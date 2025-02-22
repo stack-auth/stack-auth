@@ -100,3 +100,26 @@ export function omit<T extends {}, K extends keyof T>(obj: T, keys: K[]): Omit<T
 export function split<T extends {}, K extends keyof T>(obj: T, keys: K[]): [Pick<T, K>, Omit<T, K>] {
   return [pick(obj, keys), omit(obj, keys)];
 }
+
+
+export function set<T extends object, K extends keyof T>(obj: T, key: K, value: T[K]) {
+  Object.defineProperty(obj, key, { value, writable: true, configurable: true, enumerable: true });
+}
+
+export function get<T extends object, K extends keyof T>(obj: T, key: K): T[K] {
+  const descriptor = Object.getOwnPropertyDescriptor(obj, key);
+  if (!descriptor) throw new StackAssertionError(`get: key ${String(key)} does not exist`, { obj, key });
+  return descriptor.value;
+}
+
+export function has<T extends object, K extends keyof T>(obj: T, key: K): obj is T {
+  return Object.prototype.hasOwnProperty.call(obj, key);
+}
+
+export function deleteKey<T extends object, K extends keyof T>(obj: T, key: K) {
+  if (has(obj, key)) {
+    Reflect.deleteProperty(obj, key);
+  } else {
+    throw new StackAssertionError(`deleteKey: key ${String(key)} does not exist`, { obj, key });
+  }
+}

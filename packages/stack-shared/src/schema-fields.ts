@@ -197,6 +197,44 @@ export function yupUnion<T extends yup.ISchema<any>[]>(...args: T): yup.MixedSch
   });
 }
 
+export function yupRecord<T extends yup.AnySchema>(
+  valueSchema: T,
+  keyValidation?: (key: string) => boolean
+): yup.MixedSchema<Record<string, yup.InferType<T>>> {
+  return yupObject().test(
+    'record',
+    '${path} must be a record of valid values',
+    function (value: unknown) {
+      const { path, createError } = this as any;
+      if (typeof value !== 'object' || value === null) {
+        return createError({ message: `${path} must be an object` });
+      }
+
+      // Validate each property using the provided valueSchema
+      for (const key of Object.keys(value)) {
+        // Validate the key if a validation function was provided
+        if (keyValidation && !keyValidation(key)) {
+          return createError({
+            path: path,
+            message: `Invalid key: ${key}`,
+          });
+        }
+
+        try {
+          valueSchema.validateSync((value as Record<string, unknown>)[key]);
+        } catch (e: any) {
+          return createError({
+            path: path ? `${path}.${key}` : key,
+            message: e.message,
+          });
+        }
+      }
+
+      return true;
+    },
+  ) as any;
+}
+
 export function ensureObjectSchema<T extends yup.AnyObject>(schema: yup.Schema<T>): yup.ObjectSchema<T> & typeof schema {
   if (!(schema instanceof yup.ObjectSchema)) throw new StackAssertionError(`assertObjectSchema: schema is not an ObjectSchema: ${schema.describe().type}`);
   return schema as any;
