@@ -1,6 +1,6 @@
 {
-  "//": "THIS FILE IS AUTO-GENERATED FROM TEMPLATE. DO NOT EDIT IT DIRECTLY",
   "name": "@stackframe/js",
+
   "version": "2.7.18",
   "sideEffects": false,
   "main": "./dist/index.js",
@@ -21,8 +21,11 @@
     "typecheck": "tsc --noEmit",
     "clean": "rimraf dist && rimraf node_modules",
     "lint": "eslint --ext .tsx,.ts .",
+
     "build": "rimraf dist && tsup-node",
     "dev": "rimraf dist && tsup-node --watch"
+
+
   },
   "files": [
     "README.md",

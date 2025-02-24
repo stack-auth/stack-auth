@@ -21,7 +21,7 @@ For most users, we recommend using [Stack Auth's cloud hosted solution](https://
 On a high level, Stack Auth is composed of the following services:
 - **API backend**: The core of Stack Auth, providing the REST API that the dashboard and your app connect to. This is what [api.stack-auth.com](https://api.stack-auth.com) provides.
 - **Dashboard**: The interface for managing users, teams, auth methods, etc. This is available at [app.stack-auth.com](https://app.stack-auth.com).
-- **Client SDK**: An SDK used to connect your app to the Stack Auth API backend, wrapping API calls and providing easy-to-use interfaces. More details [here](/getting-started/setup).
+- **Client SDK**: An SDK used to connect your app to the Stack Auth API backend, wrapping API calls and providing easy-to-use interfaces. More details [here](../getting-started/setup.mdx).
 - **Postgres database**: Used to store all user data. We use [Prisma](https://prisma.io) as the ORM and manage the database schema migrations.
 - **Svix**: Used to send webhooks. Svix is open-source and can be self-hosted, but also offers a cloud hosted solution. More on Svix [here](https://svix.com)
 - **Email server**: We use [Inbucket](https://inbucket.org) as a local email server for development and a separate SMTP server for production. Any email service supporting SMTP will work.
@@ -51,7 +51,7 @@ Stack Auth provides a pre-configured Docker image that bundles the dashboard and
 
 Now you can open the dashboard at [http://localhost:8101](http://localhost:8101) and the API backend on port 8102.
 
-Now, login with your admin account on the dashboard and follow the [normal setup process](/getting-started/setup). Add `NEXT_PUBLIC_STACK_API_URL=https://your-backend-url.com` to your app's environment variables so that it connects to your API backend instead of the default Stack Auth API backend (https://api.stack-auth.com).
+Now, login with your admin account on the dashboard and follow the [normal setup process](../getting-started/setup.mdx). Add `NEXT_PUBLIC_STACK_API_URL=https://your-backend-url.com` to your app's environment variables so that it connects to your API backend instead of the default Stack Auth API backend (https://api.stack-auth.com).
 
 ## Local development
 
@@ -162,4 +162,4 @@ To manage your dashboard configs with this account, manually go into the databas
 
 Go back to the dashboard, refresh the page, and you should see the "Stack Dashboard" project. We recommend disabling new user sign-ups to your internal project to avoid unauthorized account and project creations.
 
-Now, create a new project for your app and follow the [normal setup process](/getting-started/setup). Add `NEXT_PUBLIC_STACK_API_URL=https://your-backend-url.com` to your app's environment variables so that it connects to your API backend instead of the default Stack Auth API backend (https://api.stack-auth.com).
+Now, create a new project for your app and follow the [normal setup process](../getting-started/setup.mdx). Add `NEXT_PUBLIC_STACK_API_URL=https://your-backend-url.com` to your app's environment variables so that it connects to your API backend instead of the default Stack Auth API backend (https://api.stack-auth.com).

@@ -38,6 +38,5 @@ jobs:
           tail: true
           wait-for: 120s
           log-output-if: true
-      # - run: pnpm run dev & sleep 120
       - run: pnpm test
         

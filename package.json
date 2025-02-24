@@ -4,7 +4,7 @@
   "private": true,
   "repository": "",
   "scripts": {
-    "pre": "npx -y only-allow pnpm && node -e \"if(process.env.STACK_SKIP_TEMPLATE_GENERATION !== 'true') require('child_process').execSync('npx --package=ts-node ts-node ./scripts/generate-from-template.ts')\"",
+    "pre": "npx -y only-allow pnpm && node -e \"if(process.env.STACK_SKIP_TEMPLATE_GENERATION !== 'true') require('child_process').execSync('npx --package=ts-node ts-node ./scripts/generate-sdks.ts')\"",
     "preinstall": "pnpm pre",
     "typecheck": "pnpm pre && turbo typecheck",
     "build:dev": "pnpm pre && NODE_ENV=development pnpm run build",
@@ -14,7 +14,7 @@
     "build:demo": "pnpm pre && turbo run build --filter=demo-app...",
     "build:packages": "pnpm pre && turbo run build --filter=./packages/*",
     "clean": "pnpm pre && turbo run clean && rimraf --glob **/.next && rimraf --glob **/.turbo && rimraf .turbo && rimraf --glob **/node_modules",
-    "codegen": "pnpm pre && turbo run codegen && pnpm run generate-from-template",
+    "codegen": "pnpm pre && pnpm run generate-docs && turbo run codegen && pnpm run generate-sdks",
     "deps-compose": "docker compose -p stack-dependencies -f docker/dependencies/docker.compose.yaml",
     "stop-deps": "POSTGRES_DELAY_MS=0 pnpm run deps-compose kill && POSTGRES_DELAY_MS=0 pnpm run deps-compose down -v",
     "init-db": "pnpm pre && pnpm run prisma db push && pnpm run prisma db seed",
@@ -28,8 +28,8 @@
     "explain-query": "pnpm pre && echo 'Paste your query (end with Ctrl-D):' && query=$(cat) && echo 'Connecting to Postgres...' && printf \"EXPLAIN (ANALYZE, COSTS, VERBOSE, BUFFERS, FORMAT JSON)\n$query\" | pnpm run --silent psql -qAt | sed -n '/\\[/,$p' > explained-query.untracked.json && echo 'Explained query saved to explained-query.untracked.json. To analyze it, open it in the query analyzer at https://tatiyants.com/pev/#/plans/new'",
     "prisma": "pnpm pre && pnpm run --filter=@stackframe/stack-backend prisma",
     "fern": "pnpm pre && pnpm run --filter=@stackframe/docs fern",
-    "dev": "concurrently -k \"pnpm run generate-from-template:watch\" \"turbo run dev --concurrency 99999\"",
-    "dev:basic": "concurrently -k \"pnpm run generate-from-template:watch\" \"turbo run dev --concurrency 99999 --filter=@stackframe/stack-backend --filter=@stackframe/stack-dashboard --filter=@stackframe/mock-oauth-server\"",
+    "dev": "concurrently -k \"pnpm run generate-sdks:watch\" \"pnpm run generate-docs:watch\" \"turbo run dev --concurrency 99999\"",
+    "dev:basic": "concurrently -k \"pnpm run generate-sdks:watch\" \"pnpm run generate-docs:watch\" \"turbo run dev --concurrency 99999 --filter=@stackframe/stack-backend --filter=@stackframe/stack-dashboard --filter=@stackframe/mock-oauth-server\"",
     "start": "pnpm pre && turbo run start --concurrency 99999",
     "start:backend": "pnpm pre && turbo run start --concurrency 99999 --filter=@stackframe/stack-backend",
     "start:dashboard": "pnpm pre && turbo run start --concurrency 99999 --filter=@stackframe/stack-dashboard",
@@ -42,10 +42,12 @@
     "test:e2e": "pnpm pre && vitest e2e/tests",
     "test:unit": "pnpm pre && vitest src",
     "verify-data-integrity": "pnpm pre && pnpm -C apps/backend run verify-data-integrity",
-    "generate-docs": "pnpm pre && turbo run generate-docs",
+    "generate-openapi": "pnpm pre && turbo run generate-openapi",
     "generate-keys": "pnpm pre && turbo run generate-keys",
-    "generate-from-template": "npx --package=ts-node ts-node ./scripts/generate-from-template.ts",
-    "generate-from-template:watch": "chokidar --silent -c 'pnpm run generate-from-template' './packages/template' --ignore './packages/template/package.json' --ignore '**/node_modules/**' --ignore '**/dist/**' --ignore '**/.turbo/**' --throttle 2000"
+    "generate-sdks": "npx --package=ts-node ts-node ./scripts/generate-sdks.ts",
+    "generate-sdks:watch": "chokidar --silent -c 'pnpm run generate-sdks' './packages/template' --ignore './packages/template/package.json' --ignore '**/node_modules/**' --ignore '**/dist/**' --ignore '**/.turbo/**' --throttle 2000",
+    "generate-docs": "tsx ./scripts/generate-docs.ts",
+    "generate-docs:watch": "chokidar --silent -c 'pnpm run generate-docs' './docs/fern/docs/pages-template' './docs/fern/docs/docs-template.yml' --throttle 2000"
   },
   "devDependencies": {
     "@changesets/cli": "^2.27.9",
@@ -85,5 +87,8 @@
     "npm": ">=10.0.0",
     "node": ">=20.0.0"
   },
-  "packageManager": "pnpm@9.1.2"
+  "packageManager": "pnpm@9.1.2",
+  "dependencies": {
+    "yaml": "^2.4.5"
+  }
 }

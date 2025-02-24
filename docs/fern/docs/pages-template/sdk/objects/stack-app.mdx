@@ -20,7 +20,9 @@ On this page:
 
 A [`StackApp`](../../concepts/stack-app.mdx) with client-level permissions. It contains most of the useful methods and hooks for your client-side code.
 
+{/* IF_PLATFORM: react-like */}
 Most commonly you get an instance of `StackClientApp` by calling [`useStackApp()`](../hooks/use-stack-app.mdx) in a Client Component.
+{/* END_PLATFORM */}
 
 
 
@@ -53,6 +55,7 @@ Creates a new `StackClientApp` instance.
 
 Because each app creates a new connection to Stack Auth's backend, you should re-use existing instances wherever possible.
 
+{/* IF_PLATFORM: react-like */}
 <Callout>
 This object is not usually constructed directly. More commonly, you would construct a [`StackServerApp`](#stackserverapp) instead, pass it into a [`<StackProvider />`](../../components/stack-provider.mdx), and then use `useStackApp()` hook to obtain a `StackClientApp`.
 
@@ -60,7 +63,7 @@ The [setup wizard](../../getting-started/setup.mdx) does these steps for you, so
 
 If you're building a client-only app and don't have a [`SECRET_SERVER_KEY`](../../rest-api/overview#should-i-use-client-or-server-access-type), you can construct a `StackClientApp` directly.
 </Callout>
-
+{/* END_PLATFORM */}
 ### Parameters
 
 <div className="indented">
@@ -171,7 +174,9 @@ console.log(user); // always defined; redirects to sign-in page if not signed in
 
 Functionally equivalent to [`getUser()`](#stackclientappgetuseroptions), but as a React hook.
 
+{/* IF_PLATFORM: react-like */}
 Equivalent to the [`useUser()`](../hooks/use-user.mdx) standalone hook (which is an alias for `useStackApp().useUser()`).
+{/* END_PLATFORM */}
 
 ### Parameters
 

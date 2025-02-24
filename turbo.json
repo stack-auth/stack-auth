@@ -100,7 +100,7 @@
     "typecheck": {
       "dependsOn": []
     },
-    "generate-docs": {
+    "generate-openapi": {
       "cache": false
     },
     "generate-keys": {

@@ -13,7 +13,7 @@
   "keywords": [],
   "author": "",
   "dependencies": {
-    "fern-api": "^0.44.11"
+    "fern-api": "^0.53.17"
   },
   "devDependencies": {
     "rimraf": "^5.0.7",

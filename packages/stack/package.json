@@ -1,6 +1,6 @@
 {
-  "//": "THIS FILE IS AUTO-GENERATED FROM TEMPLATE. DO NOT EDIT IT DIRECTLY",
   "name": "@stackframe/stack",
+
   "version": "2.7.18",
   "sideEffects": false,
   "main": "./dist/index.js",
@@ -21,16 +21,19 @@
     "typecheck": "tsc --noEmit",
     "clean": "rimraf dist && rimraf node_modules",
     "lint": "eslint --ext .tsx,.ts .",
+
     "build": "rimraf dist && pnpm run css && tsup-node",
     "dev": "rimraf dist && concurrently -n \"build,codegen\" -k \"tsup-node --watch\" \"pnpm run codegen:watch\"",
     "codegen": "pnpm run css",
-    "codegen:watch": "pnpm run css:watch",
-    "css": "pnpm run css-tw && pnpm run css-sc",
+    "codegen:watch": "pnpm run css:watch"
+
+    ,"css": "pnpm run css-tw && pnpm run css-sc",
     "css:watch": "concurrently -n \"tw,sc\" -k \"pnpm run css-tw:watch\" \"pnpm run css-sc:watch\"",
     "css-tw:watch": "tailwindcss -i ./src/global.css -o ./src/generated/tailwind.css --watch",
     "css-tw": "tailwindcss -i ./src/global.css -o ./src/generated/tailwind.css",
     "css-sc": "tsx ./scripts/process-css.ts ./src/generated/tailwind.css ./src/generated/global-css.ts",
     "css-sc:watch": "chokidar --silent './src/generated/tailwind.css' -c 'pnpm run css-sc' --throttle 2000"
+
   },
   "files": [
     "README.md",
