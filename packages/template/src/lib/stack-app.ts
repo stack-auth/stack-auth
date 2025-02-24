@@ -6,6 +6,7 @@ import { ApiKeysCrud } from "@stackframe/stack-shared/dist/interface/crud/api-ke
 import { ContactChannelsCrud } from "@stackframe/stack-shared/dist/interface/crud/contact-channels";
 import { CurrentUserCrud } from "@stackframe/stack-shared/dist/interface/crud/current-user";
 import { EmailTemplateCrud, EmailTemplateType } from "@stackframe/stack-shared/dist/interface/crud/email-templates";
+import { InternalEmailsCrud } from "@stackframe/stack-shared/dist/interface/crud/emails";
 import { InternalProjectsCrud, ProjectsCrud } from "@stackframe/stack-shared/dist/interface/crud/projects";
 import { TeamInvitationCrud } from "@stackframe/stack-shared/dist/interface/crud/team-invitation";
 import { TeamMemberProfilesCrud } from "@stackframe/stack-shared/dist/interface/crud/team-member-profiles";
@@ -2426,6 +2427,9 @@ class _StackAdminAppImpl<HasTokenStore extends boolean, ProjectId extends string
   private readonly _metricsCache = createCache(async () => {
     return await this._interface.getMetrics();
   });
+  private readonly _sentEmailsCache = createCache(async () => {
+    return await this._interface.listSentEmails();
+  });
 
   constructor(options: StackAdminAppConstructorOptions<HasTokenStore, ProjectId>) {
     super({
@@ -2676,6 +2680,12 @@ class _StackAdminAppImpl<HasTokenStore extends boolean, ProjectId extends string
     return crud.token;
   }
   // END_PLATFORM react-like
+  // IF_PLATFORM react-like
+  useSentEmails(): InternalEmailsCrud["Admin"]["List"] {
+    const crud = useAsyncCache(this._sentEmailsCache, [], "useSentEmails()");
+    return crud;
+  }
+  // END_PLATFORM react-like
 
   protected override async _refreshProject() {
     await Promise.all([
@@ -2717,6 +2727,10 @@ class _StackAdminAppImpl<HasTokenStore extends boolean, ProjectId extends string
     } else {
       return Result.error({ errorMessage: response.error_message ?? throwErr("Email test error not specified") });
     }
+  }
+
+  async listSentEmails(): Promise<InternalEmailsCrud["Admin"]["List"]> {
+    return await this._interface.listSentEmails();
   }
 }
 
@@ -3647,6 +3661,9 @@ export type StackAdminApp<HasTokenStore extends boolean = boolean, ProjectId ext
       recipientEmail: string,
       emailConfig: EmailConfig,
     }): Promise<Result<undefined, { errorMessage: string }>>,
+    listSentEmails(): Promise<InternalEmailsCrud["Admin"]["List"]>,
+    // NEXT_LINE_PLATFORM react-like
+    useSentEmails(): InternalEmailsCrud["Admin"]["List"],
   }
   & StackServerApp<HasTokenStore, ProjectId>
 );
