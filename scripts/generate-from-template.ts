@@ -5,7 +5,7 @@ import path from "path";
 
 const COMMENT_LINE = "THIS FILE IS AUTO-GENERATED FROM TEMPLATE. DO NOT EDIT IT DIRECTLY";
 
-const allEnvs = ["next", "react-like", "js", "template"];
+const allEnvs = ["next", "react", "react-like", "js", "template"];
 const ignoredFiles = ['node_modules', 'dist', '.turbo', '.gitignore'];
 
 const baseDir = path.resolve(__dirname, "..", "packages");
@@ -502,6 +502,21 @@ generateFromTemplate({
     }
 
     content = processMacros(content, ["next", "react-like"]);
+
+    return content;
+  },
+});
+
+generateFromTemplate({
+  src: srcDir,
+  dest: path.resolve(baseDir, "react"),
+  editFn: (path, content) => {
+    // ignore the generated folder as the files are big and not needed
+    if (path.startsWith('src/generated')) {
+      return null;
+    }
+
+    content = processMacros(content, ["react", "react-like"]);
 
     return content;
   },

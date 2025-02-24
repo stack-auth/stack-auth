@@ -5,6 +5,8 @@
   "name": "@stackframe/js",
   "//": "ELSE_IF_PLATFORM next",
   "name": "@stackframe/stack",
+  "//": "ELSE_IF_PLATFORM react",
+  "name": "@stackframe/react",
   "//": "END_PLATFORM",
 
   "//": "NEXT_LINE_PLATFORM template",
@@ -125,6 +127,7 @@
     "esbuild": "^0.20.2",
     "i18next": "^23.14.0",
     "i18next-parser": "^9.0.2",
+    "//": "NEXT_LINE_PLATFORM next",
     "next": "^14.1.0",
     "postcss": "^8.4.38",
     "postcss-nested": "^6.0.1",

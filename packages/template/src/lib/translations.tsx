@@ -1,3 +1,4 @@
+// NEXT_LINE_PLATFORM next
 import "client-only";
 import React from "react";
 import { TranslationContext } from "../providers/translation-provider-client";
