@@ -12,7 +12,8 @@ import { EmailTemplateType } from "@stackframe/stack-shared/dist/interface/crud/
 import { strictEmailSchema } from "@stackframe/stack-shared/dist/schema-fields";
 import { throwErr } from "@stackframe/stack-shared/dist/utils/errors";
 import { deepPlainEquals } from "@stackframe/stack-shared/dist/utils/objects";
-import { ActionCell, ActionDialog, Alert, Button, Card, SimpleTooltip, Typography, useToast } from "@stackframe/stack-ui";
+import { ActionCell, ActionDialog, Alert, AlertDescription, AlertTitle, Button, Card, SimpleTooltip, Typography, useToast } from "@stackframe/stack-ui";
+import { AlertCircle } from "lucide-react";
 import { useMemo, useState } from "react";
 import * as yup from "yup";
 import { PageLayout } from "../page-layout";
@@ -26,6 +27,7 @@ export default function PageClient() {
   const router = useRouter();
   const [resetTemplateType, setResetTemplateType] = useState<EmailTemplateType>("email_verification");
   const [resetTemplateDialogOpen, setResetTemplateDialogOpen] = useState(false);
+  const [sharedSmtpWarningDialogOpen, setSharedSmtpWarningDialogOpen] = useState<EmailTemplateType|null>(null);
 
   return (
     <PageLayout title="Emails" description="Configure email settings for your project">
@@ -66,6 +68,13 @@ export default function PageClient() {
       )}
 
       <SettingCard title="Email Templates" description="Customize the emails sent">
+        {emailConfig?.type === 'shared' && <Alert variant="default">
+          <AlertCircle className="h-4 w-4" />
+          <AlertTitle>Warning</AlertTitle>
+          <AlertDescription>
+            You are using a shared email server. If you want to customize the email templates, you need to configure a custom SMTP server.
+          </AlertDescription>
+        </Alert>}
         {emailTemplates.map((template) => (
           <Card key={template.type} className="p-4 flex justify-between flex-col sm:flex-row gap-4">
             <div className="flex flex-col gap-2">
@@ -78,7 +87,13 @@ export default function PageClient() {
                 </Typography>
               </div>
               <div className="flex-grow flex justify-start items-end gap-2">
-                <Button variant='secondary' onClick={() => router.push('emails/templates/' + template.type)}>Edit Template</Button>
+                <Button variant='secondary' onClick={() => {
+                  if (emailConfig?.type === 'shared') {
+                    setSharedSmtpWarningDialogOpen(template.type);
+                  } else {
+                    router.push(`emails/templates/${template.type}`);
+                  }
+                }}>Edit Template</Button>
                 {!template.isDefault && <ActionCell
                   items={[{
                     item: 'Reset to Default',
@@ -96,11 +111,24 @@ export default function PageClient() {
         ))}
       </SettingCard>
 
-      <ResetEmailTemplateDialog
-        templateType={resetTemplateType}
-        open={resetTemplateDialogOpen}
-        onClose={() => setResetTemplateDialogOpen(false)}
-      />
+      <ActionDialog
+        open={sharedSmtpWarningDialogOpen !== null}
+        onClose={() => setSharedSmtpWarningDialogOpen(null)}
+        title="Shared Email Server"
+        okButton={{ label: "Edit Templates Anyway", onClick: async () => {
+          router.push(`emails/templates/${sharedSmtpWarningDialogOpen}`);
+        } }}
+        cancelButton={{ label: "Cancel" }}
+      >
+        <Alert variant="default">
+          <AlertCircle className="h-4 w-4" />
+          <AlertTitle>Warning</AlertTitle>
+          <AlertDescription>
+            You are using a shared email server. If you want to customize the email templates, you need to configure a custom SMTP server.
+            You can edit the templates anyway, but you will not be able to save them.
+          </AlertDescription>
+        </Alert>
+      </ActionDialog>
     </PageLayout>
   );
 }
