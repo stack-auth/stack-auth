@@ -1,6 +1,10 @@
 ---
-slug: customization/page-examples/signup
+slug: customization/page-examples/sign-up
 ---
+
+# Custom Sign-Up Page Examples
+
+This page provides examples of how to create custom sign-up pages for your application using Stack Auth components and functions.
 
 ## Custom page with `SignUp` component
 
@@ -16,19 +20,19 @@ export default function DefaultSignUp() {
 }
 ```
 
-You can also use `useUser` at the beginning of the sign in page to check if wether the user is already signed in and redirect them to some other page if they are. 
+You can also use `useUser` at the beginning of the sign-up page to check whether the user is already signed in and redirect them to another page if they are.
 
 ## Other useful components
 
-`CredentialSignUp`: A component that contains a form for signing in with email and password.
+`CredentialSignUp`: A component that renders a complete form for signing up with email and password. It handles validation, error states, and submission automatically.
 
-`OAuthGroup`: A list of available OAuth provider sign-up buttons components. The available provider list is fetched from the server.
+`OAuthGroup`: A component that displays a list of available OAuth provider sign-up buttons. The available provider list is automatically fetched from the server based on your project configuration.
 
-`OAuthButton`: A single OAuth sign-up button.
+`OAuthButton`: A component that renders a single OAuth sign-up button for a specific provider. Use this when you only want to offer specific OAuth providers.
 
 ## Custom OAuth Sign Up
 
-OAuth sign-in and sign-up shares the same function. Check out the [Sign In example](/customization/page-examples/signin#custom-oauth-sign-in) for more information.
+OAuth sign-in and sign-up share the same function. Check out the [Sign In example](/customization/page-examples/sign-in#custom-oauth-sign-in) for more information.
 
 ## Custom Credential Sign Up
 
@@ -49,9 +53,11 @@ export default function CustomCredentialSignUp() {
       setError('Please enter your password');
       return;
     }
-    // this will redirect to app.urls.afterSignUp if successful, you can customize it in the StackServerApp constructor
+    // This will redirect to app.urls.afterSignUp if successful.
+    // You can customize the redirect URL in the StackServerApp constructor.
     const result = await app.signUpWithCredential({ email, password });
-    // It is better to handle each error code separately, but we will just show the error code directly for simplicity here
+    // It's better to handle each error code separately, but for simplicity,
+    // we'll just display the error message directly here.
     if (result.status === 'error') {
       setError(result.error.message);
     }

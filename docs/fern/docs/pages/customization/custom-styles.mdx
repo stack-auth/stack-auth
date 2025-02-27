@@ -2,37 +2,37 @@
 slug: customization/custom-styles
 ---
 
-If you want to spend minimal time on styling but still want to align with your brand, you can customize the colors of the Stack app. Colors are stored in React context and can be easily overridden.
+Customizing the styles of your Stack Auth components allows you to maintain your brand identity while leveraging the pre-built functionality. This approach is ideal when you want to quickly align the authentication UI with your application's design system without building custom components from scratch. Stack's theming system uses a React context to store colors and styling variables that can be easily overridden.
 
-There are some color variables that you can customize:
+You can customize the following color variables to match your brand:
 
-- `background`
-- `foreground`
-- `card`
-- `cardForeground`
-- `popover`
-- `popoverForeground`
-- `primary`
-- `primaryForeground`
-- `secondary`
-- `secondaryForeground`
-- `muted`
-- `mutedForeground`
-- `accent`
-- `accentForeground`
-- `destructive`
-- `destructiveForeground`
-- `border`
-- `input`
-- `ring`
+- `background`: Main background color of the application
+- `foreground`: Main text color on the background
+- `card`: Background color for card elements
+- `cardForeground`: Text color for card elements
+- `popover`: Background color for popover elements like dropdowns
+- `popoverForeground`: Text color for popover elements
+- `primary`: Primary brand color, used for buttons and important elements
+- `primaryForeground`: Text color on primary-colored elements
+- `secondary`: Secondary color for less prominent elements
+- `secondaryForeground`: Text color on secondary-colored elements
+- `muted`: Color for muted or disabled elements
+- `mutedForeground`: Text color for muted elements
+- `accent`: Accent color for highlights and emphasis
+- `accentForeground`: Text color on accent-colored elements
+- `destructive`: Color for destructive actions like delete buttons
+- `destructiveForeground`: Text color on destructive elements
+- `border`: Color used for borders
+- `input`: Border color for input fields
+- `ring`: Focus ring color for interactive elements
 
 And some other variables:
 
 - `radius`: border radius of components like buttons, inputs, etc.
 
-These variables are css variables so you can use the syntax like `hsl(0, 0%, 0%)`, `black`, `#fff`, etc.
+These variables are CSS variables so you can use any valid CSS color syntax like `hsl(0, 0%, 0%)`, `black`, `#fff`, `rgb(255, 0, 0)`, etc.
 
-The colors can be different for light and dark mode. You can pass these into the `StackTheme` component (in your `layout.tsx` file if you followed the Getting Started guide) as follows:
+The colors can be different for light and dark mode, allowing you to create a cohesive experience across both themes. You can pass these into the `StackTheme` component (in your `layout.tsx` file if you followed the Getting Started guide) as follows:
 
 ```jsx title="app/layout.tsx"
 const theme = {
@@ -51,3 +51,35 @@ const theme = {
   {/* children */}
 </StackTheme>
 ```
+
+## Using CSS Variables in Custom Components
+
+The theme variables are available as CSS variables in your application, which you can use in your own custom components:
+
+```css
+.my-custom-button {
+  background-color: var(--stack-primary);
+  color: var(--stack-primary-foreground);
+  border-radius: var(--stack-radius);
+}
+```
+
+This ensures your custom components maintain visual consistency with Stack's built-in components.
+
+## Overriding Specific Component Styles
+
+For more targeted styling, you can override specific Stack components using CSS selectors:
+
+```css
+/* Target all Stack buttons */
+.stack-btn {
+  font-weight: bold;
+}
+
+/* Target specific Stack components */
+.stack-sign-in-form input {
+  border-width: 2px;
+}
+```
+
+When applying these customizations, you'll see immediate visual changes in your authentication components, creating a seamless integration with your application's design system.
