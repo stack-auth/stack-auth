@@ -1,7 +1,7 @@
 import { isTeamSystemPermission, listTeamPermissionDefinitions, teamSystemPermissionStringToDBType } from "@/lib/permissions";
 import { fullProjectInclude, projectPrismaToCrud } from "@/lib/projects";
 import { ensureSharedProvider } from "@/lib/request-checks";
-import { retryTransaction } from "@/prisma-client";
+import { prismaClient, retryTransaction } from "@/prisma-client";
 import { createCrudHandlers } from "@/route-handlers/crud-handler";
 import { projectsCrud } from "@stackframe/stack-shared/dist/interface/crud/projects";
 import { yupObject } from "@stackframe/stack-shared/dist/schema-fields";
@@ -94,6 +94,16 @@ export const projectsCrudHandlers = createLazyProxy(() => createCrudHandlers(pro
       const emailConfig = data.config?.email_config;
       if (emailConfig) {
         let updateData = {};
+
+        if (emailConfig.type === 'shared') {
+          const customTemplateCount = await tx.emailTemplate.count({
+            where: { projectConfigId: oldProject.config.id },
+          });
+
+          if (customTemplateCount !== 0) {
+            throw new StatusError(StatusError.BadRequest, 'Cannot change email service type to shared when custom templates are defined. Disable custom templates first, before changing the email service type.');
+          }
+        }
 
         await tx.standardEmailServiceConfig.deleteMany({
           where: { projectConfigId: oldProject.config.id },

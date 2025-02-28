@@ -6,3 +6,23 @@
 export function scrambleDuringCompileTime<T>(t: T): T {
   return t;
 }
+import.meta.vitest?.test("scrambleDuringCompileTime", ({ expect }) => {
+  // Test with primitive values
+  expect(scrambleDuringCompileTime(42)).toBe(42);
+  expect(scrambleDuringCompileTime("hello")).toBe("hello");
+  expect(scrambleDuringCompileTime(true)).toBe(true);
+  expect(scrambleDuringCompileTime(null)).toBe(null);
+  expect(scrambleDuringCompileTime(undefined)).toBe(undefined);
+
+  // Test with objects (reference equality)
+  const obj = { a: 1 };
+  expect(scrambleDuringCompileTime(obj)).toBe(obj);
+
+  // Test with arrays (reference equality)
+  const arr = [1, 2, 3];
+  expect(scrambleDuringCompileTime(arr)).toBe(arr);
+
+  // Test with functions (reference equality)
+  const fn = () => "test";
+  expect(scrambleDuringCompileTime(fn)).toBe(fn);
+});

@@ -6,13 +6,13 @@ export function isWeekend(date: Date): boolean {
 
 import.meta.vitest?.test("isWeekend", ({ expect }) => {
   // Sunday (day 0)
-  expect(isWeekend(new Date("2023-01-01"))).toBe(true);
+  expect(isWeekend(new Date(2023, 0, 1))).toBe(true);
   // Saturday (day 6)
-  expect(isWeekend(new Date("2023-01-07"))).toBe(true);
+  expect(isWeekend(new Date(2023, 0, 7))).toBe(true);
   // Monday (day 1)
-  expect(isWeekend(new Date("2023-01-02"))).toBe(false);
+  expect(isWeekend(new Date(2023, 0, 2))).toBe(false);
   // Friday (day 5)
-  expect(isWeekend(new Date("2023-01-06"))).toBe(false);
+  expect(isWeekend(new Date(2023, 0, 6))).toBe(false);
 });
 
 const agoUnits = [

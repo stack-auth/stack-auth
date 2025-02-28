@@ -3,10 +3,25 @@ import { remainder } from "./math";
 export function typedIncludes<T extends readonly any[]>(arr: T, item: unknown): item is T[number] {
   return arr.includes(item);
 }
+import.meta.vitest?.test("typedIncludes", ({ expect }) => {
+  const arr = [1, 2, 3] as const;
+  expect(typedIncludes(arr, 1)).toBe(true);
+  expect(typedIncludes(arr, 4)).toBe(false);
+  expect(typedIncludes(arr, "1")).toBe(false);
+
+  const strArr = ["a", "b", "c"] as const;
+  expect(typedIncludes(strArr, "a")).toBe(true);
+  expect(typedIncludes(strArr, "d")).toBe(false);
+});
 
 export function enumerate<T extends readonly any[]>(arr: T): [number, T[number]][] {
   return arr.map((item, index) => [index, item]);
 }
+import.meta.vitest?.test("enumerate", ({ expect }) => {
+  expect(enumerate([])).toEqual([]);
+  expect(enumerate([1, 2, 3])).toEqual([[0, 1], [1, 2], [2, 3]]);
+  expect(enumerate(["a", "b", "c"])).toEqual([[0, "a"], [1, "b"], [2, "c"]]);
+});
 
 export function isShallowEqual(a: readonly any[], b: readonly any[]): boolean {
   if (a.length !== b.length) return false;
@@ -57,6 +72,25 @@ export function groupBy<T extends any, K>(
   }
   return result;
 }
+import.meta.vitest?.test("groupBy", ({ expect }) => {
+  expect(groupBy([], (x) => x)).toEqual(new Map());
+
+  const numbers = [1, 2, 3, 4, 5, 6];
+  const grouped = groupBy(numbers, (n) => n % 2 === 0 ? "even" : "odd");
+  expect(grouped.get("even")).toEqual([2, 4, 6]);
+  expect(grouped.get("odd")).toEqual([1, 3, 5]);
+
+  // Check the actual lengths of the words to ensure our test is correct
+  const words = ["apple", "banana", "cherry", "date", "elderberry"];
+  console.log("Word lengths:", words.map(w => `${w}: ${w.length}`));
+
+  const byLength = groupBy(words, (w) => w.length);
+  // Adjust expectations based on actual word lengths
+  expect(byLength.get(5)).toEqual(["apple"]);
+  expect(byLength.get(6)).toEqual(["banana", "cherry"]);
+  expect(byLength.get(4)).toEqual(["date"]);
+  expect(byLength.get(10)).toEqual(["elderberry"]);
+});
 
 
 export function range(endExclusive: number): number[];
@@ -86,13 +120,30 @@ import.meta.vitest?.test("range", ({ expect }) => {
 
 
 export function rotateLeft(arr: readonly any[], n: number): any[] {
+  if (arr.length === 0) return [];
   const index = remainder(n, arr.length);
-  return [...arr.slice(n), arr.slice(0, n)];
+  return [...arr.slice(index), ...arr.slice(0, index)];
 }
+import.meta.vitest?.test("rotateLeft", ({ expect }) => {
+  expect(rotateLeft([], 1)).toEqual([]);
+  expect(rotateLeft([1, 2, 3, 4, 5], 0)).toEqual([1, 2, 3, 4, 5]);
+  expect(rotateLeft([1, 2, 3, 4, 5], 1)).toEqual([2, 3, 4, 5, 1]);
+  expect(rotateLeft([1, 2, 3, 4, 5], 3)).toEqual([4, 5, 1, 2, 3]);
+  expect(rotateLeft([1, 2, 3, 4, 5], 5)).toEqual([1, 2, 3, 4, 5]);
+  expect(rotateLeft([1, 2, 3, 4, 5], 6)).toEqual([2, 3, 4, 5, 1]);
+});
 
 export function rotateRight(arr: readonly any[], n: number): any[] {
   return rotateLeft(arr, -n);
 }
+import.meta.vitest?.test("rotateRight", ({ expect }) => {
+  expect(rotateRight([], 1)).toEqual([]);
+  expect(rotateRight([1, 2, 3, 4, 5], 0)).toEqual([1, 2, 3, 4, 5]);
+  expect(rotateRight([1, 2, 3, 4, 5], 1)).toEqual([5, 1, 2, 3, 4]);
+  expect(rotateRight([1, 2, 3, 4, 5], 3)).toEqual([3, 4, 5, 1, 2]);
+  expect(rotateRight([1, 2, 3, 4, 5], 5)).toEqual([1, 2, 3, 4, 5]);
+  expect(rotateRight([1, 2, 3, 4, 5], 6)).toEqual([5, 1, 2, 3, 4]);
+});
 
 
 export function shuffle<T>(arr: readonly T[]): T[] {
@@ -103,11 +154,41 @@ export function shuffle<T>(arr: readonly T[]): T[] {
   }
   return result;
 }
+import.meta.vitest?.test("shuffle", ({ expect }) => {
+  // Test empty array
+  expect(shuffle([])).toEqual([]);
+
+  // Test single element array
+  expect(shuffle([1])).toEqual([1]);
+
+  // Test that shuffle returns a new array
+  const original = [1, 2, 3, 4, 5];
+  const shuffled = shuffle(original);
+  expect(shuffled).not.toBe(original);
+
+  // Test that all elements are preserved
+  expect(shuffled.sort((a, b) => a - b)).toEqual(original);
+
+  // Test with a larger array to ensure randomness
+  // This is a probabilistic test, but it's very unlikely to fail
+  const large = Array.from({ length: 100 }, (_, i) => i);
+  const shuffledLarge = shuffle(large);
+  expect(shuffledLarge).not.toEqual(large);
+  expect(shuffledLarge.sort((a, b) => a - b)).toEqual(large);
+});
 
 
 export function outerProduct<T, U>(arr1: readonly T[], arr2: readonly U[]): [T, U][] {
   return arr1.flatMap((item1) => arr2.map((item2) => [item1, item2] as [T, U]));
 }
+import.meta.vitest?.test("outerProduct", ({ expect }) => {
+  expect(outerProduct([], [])).toEqual([]);
+  expect(outerProduct([1], [])).toEqual([]);
+  expect(outerProduct([], [1])).toEqual([]);
+  expect(outerProduct([1], [2])).toEqual([[1, 2]]);
+  expect(outerProduct([1, 2], [3, 4])).toEqual([[1, 3], [1, 4], [2, 3], [2, 4]]);
+  expect(outerProduct(["a", "b"], [1, 2])).toEqual([["a", 1], ["a", 2], ["b", 1], ["b", 2]]);
+});
 
 export function unique<T>(arr: readonly T[]): T[] {
   return [...new Set(arr)];

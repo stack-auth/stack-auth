@@ -42,9 +42,9 @@ export const GET = createSmartRouteHandler({
       body: deindent`
         Welcome to the Stack API endpoint! Please refer to the documentation at https://docs.stack-auth.com.
 
-        Authentication: ${!req.auth ? "None" : deindent` ${typedCapitalize(req.auth.type)}
-          Project: ${req.auth.project.id}
-          User: ${req.auth.user ? req.auth.user.primary_email ?? req.auth.user.id : "None"}
+        Authentication: ${!req.auth ? "None" : typedCapitalize(req.auth.type) + "\n" + deindent`
+        ${"  "}Project: ${req.auth.project.id}
+        ${"  "}User: ${req.auth.user ? req.auth.user.primary_email ?? req.auth.user.id : "None"}
         `}
       `,
     };

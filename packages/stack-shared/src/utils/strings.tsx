@@ -5,14 +5,41 @@ import { filterUndefined } from "./objects";
 export function typedToLowercase<S extends string>(s: S): Lowercase<S> {
   return s.toLowerCase() as Lowercase<S>;
 }
+import.meta.vitest?.test("typedToLowercase", ({ expect }) => {
+  expect(typedToLowercase("")).toBe("");
+  expect(typedToLowercase("HELLO")).toBe("hello");
+  expect(typedToLowercase("Hello World")).toBe("hello world");
+  expect(typedToLowercase("hello")).toBe("hello");
+  expect(typedToLowercase("123")).toBe("123");
+  expect(typedToLowercase("MIXED123case")).toBe("mixed123case");
+  expect(typedToLowercase("Special@Chars!")).toBe("special@chars!");
+});
 
 export function typedToUppercase<S extends string>(s: S): Uppercase<S> {
   return s.toUpperCase() as Uppercase<S>;
 }
+import.meta.vitest?.test("typedToUppercase", ({ expect }) => {
+  expect(typedToUppercase("")).toBe("");
+  expect(typedToUppercase("hello")).toBe("HELLO");
+  expect(typedToUppercase("Hello World")).toBe("HELLO WORLD");
+  expect(typedToUppercase("HELLO")).toBe("HELLO");
+  expect(typedToUppercase("123")).toBe("123");
+  expect(typedToUppercase("mixed123Case")).toBe("MIXED123CASE");
+  expect(typedToUppercase("special@chars!")).toBe("SPECIAL@CHARS!");
+});
 
 export function typedCapitalize<S extends string>(s: S): Capitalize<S> {
   return s.charAt(0).toUpperCase() + s.slice(1) as Capitalize<S>;
 }
+import.meta.vitest?.test("typedCapitalize", ({ expect }) => {
+  expect(typedCapitalize("")).toBe("");
+  expect(typedCapitalize("hello")).toBe("Hello");
+  expect(typedCapitalize("hello world")).toBe("Hello world");
+  expect(typedCapitalize("HELLO")).toBe("HELLO");
+  expect(typedCapitalize("123test")).toBe("123test");
+  expect(typedCapitalize("already Capitalized")).toBe("Already Capitalized");
+  expect(typedCapitalize("h")).toBe("H");
+});
 
 /**
  * Compares two strings in a way that is not dependent on the current locale.
@@ -21,6 +48,34 @@ export function stringCompare(a: string, b: string): number {
   const cmp = (a: string, b: string) => a < b ? -1 : a > b ? 1 : 0;
   return cmp(a.toUpperCase(), b.toUpperCase()) || cmp(b, a);
 }
+import.meta.vitest?.test("stringCompare", ({ expect }) => {
+  // Equal strings
+  expect(stringCompare("a", "a")).toBe(0);
+  expect(stringCompare("", "")).toBe(0);
+
+  // Case comparison - note that this function is NOT case-insensitive
+  // It compares uppercase versions first, then original strings
+  expect(stringCompare("a", "A")).toBe(-1); // lowercase comes after uppercase
+  expect(stringCompare("A", "a")).toBe(1);  // uppercase comes before lowercase
+  expect(stringCompare("abc", "ABC")).toBe(-1);
+  expect(stringCompare("ABC", "abc")).toBe(1);
+
+  // Different strings
+  expect(stringCompare("a", "b")).toBe(-1);
+  expect(stringCompare("b", "a")).toBe(1);
+
+  // Strings with different lengths
+  expect(stringCompare("abc", "abcd")).toBe(-1);
+  expect(stringCompare("abcd", "abc")).toBe(1);
+
+  // Strings with numbers
+  expect(stringCompare("a1", "a2")).toBe(-1);
+  expect(stringCompare("a10", "a2")).toBe(-1);
+
+  // Strings with special characters
+  expect(stringCompare("a", "a!")).toBe(-1);
+  expect(stringCompare("a!", "a")).toBe(1);
+});
 
 /**
  * Returns all whitespace character at the start of the string.
@@ -30,6 +85,16 @@ export function stringCompare(a: string, b: string): number {
 export function getWhitespacePrefix(s: string): string {
   return s.substring(0, s.length - s.trimStart().length);
 }
+import.meta.vitest?.test("getWhitespacePrefix", ({ expect }) => {
+  expect(getWhitespacePrefix("")).toBe("");
+  expect(getWhitespacePrefix("hello")).toBe("");
+  expect(getWhitespacePrefix(" hello")).toBe(" ");
+  expect(getWhitespacePrefix("  hello")).toBe("  ");
+  expect(getWhitespacePrefix("\thello")).toBe("\t");
+  expect(getWhitespacePrefix("\n hello")).toBe("\n ");
+  expect(getWhitespacePrefix("   ")).toBe("   ");
+  expect(getWhitespacePrefix(" \t\n\r")).toBe(" \t\n\r");
+});
 
 /**
  * Returns all whitespace character at the end of the string.
@@ -39,6 +104,16 @@ export function getWhitespacePrefix(s: string): string {
 export function getWhitespaceSuffix(s: string): string {
   return s.substring(s.trimEnd().length);
 }
+import.meta.vitest?.test("getWhitespaceSuffix", ({ expect }) => {
+  expect(getWhitespaceSuffix("")).toBe("");
+  expect(getWhitespaceSuffix("hello")).toBe("");
+  expect(getWhitespaceSuffix("hello ")).toBe(" ");
+  expect(getWhitespaceSuffix("hello  ")).toBe("  ");
+  expect(getWhitespaceSuffix("hello\t")).toBe("\t");
+  expect(getWhitespaceSuffix("hello \n")).toBe(" \n");
+  expect(getWhitespaceSuffix("   ")).toBe("   ");
+  expect(getWhitespaceSuffix(" \t\n\r")).toBe(" \t\n\r");
+});
 
 /**
  * Returns a string with all empty or whitespace-only lines at the start removed.
@@ -48,8 +123,23 @@ export function getWhitespaceSuffix(s: string): string {
 export function trimEmptyLinesStart(s: string): string {
   const lines = s.split("\n");
   const firstNonEmptyLineIndex = lines.findIndex((line) => line.trim() !== "");
+  // If all lines are empty or whitespace-only, return an empty string
+  if (firstNonEmptyLineIndex === -1) return "";
   return lines.slice(firstNonEmptyLineIndex).join("\n");
 }
+import.meta.vitest?.test("trimEmptyLinesStart", ({ expect }) => {
+  expect(trimEmptyLinesStart("")).toBe("");
+  expect(trimEmptyLinesStart("hello")).toBe("hello");
+  expect(trimEmptyLinesStart("\nhello")).toBe("hello");
+  expect(trimEmptyLinesStart("\n\nhello")).toBe("hello");
+  expect(trimEmptyLinesStart("  \n\t\nhello")).toBe("hello");
+  expect(trimEmptyLinesStart("\n\nhello\nworld")).toBe("hello\nworld");
+  expect(trimEmptyLinesStart("hello\n\nworld")).toBe("hello\n\nworld");
+  expect(trimEmptyLinesStart("hello\nworld\n")).toBe("hello\nworld\n");
+  expect(trimEmptyLinesStart("\n  \n\nhello\n  \nworld")).toBe("hello\n  \nworld");
+  // Edge case: all lines are empty
+  expect(trimEmptyLinesStart("\n\n  \n\t")).toBe("");
+});
 
 /**
  * Returns a string with all empty or whitespace-only lines at the end removed.
@@ -61,6 +151,19 @@ export function trimEmptyLinesEnd(s: string): string {
   const lastNonEmptyLineIndex = findLastIndex(lines, (line) => line.trim() !== "");
   return lines.slice(0, lastNonEmptyLineIndex + 1).join("\n");
 }
+import.meta.vitest?.test("trimEmptyLinesEnd", ({ expect }) => {
+  expect(trimEmptyLinesEnd("")).toBe("");
+  expect(trimEmptyLinesEnd("hello")).toBe("hello");
+  expect(trimEmptyLinesEnd("hello\n")).toBe("hello");
+  expect(trimEmptyLinesEnd("hello\n\n")).toBe("hello");
+  expect(trimEmptyLinesEnd("hello\n  \n\t")).toBe("hello");
+  expect(trimEmptyLinesEnd("hello\nworld\n\n")).toBe("hello\nworld");
+  expect(trimEmptyLinesEnd("hello\n\nworld")).toBe("hello\n\nworld");
+  expect(trimEmptyLinesEnd("\nhello\nworld")).toBe("\nhello\nworld");
+  expect(trimEmptyLinesEnd("hello\n  \nworld\n\n  ")).toBe("hello\n  \nworld");
+  // Edge case: all lines are empty
+  expect(trimEmptyLinesEnd("\n\n  \n\t")).toBe("");
+});
 
 /**
  * Returns a string with all empty or whitespace-only lines trimmed at the start and end.
@@ -120,8 +223,8 @@ export function deindent(strings: string | readonly string[], ...values: any[]):
   if (values.length !== strings.length - 1) throw new StackAssertionError("Invalid number of values; must be one less than strings", { strings, values });
 
   const trimmedStrings = [...strings];
-  trimmedStrings[0] = trimEmptyLinesStart(trimmedStrings[0]);
-  trimmedStrings[trimmedStrings.length - 1] = trimEmptyLinesEnd(trimmedStrings[trimmedStrings.length - 1]);
+  trimmedStrings[0] = trimEmptyLinesStart(trimmedStrings[0] + "+").slice(0, -1);
+  trimmedStrings[trimmedStrings.length - 1] = trimEmptyLinesEnd("+" + trimmedStrings[trimmedStrings.length - 1]).slice(1);
 
   const indentation = trimmedStrings
     .join("${SOME_VALUE}")
@@ -145,6 +248,66 @@ export function deindent(strings: string | readonly string[], ...values: any[]):
 
   return templateIdentity(deindentedStrings, ...indentedValues);
 }
+import.meta.vitest?.test("deindent", ({ expect }) => {
+  // Test with string input
+  expect(deindent("  hello")).toBe("hello");
+  expect(deindent("  hello\n  world")).toBe("hello\nworld");
+  expect(deindent("  hello\n    world")).toBe("hello\n  world");
+  expect(deindent("\n  hello\n  world\n")).toBe("hello\nworld");
+
+  // Test with empty input
+  expect(deindent("")).toBe("");
+  expect(deindent([])).toBe("");
+
+  // Test with template literal
+  expect(deindent`
+    hello
+    world
+  `).toBe("hello\nworld");
+
+  expect(deindent`
+    hello
+      world
+  `).toBe("hello\n  world");
+
+  // Test with values
+  const value = "test";
+  expect(deindent`
+    hello ${value}
+    world
+  `).toBe(`hello ${value}\nworld`);
+
+  // Test with multiline values
+  expect(deindent`
+    hello
+      to ${"line1\n  line2"}
+    world
+  `).toBe(`hello\n  to line1\n    line2\nworld`);
+
+  // Leading whitespace values
+  expect(deindent`
+    ${"  "}A
+    ${"  "}B
+    ${"  "}C
+  `).toBe(`  A\n  B\n  C`);
+
+  // Trailing whitespaces (note: there are two whitespaces each after A and after C)
+  expect(deindent`
+    A  
+    B  ${"  "}
+    C  
+  `).toBe(`A  \nB    \nC  `);
+
+  // Test with mixed indentation
+  expect(deindent`
+    hello
+      world
+        !
+  `).toBe("hello\n  world\n    !");
+
+  // Test error cases
+  expect(() => deindent(["a", "b", "c"], "too", "many", "values")).toThrow("Invalid number of values");
+});
 
 export function extractScopes(scope: string, removeDuplicates=true): string[] {
   // TODO what is this for? can we move this into the OAuth code in the backend?
@@ -153,16 +316,106 @@ export function extractScopes(scope: string, removeDuplicates=true): string[] {
   const filtered = scopesArray.filter(scope => scope.length > 0);
   return removeDuplicates ? [...new Set(filtered)] : filtered;
 }
+import.meta.vitest?.test("extractScopes", ({ expect }) => {
+  // Test with empty string
+  expect(extractScopes("")).toEqual([]);
+
+  // Test with single scope
+  expect(extractScopes("read")).toEqual(["read"]);
+
+  // Test with multiple scopes
+  expect(extractScopes("read write")).toEqual(["read", "write"]);
+
+  // Test with extra whitespace
+  expect(extractScopes("  read  write  ")).toEqual(["read", "write"]);
+
+  // Test with newlines and tabs
+  expect(extractScopes("read\nwrite\tdelete")).toEqual(["read", "write", "delete"]);
+
+  // Test with duplicates (default behavior)
+  expect(extractScopes("read write read")).toEqual(["read", "write"]);
+
+  // Test with duplicates (explicitly set to remove)
+  expect(extractScopes("read write read", true)).toEqual(["read", "write"]);
+
+  // Test with duplicates (explicitly set to keep)
+  expect(extractScopes("read write read", false)).toEqual(["read", "write", "read"]);
+});
 
 export function mergeScopeStrings(...scopes: string[]): string {
   // TODO what is this for? can we move this into the OAuth code in the backend?
   const allScope = scopes.map((s) => extractScopes(s)).flat().join(" ");
   return extractScopes(allScope).join(" ");
 }
+import.meta.vitest?.test("mergeScopeStrings", ({ expect }) => {
+  // Test with empty input
+  expect(mergeScopeStrings()).toBe("");
+
+  // Test with single scope string
+  expect(mergeScopeStrings("read write")).toBe("read write");
+
+  // Test with multiple scope strings
+  expect(mergeScopeStrings("read", "write")).toBe("read write");
+
+  // Test with overlapping scopes
+  expect(mergeScopeStrings("read write", "write delete")).toBe("read write delete");
+
+  // Test with extra whitespace
+  expect(mergeScopeStrings("  read  write  ", "  delete  ")).toBe("read write delete");
+
+  // Test with duplicates across strings
+  expect(mergeScopeStrings("read write", "write delete", "read")).toBe("read write delete");
+
+  // Test with empty strings
+  expect(mergeScopeStrings("read write", "", "delete")).toBe("read write delete");
+});
 
 export function escapeTemplateLiteral(s: string): string {
   return s.replaceAll("`", "\\`").replaceAll("\\", "\\\\").replaceAll("$", "\\$");
 }
+import.meta.vitest?.test("escapeTemplateLiteral", ({ expect }) => {
+  // Test with empty string
+  expect(escapeTemplateLiteral("")).toBe("");
+
+  // Test with normal string (no special characters)
+  expect(escapeTemplateLiteral("hello world")).toBe("hello world");
+
+  // Test with backtick
+  const input1 = "hello `world`";
+  const output1 = escapeTemplateLiteral(input1);
+  // Verify backticks are escaped
+  expect(output1.includes("\\`")).toBe(true);
+  expect(output1).not.toBe(input1);
+
+  // Test with backslash
+  const input2 = "hello \\world";
+  const output2 = escapeTemplateLiteral(input2);
+  // Verify backslashes are escaped
+  expect(output2.includes("\\\\")).toBe(true);
+  expect(output2).not.toBe(input2);
+
+  // Test with dollar sign
+  const input3 = "hello $world";
+  const output3 = escapeTemplateLiteral(input3);
+  // Verify dollar signs are escaped
+  expect(output3.includes("\\$")).toBe(true);
+  expect(output3).not.toBe(input3);
+
+  // Test with multiple special characters
+  const input4 = "`hello` $world\\";
+  const output4 = escapeTemplateLiteral(input4);
+  // Verify all special characters are escaped
+  expect(output4.includes("\\`")).toBe(true);
+  expect(output4.includes("\\$")).toBe(true);
+  expect(output4.includes("\\\\")).toBe(true);
+  expect(output4).not.toBe(input4);
+
+  // Test with already escaped characters
+  const input5 = "\\`hello\\`";
+  const output5 = escapeTemplateLiteral(input5);
+  // Verify already escaped characters are properly escaped
+  expect(output5).not.toBe(input5);
+});
 
 /**
  * Some classes have different constructor names in different environments (eg. `Headers` is sometimes called `_Headers`,

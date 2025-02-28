@@ -93,6 +93,9 @@ function expectSnakeCase(obj: unknown, path: string): void {
         throw new StackAssertionError(`Object has camelCase key (expected snake_case): ${path}.${key}`);
       }
       if (["client_metadata", "server_metadata", "options_json", "credential", "authentication_response"].includes(key)) continue;
+      // because email templates
+      if (path === "req.body.content.root") continue;
+      if (path === "res.body.content.root") continue;
       expectSnakeCase(value, `${path}.${key}`);
     }
   }
