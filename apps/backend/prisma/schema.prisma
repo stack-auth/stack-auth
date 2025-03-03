@@ -74,6 +74,7 @@ model Tenancy {
   authMethods       AuthMethod[]       @relation("TenancyAuthMethods")
   contactChannels   ContactChannel[]   @relation("TenancyContactChannels")
   connectedAccounts ConnectedAccount[] @relation("TenancyConnectedAccounts")
+  cliAuthTokens     CliAuthToken[]     @relation("TenancyCliAuthTokens")
   SentEmail         SentEmail[]
 
   @@unique([projectId, branchId, organizationId])
@@ -262,6 +263,7 @@ model ProjectUser {
   contactChannels               ContactChannel[]
   authMethods                   AuthMethod[]
   connectedAccounts             ConnectedAccount[]
+  cliAuthTokens                 CliAuthToken[]
 
   // some backlinks for the unique constraints on some auth methods
   passwordAuthMethod PasswordAuthMethod[]
@@ -948,4 +950,23 @@ model SentEmail {
   user    ProjectUser? @relation(fields: [tenancyId, userId], references: [tenancyId, projectUserId], onDelete: Cascade)
 
   @@id([tenancyId, id])
+}
+
+model CliAuthToken {
+  id String @id @default(uuid()) @db.Uuid
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  pollingToken String @unique
+  internalToken String? // Set when the user authorizes the CLI
+  refreshToken String? // Set when the user authorizes the CLI
+  expiresAt DateTime
+  
+  tenancyId String? @db.Uuid
+  projectUserId String? @db.Uuid
+  
+  // When the user authorizes the CLI, we set the tenancy and projectUser
+  tenancy Tenancy? @relation("TenancyCliAuthTokens", fields: [tenancyId], references: [id], onDelete: Cascade)
+  projectUser ProjectUser? @relation(fields: [tenancyId, projectUserId], references: [tenancyId, projectUserId], onDelete: Cascade)
 }

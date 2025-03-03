@@ -1152,6 +1152,37 @@ const ContactChannelAlreadyUsedForAuthBySomeoneElse = createKnownErrorConstructo
   (json) => [json.type] as const,
 );
 
+// CLI Auth Errors
+const InvalidPollingToken = createKnownErrorConstructor(
+  KnownError,
+  "INVALID_POLLING_TOKEN",
+  () => [
+    400,
+    "Invalid polling token",
+  ] as const,
+  () => [] as const,
+);
+
+const PollingTokenExpired = createKnownErrorConstructor(
+  KnownError,
+  "POLLING_TOKEN_EXPIRED",
+  () => [
+    400,
+    "Polling token has expired",
+  ] as const,
+  () => [] as const,
+);
+
+const CliTokenNotAuthorized = createKnownErrorConstructor(
+  KnownError,
+  "CLI_TOKEN_NOT_AUTHORIZED",
+  () => [
+    400,
+    "CLI token has not been authorized",
+  ] as const,
+  () => [] as const,
+);
+
 export type KnownErrors = {
   [K in keyof typeof KnownErrors]: InstanceType<typeof KnownErrors[K]>;
 };
@@ -1246,6 +1277,11 @@ export const KnownErrors = {
   TeamPermissionNotFound,
   OAuthProviderAccessDenied,
   ContactChannelAlreadyUsedForAuthBySomeoneElse,
+
+  // CLI Auth Errors
+  InvalidPollingToken,
+  PollingTokenExpired,
+  CliTokenNotAuthorized,
 } satisfies Record<string, KnownErrorConstructor<any, any>>;
 
 
