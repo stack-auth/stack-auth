@@ -5,11 +5,11 @@
   "types": "./dist/index.d.ts",
   "type": "module",
   "scripts": {
-    "build": "tsc",
+    "build": "rimraf dist && tsup-node",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "clean": "rimraf dist && rimraf node_modules",
-    "dev": "tsc -w --preserveWatchOutput --declarationMap",
+    "dev": "rimraf dist && tsup-node --watch",
     "lint": "eslint --ext .tsx,.ts ."
   },
   "files": [
@@ -21,11 +21,37 @@
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
-      "default": "./dist/index.js"
+      "import": {
+        "default": "./dist/esm/index.js"
+      },
+      "require": {
+        "default": "./dist/index.js"
+      }
     },
     "./dist/*": {
       "types": "./dist/*.d.ts",
-      "default": "./dist/*.js"
+      "import": "./dist/esm/*.js",
+      "require": "./dist/*.js"
+    },
+    "./dist/helpers/*": {
+      "types": "./dist/helpers/*.d.ts",
+      "import": "./dist/esm/helpers/*.js",
+      "require": "./dist/helpers/*.js"
+    },
+    "./dist/hooks/*": {
+      "types": "./dist/hooks/*.d.ts",
+      "import": "./dist/esm/hooks/*.js",
+      "require": "./dist/hooks/*.js"
+    },
+    "./dist/schema-fields": {
+      "types": "./dist/schema-fields.d.ts",
+      "import": "./dist/esm/schema-fields.js",
+      "require": "./dist/schema-fields.js"
+    },
+    "./dist/utils/*": {
+      "types": "./dist/utils/*.d.ts",
+      "import": "./dist/esm/utils/*.js",
+      "require": "./dist/utils/*.js"
     }
   },
   "peerDependencies": {
@@ -69,6 +95,7 @@
     "@types/uuid": "^9.0.8",
     "react": "^18.2",
     "react-dom": "^18.2",
-    "rimraf": "^5.0.5"
+    "rimraf": "^5.0.7",
+    "tsup": "^8.4.0"
   }
 }

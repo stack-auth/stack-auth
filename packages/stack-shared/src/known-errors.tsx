@@ -70,8 +70,8 @@ export abstract class KnownError extends StatusError {
     for (const [_, KnownErrorType] of Object.entries(KnownErrors)) {
       if (json.code === KnownErrorType.prototype.errorCode) {
         const constructorArgs = KnownErrorType.constructorArgsFromJson(json);
+        // @ts-ignore
         return new KnownErrorType(
-          // @ts-expect-error
           ...constructorArgs,
         );
       }
@@ -117,14 +117,14 @@ function createKnownErrorConstructor<ErrorCode extends string, Super extends Abs
   const createFn = create === "inherit" ? identityArgs<Args> as never : create;
   const constructorArgsFromJsonFn = constructorArgsFromJson === "inherit" ? SuperClass.constructorArgsFromJson as never : constructorArgsFromJson;
 
-  // @ts-expect-error this is not a mixin, but TS detects it as one
+  // @ts-ignore this is not a mixin, but TS detects it as one
   class KnownErrorImpl extends SuperClass {
     public static readonly errorCode = errorCode;
     public name = `KnownError<${errorCode}>`;
     public readonly constructorArgs: Args;
 
     constructor(...args: Args) {
-      // @ts-expect-error DEVIN, STOP REMOVING THIS LINE YOU DUMBASS, YES TYPESCRIPT DOES THROW AN ERROR IF YOU DON'T HAVE IT, NO THIS IS NOT "UNUSED", AND YES YOU ARE BREAKING OUR CI PIPELINE EVERY TIME YOU DO IT
+      // @ts-ignore DEVIN, STOP REMOVING THIS LINE YOU DUMBASS, YES TYPESCRIPT DOES THROW AN ERROR IF YOU DON'T HAVE IT, NO THIS IS NOT "UNUSED", AND YES YOU ARE BREAKING OUR CI PIPELINE EVERY TIME YOU DO IT
       super(...createFn(...args));
       this.constructorArgs = args;
     }
