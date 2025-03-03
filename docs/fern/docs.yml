@@ -13,6 +13,9 @@ versions:
   - display-name: Next.js SDK
     path: next.yml
     slug: next
+  - display-name: React SDK
+    path: react.yml
+    slug: react
   - display-name: JavaScript SDK
     path: js.yml
     slug: js
