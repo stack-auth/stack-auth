@@ -3,6 +3,7 @@ import { getSoleTenancyFromProject, getTenancy } from "@/lib/tenancies";
 import { PrismaTransaction } from "@/lib/types";
 import { sendTeamMembershipDeletedWebhook, sendUserCreatedWebhook, sendUserDeletedWebhook, sendUserUpdatedWebhook } from "@/lib/webhooks";
 import { RawQuery, prismaClient, rawQuery, retryTransaction } from "@/prisma-client";
+import { PrismaClient } from "@prisma/client";
 import { createCrudHandlers } from "@/route-handlers/crud-handler";
 import { runAsynchronouslyAndWaitUntil } from "@/utils/vercel";
 import { BooleanTrue, Prisma } from "@prisma/client";
@@ -132,7 +133,7 @@ async function getPasswordHashFromData(data: {
 }
 
 async function checkAuthData(
-  tx: PrismaTransaction,
+  client: PrismaClient | PrismaTransaction,
   data: {
     tenancyId: string,
     oldPrimaryEmail?: string | null,
@@ -140,7 +141,7 @@ async function checkAuthData(
     primaryEmailVerified: boolean,
     primaryEmailAuthEnabled: boolean,
   }
-) {
+){
   if (!data.primaryEmail && data.primaryEmailAuthEnabled) {
     throw new StatusError(400, "primary_email_auth_enabled cannot be true without primary_email");
   }
@@ -149,7 +150,7 @@ async function checkAuthData(
   }
   if (data.primaryEmailAuthEnabled) {
     if (!data.oldPrimaryEmail || data.oldPrimaryEmail !== data.primaryEmail) {
-      const existingChannelUsedForAuth = await tx.contactChannel.findFirst({
+      const existingChannelUsedForAuth = await client.contactChannel.findFirst({
         where: {
           tenancyId: data.tenancyId,
           type: 'EMAIL',
@@ -166,8 +167,8 @@ async function checkAuthData(
 }
 
 // TODO: retrieve in the tenancy
-async function getPasswordConfig(tx: PrismaTransaction, projectConfigId: string) {
-  const passwordConfig = await tx.passwordAuthMethodConfig.findMany({
+async function getPasswordConfig(client: PrismaClient | PrismaTransaction, projectConfigId: string) {
+  const passwordConfig = await client.passwordAuthMethodConfig.findMany({
     where: {
       projectConfigId: projectConfigId,
       authMethodConfig: {
@@ -187,8 +188,8 @@ async function getPasswordConfig(tx: PrismaTransaction, projectConfigId: string)
 }
 
 // TODO: retrieve in the tenancy
-async function getOtpConfig(tx: PrismaTransaction, projectConfigId: string) {
-  const otpConfig = await tx.otpAuthMethodConfig.findMany({
+async function getOtpConfig(client: PrismaClient | PrismaTransaction, projectConfigId: string) {
+  const otpConfig = await client.otpAuthMethodConfig.findMany({
     where: {
       projectConfigId: projectConfigId,
       authMethodConfig: {
@@ -536,179 +537,188 @@ export const usersCrudHandlers = createLazyProxy(() => createCrudHandlers(usersC
     };
   },
   onCreate: async ({ auth, data }) => {
-    const result = await retryTransaction(async (tx) => {
-      const passwordHash = await getPasswordHashFromData(data);
-      await checkAuthData(tx, {
+    // Get password hash outside of transaction
+    const passwordHash = await getPasswordHashFromData(data);
+
+    // Check auth data using prismaClient instead of transaction
+    await checkAuthData(prismaClient, {
+      tenancyId: auth.tenancy.id,
+      primaryEmail: data.primary_email,
+      primaryEmailVerified: !!data.primary_email_verified,
+      primaryEmailAuthEnabled: !!data.primary_email_auth_enabled,
+    });
+
+    // Create the user
+    const newUser = await prismaClient.projectUser.create({
+      data: {
         tenancyId: auth.tenancy.id,
-        primaryEmail: data.primary_email,
-        primaryEmailVerified: !!data.primary_email_verified,
-        primaryEmailAuthEnabled: !!data.primary_email_auth_enabled,
-      });
+        mirroredProjectId: auth.project.id,
+        mirroredBranchId: auth.tenancy.branchId,
+        displayName: data.display_name === undefined ? undefined : (data.display_name || null),
+        clientMetadata: data.client_metadata === null ? Prisma.JsonNull : data.client_metadata,
+        clientReadOnlyMetadata: data.client_read_only_metadata === null ? Prisma.JsonNull : data.client_read_only_metadata,
+        serverMetadata: data.server_metadata === null ? Prisma.JsonNull : data.server_metadata,
+        profileImageUrl: data.profile_image_url,
+        totpSecret: data.totp_secret_base64 == null ? data.totp_secret_base64 : Buffer.from(decodeBase64(data.totp_secret_base64)),
+      },
+      include: userFullInclude,
+    });
 
-      const newUser = await tx.projectUser.create({
-        data: {
-          tenancyId: auth.tenancy.id,
-          mirroredProjectId: auth.project.id,
-          mirroredBranchId: auth.tenancy.branchId,
-          displayName: data.display_name === undefined ? undefined : (data.display_name || null),
-          clientMetadata: data.client_metadata === null ? Prisma.JsonNull : data.client_metadata,
-          clientReadOnlyMetadata: data.client_read_only_metadata === null ? Prisma.JsonNull : data.client_read_only_metadata,
-          serverMetadata: data.server_metadata === null ? Prisma.JsonNull : data.server_metadata,
-          profileImageUrl: data.profile_image_url,
-          totpSecret: data.totp_secret_base64 == null ? data.totp_secret_base64 : Buffer.from(decodeBase64(data.totp_secret_base64)),
+    // Handle OAuth providers if present
+    if (data.oauth_providers) {
+      // Get auth method configs
+      const authMethodConfigs = await prismaClient.authMethodConfig.findMany({
+        where: {
+          projectConfigId: auth.tenancy.config.id,
+          oauthProviderConfig: {
+            isNot: null,
+          }
         },
-        include: userFullInclude,
+        include: {
+          oauthProviderConfig: true,
+        }
       });
 
-      if (data.oauth_providers) {
-        // TODO: include this in the tenancy
-        const authMethodConfigs = await tx.authMethodConfig.findMany({
-          where: {
-            projectConfigId: auth.tenancy.config.id,
-            oauthProviderConfig: {
-              isNot: null,
-            }
-          },
-          include: {
-            oauthProviderConfig: true,
+      // Get connected account configs
+      const connectedAccountConfigs = await prismaClient.connectedAccountConfig.findMany({
+        where: {
+          projectConfigId: auth.tenancy.config.id,
+          oauthProviderConfig: {
+            isNot: null,
           }
-        });
-        const connectedAccountConfigs = await tx.connectedAccountConfig.findMany({
-          where: {
-            projectConfigId: auth.tenancy.config.id,
-            oauthProviderConfig: {
-              isNot: null,
-            }
-          },
-          include: {
-            oauthProviderConfig: true,
-          }
-        });
+        },
+        include: {
+          oauthProviderConfig: true,
+        }
+      });
 
-        // create many does not support nested create, so we have to use loop
-        for (const provider of data.oauth_providers) {
-          const connectedAccountConfig = connectedAccountConfigs.find((c) => c.oauthProviderConfig?.id === provider.id);
-          const authMethodConfig = authMethodConfigs.find((c) => c.oauthProviderConfig?.id === provider.id);
+      // Process each provider
+      for (const provider of data.oauth_providers) {
+        const connectedAccountConfig = connectedAccountConfigs.find((c) => c.oauthProviderConfig?.id === provider.id);
+        const authMethodConfig = authMethodConfigs.find((c) => c.oauthProviderConfig?.id === provider.id);
 
-          let authMethod;
-          if (authMethodConfig) {
-            authMethod = await tx.authMethod.create({
-              data: {
-                tenancyId: auth.tenancy.id,
-                projectUserId: newUser.projectUserId,
-                projectConfigId: auth.tenancy.config.id,
-                authMethodConfigId: authMethodConfig.id,
-              }
-            });
-          }
-
-          await tx.projectUserOAuthAccount.create({
+        let authMethod;
+        if (authMethodConfig) {
+          authMethod = await prismaClient.authMethod.create({
             data: {
               tenancyId: auth.tenancy.id,
               projectUserId: newUser.projectUserId,
               projectConfigId: auth.tenancy.config.id,
-              oauthProviderConfigId: provider.id,
-              providerAccountId: provider.account_id,
-              email: provider.email,
-              ...connectedAccountConfig ? {
-                connectedAccount: {
-                  create: {
-                    connectedAccountConfigId: connectedAccountConfig.id,
-                    projectUserId: newUser.projectUserId,
-                    projectConfigId: auth.tenancy.config.id,
-                  }
-                }
-              } : {},
-              ...authMethodConfig ? {
-                oauthAuthMethod: {
-                  create: {
-                    projectUserId: newUser.projectUserId,
-                    projectConfigId: auth.tenancy.config.id,
-                    authMethodId: authMethod?.id || throwErr("authMethodConfig is set but authMethod is not"),
-                  }
-                }
-              } : {},
+              authMethodConfigId: authMethodConfig.id,
             }
           });
         }
 
-      }
-
-      if (data.primary_email) {
-        await tx.contactChannel.create({
+        await prismaClient.projectUserOAuthAccount.create({
           data: {
+            tenancyId: auth.tenancy.id,
             projectUserId: newUser.projectUserId,
-            tenancyId: auth.tenancy.id,
-            type: 'EMAIL' as const,
-            value: data.primary_email,
-            isVerified: data.primary_email_verified ?? false,
-            isPrimary: "TRUE",
-            usedForAuth: data.primary_email_auth_enabled ? BooleanTrue.TRUE : null,
-          }
-        });
-      }
-
-      if (passwordHash) {
-        const passwordConfig = await getPasswordConfig(tx, auth.tenancy.config.id);
-
-        if (!passwordConfig) {
-          throw new StatusError(StatusError.BadRequest, "Password auth not enabled in the project");
-        }
-
-        await tx.authMethod.create({
-          data: {
-            tenancyId: auth.tenancy.id,
             projectConfigId: auth.tenancy.config.id,
-            projectUserId: newUser.projectUserId,
-            authMethodConfigId: passwordConfig.authMethodConfigId,
-            passwordAuthMethod: {
-              create: {
-                passwordHash,
-                projectUserId: newUser.projectUserId,
+            oauthProviderConfigId: provider.id,
+            providerAccountId: provider.account_id,
+            email: provider.email,
+            ...connectedAccountConfig ? {
+              connectedAccount: {
+                create: {
+                  connectedAccountConfigId: connectedAccountConfig.id,
+                  projectUserId: newUser.projectUserId,
+                  projectConfigId: auth.tenancy.config.id,
+                }
               }
-            }
+            } : {},
+            ...authMethodConfig ? {
+              oauthAuthMethod: {
+                create: {
+                  projectUserId: newUser.projectUserId,
+                  projectConfigId: auth.tenancy.config.id,
+                  authMethodId: authMethod?.id || throwErr("authMethodConfig is set but authMethod is not"),
+                }
+              }
+            } : {},
           }
         });
       }
+    }
 
-      if (data.otp_auth_enabled) {
-        const otpConfig = await getOtpConfig(tx, auth.tenancy.config.id);
-
-        if (!otpConfig) {
-          throw new StatusError(StatusError.BadRequest, "OTP auth not enabled in the project");
+    // Create contact channel for primary email if present
+    if (data.primary_email) {
+      await prismaClient.contactChannel.create({
+        data: {
+          projectUserId: newUser.projectUserId,
+          tenancyId: auth.tenancy.id,
+          type: 'EMAIL' as const,
+          value: data.primary_email,
+          isVerified: data.primary_email_verified ?? false,
+          isPrimary: "TRUE",
+          usedForAuth: data.primary_email_auth_enabled ? BooleanTrue.TRUE : null,
         }
-
-        await tx.authMethod.create({
-          data: {
-            tenancyId: auth.tenancy.id,
-            projectConfigId: auth.tenancy.config.id,
-            projectUserId: newUser.projectUserId,
-            authMethodConfigId: otpConfig.authMethodConfigId,
-            otpAuthMethod: {
-              create: {
-                projectUserId: newUser.projectUserId,
-              }
-            }
-          }
-        });
-      }
-
-      const user = await tx.projectUser.findUnique({
-        where: {
-          tenancyId_projectUserId: {
-            tenancyId: auth.tenancy.id,
-            projectUserId: newUser.projectUserId,
-          },
-        },
-        include: userFullInclude,
       });
+    }
 
-      if (!user) {
-        throw new StackAssertionError("User was created but not found", newUser);
+    // Handle password auth if password hash is present
+    if (passwordHash) {
+      const passwordConfig = await getPasswordConfig(prismaClient, auth.tenancy.config.id);
+
+      if (!passwordConfig) {
+        throw new StatusError(StatusError.BadRequest, "Password auth not enabled in the project");
       }
 
-      return userPrismaToCrud(user, await getUserLastActiveAtMillis(auth.tenancy.id, user.projectUserId) ?? user.createdAt.getTime());
+      await prismaClient.authMethod.create({
+        data: {
+          tenancyId: auth.tenancy.id,
+          projectConfigId: auth.tenancy.config.id,
+          projectUserId: newUser.projectUserId,
+          authMethodConfigId: passwordConfig.authMethodConfigId,
+          passwordAuthMethod: {
+            create: {
+              passwordHash,
+              projectUserId: newUser.projectUserId,
+            }
+          }
+        }
+      });
+    }
+
+    // Handle OTP auth if enabled
+    if (data.otp_auth_enabled) {
+      const otpConfig = await getOtpConfig(prismaClient, auth.tenancy.config.id);
+
+      if (!otpConfig) {
+        throw new StatusError(StatusError.BadRequest, "OTP auth not enabled in the project");
+      }
+
+      await prismaClient.authMethod.create({
+        data: {
+          tenancyId: auth.tenancy.id,
+          projectConfigId: auth.tenancy.config.id,
+          projectUserId: newUser.projectUserId,
+          authMethodConfigId: otpConfig.authMethodConfigId,
+          otpAuthMethod: {
+            create: {
+              projectUserId: newUser.projectUserId,
+            }
+          }
+        }
+      });
+    }
+
+    // Fetch the complete user data
+    const user = await prismaClient.projectUser.findUnique({
+      where: {
+        tenancyId_projectUserId: {
+          tenancyId: auth.tenancy.id,
+          projectUserId: newUser.projectUserId,
+        },
+      },
+      include: userFullInclude,
     });
+
+    if (!user) {
+      throw new StackAssertionError("User was created but not found", newUser);
+    }
+
+    // Convert to CRUD format and get last active time
+    const result = userPrismaToCrud(user, await getUserLastActiveAtMillis(auth.tenancy.id, user.projectUserId) ?? user.createdAt.getTime());
 
     if (auth.tenancy.config.create_team_on_sign_up) {
       await teamsCrudHandlers.adminCreate({
