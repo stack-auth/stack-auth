@@ -16,5 +16,8 @@
     "dotenv": "^16.4.5",
     "jose": "^5.2.2",
     "oslo": "^1.2.1"
+  },
+  "devDependencies": {
+    "@stackframe/js": "workspace:^"
   }
 }
