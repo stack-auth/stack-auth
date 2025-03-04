@@ -2,7 +2,16 @@ import { prismaClient } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { KnownErrors } from "@stackframe/stack-shared";
 import { adaptSchema, clientOrHigherAuthTypeSchema, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
-import { StatusError } from "@stackframe/stack-shared/dist/utils/errors";
+
+// Helper function to create response
+const createResponse = (status: 'waiting' | 'success' | 'expired' | 'used', refreshToken?: string) => ({
+  statusCode: status === 'success' ? 201 : 200,
+  bodyType: "json" as const,
+  body: {
+    status,
+    ...(refreshToken && { refresh_token: refreshToken }),
+  },
+});
 
 // Helper function to create response
 const createResponse = (status: 'waiting' | 'success' | 'expired' | 'used', refreshToken?: string) => ({
@@ -47,7 +56,7 @@ export const POST = createSmartRouteHandler({
     });
 
     if (!cliAuth) {
-      throw new StatusError(400, "The polling code is invalid or does not exist.");
+      throw new KnownErrors.SchemaError("The polling code is invalid or does not exist.");
     }
 
     if (cliAuth.expiresAt < new Date()) {
