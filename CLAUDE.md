@@ -26,3 +26,4 @@
 
 ## Monorepo Structure
 Managed with Turbo and pnpm workspaces. Core packages in `packages/`, apps in `apps/`.
+`packages/stack` is generated and will not be committed into the repository; change the files in `packages/template` instead.

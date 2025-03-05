@@ -107,6 +107,7 @@ it("lists oauth providers", async ({ expect }) => {
           "enabled_oauth_providers": [{ "id": "google" }],
           "id": "<stripped UUID>",
           "magic_link_enabled": false,
+          "merge_oauth_methods": "link_method",
           "oauth_providers": [
             {
               "enabled": true,
