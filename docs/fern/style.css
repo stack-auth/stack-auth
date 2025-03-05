@@ -142,29 +142,57 @@ tr.stack-clickable-row-missing {
 }
 
 .stack-50h {
+  aspect-ratio: auto !important;
+  height: unset !important;
+  width: unset !important;
   height: 50px !important;
+  object-fit: contain !important;
 }
 
 .stack-100h {
+  aspect-ratio: auto !important;
+  height: unset !important;
+  width: unset !important;
   height: 100px !important;
+  object-fit: contain !important;
 }
 
 .stack-150h {
+  aspect-ratio: auto !important;
+  height: unset !important;
+  width: unset !important;
   height: 150px !important;
+  object-fit: contain !important;
 }
 
 .stack-200h {
+  aspect-ratio: auto !important;
+  height: unset !important;
+  width: unset !important;
   height: 200px !important;
+  object-fit: contain !important;
 }
 
 .stack-250h {
+  aspect-ratio: auto !important;
+  height: unset !important;
+  width: unset !important;
   height: 250px !important;
+  object-fit: contain !important;
 }
 
 .stack-300h {
+  aspect-ratio: auto !important;
+  height: unset !important;
+  width: unset !important;
   height: 300px !important;
+  object-fit: contain !important;
 }
 
 .stack-350h {
+  aspect-ratio: auto !important;
+  height: unset !important;
+  width: unset !important;
   height: 350px !important;
+  object-fit: contain !important;
 }

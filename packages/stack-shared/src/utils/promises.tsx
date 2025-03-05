@@ -79,12 +79,13 @@ import.meta.vitest?.test("createPromise", async ({ expect }) => {
   expect(await multiResolvePromise).toBe(1);
 });
 
-const resolvedCache = new DependenciesMap<[unknown], ReactPromise<unknown>>();
+let resolvedCache: DependenciesMap<[unknown], ReactPromise<unknown>> | null = null;
 /**
  * Like Promise.resolve(...), but also adds the status and value properties for use with React's `use` hook, and caches
  * the value so that invoking `resolved` twice returns the same promise.
  */
 export function resolved<T>(value: T): ReactPromise<T> {
+  resolvedCache ??= new DependenciesMap<[unknown], ReactPromise<unknown>>();
   if (resolvedCache.has([value])) {
     return resolvedCache.get([value]) as ReactPromise<T>;
   }
@@ -120,12 +121,13 @@ import.meta.vitest?.test("resolved", async ({ expect }) => {
   expect(promise4).not.toBe(promise1);
 });
 
-const rejectedCache = new DependenciesMap<[unknown], ReactPromise<unknown>>();
+let rejectedCache: DependenciesMap<[unknown], ReactPromise<unknown>> | null = null;
 /**
  * Like Promise.reject(...), but also adds the status and value properties for use with React's `use` hook, and caches
  * the value so that invoking `rejected` twice returns the same promise.
  */
 export function rejected<T>(reason: unknown): ReactPromise<T> {
+  rejectedCache ??= new DependenciesMap<[unknown], ReactPromise<unknown>>();
   if (rejectedCache.has([reason])) {
     return rejectedCache.get([reason]) as ReactPromise<T>;
   }

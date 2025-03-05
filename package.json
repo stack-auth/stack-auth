@@ -5,8 +5,8 @@
   "repository": "",
   "scripts": {
     "pre-no-codegen": "npx -y only-allow pnpm",
-    "pre-preinstall": "npx -y only-allow pnpm && node -e \"if(process.env.STACK_SKIP_TEMPLATE_GENERATION !== 'true') require('child_process').execSync('npx --package=ts-node ts-node ./scripts/generate-sdks.ts')\"",
-    "pre": "pnpm pre-preinstall && node -e \"if(process.env.STACK_SKIP_TEMPLATE_GENERATION !== 'true') { require('child_process').execSync('pnpm run generate-docs') }\"",
+    "pre-preinstall": "npx -y only-allow pnpm && node -e \"if(process.env.STACK_SKIP_TEMPLATE_GENERATION !== 'true') require('child_process').execSync('npx --package=tsx tsx ./scripts/generate-sdks.ts', {stdio: 'inherit'})\"",
+    "pre": "pnpm pre-preinstall && node -e \"if(process.env.STACK_SKIP_TEMPLATE_GENERATION !== 'true') { require('child_process').execSync('pnpm run generate-docs', {stdio: 'inherit'}) }\"",
     "preinstall": "pnpm pre-preinstall",
     "typecheck": "pnpm pre && turbo typecheck",
     "build:dev": "pnpm pre && NODE_ENV=development pnpm run build",
@@ -15,6 +15,7 @@
     "build:dashboard": "pnpm pre && turbo run build --filter=@stackframe/stack-dashboard...",
     "build:demo": "pnpm pre && turbo run build --filter=demo-app...",
     "build:packages": "pnpm pre && turbo run build --filter=./packages/*",
+    "claude-code": "pnpm pre && npx -y @anthropic-ai/claude-code@latest",
     "restart-dev-in-background": "pnpm pre && pnpm run kill-dev:named && (pnpm run dev:named > dev-server.log.untracked.txt 2>&1 &) && echo 'Starting dev server in background... (Logs are in dev-server.log.untracked.txt)' && npx wait-on http://localhost:8102 -t 120000 && echo 'Dev server running.'",
     "restart-dev-environment": "pnpm pre && concurrently \"pnpm run build:packages && pnpm run codegen\" \"pnpm run restart-deps\" && pnpm run restart-dev-in-background",
     "stop-dev-environment": "pnpm pre && pnpm run kill-dev:named && pnpm run stop-deps",
@@ -51,7 +52,7 @@
     "verify-data-integrity": "pnpm pre && pnpm -C apps/backend run verify-data-integrity",
     "generate-openapi": "pnpm pre && turbo run generate-openapi",
     "generate-keys": "pnpm pre && turbo run generate-keys",
-    "generate-sdks": "npx --package=ts-node ts-node ./scripts/generate-sdks.ts",
+    "generate-sdks": "npx --package=tsx tsx ./scripts/generate-sdks.ts",
     "generate-sdks:watch": "chokidar --silent -c 'pnpm run generate-sdks' './packages/template' --ignore './packages/template/package.json' --ignore '**/node_modules/**' --ignore '**/dist/**' --ignore '**/.turbo/**' --throttle 2000",
     "generate-docs": "tsx ./scripts/generate-docs.ts",
     "generate-docs:watch": "chokidar --silent -c 'pnpm run generate-docs' './docs/fern/docs/pages-template' './docs/fern/docs-template.yml' --throttle 2000"

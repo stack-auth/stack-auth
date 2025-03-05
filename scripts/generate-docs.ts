@@ -69,7 +69,7 @@ const docsDir = path.resolve(__dirname, "..", "docs", "fern");
 const templateDir = path.join(docsDir, "docs", "pages-template");
 const ymlTemplatePath = path.join(docsDir, "docs-template.yml");
 
-for (const platform of ["next", "js"]) {
+for (const platform of ["next", "js", "react", "python"]) {
   const destDir = path.join(docsDir, 'docs', `pages-${platform}`);
 
   const mainYmlContent = fs.readFileSync(ymlTemplatePath, "utf-8");

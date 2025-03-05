@@ -4,11 +4,12 @@ subtitle: Getting started with Stack in 5 minutes
 ---
 
 {/* IF_PLATFORM: next */}
-## Setup
 
 <Info>
-Welcome to the Next.js SDK setup guide. If you're looking to set up Stack Auth with vanilla JavaScript instead, check out our [JavaScript SDK Setup](../../pages-js/getting-started/setup.mdx).
+Welcome to the Next.js SDK setup guide. If you're looking for guides for other frameworks, check out the [React SDK Setup](../../pages-react/getting-started/setup.mdx), or the [JavaScript SDK Setup](../../pages-js/getting-started/setup.mdx).
 </Info>
+
+## Setup
 
 Before getting started, make sure you have a [Next.js project](https://nextjs.org/docs/getting-started/installation) using the app router, as Stack Auth does not support the pages router.
 
@@ -57,7 +58,7 @@ We recommend using our **setup wizard** for a seamless installation experience. 
 
       ### Create API keys
 
-      If you haven't already, [register a new account on Stack](https://app.stack-auth.com/handler/signup). Create a project in the dashboard, create a new API key from the left sidebar, and copy the project ID, publishable client key, and secret server key into a new file called `.env.local` in the root of your Next.js project:
+      If you haven't already, [register a new account on Stack](https://app.stack-auth.com/handler/sign-up). Create a project in the dashboard, create a new API key from the left sidebar, and copy the project ID, publishable client key, and secret server key into a new file called `.env.local` in the root of your Next.js project:
 
       ```sh title=".env.local"
       NEXT_PUBLIC_STACK_PROJECT_ID=<your-project-id>
@@ -142,24 +143,115 @@ We recommend using our **setup wizard** for a seamless installation experience. 
 
 ## Post-setup
 
-That's it! Stack is now configured in your Next.js project. If you start your Next.js app with `npm run dev` and navigate to [http://localhost:3000/handler/signup](http://localhost:3000/handler/signup), you will see the sign-up page.
+That's it! Stack is now configured in your Next.js project. If you start your Next.js app with `npm run dev` and navigate to [http://localhost:3000/handler/signup](http://localhost:3000/handler/sign-up), you will see the sign-up page.
 
-![Stack sign in page](../imgs/sign-in.png)
+<div className="stack-white-image-showcase">
+  <img src="../imgs/sign-in.png" alt="SignIn" className="stack-350h" />
+</div>
 
 After signing up/in, you will be redirected back to the home page. We will show you how to add user information to it in the next section. You can also check out the [http://localhost:3000/handler/account-settings](http://localhost:3000/handler/account-settings) page which looks like this:
 
 ![Stack account settings page](../imgs/account-settings.png)
 
 
-
 ## Next steps
 
-Next up, we will show you how to retrieve and update user information, and how to protect a page.
+Next up, we will show you how to [retrieve and update user information](./users.mdx), and how to [protect a page](../concepts/backend-integration.mdx) from unauthorized access.
+
+{/* ELSE_IF_PLATFORM react */}
+
+<Info>
+Welcome to the React SDK setup guide! If you're looking for guides for other frameworks, check out the [Next.js SDK Setup](../../pages-next/getting-started/setup.mdx), or the [JavaScript SDK Setup](../../pages-js/getting-started/setup.mdx).
+</Info>
+
+Before getting started, make sure you have a [React project](https://react.dev/learn/creating-a-react-app) setup. We show an example here of a Vite React project with React Router.
+
+<Steps>
+  ### Install npm package
+
+  ```bash title="Terminal"
+  npm install @stackframe/react
+  ```
+
+  ### Create API keys
+
+  If you haven't already, [register a new account on Stack](https://app.stack-auth.com/projects), create a project in the dashboard, create a new API key from the left sidebar, and copy the project ID, publishable client key, and secret server key into a new file called `.env.local` in the root of your React project:
+
+  ### Create `stack.ts` file
+
+  Create a new file `stack.ts` in your root directory and fill it with the following Stack app initialization code:
+
+  ```tsx title="stack.ts"
+  import { StackClientApp } from "@stackframe/react";
+  import { useNavigate } from "react-router-dom";
+
+  export const stackClientApp = new StackClientApp({
+    // You should store these in environment variables based on your project setup
+    projectId: "your-project-id",
+    publishableClientKey: "your-publishable-client-key",
+    tokenStore: "cookie",
+    redirectMethod: {
+      useNavigate,
+    }
+  });
+  ```
+
+  ### Update `App.tsx`
+
+  Update your `App.tsx` file to wrap the entire app with a `StackProvider` and `StackTheme` and add a `StackHandler` component to handle the authentication flow.
+
+  ```tsx title="App.tsx"
+  import { StackHandler, StackProvider, StackTheme } from "@stackframe/react";
+  import { Suspense } from "react";
+  import { BrowserRouter, Route, Routes, useLocation } from "react-router-dom";
+  import { stackClientApp } from "./stack";
+
+  function HandlerRoutes() {
+    const location = useLocation();
+    
+    return (
+      <StackHandler app={stackClientApp} location={location.pathname} fullPage />
+    );
+  }
+
+  export default function App() {
+    return (
+      <Suspense fallback={null}>
+        <BrowserRouter>
+          <StackProvider app={stackClientApp}>
+            <StackTheme>
+              <Routes>
+                <Route path="/handler/*" element={<HandlerRoutes />} />
+                <Route path="/" element={<div>hello world</div>} />
+              </Routes>
+            </StackTheme>
+          </StackProvider>
+        </BrowserRouter>
+      </Suspense>
+    );
+  }
+  ```
+  
+  ### Done!
+
+  That's it! Stack is now configured in your React project. If you start your React app and navigate to [http://localhost:5173/handler/sign-up](http://localhost:5173/handler/sign-up), you will see the sign-up page.
+
+
+  <div className="stack-white-image-showcase">
+    <img src="../imgs/sign-in.png" alt="SignIn" className="stack-350h" />
+  </div>
+
+  After signing up/in, you will be redirected back to the home page. We will show you how to add user information to it in the next section. You can also check out the [http://localhost:5173/handler/account-settings](http://localhost:5173/handler/account-settings) page which looks like this:
+
+  ![Stack account settings page](../imgs/account-settings.png)
+  
+</Steps>
+
 
 {/* ELSE_IF_PLATFORM js */}
 
 <Info>
-Welcome to the JavaScript SDK setup guide. If you're looking to set up Stack Auth with Next.js instead, check out our [Next.js SDK Setup](../../pages-next/getting-started/setup.mdx).
+Welcome to the JavaScript SDK setup guide. If you're looking for guides for other frameworks, check out the [React SDK Setup](../../pages-react/getting-started/setup.mdx), or the [Next.js SDK Setup](../../pages-next/getting-started/setup.mdx).
 </Info>
 
 Before getting started, make sure you have a JavaScript project set up (such as Node.js, Vite, or any other JavaScript framework).
@@ -294,5 +386,79 @@ We recommend using our **setup wizard** for a seamless installation experience. 
 ## Next steps
 
 Check out the [Users](./users.mdx) to learn how to retrieve and update user information, or [Example pages](./example-pages.mdx) to see how to build your sign-in/up pages.
+
+
+{/* ELSE_IF_PLATFORM python */}
+
+<Info>
+Welcome to the Python setup guide. If you're looking for guides for other frameworks, check out the [Next.js SDK Setup](../../pages-next/getting-started/setup.mdx), [React SDK Setup](../../pages-react/getting-started/setup.mdx), or the [JavaScript SDK Setup](../../pages-js/getting-started/setup.mdx).
+</Info>
+
+Our recommended way to use Stack Auth with Python is with the [REST API](../rest-api/overview.mdx). It provides a fully documented way to interact with Stack Auth from any Python framework, including Flask, FastAPI, and Django.
+
+For the purpose of this guide, we will use the `requests` library to make HTTP requests to the Stack Auth API. If you haven't already, you can install it in your environment with `pip install requests`.
+
+<Steps>
+  ### Create API keys
+
+  First, create an account on [the Stack Auth dashboard](https://app.stack-auth.com/projects), and copy your project ID, publishable client key, and secret server key into a safe place (eg. environment variables).
+
+  From there, you can access them in your Python code. You can then read them like this:
+
+  ```python
+  import os
+
+  stack_project_id = os.getenv("STACK_PROJECT_ID")
+  stack_publishable_client_key = os.getenv("STACK_PUBLISHABLE_CLIENT_KEY")
+  stack_secret_server_key = os.getenv("STACK_SECRET_SERVER_KEY")
+  ```
+
+  ### Make a request
+
+  Next, create a helper function to make requests to the Stack Auth API:
+
+  ```python
+  import requests
+
+  def stack_auth_request(method, endpoint, **kwargs):
+    res = requests.request(
+      method,
+      f'https://api.stack-auth.com/{endpoint}',
+      headers={
+        'x-stack-access-type': 'server',  # or 'client' if you're only accessing the client API
+        'x-stack-project-id': stack_project_id,
+        'x-stack-publishable-client-key': stack_publishable_client_key,
+        'x-stack-secret-server-key': stack_secret_server_key,  # not necessary if access type is 'client'
+        **kwargs.pop('headers', {}),
+      },
+      **kwargs,
+    )
+    if res.status_code >= 400:
+      raise Exception(f"Stack Auth API request failed with {res.status_code}: {res.text}")
+    return res.json()
+
+  print(stack_auth_request('GET', '/api/v1/projects/current'))
+  ```
+
+  ### Retrieve the access tokens
+
+  If you're building a backend server, most likely you'll want to use the currently signed in user's access token. Most normally, you would send this with all your requests to the backend in an HTTP header.
+
+  In Stack Auth's JavaScript SDK, you can retrieve the access token [from the `stackClientApp` object](/sdk/types/user#currentusergetauthjson). Then, you can use said access token to make requests to Stack Auth:
+
+  ```python
+  access_token = # access token retrieved from the JavaScript SDK
+
+  print(stack_auth_request('GET', '/api/v1/users/me', headers={
+    'x-stack-access-token': access_token,
+  }))
+  ```
+
+  ### Done!
+</Steps>
+
+## Next steps
+
+Check out the [REST API documentation](../rest-api/overview.mdx) to learn more about the available endpoints and how to use them in your Python application.
 
 {/* END_PLATFORM */}

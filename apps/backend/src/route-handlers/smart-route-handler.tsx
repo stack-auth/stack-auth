@@ -14,10 +14,10 @@ import { DeepPartialSmartRequestWithSentinel, MergeSmartRequest, SmartRequest, c
 import { SmartResponse, createResponse, validateSmartResponse } from "./smart-response";
 
 class InternalServerError extends StatusError {
-  constructor(error: unknown) {
+  constructor(error: unknown, requestId: string) {
     super(
       StatusError.InternalServerError,
-      ["development", "test"].includes(getNodeEnvironment()) ? `Internal Server Error. The error message follows, but will be stripped in production. ${errorToNiceString(error)}` : `Something went wrong. Please make sure the data you entered is correct.`,
+      ["development", "test"].includes(getNodeEnvironment()) ? `Internal Server Error. The error message follows, but will be stripped in production. ${errorToNiceString(error)}` : `Something went wrong. Please make sure the data you entered is correct.\n\nRequest ID: ${requestId}`,
     );
   }
 }
@@ -36,7 +36,7 @@ const commonErrors = [
  * Catches the given error, logs it if needed and returns it as a StatusError. Errors that are not actually errors
  * (such as Next.js redirects) will be re-thrown.
  */
-function catchError(error: unknown): StatusError {
+function catchError(error: unknown, requestId: string): StatusError {
   // catch some Next.js non-errors and rethrow them
   if (error instanceof Error) {
     const digest = (error as any)?.digest;
@@ -49,8 +49,15 @@ function catchError(error: unknown): StatusError {
 
   if (error instanceof StatusError) return error;
   captureError(`route-handler`, error);
-  return new InternalServerError(error);
+  return new InternalServerError(error, requestId);
 }
+
+/**
+ * A unique identifier for the current process. This is used to correlate logs in serverless environments that allow
+ * multiple concurrent requests to be handled by the same instance.
+ */
+const processId = generateSecureRandomString(80);
+let concurrentRequestsInProcess = 0;
 
 /**
  * Catches any errors thrown in the handler and returns a 500 response with the thrown error message. Also logs the
@@ -58,86 +65,93 @@ function catchError(error: unknown): StatusError {
  */
 export function handleApiRequest(handler: (req: NextRequest, options: any, requestId: string) => Promise<Response>): (req: NextRequest, options: any) => Promise<Response> {
   return async (req: NextRequest, options: any) => {
-    const requestId = generateSecureRandomString(80);
-    return await traceSpan({
-      description: 'handling API request',
-      attributes: {
-        "stack.request.request-id": requestId,
-        "stack.request.method": req.method,
-        "stack.request.url": req.url,
-      },
-    }, async (span) => {
-      // Set Sentry scope to include request details
-      Sentry.setContext("stack-request", {
-        requestId: requestId,
-        method: req.method,
-        url: req.url,
-        query: Object.fromEntries(req.nextUrl.searchParams),
-        headers: Object.fromEntries(req.headers),
-      });
-
-      // During development, don't trash the console with logs from E2E tests
-      const disableExtendedLogging = getNodeEnvironment().includes('dev') && !!req.headers.get("x-stack-development-disable-extended-logging");
-
-      let hasRequestFinished = false;
-      try {
-        // censor long query parameters because they might contain sensitive data
-        const censoredUrl = new URL(req.url);
-        for (const [key, value] of censoredUrl.searchParams.entries()) {
-          if (value.length <= 8) {
-            continue;
-          }
-          censoredUrl.searchParams.set(key, value.slice(0, 4) + "--REDACTED--" + value.slice(-4));
-        }
-
-        // request duration warning
-        const warnAfterSeconds = 12;
-        runAsynchronously(async () => {
-          await wait(warnAfterSeconds * 1000);
-          if (!hasRequestFinished) {
-            captureError("request-timeout-watcher", new Error(`Request with ID ${requestId} to endpoint ${req.nextUrl.pathname} has been running for ${warnAfterSeconds} seconds. Try to keep requests short. The request may be cancelled by the serverless provider if it takes too long.`));
-          }
+    concurrentRequestsInProcess++;
+    try {
+      const requestId = generateSecureRandomString(80);
+      return await traceSpan({
+        description: 'handling API request',
+        attributes: {
+          "stack.request.request-id": requestId,
+          "stack.request.method": req.method,
+          "stack.request.url": req.url,
+          "stack.process.id": processId,
+          "stack.process.concurrent-requests": concurrentRequestsInProcess,
+        },
+      }, async (span) => {
+        // Set Sentry scope to include request details
+        Sentry.setContext("stack-request", {
+          requestId: requestId,
+          method: req.method,
+          url: req.url,
+          query: Object.fromEntries(req.nextUrl.searchParams),
+          headers: Object.fromEntries(req.headers),
         });
 
-        if (!disableExtendedLogging) console.log(`[API REQ] [${requestId}] ${req.method} ${censoredUrl}`);
-        const timeStart = performance.now();
-        const res = await handler(req, options, requestId);
-        const time = (performance.now() - timeStart);
-        if ([301, 302].includes(res.status)) {
-          throw new StackAssertionError("HTTP status codes 301 and 302 should not be returned by our APIs because the behavior for non-GET methods is inconsistent across implementations. Use 303 (to rewrite method to GET) or 307/308 (to preserve the original method and data) instead.", { status: res.status, url: req.nextUrl, req, res });
-        }
-        if (!disableExtendedLogging) console.log(`[    RES] [${requestId}] ${req.method} ${censoredUrl} (in ${time.toFixed(0)}ms)`);
-        return res;
-      } catch (e) {
-        let statusError: StatusError;
+        // During development, don't trash the console with logs from E2E tests
+        const disableExtendedLogging = getNodeEnvironment().includes('dev') && !!req.headers.get("x-stack-development-disable-extended-logging");
+
+        let hasRequestFinished = false;
         try {
-          statusError = catchError(e);
+          // censor long query parameters because they might contain sensitive data
+          const censoredUrl = new URL(req.url);
+          for (const [key, value] of censoredUrl.searchParams.entries()) {
+            if (value.length <= 8) {
+              continue;
+            }
+            censoredUrl.searchParams.set(key, value.slice(0, 4) + "--REDACTED--" + value.slice(-4));
+          }
+
+          // request duration warning
+          const warnAfterSeconds = 12;
+          runAsynchronously(async () => {
+            await wait(warnAfterSeconds * 1000);
+            if (!hasRequestFinished) {
+              captureError("request-timeout-watcher", new Error(`Request with ID ${requestId} to endpoint ${req.nextUrl.pathname} has been running for ${warnAfterSeconds} seconds. Try to keep requests short. The request may be cancelled by the serverless provider if it takes too long.`));
+            }
+          });
+
+          if (!disableExtendedLogging) console.log(`[API REQ] [${requestId}] ${req.method} ${censoredUrl}`);
+          const timeStart = performance.now();
+          const res = await handler(req, options, requestId);
+          const time = (performance.now() - timeStart);
+          if ([301, 302].includes(res.status)) {
+            throw new StackAssertionError("HTTP status codes 301 and 302 should not be returned by our APIs because the behavior for non-GET methods is inconsistent across implementations. Use 303 (to rewrite method to GET) or 307/308 (to preserve the original method and data) instead.", { status: res.status, url: req.nextUrl, req, res });
+          }
+          if (!disableExtendedLogging) console.log(`[    RES] [${requestId}] ${req.method} ${censoredUrl}: ${res.status} (in ${time.toFixed(0)}ms)`);
+          return res;
         } catch (e) {
-          if (!disableExtendedLogging) console.log(`[    EXC] [${requestId}] ${req.method} ${req.url}: Non-error caught (such as a redirect), will be re-thrown. Digest: ${(e as any)?.digest}`);
-          throw e;
+          let statusError: StatusError;
+          try {
+            statusError = catchError(e, requestId);
+          } catch (e) {
+            if (!disableExtendedLogging) console.log(`[    EXC] [${requestId}] ${req.method} ${req.url}: Non-error caught (such as a redirect), will be re-thrown. Digest: ${(e as any)?.digest}`);
+            throw e;
+          }
+
+          if (!disableExtendedLogging) console.log(`[    ERR] [${requestId}] ${req.method} ${req.url}: ${statusError.message}`);
+
+          if (!commonErrors.some(e => statusError instanceof e)) {
+            // HACK: Log a nicified version of the error instead of statusError to get around buggy Next.js pretty-printing
+            // https://www.reddit.com/r/nextjs/comments/1gkxdqe/comment/m19kxgn/?utm_source=share&utm_medium=web3x&utm_name=web3xcss&utm_term=1&utm_content=share_button
+            if (!disableExtendedLogging) console.debug(`For the error above with request ID ${requestId}, the full error is:`, errorToNiceString(statusError));
+          }
+
+          const res = await createResponse(req, requestId, {
+            statusCode: statusError.statusCode,
+            bodyType: "binary",
+            body: statusError.getBody(),
+            headers: {
+              ...statusError.getHeaders(),
+            },
+          });
+          return res;
+        } finally {
+          hasRequestFinished = true;
         }
-
-        if (!disableExtendedLogging) console.log(`[    ERR] [${requestId}] ${req.method} ${req.url}: ${statusError.message}`);
-
-        if (!commonErrors.some(e => statusError instanceof e)) {
-          // HACK: Log a nicified version of the error instead of statusError to get around buggy Next.js pretty-printing
-          // https://www.reddit.com/r/nextjs/comments/1gkxdqe/comment/m19kxgn/?utm_source=share&utm_medium=web3x&utm_name=web3xcss&utm_term=1&utm_content=share_button
-          if (!disableExtendedLogging) console.debug(`For the error above with request ID ${requestId}, the full error is:`, errorToNiceString(statusError));
-        }
-
-        const res = await createResponse(req, requestId, {
-          statusCode: statusError.statusCode,
-          bodyType: "binary",
-          body: statusError.getBody(),
-          headers: {
-            ...statusError.getHeaders(),
-          },
-        });
-        return res;
-      } finally {
-        hasRequestFinished = true;
-      }
-    });
+      });
+    } finally {
+      concurrentRequestsInProcess--;
+    }
   };
 };
 
@@ -214,7 +228,9 @@ export function createSmartRouteHandler<
     const reqsErrors: unknown[] = [];
     for (const [overloadParam, overload] of overloads.entries()) {
       try {
-        const parsedReq = await validateSmartRequest(nextRequest, smartRequest, overload.request);
+        const parsedReq = await traceSpan("validating smart request", async () => {
+          return await validateSmartRequest(nextRequest, smartRequest, overload.request);
+        });
         reqsParsed.push([[parsedReq, smartRequest], overload]);
       } catch (e) {
         reqsErrors.push(e);
@@ -224,7 +240,7 @@ export function createSmartRouteHandler<
       if (reqsErrors.length === 1) {
         throw reqsErrors[0];
       } else {
-        const caughtErrors = reqsErrors.map(e => catchError(e));
+        const caughtErrors = reqsErrors.map(e => catchError(e, requestId));
         throw createOverloadsError(caughtErrors);
       }
     }
@@ -252,9 +268,9 @@ export function createSmartRouteHandler<
       return await handler.handler(smartReq as any, fullReq);
     });
 
-    const validated = await validateSmartResponse(nextRequest, smartRes, handler.response);
-
-    return validated;
+    return await traceSpan("validating smart response", async () => {
+      return await validateSmartResponse(nextRequest, smartRes, handler.response);
+    });
   };
 
   return Object.assign(handleApiRequest(async (req, options, requestId) => {
@@ -265,9 +281,7 @@ export function createSmartRouteHandler<
 
     const smartRes = await invoke(req, requestId, smartRequest, true);
 
-    return await traceSpan('transforming smart response into HTTP response', async () => {
-      return await createResponse(req, requestId, smartRes);
-    });
+    return await createResponse(req, requestId, smartRes);
   }), {
     [getSmartRouteHandlerSymbol()]: true,
     invoke: (smartRequest: SmartRequest) => invoke(null, "custom-endpoint-invocation", smartRequest),

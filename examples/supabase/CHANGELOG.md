@@ -1,5 +1,19 @@
 # @stackframe/example-supabase
 
+## 2.7.23
+
+### Patch Changes
+
+- Various changes
+- Updated dependencies
+  - @stackframe/stack@2.7.23
+
+## 2.7.22
+
+### Patch Changes
+
+- @stackframe/stack@2.7.22
+
 ## 2.7.21
 
 ### Patch Changes

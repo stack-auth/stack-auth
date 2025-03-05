@@ -2,9 +2,9 @@
 
 ## Supported Versions
 
-Only the latest versions of Stack's server and client packages are supported. We do not provide security updates for older versions.
+Only the latest versions of Stack Auth's server and client packages are supported. We do not provide security updates for older versions.
 
-If you would like to get security consulting regarding older versions of on-prem or self-hosted deployments of Stack, please [contact us](mailto:team@stack-auth.com).
+If you would like to get security consulting regarding older versions of on-prem or self-hosted deployments of Stack Auth, please [contact us](mailto:team@stack-auth.com).
 
 ## Reporting a Vulnerability
 

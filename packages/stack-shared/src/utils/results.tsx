@@ -325,7 +325,7 @@ class RetryError extends AggregateError {
     this.name = "RetryError";
   }
 
-  get retries() {
+  get attempts() {
     return this.errors.length;
   }
 }
@@ -337,7 +337,7 @@ import.meta.vitest?.test("RetryError", ({ expect }) => {
   const retryErrorSingle = new RetryError([singleError]);
   expect(retryErrorSingle.name).toBe("RetryError");
   expect(retryErrorSingle.errors).toEqual([singleError]);
-  expect(retryErrorSingle.retries).toBe(1);
+  expect(retryErrorSingle.attempts).toBe(1);
   expect(retryErrorSingle.cause).toBe(singleError);
   expect(retryErrorSingle.message).toContain("Error after 1 attempts");
 
@@ -347,7 +347,7 @@ import.meta.vitest?.test("RetryError", ({ expect }) => {
   const retryErrorMultiple = new RetryError([error1, error2]);
   expect(retryErrorMultiple.name).toBe("RetryError");
   expect(retryErrorMultiple.errors).toEqual([error1, error2]);
-  expect(retryErrorMultiple.retries).toBe(2);
+  expect(retryErrorMultiple.attempts).toBe(2);
   expect(retryErrorMultiple.cause).toBe(error2);
   expect(retryErrorMultiple.message).toContain("Error after 2 attempts");
   expect(retryErrorMultiple.message).toContain("Attempt 1");
@@ -358,79 +358,54 @@ import.meta.vitest?.test("RetryError", ({ expect }) => {
   const retryErrorSame = new RetryError([sameError, sameError]);
   expect(retryErrorSame.name).toBe("RetryError");
   expect(retryErrorSame.errors).toEqual([sameError, sameError]);
-  expect(retryErrorSame.retries).toBe(2);
+  expect(retryErrorSame.attempts).toBe(2);
   expect(retryErrorSame.cause).toBe(sameError);
   expect(retryErrorSame.message).toContain("Error after 2 attempts");
   expect(retryErrorSame.message).toContain("Attempts 1-2");
 });
 
 async function retry<T>(
-  fn: (attempt: number) => Result<T> | Promise<Result<T>>,
+  fn: (attemptIndex: number) => Result<T> | Promise<Result<T>>,
   totalAttempts: number,
   { exponentialDelayBase = 1000 } = {},
-): Promise<Result<T, RetryError>> {
+): Promise<Result<T, RetryError> & { attempts: number }> {
   const errors: unknown[] = [];
   for (let i = 0; i < totalAttempts; i++) {
     const res = await fn(i);
     if (res.status === "ok") {
-      return Result.ok(res.data);
+      return Object.assign(Result.ok(res.data), { attempts: i + 1 });
     } else {
       errors.push(res.error);
       if (i < totalAttempts - 1) {
-        // Just use a minimal delay for testing
-        await new Promise(resolve => setTimeout(resolve, 1));
+        await wait((Math.random() + 0.5) * exponentialDelayBase * (2 ** i));
       }
     }
   }
-  return Result.error(new RetryError(errors));
+  return Object.assign(Result.error(new RetryError(errors)), { attempts: totalAttempts });
 }
 import.meta.vitest?.test("retry", async ({ expect }) => {
-  // We don't need to mock the wait function anymore
-  // Instead, we've modified the retry function to use a minimal delay
-
-  try {
-    // Test successful on first attempt
-    const successFn = async () => Result.ok("success");
-    const successResult = await retry(successFn, 3);
-    expect(successResult.status).toBe("ok");
-    if (successResult.status === "ok") {
-      expect(successResult.data).toBe("success");
-    }
+  // Test successful on first attempt
+  const successFn = async () => Result.ok("success");
+  const successResult = await retry(successFn, 3, { exponentialDelayBase: 0 });
+    expect(successResult).toEqual({ status: "ok", data: "success", attempts: 1 });
 
     // Test successful after failures
     let attemptCount = 0;
     const eventualSuccessFn = async () => {
-      attemptCount++;
-      if (attemptCount < 2) {
-        return Result.error(new Error(`Attempt ${attemptCount} failed`));
-      }
-      return Result.ok("eventual success");
+      return ++attemptCount < 2 ? Result.error(new Error(`Attempt ${attemptCount} failed`))
+        : Result.ok("eventual success");
     };
-
-    const eventualSuccessResult = await retry(eventualSuccessFn, 3);
-    expect(eventualSuccessResult.status).toBe("ok");
-    if (eventualSuccessResult.status === "ok") {
-      expect(eventualSuccessResult.data).toBe("eventual success");
-    }
+    const eventualSuccessResult = await retry(eventualSuccessFn, 3, { exponentialDelayBase: 0 });
+    expect(eventualSuccessResult).toEqual({ status: "ok", data: "eventual success", attempts: 2 });
 
     // Test all attempts fail
-    const error1 = new Error("Error 1");
-    const error2 = new Error("Error 2");
-    const error3 = new Error("Error 3");
+    const errors = [new Error("Error 1"), new Error("Error 2"), new Error("Error 3")];
     const allFailFn = async (attempt: number) => {
-      const errors = [error1, error2, error3];
       return Result.error(errors[attempt]);
     };
-
-    const allFailResult = await retry(allFailFn, 3);
-    expect(allFailResult.status).toBe("error");
-    if (allFailResult.status === "error") {
-      expect(allFailResult.error).toBeInstanceOf(RetryError);
-      const retryError = allFailResult.error as RetryError;
-      expect(retryError.errors).toEqual([error1, error2, error3]);
-      expect(retryError.retries).toBe(3);
-    }
-  } finally {
-    // No cleanup needed
-  }
+    const allFailResult = await retry(allFailFn, 3, { exponentialDelayBase: 0 });
+    expect(allFailResult).toEqual({ status: "error", error: expect.any(RetryError), attempts: 3 });
+    const retryError = (allFailResult as any).error as RetryError;
+    expect(retryError.errors).toEqual(errors);
+    expect(retryError.attempts).toBe(3);
 });

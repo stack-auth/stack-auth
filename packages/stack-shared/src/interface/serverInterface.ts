@@ -430,7 +430,7 @@ export class StackServerInterface extends StackClientInterface {
     );
   }
 
-  async deleteServerServerUser(userId: string) {
+  async deleteServerUser(userId: string) {
     await this.sendServerRequest(
       urlString`/users/${userId}`,
       {

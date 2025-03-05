@@ -1,5 +1,13 @@
 # @stackframe/stack-sc
 
+## 2.7.23
+
+### Patch Changes
+
+- Various changes
+
+## 2.7.22
+
 ## 2.7.21
 
 ## 2.7.20

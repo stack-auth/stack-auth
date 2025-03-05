@@ -50,7 +50,7 @@ const handler = createSmartRouteHandler({
     (await cookies()).delete("stack-oauth-inner-" + innerState);
 
     if (cookieInfo?.value !== 'true') {
-      throw new StatusError(StatusError.BadRequest, "OAuth cookie not found. This is likely because you refreshed the page during the OAuth sign in process. Please try signing in again");
+      throw new StatusError(StatusError.BadRequest, "Inner OAuth cookie not found. This is likely because you refreshed the page during the OAuth sign in process. Please try signing in again");
     }
 
     const outerInfoDB = await prismaClient.oAuthOuterInfo.findUnique({

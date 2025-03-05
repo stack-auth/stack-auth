@@ -750,6 +750,7 @@ export const usersCrudHandlers = createLazyProxy(() => createCrudHandlers(usersC
           where: {
             tenancyId: auth.tenancy.id,
             projectUserId: params.user_id,
+            isSelected: BooleanTrue.TRUE,
           },
           data: {
             isSelected: null,

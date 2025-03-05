@@ -6,7 +6,7 @@ import { getProjectQuery, listManagedProjectIds } from "@/lib/projects";
 import { Tenancy, getSoleTenancyFromProject } from "@/lib/tenancies";
 import { decodeAccessToken } from "@/lib/tokens";
 import { rawQueryAll } from "@/prisma-client";
-import { withTraceSpan } from "@/utils/telemetry";
+import { traceSpan, withTraceSpan } from "@/utils/telemetry";
 import { KnownErrors } from "@stackframe/stack-shared";
 import { ProjectsCrud } from "@stackframe/stack-shared/dist/interface/crud/projects";
 import { UsersCrud } from "@stackframe/stack-shared/dist/interface/crud/users";
@@ -284,26 +284,28 @@ const parseAuth = withTraceSpan('smart request parseAuth', async (req: NextReque
 });
 
 export async function createSmartRequest(req: NextRequest, bodyBuffer: ArrayBuffer, options?: { params: Promise<Record<string, string>> }): Promise<SmartRequest> {
-  const urlObject = new URL(req.url);
-  const clientVersionMatch = req.headers.get("x-stack-client-version")?.match(/^(\w+)\s+(@[\w\/]+)@([\d.]+)$/);
+  return await traceSpan("creating smart request", async () => {
+    const urlObject = new URL(req.url);
+    const clientVersionMatch = req.headers.get("x-stack-client-version")?.match(/^(\w+)\s+(@[\w\/]+)@([\d.]+)$/);
 
-  return {
-    url: req.url,
-    method: typedIncludes(allowedMethods, req.method) ? req.method : throwErr(new StatusError(405, "Method not allowed")),
-    body: await parseBody(req, bodyBuffer),
-    headers: Object.fromEntries(
-      [...groupBy(req.headers.entries(), ([key, _]) => key.toLowerCase())]
-        .map(([key, values]) => [key, values.map(([_, value]) => value)]),
-    ),
-    query: Object.fromEntries(urlObject.searchParams.entries()),
-    params: await options?.params ?? {},
-    auth: await parseAuth(req),
-    clientVersion: clientVersionMatch ? {
-      platform: clientVersionMatch[1],
-      sdk: clientVersionMatch[2],
-      version: clientVersionMatch[3],
-    } : undefined,
-  } satisfies SmartRequest;
+    return {
+      url: req.url,
+      method: typedIncludes(allowedMethods, req.method) ? req.method : throwErr(new StatusError(405, "Method not allowed")),
+      body: await parseBody(req, bodyBuffer),
+      headers: Object.fromEntries(
+        [...groupBy(req.headers.entries(), ([key, _]) => key.toLowerCase())]
+          .map(([key, values]) => [key, values.map(([_, value]) => value)]),
+      ),
+      query: Object.fromEntries(urlObject.searchParams.entries()),
+      params: await options?.params ?? {},
+      auth: await parseAuth(req),
+      clientVersion: clientVersionMatch ? {
+        platform: clientVersionMatch[1],
+        sdk: clientVersionMatch[2],
+        version: clientVersionMatch[3],
+      } : undefined,
+    } satisfies SmartRequest;
+  });
 }
 
 export async function validateSmartRequest<T extends DeepPartialSmartRequestWithSentinel>(nextReq: NextRequest | null, smartReq: SmartRequest, schema: yup.Schema<T>): Promise<T> {
