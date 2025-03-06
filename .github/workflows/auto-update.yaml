@@ -1,7 +1,22 @@
 name: Update pull request branches
 
 on:
-  push: {}
+  workflow_run:
+    workflows:
+      - "Ensure Prisma migrations are in sync with the schema"
+      - "Docker Build and Push"
+      - "Docker Test"
+      - "Runs E2E API Tests"
+      - "Lint & build"
+      - "Mirror main branch to main-mirror-for-wdb"
+      - "Preview Docs"
+      - "Publish Docs"
+      - "Dev Environment Test"
+      - "Run setup tests"
+      - "TOC Generator"
+    types:
+      - completed
+    conclusion: success
 
 jobs:
   update-pr-branches:
