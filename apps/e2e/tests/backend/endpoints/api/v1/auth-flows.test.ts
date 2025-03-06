@@ -74,8 +74,8 @@ it("signing in with OTP first, then signing in with OAuth, should set used_for_a
   await Auth.OAuth.signIn();
   const cc2 = await ContactChannels.getTheOnlyContactChannel();
   expect(cc2.value).toBe(cc.value);
-  expect(cc2.is_verified).toBe(false);
-  expect(cc2.used_for_auth).toBe(false);
+  expect(cc2.is_verified).toBe(true);
+  expect(cc2.used_for_auth).toBe(true);
 });
 
 it("signs in with password first, then signs in with oauth should give an account with used_for_auth true with the new defaults", async ({ expect }) => {
