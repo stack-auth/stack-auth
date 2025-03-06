@@ -208,6 +208,10 @@ export const adaptSchema = yupMixed<StackAdaptSentinel>();
  * Yup's URL schema does not recognize some URLs (including `http://localhost`) as a valid URL. This schema is a workaround for that.
  */
 export const urlSchema = yupString().test({
+  name: 'no-spaces',
+  message: (params) => `${params.path} contains spaces`,
+  test: (value) => value == null || !value.includes(' ')
+}).test({
   name: 'url',
   message: (params) => `${params.path} is not a valid URL`,
   test: (value) => value == null || isValidUrl(value)
