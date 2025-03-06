@@ -468,7 +468,7 @@ export const projectsCrudHandlers = createLazyProxy(() => createCrudHandlers(pro
               clientUserDeletionEnabled: data.config?.client_user_deletion_enabled,
               allowLocalhost: data.config?.allow_localhost,
               createTeamOnSignUp: data.config?.create_team_on_sign_up,
-              mergeOauthMethods: data.config?.merge_oauth_methods ?
+              mergeOAuthMethods: data.config?.merge_oauth_methods ?
                 typedToUppercase(data.config.merge_oauth_methods) as 'LINK_METHOD' | 'RAISE_ERROR' | 'ALLOW_DUPLICATES' :
                 undefined,
               domains: data.config?.domains ? {

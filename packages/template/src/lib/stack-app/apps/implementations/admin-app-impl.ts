@@ -99,7 +99,7 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
         clientTeamCreationEnabled: data.config.client_team_creation_enabled,
         clientUserDeletionEnabled: data.config.client_user_deletion_enabled,
         allowLocalhost: data.config.allow_localhost,
-        mergeOauthMethods: data.config.merge_oauth_methods,
+        mergeOAuthMethods: data.config.merge_oauth_methods,
         oauthProviders: data.config.oauth_providers.map((p) => ((p.type === 'shared' ? {
           id: p.id,
           enabled: p.enabled,

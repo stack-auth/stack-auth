@@ -31,7 +31,7 @@ export type AdminProjectConfig = {
   readonly createTeamOnSignUp: boolean,
   readonly teamCreatorDefaultPermissions: AdminTeamPermission[],
   readonly teamMemberDefaultPermissions: AdminTeamPermission[],
-  readonly mergeOauthMethods: 'link_method' | 'raise_error' | 'allow_duplicates',
+  readonly mergeOAuthMethods: 'link_method' | 'raise_error' | 'allow_duplicates',
 };
 
 export type AdminEmailConfig = (
@@ -85,5 +85,5 @@ export type AdminProjectConfigUpdateOptions = {
   emailConfig?: AdminEmailConfig,
   teamCreatorDefaultPermissions?: { id: string }[],
   teamMemberDefaultPermissions?: { id: string }[],
-  mergeOauthMethods?: 'link_method' | 'raise_error' | 'allow_duplicates',
+  mergeOAuthMethods?: 'link_method' | 'raise_error' | 'allow_duplicates',
 };
