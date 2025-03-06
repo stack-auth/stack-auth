@@ -78,7 +78,7 @@ it("signing in with OTP first, then signing in with OAuth, should set used_for_a
   expect(cc2.used_for_auth).toBe(false);
 });
 
-it("signs in with password first, then signs in with oauth should give an account with used_for_auth false", async ({ expect }) => {
+it("signs in with password first, then signs in with oauth should give an account with used_for_auth true with the new defaults", async ({ expect }) => {
   await Auth.Password.signUpWithEmail({ password: "some-password" });
   const cc = await ContactChannels.getTheOnlyContactChannel();
   expect(cc.is_verified).toBe(false);
@@ -88,7 +88,7 @@ it("signs in with password first, then signs in with oauth should give an accoun
   const cc2 = await ContactChannels.getTheOnlyContactChannel();
   expect(cc2.value).toBe(cc.value);
   expect(cc2.is_verified).toBe(false);
-  expect(cc2.used_for_auth).toBe(false);
+  expect(cc2.used_for_auth).toBe(true);
 });
 
 it("should merge accounts when signing in with OTP after OAuth sign-in and email verification", async ({ expect }) => {
