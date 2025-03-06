@@ -53,10 +53,10 @@ model ProjectConfig {
   permissions                        Permission[]
   authMethodConfigs                  AuthMethodConfig[]
   connectedAccountConfigs            ConnectedAccountConfig[]
-  mergeOauthMethods                  MergeOauthMethods @default(LINK_METHOD)
+  mergeOAuthMethods                  MergeOAuthMethods @default(LINK_METHOD)
 }
 
-enum MergeOauthMethods {
+enum MergeOAuthMethods {
   LINK_METHOD
   RAISE_ERROR
   ALLOW_DUPLICATES

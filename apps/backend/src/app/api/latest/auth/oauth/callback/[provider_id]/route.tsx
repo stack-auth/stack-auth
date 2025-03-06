@@ -284,9 +284,9 @@ const handler = createSmartRouteHandler({
 
                     // Check if we should link this OAuth account to an existing user based on email
                     if (oldContactChannel && oldContactChannel.usedForAuth) {
-                      const mergeOauthMethods = tenancy.config.merge_oauth_methods.toUpperCase();
+                      const mergeOAuthMethods = tenancy.config.merge_oauth_methods.toUpperCase();
 
-                      if (mergeOauthMethods === 'LINK_METHOD') {
+                      if (mergeOAuthMethods === 'LINK_METHOD') {
                         // Link this OAuth account to the existing user instead of creating a new one
                         const existingUser = oldContactChannel.projectUser;
 
@@ -350,11 +350,11 @@ const handler = createSmartRouteHandler({
                           newUser: false,
                           afterCallbackRedirectUrl,
                         };
-                      } else if (mergeOauthMethods === 'RAISE_ERROR') {
+                      } else if (mergeOAuthMethods === 'RAISE_ERROR') {
                         // Prevent sign-in with multiple providers
                         throw new KnownErrors.OAuthConnectionAlreadyConnectedToAnotherUser();
                       }
-                      // if mergeOauthMethods is ALLOW_DUPLICATES, we don't need to do anything
+                      // if mergeOAuthMethods is ALLOW_DUPLICATES, we don't need to do anything
                     }
                   }
 

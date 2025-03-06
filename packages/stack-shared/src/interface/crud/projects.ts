@@ -87,7 +87,7 @@ export const projectsCrudAdminReadSchema = yupObject({
     create_team_on_sign_up: schemaFields.projectCreateTeamOnSignUpSchema.defined(),
     team_creator_default_permissions: yupArray(teamPermissionSchema.defined()).defined(),
     team_member_default_permissions: yupArray(teamPermissionSchema.defined()).defined(),
-    merge_oauth_methods: schemaFields.mergeOauthMethodsSchema.defined(),
+    merge_oauth_methods: schemaFields.mergeOAuthMethodsSchema.defined(),
   }).defined(),
 }).defined();
 
@@ -124,7 +124,7 @@ export const projectsCrudAdminUpdateSchema = yupObject({
     create_team_on_sign_up: schemaFields.projectCreateTeamOnSignUpSchema.optional(),
     team_creator_default_permissions: yupArray(teamPermissionSchema.defined()).optional(),
     team_member_default_permissions: yupArray(teamPermissionSchema.defined()).optional(),
-    merge_oauth_methods: schemaFields.mergeOauthMethodsSchema.optional(),
+    merge_oauth_methods: schemaFields.mergeOAuthMethodsSchema.optional(),
   }).optional().default(undefined),
 }).defined();
 
