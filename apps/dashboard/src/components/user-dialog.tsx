@@ -111,16 +111,16 @@ export function UserDialog(props: {
 
         <div className="flex gap-4 items-end">
           <div className="flex-1">
-            <InputField control={form.control} label="Primary email" name="primaryEmail" required />
+            <InputField control={form.control} label="Primary email" name="primaryEmail" required autoComplete="off" />
           </div>
           <div className="mb-2">
             <SwitchField control={form.control} label="Verified" name="primaryEmailVerified" />
           </div>
         </div>
 
-        <InputField control={form.control} label="Display name" name="displayName" />
+        <InputField control={form.control} label="Display name" name="displayName" autoComplete="off" />
 
-        <DateField control={form.control} label="Signed Up At" name="signedUpAt" />
+        <DateField control={form.control} label="Signed Up At" name="signedUpAt" autoComplete="off" />
 
         {project.config.magicLinkEnabled && <SwitchField control={form.control} label="OTP/magic link sign-in" name="otpAuthEnabled" />}
         {project.config.credentialEnabled && <SwitchField control={form.control} label="Password sign-in" name="passwordEnabled" />}
@@ -149,9 +149,9 @@ export function UserDialog(props: {
           <AccordionItem value="item-1">
             <AccordionTrigger>Metadata</AccordionTrigger>
             <AccordionContent className="space-y-4">
-              <TextAreaField rows={3} control={form.control} label="Client metadata" name="clientMetadata" placeholder="null" monospace />
-              <TextAreaField rows={3} control={form.control} label="Client read only metadata" name="clientReadOnlyMetadata" placeholder="null" monospace />
-              <TextAreaField rows={3} control={form.control} label="Server metadata" name="serverMetadata" placeholder="null" monospace />
+              <TextAreaField rows={3} control={form.control} label="Client metadata" name="clientMetadata" placeholder="null" monospace autoComplete="off" />
+              <TextAreaField rows={3} control={form.control} label="Client read only metadata" name="clientReadOnlyMetadata" placeholder="null" monospace autoComplete="off" />
+              <TextAreaField rows={3} control={form.control} label="Server metadata" name="serverMetadata" placeholder="null" monospace autoComplete="off" />
             </AccordionContent>
           </AccordionItem>
         </Accordion>

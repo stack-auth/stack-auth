@@ -25,6 +25,7 @@ export function TextAreaField<F extends FieldValues>(props: {
   name: Path<F>,
   label: React.ReactNode,
   monospace?: boolean,
+  autoComplete?: string,
 }) {
   return (
     <FormField
@@ -43,6 +44,7 @@ export function TextAreaField<F extends FieldValues>(props: {
                 style={{
                   fontFamily: props.monospace ? "ui-monospace, monospace" : undefined,
                 }}
+                autoComplete={props.autoComplete}
               />
             </FormControl>
             <FormMessage />
@@ -182,6 +184,7 @@ export function DateField<F extends FieldValues>(props: {
   label: React.ReactNode,
   required?: boolean,
   disabled?: boolean,
+  autoComplete?: string,
 }) {
   return (
     <FormField
