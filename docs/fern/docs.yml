@@ -19,7 +19,7 @@ versions:
   - display-name: JavaScript SDK
     path: js.yml
     slug: js
-  - display-name: Python SDK
+  - display-name: Python
     path: python.yml
     slug: python
 

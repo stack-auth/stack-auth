@@ -21,6 +21,7 @@ model Project {
   configId         String        @db.Uuid
   config           ProjectConfig @relation(fields: [configId], references: [id], onDelete: Cascade)
   isProductionMode Boolean
+  userCount        Int           @default(0)
 
   apiKeySets             ApiKeySet[]
   projectUsers           ProjectUser[]

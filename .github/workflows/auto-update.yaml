@@ -1,0 +1,17 @@
+name: Update pull request branches
+
+on:
+  push: {}
+
+jobs:
+  update-pr-branches:
+    permissions:
+      contents: write
+      pull-requests: write
+    name: Update pull request branches
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: chinthakagodawita/autoupdate@0707656cd062a3b0cf8fa9b2cda1d1404d74437e
+        env:
+          GITHUB_TOKEN: '${{ secrets.GITHUB_TOKEN }}'
+          MERGE_CONFLICT_ACTION: 'ignore'

@@ -58,7 +58,6 @@ const NextNavigation = scrambleDuringCompileTime(NextNavigationUnscrambled);
 const process = (globalThis as any).process ?? { env: {} };
 
 
-let numberOfAppsCreated = 0;
 const allClientApps = new Map<string, [checkString: string, app: StackClientApp<any, any>]>();
 
 export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, ProjectId extends string = string> {
@@ -280,13 +279,6 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
     if (_options.uniqueIdentifier) {
       this._uniqueIdentifier = _options.uniqueIdentifier;
       this._initUniqueIdentifier();
-    }
-
-    if (!_options.noAutomaticPrefetch) {
-      numberOfAppsCreated++;
-      if (numberOfAppsCreated > 10) {
-        (process.env.NODE_ENV === "development" ? console.log : console.warn)(`You have created more than 10 Stack apps with automatic pre-fetch enabled (${numberOfAppsCreated}). This is usually a sign of a memory leak, but can sometimes be caused by hot reload of your tech stack. If you are getting this error and it is not caused by hot reload, make sure to minimize the number of Stack apps per page (usually, one per project). (If it is caused by hot reload and does not occur in production, you can safely ignore it.)`);
-      }
     }
   }
 
