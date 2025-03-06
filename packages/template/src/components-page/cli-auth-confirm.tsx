@@ -2,7 +2,7 @@
 
 import { Typography } from "@stackframe/stack-ui";
 import { useState } from "react";
-import { useStackApp, useUser } from "..";
+import { useStackApp } from "..";
 import { MessageCard } from "../components/message-cards/message-card";
 import { useTranslation } from "../lib/translations";
 
@@ -13,7 +13,7 @@ export function CLIConfirmation({ fullPage = true }: { fullPage?: boolean }) {
   const [success, setSuccess] = useState(false);
   const [error, setError] = useState<Error | null>(null);
 
-  const user = useUser();
+  const user = app.useUser();
 
   const handleAuthorize = async () => {
     if (authorizing) return;
