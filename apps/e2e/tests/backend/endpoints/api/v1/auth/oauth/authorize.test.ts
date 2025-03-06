@@ -78,11 +78,13 @@ it("should fail if an invalid redirect URL is provided", async ({ expect }) => {
         "details": {
           "message": deindent\`
             Request validation failed on GET /api/v1/auth/oauth/authorize/spotify:
+              - query.redirect_uri contains spaces
               - query.redirect_uri is not a valid URL
           \`,
         },
         "error": deindent\`
           Request validation failed on GET /api/v1/auth/oauth/authorize/spotify:
+            - query.redirect_uri contains spaces
             - query.redirect_uri is not a valid URL
         \`,
       },
