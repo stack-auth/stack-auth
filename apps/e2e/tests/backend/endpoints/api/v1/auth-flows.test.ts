@@ -65,7 +65,7 @@ it("should not be able to sign in with OTP anymore after signing in with passwor
 });
 
 
-it("signing in with OTP first, then signing in with OAuth, should set used_for_auth to false", async ({ expect }) => {
+it("signing in with OTP first, then signing in with OAuth, should set used_for_auth to true", async ({ expect }) => {
   await Auth.Otp.signIn();
   const cc = await ContactChannels.getTheOnlyContactChannel();
   expect(cc.is_verified).toBe(true);
