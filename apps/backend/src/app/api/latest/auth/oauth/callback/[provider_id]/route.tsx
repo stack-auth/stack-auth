@@ -312,7 +312,7 @@ const handler = createSmartRouteHandler({
                             throw new KnownErrors.UserEmailAlreadyExists();
                           }
 
-                          if (userInfo.emailVerified) {
+                          if (!userInfo.emailVerified) {
                             throw new KnownErrors.EmailNotVerified();
                           }
 
