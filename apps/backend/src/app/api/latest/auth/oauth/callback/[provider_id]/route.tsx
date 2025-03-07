@@ -305,8 +305,8 @@ const handler = createSmartRouteHandler({
 
                     // Check if we should link this OAuth account to an existing user based on email
                     if (oldContactChannel && oldContactChannel.usedForAuth) {
-                      const mergeOAuthMethods = tenancy.config.merge_oauth_methods.toUpperCase();
-                      switch (mergeOAuthMethods) {
+                      const oauthAccountMergeStrategy = tenancy.config.oauth_account_merge_strategy.toUpperCase();
+                      switch (oauthAccountMergeStrategy) {
                         case 'LINK_METHOD': {
                           if (!oldContactChannel.isVerified) {
                             throw new KnownErrors.UserEmailAlreadyExists();

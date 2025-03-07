@@ -11,7 +11,7 @@ import { PageLayout } from "../page-layout";
 import { useAdminApp } from "../use-admin-app";
 import { ProviderSettingDialog, ProviderSettingSwitch, TurnOffProviderDialog } from "./providers";
 
-type MergeOAuthMethods = 'link_method' | 'raise_error' | 'allow_duplicates';
+type OAuthAccountMergeStrategy = 'link_method' | 'raise_error' | 'allow_duplicates';
 
 function ConfirmSignUpEnabledDialog(props: {
   open?: boolean,
@@ -336,11 +336,11 @@ export default function PageClient() {
         />
         <SettingSelect
           label="Sign-up mode when logging in with same email on multiple providers"
-          value={project.config.mergeOAuthMethods}
+          value={project.config.oauthAccountMergeStrategy}
           onValueChange={async (value) => {
             await project.update({
               config: {
-                mergeOAuthMethods: value as MergeOAuthMethods,
+                oauthAccountMergeStrategy: value as OAuthAccountMergeStrategy,
               },
             });
           }}
