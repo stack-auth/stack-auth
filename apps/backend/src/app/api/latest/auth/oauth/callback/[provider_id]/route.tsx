@@ -15,6 +15,41 @@ import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { oauthResponseToSmartResponse } from "../../oauth-helpers";
 
+/**
+ * Create a project user OAuth account with the provided data
+ */
+async function createProjectUserOAuthAccount(params: {
+  tenancyId: string,
+  projectConfigId: string,
+  providerId: string,
+  providerAccountId: string,
+  email?: string | null,
+  projectUserId: string,
+}) {
+  return await prismaClient.projectUserOAuthAccount.create({
+    data: {
+      providerAccountId: params.providerAccountId,
+      email: params.email,
+      providerConfig: {
+        connect: {
+          projectConfigId_id: {
+            projectConfigId: params.projectConfigId,
+            id: params.providerId,
+          },
+        },
+      },
+      projectUser: {
+        connect: {
+          tenancyId_projectUserId: {
+            tenancyId: params.tenancyId,
+            projectUserId: params.projectUserId,
+          },
+        },
+      },
+    },
+  });
+}
+
 const redirectOrThrowError = (error: KnownError, tenancy: Tenancy, errorRedirectUrl?: string) => {
   if (!errorRedirectUrl || !validateRedirectUrl(errorRedirectUrl, tenancy.config.domains, tenancy.config.allow_localhost)) {
     throw error;
@@ -219,27 +254,13 @@ const handler = createSmartRouteHandler({
                     await storeTokens();
                   } else {
                     // ========================== connect account with user ==========================
-                    await prismaClient.projectUserOAuthAccount.create({
-                      data: {
-                        providerAccountId: userInfo.accountId,
-                        email: userInfo.email,
-                        providerConfig: {
-                          connect: {
-                            projectConfigId_id: {
-                              projectConfigId: tenancy.config.id,
-                              id: provider.id,
-                            },
-                          },
-                        },
-                        projectUser: {
-                          connect: {
-                            tenancyId_projectUserId: {
-                              tenancyId: outerInfo.tenancyId,
-                              projectUserId: projectUserId,
-                            },
-                          },
-                        },
-                      },
+                    await createProjectUserOAuthAccount({
+                      tenancyId: outerInfo.tenancyId,
+                      projectConfigId: tenancy.config.id,
+                      providerId: provider.id,
+                      providerAccountId: userInfo.accountId,
+                      email: userInfo.email,
+                      projectUserId,
                     });
                   }
 
@@ -290,27 +311,13 @@ const handler = createSmartRouteHandler({
                           const existingUser = oldContactChannel.projectUser;
 
                           // First create the OAuth account
-                          await prismaClient.projectUserOAuthAccount.create({
-                            data: {
-                              providerAccountId: userInfo.accountId,
-                              email: userInfo.email,
-                              providerConfig: {
-                                connect: {
-                                  projectConfigId_id: {
-                                    projectConfigId: tenancy.config.id,
-                                    id: provider.id,
-                                  }
-                                }
-                              },
-                              projectUser: {
-                                connect: {
-                                  tenancyId_projectUserId: {
-                                    tenancyId: outerInfo.tenancyId,
-                                    projectUserId: existingUser.projectUserId,
-                                  }
-                                }
-                              }
-                            }
+                          await createProjectUserOAuthAccount({
+                            tenancyId: outerInfo.tenancyId,
+                            projectConfigId: tenancy.config.id,
+                            providerId: provider.id,
+                            providerAccountId: userInfo.accountId,
+                            email: userInfo.email,
+                            projectUserId: existingUser.projectUserId,
                           });
 
                           // Then create the auth method that uses this OAuth account
