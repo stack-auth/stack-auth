@@ -315,7 +315,7 @@ const handler = createSmartRouteHandler({
 
                           // Then create the auth method that uses this OAuth account
                           // Find auth method config for this provider from the provider list
-                          const authMethod = await prismaClient.authMethodConfig.findFirst({
+                          const authMethodConfig = await prismaClient.authMethodConfig.findFirst({
                             where: {
                               projectConfigId: tenancy.config.id,
                               oauthProviderConfig: {
@@ -324,24 +324,26 @@ const handler = createSmartRouteHandler({
                             }
                           });
 
-                          if (authMethod) {
-                            await prismaClient.authMethod.create({
-                              data: {
-                                tenancyId: outerInfo.tenancyId,
-                                projectUserId: existingUser.projectUserId,
-                                projectConfigId: tenancy.config.id,
-                                authMethodConfigId: authMethod.id,
-                                oauthAuthMethod: {
-                                  create: {
-                                    projectUserId: existingUser.projectUserId,
-                                    projectConfigId: tenancy.config.id,
-                                    oauthProviderConfigId: provider.id,
-                                    providerAccountId: userInfo.accountId,
-                                  }
+                          if (!authMethodConfig) {
+                            throw new StackAssertionError("Auth method config not found, this is most likely a bug.");
+                          }
+
+                          await prismaClient.authMethod.create({
+                            data: {
+                              tenancyId: outerInfo.tenancyId,
+                              projectUserId: existingUser.projectUserId,
+                              projectConfigId: tenancy.config.id,
+                              authMethodConfigId: authMethodConfig.id,
+                              oauthAuthMethod: {
+                                create: {
+                                  projectUserId: existingUser.projectUserId,
+                                  projectConfigId: tenancy.config.id,
+                                  oauthProviderConfigId: provider.id,
+                                  providerAccountId: userInfo.accountId,
                                 }
                               }
-                            });
-                          }
+                            }
+                          });
 
                           await storeTokens();
                           return {
