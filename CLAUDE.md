@@ -8,7 +8,7 @@
 - Run single test: `pnpm test path/to/test.test.ts` or `pnpm test -t "test name pattern"`
 - Start dependencies: `pnpm start-deps` (DB, services), `pnpm stop-deps` (shutdown)
 - Dev mode: `pnpm dev` (all services) or `pnpm dev:basic` (backend+dashboard)
-- Prisma CLI:`pnpm prisma` (use instead of the `prisma` command)
+- Prisma CLI: `pnpm prisma` (use instead of the `prisma` command)
 
 ## Coding Guidelines
 - TypeScript with strict types, prefer `type` over `interface`
