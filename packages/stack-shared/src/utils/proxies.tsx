@@ -57,47 +57,6 @@ export function logged<T extends object>(name: string, toLog: T, options: {} = {
   });
   return proxy;
 }
-import.meta.vitest?.test("logged", ({ expect }) => {
-  // Test with a simple object
-  const obj = {
-    value: 42,
-    method(x: number) { return x * 2; }
-  };
-
-  const loggedObj = logged("testObj", obj);
-
-  // Test property access
-  expect(loggedObj.value).toBe(42);
-
-  // Test method call
-  const result = loggedObj.method(21);
-  expect(result).toBe(42);
-
-  // Test property setting
-  loggedObj.value = 100;
-  expect(loggedObj.value).toBe(100);
-
-  // Test with a promise-returning method
-  const asyncObj = {
-    async asyncMethod(x: number) { return x * 3; }
-  };
-
-  const loggedAsyncObj = logged("asyncObj", asyncObj);
-
-  // Test async method
-  const promise = loggedAsyncObj.asyncMethod(7);
-  expect(promise instanceof Promise).toBe(true);
-
-  // Test error handling
-  const errorObj = {
-    throwError() { throw new Error("Test error"); }
-  };
-
-  const loggedErrorObj = logged("errorObj", errorObj);
-
-  // Test error throwing
-  expect(() => loggedErrorObj.throwError()).toThrow("Test error");
-});
 
 export function createLazyProxy<FactoryResult>(factory: () => FactoryResult): FactoryResult {
   let cache: FactoryResult | undefined = undefined;

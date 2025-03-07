@@ -1,0 +1,46 @@
+name: All good?
+
+on: push
+
+jobs:
+  all-good:
+    runs-on: ubuntu-latest
+    env:
+      REPO: ${{ github.repository }}
+      COMMIT: ${{ github.sha }}
+    steps:
+      - name: Wait for 60 seconds
+        run: sleep 60
+
+      - name: Poll Checks API until complete
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          echo "Checking check runs for commit ${COMMIT} in repo ${REPO}..."
+          while true; do
+            response=$(curl -s -H "Authorization: Bearer ${GITHUB_TOKEN}" \
+              "https://api.github.com/repos/${REPO}/commits/${COMMIT}/check-runs")
+            total=$(echo "$response" | jq -r '.total_count')
+            
+            if [ "$total" -eq 0 ]; then
+              echo "No check runs found for commit ${COMMIT}. Waiting..."
+              sleep 10
+              continue
+            fi
+
+            pending=$(echo "$response" | jq '[.check_runs[] | select(.status != "completed" and .name != "all-good")] | length')
+            if [ "$pending" -gt 0 ]; then
+              echo "$pending check run(s) still in progress. Waiting..."
+              sleep 10
+              continue
+            fi
+
+            failed=$(echo "$response" | jq '[.check_runs[] | select(.conclusion != "success" and .name != "all-good")] | length')
+            if [ "$failed" -eq 0 ]; then
+              echo "All check runs passed!"
+              exit 0
+            else
+              echo "Some check runs failed. Exiting with error."
+              exit 1
+            fi
+          done
