@@ -510,7 +510,7 @@ export async function createProject(ownerIds: string[], data: InternalProjectsCr
             createTeamOnSignUp: data.config?.create_team_on_sign_up ?? false,
             clientTeamCreationEnabled: data.config?.client_team_creation_enabled ?? false,
             clientUserDeletionEnabled: data.config?.client_user_deletion_enabled ?? false,
-            oauth_account_merge_strategy: data.config?.oauth_account_merge_strategy ?
+            oauthAccountMergeStrategy: data.config?.oauth_account_merge_strategy ?
               typedToUppercase(data.config.oauth_account_merge_strategy) as 'LINK_METHOD' | 'RAISE_ERROR' | 'ALLOW_DUPLICATES' :
               'LINK_METHOD',
             domains: data.config?.domains ? {
