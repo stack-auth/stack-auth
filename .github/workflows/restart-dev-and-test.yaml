@@ -7,11 +7,7 @@ env:
 
 jobs:
   test:
-    runs-on: ubicloud-standard-4
-    strategy:
-      matrix:
-        random-seed: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
-      fail-fast: false
+    runs-on: ubicloud-standard-8
     steps:
       - uses: actions/checkout@v3
 
