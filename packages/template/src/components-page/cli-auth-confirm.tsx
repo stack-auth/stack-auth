@@ -27,32 +27,28 @@ export function CLIConfirmation({ fullPage = true }: { fullPage?: boolean }) {
       if (!loginCode) {
         throw new Error("Missing login code in URL parameters");
       }
-      try {
-        if (!user) {
-          throw new Error("You must be logged in to authorize CLI access");
-        }
-        const refreshToken = (await user.currentSession.getTokens()).refreshToken;
-        if (!refreshToken) {
-          throw new Error("You must be logged in to authorize CLI access");
-        }
+      if (!user) {
+        throw new Error("You must be logged in to authorize CLI access");
+      }
+      const refreshToken = (await user.currentSession.getTokens()).refreshToken;
+      if (!refreshToken) {
+        throw new Error("You must be logged in to authorize CLI access");
+      }
 
-        // Use the internal API to send the CLI login request
-        const result = await (app as any)[stackAppInternalsSymbol].sendRequest("/auth/cli/login", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json"
-          },
-          body: JSON.stringify({
-            login_code: loginCode,
-            refresh_token: (await user.currentSession.getTokens()).refreshToken
-          })
-        });
+      // Use the internal API to send the CLI login request
+      const result = await (app as any)[stackAppInternalsSymbol].sendRequest("/auth/cli/login", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          login_code: loginCode,
+          refresh_token: (await user.currentSession.getTokens()).refreshToken
+        })
+      });
 
-        if (!result.ok) {
-          throw new Error(`Authorization failed: ${result.status} ${await result.text()}`);
-        }
-      } catch (fetchError) {
-        throw new Error(`Authentication failed: ${(fetchError as Error).message}`);
+      if (!result.ok) {
+        throw new Error(`Authorization failed: ${result.status} ${await result.text()}`);
       }
 
       setSuccess(true);
