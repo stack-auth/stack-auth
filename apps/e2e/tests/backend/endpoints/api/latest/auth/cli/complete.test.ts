@@ -17,7 +17,7 @@ it("should set the refresh token for a CLI auth attempt and return success when 
   const refreshToken = "test-refresh-token";
 
   // Then set the refresh token
-  const loginResponse = await niceBackendFetch("/api/latest/auth/cli/login", {
+  const loginResponse = await niceBackendFetch("/api/latest/auth/cli/complete", {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -61,7 +61,7 @@ it("should return an error when trying to set the refresh token with an invalid 
   const refreshToken = "test-refresh-token";
 
   // Try to set the refresh token with an invalid login code
-  const loginResponse = await niceBackendFetch("/api/latest/auth/cli/login", {
+  const loginResponse = await niceBackendFetch("/api/latest/auth/cli/complete", {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -90,7 +90,7 @@ it("should not allow setting the refresh token twice", async ({ expect }) => {
   const refreshToken2 = "test-refresh-token-2";
 
   // Set the refresh token the first time
-  const loginResponse1 = await niceBackendFetch("/api/latest/auth/cli/login", {
+  const loginResponse1 = await niceBackendFetch("/api/latest/auth/cli/complete", {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -102,7 +102,7 @@ it("should not allow setting the refresh token twice", async ({ expect }) => {
   expect(loginResponse1.status).toBe(200);
 
   // Try to set the refresh token again
-  const loginResponse2 = await niceBackendFetch("/api/latest/auth/cli/login", {
+  const loginResponse2 = await niceBackendFetch("/api/latest/auth/cli/complete", {
     method: "POST",
     headers: {
       "Content-Type": "application/json",

@@ -5,7 +5,7 @@ import { adaptSchema, clientOrHigherAuthTypeSchema, yupNumber, yupObject, yupStr
 
 export const POST = createSmartRouteHandler({
   metadata: {
-    summary: "Set refresh token for CLI authentication",
+    summary: "Complete CLI authentication",
     description: "Set the refresh token for a CLI authentication session using the login code",
     tags: ["CLI Authentication"],
   },
