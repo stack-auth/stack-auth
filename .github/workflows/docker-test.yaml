@@ -4,7 +4,7 @@ on: push
 
 jobs:
   docker:
-    runs-on: ubicloud-standard-8
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
 
