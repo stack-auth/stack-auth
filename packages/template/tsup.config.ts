@@ -13,7 +13,7 @@ const config: Options = {
   sourcemap: true,
   clean: false,
   noExternal: [...customNoExternal],
-  dts: true,
+  dts: 'src/index.ts',  // we only generate types for the barrel file because it drastically decreases the memory needed for tsup https://github.com/egoist/tsup/issues/920#issuecomment-2454732254
   outDir: 'dist',
   format: ['esm', 'cjs'],
   legacyOutput: true,

@@ -4,7 +4,7 @@ on: push
 
 jobs:
   build:
-    runs-on: depot-ubuntu-22.04-16
+    runs-on: ubicloud-standard-8
     env:
       NODE_ENV: test
       STACK_ENABLE_HARDCODED_PASSKEY_CHALLENGE_FOR_TESTING: yes
