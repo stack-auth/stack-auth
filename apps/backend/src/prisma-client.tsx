@@ -20,8 +20,6 @@ if (getNodeEnvironment() !== 'production') {
 
 
 export async function retryTransaction<T>(fn: (...args: Parameters<Parameters<typeof prismaClient.$transaction>[0]>) => Promise<T>): Promise<T> {
-  const isDev = getNodeEnvironment() === 'development';
-
   // enable serializable isolation level for the first two attempts of 10% of all transactions
   const enableSerializable = Math.random() < 0.1;
 
@@ -61,7 +59,7 @@ export async function retryTransaction<T>(fn: (...args: Parameters<Parameters<ty
         }
         return attemptRes;
       });
-    }, 3);
+    }, 5);
 
     span.setAttribute("stack.prisma.transaction.success", res.status === "ok");
     span.setAttribute("stack.prisma.transaction.attempts", res.attempts);
