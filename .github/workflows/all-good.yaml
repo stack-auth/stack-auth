@@ -1,12 +1,9 @@
-name: Wait for Check Runs
+name: All good?
 
-on:
-  push:
-    branches:
-      - '**'
+on: push
 
 jobs:
-  wait-for-checks:
+  all-good:
     runs-on: ubuntu-latest
     env:
       REPO: ${{ github.repository }}
@@ -31,7 +28,7 @@ jobs:
               continue
             fi
 
-            pending=$(echo "$response" | jq '[.check_runs[] | select(.status != "completed")] | length')
+            pending=$(echo "$response" | jq '[.check_runs[] | select(.status != "completed")] | length - 1')
             if [ "$pending" -gt 0 ]; then
               echo "$pending check run(s) still in progress. Waiting..."
               sleep 10
