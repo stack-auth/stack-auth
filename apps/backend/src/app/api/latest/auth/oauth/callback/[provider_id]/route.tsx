@@ -353,13 +353,10 @@ const handler = createSmartRouteHandler({
                         case 'RAISE_ERROR': {
                           throw new KnownErrors.OAuthConnectionAlreadyConnectedToAnotherUser();
                         }
-                        case 'LINK_METHOD': {
+                        case 'ALLOW_DUPLICATES': {
                           break;
                         }
                       }
-
-
-                      // if mergeOAuthMethods is ALLOW_DUPLICATES, we don't need to do anything
                     }
                   }
 
