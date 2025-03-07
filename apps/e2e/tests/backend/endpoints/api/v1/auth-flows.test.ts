@@ -1,5 +1,5 @@
 import { it } from "../../../../helpers";
-import { Auth, ContactChannels, backendContext, niceBackendFetch } from "../../../backend-helpers";
+import { ApiKey, Auth, ContactChannels, Project, backendContext, niceBackendFetch } from "../../../backend-helpers";
 
 it("should not be able to sign in again after signing in with OTP and disabling auth", async ({ expect }) => {
   await Auth.Otp.signIn();
@@ -39,6 +39,13 @@ it("should not be able to sign in again after signing in with OTP and disabling 
 });
 
 it("should not be able to sign in with OTP anymore after signing in with password first", async ({ expect }) => {
+  await Project.createAndSwitch({
+    config: {
+      magic_link_enabled: true,
+      oauth_account_merge_strategy: "allow_duplicates",
+    }
+  });
+
   await Auth.Password.signUpWithEmail({ password: "some-password" });
 
   const response2 = await niceBackendFetch("/api/v1/auth/otp/send-sign-in-code", {
@@ -79,6 +86,21 @@ it("signing in with OTP first, then signing in with OAuth, should set used_for_a
 });
 
 it("signs in with password first, then signs in with oauth should give an account with used_for_auth true with the new defaults", async ({ expect }) => {
+  const res = await Project.createAndSwitch({
+    config: {
+      credential_enabled: true,
+      oauth_account_merge_strategy: "allow_duplicates",
+      oauth_providers: [{
+        id: "spotify",
+        enabled: true,
+        type: "shared",
+      }],
+    }
+  });
+
+  await ApiKey.createAndSetProjectKeys(res.adminAccessToken);
+
+
   await Auth.Password.signUpWithEmail({ password: "some-password" });
   const cc = await ContactChannels.getTheOnlyContactChannel();
   expect(cc.is_verified).toBe(false);
