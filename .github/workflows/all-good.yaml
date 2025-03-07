@@ -17,7 +17,7 @@ jobs:
       COMMIT: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
     steps:
       - name: Wait for 60 seconds
-        run: sleep 60
+        run: sleep 6
 
       - name: Poll Checks API until complete
         env:
