@@ -13,9 +13,10 @@ jobs:
     permissions:
       contents: write
       statuses: write
+      checks: write
     steps:
       - name: Wait for 60 seconds
-        run: sleep 60
+        run: sleep 6
 
       - name: Wait for all status checks to finish
         env:
@@ -24,25 +25,35 @@ jobs:
           COMMIT: ${{ github.sha }}
         run: |
           echo "Checking status checks for commit ${COMMIT} in repo ${REPO}..."
+          echo "Checking status checks for commit ${COMMIT} in repo ${REPO}..."
           while true; do
-            # Call the GitHub Checks API for the current commit
-            response=$(curl -s -H "Authorization: Bearer ${GITHUB_TOKEN}" \
+            # Fetch Check Runs for the commit (Checks API)
+            check_runs_response=$(curl -s -H "Authorization: Bearer ${GITHUB_TOKEN}" \
               "https://api.github.com/repos/${REPO}/commits/${COMMIT}/check-runs")
-            
-            echo GitHub API response: "$response" 1>&2
-            
-            # Use jq to count any check runs that are not yet completed.
-            in_progress=$(echo "$response" | jq '[.check_runs[] | select(.status != "completed")] | length')
-            
-            if [ "$in_progress" -ne 0 ]; then
-              echo "$in_progress check(s) still in progress. Waiting..."
+            # Fetch legacy statuses for the commit (Statuses API)
+            statuses_response=$(curl -s -H "Authorization: Bearer ${GITHUB_TOKEN}" \
+              "https://api.github.com/repos/${REPO}/commits/${COMMIT}/status")
+
+            echo "Check runs response: $check_runs_response"
+            echo "Statuses response: $statuses_response"
+
+            # Count check runs that are not yet complete
+            pending_check_runs=$(echo "$check_runs_response" | jq '[.check_runs[] | select(.status != "completed")] | length')
+            # Count legacy statuses that are still pending
+            pending_statuses=$(echo "$statuses_response" | jq '[.statuses[] | select(.state == "pending")] | length')
+
+            if [ "$pending_check_runs" -gt 0 ] || [ "$pending_statuses" -gt 0 ]; then
+              echo "$pending_check_runs check run(s) and $pending_statuses legacy status(es) still pending. Waiting..."
               sleep 10
               continue
             fi
 
-            # All checks are completed; now check if any did not succeed.
-            failures=$(echo "$response" | jq '[.check_runs[] | select(.conclusion != "success")] | length')
-            if [ "$failures" -eq 0 ]; then
+            # Count check runs that didn't succeed
+            failed_check_runs=$(echo "$check_runs_response" | jq '[.check_runs[] | select(.conclusion != "success")] | length')
+            # Count legacy statuses that are not "success"
+            failed_statuses=$(echo "$statuses_response" | jq '[.statuses[] | select(.state != "success")] | length')
+
+            if [ "$failed_check_runs" -eq 0 ] && [ "$failed_statuses" -eq 0 ]; then
               echo "All status checks passed!"
               exit 0
             else
