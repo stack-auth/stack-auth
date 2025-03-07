@@ -1,4 +1,4 @@
-import { KnownErrors } from "@stackframe/stack-shared";
+import { stackAppInternalsSymbol } from "../lib/stack-app/common";
 import { useCallback, useEffect, useState } from "react";
 import { useStackApp, useUser } from "..";
 
@@ -26,18 +26,17 @@ export function CLIConfirmation({ loginCode, onSuccess, onError }: CLIConfirmati
         throw new Error("No refresh token available");
       }
 
-      // Make the API call
-      const response = await fetch("/api/latest/auth/cli/complete", {
+      // Use fetch with credentials to make the API call
+      const response = await fetch(`${app.urls.handler}/auth/cli/complete`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          // Add auth headers if needed
-          ...await user.getAuthHeaders(),
         },
         body: JSON.stringify({
           login_code: loginCode,
           refresh_token: tokens.refreshToken,
         }),
+        credentials: "include", // Include cookies for authentication
       });
 
       if (!response.ok) {
@@ -47,20 +46,19 @@ export function CLIConfirmation({ loginCode, onSuccess, onError }: CLIConfirmati
       setStatus("success");
       onSuccess?.();
     } catch (error) {
-      // Handle specific known errors
-      if (error instanceof KnownErrors.SchemaError) {
-        setErrorMessage("Invalid login code or the code has expired");
-      } else if (error instanceof Error) {
-        setErrorMessage(error.message);
-      } else {
-        setErrorMessage("An unknown error occurred");
+      // Handle errors with more specific information
+      let message = "An unknown error occurred";
+      if (error instanceof Error) {
+        message = error.message;
       }
-
+      
+      setErrorMessage(message);
       setStatus("error");
+      
       if (error instanceof Error) {
         onError?.(error);
       } else {
-        onError?.(new Error("An unknown error occurred"));
+        onError?.(new Error(message));
       }
     }
   }, [app, user, loginCode, onSuccess, onError]);

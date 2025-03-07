@@ -1,7 +1,7 @@
 import { prismaClient } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
-import { KnownErrors } from "@stackframe/stack-shared";
 import { adaptSchema, clientOrHigherAuthTypeSchema, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
+import { StatusError } from "@stackframe/stack-shared/dist/utils/errors";
 
 export const POST = createSmartRouteHandler({
   metadata: {
@@ -37,7 +37,7 @@ export const POST = createSmartRouteHandler({
     });
 
     if (!cliAuth) {
-      throw new KnownErrors.SchemaError("Invalid login code or the code has expired");
+      throw new StatusError(400, "Invalid login code or the code has expired");
     }
 
     // Update with refresh token
