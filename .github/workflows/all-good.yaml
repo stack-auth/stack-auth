@@ -37,27 +37,42 @@ jobs:
             echo "Check runs response: $check_runs_response"
             echo "Statuses response: $statuses_response"
 
-            # Count check runs that are not yet complete
-            pending_check_runs=$(echo "$check_runs_response" | jq '[.check_runs[] | select(.status != "completed")] | length')
-            # Count legacy statuses that are still pending
-            pending_statuses=$(echo "$statuses_response" | jq '[.statuses[] | select(.state == "pending")] | length')
+            # Determine total check runs from the Checks API
+            total_check_runs=$(echo "$check_runs_response" | jq -r '.total_count')
+            pending_check_runs=0
+            if [ "$total_check_runs" -gt 0 ]; then
+              pending_check_runs=$(echo "$check_runs_response" | jq '[.check_runs[] | select(.status != "completed")] | length')
+            fi
 
-            if [ "$pending_check_runs" -gt 0 ] || [ "$pending_statuses" -gt 0 ]; then
-              echo "$pending_check_runs check run(s) and $pending_statuses legacy status(es) still pending. Waiting..."
+            # For the legacy statuses, use the overall "state" field.
+            overall_status=$(echo "$statuses_response" | jq -r '.state')
+            
+            echo "Pending check runs: $pending_check_runs; Legacy statuses overall state: $overall_status"
+
+            # Wait if any check runs are still pending or if overall state is "pending"
+            if [ "$pending_check_runs" -gt 0 ] || [ "$overall_status" = "pending" ]; then
+              echo "Checks still in progress. Waiting..."
               sleep 10
               continue
             fi
 
-            # Count check runs that didn't succeed
-            failed_check_runs=$(echo "$check_runs_response" | jq '[.check_runs[] | select(.conclusion != "success")] | length')
-            # Count legacy statuses that are not "success"
-            failed_statuses=$(echo "$statuses_response" | jq '[.statuses[] | select(.state != "success")] | length')
+            # If check runs exist, verify that all concluded with success.
+            failed_check_runs=0
+            if [ "$total_check_runs" -gt 0 ]; then
+              failed_check_runs=$(echo "$check_runs_response" | jq '[.check_runs[] | select(.conclusion != "success")] | length')
+            fi
 
-            if [ "$failed_check_runs" -eq 0 ] && [ "$failed_statuses" -eq 0 ]; then
+            # Use the overall legacy status. If it's not "success", then consider it a failure.
+            if [ "$overall_status" != "success" ]; then
+              echo "Legacy statuses API returned overall state: ${overall_status}. Exiting with error."
+              exit 1
+            fi
+
+            if [ "$failed_check_runs" -eq 0 ]; then
               echo "All status checks passed!"
               exit 0
             else
-              echo "Some status checks failed. Exiting with error."
+              echo "Some check runs failed. Exiting with error."
               exit 1
             fi
           done
