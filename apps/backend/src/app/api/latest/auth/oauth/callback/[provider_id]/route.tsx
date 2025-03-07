@@ -368,7 +368,7 @@ const handler = createSmartRouteHandler({
                           };
                         }
                         case 'RAISE_ERROR': {
-                          throw new KnownErrors.OAuthConnectionAlreadyConnectedToAnotherUser();
+                          throw new KnownErrors.UserEmailAlreadyExists();
                         }
                         case 'ALLOW_DUPLICATES': {
                           primaryEmailAuthEnabled = false;
