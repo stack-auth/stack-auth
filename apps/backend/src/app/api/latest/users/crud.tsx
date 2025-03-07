@@ -159,8 +159,7 @@ async function checkAuthData(
     });
 
     if (existingChannelUsedForAuth) {
-        console.log('TEST CALL PLEASE IGNORE');
-        throw new KnownErrors.UserEmailAlreadyExists();
+      throw new KnownErrors.UserEmailAlreadyExists();
     }
   }
 }
