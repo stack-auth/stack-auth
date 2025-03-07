@@ -25,7 +25,7 @@ export const POST = createSmartRouteHandler({
   }),
   async handler({ auth: { tenancy }, body: { login_code, refresh_token } }) {
     // Find the CLI auth attempt
-    const cliAuth = await (prismaClient as any).cliAuthAttempt.findFirst({
+    const cliAuth = await prismaClient.cliAuthAttempt.findFirst({
       where: {
         tenancyId: tenancy.id,
         loginCode: login_code,
