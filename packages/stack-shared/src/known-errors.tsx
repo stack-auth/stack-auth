@@ -557,6 +557,16 @@ const UserEmailAlreadyExists = createKnownErrorConstructor(
   () => [] as const,
 );
 
+const EmailNotVerified = createKnownErrorConstructor(
+  KnownError,
+  "EMAIL_NOT_VERIFIED",
+  () => [
+    400,
+    "The email is not verified.",
+  ] as const,
+  () => [] as const,
+);
+
 const CannotGetOwnUserWithoutUser = createKnownErrorConstructor(
   KnownError,
   "CANNOT_GET_OWN_USER_WITHOUT_USER",
@@ -1195,6 +1205,7 @@ export const KnownErrors = {
   ProviderRejected,
   RefreshTokenNotFoundOrExpired,
   UserEmailAlreadyExists,
+  EmailNotVerified,
   UserIdDoesNotExist,
   UserNotFound,
   ApiKeyNotFound,

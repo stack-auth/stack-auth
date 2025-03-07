@@ -308,6 +308,14 @@ const handler = createSmartRouteHandler({
                       const mergeOAuthMethods = tenancy.config.merge_oauth_methods.toUpperCase();
                       switch (mergeOAuthMethods) {
                         case 'LINK_METHOD': {
+                          if (!oldContactChannel.isVerified) {
+                            throw new KnownErrors.UserEmailAlreadyExists();
+                          }
+
+                          if (userInfo.emailVerified) {
+                            throw new KnownErrors.EmailNotVerified();
+                          }
+
                           const existingUser = oldContactChannel.projectUser;
 
                           // First create the OAuth account
