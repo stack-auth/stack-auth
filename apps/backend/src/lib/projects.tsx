@@ -351,11 +351,6 @@ export function getProjectQuery(projectId: string): RawQuery<ProjectsCrud["Admin
                 )
                 FROM "ProjectConfig"
                 WHERE "ProjectConfig"."id" = "Project"."configId"
-              ),
-              'userCount', (
-                SELECT count(*)
-                FROM "ProjectUser"
-                WHERE "ProjectUser"."mirroredProjectId" = "Project"."id"
               )
             )
           )

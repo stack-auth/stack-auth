@@ -25,7 +25,11 @@ curl https://api.stack-auth.com/api/v1/ \
 | `X-Stack-Secret-Server-Key` | string | Required for server access. The API key as found on the Stack dashboard. |
 | `X-Stack-Access-Token` | string | Optional. The access token for the current user. If not given, the request is considered to be logged out. |
 
+{/* IF_PLATFORM python */}
+To see how to use these headers in various programming languages, see the [Getting Started guide](./../getting-started/setup.mdx).
+{/* ELSE_IF_PLATFORM js-like */}
 To see how to use these headers in various programming languages, see the [examples](./../concepts/backend-integration.mdx).
+{/* END_IF_PLATFORM */}
 
 ## FAQ
 

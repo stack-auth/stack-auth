@@ -15,7 +15,7 @@ import * as QRCode from 'qrcode';
 import React, { Suspense, useEffect, useState } from "react";
 import { useForm } from 'react-hook-form';
 import * as yup from "yup";
-import { CurrentUser, MessageCard, Project, Team, TeamInvitation, useStackApp, useUser } from '..';
+import { CurrentUser, MessageCard, Project, Team, useStackApp, useUser } from '..';
 import { FormWarningText } from '../components/elements/form-warning';
 import { MaybeFullPage } from "../components/elements/maybe-full-page";
 import { SidebarLayout } from '../components/elements/sidebar-layout';
@@ -120,34 +120,29 @@ export function AccountSettings(props: {
 
 function Section(props: { title: string, description?: string, children: React.ReactNode }) {
   return (
-    <div className='flex flex-col sm:flex-row gap-2'>
-      <div className='sm:flex-1 flex flex-col justify-center'>
-        <Typography className='font-medium'>
-          {props.title}
-        </Typography>
-        {props.description && <Typography variant='secondary' type='footnote'>
-          {props.description}
-        </Typography>}
+    <>
+      <Separator/>
+      <div className='flex flex-col sm:flex-row gap-2'>
+        <div className='sm:flex-1 flex flex-col justify-center'>
+          <Typography className='font-medium'>
+            {props.title}
+          </Typography>
+          {props.description && <Typography variant='secondary' type='footnote'>
+            {props.description}
+          </Typography>}
+        </div>
+        <div className='sm:flex-1 sm:items-end flex flex-col gap-2 '>
+          {props.children}
+        </div>
       </div>
-      <div className='sm:flex-1 sm:items-end flex flex-col gap-2 '>
-        {props.children}
-      </div>
-    </div>
+    </>
   );
 }
 
 function PageLayout(props: { children: React.ReactNode }) {
   return (
     <div className='flex flex-col gap-6'>
-      <Separator/>
-      {React.Children.map(props.children, (child) => (
-        child && (
-          <>
-            {child}
-            <Separator/>
-          </>
-        )
-      ))}
+      {props.children}
     </div>
   );
 }
@@ -351,18 +346,13 @@ function EmailsSection() {
 }
 
 function EmailsAndAuthPage() {
-  const passwordSection = usePasswordSection();
-  const mfaSection = useMfaSection();
-  const otpSection = useOtpSection();
-  const passkeySection = usePasskeySection();
-
   return (
     <PageLayout>
       <EmailsSection/>
-      {passwordSection}
-      {passkeySection}
-      {otpSection}
-      {mfaSection}
+      <PasswordSection />
+      <PasskeySection />
+      <OtpSection />
+      <MfaSection />
     </PageLayout>
   );
 }
@@ -377,7 +367,7 @@ function EmailsAndAuthPageSkeleton() {
 }
 
 
-function usePasskeySection() {
+function PasskeySection() {
   const { t } = useTranslation();
   const user = useUser({ or: "throw" });
   const stackApp = useStackApp();
@@ -462,7 +452,7 @@ function usePasskeySection() {
 }
 
 
-function useOtpSection() {
+function OtpSection() {
   const { t } = useTranslation();
   const user = useUser({ or: "throw" });
   const project = useStackApp().useProject();
@@ -538,18 +528,15 @@ function useOtpSection() {
 }
 
 function SettingsPage() {
-  const deleteAccountSection = useDeleteAccountSection();
-  const signOutSection = useSignOutSection();
-
   return (
     <PageLayout>
-      {deleteAccountSection}
-      {signOutSection}
+      <DeleteAccountSection />
+      <SignOutSection />
     </PageLayout>
   );
 }
 
-function usePasswordSection() {
+function PasswordSection() {
   const { t } = useTranslation();
   const user = useUser({ or: "throw" });
   const contactChannels = user.useContactChannels();
@@ -682,7 +669,7 @@ function usePasswordSection() {
   );
 }
 
-function useMfaSection() {
+function MfaSection() {
   const { t } = useTranslation();
   const project = useStackApp().useProject();
   const user = useUser({ or: "throw" });
@@ -786,7 +773,7 @@ async function generateTotpQrCode(project: Project, user: CurrentUser, secret: U
   return await QRCode.toDataURL(uri) as any;
 }
 
-function useSignOutSection() {
+function SignOutSection() {
   const { t } = useTranslation();
   const user = useUser({ or: "throw" });
 
@@ -808,26 +795,19 @@ function useSignOutSection() {
 }
 
 function TeamPage(props: { team: Team }) {
-  const teamUserProfileSection = useTeamUserProfileSection(props);
-  const teamProfileImageSection = useTeamProfileImageSection(props);
-  const teamDisplayNameSection = useTeamDisplayNameSection(props);
-  const leaveTeamSection = useLeaveTeamSection(props);
-  const memberInvitationSection = useMemberInvitationSection(props);
-  const memberListSection = useMemberListSection(props);
-
   return (
     <PageLayout>
-      {teamUserProfileSection}
-      {memberListSection}
-      {memberInvitationSection}
-      {teamProfileImageSection}
-      {teamDisplayNameSection}
-      {leaveTeamSection}
+      <TeamUserProfileSection team={props.team} />
+      <MemberListSection team={props.team} />
+      <MemberInvitationSection team={props.team} />
+      <TeamProfileImageSection team={props.team} />
+      <TeamDisplayNameSection team={props.team} />
+      <LeaveTeamSection team={props.team} />
     </PageLayout>
   );
 }
 
-function useLeaveTeamSection(props: { team: Team }) {
+function LeaveTeamSection(props: { team: Team }) {
   const { t } = useTranslation();
   const user = useUser({ or: 'redirect' });
   const [leaving, setLeaving] = useState(false);
@@ -874,7 +854,7 @@ function useLeaveTeamSection(props: { team: Team }) {
   );
 }
 
-function useTeamProfileImageSection(props: { team: Team }) {
+function TeamProfileImageSection(props: { team: Team }) {
   const { t } = useTranslation();
   const user = useUser({ or: 'redirect' });
   const updateTeamPermission = user.usePermission(props.team, '$update_team');
@@ -898,7 +878,7 @@ function useTeamProfileImageSection(props: { team: Team }) {
   );
 }
 
-function useTeamDisplayNameSection(props: { team: Team }) {
+function TeamDisplayNameSection(props: { team: Team }) {
   const { t } = useTranslation();
   const user = useUser({ or: 'redirect' });
   const updateTeamPermission = user.usePermission(props.team, '$update_team');
@@ -920,7 +900,7 @@ function useTeamDisplayNameSection(props: { team: Team }) {
   );
 }
 
-function useTeamUserProfileSection(props: { team: Team }) {
+function TeamUserProfileSection(props: { team: Team }) {
   const { t } = useTranslation();
   const user = useUser({ or: 'redirect' });
   const profile = user.useTeamProfile(props.team);
@@ -940,26 +920,63 @@ function useTeamUserProfileSection(props: { team: Team }) {
   );
 }
 
-function useMemberInvitationSection(props: { team: Team }) {
-  const { t } = useTranslation();
-
-  const invitationSchema = yupObject({
-    email: strictEmailSchema(t('Please enter a valid email address')).defined().nonEmpty(t('Please enter an email address')),
-  });
-
+function MemberInvitationSection(props: { team: Team }) {
   const user = useUser({ or: 'redirect' });
   const inviteMemberPermission = user.usePermission(props.team, '$invite_members');
-  const readMemberPermission = user.usePermission(props.team, '$read_members');
-  const removeMemberPermission = user.usePermission(props.team, '$remove_members');
 
   if (!inviteMemberPermission) {
     return null;
   }
 
-  let invitationsToShow: TeamInvitation[] = [];
-  if (readMemberPermission) {
-    invitationsToShow = props.team.useInvitations();
-  }
+  return <MemberInvitationSectionInner team={props.team} />;
+}
+
+function MemberInvitationsSectionInvitationsList(props: { team: Team }) {
+  const user = useUser({ or: 'redirect' });
+  const { t } = useTranslation();
+  const invitationsToShow = props.team.useInvitations();
+  const removeMemberPermission = user.usePermission(props.team, '$remove_members');
+
+  return <>
+    <Table className='mt-6'>
+      <TableHeader>
+        <TableRow>
+          <TableHead className="w-[200px]">{t("Outstanding invitations")}</TableHead>
+          <TableHead className="w-[60px]">{t("Expires")}</TableHead>
+          <TableHead className="w-[36px] max-w-[36px]"></TableHead>
+        </TableRow>
+      </TableHeader>
+      <TableBody>
+        {invitationsToShow.map((invitation, i) => (
+          <TableRow key={invitation.id}>
+            <TableCell>
+              <Typography>{invitation.recipientEmail}</Typography>
+            </TableCell>
+            <TableCell>
+              <Typography variant='secondary'>{invitation.expiresAt.toLocaleString()}</Typography>
+            </TableCell>
+            <TableCell align='right' className='max-w-[36px]'>
+              {removeMemberPermission && (
+                <Button onClick={async () => await invitation.revoke()} size='icon' variant='ghost'>
+                  <Trash className="w-4 h-4"/>
+                </Button>
+              )}
+            </TableCell>
+          </TableRow>
+        ))}
+      </TableBody>
+    </Table>
+  </>;
+}
+
+function MemberInvitationSectionInner(props: { team: Team }) {
+  const user = useUser({ or: 'redirect' });
+  const { t } = useTranslation();
+  const readMemberPermission = user.usePermission(props.team, '$read_members');
+
+  const invitationSchema = yupObject({
+    email: strictEmailSchema(t('Please enter a valid email address')).defined().nonEmpty(t('Please enter an email address')),
+  });
 
   const { register, handleSubmit, formState: { errors }, watch } = useForm({
     resolver: yupResolver(invitationSchema)
@@ -983,7 +1000,7 @@ function useMemberInvitationSection(props: { team: Team }) {
   }, [watch('email')]);
 
   return (
-    <div>
+    <>
       <Section
         title={t("Invite member")}
         description={t("Invite a user to your team through email")}
@@ -1004,45 +1021,13 @@ function useMemberInvitationSection(props: { team: Team }) {
           {invitedEmail && <Typography type='label' variant='secondary'>Invited {invitedEmail}</Typography>}
         </form>
       </Section>
-      {invitationsToShow.length > 0 && (
-        <>
-          <Table className='mt-6'>
-            <TableHeader>
-              <TableRow>
-                <TableHead className="w-[200px]">{t("Outstanding invitations")}</TableHead>
-                <TableHead className="w-[60px]">{t("Expires")}</TableHead>
-                <TableHead className="w-[36px] max-w-[36px]"></TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {invitationsToShow.map((invitation, i) => (
-                <TableRow key={invitation.id}>
-                  <TableCell>
-                    <Typography>{invitation.recipientEmail}</Typography>
-                  </TableCell>
-                  <TableCell>
-                    <Typography variant='secondary'>{invitation.expiresAt.toLocaleString()}</Typography>
-                  </TableCell>
-                  <TableCell align='right' className='max-w-[36px]'>
-                    {removeMemberPermission && (
-                      <Button onClick={async () => await invitation.revoke()} size='icon' variant='ghost'>
-                        <Trash className="w-4 h-4"/>
-                      </Button>
-                    )}
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </>
-      )}
-    </div>
+      {readMemberPermission && <MemberInvitationsSectionInvitationsList team={props.team} />}
+    </>
   );
 }
 
 
-function useMemberListSection(props: { team: Team }) {
-  const { t } = useTranslation();
+function MemberListSection(props: { team: Team }) {
   const user = useUser({ or: 'redirect' });
   const readMemberPermission = user.usePermission(props.team, '$read_members');
   const inviteMemberPermission = user.usePermission(props.team, '$invite_members');
@@ -1051,11 +1036,12 @@ function useMemberListSection(props: { team: Team }) {
     return null;
   }
 
-  const users = props.team.useUsers();
+  return <MemberListSectionInner team={props.team} />;
+}
 
-  if (!readMemberPermission) {
-    return null;
-  }
+function MemberListSectionInner(props: { team: Team }) {
+  const { t } = useTranslation();
+  const users = props.team.useUsers();
 
   return (
     <div>
@@ -1086,7 +1072,7 @@ function useMemberListSection(props: { team: Team }) {
   );
 }
 
-export function TeamCreation() {
+function TeamCreation() {
   const { t } = useTranslation();
 
   const teamCreationSchema = yupObject({
@@ -1142,7 +1128,7 @@ export function TeamCreation() {
   );
 }
 
-export function useDeleteAccountSection() {
+function DeleteAccountSection() {
   const { t } = useTranslation();
   const user = useUser({ or: 'redirect' });
   const app = useStackApp();

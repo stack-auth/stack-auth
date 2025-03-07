@@ -7,9 +7,11 @@
   "typescript.tsdk": "node_modules/typescript/lib",
   "editor.tabSize": 2,
   "cSpell.words": [
+    "autoupdate",
     "backlinks",
     "Cancelation",
     "Cdfc",
+    "chinthakagodawita",
     "cjsx",
     "clsx",
     "cmdk",

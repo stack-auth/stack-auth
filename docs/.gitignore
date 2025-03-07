@@ -1,6 +1,8 @@
 fern/js.yml
 fern/next.yml
 fern/react.yml
+fern/python.yml
 fern/docs/pages-js
 fern/docs/pages-next
 fern/docs/pages-react
+fern/docs/pages-python

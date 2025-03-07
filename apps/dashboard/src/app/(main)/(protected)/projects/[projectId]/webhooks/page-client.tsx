@@ -27,7 +27,7 @@ function CreateDialog(props: {
   const { svix, appId } = useSvix();
 
   const formSchema = yup.object({
-    url: urlSchema.defined().label("URL (starts with https:// or http://)"),
+    url: urlSchema.defined().label("URL"),
     description: yup.string().label("Description"),
   });
 
@@ -154,7 +154,6 @@ function ActionMenu(props: { endpoint: Endpoint, updateFn: () => void }) {
 
 function Endpoints(props: { updateFn: () => void }) {
   const endpoints = getSvixResult(useEndpoints({ limit: 100 }));
-  let content = null;
 
   if (!endpoints.loaded) {
     return endpoints.rendered;

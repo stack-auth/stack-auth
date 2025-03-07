@@ -10,5 +10,5 @@ describe("Setup wizard", () => {
       });
     });
     expect(error, `Expected no error to be thrown!\n\n\n\nstdout: ${stdout}\n\n\n\nstderr: ${stderr}`).toBeNull();
-  }, 120_000);
+  }, 240_000);
 });

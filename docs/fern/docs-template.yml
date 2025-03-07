@@ -28,6 +28,7 @@ navigation:
         icon: fa-regular fa-circle-question
         path: ./docs/pages-{platform}/faq.mdx
       - section: Getting Started
+        platform: js-like
         contents:
           - page: Installation & Setup
             icon: fa-regular fa-download
@@ -46,7 +47,14 @@ navigation:
           - page: Going to Production
             icon: fa-regular fa-rocket
             path: ./docs/pages-{platform}/getting-started/production.mdx
+      - section: Getting Started
+        platform: python-like
+        contents:
+          - page: Setup
+            icon: fa-regular fa-download
+            path: ./docs/pages-{platform}/getting-started/setup.mdx
       - section: Concepts
+        platform: js-like
         contents:
           - page: The StackApp Object
             icon: fa-regular fa-folder-gear
@@ -103,6 +111,7 @@ navigation:
               - page: Password Reset
                 path: ./docs/pages-{platform}/customization/page-examples/password-reset.mdx
       - section: Others
+        platform: js-like
         contents:
           - page: Supabase Integration
             icon: fa-regular fa-bolt
@@ -158,6 +167,7 @@ navigation:
             icon: fa-solid fa-square-u
             path: ./docs/pages-{platform}/components/stack-theme.mdx
   - tab: sdk
+    platform: js-like
     layout:
       - page: SDK Overview
         icon: fa-regular fa-globe

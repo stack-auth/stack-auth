@@ -32,7 +32,7 @@ export type Auth = {
    *
    * If you are using `tokenStore: "cookie"`, you don't need this for same-origin requests. However, most
    * browsers now disable third-party cookies by default, so we must pass authentication tokens by header instead
-   * if the client and server are on different hostnames.
+   * if the client and server are on different origins.
    *
    * This function returns a header object that can be used with `fetch` or other HTTP request libraries to send
    * authenticated requests.

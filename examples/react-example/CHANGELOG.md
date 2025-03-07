@@ -1,5 +1,12 @@
 # react-example
 
+## 2.7.24
+
+### Patch Changes
+
+- Updated dependencies
+  - @stackframe/react@2.7.24
+
 ## 2.7.23
 
 ### Patch Changes

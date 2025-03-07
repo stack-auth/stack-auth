@@ -162,6 +162,11 @@ export abstract class OAuthBaseProvider {
       if (error?.error === 'invalid_client') {
         throw new StatusError(400, `Invalid client credentials for this OAuth provider. Please ensure the configuration in the Stack Auth dashboard is correct.`);
       }
+      if (error?.error === 'unauthorized_scope_error') {
+        const scopeMatch = error?.error_description?.match(/Scope &quot;([^&]+)&quot; is not authorized for your application/);
+        const missingScope = scopeMatch ? scopeMatch[1] : null;
+        throw new StatusError(400, `The OAuth provider does not allow the requested scope${missingScope ? ` "${missingScope}"` : ""}. Please ensure the scope is configured correctly in the provider's dashboard.`);
+      }
       throw new StackAssertionError(`Inner OAuth callback failed due to error: ${error}`, { params, cause: error });
     }
 

@@ -13,7 +13,7 @@ Stack Auth is a managed user authentication solution. It is developer-friendly a
 
 Stack Auth gets you started in just five minutes, after which you'll be ready to use all of its features as you grow your project. Our managed service is completely optional and you can export your user data and self-host, for free, at any time.
 
-We support Next.js frontends, along with any backend that can use our [REST API](https://docs.stack-auth.com/rest-api/overview). Check out our [setup guide](https://docs.stack-auth.com/getting-started/setup) to get started.
+We support Next.js, React, and JavaScript frontends, along with any backend that can use our [REST API](https://docs.stack-auth.com/rest-api/overview). Check out our [setup guide](https://docs.stack-auth.com/getting-started/setup) to get started.
 
 <div align="center">
 <img alt="Stack Auth Setup" src=".github/assets/create-project.gif" width="400" />
@@ -72,6 +72,8 @@ To get notified first when we add new features, please subscribe to [our newslet
 
 
 ## 📦 Installation & Setup
+
+To install Stack Auth in your Next.js project (for React, JavaScript, or other frameworks, see our [complete documentation](https://docs.stack-auth.com)):
 
 1. Run Stack Auth's installation wizard with the following command:
     ```bash
