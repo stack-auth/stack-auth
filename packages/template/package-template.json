@@ -34,7 +34,7 @@
 
     "//": "IF_PLATFORM template react-like",
     "build": "rimraf dist && pnpm run css && tsup-node",
-    "dev": "rimraf dist && concurrently -n \"build,codegen\" -k \"NODE_OPTIONS='--max_old_space_size=4096' tsup-node --watch\" \"pnpm run codegen:watch\"",
+    "dev": "rimraf dist && concurrently -n \"build,codegen\" -k \"tsup-node --watch\" \"pnpm run codegen:watch\"",
     "codegen": "pnpm run css",
     "codegen:watch": "pnpm run css:watch"
     ,"//": "ELSE_PLATFORM",
