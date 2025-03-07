@@ -285,75 +285,80 @@ const handler = createSmartRouteHandler({
                     // Check if we should link this OAuth account to an existing user based on email
                     if (oldContactChannel && oldContactChannel.usedForAuth) {
                       const mergeOAuthMethods = tenancy.config.merge_oauth_methods.toUpperCase();
+                      switch (mergeOAuthMethods) {
+                        case 'LINK_METHOD': {
+                          const existingUser = oldContactChannel.projectUser;
 
-                      if (mergeOAuthMethods === 'LINK_METHOD') {
-                        // Link this OAuth account to the existing user instead of creating a new one
-                        const existingUser = oldContactChannel.projectUser;
-
-                        // First create the OAuth account
-                        await prismaClient.projectUserOAuthAccount.create({
-                          data: {
-                            providerAccountId: userInfo.accountId,
-                            email: userInfo.email,
-                            providerConfig: {
-                              connect: {
-                                projectConfigId_id: {
-                                  projectConfigId: tenancy.config.id,
-                                  id: provider.id,
-                                }
-                              }
-                            },
-                            projectUser: {
-                              connect: {
-                                tenancyId_projectUserId: {
-                                  tenancyId: outerInfo.tenancyId,
-                                  projectUserId: existingUser.projectUserId,
-                                }
-                              }
-                            }
-                          }
-                        });
-
-                        // Then create the auth method that uses this OAuth account
-                        // Find auth method config for this provider from the provider list
-                        const authMethod = await prismaClient.authMethodConfig.findFirst({
-                          where: {
-                            projectConfigId: tenancy.config.id,
-                            oauthProviderConfig: {
-                              id: provider.id,
-                            }
-                          }
-                        });
-
-                        if (authMethod) {
-                          await prismaClient.authMethod.create({
+                          // First create the OAuth account
+                          await prismaClient.projectUserOAuthAccount.create({
                             data: {
-                              tenancyId: outerInfo.tenancyId,
-                              projectUserId: existingUser.projectUserId,
-                              projectConfigId: tenancy.config.id,
-                              authMethodConfigId: authMethod.id,
-                              oauthAuthMethod: {
-                                create: {
-                                  projectUserId: existingUser.projectUserId,
-                                  projectConfigId: tenancy.config.id,
-                                  oauthProviderConfigId: provider.id,
-                                  providerAccountId: userInfo.accountId,
+                              providerAccountId: userInfo.accountId,
+                              email: userInfo.email,
+                              providerConfig: {
+                                connect: {
+                                  projectConfigId_id: {
+                                    projectConfigId: tenancy.config.id,
+                                    id: provider.id,
+                                  }
+                                }
+                              },
+                              projectUser: {
+                                connect: {
+                                  tenancyId_projectUserId: {
+                                    tenancyId: outerInfo.tenancyId,
+                                    projectUserId: existingUser.projectUserId,
+                                  }
                                 }
                               }
                             }
                           });
-                        }
 
-                        await storeTokens();
-                        return {
-                          id: existingUser.projectUserId,
-                          newUser: false,
-                          afterCallbackRedirectUrl,
-                        };
-                      } else if (mergeOAuthMethods === 'RAISE_ERROR') {
-                        // Prevent sign-in with multiple providers
-                        throw new KnownErrors.OAuthConnectionAlreadyConnectedToAnotherUser();
+                          // Then create the auth method that uses this OAuth account
+                          // Find auth method config for this provider from the provider list
+                          const authMethod = await prismaClient.authMethodConfig.findFirst({
+                            where: {
+                              projectConfigId: tenancy.config.id,
+                              oauthProviderConfig: {
+                                id: provider.id,
+                              }
+                            }
+                          });
+
+                          if (authMethod) {
+                            await prismaClient.authMethod.create({
+                              data: {
+                                tenancyId: outerInfo.tenancyId,
+                                projectUserId: existingUser.projectUserId,
+                                projectConfigId: tenancy.config.id,
+                                authMethodConfigId: authMethod.id,
+                                oauthAuthMethod: {
+                                  create: {
+                                    projectUserId: existingUser.projectUserId,
+                                    projectConfigId: tenancy.config.id,
+                                    oauthProviderConfigId: provider.id,
+                                    providerAccountId: userInfo.accountId,
+                                  }
+                                }
+                              }
+                            });
+                          }
+
+                          await storeTokens();
+                          return {
+                            id: existingUser.projectUserId,
+                            newUser: false,
+                            afterCallbackRedirectUrl,
+                          };
+                        }
+                        case 'RAISE_ERROR': {
+                          throw new KnownErrors.OAuthConnectionAlreadyConnectedToAnotherUser();
+                        }
+                        case 'LINK_METHOD': {
+                          break;
+                        }
                       }
+
+
                       // if mergeOAuthMethods is ALLOW_DUPLICATES, we don't need to do anything
                     }
                   }
