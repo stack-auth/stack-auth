@@ -41,7 +41,7 @@ export const POST = createSmartRouteHandler({
     }
 
     // Update with refresh token
-    await (prismaClient as any).cliAuthAttempt.update({
+    await prismaClient.cliAuthAttempt.update({
       where: {
         tenancyId_id: {
           tenancyId: tenancy.id,
