@@ -23,7 +23,7 @@
     "clean": "rimraf dist && rimraf node_modules",
     "lint": "eslint --ext .tsx,.ts .",
     "build": "rimraf dist && pnpm run css && tsup-node",
-    "dev": "rimraf dist && concurrently -n \"build,codegen\" -k \"NODE_OPTIONS='--max_old_space_size=4096' tsup-node --watch\" \"pnpm run codegen:watch\"",
+    "dev": "rimraf dist && concurrently -n \"build,codegen\" -k \"tsup-node --watch\" \"pnpm run codegen:watch\"",
     "codegen": "pnpm run css && pnpm run quetzal",
     "codegen:watch": "concurrently -n \"css,quetzal\" -k \"pnpm run css:watch\" \"pnpm run quetzal:watch\"",
     "css": "pnpm run css-tw && pnpm run css-sc",

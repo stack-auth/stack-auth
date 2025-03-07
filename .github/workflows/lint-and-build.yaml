@@ -4,7 +4,7 @@ on: push
 
 jobs:
   lint_and_build:
-    runs-on: ubicloud-standard-8
+    runs-on: ubuntu-latest
 
     strategy:
       matrix:

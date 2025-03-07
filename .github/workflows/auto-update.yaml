@@ -8,6 +8,7 @@ jobs:
     permissions:
       contents: write
       pull-requests: write
+      actions: write
     name: Update pull request branches
     runs-on: ubuntu-22.04
     steps:
