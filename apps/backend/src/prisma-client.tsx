@@ -39,7 +39,7 @@ export async function retryTransaction<T>(fn: (...args: Parameters<Parameters<ty
                 throw e;
               }
             }, {
-              isolationLevel: enableSerializable && attemptIndex < 2 ? Prisma.TransactionIsolationLevel.Serializable : undefined,
+              isolationLevel: enableSerializable && attemptIndex < 4 ? Prisma.TransactionIsolationLevel.Serializable : undefined,
             });
           } catch (e) {
             // we don't want to retry as aggressively here, because the error may have been thrown after the transaction was already committed
