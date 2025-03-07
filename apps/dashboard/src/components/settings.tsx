@@ -134,6 +134,7 @@ export function SettingSelect<TValue extends string>(props: {
   value?: TValue,
   placeholder?: string,
   disabled?: boolean,
+  loading?: boolean,
   onValueChange?: (value: TValue) => void | Promise<void>,
   actions?: React.ReactNode,
   children: React.ReactNode,
@@ -156,9 +157,9 @@ export function SettingSelect<TValue extends string>(props: {
       <Select
         value={value}
         onValueChange={(value: TValue) => runAsynchronouslyWithAlert(onValueChange(value))}
-        disabled={props.disabled}
+        disabled={props.disabled || props.loading}
       >
-        <SelectTrigger id={id} className="max-w-lg">
+        <SelectTrigger id={id} className="max-w-lg" loading={props.loading}>
           <SelectValue placeholder={props.placeholder} />
         </SelectTrigger>
         <SelectContent
