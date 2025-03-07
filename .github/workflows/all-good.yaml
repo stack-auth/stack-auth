@@ -28,14 +28,14 @@ jobs:
               continue
             fi
 
-            pending=$(echo "$response" | jq '[.check_runs[] | select(.status != "completed")] | length - 1')
+            pending=$(echo "$response" | jq '[.check_runs[] | select(.status != "completed" and .name != "all-good")] | length')
             if [ "$pending" -gt 0 ]; then
               echo "$pending check run(s) still in progress. Waiting..."
               sleep 10
               continue
             fi
 
-            failed=$(echo "$response" | jq '[.check_runs[] | select(.conclusion != "success")] | length')
+            failed=$(echo "$response" | jq '[.check_runs[] | select(.conclusion != "success" and .name != "all-good")] | length')
             if [ "$failed" -eq 0 ]; then
               echo "All check runs passed!"
               exit 0
