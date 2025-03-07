@@ -12,6 +12,7 @@
 
 ## Coding Guidelines
 - TypeScript with strict types, prefer `type` over `interface`
+- Avoid casting to `any`; Prefer making changes to the API so that `any` casts are unnecessary to access a property or method
 - 2-space indentation, spaces in braces, semicolons required
 - Return promises with `return await`, no floating promises
 - Proper error handling for async code with try/catch

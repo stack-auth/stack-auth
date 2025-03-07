@@ -258,7 +258,7 @@ export default function PageClient() {
             SSO Providers
           </CardSubtitle>
 
-          { enabledProviders.map(([, provider]) => provider)
+          {enabledProviders.map(([, provider]) => provider)
             .filter((provider): provider is AdminOAuthProviderConfig => !!provider).map(provider => {
               return <div key={provider.id} className="flex h-10 items-center justify-between">
                 <div className="flex items-center gap-2">
@@ -336,12 +336,12 @@ export default function PageClient() {
         />
         <SettingSelect
           label="Sign-up mode when logging in with same email on multiple providers"
-          value={(project.config as any).mergeOAuthMethods as MergeOAuthMethods}
+          value={project.config.mergeOAuthMethods}
           onValueChange={async (value) => {
             await project.update({
               config: {
                 mergeOAuthMethods: value as MergeOAuthMethods,
-              } as any,
+              },
             });
           }}
           hint="Determines what happens when a user tries to sign in with a different OAuth provider using the same email address"
