@@ -62,7 +62,7 @@ export const POST = createSmartRouteHandler({
     }
 
     // Mark as used
-    await (prismaClient as any).cliAuthAttempt.update({
+    await prismaClient.cliAuthAttempt.update({
       where: {
         tenancyId_id: {
           tenancyId: tenancy.id,
