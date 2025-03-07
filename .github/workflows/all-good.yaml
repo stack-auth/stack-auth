@@ -1,0 +1,50 @@
+name: All good?
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+  push:
+    branches:
+      - main
+
+jobs:
+  all-good:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      statuses: write
+    steps:
+      - name: Wait for 60 seconds
+        run: sleep 60
+
+      - name: Wait for all status checks to finish
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          COMMIT: ${{ github.sha }}
+        run: |
+          echo "Checking status checks for commit ${COMMIT} in repo ${REPO}..."
+          while true; do
+            # Call the GitHub Checks API for the current commit
+            response=$(curl -s -H "Authorization: Bearer ${GITHUB_TOKEN}" \
+              "https://api.github.com/repos/${REPO}/commits/${COMMIT}/check-runs")
+            
+            # Use jq to count any check runs that are not yet completed.
+            in_progress=$(echo "$response" | jq '[.check_runs[] | select(.status != "completed")] | length')
+            
+            if [ "$in_progress" -ne 0 ]; then
+              echo "$in_progress check(s) still in progress. Waiting..."
+              sleep 10
+              continue
+            fi
+
+            # All checks are completed; now check if any did not succeed.
+            failures=$(echo "$response" | jq '[.check_runs[] | select(.conclusion != "success")] | length')
+            if [ "$failures" -eq 0 ]; then
+              echo "All status checks passed!"
+              exit 0
+            else
+              echo "Some status checks failed. Exiting with error."
+              exit 1
+            fi
+          done
