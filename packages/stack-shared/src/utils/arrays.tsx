@@ -82,7 +82,6 @@ import.meta.vitest?.test("groupBy", ({ expect }) => {
 
   // Check the actual lengths of the words to ensure our test is correct
   const words = ["apple", "banana", "cherry", "date", "elderberry"];
-  console.log("Word lengths:", words.map(w => `${w}: ${w.length}`));
 
   const byLength = groupBy(words, (w) => w.length);
   // Adjust expectations based on actual word lengths
