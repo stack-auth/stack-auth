@@ -20,9 +20,47 @@ export function CLIConfirmation({ fullPage = true }: { fullPage?: boolean }) {
 
     setAuthorizing(true);
     try {
-      // This is a placeholder for the actual API call to authorize the CLI application
-      // Replace with the actual implementation from stack app
-      // await app.cliAuth.authorize();
+      // Get login code from URL query parameters
+      const urlParams = new URLSearchParams(window.location.search);
+      const loginCode = urlParams.get("login_code");
+
+      if (!loginCode) {
+        throw new Error("Missing login code in URL parameters");
+      }
+
+      // We can get a session from the user, which is currently logged in
+      if (!user) {
+        throw new Error("You must be signed in to authorize CLI applications");
+      }
+
+      // Get the refresh token from session storage
+      const refreshTokenStr = localStorage.getItem(`stack.tokens.${app.projectId}.refresh_token`);
+      if (!refreshTokenStr) {
+        throw new Error("No refresh token found. Please sign in again.");
+      }
+
+      try {
+        // Make the fetch request directly
+        const response = await fetch(`${window.location.origin}/api/v1/auth/cli/login`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-Stack-Project-Id': app.projectId,
+          },
+          body: JSON.stringify({
+            login_code: loginCode,
+            refresh_token: refreshTokenStr,
+          }),
+        });
+
+        if (!response.ok) {
+          const errorData = await response.json();
+          throw new Error(errorData.message || 'Failed to authorize CLI');
+        }
+      } catch (fetchError) {
+        throw new Error(`Authentication failed: ${(fetchError as Error).message}`);
+      }
+
       setSuccess(true);
     } catch (err) {
       setError(err as Error);
