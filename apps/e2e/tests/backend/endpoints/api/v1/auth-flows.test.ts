@@ -109,8 +109,8 @@ it("signs in with password first, then signs in with oauth should give an accoun
   await Auth.OAuth.signIn();
   const cc2 = await ContactChannels.getTheOnlyContactChannel();
   expect(cc2.value).toBe(cc.value);
-  expect(cc2.is_verified).toBe(false);
-  expect(cc2.used_for_auth).toBe(true);
+  expect(cc2.is_verified).toBe(true);
+  expect(cc2.used_for_auth).toBe(false);
 });
 
 it("should merge accounts when signing in with OTP after OAuth sign-in and email verification", async ({ expect }) => {
