@@ -107,20 +107,24 @@ export function UserDialog(props: {
     okButton={{ label: props.type === 'edit' ? "Save" : "Create" }}
     render={(form) => (
       <>
+        <div style={{ height: 0, overflow: 'hidden' }}>
+          <input type="text" name="dummyUsername" style={{ height: 0, opacity: 0 }} tabIndex={-1} />
+          <input type="password" name="dummyPassword" style={{ height: 0, opacity: 0 }} tabIndex={-1} />
+        </div>
         {props.type === 'edit' ? <Typography variant='secondary'>ID: {props.user.id}</Typography> : null}
 
         <div className="flex gap-4 items-end">
           <div className="flex-1">
-            <InputField control={form.control} label="Primary email" name="primaryEmail" required autoComplete="off" />
+            <InputField control={form.control} label="Primary email" name="primaryEmail" required autoComplete="new-password" />
           </div>
           <div className="mb-2">
             <SwitchField control={form.control} label="Verified" name="primaryEmailVerified" />
           </div>
         </div>
 
-        <InputField control={form.control} label="Display name" name="displayName" autoComplete="off" />
+        <InputField control={form.control} label="Display name" name="displayName" autoComplete="new-password" />
 
-        <DateField control={form.control} label="Signed Up At" name="signedUpAt" autoComplete="off" />
+        <DateField control={form.control} label="Signed Up At" name="signedUpAt" autoComplete="new-password" />
 
         {project.config.magicLinkEnabled && <SwitchField control={form.control} label="OTP/magic link sign-in" name="otpAuthEnabled" />}
         {project.config.credentialEnabled && <SwitchField control={form.control} label="Password sign-in" name="passwordEnabled" />}
@@ -139,7 +143,7 @@ export function UserDialog(props: {
               label={props.type === 'edit' ? "New password" : "Password"}
               name="password"
               type="password"
-              autoComplete="off"
+              autoComplete="new-password"
             />
           )
         )}
@@ -149,9 +153,9 @@ export function UserDialog(props: {
           <AccordionItem value="item-1">
             <AccordionTrigger>Metadata</AccordionTrigger>
             <AccordionContent className="space-y-4">
-              <TextAreaField rows={3} control={form.control} label="Client metadata" name="clientMetadata" placeholder="null" monospace autoComplete="off" />
-              <TextAreaField rows={3} control={form.control} label="Client read only metadata" name="clientReadOnlyMetadata" placeholder="null" monospace autoComplete="off" />
-              <TextAreaField rows={3} control={form.control} label="Server metadata" name="serverMetadata" placeholder="null" monospace autoComplete="off" />
+              <TextAreaField rows={3} control={form.control} label="Client metadata" name="clientMetadata" placeholder="null" monospace autoComplete="new-password" />
+              <TextAreaField rows={3} control={form.control} label="Client read only metadata" name="clientReadOnlyMetadata" placeholder="null" monospace autoComplete="new-password" />
+              <TextAreaField rows={3} control={form.control} label="Server metadata" name="serverMetadata" placeholder="null" monospace autoComplete="new-password" />
             </AccordionContent>
           </AccordionItem>
         </Accordion>

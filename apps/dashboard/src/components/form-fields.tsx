@@ -44,7 +44,7 @@ export function TextAreaField<F extends FieldValues>(props: {
                 style={{
                   fontFamily: props.monospace ? "ui-monospace, monospace" : undefined,
                 }}
-                autoComplete={props.autoComplete}
+                autoComplete={props.autoComplete || "new-password"}
               />
             </FormControl>
             <FormMessage />
@@ -84,7 +84,7 @@ export function InputField<F extends FieldValues>(props: {
                 disabled={props.disabled}
                 type={props.type}
                 prefixItem={props.prefixItem}
-                autoComplete={props.autoComplete}
+                autoComplete={props.autoComplete || "new-password"}
               />
             </FormControl>
             <FormMessage />
