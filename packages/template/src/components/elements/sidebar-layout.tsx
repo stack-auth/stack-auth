@@ -3,7 +3,7 @@
 import { useHash } from '@stackframe/stack-shared/dist/hooks/use-hash';
 import { Button, Typography, cn } from '@stackframe/stack-ui';
 import { XIcon } from 'lucide-react';
-import React, { ReactNode, useEffect } from 'react';
+import React, { ReactNode } from 'react';
 import { useStackApp } from '../..';
 
 export type SidebarItem = {
@@ -22,11 +22,6 @@ export function SidebarLayout(props: { items: SidebarItem[], title?: ReactNode, 
   const hash = useHash();
   const selectedIndex = props.items.findIndex(item => item.id && (item.id === hash));
 
-  useEffect(() => {
-    if (selectedIndex === -1) {
-      navigate('#' + props.items[0].id);
-    }
-  }, [hash]);
 
   return (
     <>
