@@ -17,12 +17,8 @@ export type SidebarItem = {
 }
 
 export function SidebarLayout(props: { items: SidebarItem[], title?: ReactNode, className?: string }) {
-  const app = useStackApp();
-  const navigate = app.useNavigate();
   const hash = useHash();
   const selectedIndex = props.items.findIndex(item => item.id && (item.id === hash));
-
-
   return (
     <>
       <div className={cn("hidden sm:flex stack-scope h-full", props.className)}>
