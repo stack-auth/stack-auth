@@ -73,6 +73,10 @@ export function ActionCell(props: {
   items?: ActionItem[],
   invisible?: boolean,
 }) {
+  // If there are no items or the items array is empty, don't render the dropdown
+  if (!props.items || props.items.length === 0) {
+    return null;
+  }
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
@@ -88,7 +92,7 @@ export function ActionCell(props: {
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="min-w-[150px] max-w-[300px] stack-scope">
-        {props.items?.map((item, index) => {
+        {props.items.map((item, index) => {
           if (item === '-') {
             return <DropdownMenuSeparator key={index} />;
           }
