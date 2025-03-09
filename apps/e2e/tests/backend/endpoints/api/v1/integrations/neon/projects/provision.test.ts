@@ -56,6 +56,7 @@ it("should be able to provision a new project if neon client details are correct
           ],
           "id": "<stripped UUID>",
           "magic_link_enabled": false,
+          "oauth_account_merge_strategy": "link_method",
           "oauth_providers": [
             {
               "enabled": true,
