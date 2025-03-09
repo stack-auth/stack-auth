@@ -3,7 +3,7 @@
 import { useHash } from '@stackframe/stack-shared/dist/hooks/use-hash';
 import { Button, Typography, cn } from '@stackframe/stack-ui';
 import { XIcon } from 'lucide-react';
-import React, { ReactNode, useEffect } from 'react';
+import React, { ReactNode } from 'react';
 import { useStackApp } from '../..';
 
 export type SidebarItem = {
@@ -22,11 +22,6 @@ export function SidebarLayout(props: { items: SidebarItem[], title?: ReactNode, 
   const hash = useHash();
   const selectedIndex = props.items.findIndex(item => item.id && (item.id === hash));
 
-  useEffect(() => {
-    if (selectedIndex === -1) {
-      navigate('#' + props.items[0].id);
-    }
-  }, [hash]);
 
   return (
     <>
@@ -44,6 +39,9 @@ function Items(props: { items: SidebarItem[], selectedIndex: number }) {
   const app = useStackApp();
   const navigate = app.useNavigate();
 
+
+  const activeItemIndex = props.selectedIndex === -1 ? 0 : props.selectedIndex;
+
   return props.items.map((item, index) => (
     item.type === 'item' ?
       <Button
@@ -51,7 +49,7 @@ function Items(props: { items: SidebarItem[], selectedIndex: number }) {
         variant='ghost'
         size='sm'
         className={cn(
-          props.selectedIndex === index && "bg-muted",
+          activeItemIndex === index && "sm:bg-muted",
           "justify-start text-md text-zinc-800 dark:text-zinc-300 px-2 text-left",
         )}
         onClick={() => {
