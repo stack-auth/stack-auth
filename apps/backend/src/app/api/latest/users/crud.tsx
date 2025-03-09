@@ -4,6 +4,7 @@ import { PrismaTransaction } from "@/lib/types";
 import { sendTeamMembershipDeletedWebhook, sendUserCreatedWebhook, sendUserDeletedWebhook, sendUserUpdatedWebhook } from "@/lib/webhooks";
 import { RawQuery, prismaClient, rawQuery, retryTransaction } from "@/prisma-client";
 import { createCrudHandlers } from "@/route-handlers/crud-handler";
+import { log } from "@/utils/telemetry";
 import { runAsynchronouslyAndWaitUntil } from "@/utils/vercel";
 import { BooleanTrue, Prisma } from "@prisma/client";
 import { KnownErrors } from "@stackframe/stack-shared";
@@ -536,6 +537,10 @@ export const usersCrudHandlers = createLazyProxy(() => createCrudHandlers(usersC
     };
   },
   onCreate: async ({ auth, data }) => {
+    log("create_user_endpoint_primaryAuthEnabled", {
+      value: data.primary_email_auth_enabled,
+      email: data.primary_email ?? undefined,
+    });
     const result = await retryTransaction(async (tx) => {
       const passwordHash = await getPasswordHashFromData(data);
       await checkAuthData(tx, {
