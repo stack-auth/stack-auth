@@ -305,9 +305,9 @@ const handler = createSmartRouteHandler({
 
                     // Check if we should link this OAuth account to an existing user based on email
                     if (oldContactChannel && oldContactChannel.usedForAuth) {
-                      const oauthAccountMergeStrategy = tenancy.config.oauth_account_merge_strategy.toUpperCase();
+                      const oauthAccountMergeStrategy = tenancy.config.oauth_account_merge_strategy;
                       switch (oauthAccountMergeStrategy) {
-                        case 'LINK_METHOD': {
+                        case 'link_method': {
                           if (!oldContactChannel.isVerified) {
                             throw new KnownErrors.UserEmailAlreadyExists();
                           }
@@ -367,10 +367,10 @@ const handler = createSmartRouteHandler({
                             afterCallbackRedirectUrl,
                           };
                         }
-                        case 'RAISE_ERROR': {
+                        case 'raise_error': {
                           throw new KnownErrors.UserEmailAlreadyExists();
                         }
-                        case 'ALLOW_DUPLICATES': {
+                        case 'allow_duplicates': {
                           primaryEmailAuthEnabled = false;
                           break;
                         }
