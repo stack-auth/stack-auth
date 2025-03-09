@@ -1,4 +1,5 @@
 import { Attributes, AttributeValue, Span, trace } from "@opentelemetry/api";
+import { StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
 const tracer = trace.getTracer('stack-backend');
 
 export function withTraceSpan<P extends any[], T>(optionsOrDescription: string | { description: string, attributes?: Record<string, AttributeValue> }, fn: (...args: P) => Promise<T>): (...args: P) => Promise<T> {
@@ -28,6 +29,6 @@ export function log(message: string, attributes: Attributes) {
   if (span) {
     span.addEvent(message, attributes);
   } else {
-    throw new Error('No active span found');
+    throw new StackAssertionError('No active span found');
   }
 }
