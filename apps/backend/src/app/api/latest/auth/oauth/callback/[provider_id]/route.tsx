@@ -313,7 +313,9 @@ const handler = createSmartRouteHandler({
                           }
 
                           if (!userInfo.emailVerified) {
-                            throw new KnownErrors.EmailNotVerified();
+                            const err = new StackAssertionError("OAuth account merge strategy is set to link_method, but the email is not verified");
+                            captureError("oauth-link-method-email-not-verified", err);
+                            throw err;
                           }
 
                           const existingUser = oldContactChannel.projectUser;
