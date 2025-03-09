@@ -19,7 +19,7 @@ import { neverResolve, runAsynchronously, wait } from "@stackframe/stack-shared/
 import { suspend, suspendIfSsr } from "@stackframe/stack-shared/dist/utils/react";
 import { Result } from "@stackframe/stack-shared/dist/utils/results";
 import { Store, storeLock } from "@stackframe/stack-shared/dist/utils/stores";
-import { mergeScopeStrings } from "@stackframe/stack-shared/dist/utils/strings";
+import { deindent, mergeScopeStrings } from "@stackframe/stack-shared/dist/utils/strings";
 import { getRelativePart, isRelative } from "@stackframe/stack-shared/dist/utils/urls";
 import { generateUuid } from "@stackframe/stack-shared/dist/utils/uuids";
 import * as cookie from "cookie";
@@ -199,7 +199,11 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
 
     if (!hasConnection && options.redirect) {
       if (!options.session) {
-        throw new Error("No session found. You might be calling getConnectedAccount with redirect without having a user session.");
+        throw new Error(deindent`
+          Cannot add new scopes to a user that is not a CurrentUser. Please ensure that you are calling this function on a CurrentUser object, or remove the 'or: redirect' option.
+
+          Often, you can solve this by calling this function in the browser instead, or by removing the 'or: redirect' option and dealing with the case where the user doesn't have enough permissions.
+        `);
       }
       await addNewOAuthProviderOrScope(
           this._interface,
@@ -216,7 +220,6 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
       return null;
     }
 
-    const app = this;
     return {
       id: options.providerId,
       async getAccessToken() {
