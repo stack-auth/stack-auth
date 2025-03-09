@@ -39,6 +39,9 @@ function Items(props: { items: SidebarItem[], selectedIndex: number }) {
   const app = useStackApp();
   const navigate = app.useNavigate();
 
+
+  const activeItemIndex = props.selectedIndex === -1 ? 0 : props.selectedIndex;
+
   return props.items.map((item, index) => (
     item.type === 'item' ?
       <Button
@@ -46,7 +49,7 @@ function Items(props: { items: SidebarItem[], selectedIndex: number }) {
         variant='ghost'
         size='sm'
         className={cn(
-          props.selectedIndex === index && "bg-muted",
+          activeItemIndex === index && "sm:bg-muted",
           "justify-start text-md text-zinc-800 dark:text-zinc-300 px-2 text-left",
         )}
         onClick={() => {
