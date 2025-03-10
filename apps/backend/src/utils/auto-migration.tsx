@@ -5,8 +5,16 @@ import { stringCompare } from '@stackframe/stack-shared/dist/utils/strings';
 import fs from 'fs';
 import path from 'path';
 
+export const MIGRATION_FILES = getMigrationFiles();
+
+// there are 64 migrations already applied with prisma migration tooling before we started using auto-migration
+export const PRISMA_APPLIED_MIGRATIONS = MIGRATION_FILES.map(m => m.name).slice(0, 64);
+
+const ALL_ERRORS = ['MIGRATION_IN_PROGRESS', 'MIGRATION_ALREADY_DONE', 'MIGRATION_TIMEOUT', 'MIGRATION_NEEDED'] as const;
+type MigrationError = typeof ALL_ERRORS[number];
+
 function getMigrationFiles(): Array<{ name: string, sql: string }> {
-  const migrationsDir = path.join(__dirname, '..', '..', 'prisma', 'migrations');
+  const migrationsDir = path.join(process.cwd(),  'prisma', 'migrations');
   const folders = fs.readdirSync(migrationsDir).filter(folder =>
     fs.statSync(path.join(migrationsDir, folder)).isDirectory()
   );
@@ -31,7 +39,15 @@ function getMigrationFiles(): Array<{ name: string, sql: string }> {
   return result;
 }
 
-export const MIGRATION_FILES = getMigrationFiles();
+function getMigrationError(error: unknown): MigrationError {
+  if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2010' && error.meta?.code === 'P0001') {
+    const errorName = (error.meta as { message: string }).message.split(' ')[1];
+    if (ALL_ERRORS.includes(errorName as MigrationError)) {
+      return errorName as MigrationError;
+    }
+  }
+  throw error;
+}
 
 async function retryIfMigrationInProgress(fn: () => Promise<any>) {
   let attempts = 0;
@@ -42,7 +58,8 @@ async function retryIfMigrationInProgress(fn: () => Promise<any>) {
     try {
       return await fn();
     } catch (error) {
-      if (error instanceof Prisma.PrismaClientKnownRequestError && error.message.split(' ')[1] === 'MIGRATION_IN_PROGRESS') {
+      const migrationError = getMigrationError(error);
+      if (migrationError === 'MIGRATION_IN_PROGRESS') {
         if (attempts >= maxAttempts) {
           throw new StackAssertionError(`Retried ${attempts} times, but still failed migration`);
         }
@@ -181,27 +198,28 @@ async function applyMigration(options: {
       })
     );
   } catch (error) {
-    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2010' && error.meta?.code === 'P0001') {
-      switch ((error.meta.message as string | undefined)?.split(' ')[1]) {
-        case 'MIGRATION_ALREADY_DONE': {
-          break;
-        }
-        case 'MIGRATION_TIMEOUT': {
-          throw new Error('Migration timeout');
-        }
-        default: {
-          throw error;
-        }
+    const migrationError = getMigrationError(error);
+    switch (migrationError) {
+      case 'MIGRATION_ALREADY_DONE': {
+        break;
+      }
+      case 'MIGRATION_TIMEOUT': {
+        throw new Error('Migration timeout');
+      }
+      case 'MIGRATION_IN_PROGRESS': {
+        throw new Error('The retryIfMigrationInProgress function should have already handled this');
+      }
+      case 'MIGRATION_NEEDED': {
+        throw new Error('This should never happen');
       }
     }
-    throw error;
   }
 }
 
-const applyMigrations = async (options: {
+export async function applyMigrations(options: {
   // if there is no migration table, assume these migrations are already applied
   appliedMigrationsIfNoMigrationTable: Array<string>,
-}) => {
+}) {
   const appliedMigrations = await getAppliedMigrations(options.appliedMigrationsIfNoMigrationTable);
 
   for (const [index, appliedMigration] of appliedMigrations.entries()) {
@@ -217,3 +235,44 @@ const applyMigrations = async (options: {
     });
   }
 };
+
+export function getMigrationCheckQuery() {
+  const migrationNames = MIGRATION_FILES.map(m => `'${m.name}'`).join(',');
+  return Prisma.raw(`
+    DO $$ 
+    BEGIN
+      IF EXISTS (
+        SELECT 1 FROM information_schema.tables 
+        WHERE table_name = 'SchemaMigration'
+      ) THEN
+        IF EXISTS (
+          SELECT 1 FROM "SchemaMigration" sm
+          RIGHT JOIN (
+            SELECT unnest(ARRAY[${migrationNames}]) as migrationName
+          ) m ON sm."migrationName" = m.migrationName
+          WHERE sm."migrationName" IS NULL OR sm."finishedAt" IS NULL
+        ) THEN
+          RAISE EXCEPTION 'MIGRATION_NEEDED';
+        END IF;
+      ELSE
+        RAISE EXCEPTION 'MIGRATION_NEEDED';
+      END IF;
+    END $$;
+  `);
+}
+
+export async function runQueryAndMigrateIfNeeded<T>(fn: () => Promise<T>): Promise<T> {
+  try {
+    return await fn();
+  } catch (e) {
+    const migrationError = getMigrationError(e);
+    if (migrationError === 'MIGRATION_NEEDED') {
+      console.log('Migrations needed, applying migrations');
+      await applyMigrations({
+        appliedMigrationsIfNoMigrationTable: PRISMA_APPLIED_MIGRATIONS,
+      });
+      return await fn();
+    }
+    throw e;
+  }
+}
