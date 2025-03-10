@@ -21,7 +21,6 @@
     "codegen:watch": "concurrently -n \"prisma,docs,route-info\" -k \"pnpm run codegen-prisma:watch\" \"pnpm run watch-docs\" \"pnpm run codegen-route-info:watch\"",
     "psql-inner": "psql $STACK_DATABASE_CONNECTION_STRING",
     "psql": "pnpm run with-env pnpm run psql-inner",
-    "prisma": "pnpm run with-env prisma",
     "prisma-studio": "pnpm run with-env prisma studio --port 8106 --browser none",
     "generate-db-migration": "pnpm run with-env tsx scripts/db-migrations.ts migration-file",
     "reset-db": "pnpm run with-env tsx scripts/db-migrations.ts reset",
