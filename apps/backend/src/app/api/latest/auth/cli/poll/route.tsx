@@ -13,16 +13,6 @@ const createResponse = (status: 'waiting' | 'success' | 'expired' | 'used', refr
   },
 });
 
-// Helper function to create response
-const createResponse = (status: 'waiting' | 'success' | 'expired' | 'used', refreshToken?: string) => ({
-  statusCode: status === 'success' ? 201 : 200,
-  bodyType: "json" as const,
-  body: {
-    status,
-    ...(refreshToken && { refresh_token: refreshToken }),
-  },
-});
-
 export const POST = createSmartRouteHandler({
   metadata: {
     summary: "Poll CLI authentication status",
