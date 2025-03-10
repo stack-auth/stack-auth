@@ -1,6 +1,6 @@
 import fs from "fs";
 import path from "path";
-import { COMMENT_BLOCK, COMMENT_LINE, PLATFORMS, copyFromSrcToDest, processMacros, writeFileSyncIfChanged } from "./utils";
+import { COMMENT_BLOCK, COMMENT_LINE, PLATFORMS, copyFromSrcToDest, processMacros, withGeneratorLock, writeFileSyncIfChanged } from "./utils";
 
 /**
  * Main function to generate from a template:
@@ -123,65 +123,67 @@ function baseEditFn(options: {
 }
 
 
-const baseDir = path.resolve(__dirname, "..", "packages");
-const srcDir = path.resolve(baseDir, "template");
+withGeneratorLock(async () => {
+  const baseDir = path.resolve(__dirname, "..", "packages");
+  const srcDir = path.resolve(baseDir, "template");
 
-// Copy package-template.json to package.json in the template,
-// applying macros and adding a comment field.
-const packageTemplateContent = fs.readFileSync(
-  path.join(srcDir, "package-template.json"),
-  "utf-8"
-);
-const processedPackageJson = processMacros(packageTemplateContent, PLATFORMS["template"]);
-writeFileSyncIfChanged(
-  path.join(srcDir, "package.json"),
-  processPackageJson(processedPackageJson)
-);
+  // Copy package-template.json to package.json in the template,
+  // applying macros and adding a comment field.
+  const packageTemplateContent = fs.readFileSync(
+    path.join(srcDir, "package-template.json"),
+    "utf-8"
+  );
+  const processedPackageJson = processMacros(packageTemplateContent, PLATFORMS["template"]);
+  writeFileSyncIfChanged(
+    path.join(srcDir, "package.json"),
+    processPackageJson(processedPackageJson)
+  );
 
-generateFromTemplate({
-  src: srcDir,
-  dest: path.resolve(baseDir, "js"),
-  editFn: (relativePath, content) => {
-    return baseEditFn({ relativePath, content, platforms: PLATFORMS["js"] });
-  },
-  filterFn: (relativePath) => {
-    const ignores = [
-      "postcss.config.js",
-      "tailwind.config.js",
-      "quetzal.config.json",
-      "components.json",
-      ".env",
-      ".env.local",
-      "scripts/",
-      "quetzal-translations/",
-      "src/components/",
-      "src/components-page/",
-      "src/generated/",
-      "src/providers/",
-      "src/global.css",
-      "src/global.d.ts",
-    ];
+  generateFromTemplate({
+    src: srcDir,
+    dest: path.resolve(baseDir, "js"),
+    editFn: (relativePath, content) => {
+      return baseEditFn({ relativePath, content, platforms: PLATFORMS["js"] });
+    },
+    filterFn: (relativePath) => {
+      const ignores = [
+        "postcss.config.js",
+        "tailwind.config.js",
+        "quetzal.config.json",
+        "components.json",
+        ".env",
+        ".env.local",
+        "scripts/",
+        "quetzal-translations/",
+        "src/components/",
+        "src/components-page/",
+        "src/generated/",
+        "src/providers/",
+        "src/global.css",
+        "src/global.d.ts",
+      ];
 
-    if (ignores.some((ignorePath) => relativePath.startsWith(ignorePath)) || relativePath.endsWith(".tsx")) {
-      return false;
-    } else {
-      return true;
-    }
-  },
-});
+      if (ignores.some((ignorePath) => relativePath.startsWith(ignorePath)) || relativePath.endsWith(".tsx")) {
+        return false;
+      } else {
+        return true;
+      }
+    },
+  });
 
-generateFromTemplate({
-  src: srcDir,
-  dest: path.resolve(baseDir, "stack"),
-  editFn: (relativePath, content) => {
-    return baseEditFn({ relativePath, content, platforms: PLATFORMS["next"] });
-  },
-});
+  generateFromTemplate({
+    src: srcDir,
+    dest: path.resolve(baseDir, "stack"),
+    editFn: (relativePath, content) => {
+      return baseEditFn({ relativePath, content, platforms: PLATFORMS["next"] });
+    },
+  });
 
-generateFromTemplate({
-  src: srcDir,
-  dest: path.resolve(baseDir, "react"),
-  editFn: (relativePath, content) => {
-    return baseEditFn({ relativePath, content, platforms: PLATFORMS["react"] });
-  },
-});
+  generateFromTemplate({
+    src: srcDir,
+    dest: path.resolve(baseDir, "react"),
+    editFn: (relativePath, content) => {
+      return baseEditFn({ relativePath, content, platforms: PLATFORMS["react"] });
+    },
+  });
+}).catch(console.error);
