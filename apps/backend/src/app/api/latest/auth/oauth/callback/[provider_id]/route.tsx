@@ -15,6 +15,41 @@ import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { oauthResponseToSmartResponse } from "../../oauth-helpers";
 
+/**
+ * Create a project user OAuth account with the provided data
+ */
+async function createProjectUserOAuthAccount(params: {
+  tenancyId: string,
+  projectConfigId: string,
+  providerId: string,
+  providerAccountId: string,
+  email?: string | null,
+  projectUserId: string,
+}) {
+  return await prismaClient.projectUserOAuthAccount.create({
+    data: {
+      providerAccountId: params.providerAccountId,
+      email: params.email,
+      providerConfig: {
+        connect: {
+          projectConfigId_id: {
+            projectConfigId: params.projectConfigId,
+            id: params.providerId,
+          },
+        },
+      },
+      projectUser: {
+        connect: {
+          tenancyId_projectUserId: {
+            tenancyId: params.tenancyId,
+            projectUserId: params.projectUserId,
+          },
+        },
+      },
+    },
+  });
+}
+
 const redirectOrThrowError = (error: KnownError, tenancy: Tenancy, errorRedirectUrl?: string) => {
   if (!errorRedirectUrl || !validateRedirectUrl(errorRedirectUrl, tenancy.config.domains, tenancy.config.allow_localhost)) {
     throw error;
@@ -219,27 +254,13 @@ const handler = createSmartRouteHandler({
                     await storeTokens();
                   } else {
                     // ========================== connect account with user ==========================
-                    await prismaClient.projectUserOAuthAccount.create({
-                      data: {
-                        providerAccountId: userInfo.accountId,
-                        email: userInfo.email,
-                        providerConfig: {
-                          connect: {
-                            projectConfigId_id: {
-                              projectConfigId: tenancy.config.id,
-                              id: provider.id,
-                            },
-                          },
-                        },
-                        projectUser: {
-                          connect: {
-                            tenancyId_projectUserId: {
-                              tenancyId: outerInfo.tenancyId,
-                              projectUserId: projectUserId,
-                            },
-                          },
-                        },
-                      },
+                    await createProjectUserOAuthAccount({
+                      tenancyId: outerInfo.tenancyId,
+                      projectConfigId: tenancy.config.id,
+                      providerId: provider.id,
+                      providerAccountId: userInfo.accountId,
+                      email: userInfo.email,
+                      projectUserId,
                     });
                   }
 
@@ -281,12 +302,82 @@ const handler = createSmartRouteHandler({
                         value: userInfo.email,
                       }
                     );
+
+                    // Check if we should link this OAuth account to an existing user based on email
                     if (oldContactChannel && oldContactChannel.usedForAuth) {
-                      // if the email is already used for auth by another account, still create an account but don't
-                      // enable auth on it
-                      primaryEmailAuthEnabled = false;
+                      const oauthAccountMergeStrategy = tenancy.config.oauth_account_merge_strategy;
+                      switch (oauthAccountMergeStrategy) {
+                        case 'link_method': {
+                          if (!oldContactChannel.isVerified) {
+                            throw new KnownErrors.ContactChannelAlreadyUsedForAuthBySomeoneElse("email", userInfo.email);
+                          }
+
+                          if (!userInfo.emailVerified) {
+                            const err = new StackAssertionError("OAuth account merge strategy is set to link_method, but the email is not verified");
+                            captureError("oauth-link-method-email-not-verified", err);
+                            throw new KnownErrors.ContactChannelAlreadyUsedForAuthBySomeoneElse("email", userInfo.email);
+                          }
+
+                          const existingUser = oldContactChannel.projectUser;
+
+                          // First create the OAuth account
+                          await createProjectUserOAuthAccount({
+                            tenancyId: outerInfo.tenancyId,
+                            projectConfigId: tenancy.config.id,
+                            providerId: provider.id,
+                            providerAccountId: userInfo.accountId,
+                            email: userInfo.email,
+                            projectUserId: existingUser.projectUserId,
+                          });
+
+                          // Then create the auth method that uses this OAuth account
+                          // Find auth method config for this provider from the provider list
+                          const authMethodConfig = await prismaClient.authMethodConfig.findFirst({
+                            where: {
+                              projectConfigId: tenancy.config.id,
+                              oauthProviderConfig: {
+                                id: provider.id,
+                              }
+                            }
+                          });
+
+                          if (!authMethodConfig) {
+                            throw new StackAssertionError("Auth method config not found, this is most likely a bug.");
+                          }
+
+                          await prismaClient.authMethod.create({
+                            data: {
+                              tenancyId: outerInfo.tenancyId,
+                              projectUserId: existingUser.projectUserId,
+                              projectConfigId: tenancy.config.id,
+                              authMethodConfigId: authMethodConfig.id,
+                              oauthAuthMethod: {
+                                create: {
+                                  projectUserId: existingUser.projectUserId,
+                                  projectConfigId: tenancy.config.id,
+                                  oauthProviderConfigId: provider.id,
+                                  providerAccountId: userInfo.accountId,
+                                }
+                              }
+                            }
+                          });
+
+                          await storeTokens();
+                          return {
+                            id: existingUser.projectUserId,
+                            newUser: false,
+                            afterCallbackRedirectUrl,
+                          };
+                        }
+                        case 'raise_error': {
+                          throw new KnownErrors.ContactChannelAlreadyUsedForAuthBySomeoneElse("email", userInfo.email);
+                        }
+                        case 'allow_duplicates': {
+                          primaryEmailAuthEnabled = false;
+                          break;
+                        }
+                      }
                     }
-                    // TODO: check whether this OAuth account can be used to login to an existing non-OAuth account instead
                   }
 
                   const newAccount = await usersCrudHandlers.adminCreate({
