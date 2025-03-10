@@ -557,6 +557,16 @@ const UserEmailAlreadyExists = createKnownErrorConstructor(
   () => [] as const,
 );
 
+const EmailNotVerified = createKnownErrorConstructor(
+  KnownError,
+  "EMAIL_NOT_VERIFIED",
+  () => [
+    400,
+    "The email is not verified.",
+  ] as const,
+  () => [] as const,
+);
+
 const CannotGetOwnUserWithoutUser = createKnownErrorConstructor(
   KnownError,
   "CANNOT_GET_OWN_USER_WITHOUT_USER",
@@ -1144,12 +1154,14 @@ const OAuthProviderAccessDenied = createKnownErrorConstructor(
 const ContactChannelAlreadyUsedForAuthBySomeoneElse = createKnownErrorConstructor(
   KnownError,
   "CONTACT_CHANNEL_ALREADY_USED_FOR_AUTH_BY_SOMEONE_ELSE",
-  (type: "email") => [
+  (type: "email", contactChannelValue?: string) => [
     409,
+    contactChannelValue ?
+    `The ${type} (${contactChannelValue}) is already used for authentication by another account.` :
     `This ${type} is already used for authentication by another account.`,
-    { type },
+    { type, contact_channel_value: contactChannelValue ?? null },
   ] as const,
-  (json) => [json.type] as const,
+  (json) => [json.type, json.contact_channel_value] as const,
 );
 
 export type KnownErrors = {
@@ -1195,6 +1207,7 @@ export const KnownErrors = {
   ProviderRejected,
   RefreshTokenNotFoundOrExpired,
   UserEmailAlreadyExists,
+  EmailNotVerified,
   UserIdDoesNotExist,
   UserNotFound,
   ApiKeyNotFound,
