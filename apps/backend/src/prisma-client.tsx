@@ -29,9 +29,13 @@ export async function retryTransaction<T>(fn: (...args: Parameters<Parameters<ty
       return await traceSpan(`transaction attempt #${attemptIndex}`, async (attemptSpan) => {
         const attemptRes = await (async () => {
           try {
-            return await prismaClient.$transaction(async (...args) => {
+            return await prismaClient.$transaction(async (tx, ...args) => {
               try {
-                return Result.ok(await fn(...args));
+                await runQueryAndMigrateIfNeeded(async () => {
+                  await tx.$queryRaw(getMigrationCheckQuery());
+                });
+
+                return Result.ok(await fn(tx, ...args));
               } catch (e) {
                 if (e instanceof Prisma.PrismaClientKnownRequestError || e instanceof Prisma.PrismaClientUnknownRequestError) {
                   // retry
