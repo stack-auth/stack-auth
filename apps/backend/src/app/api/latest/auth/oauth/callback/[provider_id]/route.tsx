@@ -309,13 +309,13 @@ const handler = createSmartRouteHandler({
                       switch (oauthAccountMergeStrategy) {
                         case 'link_method': {
                           if (!oldContactChannel.isVerified) {
-                            throw new KnownErrors.UserEmailAlreadyExists();
+                            throw new KnownErrors.ContactChannelAlreadyUsedForAuthBySomeoneElse("email", userInfo.email);
                           }
 
                           if (!userInfo.emailVerified) {
                             const err = new StackAssertionError("OAuth account merge strategy is set to link_method, but the email is not verified");
                             captureError("oauth-link-method-email-not-verified", err);
-                            throw new KnownErrors.UserEmailAlreadyExists();
+                            throw new KnownErrors.ContactChannelAlreadyUsedForAuthBySomeoneElse("email", userInfo.email);
                           }
 
                           const existingUser = oldContactChannel.projectUser;
@@ -370,7 +370,7 @@ const handler = createSmartRouteHandler({
                           };
                         }
                         case 'raise_error': {
-                          throw new KnownErrors.UserEmailAlreadyExists();
+                          throw new KnownErrors.ContactChannelAlreadyUsedForAuthBySomeoneElse("email", userInfo.email);
                         }
                         case 'allow_duplicates': {
                           primaryEmailAuthEnabled = false;

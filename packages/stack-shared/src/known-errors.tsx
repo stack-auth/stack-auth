@@ -1154,10 +1154,12 @@ const OAuthProviderAccessDenied = createKnownErrorConstructor(
 const ContactChannelAlreadyUsedForAuthBySomeoneElse = createKnownErrorConstructor(
   KnownError,
   "CONTACT_CHANNEL_ALREADY_USED_FOR_AUTH_BY_SOMEONE_ELSE",
-  (type: "email") => [
+  (type: "email", contactChannelValue?: string) => [
     409,
+    contactChannelValue ?
+    `The ${type} (${contactChannelValue}) is already used for authentication by another account.` :
     `This ${type} is already used for authentication by another account.`,
-    { type },
+    { type, contactChannelValue: contactChannelValue ?? null },
   ] as const,
   (json) => [json.type] as const,
 );
