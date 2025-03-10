@@ -5,6 +5,7 @@ import { sendTeamMembershipDeletedWebhook, sendUserCreatedWebhook, sendUserDelet
 import { RawQuery, prismaClient, rawQuery, retryTransaction } from "@/prisma-client";
 import { PrismaClient } from "@prisma/client";
 import { createCrudHandlers } from "@/route-handlers/crud-handler";
+import { log } from "@/utils/telemetry";
 import { runAsynchronouslyAndWaitUntil } from "@/utils/vercel";
 import { BooleanTrue, Prisma } from "@prisma/client";
 import { KnownErrors } from "@stackframe/stack-shared";
@@ -162,7 +163,7 @@ async function checkAuthData(
       if (existingChannelUsedForAuth) {
         throw new KnownErrors.UserEmailAlreadyExists();
       }
-    }
+    });
   }
 }
 
@@ -539,6 +540,11 @@ export const usersCrudHandlers = createLazyProxy(() => createCrudHandlers(usersC
   onCreate: async ({ auth, data }) => {
     // Get password hash outside of transaction
     const passwordHash = await getPasswordHashFromData(data);
+    
+    log("create_user_endpoint_primaryAuthEnabled", {
+      value: data.primary_email_auth_enabled,
+      email: data.primary_email ?? undefined,
+    });
 
     // Check auth data using prismaClient instead of transaction
     await checkAuthData(prismaClient, {

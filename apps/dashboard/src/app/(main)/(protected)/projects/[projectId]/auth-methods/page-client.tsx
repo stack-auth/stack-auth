@@ -1,15 +1,17 @@
 "use client";
 
-import { SettingCard, SettingSwitch } from "@/components/settings";
+import { SettingCard, SettingSelect, SettingSwitch } from "@/components/settings";
 import { AdminOAuthProviderConfig, AuthPage, OAuthProviderConfig } from "@stackframe/stack";
 import { allProviders } from "@stackframe/stack-shared/dist/utils/oauth";
-import { ActionDialog, Badge, BrandIcons, BrowserFrame, Button, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, Input, SimpleTooltip, Typography } from "@stackframe/stack-ui";
+import { ActionDialog, Badge, BrandIcons, BrowserFrame, Button, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, Input, SelectItem, SimpleTooltip, Typography } from "@stackframe/stack-ui";
 import { AsteriskSquare, CirclePlus, Key, Link2, MoreHorizontal } from "lucide-react";
 import { useState } from "react";
 import { CardSubtitle } from "../../../../../../../../../packages/stack-ui/dist/components/ui/card";
 import { PageLayout } from "../page-layout";
 import { useAdminApp } from "../use-admin-app";
 import { ProviderSettingDialog, ProviderSettingSwitch, TurnOffProviderDialog } from "./providers";
+
+type OAuthAccountMergeStrategy = 'link_method' | 'raise_error' | 'allow_duplicates';
 
 function ConfirmSignUpEnabledDialog(props: {
   open?: boolean,
@@ -256,7 +258,7 @@ export default function PageClient() {
             SSO Providers
           </CardSubtitle>
 
-          { enabledProviders.map(([, provider]) => provider)
+          {enabledProviders.map(([, provider]) => provider)
             .filter((provider): provider is AdminOAuthProviderConfig => !!provider).map(provider => {
               return <div key={provider.id} className="flex h-10 items-center justify-between">
                 <div className="flex items-center gap-2">
@@ -332,6 +334,22 @@ export default function PageClient() {
           }}
           hint="Existing users can still sign in when sign-up is disabled. You can always create new accounts manually via the dashboard."
         />
+        <SettingSelect
+          label="Sign-up mode when logging in with same email on multiple providers"
+          value={project.config.oauthAccountMergeStrategy}
+          onValueChange={async (value) => {
+            await project.update({
+              config: {
+                oauthAccountMergeStrategy: value as OAuthAccountMergeStrategy,
+              },
+            });
+          }}
+          hint="Determines what happens when a user tries to sign in with a different OAuth provider using the same email address"
+        >
+          <SelectItem value="link_method">Link - Connect multiple providers to the same account</SelectItem>
+          <SelectItem value="allow_duplicates">Allow - Create separate accounts for each provider</SelectItem>
+          <SelectItem value="raise_error">Block - Show an error and prevent sign-in with multiple providers</SelectItem>
+        </SettingSelect>
       </SettingCard>
 
       <SettingCard title="User deletion">

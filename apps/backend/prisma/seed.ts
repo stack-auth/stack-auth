@@ -20,7 +20,7 @@ async function seed() {
   const dashboardDomain = process.env.NEXT_PUBLIC_STACK_DASHBOARD_URL;
   const oauthProviderIds = process.env.STACK_SEED_INTERNAL_PROJECT_OAUTH_PROVIDERS?.split(',') ?? [];
   const otpEnabled = process.env.STACK_SEED_INTERNAL_PROJECT_OTP_ENABLED === 'true';
-  const signUpEnabled = process.env.STACK_SEED_INTERNAL_PROJECT_SIGN_UP_DISABLED !== 'true';
+  const signUpEnabled = process.env.STACK_SEED_INTERNAL_PROJECT_SIGN_UP_ENABLED === 'true';
   const allowLocalhost = process.env.STACK_SEED_INTERNAL_PROJECT_ALLOW_LOCALHOST === 'true';
   const clientTeamCreation = process.env.STACK_SEED_INTERNAL_PROJECT_CLIENT_TEAM_CREATION === 'true';
 
