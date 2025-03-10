@@ -195,6 +195,7 @@ it("can customize default team permissions", async ({ expect }) => {
           "enabled_oauth_providers": [],
           "id": "<stripped UUID>",
           "magic_link_enabled": false,
+          "oauth_account_merge_strategy": "link_method",
           "oauth_providers": [],
           "passkey_enabled": false,
           "sign_up_enabled": true,

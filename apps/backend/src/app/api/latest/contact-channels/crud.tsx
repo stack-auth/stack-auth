@@ -83,7 +83,7 @@ export const contactChannelsCrudHandlers = createLazyProxy(() => createCrudHandl
           },
         });
         if (existingWithSameChannel) {
-          throw new KnownErrors.ContactChannelAlreadyUsedForAuthBySomeoneElse(data.type);
+          throw new KnownErrors.ContactChannelAlreadyUsedForAuthBySomeoneElse(data.type, data.value);
         }
       }
 
