@@ -5,13 +5,17 @@ import { stringCompare } from '@stackframe/stack-shared/dist/utils/strings';
 import fs from 'fs';
 import path from 'path';
 
-export const MIGRATION_FILES = getMigrationFiles();
+export let MIGRATION_FILES = getMigrationFiles();
 
 // there are 64 migrations already applied with prisma migration tooling before we started using auto-migration
 export const PRISMA_APPLIED_MIGRATIONS = MIGRATION_FILES.map(m => m.name).slice(0, 64);
 
 const ALL_ERRORS = ['MIGRATION_IN_PROGRESS', 'MIGRATION_ALREADY_DONE', 'MIGRATION_TIMEOUT', 'MIGRATION_NEEDED'] as const;
 type MigrationError = typeof ALL_ERRORS[number];
+
+export function refreshMigrationFiles() {
+  MIGRATION_FILES = getMigrationFiles();
+}
 
 function getMigrationFiles(): Array<{ name: string, sql: string }> {
   const migrationsDir = path.join(process.cwd(),  'prisma', 'migrations');
@@ -185,17 +189,24 @@ async function applyMigration(options: {
   sql: string,
 }) {
   console.log('Applying migration', options.migrationName);
-  const sqlCommands = options.sql
-    .split(';')
-    .map(cmd => cmd.trim())
-    .filter(cmd => cmd.length > 0);
-
   try {
     await retryIfMigrationInProgress(
       async () => await prismaClient.$transaction([
         ...startMigration(options.migrationName),
-        ...sqlCommands.map(cmd => prismaClient.$executeRawUnsafe(cmd)),
-        // prisma.$executeRawUnsafe(`SELECT pg_sleep(12)`),
+        ...options.sql.split('SPLIT_STATEMENT_SENTINEL')
+          .map(statement => {
+            if (statement.includes('SINGLE_STATEMENT_SENTINEL')) {
+              return prismaClient.$executeRawUnsafe(statement);
+            } else {
+              return prismaClient.$executeRawUnsafe(`
+                DO $$
+                BEGIN
+                  ${statement}
+                END
+                $$;
+              `);
+            }
+          }),
         ...finishMigration(options.migrationName),
       ], {
         isolationLevel: 'Serializable',

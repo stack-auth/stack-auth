@@ -1,43 +1,22 @@
 import { prismaClient } from "@/prisma-client";
-import { createSchemaMigrationTable } from "@/utils/auto-migration";
-
-const dropSchemaMigrationTable = async () => {
-  // Save existing migrations
-  const existingMigrations = await prismaClient.$queryRawUnsafe<Array<{migrationName: string, startedAt: Date, finishedAt: Date}>>(
-    `SELECT "migrationName", "startedAt", "finishedAt" FROM "SchemaMigration" WHERE "finishedAt" IS NOT NULL ORDER BY "startedAt" ASC`
-  ).catch((error) => {
-    if (error.code === 'P2010' && error.meta.code === '42P01') {
-      return [];
-    }
-    throw error;
-  });
-
-  // Drop the table
-  await prismaClient.$executeRawUnsafe(`
-    DROP TABLE IF EXISTS "SchemaMigration";
-  `);
-
-  return existingMigrations;
-};
+import { applyMigrations, refreshMigrationFiles } from "@/utils/auto-migration";
+import { execSync } from "child_process";
 
 const main = async () => {
-  // Save migrations and drop table
-  const existingMigrations = await dropSchemaMigrationTable();
-
   // Run prisma migrate dev to create new migration
-  const { execSync } = require('child_process');
-  execSync('pnpm prisma migrate dev --create-only', { stdio: 'inherit' });
+  execSync('pnpm prisma migrate dev --skip-seed', { stdio: 'inherit' });
 
-  // Recreate SchemaMigration table and restore data
-  await createSchemaMigrationTable();
+  // Drop everything in the current db
+  await prismaClient.$executeRawUnsafe(`DROP SCHEMA public CASCADE`);
+  await prismaClient.$executeRawUnsafe(`CREATE SCHEMA public`);
+  await prismaClient.$executeRawUnsafe(`GRANT ALL ON SCHEMA public TO postgres`);
+  await prismaClient.$executeRawUnsafe(`GRANT ALL ON SCHEMA public TO public`);
 
-  // Restore the migrations
-  for (const migration of existingMigrations) {
-    await prismaClient.$executeRawUnsafe(`
-      INSERT INTO "SchemaMigration" ("migrationName", "startedAt", "finishedAt")
-      VALUES ($1, $2, $3)
-    `, migration.migrationName, migration.startedAt, migration.finishedAt);
-  }
+  // Apply migration with auto-migration system
+  refreshMigrationFiles();
+  await applyMigrations({ appliedMigrationsIfNoMigrationTable: [] });
+
+  execSync('pnpm run db-seed-script', { stdio: 'inherit' });
 };
 
 main().catch(console.error);
