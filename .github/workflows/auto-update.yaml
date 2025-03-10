@@ -3,6 +3,10 @@ name: Update pull request branches
 on:
   push: {}
 
+concurrency:
+  group: ${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' && github.ref != 'refs/heads/dev' }}
+
 jobs:
   update-pr-branches:
     name: Update pull request branches
