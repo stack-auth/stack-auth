@@ -31,12 +31,10 @@ export const DELETE = createSmartRouteHandler({
     const refreshToken = refreshTokenHeaders[0];
 
     try {
-      await prismaClient.projectUserRefreshToken.delete({
+      await prismaClient.projectUserRefreshToken.deleteMany({
         where: {
-          tenancyId_refreshToken: {
-            tenancyId: tenancy.id,
-            refreshToken,
-          },
+          tenancyId: tenancy.id,
+          refreshToken,
         },
       });
     } catch (e) {

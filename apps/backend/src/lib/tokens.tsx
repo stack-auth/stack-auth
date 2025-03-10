@@ -103,8 +103,10 @@ export async function createAuthTokens(options: {
   tenancy: Tenancy,
   projectUserId: string,
   expiresAt?: Date,
+  isImpersonation?: boolean,
 }) {
   options.expiresAt ??= new Date(Date.now() + 1000 * 60 * 60 * 24 * 365);
+  options.isImpersonation ??= false;
 
   const refreshToken = generateSecureRandomString();
   const accessToken = await generateAccessToken({
@@ -119,6 +121,7 @@ export async function createAuthTokens(options: {
         projectUserId: options.projectUserId,
         refreshToken: refreshToken,
         expiresAt: options.expiresAt,
+        isImpersonation: options.isImpersonation,
       },
     });
   } catch (error) {
