@@ -13,6 +13,36 @@ export const PLATFORMS = {
   "python": ['python', 'python-like'],
 }
 
+export const withGeneratorLock = async <T>(fn: () => Promise<T>) => {
+  const lockFilePath = path.resolve(__dirname, "../generator-lock-file.untracked.lock");
+  while (true) {
+    try {
+      fs.writeFileSync(lockFilePath, Date.now().toString(), { flag: 'wx' });
+      break;
+    } catch (e) {
+      if ("code" in e && e.code === "EEXIST") {
+        const millis = +fs.readFileSync(lockFilePath, 'utf-8');
+        if (Date.now() - millis > 5 * 60 * 1000) {
+          console.warn(`Generator lock file ${lockFilePath} exists, but is older than 5 minutes. Assuming it's stale and deleting.`);
+          fs.unlinkSync(lockFilePath);  // TODO: this should be done atomically
+          await new Promise((resolve) => setTimeout(resolve, 5000));
+          continue;
+        } else {
+          console.log(`Generator lock file ${lockFilePath} exists. Waiting for it to be released...`);
+          await new Promise((resolve) => setTimeout(resolve, 2000 * Math.random()));
+          continue;
+        }
+      } else {
+        throw e;
+      }
+    }
+  }
+  try {
+    return await fn();
+  } finally {
+    fs.unlinkSync(lockFilePath);
+  }
+}
 
 export function processMacros(content: string, platforms: string[]): string {
   const lines = content.split('\n');
@@ -242,18 +272,13 @@ export function processMacros(content: string, platforms: string[]): string {
 }
  
 export function writeFileSyncIfChanged(path: string, content: string | Buffer): void {
+  if (typeof content === 'string') {
+    content = Buffer.from(content);
+  }
   if (fs.existsSync(path)) {
-    const existingContent = fs.readFileSync(path);
-    if (Buffer.isBuffer(content)) {
-      // For binary files, compare buffers
-      if (Buffer.compare(existingContent, content) === 0) {
-        return;
-      }
-    } else {
-      // For text files, compare strings
-      if (existingContent.toString('utf-8') === content) {
-        return;
-      }
+    const existingContent = fs.readFileSync(path, { encoding: null });
+    if (Buffer.compare(existingContent, content) === 0) {
+      return;
     }
   }
   fs.writeFileSync(path, content);
