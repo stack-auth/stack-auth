@@ -428,7 +428,7 @@ export function getProjectQuery(projectId: string): RawQuery<ProjectsCrud["Admin
             })),
           oauth_providers: oauthProviderAuthMethods,
           enabled_oauth_providers: oauthProviderAuthMethods.filter((provider: any) => provider.enabled),
-          oauth_account_merge_strategy: typedToLowercase(row.ProjectConfig.oauthAccountMergeStrategy),
+          oauth_account_merge_strategy: typedToLowercase(row.ProjectConfig.oauthAccountMergeStrategy) as "link_method" | "raise_error" | "allow_duplicates",
           email_config: (() => {
             const emailServiceConfig = row.ProjectConfig.EmailServiceConfig;
             if (!emailServiceConfig) {
