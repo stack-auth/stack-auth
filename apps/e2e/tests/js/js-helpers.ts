@@ -19,17 +19,41 @@ export async function scaffoldProject(body?: AdminProjectUpdateOptions) {
     password: "password",
     verificationCallbackUrl: "https://stack-js-test.example.com/verify",
   });
-  const user = await internalApp.getUser({
+  const internalUser = await internalApp.getUser({
     or: 'throw',
   });
 
-  const project = await user.createProject({
+  // TODO make createProject return an AdminOwnedProject so we won't have to list them right after
+  const project = await internalUser.createProject({
     displayName: body?.displayName || 'New Project',
     ...body,
   });
+  const [{ app: adminApp }] = await internalUser.listOwnedProjects();
+  
+  const publishableClientKey = ???;
+  const secretServerKey = ???;
+  
+  const clientApp = new StackClientApp({
+    projectId: projectId,
+    baseUrl: STACK_BACKEND_BASE_URL,
+    publishableClientKey: publishableClientKey,
+    tokenStore: "memory",
+  });
+
+  const serverApp = new StackServerApp({
+    projectId: projectId,
+    baseUrl: STACK_BACKEND_BASE_URL,
+    publishableClientKey: publishableClientKey,
+    secretServerKey: secretServerKey,
+    tokenStore: "memory",
+  });
+
 
   return {
     project,
     user,
+    clientApp,
+    serverApp,
+    adminApp,
   };
 }
