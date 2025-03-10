@@ -367,16 +367,17 @@ export function parseOverload(options: {
   if (!isSchemaNumberDescription(options.statusCodeDesc)) {
     throw new StackAssertionError('Expected status code to be a number', { actual: options.statusCodeDesc, options });
   }
-  if (options.statusCodeDesc.oneOf.length > 1) {
-    throw new StackAssertionError('Expected status code to have zero or one values', { actual: options.statusCodeDesc.oneOf, options });
-  }
-  const status: number = options.statusCodeDesc.oneOf[0] ?? 200 as any;  // TODO HACK hardcoded, the default 200 value (which is used in case all status codes may be returned) should be configurable
+
+  // Get all status codes or use 200 as default if none specified
+  const statusCodes: number[] = options.statusCodeDesc.oneOf.length > 0
+    ? options.statusCodeDesc.oneOf as number[]
+    : [200]; // TODO HACK hardcoded, used in case all status codes may be returned, should be configurable per endpoint
 
   switch (bodyType) {
     case 'json': {
-      return {
-        ...exRes,
-        responses: {
+      const responses = statusCodes.reduce((acc, status) => {
+        return {
+          ...acc,
           [status]: {
             description: 'Successful response',
             content: {
@@ -388,34 +389,44 @@ export function parseOverload(options: {
               },
             },
           },
-        },
+        };
+      }, {});
+
+      return {
+        ...exRes,
+        responses,
       };
     }
     case 'text': {
       if (!options.responseDesc || !isSchemaStringDescription(options.responseDesc)) {
         throw new StackAssertionError('Expected response body of bodyType=="text" to be a string schema', { actual: options.responseDesc });
       }
-      return {
-        ...exRes,
-        responses: {
+      const responses = statusCodes.reduce((acc, status) => {
+        return {
+          ...acc,
           [status]: {
             description: 'Successful response',
             content: {
               'text/plain': {
                 schema: {
                   type: 'string',
-                  example: options.responseDesc.meta?.openapiField?.exampleValue,
+                  example: options.responseDesc && isSchemaStringDescription(options.responseDesc) ? options.responseDesc.meta?.openapiField?.exampleValue : undefined,
                 },
               },
             },
           },
-        },
+        };
+      }, {});
+
+      return {
+        ...exRes,
+        responses,
       };
     }
     case 'success': {
-      return {
-        ...exRes,
-        responses: {
+      const responses = statusCodes.reduce((acc, status) => {
+        return {
+          ...acc,
           [status]: {
             description: 'Successful response',
             content: {
@@ -434,17 +445,27 @@ export function parseOverload(options: {
               },
             },
           },
-        },
+        };
+      }, {});
+
+      return {
+        ...exRes,
+        responses,
       };
     }
     case 'empty': {
-      return {
-        ...exRes,
-        responses: {
+      const responses = statusCodes.reduce((acc, status) => {
+        return {
+          ...acc,
           [status]: {
             description: 'No content',
           },
-        },
+        };
+      }, {});
+
+      return {
+        ...exRes,
+        responses,
       };
     }
     default: {
