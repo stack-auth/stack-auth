@@ -1,5 +1,5 @@
-import { prismaClient } from "../../../../../prisma-client";
-import { createCrudHandlers } from "../../../../../route-handlers/crud-handler";
+import { prismaClient } from "@/prisma-client";
+import { createCrudHandlers } from "@/route-handlers/crud-handler";
 import { sessionsCrud } from "@stackframe/stack-shared/dist/interface/crud/sessions";
 import { userIdOrMeSchema, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
 import { StatusError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";

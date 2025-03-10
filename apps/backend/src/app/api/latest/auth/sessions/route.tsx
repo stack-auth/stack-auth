@@ -1,6 +1,6 @@
-import { createAuthTokens } from "../../../../../lib/tokens";
-import { CrudHandlerInvocationError } from "../../../../../route-handlers/crud-handler";
-import { createSmartRouteHandler } from "../../../../../route-handlers/smart-route-handler";
+import { createAuthTokens } from "@/lib/tokens";
+import { CrudHandlerInvocationError } from "@/route-handlers/crud-handler";
+import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { KnownErrors } from "@stackframe/stack-shared";
 import { adaptSchema, serverOrHigherAuthTypeSchema, userIdOrMeSchema, yupBoolean, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
 import { usersCrudHandlers } from "../../users/crud";
