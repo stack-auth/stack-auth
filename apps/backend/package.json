@@ -23,6 +23,7 @@
     "psql": "pnpm run with-env pnpm run psql-inner",
     "prisma": "pnpm run with-env prisma",
     "prisma-studio": "pnpm run with-env prisma studio --port 8106 --browser none",
+    "generate-db-migration": "pnpm run with-env tsx scripts/db-migrations.ts",
     "lint": "next lint",
     "watch-docs": "pnpm run with-env tsx watch --clear-screen=false scripts/generate-openapi.ts",
     "generate-openapi": "pnpm run with-env tsx scripts/generate-openapi.ts",

@@ -92,19 +92,23 @@ function checkIfHasPendingMigrations() {
   `);
 }
 
+export function createSchemaMigrationTable() {
+  return prismaClient.$executeRawUnsafe(`
+    CREATE TABLE IF NOT EXISTS "SchemaMigration" (
+      "id" TEXT NOT NULL DEFAULT gen_random_uuid(),
+      "startedAt" TIMESTAMP(3) NOT NULL DEFAULT clock_timestamp(),
+      "finishedAt" TIMESTAMP(3),
+      "migrationName" TEXT NOT NULL UNIQUE,
+      
+      CONSTRAINT "SchemaMigration_pkey" PRIMARY KEY ("id")
+    );
+  `);
+}
+
 async function getAppliedMigrations(appliedMigrationsIfNoMigrationTable: Array<string>) {
   const [_1, _2, _3, appliedMigrations] = await retryIfMigrationInProgress(
     async () => await prismaClient.$transaction([
-      prismaClient.$executeRawUnsafe(`
-        CREATE TABLE IF NOT EXISTS "SchemaMigration" (
-          "id" TEXT NOT NULL DEFAULT gen_random_uuid(),
-          "startedAt" TIMESTAMP(3) NOT NULL DEFAULT clock_timestamp(),
-          "finishedAt" TIMESTAMP(3),
-          "migrationName" TEXT NOT NULL UNIQUE,
-          
-          CONSTRAINT "SchemaMigration_pkey" PRIMARY KEY ("id")
-        );
-      `),
+      createSchemaMigrationTable(),
       prismaClient.$executeRawUnsafe(appliedMigrationsIfNoMigrationTable.length > 0 ? `
         INSERT INTO "SchemaMigration" ("migrationName", "startedAt", "finishedAt")
         SELECT 
