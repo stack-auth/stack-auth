@@ -371,7 +371,7 @@ export function parseOverload(options: {
   // Get all status codes or use 200 as default if none specified
   const statusCodes: number[] = options.statusCodeDesc.oneOf.length > 0
     ? options.statusCodeDesc.oneOf as number[]
-    : [200]; // Default status code if none specified
+    : [200]; // TODO HACK hardcoded, used in case all status codes may be returned, should be configurable per endpoint
 
   switch (bodyType) {
     case 'json': {
