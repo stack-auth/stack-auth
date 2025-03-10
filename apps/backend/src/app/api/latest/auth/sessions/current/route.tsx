@@ -1,5 +1,5 @@
-import { prismaClient } from "@/prisma-client";
-import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
+import { prismaClient } from "../../../../../../prisma-client";
+import { createSmartRouteHandler } from "../../../../../../route-handlers/smart-route-handler";
 import { Prisma } from "@prisma/client";
 import { KnownErrors } from "@stackframe/stack-shared";
 import { adaptSchema, clientOrHigherAuthTypeSchema, yupNumber, yupObject, yupString, yupTuple } from "@stackframe/stack-shared/dist/schema-fields";
@@ -31,12 +31,10 @@ export const DELETE = createSmartRouteHandler({
     const refreshToken = refreshTokenHeaders[0];
 
     try {
-      await prismaClient.projectUserRefreshToken.delete({
+      await prismaClient.projectUserRefreshToken.deleteMany({
         where: {
-          tenancyId_refreshToken: {
-            tenancyId: tenancy.id,
-            refreshToken,
-          },
+          tenancyId: tenancy.id,
+          refreshToken,
         },
       });
     } catch (e) {
