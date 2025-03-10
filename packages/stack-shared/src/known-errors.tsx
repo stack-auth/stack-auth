@@ -1159,7 +1159,7 @@ const ContactChannelAlreadyUsedForAuthBySomeoneElse = createKnownErrorConstructo
     contactChannelValue ?
     `The ${type} (${contactChannelValue}) is already used for authentication by another account.` :
     `This ${type} is already used for authentication by another account.`,
-    { type, contactChannelValue: contactChannelValue ?? null },
+    { type, contact_channel_value: contactChannelValue ?? null },
   ] as const,
   (json) => [json.type] as const,
 );

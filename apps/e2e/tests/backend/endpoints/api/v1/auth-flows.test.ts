@@ -86,7 +86,7 @@ it("signing in with OTP first, then signing in with OAuth, should set used_for_a
 });
 
 it("signs in with password first, then signs in with oauth should give an account with used_for_auth true with the new defaults", async ({ expect }) => {
-  const res = await Project.createAndSwitch({
+  const proj = await Project.createAndSwitch({
     config: {
       credential_enabled: true,
       oauth_account_merge_strategy: "allow_duplicates",
@@ -97,8 +97,7 @@ it("signs in with password first, then signs in with oauth should give an accoun
       }],
     }
   });
-
-  await ApiKey.createAndSetProjectKeys(res.adminAccessToken);
+  await ApiKey.createAndSetProjectKeys(proj.adminAccessToken);
 
 
   await Auth.Password.signUpWithEmail({ password: "some-password" });
