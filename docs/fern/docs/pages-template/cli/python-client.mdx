@@ -1,0 +1,44 @@
+---
+title: Python CLI Client
+description: How to use the Stack Auth CLI client with Python
+---
+
+# Stack Auth CLI Client
+
+The Stack Auth CLI client allows you to authenticate with the Stack Auth API from the command line.
+
+## Installation
+
+```bash
+pip install stack-auth-cli
+```
+
+## Usage
+
+### Login
+
+To log in to Stack Auth, use the `login` command:
+
+```python
+import stack_auth_cli
+
+# Using the CLI programmatically
+stack_auth_cli.login(tenancy_id="YOUR_TENANCY_ID")
+
+# Or from the command line
+# stack-auth login --tenancy-id YOUR_TENANCY_ID
+```
+
+This will:
+1. Initiate the CLI authentication process
+2. Open your browser to complete the authentication
+3. Poll the authentication status every 5 seconds
+4. Save the refresh token to `~/.stack-auth/config.json` upon successful authentication
+
+### Configuration
+
+The CLI stores configuration in `~/.stack-auth/config.json`. This includes your refresh token after successful authentication.
+
+### Environment Variables
+
+- `STACK_AUTH_API_URL`: The base URL of the Stack Auth API. Defaults to `http://localhost:3000/api/latest`.
