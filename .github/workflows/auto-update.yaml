@@ -3,24 +3,14 @@ name: Update pull request branches
 on:
   workflow_run:
     workflows:
-      - "Ensure Prisma migrations are in sync with the schema"
-      - "Docker Build and Push"
-      - "Docker Test"
-      - "Runs E2E API Tests"
-      - "Lint & build"
-      - "Mirror main branch to main-mirror-for-wdb"
-      - "Preview Docs"
-      - "Publish Docs"
-      - "Dev Environment Test"
-      - "Run setup tests"
-      - "TOC Generator"
+      - "Did all the other checks pass?"
     types:
       - completed
     conclusion: success
 
 concurrency:
-  group: ${{ github.ref }}
-  cancel-in-progress: ${{ github.ref != 'refs/heads/main' && github.ref != 'refs/heads/dev' }}
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   update-pr-branches:
