@@ -138,6 +138,7 @@ export function projectPrismaToCrud(
         })),
       oauth_providers: oauthProviders,
       enabled_oauth_providers: oauthProviders.filter(provider => provider.enabled),
+      oauth_account_merge_strategy: typedToLowercase(prisma.config.oauthAccountMergeStrategy),
       email_config: (() => {
         const emailServiceConfig = prisma.config.emailServiceConfig;
         if (!emailServiceConfig) {
@@ -427,6 +428,7 @@ export function getProjectQuery(projectId: string): RawQuery<ProjectsCrud["Admin
             })),
           oauth_providers: oauthProviderAuthMethods,
           enabled_oauth_providers: oauthProviderAuthMethods.filter((provider: any) => provider.enabled),
+          oauth_account_merge_strategy: typedToLowercase(row.ProjectConfig.oauthAccountMergeStrategy) as "link_method" | "raise_error" | "allow_duplicates",
           email_config: (() => {
             const emailServiceConfig = row.ProjectConfig.EmailServiceConfig;
             if (!emailServiceConfig) {
@@ -508,6 +510,7 @@ export async function createProject(ownerIds: string[], data: InternalProjectsCr
             createTeamOnSignUp: data.config?.create_team_on_sign_up ?? false,
             clientTeamCreationEnabled: data.config?.client_team_creation_enabled ?? false,
             clientUserDeletionEnabled: data.config?.client_user_deletion_enabled ?? false,
+            oauthAccountMergeStrategy: data.config?.oauth_account_merge_strategy ? typedToUppercase(data.config.oauth_account_merge_strategy): 'LINK_METHOD',
             domains: data.config?.domains ? {
               create: data.config.domains.map(item => ({
                 domain: item.domain,

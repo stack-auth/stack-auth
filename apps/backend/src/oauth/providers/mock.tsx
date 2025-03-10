@@ -28,6 +28,7 @@ export class MockProvider extends OAuthBaseProvider {
       displayName: rawUserInfo.name,
       email: rawUserInfo.sub,
       profileImageUrl: rawUserInfo.picture,
+      emailVerified: true,
     });
   }
 }
