@@ -64,6 +64,7 @@ async function retryIfMigrationInProgress(fn: () => Promise<any>) {
     } catch (error) {
       const migrationError = getMigrationError(error);
       if (migrationError === 'MIGRATION_IN_PROGRESS') {
+        console.log('Migration in progress, retrying...');
         if (attempts >= maxAttempts) {
           throw new StackAssertionError(`Retried ${attempts} times, but still failed migration`);
         }
@@ -191,27 +192,31 @@ async function applyMigration(options: {
   console.log('Applying migration', options.migrationName);
   try {
     await retryIfMigrationInProgress(
-      async () => await prismaClient.$transaction([
-        ...startMigration(options.migrationName),
-        ...options.sql.split('SPLIT_STATEMENT_SENTINEL')
-          .map(statement => {
-            if (statement.includes('SINGLE_STATEMENT_SENTINEL')) {
-              return prismaClient.$executeRawUnsafe(statement);
-            } else {
-              return prismaClient.$executeRawUnsafe(`
-                DO $$
-                BEGIN
-                  ${statement}
-                END
-                $$;
-              `);
-            }
-          }),
-        ...finishMigration(options.migrationName),
-      ], {
-        isolationLevel: 'Serializable',
-      })
+      async () => await prismaClient.$transaction(
+        startMigration(options.migrationName),
+        { isolationLevel: 'Serializable' }
+      )
     );
+
+    await prismaClient.$transaction([
+      ...options.sql.split('SPLIT_STATEMENT_SENTINEL')
+        .map(statement => {
+          if (statement.includes('SINGLE_STATEMENT_SENTINEL')) {
+            return prismaClient.$executeRawUnsafe(statement);
+          } else {
+            return prismaClient.$executeRawUnsafe(`
+              DO $$
+              BEGIN
+                ${statement}
+              END
+              $$;
+            `);
+          }
+        }),
+      ...finishMigration(options.migrationName),
+    ], {
+      isolationLevel: 'Serializable',
+    });
   } catch (error) {
     const migrationError = getMigrationError(error);
     switch (migrationError) {
