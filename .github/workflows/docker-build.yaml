@@ -2,6 +2,10 @@ name: Docker Build and Push
 
 on: push
 
+concurrency:
+  group: ${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' && github.ref != 'refs/heads/dev' }}
+
 jobs:
   build-server:
     name: Docker Build and Push Server
