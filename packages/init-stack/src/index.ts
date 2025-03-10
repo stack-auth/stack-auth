@@ -34,6 +34,8 @@ const typeFromArgs: string | undefined = ["js", "next"].find(s => process.argv.i
 const packageManagerFromArgs: string | undefined = ["npm", "yarn", "pnpm", "bun"].find(s => process.argv.includes(`--${s}`));
 const isClient: boolean = process.argv.includes("--client");
 const isServer: boolean = process.argv.includes("--server");
+const noBrowser: boolean = process.argv.includes("--no-browser");
+const showHelp: boolean = process.argv.includes("--help") || process.argv.includes("-h");
 
 type Ansis = {
   red: string,
@@ -83,6 +85,32 @@ const nextSteps: string[] = [
 ];
 
 async function main(): Promise<void> {
+  // Check if help flag is provided
+  if (showHelp) {
+    console.log(`
+Stack Auth Initialization Tool
+
+Usage: npx init-stack [project-path] [options]
+
+Options:
+  --help, -h          Show this help message
+  --dry-run           Run without making any changes
+  --neon              Use Neon database
+  --js                Initialize for JavaScript project
+  --next              Initialize for Next.js project
+  --npm               Use npm as package manager
+  --yarn              Use yarn as package manager
+  --pnpm              Use pnpm as package manager
+  --bun               Use bun as package manager
+  --client            Initialize client-side only
+  --server            Initialize server-side only
+  --no-browser        Don't open browser for environment variable setup
+
+For more information, please visit https://docs.stack-auth.com/getting-started/setup
+    `);
+    process.exit(0);
+  }
+
   // Welcome message
   console.log();
   console.log(`
@@ -196,18 +224,18 @@ ${colorize.green`===============================================`}
 
 ${colorize.green`Successfully installed Stack! 🚀🚀🚀`}
 
-Next steps:
+${colorize.bold`Next steps:`}
 
-${[...nextSteps.entries()].map(([index, step]) => `${index + 1}. ${step}`).join("\n")}
-
-${type === "next" ? `Then, you will be able to access your sign-in page on http://your-website.example.com/handler/sign-in. That's it!`
-  : "That's it!"}
-
-${colorize.green`===============================================`}
+1. ${noBrowser ? 
+    `Create a project at https://app.stack-auth.com and get your API keys` : 
+    `Complete the setup in your browser to get your API keys`}
+2. Add the API keys to your .env.local file
+3. Import the Stack components in your app
+4. Add authentication to your app
 
 For more information, please visit https://docs.stack-auth.com/getting-started/setup
   `.trim());
-  if (!process.env.STACK_DISABLE_INTERACTIVE) {
+  if (!process.env.STACK_DISABLE_INTERACTIVE && !noBrowser) {
     await open("https://app.stack-auth.com/wizard-congrats");
   }
 }
@@ -394,10 +422,22 @@ const Steps = {
       envLocalPath,
     ];
     if (potentialEnvLocations.every((p) => !fs.existsSync(p))) {
-      laterWriteFile(
-        envLocalPath,
-        "# Stack Auth keys\n# Get these variables by creating a project on https://app.stack-auth.com.\nNEXT_PUBLIC_STACK_PROJECT_ID=\nNEXT_PUBLIC_STACK_PUBLISHABLE_CLIENT_KEY=\nSTACK_SECRET_SERVER_KEY=\n"
-      );
+      const envContent = noBrowser 
+        ? "# Stack Auth keys\n" +
+          "# To get these variables:\n" +
+          "# 1. Go to https://app.stack-auth.com\n" +
+          "# 2. Create a new project\n" +
+          "# 3. Copy the keys below\n" +
+          "NEXT_PUBLIC_STACK_PROJECT_ID=\n" +
+          "NEXT_PUBLIC_STACK_PUBLISHABLE_CLIENT_KEY=\n" +
+          "STACK_SECRET_SERVER_KEY=\n"
+        : "# Stack Auth keys\n" +
+          "# Get these variables by creating a project on https://app.stack-auth.com.\n" +
+          "NEXT_PUBLIC_STACK_PROJECT_ID=\n" +
+          "NEXT_PUBLIC_STACK_PUBLISHABLE_CLIENT_KEY=\n" +
+          "STACK_SECRET_SERVER_KEY=\n";
+      
+      laterWriteFile(envLocalPath, envContent);
       return true;
     }
 
