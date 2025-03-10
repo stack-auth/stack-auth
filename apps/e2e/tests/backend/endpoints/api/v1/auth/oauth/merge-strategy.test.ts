@@ -49,7 +49,7 @@ it("should not allow duplicates, if the merge strategy set to raise_error", asyn
   expect(cc.used_for_auth).toBe(true);
 
   // eslint-disable-next-line @typescript-eslint/no-floating-promises
-  expect(Auth.OAuth.signIn()).rejects.toThrowError();
+  await expect(Auth.OAuth.signIn()).rejects.toThrowError();
 });
 
 it("should merge accounts, if the merge strategy set to link_method", async ({ expect }) => {
