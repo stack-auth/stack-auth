@@ -1,4 +1,3 @@
-import { cn } from "../..";
 import { CheckIcon } from "@radix-ui/react-icons";
 import {
   Badge, Button, Command,
@@ -14,6 +13,7 @@ import {
 import { Column } from "@tanstack/react-table";
 import { ListFilter } from "lucide-react";
 import React from "react";
+import { cn } from "../../lib/utils";
 
 type DataTableFacetedFilterProps<TData, TValue> = {
   column?: Column<TData, TValue>,
