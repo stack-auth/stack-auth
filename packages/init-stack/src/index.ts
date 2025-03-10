@@ -226,8 +226,8 @@ ${colorize.green`Successfully installed Stack! 🚀🚀🚀`}
 
 ${colorize.bold`Next steps:`}
 
-1. ${noBrowser ? 
-    `Create a project at https://app.stack-auth.com and get your API keys` : 
+1. ${noBrowser ?
+    `Create a project at https://app.stack-auth.com and get your API keys` :
     `Complete the setup in your browser to get your API keys`}
 2. Add the API keys to your .env.local file
 3. Import the Stack components in your app
@@ -422,7 +422,7 @@ const Steps = {
       envLocalPath,
     ];
     if (potentialEnvLocations.every((p) => !fs.existsSync(p))) {
-      const envContent = noBrowser 
+      const envContent = noBrowser
         ? "# Stack Auth keys\n" +
           "# To get these variables:\n" +
           "# 1. Go to https://app.stack-auth.com\n" +
@@ -436,7 +436,7 @@ const Steps = {
           "NEXT_PUBLIC_STACK_PROJECT_ID=\n" +
           "NEXT_PUBLIC_STACK_PUBLISHABLE_CLIENT_KEY=\n" +
           "STACK_SECRET_SERVER_KEY=\n";
-      
+
       laterWriteFile(envLocalPath, envContent);
       return true;
     }
