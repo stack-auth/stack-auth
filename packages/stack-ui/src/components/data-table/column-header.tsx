@@ -1,7 +1,7 @@
-import { cn } from "../..";
-import { Button, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@stackframe/stack-ui";
+import { Button, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@stackframe/stack-ui";
 import { Column } from "@tanstack/react-table";
-import { LucideIcon, EyeOff, ArrowUp, ArrowDown } from "lucide-react";
+import { ArrowDown, ArrowUp, LucideIcon } from "lucide-react";
+import { cn } from "../../lib/utils";
 
 type DataTableColumnHeaderProps<TData, TValue> = {
   column: Column<TData, TValue>,
@@ -31,7 +31,7 @@ export function DataTableColumnHeader<TData, TValue>({
           <Button
             variant="ghost"
             size="sm"
-            className="-ml-3 h-8 data-[state=open]:bg-accent"
+            className={cn("-ml-3 h-8 data-[state=open]:bg-accent", !column.getCanSort() && "pointer-events-none")}
           >
             <span>{columnTitle}</span>
             {column.getIsSorted() === "desc" ? (
@@ -42,13 +42,8 @@ export function DataTableColumnHeader<TData, TValue>({
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="start" className="stack-scope">
-          {column.getCanSort() && (
-            <>
-              <Item icon={ArrowUp} onClick={() => column.toggleSorting(false)}>Asc</Item>
-              <Item icon={ArrowDown} onClick={() => column.toggleSorting(true)}>Desc</Item>
-            </>
-          )}
-          <Item icon={EyeOff} onClick={() => column.toggleVisibility(false)}>Hide</Item>
+          <Item icon={ArrowUp} onClick={() => column.toggleSorting(false)}>Asc</Item>
+          <Item icon={ArrowDown} onClick={() => column.toggleSorting(true)}>Desc</Item>
         </DropdownMenuContent>
       </DropdownMenu>
     </div>
