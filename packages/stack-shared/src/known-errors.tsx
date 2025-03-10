@@ -1161,7 +1161,7 @@ const ContactChannelAlreadyUsedForAuthBySomeoneElse = createKnownErrorConstructo
     `This ${type} is already used for authentication by another account.`,
     { type, contact_channel_value: contactChannelValue ?? null },
   ] as const,
-  (json) => [json.type] as const,
+  (json) => [json.type, json.contact_channel_value] as const,
 );
 
 export type KnownErrors = {
