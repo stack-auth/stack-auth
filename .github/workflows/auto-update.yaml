@@ -18,15 +18,17 @@ on:
       - completed
     conclusion: success
 
+concurrency:
+  group: ${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' && github.ref != 'refs/heads/dev' }}
+
 jobs:
   update-pr-branches:
-    permissions:
-      contents: write
-      pull-requests: write
     name: Update pull request branches
     runs-on: ubuntu-22.04
     steps:
       - uses: chinthakagodawita/autoupdate@0707656cd062a3b0cf8fa9b2cda1d1404d74437e
         env:
-          GITHUB_TOKEN: '${{ secrets.GITHUB_TOKEN }}'
+          GITHUB_TOKEN: '${{ secrets.GH_PAT }}'
           MERGE_CONFLICT_ACTION: 'ignore'
+        continue-on-error: true

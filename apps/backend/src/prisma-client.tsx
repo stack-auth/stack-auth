@@ -20,10 +20,8 @@ if (getNodeEnvironment() !== 'production') {
 
 
 export async function retryTransaction<T>(fn: (...args: Parameters<Parameters<typeof prismaClient.$transaction>[0]>) => Promise<T>): Promise<T> {
-  const isDev = getNodeEnvironment() === 'development';
-
-  // enable serializable isolation level for the first two attempts of 10% of all transactions
-  const enableSerializable = Math.random() < 0.1;
+  // disable serializable transactions for now, later we may re-add them
+  const enableSerializable = false as boolean;
 
   return await traceSpan('Prisma transaction', async (span) => {
     const res = await Result.retry(async (attemptIndex) => {
@@ -41,7 +39,7 @@ export async function retryTransaction<T>(fn: (...args: Parameters<Parameters<ty
                 throw e;
               }
             }, {
-              isolationLevel: enableSerializable && attemptIndex < 2 ? Prisma.TransactionIsolationLevel.Serializable : undefined,
+              isolationLevel: enableSerializable && attemptIndex < 4 ? Prisma.TransactionIsolationLevel.Serializable : undefined,
             });
           } catch (e) {
             // we don't want to retry as aggressively here, because the error may have been thrown after the transaction was already committed
@@ -61,7 +59,9 @@ export async function retryTransaction<T>(fn: (...args: Parameters<Parameters<ty
         }
         return attemptRes;
       });
-    }, 3);
+    }, 5, {
+      exponentialDelayBase: 250,
+    });
 
     span.setAttribute("stack.prisma.transaction.success", res.status === "ok");
     span.setAttribute("stack.prisma.transaction.attempts", res.attempts);
