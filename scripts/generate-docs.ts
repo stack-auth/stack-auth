@@ -1,7 +1,7 @@
 import fs from "fs";
 import path from "path";
 import yaml from "yaml";
-import { PLATFORMS, copyFromSrcToDest, processMacros, writeFileSyncIfChanged } from "./utils";
+import { PLATFORMS, copyFromSrcToDest, processMacros, withGeneratorLock, writeFileSyncIfChanged } from "./utils";
 
 interface DocObject {
   platform?: string;
@@ -65,32 +65,36 @@ function processDocObject(obj: any, platforms: string[]): { result: any, validPa
   }
 }
 
-const docsDir = path.resolve(__dirname, "..", "docs", "fern");
-const templateDir = path.join(docsDir, "docs", "pages-template");
-const ymlTemplatePath = path.join(docsDir, "docs-template.yml");
 
-for (const platform of ["next", "js", "react", "python"]) {
-  const destDir = path.join(docsDir, 'docs', `pages-${platform}`);
 
-  const mainYmlContent = fs.readFileSync(ymlTemplatePath, "utf-8");
-  const macroProcessed = processMacros(mainYmlContent, PLATFORMS[platform]);
-  const template = yaml.parse(macroProcessed);
-  const { result: processed, validPaths: processedValidPaths } = processDocObject(template, PLATFORMS[platform]);
-  const output = yaml.stringify(processed);
-  writeFileSyncIfChanged(path.join(docsDir, `${platform}.yml`), output);
+withGeneratorLock(async () => {
+  const docsDir = path.resolve(__dirname, "..", "docs", "fern");
+  const templateDir = path.join(docsDir, "docs", "pages-template");
+  const ymlTemplatePath = path.join(docsDir, "docs-template.yml");
 
-  // Copy the entire template directory, processing macros for each file
-  copyFromSrcToDest({
-    srcDir: templateDir,
-    destDir,
-    editFn: (relativePath, content) => {
-      return processMacros(content, PLATFORMS[platform]);
-    },
-    filterFn: (relativePath) => {
-      if (relativePath.endsWith('.mdx') && !relativePath.startsWith('snippets')) {
-        return processedValidPaths.includes(relativePath);
+  for (const platform of ["next", "js", "react", "python"]) {
+    const destDir = path.join(docsDir, 'docs', `pages-${platform}`);
+
+    const mainYmlContent = fs.readFileSync(ymlTemplatePath, "utf-8");
+    const macroProcessed = processMacros(mainYmlContent, PLATFORMS[platform]);
+    const template = yaml.parse(macroProcessed);
+    const { result: processed, validPaths: processedValidPaths } = processDocObject(template, PLATFORMS[platform]);
+    const output = yaml.stringify(processed);
+    writeFileSyncIfChanged(path.join(docsDir, `${platform}.yml`), output);
+
+    // Copy the entire template directory, processing macros for each file
+    copyFromSrcToDest({
+      srcDir: templateDir,
+      destDir,
+      editFn: (relativePath, content) => {
+        return processMacros(content, PLATFORMS[platform]);
+      },
+      filterFn: (relativePath) => {
+        if (relativePath.endsWith('.mdx') && !relativePath.startsWith('snippets')) {
+          return processedValidPaths.includes(relativePath);
+        }
+        return true;
       }
-      return true;
-    }
-  });
-}
+    });
+  }
+}).catch(console.error);
