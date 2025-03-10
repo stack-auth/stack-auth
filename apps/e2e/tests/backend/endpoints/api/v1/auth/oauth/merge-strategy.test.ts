@@ -48,7 +48,6 @@ it("should not allow duplicates, if the merge strategy set to raise_error", asyn
   expect(cc.is_verified).toBe(true);
   expect(cc.used_for_auth).toBe(true);
 
-  // eslint-disable-next-line @typescript-eslint/no-floating-promises
   await expect(Auth.OAuth.signIn()).rejects.toThrowError();
 });
 
