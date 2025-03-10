@@ -29,7 +29,7 @@ export const POST = createSmartRouteHandler({
     }).defined(),
   }),
   response: yupObject({
-    statusCode: yupNumber().oneOf([200, 201]).defined(),
+    statusCode: yupNumber().oneOf([200]).defined(),
     bodyType: yupString().oneOf(["json"]).defined(),
     body: yupObject({
       status: yupString().oneOf(["waiting", "success", "expired", "used"]).defined(),
