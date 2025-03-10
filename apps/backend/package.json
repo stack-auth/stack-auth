@@ -22,6 +22,7 @@
     "psql-inner": "psql $STACK_DATABASE_CONNECTION_STRING",
     "psql": "pnpm run with-env pnpm run psql-inner",
     "prisma-studio": "pnpm run with-env prisma studio --port 8106 --browser none",
+    "prisma": "pnpm run with-env prisma",
     "generate-db-migration": "pnpm run with-env tsx scripts/db-migrations.ts migration-file",
     "reset-db": "pnpm run with-env tsx scripts/db-migrations.ts reset",
     "lint": "next lint",
