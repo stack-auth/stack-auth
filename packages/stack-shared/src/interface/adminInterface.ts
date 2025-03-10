@@ -1,6 +1,7 @@
 import { InternalSession } from "../sessions";
 import { ApiKeysCrud } from "./crud/api-keys";
 import { EmailTemplateCrud, EmailTemplateType } from "./crud/email-templates";
+import { InternalEmailsCrud } from "./crud/emails";
 import { ProjectsCrud } from "./crud/projects";
 import { SvixTokenCrud } from "./crud/svix-token";
 import { TeamPermissionDefinitionsCrud } from "./crud/team-permissions";
@@ -244,6 +245,13 @@ export class StackAdminInterface extends StackServerInterface {
         "content-type": "application/json",
       },
       body: JSON.stringify(data),
+    }, null);
+    return await response.json();
+  }
+
+  async listSentEmails(): Promise<InternalEmailsCrud["Admin"]["List"]> {
+    const response = await this.sendAdminRequest("/internal/emails", {
+      method: "GET",
     }, null);
     return await response.json();
   }

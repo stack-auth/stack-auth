@@ -12,7 +12,8 @@ import { EmailTemplateType } from "@stackframe/stack-shared/dist/interface/crud/
 import { strictEmailSchema } from "@stackframe/stack-shared/dist/schema-fields";
 import { throwErr } from "@stackframe/stack-shared/dist/utils/errors";
 import { deepPlainEquals } from "@stackframe/stack-shared/dist/utils/objects";
-import { ActionCell, ActionDialog, Alert, AlertDescription, AlertTitle, Button, Card, SimpleTooltip, Typography, useToast } from "@stackframe/stack-ui";
+import { ActionCell, ActionDialog, Alert, AlertDescription, AlertTitle, Button, Card, DataTable, SimpleTooltip, Typography, useToast } from "@stackframe/stack-ui";
+import { ColumnDef } from "@tanstack/react-table";
 import { AlertCircle } from "lucide-react";
 import { useMemo, useState } from "react";
 import * as yup from "yup";
@@ -110,6 +111,9 @@ export default function PageClient() {
           </Card>
         ))}
       </SettingCard>
+      <SettingCard title="Email Log" description="Manage email sending history">
+        <EmailSendDataTable />
+      </SettingCard>
 
       <ActionDialog
         open={sharedSmtpWarningDialogOpen !== null}
@@ -131,6 +135,31 @@ export default function PageClient() {
       </ActionDialog>
     </PageLayout>
   );
+}
+
+type SentEmail = {
+  id: string,
+  to?: string[],
+  subject: string,
+  sent_at_millis: number,
+  recipient: string,
+  sentAt: Date,
+  error?: unknown,
+}
+
+const emailTableColumns: ColumnDef<SentEmail>[] = [
+  { accessorKey: 'recipient', header: 'Recipient' },
+  { accessorKey: 'subject', header: 'Subject' },
+  { accessorKey: 'sentAt', header: 'Sent At' },
+];
+
+function EmailSendDataTable() {
+  return <DataTable
+    data={[]}
+    defaultColumnFilters={[]}
+    columns={emailTableColumns}
+    defaultSorting={[]}
+  />;
 }
 
 function EmailPreview(props: { content: any, type: EmailTemplateType }) {
