@@ -58,6 +58,7 @@ it("should set the refresh token for a CLI auth attempt and return success when 
       "headers": Headers { <some fields may have been hidden> },
     }
   `);
+});
 
 it("should return an error when trying to set the refresh token with an invalid login code", async ({ expect }) => {
   const refreshToken = "test-refresh-token";
