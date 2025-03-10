@@ -80,6 +80,7 @@ it("creates and updates the basic project information of a project", async ({ ex
           "enabled_oauth_providers": [],
           "id": "<stripped UUID>",
           "magic_link_enabled": false,
+          "oauth_account_merge_strategy": "link_method",
           "oauth_providers": [],
           "passkey_enabled": false,
           "sign_up_enabled": true,
@@ -124,6 +125,7 @@ it("updates the basic project configuration", async ({ expect }) => {
           "enabled_oauth_providers": [],
           "id": "<stripped UUID>",
           "magic_link_enabled": true,
+          "oauth_account_merge_strategy": "link_method",
           "oauth_providers": [],
           "passkey_enabled": false,
           "sign_up_enabled": false,
@@ -173,6 +175,7 @@ it("updates the project domains configuration", async ({ expect }) => {
           "enabled_oauth_providers": [],
           "id": "<stripped UUID>",
           "magic_link_enabled": false,
+          "oauth_account_merge_strategy": "link_method",
           "oauth_providers": [],
           "passkey_enabled": false,
           "sign_up_enabled": true,
@@ -228,6 +231,7 @@ it("updates the project domains configuration", async ({ expect }) => {
           "enabled_oauth_providers": [],
           "id": "<stripped UUID>",
           "magic_link_enabled": false,
+          "oauth_account_merge_strategy": "link_method",
           "oauth_providers": [],
           "passkey_enabled": false,
           "sign_up_enabled": true,
@@ -301,6 +305,7 @@ it("should allow insecure HTTP connections if insecureHttp is true", async ({ ex
           "enabled_oauth_providers": [],
           "id": "<stripped UUID>",
           "magic_link_enabled": false,
+          "oauth_account_merge_strategy": "link_method",
           "oauth_providers": [],
           "passkey_enabled": false,
           "sign_up_enabled": true,
@@ -393,6 +398,7 @@ it("updates the project email configuration", async ({ expect }) => {
           "enabled_oauth_providers": [],
           "id": "<stripped UUID>",
           "magic_link_enabled": false,
+          "oauth_account_merge_strategy": "link_method",
           "oauth_providers": [],
           "passkey_enabled": false,
           "sign_up_enabled": true,
@@ -447,6 +453,7 @@ it("updates the project email configuration", async ({ expect }) => {
           "enabled_oauth_providers": [],
           "id": "<stripped UUID>",
           "magic_link_enabled": false,
+          "oauth_account_merge_strategy": "link_method",
           "oauth_providers": [],
           "passkey_enabled": false,
           "sign_up_enabled": true,
@@ -487,6 +494,7 @@ it("updates the project email configuration", async ({ expect }) => {
           "enabled_oauth_providers": [],
           "id": "<stripped UUID>",
           "magic_link_enabled": false,
+          "oauth_account_merge_strategy": "link_method",
           "oauth_providers": [],
           "passkey_enabled": false,
           "sign_up_enabled": true,
@@ -527,6 +535,7 @@ it("updates the project email configuration", async ({ expect }) => {
           "enabled_oauth_providers": [],
           "id": "<stripped UUID>",
           "magic_link_enabled": false,
+          "oauth_account_merge_strategy": "link_method",
           "oauth_providers": [],
           "passkey_enabled": false,
           "sign_up_enabled": true,
@@ -581,6 +590,7 @@ it("updates the project email configuration", async ({ expect }) => {
           "enabled_oauth_providers": [],
           "id": "<stripped UUID>",
           "magic_link_enabled": false,
+          "oauth_account_merge_strategy": "link_method",
           "oauth_providers": [],
           "passkey_enabled": false,
           "sign_up_enabled": true,
@@ -743,6 +753,7 @@ it("updates the project oauth configuration", async ({ expect }) => {
           "enabled_oauth_providers": [{ "id": "google" }],
           "id": "<stripped UUID>",
           "magic_link_enabled": false,
+          "oauth_account_merge_strategy": "link_method",
           "oauth_providers": [
             {
               "enabled": true,
@@ -791,6 +802,7 @@ it("updates the project oauth configuration", async ({ expect }) => {
           "enabled_oauth_providers": [{ "id": "google" }],
           "id": "<stripped UUID>",
           "magic_link_enabled": false,
+          "oauth_account_merge_strategy": "link_method",
           "oauth_providers": [
             {
               "enabled": true,
@@ -841,6 +853,7 @@ it("updates the project oauth configuration", async ({ expect }) => {
           "enabled_oauth_providers": [{ "id": "google" }],
           "id": "<stripped UUID>",
           "magic_link_enabled": false,
+          "oauth_account_merge_strategy": "link_method",
           "oauth_providers": [
             {
               "client_id": "client_id",
@@ -919,6 +932,7 @@ it("updates the project oauth configuration", async ({ expect }) => {
           ],
           "id": "<stripped UUID>",
           "magic_link_enabled": false,
+          "oauth_account_merge_strategy": "link_method",
           "oauth_providers": [
             {
               "enabled": true,
@@ -979,6 +993,7 @@ it("updates the project oauth configuration", async ({ expect }) => {
           "enabled_oauth_providers": [{ "id": "spotify" }],
           "id": "<stripped UUID>",
           "magic_link_enabled": false,
+          "oauth_account_merge_strategy": "link_method",
           "oauth_providers": [
             {
               "enabled": false,
@@ -1306,6 +1321,7 @@ it("should increment and decrement userCount when a user is added to a project",
           "enabled_oauth_providers": [],
           "id": "<stripped UUID>",
           "magic_link_enabled": true,
+          "oauth_account_merge_strategy": "link_method",
           "oauth_providers": [],
           "passkey_enabled": false,
           "sign_up_enabled": true,

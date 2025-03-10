@@ -50,7 +50,7 @@ describe("with grant_type === 'authorization_code'", async () => {
           "otp_auth_enabled": false,
           "passkey_auth_enabled": false,
           "primary_email": "default-mailbox--<stripped UUID>@stack-generated.example.com",
-          "primary_email_verified": false,
+          "primary_email_verified": true,
           "profile_image_url": null,
           "requires_totp_mfa": false,
           "selected_team": null,

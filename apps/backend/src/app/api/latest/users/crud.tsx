@@ -148,20 +148,19 @@ async function checkAuthData(
   if (!data.primaryEmail && data.primaryEmailVerified) {
     throw new StatusError(400, "primary_email_verified cannot be true without primary_email");
   }
-  if (data.primaryEmailAuthEnabled) {
-    if (!data.oldPrimaryEmail || data.oldPrimaryEmail !== data.primaryEmail) {
-      const existingChannelUsedForAuth = await tx.contactChannel.findFirst({
-        where: {
-          tenancyId: data.tenancyId,
-          type: 'EMAIL',
-          value: data.primaryEmail || throwErr("primary_email_auth_enabled is true but primary_email is not set"),
-          usedForAuth: BooleanTrue.TRUE,
-        }
-      });
-
-      if (existingChannelUsedForAuth) {
-        throw new KnownErrors.UserEmailAlreadyExists();
+  if (!data.primaryEmailAuthEnabled) return;
+  if (!data.oldPrimaryEmail || data.oldPrimaryEmail !== data.primaryEmail) {
+    const existingChannelUsedForAuth = await tx.contactChannel.findFirst({
+      where: {
+        tenancyId: data.tenancyId,
+        type: 'EMAIL',
+        value: data.primaryEmail || throwErr("primary_email_auth_enabled is true but primary_email is not set"),
+        usedForAuth: BooleanTrue.TRUE,
       }
+    });
+
+    if (existingChannelUsedForAuth) {
+      throw new KnownErrors.UserEmailAlreadyExists();
     }
   }
 }
