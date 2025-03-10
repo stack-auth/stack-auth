@@ -66,25 +66,25 @@ it("should return an error when trying to set the refresh token with an invalid 
   // Try to set the refresh token with an invalid login code
   const loginResponse = await niceBackendFetch("/api/latest/auth/cli/complete", {
     method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "X-Tenancy-ID": "test-tenancy-id",
-    },
+    accessType: "admin",
+
     body: { login_code: "invalid-login-code", refresh_token: refreshToken },
   });
 
-  expect(loginResponse.status).toBe(400);
-  expect(loginResponse.headers.get("X-Stack-Known-Error")).toBe("SCHEMA_ERROR");
+  expect(loginResponse).toMatchInlineSnapshot(`
+    NiceResponse {
+      "status": 400,
+      "body": "Invalid login code or the code has expired",
+      "headers": Headers { <some fields may have been hidden> },
+    }
+  `);
 });
 
 it("should not allow setting the refresh token twice", async ({ expect }) => {
   // First, create a new CLI auth attempt
   const createResponse = await niceBackendFetch("/api/latest/auth/cli", {
     method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "X-Tenancy-ID": "test-tenancy-id",
-    },
+    accessType: "admin",
     body: {},
   });
 
@@ -95,25 +95,31 @@ it("should not allow setting the refresh token twice", async ({ expect }) => {
   // Set the refresh token the first time
   const loginResponse1 = await niceBackendFetch("/api/latest/auth/cli/complete", {
     method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "X-Tenancy-ID": "test-tenancy-id",
-    },
+    accessType: "admin",
+
     body: { login_code: loginCode, refresh_token: refreshToken1 },
   });
 
-  expect(loginResponse1.status).toBe(200);
+  expect(loginResponse1).toMatchInlineSnapshot(`
+    NiceResponse {
+      "status": 200,
+      "body": { "success": true },
+      "headers": Headers { <some fields may have been hidden> },
+    }
+  `);
 
   // Try to set the refresh token again
   const loginResponse2 = await niceBackendFetch("/api/latest/auth/cli/complete", {
     method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "X-Tenancy-ID": "test-tenancy-id",
-    },
+    accessType: "admin",
     body: { login_code: loginCode, refresh_token: refreshToken2 },
   });
 
-  expect(loginResponse2.status).toBe(400);
-  expect(loginResponse2.headers.get("X-Stack-Known-Error")).toBe("SCHEMA_ERROR");
+  expect(loginResponse2).toMatchInlineSnapshot(`
+    NiceResponse {
+      "status": 400,
+      "body": "Invalid login code or the code has expired",
+      "headers": Headers { <some fields may have been hidden> },
+    }
+  `);
 });
