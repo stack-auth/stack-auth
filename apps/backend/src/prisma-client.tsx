@@ -3,6 +3,7 @@ import { withAccelerate } from "@prisma/extension-accelerate";
 import { getEnvVariable, getNodeEnvironment } from '@stackframe/stack-shared/dist/utils/env';
 import { filterUndefined, typedFromEntries, typedKeys } from "@stackframe/stack-shared/dist/utils/objects";
 import { Result } from "@stackframe/stack-shared/dist/utils/results";
+import { getMigrationCheckQuery, runQueryAndMigrateIfNeeded } from "./utils/auto-migration";
 import { traceSpan } from "./utils/telemetry";
 
 // In dev mode, fast refresh causes us to recreate many Prisma clients, eventually overloading the database.
@@ -123,7 +124,13 @@ async function rawQueryArray<Q extends RawQuery<any>[]>(queries: Q): Promise<[] 
     // Since ours starts with "WITH", we prepend a SELECT to it
     const query = Prisma.sql`SELECT * FROM (${withQuery}) AS _`;
 
-    const rawResult = await prismaClient.$queryRaw(query) as { type: string, json: any }[];
+    const [_, rawResult] = await runQueryAndMigrateIfNeeded(
+      async () => await prismaClient.$transaction([
+        prismaClient.$queryRaw(getMigrationCheckQuery()),
+        prismaClient.$queryRaw(query),
+      ])
+    ) as [unknown, { type: string, json: any }[]];
+
     const unprocessed = new Array(queries.length).fill(null).map(() => [] as any[]);
     for (const row of rawResult) {
       const type = row.type;
@@ -134,4 +141,3 @@ async function rawQueryArray<Q extends RawQuery<any>[]>(queries: Q): Promise<[] 
     return postProcessed as any;
   });
 }
-
