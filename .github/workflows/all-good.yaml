@@ -1,4 +1,4 @@
-name: All good?
+name: Did all the other checks pass?
 
 on: push
 
@@ -35,7 +35,7 @@ jobs:
               continue
             fi
 
-            failed=$(echo "$response" | jq '[.check_runs[] | select(.conclusion != "success" and .name != "all-good")] | length')
+            failed=$(echo "$response" | jq '[.check_runs[] | select(.conclusion != "success" and .conclusion != "skipped" and .conclusion != "neutral" and .name != "all-good")] | length')
             if [ "$failed" -eq 0 ]; then
               echo "All check runs passed!"
               exit 0
