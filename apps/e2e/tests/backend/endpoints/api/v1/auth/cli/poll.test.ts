@@ -72,5 +72,11 @@ it("should return 'expired' status when polling for an expired CLI auth attempt"
     body: { polling_code: pollingCode },
   });
 
-  expect(pollResponse).toMatchInlineSnapshot();
+  expect(pollResponse).toMatchInlineSnapshot(`
+    NiceResponse {
+      "status": 200,
+      "body": { "status": "expired" },
+      "headers": Headers { <some fields may have been hidden> },
+    }
+  `);
 });
