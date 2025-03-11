@@ -165,3 +165,54 @@ it("cannot create sessions with an expiry date larger than a year away", async (
     }
   `);
 });
+
+it("can delete sessions", async ({ expect }) => {
+  // Create a user and sign up
+  const res = await Auth.Password.signUpWithEmail();
+  const additionalSession = await niceBackendFetch("/api/v1/auth/sessions", {
+    accessType: "server",
+    method: "POST",
+    body: {
+      user_id: res.userId,
+    },
+  });
+
+
+  // List all sessions
+  const listResponse = await niceBackendFetch("/api/v1/auth/sessions", {
+    accessType: "server",
+    method: "GET",
+    query: {
+      user_id: res.userId,
+    },
+  });
+  expect(listResponse.status).toBe(200);
+  expect(listResponse.body.items.length).toBe(2);
+
+  // Find and delete the non-current session
+  const nonCurrentSession = listResponse.body.items.find((session: any) => !session.is_current_session);
+  console.log("Non-current session to delete:", nonCurrentSession);
+  expect(nonCurrentSession).toBeDefined();
+
+  const deleteResponse = await niceBackendFetch(`/api/v1/auth/sessions/${nonCurrentSession.id}`, {
+    accessType: "server",
+    method: "DELETE",
+    query: {
+      user_id: res.userId,
+    },
+  });
+  console.log("Delete response:", JSON.stringify(deleteResponse, null, 2));
+  expect(deleteResponse.status).toBe(200);
+
+  // Verify the session was deleted by listing sessions again
+  const finalListResponse = await niceBackendFetch(`/api/v1/auth/sessions`, {
+    accessType: "server",
+    method: "GET",
+    query: {
+      user_id: res.userId,
+    },
+  });
+  expect(finalListResponse.status).toBe(200);
+  expect(finalListResponse.body.items.length).toBe(1);
+  expect(finalListResponse.body.items[0].is_current_session).toBe(true);
+});

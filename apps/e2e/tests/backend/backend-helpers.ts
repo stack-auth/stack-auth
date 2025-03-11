@@ -188,6 +188,7 @@ export namespace Auth {
         "exp": expect.any(Number),
         "iat": expect.any(Number),
         "iss": "https://access-token.jwt-signature.stack-auth.com",
+        "refreshTokenId": expect.any(String),
         "aud": expect.any(String),
         "sub": expect.any(String),
         "branchId": "main",

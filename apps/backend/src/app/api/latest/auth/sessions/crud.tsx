@@ -14,12 +14,12 @@ export const sessionsCrudHandlers = createLazyProxy(() => createCrudHandlers(ses
     id: yupString().uuid().defined(),
   }),
   querySchema: yupObject({
-    user_id: userIdOrMeSchema.optional(),
+    user_id: userIdOrMeSchema.defined(),
   }),
-  onList: async ({ auth, query }: { auth: SmartRequestAuth, query: { user_id?: string }, params: { id?: string } }) => {
+  onList: async ({ auth, query }) => {
     if (auth.type === 'client') {
       const currentUserId = auth.user?.id || throwErr(new KnownErrors.CannotGetOwnUserWithoutUser());
-      if (query.user_id && currentUserId !== query.user_id) {
+      if (currentUserId !== query.user_id) {
         throw new StatusError(StatusError.Forbidden, 'Client can only list sessions for their own user.');
       }
     }
@@ -27,7 +27,7 @@ export const sessionsCrudHandlers = createLazyProxy(() => createCrudHandlers(ses
     const sessions = await prismaClient.projectUserRefreshToken.findMany({
       where: {
         tenancyId: auth.tenancy.id,
-        projectUserId: query.user_id || (auth.type === 'client' ? auth.user?.id : undefined),
+        projectUserId: query.user_id,
       },
       orderBy: {
         createdAt: 'desc',
@@ -47,6 +47,7 @@ export const sessionsCrudHandlers = createLazyProxy(() => createCrudHandlers(ses
       GROUP BY data->>'sessionId', data->>'endUserIpInfoGuess', data->>'isEndUserIpInfoGuessTrusted'
     `;
 
+
     const sessionsWithLastActiveAt = sessions.map(s => {
       const event = events.find(e => e.sessionId === s.id);
       return {
@@ -55,6 +56,8 @@ export const sessionsCrudHandlers = createLazyProxy(() => createCrudHandlers(ses
         last_active_at_end_user_ip_info: (event?.endUserIpInfoGuess ? (JSON.parse(event.endUserIpInfoGuess) as GeoInfo)  : undefined),
       };
     });
+
+    console.log("Sessions with last active at:", JSON.stringify(sessionsWithLastActiveAt, null, 2));
 
 
     return {
