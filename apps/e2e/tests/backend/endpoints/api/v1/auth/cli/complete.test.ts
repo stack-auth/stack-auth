@@ -5,7 +5,7 @@ it("should set the refresh token for a CLI auth attempt and return success when 
   // First, create a new CLI auth attempt
   const createResponse = await niceBackendFetch("/api/latest/auth/cli", {
     method: "POST",
-    accessType: "admin",
+    accessType: "server",
     body: {},
   });
 
@@ -14,7 +14,7 @@ it("should set the refresh token for a CLI auth attempt and return success when 
   // Then set the refresh token
   const loginResponse = await niceBackendFetch("/api/latest/auth/cli/complete", {
     method: "POST",
-    accessType: "admin",
+    accessType: "server",
     body: { login_code: createResponse.body.login_code, refresh_token: refreshToken },
   });
   expect(loginResponse).toMatchInlineSnapshot(`
@@ -28,7 +28,7 @@ it("should set the refresh token for a CLI auth attempt and return success when 
   // Then poll for the status
   const pollResponse = await niceBackendFetch("/api/latest/auth/cli/poll", {
     method: "POST",
-    accessType: "admin",
+    accessType: "server",
     body: { polling_code: createResponse.body.polling_code },
   });
 
@@ -47,7 +47,7 @@ it("should set the refresh token for a CLI auth attempt and return success when 
 
   const pollResponse2 = await niceBackendFetch("/api/latest/auth/cli/poll", {
     method: "POST",
-    accessType: "admin",
+    accessType: "server",
     body: { polling_code: createResponse.body.polling_code },
   });
 
@@ -66,8 +66,7 @@ it("should return an error when trying to set the refresh token with an invalid 
   // Try to set the refresh token with an invalid login code
   const loginResponse = await niceBackendFetch("/api/latest/auth/cli/complete", {
     method: "POST",
-    accessType: "admin",
-
+    accessType: "server",
     body: { login_code: "invalid-login-code", refresh_token: refreshToken },
   });
 
@@ -84,7 +83,7 @@ it("should not allow setting the refresh token twice", async ({ expect }) => {
   // First, create a new CLI auth attempt
   const createResponse = await niceBackendFetch("/api/latest/auth/cli", {
     method: "POST",
-    accessType: "admin",
+    accessType: "server",
     body: {},
   });
 
@@ -95,8 +94,7 @@ it("should not allow setting the refresh token twice", async ({ expect }) => {
   // Set the refresh token the first time
   const loginResponse1 = await niceBackendFetch("/api/latest/auth/cli/complete", {
     method: "POST",
-    accessType: "admin",
-
+    accessType: "server",
     body: { login_code: loginCode, refresh_token: refreshToken1 },
   });
 
@@ -111,7 +109,7 @@ it("should not allow setting the refresh token twice", async ({ expect }) => {
   // Try to set the refresh token again
   const loginResponse2 = await niceBackendFetch("/api/latest/auth/cli/complete", {
     method: "POST",
-    accessType: "admin",
+    accessType: "server",
     body: { login_code: loginCode, refresh_token: refreshToken2 },
   });
 
