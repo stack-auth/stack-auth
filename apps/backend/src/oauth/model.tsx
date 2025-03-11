@@ -95,6 +95,7 @@ export class OAuthModel implements AuthorizationCodeModel {
       //create new refresh token
       const refreshToken = await this.generateRefreshToken(client, user, scope);
       // save it in user, then we just access it in refresh
+      // HACK: This is a hack to ensure the refresh token is already there so we can associate the access token with it
       const newRefreshToken = await prismaClient.projectUserRefreshToken.create({
         data: {
           refreshToken,

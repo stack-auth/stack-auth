@@ -400,7 +400,7 @@ function ActiveSessionsPage() {
         setSessions(enhancedSessions);
         setIsLoading(false);
     });
-  }, []);
+  }, [user]);
 
   const handleRevokeSession = async (sessionId: string) => {
     try {
