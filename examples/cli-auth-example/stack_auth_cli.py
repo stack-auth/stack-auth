@@ -16,7 +16,7 @@ class StackAuthCLI:
             base_url: The base URL of the Stack Auth API. If not provided, 
                      it will try to read from STACK_AUTH_API_URL environment variable.
         """
-        self.base_url = base_url or os.environ.get("STACK_AUTH_API_URL", "http://localhost:3000/api/latest")
+        self.base_url = base_url or os.environ.get("STACK_AUTH_API_URL", "http://localhost:8082/api/latest")
         self.config_dir = os.path.expanduser("~/.stack-auth")
         self.config_file = os.path.join(self.config_dir, "config.json")
         self.refresh_token = None
