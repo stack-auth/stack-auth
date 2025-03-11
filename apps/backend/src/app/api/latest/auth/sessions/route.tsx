@@ -4,6 +4,7 @@ import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { KnownErrors } from "@stackframe/stack-shared";
 import { adaptSchema, serverOrHigherAuthTypeSchema, userIdOrMeSchema, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
 import { usersCrudHandlers } from "../../users/crud";
+import { sessionsCrudHandlers } from "./crud";
 
 export const POST = createSmartRouteHandler({
   metadata: {
@@ -59,3 +60,5 @@ export const POST = createSmartRouteHandler({
     };
   },
 });
+
+export const GET = sessionsCrudHandlers.listHandler;

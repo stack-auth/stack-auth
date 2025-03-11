@@ -11,6 +11,7 @@ import {
 import { ContactChannelsCrud } from "./crud/contact-channels";
 import { CurrentUserCrud } from "./crud/current-user";
 import { ConnectedAccountAccessTokenCrud } from "./crud/oauth";
+import { SessionsCrud } from "./crud/sessions";
 import { TeamInvitationCrud } from "./crud/team-invitation";
 import { TeamMemberProfilesCrud } from "./crud/team-member-profiles";
 import { TeamMembershipsCrud } from "./crud/team-memberships";
@@ -524,6 +525,29 @@ export class StackServerInterface extends StackClientInterface {
       null,
     );
   }
+
+
+  async listServerUserSessions(userId: string): Promise<SessionsCrud['Server']['Read'][]> {
+    const response = await this.sendServerRequest(
+      urlString`/sessions?user_id=${userId}`,
+      {
+        method: "GET",
+      },
+      null,
+    );
+    return await response.json();
+  }
+
+  async deleteSession(sessionId: string) {
+    await this.sendServerRequest(
+      urlString`/sessions/${sessionId}`,
+      {
+        method: "DELETE",
+      },
+      null,
+    );
+  }
+
 
   async sendServerTeamInvitation(options: {
     email: string,

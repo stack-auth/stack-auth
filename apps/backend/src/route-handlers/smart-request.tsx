@@ -26,6 +26,7 @@ export type SmartRequestAuth = {
   tenancy: Tenancy,
   user?: UsersCrud["Admin"]["Read"] | undefined,
   type: "client" | "server" | "admin",
+  refreshTokenId?: string,
 };
 
 export type DeepPartialSmartRequestWithSentinel<T = SmartRequest> = (T extends object ? {
@@ -164,10 +165,9 @@ const parseAuth = withTraceSpan('smart request parseAuth', async (req: NextReque
   const superSecretAdminKey = req.headers.get("x-stack-super-secret-admin-key");
   const adminAccessToken = req.headers.get("x-stack-admin-access-token");
   const accessToken = req.headers.get("x-stack-access-token");
-  const refreshToken = req.headers.get("x-stack-refresh-token");
   const developmentKeyOverride = req.headers.get("x-stack-development-override-key");  // in development, the internal project's API key can optionally be used to access any project
 
-  const extractUserIdFromAccessToken = async (options: { token: string, projectId: string }) => {
+  const extractUserIdAndRefreshTokenIdFromAccessToken = async (options: { token: string, projectId: string }) => {
     const result = await decodeAccessToken(options.token);
     if (result.status === "error") {
       throw result.error;
@@ -177,7 +177,10 @@ const parseAuth = withTraceSpan('smart request parseAuth', async (req: NextReque
       throw new KnownErrors.InvalidProjectForAccessToken();
     }
 
-    return result.data.userId;
+    return {
+      userId: result.data.userId,
+      refreshTokenId: result.data.refreshTokenId,
+    };
   };
 
   const extractUserFromAdminAccessToken = async (options: { token: string, projectId: string }) => {
@@ -210,12 +213,13 @@ const parseAuth = withTraceSpan('smart request parseAuth', async (req: NextReque
     return user;
   };
 
+  const { userId, refreshTokenId } =  projectId && accessToken ? await extractUserIdAndRefreshTokenIdFromAccessToken({ token: accessToken, projectId }): { userId: null, refreshTokenId: null };
 
   // Prisma does a query for every function call by default, even if we batch them with transactions
   // Because smart route handlers are always called, we instead send over a single raw query that fetches all the
   // data at the same time, saving us a lot of requests
   const bundledQueries = {
-    user: projectId && accessToken ? getUserQuery(projectId, null, await extractUserIdFromAccessToken({ token: accessToken, projectId })) : undefined,
+    user: userId && projectId ? getUserQuery(projectId, null, userId) : undefined,
     isClientKeyValid: projectId && publishableClientKey && requestType === "client" ? checkApiKeySetQuery(projectId, { publishableClientKey }) : undefined,
     isServerKeyValid: projectId && secretServerKey && requestType === "server" ? checkApiKeySetQuery(projectId, { secretServerKey }) : undefined,
     isAdminKeyValid: projectId && superSecretAdminKey && requestType === "admin" ? checkApiKeySetQuery(projectId, { superSecretAdminKey }) : undefined,
@@ -277,6 +281,7 @@ const parseAuth = withTraceSpan('smart request parseAuth', async (req: NextReque
   return {
     project,
     branchId: "main",
+    refreshTokenId: refreshTokenId ?? undefined,
     tenancy: await getSoleTenancyFromProject(project),
     user: queriesResults.user ?? undefined,
     type: requestType,

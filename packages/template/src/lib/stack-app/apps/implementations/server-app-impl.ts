@@ -244,6 +244,15 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
           },
         };
       },
+
+      async getActiveSessions() {
+        const sessions = await app._interface.listServerUserSessions(crud.id);
+        return sessions.map((session) => app._clientSessionFromCrud(session));
+      },
+
+      async revokeSession(sessionId: string) {
+        await app._interface.deleteSession(sessionId);
+      },
       async setDisplayName(displayName: string) {
         return await this.update({ displayName });
       },

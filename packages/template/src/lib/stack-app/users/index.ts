@@ -1,5 +1,6 @@
 import { KnownErrors } from "@stackframe/stack-shared";
 import { CurrentUserCrud } from "@stackframe/stack-shared/dist/interface/crud/current-user";
+import { SessionsCrud } from "@stackframe/stack-shared/dist/interface/crud/sessions";
 import { UsersCrud } from "@stackframe/stack-shared/dist/interface/crud/users";
 import { InternalSession } from "@stackframe/stack-shared/dist/sessions";
 import { encodeBase64 } from "@stackframe/stack-shared/dist/utils/bytes";
@@ -193,6 +194,8 @@ export type UserExtra = {
   createTeam(data: TeamCreateOptions): Promise<Team>,
   leaveTeam(team: Team): Promise<void>,
 
+  getActiveSessions(): Promise<ActiveSession[]>,
+  revokeSession(sessionId: string): Promise<void>,
   getTeamProfile(team: Team): Promise<EditableTeamMemberProfile>,
   // NEXT_LINE_PLATFORM react-like
   useTeamProfile(team: Team): EditableTeamMemberProfile,
@@ -216,6 +219,10 @@ export type CurrentInternalUser = CurrentUser & InternalUserExtra;
 
 export type ProjectCurrentUser<ProjectId> = ProjectId extends "internal" ? CurrentInternalUser : CurrentUser;
 
+
+export type ActiveSession = SessionsCrud['Client']['Read'] & {
+  lastUsedAt: Date | undefined,
+};
 
 export type UserUpdateOptions = {
   displayName?: string,

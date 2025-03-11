@@ -51,6 +51,17 @@ const UserActivityEventType = {
   inherits: [ProjectActivityEventType],
 } as const satisfies SystemEventTypeBase;
 
+
+// TODO should this inherit something?
+const SessionActivityEventType = {
+  id: "$session-activity",
+  dataSchema: yupObject({
+    sessionId: yupString().defined(),
+  }),
+  inherits: [],
+} as const satisfies SystemEventTypeBase;
+
+
 const ApiRequestEventType = {
   id: "$api-request",
   dataSchema: yupObject({
@@ -68,6 +79,7 @@ export const SystemEventTypes = stripEventTypeSuffixFromKeys({
   ProjectEventType,
   ProjectActivityEventType,
   UserActivityEventType,
+  SessionActivityEventType,
   ApiRequestEventType,
   LegacyApiEventType,
 } as const);

@@ -6,6 +6,7 @@ import { getPasswordError } from '@stackframe/stack-shared/dist/helpers/password
 import { useAsyncCallback } from '@stackframe/stack-shared/dist/hooks/use-async-callback';
 import { passwordSchema as schemaFieldsPasswordSchema, strictEmailSchema, yupObject, yupString } from '@stackframe/stack-shared/dist/schema-fields';
 import { generateRandomValues } from '@stackframe/stack-shared/dist/utils/crypto';
+import { fromNow } from '@stackframe/stack-shared/dist/utils/dates';
 import { throwErr } from '@stackframe/stack-shared/dist/utils/errors';
 import { runAsynchronously, runAsynchronouslyWithAlert } from '@stackframe/stack-shared/dist/utils/promises';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger, ActionCell, Badge, Button, Input, Label, PasswordInput, Separator, Skeleton, Table, TableBody, TableCell, TableHead, TableHeader, TableRow, Typography } from '@stackframe/stack-ui';
@@ -66,6 +67,15 @@ export function AccountSettings(props: {
               icon: <Icon name="ShieldCheck"/>,
               content: <Suspense fallback={<EmailsAndAuthPageSkeleton/>}>
                 <EmailsAndAuthPage/>
+              </Suspense>,
+            },
+            {
+              title: t('Active Sessions'),
+              type: 'item',
+              id: 'sessions',
+              icon: <Icon name="Monitor"/>,
+              content: <Suspense fallback={<ActiveSessionsPageSkeleton/>}>
+                <ActiveSessionsPage/>
               </Suspense>,
             },
             {
@@ -357,12 +367,194 @@ function EmailsAndAuthPage() {
   );
 }
 
+function ActiveSessionsPage() {
+  const { t } = useTranslation();
+  const user = useUser({ or: "throw" });
+  const [showConfirmRevokeAll, setShowConfirmRevokeAll] = useState(false);
+  const [isRevokingAll, setIsRevokingAll] = useState(false);
+  const [sessions, setSessions] = useState<Array<{
+    id: string,
+    user_id: string,
+    created_at: number,
+    last_used_at?: number,
+    is_impersonation: boolean,
+    is_current?: boolean,
+    // UI display fields
+    ipAddress?: string,
+    location?: string,
+  }>>([]);
+  const [isLoading, setIsLoading] = useState(true);
+
+  // Fetch sessions when component mounts
+  useEffect(() => {
+    runAsynchronously(async () => {
+        setIsLoading(true);
+        const sessionsData = await user.getActiveSessions();
+        const enhancedSessions = sessionsData.map(session => ({
+          ...session,
+          is_current: session.is_current_session,
+          ipAddress: session.last_used_at_end_user_ip_info?.ip,
+          location: session.last_used_at_end_user_ip_info?.cityName,
+          last_used_at: session.last_used_at,
+        }));
+        setSessions(enhancedSessions);
+        setIsLoading(false);
+    });
+  }, []);
+
+  const handleRevokeSession = async (sessionId: string) => {
+    try {
+      await user.revokeSession(sessionId);
+
+      // Remove the session from the list
+      setSessions(sessions.filter(session => session.id !== sessionId));
+    } catch (error) {
+      console.error('Failed to revoke session:', error);
+    }
+  };
+
+  const handleRevokeAllSessions = async () => {
+    setIsRevokingAll(true);
+    try {
+      const deletionPromises = sessions
+        .filter(session => !session.is_current)
+        .map(session => user.revokeSession(session.id));
+      await Promise.all(deletionPromises);
+      setSessions(sessions.filter(session => session.is_current));
+    } catch (error) {
+      console.error('Failed to revoke all sessions:', error);
+    } finally {
+      setIsRevokingAll(false);
+      setShowConfirmRevokeAll(false);
+    }
+  };
+
+  return (
+    <PageLayout>
+      <div>
+        <div className="flex justify-between items-center mb-2">
+          <Typography className='font-medium'>{t("Active Sessions")}</Typography>
+          {sessions.filter(s => !s.is_current).length > 0 && !isLoading && (
+            showConfirmRevokeAll ? (
+              <div className="flex gap-2">
+                <Button
+                  variant="destructive"
+                  size="sm"
+                  loading={isRevokingAll}
+                  onClick={handleRevokeAllSessions}
+                >
+                  {t("Confirm")}
+                </Button>
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  disabled={isRevokingAll}
+                  onClick={() => setShowConfirmRevokeAll(false)}
+                >
+                  {t("Cancel")}
+                </Button>
+              </div>
+            ) : (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setShowConfirmRevokeAll(true)}
+              >
+                {t("Revoke All Other Sessions")}
+              </Button>
+            )
+          )}
+        </div>
+        <Typography variant='secondary' type='footnote' className="mb-4">
+          {t("These are devices where you're currently logged in. You can revoke access to end a session.")}
+        </Typography>
+
+        {isLoading ? (
+          <Skeleton className="h-[300px] w-full rounded-md" />
+        ) : (
+          <div className='border rounded-md'>
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead className="w-[200px]">{t("Session")}</TableHead>
+                  <TableHead className="w-[150px]">{t("IP Address")}</TableHead>
+                  <TableHead className="w-[150px]">{t("Location")}</TableHead>
+                  <TableHead className="w-[150px]">{t("Last used")}</TableHead>
+                  <TableHead className="w-[80px]"></TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {sessions.length === 0 ? (
+                  <TableRow>
+                    <TableCell colSpan={5} className="text-center py-6">
+                      <Typography variant="secondary">{t("No active sessions found")}</Typography>
+                    </TableCell>
+                  </TableRow>
+                ) : (
+                  sessions.map((session) => (
+                    <TableRow key={session.id} className={session.is_current ? "bg-accent/10" : ""}>
+                      <TableCell>
+                        <div className="flex flex-col">
+                          <Typography>{session.is_current ? t("Current Session") : t("Other Session")}</Typography>
+                          {session.is_impersonation && <Badge variant="secondary" className="w-fit mt-1">{t("Impersonation")}</Badge>}
+                          <Typography variant='secondary' type='footnote'>
+                            {t("Signed in {time}", { time: new Date(session.created_at).toLocaleDateString() })}
+                          </Typography>
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        <Typography>{session.ipAddress || t('-')}</Typography>
+                      </TableCell>
+                      <TableCell>
+                        <Typography>{session.location || t('Unknown')}</Typography>
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex flex-col">
+                          <Typography>{session.last_used_at ? fromNow(new Date(session.last_used_at)) : t("Never")}</Typography>
+                          <Typography variant='secondary' type='footnote' title={session.last_used_at ? new Date(session.last_used_at).toLocaleString() : ""}>
+                            {session.last_used_at ? new Date(session.last_used_at).toLocaleDateString() : ""}
+                          </Typography>
+                        </div>
+                      </TableCell>
+                      <TableCell align="right">
+                        <ActionCell
+                          items={[
+                            {
+                              item: t("Revoke"),
+                              onClick: () => handleRevokeSession(session.id),
+                              danger: true,
+                              disabled: session.is_current,
+                              disabledTooltip: session.is_current ? t("You cannot revoke your current session") : undefined,
+                            },
+                          ]}
+                        />
+                      </TableCell>
+                    </TableRow>
+                  ))
+                )}
+              </TableBody>
+            </Table>
+          </div>
+        )}
+      </div>
+    </PageLayout>
+  );
+}
+
 function EmailsAndAuthPageSkeleton() {
   return <PageLayout>
     <Skeleton className="h-9 w-full mt-1"/>
     <Skeleton className="h-9 w-full mt-1"/>
     <Skeleton className="h-9 w-full mt-1"/>
     <Skeleton className="h-9 w-full mt-1"/>
+  </PageLayout>;
+}
+
+function ActiveSessionsPageSkeleton() {
+  return <PageLayout>
+    <Skeleton className="h-6 w-48 mb-2"/>
+    <Skeleton className="h-4 w-full mb-4"/>
+    <Skeleton className="h-[200px] w-full mt-1 rounded-md"/>
   </PageLayout>;
 }
 
