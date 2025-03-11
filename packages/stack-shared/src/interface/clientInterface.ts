@@ -1342,7 +1342,7 @@ export class StackClientInterface {
     session: InternalSession,
   ): Promise<void> {
     await this.sendClientRequest(
-      `/auth/sessions/${sessionId}`,
+      `/auth/sessions/${sessionId}?user_id=me`,
       {
         method: "DELETE",
       },
@@ -1354,7 +1354,7 @@ export class StackClientInterface {
     session: InternalSession,
   ): Promise<SessionsCrud['Client']['List']> {
     const response = await this.sendClientRequest(
-      "/auth/sessions",
+      "/auth/sessions?user_id=me",
       {
         method: "GET",
       },

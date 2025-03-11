@@ -344,7 +344,7 @@ export class StackServerInterface extends StackClientInterface {
     return await response.json();
   }
 
-  async createServerUserSession(userId: string, expiresInMillis: number): Promise<{ accessToken: string, refreshToken: string }> {
+  async createServerUserSession(userId: string, expiresInMillis: number, isImpersonation: boolean): Promise<{ accessToken: string, refreshToken: string }> {
     const response = await this.sendServerRequest(
       "/auth/sessions",
       {
@@ -355,6 +355,7 @@ export class StackServerInterface extends StackClientInterface {
         body: JSON.stringify({
           user_id: userId,
           expires_in_millis: expiresInMillis,
+          is_impersonation: isImpersonation,
         }),
       },
       null,
@@ -527,9 +528,9 @@ export class StackServerInterface extends StackClientInterface {
   }
 
 
-  async listServerUserSessions(userId: string): Promise<SessionsCrud['Server']['Read'][]> {
+  async listServerSessions(userId: string): Promise<SessionsCrud['Server']['Read'][]> {
     const response = await this.sendServerRequest(
-      urlString`/sessions?user_id=${userId}`,
+      urlString`/auth/sessions?user_id=${userId}`,
       {
         method: "GET",
       },
@@ -538,9 +539,9 @@ export class StackServerInterface extends StackClientInterface {
     return await response.json();
   }
 
-  async deleteSession(sessionId: string) {
+  async deleteServerSession(sessionId: string) {
     await this.sendServerRequest(
-      urlString`/sessions/${sessionId}`,
+      urlString`/auth/sessions/${sessionId}`,
       {
         method: "DELETE",
       },

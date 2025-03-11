@@ -270,7 +270,7 @@ export type ServerBaseUser = {
   /**
    * Creates a new session object with a refresh token for this user. Can be used to impersonate them.
    */
-  createSession(options?: { expiresInMillis?: number }): Promise<Session>,
+  createSession(options?: { expiresInMillis?: number, isImpersonation?: boolean }): Promise<Session>,
 }
 & AsyncStoreProperty<"team", [id: string], ServerTeam | null, false>
 & AsyncStoreProperty<"teams", [], ServerTeam[], true>

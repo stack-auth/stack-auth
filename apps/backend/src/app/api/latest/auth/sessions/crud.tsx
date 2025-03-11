@@ -12,11 +12,14 @@ import { createLazyProxy } from "@stackframe/stack-shared/dist/utils/proxies";
 export const sessionsCrudHandlers = createLazyProxy(() => createCrudHandlers(sessionsCrud, {
   paramsSchema: yupObject({
     id: yupString().uuid().defined(),
-  }),
+  }).defined(),
   querySchema: yupObject({
     user_id: userIdOrMeSchema.defined(),
-  }),
+  }).defined(),
   onList: async ({ auth, query }) => {
+
+    const list_impersonations = auth.type === 'admin';
+
     if (auth.type === 'client') {
       const currentUserId = auth.user?.id || throwErr(new KnownErrors.CannotGetOwnUserWithoutUser());
       if (currentUserId !== query.user_id) {
@@ -24,10 +27,11 @@ export const sessionsCrudHandlers = createLazyProxy(() => createCrudHandlers(ses
       }
     }
 
-    const sessions = await prismaClient.projectUserRefreshToken.findMany({
+    const refreshTokenObjs = await prismaClient.projectUserRefreshToken.findMany({
       where: {
         tenancyId: auth.tenancy.id,
         projectUserId: query.user_id,
+        isImpersonation: list_impersonations ? undefined : false,
       },
       orderBy: {
         createdAt: 'desc',
@@ -42,13 +46,13 @@ export const sessionsCrudHandlers = createLazyProxy(() => createCrudHandlers(ses
              data->>'endUserIpInfoGuess' as "endUserIpInfoGuess", 
              data->>'isEndUserIpInfoGuessTrusted' as "isEndUserIpInfoGuessTrusted"
       FROM "Event" 
-      WHERE data->>'sessionId' = ANY(${Prisma.sql`ARRAY[${Prisma.join(sessions.map(s => s.id))}]`})
+      WHERE data->>'sessionId' = ANY(${Prisma.sql`ARRAY[${Prisma.join(refreshTokenObjs.map(s => s.id))}]`})
       AND "systemEventTypeIds" @> '{"$session-activity"}'
       GROUP BY data->>'sessionId', data->>'endUserIpInfoGuess', data->>'isEndUserIpInfoGuessTrusted'
     `;
 
 
-    const sessionsWithLastActiveAt = sessions.map(s => {
+    const sessionsWithLastActiveAt = refreshTokenObjs.map(s => {
       const event = events.find(e => e.sessionId === s.id);
       return {
         ...s,
@@ -56,8 +60,6 @@ export const sessionsCrudHandlers = createLazyProxy(() => createCrudHandlers(ses
         last_active_at_end_user_ip_info: (event?.endUserIpInfoGuess ? (JSON.parse(event.endUserIpInfoGuess) as GeoInfo)  : undefined),
       };
     });
-
-    console.log("Sessions with last active at:", JSON.stringify(sessionsWithLastActiveAt, null, 2));
 
 
     return {
@@ -88,6 +90,10 @@ export const sessionsCrudHandlers = createLazyProxy(() => createCrudHandlers(ses
 
     if (auth.type === 'client' && auth.user?.id !== session.projectUserId) {
       throw new StatusError(StatusError.Forbidden, 'Client can only delete their own sessions.');
+    }
+
+    if (auth.refreshTokenId === session.id) {
+      throw new KnownErrors.CannotDeleteCurrentSession();
     }
 
     // Using refreshToken as the identifier since the Prisma client hasn't been regenerated yet

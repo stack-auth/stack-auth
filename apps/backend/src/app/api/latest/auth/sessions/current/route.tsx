@@ -14,14 +14,22 @@ export const DELETE = createSmartRouteHandler({
     auth: yupObject({
       type: clientOrHigherAuthTypeSchema,
       tenancy: adaptSchema,
-      refreshTokenId: yupString().defined(),
+      refreshTokenId: yupString().optional(),
     }).defined(),
   }),
   response: yupObject({
     statusCode: yupNumber().oneOf([200]).defined(),
     bodyType: yupString().oneOf(["success"]).defined(),
   }),
+
+
   async handler({ auth: { tenancy, refreshTokenId } }) {
+    if (!refreshTokenId) {
+      // Only here for transition period, remove this once all access tokens are updated
+      // TODO next-release
+      throw new KnownErrors.AccessTokenExpired(new Date());
+    }
+
     try {
       const result = await prismaClient.projectUserRefreshToken.deleteMany({
         where: {

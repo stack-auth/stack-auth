@@ -19,7 +19,9 @@ const accessTokenSchema = yupObject({
   projectId: yupString().defined(),
   userId: yupString().defined(),
   branchId: yupString().defined(),
-  refreshTokenId: yupString().defined(),
+  // we make it optional to keep backwards compatibility with old tokens for a while
+  // TODO next-release
+  refreshTokenId: yupString().optional(),
   exp: yupNumber().defined(),
 }).defined();
 
@@ -97,7 +99,11 @@ export async function generateAccessToken(options: {
   return await signJWT({
     issuer: jwtIssuer,
     audience: options.tenancy.project.id,
-    payload: { sub: options.userId, branchId: options.tenancy.branchId, refreshTokenId: options.refreshTokenId },
+    payload: {
+      sub: options.userId,
+      branchId: options.tenancy.branchId,
+      refreshTokenId: options.refreshTokenId,
+    },
     expirationTime: getEnvVariable("STACK_ACCESS_TOKEN_EXPIRATION_TIME", "10min"),
   });
 }
@@ -114,7 +120,7 @@ export async function createAuthTokens(options: {
   const refreshToken = generateSecureRandomString();
 
   try {
-    const session = await prismaClient.projectUserRefreshToken.create({
+    const refreshTokenObj = await prismaClient.projectUserRefreshToken.create({
       data: {
         tenancyId: options.tenancy.id,
         projectUserId: options.projectUserId,
@@ -127,7 +133,7 @@ export async function createAuthTokens(options: {
     const accessToken = await generateAccessToken({
       tenancy: options.tenancy,
       userId: options.projectUserId,
-      refreshTokenId: session.id,
+      refreshTokenId: refreshTokenObj.id,
     });
 
 
