@@ -4,10 +4,7 @@ import { niceBackendFetch } from "../../../../../backend-helpers";
 it("should create a new CLI auth attempt", async ({ expect }) => {
   const response = await niceBackendFetch("/api/latest/auth/cli", {
     method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "X-Tenancy-ID": "test-tenancy-id",
-    },
+    accessType: "server",
     body: {},
   });
 
@@ -29,10 +26,7 @@ it("should create a new CLI auth attempt with custom expiration time", async ({ 
 
   const response = await niceBackendFetch("/api/latest/auth/cli", {
     method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "X-Tenancy-ID": "test-tenancy-id",
-    },
+    accessType: "server",
     body: {
       expires_in_millis: customExpirationMs,
     },
