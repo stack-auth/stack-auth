@@ -1,3 +1,4 @@
+import { wait } from "@stackframe/stack-shared/dist/utils/promises";
 import { it } from "../../../../helpers";
 import { Auth, Project, backendContext, createMailbox, niceBackendFetch } from "../../../backend-helpers";
 
@@ -7,6 +8,8 @@ it("should return metrics data", async ({ expect }) => {
       magic_link_enabled: true,
     }
   });
+
+  await wait(3000);  // the event log is async, so let's give it some time to be written to the DB
 
   const response = await niceBackendFetch("/api/v1/internal/metrics", { accessType: 'admin' });
   expect(response).toMatchSnapshot(`metrics_result_no_users`);
@@ -44,6 +47,8 @@ it("should return metrics data with users", async ({ expect }) => {
   backendContext.set({ mailbox: mailboxes[2], ipData: { country: "CH", ipAddress: "127.0.0.1", city: "Zurich", region: "ZH", latitude: 47.3769, longitude: 8.5417, tzIdentifier: "Europe/Zurich" } });
   await Auth.Otp.signIn();
 
+  await wait(3000);  // the event log is async, so let's give it some time to be written to the DB
+
   const response = await niceBackendFetch("/api/v1/internal/metrics", { accessType: 'admin' });
   expect(response).toMatchSnapshot();
 }, {
@@ -58,6 +63,8 @@ it("should not work for non-admins", async ({ expect }) => {
   });
 
   await Auth.Otp.signIn();
+
+  await wait(3000);  // the event log is async, so let's give it some time to be written to the DB
 
   const response = await niceBackendFetch("/api/v1/internal/metrics", { accessType: 'server' });
   expect(response).toMatchInlineSnapshot(`
