@@ -1,5 +1,5 @@
-import { it } from "../../../../../../helpers";
-import { niceBackendFetch } from "../../../../../backend-helpers";
+import { it } from "../../../../../helpers";
+import { niceBackendFetch } from "../../../../backend-helpers";
 
 it("should create a new CLI auth attempt", async ({ expect }) => {
   const response = await niceBackendFetch("/api/latest/auth/cli", {

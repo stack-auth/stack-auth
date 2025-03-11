@@ -1,5 +1,5 @@
-import { it } from "../../../../../../helpers";
-import { niceBackendFetch } from "../../../../../backend-helpers";
+import { it } from "../../../../../helpers";
+import { niceBackendFetch } from "../../../../backend-helpers";
 
 it("should return 'waiting' status when polling for a new CLI auth attempt", async ({ expect }) => {
   // First, create a new CLI auth attempt

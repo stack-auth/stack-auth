@@ -1,5 +1,5 @@
-import { it } from "../../../../../../helpers";
-import { niceBackendFetch } from "../../../../../backend-helpers";
+import { it } from "../../../../../helpers";
+import { niceBackendFetch } from "../../../../backend-helpers";
 
 it("should set the refresh token for a CLI auth attempt and return success when polling", async ({ expect }) => {
   // First, create a new CLI auth attempt
