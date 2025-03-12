@@ -15,7 +15,7 @@ import { deepPlainEquals } from "@stackframe/stack-shared/dist/utils/objects";
 import { ActionCell, ActionDialog, Alert, AlertDescription, AlertTitle, Button, Card, DataTable, SimpleTooltip, Typography, useToast } from "@stackframe/stack-ui";
 import { ColumnDef } from "@tanstack/react-table";
 import { AlertCircle } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import * as yup from "yup";
 import { PageLayout } from "../page-layout";
 import { useAdminApp } from "../use-admin-app";
@@ -139,26 +139,75 @@ export default function PageClient() {
 
 type SentEmail = {
   id: string,
-  to?: string[],
+  to: string[],
   subject: string,
   sent_at_millis: number,
-  recipient: string,
-  sentAt: Date,
+  recipient: string, // We'll derive this from to[0] for display
+  sentAt: Date, // We'll derive this from sent_at_millis for display
+  sender_config: any,
   error?: unknown,
 }
 
 const emailTableColumns: ColumnDef<SentEmail>[] = [
   { accessorKey: 'recipient', header: 'Recipient' },
   { accessorKey: 'subject', header: 'Subject' },
-  { accessorKey: 'sentAt', header: 'Sent At' },
+  { accessorKey: 'sentAt', header: 'Sent At', cell: ({ row }) => {
+    const date = row.original.sentAt;
+    return date.toLocaleDateString() + ' ' + date.toLocaleTimeString();
+  }
+  },
+  { accessorKey: 'status', header: 'Status', cell: ({ row }) => {
+    return row.original.error ? (
+      <div className="text-red-500">Failed</div>
+    ) : (
+      <div className="text-green-500">Sent</div>
+    );
+  } },
 ];
 
 function EmailSendDataTable() {
+  const stackAdminApp = useAdminApp();
+  const [emailLogs, setEmailLogs] = useState<SentEmail[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  // Fetch email logs when component mounts
+  useEffect(() => {
+    async function fetchEmails() {
+      setLoading(true);
+      try {
+        const result = await stackAdminApp.listSentEmails();
+
+        // Transform the data to match our table format
+        const transformedEmails = result.items.map(email => ({
+          ...email,
+          recipient: email.to?.[0] || 'Unknown',
+          sentAt: new Date(email.sent_at_millis),
+        }));
+
+        setEmailLogs(transformedEmails);
+      } catch (error) {
+        console.error("Failed to fetch email logs:", error);
+      } finally {
+        setLoading(false);
+      }
+    }
+
+    fetchEmails();
+  }, [stackAdminApp]);
+
+  if (loading) {
+    return (
+      <div className="flex justify-center py-4">
+        <Typography>Loading email logs...</Typography>
+      </div>
+    );
+  }
+
   return <DataTable
-    data={[]}
+    data={emailLogs}
     defaultColumnFilters={[]}
     columns={emailTableColumns}
-    defaultSorting={[]}
+    defaultSorting={[{ id: 'sentAt', desc: true }]}
   />;
 }
 

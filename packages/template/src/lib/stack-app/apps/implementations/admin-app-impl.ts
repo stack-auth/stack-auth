@@ -17,6 +17,7 @@ import { AdminOwnedProject, AdminProject, AdminProjectUpdateOptions, adminProjec
 import { StackAdminApp, StackAdminAppConstructorOptions } from "../interfaces/admin-app";
 import { clientVersion, createCache, getBaseUrl, getDefaultProjectId, getDefaultPublishableClientKey, getDefaultSecretServerKey, getDefaultSuperSecretAdminKey } from "./common";
 // NEXT_LINE_PLATFORM react-like
+import { InternalEmailsCrud } from "@stackframe/stack-shared/dist/interface/crud/emails";
 import { useAsyncCache } from "./common";
 import { _StackServerAppImplIncomplete } from "./server-app-impl";
 
@@ -336,5 +337,10 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
     } else {
       return Result.error({ errorMessage: response.error_message ?? throwErr("Email test error not specified") });
     }
+  }
+
+  async listSentEmails(): Promise<InternalEmailsCrud["Admin"]["List"]> {
+    const response = await this._interface.listSentEmails();
+    return response;
   }
 }
