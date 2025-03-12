@@ -1,8 +1,10 @@
 import * as child_process from "child_process";
+import { Command } from "commander";
 import * as fs from "fs";
 import inquirer from "inquirer";
 import open from "open";
 import * as path from "path";
+import packageJson from '../package.json';
 
 const jsLikeFileExtensions: string[] = [
   "mtsx",
@@ -19,23 +21,48 @@ const jsLikeFileExtensions: string[] = [
   "js",
 ];
 
+// Setup command line parsing
+const program = new Command();
+program
+  .name(packageJson.name)
+  .description("Stack Auth Initialization Tool")
+  .version(packageJson.version)
+  .argument("[project-path]", "Path to your project")
+  .usage(`[project-path] [options]`)
+  .option("--dry-run", "Run without making any changes")
+  .option("--neon", "Use Neon database")
+  .option("--js", "Initialize for JavaScript project")
+  .option("--next", "Initialize for Next.js project")
+  .option("--npm", "Use npm as package manager")
+  .option("--yarn", "Use yarn as package manager")
+  .option("--pnpm", "Use pnpm as package manager")
+  .option("--bun", "Use bun as package manager")
+  .option("--client", "Initialize client-side only")
+  .option("--server", "Initialize server-side only")
+  .option("--no-browser", "Don't open browser for environment variable setup")
+  .addHelpText('after', `
+For more information, please visit https://docs.stack-auth.com/getting-started/setup`);
+
+program.parse();
+
+const options = program.opts();
+
+// Keep existing variables but assign from Commander
+let savedProjectPath: string | undefined = program.args[0] || undefined;
+const isDryRun: boolean = options.dryRun || false;
+const isNeon: boolean = options.neon || false;
+const typeFromArgs: string | undefined = options.js ? "js" : options.next ? "next" : undefined;
+const packageManagerFromArgs: string | undefined = options.npm ? "npm" : options.yarn ? "yarn" : options.pnpm ? "pnpm" : options.bun ? "bun" : undefined;
+const isClient: boolean = options.client || false;
+const isServer: boolean = options.server || false;
+const noBrowser: boolean = options.noBrowser || false;
+
 class UserError extends Error {
   constructor(message: string) {
     super(message);
     this.name = "UserError";
   }
 }
-
-let savedProjectPath: string | undefined = process.argv[2] || undefined;
-
-const isDryRun: boolean = process.argv.includes("--dry-run");
-const isNeon: boolean = process.argv.includes("--neon");
-const typeFromArgs: string | undefined = ["js", "next"].find(s => process.argv.includes(`--${s}`));
-const packageManagerFromArgs: string | undefined = ["npm", "yarn", "pnpm", "bun"].find(s => process.argv.includes(`--${s}`));
-const isClient: boolean = process.argv.includes("--client");
-const isServer: boolean = process.argv.includes("--server");
-const noBrowser: boolean = process.argv.includes("--no-browser");
-const showHelp: boolean = process.argv.includes("--help") || process.argv.includes("-h");
 
 type Ansis = {
   red: string,
@@ -85,32 +112,6 @@ const nextSteps: string[] = [
 ];
 
 async function main(): Promise<void> {
-  // Check if help flag is provided
-  if (showHelp) {
-    console.log(`
-Stack Auth Initialization Tool
-
-Usage: npx init-stack [project-path] [options]
-
-Options:
-  --help, -h          Show this help message
-  --dry-run           Run without making any changes
-  --neon              Use Neon database
-  --js                Initialize for JavaScript project
-  --next              Initialize for Next.js project
-  --npm               Use npm as package manager
-  --yarn              Use yarn as package manager
-  --pnpm              Use pnpm as package manager
-  --bun               Use bun as package manager
-  --client            Initialize client-side only
-  --server            Initialize server-side only
-  --no-browser        Don't open browser for environment variable setup
-
-For more information, please visit https://docs.stack-auth.com/getting-started/setup
-    `);
-    process.exit(0);
-  }
-
   // Welcome message
   console.log();
   console.log(`
