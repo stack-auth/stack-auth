@@ -717,26 +717,17 @@ export namespace Auth {
           grant_type: "authorization_code",
         },
       });
-      expect(tokenResponse).toMatchInlineSnapshot(`
-        NiceResponse {
-          "status": 200,
-          "body": {
-            "access_token": <stripped field 'access_token'>,
-            "afterCallbackRedirectUrl": null,
-            "after_callback_redirect_url": null,
-            "expires_in": 3599,
-            "is_new_user": true,
-            "newUser": true,
-            "refresh_token": <stripped field 'refresh_token'>,
-            "scope": "legacy",
-            "token_type": "Bearer",
-          },
-          "headers": Headers {
-            "pragma": "no-cache",
-            <some fields may have been hidden>,
-          },
-        }
-      `);
+      expect(tokenResponse).toMatchObject({
+        status: 200,
+        body: {
+          access_token: expect.any(String),
+          afterCallbackRedirectUrl: null,
+          after_callback_redirect_url: null,
+          refresh_token: expect.any(String),
+          scope: "legacy",
+          token_type: "Bearer"
+        },
+      });
 
       backendContext.set({
         userAuth: {

@@ -1,5 +1,5 @@
-import { AttributeValue, Span, trace } from "@opentelemetry/api";
-
+import { Attributes, AttributeValue, Span, trace } from "@opentelemetry/api";
+import { StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
 const tracer = trace.getTracer('stack-backend');
 
 export function withTraceSpan<P extends any[], T>(optionsOrDescription: string | { description: string, attributes?: Record<string, AttributeValue> }, fn: (...args: P) => Promise<T>): (...args: P) => Promise<T> {
@@ -24,6 +24,11 @@ export async function traceSpan<T>(optionsOrDescription: string | { description:
   });
 }
 
-export function log(message: string, ...args: any[]) {
-  console.log(`[${new Date().toISOString()}] ${message}`, ...args);
+export function log(message: string, attributes: Attributes) {
+  const span = trace.getActiveSpan();
+  if (span) {
+    span.addEvent(message, attributes);
+  } else {
+    throw new StackAssertionError('No active span found');
+  }
 }

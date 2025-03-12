@@ -2,9 +2,13 @@ name: Preview Docs
 
 on: pull_request
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' && github.ref != 'refs/heads/dev' }}
+
 jobs:
   run:
-    runs-on: ubicloud-standard-8
+    runs-on: ubuntu-latest
 
     permissions: write-all
 

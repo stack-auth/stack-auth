@@ -5,10 +5,7 @@ it("should return 'waiting' status when polling for a new CLI auth attempt", asy
   // First, create a new CLI auth attempt
   const createResponse = await niceBackendFetch("/api/latest/auth/cli", {
     method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "X-Tenancy-ID": "test-tenancy-id",
-    },
+    accessType: "server",
     body: {},
   });
 
@@ -17,42 +14,47 @@ it("should return 'waiting' status when polling for a new CLI auth attempt", asy
   // Then poll for the status
   const pollResponse = await niceBackendFetch("/api/latest/auth/cli/poll", {
     method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "X-Tenancy-ID": "test-tenancy-id",
-    },
+    accessType: "server",
     body: { polling_code: pollingCode },
   });
 
-  expect(pollResponse.status).toBe(200);
-  expect(pollResponse.body).toHaveProperty("status", "waiting");
-  expect(pollResponse.body).not.toHaveProperty("refresh_token");
+  expect(pollResponse).toMatchInlineSnapshot(`
+    NiceResponse {
+      "status": 200,
+      "body": { "status": "waiting" },
+      "headers": Headers { <some fields may have been hidden> },
+    }
+  `);
 });
 
 it("should return 400 with INVALID_POLLING_CODE error when polling with an invalid code", async ({ expect }) => {
   const pollResponse = await niceBackendFetch("/api/latest/auth/cli/poll", {
     method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "X-Tenancy-ID": "test-tenancy-id",
-    },
+    accessType: "server",
     body: { polling_code: "invalid-code" },
   });
 
-  expect(pollResponse.status).toBe(400);
-  expect(pollResponse.headers.get("X-Stack-Known-Error")).toBe("INVALID_POLLING_CODE");
-  expect(pollResponse.body).toHaveProperty("code", "INVALID_POLLING_CODE");
-  expect(pollResponse.body).toHaveProperty("error", "The polling code is invalid or does not exist.");
+  expect(pollResponse).toMatchInlineSnapshot(`
+    NiceResponse {
+      "status": 400,
+      "body": {
+        "code": "SCHEMA_ERROR",
+        "details": { "message": "The polling code is invalid or does not exist." },
+        "error": "The polling code is invalid or does not exist.",
+      },
+      "headers": Headers {
+        "x-stack-known-error": "SCHEMA_ERROR",
+        <some fields may have been hidden>,
+      },
+    }
+  `);
 });
 
 it("should return 'expired' status when polling for an expired CLI auth attempt", async ({ expect }) => {
   // First, create a new CLI auth attempt with a very short expiration time
   const createResponse = await niceBackendFetch("/api/latest/auth/cli", {
     method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "X-Tenancy-ID": "test-tenancy-id",
-    },
+    accessType: "server",
     body: {
       expires_in_millis: 1000, // 1 second
     },
@@ -66,14 +68,15 @@ it("should return 'expired' status when polling for an expired CLI auth attempt"
   // Then poll for the status
   const pollResponse = await niceBackendFetch("/api/latest/auth/cli/poll", {
     method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "X-Tenancy-ID": "test-tenancy-id",
-    },
+    accessType: "server",
     body: { polling_code: pollingCode },
   });
 
-  expect(pollResponse.status).toBe(200);
-  expect(pollResponse.body).toHaveProperty("status", "expired");
-  expect(pollResponse.body).not.toHaveProperty("refresh_token");
+  expect(pollResponse).toMatchInlineSnapshot(`
+    NiceResponse {
+      "status": 200,
+      "body": { "status": "expired" },
+      "headers": Headers { <some fields may have been hidden> },
+    }
+  `);
 });

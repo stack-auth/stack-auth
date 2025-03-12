@@ -5,56 +5,59 @@ it("should set the refresh token for a CLI auth attempt and return success when 
   // First, create a new CLI auth attempt
   const createResponse = await niceBackendFetch("/api/latest/auth/cli", {
     method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "X-Tenancy-ID": "test-tenancy-id",
-    },
+    accessType: "server",
     body: {},
   });
 
-  const loginCode = createResponse.body.login_code;
-  const pollingCode = createResponse.body.polling_code;
   const refreshToken = "test-refresh-token";
 
   // Then set the refresh token
   const loginResponse = await niceBackendFetch("/api/latest/auth/cli/complete", {
     method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "X-Tenancy-ID": "test-tenancy-id",
-    },
-    body: { login_code: loginCode, refresh_token: refreshToken },
+    accessType: "server",
+    body: { login_code: createResponse.body.login_code, refresh_token: refreshToken },
   });
-
-  expect(loginResponse.status).toBe(200);
+  expect(loginResponse).toMatchInlineSnapshot(`
+    NiceResponse {
+      "status": 200,
+      "body": { "success": true },
+      "headers": Headers { <some fields may have been hidden> },
+    }
+  `);
 
   // Then poll for the status
   const pollResponse = await niceBackendFetch("/api/latest/auth/cli/poll", {
     method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "X-Tenancy-ID": "test-tenancy-id",
-    },
-    body: { polling_code: pollingCode },
+    accessType: "server",
+    body: { polling_code: createResponse.body.polling_code },
   });
 
-  expect(pollResponse.status).toBe(201);
-  expect(pollResponse.body).toHaveProperty("status", "success");
-  expect(pollResponse.body).toHaveProperty("refresh_token", refreshToken);
+  expect(pollResponse).toMatchInlineSnapshot(`
+    NiceResponse {
+      "status": 200,
+      "body": {
+        "refresh_token": <stripped field 'refresh_token'>,
+        "status": "success",
+      },
+      "headers": Headers { <some fields may have been hidden> },
+    }
+  `);
 
-  // Polling again should return 'used' status
-  const pollAgainResponse = await niceBackendFetch("/api/latest/auth/cli/poll", {
+  // // Polling again should return 'used' status
+
+  const pollResponse2 = await niceBackendFetch("/api/latest/auth/cli/poll", {
     method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "X-Tenancy-ID": "test-tenancy-id",
-    },
-    body: { polling_code: pollingCode },
+    accessType: "server",
+    body: { polling_code: createResponse.body.polling_code },
   });
 
-  expect(pollAgainResponse.status).toBe(200);
-  expect(pollAgainResponse.body).toHaveProperty("status", "used");
-  expect(pollAgainResponse.body).not.toHaveProperty("refresh_token");
+  expect(pollResponse2).toMatchInlineSnapshot(`
+    NiceResponse {
+      "status": 200,
+      "body": { "status": "used" },
+      "headers": Headers { <some fields may have been hidden> },
+    }
+  `);
 });
 
 it("should return an error when trying to set the refresh token with an invalid login code", async ({ expect }) => {
@@ -63,25 +66,24 @@ it("should return an error when trying to set the refresh token with an invalid 
   // Try to set the refresh token with an invalid login code
   const loginResponse = await niceBackendFetch("/api/latest/auth/cli/complete", {
     method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "X-Tenancy-ID": "test-tenancy-id",
-    },
+    accessType: "server",
     body: { login_code: "invalid-login-code", refresh_token: refreshToken },
   });
 
-  expect(loginResponse.status).toBe(400);
-  expect(loginResponse.headers.get("X-Stack-Known-Error")).toBe("SCHEMA_ERROR");
+  expect(loginResponse).toMatchInlineSnapshot(`
+    NiceResponse {
+      "status": 400,
+      "body": "Invalid login code or the code has expired",
+      "headers": Headers { <some fields may have been hidden> },
+    }
+  `);
 });
 
 it("should not allow setting the refresh token twice", async ({ expect }) => {
   // First, create a new CLI auth attempt
   const createResponse = await niceBackendFetch("/api/latest/auth/cli", {
     method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "X-Tenancy-ID": "test-tenancy-id",
-    },
+    accessType: "server",
     body: {},
   });
 
@@ -92,25 +94,30 @@ it("should not allow setting the refresh token twice", async ({ expect }) => {
   // Set the refresh token the first time
   const loginResponse1 = await niceBackendFetch("/api/latest/auth/cli/complete", {
     method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "X-Tenancy-ID": "test-tenancy-id",
-    },
+    accessType: "server",
     body: { login_code: loginCode, refresh_token: refreshToken1 },
   });
 
-  expect(loginResponse1.status).toBe(200);
+  expect(loginResponse1).toMatchInlineSnapshot(`
+    NiceResponse {
+      "status": 200,
+      "body": { "success": true },
+      "headers": Headers { <some fields may have been hidden> },
+    }
+  `);
 
   // Try to set the refresh token again
   const loginResponse2 = await niceBackendFetch("/api/latest/auth/cli/complete", {
     method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "X-Tenancy-ID": "test-tenancy-id",
-    },
+    accessType: "server",
     body: { login_code: loginCode, refresh_token: refreshToken2 },
   });
 
-  expect(loginResponse2.status).toBe(400);
-  expect(loginResponse2.headers.get("X-Stack-Known-Error")).toBe("SCHEMA_ERROR");
+  expect(loginResponse2).toMatchInlineSnapshot(`
+    NiceResponse {
+      "status": 400,
+      "body": "Invalid login code or the code has expired",
+      "headers": Headers { <some fields may have been hidden> },
+    }
+  `);
 });

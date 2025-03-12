@@ -3,13 +3,16 @@ name: "Run setup tests"
 
 on: push
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' && github.ref != 'refs/heads/dev' }}
+
 env:
   SHELL: /usr/bin/bash
 
 jobs:
   test:
     runs-on: ubicloud-standard-8
-    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v3
 

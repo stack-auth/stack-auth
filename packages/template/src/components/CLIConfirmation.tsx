@@ -1,4 +1,3 @@
-import { stackAppInternalsSymbol } from "../lib/stack-app/common";
 import { useCallback, useEffect, useState } from "react";
 import { useStackApp, useUser } from "..";
 
@@ -51,10 +50,10 @@ export function CLIConfirmation({ loginCode, onSuccess, onError }: CLIConfirmati
       if (error instanceof Error) {
         message = error.message;
       }
-      
+
       setErrorMessage(message);
       setStatus("error");
-      
+
       if (error instanceof Error) {
         onError?.(error);
       } else {
