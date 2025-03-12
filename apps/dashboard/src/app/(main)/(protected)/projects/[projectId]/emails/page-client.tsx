@@ -168,16 +168,7 @@ const emailTableColumns: ColumnDef<SentEmail>[] = [
 
 function EmailSendDataTable() {
   const stackAdminApp = useAdminApp();
-  const [emailLogs, setEmailLogs] = useState<{
-    recipient: string,
-    sentAt: Date,
-    error?: {} | null | undefined,
-    to?: string[] | undefined,
-    id: string,
-    subject: string,
-    sent_at_millis: number,
-    sender_config: {} | null,
-}[]>([]);
+  const [emailLogs, setEmailLogs] = useState<SentEmail[]>([]);
   const [loading, setLoading] = useState(true);
 
   // Fetch email logs when component mounts
@@ -188,8 +179,9 @@ function EmailSendDataTable() {
         const result = await stackAdminApp.listSentEmails();
 
         // Transform the data to match our table format
-        const transformedEmails = result.items.map(email => ({
+        const transformedEmails: SentEmail[] = result.items.map(email => ({
           ...email,
+          to: email.to || [],
           recipient: email.to?.[0] || 'Unknown',
           sentAt: new Date(email.sent_at_millis),
         }));
