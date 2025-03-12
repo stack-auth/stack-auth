@@ -19,8 +19,11 @@ const accessTokenSchema = yupObject({
   projectId: yupString().defined(),
   userId: yupString().defined(),
   branchId: yupString().defined(),
+  // we make it optional to keep backwards compatibility with old tokens for a while
+  // TODO next-release
+  refreshTokenId: yupString().optional(),
   exp: yupNumber().defined(),
-});
+}).defined();
 
 export const oauthCookieSchema = yupObject({
   tenancyId: yupString().defined(),
@@ -81,20 +84,26 @@ export async function decodeAccessToken(accessToken: string) {
 export async function generateAccessToken(options: {
   tenancy: Tenancy,
   userId: string,
+  refreshTokenId: string,
 }) {
   await logEvent(
-    [SystemEventTypes.UserActivity],
+    [SystemEventTypes.SessionActivity],
     {
       projectId: options.tenancy.project.id,
       branchId: options.tenancy.branchId,
       userId: options.userId,
+      sessionId: options.refreshTokenId,
     }
   );
 
   return await signJWT({
     issuer: jwtIssuer,
     audience: options.tenancy.project.id,
-    payload: { sub: options.userId, branchId: options.tenancy.branchId },
+    payload: {
+      sub: options.userId,
+      branchId: options.tenancy.branchId,
+      refreshTokenId: options.refreshTokenId,
+    },
     expirationTime: getEnvVariable("STACK_ACCESS_TOKEN_EXPIRATION_TIME", "10min"),
   });
 }
@@ -103,24 +112,33 @@ export async function createAuthTokens(options: {
   tenancy: Tenancy,
   projectUserId: string,
   expiresAt?: Date,
+  isImpersonation?: boolean,
 }) {
   options.expiresAt ??= new Date(Date.now() + 1000 * 60 * 60 * 24 * 365);
+  options.isImpersonation ??= false;
 
   const refreshToken = generateSecureRandomString();
-  const accessToken = await generateAccessToken({
-    tenancy: options.tenancy,
-    userId: options.projectUserId,
-  });
 
   try {
-    await prismaClient.projectUserRefreshToken.create({
+    const refreshTokenObj = await prismaClient.projectUserRefreshToken.create({
       data: {
         tenancyId: options.tenancy.id,
         projectUserId: options.projectUserId,
         refreshToken: refreshToken,
         expiresAt: options.expiresAt,
+        isImpersonation: options.isImpersonation,
       },
     });
+
+    const accessToken = await generateAccessToken({
+      tenancy: options.tenancy,
+      userId: options.projectUserId,
+      refreshTokenId: refreshTokenObj.id,
+    });
+
+
+    return { refreshToken, accessToken };
+
   } catch (error) {
     if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2003') {
       throwErr(new Error(
@@ -131,5 +149,5 @@ export async function createAuthTokens(options: {
     throw error;
   }
 
-  return { refreshToken, accessToken };
+
 }

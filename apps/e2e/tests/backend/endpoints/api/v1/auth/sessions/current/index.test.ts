@@ -32,26 +32,18 @@ it("should sign out users", async ({ expect }) => {
   `);
 });
 
-it("should not sign out users given invalid refresh token", async ({ expect }) => {
+it("should sign out user without refresh token, only using access token", async ({ expect }) => {
   await Auth.Password.signUpWithEmail();
   const response = await niceBackendFetch("/api/v1/auth/sessions/current", {
     method: "DELETE",
     accessType: "client",
-    headers: {
-      "x-stack-refresh-token": "something-invalid",
-    },
+    // missing refresh token
   });
   expect(response).toMatchInlineSnapshot(`
     NiceResponse {
-      "status": 401,
-      "body": {
-        "code": "REFRESH_TOKEN_NOT_FOUND_OR_EXPIRED",
-        "error": "Refresh token not found for this project, or the session has expired/been revoked.",
-      },
-      "headers": Headers {
-        "x-stack-known-error": "REFRESH_TOKEN_NOT_FOUND_OR_EXPIRED",
-        <some fields may have been hidden>,
-      },
+      "status": 200,
+      "body": { "success": true },
+      "headers": Headers { <some fields may have been hidden> },
     }
   `);
 });
