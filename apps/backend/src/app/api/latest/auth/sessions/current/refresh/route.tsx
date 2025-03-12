@@ -29,12 +29,10 @@ export const POST = createSmartRouteHandler({
   async handler({ auth: { tenancy }, headers: { "x-stack-refresh-token": refreshTokenHeaders } }, fullReq) {
     const refreshToken = refreshTokenHeaders[0];
 
-    const sessionObj = await prismaClient.projectUserRefreshToken.findUnique({
+    const sessionObj = await prismaClient.projectUserRefreshToken.findFirst({
       where: {
-        tenancyId_refreshToken: {
-          tenancyId: tenancy.id,
-          refreshToken,
-        },
+        tenancyId: tenancy.id,
+        refreshToken,
       },
     });
 
@@ -45,6 +43,7 @@ export const POST = createSmartRouteHandler({
     const accessToken = await generateAccessToken({
       tenancy,
       userId: sessionObj.projectUserId,
+      refreshTokenId: sessionObj.id,
     });
 
     return {
