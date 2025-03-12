@@ -36,7 +36,7 @@ export function CLIConfirmation({ fullPage = true }: { fullPage?: boolean }) {
       }
 
       // Use the internal API to send the CLI login request
-      const result = await (app as any)[stackAppInternalsSymbol].sendRequest("/auth/cli/login", {
+      const result = await (app as any)[stackAppInternalsSymbol].sendRequest("/auth/cli/complete", {
         method: "POST",
         headers: {
           "Content-Type": "application/json"

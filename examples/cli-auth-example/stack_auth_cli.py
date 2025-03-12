@@ -46,7 +46,8 @@ class StackAuthCLI:
         except Exception as e:
             print(f"Error saving config: {e}")
     
-    def login(self, tenancy_id: str):
+    def login(self):
+        tenancy_id = "internal"
         """Initiate the CLI authentication flow.
         
         Args:
@@ -70,7 +71,7 @@ class StackAuthCLI:
             return
         
         # Step 2: Open the browser for the user to authenticate
-        auth_url = f"{self.base_url.replace('/api/latest', '')}/auth/cli?login_code={login_code}&tenancy_id={tenancy_id}"
+        auth_url = f"http://localhost:8103/handler/cli-auth-confirm?login_code={login_code}"
         print(f"Opening browser to authenticate. If it doesn't open automatically, please visit:\n{auth_url}")
         webbrowser.open(auth_url)
         
@@ -98,16 +99,17 @@ class StackAuthCLI:
             url = f"{self.base_url}/auth/cli"
             headers = {
                 "Content-Type": "application/json",
-                "X-Tenancy-ID": tenancy_id
+                "x-stack-project-id": tenancy_id,
+                'x-stack-access-type': 'client',
+                'x-stack-publishable-client-key': 'this-publishable-client-key-is-for-local-development-only'
             }
             data = {
                 "expires_in_millis": 10 * 60 * 1000  # 10 minutes
             }
             
-            response = requests.post(url, headers=headers, json=data)
-            
+            response = requests.post(url, headers=headers, json=data)            
             if response.status_code == 200:
-                return response.json().get("body", {})
+                return response.json()
             else:
                 print(f"Error initiating CLI auth: {response.status_code} {response.text}")
                 return None
@@ -133,7 +135,9 @@ class StackAuthCLI:
                 url = f"{self.base_url}/auth/cli/poll"
                 headers = {
                     "Content-Type": "application/json",
-                    "X-Tenancy-ID": tenancy_id
+                    "x-stack-project-id": tenancy_id,
+                    'x-stack-access-type': 'client',
+                    'x-stack-publishable-client-key': 'this-publishable-client-key-is-for-local-development-only'
                 }
                 data = {
                     "polling_code": polling_code
@@ -181,14 +185,13 @@ def main():
     
     # Login command
     login_parser = subparsers.add_parser("login", help="Log in to Stack Auth")
-    login_parser.add_argument("--tenancy-id", required=True, help="The ID of the tenancy to authenticate with")
     login_parser.add_argument("--api-url", help="The base URL of the Stack Auth API")
     
     args = parser.parse_args()
     
     if args.command == "login":
         cli = StackAuthCLI(base_url=args.api_url)
-        cli.login(args.tenancy_id)
+        cli.login()
     else:
         parser.print_help()
 

@@ -1380,7 +1380,7 @@ export class StackClientInterface {
     session: InternalSession
   ): Promise<Result<undefined, KnownErrors["SchemaError"]>> {
     const responseOrError = await this.sendClientRequestAndCatchKnownError(
-      "/auth/cli/login",
+      "/auth/cli/complete",
       {
         method: "POST",
         headers: {
