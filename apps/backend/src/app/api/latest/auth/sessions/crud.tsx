@@ -76,7 +76,7 @@ export const sessionsCrudHandlers = createLazyProxy(() => createCrudHandlers(ses
         created_at: s.createdAt.getTime(),
         last_used_at: s.last_active_at,
         is_impersonation: s.isImpersonation,
-        last_used_at_end_user_ip_info: s.last_active_at_end_user_ip_info,
+        last_used_at_end_user_ip_info: s.last_active_at_end_user_ip_info ?? undefined,
         is_current_session: s.id === auth.refreshTokenId,
       })),
       is_paginated: false,
