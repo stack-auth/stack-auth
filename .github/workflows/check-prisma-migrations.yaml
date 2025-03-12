@@ -2,6 +2,9 @@ name: Ensure Prisma migrations are in sync with the schema
 
 on:
   push:
+    branches:
+      - main
+      - dev
   pull_request:
 
 concurrency:
