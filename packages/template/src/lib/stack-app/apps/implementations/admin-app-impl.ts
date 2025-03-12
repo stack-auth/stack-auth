@@ -22,6 +22,7 @@ import { _StackServerAppImplIncomplete } from "./server-app-impl";
 import { useMemo } from "react";
 // NEXT_LINE_PLATFORM react-like
 import { useAsyncCache } from "./common";
+import { AdminSentEmail } from "../../email";
 
 
 export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, ProjectId extends string> extends _StackServerAppImplIncomplete<HasTokenStore, ProjectId>
@@ -341,8 +342,15 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
     }
   }
 
-  async listSentEmails(): Promise<InternalEmailsCrud["Admin"]["List"]> {
+  async listSentEmails(): Promise<AdminSentEmail[]> {
     const response = await this._interface.listSentEmails();
-    return response;
+    return response.items.map((email) => ({
+      id: email.id,
+      to: email.to ?? [],
+      subject: email.subject,
+      recipient: email.to?.[0] ?? "",
+      sentAt: new Date(email.sent_at_millis),
+      error: email.error,
+    }));
   }
 }

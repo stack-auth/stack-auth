@@ -5,7 +5,7 @@ import { InputField, SelectField } from "@/components/form-fields";
 import { useRouter } from "@/components/router";
 import { SettingCard, SettingText } from "@/components/settings";
 import { getPublicEnvVar } from "@/lib/env";
-import { AdminEmailConfig, AdminProject } from "@stackframe/stack";
+import { AdminEmailConfig, AdminProject, AdminSentEmail } from "@stackframe/stack";
 import { Reader } from "@stackframe/stack-emails/dist/editor/email-builder/index";
 import { EMAIL_TEMPLATES_METADATA, convertEmailSubjectVariables, convertEmailTemplateMetadataExampleValues, convertEmailTemplateVariables, validateEmailTemplateContent } from "@stackframe/stack-emails/dist/utils";
 import { EmailTemplateType } from "@stackframe/stack-shared/dist/interface/crud/email-templates";
@@ -138,16 +138,8 @@ export default function PageClient() {
   );
 }
 
-type SentEmail = {
-  id: string,
-  to: string[],
-  subject: string,
-  recipient: string, // We'll derive this from to[0] for display
-  sentAt: Date, // We'll derive this from sent_at_millis for display
-  error?: unknown,
-}
 
-const emailTableColumns: ColumnDef<SentEmail>[] = [
+const emailTableColumns: ColumnDef<AdminSentEmail>[] = [
   { accessorKey: 'recipient', header: 'Recipient' },
   { accessorKey: 'subject', header: 'Subject' },
   { accessorKey: 'sentAt', header: 'Sent At', cell: ({ row }) => {
@@ -166,7 +158,7 @@ const emailTableColumns: ColumnDef<SentEmail>[] = [
 
 function EmailSendDataTable() {
   const stackAdminApp = useAdminApp();
-  const [emailLogs, setEmailLogs] = useState<SentEmail[]>([]);
+  const [emailLogs, setEmailLogs] = useState<AdminSentEmail[]>([]);
   const [loading, setLoading] = useState(true);
 
   // Fetch email logs when component mounts
@@ -174,17 +166,8 @@ function EmailSendDataTable() {
     runAsynchronously(async () => {
       setLoading(true);
       try {
-        const result = await stackAdminApp.listSentEmails();
-
-        // Transform the data to match our table format
-        const transformedEmails: SentEmail[] = result.items.map(email => ({
-          ...email,
-          to: email.to || [],
-          recipient: email.to?.[0] || 'Unknown',
-          sentAt: new Date(email.sent_at_millis),
-        }));
-
-        setEmailLogs(transformedEmails);
+        const emails = await stackAdminApp.listSentEmails();
+        setEmailLogs(emails);
       } catch (error) {
         console.error("Failed to fetch email logs:", error);
       } finally {
