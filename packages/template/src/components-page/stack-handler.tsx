@@ -9,7 +9,7 @@ import { IframePreventer } from "../components/iframe-preventer";
 import { MessageCard } from "../components/message-cards/message-card";
 import { HandlerUrls, StackClientApp } from "../lib/stack-app";
 import { AccountSettings } from "./account-settings";
-import { CLIConfirmation } from "./cli-auth-confirm";
+import { CliAuthConfirmation } from "./cli-auth-confirm";
 import { EmailVerification } from "./email-verification";
 import { ErrorPage } from "./error-page";
 import { ForgotPassword } from "./forgot-password";
@@ -31,7 +31,7 @@ type Components = {
   TeamInvitation: typeof TeamInvitation,
   ErrorPage: typeof ErrorPage,
   AccountSettings: typeof AccountSettings,
-  CLIConfirmation: typeof CLIConfirmation,
+  CliAuthConfirmation: typeof CliAuthConfirmation,
 };
 
 type RouteProps = {
@@ -165,9 +165,9 @@ function renderComponent(props: {
       />;
     }
     case availablePaths.cliAuthConfirm: {
-      return <CLIConfirmation
+      return <CliAuthConfirmation
         fullPage={fullPage}
-        {...filterUndefinedINU(componentProps?.CLIConfirmation)}
+        {...filterUndefinedINU(componentProps?.CliAuthConfirmation)}
       />;
     }
     default: {

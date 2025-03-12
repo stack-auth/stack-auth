@@ -6,7 +6,7 @@ import { stackAppInternalsSymbol, useStackApp } from "..";
 import { MessageCard } from "../components/message-cards/message-card";
 import { useTranslation } from "../lib/translations";
 
-export function CLIConfirmation({ fullPage = true }: { fullPage?: boolean }) {
+export function CliAuthConfirmation({ fullPage = true }: { fullPage?: boolean }) {
   const { t } = useTranslation();
   const app = useStackApp();
   const [authorizing, setAuthorizing] = useState(false);

@@ -13,7 +13,6 @@ export { ForgotPassword } from "./components-page/forgot-password";
 export { PasswordReset } from "./components-page/password-reset";
 export { SignIn } from "./components-page/sign-in";
 export { SignUp } from "./components-page/sign-up";
-export { CLIConfirmation } from "./components/CLIConfirmation";
 export { CredentialSignIn as CredentialSignIn } from "./components/credential-sign-in";
 export { CredentialSignUp as CredentialSignUp } from "./components/credential-sign-up";
 export { UserAvatar } from "./components/elements/user-avatar";
