@@ -616,3 +616,51 @@ it("should trigger team membership webhook when a user is removed from a team", 
     }
   `);
 });
+
+it("should trigger team permission webhook when a user is added to a team", async ({ expect }) => {
+  const { projectId, svixToken, endpointId } = await Webhook.createProjectWithEndpoint();
+
+  await Auth.Otp.signIn();
+  const { teamId } = await Team.createAndAddCurrent();
+
+  await bumpEmailAddress();
+  const { userId } = await Auth.Otp.signIn();
+
+  const addUserResponse = await niceBackendFetch(`/api/v1/team-memberships/${teamId}/${userId}`, {
+    accessType: "server",
+    method: "POST",
+    body: {},
+  });
+
+  expect(addUserResponse.status).toBe(201);
+
+  await wait(3000);
+
+  const attemptResponse = await Webhook.listWebhookAttempts(projectId, endpointId, svixToken);
+
+  // Check for team_permission.created events
+  const teamPermissionCreatedEvents = attemptResponse.filter(event => event.eventType === "team_permission.created");
+
+  // There should be at least one team permission created event (for the default permissions)
+  expect(teamPermissionCreatedEvents.length).toBe(1);
+
+  // Check the first team permission created event
+  const firstPermissionEvent = teamPermissionCreatedEvents[0];
+  expect(firstPermissionEvent).toMatchInlineSnapshot(`
+    {
+      "channels": null,
+      "eventId": null,
+      "eventType": "team_permission.created",
+      "id": "<stripped svix message id>",
+      "payload": {
+        "data": {
+          "id": "member",
+          "team_id": "<stripped UUID>",
+          "user_id": "<stripped UUID>",
+        },
+        "type": "team_permission.created",
+      },
+      "timestamp": <stripped field 'timestamp'>,
+    }
+  `);
+});
