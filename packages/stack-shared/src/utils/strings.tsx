@@ -3,6 +3,7 @@ import { StackAssertionError } from "./errors";
 import { filterUndefined } from "./objects";
 
 export function typedToLowercase<S extends string>(s: S): Lowercase<S> {
+  if (typeof s !== "string") throw new StackAssertionError("Expected a string for typedToLowercase", { s });
   return s.toLowerCase() as Lowercase<S>;
 }
 import.meta.vitest?.test("typedToLowercase", ({ expect }) => {
@@ -13,9 +14,11 @@ import.meta.vitest?.test("typedToLowercase", ({ expect }) => {
   expect(typedToLowercase("123")).toBe("123");
   expect(typedToLowercase("MIXED123case")).toBe("mixed123case");
   expect(typedToLowercase("Special@Chars!")).toBe("special@chars!");
+  expect(() => typedToLowercase(123 as any)).toThrow("Expected a string for typedToLowercase");
 });
 
 export function typedToUppercase<S extends string>(s: S): Uppercase<S> {
+  if (typeof s !== "string") throw new StackAssertionError("Expected a string for typedToUppercase", { s });
   return s.toUpperCase() as Uppercase<S>;
 }
 import.meta.vitest?.test("typedToUppercase", ({ expect }) => {
@@ -26,6 +29,7 @@ import.meta.vitest?.test("typedToUppercase", ({ expect }) => {
   expect(typedToUppercase("123")).toBe("123");
   expect(typedToUppercase("mixed123Case")).toBe("MIXED123CASE");
   expect(typedToUppercase("special@chars!")).toBe("SPECIAL@CHARS!");
+  expect(() => typedToUppercase(123 as any)).toThrow("Expected a string for typedToUppercase");
 });
 
 export function typedCapitalize<S extends string>(s: S): Capitalize<S> {
