@@ -35,6 +35,7 @@ export function MaybeFullPage({
             minWidth: '100vw',
             minHeight: '100vh',
             alignSelf: 'stretch',
+            flexGrow: 1,
             display: 'flex',
             justifyContent: 'center',
             alignItems: 'center',
