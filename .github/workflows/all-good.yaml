@@ -1,4 +1,4 @@
-name: Did all the other checks pass?
+name: "all-good: Did all the other checks pass?"
 
 on:
   push:
@@ -17,6 +17,7 @@ jobs:
     env:
       REPO: ${{ github.repository }}
       COMMIT: ${{ github.sha }}
+      PR_NUMBER: ${{ github.event.pull_request.number }}
     steps:
       - name: Wait for 60 seconds
         run: sleep 60
@@ -26,26 +27,65 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           echo "Checking check runs for commit ${COMMIT} in repo ${REPO}..."
+          
+          function get_check_runs() {
+            local endpoint=$1
+            curl -s -H "Authorization: Bearer ${GITHUB_TOKEN}" "$endpoint"
+          }
+          
+          function count_pending_checks() {
+            local response=$1
+            echo "$response" | jq '[.check_runs[] | select(.status != "completed" and .name != "all-good")] | length'
+          }
+          
+          function count_failed_checks() {
+            local response=$1
+            echo "$response" | jq '[.check_runs[] | select(.conclusion != "success" and .conclusion != "skipped" and .conclusion != "neutral" and .name != "all-good")] | length'
+          }
+          
           while true; do
-            response=$(curl -s -H "Authorization: Bearer ${GITHUB_TOKEN}" \
-              "https://api.github.com/repos/${REPO}/commits/${COMMIT}/check-runs")
-            total=$(echo "$response" | jq -r '.total_count')
+            commit_response=$(get_check_runs "https://api.github.com/repos/${REPO}/commits/${COMMIT}/check-runs")
+            commit_total=$(echo "$commit_response" | jq -r '.total_count')
             
-            if [ "$total" -eq 0 ]; then
-              echo "No check runs found for commit ${COMMIT}. Waiting..."
+            # If this is a PR, also get PR check runs
+            if [ -n "$PR_NUMBER" ]; then
+              pr_response=$(get_check_runs "https://api.github.com/repos/${REPO}/pulls/${PR_NUMBER}/check-runs")
+              pr_total=$(echo "$pr_response" | jq -r '.total_count')
+              echo "Found ${commit_total} commit checks and ${pr_total} PR checks"
+            else
+              echo "Found ${commit_total} commit checks"
+            fi
+            
+            # If no checks found at all, wait and retry
+            if [ "$commit_total" -eq 0 ] && { [ -z "$PR_NUMBER" ] || [ "$pr_total" -eq 0 ]; }; then
+              echo "No check runs found. Waiting..."
               sleep 10
               continue
             fi
-
-            pending=$(echo "$response" | jq '[.check_runs[] | select(.status != "completed" and .name != "all-good")] | length')
-            if [ "$pending" -gt 0 ]; then
-              echo "$pending check run(s) still in progress. Waiting..."
+            
+            # Check for pending runs in both commit and PR checks
+            commit_pending=$(count_pending_checks "$commit_response")
+            pr_pending=0
+            if [ -n "$PR_NUMBER" ]; then
+              pr_pending=$(count_pending_checks "$pr_response")
+            fi
+            
+            total_pending=$((commit_pending + pr_pending))
+            if [ "$total_pending" -gt 0 ]; then
+              echo "$total_pending check run(s) still in progress. Waiting..."
               sleep 10
               continue
             fi
-
-            failed=$(echo "$response" | jq '[.check_runs[] | select(.conclusion != "success" and .conclusion != "skipped" and .conclusion != "neutral" and .name != "all-good")] | length')
-            if [ "$failed" -eq 0 ]; then
+            
+            # Check for failures in both commit and PR checks
+            commit_failed=$(count_failed_checks "$commit_response")
+            pr_failed=0
+            if [ -n "$PR_NUMBER" ]; then
+              pr_failed=$(count_failed_checks "$pr_response")
+            fi
+            
+            total_failed=$((commit_failed + pr_failed))
+            if [ "$total_failed" -eq 0 ]; then
               echo "All check runs passed!"
               exit 0
             else
