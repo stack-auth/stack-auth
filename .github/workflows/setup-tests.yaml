@@ -2,6 +2,9 @@ name: "Run setup tests"
 
 on:
   push:
+    branches:
+      - main
+      - dev
   pull_request:
 
 concurrency:

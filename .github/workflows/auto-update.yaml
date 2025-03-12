@@ -2,6 +2,9 @@ name: Update pull request branches
 
 on:
   push:
+    branches:
+      - main
+      - dev
   pull_request:
 
 concurrency:
