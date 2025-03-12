@@ -30,27 +30,35 @@ jobs:
           
           function get_check_runs() {
             local endpoint=$1
-            curl -s -H "Authorization: Bearer ${GITHUB_TOKEN}" "$endpoint"
+            local response
+            response=$(curl -s -f -H "Authorization: Bearer ${GITHUB_TOKEN}" "$endpoint")
+            if [ $? -ne 0 ]; then
+              echo "Error fetching from $endpoint" >&2
+              echo "{}"
+              return 1
+            fi
+            echo "$response"
           }
           
           function count_pending_checks() {
             local response=$1
-            echo "$response" | jq '[.check_runs[] | select(.status != "completed" and .name != "all-good")] | length'
+            echo "$response" | jq '([.check_runs[]? | select(.status != "completed" and .name != "all-good")] | length) // 0'
           }
           
           function count_failed_checks() {
             local response=$1
-            echo "$response" | jq '[.check_runs[] | select(.conclusion != "success" and .conclusion != "skipped" and .conclusion != "neutral" and .name != "all-good")] | length'
+            echo "$response" | jq '([.check_runs[]? | select(.conclusion != "success" and .conclusion != "skipped" and .conclusion != "neutral" and .name != "all-good")] | length) // 0'
           }
           
           while true; do
             commit_response=$(get_check_runs "https://api.github.com/repos/${REPO}/commits/${COMMIT}/check-runs")
-            commit_total=$(echo "$commit_response" | jq -r '.total_count')
+            commit_total=$(echo "$commit_response" | jq -r '.total_count // 0')
             
             # If this is a PR, also get PR check runs
+            pr_total=0
             if [ -n "$PR_NUMBER" ]; then
               pr_response=$(get_check_runs "https://api.github.com/repos/${REPO}/pulls/${PR_NUMBER}/check-runs")
-              pr_total=$(echo "$pr_response" | jq -r '.total_count')
+              pr_total=$(echo "$pr_response" | jq -r '.total_count // 0')
               echo "Found ${commit_total} commit checks and ${pr_total} PR checks"
             else
               echo "Found ${commit_total} commit checks"
