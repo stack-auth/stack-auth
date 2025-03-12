@@ -38,6 +38,7 @@
   "license": "MIT",
   "dependencies": {
     "@stackframe/stack-shared": "workspace:*",
+    "commander": "^13.1.0",
     "inquirer": "^9.2.19",
     "open": "^10.1.0"
   },
