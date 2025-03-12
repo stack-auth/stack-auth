@@ -2,6 +2,9 @@ name: Runs E2E API Tests
 
 on:
   push:
+    branches:
+      - main
+      - dev
   pull_request:
 
 concurrency:
