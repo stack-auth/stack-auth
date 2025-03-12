@@ -55,8 +55,7 @@ const typeFromArgs: string | undefined = options.js ? "js" : options.next ? "nex
 const packageManagerFromArgs: string | undefined = options.npm ? "npm" : options.yarn ? "yarn" : options.pnpm ? "pnpm" : options.bun ? "bun" : undefined;
 const isClient: boolean = options.client || false;
 const isServer: boolean = options.server || false;
-const noBrowser: boolean = !options.browser;
-const showHelp: boolean = false; // Handled by Commander automatically
+const noBrowser: boolean = options.noBrowser || false;
 
 class UserError extends Error {
   constructor(message: string) {
