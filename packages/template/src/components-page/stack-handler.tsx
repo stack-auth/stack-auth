@@ -166,6 +166,7 @@ function renderComponent(props: {
     }
     case availablePaths.cliAuthConfirm: {
       return <CLIConfirmation
+        fullPage={fullPage}
         {...filterUndefinedINU(componentProps?.CLIConfirmation)}
       />;
     }
