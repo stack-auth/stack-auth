@@ -53,6 +53,13 @@ model ProjectConfig {
   permissions                        Permission[]
   authMethodConfigs                  AuthMethodConfig[]
   connectedAccountConfigs            ConnectedAccountConfig[]
+  oauthAccountMergeStrategy          OAuthAccountMergeStrategy @default(LINK_METHOD)
+}
+
+enum OAuthAccountMergeStrategy {
+  LINK_METHOD
+  RAISE_ERROR
+  ALLOW_DUPLICATES
 }
 
 model Tenancy {

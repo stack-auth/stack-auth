@@ -2,13 +2,17 @@ name: Lint & build
 
 on: push
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' && github.ref != 'refs/heads/dev' }}
+
 jobs:
   lint_and_build:
     runs-on: ubuntu-latest
 
     strategy:
       matrix:
-        node-version: [20.x, 22.x]
+        node-version: [latest]
 
     steps:
       - uses: actions/checkout@v3
