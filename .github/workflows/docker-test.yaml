@@ -2,6 +2,9 @@ name: Docker Test
 
 on:
   push:
+    branches:
+      - main
+      - dev
   pull_request:
 
 concurrency:

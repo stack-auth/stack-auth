@@ -2,6 +2,9 @@ name: Did all the other checks pass?
 
 on:
   push:
+    branches:
+      - main
+      - dev
   pull_request:
 
 concurrency:
