@@ -406,7 +406,7 @@ function ActiveSessionsPage() {
         .filter(session => !session.isCurrentSession)
         .map(session => user.revokeSession(session.id));
       await Promise.all(deletionPromises);
-      setSessions(sessions.filter(session => session.isCurrentSession));
+      setSessions(prevSessions => prevSessions.filter(session => session.isCurrentSession));
     } catch (error) {
       captureError("Failed to revoke all sessions", { error, sessionIds: sessions.map(session => session.id) });
       throw error;
