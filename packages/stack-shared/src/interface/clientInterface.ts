@@ -16,6 +16,7 @@ import { ContactChannelsCrud } from './crud/contact-channels';
 import { CurrentUserCrud } from './crud/current-user';
 import { ConnectedAccountAccessTokenCrud } from './crud/oauth';
 import { InternalProjectsCrud, ProjectsCrud } from './crud/projects';
+import { SessionsCrud } from './crud/sessions';
 import { TeamInvitationCrud } from './crud/team-invitation';
 import { TeamMemberProfilesCrud } from './crud/team-member-profiles';
 import { TeamPermissionsCrud } from './crud/team-permissions';
@@ -1335,6 +1336,33 @@ export class StackClientInterface {
       session,
     );
   }
+
+  async deleteSession(
+    sessionId: string,
+    session: InternalSession,
+  ): Promise<void> {
+    await this.sendClientRequest(
+      `/auth/sessions/${sessionId}?user_id=me`,
+      {
+        method: "DELETE",
+      },
+      session,
+    );
+  }
+
+  async listSessions(
+    session: InternalSession,
+  ): Promise<SessionsCrud['Client']['List']> {
+    const response = await this.sendClientRequest(
+      "/auth/sessions?user_id=me",
+      {
+        method: "GET",
+      },
+      session,
+    );
+    return await response.json();
+  }
+
 
   async listClientContactChannels(
     session: InternalSession,

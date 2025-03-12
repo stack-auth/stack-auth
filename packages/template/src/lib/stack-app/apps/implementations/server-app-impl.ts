@@ -235,14 +235,23 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
         await app._refreshUsers();
         return res;
       },
-      async createSession(options: { expiresInMillis?: number }) {
+      async createSession(options: { expiresInMillis?: number, isImpersonation?: boolean }) {
         // TODO this should also refresh the access token when it expires (like InternalSession)
-        const tokens = await app._interface.createServerUserSession(crud.id, options.expiresInMillis ?? 1000 * 60 * 60 * 24 * 365);
+        const tokens = await app._interface.createServerUserSession(crud.id, options.expiresInMillis ?? 1000 * 60 * 60 * 24 * 365, options.isImpersonation ?? false);
         return {
           async getTokens() {
             return tokens;
           },
         };
+      },
+
+      async getActiveSessions() {
+        const sessions = await app._interface.listServerSessions(crud.id);
+        return sessions.map((session) => app._clientSessionFromCrud(session));
+      },
+
+      async revokeSession(sessionId: string) {
+        await app._interface.deleteServerSession(sessionId);
       },
       async setDisplayName(displayName: string) {
         return await this.update({ displayName });
