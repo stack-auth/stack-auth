@@ -367,38 +367,40 @@ function EmailsAndAuthPage() {
   );
 }
 
+type Session = {
+  id: string,
+  user_id: string,
+  created_at: number,
+  last_used_at?: number,
+  is_impersonation: boolean,
+  is_current?: boolean,
+  // UI display fields
+  ipAddress?: string,
+  location?: string,
+}
+
 function ActiveSessionsPage() {
   const { t } = useTranslation();
   const user = useUser({ or: "throw" });
   const [showConfirmRevokeAll, setShowConfirmRevokeAll] = useState(false);
   const [isRevokingAll, setIsRevokingAll] = useState(false);
-  const [sessions, setSessions] = useState<Array<{
-    id: string,
-    user_id: string,
-    created_at: number,
-    last_used_at?: number,
-    is_impersonation: boolean,
-    is_current?: boolean,
-    // UI display fields
-    ipAddress?: string,
-    location?: string,
-  }>>([]);
+  const [sessions, setSessions] = useState<Session[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
   // Fetch sessions when component mounts
   useEffect(() => {
     runAsynchronously(async () => {
-        setIsLoading(true);
-        const sessionsData = await user.getActiveSessions();
-        const enhancedSessions = sessionsData.map(session => ({
-          ...session,
-          is_current: session.is_current_session,
-          ipAddress: session.last_used_at_end_user_ip_info?.ip,
-          location: session.last_used_at_end_user_ip_info?.cityName,
-          last_used_at: session.last_used_at,
-        }));
-        setSessions(enhancedSessions);
-        setIsLoading(false);
+      setIsLoading(true);
+      const sessionsData = await user.getActiveSessions();
+      const enhancedSessions = sessionsData.map(session => ({
+        ...session,
+        is_current: session.is_current_session,
+        ipAddress: session.last_used_at_end_user_ip_info?.ip,
+        location: session.last_used_at_end_user_ip_info?.cityName,
+        last_used_at: session.last_used_at,
+      }));
+      setSessions(enhancedSessions);
+      setIsLoading(false);
     });
   }, [user]);
 
