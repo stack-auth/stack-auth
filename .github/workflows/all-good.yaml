@@ -1,6 +1,8 @@
 name: Did all the other checks pass?
 
-on: push
+on:
+  push:
+  pull_request:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
