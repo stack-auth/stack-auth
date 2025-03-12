@@ -8,6 +8,7 @@ import { AdminTeamPermission, AdminTeamPermissionDefinition, AdminTeamPermission
 import { AdminProject } from "../../projects";
 import { _StackAdminAppImpl } from "../implementations";
 import { StackServerApp, StackServerAppConstructorOptions } from "./server-app";
+import { InternalEmailsCrud } from "@stackframe/stack-shared/dist/interface/crud/emails";
 
 
 export type StackAdminAppConstructorOptions<HasTokenStore extends boolean, ProjectId extends string> = (
@@ -50,6 +51,8 @@ export type StackAdminApp<HasTokenStore extends boolean = boolean, ProjectId ext
       recipientEmail: string,
       emailConfig: EmailConfig,
     }): Promise<Result<undefined, { errorMessage: string }>>,
+
+    listSentEmails(): Promise<InternalEmailsCrud["Admin"]["List"]>,
   }
   & StackServerApp<HasTokenStore, ProjectId>
 );
