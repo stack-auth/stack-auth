@@ -36,6 +36,7 @@
     "fern": "pnpm pre && pnpm run --filter=@stackframe/docs fern",
     "dev": "pnpm pre && concurrently -k \"pnpm run generate-sdks:watch\" \"pnpm run generate-docs:watch\" \"turbo run dev --concurrency 99999\"",
     "dev:basic": "pnpm pre && concurrently -k \"pnpm run generate-sdks:watch\" \"pnpm run generate-docs:watch\" \"turbo run dev --concurrency 99999 --filter=@stackframe/stack-backend --filter=@stackframe/stack-dashboard --filter=@stackframe/mock-oauth-server\"",
+    "dev:docs": "pnpm pre && concurrently -k \"pnpm run generate-docs:watch\" \"turbo run dev --concurrency 99999 --filter=@stackframe/docs\"",
     "dev:named": "pnpm pre && concurrently -k \"pnpm run dev\" \"node -e \\\"process.title='node (stack-named-dev-server)'; process.stdin.resume();\\\"\"",
     "kill-dev:named": "(pgrep -f 'stack-named-dev-server' | xargs -r -n1 pkill -P); echo 'Killed named dev server (if found). Sleeping to give some time for it to shut down...' && sleep 10",
     "start": "pnpm pre && turbo run start --concurrency 99999",
