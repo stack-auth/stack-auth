@@ -40,7 +40,7 @@ def prompt_cli_login(
   login_code = init.json()['login_code']
 
   # Step 2: Open the browser for the user to authenticate
-  url = f'http://localhost:8103/handler/cli-auth-confirm?login_code={urllib.parse.quote(login_code)}'
+  url = f'{app_url}/handler/cli-auth-confirm?login_code={urllib.parse.quote(login_code)}'
   print(f"Opening browser to authenticate. If it doesn't open automatically, please visit:\n{url}")
   webbrowser.open(url)
 
