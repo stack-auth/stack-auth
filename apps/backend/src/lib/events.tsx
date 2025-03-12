@@ -14,6 +14,7 @@ import { getEndUserInfo } from "./end-users";
 type EventType = {
   id: string,
   dataSchema: yup.Schema<any>,
+  // The event type that this event type inherits from. Use this if every one of the events is also another event and you want all the fields from it.
   inherits: EventType[],
 };
 
@@ -51,14 +52,12 @@ const UserActivityEventType = {
   inherits: [ProjectActivityEventType],
 } as const satisfies SystemEventTypeBase;
 
-
-// TODO should this inherit something?
 const SessionActivityEventType = {
   id: "$session-activity",
   dataSchema: yupObject({
     sessionId: yupString().defined(),
   }),
-  inherits: [],
+  inherits: [UserActivityEventType],
 } as const satisfies SystemEventTypeBase;
 
 

@@ -7,7 +7,7 @@ import { useAsyncCallback } from '@stackframe/stack-shared/dist/hooks/use-async-
 import { passwordSchema as schemaFieldsPasswordSchema, strictEmailSchema, yupObject, yupString } from '@stackframe/stack-shared/dist/schema-fields';
 import { generateRandomValues } from '@stackframe/stack-shared/dist/utils/crypto';
 import { fromNow } from '@stackframe/stack-shared/dist/utils/dates';
-import { throwErr } from '@stackframe/stack-shared/dist/utils/errors';
+import { captureError, throwErr } from '@stackframe/stack-shared/dist/utils/errors';
 import { runAsynchronously, runAsynchronouslyWithAlert } from '@stackframe/stack-shared/dist/utils/promises';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger, ActionCell, Badge, Button, Input, Label, PasswordInput, Separator, Skeleton, Table, TableBody, TableCell, TableHead, TableHeader, TableRow, Typography } from '@stackframe/stack-ui';
 import { Edit, Trash, icons } from 'lucide-react';
@@ -366,15 +366,13 @@ function EmailsAndAuthPage() {
     </PageLayout>
   );
 }
-
 type Session = {
   id: string,
-  user_id: string,
-  created_at: number,
-  last_used_at?: number,
-  is_impersonation: boolean,
-  is_current?: boolean,
-  // UI display fields
+  userId: string,
+  createdAt: Date,
+  lastUsedAt?: Date,
+  isImpersonation: boolean,
+  isCurrent?: boolean,
   ipAddress?: string,
   location?: string,
 }
@@ -382,10 +380,10 @@ type Session = {
 function ActiveSessionsPage() {
   const { t } = useTranslation();
   const user = useUser({ or: "throw" });
-  const [showConfirmRevokeAll, setShowConfirmRevokeAll] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
   const [isRevokingAll, setIsRevokingAll] = useState(false);
   const [sessions, setSessions] = useState<Session[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
+  const [showConfirmRevokeAll, setShowConfirmRevokeAll] = useState(false);
 
   // Fetch sessions when component mounts
   useEffect(() => {
@@ -393,11 +391,14 @@ function ActiveSessionsPage() {
       setIsLoading(true);
       const sessionsData = await user.getActiveSessions();
       const enhancedSessions = sessionsData.map(session => ({
-        ...session,
-        is_current: session.is_current_session,
-        ipAddress: session.last_used_at_end_user_ip_info?.ip,
-        location: session.last_used_at_end_user_ip_info?.cityName,
-        last_used_at: session.last_used_at,
+        id: session.id,
+        userId: session.userId,
+        createdAt: session.createdAt,
+        lastUsedAt: session.lastUsedAt,
+        isImpersonation: session.isImpersonation,
+        isCurrent: session.isCurrentSession,
+        ipAddress: session.lastUsedAtEndUserIpInfo?.ip,
+        location: session.lastUsedAtEndUserIpInfo?.cityName,
       }));
       setSessions(enhancedSessions);
       setIsLoading(false);
@@ -411,7 +412,8 @@ function ActiveSessionsPage() {
       // Remove the session from the list
       setSessions(sessions.filter(session => session.id !== sessionId));
     } catch (error) {
-      console.error('Failed to revoke session:', error);
+      captureError("Failed to revoke session", { sessionId ,error });
+      throw error;
     }
   };
 
@@ -419,12 +421,13 @@ function ActiveSessionsPage() {
     setIsRevokingAll(true);
     try {
       const deletionPromises = sessions
-        .filter(session => !session.is_current)
+        .filter(session => !session.isCurrent)
         .map(session => user.revokeSession(session.id));
       await Promise.all(deletionPromises);
-      setSessions(sessions.filter(session => session.is_current));
+      setSessions(sessions.filter(session => session.isCurrent));
     } catch (error) {
-      console.error('Failed to revoke all sessions:', error);
+      captureError("Failed to revoke all sessions", { error, sessionIds: sessions.map(session => session.id) });
+      throw error;
     } finally {
       setIsRevokingAll(false);
       setShowConfirmRevokeAll(false);
@@ -436,7 +439,7 @@ function ActiveSessionsPage() {
       <div>
         <div className="flex justify-between items-center mb-2">
           <Typography className='font-medium'>{t("Active Sessions")}</Typography>
-          {sessions.filter(s => !s.is_current).length > 0 && !isLoading && (
+          {sessions.filter(s => !s.isCurrent).length > 0 && !isLoading && (
             showConfirmRevokeAll ? (
               <div className="flex gap-2">
                 <Button
@@ -494,13 +497,14 @@ function ActiveSessionsPage() {
                   </TableRow>
                 ) : (
                   sessions.map((session) => (
-                    <TableRow key={session.id} className={session.is_current ? "bg-accent/10" : ""}>
+                    <TableRow key={session.id}>
                       <TableCell>
                         <div className="flex flex-col">
-                          <Typography>{session.is_current ? t("Current Session") : t("Other Session")}</Typography>
-                          {session.is_impersonation && <Badge variant="secondary" className="w-fit mt-1">{t("Impersonation")}</Badge>}
+                          {/* We currently do not save any usefull information about the user, in the future, the name should probably say what kind of session it is (e.g. cli, browser, maybe what auth method was used) */}
+                          <Typography>{session.isCurrent ? t("Current Session") : t("Other Session")}</Typography>
+                          {session.isImpersonation && <Badge variant="secondary" className="w-fit mt-1">{t("Impersonation")}</Badge>}
                           <Typography variant='secondary' type='footnote'>
-                            {t("Signed in {time}", { time: new Date(session.created_at).toLocaleDateString() })}
+                            {t("Signed in {time}", { time: new Date(session.createdAt).toLocaleDateString() })}
                           </Typography>
                         </div>
                       </TableCell>
@@ -512,9 +516,9 @@ function ActiveSessionsPage() {
                       </TableCell>
                       <TableCell>
                         <div className="flex flex-col">
-                          <Typography>{session.last_used_at ? fromNow(new Date(session.last_used_at)) : t("Never")}</Typography>
-                          <Typography variant='secondary' type='footnote' title={session.last_used_at ? new Date(session.last_used_at).toLocaleString() : ""}>
-                            {session.last_used_at ? new Date(session.last_used_at).toLocaleDateString() : ""}
+                          <Typography>{session.lastUsedAt ? fromNow(new Date(session.lastUsedAt)) : t("Never")}</Typography>
+                          <Typography variant='secondary' type='footnote' title={session.lastUsedAt ? new Date(session.lastUsedAt).toLocaleString() : ""}>
+                            {session.lastUsedAt ? new Date(session.lastUsedAt).toLocaleDateString() : ""}
                           </Typography>
                         </div>
                       </TableCell>
@@ -525,8 +529,8 @@ function ActiveSessionsPage() {
                               item: t("Revoke"),
                               onClick: () => handleRevokeSession(session.id),
                               danger: true,
-                              disabled: session.is_current,
-                              disabledTooltip: session.is_current ? t("You cannot revoke your current session") : undefined,
+                              disabled: session.isCurrent,
+                              disabledTooltip: session.isCurrent ? t("You cannot revoke your current session") : undefined,
                             },
                           ]}
                         />

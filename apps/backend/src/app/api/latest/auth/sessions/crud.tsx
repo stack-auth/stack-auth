@@ -18,7 +18,7 @@ export const sessionsCrudHandlers = createLazyProxy(() => createCrudHandlers(ses
   }).defined(),
   onList: async ({ auth, query }) => {
 
-    const list_impersonations = auth.type === 'admin';
+    const listImpersonations = auth.type === 'admin';
 
     if (auth.type === 'client') {
       const currentUserId = auth.user?.id || throwErr(new KnownErrors.CannotGetOwnUserWithoutUser());
@@ -31,7 +31,7 @@ export const sessionsCrudHandlers = createLazyProxy(() => createCrudHandlers(ses
       where: {
         tenancyId: auth.tenancy.id,
         projectUserId: query.user_id,
-        isImpersonation: list_impersonations ? undefined : false,
+        isImpersonation: listImpersonations ? undefined : false,
       },
       orderBy: {
         createdAt: 'desc',
@@ -54,10 +54,11 @@ export const sessionsCrudHandlers = createLazyProxy(() => createCrudHandlers(ses
 
     const sessionsWithLastActiveAt = refreshTokenObjs.map(s => {
       const event = events.find(e => e.sessionId === s.id);
+      const endUserIpInfoGuess = event?.endUserIpInfoGuess ? (JSON.parse(event.endUserIpInfoGuess) as GeoInfo) : undefined;
       return {
         ...s,
         last_active_at: event?.lastActiveAt.getTime(),
-        last_active_at_end_user_ip_info: (event?.endUserIpInfoGuess ? (JSON.parse(event.endUserIpInfoGuess) as GeoInfo)  : undefined),
+        last_active_at_end_user_ip_info: endUserIpInfoGuess,
       };
     });
 
@@ -84,19 +85,15 @@ export const sessionsCrudHandlers = createLazyProxy(() => createCrudHandlers(ses
       },
     });
 
-    if (!session) {
+    if (!session || (auth.type === 'client' && auth.user?.id !== session.projectUserId)) {
       throw new StatusError(StatusError.NotFound, 'Session not found.');
     }
 
-    if (auth.type === 'client' && auth.user?.id !== session.projectUserId) {
-      throw new StatusError(StatusError.Forbidden, 'Client can only delete their own sessions.');
-    }
 
     if (auth.refreshTokenId === session.id) {
       throw new KnownErrors.CannotDeleteCurrentSession();
     }
 
-    // Using refreshToken as the identifier since the Prisma client hasn't been regenerated yet
     await prismaClient.projectUserRefreshToken.deleteMany({
       where: {
         tenancyId: auth.tenancy.id,

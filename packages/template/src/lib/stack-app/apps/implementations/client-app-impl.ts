@@ -974,11 +974,15 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
     Object.freeze(currentUser);
     return currentUser as ProjectCurrentUser<ProjectId>;
   }
-
   protected _clientSessionFromCrud(crud: SessionsCrud['Client']['Read']): ActiveSession {
     return {
-      ...crud,
+      id: crud.id,
+      userId: crud.user_id,
+      createdAt: new Date(crud.created_at),
+      isImpersonation: crud.is_impersonation,
       lastUsedAt: crud.last_used_at ? new Date(crud.last_used_at) : undefined,
+      isCurrentSession: crud.is_current_session ?? false,
+      lastUsedAtEndUserIpInfo: crud.last_used_at_end_user_ip_info
     };
   }
 

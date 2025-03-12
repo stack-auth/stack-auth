@@ -1,9 +1,9 @@
 import { KnownErrors } from "@stackframe/stack-shared";
 import { CurrentUserCrud } from "@stackframe/stack-shared/dist/interface/crud/current-user";
-import { SessionsCrud } from "@stackframe/stack-shared/dist/interface/crud/sessions";
 import { UsersCrud } from "@stackframe/stack-shared/dist/interface/crud/users";
 import { InternalSession } from "@stackframe/stack-shared/dist/sessions";
 import { encodeBase64 } from "@stackframe/stack-shared/dist/utils/bytes";
+import { GeoInfo } from "@stackframe/stack-shared/dist/utils/geo";
 import { ReadonlyJson } from "@stackframe/stack-shared/dist/utils/json";
 import { ProviderType } from "@stackframe/stack-shared/dist/utils/oauth";
 import { Result } from "@stackframe/stack-shared/dist/utils/results";
@@ -220,8 +220,14 @@ export type CurrentInternalUser = CurrentUser & InternalUserExtra;
 export type ProjectCurrentUser<ProjectId> = ProjectId extends "internal" ? CurrentInternalUser : CurrentUser;
 
 
-export type ActiveSession = SessionsCrud['Client']['Read'] & {
+export type ActiveSession = {
+  id: string,
+  userId: string,
+  createdAt: Date,
+  isImpersonation: boolean,
   lastUsedAt: Date | undefined,
+  isCurrentSession: boolean,
+  lastUsedAtEndUserIpInfo?: GeoInfo,
 };
 
 export type UserUpdateOptions = {

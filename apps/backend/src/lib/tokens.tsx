@@ -87,7 +87,7 @@ export async function generateAccessToken(options: {
   refreshTokenId: string,
 }) {
   await logEvent(
-    [SystemEventTypes.UserActivity, SystemEventTypes.SessionActivity],
+    [SystemEventTypes.SessionActivity],
     {
       projectId: options.tenancy.project.id,
       branchId: options.tenancy.branchId,
