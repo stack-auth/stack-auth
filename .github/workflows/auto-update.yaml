@@ -1,7 +1,11 @@
 name: Update pull request branches
 
 on:
-  push: {}
+  push:
+    branches:
+      - main
+      - dev
+  pull_request:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
