@@ -982,7 +982,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
       isImpersonation: crud.is_impersonation,
       lastUsedAt: crud.last_used_at ? new Date(crud.last_used_at) : undefined,
       isCurrentSession: crud.is_current_session ?? false,
-      lastUsedAtEndUserIpInfo: crud.last_used_at_end_user_ip_info
+      geoInfo: crud.last_used_at_end_user_ip_info,
     };
   }
 

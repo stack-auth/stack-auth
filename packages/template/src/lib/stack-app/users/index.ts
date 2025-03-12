@@ -227,7 +227,7 @@ export type ActiveSession = {
   isImpersonation: boolean,
   lastUsedAt: Date | undefined,
   isCurrentSession: boolean,
-  lastUsedAtEndUserIpInfo?: GeoInfo,
+  geoInfo?: GeoInfo,
 };
 
 export type UserUpdateOptions = {

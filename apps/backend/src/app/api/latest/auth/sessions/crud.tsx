@@ -40,25 +40,32 @@ export const sessionsCrudHandlers = createLazyProxy(() => createCrudHandlers(ses
 
 
     // Get the latest event for each session
-    const events = await prismaClient.$queryRaw<Array<{ sessionId: string, lastActiveAt: Date, endUserIpInfoGuess: string, isEndUserIpInfoGuessTrusted: boolean }>>`
-      SELECT data->>'sessionId' as "sessionId", 
-             MAX("eventStartedAt") as "lastActiveAt", 
-             data->>'endUserIpInfoGuess' as "endUserIpInfoGuess", 
-             data->>'isEndUserIpInfoGuessTrusted' as "isEndUserIpInfoGuessTrusted"
-      FROM "Event" 
-      WHERE data->>'sessionId' = ANY(${Prisma.sql`ARRAY[${Prisma.join(refreshTokenObjs.map(s => s.id))}]`})
-      AND "systemEventTypeIds" @> '{"$session-activity"}'
-      GROUP BY data->>'sessionId', data->>'endUserIpInfoGuess', data->>'isEndUserIpInfoGuessTrusted'
+    const events = await prismaClient.$queryRaw<Array<{ sessionId: string, lastActiveAt: Date, geo: GeoInfo | null, isEndUserIpInfoGuessTrusted: boolean }>>`
+      WITH latest_events AS (
+        SELECT data->>'sessionId' as "sessionId", 
+               MAX("eventStartedAt") as "lastActiveAt"
+        FROM "Event" 
+        WHERE data->>'sessionId' = ANY(${Prisma.sql`ARRAY[${Prisma.join(refreshTokenObjs.map(s => s.id))}]`})
+        AND "systemEventTypeIds" @> '{"$session-activity"}'
+        GROUP BY data->>'sessionId'
+      )
+      SELECT e.data->>'sessionId' as "sessionId", 
+             le."lastActiveAt", 
+             row_to_json(geo.*) as "geo",
+             e.data->>'isEndUserIpInfoGuessTrusted' as "isEndUserIpInfoGuessTrusted"
+      FROM "Event" e
+      JOIN latest_events le ON e.data->>'sessionId' = le."sessionId" AND e."eventStartedAt" = le."lastActiveAt"
+      LEFT JOIN "EventIpInfo" geo ON geo.id = e."endUserIpInfoGuessId"
+      WHERE e."systemEventTypeIds" @> '{"$session-activity"}'
     `;
 
-
+    console.log(events);
     const sessionsWithLastActiveAt = refreshTokenObjs.map(s => {
       const event = events.find(e => e.sessionId === s.id);
-      const endUserIpInfoGuess = event?.endUserIpInfoGuess ? (JSON.parse(event.endUserIpInfoGuess) as GeoInfo) : undefined;
       return {
         ...s,
         last_active_at: event?.lastActiveAt.getTime(),
-        last_active_at_end_user_ip_info: endUserIpInfoGuess,
+        last_active_at_end_user_ip_info: event?.geo,
       };
     });
 

@@ -8,6 +8,7 @@ import { passwordSchema as schemaFieldsPasswordSchema, strictEmailSchema, yupObj
 import { generateRandomValues } from '@stackframe/stack-shared/dist/utils/crypto';
 import { fromNow } from '@stackframe/stack-shared/dist/utils/dates';
 import { captureError, throwErr } from '@stackframe/stack-shared/dist/utils/errors';
+import { GeoInfo } from "@stackframe/stack-shared/dist/utils/geo";
 import { runAsynchronously, runAsynchronouslyWithAlert } from '@stackframe/stack-shared/dist/utils/promises';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger, ActionCell, Badge, Button, Input, Label, PasswordInput, Separator, Skeleton, Table, TableBody, TableCell, TableHead, TableHeader, TableRow, Typography } from '@stackframe/stack-ui';
 import { Edit, Trash, icons } from 'lucide-react';
@@ -373,8 +374,7 @@ type Session = {
   lastUsedAt?: Date,
   isImpersonation: boolean,
   isCurrent?: boolean,
-  ipAddress?: string,
-  location?: string,
+  geoInfo?: GeoInfo,
 }
 
 function ActiveSessionsPage() {
@@ -390,16 +390,7 @@ function ActiveSessionsPage() {
     runAsynchronously(async () => {
       setIsLoading(true);
       const sessionsData = await user.getActiveSessions();
-      const enhancedSessions = sessionsData.map(session => ({
-        id: session.id,
-        userId: session.userId,
-        createdAt: session.createdAt,
-        lastUsedAt: session.lastUsedAt,
-        isImpersonation: session.isImpersonation,
-        isCurrent: session.isCurrentSession,
-        ipAddress: session.lastUsedAtEndUserIpInfo?.ip,
-        location: session.lastUsedAtEndUserIpInfo?.cityName,
-      }));
+      const enhancedSessions = sessionsData;
       setSessions(enhancedSessions);
       setIsLoading(false);
     });
@@ -509,10 +500,10 @@ function ActiveSessionsPage() {
                         </div>
                       </TableCell>
                       <TableCell>
-                        <Typography>{session.ipAddress || t('-')}</Typography>
+                        <Typography>{session.geoInfo?.ip || t('-')}</Typography>
                       </TableCell>
                       <TableCell>
-                        <Typography>{session.location || t('Unknown')}</Typography>
+                        <Typography>{session.geoInfo?.cityName || t('Unknown')}</Typography>
                       </TableCell>
                       <TableCell>
                         <div className="flex flex-col">
