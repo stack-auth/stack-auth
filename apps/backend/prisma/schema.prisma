@@ -682,18 +682,20 @@ model OAuthOuterInfo {
 }
 
 model ProjectUserRefreshToken {
-  tenancyId     String @db.Uuid
-  projectUserId String @db.Uuid
+  id            String   @default(uuid()) @db.Uuid
+  tenancyId     String   @db.Uuid
+  projectUserId String   @db.Uuid
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  refreshToken String    @unique
-  expiresAt    DateTime?
+  refreshToken    String    @unique
+  expiresAt       DateTime?
+  isImpersonation Boolean   @default(false)
 
   projectUser ProjectUser @relation(fields: [tenancyId, projectUserId], references: [tenancyId, projectUserId], onDelete: Cascade)
 
-  @@id([tenancyId, refreshToken])
+  @@id([tenancyId, id])
 }
 
 model ProjectUserAuthorizationCode {

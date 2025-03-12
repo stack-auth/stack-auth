@@ -506,7 +506,7 @@ const AccessTokenExpired = createKnownErrorConstructor(
     `Access token has expired. Please refresh it and try again.${expiredAt ? ` (The access token expired at ${expiredAt.toISOString()}.)`: ""}`,
     { expired_at_millis: expiredAt?.getTime() ?? null },
   ] as const,
-  (json: any) => [json.expired_at_millis ?? undefined] as const,
+  (json: any) => [json.expired_at_millis ? new Date(json.expired_at_millis) : undefined] as const,
 );
 
 const InvalidProjectForAccessToken = createKnownErrorConstructor(
@@ -536,6 +536,17 @@ const RefreshTokenNotFoundOrExpired = createKnownErrorConstructor(
   ] as const,
   () => [] as const,
 );
+
+const CannotDeleteCurrentSession = createKnownErrorConstructor(
+  RefreshTokenError,
+  "CANNOT_DELETE_CURRENT_SESSION",
+  () => [
+    400,
+    "Cannot delete the current session.",
+  ] as const,
+  () => [] as const,
+);
+
 
 const ProviderRejected = createKnownErrorConstructor(
   RefreshTokenError,
@@ -1169,6 +1180,7 @@ export type KnownErrors = {
 };
 
 export const KnownErrors = {
+  CannotDeleteCurrentSession,
   UnsupportedError,
   BodyParsingError,
   SchemaError,
