@@ -13,7 +13,7 @@ export function CLIConfirmation({ fullPage = true }: { fullPage?: boolean }) {
   const [success, setSuccess] = useState(false);
   const [error, setError] = useState<Error | null>(null);
 
-  const user = app.useUser();
+  const user = app.useUser({ or: "redirect" });
 
   const handleAuthorize = async () => {
     if (authorizing) return;
@@ -26,9 +26,6 @@ export function CLIConfirmation({ fullPage = true }: { fullPage?: boolean }) {
 
       if (!loginCode) {
         throw new Error("Missing login code in URL parameters");
-      }
-      if (!user) {
-        throw new Error("You must be logged in to authorize CLI access");
       }
       const refreshToken = (await user.currentSession.getTokens()).refreshToken;
       if (!refreshToken) {
@@ -105,6 +102,9 @@ export function CLIConfirmation({ fullPage = true }: { fullPage?: boolean }) {
     >
       <Typography>
         {t("A command line application is requesting access to your account. Click the button below to authorize it.")}
+      </Typography>
+      <Typography variant="destructive">
+        {t("WARNING: Make sure you trust the command line application, as it will gain access to your account. If you did not initiate this request, you can close this page and ignore it. We will never send you this link via email or any other means.")}
       </Typography>
     </MessageCard>
   );
