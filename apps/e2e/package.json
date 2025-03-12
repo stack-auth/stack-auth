@@ -1,6 +1,6 @@
 {
   "name": "@stackframe/e2e-tests",
-  "version": "2.7.25",
+  "version": "2.7.26",
   "private": true,
   "type": "module",
   "scripts": {

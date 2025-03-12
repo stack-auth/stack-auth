@@ -1,6 +1,11 @@
 name: Lint & build
 
-on: push
+on:
+  push:
+    branches:
+      - main
+      - dev
+  pull_request:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
