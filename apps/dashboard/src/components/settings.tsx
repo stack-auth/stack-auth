@@ -1,7 +1,7 @@
 import { yupResolver } from "@hookform/resolvers/yup";
 import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
 import { forwardRefIfNeeded } from "@stackframe/stack-shared/dist/utils/react";
-import { Accordion, AccordionContent, AccordionItem, AccordionTrigger, Button, Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle, DelayedInput, Form, Label, Switch, Typography, useToast } from "@stackframe/stack-ui";
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger, Button, Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle, DelayedInput, Form, Label, Select, SelectContent, SelectTrigger, SelectValue, Switch, Typography, useToast } from "@stackframe/stack-ui";
 import { Settings } from "lucide-react";
 import React, { useEffect, useId, useState } from "react";
 import { FieldValues, useForm } from "react-hook-form";
@@ -124,6 +124,51 @@ export function SettingText(props: {
       <div>
         {props.children}
       </div>
+    </div>
+  );
+}
+
+export function SettingSelect<TValue extends string>(props: {
+  label: string | React.ReactNode,
+  hint?: string | React.ReactNode,
+  value?: TValue,
+  placeholder?: string,
+  disabled?: boolean,
+  loading?: boolean,
+  onValueChange?: (value: TValue) => void | Promise<void>,
+  actions?: React.ReactNode,
+  children: React.ReactNode,
+}) {
+  const id = useId();
+  const [valueState, setValueState] = useState<TValue | undefined>(props.value);
+  const value = props.value ?? valueState;
+
+  const onValueChange = async (value: TValue) => {
+    setValueState(value);
+    await props.onValueChange?.(value);
+  };
+
+  return (
+    <div className="flex flex-col gap-2">
+      <div className="flex items-center">
+        <Label className='pr-2' htmlFor={id}>{props.label}</Label>
+        {props.actions}
+      </div>
+      <Select
+        value={value}
+        onValueChange={(value: TValue) => runAsynchronouslyWithAlert(onValueChange(value))}
+        disabled={props.disabled || props.loading}
+      >
+        <SelectTrigger id={id} className="max-w-lg" loading={props.loading}>
+          <SelectValue placeholder={props.placeholder} />
+        </SelectTrigger>
+        <SelectContent
+          className="max-w-lg"
+        >
+          {props.children}
+        </SelectContent>
+      </Select>
+      {props.hint && <Typography variant="secondary" type="footnote">{props.hint}</Typography>}
     </div>
   );
 }

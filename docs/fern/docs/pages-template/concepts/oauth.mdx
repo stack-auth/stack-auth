@@ -99,3 +99,20 @@ export const stackServerApp = new StackServerApp({
   }
 });
 ```
+
+## OAuth account merging strategies
+
+When a user attempts to sign in with an OAuth provider that matches an existing account, Stack provides different strategies for handling the authentication flow.
+
+The available strategies are:
+
+- Allow duplicates (legacy default)
+- Link method (new default)
+- Block duplicates (most secure)
+
+The "Link" strategy is the default behavior. If a user attempts to sign in with an OAuth provider that matches an existing account, Stack will link the OAuth identity to the existing account, and the user will be signed into that account.
+This requires both of the credentials to be verified, or otherwise the link will be blocked, in the same way as the "Block" strategy.
+
+The "Allow" strategy is the default behavior for old projects. If a user attempts to sign in with an OAuth provider that has an existing account with the same email address, Stack will create a separate account for the user.
+
+The "Block" strategy will explicitly raise an error if a user attempts to sign in with an OAuth provider that matches an existing account.
