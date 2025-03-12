@@ -1,6 +1,8 @@
 name: Ensure Prisma migrations are in sync with the schema
 
-on: push
+on:
+  push:
+  pull_request:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}

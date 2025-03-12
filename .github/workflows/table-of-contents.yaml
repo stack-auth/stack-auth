@@ -1,6 +1,8 @@
-on: push
-
 name: TOC Generator
+
+on:
+  push:
+  pull_request:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
