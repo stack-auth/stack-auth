@@ -146,7 +146,7 @@ class StackAuthCLI:
                 response = requests.post(url, headers=headers, json=data)
                 
                 if response.status_code == 200:
-                    body = response.json().get("body", {})
+                    body = response.json()
                     status = body.get("status")
                     
                     if status == "success":
