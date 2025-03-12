@@ -2,6 +2,9 @@ name: Preview Docs
 
 on:
   push:
+    branches:
+      - main
+      - dev
   pull_request:
 
 concurrency:
