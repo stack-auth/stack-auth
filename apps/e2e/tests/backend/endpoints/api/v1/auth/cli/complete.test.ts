@@ -34,7 +34,7 @@ it("should set the refresh token for a CLI auth attempt and return success when 
 
   expect(pollResponse).toMatchInlineSnapshot(`
     NiceResponse {
-      "status": 200,
+      "status": 201,
       "body": {
         "refresh_token": <stripped field 'refresh_token'>,
         "status": "success",

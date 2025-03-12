@@ -38,12 +38,11 @@ it("should return 400 with INVALID_POLLING_CODE error when polling with an inval
     NiceResponse {
       "status": 400,
       "body": {
-        "code": "SCHEMA_ERROR",
-        "details": { "message": "The polling code is invalid or does not exist." },
+        "code": "INVALID_POLLING_CODE",
         "error": "The polling code is invalid or does not exist.",
       },
       "headers": Headers {
-        "x-stack-known-error": "SCHEMA_ERROR",
+        "x-stack-known-error": "INVALID_POLLING_CODE",
         <some fields may have been hidden>,
       },
     }
