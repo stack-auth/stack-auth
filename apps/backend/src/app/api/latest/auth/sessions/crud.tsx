@@ -69,8 +69,7 @@ export const sessionsCrudHandlers = createLazyProxy(() => createCrudHandlers(ses
       };
     });
 
-
-    return {
+    const result = {
       items: sessionsWithLastActiveAt.map(s => ({
         id: s.id,
         user_id: s.projectUserId,
@@ -82,6 +81,8 @@ export const sessionsCrudHandlers = createLazyProxy(() => createCrudHandlers(ses
       })),
       is_paginated: false,
     };
+
+    return result;
   },
   onDelete: async ({ auth, params }: { auth: SmartRequestAuth, params: { id: string }, query: { user_id?: string } }) => {
 

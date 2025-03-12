@@ -8,7 +8,6 @@ import { passwordSchema as schemaFieldsPasswordSchema, strictEmailSchema, yupObj
 import { generateRandomValues } from '@stackframe/stack-shared/dist/utils/crypto';
 import { fromNow } from '@stackframe/stack-shared/dist/utils/dates';
 import { captureError, throwErr } from '@stackframe/stack-shared/dist/utils/errors';
-import { GeoInfo } from "@stackframe/stack-shared/dist/utils/geo";
 import { runAsynchronously, runAsynchronouslyWithAlert } from '@stackframe/stack-shared/dist/utils/promises';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger, ActionCell, Badge, Button, Input, Label, PasswordInput, Separator, Skeleton, Table, TableBody, TableCell, TableHead, TableHeader, TableRow, Typography } from '@stackframe/stack-ui';
 import { Edit, Trash, icons } from 'lucide-react';
@@ -24,6 +23,7 @@ import { SidebarLayout } from '../components/elements/sidebar-layout';
 import { UserAvatar } from '../components/elements/user-avatar';
 import { ProfileImageEditor } from "../components/profile-image-editor";
 import { TeamIcon } from '../components/team-icon';
+import { ActiveSession } from "../lib/stack-app/users";
 import { useTranslation } from "../lib/translations";
 
 const Icon = ({ name }: { name: keyof typeof icons }) => {
@@ -367,22 +367,13 @@ function EmailsAndAuthPage() {
     </PageLayout>
   );
 }
-type Session = {
-  id: string,
-  userId: string,
-  createdAt: Date,
-  lastUsedAt?: Date,
-  isImpersonation: boolean,
-  isCurrent?: boolean,
-  geoInfo?: GeoInfo,
-}
 
 function ActiveSessionsPage() {
   const { t } = useTranslation();
   const user = useUser({ or: "throw" });
   const [isLoading, setIsLoading] = useState(true);
   const [isRevokingAll, setIsRevokingAll] = useState(false);
-  const [sessions, setSessions] = useState<Session[]>([]);
+  const [sessions, setSessions] = useState<ActiveSession[]>([]);
   const [showConfirmRevokeAll, setShowConfirmRevokeAll] = useState(false);
 
   // Fetch sessions when component mounts
@@ -412,10 +403,10 @@ function ActiveSessionsPage() {
     setIsRevokingAll(true);
     try {
       const deletionPromises = sessions
-        .filter(session => !session.isCurrent)
+        .filter(session => !session.isCurrentSession)
         .map(session => user.revokeSession(session.id));
       await Promise.all(deletionPromises);
-      setSessions(sessions.filter(session => session.isCurrent));
+      setSessions(sessions.filter(session => session.isCurrentSession));
     } catch (error) {
       captureError("Failed to revoke all sessions", { error, sessionIds: sessions.map(session => session.id) });
       throw error;
@@ -430,7 +421,7 @@ function ActiveSessionsPage() {
       <div>
         <div className="flex justify-between items-center mb-2">
           <Typography className='font-medium'>{t("Active Sessions")}</Typography>
-          {sessions.filter(s => !s.isCurrent).length > 0 && !isLoading && (
+          {sessions.filter(s => !s.isCurrentSession).length > 0 && !isLoading && (
             showConfirmRevokeAll ? (
               <div className="flex gap-2">
                 <Button
@@ -492,7 +483,7 @@ function ActiveSessionsPage() {
                       <TableCell>
                         <div className="flex flex-col">
                           {/* We currently do not save any usefull information about the user, in the future, the name should probably say what kind of session it is (e.g. cli, browser, maybe what auth method was used) */}
-                          <Typography>{session.isCurrent ? t("Current Session") : t("Other Session")}</Typography>
+                          <Typography>{session.isCurrentSession ? t("Current Session") : t("Other Session")}</Typography>
                           {session.isImpersonation && <Badge variant="secondary" className="w-fit mt-1">{t("Impersonation")}</Badge>}
                           <Typography variant='secondary' type='footnote'>
                             {t("Signed in {time}", { time: new Date(session.createdAt).toLocaleDateString() })}
@@ -520,8 +511,8 @@ function ActiveSessionsPage() {
                               item: t("Revoke"),
                               onClick: () => handleRevokeSession(session.id),
                               danger: true,
-                              disabled: session.isCurrent,
-                              disabledTooltip: session.isCurrent ? t("You cannot revoke your current session") : undefined,
+                              disabled: session.isCurrentSession,
+                              disabledTooltip: session.isCurrentSession ? t("You cannot revoke your current session") : undefined,
                             },
                           ]}
                         />
