@@ -121,7 +121,7 @@ export class StackServerInterface extends StackClientInterface {
     if (responseOrError.status === "error") {
       return Result.error(responseOrError.error);
     }
-    const user: CurrentUserCrud['Server']['Read'] = await responseOrError.data.json();
+    const user: UsersCrud['Server']['Read'] = await responseOrError.data.json();
     return Result.ok(user);
   }
 
