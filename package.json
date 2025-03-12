@@ -98,6 +98,7 @@
   },
   "packageManager": "pnpm@9.1.2",
   "dependencies": {
+    "commander": "^13.1.0",
     "tsx": "^4.19.3",
     "yaml": "^2.4.5"
   }
