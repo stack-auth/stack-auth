@@ -32,6 +32,7 @@ export function MaybeFullPage({
           suppressHydrationWarning
           id={id}
           style={{
+            minWidth: '100vw',
             minHeight: '100vh',
             alignSelf: 'stretch',
             display: 'flex',
