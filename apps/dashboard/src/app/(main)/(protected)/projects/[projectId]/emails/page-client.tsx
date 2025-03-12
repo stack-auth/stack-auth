@@ -142,10 +142,8 @@ type SentEmail = {
   id: string,
   to: string[],
   subject: string,
-  sent_at_millis: number,
   recipient: string, // We'll derive this from to[0] for display
   sentAt: Date, // We'll derive this from sent_at_millis for display
-  sender_config: any,
   error?: unknown,
 }
 
