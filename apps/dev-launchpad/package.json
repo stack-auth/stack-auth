@@ -1,6 +1,6 @@
 {
   "name": "@stackframe/dev-launchpad",
-  "version": "2.7.25",
+  "version": "2.7.26",
   "private": true,
   "scripts": {
     "dev": "serve -p 8100 -s public",
