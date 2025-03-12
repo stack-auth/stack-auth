@@ -1,6 +1,8 @@
 name: Runs E2E API Tests
 
-on: push
+on:
+  push:
+  pull_request:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
