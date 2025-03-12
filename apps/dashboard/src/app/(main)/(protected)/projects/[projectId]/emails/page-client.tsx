@@ -12,6 +12,7 @@ import { EmailTemplateType } from "@stackframe/stack-shared/dist/interface/crud/
 import { strictEmailSchema } from "@stackframe/stack-shared/dist/schema-fields";
 import { throwErr } from "@stackframe/stack-shared/dist/utils/errors";
 import { deepPlainEquals } from "@stackframe/stack-shared/dist/utils/objects";
+import { runAsynchronously } from "@stackframe/stack-shared/dist/utils/promises";
 import { ActionCell, ActionDialog, Alert, AlertDescription, AlertTitle, Button, Card, DataTable, SimpleTooltip, Typography, useToast } from "@stackframe/stack-ui";
 import { ColumnDef } from "@tanstack/react-table";
 import { AlertCircle } from "lucide-react";
@@ -167,12 +168,21 @@ const emailTableColumns: ColumnDef<SentEmail>[] = [
 
 function EmailSendDataTable() {
   const stackAdminApp = useAdminApp();
-  const [emailLogs, setEmailLogs] = useState<SentEmail[]>([]);
+  const [emailLogs, setEmailLogs] = useState<{
+    recipient: string,
+    sentAt: Date,
+    error?: {} | null | undefined,
+    to?: string[] | undefined,
+    id: string,
+    subject: string,
+    sent_at_millis: number,
+    sender_config: {} | null,
+}[]>([]);
   const [loading, setLoading] = useState(true);
 
   // Fetch email logs when component mounts
   useEffect(() => {
-    async function fetchEmails() {
+    runAsynchronously(async () => {
       setLoading(true);
       try {
         const result = await stackAdminApp.listSentEmails();
@@ -190,9 +200,7 @@ function EmailSendDataTable() {
       } finally {
         setLoading(false);
       }
-    }
-
-    fetchEmails();
+    });
   }, [stackAdminApp]);
 
   if (loading) {
