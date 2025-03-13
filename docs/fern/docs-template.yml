@@ -120,6 +120,12 @@ navigation:
           - page: Self-Hosting
             icon: fa-regular fa-house-laptop
             path: ./docs/pages-{platform}/others/self-host.mdx
+      - section: Others
+        platform: python-like
+        contents:
+          - page: CLI Authentication
+            icon: fa-regular fa-terminal
+            path: ./docs/pages-{platform}/others/cli-authentication.mdx
   - tab: components
     platform: react-like
     layout: 

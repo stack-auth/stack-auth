@@ -11,8 +11,7 @@ import { ProviderType } from "@stackframe/stack-shared/dist/utils/oauth";
 import { runAsynchronously } from "@stackframe/stack-shared/dist/utils/promises";
 import { suspend } from "@stackframe/stack-shared/dist/utils/react";
 import { Result } from "@stackframe/stack-shared/dist/utils/results";
-// NEXT_LINE_PLATFORM react-like
-import { useMemo } from "react";
+import { useMemo } from "react"; // THIS_LINE_PLATFORM react-like
 import { constructRedirectUrl } from "../../../../utils/url";
 import { GetUserOptions, HandlerUrls, OAuthScopesOnSignIn, TokenStoreInit } from "../../common";
 import { OAuthConnection } from "../../connected-accounts";
@@ -23,9 +22,9 @@ import { ProjectCurrentServerUser, ServerUser, ServerUserCreateOptions, ServerUs
 import { StackServerAppConstructorOptions } from "../interfaces/server-app";
 import { _StackClientAppImplIncomplete } from "./client-app-impl";
 import { clientVersion, createCache, createCacheBySession, getBaseUrl, getDefaultProjectId, getDefaultPublishableClientKey, getDefaultSecretServerKey } from "./common";
+
 // NEXT_LINE_PLATFORM react-like
 import { useAsyncCache } from "./common";
-
 
 export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, ProjectId extends string> extends _StackClientAppImplIncomplete<HasTokenStore, ProjectId>
 {
@@ -269,8 +268,7 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
         return await this.update({ selectedTeamId: team?.id ?? null });
       },
       getConnectedAccount,
-      // NEXT_LINE_PLATFORM react-like
-      useConnectedAccount,
+      useConnectedAccount, // THIS_LINE_PLATFORM react-like
       selectedTeam: crud.selected_team ? app._serverTeamFromCrud(crud.selected_team) : null,
       async getTeam(teamId: string) {
         const teams = await this.listTeams();

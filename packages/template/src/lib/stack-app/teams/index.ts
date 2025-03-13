@@ -38,11 +38,9 @@ export type Team = {
   clientReadOnlyMetadata: any,
   inviteUser(options: { email: string, callbackUrl?: string }): Promise<void>,
   listUsers(): Promise<TeamUser[]>,
-  // NEXT_LINE_PLATFORM react-like
-  useUsers(): TeamUser[],
+  useUsers(): TeamUser[], // THIS_LINE_PLATFORM react-like
   listInvitations(): Promise<TeamInvitation[]>,
-  // NEXT_LINE_PLATFORM react-like
-  useInvitations(): TeamInvitation[],
+  useInvitations(): TeamInvitation[], // THIS_LINE_PLATFORM react-like
   update(update: TeamUpdateOptions): Promise<void>,
   delete(): Promise<void>,
 };
@@ -83,8 +81,7 @@ export type ServerTeam = {
   createdAt: Date,
   serverMetadata: any,
   listUsers(): Promise<ServerTeamUser[]>,
-  // NEXT_LINE_PLATFORM react-like
-  useUsers(): ServerUser[],
+  useUsers(): ServerUser[], // THIS_LINE_PLATFORM react-like
   update(update: ServerTeamUpdateOptions): Promise<void>,
   delete(): Promise<void>,
   addUser(userId: string): Promise<void>,

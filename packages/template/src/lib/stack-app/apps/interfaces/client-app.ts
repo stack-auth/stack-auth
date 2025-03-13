@@ -63,8 +63,7 @@ export type StackClientApp<HasTokenStore extends boolean = boolean, ProjectId ex
     getUser(options: GetUserOptions<HasTokenStore> & { or: 'throw' }): Promise<ProjectCurrentUser<ProjectId>>,
     getUser(options?: GetUserOptions<HasTokenStore>): Promise<ProjectCurrentUser<ProjectId> | null>,
 
-    // NEXT_LINE_PLATFORM react-like
-    useNavigate(): (to: string) => void,
+    useNavigate(): (to: string) => void, // THIS_LINE_PLATFORM react-like
 
     [stackAppInternalsSymbol]: {
       toClientJson(): StackClientAppJson<HasTokenStore, ProjectId>,

@@ -7,8 +7,7 @@ export type RedirectToOptions = {
 
 export type AsyncStoreProperty<Name extends string, Args extends any[], Value, IsMultiple extends boolean> =
   & { [key in `${IsMultiple extends true ? "list" : "get"}${Capitalize<Name>}`]: (...args: Args) => Promise<Value> }
-  // NEXT_LINE_PLATFORM react-like
-  & { [key in `use${Capitalize<Name>}`]: (...args: Args) => Value }
+  & { [key in `use${Capitalize<Name>}`]: (...args: Args) => Value } // THIS_LINE_PLATFORM react-like
 
 export type EmailConfig = {
   host: string,
@@ -20,8 +19,7 @@ export type EmailConfig = {
 }
 
 export type RedirectMethod = "window"
-  // NEXT_LINE_PLATFORM next
-  | "nextjs"
+  | "nextjs" // THIS_LINE_PLATFORM next
   | "none"
   | {
     useNavigate: () => (to: string) => void,

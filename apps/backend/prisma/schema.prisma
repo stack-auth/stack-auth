@@ -83,6 +83,7 @@ model Tenancy {
   contactChannels   ContactChannel[]   @relation("TenancyContactChannels")
   connectedAccounts ConnectedAccount[] @relation("TenancyConnectedAccounts")
   SentEmail         SentEmail[]
+  cliAuthAttempts   CliAuthAttempt[]
 
   @@unique([projectId, branchId, organizationId])
   @@unique([projectId, branchId, hasNoOrganization])
@@ -957,5 +958,22 @@ model SentEmail {
   tenancy Tenancy      @relation(fields: [tenancyId], references: [id], onDelete: Cascade)
   user    ProjectUser? @relation(fields: [tenancyId, userId], references: [tenancyId, projectUserId], onDelete: Cascade)
 
+  @@id([tenancyId, id])
+}
+
+model CliAuthAttempt {
+  tenancyId    String   @db.Uuid
+  tenancy      Tenancy  @relation(fields: [tenancyId], references: [id], onDelete: Cascade)
+  
+  id           String   @default(uuid()) @db.Uuid
+  pollingCode  String   @unique
+  loginCode    String   @unique
+  refreshToken String?
+  expiresAt    DateTime
+  usedAt       DateTime?
+  
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  
   @@id([tenancyId, id])
 }

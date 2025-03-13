@@ -1,5 +1,5 @@
 import { wait } from "@stackframe/stack-shared/dist/utils/promises";
-import { it } from "../../../../helpers";
+import { STACK_SVIX_SERVER_URL, it, niceFetch } from "../../../../helpers";
 import { ApiKey, Auth, InternalProjectKeys, Project, Team, Webhook, backendContext, bumpEmailAddress, niceBackendFetch } from "../../../backend-helpers";
 
 
@@ -611,6 +611,188 @@ it("should trigger team membership webhook when a user is removed from a team", 
           "user_id": "<stripped UUID>",
         },
         "type": "team_membership.deleted",
+      },
+      "timestamp": <stripped field 'timestamp'>,
+    }
+  `);
+});
+
+it("should trigger team permission webhook when a user is added to a team", async ({ expect }) => {
+  const { projectId, svixToken, endpointId } = await Webhook.createProjectWithEndpoint();
+
+  await Auth.Otp.signIn();
+  const { teamId } = await Team.createAndAddCurrent();
+
+  await bumpEmailAddress();
+  const { userId } = await Auth.Otp.signIn();
+
+  const addUserResponse = await niceBackendFetch(`/api/v1/team-memberships/${teamId}/${userId}`, {
+    accessType: "server",
+    method: "POST",
+    body: {},
+  });
+
+  expect(addUserResponse.status).toBe(201);
+
+  await wait(3000);
+
+  const attemptResponse = await Webhook.listWebhookAttempts(projectId, endpointId, svixToken);
+
+  // Check for team_permission.created events
+  const teamPermissionCreatedEvents = attemptResponse.filter(event => event.eventType === "team_permission.created");
+
+  // There should be at least one team permission created event (for the default permissions)
+  expect(teamPermissionCreatedEvents.length).toBe(1);
+
+  // Check the first team permission created event
+  const firstPermissionEvent = teamPermissionCreatedEvents[0];
+  expect(firstPermissionEvent).toMatchInlineSnapshot(`
+    {
+      "channels": null,
+      "eventId": null,
+      "eventType": "team_permission.created",
+      "id": "<stripped svix message id>",
+      "payload": {
+        "data": {
+          "id": "member",
+          "team_id": "<stripped UUID>",
+          "user_id": "<stripped UUID>",
+        },
+        "type": "team_permission.created",
+      },
+      "timestamp": <stripped field 'timestamp'>,
+    }
+  `);
+});
+
+it("should trigger multiple permission webhooks when a custom permission is included in default team permissions", async ({ expect }) => {
+  // Setup project with webhook support
+  backendContext.set({ projectKeys: InternalProjectKeys });
+  const { projectId, adminAccessToken } = await Project.createAndGetAdminToken({
+    config: {
+      magic_link_enabled: true
+    }
+  });
+
+  // Create a new permission definition
+  const createPermissionResponse = await niceBackendFetch(`/api/v1/team-permission-definitions`, {
+    accessType: "admin",
+    method: "POST",
+    body: {
+      id: 'custom_permission',
+      description: 'Custom test permission',
+    },
+    headers: {
+      'x-stack-admin-access-token': adminAccessToken
+    },
+  });
+  expect(createPermissionResponse.status).toBe(201);
+
+  // Update project config to include the custom permission as default member permission
+  const { updateProjectResponse } = await Project.updateCurrent(adminAccessToken, {
+    config: {
+      team_member_default_permissions: [{ id: 'member' }, { id: 'custom_permission' }],
+    },
+  });
+  expect(updateProjectResponse.status).toBe(200);
+
+  // Setup webhook endpoint
+  const svixTokenResponse = await niceBackendFetch("/api/v1/webhooks/svix-token", {
+    accessType: "admin",
+    method: "POST",
+    body: {},
+    headers: {
+      'x-stack-admin-access-token': adminAccessToken
+    }
+  });
+  const svixToken = svixTokenResponse.body.token;
+
+  const createEndpointResponse = await niceFetch(STACK_SVIX_SERVER_URL + `/api/v1/app/${projectId}/endpoint`, {
+    method: "POST",
+    body: JSON.stringify({
+      url: "https://example.com"
+    }),
+    headers: {
+      "Authorization": `Bearer ${svixToken}`,
+      "Content-Type": "application/json",
+    },
+  });
+  const endpointId = createEndpointResponse.body.id;
+
+  // Setup API keys for the project
+  await ApiKey.createAndSetProjectKeys(adminAccessToken);
+
+  // Create a user and team
+  await Auth.Otp.signIn();
+  const { teamId } = await Team.createAndAddCurrent();
+
+  await bumpEmailAddress();
+  const { userId } = await Auth.Otp.signIn();
+
+  // Add the user to the team
+  const addUserResponse = await niceBackendFetch(`/api/v1/team-memberships/${teamId}/${userId}`, {
+    accessType: "server",
+    method: "POST",
+    body: {},
+  });
+
+  expect(addUserResponse.status).toBe(201);
+
+  // Wait for webhooks to be triggered
+  await wait(3000);
+
+  // Get webhook events
+  const attemptResponse = await Webhook.listWebhookAttempts(projectId, endpointId, svixToken);
+
+  // Check for team_permission.created events
+  const teamPermissionCreatedEvents = attemptResponse.filter(event => event.eventType === "team_permission.created");
+
+  // There should be two team permission created events (for both default permissions)
+  expect(teamPermissionCreatedEvents.length).toBe(2);
+
+  // Check for the custom permission event
+  const customPermissionEvent = teamPermissionCreatedEvents.find(event =>
+    event.payload.data.id === "custom_permission"
+  );
+
+  expect(customPermissionEvent).toBeDefined();
+  expect(customPermissionEvent).toMatchInlineSnapshot(`
+    {
+      "channels": null,
+      "eventId": null,
+      "eventType": "team_permission.created",
+      "id": "<stripped svix message id>",
+      "payload": {
+        "data": {
+          "id": "custom_permission",
+          "team_id": "<stripped UUID>",
+          "user_id": "<stripped UUID>",
+        },
+        "type": "team_permission.created",
+      },
+      "timestamp": <stripped field 'timestamp'>,
+    }
+  `);
+
+  // Check for the standard member permission event
+  const memberPermissionEvent = teamPermissionCreatedEvents.find(event =>
+    event.payload.data.id === "member"
+  );
+
+  expect(memberPermissionEvent).toBeDefined();
+  expect(memberPermissionEvent).toMatchInlineSnapshot(`
+    {
+      "channels": null,
+      "eventId": null,
+      "eventType": "team_permission.created",
+      "id": "<stripped svix message id>",
+      "payload": {
+        "data": {
+          "id": "member",
+          "team_id": "<stripped UUID>",
+          "user_id": "<stripped UUID>",
+        },
+        "type": "team_permission.created",
       },
       "timestamp": <stripped field 'timestamp'>,
     }
