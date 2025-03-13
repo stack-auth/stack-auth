@@ -59,7 +59,6 @@ export const sessionsCrudHandlers = createLazyProxy(() => createCrudHandlers(ses
       WHERE e."systemEventTypeIds" @> '{"$session-activity"}'
     `;
 
-    console.log(events);
     const sessionsWithLastActiveAt = refreshTokenObjs.map(s => {
       const event = events.find(e => e.sessionId === s.id);
       return {

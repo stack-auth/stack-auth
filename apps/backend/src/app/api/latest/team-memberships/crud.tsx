@@ -2,7 +2,7 @@ import { isTeamSystemPermission, teamSystemPermissionStringToDBType } from "@/li
 import { ensureTeamExists, ensureTeamMembershipDoesNotExist, ensureTeamMembershipExists, ensureUserExists, ensureUserTeamPermissionExists } from "@/lib/request-checks";
 import { Tenancy } from "@/lib/tenancies";
 import { PrismaTransaction } from "@/lib/types";
-import { sendTeamMembershipCreatedWebhook, sendTeamMembershipDeletedWebhook } from "@/lib/webhooks";
+import { sendTeamMembershipCreatedWebhook, sendTeamMembershipDeletedWebhook, sendTeamPermissionCreatedWebhook } from "@/lib/webhooks";
 import { retryTransaction } from "@/prisma-client";
 import { createCrudHandlers } from "@/route-handlers/crud-handler";
 import { runAsynchronouslyAndWaitUntil } from "@/utils/vercel";
@@ -21,7 +21,7 @@ export async function addUserToTeam(tx: PrismaTransaction, options: {
 }) {
   const permissionAttributeName = options.type === 'creator' ? 'team_creator_default_permissions' : 'team_member_default_permissions';
 
-  await tx.teamMember.create({
+  const teamMember = await tx.teamMember.create({
     data: {
       projectUserId: options.userId,
       teamId: options.teamId,
@@ -47,7 +47,18 @@ export async function addUserToTeam(tx: PrismaTransaction, options: {
         }),
       }
     },
+    include: {
+      directPermissions: {
+        include: {
+          permission: true,
+        }
+      }
+    }
   });
+
+  return {
+    directPermissionIds: teamMember.directPermissions.map((p) => p.permission?.queryableId || p.systemPermission || throwErr("Neither permission nor system permission found")),
+  };
 }
 
 
@@ -57,7 +68,7 @@ export const teamMembershipsCrudHandlers = createLazyProxy(() => createCrudHandl
     user_id: userIdOrMeSchema.defined(),
   }),
   onCreate: async ({ auth, params }) => {
-    await retryTransaction(async (tx) => {
+    const result = await retryTransaction(async (tx) => {
       await ensureUserExists(tx, {
         tenancyId: auth.tenancy.id,
         userId: params.user_id,
@@ -87,7 +98,7 @@ export const teamMembershipsCrudHandlers = createLazyProxy(() => createCrudHandl
         throw new KnownErrors.UserNotFound();
       }
 
-      await addUserToTeam(tx, {
+      return await addUserToTeam(tx, {
         tenancy: auth.tenancy,
         teamId: params.team_id,
         userId: params.user_id,
@@ -100,10 +111,25 @@ export const teamMembershipsCrudHandlers = createLazyProxy(() => createCrudHandl
       user_id: params.user_id,
     };
 
-    runAsynchronouslyAndWaitUntil(sendTeamMembershipCreatedWebhook({
-      projectId: auth.project.id,
-      data,
-    }));
+    runAsynchronouslyAndWaitUntil((async () => {
+      await sendTeamMembershipCreatedWebhook({
+        projectId: auth.project.id,
+        data,
+      });
+
+      await Promise.all(
+        result.directPermissionIds.map((permissionId) =>
+          sendTeamPermissionCreatedWebhook({
+            projectId: auth.project.id,
+            data: {
+              id: permissionId,
+              team_id: params.team_id,
+              user_id: params.user_id,
+            }
+          })
+        )
+      );
+    })());
 
     return data;
   },

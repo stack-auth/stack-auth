@@ -1,0 +1,63 @@
+---
+title: CLI Authentication
+description: How to authenticate a command line application using Stack Auth
+---
+
+If you're building a command line application that runs in a terminal, you can use Stack Auth to let your users log in to their accounts.
+
+To do so, we provide a Python template that you can use as a starting point. [Download it here](https://app.stack-auth.com/stack_auth_cli_template.py) and copy it into your project, for example:
+
+```py
+└─ my-python-app
+   ├─ main.py
+   └─ stack_auth_cli_template.py  # <- the file you just downloaded
+```
+
+Then, you can import the `prompt_cli_login` function:
+
+```py
+from stack_auth_cli_template import prompt_cli_login
+
+# prompt the user to log in
+refresh_token = prompt_cli_login(
+  app_url="https://your-app-url.example.com",
+  project_id="your-project-id-here",
+  publishable_client_key="your-publishable-client-key-here",
+)
+
+if refresh_token is None:
+  print("User cancelled the login process. Exiting")
+  exit(1)
+
+# you can also store the refresh token in a file, and only prompt the user to log in if the file doesn't exist
+
+# you can now use the REST API with the refresh token
+def stack_auth_request(method, endpoint, **kwargs):
+  # ... see Stack Auth's Getting Started section to see how this function should look like
+  # https://docs.stack-auth.com/python/getting-started/setup
+
+def get_access_token(refresh_token):
+  access_token_response = stack_auth_request(
+    'post',
+    '/api/v1/auth/sessions/current/refresh',
+    headers={
+      'x-stack-refresh-token': refresh_token,
+    }
+  )
+
+  return access_token_response['access_token']
+
+def get_user_object(access_token):
+  return stack_auth_request(
+    'get',
+    '/api/v1/users/me',
+    headers={
+      'x-stack-access-token': access_token,
+    }
+  )
+
+user = get_user_object(get_access_token(refresh_token))
+print("The user is logged in as", user['display_name'] or user['primary_email'])
+```
+
+

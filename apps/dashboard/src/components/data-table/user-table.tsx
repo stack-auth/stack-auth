@@ -4,11 +4,12 @@ import { useRouter } from "@/components/router";
 import { ServerUser } from '@stackframe/stack';
 import { deepPlainEquals } from '@stackframe/stack-shared/dist/utils/objects';
 import { deindent } from '@stackframe/stack-shared/dist/utils/strings';
-import { ActionCell, ActionDialog, AvatarCell, BadgeCell, CopyField, DataTableColumnHeader, DataTableManualPagination, DateCell, SearchToolbarItem, SimpleTooltip, TextCell, Typography } from "@stackframe/stack-ui";
+import { ActionCell, AvatarCell, BadgeCell, DataTableColumnHeader, DataTableManualPagination, DateCell, SearchToolbarItem, SimpleTooltip, TextCell } from "@stackframe/stack-ui";
 import { ColumnDef, ColumnFiltersState, Row, SortingState, Table } from "@tanstack/react-table";
 import { useState } from "react";
 import { Link } from '../link';
 import { UserDialog } from '../user-dialog';
+import { DeleteUserDialog, ImpersonateUserDialog } from '../user-dialogs';
 
 export type ExtendedServerUser = ServerUser & {
   authTypes: string[],
@@ -21,46 +22,6 @@ function userToolbarRender<TData>(table: Table<TData>) {
       <SearchToolbarItem table={table} placeholder="Search table" />
     </>
   );
-}
-
-function DeleteUserDialog(props: {
-  user: ServerUser,
-  open: boolean,
-  onOpenChange: (open: boolean) => void,
-}) {
-  return <ActionDialog
-    open={props.open}
-    onOpenChange={props.onOpenChange}
-    title="Delete User"
-    danger
-    cancelButton
-    okButton={{ label: "Delete User", onClick: async () => { await props.user.delete(); } }}
-    confirmText="I understand that this action cannot be undone."
-  >
-    {`Are you sure you want to delete the user ${props.user.displayName ? '"' + props.user.displayName + '"' : ''} with ID ${props.user.id}?`}
-  </ActionDialog>;
-}
-
-function ImpersonateUserDialog(props: {
-  user: ServerUser,
-  impersonateSnippet: string | null,
-  onClose: () => void,
-}) {
-  return <ActionDialog
-    open={props.impersonateSnippet !== null}
-    onOpenChange={(open) => !open && props.onClose()}
-    title="Impersonate User"
-    okButton
-  >
-    <Typography>
-      Open your website and paste the following code into the browser console:
-    </Typography>
-    <CopyField
-      monospace
-      height={60}
-      value={props.impersonateSnippet ?? ""}
-    />
-  </ActionDialog>;
 }
 
 function UserActions({ row }: { row: Row<ExtendedServerUser> }) {
