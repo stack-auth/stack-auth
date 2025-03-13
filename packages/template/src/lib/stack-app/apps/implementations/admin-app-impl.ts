@@ -25,7 +25,7 @@ import { useAsyncCache } from "./common";
 import { AdminSentEmail } from "../../email";
 
 
-export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, ProjectId extends string> extends _StackServerAppImplIncomplete<HasTokenStore, ProjectId>
+export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, ProjectId extends string> extends _StackServerAppImplIncomplete<HasTokenStore, ProjectId> implements StackAdminApp<HasTokenStore, ProjectId>
 {
   declare protected _interface: StackAdminInterface;
 
