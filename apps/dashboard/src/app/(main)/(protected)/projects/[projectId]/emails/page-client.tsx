@@ -5,16 +5,18 @@ import { InputField, SelectField } from "@/components/form-fields";
 import { useRouter } from "@/components/router";
 import { SettingCard, SettingText } from "@/components/settings";
 import { getPublicEnvVar } from "@/lib/env";
-import { AdminEmailConfig, AdminProject } from "@stackframe/stack";
+import { AdminEmailConfig, AdminProject, AdminSentEmail } from "@stackframe/stack";
 import { Reader } from "@stackframe/stack-emails/dist/editor/email-builder/index";
 import { EMAIL_TEMPLATES_METADATA, convertEmailSubjectVariables, convertEmailTemplateMetadataExampleValues, convertEmailTemplateVariables, validateEmailTemplateContent } from "@stackframe/stack-emails/dist/utils";
 import { EmailTemplateType } from "@stackframe/stack-shared/dist/interface/crud/email-templates";
 import { strictEmailSchema } from "@stackframe/stack-shared/dist/schema-fields";
 import { throwErr } from "@stackframe/stack-shared/dist/utils/errors";
 import { deepPlainEquals } from "@stackframe/stack-shared/dist/utils/objects";
-import { ActionCell, ActionDialog, Alert, AlertDescription, AlertTitle, Button, Card, SimpleTooltip, Typography, useToast } from "@stackframe/stack-ui";
+import { runAsynchronously } from "@stackframe/stack-shared/dist/utils/promises";
+import { ActionCell, ActionDialog, Alert, AlertDescription, AlertTitle, Button, Card, DataTable, SimpleTooltip, Typography, useToast } from "@stackframe/stack-ui";
+import { ColumnDef } from "@tanstack/react-table";
 import { AlertCircle } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import * as yup from "yup";
 import { PageLayout } from "../page-layout";
 import { useAdminApp } from "../use-admin-app";
@@ -110,6 +112,9 @@ export default function PageClient() {
           </Card>
         ))}
       </SettingCard>
+      <SettingCard title="Email Log" description="Manage email sending history">
+        <EmailSendDataTable />
+      </SettingCard>
 
       <ActionDialog
         open={sharedSmtpWarningDialogOpen !== null}
@@ -131,6 +136,60 @@ export default function PageClient() {
       </ActionDialog>
     </PageLayout>
   );
+}
+
+
+const emailTableColumns: ColumnDef<AdminSentEmail>[] = [
+  { accessorKey: 'recipient', header: 'Recipient' },
+  { accessorKey: 'subject', header: 'Subject' },
+  { accessorKey: 'sentAt', header: 'Sent At', cell: ({ row }) => {
+    const date = row.original.sentAt;
+    return date.toLocaleDateString() + ' ' + date.toLocaleTimeString();
+  }
+  },
+  { accessorKey: 'status', header: 'Status', cell: ({ row }) => {
+    return row.original.error ? (
+      <div className="text-red-500">Failed</div>
+    ) : (
+      <div className="text-green-500">Sent</div>
+    );
+  } },
+];
+
+function EmailSendDataTable() {
+  const stackAdminApp = useAdminApp();
+  const [emailLogs, setEmailLogs] = useState<AdminSentEmail[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  // Fetch email logs when component mounts
+  useEffect(() => {
+    runAsynchronously(async () => {
+      setLoading(true);
+      try {
+        const emails = await stackAdminApp.listSentEmails();
+        setEmailLogs(emails);
+      } catch (error) {
+        console.error("Failed to fetch email logs:", error);
+      } finally {
+        setLoading(false);
+      }
+    });
+  }, [stackAdminApp]);
+
+  if (loading) {
+    return (
+      <div className="flex justify-center py-4">
+        <Typography>Loading email logs...</Typography>
+      </div>
+    );
+  }
+
+  return <DataTable
+    data={emailLogs}
+    defaultColumnFilters={[]}
+    columns={emailTableColumns}
+    defaultSorting={[{ id: 'sentAt', desc: true }]}
+  />;
 }
 
 function EmailPreview(props: { content: any, type: EmailTemplateType }) {

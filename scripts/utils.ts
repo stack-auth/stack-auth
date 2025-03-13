@@ -139,18 +139,20 @@ export function processMacros(content: string, platforms: string[]): string {
    *   - ELSE_PLATFORM
    *   - END_PLATFORM
    *   - NEXT_LINE_PLATFORM
+   *   - THIS_LINE_PLATFORM
    *
    * And then capture everything after that keyword up to the end of the line.
    *
    * Examples:
-   *   "blah blah IF_PLATFORM platform1 platform2 ???"  => captures "platform platform2 ???"
+   *   "blah blah IF_PLATFORM platform1 platform2 ???"  => captures "platform1 platform2 ???"
    *   "adsfasdf ELSE_PLATFORM blabla"         => captures "blabla"
    */
-  const reBeginOnly = /\bIF_PLATFORM:?\s+(.+)/i;
-  const reElseIf    = /\bELSE_IF_PLATFORM:?\s+(.+)/i;
-  const reElse      = /\bELSE_PLATFORM\b/i;
-  const reEndOnly   = /\bEND_PLATFORM\b/i;
-  const reNextLine  = /\bNEXT_LINE_PLATFORM:?\s+(.+)/i;
+  const reBeginOnly   = /\bIF_PLATFORM:?\s+(.+)/i;
+  const reElseIf      = /\bELSE_IF_PLATFORM:?\s+(.+)/i;
+  const reElse        = /\bELSE_PLATFORM\b/i;
+  const reEndOnly     = /\bEND_PLATFORM\b/i;
+  const reNextLine    = /\bNEXT_LINE_PLATFORM:?\s+(.+)/i;
+  const reThisLine    = /\bTHIS_LINE_PLATFORM:?\s+(.+)/i;  // New regex
 
   for (const line of lines) {
     // 1) Try detecting IF_PLATFORM ...
@@ -256,6 +258,19 @@ export function processMacros(content: string, platforms: string[]): string {
         skipStack.push('NEXT_LINE');
       }
       // Skip line
+      continue;
+    }
+
+    // 6) Try detecting THIS_LINE_PLATFORM ... (new behavior)
+    const thisLineMatch = line.match(reThisLine);
+    if (thisLineMatch) {
+      const platformList = parsePlatformList(thisLineMatch[1]);
+      const matched = platformList.some((e) => platforms.includes(e));
+      if (matched) {
+        // Output the line unchanged (including the directive itself)
+        result.push(line);
+      }
+      // Whether matched or not, skip further processing of this line
       continue;
     }
 

@@ -1,13 +1,15 @@
 "use client";
 
+import { DeleteUserDialog, ImpersonateUserDialog } from "@/components/user-dialogs";
 import { useThemeWatcher } from '@/lib/theme';
 import MonacoEditor from '@monaco-editor/react';
 import { ServerUser } from "@stackframe/stack";
 import { useAsyncCallback } from "@stackframe/stack-shared/dist/hooks/use-async-callback";
 import { fromNow } from "@stackframe/stack-shared/dist/utils/dates";
 import { throwErr } from '@stackframe/stack-shared/dist/utils/errors';
-import { Avatar, AvatarFallback, AvatarImage, Badge, Button, Card, CardContent, CardDescription, CardHeader, CardTitle, Input, Separator, SimpleTooltip, Table, TableBody, TableCell, TableRow, cn } from "@stackframe/stack-ui";
-import { AtSign, Calendar, Check, Hash, Mail, Shield, SquareAsterisk, X } from "lucide-react";
+import { deindent } from "@stackframe/stack-shared/dist/utils/strings";
+import { Avatar, AvatarFallback, AvatarImage, Badge, Button, Card, CardContent, CardDescription, CardHeader, CardTitle, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger, Input, Separator, SimpleTooltip, Table, TableBody, TableCell, TableRow, Typography, cn } from "@stackframe/stack-ui";
+import { AtSign, Calendar, Check, Hash, Mail, MoreHorizontal, Shield, SquareAsterisk, X } from "lucide-react";
 import { useMemo, useRef, useState } from "react";
 import { PageLayout } from "../../page-layout";
 import { useAdminApp } from "../../use-admin-app";
@@ -249,6 +251,9 @@ function UserPage({ user }: { user: ServerUser }) {
   const nameFallback = user.primaryEmail ?? user.id;
   const name = user.displayName ?? nameFallback;
   const contactChannels = user.useContactChannels();
+  const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
+  const [impersonateSnippet, setImpersonateSnippet] = useState<string | null>(null);
+  const stackAdminApp = useAdminApp();
 
   return (
     <PageLayout>
@@ -269,6 +274,35 @@ function UserPage({ user }: { user: ServerUser }) {
                 await user.setDisplayName(newName);
               }}/>
             <p>Last active {fromNow(user.lastActiveAt)}</p>
+          </div>
+          <div>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="ghost" size="icon">
+                  <MoreHorizontal className="h-5 w-5" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem onClick={async () => {
+                  const expiresInMillis = 1000 * 60 * 60 * 2;
+                  const expiresAtDate = new Date(Date.now() + expiresInMillis);
+                  const session = await user.createSession({ expiresInMillis });
+                  const tokens = await session.getTokens();
+                  setImpersonateSnippet(deindent`
+                    document.cookie = 'stack-refresh-${stackAdminApp.projectId}=${tokens.refreshToken}; expires=${expiresAtDate.toUTCString()}; path=/'; 
+                    window.location.reload();
+                  `);
+                }}>
+                  <span>Impersonate</span>
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onClick={() => setIsDeleteModalOpen(true)}>
+                  <Typography className="text-destructive">Delete</Typography>
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+            <DeleteUserDialog user={user} open={isDeleteModalOpen} onOpenChange={setIsDeleteModalOpen} redirectTo={`/projects/${stackAdminApp.projectId}/users`} />
+            <ImpersonateUserDialog user={user} impersonateSnippet={impersonateSnippet} onClose={() => setImpersonateSnippet(null)} />
           </div>
         </div>
         <Separator className="px-8 my-4"/>

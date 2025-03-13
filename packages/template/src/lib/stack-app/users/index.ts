@@ -172,8 +172,7 @@ export type UserExtra = {
    */
   update(update: UserUpdateOptions): Promise<void>,
 
-  // NEXT_LINE_PLATFORM react-like
-  useContactChannels(): ContactChannel[],
+  useContactChannels(): ContactChannel[], // THIS_LINE_PLATFORM react-like
   listContactChannels(): Promise<ContactChannel[]>,
   createContactChannel(data: ContactChannelCreateOptions): Promise<ContactChannel>,
 
@@ -197,8 +196,7 @@ export type UserExtra = {
   getActiveSessions(): Promise<ActiveSession[]>,
   revokeSession(sessionId: string): Promise<void>,
   getTeamProfile(team: Team): Promise<EditableTeamMemberProfile>,
-  // NEXT_LINE_PLATFORM react-like
-  useTeamProfile(team: Team): EditableTeamMemberProfile,
+  useTeamProfile(team: Team): EditableTeamMemberProfile, // THIS_LINE_PLATFORM react-like
 }
 & AsyncStoreProperty<"team", [id: string], Team | null, false>
 & AsyncStoreProperty<"teams", [], Team[], true>
@@ -263,8 +261,7 @@ export type ServerBaseUser = {
 
   createTeam(data: Omit<ServerTeamCreateOptions, "creatorUserId">): Promise<ServerTeam>,
 
-  // NEXT_LINE_PLATFORM react-like
-  useContactChannels(): ServerContactChannel[],
+  useContactChannels(): ServerContactChannel[], // THIS_LINE_PLATFORM react-like
   listContactChannels(): Promise<ServerContactChannel[]>,
   createContactChannel(data: ServerContactChannelCreateOptions): Promise<ServerContactChannel>,
 
