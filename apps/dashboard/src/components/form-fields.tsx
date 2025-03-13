@@ -267,10 +267,7 @@ export function CheckboxField<F extends FieldValues>(props: {
   name: Path<F>,
   label: React.ReactNode,
   description?: string,
-  required?: boolean,
   disabled?: boolean,
-  dependsOn?: string,
-  dependsOnValue?: any,
 }) {
   return (
     <FormField
