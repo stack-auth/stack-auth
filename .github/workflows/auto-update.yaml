@@ -1,7 +1,8 @@
 name: Update pull request branches
 
 on:
-  push: {}
+  schedule:
+    - cron: '30 11 * * *'
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}

@@ -1,6 +1,11 @@
-name: Did all the other checks pass?
+name: "all-good: Did all the other checks pass?"
 
-on: push
+on:
+  push:
+    branches:
+      - main
+      - dev
+  pull_request:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -12,6 +17,7 @@ jobs:
     env:
       REPO: ${{ github.repository }}
       COMMIT: ${{ github.sha }}
+      PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
     steps:
       - name: Wait for 60 seconds
         run: sleep 60
@@ -21,26 +27,74 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           echo "Checking check runs for commit ${COMMIT} in repo ${REPO}..."
+          
+          function get_check_runs() {
+            local endpoint=$1
+            local response
+            response=$(curl -s -f -H "Authorization: Bearer ${GITHUB_TOKEN}" "$endpoint")
+            if [ $? -ne 0 ]; then
+              echo "Error fetching from $endpoint" >&2
+              echo "{}"
+              return 1
+            fi
+            echo "$response"
+          }
+          
+          function count_pending_checks() {
+            local response=$1
+            echo "$response" | jq '([.check_runs[]? | select(.status != "completed" and .name != "all-good")] | length) // 0'
+          }
+          
+          function count_failed_checks() {
+            local response=$1
+            echo "$response" | jq '([.check_runs[]? | select(.conclusion != "success" and .conclusion != "skipped" and .conclusion != "neutral" and .name != "all-good")] | length) // 0'
+          }
+          
           while true; do
-            response=$(curl -s -H "Authorization: Bearer ${GITHUB_TOKEN}" \
-              "https://api.github.com/repos/${REPO}/commits/${COMMIT}/check-runs")
-            total=$(echo "$response" | jq -r '.total_count')
+            # Always check the current commit's checks
+            commit_response=$(get_check_runs "https://api.github.com/repos/${REPO}/commits/${COMMIT}/check-runs")
+            commit_total=$(echo "$commit_response" | jq -r '.total_count // 0')
             
-            if [ "$total" -eq 0 ]; then
-              echo "No check runs found for commit ${COMMIT}. Waiting..."
+            # If this is a PR, check the PR's head commit checks
+            pr_total=0
+            if [ -n "$PR_HEAD_SHA" ] && [ "$PR_HEAD_SHA" != "$COMMIT" ]; then
+              pr_response=$(get_check_runs "https://api.github.com/repos/${REPO}/commits/${PR_HEAD_SHA}/check-runs")
+              pr_total=$(echo "$pr_response" | jq -r '.total_count // 0')
+              echo "Found ${commit_total} current commit checks and ${pr_total} PR head commit checks"
+            else
+              echo "Found ${commit_total} commit checks"
+            fi
+            
+            # If no checks found at all, wait and retry
+            if [ "$commit_total" -eq 0 ] && { [ -z "$PR_HEAD_SHA" ] || [ "$pr_total" -eq 0 ]; }; then
+              echo "No check runs found. Waiting..."
               sleep 10
               continue
             fi
-
-            pending=$(echo "$response" | jq '[.check_runs[] | select(.status != "completed" and .name != "all-good")] | length')
-            if [ "$pending" -gt 0 ]; then
-              echo "$pending check run(s) still in progress. Waiting..."
+            
+            # Check for pending runs in both current and PR head commit checks
+            commit_pending=$(count_pending_checks "$commit_response")
+            pr_pending=0
+            if [ -n "$PR_HEAD_SHA" ] && [ "$PR_HEAD_SHA" != "$COMMIT" ]; then
+              pr_pending=$(count_pending_checks "$pr_response")
+            fi
+            
+            total_pending=$((commit_pending + pr_pending))
+            if [ "$total_pending" -gt 0 ]; then
+              echo "$total_pending check run(s) still in progress. Waiting..."
               sleep 10
               continue
             fi
-
-            failed=$(echo "$response" | jq '[.check_runs[] | select(.conclusion != "success" and .conclusion != "skipped" and .conclusion != "neutral" and .name != "all-good")] | length')
-            if [ "$failed" -eq 0 ]; then
+            
+            # Check for failures in both current and PR head commit checks
+            commit_failed=$(count_failed_checks "$commit_response")
+            pr_failed=0
+            if [ -n "$PR_HEAD_SHA" ] && [ "$PR_HEAD_SHA" != "$COMMIT" ]; then
+              pr_failed=$(count_failed_checks "$pr_response")
+            fi
+            
+            total_failed=$((commit_failed + pr_failed))
+            if [ "$total_failed" -eq 0 ]; then
               echo "All check runs passed!"
               exit 0
             else

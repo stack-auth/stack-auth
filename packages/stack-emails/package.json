@@ -1,6 +1,6 @@
 {
   "name": "@stackframe/stack-emails",
-  "version": "2.7.26",
+  "version": "2.7.27",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "private": true,

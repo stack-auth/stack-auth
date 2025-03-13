@@ -1,7 +1,9 @@
 import { grantTeamPermission, listUserTeamPermissions, revokeTeamPermission } from "@/lib/permissions";
 import { ensureTeamMembershipExists, ensureUserTeamPermissionExists } from "@/lib/request-checks";
+import { sendTeamPermissionCreatedWebhook, sendTeamPermissionDeletedWebhook } from "@/lib/webhooks";
 import { retryTransaction } from "@/prisma-client";
 import { createCrudHandlers } from "@/route-handlers/crud-handler";
+import { runAsynchronouslyAndWaitUntil } from "@/utils/vercel";
 import { KnownErrors } from "@stackframe/stack-shared";
 import { teamPermissionsCrud } from '@stackframe/stack-shared/dist/interface/crud/team-permissions';
 import { teamPermissionDefinitionIdSchema, userIdOrMeSchema, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
@@ -21,7 +23,7 @@ export const teamPermissionsCrudHandlers = createLazyProxy(() => createCrudHandl
     permission_id: teamPermissionDefinitionIdSchema.defined(),
   }),
   async onCreate({ auth, params }) {
-    return await retryTransaction(async (tx) => {
+    const result = await retryTransaction(async (tx) => {
       await ensureTeamMembershipExists(tx, { tenancyId: auth.tenancy.id, teamId: params.team_id, userId: params.user_id });
 
       return await grantTeamPermission(tx, {
@@ -31,9 +33,20 @@ export const teamPermissionsCrudHandlers = createLazyProxy(() => createCrudHandl
         permissionId: params.permission_id
       });
     });
+
+    runAsynchronouslyAndWaitUntil(sendTeamPermissionCreatedWebhook({
+      projectId: auth.project.id,
+      data: {
+        id: params.permission_id,
+        team_id: params.team_id,
+        user_id: params.user_id,
+      }
+    }));
+
+    return result;
   },
   async onDelete({ auth, params }) {
-    return await retryTransaction(async (tx) => {
+    const result = await retryTransaction(async (tx) => {
       await ensureUserTeamPermissionExists(tx, {
         tenancy: auth.tenancy,
         teamId: params.team_id,
@@ -50,6 +63,17 @@ export const teamPermissionsCrudHandlers = createLazyProxy(() => createCrudHandl
         permissionId: params.permission_id
       });
     });
+
+    runAsynchronouslyAndWaitUntil(sendTeamPermissionDeletedWebhook({
+      projectId: auth.project.id,
+      data: {
+        id: params.permission_id,
+        team_id: params.team_id,
+        user_id: params.user_id,
+      }
+    }));
+
+    return result;
   },
   async onList({ auth, query }) {
     if (auth.type === 'client') {

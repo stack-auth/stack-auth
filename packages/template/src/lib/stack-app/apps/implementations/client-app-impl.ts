@@ -3,6 +3,7 @@ import { KnownErrors, StackClientInterface } from "@stackframe/stack-shared";
 import { ContactChannelsCrud } from "@stackframe/stack-shared/dist/interface/crud/contact-channels";
 import { CurrentUserCrud } from "@stackframe/stack-shared/dist/interface/crud/current-user";
 import { ProjectsCrud } from "@stackframe/stack-shared/dist/interface/crud/projects";
+import { SessionsCrud } from "@stackframe/stack-shared/dist/interface/crud/sessions";
 import { TeamInvitationCrud } from "@stackframe/stack-shared/dist/interface/crud/team-invitation";
 import { TeamMemberProfilesCrud } from "@stackframe/stack-shared/dist/interface/crud/team-member-profiles";
 import { TeamPermissionsCrud } from "@stackframe/stack-shared/dist/interface/crud/team-permissions";
@@ -23,10 +24,8 @@ import { deindent, mergeScopeStrings } from "@stackframe/stack-shared/dist/utils
 import { getRelativePart, isRelative } from "@stackframe/stack-shared/dist/utils/urls";
 import { generateUuid } from "@stackframe/stack-shared/dist/utils/uuids";
 import * as cookie from "cookie";
-// NEXT_LINE_PLATFORM next
-import * as NextNavigationUnscrambled from "next/navigation"; // import the entire module to get around some static compiler warnings emitted by Next.js in some cases
-// NEXT_LINE_PLATFORM react-like
-import React, { useCallback, useMemo } from "react";
+import * as NextNavigationUnscrambled from "next/navigation"; // import the entire module to get around some static compiler warnings emitted by Next.js in some cases | THIS_LINE_PLATFORM next
+import React, { useCallback, useMemo } from "react"; // THIS_LINE_PLATFORM react-like
 import { constructRedirectUrl } from "../../../../utils/url";
 import { addNewOAuthProviderOrScope, callOAuthCallback, signInWithOAuth } from "../../../auth";
 import { CookieHelper, createBrowserCookieHelper, createCookieHelper, createPlaceholderCookieHelper, deleteCookieClient, getCookieClient, setOrDeleteCookie, setOrDeleteCookieClient } from "../../../cookie";
@@ -36,12 +35,12 @@ import { ContactChannel, ContactChannelCreateOptions, ContactChannelUpdateOption
 import { TeamPermission } from "../../permissions";
 import { AdminOwnedProject, AdminProjectUpdateOptions, Project, adminProjectCreateOptionsToCrud } from "../../projects";
 import { EditableTeamMemberProfile, Team, TeamCreateOptions, TeamInvitation, TeamUpdateOptions, TeamUser, teamCreateOptionsToCrud, teamUpdateOptionsToCrud } from "../../teams";
-import { Auth, BaseUser, CurrentUser, InternalUserExtra, ProjectCurrentUser, UserExtra, UserUpdateOptions, userUpdateOptionsToCrud } from "../../users";
+import { ActiveSession, Auth, BaseUser, CurrentUser, InternalUserExtra, ProjectCurrentUser, UserExtra, UserUpdateOptions, userUpdateOptionsToCrud } from "../../users";
 import { StackClientApp, StackClientAppConstructorOptions, StackClientAppJson } from "../interfaces/client-app";
 import { _StackAdminAppImplIncomplete } from "./admin-app-impl";
 import { TokenObject, clientVersion, createCache, createCacheBySession, createEmptyTokenStore, getBaseUrl, getDefaultProjectId, getDefaultPublishableClientKey, getUrls } from "./common";
-// NEXT_LINE_PLATFORM react-like
-import { useAsyncCache } from "./common";
+
+import { useAsyncCache } from "./common"; // THIS_LINE_PLATFORM react-like
 
 let isReactServer = false;
 // IF_PLATFORM next
@@ -54,8 +53,7 @@ const NextNavigation = scrambleDuringCompileTime(NextNavigationUnscrambled);
 // END_PLATFORM
 
 // hack to make sure process is defined in non-node environments
-// NEXT_LINE_PLATFORM js react
-const process = (globalThis as any).process ?? { env: {} };
+const process = (globalThis as any).process ?? { env: {} }; // THIS_LINE_PLATFORM js react
 
 
 const allClientApps = new Map<string, [checkString: string, app: StackClientApp<any, any>]>();
@@ -266,16 +264,14 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
         clientVersion,
         publishableClientKey: _options.publishableClientKey ?? getDefaultPublishableClientKey(),
         prepareRequest: async () => {
-          // NEXT_LINE_PLATFORM next
-          await cookies?.();
+          await cookies?.(); // THIS_LINE_PLATFORM next
         }
       });
     }
 
     this._tokenStoreInit = _options.tokenStore;
     this._redirectMethod = _options.redirectMethod || "none";
-    // NEXT_LINE_PLATFORM next
-    this._redirectMethod = _options.redirectMethod || "nextjs";
+    this._redirectMethod = _options.redirectMethod || "nextjs"; // THIS_LINE_PLATFORM next
     this._urlOptions = _options.urls ?? {};
     this._oauthScopesOnSignIn = _options.oauthScopesOnSignIn ?? {};
 
@@ -814,6 +810,13 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
     }
     // END_PLATFORM
     return {
+      async getActiveSessions() {
+        const sessions = await app._interface.listSessions(session);
+        return sessions.items.map((crud) => app._clientSessionFromCrud(crud));
+      },
+      async revokeSession(sessionId: string) {
+        await app._interface.deleteSession(sessionId, session);
+      },
       setDisplayName(displayName: string) {
         return this.update({ displayName });
       },
@@ -824,8 +827,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
         await this.update({ selectedTeamId: team?.id ?? null });
       },
       getConnectedAccount,
-      // NEXT_LINE_PLATFORM react-like
-      useConnectedAccount,
+      useConnectedAccount, // THIS_LINE_PLATFORM react-like
       async getTeam(teamId: string) {
         const teams = await this.listTeams();
         return teams.find((t) => t.id === teamId) ?? null;
@@ -965,6 +967,17 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
 
     Object.freeze(currentUser);
     return currentUser as ProjectCurrentUser<ProjectId>;
+  }
+  protected _clientSessionFromCrud(crud: SessionsCrud['Client']['Read']): ActiveSession {
+    return {
+      id: crud.id,
+      userId: crud.user_id,
+      createdAt: new Date(crud.created_at),
+      isImpersonation: crud.is_impersonation,
+      lastUsedAt: crud.last_used_at ? new Date(crud.last_used_at) : undefined,
+      isCurrentSession: crud.is_current_session ?? false,
+      geoInfo: crud.last_used_at_end_user_ip_info,
+    };
   }
 
   protected _getOwnedAdminApp(forProjectId: string, session: InternalSession): _StackAdminAppImplIncomplete<false, string> {
