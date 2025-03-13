@@ -58,7 +58,7 @@ const process = (globalThis as any).process ?? { env: {} }; // THIS_LINE_PLATFOR
 
 const allClientApps = new Map<string, [checkString: string, app: StackClientApp<any, any>]>();
 
-export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, ProjectId extends string = string> {
+export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, ProjectId extends string = string> implements StackClientApp<HasTokenStore, ProjectId> {
   /**
    * There is a circular dependency between the admin app and the client app, as the former inherits from the latter and
    * the latter needs to use the former when creating a new instance of an internal project.

@@ -22,11 +22,11 @@ export const internalEmailsCrudHandlers = createLazyProxy(() => createCrudHandle
   paramsSchema: yupObject({
     projectId: projectIdSchema.defined(),
   }),
-  onList: async ({ params }) => {
+  onList: async ({ auth }) => {
     const emails = await prismaClient.sentEmail.findMany({
       where: {
         tenancy: {
-          projectId: params.projectId,
+          projectId: auth.project.id,
         },
       },
       orderBy: {
