@@ -52,14 +52,13 @@ export const GET = createSmartRouteHandler({
       }
     });
 
-    const projectWithEmails = new Map<string, { project: Project, emails: (typeof emails[number])[] }>();
+    const projectWithEmails = new Map<string, { emails: (typeof emails[number])[] }>();
 
     // dedupe by project
     for (const email of emails) {
       const projectId = email.tenancy.project.id;
       if (!projectWithEmails.has(projectId)) {
         projectWithEmails.set(projectId, {
-          project: email.tenancy.project,
           emails: [],
         });
       }
@@ -74,7 +73,7 @@ export const GET = createSmartRouteHandler({
           },
           serverMetadata: {
             path: ['managedProjectId'],
-            array_contains: projectWithEmail.project.id,
+            array_contains: projectId,
           }
         },
         include: {
