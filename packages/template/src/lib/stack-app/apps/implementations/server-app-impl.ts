@@ -152,9 +152,13 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
       },
       async update(data: ServerContactChannelUpdateOptions) {
         await app._interface.updateServerContactChannel(userId, crud.id, serverContactChannelUpdateOptionsToCrud(data));
+        await app._serverContactChannelsCache.refresh([userId]);
+        await app._serverUserCache.refresh([userId]);
       },
       async delete() {
         await app._interface.deleteServerContactChannel(userId, crud.id);
+        await app._serverContactChannelsCache.refresh([userId]);
+        await app._serverUserCache.refresh([userId]);
       },
     };
   }
@@ -368,6 +372,7 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
       createContactChannel: async (data: ServerContactChannelCreateOptions) => {
         const contactChannel = await app._interface.createServerContactChannel(serverContactChannelCreateOptionsToCrud(crud.id, data));
         await app._serverContactChannelsCache.refresh([crud.id]);
+        await app._serverUserCache.refresh([crud.id]);
         return app._serverContactChannelFromCrud(crud.id, contactChannel);
       },
     };

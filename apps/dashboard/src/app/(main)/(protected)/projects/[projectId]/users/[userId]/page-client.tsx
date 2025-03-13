@@ -1,16 +1,19 @@
 "use client";
 
+import { SmartFormDialog } from "@/components/form-dialog";
+import { SettingCard } from "@/components/settings";
 import { DeleteUserDialog, ImpersonateUserDialog } from "@/components/user-dialogs";
 import { useThemeWatcher } from '@/lib/theme';
 import MonacoEditor from '@monaco-editor/react';
-import { ServerUser } from "@stackframe/stack";
+import { ServerContactChannel, ServerUser } from "@stackframe/stack";
 import { useAsyncCallback } from "@stackframe/stack-shared/dist/hooks/use-async-callback";
 import { fromNow } from "@stackframe/stack-shared/dist/utils/dates";
 import { throwErr } from '@stackframe/stack-shared/dist/utils/errors';
 import { deindent } from "@stackframe/stack-shared/dist/utils/strings";
-import { Avatar, AvatarFallback, AvatarImage, Badge, Button, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger, Input, Separator, SimpleTooltip, Table, TableBody, TableCell, TableRow, Typography, cn } from "@stackframe/stack-ui";
+import { ActionCell, Avatar, AvatarFallback, AvatarImage, Badge, Button, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger, Input, Separator, SimpleTooltip, Table, TableBody, TableCell, TableHead, TableHeader, TableRow, Typography, cn } from "@stackframe/stack-ui";
 import { AtSign, Calendar, Check, Hash, Mail, MoreHorizontal, Shield, SquareAsterisk, X } from "lucide-react";
 import { useMemo, useRef, useState } from "react";
+import * as yup from "yup";
 import { PageLayout } from "../../page-layout";
 import { useAdminApp } from "../../use-admin-app";
 
@@ -320,9 +323,7 @@ function UserDetails({ user }: UserDetailsProps) {
         <EditableInput value={user.id} readOnly />
       </UserInfo>
       <UserInfo icon={<Mail size={16}/>} name="Primary email">
-        <EditableInput value={user.primaryEmail ?? ""} placeholder={"-"} onUpdate={async (newEmail) => {
-          await user.setPrimaryEmail(newEmail || null);
-        }}/>
+        <EditableInput value={user.primaryEmail ?? ""} placeholder={"-"} readOnly/>
       </UserInfo>
       <UserInfo icon={<AtSign size={16}/>} name="Display name">
         <EditableInput value={user.displayName ?? ""} placeholder={"-"} onUpdate={async (newName) => {
@@ -346,35 +347,172 @@ type ContactChannelsSectionProps = {
   user: ServerUser,
 };
 
-function ContactChannelsSection({ user }: ContactChannelsSectionProps) {
-  const contactChannels = user.useContactChannels();
+type AddEmailDialogProps = {
+  user: ServerUser,
+  open: boolean,
+  onOpenChange: (open: boolean) => void,
+};
+
+function AddEmailDialog({ user, open, onOpenChange }: AddEmailDialogProps) {
+  const formSchema = yup.object({
+    email: yup.string()
+      .email("Please enter a valid e-mail address")
+      .defined("E-mail is required")
+      .meta({
+        stackFormFieldPlaceholder: "Enter e-mail address",
+      }),
+    isVerified: yup.boolean()
+      .default(false)
+      .label("Set as verified")
+      .meta({
+        description: "E-mails verified by verification emails. Can be used for OTP/magic links"
+      }),
+    isPrimary: yup.boolean()
+      .default(false)
+      .label("Set as primary")
+      .meta({
+        description: "Make this the primary e-mail for the user"
+      }),
+    isUsedForAuth: yup.boolean()
+      .default(false)
+      .label("Used for sign-in")
+      .meta({
+        description: "Allow this e-mail to be used for password sign-in. Also enables OTP/magic links if the e-mail is verified."
+      }),
+  });
 
   return (
-    <div>
-      <h2 className="text-xl font-semibold mb-4">Contact Channels</h2>
-      <div className="mt-2">
-        {contactChannels.length === 0 ? (
+    <SmartFormDialog
+      title="Add E-mail"
+      description="Add a new e-mail address to this user account."
+      open={open}
+      onOpenChange={onOpenChange}
+      formSchema={formSchema}
+      onSubmit={async (values) => {
+        if (!values.email.trim()) return;
+
+        const channel = await user.createContactChannel({
+          type: 'email',
+          value: values.email.trim(),
+          isVerified: values.isVerified,
+          isPrimary: values.isPrimary,
+          usedForAuth: values.isUsedForAuth
+        });
+      }}
+    />
+  );
+}
+
+function ContactChannelsSection({ user }: ContactChannelsSectionProps) {
+  const contactChannels = user.useContactChannels();
+  const [isAddEmailDialogOpen, setIsAddEmailDialogOpen] = useState(false);
+
+  const toggleUsedForAuth = async (channel: ServerContactChannel) => {
+    await channel.update({ usedForAuth: !channel.usedForAuth });
+  };
+
+  const toggleVerified = async (channel: ServerContactChannel) => {
+    await channel.update({ isVerified: !channel.isVerified });
+  };
+
+  const setPrimaryEmail = async (channel: ServerContactChannel) => {
+    await channel.update({ isPrimary: true });
+  };
+
+  return (
+    <SettingCard
+      title="Contact Channels"
+      actions={
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => setIsAddEmailDialogOpen(true)}
+        >
+          Add E-mail
+        </Button>
+      }
+    >
+      <AddEmailDialog
+        user={user}
+        open={isAddEmailDialogOpen}
+        onOpenChange={setIsAddEmailDialogOpen}
+      />
+
+      {contactChannels.length === 0 ? (
+        <div className="flex flex-col items-center gap-2">
           <p className='text-sm text-gray-500 text-center'>
             No contact channels
           </p>
-        ) : (
+        </div>
+      ) : (
+        <div className='border rounded-md'>
           <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>E-Mail</TableHead>
+                <TableHead className="text-right">Status</TableHead>
+                <TableHead className="w-[80px]"></TableHead>
+              </TableRow>
+            </TableHeader>
             <TableBody>
               {contactChannels.map((channel) => (
                 <TableRow key={channel.id}>
-                  <TableCell className="flex items-center gap-2">
-                    <div>{channel.value}</div>
-                    {channel.isPrimary ? <Badge>Primary</Badge> : null}
-                    {!channel.isVerified ? <Badge variant='destructive'>Unverified</Badge> : null}
-                    {channel.usedForAuth ? <Badge variant='outline'>Used for sign-in</Badge> : null}
+                  <TableCell>
+                    <div className='flex flex-col md:flex-row gap-2 md:gap-4'>
+                      {channel.value}
+                    </div>
+                  </TableCell>
+                  <TableCell className="text-right">
+                    <div className='flex gap-2 justify-end'>
+                      {channel.isPrimary && <Badge>Primary</Badge>}
+                      {!channel.isVerified && <Badge variant='destructive'>Unverified</Badge>}
+                      {channel.usedForAuth && <Badge variant='outline'>Used for sign-in</Badge>}
+                    </div>
+                  </TableCell>
+                  <TableCell align="right">
+                    <ActionCell
+                      items={[
+                        ...(!channel.isVerified ? [{
+                          item: "Send verification email",
+                          onClick: async () => {
+                            await channel.sendVerificationEmail();
+                          },
+                        }] : []),
+                        {
+                          item: channel.isVerified ? "Mark as unverified" : "Mark as verified",
+                          onClick: async () => {
+                            await toggleVerified(channel);
+                          },
+                        },
+                        ...(!channel.isPrimary ? [{
+                          item: "Set as primary",
+                          onClick: async () => {
+                            await setPrimaryEmail(channel);
+                          },
+                        }] : []),
+                        {
+                          item: channel.usedForAuth ? "Disable for sign-in" : "Enable for sign-in",
+                          onClick: async () => {
+                            await toggleUsedForAuth(channel);
+                          },
+                        },
+                        {
+                          item: "Delete",
+                          danger: true,
+                          onClick: async () => {
+                            await channel.delete();
+                          },
+                        }
+                      ]}
+                    />
                   </TableCell>
                 </TableRow>
               ))}
             </TableBody>
           </Table>
-        )}
-      </div>
-    </div>
+        </div>
+      )}
+    </SettingCard>
   );
 }
 
@@ -384,11 +522,10 @@ type MetadataSectionProps = {
 
 function MetadataSection({ user }: MetadataSectionProps) {
   return (
-    <div>
-      <h2 className="text-xl font-semibold mb-2">Metadata</h2>
-      <p className="text-sm text-gray-500 mb-4">
-        Use metadata to store a custom JSON object on the user.
-      </p>
+    <SettingCard
+      title="Metadata"
+      description="Use metadata to store a custom JSON object on the user."
+    >
       <div className="grid gap-4 grid-cols-1 lg:grid-cols-3">
         <MetadataEditor
           title="Client"
@@ -415,20 +552,18 @@ function MetadataSection({ user }: MetadataSectionProps) {
           }}
         />
       </div>
-    </div>
+    </SettingCard>
   );
 }
 
 function UserPage({ user }: { user: ServerUser }) {
   return (
     <PageLayout>
-      <div className="flex flex-col gap-8">
+      <div className="flex flex-col gap-6">
         <UserHeader user={user} />
-        <Separator/>
+        <Separator />
         <UserDetails user={user} />
-        <Separator />
         <ContactChannelsSection user={user} />
-        <Separator />
         <MetadataSection user={user} />
       </div>
     </PageLayout>
