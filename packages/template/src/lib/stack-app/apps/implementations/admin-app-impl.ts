@@ -17,6 +17,7 @@ import { StackAdminApp, StackAdminAppConstructorOptions } from "../interfaces/ad
 import { clientVersion, createCache, getBaseUrl, getDefaultProjectId, getDefaultPublishableClientKey, getDefaultSecretServerKey, getDefaultSuperSecretAdminKey } from "./common";
 import { _StackServerAppImplIncomplete } from "./server-app-impl";
 
+import { AdminSentEmail } from "../..";
 import { useAsyncCache } from "./common"; // THIS_LINE_PLATFORM react-like
 
 
@@ -335,5 +336,17 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
     } else {
       return Result.error({ errorMessage: response.error_message ?? throwErr("Email test error not specified") });
     }
+  }
+
+  async listSentEmails(): Promise<AdminSentEmail[]> {
+    const response = await this._interface.listSentEmails();
+    return response.items.map((email) => ({
+      id: email.id,
+      to: email.to ?? [],
+      subject: email.subject,
+      recipient: email.to?.[0] ?? "",
+      sentAt: new Date(email.sent_at_millis),
+      error: email.error,
+    }));
   }
 }
