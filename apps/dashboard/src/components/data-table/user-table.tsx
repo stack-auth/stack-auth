@@ -8,8 +8,7 @@ import { ActionCell, AvatarCell, BadgeCell, DataTableColumnHeader, DataTableManu
 import { ColumnDef, ColumnFiltersState, Row, SortingState, Table } from "@tanstack/react-table";
 import { useState } from "react";
 import { Link } from '../link';
-import { UserDialog } from '../user-dialog';
-import { DeleteUserDialog, ImpersonateUserDialog } from '../user-dialogs';
+import { UserDialog, DeleteUserDialog, ImpersonateUserDialog } from '../user-dialog';
 
 export type ExtendedServerUser = ServerUser & {
   authTypes: string[],
@@ -53,7 +52,7 @@ function UserActions({ row }: { row: Row<ExtendedServerUser> }) {
             onClick: async () => {
               const expiresInMillis = 1000 * 60 * 60 * 2;
               const expiresAtDate = new Date(Date.now() + expiresInMillis);
-              const session = await row.original.createSession({ expiresInMillis });
+              const session = await row.original.createSession({ expiresInMillis, isImpersonation: true });
               const tokens = await session.getTokens();
               setImpersonateSnippet(deindent`
                 document.cookie = 'stack-refresh-${app.projectId}=${tokens.refreshToken}; expires=${expiresAtDate.toUTCString()}; path=/'; 

@@ -11,6 +11,7 @@ import {
 import { ContactChannelsCrud } from "./crud/contact-channels";
 import { CurrentUserCrud } from "./crud/current-user";
 import { ConnectedAccountAccessTokenCrud } from "./crud/oauth";
+import { SessionsCrud } from "./crud/sessions";
 import { TeamInvitationCrud } from "./crud/team-invitation";
 import { TeamMemberProfilesCrud } from "./crud/team-member-profiles";
 import { TeamMembershipsCrud } from "./crud/team-memberships";
@@ -346,7 +347,7 @@ export class StackServerInterface extends StackClientInterface {
     return await response.json();
   }
 
-  async createServerUserSession(userId: string, expiresInMillis: number): Promise<{ accessToken: string, refreshToken: string }> {
+  async createServerUserSession(userId: string, expiresInMillis: number, isImpersonation: boolean): Promise<{ accessToken: string, refreshToken: string }> {
     const response = await this.sendServerRequest(
       "/auth/sessions",
       {
@@ -357,6 +358,7 @@ export class StackServerInterface extends StackClientInterface {
         body: JSON.stringify({
           user_id: userId,
           expires_in_millis: expiresInMillis,
+          is_impersonation: isImpersonation,
         }),
       },
       null,
@@ -527,6 +529,29 @@ export class StackServerInterface extends StackClientInterface {
       null,
     );
   }
+
+
+  async listServerSessions(userId: string): Promise<SessionsCrud['Server']['Read'][]> {
+    const response = await this.sendServerRequest(
+      urlString`/auth/sessions?user_id=${userId}`,
+      {
+        method: "GET",
+      },
+      null,
+    );
+    return await response.json();
+  }
+
+  async deleteServerSession(sessionId: string) {
+    await this.sendServerRequest(
+      urlString`/auth/sessions/${sessionId}`,
+      {
+        method: "DELETE",
+      },
+      null,
+    );
+  }
+
 
   async sendServerTeamInvitation(options: {
     email: string,

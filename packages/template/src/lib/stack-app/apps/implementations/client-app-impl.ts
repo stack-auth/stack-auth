@@ -3,6 +3,7 @@ import { KnownErrors, StackClientInterface } from "@stackframe/stack-shared";
 import { ContactChannelsCrud } from "@stackframe/stack-shared/dist/interface/crud/contact-channels";
 import { CurrentUserCrud } from "@stackframe/stack-shared/dist/interface/crud/current-user";
 import { ProjectsCrud } from "@stackframe/stack-shared/dist/interface/crud/projects";
+import { SessionsCrud } from "@stackframe/stack-shared/dist/interface/crud/sessions";
 import { TeamInvitationCrud } from "@stackframe/stack-shared/dist/interface/crud/team-invitation";
 import { TeamMemberProfilesCrud } from "@stackframe/stack-shared/dist/interface/crud/team-member-profiles";
 import { TeamPermissionsCrud } from "@stackframe/stack-shared/dist/interface/crud/team-permissions";
@@ -36,7 +37,7 @@ import { ContactChannel, ContactChannelCreateOptions, ContactChannelUpdateOption
 import { TeamPermission } from "../../permissions";
 import { AdminOwnedProject, AdminProjectUpdateOptions, Project, adminProjectCreateOptionsToCrud } from "../../projects";
 import { EditableTeamMemberProfile, Team, TeamCreateOptions, TeamInvitation, TeamUpdateOptions, TeamUser, teamCreateOptionsToCrud, teamUpdateOptionsToCrud } from "../../teams";
-import { Auth, BaseUser, CurrentUser, InternalUserExtra, ProjectCurrentUser, UserExtra, UserUpdateOptions, userUpdateOptionsToCrud } from "../../users";
+import { ActiveSession, Auth, BaseUser, CurrentUser, InternalUserExtra, ProjectCurrentUser, UserExtra, UserUpdateOptions, userUpdateOptionsToCrud } from "../../users";
 import { StackClientApp, StackClientAppConstructorOptions, StackClientAppJson } from "../interfaces/client-app";
 import { _StackAdminAppImplIncomplete } from "./admin-app-impl";
 import { TokenObject, clientVersion, createCache, createCacheBySession, createEmptyTokenStore, getBaseUrl, getDefaultProjectId, getDefaultPublishableClientKey, getUrls } from "./common";
@@ -814,6 +815,13 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
     }
     // END_PLATFORM
     return {
+      async getActiveSessions() {
+        const sessions = await app._interface.listSessions(session);
+        return sessions.items.map((crud) => app._clientSessionFromCrud(crud));
+      },
+      async revokeSession(sessionId: string) {
+        await app._interface.deleteSession(sessionId, session);
+      },
       setDisplayName(displayName: string) {
         return this.update({ displayName });
       },
@@ -965,6 +973,17 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
 
     Object.freeze(currentUser);
     return currentUser as ProjectCurrentUser<ProjectId>;
+  }
+  protected _clientSessionFromCrud(crud: SessionsCrud['Client']['Read']): ActiveSession {
+    return {
+      id: crud.id,
+      userId: crud.user_id,
+      createdAt: new Date(crud.created_at),
+      isImpersonation: crud.is_impersonation,
+      lastUsedAt: crud.last_used_at ? new Date(crud.last_used_at) : undefined,
+      isCurrentSession: crud.is_current_session ?? false,
+      geoInfo: crud.last_used_at_end_user_ip_info,
+    };
   }
 
   protected _getOwnedAdminApp(forProjectId: string, session: InternalSession): _StackAdminAppImplIncomplete<false, string> {

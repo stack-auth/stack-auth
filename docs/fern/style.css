@@ -141,7 +141,7 @@ svg[icon*="square-u"] {
   display: none;
 }
 
-.stack-50h {
+div.stack-50h > span > span > img {
   aspect-ratio: auto !important;
   height: unset !important;
   width: unset !important;
@@ -149,7 +149,7 @@ svg[icon*="square-u"] {
   object-fit: contain !important;
 }
 
-.stack-100h {
+div.stack-100h > span > span > img {
   aspect-ratio: auto !important;
   height: unset !important;
   width: unset !important;
@@ -157,7 +157,7 @@ svg[icon*="square-u"] {
   object-fit: contain !important;
 }
 
-.stack-150h {
+div.stack-150h > span > span > img {
   aspect-ratio: auto !important;
   height: unset !important;
   width: unset !important;
@@ -165,7 +165,7 @@ svg[icon*="square-u"] {
   object-fit: contain !important;
 }
 
-.stack-200h {
+div.stack-200h > span > span > img {
   aspect-ratio: auto !important;
   height: unset !important;
   width: unset !important;
@@ -173,7 +173,7 @@ svg[icon*="square-u"] {
   object-fit: contain !important;
 }
 
-.stack-250h {
+div.stack-250h > span > span > img {
   aspect-ratio: auto !important;
   height: unset !important;
   width: unset !important;
@@ -181,7 +181,7 @@ svg[icon*="square-u"] {
   object-fit: contain !important;
 }
 
-.stack-300h {
+div.stack-300h > span > span > img {
   aspect-ratio: auto !important;
   height: unset !important;
   width: unset !important;
@@ -189,7 +189,7 @@ svg[icon*="square-u"] {
   object-fit: contain !important;
 }
 
-.stack-350h {
+div.stack-350h > span > span > img {
   aspect-ratio: auto !important;
   height: unset !important;
   width: unset !important;

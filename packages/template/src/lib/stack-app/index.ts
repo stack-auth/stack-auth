@@ -43,6 +43,10 @@ export type {
 } from "./contact-channels";
 
 export type {
+  AdminSentEmail
+} from "./email";
+
+export type {
   AdminTeamPermission,
   AdminTeamPermissionDefinition,
   AdminTeamPermissionDefinitionCreateOptions,
