@@ -124,7 +124,7 @@ function createKnownErrorConstructor<ErrorCode extends string, Super extends Abs
     public readonly constructorArgs: Args;
 
     constructor(...args: Args) {
-      // @ts-expect-error
+      // @ts-expect-error DEVIN, STOP REMOVING THIS LINE YOU DUMBASS, YES TYPESCRIPT DOES THROW AN ERROR IF YOU DON'T HAVE IT, NO THIS IS NOT "UNUSED", AND YES YOU ARE BREAKING OUR CI PIPELINE EVERY TIME YOU DO IT
       super(...createFn(...args));
       this.constructorArgs = args;
     }
@@ -506,7 +506,7 @@ const AccessTokenExpired = createKnownErrorConstructor(
     `Access token has expired. Please refresh it and try again.${expiredAt ? ` (The access token expired at ${expiredAt.toISOString()}.)`: ""}`,
     { expired_at_millis: expiredAt?.getTime() ?? null },
   ] as const,
-  (json: any) => [json.expired_at_millis ?? undefined] as const,
+  (json: any) => [json.expired_at_millis ? new Date(json.expired_at_millis) : undefined] as const,
 );
 
 const InvalidProjectForAccessToken = createKnownErrorConstructor(
@@ -537,6 +537,17 @@ const RefreshTokenNotFoundOrExpired = createKnownErrorConstructor(
   () => [] as const,
 );
 
+const CannotDeleteCurrentSession = createKnownErrorConstructor(
+  RefreshTokenError,
+  "CANNOT_DELETE_CURRENT_SESSION",
+  () => [
+    400,
+    "Cannot delete the current session.",
+  ] as const,
+  () => [] as const,
+);
+
+
 const ProviderRejected = createKnownErrorConstructor(
   RefreshTokenError,
   "PROVIDER_REJECTED",
@@ -553,6 +564,16 @@ const UserEmailAlreadyExists = createKnownErrorConstructor(
   () => [
     409,
     "User email already exists.",
+  ] as const,
+  () => [] as const,
+);
+
+const EmailNotVerified = createKnownErrorConstructor(
+  KnownError,
+  "EMAIL_NOT_VERIFIED",
+  () => [
+    400,
+    "The email is not verified.",
   ] as const,
   () => [] as const,
 );
@@ -1144,12 +1165,25 @@ const OAuthProviderAccessDenied = createKnownErrorConstructor(
 const ContactChannelAlreadyUsedForAuthBySomeoneElse = createKnownErrorConstructor(
   KnownError,
   "CONTACT_CHANNEL_ALREADY_USED_FOR_AUTH_BY_SOMEONE_ELSE",
-  (type: "email") => [
+  (type: "email", contactChannelValue?: string) => [
     409,
+    contactChannelValue ?
+    `The ${type} (${contactChannelValue}) is already used for authentication by another account.` :
     `This ${type} is already used for authentication by another account.`,
-    { type },
+    { type, contact_channel_value: contactChannelValue ?? null },
   ] as const,
-  (json) => [json.type] as const,
+  (json) => [json.type, json.contact_channel_value] as const,
+);
+
+const InvalidPollingCodeError = createKnownErrorConstructor(
+  KnownError,
+  "INVALID_POLLING_CODE",
+  (details?: Json) => [
+    400,
+    "The polling code is invalid or does not exist.",
+    details,
+  ] as const,
+  (json: any) => [json] as const,
 );
 
 export type KnownErrors = {
@@ -1157,6 +1191,7 @@ export type KnownErrors = {
 };
 
 export const KnownErrors = {
+  CannotDeleteCurrentSession,
   UnsupportedError,
   BodyParsingError,
   SchemaError,
@@ -1195,6 +1230,7 @@ export const KnownErrors = {
   ProviderRejected,
   RefreshTokenNotFoundOrExpired,
   UserEmailAlreadyExists,
+  EmailNotVerified,
   UserIdDoesNotExist,
   UserNotFound,
   ApiKeyNotFound,
@@ -1246,6 +1282,7 @@ export const KnownErrors = {
   TeamPermissionNotFound,
   OAuthProviderAccessDenied,
   ContactChannelAlreadyUsedForAuthBySomeoneElse,
+  InvalidPollingCodeError,
 } satisfies Record<string, KnownErrorConstructor<any, any>>;
 
 

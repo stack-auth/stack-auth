@@ -72,7 +72,7 @@ it("should fail when cookies are missing", async ({ expect }) => {
   expect(response).toMatchInlineSnapshot(`
     NiceResponse {
       "status": 400,
-      "body": "OAuth cookie not found. This is likely because you refreshed the page during the OAuth sign in process. Please try signing in again",
+      "body": "Inner OAuth cookie not found. This is likely because you refreshed the page during the OAuth sign in process. Please try signing in again",
       "headers": Headers {
         "set-cookie": <deleting cookie 'stack-oauth-inner-<stripped cookie name key>' at path '/'>,
         <some fields may have been hidden>,
@@ -166,7 +166,7 @@ it("should fail when inner callback has invalid state", async ({ expect }) => {
   expect(response).toMatchInlineSnapshot(`
     NiceResponse {
       "status": 400,
-      "body": "OAuth cookie not found. This is likely because you refreshed the page during the OAuth sign in process. Please try signing in again",
+      "body": "Inner OAuth cookie not found. This is likely because you refreshed the page during the OAuth sign in process. Please try signing in again",
       "headers": Headers {
         "set-cookie": <deleting cookie 'stack-oauth-inner-<stripped cookie name key>' at path '/'>,
         <some fields may have been hidden>,

@@ -17,10 +17,11 @@ model Project {
   updatedAt DateTime @updatedAt
 
   displayName      String
-  description      String?       @default("")
+  description      String        @default("")
   configId         String        @db.Uuid
   config           ProjectConfig @relation(fields: [configId], references: [id], onDelete: Cascade)
   isProductionMode Boolean
+  userCount        Int           @default(0)
 
   apiKeySets             ApiKeySet[]
   projectUsers           ProjectUser[]
@@ -52,6 +53,13 @@ model ProjectConfig {
   permissions                        Permission[]
   authMethodConfigs                  AuthMethodConfig[]
   connectedAccountConfigs            ConnectedAccountConfig[]
+  oauthAccountMergeStrategy          OAuthAccountMergeStrategy @default(LINK_METHOD)
+}
+
+enum OAuthAccountMergeStrategy {
+  LINK_METHOD
+  RAISE_ERROR
+  ALLOW_DUPLICATES
 }
 
 model Tenancy {
@@ -75,6 +83,7 @@ model Tenancy {
   contactChannels   ContactChannel[]   @relation("TenancyContactChannels")
   connectedAccounts ConnectedAccount[] @relation("TenancyConnectedAccounts")
   SentEmail         SentEmail[]
+  cliAuthAttempts   CliAuthAttempt[]
 
   @@unique([projectId, branchId, organizationId])
   @@unique([projectId, branchId, hasNoOrganization])
@@ -674,18 +683,20 @@ model OAuthOuterInfo {
 }
 
 model ProjectUserRefreshToken {
-  tenancyId     String @db.Uuid
-  projectUserId String @db.Uuid
+  id            String   @default(uuid()) @db.Uuid
+  tenancyId     String   @db.Uuid
+  projectUserId String   @db.Uuid
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  refreshToken String    @unique
-  expiresAt    DateTime?
+  refreshToken    String    @unique
+  expiresAt       DateTime?
+  isImpersonation Boolean   @default(false)
 
   projectUser ProjectUser @relation(fields: [tenancyId, projectUserId], references: [tenancyId, projectUserId], onDelete: Cascade)
 
-  @@id([tenancyId, refreshToken])
+  @@id([tenancyId, id])
 }
 
 model ProjectUserAuthorizationCode {
@@ -947,5 +958,22 @@ model SentEmail {
   tenancy Tenancy      @relation(fields: [tenancyId], references: [id], onDelete: Cascade)
   user    ProjectUser? @relation(fields: [tenancyId, userId], references: [tenancyId, projectUserId], onDelete: Cascade)
 
+  @@id([tenancyId, id])
+}
+
+model CliAuthAttempt {
+  tenancyId    String   @db.Uuid
+  tenancy      Tenancy  @relation(fields: [tenancyId], references: [id], onDelete: Cascade)
+  
+  id           String   @default(uuid()) @db.Uuid
+  pollingCode  String   @unique
+  loginCode    String   @unique
+  refreshToken String?
+  expiresAt    DateTime
+  usedAt       DateTime?
+  
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  
   @@id([tenancyId, id])
 }

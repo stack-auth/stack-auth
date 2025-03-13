@@ -2,6 +2,7 @@ import withPostHog from "@/analytics";
 import { prismaClient } from "@/prisma-client";
 import { runAsynchronouslyAndWaitUntil } from "@/utils/vercel";
 import { urlSchema, yupMixed, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
+import { getEnvVariable, getNodeEnvironment } from "@stackframe/stack-shared/dist/utils/env";
 import { StackAssertionError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
 import { HTTP_METHODS } from "@stackframe/stack-shared/dist/utils/http";
 import { filterUndefined, typedKeys } from "@stackframe/stack-shared/dist/utils/objects";
@@ -13,6 +14,7 @@ import { getEndUserInfo } from "./end-users";
 type EventType = {
   id: string,
   dataSchema: yup.Schema<any>,
+  // The event type that this event type inherits from. Use this if every one of the events is also another event and you want all the fields from it.
   inherits: EventType[],
 };
 
@@ -50,6 +52,15 @@ const UserActivityEventType = {
   inherits: [ProjectActivityEventType],
 } as const satisfies SystemEventTypeBase;
 
+const SessionActivityEventType = {
+  id: "$session-activity",
+  dataSchema: yupObject({
+    sessionId: yupString().defined(),
+  }),
+  inherits: [UserActivityEventType],
+} as const satisfies SystemEventTypeBase;
+
+
 const ApiRequestEventType = {
   id: "$api-request",
   dataSchema: yupObject({
@@ -67,6 +78,7 @@ export const SystemEventTypes = stripEventTypeSuffixFromKeys({
   ProjectEventType,
   ProjectActivityEventType,
   UserActivityEventType,
+  SessionActivityEventType,
   ApiRequestEventType,
   LegacyApiEventType,
 } as const);
@@ -165,25 +177,27 @@ export async function logEvent<T extends EventType[]>(
     });
 
     // log event in PostHog
-    await withPostHog(async posthog => {
-      const distinctId = typeof data === "object" && data && "userId" in data ? (data.userId as string) : `backend-anon-${generateUuid()}`;
-      for (const eventType of allEventTypes) {
-        const postHogEventName = `stack_${eventType.id.replace(/^\$/, "system_").replace(/-/g, "_")}`;
-        posthog.capture({
-          event: postHogEventName,
-          distinctId,
-          groups: filterUndefined({
-            projectId: typeof data === "object" && data && "projectId" in data ? (typeof data.projectId === "string" ? data.projectId : throwErr("Project ID is not a string for some reason?", { data })) : undefined,
-          }),
-          timestamp: timeRange.end,
-          properties: {
-            data,
-            is_wide: isWide,
-            event_started_at: timeRange.start,
-            event_ended_at: timeRange.end,
-          },
-        });
-      }
-    });
+    if (getNodeEnvironment().includes("production") && !getEnvVariable("CI", "")) {
+      await withPostHog(async posthog => {
+        const distinctId = typeof data === "object" && data && "userId" in data ? (data.userId as string) : `backend-anon-${generateUuid()}`;
+        for (const eventType of allEventTypes) {
+          const postHogEventName = `stack_${eventType.id.replace(/^\$/, "system_").replace(/-/g, "_")}`;
+          posthog.capture({
+            event: postHogEventName,
+            distinctId,
+            groups: filterUndefined({
+              projectId: typeof data === "object" && data && "projectId" in data ? (typeof data.projectId === "string" ? data.projectId : throwErr("Project ID is not a string for some reason?", { data })) : undefined,
+            }),
+            timestamp: timeRange.end,
+            properties: {
+              data,
+              is_wide: isWide,
+              event_started_at: timeRange.start,
+              event_ended_at: timeRange.end,
+            },
+          });
+        }
+      });
+    }
   })());
 }

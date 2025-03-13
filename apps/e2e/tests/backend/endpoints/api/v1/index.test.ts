@@ -192,8 +192,8 @@ describe("with internal project ID", async () => {
             Welcome to the Stack API endpoint! Please refer to the documentation at https://docs.stack-auth.com.
             
             Authentication: Client
-                     Project: internal
-                     User: None
+              Project: internal
+              User: None
           \`,
           "headers": Headers { <some fields may have been hidden> },
         }
@@ -211,8 +211,8 @@ describe("with internal project ID", async () => {
             Welcome to the Stack API endpoint! Please refer to the documentation at https://docs.stack-auth.com.
             
             Authentication: Server
-                     Project: internal
-                     User: None
+              Project: internal
+              User: None
           \`,
           "headers": Headers { <some fields may have been hidden> },
         }
@@ -230,8 +230,8 @@ describe("with internal project ID", async () => {
             Welcome to the Stack API endpoint! Please refer to the documentation at https://docs.stack-auth.com.
             
             Authentication: Admin
-                     Project: internal
-                     User: None
+              Project: internal
+              User: None
           \`,
           "headers": Headers { <some fields may have been hidden> },
         }

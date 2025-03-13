@@ -1,8 +1,9 @@
 'use client';
 
-import { useRouter } from 'next/navigation';
 import { useStackApp, useUser } from '@stackframe/stack';
-import { Button, Link } from '@stackframe/stack-ui';
+import { Button } from '@stackframe/stack-ui';
+import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 
 export default function PageClient() {
   const user = useUser();

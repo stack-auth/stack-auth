@@ -6,23 +6,24 @@ import { getPasswordError } from '@stackframe/stack-shared/dist/helpers/password
 import { useAsyncCallback } from '@stackframe/stack-shared/dist/hooks/use-async-callback';
 import { passwordSchema as schemaFieldsPasswordSchema, strictEmailSchema, yupObject, yupString } from '@stackframe/stack-shared/dist/schema-fields';
 import { generateRandomValues } from '@stackframe/stack-shared/dist/utils/crypto';
-import { throwErr } from '@stackframe/stack-shared/dist/utils/errors';
+import { fromNow } from '@stackframe/stack-shared/dist/utils/dates';
+import { captureError, throwErr } from '@stackframe/stack-shared/dist/utils/errors';
 import { runAsynchronously, runAsynchronouslyWithAlert } from '@stackframe/stack-shared/dist/utils/promises';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger, ActionCell, Badge, Button, Input, Label, PasswordInput, Separator, Skeleton, Table, TableBody, TableCell, TableHead, TableHeader, TableRow, Typography } from '@stackframe/stack-ui';
 import { Edit, Trash, icons } from 'lucide-react';
-import { useRouter } from "next/navigation";
 import { TOTPController, createTOTPKeyURI } from "oslo/otp";
 import * as QRCode from 'qrcode';
 import React, { Suspense, useEffect, useState } from "react";
 import { useForm } from 'react-hook-form';
 import * as yup from "yup";
-import { CurrentUser, MessageCard, Project, Team, TeamInvitation, useStackApp, useUser } from '..';
+import { CurrentUser, MessageCard, Project, Team, useStackApp, useUser } from '..';
 import { FormWarningText } from '../components/elements/form-warning';
 import { MaybeFullPage } from "../components/elements/maybe-full-page";
 import { SidebarLayout } from '../components/elements/sidebar-layout';
 import { UserAvatar } from '../components/elements/user-avatar';
 import { ProfileImageEditor } from "../components/profile-image-editor";
 import { TeamIcon } from '../components/team-icon';
+import { ActiveSession } from "../lib/stack-app/users";
 import { useTranslation } from "../lib/translations";
 
 const Icon = ({ name }: { name: keyof typeof icons }) => {
@@ -67,6 +68,15 @@ export function AccountSettings(props: {
               icon: <Icon name="ShieldCheck"/>,
               content: <Suspense fallback={<EmailsAndAuthPageSkeleton/>}>
                 <EmailsAndAuthPage/>
+              </Suspense>,
+            },
+            {
+              title: t('Active Sessions'),
+              type: 'item',
+              id: 'sessions',
+              icon: <Icon name="Monitor"/>,
+              content: <Suspense fallback={<ActiveSessionsPageSkeleton/>}>
+                <ActiveSessionsPage/>
               </Suspense>,
             },
             {
@@ -121,34 +131,29 @@ export function AccountSettings(props: {
 
 function Section(props: { title: string, description?: string, children: React.ReactNode }) {
   return (
-    <div className='flex flex-col sm:flex-row gap-2'>
-      <div className='sm:flex-1 flex flex-col justify-center'>
-        <Typography className='font-medium'>
-          {props.title}
-        </Typography>
-        {props.description && <Typography variant='secondary' type='footnote'>
-          {props.description}
-        </Typography>}
+    <>
+      <Separator/>
+      <div className='flex flex-col sm:flex-row gap-2'>
+        <div className='sm:flex-1 flex flex-col justify-center'>
+          <Typography className='font-medium'>
+            {props.title}
+          </Typography>
+          {props.description && <Typography variant='secondary' type='footnote'>
+            {props.description}
+          </Typography>}
+        </div>
+        <div className='sm:flex-1 sm:items-end flex flex-col gap-2 '>
+          {props.children}
+        </div>
       </div>
-      <div className='sm:flex-1 sm:items-end flex flex-col gap-2 '>
-        {props.children}
-      </div>
-    </div>
+    </>
   );
 }
 
 function PageLayout(props: { children: React.ReactNode }) {
   return (
     <div className='flex flex-col gap-6'>
-      <Separator/>
-      {React.Children.map(props.children, (child) => (
-        child && (
-          <>
-            {child}
-            <Separator/>
-          </>
-        )
-      ))}
+      {props.children}
     </div>
   );
 }
@@ -352,18 +357,174 @@ function EmailsSection() {
 }
 
 function EmailsAndAuthPage() {
-  const passwordSection = usePasswordSection();
-  const mfaSection = useMfaSection();
-  const otpSection = useOtpSection();
-  const passkeySection = usePasskeySection();
-
   return (
     <PageLayout>
       <EmailsSection/>
-      {passwordSection}
-      {passkeySection}
-      {otpSection}
-      {mfaSection}
+      <PasswordSection />
+      <PasskeySection />
+      <OtpSection />
+      <MfaSection />
+    </PageLayout>
+  );
+}
+
+function ActiveSessionsPage() {
+  const { t } = useTranslation();
+  const user = useUser({ or: "throw" });
+  const [isLoading, setIsLoading] = useState(true);
+  const [isRevokingAll, setIsRevokingAll] = useState(false);
+  const [sessions, setSessions] = useState<ActiveSession[]>([]);
+  const [showConfirmRevokeAll, setShowConfirmRevokeAll] = useState(false);
+
+  // Fetch sessions when component mounts
+  useEffect(() => {
+    runAsynchronously(async () => {
+      setIsLoading(true);
+      const sessionsData = await user.getActiveSessions();
+      const enhancedSessions = sessionsData;
+      setSessions(enhancedSessions);
+      setIsLoading(false);
+    });
+  }, [user]);
+
+  const handleRevokeSession = async (sessionId: string) => {
+    try {
+      await user.revokeSession(sessionId);
+
+      // Remove the session from the list
+      setSessions(sessions.filter(session => session.id !== sessionId));
+    } catch (error) {
+      captureError("Failed to revoke session", { sessionId ,error });
+      throw error;
+    }
+  };
+
+  const handleRevokeAllSessions = async () => {
+    setIsRevokingAll(true);
+    try {
+      const deletionPromises = sessions
+        .filter(session => !session.isCurrentSession)
+        .map(session => user.revokeSession(session.id));
+      await Promise.all(deletionPromises);
+      setSessions(prevSessions => prevSessions.filter(session => session.isCurrentSession));
+    } catch (error) {
+      captureError("Failed to revoke all sessions", { error, sessionIds: sessions.map(session => session.id) });
+      throw error;
+    } finally {
+      setIsRevokingAll(false);
+      setShowConfirmRevokeAll(false);
+    }
+  };
+
+  return (
+    <PageLayout>
+      <div>
+        <div className="flex justify-between items-center mb-2">
+          <Typography className='font-medium'>{t("Active Sessions")}</Typography>
+          {sessions.filter(s => !s.isCurrentSession).length > 0 && !isLoading && (
+            showConfirmRevokeAll ? (
+              <div className="flex gap-2">
+                <Button
+                  variant="destructive"
+                  size="sm"
+                  loading={isRevokingAll}
+                  onClick={handleRevokeAllSessions}
+                >
+                  {t("Confirm")}
+                </Button>
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  disabled={isRevokingAll}
+                  onClick={() => setShowConfirmRevokeAll(false)}
+                >
+                  {t("Cancel")}
+                </Button>
+              </div>
+            ) : (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setShowConfirmRevokeAll(true)}
+              >
+                {t("Revoke All Other Sessions")}
+              </Button>
+            )
+          )}
+        </div>
+        <Typography variant='secondary' type='footnote' className="mb-4">
+          {t("These are devices where you're currently logged in. You can revoke access to end a session.")}
+        </Typography>
+
+        {isLoading ? (
+          <Skeleton className="h-[300px] w-full rounded-md" />
+        ) : (
+          <div className='border rounded-md'>
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead className="w-[200px]">{t("Session")}</TableHead>
+                  <TableHead className="w-[150px]">{t("IP Address")}</TableHead>
+                  <TableHead className="w-[150px]">{t("Location")}</TableHead>
+                  <TableHead className="w-[150px]">{t("Last used")}</TableHead>
+                  <TableHead className="w-[80px]"></TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {sessions.length === 0 ? (
+                  <TableRow>
+                    <TableCell colSpan={5} className="text-center py-6">
+                      <Typography variant="secondary">{t("No active sessions found")}</Typography>
+                    </TableCell>
+                  </TableRow>
+                ) : (
+                  sessions.map((session) => (
+                    <TableRow key={session.id}>
+                      <TableCell>
+                        <div className="flex flex-col">
+                          {/* We currently do not save any usefull information about the user, in the future, the name should probably say what kind of session it is (e.g. cli, browser, maybe what auth method was used) */}
+                          <Typography>{session.isCurrentSession ? t("Current Session") : t("Other Session")}</Typography>
+                          {session.isImpersonation && <Badge variant="secondary" className="w-fit mt-1">{t("Impersonation")}</Badge>}
+                          <Typography variant='secondary' type='footnote'>
+                            {t("Signed in {time}", { time: new Date(session.createdAt).toLocaleDateString() })}
+                          </Typography>
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        <Typography>{session.geoInfo?.ip || t('-')}</Typography>
+                      </TableCell>
+                      <TableCell>
+                        <Typography>{session.geoInfo?.cityName || t('Unknown')}</Typography>
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex flex-col">
+                          <Typography>{session.lastUsedAt ? fromNow(new Date(session.lastUsedAt)) : t("Never")}</Typography>
+                          <Typography variant='secondary' type='footnote' title={session.lastUsedAt ? new Date(session.lastUsedAt).toLocaleString() : ""}>
+                            {session.lastUsedAt ? new Date(session.lastUsedAt).toLocaleDateString() : ""}
+                          </Typography>
+                        </div>
+                      </TableCell>
+                      <TableCell align="right">
+                        <ActionCell
+                          items={[
+                            {
+                              item: t("Revoke"),
+                              onClick: () => handleRevokeSession(session.id),
+                              danger: true,
+                              disabled: session.isCurrentSession,
+                              disabledTooltip: session.isCurrentSession ? t("You cannot revoke your current session") : undefined,
+                            },
+                          ]}
+                        />
+                      </TableCell>
+                    </TableRow>
+                  ))
+                )}
+              </TableBody>
+            </Table>
+          </div>
+        )}
+      </div>
     </PageLayout>
   );
 }
@@ -377,8 +538,16 @@ function EmailsAndAuthPageSkeleton() {
   </PageLayout>;
 }
 
+function ActiveSessionsPageSkeleton() {
+  return <PageLayout>
+    <Skeleton className="h-6 w-48 mb-2"/>
+    <Skeleton className="h-4 w-full mb-4"/>
+    <Skeleton className="h-[200px] w-full mt-1 rounded-md"/>
+  </PageLayout>;
+}
 
-function usePasskeySection() {
+
+function PasskeySection() {
   const { t } = useTranslation();
   const user = useUser({ or: "throw" });
   const stackApp = useStackApp();
@@ -463,7 +632,7 @@ function usePasskeySection() {
 }
 
 
-function useOtpSection() {
+function OtpSection() {
   const { t } = useTranslation();
   const user = useUser({ or: "throw" });
   const project = useStackApp().useProject();
@@ -539,18 +708,15 @@ function useOtpSection() {
 }
 
 function SettingsPage() {
-  const deleteAccountSection = useDeleteAccountSection();
-  const signOutSection = useSignOutSection();
-
   return (
     <PageLayout>
-      {deleteAccountSection}
-      {signOutSection}
+      <DeleteAccountSection />
+      <SignOutSection />
     </PageLayout>
   );
 }
 
-function usePasswordSection() {
+function PasswordSection() {
   const { t } = useTranslation();
   const user = useUser({ or: "throw" });
   const contactChannels = user.useContactChannels();
@@ -683,7 +849,7 @@ function usePasswordSection() {
   );
 }
 
-function useMfaSection() {
+function MfaSection() {
   const { t } = useTranslation();
   const project = useStackApp().useProject();
   const user = useUser({ or: "throw" });
@@ -787,7 +953,7 @@ async function generateTotpQrCode(project: Project, user: CurrentUser, secret: U
   return await QRCode.toDataURL(uri) as any;
 }
 
-function useSignOutSection() {
+function SignOutSection() {
   const { t } = useTranslation();
   const user = useUser({ or: "throw" });
 
@@ -809,26 +975,19 @@ function useSignOutSection() {
 }
 
 function TeamPage(props: { team: Team }) {
-  const teamUserProfileSection = useTeamUserProfileSection(props);
-  const teamProfileImageSection = useTeamProfileImageSection(props);
-  const teamDisplayNameSection = useTeamDisplayNameSection(props);
-  const leaveTeamSection = useLeaveTeamSection(props);
-  const memberInvitationSection = useMemberInvitationSection(props);
-  const memberListSection = useMemberListSection(props);
-
   return (
     <PageLayout>
-      {teamUserProfileSection}
-      {memberListSection}
-      {memberInvitationSection}
-      {teamProfileImageSection}
-      {teamDisplayNameSection}
-      {leaveTeamSection}
+      <TeamUserProfileSection team={props.team} />
+      <MemberListSection team={props.team} />
+      <MemberInvitationSection team={props.team} />
+      <TeamProfileImageSection team={props.team} />
+      <TeamDisplayNameSection team={props.team} />
+      <LeaveTeamSection team={props.team} />
     </PageLayout>
   );
 }
 
-function useLeaveTeamSection(props: { team: Team }) {
+function LeaveTeamSection(props: { team: Team }) {
   const { t } = useTranslation();
   const user = useUser({ or: 'redirect' });
   const [leaving, setLeaving] = useState(false);
@@ -875,7 +1034,7 @@ function useLeaveTeamSection(props: { team: Team }) {
   );
 }
 
-function useTeamProfileImageSection(props: { team: Team }) {
+function TeamProfileImageSection(props: { team: Team }) {
   const { t } = useTranslation();
   const user = useUser({ or: 'redirect' });
   const updateTeamPermission = user.usePermission(props.team, '$update_team');
@@ -899,7 +1058,7 @@ function useTeamProfileImageSection(props: { team: Team }) {
   );
 }
 
-function useTeamDisplayNameSection(props: { team: Team }) {
+function TeamDisplayNameSection(props: { team: Team }) {
   const { t } = useTranslation();
   const user = useUser({ or: 'redirect' });
   const updateTeamPermission = user.usePermission(props.team, '$update_team');
@@ -921,7 +1080,7 @@ function useTeamDisplayNameSection(props: { team: Team }) {
   );
 }
 
-function useTeamUserProfileSection(props: { team: Team }) {
+function TeamUserProfileSection(props: { team: Team }) {
   const { t } = useTranslation();
   const user = useUser({ or: 'redirect' });
   const profile = user.useTeamProfile(props.team);
@@ -941,26 +1100,63 @@ function useTeamUserProfileSection(props: { team: Team }) {
   );
 }
 
-function useMemberInvitationSection(props: { team: Team }) {
-  const { t } = useTranslation();
-
-  const invitationSchema = yupObject({
-    email: strictEmailSchema(t('Please enter a valid email address')).defined().nonEmpty(t('Please enter an email address')),
-  });
-
+function MemberInvitationSection(props: { team: Team }) {
   const user = useUser({ or: 'redirect' });
   const inviteMemberPermission = user.usePermission(props.team, '$invite_members');
-  const readMemberPermission = user.usePermission(props.team, '$read_members');
-  const removeMemberPermission = user.usePermission(props.team, '$remove_members');
 
   if (!inviteMemberPermission) {
     return null;
   }
 
-  let invitationsToShow: TeamInvitation[] = [];
-  if (readMemberPermission) {
-    invitationsToShow = props.team.useInvitations();
-  }
+  return <MemberInvitationSectionInner team={props.team} />;
+}
+
+function MemberInvitationsSectionInvitationsList(props: { team: Team }) {
+  const user = useUser({ or: 'redirect' });
+  const { t } = useTranslation();
+  const invitationsToShow = props.team.useInvitations();
+  const removeMemberPermission = user.usePermission(props.team, '$remove_members');
+
+  return <>
+    <Table className='mt-6'>
+      <TableHeader>
+        <TableRow>
+          <TableHead className="w-[200px]">{t("Outstanding invitations")}</TableHead>
+          <TableHead className="w-[60px]">{t("Expires")}</TableHead>
+          <TableHead className="w-[36px] max-w-[36px]"></TableHead>
+        </TableRow>
+      </TableHeader>
+      <TableBody>
+        {invitationsToShow.map((invitation, i) => (
+          <TableRow key={invitation.id}>
+            <TableCell>
+              <Typography>{invitation.recipientEmail}</Typography>
+            </TableCell>
+            <TableCell>
+              <Typography variant='secondary'>{invitation.expiresAt.toLocaleString()}</Typography>
+            </TableCell>
+            <TableCell align='right' className='max-w-[36px]'>
+              {removeMemberPermission && (
+                <Button onClick={async () => await invitation.revoke()} size='icon' variant='ghost'>
+                  <Trash className="w-4 h-4"/>
+                </Button>
+              )}
+            </TableCell>
+          </TableRow>
+        ))}
+      </TableBody>
+    </Table>
+  </>;
+}
+
+function MemberInvitationSectionInner(props: { team: Team }) {
+  const user = useUser({ or: 'redirect' });
+  const { t } = useTranslation();
+  const readMemberPermission = user.usePermission(props.team, '$read_members');
+
+  const invitationSchema = yupObject({
+    email: strictEmailSchema(t('Please enter a valid email address')).defined().nonEmpty(t('Please enter an email address')),
+  });
 
   const { register, handleSubmit, formState: { errors }, watch } = useForm({
     resolver: yupResolver(invitationSchema)
@@ -984,7 +1180,7 @@ function useMemberInvitationSection(props: { team: Team }) {
   }, [watch('email')]);
 
   return (
-    <div>
+    <>
       <Section
         title={t("Invite member")}
         description={t("Invite a user to your team through email")}
@@ -1005,45 +1201,13 @@ function useMemberInvitationSection(props: { team: Team }) {
           {invitedEmail && <Typography type='label' variant='secondary'>Invited {invitedEmail}</Typography>}
         </form>
       </Section>
-      {invitationsToShow.length > 0 && (
-        <>
-          <Table className='mt-6'>
-            <TableHeader>
-              <TableRow>
-                <TableHead className="w-[200px]">{t("Outstanding invitations")}</TableHead>
-                <TableHead className="w-[60px]">{t("Expires")}</TableHead>
-                <TableHead className="w-[36px] max-w-[36px]"></TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {invitationsToShow.map((invitation, i) => (
-                <TableRow key={invitation.id}>
-                  <TableCell>
-                    <Typography>{invitation.recipientEmail}</Typography>
-                  </TableCell>
-                  <TableCell>
-                    <Typography variant='secondary'>{invitation.expiresAt.toLocaleString()}</Typography>
-                  </TableCell>
-                  <TableCell align='right' className='max-w-[36px]'>
-                    {removeMemberPermission && (
-                      <Button onClick={async () => await invitation.revoke()} size='icon' variant='ghost'>
-                        <Trash className="w-4 h-4"/>
-                      </Button>
-                    )}
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </>
-      )}
-    </div>
+      {readMemberPermission && <MemberInvitationsSectionInvitationsList team={props.team} />}
+    </>
   );
 }
 
 
-function useMemberListSection(props: { team: Team }) {
-  const { t } = useTranslation();
+function MemberListSection(props: { team: Team }) {
   const user = useUser({ or: 'redirect' });
   const readMemberPermission = user.usePermission(props.team, '$read_members');
   const inviteMemberPermission = user.usePermission(props.team, '$invite_members');
@@ -1052,11 +1216,12 @@ function useMemberListSection(props: { team: Team }) {
     return null;
   }
 
-  const users = props.team.useUsers();
+  return <MemberListSectionInner team={props.team} />;
+}
 
-  if (!readMemberPermission) {
-    return null;
-  }
+function MemberListSectionInner(props: { team: Team }) {
+  const { t } = useTranslation();
+  const users = props.team.useUsers();
 
   return (
     <div>
@@ -1087,7 +1252,7 @@ function useMemberListSection(props: { team: Team }) {
   );
 }
 
-export function TeamCreation() {
+function TeamCreation() {
   const { t } = useTranslation();
 
   const teamCreationSchema = yupObject({
@@ -1100,7 +1265,7 @@ export function TeamCreation() {
   const app = useStackApp();
   const project = app.useProject();
   const user = useUser({ or: 'redirect' });
-  const router = useRouter();
+  const navigate = app.useNavigate();
   const [loading, setLoading] = useState(false);
 
   if (!project.config.clientTeamCreationEnabled) {
@@ -1117,7 +1282,7 @@ export function TeamCreation() {
       setLoading(false);
     }
 
-    router.push(`#team-${team.id}`);
+    navigate(`#team-${team.id}`);
   };
 
   return (
@@ -1143,7 +1308,7 @@ export function TeamCreation() {
   );
 }
 
-export function useDeleteAccountSection() {
+function DeleteAccountSection() {
   const { t } = useTranslation();
   const user = useUser({ or: 'redirect' });
   const app = useStackApp();

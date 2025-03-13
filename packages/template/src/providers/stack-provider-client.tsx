@@ -11,11 +11,13 @@ export const StackContext = React.createContext<null | {
 }>(null);
 
 export function StackProviderClient(props: {
-  appJson: StackClientAppJson<true, string>,
+  app: StackClientAppJson<true, string> | StackClientApp<true>,
+  serialized: boolean,
   children?: React.ReactNode,
 }) {
-  const appJson = props.appJson;
-  const app = StackClientApp[stackAppInternalsSymbol].fromClientJson(appJson);
+  const app = props.serialized
+    ? StackClientApp[stackAppInternalsSymbol].fromClientJson(props.app as StackClientAppJson<true, string>)
+    : props.app as StackClientApp<true>;
 
   globalVar.__STACK_AUTH__ = { app };
 

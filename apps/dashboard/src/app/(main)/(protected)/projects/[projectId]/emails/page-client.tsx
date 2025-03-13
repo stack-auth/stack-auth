@@ -5,15 +5,18 @@ import { InputField, SelectField } from "@/components/form-fields";
 import { useRouter } from "@/components/router";
 import { SettingCard, SettingText } from "@/components/settings";
 import { getPublicEnvVar } from "@/lib/env";
-import { AdminEmailConfig, AdminProject } from "@stackframe/stack";
+import { AdminEmailConfig, AdminProject, AdminSentEmail } from "@stackframe/stack";
 import { Reader } from "@stackframe/stack-emails/dist/editor/email-builder/index";
 import { EMAIL_TEMPLATES_METADATA, convertEmailSubjectVariables, convertEmailTemplateMetadataExampleValues, convertEmailTemplateVariables, validateEmailTemplateContent } from "@stackframe/stack-emails/dist/utils";
 import { EmailTemplateType } from "@stackframe/stack-shared/dist/interface/crud/email-templates";
 import { strictEmailSchema } from "@stackframe/stack-shared/dist/schema-fields";
 import { throwErr } from "@stackframe/stack-shared/dist/utils/errors";
 import { deepPlainEquals } from "@stackframe/stack-shared/dist/utils/objects";
-import { ActionCell, ActionDialog, Alert, Button, Card, SimpleTooltip, Typography, useToast } from "@stackframe/stack-ui";
-import { useMemo, useState } from "react";
+import { runAsynchronously } from "@stackframe/stack-shared/dist/utils/promises";
+import { ActionCell, ActionDialog, Alert, AlertDescription, AlertTitle, Button, Card, DataTable, SimpleTooltip, Typography, useToast } from "@stackframe/stack-ui";
+import { ColumnDef } from "@tanstack/react-table";
+import { AlertCircle } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
 import * as yup from "yup";
 import { PageLayout } from "../page-layout";
 import { useAdminApp } from "../use-admin-app";
@@ -26,6 +29,7 @@ export default function PageClient() {
   const router = useRouter();
   const [resetTemplateType, setResetTemplateType] = useState<EmailTemplateType>("email_verification");
   const [resetTemplateDialogOpen, setResetTemplateDialogOpen] = useState(false);
+  const [sharedSmtpWarningDialogOpen, setSharedSmtpWarningDialogOpen] = useState<EmailTemplateType|null>(null);
 
   return (
     <PageLayout title="Emails" description="Configure email settings for your project">
@@ -66,6 +70,13 @@ export default function PageClient() {
       )}
 
       <SettingCard title="Email Templates" description="Customize the emails sent">
+        {emailConfig?.type === 'shared' && <Alert variant="default">
+          <AlertCircle className="h-4 w-4" />
+          <AlertTitle>Warning</AlertTitle>
+          <AlertDescription>
+            You are using a shared email server. If you want to customize the email templates, you need to configure a custom SMTP server.
+          </AlertDescription>
+        </Alert>}
         {emailTemplates.map((template) => (
           <Card key={template.type} className="p-4 flex justify-between flex-col sm:flex-row gap-4">
             <div className="flex flex-col gap-2">
@@ -78,7 +89,13 @@ export default function PageClient() {
                 </Typography>
               </div>
               <div className="flex-grow flex justify-start items-end gap-2">
-                <Button variant='secondary' onClick={() => router.push('emails/templates/' + template.type)}>Edit Template</Button>
+                <Button variant='secondary' onClick={() => {
+                  if (emailConfig?.type === 'shared') {
+                    setSharedSmtpWarningDialogOpen(template.type);
+                  } else {
+                    router.push(`emails/templates/${template.type}`);
+                  }
+                }}>Edit Template</Button>
                 {!template.isDefault && <ActionCell
                   items={[{
                     item: 'Reset to Default',
@@ -95,14 +112,82 @@ export default function PageClient() {
           </Card>
         ))}
       </SettingCard>
+      <SettingCard title="Email Log" description="Manage email sending history">
+        <EmailSendDataTable />
+      </SettingCard>
 
-      <ResetEmailTemplateDialog
-        templateType={resetTemplateType}
-        open={resetTemplateDialogOpen}
-        onClose={() => setResetTemplateDialogOpen(false)}
-      />
+      <ActionDialog
+        open={sharedSmtpWarningDialogOpen !== null}
+        onClose={() => setSharedSmtpWarningDialogOpen(null)}
+        title="Shared Email Server"
+        okButton={{ label: "Edit Templates Anyway", onClick: async () => {
+          router.push(`emails/templates/${sharedSmtpWarningDialogOpen}`);
+        } }}
+        cancelButton={{ label: "Cancel" }}
+      >
+        <Alert variant="default">
+          <AlertCircle className="h-4 w-4" />
+          <AlertTitle>Warning</AlertTitle>
+          <AlertDescription>
+            You are using a shared email server. If you want to customize the email templates, you need to configure a custom SMTP server.
+            You can edit the templates anyway, but you will not be able to save them.
+          </AlertDescription>
+        </Alert>
+      </ActionDialog>
     </PageLayout>
   );
+}
+
+
+const emailTableColumns: ColumnDef<AdminSentEmail>[] = [
+  { accessorKey: 'recipient', header: 'Recipient' },
+  { accessorKey: 'subject', header: 'Subject' },
+  { accessorKey: 'sentAt', header: 'Sent At', cell: ({ row }) => {
+    const date = row.original.sentAt;
+    return date.toLocaleDateString() + ' ' + date.toLocaleTimeString();
+  }
+  },
+  { accessorKey: 'status', header: 'Status', cell: ({ row }) => {
+    return row.original.error ? (
+      <div className="text-red-500">Failed</div>
+    ) : (
+      <div className="text-green-500">Sent</div>
+    );
+  } },
+];
+
+function EmailSendDataTable() {
+  const stackAdminApp = useAdminApp();
+  const [emailLogs, setEmailLogs] = useState<AdminSentEmail[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  // Fetch email logs when component mounts
+  useEffect(() => {
+    runAsynchronously(async () => {
+      setLoading(true);
+      try {
+        const emails = await stackAdminApp.listSentEmails();
+        setEmailLogs(emails);
+      } finally {
+        setLoading(false);
+      }
+    });
+  }, [stackAdminApp]);
+
+  if (loading) {
+    return (
+      <div className="flex justify-center py-4">
+        <Typography>Loading email logs...</Typography>
+      </div>
+    );
+  }
+
+  return <DataTable
+    data={emailLogs}
+    defaultColumnFilters={[]}
+    columns={emailTableColumns}
+    defaultSorting={[{ id: 'sentAt', desc: true }]}
+  />;
 }
 
 function EmailPreview(props: { content: any, type: EmailTemplateType }) {

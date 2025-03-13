@@ -14,6 +14,38 @@ export function forwardRefIfNeeded<T, P = {}>(render: React.ForwardRefRenderFunc
     return ((props: P) => render(props, (props as any).ref)) as any;
   }
 }
+import.meta.vitest?.test("forwardRefIfNeeded", ({ expect }) => {
+  // Mock React.version and React.forwardRef
+  const originalVersion = React.version;
+  const originalForwardRef = React.forwardRef;
+
+  try {
+    // Test with React version < 19
+    Object.defineProperty(React, 'version', { value: '18.2.0', writable: true });
+
+    // Create a render function
+    const renderFn = (props: any, ref: any) => null;
+
+    // Call forwardRefIfNeeded
+    const result = forwardRefIfNeeded(renderFn);
+
+    // Verify the function returns something
+    expect(result).toBeDefined();
+
+    // Test with React version >= 19
+    Object.defineProperty(React, 'version', { value: '19.0.0', writable: true });
+
+    // Call forwardRefIfNeeded again with React 19
+    const result19 = forwardRefIfNeeded(renderFn);
+
+    // Verify the function returns something
+    expect(result19).toBeDefined();
+  } finally {
+    // Restore original values
+    Object.defineProperty(React, 'version', { value: originalVersion });
+    React.forwardRef = originalForwardRef;
+  }
+});
 
 export function getNodeText(node: React.ReactNode): string {
   if (["number", "string"].includes(typeof node)) {
@@ -30,6 +62,51 @@ export function getNodeText(node: React.ReactNode): string {
   }
   throw new Error(`Unknown node type: ${typeof node}`);
 }
+import.meta.vitest?.test("getNodeText", ({ expect }) => {
+  // Test with string
+  expect(getNodeText("hello")).toBe("hello");
+
+  // Test with number
+  expect(getNodeText(42)).toBe("42");
+
+  // Test with null/undefined
+  expect(getNodeText(null)).toBe("");
+  expect(getNodeText(undefined)).toBe("");
+
+  // Test with array
+  expect(getNodeText(["hello", " ", "world"])).toBe("hello world");
+  expect(getNodeText([1, 2, 3])).toBe("123");
+
+  // Test with mixed array
+  expect(getNodeText(["hello", 42, null])).toBe("hello42");
+
+  // Test with React element (mocked)
+  const mockElement = {
+    props: {
+      children: "child text"
+    }
+  } as React.ReactElement;
+  expect(getNodeText(mockElement)).toBe("child text");
+
+  // Test with nested React elements
+  const nestedElement = {
+    props: {
+      children: {
+        props: {
+          children: "nested text"
+        }
+      } as React.ReactElement
+    }
+  } as React.ReactElement;
+  expect(getNodeText(nestedElement)).toBe("nested text");
+
+  // Test with array of React elements
+  const arrayOfElements = [
+    { props: { children: "first" } } as React.ReactElement,
+    { props: { children: "second" } } as React.ReactElement
+  ];
+  expect(getNodeText(arrayOfElements)).toBe("firstsecond");
+});
 
 /**
  * Suspends the currently rendered component indefinitely. Will not unsuspend unless the component rerenders.
@@ -80,6 +157,26 @@ export class NoSuspenseBoundaryError extends Error {
     this.digest = "BAILOUT_TO_CLIENT_SIDE_RENDERING";
   }
 }
+import.meta.vitest?.test("NoSuspenseBoundaryError", ({ expect }) => {
+  // Test with default options
+  const defaultError = new NoSuspenseBoundaryError({});
+  expect(defaultError.name).toBe("NoSuspenseBoundaryError");
+  expect(defaultError.reason).toBe("suspendIfSsr()");
+  expect(defaultError.digest).toBe("BAILOUT_TO_CLIENT_SIDE_RENDERING");
+  expect(defaultError.message).toContain("This code path attempted to display a loading indicator");
+
+  // Test with custom caller
+  const customError = new NoSuspenseBoundaryError({ caller: "CustomComponent" });
+  expect(customError.name).toBe("NoSuspenseBoundaryError");
+  expect(customError.reason).toBe("CustomComponent");
+  expect(customError.digest).toBe("BAILOUT_TO_CLIENT_SIDE_RENDERING");
+  expect(customError.message).toContain("CustomComponent attempted to display a loading indicator");
+
+  // Verify error message contains all the necessary information
+  expect(customError.message).toContain("loading.tsx");
+  expect(customError.message).toContain("route groups");
+  expect(customError.message).toContain("https://nextjs.org/docs/messages/missing-suspense-with-csr-bailout");
+});
 
 
 /**

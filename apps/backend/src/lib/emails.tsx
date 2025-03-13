@@ -82,7 +82,7 @@ async function _sendEmailWithoutRetries(options: SendEmailOptions): Promise<Resu
   runAsynchronously(async () => {
     await wait(5000);
     if (!finished) {
-      captureError("email-send-timeout", new StackAssertionError("Email send took longer than 8s; maybe the email service is too slow?", {
+      captureError("email-send-timeout", new StackAssertionError("Email send took longer than 5s; maybe the email service is too slow?", {
         config: options.emailConfig.type === 'shared' ? "shared" : pick(options.emailConfig, ['host', 'port', 'username', 'senderEmail', 'senderName']),
         to: options.to,
         subject: options.subject,

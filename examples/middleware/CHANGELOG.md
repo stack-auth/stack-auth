@@ -1,5 +1,57 @@
 # @stackframe/example-middleware-demo
 
+## 2.7.27
+
+### Patch Changes
+
+- @stackframe/stack@2.7.27
+
+## 2.7.26
+
+### Patch Changes
+
+- @stackframe/stack@2.7.26
+
+## 2.7.25
+
+### Patch Changes
+
+- @stackframe/stack@2.7.25
+
+## 2.7.24
+
+### Patch Changes
+
+- Updated dependencies
+  - @stackframe/stack@2.7.24
+
+## 2.7.23
+
+### Patch Changes
+
+- Various changes
+- Updated dependencies
+  - @stackframe/stack@2.7.23
+
+## 2.7.22
+
+### Patch Changes
+
+- @stackframe/stack@2.7.22
+
+## 2.7.21
+
+### Patch Changes
+
+- @stackframe/stack@2.7.21
+
+## 2.7.20
+
+### Patch Changes
+
+- Updated dependencies
+  - @stackframe/stack@2.7.20
+
 ## 2.7.19
 
 ### Patch Changes

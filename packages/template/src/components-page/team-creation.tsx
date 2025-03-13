@@ -4,7 +4,6 @@ import { yupResolver } from "@hookform/resolvers/yup";
 import { yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
 import { runAsynchronously } from "@stackframe/stack-shared/dist/utils/promises";
 import { Button, Input, Label, Typography } from "@stackframe/stack-ui";
-import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { useForm } from "react-hook-form";
 import * as yup from "yup";
@@ -27,7 +26,7 @@ export function TeamCreation(props: { fullPage?: boolean }) {
   const project = app.useProject();
   const user = useUser({ or: 'redirect' });
   const [loading, setLoading] = useState(false);
-  const router = useRouter();
+  const navigate = app.useNavigate();
 
   if (!project.config.clientTeamCreationEnabled) {
     return <MessageCard title={t('Team creation is not enabled')} />;
@@ -38,7 +37,7 @@ export function TeamCreation(props: { fullPage?: boolean }) {
 
     try {
       const team = await user.createTeam({ displayName: data.displayName });
-      router.push(`${app.urls.handler}/team-settings/${team.id}`);
+      navigate(`${app.urls.handler}/team-settings/${team.id}`);
     } finally {
       setLoading(false);
     }

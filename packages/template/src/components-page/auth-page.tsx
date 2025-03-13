@@ -1,13 +1,14 @@
 'use client';
 
 import { runAsynchronously } from '@stackframe/stack-shared/dist/utils/promises';
-import { Skeleton, StyledLink, Tabs, TabsContent, TabsList, TabsTrigger, Typography, cn } from '@stackframe/stack-ui';
+import { Skeleton, Tabs, TabsContent, TabsList, TabsTrigger, Typography, cn } from '@stackframe/stack-ui';
 import { Suspense, useEffect } from 'react';
 import { useStackApp, useUser } from '..';
 import { CredentialSignIn } from '../components/credential-sign-in';
 import { CredentialSignUp } from '../components/credential-sign-up';
 import { MaybeFullPage } from '../components/elements/maybe-full-page';
 import { SeparatorWithText } from '../components/elements/separator-with-text';
+import { StyledLink } from '../components/link';
 import { MagicLinkSignIn } from '../components/magic-link-sign-in';
 import { PredefinedMessageCard } from '../components/message-cards/predefined-message-card';
 import { OAuthButtonGroup } from '../components/oauth-button-group';

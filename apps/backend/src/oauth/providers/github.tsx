@@ -32,7 +32,8 @@ export class GithubProvider extends OAuthBaseProvider {
   async postProcessUserInfo(tokenSet: TokenSet): Promise<OAuthUserInfo> {
     const rawUserInfoRes = await fetch("https://api.github.com/user", {
       headers: {
-        Authorization: `token ${tokenSet.accessToken}`,
+        Authorization: `Bearer ${tokenSet.accessToken}`,
+        "X-GitHub-Api-Version": "2022-11-28",
       },
     });
     if (!rawUserInfoRes.ok) {
@@ -47,7 +48,8 @@ export class GithubProvider extends OAuthBaseProvider {
 
     const emailsRes = await fetch("https://api.github.com/user/emails", {
       headers: {
-        Authorization: `token ${tokenSet.accessToken}`,
+        Authorization: `Bearer ${tokenSet.accessToken}`,
+        "X-GitHub-Api-Version": "2022-11-28",
       },
     });
     if (!emailsRes.ok) {

@@ -3,13 +3,14 @@
 import { yupResolver } from "@hookform/resolvers/yup";
 import { passwordSchema, strictEmailSchema, yupObject } from "@stackframe/stack-shared/dist/schema-fields";
 import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
-import { Button, Input, Label, PasswordInput, StyledLink } from "@stackframe/stack-ui";
+import { Button, Input, Label, PasswordInput } from "@stackframe/stack-ui";
 import { useState } from "react";
 import { useForm } from "react-hook-form";
 import * as yup from "yup";
 import { useStackApp } from "..";
 import { useTranslation } from "../lib/translations";
 import { FormWarningText } from "./elements/form-warning";
+import { StyledLink } from "./link";
 
 export function CredentialSignIn() {
   const { t } = useTranslation();

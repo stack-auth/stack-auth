@@ -1,8 +1,10 @@
 import * as child_process from "child_process";
+import { Command } from "commander";
 import * as fs from "fs";
 import inquirer from "inquirer";
 import open from "open";
 import * as path from "path";
+import packageJson from '../package.json';
 
 const jsLikeFileExtensions: string[] = [
   "mtsx",
@@ -19,21 +21,50 @@ const jsLikeFileExtensions: string[] = [
   "js",
 ];
 
+// Setup command line parsing
+const program = new Command();
+program
+  .name(packageJson.name)
+  .description("Stack Auth Initialization Tool")
+  .version(packageJson.version)
+  .argument("[project-path]", "Path to your project")
+  .usage(`[project-path] [options]`)
+  .option("--dry-run", "Run without making any changes")
+  .option("--neon", "Use Neon database")
+  .option("--js", "Initialize for JavaScript project")
+  .option("--next", "Initialize for Next.js project")
+  .option("--npm", "Use npm as package manager")
+  .option("--yarn", "Use yarn as package manager")
+  .option("--pnpm", "Use pnpm as package manager")
+  .option("--bun", "Use bun as package manager")
+  .option("--client", "Initialize client-side only")
+  .option("--server", "Initialize server-side only")
+  .option("--no-browser", "Don't open browser for environment variable setup")
+  .addHelpText('after', `
+For more information, please visit https://docs.stack-auth.com/getting-started/setup`);
+
+program.parse();
+
+const options = program.opts();
+
+// Keep existing variables but assign from Commander
+let savedProjectPath: string | undefined = program.args[0] || undefined;
+const isDryRun: boolean = options.dryRun || false;
+const isNeon: boolean = options.neon || false;
+const typeFromArgs: string | undefined = options.js ? "js" : options.next ? "next" : undefined;
+const packageManagerFromArgs: string | undefined = options.npm ? "npm" : options.yarn ? "yarn" : options.pnpm ? "pnpm" : options.bun ? "bun" : undefined;
+const isClient: boolean = options.client || false;
+const isServer: boolean = options.server || false;
+// Commander negates the boolean options with prefix `--no-`
+// so `--no-browser` becomes `browser: false`
+const noBrowser: boolean = !options.browser;
+
 class UserError extends Error {
   constructor(message: string) {
     super(message);
     this.name = "UserError";
   }
 }
-
-let savedProjectPath: string | undefined = process.argv[2] || undefined;
-
-const isDryRun: boolean = process.argv.includes("--dry-run");
-const isNeon: boolean = process.argv.includes("--neon");
-const typeFromArgs: string | undefined = ["js", "next"].find(s => process.argv.includes(`--${s}`));
-const packageManagerFromArgs: string | undefined = ["npm", "yarn", "pnpm", "bun"].find(s => process.argv.includes(`--${s}`));
-const isClient: boolean = process.argv.includes("--client");
-const isServer: boolean = process.argv.includes("--server");
 
 type Ansis = {
   red: string,
@@ -196,18 +227,18 @@ ${colorize.green`===============================================`}
 
 ${colorize.green`Successfully installed Stack! 🚀🚀🚀`}
 
-Next steps:
+${colorize.bold`Next steps:`}
 
-${[...nextSteps.entries()].map(([index, step]) => `${index + 1}. ${step}`).join("\n")}
-
-${type === "next" ? `Then, you will be able to access your sign-in page on http://your-website.example.com/handler/sign-in. That's it!`
-  : "That's it!"}
-
-${colorize.green`===============================================`}
+1. ${noBrowser ?
+    `Create a project at https://app.stack-auth.com and get your API keys` :
+    `Complete the setup in your browser to get your API keys`}
+2. Add the API keys to your .env.local file
+3. Import the Stack components in your app
+4. Add authentication to your app
 
 For more information, please visit https://docs.stack-auth.com/getting-started/setup
   `.trim());
-  if (!process.env.STACK_DISABLE_INTERACTIVE) {
+  if (!process.env.STACK_DISABLE_INTERACTIVE && !noBrowser) {
     await open("https://app.stack-auth.com/wizard-congrats");
   }
 }
@@ -394,10 +425,22 @@ const Steps = {
       envLocalPath,
     ];
     if (potentialEnvLocations.every((p) => !fs.existsSync(p))) {
-      laterWriteFile(
-        envLocalPath,
-        "# Stack Auth keys\n# Get these variables by creating a project on https://app.stack-auth.com.\nNEXT_PUBLIC_STACK_PROJECT_ID=\nNEXT_PUBLIC_STACK_PUBLISHABLE_CLIENT_KEY=\nSTACK_SECRET_SERVER_KEY=\n"
-      );
+      const envContent = noBrowser
+        ? "# Stack Auth keys\n" +
+          "# To get these variables:\n" +
+          "# 1. Go to https://app.stack-auth.com\n" +
+          "# 2. Create a new project\n" +
+          "# 3. Copy the keys below\n" +
+          "NEXT_PUBLIC_STACK_PROJECT_ID=\n" +
+          "NEXT_PUBLIC_STACK_PUBLISHABLE_CLIENT_KEY=\n" +
+          "STACK_SECRET_SERVER_KEY=\n"
+        : "# Stack Auth keys\n" +
+          "# Get these variables by creating a project on https://app.stack-auth.com.\n" +
+          "NEXT_PUBLIC_STACK_PROJECT_ID=\n" +
+          "NEXT_PUBLIC_STACK_PUBLISHABLE_CLIENT_KEY=\n" +
+          "STACK_SECRET_SERVER_KEY=\n";
+
+      laterWriteFile(envLocalPath, envContent);
       return true;
     }
 

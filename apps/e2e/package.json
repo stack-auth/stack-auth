@@ -1,6 +1,6 @@
 {
   "name": "@stackframe/e2e-tests",
-  "version": "2.7.19",
+  "version": "2.7.27",
   "private": true,
   "type": "module",
   "scripts": {
@@ -11,6 +11,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@stackframe/js": "workspace:*",
     "@stackframe/stack-shared": "workspace:*",
     "dotenv": "^16.4.5",
     "jose": "^5.2.2",

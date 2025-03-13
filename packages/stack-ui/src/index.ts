@@ -27,7 +27,6 @@ export * from "./components/ui/inline-code";
 export * from "./components/ui/input";
 export * from "./components/ui/input-otp";
 export * from "./components/ui/label";
-export * from "./components/ui/link";
 export * from "./components/ui/menubar";
 export * from "./components/ui/navigation-menu";
 export * from "./components/ui/password-input";

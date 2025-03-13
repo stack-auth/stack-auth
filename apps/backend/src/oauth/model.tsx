@@ -9,7 +9,7 @@ import { AuthorizationCode, AuthorizationCodeModel, Client, Falsey, RefreshToken
 import { PrismaClientKnownRequestError } from "@prisma/client/runtime/library";
 import { KnownErrors } from "@stackframe/stack-shared";
 import { generateSecureRandomString } from "@stackframe/stack-shared/dist/utils/crypto";
-import { StackAssertionError, captureError } from "@stackframe/stack-shared/dist/utils/errors";
+import { StackAssertionError, captureError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
 
 declare module "@node-oauth/oauth2-server" {
   // eslint-disable-next-line @typescript-eslint/consistent-type-definitions
@@ -90,14 +90,51 @@ export class OAuthModel implements AuthorizationCodeModel {
   async generateAccessToken(client: Client, user: User, scope: string[]): Promise<string> {
     assertScopeIsValid(scope);
     const tenancy = await getSoleTenancyFromProject(client.id);
+
+    if (!user.refreshTokenId) {
+      //create new refresh token
+      const refreshToken = await this.generateRefreshToken(client, user, scope);
+      // save it in user, then we just access it in refresh
+      // HACK: This is a hack to ensure the refresh token is already there so we can associate the access token with it
+      const newRefreshToken = await prismaClient.projectUserRefreshToken.create({
+        data: {
+          refreshToken,
+          projectUser: {
+            connect: {
+              tenancyId_projectUserId: {
+                tenancyId: tenancy.id,
+                projectUserId: user.id,
+              },
+            },
+          },
+          expiresAt: new Date(),
+        },
+      });
+      user.refreshTokenId = newRefreshToken.id;
+    }
+
     return await generateAccessToken({
       tenancy,
       userId: user.id,
+      refreshTokenId: user.refreshTokenId ?? throwErr("Refresh token ID not found on OAuth user"),
     });
   }
 
   async generateRefreshToken(client: Client, user: User, scope: string[]): Promise<string> {
     assertScopeIsValid(scope);
+
+    if (user.refreshTokenId) {
+      const tenancy = await getSoleTenancyFromProject(client.id);
+      const refreshToken = await prismaClient.projectUserRefreshToken.findUniqueOrThrow({
+        where: {
+          tenancyId_id: {
+            tenancyId: tenancy.id,
+            id: user.refreshTokenId,
+          },
+        },
+      });
+      return refreshToken.refreshToken;
+    }
 
     return generateSecureRandomString();
   }
@@ -127,10 +164,20 @@ export class OAuthModel implements AuthorizationCodeModel {
         });
       }
 
-      await prismaClient.projectUserRefreshToken.create({
-        data: {
+
+      await prismaClient.projectUserRefreshToken.upsert({
+        where: {
+          tenancyId_id: {
+            tenancyId: tenancy.id,
+            id: user.refreshTokenId,
+          },
+        },
+        update: {
           refreshToken: token.refreshToken,
           expiresAt: token.refreshTokenExpiresAt,
+        },
+        create: {
+          refreshToken: token.refreshToken,
           projectUser: {
             connect: {
               tenancyId_projectUserId: {
@@ -211,6 +258,7 @@ export class OAuthModel implements AuthorizationCodeModel {
       refreshTokenExpiresAt: token.expiresAt === null ? undefined : token.expiresAt,
       user: {
         id: token.projectUserId,
+        refreshTokenId: token.id,
       },
       client: {
         id: token.projectUser.tenancy.project.id,

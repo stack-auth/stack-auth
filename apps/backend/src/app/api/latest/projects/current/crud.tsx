@@ -95,6 +95,16 @@ export const projectsCrudHandlers = createLazyProxy(() => createCrudHandlers(pro
       if (emailConfig) {
         let updateData = {};
 
+        if (emailConfig.type === 'shared') {
+          const customTemplateCount = await tx.emailTemplate.count({
+            where: { projectConfigId: oldProject.config.id },
+          });
+
+          if (customTemplateCount !== 0) {
+            throw new StatusError(StatusError.BadRequest, 'Cannot change email service type to shared when custom templates are defined. Disable custom templates first, before changing the email service type.');
+          }
+        }
+
         await tx.standardEmailServiceConfig.deleteMany({
           where: { projectConfigId: oldProject.config.id },
         });
@@ -449,7 +459,7 @@ export const projectsCrudHandlers = createLazyProxy(() => createCrudHandlers(pro
         where: { id: auth.project.id },
         data: {
           displayName: data.display_name,
-          description: data.description,
+          description: data.description ?? "",
           isProductionMode: data.is_production_mode,
           config: {
             update: {
@@ -458,6 +468,7 @@ export const projectsCrudHandlers = createLazyProxy(() => createCrudHandlers(pro
               clientUserDeletionEnabled: data.config?.client_user_deletion_enabled,
               allowLocalhost: data.config?.allow_localhost,
               createTeamOnSignUp: data.config?.create_team_on_sign_up,
+              oauthAccountMergeStrategy: data.config?.oauth_account_merge_strategy ? typedToUppercase(data.config.oauth_account_merge_strategy) : undefined,
               domains: data.config?.domains ? {
                 deleteMany: {},
                 create: data.config.domains.map(item => ({

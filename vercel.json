@@ -9,5 +9,8 @@
       "path": "/api/v1/cron/send-email-digest",
       "schedule": "0 0 * * *"
     }
-  ]
+  ],
+  "github": {
+    "autoJobCancelation": false
+  }
 }

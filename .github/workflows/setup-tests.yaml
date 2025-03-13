@@ -1,7 +1,15 @@
 name: "Run setup tests"
 
+on:
+  push:
+    branches:
+      - main
+      - dev
+  pull_request:
 
-on: push
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' && github.ref != 'refs/heads/dev' }}
 
 env:
   SHELL: /usr/bin/bash
@@ -9,7 +17,6 @@ env:
 jobs:
   test:
     runs-on: ubicloud-standard-8
-    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v3
 
@@ -38,6 +45,5 @@ jobs:
           tail: true
           wait-for: 120s
           log-output-if: true
-      # - run: pnpm run dev & sleep 120
       - run: pnpm test
         

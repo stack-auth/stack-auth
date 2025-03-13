@@ -1,6 +1,6 @@
 {
   "name": "@stackframe/docs",
-  "version": "2.7.19",
+  "version": "2.7.27",
   "description": "",
   "main": "index.js",
   "private": true,
@@ -13,7 +13,7 @@
   "keywords": [],
   "author": "",
   "dependencies": {
-    "fern-api": "^0.44.11"
+    "fern-api": "^0.53.17"
   },
   "devDependencies": {
     "rimraf": "^5.0.7",

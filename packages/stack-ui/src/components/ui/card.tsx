@@ -17,21 +17,6 @@ const Card = forwardRefIfNeeded<
 ));
 Card.displayName = "Card";
 
-const ClickableCard = forwardRefIfNeeded<
-  HTMLDivElement,
-  React.HTMLAttributes<HTMLDivElement>
->(({ className, ...props }, ref) => (
-  <div
-    ref={ref}
-    className={cn(
-      "rounded-xl border bg-card text-card-foreground shadow-sm cursor-pointer hover:border-[color:var(--primary)] ease-in-out",
-      className
-    )}
-    {...props}
-  />
-));
-ClickableCard.displayName = "ClickableCard";
-
 const CardHeader = forwardRefIfNeeded<
   HTMLDivElement,
   React.HTMLAttributes<HTMLDivElement>
@@ -99,5 +84,5 @@ const CardFooter = forwardRefIfNeeded<
 ));
 CardFooter.displayName = "CardFooter";
 
-export { Card, CardContent, CardDescription, CardFooter, CardHeader, CardSubtitle, CardTitle, ClickableCard };
+export { Card, CardContent, CardDescription, CardFooter, CardHeader, CardSubtitle, CardTitle };
 

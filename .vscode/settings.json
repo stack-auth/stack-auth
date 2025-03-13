@@ -7,8 +7,11 @@
   "typescript.tsdk": "node_modules/typescript/lib",
   "editor.tabSize": 2,
   "cSpell.words": [
+    "autoupdate",
     "backlinks",
+    "Cancelation",
     "Cdfc",
+    "chinthakagodawita",
     "cjsx",
     "clsx",
     "cmdk",
@@ -19,6 +22,7 @@
     "deindent",
     "Deindentable",
     "deindented",
+    "DUMBASS",
     "EAUTH",
     "EDNS",
     "EENVELOPE",
@@ -92,7 +96,7 @@
   ],
   "editor.codeActionsOnSave": {
     "source.fixAll.eslint": "explicit",
-    "source.organizeImports": "explicit"
+    "source.organizeImports": "explicit"    
   },
   "terminal.integrated.wordSeparators": " (){}',\"`─‘’“”|",
   "editor.formatOnSave": false,

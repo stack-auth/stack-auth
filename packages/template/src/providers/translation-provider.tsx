@@ -2,7 +2,7 @@ import { throwErr } from "@stackframe/stack-shared/dist/utils/errors";
 import { quetzalKeys, quetzalLocales } from "../generated/quetzal-translations";
 import { TranslationProviderClient } from "./translation-provider-client";
 
-export async function TranslationProvider({ lang, translationOverrides, children }: {
+export function TranslationProvider({ lang, translationOverrides, children }: {
   lang: Parameters<typeof quetzalLocales.get>[0] | undefined,
   translationOverrides?: Record<string, string>,
   children: React.ReactNode,

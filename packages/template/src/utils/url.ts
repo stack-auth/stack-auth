@@ -1,17 +1,12 @@
-export function autoRedirect() {
-  const url = new URL(window.location.href);
-  const redirectUrl = url.searchParams.get("auto-redirect-url");
-  if (redirectUrl) {
-    const urlObject = new URL(redirectUrl);
-    if (urlObject.origin !== window.location.origin) {
-      throw new Error("auto-redirect-url is not same origin (" + urlObject.origin + " !== " + window.location.origin + ")");
-    }
-    url.searchParams.delete("auto-redirect-url");
-    window.location.replace(urlObject.href);
-  }
-}
+import { StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
+
 
 export function constructRedirectUrl(redirectUrl: URL | string | undefined) {
+  // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
+  if (typeof window === 'undefined' || !window.location) {
+    throw new StackAssertionError("Attempted to call constructRedirectUrl in a non-browser environment. You may be able to fix this by passing the `callbackUrl` option with your function call.", { redirectUrl });
+  }
+
   const retainedQueryParams = ["after_auth_return_to"];
   const currentUrl = new URL(window.location.href);
   const url = redirectUrl ? new URL(redirectUrl, window.location.href) : new URL(window.location.href);

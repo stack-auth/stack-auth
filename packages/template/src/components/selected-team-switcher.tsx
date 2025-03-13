@@ -14,7 +14,6 @@ import {
   Typography
 } from "@stackframe/stack-ui";
 import { PlusCircle, Settings } from "lucide-react";
-import { useRouter } from "next/navigation";
 import { Suspense, useEffect, useMemo } from "react";
 import { Team, useStackApp, useUser } from "..";
 import { useTranslation } from "../lib/translations";
@@ -41,7 +40,7 @@ function Inner(props: SelectedTeamSwitcherProps) {
   const app = useStackApp();
   const user = useUser();
   const project = app.useProject();
-  const router = useRouter();
+  const navigate = app.useNavigate();
   const selectedTeam = user?.selectedTeam || props.selectedTeam;
   const rawTeams = user?.useTeams();
   const teams = useMemo(() => rawTeams?.sort((a, b) => b.id === selectedTeam?.id ? 1 : -1), [rawTeams, selectedTeam]);
@@ -66,7 +65,7 @@ function Inner(props: SelectedTeamSwitcherProps) {
             await user?.setSelectedTeam(team);
           }
           if (props.urlMap) {
-            router.push(props.urlMap(team));
+            navigate(props.urlMap(team));
           }
         });
       }}
@@ -81,7 +80,7 @@ function Inner(props: SelectedTeamSwitcherProps) {
               <span>
                 {t('Current team')}
               </span>
-              <Button variant='ghost' size='icon' className="h-6 w-6" onClick={() => router.push(`${app.urls.accountSettings}#team-${user.selectedTeam?.id}`)}>
+              <Button variant='ghost' size='icon' className="h-6 w-6" onClick={() => navigate(`${app.urls.accountSettings}#team-${user.selectedTeam?.id}`)}>
                 <Settings className="h-4 w-4"/>
               </Button>
             </div>
@@ -115,7 +114,7 @@ function Inner(props: SelectedTeamSwitcherProps) {
           <SelectSeparator/>
           <div>
             <Button
-              onClick={() => router.push(`${app.urls.accountSettings}#team-creation`)}
+              onClick={() => navigate(`${app.urls.accountSettings}#team-creation`)}
               className="w-full"
               variant='ghost'
             >
