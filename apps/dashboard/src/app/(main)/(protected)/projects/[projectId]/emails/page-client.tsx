@@ -168,8 +168,6 @@ function EmailSendDataTable() {
       try {
         const emails = await stackAdminApp.listSentEmails();
         setEmailLogs(emails);
-      } catch (error) {
-        console.error("Failed to fetch email logs:", error);
       } finally {
         setLoading(false);
       }

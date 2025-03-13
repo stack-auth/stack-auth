@@ -9,6 +9,7 @@ import { _StackClientAppImpl } from "../implementations";
 
 export type StackClientAppConstructorOptions<HasTokenStore extends boolean, ProjectId extends string> = {
   baseUrl?: string | { browser: string, server: string },
+  extraRequestHeaders?: Record<string, string>,
   projectId?: ProjectId,
   publishableClientKey?: string,
   urls?: Partial<HandlerUrls>,
