@@ -86,7 +86,7 @@ export function ForgotPassword(props: { fullPage?: boolean }) {
           <Typography type='h2'>{t("Reset Your Password")}</Typography>
           <Typography>
             {t("Don't need to reset?")}{" "}
-            <StyledLink href={stackApp.urls['signUp']}>
+            <StyledLink href={stackApp.urls['signIn']}>
               {t("Sign in")}
             </StyledLink>
           </Typography>
