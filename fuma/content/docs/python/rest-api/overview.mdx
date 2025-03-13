@@ -1,0 +1,29 @@
+---
+title: Overview
+description: python documentation
+---
+
+Stack offers a REST API for backends & frontends of any programming language or framework. This API is used to authenticate users, manage user data, and more.
+
+## Authentication
+
+The following authentication headers are common to every endpoint:
+
+```http
+curl https://api.stack-auth.com/api/v1/ \
+     -H "X-Stack-Access-Type: <either 'client' or 'server'>" \
+     -H "X-Stack-Project-Id: <your project UUID>" \
+     -H "X-Stack-Publishable-Client-Key: pck_<your publishable client key>" \
+     -H "X-Stack-Secret-Server-Key: ssk_<your secret server key>" \
+     -H "X-Stack-Access-Token: <the current user's access token>"
+```
+
+| Header | Type | Description |
+| ------ | ---- | ----------- |
+| `X-Stack-Access-Type` | "client" \| "server" | Required. "client" (without quotes) for the frontend API, or "server" for the backend API. |
+| `X-Stack-Project-Id` | UUID | Required. The project ID as found on the Stack dashboard. |
+| `X-Stack-Publishable-Client-Key` | string | Required for client access. The API key as found on the Stack dashboard. |
+| `X-Stack-Secret-Server-Key` | string | Required for server access. The API key as found on the Stack dashboard. |
+| `X-Stack-Access-Token` | string | Optional. The access token for the current user. If not given, the request is considered to be logged out. |
+
+To see how to use these headers in various programming languages, see the [Getting Started guide](./../getting-started/setup.mdx).
