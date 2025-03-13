@@ -1,6 +1,7 @@
 import { prismaClient } from "@/prisma-client";
 import { Prisma } from "@prisma/client";
 import { ProjectsCrud } from "@stackframe/stack-shared/dist/interface/crud/projects";
+import { getNodeEnvironment } from "@stackframe/stack-shared/dist/utils/env";
 import { StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
 import { fullProjectInclude, getProject, projectPrismaToCrud } from "./projects";
 
@@ -65,7 +66,7 @@ export async function getSoleTenancyFromProject(projectOrId: ProjectsCrud["Admin
     if (returnNullIfNotFound) return null;
     throw new StackAssertionError(`Project ${projectOrId} does not exist`, { projectOrId });
   }
-  const tenancyId = soleTenancyIdsCache.get(project.id) ?? (await getTenancyFromProject(project.id, 'main', null))?.id;
+  const tenancyId = (!getNodeEnvironment().includes('development') ? soleTenancyIdsCache.get(project.id) : null) ?? (await getTenancyFromProject(project.id, 'main', null))?.id;
   if (!tenancyId) {
     if (returnNullIfNotFound) return null;
     throw new StackAssertionError(`No tenancy found for project ${project.id}`, { project });

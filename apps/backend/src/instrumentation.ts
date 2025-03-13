@@ -13,7 +13,7 @@ export function register() {
   });
 
   if (getNextRuntime() === "nodejs") {
-    process.title = "stack-backend (nextjs)";
+    process.title = "stack-backend (node/nextjs)";
   }
 
   if (getNextRuntime() === "nodejs" || getNextRuntime() === "edge") {
