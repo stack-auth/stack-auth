@@ -10,7 +10,7 @@ import { useAsyncCallback } from "@stackframe/stack-shared/dist/hooks/use-async-
 import { fromNow } from "@stackframe/stack-shared/dist/utils/dates";
 import { throwErr } from '@stackframe/stack-shared/dist/utils/errors';
 import { deindent } from "@stackframe/stack-shared/dist/utils/strings";
-import { ActionCell, Avatar, AvatarFallback, AvatarImage, Badge, Button, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger, Input, Separator, SimpleTooltip, Table, TableBody, TableCell, TableHead, TableHeader, TableRow, Typography, cn } from "@stackframe/stack-ui";
+import { ActionCell, Avatar, AvatarFallback, AvatarImage, Button, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger, Input, Separator, SimpleTooltip, Table, TableBody, TableCell, TableHead, TableHeader, TableRow, Typography, cn } from "@stackframe/stack-ui";
 import { AtSign, Calendar, Check, Hash, Mail, MoreHorizontal, Shield, SquareAsterisk, X } from "lucide-react";
 import { useMemo, useRef, useState } from "react";
 import * as yup from "yup";
@@ -420,9 +420,11 @@ function ContactChannelsSection({ user }: ContactChannelsSectionProps) {
   };
 
   return (
-    <SettingCard
-      title="Contact Channels"
-      actions={
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="text-lg font-semibold">Contact Channels</h2>
+        </div>
         <Button
           variant="outline"
           size="sm"
@@ -430,8 +432,8 @@ function ContactChannelsSection({ user }: ContactChannelsSectionProps) {
         >
           Add E-mail
         </Button>
-      }
-    >
+      </div>
+
       <AddEmailDialog
         user={user}
         open={isAddEmailDialogOpen}
@@ -439,7 +441,7 @@ function ContactChannelsSection({ user }: ContactChannelsSectionProps) {
       />
 
       {contactChannels.length === 0 ? (
-        <div className="flex flex-col items-center gap-2">
+        <div className="flex flex-col items-center gap-2 p-4 border rounded-md bg-muted/10">
           <p className='text-sm text-gray-500 text-center'>
             No contact channels
           </p>
@@ -450,7 +452,9 @@ function ContactChannelsSection({ user }: ContactChannelsSectionProps) {
             <TableHeader>
               <TableRow>
                 <TableHead>E-Mail</TableHead>
-                <TableHead className="text-right">Status</TableHead>
+                <TableHead className="text-center">Primary</TableHead>
+                <TableHead className="text-center">Verified</TableHead>
+                <TableHead className="text-center">Used for sign-in</TableHead>
                 <TableHead className="w-[80px]"></TableHead>
               </TableRow>
             </TableHeader>
@@ -462,12 +466,20 @@ function ContactChannelsSection({ user }: ContactChannelsSectionProps) {
                       {channel.value}
                     </div>
                   </TableCell>
-                  <TableCell className="text-right">
-                    <div className='flex gap-2 justify-end'>
-                      {channel.isPrimary && <Badge>Primary</Badge>}
-                      {!channel.isVerified && <Badge variant='destructive'>Unverified</Badge>}
-                      {channel.usedForAuth && <Badge variant='outline'>Used for sign-in</Badge>}
-                    </div>
+                  <TableCell className="text-center">
+                    {channel.isPrimary ? <Check className="mx-auto h-4 w-4 text-green-500" /> : null}
+                  </TableCell>
+                  <TableCell className="text-center">
+                    {channel.isVerified ?
+                      <Check className="mx-auto h-4 w-4 text-green-500" /> :
+                      <X className="mx-auto h-4 w-4 text-muted-foreground" />
+                    }
+                  </TableCell>
+                  <TableCell className="text-center">
+                    {channel.usedForAuth ?
+                      <Check className="mx-auto h-4 w-4 text-green-500" /> :
+                      <X className="mx-auto h-4 w-4 text-muted-foreground" />
+                    }
                   </TableCell>
                   <TableCell align="right">
                     <ActionCell
@@ -512,7 +524,7 @@ function ContactChannelsSection({ user }: ContactChannelsSectionProps) {
           </Table>
         </div>
       )}
-    </SettingCard>
+    </div>
   );
 }
 
@@ -563,6 +575,7 @@ function UserPage({ user }: { user: ServerUser }) {
         <UserHeader user={user} />
         <Separator />
         <UserDetails user={user} />
+        <Separator />
         <ContactChannelsSection user={user} />
         <MetadataSection user={user} />
       </div>
