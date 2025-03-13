@@ -6,7 +6,7 @@
   },
   "crons": [
     {
-      "path": "/api/v1/cron/send-email-digest",
+      "path": "/api/latest/cron/send-email-digest",
       "schedule": "0 0 * * *"
     }
   ],
