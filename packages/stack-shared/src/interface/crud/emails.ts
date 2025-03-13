@@ -13,7 +13,7 @@ export const sentEmailReadSchema = fieldSchema.yupObject({
 }).defined();
 
 export const internalEmailsCrud = createCrud({
-  clientReadSchema: sentEmailReadSchema,
+  adminReadSchema: sentEmailReadSchema,
 });
 
 export type InternalEmailsCrud = CrudTypeOf<typeof internalEmailsCrud>;
