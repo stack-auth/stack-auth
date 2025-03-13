@@ -17,7 +17,7 @@ jobs:
     env:
       REPO: ${{ github.repository }}
       COMMIT: ${{ github.sha }}
-      PR_NUMBER: ${{ github.event.pull_request.number }}
+      PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
     steps:
       - name: Wait for 60 seconds
         run: sleep 60
@@ -51,30 +51,31 @@ jobs:
           }
           
           while true; do
+            # Always check the current commit's checks
             commit_response=$(get_check_runs "https://api.github.com/repos/${REPO}/commits/${COMMIT}/check-runs")
             commit_total=$(echo "$commit_response" | jq -r '.total_count // 0')
             
-            # If this is a PR, also get PR check runs
+            # If this is a PR, check the PR's head commit checks
             pr_total=0
-            if [ -n "$PR_NUMBER" ]; then
-              pr_response=$(get_check_runs "https://api.github.com/repos/${REPO}/pulls/${PR_NUMBER}/check-runs")
+            if [ -n "$PR_HEAD_SHA" ] && [ "$PR_HEAD_SHA" != "$COMMIT" ]; then
+              pr_response=$(get_check_runs "https://api.github.com/repos/${REPO}/commits/${PR_HEAD_SHA}/check-runs")
               pr_total=$(echo "$pr_response" | jq -r '.total_count // 0')
-              echo "Found ${commit_total} commit checks and ${pr_total} PR checks"
+              echo "Found ${commit_total} current commit checks and ${pr_total} PR head commit checks"
             else
               echo "Found ${commit_total} commit checks"
             fi
             
             # If no checks found at all, wait and retry
-            if [ "$commit_total" -eq 0 ] && { [ -z "$PR_NUMBER" ] || [ "$pr_total" -eq 0 ]; }; then
+            if [ "$commit_total" -eq 0 ] && { [ -z "$PR_HEAD_SHA" ] || [ "$pr_total" -eq 0 ]; }; then
               echo "No check runs found. Waiting..."
               sleep 10
               continue
             fi
             
-            # Check for pending runs in both commit and PR checks
+            # Check for pending runs in both current and PR head commit checks
             commit_pending=$(count_pending_checks "$commit_response")
             pr_pending=0
-            if [ -n "$PR_NUMBER" ]; then
+            if [ -n "$PR_HEAD_SHA" ] && [ "$PR_HEAD_SHA" != "$COMMIT" ]; then
               pr_pending=$(count_pending_checks "$pr_response")
             fi
             
@@ -85,10 +86,10 @@ jobs:
               continue
             fi
             
-            # Check for failures in both commit and PR checks
+            # Check for failures in both current and PR head commit checks
             commit_failed=$(count_failed_checks "$commit_response")
             pr_failed=0
-            if [ -n "$PR_NUMBER" ]; then
+            if [ -n "$PR_HEAD_SHA" ] && [ "$PR_HEAD_SHA" != "$COMMIT" ]; then
               pr_failed=$(count_failed_checks "$pr_response")
             fi
             
