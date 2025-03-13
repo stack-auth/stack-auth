@@ -134,10 +134,11 @@ pnpm install
 pnpm build:packages
 pnpm codegen
 
-# Reset & start the dependencies (DB, Inbucket, etc.) as Docker containers, seeding the DB with the Prisma schema
-pnpm start-deps
-# pnpm run restart-deps
-# pnpm run stop-deps
+# Start the dependencies (DB, Inbucket, etc.) as Docker containers, seeding the DB with the Prisma schema
+pnpm restart-deps
+# restart-deps is the same as:
+#   pnpm run stop-deps  (if the containers are already running)
+#   pnpm run start-deps
 
 # Start the dev server
 pnpm dev
