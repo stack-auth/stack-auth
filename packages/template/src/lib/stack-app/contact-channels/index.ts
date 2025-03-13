@@ -26,6 +26,7 @@ export function contactChannelCreateOptionsToCrud(userId: string, options: Conta
     value: options.value,
     type: options.type,
     used_for_auth: options.usedForAuth,
+    is_primary: options.isPrimary,
     user_id: userId,
   };
 }
