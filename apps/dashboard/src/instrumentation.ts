@@ -6,7 +6,7 @@ import "./polyfills";
 
 export function register() {
   if (getNextRuntime() === "nodejs") {
-    process.title = "stack-dashboard (nextjs)";
+    process.title = "stack-dashboard (node/nextjs)";
   }
 
   if (getNextRuntime() === "nodejs" || getNextRuntime() === "edge") {
