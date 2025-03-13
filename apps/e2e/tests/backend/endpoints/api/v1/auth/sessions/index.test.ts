@@ -1,7 +1,7 @@
 import { StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
 import { wait } from "@stackframe/stack-shared/dist/utils/promises";
 import { it } from "../../../../../../helpers";
-import { Auth, backendContext, niceBackendFetch } from "../../../../../backend-helpers";
+import { Auth, backendContext, createMailbox, niceBackendFetch } from "../../../../../backend-helpers";
 
 it("cannot create sessions from the client", async ({ expect }) => {
   const res = await Auth.Password.signUpWithEmail();
@@ -165,3 +165,222 @@ it("cannot create sessions with an expiry date larger than a year away", async (
     }
   `);
 });
+
+it("can delete sessions as client", async ({ expect }) => {
+  // Create a user and sign up
+  const res = await Auth.Password.signUpWithEmail();
+  const additionalSession = await niceBackendFetch("/api/v1/auth/sessions", {
+    accessType: "server",
+    method: "POST",
+    body: {
+      user_id: res.userId,
+    },
+  });
+
+
+  // List all sessions
+  const listResponse = await niceBackendFetch("/api/v1/auth/sessions", {
+    accessType: "client",
+    method: "GET",
+    query: {
+      user_id: res.userId,
+    },
+  });
+  expect(listResponse.status).toBe(200);
+  expect(listResponse.body.items.length).toBe(2);
+
+  // Find and delete the non-current session
+  const nonCurrentSession = listResponse.body.items.find((session: any) => !session.is_current_session);
+  expect(nonCurrentSession).toBeDefined();
+
+  const deleteResponse = await niceBackendFetch(`/api/v1/auth/sessions/${nonCurrentSession.id}`, {
+    accessType: "client",
+    method: "DELETE",
+    query: {
+      user_id: res.userId,
+    },
+  });
+  expect(deleteResponse.status).toBe(200);
+
+  // Verify the session was deleted by listing sessions again
+  const finalListResponse = await niceBackendFetch(`/api/v1/auth/sessions`, {
+    accessType: "client",
+    method: "GET",
+    query: {
+      user_id: res.userId,
+    },
+  });
+  expect(finalListResponse.status).toBe(200);
+  expect(finalListResponse.body.items.length).toBe(1);
+  expect(finalListResponse.body.items[0].is_current_session).toBe(true);
+});
+
+it("cannot delete current session as client", async ({ expect }) => {
+  // Create a user and sign up
+  const res = await Auth.Password.signUpWithEmail();
+
+  // List sessions to get the current session ID
+  const listResponse = await niceBackendFetch("/api/v1/auth/sessions", {
+    accessType: "client",
+    method: "GET",
+    query: {
+      user_id: res.userId,
+    },
+  });
+  expect(listResponse.status).toBe(200);
+
+  // Find the current session
+  const currentSession = listResponse.body.items.find((session: any) => session.is_current_session);
+  expect(currentSession).toBeDefined();
+
+  // Attempt to delete the current session
+  const deleteResponse = await niceBackendFetch(`/api/v1/auth/sessions/${currentSession.id}`, {
+    accessType: "client",
+    query: {
+      user_id: res.userId,
+    },
+    method: "DELETE",
+  });
+  expect(deleteResponse.status).toBe(400);
+  expect(deleteResponse.body).toMatchInlineSnapshot(`
+    {
+      "code": "CANNOT_DELETE_CURRENT_SESSION",
+      "error": "Cannot delete the current session.",
+    }
+  `);
+
+  // Verify the session was not deleted by listing sessions again
+  const finalListResponse = await niceBackendFetch("/api/v1/auth/sessions", {
+    accessType: "client",
+    method: "GET",
+    query: {
+      user_id: res.userId,
+    },
+  });
+  expect(finalListResponse.status).toBe(200);
+  expect(finalListResponse.body.items.length).toBe(1);
+  expect(finalListResponse.body.items[0].is_current_session).toBe(true);
+});
+
+it("cannot read another user's sessions as client", async ({ expect }) => {
+  // Create first user and sign up
+  const user1 = await Auth.Password.signUpWithEmail();
+
+  // Create second user and sign up
+  backendContext.set({ userAuth: null, mailbox: createMailbox() }); // Clear first user's auth
+  const user2 = await Auth.Password.signUpWithEmail();
+
+  // Try to read user1's sessions while authenticated as user2
+  const listResponse = await niceBackendFetch("/api/v1/auth/sessions", {
+    accessType: "client",
+    method: "GET",
+    query: {
+      user_id: user1.userId,
+    },
+  });
+
+  // Should get a 401 unauthorized response
+  expect(listResponse).toMatchInlineSnapshot(`
+    NiceResponse {
+      "status": 403,
+      "body": "Client can only list sessions for their own user.",
+      "headers": Headers { <some fields may have been hidden> },
+    }
+  `);
+});
+
+it("server cannot list sessions without user_id", async ({ expect }) => {
+  // Attempt to list sessions without providing user_id
+  const listResponse = await niceBackendFetch("/api/v1/auth/sessions", {
+    accessType: "server",
+    method: "GET",
+  });
+
+  // Should get a 400 bad request response
+  expect(listResponse).toMatchInlineSnapshot(`
+    NiceResponse {
+      "status": 400,
+      "body": {
+        "code": "SCHEMA_ERROR",
+        "details": {
+          "message": deindent\`
+            Request validation failed on GET /api/v1/auth/sessions:
+              - query.user_id must be defined
+          \`,
+        },
+        "error": deindent\`
+          Request validation failed on GET /api/v1/auth/sessions:
+            - query.user_id must be defined
+        \`,
+      },
+      "headers": Headers {
+        "x-stack-known-error": "SCHEMA_ERROR",
+        <some fields may have been hidden>,
+      },
+    }
+  `);
+});
+
+it("impersonation sessions hidden for non-admin clients and shown for admins", async ({ expect }) => {
+  // Create a user and sign up
+  const res = await Auth.Password.signUpWithEmail();
+
+  // Create an impersonation session for the user
+  const impersonationSession = await niceBackendFetch("/api/v1/auth/sessions", {
+    accessType: "server",
+    method: "POST",
+    body: {
+      user_id: res.userId,
+      is_impersonation: true,
+    },
+  });
+  expect(impersonationSession.status).toBe(200);
+
+  // Create a regular session for the user
+  const regularSession = await niceBackendFetch("/api/v1/auth/sessions", {
+    accessType: "server",
+    method: "POST",
+    body: {
+      user_id: res.userId,
+      is_impersonation: false,
+    },
+  });
+  expect(regularSession.status).toBe(200);
+
+  // List all sessions as client
+  const listResponse = await niceBackendFetch("/api/v1/auth/sessions", {
+    accessType: "client",
+    method: "GET",
+    query: {
+      user_id: res.userId,
+    },
+  });
+  expect(listResponse.status).toBe(200);
+
+  // Verify that only the regular session and the current session are in the list
+  // The impersonation session should not be included
+  const sessions = listResponse.body.items;
+  expect(sessions.length).toBe(2); // Current session + regular session
+
+  // Verify none of the sessions are marked as impersonation
+  expect(sessions.every((session: any) => session.is_impersonation === false)).toBe(true);
+
+  // List all sessions as admin (should include impersonation sessions)
+  const adminListResponse = await niceBackendFetch("/api/v1/auth/sessions", {
+    accessType: "admin",
+    method: "GET",
+    query: {
+      user_id: res.userId,
+    },
+  });
+  expect(adminListResponse.status).toBe(200);
+
+  // Verify that all sessions are in the list for admin
+  const adminSessions = adminListResponse.body.items;
+  expect(adminSessions.length).toBe(3); // Current session + regular session + impersonation session
+
+  // Verify at least one session is marked as impersonation
+  const impersonationSessions = adminSessions.filter((session: any) => session.is_impersonation);
+  expect(impersonationSessions.length).toBeGreaterThan(0);
+});
+

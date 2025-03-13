@@ -29,8 +29,7 @@ export type StackServerApp<HasTokenStore extends boolean = boolean, ProjectId ex
     getUser(options: GetUserOptions<HasTokenStore> & { or: 'throw' }): Promise<ProjectCurrentServerUser<ProjectId>>,
     getUser(options?: GetUserOptions<HasTokenStore>): Promise<ProjectCurrentServerUser<ProjectId> | null>,
 
-    // NEXT_LINE_PLATFORM react-like
-    useUsers(options?: ServerListUsersOptions): ServerUser[] & { nextCursor: string | null },
+    useUsers(options?: ServerListUsersOptions): ServerUser[] & { nextCursor: string | null }, // THIS_LINE_PLATFORM react-like
     listUsers(options?: ServerListUsersOptions): Promise<ServerUser[] & { nextCursor: string | null }>,
   }
   & AsyncStoreProperty<"user", [id: string], ServerUser | null, false>
