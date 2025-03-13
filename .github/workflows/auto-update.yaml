@@ -2,7 +2,7 @@ name: Update pull request branches
 
 on:
   schedule:
-    - cron: '0 */6 * * *'
+    - cron: '30 11 * * *'
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}

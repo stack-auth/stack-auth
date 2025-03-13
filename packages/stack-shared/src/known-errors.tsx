@@ -1175,6 +1175,17 @@ const ContactChannelAlreadyUsedForAuthBySomeoneElse = createKnownErrorConstructo
   (json) => [json.type, json.contact_channel_value] as const,
 );
 
+const InvalidPollingCodeError = createKnownErrorConstructor(
+  KnownError,
+  "INVALID_POLLING_CODE",
+  (details?: Json) => [
+    400,
+    "The polling code is invalid or does not exist.",
+    details,
+  ] as const,
+  (json: any) => [json] as const,
+);
+
 export type KnownErrors = {
   [K in keyof typeof KnownErrors]: InstanceType<typeof KnownErrors[K]>;
 };
@@ -1271,6 +1282,7 @@ export const KnownErrors = {
   TeamPermissionNotFound,
   OAuthProviderAccessDenied,
   ContactChannelAlreadyUsedForAuthBySomeoneElse,
+  InvalidPollingCodeError,
 } satisfies Record<string, KnownErrorConstructor<any, any>>;
 
 

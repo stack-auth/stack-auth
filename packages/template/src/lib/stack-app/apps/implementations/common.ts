@@ -7,13 +7,11 @@ import { ReactPromise } from "@stackframe/stack-shared/dist/utils/promises";
 import { suspendIfSsr } from "@stackframe/stack-shared/dist/utils/react";
 import { Result } from "@stackframe/stack-shared/dist/utils/results";
 import { Store } from "@stackframe/stack-shared/dist/utils/stores";
+import React, { useCallback } from "react"; // THIS_LINE_PLATFORM react-like
 import { HandlerUrls } from "../../common";
-// NEXT_LINE_PLATFORM react-like
-import React, { useCallback } from "react";
 
 // hack to make sure process is defined in non-node environments
-// NEXT_LINE_PLATFORM js react
-const process = (globalThis as any).process ?? { env: {} };
+const process = (globalThis as any).process ?? { env: {} }; // THIS_LINE_PLATFORM js react
 
 export const clientVersion = "STACK_COMPILE_TIME_CLIENT_PACKAGE_VERSION_SENTINEL";
 if (clientVersion.startsWith("STACK_COMPILE_TIME")) {

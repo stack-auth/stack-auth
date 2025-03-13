@@ -1401,5 +1401,32 @@ export class StackClientInterface {
     }
     return Result.ok(undefined);
   }
+
+  async cliLogin(
+    loginCode: string,
+    refreshToken: string,
+    session: InternalSession
+  ): Promise<Result<undefined, KnownErrors["SchemaError"]>> {
+    const responseOrError = await this.sendClientRequestAndCatchKnownError(
+      "/auth/cli/complete",
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          login_code: loginCode,
+          refresh_token: refreshToken,
+        }),
+      },
+      session,
+      [KnownErrors.SchemaError]
+    );
+
+    if (responseOrError.status === "error") {
+      return Result.error(responseOrError.error);
+    }
+    return Result.ok(undefined);
+  }
 }
 

@@ -113,13 +113,16 @@ export class StackServerInterface extends StackClientInterface {
   }
 
   async getServerUserById(userId: string): Promise<Result<UsersCrud['Server']['Read']>> {
-    const response = await this.sendServerRequest(
+    const responseOrError = await this.sendServerRequestAndCatchKnownError(
       urlString`/users/${userId}`,
       {},
       null,
+      [KnownErrors.UserNotFound],
     );
-    const user: CurrentUserCrud['Server']['Read'] | null = await response.json();
-    if (!user) return Result.error(new Error("Failed to get user"));
+    if (responseOrError.status === "error") {
+      return Result.error(responseOrError.error);
+    }
+    const user: UsersCrud['Server']['Read'] = await responseOrError.data.json();
     return Result.ok(user);
   }
 

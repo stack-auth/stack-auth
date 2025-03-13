@@ -1,6 +1,7 @@
 import { CrudTypeOf, createCrud } from "../../crud";
 import * as schemaFields from "../../schema-fields";
 import { yupMixed, yupObject } from "../../schema-fields";
+import { WebhookEvent } from "../webhooks";
 
 // =============== Team permissions =================
 
@@ -43,6 +44,26 @@ export const teamPermissionsCrud = createCrud({
   },
 });
 export type TeamPermissionsCrud = CrudTypeOf<typeof teamPermissionsCrud>;
+
+export const teamPermissionCreatedWebhookEvent = {
+  type: "team_permission.created",
+  schema: teamPermissionsCrud.server.readSchema,
+  metadata: {
+    summary: "Team Permission Created",
+    description: "This event is triggered when a team permission is created.",
+    tags: ["Teams"],
+  },
+} satisfies WebhookEvent<typeof teamPermissionsCrud.server.readSchema>;
+
+export const teamPermissionDeletedWebhookEvent = {
+  type: "team_permission.deleted",
+  schema: teamPermissionsCrud.server.readSchema,
+  metadata: {
+    summary: "Team Permission Deleted",
+    description: "This event is triggered when a team permission is deleted.",
+    tags: ["Teams"],
+  },
+} satisfies WebhookEvent<typeof teamPermissionsCrud.server.readSchema>;
 
 // =============== Team permission definitions =================
 
