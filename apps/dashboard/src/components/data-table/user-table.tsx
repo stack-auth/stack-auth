@@ -8,7 +8,8 @@ import { ActionCell, AvatarCell, BadgeCell, DataTableColumnHeader, DataTableManu
 import { ColumnDef, ColumnFiltersState, Row, SortingState, Table } from "@tanstack/react-table";
 import { useState } from "react";
 import { Link } from '../link';
-import { UserDialog, DeleteUserDialog, ImpersonateUserDialog } from '../user-dialog';
+import { UserDialog } from '../user-dialog';
+import { DeleteUserDialog, ImpersonateUserDialog } from '../user-dialogs';
 
 export type ExtendedServerUser = ServerUser & {
   authTypes: string[],
