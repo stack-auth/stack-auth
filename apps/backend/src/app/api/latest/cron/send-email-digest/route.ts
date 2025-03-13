@@ -52,26 +52,21 @@ export const GET = createSmartRouteHandler({
       }
     });
 
-    const projectWithEmails: Record<string, { project: Project, emails: (typeof emails[number])[] } | undefined>
-     = {};
+    const projectWithEmails = new Map<string, { project: Project, emails: (typeof emails[number])[] }>();
 
     // dedupe by project
     for (const email of emails) {
       const projectId = email.tenancy.project.id;
-      if (!projectWithEmails[projectId]) {
-        projectWithEmails[projectId] = {
+      if (!projectWithEmails.has(projectId)) {
+        projectWithEmails.set(projectId, {
           project: email.tenancy.project,
           emails: [],
-        };
+        });
       }
-      projectWithEmails[projectId]!.emails.push(email);
+      projectWithEmails.get(projectId)!.emails.push(email);
     }
 
-    const usersBase = await Promise.all(Object.entries(projectWithEmails).map(async ([projectId, projectWithEmail]) => {
-      if (!projectWithEmail) {
-        return [];
-      }
-
+    const usersBase = await Promise.all(Array.from(projectWithEmails.entries()).map(async ([projectId, projectWithEmail]) => {
       return await prismaClient.projectUser.findMany({
         where: {
           mirroredProjectId: {
@@ -104,9 +99,9 @@ export const GET = createSmartRouteHandler({
       await sendEmail({
         tenancyId: internal.id,
         to: contactChannel.value,
-        subject: `You have ${projectWithEmails[user.mirroredProjectId]?.emails.length} emails that failed to deliver in your project`,
+        subject: `You have ${projectWithEmails.get(user.mirroredProjectId)?.emails.length} emails that failed to deliver in your project`,
         // list all the failed emails
-        text: projectWithEmails[user.mirroredProjectId]?.emails.map(email => JSON.stringify(email.error)).join('\n'),
+        text: projectWithEmails.get(user.mirroredProjectId)?.emails.map(email => JSON.stringify(email.error)).join('\n'),
         emailConfig,
       });
     }));
