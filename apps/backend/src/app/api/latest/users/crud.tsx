@@ -419,10 +419,11 @@ export async function getUser(options: { userId: string } & ({ projectId: string
       // While unlikely, it makes the tests flakey sometimes, so let's make sure that requesting the raw query again
       // still causes the same mismatch.
       const newResult = await rawQuery(getUserQuery(tenancy.project.id, tenancy.branchId, options.userId));
-      if (!deepPlainEquals(result, newResult)) {
+      if (!deepPlainEquals(newResult, legacyResult)) {
         throw new StackAssertionError("User result mismatch", {
           result,
           legacyResult,
+          newResult,
         });
       }
     }
