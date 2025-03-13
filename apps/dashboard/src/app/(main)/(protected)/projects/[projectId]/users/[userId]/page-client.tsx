@@ -358,6 +358,7 @@ function AddEmailDialog({ user, open, onOpenChange }: AddEmailDialogProps) {
     email: yup.string()
       .email("Please enter a valid e-mail address")
       .defined("E-mail is required")
+      .label("E-mail")
       .meta({
         stackFormFieldPlaceholder: "Enter e-mail address",
       }),
