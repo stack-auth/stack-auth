@@ -18,7 +18,6 @@ const _inlineEnvVars = {
   NEXT_PUBLIC_STACK_URL: process.env.NEXT_PUBLIC_STACK_URL,
   NEXT_PUBLIC_STACK_INBUCKET_WEB_URL: process.env.NEXT_PUBLIC_STACK_INBUCKET_WEB_URL,
 } as const;
-console.log(_inlineEnvVars);
 
 // This will be replaced with the actual env vars after a docker build
 const _postBuildEnvVars = {
