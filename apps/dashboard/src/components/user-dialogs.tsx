@@ -1,6 +1,6 @@
 import { ServerUser } from '@stackframe/stack';
 import { ActionDialog, CopyField, Typography } from "@stackframe/stack-ui";
-import { useRouter } from 'next/navigation';
+import { useRouter } from './router';
 
 
 export function DeleteUserDialog(props: {
