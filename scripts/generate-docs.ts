@@ -65,8 +65,6 @@ function processDocObject(obj: any, platforms: string[]): { result: any, validPa
   }
 }
 
-
-
 withGeneratorLock(async () => {
   const docsDir = path.resolve(__dirname, "..", "docs", "fern");
   const templateDir = path.join(docsDir, "docs", "pages-template");

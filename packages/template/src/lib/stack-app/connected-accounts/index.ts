@@ -6,6 +6,5 @@ export type Connection = {
 
 export type OAuthConnection = {
   getAccessToken(): Promise<{ accessToken: string }>,
-  // NEXT_LINE_PLATFORM react-like
-  useAccessToken(): { accessToken: string },
+  useAccessToken(): { accessToken: string }, // THIS_LINE_PLATFORM react-like
 } & Connection;
