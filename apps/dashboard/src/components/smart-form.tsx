@@ -78,7 +78,7 @@ function SmartFormField(props: {
     placeholder: "meta" in props.description && props.description.meta?.stackFormFieldPlaceholder !== undefined ? props.description.meta.stackFormFieldPlaceholder :
       typeof props.defaultValue === "string" ? `Eg.: ${props.defaultValue}` : undefined,
     defaultValue: props.defaultValue,
-    description: "meta" in props.description && props.description.meta?.description,
+    description: "meta" in props.description ? props.description.meta?.description : undefined,
   };
 
   if ("meta" in props.description) {
