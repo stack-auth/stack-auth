@@ -104,7 +104,9 @@ export async function applyMigrations(options: {
   prismaClient: PrismaClient,
   migrationFiles?: Array<{ migrationName: string, sql: string }>,
   artificialDelaySecond?: number,
-}) {
+}): Promise<{
+  newlyAppliedMigrationNames: string[],
+}> {
   const migrationFiles = options.migrationFiles ?? MIGRATION_FILES;
 
   const appliedMigrations = await getAppliedMigrations({
@@ -117,33 +119,34 @@ export async function applyMigrations(options: {
     }
   }
 
-  const migrations = [];
+  const transactions = [];
+  const newMigrationFiles = migrationFiles.slice(appliedMigrations.length);
 
   for (const migration of migrationFiles.slice(appliedMigrations.length)) {
-    migrations.push(options.prismaClient.$executeRawUnsafe(`
+    transactions.push(options.prismaClient.$executeRawUnsafe(`
       INSERT INTO "SchemaMigration" ("migrationName")
       VALUES ('${migration.migrationName}')
       ON CONFLICT ("migrationName") DO UPDATE
       SET "startedAt" = clock_timestamp()
     `));
 
-    migrations.push(...migration.sql.split('SPLIT_STATEMENT_SENTINEL')
+    transactions.push(...migration.sql.split('SPLIT_STATEMENT_SENTINEL')
       .map(statement => {
         if (statement.includes('SINGLE_STATEMENT_SENTINEL')) {
           return options.prismaClient.$executeRawUnsafe(statement);
         } else {
           return options.prismaClient.$executeRawUnsafe(`
-          DO $$
-          BEGIN
-            ${statement}
-          END
-          $$;
-        `);
+            DO $$
+            BEGIN
+              ${statement}
+            END
+            $$;
+          `);
         }
       })
     );
 
-    migrations.push(options.prismaClient.$executeRawUnsafe(`
+    transactions.push(options.prismaClient.$executeRawUnsafe(`
       UPDATE "SchemaMigration"
       SET "finishedAt" = clock_timestamp()
       WHERE "migrationName" = '${migration.migrationName}'
@@ -151,26 +154,28 @@ export async function applyMigrations(options: {
   }
 
   if (options.artificialDelaySecond) {
-    migrations.push(options.prismaClient.$executeRawUnsafe(`
+    transactions.push(options.prismaClient.$executeRawUnsafe(`
       SELECT pg_sleep(${options.artificialDelaySecond});
     `));
   }
 
   try {
-    await options.prismaClient.$transaction(migrations, {
+    await options.prismaClient.$transaction(transactions, {
       isolationLevel: 'Serializable',
     });
   } catch (error) {
     if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2010' && error.meta?.code === '40001') {
-      console.log('Migration in progress');
+      console.log('Multiple migrations running at the same time. Skipping this one');
+      return {
+        newlyAppliedMigrationNames: []
+      };
     } else {
       throw error;
     }
   }
 
   return {
-    newlyAppliedMigrations: migrationFiles.slice(appliedMigrations.length).map(m => m.migrationName),
-    allAppliedMigrations: appliedMigrations.concat(migrationFiles.slice(appliedMigrations.length).map(m => m.migrationName)),
+    newlyAppliedMigrationNames: newMigrationFiles.map(x => x.migrationName)
   };
 };
 

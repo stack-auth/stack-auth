@@ -11,26 +11,26 @@ const getTestDbURL = (testDbName: string) => {
     full: `${base}/${testDbName}`,
     base,
   };
+};
 
+const applySql = async (options: { sql: string | string[], fullDbURL: string }) => {
+  const sql = postgres(options.fullDbURL);
+
+  try {
+    for (const query of Array.isArray(options.sql) ? options.sql : [options.sql]) {
+      await sql.unsafe(query);
+    }
+
+  } finally {
+    await sql.end();
+  }
 };
 
 const setupTestDatabase = async () => {
   const randomSuffix = Math.random().toString(16).substring(2, 12);
   const testDbName = `${TEST_DB_PREFIX}_${randomSuffix}`;
   const dbURL = getTestDbURL(testDbName);
-
-  const sql = postgres(dbURL.base, {
-    max: 1,
-    idle_timeout: 20,
-    connect_timeout: 10,
-  });
-
-  try {
-    await sql`CREATE DATABASE ${sql.unsafe(testDbName)}`;
-  } finally {
-    await sql.end();
-  }
-
+  await applySql({ sql: `CREATE DATABASE ${testDbName}`, fullDbURL: dbURL.base });
 
   const prismaClient = new PrismaClient({
     datasources: {
@@ -45,47 +45,35 @@ const setupTestDatabase = async () => {
   return {
     prismaClient,
     testDbName,
+    dbURL,
   };
 };
 
 const teardownTestDatabase = async (prismaClient: PrismaClient, testDbName: string) => {
-  // First disconnect the Prisma client
   await prismaClient.$disconnect();
-
   const dbURL = getTestDbURL(testDbName);
-  const baseSQL = postgres(dbURL.base, {
-    max: 1,
-    idle_timeout: 20,
-    connect_timeout: 10,
+  await applySql({
+    sql: [
+      `
+        SELECT pg_terminate_backend(pg_stat_activity.pid)
+        FROM pg_stat_activity
+        WHERE pg_stat_activity.datname = '${testDbName}'
+        AND pid <> pg_backend_pid();
+      `,
+      `DROP DATABASE IF EXISTS ${testDbName}`
+    ],
+    fullDbURL: dbURL.base
   });
 
-  try {
-    // Force terminate all connections to the test database before dropping it
-    await baseSQL`
-      SELECT pg_terminate_backend(pg_stat_activity.pid)
-      FROM pg_stat_activity
-      WHERE pg_stat_activity.datname = ${testDbName}
-      AND pid <> pg_backend_pid();
-    `;
-
-    // Small delay to ensure connections are fully terminated
-    await new Promise(resolve => setTimeout(resolve, 500));
-
-    // Now drop the database
-    await baseSQL`DROP DATABASE IF EXISTS ${baseSQL.unsafe(testDbName)}`;
-  } catch (error) {
-    console.error(`Error dropping test database ${testDbName}:`, error);
-    throw error;
-  } finally {
-    await baseSQL.end();
-  }
+  // Wait a bit to ensure connections are terminated
+  await new Promise(resolve => setTimeout(resolve, 500));
 };
 
-function runTest(fn: (options: { expect: ExpectStatic, prismaClient: PrismaClient }) => Promise<void>) {
+function runTest(fn: (options: { expect: ExpectStatic, prismaClient: PrismaClient, dbURL: { full: string, base: string } }) => Promise<void>) {
   return async ({ expect }: { expect: ExpectStatic }) => {
-    const { prismaClient, testDbName } = await setupTestDatabase();
+    const { prismaClient, testDbName, dbURL } = await setupTestDatabase();
     try {
-      await fn({ prismaClient, expect });
+      await fn({ prismaClient, expect, dbURL });
     } finally {
       await teardownTestDatabase(prismaClient, testDbName);
     }
@@ -103,6 +91,62 @@ const exampleMigrationFiles1 = [
   },
 ];
 
+const examplePrismaBasedInitQueries = [
+  // Settings
+  `SET statement_timeout = 0`,
+  `SET lock_timeout = 0`,
+  `SET idle_in_transaction_session_timeout = 0`,
+  `SET client_encoding = 'UTF8'`,
+  `SET standard_conforming_strings = on`,
+  `SELECT pg_catalog.set_config('search_path', '', false)`,
+  `SET check_function_bodies = false`,
+  `SET xmloption = content`,
+  `SET client_min_messages = warning`,
+  `SET row_security = off`,
+  `ALTER SCHEMA public OWNER TO postgres`,
+  `COMMENT ON SCHEMA public IS ''`,
+  `SET default_tablespace = ''`,
+  `SET default_table_access_method = heap`,
+  `CREATE TABLE public."User" (
+    id integer NOT NULL,
+    name text NOT NULL
+  )`,
+  `ALTER TABLE public."User" OWNER TO postgres`,
+  `CREATE TABLE public._prisma_migrations (
+    id character varying(36) NOT NULL,
+    checksum character varying(64) NOT NULL,
+    finished_at timestamp with time zone,
+    migration_name character varying(255) NOT NULL,
+    logs text,
+    rolled_back_at timestamp with time zone,
+    started_at timestamp with time zone DEFAULT now() NOT NULL,
+    applied_steps_count integer DEFAULT 0 NOT NULL
+  )`,
+  `ALTER TABLE public._prisma_migrations OWNER TO postgres`,
+  `INSERT INTO public._prisma_migrations (id, checksum, finished_at, migration_name, logs, rolled_back_at, started_at, applied_steps_count)
+  VALUES ('a34e5ccf-c472-44c7-9d9c-0d4580d18ac3', '9785d85f8c5a8b3dbfbbbd8143cc7485bb48dd8bf30ca3eafd3cd2e1ba15a953', '2025-03-14 21:50:26.794721+00', '20250314215026_init', NULL, NULL, '2025-03-14 21:50:26.656161+00', 1)`,
+  `INSERT INTO public._prisma_migrations (id, checksum, finished_at, migration_name, logs, rolled_back_at, started_at, applied_steps_count)
+  VALUES ('7e7f0e5b-f91b-40fa-b061-d8f2edd274ed', '6853f42ae69239976b84d058430774c8faa83488545e84162844dab84b47294d', '2025-03-14 21:50:47.761397+00', '20250314215047_name', NULL, NULL, '2025-03-14 21:50:47.624814+00', 1)`,
+  `ALTER TABLE ONLY public."User" ADD CONSTRAINT "User_pkey" PRIMARY KEY (id)`,
+  `ALTER TABLE ONLY public._prisma_migrations ADD CONSTRAINT _prisma_migrations_pkey PRIMARY KEY (id)`,
+  `REVOKE USAGE ON SCHEMA public FROM PUBLIC`
+];
+
+const examplePrismaBasedMigrationFiles = [
+  {
+    migrationName: '20250314215026_init',
+    sql: `CREATE TABLE "User" ("id" INTEGER NOT NULL, CONSTRAINT "User_pkey" PRIMARY KEY ("id"));`,
+  },
+  {
+    migrationName: '20250314215047_name',
+    sql: `ALTER TABLE "User" ADD COLUMN "name" TEXT NOT NULL;`,
+  },
+  {
+    migrationName: '20250314215050_age',
+    sql: `ALTER TABLE "User" ADD COLUMN "age" INTEGER NOT NULL DEFAULT 0;`,
+  },
+];
+
 
 import.meta.vitest?.test("test prisma client connection", runTest(async ({ expect, prismaClient }) => {
   const result = await prismaClient.$executeRaw`SELECT 1`;
@@ -110,7 +154,9 @@ import.meta.vitest?.test("test prisma client connection", runTest(async ({ expec
 }));
 
 import.meta.vitest?.test("test migration", runTest(async ({ expect, prismaClient }) => {
-  await applyMigrations({ prismaClient, migrationFiles: exampleMigrationFiles1 });
+  const { newlyAppliedMigrationNames } = await applyMigrations({ prismaClient, migrationFiles: exampleMigrationFiles1 });
+
+  expect(newlyAppliedMigrationNames).toEqual(['001-create-table', '002-update-table']);
 
   await prismaClient.$executeRaw`INSERT INTO test (name) VALUES ('test_value')`;
 
@@ -126,16 +172,28 @@ import.meta.vitest?.test("test migration", runTest(async ({ expect, prismaClient
 }));
 
 import.meta.vitest?.test("test migration lock timeout", runTest(async ({ expect, prismaClient }) => {
-  // Run migrations concurrently
-  await Promise.all([
+  const [result1, result2] = await Promise.all([
     applyMigrations({ prismaClient, migrationFiles: exampleMigrationFiles1, artificialDelaySecond: 3 }),
     applyMigrations({ prismaClient, migrationFiles: exampleMigrationFiles1, artificialDelaySecond: 3 }),
   ]);
+
+  const l1 = result1.newlyAppliedMigrationNames.length;
+  const l2 = result2.newlyAppliedMigrationNames.length;
+
+  // One of the two migrations should be applied, but not both
+  expect((l1 === 2 && l2 === 0) || (l1 === 0 && l2 === 2)).toBe(true);
 
   await prismaClient.$executeRaw`INSERT INTO test (name) VALUES ('test_value')`;
   const result = await prismaClient.$queryRaw`SELECT name FROM test LIMIT 1` as { name: string }[];
   expect(Array.isArray(result)).toBe(true);
   expect(result.length).toBe(1);
   expect(result[0].name).toBe('test_value');
+}));
+
+
+import.meta.vitest?.test("test prisma-based migrations", runTest(async ({ expect, prismaClient, dbURL }) => {
+  await applySql({ sql: examplePrismaBasedInitQueries, fullDbURL: dbURL.full });
+  const result = await applyMigrations({ prismaClient, migrationFiles: examplePrismaBasedMigrationFiles });
+  expect(result.newlyAppliedMigrationNames).toEqual(['20250314215050_age']);
 }));
 
