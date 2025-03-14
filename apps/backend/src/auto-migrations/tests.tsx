@@ -126,24 +126,16 @@ import.meta.vitest?.test("test migration", runTest(async ({ expect, prismaClient
 }));
 
 import.meta.vitest?.test("test migration lock timeout", runTest(async ({ expect, prismaClient }) => {
-  try {
-    // Run migrations concurrently
-    await Promise.all([
-      applyMigrations({ prismaClient, migrationFiles: exampleMigrationFiles1, artificialDelaySecond: 3 }),
-      applyMigrations({ prismaClient, migrationFiles: exampleMigrationFiles1, artificialDelaySecond: 3 }),
-    ]);
+  // Run migrations concurrently
+  await Promise.all([
+    applyMigrations({ prismaClient, migrationFiles: exampleMigrationFiles1, artificialDelaySecond: 3 }),
+    applyMigrations({ prismaClient, migrationFiles: exampleMigrationFiles1, artificialDelaySecond: 3 }),
+  ]);
 
-    // Insert test data
-    await prismaClient.$executeRaw`INSERT INTO test (name) VALUES ('test_value')`;
-
-    // Verify the data
-    const result = await prismaClient.$queryRaw`SELECT name FROM test LIMIT 1` as { name: string }[];
-    expect(Array.isArray(result)).toBe(true);
-    expect(result.length).toBe(1);
-    expect(result[0].name).toBe('test_value');
-  } catch (error) {
-    console.error("Error in migration lock timeout test:", error);
-    throw error;
-  }
+  await prismaClient.$executeRaw`INSERT INTO test (name) VALUES ('test_value')`;
+  const result = await prismaClient.$queryRaw`SELECT name FROM test LIMIT 1` as { name: string }[];
+  expect(Array.isArray(result)).toBe(true);
+  expect(result.length).toBe(1);
+  expect(result[0].name).toBe('test_value');
 }));
 
