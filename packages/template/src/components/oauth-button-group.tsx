@@ -22,7 +22,7 @@ export function OAuthButtonGroup({
     <div className='gap-4 flex flex-col items-stretch stack-scope'>
       {project.config.oauthProviders.map(p => (
         <OAuthButton key={p.id} provider={p.id} type={type}
-          isMock={!mockProject}
+          isMock={!!mockProject}
         />
       ))}
     </div>
