@@ -195,5 +195,10 @@ import.meta.vitest?.test("test prisma-based migrations", runTest(async ({ expect
   await applySql({ sql: examplePrismaBasedInitQueries, fullDbURL: dbURL.full });
   const result = await applyMigrations({ prismaClient, migrationFiles: examplePrismaBasedMigrationFiles });
   expect(result.newlyAppliedMigrationNames).toEqual(['20250314215050_age']);
+
+  // apply migrations again
+  const result2 = await applyMigrations({ prismaClient, migrationFiles: examplePrismaBasedMigrationFiles });
+  expect(result2.newlyAppliedMigrationNames).toEqual([]);
 }));
+
 
