@@ -21,7 +21,7 @@ import { _StackServerAppImplIncomplete } from "./server-app-impl";
 // NEXT_LINE_PLATFORM react-like
 import { useAsyncCache } from "./common";
 
-export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, ProjectId extends string> extends _StackServerAppImplIncomplete<HasTokenStore, ProjectId>
+export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, ProjectId extends string> extends _StackServerAppImplIncomplete<HasTokenStore, ProjectId> implements StackAdminApp<HasTokenStore, ProjectId>
 {
   declare protected _interface: StackAdminInterface;
 
@@ -49,6 +49,7 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
       interface: new StackAdminInterface({
         getBaseUrl: () => getBaseUrl(options.baseUrl),
         projectId: options.projectId ?? getDefaultProjectId(),
+        extraRequestHeaders: options.extraRequestHeaders ?? {},
         clientVersion,
         ..."projectOwnerSession" in options ? {
           projectOwnerSession: options.projectOwnerSession,
@@ -59,6 +60,7 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
         },
       }),
       baseUrl: options.baseUrl,
+      extraRequestHeaders: options.extraRequestHeaders,
       projectId: options.projectId,
       tokenStore: options.tokenStore,
       urls: options.urls,

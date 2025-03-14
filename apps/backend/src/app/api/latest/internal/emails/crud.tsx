@@ -2,17 +2,25 @@ import { prismaClient } from "@/prisma-client";
 import { createCrudHandlers } from "@/route-handlers/crud-handler";
 import { SentEmail } from "@prisma/client";
 import { InternalEmailsCrud, internalEmailsCrud } from "@stackframe/stack-shared/dist/interface/crud/emails";
-import { projectIdSchema, yupObject } from "@stackframe/stack-shared/dist/schema-fields";
+import { yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
 import { createLazyProxy } from "@stackframe/stack-shared/dist/utils/proxies";
 
 function prismaModelToCrud(prismaModel: SentEmail): InternalEmailsCrud["Admin"]["Read"] {
+  const senderConfig = prismaModel.senderConfig as any;
 
   return {
     id: prismaModel.id,
     subject: prismaModel.subject,
     sent_at_millis: prismaModel.createdAt.getTime(),
     to: prismaModel.to,
-    sender_config: prismaModel.senderConfig,
+    sender_config: {
+      type: senderConfig.type,
+      host: senderConfig.host,
+      port: senderConfig.port,
+      username: senderConfig.username,
+      sender_name: senderConfig.senderName,
+      sender_email: senderConfig.senderEmail,
+    },
     error: prismaModel.error,
   };
 }
@@ -20,18 +28,17 @@ function prismaModelToCrud(prismaModel: SentEmail): InternalEmailsCrud["Admin"][
 
 export const internalEmailsCrudHandlers = createLazyProxy(() => createCrudHandlers(internalEmailsCrud, {
   paramsSchema: yupObject({
-    projectId: projectIdSchema.defined(),
+    emailId: yupString().optional(),
   }),
-  onList: async ({ params }) => {
+  onList: async ({ auth }) => {
     const emails = await prismaClient.sentEmail.findMany({
       where: {
-        tenancy: {
-          projectId: params.projectId,
-        },
+        tenancyId: auth.tenancy.id,
       },
       orderBy: {
         createdAt: 'desc',
       },
+      take: 100,
     });
 
     return {

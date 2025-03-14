@@ -427,16 +427,6 @@ export default function SidebarLayout(props: { projectId: string, children?: Rea
 
   return (
     <div className="w-full flex">
-      <div style={{
-        width: "160vw",
-        height: "180vmin",
-        position: "fixed",
-        top: "100%",
-        left: "50%",
-        transform: "translate(-50%, -10%)",
-        zIndex: -10000,
-        backgroundImage: "radial-gradient(50% 50% at 50% 50%,#4b5df7 0,#4b5df773 23%,#4b5df740 50%,#4b5df700)",
-      }} />
       <div className="flex-col border-r min-w-[240px] h-screen sticky top-0 hidden md:flex backdrop-blur-md bg-white/20 dark:bg-black/20 z-[10]">
         <SidebarContent projectId={props.projectId} />
       </div>
