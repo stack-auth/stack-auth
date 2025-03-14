@@ -1,19 +1,23 @@
 import { resolve } from 'path'
-import { defineConfig, mergeConfig } from 'vitest/config'
+import { defineConfig } from 'vitest/config'
 import sharedConfig from '../../vitest.shared'
 
-export default mergeConfig(
-  sharedConfig,
-  defineConfig({
-    resolve: {
-      alias: {
-        '@': resolve(__dirname, './src')
+export default defineConfig({
+  test: {
+    testTimeout: 20000,
+    include: sharedConfig.test?.include,
+    includeSource: sharedConfig.test?.includeSource,
+    environmentOptions: {
+      env: {
+        loadEnvFiles: ['.env', '.env.development', '.env.local']
       }
     },
-    envDir: __dirname,
-    envPrefix: 'STACK_',
-    env: {
-      loadEnvFiles: ['.env', '.env.development', '.env.local']
+  },
+  resolve: {
+    alias: {
+      '@': resolve(__dirname, './src')
     }
-  }),
-)
+  },
+  envDir: __dirname,
+  envPrefix: 'STACK_',
+})

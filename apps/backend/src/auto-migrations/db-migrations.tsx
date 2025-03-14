@@ -176,6 +176,7 @@ async function applyMigration(options: {
   prismaClient: PrismaClient,
   migrationName: string,
   sql: string,
+  artificialDelayInMs?: number,
 }) {
   console.log('Applying migration', options.migrationName);
   try {
@@ -201,6 +202,11 @@ async function applyMigration(options: {
             `);
           }
         }),
+      ...(options.artificialDelayInMs ? [
+        options.prismaClient.$executeRawUnsafe(`
+          SELECT pg_sleep(${options.artificialDelayInMs / 1000});
+        `)
+      ] : []),
       ...finishMigration(options),
     ], {
       isolationLevel: 'Serializable',
@@ -227,6 +233,7 @@ async function applyMigration(options: {
 export async function applyMigrations(options: {
   prismaClient: PrismaClient,
   migrationFiles?: Array<{ name: string, sql: string }>,
+  artificialDelayInMs?: number,
 }) {
   const migrationFiles = options.migrationFiles ?? MIGRATION_FILES;
 
@@ -245,6 +252,7 @@ export async function applyMigrations(options: {
       prismaClient: options.prismaClient,
       migrationName: migration.name,
       sql: migration.sql,
+      artificialDelayInMs: options.artificialDelayInMs,
     });
   }
 };
