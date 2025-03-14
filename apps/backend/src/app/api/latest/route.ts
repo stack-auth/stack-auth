@@ -31,7 +31,7 @@ export const GET = createSmartRouteHandler({
     method: yupString().oneOf(["GET"]).defined(),
   }),
   response: yupObject({
-    statusCode:  ().oneOf([200]).defined(),
+    statusCode: yupNumber().oneOf([200]).defined(),
     bodyType: yupString().oneOf(["text"]).defined(),
     body: yupString().defined().meta({ openapiField: { exampleValue: "Welcome to the Stack API endpoint! Please refer to the documentation at https://docs.stack-auth.com/\n\nAuthentication: None" } }),
   }),
