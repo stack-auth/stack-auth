@@ -1,7 +1,6 @@
 import { expect } from "vitest";
 import { it } from "../../../../../helpers";
-import { Auth, Project, backendContext, niceBackendFetch } from "../../../../backend-helpers";
-import { env } from "node:process";
+import { Auth, Project, niceBackendFetch } from "../../../../backend-helpers";
 
 it("should send email digest if there are failed emails", async () => {
   const { adminAccessToken } = await Project.createAndSwitch({
@@ -32,7 +31,7 @@ it("should send email digest if there are failed emails", async () => {
 });
 
 it("should send email digest if there are failed emails 2", async () => {
-  const { adminAccessToken } = await Project.createAndSwitch({
+  const { adminAccessToken, adminMailbox } = await Project.createAndSwitch({
     config: {
       magic_link_enabled: true,
       email_config: {
@@ -46,8 +45,6 @@ it("should send email digest if there are failed emails 2", async () => {
       },
     },
   });
-  // sign in a user into internal first / store the user id / 
-
   await expect(Auth.Otp.signIn()).rejects.toThrow();
 
   const response = await niceBackendFetch("/api/latest/cron/send-email-digest", {
@@ -59,7 +56,6 @@ it("should send email digest if there are failed emails 2", async () => {
     },
   });
 
-
   expect(response).toMatchInlineSnapshot(`
     NiceResponse {
       "status": 200,
@@ -68,8 +64,21 @@ it("should send email digest if there are failed emails 2", async () => {
     }
   `);
 
-  const mailbox = backendContext.value.mailbox;
-  const messages = await mailbox.fetchMessages({ noBody: true });
-  expect(messages).toMatchInlineSnapshot(`[]`);
+  const messages = await adminMailbox.fetchMessages({});
+  expect(messages).toMatchInlineSnapshot(`
+    [
+      MailboxMessage {
+        "attachments": [],
+        "body": {
+          "html": "http://localhost:12345/some-callback-url?code=%3Cstripped+query+param%3E",
+          "text": "http://localhost:12345/some-callback-url?code=%3Cstripped+query+param%3E",
+        },
+        "from": "Stack Dashboard <noreply@example.com>",
+        "subject": "Sign in to Stack Dashboard: Your code is <stripped code>",
+        "to": ["<unindexed-mailbox--<stripped UUID>@stack-generated.example.com>"],
+        <some fields may have been hidden>,
+      },
+    ]
+  `);
 });
 

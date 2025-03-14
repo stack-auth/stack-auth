@@ -945,7 +945,7 @@ export namespace Project {
       projectId,
       adminAccessToken: adminAccessToken!,
       createProjectResponse,
-      creatorMailbox: newMailbox,
+      adminMailbox: newMailbox,
     };
   }
 

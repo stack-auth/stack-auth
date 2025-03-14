@@ -2,7 +2,7 @@ import { getEmailConfig, sendEmail } from "@/lib/emails";
 import { getSoleTenancyFromProject } from "@/lib/tenancies";
 import { prismaClient } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
-import { Project } from "@prisma/client";
+import { Prisma } from "@prisma/client";
 import { yupBoolean, yupNumber, yupObject, yupString, yupTuple } from "@stackframe/stack-shared/dist/schema-fields";
 import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
 import { StatusError } from "@stackframe/stack-shared/dist/utils/errors";
@@ -42,6 +42,9 @@ export const GET = createSmartRouteHandler({
         createdAt: {
           gte: new Date(Date.now() - 1000 * 60 * 60 * 24),
         },
+        error: {
+          equals: Prisma.AnyNull,
+        }
       },
       include: {
         tenancy: {
@@ -65,14 +68,14 @@ export const GET = createSmartRouteHandler({
       projectWithEmails.get(projectId)!.emails.push(email);
     }
 
-    const usersBase = await Promise.all(Array.from(projectWithEmails.entries()).map(async ([projectId, projectWithEmail]) => {
+    const usersBase = await Promise.all(Array.from(projectWithEmails.keys()).map(async (projectId) => {
       return await prismaClient.projectUser.findMany({
         where: {
           mirroredProjectId: {
             equals: 'internal',
           },
           serverMetadata: {
-            path: ['managedProjectId'],
+            path: ['managedProjectIds'],
             array_contains: projectId,
           }
         },
