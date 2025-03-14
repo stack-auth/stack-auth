@@ -1,47 +1,12 @@
-import { prismaClient } from '@/prisma-client';
-import { Prisma } from '@prisma/client';
+import { Prisma, PrismaClient } from '@prisma/client';
 import { StackAssertionError } from '@stackframe/stack-shared/dist/utils/errors';
-import { stringCompare } from '@stackframe/stack-shared/dist/utils/strings';
-import fs from 'fs';
-import path from 'path';
-
-export let MIGRATION_FILES = getMigrationFiles();
+import { MIGRATION_FILES } from './migration-files';
 
 // there are 64 migrations already applied with prisma migration tooling before we started using auto-migration
 export const PRISMA_APPLIED_MIGRATIONS = MIGRATION_FILES.map(m => m.name).slice(0, 64);
 
 const ALL_ERRORS = ['MIGRATION_IN_PROGRESS', 'MIGRATION_ALREADY_DONE', 'MIGRATION_TIMEOUT', 'MIGRATION_NEEDED'] as const;
 type MigrationError = typeof ALL_ERRORS[number];
-
-export function refreshMigrationFiles() {
-  MIGRATION_FILES = getMigrationFiles();
-}
-
-function getMigrationFiles(): Array<{ name: string, sql: string }> {
-  const migrationsDir = path.join(process.cwd(),  'prisma', 'migrations');
-  const folders = fs.readdirSync(migrationsDir).filter(folder =>
-    fs.statSync(path.join(migrationsDir, folder)).isDirectory()
-  );
-
-  const result: Array<{ name: string, sql: string }> = [];
-
-  for (const folder of folders) {
-    const folderPath = path.join(migrationsDir, folder);
-    const sqlFiles = fs.readdirSync(folderPath).filter(file => file.endsWith('.sql'));
-
-    for (const sqlFile of sqlFiles) {
-      const sqlContent = fs.readFileSync(path.join(folderPath, sqlFile), 'utf8');
-      result.push({
-        name: folder,
-        sql: sqlContent
-      });
-    }
-  }
-
-  result.sort((a, b) => stringCompare(a.name, b.name));
-
-  return result;
-}
 
 function getMigrationError(error: unknown): MigrationError {
   if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2010' && error.meta?.code === 'P0001') {
@@ -80,8 +45,10 @@ async function retryIfMigrationInProgress(fn: () => Promise<any>) {
   }
 }
 
-function checkIfHasPendingMigrations() {
-  return prismaClient.$executeRawUnsafe(`
+function checkIfHasPendingMigrations(options: {
+  prismaClient: PrismaClient,
+}) {
+  return options.prismaClient.$executeRawUnsafe(`
     DO $$
     BEGIN
       IF EXISTS (
@@ -97,8 +64,10 @@ function checkIfHasPendingMigrations() {
   `);
 }
 
-export function createSchemaMigrationTable() {
-  return prismaClient.$executeRawUnsafe(`
+export function createSchemaMigrationTable(options: {
+  prismaClient: PrismaClient,
+}) {
+  return options.prismaClient.$executeRawUnsafe(`
     CREATE TABLE IF NOT EXISTS "SchemaMigration" (
       "id" TEXT NOT NULL DEFAULT gen_random_uuid(),
       "startedAt" TIMESTAMP(3) NOT NULL DEFAULT clock_timestamp(),
@@ -110,20 +79,32 @@ export function createSchemaMigrationTable() {
   `);
 }
 
-async function getAppliedMigrations(appliedMigrationsIfNoMigrationTable: Array<string>) {
+async function getAppliedMigrations(options: {
+  prismaClient: PrismaClient,
+}) {
   const [_1, _2, _3, appliedMigrations] = await retryIfMigrationInProgress(
-    async () => await prismaClient.$transaction([
-      createSchemaMigrationTable(),
-      prismaClient.$executeRawUnsafe(appliedMigrationsIfNoMigrationTable.length > 0 ? `
-        INSERT INTO "SchemaMigration" ("migrationName", "startedAt", "finishedAt")
-        SELECT 
-          unnest(ARRAY['${appliedMigrationsIfNoMigrationTable.join("','")}']) as "migrationName",
-          clock_timestamp() as "startedAt",
-          clock_timestamp() as "finishedAt"
-        WHERE NOT EXISTS (SELECT 1 FROM "SchemaMigration");
-      ` : ''),
-      checkIfHasPendingMigrations(),
-      prismaClient.$queryRawUnsafe(`
+    async () => await options.prismaClient.$transaction([
+      createSchemaMigrationTable(options),
+      options.prismaClient.$executeRawUnsafe(`
+        DO $$
+        BEGIN
+          IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = '_prisma_migrations') THEN
+            INSERT INTO "SchemaMigration" ("migrationName", "startedAt", "finishedAt")
+            SELECT 
+              migration_name as "migrationName",
+              started_at as "startedAt",
+              finished_at as "finishedAt"
+            FROM _prisma_migrations
+            WHERE NOT EXISTS (
+              SELECT 1 FROM "SchemaMigration" 
+              WHERE "SchemaMigration"."migrationName" = _prisma_migrations.migration_name
+            );
+          END IF;
+        END
+        $$;
+      `),
+      checkIfHasPendingMigrations(options),
+      options.prismaClient.$queryRawUnsafe(`
         SELECT "migrationName" FROM "SchemaMigration" 
         WHERE "finishedAt" IS NOT NULL
         ORDER BY "startedAt" ASC
@@ -136,15 +117,18 @@ async function getAppliedMigrations(appliedMigrationsIfNoMigrationTable: Array<s
   return (appliedMigrations as { migrationName: string }[]).map((migration) => migration.migrationName);
 }
 
-function startMigration(migrationName: string) {
+function startMigration(options: {
+  prismaClient: PrismaClient,
+  migrationName: string,
+}) {
   return [
-    prismaClient.$executeRawUnsafe(`
+    options.prismaClient.$executeRawUnsafe(`
       DO $$
       BEGIN
         IF EXISTS (
           SELECT 1
           FROM "SchemaMigration" 
-          WHERE "migrationName" = '${migrationName}'
+          WHERE "migrationName" = '${options.migrationName}'
           AND "finishedAt" IS NOT NULL
         ) THEN
           RAISE EXCEPTION 'MIGRATION_ALREADY_DONE';
@@ -152,24 +136,27 @@ function startMigration(migrationName: string) {
       END
       $$;
     `),
-    checkIfHasPendingMigrations(),
-    prismaClient.$executeRawUnsafe(`
+    checkIfHasPendingMigrations(options),
+    options.prismaClient.$executeRawUnsafe(`
       INSERT INTO "SchemaMigration" ("migrationName")
-      VALUES ('${migrationName}')
+      VALUES ('${options.migrationName}')
       ON CONFLICT ("migrationName") DO UPDATE
       SET "startedAt" = clock_timestamp()
     `),
   ];
 }
 
-function finishMigration(migrationName: string) {
-  return [prismaClient.$executeRawUnsafe(`
+function finishMigration(options: {
+  prismaClient: PrismaClient,
+  migrationName: string,
+}) {
+  return [options.prismaClient.$executeRawUnsafe(`
     DO $$
     BEGIN
       IF EXISTS (
         SELECT 1
         FROM "SchemaMigration"
-        WHERE "migrationName" = '${migrationName}'
+        WHERE "migrationName" = '${options.migrationName}'
         AND "startedAt" < clock_timestamp() - INTERVAL '10 seconds'
         AND "finishedAt" IS NULL
       ) THEN
@@ -178,7 +165,7 @@ function finishMigration(migrationName: string) {
 
       UPDATE "SchemaMigration"
       SET "finishedAt" = clock_timestamp()
-      WHERE "migrationName" = '${migrationName}'
+      WHERE "migrationName" = '${options.migrationName}'
       AND "finishedAt" IS NULL;
     END
     $$;
@@ -186,25 +173,26 @@ function finishMigration(migrationName: string) {
 }
 
 async function applyMigration(options: {
+  prismaClient: PrismaClient,
   migrationName: string,
   sql: string,
 }) {
   console.log('Applying migration', options.migrationName);
   try {
     await retryIfMigrationInProgress(
-      async () => await prismaClient.$transaction(
-        startMigration(options.migrationName),
+      async () => await options.prismaClient.$transaction(
+        startMigration(options),
         { isolationLevel: 'Serializable' }
       )
     );
 
-    await prismaClient.$transaction([
+    await options.prismaClient.$transaction([
       ...options.sql.split('SPLIT_STATEMENT_SENTINEL')
         .map(statement => {
           if (statement.includes('SINGLE_STATEMENT_SENTINEL')) {
-            return prismaClient.$executeRawUnsafe(statement);
+            return options.prismaClient.$executeRawUnsafe(statement);
           } else {
-            return prismaClient.$executeRawUnsafe(`
+            return options.prismaClient.$executeRawUnsafe(`
               DO $$
               BEGIN
                 ${statement}
@@ -213,7 +201,7 @@ async function applyMigration(options: {
             `);
           }
         }),
-      ...finishMigration(options.migrationName),
+      ...finishMigration(options),
     ], {
       isolationLevel: 'Serializable',
     });
@@ -237,19 +225,24 @@ async function applyMigration(options: {
 }
 
 export async function applyMigrations(options: {
-  // if there is no migration table, assume these migrations are already applied
-  appliedMigrationsIfNoMigrationTable: Array<string>,
+  prismaClient: PrismaClient,
+  migrationFiles?: Array<{ name: string, sql: string }>,
 }) {
-  const appliedMigrations = await getAppliedMigrations(options.appliedMigrationsIfNoMigrationTable);
+  const migrationFiles = options.migrationFiles ?? MIGRATION_FILES;
+
+  const appliedMigrations = await getAppliedMigrations({
+    prismaClient: options.prismaClient,
+  });
 
   for (const [index, appliedMigration] of appliedMigrations.entries()) {
-    if (appliedMigration !== MIGRATION_FILES[index].name) {
+    if (appliedMigration !== migrationFiles[index].name) {
       throw new StackAssertionError(`Migration is applied out of order`);
     }
   }
 
-  for (const migration of MIGRATION_FILES.slice(appliedMigrations.length)) {
+  for (const migration of migrationFiles.slice(appliedMigrations.length)) {
     await applyMigration({
+      prismaClient: options.prismaClient,
       migrationName: migration.name,
       sql: migration.sql,
     });
@@ -281,17 +274,20 @@ export function getMigrationCheckQuery() {
   `);
 }
 
-export async function runQueryAndMigrateIfNeeded<T>(fn: () => Promise<T>): Promise<T> {
+export async function runQueryAndMigrateIfNeeded<T>(options: {
+  prismaClient: PrismaClient,
+  fn: () => Promise<T>,
+}): Promise<T> {
   try {
-    return await fn();
+    return await options.fn();
   } catch (e) {
     const migrationError = getMigrationError(e);
     if (migrationError === 'MIGRATION_NEEDED') {
       console.log('Migrations needed, applying migrations');
       await applyMigrations({
-        appliedMigrationsIfNoMigrationTable: PRISMA_APPLIED_MIGRATIONS,
+        prismaClient: options.prismaClient,
       });
-      return await fn();
+      return await options.fn();
     }
     throw e;
   }

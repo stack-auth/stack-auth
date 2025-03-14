@@ -1,5 +1,6 @@
+import { applyMigrations } from "@/auto-migrations/db-migrations";
+import { MIGRATION_FILES_DIR, getMigrationFiles } from "@/auto-migrations/utils";
 import { prismaClient } from "@/prisma-client";
-import { applyMigrations, refreshMigrationFiles } from "@/utils/auto-migration";
 import { execSync } from "child_process";
 import * as readline from 'readline';
 
@@ -31,6 +32,13 @@ const getDropDBPrompt = async () => {
   }
 };
 
+const migrate = async () => {
+  await applyMigrations({
+    migrationFiles: getMigrationFiles(MIGRATION_FILES_DIR)
+  });
+  await seed();
+};
+
 const main = async () => {
   const args = process.argv.slice(2);
   const command = args[0];
@@ -39,17 +47,13 @@ const main = async () => {
     case 'reset': {
       await getDropDBPrompt();
       await dropPublicSchema();
-      refreshMigrationFiles();
-      await applyMigrations({ appliedMigrationsIfNoMigrationTable: [] });
-      await seed();
+      await migrate();
       break;
     }
     case 'migration-file': {
       execSync('pnpm prisma migrate dev --skip-seed', { stdio: 'inherit' });
       await dropPublicSchema();
-      refreshMigrationFiles();
-      await applyMigrations({ appliedMigrationsIfNoMigrationTable: [] });
-      await seed();
+      await migrate();
       break;
     }
     default: {

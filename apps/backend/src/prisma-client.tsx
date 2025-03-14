@@ -3,7 +3,7 @@ import { withAccelerate } from "@prisma/extension-accelerate";
 import { getEnvVariable, getNodeEnvironment } from '@stackframe/stack-shared/dist/utils/env';
 import { filterUndefined, typedFromEntries, typedKeys } from "@stackframe/stack-shared/dist/utils/objects";
 import { Result } from "@stackframe/stack-shared/dist/utils/results";
-import { getMigrationCheckQuery, runQueryAndMigrateIfNeeded } from "./utils/auto-migration";
+import { getMigrationCheckQuery, runQueryAndMigrateIfNeeded } from "./auto-migrations/db-migrations";
 import { traceSpan } from "./utils/telemetry";
 
 // In dev mode, fast refresh causes us to recreate many Prisma clients, eventually overloading the database.
@@ -31,8 +31,11 @@ export async function retryTransaction<T>(fn: (...args: Parameters<Parameters<ty
           try {
             return await prismaClient.$transaction(async (tx, ...args) => {
               try {
-                await runQueryAndMigrateIfNeeded(async () => {
-                  await tx.$queryRaw(getMigrationCheckQuery());
+                await runQueryAndMigrateIfNeeded({
+                  prismaClient,
+                  fn: async () => {
+                    await tx.$queryRaw(getMigrationCheckQuery());
+                  },
                 });
 
                 return Result.ok(await fn(tx, ...args));
@@ -128,12 +131,13 @@ async function rawQueryArray<Q extends RawQuery<any>[]>(queries: Q): Promise<[] 
     // Since ours starts with "WITH", we prepend a SELECT to it
     const query = Prisma.sql`SELECT * FROM (${withQuery}) AS _`;
 
-    const [_, rawResult] = await runQueryAndMigrateIfNeeded(
-      async () => await prismaClient.$transaction([
+    const [_, rawResult] = await runQueryAndMigrateIfNeeded({
+      prismaClient,
+      fn: async () => await prismaClient.$transaction([
         prismaClient.$queryRaw(getMigrationCheckQuery()),
         prismaClient.$queryRaw(query),
       ])
-    ) as [unknown, { type: string, json: any }[]];
+    }) as [unknown, { type: string, json: any }[]];
 
     const unprocessed = new Array(queries.length).fill(null).map(() => [] as any[]);
     for (const row of rawResult) {
