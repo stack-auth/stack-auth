@@ -261,3 +261,40 @@ export function SelectField<F extends FieldValues>(props: {
     />
   );
 }
+
+export function CheckboxField<F extends FieldValues>(props: {
+  control: Control<F>,
+  name: Path<F>,
+  label: React.ReactNode,
+  description?: string,
+  disabled?: boolean,
+}) {
+  return (
+    <FormField
+      control={props.control}
+      name={props.name}
+      render={({ field }) => (
+        <FormItem className="flex flex-row items-start space-x-3 space-y-0 rounded-md p-2">
+          <FormControl>
+            <Checkbox
+              checked={field.value}
+              onCheckedChange={field.onChange}
+              disabled={props.disabled}
+            />
+          </FormControl>
+          <div className="space-y-1 leading-none">
+            <FormLabel className={cn(props.disabled && "text-muted-foreground")}>
+              {props.label}
+            </FormLabel>
+            {props.description && (
+              <p className="text-sm text-muted-foreground">
+                {props.description}
+              </p>
+            )}
+          </div>
+          <FormMessage />
+        </FormItem>
+      )}
+    />
+  );
+}

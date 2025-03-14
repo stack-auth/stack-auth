@@ -7,7 +7,7 @@ import { Form } from "@stackframe/stack-ui";
 import React, { useCallback, useState } from "react";
 import { useForm } from "react-hook-form";
 import * as yup from "yup";
-import { DateField, InputField, TextAreaField } from "./form-fields";
+import { CheckboxField, DateField, InputField, TextAreaField } from "./form-fields";
 
 // Used for yup TS support
 declare module 'yup' {
@@ -16,6 +16,7 @@ declare module 'yup' {
     stackFormFieldRender?: (props: { control: ReturnType<typeof useForm>['control'], name: string, label: string, disabled: boolean }) => React.ReactNode,
     stackFormFieldPlaceholder?: string,
     type?: "text" | "textarea",
+    description?: string,
   }
 }
 
@@ -77,6 +78,7 @@ function SmartFormField(props: {
     placeholder: "meta" in props.description && props.description.meta?.stackFormFieldPlaceholder !== undefined ? props.description.meta.stackFormFieldPlaceholder :
       typeof props.defaultValue === "string" ? `Eg.: ${props.defaultValue}` : undefined,
     defaultValue: props.defaultValue,
+    description: "meta" in props.description ? props.description.meta?.description : undefined,
   };
 
   if ("meta" in props.description) {
@@ -105,6 +107,9 @@ function SmartFormField(props: {
     }
     case 'date': {
       return <DateField {...usualProps} />;
+    }
+    case 'boolean': {
+      return <CheckboxField {...usualProps} />;
     }
   }
 

@@ -26,6 +26,7 @@ export type ClientInterfaceOptions = {
   clientVersion: string,
   // This is a function instead of a string because it might be different based on the environment (for example client vs server)
   getBaseUrl: () => string,
+  extraRequestHeaders: Record<string, string>,
   projectId: string,
   prepareRequest?: () => Promise<void>,
 } & ({
@@ -300,6 +301,7 @@ export class StackClientInterface {
          * the case (I haven't actually tested.)
          */
         "X-Stack-Random-Nonce": generateSecureRandomString(),
+        ...this.options.extraRequestHeaders,
         ...options.headers,
       },
       /**

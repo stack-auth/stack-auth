@@ -19,7 +19,7 @@ import { ServerContactChannel, ServerContactChannelCreateOptions, ServerContactC
 import { AdminTeamPermission, AdminTeamPermissionDefinition } from "../../permissions";
 import { EditableTeamMemberProfile, ServerListUsersOptions, ServerTeam, ServerTeamCreateOptions, ServerTeamUpdateOptions, ServerTeamUser, Team, TeamInvitation, serverTeamCreateOptionsToCrud, serverTeamUpdateOptionsToCrud } from "../../teams";
 import { ProjectCurrentServerUser, ServerUser, ServerUserCreateOptions, ServerUserUpdateOptions, serverUserCreateOptionsToCrud, serverUserUpdateOptionsToCrud } from "../../users";
-import { StackServerAppConstructorOptions } from "../interfaces/server-app";
+import { StackServerApp, StackServerAppConstructorOptions } from "../interfaces/server-app";
 import { _StackClientAppImplIncomplete } from "./client-app-impl";
 import { clientVersion, createCache, createCacheBySession, getBaseUrl, getDefaultProjectId, getDefaultPublishableClientKey, getDefaultSecretServerKey } from "./common";
 
@@ -152,9 +152,17 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
       },
       async update(data: ServerContactChannelUpdateOptions) {
         await app._interface.updateServerContactChannel(userId, crud.id, serverContactChannelUpdateOptionsToCrud(data));
+        await Promise.all([
+          app._serverContactChannelsCache.refresh([userId]),
+          app._serverUserCache.refresh([userId])
+        ]);
       },
       async delete() {
         await app._interface.deleteServerContactChannel(userId, crud.id);
+        await Promise.all([
+          app._serverContactChannelsCache.refresh([userId]),
+          app._serverUserCache.refresh([userId])
+        ]);
       },
     };
   }
@@ -177,16 +185,18 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
       interface: new StackServerInterface({
         getBaseUrl: () => getBaseUrl(options.baseUrl),
         projectId: options.projectId ?? getDefaultProjectId(),
+        extraRequestHeaders: options.extraRequestHeaders ?? {},
         clientVersion,
         publishableClientKey: options.publishableClientKey ?? getDefaultPublishableClientKey(),
         secretServerKey: options.secretServerKey ?? getDefaultSecretServerKey(),
       }),
       baseUrl: options.baseUrl,
+      extraRequestHeaders: options.extraRequestHeaders,
       projectId: options.projectId,
       publishableClientKey: options.publishableClientKey,
       tokenStore: options.tokenStore,
-      urls: options.urls ?? {},
-      oauthScopesOnSignIn: options.oauthScopesOnSignIn ?? {},
+      urls: options.urls,
+      oauthScopesOnSignIn: options.oauthScopesOnSignIn,
       redirectMethod: options.redirectMethod,
     });
   }
@@ -367,7 +377,10 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
       // END_PLATFORM
       createContactChannel: async (data: ServerContactChannelCreateOptions) => {
         const contactChannel = await app._interface.createServerContactChannel(serverContactChannelCreateOptionsToCrud(crud.id, data));
-        await app._serverContactChannelsCache.refresh([crud.id]);
+        await Promise.all([
+          app._serverContactChannelsCache.refresh([crud.id]),
+          app._serverUserCache.refresh([crud.id])
+        ]);
         return app._serverContactChannelFromCrud(crud.id, contactChannel);
       },
     };

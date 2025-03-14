@@ -957,6 +957,16 @@ export namespace Project {
     });
     return createResult;
   }
+
+  export async function resetContext() {
+    backendContext.set({
+      projectKeys: InternalProjectKeys,
+      mailbox: createMailbox(`default-mailbox--${randomUUID()}${generatedEmailSuffix}`),
+      generatedMailboxNamesCount: 0,
+      userAuth: null,
+      ipData: undefined,
+    });
+  }
 }
 
 export namespace Team {
