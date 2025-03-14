@@ -56,6 +56,8 @@ export const emailConfigSchema = yupObject({
   }),
 });
 
+export const emailConfigWithoutPasswordSchema = emailConfigSchema.pick(['type', 'host', 'port', 'username', 'sender_name', 'sender_email']);
+
 const domainSchema = yupObject({
   domain: schemaFields.urlSchema.defined()
     .matches(/^https?:\/\//, 'URL must start with http:// or https://')

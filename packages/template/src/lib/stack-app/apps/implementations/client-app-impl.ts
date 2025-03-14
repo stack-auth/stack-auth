@@ -38,7 +38,7 @@ import { EditableTeamMemberProfile, Team, TeamCreateOptions, TeamInvitation, Tea
 import { ActiveSession, Auth, BaseUser, CurrentUser, InternalUserExtra, ProjectCurrentUser, UserExtra, UserUpdateOptions, userUpdateOptionsToCrud } from "../../users";
 import { StackClientApp, StackClientAppConstructorOptions, StackClientAppJson } from "../interfaces/client-app";
 import { _StackAdminAppImplIncomplete } from "./admin-app-impl";
-import { TokenObject, clientVersion, createCache, createCacheBySession, createEmptyTokenStore, getBaseUrl, getDefaultProjectId, getDefaultPublishableClientKey, getUrls } from "./common";
+import { TokenObject, clientVersion, createCache, createCacheBySession, createEmptyTokenStore, getBaseUrl, getDefaultExtraRequestHeaders, getDefaultProjectId, getDefaultPublishableClientKey, getUrls } from "./common";
 
 import { useAsyncCache } from "./common"; // THIS_LINE_PLATFORM react-like
 
@@ -58,7 +58,7 @@ const process = (globalThis as any).process ?? { env: {} }; // THIS_LINE_PLATFOR
 
 const allClientApps = new Map<string, [checkString: string, app: StackClientApp<any, any>]>();
 
-export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, ProjectId extends string = string> {
+export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, ProjectId extends string = string> implements StackClientApp<HasTokenStore, ProjectId> {
   /**
    * There is a circular dependency between the admin app and the client app, as the former inherits from the latter and
    * the latter needs to use the former when creating a new instance of an internal project.
@@ -260,6 +260,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
     } else {
       this._interface = new StackClientInterface({
         getBaseUrl: () => getBaseUrl(_options.baseUrl),
+        extraRequestHeaders: _options.extraRequestHeaders ?? getDefaultExtraRequestHeaders(),
         projectId: _options.projectId ?? getDefaultProjectId(),
         clientVersion,
         publishableClientKey: _options.publishableClientKey ?? getDefaultPublishableClientKey(),
@@ -1571,6 +1572,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
           oauthScopesOnSignIn: this._oauthScopesOnSignIn,
           uniqueIdentifier: this._getUniqueIdentifier(),
           redirectMethod: this._redirectMethod,
+          extraRequestHeaders: this._options.extraRequestHeaders,
         };
       },
       setCurrentUser: (userJsonPromise: Promise<CurrentUserCrud['Client']['Read'] | null>) => {
