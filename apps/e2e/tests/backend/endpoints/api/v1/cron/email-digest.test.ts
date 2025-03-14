@@ -3,34 +3,6 @@ import { it } from "../../../../../helpers";
 import { Auth, Project, niceBackendFetch } from "../../../../backend-helpers";
 
 it("should send email digest if there are failed emails", async () => {
-  const { adminAccessToken } = await Project.createAndSwitch({
-    config: {
-      magic_link_enabled: true,
-    },
-  });
-
-  await Auth.Otp.signIn();
-
-  const response = await niceBackendFetch("/api/latest/cron/send-email-digest", {
-    method: "GET",
-    accessType: "admin",
-    headers: {
-      'authorization': `Bearer cron-secret-placeholder`,
-      'x-stack-admin-access-token': adminAccessToken,
-    },
-  });
-
-
-  expect(response).toMatchInlineSnapshot(`
-    NiceResponse {
-      "status": 200,
-      "body": { "success": true },
-      "headers": Headers { <some fields may have been hidden> },
-    }
-  `);
-});
-
-it("should send email digest if there are failed emails 2", async () => {
   const { adminAccessToken, adminMailbox } = await Project.createAndSwitch({
     config: {
       magic_link_enabled: true,
@@ -75,6 +47,17 @@ it("should send email digest if there are failed emails 2", async () => {
         },
         "from": "Stack Dashboard <noreply@example.com>",
         "subject": "Sign in to Stack Dashboard: Your code is <stripped code>",
+        "to": ["<unindexed-mailbox--<stripped UUID>@stack-generated.example.com>"],
+        <some fields may have been hidden>,
+      },
+      MailboxMessage {
+        "attachments": [],
+        "body": {
+          "html": "",
+          "text": "{\\"message\\":\\"Failed to connect to the email host. Please make sure the email host configuration is correct.\\",\\"canRetry\\":false,\\"rawError\\":{\\"code\\":\\"EDNS\\",\\"errno\\":-3008,\\"command\\":\\"CONN\\",\\"syscall\\":\\"getaddrinfo\\",\\"hostname\\":\\"smtp-fail.example.com\\"},\\"errorType\\":\\"HOST_NOT_FOUND\\"}\\n",
+        },
+        "from": "Stack Dashboard <noreply@example.com>",
+        "subject": "You have 1 emails that failed to deliver in your project",
         "to": ["<unindexed-mailbox--<stripped UUID>@stack-generated.example.com>"],
         <some fields may have been hidden>,
       },

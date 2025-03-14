@@ -92,20 +92,26 @@ export const GET = createSmartRouteHandler({
     const internal = await getSoleTenancyFromProject('internal');
     const emailConfig = await getEmailConfig(internal);
 
+    console.log("user", usersBase.flat());
+
     await Promise.all(usersBase.flat().map(async (user) => {
       if (user.contactChannels.length === 0) {
         return;
       }
       const contactChannel = user.contactChannels[0];
 
-      await sendEmail({
-        tenancyId: internal.id,
-        to: contactChannel.value,
-        subject: `You have ${projectWithEmails.get(user.mirroredProjectId)?.emails.length} emails that failed to deliver in your project`,
-        // list all the failed emails
-        text: projectWithEmails.get(user.mirroredProjectId)?.emails.map(email => JSON.stringify(email.error)).join('\n'),
-        emailConfig,
-      });
+      for (const projectId of ((user.serverMetadata as any).managedProjectIds ?? []) as string[]) {
+        const emails = projectWithEmails.get(projectId)?.emails ?? [];
+        if (emails.length > 0) {
+          await sendEmail({
+            tenancyId: internal.id,
+            to: contactChannel.value,
+            subject: `You have ${emails.length} emails that failed to deliver in your project`,
+            text: emails.map(email => JSON.stringify(email.error)).join('\n'),
+            emailConfig,
+          });
+        }
+      }
     }));
 
     return {
