@@ -92,8 +92,6 @@ export const GET = createSmartRouteHandler({
     const internal = await getSoleTenancyFromProject('internal');
     const emailConfig = await getEmailConfig(internal);
 
-    console.log("user", usersBase.flat());
-
     await Promise.all(usersBase.flat().map(async (user) => {
       if (user.contactChannels.length === 0) {
         return;
