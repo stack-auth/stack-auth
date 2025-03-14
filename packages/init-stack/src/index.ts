@@ -55,7 +55,9 @@ const typeFromArgs: string | undefined = options.js ? "js" : options.next ? "nex
 const packageManagerFromArgs: string | undefined = options.npm ? "npm" : options.yarn ? "yarn" : options.pnpm ? "pnpm" : options.bun ? "bun" : undefined;
 const isClient: boolean = options.client || false;
 const isServer: boolean = options.server || false;
-const noBrowser: boolean = options.noBrowser || false;
+// Commander negates the boolean options with prefix `--no-`
+// so `--no-browser` becomes `browser: false`
+const noBrowser: boolean = !options.browser;
 
 class UserError extends Error {
   constructor(message: string) {
