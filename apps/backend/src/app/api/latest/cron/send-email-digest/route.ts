@@ -2,7 +2,7 @@ import { getEmailConfig, sendEmail } from "@/lib/emails";
 import { getSoleTenancyFromProject } from "@/lib/tenancies";
 import { prismaClient } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
-import { Prisma } from "@prisma/client";
+import { Prisma, Project } from "@prisma/client";
 import { yupBoolean, yupNumber, yupObject, yupString, yupTuple } from "@stackframe/stack-shared/dist/schema-fields";
 import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
 import { StatusError } from "@stackframe/stack-shared/dist/utils/errors";
@@ -55,13 +55,14 @@ export const GET = createSmartRouteHandler({
       }
     });
 
-    const projectWithEmails = new Map<string, { emails: (typeof emails[number])[] }>();
+    const projectWithEmails = new Map<string, { project: Project, emails: (typeof emails)[number][] }>();
 
     // dedupe by project
     for (const email of emails) {
       const projectId = email.tenancy.project.id;
       if (!projectWithEmails.has(projectId)) {
         projectWithEmails.set(projectId, {
+          project: email.tenancy.project,
           emails: [],
         });
       }
@@ -104,7 +105,7 @@ export const GET = createSmartRouteHandler({
           await sendEmail({
             tenancyId: internal.id,
             to: contactChannel.value,
-            subject: `You have ${emails.length} emails that failed to deliver in your project`,
+            subject: `You have ${emails.length} emails that failed to deliver in your project ${projectWithEmails.get(projectId)?.project.displayName}`,
             text: emails.map(email => JSON.stringify(email.error)).join('\n'),
             emailConfig,
           });

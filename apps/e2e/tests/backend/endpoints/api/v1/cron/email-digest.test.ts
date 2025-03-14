@@ -57,7 +57,7 @@ it("should send email digest if there are failed emails", async () => {
           "text": "{\\"message\\":\\"Failed to connect to the email host. Please make sure the email host configuration is correct.\\",\\"canRetry\\":false,\\"rawError\\":{\\"code\\":\\"EDNS\\",\\"errno\\":-3008,\\"command\\":\\"CONN\\",\\"syscall\\":\\"getaddrinfo\\",\\"hostname\\":\\"smtp-fail.example.com\\"},\\"errorType\\":\\"HOST_NOT_FOUND\\"}\\n",
         },
         "from": "Stack Dashboard <noreply@example.com>",
-        "subject": "You have 1 emails that failed to deliver in your project",
+        "subject": "You have 1 emails that failed to deliver in your project New Project",
         "to": ["<unindexed-mailbox--<stripped UUID>@stack-generated.example.com>"],
         <some fields may have been hidden>,
       },
