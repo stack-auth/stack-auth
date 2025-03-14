@@ -94,11 +94,11 @@ function runTest(fn: (options: { expect: ExpectStatic, prismaClient: PrismaClien
 
 const exampleMigrationFiles1 = [
   {
-    name: "001-create-table",
+    migrationName: "001-create-table",
     sql: "CREATE TABLE test (id SERIAL PRIMARY KEY, name VARCHAR(255) NOT NULL);",
   },
   {
-    name: "002-update-table",
+    migrationName: "002-update-table",
     sql: "ALTER TABLE test ADD COLUMN age INTEGER NOT NULL DEFAULT 0;",
   },
 ];
@@ -129,8 +129,8 @@ import.meta.vitest?.test("test migration lock timeout", runTest(async ({ expect,
   try {
     // Run migrations concurrently
     await Promise.all([
-      applyMigrations({ prismaClient, migrationFiles: exampleMigrationFiles1, artificialDelayInMs: 3000 }),
-      applyMigrations({ prismaClient, migrationFiles: exampleMigrationFiles1, artificialDelayInMs: 3000 })
+      applyMigrations({ prismaClient, migrationFiles: exampleMigrationFiles1, artificialDelaySecond: 3 }),
+      applyMigrations({ prismaClient, migrationFiles: exampleMigrationFiles1, artificialDelaySecond: 3 }),
     ]);
 
     // Insert test data
