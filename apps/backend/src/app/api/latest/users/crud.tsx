@@ -596,8 +596,7 @@ export const usersCrudHandlers = createLazyProxy(() => createCrudHandlers(usersC
           }
         });
 
-        // create many does not support nested create, so we have to use loop
-        for (const provider of data.oauth_providers) {
+        await Promise.all(data.oauth_providers.map(async (provider) => {
           const connectedAccountConfig = connectedAccountConfigs.find((c) => c.oauthProviderConfig?.id === provider.id);
           const authMethodConfig = authMethodConfigs.find((c) => c.oauthProviderConfig?.id === provider.id);
 
@@ -641,7 +640,7 @@ export const usersCrudHandlers = createLazyProxy(() => createCrudHandlers(usersC
               } : {},
             }
           });
-        }
+        }));
 
       }
 
