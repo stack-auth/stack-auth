@@ -38,7 +38,7 @@ import { EditableTeamMemberProfile, Team, TeamCreateOptions, TeamInvitation, Tea
 import { ActiveSession, Auth, BaseUser, CurrentUser, InternalUserExtra, ProjectCurrentUser, UserExtra, UserUpdateOptions, userUpdateOptionsToCrud } from "../../users";
 import { StackClientApp, StackClientAppConstructorOptions, StackClientAppJson } from "../interfaces/client-app";
 import { _StackAdminAppImplIncomplete } from "./admin-app-impl";
-import { TokenObject, clientVersion, createCache, createCacheBySession, createEmptyTokenStore, getBaseUrl, getDefaultProjectId, getDefaultPublishableClientKey, getUrls } from "./common";
+import { TokenObject, clientVersion, createCache, createCacheBySession, createEmptyTokenStore, getBaseUrl, getDefaultExtraRequestHeaders, getDefaultProjectId, getDefaultPublishableClientKey, getUrls } from "./common";
 
 import { useAsyncCache } from "./common"; // THIS_LINE_PLATFORM react-like
 
@@ -260,6 +260,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
     } else {
       this._interface = new StackClientInterface({
         getBaseUrl: () => getBaseUrl(_options.baseUrl),
+        extraRequestHeaders: _options.extraRequestHeaders ?? getDefaultExtraRequestHeaders(),
         projectId: _options.projectId ?? getDefaultProjectId(),
         clientVersion,
         publishableClientKey: _options.publishableClientKey ?? getDefaultPublishableClientKey(),
@@ -1571,6 +1572,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
           oauthScopesOnSignIn: this._oauthScopesOnSignIn,
           uniqueIdentifier: this._getUniqueIdentifier(),
           redirectMethod: this._redirectMethod,
+          extraRequestHeaders: this._options.extraRequestHeaders,
         };
       },
       setCurrentUser: (userJsonPromise: Promise<CurrentUserCrud['Client']['Read'] | null>) => {

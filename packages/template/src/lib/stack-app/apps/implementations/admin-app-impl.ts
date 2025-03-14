@@ -49,6 +49,7 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
       interface: new StackAdminInterface({
         getBaseUrl: () => getBaseUrl(options.baseUrl),
         projectId: options.projectId ?? getDefaultProjectId(),
+        extraRequestHeaders: options.extraRequestHeaders ?? {},
         clientVersion,
         ..."projectOwnerSession" in options ? {
           projectOwnerSession: options.projectOwnerSession,
@@ -59,6 +60,7 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
         },
       }),
       baseUrl: options.baseUrl,
+      extraRequestHeaders: options.extraRequestHeaders,
       projectId: options.projectId,
       tokenStore: options.tokenStore,
       urls: options.urls,
