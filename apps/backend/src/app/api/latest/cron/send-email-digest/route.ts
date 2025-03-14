@@ -43,7 +43,7 @@ export const GET = createSmartRouteHandler({
           gte: new Date(Date.now() - 1000 * 60 * 60 * 24),
         },
         error: {
-          equals: Prisma.AnyNull,
+          not: Prisma.AnyNull,
         }
       },
       include: {
