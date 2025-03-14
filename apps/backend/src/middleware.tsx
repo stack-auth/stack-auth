@@ -33,6 +33,9 @@ const corsAllowedRequestHeaders = [
   // Sentry
   'baggage',
   'sentry-trace',
+
+  // Vercel
+  'x-vercel-protection-bypass',
 ];
 
 const corsAllowedResponseHeaders = [
