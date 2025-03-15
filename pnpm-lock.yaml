@@ -171,6 +171,9 @@ importers:
       chokidar-cli:
         specifier: ^3.0.0
         version: 3.0.0
+      dotenv:
+        specifier: ^16.4.5
+        version: 16.4.5
       dotenv-cli:
         specifier: ^7.3.0
         version: 7.4.1
@@ -213,6 +216,9 @@ importers:
       svix:
         specifier: ^1.25.0
         version: 1.25.0
+      vite:
+        specifier: ^6.1.0
+        version: 6.1.0(@types/node@20.14.2)(jiti@2.4.2)(lightningcss@1.29.1)(terser@5.31.1)(tsx@4.15.5)(yaml@2.4.5)
       yaml:
         specifier: ^2.4.5
         version: 2.4.5
@@ -25258,6 +25264,20 @@ snapshots:
       fsevents: 2.3.3
       lightningcss: 1.29.1
       terser: 5.31.1
+
+  vite@6.1.0(@types/node@20.14.2)(jiti@2.4.2)(lightningcss@1.29.1)(terser@5.31.1)(tsx@4.15.5)(yaml@2.4.5):
+    dependencies:
+      esbuild: 0.24.2
+      postcss: 8.5.2
+      rollup: 4.34.8
+    optionalDependencies:
+      '@types/node': 20.14.2
+      fsevents: 2.3.3
+      jiti: 2.4.2
+      lightningcss: 1.29.1
+      terser: 5.31.1
+      tsx: 4.15.5
+      yaml: 2.4.5
 
   vite@6.1.0(@types/node@20.17.6)(jiti@2.4.2)(lightningcss@1.29.1)(terser@5.31.1)(tsx@4.19.3)(yaml@2.6.0):
     dependencies:

@@ -1,5 +1,6 @@
 import { resolve } from 'path'
 import { defineConfig } from 'vitest/config'
+import { loadEnv } from 'vite'
 import sharedConfig from '../../vitest.shared'
 
 export default defineConfig({
@@ -7,10 +8,10 @@ export default defineConfig({
     testTimeout: 20000,
     include: sharedConfig.test?.include,
     includeSource: sharedConfig.test?.includeSource,
-    environmentOptions: {
-      env: {
-        loadEnvFiles: ['.env', '.env.development', '.env.local']
-      }
+    environment: 'jsdom',
+    env: {
+      ...loadEnv('', process.cwd(), ''),
+      ...loadEnv('development', process.cwd(), ''),
     },
   },
   resolve: {
