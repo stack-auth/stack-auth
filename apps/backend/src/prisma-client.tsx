@@ -33,7 +33,9 @@ export async function retryTransaction<T>(fn: (...args: Parameters<Parameters<ty
                 await runQueryAndMigrateIfNeeded({
                   prismaClient,
                   fn: async () => {
-                    await tx.$queryRaw(getMigrationCheckQuery());
+                    // this uses prismaClient, not tx, intentionally
+                    // because if this fails, we want to retry this query instead of failing the whole transaction
+                    await prismaClient.$queryRaw(getMigrationCheckQuery());
                   },
                 });
 

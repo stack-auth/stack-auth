@@ -219,25 +219,19 @@ import.meta.vitest?.test("applies migration while running a query", runTest(asyn
 }));
 
 import.meta.vitest?.test("applies migration while running concurrent queries", runTest(async ({ expect, prismaClient, dbURL }) => {
+  const runMigrationAndInsert = (testValue: string) => runQueryAndMigrateIfNeeded({
+    prismaClient,
+    fn: async () => await prismaClient.$transaction([
+      prismaClient.$queryRaw(getMigrationCheckQuery({ migrationFiles: exampleMigrationFiles1 })),
+      prismaClient.$executeRaw`INSERT INTO test (name) VALUES (${testValue})`,
+    ]),
+    migrationFiles: exampleMigrationFiles1,
+    artificialDelayInSeconds: 3,
+  });
+
   await Promise.all([
-    runQueryAndMigrateIfNeeded({
-      prismaClient,
-      fn: async () => await prismaClient.$transaction([
-        prismaClient.$queryRaw(getMigrationCheckQuery({ migrationFiles: exampleMigrationFiles1 })),
-        prismaClient.$executeRaw`INSERT INTO test (name) VALUES ('test_value1')`,
-      ]),
-      migrationFiles: exampleMigrationFiles1,
-      artificialDelayInSeconds: 3,
-    }),
-    runQueryAndMigrateIfNeeded({
-      prismaClient,
-      fn: async () => await prismaClient.$transaction([
-        prismaClient.$queryRaw(getMigrationCheckQuery({ migrationFiles: exampleMigrationFiles1 })),
-        prismaClient.$executeRaw`INSERT INTO test (name) VALUES ('test_value2')`,
-      ]),
-      migrationFiles: exampleMigrationFiles1,
-      artificialDelayInSeconds: 3,
-    }),
+    runMigrationAndInsert('test_value1'),
+    runMigrationAndInsert('test_value2'),
   ]);
 
   const result1 = await prismaClient.$queryRaw`SELECT name FROM test` as { name: string }[];
@@ -245,4 +239,55 @@ import.meta.vitest?.test("applies migration while running concurrent queries", r
   expect(result1.length).toBe(2);
   expect(result1.some(r => r.name === 'test_value1')).toBe(true);
   expect(result1.some(r => r.name === 'test_value2')).toBe(true);
+}));
+
+import.meta.vitest?.test("applies migration while running an interactive transaction", runTest(async ({ expect, prismaClient, dbURL }) => {
+  return await prismaClient.$transaction(async (tx, ...args) => {
+    await runQueryAndMigrateIfNeeded({
+      prismaClient,
+      fn: async () => {
+        await prismaClient.$queryRaw(getMigrationCheckQuery({ migrationFiles: exampleMigrationFiles1 }));
+      },
+      migrationFiles: exampleMigrationFiles1,
+    });
+
+    await tx.$executeRaw`INSERT INTO test (name) VALUES ('test_value')`;
+    const result = await tx.$queryRaw`SELECT name FROM test` as { name: string }[];
+    expect(Array.isArray(result)).toBe(true);
+    expect(result.length).toBe(1);
+    expect(result[0].name).toBe('test_value');
+  }, {
+    isolationLevel: undefined,
+  });
+}));
+
+import.meta.vitest?.test("applies migration while running concurrent interactive transactions", runTest(async ({ expect, prismaClient, dbURL }) => {
+  const runTransactionWithMigration = async (testValue: string) => {
+    return await prismaClient.$transaction(async (tx) => {
+      await runQueryAndMigrateIfNeeded({
+        prismaClient,
+        fn: async () => {
+          await prismaClient.$queryRaw(getMigrationCheckQuery({ migrationFiles: exampleMigrationFiles1 }));
+        },
+        migrationFiles: exampleMigrationFiles1,
+        artificialDelayInSeconds: 3,
+      });
+
+      await tx.$executeRaw`INSERT INTO test (name) VALUES (${testValue})`;
+      return testValue;
+    });
+  };
+
+  const results = await Promise.all([
+    runTransactionWithMigration('concurrent_tx_1'),
+    runTransactionWithMigration('concurrent_tx_2'),
+  ]);
+
+  expect(results).toEqual(['concurrent_tx_1', 'concurrent_tx_2']);
+
+  const result = await prismaClient.$queryRaw`SELECT name FROM test` as { name: string }[];
+  expect(Array.isArray(result)).toBe(true);
+  expect(result.length).toBe(2);
+  expect(result.some(r => r.name === 'concurrent_tx_1')).toBe(true);
+  expect(result.some(r => r.name === 'concurrent_tx_2')).toBe(true);
 }));
