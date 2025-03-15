@@ -21,7 +21,7 @@ import.meta.vitest?.test("createUrlIfValid", ({ expect }) => {
 });
 
 export function isValidUrl(url: string) {
-  return !!createUrlIfValid(url);
+  return createUrlIfValid(url) !== null;
 }
 import.meta.vitest?.test("isValidUrl", ({ expect }) => {
   // Test with valid URLs
