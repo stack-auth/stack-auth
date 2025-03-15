@@ -172,6 +172,26 @@ import.meta.vitest?.test("applies migrations", runTest(async ({ expect, prismaCl
   expect(ageResult[0].age).toBe(0);
 }));
 
+import.meta.vitest?.test("first apply half of the migrations, then apply the other half", runTest(async ({ expect, prismaClient }) => {
+  const { newlyAppliedMigrationNames } = await applyMigrations({ prismaClient, migrationFiles: exampleMigrationFiles1.slice(0, 1) });
+  expect(newlyAppliedMigrationNames).toEqual(['001-create-table']);
+
+  const { newlyAppliedMigrationNames: newlyAppliedMigrationNames2 } = await applyMigrations({ prismaClient, migrationFiles: exampleMigrationFiles1 });
+  expect(newlyAppliedMigrationNames2).toEqual(['002-update-table']);
+
+  await prismaClient.$executeRaw`INSERT INTO test (name) VALUES ('test_value')`;
+
+  const result = await prismaClient.$queryRaw`SELECT name FROM test` as { name: string }[];
+  expect(Array.isArray(result)).toBe(true);
+  expect(result.length).toBe(1);
+  expect(result[0].name).toBe('test_value');
+
+  const ageResult = await prismaClient.$queryRaw`SELECT age FROM test WHERE name = 'test_value'` as { age: number }[];
+  expect(Array.isArray(ageResult)).toBe(true);
+  expect(ageResult.length).toBe(1);
+  expect(ageResult[0].age).toBe(0);
+}));
+
 import.meta.vitest?.test("applies migrations concurrently", runTest(async ({ expect, prismaClient }) => {
   const [result1, result2] = await Promise.all([
     applyMigrations({ prismaClient, migrationFiles: exampleMigrationFiles1, artificialDelayInSeconds: 3 }),
