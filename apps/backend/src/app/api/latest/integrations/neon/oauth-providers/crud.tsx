@@ -9,6 +9,7 @@ import { StatusError, throwErr } from "@stackframe/stack-shared/dist/utils/error
 import { sharedProviders } from "@stackframe/stack-shared/dist/utils/oauth";
 import { createLazyProxy } from "@stackframe/stack-shared/dist/utils/proxies";
 import { typedToLowercase, typedToUppercase } from "@stackframe/stack-shared/dist/utils/strings";
+import { generateUuid } from "@stackframe/stack-shared/dist/utils/uuids";
 import * as yup from "yup";
 
 const oauthProviderReadSchema = yupObject({
@@ -173,7 +174,7 @@ async function createOrUpdateProvider(
         data: {
           oauthProviderConfig: {
             create: {
-              id: providerId,
+              id: generateUuid(),
               ...options.data.type === 'shared' ? {
                 proxiedOAuthConfig: {
                   create: {
