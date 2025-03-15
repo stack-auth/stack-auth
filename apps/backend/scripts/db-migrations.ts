@@ -1,4 +1,4 @@
-import { applyMigrations } from "@/auto-migrations/db-migrations";
+import { applyMigrations } from "@/auto-migrations";
 import { MIGRATION_FILES_DIR, getMigrationFiles } from "@/auto-migrations/utils";
 import { prismaClient } from "@/prisma-client";
 import { execSync } from "child_process";
@@ -34,6 +34,7 @@ const getDropDBPrompt = async () => {
 
 const migrate = async () => {
   await applyMigrations({
+    prismaClient,
     migrationFiles: getMigrationFiles(MIGRATION_FILES_DIR)
   });
   await seed();
