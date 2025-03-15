@@ -19,7 +19,6 @@ if (getNodeEnvironment() !== 'production') {
   globalForPrisma.prisma = prismaClient;
 }
 
-
 export async function retryTransaction<T>(fn: (...args: Parameters<Parameters<typeof prismaClient.$transaction>[0]>) => Promise<T>): Promise<T> {
   // disable serializable transactions for now, later we may re-add them
   const enableSerializable = false as boolean;

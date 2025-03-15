@@ -1,7 +1,8 @@
 import { PrismaClient } from "@prisma/client";
 import postgres from 'postgres';
 import { ExpectStatic } from "vitest";
-import { applyMigrations } from "./db-migrations";
+import { applyMigrations, getMigrationCheckQuery, runQueryAndMigrateIfNeeded } from "./db-migrations";
+import { rawQuery } from "@/prisma-client";
 
 const TEST_DB_PREFIX = 'stack_auth_test_db';
 
@@ -148,19 +149,19 @@ const examplePrismaBasedMigrationFiles = [
 ];
 
 
-import.meta.vitest?.test("test prisma client connection", runTest(async ({ expect, prismaClient }) => {
+import.meta.vitest?.test("connects to DB", runTest(async ({ expect, prismaClient }) => {
   const result = await prismaClient.$executeRaw`SELECT 1`;
   expect(result).toBe(1);
 }));
 
-import.meta.vitest?.test("test migration", runTest(async ({ expect, prismaClient }) => {
+import.meta.vitest?.test("applies migrations", runTest(async ({ expect, prismaClient }) => {
   const { newlyAppliedMigrationNames } = await applyMigrations({ prismaClient, migrationFiles: exampleMigrationFiles1 });
 
   expect(newlyAppliedMigrationNames).toEqual(['001-create-table', '002-update-table']);
 
   await prismaClient.$executeRaw`INSERT INTO test (name) VALUES ('test_value')`;
 
-  const result = await prismaClient.$queryRaw`SELECT name FROM test LIMIT 1` as { name: string }[];
+  const result = await prismaClient.$queryRaw`SELECT name FROM test` as { name: string }[];
   expect(Array.isArray(result)).toBe(true);
   expect(result.length).toBe(1);
   expect(result[0].name).toBe('test_value');
@@ -171,10 +172,10 @@ import.meta.vitest?.test("test migration", runTest(async ({ expect, prismaClient
   expect(ageResult[0].age).toBe(0);
 }));
 
-import.meta.vitest?.test("test migration lock timeout", runTest(async ({ expect, prismaClient }) => {
+import.meta.vitest?.test("applies migrations concurrently", runTest(async ({ expect, prismaClient }) => {
   const [result1, result2] = await Promise.all([
-    applyMigrations({ prismaClient, migrationFiles: exampleMigrationFiles1, artificialDelaySecond: 3 }),
-    applyMigrations({ prismaClient, migrationFiles: exampleMigrationFiles1, artificialDelaySecond: 3 }),
+    applyMigrations({ prismaClient, migrationFiles: exampleMigrationFiles1, artificialDelayInSeconds: 3 }),
+    applyMigrations({ prismaClient, migrationFiles: exampleMigrationFiles1, artificialDelayInSeconds: 3 }),
   ]);
 
   const l1 = result1.newlyAppliedMigrationNames.length;
@@ -184,14 +185,14 @@ import.meta.vitest?.test("test migration lock timeout", runTest(async ({ expect,
   expect((l1 === 2 && l2 === 0) || (l1 === 0 && l2 === 2)).toBe(true);
 
   await prismaClient.$executeRaw`INSERT INTO test (name) VALUES ('test_value')`;
-  const result = await prismaClient.$queryRaw`SELECT name FROM test LIMIT 1` as { name: string }[];
+  const result = await prismaClient.$queryRaw`SELECT name FROM test` as { name: string }[];
   expect(Array.isArray(result)).toBe(true);
   expect(result.length).toBe(1);
   expect(result[0].name).toBe('test_value');
 }));
 
 
-import.meta.vitest?.test("test prisma-based migrations", runTest(async ({ expect, prismaClient, dbURL }) => {
+import.meta.vitest?.test("applies migration with a DB previously migrated with prisma", runTest(async ({ expect, prismaClient, dbURL }) => {
   await applySql({ sql: examplePrismaBasedInitQueries, fullDbURL: dbURL.full });
   const result = await applyMigrations({ prismaClient, migrationFiles: examplePrismaBasedMigrationFiles });
   expect(result.newlyAppliedMigrationNames).toEqual(['20250314215050_age']);
@@ -201,4 +202,47 @@ import.meta.vitest?.test("test prisma-based migrations", runTest(async ({ expect
   expect(result2.newlyAppliedMigrationNames).toEqual([]);
 }));
 
+import.meta.vitest?.test("applies migration while running a query", runTest(async ({ expect, prismaClient, dbURL }) => {
+  await runQueryAndMigrateIfNeeded({
+    prismaClient,
+    fn: async () => await prismaClient.$transaction([
+      prismaClient.$queryRaw(getMigrationCheckQuery({ migrationFiles: exampleMigrationFiles1 })),
+      prismaClient.$executeRaw`INSERT INTO test (name) VALUES ('test_value')`,
+    ]),
+    migrationFiles: exampleMigrationFiles1,
+  });
 
+  const result = await prismaClient.$queryRaw`SELECT name FROM test` as { name: string }[];
+  expect(Array.isArray(result)).toBe(true);
+  expect(result.length).toBe(1);
+  expect(result[0].name).toBe('test_value');
+}));
+
+import.meta.vitest?.test("applies migration while running concurrent queries", runTest(async ({ expect, prismaClient, dbURL }) => {
+  await Promise.all([
+    runQueryAndMigrateIfNeeded({
+      prismaClient,
+      fn: async () => await prismaClient.$transaction([
+        prismaClient.$queryRaw(getMigrationCheckQuery({ migrationFiles: exampleMigrationFiles1 })),
+        prismaClient.$executeRaw`INSERT INTO test (name) VALUES ('test_value1')`,
+      ]),
+      migrationFiles: exampleMigrationFiles1,
+      artificialDelayInSeconds: 3,
+    }),
+    runQueryAndMigrateIfNeeded({
+      prismaClient,
+      fn: async () => await prismaClient.$transaction([
+        prismaClient.$queryRaw(getMigrationCheckQuery({ migrationFiles: exampleMigrationFiles1 })),
+        prismaClient.$executeRaw`INSERT INTO test (name) VALUES ('test_value2')`,
+      ]),
+      migrationFiles: exampleMigrationFiles1,
+      artificialDelayInSeconds: 3,
+    }),
+  ]);
+
+  const result1 = await prismaClient.$queryRaw`SELECT name FROM test` as { name: string }[];
+  expect(Array.isArray(result1)).toBe(true);
+  expect(result1.length).toBe(2);
+  expect(result1.some(r => r.name === 'test_value1')).toBe(true);
+  expect(result1.some(r => r.name === 'test_value2')).toBe(true);
+}));
