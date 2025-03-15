@@ -1,7 +1,7 @@
 import { PrismaClient } from "@prisma/client";
 import postgres from 'postgres';
 import { ExpectStatic } from "vitest";
-import { applyMigrations, getMigrationCheckQuery, runQueryAndMigrateIfNeeded } from "./db-migrations";
+import { applyMigrations, getMigrationCheckQuery, runQueryAndMigrateIfNeeded } from "./index";
 
 const TEST_DB_PREFIX = 'stack_auth_test_db';
 

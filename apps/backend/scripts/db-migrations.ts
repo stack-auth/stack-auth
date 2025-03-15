@@ -51,14 +51,23 @@ const main = async () => {
       await migrate();
       break;
     }
-    case 'migration-file': {
+    case 'generate-migration-file': {
       execSync('pnpm prisma migrate dev --skip-seed', { stdio: 'inherit' });
       await dropPublicSchema();
       await migrate();
       break;
     }
+    case 'seed': {
+      await seed();
+      break;
+    }
+    case 'init': {
+      await migrate();
+      await seed();
+      break;
+    }
     default: {
-      console.error('Unknown command. Use "migration-file" or "reset"');
+      console.error('Unknown command.');
       process.exit(1);
     }
   }

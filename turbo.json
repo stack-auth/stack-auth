@@ -103,10 +103,16 @@
     "generate-keys": {
       "cache": false
     },
-    "generate-db-migration": {
+    "db:migration-gen": {
       "cache": false
     },
-    "reset-db": {
+    "db:reset": {
+      "cache": false
+    },
+    "db:seed": {
+      "cache": false
+    },
+    "db:init": {
       "cache": false
     }
   }
