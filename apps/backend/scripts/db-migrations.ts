@@ -5,10 +5,10 @@ import { execSync } from "child_process";
 import * as readline from 'readline';
 
 const dropPublicSchema = async () => {
-  await prismaClient.$executeRawUnsafe(`DROP SCHEMA public CASCADE`);
-  await prismaClient.$executeRawUnsafe(`CREATE SCHEMA public`);
-  await prismaClient.$executeRawUnsafe(`GRANT ALL ON SCHEMA public TO postgres`);
-  await prismaClient.$executeRawUnsafe(`GRANT ALL ON SCHEMA public TO public`);
+  await prismaClient.$executeRaw`DROP SCHEMA public CASCADE`;
+  await prismaClient.$executeRaw`CREATE SCHEMA public`;
+  await prismaClient.$executeRaw`GRANT ALL ON SCHEMA public TO postgres`;
+  await prismaClient.$executeRaw`GRANT ALL ON SCHEMA public TO public`;
 };
 
 const seed = async () => {

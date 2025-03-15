@@ -20,10 +20,10 @@ async function getAppliedMigrations(options: {
   prismaClient: PrismaClient,
 }) {
   const [_1, _2, _3, appliedMigrations] = await options.prismaClient.$transaction([
-    options.prismaClient.$executeRawUnsafe(
-      `SELECT pg_advisory_lock(${ADVISORY_LOCK_ID})`
-    ),
-    options.prismaClient.$executeRawUnsafe(`
+    options.prismaClient.$executeRaw`
+      SELECT pg_advisory_lock(${ADVISORY_LOCK_ID})
+    `,
+    options.prismaClient.$executeRaw`
       CREATE TABLE IF NOT EXISTS "SchemaMigration" (
         "id" TEXT NOT NULL DEFAULT gen_random_uuid(),
         "startedAt" TIMESTAMP(3) NOT NULL DEFAULT clock_timestamp(),
@@ -32,8 +32,8 @@ async function getAppliedMigrations(options: {
         
         CONSTRAINT "SchemaMigration_pkey" PRIMARY KEY ("id")
       );
-    `),
-    options.prismaClient.$executeRawUnsafe(`
+    `,
+    options.prismaClient.$executeRaw`
       DO $$
       BEGIN
         IF EXISTS (
@@ -53,15 +53,15 @@ async function getAppliedMigrations(options: {
           AND finished_at IS NOT NULL;
         END IF;
       END $$;
-    `),
-    options.prismaClient.$queryRawUnsafe(`
+    `,
+    options.prismaClient.$queryRaw`
       SELECT "migrationName" FROM "SchemaMigration" 
       WHERE "finishedAt" IS NOT NULL
       ORDER BY "startedAt" ASC
-    `),
-    options.prismaClient.$executeRawUnsafe(`
+    `,
+    options.prismaClient.$executeRaw`
       SELECT pg_advisory_unlock(${ADVISORY_LOCK_ID});
-    `),
+    `,
   ], {
     isolationLevel: 'Serializable',
   });
@@ -93,40 +93,40 @@ export async function applyMigrations(options: {
   const newMigrationFiles = migrationFiles.slice(appliedMigrations.length);
 
   for (const migration of migrationFiles.slice(appliedMigrations.length)) {
-    transactions.push(options.prismaClient.$executeRawUnsafe(`
+    transactions.push(options.prismaClient.$executeRaw`
       INSERT INTO "SchemaMigration" ("migrationName")
-      VALUES ('${migration.migrationName}')
+      VALUES (${migration.migrationName})
       ON CONFLICT ("migrationName") DO UPDATE
       SET "startedAt" = clock_timestamp()
-    `));
+    `);
 
     transactions.push(...migration.sql.split('SPLIT_STATEMENT_SENTINEL')
       .map(statement => {
         if (statement.includes('SINGLE_STATEMENT_SENTINEL')) {
-          return options.prismaClient.$executeRawUnsafe(statement);
+          return options.prismaClient.$queryRaw`${Prisma.raw(statement)}`;
         } else {
-          return options.prismaClient.$executeRawUnsafe(`
+          return options.prismaClient.$executeRaw`
             DO $$
             BEGIN
-              ${statement}
+              ${Prisma.raw(statement)}
             END
             $$;
-          `);
+          `;
         }
       })
     );
 
-    transactions.push(options.prismaClient.$executeRawUnsafe(`
+    transactions.push(options.prismaClient.$executeRaw`
       UPDATE "SchemaMigration"
       SET "finishedAt" = clock_timestamp()
-      WHERE "migrationName" = '${migration.migrationName}'
-    `));
+      WHERE "migrationName" = ${migration.migrationName}
+    `);
   }
 
   if (options.artificialDelayInSeconds) {
-    transactions.push(options.prismaClient.$executeRawUnsafe(`
+    transactions.push(options.prismaClient.$executeRaw`
       SELECT pg_sleep(${options.artificialDelayInSeconds});
-    `));
+    `);
   }
 
   try {
