@@ -18,6 +18,7 @@ export type ContactChannelCreateOptions = {
   value: string,
   type: 'email',
   usedForAuth: boolean,
+  isPrimary?: boolean,
 }
 
 export function contactChannelCreateOptionsToCrud(userId: string, options: ContactChannelCreateOptions): ContactChannelsCrud["Client"]["Create"] {
@@ -25,6 +26,7 @@ export function contactChannelCreateOptionsToCrud(userId: string, options: Conta
     value: options.value,
     type: options.type,
     used_for_auth: options.usedForAuth,
+    is_primary: options.isPrimary,
     user_id: userId,
   };
 }
@@ -55,6 +57,7 @@ export function serverContactChannelUpdateOptionsToCrud(options: ServerContactCh
     value: options.value,
     is_verified: options.isVerified,
     used_for_auth: options.usedForAuth,
+    is_primary: options.isPrimary,
   };
 }
 
@@ -68,5 +71,6 @@ export function serverContactChannelCreateOptionsToCrud(userId: string, options:
     is_verified: options.isVerified,
     user_id: userId,
     used_for_auth: options.usedForAuth,
+    is_primary: options.isPrimary,
   };
 }
