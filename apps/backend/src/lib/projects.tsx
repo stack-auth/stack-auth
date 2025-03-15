@@ -519,7 +519,7 @@ export async function createProject(ownerIds: string[], data: InternalProjectsCr
             } : undefined,
             oauthProviderConfigs: data.config?.oauth_providers ? {
               create: data.config.oauth_providers.map(item => ({
-                id: item.id,
+                id: generateUuid(),
                 proxiedOAuthConfig: item.type === "shared" ? {
                   create: {
                     type: typedToUppercase(ensureSharedProvider(item.id)),

@@ -8,6 +8,7 @@ import { yupObject } from "@stackframe/stack-shared/dist/schema-fields";
 import { StackAssertionError, StatusError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
 import { createLazyProxy } from "@stackframe/stack-shared/dist/utils/proxies";
 import { typedToUppercase } from "@stackframe/stack-shared/dist/utils/strings";
+import { generateUuid } from "@stackframe/stack-shared/dist/utils/uuids";
 import { ensureStandardProvider } from "../../../../../lib/request-checks";
 
 export const projectsCrudHandlers = createLazyProxy(() => createCrudHandlers(projectsCrud, {
@@ -245,7 +246,7 @@ export const projectsCrudHandlers = createLazyProxy(() => createCrudHandlers(pro
 
           await tx.oAuthProviderConfig.create({
             data: {
-              id: provider.id,
+              id: generateUuid(),
               projectConfigId: oldProject.config.id,
               ...providerConfigData,
             },
