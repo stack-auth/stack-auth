@@ -12,10 +12,10 @@ import { createLazyProxy } from "@stackframe/stack-shared/dist/utils/proxies";
 
 export const teamPermissionsCrudHandlers = createLazyProxy(() => createCrudHandlers(teamPermissionsCrud, {
   querySchema: yupObject({
-    team_id: yupString().uuid().optional().meta({ openapiField: { description: 'Filter with the team ID. If set, only the permissions of the members in a specific team will be returned.', exampleValue: 'cce084a3-28b7-418e-913e-c8ee6d802ea4' } }),
-    user_id: userIdOrMeSchema.optional().meta({ openapiField: { description: 'Filter with the user ID. If set, only the permissions this user has will be returned. Client request must set `user_id=me`', exampleValue: 'me' } }),
-    permission_id: teamPermissionDefinitionIdSchema.optional().meta({ openapiField: { description: 'Filter with the permission ID. If set, only the permissions with this specific ID will be returned', exampleValue: '16399452-c4f3-4554-8e44-c2d67bb60360' } }),
-    recursive: yupString().oneOf(['true', 'false']).optional().meta({ openapiField: { description: 'Whether to list permissions recursively. If set to `false`, only the permission the users directly have will be listed. If set to `true` all the direct and indirect permissions will be listed.', exampleValue: 'true' } }),
+    team_id: yupString().uuid().optional().meta({ openapiField: { onlyShowInOperations: [ 'List' ], description: 'Filter with the team ID. If set, only the permissions of the members in a specific team will be returned.', exampleValue: 'cce084a3-28b7-418e-913e-c8ee6d802ea4' } }),
+    user_id: userIdOrMeSchema.optional().meta({ openapiField: { onlyShowInOperations: [ 'List' ], description: 'Filter with the user ID. If set, only the permissions this user has will be returned. Client request must set `user_id=me`', exampleValue: 'me' } }),
+    permission_id: teamPermissionDefinitionIdSchema.optional().meta({ openapiField: { onlyShowInOperations: [ 'List' ], description: 'Filter with the permission ID. If set, only the permissions with this specific ID will be returned', exampleValue: '16399452-c4f3-4554-8e44-c2d67bb60360' } }),
+    recursive: yupString().oneOf(['true', 'false']).optional().meta({ openapiField: { onlyShowInOperations: [ 'List' ], description: 'Whether to list permissions recursively. If set to `false`, only the permission the users directly have will be listed. If set to `true` all the direct and indirect permissions will be listed.', exampleValue: 'true' } }),
   }),
   paramsSchema: yupObject({
     team_id: yupString().uuid().defined(),
