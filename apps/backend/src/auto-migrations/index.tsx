@@ -19,23 +19,21 @@ function getMigrationError(error: unknown): MigrationError {
 async function getAppliedMigrations(options: {
   prismaClient: PrismaClient,
 }) {
-  const [_1, _2, _3, appliedMigrations] = await options.prismaClient.$transaction([
-    options.prismaClient.$executeRaw`
-      SELECT pg_advisory_lock(${ADVISORY_LOCK_ID})
-    `,
-    options.prismaClient.$executeRaw`
-      CREATE TABLE IF NOT EXISTS "SchemaMigration" (
-        "id" TEXT NOT NULL DEFAULT gen_random_uuid(),
-        "startedAt" TIMESTAMP(3) NOT NULL DEFAULT clock_timestamp(),
-        "finishedAt" TIMESTAMP(3),
-        "migrationName" TEXT NOT NULL UNIQUE,
-        
-        CONSTRAINT "SchemaMigration_pkey" PRIMARY KEY ("id")
-      );
-    `,
+  const [_1, appliedMigrations] = await options.prismaClient.$transaction([
     options.prismaClient.$executeRaw`
       DO $$
       BEGIN
+        PERFORM pg_advisory_lock(${Prisma.raw(ADVISORY_LOCK_ID.toString())});
+        
+        CREATE TABLE IF NOT EXISTS "SchemaMigration" (
+          "id" TEXT NOT NULL DEFAULT gen_random_uuid(),
+          "startedAt" TIMESTAMP(3) NOT NULL DEFAULT clock_timestamp(),
+          "finishedAt" TIMESTAMP(3),
+          "migrationName" TEXT NOT NULL UNIQUE,
+          
+          CONSTRAINT "SchemaMigration_pkey" PRIMARY KEY ("id")
+        );
+        
         IF EXISTS (
           SELECT FROM information_schema.tables 
           WHERE table_schema = 'public' 
@@ -52,15 +50,14 @@ async function getAppliedMigrations(options: {
           )
           AND finished_at IS NOT NULL;
         END IF;
+        
+        PERFORM pg_advisory_unlock(${Prisma.raw(ADVISORY_LOCK_ID.toString())});
       END $$;
     `,
     options.prismaClient.$queryRaw`
       SELECT "migrationName" FROM "SchemaMigration" 
       WHERE "finishedAt" IS NOT NULL
       ORDER BY "startedAt" ASC
-    `,
-    options.prismaClient.$executeRaw`
-      SELECT pg_advisory_unlock(${ADVISORY_LOCK_ID});
     `,
   ], {
     isolationLevel: 'Serializable',
