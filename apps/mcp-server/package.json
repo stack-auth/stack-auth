@@ -13,7 +13,6 @@
     "lint": "eslint .",
     "clean": "rimraf dist && rimraf node_modules && rimraf openapi/*.json",
     "build": "tsc && chmod 755 build/index.js",
-    "blub": "tsx"
   },
   "files": [
     "build"
