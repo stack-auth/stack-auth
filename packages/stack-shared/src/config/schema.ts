@@ -1,41 +1,30 @@
 import * as yup from "yup";
 import * as schemaFields from "../schema-fields";
 import { yupBoolean, yupObject, yupRecord, yupString, yupUnion } from "../schema-fields";
-
-type EnvMode = 'undefined' | 'optional' | 'defined';
+import { validateSchemaLevels } from "./parser";
 
 const configRecord = (schema: yup.AnySchema) => yupRecord(schema, (key) => key.match(/^[a-zA-Z0-9_$-]+$/) !== null);
 
-const envSchema = <T extends yup.AnySchema>(mode: EnvMode, schema: T): T => {
-  switch (mode) {
-    case 'undefined': {
-      return schema;
-    }
-    case 'optional': {
-      return schema.nullable().optional();
-    }
-    case 'defined': {
-      return schema;
-    }
-  }
-};
 
-export const getConfigSchema = (mode: EnvMode) => yupObject({
-  createTeamOnSignUp: yupBoolean().defined().meta({ startLevel: 'project', endLevel: 'organization' }),
-  clientTeamCreationEnabled: yupBoolean().defined(),
-  clientUserDeletionEnabled: yupBoolean().defined(),
-  signUpEnabled: yupBoolean().defined(),
-  legacyGlobalJwtSigning: yupBoolean().defined(),
-  isProductionMode: envSchema(mode, yupBoolean().defined()),
-  allowLocalhost: envSchema(mode, yupBoolean().defined()),
+const projectOrLowerLevels = { startLevel: 'project', endLevel: 'organization' } as const;
+const envOrLowerLevels = { startLevel: 'environment', endLevel: 'organization' } as const;
+
+export const getConfigSchema = () => yupObject({
+  createTeamOnSignUp: yupBoolean().defined().meta(projectOrLowerLevels),
+  clientTeamCreationEnabled: yupBoolean().defined().meta(projectOrLowerLevels),
+  clientUserDeletionEnabled: yupBoolean().defined().meta(projectOrLowerLevels),
+  signUpEnabled: yupBoolean().defined().meta(projectOrLowerLevels),
+  legacyGlobalJwtSigning: yupBoolean().defined().meta(projectOrLowerLevels),
+  isProductionMode: yupBoolean().defined().meta(projectOrLowerLevels),
+  allowLocalhost: yupBoolean().defined().meta(projectOrLowerLevels),
 
   // keys to the permissions/permission definitions are hex encoded ids.
   teamCreateDefaultSystemPermissions: configRecord(yupObject({
     id: yupString().defined(),
-  })).defined(),
+  })).defined().meta(projectOrLowerLevels),
   teamMemberDefaultSystemPermissions: configRecord(yupObject({
     id: yupString().defined(),
-  })).defined(),
+  })).defined().meta(projectOrLowerLevels),
   permissionDefinitions: configRecord(yupObject({
     id: yupString().defined(),
     description: yupString().defined(),
@@ -43,17 +32,17 @@ export const getConfigSchema = (mode: EnvMode) => yupObject({
     containedPermissions: yupRecord(yupObject({
       id: yupString().defined(),
     })).defined(),
-  })).defined(),
+  })).defined().meta(projectOrLowerLevels),
 
   // keys to the oauth providers are the provider ids.
   oauthProviders: configRecord(yupObject({
     id: yupString().defined(),
-    type: envSchema(mode, yupString().oneOf(['shared', 'standard']).defined()),
-    clientId: envSchema(mode, schemaFields.yupDefinedAndNonEmptyWhen(schemaFields.oauthClientIdSchema, { type: 'standard', enabled: true })),
-    clientSecret: envSchema(mode, schemaFields.yupDefinedAndNonEmptyWhen(schemaFields.oauthClientSecretSchema, { type: 'standard', enabled: true })),
-    facebookConfigId: envSchema(mode, schemaFields.oauthFacebookConfigIdSchema.optional()),
-    microsoftTenantId: envSchema(mode, schemaFields.oauthMicrosoftTenantIdSchema.optional()),
-  })).defined(),
+    type: yupString().oneOf(['shared', 'standard']).defined().meta(envOrLowerLevels),
+    clientId: schemaFields.yupDefinedAndNonEmptyWhen(schemaFields.oauthClientIdSchema, { type: 'standard', enabled: true }).meta(envOrLowerLevels),
+    clientSecret: schemaFields.yupDefinedAndNonEmptyWhen(schemaFields.oauthClientSecretSchema, { type: 'standard', enabled: true }).meta(envOrLowerLevels),
+    facebookConfigId: schemaFields.oauthFacebookConfigIdSchema.optional().meta(envOrLowerLevels),
+    microsoftTenantId: schemaFields.oauthMicrosoftTenantIdSchema.optional().meta(envOrLowerLevels),
+  })).defined().meta(projectOrLowerLevels),
 
   // keys to the auth methods are the auth method ids.
   authMethods: configRecord(yupUnion(
@@ -74,15 +63,15 @@ export const getConfigSchema = (mode: EnvMode) => yupObject({
       type: yupString().oneOf(['oauth']).defined(),
       oauthProviderId: yupString().defined(),
     }),
-  )).defined(),
+  )).defined().meta(projectOrLowerLevels),
 
   // keys to the domains are the hex encoded domains
-  domains: envSchema(mode, yupRecord(yupObject({
+  domains: yupRecord(yupObject({
     domain: schemaFields.urlSchema.defined(),
     handlerPath: schemaFields.handlerPathSchema.defined(),
-  }), (key) => key.match(/^[a-zA-Z0-9_]+$/) !== null)),
+  }), (key) => key.match(/^[a-zA-Z0-9_]+$/) !== null).meta(envOrLowerLevels),
 
-  emailConfig: envSchema(mode, yupObject({
+  emailConfig: yupObject({
     type: schemaFields.emailTypeSchema.defined(),
     host: schemaFields.yupDefinedAndNonEmptyWhen(schemaFields.emailHostSchema, {
       type: 'standard',
@@ -102,5 +91,9 @@ export const getConfigSchema = (mode: EnvMode) => yupObject({
     sender_email: schemaFields.yupDefinedAndNonEmptyWhen(schemaFields.emailSenderEmailSchema, {
       type: 'standard',
     }),
-  })),
+  }).meta(envOrLowerLevels),
+});
+
+import.meta.vitest?.test("makes sure that config is valid", ({ expect }) => {
+  validateSchemaLevels(getConfigSchema());
 });

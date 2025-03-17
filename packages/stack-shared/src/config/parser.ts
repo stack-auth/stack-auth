@@ -300,7 +300,7 @@ const CONFIG_LEVELS = ['project', 'branch', 'environment', 'organization'] as co
 export type ConfigLevel = typeof CONFIG_LEVELS[number];
 
 // Check if all fields in the schema have startLevel and endLevel metadata
-function validateSchemaLevels(schemaField: any, path: string[] = []): void {
+export function validateSchemaLevels(schemaField: any, path: string[] = []): void {
   const meta = schemaField.meta() as { startLevel?: string, endLevel?: string } | undefined;
   const schemaType = schemaField.type;
 
