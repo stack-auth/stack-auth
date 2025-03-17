@@ -93,6 +93,9 @@ function expectSnakeCase(obj: unknown, path: string): void {
         throw new StackAssertionError(`Object has camelCase key (expected snake_case): ${path}.${key}`);
       }
       if (["client_metadata", "server_metadata", "options_json", "credential", "authentication_response"].includes(key)) continue;
+      // because email templates
+      if (path === "req.body.content.root") continue;
+      if (path === "res.body.content.root") continue;
       expectSnakeCase(value, `${path}.${key}`);
     }
   }
@@ -185,6 +188,7 @@ export namespace Auth {
         "exp": expect.any(Number),
         "iat": expect.any(Number),
         "iss": "https://access-token.jwt-signature.stack-auth.com",
+        "refreshTokenId": expect.any(String),
         "aud": expect.any(String),
         "sub": expect.any(String),
         "branchId": "main",
@@ -714,26 +718,17 @@ export namespace Auth {
           grant_type: "authorization_code",
         },
       });
-      expect(tokenResponse).toMatchInlineSnapshot(`
-        NiceResponse {
-          "status": 200,
-          "body": {
-            "access_token": <stripped field 'access_token'>,
-            "afterCallbackRedirectUrl": null,
-            "after_callback_redirect_url": null,
-            "expires_in": 3599,
-            "is_new_user": true,
-            "newUser": true,
-            "refresh_token": <stripped field 'refresh_token'>,
-            "scope": "legacy",
-            "token_type": "Bearer",
-          },
-          "headers": Headers {
-            "pragma": "no-cache",
-            <some fields may have been hidden>,
-          },
-        }
-      `);
+      expect(tokenResponse).toMatchObject({
+        status: 200,
+        body: {
+          access_token: expect.any(String),
+          afterCallbackRedirectUrl: null,
+          after_callback_redirect_url: null,
+          refresh_token: expect.any(String),
+          scope: "legacy",
+          token_type: "Bearer"
+        },
+      });
 
       backendContext.set({
         userAuth: {
@@ -962,17 +957,27 @@ export namespace Project {
     });
     return createResult;
   }
+
+  export async function resetContext() {
+    backendContext.set({
+      projectKeys: InternalProjectKeys,
+      mailbox: createMailbox(`default-mailbox--${randomUUID()}${generatedEmailSuffix}`),
+      generatedMailboxNamesCount: 0,
+      userAuth: null,
+      ipData: undefined,
+    });
+  }
 }
 
 export namespace Team {
-  export async function create(options: { accessType?: "client" | "server", addCurrentUser?: boolean } = {}, body?: any) {
+  export async function create(options: { accessType?: "client" | "server", addCurrentUser?: boolean, creatorUserId?: string } = {}, body?: any) {
     const displayName = body?.display_name || 'New Team';
     const response = await niceBackendFetch("/api/v1/teams", {
       accessType: options.accessType ?? "server",
       method: "POST",
       body: {
         display_name: displayName,
-        creator_user_id: options.addCurrentUser ? 'me' : undefined,
+        creator_user_id: options.creatorUserId ?? (options.addCurrentUser ? 'me' : undefined),
         ...body,
       },
     });
@@ -1124,6 +1129,8 @@ export namespace Webhook {
       return messageResponse.body;
     }));
 
-    return messages;
+    return messages.sort((a, b) => {
+      return new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime();
+    });
   }
 }

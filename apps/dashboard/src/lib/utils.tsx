@@ -1,4 +1,4 @@
-import { getPublicEnvVar } from "@stackframe/stack-shared/dist/utils/env";
+import { getPublicEnvVar } from "@/lib/env";
 import { clsx, type ClassValue } from "clsx";
 import { redirect } from "next/navigation";
 import { twMerge } from "tailwind-merge";

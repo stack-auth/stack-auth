@@ -1,16 +1,20 @@
 {
   "name": "@stackframe/js-example",
-  "version": "2.7.15",
+  "version": "2.7.27",
+  "private": true,
   "description": "",
   "main": "index.js",
   "scripts": {
-    "start": "dotenv -e .env.development -- tsx index.ts"
+    "dev": "dotenv -e .env.development -e .env.local -- vite --port 8119 --force",
+    "clean": "rimraf dist && rimraf node_modules"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "dependencies": {
     "@stackframe/js": "workspace:*",
-    "dotenv-cli": "^7.4.1"
+    "dotenv-cli": "^7.4.1",
+    "typescript": "^5.7.3",
+    "vite": "^6.1.0"
   }
 }

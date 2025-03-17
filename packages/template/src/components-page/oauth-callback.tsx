@@ -1,11 +1,11 @@
 'use client';
 
-import { useRef, useEffect, useState } from "react";
-import { useStackApp } from "..";
-import { runAsynchronously } from "@stackframe/stack-shared/dist/utils/promises";
-import { MessageCard } from "../components/message-cards/message-card";
-import { StyledLink } from "@stackframe/stack-ui";
 import { captureError } from "@stackframe/stack-shared/dist/utils/errors";
+import { runAsynchronously } from "@stackframe/stack-shared/dist/utils/promises";
+import { useEffect, useRef, useState } from "react";
+import { useStackApp } from "..";
+import { StyledLink } from "../components/link";
+import { MessageCard } from "../components/message-cards/message-card";
 import { useTranslation } from "../lib/translations";
 
 export function OAuthCallback(props: { fullPage?: boolean }) {

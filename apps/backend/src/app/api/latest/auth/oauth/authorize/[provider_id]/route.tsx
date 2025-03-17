@@ -1,5 +1,5 @@
 import { checkApiKeySet } from "@/lib/api-keys";
-import { Tenancy, getSoleTenancyFromProject } from "@/lib/tenancies";
+import { getSoleTenancyFromProject } from "@/lib/tenancies";
 import { decodeAccessToken, oauthCookieSchema } from "@/lib/tokens";
 import { getProvider } from "@/oauth";
 import { prismaClient } from "@/prisma-client";

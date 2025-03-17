@@ -1,9 +1,10 @@
 'use client';
 
+import { useRouter } from "@/components/router";
+import { ErrorBoundary } from '@sentry/nextjs';
 import { UserAvatar } from '@stackframe/stack';
 import { fromNow } from '@stackframe/stack-shared/dist/utils/dates';
 import { Card, CardContent, CardHeader, CardTitle, Table, TableBody, TableCell, TableRow, Typography } from '@stackframe/stack-ui';
-import { useRouter } from "@/components/router";
 import { PageLayout } from "../page-layout";
 import { useAdminApp } from '../use-admin-app';
 import { GlobeSection } from './globe';
@@ -44,7 +45,9 @@ export default function PageClient() {
     <PageLayout fillWidth>
       {
         <>
-          <GlobeSection countryData={data.users_by_country} totalUsers={data.total_users} />
+          <ErrorBoundary fallback={<div className='text-center text-sm text-red-500'>Error initializing globe visualization. Please try updating your browser or enabling WebGL.</div>}>
+            <GlobeSection countryData={data.users_by_country} totalUsers={data.total_users} />
+          </ErrorBoundary>
           <div className='grid gap-4 lg:grid-cols-2'>
             <LineChartDisplay
               config={dailySignUpsConfig}

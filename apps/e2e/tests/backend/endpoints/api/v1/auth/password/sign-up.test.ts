@@ -1,4 +1,5 @@
 import { generateSecureRandomString } from "@stackframe/stack-shared/dist/utils/crypto";
+import { wait } from "@stackframe/stack-shared/dist/utils/promises";
 import { it } from "../../../../../../helpers";
 import { Auth, Project, backendContext, niceBackendFetch } from "../../../../../backend-helpers";
 
@@ -15,6 +16,7 @@ it("should sign up new users", async ({ expect }) => {
       "headers": Headers { <some fields may have been hidden> },
     }
   `);
+  await wait(500);  // verification email is asynchronous, so let's give it some time to be received
   const messages = await backendContext.value.mailbox.fetchMessages({ noBody: true });
   expect(messages).toMatchInlineSnapshot(`
     [
@@ -66,7 +68,7 @@ it("should not allow signing up with an e-mail that already exists", async ({ ex
   });
   expect(res2).toMatchInlineSnapshot(`
     NiceResponse {
-      "status": 400,
+      "status": 409,
       "body": {
         "code": "USER_EMAIL_ALREADY_EXISTS",
         "error": "User email already exists.",

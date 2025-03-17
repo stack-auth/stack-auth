@@ -1,7 +1,7 @@
 "use client";
 
 import { SettingCard } from "@/components/settings";
-import { getPublicEnvVar } from '@stackframe/stack-shared/dist/utils/env';
+import { getPublicEnvVar } from '@/lib/env';
 import { Alert, Badge, Button, CopyButton, Label, Table, TableBody, TableCell, TableHead, TableHeader, TableRow, Typography } from "@stackframe/stack-ui";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { useMemo, useState } from "react";

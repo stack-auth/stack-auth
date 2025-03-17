@@ -21,3 +21,13 @@ export async function listRecursively(p: string, options: { excludeDirectories?:
     }))).flat(),
   ];
 }
+
+export function writeFileSyncIfChanged(path: string, content: string): void {
+  if (stackFs.existsSync(path)) {
+    const existingContent = stackFs.readFileSync(path, "utf-8");
+    if (existingContent === content) {
+      return;
+    }
+  }
+  stackFs.writeFileSync(path, content);
+}

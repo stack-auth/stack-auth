@@ -1,6 +1,6 @@
 {
   "name": "@stackframe/stack-ui",
-  "version": "2.7.15",
+  "version": "2.7.27",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "sideEffects": false,
@@ -26,7 +26,6 @@
   "peerDependencies": {
     "@types/react": ">=18.2.12 || >=19.0.0-rc.0",
     "@types/react-dom": ">=18.2.12 || >=19.0.0-rc.0",
-    "next": ">=14.1.0 || >=15.0.0-rc.0",
     "react": ">=18.2 || >=19.0.0-rc.0",
     "react-dom": ">=18.2 || >=19.0.0-rc.0",
     "yup": "^1.4.0"
@@ -89,7 +88,6 @@
   "devDependencies": {
     "@types/react": "^18.2.12",
     "@types/react-dom": "^18.2.12",
-    "next": "^14.1.0",
     "react": "^18.2",
     "react-dom": "^18.2",
     "rimraf": "^5.0.10"

@@ -158,7 +158,7 @@ it("should be able to check the password reset code without using it", async ({ 
   });
   expect(checkResponse2).toMatchInlineSnapshot(`
     NiceResponse {
-      "status": 400,
+      "status": 409,
       "body": {
         "code": "VERIFICATION_CODE_ALREADY_USED",
         "error": "The verification link has already been used.",

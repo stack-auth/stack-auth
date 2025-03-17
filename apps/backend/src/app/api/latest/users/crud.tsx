@@ -4,6 +4,7 @@ import { PrismaTransaction } from "@/lib/types";
 import { sendTeamMembershipDeletedWebhook, sendUserCreatedWebhook, sendUserDeletedWebhook, sendUserUpdatedWebhook } from "@/lib/webhooks";
 import { RawQuery, prismaClient, rawQuery, retryTransaction } from "@/prisma-client";
 import { createCrudHandlers } from "@/route-handlers/crud-handler";
+import { log } from "@/utils/telemetry";
 import { runAsynchronouslyAndWaitUntil } from "@/utils/vercel";
 import { BooleanTrue, Prisma } from "@prisma/client";
 import { KnownErrors } from "@stackframe/stack-shared";
@@ -137,8 +138,8 @@ async function checkAuthData(
     tenancyId: string,
     oldPrimaryEmail?: string | null,
     primaryEmail?: string | null,
-    primaryEmailVerified?: boolean,
-    primaryEmailAuthEnabled?: boolean,
+    primaryEmailVerified: boolean,
+    primaryEmailAuthEnabled: boolean,
   }
 ) {
   if (!data.primaryEmail && data.primaryEmailAuthEnabled) {
@@ -147,20 +148,19 @@ async function checkAuthData(
   if (!data.primaryEmail && data.primaryEmailVerified) {
     throw new StatusError(400, "primary_email_verified cannot be true without primary_email");
   }
-  if (data.primaryEmailAuthEnabled) {
-    if (!data.oldPrimaryEmail || data.oldPrimaryEmail !== data.primaryEmail) {
-      const existingChannelUsedForAuth = await tx.contactChannel.findFirst({
-        where: {
-          tenancyId: data.tenancyId,
-          type: 'EMAIL',
-          value: data.primaryEmail || throwErr("primary_email_auth_enabled is true but primary_email is not set"),
-          usedForAuth: BooleanTrue.TRUE,
-        }
-      });
-
-      if (existingChannelUsedForAuth) {
-        throw new KnownErrors.UserEmailAlreadyExists();
+  if (!data.primaryEmailAuthEnabled) return;
+  if (!data.oldPrimaryEmail || data.oldPrimaryEmail !== data.primaryEmail) {
+    const existingChannelUsedForAuth = await tx.contactChannel.findFirst({
+      where: {
+        tenancyId: data.tenancyId,
+        type: 'EMAIL',
+        value: data.primaryEmail || throwErr("primary_email_auth_enabled is true but primary_email is not set"),
+        usedForAuth: BooleanTrue.TRUE,
       }
+    });
+
+    if (existingChannelUsedForAuth) {
+      throw new KnownErrors.UserEmailAlreadyExists();
     }
   }
 }
@@ -415,10 +415,17 @@ export async function getUser(options: { userId: string } & ({ projectId: string
   if (!getNodeEnvironment().includes("prod")) {
     const legacyResult = await getUserLegacy({ tenancyId: tenancy.id, userId: options.userId });
     if (!deepPlainEquals(result, legacyResult)) {
-      throw new StackAssertionError("User result mismatch", {
-        result,
-        legacyResult,
-      });
+      // Coincidentally, it can happen that a user is modified in the database right between these two queries.
+      // While unlikely, it makes the tests flakey sometimes, so let's make sure that requesting the raw query again
+      // still causes the same mismatch.
+      const newResult = await rawQuery(getUserQuery(tenancy.project.id, tenancy.branchId, options.userId));
+      if (!deepPlainEquals(newResult, legacyResult)) {
+        throw new StackAssertionError("User result mismatch", {
+          result,
+          legacyResult,
+          newResult,
+        });
+      }
     }
   }
 
@@ -536,13 +543,17 @@ export const usersCrudHandlers = createLazyProxy(() => createCrudHandlers(usersC
     };
   },
   onCreate: async ({ auth, data }) => {
+    log("create_user_endpoint_primaryAuthEnabled", {
+      value: data.primary_email_auth_enabled,
+      email: data.primary_email ?? undefined,
+    });
     const result = await retryTransaction(async (tx) => {
       const passwordHash = await getPasswordHashFromData(data);
       await checkAuthData(tx, {
         tenancyId: auth.tenancy.id,
         primaryEmail: data.primary_email,
-        primaryEmailVerified: data.primary_email_verified,
-        primaryEmailAuthEnabled: data.primary_email_auth_enabled,
+        primaryEmailVerified: !!data.primary_email_verified,
+        primaryEmailAuthEnabled: !!data.primary_email_auth_enabled,
       });
 
       const newUser = await tx.projectUser.create({
@@ -750,6 +761,7 @@ export const usersCrudHandlers = createLazyProxy(() => createCrudHandlers(usersC
           where: {
             tenancyId: auth.tenancy.id,
             projectUserId: params.user_id,
+            isSelected: BooleanTrue.TRUE,
           },
           data: {
             isSelected: null,
@@ -792,12 +804,14 @@ export const usersCrudHandlers = createLazyProxy(() => createCrudHandlers(usersC
       const passwordAuth = oldUser.authMethods.find((m) => m.passwordAuthMethod)?.passwordAuthMethod;
       const passkeyAuth = oldUser.authMethods.find((m) => m.passkeyAuthMethod)?.passkeyAuthMethod;
 
+      const primaryEmailAuthEnabled = data.primary_email_auth_enabled || !!primaryEmailContactChannel?.usedForAuth;
+      const primaryEmailVerified = data.primary_email_verified || !!primaryEmailContactChannel?.isVerified;
       await checkAuthData(tx, {
         tenancyId: auth.tenancy.id,
         oldPrimaryEmail: primaryEmailContactChannel?.value,
         primaryEmail: data.primary_email || primaryEmailContactChannel?.value,
-        primaryEmailVerified: data.primary_email_verified || primaryEmailContactChannel?.isVerified,
-        primaryEmailAuthEnabled: data.primary_email_auth_enabled || !!primaryEmailContactChannel?.usedForAuth,
+        primaryEmailVerified,
+        primaryEmailAuthEnabled,
       });
 
       // if there is a new primary email
@@ -834,10 +848,11 @@ export const usersCrudHandlers = createLazyProxy(() => createCrudHandlers(usersC
               value: data.primary_email,
               isVerified: false,
               isPrimary: "TRUE",
+              usedForAuth: primaryEmailAuthEnabled ? BooleanTrue.TRUE : null,
             },
             update: {
               value: data.primary_email,
-              usedForAuth: data.primary_email_auth_enabled === undefined ? undefined : (data.primary_email_auth_enabled ? BooleanTrue.TRUE : null),
+              usedForAuth: primaryEmailAuthEnabled ? BooleanTrue.TRUE : null,
             }
           });
         }

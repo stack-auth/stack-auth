@@ -116,7 +116,7 @@ export function projectPrismaToCrud(
   return {
     id: prisma.id,
     display_name: prisma.displayName,
-    description: prisma.description ?? "",
+    description: prisma.description,
     created_at_millis: prisma.createdAt.getTime(),
     user_count: prisma._count.projectUsers,
     is_production_mode: prisma.isProductionMode,
@@ -130,7 +130,6 @@ export function projectPrismaToCrud(
       create_team_on_sign_up: prisma.config.createTeamOnSignUp,
       client_team_creation_enabled: prisma.config.clientTeamCreationEnabled,
       client_user_deletion_enabled: prisma.config.clientUserDeletionEnabled,
-      legacy_global_jwt_signing: prisma.config.legacyGlobalJwtSigning,
       domains: prisma.config.domains
         .sort((a: any, b: any) => a.createdAt.getTime() - b.createdAt.getTime())
         .map((domain) => ({
@@ -139,6 +138,7 @@ export function projectPrismaToCrud(
         })),
       oauth_providers: oauthProviders,
       enabled_oauth_providers: oauthProviders.filter(provider => provider.enabled),
+      oauth_account_merge_strategy: typedToLowercase(prisma.config.oauthAccountMergeStrategy),
       email_config: (() => {
         const emailServiceConfig = prisma.config.emailServiceConfig;
         if (!emailServiceConfig) {
@@ -352,11 +352,6 @@ export function getProjectQuery(projectId: string): RawQuery<ProjectsCrud["Admin
                 )
                 FROM "ProjectConfig"
                 WHERE "ProjectConfig"."id" = "Project"."configId"
-              ),
-              'userCount', (
-                SELECT count(*)
-                FROM "ProjectUser"
-                WHERE "ProjectUser"."mirroredProjectId" = "Project"."id"
               )
             )
           )
@@ -425,7 +420,6 @@ export function getProjectQuery(projectId: string): RawQuery<ProjectsCrud["Admin
           create_team_on_sign_up: row.ProjectConfig.createTeamOnSignUp,
           client_team_creation_enabled: row.ProjectConfig.clientTeamCreationEnabled,
           client_user_deletion_enabled: row.ProjectConfig.clientUserDeletionEnabled,
-          legacy_global_jwt_signing: row.ProjectConfig.legacyGlobalJwtSigning,
           domains: row.ProjectConfig.Domains
             .sort((a: any, b: any) => new Date(a.createdAt + "Z").getTime() - new Date(b.createdAt + "Z").getTime())
             .map((domain: any) => ({
@@ -434,6 +428,7 @@ export function getProjectQuery(projectId: string): RawQuery<ProjectsCrud["Admin
             })),
           oauth_providers: oauthProviderAuthMethods,
           enabled_oauth_providers: oauthProviderAuthMethods.filter((provider: any) => provider.enabled),
+          oauth_account_merge_strategy: typedToLowercase(row.ProjectConfig.oauthAccountMergeStrategy) as "link_method" | "raise_error" | "allow_duplicates",
           email_config: (() => {
             const emailServiceConfig = row.ProjectConfig.EmailServiceConfig;
             if (!emailServiceConfig) {
@@ -506,7 +501,7 @@ export async function createProject(ownerIds: string[], data: InternalProjectsCr
       data: {
         id: generateUuid(),
         displayName: data.display_name,
-        description: data.description,
+        description: data.description ?? "",
         isProductionMode: data.is_production_mode ?? false,
         config: {
           create: {
@@ -515,6 +510,7 @@ export async function createProject(ownerIds: string[], data: InternalProjectsCr
             createTeamOnSignUp: data.config?.create_team_on_sign_up ?? false,
             clientTeamCreationEnabled: data.config?.client_team_creation_enabled ?? false,
             clientUserDeletionEnabled: data.config?.client_user_deletion_enabled ?? false,
+            oauthAccountMergeStrategy: data.config?.oauth_account_merge_strategy ? typedToUppercase(data.config.oauth_account_merge_strategy): 'LINK_METHOD',
             domains: data.config?.domains ? {
               create: data.config.domains.map(item => ({
                 domain: item.domain,

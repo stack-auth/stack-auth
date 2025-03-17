@@ -1,6 +1,6 @@
 {
   "name": "@stackframe/stack-shared",
-  "version": "2.7.15",
+  "version": "2.7.27",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "type": "module",
@@ -31,7 +31,6 @@
   "peerDependencies": {
     "@types/react": ">=18.2 || >=19.0.0-rc.0",
     "@types/react-dom": ">=18.2 || >=19.0.0-rc.0",
-    "next": ">=14.1.0 || >=15.0.0-rc.0",
     "react": ">=18.2 || >=19.0.0-rc.0",
     "react-dom": ">=18.2 || >=19.0.0-rc.0",
     "yup": "^1.4.0"
@@ -52,7 +51,6 @@
   },
   "dependencies": {
     "@simplewebauthn/browser": "^11.0.0",
-    "@stackframe/stack-sc": "workspace:*",
     "async-mutex": "^0.5.0",
     "bcrypt": "^5.1.1",
     "elliptic": "^6.5.7",
@@ -69,7 +67,6 @@
     "@types/elliptic": "^6.4.18",
     "@types/semver": "^7.5.8",
     "@types/uuid": "^9.0.8",
-    "next": "^14.1.0",
     "react": "^18.2",
     "react-dom": "^18.2",
     "rimraf": "^5.0.5"

@@ -124,23 +124,20 @@ export default function PageClient () {
       <Separator orientation="vertical" />
 
       <div className="w-1/2 self-stretch py-4 px-4 lg:px-20 bg-zinc-300 dark:bg-zinc-800 hidden md:flex items-center">
-        {
-          (
-            <div className="w-full">
-              <BrowserFrame url="your-website.com/signin">
-                <div className="flex flex-col items-center justify-center min-h-[400px]">
-                  <div className='w-full sm:max-w-xs m-auto scale-90 pointer-events-none' inert=''>
-                    {/* a transparent cover that prevents the card from being clicked, even when pointer-events is overridden */}
-                    <div className="absolute inset-0 bg-transparent z-10"></div>
-                    <AuthPage
-                      type="sign-in"
-                      mockProject={mockProject}
-                    />
-                  </div>
-                </div>
-              </BrowserFrame>
+        <div className="w-full">
+          <BrowserFrame url="your-website.com/signin">
+            <div className="flex flex-col items-center justify-center min-h-[400px]">
+              <div className='w-full sm:max-w-xs m-auto scale-90 pointer-events-none' inert=''>
+                {/* a transparent cover that prevents the card from being clicked, even when pointer-events is overridden */}
+                <div className="absolute inset-0 bg-transparent z-10"></div>
+                <AuthPage
+                  type="sign-in"
+                  mockProject={mockProject}
+                />
+              </div>
             </div>
-          )}
+          </BrowserFrame>
+        </div>
       </div>
     </div>
   );

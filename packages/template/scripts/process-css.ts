@@ -1,3 +1,4 @@
+import { writeFileSyncIfChanged } from '@stackframe/stack-shared/dist/utils/fs';
 import { replaceAll } from '@stackframe/stack-shared/dist/utils/strings';
 import autoprefixer from 'autoprefixer';
 import * as fs from 'fs';
@@ -45,12 +46,12 @@ async function main() {
   }
 
   // output css file for debugging
-  fs.writeFileSync(outputPath.replace(/\.ts$/, '.css'), content);
+  writeFileSyncIfChanged(outputPath.replace(/\.ts$/, '.css'), content);
 
   content = JSON.stringify(content);
   content = `export const globalCSS = ${content};\n`;
 
-  fs.writeFileSync(outputPath, content);
+  writeFileSyncIfChanged(outputPath, content);
 
 }
 

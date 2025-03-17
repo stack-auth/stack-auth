@@ -1,4 +1,4 @@
-import { getPublicEnvVar } from '@stackframe/stack-shared/dist/utils/env';
+import { getPublicEnvVar } from '@/lib/env';
 import { Button, CopyField, Tabs, TabsContent, TabsList, TabsTrigger } from "@stackframe/stack-ui";
 
 export default function EnvKeys(props: {

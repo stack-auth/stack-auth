@@ -4,7 +4,8 @@ import { InputField, SwitchField } from "@/components/form-fields";
 import { SettingCard, SettingSwitch } from "@/components/settings";
 import { AdminDomainConfig, AdminProject } from "@stackframe/stack";
 import { yupString } from "@stackframe/stack-shared/dist/schema-fields";
-import { isValidUrl } from "@stackframe/stack-shared/dist/utils/urls";
+import { StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
+import { isValidHostname, isValidUrl } from "@stackframe/stack-shared/dist/utils/urls";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger, ActionCell, ActionDialog, Alert, Button, Table, TableBody, TableCell, TableHead, TableHeader, TableRow, Typography } from "@stackframe/stack-ui";
 import React from "react";
 import * as yup from "yup";
@@ -32,9 +33,9 @@ function EditDialog(props: {
   const domainFormSchema = yup.object({
     domain: yupString()
       .test({
-        name: 'url',
-        message: (params) => `Invalid URL`,
-        test: (value) => value == null || isValidUrl('http://' + value)
+        name: 'domain',
+        message: (params) => `Invalid domain`,
+        test: (value) => value == null || isValidHostname(value)
       })
       .test({
         name: 'unique-domain',
@@ -103,21 +104,22 @@ function EditDialog(props: {
     formSchema={domainFormSchema}
     okButton={{ label: props.type === 'create' ? "Create" : "Save" }}
     onSubmit={async (values) => {
+      const newDomains = [
+        ...props.domains,
+        {
+          domain: (values.insecureHttp ? 'http' : 'https') + `://` + values.domain,
+          handlerPath: values.handlerPath,
+        },
+        ...(canAddWww(values.domain) && values.addWww ? [{
+          domain: `${values.insecureHttp ? 'http' : 'https'}://www.` + values.domain,
+          handlerPath: values.handlerPath,
+        }] : []),
+      ];
       try {
         if (props.type === 'create') {
           await props.project.update({
             config: {
-              domains: [
-                ...props.domains,
-                {
-                  domain: (values.insecureHttp ? 'http' : 'https') + `://` + values.domain,
-                  handlerPath: values.handlerPath,
-                },
-                ...(canAddWww(values.domain) && values.addWww ? [{
-                  domain: `${values.insecureHttp ? 'http' : 'https'}://www.` + values.domain,
-                  handlerPath: values.handlerPath,
-                }] : []),
-              ],
+              domains: newDomains,
             },
           });
         } else {
@@ -136,10 +138,15 @@ function EditDialog(props: {
           });
         }
       } catch (error) {
-        // TODO: This is for debugging purposes, remove it if there is no error on sentry anymore
-        throw new Error(
-          `Failed to update domains: ${String(error)}\n` +
-          `Details: type=${props.type}, domains=${JSON.stringify(props.domains)}, projectId=${props.project.id}`
+        // this piece of code fails a lot, so let's add some additional information to the error
+        // TODO: remove this error once we're confident this is no longer happening
+        throw new StackAssertionError(
+          `Failed to update domains: ${error}`,
+          {
+            cause: error,
+            props,
+            newDomains,
+          },
         );
       }
     }}

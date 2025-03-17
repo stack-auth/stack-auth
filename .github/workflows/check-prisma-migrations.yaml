@@ -1,6 +1,15 @@
 name: Ensure Prisma migrations are in sync with the schema
 
-on: push
+on:
+  push:
+    branches:
+      - main
+      - dev
+  pull_request:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' && github.ref != 'refs/heads/dev' }}
 
 jobs:
   check_prisma_migrations:

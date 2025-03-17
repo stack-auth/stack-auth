@@ -46,7 +46,7 @@ it("each verification code that was already requested can be used exactly once",
     });
     expect(response2).toMatchInlineSnapshot(`
       NiceResponse {
-        "status": 400,
+        "status": 409,
         "body": {
           "code": "VERIFICATION_CODE_ALREADY_USED",
           "error": "The verification link has already been used.",

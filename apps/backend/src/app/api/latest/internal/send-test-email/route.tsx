@@ -1,8 +1,10 @@
-import { isSecureEmailPort, sendEmailWithKnownErrorTypes } from "@/lib/emails";
+import { isSecureEmailPort, sendEmailWithoutRetries } from "@/lib/emails";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import * as schemaFields from "@stackframe/stack-shared/dist/schema-fields";
 import { adaptSchema, adminAuthTypeSchema, emailSchema, yupBoolean, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
 import { StackAssertionError, captureError } from "@stackframe/stack-shared/dist/utils/errors";
+import { timeout } from "@stackframe/stack-shared/dist/utils/promises";
+import { Result } from "@stackframe/stack-shared/dist/utils/results";
 
 export const POST = createSmartRouteHandler({
   metadata: {
@@ -34,8 +36,9 @@ export const POST = createSmartRouteHandler({
       error_message: yupString().optional(),
     }).defined(),
   }),
-  handler: async ({ body }) => {
-    const result = await sendEmailWithKnownErrorTypes({
+  handler: async ({ body, auth }) => {
+    const resultOuter = await timeout(sendEmailWithoutRetries({
+      tenancyId: auth.tenancy.id,
       emailConfig: {
         type: 'standard',
         host: body.email_config.host,
@@ -49,6 +52,13 @@ export const POST = createSmartRouteHandler({
       to: body.recipient_email,
       subject: "Test Email from Stack Auth",
       text: "This is a test email from Stack Auth. If you successfully received this email, your email server configuration is working correctly.",
+    }), 10000);
+
+
+    const result = resultOuter.status === 'ok' ? resultOuter.data : Result.error({
+      errorType: undefined,
+      rawError: undefined,
+      message: "Timed out while sending test email. Make sure the email server is running and accepting connections.",
     });
 
     let errorMessage = result.status === 'error' ? result.error.message : undefined;

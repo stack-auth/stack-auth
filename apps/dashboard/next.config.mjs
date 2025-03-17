@@ -28,6 +28,9 @@ const withConfiguredSentryConfig = (nextConfig) =>
 
       org: "stackframe-pw",
       project: "stack-server",
+
+      widenClientFileUpload: true,
+      telemetry: false,
     },
     {
       // For all available options, see:

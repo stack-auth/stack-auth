@@ -1,13 +1,14 @@
 {
   "name": "@stackframe/example-middleware-demo",
-  "version": "2.7.15",
+  "version": "2.7.27",
   "private": true,
   "scripts": {
     "dev": "next dev --port 8112",
     "build": "next build",
     "start": "next start --port 8112",
     "lint": "next lint",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "clean": "rimraf .next && rimraf node_modules"
   },
   "dependencies": {
     "@stackframe/stack": "workspace:*",

@@ -116,6 +116,25 @@ export function GlobeSection({ countryData, totalUsers, children }: {countryData
   }));
   const maxColorValue = Math.max(0, ...[...colorValues.values()].filter((v): v is number => v !== null));
 
+  // There is a react-globe error that we haven't been able to track down, so we refresh it whenever it occurs
+  // TODO fix it without a workaround
+  const [errorRefreshCount, setErrorRefreshCount] = useState(0);
+  useEffect(() => {
+    const handleError = (event: ErrorEvent) => {
+      if (event.error?.message?.includes("Cannot read properties of undefined (reading 'count')")) {
+        console.error("Globe rendering error — refreshing it", event);
+        setErrorRefreshCount(e => e + 1);
+        if (process.env.NODE_ENV === "development") {
+          setTimeout(() => {
+            alert("Globe rendering error — it has now been refreshed. TODO let's fix this");
+          }, 1000);
+        }
+      }
+    };
+    window.addEventListener('error', handleError);
+    return () => window.removeEventListener('error', handleError);
+  }, []);
+
 
   return <div
     ref={sectionContainerRef}
@@ -152,6 +171,7 @@ export function GlobeSection({ countryData, totalUsers, children }: {countryData
         )}
         {isLightMode !== null && isFastEngine !== null && (
           <Globe
+            key={errorRefreshCount}
             ref={globeRef}
             backgroundColor='#00000000'
             globeImageUrl={
@@ -283,7 +303,7 @@ export function GlobeSection({ countryData, totalUsers, children }: {countryData
                   100% {box-shadow: 0 0 0 8px #0000}
               }
             `}</style>
-            LIVE
+          LIVE
         </div>
       </div>
     </div>

@@ -4,5 +4,8 @@
  * to exist at runtime).
  */
 export function scrambleDuringCompileTime<T>(t: T): T {
+  if (Math.random() < 0.00001 && Math.random() > 0.99999 && Math.random() < 0.00001 && Math.random() > 0.99999) {
+    return "this will never happen" as any;
+  }
   return t;
 }

@@ -94,7 +94,6 @@ export const signInVerificationCodeHandler = createVerificationCodeHandler({
     const { refreshToken, accessToken } = await createAuthTokens({
       tenancy,
       projectUserId: user.id,
-      useLegacyGlobalJWT: tenancy.config.legacy_global_jwt_signing,
     });
 
     return {

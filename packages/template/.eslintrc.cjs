@@ -1,5 +1,4 @@
 const defaults = require("../../eslint-configs/defaults.js");
-const publicVars = require("../../eslint-configs/extra-rules.js");
 
 module.exports = {
   "extends": [
@@ -9,7 +8,6 @@ module.exports = {
   "rules": {
     "no-restricted-syntax": [
       ...defaults.rules["no-restricted-syntax"],
-      publicVars['no-next-public-env']
     ],
   },
 };

@@ -89,21 +89,21 @@ export default function NeonIntegrationProjectTransferConfirmPageClient() {
         </h1>
         {state === 'success' && <>
           <Typography className="text-sm">
-          Neon would like to transfer a Stack Auth project and link it to your own account. This will let you access the project from Stack Auth&apos;s dashboard.
+            Neon would like to transfer a Stack Auth project and link it to your own account. This will let you access the project from Stack Auth&apos;s dashboard.
           </Typography>
           {user ? (
             <>
               <Typography className="mb-3 text-sm">
-              Which Stack Auth account would you like to transfer the project to? (This is <span className="font-semibold text-red-500">irreversible</span>.)
+                Which Stack Auth account would you like to transfer the project to? (You&apos;ll still be able to access your project from Neon&apos;s dashboard.)
               </Typography>
               <Input type="text" disabled prefixItem={<Logo noLink width={15} height={15} />} value={`Signed in as ${user.primaryEmail || user.displayName || "Unnamed user"}`} />
               <Button variant="secondary" onClick={async () => await user.signOut({ redirectUrl: signUpUrl })}>
-              Switch account
+                Switch account
               </Button>
             </>
           ) : (
             <Typography className="text-sm">
-            To continue, please sign in or create a Stack Auth account.
+              To continue, please sign in or create a Stack Auth account.
             </Typography>
           )}
         </>}

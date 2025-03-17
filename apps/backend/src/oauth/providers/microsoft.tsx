@@ -14,12 +14,17 @@ export class MicrosoftProvider extends OAuthBaseProvider {
     clientSecret: string,
     microsoftTenantId?: string,
   }) {
+    const tenantId = encodeURIComponent(options.microsoftTenantId || "consumers");
     return new MicrosoftProvider(...await OAuthBaseProvider.createConstructorArgs({
-      issuer: `https://login.microsoftonline.com${"/" + options.microsoftTenantId || ""}`,
-      authorizationEndpoint: `https://login.microsoftonline.com/${options.microsoftTenantId || 'consumers'}/oauth2/v2.0/authorize`,
-      tokenEndpoint: `https://login.microsoftonline.com/${options.microsoftTenantId || 'consumers'}/oauth2/v2.0/token`,
+      // Note that it is intentional to have tenantid instead of tenantId, also intentional to not be a template literal. This will be replaced by the openid-client library.
+      // The library only supports azure tenancy with the discovery endpoint but not the manual setup, so we patch it to enable the tenantid replacement.
+      issuer: "https://login.microsoftonline.com/{tenantid}/v2.0",
+      authorizationEndpoint: `https://login.microsoftonline.com/${tenantId}/oauth2/v2.0/authorize`,
+      tokenEndpoint: `https://login.microsoftonline.com/${tenantId}/oauth2/v2.0/token`,
       redirectUri: getEnvVariable("NEXT_PUBLIC_STACK_API_URL") + "/api/v1/auth/oauth/callback/microsoft",
-      baseScope: "User.Read",
+      baseScope: "User.Read openid",
+      openid: true,
+      jwksUri: `https://login.microsoftonline.com/${tenantId}/discovery/v2.0/keys`,
       ...options,
     }));
   }

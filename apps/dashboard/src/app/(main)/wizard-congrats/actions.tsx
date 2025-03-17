@@ -8,10 +8,10 @@ export default function Actions() {
   return (
     <div className="flex gap-2 justify-center">
       <Button variant="secondary" onClick={() => { window.open("https://docs.stack-auth.com/"); }}>
-      Visit docs
+        Visit docs
       </Button>
       <Button onClick={() => { router.push("/projects"); }}>
-      Continue
+        Continue
       </Button>
     </div>
   );

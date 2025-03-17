@@ -17,16 +17,17 @@ model Project {
   updatedAt DateTime @updatedAt
 
   displayName      String
-  description      String?                @default("")
-  configId         String                 @db.Uuid
-  config           ProjectConfig          @relation(fields: [configId], references: [id], onDelete: Cascade)
+  description      String        @default("")
+  configId         String        @db.Uuid
+  config           ProjectConfig @relation(fields: [configId], references: [id], onDelete: Cascade)
   isProductionMode Boolean
+  userCount        Int           @default(0)
 
-  apiKeySets        ApiKeySet[]
-  projectUsers   ProjectUser[]
+  apiKeySets             ApiKeySet[]
+  projectUsers           ProjectUser[]
   neonProvisionedProject NeonProvisionedProject?
-  tenancies Tenancy[]
-  verificationCodes VerificationCode[]
+  tenancies              Tenancy[]
+  verificationCodes      VerificationCode[]
 }
 
 model ProjectConfig {
@@ -52,6 +53,13 @@ model ProjectConfig {
   permissions                        Permission[]
   authMethodConfigs                  AuthMethodConfig[]
   connectedAccountConfigs            ConnectedAccountConfig[]
+  oauthAccountMergeStrategy          OAuthAccountMergeStrategy @default(LINK_METHOD)
+}
+
+enum OAuthAccountMergeStrategy {
+  LINK_METHOD
+  RAISE_ERROR
+  ALLOW_DUPLICATES
 }
 
 model Tenancy {
@@ -61,12 +69,12 @@ model Tenancy {
   updatedAt DateTime @updatedAt
 
   projectId String
-  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
 
   branchId String
 
   // If organizationId is NULL, hasNoOrganization must be TRUE. If organizationId is not NULL, hasNoOrganization must be NULL.
-  organizationId String? @db.Uuid
+  organizationId    String?      @db.Uuid
   hasNoOrganization BooleanTrue?
 
   teams             Team[]             @relation("TenancyTeams")
@@ -74,6 +82,8 @@ model Tenancy {
   authMethods       AuthMethod[]       @relation("TenancyAuthMethods")
   contactChannels   ContactChannel[]   @relation("TenancyContactChannels")
   connectedAccounts ConnectedAccount[] @relation("TenancyConnectedAccounts")
+  SentEmail         SentEmail[]
+  cliAuthAttempts   CliAuthAttempt[]
 
   @@unique([projectId, branchId, organizationId])
   @@unique([projectId, branchId, hasNoOrganization])
@@ -151,7 +161,7 @@ model TeamMember {
 
 model TeamMemberDirectPermission {
   id             String  @id @default(uuid()) @db.Uuid
-  tenancyId      String @db.Uuid
+  tenancyId      String  @db.Uuid
   projectUserId  String  @db.Uuid
   teamId         String  @db.Uuid
   permissionDbId String? @db.Uuid
@@ -185,10 +195,10 @@ model Permission {
   description String?
 
   // The scope of the permission. If projectConfigId is set, may be GLOBAL or TEAM; if teamId is set, must be TEAM.
-  scope         PermissionScope
+  scope PermissionScope
 
-  projectConfig ProjectConfig?  @relation(fields: [projectConfigId], references: [id], onDelete: Cascade)
-  team          Team?           @relation(fields: [tenancyId, teamId], references: [tenancyId, teamId], onDelete: Cascade)
+  projectConfig ProjectConfig? @relation(fields: [projectConfigId], references: [id], onDelete: Cascade)
+  team          Team?          @relation(fields: [tenancyId, teamId], references: [tenancyId, teamId], onDelete: Cascade)
 
   parentEdges                PermissionEdge[]             @relation("ChildPermission")
   childEdges                 PermissionEdge[]             @relation("ParentPermission")
@@ -263,15 +273,14 @@ model ProjectUser {
   connectedAccounts             ConnectedAccount[]
 
   // some backlinks for the unique constraints on some auth methods
-  passwordAuthMethod            PasswordAuthMethod[]
-  passkeyAuthMethod             PasskeyAuthMethod[]
-  otpAuthMethod                 OtpAuthMethod[]
-  oauthAuthMethod               OAuthAuthMethod[]
+  passwordAuthMethod PasswordAuthMethod[]
+  passkeyAuthMethod  PasskeyAuthMethod[]
+  otpAuthMethod      OtpAuthMethod[]
+  oauthAuthMethod    OAuthAuthMethod[]
+  SentEmail          SentEmail[]
 
   @@id([tenancyId, projectUserId])
-
   @@unique([mirroredProjectId, mirroredBranchId, projectUserId])
-
   // indices for sorting and filtering
   @@index([tenancyId, displayName(sort: Asc)], name: "ProjectUser_displayName_asc")
   @@index([tenancyId, displayName(sort: Desc)], name: "ProjectUser_displayName_desc")
@@ -579,13 +588,12 @@ model PasskeyAuthMethod {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  credentialId String
-  publicKey String
-  userHandle String 
-  transports String[]
+  credentialId         String
+  publicKey            String
+  userHandle           String
+  transports           String[]
   credentialDeviceType String
-  counter Int
-
+  counter              Int
 
   authMethod  AuthMethod  @relation(fields: [tenancyId, authMethodId], references: [tenancyId, id], onDelete: Cascade)
   projectUser ProjectUser @relation(fields: [tenancyId, projectUserId], references: [tenancyId, projectUserId], onDelete: Cascade)
@@ -675,18 +683,20 @@ model OAuthOuterInfo {
 }
 
 model ProjectUserRefreshToken {
-  tenancyId     String @db.Uuid
-  projectUserId String @db.Uuid
+  id            String   @default(uuid()) @db.Uuid
+  tenancyId     String   @db.Uuid
+  projectUserId String   @db.Uuid
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  refreshToken String    @unique
-  expiresAt    DateTime?
+  refreshToken    String    @unique
+  expiresAt       DateTime?
+  isImpersonation Boolean   @default(false)
 
   projectUser ProjectUser @relation(fields: [tenancyId, projectUserId], references: [tenancyId, projectUserId], onDelete: Cascade)
 
-  @@id([tenancyId, refreshToken])
+  @@id([tenancyId, id])
 }
 
 model ProjectUserAuthorizationCode {
@@ -716,7 +726,7 @@ model VerificationCode {
   branchId  String
   id        String @default(uuid()) @db.Uuid
 
-  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -825,19 +835,19 @@ model StandardEmailServiceConfig {
 //#region IdP
 model IdPAccountToCdfcResultMapping {
   idpId String
-  id String
+  id    String
 
-  idpAccountId String @db.Uuid @unique
-  cdfcResult Json
+  idpAccountId String @unique @db.Uuid
+  cdfcResult   Json
 
   @@id([idpId, id])
 }
 
 model ProjectWrapperCodes {
   idpId String
-  id String @default(uuid()) @db.Uuid
+  id    String @default(uuid()) @db.Uuid
 
-  interactionUid String
+  interactionUid    String
   authorizationCode String @unique
 
   cdfcResult Json
@@ -848,30 +858,32 @@ model ProjectWrapperCodes {
 model IdPAdapterData {
   idpId String
   model String
-  id String
+  id    String
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  payload Json
+  payload   Json
   expiresAt DateTime
 
   @@id([idpId, model, id])
   @@index([payload(ops: JsonbPathOps)], type: Gin)
   @@index([expiresAt])
 }
+
 //#endregion
 
 //#region Neon integration
 model NeonProvisionedProject {
-  projectId String @id
-  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  projectId String  @id
+  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   neonClientId String
 }
+
 //#endregion
 
 //#region Events
@@ -896,10 +908,10 @@ model Event {
   // This is different from a request IP. See: apps/backend/src/lib/end-users.tsx
 
   // Note that the IP may have been spoofed, unless isEndUserIpInfoGuessTrusted is true
-  endUserIpInfoGuessId String? @db.Uuid
-  endUserIpInfoGuess EventIpInfo? @relation("EventIpInfo", fields: [endUserIpInfoGuessId], references: [id])
+  endUserIpInfoGuessId        String?      @db.Uuid
+  endUserIpInfoGuess          EventIpInfo? @relation("EventIpInfo", fields: [endUserIpInfoGuessId], references: [id])
   // If true, then endUserIpInfoGuess is not spoofed (might still be behind VPNs/proxies). If false, then the values may be spoofed.
-  isEndUserIpInfoGuessTrusted Boolean @default(false)
+  isEndUserIpInfoGuessTrusted Boolean      @default(false)
   // =============================== END END USER PROPERTIES ===============================
 
   @@index([data(ops: JsonbPathOps)], type: Gin)
@@ -911,11 +923,11 @@ model EventIpInfo {
 
   ip String
 
-  countryCode String?
-  regionCode String?
-  cityName String?
-  latitude Float?
-  longitude Float?
+  countryCode  String?
+  regionCode   String?
+  cityName     String?
+  latitude     Float?
+  longitude    Float?
   tzIdentifier String?
 
   createdAt DateTime @default(now())
@@ -925,3 +937,43 @@ model EventIpInfo {
 }
 
 //#endregion
+
+model SentEmail {
+  tenancyId String @db.Uuid
+
+  id String @default(uuid()) @db.Uuid
+
+  userId String? @db.Uuid
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  senderConfig Json
+  to           String[]
+  subject      String
+  html         String?
+  text         String?
+
+  error   Json?
+  tenancy Tenancy      @relation(fields: [tenancyId], references: [id], onDelete: Cascade)
+  user    ProjectUser? @relation(fields: [tenancyId, userId], references: [tenancyId, projectUserId], onDelete: Cascade)
+
+  @@id([tenancyId, id])
+}
+
+model CliAuthAttempt {
+  tenancyId    String   @db.Uuid
+  tenancy      Tenancy  @relation(fields: [tenancyId], references: [id], onDelete: Cascade)
+  
+  id           String   @default(uuid()) @db.Uuid
+  pollingCode  String   @unique
+  loginCode    String   @unique
+  refreshToken String?
+  expiresAt    DateTime
+  usedAt       DateTime?
+  
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  
+  @@id([tenancyId, id])
+}

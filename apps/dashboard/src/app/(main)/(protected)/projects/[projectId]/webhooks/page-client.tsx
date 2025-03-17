@@ -4,8 +4,8 @@ import { FormDialog, SmartFormDialog } from "@/components/form-dialog";
 import { InputField } from "@/components/form-fields";
 import { useRouter } from "@/components/router";
 import { SettingCard } from "@/components/settings";
+import { getPublicEnvVar } from '@/lib/env';
 import { urlSchema } from "@stackframe/stack-shared/dist/schema-fields";
-import { getPublicEnvVar } from '@stackframe/stack-shared/dist/utils/env';
 import { ActionCell, ActionDialog, Alert, Button, Table, TableBody, TableCell, TableHead, TableHeader, TableRow, Typography } from "@stackframe/stack-ui";
 import { useState } from "react";
 import { SvixProvider, useEndpoints, useSvix } from "svix-react";
@@ -27,7 +27,7 @@ function CreateDialog(props: {
   const { svix, appId } = useSvix();
 
   const formSchema = yup.object({
-    url: urlSchema.defined().label("URL (starts with https:// or http://)"),
+    url: urlSchema.defined().label("URL"),
     description: yup.string().label("Description"),
   });
 
@@ -154,7 +154,6 @@ function ActionMenu(props: { endpoint: Endpoint, updateFn: () => void }) {
 
 function Endpoints(props: { updateFn: () => void }) {
   const endpoints = getSvixResult(useEndpoints({ limit: 100 }));
-  let content = null;
 
   if (!endpoints.loaded) {
     return endpoints.rendered;

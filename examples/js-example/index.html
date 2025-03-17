@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Stack Auth JS Examples</title>
+</head>
+<body>
+  <h1>Stack Auth JS Examples</h1>
+  
+  <div id="authOptions">
+    <p>Choose an authentication example:</p>
+    <ul>
+      <li><a href="/password-sign-in">Sign in with Password</a></li>
+      <li><a href="/password-sign-up">Create Account with Password</a></li>
+      <li><a href="/otp-sign-in">Sign in with OTP Code</a></li>
+      <li><a href="/oauth">Sign in with Google</a></li>
+    </ul>
+  </div>
+
+  <div id="userInfo" style="display: none;">
+    <h2>User Information</h2>
+    <p>Email: <span id="userEmail"></span></p>
+    <button id="signOut">Sign Out</button>
+  </div>
+
+  <script type="module" src="/index-script.ts"></script>
+</body>
+</html>
+

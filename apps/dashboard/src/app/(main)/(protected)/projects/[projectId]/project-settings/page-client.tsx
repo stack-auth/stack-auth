@@ -1,8 +1,8 @@
 "use client";
-import { InputField, SwitchField } from "@/components/form-fields";
+import { InputField } from "@/components/form-fields";
 import { StyledLink } from "@/components/link";
 import { FormSettingCard, SettingCard, SettingSwitch, SettingText } from "@/components/settings";
-import { getPublicEnvVar } from '@stackframe/stack-shared/dist/utils/env';
+import { getPublicEnvVar } from '@/lib/env';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger, ActionDialog, Alert, Button, Typography } from "@stackframe/stack-ui";
 import * as yup from "yup";
 import { PageLayout } from "../page-layout";
@@ -11,10 +11,6 @@ import { useAdminApp } from "../use-admin-app";
 const projectInformationSchema = yup.object().shape({
   displayName: yup.string().defined(),
   description: yup.string(),
-});
-
-const projectLegacyJwtSigningSchema = yup.object().shape({
-  legacyGlobalJwtSigning: yup.boolean(),
 });
 
 export default function PageClient() {
@@ -101,30 +97,6 @@ export default function PageClient() {
           </Alert>
         )}
       </SettingCard>
-
-      {project.config.legacyGlobalJwtSigning && <FormSettingCard
-        title="Legacy JWT Signing"
-        defaultValues={{
-          legacyGlobalJwtSigning: project.config.legacyGlobalJwtSigning,
-        }}
-        formSchema={projectLegacyJwtSigningSchema}
-        onSubmit={async (values) => {
-          await project.update({ config: { legacyGlobalJwtSigning: false } });
-        }}
-        render={(form) => (
-          <>
-            <SwitchField
-              label="Use legacy JWT signing"
-              control={form.control}
-              name="legacyGlobalJwtSigning"
-            />
-
-            <Typography variant="secondary" type="footnote">
-              {`If enabled, this uses the legacy JWT signing method with JWKs at /.well-known/jwks.json. It is recommended to disable this and move to /api/v1/projects/<project-id>/.well-known/jwks.json.`}
-            </Typography>
-          </>
-        )}
-      />}
 
       <SettingCard
         title="Danger Zone"

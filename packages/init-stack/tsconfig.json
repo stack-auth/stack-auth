@@ -1,0 +1,22 @@
+{
+  "compilerOptions": {
+    "outDir": "dist",
+    "rootDir": "src",
+    "declaration": true,
+    "target": "ES2021",
+    "lib": ["ES2021", "ES2022.Error"],
+    "module": "ES2020",
+    "moduleResolution": "Bundler",
+    "esModuleInterop": true,
+    "noErrorTruncation": true,
+    "skipLibCheck": true,
+    "strict": true,
+    "sourceMap": true,
+    "declarationMap": true,
+    "types": [
+      "vitest/importMeta"
+    ]
+  },
+  "include": ["src/**/*"],
+  "exclude": ["node_modules", "dist", "test-run-output"]
+}

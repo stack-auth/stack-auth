@@ -14,6 +14,9 @@ const withConfiguredSentryConfig = (nextConfig) =>
 
       org: process.env.SENTRY_ORG,
       project: process.env.SENTRY_PROJECT,
+
+      widenClientFileUpload: true,
+      telemetry: false,
     },
     {
       // For all available options, see:

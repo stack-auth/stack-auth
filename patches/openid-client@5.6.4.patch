@@ -1,0 +1,13 @@
+diff --git a/lib/issuer.js b/lib/issuer.js
+index 3329e889fd3e3e8ddb3b0482675fe9610c675311..6cc55b1183b4fcff0306a78521b4daff35bec863 100644
+--- a/lib/issuer.js
++++ b/lib/issuer.js
+@@ -31,7 +31,7 @@ const ISSUER_DEFAULTS = {
+ class Issuer {
+   #metadata;
+   constructor(meta = {}) {
+-    const aadIssValidation = meta[AAD_MULTITENANT];
++    const aadIssValidation = true;
+     delete meta[AAD_MULTITENANT];
+     ['introspection', 'revocation'].forEach((endpoint) => {
+       // if intro/revocation endpoint auth specific meta is missing use the token ones if they

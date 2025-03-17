@@ -1,13 +1,12 @@
 "use client";
 import { FormDialog } from "@/components/form-dialog";
 import { InputField, SwitchField } from "@/components/form-fields";
-import { SettingIconButton, SettingSwitch } from "@/components/settings";
-import { getPublicEnvVar } from '@stackframe/stack-shared/dist/utils/env';
+import { getPublicEnvVar } from '@/lib/env';
 import { AdminProject } from "@stackframe/stack";
 import { yupBoolean, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
 import { sharedProviders } from "@stackframe/stack-shared/dist/utils/oauth";
-import { runAsynchronously } from "@stackframe/stack-shared/dist/utils/promises";
-import { ActionDialog, Badge, InlineCode, Label, SimpleTooltip, Typography } from "@stackframe/stack-ui";
+import { ActionDialog, Badge, BrandIcons, InlineCode, Label, SimpleTooltip, Typography } from "@stackframe/stack-ui";
+import clsx from "clsx";
 import { useState } from "react";
 import * as yup from "yup";
 
@@ -160,7 +159,7 @@ export function ProviderSettingDialog(props: Props & { open: boolean, onClose: (
 export function TurnOffProviderDialog(props: {
   open: boolean,
   onClose: () => void,
-  onConfirm: () => void,
+  onConfirm: () => Promise<void>,
   providerId: string,
 }) {
   return (
@@ -172,7 +171,7 @@ export function TurnOffProviderDialog(props: {
       okButton={{
         label: `Disable ${toTitle(props.providerId)}`,
         onClick: async () => {
-          props.onConfirm();
+          await props.onConfirm();
         },
       }}
       cancelButton
@@ -202,35 +201,33 @@ export function ProviderSettingSwitch(props: Props) {
 
   return (
     <>
-      <SettingSwitch
-        label={
-          <div className="flex items-center gap-2">
-            {toTitle(props.id)}
-            {isShared && enabled &&
-              <SimpleTooltip tooltip={"Shared keys are automatically created by Stack, but show Stack's logo on the OAuth sign-in page.\n\nYou should replace these before you go into production."}>
-                <Badge variant="secondary">Shared keys</Badge>
-              </SimpleTooltip>
-            }
-          </div>
+      <div className={clsx("flex flex-col items-center justify-center gap-2 py-2 border border-1 rounded-lg p-2 w-[120px] h-[120px] cursor-pointer transition-all",
+        enabled ? "border-white" : "border-gray-800 hover:border-gray-400"
+      )}
+      onClick={() => {
+        if (enabled) {
+          setTurnOffProviderDialogOpen(true);
+        } else {
+          setProviderSettingDialogOpen(true);
         }
-        checked={enabled}
-        onCheckedChange={async (checked) => {
-          if (!checked) {
-            setTurnOffProviderDialogOpen(true);
-            return;
-          } else {
-            setProviderSettingDialogOpen(true);
-          }
-        }}
-        actions={<SettingIconButton onClick={() => setProviderSettingDialogOpen(true)} />}
-        onlyShowActionsWhenChecked
-      />
+      }}
+      >
+        <BrandIcons.Mapping iconSize={28} provider={props.id} />
+        <span className="text-sm">{toTitle(props.id)}</span>
+        {isShared && enabled &&
+          <SimpleTooltip tooltip={"Shared keys are automatically created by Stack, but show Stack's logo on the OAuth sign-in page.\n\nYou should replace these before you go into production."}>
+            <Badge variant="secondary">Shared keys</Badge>
+          </SimpleTooltip>
+        }
+      </div>
 
       <TurnOffProviderDialog
         open={TurnOffProviderDialogOpen}
         onClose={() => setTurnOffProviderDialogOpen(false)}
         providerId={props.id}
-        onConfirm={() => runAsynchronously(updateProvider(false))}
+        onConfirm={async () => {
+          await updateProvider(false);
+        }}
       />
 
       <ProviderSettingDialog {...props} open={ProviderSettingDialogOpen} onClose={() => setProviderSettingDialogOpen(false)} />

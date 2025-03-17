@@ -1,5 +1,5 @@
 'use client';
-import { getPublicEnvVar } from '@stackframe/stack-shared/dist/utils/env';
+import { getPublicEnvVar } from '@/lib/env';
 import { useStackApp, useUser } from '@stackframe/stack';
 import posthog from 'posthog-js';
 import { PostHogProvider } from 'posthog-js/react';

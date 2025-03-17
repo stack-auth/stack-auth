@@ -1,16 +1,16 @@
 # Stack Auth: Open-source Clerk/Auth0 alternative
 
-## [📘 Docs](https://docs.stack-auth.com) | [☁️ Hosted Version](https://stack-auth.com/) | [✨ Demo](https://demo.stack-auth.com/) | [🎮 Discord](https://discord.stack-auth.com) | [GitHub](https://github.com/stack-auth/stack)
+## [📘 Docs](https://docs.stack-auth.com) | [☁️ Hosted Version](https://stack-auth.com/) | [✨ Demo](https://demo.stack-auth.com/) | [🎮 Discord](https://discord.stack-auth.com) | [GitHub](https://github.com/stack-auth/stack-auth)
 
 Stack Auth is a managed user authentication solution. It is developer-friendly and fully open-source (licensed under MIT and AGPL).
 
-Stack gets you started in just five minutes, after which you'll be ready to use all of its features as you grow your project. Our managed service is completely optional and you can export your user data and self-host, for free, at any time.
+Stack Auth gets you started in just five minutes, after which you'll be ready to use all of its features as you grow your project. Our managed service is completely optional and you can export your user data and self-host, for free, at any time.
 
 We support Next.js frontends, along with any backend that can use our [REST API](https://docs.stack-auth.com/rest-api/overview). Check out our [setup guide](https://docs.stack-auth.com/getting-started/setup) to get started.
 
 ## 📦 Installation & Setup
 
-1. Run Stack’s installation wizard with the following command:
+1. Run Stack Auth's installation wizard with the following command:
     ```bash
     npx @stackframe/init-stack@latest
     ```

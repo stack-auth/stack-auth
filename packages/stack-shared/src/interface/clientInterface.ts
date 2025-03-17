@@ -1,6 +1,5 @@
 import * as oauth from 'oauth4webapi';
 
-import { cookies } from '@stackframe/stack-sc';
 import { KnownError, KnownErrors } from '../known-errors';
 import { AccessToken, InternalSession, RefreshToken } from '../sessions';
 import { generateSecureRandomString } from '../utils/crypto';
@@ -17,6 +16,7 @@ import { ContactChannelsCrud } from './crud/contact-channels';
 import { CurrentUserCrud } from './crud/current-user';
 import { ConnectedAccountAccessTokenCrud } from './crud/oauth';
 import { InternalProjectsCrud, ProjectsCrud } from './crud/projects';
+import { SessionsCrud } from './crud/sessions';
 import { TeamInvitationCrud } from './crud/team-invitation';
 import { TeamMemberProfilesCrud } from './crud/team-member-profiles';
 import { TeamPermissionsCrud } from './crud/team-permissions';
@@ -26,7 +26,9 @@ export type ClientInterfaceOptions = {
   clientVersion: string,
   // This is a function instead of a string because it might be different based on the environment (for example client vs server)
   getBaseUrl: () => string,
+  extraRequestHeaders: Record<string, string>,
   projectId: string,
+  prepareRequest?: () => Promise<void>,
 } & ({
   publishableClientKey: string,
 } | {
@@ -252,7 +254,7 @@ export class StackClientInterface {
     let adminTokenObj = adminSession ? await adminSession.getOrFetchLikelyValidTokens(20_000) : null;
 
     // all requests should be dynamic to prevent Next.js caching
-    await cookies?.();
+    await this.options.prepareRequest?.();
 
     let url = this.getApiUrl() + path;
     if (url.endsWith("/")) {
@@ -299,6 +301,7 @@ export class StackClientInterface {
          * the case (I haven't actually tested.)
          */
         "X-Stack-Random-Nonce": generateSecureRandomString(),
+        ...this.options.extraRequestHeaders,
         ...options.headers,
       },
       /**
@@ -373,7 +376,7 @@ export class StackClientInterface {
 
       if (res.status === 508 && error.includes("INFINITE_LOOP_DETECTED")) {
         // Some Vercel deployments seem to have an odd infinite loop bug. In that case, retry.
-        // See: https://github.com/stack-auth/stack/issues/319
+        // See: https://github.com/stack-auth/stack-auth/issues/319
         return Result.error(errorObj);
       }
 
@@ -1336,6 +1339,33 @@ export class StackClientInterface {
     );
   }
 
+  async deleteSession(
+    sessionId: string,
+    session: InternalSession,
+  ): Promise<void> {
+    await this.sendClientRequest(
+      `/auth/sessions/${sessionId}?user_id=me`,
+      {
+        method: "DELETE",
+      },
+      session,
+    );
+  }
+
+  async listSessions(
+    session: InternalSession,
+  ): Promise<SessionsCrud['Client']['List']> {
+    const response = await this.sendClientRequest(
+      "/auth/sessions?user_id=me",
+      {
+        method: "GET",
+      },
+      session,
+    );
+    return await response.json();
+  }
+
+
   async listClientContactChannels(
     session: InternalSession,
   ): Promise<ContactChannelsCrud['Client']['Read'][]> {
@@ -1366,6 +1396,33 @@ export class StackClientInterface {
       },
       session,
       [KnownErrors.EmailAlreadyVerified]
+    );
+
+    if (responseOrError.status === "error") {
+      return Result.error(responseOrError.error);
+    }
+    return Result.ok(undefined);
+  }
+
+  async cliLogin(
+    loginCode: string,
+    refreshToken: string,
+    session: InternalSession
+  ): Promise<Result<undefined, KnownErrors["SchemaError"]>> {
+    const responseOrError = await this.sendClientRequestAndCatchKnownError(
+      "/auth/cli/complete",
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          login_code: loginCode,
+          refresh_token: refreshToken,
+        }),
+      },
+      session,
+      [KnownErrors.SchemaError]
     );
 
     if (responseOrError.status === "error") {

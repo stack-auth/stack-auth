@@ -1,9 +1,9 @@
 import { createAuthTokens } from "@/lib/tokens";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
+import { runAsynchronouslyAndWaitUntil } from "@/utils/vercel";
 import { KnownErrors } from "@stackframe/stack-shared";
 import { getPasswordError } from "@stackframe/stack-shared/dist/helpers/password";
 import { adaptSchema, clientOrHigherAuthTypeSchema, emailVerificationCallbackUrlSchema, passwordSchema, signInEmailSchema, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
-import { captureError } from "@stackframe/stack-shared/dist/utils/errors";
 import { contactChannelVerificationCodeHandler } from "../../../contact-channels/verify/verification-code-handler";
 import { usersCrudHandlers } from "../../../users/crud";
 import { createMfaRequiredError } from "../../mfa/sign-in/verification-code-handler";
@@ -59,7 +59,7 @@ export const POST = createSmartRouteHandler({
       allowedErrorTypes: [KnownErrors.UserEmailAlreadyExists],
     });
 
-    try {
+    runAsynchronouslyAndWaitUntil((async () => {
       await contactChannelVerificationCodeHandler.sendCode({
         tenancy,
         data: {
@@ -72,16 +72,7 @@ export const POST = createSmartRouteHandler({
       }, {
         user: createdUser,
       });
-    } catch (error) {
-      if (error instanceof KnownErrors.RedirectUrlNotWhitelisted) {
-        throw error;
-      } else {
-        // we can ignore it because it's not critical, but we should log it
-        // a common error is that the developer's specified email service is down
-        // later, we should let the user know instead of logging this to Sentry
-        captureError("send-sign-up-verification-code", error);
-      }
-    }
+    })());
 
     if (createdUser.requires_totp_mfa) {
       throw await createMfaRequiredError({
@@ -95,7 +86,6 @@ export const POST = createSmartRouteHandler({
     const { refreshToken, accessToken } = await createAuthTokens({
       tenancy,
       projectUserId: createdUser.id,
-      useLegacyGlobalJWT: tenancy.config.legacy_global_jwt_signing,
     });
 
     return {

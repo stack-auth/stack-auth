@@ -3,5 +3,8 @@
     "**/*": {
       "maxDuration": 300
     }
+  },
+  "github": {
+    "autoJobCancelation": false
   }
 }

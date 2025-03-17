@@ -1,9 +1,12 @@
 import { prismaClient } from '@/prisma-client';
+import { traceSpan } from '@/utils/telemetry';
+import { Prisma } from '@prisma/client';
 import { KnownErrors } from '@stackframe/stack-shared';
 import { yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
 import { generateSecureRandomString } from '@stackframe/stack-shared/dist/utils/crypto';
 import { getEnvVariable } from '@stackframe/stack-shared/dist/utils/env';
-import { legacySignGlobalJWT, legacyVerifyGlobalJWT, signJWT, verifyJWT } from '@stackframe/stack-shared/dist/utils/jwt';
+import { throwErr } from '@stackframe/stack-shared/dist/utils/errors';
+import { legacyVerifyGlobalJWT, signJWT, verifyJWT } from '@stackframe/stack-shared/dist/utils/jwt';
 import { Result } from '@stackframe/stack-shared/dist/utils/results';
 import * as jose from 'jose';
 import { JOSEError, JWTExpired } from 'jose/errors';
@@ -16,8 +19,11 @@ const accessTokenSchema = yupObject({
   projectId: yupString().defined(),
   userId: yupString().defined(),
   branchId: yupString().defined(),
+  // we make it optional to keep backwards compatibility with old tokens for a while
+  // TODO next-release
+  refreshTokenId: yupString().optional(),
   exp: yupNumber().defined(),
-});
+}).defined();
 
 export const oauthCookieSchema = yupObject({
   tenancyId: yupString().defined(),
@@ -40,92 +46,108 @@ export const oauthCookieSchema = yupObject({
 const jwtIssuer = "https://access-token.jwt-signature.stack-auth.com";
 
 export async function decodeAccessToken(accessToken: string) {
-  let payload: jose.JWTPayload;
-  let decoded: jose.JWTPayload | undefined;
-  try {
-    decoded = jose.decodeJwt(accessToken);
+  return await traceSpan("decoding access token", async (span) => {
+    let payload: jose.JWTPayload;
+    let decoded: jose.JWTPayload | undefined;
+    try {
+      decoded = jose.decodeJwt(accessToken);
 
-    if (!decoded.aud) {
-      payload = await legacyVerifyGlobalJWT(jwtIssuer, accessToken);
-    } else {
-      payload = await verifyJWT({
-        issuer: jwtIssuer,
-        jwt: accessToken,
-      });
+      if (!decoded.aud) {
+        payload = await legacyVerifyGlobalJWT(jwtIssuer, accessToken);
+      } else {
+        payload = await verifyJWT({
+          issuer: jwtIssuer,
+          jwt: accessToken,
+        });
+      }
+    } catch (error) {
+      if (error instanceof JWTExpired) {
+        return Result.error(new KnownErrors.AccessTokenExpired(decoded?.exp ? new Date(decoded.exp * 1000) : undefined));
+      } else if (error instanceof JOSEError) {
+        return Result.error(new KnownErrors.UnparsableAccessToken());
+      }
+      throw error;
     }
-  } catch (error) {
-    if (error instanceof JWTExpired) {
-      return Result.error(new KnownErrors.AccessTokenExpired(decoded?.exp ? new Date(decoded.exp * 1000) : undefined));
-    } else if (error instanceof JOSEError) {
-      return Result.error(new KnownErrors.UnparsableAccessToken());
-    }
-    throw error;
-  }
 
-  const result = await accessTokenSchema.validate({
-    projectId: payload.aud || payload.projectId,
-    userId: payload.sub,
-    branchId: payload.branchId ?? "main",  // TODO remove the main fallback once old tokens have expired
-    refreshTokenId: payload.refreshTokenId,
-    exp: payload.exp,
+    const result = await accessTokenSchema.validate({
+      projectId: payload.aud || payload.projectId,
+      userId: payload.sub,
+      branchId: payload.branchId ?? "main",  // TODO remove the main fallback once old tokens have expired
+      refreshTokenId: payload.refreshTokenId,
+      exp: payload.exp,
+    });
+
+    return Result.ok(result);
   });
-
-  return Result.ok(result);
 }
 
 export async function generateAccessToken(options: {
   tenancy: Tenancy,
   userId: string,
-  useLegacyGlobalJWT: boolean,
+  refreshTokenId: string,
 }) {
   await logEvent(
-    [SystemEventTypes.UserActivity],
+    [SystemEventTypes.SessionActivity],
     {
       projectId: options.tenancy.project.id,
       branchId: options.tenancy.branchId,
       userId: options.userId,
+      sessionId: options.refreshTokenId,
     }
   );
 
-  if (options.useLegacyGlobalJWT) {
-    return await legacySignGlobalJWT(
-      jwtIssuer,
-      { projectId: options.tenancy.project.id, sub: options.userId, branchId: options.tenancy.branchId },
-      getEnvVariable("STACK_ACCESS_TOKEN_EXPIRATION_TIME", "10min")
-    );
-  } else {
-    return await signJWT({
-      issuer: jwtIssuer,
-      audience: options.tenancy.project.id,
-      payload: { sub: options.userId, branchId: options.tenancy.branchId },
-      expirationTime: getEnvVariable("STACK_ACCESS_TOKEN_EXPIRATION_TIME", "10min"),
-    });
-  }
+  return await signJWT({
+    issuer: jwtIssuer,
+    audience: options.tenancy.project.id,
+    payload: {
+      sub: options.userId,
+      branchId: options.tenancy.branchId,
+      refreshTokenId: options.refreshTokenId,
+    },
+    expirationTime: getEnvVariable("STACK_ACCESS_TOKEN_EXPIRATION_TIME", "10min"),
+  });
 }
 
 export async function createAuthTokens(options: {
   tenancy: Tenancy,
   projectUserId: string,
-  useLegacyGlobalJWT: boolean,
   expiresAt?: Date,
+  isImpersonation?: boolean,
 }) {
   options.expiresAt ??= new Date(Date.now() + 1000 * 60 * 60 * 24 * 365);
+  options.isImpersonation ??= false;
 
   const refreshToken = generateSecureRandomString();
-  const accessToken = await generateAccessToken({
-    tenancy: options.tenancy,
-    userId: options.projectUserId,
-    useLegacyGlobalJWT: options.useLegacyGlobalJWT,
-  });
 
-  await prismaClient.projectUserRefreshToken.create({
-    data: {
-      tenancyId: options.tenancy.id,
-      projectUserId: options.projectUserId,
-      refreshToken: refreshToken,
-      expiresAt: options.expiresAt,
-    },
-  });
+  try {
+    const refreshTokenObj = await prismaClient.projectUserRefreshToken.create({
+      data: {
+        tenancyId: options.tenancy.id,
+        projectUserId: options.projectUserId,
+        refreshToken: refreshToken,
+        expiresAt: options.expiresAt,
+        isImpersonation: options.isImpersonation,
+      },
+    });
 
-  return { refreshToken, accessToken };
+    const accessToken = await generateAccessToken({
+      tenancy: options.tenancy,
+      userId: options.projectUserId,
+      refreshTokenId: refreshTokenObj.id,
+    });
+
+
+    return { refreshToken, accessToken };
+
+  } catch (error) {
+    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2003') {
+      throwErr(new Error(
+        `prisma.projectUserRefreshToken.create() failed for tenancyId ${options.tenancy.id} and projectUserId ${options.projectUserId}: ${error.message}`,
+        { cause: error }
+      ));
+    }
+    throw error;
+  }
+
+
 }

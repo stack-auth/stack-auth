@@ -79,8 +79,8 @@ it("creates and updates the basic project information of a project", async ({ ex
           "email_config": { "type": "shared" },
           "enabled_oauth_providers": [],
           "id": "<stripped UUID>",
-          "legacy_global_jwt_signing": false,
           "magic_link_enabled": false,
+          "oauth_account_merge_strategy": "link_method",
           "oauth_providers": [],
           "passkey_enabled": false,
           "sign_up_enabled": true,
@@ -124,8 +124,8 @@ it("updates the basic project configuration", async ({ expect }) => {
           "email_config": { "type": "shared" },
           "enabled_oauth_providers": [],
           "id": "<stripped UUID>",
-          "legacy_global_jwt_signing": false,
           "magic_link_enabled": true,
+          "oauth_account_merge_strategy": "link_method",
           "oauth_providers": [],
           "passkey_enabled": false,
           "sign_up_enabled": false,
@@ -174,8 +174,8 @@ it("updates the project domains configuration", async ({ expect }) => {
           "email_config": { "type": "shared" },
           "enabled_oauth_providers": [],
           "id": "<stripped UUID>",
-          "legacy_global_jwt_signing": false,
           "magic_link_enabled": false,
+          "oauth_account_merge_strategy": "link_method",
           "oauth_providers": [],
           "passkey_enabled": false,
           "sign_up_enabled": true,
@@ -230,8 +230,8 @@ it("updates the project domains configuration", async ({ expect }) => {
           "email_config": { "type": "shared" },
           "enabled_oauth_providers": [],
           "id": "<stripped UUID>",
-          "legacy_global_jwt_signing": false,
           "magic_link_enabled": false,
+          "oauth_account_merge_strategy": "link_method",
           "oauth_providers": [],
           "passkey_enabled": false,
           "sign_up_enabled": true,
@@ -304,8 +304,8 @@ it("should allow insecure HTTP connections if insecureHttp is true", async ({ ex
           "email_config": { "type": "shared" },
           "enabled_oauth_providers": [],
           "id": "<stripped UUID>",
-          "legacy_global_jwt_signing": false,
           "magic_link_enabled": false,
+          "oauth_account_merge_strategy": "link_method",
           "oauth_providers": [],
           "passkey_enabled": false,
           "sign_up_enabled": true,
@@ -397,8 +397,8 @@ it("updates the project email configuration", async ({ expect }) => {
           },
           "enabled_oauth_providers": [],
           "id": "<stripped UUID>",
-          "legacy_global_jwt_signing": false,
           "magic_link_enabled": false,
+          "oauth_account_merge_strategy": "link_method",
           "oauth_providers": [],
           "passkey_enabled": false,
           "sign_up_enabled": true,
@@ -452,8 +452,8 @@ it("updates the project email configuration", async ({ expect }) => {
           },
           "enabled_oauth_providers": [],
           "id": "<stripped UUID>",
-          "legacy_global_jwt_signing": false,
           "magic_link_enabled": false,
+          "oauth_account_merge_strategy": "link_method",
           "oauth_providers": [],
           "passkey_enabled": false,
           "sign_up_enabled": true,
@@ -493,8 +493,8 @@ it("updates the project email configuration", async ({ expect }) => {
           "email_config": { "type": "shared" },
           "enabled_oauth_providers": [],
           "id": "<stripped UUID>",
-          "legacy_global_jwt_signing": false,
           "magic_link_enabled": false,
+          "oauth_account_merge_strategy": "link_method",
           "oauth_providers": [],
           "passkey_enabled": false,
           "sign_up_enabled": true,
@@ -534,8 +534,8 @@ it("updates the project email configuration", async ({ expect }) => {
           "email_config": { "type": "shared" },
           "enabled_oauth_providers": [],
           "id": "<stripped UUID>",
-          "legacy_global_jwt_signing": false,
           "magic_link_enabled": false,
+          "oauth_account_merge_strategy": "link_method",
           "oauth_providers": [],
           "passkey_enabled": false,
           "sign_up_enabled": true,
@@ -589,8 +589,8 @@ it("updates the project email configuration", async ({ expect }) => {
           },
           "enabled_oauth_providers": [],
           "id": "<stripped UUID>",
-          "legacy_global_jwt_signing": false,
           "magic_link_enabled": false,
+          "oauth_account_merge_strategy": "link_method",
           "oauth_providers": [],
           "passkey_enabled": false,
           "sign_up_enabled": true,
@@ -752,8 +752,8 @@ it("updates the project oauth configuration", async ({ expect }) => {
           "email_config": { "type": "shared" },
           "enabled_oauth_providers": [{ "id": "google" }],
           "id": "<stripped UUID>",
-          "legacy_global_jwt_signing": false,
           "magic_link_enabled": false,
+          "oauth_account_merge_strategy": "link_method",
           "oauth_providers": [
             {
               "enabled": true,
@@ -801,8 +801,8 @@ it("updates the project oauth configuration", async ({ expect }) => {
           "email_config": { "type": "shared" },
           "enabled_oauth_providers": [{ "id": "google" }],
           "id": "<stripped UUID>",
-          "legacy_global_jwt_signing": false,
           "magic_link_enabled": false,
+          "oauth_account_merge_strategy": "link_method",
           "oauth_providers": [
             {
               "enabled": true,
@@ -852,8 +852,8 @@ it("updates the project oauth configuration", async ({ expect }) => {
           "email_config": { "type": "shared" },
           "enabled_oauth_providers": [{ "id": "google" }],
           "id": "<stripped UUID>",
-          "legacy_global_jwt_signing": false,
           "magic_link_enabled": false,
+          "oauth_account_merge_strategy": "link_method",
           "oauth_providers": [
             {
               "client_id": "client_id",
@@ -931,8 +931,8 @@ it("updates the project oauth configuration", async ({ expect }) => {
             { "id": "spotify" },
           ],
           "id": "<stripped UUID>",
-          "legacy_global_jwt_signing": false,
           "magic_link_enabled": false,
+          "oauth_account_merge_strategy": "link_method",
           "oauth_providers": [
             {
               "enabled": true,
@@ -992,8 +992,8 @@ it("updates the project oauth configuration", async ({ expect }) => {
           "email_config": { "type": "shared" },
           "enabled_oauth_providers": [{ "id": "spotify" }],
           "id": "<stripped UUID>",
-          "legacy_global_jwt_signing": false,
           "magic_link_enabled": false,
+          "oauth_account_merge_strategy": "link_method",
           "oauth_providers": [
             {
               "enabled": false,
@@ -1286,4 +1286,69 @@ it("has a correctly formatted JWKS endpoint", async ({ expect }) => {
       },
     ],
   });
+});
+
+
+it("should increment and decrement userCount when a user is added to a project", async ({ expect }) => {
+  const { adminAccessToken } = await Project.createAndSwitch({
+    config: {
+      magic_link_enabled: true,
+    }
+  });
+  const initialProjectResponse = await niceBackendFetch("/api/v1/projects/current", { accessType: "admin" });
+  expect(initialProjectResponse.status).toBe(200);
+  expect(initialProjectResponse.body.user_count).toBe(0);
+
+
+  // Create a new user in the project
+  await Auth.Password.signUpWithEmail();
+
+  // Check that the userCount has been incremented
+  const updatedProjectResponse = await niceBackendFetch("/api/v1/projects/current", { accessType: "admin" });
+  expect(updatedProjectResponse.status).toBe(200);
+  expect(updatedProjectResponse).toMatchInlineSnapshot(`
+    NiceResponse {
+      "status": 200,
+      "body": {
+        "config": {
+          "allow_localhost": true,
+          "client_team_creation_enabled": false,
+          "client_user_deletion_enabled": false,
+          "create_team_on_sign_up": false,
+          "credential_enabled": true,
+          "domains": [],
+          "email_config": { "type": "shared" },
+          "enabled_oauth_providers": [],
+          "id": "<stripped UUID>",
+          "magic_link_enabled": true,
+          "oauth_account_merge_strategy": "link_method",
+          "oauth_providers": [],
+          "passkey_enabled": false,
+          "sign_up_enabled": true,
+          "team_creator_default_permissions": [{ "id": "admin" }],
+          "team_member_default_permissions": [{ "id": "member" }],
+        },
+        "created_at_millis": <stripped field 'created_at_millis'>,
+        "description": "",
+        "display_name": "New Project",
+        "id": "<stripped UUID>",
+        "is_production_mode": false,
+        "user_count": 1,
+      },
+      "headers": Headers { <some fields may have been hidden> },
+    }
+  `);
+  expect(updatedProjectResponse.body.user_count).toBe(1);
+
+  // Delete the user
+  const deleteRes = await niceBackendFetch("/api/v1/users/me", {
+    accessType: "admin",
+    method: "DELETE",
+  });
+  expect(deleteRes.status).toBe(200);
+
+  // Check that the userCount has been decremented
+  const finalProjectResponse = await niceBackendFetch("/api/v1/projects/current", { accessType: "admin" });
+  expect(finalProjectResponse.status).toBe(200);
+  expect(finalProjectResponse.body.user_count).toBe(0);
 });

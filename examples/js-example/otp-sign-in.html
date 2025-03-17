@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>OTP Sign In</title>
+</head>
+<body>
+  <h1>OTP Sign In</h1>
+  <p><a href="/">← Back to home</a></p>
+  
+  <div id="otpForm">
+    <h2>Sign In with Email Code</h2>
+    <div id="emailStep">
+      <input type="email" id="emailInput" placeholder="Email" />
+      <button id="sendCode">Send Code</button>
+    </div>
+
+    <div id="codeStep" style="display: none;">
+      <p>Enter the code sent to your email</p>
+      <input type="text" id="codeInput" placeholder="Enter code" />
+      <button id="verifyCode">Verify Code</button>
+    </div>
+  </div>
+
+  <script type="module" src="/otp-sign-in-script.ts"></script>
+</body>
+</html> 

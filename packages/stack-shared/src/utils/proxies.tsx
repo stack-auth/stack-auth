@@ -125,3 +125,55 @@ export function createLazyProxy<FactoryResult>(factory: () => FactoryResult): Fa
     }
   }) as FactoryResult;
 }
+import.meta.vitest?.test("createLazyProxy", ({ expect }) => {
+  // Test with a simple object factory
+  let factoryCallCount = 0;
+  const createObject = () => {
+    factoryCallCount++;
+    return { value: 42, method: () => "hello" };
+  };
+
+  const proxy = createLazyProxy(createObject);
+
+  // Factory should not be called until property is accessed
+  expect(factoryCallCount).toBe(0);
+
+  // Accessing a property should initialize the object
+  expect(proxy.value).toBe(42);
+  expect(factoryCallCount).toBe(1);
+
+  // Accessing another property should not call factory again
+  expect(proxy.method()).toBe("hello");
+  expect(factoryCallCount).toBe(1);
+
+  // Test with property setting
+  proxy.value = 100;
+  expect(proxy.value).toBe(100);
+  expect(factoryCallCount).toBe(1);
+
+  // Test with a class factory
+  let classFactoryCallCount = 0;
+  class TestClass {
+    constructor() {
+      classFactoryCallCount++;
+    }
+
+    getValue() {
+      return "class value";
+    }
+  }
+
+  const classFactory = () => new TestClass();
+  const classProxy = createLazyProxy(classFactory);
+
+  // Factory should not be called until method is accessed
+  expect(classFactoryCallCount).toBe(0);
+
+  // Accessing a method should initialize the object
+  expect(classProxy.getValue()).toBe("class value");
+  expect(classFactoryCallCount).toBe(1);
+
+  // Accessing the method again should not call factory again
+  expect(classProxy.getValue()).toBe("class value");
+  expect(classFactoryCallCount).toBe(1);
+});

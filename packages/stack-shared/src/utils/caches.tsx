@@ -19,6 +19,47 @@ export function cacheFunction<F extends Function>(f: F): F {
     return value;
   }) as any as F;
 }
+import.meta.vitest?.test("cacheFunction", ({ expect }) => {
+  // Test with a simple function
+  let callCount = 0;
+  const add = (a: number, b: number) => {
+    callCount++;
+    return a + b;
+  };
+
+  const cachedAdd = cacheFunction(add);
+
+  // First call should execute the function
+  expect(cachedAdd(1, 2)).toBe(3);
+  expect(callCount).toBe(1);
+
+  // Second call with same args should use cached result
+  expect(cachedAdd(1, 2)).toBe(3);
+  expect(callCount).toBe(1);
+
+  // Call with different args should execute the function again
+  expect(cachedAdd(2, 3)).toBe(5);
+  expect(callCount).toBe(2);
+
+  // Test with a function that returns objects
+  let objectCallCount = 0;
+  const createObject = (id: number) => {
+    objectCallCount++;
+    return { id };
+  };
+
+  const cachedCreateObject = cacheFunction(createObject);
+
+  // First call should execute the function
+  const obj1 = cachedCreateObject(1);
+  expect(obj1).toEqual({ id: 1 });
+  expect(objectCallCount).toBe(1);
+
+  // Second call with same args should use cached result
+  const obj2 = cachedCreateObject(1);
+  expect(obj2).toBe(obj1); // Same reference
+  expect(objectCallCount).toBe(1);
+});
 
 
 type CacheStrategy = "write-only" | "read-write" | "never";

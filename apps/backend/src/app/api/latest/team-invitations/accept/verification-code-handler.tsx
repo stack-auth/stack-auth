@@ -11,8 +11,8 @@ import { teamsCrudHandlers } from "../../teams/crud";
 export const teamInvitationCodeHandler = createVerificationCodeHandler({
   metadata: {
     post: {
-      summary: "Invite a user to a team",
-      description: "Send an email to a user to invite them to a team",
+      summary: "Accept the team invitation",
+      description: "Accept invitation and add user to the team",
       tags: ["Teams"],
     },
     check: {

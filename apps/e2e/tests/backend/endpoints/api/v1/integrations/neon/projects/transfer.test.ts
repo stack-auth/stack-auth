@@ -293,7 +293,7 @@ it("should fail the check if project was already transferred", async ({ expect }
   });
   expect(response2).toMatchInlineSnapshot(`
     NiceResponse {
-      "status": 400,
+      "status": 409,
       "body": {
         "code": "VERIFICATION_CODE_ALREADY_USED",
         "error": "The verification link has already been used.",

@@ -1,6 +1,6 @@
 "use client";
 
-import { getPublicEnvVar } from '@stackframe/stack-shared/dist/utils/env';
+import { getPublicEnvVar } from '@/lib/env';
 import { runAsynchronously, wait } from "@stackframe/stack-shared/dist/utils/promises";
 import { useEffect, useState } from "react";
 import packageJson from "../../package.json";

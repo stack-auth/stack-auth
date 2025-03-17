@@ -56,6 +56,8 @@ export const emailConfigSchema = yupObject({
   }),
 });
 
+export const emailConfigWithoutPasswordSchema = emailConfigSchema.pick(['type', 'host', 'port', 'username', 'sender_name', 'sender_email']);
+
 const domainSchema = yupObject({
   domain: schemaFields.urlSchema.defined()
     .matches(/^https?:\/\//, 'URL must start with http:// or https://')
@@ -78,7 +80,6 @@ export const projectsCrudAdminReadSchema = yupObject({
     magic_link_enabled: schemaFields.projectMagicLinkEnabledSchema.defined(),
     passkey_enabled: schemaFields.projectPasskeyEnabledSchema.defined(),
     // TODO: remove this
-    legacy_global_jwt_signing: schemaFields.yupBoolean().defined(),
     client_team_creation_enabled: schemaFields.projectClientTeamCreationEnabledSchema.defined(),
     client_user_deletion_enabled: schemaFields.projectClientUserDeletionEnabledSchema.defined(),
     oauth_providers: yupArray(oauthProviderSchema.defined()).defined(),
@@ -88,6 +89,7 @@ export const projectsCrudAdminReadSchema = yupObject({
     create_team_on_sign_up: schemaFields.projectCreateTeamOnSignUpSchema.defined(),
     team_creator_default_permissions: yupArray(teamPermissionSchema.defined()).defined(),
     team_member_default_permissions: yupArray(teamPermissionSchema.defined()).defined(),
+    oauth_account_merge_strategy: schemaFields.oauthAccountMergeStrategySchema.defined(),
   }).defined(),
 }).defined();
 
@@ -117,7 +119,6 @@ export const projectsCrudAdminUpdateSchema = yupObject({
     passkey_enabled: schemaFields.projectPasskeyEnabledSchema.optional(),
     client_team_creation_enabled: schemaFields.projectClientTeamCreationEnabledSchema.optional(),
     client_user_deletion_enabled: schemaFields.projectClientUserDeletionEnabledSchema.optional(),
-    legacy_global_jwt_signing: schemaFields.yupBoolean().isFalse().optional(),
     allow_localhost: schemaFields.projectAllowLocalhostSchema.optional(),
     email_config: emailConfigSchema.optional().default(undefined),
     domains: yupArray(domainSchema.defined()).optional().default(undefined),
@@ -125,6 +126,7 @@ export const projectsCrudAdminUpdateSchema = yupObject({
     create_team_on_sign_up: schemaFields.projectCreateTeamOnSignUpSchema.optional(),
     team_creator_default_permissions: yupArray(teamPermissionSchema.defined()).optional(),
     team_member_default_permissions: yupArray(teamPermissionSchema.defined()).optional(),
+    oauth_account_merge_strategy: schemaFields.oauthAccountMergeStrategySchema.optional(),
   }).optional().default(undefined),
 }).defined();
 

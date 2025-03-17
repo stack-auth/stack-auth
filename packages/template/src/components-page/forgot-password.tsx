@@ -3,13 +3,14 @@
 import { yupResolver } from "@hookform/resolvers/yup";
 import { strictEmailSchema, yupObject } from "@stackframe/stack-shared/dist/schema-fields";
 import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
-import { Button, Input, Label, StyledLink, Typography, cn } from "@stackframe/stack-ui";
+import { Button, Input, Label, Typography, cn } from "@stackframe/stack-ui";
 import { useState } from "react";
 import { useForm } from "react-hook-form";
 import * as yup from "yup";
 import { useStackApp, useUser } from "..";
 import { FormWarningText } from "../components/elements/form-warning";
 import { MaybeFullPage } from "../components/elements/maybe-full-page";
+import { StyledLink } from "../components/link";
 import { PredefinedMessageCard } from "../components/message-cards/predefined-message-card";
 import { useTranslation } from "../lib/translations";
 
@@ -85,7 +86,7 @@ export function ForgotPassword(props: { fullPage?: boolean }) {
           <Typography type='h2'>{t("Reset Your Password")}</Typography>
           <Typography>
             {t("Don't need to reset?")}{" "}
-            <StyledLink href={stackApp.urls['signUp']}>
+            <StyledLink href={stackApp.urls['signIn']}>
               {t("Sign in")}
             </StyledLink>
           </Typography>

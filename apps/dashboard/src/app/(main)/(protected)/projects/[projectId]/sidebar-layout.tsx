@@ -5,7 +5,7 @@ import { Link } from "@/components/link";
 import { Logo } from "@/components/logo";
 import { ProjectSwitcher } from "@/components/project-switcher";
 import ThemeToggle from "@/components/theme-toggle";
-import { getPublicEnvVar } from '@stackframe/stack-shared/dist/utils/env';
+import { getPublicEnvVar } from '@/lib/env';
 import { cn } from "@/lib/utils";
 import { AdminProject, UserButton, useUser } from "@stackframe/stack";
 import { EMAIL_TEMPLATES_METADATA } from "@stackframe/stack-emails/dist/utils";
@@ -427,16 +427,6 @@ export default function SidebarLayout(props: { projectId: string, children?: Rea
 
   return (
     <div className="w-full flex">
-      <div style={{
-        width: "160vw",
-        height: "180vmin",
-        position: "fixed",
-        top: "100%",
-        left: "50%",
-        transform: "translate(-50%, -10%)",
-        zIndex: -10000,
-        backgroundImage: "radial-gradient(50% 50% at 50% 50%,#4b5df7 0,#4b5df773 23%,#4b5df740 50%,#4b5df700)",
-      }} />
       <div className="flex-col border-r min-w-[240px] h-screen sticky top-0 hidden md:flex backdrop-blur-md bg-white/20 dark:bg-black/20 z-[10]">
         <SidebarContent projectId={props.projectId} />
       </div>

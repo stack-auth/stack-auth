@@ -55,8 +55,8 @@ it("should be able to provision a new project if neon client details are correct
             { "id": "google" },
           ],
           "id": "<stripped UUID>",
-          "legacy_global_jwt_signing": false,
           "magic_link_enabled": false,
+          "oauth_account_merge_strategy": "link_method",
           "oauth_providers": [
             {
               "enabled": true,

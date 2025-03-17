@@ -79,7 +79,7 @@ it("can't verify an e-mail that has already been verified", async ({ expect }) =
   });
   expect(response).toMatchInlineSnapshot(`
     NiceResponse {
-      "status": 400,
+      "status": 409,
       "body": {
         "code": "EMAIL_ALREADY_VERIFIED",
         "error": "The e-mail is already verified.",

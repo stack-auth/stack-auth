@@ -1,10 +1,10 @@
 import { getEnvVariable, getNodeEnvironment } from '@stackframe/stack-shared/dist/utils/env';
 import './polyfills';
 
-import { NextResponse } from 'next/server';
-import type { NextRequest } from 'next/server';
 import { StackAssertionError } from '@stackframe/stack-shared/dist/utils/errors';
 import { wait } from '@stackframe/stack-shared/dist/utils/promises';
+import type { NextRequest } from 'next/server';
+import { NextResponse } from 'next/server';
 
 const corsAllowedRequestHeaders = [
   // General

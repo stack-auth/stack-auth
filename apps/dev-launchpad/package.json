@@ -1,9 +1,10 @@
 {
   "name": "@stackframe/dev-launchpad",
-  "version": "2.7.15",
+  "version": "2.7.27",
   "private": true,
   "scripts": {
-    "dev": "serve -p 8100 -s public"
+    "dev": "serve -p 8100 -s public",
+    "clean": "rimraf node_modules"
   },
   "dependencies": {
     "serve": "^14.2.4"

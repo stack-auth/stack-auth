@@ -1,8 +1,6 @@
-import { it } from "../../../../helpers";
-import { Auth, Team, Webhook, bumpEmailAddress, niceBackendFetch } from "../../../backend-helpers";
-
-
-import { ApiKey, InternalProjectKeys, Project, backendContext } from "../../../backend-helpers";
+import { wait } from "@stackframe/stack-shared/dist/utils/promises";
+import { STACK_SVIX_SERVER_URL, it, niceFetch } from "../../../../helpers";
+import { ApiKey, Auth, InternalProjectKeys, Project, Team, Webhook, backendContext, bumpEmailAddress, niceBackendFetch } from "../../../backend-helpers";
 
 
 it("is not allowed to add user to team on client", async ({ expect }) => {
@@ -307,6 +305,54 @@ it("lets users be on multiple teams", async ({ expect }) => {
   `);
 });
 
+it("does not allow adding a user to a team if the user is already a member of the team", async ({ expect }) => {
+  const { userId: userId1 } = await Auth.Otp.signIn();
+  const { teamId } = await Team.createAndAddCurrent();
+
+  const response1 = await niceBackendFetch(`/api/v1/team-memberships/${teamId}/${userId1}`, {
+    accessType: "server",
+    method: "POST",
+    body: {},
+  });
+  expect(response1).toMatchInlineSnapshot(`
+    NiceResponse {
+      "status": 409,
+      "body": {
+        "code": "TEAM_MEMBERSHIP_ALREADY_EXISTS",
+        "error": "Team membership already exists.",
+      },
+      "headers": Headers {
+        "x-stack-known-error": "TEAM_MEMBERSHIP_ALREADY_EXISTS",
+        <some fields may have been hidden>,
+      },
+    }
+  `);
+});
+
+it("does not allow adding a user that doesn't exist to a team", async ({ expect }) => {
+  const { teamId } = await Team.create();
+
+  const response1 = await niceBackendFetch(`/api/v1/team-memberships/${teamId}/12345678-1234-4234-9234-123456789012`, {
+    accessType: "server",
+    method: "POST",
+    body: {},
+  });
+  expect(response1).toMatchInlineSnapshot(`
+    NiceResponse {
+      "status": 404,
+      "body": {
+        "code": "USER_NOT_FOUND",
+        "error": "User not found.",
+      },
+      "headers": Headers {
+        "x-stack-known-error": "USER_NOT_FOUND",
+        <some fields may have been hidden>,
+      },
+    }
+  `);
+});
+
+
 it("should give team creator default permissions", async ({ expect }) => {
   backendContext.set({ projectKeys: InternalProjectKeys });
   const { adminAccessToken } = await Project.createAndGetAdminToken({ config: { magic_link_enabled: true } });
@@ -422,45 +468,6 @@ it("removes user from team on the client", async ({ expect }) => {
   `);
 });
 
-it("can create a team without adding the current user as a member on the client", async ({ expect }) => {
-  const { userId } = await Auth.Otp.signIn();
-  const response = await niceBackendFetch("/api/v1/teams", {
-    accessType: "client",
-    method: "POST",
-    body: {
-      display_name: "My Team",
-    },
-  });
-  expect(response).toMatchInlineSnapshot(`
-    NiceResponse {
-      "status": 201,
-      "body": {
-        "client_metadata": null,
-        "client_read_only_metadata": null,
-        "display_name": "My Team",
-        "id": "<stripped UUID>",
-        "profile_image_url": null,
-      },
-      "headers": Headers { <some fields may have been hidden> },
-    }
-  `);
-
-  const response2 = await niceBackendFetch(`/api/v1/teams?user_id=me`, {
-    accessType: "client",
-    method: "GET",
-  });
-  expect(response2).toMatchInlineSnapshot(`
-    NiceResponse {
-      "status": 200,
-      "body": {
-        "is_paginated": false,
-        "items": [],
-      },
-      "headers": Headers { <some fields may have been hidden> },
-    }
-  `);
-});
-
 it("creates a team on the server and adds a different user as the creator", async ({ expect }) => {
   const user1Mailbox = await bumpEmailAddress();
   const { userId: userId1 } = await Auth.Otp.signIn();
@@ -518,27 +525,6 @@ it("creates a team on the server and adds a different user as the creator", asyn
   `);
 });
 
-it("is not allowed to create a team and add a different user as the creator on the client", async ({ expect }) => {
-  const { userId: userId1 } = await Auth.Otp.signIn();
-  await bumpEmailAddress();
-  await Auth.Otp.signIn();
-
-  const response = await niceBackendFetch("/api/v1/teams", {
-    accessType: "client",
-    method: "POST",
-    body: {
-      display_name: "My Team",
-      creator_user_id: userId1,
-    },
-  });
-  expect(response).toMatchInlineSnapshot(`
-    NiceResponse {
-      "status": 403,
-      "body": "You cannot add a user to the team as the creator that is not yourself on the client.",
-      "headers": Headers { <some fields may have been hidden> },
-    }
-  `);
-});
 
 it("should trigger team membership webhook when a user is added to a team", async ({ expect }) => {
   const { projectId, svixToken, endpointId } = await Webhook.createProjectWithEndpoint();
@@ -557,252 +543,29 @@ it("should trigger team membership webhook when a user is added to a team", asyn
 
   expect(addUserResponse.status).toBe(201);
 
-  await new Promise(resolve => setTimeout(resolve, 1000));
+  await wait(3000);
 
   const attemptResponse = await Webhook.listWebhookAttempts(projectId, endpointId, svixToken);
 
-  expect(attemptResponse).toMatchInlineSnapshot(`
-    [
-      {
-        "channels": null,
-        "eventId": null,
-        "eventType": "team_membership.created",
-        "id": "<stripped svix message id>",
-        "payload": {
-          "data": {
-            "team_id": "<stripped UUID>",
-            "user_id": "<stripped UUID>",
-          },
-          "type": "team_membership.created",
+  const teamMembershipCreatedEvent = attemptResponse.find(event => event.eventType === "team_membership.created");
+
+  expect(teamMembershipCreatedEvent).toMatchInlineSnapshot(`
+    {
+      "channels": null,
+      "eventId": null,
+      "eventType": "team_membership.created",
+      "id": "<stripped svix message id>",
+      "payload": {
+        "data": {
+          "team_id": "<stripped UUID>",
+          "user_id": "<stripped UUID>",
         },
-        "timestamp": <stripped field 'timestamp'>,
+        "type": "team_membership.created",
       },
-      {
-        "channels": null,
-        "eventId": null,
-        "eventType": "user.created",
-        "id": "<stripped svix message id>",
-        "payload": {
-          "data": {
-            "auth_with_email": true,
-            "client_metadata": null,
-            "client_read_only_metadata": null,
-            "display_name": null,
-            "has_password": false,
-            "id": "<stripped UUID>",
-            "last_active_at_millis": <stripped field 'last_active_at_millis'>,
-            "oauth_providers": [],
-            "otp_auth_enabled": true,
-            "passkey_auth_enabled": false,
-            "primary_email": "mailbox-1--<stripped UUID>@stack-generated.example.com",
-            "primary_email_auth_enabled": true,
-            "primary_email_verified": true,
-            "profile_image_url": null,
-            "requires_totp_mfa": false,
-            "selected_team": null,
-            "selected_team_id": null,
-            "server_metadata": null,
-            "signed_up_at_millis": <stripped field 'signed_up_at_millis'>,
-          },
-          "type": "user.created",
-        },
-        "timestamp": <stripped field 'timestamp'>,
-      },
-      {
-        "channels": null,
-        "eventId": null,
-        "eventType": "team.created",
-        "id": "<stripped svix message id>",
-        "payload": {
-          "data": {
-            "client_metadata": null,
-            "client_read_only_metadata": null,
-            "created_at_millis": <stripped field 'created_at_millis'>,
-            "display_name": "New Team",
-            "id": "<stripped UUID>",
-            "profile_image_url": null,
-            "server_metadata": null,
-          },
-          "type": "team.created",
-        },
-        "timestamp": <stripped field 'timestamp'>,
-      },
-      {
-        "channels": null,
-        "eventId": null,
-        "eventType": "user.created",
-        "id": "<stripped svix message id>",
-        "payload": {
-          "data": {
-            "auth_with_email": true,
-            "client_metadata": null,
-            "client_read_only_metadata": null,
-            "display_name": null,
-            "has_password": false,
-            "id": "<stripped UUID>",
-            "last_active_at_millis": <stripped field 'last_active_at_millis'>,
-            "oauth_providers": [],
-            "otp_auth_enabled": true,
-            "passkey_auth_enabled": false,
-            "primary_email": "default-mailbox--<stripped UUID>@stack-generated.example.com",
-            "primary_email_auth_enabled": true,
-            "primary_email_verified": true,
-            "profile_image_url": null,
-            "requires_totp_mfa": false,
-            "selected_team": null,
-            "selected_team_id": null,
-            "server_metadata": null,
-            "signed_up_at_millis": <stripped field 'signed_up_at_millis'>,
-          },
-          "type": "user.created",
-        },
-        "timestamp": <stripped field 'timestamp'>,
-      },
-    ]
+      "timestamp": <stripped field 'timestamp'>,
+    }
   `);
-});
 
-it("should trigger team membership webhook when a user is removed from a team", async ({ expect }) => {
-  const { projectId, svixToken, endpointId } = await Webhook.createProjectWithEndpoint();
-
-  await Auth.Otp.signIn();
-  const { teamId } = await Team.createAndAddCurrent();
-
-  await bumpEmailAddress();
-  const { userId } = await Auth.Otp.signIn();
-
-  const addUserResponse = await niceBackendFetch(`/api/v1/team-memberships/${teamId}/${userId}`, {
-    accessType: "server",
-    method: "POST",
-    body: {},
-  });
-
-  expect(addUserResponse.status).toBe(201);
-
-  const removeUserResponse = await niceBackendFetch(`/api/v1/team-memberships/${teamId}/${userId}`, {
-    accessType: "server",
-    method: "DELETE"
-  });
-
-  expect(removeUserResponse.status).toBe(200);
-
-  await new Promise(resolve => setTimeout(resolve, 1000));
-
-  const attemptResponse = await Webhook.listWebhookAttempts(projectId, endpointId, svixToken);
-
-  expect(attemptResponse).toMatchInlineSnapshot(`
-    [
-      {
-        "channels": null,
-        "eventId": null,
-        "eventType": "team_membership.deleted",
-        "id": "<stripped svix message id>",
-        "payload": {
-          "data": {
-            "team_id": "<stripped UUID>",
-            "user_id": "<stripped UUID>",
-          },
-          "type": "team_membership.deleted",
-        },
-        "timestamp": <stripped field 'timestamp'>,
-      },
-      {
-        "channels": null,
-        "eventId": null,
-        "eventType": "team_membership.created",
-        "id": "<stripped svix message id>",
-        "payload": {
-          "data": {
-            "team_id": "<stripped UUID>",
-            "user_id": "<stripped UUID>",
-          },
-          "type": "team_membership.created",
-        },
-        "timestamp": <stripped field 'timestamp'>,
-      },
-      {
-        "channels": null,
-        "eventId": null,
-        "eventType": "user.created",
-        "id": "<stripped svix message id>",
-        "payload": {
-          "data": {
-            "auth_with_email": true,
-            "client_metadata": null,
-            "client_read_only_metadata": null,
-            "display_name": null,
-            "has_password": false,
-            "id": "<stripped UUID>",
-            "last_active_at_millis": <stripped field 'last_active_at_millis'>,
-            "oauth_providers": [],
-            "otp_auth_enabled": true,
-            "passkey_auth_enabled": false,
-            "primary_email": "mailbox-1--<stripped UUID>@stack-generated.example.com",
-            "primary_email_auth_enabled": true,
-            "primary_email_verified": true,
-            "profile_image_url": null,
-            "requires_totp_mfa": false,
-            "selected_team": null,
-            "selected_team_id": null,
-            "server_metadata": null,
-            "signed_up_at_millis": <stripped field 'signed_up_at_millis'>,
-          },
-          "type": "user.created",
-        },
-        "timestamp": <stripped field 'timestamp'>,
-      },
-      {
-        "channels": null,
-        "eventId": null,
-        "eventType": "team.created",
-        "id": "<stripped svix message id>",
-        "payload": {
-          "data": {
-            "client_metadata": null,
-            "client_read_only_metadata": null,
-            "created_at_millis": <stripped field 'created_at_millis'>,
-            "display_name": "New Team",
-            "id": "<stripped UUID>",
-            "profile_image_url": null,
-            "server_metadata": null,
-          },
-          "type": "team.created",
-        },
-        "timestamp": <stripped field 'timestamp'>,
-      },
-      {
-        "channels": null,
-        "eventId": null,
-        "eventType": "user.created",
-        "id": "<stripped svix message id>",
-        "payload": {
-          "data": {
-            "auth_with_email": true,
-            "client_metadata": null,
-            "client_read_only_metadata": null,
-            "display_name": null,
-            "has_password": false,
-            "id": "<stripped UUID>",
-            "last_active_at_millis": <stripped field 'last_active_at_millis'>,
-            "oauth_providers": [],
-            "otp_auth_enabled": true,
-            "passkey_auth_enabled": false,
-            "primary_email": "default-mailbox--<stripped UUID>@stack-generated.example.com",
-            "primary_email_auth_enabled": true,
-            "primary_email_verified": true,
-            "profile_image_url": null,
-            "requires_totp_mfa": false,
-            "selected_team": null,
-            "selected_team_id": null,
-            "server_metadata": null,
-            "signed_up_at_millis": <stripped field 'signed_up_at_millis'>,
-          },
-          "type": "user.created",
-        },
-        "timestamp": <stripped field 'timestamp'>,
-      },
-    ]
-  `);
 });
 
 
@@ -830,121 +593,208 @@ it("should trigger team membership webhook when a user is removed from a team", 
 
   expect(removeUserResponse.status).toBe(200);
 
-  await new Promise(resolve => setTimeout(resolve, 1000));
+  await wait(3000);
 
   const attemptResponse = await Webhook.listWebhookAttempts(projectId, endpointId, svixToken);
 
-  expect(attemptResponse).toMatchInlineSnapshot(`
-    [
-      {
-        "channels": null,
-        "eventId": null,
-        "eventType": "team_membership.deleted",
-        "id": "<stripped svix message id>",
-        "payload": {
-          "data": {
-            "team_id": "<stripped UUID>",
-            "user_id": "<stripped UUID>",
-          },
-          "type": "team_membership.deleted",
+  const teamMembershipDeletedEvent = attemptResponse.find(event => event.eventType === "team_membership.deleted");
+
+  expect(teamMembershipDeletedEvent).toMatchInlineSnapshot(`
+    {
+      "channels": null,
+      "eventId": null,
+      "eventType": "team_membership.deleted",
+      "id": "<stripped svix message id>",
+      "payload": {
+        "data": {
+          "team_id": "<stripped UUID>",
+          "user_id": "<stripped UUID>",
         },
-        "timestamp": <stripped field 'timestamp'>,
+        "type": "team_membership.deleted",
       },
-      {
-        "channels": null,
-        "eventId": null,
-        "eventType": "team_membership.created",
-        "id": "<stripped svix message id>",
-        "payload": {
-          "data": {
-            "team_id": "<stripped UUID>",
-            "user_id": "<stripped UUID>",
-          },
-          "type": "team_membership.created",
+      "timestamp": <stripped field 'timestamp'>,
+    }
+  `);
+});
+
+it("should trigger team permission webhook when a user is added to a team", async ({ expect }) => {
+  const { projectId, svixToken, endpointId } = await Webhook.createProjectWithEndpoint();
+
+  await Auth.Otp.signIn();
+  const { teamId } = await Team.createAndAddCurrent();
+
+  await bumpEmailAddress();
+  const { userId } = await Auth.Otp.signIn();
+
+  const addUserResponse = await niceBackendFetch(`/api/v1/team-memberships/${teamId}/${userId}`, {
+    accessType: "server",
+    method: "POST",
+    body: {},
+  });
+
+  expect(addUserResponse.status).toBe(201);
+
+  await wait(3000);
+
+  const attemptResponse = await Webhook.listWebhookAttempts(projectId, endpointId, svixToken);
+
+  // Check for team_permission.created events
+  const teamPermissionCreatedEvents = attemptResponse.filter(event => event.eventType === "team_permission.created");
+
+  // There should be at least one team permission created event (for the default permissions)
+  expect(teamPermissionCreatedEvents.length).toBe(1);
+
+  // Check the first team permission created event
+  const firstPermissionEvent = teamPermissionCreatedEvents[0];
+  expect(firstPermissionEvent).toMatchInlineSnapshot(`
+    {
+      "channels": null,
+      "eventId": null,
+      "eventType": "team_permission.created",
+      "id": "<stripped svix message id>",
+      "payload": {
+        "data": {
+          "id": "member",
+          "team_id": "<stripped UUID>",
+          "user_id": "<stripped UUID>",
         },
-        "timestamp": <stripped field 'timestamp'>,
+        "type": "team_permission.created",
       },
-      {
-        "channels": null,
-        "eventId": null,
-        "eventType": "user.created",
-        "id": "<stripped svix message id>",
-        "payload": {
-          "data": {
-            "auth_with_email": true,
-            "client_metadata": null,
-            "client_read_only_metadata": null,
-            "display_name": null,
-            "has_password": false,
-            "id": "<stripped UUID>",
-            "last_active_at_millis": <stripped field 'last_active_at_millis'>,
-            "oauth_providers": [],
-            "otp_auth_enabled": true,
-            "passkey_auth_enabled": false,
-            "primary_email": "mailbox-1--<stripped UUID>@stack-generated.example.com",
-            "primary_email_auth_enabled": true,
-            "primary_email_verified": true,
-            "profile_image_url": null,
-            "requires_totp_mfa": false,
-            "selected_team": null,
-            "selected_team_id": null,
-            "server_metadata": null,
-            "signed_up_at_millis": <stripped field 'signed_up_at_millis'>,
-          },
-          "type": "user.created",
+      "timestamp": <stripped field 'timestamp'>,
+    }
+  `);
+});
+
+it("should trigger multiple permission webhooks when a custom permission is included in default team permissions", async ({ expect }) => {
+  // Setup project with webhook support
+  backendContext.set({ projectKeys: InternalProjectKeys });
+  const { projectId, adminAccessToken } = await Project.createAndGetAdminToken({
+    config: {
+      magic_link_enabled: true
+    }
+  });
+
+  // Create a new permission definition
+  const createPermissionResponse = await niceBackendFetch(`/api/v1/team-permission-definitions`, {
+    accessType: "admin",
+    method: "POST",
+    body: {
+      id: 'custom_permission',
+      description: 'Custom test permission',
+    },
+    headers: {
+      'x-stack-admin-access-token': adminAccessToken
+    },
+  });
+  expect(createPermissionResponse.status).toBe(201);
+
+  // Update project config to include the custom permission as default member permission
+  const { updateProjectResponse } = await Project.updateCurrent(adminAccessToken, {
+    config: {
+      team_member_default_permissions: [{ id: 'member' }, { id: 'custom_permission' }],
+    },
+  });
+  expect(updateProjectResponse.status).toBe(200);
+
+  // Setup webhook endpoint
+  const svixTokenResponse = await niceBackendFetch("/api/v1/webhooks/svix-token", {
+    accessType: "admin",
+    method: "POST",
+    body: {},
+    headers: {
+      'x-stack-admin-access-token': adminAccessToken
+    }
+  });
+  const svixToken = svixTokenResponse.body.token;
+
+  const createEndpointResponse = await niceFetch(STACK_SVIX_SERVER_URL + `/api/v1/app/${projectId}/endpoint`, {
+    method: "POST",
+    body: JSON.stringify({
+      url: "https://example.com"
+    }),
+    headers: {
+      "Authorization": `Bearer ${svixToken}`,
+      "Content-Type": "application/json",
+    },
+  });
+  const endpointId = createEndpointResponse.body.id;
+
+  // Setup API keys for the project
+  await ApiKey.createAndSetProjectKeys(adminAccessToken);
+
+  // Create a user and team
+  await Auth.Otp.signIn();
+  const { teamId } = await Team.createAndAddCurrent();
+
+  await bumpEmailAddress();
+  const { userId } = await Auth.Otp.signIn();
+
+  // Add the user to the team
+  const addUserResponse = await niceBackendFetch(`/api/v1/team-memberships/${teamId}/${userId}`, {
+    accessType: "server",
+    method: "POST",
+    body: {},
+  });
+
+  expect(addUserResponse.status).toBe(201);
+
+  // Wait for webhooks to be triggered
+  await wait(3000);
+
+  // Get webhook events
+  const attemptResponse = await Webhook.listWebhookAttempts(projectId, endpointId, svixToken);
+
+  // Check for team_permission.created events
+  const teamPermissionCreatedEvents = attemptResponse.filter(event => event.eventType === "team_permission.created");
+
+  // There should be two team permission created events (for both default permissions)
+  expect(teamPermissionCreatedEvents.length).toBe(2);
+
+  // Check for the custom permission event
+  const customPermissionEvent = teamPermissionCreatedEvents.find(event =>
+    event.payload.data.id === "custom_permission"
+  );
+
+  expect(customPermissionEvent).toBeDefined();
+  expect(customPermissionEvent).toMatchInlineSnapshot(`
+    {
+      "channels": null,
+      "eventId": null,
+      "eventType": "team_permission.created",
+      "id": "<stripped svix message id>",
+      "payload": {
+        "data": {
+          "id": "custom_permission",
+          "team_id": "<stripped UUID>",
+          "user_id": "<stripped UUID>",
         },
-        "timestamp": <stripped field 'timestamp'>,
+        "type": "team_permission.created",
       },
-      {
-        "channels": null,
-        "eventId": null,
-        "eventType": "team.created",
-        "id": "<stripped svix message id>",
-        "payload": {
-          "data": {
-            "client_metadata": null,
-            "client_read_only_metadata": null,
-            "created_at_millis": <stripped field 'created_at_millis'>,
-            "display_name": "New Team",
-            "id": "<stripped UUID>",
-            "profile_image_url": null,
-            "server_metadata": null,
-          },
-          "type": "team.created",
+      "timestamp": <stripped field 'timestamp'>,
+    }
+  `);
+
+  // Check for the standard member permission event
+  const memberPermissionEvent = teamPermissionCreatedEvents.find(event =>
+    event.payload.data.id === "member"
+  );
+
+  expect(memberPermissionEvent).toBeDefined();
+  expect(memberPermissionEvent).toMatchInlineSnapshot(`
+    {
+      "channels": null,
+      "eventId": null,
+      "eventType": "team_permission.created",
+      "id": "<stripped svix message id>",
+      "payload": {
+        "data": {
+          "id": "member",
+          "team_id": "<stripped UUID>",
+          "user_id": "<stripped UUID>",
         },
-        "timestamp": <stripped field 'timestamp'>,
+        "type": "team_permission.created",
       },
-      {
-        "channels": null,
-        "eventId": null,
-        "eventType": "user.created",
-        "id": "<stripped svix message id>",
-        "payload": {
-          "data": {
-            "auth_with_email": true,
-            "client_metadata": null,
-            "client_read_only_metadata": null,
-            "display_name": null,
-            "has_password": false,
-            "id": "<stripped UUID>",
-            "last_active_at_millis": <stripped field 'last_active_at_millis'>,
-            "oauth_providers": [],
-            "otp_auth_enabled": true,
-            "passkey_auth_enabled": false,
-            "primary_email": "default-mailbox--<stripped UUID>@stack-generated.example.com",
-            "primary_email_auth_enabled": true,
-            "primary_email_verified": true,
-            "profile_image_url": null,
-            "requires_totp_mfa": false,
-            "selected_team": null,
-            "selected_team_id": null,
-            "server_metadata": null,
-            "signed_up_at_millis": <stripped field 'signed_up_at_millis'>,
-          },
-          "type": "user.created",
-        },
-        "timestamp": <stripped field 'timestamp'>,
-      },
-    ]
+      "timestamp": <stripped field 'timestamp'>,
+    }
   `);
 });

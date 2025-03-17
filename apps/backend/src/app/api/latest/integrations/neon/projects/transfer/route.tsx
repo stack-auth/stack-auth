@@ -19,6 +19,7 @@ async function validateAndGetTransferInfo(authorizationHeader: string, projectId
     },
   });
   if (!neonProvisionedProject) {
+    // note: Neon relies on this exact status code and error message, so don't change it without consulting them first
     throw new StatusError(400, "This project either doesn't exist or the current Neon client is not authorized to transfer it. Note that projects can only be transferred once.");
   }
 

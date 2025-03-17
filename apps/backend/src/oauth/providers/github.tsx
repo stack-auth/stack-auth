@@ -30,16 +30,39 @@ export class GithubProvider extends OAuthBaseProvider {
   }
 
   async postProcessUserInfo(tokenSet: TokenSet): Promise<OAuthUserInfo> {
-    const rawUserInfo = await this.oauthClient.userinfo(tokenSet.accessToken);
-
-    const emails = await fetch("https://api.github.com/user/emails", {
+    const rawUserInfoRes = await fetch("https://api.github.com/user", {
       headers: {
-        Authorization: `token ${tokenSet.accessToken}`,
+        Authorization: `Bearer ${tokenSet.accessToken}`,
+        "X-GitHub-Api-Version": "2022-11-28",
       },
-    }).then((res) => res.json());
-    if (!emails.find) {
-      throw new StackAssertionError("Error fetching user emails from github", {
+    });
+    if (!rawUserInfoRes.ok) {
+      throw new StackAssertionError("Error fetching user info from GitHub provider: Status code " + rawUserInfoRes.status, {
+        rawUserInfoRes,
+        hasAccessToken: !!tokenSet.accessToken,
+        hasRefreshToken: !!tokenSet.refreshToken,
+        accessTokenExpiredAt: tokenSet.accessTokenExpiredAt,
+      });
+    }
+    const rawUserInfo = await rawUserInfoRes.json();
+
+    const emailsRes = await fetch("https://api.github.com/user/emails", {
+      headers: {
+        Authorization: `Bearer ${tokenSet.accessToken}`,
+        "X-GitHub-Api-Version": "2022-11-28",
+      },
+    });
+    if (!emailsRes.ok) {
+      throw new StackAssertionError("Error fetching user emails from GitHub: Status code " + emailsRes.status, {
+        emailsRes,
+        rawUserInfo,
+      });
+    }
+    const emails = await emailsRes.json();
+    if (!Array.isArray(emails)) {
+      throw new StackAssertionError("Error fetching user emails from GitHub: Invalid response", {
         emails,
+        emailsRes,
         rawUserInfo,
       });
     }

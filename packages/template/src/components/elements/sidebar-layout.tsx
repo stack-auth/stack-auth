@@ -3,8 +3,8 @@
 import { useHash } from '@stackframe/stack-shared/dist/hooks/use-hash';
 import { Button, Typography, cn } from '@stackframe/stack-ui';
 import { XIcon } from 'lucide-react';
-import { useRouter } from 'next/navigation';
-import React, { ReactNode, useEffect } from 'react';
+import React, { ReactNode } from 'react';
+import { useStackApp } from '../..';
 
 export type SidebarItem = {
   title: React.ReactNode,
@@ -17,16 +17,8 @@ export type SidebarItem = {
 }
 
 export function SidebarLayout(props: { items: SidebarItem[], title?: ReactNode, className?: string }) {
-  const router = useRouter();
   const hash = useHash();
   const selectedIndex = props.items.findIndex(item => item.id && (item.id === hash));
-
-  useEffect(() => {
-    if (selectedIndex === -1) {
-      router.push('#' + props.items[0].id);
-    }
-  }, [hash]);
-
   return (
     <>
       <div className={cn("hidden sm:flex stack-scope h-full", props.className)}>
@@ -40,7 +32,11 @@ export function SidebarLayout(props: { items: SidebarItem[], title?: ReactNode, 
 }
 
 function Items(props: { items: SidebarItem[], selectedIndex: number }) {
-  const router = useRouter();
+  const app = useStackApp();
+  const navigate = app.useNavigate();
+
+
+  const activeItemIndex = props.selectedIndex === -1 ? 0 : props.selectedIndex;
 
   return props.items.map((item, index) => (
     item.type === 'item' ?
@@ -49,12 +45,12 @@ function Items(props: { items: SidebarItem[], selectedIndex: number }) {
         variant='ghost'
         size='sm'
         className={cn(
-          props.selectedIndex === index && "bg-muted",
+          activeItemIndex === index && "sm:bg-muted",
           "justify-start text-md text-zinc-800 dark:text-zinc-300 px-2 text-left",
         )}
         onClick={() => {
           if (item.id) {
-            router.push('#' + item.id);
+            navigate('#' + item.id);
           }
         }}
       >
@@ -97,7 +93,8 @@ function DesktopLayout(props: { items: SidebarItem[], title?: ReactNode, selecte
 
 function MobileLayout(props: { items: SidebarItem[], title?: ReactNode, selectedIndex: number }) {
   const selectedItem = props.items[props.selectedIndex];
-  const router = useRouter();
+  const app = useStackApp();
+  const navigate = app.useNavigate();
 
   if (props.selectedIndex === -1) {
     return (
@@ -118,7 +115,7 @@ function MobileLayout(props: { items: SidebarItem[], title?: ReactNode, selected
             <Button
               variant='ghost'
               size='icon'
-              onClick={() => { router.push('#'); }}
+              onClick={() => { navigate('#'); }}
             >
               <XIcon className='h-5 w-5' />
             </Button>

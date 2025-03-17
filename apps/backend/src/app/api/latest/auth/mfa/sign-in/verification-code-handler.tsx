@@ -58,7 +58,6 @@ export const mfaVerificationCodeHandler = createVerificationCodeHandler({
     const { refreshToken, accessToken } = await createAuthTokens({
       tenancy,
       projectUserId: data.user_id,
-      useLegacyGlobalJWT: tenancy.config.legacy_global_jwt_signing,
     });
 
     return {

@@ -28,7 +28,7 @@ export default function WizardCongratsPage() {
         <Card className="max-w-lg">
           <CardHeader>
             <Typography type='h1'>
-                Congrats! 🎉
+              Congrats! 🎉
             </Typography>
           </CardHeader>
           <CardContent className="flex flex-col gap-4">

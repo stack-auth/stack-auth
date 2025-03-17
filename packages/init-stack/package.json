@@ -1,20 +1,34 @@
 {
   "name": "@stackframe/init-stack",
-  "version": "2.7.15",
+  "version": "2.7.27",
   "description": "The setup wizard for Stack. https://stack-auth.com",
-  "main": "index.mjs",
+  "main": "dist/index.js",
   "type": "module",
-  "bin": "./index.mjs",
+  "bin": "./dist/index.js",
   "scripts": {
-    "clean": "rimraf test-run-output && rimraf node_modules",
-    "init-stack": "node index.mjs",
-    "init-stack:local": "STACK_PACKAGE_NAME_OVERRIDE=../../stack node index.mjs",
-    "test-run": "rimraf test-run-output && npx -y create-next-app@latest test-run-output && pnpm run init-stack:local test-run-output",
-    "test-run-auto": "rimraf test-run-output && npx -y create-next-app@latest test-run-output --app --ts --no-src-dir --tailwind --use-npm --eslint --import-alias '##@#/*' --turbopack && STACK_DISABLE_INTERACTIVE=true pnpm run init-stack:local test-run-output"
+    "clean": "rimraf test-run-output && rimraf node_modules && rimraf dist",
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "lint": "eslint --ext .tsx,.ts .",
+    "typecheck": "tsc --noEmit",
+    "init-stack": "node dist/index.js",
+    "init-stack:local": "STACK_NEXT_INSTALL_PACKAGE_NAME_OVERRIDE=../../stack STACK_JS_INSTALL_PACKAGE_NAME_OVERRIDE=../../js node dist/index.js",
+    "test-run": "pnpm run build && pnpm run test-run-js && pnpm run test-run-node && pnpm run test-run-next && pnpm run test-run-neon && pnpm run test-run-no-browser",
+    "test-run:manual": "pnpm run build && pnpm run test-run-js:manual && pnpm run test-run-node:manual && pnpm run test-run-next:manual && pnpm run test-run-neon:manual",
+    "ensure-neon": "grep -q '\"@neondatabase/serverless\"' ./test-run-output/package.json && echo 'Initialized Neon successfully!'",
+    "test-run-neon": "pnpm run test-run-node --neon && pnpm run ensure-neon",
+    "test-run-neon:manual": "pnpm run test-run-node:manual --neon && pnpm run ensure-neon",
+    "test-run-no-browser": "rimraf test-run-output && mkdir test-run-output && cd test-run-output && npm init --init-author-name example-author --init-license UNLICENSED --init-author-url http://example.com --init-module test-run-output --init-version 1.0.0 -y && cd .. && STACK_DISABLE_INTERACTIVE=true pnpm run init-stack:local test-run-output --js --server --npm --no-browser",
+    "test-run-node:manual": "rimraf test-run-output && mkdir test-run-output && cd test-run-output && npm init && cd .. && pnpm run init-stack:local test-run-output",
+    "test-run-node": "rimraf test-run-output && mkdir test-run-output && cd test-run-output && npm init --init-author-name example-author --init-license UNLICENSED --init-author-url http://example.com --init-module test-run-output --init-version 1.0.0 -y && cd .. && STACK_DISABLE_INTERACTIVE=true pnpm run init-stack:local test-run-output --js --server --npm",
+    "test-run-js:manual": "rimraf test-run-output && npx -y sv create test-run-output --no-install && pnpm run init-stack:local test-run-output",
+    "test-run-js": "rimraf test-run-output && npx -y sv create test-run-output --template minimal --types ts --no-add-ons --no-install && STACK_DISABLE_INTERACTIVE=true pnpm run init-stack:local test-run-output --js --client --npm",
+    "test-run-next:manual": "rimraf test-run-output && npx -y create-next-app@latest test-run-output && pnpm run init-stack:local test-run-output",
+    "test-run-next": "rimraf test-run-output && npx -y create-next-app@latest test-run-output --app --ts --no-src-dir --tailwind --use-npm --eslint --import-alias '##@#/*' --turbopack && STACK_DISABLE_INTERACTIVE=true pnpm run init-stack:local test-run-output"
   },
   "files": [
     "README.md",
-    "index.mjs",
+    "dist",
     "CHANGELOG.md",
     "LICENSE"
   ],
@@ -24,7 +38,15 @@
   "license": "MIT",
   "dependencies": {
     "@stackframe/stack-shared": "workspace:*",
+    "commander": "^13.1.0",
     "inquirer": "^9.2.19",
     "open": "^10.1.0"
+  },
+  "devDependencies": {
+    "@types/inquirer": "^9.0.7",
+    "@types/node": "^22.13.5",
+    "rimraf": "^6.0.1",
+    "tsup": "^8.4.0",
+    "typescript": "^5.7.3"
   }
 }

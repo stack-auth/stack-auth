@@ -105,7 +105,7 @@ it("should not allow signing in if email is not verified", async ({ expect }) =>
   });
   expect(response).toMatchInlineSnapshot(`
     NiceResponse {
-      "status": 400,
+      "status": 409,
       "body": {
         "code": "USER_EMAIL_ALREADY_EXISTS",
         "error": "User email already exists.",
