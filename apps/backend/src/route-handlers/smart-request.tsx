@@ -114,7 +114,7 @@ async function validate<T>(obj: SmartRequest, schema: yup.Schema<T>, req: NextRe
 
 
 async function parseBody(req: NextRequest, bodyBuffer: ArrayBuffer): Promise<SmartRequest["body"]> {
-  const contentType = req.headers.get("content-type")?.split(";")[0];
+  const contentType = req.method === "GET" ? undefined : req.headers.get("content-type")?.split(";")[0];
 
   const getText = () => {
     try {
