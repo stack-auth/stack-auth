@@ -1,6 +1,6 @@
 import * as yup from "yup";
 import * as schemaFields from "../schema-fields";
-import { yupArray, yupBoolean, yupObject, yupRecord, yupString, yupUnion } from "../schema-fields";
+import { yupBoolean, yupObject, yupRecord, yupString, yupUnion } from "../schema-fields";
 
 type EnvMode = 'undefined' | 'optional' | 'defined';
 
@@ -21,7 +21,7 @@ const envSchema = <T extends yup.AnySchema>(mode: EnvMode, schema: T): T => {
 };
 
 export const getConfigSchema = (mode: EnvMode) => yupObject({
-  createTeamOnSignUp: yupBoolean().defined(),
+  createTeamOnSignUp: yupBoolean().defined().meta({ startLevel: 'project', endLevel: 'organization' }),
   clientTeamCreationEnabled: yupBoolean().defined(),
   clientUserDeletionEnabled: yupBoolean().defined(),
   signUpEnabled: yupBoolean().defined(),
@@ -39,7 +39,10 @@ export const getConfigSchema = (mode: EnvMode) => yupObject({
   permissionDefinitions: configRecord(yupObject({
     id: yupString().defined(),
     description: yupString().defined(),
-    containedPermissionIds: yupArray(yupString()).defined(),
+    // keys to the contained permissions are the ids of the permissions.
+    containedPermissions: yupRecord(yupObject({
+      id: yupString().defined(),
+    })).defined(),
   })).defined(),
 
   // keys to the oauth providers are the provider ids.
