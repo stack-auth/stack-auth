@@ -29,7 +29,7 @@ function getInvalidConfigReason(c: unknown, options: { configName?: string } = {
   if (c === null || typeof c !== 'object') return `${configName} must be a non-null object`;
   for (const [key, value] of Object.entries(c)) {
     if (typeof key !== 'string') return `${configName} must have only string keys (found: ${typeof key})`;
-    if (!key.match(/^[a-zA-Z_$][a-zA-Z_$0-9\-]*(?:\.[a-zA-Z0-9_$][a-zA-Z_$0-9\-]*)*$/)) return `All keys of ${configName} must consist of only alphanumeric characters, dots, underscores, dollar signs, or hyphens and start with a character other than a number or hyphen (found: ${key})`;
+    if (!key.match(/^[a-zA-Z0-9_$][a-zA-Z_$0-9\-]*(?:\.[a-zA-Z0-9_$][a-zA-Z_$0-9\-]*)*$/)) return `All keys of ${configName} must consist of only alphanumeric characters, dots, underscores, dollar signs, or hyphens and start with a character other than a hyphen (found: ${key})`;
 
     const entryName = `${configName}.${key}`;
     const reason = getInvalidConfigValueReason(value, { valueName: entryName });
@@ -83,8 +83,7 @@ export function override(c1: Config, ...configs: Config[]) {
   let result = c1;
   for (const key of Object.keys(c2)) {
     result = Object.fromEntries(
-      Object.entries(result)
-        .filter(([k]) => k !== key && !k.startsWith(key + '.'))
+      Object.entries(result).filter(([k]) => k !== key && !k.startsWith(key + '.'))
     );
   }
 
@@ -129,13 +128,12 @@ import.meta.vitest?.test("override(...)", ({ expect }) => {
   });
 });
 
-export function normalize(c: Config, options: { configName?: string } = {}): NormalizedConfig {
+export function normalize(c: Config): NormalizedConfig {
   assertValidConfig(c);
 
   const countDots = (s: string) => s.match(/\./g)?.length ?? 0;
   const result: NormalizedConfig = {};
-  const keysByDepth = Object.keys(c)
-    .sort((a, b) => countDots(a) - countDots(b));
+  const keysByDepth = Object.keys(c).sort((a, b) => countDots(a) - countDots(b));
 
   for (const key of keysByDepth) {
     if (key.includes('.')) {
