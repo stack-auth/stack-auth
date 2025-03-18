@@ -345,8 +345,8 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
       async sendVerificationEmail() {
         return await app._checkFeatureSupport("sendVerificationEmail() on ServerUser", {});
       },
-      async updatePassword(options: { oldPassword?: string, newPassword: string}) {
-        const result = await this.update({ password: options.newPassword });
+      async updatePassword(options: { oldPassword: string, newPassword: string}) {
+        const result = await app._interface.updatePassword(options);
         await app._serverUserCache.refresh([crud.id]);
         return result;
       },
