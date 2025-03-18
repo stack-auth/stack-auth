@@ -3,8 +3,7 @@ import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import {
   CallToolRequestSchema,
   ListToolsRequestSchema,
-  ListToolsResult,
-  Tool
+  ListToolsResult
 } from "@modelcontextprotocol/sdk/types.js";
 import { StackServerApp, stackAppInternalsSymbol } from "@stackframe/js";
 import { readFileSync } from "fs";
@@ -22,7 +21,6 @@ if (!STACK_SECRET_SERVER_KEY || !STACK_PROJECT_ID || !STACK_PUBLISHABLE_CLIENT_K
   throw new Error("STACK_SECRET_SERVER_KEY, STACK_PROJECT_ID, and STACK_PUBLISHABLE_CLIENT_KEY must be set");
 }
 
-
 export const stackServerApp = new StackServerApp({
   baseUrl: STACK_AUTH_URL,
   projectId: STACK_PROJECT_ID,
@@ -31,80 +29,36 @@ export const stackServerApp = new StackServerApp({
   tokenStore: "memory",
 });
 
-
 // Cursor only supports 40 endpoints, so we only expose the most useful tools
-const exposedEndpoints = {
-  "/users/{user_id}": ["get", "patch", "delete"],
-  "/users": ["get", "post"],
-  "/teams": ["get", "post"],
-  "/team-member-profiles": ["get"],
-  "/teams/{team_id}": ["get", "patch", "delete"],
-  "/team-memberships/{team_id}/{user_id}": ["post", "delete"],
-  "/team-member-profiles/{team_id}/{user_id}": ["get", "patch"],
-  "/team-invitations/send-code": ["post"],
-  "/team-permissions/{team_id}/{user_id}/{permission_id}": ["post", "delete"],
-  "/team-permissions": ["get"],
-  "/contact-channels/{user_id}/{contact_channel_id}": ["get", "patch", "delete"],
-  "/contact-channels": ["get"],
-  // TODO fix me "/contact-channels/send-verification-code": ["post"],
+const operationIDs = {
+  "getUserById": ["/users/{user_id}", "get"],
+  "updateUser": ["/users/{user_id}", "patch"],
+  "deleteUser": ["/users/{user_id}", "delete"],
+  "listUsers": ["/users", "get"],
+  "createUser": ["/users", "post"],
+  "listTeams": ["/teams", "get"],
+  "createTeam": ["/teams", "post"],
+  "listTeamMemberProfiles": ["/team-member-profiles", "get"],
+  "getTeamById": ["/teams/{team_id}", "get"],
+  "updateTeam": ["/teams/{team_id}", "patch"],
+  "deleteTeam": ["/teams/{team_id}", "delete"],
+  "addUserToTeam": ["/team-memberships/{team_id}/{user_id}", "post"],
+  "removeUserFromTeam": ["/team-memberships/{team_id}/{user_id}", "delete"],
+  "getTeamMemberProfile": ["/team-member-profiles/{team_id}/{user_id}", "get"],
+  "updateTeamMemberProfile": ["/team-member-profiles/{team_id}/{user_id}", "patch"],
+  "sendTeamInvitationCode": ["/team-invitations/send-code", "post"],
+  "grantPermissionToUser": ["/team-permissions/{team_id}/{user_id}/{permission_id}", "post"],
+  "revokePermissionFromUser": ["/team-permissions/{team_id}/{user_id}/{permission_id}", "delete"],
+  "listTeamPermissions": ["/team-permissions", "get"],
+  "getContactChannel": ["/contact-channels/{user_id}/{contact_channel_id}", "get"],
+  "updateContactChannel": ["/contact-channels/{user_id}/{contact_channel_id}", "patch"],
+  "deleteContactChannel": ["/contact-channels/{user_id}/{contact_channel_id}", "delete"],
+  "listContactChannels": ["/contact-channels", "get"]
 };
-
-// Define operationIDs for each endpoint and method
-const operationIDs: Record<string, Record<string, string>> = {
-  "/users/{user_id}": {
-    "get": "getUserById",
-    "patch": "updateUser",
-    "delete": "deleteUser"
-  },
-  "/users": {
-    "get": "listUsers",
-    "post": "createUser"
-  },
-  "/teams": {
-    "get": "listTeams",
-    "post": "createTeam"
-  },
-  "/team-member-profiles": {
-    "get": "listTeamMemberProfiles"
-  },
-  "/teams/{team_id}": {
-    "get": "getTeamById",
-    "patch": "updateTeam",
-    "delete": "deleteTeam"
-  },
-  "/team-memberships/{team_id}/{user_id}": {
-    "post": "addUserToTeam",
-    "delete": "removeUserFromTeam"
-  },
-  "/team-member-profiles/{team_id}/{user_id}": {
-    "get": "getTeamMemberProfile",
-    "patch": "updateTeamMemberProfile"
-  },
-  "/team-invitations/send-code": {
-    "post": "sendTeamInvitationCode"
-  },
-  "/team-permissions/{team_id}/{user_id}/{permission_id}": {
-    "post": "grantPermissionToUser",
-    "delete": "revokePermissionFromUser"
-  },
-  "/team-permissions": {
-    "get": "listTeamPermissions"
-  },
-  "/contact-channels/{user_id}/{contact_channel_id}": {
-    "get": "getContactChannel",
-    "patch": "updateContactChannel",
-    "delete": "deleteContactChannel"
-  },
-  "/contact-channels": {
-    "get": "listContactChannels"
-  }
-};
-
 
 function getOpenAPISchema(): OpenAPIV3_1.Document {
   return JSON.parse(readFileSync("./openapi/server.json", "utf8"));
 }
-
 
 function isOperationObject(obj: any): obj is OpenAPIV3_1.OperationObject {
   return obj !== null && typeof obj === 'object' && 'parameters' in obj;
@@ -126,88 +80,56 @@ function getOperationObject(openAPISchema: OpenAPIV3_1.Document, path: string, m
   return operation;
 }
 
-function addOperationIDs(openAPISchema: OpenAPIV3_1.Document, exposedEndpoints: Record<string, string[]>) {
-
-  // Add operationIDs to the OpenAPI schema in place
-  for (const [path, methods] of Object.entries(exposedEndpoints)) {
-    if (openAPISchema.paths?.[path]) {
-      for (const method of methods) {
-        const operation = getOperationObject(openAPISchema, path, method);
-        operation.operationId = operationIDs[path][method];
-      }
-    }
-  }
-}
-function filterAPIEndpoints(openAPISchema: OpenAPIV3_1.Document, exposedEndpoints: Record<string, string[]>) {
-  const filteredEndpoints: Record<string, Record<string, OpenAPIV3_1.OperationObject>> = {};
-  for (const [path, methods] of Object.entries(exposedEndpoints)) {
-    if (openAPISchema.paths?.[path]) {
-      for (const method of methods) {
-        const operation = getOperationObject(openAPISchema, path, method);
-        // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
-        if (!filteredEndpoints[path]) {
-          filteredEndpoints[path] = {};
-        }
-        filteredEndpoints[path][method] = operation;
-      }
-    } else {
-      throw new Error(`Path ${path} not found in openAPI schema`);
-    }
-  }
-  return {
-    ...openAPISchema,
-    paths: filteredEndpoints
-  };
+type ToolType = {
+  path: string,
+  method: string,
+  name: string,
+  description: string | undefined,
+  inputSchema: {
+    [x: string]: unknown,
+    type: "object",
+    properties?: {
+      [x: string]: unknown,
+    } | undefined,
+  },
 }
 
 
-const openAPISchema = getOpenAPISchema();
-addOperationIDs(openAPISchema, exposedEndpoints);
-const filteredEndpoints = filterAPIEndpoints(openAPISchema, exposedEndpoints);
-const operationsMap = Object.entries(filteredEndpoints.paths).reduce((acc, [path, methods]) => {
-  Object.entries(methods).forEach(([method, operation]) => {
-    acc[operation.operationId!] = {
-      operationId: operation.operationId!,
+function getToolsFromOpenAPI(openAPISchema: OpenAPIV3_1.Document): ToolType[] {
+  const tools: ToolType[] = Object.entries(operationIDs).map(([operationID, [path, method]]) => {
+    const operation = getOperationObject(openAPISchema, path, method);
+    const inputSchema = !operation.parameters ? {
+      type: "object" as const,
+      properties: {},
+      required: [],
+    } : convertParameterArrayToJsonSchema(operation.parameters, operation.requestBody);
+
+
+    return {
+      name: operationID,
+      description: operation.description,
+      inputSchema,
       path,
       method,
-      ...operation
+      parameters: operation.parameters,
     };
   });
-  return acc;
-}, {} as Record<string, OpenAPIV3_1.OperationObject & { operationId: string, path: string, method: string }>);
 
-
-const tools: Tool[] = [];
-
-
-for (const [name, operation] of Object.entries(operationsMap)) {
-
-  const inputSchema = !operation.parameters ? {
-    type: "object" as const,
-    properties: {},
-    required: [],
-  } : convertParameterArrayToJsonSchema(operation.parameters, operation.requestBody);
-
-
-  tools.push({
-    name: operation.operationId,
-    description: operation.description,
-    inputSchema
-  });
+  return tools;
 }
 
 
 async function main() {
+
+  const openAPISchema = getOpenAPISchema();
+  const tools = getToolsFromOpenAPI(openAPISchema);
   const transport = new StdioServerTransport();
-
   const version = (await import("../package.json", { assert: { type: "json" } })).default.version;
-
 
   // Create server instance
   const server = new Server({
     name: "stackauth",
     version,
-
   }, {
     capabilities: {
       tools: {}
@@ -224,18 +146,17 @@ async function main() {
     const name = request.params.name;
     const args = request.params.arguments ?? {};
 
-    const openApi = operationsMap[name];
+    const tool = tools.find(tool => tool.name === name);
 
-    // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
-    if (!openApi) {
+    if (!tool) {
       return {
         isError: true,
         content: [{ type: "text", text: `Tool ${name} not found` }],
       };
     }
 
-    const path = openApi.path;
-    const method = openApi.method.toUpperCase();
+    const path = tool.path;
+    const method = tool.method.toUpperCase();
 
 
     // Split args into path and query parameters
@@ -266,7 +187,8 @@ async function main() {
 
     let body: string | undefined;
     let headers: Record<string, string> | undefined;
-    if (openApi.requestBody && args["###body###"] && typeof args["###body###"] === "string") {
+    // LIMITATION: we only support JSON body for now
+    if (args["###body###"] && typeof args["###body###"] === "string") {
       body = args["###body###"];
       headers = {
         "Content-Type": "application/json",

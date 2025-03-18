@@ -7,12 +7,10 @@ import type { OpenAPIV3_1 } from 'openapi-types';
  * Type definition for JSON Schema
  */
 type JSONSchema = {
-  type: string,
+  type: 'object',
   properties: Record<string, any>,
   required?: string[],
-  [key: string]: any,
 }
-
 
 /**
  * Type guard to check if an object is a ReferenceObject
@@ -39,7 +37,7 @@ function convertParameterArrayToJsonSchema(parameterObjectArray: (OpenAPIV3_1.Pa
   }
 
 
-  const properties: Record<string, any> = {};
+  const properties = new Map<string, any>();
   const requiredParams: string[] = [];
 
   parameterObjectArray.forEach(param => {
@@ -87,7 +85,7 @@ function convertParameterArrayToJsonSchema(parameterObjectArray: (OpenAPIV3_1.Pa
     }
 
     // Add parameter to properties
-    properties[newParamName] = schema;
+    properties.set(newParamName, schema);
 
     // Add to required array if necessary
     if (param.required === true) {
@@ -98,14 +96,20 @@ function convertParameterArrayToJsonSchema(parameterObjectArray: (OpenAPIV3_1.Pa
   if (requestBody) {
     const body = handleRequestBody(requestBody);
     if (body) {
-      properties["###body###"] = body.properties;
+      properties.set("###body###", body.properties);
       requiredParams.push("###body###");
     }
   }
 
+  // Convert Map back to Record for return type
+  const propertiesRecord: Record<string, any> = {};
+  properties.forEach((value, key) => {
+    propertiesRecord[key] = value;
+  });
+
   const jsonSchema = {
     type: 'object' as const,
-    properties: properties,
+    properties: propertiesRecord,
     required: requiredParams
   };
 
