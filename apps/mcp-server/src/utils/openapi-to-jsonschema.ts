@@ -54,7 +54,7 @@ function convertParameterArrayToJsonSchema(parameterObjectArray: (OpenAPIV3_1.Pa
       throw new Error('Parameter object must have a name');
     }
 
-    param.name = param.name + "###" + param.in;
+    const newParamName = param.name + "###" + param.in;
 
     // Extract the schema from the parameter
     let schema: Record<string, any> = param.schema ?
@@ -90,11 +90,11 @@ function convertParameterArrayToJsonSchema(parameterObjectArray: (OpenAPIV3_1.Pa
     }
 
     // Add parameter to properties
-    properties[param.name] = schema;
+    properties[newParamName] = schema;
 
     // Add to required array if necessary
     if (param.required === true) {
-      required.push(param.name);
+      required.push(newParamName);
     }
   });
 

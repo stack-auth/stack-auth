@@ -279,8 +279,8 @@ async function main() {
 
     let body: string | undefined;
     let headers: Record<string, string> | undefined;
-    if (openApi.requestBody) {
-      body = args["###body###"] as string;
+    if (openApi.requestBody && args["###body###"] && typeof args["###body###"] === "string") {
+      body = args["###body###"];
       headers = {
         "Content-Type": "application/json",
       }
@@ -289,6 +289,7 @@ async function main() {
     const result = await (stackServerApp as any)[stackAppInternalsSymbol].sendRequest(finalPath, {
       method,
       headers: {
+        // Hack to make api call as a server and not client, should probably create a new (internal) function for this
         "x-stack-secret-server-key": STACK_SECRET_SERVER_KEY,
         ...headers,
       },
