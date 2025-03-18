@@ -66,6 +66,11 @@ export const getConfigSchema = () => yupObject({
     }),
   )).defined().meta(projectOrLowerLevels),
 
+  connectedAccounts: yupObject({
+    enabled: yupBoolean().defined(),
+    oauthProviderId: yupString().defined(),
+  }).defined().meta(projectOrLowerLevels),
+
   // keys to the domains are the hex encoded domains
   domains: yupRecord(yupObject({
     domain: schemaFields.urlSchema.defined(),
