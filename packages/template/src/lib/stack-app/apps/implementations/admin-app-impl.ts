@@ -102,6 +102,9 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
         clientUserDeletionEnabled: data.config.client_user_deletion_enabled,
         allowLocalhost: data.config.allow_localhost,
         oauthAccountMergeStrategy: data.config.oauth_account_merge_strategy,
+        allowUserAPIKeys: data.config.allow_user_api_keys,
+        allowTeamAPIKeys: data.config.allow_team_api_keys,
+        allowTenancyAPIKeys: data.config.allow_tenancy_api_keys,
         oauthProviders: data.config.oauth_providers.map((p) => ((p.type === 'shared' ? {
           id: p.id,
           enabled: p.enabled,

@@ -64,6 +64,56 @@ export default function PageClient() {
       />
 
       <SettingCard
+        title="API Key Settings"
+        description="Configure which types of API keys are allowed in your project."
+      >
+        <SettingSwitch
+          label="Allow User API Keys"
+          checked={project.config.allowUserAPIKeys}
+          onCheckedChange={async (checked) => {
+            await project.update({
+              config: {
+                allowUserAPIKeys: checked
+              }
+            });
+          }}
+        />
+        <Typography variant="secondary" type="footnote">
+          Enable to allow users to create API keys for their accounts.
+        </Typography>
+
+        <SettingSwitch
+          label="Allow Team API Keys"
+          checked={project.config.allowTeamAPIKeys}
+          onCheckedChange={async (checked) => {
+            await project.update({
+              config: {
+                allowTeamAPIKeys: checked
+              }
+            });
+          }}
+        />
+        <Typography variant="secondary" type="footnote">
+          Enable to allow users to create API keys for their teams.
+        </Typography>
+
+        <SettingSwitch
+          label="Allow Tenancy API Keys"
+          checked={project.config.allowTenancyAPIKeys}
+          onCheckedChange={async (checked) => {
+            await project.update({
+              config: {
+                allowTenancyAPIKeys: checked
+              }
+            });
+          }}
+        />
+        <Typography variant="secondary" type="footnote">
+          Enable to allow users to create API keys for their tenancy.
+        </Typography>
+      </SettingCard>
+
+      <SettingCard
         title="Production mode"
         description="Production mode disallows certain configuration options that are useful for development but deemed unsafe for production usage. To prevent accidental misconfigurations, it is strongly recommended to enable production mode on your production environments."
       >
@@ -88,7 +138,7 @@ export default function PageClient() {
             Your configuration is not ready for production mode. Please fix the
             following issues:
             <ul className="mt-2 list-disc pl-5">
-              {productionModeErrors.map((error) => (
+              {productionModeErrors.map((error: { message: string, relativeFixUrl: string }) => (
                 <li key={error.message}>
                   {error.message} (<StyledLink href={error.relativeFixUrl}>show configuration</StyledLink>)
                 </li>

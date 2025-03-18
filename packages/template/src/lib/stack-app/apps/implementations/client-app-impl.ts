@@ -575,6 +575,9 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
         passkeyEnabled: crud.config.passkey_enabled,
         clientTeamCreationEnabled: crud.config.client_team_creation_enabled,
         clientUserDeletionEnabled: crud.config.client_user_deletion_enabled,
+        allowUserAPIKeys: crud.config.allow_user_api_keys,
+        allowTeamAPIKeys: crud.config.allow_team_api_keys,
+        allowTenancyAPIKeys: crud.config.allow_tenancy_api_keys,
         oauthProviders: crud.config.enabled_oauth_providers.map((p) => ({
           id: p.id,
         })),
