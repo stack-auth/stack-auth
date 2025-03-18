@@ -111,7 +111,6 @@ function getToolsFromOpenAPI(openAPISchema: OpenAPIV3_1.Document): ToolType[] {
       inputSchema,
       path,
       method,
-      parameters: operation.parameters,
     };
   });
 
