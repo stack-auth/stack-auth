@@ -15,7 +15,7 @@ env:
   SHELL: /usr/bin/bash
 
 jobs:
-  test:
+  restart-dev-and-test:
     runs-on: ubicloud-standard-8
     steps:
       - uses: actions/checkout@v3
@@ -37,7 +37,7 @@ jobs:
         run: pnpm run restart-dev-environment
 
       - name: Run tests
-        run: pnpm test
+        run: pnpm test --no-file-parallelism
       
       - name: Print dev server logs
         run: cat dev-server.log.untracked.txt
