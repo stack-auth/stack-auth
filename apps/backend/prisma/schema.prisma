@@ -28,6 +28,7 @@ model Project {
   neonProvisionedProject NeonProvisionedProject?
   tenancies              Tenancy[]
   verificationCodes      VerificationCode[]
+  GroupAPIKeySet         GroupAPIKeySet[]
 }
 
 model ProjectConfig {
@@ -54,6 +55,9 @@ model ProjectConfig {
   authMethodConfigs                  AuthMethodConfig[]
   connectedAccountConfigs            ConnectedAccountConfig[]
   oauthAccountMergeStrategy          OAuthAccountMergeStrategy @default(LINK_METHOD)
+  allowUserAPIKeys                   Boolean                   @default(false)
+  allowTeamAPIKeys                   Boolean                   @default(false)
+  allowTenancyAPIKeys                Boolean                   @default(false)
 }
 
 enum OAuthAccountMergeStrategy {
@@ -84,6 +88,7 @@ model Tenancy {
   connectedAccounts ConnectedAccount[] @relation("TenancyConnectedAccounts")
   SentEmail         SentEmail[]
   cliAuthAttempts   CliAuthAttempt[]
+  Group             Group[]
 
   @@unique([projectId, branchId, organizationId])
   @@unique([projectId, branchId, hasNoOrganization])
@@ -124,6 +129,7 @@ model Team {
   tenancy     Tenancy      @relation("TenancyTeams", fields: [tenancyId], references: [id], onDelete: Cascade)
   permissions Permission[]
   teamMembers TeamMember[]
+  Group       Group[]
 
   @@id([tenancyId, teamId])
   @@unique([mirroredProjectId, mirroredBranchId, teamId])
@@ -278,6 +284,7 @@ model ProjectUser {
   otpAuthMethod      OtpAuthMethod[]
   oauthAuthMethod    OAuthAuthMethod[]
   SentEmail          SentEmail[]
+  Group              Group[]
 
   @@id([tenancyId, projectUserId])
   @@unique([mirroredProjectId, mirroredBranchId, projectUserId])
@@ -683,9 +690,9 @@ model OAuthOuterInfo {
 }
 
 model ProjectUserRefreshToken {
-  id            String   @default(uuid()) @db.Uuid
-  tenancyId     String   @db.Uuid
-  projectUserId String   @db.Uuid
+  id            String @default(uuid()) @db.Uuid
+  tenancyId     String @db.Uuid
+  projectUserId String @db.Uuid
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -773,6 +780,44 @@ model ApiKeySet {
   superSecretAdminKey  String?   @unique
 
   @@id([projectId, id])
+}
+
+model Group {
+  projectId String
+
+  id String @default(uuid()) @db.Uuid
+
+  // "Group"
+  tenancyId     String? @db.Uuid
+  teamId        String? @db.Uuid
+  projectUserId String? @db.Uuid
+
+  tenancy        Tenancy?        @relation(fields: [tenancyId], references: [id], onDelete: Cascade)
+  projectUser    ProjectUser?    @relation(fields: [tenancyId, projectUserId], references: [tenancyId, projectUserId], onDelete: Cascade)
+  team           Team?           @relation(fields: [tenancyId, teamId], references: [tenancyId, teamId], onDelete: Cascade)
+  GroupAPIKeySet GroupAPIKeySet?
+
+  @@id([projectId, id])
+}
+
+model GroupAPIKeySet {
+  projectId String
+  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  // Public id of the group
+  id           String @default(uuid()) @db.Uuid
+  secretApiKey String @unique
+
+  // Validity and revocation
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+  expiresAt         DateTime?
+  manuallyRevokedAt DateTime?
+  groupId           String    @db.Uuid
+  Group             Group     @relation(fields: [projectId, groupId], references: [projectId, id])
+
+  @@id([projectId, id])
+  @@unique([projectId, groupId])
 }
 
 model EmailServiceConfig {
@@ -962,18 +1007,18 @@ model SentEmail {
 }
 
 model CliAuthAttempt {
-  tenancyId    String   @db.Uuid
-  tenancy      Tenancy  @relation(fields: [tenancyId], references: [id], onDelete: Cascade)
-  
-  id           String   @default(uuid()) @db.Uuid
-  pollingCode  String   @unique
-  loginCode    String   @unique
+  tenancyId String  @db.Uuid
+  tenancy   Tenancy @relation(fields: [tenancyId], references: [id], onDelete: Cascade)
+
+  id           String    @default(uuid()) @db.Uuid
+  pollingCode  String    @unique
+  loginCode    String    @unique
   refreshToken String?
   expiresAt    DateTime
   usedAt       DateTime?
-  
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
-  
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
   @@id([tenancyId, id])
 }
