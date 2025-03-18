@@ -4,6 +4,7 @@ import { PrismaClient } from '@prisma/client';
 import { configSchema } from '@stackframe/stack-shared/dist/config/schema';
 import { throwErr } from '@stackframe/stack-shared/dist/utils/errors';
 import { hashPassword } from "@stackframe/stack-shared/dist/utils/hashes";
+import { typedEntries } from '@stackframe/stack-shared/dist/utils/objects';
 import { generateUuid } from '@stackframe/stack-shared/dist/utils/uuids';
 
 const prisma = new PrismaClient();
@@ -19,7 +20,7 @@ async function seed() {
 
   // dashboard settings
   const dashboardDomain = process.env.NEXT_PUBLIC_STACK_DASHBOARD_URL;
-  const oauthProviderIds = process.env.STACK_SEED_INTERNAL_PROJECT_OAUTH_PROVIDERS?.split(',') ?? [];
+  const oauthProviderTypes = process.env.STACK_SEED_INTERNAL_PROJECT_OAUTH_PROVIDERS?.split(',') ?? [];
   const otpEnabled = process.env.STACK_SEED_INTERNAL_PROJECT_OTP_ENABLED === 'true';
   const signUpEnabled = process.env.STACK_SEED_INTERNAL_PROJECT_SIGN_UP_ENABLED === 'true';
   const allowLocalhost = process.env.STACK_SEED_INTERNAL_PROJECT_ALLOW_LOCALHOST === 'true';
@@ -39,6 +40,42 @@ async function seed() {
   });
 
   if (!internalProject) {
+    const oauthProviders = oauthProviderTypes.reduce((acc, type) => {
+      const id = generateUuid();
+      return {
+        ...acc,
+        [id]: {
+          id,
+          type,
+          isShared: true,
+        }
+      };
+    }, {});
+
+    const authMethods = [
+      {
+        id: generateUuid(),
+        type: 'password'
+      },
+      ...(otpEnabled ? [{
+        id: generateUuid(),
+        type: 'otp'
+      }] : [])
+    ].reduce((acc, method) => ({
+      ...acc,
+      [method.id]: method
+    }), {});
+
+    const connectedAccounts = typedEntries(oauthProviders).reduce((acc, [id, provider]) => ({
+      ...acc,
+      [id]: {
+        enabled: false,
+        oauthProviderId: id
+      }
+    }), {});
+
+    console.log(connectedAccounts);
+
     internalProject = await prisma.project.create({
       data: {
         id: 'internal',
@@ -59,44 +96,15 @@ async function seed() {
               legacyGlobalJwtSigning: false,
               isProductionMode: false,
               allowLocalhost: true,
-              oauthAccountMergeStrategy: 'RAISE_ERROR',
-
+              oauthAccountMergeStrategy: 'allow_duplicates',
               teamCreateDefaultSystemPermissions: {},
               teamMemberDefaultSystemPermissions: {},
               permissionDefinitions: {},
-
-              oauthProviders: oauthProviderIds.reduce((acc, id) => ({
-                ...acc,
-                [id]: {
-                  id,
-                  type: 'shared',
-                }
-              }), {}),
-
-              authMethods: [
-                {
-                  id: 'password',
-                  type: 'password'
-                },
-                ...(otpEnabled ? [{
-                  id: 'otp',
-                  type: 'otp'
-                }] : [])
-              ].reduce((acc, method) => ({
-                ...acc,
-                [method.id]: method
-              }), {}),
-
-              connectedAccounts: {
-                enabled: false,
-                oauthProviderId: ''
-              },
-
+              oauthProviders,
+              authMethods,
+              connectedAccounts,
               domains: {},
-
-              emailConfig: {
-                type: 'shared'
-              }
+              emailConfig: { isShared: true }
             })
           }
         },

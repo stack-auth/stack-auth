@@ -2,6 +2,7 @@ import * as yup from "yup";
 import * as schemaFields from "../schema-fields";
 import { yupBoolean, yupObject, yupRecord, yupString, yupUnion } from "../schema-fields";
 import { allProviders } from "../utils/oauth";
+import { isUuid } from "../utils/uuids";
 import { validateSchemaLevels } from "./parser";
 
 const configRecord = (schema: yup.AnySchema) => yupRecord(schema, (key) => key.match(/^[a-zA-Z0-9_$-]+$/) !== null);
@@ -48,7 +49,7 @@ export const configSchema = yupObject({
   })).defined().meta(projectOrLowerLevels),
 
   // keys to the auth methods are the auth method ids.
-  authMethods: configRecord(yupUnion(
+  authMethods: yupRecord(yupUnion(
     yupObject({
       id: yupString().defined(),
       type: yupString().oneOf(['password']).defined(),
@@ -66,12 +67,13 @@ export const configSchema = yupObject({
       type: yupString().oneOf(['oauth']).defined(),
       oauthProviderId: yupString().defined(),
     }),
-  )).defined().meta(projectOrLowerLevels),
+  ), (key) => isUuid(key)).defined().meta(projectOrLowerLevels),
 
-  connectedAccounts: yupObject({
+  // keys to the connected accounts are the oauth provider ids.
+  connectedAccounts: yupRecord(yupObject({
     enabled: yupBoolean().defined(),
     oauthProviderId: yupString().defined(),
-  }).defined().meta(projectOrLowerLevels),
+  }), (key) => isUuid(key)).defined().meta(projectOrLowerLevels),
 
   // keys to the domains are the hex encoded domains
   domains: yupRecord(yupObject({
