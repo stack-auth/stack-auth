@@ -12,8 +12,6 @@ import type { OpenAPIV3_1 } from 'openapi-types';
 import { convertParameterArrayToJsonSchema } from "./utils/openapi-to-jsonschema";
 
 
-
-
 const STACK_AUTH_URL = process.env.STACK_AUTH_URL ?? "https://api.stack-auth.com/";
 const STACK_SECRET_SERVER_KEY = process.env.STACK_SECRET_SERVER_KEY;
 const STACK_PROJECT_ID = process.env.STACK_PROJECT_ID;
@@ -34,9 +32,6 @@ export const stackServerApp = new StackServerApp({
 });
 
 
-
-
-
 // Cursor only supports 40 endpoints, so we only expose the most useful tools
 const exposedEndpoints = {
   "/users/{user_id}": ["get", "patch", "delete"],
@@ -52,7 +47,7 @@ const exposedEndpoints = {
   "/contact-channels/{user_id}/{contact_channel_id}": ["get", "patch", "delete"],
   "/contact-channels": ["get"],
   // TODO fix me "/contact-channels/send-verification-code": ["post"],
-}
+};
 
 // Define operationIDs for each endpoint and method
 const operationIDs: Record<string, Record<string, string>> = {
@@ -103,8 +98,7 @@ const operationIDs: Record<string, Record<string, string>> = {
   "/contact-channels": {
     "get": "listContactChannels"
   }
-}
-
+};
 
 
 function getOpenAPISchema(): OpenAPIV3_1.Document {
@@ -145,11 +139,12 @@ function addOperationIDs(openAPISchema: OpenAPIV3_1.Document, exposedEndpoints: 
   }
 }
 function filterAPIEndpoints(openAPISchema: OpenAPIV3_1.Document, exposedEndpoints: Record<string, string[]>) {
-  const filteredEndpoints: Record<string, Record<string, any>> = {};
+  const filteredEndpoints: Record<string, Record<string, OpenAPIV3_1.OperationObject>> = {};
   for (const [path, methods] of Object.entries(exposedEndpoints)) {
     if (openAPISchema.paths?.[path]) {
       for (const method of methods) {
         const operation = getOperationObject(openAPISchema, path, method);
+        // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
         if (!filteredEndpoints[path]) {
           filteredEndpoints[path] = {};
         }
@@ -162,7 +157,7 @@ function filterAPIEndpoints(openAPISchema: OpenAPIV3_1.Document, exposedEndpoint
   return {
     ...openAPISchema,
     paths: filteredEndpoints
-  }
+  };
 }
 
 
@@ -171,8 +166,8 @@ addOperationIDs(openAPISchema, exposedEndpoints);
 const filteredEndpoints = filterAPIEndpoints(openAPISchema, exposedEndpoints);
 const operationsMap = Object.entries(filteredEndpoints.paths).reduce((acc, [path, methods]) => {
   Object.entries(methods).forEach(([method, operation]) => {
-    acc[operation.operationId] = {
-      operationId: operation.operationId,
+    acc[operation.operationId!] = {
+      operationId: operation.operationId!,
       path,
       method,
       ...operation
@@ -182,38 +177,30 @@ const operationsMap = Object.entries(filteredEndpoints.paths).reduce((acc, [path
 }, {} as Record<string, OpenAPIV3_1.OperationObject & { operationId: string, path: string, method: string }>);
 
 
-
-const tools: Tool[] = []
-
-
+const tools: Tool[] = [];
 
 
 for (const [name, operation] of Object.entries(operationsMap)) {
 
-    const inputSchema = !operation.parameters ? {
-      type: "object" as const,
-      properties: {},
-      required: [],
-    } : convertParameterArrayToJsonSchema(operation.parameters, operation.requestBody)
+  const inputSchema = !operation.parameters ? {
+    type: "object" as const,
+    properties: {},
+    required: [],
+  } : convertParameterArrayToJsonSchema(operation.parameters, operation.requestBody);
 
 
-    tools.push({
-      name: operation.operationId,
-      description: operation.description,
-      inputSchema
-    })
-  }
-
-
-
-
-
+  tools.push({
+    name: operation.operationId,
+    description: operation.description,
+    inputSchema
+  });
+}
 
 
 async function main() {
   const transport = new StdioServerTransport();
 
-  const version = (await import("../package.json", { assert: { type: "json" }})).default.version;
+  const version = (await import("../package.json", { assert: { type: "json" } })).default.version;
 
 
   // Create server instance
@@ -231,7 +218,7 @@ async function main() {
     (): ListToolsResult => ({
       tools
     })
-  )
+  );
 
   server.setRequestHandler(CallToolRequestSchema, async (request) => {
     const name = request.params.name;
@@ -239,11 +226,12 @@ async function main() {
 
     const openApi = operationsMap[name];
 
+    // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
     if (!openApi) {
       return {
         isError: true,
         content: [{ type: "text", text: `Tool ${name} not found` }],
-      }
+      };
     }
 
     const path = openApi.path;
@@ -282,7 +270,7 @@ async function main() {
       body = args["###body###"];
       headers = {
         "Content-Type": "application/json",
-      }
+      };
     }
 
     const result = await (stackServerApp as any)[stackAppInternalsSymbol].sendRequest(finalPath, {
@@ -299,17 +287,20 @@ async function main() {
       return {
         isError: true,
         content: [{ type: "text", text: `Error: ${result.status} ${await result.text()}` }],
-      }
+      };
     }
 
     return {
       content: [{ type: "text", text: JSON.stringify(await result.json(), null, 2) }],
-    }
+    };
 
 
-  })
+  });
 
   await server.connect(transport);
 }
 
-main();
+main().catch((error) => {
+  console.error(error);
+  process.exit(1);
+});

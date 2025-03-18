@@ -6,13 +6,12 @@ import type { OpenAPIV3_1 } from 'openapi-types';
 /**
  * Type definition for JSON Schema
  */
-interface JSONSchema {
-  type: string;
-  properties: Record<string, any>;
-  required?: string[];
-  [key: string]: any;
+type JSONSchema = {
+  type: string,
+  properties: Record<string, any>,
+  required?: string[],
+  [key: string]: any,
 }
-
 
 
 /**
@@ -25,8 +24,6 @@ function isReferenceObject(obj: any): obj is OpenAPIV3_1.ReferenceObject {
 }
 
 
-
-
 /**
  * Converts an OpenAPI Parameter Object Array to a JSON Schema
  * @param parameterObjectArray - Array of OpenAPI Parameter Objects
@@ -35,7 +32,7 @@ function isReferenceObject(obj: any): obj is OpenAPIV3_1.ReferenceObject {
 function convertParameterArrayToJsonSchema(parameterObjectArray: (OpenAPIV3_1.ParameterObject | OpenAPIV3_1.ReferenceObject)[], requestBody?: OpenAPIV3_1.RequestBodyObject | OpenAPIV3_1.ReferenceObject): {
   type: "object",
   properties: Record<string, any>,
-  required: string[]
+  required: string[],
 } {
   if (!Array.isArray(parameterObjectArray)) {
     throw new Error('Input must be an array of parameter objects');
@@ -43,7 +40,7 @@ function convertParameterArrayToJsonSchema(parameterObjectArray: (OpenAPIV3_1.Pa
 
 
   const properties: Record<string, any> = {};
-  const required: string[] = [];
+  const requiredParams: string[] = [];
 
   parameterObjectArray.forEach(param => {
 
@@ -94,24 +91,23 @@ function convertParameterArrayToJsonSchema(parameterObjectArray: (OpenAPIV3_1.Pa
 
     // Add to required array if necessary
     if (param.required === true) {
-      required.push(newParamName);
+      requiredParams.push(newParamName);
     }
   });
 
   if (requestBody) {
     const body = handleRequestBody(requestBody);
-    if(body) {
+    if (body) {
       properties["###body###"] = body.properties;
-      required.push("###body###");
+      requiredParams.push("###body###");
     }
   }
 
   const jsonSchema = {
     type: 'object' as const,
     properties: properties,
-    required: required
+    required: requiredParams
   };
-
 
 
   return jsonSchema;
@@ -121,17 +117,14 @@ export { convertParameterArrayToJsonSchema };
 export type { JSONSchema };
 
 
-
 function handleRequestBody(requestBody: OpenAPIV3_1.RequestBodyObject | OpenAPIV3_1.ReferenceObject) {
 
   if (isReferenceObject(requestBody)) {
     throw new Error('Reference objects are not supported');
   }
 
-  if (!requestBody.content) {
-    return
-  }
 
+  // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
   if (!requestBody.content["application/json"]) {
     throw new Error('Request body must be of type application/json');
   }
@@ -141,7 +134,7 @@ function handleRequestBody(requestBody: OpenAPIV3_1.RequestBodyObject | OpenAPIV
   }
 
   if (!body_schema.properties) {
-    return
+    return;
   }
 
   // We simplify the body into one property, called "body"
@@ -152,8 +145,7 @@ function handleRequestBody(requestBody: OpenAPIV3_1.RequestBodyObject | OpenAPIV
       body: JSON.stringify(body_schema)
     },
     required: ["body"]
-  }
-
+  };
 
 
 }
