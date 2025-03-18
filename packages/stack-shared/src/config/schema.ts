@@ -17,6 +17,7 @@ export const getConfigSchema = () => yupObject({
   legacyGlobalJwtSigning: yupBoolean().defined().meta(projectOrLowerLevels),
   isProductionMode: yupBoolean().defined().meta(projectOrLowerLevels),
   allowLocalhost: yupBoolean().defined().meta(projectOrLowerLevels),
+  oauthAccountMergeStrategy: yupString().oneOf(['LINK_METHOD', 'RAISE_ERROR', 'ALLOW_DUPLICATES']).defined().meta(projectOrLowerLevels),
 
   // keys to the permissions/permission definitions are hex encoded ids.
   teamCreateDefaultSystemPermissions: configRecord(yupObject({
