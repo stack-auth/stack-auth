@@ -15,7 +15,7 @@ CREATE TABLE "Group" (
 );
 
 -- CreateTable
-CREATE TABLE "GroupAPIKeySet" (
+CREATE TABLE "GroupAPIKey" (
     "projectId" TEXT NOT NULL,
     "id" UUID NOT NULL,
     "secretApiKey" TEXT NOT NULL,
@@ -23,16 +23,17 @@ CREATE TABLE "GroupAPIKeySet" (
     "updatedAt" TIMESTAMP(3) NOT NULL,
     "expiresAt" TIMESTAMP(3),
     "manuallyRevokedAt" TIMESTAMP(3),
+    "description" TEXT,
     "groupId" UUID NOT NULL,
 
-    CONSTRAINT "GroupAPIKeySet_pkey" PRIMARY KEY ("projectId","id")
+    CONSTRAINT "GroupAPIKey_pkey" PRIMARY KEY ("projectId","id")
 );
 
 -- CreateIndex
-CREATE UNIQUE INDEX "GroupAPIKeySet_secretApiKey_key" ON "GroupAPIKeySet"("secretApiKey");
+CREATE UNIQUE INDEX "GroupAPIKey_secretApiKey_key" ON "GroupAPIKey"("secretApiKey");
 
 -- CreateIndex
-CREATE UNIQUE INDEX "GroupAPIKeySet_projectId_groupId_key" ON "GroupAPIKeySet"("projectId", "groupId");
+CREATE UNIQUE INDEX "GroupAPIKey_projectId_groupId_key" ON "GroupAPIKey"("projectId", "groupId");
 
 -- AddForeignKey
 ALTER TABLE "Group" ADD CONSTRAINT "Group_tenancyId_fkey" FOREIGN KEY ("tenancyId") REFERENCES "Tenancy"("id") ON DELETE CASCADE ON UPDATE CASCADE;
@@ -44,7 +45,7 @@ ALTER TABLE "Group" ADD CONSTRAINT "Group_tenancyId_projectUserId_fkey" FOREIGN 
 ALTER TABLE "Group" ADD CONSTRAINT "Group_tenancyId_teamId_fkey" FOREIGN KEY ("tenancyId", "teamId") REFERENCES "Team"("tenancyId", "teamId") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE "GroupAPIKeySet" ADD CONSTRAINT "GroupAPIKeySet_projectId_fkey" FOREIGN KEY ("projectId") REFERENCES "Project"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+ALTER TABLE "GroupAPIKey" ADD CONSTRAINT "GroupAPIKey_projectId_fkey" FOREIGN KEY ("projectId") REFERENCES "Project"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE "GroupAPIKeySet" ADD CONSTRAINT "GroupAPIKeySet_projectId_groupId_fkey" FOREIGN KEY ("projectId", "groupId") REFERENCES "Group"("projectId", "id") ON DELETE RESTRICT ON UPDATE CASCADE;
+ALTER TABLE "GroupAPIKey" ADD CONSTRAINT "GroupAPIKey_projectId_groupId_fkey" FOREIGN KEY ("projectId", "groupId") REFERENCES "Group"("projectId", "id") ON DELETE RESTRICT ON UPDATE CASCADE;

@@ -28,7 +28,7 @@ model Project {
   neonProvisionedProject NeonProvisionedProject?
   tenancies              Tenancy[]
   verificationCodes      VerificationCode[]
-  GroupAPIKeySet         GroupAPIKeySet[]
+  GroupAPIKey            GroupAPIKey[]
 }
 
 model ProjectConfig {
@@ -792,15 +792,15 @@ model Group {
   teamId        String? @db.Uuid
   projectUserId String? @db.Uuid
 
-  tenancy        Tenancy?        @relation(fields: [tenancyId], references: [id], onDelete: Cascade)
-  projectUser    ProjectUser?    @relation(fields: [tenancyId, projectUserId], references: [tenancyId, projectUserId], onDelete: Cascade)
-  team           Team?           @relation(fields: [tenancyId, teamId], references: [tenancyId, teamId], onDelete: Cascade)
-  GroupAPIKeySet GroupAPIKeySet?
+  tenancy     Tenancy?     @relation(fields: [tenancyId], references: [id], onDelete: Cascade)
+  projectUser ProjectUser? @relation(fields: [tenancyId, projectUserId], references: [tenancyId, projectUserId], onDelete: Cascade)
+  team        Team?        @relation(fields: [tenancyId, teamId], references: [tenancyId, teamId], onDelete: Cascade)
+  GroupAPIKey GroupAPIKey?
 
   @@id([projectId, id])
 }
 
-model GroupAPIKeySet {
+model GroupAPIKey {
   projectId String
   project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
 
@@ -813,8 +813,10 @@ model GroupAPIKeySet {
   updatedAt         DateTime  @updatedAt
   expiresAt         DateTime?
   manuallyRevokedAt DateTime?
+  description       String?
+  // Group
   groupId           String    @db.Uuid
-  Group             Group     @relation(fields: [projectId, groupId], references: [projectId, id])
+  group             Group     @relation(fields: [projectId, groupId], references: [projectId, id])
 
   @@id([projectId, id])
   @@unique([projectId, groupId])
