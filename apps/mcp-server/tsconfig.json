@@ -2,12 +2,11 @@
   "compilerOptions": {
     "lib": [
       "dom",
-      "dom.iterable",
+      "dom.iterable", 
       "esnext"
     ],
     "allowJs": true,
     "strict": true,
-    "noEmit": true,
     "esModuleInterop": true,
     "module": "esnext",
     "moduleResolution": "bundler",
@@ -16,6 +15,7 @@
     "jsx": "preserve",
     "incremental": true,
     "noErrorTruncation": true,
+    "outDir": "./build",
     "plugins": [
       {
         "name": "next"
