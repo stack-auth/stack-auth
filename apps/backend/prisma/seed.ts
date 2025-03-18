@@ -1,6 +1,7 @@
 /* eslint-disable no-restricted-syntax */
 import { getSoleTenancyFromProject } from '@/lib/tenancies';
 import { PrismaClient } from '@prisma/client';
+import { configSchema } from '@stackframe/stack-shared/dist/config/schema';
 import { throwErr } from '@stackframe/stack-shared/dist/utils/errors';
 import { hashPassword } from "@stackframe/stack-shared/dist/utils/hashes";
 import { generateUuid } from '@stackframe/stack-shared/dist/utils/uuids';
@@ -35,115 +36,100 @@ async function seed() {
     where: {
       id: 'internal',
     },
-    include: {
-      config: true,
-    }
   });
 
   if (!internalProject) {
-    await prisma.$transaction(async (tx) => {
-      internalProject = await tx.project.create({
-        data: {
-          id: 'internal',
-          displayName: 'Stack Dashboard',
-          description: 'Stack\'s admin dashboard',
-          isProductionMode: false,
-          tenancies: {
-            create: {
-              id: generateUuid(),
-              branchId: 'main',
-              hasNoOrganization: "TRUE",
-              organizationId: null,
-            }
-          },
-          config: {
-            create: {
-              allowLocalhost: true,
-              emailServiceConfig: {
-                create: {
-                  proxiedEmailServiceConfig: {
-                    create: {}
-                  }
-                }
-              },
+    internalProject = await prisma.project.create({
+      data: {
+        id: 'internal',
+        displayName: 'Stack Dashboard',
+        description: 'Stack\'s admin dashboard',
+        isProductionMode: false,
+        tenancies: {
+          create: {
+            id: generateUuid(),
+            branchId: 'main',
+            hasNoOrganization: "TRUE",
+            organizationId: null,
+            configOverride: configSchema.validateSync({
               createTeamOnSignUp: false,
               clientTeamCreationEnabled: clientTeamCreation,
-              authMethodConfigs: {
-                create: [
-                  {
-                    passwordConfig: {
-                      create: {},
-                    }
-                  },
-                  ...(otpEnabled ? [{
-                    otpConfig: {
-                      create: {
-                        contactChannelType: 'EMAIL'
-                      },
-                    }
-                  }]: []),
-                ],
-              },
-              oauthProviderConfigs: {
-                create: oauthProviderIds.map((id) => ({
+              clientUserDeletionEnabled: false,
+              signUpEnabled: true,
+              legacyGlobalJwtSigning: false,
+              isProductionMode: false,
+              allowLocalhost: true,
+              oauthAccountMergeStrategy: 'RAISE_ERROR',
+
+              teamCreateDefaultSystemPermissions: {},
+              teamMemberDefaultSystemPermissions: {},
+              permissionDefinitions: {},
+
+              oauthProviders: oauthProviderIds.reduce((acc, id) => ({
+                ...acc,
+                [id]: {
                   id,
-                  proxiedOAuthConfig: {
-                    create: {
-                      type: id.toUpperCase() as any,
-                    }
-                  },
-                  projectUserOAuthAccounts: {
-                    create: []
-                  }
-                })),
+                  type: 'shared',
+                }
+              }), {}),
+
+              authMethods: [
+                {
+                  id: 'password',
+                  type: 'password'
+                },
+                ...(otpEnabled ? [{
+                  id: 'otp',
+                  type: 'otp'
+                }] : [])
+              ].reduce((acc, method) => ({
+                ...acc,
+                [method.id]: method
+              }), {}),
+
+              connectedAccounts: {
+                enabled: false,
+                oauthProviderId: ''
               },
-            }
+
+              domains: {},
+
+              emailConfig: {
+                type: 'shared'
+              }
+            })
           }
         },
-        include: {
-          config: true,
-        }
-      });
-
-      await tx.projectConfig.update({
-        where: {
-          id: internalProject.configId,
+        branches: {
+          create: {
+            id: 'main',
+            configOverride: {},
+          }
         },
-        data: {
-          authMethodConfigs: {
-            create: [
-              ...oauthProviderIds.map((id) => ({
-                oauthProviderConfig: {
-                  connect: {
-                    projectConfigId_id: {
-                      id,
-                      projectConfigId: (internalProject as any).configId,
-                    }
-                  }
-                }
-              }))
-            ],
-          },
-        }
-      });
+        configOverride: configSchema.validateSync({
+          createTeamOnSignUp: false,
+          clientTeamCreationEnabled: clientTeamCreation,
+          allowLocalhost: true,
+        })
+      },
     });
 
     console.log('Internal project created');
   }
 
   const internalTenancy = await getSoleTenancyFromProject("internal");
+  const internalConfigOverride = configSchema.validateSync(internalProject.configOverride);
 
-  if (!internalProject) {
-    throw new Error('Internal project not found');
-  }
-
-  if (internalProject.config.signUpEnabled !== signUpEnabled) {
-    await prisma.projectConfig.update({
+  if (internalConfigOverride.signUpEnabled !== signUpEnabled) {
+    await prisma.project.update({
       where: {
-        id: internalProject.configId,
+        id: internalProject.id,
       },
       data: {
-        signUpEnabled,
+        configOverride: {
+          ...internalProject.configOverride as any,
+          signUpEnabled,
+        },
       }
     });
 
@@ -214,21 +200,19 @@ async function seed() {
             }
           });
 
-          const passwordConfig = await tx.passwordAuthMethodConfig.findFirstOrThrow({
-            where: {
-              projectConfigId: (internalProject as any).configId
-            },
-            include: {
-              authMethodConfig: true,
-            }
-          });
+          const passwordAuthMethod = Object.entries(internalConfigOverride.authMethods)
+            .find(([_, method]) => method.type === 'password');
+
+          if (!passwordAuthMethod) {
+            throw new Error('Password auth method config not found');
+          }
 
           await tx.authMethod.create({
             data: {
               tenancyId: internalTenancy.id,
-              projectConfigId: (internalProject as any).configId,
               projectUserId: newUser.projectUserId,
-              authMethodConfigId: passwordConfig.authMethodConfigId,
+              projectConfigId: (internalProject as any).configId,
+              authMethodConfigId: passwordAuthMethod[0],
               passwordAuthMethod: {
                 create: {
                   passwordHash: await hashPassword(adminPassword),
@@ -242,16 +226,10 @@ async function seed() {
         }
 
         if (adminGithubId) {
-          const githubConfig = await tx.oAuthProviderConfig.findUnique({
-            where: {
-              projectConfigId_id: {
-                projectConfigId: (internalProject as any).configId,
-                id: 'github'
-              }
-            }
-          });
+          const githubProvider = Object.entries(internalConfigOverride.oauthProviders)
+            .find(([_, provider]) => provider.id === 'github');
 
-          if (!githubConfig) {
+          if (!githubProvider) {
             throw new Error('GitHub OAuth provider config not found');
           }
 
@@ -285,7 +263,7 @@ async function seed() {
               tenancyId: internalTenancy.id,
               projectConfigId: (internalProject as any).configId,
               projectUserId: newUser.projectUserId,
-              authMethodConfigId: githubConfig.authMethodConfigId || throwErr('GitHub OAuth provider config not found'),
+              authMethodConfigId: githubProvider[0],
               oauthAuthMethod: {
                 create: {
                   projectUserId: newUser.projectUserId,
@@ -303,16 +281,15 @@ async function seed() {
     });
   }
 
-  if (internalProject.config.allowLocalhost !== allowLocalhost) {
+  if (internalConfigOverride.allowLocalhost !== allowLocalhost) {
     console.log('Updating allowLocalhost for internal project: ', allowLocalhost);
 
     await prisma.project.update({
       where: { id: 'internal' },
       data: {
-        config: {
-          update: {
-            allowLocalhost,
-          }
+        configOverride: {
+          ...internalProject.configOverride as any,
+          allowLocalhost,
         }
       }
     });
@@ -324,18 +301,19 @@ async function seed() {
     if (url.hostname !== 'localhost') {
       console.log('Adding trusted domain for internal project: ', dashboardDomain);
 
-      await prisma.projectDomain.upsert({
-        where: {
-          projectConfigId_domain: {
-            projectConfigId: internalProject.configId,
-            domain: dashboardDomain,
+      await prisma.project.update({
+        where: { id: 'internal' },
+        data: {
+          configOverride: {
+            ...internalProject.configOverride as any,
+            domains: {
+              ...((internalProject.configOverride as any)?.domains || {}),
+              [dashboardDomain]: {
+                domain: dashboardDomain,
+                handlerPath: '/',
+              }
+            }
           }
-        },
-        update: {},
-        create: {
-          projectConfigId: internalProject.configId,
-          domain: dashboardDomain,
-          handlerPath: '/',
         }
       });
     } else if (!allowLocalhost) {
@@ -360,16 +338,10 @@ async function seed() {
       if (existingUser) {
         console.log('Emulator user already exists, skipping creation');
       } else {
-        const passwordConfig = await tx.authMethodConfig.findFirst({
-          where: {
-            projectConfigId: (internalProject as any).configId,
-            passwordConfig: {
-              isNot: null
-            }
-          },
-        });
+        const passwordAuthMethod = Object.entries(internalConfigOverride.authMethods)
+          .find(([_, method]) => method.type === 'password');
 
-        if (!passwordConfig) {
+        if (!passwordAuthMethod) {
           throw new Error('Password auth method config not found');
         }
 
@@ -401,9 +373,9 @@ async function seed() {
         await tx.authMethod.create({
           data: {
             tenancyId: internalTenancy.id,
-            projectConfigId: (internalProject as any).configId,
             projectUserId: newEmulatorUser.projectUserId,
-            authMethodConfigId: passwordConfig.id,
+            projectConfigId: (internalProject as any).configId,
+            authMethodConfigId: passwordAuthMethod[0],
             passwordAuthMethod: {
               create: {
                 passwordHash: await hashPassword('LocalEmulatorPassword'),
@@ -417,8 +389,6 @@ async function seed() {
       }
     });
 
-    console.log('Created emulator user');
-
     const existingProject = await prisma.project.findUnique({
       where: {
         id: emulatorProjectId,
@@ -428,81 +398,84 @@ async function seed() {
     if (existingProject) {
       console.log('Emulator project already exists, skipping creation');
     } else {
-      await prisma.$transaction(async (tx) => {
-        const emulatorProject = await tx.project.create({
-          data: {
-            id: emulatorProjectId,
-            displayName: 'Local Emulator Project',
-            description: 'Project for local development with emulator',
+      await prisma.project.create({
+        data: {
+          id: emulatorProjectId,
+          displayName: 'Local Emulator Project',
+          description: 'Project for local development with emulator',
+          isProductionMode: false,
+          configOverride: configSchema.validateSync({
+            createTeamOnSignUp: false,
+            clientTeamCreationEnabled: false,
+            clientUserDeletionEnabled: false,
+            signUpEnabled: true,
+            legacyGlobalJwtSigning: false,
             isProductionMode: false,
-            config: {
-              create: {
-                allowLocalhost: true,
-                emailServiceConfig: {
-                  create: {
-                    proxiedEmailServiceConfig: {
-                      create: {}
-                    }
-                  }
-                },
+            allowLocalhost: true,
+            oauthAccountMergeStrategy: 'RAISE_ERROR',
+
+            teamCreateDefaultSystemPermissions: {},
+            teamMemberDefaultSystemPermissions: {},
+            permissionDefinitions: {},
+
+            oauthProviders: ['github', 'google'].reduce((acc, id) => ({
+              ...acc,
+              [id]: {
+                id,
+                type: 'shared',
+              }
+            }), {}),
+
+            authMethods: {
+              password: {
+                id: 'password',
+                type: 'password'
+              }
+            },
+
+            connectedAccounts: {
+              enabled: false,
+              oauthProviderId: ''
+            },
+
+            domains: {},
+
+            emailConfig: {
+              type: 'proxied'
+            }
+          }),
+          tenancies: {
+            create: {
+              id: generateUuid(),
+              branchId: 'main',
+              hasNoOrganization: "TRUE",
+              organizationId: null,
+              configOverride: configSchema.validateSync({
                 createTeamOnSignUp: false,
                 clientTeamCreationEnabled: false,
-                authMethodConfigs: {
-                  create: [
-                    {
-                      passwordConfig: {
-                        create: {},
-                      }
-                    }
-                  ],
+                clientUserDeletionEnabled: false,
+                signUpEnabled: true,
+                legacyGlobalJwtSigning: false,
+                isProductionMode: false,
+                allowLocalhost: true,
+                oauthAccountMergeStrategy: 'RAISE_ERROR',
+                teamCreateDefaultSystemPermissions: {},
+                teamMemberDefaultSystemPermissions: {},
+                permissionDefinitions: {},
+                oauthProviders: {},
+                authMethods: {},
+                connectedAccounts: {
+                  enabled: false,
+                  oauthProviderId: ''
                 },
-                oauthProviderConfigs: {
-                  create: ['github', 'google'].map((id) => ({
-                    id,
-                    proxiedOAuthConfig: {
-                      create: {
-                        type: id.toUpperCase() as any,
-                      }
-                    },
-                    projectUserOAuthAccounts: {
-                      create: []
-                    }
-                  })),
-                },
-              },
-            },
-            tenancies: {
-              create: {
-                id: generateUuid(),
-                branchId: 'main',
-                hasNoOrganization: "TRUE",
-                organizationId: null,
-              }
+                domains: {},
+                emailConfig: {
+                  type: 'proxied'
+                }
+              })
             }
           }
-        });
-
-        await tx.projectConfig.update({
-          where: {
-            id: emulatorProject.configId,
-          },
-          data: {
-            authMethodConfigs: {
-              create: [
-                ...['github', 'google'].map((id) => ({
-                  oauthProviderConfig: {
-                    connect: {
-                      projectConfigId_id: {
-                        id,
-                        projectConfigId: emulatorProject.configId,
-                      }
-                    }
-                  }
-                }))
-              ],
-            },
-          }
-        });
+        }
       });
 
       console.log('Created emulator project');

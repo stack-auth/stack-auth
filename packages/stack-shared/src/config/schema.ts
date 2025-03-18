@@ -1,6 +1,7 @@
 import * as yup from "yup";
 import * as schemaFields from "../schema-fields";
 import { yupBoolean, yupObject, yupRecord, yupString, yupUnion } from "../schema-fields";
+import { allProviders } from "../utils/oauth";
 import { validateSchemaLevels } from "./parser";
 
 const configRecord = (schema: yup.AnySchema) => yupRecord(schema, (key) => key.match(/^[a-zA-Z0-9_$-]+$/) !== null);
@@ -9,7 +10,7 @@ const configRecord = (schema: yup.AnySchema) => yupRecord(schema, (key) => key.m
 const projectOrLowerLevels = { startLevel: 'project', endLevel: 'organization' } as const;
 const envOrLowerLevels = { startLevel: 'environment', endLevel: 'organization' } as const;
 
-export const getConfigSchema = () => yupObject({
+export const configSchema = yupObject({
   createTeamOnSignUp: yupBoolean().defined().meta(projectOrLowerLevels),
   clientTeamCreationEnabled: yupBoolean().defined().meta(projectOrLowerLevels),
   clientUserDeletionEnabled: yupBoolean().defined().meta(projectOrLowerLevels),
@@ -17,7 +18,7 @@ export const getConfigSchema = () => yupObject({
   legacyGlobalJwtSigning: yupBoolean().defined().meta(projectOrLowerLevels),
   isProductionMode: yupBoolean().defined().meta(projectOrLowerLevels),
   allowLocalhost: yupBoolean().defined().meta(projectOrLowerLevels),
-  oauthAccountMergeStrategy: yupString().oneOf(['LINK_METHOD', 'RAISE_ERROR', 'ALLOW_DUPLICATES']).defined().meta(projectOrLowerLevels),
+  oauthAccountMergeStrategy: yupString().oneOf(['link_method', 'raise_error', 'allow_duplicates']).defined().meta(projectOrLowerLevels),
 
   // keys to the permissions/permission definitions are hex encoded ids.
   teamCreateDefaultSystemPermissions: configRecord(yupObject({
@@ -38,7 +39,8 @@ export const getConfigSchema = () => yupObject({
   // keys to the oauth providers are the provider ids.
   oauthProviders: configRecord(yupObject({
     id: yupString().defined(),
-    type: yupString().oneOf(['shared', 'standard']).defined().meta(envOrLowerLevels),
+    isShared: yupBoolean().defined().meta(envOrLowerLevels),
+    type: yupString().oneOf(allProviders).defined().meta(envOrLowerLevels),
     clientId: schemaFields.yupDefinedAndNonEmptyWhen(schemaFields.oauthClientIdSchema, { type: 'standard', enabled: true }).meta(envOrLowerLevels),
     clientSecret: schemaFields.yupDefinedAndNonEmptyWhen(schemaFields.oauthClientSecretSchema, { type: 'standard', enabled: true }).meta(envOrLowerLevels),
     facebookConfigId: schemaFields.oauthFacebookConfigIdSchema.optional().meta(envOrLowerLevels),
@@ -78,28 +80,16 @@ export const getConfigSchema = () => yupObject({
   }), (key) => key.match(/^[a-zA-Z0-9_]+$/) !== null).meta(envOrLowerLevels),
 
   emailConfig: yupObject({
-    type: schemaFields.emailTypeSchema.defined(),
-    host: schemaFields.yupDefinedAndNonEmptyWhen(schemaFields.emailHostSchema, {
-      type: 'standard',
-    }),
-    port: schemaFields.yupDefinedWhen(schemaFields.emailPortSchema, {
-      type: 'standard',
-    }),
-    username: schemaFields.yupDefinedAndNonEmptyWhen(schemaFields.emailUsernameSchema, {
-      type: 'standard',
-    }),
-    password: schemaFields.yupDefinedAndNonEmptyWhen(schemaFields.emailPasswordSchema, {
-      type: 'standard',
-    }),
-    sender_name: schemaFields.yupDefinedAndNonEmptyWhen(schemaFields.emailSenderNameSchema, {
-      type: 'standard',
-    }),
-    sender_email: schemaFields.yupDefinedAndNonEmptyWhen(schemaFields.emailSenderEmailSchema, {
-      type: 'standard',
-    }),
+    isShared: yupBoolean().defined(),
+    host: schemaFields.yupDefinedAndNonEmptyWhen(schemaFields.emailHostSchema, { isShared: false }),
+    port: schemaFields.yupDefinedWhen(schemaFields.emailPortSchema, { isShared: false }),
+    username: schemaFields.yupDefinedAndNonEmptyWhen(schemaFields.emailUsernameSchema, { isShared: false }),
+    password: schemaFields.yupDefinedAndNonEmptyWhen(schemaFields.emailPasswordSchema, { isShared: false }),
+    senderName: schemaFields.yupDefinedAndNonEmptyWhen(schemaFields.emailSenderNameSchema, { isShared: false }),
+    senderEmail: schemaFields.yupDefinedAndNonEmptyWhen(schemaFields.emailSenderEmailSchema, { isShared: false }),
   }).meta(envOrLowerLevels),
 });
 
 import.meta.vitest?.test("makes sure that config is valid", ({ expect }) => {
-  validateSchemaLevels(getConfigSchema());
+  validateSchemaLevels(configSchema);
 });
