@@ -15,7 +15,8 @@ export const POST = createSmartRouteHandler({
     statusCode: yupNumber().oneOf([200]).defined(),
   }),
   handler: async ({ body }) => {
-    console.log("Event data:", body);
+    console.log("Event type:", (body as any).type);
+    console.log("Event data:", (body as any).data.object);
     return {
       statusCode: 200,
     };
