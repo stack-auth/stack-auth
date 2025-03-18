@@ -11,7 +11,7 @@
     "dev-mcp-server": "tsx watch --clear-screen=false src/index.ts",
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",
-    "clean": "rimraf dist && rimraf node_modules && rimraf openapi/*.json",
+    "clean": "rimraf build && rimraf node_modules && rimraf openapi/*.json",
     "build": "tsc"
   },
   "files": [
