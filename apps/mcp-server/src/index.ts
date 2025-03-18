@@ -27,7 +27,6 @@ if (!STACK_SECRET_SERVER_KEY || !STACK_PROJECT_ID || !STACK_PUBLISHABLE_CLIENT_K
 
 export const stackServerApp = new StackServerApp({
   baseUrl: STACK_AUTH_URL,
-  // You should store these in environment variables based on your project setup
   projectId: STACK_PROJECT_ID,
   publishableClientKey: STACK_PUBLISHABLE_CLIENT_KEY,
   secretServerKey: STACK_SECRET_SERVER_KEY,
