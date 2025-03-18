@@ -9933,12 +9933,17 @@ packages:
     engines: {node: '>= 0.6'}
 
 <<<<<<< HEAD
+<<<<<<< HEAD
   mime-db@1.54.0:
     resolution: {integrity: sha512-aU5EJuIN2WDemCcAp2vFBfp/m4EAhWJnUNSSw0ixs7/kXbd6Pg64EmwJkNdFhB8aWt1sH2CTXrLxo/iAGV3oPQ==}
 =======
   mime-db@1.53.0:
     resolution: {integrity: sha512-oHlN/w+3MQ3rba9rqFr6V/ypF10LSkdwUysQL7GkXoTgIWeV+tcXGA852TBxH+gsh8UWoyhR1hKcoMJTuWflpg==}
 >>>>>>> ab81ad14 (Implement Model Context Protocol server poc (#552))
+=======
+  mime-db@1.54.0:
+    resolution: {integrity: sha512-aU5EJuIN2WDemCcAp2vFBfp/m4EAhWJnUNSSw0ixs7/kXbd6Pg64EmwJkNdFhB8aWt1sH2CTXrLxo/iAGV3oPQ==}
+>>>>>>> 67982cf1 (update deps)
     engines: {node: '>= 0.6'}
 
   mime-types@2.1.18:
@@ -22239,10 +22244,14 @@ snapshots:
   mime-db@1.52.0: {}
 
 <<<<<<< HEAD
+<<<<<<< HEAD
   mime-db@1.54.0: {}
 =======
   mime-db@1.53.0: {}
 >>>>>>> ab81ad14 (Implement Model Context Protocol server poc (#552))
+=======
+  mime-db@1.54.0: {}
+>>>>>>> 67982cf1 (update deps)
 
   mime-types@2.1.18:
     dependencies:
@@ -22255,10 +22264,14 @@ snapshots:
   mime-types@3.0.0:
     dependencies:
 <<<<<<< HEAD
+<<<<<<< HEAD
       mime-db: 1.54.0
 =======
       mime-db: 1.53.0
 >>>>>>> ab81ad14 (Implement Model Context Protocol server poc (#552))
+=======
+      mime-db: 1.54.0
+>>>>>>> 67982cf1 (update deps)
 
   mime@1.6.0: {}
 
