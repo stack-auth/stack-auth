@@ -88,7 +88,7 @@ async function seed() {
             branchId: 'main',
             hasNoOrganization: "TRUE",
             organizationId: null,
-            configOverride: configSchema.validateSync({
+            configOverride: await configSchema.validate({
               createTeamOnSignUp: false,
               clientTeamCreationEnabled: clientTeamCreation,
               clientUserDeletionEnabled: false,
@@ -114,7 +114,7 @@ async function seed() {
             configOverride: {},
           }
         },
-        configOverride: configSchema.validateSync({
+        configOverride: await configSchema.validate({
           createTeamOnSignUp: false,
           clientTeamCreationEnabled: clientTeamCreation,
           allowLocalhost: true,
@@ -126,7 +126,7 @@ async function seed() {
   }
 
   const internalTenancy = await getSoleTenancyFromProject("internal");
-  const internalConfigOverride = configSchema.validateSync(internalProject.configOverride);
+  const internalConfigOverride = await configSchema.validate(internalProject.configOverride);
 
   if (internalConfigOverride.signUpEnabled !== signUpEnabled) {
     await prisma.project.update({
@@ -412,7 +412,7 @@ async function seed() {
           displayName: 'Local Emulator Project',
           description: 'Project for local development with emulator',
           isProductionMode: false,
-          configOverride: configSchema.validateSync({
+          configOverride: await configSchema.validate({
             createTeamOnSignUp: false,
             clientTeamCreationEnabled: false,
             clientUserDeletionEnabled: false,
@@ -458,7 +458,7 @@ async function seed() {
               branchId: 'main',
               hasNoOrganization: "TRUE",
               organizationId: null,
-              configOverride: configSchema.validateSync({
+              configOverride: await configSchema.validate({
                 createTeamOnSignUp: false,
                 clientTeamCreationEnabled: false,
                 clientUserDeletionEnabled: false,

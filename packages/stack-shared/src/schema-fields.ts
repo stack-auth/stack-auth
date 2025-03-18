@@ -204,7 +204,7 @@ export function yupRecord<T extends yup.AnySchema>(
   return yupObject().test(
     'record',
     '${path} must be a record of valid values',
-    function (value: unknown) {
+    async function (value: unknown) {
       const { path, createError } = this as any;
       if (typeof value !== 'object' || value === null) {
         return createError({ message: `${path} must be an object` });
@@ -221,7 +221,7 @@ export function yupRecord<T extends yup.AnySchema>(
         }
 
         try {
-          valueSchema.validateSync((value as Record<string, unknown>)[key]);
+          await valueSchema.validate((value as Record<string, unknown>)[key]);
         } catch (e: any) {
           return createError({
             path: path ? `${path}.${key}` : key,

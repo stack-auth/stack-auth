@@ -190,15 +190,15 @@ import.meta.vitest?.test("normalize(...)", ({ expect }) => {
   });
 });
 
-function _testMergeConfigHelper({ configSchema, defaultConfig, overrideConfig }: { configSchema: yup.AnySchema, defaultConfig: Config, overrideConfig: Config }) {
+async function _testMergeConfigHelper({ configSchema, defaultConfig, overrideConfig }: { configSchema: yup.AnySchema, defaultConfig: Config, overrideConfig: Config }) {
   const result = normalize(override(defaultConfig, overrideConfig));
-  return configSchema.validateSync(result);
+  return await configSchema.validate(result);
 }
 
-import.meta.vitest?.test("add keys", ({ expect }) => {
+import.meta.vitest?.test("add keys", async ({ expect }) => {
   const config = {};
 
-  const newConfig = _testMergeConfigHelper({
+  const newConfig = await _testMergeConfigHelper({
     configSchema: yupObject({
       b: yupNumber().optional(),
     }),
@@ -209,12 +209,12 @@ import.meta.vitest?.test("add keys", ({ expect }) => {
   expect(newConfig).toEqual({ b: 456 });
 });
 
-import.meta.vitest?.test("replace keys", ({ expect }) => {
+import.meta.vitest?.test("replace keys", async ({ expect }) => {
   const config = {
     a: 123,
   };
 
-  const newConfig = _testMergeConfigHelper({
+  const newConfig = await _testMergeConfigHelper({
     configSchema: yupObject({
       a: yupNumber().optional(),
     }),
@@ -225,12 +225,12 @@ import.meta.vitest?.test("replace keys", ({ expect }) => {
   expect(newConfig).toEqual({ a: 456 });
 });
 
-import.meta.vitest?.test("remove keys", ({ expect }) => {
+import.meta.vitest?.test("remove keys", async ({ expect }) => {
   const config = {
     a: 123,
   };
 
-  const newConfig = _testMergeConfigHelper({
+  const newConfig = await _testMergeConfigHelper({
     configSchema: yupObject({
       a: yupNumber().optional(),
     }),
@@ -241,12 +241,12 @@ import.meta.vitest?.test("remove keys", ({ expect }) => {
   expect(newConfig).toEqual({});
 });
 
-import.meta.vitest?.test("add nested keys", ({ expect }) => {
+import.meta.vitest?.test("add nested keys", async ({ expect }) => {
   const config = {
     a: {},
   };
 
-  const newConfig = _testMergeConfigHelper({
+  const newConfig = await _testMergeConfigHelper({
     configSchema: yupObject({
       a: yupObject({
         b: yupNumber().optional(),
@@ -259,14 +259,14 @@ import.meta.vitest?.test("add nested keys", ({ expect }) => {
   expect(newConfig).toEqual({ a: { b: 456 } });
 });
 
-import.meta.vitest?.test("replace nested keys", ({ expect }) => {
+import.meta.vitest?.test("replace nested keys", async ({ expect }) => {
   const config = {
     a: {
       b: 123,
     },
   };
 
-  const newConfig = _testMergeConfigHelper({
+  const newConfig = await _testMergeConfigHelper({
     configSchema: yupObject({
       a: yupObject({
         b: yupNumber().defined(),
@@ -279,12 +279,12 @@ import.meta.vitest?.test("replace nested keys", ({ expect }) => {
   expect(newConfig).toEqual({ a: { b: 456 } });
 });
 
-import.meta.vitest?.test("replace nested tuple", ({ expect }) => {
+import.meta.vitest?.test("replace nested tuple", async ({ expect }) => {
   const config = {
     a: [123],
   };
 
-  const newConfig = _testMergeConfigHelper({
+  const newConfig = await _testMergeConfigHelper({
     configSchema: yupObject({
       a: yupTuple([yupNumber()]).defined(),
     }),
@@ -554,11 +554,11 @@ import.meta.vitest?.test("fails when config level is wrong", ({ expect }) => {
   })).toThrow();
 });
 
-export function mergeConfigs(options: {
+export async function mergeConfigs(options: {
   configSchema: yup.AnySchema,
   overrideConfigs: { level: ConfigLevel | 'default', config: Config }[],
   configName?: string,
-}): any {
+}): Promise<Config> {
   const levelOrder = ['default', ...CONFIG_LEVELS];
   const overrideConfigLevels = options.overrideConfigs.map(c => c.level);
 
@@ -602,7 +602,7 @@ export function mergeConfigs(options: {
 
   // Validate the final config against the schema
   try {
-    return options.configSchema.validateSync(normalizedConfig);
+    return await options.configSchema.validate(normalizedConfig);
   } catch (error: any) {
     throw new StackAssertionError(
       `Invalid config: ${error.message}`,
@@ -611,13 +611,13 @@ export function mergeConfigs(options: {
   }
 }
 
-import.meta.vitest?.test("mergeConfigs handles simple and multi-level configurations", ({ expect }) => {
+import.meta.vitest?.test("mergeConfigs handles simple and multi-level configurations", async ({ expect }) => {
   // Simple config case
   const simpleConfig = {
     a: 123,
   };
 
-  const simpleResult = mergeConfigs({
+  const simpleResult = await mergeConfigs({
     configSchema: yupObject({
       a: yupNumber().optional().meta({ startLevel: 'project', endLevel: 'organization' }),
     }),
@@ -631,7 +631,7 @@ import.meta.vitest?.test("mergeConfigs handles simple and multi-level configurat
   const projectConfig = { a: 200, c: [1, 2, 3] };
   const organizationConfig = { b: "org", c: [4, 5], e: { nested: true } };
 
-  const multiLevelResult = mergeConfigs({
+  const multiLevelResult = await mergeConfigs({
     configSchema: yupObject({
       a: yupNumber().optional().meta({ startLevel: 'project', endLevel: 'organization' }),
       b: yupString().optional().meta({ startLevel: 'project', endLevel: 'organization' }),
@@ -652,7 +652,7 @@ import.meta.vitest?.test("mergeConfigs handles simple and multi-level configurat
   expect(multiLevelResult).toEqual({ a: 200, b: "org", c: [4, 5], d: false, e: { nested: true } });
 });
 
-import.meta.vitest?.test("mergeConfigs handles nested objects and dot notation", ({ expect }) => {
+import.meta.vitest?.test("mergeConfigs handles nested objects and dot notation", async ({ expect }) => {
   const defaultConfig = {
     nested: { a: 1, b: 2 },
     top: "value"
@@ -662,7 +662,7 @@ import.meta.vitest?.test("mergeConfigs handles nested objects and dot notation",
     'nested.c': 4,
   };
 
-  const nestedResult = mergeConfigs({
+  const nestedResult = await mergeConfigs({
     configSchema: yupObject({
       nested: yupObject({
         a: yupNumber().optional().meta({ startLevel: 'project', endLevel: 'organization' }),
@@ -681,12 +681,12 @@ import.meta.vitest?.test("mergeConfigs handles nested objects and dot notation",
   expect(nestedResult).toEqual({ nested: { a: 1, b: 3, c: 4 }, top: "value" });
 });
 
-import.meta.vitest?.test("mergeConfigs respects level boundaries and handles required fields", ({ expect }) => {
+import.meta.vitest?.test("mergeConfigs respects level boundaries and handles required fields", async ({ expect }) => {
   const defaultConfig = { a: 1, b: 2, c: 3 };
   const projectConfig = { a: 10, b: 20, c: 30 };
   const organizationConfig = { c: 300 };
 
-  const result = mergeConfigs({
+  const result = await mergeConfigs({
     configSchema: yupObject({
       // Only from project level
       a: yupNumber().optional().meta({ startLevel: 'project', endLevel: 'project' }),
@@ -708,7 +708,7 @@ import.meta.vitest?.test("mergeConfigs respects level boundaries and handles req
   expect(result).toEqual({ a: 10, b: 20, c: 300, d: false });
 
   // Test empty configs case
-  const emptyResult = mergeConfigs({
+  const emptyResult = await mergeConfigs({
     configSchema: yupObject({
       a: yupNumber().optional().meta({ startLevel: 'project', endLevel: 'organization' }),
       b: yupString().defined().default("default").meta({ startLevel: 'project', endLevel: 'organization' }),
@@ -720,7 +720,7 @@ import.meta.vitest?.test("mergeConfigs respects level boundaries and handles req
   expect(emptyResult).toEqual({ b: "default" });
 });
 
-import.meta.vitest?.test("mergeConfigs handles special cases: arrays, nulls, and complex structures", ({ expect }) => {
+import.meta.vitest?.test("mergeConfigs handles special cases: arrays, nulls, and complex structures", async ({ expect }) => {
   // Arrays case
   const arrayConfig1 = {
     items: [1, 2, 3],
@@ -730,7 +730,7 @@ import.meta.vitest?.test("mergeConfigs handles special cases: arrays, nulls, and
     items: [4, 5]
   };
 
-  const arrayResult = mergeConfigs({
+  const arrayResult = await mergeConfigs({
     configSchema: yupObject({
       items: yupArray(yupNumber()).optional().meta({ startLevel: 'project', endLevel: 'organization' }),
       settings: yupObject({
@@ -750,7 +750,7 @@ import.meta.vitest?.test("mergeConfigs handles special cases: arrays, nulls, and
   const nullConfig1 = { a: 1, b: "test" };
   const nullConfig2 = { b: null };
 
-  const nullResult = mergeConfigs({
+  const nullResult = await mergeConfigs({
     configSchema: yupObject({
       a: yupNumber().optional().meta({ startLevel: 'project', endLevel: 'organization' }),
       b: yupString().nullable().meta({ startLevel: 'project', endLevel: 'organization' }),
@@ -765,19 +765,21 @@ import.meta.vitest?.test("mergeConfigs handles special cases: arrays, nulls, and
   expect(nullResult).toEqual({ a: 1 });
 });
 
-import.meta.vitest?.test("mergeConfigs throws error for invalid config schema", ({ expect }) => {
+import.meta.vitest?.test("mergeConfigs throws error for invalid config schema", async ({ expect }) => {
   // Test with invalid schema (missing meta data)
-  expect(() => mergeConfigs({
+  // eslint-disable-next-line @typescript-eslint/no-floating-promises
+  expect(async () => await mergeConfigs({
     configSchema: yupObject({
       a: yupNumber().optional(), // Missing meta data
     }),
     overrideConfigs: [{ level: 'default', config: { a: 123 } }],
-  })).toThrow();
+  })).rejects.toThrow();
 });
 
 import.meta.vitest?.test("mergeConfigs throws error for invalid config level order", ({ expect }) => {
   // Test with configs in wrong order
-  expect(() => mergeConfigs({
+  // eslint-disable-next-line @typescript-eslint/no-floating-promises
+  expect(async () => await mergeConfigs({
     configSchema: yupObject({
       a: yupNumber().optional().meta({ startLevel: 'project', endLevel: 'organization' }),
     }),
@@ -786,12 +788,13 @@ import.meta.vitest?.test("mergeConfigs throws error for invalid config level ord
       { level: 'organization', config: { a: 300 } },
       { level: 'project', config: { a: 200 } }, // Wrong order: organization should come after project
     ],
-  })).toThrow(/Invalid config order/);
+  })).rejects.toThrow(/Invalid config order/);
 });
 
 import.meta.vitest?.test("mergeConfigs throws error for config with invalid level", ({ expect }) => {
   // Test with config at a level not allowed by schema
-  expect(() => mergeConfigs({
+  // eslint-disable-next-line @typescript-eslint/no-floating-promises
+  expect(async () => await mergeConfigs({
     configSchema: yupObject({
       a: yupNumber().optional().meta({ startLevel: 'organization', endLevel: 'organization' }),
     }),
@@ -799,17 +802,18 @@ import.meta.vitest?.test("mergeConfigs throws error for config with invalid leve
       { level: 'default', config: { a: 100 } },
       { level: 'project', config: { a: 200 } }, // 'a' not allowed at project level
     ],
-  })).toThrow();
+  })).rejects.toThrow();
 });
 
-import.meta.vitest?.test("mergeConfigs throws error for config with invalid value type", ({ expect }) => {
+import.meta.vitest?.test("mergeConfigs throws error for config with invalid value type", async ({ expect }) => {
   // Test with config value that doesn't match schema type
-  expect(() => mergeConfigs({
+  // eslint-disable-next-line @typescript-eslint/no-floating-promises
+  expect(async () => await mergeConfigs({
     configSchema: yupObject({
       a: yupNumber().optional().meta({ startLevel: 'project', endLevel: 'organization' }),
     }),
     overrideConfigs: [
       { level: 'default', config: { a: "not a number" } }, // String instead of number
     ],
-  })).toThrow();
+  })).rejects.toThrow();
 });
