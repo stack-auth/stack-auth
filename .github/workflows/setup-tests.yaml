@@ -45,4 +45,4 @@ jobs:
           tail: true
           wait-for: 120s
           log-output-if: true
-      - run: pnpm run test --no-file-parallelism --reporter=verbose
+      - run: pnpm run test --min-workers 1 --max-workers 2 --reporter=verbose
