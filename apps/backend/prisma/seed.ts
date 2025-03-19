@@ -74,50 +74,43 @@ async function seed() {
       }
     }), {});
 
-    console.log(connectedAccounts);
-
     internalProject = await prisma.project.create({
       data: {
         id: 'internal',
         displayName: 'Stack Dashboard',
         description: 'Stack\'s admin dashboard',
         isProductionMode: false,
-        tenancies: {
-          create: {
-            id: generateUuid(),
-            branchId: 'main',
-            hasNoOrganization: "TRUE",
-            organizationId: null,
-            configOverride: await configSchema.validate({
-              createTeamOnSignUp: false,
-              clientTeamCreationEnabled: clientTeamCreation,
-              clientUserDeletionEnabled: false,
-              signUpEnabled: true,
-              legacyGlobalJwtSigning: false,
-              isProductionMode: false,
-              allowLocalhost: true,
-              oauthAccountMergeStrategy: 'allow_duplicates',
-              teamCreateDefaultSystemPermissions: {},
-              teamMemberDefaultSystemPermissions: {},
-              permissionDefinitions: {},
-              oauthProviders,
-              authMethods,
-              connectedAccounts,
-              domains: {},
-              emailConfig: { isShared: true }
-            })
-          }
-        },
         branches: {
           create: {
             id: 'main',
             configOverride: {},
+            tenancies: {
+              create: {
+                id: generateUuid(),
+                projectId: 'internal',
+                hasNoOrganization: "TRUE",
+                organizationId: null,
+                configOverride: {},
+              },
+            }
           }
         },
         configOverride: await configSchema.validate({
           createTeamOnSignUp: false,
           clientTeamCreationEnabled: clientTeamCreation,
+          clientUserDeletionEnabled: false,
+          signUpEnabled: true,
+          isProductionMode: false,
           allowLocalhost: true,
+          oauthAccountMergeStrategy: 'allow_duplicates',
+          teamCreateDefaultSystemPermissions: {},
+          teamMemberDefaultSystemPermissions: {},
+          permissionDefinitions: {},
+          oauthProviders,
+          authMethods,
+          connectedAccounts,
+          domains: {},
+          emailConfig: { isShared: true }
         })
       },
     });
@@ -219,7 +212,6 @@ async function seed() {
             data: {
               tenancyId: internalTenancy.id,
               projectUserId: newUser.projectUserId,
-              projectConfigId: (internalProject as any).configId,
               authMethodConfigId: passwordAuthMethod[0],
               passwordAuthMethod: {
                 create: {
@@ -244,7 +236,6 @@ async function seed() {
           const githubAccount = await tx.projectUserOAuthAccount.findFirst({
             where: {
               tenancyId: internalTenancy.id,
-              projectConfigId: (internalProject as any).configId,
               oauthProviderConfigId: 'github',
               providerAccountId: adminGithubId,
             }
@@ -256,7 +247,6 @@ async function seed() {
             await tx.projectUserOAuthAccount.create({
               data: {
                 tenancyId: internalTenancy.id,
-                projectConfigId: (internalProject as any).configId,
                 projectUserId: newUser.projectUserId,
                 oauthProviderConfigId: 'github',
                 providerAccountId: adminGithubId
@@ -269,7 +259,6 @@ async function seed() {
           await tx.authMethod.create({
             data: {
               tenancyId: internalTenancy.id,
-              projectConfigId: (internalProject as any).configId,
               projectUserId: newUser.projectUserId,
               authMethodConfigId: githubProvider[0],
               oauthAuthMethod: {
@@ -277,7 +266,6 @@ async function seed() {
                   projectUserId: newUser.projectUserId,
                   oauthProviderConfigId: 'github',
                   providerAccountId: adminGithubId,
-                  projectConfigId: (internalProject as any).configId,
                 }
               }
             }
@@ -382,7 +370,6 @@ async function seed() {
           data: {
             tenancyId: internalTenancy.id,
             projectUserId: newEmulatorUser.projectUserId,
-            projectConfigId: (internalProject as any).configId,
             authMethodConfigId: passwordAuthMethod[0],
             passwordAuthMethod: {
               create: {

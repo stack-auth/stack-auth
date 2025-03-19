@@ -52,7 +52,7 @@ export const internalProjectsCrudHandlers = createLazyProxy(() => createCrudHand
     });
 
     return {
-      items: results.map(x => projectPrismaToCrud(x)),
+      items: await Promise.all(results.map(x => projectPrismaToCrud(x))),
       is_paginated: false,
     } as const;
   }

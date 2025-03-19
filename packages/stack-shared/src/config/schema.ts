@@ -4,41 +4,38 @@ import { yupBoolean, yupObject, yupRecord, yupString, yupUnion } from "../schema
 import { allProviders } from "../utils/oauth";
 import { isUuid } from "../utils/uuids";
 import { validateSchemaLevels } from "./parser";
-
-const configRecord = (schema: yup.AnySchema) => yupRecord(schema, (key) => key.match(/^[a-zA-Z0-9_$-]+$/) !== null);
-
-
 const projectOrLowerLevels = { startLevel: 'project', endLevel: 'organization' } as const;
 const envOrLowerLevels = { startLevel: 'environment', endLevel: 'organization' } as const;
+
+const permissionRegex = /^\$?[a-z0-9_:]+$/;
 
 export const configSchema = yupObject({
   createTeamOnSignUp: yupBoolean().defined().meta(projectOrLowerLevels),
   clientTeamCreationEnabled: yupBoolean().defined().meta(projectOrLowerLevels),
   clientUserDeletionEnabled: yupBoolean().defined().meta(projectOrLowerLevels),
   signUpEnabled: yupBoolean().defined().meta(projectOrLowerLevels),
-  legacyGlobalJwtSigning: yupBoolean().defined().meta(projectOrLowerLevels),
   isProductionMode: yupBoolean().defined().meta(projectOrLowerLevels),
   allowLocalhost: yupBoolean().defined().meta(projectOrLowerLevels),
   oauthAccountMergeStrategy: yupString().oneOf(['link_method', 'raise_error', 'allow_duplicates']).defined().meta(projectOrLowerLevels),
 
   // keys to the permissions/permission definitions are hex encoded ids.
-  teamCreateDefaultSystemPermissions: configRecord(yupObject({
+  teamCreateDefaultSystemPermissions: yupRecord(yupObject({
     id: yupString().defined(),
-  })).defined().meta(projectOrLowerLevels),
-  teamMemberDefaultSystemPermissions: configRecord(yupObject({
+  }), (key) => permissionRegex.test(key)).defined().meta(projectOrLowerLevels),
+  teamMemberDefaultSystemPermissions: yupRecord(yupObject({
     id: yupString().defined(),
-  })).defined().meta(projectOrLowerLevels),
-  permissionDefinitions: configRecord(yupObject({
+  }), (key) => permissionRegex.test(key)).defined().meta(projectOrLowerLevels),
+  permissionDefinitions: yupRecord(yupObject({
     id: yupString().defined(),
     description: yupString().defined(),
     // keys to the contained permissions are the ids of the permissions.
     containedPermissions: yupRecord(yupObject({
       id: yupString().defined(),
     })).defined(),
-  })).defined().meta(projectOrLowerLevels),
+  }), (key) => permissionRegex.test(key)).defined().meta(projectOrLowerLevels),
 
   // keys to the oauth providers are the provider ids.
-  oauthProviders: configRecord(yupObject({
+  oauthProviders: yupRecord(yupObject({
     id: yupString().defined(),
     isShared: yupBoolean().defined().meta(envOrLowerLevels),
     type: yupString().oneOf(allProviders).defined().meta(envOrLowerLevels),
@@ -52,18 +49,22 @@ export const configSchema = yupObject({
   authMethods: yupRecord(yupUnion(
     yupObject({
       id: yupString().defined(),
+      enabled: yupBoolean().defined(),
       type: yupString().oneOf(['password']).defined(),
     }),
     yupObject({
       id: yupString().defined(),
+      enabled: yupBoolean().defined(),
       type: yupString().oneOf(['otp']).defined(),
     }),
     yupObject({
       id: yupString().defined(),
+      enabled: yupBoolean().defined(),
       type: yupString().oneOf(['passkey']).defined(),
     }),
     yupObject({
       id: yupString().defined(),
+      enabled: yupBoolean().defined(),
       type: yupString().oneOf(['oauth']).defined(),
       oauthProviderId: yupString().defined(),
     }),
@@ -71,6 +72,7 @@ export const configSchema = yupObject({
 
   // keys to the connected accounts are the oauth provider ids.
   connectedAccounts: yupRecord(yupObject({
+    id: yupString().defined(),
     enabled: yupBoolean().defined(),
     oauthProviderId: yupString().defined(),
   }), (key) => isUuid(key)).defined().meta(projectOrLowerLevels),
@@ -91,6 +93,26 @@ export const configSchema = yupObject({
     senderEmail: schemaFields.yupDefinedAndNonEmptyWhen(schemaFields.emailSenderEmailSchema, { isShared: false }),
   }).meta(envOrLowerLevels),
 });
+
+export const defaultConfig = {
+  createTeamOnSignUp: false,
+  clientTeamCreationEnabled: false,
+  clientUserDeletionEnabled: false,
+  signUpEnabled: true,
+  isProductionMode: false,
+  allowLocalhost: true,
+  oauthAccountMergeStrategy: 'link_method',
+  teamCreateDefaultSystemPermissions: {},
+  teamMemberDefaultSystemPermissions: {},
+  permissionDefinitions: {},
+  oauthProviders: {},
+  authMethods: {},
+  connectedAccounts: {},
+  domains: {},
+  emailConfig: {
+    isShared: true,
+  },
+} satisfies yup.InferType<typeof configSchema>;
 
 import.meta.vitest?.test("makes sure that config is valid", ({ expect }) => {
   validateSchemaLevels(configSchema);

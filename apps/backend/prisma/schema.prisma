@@ -151,20 +151,19 @@ model TeamMemberDirectPermission {
 
 model Permission {
   // The ID of this permission, as is chosen by and exposed to the user. It is different from the database ID, which is randomly generated and only used internally.
-  queryableId     String
+  queryableId String
   // The database ID of this permission. This is never exposed to any client and is only used to make sure the database has an ID column.
-  dbId            String  @id @default(uuid()) @db.Uuid
-  // exactly one of [projectConfigId && projectConfig] or [projectId && teamId && team] must be set
-  projectConfigId String? @db.Uuid
-  tenancyId       String? @db.Uuid
-  teamId          String? @db.Uuid
+  dbId        String @id @default(uuid()) @db.Uuid
+
+  tenancyId String? @db.Uuid
+  teamId    String? @db.Uuid
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   description String?
 
-  // The scope of the permission. If projectConfigId is set, may be GLOBAL or TEAM; if teamId is set, must be TEAM.
+  // The scope of the permission. If teamId is not set, may be GLOBAL or TEAM; if teamId is set, must be TEAM.
   scope PermissionScope
 
   team Team? @relation(fields: [tenancyId, teamId], references: [tenancyId, teamId], onDelete: Cascade)
@@ -176,7 +175,6 @@ model Permission {
   isDefaultTeamCreatorPermission Boolean @default(false)
   isDefaultTeamMemberPermission  Boolean @default(false)
 
-  @@unique([projectConfigId, queryableId])
   @@unique([tenancyId, teamId, queryableId])
 }
 
@@ -262,7 +260,6 @@ model ProjectUser {
 model ProjectUserOAuthAccount {
   tenancyId             String @db.Uuid
   projectUserId         String @db.Uuid
-  projectConfigId       String @db.Uuid
   oauthProviderConfigId String
   providerAccountId     String
 
@@ -320,7 +317,6 @@ model ContactChannel {
 model ConnectedAccount {
   tenancyId                String @db.Uuid
   id                       String @default(uuid()) @db.Uuid
-  projectConfigId          String @db.Uuid
   connectedAccountConfigId String @db.Uuid
   projectUserId            String @db.Uuid
   oauthProviderConfigId    String
@@ -342,7 +338,6 @@ model AuthMethod {
   id                 String @default(uuid()) @db.Uuid
   projectUserId      String @db.Uuid
   authMethodConfigId String @db.Uuid
-  projectConfigId    String @db.Uuid
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -420,7 +415,6 @@ model PasskeyAuthMethod {
 // This connects to projectUserOauthAccount, which might be shared between auth method and connected account.
 model OAuthAuthMethod {
   tenancyId             String @db.Uuid
-  projectConfigId       String @db.Uuid
   authMethodId          String @db.Uuid
   oauthProviderConfigId String
   providerAccountId     String
@@ -586,26 +580,6 @@ model ApiKeySet {
   superSecretAdminKey  String?   @unique
 
   @@id([projectId, id])
-}
-
-enum EmailTemplateType {
-  EMAIL_VERIFICATION
-  PASSWORD_RESET
-  MAGIC_LINK
-  TEAM_INVITATION
-}
-
-model EmailTemplate {
-  projectConfigId String @db.Uuid
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  content Json
-  type    EmailTemplateType
-  subject String
-
-  @@id([projectConfigId, type])
 }
 
 //#endregion

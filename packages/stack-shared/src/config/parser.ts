@@ -554,11 +554,11 @@ import.meta.vitest?.test("fails when config level is wrong", ({ expect }) => {
   })).toThrow();
 });
 
-export async function mergeConfigs(options: {
-  configSchema: yup.AnySchema,
+export async function mergeConfigs<S extends yup.AnySchema>(options: {
+  configSchema: S,
   overrideConfigs: { level: ConfigLevel | 'default', config: Config }[],
   configName?: string,
-}): Promise<Config> {
+}): Promise<yup.InferType<S>> {
   const levelOrder = ['default', ...CONFIG_LEVELS];
   const overrideConfigLevels = options.overrideConfigs.map(c => c.level);
 
