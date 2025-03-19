@@ -6,7 +6,7 @@ import { RefObject, use, useEffect, useId, useLayoutEffect, useRef, useState } f
 import Globe, { GlobeMethods } from 'react-globe.gl';
 const countriesPromise = import('./country-data.geo.json');
 
-function useSize(target: RefObject<HTMLDivElement>) {
+function useSize(target: RefObject<HTMLDivElement | null>) {
   const [size, setSize] = useState<DOMRectReadOnly>();
 
   useLayoutEffect(() => {
@@ -20,7 +20,7 @@ function useSize(target: RefObject<HTMLDivElement>) {
 
 export function GlobeSection({ countryData, totalUsers, children }: {countryData: Record<string, number>, totalUsers: number, children?: React.ReactNode}) {
   const countries = use(countriesPromise);
-  const globeRef = useRef<GlobeMethods>();
+  const globeRef = useRef<GlobeMethods>(undefined);
 
   const globeWindowRef = useRef<HTMLDivElement>(null);
   const globeWindowSize = useSize(globeWindowRef);
