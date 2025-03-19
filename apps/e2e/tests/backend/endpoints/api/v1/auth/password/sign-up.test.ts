@@ -16,7 +16,7 @@ it("should sign up new users", async ({ expect }) => {
       "headers": Headers { <some fields may have been hidden> },
     }
   `);
-  await wait(500);  // verification email is asynchronous, so let's give it some time to be received
+  await wait(5000);  // verification email is asynchronous, so let's give it some time to be received
   const messages = await backendContext.value.mailbox.fetchMessages({ noBody: true });
   expect(messages).toMatchInlineSnapshot(`
     [
