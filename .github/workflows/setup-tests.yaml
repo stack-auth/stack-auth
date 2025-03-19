@@ -15,7 +15,7 @@ env:
   SHELL: /usr/bin/bash
 
 jobs:
-  test:
+  setup-tests:
     runs-on: ubicloud-standard-8
     steps:
       - uses: actions/checkout@v3
@@ -45,5 +45,5 @@ jobs:
           tail: true
           wait-for: 120s
           log-output-if: true
-      - run: pnpm test
+      - run: pnpm test --no-file-parallelism
         
