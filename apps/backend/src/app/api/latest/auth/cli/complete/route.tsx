@@ -41,7 +41,7 @@ export const POST = createSmartRouteHandler({
     }
 
     if (cliAuth.tenancyId !== tenancy.id) {
-      throw new StatusError(400, "Tenancy ID mismatch; please ensure that you are using the correct app url.");
+      throw new StatusError(400, "Project ID mismatch; please ensure that you are using the correct app url.");
     }
 
     // Update with refresh token
