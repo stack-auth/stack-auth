@@ -20,7 +20,7 @@ function useSize(target: RefObject<HTMLDivElement | null>) {
 
 export function GlobeSection({ countryData, totalUsers, children }: {countryData: Record<string, number>, totalUsers: number, children?: React.ReactNode}) {
   const countries = use(countriesPromise);
-  const globeRef = useRef<GlobeMethods>(undefined);
+  const globeRef = useRef<GlobeMethods | undefined>(undefined);
 
   const globeWindowRef = useRef<HTMLDivElement>(null);
   const globeWindowSize = useSize(globeWindowRef);
