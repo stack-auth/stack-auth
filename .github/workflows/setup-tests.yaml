@@ -45,5 +45,5 @@ jobs:
           tail: true
           wait-for: 120s
           log-output-if: true
-      - run: pnpm test --no-file-parallelism
+      - run: pnpm run test --no-file-parallelism
         
