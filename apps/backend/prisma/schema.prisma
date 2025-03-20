@@ -28,7 +28,6 @@ model Project {
   neonProvisionedProject NeonProvisionedProject?
   tenancies              Tenancy[]
   verificationCodes      VerificationCode[]
-  StripeConfig           StripeConfig[]
 }
 
 model ProjectConfig {
@@ -55,6 +54,7 @@ model ProjectConfig {
   authMethodConfigs                  AuthMethodConfig[]
   connectedAccountConfigs            ConnectedAccountConfig[]
   oauthAccountMergeStrategy          OAuthAccountMergeStrategy @default(LINK_METHOD)
+  StripeConfig                       StripeConfig?
 }
 
 enum OAuthAccountMergeStrategy {
@@ -980,11 +980,11 @@ model CliAuthAttempt {
 }
 
 model StripeConfig {
-  projectId String  @id
-  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id              String        @id @default(uuid()) @db.Uuid
+  projectConfigId String        @unique @db.Uuid
+  projectConfig   ProjectConfig @relation(fields: [projectConfigId], references: [id], onDelete: Cascade)
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
 
   stripeSecretKey      String
   stripePublishableKey String
