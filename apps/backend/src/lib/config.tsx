@@ -59,21 +59,21 @@ export async function validateProjectConfigOverride(projectConfigOverride: Proje
 }
 
 /**
- * Validates a branch config override, based on the given rendered project config.
+ * Validates a branch config override, based on the given project's rendered project config.
  */
 export async function validateBranchConfigOverride(project: Project, branchConfigOverride: BranchConfigOverride): Promise<Result<null, string>> {
   return await validateAndReturn(branchConfigSchema, await getIncompleteProjectConfig(project), branchConfigOverride);
 }
 
 /**
- * Validates an environment config override, based on the given rendered branch config.
+ * Validates an environment config override, based on the given branch's rendered branch config.
  */
 export async function validateEnvironmentConfigOverride(project: Project, branchId: string, environmentConfigOverride: EnvironmentConfigOverride): Promise<Result<null, string>> {
   return await validateAndReturn(environmentConfigSchema, await getIncompleteBranchConfig(project, branchId), environmentConfigOverride);
 }
 
 /**
- * Validates an organization config override, based on the given rendered environment config.
+ * Validates an organization config override, based on the given environment's rendered environment config.
  */
 export async function validateOrganizationConfigOverride(project: Project, branchId: string, organizationConfigOverride: OrganizationConfigOverride): Promise<Result<null, string>> {
   return await validateAndReturn(organizationConfigSchema, await getIncompleteEnvironmentConfig(project, branchId), organizationConfigOverride);
