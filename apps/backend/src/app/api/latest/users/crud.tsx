@@ -150,17 +150,20 @@ async function checkAuthData(
   }
   if (!data.primaryEmailAuthEnabled) return;
   if (!data.oldPrimaryEmail || data.oldPrimaryEmail !== data.primaryEmail) {
+    if (!data.primaryEmail) {
+      throw new StackAssertionError("primary_email_auth_enabled cannot be true without primary_email");
+    }
     const existingChannelUsedForAuth = await tx.contactChannel.findFirst({
       where: {
         tenancyId: data.tenancyId,
         type: 'EMAIL',
-        value: data.primaryEmail || throwErr("primary_email_auth_enabled is true but primary_email is not set"),
+        value: data.primaryEmail,
         usedForAuth: BooleanTrue.TRUE,
       }
     });
 
     if (existingChannelUsedForAuth) {
-      throw new KnownErrors.UserEmailAlreadyExists();
+      throw new KnownErrors.UserWithEmailAlreadyExists(data.primaryEmail);
     }
   }
 }

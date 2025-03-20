@@ -1,7 +1,7 @@
 {
   "//": "THIS FILE IS AUTO-GENERATED FROM TEMPLATE. DO NOT EDIT IT DIRECTLY",
   "name": "@stackframe/stack",
-  "version": "2.7.28",
+  "version": "2.7.29",
   "sideEffects": false,
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",

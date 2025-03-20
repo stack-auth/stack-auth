@@ -111,10 +111,6 @@ it("should not allow two different projects to see the same send log", async ({ 
     }
   `);
 
-  backendContext.set({
-    projectKeys: InternalProjectKeys,
-  });
-
   const { adminAccessToken: adminAccessToken2 } = await Project.createAndSwitch({
     config: {
       magic_link_enabled: true,
