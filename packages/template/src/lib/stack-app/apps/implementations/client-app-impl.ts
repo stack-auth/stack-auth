@@ -1343,7 +1343,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
     }
   }
 
-  async signInWithMagicLink(code: string, noRedirect?: boolean): Promise<Result<undefined, KnownErrors["VerificationCodeError"] | KnownErrors["InvalidTotpCode"]>> {
+  async signInWithMagicLink(code: string, options?: { noRedirect?: boolean }): Promise<Result<undefined, KnownErrors["VerificationCodeError"] | KnownErrors["InvalidTotpCode"]>> {
     this._ensurePersistentTokenStore();
     let result;
     try {
@@ -1359,7 +1359,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
 
     if (result.status === 'ok') {
       await this._signInToAccountWithTokens(result.data);
-      if (!noRedirect) {
+      if (!(options?.noRedirect)) {
         if (result.data.newUser) {
           await this.redirectToAfterSignUp({ replace: true });
         } else {
