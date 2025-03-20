@@ -16,6 +16,7 @@ import { ContactChannelsCrud } from './crud/contact-channels';
 import { CurrentUserCrud } from './crud/current-user';
 import { ConnectedAccountAccessTokenCrud } from './crud/oauth';
 import { InternalProjectsCrud, ProjectsCrud } from './crud/projects';
+import { PublicApiKeysCrud } from './crud/public-api-keys';
 import { SessionsCrud } from './crud/sessions';
 import { TeamInvitationCrud } from './crud/team-invitation';
 import { TeamMemberProfilesCrud } from './crud/team-member-profiles';
@@ -262,7 +263,7 @@ export class StackClientInterface {
     }
     const params: RequestInit = {
       /**
-       * This fetch may be cross-origin, in which case we don't want to send cookies of the
+       * This fetch may be cross-origin, in which case we don't want to send cookies of the
        * original origin (this is the default behavior of `credentials`).
        *
        * To help debugging, also omit cookies on same-origin, so we don't accidentally
@@ -1429,6 +1430,115 @@ export class StackClientInterface {
       return Result.error(responseOrError.error);
     }
     return Result.ok(undefined);
+  }
+
+  // API Keys CRUD operations
+  async listApiKeys(
+    options: {
+      project_user_id?: string,
+      team_id?: string,
+      tenancy_id?: string,
+    },
+    session: InternalSession,
+  ): Promise<PublicApiKeysCrud['Client']['List']> {
+    const queryParams = new URLSearchParams();
+    if (options.project_user_id) {
+      queryParams.set('project_user_id', options.project_user_id);
+    } else if (options.team_id) {
+      queryParams.set('team_id', options.team_id);
+    } else if (options.tenancy_id) {
+      queryParams.set('tenancy_id', options.tenancy_id);
+    } else {
+      queryParams.set('project_user_id', 'me');
+    }
+
+    const response = await this.sendClientRequest(
+      `/api-keys?${queryParams.toString()}`,
+      {
+        method: "GET",
+      },
+      session,
+    );
+    const json = await response.json();
+    return json.items;
+  }
+
+  async createApiKey(
+    data: {
+      description?: string,
+      expires_at_millis?: number,
+      project_user_id?: string,
+      team_id?: string,
+      tenancy_id?: string,
+    },
+    session: InternalSession,
+  ): Promise<PublicApiKeysCrud['Client']['Read'] & { secret_api_key: string }> {
+    const response = await this.sendClientRequest(
+      "/api-keys",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          ...data,
+          project_user_id: data.project_user_id || 'me',
+        }),
+      },
+      session,
+    );
+    return await response.json();
+  }
+
+  async getApiKey(
+    keyId: string,
+    session: InternalSession,
+  ): Promise<PublicApiKeysCrud['Client']['Read']> {
+    const response = await this.sendClientRequest(
+      `/api-keys/${keyId}`,
+      {
+        method: "GET",
+      },
+      session,
+    );
+    return await response.json();
+  }
+
+  async updateApiKey(
+    keyId: string,
+    data: {
+      description?: string,
+      revoked?: boolean,
+    },
+    session: InternalSession,
+  ): Promise<PublicApiKeysCrud['Client']['Read']> {
+    const response = await this.sendClientRequest(
+      `/api-keys/${keyId}`,
+      {
+        method: "PATCH",
+        headers: {
+          "content-type": "application/json",
+        },
+        body: JSON.stringify(data),
+      },
+      session,
+    );
+
+    return await response.json();
+  }
+
+  async deleteApiKey(
+    keyId: string,
+    session: InternalSession,
+  ): Promise<PublicApiKeysCrud['Client']['Delete']> {
+    const response = await this.sendClientRequest(
+      `/api-keys/${keyId}`,
+      {
+        method: "DELETE",
+      },
+      session,
+    );
+    return await response.json();
   }
 }
 

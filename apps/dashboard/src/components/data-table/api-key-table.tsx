@@ -1,10 +1,10 @@
 'use client';
-import { ApiKey } from '@stackframe/stack';
+import { InternalApiKey } from '@stackframe/stack';
 import { ActionCell, ActionDialog, BadgeCell, DataTable, DataTableColumnHeader, DataTableFacetedFilter, DateCell, SearchToolbarItem, TextCell, standardFilterFn } from "@stackframe/stack-ui";
 import { ColumnDef, Row, Table } from "@tanstack/react-table";
 import { useMemo, useState } from "react";
 
-type ExtendedApiKey = ApiKey & {
+type ExtendedApiKey = InternalApiKey & {
   status: 'valid' | 'expired' | 'revoked',
 };
 
@@ -101,7 +101,7 @@ const columns: ColumnDef<ExtendedApiKey>[] =  [
   },
 ];
 
-export function ApiKeyTable(props: { apiKeys: ApiKey[] }) {
+export function InternalApiKeyTable(props: { apiKeys: InternalApiKey[] }) {
   const extendedApiKeys = useMemo(() => {
     const keys = props.apiKeys.map((apiKey) => ({
       ...apiKey,

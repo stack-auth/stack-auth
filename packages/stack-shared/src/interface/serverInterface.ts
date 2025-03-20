@@ -11,6 +11,7 @@ import {
 import { ContactChannelsCrud } from "./crud/contact-channels";
 import { CurrentUserCrud } from "./crud/current-user";
 import { ConnectedAccountAccessTokenCrud } from "./crud/oauth";
+import { PublicApiKeysCrud } from "./crud/public-api-keys";
 import { SessionsCrud } from "./crud/sessions";
 import { TeamInvitationCrud } from "./crud/team-invitation";
 import { TeamMemberProfilesCrud } from "./crud/team-member-profiles";
@@ -573,5 +574,100 @@ export class StackServerInterface extends StackClientInterface {
       },
       null,
     );
+  }
+
+  // API Keys CRUD operations
+  async listServerApiKeys(options: {
+    project_user_id?: string,
+    team_id?: string,
+    tenancy_id?: string,
+  } = {}): Promise<PublicApiKeysCrud['Server']['List']> {
+    const queryParams = new URLSearchParams();
+    if (options.project_user_id) {
+      queryParams.set('project_user_id', options.project_user_id);
+    } else if (options.team_id) {
+      queryParams.set('team_id', options.team_id);
+    } else if (options.tenancy_id) {
+      queryParams.set('tenancy_id', options.tenancy_id);
+    }
+
+    const response = await this.sendServerRequest(
+      `/api-keys?${queryParams.toString()}`,
+      {
+        method: "GET",
+      },
+      null,
+    );
+    return await response.json();
+  }
+
+  async createServerApiKey(
+    data: {
+      description?: string,
+      expires_at_millis?: number,
+      project_user_id?: string,
+      team_id?: string,
+      tenancy_id?: string,
+    },
+  ): Promise<PublicApiKeysCrud['Server']['Read'] & { secret_api_key: string }> {
+    const response = await this.sendServerRequest(
+      "/api-keys",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+        },
+        body: JSON.stringify(data),
+      },
+      null,
+    );
+    return await response.json();
+  }
+
+  async getServerApiKey(
+    keyId: string,
+  ): Promise<PublicApiKeysCrud['Server']['Read']> {
+    const response = await this.sendServerRequest(
+      `/api-keys/${keyId}`,
+      {
+        method: "GET",
+      },
+      null,
+    );
+    return await response.json();
+  }
+
+  async updateServerApiKey(
+    keyId: string,
+    data: {
+      description?: string,
+      revoked?: boolean,
+    },
+  ): Promise<PublicApiKeysCrud['Server']['Read']> {
+    const response = await this.sendServerRequest(
+      `/api-keys/${keyId}`,
+      {
+        method: "PATCH",
+        headers: {
+          "content-type": "application/json",
+        },
+        body: JSON.stringify(data),
+      },
+      null,
+    );
+    return await response.json();
+  }
+
+  async deleteServerApiKey(
+    keyId: string,
+  ): Promise<PublicApiKeysCrud['Server']['Delete']> {
+    const response = await this.sendServerRequest(
+      `/api-keys/${keyId}`,
+      {
+        method: "DELETE",
+      },
+      null,
+    );
+    return await response.json();
   }
 }

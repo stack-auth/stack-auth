@@ -1,6 +1,7 @@
 import { TeamsCrud } from "@stackframe/stack-shared/dist/interface/crud/teams";
 import { ReadonlyJson } from "@stackframe/stack-shared/dist/utils/json";
 
+import { ApiKey, ApiKeyCreateOptions, ApiKeyUpdateOptions, ApiKeyWithSecret } from "../api-keys";
 import { ServerUser } from "../users";
 
 
@@ -43,6 +44,10 @@ export type Team = {
   useInvitations(): TeamInvitation[], // THIS_LINE_PLATFORM react-like
   update(update: TeamUpdateOptions): Promise<void>,
   delete(): Promise<void>,
+  listApiKeys(): Promise<ApiKey[]>,
+  createApiKey(options: ApiKeyCreateOptions): Promise<ApiKeyWithSecret>,
+  updateApiKey(keyId: string, options: ApiKeyUpdateOptions): Promise<ApiKey>,
+  deleteApiKey(keyId: string): Promise<void>,
 };
 
 export type TeamUpdateOptions = {

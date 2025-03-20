@@ -3,6 +3,7 @@ import { KnownErrors, StackClientInterface } from "@stackframe/stack-shared";
 import { ContactChannelsCrud } from "@stackframe/stack-shared/dist/interface/crud/contact-channels";
 import { CurrentUserCrud } from "@stackframe/stack-shared/dist/interface/crud/current-user";
 import { ProjectsCrud } from "@stackframe/stack-shared/dist/interface/crud/projects";
+import { PublicApiKeysCrud } from "@stackframe/stack-shared/dist/interface/crud/public-api-keys";
 import { SessionsCrud } from "@stackframe/stack-shared/dist/interface/crud/sessions";
 import { TeamInvitationCrud } from "@stackframe/stack-shared/dist/interface/crud/team-invitation";
 import { TeamMemberProfilesCrud } from "@stackframe/stack-shared/dist/interface/crud/team-member-profiles";
@@ -41,6 +42,11 @@ import { _StackAdminAppImplIncomplete } from "./admin-app-impl";
 import { TokenObject, clientVersion, createCache, createCacheBySession, createEmptyTokenStore, getBaseUrl, getDefaultExtraRequestHeaders, getDefaultProjectId, getDefaultPublishableClientKey, getUrls } from "./common";
 
 import { useAsyncCache } from "./common"; // THIS_LINE_PLATFORM react-like
+
+import {
+  ApiKey,
+  ApiKeyBase, ApiKeyCreateOptions, ApiKeyFirstView, ApiKeyUpdateOptions, apiKeyCreateOptionsToCrud
+} from "../../api-keys";
 
 let isReactServer = false;
 // IF_PLATFORM next
@@ -613,6 +619,50 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
     };
   }
 
+  protected _clientApiKeyFromCrudInner(session: InternalSession, crud: PublicApiKeysCrud['Client']['Read']): ApiKeyBase {
+    return {
+      id: crud.id,
+      description: crud.description,
+      expiresAt: crud.expires_at_millis ? new Date(crud.expires_at_millis) : undefined,
+      manuallyRevokedAt: crud.manually_revoked_at_millis ? new Date(crud.manually_revoked_at_millis) : null,
+      createdAt: new Date(crud.created_at_millis),
+      teamId: crud.team_id,
+      tenancyId: crud.tenancy_id,
+      projectUserId: crud.project_user_id,
+      isValid: function() {
+        return this.whyInvalid() === null;
+      },
+      whyInvalid: function() {
+        if (this.manuallyRevokedAt) {
+          return "manually-revoked";
+        }
+        if (this.expiresAt && this.expiresAt < new Date()) {
+          return "expired";
+        }
+        return null;
+      },
+      revoke: async () => {
+        await this._interface.updateApiKey(crud.id, { revoked: true }, session);
+      }
+    };
+  }
+
+  protected _clientApiKeyFromCrudRead(session: InternalSession, crud: PublicApiKeysCrud['Client']['Read']): ApiKey {
+    return {
+      secretApiKey: crud.secret_api_key?.last_four ? {
+        lastFour: crud.secret_api_key.last_four,
+      } : null,
+      ...this._clientApiKeyFromCrudInner(session, crud),
+    };
+  }
+
+  protected _clientApiKeyFromCrudCreate(session: InternalSession, crud: PublicApiKeysCrud['Client']['Read'] & { secret_api_key: string }): ApiKeyFirstView {
+    return {
+      secretApiKey: crud.secret_api_key,
+      ...this._clientApiKeyFromCrudInner(session, crud),
+    };
+  }
+
   protected _clientTeamFromCrud(crud: TeamsCrud['Client']['Read'], session: InternalSession): Team {
     const app = this;
     return {
@@ -661,6 +711,29 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
         await app._interface.deleteTeam(crud.id, session);
         await app._currentUserTeamsCache.refresh([session]);
       },
+
+      // API Key management methods
+      async listApiKeys() {
+        const results = await app._interface.listApiKeys({ team_id: crud.id }, session);
+        return results.items.map((crud) => app._clientApiKeyFromCrudRead(session, crud));
+      },
+
+      async createApiKey(options: ApiKeyCreateOptions) {
+        const result = await app._interface.createApiKey({
+          ...apiKeyCreateOptionsToCrud(options),
+          team_id: crud.id
+        }, session);
+        return app._clientApiKeyFromCrudCreate(session, result);
+      },
+
+      async updateApiKey(keyId: string, options: ApiKeyUpdateOptions) {
+        const result = await app._interface.updateApiKey(keyId, options, session);
+        return app._clientApiKeyFromCrudRead(session, result);
+      },
+
+      async deleteApiKey(keyId: string) {
+        await app._interface.deleteApiKey(keyId, session);
+      }
     };
   }
 
@@ -939,6 +1012,27 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
         const crud = await app._interface.createClientContactChannel(contactChannelCreateOptionsToCrud('me', data), session);
         await app._clientContactChannelsCache.refresh([session]);
         return app._clientContactChannelFromCrud(crud, session);
+      },
+      async listApiKeys() {
+        const results = await app._interface.listApiKeys({ project_user_id: 'me' }, session);
+        return results.items.map((crud) => app._clientApiKeyFromCrudRead(session, crud));
+      },
+
+      async createApiKey(options: ApiKeyCreateOptions) {
+        const result = await app._interface.createApiKey({
+          ...apiKeyCreateOptionsToCrud(options),
+          project_user_id: 'me'
+        }, session);
+        return app._clientApiKeyFromCrudCreate(session, result);
+      },
+
+      async updateApiKey(keyId: string, options: ApiKeyUpdateOptions) {
+        const result = await app._interface.updateApiKey(keyId, options, session);
+        return app._clientApiKeyFromCrudRead(session, result);
+      },
+
+      async deleteApiKey(keyId: string) {
+        await app._interface.deleteApiKey(keyId, session);
       },
     };
   }
@@ -1412,7 +1506,6 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
       return Result.error(result.error);
     }
   }
-
 
   async callOAuthCallback() {
     if (typeof window === "undefined") {

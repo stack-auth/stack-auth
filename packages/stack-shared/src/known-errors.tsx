@@ -1186,6 +1186,17 @@ const InvalidPollingCodeError = createKnownErrorConstructor(
   (json: any) => [json] as const,
 );
 
+const InvalidGroup = createKnownErrorConstructor(
+  KnownError,
+  "INVALID_GROUP",
+  (params: { project_user_id?: string, team_id?: string, tenancy_id?: string }) => [
+    400,
+    "A group must specify exactly one of: project_user_id, team_id, or tenancy_id.",
+    params,
+  ] as const,
+  (json) => [json] as const,
+);
+
 export type KnownErrors = {
   [K in keyof typeof KnownErrors]: InstanceType<typeof KnownErrors[K]>;
 };
@@ -1283,6 +1294,7 @@ export const KnownErrors = {
   OAuthProviderAccessDenied,
   ContactChannelAlreadyUsedForAuthBySomeoneElse,
   InvalidPollingCodeError,
+  InvalidGroup,
 } satisfies Record<string, KnownErrorConstructor<any, any>>;
 
 

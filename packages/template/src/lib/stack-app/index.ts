@@ -17,12 +17,12 @@ export type {
 } from "./project-configs";
 
 export type {
-  ApiKey,
-  ApiKeyBase,
-  ApiKeyBaseCrudRead,
-  ApiKeyCreateOptions,
-  ApiKeyFirstView
-} from "./api-keys";
+  InternalApiKey,
+  InternalApiKeyBase,
+  InternalApiKeyBaseCrudRead,
+  InternalApiKeyCreateOptions,
+  InternalApiKeyFirstView
+} from "./internal-api-keys";
 
 export {
   stackAppInternalsSymbol
