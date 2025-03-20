@@ -2,6 +2,7 @@ import { Tenancy } from "@/lib/tenancies";
 import { NormalizationError, getInvalidConfigReason, normalize, override } from "@stackframe/stack-shared/dist/config/format/index";
 import { BranchConfigOverride, BranchIncompleteConfig, BranchRenderedConfig, EnvironmentConfigOverride, EnvironmentIncompleteConfig, EnvironmentRenderedConfig, OrganizationConfigOverride, OrganizationIncompleteConfig, OrganizationRenderedConfig, ProjectConfigOverride, ProjectIncompleteConfig, ProjectRenderedConfig, baseConfig, branchConfigSchema, environmentConfigSchema, organizationConfigSchema, projectConfigSchema } from "@stackframe/stack-shared/dist/config/schema";
 import { ProjectsCrud } from "@stackframe/stack-shared/dist/interface/crud/projects";
+import { yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
 import { pick } from "@stackframe/stack-shared/dist/utils/objects";
 import { Result } from "@stackframe/stack-shared/dist/utils/results";
 import { expect } from "vitest";
@@ -182,21 +183,16 @@ async function validateAndReturn(schema: yup.ObjectSchema<any>, base: any, confi
 }
 
 import.meta.vitest?.describe('validateAndReturn(...)', async () => {
-  import.meta.vitest?.test('project config schema', async () => {
-    expect(await validateAndReturn(projectConfigSchema, baseConfig, {})).toEqual(Result.ok(null));
-
-    expect(await validateAndReturn(projectConfigSchema, baseConfig, {
-      sourceOfTruthDbConnectionString: 'postgres://postgres:postgres@localhost:5432/postgres',
-    })).toEqual(Result.ok(null));
-
-    expect(await validateAndReturn(projectConfigSchema, baseConfig, {
-      sourceOfTruthDbConnectionString: null,
-    })).toEqual(Result.ok(null));
+  const schema1 = yupObject({
+    a: yupString().optional(),
   });
 
-  import.meta.vitest?.test('branch config schema', async () => {
-    expect(await validateAndReturn(branchConfigSchema, baseConfig, {
-      "sourceOfTruthDbConnectionString.abc": 'postgres://postgres:postgres@localhost:5432/postgres2',
-    })).toEqual(Result.error(`Tried to use dot notation to access "sourceOfTruthDbConnectionString.abc", but "sourceOfTruthDbConnectionString" doesn't exist on the object (or is null). Maybe this config is not normalizable?`));
-  });
+  expect(await validateAndReturn(schema1, {}, {})).toEqual(Result.ok(null));
+  expect(await validateAndReturn(schema1, { a: 'b' }, {})).toEqual(Result.ok(null));
+  expect(await validateAndReturn(schema1, {}, { a: 'b' })).toEqual(Result.ok(null));
+  expect(await validateAndReturn(schema1, { a: 'b' }, { a: 'c' })).toEqual(Result.ok(null));
+  expect(await validateAndReturn(schema1, {}, { a: null })).toEqual(Result.ok(null));
+  expect(await validateAndReturn(schema1, { a: 'b' }, { a: null })).toEqual(Result.ok(null));
+
+  expect(await validateAndReturn(yupObject({}), { a: 'b' }, { "a.b": "c" })).toEqual(Result.error(`Tried to use dot notation to access "a.b", but "a" doesn't exist on the object (or is null). Maybe this config is not normalizable?`));
 });
