@@ -238,7 +238,7 @@ export function TeamApiKeysSection(props: { team: Team }) {
           {t("Create API Key")}
         </Button>
       </Section>
-      <ApiKeyTable apiKeys={apiKeys ?? []} />
+      <ApiKeyTable apiKeys={apiKeys} />
 
       <CreateApiKeyDialog
         open={isNewApiKeyDialogOpen}
@@ -1077,13 +1077,13 @@ function SignOutSection() {
 function TeamPage(props: { team: Team }) {
   return (
     <PageLayout>
-      <TeamUserProfileSection team={props.team} />
-      <TeamProfileImageSection team={props.team} />
-      <TeamDisplayNameSection team={props.team} />
-      <MemberListSection team={props.team} />
-      <MemberInvitationSection team={props.team} />
-      <TeamApiKeysSection team={props.team} />
-      <LeaveTeamSection team={props.team} />
+      <TeamUserProfileSection key={`user-profile-${props.team.id}`} team={props.team} />
+      <TeamProfileImageSection key={`profile-image-${props.team.id}`} team={props.team} />
+      <TeamDisplayNameSection key={`display-name-${props.team.id}`} team={props.team} />
+      <MemberListSection key={`member-list-${props.team.id}`} team={props.team} />
+      <MemberInvitationSection key={`member-invitation-${props.team.id}`} team={props.team} />
+      <TeamApiKeysSection key={`api-keys-${props.team.id}`} team={props.team} />
+      <LeaveTeamSection key={`leave-team-${props.team.id}`} team={props.team} />
     </PageLayout>
   );
 }
