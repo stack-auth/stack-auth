@@ -86,7 +86,7 @@ export function UserDialog(props: {
         await adminApp.createUser(userValues);
       }
     } catch (error) {
-      if (error instanceof KnownErrors.UserEmailAlreadyExists) {
+      if (error instanceof KnownErrors.UserWithEmailAlreadyExists) {
         toast({
           title: "Email already exists",
           description: "Please choose a different email address",

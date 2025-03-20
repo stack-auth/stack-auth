@@ -1322,7 +1322,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
     password: string,
     noRedirect?: boolean,
     verificationCallbackUrl?: string,
-  }): Promise<Result<undefined, KnownErrors["UserEmailAlreadyExists"] | KnownErrors['PasswordRequirementsNotMet']>> {
+  }): Promise<Result<undefined, KnownErrors["UserWithEmailAlreadyExists"] | KnownErrors['PasswordRequirementsNotMet']>> {
     this._ensurePersistentTokenStore();
     const session = await this._getSession();
     const emailVerificationRedirectUrl = options.verificationCallbackUrl ?? constructRedirectUrl(this.urls.emailVerification);
