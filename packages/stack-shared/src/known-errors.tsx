@@ -512,11 +512,15 @@ const AccessTokenExpired = createKnownErrorConstructor(
 const InvalidProjectForAccessToken = createKnownErrorConstructor(
   InvalidAccessToken,
   "INVALID_PROJECT_FOR_ACCESS_TOKEN",
-  () => [
+  (expectedProjectId: string, actualProjectId: string) => [
     401,
-    "Access token not valid for this project.",
+    `Access token not valid for this project. Expected project ID ${JSON.stringify(expectedProjectId)}, but the token is for project ID ${JSON.stringify(actualProjectId)}.`,
+    {
+      expected_project_id: expectedProjectId,
+      actual_project_id: actualProjectId,
+    },
   ] as const,
-  () => [] as const,
+  (json: any) => [json.expected_project_id, json.actual_project_id] as const,
 );
 
 
@@ -558,14 +562,17 @@ const ProviderRejected = createKnownErrorConstructor(
   () => [] as const,
 );
 
-const UserEmailAlreadyExists = createKnownErrorConstructor(
+const UserWithEmailAlreadyExists = createKnownErrorConstructor(
   KnownError,
   "USER_EMAIL_ALREADY_EXISTS",
-  () => [
+  (email: string) => [
     409,
-    "User email already exists.",
+    `A user with email ${JSON.stringify(email)} already exists.`,
+    {
+      email,
+    },
   ] as const,
-  () => [] as const,
+  (json: any) => [json.email] as const,
 );
 
 const EmailNotVerified = createKnownErrorConstructor(
@@ -1229,7 +1236,7 @@ export const KnownErrors = {
   RefreshTokenError,
   ProviderRejected,
   RefreshTokenNotFoundOrExpired,
-  UserEmailAlreadyExists,
+  UserWithEmailAlreadyExists,
   EmailNotVerified,
   UserIdDoesNotExist,
   UserNotFound,

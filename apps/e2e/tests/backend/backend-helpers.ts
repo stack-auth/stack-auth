@@ -69,17 +69,17 @@ export type ProjectKeys = "no-project" | {
   adminAccessToken?: string,
 };
 
-export const InternalProjectKeys = {
+export const InternalProjectKeys = Object.freeze({
   projectId: STACK_INTERNAL_PROJECT_ID,
   publishableClientKey: STACK_INTERNAL_PROJECT_CLIENT_KEY,
   secretServerKey: STACK_INTERNAL_PROJECT_SERVER_KEY,
   superSecretAdminKey: STACK_INTERNAL_PROJECT_ADMIN_KEY,
-};
+});
 
-export const InternalProjectClientKeys = {
+export const InternalProjectClientKeys = Object.freeze({
   projectId: STACK_INTERNAL_PROJECT_ID,
   publishableClientKey: STACK_INTERNAL_PROJECT_CLIENT_KEY,
-};
+});
 
 function expectSnakeCase(obj: unknown, path: string): void {
   if (typeof obj !== "object" || obj === null) return;
@@ -923,6 +923,7 @@ export namespace Project {
   export async function createAndGetAdminToken(body?: Partial<InternalProjectsCrud["Admin"]["Create"]>) {
     backendContext.set({
       projectKeys: InternalProjectKeys,
+      userAuth: null,
     });
     const oldMailbox = backendContext.value.mailbox;
     await bumpEmailAddress({ unindexed: true });
