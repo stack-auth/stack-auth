@@ -520,7 +520,7 @@ const InvalidProjectForAccessToken = createKnownErrorConstructor(
       actual_project_id: actualProjectId,
     },
   ] as const,
-  () => [] as const,
+  (json: any) => [json.expected_project_id, json.actual_project_id] as const,
 );
 
 
