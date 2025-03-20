@@ -1,0 +1,150 @@
+# Some notes on configs
+ 
+## Generic format vs. Stack Auth
+
+The config format is generally usable and not specific to Stack Auth.
+
+All the logic required for generic usage of the config format are in `format/`. The other files in this folder are specific to Stack Auth's usage of it.
+
+## Terminology
+
+**Generic config format**:
+- Config: Any config, as described in stack-info
+- Normalized config: A config without `null` fields and dot notation
+
+**Stack Auth**: There are four levels, project, branch, environment, organization.
+- Base config: The defaults that come with Stack Auth
+- `$Level` config override: Overrides that are applied to the base config (in the following order: project -> branch -> environment -> organization)
+- `$Level` incomplete config: The base config after some overrides have been applied
+- `$Level` rendered config: An incomplete config with those fields removed that can be overridden by a future override
+- Complete config: The organization rendered config.
+
+<details>
+<summary>Examples</summary>
+
+Base config:
+```json
+{
+  organizations: {},
+  createTeamOnSignUp: false
+}
+```
+
+---
+
+Project config override:
+```json
+{
+  sourceOfTruthConnectionString: 'postgresql://...',
+}
+```
+
+Project incomplete config:
+```json
+// note: `organizations` and `createTeamOnSignUp` may be overridden by branch, environment, or organization configs! They are not final
+{
+  organizations: {},
+  createTeamOnSignUp: false,
+  sourceOfTruthConnectionString: 'postgresql://...',
+}
+```
+
+Project rendered config:
+```json
+// since `organizations` and `createTeamOnSignUp` may change later, they are not included in the rendered config
+{
+  sourceOfTruthConnectionString: 'postgresql://...',
+  // in practice, there is another field [IncompleteConfigSymbol] that can be used to retrieve the additional properties from the original incomplete config
+}
+```
+
+---
+
+Branch config override:
+```json
+{
+  organizations: {
+    'my-org': {
+      name: 'My Org',
+    }
+  }
+}
+```
+
+
+Branch incomplete config:
+```json
+{
+  organizations: {
+    'my-org': {
+      name: 'My Org',
+    }
+  },
+  createTeamOnSignUp: true,
+  sourceOfTruthConnectionString: 'postgresql://...',
+}
+```
+
+Branch rendered config:
+```json
+// as above, `organizations` and `createTeamOnSignUp` are not included in the rendered config, as they may change later
+{
+  sourceOfTruthConnectionString: 'postgresql://...',
+}
+```
+
+---
+
+Environment config override:
+```json
+// no change from branch config
+{}
+```
+
+Environment incomplete config:
+```json
+// no change from branch config
+{
+  organizations: {
+    'my-org': {
+      name: 'My Org',
+    }
+  },
+  createTeamOnSignUp: true,
+  sourceOfTruthConnectionString: 'postgresql://...',
+}
+```
+
+Environment rendered config:
+```json
+// organizations can no longer change after this point, so they are included in the rendered config
+{
+  organizations: {
+    'my-org': {
+      name: 'My Org',
+    }
+  },
+  createTeamOnSignUp: true,
+  sourceOfTruthConnectionString: 'postgresql://...',
+}
+```
+
+---
+
+Organization config override:
+```json
+{
+  createTeamOnSignUp: true,
+}
+```
+
+Organization incomplete config = organization rendered config = complete config:
+```json
+{
+  createTeamOnSignUp: true,
+  sourceOfTruthConnectionString: 'postgresql://...',
+}
+```
+
+
+</details>

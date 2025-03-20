@@ -1,9 +1,7 @@
 // Check out https://github.com/stack-auth/info/blob/main/eng-handbook/random-thoughts/config-json-format.md for more information on the config format
 
-import * as yup from "yup";
-import { yupNumber, yupObject, yupTuple } from "../schema-fields";
-import { StackAssertionError } from "../utils/errors";
-import { deleteKey, get, has, set } from "../utils/objects";
+import { StackAssertionError } from "../../utils/errors";
+import { deleteKey, get, has, set } from "../../utils/objects";
 
 
 export type ConfigValue = string | number | boolean | null | ConfigValue[] | Config;
@@ -16,15 +14,20 @@ export type NormalizedConfig = {
   [key: string]: NormalizedConfigValue,
 };
 
+export type _NormalizesTo<N> =
+  & Config
+  & { [K in keyof N]?: _NormalizesTo<N[K]> | null }
+  & { [K in `${string}.${string}`]: ConfigValue };
+export type NormalizesTo<N extends NormalizedConfig> = _NormalizesTo<N>;
 
 /**
  * Note that a config can both be valid and not normalizable.
  */
-export function isValidConfigOverride(c: unknown): c is Config {
-  return getInvalidConfigOverrideReason(c) === undefined;
+export function isValidConfig(c: unknown): c is Config {
+  return getInvalidConfigReason(c) === undefined;
 }
 
-export function getInvalidConfigOverrideReason(c: unknown, options: { configName?: string } = {}): string | undefined {
+export function getInvalidConfigReason(c: unknown, options: { configName?: string } = {}): string | undefined {
   const configName = options.configName ?? 'config';
   if (c === null || typeof c !== 'object') return `${configName} must be a non-null object`;
   for (const [key, value] of Object.entries(c)) {
@@ -55,7 +58,7 @@ function getInvalidConfigValueReason(value: unknown, options: { valueName?: stri
           if (reason) return reason;
         }
       } else {
-        const reason = getInvalidConfigOverrideReason(value, { configName: valueName });
+        const reason = getInvalidConfigReason(value, { configName: valueName });
         if (reason) return reason;
       }
       break;
@@ -68,7 +71,7 @@ function getInvalidConfigValueReason(value: unknown, options: { valueName?: stri
 }
 
 export function assertValidConfig(c: unknown) {
-  const reason = getInvalidConfigOverrideReason(c);
+  const reason = getInvalidConfigReason(c);
   if (reason) throw new StackAssertionError(`Invalid config: ${reason}`, { c });
 }
 
@@ -128,8 +131,29 @@ import.meta.vitest?.test("override(...)", ({ expect }) => {
   });
 });
 
-export function normalize(c: Config): NormalizedConfig {
+type NormalizeOptions = {
+  /**
+   * What to do if a dot notation is used on null.
+   *
+   * - "throw" (default): Throw an error. This is the safest option, and you should return this to the user if they
+   *   attempt to save a config which you know is invalid given the current set of overloads.
+   * - "ignore": Ignore the dot notation field. This is useful for applying the config, as we don't want to error out
+   *   if a base config has changed to delete a value that was overridden in another config. Note that you should
+   *   still show a warning to the user, and notify them to update their config.
+   */
+  onDotIntoNull?: "throw" | "ignore",
+}
+
+export class NormalizationError extends Error {
+  constructor(...args: ConstructorParameters<typeof StackAssertionError>) {
+    super(...args);
+  }
+}
+NormalizationError.prototype.name = "NormalizationError";
+
+export function normalize(c: Config, options: NormalizeOptions = {}): NormalizedConfig {
   assertValidConfig(c);
+  const onDotIntoNull = options.onDotIntoNull ?? "throw";
 
   const countDots = (s: string) => s.match(/\./g)?.length ?? 0;
   const result: NormalizedConfig = {};
@@ -138,8 +162,18 @@ export function normalize(c: Config): NormalizedConfig {
   for (const key of keysByDepth) {
     if (key.includes('.')) {
       const [prefix, suffix] = key.split('.', 2);
+      if (!has(result, prefix)) {
+        switch (onDotIntoNull) {
+          case "throw": {
+            throw new NormalizationError(`Tried to use dot notation to access ${JSON.stringify(key)}, but ${JSON.stringify(prefix)} doesn't exist on the object (or is null). Maybe this config is not normalizable?`);
+          }
+          case "ignore": {
+            continue;
+          }
+        }
+      }
       const oldValue = get(result, prefix);
-      if (typeof oldValue !== 'object') throw new StackAssertionError("Tried to use dot notation on a non-object config value. Maybe this config is not normalizable?", { c, key, oldValue });
+      if (typeof oldValue !== 'object') throw new NormalizationError(`Tried to use dot notation to access ${JSON.stringify(key)}, but ${JSON.stringify(prefix)} is not an object. Maybe this config is not normalizable?`);
       set(oldValue, suffix as any, get(c, key));
       setNormalizedValue(result, prefix, oldValue);
     } else {
@@ -188,109 +222,22 @@ import.meta.vitest?.test("normalize(...)", ({ expect }) => {
     },
     h: [11, { j: 12 }, 8],
   });
-});
 
-async function _testMergeConfigHelper({ configSchema, defaultConfig, overrideConfig }: { configSchema: yup.AnySchema, defaultConfig: Config, overrideConfig: Config }) {
-  const result = normalize(override(defaultConfig, overrideConfig));
-  return await configSchema.validate(result);
-}
+  // dotting into null
+  expect(() => normalize({
+    "b.c": 2,
+  })).toThrow(`Tried to use dot notation to access "b.c", but "b" doesn't exist on the object (or is null). Maybe this config is not normalizable?`);
+  expect(() => normalize({
+    b: null,
+    "b.c": 2,
+  })).toThrow(`Tried to use dot notation to access "b.c", but "b" doesn't exist on the object (or is null). Maybe this config is not normalizable?`);
+  expect(normalize({
+    "b.c": 2,
+  }, { onDotIntoNull: "ignore" })).toEqual({});
 
-import.meta.vitest?.test("add keys", async ({ expect }) => {
-  const config = {};
-
-  const newConfig = await _testMergeConfigHelper({
-    configSchema: yupObject({
-      b: yupNumber().optional(),
-    }),
-    defaultConfig: config,
-    overrideConfig: { b: 456 },
-  });
-
-  expect(newConfig).toEqual({ b: 456 });
-});
-
-import.meta.vitest?.test("replace keys", async ({ expect }) => {
-  const config = {
-    a: 123,
-  };
-
-  const newConfig = await _testMergeConfigHelper({
-    configSchema: yupObject({
-      a: yupNumber().optional(),
-    }),
-    defaultConfig: config,
-    overrideConfig: { a: 456 },
-  });
-
-  expect(newConfig).toEqual({ a: 456 });
-});
-
-import.meta.vitest?.test("remove keys", async ({ expect }) => {
-  const config = {
-    a: 123,
-  };
-
-  const newConfig = await _testMergeConfigHelper({
-    configSchema: yupObject({
-      a: yupNumber().optional(),
-    }),
-    defaultConfig: config,
-    overrideConfig: { a: null },
-  });
-
-  expect(newConfig).toEqual({});
-});
-
-import.meta.vitest?.test("add nested keys", async ({ expect }) => {
-  const config = {
-    a: {},
-  };
-
-  const newConfig = await _testMergeConfigHelper({
-    configSchema: yupObject({
-      a: yupObject({
-        b: yupNumber().optional(),
-      }),
-    }),
-    defaultConfig: config,
-    overrideConfig: { "a.b": 456 },
-  });
-
-  expect(newConfig).toEqual({ a: { b: 456 } });
-});
-
-import.meta.vitest?.test("replace nested keys", async ({ expect }) => {
-  const config = {
-    a: {
-      b: 123,
-    },
-  };
-
-  const newConfig = await _testMergeConfigHelper({
-    configSchema: yupObject({
-      a: yupObject({
-        b: yupNumber().defined(),
-      }),
-    }),
-    defaultConfig: config,
-    overrideConfig: { "a.b": 456 },
-  });
-
-  expect(newConfig).toEqual({ a: { b: 456 } });
-});
-
-import.meta.vitest?.test("replace nested tuple", async ({ expect }) => {
-  const config = {
-    a: [123],
-  };
-
-  const newConfig = await _testMergeConfigHelper({
-    configSchema: yupObject({
-      a: yupTuple([yupNumber()]).defined(),
-    }),
-    defaultConfig: config,
-    overrideConfig: { 'a.0': 456 },
-  });
-
-  expect(newConfig).toEqual({ a: [456] });
+  // dotting into non-object
+  expect(() => normalize({
+    b: 1,
+    "b.c": 2,
+  })).toThrow(`Tried to use dot notation to access "b.c", but "b" is not an object. Maybe this config is not normalizable?`);
 });

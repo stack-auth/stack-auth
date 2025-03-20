@@ -197,14 +197,14 @@ export function yupUnion<T extends yup.ISchema<any>[]>(...args: T): yup.MixedSch
   });
 }
 
-export function yupRecord<T extends yup.AnySchema>(
+export function yupRecord<K extends yup.StringSchema, T extends yup.AnySchema>(
+  keySchema: K,
   valueSchema: T,
-  keyValidation?: (key: string) => boolean
 ): yup.MixedSchema<Record<string, yup.InferType<T>>> {
-  return yupObject().test(
+  return yupObject().unknown(true).test(
     'record',
     '${path} must be a record of valid values',
-    async function (value: unknown) {
+    async function (value: unknown, context: yup.TestContext) {
       const { path, createError } = this as any;
       if (typeof value !== 'object' || value === null) {
         return createError({ message: `${path} must be an object` });
@@ -212,16 +212,12 @@ export function yupRecord<T extends yup.AnySchema>(
 
       // Validate each property using the provided valueSchema
       for (const key of Object.keys(value)) {
-        // Validate the key if a validation function was provided
-        if (keyValidation && !keyValidation(key)) {
-          return createError({
-            path: path,
-            message: `Invalid key: ${key}`,
-          });
-        }
+        // Validate the key
+        await keySchema.validate(key, context.options);
 
+        // Validate the value
         try {
-          await valueSchema.validate((value as Record<string, unknown>)[key]);
+          await valueSchema.validate((value as Record<string, unknown>)[key], context.options);
         } catch (e: any) {
           return createError({
             path: path ? `${path}.${key}` : key,
