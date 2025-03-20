@@ -39,7 +39,8 @@ export type {
 } from "./connected-accounts";
 
 export type {
-  ContactChannel
+  ContactChannel,
+  ServerContactChannel
 } from "./contact-channels";
 
 export type {

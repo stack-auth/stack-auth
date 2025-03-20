@@ -1,6 +1,6 @@
 {
   "name": "@stackframe/stack-dashboard",
-  "version": "2.7.27",
+  "version": "2.7.28",
   "private": true,
   "scripts": {
     "clean": "rimraf .next && rimraf node_modules",

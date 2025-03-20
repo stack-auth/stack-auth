@@ -79,6 +79,10 @@ export function getDefaultSuperSecretAdminKey() {
   return process.env.STACK_SUPER_SECRET_ADMIN_KEY || throwErr(new Error("No super secret admin key provided. Please copy your key from the Stack dashboard and put it in the STACK_SUPER_SECRET_ADMIN_KEY environment variable."));
 }
 
+export function getDefaultExtraRequestHeaders() {
+  return JSON.parse(process.env.NEXT_PUBLIC_STACK_EXTRA_REQUEST_HEADERS || '{}');
+}
+
 /**
  * Returns the base URL for the Stack API.
  *
