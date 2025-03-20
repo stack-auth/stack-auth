@@ -93,7 +93,7 @@ export const POST = createSmartRouteHandler({
           user_id: contactChannel.projectUser.projectUserId,
         });
       } else {
-        throw new KnownErrors.UserEmailAlreadyExists();
+        throw new KnownErrors.UserWithEmailAlreadyExists(contactChannel.value);
       }
       isNewUser = false;
     } else {
