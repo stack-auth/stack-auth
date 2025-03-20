@@ -1322,7 +1322,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
     password: string,
     noRedirect?: boolean,
     verificationCallbackUrl?: string,
-  }): Promise<Result<undefined, KnownErrors["UserEmailAlreadyExists"] | KnownErrors['PasswordRequirementsNotMet']>> {
+  }): Promise<Result<undefined, KnownErrors["UserWithEmailAlreadyExists"] | KnownErrors['PasswordRequirementsNotMet']>> {
     this._ensurePersistentTokenStore();
     const session = await this._getSession();
     const emailVerificationRedirectUrl = options.verificationCallbackUrl ?? constructRedirectUrl(this.urls.emailVerification);
@@ -1343,7 +1343,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
     }
   }
 
-  async signInWithMagicLink(code: string): Promise<Result<undefined, KnownErrors["VerificationCodeError"] | KnownErrors["InvalidTotpCode"]>> {
+  async signInWithMagicLink(code: string, options?: { noRedirect?: boolean }): Promise<Result<undefined, KnownErrors["VerificationCodeError"] | KnownErrors["InvalidTotpCode"]>> {
     this._ensurePersistentTokenStore();
     let result;
     try {
@@ -1359,10 +1359,12 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
 
     if (result.status === 'ok') {
       await this._signInToAccountWithTokens(result.data);
-      if (result.data.newUser) {
-        await this.redirectToAfterSignUp({ replace: true });
-      } else {
-        await this.redirectToAfterSignIn({ replace: true });
+      if (!(options?.noRedirect)) {
+        if (result.data.newUser) {
+          await this.redirectToAfterSignUp({ replace: true });
+        } else {
+          await this.redirectToAfterSignIn({ replace: true });
+        }
       }
       return Result.ok(undefined);
     } else {

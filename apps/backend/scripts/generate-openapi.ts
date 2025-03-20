@@ -15,7 +15,8 @@ async function main() {
     const filePathPrefix = path.resolve(process.platform === "win32" ? "apps/src/app/api/latest" : "src/app/api/latest");
     const importPathPrefix = "@/app/api/latest";
     const filePaths = [...await glob(filePathPrefix + "/**/route.{js,jsx,ts,tsx}")];
-    const openAPISchema = yaml.stringify(parseOpenAPI({
+
+    const openApiSchemaObject = parseOpenAPI({
       endpoints: new Map(await Promise.all(filePaths.map(async (filePath) => {
         if (!filePath.startsWith(filePathPrefix)) {
           throw new Error(`Invalid file path: ${filePath}`);
@@ -32,7 +33,9 @@ async function main() {
         return [urlPath, handlersByMethod] as const;
       }))),
       audience,
-    }));
+    });
+    const openAPISchema = yaml.stringify(openApiSchemaObject);
+    writeFileSyncIfChanged(`../mcp-server/openapi/${audience}.json`, JSON.stringify(openApiSchemaObject, null, 2));
     writeFileSyncIfChanged(`../../docs/fern/openapi/${audience}.yaml`, openAPISchema);
 
     const webhookOpenAPISchema = yaml.stringify(parseWebhookOpenAPI({
