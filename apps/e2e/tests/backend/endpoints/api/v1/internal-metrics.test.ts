@@ -1,6 +1,6 @@
 import { wait } from "@stackframe/stack-shared/dist/utils/promises";
 import { it } from "../../../../helpers";
-import { Auth, Project, backendContext, createMailbox, niceBackendFetch } from "../../../backend-helpers";
+import { ApiKey, Auth, Project, backendContext, createMailbox, niceBackendFetch } from "../../../backend-helpers";
 
 it("should return metrics data", async ({ expect }) => {
   await Project.createAndSwitch({
@@ -21,6 +21,9 @@ it("should return metrics data with users", async ({ expect }) => {
       magic_link_enabled: true,
     }
   });
+
+  // this test may run longer than the admin access token is valid for, so let's create API keys
+  await ApiKey.createAndSetProjectKeys();
 
   const mailboxes = new Array(10).fill(null).map(() => createMailbox());
 
