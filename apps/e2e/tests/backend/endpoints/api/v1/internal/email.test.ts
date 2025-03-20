@@ -1,5 +1,5 @@
 import { it } from "../../../../../helpers";
-import { Auth, Project, niceBackendFetch } from "../../../../backend-helpers";
+import { Auth, InternalProjectKeys, Project, backendContext, niceBackendFetch } from "../../../../backend-helpers";
 
 // Test the internal emails CRUD endpoint for listing sent emails
 it("should list sent emails for the current project", async ({ expect }) => {
@@ -111,7 +111,9 @@ it("should not allow two different projects to see the same send log", async ({ 
     }
   `);
 
-  await Project.resetContext();
+  backendContext.set({
+    projectKeys: InternalProjectKeys,
+  });
 
   const { adminAccessToken: adminAccessToken2 } = await Project.createAndSwitch({
     config: {
