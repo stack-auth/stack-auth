@@ -13,7 +13,14 @@ const config: Options = {
   sourcemap: true,
   clean: false,
   noExternal: [...customNoExternal],
-  dts: true,  // Enable type generation for other packages that depend on these types
+  dts: {
+    // Enable type generation for other packages that depend on these types
+    // But ignore unused @ts-expect-error directives
+    compilerOptions: {
+      skipLibCheck: true,
+      suppressExcessPropertyErrors: true,
+    },
+  },
   outDir: 'dist',
   format: ['esm', 'cjs'],
   legacyOutput: true,
