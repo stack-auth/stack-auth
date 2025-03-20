@@ -37,7 +37,7 @@ jobs:
         run: pnpm run restart-dev-environment
 
       - name: Run tests
-        run: pnpm test --no-file-parallelism
+        run: pnpm run test --reporter=verbose
       
       - name: Print dev server logs
         run: cat dev-server.log.untracked.txt
