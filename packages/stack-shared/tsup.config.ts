@@ -18,7 +18,6 @@ const config: Options = {
     // But ignore unused @ts-expect-error directives
     compilerOptions: {
       skipLibCheck: true,
-      suppressExcessPropertyErrors: true,
     },
   },
   outDir: 'dist',
