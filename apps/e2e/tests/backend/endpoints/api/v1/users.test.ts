@@ -1318,7 +1318,8 @@ describe("with server access", () => {
         "status": 409,
         "body": {
           "code": "USER_EMAIL_ALREADY_EXISTS",
-          "error": "User email already exists.",
+          "details": { "email": "default-mailbox--<stripped UUID>@stack-generated.example.com" },
+          "error": "A user with email \\"default-mailbox--<stripped UUID>@stack-generated.example.com\\" already exists.",
         },
         "headers": Headers {
           "x-stack-known-error": "USER_EMAIL_ALREADY_EXISTS",
@@ -1868,7 +1869,8 @@ describe("with server access", () => {
         "status": 409,
         "body": {
           "code": "USER_EMAIL_ALREADY_EXISTS",
-          "error": "User email already exists.",
+          "details": { "email": "default-mailbox--<stripped UUID>@stack-generated.example.com" },
+          "error": "A user with email \\"default-mailbox--<stripped UUID>@stack-generated.example.com\\" already exists.",
         },
         "headers": Headers {
           "x-stack-known-error": "USER_EMAIL_ALREADY_EXISTS",
@@ -1927,7 +1929,8 @@ describe("with server access", () => {
         "status": 409,
         "body": {
           "code": "USER_EMAIL_ALREADY_EXISTS",
-          "error": "User email already exists.",
+          "details": { "email": "default-mailbox--<stripped UUID>@stack-generated.example.com" },
+          "error": "A user with email \\"default-mailbox--<stripped UUID>@stack-generated.example.com\\" already exists.",
         },
         "headers": Headers {
           "x-stack-known-error": "USER_EMAIL_ALREADY_EXISTS",
