@@ -10,7 +10,6 @@ export default function Layout(props: { children: React.ReactNode, params: { pro
       <Suspense fallback={<></>}>
         <OnboardingDialog />
       </Suspense>
-      <h1>Hello, world!</h1>
       <SidebarLayout projectId={props.params.projectId}>
         {props.children}
       </SidebarLayout>
