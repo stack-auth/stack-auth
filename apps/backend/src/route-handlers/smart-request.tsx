@@ -174,7 +174,7 @@ const parseAuth = withTraceSpan('smart request parseAuth', async (req: NextReque
     }
 
     if (result.data.projectId !== options.projectId) {
-      throw new KnownErrors.InvalidProjectForAccessToken();
+      throw new KnownErrors.InvalidProjectForAccessToken(options.projectId, result.data.projectId);
     }
 
     return {

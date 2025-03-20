@@ -488,7 +488,7 @@ Sign up using email and password credentials. The behavior is as follows:
 ### Returns
 
 <div className="indented">
-  `Promise<Result<undefined, KnownErrors["UserEmailAlreadyExists"] | KnownErrors["PasswordRequirementsNotMet"]>>`: A promise that resolves to a `Result` object.
+  `Promise<Result<undefined, KnownErrors["UserWithEmailAlreadyExists"] | KnownErrors["PasswordRequirementsNotMet"]>>`: A promise that resolves to a `Result` object.
 </div>
 
 </div><div className="stack-aside"><div className="stack-sticky">
@@ -498,7 +498,7 @@ declare function signUpWithCredential(options: {
   email: string;
   password: string;
   noRedirect?: boolean;
-}): Promise<Result<undefined, KnownErrors["UserEmailAlreadyExists"] | KnownErrors["PasswordRequirementsNotMet"]>>;
+}): Promise<Result<undefined, KnownErrors["UserWithEmailAlreadyExists"] | KnownErrors["PasswordRequirementsNotMet"]>>;
 ```
 
 ### Examples
