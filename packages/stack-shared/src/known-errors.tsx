@@ -654,6 +654,16 @@ const SignUpNotEnabled = createKnownErrorConstructor(
   () => [] as const,
 );
 
+const AnonymousSignUpNotEnabled = createKnownErrorConstructor(
+  KnownError,
+  "ANONYMOUS_SIGN_UP_NOT_ENABLED",
+  () => [
+    400,
+    "Anonymous sign-up is not enabled for this project.",
+  ] as const,
+  () => [] as const,
+);
+
 const PasswordAuthenticationNotEnabled = createKnownErrorConstructor(
   KnownError,
   "PASSWORD_AUTHENTICATION_NOT_ENABLED",
@@ -1243,6 +1253,7 @@ export const KnownErrors = {
   ApiKeyNotFound,
   ProjectNotFound,
   SignUpNotEnabled,
+  AnonymousSignUpNotEnabled,
   PasswordAuthenticationNotEnabled,
   PasskeyAuthenticationNotEnabled,
   EmailPasswordMismatch,

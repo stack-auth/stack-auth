@@ -447,6 +447,69 @@ export namespace Auth {
     }
   }
 
+  export namespace Anonymous {
+    // Define the allowed project IDs for anonymous sign-up
+    const ALLOWED_PROJECT_IDS = [
+      "9bee8100-8d83-4ad7-aaad-d6607e386a28",
+      "71bd203a-14d9-4ccc-b704-32bfac0e2542",
+    ];
+    
+    export async function signUp() {
+      // Save the current context
+      const originalContext = { ...backendContext.value };
+      
+      try {
+        // Create a project with admin token to properly authenticate
+        const { projectId, adminAccessToken } = await Project.createAndGetAdminToken();
+        
+        // Create an API key to get a publishable client key
+        const { createApiKeyResponse } = await ApiKey.create(adminAccessToken);
+        const apiKey = createApiKeyResponse.body;
+        
+        // Set the project ID to one of the allowed values
+        // This is crucial - we need to use one of the allowed project IDs
+        backendContext.set({
+          projectKeys: {
+            projectId: ALLOWED_PROJECT_IDS[0],
+          },
+        });
+        
+        // Make the request with the allowed project ID and client auth
+        const response = await niceBackendFetch("/api/v1/auth/anonymous", {
+          method: "POST",
+          accessType: "client",
+          body: {},
+          headers: {
+            "x-stack-publishable-client-key": apiKey.publishable_client_key,
+            "x-client-auth": "true"
+          }
+        });
+        
+        // Set the auth tokens for subsequent requests
+        if (response.status === 200) {
+          backendContext.set({
+            userAuth: {
+              accessToken: response.body.access_token,
+              refreshToken: response.body.refresh_token,
+            },
+            projectKeys: {
+              projectId: ALLOWED_PROJECT_IDS[0],
+            },
+          });
+        }
+
+        return {
+          signUpResponse: response,
+          userId: response.status === 200 ? response.body.user_id : null,
+        };
+      } catch (error) {
+        // Restore original context on error
+        backendContext.set(originalContext);
+        throw error;
+      }
+    }
+  }
+
   export namespace Passkey {
 
 
