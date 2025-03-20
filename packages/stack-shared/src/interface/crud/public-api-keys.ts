@@ -33,6 +33,10 @@ export const publicApiKeysObfuscatedReadSchema = basePublicApiKeysReadSchema.con
   }).optional(),
 }));
 
+export const combinedPublicApiKeysReadSchema = basePublicApiKeysReadSchema.concat(yupObject({
+  secret_api_key: yupMixed(),
+}));
+
 export const publicApiKeysUpdateSchema = yupObject({
   description: yupString().optional(),
   revoked: yupBoolean().oneOf([true]).optional(),
@@ -44,8 +48,7 @@ export const publicApiKeysDeleteSchema = yupMixed();
 export const publicApiKeysCrud = createCrud({
   // Also adding client schemas to allow client-side access
   clientCreateSchema: publicApiKeysCreateInputSchema,
-  clientCreateOutputSchema: publicApiKeysCreateOutputSchema,
-  clientReadSchema: publicApiKeysObfuscatedReadSchema,
+  clientReadSchema: combinedPublicApiKeysReadSchema,
   clientUpdateSchema: publicApiKeysUpdateSchema,
   clientDeleteSchema: publicApiKeysDeleteSchema,
   docs: {

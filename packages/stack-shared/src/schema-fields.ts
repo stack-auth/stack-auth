@@ -358,6 +358,7 @@ export const teamSystemPermissions = [
   '$read_members',
   '$remove_members',
   '$invite_members',
+  '$manage_api_keys',
 ] as const;
 export const teamPermissionDefinitionIdSchema = yupString()
   .matches(/^\$?[a-z0-9_:]+$/, 'Only lowercase letters, numbers, ":", "_" and optional "$" at the beginning are allowed')

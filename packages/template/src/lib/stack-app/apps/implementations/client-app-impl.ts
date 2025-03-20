@@ -173,6 +173,21 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
     }
   );
 
+  private readonly _clientApiKeysCache = createCacheBySession<[], PublicApiKeysCrud['Client']['Read'][]>(
+    async (session) => {
+      const results = await this._interface.listApiKeys({ project_user_id: 'me' }, session);
+      return results;
+    }
+  );
+
+  private readonly _teamApiKeysCache = createCacheBySession<[string], PublicApiKeysCrud['Client']['Read'][]>(
+    async (session, [teamId]) => {
+      const results = await this._interface.listApiKeys({ team_id: teamId }, session);
+      return results;
+    }
+  );
+
+
   protected async _createCookieHelper(): Promise<CookieHelper> {
     if (this._tokenStoreInit === 'nextjs-cookie' || this._tokenStoreInit === 'cookie') {
       return await createCookieHelper();
@@ -712,10 +727,17 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
         await app._currentUserTeamsCache.refresh([session]);
       },
 
+      // IF_PLATFORM react-like
+      useApiKeys() {
+        const result = useAsyncCache(app._teamApiKeysCache, [session, crud.id] as const, "team.useApiKeys()");
+        return result.map((crud) => app._clientApiKeyFromCrudRead(session, crud));
+      },
+      // END_PLATFORM
+
       // API Key management methods
       async listApiKeys() {
         const results = await app._interface.listApiKeys({ team_id: crud.id }, session);
-        return results.items.map((crud) => app._clientApiKeyFromCrudRead(session, crud));
+        return results.map((crud) => app._clientApiKeyFromCrudRead(session, crud));
       },
 
       async createApiKey(options: ApiKeyCreateOptions) {
@@ -723,16 +745,19 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
           ...apiKeyCreateOptionsToCrud(options),
           team_id: crud.id
         }, session);
+        await app._teamApiKeysCache.refresh([session, crud.id]);
         return app._clientApiKeyFromCrudCreate(session, result);
       },
 
       async updateApiKey(keyId: string, options: ApiKeyUpdateOptions) {
         const result = await app._interface.updateApiKey(keyId, options, session);
+        await app._teamApiKeysCache.refresh([session, crud.id]);
         return app._clientApiKeyFromCrudRead(session, result);
       },
 
       async deleteApiKey(keyId: string) {
         await app._interface.deleteApiKey(keyId, session);
+        await app._teamApiKeysCache.refresh([session, crud.id]);
       }
     };
   }
@@ -1013,9 +1038,17 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
         await app._clientContactChannelsCache.refresh([session]);
         return app._clientContactChannelFromCrud(crud, session);
       },
+
+      // IF_PLATFORM react-like
+      useApiKeys() {
+        const result = useAsyncCache(app._clientApiKeysCache, [session] as const, "user.useApiKeys()");
+        return result.map((crud) => app._clientApiKeyFromCrudRead(session, crud));
+      },
+      // END_PLATFORM
+
       async listApiKeys() {
         const results = await app._interface.listApiKeys({ project_user_id: 'me' }, session);
-        return results.items.map((crud) => app._clientApiKeyFromCrudRead(session, crud));
+        return results.map((crud) => app._clientApiKeyFromCrudRead(session, crud));
       },
 
       async createApiKey(options: ApiKeyCreateOptions) {
@@ -1023,16 +1056,19 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
           ...apiKeyCreateOptionsToCrud(options),
           project_user_id: 'me'
         }, session);
+        await app._clientApiKeysCache.refresh([session]);
         return app._clientApiKeyFromCrudCreate(session, result);
       },
 
       async updateApiKey(keyId: string, options: ApiKeyUpdateOptions) {
         const result = await app._interface.updateApiKey(keyId, options, session);
+        await app._clientApiKeysCache.refresh([session]);
         return app._clientApiKeyFromCrudRead(session, result);
       },
 
       async deleteApiKey(keyId: string) {
         await app._interface.deleteApiKey(keyId, session);
+        await app._clientApiKeysCache.refresh([session]);
       },
     };
   }

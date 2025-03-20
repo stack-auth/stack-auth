@@ -674,7 +674,7 @@ export async function createProject(ownerIds: string[], data: InternalProjectsCr
         scope: 'TEAM',
         parentEdges: {
           createMany: {
-            data: (['UPDATE_TEAM', 'DELETE_TEAM', 'READ_MEMBERS', 'REMOVE_MEMBERS', 'INVITE_MEMBERS'] as const).map(p =>({ parentTeamSystemPermission: p }))
+            data: (['UPDATE_TEAM', 'DELETE_TEAM', 'READ_MEMBERS', 'REMOVE_MEMBERS', 'INVITE_MEMBERS', 'MANAGE_API_KEYS'] as const).map(p =>({ parentTeamSystemPermission: p }))
           },
         },
         isDefaultTeamCreatorPermission: true,

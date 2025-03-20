@@ -1440,7 +1440,7 @@ export class StackClientInterface {
       tenancy_id?: string,
     },
     session: InternalSession,
-  ): Promise<PublicApiKeysCrud['Client']['List']> {
+  ): Promise<PublicApiKeysCrud['Client']['Read'][]> {
     const queryParams = new URLSearchParams();
     if (options.project_user_id) {
       queryParams.set('project_user_id', options.project_user_id);
@@ -1482,7 +1482,6 @@ export class StackClientInterface {
         },
         body: JSON.stringify({
           ...data,
-          project_user_id: data.project_user_id || 'me',
         }),
       },
       session,

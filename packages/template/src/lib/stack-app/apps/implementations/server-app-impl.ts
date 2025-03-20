@@ -111,7 +111,7 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
     }
   );
 
-  private readonly _serverUserApiKeysCache = createCache<[string | undefined, string | undefined, string | undefined], PublicApiKeysCrud['Server']['Read'][]>(
+  private readonly _serverApiKeysCache = createCache<[string | undefined, string | undefined, string | undefined], PublicApiKeysCrud['Server']['Read'][]>(
     async ([projectUserId, teamId, tenancyId]) => {
       const result = await this._interface.listServerApiKeys({
         project_user_id: projectUserId,
@@ -235,7 +235,7 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
       },
       async revoke() {
         await app._interface.updateServerApiKey(data.id, { revoked: true });
-        await app._serverUserApiKeysCache.refreshWhere(() => true);
+        await app._serverApiKeysCache.refresh([data.project_user_id, data.team_id, data.tenancy_id]);
       }
     };
   }
@@ -436,8 +436,14 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
         ]);
         return app._serverContactChannelFromCrud(crud.id, contactChannel);
       },
+      // IF_PLATFORM react-like
+      useApiKeys() {
+        const result = useAsyncCache(app._serverApiKeysCache, [crud.id, undefined, undefined] as const, "user.useApiKeys()");
+        return result.map((apiKey) => app._serverApiKeyFromCrudRead(apiKey));
+      },
+      // END_PLATFORM
       async listApiKeys() {
-        const result = Result.orThrow(await app._serverUserApiKeysCache.getOrWait([crud.id, undefined, undefined], "write-only"));
+        const result = Result.orThrow(await app._serverApiKeysCache.getOrWait([crud.id, undefined, undefined], "write-only"));
         return result.map((apiKey) => app._serverApiKeyFromCrudRead(apiKey));
       },
       async createApiKey(options: ApiKeyCreateOptions) {
@@ -445,17 +451,17 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
           ...apiKeyCreateOptionsToCrud(options),
           project_user_id: crud.id
         });
-        await app._serverUserApiKeysCache.refresh([crud.id, undefined, undefined]);
+        await app._serverApiKeysCache.refresh([crud.id, undefined, undefined]);
         return app._serverApiKeyFromCrudCreate(result);
       },
       async updateApiKey(keyId: string, options: ApiKeyUpdateOptions) {
         const result = await app._interface.updateServerApiKey(keyId, options);
-        await app._serverUserApiKeysCache.refreshWhere(() => true);
+        await app._serverApiKeysCache.refresh([crud.id, undefined, undefined]);
         return app._serverApiKeyFromCrudRead(result);
       },
       async deleteApiKey(keyId: string) {
         await app._interface.deleteServerApiKey(keyId);
-        await app._serverUserApiKeysCache.refreshWhere(() => true);
+        await app._serverApiKeysCache.refresh([crud.id, undefined, undefined]);
       },
     };
   }
@@ -557,8 +563,14 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
         return useMemo(() => result.map((crud) => app._serverTeamInvitationFromCrud(crud)), [result]);
       },
       // END_PLATFORM
+      // IF_PLATFORM react-like
+      useApiKeys() {
+        const result = useAsyncCache(app._serverApiKeysCache, [undefined, crud.id, undefined] as const, "team.useApiKeys()");
+        return result.map((apiKey) => app._serverApiKeyFromCrudRead(apiKey));
+      },
+      // END_PLATFORM
       async listApiKeys() {
-        const result = Result.orThrow(await app._serverUserApiKeysCache.getOrWait([undefined, crud.id, undefined], "write-only"));
+        const result = Result.orThrow(await app._serverApiKeysCache.getOrWait([undefined, crud.id, undefined], "write-only"));
         return result.map((apiKey) => app._serverApiKeyFromCrudRead(apiKey));
       },
       async createApiKey(options: ApiKeyCreateOptions) {
@@ -566,17 +578,17 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
           ...apiKeyCreateOptionsToCrud(options),
           team_id: crud.id
         });
-        await app._serverUserApiKeysCache.refresh([undefined, crud.id, undefined]);
+        await app._serverApiKeysCache.refresh([undefined, crud.id, undefined]);
         return app._serverApiKeyFromCrudCreate(result);
       },
       async updateApiKey(keyId: string, options: ApiKeyUpdateOptions) {
         const result = await app._interface.updateServerApiKey(keyId, options);
-        await app._serverUserApiKeysCache.refreshWhere(() => true);
+        await app._serverApiKeysCache.refresh([undefined, crud.id, undefined]);
         return app._serverApiKeyFromCrudRead(result);
       },
       async deleteApiKey(keyId: string) {
         await app._interface.deleteServerApiKey(keyId);
-        await app._serverUserApiKeysCache.refreshWhere(() => true);
+        await app._serverApiKeysCache.refresh([undefined, crud.id, undefined]);
       },
     };
   }
@@ -753,7 +765,6 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
       this._serverUserCache.refreshWhere(() => true),
       this._serverUsersCache.refreshWhere(() => true),
       this._serverContactChannelsCache.refreshWhere(() => true),
-      this._serverUserApiKeysCache.refreshWhere(() => true),
     ]);
   }
 }

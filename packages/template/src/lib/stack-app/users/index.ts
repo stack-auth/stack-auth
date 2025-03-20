@@ -199,15 +199,16 @@ export type UserExtra = {
   getTeamProfile(team: Team): Promise<EditableTeamMemberProfile>,
   useTeamProfile(team: Team): EditableTeamMemberProfile, // THIS_LINE_PLATFORM react-like
 
-  listApiKeys(): Promise<ApiKey[]>,
   createApiKey(options: ApiKeyCreateOptions): Promise<ApiKeyWithSecret>,
   updateApiKey(keyId: string, options: ApiKeyUpdateOptions): Promise<ApiKey>,
   deleteApiKey(keyId: string): Promise<void>,
 }
+& AsyncStoreProperty<"apiKeys", [], ApiKey[], true>
 & AsyncStoreProperty<"team", [id: string], Team | null, false>
 & AsyncStoreProperty<"teams", [], Team[], true>
 & AsyncStoreProperty<"permission", [scope: Team, permissionId: string, options?: { recursive?: boolean }], TeamPermission | null, false>
 & AsyncStoreProperty<"permissions", [scope: Team, options?: { recursive?: boolean }], TeamPermission[], true>;
+
 
 export type InternalUserExtra =
   & {

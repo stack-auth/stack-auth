@@ -43,6 +43,12 @@ export const publicApiKeyCrudHandlers = createLazyProxy(() => createCrudHandlers
   onCreate: async ({ auth, data }) => {
 
 
+    // TODO figure out if this is right
+    if (data.project_user_id === 'me') {
+      data.project_user_id = auth.user?.id;
+    }
+
+
     validateExactlyOneGroupIdentifier(data);
 
 
@@ -62,25 +68,12 @@ export const publicApiKeyCrudHandlers = createLazyProxy(() => createCrudHandlers
     }
 
     const apiKeyId = generateUuid();
-    const groupId = generateUuid();
-
     // Generate API keys based on flags
     const secretApiKey = generateSecureRandomString();
 
 
-    // Create the group first
-    const group = await prismaClient.group.create({
-      data: {
-        id: groupId,
-        projectId: auth.project.id,
-        tenancyId: auth.tenancy.id,
-        projectUserId: data.project_user_id,
-        teamId: data.team_id,
-      }
-    });
-
     // Create the API key set in the database
-    const apiKey = await prismaClient.groupAPIKey.create({
+    const apiKey = await prismaClient.projectAPIKey.create({
       data: {
         id: apiKeyId,
         projectId: auth.project.id,
@@ -88,7 +81,9 @@ export const publicApiKeyCrudHandlers = createLazyProxy(() => createCrudHandlers
         secretApiKey,
         expiresAt: data.expires_at_millis ? new Date(data.expires_at_millis) : undefined,
         createdAt: new Date(),
-        groupId: group.id,
+        projectUserId: data.project_user_id,
+        teamId: data.team_id,
+        tenancyId: data.tenancy_id,
       },
     });
 
@@ -97,9 +92,7 @@ export const publicApiKeyCrudHandlers = createLazyProxy(() => createCrudHandlers
     return {
       id: apiKey.id,
       description: apiKey.description ?? undefined,
-      secret_api_key: {
-        last_four: apiKey.secretApiKey.slice(-4),
-      },
+      secret_api_key: apiKey.secretApiKey,
       created_at_millis: apiKey.createdAt.getTime(),
       expires_at_millis: apiKey.expiresAt?.getTime(),
     };
@@ -127,14 +120,12 @@ export const publicApiKeyCrudHandlers = createLazyProxy(() => createCrudHandlers
       }
     }
 
-    const apiKeys = await prismaClient.groupAPIKey.findMany({
+    const apiKeys = await prismaClient.projectAPIKey.findMany({
       where: {
         projectId: auth.project.id,
-        group: {
-          projectUserId: query.project_user_id,
-          teamId: query.team_id,
-          tenancyId: query.tenancy_id,
-        },
+        projectUserId: query.project_user_id,
+        teamId: query.team_id,
+        tenancyId: query.tenancy_id,
       },
       orderBy: {
         createdAt: 'desc',
@@ -164,16 +155,13 @@ export const publicApiKeyCrudHandlers = createLazyProxy(() => createCrudHandlers
     params: { api_key_id: string },
   }) => {
     // Find the existing API key
-    const existingApiKey = await prismaClient.groupAPIKey.findUnique({
+    const existingApiKey = await prismaClient.projectAPIKey.findUnique({
       where: {
         projectId_id: {
           projectId: auth.project.id,
           id: params.api_key_id,
         },
       },
-      include: {
-        group: true
-      }
     });
 
     if (!existingApiKey) {
@@ -182,21 +170,21 @@ export const publicApiKeyCrudHandlers = createLazyProxy(() => createCrudHandlers
 
     // Security checks
     if (auth.type === "client") {
-      if (existingApiKey.group.projectUserId && auth.user?.id !== existingApiKey.group.projectUserId) {
+      if (existingApiKey.projectUserId && auth.user?.id !== existingApiKey.projectUserId) {
         throw new StackAssertionError("Client cannot create API keys for other users");
       }
 
-      if (existingApiKey.group.teamId) {
+      if (existingApiKey.teamId) {
         // TODO check if the auth.user.id has permission "manageApiKeys" on the team
       }
 
-      if (existingApiKey.group.tenancyId) {
+      if (existingApiKey.tenancyId) {
         // TODO throw an error because client cannot create API keys for a tenancy
       }
     }
 
     // Update the API key
-    const updatedApiKey = await prismaClient.groupAPIKey.update({
+    const updatedApiKey = await prismaClient.projectAPIKey.update({
       where: {
         projectId_id: {
           projectId: auth.project.id,
@@ -228,16 +216,13 @@ export const publicApiKeyCrudHandlers = createLazyProxy(() => createCrudHandlers
     params: { api_key_id: string },
   }) => {
     // Check if the API key exists
-    const existingApiKey = await prismaClient.groupAPIKey.findUnique({
+    const existingApiKey = await prismaClient.projectAPIKey.findUnique({
       where: {
         projectId_id: {
           projectId: auth.project.id,
           id: params.api_key_id,
         },
       },
-      include: {
-        group: true
-      }
     });
 
     if (!existingApiKey) {
@@ -246,21 +231,21 @@ export const publicApiKeyCrudHandlers = createLazyProxy(() => createCrudHandlers
 
     // Security checks
     if (auth.type === "client") {
-      if (existingApiKey.group.projectUserId && auth.user?.id !== existingApiKey.group.projectUserId) {
+      if (existingApiKey.projectUserId && auth.user?.id !== existingApiKey.projectUserId) {
         throw new StackAssertionError("Client cannot create API keys for other users");
       }
 
-      if (existingApiKey.group.teamId) {
+      if (existingApiKey.teamId) {
         // TODO check if the auth.user.id has permission "manageApiKeys" on the team
       }
 
-      if (existingApiKey.group.tenancyId) {
+      if (existingApiKey.tenancyId) {
         // TODO throw an error because client cannot create API keys for a tenancy
       }
     }
 
     // Delete the API key
-    await prismaClient.groupAPIKey.delete({
+    await prismaClient.projectAPIKey.delete({
       where: {
         projectId_id: {
           projectId: auth.project.id,

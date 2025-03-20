@@ -28,7 +28,7 @@ model Project {
   neonProvisionedProject NeonProvisionedProject?
   tenancies              Tenancy[]
   verificationCodes      VerificationCode[]
-  GroupAPIKey            GroupAPIKey[]
+  projectAPIKey          ProjectAPIKey[]
 }
 
 model ProjectConfig {
@@ -88,7 +88,7 @@ model Tenancy {
   connectedAccounts ConnectedAccount[] @relation("TenancyConnectedAccounts")
   SentEmail         SentEmail[]
   cliAuthAttempts   CliAuthAttempt[]
-  Group             Group[]
+  projectAPIKey     ProjectAPIKey[]
 
   @@unique([projectId, branchId, organizationId])
   @@unique([projectId, branchId, hasNoOrganization])
@@ -126,10 +126,10 @@ model Team {
   clientReadOnlyMetadata Json?
   serverMetadata         Json?
 
-  tenancy     Tenancy      @relation("TenancyTeams", fields: [tenancyId], references: [id], onDelete: Cascade)
-  permissions Permission[]
-  teamMembers TeamMember[]
-  Group       Group[]
+  tenancy       Tenancy         @relation("TenancyTeams", fields: [tenancyId], references: [id], onDelete: Cascade)
+  permissions   Permission[]
+  teamMembers   TeamMember[]
+  projectAPIKey ProjectAPIKey[]
 
   @@id([tenancyId, teamId])
   @@unique([mirroredProjectId, mirroredBranchId, teamId])
@@ -228,6 +228,7 @@ enum TeamSystemPermission {
   READ_MEMBERS
   REMOVE_MEMBERS
   INVITE_MEMBERS
+  MANAGE_API_KEYS
 }
 
 model PermissionEdge {
@@ -284,7 +285,7 @@ model ProjectUser {
   otpAuthMethod      OtpAuthMethod[]
   oauthAuthMethod    OAuthAuthMethod[]
   SentEmail          SentEmail[]
-  Group              Group[]
+  projectAPIKey      ProjectAPIKey[]
 
   @@id([tenancyId, projectUserId])
   @@unique([mirroredProjectId, mirroredBranchId, projectUserId])
@@ -764,7 +765,7 @@ enum VerificationCodeType {
 }
 
 //#region API keys
-
+// Internal API keys
 model ApiKeySet {
   projectId String
   project   Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
@@ -782,25 +783,8 @@ model ApiKeySet {
   @@id([projectId, id])
 }
 
-model Group {
-  projectId String
-
-  id String @default(uuid()) @db.Uuid
-
-  // "Group"
-  tenancyId     String? @db.Uuid
-  teamId        String? @db.Uuid
-  projectUserId String? @db.Uuid
-
-  tenancy     Tenancy?     @relation(fields: [tenancyId], references: [id], onDelete: Cascade)
-  projectUser ProjectUser? @relation(fields: [tenancyId, projectUserId], references: [tenancyId, projectUserId], onDelete: Cascade)
-  team        Team?        @relation(fields: [tenancyId, teamId], references: [tenancyId, teamId], onDelete: Cascade)
-  GroupAPIKey GroupAPIKey?
-
-  @@id([projectId, id])
-}
-
-model GroupAPIKey {
+// New api keys
+model ProjectAPIKey {
   projectId String
   project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
 
@@ -815,11 +799,15 @@ model GroupAPIKey {
   manuallyRevokedAt DateTime?
   description       String?
   // Group
-  groupId           String    @db.Uuid
-  group             Group     @relation(fields: [projectId, groupId], references: [projectId, id])
+  tenancyId         String?   @db.Uuid
+  teamId            String?   @db.Uuid
+  projectUserId     String?   @db.Uuid
+
+  tenancy     Tenancy?     @relation(fields: [tenancyId], references: [id], onDelete: Cascade)
+  projectUser ProjectUser? @relation(fields: [tenancyId, projectUserId], references: [tenancyId, projectUserId], onDelete: Cascade)
+  team        Team?        @relation(fields: [tenancyId, teamId], references: [tenancyId, teamId], onDelete: Cascade)
 
   @@id([projectId, id])
-  @@unique([projectId, groupId])
 }
 
 model EmailServiceConfig {

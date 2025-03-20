@@ -74,6 +74,7 @@
     "@stackframe/stack-shared": "workspace:*",
     "//": "NEXT_LINE_PLATFORM react-like",
     "@stackframe/stack-ui": "workspace:*",
+    "@tanstack/react-table": "^8.20.5",
     "//": "NEXT_LINE_PLATFORM react-like",
     "browser-image-compression": "^2.0.2",
     "color": "^4.2.3",
