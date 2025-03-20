@@ -68,8 +68,6 @@ export function ForgotPassword(props: { fullPage?: boolean }) {
   const user = useUser();
   const [sent, setSent] = useState(false);
 
-  console.log("Enter ForgotPassword");
-
   useEffect(() => {
     if (user) {
       runAsynchronously(stackApp.redirectToAfterSignIn({ replace: true }));
