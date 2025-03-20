@@ -5,7 +5,7 @@ import { adaptSchema, clientOrHigherAuthTypeSchema, yupNumber, yupObject, yupStr
 import { usersCrudHandlers } from "../../users/crud";
 
 // Define the allowed project IDs for anonymous sign-up
-export const ALLOWED_PROJECT_IDS = [
+const ALLOWED_PROJECT_IDS = [
   "9bee8100-8d83-4ad7-aaad-d6607e386a28",
   "71bd203a-14d9-4ccc-b704-32bfac0e2542",
 ];
