@@ -2,9 +2,9 @@
 
 import { yupResolver } from "@hookform/resolvers/yup";
 import { strictEmailSchema, yupObject } from "@stackframe/stack-shared/dist/schema-fields";
-import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
+import { runAsynchronously, runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
 import { Button, Input, Label, Typography, cn } from "@stackframe/stack-ui";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
 import * as yup from "yup";
 import { useStackApp, useUser } from "..";
@@ -67,6 +67,14 @@ export function ForgotPassword(props: { fullPage?: boolean }) {
   const stackApp = useStackApp();
   const user = useUser();
   const [sent, setSent] = useState(false);
+
+  console.log("Enter ForgotPassword");
+
+  useEffect(() => {
+    if (user) {
+      runAsynchronously(stackApp.redirectToAfterSignIn({ replace: true }));
+    }
+  }, [user, stackApp]);
 
   if (user) {
     return <PredefinedMessageCard type='signedIn' fullPage={!!props.fullPage} />;
