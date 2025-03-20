@@ -448,13 +448,11 @@ export const projectsCrudHandlers = createLazyProxy(() => createCrudHandlers(pro
       // ======================= update Stripe config =======================
       const stripeConfig = data.config?.stripe_config;
       if (stripeConfig) {
-        // Check if Stripe config already exists
         const existingStripeConfig = await tx.stripeConfig.findUnique({
           where: { projectConfigId: oldProject.config.id },
         });
 
         if (existingStripeConfig) {
-          // Update existing config
           await tx.stripeConfig.update({
             where: { projectConfigId: oldProject.config.id },
             data: {
@@ -464,7 +462,6 @@ export const projectsCrudHandlers = createLazyProxy(() => createCrudHandlers(pro
             },
           });
         } else {
-          // Create new config
           await tx.stripeConfig.create({
             data: {
               projectConfigId: oldProject.config.id,
