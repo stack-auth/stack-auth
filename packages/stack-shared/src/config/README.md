@@ -23,24 +23,25 @@ All the logic required for generic usage of the config format are in `format/`. 
 <summary>Examples</summary>
 
 Base config:
-```json
+```js
 {
   organizations: {},
-  createTeamOnSignUp: false
+  createTeamOnSignUp: false,
+  sourceOfTruthConnectionString: null
 }
 ```
 
 ---
 
 Project config override:
-```json
+```js
 {
   sourceOfTruthConnectionString: 'postgresql://...',
 }
 ```
 
 Project incomplete config:
-```json
+```js
 // note: `organizations` and `createTeamOnSignUp` may be overridden by branch, environment, or organization configs! They are not final
 {
   organizations: {},
@@ -50,7 +51,7 @@ Project incomplete config:
 ```
 
 Project rendered config:
-```json
+```js
 // since `organizations` and `createTeamOnSignUp` may change later, they are not included in the rendered config
 {
   sourceOfTruthConnectionString: 'postgresql://...',
@@ -61,7 +62,7 @@ Project rendered config:
 ---
 
 Branch config override:
-```json
+```js
 {
   organizations: {
     'my-org': {
@@ -73,7 +74,7 @@ Branch config override:
 
 
 Branch incomplete config:
-```json
+```js
 {
   organizations: {
     'my-org': {
@@ -86,7 +87,7 @@ Branch incomplete config:
 ```
 
 Branch rendered config:
-```json
+```js
 // as above, `organizations` and `createTeamOnSignUp` are not included in the rendered config, as they may change later
 {
   sourceOfTruthConnectionString: 'postgresql://...',
@@ -96,13 +97,13 @@ Branch rendered config:
 ---
 
 Environment config override:
-```json
+```js
 // no change from branch config
 {}
 ```
 
 Environment incomplete config:
-```json
+```js
 // no change from branch config
 {
   organizations: {
@@ -116,7 +117,7 @@ Environment incomplete config:
 ```
 
 Environment rendered config:
-```json
+```js
 // organizations can no longer change after this point, so they are included in the rendered config
 {
   organizations: {
@@ -132,14 +133,14 @@ Environment rendered config:
 ---
 
 Organization config override:
-```json
+```js
 {
   createTeamOnSignUp: true,
 }
 ```
 
 Organization incomplete config = organization rendered config = complete config:
-```json
+```js
 {
   createTeamOnSignUp: true,
   sourceOfTruthConnectionString: 'postgresql://...',
