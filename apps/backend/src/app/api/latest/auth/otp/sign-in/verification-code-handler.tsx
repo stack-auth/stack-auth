@@ -71,7 +71,7 @@ export const signInVerificationCodeHandler = createVerificationCodeHandler({
           primary_email_auth_enabled: true,
           otp_auth_enabled: true,
         },
-        allowedErrorTypes: [KnownErrors.UserEmailAlreadyExists],
+        allowedErrorTypes: [KnownErrors.UserWithEmailAlreadyExists],
       });
     } else {
       user = await usersCrudHandlers.adminRead({
