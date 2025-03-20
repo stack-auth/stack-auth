@@ -1,5 +1,7 @@
 # @stackframe/docs
 
+## 2.7.28
+
 ## 2.7.27
 
 ### Patch Changes
