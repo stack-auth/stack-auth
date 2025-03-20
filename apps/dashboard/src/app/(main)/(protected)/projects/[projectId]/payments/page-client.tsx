@@ -11,9 +11,10 @@ import { useAdminApp } from "../use-admin-app";
 
 
 export default function PageClient() {
-  const stackAdminApp = useAdminApp();
   const [isStripeKeyDialogOpen, setIsStripeKeyDialogOpen] = useState(false);
-  const [stripeConfigured, setStripeConfigured] = useState(false);
+  const stackAdminApp = useAdminApp();
+  const project = stackAdminApp.useProject();
+  const [stripeConfigured, setStripeConfigured] = useState(!!project.config.stripeConfig);
 
   return (
     <PageLayout
@@ -63,6 +64,7 @@ function StripeKeyDialog(props: {
   onKeyConfigured?: () => void,
 }) {
   const stackAdminApp = useAdminApp();
+  const project = stackAdminApp.useProject();
 
   const formSchema = yup.object({
     stripeSecretKey: yup.string().defined().label("Stripe Secret Key"),
@@ -78,11 +80,15 @@ function StripeKeyDialog(props: {
       formSchema={formSchema}
       okButton={{ label: "Save" }}
       onSubmit={async (values) => {
-        // In a real implementation, this would save the keys to your project configuration
-        // For example: await stackAdminApp.setStripeConfig({ ... })
-        console.log("Stripe keys configured:", values);
-
-        // Mock implementation - just notify parent component that keys were configured
+        await project.update({
+          config: {
+            stripeConfig: {
+              stripeSecretKey: values.stripeSecretKey,
+              stripePublishableKey: values.stripePublishableKey,
+              stripeWebhookSecret: values.stripeWebhookSecret,
+            },
+          }
+        });
         props.onKeyConfigured?.();
       }}
       cancelButton
