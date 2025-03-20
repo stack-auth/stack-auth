@@ -138,19 +138,19 @@ export function setOrganizationConfigOverride(tenancy: Tenancy, organizationConf
 // ---------------------------------------------------------------------------------------------------------------------
 
 async function getIncompleteProjectConfig(project: Project): Promise<ProjectIncompleteConfig> {
-  return normalize(override(baseConfig, await getProjectConfigOverride(project)));
+  return normalize(override(baseConfig, await getProjectConfigOverride(project)), { onDotIntoNull: "ignore" });
 }
 
 async function getIncompleteBranchConfig(project: Project, branchId: string): Promise<BranchIncompleteConfig> {
-  return normalize(override(await getIncompleteProjectConfig(project), await getBranchConfigOverride(project, branchId))) as any;
+  return normalize(override(await getIncompleteProjectConfig(project), await getBranchConfigOverride(project, branchId)), { onDotIntoNull: "ignore" }) as any;
 }
 
 async function getIncompleteEnvironmentConfig(project: Project, branchId: string): Promise<EnvironmentIncompleteConfig> {
-  return normalize(override(await getIncompleteBranchConfig(project, branchId), await getEnvironmentConfigOverride(project, branchId))) as any;
+  return normalize(override(await getIncompleteBranchConfig(project, branchId), await getEnvironmentConfigOverride(project, branchId)), { onDotIntoNull: "ignore" }) as any;
 }
 
 async function getIncompleteOrganizationConfig(tenancy: Tenancy): Promise<OrganizationIncompleteConfig> {
-  return normalize(override(await getIncompleteEnvironmentConfig(tenancy.project, tenancy.branchId), await getOrganizationConfigOverride(tenancy))) as any;
+  return normalize(override(await getIncompleteEnvironmentConfig(tenancy.project, tenancy.branchId), await getOrganizationConfigOverride(tenancy)), { onDotIntoNull: "ignore" }) as any;
 }
 
 async function validateAndReturn(schema: yup.ObjectSchema<any>, base: any, configOverride: any): Promise<Result<null, string>> {
