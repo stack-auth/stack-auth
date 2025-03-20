@@ -55,7 +55,6 @@ Project rendered config:
 // since `organizations` and `createTeamOnSignUp` may change later, they are not included in the rendered config
 {
   sourceOfTruthConnectionString: 'postgresql://...',
-  // in practice, there is another field [IncompleteConfigSymbol] that can be used to retrieve the additional properties from the original incomplete config
 }
 ```
 
