@@ -167,6 +167,8 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
     }
   );
 
+  private _anonymousSignUpInProgress: Promise<{ accessToken: string, refreshToken: string }> | null = null;
+
   protected async _createCookieHelper(): Promise<CookieHelper> {
     if (this._tokenStoreInit === 'nextjs-cookie' || this._tokenStoreInit === 'cookie') {
       return await createCookieHelper();
@@ -1176,11 +1178,15 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
 
   async getUser(options: GetUserOptions<HasTokenStore> & { or: 'redirect' }): Promise<ProjectCurrentUser<ProjectId>>;
   async getUser(options: GetUserOptions<HasTokenStore> & { or: 'throw' }): Promise<ProjectCurrentUser<ProjectId>>;
+  async getUser(options: GetUserOptions<HasTokenStore> & { or: 'anonymous' }): Promise<ProjectCurrentUser<ProjectId>>;
   async getUser(options?: GetUserOptions<HasTokenStore>): Promise<ProjectCurrentUser<ProjectId> | null>;
   async getUser(options?: GetUserOptions<HasTokenStore>): Promise<ProjectCurrentUser<ProjectId> | null> {
     this._ensurePersistentTokenStore(options?.tokenStore);
     const session = await this._getSession(options?.tokenStore);
-    const crud = Result.orThrow(await this._currentUserCache.getOrWait([session], "write-only"));
+    let crud = Result.orThrow(await this._currentUserCache.getOrWait([session], "write-only"));
+    if (crud?.is_anonymous && options?.or !== "anonymous" && options?.or !== "anonymous-if-exists") {
+      crud = null;
+    }
 
     if (crud === null) {
       switch (options?.or) {
@@ -1191,7 +1197,13 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
         case 'throw': {
           throw new Error("User is not signed in but getUser was called with { or: 'throw' }");
         }
-        default: {
+        case 'anonymous': {
+          const tokens = await this._signUpAnonymously();
+          return await this.getUser({ tokenStore: tokens }) ?? throwErr("Something went wrong while signing up anonymously");
+        }
+        case undefined:
+        case "anonymous-if-exists":
+        case "return-null": {
           return null;
         }
       }
@@ -1203,12 +1215,16 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
   // IF_PLATFORM react-like
   useUser(options: GetUserOptions<HasTokenStore> & { or: 'redirect' }): ProjectCurrentUser<ProjectId>;
   useUser(options: GetUserOptions<HasTokenStore> & { or: 'throw' }): ProjectCurrentUser<ProjectId>;
+  useUser(options: GetUserOptions<HasTokenStore> & { or: 'anonymous' }): ProjectCurrentUser<ProjectId>;
   useUser(options?: GetUserOptions<HasTokenStore>): ProjectCurrentUser<ProjectId> | null;
   useUser(options?: GetUserOptions<HasTokenStore>): ProjectCurrentUser<ProjectId> | null {
     this._ensurePersistentTokenStore(options?.tokenStore);
 
     const session = this._useSession(options?.tokenStore);
-    const crud = useAsyncCache(this._currentUserCache, [session], "useUser()");
+    let crud = useAsyncCache(this._currentUserCache, [session] as const, "useUser()");
+    if (crud?.is_anonymous && options?.or !== "anonymous" && options?.or !== "anonymous-if-exists") {
+      crud = null;
+    }
 
     if (crud === null) {
       switch (options?.or) {
@@ -1220,7 +1236,20 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
         case 'throw': {
           throw new Error("User is not signed in but useUser was called with { or: 'throw' }");
         }
+        case 'anonymous': {
+          // TODO we should think about the behavior when calling useUser (or getUser) in anonymous with a custom token store. signUpAnonymously always sets the current token store on app level, instead of the one passed to this function
+          // TODO we shouldn't reload & suspend here, instead we should use a promise that resolves to the new anonymous user
+          runAsynchronously(async () => {
+            await this._signUpAnonymously();
+            if (typeof window !== "undefined") {
+              window.location.reload();
+            }
+          });
+          suspend();
+          throw new StackAssertionError("suspend should never return");
+        }
         case undefined:
+        case "anonymous-if-exists":
         case "return-null": {
           // do nothing
         }
@@ -1341,6 +1370,27 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
     } else {
       return Result.error(result.error);
     }
+  }
+
+  async _signUpAnonymously() {
+    this._ensurePersistentTokenStore();
+
+    if (!this._anonymousSignUpInProgress) {
+      this._anonymousSignUpInProgress = (async () => {
+        this._ensurePersistentTokenStore();
+        const session = await this._getSession();
+        const result = await this._interface.signUpAnonymously(session);
+        if (result.status === "ok") {
+          await this._signInToAccountWithTokens(result.data);
+        } else {
+          throw new StackAssertionError("signUpAnonymously() should never return an error");
+        }
+        this._anonymousSignUpInProgress = null;
+        return result.data;
+      })();
+    }
+
+    return await this._anonymousSignUpInProgress;
   }
 
   async signInWithMagicLink(code: string, options?: { noRedirect?: boolean }): Promise<Result<undefined, KnownErrors["VerificationCodeError"] | KnownErrors["InvalidTotpCode"]>> {
