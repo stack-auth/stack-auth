@@ -261,6 +261,7 @@ model ProjectUser {
   clientMetadata         Json?
   requiresTotpMfa        Boolean @default(false)
   totpSecret             Bytes?
+  isAnonymous            Boolean @default(false)
 
   tenancy                       Tenancy                        @relation("TenancyProjectUsers", fields: [tenancyId], references: [id], onDelete: Cascade)
   project                       Project                        @relation(fields: [mirroredProjectId], references: [id], onDelete: Cascade)
@@ -683,9 +684,9 @@ model OAuthOuterInfo {
 }
 
 model ProjectUserRefreshToken {
-  id            String   @default(uuid()) @db.Uuid
-  tenancyId     String   @db.Uuid
-  projectUserId String   @db.Uuid
+  id            String @default(uuid()) @db.Uuid
+  tenancyId     String @db.Uuid
+  projectUserId String @db.Uuid
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -962,18 +963,18 @@ model SentEmail {
 }
 
 model CliAuthAttempt {
-  tenancyId    String   @db.Uuid
-  tenancy      Tenancy  @relation(fields: [tenancyId], references: [id], onDelete: Cascade)
-  
-  id           String   @default(uuid()) @db.Uuid
-  pollingCode  String   @unique
-  loginCode    String   @unique
+  tenancyId String  @db.Uuid
+  tenancy   Tenancy @relation(fields: [tenancyId], references: [id], onDelete: Cascade)
+
+  id           String    @default(uuid()) @db.Uuid
+  pollingCode  String    @unique
+  loginCode    String    @unique
   refreshToken String?
   expiresAt    DateTime
   usedAt       DateTime?
-  
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
-  
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
   @@id([tenancyId, id])
 }

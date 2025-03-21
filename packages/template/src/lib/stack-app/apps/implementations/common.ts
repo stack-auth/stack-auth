@@ -140,7 +140,7 @@ export function createEmptyTokenStore() {
 
 
 // IF_PLATFORM react-like
-const cachePromiseByComponentId = new Map<string, ReactPromise<Result<unknown>>>();
+const cachePromiseByHookId = new Map<string, ReactPromise<Result<unknown>>>();
 export function useAsyncCache<D extends any[], T>(cache: AsyncCache<D, Result<T>>, dependencies: D, caller: string): T {
   // we explicitly don't want to run this hook in SSR
   suspendIfSsr(caller);
@@ -149,7 +149,7 @@ export function useAsyncCache<D extends any[], T>(cache: AsyncCache<D, Result<T>
 
   const subscribe = useCallback((cb: () => void) => {
     const { unsubscribe } = cache.onStateChange(dependencies, () => {
-      cachePromiseByComponentId.delete(id);
+      cachePromiseByHookId.delete(id);
       cb();
     });
     return unsubscribe;
@@ -157,14 +157,14 @@ export function useAsyncCache<D extends any[], T>(cache: AsyncCache<D, Result<T>
   const getSnapshot = useCallback(() => {
     // React checks whether a promise passed to `use` is still the same as the previous one by comparing the reference.
     // If we didn't cache here, this wouldn't work because the promise would be recreated every time the value changes.
-    if (!cachePromiseByComponentId.has(id)) {
-      cachePromiseByComponentId.set(id, cache.getOrWait(dependencies, "read-write"));
+    if (!cachePromiseByHookId.has(id)) {
+      cachePromiseByHookId.set(id, cache.getOrWait(dependencies, "read-write"));
     }
-    return cachePromiseByComponentId.get(id) as ReactPromise<Result<T>>;
+    return cachePromiseByHookId.get(id) as ReactPromise<Result<T>>;
   }, [cache, ...dependencies]);
 
   // note: we must use React.useSyncExternalStore instead of importing the function directly, as it will otherwise
-  // throw an error ("can't import useSyncExternalStore from the server")
+  // throw an error on Next.js ("can't import useSyncExternalStore from the server")
   const promise = React.useSyncExternalStore(
     subscribe,
     getSnapshot,
