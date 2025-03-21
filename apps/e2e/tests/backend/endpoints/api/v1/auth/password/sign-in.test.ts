@@ -28,6 +28,7 @@ it("should allow signing in to existing accounts", async ({ expect }) => {
         "display_name": null,
         "has_password": true,
         "id": "<stripped UUID>",
+        "is_anonymous": false,
         "oauth_providers": [],
         "otp_auth_enabled": false,
         "passkey_auth_enabled": false,
