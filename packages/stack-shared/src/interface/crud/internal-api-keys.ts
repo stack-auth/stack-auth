@@ -1,7 +1,7 @@
 import { CrudTypeOf, createCrud } from "../../crud";
 import { yupBoolean, yupMixed, yupNumber, yupObject, yupString } from "../../schema-fields";
 
-const baseApiKeysReadSchema = yupObject({
+const baseInternalApiKeysReadSchema = yupObject({
   id: yupString().defined(),
   description: yupString().defined(),
   expires_at_millis: yupNumber().defined(),
@@ -10,7 +10,7 @@ const baseApiKeysReadSchema = yupObject({
 });
 
 // Used for the result of the create endpoint
-export const apiKeysCreateInputSchema = yupObject({
+export const internalApiKeysCreateInputSchema = yupObject({
   description: yupString().defined(),
   expires_at_millis: yupNumber().defined(),
   has_publishable_client_key: yupBoolean().defined(),
@@ -18,14 +18,14 @@ export const apiKeysCreateInputSchema = yupObject({
   has_super_secret_admin_key: yupBoolean().defined(),
 });
 
-export const apiKeysCreateOutputSchema = baseApiKeysReadSchema.concat(yupObject({
+export const internalApiKeysCreateOutputSchema = baseInternalApiKeysReadSchema.concat(yupObject({
   publishable_client_key: yupString().optional(),
   secret_server_key: yupString().optional(),
   super_secret_admin_key: yupString().optional(),
 }).defined());
 
 // Used for list, read and update endpoints after the initial creation
-export const apiKeysCrudAdminObfuscatedReadSchema = baseApiKeysReadSchema.concat(yupObject({
+export const internalApiKeysCrudAdminObfuscatedReadSchema = baseInternalApiKeysReadSchema.concat(yupObject({
   publishable_client_key: yupObject({
     last_four: yupString().defined(),
   }).optional(),
@@ -37,17 +37,17 @@ export const apiKeysCrudAdminObfuscatedReadSchema = baseApiKeysReadSchema.concat
   }).optional(),
 }));
 
-export const apiKeysCrudAdminUpdateSchema = yupObject({
+export const internalApiKeysCrudAdminUpdateSchema = yupObject({
   description: yupString().optional(),
   revoked: yupBoolean().oneOf([true]).optional(),
 }).defined();
 
-export const apiKeysCrudAdminDeleteSchema = yupMixed();
+export const internalApiKeysCrudAdminDeleteSchema = yupMixed();
 
-export const apiKeysCrud = createCrud({
-  adminReadSchema: apiKeysCrudAdminObfuscatedReadSchema,
-  adminUpdateSchema: apiKeysCrudAdminUpdateSchema,
-  adminDeleteSchema: apiKeysCrudAdminDeleteSchema,
+export const internalApiKeysCrud = createCrud({
+  adminReadSchema: internalApiKeysCrudAdminObfuscatedReadSchema,
+  adminUpdateSchema: internalApiKeysCrudAdminUpdateSchema,
+  adminDeleteSchema: internalApiKeysCrudAdminDeleteSchema,
   docs: {
     adminList: {
       hidden: true,
@@ -66,4 +66,4 @@ export const apiKeysCrud = createCrud({
     },
   },
 });
-export type ApiKeysCrud = CrudTypeOf<typeof apiKeysCrud>;
+export type InternalApiKeysCrud = CrudTypeOf<typeof internalApiKeysCrud>;

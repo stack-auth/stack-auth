@@ -1,7 +1,7 @@
 import { InternalSession } from "../sessions";
 import { EmailTemplateCrud, EmailTemplateType } from "./crud/email-templates";
 import { InternalEmailsCrud } from "./crud/emails";
-import { ApiKeysCrud } from "./crud/internal-api-keys";
+import { InternalApiKeysCrud } from "./crud/internal-api-keys";
 import { ProjectsCrud } from "./crud/projects";
 import { SvixTokenCrud } from "./crud/svix-token";
 import { TeamPermissionDefinitionsCrud } from "./crud/team-permissions";
@@ -24,7 +24,7 @@ export type InternalApiKeyCreateCrudRequest = {
   description: string,
 };
 
-export type InternalApiKeyCreateCrudResponse = ApiKeysCrud["Admin"]["Read"] & {
+export type InternalApiKeyCreateCrudResponse = InternalApiKeysCrud["Admin"]["Read"] & {
   publishable_client_key?: string,
   secret_server_key?: string,
   super_secret_admin_key?: string,
@@ -93,9 +93,9 @@ export class StackAdminInterface extends StackServerInterface {
     return await response.json();
   }
 
-  async listInternalApiKeys(): Promise<ApiKeysCrud["Admin"]["Read"][]> {
+  async listInternalApiKeys(): Promise<InternalApiKeysCrud["Admin"]["Read"][]> {
     const response = await this.sendAdminRequest("/internal/api-keys", {}, null);
-    const result = await response.json() as ApiKeysCrud["Admin"]["List"];
+    const result = await response.json() as InternalApiKeysCrud["Admin"]["List"];
     return result.items;
   }
 
@@ -114,7 +114,7 @@ export class StackAdminInterface extends StackServerInterface {
     );
   }
 
-  async getInternalApiKey(id: string, session: InternalSession): Promise<ApiKeysCrud["Admin"]["Read"]> {
+  async getInternalApiKey(id: string, session: InternalSession): Promise<InternalApiKeysCrud["Admin"]["Read"]> {
     const response = await this.sendAdminRequest(`/internal/api-keys/${id}`, {}, session);
     return await response.json();
   }
