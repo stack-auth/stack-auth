@@ -1,7 +1,7 @@
 {
   "name": "react-example",
   "private": true,
-  "version": "2.7.29",
+  "version": "2.7.30",
   "type": "module",
   "scripts": {
     "dev": "vite --force --port 8120",
