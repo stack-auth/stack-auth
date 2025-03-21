@@ -822,6 +822,27 @@ export class StackClientInterface {
     });
   }
 
+  async signUpAnonymously(session: InternalSession): Promise<Result<{ accessToken: string, refreshToken: string }, never>> {
+    const res = await this.sendClientRequestAndCatchKnownError(
+      "/auth/anonymous/sign-up",
+      {
+        method: "POST",
+      },
+      session,
+      [],
+    );
+
+    if (res.status === "error") {
+      return Result.error(res.error);
+    }
+
+    const result = await res.data.json();
+    return Result.ok({
+      accessToken: result.access_token,
+      refreshToken: result.refresh_token,
+    });
+  }
+
   async signInWithMagicLink(code: string): Promise<Result<{ newUser: boolean, accessToken: string, refreshToken: string }, KnownErrors["VerificationCodeError"]>> {
     const res = await this.sendClientRequestAndCatchKnownError(
       "/auth/otp/sign-in",

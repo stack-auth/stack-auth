@@ -107,6 +107,7 @@ export const userPrismaToCrud = (
     selected_team_id: selectedTeamMembers[0]?.teamId ?? null,
     selected_team: selectedTeamMembers[0] ? teamPrismaToCrud(selectedTeamMembers[0]?.team) : null,
     last_active_at_millis: lastActiveAtMillis,
+    is_anonymous: prisma.isAnonymous,
   };
 };
 
@@ -399,6 +400,7 @@ export function getUserQuery(projectId: string, branchId: string | null, userId:
           server_metadata: row.SelectedTeamMember.Team.serverMetadata,
         } : null,
         last_active_at_millis: row.lastActiveAt ? new Date(row.lastActiveAt + "Z").getTime() : new Date(row.createdAt + "Z").getTime(),
+        is_anonymous: row.isAnonymous,
       };
     },
   };
@@ -570,6 +572,7 @@ export const usersCrudHandlers = createLazyProxy(() => createCrudHandlers(usersC
           serverMetadata: data.server_metadata === null ? Prisma.JsonNull : data.server_metadata,
           profileImageUrl: data.profile_image_url,
           totpSecret: data.totp_secret_base64 == null ? data.totp_secret_base64 : Buffer.from(decodeBase64(data.totp_secret_base64)),
+          isAnonymous: data.is_anonymous ?? false,
         },
         include: userFullInclude,
       });
@@ -1023,6 +1026,7 @@ export const usersCrudHandlers = createLazyProxy(() => createCrudHandlers(usersC
           profileImageUrl: data.profile_image_url,
           requiresTotpMfa: data.totp_secret_base64 === undefined ? undefined : (data.totp_secret_base64 !== null),
           totpSecret: data.totp_secret_base64 == null ? data.totp_secret_base64 : Buffer.from(decodeBase64(data.totp_secret_base64)),
+          isAnonymous: data.is_anonymous ?? undefined,
         },
         include: userFullInclude,
       });
