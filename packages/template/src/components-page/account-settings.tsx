@@ -87,7 +87,9 @@ export function AccountSettings(props: {
               type: 'item',
               id: 'api-keys',
               icon: <Icon name="Key" />,
-              content: <ApiKeysPage />,
+              content: <Suspense fallback={<ApiKeysPageSkeleton/>}>
+                <ApiKeysPage />
+              </Suspense>,
             }] as const : []),
             {
               title: t('Settings'),
@@ -122,14 +124,18 @@ export function AccountSettings(props: {
               </div>,
               type: 'item',
               id: `team-${team.id}`,
-              content: <TeamPage team={team}/>,
+              content: <Suspense fallback={<TeamPageSkeleton/>}>
+                <TeamPage team={team}/>
+              </Suspense>,
             } as const)),
             ...project.config.clientTeamCreationEnabled ? [{
               title: t('Create a team'),
               icon: <Icon name="CirclePlus"/>,
               type: 'item',
               id: 'team-creation',
-              content: <TeamCreation />,
+              content: <Suspense fallback={<TeamCreationSkeleton/>}>
+                <TeamCreation />
+              </Suspense>,
             }] as const : [],
           ] as const).filter((p) => p.type === 'divider' || (p as any).content )}
           title={t("Account Settings")}
@@ -219,13 +225,13 @@ export function TeamApiKeysSection(props: { team: Team }) {
     throw new StackAssertionError("Team not found");
   }
 
-  const apiKeys = team.useApiKeys();
-
-
   const manageApiKeysPermission = user.usePermission(props.team, '$manage_api_keys');
   if (!manageApiKeysPermission) {
     return null;
   }
+
+  // Conditional hook ok?
+  const apiKeys = team.useApiKeys();
 
 
   return (
@@ -1522,4 +1528,27 @@ export function EditableText(props: { value: string, onSave?: (value: string) =>
       )}
     </div>
   );
+}
+
+function ApiKeysPageSkeleton() {
+  return <PageLayout>
+    <Skeleton className="h-9 w-full mt-1"/>
+    <Skeleton className="h-[200px] w-full mt-1 rounded-md"/>
+  </PageLayout>;
+}
+
+function TeamPageSkeleton() {
+  return <PageLayout>
+    <Skeleton className="h-9 w-full mt-1"/>
+    <Skeleton className="h-9 w-full mt-1"/>
+    <Skeleton className="h-9 w-full mt-1"/>
+    <Skeleton className="h-[200px] w-full mt-1 rounded-md"/>
+  </PageLayout>;
+}
+
+function TeamCreationSkeleton() {
+  return <PageLayout>
+    <Skeleton className="h-9 w-full mt-1"/>
+    <Skeleton className="h-9 w-full mt-1"/>
+  </PageLayout>;
 }

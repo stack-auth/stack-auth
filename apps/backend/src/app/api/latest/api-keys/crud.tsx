@@ -6,7 +6,7 @@ import { KnownErrors } from "@stackframe/stack-shared";
 import { projectApiKeysCrud, ProjectApiKeysCrud } from "@stackframe/stack-shared/dist/interface/crud/project-api-keys";
 import { userIdOrMeSchema, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
 import { generateSecureRandomString } from "@stackframe/stack-shared/dist/utils/crypto";
-import { StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
+import { StatusError } from "@stackframe/stack-shared/dist/utils/errors";
 import { createLazyProxy } from "@stackframe/stack-shared/dist/utils/proxies";
 import { generateUuid } from "@stackframe/stack-shared/dist/utils/uuids";
 
@@ -49,13 +49,13 @@ async function validateClientSecurity(
 
   // Check if client is trying to manage API keys for other users
   if (options.project_user_id && auth.user?.id !== options.project_user_id) {
-    throw new StackAssertionError(`Client cannot ${options.operation} API keys for other users`);
+    throw new StatusError(StatusError.Forbidden, "Client can only manage their own api keys");
   }
 
   // Check team API key permissions
   if (options.team_id) {
     if (!auth.user) {
-      throw new StackAssertionError(`User must be authenticated to ${options.operation} API keys for a team`);
+      throw new KnownErrors.UserAuthenticationRequired();
     }
 
     const userId = auth.user.id;
@@ -77,7 +77,7 @@ async function validateClientSecurity(
 
   // Clients cannot manage tenancy API keys
   if (options.tenancy_id) {
-    throw new StackAssertionError(`Client access type is not authorized to ${options.operation} API keys for tenancies`);
+    throw new KnownErrors.InsufficientAccessType(auth.type, ['admin']);
   }
 }
 
