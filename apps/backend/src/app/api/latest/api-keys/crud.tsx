@@ -1,3 +1,4 @@
+import { listUserTeamPermissions } from "@/lib/permissions";
 import { prismaClient } from "@/prisma-client";
 import { createCrudHandlers } from "@/route-handlers/crud-handler";
 import { SmartRequestAuth } from "@/route-handlers/smart-request";
@@ -28,6 +29,58 @@ function validateExactlyOneGroupIdentifier(params: {
   }
 }
 
+/**
+ * Validates client security for API key operations
+ * @param auth Authentication information
+ * @param options Options containing user, team, and tenancy information
+ */
+async function validateClientSecurity(
+  auth: SmartRequestAuth,
+  options: {
+    project_user_id?: string,
+    team_id?: string,
+    tenancy_id?: string,
+    operation: 'create' | 'delete' | 'list' | 'update',
+  }
+) {
+  if (auth.type !== "client") {
+    return; // Only apply these checks for client access type
+  }
+
+  // Check if client is trying to manage API keys for other users
+  if (options.project_user_id && auth.user?.id !== options.project_user_id) {
+    throw new StackAssertionError(`Client cannot ${options.operation} API keys for other users`);
+  }
+
+  // Check team API key permissions
+  if (options.team_id) {
+    if (!auth.user) {
+      throw new StackAssertionError(`User must be authenticated to ${options.operation} API keys for a team`);
+    }
+
+    const userId = auth.user.id;
+    const hasManageApiKeysPermission = await prismaClient.$transaction(async (tx) => {
+      const permissions = await listUserTeamPermissions(tx, {
+        tenancy: auth.tenancy,
+        teamId: options.team_id,
+        userId,
+        permissionId: '$manage_api_keys',
+        recursive: true,
+      });
+      return permissions.length > 0;
+    });
+
+    if (!hasManageApiKeysPermission) {
+      throw new KnownErrors.TeamPermissionRequired(options.team_id, userId, '$manage_api_keys');
+    }
+  }
+
+  // Clients cannot manage tenancy API keys
+  if (options.tenancy_id) {
+    throw new StackAssertionError(`Client access type is not authorized to ${options.operation} API keys for tenancies`);
+  }
+}
+
 
 export const projectApiKeyCrudHandlers = createLazyProxy(() => createCrudHandlers(projectApiKeysCrud, {
   paramsSchema: yupObject({
@@ -53,19 +106,12 @@ export const projectApiKeyCrudHandlers = createLazyProxy(() => createCrudHandler
 
 
     // Security checks
-    if (auth.type === "client") {
-      if (data.project_user_id && auth.user?.id !== data.project_user_id) {
-        throw new StackAssertionError("Client cannot create API keys for other users");
-      }
-
-      if (data.team_id) {
-        // TODO check if the auth.user.id has permission "manageApiKeys" on the team
-      }
-
-      if (data.tenancy_id) {
-        // TODO throw an error because client cannot create API keys for a tenancy
-      }
-    }
+    await validateClientSecurity(auth, {
+      project_user_id: data.project_user_id,
+      team_id: data.team_id,
+      tenancy_id: data.tenancy_id,
+      operation: 'create'
+    });
 
     const apiKeyId = generateUuid();
     // Generate API keys based on flags
@@ -106,19 +152,12 @@ export const projectApiKeyCrudHandlers = createLazyProxy(() => createCrudHandler
     validateExactlyOneGroupIdentifier(query);
 
     // Security checks
-    if (auth.type === "client") {
-      if (query.project_user_id && auth.user?.id !== query.project_user_id) {
-        throw new StackAssertionError("Client cannot create API keys for other users");
-      }
-
-      if (query.team_id) {
-        // TODO check if the auth.user.id has permission "manageApiKeys" on the team
-      }
-
-      if (query.tenancy_id) {
-        // TODO throw an error because client cannot create API keys for a tenancy
-      }
-    }
+    await validateClientSecurity(auth, {
+      project_user_id: query.project_user_id,
+      team_id: query.team_id,
+      tenancy_id: query.tenancy_id,
+      operation: 'list'
+    });
 
     const apiKeys = await prismaClient.projectAPIKey.findMany({
       where: {
@@ -169,19 +208,12 @@ export const projectApiKeyCrudHandlers = createLazyProxy(() => createCrudHandler
     }
 
     // Security checks
-    if (auth.type === "client") {
-      if (existingApiKey.projectUserId && auth.user?.id !== existingApiKey.projectUserId) {
-        throw new StackAssertionError("Client cannot create API keys for other users");
-      }
-
-      if (existingApiKey.teamId) {
-        // TODO check if the auth.user.id has permission "manageApiKeys" on the team
-      }
-
-      if (existingApiKey.tenancyId) {
-        // TODO throw an error because client cannot create API keys for a tenancy
-      }
-    }
+    await validateClientSecurity(auth, {
+      project_user_id: existingApiKey.projectUserId || undefined,
+      team_id: existingApiKey.teamId || undefined,
+      tenancy_id: existingApiKey.tenancyId || undefined,
+      operation: 'update'
+    });
 
     // Update the API key
     const updatedApiKey = await prismaClient.projectAPIKey.update({
@@ -230,19 +262,12 @@ export const projectApiKeyCrudHandlers = createLazyProxy(() => createCrudHandler
     }
 
     // Security checks
-    if (auth.type === "client") {
-      if (existingApiKey.projectUserId && auth.user?.id !== existingApiKey.projectUserId) {
-        throw new StackAssertionError("Client cannot create API keys for other users");
-      }
-
-      if (existingApiKey.teamId) {
-        // TODO check if the auth.user.id has permission "manageApiKeys" on the team
-      }
-
-      if (existingApiKey.tenancyId) {
-        // TODO throw an error because client cannot create API keys for a tenancy
-      }
-    }
+    await validateClientSecurity(auth, {
+      project_user_id: existingApiKey.projectUserId || undefined,
+      team_id: existingApiKey.teamId || undefined,
+      tenancy_id: existingApiKey.tenancyId || undefined,
+      operation: 'delete'
+    });
 
     // Delete the API key
     await prismaClient.projectAPIKey.delete({
