@@ -70,6 +70,9 @@ it("creates a new project", async ({ expect }) => {
       "body": {
         "config": {
           "allow_localhost": true,
+          "allow_team_api_keys": false,
+          "allow_tenancy_api_keys": false,
+          "allow_user_api_keys": false,
           "client_team_creation_enabled": false,
           "client_user_deletion_enabled": false,
           "create_team_on_sign_up": false,
@@ -118,6 +121,9 @@ it("creates a new project with different configurations", async ({ expect }) => 
       "body": {
         "config": {
           "allow_localhost": false,
+          "allow_team_api_keys": false,
+          "allow_tenancy_api_keys": false,
+          "allow_user_api_keys": false,
           "client_team_creation_enabled": false,
           "client_user_deletion_enabled": false,
           "create_team_on_sign_up": false,
@@ -171,6 +177,9 @@ it("creates a new project with different configurations", async ({ expect }) => 
       "body": {
         "config": {
           "allow_localhost": true,
+          "allow_team_api_keys": false,
+          "allow_tenancy_api_keys": false,
+          "allow_user_api_keys": false,
           "client_team_creation_enabled": false,
           "client_user_deletion_enabled": false,
           "create_team_on_sign_up": false,
@@ -226,6 +235,9 @@ it("creates a new project with different configurations", async ({ expect }) => 
       "body": {
         "config": {
           "allow_localhost": true,
+          "allow_team_api_keys": false,
+          "allow_tenancy_api_keys": false,
+          "allow_user_api_keys": false,
           "client_team_creation_enabled": false,
           "client_user_deletion_enabled": false,
           "create_team_on_sign_up": false,
@@ -274,6 +286,9 @@ it("creates a new project with different configurations", async ({ expect }) => 
       "body": {
         "config": {
           "allow_localhost": true,
+          "allow_team_api_keys": false,
+          "allow_tenancy_api_keys": false,
+          "allow_user_api_keys": false,
           "client_team_creation_enabled": false,
           "client_user_deletion_enabled": false,
           "create_team_on_sign_up": false,
@@ -331,6 +346,9 @@ it("creates a new project with different configurations", async ({ expect }) => 
       "body": {
         "config": {
           "allow_localhost": true,
+          "allow_team_api_keys": false,
+          "allow_tenancy_api_keys": false,
+          "allow_user_api_keys": false,
           "client_team_creation_enabled": false,
           "client_user_deletion_enabled": false,
           "create_team_on_sign_up": false,
@@ -381,6 +399,9 @@ it("lists the current projects after creating a new project", async ({ expect })
           {
             "config": {
               "allow_localhost": true,
+              "allow_team_api_keys": false,
+              "allow_tenancy_api_keys": false,
+              "allow_user_api_keys": false,
               "client_team_creation_enabled": false,
               "client_user_deletion_enabled": false,
               "create_team_on_sign_up": false,

@@ -36,6 +36,9 @@ it("gets current project (internal)", async ({ expect }) => {
       "status": 200,
       "body": {
         "config": {
+          "allow_team_api_keys": false,
+          "allow_tenancy_api_keys": false,
+          "allow_user_api_keys": false,
           "client_team_creation_enabled": true,
           "client_user_deletion_enabled": false,
           "credential_enabled": true,
@@ -71,6 +74,9 @@ it("creates and updates the basic project information of a project", async ({ ex
       "body": {
         "config": {
           "allow_localhost": true,
+          "allow_team_api_keys": false,
+          "allow_tenancy_api_keys": false,
+          "allow_user_api_keys": false,
           "client_team_creation_enabled": false,
           "client_user_deletion_enabled": false,
           "create_team_on_sign_up": false,
@@ -116,6 +122,9 @@ it("updates the basic project configuration", async ({ expect }) => {
       "body": {
         "config": {
           "allow_localhost": false,
+          "allow_team_api_keys": false,
+          "allow_tenancy_api_keys": false,
+          "allow_user_api_keys": false,
           "client_team_creation_enabled": false,
           "client_user_deletion_enabled": false,
           "create_team_on_sign_up": false,
@@ -161,6 +170,9 @@ it("updates the project domains configuration", async ({ expect }) => {
       "body": {
         "config": {
           "allow_localhost": true,
+          "allow_team_api_keys": false,
+          "allow_tenancy_api_keys": false,
+          "allow_user_api_keys": false,
           "client_team_creation_enabled": false,
           "client_user_deletion_enabled": false,
           "create_team_on_sign_up": false,
@@ -213,6 +225,9 @@ it("updates the project domains configuration", async ({ expect }) => {
       "body": {
         "config": {
           "allow_localhost": true,
+          "allow_team_api_keys": false,
+          "allow_tenancy_api_keys": false,
+          "allow_user_api_keys": false,
           "client_team_creation_enabled": false,
           "client_user_deletion_enabled": false,
           "create_team_on_sign_up": false,
@@ -291,6 +306,9 @@ it("should allow insecure HTTP connections if insecureHttp is true", async ({ ex
       "body": {
         "config": {
           "allow_localhost": true,
+          "allow_team_api_keys": false,
+          "allow_tenancy_api_keys": false,
+          "allow_user_api_keys": false,
           "client_team_creation_enabled": false,
           "client_user_deletion_enabled": false,
           "create_team_on_sign_up": false,
@@ -381,6 +399,9 @@ it("updates the project email configuration", async ({ expect }) => {
       "body": {
         "config": {
           "allow_localhost": true,
+          "allow_team_api_keys": false,
+          "allow_tenancy_api_keys": false,
+          "allow_user_api_keys": false,
           "client_team_creation_enabled": false,
           "client_user_deletion_enabled": false,
           "create_team_on_sign_up": false,
@@ -436,6 +457,9 @@ it("updates the project email configuration", async ({ expect }) => {
       "body": {
         "config": {
           "allow_localhost": true,
+          "allow_team_api_keys": false,
+          "allow_tenancy_api_keys": false,
+          "allow_user_api_keys": false,
           "client_team_creation_enabled": false,
           "client_user_deletion_enabled": false,
           "create_team_on_sign_up": false,
@@ -485,6 +509,9 @@ it("updates the project email configuration", async ({ expect }) => {
       "body": {
         "config": {
           "allow_localhost": true,
+          "allow_team_api_keys": false,
+          "allow_tenancy_api_keys": false,
+          "allow_user_api_keys": false,
           "client_team_creation_enabled": false,
           "client_user_deletion_enabled": false,
           "create_team_on_sign_up": false,
@@ -526,6 +553,9 @@ it("updates the project email configuration", async ({ expect }) => {
       "body": {
         "config": {
           "allow_localhost": true,
+          "allow_team_api_keys": false,
+          "allow_tenancy_api_keys": false,
+          "allow_user_api_keys": false,
           "client_team_creation_enabled": false,
           "client_user_deletion_enabled": false,
           "create_team_on_sign_up": false,
@@ -573,6 +603,9 @@ it("updates the project email configuration", async ({ expect }) => {
       "body": {
         "config": {
           "allow_localhost": true,
+          "allow_team_api_keys": false,
+          "allow_tenancy_api_keys": false,
+          "allow_user_api_keys": false,
           "client_team_creation_enabled": false,
           "client_user_deletion_enabled": false,
           "create_team_on_sign_up": false,
@@ -744,6 +777,9 @@ it("updates the project oauth configuration", async ({ expect }) => {
       "body": {
         "config": {
           "allow_localhost": true,
+          "allow_team_api_keys": false,
+          "allow_tenancy_api_keys": false,
+          "allow_user_api_keys": false,
           "client_team_creation_enabled": false,
           "client_user_deletion_enabled": false,
           "create_team_on_sign_up": false,
@@ -793,6 +829,9 @@ it("updates the project oauth configuration", async ({ expect }) => {
       "body": {
         "config": {
           "allow_localhost": true,
+          "allow_team_api_keys": false,
+          "allow_tenancy_api_keys": false,
+          "allow_user_api_keys": false,
           "client_team_creation_enabled": false,
           "client_user_deletion_enabled": false,
           "create_team_on_sign_up": false,
@@ -844,6 +883,9 @@ it("updates the project oauth configuration", async ({ expect }) => {
       "body": {
         "config": {
           "allow_localhost": true,
+          "allow_team_api_keys": false,
+          "allow_tenancy_api_keys": false,
+          "allow_user_api_keys": false,
           "client_team_creation_enabled": false,
           "client_user_deletion_enabled": false,
           "create_team_on_sign_up": false,
@@ -920,6 +962,9 @@ it("updates the project oauth configuration", async ({ expect }) => {
       "body": {
         "config": {
           "allow_localhost": true,
+          "allow_team_api_keys": false,
+          "allow_tenancy_api_keys": false,
+          "allow_user_api_keys": false,
           "client_team_creation_enabled": false,
           "client_user_deletion_enabled": false,
           "create_team_on_sign_up": false,
@@ -984,6 +1029,9 @@ it("updates the project oauth configuration", async ({ expect }) => {
       "body": {
         "config": {
           "allow_localhost": true,
+          "allow_team_api_keys": false,
+          "allow_tenancy_api_keys": false,
+          "allow_user_api_keys": false,
           "client_team_creation_enabled": false,
           "client_user_deletion_enabled": false,
           "create_team_on_sign_up": false,
@@ -1312,6 +1360,9 @@ it("should increment and decrement userCount when a user is added to a project",
       "body": {
         "config": {
           "allow_localhost": true,
+          "allow_team_api_keys": false,
+          "allow_tenancy_api_keys": false,
+          "allow_user_api_keys": false,
           "client_team_creation_enabled": false,
           "client_user_deletion_enabled": false,
           "create_team_on_sign_up": false,
