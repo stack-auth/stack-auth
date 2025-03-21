@@ -137,6 +137,7 @@ describe("with client access", () => {
           "display_name": null,
           "has_password": false,
           "id": "<stripped UUID>",
+          "is_anonymous": false,
           "oauth_providers": [],
           "otp_auth_enabled": true,
           "passkey_auth_enabled": false,
@@ -169,6 +170,7 @@ describe("with client access", () => {
           "display_name": null,
           "has_password": false,
           "id": "<stripped UUID>",
+          "is_anonymous": false,
           "oauth_providers": [],
           "otp_auth_enabled": true,
           "passkey_auth_enabled": false,
@@ -246,6 +248,7 @@ describe("with client access", () => {
           "display_name": "John Doe",
           "has_password": false,
           "id": "<stripped UUID>",
+          "is_anonymous": false,
           "oauth_providers": [],
           "otp_auth_enabled": true,
           "passkey_auth_enabled": false,
@@ -277,6 +280,7 @@ describe("with client access", () => {
           "display_name": "John Doe",
           "has_password": false,
           "id": "<stripped UUID>",
+          "is_anonymous": false,
           "oauth_providers": [],
           "otp_auth_enabled": true,
           "passkey_auth_enabled": false,
@@ -426,6 +430,7 @@ describe("with client access", () => {
           "display_name": "John Doe",
           "has_password": false,
           "id": "<stripped UUID>",
+          "is_anonymous": false,
           "oauth_providers": [],
           "otp_auth_enabled": true,
           "passkey_auth_enabled": false,
@@ -457,6 +462,7 @@ describe("with client access", () => {
           "display_name": null,
           "has_password": false,
           "id": "<stripped UUID>",
+          "is_anonymous": false,
           "oauth_providers": [],
           "otp_auth_enabled": true,
           "passkey_auth_enabled": false,
@@ -595,6 +601,7 @@ describe("with client access", () => {
           "display_name": null,
           "has_password": false,
           "id": "<stripped UUID>",
+          "is_anonymous": false,
           "oauth_providers": [],
           "otp_auth_enabled": true,
           "passkey_auth_enabled": false,
@@ -708,6 +715,7 @@ describe("with client access", () => {
           "display_name": null,
           "has_password": false,
           "id": "<stripped UUID>",
+          "is_anonymous": false,
           "oauth_providers": [],
           "otp_auth_enabled": true,
           "passkey_auth_enabled": false,
@@ -739,6 +747,7 @@ describe("with client access", () => {
           "display_name": null,
           "has_password": false,
           "id": "<stripped UUID>",
+          "is_anonymous": false,
           "oauth_providers": [],
           "otp_auth_enabled": true,
           "passkey_auth_enabled": false,
@@ -777,6 +786,7 @@ describe("with client access", () => {
           "display_name": null,
           "has_password": false,
           "id": "<stripped UUID>",
+          "is_anonymous": false,
           "oauth_providers": [],
           "otp_auth_enabled": true,
           "passkey_auth_enabled": false,
@@ -810,6 +820,7 @@ describe("with server access", () => {
           "display_name": null,
           "has_password": false,
           "id": "<stripped UUID>",
+          "is_anonymous": false,
           "last_active_at_millis": <stripped field 'last_active_at_millis'>,
           "oauth_providers": [],
           "otp_auth_enabled": true,
@@ -848,6 +859,7 @@ describe("with server access", () => {
           "display_name": "John Doe",
           "has_password": false,
           "id": "<stripped UUID>",
+          "is_anonymous": false,
           "last_active_at_millis": <stripped field 'last_active_at_millis'>,
           "oauth_providers": [],
           "otp_auth_enabled": true,
@@ -902,6 +914,7 @@ describe("with server access", () => {
               "display_name": null,
               "has_password": false,
               "id": "<stripped UUID>",
+              "is_anonymous": false,
               "last_active_at_millis": <stripped field 'last_active_at_millis'>,
               "oauth_providers": [],
               "otp_auth_enabled": true,
@@ -973,6 +986,7 @@ describe("with server access", () => {
           "display_name": null,
           "has_password": false,
           "id": "<stripped UUID>",
+          "is_anonymous": false,
           "last_active_at_millis": <stripped field 'last_active_at_millis'>,
           "oauth_providers": [],
           "otp_auth_enabled": true,
@@ -1009,6 +1023,7 @@ describe("with server access", () => {
           "display_name": null,
           "has_password": false,
           "id": "<stripped UUID>",
+          "is_anonymous": false,
           "last_active_at_millis": <stripped field 'last_active_at_millis'>,
           "oauth_providers": [],
           "otp_auth_enabled": false,
@@ -1049,6 +1064,7 @@ describe("with server access", () => {
           "display_name": "John Dough",
           "has_password": false,
           "id": "<stripped UUID>",
+          "is_anonymous": false,
           "last_active_at_millis": <stripped field 'last_active_at_millis'>,
           "oauth_providers": [],
           "otp_auth_enabled": false,
@@ -1090,6 +1106,7 @@ describe("with server access", () => {
           "display_name": null,
           "has_password": false,
           "id": "<stripped UUID>",
+          "is_anonymous": false,
           "last_active_at_millis": <stripped field 'last_active_at_millis'>,
           "oauth_providers": [],
           "otp_auth_enabled": false,
@@ -1130,6 +1147,7 @@ describe("with server access", () => {
           "display_name": null,
           "has_password": true,
           "id": "<stripped UUID>",
+          "is_anonymous": false,
           "last_active_at_millis": <stripped field 'last_active_at_millis'>,
           "oauth_providers": [],
           "otp_auth_enabled": false,
@@ -1182,6 +1200,7 @@ describe("with server access", () => {
           "display_name": null,
           "has_password": true,
           "id": "<stripped UUID>",
+          "is_anonymous": false,
           "last_active_at_millis": <stripped field 'last_active_at_millis'>,
           "oauth_providers": [],
           "otp_auth_enabled": false,
@@ -1209,6 +1228,121 @@ describe("with server access", () => {
           "user_id": "<stripped UUID>",
         },
         "headers": Headers { <some fields may have been hidden> },
+      }
+    `);
+  });
+
+  it("should be able to create an anonymous user", async ({ expect }) => {
+    const response = await niceBackendFetch("/api/v1/users", {
+      accessType: "server",
+      method: "POST",
+      body: {
+        is_anonymous: true,
+      },
+    });
+    expect(response).toMatchInlineSnapshot(`
+      NiceResponse {
+        "status": 201,
+        "body": {
+          "auth_with_email": false,
+          "client_metadata": null,
+          "client_read_only_metadata": null,
+          "display_name": null,
+          "has_password": false,
+          "id": "<stripped UUID>",
+          "is_anonymous": true,
+          "last_active_at_millis": <stripped field 'last_active_at_millis'>,
+          "oauth_providers": [],
+          "otp_auth_enabled": false,
+          "passkey_auth_enabled": false,
+          "primary_email": null,
+          "primary_email_auth_enabled": false,
+          "primary_email_verified": false,
+          "profile_image_url": null,
+          "requires_totp_mfa": false,
+          "selected_team": null,
+          "selected_team_id": null,
+          "server_metadata": null,
+          "signed_up_at_millis": <stripped field 'signed_up_at_millis'>,
+        },
+        "headers": Headers { <some fields may have been hidden> },
+      }
+    `);
+  });
+
+  it("should be able to make an anonymous user non-anonymous", async ({ expect }) => {
+    await Auth.Anonymous.signUp();
+    const response = await niceBackendFetch("/api/v1/users/me", {
+      accessType: "server",
+      method: "PATCH",
+      body: {
+        is_anonymous: false,
+      },
+    });
+    expect(response).toMatchInlineSnapshot(`
+      NiceResponse {
+        "status": 200,
+        "body": {
+          "auth_with_email": false,
+          "client_metadata": null,
+          "client_read_only_metadata": null,
+          "display_name": "Anonymous user",
+          "has_password": false,
+          "id": "<stripped UUID>",
+          "is_anonymous": false,
+          "last_active_at_millis": <stripped field 'last_active_at_millis'>,
+          "oauth_providers": [],
+          "otp_auth_enabled": false,
+          "passkey_auth_enabled": false,
+          "primary_email": null,
+          "primary_email_auth_enabled": false,
+          "primary_email_verified": false,
+          "profile_image_url": null,
+          "requires_totp_mfa": false,
+          "selected_team": null,
+          "selected_team_id": null,
+          "server_metadata": null,
+          "signed_up_at_millis": <stripped field 'signed_up_at_millis'>,
+        },
+        "headers": Headers { <some fields may have been hidden> },
+      }
+    `);
+  });
+
+  it("should not be able to make a non-anonymous user anonymous", async ({ expect }) => {
+    const response = await niceBackendFetch("/api/v1/users", {
+      accessType: "server",
+      method: "POST",
+      body: {},
+    });
+    const userId = response.body.id;
+    const response2 = await niceBackendFetch("/api/v1/users/" + userId, {
+      accessType: "server",
+      method: "PATCH",
+      body: {
+        is_anonymous: true,
+      },
+    });
+    expect(response2).toMatchInlineSnapshot(`
+      NiceResponse {
+        "status": 400,
+        "body": {
+          "code": "SCHEMA_ERROR",
+          "details": {
+            "message": deindent\`
+              Request validation failed on PATCH /api/v1/users/<stripped UUID>:
+                - body.is_anonymous must be one of the following values: false
+            \`,
+          },
+          "error": deindent\`
+            Request validation failed on PATCH /api/v1/users/<stripped UUID>:
+              - body.is_anonymous must be one of the following values: false
+          \`,
+        },
+        "headers": Headers {
+          "x-stack-known-error": "SCHEMA_ERROR",
+          <some fields may have been hidden>,
+        },
       }
     `);
   });
@@ -1288,6 +1422,7 @@ describe("with server access", () => {
           "display_name": null,
           "has_password": false,
           "id": "<stripped UUID>",
+          "is_anonymous": false,
           "last_active_at_millis": <stripped field 'last_active_at_millis'>,
           "oauth_providers": [],
           "otp_auth_enabled": false,
@@ -1347,6 +1482,7 @@ describe("with server access", () => {
           "display_name": null,
           "has_password": false,
           "id": "<stripped UUID>",
+          "is_anonymous": false,
           "last_active_at_millis": <stripped field 'last_active_at_millis'>,
           "oauth_providers": [],
           "otp_auth_enabled": false,
@@ -1384,6 +1520,7 @@ describe("with server access", () => {
           "display_name": null,
           "has_password": true,
           "id": "<stripped UUID>",
+          "is_anonymous": false,
           "last_active_at_millis": <stripped field 'last_active_at_millis'>,
           "oauth_providers": [],
           "otp_auth_enabled": false,
@@ -1436,6 +1573,7 @@ describe("with server access", () => {
           "display_name": null,
           "has_password": true,
           "id": "<stripped UUID>",
+          "is_anonymous": false,
           "last_active_at_millis": <stripped field 'last_active_at_millis'>,
           "oauth_providers": [],
           "otp_auth_enabled": false,
@@ -1470,6 +1608,7 @@ describe("with server access", () => {
           "display_name": null,
           "has_password": false,
           "id": "<stripped UUID>",
+          "is_anonymous": false,
           "last_active_at_millis": <stripped field 'last_active_at_millis'>,
           "oauth_providers": [],
           "otp_auth_enabled": false,
@@ -1528,6 +1667,7 @@ describe("with server access", () => {
           "display_name": "John Doe",
           "has_password": false,
           "id": "<stripped UUID>",
+          "is_anonymous": false,
           "last_active_at_millis": <stripped field 'last_active_at_millis'>,
           "oauth_providers": [],
           "otp_auth_enabled": true,
@@ -1558,6 +1698,7 @@ describe("with server access", () => {
           "display_name": "John Doe",
           "has_password": false,
           "id": "<stripped UUID>",
+          "is_anonymous": false,
           "last_active_at_millis": <stripped field 'last_active_at_millis'>,
           "oauth_providers": [],
           "otp_auth_enabled": true,
@@ -1597,6 +1738,7 @@ describe("with server access", () => {
           "display_name": "John Doe",
           "has_password": false,
           "id": "<stripped UUID>",
+          "is_anonymous": false,
           "last_active_at_millis": <stripped field 'last_active_at_millis'>,
           "oauth_providers": [],
           "otp_auth_enabled": true,
@@ -1636,6 +1778,7 @@ describe("with server access", () => {
           "display_name": null,
           "has_password": true,
           "id": "<stripped UUID>",
+          "is_anonymous": false,
           "last_active_at_millis": <stripped field 'last_active_at_millis'>,
           "oauth_providers": [],
           "otp_auth_enabled": true,
@@ -1724,6 +1867,7 @@ describe("with server access", () => {
           "display_name": null,
           "has_password": false,
           "id": "<stripped UUID>",
+          "is_anonymous": false,
           "last_active_at_millis": <stripped field 'last_active_at_millis'>,
           "oauth_providers": [],
           "otp_auth_enabled": true,
@@ -1775,6 +1919,7 @@ describe("with server access", () => {
           "display_name": null,
           "has_password": false,
           "id": "<stripped UUID>",
+          "is_anonymous": false,
           "last_active_at_millis": <stripped field 'last_active_at_millis'>,
           "oauth_providers": [],
           "otp_auth_enabled": true,
@@ -1832,6 +1977,7 @@ describe("with server access", () => {
           "display_name": null,
           "has_password": false,
           "id": "<stripped UUID>",
+          "is_anonymous": false,
           "last_active_at_millis": <stripped field 'last_active_at_millis'>,
           "oauth_providers": [],
           "otp_auth_enabled": true,
@@ -1998,6 +2144,7 @@ describe("with server access", () => {
               "display_name": null,
               "has_password": false,
               "id": "<stripped UUID>",
+              "is_anonymous": false,
               "last_active_at_millis": <stripped field 'last_active_at_millis'>,
               "oauth_providers": [],
               "otp_auth_enabled": false,
@@ -2063,6 +2210,7 @@ describe("with server access", () => {
             "display_name": "Test User",
             "has_password": false,
             "id": "<stripped UUID>",
+            "is_anonymous": false,
             "last_active_at_millis": <stripped field 'last_active_at_millis'>,
             "oauth_providers": [],
             "otp_auth_enabled": false,
