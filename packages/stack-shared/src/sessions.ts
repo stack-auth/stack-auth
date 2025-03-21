@@ -11,8 +11,12 @@ export class AccessToken {
     }
   }
 
+  get decoded() {
+    return jose.decodeJwt(this.token);
+  }
+
   get expiresAt(): Date {
-    const { exp } = jose.decodeJwt(this.token);
+    const { exp } = this.decoded;
     if (exp === undefined) return new Date(8640000000000000);  // max date value
     return new Date(exp * 1000);
   }

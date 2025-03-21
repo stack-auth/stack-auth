@@ -31,6 +31,7 @@ const clientReadSchema = usersCrudServerReadSchema.pick([
   "requires_totp_mfa",
   "otp_auth_enabled",
   "passkey_auth_enabled",
+  "is_anonymous",
 ]).concat(yupObject({
   selected_team: teamsCrudClientReadSchema.nullable().defined(),
 })).defined();

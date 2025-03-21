@@ -10,6 +10,9 @@ export const neonIntegrationProjectTransferCodeHandler = createVerificationCodeH
     post: {
       hidden: true,
     },
+    check: {
+      hidden: true,
+    },
   },
   type: VerificationCodeType.NEON_INTEGRATION_PROJECT_TRANSFER,
   data: yupObject({

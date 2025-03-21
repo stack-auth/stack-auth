@@ -262,6 +262,7 @@ model ProjectUser {
   clientMetadata         Json?
   requiresTotpMfa        Boolean @default(false)
   totpSecret             Bytes?
+  isAnonymous            Boolean @default(false)
 
   tenancy                       Tenancy                        @relation("TenancyProjectUsers", fields: [tenancyId], references: [id], onDelete: Cascade)
   project                       Project                        @relation(fields: [mirroredProjectId], references: [id], onDelete: Cascade)
