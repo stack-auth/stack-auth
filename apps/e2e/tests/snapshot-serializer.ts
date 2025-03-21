@@ -63,6 +63,7 @@ const stripFields = [
 ] as const;
 
 const stripFieldsIfString = [
+  "secret_api_key",
   "publishable_client_key",
   "secret_server_key",
   "super_secret_admin_key",
