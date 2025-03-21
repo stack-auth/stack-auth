@@ -56,7 +56,7 @@ export const POST = createSmartRouteHandler({
         primary_email_auth_enabled: true,
         password,
       },
-      allowedErrorTypes: [KnownErrors.UserEmailAlreadyExists],
+      allowedErrorTypes: [KnownErrors.UserWithEmailAlreadyExists],
     });
 
     runAsynchronouslyAndWaitUntil((async () => {

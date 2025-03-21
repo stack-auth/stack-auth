@@ -794,7 +794,7 @@ export class StackClientInterface {
     password: string,
     emailVerificationRedirectUrl: string,
     session: InternalSession,
-  ): Promise<Result<{ accessToken: string, refreshToken: string }, KnownErrors["UserEmailAlreadyExists"] | KnownErrors["PasswordRequirementsNotMet"]>> {
+  ): Promise<Result<{ accessToken: string, refreshToken: string }, KnownErrors["UserWithEmailAlreadyExists"] | KnownErrors["PasswordRequirementsNotMet"]>> {
     const res = await this.sendClientRequestAndCatchKnownError(
       "/auth/password/sign-up",
       {
@@ -809,7 +809,7 @@ export class StackClientInterface {
         }),
       },
       session,
-      [KnownErrors.UserEmailAlreadyExists, KnownErrors.PasswordRequirementsNotMet]
+      [KnownErrors.UserWithEmailAlreadyExists, KnownErrors.PasswordRequirementsNotMet]
     );
 
     if (res.status === "error") {

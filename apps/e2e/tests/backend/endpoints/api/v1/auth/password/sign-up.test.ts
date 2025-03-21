@@ -16,7 +16,7 @@ it("should sign up new users", async ({ expect }) => {
       "headers": Headers { <some fields may have been hidden> },
     }
   `);
-  await wait(500);  // verification email is asynchronous, so let's give it some time to be received
+  await wait(5000);  // verification email is asynchronous, so let's give it some time to be received
   const messages = await backendContext.value.mailbox.fetchMessages({ noBody: true });
   expect(messages).toMatchInlineSnapshot(`
     [
@@ -71,7 +71,8 @@ it("should not allow signing up with an e-mail that already exists", async ({ ex
       "status": 409,
       "body": {
         "code": "USER_EMAIL_ALREADY_EXISTS",
-        "error": "User email already exists.",
+        "details": { "email": "default-mailbox--<stripped UUID>@stack-generated.example.com" },
+        "error": "A user with email \\"default-mailbox--<stripped UUID>@stack-generated.example.com\\" already exists.",
       },
       "headers": Headers {
         "x-stack-known-error": "USER_EMAIL_ALREADY_EXISTS",

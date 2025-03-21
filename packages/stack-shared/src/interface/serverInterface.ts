@@ -670,4 +670,28 @@ export class StackServerInterface extends StackClientInterface {
     );
     return await response.json();
   }
+
+  async updatePassword(
+    options: { oldPassword: string, newPassword: string },
+  ): Promise<KnownErrors["PasswordConfirmationMismatch"] | KnownErrors["PasswordRequirementsNotMet"] | undefined> {
+    const res = await this.sendServerRequestAndCatchKnownError(
+      "/auth/password/update",
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          old_password: options.oldPassword,
+          new_password: options.newPassword,
+        }),
+      },
+      null,
+      [KnownErrors.PasswordConfirmationMismatch, KnownErrors.PasswordRequirementsNotMet]
+    );
+
+    if (res.status === "error") {
+      return res.error;
+    }
+  }
 }

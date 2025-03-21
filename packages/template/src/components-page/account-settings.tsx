@@ -822,6 +822,7 @@ function PasswordSection() {
   const contactChannels = user.useContactChannels();
   const [changingPassword, setChangingPassword] = useState(false);
   const [loading, setLoading] = useState(false);
+  const project = useStackApp().useProject();
 
   const passwordSchema = yupObject({
     oldPassword: user.hasPassword ? schemaFieldsPasswordSchema.defined().nonEmpty(t('Please enter your old password')) : yupString(),
@@ -866,6 +867,10 @@ function PasswordSection() {
 
   const registerPassword = register('newPassword');
   const registerPasswordRepeat = register('newPasswordRepeat');
+
+  if (!project.config.credentialEnabled) {
+    return null;
+  }
 
   return (
     <Section
