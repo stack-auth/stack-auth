@@ -1309,7 +1309,7 @@ describe("with server access", () => {
     `);
   });
 
-  it("should not be able to to make a non-anonymous user anonymous", async ({ expect }) => {
+  it("should not be able to make a non-anonymous user anonymous", async ({ expect }) => {
     const response = await niceBackendFetch("/api/v1/users", {
       accessType: "server",
       method: "POST",
