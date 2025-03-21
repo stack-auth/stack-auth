@@ -1,7 +1,7 @@
 import { InternalSession } from "../sessions";
-import { ApiKeysCrud } from "./crud/api-keys";
 import { EmailTemplateCrud, EmailTemplateType } from "./crud/email-templates";
 import { InternalEmailsCrud } from "./crud/emails";
+import { ApiKeysCrud } from "./crud/internal-api-keys";
 import { ProjectsCrud } from "./crud/projects";
 import { SvixTokenCrud } from "./crud/svix-token";
 import { TeamPermissionDefinitionsCrud } from "./crud/team-permissions";

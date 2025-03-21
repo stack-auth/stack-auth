@@ -1,8 +1,8 @@
 import { StackAdminInterface } from "@stackframe/stack-shared";
 import { getProductionModeErrors } from "@stackframe/stack-shared/dist/helpers/production-mode";
 import { InternalApiKeyCreateCrudResponse } from "@stackframe/stack-shared/dist/interface/adminInterface";
-import { ApiKeysCrud } from "@stackframe/stack-shared/dist/interface/crud/api-keys";
 import { EmailTemplateCrud, EmailTemplateType } from "@stackframe/stack-shared/dist/interface/crud/email-templates";
+import { ApiKeysCrud } from "@stackframe/stack-shared/dist/interface/crud/internal-api-keys";
 import { InternalProjectsCrud } from "@stackframe/stack-shared/dist/interface/crud/projects";
 import { StackAssertionError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
 import { pick } from "@stackframe/stack-shared/dist/utils/objects";

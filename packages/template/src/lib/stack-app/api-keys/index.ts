@@ -1,4 +1,4 @@
-import { PublicApiKeysCrud } from "@stackframe/stack-shared/dist/interface/crud/public-api-keys";
+import { PublicApiKeysCrud } from "@stackframe/stack-shared/dist/interface/crud/project-api-keys";
 
 export type ApiKeyBase = {
   id: string,

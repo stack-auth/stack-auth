@@ -1,6 +1,6 @@
 import { KnownErrors, StackServerInterface } from "@stackframe/stack-shared";
 import { ContactChannelsCrud } from "@stackframe/stack-shared/dist/interface/crud/contact-channels";
-import { PublicApiKeysCrud } from "@stackframe/stack-shared/dist/interface/crud/public-api-keys";
+import { PublicApiKeysCrud } from "@stackframe/stack-shared/dist/interface/crud/project-api-keys";
 import { TeamInvitationCrud } from "@stackframe/stack-shared/dist/interface/crud/team-invitation";
 import { TeamMemberProfilesCrud } from "@stackframe/stack-shared/dist/interface/crud/team-member-profiles";
 import { TeamPermissionDefinitionsCrud, TeamPermissionsCrud } from "@stackframe/stack-shared/dist/interface/crud/team-permissions";
