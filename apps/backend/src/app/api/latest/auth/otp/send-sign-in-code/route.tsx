@@ -32,7 +32,7 @@ export const POST = createSmartRouteHandler({
     statusCode: yupNumber().oneOf([200]).defined(),
     bodyType: yupString().oneOf(["json"]).defined(),
     body: yupObject({
-      nonce: yupString().defined(),
+      nonce: yupString().defined().meta({ openapiField: { description: "A token that must be stored temporarily and provided when verifying the 6-digit code", exampleValue: "u3h6gn4w24pqc8ya679inrhjwh1rybth6a7thurqhnpf2" } }),
     }).defined(),
   }),
   async handler({ auth: { tenancy }, body: { email, callback_url: callbackUrl }, clientVersion }, fullReq) {

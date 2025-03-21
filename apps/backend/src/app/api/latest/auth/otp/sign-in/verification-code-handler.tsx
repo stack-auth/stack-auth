@@ -13,14 +13,15 @@ export const signInVerificationCodeHandler = createVerificationCodeHandler({
   metadata: {
     post: {
       summary: "Sign in with a code",
-      description: "Sign in with a code",
+      description: "",
       tags: ["OTP"],
     },
     check: {
       summary: "Check sign in code",
       description: "Check if a sign in code is valid without using it",
       tags: ["OTP"],
-    }
+    },
+    codeDescription: `A 45-character verification code. For magic links, this is the code found in the "code" URL query parameter. For OTP, this is formed by concatenating the nonce (received during code creation) with the 6-digit code entered by the user`,
   },
   type: VerificationCodeType.ONE_TIME_PASSWORD,
   data: yupObject({

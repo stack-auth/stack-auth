@@ -123,7 +123,7 @@ export function createVerificationCodeHandler<
         user: adaptSchema,
       }).defined(),
       body: yupObject({
-        code: yupString().length(45).defined().meta({ openapiField: { description: options.metadata?.codeDescription, exampleValue: "u3h6gn4w24pqc8ya679inrhjwh1rybth6a7thurqhnpf2" } }),
+        code: yupString().length(45).defined().meta({ openapiField: { description: options.metadata?.codeDescription || "A 45 character code", exampleValue: "u3h6gn4w24pqc8ya679inrhjwh1rybth6a7thurqhnpf2" } }),
       // we cast to undefined as a typehack because the types are a bit icky
       // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
       }).concat((handlerType === 'post' ? options.requestBody : undefined) as undefined ?? yupObject({})).defined(),
