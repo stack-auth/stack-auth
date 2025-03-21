@@ -2,7 +2,7 @@
 
 import { RawQuery, prismaClient, rawQuery } from '@/prisma-client';
 import { ApiKeySet, Prisma } from '@prisma/client';
-import { ApiKeysCrud } from '@stackframe/stack-shared/dist/interface/crud/api-keys';
+import { InternalApiKeysCrud } from '@stackframe/stack-shared/dist/interface/crud/internal-api-keys';
 import { yupString } from '@stackframe/stack-shared/dist/schema-fields';
 import { typedIncludes } from '@stackframe/stack-shared/dist/utils/arrays';
 import { generateSecureRandomString } from '@stackframe/stack-shared/dist/utils/crypto';
@@ -93,7 +93,7 @@ export async function getApiKeySet(
   whereOrId:
     | string
     | KeyType,
-): Promise<ApiKeysCrud["Admin"]["Read"] | null> {
+): Promise<InternalApiKeysCrud["Admin"]["Read"] | null> {
   const where = typeof whereOrId === 'string'
     ? {
       projectId_id: {
@@ -118,7 +118,7 @@ export async function getApiKeySet(
 }
 
 
-function createSummaryFromDbType(set: ApiKeySet): ApiKeysCrud["Admin"]["Read"] {
+function createSummaryFromDbType(set: ApiKeySet): InternalApiKeysCrud["Admin"]["Read"] {
   return {
     id: set.id,
     description: set.description,

@@ -15,8 +15,8 @@ import { deindent } from '../utils/strings';
 import { ContactChannelsCrud } from './crud/contact-channels';
 import { CurrentUserCrud } from './crud/current-user';
 import { ConnectedAccountAccessTokenCrud } from './crud/oauth';
+import { ProjectApiKeysCrud } from './crud/project-api-keys';
 import { InternalProjectsCrud, ProjectsCrud } from './crud/projects';
-import { PublicApiKeysCrud } from './crud/public-api-keys';
 import { SessionsCrud } from './crud/sessions';
 import { TeamInvitationCrud } from './crud/team-invitation';
 import { TeamMemberProfilesCrud } from './crud/team-member-profiles';
@@ -1440,7 +1440,7 @@ export class StackClientInterface {
       tenancy_id?: string,
     },
     session: InternalSession,
-  ): Promise<PublicApiKeysCrud['Client']['Read'][]> {
+  ): Promise<ProjectApiKeysCrud['Client']['Read'][]> {
     const queryParams = new URLSearchParams();
     if (options.project_user_id) {
       queryParams.set('project_user_id', options.project_user_id);
@@ -1472,7 +1472,7 @@ export class StackClientInterface {
       tenancy_id?: string,
     },
     session: InternalSession,
-  ): Promise<PublicApiKeysCrud['Client']['Read'] & { secret_api_key: string }> {
+  ): Promise<ProjectApiKeysCrud['Client']['Read'] & { secret_api_key: string }> {
     const response = await this.sendClientRequest(
       "/api-keys",
       {
@@ -1492,7 +1492,7 @@ export class StackClientInterface {
   async getApiKey(
     keyId: string,
     session: InternalSession,
-  ): Promise<PublicApiKeysCrud['Client']['Read']> {
+  ): Promise<ProjectApiKeysCrud['Client']['Read']> {
     const response = await this.sendClientRequest(
       `/api-keys/${keyId}`,
       {
@@ -1510,7 +1510,7 @@ export class StackClientInterface {
       revoked?: boolean,
     },
     session: InternalSession,
-  ): Promise<PublicApiKeysCrud['Client']['Read']> {
+  ): Promise<ProjectApiKeysCrud['Client']['Read']> {
     const response = await this.sendClientRequest(
       `/api-keys/${keyId}`,
       {
@@ -1529,7 +1529,7 @@ export class StackClientInterface {
   async deleteApiKey(
     keyId: string,
     session: InternalSession,
-  ): Promise<PublicApiKeysCrud['Client']['Delete']> {
+  ): Promise<ProjectApiKeysCrud['Client']['Delete']> {
     const response = await this.sendClientRequest(
       `/api-keys/${keyId}`,
       {

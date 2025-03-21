@@ -1,4 +1,4 @@
-import { publicApiKeyCrudHandlers } from "./crud";
+import { projectApiKeyCrudHandlers } from "./crud";
 
-export const GET = publicApiKeyCrudHandlers.listHandler;
-export const POST = publicApiKeyCrudHandlers.createHandler;
+export const GET = projectApiKeyCrudHandlers.listHandler;
+export const POST = projectApiKeyCrudHandlers.createHandler;

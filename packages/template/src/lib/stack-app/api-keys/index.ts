@@ -1,4 +1,4 @@
-import { PublicApiKeysCrud } from "@stackframe/stack-shared/dist/interface/crud/project-api-keys";
+import { ProjectApiKeysCrud } from "@stackframe/stack-shared/dist/interface/crud/project-api-keys";
 
 export type ApiKeyBase = {
   id: string,
@@ -15,7 +15,7 @@ export type ApiKeyBase = {
 };
 
 // Define a more complete type that includes the secret_api_key field from the obfuscated read schema
-export type ApiKeyBaseCrudRead = Pick<PublicApiKeysCrud["Client"]["Read"],
+export type ApiKeyBaseCrudRead = Pick<ProjectApiKeysCrud["Client"]["Read"],
   "id" | "created_at_millis" | "description" | "expires_at_millis" | "manually_revoked_at_millis" |
   "team_id" | "tenancy_id" | "project_user_id"> & {
     secret_api_key?: {
@@ -51,7 +51,7 @@ export type ApiKeyUpdateOptions = {
   revoked?: boolean,
 };
 
-export function apiKeyCreateOptionsToCrud(options: ApiKeyCreateOptions): PublicApiKeysCrud["Client"]["Create"] {
+export function apiKeyCreateOptionsToCrud(options: ApiKeyCreateOptions): ProjectApiKeysCrud["Client"]["Create"] {
   return {
     description: options.description,
     expires_at_millis: options.expiresAt?.getTime(),
@@ -62,7 +62,7 @@ export function apiKeyCreateOptionsToCrud(options: ApiKeyCreateOptions): PublicA
 }
 
 // Define the correct type for the create output
-export type ApiKeyCreateOutput = Pick<PublicApiKeysCrud["Client"]["Read"],
+export type ApiKeyCreateOutput = Pick<ProjectApiKeysCrud["Client"]["Read"],
   "id" | "created_at_millis" | "description" | "expires_at_millis" | "manually_revoked_at_millis" |
   "team_id" | "tenancy_id" | "project_user_id"> & {
     secret_api_key?: string,

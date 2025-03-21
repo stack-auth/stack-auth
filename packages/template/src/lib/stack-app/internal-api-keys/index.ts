@@ -1,6 +1,5 @@
 import { InternalApiKeyCreateCrudRequest } from "@stackframe/stack-shared/dist/interface/adminInterface";
-import { ApiKeysCrud } from "@stackframe/stack-shared/dist/interface/crud/internal-api-keys";
-
+import { InternalApiKeysCrud } from "@stackframe/stack-shared/dist/interface/crud/internal-api-keys";
 
 export type InternalApiKeyBase = {
   id: string,
@@ -13,7 +12,7 @@ export type InternalApiKeyBase = {
   revoke(): Promise<void>,
 };
 
-export type InternalApiKeyBaseCrudRead = Pick<ApiKeysCrud["Admin"]["Read"], "id" | "created_at_millis" | "description" | "expires_at_millis" | "manually_revoked_at_millis">;
+export type InternalApiKeyBaseCrudRead = Pick<InternalApiKeysCrud["Admin"]["Read"], "id" | "created_at_millis" | "description" | "expires_at_millis" | "manually_revoked_at_millis">;
 
 export type InternalApiKeyFirstView = {
   publishableClientKey?: string,

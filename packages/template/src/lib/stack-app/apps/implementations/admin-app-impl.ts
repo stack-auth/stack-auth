@@ -2,7 +2,7 @@ import { StackAdminInterface } from "@stackframe/stack-shared";
 import { getProductionModeErrors } from "@stackframe/stack-shared/dist/helpers/production-mode";
 import { InternalApiKeyCreateCrudResponse } from "@stackframe/stack-shared/dist/interface/adminInterface";
 import { EmailTemplateCrud, EmailTemplateType } from "@stackframe/stack-shared/dist/interface/crud/email-templates";
-import { ApiKeysCrud } from "@stackframe/stack-shared/dist/interface/crud/internal-api-keys";
+import { InternalApiKeysCrud } from "@stackframe/stack-shared/dist/interface/crud/internal-api-keys";
 import { InternalProjectsCrud } from "@stackframe/stack-shared/dist/interface/crud/projects";
 import { StackAssertionError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
 import { pick } from "@stackframe/stack-shared/dist/utils/objects";
@@ -205,7 +205,7 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
     };
   }
 
-  protected _createInternalApiKeyFromCrud(data: ApiKeysCrud["Admin"]["Read"]): InternalApiKey {
+  protected _createInternalApiKeyFromCrud(data: InternalApiKeysCrud["Admin"]["Read"]): InternalApiKey {
     return {
       ...this._createInternalApiKeyBaseFromCrud(data),
       publishableClientKey: data.publishable_client_key ? { lastFour: data.publishable_client_key.last_four } : null,

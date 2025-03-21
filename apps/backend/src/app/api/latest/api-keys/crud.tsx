@@ -2,7 +2,7 @@ import { prismaClient } from "@/prisma-client";
 import { createCrudHandlers } from "@/route-handlers/crud-handler";
 import { SmartRequestAuth } from "@/route-handlers/smart-request";
 import { KnownErrors } from "@stackframe/stack-shared";
-import { publicApiKeysCrud, PublicApiKeysCrud } from "@stackframe/stack-shared/dist/interface/crud/public-api-keys";
+import { projectApiKeysCrud, ProjectApiKeysCrud } from "@stackframe/stack-shared/dist/interface/crud/project-api-keys";
 import { userIdOrMeSchema, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
 import { generateSecureRandomString } from "@stackframe/stack-shared/dist/utils/crypto";
 import { StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
@@ -29,7 +29,7 @@ function validateExactlyOneGroupIdentifier(params: {
 }
 
 
-export const publicApiKeyCrudHandlers = createLazyProxy(() => createCrudHandlers(publicApiKeysCrud, {
+export const projectApiKeyCrudHandlers = createLazyProxy(() => createCrudHandlers(projectApiKeysCrud, {
   paramsSchema: yupObject({
     api_key_id: yupString().uuid().defined(),
   }),
@@ -151,7 +151,7 @@ export const publicApiKeyCrudHandlers = createLazyProxy(() => createCrudHandlers
   // UPDATE
   onUpdate: async ({ auth, data, params }: {
     auth: SmartRequestAuth,
-    data: PublicApiKeysCrud["Client"]["Update"],
+    data: ProjectApiKeysCrud["Client"]["Update"],
     params: { api_key_id: string },
   }) => {
     // Find the existing API key

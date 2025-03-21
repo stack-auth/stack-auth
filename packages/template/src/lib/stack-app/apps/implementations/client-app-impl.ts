@@ -2,8 +2,8 @@ import { WebAuthnError, startAuthentication, startRegistration } from "@simplewe
 import { KnownErrors, StackClientInterface } from "@stackframe/stack-shared";
 import { ContactChannelsCrud } from "@stackframe/stack-shared/dist/interface/crud/contact-channels";
 import { CurrentUserCrud } from "@stackframe/stack-shared/dist/interface/crud/current-user";
+import { ProjectApiKeysCrud } from "@stackframe/stack-shared/dist/interface/crud/project-api-keys";
 import { ProjectsCrud } from "@stackframe/stack-shared/dist/interface/crud/projects";
-import { PublicApiKeysCrud } from "@stackframe/stack-shared/dist/interface/crud/public-api-keys";
 import { SessionsCrud } from "@stackframe/stack-shared/dist/interface/crud/sessions";
 import { TeamInvitationCrud } from "@stackframe/stack-shared/dist/interface/crud/team-invitation";
 import { TeamMemberProfilesCrud } from "@stackframe/stack-shared/dist/interface/crud/team-member-profiles";
@@ -173,14 +173,14 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
     }
   );
 
-  private readonly _clientApiKeysCache = createCacheBySession<[], PublicApiKeysCrud['Client']['Read'][]>(
+  private readonly _clientApiKeysCache = createCacheBySession<[], ProjectApiKeysCrud['Client']['Read'][]>(
     async (session) => {
       const results = await this._interface.listApiKeys({ project_user_id: 'me' }, session);
       return results;
     }
   );
 
-  private readonly _teamApiKeysCache = createCacheBySession<[string], PublicApiKeysCrud['Client']['Read'][]>(
+  private readonly _teamApiKeysCache = createCacheBySession<[string], ProjectApiKeysCrud['Client']['Read'][]>(
     async (session, [teamId]) => {
       const results = await this._interface.listApiKeys({ team_id: teamId }, session);
       return results;
@@ -634,7 +634,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
     };
   }
 
-  protected _clientApiKeyFromCrudInner(session: InternalSession, crud: PublicApiKeysCrud['Client']['Read']): ApiKeyBase {
+  protected _clientApiKeyFromCrudInner(session: InternalSession, crud: ProjectApiKeysCrud['Client']['Read']): ApiKeyBase {
     return {
       id: crud.id,
       description: crud.description,
@@ -662,7 +662,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
     };
   }
 
-  protected _clientApiKeyFromCrudRead(session: InternalSession, crud: PublicApiKeysCrud['Client']['Read']): ApiKey {
+  protected _clientApiKeyFromCrudRead(session: InternalSession, crud: ProjectApiKeysCrud['Client']['Read']): ApiKey {
     return {
       secretApiKey: crud.secret_api_key?.last_four ? {
         lastFour: crud.secret_api_key.last_four,
@@ -671,7 +671,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
     };
   }
 
-  protected _clientApiKeyFromCrudCreate(session: InternalSession, crud: PublicApiKeysCrud['Client']['Read'] & { secret_api_key: string }): ApiKeyFirstView {
+  protected _clientApiKeyFromCrudCreate(session: InternalSession, crud: ProjectApiKeysCrud['Client']['Read'] & { secret_api_key: string }): ApiKeyFirstView {
     return {
       secretApiKey: crud.secret_api_key,
       ...this._clientApiKeyFromCrudInner(session, crud),

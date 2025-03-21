@@ -1,6 +1,6 @@
 import { KnownErrors, StackServerInterface } from "@stackframe/stack-shared";
 import { ContactChannelsCrud } from "@stackframe/stack-shared/dist/interface/crud/contact-channels";
-import { PublicApiKeysCrud } from "@stackframe/stack-shared/dist/interface/crud/project-api-keys";
+import { ProjectApiKeysCrud } from "@stackframe/stack-shared/dist/interface/crud/project-api-keys";
 import { TeamInvitationCrud } from "@stackframe/stack-shared/dist/interface/crud/team-invitation";
 import { TeamMemberProfilesCrud } from "@stackframe/stack-shared/dist/interface/crud/team-member-profiles";
 import { TeamPermissionDefinitionsCrud, TeamPermissionsCrud } from "@stackframe/stack-shared/dist/interface/crud/team-permissions";
@@ -111,7 +111,7 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
     }
   );
 
-  private readonly _serverApiKeysCache = createCache<[string | undefined, string | undefined, string | undefined], PublicApiKeysCrud['Server']['Read'][]>(
+  private readonly _serverApiKeysCache = createCache<[string | undefined, string | undefined, string | undefined], ProjectApiKeysCrud['Server']['Read'][]>(
     async ([projectUserId, teamId, tenancyId]) => {
       const result = await this._interface.listServerApiKeys({
         project_user_id: projectUserId,
@@ -214,7 +214,7 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
     });
   }
 
-  protected _serverApiKeyBaseFromCrud(data: PublicApiKeysCrud['Server']['Read']): ApiKeyBase {
+  protected _serverApiKeyBaseFromCrud(data: ProjectApiKeysCrud['Server']['Read']): ApiKeyBase {
     const app = this;
     return {
       id: data.id,
@@ -240,14 +240,14 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
     };
   }
 
-  protected _serverApiKeyFromCrudRead(data: PublicApiKeysCrud['Server']['Read']): ApiKey {
+  protected _serverApiKeyFromCrudRead(data: ProjectApiKeysCrud['Server']['Read']): ApiKey {
     return {
       ...this._serverApiKeyBaseFromCrud(data),
       secretApiKey: data.secret_api_key ? { lastFour: data.secret_api_key.last_four } : null,
     };
   }
 
-  protected _serverApiKeyFromCrudCreate(data: PublicApiKeysCrud['Server']['Read'] & { secret_api_key: string }): ApiKeyFirstView {
+  protected _serverApiKeyFromCrudCreate(data: ProjectApiKeysCrud['Server']['Read'] & { secret_api_key: string }): ApiKeyFirstView {
     return {
       ...this._serverApiKeyBaseFromCrud(data),
       secretApiKey: data.secret_api_key,

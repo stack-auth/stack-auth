@@ -1,4 +1,4 @@
-import { publicApiKeyCrudHandlers } from "../crud";
+import { projectApiKeyCrudHandlers } from "../crud";
 
-export const PATCH = publicApiKeyCrudHandlers.updateHandler;
-export const DELETE = publicApiKeyCrudHandlers.deleteHandler;
+export const PATCH = projectApiKeyCrudHandlers.updateHandler;
+export const DELETE = projectApiKeyCrudHandlers.deleteHandler;
