@@ -6,7 +6,8 @@ export const metadata = {
   title: 'Email Template',
 };
 
-export default function Page({ params }: { params: { type: string } }) {
+export default async function Page(props: { params: Promise<{ type: string }> }) {
+  const params = await props.params;
   if (!emailTemplateTypes.includes(params.type as any)) {
     return notFound();
   }

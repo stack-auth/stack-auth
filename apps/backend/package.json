@@ -34,7 +34,7 @@
     "seed": "pnpm run db-seed-script"
   },
   "dependencies": {
-    "@next/bundle-analyzer": "15.0.3",
+    "@next/bundle-analyzer": "15.2.3",
     "@node-oauth/oauth2-server": "^5.1.0",
     "@opentelemetry/api": "^1.9.0",
     "@opentelemetry/api-logs": "^0.53.0",
@@ -59,14 +59,14 @@
     "bcrypt": "^5.1.1",
     "dotenv-cli": "^7.3.0",
     "jose": "^5.2.2",
-    "next": "15.0.3",
+    "next": "15.2.3",
     "nodemailer": "^6.9.10",
     "oidc-provider": "^8.5.1",
     "openid-client": "5.6.4",
     "oslo": "^1.2.1",
     "posthog-node": "^4.1.0",
-    "react": "^19.0.0",
-    "react-dom": "^19.0.0",
+    "react": "19.0.0",
+    "react-dom": "19.0.0",
     "semver": "^7.6.3",
     "sharp": "^0.32.6",
     "svix": "^1.25.0",
@@ -78,8 +78,8 @@
     "@types/node": "^20.8.10",
     "@types/nodemailer": "^6.4.14",
     "@types/oidc-provider": "^8.5.1",
-    "@types/react": "link:@types/react@18.3.12",
-    "@types/react-dom": "^19.0.0",
+    "@types/react": "19.0.12",
+    "@types/react-dom": "19.0.4",
     "@types/semver": "^7.5.8",
     "concurrently": "^8.2.2",
     "glob": "^10.4.1",
@@ -89,5 +89,11 @@
     "rimraf": "^5.0.5",
     "tsup": "^8.3.0",
     "tsx": "^4.7.2"
+  },
+  "pnpm": {
+    "overrides": {
+      "@types/react": "19.0.12",
+      "@types/react-dom": "19.0.4"
+    }
   }
 }

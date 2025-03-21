@@ -1,5 +1,7 @@
 import { SiteLoadingIndicator } from "@/components/site-loading-indicator";
 
+import type { JSX } from "react";
+
 type Pagination = {
   hasPrevPage?: boolean,
   hasNextPage?: boolean,

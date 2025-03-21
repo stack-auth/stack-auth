@@ -8,8 +8,8 @@ export const metadata = {
   title: "Neon x Stack Auth",
 };
 
-export default async function NeonIntegrationConfirmPage(props: { searchParams: { interaction_uid: string } }) {
-  const interactionUid = props.searchParams.interaction_uid;
+export default async function NeonIntegrationConfirmPage(props: { searchParams: Promise<{ interaction_uid: string }> }) {
+  const interactionUid = (await props.searchParams).interaction_uid;
   if (!interactionUid) {
     return <>
       <div>Error: No interaction UID provided.</div>
@@ -38,7 +38,7 @@ export default async function NeonIntegrationConfirmPage(props: { searchParams: 
       },
       body: JSON.stringify({
         project_id: options.projectId,
-        interaction_uid: props.searchParams.interaction_uid,
+        interaction_uid: (await props.searchParams).interaction_uid,
         neon_project_name: options.neonProjectName,
       }),
     });
@@ -49,7 +49,7 @@ export default async function NeonIntegrationConfirmPage(props: { searchParams: 
     const json = await response.json();
     const authorizationCode = json.authorization_code;
 
-    const redirectUrl = new URL(`/api/v1/integrations/neon/oauth/idp/interaction/${encodeURIComponent(props.searchParams.interaction_uid)}/done`, getEnvVariable("NEXT_PUBLIC_STACK_API_URL"));
+    const redirectUrl = new URL(`/api/v1/integrations/neon/oauth/idp/interaction/${encodeURIComponent((await props.searchParams).interaction_uid)}/done`, getEnvVariable("NEXT_PUBLIC_STACK_API_URL"));
     redirectUrl.searchParams.set("code", authorizationCode);
     redirect(redirectUrl.toString());
   };

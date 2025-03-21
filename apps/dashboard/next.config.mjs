@@ -1,19 +1,6 @@
 import { withSentryConfig } from "@sentry/nextjs";
-import rehypeKatex from "rehype-katex";
-import remarkGfm from "remark-gfm";
-import remarkHeadingId from "remark-heading-id";
-import remarkMath from "remark-math";
-
-import createMDX from "@next/mdx";
 
 import createBundleAnalyzer from "@next/bundle-analyzer";
-
-const withMDX = createMDX({
-  options: {
-    rehypePlugins: [rehypeKatex],
-    remarkPlugins: [remarkMath, remarkGfm, remarkHeadingId],
-  },
-});
 
 const withBundleAnalyzer = createBundleAnalyzer({
   enabled: !!process.env.ANALYZE_BUNDLE,
@@ -93,10 +80,6 @@ const nextConfig = {
   },
   skipTrailingSlashRedirect: true, 
 
-  experimental: {
-    instrumentationHook: true,
-  },
-
   async headers() {
     return [
       {
@@ -133,5 +116,5 @@ const nextConfig = {
 };
 
 export default withConfiguredSentryConfig(
-  withBundleAnalyzer(withMDX(nextConfig))
+  withBundleAnalyzer(nextConfig)
 );

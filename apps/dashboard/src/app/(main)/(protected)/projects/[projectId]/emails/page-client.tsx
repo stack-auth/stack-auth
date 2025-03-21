@@ -213,7 +213,7 @@ function EmailPreview(props: { content: any, type: EmailTemplateType }) {
   }
 
   return (
-    <div className="max-h-[150px] min-h-[150px] max-w-[200px] sm:min-w-[200px] overflow-hidden rounded border" inert=''>
+    <div className="max-h-[150px] min-h-[150px] max-w-[200px] sm:min-w-[200px] overflow-hidden rounded border" inert>
       <div className="absolute inset-0 bg-transparent z-10"/>
       {reader}
     </div>

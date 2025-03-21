@@ -6,7 +6,7 @@
   "scripts": {
     "typecheck": "tsc --noEmit",
     "clean": "rimraf .next && rimraf node_modules",
-    "dev": "next dev --turbo --port 8103",
+    "dev": "next dev --turbopack --port 8103",
     "build": "next build",
     "start": "next start --port 8103",
     "lint": "next lint"
@@ -17,18 +17,24 @@
     "@stackframe/stack": "workspace:*",
     "@stackframe/stack-shared": "workspace:*",
     "@stackframe/stack-ui": "workspace:*",
-    "next": "^15.0.3",
+    "next": "15.2.3",
     "next-themes": "^0.4.3",
-    "react": "19.0.0-rc-65a56d0e-20241020",
-    "react-dom": "19.0.0-rc-65a56d0e-20241020",
+    "react": "19.0.0",
+    "react-dom": "19.0.0",
     "react-icons": "^5.3.0"
   },
   "devDependencies": {
-    "@types/react": "link:@types/react@18.3.12",
-    "@types/react-dom": "npm:types-react-dom@19.0.0-rc.1",
+    "@types/react": "19.0.12",
+    "@types/react-dom": "19.0.4",
     "autoprefixer": "^10.4.20",
     "postcss": "^8.4.47",
     "rimraf": "^5.0.10",
     "tailwindcss": "^3.4.14"
+  },
+  "pnpm": {
+    "overrides": {
+      "@types/react": "19.0.12",
+      "@types/react-dom": "19.0.4"
+    }
   }
 }

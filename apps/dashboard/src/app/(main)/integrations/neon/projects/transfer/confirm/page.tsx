@@ -4,8 +4,8 @@ export const metadata = {
   title: "Project transfer",
 };
 
-export default async function NeonIntegrationProjectTransferConfirmPage(props: { searchParams: { code?: string } }) {
-  const transferCode = props.searchParams.code;
+export default async function NeonIntegrationProjectTransferConfirmPage(props: { searchParams: Promise<{ code?: string }> }) {
+  const transferCode = (await props.searchParams).code;
   if (!transferCode) {
     return <>
       <div>Error: No transfer code provided.</div>

@@ -4,7 +4,8 @@ export const metadata = {
   title: "Team Members",
 };
 
-export default function Page({ params }: { params: { teamId: string } }) {
+export default async function Page(props: { params: Promise<{ teamId: string }> }) {
+  const params = await props.params;
   return (
     <PageClient teamId={params.teamId} />
   );
