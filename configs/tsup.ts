@@ -13,6 +13,7 @@ export const stackTsupDefaultConfig = {
   sourcemap: true,
   clean: false,
   noExternal: [...customNoExternal],
+  dts: true,
   format: ['esm', 'cjs'],
   legacyOutput: true,
   esbuildPlugins: [
