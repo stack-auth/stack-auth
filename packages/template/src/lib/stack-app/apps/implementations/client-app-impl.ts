@@ -1202,6 +1202,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
           return await this.getUser({ tokenStore: tokens }) ?? throwErr("Something went wrong while signing up anonymously");
         }
         case undefined:
+        case "anonymous-if-exists":
         case "return-null": {
           return null;
         }
@@ -1248,6 +1249,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
           throw new StackAssertionError("suspend should never return");
         }
         case undefined:
+        case "anonymous-if-exists":
         case "return-null": {
           // do nothing
         }
