@@ -40,6 +40,7 @@ describe("with grant_type === 'authorization_code'", async () => {
           "display_name": null,
           "has_password": false,
           "id": "<stripped UUID>",
+          "is_anonymous": false,
           "oauth_providers": [
             {
               "account_id": "default-mailbox--<stripped UUID>@stack-generated.example.com",

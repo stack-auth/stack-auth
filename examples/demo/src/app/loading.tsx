@@ -1,3 +1,3 @@
 export default function Loading() {
-  return null;
+  return process.env.NODE_ENV === "development" ? "Loading..." : null;
 }
