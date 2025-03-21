@@ -85,13 +85,13 @@ type SubscriptionRole = {
 
 function SubscriptionRolesTable() {
   // Mock data for the table
-  const data: SubscriptionRole[] = [
+  const subscriptionRoles: SubscriptionRole[] = [
     { id: "1", role: "premium", planId: "price_1234", planName: "Premium Monthly" },
     { id: "2", role: "pro", planId: "price_5678", planName: "Pro Monthly" },
     { id: "3", role: "enterprise", planId: "price_9012", planName: "Enterprise Annual" },
   ];
 
-  const [subscriptionRoles, setSubscriptionRoles] = useState<SubscriptionRole[]>(data);
+  const [isAddRoleDialogOpen, setIsAddRoleDialogOpen] = useState(false);
 
   const columns: ColumnDef<SubscriptionRole>[] = [
     {
@@ -123,11 +123,7 @@ function SubscriptionRolesTable() {
             {
               item: "Delete",
               danger: true,
-              onClick: () => {
-                setSubscriptionRoles(prev =>
-                  prev.filter(role => role.id !== row.original.id)
-                );
-              },
+              onClick: () => {},
             },
           ]}
         />
@@ -137,14 +133,53 @@ function SubscriptionRolesTable() {
 
   return (
     <div className="mt-4">
-      <Button className="mb-4">Add Subscription Role</Button>
+      <Button className="mb-4" onClick={() => setIsAddRoleDialogOpen(true)}>Add Subscription Role</Button>
       <DataTable
         data={subscriptionRoles}
         columns={columns}
         defaultColumnFilters={[]}
         defaultSorting={[{ id: "role", desc: false }]}
       />
+
+      <AddSubscriptionRoleDialog
+        open={isAddRoleDialogOpen}
+        onOpenChange={setIsAddRoleDialogOpen}
+        onRoleAdded={(role) => {
+          // TODO: Add the role to the database
+        }}
+      />
     </div>
+  );
+}
+
+function AddSubscriptionRoleDialog(props: {
+  open: boolean,
+  onOpenChange: (open: boolean) => void,
+  onRoleAdded: (role: Omit<SubscriptionRole, "id">) => void,
+}) {
+  const formSchema = yup.object({
+    role: yup.string().defined().label("Role Name"),
+    planId: yup.string().defined().label("Stripe Plan ID"),
+    planName: yup.string().defined().label("Plan Display Name"),
+  });
+
+  return (
+    <SmartFormDialog
+      open={props.open}
+      onOpenChange={props.onOpenChange}
+      title="Add Subscription Role"
+      description="Assign a role to users who subscribe to a specific Stripe plan"
+      formSchema={formSchema}
+      okButton={{ label: "Add" }}
+      onSubmit={async (values) => {
+        props.onRoleAdded({
+          role: values.role,
+          planId: values.planId,
+          planName: values.planName,
+        });
+      }}
+      cancelButton
+    />
   );
 }
 
