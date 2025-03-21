@@ -520,7 +520,7 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
           }
           case 'anonymous': {
             const tokens = await this._signUpAnonymously();
-            return await this.getUser({ tokenStore: tokens }) ?? throwErr("Something went wrong while signing up anonymously");
+            return await this.getUser({ tokenStore: tokens, or: "anonymous-if-exists" }) ?? throwErr("Something went wrong while signing up anonymously");
           }
           case undefined:
           case "anonymous-if-exists":
