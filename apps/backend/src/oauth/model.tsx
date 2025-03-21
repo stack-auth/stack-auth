@@ -92,7 +92,7 @@ export class OAuthModel implements AuthorizationCodeModel {
     const tenancy = await getSoleTenancyFromProject(client.id);
 
     if (!user.refreshTokenId) {
-      //create new refresh token
+      // create new refresh token
       const refreshToken = await this.generateRefreshToken(client, user, scope);
       // save it in user, then we just access it in refresh
       // HACK: This is a hack to ensure the refresh token is already there so we can associate the access token with it

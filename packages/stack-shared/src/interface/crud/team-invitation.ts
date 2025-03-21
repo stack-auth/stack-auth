@@ -18,6 +18,16 @@ export const teamInvitationCrud = createCrud({
       description: "",
       tags: ["Teams"],
     },
+    clientList: {
+      summary: "List team invitations",
+      description: "",
+      tags: ["Teams"],
+    },
+    clientDelete: {
+      summary: "Delete a team invitation",
+      description: "",
+      tags: ["Teams"],
+    },
   },
 });
 
