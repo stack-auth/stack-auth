@@ -1,4 +1,4 @@
-import { TOTPController } from "oslo/otp";
+import { generateTOTP } from "@oslojs/otp";
 import { it } from "../../../../../../helpers";
 import { Auth, backendContext, niceBackendFetch } from "../../../../../backend-helpers";
 
@@ -28,7 +28,7 @@ it("should sign in users with MFA enabled", async ({ expect }) => {
       },
     }
   `);
-  const totp = await new TOTPController().generate(totpSecret);
+  const totp = generateTOTP(totpSecret, 30, 6);
   const response = await niceBackendFetch("/api/v1/auth/mfa/sign-in", {
     accessType: "client",
     method: "POST",
@@ -67,7 +67,7 @@ it("should reject invalid attempt codes", async ({ expect }) => {
   const passwordRes = await Auth.Password.signUpWithEmail();
   const { totpSecret } = await Auth.Mfa.setupTotpMfa();
   await Auth.signOut();
-  const totp = await new TOTPController().generate(totpSecret);
+  const totp = generateTOTP(totpSecret, 30, 6);
   const response = await niceBackendFetch("/api/v1/auth/mfa/sign-in", {
     accessType: "client",
     method: "POST",
