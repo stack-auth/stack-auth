@@ -14,10 +14,11 @@ export type NormalizedConfig = {
   [key: string]: NormalizedConfigValue,
 };
 
-export type _NormalizesTo<N> =
+export type _NormalizesTo<N> = N extends object ? (
   & Config
   & { [K in keyof N]?: _NormalizesTo<N[K]> | null }
-  & { [K in `${string}.${string}`]: ConfigValue };
+  & { [K in `${string}.${string}`]: ConfigValue }
+) : N;
 export type NormalizesTo<N extends NormalizedConfig> = _NormalizesTo<N>;
 
 /**

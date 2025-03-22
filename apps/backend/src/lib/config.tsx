@@ -3,6 +3,7 @@ import { NormalizationError, getInvalidConfigReason, normalize, override } from 
 import { BranchConfigOverride, BranchIncompleteConfig, BranchRenderedConfig, EnvironmentConfigOverride, EnvironmentIncompleteConfig, EnvironmentRenderedConfig, OrganizationConfigOverride, OrganizationIncompleteConfig, OrganizationRenderedConfig, ProjectConfigOverride, ProjectIncompleteConfig, ProjectRenderedConfig, baseConfig, branchConfigSchema, environmentConfigSchema, organizationConfigSchema, projectConfigSchema } from "@stackframe/stack-shared/dist/config/schema";
 import { ProjectsCrud } from "@stackframe/stack-shared/dist/interface/crud/projects";
 import { yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
+import { throwErr } from "@stackframe/stack-shared/dist/utils/errors";
 import { pick } from "@stackframe/stack-shared/dist/utils/objects";
 import { Result } from "@stackframe/stack-shared/dist/utils/results";
 import { expect } from "vitest";
@@ -85,23 +86,82 @@ export async function validateOrganizationConfigOverride(project: Project, branc
 // get<$$$>ConfigOverride
 // ---------------------------------------------------------------------------------------------------------------------
 
-export function getProjectConfigOverride(project: Project): Promise<ProjectConfigOverride> {
+export async function getProjectConfigOverride(project: Project): Promise<ProjectConfigOverride> {
   // fetch project config from our own DB
-  throw new Error('Not implemented');
+  return {
+    sourceOfTruthDbConnectionString: '123',
+  };
 }
 
-export function getBranchConfigOverride(project: Project, branchId: string): Promise<BranchConfigOverride> {
+export async function getBranchConfigOverride(project: Project, branchId: string): Promise<BranchConfigOverride> {
   // fetch branch config from GitHub
   // (currently it's just empty)
   throw new Error('Not implemented');
 }
 
-export function getEnvironmentConfigOverride(project: Project, branchId: string): Promise<EnvironmentConfigOverride> {
+type t = EnvironmentConfigOverride['emailConfig']
+
+export async function getEnvironmentConfigOverride(project: Project, branchId: string): Promise<EnvironmentConfigOverride> {
   // fetch environment config from DB (either our own, or the source of truth one)
-  throw new Error('Not implemented');
+  if (branchId !== 'main') {
+    throw new Error('Not implemented');
+  }
+
+  const config = project.config;
+
+  return {
+    createTeamOnSignUp: config.create_team_on_sign_up,
+    allowLocalhost: config.allow_localhost,
+    clientTeamCreationEnabled: config.client_team_creation_enabled,
+    clientUserDeletionEnabled: config.client_user_deletion_enabled,
+    signUpEnabled: config.sign_up_enabled,
+    oauthAccountMergeStrategy: config.oauth_account_merge_strategy,
+    authMethods: {},
+    connectedAccounts: {},
+    oauthProviders: config.oauth_providers.map(provider => ({
+      id: provider.id,
+      type: provider.id,
+      isShared: provider.type === 'shared',
+      clientId: provider.client_id,
+      clientSecret: provider.client_secret,
+      facebookConfigId: provider.facebook_config_id,
+      microsoftTenantId: provider.microsoft_tenant_id,
+    })).reduce((acc, provider) => {
+      (acc as any)[provider.id] = provider;
+      return acc;
+    }, {}),
+    emailConfig: config.email_config.type === 'shared' ? {
+      isShared: true,
+    } : {
+      isShared: false,
+      host: config.email_config.host || throwErr('email_config.host is required'),
+      port: config.email_config.port || throwErr('email_config.port is required'),
+      username: config.email_config.username || throwErr('email_config.username is required'),
+      password: config.email_config.password || throwErr('email_config.password is required'),
+      senderName: config.email_config.sender_name || throwErr('email_config.sender_name is required'),
+      senderEmail: config.email_config.sender_email || throwErr('email_config.sender_email is required'),
+    },
+    domains: config.domains.map(domain => ({
+      domain: domain.domain,
+      handle: domain.handler_path,
+    })).reduce((acc, domain) => {
+      (acc as any)[domain.domain] = domain;
+      return acc;
+    }, {}),
+    permissionDefinitions: {},
+    teamCreateDefaultSystemPermissions: config.team_creator_default_permissions.map(permission => ({
+      id: permission.id,
+    })).reduce((acc, permission) => {
+      (acc as any)[permission.id] = permission;
+      return acc;
+    }, {}),
+    teamCreateDefaultUserPermissions: config.team_creator_default_permissions.map(permission => ({
+      id: permission.id,
+    })),
+  };
 }
 
-export function getOrganizationConfigOverride(tenancy: Tenancy): Promise<OrganizationConfigOverride> {
+export async function getOrganizationConfigOverride(tenancy: Tenancy): Promise<OrganizationConfigOverride> {
   // fetch organization config from DB (either our own, or the source of truth one)
   throw new Error('Not implemented');
 }

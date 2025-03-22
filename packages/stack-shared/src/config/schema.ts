@@ -133,15 +133,20 @@ export const environmentConfigSchema = branchConfigSchema.concat(yupObject({
     }),
   ).defined().meta({ endConfigurableLevel: 'organization' }),
 
-  emailConfig: yupObject({
-    isShared: yupBoolean().defined(),
-    host: schemaFields.yupDefinedAndNonEmptyWhen(schemaFields.emailHostSchema, { isShared: false }),
-    port: schemaFields.yupDefinedWhen(schemaFields.emailPortSchema, { isShared: false }),
-    username: schemaFields.yupDefinedAndNonEmptyWhen(schemaFields.emailUsernameSchema, { isShared: false }),
-    password: schemaFields.yupDefinedAndNonEmptyWhen(schemaFields.emailPasswordSchema, { isShared: false }),
-    senderName: schemaFields.yupDefinedAndNonEmptyWhen(schemaFields.emailSenderNameSchema, { isShared: false }),
-    senderEmail: schemaFields.yupDefinedAndNonEmptyWhen(schemaFields.emailSenderEmailSchema, { isShared: false }),
-  }).meta({ endConfigurableLevel: 'organization' }),
+  emailConfig: yupUnion(
+    yupObject({
+      isShared: yupBoolean().oneOf([true]).defined(),
+    }),
+    yupObject({
+      isShared: yupBoolean().oneOf([false]).defined(),
+      host: schemaFields.emailHostSchema.defined().nonEmpty(),
+      port: schemaFields.emailPortSchema.defined(),
+      username: schemaFields.emailUsernameSchema.defined().nonEmpty(),
+      password: schemaFields.emailPasswordSchema.defined().nonEmpty(),
+      senderName: schemaFields.emailSenderNameSchema.defined().nonEmpty(),
+      senderEmail: schemaFields.emailSenderEmailSchema.defined().nonEmpty(),
+    })
+  ).meta({ endConfigurableLevel: 'organization' }),
 
   // keys to the domains are the hex encoded domains
   domains: yupRecord(
