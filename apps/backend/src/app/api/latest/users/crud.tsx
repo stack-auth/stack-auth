@@ -728,7 +728,7 @@ export const usersCrudHandlers = createLazyProxy(() => createCrudHandlers(usersC
     });
 
     if (auth.tenancy.config.create_team_on_sign_up) {
-      await teamsCrudHandlers.adminCreate({
+      const team = await teamsCrudHandlers.adminCreate({
         data: {
           display_name: data.display_name ?
             `${data.display_name}'s Team` :
@@ -739,6 +739,19 @@ export const usersCrudHandlers = createLazyProxy(() => createCrudHandlers(usersC
         },
         tenancy: auth.tenancy,
         user: result,
+      });
+
+      await prismaClient.teamMember.update({
+        where: {
+          tenancyId_projectUserId_teamId: {
+            tenancyId: auth.tenancy.id,
+            projectUserId: result.id,
+            teamId: team.id,
+          },
+        },
+        data: {
+          isSelected: BooleanTrue.TRUE,
+        },
       });
     }
 
