@@ -1,8 +1,8 @@
-const defaults = require("../../eslint-configs/defaults.js");
+const defaults = require("../../configs/eslint/defaults.js");
 
 module.exports = {
   "extends": [
-    "../../eslint-configs/defaults.js",
+    "../../configs/eslint/defaults.js",
   ],
   "ignorePatterns": ['/*', '!/src'],
   "rules": {

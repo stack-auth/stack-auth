@@ -1,7 +1,7 @@
 module.exports = {
   "extends": [
-    "../../eslint-configs/defaults.js",
-    "../../eslint-configs/next.js",
+    "../../configs/eslint/defaults.js",
+    "../../configs/eslint/next.js",
   ],
   "ignorePatterns": ['/*', '!/src']
 };
