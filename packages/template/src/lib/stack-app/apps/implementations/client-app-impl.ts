@@ -856,6 +856,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
       async createTeam(data: TeamCreateOptions) {
         const crud = await app._interface.createClientTeam(teamCreateOptionsToCrud(data, 'me'), session);
         await app._currentUserTeamsCache.refresh([session]);
+        await this.update({ selectedTeamId: crud.id });
         return app._clientTeamFromCrud(crud, session);
       },
       async leaveTeam(team: Team) {
@@ -1199,7 +1200,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
         }
         case 'anonymous': {
           const tokens = await this._signUpAnonymously();
-          return await this.getUser({ tokenStore: tokens }) ?? throwErr("Something went wrong while signing up anonymously");
+          return await this.getUser({ tokenStore: tokens, or: "anonymous-if-exists" }) ?? throwErr("Something went wrong while signing up anonymously");
         }
         case undefined:
         case "anonymous-if-exists":
