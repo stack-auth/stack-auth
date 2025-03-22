@@ -54,6 +54,7 @@
     "@simplewebauthn/server": "^11.0.0",
     "@stackframe/stack-emails": "workspace:*",
     "@stackframe/stack-shared": "workspace:*",
+    "@stripe/stripe-js": "^6.1.0",
     "@vercel/functions": "^1.4.2",
     "@vercel/otel": "^1.10.0",
     "bcrypt": "^5.1.1",

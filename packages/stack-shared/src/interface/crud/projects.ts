@@ -58,6 +58,12 @@ export const emailConfigSchema = yupObject({
 
 export const emailConfigWithoutPasswordSchema = emailConfigSchema.pick(['type', 'host', 'port', 'username', 'sender_name', 'sender_email']);
 
+export const stripeConfigSchema = yupObject({
+  stripe_secret_key: schemaFields.stripeSecretKeySchema.defined(),
+  stripe_publishable_key: schemaFields.stripePublishableKeySchema.defined(),
+  stripe_webhook_secret: schemaFields.stripeWebhookSecretSchema.optional(),
+});
+
 const domainSchema = yupObject({
   domain: schemaFields.urlSchema.defined()
     .matches(/^https?:\/\//, 'URL must start with http:// or https://')
@@ -86,12 +92,17 @@ export const projectsCrudAdminReadSchema = yupObject({
     enabled_oauth_providers: yupArray(enabledOAuthProviderSchema.defined()).defined().meta({ openapiField: { hidden: true } }),
     domains: yupArray(domainSchema.defined()).defined(),
     email_config: emailConfigSchema.defined(),
+    stripe_config: stripeConfigSchema.optional(),
     create_team_on_sign_up: schemaFields.projectCreateTeamOnSignUpSchema.defined(),
     team_creator_default_permissions: yupArray(teamPermissionSchema.defined()).defined(),
     team_member_default_permissions: yupArray(teamPermissionSchema.defined()).defined(),
     oauth_account_merge_strategy: schemaFields.oauthAccountMergeStrategySchema.defined(),
   }).defined(),
 }).defined();
+
+export const stripeClientConfigSchema = yupObject({
+  stripe_publishable_key: schemaFields.stripePublishableKeySchema.defined(),
+});
 
 export const projectsCrudClientReadSchema = yupObject({
   id: schemaFields.projectIdSchema.defined(),
@@ -104,6 +115,7 @@ export const projectsCrudClientReadSchema = yupObject({
     client_team_creation_enabled: schemaFields.projectClientTeamCreationEnabledSchema.defined(),
     client_user_deletion_enabled: schemaFields.projectClientUserDeletionEnabledSchema.defined(),
     enabled_oauth_providers: yupArray(enabledOAuthProviderSchema.defined()).defined().meta({ openapiField: { hidden: true } }),
+    stripe_config: stripeClientConfigSchema.optional(),
   }).defined(),
 }).defined();
 
@@ -121,6 +133,7 @@ export const projectsCrudAdminUpdateSchema = yupObject({
     client_user_deletion_enabled: schemaFields.projectClientUserDeletionEnabledSchema.optional(),
     allow_localhost: schemaFields.projectAllowLocalhostSchema.optional(),
     email_config: emailConfigSchema.optional().default(undefined),
+    stripe_config: stripeConfigSchema.optional().default(undefined),
     domains: yupArray(domainSchema.defined()).optional().default(undefined),
     oauth_providers: yupArray(oauthProviderSchema.defined()).optional().default(undefined),
     create_team_on_sign_up: schemaFields.projectCreateTeamOnSignUpSchema.optional(),

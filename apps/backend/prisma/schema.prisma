@@ -54,6 +54,7 @@ model ProjectConfig {
   authMethodConfigs                  AuthMethodConfig[]
   connectedAccountConfigs            ConnectedAccountConfig[]
   oauthAccountMergeStrategy          OAuthAccountMergeStrategy @default(LINK_METHOD)
+  StripeConfig                       StripeConfig?
 }
 
 enum OAuthAccountMergeStrategy {
@@ -977,4 +978,16 @@ model CliAuthAttempt {
   updatedAt DateTime @updatedAt
 
   @@id([tenancyId, id])
+}
+
+model StripeConfig {
+  id              String        @id @default(uuid()) @db.Uuid
+  projectConfigId String        @unique @db.Uuid
+  projectConfig   ProjectConfig @relation(fields: [projectConfigId], references: [id], onDelete: Cascade)
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  stripeSecretKey      String
+  stripePublishableKey String
+  stripeWebhookSecret  String?
 }

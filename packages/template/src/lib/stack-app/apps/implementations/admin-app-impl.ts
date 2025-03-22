@@ -126,6 +126,11 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
           senderName: data.config.email_config.sender_name ?? throwErr("Email sender name is missing"),
           senderEmail: data.config.email_config.sender_email ?? throwErr("Email sender email is missing"),
         },
+        stripeConfig: data.config.stripe_config ? {
+          stripeSecretKey: data.config.stripe_config.stripe_secret_key,
+          stripePublishableKey: data.config.stripe_config.stripe_publishable_key,
+          stripeWebhookSecret: data.config.stripe_config.stripe_webhook_secret,
+        } : undefined,
         domains: data.config.domains.map((d) => ({
           domain: d.domain,
           handlerPath: d.handler_path,

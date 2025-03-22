@@ -46,7 +46,7 @@ function CreateDialog(props: {
       .matches(/^[a-z0-9_:]+$/, 'Only lowercase letters, numbers, ":" and "_" are allowed')
       .label("ID"),
     description: yup.string().label("Description"),
-    containedPermissionIds: yup.array().of(yup.string().defined()).defined().default([]).meta({
+    containedPermissionIds: yup.array().of(yup.string().defined()).defined().default([]).label("Contained Permissions").meta({
       stackFormFieldRender: (props) => (
         <PermissionListField {...props} permissions={permissions} type="new" />
       ),

@@ -52,6 +52,7 @@ export const fullProjectInclude = {
         }
       },
       domains: true,
+      StripeConfig: true,
     },
   },
   _count: {
@@ -68,6 +69,9 @@ export type ProjectDB = Prisma.ProjectGetPayload<{ include: typeof fullProjectIn
     >)[],
     emailServiceConfig: Prisma.EmailServiceConfigGetPayload<
       typeof fullProjectInclude.config.include.emailServiceConfig
+    > | null,
+    StripeConfig: Prisma.StripeConfigGetPayload<
+      typeof fullProjectInclude.config.include.StripeConfig
     > | null,
     domains: Prisma.ProjectDomainGetPayload<
       typeof fullProjectInclude.config.include.domains
@@ -163,6 +167,11 @@ export function projectPrismaToCrud(
           throw new StackAssertionError(`Exactly one of the email service configs should be set on project '${prisma.id}'`, { prisma });
         }
       })(),
+      stripe_config: prisma.config.StripeConfig ? {
+        stripe_secret_key: prisma.config.StripeConfig.stripeSecretKey,
+        stripe_publishable_key: prisma.config.StripeConfig.stripePublishableKey,
+        stripe_webhook_secret: prisma.config.StripeConfig.stripeWebhookSecret ?? undefined,
+      } : undefined,
       team_creator_default_permissions: prisma.config.permissions.filter(perm => perm.isDefaultTeamCreatorPermission)
         .map(teamPermissionDefinitionJsonFromDbType)
         .concat(prisma.config.teamCreateDefaultSystemPermissions.map(db => teamPermissionDefinitionJsonFromTeamSystemDbType(db, prisma.config)))
@@ -347,6 +356,14 @@ export function getProjectQuery(projectId: string): RawQuery<ProjectsCrud["Admin
                       ), '{}')
                       FROM "ProjectDomain"
                       WHERE "ProjectDomain"."projectConfigId" = "ProjectConfig"."id"
+                    ),
+                    'StripeConfig', (
+                      SELECT (
+                        to_jsonb("StripeConfig") ||
+                        jsonb_build_object()
+                      )
+                      FROM "StripeConfig"
+                      WHERE "StripeConfig"."projectConfigId" = "ProjectConfig"."id"
                     )
                   )
                 )
@@ -453,6 +470,11 @@ export function getProjectQuery(projectId: string): RawQuery<ProjectsCrud["Admin
               throw new StackAssertionError(`Exactly one of the email service configs should be set on project ${row.id}`, { row });
             }
           })(),
+          stripe_config: row.ProjectConfig.StripeConfig ? {
+            stripe_secret_key: row.ProjectConfig.StripeConfig.stripeSecretKey,
+            stripe_publishable_key: row.ProjectConfig.StripeConfig.stripePublishableKey,
+            stripe_webhook_secret: row.ProjectConfig.StripeConfig.stripeWebhookSecret ?? undefined,
+          } : undefined,
           team_creator_default_permissions: teamPermissions
             .filter(perm => perm.__is_default_team_creator_permission)
             .map(perm => ({ id: perm.id })),
@@ -559,6 +581,13 @@ export async function createProject(ownerIds: string[], data: InternalProjectsCr
                 },
               },
             },
+            StripeConfig: data.config?.stripe_config ? {
+              create: {
+                stripeSecretKey: data.config.stripe_config.stripe_secret_key,
+                stripePublishableKey: data.config.stripe_config.stripe_publishable_key,
+                stripeWebhookSecret: data.config.stripe_config.stripe_webhook_secret,
+              }
+            } : undefined,
           },
         }
       },
