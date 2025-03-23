@@ -2,8 +2,12 @@ import useResizeObserver from '@react-hook/resize-observer';
 import { useUser } from '@stackframe/stack';
 import { getFlagEmoji } from '@stackframe/stack-shared/dist/utils/unicode';
 import { Typography } from '@stackframe/stack-ui';
+import dynamic from 'next/dynamic';
 import { RefObject, use, useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
-import Globe, { GlobeMethods } from 'react-globe.gl';
+import { GlobeMethods } from 'react-globe.gl';
+
+// https://github.com/vasturiano/react-globe.gl/issues/1#issuecomment-554459831
+const Globe = dynamic(import('react-globe.gl'), { ssr: false });
 const countriesPromise = import('./country-data.geo.json');
 
 function useSize(target: RefObject<HTMLDivElement | null>) {
