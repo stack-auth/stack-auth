@@ -1,0 +1,28 @@
+version: '3'
+services:
+  app:
+    build:
+      context: ..
+      dockerfile: .devcontainer/Dockerfile
+    volumes:
+      - ..:/workspaces/stack-auth:cached
+    command: sleep infinity
+    network_mode: service:db
+    depends_on:
+      - db
+
+  db:
+    build:
+      context: ../docker/postgres-with-extensions
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: PASSWORD-PLACEHOLDER--uqfEC1hmmv
+      POSTGRES_DB: stackframe
+      POSTGRES_DELAY_MS: 0
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    cap_add:
+      - NET_ADMIN
+
+volumes:
+  postgres-data:
