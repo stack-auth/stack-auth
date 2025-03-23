@@ -59,6 +59,7 @@ export function getUrls(partial: Partial<HandlerUrls>): HandlerUrls {
     accountSettings: `${handler}/account-settings`,
     error: `${handler}/error`,
     teamInvitation: `${handler}/team-invitation`,
+    mfa: `${handler}/mfa`,
     ...filterUndefined(partial),
   };
 }
