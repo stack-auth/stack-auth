@@ -1,5 +1,5 @@
 module.exports = {
-  extends: ["../../eslint-configs/defaults.js", "../../eslint-configs/next.js"],
+  extends: ["../../configs/eslint/defaults.js", "../../configs/eslint/next.js"],
   ignorePatterns: ["/*", "!/src"],
   rules: {
     "@typescript-eslint/no-misused-promises": [0],
