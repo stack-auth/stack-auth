@@ -5,10 +5,11 @@ import { runAsynchronously } from "@stackframe/stack-shared/dist/utils/promises"
 import { useEffect, useRef, useState } from "react";
 import { useStackApp } from "..";
 import { StyledLink } from "../components/link";
-import { MessageCard } from "../components/message-cards/message-card";
 import { useTranslation } from "../lib/translations";
+import { Spinner, Typography, cn } from "@stackframe/stack-ui";
+import { MaybeFullPage } from "../components/elements/maybe-full-page";
 
-export function OAuthCallback(props: { fullPage?: boolean }) {
+export function OAuthCallback({ fullPage }: { fullPage?: boolean }) {
   const { t } = useTranslation();
   const app = useStackApp();
   const called = useRef(false);
@@ -21,7 +22,7 @@ export function OAuthCallback(props: { fullPage?: boolean }) {
     let hasRedirected = false;
     try {
       hasRedirected = await app.callOAuthCallback();
-    } catch (e: any) {
+    } catch (e) {
       captureError("<OAuthCallback />", e);
       setError(e);
     }
@@ -34,12 +35,28 @@ export function OAuthCallback(props: { fullPage?: boolean }) {
     setTimeout(() => setShowRedirectLink(true), 3000);
   }, []);
 
-  return <MessageCard title='Redirecting...' fullPage={props.fullPage}>
-    {showRedirectLink ? <p>{t('If you are not redirected automatically, ')}<StyledLink href={app.urls.home}>{t("click here")}</StyledLink></p> : null}
-    {error ? <div>
-      <p>{t("Something went wrong while processing the OAuth callback:")}</p>
-      <pre>{JSON.stringify(error, null, 2)}</pre>
-      <p>{t("This is most likely an error in Stack. Please report it.")}</p>
-    </div> : null}
-  </MessageCard>;
+  return (
+    <MaybeFullPage
+      fullPage={fullPage ?? false}
+      containerClassName="flex items-center justify-center"
+    >
+      <div
+        className={cn(
+          "text-center justify-center items-center stack-scope flex flex-col gap-4 max-w-[380px]",
+          fullPage ? "p-4" : "p-0"
+        )}
+      >
+        <div className="flex flex-col justify-center items-center gap-4">
+          <Spinner />
+          <Typography type='h3'>{t("Redirecting")}</Typography>
+        </div>
+        {showRedirectLink ? <p>{t('If you are not redirected automatically, ')}<StyledLink className="whitespace-nowrap" href={app.urls.home}>{t("click here")}</StyledLink></p> : null}
+        {error ? <div>
+          <p>{t("Something went wrong while processing the OAuth callback:")}</p>
+          <pre>{JSON.stringify(error, null, 2)}</pre>
+          <p>{t("This is most likely an error in Stack. Please report it.")}</p>
+        </div> : null}
+      </div>
+    </MaybeFullPage>
+  );
 }
