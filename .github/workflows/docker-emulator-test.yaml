@@ -20,7 +20,6 @@ jobs:
       - name: Install Docker Compose
         run: |
           sudo apt-get update
-          # Use docker-compose instead of docker-compose-plugin which is not available
           sudo apt-get install -y docker-compose
           docker-compose version
 

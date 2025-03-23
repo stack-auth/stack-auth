@@ -14,5 +14,5 @@ docker run --env-file docker/server/.env.example -p 8101:8101 -p 8102:8102 -t se
 
 Build & run
 ```bash
-docker-compose -f docker/emulator/docker.compose.yaml up
+docker-compose -f docker/emulator/docker.compose.yaml up --build
 ```
