@@ -2,12 +2,12 @@
 
 import { captureError } from "@stackframe/stack-shared/dist/utils/errors";
 import { runAsynchronously } from "@stackframe/stack-shared/dist/utils/promises";
+import { Spinner, cn } from "@stackframe/stack-ui";
 import { useEffect, useRef, useState } from "react";
 import { useStackApp } from "..";
+import { MaybeFullPage } from "../components/elements/maybe-full-page";
 import { StyledLink } from "../components/link";
 import { useTranslation } from "../lib/translations";
-import { Spinner, Typography, cn } from "@stackframe/stack-ui";
-import { MaybeFullPage } from "../components/elements/maybe-full-page";
 
 export function OAuthCallback({ fullPage }: { fullPage?: boolean }) {
   const { t } = useTranslation();
@@ -47,8 +47,7 @@ export function OAuthCallback({ fullPage }: { fullPage?: boolean }) {
         )}
       >
         <div className="flex flex-col justify-center items-center gap-4">
-          <Spinner />
-          <Typography type='h3'>{t("Redirecting")}</Typography>
+          <Spinner size={20} />
         </div>
         {showRedirectLink ? <p>{t('If you are not redirected automatically, ')}<StyledLink className="whitespace-nowrap" href={app.urls.home}>{t("click here")}</StyledLink></p> : null}
         {error ? <div>
