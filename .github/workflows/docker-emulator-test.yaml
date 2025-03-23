@@ -16,12 +16,18 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
-
-      - name: Start emulator with docker-compose
+      
+      - name: Install Docker Compose
         run: |
-          docker-compose -f docker/emulator/docker.compose.yaml up -d
+          sudo apt-get update
+          sudo apt-get install -y docker-compose-plugin
+          docker compose version
+
+      - name: Start emulator with docker compose
+        run: |
+          docker compose -f docker/emulator/docker.compose.yaml up -d
           sleep 30
-          docker-compose -f docker/emulator/docker.compose.yaml logs
+          docker compose -f docker/emulator/docker.compose.yaml logs
 
       - name: Check emulator health
         run: |
