@@ -17,17 +17,20 @@ jobs:
     steps:
       - uses: actions/checkout@v3
       
-      - name: Install Docker Compose
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y docker-compose-plugin
-          docker compose version
-
       - name: Start emulator with docker compose
-        run: |
-          docker compose -f docker/emulator/docker.compose.yaml up -d
-          sleep 30
-          docker compose -f docker/emulator/docker.compose.yaml logs
+        uses: hoverkraft-tech/compose-action@v0.0.0
+        with:
+          compose-file: docker/emulator/docker.compose.yaml
+          up-flags: "-d"
+      
+      - name: Wait for emulator to start
+        run: sleep 30
+      
+      - name: Check emulator logs
+        uses: hoverkraft-tech/compose-action@v0.0.0
+        with:
+          compose-file: docker/emulator/docker.compose.yaml
+          compose-flags: "logs"
 
       - name: Check emulator health
         run: |
