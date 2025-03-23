@@ -16,7 +16,7 @@ services:
       context: ../docker/postgres-with-extensions
     environment:
       POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: PASSWORD-PLACEHOLDER--uqfEC1hmmv
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
       POSTGRES_DB: stackframe
       POSTGRES_DELAY_MS: 0
     volumes:
