@@ -25,7 +25,7 @@ it("lists all the user permissions", async ({ expect }) => {
   `);
 });
 
-it("creates, updates, and delete a new user permission", async ({ expect }) => {
+it("creates, updates, and deletes a new user permission", async ({ expect }) => {
   backendContext.set({ projectKeys: InternalProjectKeys });
   const { adminAccessToken } = await Project.createAndGetAdminToken();
 
