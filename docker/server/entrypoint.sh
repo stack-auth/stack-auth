@@ -2,10 +2,14 @@
 
 set -e
 
+# ============= FORWARD MOCK OAUTH SERVER =============
+
 # Start socat to forward port 32202 for mock-oauth-server if enabled
 if [ "$STACK_FORWARD_MOCK_OAUTH_SERVER" = "true" ]; then
   socat TCP-LISTEN:32202,fork,reuseaddr TCP:host.docker.internal:32202 &
 fi
+
+# ============= ENV VARS =============
 
 export STACK_SEED_INTERNAL_PROJECT_PUBLISHABLE_CLIENT_KEY=$(openssl rand -base64 32)
 export STACK_SEED_INTERNAL_PROJECT_SECRET_SERVER_KEY=$(openssl rand -base64 32)
@@ -27,6 +31,8 @@ if [ -z "${NEXT_PUBLIC_STACK_SVIX_SERVER_URL}" ]; then
   export NEXT_PUBLIC_STACK_SVIX_SERVER_URL=${STACK_SVIX_SERVER_URL}
 fi
 
+# ============= MIGRATIONS =============
+
 if [ "$STACK_SKIP_MIGRATIONS" = "true" ]; then
   echo "Skipping migrations."
 else
@@ -42,6 +48,8 @@ else
   node seed.js
   cd ../..
 fi
+
+# ============= ENV VARS =============
 
 # Find all files in /app/apps that contain a STACK_ENV_VAR_SENTINEL and extract the unique sentinel strings.
 unhandled_sentinels=$(find /app/apps -type f -exec grep -l "STACK_ENV_VAR_SENTINEL" {} + | \
@@ -75,8 +83,8 @@ for sentinel in $unhandled_sentinels; do
   find /app/apps -type f -exec sed -i "s${delimiter}${escaped_sentinel}${delimiter}${escaped_value}${delimiter}g" {} +
 done
 
+# ============= START BACKEND AND DASHBOARD =============
 
-# Start backend and dashboard in parallel
 echo "Starting backend on port $BACKEND_PORT..."
 PORT=$BACKEND_PORT HOSTNAME=0.0.0.0 node apps/backend/server.js &
 

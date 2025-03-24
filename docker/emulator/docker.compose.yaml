@@ -17,42 +17,45 @@ services:
       - 32101:8101
       - 32102:8102
     environment:
-      NEXT_PUBLIC_STACK_API_URL: http://localhost:32102
-      NEXT_PUBLIC_STACK_DASHBOARD_URL: http://localhost:32101
-      STACK_DATABASE_CONNECTION_STRING: postgres://postgres:PASSWORD-PLACEHOLDER--uqfEC1hmmv@db:5432/stackframe
-      STACK_DIRECT_DATABASE_CONNECTION_STRING: postgres://postgres:PASSWORD-PLACEHOLDER--uqfEC1hmmv@db:5432/stackframe
-      STACK_SERVER_SECRET: 23-wuNpik0gIW4mruTz25rbIvhuuvZFrLOLtL7J4tyo
-      STACK_SEED_INTERNAL_PROJECT_ALLOW_LOCALHOST: true
-      STACK_RUN_MIGRATIONS: true
-      STACK_RUN_SEED_SCRIPT: true
-      STACK_EMULATOR_ENABLED: true
-      NEXT_PUBLIC_STACK_EMULATOR_ENABLED: true
-      STACK_EMULATOR_PROJECT_ID: dff88d17-6d39-4b08-b4e2-c87c81f7218a
-      NEXT_PUBLIC_STACK_EMULATOR_PROJECT_ID: dff88d17-6d39-4b08-b4e2-c87c81f7218a
-      NEXT_PUBLIC_STACK_SVIX_SERVER_URL: http://localhost:32201
-      STACK_SVIX_SERVER_URL: http://svix-server:8071
-      STACK_SVIX_API_KEY: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpYXQiOjE2NTUxNDA2MzksImV4cCI6MTk3MDUwMDYzOSwibmJmIjoxNjU1MTQwNjM5LCJpc3MiOiJzdml4LXNlcnZlciIsInN1YiI6Im9yZ18yM3JiOFlkR3FNVDBxSXpwZ0d3ZFhmSGlyTXUifQ.En8w77ZJWbd0qrMlHHupHUB-4cx17RfzFykseg95SUk
-      NEXT_PUBLIC_STACK_INBUCKET_WEB_URL: http://localhost:32203
-      STACK_EMAIL_HOST: inbucket
+      NEXT_PUBLIC_STACK_API_URL: "http://localhost:32102"
+      NEXT_PUBLIC_STACK_DASHBOARD_URL: "http://localhost:32101"
+      STACK_DATABASE_CONNECTION_STRING: "postgres://postgres:PASSWORD-PLACEHOLDER--uqfEC1hmmv@db:5432/stackframe"
+      STACK_DIRECT_DATABASE_CONNECTION_STRING: "postgres://postgres:PASSWORD-PLACEHOLDER--uqfEC1hmmv@db:5432/stackframe"
+      STACK_SERVER_SECRET: "23-wuNpik0gIW4mruTz25rbIvhuuvZFrLOLtL7J4tyo"
+      STACK_SEED_INTERNAL_PROJECT_ALLOW_LOCALHOST: "true"
+      STACK_RUN_MIGRATIONS: "true"
+      STACK_RUN_SEED_SCRIPT: "true"
+      STACK_EMULATOR_ENABLED: "true"
+      NEXT_PUBLIC_STACK_EMULATOR_ENABLED: "true"
+      STACK_EMULATOR_PROJECT_ID: "dff88d17-6d39-4b08-b4e2-c87c81f7218a"
+      NEXT_PUBLIC_STACK_EMULATOR_PROJECT_ID: "dff88d17-6d39-4b08-b4e2-c87c81f7218a"
+      NEXT_PUBLIC_STACK_SVIX_SERVER_URL: "http://localhost:32201"
+      STACK_SVIX_SERVER_URL: "http://svix-server:8071"
+      STACK_SVIX_API_KEY: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpYXQiOjE2NTUxNDA2MzksImV4cCI6MTk3MDUwMDYzOSwibmJmIjoxNjU1MTQwNjM5LCJpc3MiOiJzdml4LXNlcnZlciIsInN1YiI6Im9yZ18yM3JiOFlkR3FNVDBxSXpwZ0d3ZFhmSGlyTXUifQ.En8w77ZJWbd0qrMlHHupHUB-4cx17RfzFykseg95SUk"
+      NEXT_PUBLIC_STACK_INBUCKET_WEB_URL: "http://localhost:32203"
+      STACK_EMAIL_HOST: "inbucket"
       STACK_EMAIL_PORT: 2500
-      STACK_EMAIL_SECURE: false
-      STACK_EMAIL_USERNAME: none
-      STACK_EMAIL_PASSWORD: none
-      STACK_EMAIL_SENDER: noreply@example.com
-      STACK_FORWARD_MOCK_OAUTH_SERVER: true
-      STACK_OAUTH_MOCK_URL: http://localhost:32202
-      STACK_GITHUB_CLIENT_ID: MOCK
-      STACK_GITHUB_CLIENT_SECRET: MOCK
-      STACK_GOOGLE_CLIENT_ID: MOCK
-      STACK_GOOGLE_CLIENT_SECRET: MOCK
-      STACK_MICROSOFT_CLIENT_ID: MOCK
-      STACK_MICROSOFT_CLIENT_SECRET: MOCK
-      STACK_SPOTIFY_CLIENT_ID: MOCK
-      STACK_SPOTIFY_CLIENT_SECRET: MOCK
+      STACK_EMAIL_SECURE: "false"
+      STACK_EMAIL_USERNAME: "none"
+      STACK_EMAIL_PASSWORD: "none"
+      STACK_EMAIL_SENDER: "noreply@example.com"
+      STACK_FORWARD_MOCK_OAUTH_SERVER: "true"
+      STACK_OAUTH_MOCK_URL: "http://localhost:32202"
+      STACK_GITHUB_CLIENT_ID: "MOCK"
+      STACK_GITHUB_CLIENT_SECRET: "MOCK"
+      STACK_GOOGLE_CLIENT_ID: "MOCK"
+      STACK_GOOGLE_CLIENT_SECRET: "MOCK"
+      STACK_MICROSOFT_CLIENT_ID: "MOCK"
+      STACK_MICROSOFT_CLIENT_SECRET: "MOCK"
+      STACK_SPOTIFY_CLIENT_ID: "MOCK"
+      STACK_SPOTIFY_CLIENT_SECRET: "MOCK"
     depends_on:
-      - db
-      - inbucket
-      - svix-server
+      db:
+        condition: service_healthy
+      inbucket:
+        condition: service_started
+      svix-server:
+        condition: service_started
 
   # ================= Mock OAuth Server =================
 
@@ -73,6 +76,12 @@ services:
       POSTGRES_DB: stackframe
     volumes:
       - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready", "-d", "stackframe"]
+      interval: 5s
+      timeout: 10s
+      retries: 5
+      start_period: 10s
 
   # ================= Inbucket =================
   inbucket:
