@@ -42,6 +42,7 @@ type ExtendedTeamPermissionDefinition = TeamPermissionDefinitionsCrud["Admin"]["
   __database_id: string,
   __is_default_team_member_permission?: boolean,
   __is_default_team_creator_permission?: boolean,
+  __is_default_user_permission?: boolean,
 };
 
 export function teamPermissionDefinitionJsonFromDbType(db: Prisma.PermissionGetPayload<{ include: typeof fullPermissionInclude }>): ExtendedTeamPermissionDefinition {
@@ -59,6 +60,7 @@ export function teamPermissionDefinitionJsonFromRawDbType(db: any | Prisma.Permi
     __database_id: db.dbId,
     __is_default_team_member_permission: db.isDefaultTeamMemberPermission,
     __is_default_team_creator_permission: db.isDefaultTeamCreatorPermission,
+    __is_default_user_permission: db.isDefaultUserPermission,
     id: db.queryableId,
     description: db.description || undefined,
     contained_permission_ids: db.parentEdges?.map((edge: any) => {
@@ -73,7 +75,11 @@ export function teamPermissionDefinitionJsonFromRawDbType(db: any | Prisma.Permi
   } as const;
 }
 
-export function teamPermissionDefinitionJsonFromTeamSystemDbType(db: DBTeamSystemPermission, projectConfig: { teamCreateDefaultSystemPermissions: string[] | null, teamMemberDefaultSystemPermissions: string[] | null }): ExtendedTeamPermissionDefinition {
+export function teamPermissionDefinitionJsonFromTeamSystemDbType(db: DBTeamSystemPermission, projectConfig: { 
+  teamCreateDefaultSystemPermissions: string[] | null, 
+  teamMemberDefaultSystemPermissions: string[] | null,
+  userDefaultPermissions?: string[] | null 
+}): ExtendedTeamPermissionDefinition {
   if ((["teamMemberDefaultSystemPermissions", "teamCreateDefaultSystemPermissions"] as const).some(key => projectConfig[key] !== null && !Array.isArray(projectConfig[key]))) {
     throw new StackAssertionError(`Project config should have (nullable) array values for teamMemberDefaultSystemPermissions and teamCreateDefaultSystemPermissions`, { projectConfig });
   }
@@ -82,6 +88,7 @@ export function teamPermissionDefinitionJsonFromTeamSystemDbType(db: DBTeamSyste
     __database_id: '$' + typedToLowercase(db),
     __is_default_team_member_permission: projectConfig.teamMemberDefaultSystemPermissions?.includes(db) ?? false,
     __is_default_team_creator_permission: projectConfig.teamCreateDefaultSystemPermissions?.includes(db) ?? false,
+    __is_default_user_permission: projectConfig.userDefaultPermissions?.includes(db) ?? false,
     id: '$' + typedToLowercase(db),
     description: descriptionMap[db],
     contained_permission_ids: [] as string[],
@@ -344,6 +351,7 @@ export async function createTeamPermissionDefinition(
       id: string,
       description?: string,
       contained_permission_ids?: string[],
+      is_default_user_permission?: boolean,
     },
   }
 ) {
@@ -357,6 +365,7 @@ export async function createTeamPermissionDefinition(
       queryableId: options.data.id,
       description: options.data.description,
       projectConfigId: options.tenancy.config.id,
+      isDefaultUserPermission: options.data.is_default_user_permission ?? false,
       parentEdges: {
         create: parentDbIds.map(parentDbId => {
           if (isTeamSystemPermission(parentDbId)) {
@@ -389,6 +398,7 @@ export async function updateTeamPermissionDefinitions(
       id?: string,
       description?: string,
       contained_permission_ids?: string[],
+      is_default_user_permission?: boolean,
     },
   }
 ) {
@@ -432,6 +442,7 @@ export async function updateTeamPermissionDefinitions(
     data: {
       queryableId: options.data.id,
       description: options.data.description,
+      isDefaultUserPermission: options.data.is_default_user_permission,
       ...edgeUpdateData,
     },
     include: fullPermissionInclude,
