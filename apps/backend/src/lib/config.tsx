@@ -3,11 +3,14 @@ import { NormalizationError, getInvalidConfigReason, normalize, override } from 
 import { BranchConfigOverride, BranchIncompleteConfig, BranchRenderedConfig, EnvironmentConfigOverride, EnvironmentIncompleteConfig, EnvironmentRenderedConfig, OrganizationConfigOverride, OrganizationIncompleteConfig, OrganizationRenderedConfig, ProjectConfigOverride, ProjectIncompleteConfig, ProjectRenderedConfig, baseConfig, branchConfigSchema, environmentConfigSchema, organizationConfigSchema, projectConfigSchema } from "@stackframe/stack-shared/dist/config/schema";
 import { ProjectsCrud } from "@stackframe/stack-shared/dist/interface/crud/projects";
 import { yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
-import { throwErr } from "@stackframe/stack-shared/dist/utils/errors";
+import { StackAssertionError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
 import { pick } from "@stackframe/stack-shared/dist/utils/objects";
 import { Result } from "@stackframe/stack-shared/dist/utils/results";
+import { typedToLowercase } from "@stackframe/stack-shared/dist/utils/strings";
 import { expect } from "vitest";
 import * as yup from "yup";
+import { teamPermissionDefinitionJsonFromDbType, teamPermissionDefinitionJsonFromTeamSystemDbType } from "./permissions";
+import { DBProject } from "./projects";
 
 type Project = ProjectsCrud["Admin"]["Read"];
 
@@ -254,3 +257,133 @@ import.meta.vitest?.describe('validateAndReturn(...)', async () => {
 
   expect(await validateAndReturn(yupObject({}), { a: 'b' }, { "a.b": "c" })).toEqual(Result.error(`Tried to use dot notation to access "a.b", but "a" doesn't exist on the object (or is null). Maybe this config is not normalizable?`));
 });
+
+// ---------------------------------------------------------------------------------------------------------------------
+// Conversions
+// ---------------------------------------------------------------------------------------------------------------------
+export const dbProjectToRenderedConfigOverride = (dbProject: DBProject): EnvironmentConfigOverride => {
+  const config = dbProject.config;
+
+  return {
+    allowLocalhost: config.allowLocalhost,
+    clientTeamCreationEnabled: config.clientTeamCreationEnabled,
+    clientUserDeletionEnabled: config.clientUserDeletionEnabled,
+    signUpEnabled: config.signUpEnabled,
+    oauthAccountMergeStrategy: typedToLowercase(config.oauthAccountMergeStrategy),
+    createTeamOnSignUp: config.createTeamOnSignUp,
+    isProductionMode: dbProject.isProductionMode,
+
+    authMethods: config.authMethodConfigs.map((authMethod): NonNullable<EnvironmentRenderedConfig['authMethods']>[string] => {
+      const baseAuthMethod = {
+        id: authMethod.id,
+        enabled: authMethod.enabled,
+      };
+
+      if (authMethod.oauthProviderConfig) {
+        const oauthConfig = authMethod.oauthProviderConfig.proxiedOAuthConfig || authMethod.oauthProviderConfig.standardOAuthConfig;
+        if (!oauthConfig) {
+          throw new StackAssertionError('Either ProxiedOAuthConfig or StandardOAuthConfig must be set on authMethodConfigs.oauthProviderConfig', { authMethod });
+        }
+        return {
+          ...baseAuthMethod,
+          type: 'oauth',
+          oauthProviderId: oauthConfig.id,
+        } as const;
+      } else if (authMethod.passwordConfig) {
+        return {
+          ...baseAuthMethod,
+          type: 'password',
+        } as const;
+      } else if (authMethod.otpConfig) {
+        return {
+          ...baseAuthMethod,
+          type: 'otp',
+        } as const;
+      } else if (authMethod.passkeyConfig) {
+        return {
+          ...baseAuthMethod,
+          type: 'passkey',
+        } as const;
+      } else {
+        throw new StackAssertionError('Unknown auth method config', { authMethod });
+      }
+    }).reduce((acc, authMethod) => {
+      (acc as any)[authMethod.id] = authMethod;
+      return acc;
+    }, {}),
+
+    oauthProviders: config.oauthProviderConfigs.map(provider => {
+      if (provider.proxiedOAuthConfig) {
+        return {
+          id: provider.id,
+          type: provider.proxiedOAuthConfig.type,
+          isShared: true,
+        } as const;
+      } else if (provider.standardOAuthConfig) {
+        return {
+          id: provider.id,
+          type: provider.standardOAuthConfig.type,
+          isShared: false,
+        } as const;
+      } else {
+        throw new StackAssertionError('Unknown oauth provider config', { provider });
+      }
+    }).reduce((acc, provider) => {
+      (acc as any)[provider.id] = provider;
+      return acc;
+    }, {}),
+
+    connectedAccounts: config.connectedAccountConfigs.map(account => ({
+      id: account.id,
+      enabled: account.enabled,
+      oauthProviderId: account.oauthProviderConfig?.id || throwErr('oauthProviderConfig.id is required'),
+    })).reduce((acc, account) => {
+      (acc as any)[account.id] = account;
+      return acc;
+    }, {}),
+
+    domains: config.domains.map(domain => ({
+      domain: domain.domain,
+      handle: domain.handlerPath,
+    })).reduce((acc, domain) => {
+      (acc as any)[domain.domain] = domain;
+      return acc;
+    }, {}),
+
+    emailConfig: ((): EnvironmentRenderedConfig['emailConfig'] => {
+      if (config.emailServiceConfig?.standardEmailServiceConfig) {
+        return {
+          isShared: false,
+          host: config.emailServiceConfig.standardEmailServiceConfig.host,
+          port: config.emailServiceConfig.standardEmailServiceConfig.port,
+          username: config.emailServiceConfig.standardEmailServiceConfig.username,
+          password: config.emailServiceConfig.standardEmailServiceConfig.password,
+          senderName: config.emailServiceConfig.standardEmailServiceConfig.senderName,
+          senderEmail: config.emailServiceConfig.standardEmailServiceConfig.senderEmail,
+        } as const;
+      } else if (config.emailServiceConfig?.proxiedEmailServiceConfig) {
+        return {
+          isShared: true,
+        } as const;
+      } else {
+        throw new StackAssertionError('Unknown email service config', { config });
+      }
+    })(),
+
+    teamCreateDefaultSystemPermissions: config.permissions.filter(perm => perm.isDefaultTeamCreatorPermission)
+      .map(teamPermissionDefinitionJsonFromDbType)
+      .concat(config.teamCreateDefaultSystemPermissions.map(db => teamPermissionDefinitionJsonFromTeamSystemDbType(db, config)))
+      .reduce((acc, perm) => {
+        (acc as any)[perm.id] = { id: perm.id };
+        return acc;
+      }, {}),
+
+    teamMemberDefaultSystemPermissions: config.permissions.filter(perm => perm.isDefaultTeamMemberPermission)
+      .map(teamPermissionDefinitionJsonFromDbType)
+      .concat(config.teamMemberDefaultSystemPermissions.map(db => teamPermissionDefinitionJsonFromTeamSystemDbType(db, config)))
+      .reduce((acc, perm) => {
+        (acc as any)[perm.id] = { id: perm.id };
+        return acc;
+      }, {}),
+  };
+};

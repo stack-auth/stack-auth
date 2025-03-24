@@ -61,8 +61,10 @@ export const fullProjectInclude = {
   },
 } as const satisfies Prisma.ProjectInclude;
 
+export type DBProject = Prisma.ProjectGetPayload<{ include: typeof fullProjectInclude }>;
+
 export function projectPrismaToCrud(
-  prisma: Prisma.ProjectGetPayload<{ include: typeof fullProjectInclude }>
+  prisma: DBProject
 ): ProjectsCrud["Admin"]["Read"] {
   const oauthProviders = prisma.config.authMethodConfigs
     .map((config) => {
