@@ -4,7 +4,7 @@ import { BranchConfigOverride, BranchIncompleteConfig, BranchRenderedConfig, Env
 import { ProjectsCrud } from "@stackframe/stack-shared/dist/interface/crud/projects";
 import { yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
 import { StackAssertionError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
-import { pick } from "@stackframe/stack-shared/dist/utils/objects";
+import { pick, typedEntries } from "@stackframe/stack-shared/dist/utils/objects";
 import { Result } from "@stackframe/stack-shared/dist/utils/results";
 import { typedToLowercase } from "@stackframe/stack-shared/dist/utils/strings";
 import { expect } from "vitest";
@@ -261,7 +261,7 @@ import.meta.vitest?.describe('validateAndReturn(...)', async () => {
 // ---------------------------------------------------------------------------------------------------------------------
 // Conversions
 // ---------------------------------------------------------------------------------------------------------------------
-export const dbProjectToRenderedConfigOverride = (dbProject: DBProject): EnvironmentConfigOverride => {
+export const dbProjectToRenderedEnvironmentConfigOverride = (dbProject: DBProject): EnvironmentConfigOverride => {
   const config = dbProject.config;
 
   return {
@@ -397,5 +397,40 @@ export const dbProjectToRenderedConfigOverride = (dbProject: DBProject): Environ
       } satisfies EnvironmentRenderedConfig['teamPermissionDefinitions'][string];
       return acc;
     }, {}),
+  };
+};
+
+export const renderedEnvironmentConfigToProjectCrud = (renderedConfig: EnvironmentRenderedConfig): ProjectsCrud["Admin"]["Read"]['config'] => {
+  return {
+    allow_localhost: renderedConfig.allowLocalhost,
+    client_team_creation_enabled: renderedConfig.clientTeamCreationEnabled,
+    client_user_deletion_enabled: renderedConfig.clientUserDeletionEnabled,
+    sign_up_enabled: renderedConfig.signUpEnabled,
+    oauth_account_merge_strategy: renderedConfig.oauthAccountMergeStrategy,
+    create_team_on_sign_up: renderedConfig.createTeamOnSignUp,
+    credential_enabled: typedEntries(renderedConfig.authMethods).filter(([_, authMethod]) => authMethod.enabled && authMethod.type === 'password').length > 0,
+    magic_link_enabled: typedEntries(renderedConfig.authMethods).filter(([_, authMethod]) => authMethod.enabled && authMethod.type === 'otp').length > 0,
+    passkey_enabled: typedEntries(renderedConfig.authMethods).filter(([_, authMethod]) => authMethod.enabled && authMethod.type === 'passkey').length > 0,
+
+    oauth_providers: typedEntries(renderedConfig.authMethods)
+      .filter(([_, authMethod]) => authMethod.type === 'oauth')
+      .map(([_, authMethod]) => {
+        if (authMethod.type !== 'oauth') {
+          throw new StackAssertionError('Expected oauth provider', { authMethod });
+        }
+        const oauthProvider = renderedConfig.oauthProviders[authMethod.oauthProviderId];
+        if (!oauthProvider) {
+          throw new StackAssertionError('OAuth provider not found', { authMethod });
+        }
+        return {
+          id: oauthProvider.type,
+          enabled: authMethod.enabled,
+          type: oauthProvider.isShared ? 'shared' : 'standard',
+          client_id: oauthProvider.clientId,
+          client_secret: oauthProvider.clientSecret,
+          facebook_config_id: oauthProvider.facebookConfigId,
+          microsoft_tenant_id: oauthProvider.microsoftTenantId,
+        } satisfies ProjectsCrud["Admin"]["Read"]['config']['oauth_providers'][number];
+      }),
   };
 };
