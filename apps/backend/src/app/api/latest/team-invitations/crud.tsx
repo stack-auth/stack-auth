@@ -20,6 +20,7 @@ export const teamInvitationsCrudHandlers = createLazyProxy(() => createCrudHandl
       if (auth.type === 'client') {
         // Client can only:
         // - list invitations in their own team if they have the $read_members AND $invite_members permissions
+        console.log("authUser", auth.user);
 
         const currentUserId = auth.user?.id ?? throwErr(new KnownErrors.CannotGetOwnUserWithoutUser());
 

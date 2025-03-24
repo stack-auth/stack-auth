@@ -375,15 +375,12 @@ it("allows team admins to revoke invitations", async ({ expect }) => {
   });
   expect(listInvitationsResponse).toMatchInlineSnapshot(`
     NiceResponse {
-      "status": 400,
+      "status": 200,
       "body": {
-        "code": "CANNOT_GET_OWN_USER_WITHOUT_USER",
-        "error": "You have specified 'me' as a userId, but did not provide authentication for a user.",
+        "is_paginated": false,
+        "items": [],
       },
-      "headers": Headers {
-        "x-stack-known-error": "CANNOT_GET_OWN_USER_WITHOUT_USER",
-        <some fields may have been hidden>,
-      },
+      "headers": Headers { <some fields may have been hidden> },
     }
   `);
 });

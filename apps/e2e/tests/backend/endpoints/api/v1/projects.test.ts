@@ -578,15 +578,43 @@ it("updates the project email configuration", async ({ expect }) => {
   });
   expect(response2p2).toMatchInlineSnapshot(`
     NiceResponse {
-      "status": 401,
+      "status": 200,
       "body": {
-        "code": "ADMIN_ACCESS_TOKEN_IS_NOT_ADMIN",
-        "error": "Admin access token does not have the required permissions to access this project.",
+        "config": {
+          "allow_localhost": true,
+          "client_team_creation_enabled": false,
+          "client_user_deletion_enabled": false,
+          "create_team_on_sign_up": false,
+          "credential_enabled": true,
+          "domains": [],
+          "email_config": {
+            "host": "smtp.control-group.com",
+            "password": "control group",
+            "port": 587,
+            "sender_email": "control-group@email.com",
+            "sender_name": "Control Group",
+            "type": "standard",
+            "username": "control group",
+          },
+          "enabled_oauth_providers": [],
+          "id": "<stripped UUID>",
+          "magic_link_enabled": false,
+          "oauth_account_merge_strategy": "link_method",
+          "oauth_providers": [],
+          "passkey_enabled": false,
+          "sign_up_enabled": true,
+          "team_creator_default_permissions": [{ "id": "admin" }],
+          "team_member_default_permissions": [{ "id": "member" }],
+          "user_default_permissions": [],
+        },
+        "created_at_millis": <stripped field 'created_at_millis'>,
+        "description": "",
+        "display_name": "New Project",
+        "id": "<stripped UUID>",
+        "is_production_mode": false,
+        "user_count": 0,
       },
-      "headers": Headers {
-        "x-stack-known-error": "ADMIN_ACCESS_TOKEN_IS_NOT_ADMIN",
-        <some fields may have been hidden>,
-      },
+      "headers": Headers { <some fields may have been hidden> },
     }
   `);
 });
