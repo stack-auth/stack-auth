@@ -1,10 +1,7 @@
-import { AdminAppProvider } from "../use-admin-app";
 import PageClient from "./page-client";
 
-export default function Page({ params }: { params: { projectId: string } }) {
+export default function Page() {
   return (
-    <AdminAppProvider projectId={params.projectId}>
-      <PageClient />
-    </AdminAppProvider>
+    <PageClient />
   );
 }
