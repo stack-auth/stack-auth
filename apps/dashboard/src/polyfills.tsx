@@ -28,7 +28,9 @@ export function ensurePolyfilled() {
       if (getNodeEnvironment() === "development") {
         console.error("Unhandled promise rejection. Some production environments will kill the server in this case, so the server will now exit. Please use the `ignoreUnhandledRejection` function to signal that you've handled the error.", reason);
       }
-      process.exit(1);
+      if ((globalThis.process as any).exit) {
+        globalThis.process.exit(1);
+      }
     });
   }
 }
