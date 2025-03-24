@@ -1,5 +1,6 @@
 'use client';
 import { useAdminApp } from "@/app/(main)/(protected)/projects/[projectId]/use-admin-app";
+import { runAsynchronously } from "@stackframe/stack-shared/dist/utils/promises";
 import { ActionCell, ActionDialog, BadgeCell, DataTable, DataTableColumnHeader, SearchToolbarItem, SimpleTooltip, TextCell } from "@stackframe/stack-ui";
 import { ColumnDef, Row, Table } from "@tanstack/react-table";
 import { useState } from "react";
@@ -23,7 +24,7 @@ function toolbarRender<TData>(table: Table<TData>) {
   );
 }
 
-function EditDialog<T extends AdminPermissionDefinition>(props: {
+function EditDialog(props: {
   open: boolean,
   onOpenChange: (open: boolean) => void,
   selectedPermissionId: string,
@@ -71,8 +72,10 @@ function EditDialog<T extends AdminPermissionDefinition>(props: {
     title="Edit Permission"
     formSchema={formSchema}
     okButton={{ label: "Save" }}
-    onSubmit={async (values) => {
-      await updatePermission(props.selectedPermissionId, values);
+    onSubmit={(values) => {
+      runAsynchronously(async () => {
+        await updatePermission(props.selectedPermissionId, values);
+      });
     }}
     cancelButton
   />;

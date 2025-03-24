@@ -40,7 +40,8 @@ export const projectsCrudHandlers = createLazyProxy(() => createCrudHandlers(pro
       const userDefaultPerms = data.config?.user_default_permissions?.map((p) => p.id);
       if (userDefaultPerms) {
         if (!userDefaultPerms.every((id) => globalPermissions.some((perm) => perm.id === id))) {
-          throw new StatusError(StatusError.BadRequest, "Invalid user default permission ids");
+          throw new StatusError(StatusError.BadRequest,
+            `Invalid user default permission ids: ${userDefaultPerms.filter(id => !globalPermissions.some(perm => perm.id === id)).join(', ')}`);
         }
 
         // Remove existing default user permissions
