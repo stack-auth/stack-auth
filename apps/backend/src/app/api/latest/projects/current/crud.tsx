@@ -1,4 +1,4 @@
-import { isTeamSystemPermission, listTeamPermissionDefinitions, teamSystemPermissionStringToDBType } from "@/lib/permissions";
+import { isTeamSystemPermission, listPermissionDefinitions, teamSystemPermissionStringToDBType } from "@/lib/permissions";
 import { fullProjectInclude, projectPrismaToCrud } from "@/lib/projects";
 import { ensureSharedProvider } from "@/lib/request-checks";
 import { retryTransaction } from "@/prisma-client";
@@ -33,7 +33,7 @@ export const projectsCrudHandlers = createLazyProxy(() => createCrudHandlers(pro
         },
       ] as const;
 
-      const permissions = await listTeamPermissionDefinitions(tx, auth.tenancy);
+      const permissions = await listPermissionDefinitions(tx, "TEAM", auth.tenancy);
 
 
       for (const param of dbParams) {

@@ -1,4 +1,4 @@
-import { createTeamPermissionDefinition, deleteTeamPermissionDefinition, listTeamPermissionDefinitions, updateTeamPermissionDefinitions } from "@/lib/permissions";
+import { createPermissionDefinition, deletePermissionDefinition, listPermissionDefinitions, updatePermissionDefinitions } from "@/lib/permissions";
 import { retryTransaction } from "@/prisma-client";
 import { createCrudHandlers } from "@/route-handlers/crud-handler";
 import { teamPermissionDefinitionsCrud } from '@stackframe/stack-shared/dist/interface/crud/team-permissions';
@@ -11,7 +11,8 @@ export const teamPermissionDefinitionsCrudHandlers = createLazyProxy(() => creat
   }),
   async onCreate({ auth, data }) {
     return await retryTransaction(async (tx) => {
-      return await createTeamPermissionDefinition(tx, {
+      return await createPermissionDefinition(tx, {
+        scope: "TEAM",
         tenancy: auth.tenancy,
         data,
       });
@@ -19,7 +20,7 @@ export const teamPermissionDefinitionsCrudHandlers = createLazyProxy(() => creat
   },
   async onUpdate({ auth, data, params }) {
     return await retryTransaction(async (tx) => {
-      return await updateTeamPermissionDefinitions(tx, {
+      return await updatePermissionDefinitions(tx, {
         tenancy: auth.tenancy,
         permissionId: params.permission_id,
         data,
@@ -28,7 +29,7 @@ export const teamPermissionDefinitionsCrudHandlers = createLazyProxy(() => creat
   },
   async onDelete({ auth, params }) {
     return await retryTransaction(async (tx) => {
-      await deleteTeamPermissionDefinition(tx, {
+      await deletePermissionDefinition(tx, {
         tenancy: auth.tenancy,
         permissionId: params.permission_id
       });
@@ -37,7 +38,7 @@ export const teamPermissionDefinitionsCrudHandlers = createLazyProxy(() => creat
   async onList({ auth }) {
     return await retryTransaction(async (tx) => {
       return {
-        items: await listTeamPermissionDefinitions(tx, auth.tenancy),
+        items: await listPermissionDefinitions(tx, "TEAM", auth.tenancy),
         is_paginated: false,
       };
     });

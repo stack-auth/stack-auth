@@ -2,11 +2,11 @@ import { TeamSystemPermission as DBTeamSystemPermission, Prisma } from "@prisma/
 import { KnownErrors } from "@stackframe/stack-shared";
 import { TeamPermissionDefinitionsCrud, TeamPermissionsCrud } from "@stackframe/stack-shared/dist/interface/crud/team-permissions";
 import { UserPermissionsCrud } from "@stackframe/stack-shared/dist/interface/crud/user-permissions";
+import { groupBy } from "@stackframe/stack-shared/dist/utils/arrays";
 import { StackAssertionError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
 import { stringCompare, typedToLowercase, typedToUppercase } from "@stackframe/stack-shared/dist/utils/strings";
 import { Tenancy } from "./tenancies";
 import { PrismaTransaction } from "./types";
-import { groupBy } from "@stackframe/stack-shared/dist/utils/arrays";
 
 export const fullPermissionInclude = {
   parentEdges: {
@@ -103,7 +103,7 @@ async function getParentDbIds(
   }
 ) {
   let parentDbIds = [];
-  const potentialParentPermissions = await listTeamPermissionDefinitions(tx, options.tenancy);
+  const potentialParentPermissions = await listPermissionDefinitions(tx, "ALL", options.tenancy);
   for (const parentPermissionId of options.containedPermissionIds || []) {
     const parentPermission = potentialParentPermissions.find(p => p.id === parentPermissionId);
     if (!parentPermission) {
@@ -126,7 +126,7 @@ export async function listUserTeamPermissions(
     recursive: boolean,
   }
 ): Promise<TeamPermissionsCrud["Admin"]["Read"][]> {
-  const permissionDefs = await listTeamPermissionDefinitions(tx, options.tenancy);
+  const permissionDefs = await listPermissionDefinitions(tx, "TEAM", options.tenancy);
   const permissionsMap = new Map(permissionDefs.map(p => [p.id, p]));
   const results = await tx.teamMemberDirectPermission.findMany({
     where: {
@@ -320,8 +320,9 @@ export async function revokeTeamPermission(
 }
 
 
-export async function listTeamPermissionDefinitions(
+export async function listPermissionDefinitions(
   tx: PrismaTransaction,
+  scope: "TEAM" | "GLOBAL" | "ALL",
   tenancy: Tenancy
 ): Promise<(TeamPermissionDefinitionsCrud["Admin"]["Read"] & { __database_id: string })[]> {
   const projectConfig = await tx.projectConfig.findUnique({
@@ -330,6 +331,9 @@ export async function listTeamPermissionDefinitions(
     },
     include: {
       permissions: {
+        where: {
+          scope: scope === "ALL" ? undefined : scope,
+        },
         include: fullPermissionInclude,
       },
     },
@@ -343,9 +347,10 @@ export async function listTeamPermissionDefinitions(
   return [...nonSystemPermissions, ...systemPermissions].sort((a, b) => stringCompare(a.id, b.id));
 }
 
-export async function createTeamPermissionDefinition(
+export async function createPermissionDefinition(
   tx: PrismaTransaction,
   options: {
+    scope: "TEAM" | "GLOBAL",
     tenancy: Tenancy,
     data: {
       id: string,
@@ -360,7 +365,7 @@ export async function createTeamPermissionDefinition(
   });
   const dbPermission = await tx.permission.create({
     data: {
-      scope: "TEAM",
+      scope: options.scope,
       queryableId: options.data.id,
       description: options.data.description,
       projectConfigId: options.tenancy.config.id,
@@ -387,7 +392,7 @@ export async function createTeamPermissionDefinition(
   return teamPermissionDefinitionJsonFromDbType(dbPermission);
 }
 
-export async function updateTeamPermissionDefinitions(
+export async function updatePermissionDefinitions(
   tx: PrismaTransaction,
   options: {
     tenancy: Tenancy,
@@ -446,7 +451,7 @@ export async function updateTeamPermissionDefinitions(
   return teamPermissionDefinitionJsonFromDbType(db);
 }
 
-export async function deleteTeamPermissionDefinition(
+export async function deletePermissionDefinition(
   tx: PrismaTransaction,
   options: {
     tenancy: Tenancy,
@@ -474,7 +479,7 @@ export async function listUserPermissions(
     recursive: boolean,
   }
 ): Promise<UserPermissionsCrud["Admin"]["Read"][]> {
-  const permissionDefs = await listTeamPermissionDefinitions(tx, options.tenancy);
+  const permissionDefs = await listPermissionDefinitions(tx, "GLOBAL", options.tenancy);
   const permissionsMap = new Map(permissionDefs.map(p => [p.id, p]));
   const results = await tx.projectUserDirectPermission.findMany({
     where: {
