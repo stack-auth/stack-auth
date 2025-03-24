@@ -139,7 +139,7 @@ export async function ensureUserPermissionExists(
     if (options.errorType === 'not-exist') {
       throw new KnownErrors.PermissionNotFound(options.permissionId);
     } else {
-      throw new KnownErrors.TeamPermissionRequired('', options.userId, options.permissionId); // Reusing the TeamPermissionRequired error for now
+      throw new KnownErrors.UserPermissionRequired(options.userId, options.permissionId);
     }
   }
 }
