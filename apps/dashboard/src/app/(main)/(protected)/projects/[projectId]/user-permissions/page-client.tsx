@@ -1,5 +1,5 @@
 "use client";
-import { UserPermissionTable } from "@/components/data-table/user-permission-table copy";
+import { UserPermissionTable } from "@/components/data-table/user-permission-table";
 import { SmartFormDialog } from "@/components/form-dialog";
 import { PermissionListField } from "@/components/permission-field";
 import { Button } from "@stackframe/stack-ui";
