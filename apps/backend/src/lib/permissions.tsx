@@ -589,3 +589,44 @@ export async function revokeUserPermission(
     },
   });
 }
+
+/**
+ * Grants default user permissions to a user
+ * This function should be called when a new user is created
+ */
+export async function grantDefaultUserPermissions(
+  tx: PrismaTransaction,
+  options: {
+    tenancy: Tenancy,
+    userId: string,
+  }
+) {
+  const defaultPermissions = await tx.permission.findMany({
+    where: {
+      projectConfigId: options.tenancy.config.id,
+      isDefaultUserPermission: true,
+    }
+  });
+
+  for (const permission of defaultPermissions) {
+    await tx.projectUserDirectPermission.create({
+      data: {
+        permission: {
+          connect: {
+            dbId: permission.dbId,
+          },
+        },
+        projectUser: {
+          connect: {
+            tenancyId_projectUserId: {
+              tenancyId: options.tenancy.id,
+              projectUserId: options.userId,
+            },
+          },
+        },
+      },
+    });
+  }
+
+  return defaultPermissions.length > 0;
+}
