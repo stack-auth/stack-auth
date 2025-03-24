@@ -1,0 +1,41 @@
+name: Docker Emulator Test
+
+on:
+  push:
+    branches:
+      - main
+      - dev
+  pull_request:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' && github.ref != 'refs/heads/dev' }}
+
+jobs:
+  docker:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      
+      - name: Install Docker Compose
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y docker-compose
+          docker-compose version
+
+      - name: Start emulator with docker compose
+        run: |
+          docker-compose -f docker/emulator/docker.compose.yaml up -d
+          sleep 30
+          docker-compose -f docker/emulator/docker.compose.yaml logs
+
+      - name: Check emulator health
+        run: |
+          echo "Attempting to connect to emulator dashboard..."
+          curl -v http://localhost:32101
+          response_code=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:32101)
+          echo "Response code: $response_code"
+          if [ $response_code -ne 200 ]; then
+            echo "Emulator health check failed with status code: $response_code"
+            exit 1
+          fi
