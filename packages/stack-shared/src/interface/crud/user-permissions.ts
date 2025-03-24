@@ -63,3 +63,59 @@ export const userPermissionDeletedWebhookEvent = {
     tags: ["Users"],
   },
 } satisfies WebhookEvent<typeof userPermissionsCrud.server.readSchema>;
+
+// =============== User permission definitions =================
+
+export const userPermissionDefinitionsCrudAdminReadSchema = yupObject({
+  id: schemaFields.teamPermissionDefinitionIdSchema.defined(),
+  description: schemaFields.teamPermissionDescriptionSchema.optional(),
+  contained_permission_ids: schemaFields.containedPermissionIdsSchema.defined(),
+  is_default_user_permission: schemaFields.yupBoolean().optional().default(false)
+}).defined();
+
+export const userPermissionDefinitionsCrudAdminCreateSchema = yupObject({
+  id: schemaFields.customTeamPermissionDefinitionIdSchema.defined(),
+  description: schemaFields.teamPermissionDescriptionSchema.optional(),
+  contained_permission_ids: schemaFields.containedPermissionIdsSchema.optional(),
+  is_default_user_permission: schemaFields.yupBoolean().optional().default(false)
+}).defined();
+
+export const userPermissionDefinitionsCrudAdminUpdateSchema = yupObject({
+  id: schemaFields.customTeamPermissionDefinitionIdSchema.optional(),
+  description: schemaFields.teamPermissionDescriptionSchema.optional(),
+  contained_permission_ids: schemaFields.containedPermissionIdsSchema.optional(),
+  is_default_user_permission: schemaFields.yupBoolean().optional()
+}).defined();
+
+export const userPermissionDefinitionsCrudAdminDeleteSchema = yupMixed();
+
+export const userPermissionDefinitionsCrud = createCrud({
+  adminReadSchema: userPermissionDefinitionsCrudAdminReadSchema,
+  adminCreateSchema: userPermissionDefinitionsCrudAdminCreateSchema,
+  adminUpdateSchema: userPermissionDefinitionsCrudAdminUpdateSchema,
+  adminDeleteSchema: userPermissionDefinitionsCrudAdminDeleteSchema,
+  docs: {
+    adminList: {
+      summary: "List user permission definitions",
+      description: "Query and filter user permission definitions (the equivalent of listing permissions on the Stack dashboard)",
+      tags: ["Permissions"],
+    },
+    adminCreate: {
+      summary: "Create a new user permission definition",
+      description: "Create a new user permission definition (the equivalent of creating a new permission on the Stack dashboard)",
+      tags: ["Permissions"],
+    },
+    adminUpdate: {
+      summary: "Update a user permission definition",
+      description: "Update a user permission definition (the equivalent of updating a permission on the Stack dashboard)",
+      tags: ["Permissions"],
+    },
+    adminDelete: {
+      summary: "Delete a user permission definition",
+      description: "Delete a user permission definition (the equivalent of deleting a permission on the Stack dashboard)",
+      tags: ["Permissions"],
+    },
+  },
+});
+
+export type UserPermissionDefinitionsCrud = CrudTypeOf<typeof userPermissionDefinitionsCrud>;
