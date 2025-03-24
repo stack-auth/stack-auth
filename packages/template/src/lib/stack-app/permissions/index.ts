@@ -11,18 +11,21 @@ export type AdminTeamPermissionDefinition = {
   id: string,
   description?: string,
   containedPermissionIds: string[],
+  isDefaultUserPermission?: boolean,
 };
 
 export type AdminTeamPermissionDefinitionCreateOptions = {
   id: string,
   description?: string,
   containedPermissionIds: string[],
+  isDefaultUserPermission?: boolean,
 };
 export function adminTeamPermissionDefinitionCreateOptionsToCrud(options: AdminTeamPermissionDefinitionCreateOptions): TeamPermissionDefinitionsCrud["Admin"]["Create"] {
   return {
     id: options.id,
     description: options.description,
     contained_permission_ids: options.containedPermissionIds,
+    is_default_user_permission: options.isDefaultUserPermission ?? false,
   };
 }
 
@@ -32,5 +35,6 @@ export function adminTeamPermissionDefinitionUpdateOptionsToCrud(options: AdminT
     id: options.id,
     description: options.description,
     contained_permission_ids: options.containedPermissionIds,
+    is_default_user_permission: options.isDefaultUserPermission,
   };
 }

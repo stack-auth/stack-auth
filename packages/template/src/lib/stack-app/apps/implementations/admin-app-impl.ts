@@ -133,6 +133,7 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
         createTeamOnSignUp: data.config.create_team_on_sign_up,
         teamCreatorDefaultPermissions: data.config.team_creator_default_permissions,
         teamMemberDefaultPermissions: data.config.team_member_default_permissions,
+        userDefaultPermissions: data.config.user_default_permissions || [],
       },
 
       async update(update: AdminProjectUpdateOptions) {

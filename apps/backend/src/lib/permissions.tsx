@@ -72,6 +72,7 @@ export function teamPermissionDefinitionJsonFromRawDbType(db: any | Prisma.Permi
         throw new StackAssertionError(`Permission edge should have either parentPermission or parentSystemPermission`, { edge });
       }
     }).sort() ?? [],
+    is_default_user_permission: db.isDefaultUserPermission,
   } as const;
 }
 
@@ -92,6 +93,7 @@ export function teamPermissionDefinitionJsonFromTeamSystemDbType(db: DBTeamSyste
     id: '$' + typedToLowercase(db),
     description: descriptionMap[db],
     contained_permission_ids: [] as string[],
+    is_default_user_permission: projectConfig.userDefaultPermissions?.includes(db) ?? false,
   } as const;
 }
 
