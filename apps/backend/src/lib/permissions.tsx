@@ -335,11 +335,16 @@ export async function listTeamPermissionDefinitions(
     },
   });
   if (!projectConfig) throw new StackAssertionError(`Couldn't find tenancy config`, { tenancy });
+
+  return getTeamPermissionDefinitionsFromProjectConfig(projectConfig);
+}
+
+export function getTeamPermissionDefinitionsFromProjectConfig(
+  projectConfig: Prisma.ProjectConfigGetPayload<{ include: { permissions: { include: typeof fullPermissionInclude } } }>
+): ExtendedTeamPermissionDefinition[] {
   const res = projectConfig.permissions;
   const nonSystemPermissions = res.map(db => teamPermissionDefinitionJsonFromDbType(db));
-
   const systemPermissions = Object.values(DBTeamSystemPermission).map(db => teamPermissionDefinitionJsonFromTeamSystemDbType(db, projectConfig));
-
   return [...nonSystemPermissions, ...systemPermissions].sort((a, b) => stringCompare(a.id, b.id));
 }
 

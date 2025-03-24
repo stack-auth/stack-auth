@@ -66,7 +66,7 @@ export const branchConfigSchema = projectConfigSchema.omit(["sourceOfTruthDbConn
     yupString().defined().matches(permissionRegex),
     yupObject({
       id: yupString().defined(),
-      description: yupString().defined(),
+      description: yupString().optional(),
       // keys to the contained permissions are the ids of the permissions.
       containedPermissions: yupRecord(
         yupString().defined().matches(permissionRegex),

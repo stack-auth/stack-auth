@@ -9,7 +9,7 @@ import { Result } from "@stackframe/stack-shared/dist/utils/results";
 import { typedToLowercase } from "@stackframe/stack-shared/dist/utils/strings";
 import { expect } from "vitest";
 import * as yup from "yup";
-import { teamPermissionDefinitionJsonFromDbType, teamPermissionDefinitionJsonFromTeamSystemDbType } from "./permissions";
+import { getTeamPermissionDefinitionsFromProjectConfig, teamPermissionDefinitionJsonFromDbType, teamPermissionDefinitionJsonFromTeamSystemDbType } from "./permissions";
 import { DBProject } from "./projects";
 
 type Project = ProjectsCrud["Admin"]["Read"];
@@ -385,5 +385,17 @@ export const dbProjectToRenderedConfigOverride = (dbProject: DBProject): Environ
         (acc as any)[perm.id] = { id: perm.id };
         return acc;
       }, {}),
+
+    teamPermissionDefinitions: getTeamPermissionDefinitionsFromProjectConfig(config).reduce((acc, perm) => {
+      (acc as any)[perm.id] = {
+        id: perm.id,
+        description: perm.description,
+        containedPermissions: perm.contained_permission_ids.reduce((acc, id) => {
+          (acc as any)[id] = { id };
+          return acc;
+        }, {}),
+      } satisfies EnvironmentRenderedConfig['teamPermissionDefinitions'][string];
+      return acc;
+    }, {}),
   };
 };
