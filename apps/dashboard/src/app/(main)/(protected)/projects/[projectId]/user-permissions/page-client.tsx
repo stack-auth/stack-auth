@@ -1,4 +1,5 @@
 "use client";
+import { UserPermissionTable } from "@/components/data-table/user-permission-table copy";
 import { SmartFormDialog } from "@/components/form-dialog";
 import { PermissionListField } from "@/components/permission-field";
 import { Button } from "@stackframe/stack-ui";
@@ -6,7 +7,6 @@ import React from "react";
 import * as yup from "yup";
 import { PageLayout } from "../page-layout";
 import { useAdminApp } from "../use-admin-app";
-import { TeamPermissionTable } from "@/components/data-table/team-permission-table";
 
 export default function PageClient() {
   const stackAdminApp = useAdminApp();
@@ -22,7 +22,7 @@ export default function PageClient() {
         </Button>
       }>
 
-      <TeamPermissionTable permissions={permissions}/>
+      <UserPermissionTable permissions={permissions}/>
 
       <CreateDialog
         open={createPermissionModalOpen}

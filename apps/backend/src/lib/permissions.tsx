@@ -443,7 +443,6 @@ export async function updatePermissionDefinitions(
         projectConfigId: options.tenancy.config.id,
         queryableId: options.permissionId,
       },
-      scope: "TEAM",
     },
     data: {
       queryableId: options.data.id,
@@ -466,7 +465,6 @@ export async function deletePermissionDefinition(
     where: {
       projectConfigId: options.tenancy.config.id,
       queryableId: options.permissionId,
-      scope: "TEAM",
     },
   });
   if (deleted.count < 1) throw new KnownErrors.PermissionNotFound(options.permissionId);
