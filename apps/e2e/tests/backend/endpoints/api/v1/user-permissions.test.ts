@@ -153,7 +153,6 @@ it.todo("can customize default user permissions", async ({ expect }) => {
       "body": {
         "contained_permission_ids": [],
         "id": "test",
-        "is_default_user_permission": false,
       },
       "headers": Headers { <some fields may have been hidden> },
     }

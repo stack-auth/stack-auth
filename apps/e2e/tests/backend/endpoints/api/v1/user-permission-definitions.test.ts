@@ -23,31 +23,26 @@ it("lists all the user permissions", async ({ expect }) => {
             "contained_permission_ids": [],
             "description": "Delete the team",
             "id": "$delete_team",
-            "is_default_user_permission": false,
           },
           {
             "contained_permission_ids": [],
             "description": "Invite other users to the team",
             "id": "$invite_members",
-            "is_default_user_permission": false,
           },
           {
             "contained_permission_ids": [],
             "description": "Read and list the other members of the team",
             "id": "$read_members",
-            "is_default_user_permission": false,
           },
           {
             "contained_permission_ids": [],
             "description": "Remove other members from the team",
             "id": "$remove_members",
-            "is_default_user_permission": false,
           },
           {
             "contained_permission_ids": [],
             "description": "Update the team information",
             "id": "$update_team",
-            "is_default_user_permission": false,
           },
           {
             "contained_permission_ids": [
@@ -59,7 +54,6 @@ it("lists all the user permissions", async ({ expect }) => {
             ],
             "description": "Default permission for team creators",
             "id": "admin",
-            "is_default_user_permission": false,
           },
           {
             "contained_permission_ids": [
@@ -68,7 +62,6 @@ it("lists all the user permissions", async ({ expect }) => {
             ],
             "description": "Default permission for team members",
             "id": "member",
-            "is_default_user_permission": false,
           },
         ],
       },
@@ -97,7 +90,6 @@ it("creates, updates, and delete a new user permission", async ({ expect }) => {
       "body": {
         "contained_permission_ids": [],
         "id": "p1",
-        "is_default_user_permission": false,
       },
       "headers": Headers { <some fields may have been hidden> },
     }
@@ -124,7 +116,6 @@ it("creates, updates, and delete a new user permission", async ({ expect }) => {
           "p1",
         ],
         "id": "p2",
-        "is_default_user_permission": false,
       },
       "headers": Headers { <some fields may have been hidden> },
     }
@@ -152,7 +143,6 @@ it("creates, updates, and delete a new user permission", async ({ expect }) => {
           "p1",
         ],
         "id": "p3",
-        "is_default_user_permission": false,
       },
       "headers": Headers { <some fields may have been hidden> },
     }
@@ -176,31 +166,26 @@ it("creates, updates, and delete a new user permission", async ({ expect }) => {
             "contained_permission_ids": [],
             "description": "Delete the team",
             "id": "$delete_team",
-            "is_default_user_permission": false,
           },
           {
             "contained_permission_ids": [],
             "description": "Invite other users to the team",
             "id": "$invite_members",
-            "is_default_user_permission": false,
           },
           {
             "contained_permission_ids": [],
             "description": "Read and list the other members of the team",
             "id": "$read_members",
-            "is_default_user_permission": false,
           },
           {
             "contained_permission_ids": [],
             "description": "Remove other members from the team",
             "id": "$remove_members",
-            "is_default_user_permission": false,
           },
           {
             "contained_permission_ids": [],
             "description": "Update the team information",
             "id": "$update_team",
-            "is_default_user_permission": false,
           },
           {
             "contained_permission_ids": [
@@ -212,7 +197,6 @@ it("creates, updates, and delete a new user permission", async ({ expect }) => {
             ],
             "description": "Default permission for team creators",
             "id": "admin",
-            "is_default_user_permission": false,
           },
           {
             "contained_permission_ids": [
@@ -221,12 +205,10 @@ it("creates, updates, and delete a new user permission", async ({ expect }) => {
             ],
             "description": "Default permission for team members",
             "id": "member",
-            "is_default_user_permission": false,
           },
           {
             "contained_permission_ids": [],
             "id": "p1",
-            "is_default_user_permission": false,
           },
           {
             "contained_permission_ids": [
@@ -234,7 +216,6 @@ it("creates, updates, and delete a new user permission", async ({ expect }) => {
               "p1",
             ],
             "id": "p3",
-            "is_default_user_permission": false,
           },
         ],
       },
@@ -276,31 +257,26 @@ it("creates, updates, and delete a new user permission", async ({ expect }) => {
             "contained_permission_ids": [],
             "description": "Delete the team",
             "id": "$delete_team",
-            "is_default_user_permission": false,
           },
           {
             "contained_permission_ids": [],
             "description": "Invite other users to the team",
             "id": "$invite_members",
-            "is_default_user_permission": false,
           },
           {
             "contained_permission_ids": [],
             "description": "Read and list the other members of the team",
             "id": "$read_members",
-            "is_default_user_permission": false,
           },
           {
             "contained_permission_ids": [],
             "description": "Remove other members from the team",
             "id": "$remove_members",
-            "is_default_user_permission": false,
           },
           {
             "contained_permission_ids": [],
             "description": "Update the team information",
             "id": "$update_team",
-            "is_default_user_permission": false,
           },
           {
             "contained_permission_ids": [
@@ -312,7 +288,6 @@ it("creates, updates, and delete a new user permission", async ({ expect }) => {
             ],
             "description": "Default permission for team creators",
             "id": "admin",
-            "is_default_user_permission": false,
           },
           {
             "contained_permission_ids": [
@@ -321,12 +296,10 @@ it("creates, updates, and delete a new user permission", async ({ expect }) => {
             ],
             "description": "Default permission for team members",
             "id": "member",
-            "is_default_user_permission": false,
           },
           {
             "contained_permission_ids": ["$update_team"],
             "id": "p3",
-            "is_default_user_permission": false,
           },
         ],
       },

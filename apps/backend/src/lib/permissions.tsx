@@ -72,7 +72,6 @@ export function teamPermissionDefinitionJsonFromRawDbType(db: any | Prisma.Permi
         throw new StackAssertionError(`Permission edge should have either parentPermission or parentSystemPermission`, { edge });
       }
     }).sort() ?? [],
-    is_default_user_permission: db.isDefaultUserPermission,
   } as const;
 }
 
@@ -93,7 +92,6 @@ export function teamPermissionDefinitionJsonFromTeamSystemDbType(db: DBTeamSyste
     id: '$' + typedToLowercase(db),
     description: descriptionMap[db],
     contained_permission_ids: [] as string[],
-    is_default_user_permission: projectConfig.userDefaultPermissions?.includes(db) ?? false,
   } as const;
 }
 
@@ -353,7 +351,6 @@ export async function createTeamPermissionDefinition(
       id: string,
       description?: string,
       contained_permission_ids?: string[],
-      is_default_user_permission?: boolean,
     },
   }
 ) {
@@ -367,7 +364,6 @@ export async function createTeamPermissionDefinition(
       queryableId: options.data.id,
       description: options.data.description,
       projectConfigId: options.tenancy.config.id,
-      isDefaultUserPermission: options.data.is_default_user_permission ?? false,
       parentEdges: {
         create: parentDbIds.map(parentDbId => {
           if (isTeamSystemPermission(parentDbId)) {
@@ -400,7 +396,6 @@ export async function updateTeamPermissionDefinitions(
       id?: string,
       description?: string,
       contained_permission_ids?: string[],
-      is_default_user_permission?: boolean,
     },
   }
 ) {
@@ -444,7 +439,6 @@ export async function updateTeamPermissionDefinitions(
     data: {
       queryableId: options.data.id,
       description: options.data.description,
-      isDefaultUserPermission: options.data.is_default_user_permission,
       ...edgeUpdateData,
     },
     include: fullPermissionInclude,

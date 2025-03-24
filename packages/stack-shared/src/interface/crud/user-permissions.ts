@@ -70,21 +70,18 @@ export const userPermissionDefinitionsCrudAdminReadSchema = yupObject({
   id: schemaFields.teamPermissionDefinitionIdSchema.defined(),
   description: schemaFields.teamPermissionDescriptionSchema.optional(),
   contained_permission_ids: schemaFields.containedPermissionIdsSchema.defined(),
-  is_default_user_permission: schemaFields.yupBoolean().optional().default(false)
 }).defined();
 
 export const userPermissionDefinitionsCrudAdminCreateSchema = yupObject({
   id: schemaFields.customTeamPermissionDefinitionIdSchema.defined(),
   description: schemaFields.teamPermissionDescriptionSchema.optional(),
   contained_permission_ids: schemaFields.containedPermissionIdsSchema.optional(),
-  is_default_user_permission: schemaFields.yupBoolean().optional().default(false)
 }).defined();
 
 export const userPermissionDefinitionsCrudAdminUpdateSchema = yupObject({
   id: schemaFields.customTeamPermissionDefinitionIdSchema.optional(),
   description: schemaFields.teamPermissionDescriptionSchema.optional(),
   contained_permission_ids: schemaFields.containedPermissionIdsSchema.optional(),
-  is_default_user_permission: schemaFields.yupBoolean().optional()
 }).defined();
 
 export const userPermissionDefinitionsCrudAdminDeleteSchema = yupMixed();

@@ -25,7 +25,6 @@ export function adminTeamPermissionDefinitionCreateOptionsToCrud(options: AdminT
     id: options.id,
     description: options.description,
     contained_permission_ids: options.containedPermissionIds,
-    is_default_user_permission: options.isDefaultUserPermission ?? false,
   };
 }
 
@@ -35,6 +34,5 @@ export function adminTeamPermissionDefinitionUpdateOptionsToCrud(options: AdminT
     id: options.id,
     description: options.description,
     contained_permission_ids: options.containedPermissionIds,
-    is_default_user_permission: options.isDefaultUserPermission,
   };
 }
