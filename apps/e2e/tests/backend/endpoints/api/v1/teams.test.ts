@@ -695,7 +695,7 @@ it("deletes a team on the server", async ({ expect }) => {
 
 it("enables create team on sign up", async ({ expect }) => {
   const { adminAccessToken } = await Project.createAndGetAdminToken();
-  const response = await niceBackendFetch("/api/v1/projects/current", {
+  const response = await niceBackendFetch("/api/v1/internal/projects/current", {
     accessType: "admin",
     method: "PATCH",
     body: {

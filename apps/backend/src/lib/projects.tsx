@@ -1,6 +1,6 @@
 import { RawQuery, prismaClient, rawQuery, retryTransaction } from "@/prisma-client";
 import { Prisma, TeamSystemPermission } from "@prisma/client";
-import { InternalProjectsCrud, ProjectsCrud } from "@stackframe/stack-shared/dist/interface/crud/projects";
+import { AdminUserProjectsCrud, ProjectsCrud } from "@stackframe/stack-shared/dist/interface/crud/projects";
 import { UsersCrud } from "@stackframe/stack-shared/dist/interface/crud/users";
 import { getNodeEnvironment } from "@stackframe/stack-shared/dist/utils/env";
 import { StackAssertionError, captureError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
@@ -478,7 +478,7 @@ async function getProjectLegacy(projectId: string): Promise<ProjectsCrud["Admin"
   return projectPrismaToCrud(rawProject);
 }
 
-export async function createProject(ownerIds: string[], data: InternalProjectsCrud["Admin"]["Create"]) {
+export async function createProject(ownerIds: string[], data: AdminUserProjectsCrud["Admin"]["Create"]) {
   const result = await retryTransaction(async (tx) => {
     const project = await tx.project.create({
       data: {

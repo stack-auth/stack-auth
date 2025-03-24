@@ -52,7 +52,7 @@ export class StackAdminInterface extends StackServerInterface {
 
   async getProject(): Promise<ProjectsCrud["Admin"]["Read"]> {
     const response = await this.sendAdminRequest(
-      "/projects/current",
+      "/internal/projects/current",
       {
         method: "GET",
       },
@@ -63,7 +63,7 @@ export class StackAdminInterface extends StackServerInterface {
 
   async updateProject(update: ProjectsCrud["Admin"]["Update"]): Promise<ProjectsCrud["Admin"]["Read"]> {
     const response = await this.sendAdminRequest(
-      "/projects/current",
+      "/internal/projects/current",
       {
         method: "PATCH",
         headers: {
@@ -209,7 +209,7 @@ export class StackAdminInterface extends StackServerInterface {
 
   async deleteProject(): Promise<void> {
     await this.sendAdminRequest(
-      "/projects/current",
+      "/internal/projects/current",
       {
         method: "DELETE",
       },
