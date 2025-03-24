@@ -61,23 +61,6 @@ export const fullProjectInclude = {
   },
 } as const satisfies Prisma.ProjectInclude;
 
-export type ProjectDB = Prisma.ProjectGetPayload<{ include: typeof fullProjectInclude }> & {
-  config: {
-    oauthProviderConfigs: (Prisma.OAuthProviderConfigGetPayload<
-      typeof fullProjectInclude.config.include.oauthProviderConfigs
-    >)[],
-    emailServiceConfig: Prisma.EmailServiceConfigGetPayload<
-      typeof fullProjectInclude.config.include.emailServiceConfig
-    > | null,
-    domains: Prisma.ProjectDomainGetPayload<
-      typeof fullProjectInclude.config.include.domains
-    >[],
-    permissions: Prisma.PermissionGetPayload<
-      typeof fullProjectInclude.config.include.permissions
-    >[],
-  },
-};
-
 export function projectPrismaToCrud(
   prisma: Prisma.ProjectGetPayload<{ include: typeof fullProjectInclude }>
 ): ProjectsCrud["Admin"]["Read"] {
