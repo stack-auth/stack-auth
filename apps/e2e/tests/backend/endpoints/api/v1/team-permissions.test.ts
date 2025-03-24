@@ -168,6 +168,7 @@ it("can customize default team permissions", async ({ expect }) => {
       "body": {
         "contained_permission_ids": [],
         "id": "test",
+        "is_default_user_permission": false,
       },
       "headers": Headers { <some fields may have been hidden> },
     }
@@ -202,6 +203,7 @@ it("can customize default team permissions", async ({ expect }) => {
           "sign_up_enabled": true,
           "team_creator_default_permissions": [{ "id": "admin" }],
           "team_member_default_permissions": [{ "id": "test" }],
+          "user_default_permissions": [],
         },
         "created_at_millis": <stripped field 'created_at_millis'>,
         "description": "",
