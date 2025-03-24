@@ -7,7 +7,7 @@ import { RefObject, use, useEffect, useId, useLayoutEffect, useRef, useState } f
 import { GlobeMethods } from 'react-globe.gl';
 
 // https://github.com/vasturiano/react-globe.gl/issues/1#issuecomment-554459831
-const Globe = dynamic(import('react-globe.gl'), { ssr: false });
+const Globe = dynamic(() => import('react-globe.gl').then((mod) => mod.default), { ssr: false });
 const countriesPromise = import('./country-data.geo.json');
 
 function useSize(target: RefObject<HTMLDivElement | null>) {
@@ -138,7 +138,6 @@ export function GlobeSection({ countryData, totalUsers, children }: {countryData
     window.addEventListener('error', handleError);
     return () => window.removeEventListener('error', handleError);
   }, []);
-
 
   return <div
     ref={sectionContainerRef}
