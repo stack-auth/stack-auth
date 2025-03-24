@@ -1,3 +1,6 @@
+-- AlterTable
+ALTER TABLE "Permission" ADD COLUMN     "isDefaultUserPermission" BOOLEAN NOT NULL DEFAULT false;
+
 -- CreateTable
 CREATE TABLE "ProjectUserDirectPermission" (
     "id" UUID NOT NULL,
