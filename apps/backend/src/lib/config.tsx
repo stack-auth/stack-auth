@@ -96,10 +96,8 @@ export async function getProjectConfigOverride(project: Project): Promise<Projec
 export async function getBranchConfigOverride(project: Project, branchId: string): Promise<BranchConfigOverride> {
   // fetch branch config from GitHub
   // (currently it's just empty)
-  throw new Error('Not implemented');
+  return {};
 }
-
-type t = EnvironmentConfigOverride['emailConfig']
 
 export async function getEnvironmentConfigOverride(project: Project, branchId: string): Promise<EnvironmentConfigOverride> {
   // fetch environment config from DB (either our own, or the source of truth one)
