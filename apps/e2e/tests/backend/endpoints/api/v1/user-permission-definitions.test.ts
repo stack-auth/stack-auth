@@ -18,52 +18,7 @@ it("lists all the user permissions", async ({ expect }) => {
       "status": 200,
       "body": {
         "is_paginated": false,
-        "items": [
-          {
-            "contained_permission_ids": [],
-            "description": "Delete the team",
-            "id": "$delete_team",
-          },
-          {
-            "contained_permission_ids": [],
-            "description": "Invite other users to the team",
-            "id": "$invite_members",
-          },
-          {
-            "contained_permission_ids": [],
-            "description": "Read and list the other members of the team",
-            "id": "$read_members",
-          },
-          {
-            "contained_permission_ids": [],
-            "description": "Remove other members from the team",
-            "id": "$remove_members",
-          },
-          {
-            "contained_permission_ids": [],
-            "description": "Update the team information",
-            "id": "$update_team",
-          },
-          {
-            "contained_permission_ids": [
-              "$delete_team",
-              "$invite_members",
-              "$read_members",
-              "$remove_members",
-              "$update_team",
-            ],
-            "description": "Default permission for team creators",
-            "id": "admin",
-          },
-          {
-            "contained_permission_ids": [
-              "$invite_members",
-              "$read_members",
-            ],
-            "description": "Default permission for team members",
-            "id": "member",
-          },
-        ],
+        "items": [],
       },
       "headers": Headers { <some fields may have been hidden> },
     }
@@ -101,7 +56,7 @@ it("creates, updates, and delete a new user permission", async ({ expect }) => {
     method: "POST",
     body: {
       id: 'p2',
-      contained_permission_ids: ['p1', '$read_members']
+      contained_permission_ids: ['p1']
     },
     headers: {
       'x-stack-admin-access-token': adminAccessToken
@@ -111,23 +66,20 @@ it("creates, updates, and delete a new user permission", async ({ expect }) => {
     NiceResponse {
       "status": 201,
       "body": {
-        "contained_permission_ids": [
-          "$read_members",
-          "p1",
-        ],
+        "contained_permission_ids": ["p1"],
         "id": "p2",
       },
       "headers": Headers { <some fields may have been hidden> },
     }
   `);
 
-  // update the permission
-  const response3 = await niceBackendFetch(`/api/v1/user-permission-definitions/p2`, {
+  // create another permission with contained permissions
+  const response3 = await niceBackendFetch(`/api/v1/user-permission-definitions`, {
     accessType: "admin",
-    method: "PATCH",
+    method: "POST",
     body: {
       id: 'p3',
-      contained_permission_ids: ['p1', '$update_team']
+      contained_permission_ids: ['p1']
     },
     headers: {
       'x-stack-admin-access-token': adminAccessToken
@@ -136,12 +88,9 @@ it("creates, updates, and delete a new user permission", async ({ expect }) => {
 
   expect(response3).toMatchInlineSnapshot(`
     NiceResponse {
-      "status": 200,
+      "status": 201,
       "body": {
-        "contained_permission_ids": [
-          "$update_team",
-          "p1",
-        ],
+        "contained_permission_ids": ["p1"],
         "id": "p3",
       },
       "headers": Headers { <some fields may have been hidden> },
@@ -157,71 +106,28 @@ it("creates, updates, and delete a new user permission", async ({ expect }) => {
     },
   });
   expect(response4).toMatchInlineSnapshot(`
-    NiceResponse {
-      "status": 200,
-      "body": {
-        "is_paginated": false,
-        "items": [
-          {
-            "contained_permission_ids": [],
-            "description": "Delete the team",
-            "id": "$delete_team",
-          },
-          {
-            "contained_permission_ids": [],
-            "description": "Invite other users to the team",
-            "id": "$invite_members",
-          },
-          {
-            "contained_permission_ids": [],
-            "description": "Read and list the other members of the team",
-            "id": "$read_members",
-          },
-          {
-            "contained_permission_ids": [],
-            "description": "Remove other members from the team",
-            "id": "$remove_members",
-          },
-          {
-            "contained_permission_ids": [],
-            "description": "Update the team information",
-            "id": "$update_team",
-          },
-          {
-            "contained_permission_ids": [
-              "$delete_team",
-              "$invite_members",
-              "$read_members",
-              "$remove_members",
-              "$update_team",
-            ],
-            "description": "Default permission for team creators",
-            "id": "admin",
-          },
-          {
-            "contained_permission_ids": [
-              "$invite_members",
-              "$read_members",
-            ],
-            "description": "Default permission for team members",
-            "id": "member",
-          },
-          {
-            "contained_permission_ids": [],
-            "id": "p1",
-          },
-          {
-            "contained_permission_ids": [
-              "$update_team",
-              "p1",
-            ],
-            "id": "p3",
-          },
-        ],
-      },
-      "headers": Headers { <some fields may have been hidden> },
-    }
-  `);
+      NiceResponse {
+        "status": 200,
+        "body": {
+          "is_paginated": false,
+          "items": [
+            {
+              "contained_permission_ids": [],
+              "id": "p1",
+            },
+            {
+              "contained_permission_ids": ["p1"],
+              "id": "p2",
+            },
+            {
+              "contained_permission_ids": ["p1"],
+              "id": "p3",
+            },
+          ],
+        },
+        "headers": Headers { <some fields may have been hidden> },
+      }
+    `);
 
   // delete the permission
   const response5 = await niceBackendFetch(`/api/v1/user-permission-definitions/p1`, {
@@ -232,12 +138,28 @@ it("creates, updates, and delete a new user permission", async ({ expect }) => {
     },
   });
   expect(response5).toMatchInlineSnapshot(`
-    NiceResponse {
-      "status": 200,
-      "body": { "success": true },
-      "headers": Headers { <some fields may have been hidden> },
-    }
-  `);
+          NiceResponse {
+            "status": 200,
+            "body": {
+              "is_paginated": false,
+              "items": [
+                {
+                  "contained_permission_ids": [],
+                  "id": "p1",
+                },
+                {
+                  "contained_permission_ids": ["p1"],
+                  "id": "p2",
+                },
+                {
+                  "contained_permission_ids": ["p1"],
+                  "id": "p3",
+                },
+              ],
+            },
+            "headers": Headers { <some fields may have been hidden> },
+          }
+        `);
 
   // list all permissions again
   const response6 = await niceBackendFetch(`/api/v1/user-permission-definitions`, {
@@ -255,51 +177,11 @@ it("creates, updates, and delete a new user permission", async ({ expect }) => {
         "items": [
           {
             "contained_permission_ids": [],
-            "description": "Delete the team",
-            "id": "$delete_team",
+            "id": "p1",
           },
           {
-            "contained_permission_ids": [],
-            "description": "Invite other users to the team",
-            "id": "$invite_members",
-          },
-          {
-            "contained_permission_ids": [],
-            "description": "Read and list the other members of the team",
-            "id": "$read_members",
-          },
-          {
-            "contained_permission_ids": [],
-            "description": "Remove other members from the team",
-            "id": "$remove_members",
-          },
-          {
-            "contained_permission_ids": [],
-            "description": "Update the team information",
-            "id": "$update_team",
-          },
-          {
-            "contained_permission_ids": [
-              "$delete_team",
-              "$invite_members",
-              "$read_members",
-              "$remove_members",
-              "$update_team",
-            ],
-            "description": "Default permission for team creators",
-            "id": "admin",
-          },
-          {
-            "contained_permission_ids": [
-              "$invite_members",
-              "$read_members",
-            ],
-            "description": "Default permission for team members",
-            "id": "member",
-          },
-          {
-            "contained_permission_ids": ["$update_team"],
-            "id": "p3",
+            "contained_permission_ids": ["p1"],
+            "id": "p2",
           },
         ],
       },

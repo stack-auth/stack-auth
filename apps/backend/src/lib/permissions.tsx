@@ -342,7 +342,11 @@ export async function listPermissionDefinitions(
   const res = projectConfig.permissions;
   const nonSystemPermissions = res.map(db => teamPermissionDefinitionJsonFromDbType(db));
 
-  const systemPermissions = Object.values(DBTeamSystemPermission).map(db => teamPermissionDefinitionJsonFromTeamSystemDbType(db, projectConfig));
+  const systemPermissions = [
+    ...(scope === "ALL" || scope === "TEAM" ?
+      Object.values(DBTeamSystemPermission).map(db => teamPermissionDefinitionJsonFromTeamSystemDbType(db, projectConfig)) :
+      []),
+  ];
 
   return [...nonSystemPermissions, ...systemPermissions].sort((a, b) => stringCompare(a.id, b.id));
 }
