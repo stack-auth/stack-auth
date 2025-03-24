@@ -6,6 +6,7 @@ import { StackAssertionError, throwErr } from "@stackframe/stack-shared/dist/uti
 import { stringCompare, typedToLowercase, typedToUppercase } from "@stackframe/stack-shared/dist/utils/strings";
 import { Tenancy } from "./tenancies";
 import { PrismaTransaction } from "./types";
+import { groupBy } from "@stackframe/stack-shared/dist/utils/arrays";
 
 export const fullPermissionInclude = {
   parentEdges: {
@@ -46,19 +47,6 @@ type ExtendedTeamPermissionDefinition = TeamPermissionDefinitionsCrud["Admin"]["
 export function teamPermissionDefinitionJsonFromDbType(db: Prisma.PermissionGetPayload<{ include: typeof fullPermissionInclude }>): ExtendedTeamPermissionDefinition {
   return teamPermissionDefinitionJsonFromRawDbType(db);
 }
-
-function groupResults<K, V>(values: V[], keyFn: (result: V) => K): Map<K, V[]> {
-  const grouped = new Map<K, V[]>();
-  for (const val of values) {
-    const key: K = keyFn(val);
-    if (!grouped.has(key)) {
-      grouped.set(key, []);
-    }
-    grouped.get(key)!.push(val);
-  }
-  return grouped;
-}
-
 /**
  * Can either take a Prisma permission object or a raw SQL `to_jsonb` result.
  */
@@ -145,7 +133,7 @@ export async function listUserTeamPermissions(
   });
 
   const finalResults: { id: string, team_id: string, user_id: string }[] = [];
-  for (const [[userId, teamId], userTeamResults] of groupResults(results, (result) => [result.projectUserId, result.teamId])) {
+  for (const [[userId, teamId], userTeamResults] of groupBy(results, (result) => [result.projectUserId, result.teamId])) {
     const idsToProcess = [...userTeamResults.map(p =>
       p.permission?.queryableId ||
       (p.systemPermission ? teamDBTypeToSystemPermissionString(p.systemPermission) : null) ||
@@ -492,7 +480,7 @@ export async function listUserPermissions(
   });
 
   const finalResults: { id: string, user_id: string }[] = [];
-  for (const [userId, userResults] of groupResults(results, (result) => result.projectUserId)) {
+  for (const [userId, userResults] of groupBy(results, (result) => result.projectUserId)) {
     const idsToProcess = [...userResults.map(p =>
       p.permission?.queryableId ||
       throwErr(new StackAssertionError(`Permission should have queryableId`, { p }))
