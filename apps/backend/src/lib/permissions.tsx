@@ -76,10 +76,10 @@ export function teamPermissionDefinitionJsonFromRawDbType(db: any | Prisma.Permi
   } as const;
 }
 
-export function teamPermissionDefinitionJsonFromTeamSystemDbType(db: DBTeamSystemPermission, projectConfig: { 
-  teamCreateDefaultSystemPermissions: string[] | null, 
+export function teamPermissionDefinitionJsonFromTeamSystemDbType(db: DBTeamSystemPermission, projectConfig: {
+  teamCreateDefaultSystemPermissions: string[] | null,
   teamMemberDefaultSystemPermissions: string[] | null,
-  userDefaultPermissions?: string[] | null 
+  userDefaultPermissions?: string[] | null,
 }): ExtendedTeamPermissionDefinition {
   if ((["teamMemberDefaultSystemPermissions", "teamCreateDefaultSystemPermissions"] as const).some(key => projectConfig[key] !== null && !Array.isArray(projectConfig[key]))) {
     throw new StackAssertionError(`Project config should have (nullable) array values for teamMemberDefaultSystemPermissions and teamCreateDefaultSystemPermissions`, { projectConfig });

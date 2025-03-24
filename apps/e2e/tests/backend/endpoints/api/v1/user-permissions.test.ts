@@ -147,15 +147,57 @@ it.todo("can customize default user permissions", async ({ expect }) => {
       'x-stack-admin-access-token': adminAccessToken
     },
   });
-  expect(response1).toMatchInlineSnapshot();
+  expect(response1).toMatchInlineSnapshot(`
+    NiceResponse {
+      "status": 201,
+      "body": {
+        "contained_permission_ids": [],
+        "id": "test",
+        "is_default_user_permission": false,
+      },
+      "headers": Headers { <some fields may have been hidden> },
+    }
+  `);
 
   const { updateProjectResponse: response2 } = await Project.updateCurrent(adminAccessToken, {
     config: {
-      // user_default_permissions: [{ id: 'test' }],
+      user_default_permissions: [{ id: 'test' }],
     },
   });
 
   await ApiKey.createAndSetProjectKeys(adminAccessToken);
 
-  expect(response2).toMatchInlineSnapshot();
+  expect(response2).toMatchInlineSnapshot(`
+    NiceResponse {
+      "status": 200,
+      "body": {
+        "config": {
+          "allow_localhost": true,
+          "client_team_creation_enabled": false,
+          "client_user_deletion_enabled": false,
+          "create_team_on_sign_up": false,
+          "credential_enabled": true,
+          "domains": [],
+          "email_config": { "type": "shared" },
+          "enabled_oauth_providers": [],
+          "id": "<stripped UUID>",
+          "magic_link_enabled": false,
+          "oauth_account_merge_strategy": "link_method",
+          "oauth_providers": [],
+          "passkey_enabled": false,
+          "sign_up_enabled": true,
+          "team_creator_default_permissions": [{ "id": "admin" }],
+          "team_member_default_permissions": [{ "id": "member" }],
+          "user_default_permissions": [],
+        },
+        "created_at_millis": <stripped field 'created_at_millis'>,
+        "description": "",
+        "display_name": "New Project",
+        "id": "<stripped UUID>",
+        "is_production_mode": false,
+        "user_count": 0,
+      },
+      "headers": Headers { <some fields may have been hidden> },
+    }
+  `);
 });
