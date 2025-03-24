@@ -13,13 +13,13 @@ import { SpeedInsights } from "@vercel/speed-insights/next";
 import { GeistMono } from "geist/font/mono";
 import { GeistSans } from 'geist/font/sans';
 import type { Metadata } from 'next';
-import dynamic from 'next/dynamic';
 import { Inter as FontSans } from "next/font/google";
 import React from 'react';
 import { VersionAlerter } from '../components/version-alerter';
 import '../polyfills';
 import { ClientPolyfill } from './client-polyfill';
 import './globals.css';
+import PageView from './pageview';
 import { CSPostHogProvider, UserIdentity } from './providers';
 
 export const metadata: Metadata = {
@@ -51,10 +51,6 @@ type TagConfigJson = {
   attributes: { [key: string]: string },
   innerHTML?: string,
 };
-
-const PageView = dynamic(() => import('./pageview'), {
-  ssr: false,
-});
 
 export default function RootLayout({
   children,
@@ -90,6 +86,7 @@ export default function RootLayout({
             "min-h-screen bg-background font-sans antialiased",
             fontSans.variable
           )}
+          suppressHydrationWarning
         >
           <Analytics />
           <PageView />
