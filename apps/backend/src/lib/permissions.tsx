@@ -1,6 +1,7 @@
 import { TeamSystemPermission as DBTeamSystemPermission, Prisma } from "@prisma/client";
 import { KnownErrors } from "@stackframe/stack-shared";
 import { TeamPermissionDefinitionsCrud, TeamPermissionsCrud } from "@stackframe/stack-shared/dist/interface/crud/team-permissions";
+import { UserPermissionsCrud } from "@stackframe/stack-shared/dist/interface/crud/user-permissions";
 import { StackAssertionError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
 import { stringCompare, typedToLowercase, typedToUppercase } from "@stackframe/stack-shared/dist/utils/strings";
 import { Tenancy } from "./tenancies";
@@ -44,6 +45,18 @@ type ExtendedTeamPermissionDefinition = TeamPermissionDefinitionsCrud["Admin"]["
 
 export function teamPermissionDefinitionJsonFromDbType(db: Prisma.PermissionGetPayload<{ include: typeof fullPermissionInclude }>): ExtendedTeamPermissionDefinition {
   return teamPermissionDefinitionJsonFromRawDbType(db);
+}
+
+function groupResults<K, V>(values: V[], keyFn: (result: V) => K): Map<K, V[]> {
+  const grouped = new Map<K, V[]>();
+  for (const val of values) {
+    const key: K = keyFn(val);
+    if (!grouped.has(key)) {
+      grouped.set(key, []);
+    }
+    grouped.get(key)!.push(val);
+  }
+  return grouped;
 }
 
 /**
@@ -130,17 +143,9 @@ export async function listUserTeamPermissions(
       permission: true,
     }
   });
-  const groupedResults = new Map<[string, string], typeof results>();
-  for (const result of results) {
-    const key: [string, string] = [result.projectUserId, result.teamId];
-    if (!groupedResults.has(key)) {
-      groupedResults.set(key, []);
-    }
-    groupedResults.get(key)!.push(result);
-  }
 
   const finalResults: { id: string, team_id: string, user_id: string }[] = [];
-  for (const [[userId, teamId], userTeamResults] of groupedResults) {
+  for (const [[userId, teamId], userTeamResults] of groupResults(results, (result) => [result.projectUserId, result.teamId])) {
     const idsToProcess = [...userTeamResults.map(p =>
       p.permission?.queryableId ||
       (p.systemPermission ? teamDBTypeToSystemPermissionString(p.systemPermission) : null) ||
@@ -461,4 +466,138 @@ export async function deleteTeamPermissionDefinition(
     },
   });
   if (deleted.count < 1) throw new KnownErrors.PermissionNotFound(options.permissionId);
+}
+
+// User permission functions
+
+export async function listUserPermissions(
+  tx: PrismaTransaction,
+  options: {
+    tenancy: Tenancy,
+    userId?: string,
+    permissionId?: string,
+    recursive: boolean,
+  }
+): Promise<UserPermissionsCrud["Admin"]["Read"][]> {
+  const permissionDefs = await listTeamPermissionDefinitions(tx, options.tenancy);
+  const permissionsMap = new Map(permissionDefs.map(p => [p.id, p]));
+  const results = await tx.projectUserDirectPermission.findMany({
+    where: {
+      tenancyId: options.tenancy.id,
+      projectUserId: options.userId,
+    },
+    include: {
+      permission: true,
+    }
+  });
+
+  const finalResults: { id: string, user_id: string }[] = [];
+  for (const [userId, userResults] of groupResults(results, (result) => result.projectUserId)) {
+    const idsToProcess = [...userResults.map(p =>
+      p.permission?.queryableId ||
+      throwErr(new StackAssertionError(`Permission should have queryableId`, { p }))
+    )];
+
+    const result = new Map<string, ReturnType<typeof teamPermissionDefinitionJsonFromDbType>>();
+    while (idsToProcess.length > 0) {
+      const currentId = idsToProcess.pop()!;
+      const current = permissionsMap.get(currentId);
+      if (!current) throw new StackAssertionError(`Couldn't find permission in DB`, { currentId, result, idsToProcess });
+      if (result.has(current.id)) continue;
+      result.set(current.id, current);
+      if (options.recursive) {
+        idsToProcess.push(...current.contained_permission_ids);
+      }
+    }
+
+    finalResults.push(...[...result.values()].map(p => ({
+      id: p.id,
+      user_id: userId,
+    })));
+  }
+
+  return finalResults
+    .sort((a, b) => stringCompare(a.user_id, b.user_id) || stringCompare(a.id, b.id))
+    .filter(p => options.permissionId ? p.id === options.permissionId : true);
+}
+
+export async function grantUserPermission(
+  tx: PrismaTransaction,
+  options: {
+    tenancy: Tenancy,
+    userId: string,
+    permissionId: string,
+  }
+) {
+  const permission = await tx.permission.findUnique({
+    where: {
+      projectConfigId_queryableId: {
+        projectConfigId: options.tenancy.config.id,
+        queryableId: options.permissionId,
+      },
+    }
+  });
+
+  if (!permission) throw new KnownErrors.PermissionNotFound(options.permissionId);
+
+  await tx.projectUserDirectPermission.upsert({
+    where: {
+      tenancyId_projectUserId_permissionDbId: {
+        tenancyId: options.tenancy.id,
+        projectUserId: options.userId,
+        permissionDbId: permission.dbId,
+      },
+    },
+    create: {
+      permission: {
+        connect: {
+          dbId: permission.dbId,
+        },
+      },
+      projectUser: {
+        connect: {
+          tenancyId_projectUserId: {
+            tenancyId: options.tenancy.id,
+            projectUserId: options.userId,
+          },
+        },
+      },
+    },
+    update: {},
+  });
+
+  return {
+    id: options.permissionId,
+    user_id: options.userId,
+  };
+}
+
+export async function revokeUserPermission(
+  tx: PrismaTransaction,
+  options: {
+    tenancy: Tenancy,
+    userId: string,
+    permissionId: string,
+  }
+) {
+  const permission = await tx.permission.findUnique({
+    where: {
+      projectConfigId_queryableId: {
+        projectConfigId: options.tenancy.config.id,
+        queryableId: options.permissionId,
+      },
+    }
+  });
+
+  if (!permission) throw new KnownErrors.PermissionNotFound(options.permissionId);
+
+  await tx.projectUserDirectPermission.delete({
+    where: {
+      tenancyId_projectUserId_permissionDbId: {
+        tenancyId: options.tenancy.id,
+        projectUserId: options.userId,
+        permissionDbId: permission.dbId,
+      }
+    },
+  });
 }
