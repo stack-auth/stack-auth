@@ -1,12 +1,19 @@
 'use client';
 import { useAdminApp } from "@/app/(main)/(protected)/projects/[projectId]/use-admin-app";
-import { AdminTeamPermissionDefinition } from "@stackframe/stack";
 import { ActionCell, ActionDialog, BadgeCell, DataTable, DataTableColumnHeader, SearchToolbarItem, SimpleTooltip, TextCell } from "@stackframe/stack-ui";
 import { ColumnDef, Row, Table } from "@tanstack/react-table";
 import { useState } from "react";
 import * as yup from "yup";
 import { SmartFormDialog } from "../form-dialog";
 import { PermissionListField } from "../permission-field";
+
+type AdminPermissionDefinition = {
+  id: string,
+  description?: string,
+  containedPermissionIds: string[],
+};
+
+type PermissionType = 'user' | 'team';
 
 function toolbarRender<TData>(table: Table<TData>) {
   return (
@@ -16,13 +23,16 @@ function toolbarRender<TData>(table: Table<TData>) {
   );
 }
 
-function EditDialog(props: {
+function EditDialog<T extends AdminPermissionDefinition>(props: {
   open: boolean,
   onOpenChange: (open: boolean) => void,
   selectedPermissionId: string,
+  permissionType: PermissionType,
 }) {
   const stackAdminApp = useAdminApp();
-  const permissions = stackAdminApp.useTeamPermissionDefinitions();
+  const permissions = props.permissionType === 'user'
+    ? stackAdminApp.useUserPermissionDefinitions()
+    : stackAdminApp.useTeamPermissionDefinitions();
   const currentPermission = permissions.find((p) => p.id === props.selectedPermissionId);
   if (!currentPermission) {
     return null;
@@ -51,6 +61,10 @@ function EditDialog(props: {
     })
   }).default(currentPermission);
 
+  const updatePermission = props.permissionType === 'user'
+    ? stackAdminApp.updateUserPermissionDefinition
+    : stackAdminApp.updateTeamPermissionDefinition;
+
   return <SmartFormDialog
     open={props.open}
     onOpenChange={props.onOpenChange}
@@ -58,39 +72,48 @@ function EditDialog(props: {
     formSchema={formSchema}
     okButton={{ label: "Save" }}
     onSubmit={async (values) => {
-      await stackAdminApp.updateTeamPermissionDefinition(props.selectedPermissionId, values);
+      await updatePermission(props.selectedPermissionId, values);
     }}
     cancelButton
   />;
 }
 
-function DeleteDialog(props: {
-  permission: AdminTeamPermissionDefinition,
+function DeleteDialog<T extends AdminPermissionDefinition>(props: {
+  permission: T,
   open: boolean,
   onOpenChange: (open: boolean) => void,
+  permissionType: PermissionType,
 }) {
   const stackApp = useAdminApp();
+  const deletePermission = props.permissionType === 'user'
+    ? stackApp.deleteUserPermissionDefinition
+    : stackApp.deleteTeamPermissionDefinition;
+
   return <ActionDialog
     open={props.open}
     onOpenChange={props.onOpenChange}
     title="Delete Permission"
     danger
     cancelButton
-    okButton={{ label: "Delete Permission", onClick: async () => { await stackApp.deleteTeamPermissionDefinition(props.permission.id); } }}
+    okButton={{ label: "Delete Permission", onClick: async () => { await deletePermission(props.permission.id); } }}
     confirmText="I understand this will remove the permission from all users and other permissions that contain it."
   >
     {`Are you sure you want to delete the permission "${props.permission.id}"?`}
   </ActionDialog>;
 }
 
-function Actions({ row, invisible }: { row: Row<AdminTeamPermissionDefinition>, invisible: boolean }) {
+function Actions<T extends AdminPermissionDefinition>({ row, invisible, permissionType }: {
+  row: Row<T>,
+  invisible: boolean,
+  permissionType: PermissionType,
+}) {
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
 
   return (
     <div className={`flex items-center gap-2 ${invisible ? "invisible" : ""}`}>
-      <EditDialog selectedPermissionId={row.original.id} open={isEditModalOpen} onOpenChange={setIsEditModalOpen} />
-      <DeleteDialog permission={row.original} open={isDeleteModalOpen} onOpenChange={setIsDeleteModalOpen} />
+      <EditDialog selectedPermissionId={row.original.id} open={isEditModalOpen} onOpenChange={setIsEditModalOpen} permissionType={permissionType} />
+      <DeleteDialog permission={row.original} open={isDeleteModalOpen} onOpenChange={setIsDeleteModalOpen} permissionType={permissionType} />
       <ActionCell
         items={[
           {
@@ -109,42 +132,49 @@ function Actions({ row, invisible }: { row: Row<AdminTeamPermissionDefinition>, 
   );
 }
 
-const columns: ColumnDef<AdminTeamPermissionDefinition>[] =  [
-  {
-    accessorKey: "id",
-    header: ({ column }) => <DataTableColumnHeader column={column} columnTitle="ID" />,
-    cell: ({ row }) => <TextCell size={160}>
-      <div className="flex items-center gap-1">
-        {row.original.id}
-        {row.original.id.startsWith('$') ?
-          <SimpleTooltip tooltip="Built-in system permissions are prefixed with $. They cannot be edited or deleted, but can be contained in other permissions." type='info'/>
-          : null}
-      </div>
-    </TextCell>,
-  },
-  {
-    accessorKey: "description",
-    header: ({ column }) => <DataTableColumnHeader column={column} columnTitle="Description" />,
-    cell: ({ row }) => <TextCell size={200}>{row.getValue("description")}</TextCell>,
-  },
-  {
-    accessorKey: "containedPermissionIds",
-    header: ({ column }) => <DataTableColumnHeader
-      column={column}
-      columnTitle={<div className="flex items-center gap-1">
-        Contained Permissions
-        <SimpleTooltip tooltip="Only showing permissions that are contained directly (non-recursive)." type='info' />
-      </div>}
-    />,
-    cell: ({ row }) => <BadgeCell size={120} badges={row.original.containedPermissionIds} />,
-  },
-  {
-    id: "actions",
-    cell: ({ row }) => <Actions row={row} invisible={row.original.id.startsWith('$')} />,
-  },
-];
+function createColumns<T extends AdminPermissionDefinition>(permissionType: PermissionType): ColumnDef<T>[] {
+  return [
+    {
+      accessorKey: "id",
+      header: ({ column }) => <DataTableColumnHeader column={column} columnTitle="ID" />,
+      cell: ({ row }) => <TextCell size={160}>
+        <div className="flex items-center gap-1">
+          {row.original.id}
+          {row.original.id.startsWith('$') ?
+            <SimpleTooltip tooltip="Built-in system permissions are prefixed with $. They cannot be edited or deleted, but can be contained in other permissions." type='info'/>
+            : null}
+        </div>
+      </TextCell>,
+    },
+    {
+      accessorKey: "description",
+      header: ({ column }) => <DataTableColumnHeader column={column} columnTitle="Description" />,
+      cell: ({ row }) => <TextCell size={200}>{row.getValue("description")}</TextCell>,
+    },
+    {
+      accessorKey: "containedPermissionIds",
+      header: ({ column }) => <DataTableColumnHeader
+        column={column}
+        columnTitle={<div className="flex items-center gap-1">
+          Contained Permissions
+          <SimpleTooltip tooltip="Only showing permissions that are contained directly (non-recursive)." type='info' />
+        </div>}
+      />,
+      cell: ({ row }) => <BadgeCell size={120} badges={row.original.containedPermissionIds} />,
+    },
+    {
+      id: "actions",
+      cell: ({ row }) => <Actions row={row} invisible={row.original.id.startsWith('$')} permissionType={permissionType} />,
+    },
+  ];
+}
 
-export function TeamPermissionTable(props: { permissions: AdminTeamPermissionDefinition[] }) {
+export function PermissionTable<T extends AdminPermissionDefinition>(props: {
+  permissions: T[],
+  permissionType: PermissionType,
+}) {
+  const columns = createColumns<T>(props.permissionType);
+
   return <DataTable
     data={props.permissions}
     columns={columns}
