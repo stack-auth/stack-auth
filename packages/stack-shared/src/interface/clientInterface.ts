@@ -1525,19 +1525,5 @@ export class StackClientInterface {
 
     return await response.json();
   }
-
-  async deleteApiKey(
-    keyId: string,
-    session: InternalSession,
-  ): Promise<ProjectApiKeysCrud['Client']['Delete']> {
-    const response = await this.sendClientRequest(
-      `/api-keys/${keyId}`,
-      {
-        method: "DELETE",
-      },
-      session,
-    );
-    return await response.json();
-  }
 }
 

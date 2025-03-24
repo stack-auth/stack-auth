@@ -201,7 +201,6 @@ export type UserExtra = {
 
   createApiKey(options: ApiKeyCreateOptions): Promise<ApiKeyWithSecret>,
   updateApiKey(keyId: string, options: ApiKeyUpdateOptions): Promise<ApiKey>,
-  deleteApiKey(keyId: string): Promise<void>,
 }
 & AsyncStoreProperty<"apiKeys", [], ApiKey[], true>
 & AsyncStoreProperty<"team", [id: string], Team | null, false>
@@ -276,6 +275,8 @@ export type ServerBaseUser = {
 
   grantPermission(scope: Team, permissionId: string): Promise<void>,
   revokePermission(scope: Team, permissionId: string): Promise<void>,
+
+  deleteApiKey(keyId: string): Promise<void>,
 
   /**
    * Creates a new session object with a refresh token for this user. Can be used to impersonate them.

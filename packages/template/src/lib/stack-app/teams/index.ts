@@ -47,7 +47,6 @@ export type Team = {
   delete(): Promise<void>,
   createApiKey(options: ApiKeyCreateOptions): Promise<ApiKeyWithSecret>,
   updateApiKey(keyId: string, options: ApiKeyUpdateOptions): Promise<ApiKey>,
-  deleteApiKey(keyId: string): Promise<void>,
 } & AsyncStoreProperty<"apiKeys", [], ApiKey[], true>;
 
 export type TeamUpdateOptions = {
@@ -92,6 +91,7 @@ export type ServerTeam = {
   addUser(userId: string): Promise<void>,
   inviteUser(options: { email: string, callbackUrl?: string }): Promise<void>,
   removeUser(userId: string): Promise<void>,
+  deleteApiKey(keyId: string): Promise<void>,
 } & Team;
 
 export type ServerListUsersOptions = {

@@ -11,11 +11,11 @@ import { createLazyProxy } from "@stackframe/stack-shared/dist/utils/proxies";
 import { generateUuid } from "@stackframe/stack-shared/dist/utils/uuids";
 
 
-function validateExactlyOneGroupIdentifier(params: {
+function getGroupType(params: {
   project_user_id?: string,
   tenancy_id?: string,
   team_id?: string,
-}): void {
+}): "USER" | "TENANCY" | "TEAM" {
   const definedCount = [
     params.project_user_id,
     params.tenancy_id,
@@ -27,6 +27,21 @@ function validateExactlyOneGroupIdentifier(params: {
       params,
     );
   }
+
+  if (params.project_user_id) {
+    return 'USER';
+  }
+
+  if (params.team_id) {
+    return 'TEAM';
+  }
+
+  if (params.tenancy_id) {
+    return 'TENANCY';
+  }
+
+  // this should never happen
+  throw new KnownErrors.InvalidGroup(params);
 }
 
 /**
@@ -102,7 +117,11 @@ export const projectApiKeyCrudHandlers = createLazyProxy(() => createCrudHandler
     }
 
 
-    validateExactlyOneGroupIdentifier(data);
+    const groupType = getGroupType(data);
+
+    if (groupType === 'TENANCY') {
+      throw new KnownErrors.UnsupportedError("Creating API keys for a tenancy is not supported right now");
+    }
 
 
     // Security checks
@@ -129,7 +148,8 @@ export const projectApiKeyCrudHandlers = createLazyProxy(() => createCrudHandler
         createdAt: new Date(),
         projectUserId: data.project_user_id,
         teamId: data.team_id,
-        tenancyId: data.tenancy_id,
+        tenancyId: auth.tenancy.id,
+        groupType,
       },
     });
 
@@ -141,6 +161,7 @@ export const projectApiKeyCrudHandlers = createLazyProxy(() => createCrudHandler
       secret_api_key: apiKey.secretApiKey,
       created_at_millis: apiKey.createdAt.getTime(),
       expires_at_millis: apiKey.expiresAt?.getTime(),
+      group_type: apiKey.groupType,
     };
   },
 
@@ -149,7 +170,7 @@ export const projectApiKeyCrudHandlers = createLazyProxy(() => createCrudHandler
   onList: async ({ auth, query }) => {
 
 
-    validateExactlyOneGroupIdentifier(query);
+    const groupType = getGroupType(query);
 
     // Security checks
     await validateClientSecurity(auth, {
@@ -165,6 +186,7 @@ export const projectApiKeyCrudHandlers = createLazyProxy(() => createCrudHandler
         projectUserId: query.project_user_id,
         teamId: query.team_id,
         tenancyId: query.tenancy_id,
+        groupType,
       },
       orderBy: {
         createdAt: 'desc',
@@ -196,8 +218,8 @@ export const projectApiKeyCrudHandlers = createLazyProxy(() => createCrudHandler
     // Find the existing API key
     const existingApiKey = await prismaClient.projectAPIKey.findUnique({
       where: {
-        projectId_id: {
-          projectId: auth.project.id,
+        tenancyId_id: {
+          tenancyId: auth.tenancy.id,
           id: params.api_key_id,
         },
       },
@@ -218,8 +240,8 @@ export const projectApiKeyCrudHandlers = createLazyProxy(() => createCrudHandler
     // Update the API key
     const updatedApiKey = await prismaClient.projectAPIKey.update({
       where: {
-        projectId_id: {
-          projectId: auth.project.id,
+        tenancyId_id: {
+          tenancyId: auth.tenancy.id,
           id: params.api_key_id,
         },
       },
@@ -250,8 +272,8 @@ export const projectApiKeyCrudHandlers = createLazyProxy(() => createCrudHandler
     // Check if the API key exists
     const existingApiKey = await prismaClient.projectAPIKey.findUnique({
       where: {
-        projectId_id: {
-          projectId: auth.project.id,
+        tenancyId_id: {
+          tenancyId: auth.tenancy.id,
           id: params.api_key_id,
         },
       },
@@ -272,8 +294,8 @@ export const projectApiKeyCrudHandlers = createLazyProxy(() => createCrudHandler
     // Delete the API key
     await prismaClient.projectAPIKey.delete({
       where: {
-        projectId_id: {
-          projectId: auth.project.id,
+        tenancyId_id: {
+          tenancyId: auth.tenancy.id,
           id: params.api_key_id,
         },
       },

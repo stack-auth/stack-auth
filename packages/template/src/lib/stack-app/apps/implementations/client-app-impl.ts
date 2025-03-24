@@ -754,11 +754,6 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
         await app._teamApiKeysCache.refresh([session, crud.id]);
         return app._clientApiKeyFromCrudRead(session, result);
       },
-
-      async deleteApiKey(keyId: string) {
-        await app._interface.deleteApiKey(keyId, session);
-        await app._teamApiKeysCache.refresh([session, crud.id]);
-      }
     };
   }
 
@@ -1066,10 +1061,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
         return app._clientApiKeyFromCrudRead(session, result);
       },
 
-      async deleteApiKey(keyId: string) {
-        await app._interface.deleteApiKey(keyId, session);
-        await app._clientApiKeysCache.refresh([session]);
-      },
+
     };
   }
 

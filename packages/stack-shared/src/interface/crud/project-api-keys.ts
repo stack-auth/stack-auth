@@ -50,7 +50,7 @@ export const projectApiKeysCrud = createCrud({
   clientCreateSchema: projectApiKeysCreateInputSchema,
   clientReadSchema: combinedProjectApiKeysReadSchema,
   clientUpdateSchema: projectApiKeysUpdateSchema,
-  clientDeleteSchema: projectApiKeysDeleteSchema,
+  serverDeleteSchema: projectApiKeysDeleteSchema,
   docs: {
     clientCreate: {
       description: "Create a new API key",
@@ -72,7 +72,7 @@ export const projectApiKeysCrud = createCrud({
       displayName: "Update API Key",
       summary: "Update API key",
     },
-    clientDelete: {
+    serverDelete: {
       description: "Delete an API key",
       displayName: "Delete API Key",
       summary: "Delete API key",

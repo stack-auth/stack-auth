@@ -783,10 +783,17 @@ model ApiKeySet {
   @@id([projectId, id])
 }
 
+enum GroupType {
+  TEAM
+  USER
+  TENANCY
+}
+
 // New api keys
 model ProjectAPIKey {
   projectId String
   project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  tenancyId String  @db.Uuid
 
   // Public id of the group
   id           String @default(uuid()) @db.Uuid
@@ -799,15 +806,15 @@ model ProjectAPIKey {
   manuallyRevokedAt DateTime?
   description       String?
   // Group
-  tenancyId         String?   @db.Uuid
+  groupType         GroupType
   teamId            String?   @db.Uuid
   projectUserId     String?   @db.Uuid
 
-  tenancy     Tenancy?     @relation(fields: [tenancyId], references: [id], onDelete: Cascade)
+  tenancy     Tenancy      @relation(fields: [tenancyId], references: [id], onDelete: Cascade)
   projectUser ProjectUser? @relation(fields: [tenancyId, projectUserId], references: [tenancyId, projectUserId], onDelete: Cascade)
   team        Team?        @relation(fields: [tenancyId, teamId], references: [tenancyId, teamId], onDelete: Cascade)
 
-  @@id([projectId, id])
+  @@id([tenancyId, id])
 }
 
 model EmailServiceConfig {

@@ -1,3 +1,9 @@
+-- CreateEnum
+CREATE TYPE "GroupType" AS ENUM ('TEAM', 'USER', 'TENANCY');
+
+-- AlterEnum
+ALTER TYPE "TeamSystemPermission" ADD VALUE 'MANAGE_API_KEYS';
+
 -- AlterTable
 ALTER TABLE "ProjectConfig" ADD COLUMN     "allowTeamAPIKeys" BOOLEAN NOT NULL DEFAULT false,
 ADD COLUMN     "allowTenancyAPIKeys" BOOLEAN NOT NULL DEFAULT false,
@@ -6,6 +12,7 @@ ADD COLUMN     "allowUserAPIKeys" BOOLEAN NOT NULL DEFAULT false;
 -- CreateTable
 CREATE TABLE "ProjectAPIKey" (
     "projectId" TEXT NOT NULL,
+    "tenancyId" UUID NOT NULL,
     "id" UUID NOT NULL,
     "secretApiKey" TEXT NOT NULL,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -13,11 +20,11 @@ CREATE TABLE "ProjectAPIKey" (
     "expiresAt" TIMESTAMP(3),
     "manuallyRevokedAt" TIMESTAMP(3),
     "description" TEXT,
-    "tenancyId" UUID,
+    "groupType" "GroupType" NOT NULL,
     "teamId" UUID,
     "projectUserId" UUID,
 
-    CONSTRAINT "ProjectAPIKey_pkey" PRIMARY KEY ("projectId","id")
+    CONSTRAINT "ProjectAPIKey_pkey" PRIMARY KEY ("tenancyId","id")
 );
 
 -- CreateIndex

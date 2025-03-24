@@ -694,4 +694,20 @@ export class StackServerInterface extends StackClientInterface {
       return res.error;
     }
   }
+
+
+  async deleteApiKey(
+    keyId: string,
+    session: InternalSession,
+  ): Promise<ProjectApiKeysCrud['Server']['Delete']> {
+    const response = await this.sendServerRequest(
+      `/api-keys/${keyId}`,
+      {
+        method: "DELETE",
+      },
+      session,
+    );
+    return await response.json();
+  }
+
 }
