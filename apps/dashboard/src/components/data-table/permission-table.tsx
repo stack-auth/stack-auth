@@ -32,7 +32,7 @@ function EditDialog(props: {
 }) {
   const stackAdminApp = useAdminApp();
   const permissions = props.permissionType === 'user'
-    ? stackAdminApp.useUserPermissionDefinitions()
+    ? stackAdminApp.useProjectPermissionDefinitions()
     : stackAdminApp.useTeamPermissionDefinitions();
   const currentPermission = permissions.find((p) => p.id === props.selectedPermissionId);
   if (!currentPermission) {
@@ -63,7 +63,7 @@ function EditDialog(props: {
   }).default(currentPermission);
 
   const updatePermission = props.permissionType === 'user'
-    ? stackAdminApp.updateUserPermissionDefinition
+    ? stackAdminApp.updateProjectPermissionDefinition
     : stackAdminApp.updateTeamPermissionDefinition;
 
   return <SmartFormDialog
@@ -89,7 +89,7 @@ function DeleteDialog<T extends AdminPermissionDefinition>(props: {
 }) {
   const stackApp = useAdminApp();
   const deletePermission = props.permissionType === 'user'
-    ? stackApp.deleteUserPermissionDefinition
+    ? stackApp.deleteProjectPermissionDefinition
     : stackApp.deleteTeamPermissionDefinition;
 
   return <ActionDialog

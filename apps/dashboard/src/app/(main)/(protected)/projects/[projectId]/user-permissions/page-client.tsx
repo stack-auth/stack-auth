@@ -10,7 +10,7 @@ import { useAdminApp } from "../use-admin-app";
 
 export default function PageClient() {
   const stackAdminApp = useAdminApp();
-  const permissions = stackAdminApp.useUserPermissionDefinitions();
+  const permissions = stackAdminApp.useProjectPermissionDefinitions();
   const [createPermissionModalOpen, setCreatePermissionModalOpen] = React.useState(false);
 
   return (
@@ -40,7 +40,7 @@ function CreateDialog(props: {
   onOpenChange: (open: boolean) => void,
 }) {
   const stackAdminApp = useAdminApp();
-  const permissions = stackAdminApp.useUserPermissionDefinitions();
+  const permissions = stackAdminApp.useProjectPermissionDefinitions();
 
   const formSchema = yup.object({
     id: yup.string().defined()
@@ -62,7 +62,7 @@ function CreateDialog(props: {
     formSchema={formSchema}
     okButton={{ label: "Create" }}
     onSubmit={async (values) => {
-      await stackAdminApp.createUserPermissionDefinition({
+      await stackAdminApp.createProjectPermissionDefinition({
         id: values.id,
         description: values.description,
         containedPermissionIds: values.containedPermissionIds,
