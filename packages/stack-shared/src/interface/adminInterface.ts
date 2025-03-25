@@ -5,6 +5,7 @@ import { InternalEmailsCrud } from "./crud/emails";
 import { ProjectsCrud } from "./crud/projects";
 import { SvixTokenCrud } from "./crud/svix-token";
 import { TeamPermissionDefinitionsCrud } from "./crud/team-permissions";
+import { UserPermissionDefinitionsCrud } from "./crud/user-permissions";
 import { ServerAuthApplicationOptions, StackServerInterface } from "./serverInterface";
 
 export type AdminAuthApplicationOptions = ServerAuthApplicationOptions &(
@@ -148,13 +149,14 @@ export class StackAdminInterface extends StackServerInterface {
     );
   }
 
-  async listPermissionDefinitions(): Promise<TeamPermissionDefinitionsCrud['Admin']['Read'][]> {
+  // Team permission definitions methods
+  async listTeamPermissionDefinitions(): Promise<TeamPermissionDefinitionsCrud['Admin']['Read'][]> {
     const response = await this.sendAdminRequest(`/team-permission-definitions`, {}, null);
     const result = await response.json() as TeamPermissionDefinitionsCrud['Admin']['List'];
     return result.items;
   }
 
-  async createPermissionDefinition(data: TeamPermissionDefinitionsCrud['Admin']['Create']): Promise<TeamPermissionDefinitionsCrud['Admin']['Read']> {
+  async createTeamPermissionDefinition(data: TeamPermissionDefinitionsCrud['Admin']['Create']): Promise<TeamPermissionDefinitionsCrud['Admin']['Read']> {
     const response = await this.sendAdminRequest(
       "/team-permission-definitions",
       {
@@ -169,7 +171,7 @@ export class StackAdminInterface extends StackServerInterface {
     return await response.json();
   }
 
-  async updatePermissionDefinition(permissionId: string, data: TeamPermissionDefinitionsCrud['Admin']['Update']): Promise<TeamPermissionDefinitionsCrud['Admin']['Read']> {
+  async updateTeamPermissionDefinition(permissionId: string, data: TeamPermissionDefinitionsCrud['Admin']['Update']): Promise<TeamPermissionDefinitionsCrud['Admin']['Read']> {
     const response = await this.sendAdminRequest(
       `/team-permission-definitions/${permissionId}`,
       {
@@ -184,9 +186,53 @@ export class StackAdminInterface extends StackServerInterface {
     return await response.json();
   }
 
-  async deletePermissionDefinition(permissionId: string): Promise<void> {
+  async deleteTeamPermissionDefinition(permissionId: string): Promise<void> {
     await this.sendAdminRequest(
       `/team-permission-definitions/${permissionId}`,
+      { method: "DELETE" },
+      null,
+    );
+  }
+
+  async listUserPermissionDefinitions(): Promise<UserPermissionDefinitionsCrud['Admin']['Read'][]> {
+    const response = await this.sendAdminRequest(`/user-permission-definitions`, {}, null);
+    const result = await response.json() as UserPermissionDefinitionsCrud['Admin']['List'];
+    return result.items;
+  }
+
+  async createUserPermissionDefinition(data: UserPermissionDefinitionsCrud['Admin']['Create']): Promise<UserPermissionDefinitionsCrud['Admin']['Read']> {
+    const response = await this.sendAdminRequest(
+      "/user-permission-definitions",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+        },
+        body: JSON.stringify(data),
+      },
+      null,
+    );
+    return await response.json();
+  }
+
+  async updateUserPermissionDefinition(permissionId: string, data: UserPermissionDefinitionsCrud['Admin']['Update']): Promise<UserPermissionDefinitionsCrud['Admin']['Read']> {
+    const response = await this.sendAdminRequest(
+      `/user-permission-definitions/${permissionId}`,
+      {
+        method: "PATCH",
+        headers: {
+          "content-type": "application/json",
+        },
+        body: JSON.stringify(data),
+      },
+      null,
+    );
+    return await response.json();
+  }
+
+  async deleteUserPermissionDefinition(permissionId: string): Promise<void> {
+    await this.sendAdminRequest(
+      `/user-permission-definitions/${permissionId}`,
       { method: "DELETE" },
       null,
     );
