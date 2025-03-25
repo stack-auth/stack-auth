@@ -1,5 +1,5 @@
 import { TeamPermissionDefinitionsCrud } from "@stackframe/stack-shared/dist/interface/crud/team-permissions";
-import { UserPermissionDefinitionsCrud } from "@stackframe/stack-shared/dist/interface/crud/user-permissions";
+import { ProjectPermissionDefinitionsCrud } from "@stackframe/stack-shared/dist/interface/crud/project-permissions";
 
 
 export type TeamPermission = {
@@ -55,7 +55,7 @@ export type AdminUserPermissionDefinitionCreateOptions = {
   description?: string,
   containedPermissionIds: string[],
 };
-export function adminUserPermissionDefinitionCreateOptionsToCrud(options: AdminUserPermissionDefinitionCreateOptions): UserPermissionDefinitionsCrud["Admin"]["Create"] {
+export function adminUserPermissionDefinitionCreateOptionsToCrud(options: AdminUserPermissionDefinitionCreateOptions): ProjectPermissionDefinitionsCrud["Admin"]["Create"] {
   return {
     id: options.id,
     description: options.description,
@@ -64,7 +64,7 @@ export function adminUserPermissionDefinitionCreateOptionsToCrud(options: AdminU
 }
 
 export type AdminUserPermissionDefinitionUpdateOptions = Partial<AdminUserPermissionDefinitionCreateOptions>;
-export function adminUserPermissionDefinitionUpdateOptionsToCrud(options: AdminUserPermissionDefinitionUpdateOptions): UserPermissionDefinitionsCrud["Admin"]["Update"] {
+export function adminUserPermissionDefinitionUpdateOptionsToCrud(options: AdminUserPermissionDefinitionUpdateOptions): ProjectPermissionDefinitionsCrud["Admin"]["Update"] {
   return {
     id: options.id,
     description: options.description,
