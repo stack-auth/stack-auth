@@ -81,6 +81,7 @@ export function adminProjectUpdateOptionsToCrud(options: AdminProjectUpdateOptio
       client_user_deletion_enabled: options.config?.clientUserDeletionEnabled,
       team_creator_default_permissions: options.config?.teamCreatorDefaultPermissions,
       team_member_default_permissions: options.config?.teamMemberDefaultPermissions,
+      user_default_permissions: options.config?.userDefaultPermissions,
       oauth_account_merge_strategy: options.config?.oauthAccountMergeStrategy,
     },
   };
