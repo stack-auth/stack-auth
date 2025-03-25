@@ -12,7 +12,7 @@ import { AdminSentEmail } from "../..";
 import { ApiKey, ApiKeyBase, ApiKeyBaseCrudRead, ApiKeyCreateOptions, ApiKeyFirstView, apiKeyCreateOptionsToCrud } from "../../api-keys";
 import { EmailConfig, stackAppInternalsSymbol } from "../../common";
 import { AdminEmailTemplate, AdminEmailTemplateUpdateOptions, adminEmailTemplateUpdateOptionsToCrud } from "../../email-templates";
-import { AdminTeamPermission, AdminTeamPermissionDefinition, AdminTeamPermissionDefinitionCreateOptions, AdminTeamPermissionDefinitionUpdateOptions, adminTeamPermissionDefinitionCreateOptionsToCrud, adminTeamPermissionDefinitionUpdateOptionsToCrud } from "../../permissions";
+import { AdminTeamPermission, AdminTeamPermissionDefinition, AdminTeamPermissionDefinitionCreateOptions, AdminTeamPermissionDefinitionUpdateOptions, AdminUserPermission, AdminUserPermissionDefinition, AdminUserPermissionDefinitionCreateOptions, AdminUserPermissionDefinitionUpdateOptions, adminTeamPermissionDefinitionCreateOptionsToCrud, adminTeamPermissionDefinitionUpdateOptionsToCrud, adminUserPermissionDefinitionCreateOptionsToCrud, adminUserPermissionDefinitionUpdateOptionsToCrud } from "../../permissions";
 import { AdminOwnedProject, AdminProject, AdminProjectUpdateOptions, adminProjectUpdateOptionsToCrud } from "../../projects";
 import { StackAdminApp, StackAdminAppConstructorOptions } from "../interfaces/admin-app";
 import { clientVersion, createCache, getBaseUrl, getDefaultProjectId, getDefaultPublishableClientKey, getDefaultSecretServerKey, getDefaultSuperSecretAdminKey } from "./common";
@@ -35,7 +35,10 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
     return await this._interface.listEmailTemplates();
   });
   private readonly _adminTeamPermissionDefinitionsCache = createCache(async () => {
-    return await this._interface.listPermissionDefinitions();
+    return await this._interface.listTeamPermissionDefinitions();
+  });
+  private readonly _adminUserPermissionDefinitionsCache = createCache(async () => {
+    return await this._interface.listUserPermissionDefinitions();
   });
   private readonly _svixTokenCache = createCache(async () => {
     return await this._interface.getSvixToken();
@@ -133,6 +136,7 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
         createTeamOnSignUp: data.config.create_team_on_sign_up,
         teamCreatorDefaultPermissions: data.config.team_creator_default_permissions,
         teamMemberDefaultPermissions: data.config.team_member_default_permissions,
+        userDefaultPermissions: data.config.user_default_permissions,
       },
 
       async update(update: AdminProjectUpdateOptions) {
@@ -263,18 +267,18 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
   }
 
   async createTeamPermissionDefinition(data: AdminTeamPermissionDefinitionCreateOptions): Promise<AdminTeamPermission>{
-    const crud = await this._interface.createPermissionDefinition(adminTeamPermissionDefinitionCreateOptionsToCrud(data));
+    const crud = await this._interface.createTeamPermissionDefinition(adminTeamPermissionDefinitionCreateOptionsToCrud(data));
     await this._adminTeamPermissionDefinitionsCache.refresh([]);
     return this._serverTeamPermissionDefinitionFromCrud(crud);
   }
 
   async updateTeamPermissionDefinition(permissionId: string, data: AdminTeamPermissionDefinitionUpdateOptions) {
-    await this._interface.updatePermissionDefinition(permissionId, adminTeamPermissionDefinitionUpdateOptionsToCrud(data));
+    await this._interface.updateTeamPermissionDefinition(permissionId, adminTeamPermissionDefinitionUpdateOptionsToCrud(data));
     await this._adminTeamPermissionDefinitionsCache.refresh([]);
   }
 
   async deleteTeamPermissionDefinition(permissionId: string): Promise<void> {
-    await this._interface.deletePermissionDefinition(permissionId);
+    await this._interface.deleteTeamPermissionDefinition(permissionId);
     await this._adminTeamPermissionDefinitionsCache.refresh([]);
   }
 
@@ -288,6 +292,36 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
     const crud = useAsyncCache(this._adminTeamPermissionDefinitionsCache, [], "usePermissions()");
     return useMemo(() => {
       return crud.map((p) => this._serverTeamPermissionDefinitionFromCrud(p));
+    }, [crud]);
+  }
+  // END_PLATFORM
+
+  async createUserPermissionDefinition(data: AdminUserPermissionDefinitionCreateOptions): Promise<AdminUserPermission> {
+    const crud = await this._interface.createUserPermissionDefinition(adminUserPermissionDefinitionCreateOptionsToCrud(data));
+    await this._adminUserPermissionDefinitionsCache.refresh([]);
+    return this._serverUserPermissionDefinitionFromCrud(crud);
+  }
+
+  async updateUserPermissionDefinition(permissionId: string, data: AdminUserPermissionDefinitionUpdateOptions) {
+    await this._interface.updateUserPermissionDefinition(permissionId, adminUserPermissionDefinitionUpdateOptionsToCrud(data));
+    await this._adminUserPermissionDefinitionsCache.refresh([]);
+  }
+
+  async deleteUserPermissionDefinition(permissionId: string): Promise<void> {
+    await this._interface.deleteUserPermissionDefinition(permissionId);
+    await this._adminUserPermissionDefinitionsCache.refresh([]);
+  }
+
+  async listUserPermissionDefinitions(): Promise<AdminUserPermissionDefinition[]> {
+    const crud = Result.orThrow(await this._adminUserPermissionDefinitionsCache.getOrWait([], "write-only"));
+    return crud.map((p) => this._serverUserPermissionDefinitionFromCrud(p));
+  }
+
+  // IF_PLATFORM react-like
+  useUserPermissionDefinitions(): AdminUserPermissionDefinition[] {
+    const crud = useAsyncCache(this._adminUserPermissionDefinitionsCache, [], "useUserPermissions()");
+    return useMemo(() => {
+      return crud.map((p) => this._serverUserPermissionDefinitionFromCrud(p));
     }, [crud]);
   }
   // END_PLATFORM

@@ -8,15 +8,14 @@ import * as yup from "yup";
 import { PageLayout } from "../page-layout";
 import { useAdminApp } from "../use-admin-app";
 
-
 export default function PageClient() {
   const stackAdminApp = useAdminApp();
-  const permissions = stackAdminApp.useTeamPermissionDefinitions();
+  const permissions = stackAdminApp.useUserPermissionDefinitions();
   const [createPermissionModalOpen, setCreatePermissionModalOpen] = React.useState(false);
 
   return (
     <PageLayout
-      title="Team Permissions"
+      title="User Permissions"
       actions={
         <Button onClick={() => setCreatePermissionModalOpen(true)}>
           Create Permission
@@ -25,7 +24,7 @@ export default function PageClient() {
 
       <PermissionTable
         permissions={permissions}
-        permissionType="team"
+        permissionType="user"
       />
 
       <CreateDialog
@@ -41,7 +40,7 @@ function CreateDialog(props: {
   onOpenChange: (open: boolean) => void,
 }) {
   const stackAdminApp = useAdminApp();
-  const permissions = stackAdminApp.useTeamPermissionDefinitions();
+  const permissions = stackAdminApp.useUserPermissionDefinitions();
 
   const formSchema = yup.object({
     id: yup.string().defined()
@@ -63,7 +62,7 @@ function CreateDialog(props: {
     formSchema={formSchema}
     okButton={{ label: "Create" }}
     onSubmit={async (values) => {
-      await stackAdminApp.createTeamPermissionDefinition({
+      await stackAdminApp.createUserPermissionDefinition({
         id: values.id,
         description: values.description,
         containedPermissionIds: values.containedPermissionIds,
