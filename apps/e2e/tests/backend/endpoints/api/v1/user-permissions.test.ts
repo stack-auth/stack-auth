@@ -4,9 +4,8 @@ import { ApiKey, Auth, InternalProjectKeys, Project, Team, Webhook, backendConte
 
 it("is not allowed to list permissions from the other users on the client", async ({ expect }) => {
   await Auth.Otp.signIn();
-  const { teamId } = await Team.createAndAddCurrent();
 
-  const response = await niceBackendFetch(`/api/v1/team-permissions?team_id=${teamId}`, {
+  const response = await niceBackendFetch(`/api/v1/user-permissions`, {
     accessType: "client",
     method: "GET",
   });
@@ -21,9 +20,8 @@ it("is not allowed to list permissions from the other users on the client", asyn
 
 it("is not allowed to grant non-existing permission to a user on the server", async ({ expect }) => {
   const { userId } = await Auth.Otp.signIn();
-  const { teamId } = await Team.createAndAddCurrent();
 
-  const response = await niceBackendFetch(`/api/v1/team-permissions/${teamId}/${userId}/does_not_exist`, {
+  const response = await niceBackendFetch(`/api/v1/user-permissions/${userId}/does_not_exist`, {
     accessType: "server",
     method: "POST",
     body: {},
@@ -49,7 +47,7 @@ it("can create a new permission and grant it to a user on the server", async ({ 
   const { adminAccessToken } = await Project.createAndGetAdminToken({ config: { magic_link_enabled: true } });
 
   // create a permission child
-  await niceBackendFetch(`/api/v1/team-permission-definitions`, {
+  await niceBackendFetch(`/api/v1/user-permission-definitions`, {
     accessType: "admin",
     method: "POST",
     body: {
@@ -62,7 +60,7 @@ it("can create a new permission and grant it to a user on the server", async ({ 
   });
 
   // create a permission parent
-  await niceBackendFetch(`/api/v1/team-permission-definitions`, {
+  await niceBackendFetch(`/api/v1/user-permission-definitions`, {
     accessType: "admin",
     method: "POST",
     body: {
@@ -78,10 +76,9 @@ it("can create a new permission and grant it to a user on the server", async ({ 
   await ApiKey.createAndSetProjectKeys(adminAccessToken);
 
   const { userId } = await Auth.Password.signUpWithEmail({ password: 'test1234' });
-  const { teamId } = await Team.createAndAddCurrent();
 
   // list current permissions
-  const response1 = await niceBackendFetch(`/api/v1/team-permissions?team_id=${teamId}&user_id=me`, {
+  const response1 = await niceBackendFetch(`/api/v1/user-permissions?user_id=me`, {
     accessType: "client",
     method: "GET",
   });
@@ -90,20 +87,14 @@ it("can create a new permission and grant it to a user on the server", async ({ 
       "status": 200,
       "body": {
         "is_paginated": false,
-        "items": [
-          {
-            "id": "admin",
-            "team_id": "<stripped UUID>",
-            "user_id": "<stripped UUID>",
-          },
-        ],
+        "items": [],
       },
       "headers": Headers { <some fields may have been hidden> },
     }
   `);
 
   // grant new permission
-  const response2 = await niceBackendFetch(`/api/v1/team-permissions/${teamId}/${userId}/parent`, {
+  const response2 = await niceBackendFetch(`/api/v1/user-permissions/${userId}/parent`, {
     accessType: "server",
     method: "POST",
     body: {},
@@ -113,7 +104,6 @@ it("can create a new permission and grant it to a user on the server", async ({ 
       "status": 201,
       "body": {
         "id": "parent",
-        "team_id": "<stripped UUID>",
         "user_id": "<stripped UUID>",
       },
       "headers": Headers { <some fields may have been hidden> },
@@ -121,7 +111,7 @@ it("can create a new permission and grant it to a user on the server", async ({ 
   `);
 
   // list current permissions (should have the new permission)
-  const response3 = await niceBackendFetch(`/api/v1/team-permissions?team_id=${teamId}&user_id=me`, {
+  const response3 = await niceBackendFetch(`/api/v1/user-permissions?user_id=me`, {
     accessType: "client",
     method: "GET",
   });
@@ -132,13 +122,7 @@ it("can create a new permission and grant it to a user on the server", async ({ 
         "is_paginated": false,
         "items": [
           {
-            "id": "admin",
-            "team_id": "<stripped UUID>",
-            "user_id": "<stripped UUID>",
-          },
-          {
             "id": "parent",
-            "team_id": "<stripped UUID>",
             "user_id": "<stripped UUID>",
           },
         ],
@@ -148,11 +132,11 @@ it("can create a new permission and grant it to a user on the server", async ({ 
   `);
 });
 
-it("can customize default team permissions", async ({ expect }) => {
+it("can customize default user permissions", async ({ expect }) => {
   await Auth.Otp.signIn();
   const { adminAccessToken } = await Project.createAndGetAdminToken();
 
-  const response1 = await niceBackendFetch(`/api/v1/team-permission-definitions`, {
+  const response1 = await niceBackendFetch(`/api/v1/user-permission-definitions`, {
     accessType: "admin",
     method: "POST",
     body: {
@@ -175,7 +159,7 @@ it("can customize default team permissions", async ({ expect }) => {
 
   const { updateProjectResponse: response2 } = await Project.updateCurrent(adminAccessToken, {
     config: {
-      team_member_default_permissions: [{ id: 'test' }],
+      user_default_permissions: [{ id: 'test' }],
     },
   });
 
@@ -201,8 +185,8 @@ it("can customize default team permissions", async ({ expect }) => {
           "passkey_enabled": false,
           "sign_up_enabled": true,
           "team_creator_default_permissions": [{ "id": "admin" }],
-          "team_member_default_permissions": [{ "id": "test" }],
-          "user_default_permissions": [],
+          "team_member_default_permissions": [{ "id": "member" }],
+          "user_default_permissions": [{ "id": "test" }],
         },
         "created_at_millis": <stripped field 'created_at_millis'>,
         "description": "",
@@ -214,15 +198,43 @@ it("can customize default team permissions", async ({ expect }) => {
       "headers": Headers { <some fields may have been hidden> },
     }
   `);
+
+  // sign up a new user
+  const { userId } = await Auth.Password.signUpWithEmail({ password: 'test1234' });
+  // list permissions for the new user
+  const response3 = await niceBackendFetch(`/api/v1/user-permissions?user_id=${userId}`, {
+    accessType: "client",
+    method: "GET",
+  });
+  expect(response3).toMatchInlineSnapshot(`
+    NiceResponse {
+      "status": 200,
+      "body": {
+        "is_paginated": false,
+        "items": [
+          {
+            "id": "test",
+            "user_id": "<stripped UUID>",
+          },
+        ],
+      },
+      "headers": Headers { <some fields may have been hidden> },
+    }
+  `);
 });
 
-it("should trigger team permission webhook when a permission is granted to a user", async ({ expect }) => {
+it("should trigger user permission webhook when a permission is granted to a user", async ({ expect }) => {
   const { projectId, svixToken, endpointId } = await Webhook.createProjectWithEndpoint();
 
   const { userId } = await Auth.Otp.signIn();
-  const { teamId } = await Team.createAndAddCurrent();
 
-  const grantPermissionResponse = await niceBackendFetch(`/api/v1/team-permissions/${teamId}/${userId}/$update_team`, {
+  await niceBackendFetch(`/api/v1/user-permission-definitions`, {
+    accessType: "admin",
+    method: "POST",
+    body: { id: 'test_permission' },
+  });
+
+  const grantPermissionResponse = await niceBackendFetch(`/api/v1/user-permissions/${userId}/test_permission`, {
     accessType: "server",
     method: "POST",
     body: {},
@@ -233,35 +245,39 @@ it("should trigger team permission webhook when a permission is granted to a use
   await wait(3000);
 
   const attemptResponse = await Webhook.listWebhookAttempts(projectId, endpointId, svixToken);
-  const teamPermissionCreatedEvent = attemptResponse.find(event => event.eventType === "team_permission.created");
+  const userPermissionCreatedEvent = attemptResponse.find(event => event.eventType === "user_permission.created");
 
-  expect(teamPermissionCreatedEvent).toMatchInlineSnapshot(`
+  expect(userPermissionCreatedEvent).toMatchInlineSnapshot(`
     {
       "channels": null,
       "eventId": null,
-      "eventType": "team_permission.created",
+      "eventType": "user_permission.created",
       "id": "<stripped svix message id>",
       "payload": {
         "data": {
-          "id": "$update_team",
-          "team_id": "<stripped UUID>",
+          "id": "test_permission",
           "user_id": "<stripped UUID>",
         },
-        "type": "team_permission.created",
+        "type": "user_permission.created",
       },
       "timestamp": <stripped field 'timestamp'>,
     }
   `);
 });
 
-it("should trigger team permission webhook when a permission is revoked from a user", async ({ expect }) => {
+it("should trigger user permission webhook when a permission is revoked from a user", async ({ expect }) => {
   const { projectId, svixToken, endpointId } = await Webhook.createProjectWithEndpoint();
 
   const { userId } = await Auth.Otp.signIn();
-  const { teamId } = await Team.createAndAddCurrent();
+
+  await niceBackendFetch(`/api/v1/user-permission-definitions`, {
+    accessType: "admin",
+    method: "POST",
+    body: { id: 'test_permission' },
+  });
 
   // First grant the permission
-  const grantPermissionResponse = await niceBackendFetch(`/api/v1/team-permissions/${teamId}/${userId}/$update_team`, {
+  const grantPermissionResponse = await niceBackendFetch(`/api/v1/user-permissions/${userId}/test_permission`, {
     accessType: "server",
     method: "POST",
     body: {},
@@ -270,7 +286,7 @@ it("should trigger team permission webhook when a permission is revoked from a u
   expect(grantPermissionResponse.status).toBe(201);
 
   // Then revoke the permission
-  const revokePermissionResponse = await niceBackendFetch(`/api/v1/team-permissions/${teamId}/${userId}/$update_team`, {
+  const revokePermissionResponse = await niceBackendFetch(`/api/v1/user-permissions/${userId}/test_permission`, {
     accessType: "server",
     method: "DELETE",
   });
@@ -280,21 +296,20 @@ it("should trigger team permission webhook when a permission is revoked from a u
   await wait(3000);
 
   const attemptResponse = await Webhook.listWebhookAttempts(projectId, endpointId, svixToken);
-  const teamPermissionDeletedEvent = attemptResponse.find(event => event.eventType === "team_permission.deleted");
+  const userPermissionDeletedEvent = attemptResponse.find(event => event.eventType === "user_permission.deleted");
 
-  expect(teamPermissionDeletedEvent).toMatchInlineSnapshot(`
+  expect(userPermissionDeletedEvent).toMatchInlineSnapshot(`
     {
       "channels": null,
       "eventId": null,
-      "eventType": "team_permission.deleted",
+      "eventType": "user_permission.deleted",
       "id": "<stripped svix message id>",
       "payload": {
         "data": {
-          "id": "$update_team",
-          "team_id": "<stripped UUID>",
+          "id": "test_permission",
           "user_id": "<stripped UUID>",
         },
-        "type": "team_permission.deleted",
+        "type": "user_permission.deleted",
       },
       "timestamp": <stripped field 'timestamp'>,
     }
