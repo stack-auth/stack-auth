@@ -1104,6 +1104,20 @@ const TeamMembershipAlreadyExists = createKnownErrorConstructor(
   () => [] as const,
 );
 
+const UserPermissionRequired = createKnownErrorConstructor(
+  KnownError,
+  "USER_PERMISSION_REQUIRED",
+  (userId, permissionId) => [
+    401,
+    `User ${userId} does not have permission ${permissionId}.`,
+    {
+      user_id: userId,
+      permission_id: permissionId,
+    },
+  ] as const,
+  (json) => [json.user_id, json.permission_id] as const,
+);
+
 const TeamPermissionRequired = createKnownErrorConstructor(
   KnownError,
   "TEAM_PERMISSION_REQUIRED",
@@ -1294,6 +1308,7 @@ export const KnownErrors = {
   InvalidTotpCode,
   UserAuthenticationRequired,
   TeamMembershipAlreadyExists,
+  UserPermissionRequired,
   TeamPermissionRequired,
   InvalidSharedOAuthProviderId,
   InvalidStandardOAuthProviderId,

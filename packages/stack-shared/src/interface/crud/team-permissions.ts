@@ -70,19 +70,19 @@ export const teamPermissionDeletedWebhookEvent = {
 export const teamPermissionDefinitionsCrudAdminReadSchema = yupObject({
   id: schemaFields.teamPermissionDefinitionIdSchema.defined(),
   description: schemaFields.teamPermissionDescriptionSchema.optional(),
-  contained_permission_ids: schemaFields.containedPermissionIdsSchema.defined()
+  contained_permission_ids: schemaFields.containedPermissionIdsSchema.defined(),
 }).defined();
 
 export const teamPermissionDefinitionsCrudAdminCreateSchema = yupObject({
   id: schemaFields.customTeamPermissionDefinitionIdSchema.defined(),
   description: schemaFields.teamPermissionDescriptionSchema.optional(),
-  contained_permission_ids: schemaFields.containedPermissionIdsSchema.optional()
+  contained_permission_ids: schemaFields.containedPermissionIdsSchema.optional(),
 }).defined();
 
 export const teamPermissionDefinitionsCrudAdminUpdateSchema = yupObject({
   id: schemaFields.customTeamPermissionDefinitionIdSchema.optional(),
   description: schemaFields.teamPermissionDescriptionSchema.optional(),
-  contained_permission_ids: schemaFields.containedPermissionIdsSchema.optional()
+  contained_permission_ids: schemaFields.containedPermissionIdsSchema.optional(),
 }).defined();
 
 export const teamPermissionDefinitionsCrudAdminDeleteSchema = yupMixed();

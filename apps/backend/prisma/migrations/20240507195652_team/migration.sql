@@ -1,6 +1,6 @@
 
 -- CreateEnum
-CREATE TYPE "PermissionScope" AS ENUM ('GLOBAL', 'TEAM');
+CREATE TYPE "PermissionScope" AS ENUM ('USER', 'TEAM');
 
 -- AlterTable
 ALTER TABLE "ProjectConfig" ADD COLUMN "createTeamOnSignUp" BOOLEAN NOT NULL DEFAULT false;

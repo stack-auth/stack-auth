@@ -112,6 +112,13 @@ const navigationItems: (Label | Item | Hidden)[] = [
     type: 'item'
   },
   {
+    name: "User Permissions",
+    href: "/user-permissions",
+    regex: /^\/projects\/[^\/]+\/user-permissions$/,
+    icon: LockKeyhole,
+    type: 'item'
+  },
+  {
     name: "Teams",
     type: 'label'
   },
@@ -144,7 +151,7 @@ const navigationItems: (Label | Item | Hidden)[] = [
     type: "hidden",
   },
   {
-    name: "Permissions",
+    name: "Team Permissions",
     href: "/team-permissions",
     regex: /^\/projects\/[^\/]+\/team-permissions$/,
     icon: LockKeyhole,
