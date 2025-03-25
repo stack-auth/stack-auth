@@ -99,11 +99,12 @@ async function getParentDbIds(
   tx: PrismaTransaction,
   options: {
     tenancy: Tenancy,
+    scope: "TEAM" | "GLOBAL",
     containedPermissionIds?: string[],
   }
 ) {
   let parentDbIds = [];
-  const potentialParentPermissions = await listPermissionDefinitions(tx, "ALL", options.tenancy);
+  const potentialParentPermissions = await listPermissionDefinitions(tx, options.scope, options.tenancy);
   for (const parentPermissionId of options.containedPermissionIds || []) {
     const parentPermission = potentialParentPermissions.find(p => p.id === parentPermissionId);
     if (!parentPermission) {
@@ -140,7 +141,8 @@ export async function listUserTeamPermissions(
   });
 
   const finalResults: { id: string, team_id: string, user_id: string }[] = [];
-  for (const [[userId, teamId], userTeamResults] of groupBy(results, (result) => [result.projectUserId, result.teamId])) {
+  for (const [compositeKey, userTeamResults] of groupBy(results, (result) => JSON.stringify([result.projectUserId, result.teamId]))) {
+    const [userId, teamId] = JSON.parse(compositeKey) as [string, string];
     const idsToProcess = [...userTeamResults.map(p =>
       p.permission?.queryableId ||
       (p.systemPermission ? teamDBTypeToSystemPermissionString(p.systemPermission) : null) ||
@@ -322,7 +324,7 @@ export async function revokeTeamPermission(
 
 export async function listPermissionDefinitions(
   tx: PrismaTransaction,
-  scope: "TEAM" | "GLOBAL" | "ALL",
+  scope: "TEAM" | "GLOBAL",
   tenancy: Tenancy
 ): Promise<(TeamPermissionDefinitionsCrud["Admin"]["Read"] & { __database_id: string })[]> {
   const projectConfig = await tx.projectConfig.findUnique({
@@ -332,7 +334,7 @@ export async function listPermissionDefinitions(
     include: {
       permissions: {
         where: {
-          scope: scope === "ALL" ? undefined : scope,
+          scope,
         },
         include: fullPermissionInclude,
       },
@@ -343,7 +345,7 @@ export async function listPermissionDefinitions(
   const nonSystemPermissions = res.map(db => teamPermissionDefinitionJsonFromDbType(db));
 
   const systemPermissions = [
-    ...(scope === "ALL" || scope === "TEAM" ?
+    ...(scope === "TEAM" ?
       Object.values(DBTeamSystemPermission).map(db => teamPermissionDefinitionJsonFromTeamSystemDbType(db, projectConfig)) :
       []),
   ];
@@ -365,6 +367,7 @@ export async function createPermissionDefinition(
 ) {
   const parentDbIds = await getParentDbIds(tx, {
     tenancy: options.tenancy,
+    scope: options.scope,
     containedPermissionIds: options.data.contained_permission_ids
   });
   const dbPermission = await tx.permission.create({
@@ -399,6 +402,7 @@ export async function createPermissionDefinition(
 export async function updatePermissionDefinitions(
   tx: PrismaTransaction,
   options: {
+    scope: "TEAM" | "GLOBAL",
     tenancy: Tenancy,
     permissionId: string,
     data: {
@@ -410,6 +414,7 @@ export async function updatePermissionDefinitions(
 ) {
   const parentDbIds = await getParentDbIds(tx, {
     tenancy: options.tenancy,
+    scope: options.scope,
     containedPermissionIds: options.data.contained_permission_ids
   });
 

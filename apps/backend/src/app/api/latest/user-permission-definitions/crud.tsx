@@ -21,6 +21,7 @@ export const userPermissionDefinitionsCrudHandlers = createLazyProxy(() => creat
   async onUpdate({ auth, data, params }) {
     return await retryTransaction(async (tx) => {
       return await updatePermissionDefinitions(tx, {
+        scope: "GLOBAL",
         tenancy: auth.tenancy,
         permissionId: params.permission_id,
         data,
