@@ -132,7 +132,6 @@ it("can create a new permission and grant it to a user on the server", async ({ 
   `);
 });
 
-// TODO: add user default permissions to the project config
 it("can customize default user permissions", async ({ expect }) => {
   await Auth.Otp.signIn();
   const { adminAccessToken } = await Project.createAndGetAdminToken();
