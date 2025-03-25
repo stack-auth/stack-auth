@@ -261,6 +261,25 @@ import.meta.vitest?.describe('validateAndReturn(...)', async () => {
 // ---------------------------------------------------------------------------------------------------------------------
 // Conversions
 // ---------------------------------------------------------------------------------------------------------------------
+
+/*
+A: AdminProjectCrudRead
+U: AdminProjectCrudUpdate
+D: DB legacy config
+C: config override
+
+Get project
+- old: D -> A
+- new: D -> C -> A
+        ---- ----
+Update project
+- old: U -> D
+- new: U -> C -> U -> D
+        ---- ----
+*/
+
+
+// D -> C
 export const dbProjectToRenderedEnvironmentConfigOverride = (dbProject: DBProject): EnvironmentConfigOverride => {
   const config = dbProject.config;
 
@@ -370,7 +389,7 @@ export const dbProjectToRenderedEnvironmentConfigOverride = (dbProject: DBProjec
       }
     })(),
 
-    teamCreateDefaultSystemPermissions: config.permissions.filter(perm => perm.isDefaultTeamCreatorPermission)
+    teamCreateDefaultPermissions: config.permissions.filter(perm => perm.isDefaultTeamCreatorPermission)
       .map(teamPermissionDefinitionJsonFromDbType)
       .concat(config.teamCreateDefaultSystemPermissions.map(db => teamPermissionDefinitionJsonFromTeamSystemDbType(db, config)))
       .reduce((acc, perm) => {
@@ -378,7 +397,7 @@ export const dbProjectToRenderedEnvironmentConfigOverride = (dbProject: DBProjec
         return acc;
       }, {}),
 
-    teamMemberDefaultSystemPermissions: config.permissions.filter(perm => perm.isDefaultTeamMemberPermission)
+    teamMemberDefaultPermissions: config.permissions.filter(perm => perm.isDefaultTeamMemberPermission)
       .map(teamPermissionDefinitionJsonFromDbType)
       .concat(config.teamMemberDefaultSystemPermissions.map(db => teamPermissionDefinitionJsonFromTeamSystemDbType(db, config)))
       .reduce((acc, perm) => {
@@ -397,11 +416,31 @@ export const dbProjectToRenderedEnvironmentConfigOverride = (dbProject: DBProjec
       } satisfies EnvironmentRenderedConfig['teamPermissionDefinitions'][string];
       return acc;
     }, {}),
-  };
+  } satisfies EnvironmentRenderedConfig;
 };
 
-export const renderedEnvironmentConfigToProjectCrud = (renderedConfig: EnvironmentRenderedConfig): ProjectsCrud["Admin"]["Read"]['config'] => {
+// C -> A
+export const renderedEnvironmentConfigToProjectCrud = (renderedConfig: EnvironmentRenderedConfig, configId: string): ProjectsCrud["Admin"]["Read"]['config'] => {
+  const oauthProviders = typedEntries(renderedConfig.authMethods)
+    .filter(([_, authMethod]) => authMethod.type === 'oauth')
+    .map(([_, authMethod]) => {
+      if (authMethod.type !== 'oauth') {
+        throw new StackAssertionError('Expected oauth provider', { authMethod });
+      }
+      const oauthProvider = renderedConfig.oauthProviders[authMethod.oauthProviderId];
+
+      return {
+        id: oauthProvider.type,
+        enabled: authMethod.enabled,
+        type: oauthProvider.isShared ? 'shared' : 'standard',
+        client_id: oauthProvider.clientId,
+        client_secret: oauthProvider.clientSecret,
+        facebook_config_id: oauthProvider.facebookConfigId,
+        microsoft_tenant_id: oauthProvider.microsoftTenantId,
+      } satisfies ProjectsCrud["Admin"]["Read"]['config']['oauth_providers'][number];
+    });
   return {
+    id: configId,
     allow_localhost: renderedConfig.allowLocalhost,
     client_team_creation_enabled: renderedConfig.clientTeamCreationEnabled,
     client_user_deletion_enabled: renderedConfig.clientUserDeletionEnabled,
@@ -412,25 +451,27 @@ export const renderedEnvironmentConfigToProjectCrud = (renderedConfig: Environme
     magic_link_enabled: typedEntries(renderedConfig.authMethods).filter(([_, authMethod]) => authMethod.enabled && authMethod.type === 'otp').length > 0,
     passkey_enabled: typedEntries(renderedConfig.authMethods).filter(([_, authMethod]) => authMethod.enabled && authMethod.type === 'passkey').length > 0,
 
-    oauth_providers: typedEntries(renderedConfig.authMethods)
-      .filter(([_, authMethod]) => authMethod.type === 'oauth')
-      .map(([_, authMethod]) => {
-        if (authMethod.type !== 'oauth') {
-          throw new StackAssertionError('Expected oauth provider', { authMethod });
-        }
-        const oauthProvider = renderedConfig.oauthProviders[authMethod.oauthProviderId];
-        if (!oauthProvider) {
-          throw new StackAssertionError('OAuth provider not found', { authMethod });
-        }
-        return {
-          id: oauthProvider.type,
-          enabled: authMethod.enabled,
-          type: oauthProvider.isShared ? 'shared' : 'standard',
-          client_id: oauthProvider.clientId,
-          client_secret: oauthProvider.clientSecret,
-          facebook_config_id: oauthProvider.facebookConfigId,
-          microsoft_tenant_id: oauthProvider.microsoftTenantId,
-        } satisfies ProjectsCrud["Admin"]["Read"]['config']['oauth_providers'][number];
-      }),
+    oauth_providers: oauthProviders,
+    enabled_oauth_providers: oauthProviders.filter(provider => provider.enabled),
+
+    domains: typedEntries(renderedConfig.domains).map(([_, domainConfig]) => ({
+      domain: domainConfig.domain,
+      handler_path: domainConfig.handlerPath,
+    })),
+
+    email_config: renderedConfig.emailConfig.isShared ? {
+      type: 'shared',
+    } : {
+      type: 'standard',
+      host: renderedConfig.emailConfig.host,
+      port: renderedConfig.emailConfig.port,
+      username: renderedConfig.emailConfig.username,
+      password: renderedConfig.emailConfig.password,
+      sender_name: renderedConfig.emailConfig.senderName,
+      sender_email: renderedConfig.emailConfig.senderEmail,
+    },
+
+    team_creator_default_permissions: typedEntries(renderedConfig.teamCreateDefaultPermissions).map(([_, perm]) => ({ id: perm.id })),
+    team_member_default_permissions: typedEntries(renderedConfig.teamMemberDefaultPermissions).map(([_, perm]) => ({ id: perm.id })),
   };
 };

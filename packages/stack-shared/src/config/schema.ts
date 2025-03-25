@@ -48,14 +48,14 @@ export const branchConfigSchema = projectConfigSchema.omit(["sourceOfTruthDbConn
   oauthAccountMergeStrategy: yupString().oneOf(['link_method', 'raise_error', 'allow_duplicates']).defined().meta({ endConfigurableLevel: 'organization' }),
 
   // keys to the permissions/permission definitions are hex encoded ids.
-  teamCreateDefaultSystemPermissions: yupRecord(
+  teamCreateDefaultPermissions: yupRecord(
     yupString().defined().matches(permissionRegex),
     yupObject({
       id: yupString().defined(),
     }),
   ).defined().meta({ endConfigurableLevel: 'organization' }),
 
-  teamMemberDefaultSystemPermissions: yupRecord(
+  teamMemberDefaultPermissions: yupRecord(
     yupString().defined().matches(permissionRegex),
     yupObject({
       id: yupString().defined(),
@@ -147,10 +147,10 @@ export const environmentConfigSchema = branchConfigSchema.concat(yupObject({
 
   emailConfig: yupUnion(
     yupObject({
-      isShared: yupBoolean().oneOf([true]).defined(),
+      isShared: yupBoolean().isTrue().defined(),
     }),
     yupObject({
-      isShared: yupBoolean().oneOf([false]).defined(),
+      isShared: yupBoolean().isFalse().defined(),
       host: schemaFields.emailHostSchema.defined().nonEmpty(),
       port: schemaFields.emailPortSchema.defined(),
       username: schemaFields.emailUsernameSchema.defined().nonEmpty(),
