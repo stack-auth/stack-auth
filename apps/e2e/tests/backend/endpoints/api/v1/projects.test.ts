@@ -30,7 +30,7 @@ it("should not have have access to the project without project keys", async ({ e
 
 it("gets current project (internal)", async ({ expect }) => {
   backendContext.set({ projectKeys: InternalProjectKeys });
-  const response = await niceBackendFetch("/api/v1/internal/projects/current", { accessType: "client" });
+  const response = await niceBackendFetch("/api/v1/projects/current", { accessType: "client" });
   expect(response).toMatchInlineSnapshot(`
     NiceResponse {
       "status": 200,
