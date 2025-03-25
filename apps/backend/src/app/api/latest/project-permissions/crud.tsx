@@ -1,5 +1,5 @@
-import { grantUserPermission, listUserPermissions, revokeUserPermission } from "@/lib/permissions";
-import { ensureUserExists, ensureUserPermissionExists } from "@/lib/request-checks";
+import { grantProjectPermission, listProjectPermissions, revokeProjectPermission } from "@/lib/permissions";
+import { ensureUserExists, ensureProjectPermissionExists } from "@/lib/request-checks";
 import { sendProjectPermissionCreatedWebhook, sendProjectPermissionDeletedWebhook } from "@/lib/webhooks";
 import { retryTransaction } from "@/prisma-client";
 import { createCrudHandlers } from "@/route-handlers/crud-handler";
@@ -24,7 +24,7 @@ export const projectPermissionsCrudHandlers = createLazyProxy(() => createCrudHa
     const result = await retryTransaction(async (tx) => {
       await ensureUserExists(tx, { tenancyId: auth.tenancy.id, userId: params.user_id });
 
-      return await grantUserPermission(tx, {
+      return await grantProjectPermission(tx, {
         tenancy: auth.tenancy,
         userId: params.user_id,
         permissionId: params.permission_id
@@ -43,7 +43,7 @@ export const projectPermissionsCrudHandlers = createLazyProxy(() => createCrudHa
   },
   async onDelete({ auth, params }) {
     const result = await retryTransaction(async (tx) => {
-      await ensureUserPermissionExists(tx, {
+      await ensureProjectPermissionExists(tx, {
         tenancy: auth.tenancy,
         userId: params.user_id,
         permissionId: params.permission_id,
@@ -51,7 +51,7 @@ export const projectPermissionsCrudHandlers = createLazyProxy(() => createCrudHa
         recursive: false,
       });
 
-      return await revokeUserPermission(tx, {
+      return await revokeProjectPermission(tx, {
         tenancy: auth.tenancy,
         userId: params.user_id,
         permissionId: params.permission_id
@@ -79,7 +79,7 @@ export const projectPermissionsCrudHandlers = createLazyProxy(() => createCrudHa
 
     return await retryTransaction(async (tx) => {
       return {
-        items: await listUserPermissions(tx, {
+        items: await listProjectPermissions(tx, {
           tenancy: auth.tenancy,
           permissionId: query.permission_id,
           userId: query.user_id,

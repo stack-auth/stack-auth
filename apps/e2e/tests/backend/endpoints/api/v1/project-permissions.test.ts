@@ -223,7 +223,7 @@ it("can customize default user permissions", async ({ expect }) => {
   `);
 });
 
-it("should trigger user permission webhook when a permission is granted to a user", async ({ expect }) => {
+it("should trigger project permission webhook when a permission is granted to a user", async ({ expect }) => {
   const { projectId, svixToken, endpointId } = await Webhook.createProjectWithEndpoint();
 
   const { userId } = await Auth.Otp.signIn();
@@ -245,9 +245,9 @@ it("should trigger user permission webhook when a permission is granted to a use
   await wait(3000);
 
   const attemptResponse = await Webhook.listWebhookAttempts(projectId, endpointId, svixToken);
-  const userPermissionCreatedEvent = attemptResponse.find(event => event.eventType === "project_permission.created");
+  const projectPermissionCreatedEvent = attemptResponse.find(event => event.eventType === "project_permission.created");
 
-  expect(userPermissionCreatedEvent).toMatchInlineSnapshot(`
+  expect(projectPermissionCreatedEvent).toMatchInlineSnapshot(`
     {
       "channels": null,
       "eventId": null,
@@ -265,7 +265,7 @@ it("should trigger user permission webhook when a permission is granted to a use
   `);
 });
 
-it("should trigger user permission webhook when a permission is revoked from a user", async ({ expect }) => {
+it("should trigger project permission webhook when a permission is revoked from a user", async ({ expect }) => {
   const { projectId, svixToken, endpointId } = await Webhook.createProjectWithEndpoint();
 
   const { userId } = await Auth.Otp.signIn();

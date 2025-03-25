@@ -14,7 +14,7 @@ type AdminPermissionDefinition = {
   containedPermissionIds: string[],
 };
 
-type PermissionType = 'user' | 'team';
+type PermissionType = 'project' | 'team';
 
 function toolbarRender<TData>(table: Table<TData>) {
   return (
@@ -31,7 +31,7 @@ function EditDialog(props: {
   permissionType: PermissionType,
 }) {
   const stackAdminApp = useAdminApp();
-  const permissions = props.permissionType === 'user'
+  const permissions = props.permissionType === 'project'
     ? stackAdminApp.useProjectPermissionDefinitions()
     : stackAdminApp.useTeamPermissionDefinitions();
   const currentPermission = permissions.find((p) => p.id === props.selectedPermissionId);
@@ -62,7 +62,7 @@ function EditDialog(props: {
     })
   }).default(currentPermission);
 
-  const updatePermission = props.permissionType === 'user'
+  const updatePermission = props.permissionType === 'project'
     ? stackAdminApp.updateProjectPermissionDefinition
     : stackAdminApp.updateTeamPermissionDefinition;
 
@@ -88,7 +88,7 @@ function DeleteDialog<T extends AdminPermissionDefinition>(props: {
   permissionType: PermissionType,
 }) {
   const stackApp = useAdminApp();
-  const deletePermission = props.permissionType === 'user'
+  const deletePermission = props.permissionType === 'project'
     ? stackApp.deleteProjectPermissionDefinition
     : stackApp.deleteTeamPermissionDefinition;
 

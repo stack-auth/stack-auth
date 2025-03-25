@@ -477,7 +477,7 @@ export async function deletePermissionDefinition(
 
 // User permission functions
 
-export async function listUserPermissions(
+export async function listProjectPermissions(
   tx: PrismaTransaction,
   options: {
     tenancy: Tenancy,
@@ -528,7 +528,7 @@ export async function listUserPermissions(
     .filter(p => options.permissionId ? p.id === options.permissionId : true);
 }
 
-export async function grantUserPermission(
+export async function grantProjectPermission(
   tx: PrismaTransaction,
   options: {
     tenancy: Tenancy,
@@ -579,7 +579,7 @@ export async function grantUserPermission(
   };
 }
 
-export async function revokeUserPermission(
+export async function revokeProjectPermission(
   tx: PrismaTransaction,
   options: {
     tenancy: Tenancy,
@@ -613,7 +613,7 @@ export async function revokeUserPermission(
  * Grants default project permissions to a user
  * This function should be called when a new user is created
  */
-export async function grantDefaultUserPermissions(
+export async function grantDefaultProjectPermissions(
   tx: PrismaTransaction,
   options: {
     tenancy: Tenancy,

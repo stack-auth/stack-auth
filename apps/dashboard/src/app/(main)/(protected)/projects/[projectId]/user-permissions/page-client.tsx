@@ -24,7 +24,7 @@ export default function PageClient() {
 
       <PermissionTable
         permissions={permissions}
-        permissionType="user"
+        permissionType="project"
       />
 
       <CreateDialog
