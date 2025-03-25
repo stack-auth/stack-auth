@@ -159,6 +159,23 @@ model TeamMember {
   @@unique([tenancyId, projectUserId, isSelected])
 }
 
+model ProjectUserDirectPermission {
+  id             String  @id @default(uuid()) @db.Uuid
+  tenancyId      String  @db.Uuid
+  projectUserId  String  @db.Uuid
+  permissionDbId String? @db.Uuid
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  projectUser ProjectUser @relation(fields: [tenancyId, projectUserId], references: [tenancyId, projectUserId], onDelete: Cascade)
+
+  // no [systemPermission] yet, we'll add it when the need arises
+  permission Permission? @relation(fields: [permissionDbId], references: [dbId], onDelete: Cascade)
+
+  @@unique([tenancyId, projectUserId, permissionDbId])
+}
+
 model TeamMemberDirectPermission {
   id             String  @id @default(uuid()) @db.Uuid
   tenancyId      String  @db.Uuid
@@ -194,25 +211,27 @@ model Permission {
 
   description String?
 
-  // The scope of the permission. If projectConfigId is set, may be GLOBAL or TEAM; if teamId is set, must be TEAM.
+  // The scope of the permission. If projectConfigId is set, may be USER or TEAM; if teamId is set, must be TEAM.
   scope PermissionScope
 
   projectConfig ProjectConfig? @relation(fields: [projectConfigId], references: [id], onDelete: Cascade)
   team          Team?          @relation(fields: [tenancyId, teamId], references: [tenancyId, teamId], onDelete: Cascade)
 
-  parentEdges                PermissionEdge[]             @relation("ChildPermission")
-  childEdges                 PermissionEdge[]             @relation("ParentPermission")
-  teamMemberDirectPermission TeamMemberDirectPermission[]
+  parentEdges                 PermissionEdge[]              @relation("ChildPermission")
+  childEdges                  PermissionEdge[]              @relation("ParentPermission")
+  teamMemberDirectPermission  TeamMemberDirectPermission[]
+  projectUserDirectPermission ProjectUserDirectPermission[]
 
   isDefaultTeamCreatorPermission Boolean @default(false)
   isDefaultTeamMemberPermission  Boolean @default(false)
+  isDefaultUserPermission        Boolean @default(false)
 
   @@unique([projectConfigId, queryableId])
   @@unique([tenancyId, teamId, queryableId])
 }
 
 enum PermissionScope {
-  GLOBAL
+  USER
   TEAM
 }
 
@@ -279,6 +298,7 @@ model ProjectUser {
   otpAuthMethod      OtpAuthMethod[]
   oauthAuthMethod    OAuthAuthMethod[]
   SentEmail          SentEmail[]
+  directPermissions  ProjectUserDirectPermission[]
 
   @@id([tenancyId, projectUserId])
   @@unique([mirroredProjectId, mirroredBranchId, projectUserId])

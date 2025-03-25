@@ -2,6 +2,7 @@ import { teamMembershipCreatedWebhookEvent, teamMembershipDeletedWebhookEvent } 
 import { teamPermissionCreatedWebhookEvent, teamPermissionDeletedWebhookEvent } from "@stackframe/stack-shared/dist/interface/crud/team-permissions";
 import { teamCreatedWebhookEvent, teamDeletedWebhookEvent, teamUpdatedWebhookEvent } from "@stackframe/stack-shared/dist/interface/crud/teams";
 import { userCreatedWebhookEvent, userDeletedWebhookEvent, userUpdatedWebhookEvent } from "@stackframe/stack-shared/dist/interface/crud/users";
+import { userPermissionCreatedWebhookEvent, userPermissionDeletedWebhookEvent } from "@stackframe/stack-shared/dist/interface/crud/user-permissions";
 import { WebhookEvent } from "@stackframe/stack-shared/dist/interface/webhooks";
 import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
 import { StackAssertionError, captureError } from "@stackframe/stack-shared/dist/utils/errors";
@@ -73,3 +74,5 @@ export const sendTeamMembershipCreatedWebhook = createWebhookSender(teamMembersh
 export const sendTeamMembershipDeletedWebhook = createWebhookSender(teamMembershipDeletedWebhookEvent);
 export const sendTeamPermissionCreatedWebhook = createWebhookSender(teamPermissionCreatedWebhookEvent);
 export const sendTeamPermissionDeletedWebhook = createWebhookSender(teamPermissionDeletedWebhookEvent);
+export const sendUserPermissionCreatedWebhook = createWebhookSender(userPermissionCreatedWebhookEvent);
+export const sendUserPermissionDeletedWebhook = createWebhookSender(userPermissionDeletedWebhookEvent);
