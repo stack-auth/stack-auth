@@ -222,3 +222,96 @@ it("can customize default user permissions", async ({ expect }) => {
     }
   `);
 });
+
+it("should trigger user permission webhook when a permission is granted to a user", async ({ expect }) => {
+  const { projectId, svixToken, endpointId } = await Webhook.createProjectWithEndpoint();
+
+  const { userId } = await Auth.Otp.signIn();
+
+  await niceBackendFetch(`/api/v1/user-permission-definitions`, {
+    accessType: "admin",
+    method: "POST",
+    body: { id: 'test_permission' },
+  });
+
+  const grantPermissionResponse = await niceBackendFetch(`/api/v1/user-permissions/${userId}/test_permission`, {
+    accessType: "server",
+    method: "POST",
+    body: {},
+  });
+
+  expect(grantPermissionResponse.status).toBe(201);
+
+  await wait(3000);
+
+  const attemptResponse = await Webhook.listWebhookAttempts(projectId, endpointId, svixToken);
+  const userPermissionCreatedEvent = attemptResponse.find(event => event.eventType === "user_permission.created");
+
+  expect(userPermissionCreatedEvent).toMatchInlineSnapshot(`
+    {
+      "channels": null,
+      "eventId": null,
+      "eventType": "user_permission.created",
+      "id": "<stripped svix message id>",
+      "payload": {
+        "data": {
+          "id": "test_permission",
+          "user_id": "<stripped UUID>",
+        },
+        "type": "user_permission.created",
+      },
+      "timestamp": <stripped field 'timestamp'>,
+    }
+  `);
+});
+
+it("should trigger user permission webhook when a permission is revoked from a user", async ({ expect }) => {
+  const { projectId, svixToken, endpointId } = await Webhook.createProjectWithEndpoint();
+
+  const { userId } = await Auth.Otp.signIn();
+
+  await niceBackendFetch(`/api/v1/user-permission-definitions`, {
+    accessType: "admin",
+    method: "POST",
+    body: { id: 'test_permission' },
+  });
+
+  // First grant the permission
+  const grantPermissionResponse = await niceBackendFetch(`/api/v1/user-permissions/${userId}/test_permission`, {
+    accessType: "server",
+    method: "POST",
+    body: {},
+  });
+
+  expect(grantPermissionResponse.status).toBe(201);
+
+  // Then revoke the permission
+  const revokePermissionResponse = await niceBackendFetch(`/api/v1/user-permissions/${userId}/test_permission`, {
+    accessType: "server",
+    method: "DELETE",
+  });
+
+  expect(revokePermissionResponse.status).toBe(200);
+
+  await wait(3000);
+
+  const attemptResponse = await Webhook.listWebhookAttempts(projectId, endpointId, svixToken);
+  const userPermissionDeletedEvent = attemptResponse.find(event => event.eventType === "user_permission.deleted");
+
+  expect(userPermissionDeletedEvent).toMatchInlineSnapshot(`
+    {
+      "channels": null,
+      "eventId": null,
+      "eventType": "user_permission.deleted",
+      "id": "<stripped svix message id>",
+      "payload": {
+        "data": {
+          "id": "test_permission",
+          "user_id": "<stripped UUID>",
+        },
+        "type": "user_permission.deleted",
+      },
+      "timestamp": <stripped field 'timestamp'>,
+    }
+  `);
+});
