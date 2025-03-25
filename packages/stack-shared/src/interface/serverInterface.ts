@@ -11,7 +11,7 @@ import {
 import { ContactChannelsCrud } from "./crud/contact-channels";
 import { CurrentUserCrud } from "./crud/current-user";
 import { ConnectedAccountAccessTokenCrud } from "./crud/oauth";
-import { ProjectApiKeysCrud } from "./crud/project-api-keys";
+import { TeamApiKeysCrud, UserApiKeysCrud } from "./crud/project-api-keys";
 import { SessionsCrud } from "./crud/sessions";
 import { TeamInvitationCrud } from "./crud/team-invitation";
 import { TeamMemberProfilesCrud } from "./crud/team-member-profiles";
@@ -125,6 +125,24 @@ export class StackServerInterface extends StackClientInterface {
     }
     const user: UsersCrud['Server']['Read'] = await responseOrError.data.json();
     return Result.ok(user);
+  }
+
+  async getServerUserByApiKey(apiKey: string): Promise<Result<UsersCrud['Server']['Read']>> {
+    const responseOrError = await this.sendServerRequestAndCatchKnownError(
+      urlString`/users`,
+      {
+        headers: {
+          "x-stack-project-api-key": apiKey,
+        },
+      },
+      null,
+      [KnownErrors.UserNotFound],
+    );
+    if (responseOrError.status === "error") {
+      return Result.error(responseOrError.error);
+    }
+    const user: UsersCrud['Server']['List'] = await responseOrError.data.json();
+    return Result.ok(user.items[0]);
   }
 
   async listServerTeamInvitations(options: {
@@ -576,100 +594,6 @@ export class StackServerInterface extends StackClientInterface {
     );
   }
 
-  // API Keys CRUD operations
-  async listServerApiKeys(options: {
-    project_user_id?: string,
-    team_id?: string,
-    tenancy_id?: string,
-  } = {}): Promise<ProjectApiKeysCrud['Server']['List']> {
-    const queryParams = new URLSearchParams();
-    if (options.project_user_id) {
-      queryParams.set('project_user_id', options.project_user_id);
-    } else if (options.team_id) {
-      queryParams.set('team_id', options.team_id);
-    } else if (options.tenancy_id) {
-      queryParams.set('tenancy_id', options.tenancy_id);
-    }
-
-    const response = await this.sendServerRequest(
-      `/api-keys?${queryParams.toString()}`,
-      {
-        method: "GET",
-      },
-      null,
-    );
-    return await response.json();
-  }
-
-  async createServerApiKey(
-    data: {
-      description?: string,
-      expires_at_millis?: number,
-      project_user_id?: string,
-      team_id?: string,
-      tenancy_id?: string,
-    },
-  ): Promise<ProjectApiKeysCrud['Server']['Read'] & { secret_api_key: string }> {
-    const response = await this.sendServerRequest(
-      "/api-keys",
-      {
-        method: "POST",
-        headers: {
-          "content-type": "application/json",
-        },
-        body: JSON.stringify(data),
-      },
-      null,
-    );
-    return await response.json();
-  }
-
-  async getServerApiKey(
-    keyId: string,
-  ): Promise<ProjectApiKeysCrud['Server']['Read']> {
-    const response = await this.sendServerRequest(
-      `/api-keys/${keyId}`,
-      {
-        method: "GET",
-      },
-      null,
-    );
-    return await response.json();
-  }
-
-  async updateServerApiKey(
-    keyId: string,
-    data: {
-      description?: string,
-      revoked?: boolean,
-    },
-  ): Promise<ProjectApiKeysCrud['Server']['Read']> {
-    const response = await this.sendServerRequest(
-      `/api-keys/${keyId}`,
-      {
-        method: "PATCH",
-        headers: {
-          "content-type": "application/json",
-        },
-        body: JSON.stringify(data),
-      },
-      null,
-    );
-    return await response.json();
-  }
-
-  async deleteServerApiKey(
-    keyId: string,
-  ): Promise<ProjectApiKeysCrud['Server']['Delete']> {
-    const response = await this.sendServerRequest(
-      `/api-keys/${keyId}`,
-      {
-        method: "DELETE",
-      },
-      null,
-    );
-    return await response.json();
-  }
 
   async updatePassword(
     options: { oldPassword: string, newPassword: string },
@@ -695,17 +619,171 @@ export class StackServerInterface extends StackClientInterface {
     }
   }
 
+  // User API Keys CRUD operations
+  async listServerUserApiKeys(options: {
+    user_id?: string,
+  }): Promise<UserApiKeysCrud['Server']['List']> {
+    const queryParams = new URLSearchParams();
+    if (options.user_id) {
+      queryParams.set('user_id', options.user_id);
+    }
 
-  async deleteApiKey(
-    keyId: string,
-    session: InternalSession,
-  ): Promise<ProjectApiKeysCrud['Server']['Delete']> {
     const response = await this.sendServerRequest(
-      `/api-keys/${keyId}`,
+      `/user-api-keys?${queryParams.toString()}`,
+      {
+        method: "GET",
+      },
+      null,
+    );
+    return await response.json();
+  }
+
+  async createServerUserApiKey(
+    data: {
+      description?: string,
+      expires_at_millis?: number,
+      user_id?: string,
+    },
+  ): Promise<UserApiKeysCrud['Server']['Read'] & { secret_api_key: string }> {
+    const response = await this.sendServerRequest(
+      "/user-api-keys",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+        },
+        body: JSON.stringify(data),
+      },
+      null,
+    );
+    return await response.json();
+  }
+
+  async getServerUserApiKey(
+    keyId: string,
+  ): Promise<UserApiKeysCrud['Server']['Read']> {
+    const response = await this.sendServerRequest(
+      `/user-api-keys/${keyId}`,
+      {
+        method: "GET",
+      },
+      null,
+    );
+    return await response.json();
+  }
+
+  async updateServerUserApiKey(
+    keyId: string,
+    data: {
+      description?: string,
+      revoked?: boolean,
+    },
+  ): Promise<UserApiKeysCrud['Server']['Read']> {
+    const response = await this.sendServerRequest(
+      `/user-api-keys/${keyId}`,
+      {
+        method: "PATCH",
+        headers: {
+          "content-type": "application/json",
+        },
+        body: JSON.stringify(data),
+      },
+      null,
+    );
+    return await response.json();
+  }
+
+  async deleteServerUserApiKey(
+    keyId: string,
+  ): Promise<UserApiKeysCrud['Server']['Delete']> {
+    const response = await this.sendServerRequest(
+      `/user-api-keys/${keyId}`,
       {
         method: "DELETE",
       },
-      session,
+      null,
+    );
+    return await response.json();
+  }
+
+  // Team API Keys CRUD operations
+  async listServerTeamApiKeys(
+    teamId: string,
+  ): Promise<TeamApiKeysCrud['Server']['List']> {
+    const response = await this.sendServerRequest(
+      `/team-api-keys?team_id=${teamId}`,
+      {
+        method: "GET",
+      },
+      null,
+    );
+    return await response.json();
+  }
+
+  async createServerTeamApiKey(
+    data: {
+      description?: string,
+      expires_at_millis?: number,
+      team_id: string,
+    },
+  ): Promise<TeamApiKeysCrud['Server']['Read'] & { secret_api_key: string }> {
+    const response = await this.sendServerRequest(
+      "/team-api-keys",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+        },
+        body: JSON.stringify(data),
+      },
+      null,
+    );
+    return await response.json();
+  }
+
+  async getServerTeamApiKey(
+    keyId: string,
+  ): Promise<TeamApiKeysCrud['Server']['Read']> {
+    const response = await this.sendServerRequest(
+      `/team-api-keys/${keyId}`,
+      {
+        method: "GET",
+      },
+      null,
+    );
+    return await response.json();
+  }
+
+  async updateServerTeamApiKey(
+    keyId: string,
+    data: {
+      description?: string,
+      revoked?: boolean,
+    },
+  ): Promise<TeamApiKeysCrud['Server']['Read']> {
+    const response = await this.sendServerRequest(
+      `/team-api-keys/${keyId}`,
+      {
+        method: "PATCH",
+        headers: {
+          "content-type": "application/json",
+        },
+        body: JSON.stringify(data),
+      },
+      null,
+    );
+    return await response.json();
+  }
+
+  async deleteServerTeamApiKey(
+    keyId: string,
+  ): Promise<TeamApiKeysCrud['Server']['Delete']> {
+    const response = await this.sendServerRequest(
+      `/team-api-keys/${keyId}`,
+      {
+        method: "DELETE",
+      },
+      null,
     );
     return await response.json();
   }

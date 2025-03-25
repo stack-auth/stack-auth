@@ -15,7 +15,7 @@ import { deindent } from '../utils/strings';
 import { ContactChannelsCrud } from './crud/contact-channels';
 import { CurrentUserCrud } from './crud/current-user';
 import { ConnectedAccountAccessTokenCrud } from './crud/oauth';
-import { ProjectApiKeysCrud } from './crud/project-api-keys';
+import { TeamApiKeysCrud, UserApiKeysCrud } from './crud/project-api-keys';
 import { InternalProjectsCrud, ProjectsCrud } from './crud/projects';
 import { SessionsCrud } from './crud/sessions';
 import { TeamInvitationCrud } from './crud/team-invitation';
@@ -1432,28 +1432,22 @@ export class StackClientInterface {
     return Result.ok(undefined);
   }
 
-  // API Keys CRUD operations
-  async listApiKeys(
+  // User API Keys CRUD operations
+  async listUserApiKeys(
     options: {
-      project_user_id?: string,
-      team_id?: string,
-      tenancy_id?: string,
+      user_id?: string,
     },
     session: InternalSession,
-  ): Promise<ProjectApiKeysCrud['Client']['Read'][]> {
+  ): Promise<UserApiKeysCrud['Client']['Read'][]> {
     const queryParams = new URLSearchParams();
-    if (options.project_user_id) {
-      queryParams.set('project_user_id', options.project_user_id);
-    } else if (options.team_id) {
-      queryParams.set('team_id', options.team_id);
-    } else if (options.tenancy_id) {
-      queryParams.set('tenancy_id', options.tenancy_id);
+    if (options.user_id) {
+      queryParams.set('user_id', options.user_id);
     } else {
-      queryParams.set('project_user_id', 'me');
+      queryParams.set('user_id', 'me');
     }
 
     const response = await this.sendClientRequest(
-      `/api-keys?${queryParams.toString()}`,
+      `/user-api-keys?${queryParams.toString()}`,
       {
         method: "GET",
       },
@@ -1463,18 +1457,16 @@ export class StackClientInterface {
     return json.items;
   }
 
-  async createApiKey(
+  async createUserApiKey(
     data: {
       description?: string,
       expires_at_millis?: number,
-      project_user_id?: string,
-      team_id?: string,
-      tenancy_id?: string,
+      user_id?: string,
     },
     session: InternalSession,
-  ): Promise<ProjectApiKeysCrud['Client']['Read'] & { secret_api_key: string }> {
+  ): Promise<UserApiKeysCrud['Client']['Read'] & { secret_api_key: string }> {
     const response = await this.sendClientRequest(
-      "/api-keys",
+      "/user-api-keys",
       {
         method: "POST",
         headers: {
@@ -1482,6 +1474,7 @@ export class StackClientInterface {
         },
         body: JSON.stringify({
           ...data,
+          user_id: data.user_id || 'me',
         }),
       },
       session,
@@ -1489,12 +1482,12 @@ export class StackClientInterface {
     return await response.json();
   }
 
-  async getApiKey(
+  async getUserApiKey(
     keyId: string,
     session: InternalSession,
-  ): Promise<ProjectApiKeysCrud['Client']['Read']> {
+  ): Promise<UserApiKeysCrud['Client']['Read']> {
     const response = await this.sendClientRequest(
-      `/api-keys/${keyId}`,
+      `/user-api-keys/${keyId}`,
       {
         method: "GET",
       },
@@ -1503,16 +1496,16 @@ export class StackClientInterface {
     return await response.json();
   }
 
-  async updateApiKey(
+  async updateUserApiKey(
     keyId: string,
     data: {
       description?: string,
       revoked?: boolean,
     },
     session: InternalSession,
-  ): Promise<ProjectApiKeysCrud['Client']['Read']> {
+  ): Promise<UserApiKeysCrud['Client']['Read']> {
     const response = await this.sendClientRequest(
-      `/api-keys/${keyId}`,
+      `/user-api-keys/${keyId}`,
       {
         method: "PATCH",
         headers: {
@@ -1522,8 +1515,107 @@ export class StackClientInterface {
       },
       session,
     );
-
     return await response.json();
+  }
+
+  async deleteUserApiKey(
+    keyId: string,
+    session: InternalSession,
+  ): Promise<void> {
+    await this.sendClientRequest(
+      `/user-api-keys/${keyId}`,
+      {
+        method: "DELETE",
+      },
+      session,
+    );
+  }
+
+  // Team API Keys CRUD operations
+  async listTeamApiKeys(
+    teamId: string,
+    session: InternalSession,
+  ): Promise<TeamApiKeysCrud['Client']['Read'][]> {
+    const response = await this.sendClientRequest(
+      `/team-api-keys?team_id=${teamId}`,
+      {
+        method: "GET",
+      },
+      session,
+    );
+    const json = await response.json();
+    return json.items;
+  }
+
+  async createTeamApiKey(
+    data: {
+      description?: string,
+      expires_at_millis?: number,
+      team_id: string,
+    },
+    session: InternalSession,
+  ): Promise<TeamApiKeysCrud['Client']['Read'] & { secret_api_key: string }> {
+    const response = await this.sendClientRequest(
+      "/team-api-keys",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+        },
+        body: JSON.stringify(data),
+      },
+      session,
+    );
+    return await response.json();
+  }
+
+  async getTeamApiKey(
+    keyId: string,
+    session: InternalSession,
+  ): Promise<TeamApiKeysCrud['Client']['Read']> {
+    const response = await this.sendClientRequest(
+      `/team-api-keys/${keyId}`,
+      {
+        method: "GET",
+      },
+      session,
+    );
+    return await response.json();
+  }
+
+  async updateTeamApiKey(
+    keyId: string,
+    data: {
+      description?: string,
+      revoked?: boolean,
+    },
+    session: InternalSession,
+  ): Promise<TeamApiKeysCrud['Client']['Read']> {
+    const response = await this.sendClientRequest(
+      `/team-api-keys/${keyId}`,
+      {
+        method: "PATCH",
+        headers: {
+          "content-type": "application/json",
+        },
+        body: JSON.stringify(data),
+      },
+      session,
+    );
+    return await response.json();
+  }
+
+  async deleteTeamApiKey(
+    keyId: string,
+    session: InternalSession,
+  ): Promise<void> {
+    await this.sendClientRequest(
+      `/team-api-keys/${keyId}`,
+      {
+        method: "DELETE",
+      },
+      session,
+    );
   }
 }
 

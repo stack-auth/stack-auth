@@ -1,6 +1,3 @@
--- CreateEnum
-CREATE TYPE "GroupType" AS ENUM ('TEAM', 'USER', 'TENANCY');
-
 -- AlterEnum
 ALTER TYPE "TeamSystemPermission" ADD VALUE 'MANAGE_API_KEYS';
 
@@ -20,7 +17,6 @@ CREATE TABLE "ProjectAPIKey" (
     "expiresAt" TIMESTAMP(3),
     "manuallyRevokedAt" TIMESTAMP(3),
     "description" TEXT,
-    "groupType" "GroupType" NOT NULL,
     "teamId" UUID,
     "projectUserId" UUID,
 

@@ -783,12 +783,6 @@ model ApiKeySet {
   @@id([projectId, id])
 }
 
-enum GroupType {
-  TEAM
-  USER
-  TENANCY
-}
-
 // New api keys
 model ProjectAPIKey {
   projectId String
@@ -805,10 +799,10 @@ model ProjectAPIKey {
   expiresAt         DateTime?
   manuallyRevokedAt DateTime?
   description       String?
-  // Group
-  groupType         GroupType
-  teamId            String?   @db.Uuid
-  projectUserId     String?   @db.Uuid
+
+  // exactly one of [teamId] or [projectUserId] must be set
+  teamId        String? @db.Uuid
+  projectUserId String? @db.Uuid
 
   tenancy     Tenancy      @relation(fields: [tenancyId], references: [id], onDelete: Cascade)
   projectUser ProjectUser? @relation(fields: [tenancyId, projectUserId], references: [tenancyId, projectUserId], onDelete: Cascade)

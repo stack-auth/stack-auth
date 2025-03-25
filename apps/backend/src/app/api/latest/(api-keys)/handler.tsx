@@ -3,7 +3,7 @@ import { prismaClient } from "@/prisma-client";
 import { createCrudHandlers } from "@/route-handlers/crud-handler";
 import { SmartRequestAuth } from "@/route-handlers/smart-request";
 import { KnownErrors } from "@stackframe/stack-shared";
-import { projectApiKeysCrud, ProjectApiKeysCrud } from "@stackframe/stack-shared/dist/interface/crud/project-api-keys";
+import { UserApiKeysCrud, teamApiKeysCrud, userApiKeysCrud } from "@stackframe/stack-shared/dist/interface/crud/project-api-keys";
 import { userIdOrMeSchema, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
 import { generateSecureRandomString } from "@stackframe/stack-shared/dist/utils/crypto";
 import { StatusError } from "@stackframe/stack-shared/dist/utils/errors";
@@ -11,50 +11,11 @@ import { createLazyProxy } from "@stackframe/stack-shared/dist/utils/proxies";
 import { generateUuid } from "@stackframe/stack-shared/dist/utils/uuids";
 
 
-function getGroupType(params: {
-  project_user_id?: string,
-  tenancy_id?: string,
-  team_id?: string,
-}): "USER" | "TENANCY" | "TEAM" {
-  const definedCount = [
-    params.project_user_id,
-    params.tenancy_id,
-    params.team_id
-  ].filter(x => x !== undefined).length;
-
-  if (definedCount !== 1) {
-    throw new KnownErrors.InvalidGroup(
-      params,
-    );
-  }
-
-  if (params.project_user_id) {
-    return 'USER';
-  }
-
-  if (params.team_id) {
-    return 'TEAM';
-  }
-
-  if (params.tenancy_id) {
-    return 'TENANCY';
-  }
-
-  // this should never happen
-  throw new KnownErrors.InvalidGroup(params);
-}
-
-/**
- * Validates client security for API key operations
- * @param auth Authentication information
- * @param options Options containing user, team, and tenancy information
- */
 async function validateClientSecurity(
   auth: SmartRequestAuth,
   options: {
-    project_user_id?: string,
-    team_id?: string,
-    tenancy_id?: string,
+    userId?: string,
+    teamId?: string,
     operation: 'create' | 'delete' | 'list' | 'update',
   }
 ) {
@@ -63,12 +24,12 @@ async function validateClientSecurity(
   }
 
   // Check if client is trying to manage API keys for other users
-  if (options.project_user_id && auth.user?.id !== options.project_user_id) {
+  if (options.userId && auth.user?.id !== options.userId) {
     throw new StatusError(StatusError.Forbidden, "Client can only manage their own api keys");
   }
 
   // Check team API key permissions
-  if (options.team_id) {
+  if (options.teamId) {
     if (!auth.user) {
       throw new KnownErrors.UserAuthenticationRequired();
     }
@@ -77,7 +38,7 @@ async function validateClientSecurity(
     const hasManageApiKeysPermission = await prismaClient.$transaction(async (tx) => {
       const permissions = await listUserTeamPermissions(tx, {
         tenancy: auth.tenancy,
-        teamId: options.team_id,
+        teamId: options.teamId,
         userId,
         permissionId: '$manage_api_keys',
         recursive: true,
@@ -86,49 +47,37 @@ async function validateClientSecurity(
     });
 
     if (!hasManageApiKeysPermission) {
-      throw new KnownErrors.TeamPermissionRequired(options.team_id, userId, '$manage_api_keys');
+      throw new KnownErrors.TeamPermissionRequired(options.teamId, userId, '$manage_api_keys');
     }
-  }
-
-  // Clients cannot manage tenancy API keys
-  if (options.tenancy_id) {
-    throw new KnownErrors.InsufficientAccessType(auth.type, ['admin']);
   }
 }
 
 
-export const projectApiKeyCrudHandlers = createLazyProxy(() => createCrudHandlers(projectApiKeysCrud, {
+export const createApiKeyHandlers = (type: 'USER' | 'TEAM') =>
+createLazyProxy(() => createCrudHandlers(type === 'USER' ? userApiKeysCrud : teamApiKeysCrud, {
   paramsSchema: yupObject({
     api_key_id: yupString().uuid().defined(),
   }),
-  querySchema: yupObject({
-    project_user_id: userIdOrMeSchema.optional().meta({ openapiField: { onlyShowInOperations: ['List'] } }),
+  querySchema: type === 'USER' ? yupObject({
+    user_id: userIdOrMeSchema.optional().meta({ openapiField: { onlyShowInOperations: ['List'] } }),
+  }) : yupObject({
     team_id: yupString().uuid().optional().meta({ openapiField: { onlyShowInOperations: ['List'] } }),
-    tenancy_id: yupString().uuid().optional().meta({ openapiField: { onlyShowInOperations: ['List'] } }),
   }),
 
   // CREATE
-  onCreate: async ({ auth, data }) => {
+  onCreate: async ({ auth, data  }) => {
 
+    const userId = "user_id" in data ? (
+      data.user_id === "me" ? auth.user?.id : data.user_id
+    ): undefined;
+    const teamId = "team_id" in data ? data.team_id : undefined;
 
-    // TODO figure out if this is right
-    if (data.project_user_id === 'me') {
-      data.project_user_id = auth.user?.id;
-    }
-
-
-    const groupType = getGroupType(data);
-
-    if (groupType === 'TENANCY') {
-      throw new KnownErrors.UnsupportedError("Creating API keys for a tenancy is not supported right now");
-    }
-
+    console.log("userId", data);
 
     // Security checks
     await validateClientSecurity(auth, {
-      project_user_id: data.project_user_id,
-      team_id: data.team_id,
-      tenancy_id: data.tenancy_id,
+      userId,
+      teamId,
       operation: 'create'
     });
 
@@ -146,10 +95,9 @@ export const projectApiKeyCrudHandlers = createLazyProxy(() => createCrudHandler
         secretApiKey,
         expiresAt: data.expires_at_millis ? new Date(data.expires_at_millis) : undefined,
         createdAt: new Date(),
-        projectUserId: data.project_user_id,
-        teamId: data.team_id,
+        projectUserId: userId,
+        teamId: teamId,
         tenancyId: auth.tenancy.id,
-        groupType,
       },
     });
 
@@ -157,11 +105,12 @@ export const projectApiKeyCrudHandlers = createLazyProxy(() => createCrudHandler
     // Return the newly created API key information
     return {
       id: apiKey.id,
+      user_id: apiKey.projectUserId || undefined,
+      team_id: apiKey.teamId || undefined,
       description: apiKey.description ?? undefined,
       secret_api_key: apiKey.secretApiKey,
       created_at_millis: apiKey.createdAt.getTime(),
       expires_at_millis: apiKey.expiresAt?.getTime(),
-      group_type: apiKey.groupType,
     };
   },
 
@@ -169,24 +118,21 @@ export const projectApiKeyCrudHandlers = createLazyProxy(() => createCrudHandler
   // LIST
   onList: async ({ auth, query }) => {
 
-
-    const groupType = getGroupType(query);
+    const userId = "user_id" in query ? query.user_id : undefined;
+    const teamId = "team_id" in query ? query.team_id : undefined;
 
     // Security checks
     await validateClientSecurity(auth, {
-      project_user_id: query.project_user_id,
-      team_id: query.team_id,
-      tenancy_id: query.tenancy_id,
+      userId,
+      teamId,
       operation: 'list'
     });
 
     const apiKeys = await prismaClient.projectAPIKey.findMany({
       where: {
         projectId: auth.project.id,
-        projectUserId: query.project_user_id,
-        teamId: query.team_id,
-        tenancyId: query.tenancy_id,
-        groupType,
+        projectUserId: userId,
+        teamId: teamId,
       },
       orderBy: {
         createdAt: 'desc',
@@ -197,6 +143,8 @@ export const projectApiKeyCrudHandlers = createLazyProxy(() => createCrudHandler
     return {
       items: apiKeys.map(apiKey => ({
         id: apiKey.id,
+        team_id: apiKey.teamId || undefined,
+        user_id: apiKey.projectUserId || undefined,
         description: apiKey.description ?? undefined,
         secret_api_key: {
           last_four: apiKey.secretApiKey.slice(-4),
@@ -212,7 +160,7 @@ export const projectApiKeyCrudHandlers = createLazyProxy(() => createCrudHandler
   // UPDATE
   onUpdate: async ({ auth, data, params }: {
     auth: SmartRequestAuth,
-    data: ProjectApiKeysCrud["Client"]["Update"],
+    data: UserApiKeysCrud["Client"]["Update"],
     params: { api_key_id: string },
   }) => {
     // Find the existing API key
@@ -231,9 +179,8 @@ export const projectApiKeyCrudHandlers = createLazyProxy(() => createCrudHandler
 
     // Security checks
     await validateClientSecurity(auth, {
-      project_user_id: existingApiKey.projectUserId || undefined,
-      team_id: existingApiKey.teamId || undefined,
-      tenancy_id: existingApiKey.tenancyId || undefined,
+      userId: existingApiKey.projectUserId || undefined,
+      teamId: existingApiKey.teamId || undefined,
       operation: 'update'
     });
 
@@ -254,6 +201,8 @@ export const projectApiKeyCrudHandlers = createLazyProxy(() => createCrudHandler
     // Return the updated API key with obfuscated key values
     return {
       id: updatedApiKey.id,
+      user_id: updatedApiKey.projectUserId || undefined,
+      team_id: updatedApiKey.teamId || undefined,
       description: updatedApiKey.description ?? undefined,
       secret_api_key: {
         last_four: updatedApiKey.secretApiKey.slice(-4),
@@ -285,9 +234,8 @@ export const projectApiKeyCrudHandlers = createLazyProxy(() => createCrudHandler
 
     // Security checks
     await validateClientSecurity(auth, {
-      project_user_id: existingApiKey.projectUserId || undefined,
-      team_id: existingApiKey.teamId || undefined,
-      tenancy_id: existingApiKey.tenancyId || undefined,
+      userId: existingApiKey.projectUserId || undefined,
+      teamId: existingApiKey.teamId || undefined,
       operation: 'delete'
     });
 

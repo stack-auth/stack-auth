@@ -25,7 +25,7 @@ import { SidebarLayout } from '../components/elements/sidebar-layout';
 import { UserAvatar } from '../components/elements/user-avatar';
 import { ProfileImageEditor } from "../components/profile-image-editor";
 import { TeamIcon } from '../components/team-icon';
-import { ApiKeyFirstView } from "../lib/stack-app/api-keys";
+import { BaseApiKeyFirstView } from "../lib/stack-app/api-keys";
 import { ActiveSession } from "../lib/stack-app/users";
 import { useTranslation } from "../lib/translations";
 
@@ -182,7 +182,7 @@ export function ApiKeysPage() {
   const apiKeys = user.useApiKeys();
 
   const [isNewApiKeyDialogOpen, setIsNewApiKeyDialogOpen] = useState(false);
-  const [returnedApiKey, setReturnedApiKey] = useState<ApiKeyFirstView | null>(null);
+  const [returnedApiKey, setReturnedApiKey] = useState<BaseApiKeyFirstView | null>(null);
 
   return (
     <PageLayout>
@@ -216,7 +216,7 @@ export function TeamApiKeysSection(props: { team: Team }) {
   const { t } = useTranslation();
 
   const [isNewApiKeyDialogOpen, setIsNewApiKeyDialogOpen] = useState(false);
-  const [returnedApiKey, setReturnedApiKey] = useState<ApiKeyFirstView | null>(null);
+  const [returnedApiKey, setReturnedApiKey] = useState<BaseApiKeyFirstView | null>(null);
 
   const user = useUser({ or: 'redirect' });
   const team = user.useTeam(props.team.id);

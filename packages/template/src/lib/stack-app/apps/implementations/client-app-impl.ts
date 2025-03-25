@@ -2,14 +2,10 @@ import { WebAuthnError, startAuthentication, startRegistration } from "@simplewe
 import { KnownErrors, StackClientInterface } from "@stackframe/stack-shared";
 import { ContactChannelsCrud } from "@stackframe/stack-shared/dist/interface/crud/contact-channels";
 import { CurrentUserCrud } from "@stackframe/stack-shared/dist/interface/crud/current-user";
-import { ProjectApiKeysCrud } from "@stackframe/stack-shared/dist/interface/crud/project-api-keys";
 import { ProjectsCrud } from "@stackframe/stack-shared/dist/interface/crud/projects";
-import { SessionsCrud } from "@stackframe/stack-shared/dist/interface/crud/sessions";
 import { TeamInvitationCrud } from "@stackframe/stack-shared/dist/interface/crud/team-invitation";
 import { TeamMemberProfilesCrud } from "@stackframe/stack-shared/dist/interface/crud/team-member-profiles";
 import { TeamPermissionsCrud } from "@stackframe/stack-shared/dist/interface/crud/team-permissions";
-import { TeamsCrud } from "@stackframe/stack-shared/dist/interface/crud/teams";
-import { UsersCrud } from "@stackframe/stack-shared/dist/interface/crud/users";
 import { InternalSession } from "@stackframe/stack-shared/dist/sessions";
 import { scrambleDuringCompileTime } from "@stackframe/stack-shared/dist/utils/compile-time";
 import { isBrowserLike } from "@stackframe/stack-shared/dist/utils/env";
@@ -43,15 +39,16 @@ import { TokenObject, clientVersion, createCache, createCacheBySession, createEm
 
 import { useAsyncCache } from "./common"; // THIS_LINE_PLATFORM react-like
 
-import {
-  ApiKey,
-  ApiKeyBase, ApiKeyCreateOptions, ApiKeyFirstView, ApiKeyUpdateOptions, apiKeyCreateOptionsToCrud
-} from "../../api-keys";
 
 let isReactServer = false;
 // IF_PLATFORM next
 import * as sc from "@stackframe/stack-sc";
 import { cookies } from '@stackframe/stack-sc';
+import { TeamApiKeysCrud, UserApiKeysCrud } from "@stackframe/stack-shared/dist/interface/crud/project-api-keys";
+import { SessionsCrud } from "@stackframe/stack-shared/dist/interface/crud/sessions";
+import { TeamsCrud } from "@stackframe/stack-shared/dist/interface/crud/teams";
+import { UsersCrud } from "@stackframe/stack-shared/dist/interface/crud/users";
+import { BaseApiKeyUpdateOptions, TeamApiKey, TeamApiKeyCreateOptions, TeamApiKeyFirstView, TeamApiKeyView, UserApiKeyCreateOptions, UserApiKeyFirstView, UserApiKeyView, teamApiKeyCreateOptionsToCrud, userApiKeyCreateOptionsToCrud } from "../../api-keys";
 isReactServer = sc.isReactServer;
 
 // NextNavigation.useRouter does not exist in react-server environments and some bundlers try to be helpful and throw a warning. Ignore the warning.
@@ -173,16 +170,16 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
     }
   );
 
-  private readonly _clientApiKeysCache = createCacheBySession<[], ProjectApiKeysCrud['Client']['Read'][]>(
+  private readonly _userApiKeysCache = createCacheBySession<[], UserApiKeysCrud['Client']['Read'][]>(
     async (session) => {
-      const results = await this._interface.listApiKeys({ project_user_id: 'me' }, session);
+      const results = await this._interface.listUserApiKeys({ user_id: 'me' }, session);
       return results;
     }
   );
 
-  private readonly _teamApiKeysCache = createCacheBySession<[string], ProjectApiKeysCrud['Client']['Read'][]>(
+  private readonly _teamApiKeysCache = createCacheBySession<[string], TeamApiKeysCrud['Client']['Read'][]>(
     async (session, [teamId]) => {
-      const results = await this._interface.listApiKeys({ team_id: teamId }, session);
+      const results = await this._interface.listTeamApiKeys(teamId, session);
       return results;
     }
   );
@@ -634,7 +631,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
     };
   }
 
-  protected _clientApiKeyFromCrudInner(session: InternalSession, crud: ProjectApiKeysCrud['Client']['Read']): ApiKeyBase {
+  protected _clientTeamApiKeyFromCrudInner(session: InternalSession, crud: TeamApiKeysCrud['Client']['Read']): TeamApiKey {
     return {
       id: crud.id,
       description: crud.description,
@@ -642,8 +639,6 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
       manuallyRevokedAt: crud.manually_revoked_at_millis ? new Date(crud.manually_revoked_at_millis) : null,
       createdAt: new Date(crud.created_at_millis),
       teamId: crud.team_id,
-      tenancyId: crud.tenancy_id,
-      projectUserId: crud.project_user_id,
       isValid: function() {
         return this.whyInvalid() === null;
       },
@@ -657,24 +652,80 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
         return null;
       },
       revoke: async () => {
-        await this._interface.updateApiKey(crud.id, { revoked: true }, session);
+        await this._interface.updateTeamApiKey(crud.id, { revoked: true }, session);
       }
     };
   }
 
-  protected _clientApiKeyFromCrudRead(session: InternalSession, crud: ProjectApiKeysCrud['Client']['Read']): ApiKey {
+  protected _clientTeamApiKeyFromCrudRead(session: InternalSession, crud: TeamApiKeysCrud['Client']['Read']): TeamApiKeyView {
     return {
       secretApiKey: crud.secret_api_key?.last_four ? {
         lastFour: crud.secret_api_key.last_four,
       } : null,
-      ...this._clientApiKeyFromCrudInner(session, crud),
+      ...this._clientTeamApiKeyFromCrudInner(session, crud),
     };
   }
 
-  protected _clientApiKeyFromCrudCreate(session: InternalSession, crud: ProjectApiKeysCrud['Client']['Read'] & { secret_api_key: string }): ApiKeyFirstView {
+  protected _clientTeamApiKeyFromCrudCreate(session: InternalSession, crud: TeamApiKeysCrud['Client']['Read'] & { secret_api_key: string }): TeamApiKeyFirstView {
     return {
       secretApiKey: crud.secret_api_key,
-      ...this._clientApiKeyFromCrudInner(session, crud),
+      ...this._clientTeamApiKeyFromCrudInner(session, crud),
+    };
+  }
+
+  protected _clientUserApiKeyFromCrudRead(session: InternalSession, crud: UserApiKeysCrud['Client']['Read']): UserApiKeyView {
+    return {
+      secretApiKey: crud.secret_api_key?.last_four ? {
+        lastFour: crud.secret_api_key.last_four,
+      } : null,
+      userId: crud.user_id,
+      id: crud.id,
+      description: crud.description,
+      expiresAt: crud.expires_at_millis ? new Date(crud.expires_at_millis) : undefined,
+      manuallyRevokedAt: crud.manually_revoked_at_millis ? new Date(crud.manually_revoked_at_millis) : null,
+      createdAt: new Date(crud.created_at_millis),
+      isValid: function() {
+        return this.whyInvalid() === null;
+      },
+      whyInvalid: function() {
+        if (this.manuallyRevokedAt) {
+          return "manually-revoked";
+        }
+        if (this.expiresAt && this.expiresAt < new Date()) {
+          return "expired";
+        }
+        return null;
+      },
+      revoke: async () => {
+        await this._interface.updateUserApiKey(crud.id, { revoked: true }, session);
+      }
+    };
+  }
+
+  protected _clientUserApiKeyFromCrudCreate(session: InternalSession, crud: UserApiKeysCrud['Client']['Read'] & { secret_api_key: string }): UserApiKeyFirstView {
+    return {
+      secretApiKey: crud.secret_api_key,
+      userId: crud.user_id,
+      id: crud.id,
+      description: crud.description,
+      expiresAt: crud.expires_at_millis ? new Date(crud.expires_at_millis) : undefined,
+      manuallyRevokedAt: crud.manually_revoked_at_millis ? new Date(crud.manually_revoked_at_millis) : null,
+      createdAt: new Date(crud.created_at_millis),
+      isValid: function() {
+        return this.whyInvalid() === null;
+      },
+      whyInvalid: function() {
+        if (this.manuallyRevokedAt) {
+          return "manually-revoked";
+        }
+        if (this.expiresAt && this.expiresAt < new Date()) {
+          return "expired";
+        }
+        return null;
+      },
+      revoke: async () => {
+        await this._interface.updateUserApiKey(crud.id, { revoked: true }, session);
+      }
     };
   }
 
@@ -730,29 +781,29 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
       // IF_PLATFORM react-like
       useApiKeys() {
         const result = useAsyncCache(app._teamApiKeysCache, [session, crud.id] as const, "team.useApiKeys()");
-        return result.map((crud) => app._clientApiKeyFromCrudRead(session, crud));
+        return result.map((crud) => app._clientTeamApiKeyFromCrudRead(session, crud));
       },
       // END_PLATFORM
 
       // API Key management methods
       async listApiKeys() {
-        const results = await app._interface.listApiKeys({ team_id: crud.id }, session);
-        return results.map((crud) => app._clientApiKeyFromCrudRead(session, crud));
+        const results = await app._interface.listTeamApiKeys(crud.id, session);
+        return results.map((crud) => app._clientTeamApiKeyFromCrudRead(session, crud));
       },
 
-      async createApiKey(options: ApiKeyCreateOptions) {
-        const result = await app._interface.createApiKey({
-          ...apiKeyCreateOptionsToCrud(options),
-          team_id: crud.id
-        }, session);
+      async createApiKey(options: TeamApiKeyCreateOptions) {
+        const result = await app._interface.createTeamApiKey(
+          teamApiKeyCreateOptionsToCrud(options, crud.id),
+          session
+        );
         await app._teamApiKeysCache.refresh([session, crud.id]);
-        return app._clientApiKeyFromCrudCreate(session, result);
+        return app._clientTeamApiKeyFromCrudCreate(session, result);
       },
 
-      async updateApiKey(keyId: string, options: ApiKeyUpdateOptions) {
-        const result = await app._interface.updateApiKey(keyId, options, session);
+      async updateApiKey(keyId: string, options: BaseApiKeyUpdateOptions) {
+        const result = await app._interface.updateTeamApiKey(keyId, options, session);
         await app._teamApiKeysCache.refresh([session, crud.id]);
-        return app._clientApiKeyFromCrudRead(session, result);
+        return app._clientTeamApiKeyFromCrudRead(session, result);
       },
     };
   }
@@ -1036,29 +1087,29 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
 
       // IF_PLATFORM react-like
       useApiKeys() {
-        const result = useAsyncCache(app._clientApiKeysCache, [session] as const, "user.useApiKeys()");
-        return result.map((crud) => app._clientApiKeyFromCrudRead(session, crud));
+        const result = useAsyncCache(app._userApiKeysCache, [session] as const, "user.useApiKeys()");
+        return result.map((crud) => app._clientUserApiKeyFromCrudRead(session, crud));
       },
       // END_PLATFORM
 
       async listApiKeys() {
-        const results = await app._interface.listApiKeys({ project_user_id: 'me' }, session);
-        return results.map((crud) => app._clientApiKeyFromCrudRead(session, crud));
+        const results = await app._interface.listUserApiKeys({ user_id: 'me' }, session);
+        return results.map((crud) => app._clientUserApiKeyFromCrudRead(session, crud));
       },
 
-      async createApiKey(options: ApiKeyCreateOptions) {
-        const result = await app._interface.createApiKey({
-          ...apiKeyCreateOptionsToCrud(options),
-          project_user_id: 'me'
-        }, session);
-        await app._clientApiKeysCache.refresh([session]);
-        return app._clientApiKeyFromCrudCreate(session, result);
+      async createApiKey(options: UserApiKeyCreateOptions) {
+        const result = await app._interface.createUserApiKey(
+          userApiKeyCreateOptionsToCrud(options, 'me'),
+          session
+        );
+        await app._userApiKeysCache.refresh([session]);
+        return app._clientUserApiKeyFromCrudCreate(session, result);
       },
 
-      async updateApiKey(keyId: string, options: ApiKeyUpdateOptions) {
-        const result = await app._interface.updateApiKey(keyId, options, session);
-        await app._clientApiKeysCache.refresh([session]);
-        return app._clientApiKeyFromCrudRead(session, result);
+      async updateApiKey(keyId: string, options: BaseApiKeyUpdateOptions) {
+        const result = await app._interface.updateUserApiKey(keyId, options, session);
+        await app._userApiKeysCache.refresh([session]);
+        return app._clientUserApiKeyFromCrudRead(session, result);
       },
 
 
