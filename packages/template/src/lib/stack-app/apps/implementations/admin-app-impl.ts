@@ -3,6 +3,7 @@ import { getProductionModeErrors } from "@stackframe/stack-shared/dist/helpers/p
 import { ApiKeyCreateCrudResponse } from "@stackframe/stack-shared/dist/interface/adminInterface";
 import { ApiKeysCrud } from "@stackframe/stack-shared/dist/interface/crud/api-keys";
 import { EmailTemplateCrud, EmailTemplateType } from "@stackframe/stack-shared/dist/interface/crud/email-templates";
+import { ProjectsCrud } from "@stackframe/stack-shared/dist/interface/crud/projects";
 import { StackAssertionError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
 import { pick } from "@stackframe/stack-shared/dist/utils/objects";
 import { Result } from "@stackframe/stack-shared/dist/utils/results";
@@ -17,8 +18,7 @@ import { StackAdminApp, StackAdminAppConstructorOptions } from "../interfaces/ad
 import { clientVersion, createCache, getBaseUrl, getDefaultProjectId, getDefaultPublishableClientKey, getDefaultSecretServerKey, getDefaultSuperSecretAdminKey } from "./common";
 import { _StackServerAppImplIncomplete } from "./server-app-impl";
 
-// NEXT_LINE_PLATFORM react-like
-import { useAsyncCache } from "./common";
+import { useAsyncCache } from "./common"; // THIS_LINE_PLATFORM react-like
 
 export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, ProjectId extends string> extends _StackServerAppImplIncomplete<HasTokenStore, ProjectId> implements StackAdminApp<HasTokenStore, ProjectId>
 {
@@ -71,7 +71,7 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
     });
   }
 
-  _adminOwnedProjectFromCrud(data: AdminUserProjectsCrud['Admin']['Read'], onRefresh: () => Promise<void>): AdminOwnedProject {
+  _adminOwnedProjectFromCrud(data: ProjectsCrud['Admin']['Read'], onRefresh: () => Promise<void>): AdminOwnedProject {
     if (this._tokenStoreInit !== null) {
       throw new StackAssertionError("Owned apps must always have tokenStore === null — did you not create this project with app._createOwnedApp()?");;
     }
@@ -81,7 +81,7 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
     };
   }
 
-  _adminProjectFromCrud(data: AdminUserProjectsCrud['Admin']['Read'], onRefresh: () => Promise<void>): AdminProject {
+  _adminProjectFromCrud(data: ProjectsCrud['Admin']['Read'], onRefresh: () => Promise<void>): AdminProject {
     if (data.id !== this.projectId) {
       throw new StackAssertionError(`The project ID of the provided project JSON (${data.id}) does not match the project ID of the app (${this.projectId})!`);
     }
