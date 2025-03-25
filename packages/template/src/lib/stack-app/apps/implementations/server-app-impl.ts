@@ -25,7 +25,7 @@ import { _StackClientAppImplIncomplete } from "./client-app-impl";
 import { clientVersion, createCache, createCacheBySession, getBaseUrl, getDefaultProjectId, getDefaultPublishableClientKey, getDefaultSecretServerKey } from "./common";
 
 // NEXT_LINE_PLATFORM react-like
-import { BaseApiKeyUpdateOptions, TeamApiKey, TeamApiKeyCreateOptions, TeamApiKeyFirstView, TeamApiKeyView, UserApiKey, UserApiKeyCreateOptions, UserApiKeyFirstView, UserApiKeyView, teamApiKeyCreateOptionsToCrud, userApiKeyCreateOptionsToCrud } from "../../api-keys";
+import { BaseApiKey, BaseApiKeyUpdateOptions, TeamApiKey, TeamApiKeyCreateOptions, TeamApiKeyFirstView, TeamApiKeyView, UserApiKey, UserApiKeyCreateOptions, UserApiKeyFirstView, UserApiKeyView, teamApiKeyCreateOptionsToCrud, userApiKeyCreateOptionsToCrud } from "../../api-keys";
 import { useAsyncCache } from "./common";
 
 export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, ProjectId extends string> extends _StackClientAppImplIncomplete<HasTokenStore, ProjectId>
@@ -55,7 +55,7 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
   });
   private readonly _serverUserByApiKeyCache = createCache<string[], UsersCrud['Server']['Read'] | null>(async ([apiKey]) => {
     const user = await this._interface.getServerUserByApiKey(apiKey);
-    return await Result.or(user, null);
+    return Result.or(user, null);
   });
   private readonly _serverTeamsCache = createCache<[string | undefined], TeamsCrud['Server']['Read'][]>(async ([userId]) => {
     return await this._interface.listServerTeams({ userId });
@@ -128,6 +128,15 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
     async ([teamId]) => {
       const result = await this._interface.listServerTeamApiKeys(teamId);
       return result.items;
+    }
+  );
+
+  private readonly _serverTeamByApiKeyCache = createCache<[string], TeamsCrud['Server']['Read'] | null>(
+    async ([apiKey]) => {
+      const apiKeyData = await this._interface.getServerTeamApiKey(apiKey);
+      if (!apiKeyData.team_id) return null;
+      const teams = await this._interface.listServerTeams({ userId: apiKeyData.team_id });
+      return teams[0] ?? null;
     }
   );
 
@@ -222,15 +231,22 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
       redirectMethod: options.redirectMethod,
     });
   }
-  protected _serverUserApiKeyBaseFromCrud(data: UserApiKeysCrud['Server']['Read']): UserApiKey {
+
+  // Base api key from crud
+  protected _serverApiKeyBaseFromCrud(data: UserApiKeysCrud['Server']['Read']): UserApiKey;
+  protected _serverApiKeyBaseFromCrud(data: TeamApiKeysCrud['Server']['Read']): TeamApiKey;
+  protected _serverApiKeyBaseFromCrud(data: UserApiKeysCrud['Server']['Read'] | TeamApiKeysCrud['Server']['Read']): Omit<BaseApiKey, 'revoke'> & { userId?: string, teamId?: string } {
     const app = this;
+    const userId = "user_id" in data ? data.user_id : undefined;
+    const teamId = "team_id" in data ? data.team_id : undefined;
     return {
       id: data.id,
       description: data.description || undefined,
       expiresAt: data.expires_at_millis ? new Date(data.expires_at_millis) : undefined,
       manuallyRevokedAt: data.manually_revoked_at_millis ? new Date(data.manually_revoked_at_millis) : null,
       createdAt: new Date(data.created_at_millis),
-      userId: data.user_id,
+      userId: userId,
+      teamId: teamId,
       isValid() {
         return this.whyInvalid() === null;
       },
@@ -239,65 +255,56 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
         if (this.manuallyRevokedAt) return "manually-revoked";
         return null;
       },
-      async revoke() {
-        await app._interface.updateServerUserApiKey(data.id, { revoked: true });
-        if (data.user_id) {
-          await app._serverUserApiKeysCache.refresh([data.user_id]);
-        }
-      }
+
     };
   }
 
-  protected _serverTeamApiKeyBaseFromCrud(data: TeamApiKeysCrud['Server']['Read']): TeamApiKey {
-    const app = this;
+  protected _serverApiKeyUserFromCrud(data: UserApiKeysCrud['Server']['Read']): UserApiKey {
     return {
-      id: data.id,
-      description: data.description || undefined,
-      expiresAt: data.expires_at_millis ? new Date(data.expires_at_millis) : undefined,
-      manuallyRevokedAt: data.manually_revoked_at_millis ? new Date(data.manually_revoked_at_millis) : null,
-      createdAt: new Date(data.created_at_millis),
-      teamId: data.team_id,
-      isValid() {
-        return this.whyInvalid() === null;
-      },
-      whyInvalid() {
-        if (this.expiresAt && this.expiresAt.getTime() < Date.now()) return "expired";
-        if (this.manuallyRevokedAt) return "manually-revoked";
-        return null;
-      },
-      async revoke() {
-        await app._interface.updateServerTeamApiKey(data.id, { revoked: true });
-        if (data.team_id) {
-          await app._serverTeamApiKeysCache.refresh([data.team_id]);
-        }
+      ...this._serverApiKeyBaseFromCrud(data),
+      userId: data.user_id,
+      revoke: async () => {
+        await this._interface.updateServerUserApiKey(data.id, { revoked: true });
+        await this._serverUserApiKeysCache.refresh([data.user_id]);
       }
     };
-  }
+  };
+
+  protected _serverApiKeyTeamFromCrud(data: TeamApiKeysCrud['Server']['Read']): TeamApiKey {
+    return {
+      ...this._serverApiKeyBaseFromCrud(data),
+      teamId: data.team_id,
+      revoke: async () => {
+        await this._interface.updateServerTeamApiKey(data.id, { revoked: true });
+        await this._serverTeamApiKeysCache.refresh([data.team_id]);
+      }
+    };
+  };
 
   protected _serverUserApiKeyFromCrudRead(data: UserApiKeysCrud['Server']['Read']): UserApiKeyView {
     return {
-      ...this._serverUserApiKeyBaseFromCrud(data),
+      ...this._serverApiKeyBaseFromCrud(data),
       secretApiKey: data.secret_api_key ? { lastFour: data.secret_api_key.last_four } : null,
     };
   }
 
   protected _serverTeamApiKeyFromCrudRead(data: TeamApiKeysCrud['Server']['Read']): TeamApiKeyView {
     return {
-      ...this._serverTeamApiKeyBaseFromCrud(data),
+      ...this._serverApiKeyBaseFromCrud(data),
       secretApiKey: data.secret_api_key ? { lastFour: data.secret_api_key.last_four } : null,
     };
   }
 
   protected _serverUserApiKeyFromCrudCreate(data: UserApiKeysCrud['Server']['Read'] & { secret_api_key: string }): UserApiKeyFirstView {
     return {
-      ...this._serverUserApiKeyBaseFromCrud(data),
+      ...this._serverApiKeyBaseFromCrud(data),
       secretApiKey: data.secret_api_key,
     };
   }
 
   protected _serverTeamApiKeyFromCrudCreate(data: TeamApiKeysCrud['Server']['Read'] & { secret_api_key: string }): TeamApiKeyFirstView {
     return {
-      ...this._serverTeamApiKeyBaseFromCrud(data),
+      ...this._serverApiKeyBaseFromCrud(data),
       secretApiKey: data.secret_api_key,
     };
   }
@@ -796,12 +803,11 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
   }
   // END_PLATFORM
 
-  async getTeam(options: { apiKey: string }): Promise<ServerTeam | null>
+  async getTeam(options: { apiKey: string }): Promise<ServerTeam | null>;
   async getTeam(teamId: string): Promise<ServerTeam | null>;
   async getTeam(options?: { apiKey: string } | string): Promise<ServerTeam | null> {
     if (typeof options === "object" && "apiKey" in options) {
-      throw new Error("TODO BAZUMO implement getTeamByApiKey");
-      //return this.getTeamByApiKey(options.apiKey);
+      return await this._getTeamByApiKey(options.apiKey);
     } else {
       const teamId = options;
       const teams = await this.listTeams();
@@ -814,8 +820,7 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
   useTeam(teamId: string): ServerTeam | null;
   useTeam(options?: { apiKey: string } | string): ServerTeam | null {
     if (typeof options === "object" && "apiKey" in options) {
-      throw new Error("TODO BAZUMO implement useTeamByApiKey");
-      //return this.useTeamByApiKey(options.apiKey);
+      return this._useTeamByApiKey(options.apiKey);
     } else {
       const teamId = options;
       const teams = this.useTeams();
@@ -840,5 +845,20 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
       this._serverUsersCache.refreshWhere(() => true),
       this._serverContactChannelsCache.refreshWhere(() => true),
     ]);
+  }
+
+  protected async _getTeamByApiKey(apiKey: string): Promise<ServerTeam | null> {
+    const crud = Result.orThrow(await this._serverTeamByApiKeyCache.getOrWait([apiKey], "write-only"));
+    if (crud === null) {
+      return null;
+    }
+    return this._serverTeamFromCrud(crud);
+  }
+
+  protected _useTeamByApiKey(apiKey: string): ServerTeam | null {
+    const crud = useAsyncCache(this._serverTeamByApiKeyCache, [apiKey]  as const, "useTeamByApiKey()");
+    return useMemo(() => {
+      return crud && this._serverTeamFromCrud(crud);
+    }, [crud]);
   }
 }

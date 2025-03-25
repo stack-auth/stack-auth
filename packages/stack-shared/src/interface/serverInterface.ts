@@ -252,6 +252,16 @@ export class StackServerInterface extends StackClientInterface {
     return result.items;
   }
 
+  async getServerTeam(teamId: string): Promise<TeamsCrud['Server']['Read']> {
+    const response = await this.sendServerRequest(
+      `/teams/${teamId}`,
+      {},
+      null
+    );
+    return await response.json();
+  }
+
+
   async listServerTeamUsers(teamId: string): Promise<UsersCrud['Server']['Read'][]> {
     const response = await this.sendServerRequest(`/users?team_id=${teamId}`, {}, null);
     const result = await response.json() as UsersCrud['Server']['List'];

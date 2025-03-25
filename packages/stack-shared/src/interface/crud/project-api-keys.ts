@@ -3,22 +3,15 @@ import { CrudTypeOf, createCrud } from "../../crud";
 import { yupBoolean, yupMixed, yupNumber, yupObject, yupString } from "../../schema-fields";
 
 
-type CreateApiKeyCrudOptions<T extends yup.AnyObject> = {
-  idSchema: yup.ObjectSchema<T>,
-}
-
 const createApiKeyCrud = <T extends Record<string, yup.Schema>>(options: T) => {
 
   const baseProjectApiKeysReadSchema = yupObject({
     id: yupString().defined(),
-    user_id: yupString().optional(),
-    team_id: yupString().optional(),
     description: yupString().optional(),
     expires_at_millis: yupNumber().optional(),
     manually_revoked_at_millis: yupNumber().optional(),
     created_at_millis: yupNumber().defined(),
     ...options,
-
   });
 
   // Used for the result of the create endpoint
@@ -80,16 +73,20 @@ const createApiKeyCrud = <T extends Record<string, yup.Schema>>(options: T) => {
 };
 
 
-const { crud: userApiKeysCrud } = createApiKeyCrud({
-  user_id: yupString().optional(),
-});
+const { crud: userApiKeysCrud } = createApiKeyCrud(
+  {
+    user_id: yupString().defined(),
+  }
+);
 
 export { userApiKeysCrud };
 export type UserApiKeysCrud = CrudTypeOf<typeof userApiKeysCrud>;
 
-const { crud: teamApiKeysCrud } = createApiKeyCrud({
-  team_id: yupString().optional(),
-});
+const { crud: teamApiKeysCrud } = createApiKeyCrud(
+  {
+    team_id: yupString().defined(),
+  }
+);
 
 export { teamApiKeysCrud };
 export type TeamApiKeysCrud = CrudTypeOf<typeof teamApiKeysCrud>;
