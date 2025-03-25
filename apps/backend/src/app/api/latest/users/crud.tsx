@@ -1,4 +1,5 @@
 import { ensureTeamMembershipExists, ensureUserExists } from "@/lib/request-checks";
+import { grantDefaultUserPermissions } from "@/lib/permissions";
 import { getSoleTenancyFromProject, getTenancy } from "@/lib/tenancies";
 import { PrismaTransaction } from "@/lib/types";
 import { sendTeamMembershipDeletedWebhook, sendUserCreatedWebhook, sendUserDeletedWebhook, sendUserUpdatedWebhook } from "@/lib/webhooks";
@@ -709,6 +710,12 @@ export const usersCrudHandlers = createLazyProxy(() => createCrudHandlers(usersC
           }
         });
       }
+
+      // Grant default user permissions
+      await grantDefaultUserPermissions(tx, {
+        tenancy: auth.tenancy,
+        userId: newUser.projectUserId
+      });
 
       const user = await tx.projectUser.findUnique({
         where: {

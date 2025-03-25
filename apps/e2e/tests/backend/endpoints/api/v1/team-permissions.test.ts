@@ -202,6 +202,7 @@ it("can customize default team permissions", async ({ expect }) => {
           "sign_up_enabled": true,
           "team_creator_default_permissions": [{ "id": "admin" }],
           "team_member_default_permissions": [{ "id": "test" }],
+          "user_default_permissions": [],
         },
         "created_at_millis": <stripped field 'created_at_millis'>,
         "description": "",

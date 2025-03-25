@@ -1,5 +1,5 @@
 "use client";
-import { TeamPermissionTable } from "@/components/data-table/team-permission-table";
+import { PermissionTable } from "@/components/data-table/permission-table";
 import { SmartFormDialog } from "@/components/form-dialog";
 import { PermissionListField } from "@/components/permission-field";
 import { Button } from "@stackframe/stack-ui";
@@ -23,7 +23,10 @@ export default function PageClient() {
         </Button>
       }>
 
-      <TeamPermissionTable permissions={permissions}/>
+      <PermissionTable
+        permissions={permissions}
+        permissionType="team"
+      />
 
       <CreateDialog
         open={createPermissionModalOpen}
