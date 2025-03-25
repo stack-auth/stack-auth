@@ -276,7 +276,7 @@ export type ServerBaseUser = {
 
   grantPermission(scope: Team, permissionId: string): Promise<void>,
   revokePermission(scope: Team, permissionId: string): Promise<void>,
-  
+
   getProjectPermission(permissionId: string): Promise<TeamPermission | null>,
   hasProjectPermission(permissionId: string): Promise<boolean>,
   listProjectPermissions(options?: { recursive?: boolean }): Promise<TeamPermission[]>,
