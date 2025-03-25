@@ -4,10 +4,9 @@ import { BranchConfigOverride, BranchIncompleteConfig, BranchRenderedConfig, Env
 import { ProjectsCrud } from "@stackframe/stack-shared/dist/interface/crud/projects";
 import { yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
 import { StackAssertionError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
-import { pick, typedEntries } from "@stackframe/stack-shared/dist/utils/objects";
+import { filterUndefined, pick, typedEntries } from "@stackframe/stack-shared/dist/utils/objects";
 import { Result } from "@stackframe/stack-shared/dist/utils/results";
-import { typedToLowercase } from "@stackframe/stack-shared/dist/utils/strings";
-import { expect } from "vitest";
+import { stringCompare, typedToLowercase } from "@stackframe/stack-shared/dist/utils/strings";
 import * as yup from "yup";
 import { getTeamPermissionDefinitionsFromProjectConfig, teamPermissionDefinitionJsonFromDbType, teamPermissionDefinitionJsonFromTeamSystemDbType } from "./permissions";
 import { DBProject } from "./projects";
@@ -243,7 +242,7 @@ async function validateAndReturn(schema: yup.ObjectSchema<any>, base: any, confi
   }
 }
 
-import.meta.vitest?.describe('validateAndReturn(...)', async () => {
+import.meta.vitest?.describe('validateAndReturn(...)', async ({ expect }) => {
   const schema1 = yupObject({
     a: yupString().optional(),
   });
@@ -335,13 +334,13 @@ export const dbProjectToRenderedEnvironmentConfig = (dbProject: DBProject): Envi
       if (provider.proxiedOAuthConfig) {
         return {
           id: provider.id,
-          type: provider.proxiedOAuthConfig.type,
+          type: typedToLowercase(provider.proxiedOAuthConfig.type),
           isShared: true,
         } as const;
       } else if (provider.standardOAuthConfig) {
         return {
           id: provider.id,
-          type: provider.standardOAuthConfig.type,
+          type: typedToLowercase(provider.standardOAuthConfig.type),
           isShared: false,
         } as const;
       } else {
@@ -429,16 +428,17 @@ export const renderedEnvironmentConfigToProjectCrud = (renderedConfig: Environme
       }
       const oauthProvider = renderedConfig.oauthProviders[authMethod.oauthProviderId];
 
-      return {
+      return filterUndefined({
         id: oauthProvider.type,
         enabled: authMethod.enabled,
-        type: oauthProvider.isShared ? 'shared' : 'standard',
+        type: (oauthProvider.isShared ? 'shared' : 'standard') as 'shared' | 'standard',
         client_id: oauthProvider.clientId,
         client_secret: oauthProvider.clientSecret,
         facebook_config_id: oauthProvider.facebookConfigId,
         microsoft_tenant_id: oauthProvider.microsoftTenantId,
-      } satisfies ProjectsCrud["Admin"]["Read"]['config']['oauth_providers'][number];
-    });
+      }) satisfies ProjectsCrud["Admin"]["Read"]['config']['oauth_providers'][number];
+    })
+    .sort((a, b) => stringCompare(a.id, b.id));
   return {
     id: configId,
     allow_localhost: renderedConfig.allowLocalhost,
@@ -454,10 +454,12 @@ export const renderedEnvironmentConfigToProjectCrud = (renderedConfig: Environme
     oauth_providers: oauthProviders,
     enabled_oauth_providers: oauthProviders.filter(provider => provider.enabled),
 
-    domains: typedEntries(renderedConfig.domains).map(([_, domainConfig]) => ({
-      domain: domainConfig.domain,
-      handler_path: domainConfig.handlerPath,
-    })),
+    domains: typedEntries(renderedConfig.domains)
+      .map(([_, domainConfig]) => ({
+        domain: domainConfig.domain,
+        handler_path: domainConfig.handlerPath,
+      }))
+      .sort((a, b) => stringCompare(a.domain, b.domain)),
 
     email_config: renderedConfig.emailConfig.isShared ? {
       type: 'shared',

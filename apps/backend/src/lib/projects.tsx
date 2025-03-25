@@ -7,9 +7,9 @@ import { StackAssertionError, captureError, throwErr } from "@stackframe/stack-s
 import { deepPlainEquals, isNotNull, omit } from "@stackframe/stack-shared/dist/utils/objects";
 import { stringCompare, typedToLowercase, typedToUppercase } from "@stackframe/stack-shared/dist/utils/strings";
 import { generateUuid } from "@stackframe/stack-shared/dist/utils/uuids";
+import { dbProjectToRenderedEnvironmentConfig, renderedEnvironmentConfigToProjectCrud } from "./config";
 import { fullPermissionInclude, teamPermissionDefinitionJsonFromDbType, teamPermissionDefinitionJsonFromRawDbType, teamPermissionDefinitionJsonFromTeamSystemDbType } from "./permissions";
 import { ensureSharedProvider, ensureStandardProvider } from "./request-checks";
-import { dbProjectToRenderedEnvironmentConfig, renderedEnvironmentConfigToProjectCrud } from "./config";
 
 export const fullProjectInclude = {
   config: {
@@ -117,11 +117,11 @@ export function projectPrismaToCrud(
       client_team_creation_enabled: prisma.config.clientTeamCreationEnabled,
       client_user_deletion_enabled: prisma.config.clientUserDeletionEnabled,
       domains: prisma.config.domains
-        .sort((a: any, b: any) => a.createdAt.getTime() - b.createdAt.getTime())
         .map((domain) => ({
           domain: domain.domain,
           handler_path: domain.handlerPath,
-        })),
+        }))
+        .sort((a: any, b: any) => stringCompare(a.domain, b.domain)),
       oauth_providers: oauthProviders,
       enabled_oauth_providers: oauthProviders.filter(provider => provider.enabled),
       oauth_account_merge_strategy: typedToLowercase(prisma.config.oauthAccountMergeStrategy),
@@ -161,12 +161,13 @@ export function projectPrismaToCrud(
         .map(perm => ({ id: perm.id })),
     }
   };
-
   const newResultWithConfigJson = renderedEnvironmentConfigToProjectCrud(dbProjectToRenderedEnvironmentConfig(prisma), result.config.id);
   if (!deepPlainEquals(result.config, newResultWithConfigJson)) {
     captureError("Project config mismatch", {
-      result,
-      newResultWithConfigJson,
+      // result: result.config,
+      // newResult: newResultWithConfigJson,
+      a: JSON.stringify(result.config),
+      b: JSON.stringify(newResultWithConfigJson),
     });
   }
 
