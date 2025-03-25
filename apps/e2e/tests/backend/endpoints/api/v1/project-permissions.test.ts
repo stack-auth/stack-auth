@@ -1,6 +1,6 @@
 import { wait } from "@stackframe/stack-shared/dist/utils/promises";
 import { it } from "../../../../helpers";
-import { ApiKey, Auth, InternalProjectKeys, Project, Team, Webhook, backendContext, niceBackendFetch } from "../../../backend-helpers";
+import { ApiKey, Auth, InternalProjectKeys, Project, Webhook, backendContext, niceBackendFetch } from "../../../backend-helpers";
 
 it("is not allowed to list permissions from the other users on the client", async ({ expect }) => {
   await Auth.Otp.signIn();
@@ -245,20 +245,20 @@ it("should trigger user permission webhook when a permission is granted to a use
   await wait(3000);
 
   const attemptResponse = await Webhook.listWebhookAttempts(projectId, endpointId, svixToken);
-  const userPermissionCreatedEvent = attemptResponse.find(event => event.eventType === "user_permission.created");
+  const userPermissionCreatedEvent = attemptResponse.find(event => event.eventType === "project_permission.created");
 
   expect(userPermissionCreatedEvent).toMatchInlineSnapshot(`
     {
       "channels": null,
       "eventId": null,
-      "eventType": "user_permission.created",
+      "eventType": "project_permission.created",
       "id": "<stripped svix message id>",
       "payload": {
         "data": {
           "id": "test_permission",
           "user_id": "<stripped UUID>",
         },
-        "type": "user_permission.created",
+        "type": "project_permission.created",
       },
       "timestamp": <stripped field 'timestamp'>,
     }
@@ -296,20 +296,20 @@ it("should trigger user permission webhook when a permission is revoked from a u
   await wait(3000);
 
   const attemptResponse = await Webhook.listWebhookAttempts(projectId, endpointId, svixToken);
-  const userPermissionDeletedEvent = attemptResponse.find(event => event.eventType === "user_permission.deleted");
+  const projectPermissionDeletedEvent = attemptResponse.find(event => event.eventType === "project_permission.deleted");
 
-  expect(userPermissionDeletedEvent).toMatchInlineSnapshot(`
+  expect(projectPermissionDeletedEvent).toMatchInlineSnapshot(`
     {
       "channels": null,
       "eventId": null,
-      "eventType": "user_permission.deleted",
+      "eventType": "project_permission.deleted",
       "id": "<stripped svix message id>",
       "payload": {
         "data": {
           "id": "test_permission",
           "user_id": "<stripped UUID>",
         },
-        "type": "user_permission.deleted",
+        "type": "project_permission.deleted",
       },
       "timestamp": <stripped field 'timestamp'>,
     }
