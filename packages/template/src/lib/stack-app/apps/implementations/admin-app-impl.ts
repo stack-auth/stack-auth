@@ -35,7 +35,7 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
     return await this._interface.listEmailTemplates();
   });
   private readonly _adminTeamPermissionDefinitionsCache = createCache(async () => {
-    return await this._interface.listPermissionDefinitions();
+    return await this._interface.listTeamPermissionDefinitions();
   });
   private readonly _adminUserPermissionDefinitionsCache = createCache(async () => {
     return await this._interface.listUserPermissionDefinitions();
@@ -267,18 +267,18 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
   }
 
   async createTeamPermissionDefinition(data: AdminTeamPermissionDefinitionCreateOptions): Promise<AdminTeamPermission>{
-    const crud = await this._interface.createPermissionDefinition(adminTeamPermissionDefinitionCreateOptionsToCrud(data));
+    const crud = await this._interface.createTeamPermissionDefinition(adminTeamPermissionDefinitionCreateOptionsToCrud(data));
     await this._adminTeamPermissionDefinitionsCache.refresh([]);
     return this._serverTeamPermissionDefinitionFromCrud(crud);
   }
 
   async updateTeamPermissionDefinition(permissionId: string, data: AdminTeamPermissionDefinitionUpdateOptions) {
-    await this._interface.updatePermissionDefinition(permissionId, adminTeamPermissionDefinitionUpdateOptionsToCrud(data));
+    await this._interface.updateTeamPermissionDefinition(permissionId, adminTeamPermissionDefinitionUpdateOptionsToCrud(data));
     await this._adminTeamPermissionDefinitionsCache.refresh([]);
   }
 
   async deleteTeamPermissionDefinition(permissionId: string): Promise<void> {
-    await this._interface.deletePermissionDefinition(permissionId);
+    await this._interface.deleteTeamPermissionDefinition(permissionId);
     await this._adminTeamPermissionDefinitionsCache.refresh([]);
   }
 
