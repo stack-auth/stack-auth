@@ -12,7 +12,7 @@ export const userPermissionDefinitionsCrudHandlers = createLazyProxy(() => creat
   async onCreate({ auth, data }) {
     return await retryTransaction(async (tx) => {
       return await createPermissionDefinition(tx, {
-        scope: "USER",
+        scope: "PROJECT",
         tenancy: auth.tenancy,
         data,
       });
@@ -21,7 +21,7 @@ export const userPermissionDefinitionsCrudHandlers = createLazyProxy(() => creat
   async onUpdate({ auth, data, params }) {
     return await retryTransaction(async (tx) => {
       return await updatePermissionDefinitions(tx, {
-        scope: "USER",
+        scope: "PROJECT",
         tenancy: auth.tenancy,
         permissionId: params.permission_id,
         data,
@@ -39,7 +39,7 @@ export const userPermissionDefinitionsCrudHandlers = createLazyProxy(() => creat
   async onList({ auth }) {
     return await retryTransaction(async (tx) => {
       return {
-        items: await listPermissionDefinitions(tx, "USER", auth.tenancy),
+        items: await listPermissionDefinitions(tx, "PROJECT", auth.tenancy),
         is_paginated: false,
       };
     });
