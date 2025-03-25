@@ -33,15 +33,15 @@ export const projectsCrudHandlers = createLazyProxy(() => createCrudHandlers(pro
         },
       ] as const;
 
-      const permissions = await listPermissionDefinitions(tx, "TEAM", auth.tenancy);
-      const globalPermissions = await listPermissionDefinitions(tx, "USER", auth.tenancy);
+      const teamPermissions = await listPermissionDefinitions(tx, "TEAM", auth.tenancy);
+      const userPermissions = await listPermissionDefinitions(tx, "USER", auth.tenancy);
 
       // Handle user default permissions
       const userDefaultPerms = data.config?.user_default_permissions?.map((p) => p.id);
       if (userDefaultPerms) {
-        if (!userDefaultPerms.every((id) => globalPermissions.some((perm) => perm.id === id))) {
+        if (!userDefaultPerms.every((id) => userPermissions.some((perm) => perm.id === id))) {
           throw new StatusError(StatusError.BadRequest,
-            `Invalid user default permission ids: ${userDefaultPerms.filter(id => !globalPermissions.some(perm => perm.id === id)).join(', ')}`);
+            `Invalid user default permission ids: ${userDefaultPerms.filter(id => !userPermissions.some(perm => perm.id === id)).join(', ')}`);
         }
 
         // Remove existing default user permissions
@@ -75,7 +75,7 @@ export const projectsCrudHandlers = createLazyProxy(() => createCrudHandlers(pro
           continue;
         }
 
-        if (!defaultPerms.every((id) => permissions.some((perm) => perm.id === id))) {
+        if (!defaultPerms.every((id) => teamPermissions.some((perm) => perm.id === id))) {
           throw new StatusError(StatusError.BadRequest, "Invalid team default permission ids");
         }
 
