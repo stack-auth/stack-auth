@@ -242,7 +242,7 @@ async function validateAndReturn(schema: yup.ObjectSchema<any>, base: any, confi
   }
 }
 
-import.meta.vitest?.describe('validateAndReturn(...)', async ({ expect }) => {
+import.meta.vitest?.test('validateAndReturn(...)', async ({ expect }) => {
   const schema1 = yupObject({
     a: yupString().optional(),
   });
