@@ -199,4 +199,27 @@ it("can customize default user permissions", async ({ expect }) => {
       "headers": Headers { <some fields may have been hidden> },
     }
   `);
+
+  // sign up a new user
+  const { userId } = await Auth.Password.signUpWithEmail({ password: 'test1234' });
+  // list permissions for the new user
+  const response3 = await niceBackendFetch(`/api/v1/user-permissions?user_id=${userId}`, {
+    accessType: "client",
+    method: "GET",
+  });
+  expect(response3).toMatchInlineSnapshot(`
+    NiceResponse {
+      "status": 200,
+      "body": {
+        "is_paginated": false,
+        "items": [
+          {
+            "id": "test",
+            "user_id": "<stripped UUID>",
+          },
+        ],
+      },
+      "headers": Headers { <some fields may have been hidden> },
+    }
+  `);
 });
