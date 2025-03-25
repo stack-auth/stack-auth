@@ -52,7 +52,10 @@ export type {
   AdminTeamPermissionDefinition,
   AdminTeamPermissionDefinitionCreateOptions,
   AdminTeamPermissionDefinitionUpdateOptions,
-  TeamPermission
+  AdminUserPermission,
+  AdminUserPermissionDefinition,
+  AdminUserPermissionDefinitionCreateOptions,
+  AdminUserPermissionDefinitionUpdateOptions,
 } from "./permissions";
 
 export type {
