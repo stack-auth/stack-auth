@@ -149,23 +149,6 @@ export class StackAdminInterface extends StackServerInterface {
     );
   }
 
-  // Backward compatibility methods
-  async listPermissionDefinitions(): Promise<TeamPermissionDefinitionsCrud['Admin']['Read'][]> {
-    return await this.listTeamPermissionDefinitions();
-  }
-
-  async createPermissionDefinition(data: TeamPermissionDefinitionsCrud['Admin']['Create']): Promise<TeamPermissionDefinitionsCrud['Admin']['Read']> {
-    return await this.createTeamPermissionDefinition(data);
-  }
-
-  async updatePermissionDefinition(permissionId: string, data: TeamPermissionDefinitionsCrud['Admin']['Update']): Promise<TeamPermissionDefinitionsCrud['Admin']['Read']> {
-    return await this.updateTeamPermissionDefinition(permissionId, data);
-  }
-
-  async deletePermissionDefinition(permissionId: string): Promise<void> {
-    return await this.deleteTeamPermissionDefinition(permissionId);
-  }
-
   // Team permission definitions methods
   async listTeamPermissionDefinitions(): Promise<TeamPermissionDefinitionsCrud['Admin']['Read'][]> {
     const response = await this.sendAdminRequest(`/team-permission-definitions`, {}, null);
