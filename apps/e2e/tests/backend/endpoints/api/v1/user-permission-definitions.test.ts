@@ -138,28 +138,12 @@ it("creates, updates, and deletes a new user permission", async ({ expect }) => 
     },
   });
   expect(response5).toMatchInlineSnapshot(`
-          NiceResponse {
-            "status": 200,
-            "body": {
-              "is_paginated": false,
-              "items": [
-                {
-                  "contained_permission_ids": [],
-                  "id": "p1",
-                },
-                {
-                  "contained_permission_ids": ["p1"],
-                  "id": "p2",
-                },
-                {
-                  "contained_permission_ids": ["p1"],
-                  "id": "p3",
-                },
-              ],
-            },
-            "headers": Headers { <some fields may have been hidden> },
-          }
-        `);
+    NiceResponse {
+      "status": 200,
+      "body": { "success": true },
+      "headers": Headers { <some fields may have been hidden> },
+    }
+  `);
 
   // list all permissions again
   const response6 = await niceBackendFetch(`/api/v1/user-permission-definitions`, {
@@ -177,11 +161,11 @@ it("creates, updates, and deletes a new user permission", async ({ expect }) => 
         "items": [
           {
             "contained_permission_ids": [],
-            "id": "p1",
+            "id": "p2",
           },
           {
-            "contained_permission_ids": ["p1"],
-            "id": "p2",
+            "contained_permission_ids": [],
+            "id": "p3",
           },
         ],
       },
