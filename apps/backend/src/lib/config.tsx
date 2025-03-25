@@ -8,7 +8,7 @@ import { filterUndefined, pick, typedEntries } from "@stackframe/stack-shared/di
 import { Result } from "@stackframe/stack-shared/dist/utils/results";
 import { stringCompare, typedToLowercase } from "@stackframe/stack-shared/dist/utils/strings";
 import * as yup from "yup";
-import { getTeamPermissionDefinitionsFromProjectConfig, teamPermissionDefinitionJsonFromDbType, teamPermissionDefinitionJsonFromTeamSystemDbType } from "./permissions";
+import { getPermissionDefinitionsFromProjectConfig, permissionDefinitionJsonFromDbType, teamPermissionDefinitionJsonFromTeamSystemDbType } from "./permissions";
 import { DBProject } from "./projects";
 
 type Project = ProjectsCrud["Admin"]["Read"];
@@ -389,7 +389,7 @@ export const dbProjectToRenderedEnvironmentConfig = (dbProject: DBProject): Envi
     })(),
 
     teamCreateDefaultPermissions: config.permissions.filter(perm => perm.isDefaultTeamCreatorPermission)
-      .map(teamPermissionDefinitionJsonFromDbType)
+      .map(permissionDefinitionJsonFromDbType)
       .concat(config.teamCreateDefaultSystemPermissions.map(db => teamPermissionDefinitionJsonFromTeamSystemDbType(db, config)))
       .reduce((acc, perm) => {
         (acc as any)[perm.id] = { id: perm.id };
@@ -397,14 +397,14 @@ export const dbProjectToRenderedEnvironmentConfig = (dbProject: DBProject): Envi
       }, {}),
 
     teamMemberDefaultPermissions: config.permissions.filter(perm => perm.isDefaultTeamMemberPermission)
-      .map(teamPermissionDefinitionJsonFromDbType)
+      .map(permissionDefinitionJsonFromDbType)
       .concat(config.teamMemberDefaultSystemPermissions.map(db => teamPermissionDefinitionJsonFromTeamSystemDbType(db, config)))
       .reduce((acc, perm) => {
         (acc as any)[perm.id] = { id: perm.id };
         return acc;
       }, {}),
 
-    teamPermissionDefinitions: getTeamPermissionDefinitionsFromProjectConfig(config).reduce((acc, perm) => {
+    teamPermissionDefinitions: getPermissionDefinitionsFromProjectConfig(config, 'TEAM').reduce((acc, perm) => {
       (acc as any)[perm.id] = {
         id: perm.id,
         description: perm.description,
@@ -415,6 +415,13 @@ export const dbProjectToRenderedEnvironmentConfig = (dbProject: DBProject): Envi
       } satisfies EnvironmentRenderedConfig['teamPermissionDefinitions'][string];
       return acc;
     }, {}),
+
+    userDefaultPermissions: config.permissions.filter(perm => perm.isDefaultUserPermission)
+      .map(permissionDefinitionJsonFromDbType)
+      .reduce((acc, perm) => {
+        (acc as any)[perm.id] = { id: perm.id };
+        return acc;
+      }, {}),
   };
 };
 
@@ -439,6 +446,7 @@ export const renderedEnvironmentConfigToProjectCrud = (renderedConfig: Environme
       }) satisfies ProjectsCrud["Admin"]["Read"]['config']['oauth_providers'][number];
     })
     .sort((a, b) => stringCompare(a.id, b.id));
+
   return {
     id: configId,
     allow_localhost: renderedConfig.allowLocalhost,
@@ -475,5 +483,6 @@ export const renderedEnvironmentConfigToProjectCrud = (renderedConfig: Environme
 
     team_creator_default_permissions: typedEntries(renderedConfig.teamCreateDefaultPermissions).map(([_, perm]) => ({ id: perm.id })),
     team_member_default_permissions: typedEntries(renderedConfig.teamMemberDefaultPermissions).map(([_, perm]) => ({ id: perm.id })),
+    user_default_permissions: typedEntries(renderedConfig.userDefaultPermissions).map(([_, perm]) => ({ id: perm.id })),
   };
 };

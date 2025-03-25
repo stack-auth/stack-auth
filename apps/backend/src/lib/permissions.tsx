@@ -45,13 +45,13 @@ type ExtendedTeamPermissionDefinition = TeamPermissionDefinitionsCrud["Admin"]["
   __is_default_user_permission?: boolean,
 };
 
-export function teamPermissionDefinitionJsonFromDbType(db: Prisma.PermissionGetPayload<{ include: typeof fullPermissionInclude }>): ExtendedTeamPermissionDefinition {
-  return teamPermissionDefinitionJsonFromRawDbType(db);
+export function permissionDefinitionJsonFromDbType(db: Prisma.PermissionGetPayload<{ include: typeof fullPermissionInclude }>): ExtendedTeamPermissionDefinition {
+  return permissionDefinitionJsonFromRawDbType(db);
 }
 /**
  * Can either take a Prisma permission object or a raw SQL `to_jsonb` result.
  */
-export function teamPermissionDefinitionJsonFromRawDbType(db: any | Prisma.PermissionGetPayload<{ include: typeof fullPermissionInclude }>): ExtendedTeamPermissionDefinition {
+export function permissionDefinitionJsonFromRawDbType(db: any | Prisma.PermissionGetPayload<{ include: typeof fullPermissionInclude }>): ExtendedTeamPermissionDefinition {
   if (!db.projectConfigId && !db.teamId) throw new StackAssertionError(`Permission DB object should have either projectConfigId or teamId`, { db });
   if (db.projectConfigId && db.teamId) throw new StackAssertionError(`Permission DB object should have either projectConfigId or teamId, not both`, { db });
   if (db.scope === "USER" && db.teamId) throw new StackAssertionError(`Permission DB object should not have teamId when scope is USER`, { db });
@@ -149,7 +149,7 @@ export async function listUserTeamPermissions(
       throwErr(new StackAssertionError(`Permission should have either queryableId or systemPermission`, { p }))
     )];
 
-    const result = new Map<string, ReturnType<typeof teamPermissionDefinitionJsonFromDbType>>();
+    const result = new Map<string, ReturnType<typeof permissionDefinitionJsonFromDbType>>();
     while (idsToProcess.length > 0) {
       const currentId = idsToProcess.pop()!;
       const current = permissionsMap.get(currentId);
@@ -342,15 +342,15 @@ export async function listPermissionDefinitions(
   });
   if (!projectConfig) throw new StackAssertionError(`Couldn't find tenancy config`, { tenancy });
 
-  return getTeamPermissionDefinitionsFromProjectConfig(projectConfig, scope);
+  return getPermissionDefinitionsFromProjectConfig(projectConfig, scope);
 }
 
-export function getTeamPermissionDefinitionsFromProjectConfig(
+export function getPermissionDefinitionsFromProjectConfig(
   projectConfig: Prisma.ProjectConfigGetPayload<{ include: { permissions: { include: typeof fullPermissionInclude } } }>,
   scope: 'TEAM' | 'USER'
 ): ExtendedTeamPermissionDefinition[] {
   const res = projectConfig.permissions;
-  const nonSystemPermissions = res.map(db => teamPermissionDefinitionJsonFromDbType(db));
+  const nonSystemPermissions = res.map(db => permissionDefinitionJsonFromDbType(db));
 
   const systemPermissions = [
     ...(scope === "TEAM" ?
@@ -404,7 +404,7 @@ export async function createPermissionDefinition(
     },
     include: fullPermissionInclude,
   });
-  return teamPermissionDefinitionJsonFromDbType(dbPermission);
+  return permissionDefinitionJsonFromDbType(dbPermission);
 }
 
 export async function updatePermissionDefinitions(
@@ -464,7 +464,7 @@ export async function updatePermissionDefinitions(
     },
     include: fullPermissionInclude,
   });
-  return teamPermissionDefinitionJsonFromDbType(db);
+  return permissionDefinitionJsonFromDbType(db);
 }
 
 export async function deletePermissionDefinition(
@@ -513,7 +513,7 @@ export async function listUserPermissions(
       throwErr(new StackAssertionError(`Permission should have queryableId`, { p }))
     )];
 
-    const result = new Map<string, ReturnType<typeof teamPermissionDefinitionJsonFromDbType>>();
+    const result = new Map<string, ReturnType<typeof permissionDefinitionJsonFromDbType>>();
     while (idsToProcess.length > 0) {
       const currentId = idsToProcess.pop()!;
       const current = permissionsMap.get(currentId);

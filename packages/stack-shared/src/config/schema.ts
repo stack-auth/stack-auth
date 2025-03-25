@@ -19,6 +19,7 @@ export const baseConfig = {
   oauthAccountMergeStrategy: 'link_method',
   teamCreateDefaultSystemPermissions: {},
   teamMemberDefaultSystemPermissions: {},
+  userDefaultSystemPermissions: {},
   permissionDefinitions: {},
   oauthProviders: {},
   authMethods: {},
@@ -75,6 +76,13 @@ export const branchConfigSchema = projectConfigSchema.omit(["sourceOfTruthDbConn
         }),
       ).defined(),
     }).defined(),
+  ).defined().meta({ endConfigurableLevel: 'organization' }),
+
+  userDefaultPermissions: yupRecord(
+    yupString().defined().matches(permissionRegex),
+    yupObject({
+      id: yupString().defined(),
+    }),
   ).defined().meta({ endConfigurableLevel: 'organization' }),
 
   // keys to the oauth providers are the provider ids.

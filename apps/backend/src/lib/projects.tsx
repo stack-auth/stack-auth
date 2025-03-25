@@ -8,7 +8,7 @@ import { deepPlainEquals, isNotNull, omit } from "@stackframe/stack-shared/dist/
 import { stringCompare, typedToLowercase, typedToUppercase } from "@stackframe/stack-shared/dist/utils/strings";
 import { generateUuid } from "@stackframe/stack-shared/dist/utils/uuids";
 import { dbProjectToRenderedEnvironmentConfig, renderedEnvironmentConfigToProjectCrud } from "./config";
-import { fullPermissionInclude, teamPermissionDefinitionJsonFromDbType, teamPermissionDefinitionJsonFromRawDbType, teamPermissionDefinitionJsonFromTeamSystemDbType } from "./permissions";
+import { fullPermissionInclude, permissionDefinitionJsonFromDbType, permissionDefinitionJsonFromRawDbType, teamPermissionDefinitionJsonFromTeamSystemDbType } from "./permissions";
 import { ensureSharedProvider, ensureStandardProvider } from "./request-checks";
 
 export const fullProjectInclude = {
@@ -150,29 +150,32 @@ export function projectPrismaToCrud(
         }
       })(),
       team_creator_default_permissions: prisma.config.permissions.filter(perm => perm.isDefaultTeamCreatorPermission)
-        .map(teamPermissionDefinitionJsonFromDbType)
+        .map(permissionDefinitionJsonFromDbType)
         .concat(prisma.config.teamCreateDefaultSystemPermissions.map(db => teamPermissionDefinitionJsonFromTeamSystemDbType(db, prisma.config)))
         .sort((a, b) => stringCompare(a.id, b.id))
         .map(perm => ({ id: perm.id })),
       team_member_default_permissions: prisma.config.permissions.filter(perm => perm.isDefaultTeamMemberPermission)
-        .map(teamPermissionDefinitionJsonFromDbType)
+        .map(permissionDefinitionJsonFromDbType)
         .concat(prisma.config.teamMemberDefaultSystemPermissions.map(db => teamPermissionDefinitionJsonFromTeamSystemDbType(db, prisma.config)))
         .sort((a, b) => stringCompare(a.id, b.id))
         .map(perm => ({ id: perm.id })),
       user_default_permissions: prisma.config.permissions.filter(perm => perm.isDefaultUserPermission)
-        .map(teamPermissionDefinitionJsonFromDbType)
+        .map(permissionDefinitionJsonFromDbType)
         .sort((a, b) => stringCompare(a.id, b.id))
         .map(perm => ({ id: perm.id })),
     }
   };
+
   const newResultWithConfigJson = renderedEnvironmentConfigToProjectCrud(dbProjectToRenderedEnvironmentConfig(prisma), result.config.id);
   if (!deepPlainEquals(result.config, newResultWithConfigJson)) {
-    captureError("Project config mismatch", {
-      // result: result.config,
-      // newResult: newResultWithConfigJson,
-      a: JSON.stringify(result.config),
-      b: JSON.stringify(newResultWithConfigJson),
-    });
+    const errorName = "Project config mismatch";
+    const errorData = { result: result.config, newResult: newResultWithConfigJson };
+
+    if (!getNodeEnvironment().includes("prod")) {
+      throw new StackAssertionError(errorName, errorData);
+    } else {
+      captureError(errorName, errorData);
+    }
   }
 
   return result;
@@ -372,7 +375,7 @@ export function getProjectQuery(projectId: string): RawQuery<ProjectsCrud["Admin
       }
 
       const teamPermissions = [
-        ...row.ProjectConfig.Permissions.map((perm: any) => teamPermissionDefinitionJsonFromRawDbType(perm)),
+        ...row.ProjectConfig.Permissions.map((perm: any) => permissionDefinitionJsonFromRawDbType(perm)),
         ...Object.values(TeamSystemPermission).map(systemPermission => teamPermissionDefinitionJsonFromTeamSystemDbType(systemPermission, row.ProjectConfig)),
       ].sort((a, b) => stringCompare(a.id, b.id));
 
