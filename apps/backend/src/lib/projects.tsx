@@ -9,6 +9,7 @@ import { stringCompare, typedToLowercase, typedToUppercase } from "@stackframe/s
 import { generateUuid } from "@stackframe/stack-shared/dist/utils/uuids";
 import { fullPermissionInclude, teamPermissionDefinitionJsonFromDbType, teamPermissionDefinitionJsonFromRawDbType, teamPermissionDefinitionJsonFromTeamSystemDbType } from "./permissions";
 import { ensureSharedProvider, ensureStandardProvider } from "./request-checks";
+import { dbProjectToRenderedEnvironmentConfig, renderedEnvironmentConfigToProjectCrud } from "./config";
 
 export const fullProjectInclude = {
   config: {
@@ -98,7 +99,7 @@ export function projectPrismaToCrud(
   const otpAuth = prisma.config.authMethodConfigs.find((config) => config.otpConfig && config.enabled);
   const passkeyAuth = prisma.config.authMethodConfigs.find((config) => config.passkeyConfig && config.enabled);
 
-  return {
+  const result = {
     id: prisma.id,
     display_name: prisma.displayName,
     description: prisma.description,
@@ -160,6 +161,16 @@ export function projectPrismaToCrud(
         .map(perm => ({ id: perm.id })),
     }
   };
+
+  const newResultWithConfigJson = renderedEnvironmentConfigToProjectCrud(dbProjectToRenderedEnvironmentConfig(prisma), result.config.id);
+  if (!deepPlainEquals(result.config, newResultWithConfigJson)) {
+    captureError("Project config mismatch", {
+      result,
+      newResultWithConfigJson,
+    });
+  }
+
+  return result;
 }
 
 function isStringArray(value: any): value is string[] {

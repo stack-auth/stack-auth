@@ -280,7 +280,7 @@ Update project
 
 
 // D -> C
-export const dbProjectToRenderedEnvironmentConfigOverride = (dbProject: DBProject): EnvironmentConfigOverride => {
+export const dbProjectToRenderedEnvironmentConfig = (dbProject: DBProject): EnvironmentRenderedConfig => {
   const config = dbProject.config;
 
   return {
@@ -416,7 +416,7 @@ export const dbProjectToRenderedEnvironmentConfigOverride = (dbProject: DBProjec
       } satisfies EnvironmentRenderedConfig['teamPermissionDefinitions'][string];
       return acc;
     }, {}),
-  } satisfies EnvironmentRenderedConfig;
+  };
 };
 
 // C -> A
