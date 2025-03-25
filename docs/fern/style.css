@@ -11,6 +11,10 @@
   padding: 16px;
 }
 
+.grid:has(.prose .stack-aside-container) {
+  grid-template-columns: minmax(0, 1fr) !important;
+}
+
 .stack-aside-container {
   display: grid;
   grid-template-columns: 55% 40%;
@@ -64,19 +68,19 @@
 
 }
 
-.fern-accordion > [data-state="closed"] > button > .fern-accordion-trigger-title > .accordion-show-properties::before {
+.fern-accordion > [data-state="closed"] .fern-accordion-trigger-title > .accordion-show-properties::before {
   content: "Show properties";
 }
 
-.fern-accordion > [data-state="open"] > button > .fern-accordion-trigger-title > .accordion-show-properties::before {
+.fern-accordion > [data-state="open"] .fern-accordion-trigger-title > .accordion-show-properties::before {
   content: "Hide properties";
 }
 
-.fern-accordion > [data-state="closed"] > button > .fern-accordion-trigger-title > .accordion-show-possible-values::before {
+.fern-accordion > [data-state="closed"] .fern-accordion-trigger-title > .accordion-show-possible-values::before {
   content: "Show possible values";
 }
 
-.fern-accordion > [data-state="open"] > button > .fern-accordion-trigger-title > .accordion-show-possible-values::before {
+.fern-accordion > [data-state="open"] .fern-accordion-trigger-title > .accordion-show-possible-values::before {
   content: "Hide possible values";
 }
 
