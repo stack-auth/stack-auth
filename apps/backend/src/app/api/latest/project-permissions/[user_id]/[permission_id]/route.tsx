@@ -1,4 +1,4 @@
-import { userPermissionsCrudHandlers } from "../../crud";
+import { projectPermissionsCrudHandlers } from "../../crud";
 
-export const POST = userPermissionsCrudHandlers.createHandler;
-export const DELETE = userPermissionsCrudHandlers.deleteHandler;
+export const POST = projectPermissionsCrudHandlers.createHandler;
+export const DELETE = projectPermissionsCrudHandlers.deleteHandler;

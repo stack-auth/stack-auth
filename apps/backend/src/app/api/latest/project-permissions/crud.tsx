@@ -1,16 +1,16 @@
 import { grantUserPermission, listUserPermissions, revokeUserPermission } from "@/lib/permissions";
 import { ensureUserExists, ensureUserPermissionExists } from "@/lib/request-checks";
-import { sendUserPermissionCreatedWebhook, sendUserPermissionDeletedWebhook } from "@/lib/webhooks";
+import { sendProjectPermissionCreatedWebhook, sendProjectPermissionDeletedWebhook } from "@/lib/webhooks";
 import { retryTransaction } from "@/prisma-client";
 import { createCrudHandlers } from "@/route-handlers/crud-handler";
 import { runAsynchronouslyAndWaitUntil } from "@/utils/vercel";
 import { KnownErrors } from "@stackframe/stack-shared";
-import { userPermissionsCrud } from '@stackframe/stack-shared/dist/interface/crud/user-permissions';
+import { projectPermissionsCrud } from '@stackframe/stack-shared/dist/interface/crud/project-permissions';
 import { teamPermissionDefinitionIdSchema, userIdOrMeSchema, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
 import { StatusError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
 import { createLazyProxy } from "@stackframe/stack-shared/dist/utils/proxies";
 
-export const userPermissionsCrudHandlers = createLazyProxy(() => createCrudHandlers(userPermissionsCrud, {
+export const projectPermissionsCrudHandlers = createLazyProxy(() => createCrudHandlers(projectPermissionsCrud, {
   querySchema: yupObject({
     user_id: userIdOrMeSchema.optional().meta({ openapiField: { onlyShowInOperations: [ 'List' ], description: 'Filter with the user ID. If set, only the permissions this user has will be returned. Client request must set `user_id=me`', exampleValue: 'me' } }),
     permission_id: teamPermissionDefinitionIdSchema.optional().meta({ openapiField: { onlyShowInOperations: [ 'List' ], description: 'Filter with the permission ID. If set, only the permissions with this specific ID will be returned', exampleValue: '16399452-c4f3-4554-8e44-c2d67bb60360' } }),
@@ -31,7 +31,7 @@ export const userPermissionsCrudHandlers = createLazyProxy(() => createCrudHandl
       });
     });
 
-    runAsynchronouslyAndWaitUntil(sendUserPermissionCreatedWebhook({
+    runAsynchronouslyAndWaitUntil(sendProjectPermissionCreatedWebhook({
       projectId: auth.project.id,
       data: {
         id: params.permission_id,
@@ -58,7 +58,7 @@ export const userPermissionsCrudHandlers = createLazyProxy(() => createCrudHandl
       });
     });
 
-    runAsynchronouslyAndWaitUntil(sendUserPermissionDeletedWebhook({
+    runAsynchronouslyAndWaitUntil(sendProjectPermissionDeletedWebhook({
       projectId: auth.project.id,
       data: {
         id: params.permission_id,

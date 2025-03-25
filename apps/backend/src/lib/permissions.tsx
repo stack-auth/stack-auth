@@ -1,7 +1,7 @@
 import { TeamSystemPermission as DBTeamSystemPermission, Prisma } from "@prisma/client";
 import { KnownErrors } from "@stackframe/stack-shared";
 import { TeamPermissionDefinitionsCrud, TeamPermissionsCrud } from "@stackframe/stack-shared/dist/interface/crud/team-permissions";
-import { UserPermissionsCrud } from "@stackframe/stack-shared/dist/interface/crud/user-permissions";
+import { ProjectPermissionsCrud } from "@stackframe/stack-shared/dist/interface/crud/project-permissions";
 import { groupBy } from "@stackframe/stack-shared/dist/utils/arrays";
 import { StackAssertionError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
 import { stringCompare, typedToLowercase, typedToUppercase } from "@stackframe/stack-shared/dist/utils/strings";
@@ -485,7 +485,7 @@ export async function listUserPermissions(
     permissionId?: string,
     recursive: boolean,
   }
-): Promise<UserPermissionsCrud["Admin"]["Read"][]> {
+): Promise<ProjectPermissionsCrud["Admin"]["Read"][]> {
   const permissionDefs = await listPermissionDefinitions(tx, "PROJECT", options.tenancy);
   const permissionsMap = new Map(permissionDefs.map(p => [p.id, p]));
   const results = await tx.projectUserDirectPermission.findMany({

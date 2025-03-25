@@ -1,3 +1,3 @@
-import { userPermissionsCrudHandlers } from "./crud";
+import { projectPermissionsCrudHandlers } from "./crud";
 
-export const GET = userPermissionsCrudHandlers.listHandler;
+export const GET = projectPermissionsCrudHandlers.listHandler;

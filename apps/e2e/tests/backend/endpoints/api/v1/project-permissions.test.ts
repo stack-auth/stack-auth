@@ -5,7 +5,7 @@ import { ApiKey, Auth, InternalProjectKeys, Project, Team, Webhook, backendConte
 it("is not allowed to list permissions from the other users on the client", async ({ expect }) => {
   await Auth.Otp.signIn();
 
-  const response = await niceBackendFetch(`/api/v1/user-permissions`, {
+  const response = await niceBackendFetch(`/api/v1/project-permissions`, {
     accessType: "client",
     method: "GET",
   });
@@ -21,7 +21,7 @@ it("is not allowed to list permissions from the other users on the client", asyn
 it("is not allowed to grant non-existing permission to a user on the server", async ({ expect }) => {
   const { userId } = await Auth.Otp.signIn();
 
-  const response = await niceBackendFetch(`/api/v1/user-permissions/${userId}/does_not_exist`, {
+  const response = await niceBackendFetch(`/api/v1/project-permissions/${userId}/does_not_exist`, {
     accessType: "server",
     method: "POST",
     body: {},
@@ -47,7 +47,7 @@ it("can create a new permission and grant it to a user on the server", async ({ 
   const { adminAccessToken } = await Project.createAndGetAdminToken({ config: { magic_link_enabled: true } });
 
   // create a permission child
-  await niceBackendFetch(`/api/v1/user-permission-definitions`, {
+  await niceBackendFetch(`/api/v1/project-permission-definitions`, {
     accessType: "admin",
     method: "POST",
     body: {
@@ -60,7 +60,7 @@ it("can create a new permission and grant it to a user on the server", async ({ 
   });
 
   // create a permission parent
-  await niceBackendFetch(`/api/v1/user-permission-definitions`, {
+  await niceBackendFetch(`/api/v1/project-permission-definitions`, {
     accessType: "admin",
     method: "POST",
     body: {
@@ -78,7 +78,7 @@ it("can create a new permission and grant it to a user on the server", async ({ 
   const { userId } = await Auth.Password.signUpWithEmail({ password: 'test1234' });
 
   // list current permissions
-  const response1 = await niceBackendFetch(`/api/v1/user-permissions?user_id=me`, {
+  const response1 = await niceBackendFetch(`/api/v1/project-permissions?user_id=me`, {
     accessType: "client",
     method: "GET",
   });
@@ -94,7 +94,7 @@ it("can create a new permission and grant it to a user on the server", async ({ 
   `);
 
   // grant new permission
-  const response2 = await niceBackendFetch(`/api/v1/user-permissions/${userId}/parent`, {
+  const response2 = await niceBackendFetch(`/api/v1/project-permissions/${userId}/parent`, {
     accessType: "server",
     method: "POST",
     body: {},
@@ -111,7 +111,7 @@ it("can create a new permission and grant it to a user on the server", async ({ 
   `);
 
   // list current permissions (should have the new permission)
-  const response3 = await niceBackendFetch(`/api/v1/user-permissions?user_id=me`, {
+  const response3 = await niceBackendFetch(`/api/v1/project-permissions?user_id=me`, {
     accessType: "client",
     method: "GET",
   });
@@ -136,7 +136,7 @@ it("can customize default user permissions", async ({ expect }) => {
   await Auth.Otp.signIn();
   const { adminAccessToken } = await Project.createAndGetAdminToken();
 
-  const response1 = await niceBackendFetch(`/api/v1/user-permission-definitions`, {
+  const response1 = await niceBackendFetch(`/api/v1/project-permission-definitions`, {
     accessType: "admin",
     method: "POST",
     body: {
@@ -202,7 +202,7 @@ it("can customize default user permissions", async ({ expect }) => {
   // sign up a new user
   const { userId } = await Auth.Password.signUpWithEmail({ password: 'test1234' });
   // list permissions for the new user
-  const response3 = await niceBackendFetch(`/api/v1/user-permissions?user_id=${userId}`, {
+  const response3 = await niceBackendFetch(`/api/v1/project-permissions?user_id=${userId}`, {
     accessType: "client",
     method: "GET",
   });
@@ -228,13 +228,13 @@ it("should trigger user permission webhook when a permission is granted to a use
 
   const { userId } = await Auth.Otp.signIn();
 
-  await niceBackendFetch(`/api/v1/user-permission-definitions`, {
+  await niceBackendFetch(`/api/v1/project-permission-definitions`, {
     accessType: "admin",
     method: "POST",
     body: { id: 'test_permission' },
   });
 
-  const grantPermissionResponse = await niceBackendFetch(`/api/v1/user-permissions/${userId}/test_permission`, {
+  const grantPermissionResponse = await niceBackendFetch(`/api/v1/project-permissions/${userId}/test_permission`, {
     accessType: "server",
     method: "POST",
     body: {},
@@ -270,14 +270,14 @@ it("should trigger user permission webhook when a permission is revoked from a u
 
   const { userId } = await Auth.Otp.signIn();
 
-  await niceBackendFetch(`/api/v1/user-permission-definitions`, {
+  await niceBackendFetch(`/api/v1/project-permission-definitions`, {
     accessType: "admin",
     method: "POST",
     body: { id: 'test_permission' },
   });
 
   // First grant the permission
-  const grantPermissionResponse = await niceBackendFetch(`/api/v1/user-permissions/${userId}/test_permission`, {
+  const grantPermissionResponse = await niceBackendFetch(`/api/v1/project-permissions/${userId}/test_permission`, {
     accessType: "server",
     method: "POST",
     body: {},
@@ -286,7 +286,7 @@ it("should trigger user permission webhook when a permission is revoked from a u
   expect(grantPermissionResponse.status).toBe(201);
 
   // Then revoke the permission
-  const revokePermissionResponse = await niceBackendFetch(`/api/v1/user-permissions/${userId}/test_permission`, {
+  const revokePermissionResponse = await niceBackendFetch(`/api/v1/project-permissions/${userId}/test_permission`, {
     accessType: "server",
     method: "DELETE",
   });

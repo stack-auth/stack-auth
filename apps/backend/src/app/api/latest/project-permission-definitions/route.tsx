@@ -1,4 +1,4 @@
-import { userPermissionDefinitionsCrudHandlers } from "./crud";
+import { projectPermissionDefinitionsCrudHandlers } from "./crud";
 
-export const POST = userPermissionDefinitionsCrudHandlers.createHandler;
-export const GET = userPermissionDefinitionsCrudHandlers.listHandler;
+export const POST = projectPermissionDefinitionsCrudHandlers.createHandler;
+export const GET = projectPermissionDefinitionsCrudHandlers.listHandler;

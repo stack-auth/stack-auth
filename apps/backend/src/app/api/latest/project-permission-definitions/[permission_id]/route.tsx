@@ -1,4 +1,4 @@
-import { userPermissionDefinitionsCrudHandlers } from "../crud";
+import { projectPermissionDefinitionsCrudHandlers } from "../crud";
 
-export const PATCH = userPermissionDefinitionsCrudHandlers.updateHandler;
-export const DELETE = userPermissionDefinitionsCrudHandlers.deleteHandler;
+export const PATCH = projectPermissionDefinitionsCrudHandlers.updateHandler;
+export const DELETE = projectPermissionDefinitionsCrudHandlers.deleteHandler;
