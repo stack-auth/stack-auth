@@ -486,8 +486,8 @@ export const renderedEnvironmentConfigToProjectCrud = (renderedConfig: Environme
       sender_email: renderedConfig.emailConfig.senderEmail,
     },
 
-    team_creator_default_permissions: typedEntries(renderedConfig.teamCreateDefaultPermissions).map(([_, perm]) => ({ id: perm.id })),
-    team_member_default_permissions: typedEntries(renderedConfig.teamMemberDefaultPermissions).map(([_, perm]) => ({ id: perm.id })),
-    user_default_permissions: typedEntries(renderedConfig.userDefaultPermissions).map(([_, perm]) => ({ id: perm.id })),
+    team_creator_default_permissions: typedEntries(renderedConfig.teamCreateDefaultPermissions).map(([_, perm]) => ({ id: perm.id })).sort((a, b) => stringCompare(a.id, b.id)),
+    team_member_default_permissions: typedEntries(renderedConfig.teamMemberDefaultPermissions).map(([_, perm]) => ({ id: perm.id })).sort((a, b) => stringCompare(a.id, b.id)),
+    user_default_permissions: typedEntries(renderedConfig.userDefaultPermissions).map(([_, perm]) => ({ id: perm.id })).sort((a, b) => stringCompare(a.id, b.id)),
   };
 };
