@@ -187,6 +187,13 @@ export type UserExtra = {
   // END_PLATFORM
 
   hasPermission(scope: Team, permissionId: string): Promise<boolean>,
+  getProjectPermission(permissionId: string): Promise<TeamPermission | null>,
+  hasProjectPermission(permissionId: string): Promise<boolean>,
+  listProjectPermissions(options?: { recursive?: boolean }): Promise<TeamPermission[]>,
+  // IF_PLATFORM react-like
+  useProjectPermissions(options?: { recursive?: boolean }): TeamPermission[],
+  useProjectPermission(permissionId: string): TeamPermission | null,
+  // END_PLATFORM
 
   readonly selectedTeam: Team | null,
   setSelectedTeam(team: Team | null): Promise<void>,
@@ -269,6 +276,14 @@ export type ServerBaseUser = {
 
   grantPermission(scope: Team, permissionId: string): Promise<void>,
   revokePermission(scope: Team, permissionId: string): Promise<void>,
+  
+  getProjectPermission(permissionId: string): Promise<TeamPermission | null>,
+  hasProjectPermission(permissionId: string): Promise<boolean>,
+  listProjectPermissions(options?: { recursive?: boolean }): Promise<TeamPermission[]>,
+  // IF_PLATFORM react-like
+  useProjectPermissions(options?: { recursive?: boolean }): TeamPermission[],
+  useProjectPermission(permissionId: string): TeamPermission | null,
+  // END_PLATFORM
 
   /**
    * Creates a new session object with a refresh token for this user. Can be used to impersonate them.

@@ -46,6 +46,7 @@ let isReactServer = false;
 // IF_PLATFORM next
 import * as sc from "@stackframe/stack-sc";
 import { cookies } from '@stackframe/stack-sc';
+import { ProjectPermissionsCrud } from "@stackframe/stack-shared/dist/interface/crud/project-permissions";
 isReactServer = sc.isReactServer;
 
 // NextNavigation.useRouter does not exist in react-server environments and some bundlers try to be helpful and throw a warning. Ignore the warning.
@@ -114,6 +115,12 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
     TeamPermissionsCrud['Client']['Read'][]
   >(async (session, [teamId, recursive]) => {
     return await this._interface.listCurrentUserTeamPermissions({ teamId, recursive }, session);
+  });
+  private readonly _currentUserProjectPermissionsCache = createCacheBySession<
+    [boolean],
+    ProjectPermissionsCrud['Client']['Read'][]
+  >(async (session, [recursive]) => {
+    return await this._interface.listCurrentUserProjectPermissions({ recursive }, session);
   });
   private readonly _currentUserTeamsCache = createCacheBySession(async (session) => {
     return await this._interface.listCurrentUserTeams(session);
@@ -584,7 +591,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
     };
   }
 
-  protected _clientTeamPermissionFromCrud(crud: TeamPermissionsCrud['Client']['Read']): TeamPermission {
+  protected _clientTeamPermissionFromCrud(crud: TeamPermissionsCrud['Client']['Read'] | ProjectPermissionsCrud['Client']['Read']): TeamPermission {
     return {
       id: crud.id,
     };
@@ -868,16 +875,30 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
         const permissions = Result.orThrow(await app._currentUserPermissionsCache.getOrWait([session, scope.id, recursive], "write-only"));
         return permissions.map((crud) => app._clientTeamPermissionFromCrud(crud));
       },
+      async listProjectPermissions(options?: { recursive?: boolean }): Promise<TeamPermission[]> {
+        const recursive = options?.recursive ?? true;
+        const permissions = Result.orThrow(await app._currentUserProjectPermissionsCache.getOrWait([session, recursive], "write-only"));
+        return permissions.map((crud) => app._clientTeamPermissionFromCrud(crud));
+      },
       // IF_PLATFORM react-like
       usePermissions(scope: Team, options?: { recursive?: boolean }): TeamPermission[] {
         const recursive = options?.recursive ?? true;
         const permissions = useAsyncCache(app._currentUserPermissionsCache, [session, scope.id, recursive] as const, "user.usePermissions()");
         return useMemo(() => permissions.map((crud) => app._clientTeamPermissionFromCrud(crud)), [permissions]);
       },
+      useProjectPermissions(options?: { recursive?: boolean }): TeamPermission[] {
+        const recursive = options?.recursive ?? true;
+        const permissions = useAsyncCache(app._currentUserProjectPermissionsCache, [session, recursive] as const, "user.useProjectPermissions()");
+        return useMemo(() => permissions.map((crud) => app._clientTeamPermissionFromCrud(crud)), [permissions]);
+      },
       // END_PLATFORM
       // IF_PLATFORM react-like
       usePermission(scope: Team, permissionId: string): TeamPermission | null {
         const permissions = this.usePermissions(scope);
+        return useMemo(() => permissions.find((p) => p.id === permissionId) ?? null, [permissions, permissionId]);
+      },
+      useProjectPermission(permissionId: string): TeamPermission | null {
+        const permissions = this.useProjectPermissions();
         return useMemo(() => permissions.find((p) => p.id === permissionId) ?? null, [permissions, permissionId]);
       },
       // END_PLATFORM
@@ -887,6 +908,13 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
       },
       async hasPermission(scope: Team, permissionId: string): Promise<boolean> {
         return (await this.getPermission(scope, permissionId)) !== null;
+      },
+      async getProjectPermission(permissionId: string): Promise<TeamPermission | null> {
+        const permissions = await this.listProjectPermissions();
+        return permissions.find((p) => p.id === permissionId) ?? null;
+      },
+      async hasProjectPermission(permissionId: string): Promise<boolean> {
+        return (await this.getProjectPermission(permissionId)) !== null;
       },
       async update(update) {
         return await app._updateClientUser(update, session);

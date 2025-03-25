@@ -3,7 +3,7 @@ import { ContactChannelsCrud } from "@stackframe/stack-shared/dist/interface/cru
 import { TeamInvitationCrud } from "@stackframe/stack-shared/dist/interface/crud/team-invitation";
 import { TeamMemberProfilesCrud } from "@stackframe/stack-shared/dist/interface/crud/team-member-profiles";
 import { TeamPermissionDefinitionsCrud, TeamPermissionsCrud } from "@stackframe/stack-shared/dist/interface/crud/team-permissions";
-import { ProjectPermissionDefinitionsCrud } from "@stackframe/stack-shared/dist/interface/crud/project-permissions";
+import { ProjectPermissionDefinitionsCrud, ProjectPermissionsCrud } from "@stackframe/stack-shared/dist/interface/crud/project-permissions";
 import { TeamsCrud } from "@stackframe/stack-shared/dist/interface/crud/teams";
 import { UsersCrud } from "@stackframe/stack-shared/dist/interface/crud/users";
 import { InternalSession } from "@stackframe/stack-shared/dist/sessions";
@@ -60,6 +60,12 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
     TeamPermissionsCrud['Server']['Read'][]
   >(async ([teamId, userId, recursive]) => {
     return await this._interface.listServerTeamPermissions({ teamId, userId, recursive }, null);
+  });
+  private readonly _serverUserProjectPermissionsCache = createCache<
+    [string, boolean],
+    ProjectPermissionsCrud['Server']['Read'][]
+  >(async ([userId, recursive]) => {
+    return await this._interface.listServerProjectPermissions({ userId, recursive }, null);
   });
   private readonly _serverUserOAuthConnectionAccessTokensCache = createCache<[string, string, string], { accessToken: string } | null>(
     async ([userId, providerId, scope]) => {
@@ -340,6 +346,31 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
       // END_PLATFORM
       async hasPermission(scope: Team, permissionId: string): Promise<boolean> {
         return await this.getPermission(scope, permissionId) !== null;
+      },
+      async listProjectPermissions(options?: { recursive?: boolean }): Promise<AdminTeamPermission[]> {
+        const recursive = options?.recursive ?? true;
+        const permissions = Result.orThrow(await app._serverUserProjectPermissionsCache.getOrWait([crud.id, recursive], "write-only"));
+        return permissions.map((crud) => app._serverPermissionFromCrud(crud));
+      },
+      // IF_PLATFORM react-like
+      useProjectPermissions(options?: { recursive?: boolean }): AdminTeamPermission[] {
+        const recursive = options?.recursive ?? true;
+        const permissions = useAsyncCache(app._serverUserProjectPermissionsCache, [crud.id, recursive] as const, "user.useProjectPermissions()");
+        return useMemo(() => permissions.map((crud) => app._serverPermissionFromCrud(crud)), [permissions]);
+      },
+      // END_PLATFORM
+      async getProjectPermission(permissionId: string): Promise<AdminTeamPermission | null> {
+        const permissions = await this.listProjectPermissions();
+        return permissions.find((p) => p.id === permissionId) ?? null;
+      },
+      // IF_PLATFORM react-like
+      useProjectPermission(permissionId: string): AdminTeamPermission | null {
+        const permissions = this.useProjectPermissions();
+        return useMemo(() => permissions.find((p) => p.id === permissionId) ?? null, [permissions, permissionId]);
+      },
+      // END_PLATFORM
+      async hasProjectPermission(permissionId: string): Promise<boolean> {
+        return await this.getProjectPermission(permissionId) !== null;
       },
       async update(update: ServerUserUpdateOptions) {
         await app._updateServerUser(crud.id, update);
@@ -626,7 +657,7 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
   }
   // END_PLATFORM
 
-  _serverPermissionFromCrud(crud: TeamPermissionsCrud['Server']['Read']): AdminTeamPermission {
+  _serverPermissionFromCrud(crud: TeamPermissionsCrud['Server']['Read'] | ProjectPermissionsCrud['Server']['Read']): AdminTeamPermission {
     return {
       id: crud.id,
     };
