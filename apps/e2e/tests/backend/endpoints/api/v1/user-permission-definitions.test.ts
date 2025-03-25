@@ -73,13 +73,13 @@ it("creates, updates, and deletes a new user permission", async ({ expect }) => 
     }
   `);
 
-  // create another permission with contained permissions
+  // test recursive case
   const response3 = await niceBackendFetch(`/api/v1/user-permission-definitions`, {
     accessType: "admin",
     method: "POST",
     body: {
       id: 'p3',
-      contained_permission_ids: ['p1']
+      contained_permission_ids: ['p2']
     },
     headers: {
       'x-stack-admin-access-token': adminAccessToken
@@ -90,7 +90,7 @@ it("creates, updates, and deletes a new user permission", async ({ expect }) => 
     NiceResponse {
       "status": 201,
       "body": {
-        "contained_permission_ids": ["p1"],
+        "contained_permission_ids": ["p2"],
         "id": "p3",
       },
       "headers": Headers { <some fields may have been hidden> },
@@ -106,28 +106,28 @@ it("creates, updates, and deletes a new user permission", async ({ expect }) => 
     },
   });
   expect(response4).toMatchInlineSnapshot(`
-      NiceResponse {
-        "status": 200,
-        "body": {
-          "is_paginated": false,
-          "items": [
-            {
-              "contained_permission_ids": [],
-              "id": "p1",
-            },
-            {
-              "contained_permission_ids": ["p1"],
-              "id": "p2",
-            },
-            {
-              "contained_permission_ids": ["p1"],
-              "id": "p3",
-            },
-          ],
-        },
-        "headers": Headers { <some fields may have been hidden> },
-      }
-    `);
+    NiceResponse {
+      "status": 200,
+      "body": {
+        "is_paginated": false,
+        "items": [
+          {
+            "contained_permission_ids": [],
+            "id": "p1",
+          },
+          {
+            "contained_permission_ids": ["p1"],
+            "id": "p2",
+          },
+          {
+            "contained_permission_ids": ["p2"],
+            "id": "p3",
+          },
+        ],
+      },
+      "headers": Headers { <some fields may have been hidden> },
+    }
+  `);
 
   // delete the permission
   const response5 = await niceBackendFetch(`/api/v1/user-permission-definitions/p1`, {
@@ -164,7 +164,7 @@ it("creates, updates, and deletes a new user permission", async ({ expect }) => 
             "id": "p2",
           },
           {
-            "contained_permission_ids": [],
+            "contained_permission_ids": ["p2"],
             "id": "p3",
           },
         ],
