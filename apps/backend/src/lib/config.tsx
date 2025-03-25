@@ -7,6 +7,7 @@ import { StackAssertionError, throwErr } from "@stackframe/stack-shared/dist/uti
 import { filterUndefined, pick, typedEntries } from "@stackframe/stack-shared/dist/utils/objects";
 import { Result } from "@stackframe/stack-shared/dist/utils/results";
 import { stringCompare, typedToLowercase } from "@stackframe/stack-shared/dist/utils/strings";
+import { base64url } from "jose";
 import * as yup from "yup";
 import { getPermissionDefinitionsFromProjectConfig, permissionDefinitionJsonFromDbType, teamPermissionDefinitionJsonFromTeamSystemDbType } from "./permissions";
 import { DBProject } from "./projects";
@@ -108,7 +109,7 @@ export async function getEnvironmentConfigOverride(project: Project, branchId: s
   }
 
   const config = project.config;
-
+  console.log(config.domains);
   return {
     createTeamOnSignUp: config.create_team_on_sign_up,
     allowLocalhost: config.allow_localhost,
@@ -332,17 +333,21 @@ export const dbProjectToRenderedEnvironmentConfig = (dbProject: DBProject): Envi
 
     oauthProviders: config.oauthProviderConfigs.map(provider => {
       if (provider.proxiedOAuthConfig) {
-        return {
+        return ({
           id: provider.id,
           type: typedToLowercase(provider.proxiedOAuthConfig.type),
           isShared: true,
-        } as const;
+        } as const) satisfies EnvironmentRenderedConfig['oauthProviders'][string];
       } else if (provider.standardOAuthConfig) {
-        return {
+        return filterUndefined({
           id: provider.id,
           type: typedToLowercase(provider.standardOAuthConfig.type),
           isShared: false,
-        } as const;
+          clientId: provider.standardOAuthConfig.clientId,
+          clientSecret: provider.standardOAuthConfig.clientSecret,
+          facebookConfigId: provider.standardOAuthConfig.facebookConfigId ?? undefined,
+          microsoftTenantId: provider.standardOAuthConfig.microsoftTenantId ?? undefined,
+        } as const) satisfies EnvironmentRenderedConfig['oauthProviders'][string];
       } else {
         throw new StackAssertionError('Unknown oauth provider config', { provider });
       }
@@ -355,16 +360,16 @@ export const dbProjectToRenderedEnvironmentConfig = (dbProject: DBProject): Envi
       id: account.id,
       enabled: account.enabled,
       oauthProviderId: account.oauthProviderConfig?.id || throwErr('oauthProviderConfig.id is required'),
-    })).reduce((acc, account) => {
+    } satisfies EnvironmentRenderedConfig['connectedAccounts'][string])).reduce((acc, account) => {
       (acc as any)[account.id] = account;
       return acc;
     }, {}),
 
     domains: config.domains.map(domain => ({
       domain: domain.domain,
-      handle: domain.handlerPath,
-    })).reduce((acc, domain) => {
-      (acc as any)[domain.domain] = domain;
+      handlerPath: domain.handlerPath,
+    } satisfies EnvironmentRenderedConfig['domains'][string])).reduce((acc, domain) => {
+      (acc as any)[base64url.encode(domain.domain)] = domain;
       return acc;
     }, {}),
 
@@ -438,12 +443,12 @@ export const renderedEnvironmentConfigToProjectCrud = (renderedConfig: Environme
       return filterUndefined({
         id: oauthProvider.type,
         enabled: authMethod.enabled,
-        type: (oauthProvider.isShared ? 'shared' : 'standard') as 'shared' | 'standard',
+        type: oauthProvider.isShared ? 'shared' : 'standard',
         client_id: oauthProvider.clientId,
         client_secret: oauthProvider.clientSecret,
         facebook_config_id: oauthProvider.facebookConfigId,
         microsoft_tenant_id: oauthProvider.microsoftTenantId,
-      }) satisfies ProjectsCrud["Admin"]["Read"]['config']['oauth_providers'][number];
+      } as const) satisfies ProjectsCrud["Admin"]["Read"]['config']['oauth_providers'][number];
     })
     .sort((a, b) => stringCompare(a.id, b.id));
 

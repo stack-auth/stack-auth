@@ -168,7 +168,7 @@ export const environmentConfigSchema = branchConfigSchema.concat(yupObject({
     })
   ).meta({ endConfigurableLevel: 'organization' }),
 
-  // keys to the domains are the hex encoded domains
+  // keys to the domains are url base64 encoded
   domains: yupRecord(
     yupString().defined().matches(permissionRegex),
     yupObject({

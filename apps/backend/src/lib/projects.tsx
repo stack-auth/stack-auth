@@ -4,7 +4,7 @@ import { AdminUserProjectsCrud, ProjectsCrud } from "@stackframe/stack-shared/di
 import { UsersCrud } from "@stackframe/stack-shared/dist/interface/crud/users";
 import { getNodeEnvironment } from "@stackframe/stack-shared/dist/utils/env";
 import { StackAssertionError, captureError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
-import { deepPlainEquals, isNotNull, omit } from "@stackframe/stack-shared/dist/utils/objects";
+import { deepPlainEquals, filterUndefined, isNotNull, omit } from "@stackframe/stack-shared/dist/utils/objects";
 import { stringCompare, typedToLowercase, typedToUppercase } from "@stackframe/stack-shared/dist/utils/strings";
 import { generateUuid } from "@stackframe/stack-shared/dist/utils/uuids";
 import { dbProjectToRenderedEnvironmentConfig, renderedEnvironmentConfigToProjectCrud } from "./config";
@@ -78,7 +78,7 @@ export function projectPrismaToCrud(
             type: "shared",
           } as const;
         } else if (providerConfig.standardOAuthConfig) {
-          return {
+          return filterUndefined({
             id: typedToLowercase(providerConfig.standardOAuthConfig.type),
             enabled: config.enabled,
             type: "standard",
@@ -86,7 +86,7 @@ export function projectPrismaToCrud(
             client_secret: providerConfig.standardOAuthConfig.clientSecret,
             facebook_config_id: providerConfig.standardOAuthConfig.facebookConfigId ?? undefined,
             microsoft_tenant_id: providerConfig.standardOAuthConfig.microsoftTenantId ?? undefined,
-          } as const;
+          } as const);
         } else {
           throw new StackAssertionError(`Exactly one of the provider configs should be set on provider config '${config.id}' of project '${prisma.id}'`, { prisma });
         }
