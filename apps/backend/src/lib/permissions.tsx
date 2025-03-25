@@ -54,7 +54,7 @@ export function teamPermissionDefinitionJsonFromDbType(db: Prisma.PermissionGetP
 export function teamPermissionDefinitionJsonFromRawDbType(db: any | Prisma.PermissionGetPayload<{ include: typeof fullPermissionInclude }>): ExtendedTeamPermissionDefinition {
   if (!db.projectConfigId && !db.teamId) throw new StackAssertionError(`Permission DB object should have either projectConfigId or teamId`, { db });
   if (db.projectConfigId && db.teamId) throw new StackAssertionError(`Permission DB object should have either projectConfigId or teamId, not both`, { db });
-  if (db.scope === "GLOBAL" && db.teamId) throw new StackAssertionError(`Permission DB object should not have teamId when scope is GLOBAL`, { db });
+  if (db.scope === "USER" && db.teamId) throw new StackAssertionError(`Permission DB object should not have teamId when scope is USER`, { db });
 
   return {
     __database_id: db.dbId,
@@ -99,7 +99,7 @@ async function getParentDbIds(
   tx: PrismaTransaction,
   options: {
     tenancy: Tenancy,
-    scope: "TEAM" | "GLOBAL",
+    scope: "TEAM" | "USER",
     containedPermissionIds?: string[],
   }
 ) {
@@ -324,7 +324,7 @@ export async function revokeTeamPermission(
 
 export async function listPermissionDefinitions(
   tx: PrismaTransaction,
-  scope: "TEAM" | "GLOBAL",
+  scope: "TEAM" | "USER",
   tenancy: Tenancy
 ): Promise<(TeamPermissionDefinitionsCrud["Admin"]["Read"] & { __database_id: string })[]> {
   const projectConfig = await tx.projectConfig.findUnique({
@@ -356,7 +356,7 @@ export async function listPermissionDefinitions(
 export async function createPermissionDefinition(
   tx: PrismaTransaction,
   options: {
-    scope: "TEAM" | "GLOBAL",
+    scope: "TEAM" | "USER",
     tenancy: Tenancy,
     data: {
       id: string,
@@ -402,7 +402,7 @@ export async function createPermissionDefinition(
 export async function updatePermissionDefinitions(
   tx: PrismaTransaction,
   options: {
-    scope: "TEAM" | "GLOBAL",
+    scope: "TEAM" | "USER",
     tenancy: Tenancy,
     permissionId: string,
     data: {
@@ -486,7 +486,7 @@ export async function listUserPermissions(
     recursive: boolean,
   }
 ): Promise<UserPermissionsCrud["Admin"]["Read"][]> {
-  const permissionDefs = await listPermissionDefinitions(tx, "GLOBAL", options.tenancy);
+  const permissionDefs = await listPermissionDefinitions(tx, "USER", options.tenancy);
   const permissionsMap = new Map(permissionDefs.map(p => [p.id, p]));
   const results = await tx.projectUserDirectPermission.findMany({
     where: {

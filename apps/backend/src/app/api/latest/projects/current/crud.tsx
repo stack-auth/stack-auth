@@ -34,7 +34,7 @@ export const projectsCrudHandlers = createLazyProxy(() => createCrudHandlers(pro
       ] as const;
 
       const permissions = await listPermissionDefinitions(tx, "TEAM", auth.tenancy);
-      const globalPermissions = await listPermissionDefinitions(tx, "GLOBAL", auth.tenancy);
+      const globalPermissions = await listPermissionDefinitions(tx, "USER", auth.tenancy);
 
       // Handle user default permissions
       const userDefaultPerms = data.config?.user_default_permissions?.map((p) => p.id);

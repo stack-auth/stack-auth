@@ -211,7 +211,7 @@ model Permission {
 
   description String?
 
-  // The scope of the permission. If projectConfigId is set, may be GLOBAL or TEAM; if teamId is set, must be TEAM.
+  // The scope of the permission. If projectConfigId is set, may be USER or TEAM; if teamId is set, must be TEAM.
   scope PermissionScope
 
   projectConfig ProjectConfig? @relation(fields: [projectConfigId], references: [id], onDelete: Cascade)
@@ -231,7 +231,7 @@ model Permission {
 }
 
 enum PermissionScope {
-  GLOBAL
+  USER
   TEAM
 }
 
