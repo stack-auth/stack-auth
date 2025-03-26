@@ -15,7 +15,7 @@ export default function PageClient() {
 
   return (
     <PageLayout
-      title="User Permissions"
+      title="Project Permissions"
       actions={
         <Button onClick={() => setCreatePermissionModalOpen(true)}>
           Create Permission
