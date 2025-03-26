@@ -7,6 +7,7 @@ import { StackAssertionError, throwErr } from "@stackframe/stack-shared/dist/uti
 import { filterUndefined, pick, typedEntries } from "@stackframe/stack-shared/dist/utils/objects";
 import { Result } from "@stackframe/stack-shared/dist/utils/results";
 import { stringCompare, typedToLowercase } from "@stackframe/stack-shared/dist/utils/strings";
+import { randomUUID } from "crypto";
 import { base64url } from "jose";
 import * as yup from "yup";
 import { getPermissionDefinitionsFromProjectConfig, permissionDefinitionJsonFromDbType, teamPermissionDefinitionJsonFromTeamSystemDbType } from "./permissions";
@@ -278,6 +279,13 @@ Update project
         ---- ----
 */
 
+function arrayToRecord<T, K extends string = string>(array: T[], keySelector: (item: T) => K): Record<K, T> {
+  return array.reduce((acc, item) => {
+    (acc as any)[keySelector(item)] = item;
+    return acc;
+  }, {} as Record<K, T>);
+}
+
 
 // D -> C
 export const dbProjectToRenderedEnvironmentConfig = (dbProject: DBProject): EnvironmentRenderedConfig => {
@@ -292,86 +300,86 @@ export const dbProjectToRenderedEnvironmentConfig = (dbProject: DBProject): Envi
     createTeamOnSignUp: config.createTeamOnSignUp,
     isProductionMode: dbProject.isProductionMode,
 
-    authMethods: config.authMethodConfigs.map((authMethod): NonNullable<EnvironmentRenderedConfig['authMethods']>[string] => {
-      const baseAuthMethod = {
-        id: authMethod.id,
-        enabled: authMethod.enabled,
-      };
+    authMethods: arrayToRecord(
+      config.authMethodConfigs.map((authMethod): NonNullable<EnvironmentRenderedConfig['authMethods']>[string] => {
+        const baseAuthMethod = {
+          id: authMethod.id,
+          enabled: authMethod.enabled,
+        };
 
-      if (authMethod.oauthProviderConfig) {
-        const oauthConfig = authMethod.oauthProviderConfig.proxiedOAuthConfig || authMethod.oauthProviderConfig.standardOAuthConfig;
-        if (!oauthConfig) {
-          throw new StackAssertionError('Either ProxiedOAuthConfig or StandardOAuthConfig must be set on authMethodConfigs.oauthProviderConfig', { authMethod });
+        if (authMethod.oauthProviderConfig) {
+          const oauthConfig = authMethod.oauthProviderConfig.proxiedOAuthConfig || authMethod.oauthProviderConfig.standardOAuthConfig;
+          if (!oauthConfig) {
+            throw new StackAssertionError('Either ProxiedOAuthConfig or StandardOAuthConfig must be set on authMethodConfigs.oauthProviderConfig', { authMethod });
+          }
+          return {
+            ...baseAuthMethod,
+            type: 'oauth',
+            oauthProviderId: oauthConfig.id,
+          } as const;
+        } else if (authMethod.passwordConfig) {
+          return {
+            ...baseAuthMethod,
+            type: 'password',
+          } as const;
+        } else if (authMethod.otpConfig) {
+          return {
+            ...baseAuthMethod,
+            type: 'otp',
+          } as const;
+        } else if (authMethod.passkeyConfig) {
+          return {
+            ...baseAuthMethod,
+            type: 'passkey',
+          } as const;
+        } else {
+          throw new StackAssertionError('Unknown auth method config', { authMethod });
         }
-        return {
-          ...baseAuthMethod,
-          type: 'oauth',
-          oauthProviderId: oauthConfig.id,
-        } as const;
-      } else if (authMethod.passwordConfig) {
-        return {
-          ...baseAuthMethod,
-          type: 'password',
-        } as const;
-      } else if (authMethod.otpConfig) {
-        return {
-          ...baseAuthMethod,
-          type: 'otp',
-        } as const;
-      } else if (authMethod.passkeyConfig) {
-        return {
-          ...baseAuthMethod,
-          type: 'passkey',
-        } as const;
-      } else {
-        throw new StackAssertionError('Unknown auth method config', { authMethod });
-      }
-    }).reduce((acc, authMethod) => {
-      (acc as any)[authMethod.id] = authMethod;
-      return acc;
-    }, {}),
+      }),
+      authMethod => authMethod.id,
+    ),
 
-    oauthProviders: config.oauthProviderConfigs.map(provider => {
-      if (provider.proxiedOAuthConfig) {
-        return ({
-          id: provider.id,
-          type: typedToLowercase(provider.proxiedOAuthConfig.type),
-          isShared: true,
-        } as const) satisfies EnvironmentRenderedConfig['oauthProviders'][string];
-      } else if (provider.standardOAuthConfig) {
-        return filterUndefined({
-          id: provider.id,
-          type: typedToLowercase(provider.standardOAuthConfig.type),
-          isShared: false,
-          clientId: provider.standardOAuthConfig.clientId,
-          clientSecret: provider.standardOAuthConfig.clientSecret,
-          facebookConfigId: provider.standardOAuthConfig.facebookConfigId ?? undefined,
-          microsoftTenantId: provider.standardOAuthConfig.microsoftTenantId ?? undefined,
-        } as const) satisfies EnvironmentRenderedConfig['oauthProviders'][string];
-      } else {
-        throw new StackAssertionError('Unknown oauth provider config', { provider });
-      }
-    }).reduce((acc, provider) => {
-      (acc as any)[provider.id] = provider;
-      return acc;
-    }, {}),
+    oauthProviders: arrayToRecord(
+      config.oauthProviderConfigs.map(provider => {
+        if (provider.proxiedOAuthConfig) {
+          return ({
+            id: provider.id,
+            type: typedToLowercase(provider.proxiedOAuthConfig.type),
+            isShared: true,
+          } as const) satisfies EnvironmentRenderedConfig['oauthProviders'][string];
+        } else if (provider.standardOAuthConfig) {
+          return filterUndefined({
+            id: provider.id,
+            type: typedToLowercase(provider.standardOAuthConfig.type),
+            isShared: false,
+            clientId: provider.standardOAuthConfig.clientId,
+            clientSecret: provider.standardOAuthConfig.clientSecret,
+            facebookConfigId: provider.standardOAuthConfig.facebookConfigId ?? undefined,
+            microsoftTenantId: provider.standardOAuthConfig.microsoftTenantId ?? undefined,
+          } as const) satisfies EnvironmentRenderedConfig['oauthProviders'][string];
+        } else {
+          throw new StackAssertionError('Unknown oauth provider config', { provider });
+        }
+      }),
+      provider => provider.id,
+    ),
 
-    connectedAccounts: config.connectedAccountConfigs.map(account => ({
-      id: account.id,
-      enabled: account.enabled,
-      oauthProviderId: account.oauthProviderConfig?.id || throwErr('oauthProviderConfig.id is required'),
-    } satisfies EnvironmentRenderedConfig['connectedAccounts'][string])).reduce((acc, account) => {
-      (acc as any)[account.id] = account;
-      return acc;
-    }, {}),
+    connectedAccounts: arrayToRecord(
+      config.connectedAccountConfigs.map(account => ({
+        id: account.id,
+        enabled: account.enabled,
+        oauthProviderId: account.oauthProviderConfig?.id || throwErr('oauthProviderConfig.id is required'),
+      } satisfies EnvironmentRenderedConfig['connectedAccounts'][string])),
+      account => account.id,
+    ),
 
-    domains: config.domains.map(domain => ({
-      domain: domain.domain,
-      handlerPath: domain.handlerPath,
-    } satisfies EnvironmentRenderedConfig['domains'][string])).reduce((acc, domain) => {
-      (acc as any)[base64url.encode(domain.domain)] = domain;
-      return acc;
-    }, {}),
+    domains: arrayToRecord(
+      config.domains.map(domain => ({
+        domain: domain.domain,
+        handlerPath: domain.handlerPath,
+      } satisfies EnvironmentRenderedConfig['domains'][string])),
+      domain => base64url.encode(domain.domain),
+    ),
 
     emailConfig: ((): EnvironmentRenderedConfig['emailConfig'] => {
       if (config.emailServiceConfig?.standardEmailServiceConfig) {
@@ -393,40 +401,37 @@ export const dbProjectToRenderedEnvironmentConfig = (dbProject: DBProject): Envi
       }
     })(),
 
-    teamCreateDefaultPermissions: config.permissions.filter(perm => perm.isDefaultTeamCreatorPermission)
-      .map(permissionDefinitionJsonFromDbType)
-      .concat(config.teamCreateDefaultSystemPermissions.map(db => teamPermissionDefinitionJsonFromTeamSystemDbType(db, config)))
-      .reduce((acc, perm) => {
-        (acc as any)[perm.id] = { id: perm.id };
-        return acc;
-      }, {}),
+    teamCreateDefaultPermissions: arrayToRecord(
+      config.permissions.filter(perm => perm.isDefaultTeamCreatorPermission)
+        .map(permissionDefinitionJsonFromDbType)
+        .concat(config.teamCreateDefaultSystemPermissions.map(db => teamPermissionDefinitionJsonFromTeamSystemDbType(db, config))),
+      perm => perm.id,
+    ),
 
-    teamMemberDefaultPermissions: config.permissions.filter(perm => perm.isDefaultTeamMemberPermission)
-      .map(permissionDefinitionJsonFromDbType)
-      .concat(config.teamMemberDefaultSystemPermissions.map(db => teamPermissionDefinitionJsonFromTeamSystemDbType(db, config)))
-      .reduce((acc, perm) => {
-        (acc as any)[perm.id] = { id: perm.id };
-        return acc;
-      }, {}),
+    teamMemberDefaultPermissions: arrayToRecord(
+      config.permissions.filter(perm => perm.isDefaultTeamMemberPermission)
+        .map(permissionDefinitionJsonFromDbType)
+        .concat(config.teamMemberDefaultSystemPermissions.map(db => teamPermissionDefinitionJsonFromTeamSystemDbType(db, config))),
+      perm => perm.id,
+    ),
 
-    teamPermissionDefinitions: getPermissionDefinitionsFromProjectConfig(config, 'TEAM').reduce((acc, perm) => {
-      (acc as any)[perm.id] = {
+    teamPermissionDefinitions: arrayToRecord(
+      getPermissionDefinitionsFromProjectConfig(config, 'TEAM').map(perm => ({
         id: perm.id,
         description: perm.description,
-        containedPermissions: perm.contained_permission_ids.reduce((acc, id) => {
-          (acc as any)[id] = { id };
-          return acc;
-        }, {}),
-      } satisfies EnvironmentRenderedConfig['teamPermissionDefinitions'][string];
-      return acc;
-    }, {}),
+        containedPermissions: arrayToRecord(
+          perm.contained_permission_ids.map(id => ({ id })),
+          permission => permission.id
+        ),
+      } satisfies EnvironmentRenderedConfig['teamPermissionDefinitions'][string])),
+      perm => perm.id,
+    ),
 
-    userDefaultPermissions: config.permissions.filter(perm => perm.isDefaultUserPermission)
-      .map(permissionDefinitionJsonFromDbType)
-      .reduce((acc, perm) => {
-        (acc as any)[perm.id] = { id: perm.id };
-        return acc;
-      }, {}),
+    userDefaultPermissions: arrayToRecord(
+      config.permissions.filter(perm => perm.isDefaultUserPermission)
+        .map(permissionDefinitionJsonFromDbType),
+      perm => perm.id,
+    ),
   };
 };
 
@@ -496,4 +501,140 @@ export const renderedEnvironmentConfigToProjectCrud = (renderedConfig: Environme
       .map(([_, perm]) => ({ id: perm.id }))
       .sort((a, b) => stringCompare(a.id, b.id)),
   };
+};
+
+export const adminProjectCrudUpdateToEnvironmentConfigOverride = (
+  update: ProjectsCrud["Admin"]["Update"],
+  oldConfig: EnvironmentRenderedConfig,
+): EnvironmentConfigOverride => {
+  const updateConfig = update.config;
+  const emailConfig = updateConfig?.email_config;
+
+  const getAuthMethod = (
+    enabledFlag: boolean | undefined,
+    authType: 'otp' | 'passkey' | 'password'
+  ) => {
+    if (enabledFlag !== undefined) {
+      const id = Object.keys(oldConfig.authMethods).find(id => oldConfig.authMethods[id].type === authType) ?? randomUUID();
+      return {
+        id,
+        enabled: enabledFlag,
+        type: authType,
+      } as NonNullable<EnvironmentConfigOverride['authMethods']>[string];
+    }
+  };
+
+  const authMethodOverrides: Record<string, NonNullable<EnvironmentConfigOverride['authMethods']>[string]> = {};
+  const updateOAuthProviders = updateConfig?.oauth_providers ?? [];
+  for (const provider of updateOAuthProviders) {
+    authMethodOverrides['authMethods.' + provider.id] = {
+      id: provider.id,
+      enabled: provider.enabled,
+      type: 'oauth',
+      oauthProviderId: provider.id,
+    } satisfies NonNullable<EnvironmentConfigOverride['authMethods']>[string];
+  }
+  for (const type of ['otp', 'passkey', 'password'] as const) {
+    const authMethod = getAuthMethod(updateConfig?.[({
+      otp: 'magic_link_enabled',
+      passkey: 'passkey_enabled',
+      password: 'credential_enabled',
+    } as const)[type]], type);
+    if (authMethod) {
+      authMethodOverrides['authMethods.' + authMethod.id] = authMethod;
+    }
+  }
+
+  return filterUndefined({
+    allowLocalhost: updateConfig?.allow_localhost,
+    clientTeamCreationEnabled: updateConfig?.client_team_creation_enabled,
+    clientUserDeletionEnabled: updateConfig?.client_user_deletion_enabled,
+    createTeamOnSignUp: updateConfig?.create_team_on_sign_up,
+    signUpEnabled: updateConfig?.sign_up_enabled,
+    oauthAccountMergeStrategy: updateConfig?.oauth_account_merge_strategy,
+
+    ...authMethodOverrides,
+
+    connectedAccounts: arrayToRecord(
+      updateConfig?.oauth_providers?.map(provider => ({
+        id: provider.id,
+        enabled: provider.enabled,
+        oauthProviderId: provider.id,
+      })) || [],
+      account => account.id,
+    ),
+
+    oauthProviders: arrayToRecord(
+      updateConfig?.oauth_providers?.map(provider => {
+        switch (provider.type) {
+          case 'shared': {
+            return {
+              id: provider.id,
+              isShared: true,
+              type: provider.id,
+            } satisfies NonNullable<EnvironmentConfigOverride['oauthProviders']>[string];
+          }
+          case 'standard': {
+            return filterUndefined({
+              id: provider.id,
+              isShared: false,
+              type: provider.id,
+              clientId: provider.client_id,
+              clientSecret: provider.client_secret,
+              facebookConfigId: provider.facebook_config_id || undefined,
+              microsoftTenantId: provider.microsoft_tenant_id || undefined,
+            }) satisfies NonNullable<EnvironmentConfigOverride['oauthProviders']>[string];
+          }
+          default: {
+            throw new StackAssertionError('Unknown oauth provider type', { provider });
+          }
+        }
+      }) || [],
+      provider => provider.id,
+    ),
+
+    domains: arrayToRecord(
+      updateConfig?.domains?.map(domain => ({
+        domain: domain.domain,
+        handlerPath: domain.handler_path,
+      } satisfies NonNullable<EnvironmentConfigOverride['domains']>[string])) || [],
+      domain => base64url.encode(domain.domain),
+    ),
+
+    emailConfig: emailConfig ? ((): NonNullable<EnvironmentConfigOverride['emailConfig']> => {
+      switch (emailConfig.type) {
+        case 'shared': {
+          return {
+            isShared: true,
+          } satisfies NonNullable<EnvironmentConfigOverride['emailConfig']>;
+        }
+        default: {
+          return {
+            isShared: false,
+            host: emailConfig.host || throwErr('host is required'),
+            port: emailConfig.port || throwErr('port is required'),
+            username: emailConfig.username || throwErr('username is required'),
+            password: emailConfig.password || throwErr('password is required'),
+            senderName: emailConfig.sender_name || throwErr('sender_name is required'),
+            senderEmail: emailConfig.sender_email || throwErr('sender_email is required'),
+          } satisfies NonNullable<EnvironmentConfigOverride['emailConfig']>;
+        }
+      }
+    })() : undefined,
+
+    teamCreateDefaultPermissions: arrayToRecord(
+      updateConfig?.team_creator_default_permissions?.map(perm => ({ id: perm.id })) || [],
+      perm => perm.id,
+    ),
+
+    teamMemberDefaultPermissions: arrayToRecord(
+      updateConfig?.team_member_default_permissions?.map(perm => ({ id: perm.id })) || [],
+      perm => perm.id,
+    ),
+
+    userDefaultPermissions: arrayToRecord(
+      updateConfig?.user_default_permissions?.map(perm => ({ id: perm.id })) || [],
+      perm => perm.id,
+    ),
+  });
 };

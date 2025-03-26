@@ -1,10 +1,12 @@
+import { adminProjectCrudUpdateToEnvironmentConfigOverride, dbProjectToRenderedEnvironmentConfig } from "@/lib/config";
 import { isTeamSystemPermission, listPermissionDefinitions, teamSystemPermissionStringToDBType } from "@/lib/permissions";
 import { fullProjectInclude, projectPrismaToCrud } from "@/lib/projects";
 import { ensureSharedProvider } from "@/lib/request-checks";
-import { retryTransaction } from "@/prisma-client";
+import { prismaClient, retryTransaction } from "@/prisma-client";
 import { createCrudHandlers } from "@/route-handlers/crud-handler";
 import { projectsCrud } from "@stackframe/stack-shared/dist/interface/crud/projects";
 import { yupObject } from "@stackframe/stack-shared/dist/schema-fields";
+import { getNodeEnvironment } from "@stackframe/stack-shared/dist/utils/env";
 import { StackAssertionError, StatusError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
 import { createLazyProxy } from "@stackframe/stack-shared/dist/utils/proxies";
 import { typedToUppercase } from "@stackframe/stack-shared/dist/utils/strings";
@@ -13,6 +15,20 @@ import { ensureStandardProvider } from "../../../../../../lib/request-checks";
 export const projectsCrudHandlers = createLazyProxy(() => createCrudHandlers(projectsCrud, {
   paramsSchema: yupObject({}),
   onUpdate: async ({ auth, data }) => {
+    if (!getNodeEnvironment().includes("prod")) {
+      const dbProject = await prismaClient.project.findUnique({
+        where: { id: auth.project.id },
+        include: fullProjectInclude,
+      });
+
+      if (dbProject) {
+        console.log(adminProjectCrudUpdateToEnvironmentConfigOverride(
+          data,
+          dbProjectToRenderedEnvironmentConfig(dbProject)
+        ), '!!!!!!!!!');
+      }
+    }
+
     const oldProject = auth.project;
 
     const result = await retryTransaction(async (tx) => {
