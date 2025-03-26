@@ -27,7 +27,6 @@ export const POST = createSmartRouteHandler({
     // Find the CLI auth attempt
     const cliAuth = await prismaClient.cliAuthAttempt.findUnique({
       where: {
-        // tenancyId: tenancy.id,
         loginCode: login_code,
         refreshToken: null,
         expiresAt: {
