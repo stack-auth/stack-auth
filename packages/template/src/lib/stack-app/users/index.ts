@@ -187,12 +187,20 @@ export type UserExtra = {
   // END_PLATFORM
 
   hasPermission(scope: Team, permissionId: string): Promise<boolean>,
-  getProjectPermission(permissionId: string): Promise<TeamPermission | null>,
-  hasProjectPermission(permissionId: string): Promise<boolean>,
-  listProjectPermissions(options?: { recursive?: boolean }): Promise<TeamPermission[]>,
+  hasPermission(permissionId: string): Promise<boolean>,
+
+  getPermission(scope: Team, permissionId: string): Promise<TeamPermission | null>,
+  getPermission(permissionId: string): Promise<TeamPermission | null>,
+
+  listPermissions(scope: Team, options?: { recursive?: boolean }): Promise<TeamPermission[]>,
+  listPermissions(options?: { recursive?: boolean }): Promise<TeamPermission[]>,
+
   // IF_PLATFORM react-like
-  useProjectPermissions(options?: { recursive?: boolean }): TeamPermission[],
-  useProjectPermission(permissionId: string): TeamPermission | null,
+  usePermissions(scope: Team, options?: { recursive?: boolean }): TeamPermission[],
+  usePermissions(options?: { recursive?: boolean }): TeamPermission[],
+
+  usePermission(scope: Team, permissionId: string): TeamPermission | null,
+  usePermission(permissionId: string): TeamPermission | null,
   // END_PLATFORM
 
   readonly selectedTeam: Team | null,
@@ -277,12 +285,21 @@ export type ServerBaseUser = {
   grantPermission(scope: Team, permissionId: string): Promise<void>,
   revokePermission(scope: Team, permissionId: string): Promise<void>,
 
-  getProjectPermission(permissionId: string): Promise<TeamPermission | null>,
-  hasProjectPermission(permissionId: string): Promise<boolean>,
-  listProjectPermissions(options?: { recursive?: boolean }): Promise<TeamPermission[]>,
+  getPermission(scope: Team, permissionId: string): Promise<TeamPermission | null>,
+  getPermission(permissionId: string): Promise<TeamPermission | null>,
+
+  hasPermission(scope: Team, permissionId: string): Promise<boolean>,
+  hasPermission(permissionId: string): Promise<boolean>,
+
+  listPermissions(scope: Team, options?: { recursive?: boolean }): Promise<TeamPermission[]>,
+  listPermissions(options?: { recursive?: boolean }): Promise<TeamPermission[]>,
+
   // IF_PLATFORM react-like
-  useProjectPermissions(options?: { recursive?: boolean }): TeamPermission[],
-  useProjectPermission(permissionId: string): TeamPermission | null,
+  usePermissions(scope: Team, options?: { recursive?: boolean }): TeamPermission[],
+  usePermissions(options?: { recursive?: boolean }): TeamPermission[],
+
+  usePermission(scope: Team, permissionId: string): TeamPermission | null,
+  usePermission(permissionId: string): TeamPermission | null,
   // END_PLATFORM
 
   /**

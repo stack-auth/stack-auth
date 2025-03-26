@@ -322,55 +322,66 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
         await app._interface.leaveServerTeam({ teamId: team.id, userId: crud.id });
         // TODO: refresh cache
       },
-      async listPermissions(scope: Team, options?: { recursive?: boolean }): Promise<AdminTeamPermission[]> {
-        const recursive = options?.recursive ?? true;
-        const permissions = Result.orThrow(await app._serverTeamUserPermissionsCache.getOrWait([scope.id, crud.id, recursive], "write-only"));
-        return permissions.map((crud) => app._serverPermissionFromCrud(crud));
+      async listPermissions(scopeOrOptions?: Team | { recursive?: boolean }, options?: { recursive?: boolean }): Promise<AdminTeamPermission[]> {
+        if (scopeOrOptions && 'id' in scopeOrOptions) {
+          const scope = scopeOrOptions;
+          const recursive = options?.recursive ?? true;
+          const permissions = Result.orThrow(await app._serverTeamUserPermissionsCache.getOrWait([scope.id, crud.id, recursive], "write-only"));
+          return permissions.map((crud) => app._serverPermissionFromCrud(crud));
+        } else {
+          const opts = scopeOrOptions;
+          const recursive = opts?.recursive ?? true;
+          const permissions = Result.orThrow(await app._serverUserProjectPermissionsCache.getOrWait([crud.id, recursive], "write-only"));
+          return permissions.map((crud) => app._serverPermissionFromCrud(crud));
+        }
       },
       // IF_PLATFORM react-like
-      usePermissions(scope: Team, options?: { recursive?: boolean }): AdminTeamPermission[] {
-        const recursive = options?.recursive ?? true;
-        const permissions = useAsyncCache(app._serverTeamUserPermissionsCache, [scope.id, crud.id, recursive] as const, "user.usePermissions()");
-        return useMemo(() => permissions.map((crud) => app._serverPermissionFromCrud(crud)), [permissions]);
+      usePermissions(scopeOrOptions?: Team | { recursive?: boolean }, options?: { recursive?: boolean }): AdminTeamPermission[] {
+        if (scopeOrOptions && 'id' in scopeOrOptions) {
+          const scope = scopeOrOptions;
+          const recursive = options?.recursive ?? true;
+          const permissions = useAsyncCache(app._serverTeamUserPermissionsCache, [scope.id, crud.id, recursive] as const, "user.usePermissions()");
+          return useMemo(() => permissions.map((crud) => app._serverPermissionFromCrud(crud)), [permissions]);
+        } else {
+          const opts = scopeOrOptions;
+          const recursive = opts?.recursive ?? true;
+          const permissions = useAsyncCache(app._serverUserProjectPermissionsCache, [crud.id, recursive] as const, "user.usePermissions()");
+          return useMemo(() => permissions.map((crud) => app._serverPermissionFromCrud(crud)), [permissions]);
+        }
       },
       // END_PLATFORM
-      async getPermission(scope: Team, permissionId: string): Promise<AdminTeamPermission | null> {
-        const permissions = await this.listPermissions(scope);
-        return permissions.find((p) => p.id === permissionId) ?? null;
+      async getPermission(scopeOrPermissionId: Team | string, permissionId?: string): Promise<AdminTeamPermission | null> {
+        if (scopeOrPermissionId && typeof scopeOrPermissionId !== 'string') {
+          const scope = scopeOrPermissionId;
+          const permissions = await this.listPermissions(scope);
+          return permissions.find((p) => p.id === permissionId) ?? null;
+        } else {
+          const pid = scopeOrPermissionId;
+          const permissions = await this.listPermissions();
+          return permissions.find((p) => p.id === pid) ?? null;
+        }
       },
       // IF_PLATFORM react-like
-      usePermission(scope: Team, permissionId: string): AdminTeamPermission | null {
-        const permissions = this.usePermissions(scope);
-        return useMemo(() => permissions.find((p) => p.id === permissionId) ?? null, [permissions, permissionId]);
+      usePermission(scopeOrPermissionId: Team | string, permissionId?: string): AdminTeamPermission | null {
+        if (scopeOrPermissionId && typeof scopeOrPermissionId !== 'string') {
+          const scope = scopeOrPermissionId;
+          const permissions = this.usePermissions(scope);
+          return useMemo(() => permissions.find((p) => p.id === permissionId) ?? null, [permissions, permissionId]);
+        } else {
+          const pid = scopeOrPermissionId;
+          const permissions = this.usePermissions();
+          return useMemo(() => permissions.find((p) => p.id === pid) ?? null, [permissions, pid]);
+        }
       },
       // END_PLATFORM
-      async hasPermission(scope: Team, permissionId: string): Promise<boolean> {
-        return await this.getPermission(scope, permissionId) !== null;
-      },
-      async listProjectPermissions(options?: { recursive?: boolean }): Promise<AdminTeamPermission[]> {
-        const recursive = options?.recursive ?? true;
-        const permissions = Result.orThrow(await app._serverUserProjectPermissionsCache.getOrWait([crud.id, recursive], "write-only"));
-        return permissions.map((crud) => app._serverPermissionFromCrud(crud));
-      },
-      // IF_PLATFORM react-like
-      useProjectPermissions(options?: { recursive?: boolean }): AdminTeamPermission[] {
-        const recursive = options?.recursive ?? true;
-        const permissions = useAsyncCache(app._serverUserProjectPermissionsCache, [crud.id, recursive] as const, "user.useProjectPermissions()");
-        return useMemo(() => permissions.map((crud) => app._serverPermissionFromCrud(crud)), [permissions]);
-      },
-      // END_PLATFORM
-      async getProjectPermission(permissionId: string): Promise<AdminTeamPermission | null> {
-        const permissions = await this.listProjectPermissions();
-        return permissions.find((p) => p.id === permissionId) ?? null;
-      },
-      // IF_PLATFORM react-like
-      useProjectPermission(permissionId: string): AdminTeamPermission | null {
-        const permissions = this.useProjectPermissions();
-        return useMemo(() => permissions.find((p) => p.id === permissionId) ?? null, [permissions, permissionId]);
-      },
-      // END_PLATFORM
-      async hasProjectPermission(permissionId: string): Promise<boolean> {
-        return await this.getProjectPermission(permissionId) !== null;
+      async hasPermission(scopeOrPermissionId: Team | string, permissionId?: string): Promise<boolean> {
+        if (scopeOrPermissionId && typeof scopeOrPermissionId !== 'string') {
+          const scope = scopeOrPermissionId;
+          return (await this.getPermission(scope, permissionId as string)) !== null;
+        } else {
+          const pid = scopeOrPermissionId;
+          return (await this.getPermission(pid)) !== null;
+        }
       },
       async update(update: ServerUserUpdateOptions) {
         await app._updateServerUser(crud.id, update);
