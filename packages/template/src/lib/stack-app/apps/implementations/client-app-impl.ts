@@ -39,10 +39,7 @@ import { EditableTeamMemberProfile, Team, TeamCreateOptions, TeamInvitation, Tea
 import { ActiveSession, Auth, BaseUser, CurrentUser, InternalUserExtra, ProjectCurrentUser, UserExtra, UserUpdateOptions, userUpdateOptionsToCrud } from "../../users";
 import { StackClientApp, StackClientAppConstructorOptions, StackClientAppJson } from "../interfaces/client-app";
 import { _StackAdminAppImplIncomplete } from "./admin-app-impl";
-import { TokenObject, clientVersion, createCache, createCacheBySession, createEmptyTokenStore, getBaseUrl, getDefaultExtraRequestHeaders, getDefaultProjectId, getDefaultPublishableClientKey, getUrls } from "./common";
-
-
-import { useAsyncCache } from "./common"; // THIS_LINE_PLATFORM react-like
+import { TokenObject, clientVersion, createCache, createCacheBySession, createEmptyTokenStore, getBaseUrl, getDefaultExtraRequestHeaders, getDefaultProjectId, getDefaultPublishableClientKey, getUrls, useAsyncCache } from "./common";
 
 let isReactServer = false;
 // IF_PLATFORM next
