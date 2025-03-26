@@ -1,6 +1,7 @@
 'use client';
 
 import { yupResolver } from "@hookform/resolvers/yup";
+import { createTOTPKeyURI, verifyTOTP } from "@oslojs/otp";
 import { KnownErrors } from "@stackframe/stack-shared";
 import { getPasswordError } from '@stackframe/stack-shared/dist/helpers/password';
 import { useAsyncCallback } from '@stackframe/stack-shared/dist/hooks/use-async-callback';
@@ -11,7 +12,6 @@ import { captureError, throwErr } from '@stackframe/stack-shared/dist/utils/erro
 import { runAsynchronously, runAsynchronouslyWithAlert } from '@stackframe/stack-shared/dist/utils/promises';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger, ActionCell, Badge, Button, Input, Label, PasswordInput, Separator, Skeleton, Table, TableBody, TableCell, TableHead, TableHeader, TableRow, Typography } from '@stackframe/stack-ui';
 import { Edit, Trash, icons } from 'lucide-react';
-import { TOTPController, createTOTPKeyURI } from "oslo/otp";
 import * as QRCode from 'qrcode';
 import React, { Suspense, useEffect, useState } from "react";
 import { useForm } from 'react-hook-form';
@@ -876,7 +876,7 @@ function MfaSection() {
   useEffect(() => {
     setIsMaybeWrong(false);
     runAsynchronouslyWithAlert(async () => {
-      if (generatedSecret && await new TOTPController().verify(mfaCode, generatedSecret)) {
+      if (generatedSecret && verifyTOTP(generatedSecret, 30, 6, mfaCode)) {
         await handleSubmit();
       }
       setIsMaybeWrong(true);
@@ -954,7 +954,7 @@ function MfaSection() {
 }
 
 async function generateTotpQrCode(project: Project, user: CurrentUser, secret: Uint8Array) {
-  const uri = createTOTPKeyURI(project.displayName, user.primaryEmail ?? user.id, secret);
+  const uri = createTOTPKeyURI(project.displayName, user.primaryEmail ?? user.id, secret, 30, 6);
   return await QRCode.toDataURL(uri) as any;
 }
 

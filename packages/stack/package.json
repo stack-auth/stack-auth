@@ -51,7 +51,7 @@
     "js-cookie": "^3.0.5",
     "lucide-react": "^0.378.0",
     "oauth4webapi": "^2.10.3",
-    "oslo": "^1.2.1",
+    "@oslojs/otp": "^1.1.0",
     "qrcode": "^1.5.4",
     "react-avatar-editor": "^13.0.2",
     "react-hook-form": "^7.51.4",
