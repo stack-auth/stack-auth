@@ -591,7 +591,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
     };
   }
 
-  protected _clientTeamPermissionFromCrud(crud: TeamPermissionsCrud['Client']['Read'] | ProjectPermissionsCrud['Client']['Read']): TeamPermission {
+  protected _clientPermissionFromCrud(crud: TeamPermissionsCrud['Client']['Read'] | ProjectPermissionsCrud['Client']['Read']): TeamPermission {
     return {
       id: crud.id,
     };
@@ -875,12 +875,12 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
           const scope = scopeOrOptions;
           const recursive = options?.recursive ?? true;
           const permissions = Result.orThrow(await app._currentUserPermissionsCache.getOrWait([session, scope.id, recursive], "write-only"));
-          return permissions.map((crud) => app._clientTeamPermissionFromCrud(crud));
+          return permissions.map((crud) => app._clientPermissionFromCrud(crud));
         } else {
           const opts = scopeOrOptions;
           const recursive = opts?.recursive ?? true;
           const permissions = Result.orThrow(await app._currentUserProjectPermissionsCache.getOrWait([session, recursive], "write-only"));
-          return permissions.map((crud) => app._clientTeamPermissionFromCrud(crud));
+          return permissions.map((crud) => app._clientPermissionFromCrud(crud));
         }
       },
       // IF_PLATFORM react-like
@@ -889,12 +889,12 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
           const scope = scopeOrOptions;
           const recursive = options?.recursive ?? true;
           const permissions = useAsyncCache(app._currentUserPermissionsCache, [session, scope.id, recursive] as const, "user.usePermissions()");
-          return useMemo(() => permissions.map((crud) => app._clientTeamPermissionFromCrud(crud)), [permissions]);
+          return useMemo(() => permissions.map((crud) => app._clientPermissionFromCrud(crud)), [permissions]);
         } else {
           const opts = scopeOrOptions;
           const recursive = opts?.recursive ?? true;
           const permissions = useAsyncCache(app._currentUserProjectPermissionsCache, [session, recursive] as const, "user.usePermissions()");
-          return useMemo(() => permissions.map((crud) => app._clientTeamPermissionFromCrud(crud)), [permissions]);
+          return useMemo(() => permissions.map((crud) => app._clientPermissionFromCrud(crud)), [permissions]);
         }
       },
       // END_PLATFORM
