@@ -11,6 +11,10 @@
   padding: 16px;
 }
 
+.grid:has(.prose .stack-aside-container) {
+  grid-template-columns: minmax(0, 1fr) !important;
+}
+
 .stack-aside-container {
   display: grid;
   grid-template-columns: 55% 40%;
@@ -64,19 +68,19 @@
 
 }
 
-.fern-accordion > [data-state="closed"] > button > .fern-accordion-trigger-title > .accordion-show-properties::before {
+.fern-accordion > [data-state="closed"] .fern-accordion-trigger-title > .accordion-show-properties::before {
   content: "Show properties";
 }
 
-.fern-accordion > [data-state="open"] > button > .fern-accordion-trigger-title > .accordion-show-properties::before {
+.fern-accordion > [data-state="open"] .fern-accordion-trigger-title > .accordion-show-properties::before {
   content: "Hide properties";
 }
 
-.fern-accordion > [data-state="closed"] > button > .fern-accordion-trigger-title > .accordion-show-possible-values::before {
+.fern-accordion > [data-state="closed"] .fern-accordion-trigger-title > .accordion-show-possible-values::before {
   content: "Show possible values";
 }
 
-.fern-accordion > [data-state="open"] > button > .fern-accordion-trigger-title > .accordion-show-possible-values::before {
+.fern-accordion > [data-state="open"] .fern-accordion-trigger-title > .accordion-show-possible-values::before {
   content: "Hide possible values";
 }
 
@@ -141,7 +145,7 @@ svg[icon*="square-u"] {
   display: none;
 }
 
-div.stack-50h > span > span > img {
+div.stack-50h > span > span > img, img.stack-50h {
   aspect-ratio: auto !important;
   height: unset !important;
   width: unset !important;
@@ -149,7 +153,7 @@ div.stack-50h > span > span > img {
   object-fit: contain !important;
 }
 
-div.stack-100h > span > span > img {
+div.stack-100h > span > span > img, img.stack-100h {
   aspect-ratio: auto !important;
   height: unset !important;
   width: unset !important;
@@ -157,7 +161,7 @@ div.stack-100h > span > span > img {
   object-fit: contain !important;
 }
 
-div.stack-150h > span > span > img {
+div.stack-150h > span > span > img, img.stack-150h {
   aspect-ratio: auto !important;
   height: unset !important;
   width: unset !important;
@@ -165,7 +169,7 @@ div.stack-150h > span > span > img {
   object-fit: contain !important;
 }
 
-div.stack-200h > span > span > img {
+div.stack-200h > span > span > img, img.stack-200h {
   aspect-ratio: auto !important;
   height: unset !important;
   width: unset !important;
@@ -173,7 +177,7 @@ div.stack-200h > span > span > img {
   object-fit: contain !important;
 }
 
-div.stack-250h > span > span > img {
+div.stack-250h > span > span > img, img.stack-250h {
   aspect-ratio: auto !important;
   height: unset !important;
   width: unset !important;
@@ -181,7 +185,7 @@ div.stack-250h > span > span > img {
   object-fit: contain !important;
 }
 
-div.stack-300h > span > span > img {
+div.stack-300h > span > span > img, img.stack-300h {
   aspect-ratio: auto !important;
   height: unset !important;
   width: unset !important;
@@ -189,7 +193,7 @@ div.stack-300h > span > span > img {
   object-fit: contain !important;
 }
 
-div.stack-350h > span > span > img {
+div.stack-350h > span > span > img, img.stack-350h {
   aspect-ratio: auto !important;
   height: unset !important;
   width: unset !important;

@@ -1,4 +1,5 @@
 import { ensureTeamMembershipExists, ensureUserExists } from "@/lib/request-checks";
+import { grantDefaultUserPermissions } from "@/lib/permissions";
 import { getSoleTenancyFromProject, getTenancy } from "@/lib/tenancies";
 import { PrismaTransaction } from "@/lib/types";
 import { sendTeamMembershipDeletedWebhook, sendUserCreatedWebhook, sendUserDeletedWebhook, sendUserUpdatedWebhook } from "@/lib/webhooks";
@@ -710,6 +711,12 @@ export const usersCrudHandlers = createLazyProxy(() => createCrudHandlers(usersC
         });
       }
 
+      // Grant default user permissions
+      await grantDefaultUserPermissions(tx, {
+        tenancy: auth.tenancy,
+        userId: newUser.projectUserId
+      });
+
       const user = await tx.projectUser.findUnique({
         where: {
           tenancyId_projectUserId: {
@@ -728,7 +735,7 @@ export const usersCrudHandlers = createLazyProxy(() => createCrudHandlers(usersC
     });
 
     if (auth.tenancy.config.create_team_on_sign_up) {
-      await teamsCrudHandlers.adminCreate({
+      const team = await teamsCrudHandlers.adminCreate({
         data: {
           display_name: data.display_name ?
             `${data.display_name}'s Team` :
@@ -739,6 +746,19 @@ export const usersCrudHandlers = createLazyProxy(() => createCrudHandlers(usersC
         },
         tenancy: auth.tenancy,
         user: result,
+      });
+
+      await prismaClient.teamMember.update({
+        where: {
+          tenancyId_projectUserId_teamId: {
+            tenancyId: auth.tenancy.id,
+            projectUserId: result.id,
+            teamId: team.id,
+          },
+        },
+        data: {
+          isSelected: BooleanTrue.TRUE,
+        },
       });
     }
 

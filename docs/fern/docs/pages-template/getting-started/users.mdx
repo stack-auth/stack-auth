@@ -56,24 +56,6 @@ Middleware can be used whenever it is easy to tell whether a page should be prot
 
 
 <Tabs>
-  <Tab title="Middleware">
-    ```tsx title="middleware.tsx"
-    export async function middleware(request: NextRequest) {
-      const user = await stackServerApp.getUser();
-      if (!user) {
-        return NextResponse.redirect(new URL('/handler/sign-in', request.url));
-      }
-      return NextResponse.next();
-    }
-
-    export const config = {
-      // You can add your own route protection logic here
-      // Make sure not to protect the root URL, as it would prevent users from accessing static Next.js files or Stack's /handler path
-      matcher: '/protected/:path*',
-    };
-    ```
-  </Tab>
-
   <Tab title="Client Component">
     ```tsx title="my-protected-client-component.tsx"
     "use client";
@@ -96,6 +78,24 @@ Middleware can be used whenever it is easy to tell whether a page should be prot
     }
     ```
   </Tab>
+
+  <Tab title="Middleware">
+    ```tsx title="middleware.tsx"
+    export async function middleware(request: NextRequest) {
+      const user = await stackServerApp.getUser();
+      if (!user) {
+        return NextResponse.redirect(new URL('/handler/sign-in', request.url));
+      }
+      return NextResponse.next();
+    }
+
+    export const config = {
+      // You can add your own route protection logic here
+      // Make sure not to protect the root URL, as it would prevent users from accessing static Next.js files or Stack's /handler path
+      matcher: '/protected/:path*',
+    };
+    ```
+  </Tab>
 </Tabs>
 
 <Note>
@@ -109,7 +109,7 @@ Middleware can be used whenever it is easy to tell whether a page should be prot
   
     To remediate this, every component/page that contains sensitive information should protect itself, instead of relying on an outer layout. This is good practice anyways; it prevents you from accidentally exposing the data.
   
-  - **Middleware**: Because middleware runs on the edge, it ensures that the protected URLs are not accessible to anyone who is not authorized, so you don't have to worry about Next.js pre-sending unprotected components to the client.
+  - **Middleware**: Prior to Next.js v15.2.3, Next.js allowed attackers to see unprotected components if you only protect on a middleware level. Since v15.2.3, this is no longer possible, and you don't have to worry about leaking sensitive information when using middleware to protect a route.
   
   No matter which method you use, attackers will never be able to, say, impersonate a user.
 
