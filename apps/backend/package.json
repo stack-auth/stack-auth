@@ -63,7 +63,7 @@
     "nodemailer": "^6.9.10",
     "oidc-provider": "^8.5.1",
     "openid-client": "5.6.4",
-    "oslo": "^1.2.1",
+    "@oslojs/otp": "^1.1.0",
     "posthog-node": "^4.1.0",
     "react": "19.0.0",
     "react-dom": "19.0.0",

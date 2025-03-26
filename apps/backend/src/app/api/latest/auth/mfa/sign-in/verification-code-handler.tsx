@@ -1,12 +1,12 @@
 import { createAuthTokens } from "@/lib/tokens";
 import { prismaClient } from "@/prisma-client";
 import { createVerificationCodeHandler } from "@/route-handlers/verification-code-handler";
+import { verifyTOTP } from "@oslojs/otp";
 import { VerificationCodeType } from "@prisma/client";
 import { KnownErrors } from "@stackframe/stack-shared";
 import { ProjectsCrud } from "@stackframe/stack-shared/dist/interface/crud/projects";
 import { signInResponseSchema, yupBoolean, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
 import { StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
-import { TOTPController } from "oslo/otp";
 
 export const mfaVerificationCodeHandler = createVerificationCodeHandler({
   metadata: {
@@ -49,7 +49,7 @@ export const mfaVerificationCodeHandler = createVerificationCodeHandler({
     if (!totpSecret) {
       throw new StackAssertionError("User does not have a TOTP secret", { user });
     }
-    const isTotpValid = await new TOTPController().verify(body.totp, totpSecret);
+    const isTotpValid = verifyTOTP(totpSecret, 30, 6, body.totp);
     if (!isTotpValid) {
       throw new KnownErrors.InvalidTotpCode();
     }
