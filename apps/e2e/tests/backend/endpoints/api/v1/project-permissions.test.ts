@@ -316,7 +316,7 @@ it("should trigger project permission webhook when a permission is revoked from 
   `);
 });
 
-it("should not be able to create a project or team permission with a same name as project permission", async ({ expect }) => {
+it("should not be able to create a permission with the same name as an existing project permission", async ({ expect }) => {
   await Auth.Otp.signIn();
   const { adminAccessToken } = await Project.createAndGetAdminToken();
 
