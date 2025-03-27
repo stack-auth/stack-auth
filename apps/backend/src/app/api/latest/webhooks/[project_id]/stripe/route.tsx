@@ -19,22 +19,18 @@ async function buffer(readable: Readable) {
 // rewrite to use export const POST = ...
 export const POST = async (req: NextApiRequest, { params }: { params: { project_id: string } }) => {
   try {
-    const projectId = params.project_id;
-
-    // Fetch the project with its config and stripe config
-    const project = await rawQuery(getProjectQuery(projectId));
-
+    const project = await rawQuery(getProjectQuery(params.project_id));
     if (!project || !project.config.stripe_config) {
       return Response.json({ error: 'Stripe configuration not found for this project' }, { status: 404 });
     }
 
-    const { stripe_secret_key, stripe_webhook_secret } = project.config.stripe_config;
+    const stripeConfig = project.config.stripe_config;
 
-    if (!stripe_webhook_secret) {
+    if (!stripeConfig.stripe_webhook_secret) {
       return Response.json({ error: 'Stripe webhook secret not configured' }, { status: 400 });
     }
 
-    const stripe = new Stripe(stripe_secret_key);
+    const stripe = new Stripe(stripeConfig.stripe_secret_key);
 
     const head = await headers();
     const body = await buffer(req.body as Readable);
@@ -44,7 +40,7 @@ export const POST = async (req: NextApiRequest, { params }: { params: { project_
       return Response.json({ error: 'No signature' }, { status: 400 });
     }
 
-    let event = stripe.webhooks.constructEvent(body, signature, stripe_webhook_secret);
+    let event = stripe.webhooks.constructEvent(body, signature, stripeConfig.stripe_webhook_secret);
 
     // Handle the event
     console.log('Stripe event received:', event.type);
