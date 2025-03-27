@@ -6,7 +6,7 @@ import { WebhookEvent } from "../webhooks";
 // =============== Team permissions =================
 
 export const teamPermissionsCrudClientReadSchema = yupObject({
-  id: schemaFields.teamPermissionDefinitionIdSchema.defined(),
+  id: schemaFields.permissionDefinitionIdSchema.defined(),
   user_id: schemaFields.userIdSchema.defined(),
   team_id: schemaFields.teamIdSchema.defined(),
 }).defined();
@@ -68,19 +68,19 @@ export const teamPermissionDeletedWebhookEvent = {
 // =============== Team permission definitions =================
 
 export const teamPermissionDefinitionsCrudAdminReadSchema = yupObject({
-  id: schemaFields.teamPermissionDefinitionIdSchema.defined(),
+  id: schemaFields.permissionDefinitionIdSchema.defined(),
   description: schemaFields.teamPermissionDescriptionSchema.optional(),
   contained_permission_ids: schemaFields.containedPermissionIdsSchema.defined(),
 }).defined();
 
 export const teamPermissionDefinitionsCrudAdminCreateSchema = yupObject({
-  id: schemaFields.customTeamPermissionDefinitionIdSchema.defined(),
+  id: schemaFields.customPermissionDefinitionIdSchema.defined(),
   description: schemaFields.teamPermissionDescriptionSchema.optional(),
   contained_permission_ids: schemaFields.containedPermissionIdsSchema.optional(),
 }).defined();
 
 export const teamPermissionDefinitionsCrudAdminUpdateSchema = yupObject({
-  id: schemaFields.customTeamPermissionDefinitionIdSchema.optional(),
+  id: schemaFields.customPermissionDefinitionIdSchema.optional(),
   description: schemaFields.teamPermissionDescriptionSchema.optional(),
   contained_permission_ids: schemaFields.containedPermissionIdsSchema.optional(),
 }).defined();
