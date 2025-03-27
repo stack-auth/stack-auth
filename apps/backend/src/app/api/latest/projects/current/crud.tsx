@@ -34,27 +34,27 @@ export const projectsCrudHandlers = createLazyProxy(() => createCrudHandlers(pro
       ] as const;
 
       const teamPermissions = await listPermissionDefinitions(tx, "TEAM", auth.tenancy);
-      const userPermissions = await listPermissionDefinitions(tx, "USER", auth.tenancy);
+      const projectPermissions = await listPermissionDefinitions(tx, "PROJECT", auth.tenancy);
 
       // Handle user default permissions
       const userDefaultPerms = data.config?.user_default_permissions?.map((p) => p.id);
       if (userDefaultPerms) {
-        if (!userDefaultPerms.every((id) => userPermissions.some((perm) => perm.id === id))) {
+        if (!userDefaultPerms.every((id) => projectPermissions.some((perm) => perm.id === id))) {
           throw new StatusError(StatusError.BadRequest,
-            `Invalid user default permission ids: ${userDefaultPerms.filter(id => !userPermissions.some(perm => perm.id === id)).join(', ')}`);
+            `Invalid user default permission ids: ${userDefaultPerms.filter(id => !projectPermissions.some(perm => perm.id === id)).join(', ')}`);
         }
 
-        // Remove existing default user permissions
+        // Remove existing default project permissions
         await tx.permission.updateMany({
           where: {
             projectConfigId: oldProject.config.id,
           },
           data: {
-            isDefaultUserPermission: false,
+            isDefaultProjectPermission: false,
           },
         });
 
-        // Add new default user permissions
+        // Add new default project permissions
         await tx.permission.updateMany({
           where: {
             projectConfigId: oldProject.config.id,
@@ -63,7 +63,7 @@ export const projectsCrudHandlers = createLazyProxy(() => createCrudHandlers(pro
             },
           },
           data: {
-            isDefaultUserPermission: true,
+            isDefaultProjectPermission: true,
           },
         });
       }

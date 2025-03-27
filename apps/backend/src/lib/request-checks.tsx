@@ -3,7 +3,7 @@ import { KnownErrors } from "@stackframe/stack-shared";
 import { StatusError } from "@stackframe/stack-shared/dist/utils/errors";
 import { ProviderType, sharedProviders, standardProviders } from "@stackframe/stack-shared/dist/utils/oauth";
 import { typedToUppercase } from "@stackframe/stack-shared/dist/utils/strings";
-import { listUserPermissions, listUserTeamPermissions } from "./permissions";
+import { listProjectPermissions, listUserTeamPermissions } from "./permissions";
 import { Tenancy } from "./tenancies";
 import { PrismaTransaction } from "./types";
 
@@ -113,7 +113,7 @@ export async function ensureUserTeamPermissionExists(
   }
 }
 
-export async function ensureUserPermissionExists(
+export async function ensureProjectPermissionExists(
   tx: PrismaTransaction,
   options: {
     tenancy: Tenancy,
@@ -128,7 +128,7 @@ export async function ensureUserPermissionExists(
     userId: options.userId,
   });
 
-  const result = await listUserPermissions(tx, {
+  const result = await listProjectPermissions(tx, {
     tenancy: options.tenancy,
     userId: options.userId,
     permissionId: options.permissionId,
@@ -139,7 +139,7 @@ export async function ensureUserPermissionExists(
     if (options.errorType === 'not-exist') {
       throw new KnownErrors.PermissionNotFound(options.permissionId);
     } else {
-      throw new KnownErrors.UserPermissionRequired(options.userId, options.permissionId);
+      throw new KnownErrors.ProjectPermissionRequired(options.userId, options.permissionId);
     }
   }
 }

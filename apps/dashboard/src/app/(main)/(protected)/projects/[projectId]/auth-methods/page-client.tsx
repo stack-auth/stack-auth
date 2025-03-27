@@ -164,6 +164,7 @@ function OAuthActionCell({ config }: { config: AdminOAuthProviderConfig }) {
         id={config.id}
         open={providerSettingDialogOpen}
         onClose={() => setProviderSettingDialogOpen(false)}
+        provider={config}
         updateProvider={updateProvider}
       />
 

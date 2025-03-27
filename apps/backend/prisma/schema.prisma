@@ -224,14 +224,14 @@ model Permission {
 
   isDefaultTeamCreatorPermission Boolean @default(false)
   isDefaultTeamMemberPermission  Boolean @default(false)
-  isDefaultUserPermission        Boolean @default(false)
+  isDefaultProjectPermission Boolean @default(false)
 
   @@unique([projectConfigId, queryableId])
   @@unique([tenancyId, teamId, queryableId])
 }
 
 enum PermissionScope {
-  USER
+  PROJECT
   TEAM
 }
 

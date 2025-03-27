@@ -15,6 +15,7 @@ import { SessionsCrud } from "./crud/sessions";
 import { TeamInvitationCrud } from "./crud/team-invitation";
 import { TeamMemberProfilesCrud } from "./crud/team-member-profiles";
 import { TeamMembershipsCrud } from "./crud/team-memberships";
+import { ProjectPermissionsCrud } from "./crud/project-permissions";
 import { TeamPermissionsCrud } from "./crud/team-permissions";
 import { TeamsCrud } from "./crud/teams";
 import { UsersCrud } from "./crud/users";
@@ -192,6 +193,25 @@ export class StackServerInterface extends StackClientInterface {
       session,
     );
     const result = await response.json() as TeamPermissionsCrud['Server']['List'];
+    return result.items;
+  }
+
+  async listServerProjectPermissions(
+    options: {
+      userId?: string,
+      recursive: boolean,
+    },
+    session: InternalSession | null,
+  ): Promise<ProjectPermissionsCrud['Server']['Read'][]> {
+    const response = await this.sendServerRequest(
+      `/project-permissions?${new URLSearchParams(filterUndefined({
+        user_id: options.userId,
+        recursive: options.recursive.toString(),
+      }))}`,
+      {},
+      session,
+    );
+    const result = await response.json() as ProjectPermissionsCrud['Server']['List'];
     return result.items;
   }
 

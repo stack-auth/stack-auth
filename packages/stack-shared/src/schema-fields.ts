@@ -359,7 +359,7 @@ export const teamSystemPermissions = [
   '$remove_members',
   '$invite_members',
 ] as const;
-export const teamPermissionDefinitionIdSchema = yupString()
+export const permissionDefinitionIdSchema = yupString()
   .matches(/^\$?[a-z0-9_:]+$/, 'Only lowercase letters, numbers, ":", "_" and optional "$" at the beginning are allowed')
   .test('is-system-permission', 'System permissions must start with a dollar sign', (value, ctx) => {
     if (!value) return true;
@@ -369,11 +369,11 @@ export const teamPermissionDefinitionIdSchema = yupString()
     return true;
   })
   .meta({ openapiField: { description: `The permission ID used to uniquely identify a permission. Can either be a custom permission with lowercase letters, numbers, \`:\`, and \`_\` characters, or one of the system permissions: ${teamSystemPermissions.map(x => `\`${x}\``).join(', ')}`, exampleValue: 'read_secret_info' } });
-export const customTeamPermissionDefinitionIdSchema = yupString()
+export const customPermissionDefinitionIdSchema = yupString()
   .matches(/^[a-z0-9_:]+$/, 'Only lowercase letters, numbers, ":", "_" are allowed')
   .meta({ openapiField: { description: 'The permission ID used to uniquely identify a permission. Can only contain lowercase letters, numbers, ":", and "_" characters', exampleValue: 'read_secret_info' } });
 export const teamPermissionDescriptionSchema = yupString().meta({ openapiField: { description: 'A human-readable description of the permission', exampleValue: 'Read secret information' } });
-export const containedPermissionIdsSchema = yupArray(teamPermissionDefinitionIdSchema.defined()).meta({ openapiField: { description: 'The IDs of the permissions that are contained in this permission', exampleValue: ['read_public_info'] } });
+export const containedPermissionIdsSchema = yupArray(permissionDefinitionIdSchema.defined()).meta({ openapiField: { description: 'The IDs of the permissions that are contained in this permission', exampleValue: ['read_public_info'] } });
 
 // Teams
 export const teamIdSchema = yupString().uuid().meta({ openapiField: { description: _idDescription('team'), exampleValue: 'ad962777-8244-496a-b6a2-e0c6a449c79e' } });

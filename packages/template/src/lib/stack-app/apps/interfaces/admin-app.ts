@@ -5,7 +5,7 @@ import { ApiKey, ApiKeyCreateOptions, ApiKeyFirstView } from "../../api-keys";
 import { AsyncStoreProperty, EmailConfig } from "../../common";
 import { AdminSentEmail } from "../../email";
 import { AdminEmailTemplate, AdminEmailTemplateUpdateOptions } from "../../email-templates";
-import { AdminTeamPermission, AdminTeamPermissionDefinition, AdminTeamPermissionDefinitionCreateOptions, AdminTeamPermissionDefinitionUpdateOptions, AdminUserPermission, AdminUserPermissionDefinition, AdminUserPermissionDefinitionCreateOptions, AdminUserPermissionDefinitionUpdateOptions } from "../../permissions";
+import { AdminTeamPermission, AdminTeamPermissionDefinition, AdminTeamPermissionDefinitionCreateOptions, AdminTeamPermissionDefinitionUpdateOptions, AdminProjectPermission, AdminProjectPermissionDefinition, AdminProjectPermissionDefinitionCreateOptions, AdminProjectPermissionDefinitionUpdateOptions } from "../../permissions";
 import { AdminProject } from "../../projects";
 import { _StackAdminAppImpl } from "../implementations";
 import { StackServerApp, StackServerAppConstructorOptions } from "./server-app";
@@ -31,7 +31,7 @@ export type StackAdminApp<HasTokenStore extends boolean = boolean, ProjectId ext
   & AsyncStoreProperty<"project", [], AdminProject, false>
   & AsyncStoreProperty<"apiKeys", [], ApiKey[], true>
   & AsyncStoreProperty<"teamPermissionDefinitions", [], AdminTeamPermissionDefinition[], true>
-  & AsyncStoreProperty<"userPermissionDefinitions", [], AdminUserPermissionDefinition[], true>
+  & AsyncStoreProperty<"projectPermissionDefinitions", [], AdminProjectPermissionDefinition[], true>
   & {
     useEmailTemplates(): AdminEmailTemplate[], // THIS_LINE_PLATFORM react-like
     listEmailTemplates(): Promise<AdminEmailTemplate[]>,
@@ -44,9 +44,9 @@ export type StackAdminApp<HasTokenStore extends boolean = boolean, ProjectId ext
     updateTeamPermissionDefinition(permissionId: string, data: AdminTeamPermissionDefinitionUpdateOptions): Promise<void>,
     deleteTeamPermissionDefinition(permissionId: string): Promise<void>,
 
-    createUserPermissionDefinition(data: AdminUserPermissionDefinitionCreateOptions): Promise<AdminUserPermission>,
-    updateUserPermissionDefinition(permissionId: string, data: AdminUserPermissionDefinitionUpdateOptions): Promise<void>,
-    deleteUserPermissionDefinition(permissionId: string): Promise<void>,
+    createProjectPermissionDefinition(data: AdminProjectPermissionDefinitionCreateOptions): Promise<AdminProjectPermission>,
+    updateProjectPermissionDefinition(permissionId: string, data: AdminProjectPermissionDefinitionUpdateOptions): Promise<void>,
+    deleteProjectPermissionDefinition(permissionId: string): Promise<void>,
 
     useSvixToken(): string, // THIS_LINE_PLATFORM react-like
 
