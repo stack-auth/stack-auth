@@ -1,5 +1,5 @@
 import { createPermissionDefinition, deletePermissionDefinition, listPermissionDefinitions, updatePermissionDefinitions } from "@/lib/permissions";
-import { prismaTransaction } from "@/prisma-client";
+import { isPrismaError, retryTransaction } from "@/prisma-client";
 import { createCrudHandlers } from "@/route-handlers/crud-handler";
 import { KnownErrors } from "@stackframe/stack-shared";
 import { teamPermissionDefinitionsCrud } from '@stackframe/stack-shared/dist/interface/crud/team-permissions';
@@ -11,46 +11,52 @@ export const teamPermissionDefinitionsCrudHandlers = createLazyProxy(() => creat
     permission_id: permissionDefinitionIdSchema.defined(),
   }),
   async onCreate({ auth, data }) {
-    return await prismaTransaction(async (tx) => {
-      return await createPermissionDefinition(tx, {
-        scope: "TEAM",
-        tenancy: auth.tenancy,
-        data,
-      });
-    }).catchUniqueConstraintViolation(async () => {
-      throw new KnownErrors.PermissionIdAlreadyExists(data.id);
-    })
-      .runWithRetry();
+    return await retryTransaction(async (tx) => {
+      try {
+        return await createPermissionDefinition(tx, {
+          scope: "TEAM",
+          tenancy: auth.tenancy,
+          data,
+        });
+      } catch (error) {
+        if (isPrismaError(error, "UNIQUE_CONSTRAINT_VIOLATION")) {
+          throw new KnownErrors.PermissionIdAlreadyExists(data.id);
+        }
+        throw error;
+      }
+    });
   },
   async onUpdate({ auth, data, params }) {
-    return await prismaTransaction(async (tx) => {
-      return await updatePermissionDefinitions(tx, {
-        scope: "TEAM",
-        tenancy: auth.tenancy,
-        permissionId: params.permission_id,
-        data,
-      });
-    }).catchUniqueConstraintViolation(async () => {
-      throw new KnownErrors.PermissionIdAlreadyExists(data.id ?? '');
-    })
-      .runWithRetry();
+    return await retryTransaction(async (tx) => {
+      try {
+        return await updatePermissionDefinitions(tx, {
+          scope: "TEAM",
+          tenancy: auth.tenancy,
+          permissionId: params.permission_id,
+          data,
+        });
+      } catch (error) {
+        if (isPrismaError(error, "UNIQUE_CONSTRAINT_VIOLATION")) {
+          throw new KnownErrors.PermissionIdAlreadyExists(data.id ?? '');
+        }
+        throw error;
+      }
+    });
   },
   async onDelete({ auth, params }) {
-    return await prismaTransaction(async (tx) => {
+    return await retryTransaction(async (tx) => {
       await deletePermissionDefinition(tx, {
         tenancy: auth.tenancy,
         permissionId: params.permission_id
       });
-    })
-      .runWithRetry();
+    });
   },
   async onList({ auth }) {
-    return await prismaTransaction(async (tx) => {
+    return await retryTransaction(async (tx) => {
       return {
         items: await listPermissionDefinitions(tx, "TEAM", auth.tenancy),
         is_paginated: false,
       };
-    })
-      .runWithRetry();
+    });
   },
 }));

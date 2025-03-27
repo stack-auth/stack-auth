@@ -135,79 +135,15 @@ async function rawQueryArray<Q extends RawQuery<any>[]>(queries: Q): Promise<[] 
   });
 }
 
-export class PrismaTransactionBuilder<T> {
-  private constraintViolationMap: {
-    P2002?: (modelName: string, target: string[]) => Promise<void>,
-  } = {};
-  constructor(private queryFn: (...args: Parameters<Parameters<typeof prismaClient.$transaction>[0]>) => Promise<T>) {
-  }
+// not exhaustive
+export const PRISMA_ERROR_CODES = {
+  VALUE_TOO_LONG: "P2000",
+  RECORD_NOT_FOUND: "P2001",
+  UNIQUE_CONSTRAINT_VIOLATION: "P2002",
+  FOREIGN_CONSTRAINT_VIOLATION: "P2003",
+  GENERIC_CONSTRAINT_VIOLATION: "P2004",
+} as const;
 
-  catchUniqueConstraintViolation(fn: (
-    modelName: string,
-    target: string[],
-  ) => Promise<void>): PrismaTransactionBuilder<T> {
-    this.constraintViolationMap['P2002'] = fn;
-    return this;
-  }
-
-  async runWithRetry(): Promise<T> {
-    const enableSerializable = false as boolean;
-
-    return await traceSpan('Prisma transaction', async (span) => {
-      const res = await Result.retry(async (attemptIndex) => {
-        return await traceSpan(`transaction attempt #${attemptIndex}`, async (attemptSpan) => {
-          const attemptRes = await (async () => {
-            try {
-              return await prismaClient.$transaction(async (...args) => {
-                try {
-                  return Result.ok(await this.queryFn(...args));
-                } catch (e) {
-                  if (e instanceof Prisma.PrismaClientKnownRequestError || e instanceof Prisma.PrismaClientUnknownRequestError) {
-                    // retry
-                    return Result.error(e);
-                  }
-                  throw e;
-                }
-              }, {
-                isolationLevel: enableSerializable && attemptIndex < 4 ? Prisma.TransactionIsolationLevel.Serializable : undefined,
-              });
-            } catch (e) {
-              // we don't want to retry as aggressively here, because the error may have been thrown after the transaction was already committed
-              // so, we select the specific errors that we know are safe to retry
-              if ([
-                "Transaction failed due to a write conflict or a deadlock. Please retry your transaction",
-                "Transaction already closed: A commit cannot be executed on an expired transaction. The timeout for this transaction",
-              ].some(s => e instanceof Prisma.PrismaClientKnownRequestError && e.message.includes(s))) {
-                // transaction timeout, retry
-                return Result.error(e);
-              }
-              throw e;
-            }
-          })();
-          if (attemptRes.status === "error") {
-            attemptSpan.setAttribute("stack.prisma.transaction-retry.error", `${attemptRes.error}`);
-            if (attemptRes.error instanceof Prisma.PrismaClientKnownRequestError && (this.constraintViolationMap as any)[attemptRes.error.code]) {
-              await (this.constraintViolationMap as any)[attemptRes.error.code](attemptRes.error.meta?.modelName as string, attemptRes.error.meta?.target as string[]);
-            }
-          }
-
-          return attemptRes;
-        });
-      }, 5, {
-        exponentialDelayBase: 250,
-      });
-
-      span.setAttribute("stack.prisma.transaction.success", res.status === "ok");
-      span.setAttribute("stack.prisma.transaction.attempts", res.attempts);
-      span.setAttribute("stack.prisma.transaction.serializable-enabled", enableSerializable ? "true" : "false");
-
-      return Result.orThrow(res);
-    });
-  }
-}
-
-export function prismaTransaction<T>(fn: (tx: Prisma.TransactionClient) => Promise<T>): PrismaTransactionBuilder<T> {
-  return new PrismaTransactionBuilder(async (...args) => {
-    return await fn(...args);
-  });
+export function isPrismaError(error: unknown, code: keyof typeof PRISMA_ERROR_CODES): error is Prisma.PrismaClientKnownRequestError {
+  return error instanceof Prisma.PrismaClientKnownRequestError && error.code === PRISMA_ERROR_CODES[code];
 }
