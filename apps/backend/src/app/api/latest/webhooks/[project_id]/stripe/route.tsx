@@ -17,17 +17,22 @@ async function buffer(readable: Readable) {
   return Buffer.concat(chunks);
 }
 
-type StripeEventHandler = (event: Stripe.Event, project: ProjectsCrud["Admin"]["Read"]) => Promise<void>;
+type StripeEventHandler<T extends Stripe.Event.Type> = (
+  event: Extract<Stripe.Event, { type: T }>,
+  project: ProjectsCrud["Admin"]["Read"]
+) => Promise<void>;
 
-const STRIPE_EVENT_HANDLERS: Partial<Record<Stripe.Event.Type, StripeEventHandler>> = {
+const STRIPE_EVENT_HANDLERS: {
+  [T in Stripe.Event.Type]?: StripeEventHandler<T>
+} = {
   "customer.subscription.created": async (event, project) => {
-    console.log("Customer subscription created", event);
+    console.log("Customer subscription created", event.data.object);
   },
   "customer.subscription.deleted": async (event, project) => {
-    console.log("Customer subscription deleted", event);
+    console.log("Customer subscription deleted", event.data.object);
   },
   "customer.subscription.updated": async (event, project) => {
-    console.log("Customer subscription updated", event);
+    console.log("Customer subscription updated", event.data.object);
   },
 };
 
@@ -63,7 +68,7 @@ export const POST = async (req: NextApiRequest, { params }: { params: { project_
     }
 
     // Handle the event
-    await STRIPE_EVENT_HANDLERS[event.type]?.(event, project);
+    await STRIPE_EVENT_HANDLERS[event.type]?.(event as any, project);
 
     return Response.json({ received: true });
   } catch (error) {
