@@ -2,6 +2,7 @@ import { WebAuthnError, startAuthentication, startRegistration } from "@simplewe
 import { KnownErrors, StackClientInterface } from "@stackframe/stack-shared";
 import { ContactChannelsCrud } from "@stackframe/stack-shared/dist/interface/crud/contact-channels";
 import { CurrentUserCrud } from "@stackframe/stack-shared/dist/interface/crud/current-user";
+import { TeamApiKeysCrud, UserApiKeysCrud, teamApiKeysCreateOutputSchema, userApiKeysCreateOutputSchema } from "@stackframe/stack-shared/dist/interface/crud/project-api-keys";
 import { ProjectPermissionsCrud } from "@stackframe/stack-shared/dist/interface/crud/project-permissions";
 import { ProjectsCrud } from "@stackframe/stack-shared/dist/interface/crud/projects";
 import { SessionsCrud } from "@stackframe/stack-shared/dist/interface/crud/sessions";
@@ -25,6 +26,9 @@ import { deindent, mergeScopeStrings } from "@stackframe/stack-shared/dist/utils
 import { getRelativePart, isRelative } from "@stackframe/stack-shared/dist/utils/urls";
 import { generateUuid } from "@stackframe/stack-shared/dist/utils/uuids";
 import * as cookie from "cookie";
+import * as NextNavigationUnscrambled from "next/navigation"; // import the entire module to get around some static compiler warnings emitted by Next.js in some cases | THIS_LINE_PLATFORM next
+import React, { useCallback, useMemo } from "react"; // THIS_LINE_PLATFORM react-like
+import type * as yup from "yup";
 import { constructRedirectUrl } from "../../../../utils/url";
 import { addNewOAuthProviderOrScope, callOAuthCallback, signInWithOAuth } from "../../../auth";
 import { CookieHelper, createBrowserCookieHelper, createCookieHelper, createPlaceholderCookieHelper, deleteCookieClient, getCookieClient, setOrDeleteCookie, setOrDeleteCookieClient } from "../../../cookie";
@@ -38,10 +42,9 @@ import { EditableTeamMemberProfile, Team, TeamCreateOptions, TeamInvitation, Tea
 import { ActiveSession, Auth, BaseUser, CurrentUser, InternalUserExtra, ProjectCurrentUser, UserExtra, UserUpdateOptions, userUpdateOptionsToCrud } from "../../users";
 import { StackClientApp, StackClientAppConstructorOptions, StackClientAppJson } from "../interfaces/client-app";
 import { _StackAdminAppImplIncomplete } from "./admin-app-impl";
-import { TokenObject, clientVersion, createCache, createCacheBySession, createEmptyTokenStore, getBaseUrl, getDefaultExtraRequestHeaders, getDefaultProjectId, getDefaultPublishableClientKey, getUrls, } from "./common";
+import { TokenObject, clientVersion, createCache, createCacheBySession, createEmptyTokenStore, getBaseUrl, getDefaultExtraRequestHeaders, getDefaultProjectId, getDefaultPublishableClientKey, getUrls } from "./common";
 
-import * as NextNavigationUnscrambled from "next/navigation"; // import the entire module to get around some static compiler warnings emitted by Next.js in some cases | THIS_LINE_PLATFORM next
-import React, { useCallback, useMemo } from "react"; // THIS_LINE_PLATFORM react-like
+
 import { useAsyncCache } from "./common"; // THIS_LINE_PLATFORM react-like
 
 let isReactServer = false;
