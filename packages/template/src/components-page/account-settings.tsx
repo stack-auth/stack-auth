@@ -1,6 +1,7 @@
 'use client';
 
 import { yupResolver } from "@hookform/resolvers/yup";
+import { createTOTPKeyURI, verifyTOTP } from "@oslojs/otp";
 import { KnownErrors } from "@stackframe/stack-shared";
 import { getPasswordError } from '@stackframe/stack-shared/dist/helpers/password';
 import { useAsyncCallback } from '@stackframe/stack-shared/dist/hooks/use-async-callback';
@@ -11,7 +12,6 @@ import { StackAssertionError, captureError, throwErr } from '@stackframe/stack-s
 import { runAsynchronously, runAsynchronouslyWithAlert } from '@stackframe/stack-shared/dist/utils/promises';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger, ActionCell, Badge, Button, Input, Label, PasswordInput, Separator, Skeleton, Table, TableBody, TableCell, TableHead, TableHeader, TableRow, Typography } from '@stackframe/stack-ui';
 import { Edit, Trash, icons } from 'lucide-react';
-import { TOTPController, createTOTPKeyURI } from "oslo/otp";
 import * as QRCode from 'qrcode';
 import React, { Suspense, useEffect, useState } from "react";
 import { useForm } from 'react-hook-form';
@@ -25,7 +25,7 @@ import { SidebarLayout } from '../components/elements/sidebar-layout';
 import { UserAvatar } from '../components/elements/user-avatar';
 import { ProfileImageEditor } from "../components/profile-image-editor";
 import { TeamIcon } from '../components/team-icon';
-import { BaseApiKeyFirstView } from "../lib/stack-app/api-keys";
+import { ApiKey, ApiKeyCreationOptions, TeamApiKeyFirstView } from "../lib/stack-app/api-keys";
 import { ActiveSession } from "../lib/stack-app/users";
 import { useTranslation } from "../lib/translations";
 
@@ -82,7 +82,7 @@ export function AccountSettings(props: {
                 <ActiveSessionsPage/>
               </Suspense>,
             },
-            ...(project.config.allowUserAPIKeys ? [{
+            ...(project.config.allowUserApiKeys ? [{
               title: t('API Keys'),
               type: 'item',
               id: 'api-keys',
@@ -182,7 +182,10 @@ export function ApiKeysPage() {
   const apiKeys = user.useApiKeys();
 
   const [isNewApiKeyDialogOpen, setIsNewApiKeyDialogOpen] = useState(false);
-  const [returnedApiKey, setReturnedApiKey] = useState<BaseApiKeyFirstView | null>(null);
+  const [returnedApiKey, setReturnedApiKey] = useState<ApiKey<"user", true>   | null>(null);
+
+  const CreateDialog = CreateApiKeyDialog<"user">;
+  const ShowDialog = ShowApiKeyDialog<"user">;
 
   return (
     <PageLayout>
@@ -192,17 +195,17 @@ export function ApiKeysPage() {
 
       <ApiKeyTable apiKeys={apiKeys} />
 
-      <CreateApiKeyDialog
+      <CreateDialog
         open={isNewApiKeyDialogOpen}
         onOpenChange={setIsNewApiKeyDialogOpen}
         onKeyCreated={setReturnedApiKey}
-        createApiKey={async (data) => {
+        createApiKey={async (data: ApiKeyCreationOptions<"user">) => {
           const apiKey = await user.createApiKey(data);
           return apiKey;
         }}
       />
-      <ShowApiKeyDialog
-        apiKey={returnedApiKey || undefined}
+      <ShowDialog
+        apiKey={returnedApiKey}
         onClose={() => setReturnedApiKey(null)}
       />
 
@@ -216,7 +219,7 @@ export function TeamApiKeysSection(props: { team: Team }) {
   const { t } = useTranslation();
 
   const [isNewApiKeyDialogOpen, setIsNewApiKeyDialogOpen] = useState(false);
-  const [returnedApiKey, setReturnedApiKey] = useState<BaseApiKeyFirstView | null>(null);
+  const [returnedApiKey, setReturnedApiKey] = useState<TeamApiKeyFirstView | null>(null);
 
   const user = useUser({ or: 'redirect' });
   const team = user.useTeam(props.team.id);
@@ -233,6 +236,9 @@ export function TeamApiKeysSection(props: { team: Team }) {
   // Conditional hook ok?
   const apiKeys = team.useApiKeys();
 
+  const CreateDialog = CreateApiKeyDialog<"team">;
+  const ShowDialog = ShowApiKeyDialog<"team">;
+
 
   return (
     <>
@@ -246,7 +252,7 @@ export function TeamApiKeysSection(props: { team: Team }) {
       </Section>
       <ApiKeyTable apiKeys={apiKeys} />
 
-      <CreateApiKeyDialog
+      <CreateDialog
         open={isNewApiKeyDialogOpen}
         onOpenChange={setIsNewApiKeyDialogOpen}
         onKeyCreated={setReturnedApiKey}
@@ -255,8 +261,8 @@ export function TeamApiKeysSection(props: { team: Team }) {
           return apiKey;
         }}
       />
-      <ShowApiKeyDialog
-        apiKey={returnedApiKey || undefined}
+      <ShowDialog
+        apiKey={returnedApiKey}
         onClose={() => setReturnedApiKey(null)}
       />
     </>
@@ -982,7 +988,7 @@ function MfaSection() {
   useEffect(() => {
     setIsMaybeWrong(false);
     runAsynchronouslyWithAlert(async () => {
-      if (generatedSecret && await new TOTPController().verify(mfaCode, generatedSecret)) {
+      if (generatedSecret && verifyTOTP(generatedSecret, 30, 6, mfaCode)) {
         await handleSubmit();
       }
       setIsMaybeWrong(true);
@@ -1060,7 +1066,7 @@ function MfaSection() {
 }
 
 async function generateTotpQrCode(project: Project, user: CurrentUser, secret: Uint8Array) {
-  const uri = createTOTPKeyURI(project.displayName, user.primaryEmail ?? user.id, secret);
+  const uri = createTOTPKeyURI(project.displayName, user.primaryEmail ?? user.id, secret, 30, 6);
   return await QRCode.toDataURL(uri) as any;
 }
 

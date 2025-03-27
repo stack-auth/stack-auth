@@ -10,7 +10,7 @@ import { useForm } from 'react-hook-form';
 import * as yup from "yup";
 import { useUser } from '..';
 import { FormWarningText } from '../components/elements/form-warning';
-import { ApiKeyFirstView } from "../lib/stack-app/api-keys";
+import { ApiKey, ApiKeyCreationOptions, ApiKeyType } from "../lib/stack-app/api-keys";
 import { useTranslation } from "../lib/translations";
 
 // Constants for expiration options
@@ -27,14 +27,11 @@ export const expiresInOptions = {
 /**
  * Dialog for creating a new API key
  */
-export function CreateApiKeyDialog(props: {
+export function CreateApiKeyDialog<Type extends ApiKeyType = ApiKeyType>(props: {
   open: boolean,
   onOpenChange: (open: boolean) => void,
-  onKeyCreated?: (key: ApiKeyFirstView) => void,
-  createApiKey: (data: {
-    description: string,
-    expiresIn: number,
-  }) => Promise<ApiKeyFirstView>,
+  onKeyCreated?: (key: ApiKey<Type, true>) => void,
+  createApiKey: (data: ApiKeyCreationOptions<Type>) => Promise<ApiKey<Type, true>>,
 }) {
   const { t } = useTranslation();
   const user = useUser({ or: 'redirect' });
@@ -56,10 +53,10 @@ export function CreateApiKeyDialog(props: {
   const onSubmit = async (data: yup.InferType<typeof apiKeySchema>) => {
     setLoading(true);
     try {
-      const expiresIn = parseInt(data.expiresIn);
+      const expiresAt = new Date(Date.now() + parseInt(data.expiresIn));
       const apiKey = await props.createApiKey({
         description: data.description,
-        expiresIn: expiresIn,
+        expiresAt,
       });
 
       if (props.onKeyCreated) {
@@ -136,8 +133,8 @@ export function CreateApiKeyDialog(props: {
 /**
  * Dialog for showing the newly created API key
  */
-export function ShowApiKeyDialog(props: {
-  apiKey?: ApiKeyFirstView,
+export function ShowApiKeyDialog<Type extends ApiKeyType = ApiKeyType>(props: {
+  apiKey: ApiKey<Type, true> | null,
   onClose?: () => void,
 }) {
   const { t } = useTranslation();
@@ -160,7 +157,7 @@ export function ShowApiKeyDialog(props: {
         </Typography>
         <CopyField
           monospace
-          value={props.apiKey?.secretApiKey ?? ''}
+          value={props.apiKey?.value ?? ''}
           label={t("Secret API Key")}
         />
       </div>

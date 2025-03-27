@@ -1,7 +1,7 @@
 import { RefObject, useEffect, useRef } from "react";
 
 export function useMutationObserver(
-  targetRef: RefObject<Node>,
+  targetRef: RefObject<Node | null>,
   callback: (mutations: MutationRecord[] | "init") => void,
   options: MutationObserverInit,
 ) {

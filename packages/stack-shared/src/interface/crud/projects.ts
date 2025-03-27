@@ -84,7 +84,6 @@ export const projectsCrudAdminReadSchema = yupObject({
     client_user_deletion_enabled: schemaFields.projectClientUserDeletionEnabledSchema.defined(),
     allow_user_api_keys: schemaFields.yupBoolean().defined(),
     allow_team_api_keys: schemaFields.yupBoolean().defined(),
-    allow_tenancy_api_keys: schemaFields.yupBoolean().defined(),
     oauth_providers: yupArray(oauthProviderSchema.defined()).defined(),
     enabled_oauth_providers: yupArray(enabledOAuthProviderSchema.defined()).defined().meta({ openapiField: { hidden: true } }),
     domains: yupArray(domainSchema.defined()).defined(),
@@ -92,6 +91,7 @@ export const projectsCrudAdminReadSchema = yupObject({
     create_team_on_sign_up: schemaFields.projectCreateTeamOnSignUpSchema.defined(),
     team_creator_default_permissions: yupArray(teamPermissionSchema.defined()).defined(),
     team_member_default_permissions: yupArray(teamPermissionSchema.defined()).defined(),
+    user_default_permissions: yupArray(teamPermissionSchema.defined()).defined(),
     oauth_account_merge_strategy: schemaFields.oauthAccountMergeStrategySchema.defined(),
   }).defined(),
 }).defined();
@@ -108,7 +108,6 @@ export const projectsCrudClientReadSchema = yupObject({
     client_user_deletion_enabled: schemaFields.projectClientUserDeletionEnabledSchema.defined(),
     allow_user_api_keys: schemaFields.yupBoolean().defined(),
     allow_team_api_keys: schemaFields.yupBoolean().defined(),
-    allow_tenancy_api_keys: schemaFields.yupBoolean().defined(),
     enabled_oauth_providers: yupArray(enabledOAuthProviderSchema.defined()).defined().meta({ openapiField: { hidden: true } }),
   }).defined(),
 }).defined();
@@ -128,13 +127,13 @@ export const projectsCrudAdminUpdateSchema = yupObject({
     allow_localhost: schemaFields.projectAllowLocalhostSchema.optional(),
     allow_user_api_keys: schemaFields.yupBoolean().optional(),
     allow_team_api_keys: schemaFields.yupBoolean().optional(),
-    allow_tenancy_api_keys: schemaFields.yupBoolean().optional(),
     email_config: emailConfigSchema.optional().default(undefined),
     domains: yupArray(domainSchema.defined()).optional().default(undefined),
     oauth_providers: yupArray(oauthProviderSchema.defined()).optional().default(undefined),
     create_team_on_sign_up: schemaFields.projectCreateTeamOnSignUpSchema.optional(),
     team_creator_default_permissions: yupArray(teamPermissionSchema.defined()).optional(),
     team_member_default_permissions: yupArray(teamPermissionSchema.defined()).optional(),
+    user_default_permissions: yupArray(teamPermissionSchema.defined()).optional(),
     oauth_account_merge_strategy: schemaFields.oauthAccountMergeStrategySchema.optional(),
   }).optional().default(undefined),
 }).defined();

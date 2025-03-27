@@ -188,7 +188,6 @@ it("can customize default team permissions", async ({ expect }) => {
         "config": {
           "allow_localhost": true,
           "allow_team_api_keys": false,
-          "allow_tenancy_api_keys": false,
           "allow_user_api_keys": false,
           "client_team_creation_enabled": false,
           "client_user_deletion_enabled": false,
@@ -205,6 +204,7 @@ it("can customize default team permissions", async ({ expect }) => {
           "sign_up_enabled": true,
           "team_creator_default_permissions": [{ "id": "admin" }],
           "team_member_default_permissions": [{ "id": "test" }],
+          "user_default_permissions": [],
         },
         "created_at_millis": <stripped field 'created_at_millis'>,
         "description": "",

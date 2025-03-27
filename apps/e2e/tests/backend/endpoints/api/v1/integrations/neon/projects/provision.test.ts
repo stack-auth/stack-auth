@@ -45,7 +45,6 @@ it("should be able to provision a new project if neon client details are correct
         "config": {
           "allow_localhost": true,
           "allow_team_api_keys": false,
-          "allow_tenancy_api_keys": false,
           "allow_user_api_keys": false,
           "client_team_creation_enabled": false,
           "client_user_deletion_enabled": false,
@@ -76,6 +75,7 @@ it("should be able to provision a new project if neon client details are correct
           "sign_up_enabled": true,
           "team_creator_default_permissions": [{ "id": "admin" }],
           "team_member_default_permissions": [{ "id": "member" }],
+          "user_default_permissions": [],
         },
         "created_at_millis": <stripped field 'created_at_millis'>,
         "description": "Created with Neon",

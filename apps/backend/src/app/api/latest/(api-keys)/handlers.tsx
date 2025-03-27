@@ -68,7 +68,8 @@ async function parseTypeAndParams(options: { type: "user" | "team", params: { us
   return { userId, teamId };
 }
 
-async function prismaToCrud(prisma: ProjectApiKey, isFirstView: boolean): Promise<UserApiKeysCrud["Admin"]["Read"] & TeamApiKeysCrud["Admin"]["Read"] & { value: string }> {
+
+async function prismaToCrud(prisma: ProjectApiKey, isFirstView: boolean): Promise<(UserApiKeysCrud["Admin"]["Read"] | TeamApiKeysCrud["Admin"]["Read"]) & { value: string }> {
   if ((prisma.projectUserId == null) === (prisma.teamId == null)) {
     throw new StackAssertionError("Exactly one of projectUserId or teamId must be set", { prisma });
   }

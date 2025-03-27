@@ -69,48 +69,35 @@ export default function PageClient() {
       >
         <SettingSwitch
           label="Allow User API Keys"
-          checked={project.config.allowUserAPIKeys}
+          checked={project.config.allowUserApiKeys}
           onCheckedChange={async (checked) => {
             await project.update({
               config: {
-                allowUserAPIKeys: checked
+                allowUserApiKeys: checked
               }
             });
           }}
         />
         <Typography variant="secondary" type="footnote">
-          Enable to allow users to create API keys for their accounts.
+          Enable to allow users to create API keys for their accounts. Enables user-api-keys backend routes.
         </Typography>
 
         <SettingSwitch
           label="Allow Team API Keys"
-          checked={project.config.allowTeamAPIKeys}
+          checked={project.config.allowTeamApiKeys}
           onCheckedChange={async (checked) => {
             await project.update({
               config: {
-                allowTeamAPIKeys: checked
+                allowTeamApiKeys: checked
               }
             });
           }}
         />
         <Typography variant="secondary" type="footnote">
-          Enable to allow users to create API keys for their teams.
+          Enable to allow users to create API keys for their teams. Enables team-api-keys backend routes.
         </Typography>
 
-        <SettingSwitch
-          label="Allow Tenancy API Keys"
-          checked={project.config.allowTenancyAPIKeys}
-          onCheckedChange={async (checked) => {
-            await project.update({
-              config: {
-                allowTenancyAPIKeys: checked
-              }
-            });
-          }}
-        />
-        <Typography variant="secondary" type="footnote">
-          Enable to allow users to create API keys for their tenancy.
-        </Typography>
+
       </SettingCard>
 
       <SettingCard

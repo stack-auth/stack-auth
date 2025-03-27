@@ -35,7 +35,7 @@ export const POST = createSmartRouteHandler({
   }),
   handler: async (req, fullReq) => {
     // Check if the API key exists and is valid
-    const apiKey = await prismaClient.projectAPIKey.findUnique({
+    const apiKey = await prismaClient.projectApiKey.findUnique({
       where: {
         secretApiKey: req.body.api_key,
       },

@@ -2,9 +2,8 @@
 ALTER TYPE "TeamSystemPermission" ADD VALUE 'MANAGE_API_KEYS';
 
 -- AlterTable
-ALTER TABLE "ProjectConfig" ADD COLUMN     "allowTeamAPIKeys" BOOLEAN NOT NULL DEFAULT false,
-ADD COLUMN     "allowTenancyAPIKeys" BOOLEAN NOT NULL DEFAULT false,
-ADD COLUMN     "allowUserAPIKeys" BOOLEAN NOT NULL DEFAULT false;
+ALTER TABLE "ProjectConfig" ADD COLUMN     "allowTeamApiKeys" BOOLEAN NOT NULL DEFAULT false,
+ADD COLUMN     "allowUserApiKeys" BOOLEAN NOT NULL DEFAULT false;
 
 -- CreateTable
 CREATE TABLE "ProjectApiKey" (

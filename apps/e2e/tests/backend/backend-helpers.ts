@@ -765,6 +765,33 @@ export namespace Auth {
       };
     }
   }
+
+  export namespace Anonymous {
+    export async function signUp() {
+      const response = await niceBackendFetch("/api/v1/auth/anonymous/sign-up", {
+        method: "POST",
+        accessType: "client",
+      });
+      expect(response).toMatchInlineSnapshot(`
+        NiceResponse {
+          "status": 200,
+          "body": {
+            "access_token": <stripped field 'access_token'>,
+            "refresh_token": <stripped field 'refresh_token'>,
+            "user_id": "<stripped UUID>",
+          },
+          "headers": Headers { <some fields may have been hidden> },
+        }
+      `);
+      backendContext.set({
+        userAuth: {
+          accessToken: response.body.access_token,
+          refreshToken: response.body.refresh_token,
+        },
+      });
+      return { response };
+    }
+  }
 }
 
 export namespace ContactChannels {

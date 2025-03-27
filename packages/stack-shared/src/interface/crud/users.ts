@@ -18,6 +18,7 @@ export const usersCrudServerUpdateSchema = fieldSchema.yupObject({
   otp_auth_enabled: fieldSchema.userOtpAuthEnabledMutationSchema.optional(),
   totp_secret_base64: fieldSchema.userTotpSecretMutationSchema.optional(),
   selected_team_id: fieldSchema.selectedTeamIdSchema.nullable().optional(),
+  is_anonymous: fieldSchema.yupBoolean().oneOf([false]).optional(),
 }).defined();
 
 export const usersCrudServerReadSchema = fieldSchema.yupObject({
@@ -37,6 +38,7 @@ export const usersCrudServerReadSchema = fieldSchema.yupObject({
   client_read_only_metadata: fieldSchema.userClientReadOnlyMetadataSchema,
   server_metadata: fieldSchema.userServerMetadataSchema,
   last_active_at_millis: fieldSchema.userLastActiveAtMillisSchema.nonNullable().defined(),
+  is_anonymous: fieldSchema.yupBoolean().defined(),
 
   oauth_providers: fieldSchema.yupArray(fieldSchema.yupObject({
     id: fieldSchema.yupString().defined(),
@@ -60,6 +62,7 @@ export const usersCrudServerCreateSchema = usersCrudServerUpdateSchema.omit(['se
     account_id: fieldSchema.yupString().defined(),
     email: fieldSchema.yupString().nullable().defined().default(null),
   }).defined()).optional().meta({ openapiField: { hidden: true } }),
+  is_anonymous: fieldSchema.yupBoolean().optional(),
 }).defined());
 
 export const usersCrudServerDeleteSchema = fieldSchema.yupMixed();

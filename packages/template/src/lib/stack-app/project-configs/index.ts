@@ -9,9 +9,8 @@ export type ProjectConfig = {
   readonly clientTeamCreationEnabled: boolean,
   readonly clientUserDeletionEnabled: boolean,
   readonly oauthProviders: OAuthProviderConfig[],
-  readonly allowUserAPIKeys: boolean,
-  readonly allowTeamAPIKeys: boolean,
-  readonly allowTenancyAPIKeys: boolean,
+  readonly allowUserApiKeys: boolean,
+  readonly allowTeamApiKeys: boolean,
 };
 
 export type OAuthProviderConfig = {
@@ -33,10 +32,10 @@ export type AdminProjectConfig = {
   readonly createTeamOnSignUp: boolean,
   readonly teamCreatorDefaultPermissions: AdminTeamPermission[],
   readonly teamMemberDefaultPermissions: AdminTeamPermission[],
+  readonly userDefaultPermissions: AdminTeamPermission[],
   readonly oauthAccountMergeStrategy: 'link_method' | 'raise_error' | 'allow_duplicates',
-  readonly allowUserAPIKeys: boolean,
-  readonly allowTeamAPIKeys: boolean,
-  readonly allowTenancyAPIKeys: boolean,
+  readonly allowUserApiKeys: boolean,
+  readonly allowTeamApiKeys: boolean,
 };
 
 export type AdminEmailConfig = (
@@ -90,8 +89,8 @@ export type AdminProjectConfigUpdateOptions = {
   emailConfig?: AdminEmailConfig,
   teamCreatorDefaultPermissions?: { id: string }[],
   teamMemberDefaultPermissions?: { id: string }[],
+  userDefaultPermissions?: { id: string }[],
   oauthAccountMergeStrategy?: 'link_method' | 'raise_error' | 'allow_duplicates',
-  allowUserAPIKeys?: boolean,
-  allowTeamAPIKeys?: boolean,
-  allowTenancyAPIKeys?: boolean,
+  allowUserApiKeys?: boolean,
+  allowTeamApiKeys?: boolean,
 };

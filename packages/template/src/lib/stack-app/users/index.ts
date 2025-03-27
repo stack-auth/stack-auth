@@ -188,6 +188,21 @@ export type UserExtra = {
   // END_PLATFORM
 
   hasPermission(scope: Team, permissionId: string): Promise<boolean>,
+  hasPermission(permissionId: string): Promise<boolean>,
+
+  getPermission(scope: Team, permissionId: string): Promise<TeamPermission | null>,
+  getPermission(permissionId: string): Promise<TeamPermission | null>,
+
+  listPermissions(scope: Team, options?: { recursive?: boolean }): Promise<TeamPermission[]>,
+  listPermissions(options?: { recursive?: boolean }): Promise<TeamPermission[]>,
+
+  // IF_PLATFORM react-like
+  usePermissions(scope: Team, options?: { recursive?: boolean }): TeamPermission[],
+  usePermissions(options?: { recursive?: boolean }): TeamPermission[],
+
+  usePermission(scope: Team, permissionId: string): TeamPermission | null,
+  usePermission(permissionId: string): TeamPermission | null,
+  // END_PLATFORM
 
   readonly selectedTeam: Team | null,
   setSelectedTeam(team: Team | null): Promise<void>,
@@ -276,6 +291,23 @@ export type ServerBaseUser = {
 
   grantPermission(scope: Team, permissionId: string): Promise<void>,
   revokePermission(scope: Team, permissionId: string): Promise<void>,
+
+  getPermission(scope: Team, permissionId: string): Promise<TeamPermission | null>,
+  getPermission(permissionId: string): Promise<TeamPermission | null>,
+
+  hasPermission(scope: Team, permissionId: string): Promise<boolean>,
+  hasPermission(permissionId: string): Promise<boolean>,
+
+  listPermissions(scope: Team, options?: { recursive?: boolean }): Promise<TeamPermission[]>,
+  listPermissions(options?: { recursive?: boolean }): Promise<TeamPermission[]>,
+
+  // IF_PLATFORM react-like
+  usePermissions(scope: Team, options?: { recursive?: boolean }): TeamPermission[],
+  usePermissions(options?: { recursive?: boolean }): TeamPermission[],
+
+  usePermission(scope: Team, permissionId: string): TeamPermission | null,
+  usePermission(permissionId: string): TeamPermission | null,
+  // END_PLATFORM
 
   /**
    * Creates a new session object with a refresh token for this user. Can be used to impersonate them.

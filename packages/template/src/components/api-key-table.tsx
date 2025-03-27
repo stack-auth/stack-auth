@@ -38,7 +38,7 @@ function RevokeDialog(props: {
     okButton={{ label: "Revoke Key", onClick: async () => { await props.apiKey.revoke(); } }}
     confirmText="I understand this will unlink all the apps using this API key"
   >
-    {`Are you sure you want to revoke client key *****${props.apiKey.secretApiKey?.lastFour} and server key *****${props.apiKey.secretApiKey?.lastFour}?`}
+    {`Are you sure you want to revoke client key *****${props.apiKey.value.lastFour} and server key *****${props.apiKey.value.lastFour}?`}
   </ActionDialog>;
 }
 
@@ -72,10 +72,10 @@ const columns: ColumnDef<ExtendedApiKey>[] =  [
     filterFn: standardFilterFn,
   },
   {
-    id: "secretApiKey",
-    accessorFn: (row) => row.secretApiKey?.lastFour,
+    id: "value",
+    accessorFn: (row) => row.value.lastFour,
     header: ({ column }) => <DataTableColumnHeader column={column} columnTitle="Client Key" />,
-    cell: ({ row }) => <TextCell>*******{row.original.secretApiKey?.lastFour}</TextCell>,
+    cell: ({ row }) => <TextCell>*******{row.original.value.lastFour}</TextCell>,
     enableSorting: false,
   },
   {

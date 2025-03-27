@@ -164,6 +164,7 @@ function OAuthActionCell({ config }: { config: AdminOAuthProviderConfig }) {
         id={config.id}
         open={providerSettingDialogOpen}
         onClose={() => setProviderSettingDialogOpen(false)}
+        provider={config}
         updateProvider={updateProvider}
       />
 
@@ -300,7 +301,7 @@ export default function PageClient() {
             <div className="w-full">
               <BrowserFrame url="your-website.com/signin">
                 <div className="flex flex-col items-center justify-center min-h-[400px]">
-                  <div className='w-full sm:max-w-xs m-auto scale-90 pointer-events-none' inert=''>
+                  <div className='w-full sm:max-w-xs m-auto scale-90 pointer-events-none' inert>
                     {/* a transparent cover that prevents the card from being clicked, even when pointer-events is overridden */}
                     <div className="absolute inset-0 bg-transparent z-10"></div>
                     <AuthPage

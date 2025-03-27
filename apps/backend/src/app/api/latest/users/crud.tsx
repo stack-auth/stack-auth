@@ -1,3 +1,4 @@
+import { grantDefaultProjectPermissions } from "@/lib/permissions";
 import { ensureTeamMembershipExists, ensureUserExists } from "@/lib/request-checks";
 import { getSoleTenancyFromProject, getTenancy } from "@/lib/tenancies";
 import { PrismaTransaction } from "@/lib/types";
@@ -107,6 +108,7 @@ export const userPrismaToCrud = (
     selected_team_id: selectedTeamMembers[0]?.teamId ?? null,
     selected_team: selectedTeamMembers[0] ? teamPrismaToCrud(selectedTeamMembers[0]?.team) : null,
     last_active_at_millis: lastActiveAtMillis,
+    is_anonymous: prisma.isAnonymous,
   };
 };
 
@@ -399,6 +401,7 @@ export function getUserQuery(projectId: string, branchId: string | null, userId:
           server_metadata: row.SelectedTeamMember.Team.serverMetadata,
         } : null,
         last_active_at_millis: row.lastActiveAt ? new Date(row.lastActiveAt + "Z").getTime() : new Date(row.createdAt + "Z").getTime(),
+        is_anonymous: row.isAnonymous,
       };
     },
   };
@@ -570,6 +573,7 @@ export const usersCrudHandlers = createLazyProxy(() => createCrudHandlers(usersC
           serverMetadata: data.server_metadata === null ? Prisma.JsonNull : data.server_metadata,
           profileImageUrl: data.profile_image_url,
           totpSecret: data.totp_secret_base64 == null ? data.totp_secret_base64 : Buffer.from(decodeBase64(data.totp_secret_base64)),
+          isAnonymous: data.is_anonymous ?? false,
         },
         include: userFullInclude,
       });
@@ -707,6 +711,12 @@ export const usersCrudHandlers = createLazyProxy(() => createCrudHandlers(usersC
         });
       }
 
+      // Grant default user permissions
+      await grantDefaultProjectPermissions(tx, {
+        tenancy: auth.tenancy,
+        userId: newUser.projectUserId
+      });
+
       const user = await tx.projectUser.findUnique({
         where: {
           tenancyId_projectUserId: {
@@ -725,7 +735,7 @@ export const usersCrudHandlers = createLazyProxy(() => createCrudHandlers(usersC
     });
 
     if (auth.tenancy.config.create_team_on_sign_up) {
-      await teamsCrudHandlers.adminCreate({
+      const team = await teamsCrudHandlers.adminCreate({
         data: {
           display_name: data.display_name ?
             `${data.display_name}'s Team` :
@@ -736,6 +746,19 @@ export const usersCrudHandlers = createLazyProxy(() => createCrudHandlers(usersC
         },
         tenancy: auth.tenancy,
         user: result,
+      });
+
+      await prismaClient.teamMember.update({
+        where: {
+          tenancyId_projectUserId_teamId: {
+            tenancyId: auth.tenancy.id,
+            projectUserId: result.id,
+            teamId: team.id,
+          },
+        },
+        data: {
+          isSelected: BooleanTrue.TRUE,
+        },
       });
     }
 
@@ -1023,6 +1046,7 @@ export const usersCrudHandlers = createLazyProxy(() => createCrudHandlers(usersC
           profileImageUrl: data.profile_image_url,
           requiresTotpMfa: data.totp_secret_base64 === undefined ? undefined : (data.totp_secret_base64 !== null),
           totpSecret: data.totp_secret_base64 == null ? data.totp_secret_base64 : Buffer.from(decodeBase64(data.totp_secret_base64)),
+          isAnonymous: data.is_anonymous ?? undefined,
         },
         include: userFullInclude,
       });

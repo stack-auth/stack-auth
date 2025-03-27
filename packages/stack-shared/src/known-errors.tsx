@@ -675,6 +675,17 @@ const PasskeyAuthenticationNotEnabled = createKnownErrorConstructor(
   () => [] as const,
 );
 
+const AnonymousAccountsNotEnabled = createKnownErrorConstructor(
+  KnownError,
+  "ANONYMOUS_ACCOUNTS_NOT_ENABLED",
+  () => [
+    400,
+    "Anonymous accounts are not enabled for this project.",
+  ] as const,
+  () => [] as const,
+);
+
+
 const EmailPasswordMismatch = createKnownErrorConstructor(
   KnownError,
   "EMAIL_PASSWORD_MISMATCH",
@@ -1093,6 +1104,20 @@ const TeamMembershipAlreadyExists = createKnownErrorConstructor(
   () => [] as const,
 );
 
+const ProjectPermissionRequired = createKnownErrorConstructor(
+  KnownError,
+  "PROJECT_PERMISSION_REQUIRED",
+  (userId, permissionId) => [
+    401,
+    `User ${userId} does not have permission ${permissionId}.`,
+    {
+      user_id: userId,
+      permission_id: permissionId,
+    },
+  ] as const,
+  (json) => [json.user_id, json.permission_id] as const,
+);
+
 const TeamPermissionRequired = createKnownErrorConstructor(
   KnownError,
   "TEAM_PERMISSION_REQUIRED",
@@ -1288,6 +1313,7 @@ export const KnownErrors = {
   SignUpNotEnabled,
   PasswordAuthenticationNotEnabled,
   PasskeyAuthenticationNotEnabled,
+  AnonymousAccountsNotEnabled,
   EmailPasswordMismatch,
   RedirectUrlNotWhitelisted,
   PasswordRequirementsNotMet,
@@ -1325,6 +1351,7 @@ export const KnownErrors = {
   InvalidTotpCode,
   UserAuthenticationRequired,
   TeamMembershipAlreadyExists,
+  ProjectPermissionRequired,
   TeamPermissionRequired,
   InvalidSharedOAuthProviderId,
   InvalidStandardOAuthProviderId,

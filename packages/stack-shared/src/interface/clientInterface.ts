@@ -21,6 +21,7 @@ import { InternalProjectsCrud, ProjectsCrud } from './crud/projects';
 import { SessionsCrud } from './crud/sessions';
 import { TeamInvitationCrud } from './crud/team-invitation';
 import { TeamMemberProfilesCrud } from './crud/team-member-profiles';
+import { ProjectPermissionsCrud } from './crud/project-permissions';
 import { TeamPermissionsCrud } from './crud/team-permissions';
 import { TeamsCrud } from './crud/teams';
 
@@ -824,6 +825,27 @@ export class StackClientInterface {
     });
   }
 
+  async signUpAnonymously(session: InternalSession): Promise<Result<{ accessToken: string, refreshToken: string }, never>> {
+    const res = await this.sendClientRequestAndCatchKnownError(
+      "/auth/anonymous/sign-up",
+      {
+        method: "POST",
+      },
+      session,
+      [],
+    );
+
+    if (res.status === "error") {
+      return Result.error(res.error);
+    }
+
+    const result = await res.data.json();
+    return Result.ok({
+      accessToken: result.access_token,
+      refreshToken: result.refresh_token,
+    });
+  }
+
   async signInWithMagicLink(code: string): Promise<Result<{ newUser: boolean, accessToken: string, refreshToken: string }, KnownErrors["VerificationCodeError"]>> {
     const res = await this.sendClientRequestAndCatchKnownError(
       "/auth/otp/sign-in",
@@ -1161,6 +1183,21 @@ export class StackClientInterface {
       session,
     );
     const result = await response.json() as TeamPermissionsCrud['Client']['List'];
+    return result.items;
+  }
+
+  async listCurrentUserProjectPermissions(
+    options: {
+      recursive: boolean,
+    },
+    session: InternalSession
+  ): Promise<ProjectPermissionsCrud['Client']['Read'][]> {
+    const response = await this.sendClientRequest(
+      `/project-permissions?user_id=me&recursive=${options.recursive}`,
+      {},
+      session,
+    );
+    const result = await response.json() as ProjectPermissionsCrud['Client']['List'];
     return result.items;
   }
 
