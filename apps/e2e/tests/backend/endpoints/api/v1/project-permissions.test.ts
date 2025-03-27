@@ -1,7 +1,6 @@
 import { wait } from "@stackframe/stack-shared/dist/utils/promises";
 import { it } from "../../../../helpers";
 import { ApiKey, Auth, InternalProjectKeys, Project, Webhook, backendContext, niceBackendFetch } from "../../../backend-helpers";
-import { StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
 
 it("is not allowed to list permissions from the other users on the client", async ({ expect }) => {
   await Auth.Otp.signIn();
@@ -317,17 +316,17 @@ it("should trigger project permission webhook when a permission is revoked from 
   `);
 });
 
-it("should not be able to create a project permission with a same name as team permission", async ({ expect }) => {
+it("should not be able to create a project or team permission with a same name as project permission", async ({ expect }) => {
   await Auth.Otp.signIn();
   const { adminAccessToken } = await Project.createAndGetAdminToken();
 
-  // First, create a team permission definition
-  const createTeamPermissionResponse = await niceBackendFetch(`/api/v1/team-permission-definitions`, {
+  // First, create a project permission definition
+  const createTeamPermissionResponse = await niceBackendFetch(`/api/v1/project-permission-definitions`, {
     accessType: "admin",
     method: "POST",
     body: {
-      id: 'custom_team_permission',
-      description: 'A custom team permission',
+      id: 'custom_project_permission',
+      description: 'A custom project permission',
     },
     headers: {
       'x-stack-admin-access-token': adminAccessToken
@@ -339,19 +338,43 @@ it("should not be able to create a project permission with a same name as team p
       "status": 201,
       "body": {
         "contained_permission_ids": [],
-        "description": "A custom team permission",
-        "id": "custom_team_permission",
+        "description": "A custom project permission",
+        "id": "custom_project_permission",
       },
       "headers": Headers { <some fields may have been hidden> },
     }
   `);
+
+  // Try creating another team permission with the same name
+  const createAnotherTeamPermissionResponse = await niceBackendFetch(`/api/v1/team-permission-definitions`, {
+    accessType: "admin",
+    method: "POST",
+    body: { id: 'custom_project_permission' },
+    headers: { 'x-stack-admin-access-token': adminAccessToken },
+  });
+
+  expect(createAnotherTeamPermissionResponse).toMatchInlineSnapshot(`
+    NiceResponse {
+      "status": 400,
+      "body": {
+        "code": "PERMISSION_ID_ALREADY_EXISTS",
+        "details": { "permission_id": "custom_project_permission" },
+        "error": "Permission with ID \\"custom_project_permission\\" already exists. Choose a different ID.",
+      },
+      "headers": Headers {
+        "x-stack-known-error": "PERMISSION_ID_ALREADY_EXISTS",
+        <some fields may have been hidden>,
+      },
+    }
+  `);
+
 
   // Now try to create a project permission with the same name
   const createProjectPermissionResponse = await niceBackendFetch(`/api/v1/project-permission-definitions`, {
     accessType: "admin",
     method: "POST",
     body: {
-      id: 'custom_team_permission',
+      id: 'custom_project_permission',
       description: 'Attempt to create a project permission with same name as team permission',
     },
     headers: {
@@ -365,8 +388,8 @@ it("should not be able to create a project permission with a same name as team p
       "status": 400,
       "body": {
         "code": "PERMISSION_ID_ALREADY_EXISTS",
-        "details": { "permission_id": "custom_team_permission" },
-        "error": "Permission with ID \\"custom_team_permission\\" already exists. Choose a different ID.",
+        "details": { "permission_id": "custom_project_permission" },
+        "error": "Permission with ID \\"custom_project_permission\\" already exists. Choose a different ID.",
       },
       "headers": Headers {
         "x-stack-known-error": "PERMISSION_ID_ALREADY_EXISTS",
