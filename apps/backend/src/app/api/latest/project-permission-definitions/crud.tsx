@@ -1,10 +1,11 @@
 import { createPermissionDefinition, deletePermissionDefinition, listPermissionDefinitions, updatePermissionDefinitions } from "@/lib/permissions";
-import { isPrismaError, retryTransaction } from "@/prisma-client";
+import { isPrismaUniqueConstraintViolation, retryTransaction } from "@/prisma-client";
 import { createCrudHandlers } from "@/route-handlers/crud-handler";
 import { KnownErrors } from "@stackframe/stack-shared";
 import { projectPermissionDefinitionsCrud } from '@stackframe/stack-shared/dist/interface/crud/project-permissions';
 import { permissionDefinitionIdSchema, yupObject } from "@stackframe/stack-shared/dist/schema-fields";
 import { createLazyProxy } from "@stackframe/stack-shared/dist/utils/proxies";
+
 
 export const projectPermissionDefinitionsCrudHandlers = createLazyProxy(() => createCrudHandlers(projectPermissionDefinitionsCrud, {
   paramsSchema: yupObject({
@@ -19,7 +20,11 @@ export const projectPermissionDefinitionsCrudHandlers = createLazyProxy(() => cr
           data,
         });
       } catch (error) {
-        if (isPrismaError(error, "UNIQUE_CONSTRAINT_VIOLATION")) {
+        if (
+          isPrismaUniqueConstraintViolation(error, "Permission", ["tenancyId", "queryableId"]) ||
+          isPrismaUniqueConstraintViolation(error, "Permission", ["projectConfigId", "queryableId"]) ||
+          isPrismaUniqueConstraintViolation(error, "Permission", ["tenancyId", "teamId", "queryableId"])
+        ) {
           throw new KnownErrors.PermissionIdAlreadyExists(data.id);
         }
         throw error;
@@ -36,7 +41,11 @@ export const projectPermissionDefinitionsCrudHandlers = createLazyProxy(() => cr
           data,
         });
       } catch (error) {
-        if (isPrismaError(error, "UNIQUE_CONSTRAINT_VIOLATION")) {
+        if (
+          isPrismaUniqueConstraintViolation(error, "Permission", ["tenancyId", "queryableId"]) ||
+          isPrismaUniqueConstraintViolation(error, "Permission", ["projectConfigId", "queryableId"]) ||
+          isPrismaUniqueConstraintViolation(error, "Permission", ["tenancyId", "teamId", "queryableId"])
+        ) {
           throw new KnownErrors.PermissionIdAlreadyExists(data.id ?? '');
         }
         throw error;
