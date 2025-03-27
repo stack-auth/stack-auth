@@ -1,6 +1,6 @@
 {
   "name": "@stackframe/docs",
-  "version": "2.7.30",
+  "version": "2.8.0",
   "description": "",
   "main": "index.js",
   "private": true,
