@@ -31,9 +31,7 @@ function EditDialog(props: {
   permissionType: PermissionType,
 }) {
   const stackAdminApp = useAdminApp();
-  const permissions = props.permissionType === 'project'
-    ? stackAdminApp.useProjectPermissionDefinitions()
-    : stackAdminApp.useTeamPermissionDefinitions();
+  const permissions = [...stackAdminApp.useTeamPermissionDefinitions(), ...stackAdminApp.useProjectPermissionDefinitions()];
   const currentPermission = permissions.find((p) => p.id === props.selectedPermissionId);
   if (!currentPermission) {
     return null;

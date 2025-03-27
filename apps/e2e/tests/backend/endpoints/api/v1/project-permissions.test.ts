@@ -1,6 +1,7 @@
 import { wait } from "@stackframe/stack-shared/dist/utils/promises";
 import { it } from "../../../../helpers";
 import { ApiKey, Auth, InternalProjectKeys, Project, Webhook, backendContext, niceBackendFetch } from "../../../backend-helpers";
+import { StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
 
 it("is not allowed to list permissions from the other users on the client", async ({ expect }) => {
   await Auth.Otp.signIn();
@@ -314,4 +315,50 @@ it("should trigger project permission webhook when a permission is revoked from 
       "timestamp": <stripped field 'timestamp'>,
     }
   `);
+});
+
+it("should not be able to create a project permission with a same name as team permission", async ({ expect }) => {
+  await Auth.Otp.signIn();
+  const { adminAccessToken } = await Project.createAndGetAdminToken();
+
+  // First, create a team permission definition
+  const createTeamPermissionResponse = await niceBackendFetch(`/api/v1/team-permission-definitions`, {
+    accessType: "admin",
+    method: "POST",
+    body: {
+      id: 'custom_team_permission',
+      description: 'A custom team permission',
+    },
+    headers: {
+      'x-stack-admin-access-token': adminAccessToken
+    },
+  });
+
+  expect(createTeamPermissionResponse).toMatchInlineSnapshot(`
+    NiceResponse {
+      "status": 201,
+      "body": {
+        "contained_permission_ids": [],
+        "description": "A custom team permission",
+        "id": "custom_team_permission",
+      },
+      "headers": Headers { <some fields may have been hidden> },
+    }
+  `);
+
+  // Now try to create a project permission with the same name
+  const createProjectPermissionResponse = niceBackendFetch(`/api/v1/project-permission-definitions`, {
+    accessType: "admin",
+    method: "POST",
+    body: {
+      id: 'custom_team_permission',
+      description: 'Attempt to create a project permission with same name as team permission',
+    },
+    headers: {
+      'x-stack-admin-access-token': adminAccessToken
+    },
+  });
+
+  // TODO: P2002 postgres codes should automatically be converted into duplicate key error
+  await expect(createProjectPermissionResponse).rejects.toThrow(StackAssertionError);
 });

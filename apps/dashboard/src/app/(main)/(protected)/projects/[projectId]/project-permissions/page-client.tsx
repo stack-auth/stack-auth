@@ -40,7 +40,7 @@ function CreateDialog(props: {
   onOpenChange: (open: boolean) => void,
 }) {
   const stackAdminApp = useAdminApp();
-  const permissions = stackAdminApp.useProjectPermissionDefinitions();
+  const permissions = [...stackAdminApp.useTeamPermissionDefinitions(), ...stackAdminApp.useProjectPermissionDefinitions()];
 
   const formSchema = yup.object({
     id: yup.string().defined()
