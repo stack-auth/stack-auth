@@ -58,7 +58,8 @@ To check whether a user has a specific permission, use the `getPermission` metho
 
     export default async function CheckUserPermission() {
       const user = await stackServerApp.getUser({ or: 'redirect' });
-      const permission = await user.getPermission('read');
+      const team = await stackServerApp.getTeam('some-team-id');
+      const permission = await user.getPermission(team, 'read');
 
       // This is a server-side check, so it's secure.
       return (
