@@ -1,5 +1,6 @@
 import * as oauth from 'oauth4webapi';
 
+import * as yup from 'yup';
 import { KnownError, KnownErrors } from '../known-errors';
 import { AccessToken, InternalSession, RefreshToken } from '../sessions';
 import { generateSecureRandomString } from '../utils/crypto';
@@ -7,7 +8,7 @@ import { StackAssertionError, throwErr } from '../utils/errors';
 import { globalVar } from '../utils/globals';
 import { HTTP_METHODS, HttpMethod } from '../utils/http';
 import { ReadonlyJson } from '../utils/json';
-import { filterUndefined } from '../utils/objects';
+import { filterUndefined, filterUndefinedOrNull } from '../utils/objects';
 import { AuthenticationResponseJSON, PublicKeyCredentialCreationOptionsJSON, PublicKeyCredentialRequestOptionsJSON, RegistrationResponseJSON } from '../utils/passkey';
 import { wait } from '../utils/promises';
 import { Result } from "../utils/results";
@@ -15,7 +16,7 @@ import { deindent } from '../utils/strings';
 import { ContactChannelsCrud } from './crud/contact-channels';
 import { CurrentUserCrud } from './crud/current-user';
 import { ConnectedAccountAccessTokenCrud } from './crud/oauth';
-import { TeamApiKeysCrud, UserApiKeysCrud } from './crud/project-api-keys';
+import { TeamApiKeysCrud, UserApiKeysCrud, teamApiKeysCreateInputSchema, teamApiKeysCreateOutputSchema, userApiKeysCreateInputSchema, userApiKeysCreateOutputSchema } from './crud/project-api-keys';
 import { InternalProjectsCrud, ProjectsCrud } from './crud/projects';
 import { SessionsCrud } from './crud/sessions';
 import { TeamInvitationCrud } from './crud/team-invitation';
@@ -1432,131 +1433,52 @@ export class StackClientInterface {
     return Result.ok(undefined);
   }
 
-  // User API Keys CRUD operations
-  async listUserApiKeys(
-    options: {
-      user_id?: string,
-    },
-    session: InternalSession,
-  ): Promise<UserApiKeysCrud['Client']['Read'][]> {
-    const queryParams = new URLSearchParams();
-    if (options.user_id) {
-      queryParams.set('user_id', options.user_id);
-    } else {
-      queryParams.set('user_id', 'me');
+  private async _getApiKeyRequestInfo(options: { user_id: string | null } | { team_id: string }) {
+    if ("user_id" in options && "team_id" in options) {
+      throw new StackAssertionError("Cannot specify both user_id and team_id in _getApiKeyRequestInfo");
     }
 
+    return {
+      endpoint: "team_id" in options ? "/team-api-keys" : "/user-api-keys",
+      queryParams: new URLSearchParams(filterUndefinedOrNull(options)),
+    };
+  }
+
+  // API Keys CRUD operations
+  listProjectApiKeys(options: { user_id: string }, session: InternalSession | null, requestType: "client" | "server" | "admin"): Promise<UserApiKeysCrud['Client']['Read'][]>;
+  listProjectApiKeys(options: { team_id: string }, session: InternalSession | null, requestType: "client" | "server" | "admin"): Promise<TeamApiKeysCrud['Client']['Read'][]>;
+  listProjectApiKeys(options: { user_id: string } | { team_id: string }, session: InternalSession | null, requestType: "client" | "server" | "admin"): Promise<(UserApiKeysCrud['Client']['Read'] | TeamApiKeysCrud['Client']['Read'])[]>;
+  async listProjectApiKeys(
+    options: { user_id: string } | { team_id: string },
+    session: InternalSession | null,
+    requestType: "client" | "server" | "admin",
+  ): Promise<(UserApiKeysCrud['Client']['Read'] | TeamApiKeysCrud['Client']['Read'])[]> {
+    const { endpoint, queryParams } = await this._getApiKeyRequestInfo(options);
+
     const response = await this.sendClientRequest(
-      `/user-api-keys?${queryParams.toString()}`,
+      `${endpoint}?${queryParams.toString()}`,
       {
         method: "GET",
       },
       session,
+      requestType,
     );
     const json = await response.json();
     return json.items;
   }
 
-  async createUserApiKey(
-    data: {
-      description?: string,
-      expires_at_millis?: number,
-      user_id?: string,
-    },
-    session: InternalSession,
-  ): Promise<UserApiKeysCrud['Client']['Read'] & { secret_api_key: string }> {
-    const response = await this.sendClientRequest(
-      "/user-api-keys",
-      {
-        method: "POST",
-        headers: {
-          "content-type": "application/json",
-        },
-        body: JSON.stringify({
-          ...data,
-          user_id: data.user_id || 'me',
-        }),
-      },
-      session,
-    );
-    return await response.json();
-  }
+  createProjectApiKey(data: yup.InferType<typeof userApiKeysCreateInputSchema>, session: InternalSession | null, requestType: "client" | "server" | "admin"): Promise<yup.InferType<typeof userApiKeysCreateOutputSchema>>;
+  createProjectApiKey(data: yup.InferType<typeof teamApiKeysCreateInputSchema>, session: InternalSession | null, requestType: "client" | "server" | "admin"): Promise<yup.InferType<typeof teamApiKeysCreateOutputSchema>>;
+  createProjectApiKey(data: yup.InferType<typeof userApiKeysCreateInputSchema> | yup.InferType<typeof teamApiKeysCreateInputSchema>, session: InternalSession | null, requestType: "client" | "server" | "admin"): Promise<yup.InferType<typeof userApiKeysCreateOutputSchema> | yup.InferType<typeof teamApiKeysCreateOutputSchema>>;
+  async createProjectApiKey(
+    data: yup.InferType<typeof userApiKeysCreateInputSchema> | yup.InferType<typeof teamApiKeysCreateInputSchema>,
+    session: InternalSession | null,
+    requestType: "client" | "server" | "admin",
+  ): Promise<yup.InferType<typeof userApiKeysCreateOutputSchema> | yup.InferType<typeof teamApiKeysCreateOutputSchema>> {
+    const { endpoint } = await this._getApiKeyRequestInfo(data);
 
-  async getUserApiKey(
-    keyId: string,
-    session: InternalSession,
-  ): Promise<UserApiKeysCrud['Client']['Read']> {
     const response = await this.sendClientRequest(
-      `/user-api-keys/${keyId}`,
-      {
-        method: "GET",
-      },
-      session,
-    );
-    return await response.json();
-  }
-
-  async updateUserApiKey(
-    keyId: string,
-    data: {
-      description?: string,
-      revoked?: boolean,
-    },
-    session: InternalSession,
-  ): Promise<UserApiKeysCrud['Client']['Read']> {
-    const response = await this.sendClientRequest(
-      `/user-api-keys/${keyId}`,
-      {
-        method: "PATCH",
-        headers: {
-          "content-type": "application/json",
-        },
-        body: JSON.stringify(data),
-      },
-      session,
-    );
-    return await response.json();
-  }
-
-  async deleteUserApiKey(
-    keyId: string,
-    session: InternalSession,
-  ): Promise<void> {
-    await this.sendClientRequest(
-      `/user-api-keys/${keyId}`,
-      {
-        method: "DELETE",
-      },
-      session,
-    );
-  }
-
-  // Team API Keys CRUD operations
-  async listTeamApiKeys(
-    teamId: string,
-    session: InternalSession,
-  ): Promise<TeamApiKeysCrud['Client']['Read'][]> {
-    const response = await this.sendClientRequest(
-      `/team-api-keys?team_id=${teamId}`,
-      {
-        method: "GET",
-      },
-      session,
-    );
-    const json = await response.json();
-    return json.items;
-  }
-
-  async createTeamApiKey(
-    data: {
-      description?: string,
-      expires_at_millis?: number,
-      team_id: string,
-    },
-    session: InternalSession,
-  ): Promise<TeamApiKeysCrud['Client']['Read'] & { secret_api_key: string }> {
-    const response = await this.sendClientRequest(
-      "/team-api-keys",
+      `${endpoint}`,
       {
         method: "POST",
         headers: {
@@ -1565,34 +1487,47 @@ export class StackClientInterface {
         body: JSON.stringify(data),
       },
       session,
+      requestType,
     );
     return await response.json();
   }
 
-  async getTeamApiKey(
+  getProjectApiKey(options: { user_id: string | null }, keyId: string, session: InternalSession | null, requestType: "client" | "server" | "admin"): Promise<UserApiKeysCrud['Client']['Read']>;
+  getProjectApiKey(options: { team_id: string }, keyId: string, session: InternalSession | null, requestType: "client" | "server" | "admin"): Promise<TeamApiKeysCrud['Client']['Read']>;
+  getProjectApiKey(options: { user_id: string | null } | { team_id: string }, keyId: string, session: InternalSession | null, requestType: "client" | "server" | "admin"): Promise<UserApiKeysCrud['Client']['Read'] | TeamApiKeysCrud['Client']['Read']>;
+  async getProjectApiKey(
+    options: { user_id: string | null } | { team_id: string },
     keyId: string,
-    session: InternalSession,
-  ): Promise<TeamApiKeysCrud['Client']['Read']> {
+    session: InternalSession | null,
+    requestType: "client" | "server" | "admin",
+  ): Promise<UserApiKeysCrud['Client']['Read'] | TeamApiKeysCrud['Client']['Read']> {
+    const { endpoint, queryParams } = await this._getApiKeyRequestInfo(options);
+
     const response = await this.sendClientRequest(
-      `/team-api-keys/${keyId}`,
+      `${endpoint}/${keyId}?${queryParams.toString()}`,
       {
         method: "GET",
       },
       session,
+      requestType,
     );
     return await response.json();
   }
 
-  async updateTeamApiKey(
+  updateProjectApiKey(options: { user_id: string }, keyId: string, data: UserApiKeysCrud['Client']['Update'], session: InternalSession | null, requestType: "client" | "server" | "admin"): Promise<UserApiKeysCrud['Client']['Read']>;
+  updateProjectApiKey(options: { team_id: string }, keyId: string, data: TeamApiKeysCrud['Client']['Update'], session: InternalSession | null, requestType: "client" | "server" | "admin"): Promise<TeamApiKeysCrud['Client']['Read']>;
+  updateProjectApiKey(options: { user_id: string } | { team_id: string }, keyId: string, data: UserApiKeysCrud['Client']['Update'] | TeamApiKeysCrud['Client']['Update'], session: InternalSession | null, requestType: "client" | "server" | "admin"): Promise<UserApiKeysCrud['Client']['Read'] | TeamApiKeysCrud['Client']['Read']>;
+  async updateProjectApiKey(
+    options: { user_id: string } | { team_id: string },
     keyId: string,
-    data: {
-      description?: string,
-      revoked?: boolean,
-    },
-    session: InternalSession,
-  ): Promise<TeamApiKeysCrud['Client']['Read']> {
+    data: UserApiKeysCrud['Client']['Update'] | TeamApiKeysCrud['Client']['Update'],
+    session: InternalSession | null,
+    requestType: "client" | "server" | "admin",
+  ): Promise<UserApiKeysCrud['Client']['Read'] | TeamApiKeysCrud['Client']['Read']> {
+    const { endpoint, queryParams } = await this._getApiKeyRequestInfo(options);
+
     const response = await this.sendClientRequest(
-      `/team-api-keys/${keyId}`,
+      `${endpoint}/${keyId}?${queryParams.toString()}`,
       {
         method: "PATCH",
         headers: {
@@ -1601,21 +1536,28 @@ export class StackClientInterface {
         body: JSON.stringify(data),
       },
       session,
+      requestType,
     );
     return await response.json();
   }
 
-  async deleteTeamApiKey(
-    keyId: string,
-    session: InternalSession,
-  ): Promise<void> {
-    await this.sendClientRequest(
-      `/team-api-keys/${keyId}`,
+  checkProjectApiKey(type: "user", apiKey: string, session: InternalSession | null, requestType: "client" | "server" | "admin"): Promise<UserApiKeysCrud['Client']['Read']>;
+  checkProjectApiKey(type: "team", apiKey: string, session: InternalSession | null, requestType: "client" | "server" | "admin"): Promise<TeamApiKeysCrud['Client']['Read']>;
+  checkProjectApiKey(type: "user" | "team", apiKey: string, session: InternalSession | null, requestType: "client" | "server" | "admin"): Promise<UserApiKeysCrud['Client']['Read'] | TeamApiKeysCrud['Client']['Read']>;
+  async checkProjectApiKey(type: "user" | "team", apiKey: string, session: InternalSession | null, requestType: "client" | "server" | "admin"): Promise<UserApiKeysCrud['Client']['Read'] | TeamApiKeysCrud['Client']['Read']> {
+    const response = await this.sendClientRequest(
+      `/${type}-api-keys/check`,
       {
-        method: "DELETE",
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({ api_key: apiKey }),
       },
       session,
+      requestType,
     );
+    return await response.json();
   }
 }
 

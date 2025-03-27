@@ -184,7 +184,7 @@ export function yupUnion<T extends yup.ISchema<any>[]>(...args: T): yup.MixedSch
     const errors = [];
     for (const schema of args) {
       try {
-        await schema.validate(value, context.options);
+        await yupValidate(schema, value, context.options);
         return true;
       } catch (e) {
         errors.push(e);

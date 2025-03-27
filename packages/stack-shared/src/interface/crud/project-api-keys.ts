@@ -1,43 +1,31 @@
-import * as yup from 'yup';
+import * as yup from "yup";
 import { CrudTypeOf, createCrud } from "../../crud";
-import { yupBoolean, yupMixed, yupNumber, yupObject, yupString } from "../../schema-fields";
+import { userIdOrMeSchema, yupBoolean, yupNumber, yupObject, yupString } from "../../schema-fields";
+import { typedFromEntries } from "../../utils/objects";
 
-
-const createApiKeyCrud = <T extends Record<string, yup.Schema>>(options: T) => {
-
-  const baseProjectApiKeysReadSchema = yupObject({
+function createApiKeyCrud<T extends string, IdFieldName extends string, IdSchema extends yup.Schema<any>>(type: T, idFieldName: IdFieldName, idSchema: IdSchema) {
+  const projectApiKeysReadSchema = yupObject({
     id: yupString().defined(),
-    description: yupString().optional(),
+    description: yupString().defined(),
     expires_at_millis: yupNumber().optional(),
     manually_revoked_at_millis: yupNumber().optional(),
     created_at_millis: yupNumber().defined(),
-    ...options,
+    is_public: yupBoolean().defined(),
+    value: yupObject({
+      last_four: yupString().defined(),
+    }).defined(),
+    type: yupString().oneOf([type]).defined(),
+    ...typedFromEntries([[idFieldName, idSchema]]),
   });
-
-  // Used for the result of the create endpoint
-  const projectApiKeysCreateInputSchema = yupObject({
-    description: yupString().optional(),
-    expires_at_millis: yupNumber().optional(),
-    ...options,
-  });
-
-  const combinedProjectApiKeysReadSchema = baseProjectApiKeysReadSchema.concat(yupObject({
-    secret_api_key: yupMixed(),
-  }));
 
   const projectApiKeysUpdateSchema = yupObject({
     description: yupString().optional(),
     revoked: yupBoolean().oneOf([true]).optional(),
   }).defined();
 
-  const projectApiKeysDeleteSchema = yupMixed();
-
   const projectApiKeysCrud = createCrud({
-    // Also adding client schemas to allow client-side access
-    clientCreateSchema: projectApiKeysCreateInputSchema,
-    clientReadSchema: combinedProjectApiKeysReadSchema,
+    clientReadSchema: projectApiKeysReadSchema,
     clientUpdateSchema: projectApiKeysUpdateSchema,
-    serverDeleteSchema: projectApiKeysDeleteSchema,
     docs: {
       clientCreate: {
         description: "Create a new API key",
@@ -67,26 +55,39 @@ const createApiKeyCrud = <T extends Record<string, yup.Schema>>(options: T) => {
     },
   });
 
+  // Used for the result of the create endpoint
+  const projectApiKeysCreateInputSchema = yupObject({
+    description: yupString().defined(),
+    expires_at_millis: yupNumber().nullable().defined(),
+    is_public: yupBoolean().optional(),
+    prefix: yupString().optional().nonEmpty().test("prefix", "Prefix must contain only alphanumeric characters and underscores", (value) => {
+      if (!value) return true;
+      return /^[a-zA-Z0-9_]+$/.test(value);
+    }),
+    ...typedFromEntries([[idFieldName, idSchema]]),
+  });
+  const projectApiKeysCreateOutputSchema = projectApiKeysReadSchema.omit(["value"]).concat(yupObject({
+    value: yupString().defined(),
+  }));
+
   return {
     crud: projectApiKeysCrud,
+    createInputSchema: projectApiKeysCreateInputSchema,
+    createOutputSchema: projectApiKeysCreateOutputSchema,
   };
-};
+}
 
 
-const { crud: userApiKeysCrud } = createApiKeyCrud(
-  {
-    user_id: yupString().defined(),
-  }
-);
-
-export { userApiKeysCrud };
+export const {
+  crud: userApiKeysCrud,
+  createInputSchema: userApiKeysCreateInputSchema,
+  createOutputSchema: userApiKeysCreateOutputSchema,
+} = createApiKeyCrud("user", "user_id", userIdOrMeSchema.defined());
 export type UserApiKeysCrud = CrudTypeOf<typeof userApiKeysCrud>;
 
-const { crud: teamApiKeysCrud } = createApiKeyCrud(
-  {
-    team_id: yupString().defined(),
-  }
-);
-
-export { teamApiKeysCrud };
+export const {
+  crud: teamApiKeysCrud,
+  createInputSchema: teamApiKeysCreateInputSchema,
+  createOutputSchema: teamApiKeysCreateOutputSchema,
+} = createApiKeyCrud("team", "team_id", yupString().defined());
 export type TeamApiKeysCrud = CrudTypeOf<typeof teamApiKeysCrud>;

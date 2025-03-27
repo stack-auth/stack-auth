@@ -1,6 +1,6 @@
 import { describe } from "vitest";
 import { it } from "../../../../../helpers";
-import { ApiKey, Auth, Project, backendContext, niceBackendFetch } from "../../../../backend-helpers";
+import { Auth, InternalApiKey, Project, backendContext, niceBackendFetch } from "../../../../backend-helpers";
 
 
 describe("without project access", () => {
@@ -154,7 +154,7 @@ describe("with admin access to a non-internal project", () => {
 
   it("creates, list, updates, revokes api keys", async ({ expect }) => {
     const { adminAccessToken } = await Project.createAndGetAdminToken();
-    const { createApiKeyResponse } = await ApiKey.create(adminAccessToken);
+    const { createApiKeyResponse } = await InternalApiKey.create(adminAccessToken);
     expect(createApiKeyResponse).toMatchInlineSnapshot(`
       NiceResponse {
         "status": 200,
@@ -219,7 +219,7 @@ describe("with admin access to a non-internal project", () => {
     `);
 
     // create another api key
-    const { createApiKeyResponse: createApiKeyResponse2 } = await ApiKey.create(adminAccessToken, {
+    const { createApiKeyResponse: createApiKeyResponse2 } = await InternalApiKey.create(adminAccessToken, {
       description: 'key2',
       has_publishable_client_key: false,
       has_secret_server_key: true,

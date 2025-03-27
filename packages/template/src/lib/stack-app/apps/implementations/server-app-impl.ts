@@ -1,6 +1,6 @@
 import { KnownErrors, StackServerInterface } from "@stackframe/stack-shared";
 import { ContactChannelsCrud } from "@stackframe/stack-shared/dist/interface/crud/contact-channels";
-import { TeamApiKeysCrud, UserApiKeysCrud } from "@stackframe/stack-shared/dist/interface/crud/project-api-keys";
+import { TeamApiKeysCrud, UserApiKeysCrud, teamApiKeysCreateOutputSchema, userApiKeysCreateOutputSchema } from "@stackframe/stack-shared/dist/interface/crud/project-api-keys";
 import { TeamInvitationCrud } from "@stackframe/stack-shared/dist/interface/crud/team-invitation";
 import { TeamMemberProfilesCrud } from "@stackframe/stack-shared/dist/interface/crud/team-member-profiles";
 import { TeamPermissionDefinitionsCrud, TeamPermissionsCrud } from "@stackframe/stack-shared/dist/interface/crud/team-permissions";
@@ -13,6 +13,7 @@ import { runAsynchronously } from "@stackframe/stack-shared/dist/utils/promises"
 import { suspend } from "@stackframe/stack-shared/dist/utils/react";
 import { Result } from "@stackframe/stack-shared/dist/utils/results";
 import { useMemo } from "react"; // THIS_LINE_PLATFORM react-like
+import * as yup from "yup";
 import { constructRedirectUrl } from "../../../../utils/url";
 import { GetUserOptions, HandlerUrls, OAuthScopesOnSignIn, TokenStoreInit } from "../../common";
 import { OAuthConnection } from "../../connected-accounts";
@@ -24,8 +25,9 @@ import { StackServerAppConstructorOptions } from "../interfaces/server-app";
 import { _StackClientAppImplIncomplete } from "./client-app-impl";
 import { clientVersion, createCache, createCacheBySession, getBaseUrl, getDefaultProjectId, getDefaultPublishableClientKey, getDefaultSecretServerKey } from "./common";
 
+
 // NEXT_LINE_PLATFORM react-like
-import { BaseApiKey, BaseApiKeyUpdateOptions, TeamApiKey, TeamApiKeyCreateOptions, TeamApiKeyFirstView, TeamApiKeyView, UserApiKey, UserApiKeyCreateOptions, UserApiKeyFirstView, UserApiKeyView, teamApiKeyCreateOptionsToCrud, userApiKeyCreateOptionsToCrud } from "../../api-keys";
+import { ApiKey, ApiKeyCreationOptions, ApiKeyUpdateOptions, apiKeyCreationOptionsToCrud, apiKeyUpdateOptionsToCrud } from "../../api-keys";
 import { useAsyncCache } from "./common";
 
 export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, ProjectId extends string> extends _StackClientAppImplIncomplete<HasTokenStore, ProjectId>
@@ -51,10 +53,6 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
   });
   private readonly _serverUserCache = createCache<string[], UsersCrud['Server']['Read'] | null>(async ([userId]) => {
     const user = await this._interface.getServerUserById(userId);
-    return Result.or(user, null);
-  });
-  private readonly _serverUserByApiKeyCache = createCache<string[], UsersCrud['Server']['Read'] | null>(async ([apiKey]) => {
-    const user = await this._interface.getServerUserByApiKey(apiKey);
     return Result.or(user, null);
   });
   private readonly _serverTeamsCache = createCache<[string | undefined], TeamsCrud['Server']['Read'][]>(async ([userId]) => {
@@ -117,28 +115,31 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
 
   private readonly _serverUserApiKeysCache = createCache<[string], UserApiKeysCrud['Server']['Read'][]>(
     async ([userId]) => {
-      const result = await this._interface.listServerUserApiKeys({
+      const result = await this._interface.listProjectApiKeys({
         user_id: userId,
-      });
-      return result.items;
+      }, null, "server");
+      return result as UserApiKeysCrud['Server']['Read'][];
     }
   );
 
   private readonly _serverTeamApiKeysCache = createCache<[string], TeamApiKeysCrud['Server']['Read'][]>(
     async ([teamId]) => {
-      const result = await this._interface.listServerTeamApiKeys(teamId);
-      return result.items;
+      const result = await this._interface.listProjectApiKeys({
+        team_id: teamId,
+      }, null, "server");
+      return result as TeamApiKeysCrud['Server']['Read'][];
     }
   );
 
-  private readonly _serverTeamByApiKeyCache = createCache<[string], TeamsCrud['Server']['Read'] | null>(
-    async ([apiKey]) => {
-      const apiKeyData = await this._interface.getServerTeamApiKey(apiKey);
-      if (!apiKeyData.team_id) return null;
-      const teams = await this._interface.listServerTeams({ userId: apiKeyData.team_id });
-      return teams[0] ?? null;
-    }
-  );
+  private readonly _serverCheckApiKeyCache = createCache<["user" | "team", string], UserApiKeysCrud['Server']['Read'] | TeamApiKeysCrud['Server']['Read']>(async ([type, apiKey]) => {
+    const result = await this._interface.checkProjectApiKey(
+      type,
+      apiKey,
+      null,
+      "server",
+    );
+    return result;
+  });
 
   private async _updateServerUser(userId: string, update: ServerUserUpdateOptions): Promise<UsersCrud['Server']['Read']> {
     const result = await this._interface.updateServerUser(userId, serverUserUpdateOptionsToCrud(update));
@@ -232,80 +233,16 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
     });
   }
 
-  // Base api key from crud
-  protected _serverApiKeyBaseFromCrud(data: UserApiKeysCrud['Server']['Read']): UserApiKey;
-  protected _serverApiKeyBaseFromCrud(data: TeamApiKeysCrud['Server']['Read']): TeamApiKey;
-  protected _serverApiKeyBaseFromCrud(data: UserApiKeysCrud['Server']['Read'] | TeamApiKeysCrud['Server']['Read']): Omit<BaseApiKey, 'revoke'> & { userId?: string, teamId?: string } {
-    const app = this;
-    const userId = "user_id" in data ? data.user_id : undefined;
-    const teamId = "team_id" in data ? data.team_id : undefined;
+  protected _serverApiKeyFromCrud(crud: TeamApiKeysCrud['Client']['Read']): ApiKey<"team">;
+  protected _serverApiKeyFromCrud(crud: UserApiKeysCrud['Client']['Read']): ApiKey<"user">;
+  protected _serverApiKeyFromCrud(crud: yup.InferType<typeof teamApiKeysCreateOutputSchema>): ApiKey<"team", true>;
+  protected _serverApiKeyFromCrud(crud: yup.InferType<typeof userApiKeysCreateOutputSchema>): ApiKey<"user", true>;
+  protected _serverApiKeyFromCrud(crud: TeamApiKeysCrud['Server']['Read'] | UserApiKeysCrud['Server']['Read'] | yup.InferType<typeof teamApiKeysCreateOutputSchema> | yup.InferType<typeof userApiKeysCreateOutputSchema>): ApiKey<"user" | "team", boolean> {
     return {
-      id: data.id,
-      description: data.description || undefined,
-      expiresAt: data.expires_at_millis ? new Date(data.expires_at_millis) : undefined,
-      manuallyRevokedAt: data.manually_revoked_at_millis ? new Date(data.manually_revoked_at_millis) : null,
-      createdAt: new Date(data.created_at_millis),
-      userId: userId,
-      teamId: teamId,
-      isValid() {
-        return this.whyInvalid() === null;
-      },
-      whyInvalid() {
-        if (this.expiresAt && this.expiresAt.getTime() < Date.now()) return "expired";
-        if (this.manuallyRevokedAt) return "manually-revoked";
-        return null;
-      },
-
-    };
-  }
-
-  protected _serverApiKeyUserFromCrud(data: UserApiKeysCrud['Server']['Read']): UserApiKey {
-    return {
-      ...this._serverApiKeyBaseFromCrud(data),
-      userId: data.user_id,
+      ...this._baseApiKeyFromCrud(crud),
       revoke: async () => {
-        await this._interface.updateServerUserApiKey(data.id, { revoked: true });
-        await this._serverUserApiKeysCache.refresh([data.user_id]);
+        await this._interface.updateProjectApiKey(crud.type === "team" ? { team_id: crud.team_id } : { user_id: crud.user_id }, crud.id, { revoked: true }, null, "server");
       }
-    };
-  };
-
-  protected _serverApiKeyTeamFromCrud(data: TeamApiKeysCrud['Server']['Read']): TeamApiKey {
-    return {
-      ...this._serverApiKeyBaseFromCrud(data),
-      teamId: data.team_id,
-      revoke: async () => {
-        await this._interface.updateServerTeamApiKey(data.id, { revoked: true });
-        await this._serverTeamApiKeysCache.refresh([data.team_id]);
-      }
-    };
-  };
-
-  protected _serverUserApiKeyFromCrudRead(data: UserApiKeysCrud['Server']['Read']): UserApiKeyView {
-    return {
-      ...this._serverApiKeyBaseFromCrud(data),
-      secretApiKey: data.secret_api_key ? { lastFour: data.secret_api_key.last_four } : null,
-    };
-  }
-
-  protected _serverTeamApiKeyFromCrudRead(data: TeamApiKeysCrud['Server']['Read']): TeamApiKeyView {
-    return {
-      ...this._serverApiKeyBaseFromCrud(data),
-      secretApiKey: data.secret_api_key ? { lastFour: data.secret_api_key.last_four } : null,
-    };
-  }
-
-  protected _serverUserApiKeyFromCrudCreate(data: UserApiKeysCrud['Server']['Read'] & { secret_api_key: string }): UserApiKeyFirstView {
-    return {
-      ...this._serverApiKeyBaseFromCrud(data),
-      secretApiKey: data.secret_api_key,
-    };
-  }
-
-  protected _serverTeamApiKeyFromCrudCreate(data: TeamApiKeysCrud['Server']['Read'] & { secret_api_key: string }): TeamApiKeyFirstView {
-    return {
-      ...this._serverApiKeyBaseFromCrud(data),
-      secretApiKey: data.secret_api_key,
     };
   }
 
@@ -494,28 +431,32 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
       // IF_PLATFORM react-like
       useApiKeys() {
         const result = useAsyncCache(app._serverUserApiKeysCache, [crud.id] as const, "user.useApiKeys()");
-        return result.map((apiKey) => app._serverUserApiKeyFromCrudRead(apiKey));
+        return result.map((apiKey) => app._serverApiKeyFromCrud(apiKey));
       },
       // END_PLATFORM
       async listApiKeys() {
         const result = Result.orThrow(await app._serverUserApiKeysCache.getOrWait([crud.id], "write-only"));
-        return result.map((apiKey) => app._serverUserApiKeyFromCrudRead(apiKey));
+        return result.map((apiKey) => app._serverApiKeyFromCrud(apiKey));
       },
-      async createApiKey(options: UserApiKeyCreateOptions) {
-        const result = await app._interface.createServerUserApiKey(
-          userApiKeyCreateOptionsToCrud(options, crud.id)
+      async createApiKey(options: ApiKeyCreationOptions<"user">) {
+        const result = await app._interface.createProjectApiKey(
+          await apiKeyCreationOptionsToCrud("user", crud.id, options),
+          null,
+          "server",
         );
         await app._serverUserApiKeysCache.refresh([crud.id]);
-        return app._serverUserApiKeyFromCrudCreate(result);
+        return app._serverApiKeyFromCrud(result);
       },
-      async updateApiKey(keyId: string, options: BaseApiKeyUpdateOptions) {
-        const result = await app._interface.updateServerUserApiKey(keyId, options);
+      async updateApiKey(keyId: string, options: ApiKeyUpdateOptions<"user">) {
+        const result = await app._interface.updateProjectApiKey(
+          { user_id: crud.id },
+          keyId,
+          await apiKeyUpdateOptionsToCrud("user", options),
+          null,
+          "server",
+        );
         await app._serverUserApiKeysCache.refresh([crud.id]);
-        return app._serverUserApiKeyFromCrudRead(result);
-      },
-      async deleteApiKey(keyId: string) {
-        await app._interface.deleteServerUserApiKey(keyId);
-        await app._serverUserApiKeysCache.refresh([crud.id]);
+        return app._serverApiKeyFromCrud(result);
       },
     };
   }
@@ -620,30 +561,54 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
       // IF_PLATFORM react-like
       useApiKeys() {
         const result = useAsyncCache(app._serverTeamApiKeysCache, [crud.id] as const, "team.useApiKeys()");
-        return result.map((apiKey) => app._serverTeamApiKeyFromCrudRead(apiKey));
+        return result.map((apiKey) => app._serverApiKeyFromCrud(apiKey));
       },
       // END_PLATFORM
       async listApiKeys() {
         const result = Result.orThrow(await app._serverTeamApiKeysCache.getOrWait([crud.id], "write-only"));
-        return result.map((apiKey) => app._serverTeamApiKeyFromCrudRead(apiKey));
+        return result.map((apiKey) => app._serverApiKeyFromCrud(apiKey));
       },
-      async createApiKey(options: TeamApiKeyCreateOptions) {
-        const result = await app._interface.createServerTeamApiKey(
-          teamApiKeyCreateOptionsToCrud(options, crud.id)
+      async createApiKey(options: ApiKeyCreationOptions<"team">) {
+        const result = await app._interface.createProjectApiKey(
+          await apiKeyCreationOptionsToCrud("team", crud.id, options),
+          null,
+          "server",
         );
         await app._serverTeamApiKeysCache.refresh([crud.id]);
-        return app._serverTeamApiKeyFromCrudCreate(result);
+        return app._serverApiKeyFromCrud(result);
       },
-      async updateApiKey(keyId: string, options: BaseApiKeyUpdateOptions) {
-        const result = await app._interface.updateServerTeamApiKey(keyId, options);
+      async updateApiKey(keyId: string, options: ApiKeyUpdateOptions<"team">) {
+        const result = await app._interface.updateProjectApiKey(
+          { team_id: crud.id },
+          keyId,
+          await apiKeyUpdateOptionsToCrud("team", options),
+          null,
+          "server",
+        );
         await app._serverTeamApiKeysCache.refresh([crud.id]);
-        return app._serverTeamApiKeyFromCrudRead(result);
-      },
-      async deleteApiKey(keyId: string) {
-        await app._interface.deleteServerTeamApiKey(keyId);
-        await app._serverTeamApiKeysCache.refresh([crud.id]);
+        return app._serverApiKeyFromCrud(result);
       },
     };
+  }
+
+  protected async _getUserApiKey(options: { apiKey: string }): Promise<ApiKey<"user"> | null> {
+    const crud = Result.orThrow(await this._serverCheckApiKeyCache.getOrWait(["user", options.apiKey], "write-only")) as UserApiKeysCrud['Server']['Read'];
+    return this._serverApiKeyFromCrud(crud);
+  }
+
+  protected async _getTeamApiKey(options: { apiKey: string }): Promise<ApiKey<"team"> | null> {
+    const crud = Result.orThrow(await this._serverCheckApiKeyCache.getOrWait(["team", options.apiKey], "write-only")) as TeamApiKeysCrud['Server']['Read'];
+    return this._serverApiKeyFromCrud(crud);
+  }
+
+  protected _useUserApiKey(options: { apiKey: string }): ApiKey<"user"> | null {
+    const crud = useAsyncCache(this._serverCheckApiKeyCache, ["user", options.apiKey] as const, "useUserApiKey()") as UserApiKeysCrud['Server']['Read'];
+    return useMemo(() => this._serverApiKeyFromCrud(crud), [crud]);
+  }
+
+  protected _useTeamApiKey(options: { apiKey: string }): ApiKey<"team"> | null {
+    const crud = useAsyncCache(this._serverCheckApiKeyCache, ["team", options.apiKey] as const, "useTeamApiKey()") as TeamApiKeysCrud['Server']['Read'];
+    return useMemo(() => this._serverApiKeyFromCrud(crud), [crud]);
   }
 
   async createUser(options: ServerUserCreateOptions): Promise<ServerUser> {
@@ -698,8 +663,11 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
   }
 
   async getServerUserByApiKey(apiKey: string): Promise<ServerUser | null> {
-    const crud = Result.orThrow(await this._serverUserByApiKeyCache.getOrWait([apiKey], "write-only"));
-    return crud && this._serverUserFromCrud(crud);
+    const apiKeyObject = await this._getUserApiKey({ apiKey });
+    if (apiKeyObject === null) {
+      return null;
+    }
+    return await this.getServerUserById(apiKeyObject.userId);
   }
 
   // IF_PLATFORM react-like
@@ -848,17 +816,18 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
   }
 
   protected async _getTeamByApiKey(apiKey: string): Promise<ServerTeam | null> {
-    const crud = Result.orThrow(await this._serverTeamByApiKeyCache.getOrWait([apiKey], "write-only"));
-    if (crud === null) {
+    const apiKeyObject = await this._getTeamApiKey({ apiKey });
+    if (apiKeyObject === null) {
       return null;
     }
-    return this._serverTeamFromCrud(crud);
+    return await this.getTeam(apiKeyObject.teamId);
   }
 
   protected _useTeamByApiKey(apiKey: string): ServerTeam | null {
-    const crud = useAsyncCache(this._serverTeamByApiKeyCache, [apiKey]  as const, "useTeamByApiKey()");
-    return useMemo(() => {
-      return crud && this._serverTeamFromCrud(crud);
-    }, [crud]);
+    const apiKeyObject = this._useTeamApiKey({ apiKey });
+    if (apiKeyObject === null) {
+      return null;
+    }
+    return this.useTeam(apiKeyObject.teamId);
   }
 }

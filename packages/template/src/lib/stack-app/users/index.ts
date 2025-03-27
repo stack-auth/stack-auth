@@ -7,7 +7,7 @@ import { GeoInfo } from "@stackframe/stack-shared/dist/utils/geo";
 import { ReadonlyJson } from "@stackframe/stack-shared/dist/utils/json";
 import { ProviderType } from "@stackframe/stack-shared/dist/utils/oauth";
 import { Result } from "@stackframe/stack-shared/dist/utils/results";
-import { BaseApiKeyUpdateOptions, UserApiKey, UserApiKeyCreateOptions, UserApiKeyWithSecret } from "../api-keys";
+import { ApiKeyCreationOptions, ApiKeyUpdateOptions, UserApiKey, UserApiKeyFirstView } from "../api-keys";
 import { AsyncStoreProperty } from "../common";
 import { OAuthConnection } from "../connected-accounts";
 import { ContactChannel, ContactChannelCreateOptions, ServerContactChannel, ServerContactChannelCreateOptions } from "../contact-channels";
@@ -199,9 +199,9 @@ export type UserExtra = {
   getTeamProfile(team: Team): Promise<EditableTeamMemberProfile>,
   useTeamProfile(team: Team): EditableTeamMemberProfile, // THIS_LINE_PLATFORM react-like
 
-  createApiKey(options: UserApiKeyCreateOptions): Promise<UserApiKeyWithSecret>,
+  createApiKey(options: ApiKeyCreationOptions<"user">): Promise<UserApiKeyFirstView>,
   // move this to ApiKey
-  updateApiKey(keyId: string, options: BaseApiKeyUpdateOptions): Promise<UserApiKey>,
+  updateApiKey(keyId: string, options: ApiKeyUpdateOptions<"user">): Promise<UserApiKey>,
 }
 & AsyncStoreProperty<"apiKeys", [], UserApiKey[], true>
 & AsyncStoreProperty<"team", [id: string], Team | null, false>
@@ -276,8 +276,6 @@ export type ServerBaseUser = {
 
   grantPermission(scope: Team, permissionId: string): Promise<void>,
   revokePermission(scope: Team, permissionId: string): Promise<void>,
-
-  deleteApiKey(keyId: string): Promise<void>,
 
   /**
    * Creates a new session object with a refresh token for this user. Can be used to impersonate them.
