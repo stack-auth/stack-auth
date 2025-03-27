@@ -14,7 +14,7 @@ import { DonutChartDisplay, LineChartDisplay, LineChartDisplayConfig } from './l
 const stackAppInternalsSymbol = Symbol.for("StackAuth--DO-NOT-USE-OR-YOU-WILL-BE-FIRED--StackAppInternals");
 
 const dailySignUpsConfig = {
-  name: 'Daily Signups',
+  name: 'Daily Sign-ups',
   description: 'User registration over the last 30 days',
   chart: {
     activity: {
@@ -35,7 +35,7 @@ const dauConfig = {
   }
 } satisfies LineChartDisplayConfig;
 
-export default function PageClient() {
+export default function MetricsPage() {
   const adminApp = useAdminApp();
   const router = useRouter();
 
