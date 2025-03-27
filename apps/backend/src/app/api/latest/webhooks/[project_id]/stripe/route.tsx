@@ -1,5 +1,6 @@
 
-import { prismaClient as prisma } from "@/prisma-client";
+import { getProjectQuery } from "@/lib/projects";
+import { prismaClient as prisma, rawQuery } from "@/prisma-client";
 import { NextApiRequest } from "next";
 import { headers } from "next/headers";
 import { Readable } from "node:stream";
@@ -21,28 +22,19 @@ export const POST = async (req: NextApiRequest, { params }: { params: { project_
     const projectId = params.project_id;
 
     // Fetch the project with its config and stripe config
-    const project = await prisma.project.findUnique({
-      where: { id: projectId },
-      include: {
-        config: {
-          include: {
-            stripeConfig: true
-          }
-        }
-      }
-    });
+    const project = await rawQuery(getProjectQuery(projectId));
 
-    if (!project || !project.config.stripeConfig) {
+    if (!project || !project.config.stripe_config) {
       return Response.json({ error: 'Stripe configuration not found for this project' }, { status: 404 });
     }
 
-    const { stripeSecretKey, stripeWebhookSecret } = project.config.stripeConfig;
+    const { stripe_secret_key, stripe_webhook_secret } = project.config.stripe_config;
 
-    if (!stripeWebhookSecret) {
+    if (!stripe_webhook_secret) {
       return Response.json({ error: 'Stripe webhook secret not configured' }, { status: 400 });
     }
 
-    const stripe = new Stripe(stripeSecretKey);
+    const stripe = new Stripe(stripe_secret_key);
 
     const head = await headers();
     const body = await buffer(req.body as Readable);
@@ -52,7 +44,7 @@ export const POST = async (req: NextApiRequest, { params }: { params: { project_
       return Response.json({ error: 'No signature' }, { status: 400 });
     }
 
-    let event = stripe.webhooks.constructEvent(body, signature, stripeWebhookSecret);
+    let event = stripe.webhooks.constructEvent(body, signature, stripe_webhook_secret);
 
     // Handle the event
     console.log('Stripe event received:', event.type);
