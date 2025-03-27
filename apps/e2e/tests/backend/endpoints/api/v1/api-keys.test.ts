@@ -282,7 +282,7 @@ it.todo("can list all API keys for a user");
 
 it.todo("prevents listing API keys for other users on the client");
 
-it.todo("can not list all API keys for all users on the server");
+it.todo("cannot list all API keys for all users on the server");
 
 it.todo("can check own API keys on the client");
 

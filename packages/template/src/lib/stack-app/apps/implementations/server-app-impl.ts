@@ -601,15 +601,18 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
     return this._serverApiKeyFromCrud(crud);
   }
 
+  // IF_PLATFORM react-like
   protected _useUserApiKey(options: { apiKey: string }): ApiKey<"user"> | null {
     const crud = useAsyncCache(this._serverCheckApiKeyCache, ["user", options.apiKey] as const, "useUserApiKey()") as UserApiKeysCrud['Server']['Read'];
     return useMemo(() => this._serverApiKeyFromCrud(crud), [crud]);
   }
-
+  // END_PLATFORM
+  // IF_PLATFORM react-like
   protected _useTeamApiKey(options: { apiKey: string }): ApiKey<"team"> | null {
     const crud = useAsyncCache(this._serverCheckApiKeyCache, ["team", options.apiKey] as const, "useTeamApiKey()") as TeamApiKeysCrud['Server']['Read'];
     return useMemo(() => this._serverApiKeyFromCrud(crud), [crud]);
   }
+  // END_PLATFORM
 
   async createUser(options: ServerUserCreateOptions): Promise<ServerUser> {
     const crud = await this._interface.createServerUser(serverUserCreateOptionsToCrud(options));
@@ -822,7 +825,7 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
     }
     return await this.getTeam(apiKeyObject.teamId);
   }
-
+  // IF_PLATFORM react-like
   protected _useTeamByApiKey(apiKey: string): ServerTeam | null {
     const apiKeyObject = this._useTeamApiKey({ apiKey });
     if (apiKeyObject === null) {
@@ -830,4 +833,5 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
     }
     return this.useTeam(apiKeyObject.teamId);
   }
+  // END_PLATFORM
 }
