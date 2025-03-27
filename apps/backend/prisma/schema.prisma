@@ -54,7 +54,7 @@ model ProjectConfig {
   authMethodConfigs                  AuthMethodConfig[]
   connectedAccountConfigs            ConnectedAccountConfig[]
   oauthAccountMergeStrategy          OAuthAccountMergeStrategy @default(LINK_METHOD)
-  StripeConfig                       StripeConfig?
+  stripeConfig                       StripeConfig?
 }
 
 enum OAuthAccountMergeStrategy {

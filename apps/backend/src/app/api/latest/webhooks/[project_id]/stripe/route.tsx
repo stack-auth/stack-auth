@@ -1,18 +1,12 @@
 
-import { NextApiRequest, NextApiResponse } from "next";
+import { prismaClient as prisma } from "@/prisma-client";
+import { NextApiRequest } from "next";
 import { headers } from "next/headers";
 import { Readable } from "node:stream";
 import Stripe from "stripe";
 
-
 // $ stripe listen --forward-to http://localhost:8102/api/v1/webhooks/stripe
 // $ stripe trigger payment_intent.succeeded
-
-
-const ENDPOINT_SECRET = 'whsec_67f49d904ce250c87d4f62a13f31815742ce9a124316bcaee3d1d7d3a52473a0';
-
-const stripe = new Stripe('key_here');
-
 async function buffer(readable: Readable) {
   const chunks = [];
   for await (const chunk of readable) {
@@ -22,19 +16,52 @@ async function buffer(readable: Readable) {
 }
 
 // rewrite to use export const POST = ...
-export const POST = async (req: NextApiRequest, res: NextApiResponse) => {
-  console.log('REQQQQ');
+export const POST = async (req: NextApiRequest, { params }: { params: { project_id: string } }) => {
+  try {
+    const projectId = params.project_id;
 
-  const head = await headers();
-  const body = await buffer(req.body as Readable);
+    // Fetch the project with its config and stripe config
+    const project = await prisma.project.findUnique({
+      where: { id: projectId },
+      include: {
+        config: {
+          include: {
+            stripeConfig: true
+          }
+        }
+      }
+    });
 
-  if (!head.get('stripe-signature')) {
-    return res.status(400).send('No signature');
+    if (!project || !project.config.stripeConfig) {
+      return Response.json({ error: 'Stripe configuration not found for this project' }, { status: 404 });
+    }
+
+    const { stripeSecretKey, stripeWebhookSecret } = project.config.stripeConfig;
+
+    if (!stripeWebhookSecret) {
+      return Response.json({ error: 'Stripe webhook secret not configured' }, { status: 400 });
+    }
+
+    const stripe = new Stripe(stripeSecretKey);
+
+    const head = await headers();
+    const body = await buffer(req.body as Readable);
+
+    const signature = head.get('stripe-signature');
+    if (!signature) {
+      return Response.json({ error: 'No signature' }, { status: 400 });
+    }
+
+    let event = stripe.webhooks.constructEvent(body, signature, stripeWebhookSecret);
+
+    // Handle the event
+    console.log('Stripe event received:', event.type);
+
+    return Response.json({ received: true });
+  } catch (error) {
+    console.error('Error processing Stripe webhook:', error);
+    return Response.json({ error: 'Webhook error' }, { status: 400 });
   }
-  let event = stripe.webhooks.constructEvent(body, head.get('stripe-signature') as string, ENDPOINT_SECRET);
-  // Handle the event
-  console.log(event);
-  res.status(200).json({ received: true });
 };
 
 export const config = {
