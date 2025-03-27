@@ -11,10 +11,9 @@ import { encodeBase32, getBase32CharacterFromIndex } from "@stackframe/stack-sha
 import { generateSecureRandomString } from "@stackframe/stack-shared/dist/utils/crypto";
 import { StackAssertionError, StatusError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
 import { sha512 } from "@stackframe/stack-shared/dist/utils/hashes";
-import { filterUndefined } from "@stackframe/stack-shared/dist/utils/objects";
 import { createLazyProxy } from "@stackframe/stack-shared/dist/utils/proxies";
 import { generateUuid } from "@stackframe/stack-shared/dist/utils/uuids";
-
+import * as yup from "yup";
 async function ensureUserCanManageApiKeys(
   auth: Pick<SmartRequestAuth, "user" | "type" | "tenancy">,
   options: {
@@ -69,24 +68,64 @@ async function parseTypeAndParams(options: { type: "user" | "team", params: { us
 }
 
 
-async function prismaToCrud(prisma: ProjectApiKey, isFirstView: boolean): Promise<(UserApiKeysCrud["Admin"]["Read"] | TeamApiKeysCrud["Admin"]["Read"]) & { value: string }> {
-  if ((prisma.projectUserId == null) === (prisma.teamId == null)) {
-    throw new StackAssertionError("Exactly one of projectUserId or teamId must be set", { prisma });
-  }
-
-  return filterUndefined({
+function _prismaToCrudBase(prisma: ProjectApiKey): Omit<UserApiKeysCrud["Admin"]["Read"], "user_id" | "type" | "value"> {
+  return {
     id: prisma.id,
-    user_id: prisma.projectUserId ?? undefined as never,
-    team_id: prisma.teamId ?? undefined as never,
     description: prisma.description,
     is_public: prisma.isPublic,
     created_at_millis: prisma.createdAt.getTime(),
     expires_at_millis: prisma.expiresAt?.getTime(),
     manually_revoked_at_millis: prisma.manuallyRevokedAt?.getTime(),
-    value: isFirstView ? prisma.secretApiKey : {
-      last_four: prisma.secretApiKey.slice(-4),
-    } as any,
-  });
+  };
+}
+
+async function prismaToCrud<Type extends "user" | "team">(prisma: ProjectApiKey, type: Type, isFirstView: true): Promise<
+| yup.InferType<typeof userApiKeysCreateOutputSchema>
+| yup.InferType<typeof teamApiKeysCreateOutputSchema>
+> ;
+async function prismaToCrud<Type extends "user" | "team">(prisma: ProjectApiKey, type: Type, isFirstView: false): Promise<
+| UserApiKeysCrud["Admin"]["Read"]
+| TeamApiKeysCrud["Admin"]["Read"]
+> ;
+async function prismaToCrud<Type extends "user" | "team">(prisma: ProjectApiKey, type: Type, isFirstView: boolean):
+Promise<
+| yup.InferType<typeof userApiKeysCreateOutputSchema>
+| yup.InferType<typeof teamApiKeysCreateOutputSchema>
+| UserApiKeysCrud["Admin"]["Read"]
+| TeamApiKeysCrud["Admin"]["Read"]
+> {
+  if ((prisma.projectUserId == null) === (prisma.teamId == null)) {
+    throw new StackAssertionError("Exactly one of projectUserId or teamId must be set", { prisma });
+  }
+
+  if (type === "user" && prisma.projectUserId == null) {
+    throw new StackAssertionError("projectUserId must be set for user API keys", { prisma });
+  }
+  if (type === "team" && prisma.teamId == null) {
+    throw new StackAssertionError("teamId must be set for team API keys", { prisma });
+  }
+
+  return {
+    id: prisma.id,
+    description: prisma.description,
+    is_public: prisma.isPublic,
+    created_at_millis: prisma.createdAt.getTime(),
+    expires_at_millis: prisma.expiresAt?.getTime(),
+    manually_revoked_at_millis: prisma.manuallyRevokedAt?.getTime(),    ...(isFirstView ? {
+      value: prisma.secretApiKey,
+    } : {
+      value: {
+        last_four: prisma.secretApiKey.slice(-4),
+      },
+    }),
+    ...(type === "user" ? {
+      user_id: prisma.projectUserId!,
+      type: "user",
+    } : {
+      team_id: prisma.teamId!,
+      type: "team",
+    }),
+  };
 }
 
 function createApiKeyHandlers<Type extends "user" | "team">(type: Type) {
@@ -152,7 +191,7 @@ function createApiKeyHandlers<Type extends "user" | "team">(type: Type) {
         return {
           statusCode: 200,
           bodyType: "json",
-          body: await prismaToCrud(apiKey, true),
+          body: await prismaToCrud(apiKey, type, true),
         };
       },
     }),
@@ -186,7 +225,7 @@ function createApiKeyHandlers<Type extends "user" | "team">(type: Type) {
         return {
           statusCode: 200,
           bodyType: "json",
-          body: await prismaToCrud(apiKey, false),
+          body: await prismaToCrud<Type>(apiKey, type, false),
         };
       },
     }),
@@ -224,6 +263,7 @@ function createApiKeyHandlers<Type extends "user" | "team">(type: Type) {
           return {
             items: apiKeys.map(apiKey => ({
               id: apiKey.id,
+              type: apiKey.projectUserId ? "user" : "team",
               team_id: apiKey.teamId || undefined as never,
               user_id: apiKey.projectUserId || undefined as never,
               description: apiKey.description,
@@ -261,7 +301,7 @@ function createApiKeyHandlers<Type extends "user" | "team">(type: Type) {
             throw new KnownErrors.ApiKeyNotFound();
           }
 
-          return await prismaToCrud(apiKey, false);
+          return await prismaToCrud(apiKey, type, false);
         },
 
         onUpdate: async ({ auth, data, params, query }) => {
@@ -302,7 +342,7 @@ function createApiKeyHandlers<Type extends "user" | "team">(type: Type) {
           });
 
           // Return the updated API key with obfuscated key values
-          return await prismaToCrud(updatedApiKey, false);
+          return await prismaToCrud(updatedApiKey, type, false);
         },
       },
     )))
