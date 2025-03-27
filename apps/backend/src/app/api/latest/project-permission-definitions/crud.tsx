@@ -1,4 +1,4 @@
-import { createPermissionDefinition, deletePermissionDefinition, listPermissionDefinitions, updatePermissionDefinitions } from "@/lib/permissions";
+import { createPermissionDefinition, deletePermissionDefinition, isErrorForNonUniquePermission, listPermissionDefinitions, updatePermissionDefinitions } from "@/lib/permissions";
 import { isPrismaUniqueConstraintViolation, retryTransaction } from "@/prisma-client";
 import { createCrudHandlers } from "@/route-handlers/crud-handler";
 import { KnownErrors } from "@stackframe/stack-shared";
@@ -20,11 +20,7 @@ export const projectPermissionDefinitionsCrudHandlers = createLazyProxy(() => cr
           data,
         });
       } catch (error) {
-        if (
-          isPrismaUniqueConstraintViolation(error, "Permission", ["tenancyId", "queryableId"]) ||
-          isPrismaUniqueConstraintViolation(error, "Permission", ["projectConfigId", "queryableId"]) ||
-          isPrismaUniqueConstraintViolation(error, "Permission", ["tenancyId", "teamId", "queryableId"])
-        ) {
+        if (isErrorForNonUniquePermission(error)) {
           throw new KnownErrors.PermissionIdAlreadyExists(data.id);
         }
         throw error;
@@ -41,11 +37,7 @@ export const projectPermissionDefinitionsCrudHandlers = createLazyProxy(() => cr
           data,
         });
       } catch (error) {
-        if (
-          isPrismaUniqueConstraintViolation(error, "Permission", ["tenancyId", "queryableId"]) ||
-          isPrismaUniqueConstraintViolation(error, "Permission", ["projectConfigId", "queryableId"]) ||
-          isPrismaUniqueConstraintViolation(error, "Permission", ["tenancyId", "teamId", "queryableId"])
-        ) {
+        if (isErrorForNonUniquePermission(error)) {
           throw new KnownErrors.PermissionIdAlreadyExists(data.id ?? '');
         }
         throw error;
