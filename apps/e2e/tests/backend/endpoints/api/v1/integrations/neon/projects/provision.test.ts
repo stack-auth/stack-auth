@@ -34,7 +34,7 @@ it("should be able to provision a new project if neon client details are correct
       superSecretAdminKey: response.body.super_secret_admin_key,
     },
   });
-  const project = await niceBackendFetch(`/api/v1/projects/current`, {
+  const project = await niceBackendFetch(`/api/v1/internal/projects/current`, {
     method: "GET",
     accessType: "admin",
   });

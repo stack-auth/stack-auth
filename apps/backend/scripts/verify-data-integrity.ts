@@ -75,7 +75,7 @@ async function main() {
     const projectId = projects[i].id;
     await recurse(`[project ${i + 1}/${projects.length}] ${projectId} ${projects[i].displayName}`, async (recurse) => {
       const [currentProject, users] = await Promise.all([
-        expectStatusCode(200, `/api/v1/projects/current`, {
+        expectStatusCode(200, `/api/v1/internal/projects/current`, {
           method: "GET",
           headers: {
             "x-stack-project-id": projectId,
@@ -93,7 +93,10 @@ async function main() {
         }),
       ]);
       if (users.pagination?.next_cursor) throwErr("Users are paginated? Please update the verify-data-integrity.ts script to handle this.");
-      if (currentProject.user_count !== users.items.length) throwErr("User count mismatch.");
+      if (currentProject.user_count !== users.items.length) throwErr("User count mismatch.", {
+        projectUserCount: currentProject.user_count,
+        usersUserCount: users.items.length,
+      });
 
       for (let j = 0; j < users.items.length; j++) {
         const user = users.items[j];

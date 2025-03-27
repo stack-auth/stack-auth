@@ -1,5 +1,4 @@
 import { AdminProjectUpdateOptions, StackAdminApp } from '@stackframe/js';
-import { wait } from '@stackframe/stack-shared/dist/utils/promises';
 import { STACK_BACKEND_BASE_URL, STACK_INTERNAL_PROJECT_ADMIN_KEY, STACK_INTERNAL_PROJECT_CLIENT_KEY, STACK_INTERNAL_PROJECT_SERVER_KEY } from '../helpers';
 
 export async function scaffoldProject(body?: AdminProjectUpdateOptions) {
