@@ -1,4 +1,5 @@
 import * as yup from 'yup';
+import { yupObject, yupString } from './schema-fields';
 import { filterUndefined } from './utils/objects';
 import { NullishCoalesce } from './utils/types';
 
@@ -17,6 +18,7 @@ declare module 'yup' {
       hidden?: boolean,
       onlyShowInOperations?: Capitalize<CrudlOperation>[],
     },
+    endConfigurableLevel?: string,
   }
 }
 
@@ -189,7 +191,6 @@ export function createCrud<SO extends CrudSchemaCreationOptions>(options: SO & {
     hasDelete: !!admin.deleteSchema,
   };
 }
-import { yupObject, yupString } from './schema-fields';
 
 import.meta.vitest?.test("createCrud", ({ expect }) => {
   // Test with empty options
