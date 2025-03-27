@@ -10,7 +10,6 @@ import { adaptSchema, clientOrHigherAuthTypeSchema, serverOrHigherAuthTypeSchema
 import { encodeBase32, getBase32CharacterFromIndex } from "@stackframe/stack-shared/dist/utils/bytes";
 import { generateSecureRandomString } from "@stackframe/stack-shared/dist/utils/crypto";
 import { StackAssertionError, StatusError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
-import { identity } from "@stackframe/stack-shared/dist/utils/functions";
 import { sha512 } from "@stackframe/stack-shared/dist/utils/hashes";
 import { filterUndefined } from "@stackframe/stack-shared/dist/utils/objects";
 import { createLazyProxy } from "@stackframe/stack-shared/dist/utils/proxies";
@@ -74,7 +73,7 @@ async function prismaToCrud(prisma: ProjectApiKey, isFirstView: boolean): Promis
     throw new StackAssertionError("Exactly one of projectUserId or teamId must be set", { prisma });
   }
 
-  return (filterUndefined as typeof identity)({
+  return filterUndefined({
     id: prisma.id,
     user_id: prisma.projectUserId ?? undefined as never,
     team_id: prisma.teamId ?? undefined as never,
