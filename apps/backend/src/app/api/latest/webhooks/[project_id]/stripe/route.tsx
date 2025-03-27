@@ -1,6 +1,7 @@
 
 import { getProjectQuery } from "@/lib/projects";
-import { prismaClient as prisma, rawQuery } from "@/prisma-client";
+import { rawQuery } from "@/prisma-client";
+import { ProjectsCrud } from "@stackframe/stack-shared/dist/interface/crud/projects";
 import { NextApiRequest } from "next";
 import { headers } from "next/headers";
 import { Readable } from "node:stream";
@@ -15,6 +16,20 @@ async function buffer(readable: Readable) {
   }
   return Buffer.concat(chunks);
 }
+
+type StripeEventHandler = (event: Stripe.Event, project: ProjectsCrud["Admin"]["Read"]) => Promise<void>;
+
+const STRIPE_EVENT_HANDLERS: Partial<Record<Stripe.Event.Type, StripeEventHandler>> = {
+  "customer.subscription.created": async (event, project) => {
+    console.log("Customer subscription created", event);
+  },
+  "customer.subscription.deleted": async (event, project) => {
+    console.log("Customer subscription deleted", event);
+  },
+  "customer.subscription.updated": async (event, project) => {
+    console.log("Customer subscription updated", event);
+  },
+};
 
 // rewrite to use export const POST = ...
 export const POST = async (req: NextApiRequest, { params }: { params: { project_id: string } }) => {
@@ -40,10 +55,15 @@ export const POST = async (req: NextApiRequest, { params }: { params: { project_
       return Response.json({ error: 'No signature' }, { status: 400 });
     }
 
-    let event = stripe.webhooks.constructEvent(body, signature, stripeConfig.stripe_webhook_secret);
+    let event: Stripe.Event;
+    try {
+      event = stripe.webhooks.constructEvent(body, signature, stripeConfig.stripe_webhook_secret);
+    } catch (error) {
+      return Response.json({ error: `Webhook error: ${error}` }, { status: 400 });
+    }
 
     // Handle the event
-    console.log('Stripe event received:', event.type);
+    await STRIPE_EVENT_HANDLERS[event.type]?.(event, project);
 
     return Response.json({ received: true });
   } catch (error) {
