@@ -28,7 +28,7 @@ model Project {
   neonProvisionedProject NeonProvisionedProject?
   tenancies              Tenancy[]
   verificationCodes      VerificationCode[]
-  projectAPIKey          ProjectAPIKey[]
+  projectApiKey          ProjectApiKey[]
 }
 
 model ProjectConfig {
@@ -56,8 +56,8 @@ model ProjectConfig {
   connectedAccountConfigs            ConnectedAccountConfig[]
   oauthAccountMergeStrategy          OAuthAccountMergeStrategy @default(LINK_METHOD)
   allowUserAPIKeys                   Boolean                   @default(false)
-  allowTeamAPIKeys                   Boolean                   @default(false)
-  allowTenancyAPIKeys                Boolean                   @default(false)
+  allowTeamApiKeys                   Boolean                   @default(false)
+  allowTenancyApiKeys                Boolean                   @default(false)
 }
 
 enum OAuthAccountMergeStrategy {
@@ -88,7 +88,7 @@ model Tenancy {
   connectedAccounts ConnectedAccount[] @relation("TenancyConnectedAccounts")
   SentEmail         SentEmail[]
   cliAuthAttempts   CliAuthAttempt[]
-  projectAPIKey     ProjectAPIKey[]
+  projectApiKey     ProjectApiKey[]
 
   @@unique([projectId, branchId, organizationId])
   @@unique([projectId, branchId, hasNoOrganization])
@@ -129,7 +129,7 @@ model Team {
   tenancy       Tenancy         @relation("TenancyTeams", fields: [tenancyId], references: [id], onDelete: Cascade)
   permissions   Permission[]
   teamMembers   TeamMember[]
-  projectAPIKey ProjectAPIKey[]
+  projectApiKey ProjectApiKey[]
 
   @@id([tenancyId, teamId])
   @@unique([mirroredProjectId, mirroredBranchId, teamId])
@@ -285,7 +285,7 @@ model ProjectUser {
   otpAuthMethod      OtpAuthMethod[]
   oauthAuthMethod    OAuthAuthMethod[]
   SentEmail          SentEmail[]
-  projectAPIKey      ProjectAPIKey[]
+  projectApiKey      ProjectApiKey[]
 
   @@id([tenancyId, projectUserId])
   @@unique([mirroredProjectId, mirroredBranchId, projectUserId])
@@ -784,7 +784,7 @@ model ApiKeySet {
 }
 
 // New api keys
-model ProjectAPIKey {
+model ProjectApiKey {
   projectId String
   project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
   tenancyId String  @db.Uuid
@@ -798,7 +798,8 @@ model ProjectAPIKey {
   updatedAt         DateTime  @updatedAt
   expiresAt         DateTime?
   manuallyRevokedAt DateTime?
-  description       String?
+  description       String
+  isPublic          Boolean
 
   // exactly one of [teamId] or [projectUserId] must be set
   teamId        String? @db.Uuid

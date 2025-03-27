@@ -1,6 +1,6 @@
 import { prismaClient, retryTransaction } from '@/prisma-client';
 import { Prisma } from '@prisma/client';
-import { decodeBase64OrBase64Url } from '@stackframe/stack-shared/dist/utils/bytes';
+import { decodeBase64OrBase64Url, toHexString } from '@stackframe/stack-shared/dist/utils/bytes';
 import { getEnvVariable } from '@stackframe/stack-shared/dist/utils/env';
 import { StackAssertionError, captureError, throwErr } from '@stackframe/stack-shared/dist/utils/errors';
 import { sha512 } from '@stackframe/stack-shared/dist/utils/hashes';
@@ -186,7 +186,7 @@ export async function createOidcProvider(options: { id: string, baseUrl: string 
     ttl: {},
     cookies: {
       keys: [
-        await sha512(`oidc-idp-cookie-encryption-key:${getEnvVariable("STACK_SERVER_SECRET")}`),
+        toHexString(await sha512(`oidc-idp-cookie-encryption-key:${getEnvVariable("STACK_SERVER_SECRET")}`)),
       ],
     },
     jwks: privateJwks,

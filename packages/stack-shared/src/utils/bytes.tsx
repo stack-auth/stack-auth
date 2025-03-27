@@ -7,6 +7,28 @@ const crockfordReplacements = new Map([
   ["l", "1"],
 ]);
 
+export function toHexString(input: Uint8Array): string {
+  return Array.from(input).map(b => b.toString(16).padStart(2, "0")).join("");
+}
+
+export function getBase32CharacterFromIndex(index: number): string {
+  if (index < 0 || index >= crockfordAlphabet.length) {
+    throw new StackAssertionError(`Invalid base32 index: ${index}`);
+  }
+  return crockfordAlphabet[index];
+}
+
+export function getBase32IndexFromCharacter(character: string): number {
+  if (character.length !== 1) {
+    throw new StackAssertionError(`Invalid base32 character: ${character}`);
+  }
+  const index = crockfordAlphabet.indexOf(character.toUpperCase());
+  if (index === -1) {
+    throw new StackAssertionError(`Invalid base32 character: ${character}`);
+  }
+  return index;
+}
+
 export function encodeBase32(input: Uint8Array): string {
   let bits = 0;
   let value = 0;
@@ -15,12 +37,12 @@ export function encodeBase32(input: Uint8Array): string {
     value = (value << 8) | input[i];
     bits += 8;
     while (bits >= 5) {
-      output += crockfordAlphabet[(value >>> (bits - 5)) & 31];
+      output += getBase32CharacterFromIndex((value >>> (bits - 5)) & 31);
       bits -= 5;
     }
   }
   if (bits > 0) {
-    output += crockfordAlphabet[(value << (5 - bits)) & 31];
+    output += getBase32CharacterFromIndex((value << (5 - bits)) & 31);
   }
 
   // sanity check
@@ -46,10 +68,7 @@ export function decodeBase32(input: string): Uint8Array {
     if (crockfordReplacements.has(char)) {
       char = crockfordReplacements.get(char)!;
     }
-    const index = crockfordAlphabet.indexOf(char);
-    if (index === -1) {
-      throw new Error(`Invalid character: ${char}`);
-    }
+    const index = getBase32IndexFromCharacter(char);
     value = (value << 5) | index;
     bits += 5;
     if (bits >= 8) {

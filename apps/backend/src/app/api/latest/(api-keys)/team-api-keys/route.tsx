@@ -1,4 +1,4 @@
-import { teamApiKeyCrudHandlers } from "./crud";
+import { teamApiKeyCreateHandler, teamApiKeyCrudHandlers } from "../handlers";
 
 export const GET = teamApiKeyCrudHandlers.listHandler;
-export const POST = teamApiKeyCrudHandlers.createHandler;
+export const POST = teamApiKeyCreateHandler;

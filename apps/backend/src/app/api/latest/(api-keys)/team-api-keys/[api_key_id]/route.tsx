@@ -1,4 +1,4 @@
-import { teamApiKeyCrudHandlers } from "../crud";
+import { teamApiKeyCrudHandlers } from "../../handlers";
 
+export const GET = teamApiKeyCrudHandlers.readHandler;
 export const PATCH = teamApiKeyCrudHandlers.updateHandler;
-export const DELETE = teamApiKeyCrudHandlers.deleteHandler;
