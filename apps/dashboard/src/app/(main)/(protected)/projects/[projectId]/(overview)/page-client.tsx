@@ -1,8 +1,8 @@
 'use client';
 
 import { useAdminApp } from "../use-admin-app";
-import MetricsPage from "./metrics-page";
-import SetupPage from "./setup-page";
+import MetricsPage from "./(metrics)/metrics-page";
+import SetupPage from "./(setup)/setup-page";
 
 export default function PageClient() {
   const adminApp = useAdminApp();

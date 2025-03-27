@@ -1,0 +1,48 @@
+.livePulse {
+  width: 6px;
+  aspect-ratio: 1;
+  border-radius: 50%;
+  background: currentColor;
+  box-shadow: 0 0 0 0 currentColor;
+  animation: livePulseAnim 4s infinite;
+}
+
+@keyframes livePulseAnim {
+  25% {box-shadow: 0 0 0 8px #0000}
+  100% {box-shadow: 0 0 0 8px #0000}
+}
+
+.globePulse {
+  width: 120px;
+  height: 120px;
+  border-radius: 50%;
+  background: rgb(107,93,247, 0.1);
+  animation: rippleAnimation 4s linear infinite;
+}
+
+.globePulse2 {
+  width: 140px;
+  height: 140px;
+  animation-delay: 1s;
+}
+
+.globePulse3 {
+  width: 160px;
+  height: 160px;
+  animation-delay: 2s;
+}
+
+@keyframes rippleAnimation {
+  0% {
+    transform: scale(1);
+    opacity: 1;
+  }
+  50% {
+    transform: scale(0.5);
+    opacity: 0.5;
+  }
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+} 
