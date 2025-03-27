@@ -347,7 +347,7 @@ it("should not be able to create a project permission with a same name as team p
   `);
 
   // Now try to create a project permission with the same name
-  const createProjectPermissionResponse = niceBackendFetch(`/api/v1/project-permission-definitions`, {
+  const createProjectPermissionResponse = await niceBackendFetch(`/api/v1/project-permission-definitions`, {
     accessType: "admin",
     method: "POST",
     body: {
@@ -360,5 +360,18 @@ it("should not be able to create a project permission with a same name as team p
   });
 
   // TODO: P2002 postgres codes should automatically be converted into duplicate key error
-  await expect(createProjectPermissionResponse).rejects.toThrow(StackAssertionError);
+  expect(createProjectPermissionResponse).toMatchInlineSnapshot(`
+    NiceResponse {
+      "status": 400,
+      "body": {
+        "code": "PERMISSION_ID_ALREADY_EXISTS",
+        "details": { "permission_id": "custom_team_permission" },
+        "error": "Permission with ID \\"custom_team_permission\\" already exists. Choose a different ID.",
+      },
+      "headers": Headers {
+        "x-stack-known-error": "PERMISSION_ID_ALREADY_EXISTS",
+        <some fields may have been hidden>,
+      },
+    }
+  `);
 });
