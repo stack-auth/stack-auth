@@ -192,9 +192,17 @@ function StripeKeyDialog(props: {
   const project = stackAdminApp.useProject();
 
   const formSchema = yup.object({
-    stripeSecretKey: yup.string().defined().label("Stripe Secret Key"),
-    stripePublishableKey: yup.string().defined().label("Stripe Publishable Key"),
-    stripeWebhookSecret: yup.string().label("Stripe Webhook Secret (optional)")
+    stripeSecretKey: yup.string()
+      .defined()
+      .matches(/^sk_[a-zA-Z0-9_]+$/, "Must be a valid Stripe secret key")
+      .label("Stripe Secret Key"),
+    stripePublishableKey: yup.string()
+      .defined()
+      .matches(/^pk_[a-zA-Z0-9_]+$/, "Must be a valid Stripe publishable key")
+      .label("Stripe Publishable Key"),
+    stripeWebhookSecret: yup.string()
+      .matches(/^whsec_[a-zA-Z0-9_]+$/, "Must be a valid Stripe webhook secret")
+      .label("Stripe Webhook Secret (optional)")
   });
 
   return (
