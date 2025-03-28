@@ -1,5 +1,5 @@
 
-import { grantUserPermission, revokeUserPermission } from "@/lib/permissions";
+import { grantProjectPermission, revokeProjectPermission } from "@/lib/permissions";
 import { getProjectQuery } from "@/lib/projects";
 import { getTenancyFromProject, tenancyPrismaToCrud } from "@/lib/tenancies";
 import { rawQuery, retryTransaction } from "@/prisma-client";
@@ -60,7 +60,7 @@ const STRIPE_EVENT_HANDLERS: {
             },
           });
           if (perm) {
-            await grantUserPermission(tx, {
+            await grantProjectPermission(tx, {
               tenancy,
               userId: user.id,
               permissionId: perm.queryableId,
@@ -100,7 +100,7 @@ const STRIPE_EVENT_HANDLERS: {
             },
           });
           if (perm) {
-            await revokeUserPermission(tx, {
+            await revokeProjectPermission(tx, {
               tenancy,
               userId: user.id,
               permissionId: perm.queryableId,
