@@ -91,7 +91,7 @@ export default function PageClient () {
             <Typography type='h2'>Create a new project</Typography>
           </div>
 
-          <Form {...form}>
+          <Form {...form as any}>
             <form onSubmit={e => runAsynchronouslyWithAlert(form.handleSubmit(onSubmit)(e))} className="space-y-4">
 
               <InputField required control={form.control} name="displayName" label="Display Name" placeholder="My Project" />

@@ -139,7 +139,7 @@ export function handleApiRequest(handler: (req: NextRequest, options: any, reque
           const res = await createResponse(req, requestId, {
             statusCode: statusError.statusCode,
             bodyType: "binary",
-            body: statusError.getBody(),
+            body: statusError.getBody() as any,
             headers: {
               ...statusError.getHeaders(),
             },
