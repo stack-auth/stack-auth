@@ -634,7 +634,6 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
     const crud = Result.orThrow(await this._serverCheckApiKeyCache.getOrWait(["team", options.apiKey], "write-only")) as TeamApiKeysCrud['Server']['Read'];
     return this._serverApiKeyFromCrud(crud);
   }
-
   // IF_PLATFORM react-like
   protected _useUserApiKey(options: { apiKey: string }): ApiKey<"user"> | null {
     const crud = useAsyncCache(this._serverCheckApiKeyCache, ["user", options.apiKey] as const, "useUserApiKey()") as UserApiKeysCrud['Server']['Read'];
@@ -647,8 +646,6 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
     return useMemo(() => this._serverApiKeyFromCrud(crud), [crud]);
   }
   // END_PLATFORM
-
-
   protected async _getUserByApiKey(apiKey: string): Promise<ServerUser | null> {
     const apiKeyObject = await this._getUserApiKey({ apiKey });
     if (apiKeyObject === null) {
