@@ -57,7 +57,7 @@ export const POST = createSmartRouteHandler({
         }
       }
       if (e instanceof InvalidClientError) {
-        throw new KnownErrors.InvalidOAuthClientIdOrSecret();
+        throw new KnownErrors.InvalidOAuthClientIdOrSecret("");
       }
       if (e instanceof InvalidRequestError) {
         if (e.message.includes("`redirect_uri` is invalid")) {

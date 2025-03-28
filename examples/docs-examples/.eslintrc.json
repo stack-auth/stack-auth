@@ -1,0 +1,22 @@
+{
+  "extends": ["next/core-web-vitals"],
+  "ignorePatterns": ["/*", "!/src"],
+  "rules": {
+    "@typescript-eslint/no-misused-promises": "off",
+    "@typescript-eslint/no-floating-promises": "off",
+    "@typescript-eslint/member-delimiter-style": "off",
+    "import/order": [
+      "warn",
+      {
+        "groups": [
+          "external",
+          "builtin",
+          "internal",
+          "sibling",
+          "parent",
+          "index"
+        ]
+      }
+    ]
+  }
+}
