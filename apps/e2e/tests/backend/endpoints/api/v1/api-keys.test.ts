@@ -2,6 +2,76 @@ import { urlString } from "@stackframe/stack-shared/dist/utils/urls";
 import { it } from "../../../../helpers";
 import { Auth, Project, ProjectApiKey, Team, backendContext, bumpEmailAddress, niceBackendFetch } from "../../../backend-helpers";
 
+async function createAndSwitchToAPIEnabledProject(allow_team_api_keys = true, allow_user_api_keys = true) {
+  await Project.createAndSwitch({ config: { magic_link_enabled: true, allow_team_api_keys, allow_user_api_keys } });
+}
+
+it("throws an error when user API keys are disabled", async ({ expect }: { expect: any }) => {
+  // Create a project with user API keys disabled
+  await createAndSwitchToAPIEnabledProject(true, false);
+  await Auth.Otp.signIn();
+
+  // Try to create a user API key
+  const createResponse = await niceBackendFetch("/api/v1/user-api-keys", {
+    method: "POST",
+    accessType: "client",
+    body: {
+      user_id: "me",
+      description: "This should fail",
+      expires_at_millis: null,
+    },
+  });
+
+  expect(createResponse).toMatchInlineSnapshot(`
+    NiceResponse {
+      "status": 400,
+      "body": "User API keys are not enabled for this project.",
+      "headers": Headers { <some fields may have been hidden> },
+    }
+  `);
+
+  // Try to list user API keys
+  const listResponse = await niceBackendFetch("/api/v1/user-api-keys?user_id=me", {
+    accessType: "client",
+  });
+
+  expect(listResponse).toMatchInlineSnapshot(`
+    NiceResponse {
+      "status": 400,
+      "body": "User API keys are not enabled for this project.",
+      "headers": Headers { <some fields may have been hidden> },
+    }
+  `);
+
+
+  const { teamId } = await Team.create({ addCurrentUser: true });
+  // Try to create a team API key
+  const createTeamResponse = await niceBackendFetch("/api/v1/team-api-keys", {
+    method: "POST",
+    accessType: "client",
+    body: {
+      team_id: teamId,
+      description: "This should work",
+      expires_at_millis: null,
+    },
+  });
+
+  expect(createTeamResponse).toMatchInlineSnapshot(`
+    NiceResponse {
+      "status": 200,
+      "body": {
+        "created_at_millis": <stripped field 'created_at_millis'>,
+        "description": "This should work",
+        "id": "<stripped UUID>",
+        "is_public": false,
+        "team_id": "<stripped UUID>",
+        "type": "team",
+        "value": sk_<stripped team API key>,
+      },
+      "headers": Headers { <some fields may have been hidden> },
+    }
+  `);
+});
 
 it("can create public API keys", async ({ expect }: { expect: any }) => {
   await Auth.Otp.signIn();
@@ -31,7 +101,7 @@ it("can create public API keys", async ({ expect }: { expect: any }) => {
 });
 
 it("can create API keys with custom prefixes", async ({ expect }: { expect: any }) => {
-  await Project.createAndSwitch({ config: { magic_link_enabled: true } });
+  await createAndSwitchToAPIEnabledProject();
   const { userId } = await Auth.Otp.signIn();
 
   // Create a user API key with custom prefix
@@ -112,7 +182,7 @@ it("can create API keys with custom prefixes", async ({ expect }: { expect: any 
 });
 
 it("can create API keys that expire", async ({ expect }: { expect: any }) => {
-  await Project.createAndSwitch({ config: { magic_link_enabled: true } });
+  await createAndSwitchToAPIEnabledProject();
   const { userId } = await Auth.Otp.signIn();
 
   // Create a user API key that expires in 1 hour
@@ -241,7 +311,7 @@ it("can create API keys that expire", async ({ expect }: { expect: any }) => {
 });
 
 it("can read own API key on the client", async ({ expect }: { expect: any }) => {
-  await Project.createAndSwitch({ config: { magic_link_enabled: true } });
+  await createAndSwitchToAPIEnabledProject();
   const { userId } = await Auth.Otp.signIn();
 
   // Create an API key
@@ -275,7 +345,7 @@ it("can read own API key on the client", async ({ expect }: { expect: any }) => 
 
 
 it("returns 404 when checking a non-existent API key", async ({ expect }: { expect: any }) => {
-  await Project.createAndSwitch({ config: { magic_link_enabled: true } });
+  await createAndSwitchToAPIEnabledProject();
   await Auth.Otp.signIn();
 
   // Try to check a non-existent API key
@@ -303,7 +373,7 @@ it("returns 404 when checking a non-existent API key", async ({ expect }: { expe
 });
 
 it("returns 404 when checking a team API key with the user endpoint", async ({ expect }: { expect: any }) => {
-  await Project.createAndSwitch({ config: { magic_link_enabled: true } });
+  await createAndSwitchToAPIEnabledProject();
   const { userId } = await Auth.Otp.signIn();
   const { teamId } = await Team.create({ addCurrentUser: true });
 
@@ -343,7 +413,7 @@ it("returns 404 when checking a team API key with the user endpoint", async ({ e
 });
 
 it("requires user_id in read requests on the client", async ({ expect }: { expect: any }) => {
-  await Project.createAndSwitch({ config: { magic_link_enabled: true } });
+  await createAndSwitchToAPIEnabledProject();
   const { userId } = await Auth.Otp.signIn();
 
   // Create an API key
@@ -403,7 +473,7 @@ it("requires user_id in read requests on the client", async ({ expect }: { expec
 });
 
 it("does not require user_id in read requests on the server", async ({ expect }: { expect: any }) => {
-  await Project.createAndSwitch({ config: { magic_link_enabled: true } });
+  await createAndSwitchToAPIEnabledProject();
   const { userId } = await Auth.Otp.signIn();
 
   // Create an API key
@@ -569,7 +639,7 @@ it("can manage API keys if only if the respective team permission is granted", a
 });
 
 it("can revoke API keys", async ({ expect }: { expect: any }) => {
-  await Project.createAndSwitch({ config: { magic_link_enabled: true } });
+  await createAndSwitchToAPIEnabledProject();
   const { userId } = await Auth.Otp.signIn();
 
   // Create an API key
@@ -670,7 +740,7 @@ it("can revoke API keys", async ({ expect }: { expect: any }) => {
 });
 
 it("prevents updating API keys for other users on the client", async ({ expect }: { expect: any }) => {
-  await Project.createAndSwitch({ config: { magic_link_enabled: true } });
+  await createAndSwitchToAPIEnabledProject();
 
   // First user signs in and creates an API key
   const { userId: userId1 } = await Auth.Otp.signIn();
@@ -729,7 +799,7 @@ it("prevents updating API keys for other users on the client", async ({ expect }
 });
 
 it("cannot pass user_id or team_id in update requests", async ({ expect }: { expect: any }) => {
-  await Project.createAndSwitch({ config: { magic_link_enabled: true } });
+  await createAndSwitchToAPIEnabledProject();
   const { userId } = await Auth.Otp.signIn();
 
   // Create an API key
@@ -832,7 +902,7 @@ it("cannot pass user_id or team_id in update requests", async ({ expect }: { exp
 });
 
 it("can create API keys for other users on the server", async ({ expect }: { expect: any }) => {
-  await Project.createAndSwitch({ config: { magic_link_enabled: true } });
+  await createAndSwitchToAPIEnabledProject();
 
   // First user signs in
   const { userId: userId1 } = await Auth.Otp.signIn();
@@ -918,7 +988,7 @@ it("can create API keys for other users on the server", async ({ expect }: { exp
 });
 
 it("can list all API keys for a user", async ({ expect }: { expect: any }) => {
-  await Project.createAndSwitch({ config: { magic_link_enabled: true } });
+  await createAndSwitchToAPIEnabledProject();
   const { userId } = await Auth.Otp.signIn();
 
   // Create multiple API keys for the user
@@ -972,7 +1042,7 @@ it("can list all API keys for a user", async ({ expect }: { expect: any }) => {
 });
 
 it("prevents listing API keys for other users on the client", async ({ expect }: { expect: any }) => {
-  await Project.createAndSwitch({ config: { magic_link_enabled: true } });
+  await createAndSwitchToAPIEnabledProject();
 
   // First user signs in and creates an API key
   const { userId: userId1 } = await Auth.Otp.signIn();
@@ -1008,7 +1078,7 @@ it("prevents listing API keys for other users on the client", async ({ expect }:
 
 // Should the server be allowed to do this maybe?
 it("cannot list all API keys for all users on the server", async ({ expect }: { expect: any }) => {
-  await Project.createAndSwitch({ config: { magic_link_enabled: true } });
+  await createAndSwitchToAPIEnabledProject();
 
   // First user signs in and creates an API key
   const { userId: userId1 } = await Auth.Otp.signIn();

@@ -16,6 +16,21 @@ import { generateUuid } from "@stackframe/stack-shared/dist/utils/uuids";
 import * as yup from "yup";
 
 
+async function throwIfFeatureDisabled(project: {
+  allow_team_api_keys: boolean,
+  allow_user_api_keys: boolean,
+}, type: "team" | "user") {
+  if (type === "team") {
+    if (!project.allow_team_api_keys) {
+      throw new StatusError(StatusError.BadRequest, "Team API keys are not enabled for this project.");
+    }
+  } else {
+    if (!project.allow_user_api_keys) {
+      throw new StatusError(StatusError.BadRequest, "User API keys are not enabled for this project.");
+    }
+  }
+}
+
 async function ensureUserCanManageApiKeys(
   auth: Pick<SmartRequestAuth, "user" | "type" | "tenancy">,
   options: {
@@ -166,6 +181,7 @@ function createApiKeyHandlers<Type extends "user" | "team">(type: Type) {
         body: type === 'user' ? userApiKeysCreateOutputSchema.defined() : teamApiKeysCreateOutputSchema.defined(),
       }),
       handler: async ({ url, auth, body }) => {
+        await throwIfFeatureDisabled(auth.project.config, type);
         const { userId, teamId } = await parseTypeAndParams({ type, params: body });
         await ensureUserCanManageApiKeys(auth, {
           userId,
@@ -226,6 +242,8 @@ function createApiKeyHandlers<Type extends "user" | "team">(type: Type) {
         body: (type === 'user' ? userApiKeysCrud : teamApiKeysCrud).server.readSchema.defined(),
       }),
       handler: async ({ auth, body }) => {
+        await throwIfFeatureDisabled(auth.project.config, type);
+
         const apiKey = await prismaClient.projectApiKey.findUnique({
           where: {
             projectId: auth.project.id,
@@ -273,6 +291,7 @@ function createApiKeyHandlers<Type extends "user" | "team">(type: Type) {
         }),
 
         onList: async ({ auth, query }) => {
+          await throwIfFeatureDisabled(auth.project.config, type);
           const { userId, teamId } = await parseTypeAndParams({ type, params: query });
           await ensureUserCanManageApiKeys(auth, {
             userId,
@@ -311,6 +330,7 @@ function createApiKeyHandlers<Type extends "user" | "team">(type: Type) {
         },
 
         onRead: async ({ auth, query, params }) => {
+          await throwIfFeatureDisabled(auth.project.config, type);
 
           switch (auth.type) {
             case "client": {
@@ -372,6 +392,8 @@ function createApiKeyHandlers<Type extends "user" | "team">(type: Type) {
         },
 
         onUpdate: async ({ auth, data, params, query }) => {
+          await throwIfFeatureDisabled(auth.project.config, type);
+
           const { userId, teamId } = await parseTypeAndParams({ type, params: query });
           await ensureUserCanManageApiKeys(auth, {
             userId,
