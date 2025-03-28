@@ -46,7 +46,7 @@ export const POST = createSmartRouteHandler({
     });
 
     if (!cliAuth) {
-      throw new KnownErrors.InvalidPollingCodeError();
+      throw new KnownErrors.InvalidPollingCodeError({});
     }
 
     if (cliAuth.expiresAt < new Date()) {
