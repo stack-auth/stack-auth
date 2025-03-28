@@ -69,7 +69,7 @@
     "@vitejs/plugin-react": "^4.3.3",
     "chokidar-cli": "^3.0.0",
     "concurrently": "^8.2.2",
-    "eslint": "8.30.0",
+    "eslint": "8.57.0",
     "eslint-config-next": "^14.2.17",
     "eslint-plugin-import": "^2.31.0",
     "eslint-plugin-node": "^11.1.0",
