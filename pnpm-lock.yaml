@@ -553,15 +553,27 @@ importers:
         specifier: ^5.3.0
         version: 5.3.0(react@19.0.0)
     devDependencies:
+      '@types/node':
+        specifier: ^22.13.14
+        version: 22.13.14
       '@types/react':
         specifier: ^18.2.0
         version: 18.3.12
       '@types/react-dom':
         specifier: ^18.2.0
         version: 18.3.1
+      '@typescript-eslint/eslint-plugin':
+        specifier: ^8.28.0
+        version: 8.28.0(@typescript-eslint/parser@8.28.0(eslint@8.57.0)(typescript@5.8.2))(eslint@8.57.0)(typescript@5.8.2)
+      '@typescript-eslint/parser':
+        specifier: ^8.28.0
+        version: 8.28.0(eslint@8.57.0)(typescript@5.8.2)
       autoprefixer:
         specifier: ^10.4.20
         version: 10.4.20(postcss@8.4.47)
+      eslint:
+        specifier: ^8.57.0
+        version: 8.57.0
       postcss:
         specifier: ^8.4.47
         version: 8.4.47
@@ -571,6 +583,9 @@ importers:
       tailwindcss:
         specifier: ^3.4.14
         version: 3.4.14
+      typescript:
+        specifier: ^5.8.2
+        version: 5.8.2
 
   examples/docs-examples:
     dependencies:
