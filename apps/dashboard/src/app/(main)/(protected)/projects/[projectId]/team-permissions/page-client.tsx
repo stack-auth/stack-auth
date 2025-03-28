@@ -41,17 +41,18 @@ function CreateDialog(props: {
   onOpenChange: (open: boolean) => void,
 }) {
   const stackAdminApp = useAdminApp();
-  const permissions = stackAdminApp.useTeamPermissionDefinitions();
+  const teamPermissions = stackAdminApp.useTeamPermissionDefinitions();
+  const combinedPermissions = [...teamPermissions, ...stackAdminApp.useProjectPermissionDefinitions()];
 
   const formSchema = yup.object({
     id: yup.string().defined()
-      .notOneOf(permissions.map((p) => p.id), "ID already exists")
+      .notOneOf(combinedPermissions.map((p) => p.id), "ID already exists")
       .matches(/^[a-z0-9_:]+$/, 'Only lowercase letters, numbers, ":" and "_" are allowed')
       .label("ID"),
     description: yup.string().label("Description"),
     containedPermissionIds: yup.array().of(yup.string().defined()).defined().default([]).meta({
       stackFormFieldRender: (props) => (
-        <PermissionListField {...props} permissions={permissions} type="new" />
+        <PermissionListField {...props} permissions={teamPermissions} type="new" />
       ),
     }),
   });
