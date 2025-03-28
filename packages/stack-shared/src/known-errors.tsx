@@ -1208,12 +1208,11 @@ const ContactChannelAlreadyUsedForAuthBySomeoneElse = createKnownErrorConstructo
 const InvalidPollingCodeError = createKnownErrorConstructor(
   KnownError,
   "INVALID_POLLING_CODE",
-  (details?: Json) => [
+  () => [
     400,
     "The polling code is invalid or does not exist.",
-    details,
   ] as const,
-  (json: any) => [json] as const,
+  () => [] as const,
 );
 
 export type KnownErrors = {
