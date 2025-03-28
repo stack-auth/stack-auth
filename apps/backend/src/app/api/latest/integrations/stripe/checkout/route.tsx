@@ -1,18 +1,6 @@
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
-import { KnownErrors } from "@stackframe/stack-shared";
-import { ProjectsCrud } from "@stackframe/stack-shared/dist/interface/crud/projects";
+import { getStripeClient } from "@/utils/stripe";
 import { adaptSchema, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
-import Stripe from "stripe";
-
-
-function getStripeClient(
-  project: ProjectsCrud["Admin"]["Read"],
-) {
-  if (!project.config.stripe_config) {
-    throw new KnownErrors.StripeConfigurationNotFound();
-  }
-  return new Stripe(project.config.stripe_config.stripe_secret_key);
-}
 
 export const POST = createSmartRouteHandler({
   metadata: {
