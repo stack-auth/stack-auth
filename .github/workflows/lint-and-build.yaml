@@ -33,7 +33,7 @@ jobs:
             version: 9.1.2
 
       - name: Install dependencies
-        run: pnpm install --frozen-lockfile
+        run: pnpm install --no-frozen-lockfile
 
       - name: Create .env.production.local file for apps/backend
         run: cp apps/backend/.env.development apps/backend/.env.production.local

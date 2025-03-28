@@ -51,7 +51,7 @@ export function SmartForm<S extends yup.ObjectSchema<any>>(props: {
   const defaults = props.formSchema.getDefault();
 
   return (
-    <Form {...form}>
+    <Form {...form as any}>
       <form onSubmit={(e) => runAsynchronously(handleSubmit(e))} id={props.formId} className="space-y-4">
         {Object.entries(details.fields).map(([fieldId, field]) => (
           <SmartFormField key={fieldId} id={fieldId} description={field} form={form} disabled={isSubmitting} defaultValue={defaults[fieldId]} />

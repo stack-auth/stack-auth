@@ -123,7 +123,7 @@ export function FormDialog<F extends FieldValues>(
         },
       }}
     >
-      <Form {...form}>
+      <Form {...form as any}>
         <form onSubmit={e => runAsynchronouslyWithAlert(form.handleSubmit(onSubmit)(e))} className="space-y-4" id={formId}>
           {props.render(form)}
         </form>

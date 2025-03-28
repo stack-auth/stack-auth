@@ -31,8 +31,8 @@ export function TextAreaField<F extends FieldValues>(props: {
 }) {
   return (
     <FormField
-      control={props.control}
-      name={props.name}
+      control={props.control as any}
+      name={props.name as any}
       render={({ field }) => (
         <FormItem>
           <label className="flex flex-col gap-2">
@@ -42,7 +42,7 @@ export function TextAreaField<F extends FieldValues>(props: {
                 {...field}
                 rows={props.rows}
                 placeholder={props.placeholder}
-                value={field.value ?? ""}
+                value={(field.value ?? "") as string}
                 style={{
                   fontFamily: props.monospace ? "ui-monospace, monospace" : undefined,
                 }}
@@ -70,8 +70,8 @@ export function InputField<F extends FieldValues>(props: {
 }) {
   return (
     <FormField
-      control={props.control}
-      name={props.name}
+      control={props.control as any}
+      name={props.name as any}
       render={({ field }) => (
         <FormItem className={props.className}>
           <label className="flex flex-col gap-2">
@@ -79,7 +79,7 @@ export function InputField<F extends FieldValues>(props: {
             <FormControl>
               <Input
                 {...field}
-                value={field.value ?? ""}
+                value={(field.value ?? "") as string}
                 placeholder={props.placeholder}
                 className="max-w-lg"
                 disabled={props.disabled}
@@ -106,8 +106,8 @@ export function SwitchField<F extends FieldValues>(props: {
 }) {
   return (
     <FormField
-      control={props.control}
-      name={props.name}
+      control={props.control as any}
+      name={props.name as any}
       render={({ field }) => (
         <FormItem>
           <label className={cn(
@@ -116,7 +116,7 @@ export function SwitchField<F extends FieldValues>(props: {
           )}>
             <FormControl>
               <Switch
-                checked={field.value}
+                checked={field.value as boolean}
                 onCheckedChange={field.onChange}
                 disabled={props.disabled}
               />
@@ -146,8 +146,8 @@ export function SwitchListField<F extends FieldValues>(props: {
 
   return (
     <FormField
-      control={props.control}
-      name={props.name}
+      control={props.control as any}
+      name={props.name as any}
       render={({ field }) => (
         <FormItem>
           <FormLabel>{props.label}</FormLabel>
@@ -157,12 +157,12 @@ export function SwitchListField<F extends FieldValues>(props: {
                 <FieldLabel required={props.required}>{provider.label}</FieldLabel>
                 <FormControl>
                   <Trigger
-                    checked={field.value.includes(provider.value)}
+                    checked={(field.value as any[])?.includes?.(provider.value) || false}
                     onCheckedChange={(checked) => {
                       if (checked) {
-                        field.onChange([...field.value, provider.value]);
+                        field.onChange([...(field.value as any[] || []), provider.value]);
                       } else {
-                        field.onChange(field.value.filter((v: any) => v !== provider.value));
+                        field.onChange((field.value as any[] || []).filter((v: any) => v !== provider.value));
                       }
                     }}
                     disabled={props.disabled}
@@ -188,8 +188,8 @@ export function DateField<F extends FieldValues>(props: {
 }) {
   return (
     <FormField
-      control={props.control}
-      name={props.name}
+      control={props.control as any}
+      name={props.name as any}
       render={({ field }) => (
         <FormItem className="flex flex-col">
           <FieldLabel required={props.required}>{props.label}</FieldLabel>
@@ -204,7 +204,7 @@ export function DateField<F extends FieldValues>(props: {
                   )}
                   disabled={props.disabled}
                 >
-                  {field.value ? field.value.toLocaleDateString() : <span>Pick a date</span>}
+                  {field.value ? (field.value as Date).toLocaleDateString() : <span>Pick a date</span>}
                   <CalendarIcon className="ml-auto h-4 w-4 opacity-50" />
                 </Button>
               </FormControl>
@@ -212,7 +212,7 @@ export function DateField<F extends FieldValues>(props: {
             <PopoverContent className="w-auto p-0" align="start">
               <Calendar
                 mode="single"
-                selected={field.value}
+                selected={field.value as Date}
                 onSelect={field.onChange}
                 initialFocus
                 disabled={props.disabled}
@@ -237,13 +237,13 @@ export function SelectField<F extends FieldValues>(props: {
 }) {
   return (
     <FormField
-      control={props.control}
-      name={props.name}
+      control={props.control as any}
+      name={props.name as any}
       render={({ field }) => (
         <FormItem>
           <FieldLabel required={props.required}>{props.label}</FieldLabel>
           <FormControl>
-            <Select onValueChange={field.onChange} defaultValue={field.value} disabled={props.disabled}>
+            <Select onValueChange={field.onChange} defaultValue={field.value as string} disabled={props.disabled}>
               <SelectTrigger className="max-w-lg">
                 <SelectValue placeholder={props.placeholder}/>
               </SelectTrigger>
@@ -274,13 +274,13 @@ export function CheckboxField<F extends FieldValues>(props: {
 }) {
   return (
     <FormField
-      control={props.control}
-      name={props.name}
+      control={props.control as any}
+      name={props.name as any}
       render={({ field }) => (
         <FormItem className="flex flex-row items-start space-x-3 space-y-0 rounded-md p-2">
           <FormControl>
             <Checkbox
-              checked={field.value}
+              checked={field.value as boolean}
               onCheckedChange={field.onChange}
               disabled={props.disabled}
             />

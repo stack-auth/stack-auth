@@ -59,7 +59,7 @@ export function AddUserDialog(props: {
     trigger={props.trigger}
   >
     <h3 className="font-semibold mb-4">Invite a new user</h3>
-    <Form {...inviteForm}>
+    <Form {...inviteForm as any}>
       <form onSubmit={e => runAsynchronouslyWithAlert(inviteForm.handleSubmit(onSubmit)(e))} onChange={() => setSubmitted(false)}>
         <div className="flex flex-row gap-4">
           <InputField control={inviteForm.control} className="flex-1" name="email" placeholder="Email" />
