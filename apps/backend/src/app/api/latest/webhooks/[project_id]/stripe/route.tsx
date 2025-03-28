@@ -1,5 +1,5 @@
 
-import { grantUserPermission } from "@/lib/permissions";
+import { grantUserPermission, revokeUserPermission } from "@/lib/permissions";
 import { getProjectQuery } from "@/lib/projects";
 import { getTenancyFromProject } from "@/lib/tenancies";
 import { rawQuery, retryTransaction } from "@/prisma-client";
@@ -71,10 +71,44 @@ const STRIPE_EVENT_HANDLERS: {
     });
   },
   "customer.subscription.deleted": async (stripe, event, project) => {
-    console.log("Customer subscription deleted", event.data.object);
-  },
-  "customer.subscription.updated": async (stripe, event, project) => {
-    console.log("Customer subscription updated", event.data.object);
+    const tenancy = await getTenancyFromProject(project.id, 'main', null);
+    if (!tenancy) throw new KnownErrors.ProjectNotFound(project.id);
+
+    const user = await rawQuery(getUserQuery(tenancy.project.id, tenancy.branchId, event.data.object.metadata.user_id));
+    if (!user) throw new KnownErrors.UserNotFound();
+
+    const productIds = event.data.object.items.data
+      .filter(item => item.plan.product)
+      .map(item => item.plan.product)
+      .filter(product => product !== null)
+      .map(product => typeof product === "string" ? product : product.id);
+
+    await retryTransaction(async (tx) => {
+      for (const productId of productIds) {
+        const features = await stripe.products.listFeatures(productId);
+        const permsToRevoke = features.data
+          .map(x => x.entitlement_feature.metadata['STACK_LINKED_PERMISSION'])
+          .filter(x => typeof x === "string");
+
+        for (const permId of permsToRevoke) {
+          const perm = await tx.permission.findUnique({
+            where: {
+              projectConfigId_queryableId: {
+                projectConfigId: project.config.id,
+                queryableId: permId,
+              }
+            },
+          });
+          if (perm) {
+            await revokeUserPermission(tx, {
+              tenancy: tenancy as any, // TODO: ???
+              userId: user.id,
+              permissionId: perm.queryableId,
+            });
+          }
+        }
+      }
+    });
   },
 };
 
