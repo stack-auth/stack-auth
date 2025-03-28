@@ -51,29 +51,38 @@ it("throws an error when user API keys are disabled", async ({ expect }: { expec
     accessType: "client",
     body: {
       team_id: teamId,
-      description: "This should work",
+      description: "This should not work",
       expires_at_millis: null,
     },
   });
 
   expect(createTeamResponse).toMatchInlineSnapshot(`
     NiceResponse {
-      "status": 200,
+      "status": 400,
       "body": {
-        "created_at_millis": <stripped field 'created_at_millis'>,
-        "description": "This should work",
-        "id": "<stripped UUID>",
-        "is_public": false,
-        "team_id": "<stripped UUID>",
-        "type": "team",
-        "value": sk_<stripped team API key>,
+        "code": "SCHEMA_ERROR",
+        "details": {
+          "message": deindent\`
+            Request validation failed on POST /api/v1/team-api-keys:
+              - body.team_id must be defined
+          \`,
+        },
+        "error": deindent\`
+          Request validation failed on POST /api/v1/team-api-keys:
+            - body.team_id must be defined
+        \`,
       },
-      "headers": Headers { <some fields may have been hidden> },
+      "headers": Headers {
+        "x-stack-known-error": "SCHEMA_ERROR",
+        <some fields may have been hidden>,
+      },
     }
   `);
 });
 
 it("can create public API keys", async ({ expect }: { expect: any }) => {
+  await createAndSwitchToAPIEnabledProject();
+
   await Auth.Otp.signIn();
 
   const { createUserApiKeyResponse } = await ProjectApiKey.User.create({
@@ -537,7 +546,7 @@ it("prevents creating API keys for other users", async ({ expect }: { expect: an
 });
 
 it("can manage API keys if only if the respective team permission is granted", async ({ expect }: { expect: any }) => {
-  // First user creates a team and API key
+  await createAndSwitchToAPIEnabledProject();
   const { userId: userId1 } = await Auth.Otp.signIn();
   const { teamId } = await Team.createAndAddCurrent();
 
