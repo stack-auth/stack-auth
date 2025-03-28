@@ -75,7 +75,7 @@
   },
   "devDependencies": {
     "@simplewebauthn/types": "^11.0.0",
-    "@types/node": "^20.8.10",
+    "@types/node": "^22.13.14",
     "@types/nodemailer": "^6.4.14",
     "@types/oidc-provider": "^8.5.1",
     "@types/react": "19.0.12",
