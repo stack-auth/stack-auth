@@ -4,22 +4,8 @@ module.exports = {
     "../../eslint-configs/next.js",
   ],
   "ignorePatterns": ['/*', '!/src'],
-  "parser": "@typescript-eslint/parser",
-  "plugins": ["@typescript-eslint"],
   rules: {
-    "@typescript-eslint/member-delimiter-style": [
-      "error",
-      {
-        multiline: {
-          delimiter: "comma",
-        },
-        singleline: {
-          delimiter: "comma",
-          requireLast: false,
-        },
-        multilineDetection: "brackets",
-      },
-    ],
+    "@typescript-eslint/member-delimiter-style": "off",
     "import/order": [
       1,
       {
