@@ -86,7 +86,7 @@ async function seed() {
               },
               oauthProviderConfigs: {
                 create: oauthProviderIds.map((id) => ({
-                  id,
+                  id: generateUuid(),
                   proxiedOAuthConfig: {
                     create: {
                       type: id.toUpperCase() as any,
@@ -112,11 +112,21 @@ async function seed() {
         data: {
           authMethodConfigs: {
             create: [
-              ...oauthProviderIds.map((id) => ({
+              // We need to look up the oauth provider configs by their type
+              ...(await tx.oAuthProviderConfig.findMany({
+                where: {
+                  projectConfigId: (internalProject as any).configId,
+                  OR: oauthProviderIds.map(id => ({
+                    proxiedOAuthConfig: {
+                      type: id.toUpperCase() as any
+                    }
+                  }))
+                }
+              })).map(config => ({
                 oauthProviderConfig: {
                   connect: {
                     projectConfigId_id: {
-                      id,
+                      id: config.id,
                       projectConfigId: (internalProject as any).configId,
                     }
                   }
@@ -242,11 +252,11 @@ async function seed() {
         }
 
         if (adminGithubId) {
-          const githubConfig = await tx.oAuthProviderConfig.findUnique({
+          const githubConfig = await tx.oAuthProviderConfig.findFirst({
             where: {
-              projectConfigId_id: {
-                projectConfigId: (internalProject as any).configId,
-                id: 'github'
+              projectConfigId: (internalProject as any).configId,
+              proxiedOAuthConfig: {
+                type: 'GITHUB'
               }
             }
           });
@@ -259,7 +269,7 @@ async function seed() {
             where: {
               tenancyId: internalTenancy.id,
               projectConfigId: (internalProject as any).configId,
-              oauthProviderConfigId: 'github',
+              oauthProviderConfigId: githubConfig.id,
               providerAccountId: adminGithubId,
             }
           });
@@ -272,7 +282,7 @@ async function seed() {
                 tenancyId: internalTenancy.id,
                 projectConfigId: (internalProject as any).configId,
                 projectUserId: newUser.projectUserId,
-                oauthProviderConfigId: 'github',
+                oauthProviderConfigId: githubConfig.id,
                 providerAccountId: adminGithubId
               }
             });
@@ -289,7 +299,7 @@ async function seed() {
               oauthAuthMethod: {
                 create: {
                   projectUserId: newUser.projectUserId,
-                  oauthProviderConfigId: 'github',
+                  oauthProviderConfigId: githubConfig.id,
                   providerAccountId: adminGithubId,
                   projectConfigId: (internalProject as any).configId,
                 }
@@ -458,7 +468,7 @@ async function seed() {
                 },
                 oauthProviderConfigs: {
                   create: ['github', 'google'].map((id) => ({
-                    id,
+                    id: generateUuid(),
                     proxiedOAuthConfig: {
                       create: {
                         type: id.toUpperCase() as any,
@@ -489,11 +499,21 @@ async function seed() {
           data: {
             authMethodConfigs: {
               create: [
-                ...['github', 'google'].map((id) => ({
+                // We need to look up the oauth provider configs by their type
+                ...(await tx.oAuthProviderConfig.findMany({
+                  where: {
+                    projectConfigId: emulatorProject.configId,
+                    OR: ['github', 'google'].map(id => ({
+                      proxiedOAuthConfig: {
+                        type: id.toUpperCase() as any
+                      }
+                    }))
+                  }
+                })).map(config => ({
                   oauthProviderConfig: {
                     connect: {
                       projectConfigId_id: {
-                        id,
+                        id: config.id,
                         projectConfigId: emulatorProject.configId,
                       }
                     }
