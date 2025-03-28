@@ -9,7 +9,7 @@
     "clean": "rimraf test-run-output && rimraf node_modules && rimraf dist",
     "build": "tsup",
     "dev": "tsup --watch",
-    "lint": "eslint --ext .tsx,.ts .",
+    "lint": "eslint .",
     "typecheck": "tsc --noEmit",
     "init-stack": "node dist/index.js",
     "init-stack:local": "STACK_NEXT_INSTALL_PACKAGE_NAME_OVERRIDE=../../stack STACK_JS_INSTALL_PACKAGE_NAME_OVERRIDE=../../js node dist/index.js",
