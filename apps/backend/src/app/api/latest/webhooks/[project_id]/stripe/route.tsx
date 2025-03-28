@@ -1,7 +1,7 @@
 
 import { grantUserPermission, revokeUserPermission } from "@/lib/permissions";
 import { getProjectQuery } from "@/lib/projects";
-import { getTenancyFromProject } from "@/lib/tenancies";
+import { getTenancyFromProject, tenancyPrismaToCrud } from "@/lib/tenancies";
 import { rawQuery, retryTransaction } from "@/prisma-client";
 import { KnownErrors } from "@stackframe/stack-shared";
 import { ProjectsCrud } from "@stackframe/stack-shared/dist/interface/crud/projects";
@@ -61,7 +61,7 @@ const STRIPE_EVENT_HANDLERS: {
           });
           if (perm) {
             await grantUserPermission(tx, {
-              tenancy: tenancy as any, // TODO: ???
+              tenancy,
               userId: user.id,
               permissionId: perm.queryableId,
             });
@@ -101,7 +101,7 @@ const STRIPE_EVENT_HANDLERS: {
           });
           if (perm) {
             await revokeUserPermission(tx, {
-              tenancy: tenancy as any, // TODO: ???
+              tenancy,
               userId: user.id,
               permissionId: perm.queryableId,
             });
