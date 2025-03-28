@@ -1,18 +1,18 @@
 import { createPermissionDefinition, deletePermissionDefinition, listPermissionDefinitions, updatePermissionDefinitions } from "@/lib/permissions";
 import { retryTransaction } from "@/prisma-client";
 import { createCrudHandlers } from "@/route-handlers/crud-handler";
-import { userPermissionDefinitionsCrud } from '@stackframe/stack-shared/dist/interface/crud/user-permissions';
-import { teamPermissionDefinitionIdSchema, yupObject } from "@stackframe/stack-shared/dist/schema-fields";
+import { projectPermissionDefinitionsCrud } from '@stackframe/stack-shared/dist/interface/crud/project-permissions';
+import { permissionDefinitionIdSchema, yupObject } from "@stackframe/stack-shared/dist/schema-fields";
 import { createLazyProxy } from "@stackframe/stack-shared/dist/utils/proxies";
 
-export const userPermissionDefinitionsCrudHandlers = createLazyProxy(() => createCrudHandlers(userPermissionDefinitionsCrud, {
+export const projectPermissionDefinitionsCrudHandlers = createLazyProxy(() => createCrudHandlers(projectPermissionDefinitionsCrud, {
   paramsSchema: yupObject({
-    permission_id: teamPermissionDefinitionIdSchema.defined(),
+    permission_id: permissionDefinitionIdSchema.defined(),
   }),
   async onCreate({ auth, data }) {
     return await retryTransaction(async (tx) => {
       return await createPermissionDefinition(tx, {
-        scope: "USER",
+        scope: "PROJECT",
         tenancy: auth.tenancy,
         data,
       });
@@ -21,7 +21,7 @@ export const userPermissionDefinitionsCrudHandlers = createLazyProxy(() => creat
   async onUpdate({ auth, data, params }) {
     return await retryTransaction(async (tx) => {
       return await updatePermissionDefinitions(tx, {
-        scope: "USER",
+        scope: "PROJECT",
         tenancy: auth.tenancy,
         permissionId: params.permission_id,
         data,
@@ -39,7 +39,7 @@ export const userPermissionDefinitionsCrudHandlers = createLazyProxy(() => creat
   async onList({ auth }) {
     return await retryTransaction(async (tx) => {
       return {
-        items: await listPermissionDefinitions(tx, "USER", auth.tenancy),
+        items: await listPermissionDefinitions(tx, "PROJECT", auth.tenancy),
         is_paginated: false,
       };
     });
