@@ -1112,6 +1112,31 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
   async redirectToError(options?: RedirectToOptions) { return await this._redirectToHandler("error", options); }
   async redirectToTeamInvitation(options?: RedirectToOptions) { return await this._redirectToHandler("teamInvitation", options); }
 
+  async redirectToStripeCheckout(options: {
+    priceId: string,
+    successUrl?: string,
+    cancelUrl?: string,
+  }): Promise<void> {
+    this._ensurePersistentTokenStore();
+    const session = await this._getSession();
+
+    const currentUrl = await this._getCurrentUrl();
+    if (!currentUrl && (!options.successUrl || !options.cancelUrl)) {
+      throw new Error("Cannot redirect to checkout without success and cancel URLs from the server or without a redirect method. Make sure you pass both the `successUrl` and `cancelUrl` options.");
+    }
+
+    const successUrl = options.successUrl || new URL("./checkout-success", currentUrl!).toString();
+    const cancelUrl = options.cancelUrl || new URL("./checkout-cancel", currentUrl!).toString();
+
+    const { paymentUrl } = await this._interface.createCheckoutSession({
+      priceId: options.priceId,
+      successUrl,
+      cancelUrl,
+    }, session);
+
+    await this._redirectTo({ url: paymentUrl });
+  }
+
   async sendForgotPasswordEmail(email: string, options?: { callbackUrl?: string }): Promise<Result<undefined, KnownErrors["UserNotFound"]>> {
     if (!options?.callbackUrl && !await this._getCurrentUrl()) {
       throw new Error("Cannot send forgot password email without a callback URL from the server or without a redirect method. Make sure you pass the `callbackUrl` option: `sendForgotPasswordEmail({ email, callbackUrl: ... })`");

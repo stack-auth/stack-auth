@@ -1451,5 +1451,35 @@ export class StackClientInterface {
     }
     return Result.ok(undefined);
   }
+
+  async createCheckoutSession(
+    options: {
+      priceId: string,
+      successUrl: string,
+      cancelUrl: string,
+    },
+    session: InternalSession,
+  ): Promise<{ paymentUrl: string }> {
+    const response = await this.sendClientRequest(
+      "/api/latest/integrations/stripe/checkout",
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          price_id: options.priceId,
+          success_url: options.successUrl,
+          cancel_url: options.cancelUrl,
+        }),
+      },
+      session,
+    );
+
+    const result = await response.json();
+    return {
+      paymentUrl: result.payment_url,
+    };
+  }
 }
 
