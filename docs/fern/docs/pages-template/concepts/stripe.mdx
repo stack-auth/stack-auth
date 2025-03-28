@@ -1,0 +1,52 @@
+---
+slug: concepts/stripe-integration
+subtitle: Integrating Stripe for payments and subscriptions
+---
+
+Stack Auth provides integration with Stripe for payment processing and subscription management. This integration allows you to connect your Stripe account to your Stack Auth project and implement subscription-based features, including automatic permission assignment based on subscription status.
+
+## Overview
+
+The Stripe integration enables you to:
+
+1. Connect your Stripe account to your Stack Auth project
+2. Process payments through Stripe
+3. Implement subscription-based access control
+4. Automatically grant and revoke permissions based on subscription status
+
+## Configuration
+
+### Dashboard Configuration
+
+To configure Stripe in your Stack Auth project:
+
+1. Navigate to your project in the Stack Auth dashboard
+2. Go to the **Payments** tab
+3. Click **Configure Stripe** and enter your credentials:
+   - **Stripe Secret Key**: Your Stripe secret key starting with `sk_`
+   - **Stripe Publishable Key**: Your Stripe publishable key starting with `pk_`
+   - **Stripe Webhook Secret** (optional but recommended for production): Your webhook signing secret
+
+### Setting Up Webhook Endpoints
+
+To receive subscription events from Stripe, you need to set up a webhook endpoint in your Stripe dashboard:
+
+1. Go to the [Stripe Dashboard](https://dashboard.stripe.com/)
+2. Navigate to **Developers > Webhooks**
+3. Click **Add endpoint**
+4. Enter your webhook URL: `https://your-stack-auth-domain.com/api/latest/webhooks/{project_id}/stripe`
+5. Select the following events to listen for:
+   - `customer.subscription.created`
+   - `customer.subscription.updated`
+   - `customer.subscription.deleted`
+
+## Linking Permissions to Products
+
+Stack Auth uses Stripe Product Features metadata to link subscriptions to user permissions. Here's how to set it up:
+
+1. In your Stripe Dashboard, go to **Products**
+2. Select or create a product that represents a subscription tier
+3. Go to the **Features** tab and add features
+4. For each feature that should grant a Stack permission, add a metadata key `STACK_LINKED_PERMISSION` with the value being your permission ID in Stack
+
+When a user subscribes to this product, they will automatically receive the associated permissions.

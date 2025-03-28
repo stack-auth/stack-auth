@@ -84,6 +84,9 @@ navigation:
           - page: Backend Integration
             icon: fa-regular fa-network-wired
             path: ./docs/pages-{platform}/concepts/backend-integration.mdx
+          # - page: Stripe Integration
+          #   icon: fa-regular fa-credit-card
+          #   path: ./docs/pages-{platform}/concepts/stripe-integration.mdx
       - section: Customization
         platform: react-like
         contents:

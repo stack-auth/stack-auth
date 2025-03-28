@@ -28,6 +28,7 @@ model Project {
   neonProvisionedProject NeonProvisionedProject?
   tenancies              Tenancy[]
   verificationCodes      VerificationCode[]
+  products               Product[]
 }
 
 model ProjectConfig {
@@ -1010,4 +1011,16 @@ model StripeConfig {
   stripeSecretKey      String
   stripePublishableKey String
   stripeWebhookSecret  String?
+}
+
+model Product {
+  id        String  @id @default(uuid()) @db.Uuid
+  projectId String  @unique
+  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  name            String
+  stripeProductId String? @unique
 }
