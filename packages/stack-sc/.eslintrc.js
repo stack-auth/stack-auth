@@ -4,5 +4,6 @@ module.exports = {
   ],
   rules: {
     "@typescript-eslint/member-delimiter-style": "off"
-  }
+  },
+  ignorePatterns: ["dist/**/*", "vitest.config.ts"]
 };
