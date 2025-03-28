@@ -1,7 +1,7 @@
 
 import { grantProjectPermission, revokeProjectPermission } from "@/lib/permissions";
 import { getProjectQuery } from "@/lib/projects";
-import { getTenancyFromProject, tenancyPrismaToCrud } from "@/lib/tenancies";
+import { getTenancyFromProject } from "@/lib/tenancies";
 import { rawQuery, retryTransaction } from "@/prisma-client";
 import { KnownErrors } from "@stackframe/stack-shared";
 import { ProjectsCrud } from "@stackframe/stack-shared/dist/interface/crud/projects";
@@ -37,36 +37,33 @@ const STRIPE_EVENT_HANDLERS: {
     const user = await rawQuery(getUserQuery(tenancy.project.id, tenancy.branchId, event.data.object.metadata.user_id));
     if (!user) throw new KnownErrors.UserNotFound();
 
-    const productIds = event.data.object.items.data
+    const stripeProductIds = event.data.object.items.data
       .filter(item => item.plan.product)
       .map(item => item.plan.product)
       .filter(product => product !== null)
       .map(product => typeof product === "string" ? product : product.id);
 
     await retryTransaction(async (tx) => {
-      for (const productId of productIds) {
-        const features = await stripe.products.listFeatures(productId);
-        const permsToAssign = features.data
-          .map(x => x.entitlement_feature.metadata['STACK_LINKED_PERMISSION'])
-          .filter(x => typeof x === "string");
-
-        for (const permId of permsToAssign) {
-          const perm = await tx.permission.findUnique({
-            where: {
-              projectConfigId_queryableId: {
-                projectConfigId: project.config.id,
-                queryableId: permId,
-              }
-            },
-          });
-          if (perm) {
-            await grantProjectPermission(tx, {
-              tenancy,
-              userId: user.id,
-              permissionId: perm.queryableId,
-            });
-          }
+      const stackProducts = await tx.product.findMany({
+        where: {
+          stripeProductId: {
+            in: stripeProductIds,
+          },
+        },
+        include: {
+          associatedPermission: true,
         }
+      });
+      const permissionsToAssign = stackProducts
+        .map(x => x.associatedPermission)
+        .filter(x => x !== null);
+
+      for (const permission of permissionsToAssign) {
+        await grantProjectPermission(tx, {
+          tenancy,
+          userId: user.id,
+          permissionId: permission.queryableId,
+        });
       }
     });
   },
@@ -77,36 +74,33 @@ const STRIPE_EVENT_HANDLERS: {
     const user = await rawQuery(getUserQuery(tenancy.project.id, tenancy.branchId, event.data.object.metadata.user_id));
     if (!user) throw new KnownErrors.UserNotFound();
 
-    const productIds = event.data.object.items.data
+    const stripeProductIds = event.data.object.items.data
       .filter(item => item.plan.product)
       .map(item => item.plan.product)
       .filter(product => product !== null)
       .map(product => typeof product === "string" ? product : product.id);
 
     await retryTransaction(async (tx) => {
-      for (const productId of productIds) {
-        const features = await stripe.products.listFeatures(productId);
-        const permsToRevoke = features.data
-          .map(x => x.entitlement_feature.metadata['STACK_LINKED_PERMISSION'])
-          .filter(x => typeof x === "string");
-
-        for (const permId of permsToRevoke) {
-          const perm = await tx.permission.findUnique({
-            where: {
-              projectConfigId_queryableId: {
-                projectConfigId: project.config.id,
-                queryableId: permId,
-              }
-            },
-          });
-          if (perm) {
-            await revokeProjectPermission(tx, {
-              tenancy,
-              userId: user.id,
-              permissionId: perm.queryableId,
-            });
-          }
+      const stackProducts = await tx.product.findMany({
+        where: {
+          stripeProductId: {
+            in: stripeProductIds,
+          },
+        },
+        include: {
+          associatedPermission: true,
         }
+      });
+      const permissionsToAssign = stackProducts
+        .map(x => x.associatedPermission)
+        .filter(x => x !== null);
+
+      for (const permission of permissionsToAssign) {
+        await revokeProjectPermission(tx, {
+          tenancy,
+          userId: user.id,
+          permissionId: permission.queryableId,
+        });
       }
     });
   },

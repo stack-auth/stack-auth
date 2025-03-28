@@ -224,12 +224,10 @@ model Permission {
   teamMemberDirectPermission  TeamMemberDirectPermission[]
   projectUserDirectPermission ProjectUserDirectPermission[]
 
-  isDefaultTeamCreatorPermission Boolean @default(false)
-  isDefaultTeamMemberPermission  Boolean @default(false)
-  isDefaultProjectPermission Boolean @default(false)
-
-  product   Product? @relation(fields: [productId], references: [id])
-  productId String?  @db.Uuid
+  isDefaultTeamCreatorPermission Boolean   @default(false)
+  isDefaultTeamMemberPermission  Boolean   @default(false)
+  isDefaultProjectPermission     Boolean   @default(false)
+  products                       Product[]
 
   @@unique([projectConfigId, queryableId])
   @@unique([tenancyId, teamId, queryableId])
@@ -1024,7 +1022,8 @@ model Product {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  name                  String
-  stripeProductId       String?      @unique
-  associatedPermissions Permission[]
+  name                   String
+  stripeProductId        String?     @unique
+  associatedPermissionId String?     @db.Uuid
+  associatedPermission   Permission? @relation(fields: [associatedPermissionId], references: [dbId])
 }
