@@ -22,7 +22,8 @@ export const POST = createSmartRouteHandler({
   },
   request: yupObject({
     auth: yupObject({
-      project: adaptSchema,
+      project: adaptSchema.defined(),
+      user: adaptSchema.defined(),
     }).defined(),
     body: yupObject({
       price_id: yupString().defined(),
@@ -38,13 +39,18 @@ export const POST = createSmartRouteHandler({
       payment_url: yupString().defined(),
     }).defined(),
   }),
-  async handler({ body, auth: { project } }) {
+  async handler({ body, auth: { project, user } }) {
     const stripe = getStripeClient(project);
 
+
     const session = await stripe.checkout.sessions.create({
-      customer: 'foo',
+      customer_email: user.primary_email ?? undefined,
       line_items: [{ price: body.price_id, quantity: 1 }],
-      mode: 'subscription',
+      metadata: {
+        stack_project_id: project.id,
+        stack_user_id: user.id,
+      },
+      mode: 'payment',
       success_url: body.success_url,
       cancel_url: body.cancel_url,
     });
