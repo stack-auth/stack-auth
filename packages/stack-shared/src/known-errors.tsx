@@ -1231,23 +1231,32 @@ const InvalidApiKey = createKnownErrorConstructor(
 const ApiKeyExpired = createKnownErrorConstructor(
   KnownError,
   "API_KEY_EXPIRED",
-  (expiredAt: Date | undefined) => [
+  () => [
     401,
     "API key has expired.",
-    { expired_at_millis: expiredAt?.getTime() ?? null },
   ] as const,
-  (json: any) => [json.expired_at_millis ? new Date(json.expired_at_millis) : undefined] as const,
+  () => [] as const,
 );
 
 const ApiKeyRevoked = createKnownErrorConstructor(
   KnownError,
   "API_KEY_REVOKED",
-  (revokedAt: Date | undefined) => [
+  () => [
     401,
     "API key has been revoked.",
-    { revoked_at_millis: revokedAt?.getTime() ?? null },
   ] as const,
-  (json: any) => [json.revoked_at_millis ? new Date(json.revoked_at_millis) : undefined] as const,
+  () => [] as const,
+);
+
+const WrongApiKeyType = createKnownErrorConstructor(
+  KnownError,
+  "WRONG_API_KEY_TYPE",
+  (expectedType: string, actualType: string) => [
+    400,
+    `This endpoint is for ${expectedType} API keys, but a ${actualType} API key was provided.`,
+    { expected_type: expectedType, actual_type: actualType },
+  ] as const,
+  (json) => [json.expected_type, json.actual_type] as const,
 );
 
 export type KnownErrors = {
@@ -1352,6 +1361,7 @@ export const KnownErrors = {
   InvalidApiKey,
   ApiKeyExpired,
   ApiKeyRevoked,
+  WrongApiKeyType,
 } satisfies Record<string, KnownErrorConstructor<any, any>>;
 
 

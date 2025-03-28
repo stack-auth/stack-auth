@@ -9,7 +9,7 @@ import { TeamApiKeysCrud, UserApiKeysCrud, teamApiKeysCreateInputSchema, teamApi
 import { adaptSchema, clientOrHigherAuthTypeSchema, serverOrHigherAuthTypeSchema, userIdOrMeSchema, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
 import { encodeBase32, getBase32CharacterFromIndex } from "@stackframe/stack-shared/dist/utils/bytes";
 import { generateSecureRandomString } from "@stackframe/stack-shared/dist/utils/crypto";
-import { StackAssertionError, StatusError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
+import { StackAssertionError, StatusError } from "@stackframe/stack-shared/dist/utils/errors";
 import { sha512 } from "@stackframe/stack-shared/dist/utils/hashes";
 import { createLazyProxy } from "@stackframe/stack-shared/dist/utils/proxies";
 import { generateUuid } from "@stackframe/stack-shared/dist/utils/uuids";
@@ -64,8 +64,21 @@ async function ensureUserCanManageApiKeys(
 }
 
 async function parseTypeAndParams(options: { type: "user" | "team", params: { user_id?: string, team_id?: string } }) {
-  const userId = options.type === "user" ? ("user_id" in options.params ? options.params.user_id : throwErr("no user_id found on handler of type user?")) : undefined;
-  const teamId = options.type === "team" ? ("team_id" in options.params ? options.params.team_id : throwErr("no team_id found on handler of type team?")) : undefined;
+  let userId: string | undefined;
+  let teamId: string | undefined;
+
+  if (options.type === "user") {
+    if (!("user_id" in options.params)) {
+      throw new KnownErrors.SchemaError("user_id is required for user API keys");
+    }
+    userId = options.params.user_id;
+  } else {
+    if (!("team_id" in options.params)) {
+      throw new KnownErrors.SchemaError("team_id is required for team API keys");
+    }
+    teamId = options.params.team_id;
+  }
+
   return { userId, teamId };
 }
 
@@ -224,6 +237,22 @@ function createApiKeyHandlers<Type extends "user" | "team">(type: Type) {
           throw new KnownErrors.ApiKeyNotFound();
         }
 
+        if (apiKey.projectUserId && type === "team") {
+          throw new KnownErrors.WrongApiKeyType("team", "user");
+        }
+
+        if (apiKey.teamId && type === "user") {
+          throw new KnownErrors.WrongApiKeyType("user", "team");
+        }
+
+        if (apiKey.manuallyRevokedAt) {
+          throw new KnownErrors.ApiKeyRevoked();
+        }
+
+        if (apiKey.expiresAt && apiKey.expiresAt < new Date()) {
+          throw new KnownErrors.ApiKeyExpired();
+        }
+
         return {
           statusCode: 200,
           bodyType: "json",
@@ -238,7 +267,7 @@ function createApiKeyHandlers<Type extends "user" | "team">(type: Type) {
           api_key_id: yupString().uuid().defined(),
         }),
         querySchema: type === 'user' ? yupObject({
-          user_id: userIdOrMeSchema.defined().meta({ openapiField: { onlyShowInOperations: ['List'] } }),
+          user_id: userIdOrMeSchema.optional().meta({ openapiField: { onlyShowInOperations: ['List'] } }),
         }) : yupObject({
           team_id: yupString().uuid().defined().meta({ openapiField: { onlyShowInOperations: ['List'] } }),
         }),
@@ -282,28 +311,64 @@ function createApiKeyHandlers<Type extends "user" | "team">(type: Type) {
         },
 
         onRead: async ({ auth, query, params }) => {
-          const { userId, teamId } = await parseTypeAndParams({ type, params: query });
-          await ensureUserCanManageApiKeys(auth, {
-            userId,
-            teamId,
-          });
 
-          const apiKey = await prismaClient.projectApiKey.findUnique({
-            where: {
-              tenancyId_id: {
-                tenancyId: auth.tenancy.id,
-                id: params.api_key_id,
-              },
-              projectUserId: userId,
-              teamId: teamId,
-            },
-          });
+          switch (auth.type) {
+            case "client": {
+              // Client: need to have user_id or team_id in the query, check if authorized to manage these, add query params db where clause
+              const { userId, teamId } = await parseTypeAndParams({ type, params: query });
+              await ensureUserCanManageApiKeys(auth, {
+                userId,
+                teamId,
+              });
 
-          if (!apiKey) {
-            throw new KnownErrors.ApiKeyNotFound();
+              const apiKey = await prismaClient.projectApiKey.findUnique({
+                where: {
+                  tenancyId_id: {
+                    tenancyId: auth.tenancy.id,
+                    id: params.api_key_id,
+                  },
+                  projectUserId: userId,
+                  teamId: teamId,
+                },
+              });
+
+              if (!apiKey) {
+                throw new KnownErrors.ApiKeyNotFound();
+              }
+
+              return await prismaToCrud(apiKey, type, false);
+            }
+
+            case "server":
+            case "admin": {
+              // Server: no need to have user_id or team_id in the query, get key by id directly
+              const apiKey = await prismaClient.projectApiKey.findUnique({
+                where: {
+                  tenancyId_id: {
+                    tenancyId: auth.tenancy.id,
+                    id: params.api_key_id,
+                  },
+                },
+              });
+
+              if (!apiKey) {
+                throw new KnownErrors.ApiKeyNotFound();
+              }
+              const { userId, teamId } = await parseTypeAndParams({ type, params: {
+                user_id: apiKey.projectUserId ?? undefined,
+                team_id: apiKey.teamId ?? undefined,
+              } });
+              await ensureUserCanManageApiKeys(auth, {
+                userId,
+                teamId,
+              });
+              return await prismaToCrud(apiKey, type, false);
+            }
+            default: {
+              // This should never happen
+              throw new StackAssertionError("Invalid auth type", { auth });
+            }
           }
-
-          return await prismaToCrud(apiKey, type, false);
         },
 
         onUpdate: async ({ auth, data, params, query }) => {
