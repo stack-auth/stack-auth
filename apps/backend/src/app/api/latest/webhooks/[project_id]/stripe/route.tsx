@@ -1,11 +1,15 @@
 
+import { grantUserPermission } from "@/lib/permissions";
 import { getProjectQuery } from "@/lib/projects";
-import { rawQuery } from "@/prisma-client";
+import { getTenancyFromProject } from "@/lib/tenancies";
+import { rawQuery, retryTransaction } from "@/prisma-client";
+import { KnownErrors } from "@stackframe/stack-shared";
 import { ProjectsCrud } from "@stackframe/stack-shared/dist/interface/crud/projects";
 import { NextApiRequest } from "next";
 import { headers } from "next/headers";
 import { Readable } from "node:stream";
 import Stripe from "stripe";
+import { getUserQuery } from "../../../users/crud";
 
 // $ stripe listen --forward-to http://localhost:8102/api/v1/webhooks/stripe
 // $ stripe trigger payment_intent.succeeded
@@ -18,28 +22,68 @@ async function buffer(readable: Readable) {
 }
 
 type StripeEventHandler<T extends Stripe.Event.Type> = (
+  stripe: Stripe,
   event: Extract<Stripe.Event, { type: T }>,
-  project: ProjectsCrud["Admin"]["Read"]
+  project: ProjectsCrud["Admin"]["Read"],
 ) => Promise<void>;
 
 const STRIPE_EVENT_HANDLERS: {
   [T in Stripe.Event.Type]?: StripeEventHandler<T>
 } = {
-  "customer.subscription.created": async (event, project) => {
-    console.log("Customer subscription created", event.data.object);
+  "customer.subscription.created": async (stripe, event, project) => {
+    const tenancy = await getTenancyFromProject(project.id, 'main', null);
+    if (!tenancy) throw new KnownErrors.ProjectNotFound(project.id);
+
+    const user = await rawQuery(getUserQuery(tenancy.project.id, tenancy.branchId, event.data.object.metadata.user_id));
+    if (!user) throw new KnownErrors.UserNotFound();
+
+    await retryTransaction(async (tx) => {
+      for (const item of event.data.object.items.data) {
+        if (!item.plan.product) continue;
+        const productId = typeof item.plan.product === "string" ? item.plan.product : item.plan.product.id;
+        const features = await stripe.products.listFeatures(productId);
+        for (const feature of features.data) {
+          const stackLinkedPermission = feature.entitlement_feature.metadata['STACK_LINKED_PERMISSION'];
+          if (typeof stackLinkedPermission === "string") {
+            const perm = await tx.permission.findUnique({
+              where: {
+                projectConfigId_queryableId: {
+                  projectConfigId: project.config.id,
+                  queryableId: stackLinkedPermission,
+                }
+              },
+            });
+            if (perm) {
+              await grantUserPermission(tx, {
+                tenancy: tenancy as any, // TODO: ???
+                userId: user.id,
+                permissionId: perm.queryableId,
+              });
+            }
+          }
+        }
+      }
+    });
   },
-  "customer.subscription.deleted": async (event, project) => {
+  "customer.subscription.deleted": async (stripe, event, project) => {
     console.log("Customer subscription deleted", event.data.object);
   },
-  "customer.subscription.updated": async (event, project) => {
+  "customer.subscription.updated": async (stripe, event, project) => {
     console.log("Customer subscription updated", event.data.object);
   },
 };
 
 // rewrite to use export const POST = ...
-export const POST = async (req: NextApiRequest, { params }: { params: { project_id: string } }) => {
+export const POST = async (req: NextApiRequest) => {
+  // parse the URL manually to get the project_id from the path (second to last segment)
+  const url = new URL((req as any).url);
+  const project_id = url.pathname.split("/").slice(-2, -1)[0];
+  if (!project_id) {
+    return Response.json({ error: 'Project ID is required' }, { status: 400 });
+  }
+
   try {
-    const project = await rawQuery(getProjectQuery(params.project_id));
+    const project = await rawQuery(getProjectQuery(project_id as string));
     if (!project || !project.config.stripe_config) {
       return Response.json({ error: 'Stripe configuration not found for this project' }, { status: 404 });
     }
@@ -68,7 +112,7 @@ export const POST = async (req: NextApiRequest, { params }: { params: { project_
     }
 
     // Handle the event
-    await STRIPE_EVENT_HANDLERS[event.type]?.(event as any, project);
+    await STRIPE_EVENT_HANDLERS[event.type]?.(stripe, event as any, project);
 
     return Response.json({ received: true });
   } catch (error) {
