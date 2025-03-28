@@ -9,7 +9,7 @@
     "dev": "next dev --turbopack --port 8103",
     "build": "next build --no-lint",
     "start": "next start --port 8103",
-    "lint": "next lint --no-dir-warnings"
+    "lint": "next lint"
   },
   "dependencies": {
     "@emotion/react": "^11.13.3",
