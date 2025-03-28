@@ -1349,7 +1349,6 @@ export const KnownErrors = {
   OAuthProviderAccessDenied,
   ContactChannelAlreadyUsedForAuthBySomeoneElse,
   InvalidPollingCodeError,
-  InvalidGroup,
   InvalidApiKey,
   ApiKeyExpired,
   ApiKeyRevoked,

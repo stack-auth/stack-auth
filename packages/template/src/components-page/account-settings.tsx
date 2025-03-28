@@ -229,13 +229,11 @@ export function TeamApiKeysSection(props: { team: Team }) {
 
 function TeamApiKeysSectionInner(props: { team: Team }) {
   const { t } = useTranslation();
-  const user = useUser({ or: 'redirect' });
-
 
   const [isNewApiKeyDialogOpen, setIsNewApiKeyDialogOpen] = useState(false);
   const [returnedApiKey, setReturnedApiKey] = useState<TeamApiKeyFirstView | null>(null);
 
-  const apiKeys = team.useApiKeys();
+  const apiKeys = props.team.useApiKeys();
 
   const CreateDialog = CreateApiKeyDialog<"team">;
   const ShowDialog = ShowApiKeyDialog<"team">;
@@ -257,7 +255,7 @@ function TeamApiKeysSectionInner(props: { team: Team }) {
         onOpenChange={setIsNewApiKeyDialogOpen}
         onKeyCreated={setReturnedApiKey}
         createApiKey={async (data) => {
-          const apiKey = await team.createApiKey(data);
+          const apiKey = await props.team.createApiKey(data);
           return apiKey;
         }}
       />
