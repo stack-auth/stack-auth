@@ -12,7 +12,7 @@ import Stripe from "stripe";
 import { getUserQuery } from "../../../users/crud";
 
 // $ stripe listen --forward-to http://localhost:8102/api/v1/webhooks/stripe
-// $ stripe trigger payment_intent.succeeded
+// $ stripe trigger customer.subscription.created
 async function buffer(readable: Readable) {
   const chunks = [];
   for await (const chunk of readable) {
