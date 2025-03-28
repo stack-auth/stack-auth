@@ -82,10 +82,7 @@ StackAssertionError.prototype.name = "StackAssertionError";
 
 export function errorToNiceString(error: unknown): string {
   if (!(error instanceof Error)) return `${typeof error}<${nicify(error)}>`;
-  let stack = error.stack ?? "";
-  const toString = error.toString();
-  if (!stack.startsWith(toString)) stack = `${toString}\n${stack}`;  // some browsers don't include the error message in the stack, some do
-  return `${stack} ${nicify(Object.fromEntries(Object.entries(error)), { maxDepth: 8 })}`;
+  return nicify(error, { maxDepth: 8 });
 }
 
 
