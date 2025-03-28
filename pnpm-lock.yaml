@@ -218,8 +218,8 @@ importers:
         specifier: ^11.0.0
         version: 11.0.0
       '@types/node':
-        specifier: ^20.8.10
-        version: 20.14.2
+        specifier: ^22.13.14
+        version: 22.13.14
       '@types/nodemailer':
         specifier: ^6.4.14
         version: 6.4.15
@@ -366,8 +366,8 @@ importers:
         specifier: ^4.17.5
         version: 4.17.5
       '@types/node':
-        specifier: ^20.8.10
-        version: 20.14.2
+        specifier: ^22.13.14
+        version: 22.13.14
       '@types/react':
         specifier: ^18.2.0
         version: 18.3.12
@@ -436,8 +436,8 @@ importers:
         version: 12.1.3
     devDependencies:
       '@types/node':
-        specifier: ^22.13.10
-        version: 22.13.10
+        specifier: ^22.13.14
+        version: 22.13.14
       typescript:
         specifier: ^5.8.2
         version: 5.8.2
@@ -496,8 +496,8 @@ importers:
         version: 18.3.1(react@18.3.1)
     devDependencies:
       '@types/node':
-        specifier: ^20
-        version: 20.14.2
+        specifier: ^22.13.14
+        version: 22.13.14
       '@types/react':
         specifier: ^18.2.0
         version: 18.3.12
@@ -640,8 +640,8 @@ importers:
         version: 18.3.1(react@18.3.1)
     devDependencies:
       '@types/node':
-        specifier: ^20
-        version: 20.14.2
+        specifier: ^22.13.14
+        version: 22.13.14
       '@types/react':
         specifier: ^18.2.0
         version: 18.3.12
@@ -674,7 +674,7 @@ importers:
         version: 5.8.2
       vite:
         specifier: ^6.1.0
-        version: 6.1.0(@types/node@22.13.10)(jiti@2.4.2)(lightningcss@1.29.1)(terser@5.31.1)(tsx@4.19.3)(yaml@2.6.0)
+        version: 6.1.0(@types/node@22.13.14)(jiti@2.4.2)(lightningcss@1.29.1)(terser@5.31.1)(tsx@4.19.3)(yaml@2.6.0)
 
   examples/middleware:
     dependencies:
@@ -692,8 +692,8 @@ importers:
         version: 18.3.1(react@18.3.1)
     devDependencies:
       '@types/node':
-        specifier: ^20
-        version: 20.14.2
+        specifier: ^22.13.14
+        version: 22.13.14
       '@types/react':
         specifier: ^18.2.0
         version: 18.3.12
@@ -726,8 +726,8 @@ importers:
         version: 18.3.1(react@18.3.1)
     devDependencies:
       '@types/node':
-        specifier: ^20
-        version: 20.14.2
+        specifier: ^22.13.14
+        version: 22.13.14
       '@types/react':
         specifier: ^18.2.0
         version: 18.3.12
@@ -770,7 +770,7 @@ importers:
         version: 18.3.1
       '@vitejs/plugin-react':
         specifier: ^4.3.4
-        version: 4.3.4(vite@6.1.0(@types/node@22.13.10)(jiti@2.4.2)(lightningcss@1.29.1)(terser@5.31.1)(tsx@4.19.3)(yaml@2.6.0))
+        version: 4.3.4(vite@6.1.0(@types/node@22.13.14)(jiti@2.4.2)(lightningcss@1.29.1)(terser@5.31.1)(tsx@4.19.3)(yaml@2.6.0))
       eslint:
         specifier: ^9.19.0
         version: 9.21.0(jiti@2.4.2)
@@ -791,7 +791,7 @@ importers:
         version: 8.25.0(eslint@9.21.0(jiti@2.4.2))(typescript@5.8.2)
       vite:
         specifier: ^6.1.0
-        version: 6.1.0(@types/node@22.13.10)(jiti@2.4.2)(lightningcss@1.29.1)(terser@5.31.1)(tsx@4.19.3)(yaml@2.6.0)
+        version: 6.1.0(@types/node@22.13.14)(jiti@2.4.2)(lightningcss@1.29.1)(terser@5.31.1)(tsx@4.19.3)(yaml@2.6.0)
 
   examples/supabase:
     dependencies:
@@ -818,8 +818,8 @@ importers:
         version: 18.3.1(react@18.3.1)
     devDependencies:
       '@types/node':
-        specifier: 20.10.6
-        version: 20.10.6
+        specifier: ^22.13.14
+        version: 22.13.14
       '@types/react':
         specifier: ^18.2.0
         version: 18.3.12
@@ -849,8 +849,8 @@ importers:
         specifier: ^9.0.7
         version: 9.0.7
       '@types/node':
-        specifier: ^22.13.5
-        version: 22.13.5
+        specifier: ^22.13.14
+        version: 22.13.14
       rimraf:
         specifier: ^6.0.1
         version: 6.0.1
@@ -6044,20 +6044,11 @@ packages:
   '@types/node@12.20.55':
     resolution: {integrity: sha512-J8xLz7q2OFulZ2cyGTLE1TbbZcjpno7FaN6zdJNrgAdrJ+DZzh/uFR6YrTb4C+nXakvud8Q4+rbhoIWlYQbUFQ==}
 
-  '@types/node@20.10.6':
-    resolution: {integrity: sha512-Vac8H+NlRNNlAmDfGUP7b5h/KA+AtWIzuXy0E6OyP8f1tCLYAtPvKRRDJjAPqhpCb0t6U2j7/xqAuLEebW2kiw==}
-
-  '@types/node@20.14.2':
-    resolution: {integrity: sha512-xyu6WAMVwv6AKFLB+e/7ySZVr/0zLCzOa7rSpq6jNwpqOrUbcACDWC+53d4n2QHOnDou0fbIsg8wZu/sxrnI4Q==}
-
   '@types/node@20.17.6':
     resolution: {integrity: sha512-VEI7OdvK2wP7XHnsuXbAJnEpEkF6NjSN45QJlL4VGqZSXsnicpesdTWsg9RISeSdYd3yeRj/y3k5KGjUXYnFwQ==}
 
-  '@types/node@22.13.10':
-    resolution: {integrity: sha512-I6LPUvlRH+O6VRUqYOcMudhaIdUVWfsjnZavnsraHvpBwaEyMN29ry+0UVJhImYL16xsscu0aske3yA+uPOWfw==}
-
-  '@types/node@22.13.5':
-    resolution: {integrity: sha512-+lTU0PxZXn0Dr1NBtC7Y8cR21AJr87dLLU953CWA6pMxxv/UDc7jYAY90upcrie1nRcD6XNG5HOYEDtgW5TxAg==}
+  '@types/node@22.13.14':
+    resolution: {integrity: sha512-Zs/Ollc1SJ8nKUAgc7ivOEdIBM8JAKgrqqUYi2J997JuKO7/tpQC+WCetQ1sypiKCQWHdvdg9wBNpUPEWZae7w==}
 
   '@types/nodemailer@6.4.15':
     resolution: {integrity: sha512-0EBJxawVNjPkng1zm2vopRctuWVCxk34JcIlRuXSf54habUWdz1FB7wHDqOqvDa8Mtpt0Q3LTXQkAs2LNyK5jQ==}
@@ -11531,9 +11522,6 @@ packages:
   underscore.string@3.3.6:
     resolution: {integrity: sha512-VoC83HWXmCrF6rgkyxS9GHv8W9Q5nhMKho+OadDJGzL2oDYbYEppBaCMH6pFlwLeqj2QS+hhkw2kpXkSdD1JxQ==}
 
-  undici-types@5.26.5:
-    resolution: {integrity: sha512-JlCMO+ehdEIKqlFxk6IfVoAUVmgz7cU7zD/h9XZ0qzeosSHmUJVOzSQvvYSYWXkFXC+IfLKSIffhv0sVZup6pA==}
-
   undici-types@6.19.8:
     resolution: {integrity: sha512-ve2KP6f/JnbPBFyobGHuerC9g1FYGn/F8n1LWTwNxCEzd6IfqTwUQcNXgEtmmQ6DlRrC1hrSrBnCZPokRrDHjw==}
 
@@ -16332,7 +16320,7 @@ snapshots:
 
   '@types/accepts@1.3.7':
     dependencies:
-      '@types/node': 20.17.6
+      '@types/node': 22.13.14
 
   '@types/aria-query@5.0.4': {}
 
@@ -16384,7 +16372,7 @@ snapshots:
 
   '@types/connect@3.4.36':
     dependencies:
-      '@types/node': 20.17.6
+      '@types/node': 22.13.14
 
   '@types/connect@3.4.38':
     dependencies:
@@ -16403,7 +16391,7 @@ snapshots:
       '@types/connect': 3.4.38
       '@types/express': 5.0.0
       '@types/keygrip': 1.0.6
-      '@types/node': 20.17.6
+      '@types/node': 22.13.14
 
   '@types/cors@2.8.17':
     dependencies:
@@ -16499,7 +16487,7 @@ snapshots:
       '@types/http-errors': 2.0.4
       '@types/keygrip': 1.0.6
       '@types/koa-compose': 3.2.8
-      '@types/node': 20.17.6
+      '@types/node': 22.13.14
 
   '@types/lodash@4.17.5': {}
 
@@ -16513,40 +16501,28 @@ snapshots:
 
   '@types/mysql@2.15.26':
     dependencies:
-      '@types/node': 20.17.6
+      '@types/node': 22.13.14
 
   '@types/node@12.20.55': {}
-
-  '@types/node@20.10.6':
-    dependencies:
-      undici-types: 5.26.5
-
-  '@types/node@20.14.2':
-    dependencies:
-      undici-types: 5.26.5
 
   '@types/node@20.17.6':
     dependencies:
       undici-types: 6.19.8
 
-  '@types/node@22.13.10':
-    dependencies:
-      undici-types: 6.20.0
-
-  '@types/node@22.13.5':
+  '@types/node@22.13.14':
     dependencies:
       undici-types: 6.20.0
 
   '@types/nodemailer@6.4.15':
     dependencies:
-      '@types/node': 20.17.6
+      '@types/node': 22.13.14
 
   '@types/normalize-package-data@2.4.4': {}
 
   '@types/oidc-provider@8.5.1':
     dependencies:
       '@types/koa': 2.15.0
-      '@types/node': 20.17.6
+      '@types/node': 22.13.14
 
   '@types/parse-json@4.0.2': {}
 
@@ -16556,7 +16532,7 @@ snapshots:
 
   '@types/pg@8.6.1':
     dependencies:
-      '@types/node': 20.17.6
+      '@types/node': 22.13.14
       pg-protocol: 1.6.1
       pg-types: 2.2.0
 
@@ -16618,11 +16594,11 @@ snapshots:
 
   '@types/tedious@4.0.14':
     dependencies:
-      '@types/node': 20.17.6
+      '@types/node': 22.13.14
 
   '@types/through@0.0.33':
     dependencies:
-      '@types/node': 20.17.6
+      '@types/node': 22.13.14
 
   '@types/uuid@9.0.8': {}
 
@@ -16639,7 +16615,7 @@ snapshots:
 
   '@types/ws@8.5.12':
     dependencies:
-      '@types/node': 20.17.6
+      '@types/node': 22.13.14
 
   '@typescript-eslint/eslint-plugin@6.21.0(@typescript-eslint/parser@6.21.0(eslint@8.30.0)(typescript@5.8.2))(eslint@8.30.0)(typescript@5.8.2)':
     dependencies:
@@ -16839,14 +16815,14 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
-  '@vitejs/plugin-react@4.3.4(vite@6.1.0(@types/node@22.13.10)(jiti@2.4.2)(lightningcss@1.29.1)(terser@5.31.1)(tsx@4.19.3)(yaml@2.6.0))':
+  '@vitejs/plugin-react@4.3.4(vite@6.1.0(@types/node@22.13.14)(jiti@2.4.2)(lightningcss@1.29.1)(terser@5.31.1)(tsx@4.19.3)(yaml@2.6.0))':
     dependencies:
       '@babel/core': 7.26.9
       '@babel/plugin-transform-react-jsx-self': 7.25.9(@babel/core@7.26.9)
       '@babel/plugin-transform-react-jsx-source': 7.25.9(@babel/core@7.26.9)
       '@types/babel__core': 7.20.5
       react-refresh: 0.14.2
-      vite: 6.1.0(@types/node@22.13.10)(jiti@2.4.2)(lightningcss@1.29.1)(terser@5.31.1)(tsx@4.19.3)(yaml@2.6.0)
+      vite: 6.1.0(@types/node@22.13.14)(jiti@2.4.2)(lightningcss@1.29.1)(terser@5.31.1)(tsx@4.19.3)(yaml@2.6.0)
     transitivePeerDependencies:
       - supports-color
 
@@ -21618,7 +21594,7 @@ snapshots:
       '@protobufjs/path': 1.1.2
       '@protobufjs/pool': 1.1.0
       '@protobufjs/utf8': 1.1.0
-      '@types/node': 20.17.6
+      '@types/node': 22.13.14
       long: 5.2.3
 
   proxy-addr@2.0.7:
@@ -23569,8 +23545,6 @@ snapshots:
       sprintf-js: 1.1.3
       util-deprecate: 1.0.2
 
-  undici-types@5.26.5: {}
-
   undici-types@6.19.8: {}
 
   undici-types@6.20.0: {}
@@ -23782,13 +23756,13 @@ snapshots:
       tsx: 4.19.3
       yaml: 2.6.0
 
-  vite@6.1.0(@types/node@22.13.10)(jiti@2.4.2)(lightningcss@1.29.1)(terser@5.31.1)(tsx@4.19.3)(yaml@2.6.0):
+  vite@6.1.0(@types/node@22.13.14)(jiti@2.4.2)(lightningcss@1.29.1)(terser@5.31.1)(tsx@4.19.3)(yaml@2.6.0):
     dependencies:
       esbuild: 0.24.2
       postcss: 8.5.2
       rollup: 4.34.8
     optionalDependencies:
-      '@types/node': 22.13.10
+      '@types/node': 22.13.14
       fsevents: 2.3.3
       jiti: 2.4.2
       lightningcss: 1.29.1
