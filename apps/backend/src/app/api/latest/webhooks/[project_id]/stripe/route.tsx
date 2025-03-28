@@ -37,29 +37,34 @@ const STRIPE_EVENT_HANDLERS: {
     const user = await rawQuery(getUserQuery(tenancy.project.id, tenancy.branchId, event.data.object.metadata.user_id));
     if (!user) throw new KnownErrors.UserNotFound();
 
+    const productIds = event.data.object.items.data
+      .filter(item => item.plan.product)
+      .map(item => item.plan.product)
+      .filter(product => product !== null)
+      .map(product => typeof product === "string" ? product : product.id);
+
     await retryTransaction(async (tx) => {
-      for (const item of event.data.object.items.data) {
-        if (!item.plan.product) continue;
-        const productId = typeof item.plan.product === "string" ? item.plan.product : item.plan.product.id;
+      for (const productId of productIds) {
         const features = await stripe.products.listFeatures(productId);
-        for (const feature of features.data) {
-          const stackLinkedPermission = feature.entitlement_feature.metadata['STACK_LINKED_PERMISSION'];
-          if (typeof stackLinkedPermission === "string") {
-            const perm = await tx.permission.findUnique({
-              where: {
-                projectConfigId_queryableId: {
-                  projectConfigId: project.config.id,
-                  queryableId: stackLinkedPermission,
-                }
-              },
+        const permsToAssign = features.data
+          .map(x => x.entitlement_feature.metadata['STACK_LINKED_PERMISSION'])
+          .filter(x => typeof x === "string");
+
+        for (const permId of permsToAssign) {
+          const perm = await tx.permission.findUnique({
+            where: {
+              projectConfigId_queryableId: {
+                projectConfigId: project.config.id,
+                queryableId: permId,
+              }
+            },
+          });
+          if (perm) {
+            await grantUserPermission(tx, {
+              tenancy: tenancy as any, // TODO: ???
+              userId: user.id,
+              permissionId: perm.queryableId,
             });
-            if (perm) {
-              await grantUserPermission(tx, {
-                tenancy: tenancy as any, // TODO: ???
-                userId: user.id,
-                permissionId: perm.queryableId,
-              });
-            }
           }
         }
       }
