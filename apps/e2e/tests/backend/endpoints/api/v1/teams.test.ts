@@ -1,6 +1,6 @@
 import { wait } from "@stackframe/stack-shared/dist/utils/promises";
 import { it } from "../../../../helpers";
-import { ApiKey, Auth, Project, Team, Webhook, bumpEmailAddress, niceBackendFetch } from "../../../backend-helpers";
+import { Auth, InternalApiKey, Project, Team, Webhook, bumpEmailAddress, niceBackendFetch } from "../../../backend-helpers";
 
 
 it("is not allowed to list all the teams in a project on the client", async ({ expect }) => {
@@ -711,7 +711,7 @@ it("enables create team on sign up", async ({ expect }) => {
 
   expect(response.body.config.create_team_on_sign_up).toBe(true);
 
-  await ApiKey.createAndSetProjectKeys(adminAccessToken);
+  await InternalApiKey.createAndSetProjectKeys(adminAccessToken);
 
   await bumpEmailAddress();
   await Auth.Otp.signIn();

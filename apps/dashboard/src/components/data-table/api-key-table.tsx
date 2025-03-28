@@ -1,10 +1,10 @@
 'use client';
-import { ApiKey } from '@stackframe/stack';
+import { InternalApiKey } from '@stackframe/stack';
 import { ActionCell, ActionDialog, BadgeCell, DataTable, DataTableColumnHeader, DataTableFacetedFilter, DateCell, SearchToolbarItem, TextCell, standardFilterFn } from "@stackframe/stack-ui";
 import { ColumnDef, Row, Table } from "@tanstack/react-table";
 import { useMemo, useState } from "react";
 
-type ExtendedApiKey = ApiKey & {
+type ExtendedInternalApiKey = InternalApiKey & {
   status: 'valid' | 'expired' | 'revoked',
 };
 
@@ -25,7 +25,7 @@ function toolbarRender<TData>(table: Table<TData>) {
 }
 
 function RevokeDialog(props: {
-  apiKey: ExtendedApiKey,
+  apiKey: ExtendedInternalApiKey,
   open: boolean,
   onOpenChange: (open: boolean) => void,
 }) {
@@ -42,7 +42,7 @@ function RevokeDialog(props: {
   </ActionDialog>;
 }
 
-function Actions({ row }: { row: Row<ExtendedApiKey> }) {
+function Actions({ row }: { row: Row<ExtendedInternalApiKey> }) {
   const [isRevokeModalOpen, setIsRevokeModalOpen] = useState(false);
   return (
     <>
@@ -59,7 +59,7 @@ function Actions({ row }: { row: Row<ExtendedApiKey> }) {
   );
 }
 
-const columns: ColumnDef<ExtendedApiKey>[] =  [
+const columns: ColumnDef<ExtendedInternalApiKey>[] =  [
   {
     accessorKey: "description",
     header: ({ column }) => <DataTableColumnHeader column={column} columnTitle="Description" />,
@@ -101,12 +101,12 @@ const columns: ColumnDef<ExtendedApiKey>[] =  [
   },
 ];
 
-export function ApiKeyTable(props: { apiKeys: ApiKey[] }) {
+export function InternalApiKeyTable(props: { apiKeys: InternalApiKey[] }) {
   const extendedApiKeys = useMemo(() => {
     const keys = props.apiKeys.map((apiKey) => ({
       ...apiKey,
       status: ({ 'valid': 'valid', 'manually-revoked': 'revoked', 'expired': 'expired' } as const)[apiKey.whyInvalid() || 'valid'],
-    } satisfies ExtendedApiKey));
+    } satisfies ExtendedInternalApiKey));
     // first sort based on status, then by createdAt
     return keys.sort((a, b) => {
       if (a.status === b.status) {

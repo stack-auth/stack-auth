@@ -800,7 +800,7 @@ importers:
         version: link:../../packages/stack
       '@supabase/ssr':
         specifier: latest
-        version: 0.5.2(@supabase/supabase-js@2.49.1)
+        version: 0.6.1(@supabase/supabase-js@2.49.1)
       '@supabase/supabase-js':
         specifier: latest
         version: 2.49.1
@@ -875,6 +875,9 @@ importers:
       '@stackframe/stack-shared':
         specifier: workspace:*
         version: link:../stack-shared
+      '@tanstack/react-table':
+        specifier: ^8.20.5
+        version: 8.20.5(react-dom@19.0.0(react@18.3.1))(react@18.3.1)
       color:
         specifier: ^4.2.3
         version: 4.2.3
@@ -969,6 +972,9 @@ importers:
       '@stackframe/stack-ui':
         specifier: workspace:*
         version: link:../stack-ui
+      '@tanstack/react-table':
+        specifier: ^8.20.5
+        version: 8.20.5(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
       '@types/react':
         specifier: ^18.2.0
         version: 18.3.12
@@ -1090,6 +1096,9 @@ importers:
       '@stackframe/stack-ui':
         specifier: workspace:*
         version: link:../stack-ui
+      '@tanstack/react-table':
+        specifier: ^8.20.5
+        version: 8.20.5(react-dom@18.3.1(react@18.2.0))(react@18.2.0)
       '@types/react':
         specifier: ^18.2.0
         version: 18.3.12
@@ -1506,6 +1515,9 @@ importers:
       '@stackframe/stack-ui':
         specifier: workspace:*
         version: link:../stack-ui
+      '@tanstack/react-table':
+        specifier: ^8.20.5
+        version: 8.20.5(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
       '@types/react':
         specifier: ^18.2.0
         version: 18.3.12
@@ -5739,8 +5751,8 @@ packages:
   '@supabase/realtime-js@2.11.2':
     resolution: {integrity: sha512-u/XeuL2Y0QEhXSoIPZZwR6wMXgB+RQbJzG9VErA3VghVt7uRfSVsjeqd7m5GhX3JR6dM/WRmLbVR8URpDWG4+w==}
 
-  '@supabase/ssr@0.5.2':
-    resolution: {integrity: sha512-n3plRhr2Bs8Xun1o4S3k1CDv17iH5QY9YcoEvXX3bxV1/5XSasA0mNXYycFmADIdtdE6BG9MRjP5CGIs8qxC8A==}
+  '@supabase/ssr@0.6.1':
+    resolution: {integrity: sha512-QtQgEMvaDzr77Mk3vZ3jWg2/y+D8tExYF7vcJT+wQ8ysuvOeGGjYbZlvj5bHYsj/SpC0bihcisnwPrM4Gp5G4g==}
     peerDependencies:
       '@supabase/supabase-js': ^2.43.4
 
@@ -16188,11 +16200,10 @@ snapshots:
       - bufferutil
       - utf-8-validate
 
-  '@supabase/ssr@0.5.2(@supabase/supabase-js@2.49.1)':
+  '@supabase/ssr@0.6.1(@supabase/supabase-js@2.49.1)':
     dependencies:
       '@supabase/supabase-js': 2.49.1
-      '@types/cookie': 0.6.0
-      cookie: 0.7.1
+      cookie: 1.0.2
 
   '@supabase/storage-js@2.7.1':
     dependencies:
@@ -16289,6 +16300,24 @@ snapshots:
       '@tanstack/table-core': 8.20.5
       react: 18.2.0
       react-dom: 18.2.0(react@18.2.0)
+
+  '@tanstack/react-table@8.20.5(react-dom@18.3.1(react@18.2.0))(react@18.2.0)':
+    dependencies:
+      '@tanstack/table-core': 8.20.5
+      react: 18.2.0
+      react-dom: 18.3.1(react@18.2.0)
+
+  '@tanstack/react-table@8.20.5(react-dom@18.3.1(react@18.3.1))(react@18.3.1)':
+    dependencies:
+      '@tanstack/table-core': 8.20.5
+      react: 19.0.0
+      react-dom: 19.0.0(react@19.0.0)
+
+  '@tanstack/react-table@8.20.5(react-dom@19.0.0(react@18.3.1))(react@18.3.1)':
+    dependencies:
+      '@tanstack/table-core': 8.20.5
+      react: 18.3.1
+      react-dom: 19.0.0(react@18.3.1)
 
   '@tanstack/react-table@8.20.5(react-dom@19.0.0(react@19.0.0))(react@19.0.0)':
     dependencies:

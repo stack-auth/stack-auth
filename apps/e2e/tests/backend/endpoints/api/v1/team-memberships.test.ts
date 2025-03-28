@@ -1,6 +1,6 @@
 import { wait } from "@stackframe/stack-shared/dist/utils/promises";
 import { STACK_SVIX_SERVER_URL, it, niceFetch } from "../../../../helpers";
-import { ApiKey, Auth, InternalProjectKeys, Project, Team, Webhook, backendContext, bumpEmailAddress, niceBackendFetch } from "../../../backend-helpers";
+import { Auth, InternalApiKey, InternalProjectKeys, Project, Team, Webhook, backendContext, bumpEmailAddress, niceBackendFetch } from "../../../backend-helpers";
 
 
 it("is not allowed to add user to team on client", async ({ expect }) => {
@@ -363,7 +363,7 @@ it("does not allow adding a user that doesn't exist to a team", async ({ expect 
 it("should give team creator default permissions", async ({ expect }) => {
   backendContext.set({ projectKeys: InternalProjectKeys });
   const { adminAccessToken } = await Project.createAndGetAdminToken({ config: { magic_link_enabled: true } });
-  await ApiKey.createAndSetProjectKeys(adminAccessToken);
+  await InternalApiKey.createAndSetProjectKeys(adminAccessToken);
 
   const { userId: userId1 } = await Auth.Password.signUpWithEmail({ password: 'test1234' });
   await bumpEmailAddress();
@@ -727,7 +727,7 @@ it("should trigger multiple permission webhooks when a custom permission is incl
   const endpointId = createEndpointResponse.body.id;
 
   // Setup API keys for the project
-  await ApiKey.createAndSetProjectKeys(adminAccessToken);
+  await InternalApiKey.createAndSetProjectKeys(adminAccessToken);
 
   // Create a user and team
   await Auth.Otp.signIn();

@@ -2,7 +2,7 @@ import { createCrudHandlers } from "@/route-handlers/crud-handler";
 import { CrudTypeOf, createCrud } from "@stackframe/stack-shared/dist/crud";
 import { yupBoolean, yupMixed, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
 import { createLazyProxy } from "@stackframe/stack-shared/dist/utils/proxies";
-import { apiKeyCrudHandlers as internalApiKeyCrudHandlers } from "../../../internal/api-keys/crud";
+import { internalApiKeyCrudHandlers } from "../../../internal/api-keys/crud";
 
 const baseApiKeysReadSchema = yupObject({
   id: yupString().defined(),

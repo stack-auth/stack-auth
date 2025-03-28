@@ -1,5 +1,5 @@
 import { it } from "../../../../helpers";
-import { ApiKey, Auth, ContactChannels, Project, backendContext, niceBackendFetch } from "../../../backend-helpers";
+import { Auth, ContactChannels, InternalApiKey, Project, backendContext, niceBackendFetch } from "../../../backend-helpers";
 
 it("should not be able to sign in again after signing in with OTP and disabling auth", async ({ expect }) => {
   await Auth.Otp.signIn();
@@ -99,7 +99,7 @@ it("signs in with password first, then signs in with oauth should give an accoun
       }],
     }
   });
-  await ApiKey.createAndSetProjectKeys(proj.adminAccessToken);
+  await InternalApiKey.createAndSetProjectKeys(proj.adminAccessToken);
 
 
   await Auth.Password.signUpWithEmail({ password: "some-password" });

@@ -1,6 +1,6 @@
 import { describe } from "vitest";
 import { it } from "../../../../../../helpers";
-import { ApiKey, Auth, Project, backendContext, niceBackendFetch } from "../../../../../backend-helpers";
+import { Auth, InternalApiKey, Project, backendContext, niceBackendFetch } from "../../../../../backend-helpers";
 
 
 describe("without project access", () => {
@@ -349,7 +349,7 @@ describe("with admin access to a non-internal project", () => {
 
   it("can read API keys created with the internal (non-Neon) API", async ({ expect }) => {
     const { adminAccessToken } = await Project.createAndGetAdminToken();
-    const { createApiKeyResponse } = await ApiKey.create(adminAccessToken);
+    const { createApiKeyResponse } = await InternalApiKey.create(adminAccessToken);
     expect(createApiKeyResponse).toMatchInlineSnapshot(`
       NiceResponse {
         "status": 200,

@@ -1218,6 +1218,47 @@ const InvalidPollingCodeError = createKnownErrorConstructor(
   (json: any) => [json] as const,
 );
 
+const InvalidApiKey = createKnownErrorConstructor(
+  KnownError,
+  "INVALID_API_KEY",
+  () => [
+    401,
+    "The provided API key is invalid.",
+  ] as const,
+  () => [] as const,
+);
+
+const ApiKeyExpired = createKnownErrorConstructor(
+  KnownError,
+  "API_KEY_EXPIRED",
+  () => [
+    401,
+    "API key has expired.",
+  ] as const,
+  () => [] as const,
+);
+
+const ApiKeyRevoked = createKnownErrorConstructor(
+  KnownError,
+  "API_KEY_REVOKED",
+  () => [
+    401,
+    "API key has been revoked.",
+  ] as const,
+  () => [] as const,
+);
+
+const WrongApiKeyType = createKnownErrorConstructor(
+  KnownError,
+  "WRONG_API_KEY_TYPE",
+  (expectedType: string, actualType: string) => [
+    400,
+    `This endpoint is for ${expectedType} API keys, but a ${actualType} API key was provided.`,
+    { expected_type: expectedType, actual_type: actualType },
+  ] as const,
+  (json) => [json.expected_type, json.actual_type] as const,
+);
+
 export type KnownErrors = {
   [K in keyof typeof KnownErrors]: InstanceType<typeof KnownErrors[K]>;
 };
@@ -1317,6 +1358,10 @@ export const KnownErrors = {
   OAuthProviderAccessDenied,
   ContactChannelAlreadyUsedForAuthBySomeoneElse,
   InvalidPollingCodeError,
+  InvalidApiKey,
+  ApiKeyExpired,
+  ApiKeyRevoked,
+  WrongApiKeyType,
 } satisfies Record<string, KnownErrorConstructor<any, any>>;
 
 

@@ -860,7 +860,61 @@ export namespace ContactChannels {
   }
 }
 
-export namespace ApiKey {
+export namespace ProjectApiKey {
+  export namespace User {
+    export async function create(data?: any) {
+      const response = await niceBackendFetch("/api/v1/user-api-keys", {
+        method: "POST",
+        accessType: "server",
+        body: data,
+      });
+      expect(response.status).toEqual(200);
+      return {
+        createUserApiKeyResponse: response,
+      };
+    }
+
+    export async function check(apiKey: string) {
+      const response = await niceBackendFetch(`/api/v1/user-api-keys/check`, {
+        method: "POST",
+        accessType: "server",
+        body: {
+          api_key: apiKey,
+        },
+      });
+      expect(response.status).oneOf([200, 404]);
+      return response.body;
+    }
+  }
+
+  export namespace Team {
+    export async function create(body?: any) {
+      const response = await niceBackendFetch("/api/v1/team-api-keys", {
+        method: "POST",
+        accessType: "client",
+        body,
+      });
+      expect(response.status).toEqual(200);
+      return {
+        createTeamApiKeyResponse: response,
+      };
+    }
+
+    export async function check(apiKey: string) {
+      const response = await niceBackendFetch(`/api/v1/team-api-keys/check`, {
+        method: "POST",
+        accessType: "server",
+        body: {
+          api_key: apiKey,
+        },
+      });
+      expect(response.status).oneOf([200, 404]);
+      return response.body;
+    }
+  }
+}
+
+export namespace InternalApiKey {
   export async function create(adminAccessToken?: string, body?: any) {
     const oldProjectKeys = backendContext.value.projectKeys;
     if (oldProjectKeys === 'no-project') {
@@ -896,12 +950,12 @@ export namespace ApiKey {
   }
 
   export async function createAndSetProjectKeys(adminAccessToken?: string, body?: any) {
-    const res = await ApiKey.create(adminAccessToken, body);
+    const res = await InternalApiKey.create(adminAccessToken, body);
     backendContext.set({ projectKeys: res.projectKeys });
     return res;
   }
 
-  export async function listAll() {
+  export async function list() {
     const response = await niceBackendFetch("/api/v1/internal/api-keys", {
       accessType: "admin",
     });
