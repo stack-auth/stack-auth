@@ -13,6 +13,7 @@ export type ApiKey<Type extends ApiKeyType = ApiKeyType, IsFirstView extends boo
       manuallyRevokedAt?: Date | null,
       createdAt: Date,
       value: IfAndOnlyIf<IsFirstView, true, string, { lastFour: string }>,
+      update(options: ApiKeyUpdateOptions<Type>): Promise<void>,
       revoke: () => Promise<void>,
       isValid: () => boolean,
       whyInvalid: () => "manually-revoked" | "expired" | null,

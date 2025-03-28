@@ -192,9 +192,7 @@ export function ApiKeysPage() {
       <Button onClick={() => setIsNewApiKeyDialogOpen(true)}>
         {t("Create API Key")}
       </Button>
-
       <ApiKeyTable apiKeys={apiKeys} />
-
       <CreateDialog
         open={isNewApiKeyDialogOpen}
         onOpenChange={setIsNewApiKeyDialogOpen}
@@ -208,19 +206,12 @@ export function ApiKeysPage() {
         apiKey={returnedApiKey}
         onClose={() => setReturnedApiKey(null)}
       />
-
-
     </PageLayout>
   );
 }
 
 
 export function TeamApiKeysSection(props: { team: Team }) {
-  const { t } = useTranslation();
-
-  const [isNewApiKeyDialogOpen, setIsNewApiKeyDialogOpen] = useState(false);
-  const [returnedApiKey, setReturnedApiKey] = useState<TeamApiKeyFirstView | null>(null);
-
   const user = useUser({ or: 'redirect' });
   const team = user.useTeam(props.team.id);
 
@@ -233,12 +224,21 @@ export function TeamApiKeysSection(props: { team: Team }) {
     return null;
   }
 
-  // Conditional hook ok?
+  return <TeamApiKeysSectionInner team={props.team} />;
+}
+
+function TeamApiKeysSectionInner(props: { team: Team }) {
+  const { t } = useTranslation();
+  const user = useUser({ or: 'redirect' });
+
+
+  const [isNewApiKeyDialogOpen, setIsNewApiKeyDialogOpen] = useState(false);
+  const [returnedApiKey, setReturnedApiKey] = useState<TeamApiKeyFirstView | null>(null);
+
   const apiKeys = team.useApiKeys();
 
   const CreateDialog = CreateApiKeyDialog<"team">;
   const ShowDialog = ShowApiKeyDialog<"team">;
-
 
   return (
     <>

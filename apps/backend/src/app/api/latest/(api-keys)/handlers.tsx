@@ -14,6 +14,8 @@ import { sha512 } from "@stackframe/stack-shared/dist/utils/hashes";
 import { createLazyProxy } from "@stackframe/stack-shared/dist/utils/proxies";
 import { generateUuid } from "@stackframe/stack-shared/dist/utils/uuids";
 import * as yup from "yup";
+
+
 async function ensureUserCanManageApiKeys(
   auth: Pick<SmartRequestAuth, "user" | "type" | "tenancy">,
   options: {
@@ -80,20 +82,20 @@ function _prismaToCrudBase(prisma: ProjectApiKey): Omit<UserApiKeysCrud["Admin"]
 }
 
 async function prismaToCrud<Type extends "user" | "team">(prisma: ProjectApiKey, type: Type, isFirstView: true): Promise<
-| yup.InferType<typeof userApiKeysCreateOutputSchema>
-| yup.InferType<typeof teamApiKeysCreateOutputSchema>
-> ;
+  | yup.InferType<typeof userApiKeysCreateOutputSchema>
+  | yup.InferType<typeof teamApiKeysCreateOutputSchema>
+>;
 async function prismaToCrud<Type extends "user" | "team">(prisma: ProjectApiKey, type: Type, isFirstView: false): Promise<
-| UserApiKeysCrud["Admin"]["Read"]
-| TeamApiKeysCrud["Admin"]["Read"]
-> ;
+  | UserApiKeysCrud["Admin"]["Read"]
+  | TeamApiKeysCrud["Admin"]["Read"]
+>;
 async function prismaToCrud<Type extends "user" | "team">(prisma: ProjectApiKey, type: Type, isFirstView: boolean):
-Promise<
-| yup.InferType<typeof userApiKeysCreateOutputSchema>
-| yup.InferType<typeof teamApiKeysCreateOutputSchema>
-| UserApiKeysCrud["Admin"]["Read"]
-| TeamApiKeysCrud["Admin"]["Read"]
-> {
+  Promise<
+    | yup.InferType<typeof userApiKeysCreateOutputSchema>
+    | yup.InferType<typeof teamApiKeysCreateOutputSchema>
+    | UserApiKeysCrud["Admin"]["Read"]
+    | TeamApiKeysCrud["Admin"]["Read"]
+  > {
   if ((prisma.projectUserId == null) === (prisma.teamId == null)) {
     throw new StackAssertionError("Exactly one of projectUserId or teamId must be set", { prisma });
   }
@@ -111,7 +113,7 @@ Promise<
     is_public: prisma.isPublic,
     created_at_millis: prisma.createdAt.getTime(),
     expires_at_millis: prisma.expiresAt?.getTime(),
-    manually_revoked_at_millis: prisma.manuallyRevokedAt?.getTime(),    ...(isFirstView ? {
+    manually_revoked_at_millis: prisma.manuallyRevokedAt?.getTime(), ...(isFirstView ? {
       value: prisma.secretApiKey,
     } : {
       value: {

@@ -125,7 +125,7 @@ export default function PageClient() {
             Your configuration is not ready for production mode. Please fix the
             following issues:
             <ul className="mt-2 list-disc pl-5">
-              {productionModeErrors.map((error: { message: string, relativeFixUrl: string }) => (
+              {productionModeErrors.map((error) => (
                 <li key={error.message}>
                   {error.message} (<StyledLink href={error.relativeFixUrl}>show configuration</StyledLink>)
                 </li>

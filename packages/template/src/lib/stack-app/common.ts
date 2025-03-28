@@ -36,7 +36,6 @@ export type GetUserOptions<HasTokenStore> =
     tokenStore: TokenStoreInit,
   } : {});
 
-
 export type RequestLike = {
   headers: {
     get: (name: string) => string | null,

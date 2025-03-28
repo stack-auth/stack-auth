@@ -1,7 +1,7 @@
 import { TeamsCrud } from "@stackframe/stack-shared/dist/interface/crud/teams";
 import { ReadonlyJson } from "@stackframe/stack-shared/dist/utils/json";
 
-import { ApiKeyCreationOptions, ApiKeyUpdateOptions, TeamApiKey, TeamApiKeyFirstView } from "../api-keys";
+import { ApiKeyCreationOptions, TeamApiKey, TeamApiKeyFirstView } from "../api-keys";
 import { AsyncStoreProperty } from "../common";
 import { ServerUser } from "../users";
 
@@ -46,7 +46,6 @@ export type Team = {
   update(update: TeamUpdateOptions): Promise<void>,
   delete(): Promise<void>,
   createApiKey(options: ApiKeyCreationOptions<"team">): Promise<TeamApiKeyFirstView>,
-  updateApiKey(keyId: string, options: ApiKeyUpdateOptions<"team">): Promise<TeamApiKey>,
 } & AsyncStoreProperty<"apiKeys", [], TeamApiKey[], true>;
 
 export type TeamUpdateOptions = {

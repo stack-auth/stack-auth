@@ -61,5 +61,3 @@ export type StackServerAppConstructor = {
   new (options: StackServerAppConstructorOptions<boolean, string>): StackServerApp<boolean, string>,
 };
 export const StackServerApp: StackServerAppConstructor = _StackServerAppImpl;
-
-

@@ -26,13 +26,11 @@ import { deindent, mergeScopeStrings } from "@stackframe/stack-shared/dist/utils
 import { getRelativePart, isRelative } from "@stackframe/stack-shared/dist/utils/urls";
 import { generateUuid } from "@stackframe/stack-shared/dist/utils/uuids";
 import * as cookie from "cookie";
-import * as NextNavigationUnscrambled from "next/navigation"; // import the entire module to get around some static compiler warnings emitted by Next.js in some cases | THIS_LINE_PLATFORM next
-import React, { useCallback, useMemo } from "react"; // THIS_LINE_PLATFORM react-like
 import type * as yup from "yup";
 import { constructRedirectUrl } from "../../../../utils/url";
 import { addNewOAuthProviderOrScope, callOAuthCallback, signInWithOAuth } from "../../../auth";
 import { CookieHelper, createBrowserCookieHelper, createCookieHelper, createPlaceholderCookieHelper, deleteCookieClient, getCookieClient, setOrDeleteCookie, setOrDeleteCookieClient } from "../../../cookie";
-import { ApiKey, ApiKeyCreationOptions, ApiKeyUpdateOptions, apiKeyCreationOptionsToCrud, apiKeyUpdateOptionsToCrud } from "../../api-keys";
+import { ApiKey, ApiKeyCreationOptions, ApiKeyUpdateOptions, apiKeyCreationOptionsToCrud } from "../../api-keys";
 import { GetUserOptions, HandlerUrls, OAuthScopesOnSignIn, RedirectMethod, RedirectToOptions, RequestLike, TokenStoreInit, stackAppInternalsSymbol } from "../../common";
 import { OAuthConnection } from "../../connected-accounts";
 import { ContactChannel, ContactChannelCreateOptions, ContactChannelUpdateOptions, contactChannelCreateOptionsToCrud, contactChannelUpdateOptionsToCrud } from "../../contact-channels";
@@ -42,9 +40,10 @@ import { EditableTeamMemberProfile, Team, TeamCreateOptions, TeamInvitation, Tea
 import { ActiveSession, Auth, BaseUser, CurrentUser, InternalUserExtra, ProjectCurrentUser, UserExtra, UserUpdateOptions, userUpdateOptionsToCrud } from "../../users";
 import { StackClientApp, StackClientAppConstructorOptions, StackClientAppJson } from "../interfaces/client-app";
 import { _StackAdminAppImplIncomplete } from "./admin-app-impl";
-import { TokenObject, clientVersion, createCache, createCacheBySession, createEmptyTokenStore, getBaseUrl, getDefaultExtraRequestHeaders, getDefaultProjectId, getDefaultPublishableClientKey, getUrls } from "./common";
+import { TokenObject, clientVersion, createCache, createCacheBySession, createEmptyTokenStore, getBaseUrl, getDefaultExtraRequestHeaders, getDefaultProjectId, getDefaultPublishableClientKey, getUrls, } from "./common";
 
-
+import * as NextNavigationUnscrambled from "next/navigation"; // import the entire module to get around some static compiler warnings emitted by Next.js in some cases | THIS_LINE_PLATFORM next
+import React, { useCallback, useMemo } from "react"; // THIS_LINE_PLATFORM react-like
 import { useAsyncCache } from "./common"; // THIS_LINE_PLATFORM react-like
 
 let isReactServer = false;
@@ -641,7 +640,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
 
   protected _baseApiKeyFromCrud(
     crud: TeamApiKeysCrud['Client']['Read'] | UserApiKeysCrud['Client']['Read'] | yup.InferType<typeof teamApiKeysCreateOutputSchema> | yup.InferType<typeof userApiKeysCreateOutputSchema>
-  ): Omit<ApiKey<"user", boolean>, "revoke"> | Omit<ApiKey<"team", boolean>, "revoke"> {
+  ): Omit<ApiKey<"user", boolean>, "revoke" | "update"> | Omit<ApiKey<"team", boolean>, "revoke" | "update"> {
     return {
       id: crud.id,
       description: crud.description,
@@ -677,7 +676,15 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
       ...this._baseApiKeyFromCrud(crud),
       revoke: async () => {
         await this._interface.updateProjectApiKey(crud.type === "team" ? { team_id: crud.team_id } : { user_id: crud.user_id }, crud.id, { revoked: true }, session, "client");
-      }
+      },
+      update: async (options: ApiKeyUpdateOptions) => {
+        await this._interface.updateProjectApiKey(crud.type === "team" ? { team_id: crud.team_id } : { user_id: crud.user_id }, crud.id, options, session, "client");
+        if (crud.type === "team") {
+          await this._teamApiKeysCache.refresh([session, crud.team_id]);
+        } else {
+          await this._userApiKeysCache.refresh([session]);
+        }
+      },
     };
   }
 
@@ -746,18 +753,6 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
       async createApiKey(options: ApiKeyCreationOptions<"team">) {
         const result = await app._interface.createProjectApiKey(
           await apiKeyCreationOptionsToCrud("team", crud.id, options),
-          session,
-          "client",
-        );
-        await app._teamApiKeysCache.refresh([session, crud.id]);
-        return app._clientApiKeyFromCrud(session, result);
-      },
-
-      async updateApiKey(keyId: string, options: ApiKeyUpdateOptions<"team">) {
-        const result = await app._interface.updateProjectApiKey(
-          { team_id: crud.id },
-          keyId,
-          await apiKeyUpdateOptionsToCrud("team", options),
           session,
           "client",
         );
@@ -1102,20 +1097,6 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
         await app._userApiKeysCache.refresh([session]);
         return app._clientApiKeyFromCrud(session, result);
       },
-
-      async updateApiKey(keyId: string, options: ApiKeyUpdateOptions<"user">) {
-        const result = await app._interface.updateProjectApiKey(
-          { user_id: 'me' },
-          keyId,
-          await apiKeyUpdateOptionsToCrud("user", options),
-          session,
-          "client",
-        );
-        await app._userApiKeysCache.refresh([session]);
-        return app._clientApiKeyFromCrud(session, result);
-      },
-
-
     };
   }
 
@@ -1638,6 +1619,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
       return Result.error(result.error);
     }
   }
+
 
   async callOAuthCallback() {
     if (typeof window === "undefined") {

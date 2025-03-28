@@ -38,7 +38,7 @@ function RevokeDialog(props: {
     okButton={{ label: "Revoke Key", onClick: async () => { await props.apiKey.revoke(); } }}
     confirmText="I understand this will unlink all the apps using this API key"
   >
-    {`Are you sure you want to revoke client key *****${props.apiKey.value.lastFour} and server key *****${props.apiKey.value.lastFour}?`}
+    {`Are you sure you want to revoke API key *****${props.apiKey.value.lastFour}?`}
   </ActionDialog>;
 }
 

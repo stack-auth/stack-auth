@@ -248,7 +248,20 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
       ...this._baseApiKeyFromCrud(crud),
       revoke: async () => {
         await this._interface.updateProjectApiKey(crud.type === "team" ? { team_id: crud.team_id } : { user_id: crud.user_id }, crud.id, { revoked: true }, null, "server");
-      }
+      },
+      update: async (options: ApiKeyUpdateOptions) => {
+        await this._interface.updateProjectApiKey(
+          crud.type === "team" ? { team_id: crud.team_id } : { user_id: crud.user_id },
+          crud.id,
+          await apiKeyUpdateOptionsToCrud(crud.type, options),
+          null,
+          "server");
+        if (crud.type === "team") {
+          await this._serverTeamApiKeysCache.refresh([crud.team_id]);
+        } else {
+          await this._serverUserApiKeysCache.refresh([crud.user_id]);
+        }
+      },
     };
   }
 
@@ -490,17 +503,6 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
         await app._serverUserApiKeysCache.refresh([crud.id]);
         return app._serverApiKeyFromCrud(result);
       },
-      async updateApiKey(keyId: string, options: ApiKeyUpdateOptions<"user">) {
-        const result = await app._interface.updateProjectApiKey(
-          { user_id: crud.id },
-          keyId,
-          await apiKeyUpdateOptionsToCrud("user", options),
-          null,
-          "server",
-        );
-        await app._serverUserApiKeysCache.refresh([crud.id]);
-        return app._serverApiKeyFromCrud(result);
-      },
     };
   }
 
@@ -620,17 +622,6 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
         await app._serverTeamApiKeysCache.refresh([crud.id]);
         return app._serverApiKeyFromCrud(result);
       },
-      async updateApiKey(keyId: string, options: ApiKeyUpdateOptions<"team">) {
-        const result = await app._interface.updateProjectApiKey(
-          { team_id: crud.id },
-          keyId,
-          await apiKeyUpdateOptionsToCrud("team", options),
-          null,
-          "server",
-        );
-        await app._serverTeamApiKeysCache.refresh([crud.id]);
-        return app._serverApiKeyFromCrud(result);
-      },
     };
   }
 
@@ -657,6 +648,41 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
   }
   // END_PLATFORM
 
+
+  protected async _getUserByApiKey(apiKey: string): Promise<ServerUser | null> {
+    const apiKeyObject = await this._getUserApiKey({ apiKey });
+    if (apiKeyObject === null) {
+      return null;
+    }
+    return await this.getServerUserById(apiKeyObject.userId);
+  }
+  // IF_PLATFORM react-like
+  protected _useUserByApiKey(apiKey: string): ServerUser | null {
+    const apiKeyObject = this._useUserApiKey({ apiKey });
+    if (apiKeyObject === null) {
+      return null;
+    }
+    return this.useUserById(apiKeyObject.userId);
+  }
+  // END_PLATFORM
+
+  protected async _getTeamByApiKey(apiKey: string): Promise<ServerTeam | null> {
+    const apiKeyObject = await this._getTeamApiKey({ apiKey });
+    if (apiKeyObject === null) {
+      return null;
+    }
+    return await this.getTeam(apiKeyObject.teamId);
+  }
+  // IF_PLATFORM react-like
+  protected _useTeamByApiKey(apiKey: string): ServerTeam | null {
+    const apiKeyObject = this._useTeamApiKey({ apiKey });
+    if (apiKeyObject === null) {
+      return null;
+    }
+    return this.useTeam(apiKeyObject.teamId);
+  }
+  // END_PLATFORM
+
   async createUser(options: ServerUserCreateOptions): Promise<ServerUser> {
     const crud = await this._interface.createServerUser(serverUserCreateOptionsToCrud(options));
     await this._refreshUsers();
@@ -673,7 +699,7 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
     if (typeof options === "string") {
       return await this.getServerUserById(options);
     } else if (typeof options === "object" && "apiKey" in options) {
-      return await this.getServerUserByApiKey(options.apiKey);
+      return await this._getUserByApiKey(options.apiKey);
     } else {
       // TODO this code is duplicated from the client app; fix that
       this._ensurePersistentTokenStore(options?.tokenStore);
@@ -718,14 +744,6 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
     return crud && this._serverUserFromCrud(crud);
   }
 
-  async getServerUserByApiKey(apiKey: string): Promise<ServerUser | null> {
-    const apiKeyObject = await this._getUserApiKey({ apiKey });
-    if (apiKeyObject === null) {
-      return null;
-    }
-    return await this.getServerUserById(apiKeyObject.userId);
-  }
-
   // IF_PLATFORM react-like
   useUser(options: GetUserOptions<HasTokenStore> & { or: 'redirect' }): ProjectCurrentServerUser<ProjectId>;
   useUser(options: GetUserOptions<HasTokenStore> & { or: 'throw' }): ProjectCurrentServerUser<ProjectId>;
@@ -737,8 +755,7 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
     if (typeof options === "string") {
       return this.useUserById(options);
     } else if (typeof options === "object" && "apiKey" in options) {
-      throw new Error("TODO BAZUMO implement useUserByApiKey");
-      //return this.useUserByApiKey(options.apiKey);
+      return this._useUserByApiKey(options.apiKey);
     } else {
       // TODO this code is duplicated from the client app; fix that
       this._ensurePersistentTokenStore(options?.tokenStore);
@@ -895,21 +912,4 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
       this._serverContactChannelsCache.refreshWhere(() => true),
     ]);
   }
-
-  protected async _getTeamByApiKey(apiKey: string): Promise<ServerTeam | null> {
-    const apiKeyObject = await this._getTeamApiKey({ apiKey });
-    if (apiKeyObject === null) {
-      return null;
-    }
-    return await this.getTeam(apiKeyObject.teamId);
-  }
-  // IF_PLATFORM react-like
-  protected _useTeamByApiKey(apiKey: string): ServerTeam | null {
-    const apiKeyObject = this._useTeamApiKey({ apiKey });
-    if (apiKeyObject === null) {
-      return null;
-    }
-    return this.useTeam(apiKeyObject.teamId);
-  }
-  // END_PLATFORM
 }
