@@ -1,0 +1,48 @@
+{
+  "name": "Stack Auth Development",
+  "image": "mcr.microsoft.com/devcontainers/base:ubuntu",
+  "features": {
+    "ghcr.io/devcontainers/features/node:1": {
+      "version": "22"
+    },
+    "ghcr.io/devcontainers/features/docker-in-docker:2": {},
+    "ghcr.io/devcontainers-contrib/features/pnpm:2": {
+      "version": "9"
+    },
+    "ghcr.io/devcontainers/features/git:1": {}
+  },
+  "forwardPorts": [
+    5432,   // PostgreSQL
+    8100,   // Dev launchpad
+    8101,   // Dashboard
+    8102,   // API
+    8103,   // Demo
+    8104,   // Docs
+    8105,   // Inbucket (e-mails)
+    8106,   // Prisma Studio
+    8107,   // Jaeger UI
+    8113,   // Svix
+    8116,   // PgHero
+    8117    // PgAdmin
+  ],
+  "postCreateCommand": "pnpm install && pnpm build:packages && pnpm codegen",
+  "postStartCommand": "echo 'To start the development server with dependencies, run: pnpm restart-deps && pnpm dev'",
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "dbaeumer.vscode-eslint",
+        "esbenp.prettier-vscode",
+        "bradlc.vscode-tailwindcss",
+        "Prisma.prisma"
+      ],
+      "settings": {
+        "editor.formatOnSave": true,
+        "editor.defaultFormatter": "esbenp.prettier-vscode",
+        "editor.codeActionsOnSave": {
+          "source.fixAll.eslint": true
+        }
+      }
+    }
+  },
+  "remoteUser": "vscode"
+}
