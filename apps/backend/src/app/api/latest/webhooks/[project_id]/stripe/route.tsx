@@ -2,6 +2,7 @@
 import { grantProjectPermission, revokeProjectPermission } from "@/lib/permissions";
 import { getProjectQuery } from "@/lib/projects";
 import { getTenancyFromProject } from "@/lib/tenancies";
+import { PrismaTransaction } from "@/lib/types";
 import { rawQuery, retryTransaction } from "@/prisma-client";
 import { KnownErrors } from "@stackframe/stack-shared";
 import { ProjectsCrud } from "@stackframe/stack-shared/dist/interface/crud/projects";
@@ -21,6 +22,25 @@ async function buffer(readable: Readable) {
   return Buffer.concat(chunks);
 }
 
+async function findStackProductsFromSubscription(tx: PrismaTransaction,  subscription: Stripe.Subscription) {
+  const stripeProductIds = subscription.items.data
+    .filter(item => item.plan.product)
+    .map(item => item.plan.product)
+    .filter(product => product !== null)
+    .map(product => typeof product === "string" ? product : product.id);
+
+  return await tx.product.findMany({
+    where: {
+      stripeProductId: {
+        in: stripeProductIds,
+      },
+    },
+    include: {
+      associatedPermission: true,
+    }
+  });
+}
+
 type StripeEventHandler<T extends Stripe.Event.Type> = (
   stripe: Stripe,
   event: Extract<Stripe.Event, { type: T }>,
@@ -37,23 +57,8 @@ const STRIPE_EVENT_HANDLERS: {
     const user = await rawQuery(getUserQuery(tenancy.project.id, tenancy.branchId, event.data.object.metadata.user_id));
     if (!user) throw new KnownErrors.UserNotFound();
 
-    const stripeProductIds = event.data.object.items.data
-      .filter(item => item.plan.product)
-      .map(item => item.plan.product)
-      .filter(product => product !== null)
-      .map(product => typeof product === "string" ? product : product.id);
-
     await retryTransaction(async (tx) => {
-      const stackProducts = await tx.product.findMany({
-        where: {
-          stripeProductId: {
-            in: stripeProductIds,
-          },
-        },
-        include: {
-          associatedPermission: true,
-        }
-      });
+      const stackProducts = await findStackProductsFromSubscription(tx, event.data.object);
       const permissionsToAssign = stackProducts
         .map(x => x.associatedPermission)
         .filter(x => x !== null);
@@ -74,23 +79,9 @@ const STRIPE_EVENT_HANDLERS: {
     const user = await rawQuery(getUserQuery(tenancy.project.id, tenancy.branchId, event.data.object.metadata.user_id));
     if (!user) throw new KnownErrors.UserNotFound();
 
-    const stripeProductIds = event.data.object.items.data
-      .filter(item => item.plan.product)
-      .map(item => item.plan.product)
-      .filter(product => product !== null)
-      .map(product => typeof product === "string" ? product : product.id);
-
     await retryTransaction(async (tx) => {
-      const stackProducts = await tx.product.findMany({
-        where: {
-          stripeProductId: {
-            in: stripeProductIds,
-          },
-        },
-        include: {
-          associatedPermission: true,
-        }
-      });
+      const stackProducts = await findStackProductsFromSubscription(tx, event.data.object);
+
       const permissionsToAssign = stackProducts
         .map(x => x.associatedPermission)
         .filter(x => x !== null);
