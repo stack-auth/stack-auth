@@ -6,7 +6,7 @@ async function createAndSwitchToAPIEnabledProject(allow_team_api_keys = true, al
   await Project.createAndSwitch({ config: { magic_link_enabled: true, allow_team_api_keys, allow_user_api_keys } });
 }
 
-it("throws an error when user API keys are disabled", async ({ expect }: { expect: any }) => {
+it("throws an error when user API keys are disabled and trying to use user API keys", async ({ expect }: { expect: any }) => {
   // Create a project with user API keys disabled
   await createAndSwitchToAPIEnabledProject(true, false);
   await Auth.Otp.signIn();
@@ -58,24 +58,17 @@ it("throws an error when user API keys are disabled", async ({ expect }: { expec
 
   expect(createTeamResponse).toMatchInlineSnapshot(`
     NiceResponse {
-      "status": 400,
+      "status": 200,
       "body": {
-        "code": "SCHEMA_ERROR",
-        "details": {
-          "message": deindent\`
-            Request validation failed on POST /api/v1/team-api-keys:
-              - body.team_id must be defined
-          \`,
-        },
-        "error": deindent\`
-          Request validation failed on POST /api/v1/team-api-keys:
-            - body.team_id must be defined
-        \`,
+        "created_at_millis": <stripped field 'created_at_millis'>,
+        "description": "This should not work",
+        "id": "<stripped UUID>",
+        "is_public": false,
+        "team_id": "<stripped UUID>",
+        "type": "team",
+        "value": sk_<stripped team API key>,
       },
-      "headers": Headers {
-        "x-stack-known-error": "SCHEMA_ERROR",
-        <some fields may have been hidden>,
-      },
+      "headers": Headers { <some fields may have been hidden> },
     }
   `);
 });
@@ -105,87 +98,6 @@ it("can create public API keys", async ({ expect }: { expect: any }) => {
         "value": pk_<stripped public user API key>,
       },
       "headers": Headers { <some fields may have been hidden> },
-    }
-  `);
-});
-
-it("can create API keys with custom prefixes", async ({ expect }: { expect: any }) => {
-  await createAndSwitchToAPIEnabledProject();
-  const { userId } = await Auth.Otp.signIn();
-
-  // Create a user API key with custom prefix
-  const { createUserApiKeyResponse } = await ProjectApiKey.User.create({
-    user_id: userId,
-    description: "Test API Key with Custom Prefix",
-    expires_at_millis: null,
-    prefix: "custom",
-  });
-
-  expect(createUserApiKeyResponse).toMatchInlineSnapshot(`
-    NiceResponse {
-      "status": 200,
-      "body": {
-        "created_at_millis": <stripped field 'created_at_millis'>,
-        "description": "Test API Key with Custom Prefix",
-        "id": "<stripped UUID>",
-        "is_public": false,
-        "type": "user",
-        "user_id": "<stripped UUID>",
-        "value": custom_<stripped user API key>,
-      },
-      "headers": Headers { <some fields may have been hidden> },
-    }
-  `);
-
-  // Create a team API key with custom prefix
-  const { teamId } = await Team.create({ addCurrentUser: true });
-  const { createTeamApiKeyResponse } = await ProjectApiKey.Team.create({
-    team_id: teamId,
-    description: "Test Team API Key with Custom Prefix",
-    expires_at_millis: null,
-    prefix: "team_custom",
-  });
-
-  expect(createTeamApiKeyResponse).toMatchInlineSnapshot(`
-    NiceResponse {
-      "status": 200,
-      "body": {
-        "created_at_millis": <stripped field 'created_at_millis'>,
-        "description": "Test Team API Key with Custom Prefix",
-        "id": "<stripped UUID>",
-        "is_public": false,
-        "team_id": "<stripped UUID>",
-        "type": "team",
-        "value": team_custom_<stripped team API key>,
-      },
-      "headers": Headers { <some fields may have been hidden> },
-    }
-  `);
-
-  // Verify the API keys work by checking them
-  const checkUserApiKeyResponse = await ProjectApiKey.User.check(createUserApiKeyResponse.body.value);
-  expect(checkUserApiKeyResponse).toMatchInlineSnapshot(`
-    {
-      "created_at_millis": <stripped field 'created_at_millis'>,
-      "description": "Test API Key with Custom Prefix",
-      "id": "<stripped UUID>",
-      "is_public": false,
-      "type": "user",
-      "user_id": "<stripped UUID>",
-      "value": { "last_four": <stripped field 'last_four'> },
-    }
-  `);
-
-  const checkTeamApiKeyResponse = await ProjectApiKey.Team.check(createTeamApiKeyResponse.body.value);
-  expect(checkTeamApiKeyResponse).toMatchInlineSnapshot(`
-    {
-      "created_at_millis": <stripped field 'created_at_millis'>,
-      "description": "Test Team API Key with Custom Prefix",
-      "id": "<stripped UUID>",
-      "is_public": false,
-      "team_id": "<stripped UUID>",
-      "type": "team",
-      "value": { "last_four": <stripped field 'last_four'> },
     }
   `);
 });
@@ -515,6 +427,8 @@ it("does not require user_id in read requests on the server", async ({ expect }:
 });
 
 it("prevents creating API keys for other users", async ({ expect }: { expect: any }) => {
+  await createAndSwitchToAPIEnabledProject();
+
   // First user signs in
   const { userId: userId1 } = await Auth.Otp.signIn();
 

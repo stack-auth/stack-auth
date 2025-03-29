@@ -98,17 +98,6 @@ async function parseTypeAndParams(options: { type: "user" | "team", params: { us
 }
 
 
-function _prismaToCrudBase(prisma: ProjectApiKey): Omit<UserApiKeysCrud["Admin"]["Read"], "user_id" | "type" | "value"> {
-  return {
-    id: prisma.id,
-    description: prisma.description,
-    is_public: prisma.isPublic,
-    created_at_millis: prisma.createdAt.getTime(),
-    expires_at_millis: prisma.expiresAt?.getTime(),
-    manually_revoked_at_millis: prisma.manuallyRevokedAt?.getTime(),
-  };
-}
-
 async function prismaToCrud<Type extends "user" | "team">(prisma: ProjectApiKey, type: Type, isFirstView: true): Promise<
   | yup.InferType<typeof userApiKeysCreateOutputSchema>
   | yup.InferType<typeof teamApiKeysCreateOutputSchema>
@@ -193,10 +182,13 @@ function createApiKeyHandlers<Type extends "user" | "team">(type: Type) {
 
         // to make it easier to scan, we want our API key to have a very specific format
         // for example, for GitHub secret scanning: https://docs.github.com/en/code-security/secret-scanning/secret-scanning-partnership-program/secret-scanning-partner-program
+        /*
         const userPrefix = body.prefix ?? (isPublic ? "pk" : "sk");
         if (!userPrefix.match(/^[a-zA-Z0-9_]+$/)) {
           throw new StackAssertionError("userPrefix must contain only alphanumeric characters and underscores. This is so we can register the API key with security scanners. This should've been checked in the creation schema");
         }
+        */
+        const userPrefix = isPublic ? "pk" : "sk";
         const isCloudVersion = new URL(url).hostname === "api.stack-auth.com";  // we only want to enable secret scanning on the cloud version
         const scannerFlag = (isCloudVersion ? 0 : 1) + (isPublic ? 2 : 0) + (/* version */ 0);
         const firstSecretPart = `${userPrefix}_${generateSecureRandomString()}${apiKeyId.replace(/-/g, "")}${type}${getBase32CharacterFromIndex(scannerFlag).toLowerCase()}574ck4u7h`;

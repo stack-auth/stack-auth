@@ -60,10 +60,12 @@ function createApiKeyCrud<T extends string, IdFieldName extends string, IdSchema
     description: yupString().defined(),
     expires_at_millis: yupNumber().nullable().defined(),
     is_public: yupBoolean().optional(),
+    /*
     prefix: yupString().optional().nonEmpty().test("prefix", "Prefix must contain only alphanumeric characters and underscores", (value) => {
       if (!value) return true;
       return /^[a-zA-Z0-9_]+$/.test(value);
     }),
+    */
     ...typedFromEntries([[idFieldName, idSchema]]),
   });
   const projectApiKeysCreateOutputSchema = projectApiKeysReadSchema.omit(["value"]).concat(yupObject({

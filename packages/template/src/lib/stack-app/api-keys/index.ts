@@ -34,10 +34,6 @@ export type ApiKeyCreationOptions<Type extends ApiKeyType = ApiKeyType> =
     description: string,
     expiresAt: Date | null,
     /**
-     * Must be alphanumeric with underscores.
-     */
-    prefix?: string,
-    /**
      * Whether the API key should be considered public. A public API key will not be detected by the secret scanner, which
      * automatically revokes API keys when it detects that they may have been exposed to the public.
      */
@@ -50,7 +46,6 @@ export async function apiKeyCreationOptionsToCrud(type: ApiKeyType, userIdOrTeam
   return {
     description: options.description,
     expires_at_millis: options.expiresAt == null ? options.expiresAt : options.expiresAt.getTime(),
-    prefix: options.prefix,
     is_public: options.isPublic,
     ...(type === "user" ? { user_id: userIdOrTeamId } : { team_id: userIdOrTeamId }),
   };
