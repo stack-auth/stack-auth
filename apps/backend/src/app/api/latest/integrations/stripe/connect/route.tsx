@@ -1,6 +1,6 @@
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { getStripeClient } from "@/utils/stripe";
-import { adaptSchema, emailSchema, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
+import { adaptSchema, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
 
 export const POST = createSmartRouteHandler({
   metadata: {
@@ -30,7 +30,7 @@ export const POST = createSmartRouteHandler({
     }).defined(),
   }),
   async handler({ body, auth: { project } }) {
-    const stripe = getStripeClient(project);
+    const stripe = getStripeClient();
 
     const account = await stripe.accounts.create({
       type: body.type,

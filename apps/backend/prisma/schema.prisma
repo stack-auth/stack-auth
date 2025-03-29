@@ -22,6 +22,7 @@ model Project {
   config           ProjectConfig @relation(fields: [configId], references: [id], onDelete: Cascade)
   isProductionMode Boolean
   userCount        Int           @default(0)
+  stripeAccountId  String?       // ID of the connected Stripe account after onboarding
 
   apiKeySets             ApiKeySet[]
   projectUsers           ProjectUser[]
