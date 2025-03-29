@@ -102,11 +102,13 @@ export const GET = createSmartRouteHandler({
       for (const projectId of ((user.serverMetadata as any).managedProjectIds ?? []) as string[]) {
         const emails = projectWithEmails.get(projectId)?.emails ?? [];
         if (emails.length > 0) {
+          const failedRecipients = emails.flatMap(email => email.to);
+
           await sendEmail({
             tenancyId: internal.id,
             to: contactChannel.value,
             subject: `You have ${emails.length} emails that failed to deliver in your project ${projectWithEmails.get(projectId)?.project.displayName}`,
-            text: emails.map(email => JSON.stringify(email.error)).join('\n'),
+            text: `The following email addresses failed to receive messages:\n\n${failedRecipients.join('\n')}`,
             emailConfig,
           });
         }

@@ -18,6 +18,7 @@ it("should send email digest if there are failed emails", async () => {
     },
   });
   await expect(Auth.Otp.signIn()).rejects.toThrow();
+   await expect(Auth.Otp.signIn()).rejects.toThrow();
 
   const response = await niceBackendFetch("/api/latest/cron/send-email-digest", {
     method: "GET",
@@ -54,10 +55,16 @@ it("should send email digest if there are failed emails", async () => {
         "attachments": [],
         "body": {
           "html": "",
-          "text": "{\\"message\\":\\"Failed to connect to the email host. Please make sure the email host configuration is correct.\\",\\"canRetry\\":false,\\"rawError\\":{\\"code\\":\\"EDNS\\",\\"errno\\":-3008,\\"command\\":\\"CONN\\",\\"syscall\\":\\"getaddrinfo\\",\\"hostname\\":\\"smtp-fail.example.com\\"},\\"errorType\\":\\"HOST_NOT_FOUND\\"}\\n",
+          "text": deindent\`
+            The following email addresses failed to receive messages:
+            
+            default-mailbox--<stripped UUID>@stack-generated.example.com
+            default-mailbox--<stripped UUID>@stack-generated.example.com
+            
+          \` + "\\n",
         },
         "from": "Stack Dashboard <noreply@example.com>",
-        "subject": "You have 1 emails that failed to deliver in your project New Project",
+        "subject": "You have 2 emails that failed to deliver in your project New Project",
         "to": ["<unindexed-mailbox--<stripped UUID>@stack-generated.example.com>"],
         <some fields may have been hidden>,
       },
