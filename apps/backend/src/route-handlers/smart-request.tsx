@@ -1,7 +1,7 @@
 import "../polyfills";
 
 import { getUser, getUserQuery } from "@/app/api/latest/users/crud";
-import { checkApiKeySet, checkApiKeySetQuery } from "@/lib/api-keys";
+import { checkApiKeySet, checkApiKeySetQuery } from "@/lib/internal-api-keys";
 import { getProjectQuery, listManagedProjectIds } from "@/lib/projects";
 import { Tenancy, getSoleTenancyFromProject } from "@/lib/tenancies";
 import { decodeAccessToken } from "@/lib/tokens";
