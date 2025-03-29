@@ -18,7 +18,7 @@ it("should send email digest if there are failed emails", async () => {
     },
   });
   await expect(Auth.Otp.signIn()).rejects.toThrow();
-   await expect(Auth.Otp.signIn()).rejects.toThrow();
+  await expect(Auth.Otp.signIn()).rejects.toThrow();
 
   const response = await niceBackendFetch("/api/latest/cron/send-email-digest", {
     method: "GET",
