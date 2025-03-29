@@ -30,7 +30,6 @@ export const POST = createSmartRouteHandler({
   async handler({ body, auth: { project, user } }) {
     const stripe = getStripeClient(project);
 
-
     const session = await stripe.checkout.sessions.create({
       customer_email: user.primary_email ?? undefined,
       line_items: [{ price: body.price_id, quantity: 1 }],

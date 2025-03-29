@@ -295,6 +295,12 @@ importers:
       '@stackframe/stack-ui':
         specifier: workspace:*
         version: link:../../packages/stack-ui
+      '@stripe/connect-js':
+        specifier: ^3.3.21
+        version: 3.3.21
+      '@stripe/react-connect-js':
+        specifier: ^3.3.21
+        version: 3.3.21(@stripe/connect-js@3.3.21)(react-dom@19.0.0(react@19.0.0))(react@19.0.0)
       '@tanstack/react-table':
         specifier: ^8.20.5
         version: 8.20.5(react-dom@19.0.0(react@19.0.0))(react@19.0.0)
@@ -5728,6 +5734,16 @@ packages:
 
   '@stablelib/base64@1.0.1':
     resolution: {integrity: sha512-1bnPQqSxSuc3Ii6MhBysoWCg58j97aUjuCSZrGSmDxNqtytIi0k8utUenAwTZN4V5mXXYGsVUI9zeBqy+jBOSQ==}
+
+  '@stripe/connect-js@3.3.21':
+    resolution: {integrity: sha512-MsUtZLIScosvrcB0c5HKmHUq5fnBhqxi69TPmUr5nGRcHIkGuwqUPIrsJEAkiPeSh+Opq2GCyt7dSNqsOGYsVg==}
+
+  '@stripe/react-connect-js@3.3.21':
+    resolution: {integrity: sha512-b2M9S9QhdIR7suF0VYWwG0+H7SV+X7Y4y/mfJcsVUU/oyrUPZ1V6HIP9z07C33JDcR5I5ULIiwIBRytgPhr09g==}
+    peerDependencies:
+      '@stripe/connect-js': '>=3.3.20'
+      react: '>=16.8.0'
+      react-dom: '>=16.8.0'
 
   '@stripe/stripe-js@6.1.0':
     resolution: {integrity: sha512-/5zxRol+MU4I7fjZXPxP2M6E1nuHOxAzoc0tOEC/TLnC31Gzc+5EE93mIjoAnu28O1Sqpl7/BkceDHwnGmn75A==}
@@ -16175,6 +16191,14 @@ snapshots:
   '@socket.io/component-emitter@3.1.2': {}
 
   '@stablelib/base64@1.0.1': {}
+
+  '@stripe/connect-js@3.3.21': {}
+
+  '@stripe/react-connect-js@3.3.21(@stripe/connect-js@3.3.21)(react-dom@19.0.0(react@19.0.0))(react@19.0.0)':
+    dependencies:
+      '@stripe/connect-js': 3.3.21
+      react: 19.0.0
+      react-dom: 19.0.0(react@19.0.0)
 
   '@stripe/stripe-js@6.1.0': {}
 
