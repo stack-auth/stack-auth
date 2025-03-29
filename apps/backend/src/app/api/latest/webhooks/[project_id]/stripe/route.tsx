@@ -95,6 +95,23 @@ const STRIPE_EVENT_HANDLERS: {
       }
     });
   },
+  "account.updated": async (stripe, event, project) => {
+    const account = event.data.object as Stripe.Account;
+
+    // Check if this is the Stripe account created for this project (verify metadata)
+    if (account.metadata?.stack_project_id === project.id) {
+      // Check if the account is fully onboarded (details_submitted is true)
+      if (account.details_submitted) {
+        // Update the project's stripeAccountId
+        await retryTransaction(async (tx) => {
+          await tx.project.update({
+            where: { id: project.id },
+            data: { stripeAccountId: account.id }
+          });
+        });
+      }
+    }
+  },
 };
 
 // rewrite to use export const POST = ...
