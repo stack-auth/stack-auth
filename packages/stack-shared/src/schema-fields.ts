@@ -292,6 +292,11 @@ export const emailPortSchema = yupNumber().min(0).max(65535).meta({ openapiField
 export const emailUsernameSchema = yupString().meta({ openapiField: { description: 'Email username. Needs to be specified when using type="standard"', exampleValue: 'smtp-email' } });
 export const emailSenderEmailSchema = emailSchema.meta({ openapiField: { description: 'Email sender email. Needs to be specified when using type="standard"', exampleValue: 'example@your-domain.com' } });
 export const emailPasswordSchema = passwordSchema.meta({ openapiField: { description: 'Email password. Needs to be specified when using type="standard"', exampleValue: 'your-email-password' } });
+
+// Project Stripe config
+export const stripeSecretKeySchema = yupString().meta({ openapiField: { description: 'Your Stripe secret key', exampleValue: 'sk_test_abc123' } });
+export const stripePublishableKeySchema = yupString().meta({ openapiField: { description: 'Your Stripe publishable key', exampleValue: 'pk_test_abc123' } });
+export const stripeWebhookSecretSchema = yupString().meta({ openapiField: { description: 'Your Stripe webhook secret', exampleValue: 'whsec_abc123' } });
 // Project domain config
 export const handlerPathSchema = yupString().test('is-handler-path', 'Handler path must start with /', (value) => value?.startsWith('/')).meta({ openapiField: { description: 'Handler path. If you did not setup a custom handler path, it should be "/handler" by default. It needs to start with /', exampleValue: '/handler' } });
 

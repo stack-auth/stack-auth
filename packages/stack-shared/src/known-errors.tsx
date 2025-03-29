@@ -1218,6 +1218,16 @@ const InvalidPollingCodeError = createKnownErrorConstructor(
   (json: any) => [json] as const,
 );
 
+const StripeConfigurationNotFound = createKnownErrorConstructor(
+  KnownError,
+  "STRIPE_CONFIGURATION_NOT_FOUND",
+  () => [
+    400,
+    "The Stripe configuration is not found.",
+  ] as const,
+  () => [] as const,
+);
+
 export type KnownErrors = {
   [K in keyof typeof KnownErrors]: InstanceType<typeof KnownErrors[K]>;
 };
@@ -1317,6 +1327,7 @@ export const KnownErrors = {
   OAuthProviderAccessDenied,
   ContactChannelAlreadyUsedForAuthBySomeoneElse,
   InvalidPollingCodeError,
+  StripeConfigurationNotFound,
 } satisfies Record<string, KnownErrorConstructor<any, any>>;
 
 
