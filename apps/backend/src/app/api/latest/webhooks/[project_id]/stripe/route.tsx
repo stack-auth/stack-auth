@@ -22,11 +22,11 @@ async function buffer(readable: Readable) {
   return Buffer.concat(chunks);
 }
 
-async function findStackProductsFromSubscription(tx: PrismaTransaction,  subscription: Stripe.Subscription) {
+async function findStackProductsFromSubscription(tx: PrismaTransaction, subscription: Stripe.Subscription) {
   const stripeProductIds = subscription.items.data
     .filter(item => item.plan.product)
     .map(item => item.plan.product)
-    .filter(product => product !== null)
+    .filter((product): product is string | Stripe.Product => product !== null)
     .map(product => typeof product === "string" ? product : product.id);
 
   return await tx.product.findMany({
@@ -64,11 +64,13 @@ const STRIPE_EVENT_HANDLERS: {
         .filter(x => x !== null);
 
       for (const permission of permissionsToAssign) {
-        await grantProjectPermission(tx, {
-          tenancy,
-          userId: user.id,
-          permissionId: permission.queryableId,
-        });
+        if (permission) {
+          await grantProjectPermission(tx, {
+            tenancy,
+            userId: user.id,
+            permissionId: permission.queryableId,
+          });
+        }
       }
     });
   },
@@ -87,11 +89,13 @@ const STRIPE_EVENT_HANDLERS: {
         .filter(x => x !== null);
 
       for (const permission of permissionsToAssign) {
-        await revokeProjectPermission(tx, {
-          tenancy,
-          userId: user.id,
-          permissionId: permission.queryableId,
-        });
+        if (permission) {
+          await revokeProjectPermission(tx, {
+            tenancy,
+            userId: user.id,
+            permissionId: permission.queryableId,
+          });
+        }
       }
     });
   },
@@ -104,10 +108,26 @@ const STRIPE_EVENT_HANDLERS: {
       if (account.details_submitted) {
         // Update the project's stripeAccountId
         await retryTransaction(async (tx) => {
-          await tx.project.update({
-            where: { id: project.id },
-            data: { stripeAccountId: account.id }
+          // Update the StripeConfig table to include the Stripe account ID
+          const projectConfig = await tx.projectConfig.findFirst({
+            where: { projects: { some: { id: project.id } } },
+            include: { stripeConfig: true }
           });
+          
+          if (projectConfig?.stripeConfig) {
+            await tx.stripeConfig.update({
+              where: { id: projectConfig.stripeConfig.id },
+              data: { stripeAccountId: account.id }
+            });
+          } else if (projectConfig) {
+            // Create a new stripeConfig if it doesn't exist
+            await tx.stripeConfig.create({
+              data: {
+                projectConfigId: projectConfig.id,
+                stripeAccountId: account.id
+              }
+            });
+          }
         });
       }
     }
@@ -125,8 +145,12 @@ export const POST = async (req: NextApiRequest) => {
 
   try {
     const project = await rawQuery(getProjectQuery(project_id as string));
-    if (!project || !project.config.stripe_config) {
-      return Response.json({ error: 'Stripe configuration not found for this project' }, { status: 404 });
+    if (!project) {
+      return Response.json({ error: 'Project not found' }, { status: 404 });
+    }
+    
+    if (!project.config.stripe_config) {
+      throw new KnownErrors.StripeConfigurationNotFound();
     }
 
     const stripeConfig = project.config.stripe_config;
@@ -135,6 +159,10 @@ export const POST = async (req: NextApiRequest) => {
       return Response.json({ error: 'Stripe webhook secret not configured' }, { status: 400 });
     }
 
+    if (!stripeConfig.stripe_secret_key) {
+      return Response.json({ error: 'Stripe secret key not configured' }, { status: 400 });
+    }
+    
     const stripe = new Stripe(stripeConfig.stripe_secret_key);
 
     const head = await headers();

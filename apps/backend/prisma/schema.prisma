@@ -22,7 +22,6 @@ model Project {
   config           ProjectConfig @relation(fields: [configId], references: [id], onDelete: Cascade)
   isProductionMode Boolean
   userCount        Int           @default(0)
-  stripeAccountId  String?       // ID of the connected Stripe account after onboarding
 
   apiKeySets             ApiKeySet[]
   projectUsers           ProjectUser[]
@@ -1010,8 +1009,13 @@ model StripeConfig {
   createdAt       DateTime      @default(now())
   updatedAt       DateTime      @updatedAt
 
-  stripeSecretKey      String
-  stripePublishableKey String
+  // either [stripeAccountId] or [stripeSecretKey, stripePublishableKey, stripeWebhookSecret] must be set
+  // if the Stripe integration is provided through Stripe Connect, then [stripeAccountId] must be set
+  // if the Stripe integration is provided through Stripe API keys, then [stripeSecretKey, stripePublishableKey, stripeWebhookSecret] must be set
+  stripeAccountId String?
+
+  stripeSecretKey      String?
+  stripePublishableKey String?
   stripeWebhookSecret  String?
 }
 

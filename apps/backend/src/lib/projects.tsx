@@ -168,8 +168,9 @@ export function projectPrismaToCrud(
         }
       })(),
       stripe_config: prisma.config.stripeConfig ? {
-        stripe_secret_key: prisma.config.stripeConfig.stripeSecretKey,
-        stripe_publishable_key: prisma.config.stripeConfig.stripePublishableKey,
+        stripe_account_id: prisma.config.stripeConfig.stripeAccountId ?? undefined,
+        stripe_secret_key: prisma.config.stripeConfig.stripeSecretKey ?? undefined,
+        stripe_publishable_key: prisma.config.stripeConfig.stripePublishableKey ?? undefined,
         stripe_webhook_secret: prisma.config.stripeConfig.stripeWebhookSecret ?? undefined,
       } : undefined,
       team_creator_default_permissions: prisma.config.permissions.filter(perm => perm.isDefaultTeamCreatorPermission)

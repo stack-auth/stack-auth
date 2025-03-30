@@ -36,15 +36,26 @@ export const POST = createSmartRouteHandler({
     }).defined(),
   }),
   async handler({ body, auth: { project } }) {
-    // Get the Stripe account ID from the database directly.
-    const projectWithStripeAccount = await prismaClient.project.findUnique({
+    // Get the project config with Stripe config
+    const projectWithStripeConfig = await prismaClient.project.findUnique({
       where: { id: project.id },
-      select: { stripeAccountId: true }
+      select: { 
+        config: {
+          select: {
+            stripeConfig: true
+          }
+        }
+      }
     });
 
-    // Make sure the project has a connected Stripe account
-    if (!projectWithStripeAccount?.stripeAccountId) {
-      throw new StackAssertionError("Project has no connected Stripe account");
+    // Make sure the project has a Stripe config
+    if (!projectWithStripeConfig?.config.stripeConfig) {
+      throw new KnownErrors.StripeConfigurationNotFound();
+    }
+
+    // Make sure the project is using Stripe Connect
+    if (!projectWithStripeConfig.config.stripeConfig.stripeAccountId) {
+      throw new KnownErrors.StripeConfigurationNotFound();
     }
 
     const stripe = getStripeClient();
@@ -61,7 +72,7 @@ export const POST = createSmartRouteHandler({
 
     // Create an account session for the connected account using the project's Stripe account ID
     const accountSession = await stripe.accountSessions.create({
-      account: projectWithStripeAccount.stripeAccountId,
+      account: projectWithStripeConfig.config.stripeConfig.stripeAccountId,
       components,
     });
 

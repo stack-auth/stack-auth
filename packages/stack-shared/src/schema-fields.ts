@@ -294,6 +294,7 @@ export const emailSenderEmailSchema = emailSchema.meta({ openapiField: { descrip
 export const emailPasswordSchema = passwordSchema.meta({ openapiField: { description: 'Email password. Needs to be specified when using type="standard"', exampleValue: 'your-email-password' } });
 
 // Project Stripe config
+export const stripeAccountIdSchema = yupString().meta({ openapiField: { description: 'Your Stripe Connect account ID', exampleValue: 'acct_abc123' } });
 export const stripeSecretKeySchema = yupString().meta({ openapiField: { description: 'Your Stripe secret key', exampleValue: 'sk_test_abc123' } });
 export const stripePublishableKeySchema = yupString().meta({ openapiField: { description: 'Your Stripe publishable key', exampleValue: 'pk_test_abc123' } });
 export const stripeWebhookSecretSchema = yupString().meta({ openapiField: { description: 'Your Stripe webhook secret', exampleValue: 'whsec_abc123' } });

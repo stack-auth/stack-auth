@@ -59,8 +59,12 @@ export const emailConfigSchema = yupObject({
 export const emailConfigWithoutPasswordSchema = emailConfigSchema.pick(['type', 'host', 'port', 'username', 'sender_name', 'sender_email']);
 
 export const stripeConfigSchema = yupObject({
-  stripe_secret_key: schemaFields.stripeSecretKeySchema.defined(),
-  stripe_publishable_key: schemaFields.stripePublishableKeySchema.defined(),
+  // Either [stripe_account_id] or [stripe_secret_key, stripe_publishable_key] must be set
+  // If the Stripe integration is provided through Stripe Connect, then [stripe_account_id] must be set
+  // If the Stripe integration is provided through Stripe API keys, then [stripe_secret_key, stripe_publishable_key] must be set
+  stripe_account_id: schemaFields.stripeAccountIdSchema.optional(),
+  stripe_secret_key: schemaFields.stripeSecretKeySchema.optional(),
+  stripe_publishable_key: schemaFields.stripePublishableKeySchema.optional(),
   stripe_webhook_secret: schemaFields.stripeWebhookSecretSchema.optional(),
 });
 
@@ -102,7 +106,8 @@ export const projectsCrudAdminReadSchema = yupObject({
 }).defined();
 
 export const stripeClientConfigSchema = yupObject({
-  stripe_publishable_key: schemaFields.stripePublishableKeySchema.defined(),
+  // Only need to expose publishable key to the client
+  stripe_publishable_key: schemaFields.stripePublishableKeySchema.optional(),
 });
 
 export const projectsCrudClientReadSchema = yupObject({
