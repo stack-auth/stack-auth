@@ -1012,7 +1012,7 @@ model StripeConfig {
   // either [stripeAccountId] or [stripeSecretKey, stripePublishableKey, stripeWebhookSecret] must be set
   // if the Stripe integration is provided through Stripe Connect, then [stripeAccountId] must be set
   // if the Stripe integration is provided through Stripe API keys, then [stripeSecretKey, stripePublishableKey, stripeWebhookSecret] must be set
-  stripeAccountId String?
+  stripeAccountId String? @unique
 
   stripeSecretKey      String?
   stripePublishableKey String?
