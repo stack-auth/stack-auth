@@ -21,6 +21,7 @@
 - React Server Components preferred where applicable
 - No direct 'use' imports from React (use React.use instead)
 - Follow existing file structure and naming patterns
+- camelCase is preferred for database and JS client; snake_case is preferred for API responses
 
 ## Testing Guidelines
 - Import test utilities from `/apps/e2e/test/helpers.ts`
