@@ -71,8 +71,9 @@ export type AdminOAuthProviderConfig = {
 ) & OAuthProviderConfig;
 
 export type AdminStripeConfig = {
-  stripeSecretKey: string,
-  stripePublishableKey: string,
+  stripeAccountId?: string,
+  stripeSecretKey?: string,
+  stripePublishableKey?: string,
   stripeWebhookSecret?: string,
 };
 

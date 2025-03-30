@@ -3,7 +3,6 @@ import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { getStripeClient } from "@/utils/stripe";
 import { KnownErrors } from "@stackframe/stack-shared/dist/known-errors";
 import { adaptSchema, yupBoolean, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
-import { StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
 
 export const POST = createSmartRouteHandler({
   metadata: {
@@ -39,7 +38,7 @@ export const POST = createSmartRouteHandler({
     // Get the project config with Stripe config
     const projectWithStripeConfig = await prismaClient.project.findUnique({
       where: { id: project.id },
-      select: { 
+      select: {
         config: {
           select: {
             stripeConfig: true
