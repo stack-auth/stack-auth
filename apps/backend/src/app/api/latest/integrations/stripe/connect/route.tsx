@@ -1,7 +1,7 @@
 import { prismaClient } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { getStripeClient } from "@/utils/stripe";
-import { adaptSchema, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
+import { adaptSchema, adminAuthTypeSchema, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
 
 export const POST = createSmartRouteHandler({
   metadata: {
@@ -11,8 +11,8 @@ export const POST = createSmartRouteHandler({
   },
   request: yupObject({
     auth: yupObject({
+      type: adminAuthTypeSchema.defined(),
       project: adaptSchema.defined(),
-      user: adaptSchema.defined(),
     }).defined(),
     body: yupObject({
       type: yupString().oneOf(["standard", "express", "custom"]).default("standard"),

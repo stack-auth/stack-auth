@@ -72,6 +72,7 @@ export function adminProjectUpdateOptionsToCrud(options: AdminProjectUpdateOptio
         }
       ),
       stripe_config: options.config?.stripeConfig && {
+        stripe_account_id: options.config.stripeConfig.stripeAccountId,
         stripe_secret_key: options.config.stripeConfig.stripeSecretKey,
         stripe_publishable_key: options.config.stripeConfig.stripePublishableKey,
         stripe_webhook_secret: options.config.stripeConfig.stripeWebhookSecret,

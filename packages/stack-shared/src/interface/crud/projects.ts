@@ -62,10 +62,10 @@ export const stripeConfigSchema = yupObject({
   // Either [stripe_account_id] or [stripe_secret_key, stripe_publishable_key] must be set
   // If the Stripe integration is provided through Stripe Connect, then [stripe_account_id] must be set
   // If the Stripe integration is provided through Stripe API keys, then [stripe_secret_key, stripe_publishable_key] must be set
-  stripe_account_id: schemaFields.stripeAccountIdSchema.optional(),
-  stripe_secret_key: schemaFields.stripeSecretKeySchema.optional(),
-  stripe_publishable_key: schemaFields.stripePublishableKeySchema.optional(),
-  stripe_webhook_secret: schemaFields.stripeWebhookSecretSchema.optional(),
+  stripe_account_id: schemaFields.stripeAccountIdSchema.optional().nullable(),
+  stripe_secret_key: schemaFields.stripeSecretKeySchema.optional().nullable(),
+  stripe_publishable_key: schemaFields.stripePublishableKeySchema.optional().nullable(),
+  stripe_webhook_secret: schemaFields.stripeWebhookSecretSchema.optional().nullable(),
 });
 
 const domainSchema = yupObject({

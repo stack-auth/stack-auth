@@ -476,6 +476,7 @@ export function getProjectQuery(projectId: string): RawQuery<ProjectsCrud["Admin
             }
           })(),
           stripe_config: row.ProjectConfig.stripeConfig ? {
+            stripe_account_id: row.ProjectConfig.stripeConfig.stripeAccountId,
             stripe_secret_key: row.ProjectConfig.stripeConfig.stripeSecretKey,
             stripe_publishable_key: row.ProjectConfig.stripeConfig.stripePublishableKey,
             stripe_webhook_secret: row.ProjectConfig.stripeConfig.stripeWebhookSecret ?? undefined,
@@ -591,6 +592,7 @@ export async function createProject(ownerIds: string[], data: InternalProjectsCr
             },
             stripeConfig: data.config?.stripe_config ? {
               create: {
+                stripeAccountId: data.config.stripe_config.stripe_account_id,
                 stripeSecretKey: data.config.stripe_config.stripe_secret_key,
                 stripePublishableKey: data.config.stripe_config.stripe_publishable_key,
                 stripeWebhookSecret: data.config.stripe_config.stripe_webhook_secret,

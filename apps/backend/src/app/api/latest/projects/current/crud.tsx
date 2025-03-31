@@ -488,6 +488,7 @@ export const projectsCrudHandlers = createLazyProxy(() => createCrudHandlers(pro
           await tx.stripeConfig.update({
             where: { projectConfigId: oldProject.config.id },
             data: {
+              stripeAccountId: stripeConfig.stripe_account_id,
               stripeSecretKey: stripeConfig.stripe_secret_key,
               stripePublishableKey: stripeConfig.stripe_publishable_key,
               stripeWebhookSecret: stripeConfig.stripe_webhook_secret,
@@ -497,6 +498,7 @@ export const projectsCrudHandlers = createLazyProxy(() => createCrudHandlers(pro
           await tx.stripeConfig.create({
             data: {
               projectConfigId: oldProject.config.id,
+              stripeAccountId: stripeConfig.stripe_account_id,
               stripeSecretKey: stripeConfig.stripe_secret_key,
               stripePublishableKey: stripeConfig.stripe_publishable_key,
               stripeWebhookSecret: stripeConfig.stripe_webhook_secret,
