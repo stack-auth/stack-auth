@@ -2,9 +2,9 @@
 
 import { SmartFormDialog } from "@/components/form-dialog";
 import { SettingCard } from "@/components/settings";
-import { ActionCell, Button, DataTable, DataTableColumnHeader, TextCell, Typography } from "@stackframe/stack-ui";
+import { ActionCell, Button, DataTable, DataTableColumnHeader, Dialog, DialogBody, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, TextCell, Typography } from "@stackframe/stack-ui";
 import { ColumnDef } from "@tanstack/react-table";
-import { WalletMinimal } from "lucide-react";
+import { Info, WalletMinimal } from "lucide-react";
 import { useState } from "react";
 import * as yup from "yup";
 import { PageLayout } from "../page-layout";
@@ -13,10 +13,19 @@ import { PlaceholderData } from "./placeholder-data";
 
 export default function PageClient() {
   const [isStripeKeyDialogOpen, setIsStripeKeyDialogOpen] = useState(false);
+  const [isStripeConnectDialogOpen, setIsStripeConnectDialogOpen] = useState(false);
+  const [isConfigurationMethodDialogOpen, setIsConfigurationMethodDialogOpen] = useState(false);
 
   const stackAdminApp = useAdminApp();
   const project = stackAdminApp.useProject();
-  const stripeConfigured = !!project.config.stripeConfig;
+  const stripeConfig = project.config.stripeConfig;
+  const stripeConfigured = !!stripeConfig;
+  const isStripeConnect = stripeConfigured && !!stripeConfig.stripeAccountId;
+  const isDirectKeys = stripeConfigured && !!stripeConfig.stripeSecretKey;
+
+  const configureStripe = () => {
+    setIsConfigurationMethodDialogOpen(true);
+  };
 
   return (
     <PageLayout
@@ -24,21 +33,23 @@ export default function PageClient() {
       description="Configure payment providers for your application"
       actions={
         <div className="flex items-center gap-2">
-          <Button onClick={() => setIsStripeKeyDialogOpen(true)}>
-            {stripeConfigured ? "Update Stripe Key" : "Configure Stripe"}
+          <Button onClick={configureStripe}>
+            {stripeConfigured ? "Update Stripe Configuration" : "Configure Stripe"}
           </Button>
-          <Button
-            variant="destructive"
-            onClick={async () => {
-              await project.update({
-                config: {
-                  stripeConfig: undefined,
-                },
-              });
-            }}
-          >
-            Disable Stripe
-          </Button>
+          {stripeConfigured && (
+            <Button
+              variant="destructive"
+              onClick={async () => {
+                await project.update({
+                  config: {
+                    stripeConfig: undefined,
+                  },
+                });
+              }}
+            >
+              Disable Stripe
+            </Button>
+          )}
         </div>
       }
     >
@@ -46,20 +57,60 @@ export default function PageClient() {
         <PlaceholderData />
       )}
 
-      {!stripeConfigured && <SettingCard
-        title="Stripe"
-        description="Not configured"
-        actions={
-          <Button onClick={() => setIsStripeKeyDialogOpen(true)}>Configure Stripe</Button>
-        }
-      >
-        <div className="flex items-center gap-3">
-          <WalletMinimal />
-          <Typography>
-            Connect your Stripe account to enable payment processing in your application.
-          </Typography>
-        </div>
-      </SettingCard>}
+      {!stripeConfigured && (
+        <SettingCard
+          title="Stripe"
+          description="Not configured"
+          actions={
+            <Button onClick={configureStripe}>Configure Stripe</Button>
+          }
+        >
+          <div className="flex items-center gap-3">
+            <WalletMinimal />
+            <Typography>
+              Connect your Stripe account to enable payment processing in your application.
+            </Typography>
+          </div>
+        </SettingCard>
+      )}
+
+      {stripeConfigured && (
+        <SettingCard
+          title="Stripe Configuration"
+          description={isStripeConnect ? "Connected via Stripe Connect" : "Connected via API Keys"}
+          actions={
+            <Button onClick={configureStripe}>Update Configuration</Button>
+          }
+        >
+          <div className="flex items-center gap-3">
+            <WalletMinimal />
+            <Typography>
+              {isStripeConnect
+                ? `Your application is connected to Stripe via Stripe Connect (Account ID: ${stripeConfig.stripeAccountId})`
+                : "Your application is connected to Stripe via manual API keys."}
+            </Typography>
+          </div>
+        </SettingCard>
+      )}
+
+      <StripeConfigurationMethodDialog
+        open={isConfigurationMethodDialogOpen}
+        onOpenChange={setIsConfigurationMethodDialogOpen}
+        onSelectConnect={() => {
+          setIsConfigurationMethodDialogOpen(false);
+          setIsStripeConnectDialogOpen(true);
+        }}
+        onSelectManual={() => {
+          setIsConfigurationMethodDialogOpen(false);
+          setIsStripeKeyDialogOpen(true);
+        }}
+        currentMethod={isStripeConnect ? "connect" : isDirectKeys ? "manual" : undefined}
+      />
+
+      <StripeConnectDialog
+        open={isStripeConnectDialogOpen}
+        onOpenChange={setIsStripeConnectDialogOpen}
+      />
 
       <StripeKeyDialog
         open={isStripeKeyDialogOpen}
@@ -187,6 +238,124 @@ function AddSubscriptionRoleDialog(props: {
   );
 }
 
+function StripeConfigurationMethodDialog(props: {
+  open: boolean,
+  onOpenChange: (open: boolean) => void,
+  onSelectConnect: () => void,
+  onSelectManual: () => void,
+  currentMethod?: "connect" | "manual",
+}) {
+  // We can't use SmartFormDialog with children, so we'll use ActionDialog directly
+  return (
+    <Dialog open={props.open} onOpenChange={props.onOpenChange}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle className="flex items-center">
+            <Info className="h-4 w-4 mr-2"/>
+            Configure Stripe
+          </DialogTitle>
+          <DialogDescription>
+            Choose how you want to connect your application to Stripe
+          </DialogDescription>
+        </DialogHeader>
+
+        <DialogBody className="pb-2">
+          <div className="flex flex-col gap-4 my-4">
+            <div className="flex flex-col gap-2">
+              <Typography className="text-xl font-bold">Configuration Methods</Typography>
+              <Typography variant="secondary">
+                There are two ways to connect your application to Stripe. Choose the one that best fits your needs.
+              </Typography>
+            </div>
+
+            <div className="flex flex-col gap-4 mt-2">
+              <Button
+                onClick={props.onSelectConnect}
+                className="justify-start h-auto py-4"
+                variant={props.currentMethod === "connect" ? "default" : "outline"}
+              >
+                <div className="flex flex-col items-start text-left gap-1">
+                  <Typography className="font-semibold">Stripe Connect (Recommended)</Typography>
+                  <Typography variant="secondary" className="font-normal">
+                    Connect directly to your Stripe account without having to manage API keys.
+                    This is the simplest and most secure way to integrate with Stripe.
+                  </Typography>
+                </div>
+              </Button>
+
+              <Button
+                onClick={props.onSelectManual}
+                className="justify-start h-auto py-4"
+                variant={props.currentMethod === "manual" ? "default" : "outline"}
+              >
+                <div className="flex flex-col items-start text-left gap-1">
+                  <Typography className="font-semibold">Manual API Keys</Typography>
+                  <Typography variant="secondary" className="font-normal">
+                    Manually configure your Stripe integration by providing your API keys.
+                    Use this if you need more control over your Stripe integration.
+                  </Typography>
+                </div>
+              </Button>
+            </div>
+          </div>
+        </DialogBody>
+
+        <DialogFooter className="gap-2">
+          <Button 
+            variant="secondary" 
+            color="neutral" 
+            onClick={() => props.onOpenChange(false)}
+          >
+            Cancel
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function StripeConnectDialog(props: {
+  open: boolean,
+  onOpenChange: (open: boolean) => void,
+  onStripeConnected?: () => void,
+}) {
+  const stackAdminApp = useAdminApp();
+  const project = stackAdminApp.useProject();
+
+  const formSchema = yup.object({
+    stripeAccountId: yup.string()
+      .defined()
+      .matches(/^acct_[a-zA-Z0-9]+$/, "Must be a valid Stripe account ID")
+      .label("Stripe Account ID"),
+  });
+
+  const handleSubmit = async (values: { stripeAccountId: string }) => {
+    await project.update({
+      config: {
+        stripeConfig: {
+          stripeAccountId: values.stripeAccountId,
+        },
+      }
+    });
+    props.onStripeConnected?.();
+    // Close the dialog after successful update
+    props.onOpenChange(false);
+  };
+
+  return (
+    <SmartFormDialog
+      open={props.open}
+      onOpenChange={props.onOpenChange}
+      title="Connect with Stripe"
+      description="Connect your application directly to your Stripe account"
+      formSchema={formSchema}
+      okButton={{ label: "Connect" }}
+      onSubmit={handleSubmit}
+      cancelButton
+    />
+  );
+}
+
 function StripeKeyDialog(props: {
   open: boolean,
   onOpenChange: (open: boolean) => void,
@@ -213,7 +382,8 @@ function StripeKeyDialog(props: {
     <SmartFormDialog
       open={props.open}
       onOpenChange={props.onOpenChange}
-      title="Configure Stripe"
+      title="Configure Stripe API Keys"
+      description="Manually configure your Stripe integration by providing your API keys"
       formSchema={formSchema}
       okButton={{ label: "Save" }}
       onSubmit={async (values) => {
