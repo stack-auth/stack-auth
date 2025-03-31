@@ -11,11 +11,11 @@ import {
 import { ContactChannelsCrud } from "./crud/contact-channels";
 import { CurrentUserCrud } from "./crud/current-user";
 import { ConnectedAccountAccessTokenCrud } from "./crud/oauth";
+import { ProjectPermissionsCrud } from "./crud/project-permissions";
 import { SessionsCrud } from "./crud/sessions";
 import { TeamInvitationCrud } from "./crud/team-invitation";
 import { TeamMemberProfilesCrud } from "./crud/team-member-profiles";
 import { TeamMembershipsCrud } from "./crud/team-memberships";
-import { ProjectPermissionsCrud } from "./crud/project-permissions";
 import { TeamPermissionsCrud } from "./crud/team-permissions";
 import { TeamsCrud } from "./crud/teams";
 import { UsersCrud } from "./crud/users";
@@ -604,7 +604,6 @@ export class StackServerInterface extends StackClientInterface {
       null,
     );
   }
-
 
   async updatePassword(
     options: { oldPassword: string, newPassword: string },

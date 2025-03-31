@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server";
 import { stackServerApp } from "src/stack";
-
 export async function POST(request: Request) {
   try {
     const body = await request.json();
@@ -14,10 +13,10 @@ export async function POST(request: Request) {
     }
 
     // Try to validate the API key using the stack app
-    let user = null;
-    let userError = null;
-    let team = null;
-    let teamError = null;
+    let user;
+    let userError;
+    let team;
+    let teamError;
 
     try {
       user = await stackServerApp.getUser({ apiKey });
