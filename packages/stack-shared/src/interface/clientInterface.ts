@@ -17,11 +17,11 @@ import { ContactChannelsCrud } from './crud/contact-channels';
 import { CurrentUserCrud } from './crud/current-user';
 import { ConnectedAccountAccessTokenCrud } from './crud/oauth';
 import { TeamApiKeysCrud, UserApiKeysCrud, teamApiKeysCreateInputSchema, teamApiKeysCreateOutputSchema, userApiKeysCreateInputSchema, userApiKeysCreateOutputSchema } from './crud/project-api-keys';
+import { ProjectPermissionsCrud } from './crud/project-permissions';
 import { InternalProjectsCrud, ProjectsCrud } from './crud/projects';
 import { SessionsCrud } from './crud/sessions';
 import { TeamInvitationCrud } from './crud/team-invitation';
 import { TeamMemberProfilesCrud } from './crud/team-member-profiles';
-import { ProjectPermissionsCrud } from './crud/project-permissions';
 import { TeamPermissionsCrud } from './crud/team-permissions';
 import { TeamsCrud } from './crud/teams';
 
@@ -1490,9 +1490,10 @@ export class StackClientInterface {
     session: InternalSession | null,
     requestType: "client" | "server" | "admin",
   ): Promise<(UserApiKeysCrud['Client']['Read'] | TeamApiKeysCrud['Client']['Read'])[]> {
+    const sendRequest = (requestType === "client" ? this.sendClientRequest : (this as any).sendServerRequest as never).bind(this);
     const { endpoint, queryParams } = await this._getApiKeyRequestInfo(options);
 
-    const response = await this.sendClientRequest(
+    const response = await sendRequest(
       `${endpoint}?${queryParams.toString()}`,
       {
         method: "GET",
@@ -1512,9 +1513,10 @@ export class StackClientInterface {
     session: InternalSession | null,
     requestType: "client" | "server" | "admin",
   ): Promise<yup.InferType<typeof userApiKeysCreateOutputSchema> | yup.InferType<typeof teamApiKeysCreateOutputSchema>> {
+    const sendRequest = (requestType === "client" ? this.sendClientRequest : (this as any).sendServerRequest as never).bind(this);
     const { endpoint } = await this._getApiKeyRequestInfo(data);
 
-    const response = await this.sendClientRequest(
+    const response = await sendRequest(
       `${endpoint}`,
       {
         method: "POST",
@@ -1538,9 +1540,10 @@ export class StackClientInterface {
     session: InternalSession | null,
     requestType: "client" | "server" | "admin",
   ): Promise<UserApiKeysCrud['Client']['Read'] | TeamApiKeysCrud['Client']['Read']> {
+    const sendRequest = (requestType === "client" ? this.sendClientRequest : (this as any).sendServerRequest as never).bind(this);
     const { endpoint, queryParams } = await this._getApiKeyRequestInfo(options);
 
-    const response = await this.sendClientRequest(
+    const response = await sendRequest(
       `${endpoint}/${keyId}?${queryParams.toString()}`,
       {
         method: "GET",
@@ -1561,9 +1564,10 @@ export class StackClientInterface {
     session: InternalSession | null,
     requestType: "client" | "server" | "admin",
   ): Promise<UserApiKeysCrud['Client']['Read'] | TeamApiKeysCrud['Client']['Read']> {
+    const sendRequest = (requestType === "client" ? this.sendClientRequest : (this as any).sendServerRequest as never).bind(this);
     const { endpoint, queryParams } = await this._getApiKeyRequestInfo(options);
 
-    const response = await this.sendClientRequest(
+    const response = await sendRequest(
       `${endpoint}/${keyId}?${queryParams.toString()}`,
       {
         method: "PATCH",
@@ -1582,7 +1586,8 @@ export class StackClientInterface {
   checkProjectApiKey(type: "team", apiKey: string, session: InternalSession | null, requestType: "client" | "server" | "admin"): Promise<TeamApiKeysCrud['Client']['Read']>;
   checkProjectApiKey(type: "user" | "team", apiKey: string, session: InternalSession | null, requestType: "client" | "server" | "admin"): Promise<UserApiKeysCrud['Client']['Read'] | TeamApiKeysCrud['Client']['Read']>;
   async checkProjectApiKey(type: "user" | "team", apiKey: string, session: InternalSession | null, requestType: "client" | "server" | "admin"): Promise<UserApiKeysCrud['Client']['Read'] | TeamApiKeysCrud['Client']['Read']> {
-    const response = await this.sendClientRequest(
+    const sendRequest = (requestType === "client" ? this.sendClientRequest : (this as any).sendServerRequest as never).bind(this);
+    const response = await sendRequest(
       `/${type}-api-keys/check`,
       {
         method: "POST",

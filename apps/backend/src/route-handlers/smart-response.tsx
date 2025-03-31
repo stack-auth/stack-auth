@@ -45,7 +45,7 @@ export async function validateSmartResponse<T>(req: NextRequest | null, smartReq
       context: {
         noUnknownPathPrefixes: [""],
       },
-      currentUserId: smartReq.auth?.user?.id,
+      currentUserId: smartReq.auth?.user?.id ?? null,
     });
   } catch (error) {
     throw new StackAssertionError(`Error occurred during ${req ? `${req.method} ${req.url}` : "a custom endpoint invocation's"} response validation: ${error}`, { obj, schema, cause: error });
