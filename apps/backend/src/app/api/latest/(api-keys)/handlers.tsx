@@ -186,7 +186,7 @@ function createApiKeyHandlers<Type extends "user" | "team">(type: Type) {
         const isPublic = body.is_public ?? false;
         const apiKeyId = generateUuid();
 
-        const secretApiKey = await createProjectApiKey({
+        const secretApiKey = createProjectApiKey({
           id: apiKeyId,
           isPublic,
           isCloudVersion,

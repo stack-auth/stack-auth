@@ -1,12 +1,10 @@
-import { encodeBase32, getBase32CharacterFromIndex } from "@stackframe/stack-shared/dist/utils/bytes";
+import { getBase32CharacterFromIndex } from "@stackframe/stack-shared/dist/utils/bytes";
 import { generateSecureRandomString } from "@stackframe/stack-shared/dist/utils/crypto";
 import { StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
-import { sha512 } from "@stackframe/stack-shared/dist/utils/hashes";
-import crypto from "crypto";
+import crc32 from 'crc/crc32';
 
 
 const STACK_AUTH_MARKER = "574ck4u7h";
-const STACK_AUTH_PEPPER = "stack-auth-api-key-checksum-pepper";
 
 // API key part lengths
 const API_KEY_LENGTHS = {
@@ -14,17 +12,17 @@ const API_KEY_LENGTHS = {
   ID_PART: 32,
   TYPE_PART: 4,
   SCANNER_AND_MARKER: 10,
-  CHECKSUM: 6,
+  CHECKSUM: 8,
 } as const;
 
 /**
  * An api has the folowing format:
- * <prefix_without_underscores>_<secret_part_45_chars><id_part_32_chars><type_user_or_team_4_chars><scanner_and_marker_10_chars><checksum_6_chars>
+ * <prefix_without_underscores>_<secret_part_45_chars><id_part_32_chars><type_user_or_team_4_chars><scanner_and_marker_10_chars><checksum_8_chars>
  *
  * The scanner and marker is a base32 character that is used to determine if the api key is a public or private key
  * and if it is a cloud or self-hosted key.
  *
- * The checksum is a sha512 checksum of the api key.
+ * The checksum is a crc32 checksum of the api key encoded in hex.
  *
  */
 
@@ -38,16 +36,11 @@ type ProjectApiKey = {
   type: "user" | "team",
 }
 
-async function createChecksum(checksummablePart: string): Promise<string> {
-  const calculated_checksum = await sha512(checksummablePart + STACK_AUTH_PEPPER);
-  return encodeBase32(calculated_checksum).slice(0, 6).toLowerCase();
-}
-
 
 function createChecksumSync(checksummablePart: string): string {
-  const hash = crypto.createHash('sha512');
-  hash.update(checksummablePart + STACK_AUTH_PEPPER);
-  return encodeBase32(hash.digest()).slice(0, 6).toLowerCase();
+  const data = new TextEncoder().encode(checksummablePart);
+  const calculated_checksum = crc32(data);
+  return calculated_checksum.toString(16).padStart(8, "0");
 }
 
 function createApiKeyParts(options: Pick<ProjectApiKey, "id" | "isPublic" | "isCloudVersion" | "type">) {
@@ -100,38 +93,14 @@ export function isApiKey(secret: string): boolean {
   return secret.includes("_") && secret.includes(STACK_AUTH_MARKER);
 }
 
-export async function createProjectApiKey(options: Pick<ProjectApiKey, "id" | "isPublic" | "isCloudVersion" | "type">): Promise<string> {
-  const { checksummablePart } = createApiKeyParts(options);
-  const checksum = await createChecksum(checksummablePart);
-  return `${checksummablePart}${checksum}`;
-}
-
-export function createProjectApiKeySync(options: Pick<ProjectApiKey, "id" | "isPublic" | "isCloudVersion" | "type">): string {
+export function createProjectApiKey(options: Pick<ProjectApiKey, "id" | "isPublic" | "isCloudVersion" | "type">): string {
   const { checksummablePart } = createApiKeyParts(options);
   const checksum = createChecksumSync(checksummablePart);
   return `${checksummablePart}${checksum}`;
 }
 
-export async function parseProjectApiKey(secret: string): Promise<ProjectApiKey> {
-  const { checksummablePart, checksum, id, isCloudVersion, isPublic, prefix, type } = parseApiKeyParts(secret);
-  const calculated_checksum = await createChecksum(checksummablePart);
 
-  if (calculated_checksum !== checksum) {
-    throw new StackAssertionError("Checksum mismatch");
-  }
-
-  return {
-    id,
-    prefix,
-    isPublic,
-    isCloudVersion,
-    secret,
-    checksum,
-    type,
-  };
-}
-
-export function parseProjectApiKeySync(secret: string): ProjectApiKey {
+export function parseProjectApiKey(secret: string): ProjectApiKey {
   const { checksummablePart, checksum, id, isCloudVersion, isPublic, prefix, type } = parseApiKeyParts(secret);
   const calculated_checksum = createChecksumSync(checksummablePart);
 

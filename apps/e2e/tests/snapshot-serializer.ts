@@ -1,4 +1,4 @@
-import { isApiKey, parseProjectApiKeySync } from "@stackframe/stack-shared/dist/utils/api-keys";
+import { isApiKey, parseProjectApiKey } from "@stackframe/stack-shared/dist/utils/api-keys";
 import { typedIncludes } from "@stackframe/stack-shared/dist/utils/arrays";
 import { StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
 import { nicify } from "@stackframe/stack-shared/dist/utils/strings";
@@ -125,7 +125,7 @@ const snapshotSerializer: SnapshotSerializer = {
 
         // Strip all API keys
         if (typeof value === "string" && isApiKey(value)) {
-          const apiKey = parseProjectApiKeySync(value);
+          const apiKey = parseProjectApiKey(value);
           return `${apiKey.prefix}_<stripped ${apiKey.isPublic ? "public " : ""}${apiKey.type} API key>`;
         }
 
