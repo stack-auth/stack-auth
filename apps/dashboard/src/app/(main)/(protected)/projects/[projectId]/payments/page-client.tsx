@@ -7,7 +7,7 @@ import { ActionCell, Button, Card, CardContent, CardDescription, CardHeader, Car
 import { ColumnDef } from "@tanstack/react-table";
 import { DollarSign, TrendingUp, WalletMinimal } from "lucide-react";
 import { useState } from "react";
-import { Bar, BarChart, CartesianGrid, Line, LineChart, XAxis, YAxis } from "recharts";
+import { CartesianGrid, Line, LineChart, XAxis, YAxis } from "recharts";
 import * as yup from "yup";
 import { PageLayout } from "../page-layout";
 import { useAdminApp } from "../use-admin-app";
