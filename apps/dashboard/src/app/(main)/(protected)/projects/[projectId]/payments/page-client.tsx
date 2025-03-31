@@ -2,12 +2,13 @@
 
 import { SmartFormDialog } from "@/components/form-dialog";
 import { SettingCard } from "@/components/settings";
+import { runAsynchronously } from "@stackframe/stack-shared/dist/utils/promises";
 import { ActionCell, Button, DataTable, DataTableColumnHeader, Dialog, DialogBody, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, TextCell, Typography } from "@stackframe/stack-ui";
 import { loadConnectAndInitialize } from "@stripe/connect-js";
 import { ConnectComponentsProvider, ConnectPayments } from "@stripe/react-connect-js";
 import { ColumnDef } from "@tanstack/react-table";
 import { Info, WalletMinimal } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import * as yup from "yup";
 import { PageLayout } from "../page-layout";
 import { useAdminApp } from "../use-admin-app";
@@ -138,24 +139,56 @@ export default function PageClient() {
 function StripeConnectSection() {
   const stackAdminApp = useAdminApp();
   const [errorMessage, setErrorMessage] = useState('');
+  const [isLoading, setIsLoading] = useState(true);
+  const [connectInstance, setConnectInstance] = useState<any>(null);
 
-  const [connectInstance] = useState(() => {
-    const fetchClientSecret = async () => {
+  // Use useEffect to initialize the Stripe Connect session only once
+  useEffect(() => {
+    const initializeStripeConnect = async () => {
       try {
-        const result = await stackAdminApp.getStripeAccountSession();
-        return result.clientSecret;
+        const fetchClientSecret = async () => {
+          try {
+            const result = await stackAdminApp.getStripeAccountSession();
+            return result.clientSecret;
+          } catch (error) {
+            console.error('Error fetching Stripe account session client secret:', error);
+
+            // Extract a more user-friendly error message
+            if (error instanceof Error) {
+              if (error.message.includes('STRIPE_CONFIGURATION_NOT_FOUND')) {
+                setErrorMessage("This project has not been properly configured with Stripe Connect. Please set up Stripe Connect integration first.");
+              } else {
+                setErrorMessage(error.message);
+              }
+            } else {
+              setErrorMessage('Failed to fetch Stripe account session. Please try again.');
+            }
+
+            return '';
+          }
+        };
+
+        const instance = loadConnectAndInitialize({
+          publishableKey: 'pk_test_51PG1x62NZrVPeGHsPOSW8tQ6X80XtXeorCiEJYWraaXxtkAhm1jU21EU4CY3MLVrKqCKPw9o9Dtpgfe3fBT2Od1d00DqG2OPkp',
+          fetchClientSecret,
+        });
+
+        setConnectInstance(instance);
       } catch (error) {
-        console.error('Error fetching Stripe account session client secret:', error);
-        setErrorMessage((error as any).toString());
-        return '';
+        console.error('Error initializing Stripe Connect:', error);
+
+        // Provide a more helpful error message
+        if (error instanceof Error) {
+          setErrorMessage(`Error initializing Stripe Connect: ${error.message}`);
+        } else {
+          setErrorMessage('An unexpected error occurred while initializing Stripe Connect.');
+        }
+      } finally {
+        setIsLoading(false);
       }
     };
-
-    return loadConnectAndInitialize({
-      publishableKey: 'pk_test_51PG1x62NZrVPeGHsPOSW8tQ6X80XtXeorCiEJYWraaXxtkAhm1jU21EU4CY3MLVrKqCKPw9o9Dtpgfe3fBT2Od1d00DqG2OPkp',
-      fetchClientSecret,
-    });
-  });
+    runAsynchronously(initializeStripeConnect);
+  }, [stackAdminApp]);
 
   if (errorMessage) {
     return (
@@ -163,6 +196,14 @@ function StripeConnectSection() {
         {errorMessage}
       </div>
     );
+  }
+
+  if (isLoading) {
+    return <div className="py-4">Loading Stripe Connect...</div>;
+  }
+
+  if (!connectInstance) {
+    return <div className="py-4">Failed to initialize Stripe Connect.</div>;
   }
 
   return (
