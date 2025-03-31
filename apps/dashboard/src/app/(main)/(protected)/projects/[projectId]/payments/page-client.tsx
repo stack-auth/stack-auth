@@ -171,6 +171,13 @@ function StripeConnectSection() {
         const instance = loadConnectAndInitialize({
           publishableKey: 'pk_test_51PG1x62NZrVPeGHsPOSW8tQ6X80XtXeorCiEJYWraaXxtkAhm1jU21EU4CY3MLVrKqCKPw9o9Dtpgfe3fBT2Od1d00DqG2OPkp',
           fetchClientSecret,
+          appearance: {
+            variables: {
+              colorBackground: '#151519',
+              colorText: '#ffffff',
+              colorSecondaryText: '#a1a1aa',
+            }
+          }
         });
 
         setConnectInstance(instance);
@@ -209,9 +216,6 @@ function StripeConnectSection() {
   return (
     <ConnectComponentsProvider connectInstance={connectInstance}>
       <ConnectPayments />
-      <div>
-        placeholder
-      </div>
     </ConnectComponentsProvider>
   );
 }
