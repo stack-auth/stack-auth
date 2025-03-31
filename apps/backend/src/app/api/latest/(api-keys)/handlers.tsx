@@ -7,10 +7,8 @@ import { ProjectApiKey } from "@prisma/client";
 import { KnownErrors } from "@stackframe/stack-shared";
 import { TeamApiKeysCrud, UserApiKeysCrud, teamApiKeysCreateInputSchema, teamApiKeysCreateOutputSchema, teamApiKeysCrud, userApiKeysCreateInputSchema, userApiKeysCreateOutputSchema, userApiKeysCrud } from "@stackframe/stack-shared/dist/interface/crud/project-api-keys";
 import { adaptSchema, clientOrHigherAuthTypeSchema, serverOrHigherAuthTypeSchema, userIdOrMeSchema, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
-import { encodeBase32, getBase32CharacterFromIndex } from "@stackframe/stack-shared/dist/utils/bytes";
-import { generateSecureRandomString } from "@stackframe/stack-shared/dist/utils/crypto";
+import { createProjectApiKey } from "@stackframe/stack-shared/dist/utils/api-keys";
 import { StackAssertionError, StatusError } from "@stackframe/stack-shared/dist/utils/errors";
-import { sha512 } from "@stackframe/stack-shared/dist/utils/hashes";
 import { createLazyProxy } from "@stackframe/stack-shared/dist/utils/proxies";
 import { generateUuid } from "@stackframe/stack-shared/dist/utils/uuids";
 import * as yup from "yup";
@@ -176,10 +174,6 @@ function createApiKeyHandlers<Type extends "user" | "team">(type: Type) {
           userId,
           teamId,
         });
-
-        const isPublic = body.is_public ?? false;
-        const apiKeyId = generateUuid();
-
         // to make it easier to scan, we want our API key to have a very specific format
         // for example, for GitHub secret scanning: https://docs.github.com/en/code-security/secret-scanning/secret-scanning-partnership-program/secret-scanning-partner-program
         /*
@@ -188,12 +182,16 @@ function createApiKeyHandlers<Type extends "user" | "team">(type: Type) {
           throw new StackAssertionError("userPrefix must contain only alphanumeric characters and underscores. This is so we can register the API key with security scanners. This should've been checked in the creation schema");
         }
         */
-        const userPrefix = isPublic ? "pk" : "sk";
         const isCloudVersion = new URL(url).hostname === "api.stack-auth.com";  // we only want to enable secret scanning on the cloud version
-        const scannerFlag = (isCloudVersion ? 0 : 1) + (isPublic ? 2 : 0) + (/* version */ 0);
-        const firstSecretPart = `${userPrefix}_${generateSecureRandomString()}${apiKeyId.replace(/-/g, "")}${type}${getBase32CharacterFromIndex(scannerFlag).toLowerCase()}574ck4u7h`;
-        const checksum = await sha512(firstSecretPart + "stack-auth-api-key-checksum-pepper");
-        const secretApiKey = `${firstSecretPart}${encodeBase32(checksum).slice(0, 6).toLowerCase()}`;
+        const isPublic = body.is_public ?? false;
+        const apiKeyId = generateUuid();
+
+        const secretApiKey = await createProjectApiKey({
+          id: apiKeyId,
+          isPublic,
+          isCloudVersion,
+          type,
+        });
 
         const apiKey = await prismaClient.projectApiKey.create({
           data: {
@@ -300,6 +298,7 @@ function createApiKeyHandlers<Type extends "user" | "team">(type: Type) {
               createdAt: 'desc',
             },
           });
+
 
           // Return a list of API keys with obfuscated key values
           return {

@@ -1,5 +1,5 @@
+import { isApiKey, parseProjectApiKeySync } from "@stackframe/stack-shared/dist/utils/api-keys";
 import { typedIncludes } from "@stackframe/stack-shared/dist/utils/arrays";
-import { decodeBase32, getBase32IndexFromCharacter } from "@stackframe/stack-shared/dist/utils/bytes";
 import { StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
 import { nicify } from "@stackframe/stack-shared/dist/utils/strings";
 import { SnapshotSerializer } from "vitest";
@@ -124,27 +124,9 @@ const snapshotSerializer: SnapshotSerializer = {
         }
 
         // Strip all API keys
-        if (typeof value === "string") {
-          const matches = [...value.matchAll(/(([a-zA-Z0-9_]*)_([a-zA-Z0-9]+)(user|team)([a-zA-Z0-9])574ck4u7h)([a-zA-Z0-9_]+)/g)];
-          if (matches.length > 0) {
-            let result = "";
-            for (const match of matches) {
-              const entire = match[0];
-              const firstPart = match[1];
-              const prefix = match[2];
-              const random = match[3];
-              const type = match[4];
-              const flag = getBase32IndexFromCharacter(match[5]);
-              const isCloud = !(flag & 1);
-              const isPublic = !!(flag & 2);
-              const checksum = decodeBase32(match[6]);
-              // TODO check if the checksum matches base32(sha512(firstPart + "stack-auth-api-key-checksum-pepper"))
-              const newValue = `${prefix}_<stripped ${isPublic ? "public " : ""}${type} API key>`;
-              result += value.slice(0, match.index) + newValue;
-            }
-            result += value.slice(matches[matches.length - 1].index! + matches[matches.length - 1][0].length);
-            return result;
-          }
+        if (typeof value === "string" && isApiKey(value)) {
+          const apiKey = parseProjectApiKeySync(value);
+          return `${apiKey.prefix}_<stripped ${apiKey.isPublic ? "public " : ""}${apiKey.type} API key>`;
         }
 
         // Strip all UUIDs except all-zero UUID
