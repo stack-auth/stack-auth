@@ -113,7 +113,7 @@ const STRIPE_EVENT_HANDLERS: {
             where: { projects: { some: { id: project.id } } },
             include: { stripeConfig: true }
           });
-          
+
           if (projectConfig?.stripeConfig) {
             await tx.stripeConfig.update({
               where: { id: projectConfig.stripeConfig.id },
@@ -148,7 +148,7 @@ export const POST = async (req: NextApiRequest) => {
     if (!project) {
       return Response.json({ error: 'Project not found' }, { status: 404 });
     }
-    
+
     if (!project.config.stripe_config) {
       throw new KnownErrors.StripeConfigurationNotFound();
     }
@@ -162,7 +162,7 @@ export const POST = async (req: NextApiRequest) => {
     if (!stripeConfig.stripe_secret_key) {
       return Response.json({ error: 'Stripe secret key not configured' }, { status: 400 });
     }
-    
+
     const stripe = new Stripe(stripeConfig.stripe_secret_key);
 
     const head = await headers();
