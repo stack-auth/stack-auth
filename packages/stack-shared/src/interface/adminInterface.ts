@@ -301,4 +301,19 @@ export class StackAdminInterface extends StackServerInterface {
     }, null);
     return await response.json();
   }
+
+  async getStripeAccountSession(): Promise<{ client_secret: string }> {
+    const response = await this.sendAdminRequest(
+      "/integrations/stripe/account-session",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({}),
+      },
+      null,
+    );
+    return await response.json();
+  }
 }

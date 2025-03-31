@@ -3,6 +3,8 @@
 import { SmartFormDialog } from "@/components/form-dialog";
 import { SettingCard } from "@/components/settings";
 import { ActionCell, Button, DataTable, DataTableColumnHeader, Dialog, DialogBody, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, TextCell, Typography } from "@stackframe/stack-ui";
+import { loadConnectAndInitialize } from "@stripe/connect-js";
+import { ConnectComponentsProvider, ConnectPayments } from "@stripe/react-connect-js";
 import { ColumnDef } from "@tanstack/react-table";
 import { Info, WalletMinimal } from "lucide-react";
 import { useState } from "react";
@@ -26,6 +28,7 @@ export default function PageClient() {
   const configureStripe = () => {
     setIsConfigurationMethodDialogOpen(true);
   };
+
 
   return (
     <PageLayout
@@ -92,6 +95,7 @@ export default function PageClient() {
           </div>
         </SettingCard>
       )}
+      {stripeConfig && stripeConfig.stripeAccountId && <StripeConnectSection />}
 
       <StripeConfigurationMethodDialog
         open={isConfigurationMethodDialogOpen}
@@ -128,6 +132,46 @@ export default function PageClient() {
         )
       }
     </PageLayout>
+  );
+}
+
+function StripeConnectSection() {
+  const stackAdminApp = useAdminApp();
+  const [errorMessage, setErrorMessage] = useState('');
+
+  const [connectInstance] = useState(() => {
+    const fetchClientSecret = async () => {
+      try {
+        const result = await stackAdminApp.getStripeAccountSession();
+        return result.clientSecret;
+      } catch (error) {
+        console.error('Error fetching Stripe account session client secret:', error);
+        setErrorMessage((error as any).toString());
+        return '';
+      }
+    };
+
+    return loadConnectAndInitialize({
+      publishableKey: 'pk_test_51PG1x62NZrVPeGHsPOSW8tQ6X80XtXeorCiEJYWraaXxtkAhm1jU21EU4CY3MLVrKqCKPw9o9Dtpgfe3fBT2Od1d00DqG2OPkp',
+      fetchClientSecret,
+    });
+  });
+
+  if (errorMessage) {
+    return (
+      <div className="bg-red-50 dark:bg-red-950 border border-red-200 dark:border-red-800 p-3 rounded-md text-red-600 dark:text-red-400 text-sm">
+        {errorMessage}
+      </div>
+    );
+  }
+
+  return (
+    <ConnectComponentsProvider connectInstance={connectInstance}>
+      <ConnectPayments />
+      <div>
+        placeholder
+      </div>
+    </ConnectComponentsProvider>
   );
 }
 
@@ -333,19 +377,17 @@ function StripeConnectDialog(props: {
     try {
       const baseUrl = window.location.origin + window.location.pathname;
 
-      const stripeSession = await stackAdminApp.createStripeConnectIntegration({
+      const stripeConnect = await stackAdminApp.createStripeConnectIntegration({
         type: 'standard',
         return_url: `${baseUrl}?stripeConnectSuccess=true`,
         refresh_url: `${baseUrl}?stripeConnectRefresh=true`,
       });
 
-      await project.update({
-        config: {
-          stripeConfig: {
-            stripeAccountId: stripeSession.accountId,
-          },
-        }
-      });
+      // Redirect to the Stripe Connect account link URL
+      if (stripeConnect.accountLinkUrl) {
+        window.location.href = stripeConnect.accountLinkUrl;
+      }
+
       props.onStripeConnected?.();
     } catch (err) {
       console.error('Error creating Stripe Connect account:', err);

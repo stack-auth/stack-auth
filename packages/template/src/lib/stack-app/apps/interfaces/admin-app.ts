@@ -66,6 +66,10 @@ export type StackAdminApp<HasTokenStore extends boolean = boolean, ProjectId ext
       accountId: string,
       accountLinkUrl: string,
     }>,
+
+    getStripeAccountSession(): Promise<{
+      clientSecret: string
+    }>,
   }
   & StackServerApp<HasTokenStore, ProjectId>
 );

@@ -2,7 +2,7 @@ import { prismaClient } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { getStripeClient } from "@/utils/stripe";
 import { KnownErrors } from "@stackframe/stack-shared/dist/known-errors";
-import { adaptSchema, yupBoolean, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
+import { adaptSchema, adminAuthTypeSchema, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
 
 export const POST = createSmartRouteHandler({
   metadata: {
@@ -12,19 +12,10 @@ export const POST = createSmartRouteHandler({
   },
   request: yupObject({
     auth: yupObject({
+      type: adminAuthTypeSchema.defined(),
       project: adaptSchema.defined(),
-      user: adaptSchema.defined(),
     }).defined(),
-    body: yupObject({
-      components: yupObject({
-        account_onboarding: yupObject({
-          enabled: yupBoolean().default(true),
-        }).optional(),
-        payment_details: yupObject({
-          enabled: yupBoolean().default(true),
-        }).optional(),
-      }).defined(),
-    }).defined(),
+    body: yupObject({}).defined(),
   }),
   response: yupObject({
     statusCode: yupNumber().oneOf([200]).defined(),
@@ -59,20 +50,14 @@ export const POST = createSmartRouteHandler({
 
     const stripe = getStripeClient();
 
-    // Transform the components from Yup validation format to Stripe API format
-    const components = {
-      account_onboarding: body.components.account_onboarding ? {
-        enabled: !!body.components.account_onboarding.enabled
-      } : undefined,
-      payment_details: body.components.payment_details ? {
-        enabled: !!body.components.payment_details.enabled
-      } : undefined
-    };
-
     // Create an account session for the connected account using the project's Stripe account ID
     const accountSession = await stripe.accountSessions.create({
       account: projectWithStripeConfig.config.stripeConfig.stripeAccountId,
-      components,
+      components: {
+        payments: {
+          enabled: true,
+        }
+      },
     });
 
     return {

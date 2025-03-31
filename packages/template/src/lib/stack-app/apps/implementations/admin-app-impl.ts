@@ -130,10 +130,10 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
           senderEmail: data.config.email_config.sender_email ?? throwErr("Email sender email is missing"),
         },
         stripeConfig: data.config.stripe_config ? {
-          stripeAccountId: data.config.stripe_config.stripe_account_id,
-          stripeSecretKey: data.config.stripe_config.stripe_secret_key,
-          stripePublishableKey: data.config.stripe_config.stripe_publishable_key,
-          stripeWebhookSecret: data.config.stripe_config.stripe_webhook_secret,
+          stripeAccountId: data.config.stripe_config.stripe_account_id || undefined,
+          stripeSecretKey: data.config.stripe_config.stripe_secret_key || undefined,
+          stripePublishableKey: data.config.stripe_config.stripe_publishable_key || undefined,
+          stripeWebhookSecret: data.config.stripe_config.stripe_webhook_secret || undefined,
         } : undefined,
         domains: data.config.domains.map((d) => ({
           domain: d.domain,
@@ -422,6 +422,15 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
     return {
       accountId: result.account_id,
       accountLinkUrl: result.account_link_url,
+    };
+  }
+
+  async getStripeAccountSession(): Promise<{
+    clientSecret: string,
+  }> {
+    const result = await this._interface.getStripeAccountSession();
+    return {
+      clientSecret: result.client_secret
     };
   }
 }
