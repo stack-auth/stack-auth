@@ -277,7 +277,8 @@ function StripeConfigurationMethodDialog(props: {
                 <div className="flex flex-col items-start text-left gap-1">
                   <Typography className="font-semibold">Stripe Connect (Recommended)</Typography>
                   <Typography variant="secondary" className="font-normal">
-                    Connect directly to your Stripe account without having to manage API keys.
+                    Allow Stack Auth to handle the integration with Stripe.
+                    <br />
                     This is the simplest and most secure way to integrate with Stripe.
                   </Typography>
                 </div>
@@ -291,7 +292,8 @@ function StripeConfigurationMethodDialog(props: {
                 <div className="flex flex-col items-start text-left gap-1">
                   <Typography className="font-semibold">Manual API Keys</Typography>
                   <Typography variant="secondary" className="font-normal">
-                    Manually configure your Stripe integration by providing your API keys.
+                    Configure your integration by providing your API keys.
+                    <br />
                     Use this if you need more control over your Stripe integration.
                   </Typography>
                 </div>
@@ -301,9 +303,9 @@ function StripeConfigurationMethodDialog(props: {
         </DialogBody>
 
         <DialogFooter className="gap-2">
-          <Button 
-            variant="secondary" 
-            color="neutral" 
+          <Button
+            variant="secondary"
+            color="neutral"
             onClick={() => props.onOpenChange(false)}
           >
             Cancel
@@ -321,38 +323,85 @@ function StripeConnectDialog(props: {
 }) {
   const stackAdminApp = useAdminApp();
   const project = stackAdminApp.useProject();
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  const formSchema = yup.object({
-    stripeAccountId: yup.string()
-      .defined()
-      .matches(/^acct_[a-zA-Z0-9]+$/, "Must be a valid Stripe account ID")
-      .label("Stripe Account ID"),
-  });
+  const handleCreateAccount = async () => {
+    setIsLoading(true);
+    setError(null);
 
-  const handleSubmit = async (values: { stripeAccountId: string }) => {
-    await project.update({
-      config: {
-        stripeConfig: {
-          stripeAccountId: values.stripeAccountId,
-        },
-      }
-    });
-    props.onStripeConnected?.();
-    // Close the dialog after successful update
-    props.onOpenChange(false);
+    try {
+      const baseUrl = window.location.origin + window.location.pathname;
+
+      const stripeSession = await stackAdminApp.createCheckoutSession({
+        type: 'standard',
+        return_url: `${baseUrl}?stripeConnectSuccess=true`,
+        refresh_url: `${baseUrl}?stripeConnectRefresh=true`,
+      });
+
+      await project.update({
+        config: {
+          stripeConfig: {
+            stripeAccountId: stripeSession.accountId,
+          },
+        }
+      });
+      props.onStripeConnected?.();
+    } catch (err) {
+      console.error('Error creating Stripe Connect account:', err);
+      setError(err instanceof Error ? err.message : 'An unexpected error occurred');
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   return (
-    <SmartFormDialog
-      open={props.open}
-      onOpenChange={props.onOpenChange}
-      title="Connect with Stripe"
-      description="Connect your application directly to your Stripe account"
-      formSchema={formSchema}
-      okButton={{ label: "Connect" }}
-      onSubmit={handleSubmit}
-      cancelButton
-    />
+    <Dialog open={props.open} onOpenChange={props.onOpenChange}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Connect with Stripe</DialogTitle>
+          <DialogDescription>
+            Create a new Stripe Connect account for your application
+          </DialogDescription>
+        </DialogHeader>
+
+        <DialogBody className="py-4">
+          <div className="flex flex-col gap-4">
+            <Typography>
+              Clicking Create Account will:
+            </Typography>
+            <ul className="list-disc pl-6 space-y-1">
+              <li>Create a new Stripe Connect account for your project</li>
+              <li>Redirect you to Stripe to complete the onboarding process</li>
+              <li>Link the account to your project once onboarding is complete</li>
+            </ul>
+
+            {error && (
+              <div className="bg-red-50 dark:bg-red-950 border border-red-200 dark:border-red-800 p-3 rounded-md text-red-600 dark:text-red-400 text-sm">
+                {error}
+              </div>
+            )}
+          </div>
+        </DialogBody>
+
+        <DialogFooter className="gap-2">
+          <Button
+            variant="secondary"
+            color="neutral"
+            onClick={() => props.onOpenChange(false)}
+            disabled={isLoading}
+          >
+            Cancel
+          </Button>
+          <Button
+            onClick={handleCreateAccount}
+            disabled={isLoading}
+          >
+            {isLoading ? "Creating Account..." : "Create Account"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 

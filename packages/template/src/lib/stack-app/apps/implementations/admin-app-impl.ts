@@ -391,4 +391,37 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
       error: email.error,
     }));
   }
+
+  async createCheckoutSession(options: {
+    type: 'standard' | 'express' | 'custom',
+    return_url: string,
+    refresh_url: string,
+    team_id?: string,
+  }): Promise<{
+    accountId: string,
+    accountLinkUrl: string,
+  }> {
+    const response = await this._interface.sendAdminRequest(
+      "/api/latest/integrations/stripe/connect",
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          type: options.type,
+          return_url: options.return_url,
+          refresh_url: options.refresh_url,
+          team_id: options.team_id,
+        }),
+      },
+      null,
+    );
+
+    const result = await response.json();
+    return {
+      accountId: result.account_id,
+      accountLinkUrl: result.account_link_url,
+    };
+  }
 }

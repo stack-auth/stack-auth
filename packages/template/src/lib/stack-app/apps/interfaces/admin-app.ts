@@ -56,6 +56,16 @@ export type StackAdminApp<HasTokenStore extends boolean = boolean, ProjectId ext
     }): Promise<Result<undefined, { errorMessage: string }>>,
 
     listSentEmails(): Promise<AdminSentEmail[]>,
+    
+    createCheckoutSession(options: {
+      type: 'standard' | 'express' | 'custom',
+      return_url: string,
+      refresh_url: string,
+      team_id?: string,
+    }): Promise<{
+      accountId: string,
+      accountLinkUrl: string,
+    }>,
   }
   & StackServerApp<HasTokenStore, ProjectId>
 );
