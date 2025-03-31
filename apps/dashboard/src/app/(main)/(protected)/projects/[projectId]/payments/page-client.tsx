@@ -272,7 +272,7 @@ function StripeConfigurationMethodDialog(props: {
               <Button
                 onClick={props.onSelectConnect}
                 className="justify-start h-auto py-4"
-                variant={props.currentMethod === "connect" ? "default" : "outline"}
+                variant="outline"
               >
                 <div className="flex flex-col items-start text-left gap-1">
                   <Typography className="font-semibold">Stripe Connect (Recommended)</Typography>
@@ -287,7 +287,7 @@ function StripeConfigurationMethodDialog(props: {
               <Button
                 onClick={props.onSelectManual}
                 className="justify-start h-auto py-4"
-                variant={props.currentMethod === "manual" ? "default" : "outline"}
+                variant="outline"
               >
                 <div className="flex flex-col items-start text-left gap-1">
                   <Typography className="font-semibold">Manual API Keys</Typography>
