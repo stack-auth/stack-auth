@@ -299,23 +299,8 @@ function createApiKeyHandlers<Type extends "user" | "team">(type: Type) {
             },
           });
 
-
-          // Return a list of API keys with obfuscated key values
           return {
-            items: apiKeys.map(apiKey => ({
-              id: apiKey.id,
-              type: apiKey.projectUserId ? "user" : "team",
-              team_id: apiKey.teamId || undefined as never,
-              user_id: apiKey.projectUserId || undefined as never,
-              description: apiKey.description,
-              is_public: apiKey.isPublic,
-              value: {
-                last_four: apiKey.secretApiKey.slice(-4),
-              },
-              created_at_millis: apiKey.createdAt.getTime(),
-              expires_at_millis: apiKey.expiresAt?.getTime(),
-              manually_revoked_at_millis: apiKey.manuallyRevokedAt?.getTime(),
-            })),
+            items: await Promise.all(apiKeys.map(apiKey => prismaToCrud(apiKey, type, false))),
             is_paginated: false,
           };
         },

@@ -744,7 +744,6 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
       },
       // END_PLATFORM
 
-      // API Key management methods
       async listApiKeys() {
         const results = Result.orThrow(await app._teamApiKeysCache.getOrWait([session, crud.id], "write-only"));
         return results.map((crud) => app._clientApiKeyFromCrud(session, crud));
