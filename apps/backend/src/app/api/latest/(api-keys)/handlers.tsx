@@ -45,7 +45,7 @@ async function ensureUserCanManageApiKeys(
       throw new KnownErrors.UserAuthenticationRequired();
     }
     if ((options.userId === undefined) === (options.teamId === undefined)) {
-      throw new StatusError(StatusError.BadRequest, "Exactly one of the userId or teamId query parameters must be provided, never none or both");
+      throw new StatusError(StatusError.BadRequest, "Exactly one of the userId or teamId query parameters must be provided");
     }
 
     // Check if client is trying to manage API keys for other users

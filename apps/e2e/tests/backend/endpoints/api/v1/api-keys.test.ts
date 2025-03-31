@@ -1041,6 +1041,9 @@ it("cannot list all API keys for all users on the server", async ({ expect }: { 
   `);
 });
 
+
+// We don't currently support these features
+
 it.todo("can check own API keys on the client");
 
 it.todo("can not check other users' API keys on the client");
