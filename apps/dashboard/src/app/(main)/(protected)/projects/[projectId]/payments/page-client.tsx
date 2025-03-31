@@ -333,7 +333,7 @@ function StripeConnectDialog(props: {
     try {
       const baseUrl = window.location.origin + window.location.pathname;
 
-      const stripeSession = await stackAdminApp.createCheckoutSession({
+      const stripeSession = await stackAdminApp.createStripeConnectIntegration({
         type: 'standard',
         return_url: `${baseUrl}?stripeConnectSuccess=true`,
         refresh_url: `${baseUrl}?stripeConnectRefresh=true`,

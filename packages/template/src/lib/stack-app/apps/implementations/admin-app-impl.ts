@@ -392,7 +392,7 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
     }));
   }
 
-  async createCheckoutSession(options: {
+  async createStripeConnectIntegration(options: {
     type: 'standard' | 'express' | 'custom',
     return_url: string,
     refresh_url: string,
@@ -402,7 +402,7 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
     accountLinkUrl: string,
   }> {
     const response = await this._interface.sendAdminRequest(
-      "/api/latest/integrations/stripe/connect",
+      "/integrations/stripe/connect",
       {
         method: "POST",
         headers: {

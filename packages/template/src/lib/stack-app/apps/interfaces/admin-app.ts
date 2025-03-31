@@ -5,7 +5,7 @@ import { ApiKey, ApiKeyCreateOptions, ApiKeyFirstView } from "../../api-keys";
 import { AsyncStoreProperty, EmailConfig } from "../../common";
 import { AdminSentEmail } from "../../email";
 import { AdminEmailTemplate, AdminEmailTemplateUpdateOptions } from "../../email-templates";
-import { AdminTeamPermission, AdminTeamPermissionDefinition, AdminTeamPermissionDefinitionCreateOptions, AdminTeamPermissionDefinitionUpdateOptions, AdminProjectPermission, AdminProjectPermissionDefinition, AdminProjectPermissionDefinitionCreateOptions, AdminProjectPermissionDefinitionUpdateOptions } from "../../permissions";
+import { AdminProjectPermission, AdminProjectPermissionDefinition, AdminProjectPermissionDefinitionCreateOptions, AdminProjectPermissionDefinitionUpdateOptions, AdminTeamPermission, AdminTeamPermissionDefinition, AdminTeamPermissionDefinitionCreateOptions, AdminTeamPermissionDefinitionUpdateOptions } from "../../permissions";
 import { AdminProject } from "../../projects";
 import { _StackAdminAppImpl } from "../implementations";
 import { StackServerApp, StackServerAppConstructorOptions } from "./server-app";
@@ -56,8 +56,8 @@ export type StackAdminApp<HasTokenStore extends boolean = boolean, ProjectId ext
     }): Promise<Result<undefined, { errorMessage: string }>>,
 
     listSentEmails(): Promise<AdminSentEmail[]>,
-    
-    createCheckoutSession(options: {
+
+    createStripeConnectIntegration(options: {
       type: 'standard' | 'express' | 'custom',
       return_url: string,
       refresh_url: string,
