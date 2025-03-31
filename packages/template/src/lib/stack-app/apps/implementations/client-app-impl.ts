@@ -674,8 +674,8 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
   protected _clientApiKeyFromCrud(session: InternalSession, crud: TeamApiKeysCrud['Client']['Read'] | UserApiKeysCrud['Client']['Read'] | yup.InferType<typeof teamApiKeysCreateOutputSchema> | yup.InferType<typeof userApiKeysCreateOutputSchema>): ApiKey<"user" | "team", boolean> {
     return {
       ...this._baseApiKeyFromCrud(crud),
-      revoke: async () => {
-        await this._interface.updateProjectApiKey(crud.type === "team" ? { team_id: crud.team_id } : { user_id: crud.user_id }, crud.id, { revoked: true }, session, "client");
+      async revoke() {
+        await this.update({ revoked: true });
       },
       update: async (options: ApiKeyUpdateOptions) => {
         await this._interface.updateProjectApiKey(crud.type === "team" ? { team_id: crud.team_id } : { user_id: crud.user_id }, crud.id, options, session, "client");

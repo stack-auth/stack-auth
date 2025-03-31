@@ -55,6 +55,7 @@ export async function apiKeyCreationOptionsToCrud(type: ApiKeyType, userIdOrTeam
 export type ApiKeyUpdateOptions<Type extends ApiKeyType = ApiKeyType> = {
   description?: string,
   expiresAt?: Date | null,
+  revoked?: boolean,
 };
 export function apiKeyUpdateOptionsToCrud(type: "user", options: ApiKeyUpdateOptions<"user">): Promise<UserApiKeysCrud["Client"]["Update"]>;
 export function apiKeyUpdateOptionsToCrud(type: "team", options: ApiKeyUpdateOptions<"team">): Promise<TeamApiKeysCrud["Client"]["Update"]>;
@@ -63,5 +64,6 @@ export async function apiKeyUpdateOptionsToCrud(type: ApiKeyType, options: ApiKe
   return filterUndefined({
     description: options.description,
     expires_at_millis: options.expiresAt == null ? options.expiresAt : options.expiresAt.getTime(),
+    revoked: options.revoked,
   });
 }

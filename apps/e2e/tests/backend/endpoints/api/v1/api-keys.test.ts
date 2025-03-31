@@ -1042,6 +1042,101 @@ it("cannot list all API keys for all users on the server", async ({ expect }: { 
 });
 
 
+it("revoking an API key twice will not change the revocation timestamp", async ({ expect }: { expect: any }) => {
+  await createAndSwitchToAPIEnabledProject();
+  const { userId } = await Auth.Otp.signIn();
+
+  // Create an API key
+  const { createUserApiKeyResponse } = await ProjectApiKey.User.create({
+    user_id: userId,
+    description: "Test API Key to Revoke",
+    expires_at_millis: null,
+  });
+
+  // First revocation
+  const firstRevokeResponse = await niceBackendFetch(urlString`/api/v1/user-api-keys/${createUserApiKeyResponse.body.id}?user_id=${userId}`, {
+    method: "PATCH",
+    accessType: "client",
+    body: {
+      revoked: true,
+    },
+  });
+
+  expect(firstRevokeResponse).toMatchInlineSnapshot(`
+    NiceResponse {
+      "status": 200,
+      "body": {
+        "created_at_millis": <stripped field 'created_at_millis'>,
+        "description": "Test API Key to Revoke",
+        "id": "<stripped UUID>",
+        "is_public": false,
+        "manually_revoked_at_millis": <stripped field 'manually_revoked_at_millis'>,
+        "type": "user",
+        "user_id": "<stripped UUID>",
+        "value": { "last_four": <stripped field 'last_four'> },
+      },
+      "headers": Headers { <some fields may have been hidden> },
+    }
+  `);
+
+  const firstRevokeTimestamp = firstRevokeResponse.body.manually_revoked_at_millis;
+
+  // Second revocation attempt
+  const secondRevokeResponse = await niceBackendFetch(urlString`/api/v1/user-api-keys/${createUserApiKeyResponse.body.id}?user_id=${userId}`, {
+    method: "PATCH",
+    accessType: "client",
+    body: {
+      revoked: true,
+    },
+  });
+
+  expect(secondRevokeResponse).toMatchInlineSnapshot(`
+    NiceResponse {
+      "status": 200,
+      "body": {
+        "created_at_millis": <stripped field 'created_at_millis'>,
+        "description": "Test API Key to Revoke",
+        "id": "<stripped UUID>",
+        "is_public": false,
+        "manually_revoked_at_millis": <stripped field 'manually_revoked_at_millis'>,
+        "type": "user",
+        "user_id": "<stripped UUID>",
+        "value": { "last_four": <stripped field 'last_four'> },
+      },
+      "headers": Headers { <some fields may have been hidden> },
+    }
+  `);
+
+  const secondRevokeTimestamp = secondRevokeResponse.body.manually_revoked_at_millis;
+
+  // Verify the timestamps are the same
+  expect(firstRevokeTimestamp).toBe(secondRevokeTimestamp);
+
+  // Verify the API key is still revoked
+  const checkResponse = await niceBackendFetch("/api/v1/user-api-keys/check", {
+    method: "POST",
+    accessType: "server",
+    body: {
+      api_key: createUserApiKeyResponse.body.value,
+    },
+  });
+
+  expect(checkResponse).toMatchInlineSnapshot(`
+    NiceResponse {
+      "status": 401,
+      "body": {
+        "code": "API_KEY_REVOKED",
+        "error": "API key has been revoked.",
+      },
+      "headers": Headers {
+        "x-stack-known-error": "API_KEY_REVOKED",
+        <some fields may have been hidden>,
+      },
+    }
+  `);
+});
+
+
 // We don't currently support these features
 
 it.todo("can check own API keys on the client");
