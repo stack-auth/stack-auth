@@ -6,8 +6,8 @@ import { adaptSchema, adminAuthTypeSchema, yupNumber, yupObject, yupString } fro
 
 export const POST = createSmartRouteHandler({
   metadata: {
-    summary: "Create a Stripe account session",
-    description: "Create a Stripe account session for connected accounts to manage their settings",
+    summary: "Create a Stripe login link",
+    description: "Create a Stripe login link for connected accounts to access their Stripe dashboard",
     tags: ["Stripe Integration"],
   },
   request: yupObject({
@@ -22,7 +22,7 @@ export const POST = createSmartRouteHandler({
     bodyType: yupString().oneOf(["json"]).defined(),
     body: yupObject({
       status: yupString().defined(),
-      client_secret: yupString().defined(),
+      url: yupString().defined(),
     }).defined(),
   }),
   async handler({ body, auth: { project } }) {
@@ -50,34 +50,18 @@ export const POST = createSmartRouteHandler({
 
     const stripe = getStripeClient();
 
-    // Create an account session for the connected account using the project's Stripe account ID
-    const accountSession = await stripe.accountSessions.create({
-      account: projectWithStripeConfig.config.stripeConfig.stripeAccountId,
-      components: {
-        balances: {
-          enabled: true,
-        },
-        payments: {
-          enabled: true,
-        },
-        payouts: {
-          enabled: true,
-        },
-        account_onboarding: {
-          enabled: true,
-        },
-        account_management: {
-          enabled: true,
-        },
-      },
-    });
+    // Get the account ID
+    const accountId = projectWithStripeConfig.config.stripeConfig.stripeAccountId;
+
+    // Create the login link
+    const loginLink = await stripe.accounts.createLoginLink(accountId);
 
     return {
       statusCode: 200,
       bodyType: 'json',
       body: {
         status: 'success',
-        client_secret: accountSession.client_secret,
+        url: loginLink.url,
       },
     };
   },

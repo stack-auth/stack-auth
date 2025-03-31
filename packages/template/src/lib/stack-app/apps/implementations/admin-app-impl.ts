@@ -433,4 +433,13 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
       clientSecret: result.client_secret
     };
   }
+
+  async getStripeLoginLink(): Promise<{
+    url: string,
+  }> {
+    const result = await this._interface.getStripeLoginLink();
+    return {
+      url: result.url
+    };
+  }
 }

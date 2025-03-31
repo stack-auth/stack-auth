@@ -316,4 +316,19 @@ export class StackAdminInterface extends StackServerInterface {
     );
     return await response.json();
   }
+
+  async getStripeLoginLink(): Promise<{ url: string }> {
+    const response = await this.sendAdminRequest(
+      "/integrations/stripe/login-link",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({}),
+      },
+      null,
+    );
+    return await response.json();
+  }
 }

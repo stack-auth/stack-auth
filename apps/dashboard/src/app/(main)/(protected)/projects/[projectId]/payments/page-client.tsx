@@ -5,14 +5,13 @@ import { SettingCard } from "@/components/settings";
 import { runAsynchronously } from "@stackframe/stack-shared/dist/utils/promises";
 import { ActionCell, Button, DataTable, DataTableColumnHeader, Dialog, DialogBody, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, TextCell, Typography } from "@stackframe/stack-ui";
 import { loadConnectAndInitialize } from "@stripe/connect-js";
-import { ConnectComponentsProvider, ConnectPayments } from "@stripe/react-connect-js";
+import { ConnectAccountManagement, ConnectBalances, ConnectComponentsProvider, ConnectPayments, ConnectPayouts } from "@stripe/react-connect-js";
 import { ColumnDef } from "@tanstack/react-table";
 import { Info, WalletMinimal } from "lucide-react";
 import { useEffect, useState } from "react";
 import * as yup from "yup";
 import { PageLayout } from "../page-layout";
 import { useAdminApp } from "../use-admin-app";
-import { PlaceholderData } from "./placeholder-data";
 
 export default function PageClient() {
   const [isStripeKeyDialogOpen, setIsStripeKeyDialogOpen] = useState(false);
@@ -57,9 +56,6 @@ export default function PageClient() {
         </div>
       }
     >
-      {stripeConfigured && (
-        <PlaceholderData />
-      )}
 
       {!stripeConfigured && (
         <SettingCard
@@ -83,7 +79,24 @@ export default function PageClient() {
           title="Stripe Configuration"
           description={isStripeConnect ? "Connected via Stripe Connect" : "Connected via API Keys"}
           actions={
-            <Button onClick={configureStripe}>Update Configuration</Button>
+            <div className="flex gap-2">
+              {isStripeConnect && (
+                <Button 
+                  variant="outline"
+                  onClick={async () => {
+                    try {
+                      const loginLink = await stackAdminApp.getStripeLoginLink();
+                      window.open(loginLink.url, '_blank');
+                    } catch (error) {
+                      console.error('Error fetching Stripe login link:', error);
+                    }
+                  }}
+                >
+                  Login to Stripe Dashboard
+                </Button>
+              )}
+              <Button onClick={configureStripe}>Update Configuration</Button>
+            </div>
           }
         >
           <div className="flex items-center gap-3">
@@ -215,7 +228,26 @@ function StripeConnectSection() {
 
   return (
     <ConnectComponentsProvider connectInstance={connectInstance}>
-      <ConnectPayments />
+      <SettingCard
+        title="Balance"
+      >
+        <ConnectBalances/>
+      </SettingCard>
+      <SettingCard
+        title="Transactions"
+      >
+        <ConnectPayments />
+      </SettingCard>
+      <SettingCard
+        title="Payouts"
+      >
+        <ConnectPayouts />
+      </SettingCard>
+      <SettingCard
+        title="Settings"
+      >
+        <ConnectAccountManagement />
+      </SettingCard>
     </ConnectComponentsProvider>
   );
 }
