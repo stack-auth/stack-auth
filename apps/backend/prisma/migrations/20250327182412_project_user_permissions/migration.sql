@@ -2,7 +2,6 @@
   Warnings:
 
   - The values [USER] on the enum `PermissionScope` will be removed. If these variants are still used in the database, this will fail.
-  - A unique constraint covering the columns `[tenancyId,queryableId]` on the table `Permission` will be added. If there are existing duplicate values, this will fail.
 
 */
 -- AlterEnum
