@@ -32,9 +32,6 @@ CREATE TABLE "ProjectUserDirectPermission" (
 -- CreateIndex
 CREATE UNIQUE INDEX "ProjectUserDirectPermission_tenancyId_projectUserId_permiss_key" ON "ProjectUserDirectPermission"("tenancyId", "projectUserId", "permissionDbId");
 
--- CreateIndex
-CREATE UNIQUE INDEX "Permission_tenancyId_queryableId_key" ON "Permission"("tenancyId", "queryableId");
-
 -- AddForeignKey
 ALTER TABLE "ProjectUserDirectPermission" ADD CONSTRAINT "ProjectUserDirectPermission_tenancyId_projectUserId_fkey" FOREIGN KEY ("tenancyId", "projectUserId") REFERENCES "ProjectUser"("tenancyId", "projectUserId") ON DELETE CASCADE ON UPDATE CASCADE;
 
