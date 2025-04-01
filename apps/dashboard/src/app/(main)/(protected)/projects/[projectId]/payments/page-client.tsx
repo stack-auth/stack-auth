@@ -80,21 +80,19 @@ export default function PageClient() {
           description={isStripeConnect ? "Connected via Stripe Connect" : "Connected via API Keys"}
           actions={
             <div className="flex gap-2">
-              {isStripeConnect && (
-                <Button 
-                  variant="outline"
-                  onClick={async () => {
-                    try {
-                      const loginLink = await stackAdminApp.getStripeLoginLink();
-                      window.open(loginLink.url, '_blank');
-                    } catch (error) {
-                      console.error('Error fetching Stripe login link:', error);
-                    }
-                  }}
-                >
-                  Login to Stripe Dashboard
-                </Button>
-              )}
+              <Button
+                variant="outline"
+                onClick={async () => {
+                  try {
+                    const loginLink = await stackAdminApp.getStripeLoginLink();
+                    window.open(loginLink.url, '_blank');
+                  } catch (error) {
+                    console.error('Error fetching Stripe login link:', error);
+                  }
+                }}
+              >
+                Login to Stripe Dashboard
+              </Button>
               <Button onClick={configureStripe}>Update Configuration</Button>
             </div>
           }
@@ -232,21 +230,6 @@ function StripeConnectSection() {
         title="Balance"
       >
         <ConnectBalances/>
-      </SettingCard>
-      <SettingCard
-        title="Transactions"
-      >
-        <ConnectPayments />
-      </SettingCard>
-      <SettingCard
-        title="Payouts"
-      >
-        <ConnectPayouts />
-      </SettingCard>
-      <SettingCard
-        title="Settings"
-      >
-        <ConnectAccountManagement />
       </SettingCard>
     </ConnectComponentsProvider>
   );
@@ -455,7 +438,7 @@ function StripeConnectDialog(props: {
       const baseUrl = window.location.origin + window.location.pathname;
 
       const stripeConnect = await stackAdminApp.createStripeConnectIntegration({
-        type: 'standard',
+        type: 'express',
         return_url: `${baseUrl}?stripeConnectSuccess=true`,
         refresh_url: `${baseUrl}?stripeConnectRefresh=true`,
       });
