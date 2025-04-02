@@ -23,10 +23,10 @@ export default function PageClient() {
 
   return (
     <PageLayout
-      title="API Keys"
+      title="Stack Auth Keys"
       actions={
         <Button onClick={() => setIsNewApiKeyDialogOpen(true)}>
-          Create API Key
+          Create Stack Auth Keys
         </Button>
       }
     >
@@ -77,7 +77,7 @@ function CreateDialog(props: {
   return <SmartFormDialog
     open={props.open}
     onOpenChange={props.onOpenChange}
-    title="Create API Key"
+    title="Create Stack Auth Keys"
     formSchema={formSchema}
     okButton={{ label: "Create" }}
     onSubmit={async (values) => {
@@ -107,15 +107,15 @@ function ShowKeyDialog(props: {
   return (
     <ActionDialog
       open={!!props.apiKey}
-      title="API Key"
+      title="Stack Auth Keys"
       okButton={{ label: "Close" }}
       onClose={props.onClose}
       preventClose
-      confirmText="I understand that I will not be able to view this key again."
+      confirmText="I understand that I will not be able to view these keys again."
     >
       <div className="flex flex-col gap-4">
         <Typography>
-          Here are your API keys.{" "}
+          Here are your Stack Auth keys.{" "}
           <span className="font-bold">
             Copy them to a safe place. You will not be able to view them again.
           </span>
