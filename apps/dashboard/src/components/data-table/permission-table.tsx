@@ -31,9 +31,11 @@ function EditDialog(props: {
   permissionType: PermissionType,
 }) {
   const stackAdminApp = useAdminApp();
-  const permissions = props.permissionType === 'project'
-    ? stackAdminApp.useProjectPermissionDefinitions()
-    : stackAdminApp.useTeamPermissionDefinitions();
+  const teamPermissions = stackAdminApp.useTeamPermissionDefinitions();
+  const projectPermissions = stackAdminApp.useProjectPermissionDefinitions();
+  const permissions = props.permissionType === 'project' ? projectPermissions : teamPermissions;
+  const combinedPermissions = [...teamPermissions, ...projectPermissions];
+
   const currentPermission = permissions.find((p) => p.id === props.selectedPermissionId);
   if (!currentPermission) {
     return null;
@@ -42,7 +44,7 @@ function EditDialog(props: {
   const formSchema = yup.object({
     id: yup.string()
       .defined()
-      .notOneOf(permissions.map((p) => p.id).filter(p => p !== props.selectedPermissionId), "ID already exists")
+      .notOneOf(combinedPermissions.map((p) => p.id).filter(p => p !== props.selectedPermissionId), "ID already exists")
       .matches(/^[a-z0-9_:]+$/, 'Only lowercase letters, numbers, ":" and "_" are allowed')
       .label("ID"),
     description: yup.string().label("Description"),

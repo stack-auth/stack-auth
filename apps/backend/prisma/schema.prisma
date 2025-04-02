@@ -211,7 +211,7 @@ model Permission {
 
   description String?
 
-  // The scope of the permission. If projectConfigId is set, may be USER or TEAM; if teamId is set, must be TEAM.
+  // The scope of the permission. If projectConfigId is set, may be PROJECT or TEAM; if teamId is set, must be PROJECT.
   scope PermissionScope
 
   projectConfig ProjectConfig? @relation(fields: [projectConfigId], references: [id], onDelete: Cascade)
@@ -224,8 +224,9 @@ model Permission {
 
   isDefaultTeamCreatorPermission Boolean @default(false)
   isDefaultTeamMemberPermission  Boolean @default(false)
-  isDefaultProjectPermission Boolean @default(false)
+  isDefaultProjectPermission     Boolean @default(false)
 
+  @@unique([tenancyId, queryableId])
   @@unique([projectConfigId, queryableId])
   @@unique([tenancyId, teamId, queryableId])
 }

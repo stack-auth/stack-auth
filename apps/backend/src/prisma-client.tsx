@@ -1,7 +1,7 @@
 import { Prisma, PrismaClient } from "@prisma/client";
 import { withAccelerate } from "@prisma/extension-accelerate";
 import { getEnvVariable, getNodeEnvironment } from '@stackframe/stack-shared/dist/utils/env';
-import { filterUndefined, typedFromEntries, typedKeys } from "@stackframe/stack-shared/dist/utils/objects";
+import { deepPlainEquals, filterUndefined, typedFromEntries, typedKeys } from "@stackframe/stack-shared/dist/utils/objects";
 import { Result } from "@stackframe/stack-shared/dist/utils/results";
 import { traceSpan } from "./utils/telemetry";
 
@@ -135,3 +135,21 @@ async function rawQueryArray<Q extends RawQuery<any>[]>(queries: Q): Promise<[] 
   });
 }
 
+// not exhaustive
+export const PRISMA_ERROR_CODES = {
+  VALUE_TOO_LONG: "P2000",
+  RECORD_NOT_FOUND: "P2001",
+  UNIQUE_CONSTRAINT_VIOLATION: "P2002",
+  FOREIGN_CONSTRAINT_VIOLATION: "P2003",
+  GENERIC_CONSTRAINT_VIOLATION: "P2004",
+} as const;
+
+export function isPrismaError(error: unknown, code: keyof typeof PRISMA_ERROR_CODES): error is Prisma.PrismaClientKnownRequestError {
+  return error instanceof Prisma.PrismaClientKnownRequestError && error.code === PRISMA_ERROR_CODES[code];
+}
+
+export function isPrismaUniqueConstraintViolation(error: unknown, modelName: string, target: string | string[]): error is Prisma.PrismaClientKnownRequestError {
+  if (!isPrismaError(error, "UNIQUE_CONSTRAINT_VIOLATION")) return false;
+  if (!error.meta?.target) return false;
+  return error.meta.modelName === modelName && deepPlainEquals(error.meta.target, target);
+}
