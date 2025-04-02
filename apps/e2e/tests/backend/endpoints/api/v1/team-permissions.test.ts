@@ -300,3 +300,86 @@ it("should trigger team permission webhook when a permission is revoked from a u
     }
   `);
 });
+
+it("should not be able to create a permission with the same name as an existing team permission", async ({ expect }) => {
+  await Auth.Otp.signIn();
+  const { adminAccessToken } = await Project.createAndGetAdminToken();
+
+  // First, create a team permission definition
+  const createTeamPermissionResponse = await niceBackendFetch(`/api/v1/team-permission-definitions`, {
+    accessType: "admin",
+    method: "POST",
+    body: {
+      id: 'custom_team_permission',
+      description: 'A custom team permission',
+    },
+    headers: {
+      'x-stack-admin-access-token': adminAccessToken
+    },
+  });
+
+  expect(createTeamPermissionResponse).toMatchInlineSnapshot(`
+    NiceResponse {
+      "status": 201,
+      "body": {
+        "contained_permission_ids": [],
+        "description": "A custom team permission",
+        "id": "custom_team_permission",
+      },
+      "headers": Headers { <some fields may have been hidden> },
+    }
+  `);
+
+  // Try creating another team permission with the same name
+  const createAnotherTeamPermissionResponse = await niceBackendFetch(`/api/v1/team-permission-definitions`, {
+    accessType: "admin",
+    method: "POST",
+    body: { id: 'custom_team_permission' },
+    headers: { 'x-stack-admin-access-token': adminAccessToken },
+  });
+
+  expect(createAnotherTeamPermissionResponse).toMatchInlineSnapshot(`
+    NiceResponse {
+      "status": 400,
+      "body": {
+        "code": "PERMISSION_ID_ALREADY_EXISTS",
+        "details": { "permission_id": "custom_team_permission" },
+        "error": "Permission with ID \\"custom_team_permission\\" already exists. Choose a different ID.",
+      },
+      "headers": Headers {
+        "x-stack-known-error": "PERMISSION_ID_ALREADY_EXISTS",
+        <some fields may have been hidden>,
+      },
+    }
+  `);
+
+
+  // Now try to create a project permission with the same name
+  const createProjectPermissionResponse = await niceBackendFetch(`/api/v1/project-permission-definitions`, {
+    accessType: "admin",
+    method: "POST",
+    body: {
+      id: 'custom_team_permission',
+      description: 'Attempt to create a project permission with same name as team permission',
+    },
+    headers: {
+      'x-stack-admin-access-token': adminAccessToken
+    },
+  });
+
+  // TODO: P2002 postgres codes should automatically be converted into duplicate key error
+  expect(createProjectPermissionResponse).toMatchInlineSnapshot(`
+    NiceResponse {
+      "status": 400,
+      "body": {
+        "code": "PERMISSION_ID_ALREADY_EXISTS",
+        "details": { "permission_id": "custom_team_permission" },
+        "error": "Permission with ID \\"custom_team_permission\\" already exists. Choose a different ID.",
+      },
+      "headers": Headers {
+        "x-stack-known-error": "PERMISSION_ID_ALREADY_EXISTS",
+        <some fields may have been hidden>,
+      },
+    }
+  `);
+});
