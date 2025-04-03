@@ -1,7 +1,7 @@
 'use client';
 
 import { useThemeWatcher } from '@/lib/theme';
-import { Button, Typography } from "@stackframe/stack-ui";
+import { Button, Typography, cn } from "@stackframe/stack-ui";
 import { Book } from "lucide-react";
 import dynamic from "next/dynamic";
 import Image from 'next/image';
@@ -29,6 +29,15 @@ export default function SetupPage() {
       setSetupCode(code.code);
     };
     fetchSetupCode().catch(console.error);
+
+    // Refresh the setup code every 10 minutes
+    const refreshInterval = 10 * 60 * 1000; // 10 minutes in milliseconds
+    const intervalId = setInterval(() => {
+      fetchSetupCode().catch(console.error);
+    }, refreshInterval);
+
+    // Clean up interval on component unmount
+    return () => clearInterval(intervalId);
   }, [adminApp]);
 
   return (
@@ -123,46 +132,40 @@ export default function SetupPage() {
         ))}
       </div>
 
-      <div className="flex gap-4 justify-center">
-        <Typography>
-          Code: {setupCode}
-        </Typography>
-      </div>
-
       <div className="flex">
         <ol className="relative text-gray-500 border-s border-gray-200 dark:border-gray-700 dark:text-gray-400">
           {[
             {
               step: 1,
-              title: "Personal Info",
-              description: "Step details here",
-              isCompleted: true
+              title: "Setup Next.js",
+              description: "Create a new project or use an existing one",
+              content: <div>
+                <Typography>
+                  Code: {setupCode}
+                </Typography>
+              </div>,
             },
             {
               step: 2,
-              title: "Account Info",
-              description: "Step details here",
-              isCompleted: false
+              title: "Install Stack Auth",
+              description: "The wizard will guide you through the setup process",
             },
             {
               step: 3,
-              title: "Review",
-              description: "Step details here",
-              isCompleted: false
+              title: "Done",
+              description: "You're all set up!",
             },
-            {
-              step: 4,
-              title: "Confirmation",
-              description: "Step details here",
-              isCompleted: false
-            }
           ].map((item, index) => (
-            <li key={item.step} className={`${index < 3 ? "mb-10 " : ""}ms-6`}>
-              <span className={`absolute flex items-center justify-center w-8 h-8 ${item.isCompleted ? "bg-green-200 dark:bg-green-900" : "bg-gray-100 dark:bg-gray-700"} rounded-full -start-4 ring-4 ring-white dark:ring-gray-900`}>
-                <span className={`${item.isCompleted ? "text-green-500 dark:text-green-400" : "text-gray-500 dark:text-gray-400"} font-medium`}>{item.step}</span>
-              </span>
-              <h3 className="font-medium leading-tight">{item.title}</h3>
-              <p className="text-sm">{item.description}</p>
+            <li key={item.step} className={cn("ms-6 flex gap-8", { "mb-10": index < 3 })}>
+              <div className="flex flex-col gap-2 max-w-[180px]">
+                <span className={`absolute flex items-center justify-center w-8 h-8 bg-gray-100 dark:bg-gray-70 rounded-full -start-4 ring-4 ring-white dark:ring-gray-900`}>
+                  <span className={`text-gray-500 dark:text-gray-400 font-medium`}>{item.step}</span>
+                </span>
+                <h3 className="font-medium leading-tight">{item.title}</h3>
+                <p className="text-sm">{item.description}</p>
+              </div>
+              {/* <Separator orientation="vertical" className="h-14" /> */}
+              {item.content}
             </li>
           ))}
         </ol>
