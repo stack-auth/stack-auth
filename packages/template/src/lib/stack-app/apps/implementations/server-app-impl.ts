@@ -182,11 +182,7 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
       isPrimary: crud.is_primary,
       usedForAuth: crud.used_for_auth,
       async sendVerificationEmail(options?: { callbackUrl?: string }) {
-        if (!options?.callbackUrl && !await app._getCurrentUrl()) {
-          throw new Error("Cannot send verification email without a callback URL from the server or without a redirect method. Make sure you pass the `callbackUrl` option: `sendVerificationEmail({ callbackUrl: ... })`");
-        }
-
-        await app._interface.sendServerContactChannelVerificationEmail(userId, crud.id, options?.callbackUrl ?? constructRedirectUrl(app.urls.emailVerification));
+        await app._interface.sendServerContactChannelVerificationEmail(userId, crud.id, options?.callbackUrl ?? constructRedirectUrl(app.urls.emailVerification, "callbackUrl"));
       },
       async update(data: ServerContactChannelUpdateOptions) {
         await app._interface.updateServerContactChannel(userId, crud.id, serverContactChannelUpdateOptionsToCrud(data));
@@ -582,14 +578,10 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
         await app._serverTeamMemberProfilesCache.refresh([crud.id]);
       },
       async inviteUser(options: { email: string, callbackUrl?: string }) {
-        if (!options.callbackUrl && !await app._getCurrentUrl()) {
-          throw new Error("Cannot invite user without a callback URL from the server or without a redirect method. Make sure you pass the `callbackUrl` option: `inviteUser({ email, callbackUrl: ... })`");
-        }
-
         await app._interface.sendServerTeamInvitation({
           teamId: crud.id,
           email: options.email,
-          callbackUrl: options.callbackUrl ?? constructRedirectUrl(app.urls.teamInvitation),
+          callbackUrl: options.callbackUrl ?? constructRedirectUrl(app.urls.teamInvitation, "callbackUrl"),
         });
         await app._serverTeamInvitationsCache.refresh([crud.id]);
       },

@@ -1218,6 +1218,7 @@ const InvalidPollingCodeError = createKnownErrorConstructor(
   (json: any) => [json] as const,
 );
 
+
 const InvalidApiKey = createKnownErrorConstructor(
   KnownError,
   "INVALID_API_KEY",
@@ -1257,6 +1258,19 @@ const WrongApiKeyType = createKnownErrorConstructor(
     { expected_type: expectedType, actual_type: actualType },
   ] as const,
   (json) => [json.expected_type, json.actual_type] as const,
+)
+
+const PermissionIdAlreadyExists = createKnownErrorConstructor(
+  KnownError,
+  "PERMISSION_ID_ALREADY_EXISTS",
+  (permissionId: string) => [
+    400,
+    `Permission with ID "${permissionId}" already exists. Choose a different ID.`,
+    {
+      permission_id: permissionId,
+    },
+  ] as const,
+  (json: any) => [json.permission_id] as const,
 );
 
 export type KnownErrors = {
@@ -1270,6 +1284,7 @@ export const KnownErrors = {
   SchemaError,
   AllOverloadsFailed,
   ProjectAuthenticationError,
+  PermissionIdAlreadyExists,
   InvalidProjectAuthentication,
   ProjectKeyWithoutAccessType,
   InvalidAccessType,
