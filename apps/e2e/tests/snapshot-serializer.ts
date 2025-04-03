@@ -61,6 +61,7 @@ const stripFields = [
   "iterator",
   "prevIterator",
   "nextAttempt",
+  "lastFour",
 ] as const;
 
 const stripFieldsIfString = [

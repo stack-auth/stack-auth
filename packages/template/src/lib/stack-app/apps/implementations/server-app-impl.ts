@@ -137,7 +137,7 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
     }
   );
 
-  private readonly _serverCheckApiKeyCache = createCache<["user" | "team", string], UserApiKeysCrud['Server']['Read'] | TeamApiKeysCrud['Server']['Read']>(async ([type, apiKey]) => {
+  private readonly _serverCheckApiKeyCache = createCache<["user" | "team", string], UserApiKeysCrud['Server']['Read'] | TeamApiKeysCrud['Server']['Read'] | null>(async ([type, apiKey]) => {
     const result = await this._interface.checkProjectApiKey(
       type,
       apiKey,
@@ -235,11 +235,12 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
     });
   }
 
+
   protected _serverApiKeyFromCrud(crud: TeamApiKeysCrud['Client']['Read']): ApiKey<"team">;
   protected _serverApiKeyFromCrud(crud: UserApiKeysCrud['Client']['Read']): ApiKey<"user">;
   protected _serverApiKeyFromCrud(crud: yup.InferType<typeof teamApiKeysCreateOutputSchema>): ApiKey<"team", true>;
   protected _serverApiKeyFromCrud(crud: yup.InferType<typeof userApiKeysCreateOutputSchema>): ApiKey<"user", true>;
-  protected _serverApiKeyFromCrud(crud: TeamApiKeysCrud['Server']['Read'] | UserApiKeysCrud['Server']['Read'] | yup.InferType<typeof teamApiKeysCreateOutputSchema> | yup.InferType<typeof userApiKeysCreateOutputSchema>): ApiKey<"user" | "team", boolean> {
+  protected _serverApiKeyFromCrud(crud: TeamApiKeysCrud['Client']['Read'] | UserApiKeysCrud['Cliente ']['Read'] | yup.InferType<typeof teamApiKeysCreateOutputSchema> | yup.InferType<typeof userApiKeysCreateOutputSchema>): ApiKey<"user" | "team", boolean> {
     return {
       ...this._baseApiKeyFromCrud(crud),
       async revoke() {
@@ -618,24 +619,24 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
   }
 
   protected async _getUserApiKey(options: { apiKey: string }): Promise<ApiKey<"user"> | null> {
-    const crud = Result.orThrow(await this._serverCheckApiKeyCache.getOrWait(["user", options.apiKey], "write-only")) as UserApiKeysCrud['Server']['Read'];
-    return this._serverApiKeyFromCrud(crud);
+    const crud = Result.orThrow(await this._serverCheckApiKeyCache.getOrWait(["user", options.apiKey], "write-only")) as UserApiKeysCrud['Server']['Read'] | null;
+    return crud ? this._serverApiKeyFromCrud(crud) : null;
   }
 
   protected async _getTeamApiKey(options: { apiKey: string }): Promise<ApiKey<"team"> | null> {
-    const crud = Result.orThrow(await this._serverCheckApiKeyCache.getOrWait(["team", options.apiKey], "write-only")) as TeamApiKeysCrud['Server']['Read'];
-    return this._serverApiKeyFromCrud(crud);
+    const crud = Result.orThrow(await this._serverCheckApiKeyCache.getOrWait(["team", options.apiKey], "write-only")) as TeamApiKeysCrud['Server']['Read'] | null;
+    return crud ? this._serverApiKeyFromCrud(crud) : null;
   }
   // IF_PLATFORM react-like
   protected _useUserApiKey(options: { apiKey: string }): ApiKey<"user"> | null {
-    const crud = useAsyncCache(this._serverCheckApiKeyCache, ["user", options.apiKey] as const, "useUserApiKey()") as UserApiKeysCrud['Server']['Read'];
-    return useMemo(() => this._serverApiKeyFromCrud(crud), [crud]);
+    const crud = useAsyncCache(this._serverCheckApiKeyCache, ["user", options.apiKey] as const, "useUserApiKey()") as UserApiKeysCrud['Server']['Read'] | null;
+    return useMemo(() => crud ? this._serverApiKeyFromCrud(crud) : null, [crud]);
   }
   // END_PLATFORM
   // IF_PLATFORM react-like
   protected _useTeamApiKey(options: { apiKey: string }): ApiKey<"team"> | null {
-    const crud = useAsyncCache(this._serverCheckApiKeyCache, ["team", options.apiKey] as const, "useTeamApiKey()") as TeamApiKeysCrud['Server']['Read'];
-    return useMemo(() => this._serverApiKeyFromCrud(crud), [crud]);
+    const crud = useAsyncCache(this._serverCheckApiKeyCache, ["team", options.apiKey] as const, "useTeamApiKey()") as TeamApiKeysCrud['Server']['Read'] | null;
+    return useMemo(() => crud ? this._serverApiKeyFromCrud(crud) : null, [crud]);
   }
   // END_PLATFORM
   protected async _getUserByApiKey(apiKey: string): Promise<ServerUser | null> {

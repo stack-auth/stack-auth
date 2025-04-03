@@ -333,7 +333,7 @@ it("returns 404 when checking a team API key with the user endpoint", async ({ e
   `);
 });
 
-it("does not requires user_id in read requests on the client", async ({ expect }: { expect: any }) => {
+it("does not require user_id in read requests on the client", async ({ expect }: { expect: any }) => {
   await createAndSwitchToAPIEnabledProject();
   const { userId } = await Auth.Otp.signIn();
 

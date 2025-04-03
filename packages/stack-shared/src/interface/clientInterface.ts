@@ -1582,12 +1582,12 @@ export class StackClientInterface {
     return await response.json();
   }
 
-  checkProjectApiKey(type: "user", apiKey: string, session: InternalSession | null, requestType: "client" | "server" | "admin"): Promise<UserApiKeysCrud['Client']['Read']>;
-  checkProjectApiKey(type: "team", apiKey: string, session: InternalSession | null, requestType: "client" | "server" | "admin"): Promise<TeamApiKeysCrud['Client']['Read']>;
-  checkProjectApiKey(type: "user" | "team", apiKey: string, session: InternalSession | null, requestType: "client" | "server" | "admin"): Promise<UserApiKeysCrud['Client']['Read'] | TeamApiKeysCrud['Client']['Read']>;
-  async checkProjectApiKey(type: "user" | "team", apiKey: string, session: InternalSession | null, requestType: "client" | "server" | "admin"): Promise<UserApiKeysCrud['Client']['Read'] | TeamApiKeysCrud['Client']['Read']> {
-    const sendRequest = (requestType === "client" ? this.sendClientRequest : (this as any).sendServerRequest as never).bind(this);
-    const response = await sendRequest(
+  checkProjectApiKey(type: "user", apiKey: string, session: InternalSession | null, requestType: "client" | "server" | "admin"): Promise<UserApiKeysCrud['Client']['Read'] | null>;
+  checkProjectApiKey(type: "team", apiKey: string, session: InternalSession | null, requestType: "client" | "server" | "admin"): Promise<TeamApiKeysCrud['Client']['Read'] | null>;
+  checkProjectApiKey(type: "user" | "team", apiKey: string, session: InternalSession | null, requestType: "client" | "server" | "admin"): Promise<UserApiKeysCrud['Client']['Read'] | TeamApiKeysCrud['Client']['Read'] | null>;
+  async checkProjectApiKey(type: "user" | "team", apiKey: string, session: InternalSession | null, requestType: "client" | "server" | "admin"): Promise<UserApiKeysCrud['Client']['Read'] | TeamApiKeysCrud['Client']['Read'] | null> {
+    const sendRequest = (requestType === "client" ? this.sendClientRequestAndCatchKnownError : (this as any).sendServerRequestAndCatchKnownError as never).bind(this);
+    const result = await sendRequest(
       `/${type}-api-keys/check`,
       {
         method: "POST",
@@ -1597,9 +1597,12 @@ export class StackClientInterface {
         body: JSON.stringify({ api_key: apiKey }),
       },
       session,
-      requestType,
+      [KnownErrors.InvalidApiKey, KnownErrors.ApiKeyNotFound, KnownErrors.ApiKeyRevoked, KnownErrors.ApiKeyExpired]
     );
-    return await response.json();
+    if (result.status === "error") {
+      return null;
+    }
+    return await result.data.json();
   }
 }
 
