@@ -12,37 +12,19 @@
   100% {box-shadow: 0 0 0 8px #0000}
 }
 
-.globePulse {
-  width: 120px;
-  height: 120px;
-  border-radius: 50%;
-  background: rgb(107,93,247, 0.1);
-  animation: rippleAnimation 4s linear infinite;
-}
-
-.globePulse2 {
-  width: 140px;
-  height: 140px;
-  animation-delay: 1s;
-}
-
-.globePulse3 {
-  width: 160px;
-  height: 160px;
-  animation-delay: 2s;
-}
-
-@keyframes rippleAnimation {
+@keyframes pulseOut {
   0% {
     transform: scale(1);
-    opacity: 1;
-  }
-  50% {
-    transform: scale(0.5);
-    opacity: 0.5;
+    opacity: 0.8;
   }
   100% {
-    transform: scale(1);
-    opacity: 1;
+    transform: scale(5);
+    opacity: 0;
   }
-} 
+}
+
+.pulse-circle {
+  animation: pulseOut 8s infinite ease-out;
+  position: absolute;
+  transform-origin: center;
+}

@@ -20,6 +20,7 @@ export default function SetupPage() {
   const countries = use(countriesPromise);
   const globeEl = useRef<GlobeMethods | undefined>(undefined);
   const { theme, mounted } = useThemeWatcher();
+  const [showPulse, setShowPulse] = useState(false);
 
   const [setupCode, setSetupCode] = useState<string | undefined>(undefined);
 
@@ -40,15 +41,34 @@ export default function SetupPage() {
     return () => clearInterval(intervalId);
   }, [adminApp]);
 
+  useEffect(() => {
+    // Add delay before showing pulse circles in order to allow the globe to animate in
+    const timer = setTimeout(() => {
+      setShowPulse(true);
+    }, 1000);
+
+    return () => clearTimeout(timer);
+  }, []);
+
   return (
     <PageLayout width={1000}>
       <div className="flex gap-4 justify-center items-center border rounded-2xl">
         <div className="w-[200px] h-[200px] relative">
-          <div className="absolute inset-0 flex items-center justify-center z-0">
-            <div className={styles.globePulse}></div>
-            <div className={`absolute ${styles.globePulse} ${styles.globePulse2}`}></div>
-            <div className={`absolute ${styles.globePulse} ${styles.globePulse3}`}></div>
-          </div>
+          {showPulse && (
+            <div className="absolute inset-0 pointer-events-none w-[200px] h-[200px] flex items-center justify-center">
+              {[...Array(3)].map((_, i) => (
+                <div
+                  key={i}
+                  className={`${styles['pulse-circle']} rounded-full bg-blue-200`}
+                  style={{
+                    width: "50px",
+                    height: "50px",
+                    animationDelay: `${i * 2.5}s`,
+                  }}
+                />
+              ))}
+            </div>
+          )}
 
           <div className="relative z-10 flex items-center justify-center w-full h-full">
             {mounted && (
@@ -81,8 +101,8 @@ export default function SetupPage() {
                 hexPolygonMargin={0.2}
                 hexPolygonAltitude={0.003}
                 hexPolygonColor={() => "rgb(107, 93, 247)"}
-                width={150}
-                height={150}
+                width={180}
+                height={180}
               />
             )}
           </div>
