@@ -1258,7 +1258,7 @@ const WrongApiKeyType = createKnownErrorConstructor(
     { expected_type: expectedType, actual_type: actualType },
   ] as const,
   (json) => [json.expected_type, json.actual_type] as const,
-)
+);
 
 const PermissionIdAlreadyExists = createKnownErrorConstructor(
   KnownError,
