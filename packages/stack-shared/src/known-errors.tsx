@@ -1228,6 +1228,19 @@ const StripeConfigurationNotFound = createKnownErrorConstructor(
   () => [] as const,
 );
 
+const PermissionIdAlreadyExists = createKnownErrorConstructor(
+  KnownError,
+  "PERMISSION_ID_ALREADY_EXISTS",
+  (permissionId: string) => [
+    400,
+    `Permission with ID "${permissionId}" already exists. Choose a different ID.`,
+    {
+      permission_id: permissionId,
+    },
+  ] as const,
+  (json: any) => [json.permission_id] as const,
+);
+
 export type KnownErrors = {
   [K in keyof typeof KnownErrors]: InstanceType<typeof KnownErrors[K]>;
 };
@@ -1239,6 +1252,7 @@ export const KnownErrors = {
   SchemaError,
   AllOverloadsFailed,
   ProjectAuthenticationError,
+  PermissionIdAlreadyExists,
   InvalidProjectAuthentication,
   ProjectKeyWithoutAccessType,
   InvalidAccessType,
