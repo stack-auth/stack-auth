@@ -333,7 +333,7 @@ it("returns 404 when checking a team API key with the user endpoint", async ({ e
   `);
 });
 
-it("requires user_id in read requests on the client", async ({ expect }: { expect: any }) => {
+it("does not requires user_id in read requests on the client", async ({ expect }: { expect: any }) => {
   await createAndSwitchToAPIEnabledProject();
   const { userId } = await Auth.Otp.signIn();
 
@@ -351,16 +351,17 @@ it("requires user_id in read requests on the client", async ({ expect }: { expec
 
   expect(readResponseWithoutUserId).toMatchInlineSnapshot(`
     NiceResponse {
-      "status": 400,
+      "status": 200,
       "body": {
-        "code": "SCHEMA_ERROR",
-        "details": { "message": "user_id is required for user API keys" },
-        "error": "user_id is required for user API keys",
+        "created_at_millis": <stripped field 'created_at_millis'>,
+        "description": "Test API Key",
+        "id": "<stripped UUID>",
+        "is_public": false,
+        "type": "user",
+        "user_id": "<stripped UUID>",
+        "value": { "last_four": <stripped field 'last_four'> },
       },
-      "headers": Headers {
-        "x-stack-known-error": "SCHEMA_ERROR",
-        <some fields may have been hidden>,
-      },
+      "headers": Headers { <some fields may have been hidden> },
     }
   `);
 
@@ -543,18 +544,13 @@ it("can manage API keys if only if the respective team permission is granted", a
 
   expect(unauthorizedResponse).toMatchInlineSnapshot(`
     NiceResponse {
-      "status": 401,
+      "status": 404,
       "body": {
-        "code": "TEAM_PERMISSION_REQUIRED",
-        "details": {
-          "permission_id": "$manage_api_keys",
-          "team_id": "<stripped UUID>",
-          "user_id": "<stripped UUID>",
-        },
-        "error": "User <stripped UUID> does not have permission $manage_api_keys in team <stripped UUID>.",
+        "code": "API_KEY_NOT_FOUND",
+        "error": "API key not found.",
       },
       "headers": Headers {
-        "x-stack-known-error": "TEAM_PERMISSION_REQUIRED",
+        "x-stack-known-error": "API_KEY_NOT_FOUND",
         <some fields may have been hidden>,
       },
     }

@@ -47,7 +47,6 @@ async function ensureUserCanManageApiKeys(
     if ((options.userId === undefined) === (options.teamId === undefined)) {
       throw new StatusError(StatusError.BadRequest, "Exactly one of the userId or teamId query parameters must be provided");
     }
-
     // Check if client is trying to manage API keys for other users
     if (options.userId !== undefined && auth.user.id !== options.userId) {
       throw new StatusError(StatusError.Forbidden, "Client can only manage their own api keys");
@@ -69,7 +68,8 @@ async function ensureUserCanManageApiKeys(
       });
 
       if (!hasManageApiKeysPermission) {
-        throw new KnownErrors.TeamPermissionRequired(options.teamId, userId, '$manage_api_keys');
+        // We return 404 here to not leak the existence of the team
+        throw new KnownErrors.ApiKeyNotFound();
       }
     }
     return true;
@@ -308,89 +308,46 @@ function createApiKeyHandlers<Type extends "user" | "team">(type: Type) {
         onRead: async ({ auth, query, params }) => {
           await throwIfFeatureDisabled(auth.project.config, type);
 
-          switch (auth.type) {
-            case "client": {
-              // Client: need to have user_id or team_id in the query, check if authorized to manage these, add query params db where clause
-              const { userId, teamId } = await parseTypeAndParams({ type, params: query });
-              await ensureUserCanManageApiKeys(auth, {
-                userId,
-                teamId,
-              });
-
-              const apiKey = await prismaClient.projectApiKey.findUnique({
-                where: {
-                  tenancyId_id: {
-                    tenancyId: auth.tenancy.id,
-                    id: params.api_key_id,
-                  },
-                  projectUserId: userId,
-                  teamId: teamId,
-                },
-              });
-
-              if (!apiKey) {
-                throw new KnownErrors.ApiKeyNotFound();
+          const apiKey = await prismaClient.projectApiKey.findUnique({
+            where: {
+              tenancyId_id: {
+                tenancyId: auth.tenancy.id,
+                id: params.api_key_id,
               }
+            },
+          });
 
-              return await prismaToCrud(apiKey, type, false);
-            }
-
-            case "server":
-            case "admin": {
-              // Server: no need to have user_id or team_id in the query, get key by id directly
-              const apiKey = await prismaClient.projectApiKey.findUnique({
-                where: {
-                  tenancyId_id: {
-                    tenancyId: auth.tenancy.id,
-                    id: params.api_key_id,
-                  },
-                },
-              });
-
-              if (!apiKey) {
-                throw new KnownErrors.ApiKeyNotFound();
-              }
-              const { userId, teamId } = await parseTypeAndParams({ type, params: {
-                user_id: apiKey.projectUserId ?? undefined,
-                team_id: apiKey.teamId ?? undefined,
-              } });
-              await ensureUserCanManageApiKeys(auth, {
-                userId,
-                teamId,
-              });
-              return await prismaToCrud(apiKey, type, false);
-            }
-            default: {
-              // This should never happen
-              throw new StackAssertionError("Invalid auth type", { auth });
-            }
+          if (!apiKey) {
+            throw new KnownErrors.ApiKeyNotFound();
           }
+          await ensureUserCanManageApiKeys(auth, {
+            userId: apiKey.projectUserId ?? undefined,
+            teamId: apiKey.teamId ?? undefined,
+          });
+
+          return await prismaToCrud(apiKey, type, false);
         },
 
         onUpdate: async ({ auth, data, params, query }) => {
           await throwIfFeatureDisabled(auth.project.config, type);
 
-          const { userId, teamId } = await parseTypeAndParams({ type, params: query });
-          await ensureUserCanManageApiKeys(auth, {
-            userId,
-            teamId,
-          });
-
-          // Find the existing API key
           const existingApiKey = await prismaClient.projectApiKey.findUnique({
             where: {
               tenancyId_id: {
                 tenancyId: auth.tenancy.id,
                 id: params.api_key_id,
-              },
-              projectUserId: userId,
-              teamId: teamId,
+              }
             },
           });
 
           if (!existingApiKey) {
             throw new KnownErrors.ApiKeyNotFound();
           }
+
+          await ensureUserCanManageApiKeys(auth, {
+            userId: existingApiKey.projectUserId ?? undefined,
+            teamId: existingApiKey.teamId ?? undefined,
+          });
 
           // Update the API key
           const updatedApiKey = await prismaClient.projectApiKey.update({
