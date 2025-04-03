@@ -4,22 +4,35 @@ import { useThemeWatcher } from '@/lib/theme';
 import { Button, Typography } from "@stackframe/stack-ui";
 import { Book } from "lucide-react";
 import dynamic from "next/dynamic";
-import { use, useRef } from "react";
+import Image from 'next/image';
+import { use, useEffect, useRef, useState } from "react";
 import { GlobeMethods } from "react-globe.gl";
 import { globeImages } from '../(utils)/utils';
 import { PageLayout } from "../../page-layout";
+import { useAdminApp } from '../../use-admin-app';
 import styles from './setup-page.module.css';
 const countriesPromise = import('../(utils)/country-data.geo.json');
 
 const Globe = dynamic(() => import('react-globe.gl').then((mod) => mod.default), { ssr: false });
 
 export default function SetupPage() {
+  const adminApp = useAdminApp();
   const countries = use(countriesPromise);
   const globeEl = useRef<GlobeMethods | undefined>(undefined);
   const { theme, mounted } = useThemeWatcher();
 
+  const [setupCode, setSetupCode] = useState<string | undefined>(undefined);
+
+  useEffect(() => {
+    const fetchSetupCode = async () => {
+      const code = await adminApp.createSetupCode();
+      setSetupCode(code.code);
+    };
+    fetchSetupCode().catch(console.error);
+  }, [adminApp]);
+
   return (
-    <PageLayout>
+    <PageLayout width={1000}>
       <div className="flex gap-4 justify-center items-center border rounded-2xl">
         <div className="w-[200px] h-[200px] relative">
           <div className="absolute inset-0 flex items-center justify-center z-0">
@@ -95,19 +108,66 @@ export default function SetupPage() {
       <div className="flex gap-4 justify-center">
         {[{
           name: 'Next.js',
-          icon: null,
+          src: '/next-logo.svg',
         }, {
           name: 'React',
-          icon: null,
+          src: '/react-logo.svg',
         }, {
-          name: 'React',
-          icon: null,
-        }].map(({ name, icon }) => (
-          <Button variant='outline' size='sm' className='h-20 w-20' key={name}>
-            <Book className="w-4 h-4" />
+          name: 'JavaScript',
+          src: '/javascript-logo.svg',
+        }].map(({ name, src }) => (
+          <Button variant={name === 'Next.js' ? 'secondary' : 'plain'} className='h-12 w-40 flex items-center justify-center gap-2' key={name}>
+            <Image src={src} alt={name} width={30} height={30} />
+            <Typography>{name}</Typography>
           </Button>
         ))}
       </div>
+
+      <div className="flex gap-4 justify-center">
+        <Typography>
+          Code: {setupCode}
+        </Typography>
+      </div>
+
+      <div className="flex">
+        <ol className="relative text-gray-500 border-s border-gray-200 dark:border-gray-700 dark:text-gray-400">
+          {[
+            {
+              step: 1,
+              title: "Personal Info",
+              description: "Step details here",
+              isCompleted: true
+            },
+            {
+              step: 2,
+              title: "Account Info",
+              description: "Step details here",
+              isCompleted: false
+            },
+            {
+              step: 3,
+              title: "Review",
+              description: "Step details here",
+              isCompleted: false
+            },
+            {
+              step: 4,
+              title: "Confirmation",
+              description: "Step details here",
+              isCompleted: false
+            }
+          ].map((item, index) => (
+            <li key={item.step} className={`${index < 3 ? "mb-10 " : ""}ms-6`}>
+              <span className={`absolute flex items-center justify-center w-8 h-8 ${item.isCompleted ? "bg-green-200 dark:bg-green-900" : "bg-gray-100 dark:bg-gray-700"} rounded-full -start-4 ring-4 ring-white dark:ring-gray-900`}>
+                <span className={`${item.isCompleted ? "text-green-500 dark:text-green-400" : "text-gray-500 dark:text-gray-400"} font-medium`}>{item.step}</span>
+              </span>
+              <h3 className="font-medium leading-tight">{item.title}</h3>
+              <p className="text-sm">{item.description}</p>
+            </li>
+          ))}
+        </ol>
+      </div>
+
     </PageLayout>
   );
 }
