@@ -148,6 +148,7 @@ export type BaseUser = {
   readonly passkeyAuthEnabled: boolean,
 
   readonly isMultiFactorRequired: boolean,
+  readonly isAnonymous: boolean,
   toClientJson(): CurrentUserCrud["Client"]["Read"],
 
   /**
