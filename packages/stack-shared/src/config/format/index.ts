@@ -1,4 +1,4 @@
-// Check out https://github.com/stack-auth/info/blob/main/eng-handbook/random-thoughts/config-json-format.md for more information on the config format
+// see https://github.com/stack-auth/info/blob/main/eng-handbook/random-thoughts/config-json-format.md
 
 import { StackAssertionError } from "../../utils/errors";
 import { deleteKey, get, has, set } from "../../utils/objects";
