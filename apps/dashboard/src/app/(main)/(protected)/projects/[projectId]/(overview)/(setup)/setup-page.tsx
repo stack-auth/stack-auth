@@ -1,5 +1,6 @@
 'use client';
 
+import { StyledLink } from '@/components/link';
 import { useThemeWatcher } from '@/lib/theme';
 import { Button, CopyButton, Typography, cn } from "@stackframe/stack-ui";
 import { Book, Terminal } from "lucide-react";
@@ -134,7 +135,7 @@ export default function SetupPage() {
         </div>
       </div>
 
-      <div className="flex flex-col mt-10">
+      <div className="flex flex-col mt-10 mx-4">
         <ol className="relative text-gray-500 border-s border-gray-200 dark:border-gray-700 dark:text-gray-400">
           {[
             {
@@ -165,7 +166,8 @@ export default function SetupPage() {
               step: 2,
               title: "Install Stack Auth",
               description: "The wizard will guide you through the setup process",
-              content: <div className="flex flex-col w-0 flex-grow">
+              content: <div className="flex flex-col w-0 flex-grow gap-4">
+                In a new or existing Next.js project, run:
                 <CodeSnippet
                   type="Terminal"
                   content={[
@@ -188,9 +190,12 @@ export default function SetupPage() {
               step: 3,
               title: "Done",
               description: "You're all set up!",
+              content: <div className="">
+                If you start your Next.js app with npm run dev and navigate to <StyledLink href="http://localhost:3000/handler/signup">http://localhost:3000/handler/signup</StyledLink>, you will see the sign-up page.
+              </div>
             },
           ].map((item, index) => (
-            <li key={item.step} className={cn("ms-6 flex gap-8", { "mb-10": index < 3 })}>
+            <li key={item.step} className={cn("ms-6 flex flex-col lg:flex-row gap-10", { "mb-20": index < 3 })}>
               <div className="flex flex-col gap-2 max-w-[180px] min-w-[180px]">
                 <span className={`absolute flex items-center justify-center w-8 h-8 bg-gray-100 dark:bg-gray-70 rounded-full -start-4 ring-4 ring-white dark:ring-gray-900`}>
                   <span className={`text-gray-500 dark:text-gray-400 font-medium`}>{item.step}</span>
@@ -199,7 +204,9 @@ export default function SetupPage() {
                 <p className="text-sm">{item.description}</p>
               </div>
               {/* <Separator orientation="vertical" className="h-14" /> */}
-              {item.content}
+              <div className="flex flex-grow">
+                {item.content}
+              </div>
             </li>
           ))}
         </ol>
