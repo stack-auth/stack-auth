@@ -108,7 +108,6 @@ export async function getEnvironmentConfigOverride(project: Project, branchId: s
   }
 
   const config = project.config;
-  console.log(config.domains);
   return {
     createTeamOnSignUp: config.create_team_on_sign_up,
     allowLocalhost: config.allow_localhost,
