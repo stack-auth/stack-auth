@@ -1479,10 +1479,6 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
    * @returns Result containing either the refresh token or an error
    */
   async promptCliLogin(options: { appUrl: string, expiresInMillis?: number }): Promise<Result<string, KnownErrors["CliAuthError"] | KnownErrors["CliAuthExpiredError"] | KnownErrors["CliAuthUsedError"]>> {
-    if (!options.appUrl) {
-      return Result.error(new KnownErrors.CliAuthError("appUrl is required and must be set to the URL of the app you're authenticating with"));
-    }
-
     // Step 1: Initiate the CLI auth process
     const response = await this._interface.sendClientRequest(
       "/auth/cli",
