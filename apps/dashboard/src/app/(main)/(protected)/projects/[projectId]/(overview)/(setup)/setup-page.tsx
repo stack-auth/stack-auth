@@ -1,6 +1,7 @@
 'use client';
 
 import { StyledLink } from '@/components/link';
+import { getPublicEnvVar } from '@/lib/env';
 import { useThemeWatcher } from '@/lib/theme';
 import { Button, CopyButton, Typography, cn } from "@stackframe/stack-ui";
 import { Book, Terminal } from "lucide-react";
@@ -22,8 +23,8 @@ export default function SetupPage() {
   const globeEl = useRef<GlobeMethods | undefined>(undefined);
   const { theme, mounted } = useThemeWatcher();
   const [showPulse, setShowPulse] = useState(false);
-
   const [setupCode, setSetupCode] = useState<string | undefined>(undefined);
+  const apiUrl = getPublicEnvVar('NEXT_PUBLIC_STACK_API_URL') === "https://api.stack-auth.com" ? undefined : getPublicEnvVar('NEXT_PUBLIC_STACK_API_URL');
 
   useEffect(() => {
     const fetchSetupCode = async () => {
@@ -191,7 +192,7 @@ export default function SetupPage() {
                   type="Terminal"
                   content={[
                     [
-                      { value: "npx", className: "text-muted-foreground" },
+                      { value: "npx", className: "text-purple-600" },
                       {
                         value: "@stackframe/init@latest",
                         className: "",
@@ -200,6 +201,10 @@ export default function SetupPage() {
                         value: `--setup=${setupCode}`,
                         className: "text-green-600",
                       },
+                      ...(apiUrl ? [{
+                        value: `--api-url=${apiUrl}`,
+                        className: "text-green-600",
+                      }] : []),
                     ],
                   ]}
                 />
