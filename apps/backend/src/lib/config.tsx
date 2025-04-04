@@ -429,7 +429,7 @@ export const dbProjectToRenderedOrganizationConfig = (dbProject: DBProject): Org
 };
 
 // C -> A
-export const renderedEnvironmentConfigToProjectCrud = (renderedConfig: EnvironmentRenderedConfig, configId: string): ProjectsCrud["Admin"]["Read"]['config'] => {
+export const renderedOrganizationConfigToProjectCrud = (renderedConfig: OrganizationRenderedConfig, configId: string): ProjectsCrud["Admin"]["Read"]['config'] => {
   const oauthProviders = typedEntries(renderedConfig.authMethods)
     .filter(([_, authMethod]) => authMethod.type === 'oauth')
     .map(([_, authMethod]) => {
