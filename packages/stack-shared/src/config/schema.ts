@@ -10,23 +10,32 @@ const permissionRegex = /^\$?[a-z0-9_:]+$/;
 
 export const baseConfig = {
   // default values belong here
-  createTeamOnSignUp: false,
-  clientTeamCreationEnabled: false,
-  clientUserDeletionEnabled: false,
-  signUpEnabled: true,
-  isProductionMode: false,
-  allowLocalhost: true,
-  oauthAccountMergeStrategy: 'link_method',
-  teamCreateDefaultSystemPermissions: {},
-  teamMemberDefaultSystemPermissions: {},
-  userDefaultSystemPermissions: {},
-  permissionDefinitions: {},
-  oauthProviders: {},
-  authMethods: {},
-  connectedAccounts: {},
-  domains: {},
-  emailConfig: {
-    isShared: true,
+  team: {
+    createTeamOnSignUp: false,
+    clientTeamCreationEnabled: false,
+    defaultCreatorTeamPermissions: {},
+    defaultMemberTeamPermissions: {},
+    teamPermissionDefinitions: {},
+  },
+  user: {
+    clientUserDeletionEnabled: false,
+    signUpEnabled: true,
+    defaultProjectPermissions: {},
+    userPermissionDefinitions: {},
+  },
+  domain: {
+    allowLocalhost: true,
+  },
+  auth: {
+    oauthAccountMergeStrategy: 'link_method',
+    oauthProviders: {},
+    authMethods: {},
+    connectedAccounts: {},
+  },
+  email: {
+    emailServer: {
+      isShared: true,
+    },
   },
 };
 
