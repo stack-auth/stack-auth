@@ -1,6 +1,6 @@
-import { findLastIndex, unique } from "../arrays";
-import { StackAssertionError } from "../errors";
-import { filterUndefined } from "../objects";
+import { findLastIndex, unique } from "./arrays";
+import { StackAssertionError } from "./errors";
+import { filterUndefined } from "./objects";
 
 export function typedToLowercase<S extends string>(s: S): Lowercase<S> {
   if (typeof s !== "string") throw new StackAssertionError("Expected a string for typedToLowercase", { s });
