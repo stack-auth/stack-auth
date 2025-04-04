@@ -42,7 +42,7 @@ export async function createApp(body?: AdminProjectUpdateOptions) {
     tokenStore: "memory",
   });
 
-  const apiKey = await adminApp.createApiKey({
+  const apiKey = await adminApp.createInternalApiKey({
     description: 'test',
     expiresAt: new Date(Date.now() + 1000 * 60 * 60 * 24 * 30),
     hasPublishableClientKey: true,

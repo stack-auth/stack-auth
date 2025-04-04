@@ -34,6 +34,7 @@
     "@hookform/resolvers": "^3.3.4",
     "@simplewebauthn/browser": "^11.0.0",
     "@stackframe/stack-shared": "workspace:*",
+    "@tanstack/react-table": "^8.20.5",
     "color": "^4.2.3",
     "cookie": "^0.6.0",
     "jose": "^5.2.2",

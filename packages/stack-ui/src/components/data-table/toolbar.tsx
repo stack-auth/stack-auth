@@ -28,7 +28,7 @@ export function DataTableToolbar<TData>({
 
   return (
     <div className="flex items-center justify-between">
-      <div className="flex items-center gap-2 flex-wrap flex-1">
+      <div className="flex items-center gap-2 flex-wrap flex-1 stack-scope">
         {toolbarRender?.(table)}
         {(isFiltered || isSorted) && (
           <Button
