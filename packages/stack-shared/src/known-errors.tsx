@@ -1218,6 +1218,36 @@ const InvalidPollingCodeError = createKnownErrorConstructor(
   (json: any) => [json] as const,
 );
 
+const CliAuthError = createKnownErrorConstructor(
+  KnownError,
+  "CLI_AUTH_ERROR",
+  (message: string) => [
+    400,
+    message,
+  ] as const,
+  (json: any) => [json.message] as const,
+);
+
+const CliAuthExpiredError = createKnownErrorConstructor(
+  KnownError,
+  "CLI_AUTH_EXPIRED_ERROR",
+  (message: string = "CLI authentication request expired. Please try again.") => [
+    400,
+    message,
+  ] as const,
+  (json: any) => [json.message] as const,
+);
+
+const CliAuthUsedError = createKnownErrorConstructor(
+  KnownError,
+  "CLI_AUTH_USED_ERROR",
+  (message: string = "This authentication token has already been used.") => [
+    400,
+    message,
+  ] as const,
+  (json: any) => [json.message] as const,
+);
+
 const PermissionIdAlreadyExists = createKnownErrorConstructor(
   KnownError,
   "PERMISSION_ID_ALREADY_EXISTS",
@@ -1243,6 +1273,9 @@ export const KnownErrors = {
   AllOverloadsFailed,
   ProjectAuthenticationError,
   PermissionIdAlreadyExists,
+  CliAuthError,
+  CliAuthExpiredError,
+  CliAuthUsedError,
   InvalidProjectAuthentication,
   ProjectKeyWithoutAccessType,
   InvalidAccessType,

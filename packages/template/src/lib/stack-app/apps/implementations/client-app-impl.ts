@@ -1476,11 +1476,11 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
    * @param options Options for the CLI login
    * @param options.appUrl The URL of the app that will handle the CLI auth confirmation
    * @param options.expiresInMillis Optional duration in milliseconds before the auth attempt expires (default: 2 hours)
-   * @returns The refresh token that can be used to authenticate the CLI application
+   * @returns Result containing either the refresh token or an error
    */
-  async promptCliLogin(options: { appUrl: string, expiresInMillis?: number }): Promise<string> {
+  async promptCliLogin(options: { appUrl: string, expiresInMillis?: number }): Promise<Result<string, KnownErrors["CliAuthError"] | KnownErrors["CliAuthExpiredError"] | KnownErrors["CliAuthUsedError"]>> {
     if (!options.appUrl) {
-      throw new Error("appUrl is required and must be set to the URL of the app you're authenticating with");
+      return Result.error(new KnownErrors.CliAuthError("appUrl is required and must be set to the URL of the app you're authenticating with"));
     }
 
     // Step 1: Initiate the CLI auth process
@@ -1499,7 +1499,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
     );
 
     if (!response.ok) {
-      throw new Error(`Failed to initiate CLI auth: ${response.status} ${await response.text()}`);
+      return Result.error(new KnownErrors.CliAuthError(`Failed to initiate CLI auth: ${response.status} ${await response.text()}`));
     }
 
     const initResult = await response.json();
@@ -1531,20 +1531,20 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
       const pollResult = await pollResponse.json();
 
       if (pollResponse.status === 201 && pollResult.status === "success") {
-        return pollResult.refresh_token;
+        return Result.ok(pollResult.refresh_token);
       } else if (pollResult.status === "waiting") {
         // Wait for 2 seconds before polling again
         await wait(2000);
       } else if (pollResult.status === "expired") {
-        throw new Error("CLI authentication request expired. Please try again.");
+        return Result.error(new KnownErrors.CliAuthExpiredError("CLI authentication request expired. Please try again."));
       } else if (pollResult.status === "used") {
-        throw new Error("This authentication token has already been used.");
+        return Result.error(new KnownErrors.CliAuthUsedError("This authentication token has already been used."));
       } else {
-        throw new Error(`Unexpected status from CLI auth polling: ${pollResult.status}`);
+        return Result.error(new KnownErrors.CliAuthError(`Unexpected status from CLI auth polling: ${pollResult.status}`));
       }
     }
 
-    throw new Error("Timed out waiting for CLI authentication.");
+    return Result.error(new KnownErrors.CliAuthError("Timed out waiting for CLI authentication."));
   }
 
   async signInWithPasskey(): Promise<Result<undefined, KnownErrors["PasskeyAuthenticationFailed"] | KnownErrors["InvalidTotpCode"] | KnownErrors["PasskeyWebAuthnError"]>> {
