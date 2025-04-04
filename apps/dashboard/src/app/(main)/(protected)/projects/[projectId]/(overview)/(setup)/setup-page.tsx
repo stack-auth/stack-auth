@@ -53,8 +53,8 @@ export default function SetupPage() {
 
   return (
     <PageLayout width={1000}>
-      <div className="flex gap-4 justify-center items-center border rounded-2xl">
-        <div className="w-[200px] h-[200px] relative">
+      <div className="flex gap-4 justify-center items-center border rounded-2xl py-4 px-8">
+        <div className="w-[200px] h-[200px] relative hidden md:block">
           {showPulse && (
             <div className="absolute inset-0 pointer-events-none w-[200px] h-[200px] flex items-center justify-center">
               {[...Array(3)].map((_, i) => (
@@ -71,7 +71,7 @@ export default function SetupPage() {
             </div>
           )}
 
-          <div className="relative z-10 flex items-center justify-center w-full h-full">
+          <div className="relative z-10 items-center justify-center w-full h-full hidden md:flex">
             {mounted && (
               <Globe
                 ref={globeEl}
@@ -146,16 +146,35 @@ export default function SetupPage() {
                 <div className="flex gap-4 justify-center">
                   {[{
                     name: 'Next.js',
-                    src: '/next-logo.svg',
+                    reverseIfDark: true,
+                    imgSrc: '/next-logo.svg',
                   }, {
                     name: 'React',
-                    src: '/react-logo.svg',
+                    imgSrc: '/react-logo.svg',
+                    onClick: () => {
+                      window.open('https://docs.stack-auth.com/react/overview', '_blank');
+                    },
                   }, {
                     name: 'JavaScript',
-                    src: '/javascript-logo.svg',
-                  }].map(({ name, src }) => (
-                    <Button variant={name === 'Next.js' ? 'secondary' : 'plain'} className='h-20 w-20 flex flex-col items-center justify-center gap-2' key={name}>
-                      <Image src={src} alt={name} width={30} height={30} />
+                    imgSrc: '/javascript-logo.svg',
+                    onClick: () => {
+                      window.open('https://docs.stack-auth.com/js/overview', '_blank');
+                    },
+                  }, {
+                    name: 'Python',
+                    imgSrc: '/python-logo.svg',
+                    onClick: () => {
+                      window.open('https://docs.stack-auth.com/python/overview', '_blank');
+                    },
+                  }].map(({ name, imgSrc: src, reverseIfDark, onClick }) => (
+                    <Button variant={name === 'Next.js' ? 'secondary' : 'plain'} className='h-20 w-20 flex flex-col items-center justify-center gap-2' key={name} onClick={onClick}>
+                      <Image
+                        src={src}
+                        alt={name}
+                        width={30}
+                        height={30}
+                        className={reverseIfDark ? "dark:invert" : undefined}
+                      />
                       <Typography>{name}</Typography>
                     </Button>
                   ))}
@@ -198,7 +217,7 @@ export default function SetupPage() {
             <li key={item.step} className={cn("ms-6 flex flex-col lg:flex-row gap-10", { "mb-20": index < 3 })}>
               <div className="flex flex-col gap-2 max-w-[180px] min-w-[180px]">
                 <span className={`absolute flex items-center justify-center w-8 h-8 bg-gray-100 dark:bg-gray-70 rounded-full -start-4 ring-4 ring-white dark:ring-gray-900`}>
-                  <span className={`text-gray-500 dark:text-gray-400 font-medium`}>{item.step}</span>
+                  <span className={`text-gray-500 dark:text-gray-700 font-medium`}>{item.step}</span>
                 </span>
                 <h3 className="font-medium leading-tight">{item.title}</h3>
                 <p className="text-sm">{item.description}</p>
