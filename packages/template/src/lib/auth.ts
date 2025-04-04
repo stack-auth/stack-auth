@@ -19,8 +19,8 @@ export async function signInWithOAuth(
   const { codeChallenge, state } = await saveVerifierAndState();
   const location = await iface.getOAuthUrl({
     provider: options.provider,
-    redirectUrl: constructRedirectUrl(options.redirectUrl),
-    errorRedirectUrl: constructRedirectUrl(options.errorRedirectUrl),
+    redirectUrl: constructRedirectUrl(options.redirectUrl, "redirectUrl"),
+    errorRedirectUrl: constructRedirectUrl(options.errorRedirectUrl, "errorRedirectUrl"),
     codeChallenge,
     state,
     type: "authenticate",
@@ -43,9 +43,9 @@ export async function addNewOAuthProviderOrScope(
   const { codeChallenge, state } = await saveVerifierAndState();
   const location = await iface.getOAuthUrl({
     provider: options.provider,
-    redirectUrl: constructRedirectUrl(options.redirectUrl),
-    errorRedirectUrl: constructRedirectUrl(options.errorRedirectUrl),
-    afterCallbackRedirectUrl: constructRedirectUrl(window.location.href),
+    redirectUrl: constructRedirectUrl(options.redirectUrl, "redirectUrl"),
+    errorRedirectUrl: constructRedirectUrl(options.errorRedirectUrl, "errorRedirectUrl"),
+    afterCallbackRedirectUrl: constructRedirectUrl(window.location.href, "afterCallbackRedirectUrl"),
     codeChallenge,
     state,
     type: "link",
@@ -129,7 +129,7 @@ export async function callOAuthCallback(
   try {
     return Result.ok(await iface.callOAuthCallback({
       oauthParams: consumed.originalUrl.searchParams,
-      redirectUri: constructRedirectUrl(redirectUrl),
+      redirectUri: constructRedirectUrl(redirectUrl, "redirectUri"),
       codeVerifier: consumed.codeVerifier,
       state: consumed.state,
     }));
