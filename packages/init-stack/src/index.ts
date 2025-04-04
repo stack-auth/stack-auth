@@ -40,8 +40,8 @@ program
   .option("--client", "Initialize client-side only")
   .option("--server", "Initialize server-side only")
   .option("--no-browser", "Don't open browser for environment variable setup")
-  .option("--api-url", "Stack Auth API URL")
-  .option("--token", "token to fetch Stack Auth keys")
+  .option("--api-url <url>", "Stack Auth API URL")
+  .option("--token <token>", "token to fetch Stack Auth keys")
   .addHelpText('after', `
 For more information, please visit https://docs.stack-auth.com/getting-started/setup`);
 
@@ -153,6 +153,8 @@ async function main(): Promise<void> {
   // Steps
   const { packageJson } = await Steps.getProject();
   const type = await Steps.getProjectType({ packageJson });
+
+  const keys = options.token ? await Steps.fetchKeys(options.token, options.apiUrl) : undefined;
 
   await Steps.addStackPackage(type);
   if (isNeon) packagesToInstall.push('@neondatabase/serverless');
@@ -417,18 +419,22 @@ const Steps = {
   },
 
   async fetchKeys(token: string, apiUrl?: string): Promise<Keys> {
-    const response = await fetch((apiUrl ?? "https://api.stack-auth.com/v1") + "/setup-keys/verify", {
-      headers: {
-        "Authorization": `Bearer ${token}`,
-      },
-    });
-    const data = await response.json() as any;
+    try {
+      const response = await fetch((apiUrl ?? "https://api.stack-auth.com/v1") + "/setup-keys/verify", {
+        headers: {
+          "Authorization": `Bearer ${token}`,
+        },
+      });
+      const data = await response.json() as any;
 
-    return {
-      projectId: data.project_id,
-      publishableClientKey: data.publishable_client_key,
-      secretServerKey: data.secret_server_key,
-    };
+      return {
+        projectId: data.project_id,
+        publishableClientKey: data.publishable_client_key,
+        secretServerKey: data.secret_server_key,
+      };
+    } catch (e) {
+      throw new UserError("Invalid token. Please try again. Error details: " + e);
+    }
   },
 
   async writeEnvVars(type: string, keys?: Keys, apiUrl?: string): Promise<boolean> {
