@@ -5,6 +5,7 @@ module.exports = {
   ],
   "ignorePatterns": ['/*', '!/src'],
   rules: {
+    "@typescript-eslint/member-delimiter-style": "off",
     "import/order": [
       1,
       {

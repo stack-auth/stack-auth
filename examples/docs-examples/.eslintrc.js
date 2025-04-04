@@ -4,6 +4,7 @@ module.exports = {
   rules: {
     "@typescript-eslint/no-misused-promises": [0],
     "@typescript-eslint/no-floating-promises": [0],
+    "@typescript-eslint/member-delimiter-style": "off",
     "import/order": [
       1,
       {
