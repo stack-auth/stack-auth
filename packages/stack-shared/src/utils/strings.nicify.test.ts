@@ -84,7 +84,7 @@ describe("nicify", () => {
       class TestClass {
         constructor(public value: number) {}
       }
-      expect(nicify(new TestClass(42))).toBe("TestClass { value: 42 }");
+      expect(nicify(new TestClass(42))).toBe('TestClass { "value": 42 }');
     });
   });
 
@@ -103,7 +103,7 @@ describe("nicify", () => {
       const nicifiedError = nicify({ error });
       expect(nicifiedError).toMatch(new RegExp(deindent`
         ^\{
-          error: Error: test error
+          "error": Error: test error
             Stack:
               at (.|\\n)*
         \}$
@@ -118,7 +118,7 @@ describe("nicify", () => {
         ^Error: test error
         --Stack:
         ----at (.|\\n)+
-        --Extra properties: \{ extra: "something" \}
+        --Extra properties: \{ "extra": "something" \}
         --Cause:
         ----Error: cause
         ------Stack:
@@ -132,7 +132,7 @@ describe("nicify", () => {
       headers.append("Accept", "text/plain");
       expect(nicify(headers)).toBe(deindent`
         Headers {
-          accept: "text/plain",
+          "accept": "text/plain",
           "content-type": "application/json",
         }`
       );
@@ -155,8 +155,8 @@ describe("nicify", () => {
       circular.self = circular;
       expect(nicify(circular)).toBe(deindent`
         {
-          a: 1,
-          self: Ref<value>,
+          "a": 1,
+          "self": Ref<value>,
         }`
       );
     });
@@ -165,14 +165,14 @@ describe("nicify", () => {
   describe("configuration options", () => {
     test("maxDepth", () => {
       const deep = { a: { b: { c: { d: { e: 1 } } } } };
-      expect(nicify(deep, { maxDepth: 2 })).toBe("{ a: { b: { ... } } }");
+      expect(nicify(deep, { maxDepth: 2 })).toBe('{ "a": { "b": { ... } } }');
     });
 
     test("lineIndent", () => {
       expect(nicify({ a: 1, b: 2 }, { lineIndent: "    " })).toBe(deindent`
         {
-            a: 1,
-            b: 2,
+            "a": 1,
+            "b": 2,
         }
       `);
     });
@@ -180,8 +180,8 @@ describe("nicify", () => {
     test("hideFields", () => {
       expect(nicify({ a: 1, b: 2, secret: "hidden" }, { hideFields: ["secret"] })).toBe(deindent`
         {
-          a: 1,
-          b: 2,
+          "a": 1,
+          "b": 2,
           <some fields may have been hidden>,
         }
       `);
@@ -224,7 +224,7 @@ describe("nicify", () => {
       };
       expect(nicify(nicifiable)).toBe(deindent`
         {
-          value: 42,
+          "value": 42,
           // custom comment,
         }
       `);
@@ -235,7 +235,7 @@ describe("nicify", () => {
     test("object without prototype", () => {
       const unknownType = Object.create(null);
       unknownType.value = "test";
-      expect(nicify(unknownType)).toBe('{ value: "test" }');
+      expect(nicify(unknownType)).toBe('{ "value": "test" }');
     });
   });
 });

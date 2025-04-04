@@ -582,7 +582,7 @@ export function nicify(
       }
 
       const constructorName = [null, Object.prototype].includes(Object.getPrototypeOf(value)) ? null : (nicifiableClassNameOverrides.get(value.constructor) ?? value.constructor.name);
-      const constructorString = constructorName ? `${nicifyPropertyString(constructorName)} ` : "";
+      const constructorString = constructorName ? `${constructorName} ` : "";
 
       const entries = getNicifiableEntries(value).filter(([k]) => !hideFields.includes(k));
       const extraLines = [
