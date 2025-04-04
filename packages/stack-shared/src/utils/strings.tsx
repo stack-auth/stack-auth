@@ -551,7 +551,7 @@ export function nicify(
         const resValues = value.map((v, i) => nestedNicify(v, `${path}[${i}]`, i));
         resValues.push(...extraLines);
         if (resValues.length !== resValueLength) throw new StackAssertionError("nicify of object: resValues.length !== resValueLength", { value, resValues, resValueLength });
-        const shouldIndent = resValues.length > 4 || (resValues.length > 1 && resValues.some(x => x.length > 4 || x.includes("\n")));
+        const shouldIndent = resValues.length > 4 || resValues.some(x => (resValues.length > 1 && x.length > 4) || x.includes("\n"));
         if (shouldIndent) {
           return `[${nl}${resValues.map(x => `${lineIndent}${x},${nl}`).join("")}]`;
         } else {
