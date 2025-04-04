@@ -28,6 +28,7 @@ model Project {
   neonProvisionedProject NeonProvisionedProject?
   tenancies              Tenancy[]
   verificationCodes      VerificationCode[]
+  products               Product[]
 }
 
 model ProjectConfig {
@@ -54,6 +55,7 @@ model ProjectConfig {
   authMethodConfigs                  AuthMethodConfig[]
   connectedAccountConfigs            ConnectedAccountConfig[]
   oauthAccountMergeStrategy          OAuthAccountMergeStrategy @default(LINK_METHOD)
+  stripeConfig                       StripeConfig?
 }
 
 enum OAuthAccountMergeStrategy {
@@ -222,9 +224,10 @@ model Permission {
   teamMemberDirectPermission  TeamMemberDirectPermission[]
   projectUserDirectPermission ProjectUserDirectPermission[]
 
-  isDefaultTeamCreatorPermission Boolean @default(false)
-  isDefaultTeamMemberPermission  Boolean @default(false)
-  isDefaultProjectPermission     Boolean @default(false)
+  isDefaultTeamCreatorPermission Boolean   @default(false)
+  isDefaultTeamMemberPermission  Boolean   @default(false)
+  isDefaultProjectPermission     Boolean   @default(false)
+  products                       Product[]
 
   @@unique([tenancyId, queryableId])
   @@unique([projectConfigId, queryableId])
@@ -998,4 +1001,35 @@ model CliAuthAttempt {
   updatedAt DateTime @updatedAt
 
   @@id([tenancyId, id])
+}
+
+model StripeConfig {
+  id              String        @id @default(uuid()) @db.Uuid
+  projectConfigId String        @unique @db.Uuid
+  projectConfig   ProjectConfig @relation(fields: [projectConfigId], references: [id], onDelete: Cascade)
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  // either [stripeAccountId] or [stripeSecretKey, stripePublishableKey, stripeWebhookSecret] must be set
+  // if the Stripe integration is provided through Stripe Connect, then [stripeAccountId] must be set
+  // if the Stripe integration is provided through Stripe API keys, then [stripeSecretKey, stripePublishableKey, stripeWebhookSecret] must be set
+  stripeAccountId String? @unique
+
+  stripeSecretKey      String?
+  stripePublishableKey String?
+  stripeWebhookSecret  String?
+}
+
+model Product {
+  id        String  @id @default(uuid()) @db.Uuid
+  projectId String  @unique
+  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  name                   String
+  stripeProductId        String?     @unique
+  associatedPermissionId String?     @db.Uuid
+  associatedPermission   Permission? @relation(fields: [associatedPermissionId], references: [dbId])
 }

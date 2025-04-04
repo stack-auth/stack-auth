@@ -76,6 +76,12 @@ export type {
 } from "./projects";
 
 export type {
+  AdminProduct,
+  AdminProductCreateOptions,
+  AdminProductUpdateOptions
+} from "./products";
+
+export type {
   EditableTeamMemberProfile,
   ServerListUsersOptions,
   ServerTeam,

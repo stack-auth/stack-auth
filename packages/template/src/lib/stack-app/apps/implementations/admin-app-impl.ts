@@ -12,7 +12,8 @@ import { AdminSentEmail } from "../..";
 import { ApiKey, ApiKeyBase, ApiKeyBaseCrudRead, ApiKeyCreateOptions, ApiKeyFirstView, apiKeyCreateOptionsToCrud } from "../../api-keys";
 import { EmailConfig, stackAppInternalsSymbol } from "../../common";
 import { AdminEmailTemplate, AdminEmailTemplateUpdateOptions, adminEmailTemplateUpdateOptionsToCrud } from "../../email-templates";
-import { AdminTeamPermission, AdminTeamPermissionDefinition, AdminTeamPermissionDefinitionCreateOptions, AdminTeamPermissionDefinitionUpdateOptions, AdminProjectPermission, AdminProjectPermissionDefinition, AdminProjectPermissionDefinitionCreateOptions, AdminProjectPermissionDefinitionUpdateOptions, adminTeamPermissionDefinitionCreateOptionsToCrud, adminTeamPermissionDefinitionUpdateOptionsToCrud, adminProjectPermissionDefinitionCreateOptionsToCrud, adminProjectPermissionDefinitionUpdateOptionsToCrud } from "../../permissions";
+import { AdminProjectPermission, AdminProjectPermissionDefinition, AdminProjectPermissionDefinitionCreateOptions, AdminProjectPermissionDefinitionUpdateOptions, AdminTeamPermission, AdminTeamPermissionDefinition, AdminTeamPermissionDefinitionCreateOptions, AdminTeamPermissionDefinitionUpdateOptions, adminProjectPermissionDefinitionCreateOptionsToCrud, adminProjectPermissionDefinitionUpdateOptionsToCrud, adminTeamPermissionDefinitionCreateOptionsToCrud, adminTeamPermissionDefinitionUpdateOptionsToCrud } from "../../permissions";
+import { AdminProduct, AdminProductCreateOptions, AdminProductUpdateOptions, adminProductCreateOptionsToCrud, adminProductUpdateOptionsToCrud } from "../../products";
 import { AdminOwnedProject, AdminProject, AdminProjectUpdateOptions, adminProjectUpdateOptionsToCrud } from "../../projects";
 import { StackAdminApp, StackAdminAppConstructorOptions } from "../interfaces/admin-app";
 import { clientVersion, createCache, getBaseUrl, getDefaultProjectId, getDefaultPublishableClientKey, getDefaultSecretServerKey, getDefaultSuperSecretAdminKey } from "./common";
@@ -39,6 +40,9 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
   });
   private readonly _adminProjectPermissionDefinitionsCache = createCache(async () => {
     return await this._interface.listProjectPermissionDefinitions();
+  });
+  private readonly _productsCache = createCache(async () => {
+    return await this._interface.listProducts();
   });
   private readonly _svixTokenCache = createCache(async () => {
     return await this._interface.getSvixToken();
@@ -129,6 +133,12 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
           senderName: data.config.email_config.sender_name ?? throwErr("Email sender name is missing"),
           senderEmail: data.config.email_config.sender_email ?? throwErr("Email sender email is missing"),
         },
+        stripeConfig: data.config.stripe_config ? {
+          stripeAccountId: data.config.stripe_config.stripe_account_id || undefined,
+          stripeSecretKey: data.config.stripe_config.stripe_secret_key || undefined,
+          stripePublishableKey: data.config.stripe_config.stripe_publishable_key || undefined,
+          stripeWebhookSecret: data.config.stripe_config.stripe_webhook_secret || undefined,
+        } : undefined,
         domains: data.config.domains.map((d) => ({
           domain: d.domain,
           handlerPath: d.handler_path,
@@ -384,5 +394,105 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
       sentAt: new Date(email.sent_at_millis),
       error: email.error,
     }));
+  }
+
+  async createStripeConnectIntegration(options: {
+    type: 'standard' | 'express' | 'custom',
+    return_url: string,
+    refresh_url: string,
+    team_id?: string,
+  }): Promise<{
+    accountId: string,
+    accountLinkUrl: string,
+  }> {
+    const response = await this._interface.sendAdminRequest(
+      "/integrations/stripe/connect",
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          type: options.type,
+          return_url: options.return_url,
+          refresh_url: options.refresh_url,
+          team_id: options.team_id,
+        }),
+      },
+      null,
+    );
+
+    const result = await response.json();
+    return {
+      accountId: result.account_id,
+      accountLinkUrl: result.account_link_url,
+    };
+  }
+
+  async getStripeAccountSession(): Promise<{
+    clientSecret: string,
+  }> {
+    const result = await this._interface.getStripeAccountSession();
+    return {
+      clientSecret: result.client_secret
+    };
+  }
+
+  async getStripeLoginLink(): Promise<{
+    url: string,
+  }> {
+    const result = await this._interface.getStripeLoginLink();
+    return {
+      url: result.url
+    };
+  }
+
+  // Products methods
+  protected _createProductFromCrud(data: {
+    id: string,
+    name: string,
+    stripe_product_id: string | null,
+    associated_permission_id: string | null,
+    created_at_millis: string,
+    project_id: string,
+  }): AdminProduct {
+    return {
+      id: data.id,
+      name: data.name,
+      stripeProductId: data.stripe_product_id,
+      associatedPermissionId: data.associated_permission_id,
+      createdAt: new Date(parseInt(data.created_at_millis)),
+    };
+  }
+
+  async listProducts(): Promise<AdminProduct[]> {
+    const crud = Result.orThrow(await this._productsCache.getOrWait([], "write-only"));
+    return crud.map((j) => this._createProductFromCrud(j));
+  }
+
+  // IF_PLATFORM react-like
+  useProducts(): AdminProduct[] {
+    const crud = useAsyncCache(this._productsCache, [], "useProducts()");
+    return useMemo(() => {
+      return crud.map((j) => this._createProductFromCrud(j));
+    }, [crud]);
+  }
+  // END_PLATFORM
+
+  async createProduct(options: AdminProductCreateOptions): Promise<AdminProduct> {
+    const crud = await this._interface.createProduct(adminProductCreateOptionsToCrud(options));
+    await this._productsCache.refresh([]);
+    return this._createProductFromCrud(crud);
+  }
+
+  async updateProduct(productId: string, options: AdminProductUpdateOptions): Promise<AdminProduct> {
+    const crud = await this._interface.updateProduct(productId, adminProductUpdateOptionsToCrud(options));
+    await this._productsCache.refresh([]);
+    return this._createProductFromCrud(crud);
+  }
+
+  async deleteProduct(productId: string): Promise<void> {
+    await this._interface.deleteProduct(productId);
+    await this._productsCache.refresh([]);
   }
 }

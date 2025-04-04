@@ -5,7 +5,8 @@ import { ApiKey, ApiKeyCreateOptions, ApiKeyFirstView } from "../../api-keys";
 import { AsyncStoreProperty, EmailConfig } from "../../common";
 import { AdminSentEmail } from "../../email";
 import { AdminEmailTemplate, AdminEmailTemplateUpdateOptions } from "../../email-templates";
-import { AdminTeamPermission, AdminTeamPermissionDefinition, AdminTeamPermissionDefinitionCreateOptions, AdminTeamPermissionDefinitionUpdateOptions, AdminProjectPermission, AdminProjectPermissionDefinition, AdminProjectPermissionDefinitionCreateOptions, AdminProjectPermissionDefinitionUpdateOptions } from "../../permissions";
+import { AdminProjectPermission, AdminProjectPermissionDefinition, AdminProjectPermissionDefinitionCreateOptions, AdminProjectPermissionDefinitionUpdateOptions, AdminTeamPermission, AdminTeamPermissionDefinition, AdminTeamPermissionDefinitionCreateOptions, AdminTeamPermissionDefinitionUpdateOptions } from "../../permissions";
+import { AdminProduct, AdminProductCreateOptions, AdminProductUpdateOptions } from "../../products";
 import { AdminProject } from "../../projects";
 import { _StackAdminAppImpl } from "../implementations";
 import { StackServerApp, StackServerAppConstructorOptions } from "./server-app";
@@ -32,6 +33,7 @@ export type StackAdminApp<HasTokenStore extends boolean = boolean, ProjectId ext
   & AsyncStoreProperty<"apiKeys", [], ApiKey[], true>
   & AsyncStoreProperty<"teamPermissionDefinitions", [], AdminTeamPermissionDefinition[], true>
   & AsyncStoreProperty<"projectPermissionDefinitions", [], AdminProjectPermissionDefinition[], true>
+  & AsyncStoreProperty<"products", [], AdminProduct[], true>
   & {
     useEmailTemplates(): AdminEmailTemplate[], // THIS_LINE_PLATFORM react-like
     listEmailTemplates(): Promise<AdminEmailTemplate[]>,
@@ -56,6 +58,31 @@ export type StackAdminApp<HasTokenStore extends boolean = boolean, ProjectId ext
     }): Promise<Result<undefined, { errorMessage: string }>>,
 
     listSentEmails(): Promise<AdminSentEmail[]>,
+
+    createStripeConnectIntegration(options: {
+      type: 'standard' | 'express' | 'custom',
+      return_url: string,
+      refresh_url: string,
+      team_id?: string,
+    }): Promise<{
+      accountId: string,
+      accountLinkUrl: string,
+    }>,
+
+    getStripeAccountSession(): Promise<{
+      clientSecret: string,
+    }>,
+
+    getStripeLoginLink(): Promise<{
+      url: string,
+    }>,
+
+    // Products endpoints
+    listProducts(): Promise<AdminProduct[]>,
+    createProduct(options: AdminProductCreateOptions): Promise<AdminProduct>,
+    updateProduct(productId: string, options: AdminProductUpdateOptions): Promise<AdminProduct>,
+    deleteProduct(productId: string): Promise<void>,
+    useProducts(): AdminProduct[], // THIS_LINE_PLATFORM react-like
   }
   & StackServerApp<HasTokenStore, ProjectId>
 );
