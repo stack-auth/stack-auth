@@ -35,55 +35,35 @@ export const baseConfig = {
  */
 export const projectConfigSchema = yupObject({
   // This is just an example of a field that can only be configured at the project level. Will be actually implemented in the future.
-  sourceOfTruthDbConnectionString: yupString().optional(),
+  project: yupObject({
+    sourceOfTruthDbConnectionString: yupString().optional(),
+  }).defined(),
 });
 
+const _permissionDefinitions = yupRecord(
+  yupString().defined().matches(permissionRegex),
+  yupObject({
+    id: yupString().defined(),
+    description: yupString().optional(),
+    // keys to the contained permissions are the ids of the permissions.
+    containedPermissions: yupRecord(
+      yupString().defined().matches(permissionRegex),
+      yupObject({
+        id: yupString().defined(),
+      }),
+    ).defined(),
+  }).defined(),
+).defined();
 
-export const branchConfigSchema = projectConfigSchema.omit(["sourceOfTruthDbConnectionString"]).concat(yupObject({
-  createTeamOnSignUp: yupBoolean().defined(),
-  clientTeamCreationEnabled: yupBoolean().defined(),
-  clientUserDeletionEnabled: yupBoolean().defined(),
-  signUpEnabled: yupBoolean().defined(),
-  isProductionMode: yupBoolean().defined(),
-  allowLocalhost: yupBoolean().defined(),
+const _permissionDefault = yupRecord(
+  yupString().defined().matches(permissionRegex),
+  yupObject({
+    id: yupString().defined(),
+  }),
+).defined();
+
+const branchAuth = yupObject({
   oauthAccountMergeStrategy: yupString().oneOf(['link_method', 'raise_error', 'allow_duplicates']).defined(),
-
-  // keys to the permissions/permission definitions are hex encoded ids.
-  teamCreateDefaultPermissions: yupRecord(
-    yupString().defined().matches(permissionRegex),
-    yupObject({
-      id: yupString().defined(),
-    }),
-  ).defined(),
-
-  teamMemberDefaultPermissions: yupRecord(
-    yupString().defined().matches(permissionRegex),
-    yupObject({
-      id: yupString().defined(),
-    }),
-  ).defined(),
-
-  teamPermissionDefinitions: yupRecord(
-    yupString().defined().matches(permissionRegex),
-    yupObject({
-      id: yupString().defined(),
-      description: yupString().optional(),
-      // keys to the contained permissions are the ids of the permissions.
-      containedPermissions: yupRecord(
-        yupString().defined().matches(permissionRegex),
-        yupObject({
-          id: yupString().defined(),
-        }),
-      ).defined(),
-    }).defined(),
-  ).defined(),
-
-  userDefaultPermissions: yupRecord(
-    yupString().defined().matches(permissionRegex),
-    yupObject({
-      id: yupString().defined(),
-    }),
-  ).defined(),
 
   // keys to the oauth providers are the provider ids.
   oauthProviders: yupRecord(
@@ -136,48 +116,80 @@ export const branchConfigSchema = projectConfigSchema.omit(["sourceOfTruthDbConn
       oauthProviderId: yupString().defined(),
     }),
   ).defined(),
+}).defined();
+
+const branchDomain = yupObject({
+  allowLocalhost: yupBoolean().defined(),
+}).defined();
+
+export const branchConfigSchema = projectConfigSchema.omit(["project"]).concat(yupObject({
+  team: yupObject({
+    createTeamOnSignUp: yupBoolean().defined(),
+    clientTeamCreationEnabled: yupBoolean().defined(),
+
+    defaultCreatorTeamPermissions: _permissionDefault,
+    defaultMemberTeamPermissions: _permissionDefault,
+    teamPermissionDefinitions: _permissionDefinitions,
+  }).defined(),
+
+  user: yupObject({
+    clientUserDeletionEnabled: yupBoolean().defined(),
+    signUpEnabled: yupBoolean().defined(),
+
+    defaultProjectPermissions: _permissionDefault,
+    userPermissionDefinitions: _permissionDefinitions,
+  }).defined(),
+
+  domain: branchDomain,
+
+  auth: branchAuth,
 }));
 
 
-export const environmentConfigSchema = branchConfigSchema.concat(yupObject({
-  oauthProviders: yupRecord(
-    yupString().defined().matches(permissionRegex),
-    yupObject({
-      id: yupString().defined(),
-      type: yupString().oneOf(allProviders).defined(),
-      isShared: yupBoolean().defined(),
-      clientId: schemaFields.yupDefinedAndNonEmptyWhen(schemaFields.oauthClientIdSchema, { type: 'standard', enabled: true }),
-      clientSecret: schemaFields.yupDefinedAndNonEmptyWhen(schemaFields.oauthClientSecretSchema, { type: 'standard', enabled: true }),
-      facebookConfigId: schemaFields.oauthFacebookConfigIdSchema.optional(),
-      microsoftTenantId: schemaFields.oauthMicrosoftTenantIdSchema.optional(),
-    }),
-  ).defined(),
+export const environmentConfigSchema = branchConfigSchema.omit(["auth", "domain"]).concat(yupObject({
+  auth: branchAuth.omit(["oauthProviders"]).concat(yupObject({
+    oauthProviders: yupRecord(
+      yupString().defined().matches(permissionRegex),
+      yupObject({
+        id: yupString().defined(),
+        type: yupString().oneOf(allProviders).defined(),
+        isShared: yupBoolean().defined(),
+        clientId: schemaFields.yupDefinedAndNonEmptyWhen(schemaFields.oauthClientIdSchema, { type: 'standard', enabled: true }),
+        clientSecret: schemaFields.yupDefinedAndNonEmptyWhen(schemaFields.oauthClientSecretSchema, { type: 'standard', enabled: true }),
+        facebookConfigId: schemaFields.oauthFacebookConfigIdSchema.optional(),
+        microsoftTenantId: schemaFields.oauthMicrosoftTenantIdSchema.optional(),
+      }),
+    ).defined(),
+  }).defined()),
 
-  emailConfig: yupUnion(
-    yupObject({
-      isShared: yupBoolean().isTrue().defined(),
-    }),
-    yupObject({
-      isShared: yupBoolean().isFalse().defined(),
-      host: schemaFields.emailHostSchema.defined().nonEmpty(),
-      port: schemaFields.emailPortSchema.defined(),
-      username: schemaFields.emailUsernameSchema.defined().nonEmpty(),
-      password: schemaFields.emailPasswordSchema.defined().nonEmpty(),
-      senderName: schemaFields.emailSenderNameSchema.defined().nonEmpty(),
-      senderEmail: schemaFields.emailSenderEmailSchema.defined().nonEmpty(),
-    })
-  ).defined(),
+  email: yupObject({
+    emailServer: yupUnion(
+      yupObject({
+        isShared: yupBoolean().isTrue().defined(),
+      }),
+      yupObject({
+        isShared: yupBoolean().isFalse().defined(),
+        host: schemaFields.emailHostSchema.defined().nonEmpty(),
+        port: schemaFields.emailPortSchema.defined(),
+        username: schemaFields.emailUsernameSchema.defined().nonEmpty(),
+        password: schemaFields.emailPasswordSchema.defined().nonEmpty(),
+        senderName: schemaFields.emailSenderNameSchema.defined().nonEmpty(),
+        senderEmail: schemaFields.emailSenderEmailSchema.defined().nonEmpty(),
+      })
+    ).defined(),
+  }).defined(),
 
-  // keys to the domains are url base64 encoded
-  domains: yupRecord(
-    yupString().defined().matches(permissionRegex),
-    yupObject({
-      domain: schemaFields.urlSchema.defined(),
-      handlerPath: schemaFields.handlerPathSchema.defined(),
-    }),
-  ).defined(),
+  domain: branchDomain.concat(yupObject({
+    // keys to the domains are url base64 encoded
+    trustedDomains: yupRecord(
+      yupString().defined().matches(permissionRegex),
+      yupObject({
+        baseUrl: schemaFields.urlSchema.defined(),
+        handlerPath: schemaFields.handlerPathSchema.defined(),
+      }),
+    ).defined(),
+  })),
 }));
-
 
 export const organizationConfigSchema = environmentConfigSchema.concat(yupObject({}));
 
