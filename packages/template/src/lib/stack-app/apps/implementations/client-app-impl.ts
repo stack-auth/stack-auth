@@ -1462,6 +1462,91 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
     }
   }
 
+  /**
+   * Initiates a CLI authentication process that allows a command line application
+   * to get a refresh token for a user's account.
+   *
+   * This process works as follows:
+   * 1. The CLI app calls this method, which initiates the auth process with the server
+   * 2. The server returns a polling code and a login code
+   * 3. The CLI app opens a browser window to the appUrl with the login code as a parameter
+   * 4. The user logs in through the browser and confirms the authorization
+   * 5. The CLI app polls for the refresh token using the polling code
+   *
+   * @param options Options for the CLI login
+   * @param options.appUrl The URL of the app that will handle the CLI auth confirmation
+   * @param options.expiresInMillis Optional duration in milliseconds before the auth attempt expires (default: 2 hours)
+   * @returns The refresh token that can be used to authenticate the CLI application
+   */
+  async promptCliLogin(options: { appUrl: string, expiresInMillis?: number }): Promise<string> {
+    if (!options.appUrl) {
+      throw new Error("appUrl is required and must be set to the URL of the app you're authenticating with");
+    }
+
+    // Step 1: Initiate the CLI auth process
+    const response = await this._interface.sendClientRequest(
+      "/auth/cli",
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          expires_in_millis: options.expiresInMillis,
+        }),
+      },
+      null
+    );
+
+    if (!response.ok) {
+      throw new Error(`Failed to initiate CLI auth: ${response.status} ${await response.text()}`);
+    }
+
+    const initResult = await response.json();
+    const pollingCode = initResult.polling_code;
+    const loginCode = initResult.login_code;
+
+    // Step 2: Open the browser for the user to authenticate
+    const url = `${options.appUrl}/handler/cli-auth-confirm?login_code=${encodeURIComponent(loginCode)}`;
+    console.log(`Please visit the following URL to authenticate:\n${url}`);
+
+    // Try to open the browser if we're in a NodeJS or browser environment
+
+    // Step 3: Poll for the token
+    let attempts = 0;
+    const maxAttempts = 300; // 10 minutes with 2-second intervals
+
+    while (attempts < maxAttempts) {
+      attempts++;
+      const pollResponse = await this._interface.sendClientRequest("/auth/cli/poll", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          polling_code: pollingCode,
+        }),
+      }, null);
+
+      const pollResult = await pollResponse.json();
+
+      if (pollResponse.status === 201 && pollResult.status === "success") {
+        return pollResult.refresh_token;
+      } else if (pollResult.status === "waiting") {
+        // Wait for 2 seconds before polling again
+        await wait(2000);
+      } else if (pollResult.status === "expired") {
+        throw new Error("CLI authentication request expired. Please try again.");
+      } else if (pollResult.status === "used") {
+        throw new Error("This authentication token has already been used.");
+      } else {
+        throw new Error(`Unexpected status from CLI auth polling: ${pollResult.status}`);
+      }
+    }
+
+    throw new Error("Timed out waiting for CLI authentication.");
+  }
+
   async signInWithPasskey(): Promise<Result<undefined, KnownErrors["PasskeyAuthenticationFailed"] | KnownErrors["InvalidTotpCode"] | KnownErrors["PasskeyWebAuthnError"]>> {
     this._ensurePersistentTokenStore();
     const session = await this._getSession();
