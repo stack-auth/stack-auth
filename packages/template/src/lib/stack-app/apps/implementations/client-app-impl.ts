@@ -797,6 +797,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
       oauthProviders: crud.oauth_providers,
       passkeyAuthEnabled: crud.passkey_auth_enabled,
       isMultiFactorRequired: crud.requires_totp_mfa,
+      isAnonymous: crud.is_anonymous,
       toClientJson(): CurrentUserCrud['Client']['Read'] {
         return crud;
       }
