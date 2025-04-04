@@ -152,19 +152,19 @@ export default function SetupPage() {
                     name: 'React',
                     imgSrc: '/react-logo.svg',
                     onClick: () => {
-                      window.open('https://docs.stack-auth.com/react/overview', '_blank');
+                      window.open('https://docs.stack-auth.com/react/getting-started/setup', '_blank');
                     },
                   }, {
                     name: 'JavaScript',
                     imgSrc: '/javascript-logo.svg',
                     onClick: () => {
-                      window.open('https://docs.stack-auth.com/js/overview', '_blank');
+                      window.open('https://docs.stack-auth.com/js/getting-started/setup', '_blank');
                     },
                   }, {
                     name: 'Python',
                     imgSrc: '/python-logo.svg',
                     onClick: () => {
-                      window.open('https://docs.stack-auth.com/python/overview', '_blank');
+                      window.open('https://docs.stack-auth.com/python/getting-started/setup', '_blank');
                     },
                   }].map(({ name, imgSrc: src, reverseIfDark, onClick }) => (
                     <Button variant={name === 'Next.js' ? 'secondary' : 'plain'} className='h-24 w-24 flex flex-col items-center justify-center gap-2 ' key={name} onClick={onClick}>
