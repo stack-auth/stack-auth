@@ -1,9 +1,9 @@
 import { KnownErrors, StackServerInterface } from "@stackframe/stack-shared";
 import { ContactChannelsCrud } from "@stackframe/stack-shared/dist/interface/crud/contact-channels";
+import { ProjectPermissionDefinitionsCrud, ProjectPermissionsCrud } from "@stackframe/stack-shared/dist/interface/crud/project-permissions";
 import { TeamInvitationCrud } from "@stackframe/stack-shared/dist/interface/crud/team-invitation";
 import { TeamMemberProfilesCrud } from "@stackframe/stack-shared/dist/interface/crud/team-member-profiles";
 import { TeamPermissionDefinitionsCrud, TeamPermissionsCrud } from "@stackframe/stack-shared/dist/interface/crud/team-permissions";
-import { UserPermissionDefinitionsCrud } from "@stackframe/stack-shared/dist/interface/crud/user-permissions";
 import { TeamsCrud } from "@stackframe/stack-shared/dist/interface/crud/teams";
 import { UsersCrud } from "@stackframe/stack-shared/dist/interface/crud/users";
 import { InternalSession } from "@stackframe/stack-shared/dist/sessions";
@@ -17,7 +17,7 @@ import { constructRedirectUrl } from "../../../../utils/url";
 import { GetUserOptions, HandlerUrls, OAuthScopesOnSignIn, TokenStoreInit } from "../../common";
 import { OAuthConnection } from "../../connected-accounts";
 import { ServerContactChannel, ServerContactChannelCreateOptions, ServerContactChannelUpdateOptions, serverContactChannelCreateOptionsToCrud, serverContactChannelUpdateOptionsToCrud } from "../../contact-channels";
-import { AdminTeamPermission, AdminTeamPermissionDefinition, AdminUserPermissionDefinition } from "../../permissions";
+import { AdminProjectPermissionDefinition, AdminTeamPermission, AdminTeamPermissionDefinition } from "../../permissions";
 import { EditableTeamMemberProfile, ServerListUsersOptions, ServerTeam, ServerTeamCreateOptions, ServerTeamUpdateOptions, ServerTeamUser, Team, TeamInvitation, serverTeamCreateOptionsToCrud, serverTeamUpdateOptionsToCrud } from "../../teams";
 import { ProjectCurrentServerUser, ServerUser, ServerUserCreateOptions, ServerUserUpdateOptions, serverUserCreateOptionsToCrud, serverUserUpdateOptionsToCrud } from "../../users";
 import { StackServerAppConstructorOptions } from "../interfaces/server-app";
@@ -60,6 +60,12 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
     TeamPermissionsCrud['Server']['Read'][]
   >(async ([teamId, userId, recursive]) => {
     return await this._interface.listServerTeamPermissions({ teamId, userId, recursive }, null);
+  });
+  private readonly _serverUserProjectPermissionsCache = createCache<
+    [string, boolean],
+    ProjectPermissionsCrud['Server']['Read'][]
+  >(async ([userId, recursive]) => {
+    return await this._interface.listServerProjectPermissions({ userId, recursive }, null);
   });
   private readonly _serverUserOAuthConnectionAccessTokensCache = createCache<[string, string, string], { accessToken: string } | null>(
     async ([userId, providerId, scope]) => {
@@ -145,11 +151,7 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
       isPrimary: crud.is_primary,
       usedForAuth: crud.used_for_auth,
       async sendVerificationEmail(options?: { callbackUrl?: string }) {
-        if (!options?.callbackUrl && !await app._getCurrentUrl()) {
-          throw new Error("Cannot send verification email without a callback URL from the server or without a redirect method. Make sure you pass the `callbackUrl` option: `sendVerificationEmail({ callbackUrl: ... })`");
-        }
-
-        await app._interface.sendServerContactChannelVerificationEmail(userId, crud.id, options?.callbackUrl ?? constructRedirectUrl(app.urls.emailVerification));
+        await app._interface.sendServerContactChannelVerificationEmail(userId, crud.id, options?.callbackUrl ?? constructRedirectUrl(app.urls.emailVerification, "callbackUrl"));
       },
       async update(data: ServerContactChannelUpdateOptions) {
         await app._interface.updateServerContactChannel(userId, crud.id, serverContactChannelUpdateOptionsToCrud(data));
@@ -316,30 +318,66 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
         await app._interface.leaveServerTeam({ teamId: team.id, userId: crud.id });
         // TODO: refresh cache
       },
-      async listPermissions(scope: Team, options?: { recursive?: boolean }): Promise<AdminTeamPermission[]> {
-        const recursive = options?.recursive ?? true;
-        const permissions = Result.orThrow(await app._serverTeamUserPermissionsCache.getOrWait([scope.id, crud.id, recursive], "write-only"));
-        return permissions.map((crud) => app._serverPermissionFromCrud(crud));
+      async listPermissions(scopeOrOptions?: Team | { recursive?: boolean }, options?: { recursive?: boolean }): Promise<AdminTeamPermission[]> {
+        if (scopeOrOptions && 'id' in scopeOrOptions) {
+          const scope = scopeOrOptions;
+          const recursive = options?.recursive ?? true;
+          const permissions = Result.orThrow(await app._serverTeamUserPermissionsCache.getOrWait([scope.id, crud.id, recursive], "write-only"));
+          return permissions.map((crud) => app._serverPermissionFromCrud(crud));
+        } else {
+          const opts = scopeOrOptions;
+          const recursive = opts?.recursive ?? true;
+          const permissions = Result.orThrow(await app._serverUserProjectPermissionsCache.getOrWait([crud.id, recursive], "write-only"));
+          return permissions.map((crud) => app._serverPermissionFromCrud(crud));
+        }
       },
       // IF_PLATFORM react-like
-      usePermissions(scope: Team, options?: { recursive?: boolean }): AdminTeamPermission[] {
-        const recursive = options?.recursive ?? true;
-        const permissions = useAsyncCache(app._serverTeamUserPermissionsCache, [scope.id, crud.id, recursive] as const, "user.usePermissions()");
-        return useMemo(() => permissions.map((crud) => app._serverPermissionFromCrud(crud)), [permissions]);
+      usePermissions(scopeOrOptions?: Team | { recursive?: boolean }, options?: { recursive?: boolean }): AdminTeamPermission[] {
+        if (scopeOrOptions && 'id' in scopeOrOptions) {
+          const scope = scopeOrOptions;
+          const recursive = options?.recursive ?? true;
+          const permissions = useAsyncCache(app._serverTeamUserPermissionsCache, [scope.id, crud.id, recursive] as const, "user.usePermissions()");
+          return useMemo(() => permissions.map((crud) => app._serverPermissionFromCrud(crud)), [permissions]);
+        } else {
+          const opts = scopeOrOptions;
+          const recursive = opts?.recursive ?? true;
+          const permissions = useAsyncCache(app._serverUserProjectPermissionsCache, [crud.id, recursive] as const, "user.usePermissions()");
+          return useMemo(() => permissions.map((crud) => app._serverPermissionFromCrud(crud)), [permissions]);
+        }
       },
       // END_PLATFORM
-      async getPermission(scope: Team, permissionId: string): Promise<AdminTeamPermission | null> {
-        const permissions = await this.listPermissions(scope);
-        return permissions.find((p) => p.id === permissionId) ?? null;
+      async getPermission(scopeOrPermissionId: Team | string, permissionId?: string): Promise<AdminTeamPermission | null> {
+        if (scopeOrPermissionId && typeof scopeOrPermissionId !== 'string') {
+          const scope = scopeOrPermissionId;
+          const permissions = await this.listPermissions(scope);
+          return permissions.find((p) => p.id === permissionId) ?? null;
+        } else {
+          const pid = scopeOrPermissionId;
+          const permissions = await this.listPermissions();
+          return permissions.find((p) => p.id === pid) ?? null;
+        }
       },
       // IF_PLATFORM react-like
-      usePermission(scope: Team, permissionId: string): AdminTeamPermission | null {
-        const permissions = this.usePermissions(scope);
-        return useMemo(() => permissions.find((p) => p.id === permissionId) ?? null, [permissions, permissionId]);
+      usePermission(scopeOrPermissionId: Team | string, permissionId?: string): AdminTeamPermission | null {
+        if (scopeOrPermissionId && typeof scopeOrPermissionId !== 'string') {
+          const scope = scopeOrPermissionId;
+          const permissions = this.usePermissions(scope);
+          return useMemo(() => permissions.find((p) => p.id === permissionId) ?? null, [permissions, permissionId]);
+        } else {
+          const pid = scopeOrPermissionId;
+          const permissions = this.usePermissions();
+          return useMemo(() => permissions.find((p) => p.id === pid) ?? null, [permissions, pid]);
+        }
       },
       // END_PLATFORM
-      async hasPermission(scope: Team, permissionId: string): Promise<boolean> {
-        return await this.getPermission(scope, permissionId) !== null;
+      async hasPermission(scopeOrPermissionId: Team | string, permissionId?: string): Promise<boolean> {
+        if (scopeOrPermissionId && typeof scopeOrPermissionId !== 'string') {
+          const scope = scopeOrPermissionId;
+          return (await this.getPermission(scope, permissionId as string)) !== null;
+        } else {
+          const pid = scopeOrPermissionId;
+          return (await this.getPermission(pid)) !== null;
+        }
       },
       async update(update: ServerUserUpdateOptions) {
         await app._updateServerUser(crud.id, update);
@@ -464,14 +502,10 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
         await app._serverTeamMemberProfilesCache.refresh([crud.id]);
       },
       async inviteUser(options: { email: string, callbackUrl?: string }) {
-        if (!options.callbackUrl && !await app._getCurrentUrl()) {
-          throw new Error("Cannot invite user without a callback URL from the server or without a redirect method. Make sure you pass the `callbackUrl` option: `inviteUser({ email, callbackUrl: ... })`");
-        }
-
         await app._interface.sendServerTeamInvitation({
           teamId: crud.id,
           email: options.email,
-          callbackUrl: options.callbackUrl ?? constructRedirectUrl(app.urls.teamInvitation),
+          callbackUrl: options.callbackUrl ?? constructRedirectUrl(app.urls.teamInvitation, "callbackUrl"),
         });
         await app._serverTeamInvitationsCache.refresh([crud.id]);
       },
@@ -626,7 +660,7 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
   }
   // END_PLATFORM
 
-  _serverPermissionFromCrud(crud: TeamPermissionsCrud['Server']['Read']): AdminTeamPermission {
+  _serverPermissionFromCrud(crud: TeamPermissionsCrud['Server']['Read'] | ProjectPermissionsCrud['Server']['Read']): AdminTeamPermission {
     return {
       id: crud.id,
     };
@@ -640,7 +674,7 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
     };
   }
 
-  _serverUserPermissionDefinitionFromCrud(crud: UserPermissionDefinitionsCrud['Admin']['Read']): AdminUserPermissionDefinition {
+  _serverProjectPermissionDefinitionFromCrud(crud: ProjectPermissionDefinitionsCrud['Admin']['Read']): AdminProjectPermissionDefinition {
     return {
       id: crud.id,
       description: crud.description,

@@ -1104,9 +1104,9 @@ const TeamMembershipAlreadyExists = createKnownErrorConstructor(
   () => [] as const,
 );
 
-const UserPermissionRequired = createKnownErrorConstructor(
+const ProjectPermissionRequired = createKnownErrorConstructor(
   KnownError,
-  "USER_PERMISSION_REQUIRED",
+  "PROJECT_PERMISSION_REQUIRED",
   (userId, permissionId) => [
     401,
     `User ${userId} does not have permission ${permissionId}.`,
@@ -1218,6 +1218,19 @@ const InvalidPollingCodeError = createKnownErrorConstructor(
   (json: any) => [json] as const,
 );
 
+const PermissionIdAlreadyExists = createKnownErrorConstructor(
+  KnownError,
+  "PERMISSION_ID_ALREADY_EXISTS",
+  (permissionId: string) => [
+    400,
+    `Permission with ID "${permissionId}" already exists. Choose a different ID.`,
+    {
+      permission_id: permissionId,
+    },
+  ] as const,
+  (json: any) => [json.permission_id] as const,
+);
+
 export type KnownErrors = {
   [K in keyof typeof KnownErrors]: InstanceType<typeof KnownErrors[K]>;
 };
@@ -1229,6 +1242,7 @@ export const KnownErrors = {
   SchemaError,
   AllOverloadsFailed,
   ProjectAuthenticationError,
+  PermissionIdAlreadyExists,
   InvalidProjectAuthentication,
   ProjectKeyWithoutAccessType,
   InvalidAccessType,
@@ -1308,7 +1322,7 @@ export const KnownErrors = {
   InvalidTotpCode,
   UserAuthenticationRequired,
   TeamMembershipAlreadyExists,
-  UserPermissionRequired,
+  ProjectPermissionRequired,
   TeamPermissionRequired,
   InvalidSharedOAuthProviderId,
   InvalidStandardOAuthProviderId,

@@ -1,5 +1,5 @@
 import { TeamPermissionDefinitionsCrud } from "@stackframe/stack-shared/dist/interface/crud/team-permissions";
-import { UserPermissionDefinitionsCrud } from "@stackframe/stack-shared/dist/interface/crud/user-permissions";
+import { ProjectPermissionDefinitionsCrud } from "@stackframe/stack-shared/dist/interface/crud/project-permissions";
 
 
 export type TeamPermission = {
@@ -38,24 +38,24 @@ export function adminTeamPermissionDefinitionUpdateOptionsToCrud(options: AdminT
   };
 }
 
-export type UserPermission = {
+export type ProjectPermission = {
   id: string,
 };
 
-export type AdminUserPermission = UserPermission;
+export type AdminProjectPermission = ProjectPermission;
 
-export type AdminUserPermissionDefinition = {
-  id: string,
-  description?: string,
-  containedPermissionIds: string[],
-};
-
-export type AdminUserPermissionDefinitionCreateOptions = {
+export type AdminProjectPermissionDefinition = {
   id: string,
   description?: string,
   containedPermissionIds: string[],
 };
-export function adminUserPermissionDefinitionCreateOptionsToCrud(options: AdminUserPermissionDefinitionCreateOptions): UserPermissionDefinitionsCrud["Admin"]["Create"] {
+
+export type AdminProjectPermissionDefinitionCreateOptions = {
+  id: string,
+  description?: string,
+  containedPermissionIds: string[],
+};
+export function adminProjectPermissionDefinitionCreateOptionsToCrud(options: AdminProjectPermissionDefinitionCreateOptions): ProjectPermissionDefinitionsCrud["Admin"]["Create"] {
   return {
     id: options.id,
     description: options.description,
@@ -63,8 +63,8 @@ export function adminUserPermissionDefinitionCreateOptionsToCrud(options: AdminU
   };
 }
 
-export type AdminUserPermissionDefinitionUpdateOptions = Partial<AdminUserPermissionDefinitionCreateOptions>;
-export function adminUserPermissionDefinitionUpdateOptionsToCrud(options: AdminUserPermissionDefinitionUpdateOptions): UserPermissionDefinitionsCrud["Admin"]["Update"] {
+export type AdminProjectPermissionDefinitionUpdateOptions = Partial<AdminProjectPermissionDefinitionCreateOptions>;
+export function adminProjectPermissionDefinitionUpdateOptionsToCrud(options: AdminProjectPermissionDefinitionUpdateOptions): ProjectPermissionDefinitionsCrud["Admin"]["Update"] {
   return {
     id: options.id,
     description: options.description,

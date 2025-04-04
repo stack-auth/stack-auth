@@ -1,5 +1,19 @@
 # @stackframe/docs
 
+## 2.8.2
+
+### Patch Changes
+
+- Various changes
+
+## 2.8.1
+
+## 2.8.0
+
+### Minor Changes
+
+- Various changes
+
 ## 2.7.30
 
 ## 2.7.29

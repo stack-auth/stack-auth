@@ -464,7 +464,7 @@ export function getProjectQuery(projectId: string): RawQuery<ProjectsCrud["Admin
             .filter(perm => perm.__is_default_team_member_permission)
             .map(perm => ({ id: perm.id })),
           user_default_permissions: teamPermissions
-            .filter(perm => perm.__is_default_user_permission)
+            .filter(perm => perm.__is_default_project_permission)
             .map(perm => ({ id: perm.id })),
         },
       };

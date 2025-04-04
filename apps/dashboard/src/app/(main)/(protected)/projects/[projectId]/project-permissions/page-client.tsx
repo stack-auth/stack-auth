@@ -10,12 +10,12 @@ import { useAdminApp } from "../use-admin-app";
 
 export default function PageClient() {
   const stackAdminApp = useAdminApp();
-  const permissions = stackAdminApp.useUserPermissionDefinitions();
+  const permissions = stackAdminApp.useProjectPermissionDefinitions();
   const [createPermissionModalOpen, setCreatePermissionModalOpen] = React.useState(false);
 
   return (
     <PageLayout
-      title="User Permissions"
+      title="Project Permissions"
       actions={
         <Button onClick={() => setCreatePermissionModalOpen(true)}>
           Create Permission
@@ -24,7 +24,7 @@ export default function PageClient() {
 
       <PermissionTable
         permissions={permissions}
-        permissionType="user"
+        permissionType="project"
       />
 
       <CreateDialog
@@ -40,17 +40,18 @@ function CreateDialog(props: {
   onOpenChange: (open: boolean) => void,
 }) {
   const stackAdminApp = useAdminApp();
-  const permissions = stackAdminApp.useUserPermissionDefinitions();
+  const projectPermissions = stackAdminApp.useProjectPermissionDefinitions();
+  const combinedPermissions = [...stackAdminApp.useTeamPermissionDefinitions(), ...projectPermissions];
 
   const formSchema = yup.object({
     id: yup.string().defined()
-      .notOneOf(permissions.map((p) => p.id), "ID already exists")
+      .notOneOf(combinedPermissions.map((p) => p.id), "ID already exists")
       .matches(/^[a-z0-9_:]+$/, 'Only lowercase letters, numbers, ":" and "_" are allowed')
       .label("ID"),
     description: yup.string().label("Description"),
     containedPermissionIds: yup.array().of(yup.string().defined()).defined().default([]).meta({
       stackFormFieldRender: (props) => (
-        <PermissionListField {...props} permissions={permissions} type="new" />
+        <PermissionListField {...props} permissions={projectPermissions} type="new" />
       ),
     }),
   });
@@ -62,7 +63,7 @@ function CreateDialog(props: {
     formSchema={formSchema}
     okButton={{ label: "Create" }}
     onSubmit={async (values) => {
-      await stackAdminApp.createUserPermissionDefinition({
+      await stackAdminApp.createProjectPermissionDefinition({
         id: values.id,
         description: values.description,
         containedPermissionIds: values.containedPermissionIds,

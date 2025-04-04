@@ -14,7 +14,7 @@ type AdminPermissionDefinition = {
   containedPermissionIds: string[],
 };
 
-type PermissionType = 'user' | 'team';
+type PermissionType = 'project' | 'team';
 
 function toolbarRender<TData>(table: Table<TData>) {
   return (
@@ -31,9 +31,11 @@ function EditDialog(props: {
   permissionType: PermissionType,
 }) {
   const stackAdminApp = useAdminApp();
-  const permissions = props.permissionType === 'user'
-    ? stackAdminApp.useUserPermissionDefinitions()
-    : stackAdminApp.useTeamPermissionDefinitions();
+  const teamPermissions = stackAdminApp.useTeamPermissionDefinitions();
+  const projectPermissions = stackAdminApp.useProjectPermissionDefinitions();
+  const permissions = props.permissionType === 'project' ? projectPermissions : teamPermissions;
+  const combinedPermissions = [...teamPermissions, ...projectPermissions];
+
   const currentPermission = permissions.find((p) => p.id === props.selectedPermissionId);
   if (!currentPermission) {
     return null;
@@ -42,7 +44,7 @@ function EditDialog(props: {
   const formSchema = yup.object({
     id: yup.string()
       .defined()
-      .notOneOf(permissions.map((p) => p.id).filter(p => p !== props.selectedPermissionId), "ID already exists")
+      .notOneOf(combinedPermissions.map((p) => p.id).filter(p => p !== props.selectedPermissionId), "ID already exists")
       .matches(/^[a-z0-9_:]+$/, 'Only lowercase letters, numbers, ":" and "_" are allowed')
       .label("ID"),
     description: yup.string().label("Description"),
@@ -62,10 +64,6 @@ function EditDialog(props: {
     })
   }).default(currentPermission);
 
-  const updatePermission = props.permissionType === 'user'
-    ? stackAdminApp.updateUserPermissionDefinition
-    : stackAdminApp.updateTeamPermissionDefinition;
-
   return <SmartFormDialog
     open={props.open}
     onOpenChange={props.onOpenChange}
@@ -74,7 +72,11 @@ function EditDialog(props: {
     okButton={{ label: "Save" }}
     onSubmit={(values) => {
       runAsynchronously(async () => {
-        await updatePermission(props.selectedPermissionId, values);
+        if (props.permissionType === 'project') {
+          await stackAdminApp.updateProjectPermissionDefinition(props.selectedPermissionId, values);
+        } else {
+          await stackAdminApp.updateTeamPermissionDefinition(props.selectedPermissionId, values);
+        }
       });
     }}
     cancelButton
@@ -87,10 +89,7 @@ function DeleteDialog<T extends AdminPermissionDefinition>(props: {
   onOpenChange: (open: boolean) => void,
   permissionType: PermissionType,
 }) {
-  const stackApp = useAdminApp();
-  const deletePermission = props.permissionType === 'user'
-    ? stackApp.deleteUserPermissionDefinition
-    : stackApp.deleteTeamPermissionDefinition;
+  const stackAdminApp = useAdminApp();
 
   return <ActionDialog
     open={props.open}
@@ -98,7 +97,13 @@ function DeleteDialog<T extends AdminPermissionDefinition>(props: {
     title="Delete Permission"
     danger
     cancelButton
-    okButton={{ label: "Delete Permission", onClick: async () => { await deletePermission(props.permission.id); } }}
+    okButton={{ label: "Delete Permission", onClick: async () => {
+      if (props.permissionType === 'project') {
+        await stackAdminApp.deleteProjectPermissionDefinition(props.permission.id);
+      } else {
+        await stackAdminApp.deleteTeamPermissionDefinition(props.permission.id);
+      }
+    } }}
     confirmText="I understand this will remove the permission from all users and other permissions that contain it."
   >
     {`Are you sure you want to delete the permission "${props.permission.id}"?`}

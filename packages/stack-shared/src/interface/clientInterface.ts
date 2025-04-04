@@ -15,6 +15,7 @@ import { deindent } from '../utils/strings';
 import { ContactChannelsCrud } from './crud/contact-channels';
 import { CurrentUserCrud } from './crud/current-user';
 import { ConnectedAccountAccessTokenCrud } from './crud/oauth';
+import { ProjectPermissionsCrud } from './crud/project-permissions';
 import { AdminUserProjectsCrud, ClientProjectsCrud } from './crud/projects';
 import { SessionsCrud } from './crud/sessions';
 import { TeamInvitationCrud } from './crud/team-invitation';
@@ -119,7 +120,7 @@ export class StackClientInterface {
     // try to diagnose the error for the user
     if (retriedResult.status === "error") {
       if (globalVar.navigator && !globalVar.navigator.onLine) {
-        throw new Error("Failed to send Stack network request. It seems like you are offline. (window.navigator.onLine is falsy)", { cause: retriedResult.error });
+        throw new Error("Failed to send Stack network request. It seems like you are offline, please check your internet connection and try again. This is not an error with Stack Auth. (window.navigator.onLine is falsy)", { cause: retriedResult.error });
       }
       throw await this._createNetworkError(retriedResult.error, session, requestType);
     }
@@ -1180,6 +1181,21 @@ export class StackClientInterface {
       session,
     );
     const result = await response.json() as TeamPermissionsCrud['Client']['List'];
+    return result.items;
+  }
+
+  async listCurrentUserProjectPermissions(
+    options: {
+      recursive: boolean,
+    },
+    session: InternalSession
+  ): Promise<ProjectPermissionsCrud['Client']['Read'][]> {
+    const response = await this.sendClientRequest(
+      `/project-permissions?user_id=me&recursive=${options.recursive}`,
+      {},
+      session,
+    );
+    const result = await response.json() as ProjectPermissionsCrud['Client']['List'];
     return result.items;
   }
 
