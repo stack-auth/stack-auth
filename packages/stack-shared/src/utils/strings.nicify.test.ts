@@ -36,6 +36,10 @@ describe("nicify", () => {
       expect(nicify([1])).toBe("[1]");
     });
 
+    test("single-element array with long content", () => {
+      expect(nicify(["123123123123123"])).toBe('["123123123123123"]');
+    });
+
     test("flat array", () => {
       expect(nicify([1, 2, 3])).toBe("[1, 2, 3]");
     });
