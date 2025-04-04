@@ -278,7 +278,7 @@ Update project
 
 
 // D -> C
-export const dbProjectToRenderedEnvironmentConfig = (dbProject: DBProject): EnvironmentRenderedConfig => {
+export const dbProjectToRenderedOrganizationConfig = (dbProject: DBProject): OrganizationRenderedConfig => {
   const config = dbProject.config;
 
   return {
