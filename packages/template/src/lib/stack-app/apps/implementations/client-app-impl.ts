@@ -628,14 +628,11 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
       clientMetadata: crud.client_metadata,
       clientReadOnlyMetadata: crud.client_read_only_metadata,
       async inviteUser(options: { email: string, callbackUrl?: string }) {
-        if (!options.callbackUrl && !await app._getCurrentUrl()) {
-          throw new Error("Cannot invite user without a callback URL from the server or without a redirect method. Make sure you pass the `callbackUrl` option: `inviteUser({ email, callbackUrl: ... })`");
-        }
         await app._interface.sendTeamInvitation({
           teamId: crud.id,
           email: options.email,
           session,
-          callbackUrl: options.callbackUrl ?? constructRedirectUrl(app.urls.teamInvitation),
+          callbackUrl: options.callbackUrl ?? constructRedirectUrl(app.urls.teamInvitation, "callbackUrl"),
         });
         await app._teamInvitationsCache.refresh([session, crud.id]);
       },
@@ -680,8 +677,12 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
       isPrimary: crud.is_primary,
       usedForAuth: crud.used_for_auth,
 
-      async sendVerificationEmail() {
-        await app._interface.sendCurrentUserContactChannelVerificationEmail(crud.id, constructRedirectUrl(app.urls.emailVerification), session);
+      async sendVerificationEmail(options?: { callbackUrl?: string }) {
+        await app._interface.sendCurrentUserContactChannelVerificationEmail(
+          crud.id,
+          options?.callbackUrl || constructRedirectUrl(app.urls.emailVerification, "callbackUrl"),
+          session
+        );
       },
       async update(data: ContactChannelUpdateOptions) {
         await app._interface.updateClientContactChannel(crud.id, contactChannelUpdateOptionsToCrud(data), session);
@@ -796,6 +797,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
       oauthProviders: crud.oauth_providers,
       passkeyAuthEnabled: crud.passkey_auth_enabled,
       isMultiFactorRequired: crud.requires_totp_mfa,
+      isAnonymous: crud.is_anonymous,
       toClientJson(): CurrentUserCrud['Client']['Read'] {
         return crud;
       }
@@ -938,10 +940,11 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
         if (!crud.primary_email) {
           throw new StackAssertionError("User does not have a primary email");
         }
-        if (!options?.callbackUrl && !await app._getCurrentUrl()) {
-          throw new Error("Cannot send verification email without a callback URL from the server or without a redirect method. Make sure you pass the `callbackUrl` option: `sendVerificationEmail({ callbackUrl: ... })`");
-        }
-        return await app._interface.sendVerificationEmail(crud.primary_email, options?.callbackUrl ?? constructRedirectUrl(app.urls.emailVerification), session);
+        return await app._interface.sendVerificationEmail(
+          crud.primary_email,
+          options?.callbackUrl ?? constructRedirectUrl(app.urls.emailVerification, "callbackUrl"),
+          session
+        );
       },
       async updatePassword(options: { oldPassword: string, newPassword: string}) {
         const result = await app._interface.updatePassword(options, session);
@@ -1156,17 +1159,11 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
   async redirectToTeamInvitation(options?: RedirectToOptions) { return await this._redirectToHandler("teamInvitation", options); }
 
   async sendForgotPasswordEmail(email: string, options?: { callbackUrl?: string }): Promise<Result<undefined, KnownErrors["UserNotFound"]>> {
-    if (!options?.callbackUrl && !await this._getCurrentUrl()) {
-      throw new Error("Cannot send forgot password email without a callback URL from the server or without a redirect method. Make sure you pass the `callbackUrl` option: `sendForgotPasswordEmail({ email, callbackUrl: ... })`");
-    }
-    return await this._interface.sendForgotPasswordEmail(email, options?.callbackUrl ?? constructRedirectUrl(this.urls.passwordReset));
+    return await this._interface.sendForgotPasswordEmail(email, options?.callbackUrl ?? constructRedirectUrl(this.urls.passwordReset, "callbackUrl"));
   }
 
   async sendMagicLinkEmail(email: string, options?: { callbackUrl?: string }): Promise<Result<{ nonce: string }, KnownErrors["RedirectUrlNotWhitelisted"]>> {
-    if (!options?.callbackUrl && !await this._getCurrentUrl()) {
-      throw new Error("Cannot send magic link email without a callback URL from the server or without a redirect method. Make sure you pass the `callbackUrl` option: `sendMagicLinkEmail({ email, callbackUrl: ... })`");
-    }
-    return await this._interface.sendMagicLinkEmail(email, options?.callbackUrl ?? constructRedirectUrl(this.urls.magicLinkCallback));
+    return await this._interface.sendMagicLinkEmail(email, options?.callbackUrl ?? constructRedirectUrl(this.urls.magicLinkCallback, "callbackUrl"));
   }
 
   async resetPassword(options: { password: string, code: string }): Promise<Result<undefined, KnownErrors["VerificationCodeError"]>> {
@@ -1398,7 +1395,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
   }): Promise<Result<undefined, KnownErrors["UserWithEmailAlreadyExists"] | KnownErrors['PasswordRequirementsNotMet']>> {
     this._ensurePersistentTokenStore();
     const session = await this._getSession();
-    const emailVerificationRedirectUrl = options.verificationCallbackUrl ?? constructRedirectUrl(this.urls.emailVerification);
+    const emailVerificationRedirectUrl = options.verificationCallbackUrl ?? constructRedirectUrl(this.urls.emailVerification, "verificationCallbackUrl");
     const result = await this._interface.signUpWithCredential(
       options.email,
       options.password,
