@@ -166,7 +166,7 @@ export function projectPrismaToCrud(
     }
   };
 
-  const newResultWithConfigJson = renderedEnvironmentConfigToProjectCrud(dbProjectToRenderedEnvironmentConfig(prisma), result.config.id);
+  const newResultWithConfigJson = renderedOrganizationConfigToProjectCrud(await getRenderedOrganizationConfig(), result.config.id);
   if (!deepPlainEquals(result.config, newResultWithConfigJson)) {
     const errorName = "Project config mismatch";
     const errorData = { result: result.config, newResult: newResultWithConfigJson };
