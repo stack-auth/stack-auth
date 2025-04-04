@@ -146,7 +146,7 @@ type NormalizeOptions = {
 }
 
 export class NormalizationError extends Error {
-  constructor(...args: ConstructorParameters<typeof StackAssertionError>) {
+  constructor(...args: ConstructorParameters<typeof Error>) {
     super(...args);
   }
 }
