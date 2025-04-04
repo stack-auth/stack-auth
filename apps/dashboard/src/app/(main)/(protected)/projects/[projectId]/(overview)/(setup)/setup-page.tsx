@@ -143,7 +143,7 @@ export default function SetupPage() {
               title: "Select your framework",
               description: "Create a new project or use an existing one",
               content: <div>
-                <div className="flex gap-4 justify-center">
+                <div className="flex gap-4 flex-wrap">
                   {[{
                     name: 'Next.js',
                     reverseIfDark: true,
@@ -167,7 +167,7 @@ export default function SetupPage() {
                       window.open('https://docs.stack-auth.com/python/overview', '_blank');
                     },
                   }].map(({ name, imgSrc: src, reverseIfDark, onClick }) => (
-                    <Button variant={name === 'Next.js' ? 'secondary' : 'plain'} className='h-20 w-20 flex flex-col items-center justify-center gap-2' key={name} onClick={onClick}>
+                    <Button variant={name === 'Next.js' ? 'secondary' : 'plain'} className='h-24 w-24 flex flex-col items-center justify-center gap-2 ' key={name} onClick={onClick}>
                       <Image
                         src={src}
                         alt={name}
@@ -175,7 +175,7 @@ export default function SetupPage() {
                         height={30}
                         className={reverseIfDark ? "dark:invert" : undefined}
                       />
-                      <Typography>{name}</Typography>
+                      <Typography type='label'>{name}</Typography>
                     </Button>
                   ))}
                 </div>
