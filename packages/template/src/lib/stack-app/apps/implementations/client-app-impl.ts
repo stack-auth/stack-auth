@@ -1506,8 +1506,6 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
     const url = `${options.appUrl}/handler/cli-auth-confirm?login_code=${encodeURIComponent(loginCode)}`;
     console.log(`Please visit the following URL to authenticate:\n${url}`);
 
-    // Try to open the browser if we're in a NodeJS or browser environment
-
     // Step 3: Poll for the token
     let attempts = 0;
     const maxAttempts = 300; // 10 minutes with 2-second intervals
