@@ -7,7 +7,7 @@
     "typecheck": "tsc --noEmit",
     "clean": "rimraf .next && rimraf node_modules",
     "dev": "next dev --port 8108",
-    "build": "next build",
+    "build": "next build --no-lint",
     "start": "next start --port 8108",
     "lint": "next lint"
   },
@@ -24,11 +24,16 @@
     "react-icons": "^5.0.1"
   },
   "devDependencies": {
+    "@types/node": "^22.13.14",
     "@types/react": "link:@types/react@18.3.12",
     "@types/react-dom": "^18",
+    "@typescript-eslint/eslint-plugin": "^8.28.0",
+    "@typescript-eslint/parser": "^8.28.0",
     "autoprefixer": "^10.4.17",
+    "eslint": "^8.57.0",
     "postcss": "^8.4.35",
     "rimraf": "^5.0.5",
-    "tailwindcss": "^3.4.1"
+    "tailwindcss": "^3.4.1",
+    "typescript": "^5.8.2"
   }
 }

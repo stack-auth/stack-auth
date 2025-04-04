@@ -165,7 +165,7 @@ export const contactChannelsCrudHandlers = createLazyProxy(() => createCrudHandl
           },
         });
         if (existingWithSameChannel && existingWithSameChannel.id !== existingContactChannel.id) {
-          throw new KnownErrors.ContactChannelAlreadyUsedForAuthBySomeoneElse(data.type ?? prismaContactChannelTypeToCrud(existingContactChannel.type));
+          throw new KnownErrors.ContactChannelAlreadyUsedForAuthBySomeoneElse(data.type ?? prismaContactChannelTypeToCrud(existingContactChannel.type), data.value ?? existingContactChannel.value);
         }
       }
 

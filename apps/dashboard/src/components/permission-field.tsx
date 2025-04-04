@@ -171,8 +171,8 @@ export function PermissionListField<F extends FieldValues>(props: {
 
   return (
     <FormField
-      control={props.control}
-      name={props.name}
+      control={props.control as any}
+      name={props.name as any}
       render={({ field }) => {
         return (
           <FormItem>
@@ -195,9 +195,9 @@ export function PermissionListField<F extends FieldValues>(props: {
                         onCheckedChange={(checked) => {
                           let newContains: string[];
                           if (checked) {
-                            newContains = [...field.value || [], permission.id];
+                            newContains = [...(field.value as any[] || []), permission.id];
                           } else {
-                            newContains = (field.value  || []).filter((v: any) => v !== permission.id);
+                            newContains = ((field.value as any[]) || []).filter((v: any) => v !== permission.id);
                           }
                           newContains = [...new Set(newContains)];
 

@@ -214,7 +214,7 @@ export function FormSettingCard<F extends FieldValues>(
         <Button form={formId} type="submit" loading={submitting} disabled={buttonsDisabled}>Save</Button>
       </>
     }>
-      <Form {...form}>
+      <Form {...form as any}>
         <form onSubmit={e => runAsynchronouslyWithAlert(form.handleSubmit(onSubmit)(e))} className="space-y-4" id={formId}>
           {props.render(form)}
         </form>

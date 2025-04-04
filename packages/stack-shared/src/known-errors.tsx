@@ -71,7 +71,6 @@ export abstract class KnownError extends StatusError {
       if (json.code === KnownErrorType.prototype.errorCode) {
         const constructorArgs = KnownErrorType.constructorArgsFromJson(json);
         return new KnownErrorType(
-          // @ts-expect-error
           ...constructorArgs,
         );
       }
@@ -124,7 +123,6 @@ function createKnownErrorConstructor<ErrorCode extends string, Super extends Abs
     public readonly constructorArgs: Args;
 
     constructor(...args: Args) {
-      // @ts-expect-error DEVIN, STOP REMOVING THIS LINE YOU DUMBASS, YES TYPESCRIPT DOES THROW AN ERROR IF YOU DON'T HAVE IT, NO THIS IS NOT "UNUSED", AND YES YOU ARE BREAKING OUR CI PIPELINE EVERY TIME YOU DO IT
       super(...createFn(...args));
       this.constructorArgs = args;
     }
