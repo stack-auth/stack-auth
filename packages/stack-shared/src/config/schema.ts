@@ -35,18 +35,18 @@ export const baseConfig = {
  */
 export const projectConfigSchema = yupObject({
   // This is just an example of a field that can only be configured at the project level. Will be actually implemented in the future.
-  sourceOfTruthDbConnectionString: yupString().optional().meta({ endConfigurableLevel: 'project' }),
+  sourceOfTruthDbConnectionString: yupString().optional(),
 });
 
 
 export const branchConfigSchema = projectConfigSchema.omit(["sourceOfTruthDbConnectionString"]).concat(yupObject({
-  createTeamOnSignUp: yupBoolean().defined().meta({ endConfigurableLevel: 'organization' }),
-  clientTeamCreationEnabled: yupBoolean().defined().meta({ endConfigurableLevel: 'organization' }),
-  clientUserDeletionEnabled: yupBoolean().defined().meta({ endConfigurableLevel: 'organization' }),
-  signUpEnabled: yupBoolean().defined().meta({ endConfigurableLevel: 'organization' }),
-  isProductionMode: yupBoolean().defined().meta({ endConfigurableLevel: 'organization' }),
-  allowLocalhost: yupBoolean().defined().meta({ endConfigurableLevel: 'organization' }),
-  oauthAccountMergeStrategy: yupString().oneOf(['link_method', 'raise_error', 'allow_duplicates']).defined().meta({ endConfigurableLevel: 'organization' }),
+  createTeamOnSignUp: yupBoolean().defined(),
+  clientTeamCreationEnabled: yupBoolean().defined(),
+  clientUserDeletionEnabled: yupBoolean().defined(),
+  signUpEnabled: yupBoolean().defined(),
+  isProductionMode: yupBoolean().defined(),
+  allowLocalhost: yupBoolean().defined(),
+  oauthAccountMergeStrategy: yupString().oneOf(['link_method', 'raise_error', 'allow_duplicates']).defined(),
 
   // keys to the permissions/permission definitions are hex encoded ids.
   teamCreateDefaultPermissions: yupRecord(
@@ -54,14 +54,14 @@ export const branchConfigSchema = projectConfigSchema.omit(["sourceOfTruthDbConn
     yupObject({
       id: yupString().defined(),
     }),
-  ).defined().meta({ endConfigurableLevel: 'organization' }),
+  ).defined(),
 
   teamMemberDefaultPermissions: yupRecord(
     yupString().defined().matches(permissionRegex),
     yupObject({
       id: yupString().defined(),
     }),
-  ).defined().meta({ endConfigurableLevel: 'organization' }),
+  ).defined(),
 
   teamPermissionDefinitions: yupRecord(
     yupString().defined().matches(permissionRegex),
@@ -76,23 +76,23 @@ export const branchConfigSchema = projectConfigSchema.omit(["sourceOfTruthDbConn
         }),
       ).defined(),
     }).defined(),
-  ).defined().meta({ endConfigurableLevel: 'organization' }),
+  ).defined(),
 
   userDefaultPermissions: yupRecord(
     yupString().defined().matches(permissionRegex),
     yupObject({
       id: yupString().defined(),
     }),
-  ).defined().meta({ endConfigurableLevel: 'organization' }),
+  ).defined(),
 
   // keys to the oauth providers are the provider ids.
   oauthProviders: yupRecord(
     yupString().defined().matches(permissionRegex),
     yupObject({
       id: yupString().defined(),
-      type: yupString().oneOf(allProviders).defined().meta({ endConfigurableLevel: 'organization' }),
+      type: yupString().oneOf(allProviders).defined(),
     }),
-  ).defined().meta({ endConfigurableLevel: 'organization' }),
+  ).defined(),
 
   // keys to the auth methods are the auth method ids.
   authMethods: yupRecord(
@@ -124,7 +124,7 @@ export const branchConfigSchema = projectConfigSchema.omit(["sourceOfTruthDbConn
         oauthProviderId: yupString().defined(),
       }),
     ),
-  ).defined().meta({ endConfigurableLevel: 'organization' }),
+  ).defined(),
 
   // keys to the connected accounts are the oauth provider ids.
   connectedAccounts: yupRecord(
@@ -135,7 +135,7 @@ export const branchConfigSchema = projectConfigSchema.omit(["sourceOfTruthDbConn
       enabled: yupBoolean().defined(),
       oauthProviderId: yupString().defined(),
     }),
-  ).defined().meta({ endConfigurableLevel: 'organization' }),
+  ).defined(),
 }));
 
 
@@ -144,14 +144,14 @@ export const environmentConfigSchema = branchConfigSchema.concat(yupObject({
     yupString().defined().matches(permissionRegex),
     yupObject({
       id: yupString().defined(),
-      type: yupString().oneOf(allProviders).defined().meta({ endConfigurableLevel: 'organization' }),
-      isShared: yupBoolean().defined().meta({ endConfigurableLevel: 'organization' }),
-      clientId: schemaFields.yupDefinedAndNonEmptyWhen(schemaFields.oauthClientIdSchema, { type: 'standard', enabled: true }).meta({ endConfigurableLevel: 'organization' }),
-      clientSecret: schemaFields.yupDefinedAndNonEmptyWhen(schemaFields.oauthClientSecretSchema, { type: 'standard', enabled: true }).meta({ endConfigurableLevel: 'organization' }),
-      facebookConfigId: schemaFields.oauthFacebookConfigIdSchema.optional().meta({ endConfigurableLevel: 'organization' }),
-      microsoftTenantId: schemaFields.oauthMicrosoftTenantIdSchema.optional().meta({ endConfigurableLevel: 'organization' }),
+      type: yupString().oneOf(allProviders).defined(),
+      isShared: yupBoolean().defined(),
+      clientId: schemaFields.yupDefinedAndNonEmptyWhen(schemaFields.oauthClientIdSchema, { type: 'standard', enabled: true }),
+      clientSecret: schemaFields.yupDefinedAndNonEmptyWhen(schemaFields.oauthClientSecretSchema, { type: 'standard', enabled: true }),
+      facebookConfigId: schemaFields.oauthFacebookConfigIdSchema.optional(),
+      microsoftTenantId: schemaFields.oauthMicrosoftTenantIdSchema.optional(),
     }),
-  ).defined().meta({ endConfigurableLevel: 'organization' }),
+  ).defined(),
 
   emailConfig: yupUnion(
     yupObject({
@@ -166,7 +166,7 @@ export const environmentConfigSchema = branchConfigSchema.concat(yupObject({
       senderName: schemaFields.emailSenderNameSchema.defined().nonEmpty(),
       senderEmail: schemaFields.emailSenderEmailSchema.defined().nonEmpty(),
     })
-  ).meta({ endConfigurableLevel: 'organization' }),
+  ).defined(),
 
   // keys to the domains are url base64 encoded
   domains: yupRecord(
@@ -175,7 +175,7 @@ export const environmentConfigSchema = branchConfigSchema.concat(yupObject({
       domain: schemaFields.urlSchema.defined(),
       handlerPath: schemaFields.handlerPathSchema.defined(),
     }),
-  ).defined().meta({ endConfigurableLevel: 'organization' }),
+  ).defined(),
 }));
 
 

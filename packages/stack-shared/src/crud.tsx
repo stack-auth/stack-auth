@@ -18,7 +18,6 @@ declare module 'yup' {
       hidden?: boolean,
       onlyShowInOperations?: Capitalize<CrudlOperation>[],
     },
-    endConfigurableLevel?: string,
   }
 }
 
