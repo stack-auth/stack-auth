@@ -61,7 +61,7 @@ it("throws an error when user API keys are disabled and trying to use user API k
       "status": 200,
       "body": {
         "created_at_millis": <stripped field 'created_at_millis'>,
-        "description": "This should not work",
+        "description": "This should work",
         "id": "<stripped UUID>",
         "is_public": false,
         "team_id": "<stripped UUID>",
