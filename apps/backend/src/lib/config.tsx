@@ -91,9 +91,8 @@ export async function validateOrganizationConfigOverride(project: Project, branc
 
 export async function getProjectConfigOverride(project: Project): Promise<ProjectConfigOverride> {
   // fetch project config from our own DB
-  return {
-    sourceOfTruthDbConnectionString: '123',
-  };
+  // (currently it's just empty)
+  return {};
 }
 
 export async function getBranchConfigOverride(project: Project, branchId: string): Promise<BranchConfigOverride> {
