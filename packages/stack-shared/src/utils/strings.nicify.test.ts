@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import { NicifyOptions, deindent, nicify } from ".";
+import { NicifyOptions, deindent, nicify } from "./strings";
 
 describe("nicify", () => {
   describe("primitive values", () => {
