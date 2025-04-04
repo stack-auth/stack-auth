@@ -217,7 +217,7 @@ export function yupRecord<K extends yup.StringSchema, T extends yup.AnySchema>(
 
         // Validate the value
         try {
-          await valueSchema.validate((value as Record<string, unknown>)[key], context.options);
+          await yupValidate(valueSchema, (value as Record<string, unknown>)[key], context.options);
         } catch (e: any) {
           return createError({
             path: path ? `${path}.${key}` : key,
