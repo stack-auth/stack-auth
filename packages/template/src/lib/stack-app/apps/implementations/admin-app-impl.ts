@@ -13,6 +13,7 @@ import { ApiKey, ApiKeyBase, ApiKeyBaseCrudRead, ApiKeyCreateOptions, ApiKeyFirs
 import { EmailConfig, stackAppInternalsSymbol } from "../../common";
 import { AdminEmailTemplate, AdminEmailTemplateUpdateOptions, adminEmailTemplateUpdateOptionsToCrud } from "../../email-templates";
 import { AdminProjectPermission, AdminProjectPermissionDefinition, AdminProjectPermissionDefinitionCreateOptions, AdminProjectPermissionDefinitionUpdateOptions, AdminTeamPermission, AdminTeamPermissionDefinition, AdminTeamPermissionDefinitionCreateOptions, AdminTeamPermissionDefinitionUpdateOptions, adminProjectPermissionDefinitionCreateOptionsToCrud, adminProjectPermissionDefinitionUpdateOptionsToCrud, adminTeamPermissionDefinitionCreateOptionsToCrud, adminTeamPermissionDefinitionUpdateOptionsToCrud } from "../../permissions";
+import { AdminProduct, AdminProductCreateOptions, AdminProductUpdateOptions, adminProductCreateOptionsToCrud, adminProductUpdateOptionsToCrud } from "../../products";
 import { AdminOwnedProject, AdminProject, AdminProjectUpdateOptions, adminProjectUpdateOptionsToCrud } from "../../projects";
 import { StackAdminApp, StackAdminAppConstructorOptions } from "../interfaces/admin-app";
 import { clientVersion, createCache, getBaseUrl, getDefaultProjectId, getDefaultPublishableClientKey, getDefaultSecretServerKey, getDefaultSuperSecretAdminKey } from "./common";
@@ -39,6 +40,9 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
   });
   private readonly _adminProjectPermissionDefinitionsCache = createCache(async () => {
     return await this._interface.listProjectPermissionDefinitions();
+  });
+  private readonly _productsCache = createCache(async () => {
+    return await this._interface.listProducts();
   });
   private readonly _svixTokenCache = createCache(async () => {
     return await this._interface.getSvixToken();
@@ -441,5 +445,54 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
     return {
       url: result.url
     };
+  }
+
+  // Products methods
+  protected _createProductFromCrud(data: {
+    id: string,
+    name: string,
+    stripe_product_id: string | null,
+    associated_permission_id: string | null,
+    created_at_millis: string,
+    project_id: string,
+  }): AdminProduct {
+    return {
+      id: data.id,
+      name: data.name,
+      stripeProductId: data.stripe_product_id,
+      associatedPermissionId: data.associated_permission_id,
+      createdAt: new Date(parseInt(data.created_at_millis)),
+    };
+  }
+
+  async listProducts(): Promise<AdminProduct[]> {
+    const crud = Result.orThrow(await this._productsCache.getOrWait([], "write-only"));
+    return crud.map((j) => this._createProductFromCrud(j));
+  }
+
+  // IF_PLATFORM react-like
+  useProducts(): AdminProduct[] {
+    const crud = useAsyncCache(this._productsCache, [], "useProducts()");
+    return useMemo(() => {
+      return crud.map((j) => this._createProductFromCrud(j));
+    }, [crud]);
+  }
+  // END_PLATFORM
+
+  async createProduct(options: AdminProductCreateOptions): Promise<AdminProduct> {
+    const crud = await this._interface.createProduct(adminProductCreateOptionsToCrud(options));
+    await this._productsCache.refresh([]);
+    return this._createProductFromCrud(crud);
+  }
+
+  async updateProduct(productId: string, options: AdminProductUpdateOptions): Promise<AdminProduct> {
+    const crud = await this._interface.updateProduct(productId, adminProductUpdateOptionsToCrud(options));
+    await this._productsCache.refresh([]);
+    return this._createProductFromCrud(crud);
+  }
+
+  async deleteProduct(productId: string): Promise<void> {
+    await this._interface.deleteProduct(productId);
+    await this._productsCache.refresh([]);
   }
 }

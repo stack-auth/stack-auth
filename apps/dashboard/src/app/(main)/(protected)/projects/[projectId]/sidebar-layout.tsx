@@ -33,6 +33,7 @@ import {
   LucideIcon,
   Mail,
   Menu,
+  Package2,
   Settings,
   Settings2,
   ShieldEllipsis,
@@ -243,7 +244,7 @@ const navigationItems: (Label | Item | Hidden)[] = [
     type: 'item'
   },
   {
-    name: "Operations",
+    name: "Finance",
     type: 'label'
   },
   {
@@ -251,6 +252,13 @@ const navigationItems: (Label | Item | Hidden)[] = [
     href: "/payments",
     regex: /^\/projects\/[^\/]+\/payments$/,
     icon: CreditCard,
+    type: 'item'
+  },
+  {
+    name: "Products",
+    href: "/products",
+    regex: /^\/projects\/[^\/]+\/products$/,
+    icon: Package2,
     type: 'item'
   },
 ];

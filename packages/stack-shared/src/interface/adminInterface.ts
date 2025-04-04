@@ -2,6 +2,7 @@ import { InternalSession } from "../sessions";
 import { ApiKeysCrud } from "./crud/api-keys";
 import { EmailTemplateCrud, EmailTemplateType } from "./crud/email-templates";
 import { InternalEmailsCrud } from "./crud/emails";
+import { ProductAdminCreate, ProductAdminList, ProductAdminRead, ProductAdminUpdate } from "./crud/internal-products-types";
 import { ProjectPermissionDefinitionsCrud } from "./crud/project-permissions";
 import { ProjectsCrud } from "./crud/projects";
 import { SvixTokenCrud } from "./crud/svix-token";
@@ -330,5 +331,50 @@ export class StackAdminInterface extends StackServerInterface {
       null,
     );
     return await response.json();
+  }
+
+  // Products endpoints
+  async listProducts(): Promise<ProductAdminRead[]> {
+    const response = await this.sendAdminRequest("/products", {}, null);
+    const result = await response.json() as ProductAdminList;
+    return result.items;
+  }
+
+  async createProduct(data: Omit<ProductAdminCreate, 'project_id'>): Promise<ProductAdminRead> {
+    const response = await this.sendAdminRequest(
+      "/products",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+        },
+        body: JSON.stringify(data),
+      },
+      null,
+    );
+    return await response.json();
+  }
+
+  async updateProduct(productId: string, data: ProductAdminUpdate): Promise<ProductAdminRead> {
+    const response = await this.sendAdminRequest(
+      `/products/${productId}`,
+      {
+        method: "PATCH",
+        headers: {
+          "content-type": "application/json",
+        },
+        body: JSON.stringify(data),
+      },
+      null,
+    );
+    return await response.json();
+  }
+
+  async deleteProduct(productId: string): Promise<void> {
+    await this.sendAdminRequest(
+      `/products/${productId}`,
+      { method: "DELETE" },
+      null,
+    );
   }
 }
