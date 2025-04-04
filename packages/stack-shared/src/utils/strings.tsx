@@ -634,7 +634,6 @@ import.meta.vitest?.test("replaceAll", ({ expect }) => {
 });
 
 function nicifyPropertyString(str: string) {
-  if (/^[_a-zA-Z][_a-zA-Z0-9]*$/.test(str)) return str;
   return JSON.stringify(str);
 }
 import.meta.vitest?.test("nicifyPropertyString", ({ expect }) => {

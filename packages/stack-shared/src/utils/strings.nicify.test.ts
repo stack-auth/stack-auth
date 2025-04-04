@@ -66,14 +66,14 @@ describe("nicify", () => {
     });
 
     test("simple object", () => {
-      expect(nicify({ a: 1 })).toBe("{ a: 1 }");
+      expect(nicify({ a: 1 })).toBe('{ "a": 1 }');
     });
 
     test("multiline object", () => {
       expect(nicify({ a: 1, b: 2 })).toBe(deindent`
         {
-          a: 1,
-          b: 2,
+          "a": 1,
+          "b": 2,
         }
       `);
     });
