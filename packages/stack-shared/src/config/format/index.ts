@@ -185,7 +185,7 @@ export function normalize(c: Config, options: NormalizeOptions = {}): Normalized
 }
 
 function normalizeValue(value: ConfigValue): NormalizedConfigValue {
-  if (value === null) throw new StackAssertionError("Tried to normalize a null value");
+  if (value === null) throw new NormalizationError("Tried to normalize a null value");
   if (Array.isArray(value)) return value.map(normalizeValue);
   if (typeof value === 'object') return normalize(value);
   return value;
