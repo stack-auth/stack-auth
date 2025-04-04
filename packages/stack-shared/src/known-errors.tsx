@@ -618,15 +618,6 @@ const UserNotFound = createKnownErrorConstructor(
   () => [] as const,
 );
 
-const ApiKeyNotFound = createKnownErrorConstructor(
-  KnownError,
-  "API_KEY_NOT_FOUND",
-  () => [
-    404,
-    "API key not found.",
-  ] as const,
-  () => [] as const,
-);
 
 const ProjectNotFound = createKnownErrorConstructor(
   KnownError,
@@ -1219,18 +1210,15 @@ const InvalidPollingCodeError = createKnownErrorConstructor(
 );
 
 
-const InvalidApiKey = createKnownErrorConstructor(
+const ApiKeyNotValid = createKnownErrorConstructor(
   KnownError,
-  "INVALID_API_KEY",
-  () => [
-    401,
-    "The provided API key is invalid.",
-  ] as const,
-  () => [] as const,
+  "API_KEY_NOT_VALID",
+  "inherit",
+  "inherit",
 );
 
 const ApiKeyExpired = createKnownErrorConstructor(
-  KnownError,
+  ApiKeyNotValid,
   "API_KEY_EXPIRED",
   () => [
     401,
@@ -1240,7 +1228,7 @@ const ApiKeyExpired = createKnownErrorConstructor(
 );
 
 const ApiKeyRevoked = createKnownErrorConstructor(
-  KnownError,
+  ApiKeyNotValid,
   "API_KEY_REVOKED",
   () => [
     401,
@@ -1250,7 +1238,7 @@ const ApiKeyRevoked = createKnownErrorConstructor(
 );
 
 const WrongApiKeyType = createKnownErrorConstructor(
-  KnownError,
+  ApiKeyNotValid,
   "WRONG_API_KEY_TYPE",
   (expectedType: string, actualType: string) => [
     400,
@@ -1259,6 +1247,17 @@ const WrongApiKeyType = createKnownErrorConstructor(
   ] as const,
   (json) => [json.expected_type, json.actual_type] as const,
 );
+
+const ApiKeyNotFound = createKnownErrorConstructor(
+  ApiKeyNotValid,
+  "API_KEY_NOT_FOUND",
+  () => [
+    404,
+    "API key not found.",
+  ] as const,
+  () => [] as const,
+);
+
 
 const PermissionIdAlreadyExists = createKnownErrorConstructor(
   KnownError,
@@ -1373,7 +1372,7 @@ export const KnownErrors = {
   OAuthProviderAccessDenied,
   ContactChannelAlreadyUsedForAuthBySomeoneElse,
   InvalidPollingCodeError,
-  InvalidApiKey,
+  ApiKeyNotValid,
   ApiKeyExpired,
   ApiKeyRevoked,
   WrongApiKeyType,

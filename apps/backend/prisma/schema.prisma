@@ -804,13 +804,11 @@ model ApiKeySet {
   @@id([projectId, id])
 }
 
-// New api keys
 model ProjectApiKey {
   projectId String
   project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
   tenancyId String  @db.Uuid
 
-  // Public id of the group
   id           String @default(uuid()) @db.Uuid
   secretApiKey String @unique
 

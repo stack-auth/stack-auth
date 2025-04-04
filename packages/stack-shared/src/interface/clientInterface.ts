@@ -1597,7 +1597,7 @@ export class StackClientInterface {
         body: JSON.stringify({ api_key: apiKey }),
       },
       session,
-      [KnownErrors.InvalidApiKey, KnownErrors.ApiKeyNotFound, KnownErrors.ApiKeyRevoked, KnownErrors.ApiKeyExpired, KnownErrors.WrongApiKeyType]
+      [KnownErrors.ApiKeyNotValid]
     );
     if (result.status === "error") {
       return null;

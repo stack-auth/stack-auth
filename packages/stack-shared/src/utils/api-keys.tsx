@@ -16,7 +16,7 @@ const API_KEY_LENGTHS = {
 } as const;
 
 /**
- * An api has the folowing format:
+ * An api key has the following format:
  * <prefix_without_underscores>_<secret_part_45_chars><id_part_32_chars><type_user_or_team_4_chars><scanner_and_marker_10_chars><checksum_8_chars>
  *
  * The scanner and marker is a base32 character that is used to determine if the api key is a public or private key

@@ -45,13 +45,13 @@ it("throws an error when user API keys are disabled and trying to use user API k
 
 
   const { teamId } = await Team.create({ addCurrentUser: true });
-  // Try to create a team API key
+  // Try to create a team API key (should work)
   const createTeamResponse = await niceBackendFetch("/api/v1/team-api-keys", {
     method: "POST",
     accessType: "client",
     body: {
       team_id: teamId,
-      description: "This should not work",
+      description: "This should work",
       expires_at_millis: null,
     },
   });
@@ -293,7 +293,7 @@ it("returns 404 when checking a non-existent API key", async ({ expect }: { expe
   `);
 });
 
-it("returns 404 when checking a team API key with the user endpoint", async ({ expect }: { expect: any }) => {
+it("returns 400 when checking a team API key with the user endpoint", async ({ expect }: { expect: any }) => {
   await createAndSwitchToAPIEnabledProject();
   const { userId } = await Auth.Otp.signIn();
   const { teamId } = await Team.create({ addCurrentUser: true });
@@ -435,10 +435,6 @@ it("prevents creating API keys for other users", async ({ expect }: { expect: an
 
   // Second user signs in
   await bumpEmailAddress();
-  const { userId: userId2 } = await Auth.Otp.signIn();
-
-  // First user tries to create an API key for the second user
-  await bumpEmailAddress();
   await Auth.Otp.signIn();
 
   const unauthorizedResponse = await niceBackendFetch("/api/v1/user-api-keys", {
@@ -446,7 +442,7 @@ it("prevents creating API keys for other users", async ({ expect }: { expect: an
     body: {
       description: "Unauthorized User API Key",
       expires_at_millis: new Date().getTime() + 1000 * 60 * 60 * 24,
-      user_id: userId2,
+      user_id: userId1,
     },
     accessType: "client",
   });
@@ -460,7 +456,7 @@ it("prevents creating API keys for other users", async ({ expect }: { expect: an
   `);
 });
 
-it("can manage API keys if only if the respective team permission is granted", async ({ expect }: { expect: any }) => {
+it("can manage API keys if and only if the respective team permission is granted", async ({ expect }: { expect: any }) => {
   await createAndSwitchToAPIEnabledProject();
   const { userId: userId1 } = await Auth.Otp.signIn();
   const { teamId } = await Team.createAndAddCurrent();
@@ -826,7 +822,7 @@ it("can create API keys for other users on the server", async ({ expect }: { exp
   // First user signs in
   const { userId: userId1 } = await Auth.Otp.signIn();
 
-  const user1_creds = backendContext.value.userAuth;
+  const user1Creds = backendContext.value.userAuth;
 
 
   // Second user signs in
@@ -863,10 +859,10 @@ it("can create API keys for other users on the server", async ({ expect }: { exp
   `);
 
   backendContext.set({
-    userAuth: user1_creds,
+    userAuth: user1Creds,
   });
 
-  // Verify the API key works by checking it
+  // Verify the API key works on the server by checking it
   const checkResponse = await niceBackendFetch("/api/v1/user-api-keys/check", {
     method: "POST",
     accessType: "server",
@@ -892,7 +888,7 @@ it("can create API keys for other users on the server", async ({ expect }: { exp
     }
   `);
 
-  // Verify the second user can see their API key
+  // Verify the first user can not see the API key
   const listResponse = await niceBackendFetch(urlString`/api/v1/user-api-keys?user_id=${userId2}`, {
     accessType: "client",
   });
