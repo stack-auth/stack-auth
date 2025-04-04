@@ -2,14 +2,6 @@
 
 This development container provides a standardized development environment for working on Stack Auth.
 
-## What's Included
-
-- Node.js 22
-- pnpm 9
-- Docker for running dependencies
-- PostgreSQL client tools
-- VS Code extensions for development
-
 ## Getting Started
 
 1. Open this folder in VS Code with the Dev Containers extension installed
@@ -27,14 +19,5 @@ This development container provides a standardized development environment for w
 
 5. You can now access the dev launchpad at http://localhost:8100
 
-## Ports
+For more information, read the README.md in the root of the repository.
 
-The following ports are forwarded to your local machine:
-- 8100: Dev launchpad
-- 8101: Dashboard
-- 8102: API
-- 8103: Demo
-- 8104: Docs
-- 8105: Inbucket (e-mails)
-- 8106: Prisma Studio
-- and more development services
