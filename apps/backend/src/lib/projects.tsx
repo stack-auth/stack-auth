@@ -168,13 +168,13 @@ export function projectPrismaToCrud(
 
   const newResultWithConfigJson = renderedOrganizationConfigToProjectCrud(await getRenderedOrganizationConfig(), result.config.id);
   if (!deepPlainEquals(result.config, newResultWithConfigJson)) {
-    const errorName = "Project config mismatch";
     const errorData = { result: result.config, newResult: newResultWithConfigJson };
+    const error = new StackAssertionError("Project config mismatch", errorData);
 
     if (!getNodeEnvironment().includes("prod")) {
-      throw new StackAssertionError(errorName, errorData);
+      throw error;
     } else {
-      captureError(errorName, errorData);
+      captureError("project-config-migration-checker", error);
     }
   }
 
