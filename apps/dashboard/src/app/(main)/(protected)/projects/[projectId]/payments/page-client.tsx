@@ -5,7 +5,7 @@ import { SettingCard } from "@/components/settings";
 import { runAsynchronously } from "@stackframe/stack-shared/dist/utils/promises";
 import { ActionCell, Button, DataTable, DataTableColumnHeader, Dialog, DialogBody, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, TextCell, Typography } from "@stackframe/stack-ui";
 import { loadConnectAndInitialize } from "@stripe/connect-js";
-import { ConnectAccountManagement, ConnectBalances, ConnectComponentsProvider, ConnectPayments, ConnectPayouts } from "@stripe/react-connect-js";
+import { ConnectBalances, ConnectComponentsProvider } from "@stripe/react-connect-js";
 import { ColumnDef } from "@tanstack/react-table";
 import { Info, WalletMinimal } from "lucide-react";
 import { useEffect, useState } from "react";
