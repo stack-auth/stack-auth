@@ -213,7 +213,7 @@ export function yupRecord<K extends yup.StringSchema, T extends yup.AnySchema>(
       // Validate each property using the provided valueSchema
       for (const key of Object.keys(value)) {
         // Validate the key
-        await keySchema.validate(key, context.options);
+        await yupValidate(keySchema, key, context.options);
 
         // Validate the value
         try {
