@@ -1,8 +1,8 @@
 'use client';
 
 import { useThemeWatcher } from '@/lib/theme';
-import { Button, Typography, cn } from "@stackframe/stack-ui";
-import { Book } from "lucide-react";
+import { Button, CopyButton, Typography, cn } from "@stackframe/stack-ui";
+import { Book, Terminal } from "lucide-react";
 import dynamic from "next/dynamic";
 import Image from 'next/image';
 import { use, useEffect, useRef, useState } from "react";
@@ -59,7 +59,7 @@ export default function SetupPage() {
               {[...Array(3)].map((_, i) => (
                 <div
                   key={i}
-                  className={`${styles['pulse-circle']} rounded-full bg-blue-200`}
+                  className={`${styles['pulse-circle']} rounded-full bg-blue-200 dark:bg-blue-800`}
                   style={{
                     width: "50px",
                     height: "50px",
@@ -134,41 +134,55 @@ export default function SetupPage() {
         </div>
       </div>
 
-      <div className="flex gap-4 justify-center">
-        {[{
-          name: 'Next.js',
-          src: '/next-logo.svg',
-        }, {
-          name: 'React',
-          src: '/react-logo.svg',
-        }, {
-          name: 'JavaScript',
-          src: '/javascript-logo.svg',
-        }].map(({ name, src }) => (
-          <Button variant={name === 'Next.js' ? 'secondary' : 'plain'} className='h-12 w-40 flex items-center justify-center gap-2' key={name}>
-            <Image src={src} alt={name} width={30} height={30} />
-            <Typography>{name}</Typography>
-          </Button>
-        ))}
-      </div>
-
-      <div className="flex">
+      <div className="flex flex-col mt-10">
         <ol className="relative text-gray-500 border-s border-gray-200 dark:border-gray-700 dark:text-gray-400">
           {[
             {
               step: 1,
-              title: "Setup Next.js",
+              title: "Select your framework",
               description: "Create a new project or use an existing one",
               content: <div>
-                <Typography>
-                  Code: {setupCode}
-                </Typography>
+                <div className="flex gap-4 justify-center">
+                  {[{
+                    name: 'Next.js',
+                    src: '/next-logo.svg',
+                  }, {
+                    name: 'React',
+                    src: '/react-logo.svg',
+                  }, {
+                    name: 'JavaScript',
+                    src: '/javascript-logo.svg',
+                  }].map(({ name, src }) => (
+                    <Button variant={name === 'Next.js' ? 'secondary' : 'plain'} className='h-20 w-20 flex flex-col items-center justify-center gap-2' key={name}>
+                      <Image src={src} alt={name} width={30} height={30} />
+                      <Typography>{name}</Typography>
+                    </Button>
+                  ))}
+                </div>
               </div>,
             },
             {
               step: 2,
               title: "Install Stack Auth",
               description: "The wizard will guide you through the setup process",
+              content: <div className="flex flex-col w-0 flex-grow">
+                <CodeSnippet
+                  type="Terminal"
+                  content={[
+                    [
+                      { value: "npx", className: "text-muted-foreground" },
+                      {
+                        value: "@stackframe/init@latest",
+                        className: "",
+                      },
+                      {
+                        value: `--setup=${setupCode}`,
+                        className: "text-green-600",
+                      },
+                    ],
+                  ]}
+                />
+              </div>
             },
             {
               step: 3,
@@ -177,7 +191,7 @@ export default function SetupPage() {
             },
           ].map((item, index) => (
             <li key={item.step} className={cn("ms-6 flex gap-8", { "mb-10": index < 3 })}>
-              <div className="flex flex-col gap-2 max-w-[180px]">
+              <div className="flex flex-col gap-2 max-w-[180px] min-w-[180px]">
                 <span className={`absolute flex items-center justify-center w-8 h-8 bg-gray-100 dark:bg-gray-70 rounded-full -start-4 ring-4 ring-white dark:ring-gray-900`}>
                   <span className={`text-gray-500 dark:text-gray-400 font-medium`}>{item.step}</span>
                 </span>
@@ -192,5 +206,34 @@ export default function SetupPage() {
       </div>
 
     </PageLayout>
+  );
+}
+
+type CodeLine = { value: string, className?: string }[];
+
+export function CodeSnippet(props: { type: string, content: CodeLine[] }) {
+  return (
+    <div className="bg-muted rounded-xl overflow-hidden">
+      <div className="text-muted-foreground font-medium py-1 pl-4 pr-1 border-b dark:border-black text-sm flex justify-between items-center">
+        <h5 className="font-medium flex items-center gap-2">
+          <Terminal className="w-4 h-4" />
+          {props.type}
+        </h5>
+        <CopyButton content={props.content.map(line =>
+          line.map(segment => segment.value).join(' ')
+        ).join('\n')} />
+      </div>
+      <div className="font-mono font-medium p-4 pl-5 pb-5 max-h-60 overflow-x-auto whitespace-nowrap">
+        {props.content.map((line, index) => (
+          <div key={index} className="whitespace-nowrap">
+            {line.map((content) => (
+              <span key={content.value} className={content.className}>
+                {content.value}{" "}
+              </span>
+            ))}
+          </div>
+        ))}
+      </div>
+    </div>
   );
 }
