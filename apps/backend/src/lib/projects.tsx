@@ -7,7 +7,7 @@ import { StackAssertionError, captureError, throwErr } from "@stackframe/stack-s
 import { deepPlainEquals, filterUndefined, isNotNull, omit } from "@stackframe/stack-shared/dist/utils/objects";
 import { stringCompare, typedToLowercase, typedToUppercase } from "@stackframe/stack-shared/dist/utils/strings";
 import { generateUuid } from "@stackframe/stack-shared/dist/utils/uuids";
-import { dbProjectToRenderedEnvironmentConfig, renderedEnvironmentConfigToProjectCrud } from "./config";
+import { getRenderedOrganizationConfig, renderedOrganizationConfigToProjectCrud } from "./config";
 import { fullPermissionInclude, permissionDefinitionJsonFromDbType, permissionDefinitionJsonFromRawDbType, teamPermissionDefinitionJsonFromTeamSystemDbType } from "./permissions";
 import { ensureSharedProvider, ensureStandardProvider } from "./request-checks";
 
@@ -159,14 +159,14 @@ export function projectPrismaToCrud(
         .concat(prisma.config.teamMemberDefaultSystemPermissions.map(db => teamPermissionDefinitionJsonFromTeamSystemDbType(db, prisma.config)))
         .sort((a, b) => stringCompare(a.id, b.id))
         .map(perm => ({ id: perm.id })),
-      user_default_permissions: prisma.config.permissions.filter(perm => perm.isDefaultUserPermission)
+      user_default_permissions: prisma.config.permissions.filter(perm => perm.isDefaultProjectPermission)
         .map(permissionDefinitionJsonFromDbType)
         .sort((a, b) => stringCompare(a.id, b.id))
         .map(perm => ({ id: perm.id })),
     }
   };
 
-  const newResultWithConfigJson = renderedOrganizationConfigToProjectCrud(await getRenderedOrganizationConfig(), result.config.id);
+  const newResultWithConfigJson = renderedOrganizationConfigToProjectCrud(await getRenderedOrganizationConfig(prisma.tenancy), result.config.id);
   if (!deepPlainEquals(result.config, newResultWithConfigJson)) {
     const errorData = { result: result.config, newResult: newResultWithConfigJson };
     const error = new StackAssertionError("Project config mismatch", errorData);

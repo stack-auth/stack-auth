@@ -290,7 +290,7 @@ export const dbProjectToRenderedOrganizationConfig = (dbProject: DBProject): Org
     createTeamOnSignUp: config.createTeamOnSignUp,
     isProductionMode: dbProject.isProductionMode,
 
-    authMethods: config.authMethodConfigs.map((authMethod): NonNullable<EnvironmentRenderedConfig['authMethods']>[string] => {
+    authMethods: config.authMethodConfigs.map((authMethod): NonNullable<OrganizationRenderedConfig['authMethods']>[string] => {
       const baseAuthMethod = {
         id: authMethod.id,
         enabled: authMethod.enabled,
@@ -335,7 +335,7 @@ export const dbProjectToRenderedOrganizationConfig = (dbProject: DBProject): Org
           id: provider.id,
           type: typedToLowercase(provider.proxiedOAuthConfig.type),
           isShared: true,
-        } as const) satisfies EnvironmentRenderedConfig['oauthProviders'][string];
+        } as const) satisfies OrganizationRenderedConfig['oauthProviders'][string];
       } else if (provider.standardOAuthConfig) {
         return filterUndefined({
           id: provider.id,
@@ -345,7 +345,7 @@ export const dbProjectToRenderedOrganizationConfig = (dbProject: DBProject): Org
           clientSecret: provider.standardOAuthConfig.clientSecret,
           facebookConfigId: provider.standardOAuthConfig.facebookConfigId ?? undefined,
           microsoftTenantId: provider.standardOAuthConfig.microsoftTenantId ?? undefined,
-        } as const) satisfies EnvironmentRenderedConfig['oauthProviders'][string];
+        } as const) satisfies OrganizationRenderedConfig['oauthProviders'][string];
       } else {
         throw new StackAssertionError('Unknown oauth provider config', { provider });
       }
@@ -358,7 +358,7 @@ export const dbProjectToRenderedOrganizationConfig = (dbProject: DBProject): Org
       id: account.id,
       enabled: account.enabled,
       oauthProviderId: account.oauthProviderConfig?.id || throwErr('oauthProviderConfig.id is required'),
-    } satisfies EnvironmentRenderedConfig['connectedAccounts'][string])).reduce((acc, account) => {
+    } satisfies OrganizationRenderedConfig['connectedAccounts'][string])).reduce((acc, account) => {
       (acc as any)[account.id] = account;
       return acc;
     }, {}),
@@ -366,12 +366,12 @@ export const dbProjectToRenderedOrganizationConfig = (dbProject: DBProject): Org
     domains: config.domains.map(domain => ({
       domain: domain.domain,
       handlerPath: domain.handlerPath,
-    } satisfies EnvironmentRenderedConfig['domains'][string])).reduce((acc, domain) => {
+    } satisfies OrganizationRenderedConfig['domains'][string])).reduce((acc, domain) => {
       (acc as any)[base64url.encode(domain.domain)] = domain;
       return acc;
     }, {}),
 
-    emailConfig: ((): EnvironmentRenderedConfig['emailConfig'] => {
+    emailConfig: ((): OrganizationRenderedConfig['emailConfig'] => {
       if (config.emailServiceConfig?.standardEmailServiceConfig) {
         return {
           isShared: false,
@@ -415,11 +415,11 @@ export const dbProjectToRenderedOrganizationConfig = (dbProject: DBProject): Org
           (acc as any)[id] = { id };
           return acc;
         }, {}),
-      } satisfies EnvironmentRenderedConfig['teamPermissionDefinitions'][string];
+      } satisfies OrganizationRenderedConfig['teamPermissionDefinitions'][string];
       return acc;
     }, {}),
 
-    userDefaultPermissions: config.permissions.filter(perm => perm.isDefaultUserPermission)
+    userDefaultPermissions: config.permissions.filter(perm => perm.isDefaultProjectPermission)
       .map(permissionDefinitionJsonFromDbType)
       .reduce((acc, perm) => {
         (acc as any)[perm.id] = { id: perm.id };

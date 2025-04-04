@@ -189,10 +189,19 @@ export type OrganizationIncompleteConfig = EnvironmentIncompleteConfig & yup.Inf
 
 export const IncompleteConfigSymbol = Symbol('stack-auth-incomplete-config');
 
-export type ProjectRenderedConfig = yup.InferType<typeof projectConfigSchema>;
-export type BranchRenderedConfig = yup.InferType<typeof branchConfigSchema>;
-export type EnvironmentRenderedConfig = yup.InferType<typeof environmentConfigSchema>;
-export type OrganizationRenderedConfig = yup.InferType<typeof organizationConfigSchema>;
+export type ProjectRenderedConfig = Omit<ProjectIncompleteConfig,
+  | keyof yup.InferType<typeof branchConfigSchema>
+  | keyof yup.InferType<typeof environmentConfigSchema>
+  | keyof yup.InferType<typeof organizationConfigSchema>
+>;
+export type BranchRenderedConfig = Omit<BranchIncompleteConfig,
+  | keyof yup.InferType<typeof environmentConfigSchema>
+  | keyof yup.InferType<typeof organizationConfigSchema>
+>;
+export type EnvironmentRenderedConfig = Omit<EnvironmentIncompleteConfig,
+  | keyof yup.InferType<typeof organizationConfigSchema>
+>;
+export type OrganizationRenderedConfig = OrganizationIncompleteConfig;
 
 export type ProjectConfigOverride = NormalizesTo<ProjectIncompleteConfig>;
 export type BranchConfigOverride = NormalizesTo<BranchIncompleteConfig>;
