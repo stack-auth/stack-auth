@@ -638,9 +638,9 @@ function nicifyPropertyString(str: string) {
 }
 import.meta.vitest?.test("nicifyPropertyString", ({ expect }) => {
   // Test valid identifiers
-  expect(nicifyPropertyString("validName")).toBe("validName");
-  expect(nicifyPropertyString("_validName")).toBe("_validName");
-  expect(nicifyPropertyString("valid123Name")).toBe("valid123Name");
+  expect(nicifyPropertyString("validName")).toBe('"validName"');
+  expect(nicifyPropertyString("_validName")).toBe('"_validName"');
+  expect(nicifyPropertyString("valid123Name")).toBe('"valid123Name"');
 
   // Test invalid identifiers
   expect(nicifyPropertyString("123invalid")).toBe('"123invalid"');
