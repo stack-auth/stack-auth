@@ -40,6 +40,8 @@ program
   .option("--client", "Initialize client-side only")
   .option("--server", "Initialize server-side only")
   .option("--no-browser", "Don't open browser for environment variable setup")
+  .option("--api-url <url>", "Stack Auth API URL")
+  .option("--token <token>", "token to fetch Stack Auth keys")
   .addHelpText('after', `
 For more information, please visit https://docs.stack-auth.com/getting-started/setup`);
 
@@ -95,6 +97,12 @@ type Colorize = {
   bold: TemplateFunction,
 };
 
+type Keys = {
+  projectId: string,
+  publishableClientKey: string,
+  secretServerKey: string,
+}
+
 const colorize: Colorize = {
   red: (strings, ...values) => ansis.red + templateIdentity(strings, ...values) + ansis.clear,
   blue: (strings, ...values) => ansis.blue + templateIdentity(strings, ...values) + ansis.clear,
@@ -145,6 +153,8 @@ async function main(): Promise<void> {
   // Steps
   const { packageJson } = await Steps.getProject();
   const type = await Steps.getProjectType({ packageJson });
+
+  const keys = options.token ? await Steps.fetchKeys(options.token, options.apiUrl) : undefined;
 
   await Steps.addStackPackage(type);
   if (isNeon) packagesToInstall.push('@neondatabase/serverless');
@@ -408,7 +418,26 @@ const Steps = {
     };
   },
 
-  async writeEnvVars(type: string): Promise<boolean> {
+  async fetchKeys(token: string, apiUrl?: string): Promise<Keys> {
+    try {
+      const response = await fetch((apiUrl ?? "https://api.stack-auth.com/v1") + "/setup-keys/verify", {
+        headers: {
+          "Authorization": `Bearer ${token}`,
+        },
+      });
+      const data = await response.json() as any;
+
+      return {
+        projectId: data.project_id,
+        publishableClientKey: data.publishable_client_key,
+        secretServerKey: data.secret_server_key,
+      };
+    } catch (e) {
+      throw new UserError("Invalid token. Please try again. Error details: " + e);
+    }
+  },
+
+  async writeEnvVars(type: string, keys?: Keys, apiUrl?: string): Promise<boolean> {
     const projectPath = await getProjectPath();
 
     // TODO: in non-Next environments, ask the user what method they prefer for envvars
@@ -425,20 +454,12 @@ const Steps = {
       envLocalPath,
     ];
     if (potentialEnvLocations.every((p) => !fs.existsSync(p))) {
-      const envContent = noBrowser
-        ? "# Stack Auth keys\n" +
-          "# To get these variables:\n" +
-          "# 1. Go to https://app.stack-auth.com\n" +
-          "# 2. Create a new project\n" +
-          "# 3. Copy the keys below\n" +
-          "NEXT_PUBLIC_STACK_PROJECT_ID=\n" +
-          "NEXT_PUBLIC_STACK_PUBLISHABLE_CLIENT_KEY=\n" +
-          "STACK_SECRET_SERVER_KEY=\n"
-        : "# Stack Auth keys\n" +
+      const envContent = "# Stack Auth keys\n" +
           "# Get these variables by creating a project on https://app.stack-auth.com.\n" +
-          "NEXT_PUBLIC_STACK_PROJECT_ID=\n" +
-          "NEXT_PUBLIC_STACK_PUBLISHABLE_CLIENT_KEY=\n" +
-          "STACK_SECRET_SERVER_KEY=\n";
+          (apiUrl ? `NEXT_PUBLIC_STACK_API_URL=${apiUrl}\n` : "") +
+          "NEXT_PUBLIC_STACK_PROJECT_ID=" + (keys?.projectId || "") + "\n" +
+          "NEXT_PUBLIC_STACK_PUBLISHABLE_CLIENT_KEY=" + (keys?.publishableClientKey || "") + "\n" +
+          "STACK_SECRET_SERVER_KEY=" + (keys?.secretServerKey || "") + "\n";
 
       laterWriteFile(envLocalPath, envContent);
       return true;
