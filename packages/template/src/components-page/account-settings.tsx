@@ -8,7 +8,7 @@ import { useAsyncCallback } from '@stackframe/stack-shared/dist/hooks/use-async-
 import { passwordSchema as schemaFieldsPasswordSchema, strictEmailSchema, yupObject, yupString } from '@stackframe/stack-shared/dist/schema-fields';
 import { generateRandomValues } from '@stackframe/stack-shared/dist/utils/crypto';
 import { fromNow } from '@stackframe/stack-shared/dist/utils/dates';
-import { captureError, throwErr } from '@stackframe/stack-shared/dist/utils/errors';
+import { StackAssertionError, captureError, throwErr } from '@stackframe/stack-shared/dist/utils/errors';
 import { runAsynchronously, runAsynchronouslyWithAlert } from '@stackframe/stack-shared/dist/utils/promises';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger, ActionCell, Badge, Button, Input, Label, PasswordInput, Separator, Skeleton, Table, TableBody, TableCell, TableHead, TableHeader, TableRow, Typography } from '@stackframe/stack-ui';
 import { Edit, Trash, icons } from 'lucide-react';
@@ -17,12 +17,15 @@ import React, { Suspense, useEffect, useState } from "react";
 import { useForm } from 'react-hook-form';
 import * as yup from "yup";
 import { CurrentUser, MessageCard, Project, Team, useStackApp, useUser } from '..';
+import { CreateApiKeyDialog, ShowApiKeyDialog } from "../components/api-key-dialogs";
+import { ApiKeyTable } from "../components/api-key-table";
 import { FormWarningText } from '../components/elements/form-warning';
 import { MaybeFullPage } from "../components/elements/maybe-full-page";
 import { SidebarLayout } from '../components/elements/sidebar-layout';
 import { UserAvatar } from '../components/elements/user-avatar';
 import { ProfileImageEditor } from "../components/profile-image-editor";
 import { TeamIcon } from '../components/team-icon';
+import { ApiKey, ApiKeyCreationOptions, TeamApiKeyFirstView } from "../lib/stack-app/api-keys";
 import { ActiveSession } from "../lib/stack-app/users";
 import { useTranslation } from "../lib/translations";
 
@@ -79,6 +82,15 @@ export function AccountSettings(props: {
                 <ActiveSessionsPage/>
               </Suspense>,
             },
+            ...(project.config.allowUserApiKeys ? [{
+              title: t('API Keys'),
+              type: 'item',
+              id: 'api-keys',
+              icon: <Icon name="Key" />,
+              content: <Suspense fallback={<ApiKeysPageSkeleton/>}>
+                <ApiKeysPage />
+              </Suspense>,
+            }] as const : []),
             {
               title: t('Settings'),
               type: 'item',
@@ -112,14 +124,18 @@ export function AccountSettings(props: {
               </div>,
               type: 'item',
               id: `team-${team.id}`,
-              content: <TeamPage team={team}/>,
+              content: <Suspense fallback={<TeamPageSkeleton/>}>
+                <TeamPage team={team}/>
+              </Suspense>,
             } as const)),
             ...project.config.clientTeamCreationEnabled ? [{
               title: t('Create a team'),
               icon: <Icon name="CirclePlus"/>,
               type: 'item',
               id: 'team-creation',
-              content: <TeamCreation />,
+              content: <Suspense fallback={<TeamCreationSkeleton/>}>
+                <TeamCreation />
+              </Suspense>,
             }] as const : [],
           ] as const).filter((p) => p.type === 'divider' || (p as any).content )}
           title={t("Account Settings")}
@@ -132,7 +148,7 @@ export function AccountSettings(props: {
 function Section(props: { title: string, description?: string, children: React.ReactNode }) {
   return (
     <>
-      <Separator/>
+      <Separator />
       <div className='flex flex-col sm:flex-row gap-2'>
         <div className='sm:flex-1 flex flex-col justify-center'>
           <Typography className='font-medium'>
@@ -157,6 +173,100 @@ function PageLayout(props: { children: React.ReactNode }) {
     </div>
   );
 }
+
+
+export function ApiKeysPage() {
+  const { t } = useTranslation();
+
+  const user = useUser({ or: 'redirect' });
+  const apiKeys = user.useApiKeys();
+
+  const [isNewApiKeyDialogOpen, setIsNewApiKeyDialogOpen] = useState(false);
+  const [returnedApiKey, setReturnedApiKey] = useState<ApiKey<"user", true>   | null>(null);
+
+  const CreateDialog = CreateApiKeyDialog<"user">;
+  const ShowDialog = ShowApiKeyDialog<"user">;
+
+  return (
+    <PageLayout>
+      <Button onClick={() => setIsNewApiKeyDialogOpen(true)}>
+        {t("Create API Key")}
+      </Button>
+      <ApiKeyTable apiKeys={apiKeys} />
+      <CreateDialog
+        open={isNewApiKeyDialogOpen}
+        onOpenChange={setIsNewApiKeyDialogOpen}
+        onKeyCreated={setReturnedApiKey}
+        createApiKey={async (data: ApiKeyCreationOptions<"user">) => {
+          const apiKey = await user.createApiKey(data);
+          return apiKey;
+        }}
+      />
+      <ShowDialog
+        apiKey={returnedApiKey}
+        onClose={() => setReturnedApiKey(null)}
+      />
+    </PageLayout>
+  );
+}
+
+
+export function TeamApiKeysSection(props: { team: Team }) {
+  const user = useUser({ or: 'redirect' });
+  const team = user.useTeam(props.team.id);
+
+  if (!team) {
+    throw new StackAssertionError("Team not found");
+  }
+
+  const manageApiKeysPermission = user.usePermission(props.team, '$manage_api_keys');
+  if (!manageApiKeysPermission) {
+    return null;
+  }
+
+  return <TeamApiKeysSectionInner team={props.team} />;
+}
+
+function TeamApiKeysSectionInner(props: { team: Team }) {
+  const { t } = useTranslation();
+
+  const [isNewApiKeyDialogOpen, setIsNewApiKeyDialogOpen] = useState(false);
+  const [returnedApiKey, setReturnedApiKey] = useState<TeamApiKeyFirstView | null>(null);
+
+  const apiKeys = props.team.useApiKeys();
+
+  const CreateDialog = CreateApiKeyDialog<"team">;
+  const ShowDialog = ShowApiKeyDialog<"team">;
+
+  return (
+    <>
+      <Section
+        title={t("API Keys")}
+        description={t("API keys grant programmatic access to your team.")}
+      >
+        <Button onClick={() => setIsNewApiKeyDialogOpen(true)}>
+          {t("Create API Key")}
+        </Button>
+      </Section>
+      <ApiKeyTable apiKeys={apiKeys} />
+
+      <CreateDialog
+        open={isNewApiKeyDialogOpen}
+        onOpenChange={setIsNewApiKeyDialogOpen}
+        onKeyCreated={setReturnedApiKey}
+        createApiKey={async (data) => {
+          const apiKey = await props.team.createApiKey(data);
+          return apiKey;
+        }}
+      />
+      <ShowDialog
+        apiKey={returnedApiKey}
+        onClose={() => setReturnedApiKey(null)}
+      />
+    </>
+  );
+}
+
 
 function ProfilePage() {
   const { t } = useTranslation();
@@ -982,12 +1092,13 @@ function SignOutSection() {
 function TeamPage(props: { team: Team }) {
   return (
     <PageLayout>
-      <TeamUserProfileSection team={props.team} />
-      <MemberListSection team={props.team} />
-      <MemberInvitationSection team={props.team} />
-      <TeamProfileImageSection team={props.team} />
-      <TeamDisplayNameSection team={props.team} />
-      <LeaveTeamSection team={props.team} />
+      <TeamUserProfileSection key={`user-profile-${props.team.id}`} team={props.team} />
+      <TeamProfileImageSection key={`profile-image-${props.team.id}`} team={props.team} />
+      <TeamDisplayNameSection key={`display-name-${props.team.id}`} team={props.team} />
+      <MemberListSection key={`member-list-${props.team.id}`} team={props.team} />
+      <MemberInvitationSection key={`member-invitation-${props.team.id}`} team={props.team} />
+      <TeamApiKeysSection key={`api-keys-${props.team.id}`} team={props.team} />
+      <LeaveTeamSection key={`leave-team-${props.team.id}`} team={props.team} />
     </PageLayout>
   );
 }
@@ -1143,12 +1254,17 @@ function MemberInvitationsSectionInvitationsList(props: { team: Team }) {
             <TableCell align='right' className='max-w-[36px]'>
               {removeMemberPermission && (
                 <Button onClick={async () => await invitation.revoke()} size='icon' variant='ghost'>
-                  <Trash className="w-4 h-4"/>
+                  <Trash className="w-4 h-4" />
                 </Button>
               )}
             </TableCell>
           </TableRow>
         ))}
+        {invitationsToShow.length === 0 && <TableRow>
+          <TableCell colSpan={3}>
+            <Typography variant='secondary'>{t("No outstanding invitations")}</Typography>
+          </TableCell>
+        </TableRow>}
       </TableBody>
     </Table>
   </>;
@@ -1243,7 +1359,7 @@ function MemberListSectionInner(props: { team: Team }) {
             {users.map(({ id, teamProfile }, i) => (
               <TableRow key={id}>
                 <TableCell>
-                  <UserAvatar user={teamProfile}/>
+                  <UserAvatar user={teamProfile} />
                 </TableCell>
                 <TableCell>
                   <Typography>{teamProfile.displayName}</Typography>
@@ -1410,10 +1526,33 @@ export function EditableText(props: { value: string, onSave?: (value: string) =>
         <>
           <Typography>{props.value}</Typography>
           <Button onClick={() => setEditing(true)} size='icon' variant='ghost'>
-            <Edit className="w-4 h-4"/>
+            <Edit className="w-4 h-4" />
           </Button>
         </>
       )}
     </div>
   );
+}
+
+function ApiKeysPageSkeleton() {
+  return <PageLayout>
+    <Skeleton className="h-9 w-full mt-1"/>
+    <Skeleton className="h-[200px] w-full mt-1 rounded-md"/>
+  </PageLayout>;
+}
+
+function TeamPageSkeleton() {
+  return <PageLayout>
+    <Skeleton className="h-9 w-full mt-1"/>
+    <Skeleton className="h-9 w-full mt-1"/>
+    <Skeleton className="h-9 w-full mt-1"/>
+    <Skeleton className="h-[200px] w-full mt-1 rounded-md"/>
+  </PageLayout>;
+}
+
+function TeamCreationSkeleton() {
+  return <PageLayout>
+    <Skeleton className="h-9 w-full mt-1"/>
+    <Skeleton className="h-9 w-full mt-1"/>
+  </PageLayout>;
 }

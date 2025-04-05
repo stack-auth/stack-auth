@@ -1,12 +1,12 @@
 import { prismaClient } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
-import { apiKeysCreateInputSchema, apiKeysCreateOutputSchema } from "@stackframe/stack-shared/dist/interface/crud/api-keys";
+import { internalApiKeysCreateInputSchema, internalApiKeysCreateOutputSchema } from "@stackframe/stack-shared/dist/interface/crud/internal-api-keys";
 import { adaptSchema, adminAuthTypeSchema, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
 import { generateSecureRandomString } from "@stackframe/stack-shared/dist/utils/crypto";
 import { generateUuid } from "@stackframe/stack-shared/dist/utils/uuids";
-import { apiKeyCrudHandlers } from "./crud";
+import { internalApiKeyCrudHandlers } from "./crud";
 
-export const GET = apiKeyCrudHandlers.listHandler;
+export const GET = internalApiKeyCrudHandlers.listHandler;
 
 export const POST = createSmartRouteHandler({
   metadata: {
@@ -17,13 +17,13 @@ export const POST = createSmartRouteHandler({
       type: adminAuthTypeSchema,
       project: adaptSchema.defined(),
     }).defined(),
-    body: apiKeysCreateInputSchema.defined(),
+    body: internalApiKeysCreateInputSchema.defined(),
     method: yupString().oneOf(["POST"]).defined(),
   }),
   response: yupObject({
     statusCode: yupNumber().oneOf([200]).defined(),
     bodyType: yupString().oneOf(["json"]).defined(),
-    body: apiKeysCreateOutputSchema.defined(),
+    body: internalApiKeysCreateOutputSchema.defined(),
   }),
   handler: async ({ auth, body }) => {
     const set = await prismaClient.apiKeySet.create({
