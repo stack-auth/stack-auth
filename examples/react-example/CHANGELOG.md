@@ -1,5 +1,11 @@
 # react-example
 
+## 2.8.2
+
+### Patch Changes
+
+- @stackframe/react@2.8.2
+
 ## 2.8.1
 
 ### Patch Changes

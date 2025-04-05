@@ -1,7 +1,7 @@
 {
   "//": "THIS FILE IS AUTO-GENERATED FROM TEMPLATE. DO NOT EDIT IT DIRECTLY",
   "name": "@stackframe/react",
-  "version": "2.8.1",
+  "version": "2.8.2",
   "sideEffects": false,
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -43,6 +43,7 @@
     "@simplewebauthn/browser": "^11.0.0",
     "@stackframe/stack-shared": "workspace:*",
     "@stackframe/stack-ui": "workspace:*",
+    "@tanstack/react-table": "^8.20.5",
     "browser-image-compression": "^2.0.2",
     "color": "^4.2.3",
     "cookie": "^0.6.0",
