@@ -1009,6 +1009,7 @@ export namespace Project {
     const oldMailbox = backendContext.value.mailbox;
     await bumpEmailAddress({ unindexed: true });
     const { userId } = await Auth.Otp.signIn();
+    const newMailbox = backendContext.value.mailbox;
     const adminAccessToken = backendContext.value.userAuth?.accessToken;
     expect(adminAccessToken).toBeDefined();
     const { projectId, createProjectResponse } = await Project.create(body);
@@ -1026,6 +1027,7 @@ export namespace Project {
       projectId,
       adminAccessToken: adminAccessToken!,
       createProjectResponse,
+      adminMailbox: newMailbox,
     };
   }
 
