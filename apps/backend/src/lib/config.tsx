@@ -2,13 +2,12 @@ import { NormalizationError, getInvalidConfigReason, normalize, override } from 
 import { BranchConfigOverride, BranchIncompleteConfig, BranchRenderedConfig, EnvironmentConfigOverride, EnvironmentIncompleteConfig, EnvironmentRenderedConfig, OrganizationConfigOverride, OrganizationIncompleteConfig, OrganizationRenderedConfig, ProjectConfigOverride, ProjectIncompleteConfig, ProjectRenderedConfig, baseConfig, branchConfigSchema, environmentConfigSchema, organizationConfigSchema, projectConfigSchema } from "@stackframe/stack-shared/dist/config/schema";
 import { ProjectsCrud } from "@stackframe/stack-shared/dist/interface/crud/projects";
 import { yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
-import { StackAssertionError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
+import { StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
 import { filterUndefined, pick, typedEntries } from "@stackframe/stack-shared/dist/utils/objects";
 import { Result } from "@stackframe/stack-shared/dist/utils/results";
 import { stringCompare, typedToLowercase } from "@stackframe/stack-shared/dist/utils/strings";
 import { base64url } from "jose";
 import * as yup from "yup";
-import { getPermissionDefinitionsFromProjectConfig, permissionDefinitionJsonFromDbType, teamPermissionDefinitionJsonFromTeamSystemDbType } from "./permissions";
 import { DBProject } from "./projects";
 
 type Project = ProjectsCrud["Admin"]["Read"];
@@ -160,7 +159,7 @@ export async function getEnvironmentConfigOverride(options: environmentOptions):
   // =================== AUTH ===================
 
   if (oldConfig.oauthAccountMergeStrategy !== baseConfig.auth.oauthAccountMergeStrategy) {
-    configOverride['auth.oauthAccountMergeStrategy'] = oldConfig.oauthAccountMergeStrategy;
+    configOverride['auth.oauthAccountMergeStrategy'] = typedToLowercase(oldConfig.oauthAccountMergeStrategy) satisfies OrganizationRenderedConfig['auth']['oauthAccountMergeStrategy'];
   }
 
   for (const authMethodConfig of oldConfig.authMethodConfigs) {
@@ -364,183 +363,15 @@ import.meta.vitest?.test('validateAndReturn(...)', async ({ expect }) => {
 // Conversions
 // ---------------------------------------------------------------------------------------------------------------------
 
-/*
-A: AdminProjectCrudRead
-U: AdminProjectCrudUpdate
-D: DB legacy config
-C: config override
-
-Get project
-- old: D -> A
-- new: D -> C -> A
-        ---- ----
-Update project
-- old: U -> D
-- new: U -> C -> U -> D
-        ---- ----
-*/
-
-
-// D -> C
-export const dbProjectToRenderedOrganizationConfig = (dbProject: DBProject): OrganizationRenderedConfig => {
-  const config = dbProject.config;
-
-  return {
-    allowLocalhost: config.allowLocalhost,
-    clientTeamCreationEnabled: config.clientTeamCreationEnabled,
-    clientUserDeletionEnabled: config.clientUserDeletionEnabled,
-    signUpEnabled: config.signUpEnabled,
-    oauthAccountMergeStrategy: typedToLowercase(config.oauthAccountMergeStrategy),
-    createTeamOnSignUp: config.createTeamOnSignUp,
-    isProductionMode: dbProject.isProductionMode,
-
-    authMethods: config.authMethodConfigs.map((authMethod): NonNullable<OrganizationRenderedConfig['authMethods']>[string] => {
-      const baseAuthMethod = {
-        id: authMethod.id,
-        enabled: authMethod.enabled,
-      };
-
-      if (authMethod.oauthProviderConfig) {
-        const oauthConfig = authMethod.oauthProviderConfig.proxiedOAuthConfig || authMethod.oauthProviderConfig.standardOAuthConfig;
-        if (!oauthConfig) {
-          throw new StackAssertionError('Either ProxiedOAuthConfig or StandardOAuthConfig must be set on authMethodConfigs.oauthProviderConfig', { authMethod });
-        }
-        return {
-          ...baseAuthMethod,
-          type: 'oauth',
-          oauthProviderId: oauthConfig.id,
-        } as const;
-      } else if (authMethod.passwordConfig) {
-        return {
-          ...baseAuthMethod,
-          type: 'password',
-        } as const;
-      } else if (authMethod.otpConfig) {
-        return {
-          ...baseAuthMethod,
-          type: 'otp',
-        } as const;
-      } else if (authMethod.passkeyConfig) {
-        return {
-          ...baseAuthMethod,
-          type: 'passkey',
-        } as const;
-      } else {
-        throw new StackAssertionError('Unknown auth method config', { authMethod });
-      }
-    }).reduce((acc, authMethod) => {
-      acc.set(authMethod.id, authMethod);
-      return acc;
-    }, new Map<string, NonNullable<OrganizationRenderedConfig['authMethods']>[string]>()),
-
-    oauthProviders: config.oauthProviderConfigs.map(provider => {
-      if (provider.proxiedOAuthConfig) {
-        return ({
-          id: provider.id,
-          type: typedToLowercase(provider.proxiedOAuthConfig.type),
-          isShared: true,
-        } as const) satisfies OrganizationRenderedConfig['oauthProviders'][string];
-      } else if (provider.standardOAuthConfig) {
-        return filterUndefined({
-          id: provider.id,
-          type: typedToLowercase(provider.standardOAuthConfig.type),
-          isShared: false,
-          clientId: provider.standardOAuthConfig.clientId,
-          clientSecret: provider.standardOAuthConfig.clientSecret,
-          facebookConfigId: provider.standardOAuthConfig.facebookConfigId ?? undefined,
-          microsoftTenantId: provider.standardOAuthConfig.microsoftTenantId ?? undefined,
-        } as const) satisfies OrganizationRenderedConfig['oauthProviders'][string];
-      } else {
-        throw new StackAssertionError('Unknown oauth provider config', { provider });
-      }
-    }).reduce((acc, provider) => {
-      (acc as any)[provider.id] = provider;
-      return acc;
-    }, {}),
-
-    connectedAccounts: config.connectedAccountConfigs.map(account => ({
-      id: account.id,
-      enabled: account.enabled,
-      oauthProviderId: account.oauthProviderConfig?.id || throwErr('oauthProviderConfig.id is required'),
-    } satisfies OrganizationRenderedConfig['connectedAccounts'][string])).reduce((acc, account) => {
-      (acc as any)[account.id] = account;
-      return acc;
-    }, {}),
-
-    domains: config.domains.map(domain => ({
-      domain: domain.domain,
-      handlerPath: domain.handlerPath,
-    } satisfies OrganizationRenderedConfig['domains'][string])).reduce((acc, domain) => {
-      (acc as any)[base64url.encode(domain.domain)] = domain;
-      return acc;
-    }, {}),
-
-    emailConfig: ((): OrganizationRenderedConfig['emailConfig'] => {
-      if (config.emailServiceConfig?.standardEmailServiceConfig) {
-        return {
-          isShared: false,
-          host: config.emailServiceConfig.standardEmailServiceConfig.host,
-          port: config.emailServiceConfig.standardEmailServiceConfig.port,
-          username: config.emailServiceConfig.standardEmailServiceConfig.username,
-          password: config.emailServiceConfig.standardEmailServiceConfig.password,
-          senderName: config.emailServiceConfig.standardEmailServiceConfig.senderName,
-          senderEmail: config.emailServiceConfig.standardEmailServiceConfig.senderEmail,
-        } as const;
-      } else if (config.emailServiceConfig?.proxiedEmailServiceConfig) {
-        return {
-          isShared: true,
-        } as const;
-      } else {
-        throw new StackAssertionError('Unknown email service config', { config });
-      }
-    })(),
-
-    teamCreateDefaultPermissions: config.permissions.filter(perm => perm.isDefaultTeamCreatorPermission)
-      .map(permissionDefinitionJsonFromDbType)
-      .concat(config.teamCreateDefaultSystemPermissions.map(db => teamPermissionDefinitionJsonFromTeamSystemDbType(db, config)))
-      .reduce((acc, perm) => {
-        (acc as any)[perm.id] = { id: perm.id };
-        return acc;
-      }, {}),
-
-    teamMemberDefaultPermissions: config.permissions.filter(perm => perm.isDefaultTeamMemberPermission)
-      .map(permissionDefinitionJsonFromDbType)
-      .concat(config.teamMemberDefaultSystemPermissions.map(db => teamPermissionDefinitionJsonFromTeamSystemDbType(db, config)))
-      .reduce((acc, perm) => {
-        (acc as any)[perm.id] = { id: perm.id };
-        return acc;
-      }, {}),
-
-    teamPermissionDefinitions: getPermissionDefinitionsFromProjectConfig(config, 'TEAM').reduce((acc, perm) => {
-      (acc as any)[perm.id] = {
-        id: perm.id,
-        description: perm.description,
-        containedPermissions: perm.contained_permission_ids.reduce((acc, id) => {
-          (acc as any)[id] = { id };
-          return acc;
-        }, {}),
-      } satisfies OrganizationRenderedConfig['teamPermissionDefinitions'][string];
-      return acc;
-    }, {}),
-
-    userDefaultPermissions: config.permissions.filter(perm => perm.isDefaultProjectPermission)
-      .map(permissionDefinitionJsonFromDbType)
-      .reduce((acc, perm) => {
-        (acc as any)[perm.id] = { id: perm.id };
-        return acc;
-      }, {}),
-  };
-};
-
 // C -> A
 export const renderedOrganizationConfigToProjectCrud = (renderedConfig: OrganizationRenderedConfig, configId: string): ProjectsCrud["Admin"]["Read"]['config'] => {
-  const oauthProviders = typedEntries(renderedConfig.authMethods)
+  const oauthProviders = typedEntries(renderedConfig.auth.authMethods)
     .filter(([_, authMethod]) => authMethod.type === 'oauth')
     .map(([_, authMethod]) => {
       if (authMethod.type !== 'oauth') {
         throw new StackAssertionError('Expected oauth provider', { authMethod });
       }
-      const oauthProvider = renderedConfig.oauthProviders[authMethod.oauthProviderId];
+      const oauthProvider = renderedConfig.auth.oauthProviders[authMethod.oauthProviderId];
 
       return filterUndefined({
         id: oauthProvider.type,
@@ -556,46 +387,49 @@ export const renderedOrganizationConfigToProjectCrud = (renderedConfig: Organiza
 
   return {
     id: configId,
-    allow_localhost: renderedConfig.allowLocalhost,
-    client_team_creation_enabled: renderedConfig.clientTeamCreationEnabled,
-    client_user_deletion_enabled: renderedConfig.clientUserDeletionEnabled,
-    sign_up_enabled: renderedConfig.signUpEnabled,
-    oauth_account_merge_strategy: renderedConfig.oauthAccountMergeStrategy,
-    create_team_on_sign_up: renderedConfig.createTeamOnSignUp,
-    credential_enabled: typedEntries(renderedConfig.authMethods).filter(([_, authMethod]) => authMethod.enabled && authMethod.type === 'password').length > 0,
-    magic_link_enabled: typedEntries(renderedConfig.authMethods).filter(([_, authMethod]) => authMethod.enabled && authMethod.type === 'otp').length > 0,
-    passkey_enabled: typedEntries(renderedConfig.authMethods).filter(([_, authMethod]) => authMethod.enabled && authMethod.type === 'passkey').length > 0,
+    allow_localhost: renderedConfig.domain.allowLocalhost,
+    client_team_creation_enabled: renderedConfig.team.clientTeamCreationEnabled,
+    client_user_deletion_enabled: renderedConfig.user.clientUserDeletionEnabled,
+    sign_up_enabled: renderedConfig.user.signUpEnabled,
+    oauth_account_merge_strategy: renderedConfig.auth.oauthAccountMergeStrategy,
+    create_team_on_sign_up: renderedConfig.team.createTeamOnSignUp,
+    credential_enabled: typedEntries(renderedConfig.auth.authMethods).filter(([_, authMethod]) => authMethod.enabled && authMethod.type === 'password').length > 0,
+    magic_link_enabled: typedEntries(renderedConfig.auth.authMethods).filter(([_, authMethod]) => authMethod.enabled && authMethod.type === 'otp').length > 0,
+    passkey_enabled: typedEntries(renderedConfig.auth.authMethods).filter(([_, authMethod]) => authMethod.enabled && authMethod.type === 'passkey').length > 0,
 
     oauth_providers: oauthProviders,
     enabled_oauth_providers: oauthProviders.filter(provider => provider.enabled),
 
-    domains: typedEntries(renderedConfig.domains)
+    domains: typedEntries(renderedConfig.domain.trustedDomains)
       .map(([_, domainConfig]) => ({
-        domain: domainConfig.domain,
+        domain: domainConfig.baseUrl,
         handler_path: domainConfig.handlerPath,
       }))
       .sort((a, b) => stringCompare(a.domain, b.domain)),
 
-    email_config: renderedConfig.emailConfig.isShared ? {
+    email_config: renderedConfig.email.emailServer.isShared ? {
       type: 'shared',
     } : {
       type: 'standard',
-      host: renderedConfig.emailConfig.host,
-      port: renderedConfig.emailConfig.port,
-      username: renderedConfig.emailConfig.username,
-      password: renderedConfig.emailConfig.password,
-      sender_name: renderedConfig.emailConfig.senderName,
-      sender_email: renderedConfig.emailConfig.senderEmail,
+      host: renderedConfig.email.emailServer.host,
+      port: renderedConfig.email.emailServer.port,
+      username: renderedConfig.email.emailServer.username,
+      password: renderedConfig.email.emailServer.password,
+      sender_name: renderedConfig.email.emailServer.senderName,
+      sender_email: renderedConfig.email.emailServer.senderEmail,
     },
 
-    team_creator_default_permissions: typedEntries(renderedConfig.teamCreateDefaultPermissions)
+    team_creator_default_permissions: typedEntries(renderedConfig.team.defaultCreatorTeamPermissions)
       .map(([_, perm]) => ({ id: perm.id }))
       .sort((a, b) => stringCompare(a.id, b.id)),
-    team_member_default_permissions: typedEntries(renderedConfig.teamMemberDefaultPermissions)
+    team_member_default_permissions: typedEntries(renderedConfig.team.defaultMemberTeamPermissions)
       .map(([_, perm]) => ({ id: perm.id }))
       .sort((a, b) => stringCompare(a.id, b.id)),
-    user_default_permissions: typedEntries(renderedConfig.userDefaultPermissions)
+    user_default_permissions: typedEntries(renderedConfig.user.defaultProjectPermissions)
       .map(([_, perm]) => ({ id: perm.id }))
       .sort((a, b) => stringCompare(a.id, b.id)),
+
+    allow_user_api_keys: false, // TODO
+    allow_team_api_keys: false, // TODO
   };
 };
