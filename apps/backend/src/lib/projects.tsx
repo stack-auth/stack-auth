@@ -64,9 +64,9 @@ export const fullProjectInclude = {
 
 export type DBProject = Prisma.ProjectGetPayload<{ include: typeof fullProjectInclude }>;
 
-export function projectPrismaToCrud(
+export async function projectPrismaToCrud(
   prisma: DBProject
-): ProjectsCrud["Admin"]["Read"] {
+): Promise<ProjectsCrud["Admin"]["Read"]> {
   const oauthProviders = prisma.config.authMethodConfigs
     .map((config) => {
       if (config.oauthProviderConfig) {
@@ -168,7 +168,10 @@ export function projectPrismaToCrud(
     }
   };
 
-  const newResultWithConfigJson = renderedOrganizationConfigToProjectCrud(await getRenderedOrganizationConfig(prisma.tenancy), result.config.id);
+  const newResultWithConfigJson = renderedOrganizationConfigToProjectCrud(
+    await getRenderedOrganizationConfig({ project: prisma, branch: { id: 'main' }, environment: {}, organization: { id: null } }),
+    result.config.id,
+  );
   if (!deepPlainEquals(result.config, newResultWithConfigJson)) {
     const errorData = { result: result.config, newResult: newResultWithConfigJson };
     const error = new StackAssertionError("Project config mismatch", errorData);
@@ -503,7 +506,7 @@ async function getProjectLegacy(projectId: string): Promise<ProjectsCrud["Admin"
     return null;
   }
 
-  return projectPrismaToCrud(rawProject);
+  return await projectPrismaToCrud(rawProject);
 }
 
 export async function createProject(ownerIds: string[], data: AdminUserProjectsCrud["Admin"]["Create"]) {
@@ -734,5 +737,5 @@ export async function createProject(ownerIds: string[], data: AdminUserProjectsC
     return result;
   });
 
-  return projectPrismaToCrud(result);
+  return await projectPrismaToCrud(result);
 }

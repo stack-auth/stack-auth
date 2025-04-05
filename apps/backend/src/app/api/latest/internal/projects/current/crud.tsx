@@ -517,7 +517,7 @@ export const projectsCrudHandlers = createLazyProxy(() => createCrudHandlers(pro
       });
     });
 
-    return projectPrismaToCrud(result);
+    return await projectPrismaToCrud(result);
   },
   onRead: async ({ auth }) => {
     return auth.project;
