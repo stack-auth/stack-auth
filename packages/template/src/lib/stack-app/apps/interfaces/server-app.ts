@@ -24,6 +24,8 @@ export type StackServerApp<HasTokenStore extends boolean = boolean, ProjectId ex
     useUser(options: GetUserOptions<HasTokenStore> & { or: 'throw' }): ProjectCurrentServerUser<ProjectId>,
     useUser(options: GetUserOptions<HasTokenStore> & { or: 'anonymous' }): ProjectCurrentServerUser<ProjectId>,
     useUser(options?: GetUserOptions<HasTokenStore>): ProjectCurrentServerUser<ProjectId> | null,
+    useUser(id: string): ServerUser | null,
+    useUser(options: { apiKey: string }): ServerUser | null,
     // END_PLATFORM
 
     getUser(options: GetUserOptions<HasTokenStore> & { or: 'redirect' }): Promise<ProjectCurrentServerUser<ProjectId>>,
@@ -31,13 +33,22 @@ export type StackServerApp<HasTokenStore extends boolean = boolean, ProjectId ex
     getUser(options: GetUserOptions<HasTokenStore> & { or: 'anonymous' }): Promise<ProjectCurrentServerUser<ProjectId>>,
     getUser(options?: GetUserOptions<HasTokenStore>): Promise<ProjectCurrentServerUser<ProjectId> | null>,
     getUser(id: string): Promise<ServerUser | null>,
+    getUser(options: { apiKey: string }): Promise<ServerUser | null>,
+
+    // IF_PLATFORM react-like
+    useTeam(id: string): ServerTeam | null,
+    useTeam(options: { apiKey: string }): ServerTeam | null,
+    // END_PLATFORM
+
+    getTeam(id: string): Promise<ServerTeam | null>,
+    getTeam(options: { apiKey: string }): Promise<ServerTeam | null>,
+
 
     useUsers(options?: ServerListUsersOptions): ServerUser[] & { nextCursor: string | null }, // THIS_LINE_PLATFORM react-like
     listUsers(options?: ServerListUsersOptions): Promise<ServerUser[] & { nextCursor: string | null }>,
   }
   & AsyncStoreProperty<"user", [id: string], ServerUser | null, false>
   & Omit<AsyncStoreProperty<"users", [], ServerUser[], true>, "listUsers" | "useUsers">
-  & AsyncStoreProperty<"team", [id: string], ServerTeam | null, false>
   & AsyncStoreProperty<"teams", [], ServerTeam[], true>
   & StackClientApp<HasTokenStore, ProjectId>
 );
