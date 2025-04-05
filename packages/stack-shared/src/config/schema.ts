@@ -10,6 +10,9 @@ const permissionRegex = /^\$?[a-z0-9_:]+$/;
 
 export const baseConfig = {
   // default values belong here
+  project: {
+
+  },
   team: {
     createTeamOnSignUp: false,
     clientTeamCreationEnabled: false,

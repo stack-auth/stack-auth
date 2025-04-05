@@ -1,4 +1,3 @@
-import { Tenancy } from "@/lib/tenancies";
 import { NormalizationError, getInvalidConfigReason, normalize, override } from "@stackframe/stack-shared/dist/config/format/index";
 import { BranchConfigOverride, BranchIncompleteConfig, BranchRenderedConfig, EnvironmentConfigOverride, EnvironmentIncompleteConfig, EnvironmentRenderedConfig, OrganizationConfigOverride, OrganizationIncompleteConfig, OrganizationRenderedConfig, ProjectConfigOverride, ProjectIncompleteConfig, ProjectRenderedConfig, baseConfig, branchConfigSchema, environmentConfigSchema, organizationConfigSchema, projectConfigSchema } from "@stackframe/stack-shared/dist/config/schema";
 import { ProjectsCrud } from "@stackframe/stack-shared/dist/interface/crud/projects";
@@ -14,41 +13,51 @@ import { DBProject } from "./projects";
 
 type Project = ProjectsCrud["Admin"]["Read"];
 
+// These are placeholder types that should be replaced after the config json db migration
+type ProjectDB = DBProject;
+type BranchDB = { id: string };
+type EnvironmentDB = {};
+type OrganizationDB = { id: string | null };
+
+type projectOptions = { project: ProjectDB };
+type branchOptions = projectOptions & { branch: BranchDB };
+type environmentOptions = branchOptions & { environment: EnvironmentDB };
+type organizationOptions = environmentOptions & { organization: OrganizationDB };
 
 // ---------------------------------------------------------------------------------------------------------------------
 // getRendered<$$$>Config
 // ---------------------------------------------------------------------------------------------------------------------
 
-export async function getRenderedProjectConfig(project: Project): Promise<ProjectRenderedConfig> {
+export async function getRenderedProjectConfig(options: projectOptions): Promise<ProjectRenderedConfig> {
   // returns the same object as the incomplete config, although with a restricted type so we don't accidentally use the
   // fields that may still be overridden by other layers
   // see packages/stack-shared/src/config/README.md for more details
   // TODO actually strip the fields that are not part of the type
-  return await getIncompleteProjectConfig(project);
+  return await getIncompleteProjectConfig(options);
 }
 
-export async function getRenderedBranchConfig(project: Project, branchId: string): Promise<BranchRenderedConfig> {
+export async function getRenderedBranchConfig(options: branchOptions): Promise<BranchRenderedConfig> {
   // returns the same object as the incomplete config, although with a restricted type so we don't accidentally use the
   // fields that may still be overridden by other layers
   // see packages/stack-shared/src/config/README.md for more details
   // TODO actually strip the fields that are not part of the type
-  return await getIncompleteBranchConfig(project, branchId);
+  return await getIncompleteBranchConfig(options);
 }
 
-export async function getRenderedEnvironmentConfig(project: Project, branchId: string): Promise<EnvironmentRenderedConfig> {
+export async function getRenderedEnvironmentConfig(options: environmentOptions): Promise<EnvironmentRenderedConfig> {
   // returns the same object as the incomplete config, although with a restricted type so we don't accidentally use the
   // fields that may still be overridden by other layers
   // see packages/stack-shared/src/config/README.md for more details
   // TODO actually strip the fields that are not part of the type
-  return await getIncompleteEnvironmentConfig(project, branchId);
+  return await getIncompleteEnvironmentConfig(options);
 }
 
-export async function getRenderedOrganizationConfig(tenancy: Tenancy): Promise<OrganizationRenderedConfig> {
+export async function getRenderedOrganizationConfig(options: organizationOptions): Promise<OrganizationRenderedConfig> {
   // returns the same object as the incomplete config, although with a restricted type so we don't accidentally use the
   // fields that may still be overridden by other layers
   // see packages/stack-shared/src/config/README.md for more details
   // TODO actually strip the fields that are not part of the type
-  return await getIncompleteOrganizationConfig(tenancy);
+  return await getIncompleteOrganizationConfig(options);
 }
 
 
@@ -59,29 +68,29 @@ export async function getRenderedOrganizationConfig(tenancy: Tenancy): Promise<O
 /**
  * Validates a project config override, based on the base config.
  */
-export async function validateProjectConfigOverride(projectConfigOverride: ProjectConfigOverride): Promise<Result<null, string>> {
-  return await validateAndReturn(projectConfigSchema, baseConfig, projectConfigOverride);
+export async function validateProjectConfigOverride(options: { projectConfigOverride: ProjectConfigOverride }): Promise<Result<null, string>> {
+  return await validateAndReturn(projectConfigSchema, baseConfig, options.projectConfigOverride);
 }
 
 /**
  * Validates a branch config override, based on the given project's rendered project config.
  */
-export async function validateBranchConfigOverride(project: Project, branchConfigOverride: BranchConfigOverride): Promise<Result<null, string>> {
-  return await validateAndReturn(branchConfigSchema, await getIncompleteProjectConfig(project), branchConfigOverride);
+export async function validateBranchConfigOverride(options: { branchConfigOverride: BranchConfigOverride } & projectOptions): Promise<Result<null, string>> {
+  return await validateAndReturn(branchConfigSchema, await getIncompleteProjectConfig(options), options.branchConfigOverride);
 }
 
 /**
  * Validates an environment config override, based on the given branch's rendered branch config.
  */
-export async function validateEnvironmentConfigOverride(project: Project, branchId: string, environmentConfigOverride: EnvironmentConfigOverride): Promise<Result<null, string>> {
-  return await validateAndReturn(environmentConfigSchema, await getIncompleteBranchConfig(project, branchId), environmentConfigOverride);
+export async function validateEnvironmentConfigOverride(options: { environmentConfigOverride: EnvironmentConfigOverride } & branchOptions): Promise<Result<null, string>> {
+  return await validateAndReturn(environmentConfigSchema, await getIncompleteBranchConfig(options), options.environmentConfigOverride);
 }
 
 /**
  * Validates an organization config override, based on the given environment's rendered environment config.
  */
-export async function validateOrganizationConfigOverride(project: Project, branchId: string, organizationConfigOverride: OrganizationConfigOverride): Promise<Result<null, string>> {
-  return await validateAndReturn(organizationConfigSchema, await getIncompleteEnvironmentConfig(project, branchId), organizationConfigOverride);
+export async function validateOrganizationConfigOverride(options: { organizationConfigOverride: OrganizationConfigOverride } & environmentOptions): Promise<Result<null, string>> {
+  return await validateAndReturn(organizationConfigSchema, await getIncompleteEnvironmentConfig(options), options.organizationConfigOverride);
 }
 
 
@@ -89,80 +98,159 @@ export async function validateOrganizationConfigOverride(project: Project, branc
 // get<$$$>ConfigOverride
 // ---------------------------------------------------------------------------------------------------------------------
 
-export async function getProjectConfigOverride(project: Project): Promise<ProjectConfigOverride> {
+// Placeholder types that should be replaced after the config json db migration
+
+export async function getProjectConfigOverride(options: projectOptions): Promise<ProjectConfigOverride> {
   // fetch project config from our own DB
   // (currently it's just empty)
   return {};
 }
 
-export async function getBranchConfigOverride(project: Project, branchId: string): Promise<BranchConfigOverride> {
+export async function getBranchConfigOverride(options: branchOptions): Promise<BranchConfigOverride> {
   // fetch branch config from GitHub
   // (currently it's just empty)
+  if (options.branch.id !== 'main') {
+    throw new Error('Not implemented');
+  }
   return {};
 }
 
-export async function getEnvironmentConfigOverride(project: Project, branchId: string): Promise<EnvironmentConfigOverride> {
+export async function getEnvironmentConfigOverride(options: environmentOptions): Promise<EnvironmentConfigOverride> {
   // fetch environment config from DB (either our own, or the source of truth one)
-  if (branchId !== 'main') {
+  if (options.branch.id !== 'main') {
+    throw new Error('Not implemented');
+  }
+  const configOverride: EnvironmentConfigOverride = {};
+
+  const oldConfig = options.project.config;
+
+  // =================== TEAM ===================
+
+  if (oldConfig.clientTeamCreationEnabled !== baseConfig.team.clientTeamCreationEnabled) {
+    configOverride['team.clientTeamCreationEnabled'] = oldConfig.clientTeamCreationEnabled;
+  }
+
+  if (oldConfig.clientUserDeletionEnabled !== baseConfig.user.clientUserDeletionEnabled) {
+    configOverride['team.clientUserDeletionEnabled'] = oldConfig.clientUserDeletionEnabled;
+  }
+
+  if (oldConfig.createTeamOnSignUp !== baseConfig.team.createTeamOnSignUp) {
+    configOverride['team.createTeamOnSignUp'] = oldConfig.createTeamOnSignUp;
+  }
+
+  // =================== USER ===================
+
+  if (oldConfig.signUpEnabled !== baseConfig.user.signUpEnabled) {
+    configOverride['user.signUpEnabled'] = oldConfig.signUpEnabled;
+  }
+
+  // =================== DOMAIN ===================
+
+  if (oldConfig.allowLocalhost !== baseConfig.domain.allowLocalhost) {
+    configOverride['domain.allowLocalhost'] = oldConfig.allowLocalhost;
+  }
+
+  for (const domain of oldConfig.domains) {
+    configOverride['domain.' + base64url.encode(domain.domain)] = {
+      baseUrl: domain.domain,
+      handlerPath: domain.handlerPath,
+    } satisfies OrganizationRenderedConfig['domain']['trustedDomains'][string];
+  }
+
+  // =================== AUTH ===================
+
+  if (oldConfig.oauthAccountMergeStrategy !== baseConfig.auth.oauthAccountMergeStrategy) {
+    configOverride['auth.oauthAccountMergeStrategy'] = oldConfig.oauthAccountMergeStrategy;
+  }
+
+  for (const authMethodConfig of oldConfig.authMethodConfigs) {
+    const baseAuthMethod = {
+      id: authMethodConfig.id,
+      enabled: authMethodConfig.enabled,
+    };
+
+    let authMethodOverride: OrganizationRenderedConfig['auth']['authMethods'][string];
+    if (authMethodConfig.oauthProviderConfig) {
+      const oauthConfig = authMethodConfig.oauthProviderConfig.proxiedOAuthConfig || authMethodConfig.oauthProviderConfig.standardOAuthConfig;
+      if (!oauthConfig) {
+        throw new StackAssertionError('Either ProxiedOAuthConfig or StandardOAuthConfig must be set on authMethodConfigs.oauthProviderConfig', { authMethodConfig });
+      }
+      authMethodOverride = {
+        ...baseAuthMethod,
+        type: 'oauth',
+        oauthProviderId: oauthConfig.id,
+      } as const;
+    } else if (authMethodConfig.passwordConfig) {
+      authMethodOverride = {
+        ...baseAuthMethod,
+        type: 'password',
+      } as const;
+    } else if (authMethodConfig.otpConfig) {
+      authMethodOverride = {
+        ...baseAuthMethod,
+        type: 'otp',
+      } as const;
+    } else if (authMethodConfig.passkeyConfig) {
+      authMethodOverride = {
+        ...baseAuthMethod,
+        type: 'passkey',
+      } as const;
+    } else {
+      throw new StackAssertionError('Unknown auth method config', { authMethodConfig });
+    }
+
+    configOverride['auth.authMethodConfigs.' + authMethodConfig.id] = authMethodOverride;
+  }
+
+  for (const provider of oldConfig.oauthProviderConfigs) {
+    let providerOverride: OrganizationRenderedConfig['auth']['oauthProviders'][string];
+    if (provider.proxiedOAuthConfig) {
+      providerOverride = {
+        id: provider.id,
+        type: typedToLowercase(provider.proxiedOAuthConfig.type),
+        isShared: true,
+      } as const;
+    } else if (provider.standardOAuthConfig) {
+      providerOverride = filterUndefined({
+        id: provider.id,
+        type: typedToLowercase(provider.standardOAuthConfig.type),
+        isShared: false,
+        clientId: provider.standardOAuthConfig.clientId,
+        clientSecret: provider.standardOAuthConfig.clientSecret,
+        facebookConfigId: provider.standardOAuthConfig.facebookConfigId ?? undefined,
+        microsoftTenantId: provider.standardOAuthConfig.microsoftTenantId ?? undefined,
+      } as const);
+    } else {
+      throw new StackAssertionError('Unknown oauth provider config', { provider });
+    }
+
+    configOverride['auth.oauthProviders.' + provider.id] = providerOverride;
+  }
+
+  // =================== EMAIL ===================
+
+  if (oldConfig.emailServiceConfig?.standardEmailServiceConfig) {
+    configOverride['email.emailServer'] = {
+      isShared: false,
+      host: oldConfig.emailServiceConfig.standardEmailServiceConfig.host,
+      port: oldConfig.emailServiceConfig.standardEmailServiceConfig.port,
+      username: oldConfig.emailServiceConfig.standardEmailServiceConfig.username,
+      password: oldConfig.emailServiceConfig.standardEmailServiceConfig.password,
+      senderName: oldConfig.emailServiceConfig.standardEmailServiceConfig.senderName,
+      senderEmail: oldConfig.emailServiceConfig.standardEmailServiceConfig.senderEmail,
+    } satisfies OrganizationRenderedConfig['email']['emailServer'];
+  }
+
+  return configOverride;
+}
+
+export async function getOrganizationConfigOverride(options: organizationOptions): Promise<OrganizationConfigOverride> {
+  // fetch organization config from DB (either our own, or the source of truth one)
+  if (options.branch.id !== 'main' || options.organization.id !== null) {
     throw new Error('Not implemented');
   }
 
-  const config = project.config;
-  return {
-    createTeamOnSignUp: config.create_team_on_sign_up,
-    allowLocalhost: config.allow_localhost,
-    clientTeamCreationEnabled: config.client_team_creation_enabled,
-    clientUserDeletionEnabled: config.client_user_deletion_enabled,
-    signUpEnabled: config.sign_up_enabled,
-    oauthAccountMergeStrategy: config.oauth_account_merge_strategy,
-    authMethods: {},
-    connectedAccounts: {},
-    oauthProviders: config.oauth_providers.map(provider => ({
-      id: provider.id,
-      type: provider.id,
-      isShared: provider.type === 'shared',
-      clientId: provider.client_id,
-      clientSecret: provider.client_secret,
-      facebookConfigId: provider.facebook_config_id,
-      microsoftTenantId: provider.microsoft_tenant_id,
-    })).reduce((acc, provider) => {
-      (acc as any)[provider.id] = provider;
-      return acc;
-    }, {}),
-    emailConfig: config.email_config.type === 'shared' ? {
-      isShared: true,
-    } : {
-      isShared: false,
-      host: config.email_config.host || throwErr('email_config.host is required'),
-      port: config.email_config.port || throwErr('email_config.port is required'),
-      username: config.email_config.username || throwErr('email_config.username is required'),
-      password: config.email_config.password || throwErr('email_config.password is required'),
-      senderName: config.email_config.sender_name || throwErr('email_config.sender_name is required'),
-      senderEmail: config.email_config.sender_email || throwErr('email_config.sender_email is required'),
-    },
-    domains: config.domains.map(domain => ({
-      domain: domain.domain,
-      handle: domain.handler_path,
-    })).reduce((acc, domain) => {
-      (acc as any)[domain.domain] = domain;
-      return acc;
-    }, {}),
-    permissionDefinitions: {},
-    teamCreateDefaultSystemPermissions: config.team_creator_default_permissions.map(permission => ({
-      id: permission.id,
-    })).reduce((acc, permission) => {
-      (acc as any)[permission.id] = permission;
-      return acc;
-    }, {}),
-    teamCreateDefaultUserPermissions: config.team_creator_default_permissions.map(permission => ({
-      id: permission.id,
-    })),
-  };
-}
-
-export async function getOrganizationConfigOverride(tenancy: Tenancy): Promise<OrganizationConfigOverride> {
-  // fetch organization config from DB (either our own, or the source of truth one)
-  throw new Error('Not implemented');
+  return {};
 }
 
 
@@ -170,23 +258,39 @@ export async function getOrganizationConfigOverride(tenancy: Tenancy): Promise<O
 // set<$$$>ConfigOverride
 // ---------------------------------------------------------------------------------------------------------------------
 
-export async function setProjectConfigOverride(project: Project, projectConfigOverride: ProjectConfigOverride): Promise<void> {
+export async function setProjectConfigOverride(options: {
+  projectId: string,
+  projectConfigOverride: ProjectConfigOverride,
+}): Promise<void> {
   // set project config override on our own DB
   throw new Error('Not implemented');
 }
 
-export function setBranchConfigOverride(project: Project, branchId: string, branchConfigOverride: BranchConfigOverride): Promise<void> {
+export function setBranchConfigOverride(options: {
+  projectId: string,
+  branchId: string,
+  branchConfigOverride: BranchConfigOverride,
+}): Promise<void> {
   // update config.json if on local emulator
   // throw error otherwise
   throw new Error('Not implemented');
 }
 
-export function setEnvironmentConfigOverride(project: Project, branchId: string, environmentConfigOverride: EnvironmentConfigOverride): Promise<void> {
+export function setEnvironmentConfigOverride(options: {
+  projectId: string,
+  branchId: string,
+  environmentConfigOverride: EnvironmentConfigOverride,
+}): Promise<void> {
   // save environment config override on DB (either our own, or the source of truth one)
   throw new Error('Not implemented');
 }
 
-export function setOrganizationConfigOverride(tenancy: Tenancy, organizationConfigOverride: OrganizationConfigOverride): Promise<void> {
+export function setOrganizationConfigOverride(options: {
+  projectId: string,
+  branchId: string,
+  organizationId: string | null,
+  organizationConfigOverride: OrganizationConfigOverride,
+}): Promise<void> {
   // save organization config override on DB (either our own, or the source of truth one)
   throw new Error('Not implemented');
 }
@@ -196,20 +300,20 @@ export function setOrganizationConfigOverride(tenancy: Tenancy, organizationConf
 // internal functions
 // ---------------------------------------------------------------------------------------------------------------------
 
-async function getIncompleteProjectConfig(project: Project): Promise<ProjectIncompleteConfig> {
-  return normalize(override(baseConfig, await getProjectConfigOverride(project)), { onDotIntoNull: "ignore" });
+async function getIncompleteProjectConfig(options: projectOptions): Promise<ProjectIncompleteConfig> {
+  return normalize(override(baseConfig, await getProjectConfigOverride(options)), { onDotIntoNull: "ignore" }) as any;
 }
 
-async function getIncompleteBranchConfig(project: Project, branchId: string): Promise<BranchIncompleteConfig> {
-  return normalize(override(await getIncompleteProjectConfig(project), await getBranchConfigOverride(project, branchId)), { onDotIntoNull: "ignore" }) as any;
+async function getIncompleteBranchConfig(options: branchOptions): Promise<BranchIncompleteConfig> {
+  return normalize(override(await getIncompleteProjectConfig(options), await getBranchConfigOverride(options)), { onDotIntoNull: "ignore" }) as any;
 }
 
-async function getIncompleteEnvironmentConfig(project: Project, branchId: string): Promise<EnvironmentIncompleteConfig> {
-  return normalize(override(await getIncompleteBranchConfig(project, branchId), await getEnvironmentConfigOverride(project, branchId)), { onDotIntoNull: "ignore" }) as any;
+async function getIncompleteEnvironmentConfig(options: environmentOptions): Promise<EnvironmentIncompleteConfig> {
+  return normalize(override(await getIncompleteBranchConfig(options), await getEnvironmentConfigOverride(options)), { onDotIntoNull: "ignore" }) as any;
 }
 
-async function getIncompleteOrganizationConfig(tenancy: Tenancy): Promise<OrganizationIncompleteConfig> {
-  return normalize(override(await getIncompleteEnvironmentConfig(tenancy.project, tenancy.branchId), await getOrganizationConfigOverride(tenancy)), { onDotIntoNull: "ignore" }) as any;
+async function getIncompleteOrganizationConfig(options: organizationOptions): Promise<OrganizationIncompleteConfig> {
+  return normalize(override(await getIncompleteEnvironmentConfig(options), await getOrganizationConfigOverride(options)), { onDotIntoNull: "ignore" }) as any;
 }
 
 async function validateAndReturn(schema: yup.ObjectSchema<any>, base: any, configOverride: any): Promise<Result<null, string>> {
@@ -325,9 +429,9 @@ export const dbProjectToRenderedOrganizationConfig = (dbProject: DBProject): Org
         throw new StackAssertionError('Unknown auth method config', { authMethod });
       }
     }).reduce((acc, authMethod) => {
-      (acc as any)[authMethod.id] = authMethod;
+      acc.set(authMethod.id, authMethod);
       return acc;
-    }, {}),
+    }, new Map<string, NonNullable<OrganizationRenderedConfig['authMethods']>[string]>()),
 
     oauthProviders: config.oauthProviderConfigs.map(provider => {
       if (provider.proxiedOAuthConfig) {
