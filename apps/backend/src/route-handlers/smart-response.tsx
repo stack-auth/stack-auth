@@ -1,11 +1,12 @@
 import { traceSpan } from "@/utils/telemetry";
-import "../polyfills";
-
+import { yupValidate } from "@stackframe/stack-shared/dist/schema-fields";
 import { StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
 import { Json } from "@stackframe/stack-shared/dist/utils/json";
 import { deepPlainEquals } from "@stackframe/stack-shared/dist/utils/objects";
 import { NextRequest } from "next/server";
 import * as yup from "yup";
+import "../polyfills";
+import { SmartRequest } from "./smart-request";
 
 export type SmartResponse = {
   statusCode: number,
@@ -37,13 +38,14 @@ export type SmartResponse = {
   }
 );
 
-export async function validateSmartResponse<T>(req: NextRequest | null, obj: unknown, schema: yup.Schema<T>): Promise<T> {
+export async function validateSmartResponse<T>(req: NextRequest | null, smartReq: SmartRequest, obj: unknown, schema: yup.Schema<T>): Promise<T> {
   try {
-    return await schema.validate(obj, {
+    return await yupValidate(schema, obj, {
       abortEarly: false,
       context: {
         noUnknownPathPrefixes: [""],
       },
+      currentUserId: smartReq.auth?.user?.id ?? null,
     });
   } catch (error) {
     throw new StackAssertionError(`Error occurred during ${req ? `${req.method} ${req.url}` : "a custom endpoint invocation's"} response validation: ${error}`, { obj, schema, cause: error });

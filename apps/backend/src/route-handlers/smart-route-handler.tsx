@@ -269,7 +269,7 @@ export function createSmartRouteHandler<
     });
 
     return await traceSpan("validating smart response", async () => {
-      return await validateSmartResponse(nextRequest, smartRes, handler.response);
+      return await validateSmartResponse(nextRequest, fullReq, smartRes, handler.response);
     });
   };
 
