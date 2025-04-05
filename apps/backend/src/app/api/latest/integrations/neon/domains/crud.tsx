@@ -4,7 +4,7 @@ import * as schemaFields from "@stackframe/stack-shared/dist/schema-fields";
 import { yupMixed, yupObject } from "@stackframe/stack-shared/dist/schema-fields";
 import { StatusError } from "@stackframe/stack-shared/dist/utils/errors";
 import { createLazyProxy } from "@stackframe/stack-shared/dist/utils/proxies";
-import { projectsCrudHandlers } from "../../../projects/current/crud";
+import { projectsCrudHandlers } from "../../../internal/projects/current/crud";
 
 const domainSchema = schemaFields.urlSchema.defined()
   .matches(/^https?:\/\//, 'URL must start with http:// or https://')

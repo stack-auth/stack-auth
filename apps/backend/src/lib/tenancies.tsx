@@ -11,7 +11,7 @@ export const fullTenancyInclude = {
   },
 } as const satisfies Prisma.TenancyInclude;
 
-export function tenancyPrismaToCrud(prisma: Prisma.TenancyGetPayload<{ include: typeof fullTenancyInclude }>) {
+export async function tenancyPrismaToCrud(prisma: Prisma.TenancyGetPayload<{ include: typeof fullTenancyInclude }>) {
   if (prisma.hasNoOrganization && prisma.organizationId !== null) {
     throw new StackAssertionError("Organization ID is not null for a tenancy with hasNoOrganization", { tenancyId: prisma.id, prisma });
   }
@@ -19,7 +19,7 @@ export function tenancyPrismaToCrud(prisma: Prisma.TenancyGetPayload<{ include: 
     throw new StackAssertionError("Organization ID is null for a tenancy without hasNoOrganization", { tenancyId: prisma.id, prisma });
   }
 
-  const projectCrud = projectPrismaToCrud(prisma.project);
+  const projectCrud = await projectPrismaToCrud(prisma.project);
   return {
     id: prisma.id,
     config: projectCrud.config,
@@ -90,7 +90,7 @@ export async function getTenancy(tenancyId: string) {
     include: fullTenancyInclude,
   });
   if (!prisma) return null;
-  return tenancyPrismaToCrud(prisma);
+  return await tenancyPrismaToCrud(prisma);
 }
 
 export async function getTenancyFromProject(projectId: string, branchId: string, organizationId: string | null) {
@@ -113,6 +113,6 @@ export async function getTenancyFromProject(projectId: string, branchId: string,
     include: fullTenancyInclude,
   });
   if (!prisma) return null;
-  return tenancyPrismaToCrud(prisma);
+  return await tenancyPrismaToCrud(prisma);
 }
 

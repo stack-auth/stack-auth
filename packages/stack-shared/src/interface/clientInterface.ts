@@ -18,7 +18,7 @@ import { CurrentUserCrud } from './crud/current-user';
 import { ConnectedAccountAccessTokenCrud } from './crud/oauth';
 import { TeamApiKeysCrud, UserApiKeysCrud, teamApiKeysCreateInputSchema, teamApiKeysCreateOutputSchema, userApiKeysCreateInputSchema, userApiKeysCreateOutputSchema } from './crud/project-api-keys';
 import { ProjectPermissionsCrud } from './crud/project-permissions';
-import { InternalProjectsCrud, ProjectsCrud } from './crud/projects';
+import { AdminUserProjectsCrud, ClientProjectsCrud } from './crud/projects';
 import { SessionsCrud } from './crud/sessions';
 import { TeamInvitationCrud } from './crud/team-invitation';
 import { TeamMemberProfilesCrud } from './crud/team-member-profiles';
@@ -1211,13 +1211,13 @@ export class StackClientInterface {
     return result.items;
   }
 
-  async getClientProject(): Promise<Result<ProjectsCrud['Client']['Read'], KnownErrors["ProjectNotFound"]>> {
+  async getClientProject(): Promise<Result<ClientProjectsCrud['Client']['Read'], KnownErrors["ProjectNotFound"]>> {
     const responseOrError = await this.sendClientRequestAndCatchKnownError("/projects/current", {}, null, [KnownErrors.ProjectNotFound]);
     if (responseOrError.status === "error") {
       return Result.error(responseOrError.error);
     }
     const response = responseOrError.data;
-    const project: ProjectsCrud['Client']['Read'] = await response.json();
+    const project: ClientProjectsCrud['Client']['Read'] = await response.json();
     return Result.ok(project);
   }
 
@@ -1235,20 +1235,20 @@ export class StackClientInterface {
     );
   }
 
-  async listProjects(session: InternalSession): Promise<InternalProjectsCrud['Client']['Read'][]> {
+  async listProjects(session: InternalSession): Promise<AdminUserProjectsCrud['Client']['Read'][]> {
     const response = await this.sendClientRequest("/internal/projects", {}, session);
     if (!response.ok) {
       throw new Error("Failed to list projects: " + response.status + " " + (await response.text()));
     }
 
-    const json = await response.json() as InternalProjectsCrud['Client']['List'];
+    const json = await response.json() as AdminUserProjectsCrud['Client']['List'];
     return json.items;
   }
 
   async createProject(
-    project: InternalProjectsCrud['Client']['Create'],
+    project: AdminUserProjectsCrud['Client']['Create'],
     session: InternalSession,
-  ): Promise<InternalProjectsCrud['Client']['Read']> {
+  ): Promise<AdminUserProjectsCrud['Client']['Read']> {
     const fetchResponse = await this.sendClientRequest(
       "/internal/projects",
       {

@@ -2,7 +2,7 @@ import { createProject, fullProjectInclude, listManagedProjectIds, projectPrisma
 import { prismaClient } from "@/prisma-client";
 import { createCrudHandlers } from "@/route-handlers/crud-handler";
 import { KnownErrors } from "@stackframe/stack-shared";
-import { internalProjectsCrud } from "@stackframe/stack-shared/dist/interface/crud/projects";
+import { adminUserProjectsCrud } from "@stackframe/stack-shared/dist/interface/crud/projects";
 import { projectIdSchema, yupObject } from "@stackframe/stack-shared/dist/schema-fields";
 import { throwErr } from "@stackframe/stack-shared/dist/utils/errors";
 import { createLazyProxy } from "@stackframe/stack-shared/dist/utils/proxies";
@@ -17,7 +17,7 @@ const disableSignUpByDefault = new Set([
   "1343e3e7-dd7a-44a1-8752-701c0881da72",
 ]);
 
-export const internalProjectsCrudHandlers = createLazyProxy(() => createCrudHandlers(internalProjectsCrud, {
+export const adminUserProjectsCrudHandlers = createLazyProxy(() => createCrudHandlers(adminUserProjectsCrud, {
   paramsSchema: yupObject({
     projectId: projectIdSchema.defined(),
   }),
@@ -52,7 +52,7 @@ export const internalProjectsCrudHandlers = createLazyProxy(() => createCrudHand
     });
 
     return {
-      items: results.map(x => projectPrismaToCrud(x)),
+      items: await Promise.all(results.map(x => projectPrismaToCrud(x))),
       is_paginated: false,
     } as const;
   }
