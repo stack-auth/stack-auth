@@ -43,6 +43,7 @@
     "@simplewebauthn/browser": "^11.0.0",
     "@stackframe/stack-shared": "workspace:*",
     "@stackframe/stack-ui": "workspace:*",
+    "@tanstack/react-table": "^8.20.5",
     "browser-image-compression": "^2.0.2",
     "color": "^4.2.3",
     "cookie": "^0.6.0",
