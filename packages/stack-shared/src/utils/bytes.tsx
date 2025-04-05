@@ -7,6 +7,46 @@ const crockfordReplacements = new Map([
   ["l", "1"],
 ]);
 
+export function toHexString(input: Uint8Array): string {
+  return Array.from(input).map(b => b.toString(16).padStart(2, "0")).join("");
+}
+import.meta.vitest?.test("toHexString", ({ expect }) => {
+  expect(toHexString(new Uint8Array([]))).toBe("");
+  expect(toHexString(new Uint8Array([0]))).toBe("00");
+  expect(toHexString(new Uint8Array([15]))).toBe("0f");
+  expect(toHexString(new Uint8Array([16]))).toBe("10");
+  expect(toHexString(new Uint8Array([255]))).toBe("ff");
+  expect(toHexString(new Uint8Array([1, 2, 3]))).toBe("010203");
+});
+
+export function getBase32CharacterFromIndex(index: number): string {
+  if (index < 0 || index >= crockfordAlphabet.length) {
+    throw new StackAssertionError(`Invalid base32 index: ${index}`);
+  }
+  return crockfordAlphabet[index];
+}
+import.meta.vitest?.test("getBase32CharacterFromIndex", ({ expect }) => {
+  expect(getBase32CharacterFromIndex(0)).toBe("0");
+  expect(getBase32CharacterFromIndex(15)).toBe("F");
+  expect(() => getBase32CharacterFromIndex(32)).toThrow();
+});
+
+export function getBase32IndexFromCharacter(character: string): number {
+  if (character.length !== 1) {
+    throw new StackAssertionError(`Invalid base32 character: ${character}`);
+  }
+  const index = crockfordAlphabet.indexOf(character.toUpperCase());
+  if (index === -1) {
+    throw new StackAssertionError(`Invalid base32 character: ${character}`);
+  }
+  return index;
+}
+import.meta.vitest?.test("getBase32IndexFromCharacter", ({ expect }) => {
+  expect(getBase32IndexFromCharacter("0")).toBe(0);
+  expect(getBase32IndexFromCharacter("F")).toBe(15);
+  expect(() => getBase32IndexFromCharacter("_")).toThrow();
+});
+
 export function encodeBase32(input: Uint8Array): string {
   let bits = 0;
   let value = 0;
@@ -15,12 +55,12 @@ export function encodeBase32(input: Uint8Array): string {
     value = (value << 8) | input[i];
     bits += 8;
     while (bits >= 5) {
-      output += crockfordAlphabet[(value >>> (bits - 5)) & 31];
+      output += getBase32CharacterFromIndex((value >>> (bits - 5)) & 31);
       bits -= 5;
     }
   }
   if (bits > 0) {
-    output += crockfordAlphabet[(value << (5 - bits)) & 31];
+    output += getBase32CharacterFromIndex((value << (5 - bits)) & 31);
   }
 
   // sanity check
@@ -30,7 +70,14 @@ export function encodeBase32(input: Uint8Array): string {
 
   return output;
 }
-
+import.meta.vitest?.test("encodeBase32", ({ expect }) => {
+  expect(encodeBase32(new Uint8Array([]))).toBe("");
+  expect(encodeBase32(new Uint8Array([1]))).toBe("04");
+  expect(encodeBase32(new Uint8Array([15]))).toBe("1W");
+  expect(encodeBase32(new Uint8Array([16]))).toBe("20");
+  expect(encodeBase32(new Uint8Array([255]))).toBe("ZW");
+  expect(encodeBase32(new Uint8Array([255,255]))).toBe("ZZZG");
+});
 export function decodeBase32(input: string): Uint8Array {
   if (!isBase32(input)) {
     throw new StackAssertionError("Invalid base32 string");
@@ -46,10 +93,7 @@ export function decodeBase32(input: string): Uint8Array {
     if (crockfordReplacements.has(char)) {
       char = crockfordReplacements.get(char)!;
     }
-    const index = crockfordAlphabet.indexOf(char);
-    if (index === -1) {
-      throw new Error(`Invalid character: ${char}`);
-    }
+    const index = getBase32IndexFromCharacter(char);
     value = (value << 5) | index;
     bits += 5;
     if (bits >= 8) {
@@ -59,6 +103,13 @@ export function decodeBase32(input: string): Uint8Array {
   }
   return output;
 }
+import.meta.vitest?.test("decodeBase32", ({ expect }) => {
+  expect(decodeBase32("")).toEqual(new Uint8Array([]));
+  expect(decodeBase32("00")).toEqual(new Uint8Array([0]));
+  expect(decodeBase32("1W")).toEqual(new Uint8Array([15]));
+  expect(decodeBase32("20")).toEqual(new Uint8Array([16]));
+  expect(decodeBase32("ZW")).toEqual(new Uint8Array([255]));
+});
 
 export function encodeBase64(input: Uint8Array): string {
   const res = btoa(String.fromCharCode(...input));

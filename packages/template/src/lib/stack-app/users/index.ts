@@ -7,6 +7,7 @@ import { GeoInfo } from "@stackframe/stack-shared/dist/utils/geo";
 import { ReadonlyJson } from "@stackframe/stack-shared/dist/utils/json";
 import { ProviderType } from "@stackframe/stack-shared/dist/utils/oauth";
 import { Result } from "@stackframe/stack-shared/dist/utils/results";
+import { ApiKeyCreationOptions, UserApiKey, UserApiKeyFirstView } from "../api-keys";
 import { AsyncStoreProperty } from "../common";
 import { OAuthConnection } from "../connected-accounts";
 import { ContactChannel, ContactChannelCreateOptions, ServerContactChannel, ServerContactChannelCreateOptions } from "../contact-channels";
@@ -213,7 +214,10 @@ export type UserExtra = {
   revokeSession(sessionId: string): Promise<void>,
   getTeamProfile(team: Team): Promise<EditableTeamMemberProfile>,
   useTeamProfile(team: Team): EditableTeamMemberProfile, // THIS_LINE_PLATFORM react-like
+
+  createApiKey(options: ApiKeyCreationOptions<"user">): Promise<UserApiKeyFirstView>,
 }
+& AsyncStoreProperty<"apiKeys", [], UserApiKey[], true>
 & AsyncStoreProperty<"team", [id: string], Team | null, false>
 & AsyncStoreProperty<"teams", [], Team[], true>
 & AsyncStoreProperty<"permission", [scope: Team, permissionId: string, options?: { recursive?: boolean }], TeamPermission | null, false>

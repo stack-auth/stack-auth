@@ -98,6 +98,8 @@ it("lists oauth providers", async ({ expect }) => {
       "body": {
         "config": {
           "allow_localhost": true,
+          "allow_team_api_keys": false,
+          "allow_user_api_keys": false,
           "client_team_creation_enabled": false,
           "client_user_deletion_enabled": false,
           "create_team_on_sign_up": false,
