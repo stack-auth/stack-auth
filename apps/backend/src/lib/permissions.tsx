@@ -349,7 +349,7 @@ export async function listPermissionDefinitions(
 
 export function getPermissionDefinitionsFromProjectConfig(
   projectConfig: Prisma.ProjectConfigGetPayload<{ include: { permissions: { include: typeof fullPermissionInclude } } }>,
-  scope: 'TEAM' | 'USER'
+  scope: 'TEAM' | 'PROJECT'
 ): ExtendedTeamPermissionDefinition[] {
   const res = projectConfig.permissions;
   const nonSystemPermissions = res.map(db => permissionDefinitionJsonFromDbType(db));
