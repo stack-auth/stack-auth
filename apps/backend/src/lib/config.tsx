@@ -198,7 +198,7 @@ export async function getEnvironmentConfigOverride(options: environmentOptions):
       throw new StackAssertionError('Unknown auth method config', { authMethodConfig });
     }
 
-    configOverride['auth.authMethodConfigs.' + authMethodConfig.id] = authMethodOverride;
+    configOverride['auth.authMethods.' + authMethodConfig.id] = authMethodOverride;
   }
 
   for (const provider of oldConfig.oauthProviderConfigs) {

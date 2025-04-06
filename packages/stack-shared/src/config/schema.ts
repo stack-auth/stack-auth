@@ -28,6 +28,7 @@ export const baseConfig = {
   },
   domain: {
     allowLocalhost: true,
+    trustedDomains: {},
   },
   auth: {
     oauthAccountMergeStrategy: 'link_method',

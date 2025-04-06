@@ -162,21 +162,36 @@ export function normalize(c: Config, options: NormalizeOptions = {}): Normalized
 
   for (const key of keysByDepth) {
     if (key.includes('.')) {
-      const [prefix, suffix] = key.split('.', 2);
-      if (!has(result, prefix)) {
-        switch (onDotIntoNull) {
-          case "throw": {
-            throw new NormalizationError(`Tried to use dot notation to access ${JSON.stringify(key)}, but ${JSON.stringify(prefix)} doesn't exist on the object (or is null). Maybe this config is not normalizable?`);
-          }
-          case "ignore": {
-            continue;
+      const segments = key.split('.');
+      let current: NormalizedConfig = result;
+      let currentKey = segments[0];
+      let ignored = false;
+
+      // Create or traverse the path for all segments except the last one
+      for (let i = 0; i < segments.length - 1; i++) {
+        if (!has(current, currentKey)) {
+          switch (onDotIntoNull) {
+            case "throw": {
+              throw new NormalizationError(`Tried to use dot notation to access ${JSON.stringify(key)}, but ${JSON.stringify(currentKey)} doesn't exist on the object (or is null). Maybe this config is not normalizable?`);
+            }
+            case "ignore": {
+              ignored = true;
+              continue;
+            }
           }
         }
+        const value = get(current, currentKey);
+        if (typeof value !== 'object') {
+          throw new NormalizationError(`Tried to use dot notation to access ${JSON.stringify(key)}, but ${JSON.stringify(currentKey)} is not an object. Maybe this config is not normalizable?`);
+        }
+        current = value as NormalizedConfig;
+        currentKey = segments[i + 1];
       }
-      const oldValue = get(result, prefix);
-      if (typeof oldValue !== 'object') throw new NormalizationError(`Tried to use dot notation to access ${JSON.stringify(key)}, but ${JSON.stringify(prefix)} is not an object. Maybe this config is not normalizable?`);
-      set(oldValue, suffix as any, get(c, key));
-      setNormalizedValue(result, prefix, oldValue);
+
+      // Set the final value
+      if (!ignored) {
+        setNormalizedValue(current, currentKey, get(c, key));
+      }
     } else {
       setNormalizedValue(result, key, get(c, key));
     }
@@ -214,6 +229,8 @@ import.meta.vitest?.test("normalize(...)", ({ expect }) => {
     "h.1": {
       j: 12,
     },
+    k: { l: {} },
+    "k.l.m": 13,
   })).toEqual({
     a: 9,
     b: 2,
@@ -222,6 +239,7 @@ import.meta.vitest?.test("normalize(...)", ({ expect }) => {
       g: 5,
     },
     h: [11, { j: 12 }, 8],
+    k: { l: { m: 13 } },
   });
 
   // dotting into null
