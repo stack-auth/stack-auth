@@ -151,7 +151,7 @@ export async function getEnvironmentConfigOverride(options: environmentOptions):
   }
 
   for (const domain of oldConfig.domains) {
-    configOverride['domain.' + base64url.encode(domain.domain)] = {
+    configOverride['domain.trustedDomains.' + base64url.encode(domain.domain)] = {
       baseUrl: domain.domain,
       handlerPath: domain.handlerPath,
     } satisfies OrganizationRenderedConfig['domain']['trustedDomains'][string];
