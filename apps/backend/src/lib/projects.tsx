@@ -7,8 +7,9 @@ import { StackAssertionError, captureError, throwErr } from "@stackframe/stack-s
 import { deepPlainEquals, filterUndefined, isNotNull, omit } from "@stackframe/stack-shared/dist/utils/objects";
 import { stringCompare, typedToLowercase, typedToUppercase } from "@stackframe/stack-shared/dist/utils/strings";
 import { generateUuid } from "@stackframe/stack-shared/dist/utils/uuids";
+import { diffString } from 'json-diff';
 import { getRenderedOrganizationConfig, renderedOrganizationConfigToProjectCrud } from "./config";
-import { fullPermissionInclude, permissionDefinitionJsonFromDbType, permissionDefinitionJsonFromRawDbType, teamPermissionDefinitionJsonFromTeamSystemDbType } from "./permissions";
+import { fullPermissionInclude, permissionDefinitionJsonFromDbType, permissionDefinitionJsonFromRawDbType, permissionDefinitionJsonFromSystemDbType } from "./permissions";
 import { ensureSharedProvider, ensureStandardProvider } from "./request-checks";
 
 export const fullProjectInclude = {
@@ -153,12 +154,12 @@ export async function projectPrismaToCrud(
       })(),
       team_creator_default_permissions: prisma.config.permissions.filter(perm => perm.isDefaultTeamCreatorPermission)
         .map(permissionDefinitionJsonFromDbType)
-        .concat(prisma.config.teamCreateDefaultSystemPermissions.map(db => teamPermissionDefinitionJsonFromTeamSystemDbType(db, prisma.config)))
+        .concat(prisma.config.teamCreateDefaultSystemPermissions.map(db => permissionDefinitionJsonFromSystemDbType(db, prisma.config)))
         .sort((a, b) => stringCompare(a.id, b.id))
         .map(perm => ({ id: perm.id })),
       team_member_default_permissions: prisma.config.permissions.filter(perm => perm.isDefaultTeamMemberPermission)
         .map(permissionDefinitionJsonFromDbType)
-        .concat(prisma.config.teamMemberDefaultSystemPermissions.map(db => teamPermissionDefinitionJsonFromTeamSystemDbType(db, prisma.config)))
+        .concat(prisma.config.teamMemberDefaultSystemPermissions.map(db => permissionDefinitionJsonFromSystemDbType(db, prisma.config)))
         .sort((a, b) => stringCompare(a.id, b.id))
         .map(perm => ({ id: perm.id })),
       user_default_permissions: prisma.config.permissions.filter(perm => perm.isDefaultProjectPermission)
@@ -173,7 +174,7 @@ export async function projectPrismaToCrud(
     result.config.id,
   );
   if (!deepPlainEquals(result.config, newResultWithConfigJson)) {
-    const errorData = { result: result.config, newResult: newResultWithConfigJson };
+    const errorData = { diff: diffString(result.config, newResultWithConfigJson) };
     const error = new StackAssertionError("Project config mismatch", errorData);
 
     if (!getNodeEnvironment().includes("prod")) {
@@ -381,7 +382,7 @@ export function getProjectQuery(projectId: string): RawQuery<ProjectsCrud["Admin
 
       const teamPermissions = [
         ...row.ProjectConfig.Permissions.map((perm: any) => permissionDefinitionJsonFromRawDbType(perm)),
-        ...Object.values(TeamSystemPermission).map(systemPermission => teamPermissionDefinitionJsonFromTeamSystemDbType(systemPermission, row.ProjectConfig)),
+        ...Object.values(TeamSystemPermission).map(systemPermission => permissionDefinitionJsonFromSystemDbType(systemPermission, row.ProjectConfig)),
       ].sort((a, b) => stringCompare(a.id, b.id));
 
       const oauthProviderAuthMethods = row.ProjectConfig.AuthMethodConfigs

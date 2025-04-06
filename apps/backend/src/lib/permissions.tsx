@@ -77,9 +77,9 @@ export function permissionDefinitionJsonFromRawDbType(db: any | Prisma.Permissio
   } as const;
 }
 
-export function teamPermissionDefinitionJsonFromTeamSystemDbType(db: DBTeamSystemPermission, projectConfig: {
-  teamCreateDefaultSystemPermissions: string[] | null,
+export function permissionDefinitionJsonFromSystemDbType(db: DBTeamSystemPermission, projectConfig: {
   teamMemberDefaultSystemPermissions: string[] | null,
+  teamCreateDefaultSystemPermissions: string[] | null,
   projectDefaultPermissions?: string[] | null,
 }): ExtendedTeamPermissionDefinition {
   if ((["teamMemberDefaultSystemPermissions", "teamCreateDefaultSystemPermissions"] as const).some(key => projectConfig[key] !== null && !Array.isArray(projectConfig[key]))) {
@@ -356,7 +356,7 @@ export function getPermissionDefinitionsFromProjectConfig(
 
   const systemPermissions = [
     ...(scope === "TEAM" ?
-      Object.values(DBTeamSystemPermission).map(db => teamPermissionDefinitionJsonFromTeamSystemDbType(db, projectConfig)) :
+      Object.values(DBTeamSystemPermission).map(db => permissionDefinitionJsonFromSystemDbType(db, projectConfig)) :
       []),
   ];
 

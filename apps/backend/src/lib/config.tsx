@@ -8,6 +8,7 @@ import { Result } from "@stackframe/stack-shared/dist/utils/results";
 import { stringCompare, typedToLowercase } from "@stackframe/stack-shared/dist/utils/strings";
 import { base64url } from "jose";
 import * as yup from "yup";
+import { permissionDefinitionJsonFromDbType, permissionDefinitionJsonFromSystemDbType } from "./permissions";
 import { DBProject } from "./projects";
 
 type Project = ProjectsCrud["Admin"]["Read"];
@@ -239,6 +240,26 @@ export async function getEnvironmentConfigOverride(options: environmentOptions):
       senderEmail: oldConfig.emailServiceConfig.standardEmailServiceConfig.senderEmail,
     } satisfies OrganizationRenderedConfig['email']['emailServer'];
   }
+
+  // =================== PERMISSIONS ===================
+
+  configOverride['team.defaultCreatorTeamPermissions'] = oldConfig.permissions.filter(perm => perm.isDefaultTeamCreatorPermission)
+    .map(permissionDefinitionJsonFromDbType)
+    .concat(oldConfig.teamCreateDefaultSystemPermissions.map(db => permissionDefinitionJsonFromSystemDbType(db, oldConfig)))
+    .sort((a, b) => stringCompare(a.id, b.id))
+    .map(perm => ({ id: perm.id }));
+
+  configOverride['team.defaultMemberTeamPermissions'] = oldConfig.permissions.filter(perm => perm.isDefaultTeamMemberPermission)
+    .map(permissionDefinitionJsonFromDbType)
+    .concat(oldConfig.teamMemberDefaultSystemPermissions.map(db => permissionDefinitionJsonFromSystemDbType(db, oldConfig)))
+    .sort((a, b) => stringCompare(a.id, b.id))
+    .map(perm => ({ id: perm.id }));
+
+  configOverride['user.defaultProjectPermissions'] = oldConfig.permissions.filter(perm => perm.isDefaultProjectPermission)
+    .map(permissionDefinitionJsonFromDbType)
+    // TODO: add project default system permissions after creating the first project system permission
+    .sort((a, b) => stringCompare(a.id, b.id))
+    .map(perm => ({ id: perm.id }));
 
   return configOverride;
 }
