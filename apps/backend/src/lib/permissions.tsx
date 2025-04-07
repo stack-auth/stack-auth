@@ -1,4 +1,3 @@
-import { isPrismaUniqueConstraintViolation } from "@/prisma-client";
 import { TeamSystemPermission as DBTeamSystemPermission, Prisma } from "@prisma/client";
 import { KnownErrors } from "@stackframe/stack-shared";
 import { ProjectPermissionsCrud } from "@stackframe/stack-shared/dist/interface/crud/project-permissions";
@@ -6,6 +5,7 @@ import { TeamPermissionDefinitionsCrud, TeamPermissionsCrud } from "@stackframe/
 import { groupBy } from "@stackframe/stack-shared/dist/utils/arrays";
 import { StackAssertionError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
 import { stringCompare, typedToLowercase, typedToUppercase } from "@stackframe/stack-shared/dist/utils/strings";
+import { isPrismaUniqueConstraintViolation } from "../prisma-client";
 import { Tenancy } from "./tenancies";
 import { PrismaTransaction } from "./types";
 
