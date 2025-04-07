@@ -36,7 +36,7 @@
     "lucide-react": "^0.378.0",
     "next": "15.2.3",
     "next-themes": "^0.2.1",
-    "posthog-js": "^1.149.1",
+    "posthog-js": "^1.234.9",
     "react": "19.0.0",
     "react-dom": "19.0.0",
     "react-globe.gl": "^2.28.2",
