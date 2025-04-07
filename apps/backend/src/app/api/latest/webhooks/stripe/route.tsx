@@ -55,6 +55,25 @@ const STRIPE_CONNECT_EVENT_HANDLERS: {
       }
     });
   },
+  "product.created": async (stripe, event) => {
+    const stripeProduct = event.data.object;
+    if (!stripeProduct.metadata.stack_product_id) return;
+    const stackProductId = stripeProduct.metadata.stack_product_id;
+
+    await retryTransaction(async (tx) => {
+      const stackProduct = await tx.product.findUnique({
+        where: { id: stackProductId }
+      });
+
+      if (stackProduct) {
+        // Update the product with the Stripe product ID
+        await tx.product.update({
+          where: { id: stackProduct.id },
+          data: { stripeProductId: stripeProduct.id }
+        });
+      }
+    });
+  },
 };
 
 export const POST = async (req: NextApiRequest) => {
