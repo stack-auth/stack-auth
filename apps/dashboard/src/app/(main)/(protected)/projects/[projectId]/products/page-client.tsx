@@ -5,26 +5,24 @@ import { SettingCard } from "@/components/settings";
 import { ActionCell, Button, DataTable, DataTableColumnHeader, TextCell, Typography } from "@stackframe/stack-ui";
 import { ColumnDef } from "@tanstack/react-table";
 import { Package2, Plus } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import * as yup from "yup";
 import { PageLayout } from "../page-layout";
 import { useAdminApp } from "../use-admin-app";
 
 type Product = {
-  id: string;
-  name: string;
-  stripe_product_id: string | null;
-  associated_permission_id: string | null;
-  created_at_millis: string;
-  project_id: string;
+  id: string,
+  name: string,
+  stripe_product_id: string | null,
+  associated_permission_id: string | null,
+  created_at_millis: string,
+  project_id: string,
 };
 
 export default function PageClient() {
   const [isAddProductDialogOpen, setIsAddProductDialogOpen] = useState(false);
   const [isEditProductDialogOpen, setIsEditProductDialogOpen] = useState(false);
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
-  const [products, setProducts] = useState<Product[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   const stackAdminApp = useAdminApp();
@@ -32,53 +30,26 @@ export default function PageClient() {
   const stripeConfig = project.config.stripeConfig;
   const stripeConfigured = !!stripeConfig;
 
-  const fetchProducts = async () => {
-    setIsLoading(true);
-    setError(null);
-    try {
-      const response = await fetch(`/api/latest/internal/payments/products`, {
-        headers: {
-          "Content-Type": "application/json",
-        },
-      });
-      if (!response.ok) {
-        throw new Error(`Error fetching products: ${response.status}`);
-      }
-      const data = await response.json();
-      setProducts(data.items || []);
-    } catch (err) {
-      console.error("Error fetching products:", err);
-      setError(err instanceof Error ? err.message : "Failed to fetch products");
-    } finally {
-      setIsLoading(false);
-    }
-  };
+  const adminProducts = stackAdminApp.useProducts();
 
-  useEffect(() => {
-    fetchProducts();
-  }, []);
+  // Map AdminProduct to our Product type
+  const products: Product[] = adminProducts.map(product => ({
+    id: product.id,
+    name: product.name,
+    stripe_product_id: product.stripeProductId,
+    associated_permission_id: product.associatedPermissionId,
+    created_at_millis: String(new Date(product.createdAt).getTime()),
+    project_id: project.id, // Use current project ID since it's not in AdminProduct
+  }));
 
   const handleAddProduct = async (values: any) => {
     try {
-      const response = await fetch(`/api/latest/internal/payments/products`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          name: values.name,
-          stripe_product_id: values.stripe_product_id || null,
-          associated_permission_id: values.associated_permission_id || null,
-          project_id: project.id,
-        }),
+      await stackAdminApp.createProduct({
+        name: values.name,
+        stripeProductId: values.stripe_product_id || null,
+        associatedPermissionId: values.associated_permission_id || null,
+        // project_id is not in AdminProductCreateOptions, so we don't include it
       });
-
-      if (!response.ok) {
-        throw new Error(`Error creating product: ${response.status}`);
-      }
-
-      // Refresh products list
-      await fetchProducts();
     } catch (err) {
       console.error("Error creating product:", err);
       setError(err instanceof Error ? err.message : "Failed to create product");
@@ -89,24 +60,11 @@ export default function PageClient() {
     if (!selectedProduct) return;
 
     try {
-      const response = await fetch(`/api/latest/internal/payments/products/${selectedProduct.id}`, {
-        method: "PATCH",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          name: values.name,
-          stripe_product_id: values.stripe_product_id || null,
-          associated_permission_id: values.associated_permission_id || null,
-        }),
+      await stackAdminApp.updateProduct(selectedProduct.id, {
+        name: values.name,
+        stripeProductId: values.stripe_product_id || null,
+        associatedPermissionId: values.associated_permission_id || null,
       });
-
-      if (!response.ok) {
-        throw new Error(`Error updating product: ${response.status}`);
-      }
-
-      // Refresh products list
-      await fetchProducts();
     } catch (err) {
       console.error("Error updating product:", err);
       setError(err instanceof Error ? err.message : "Failed to update product");
@@ -115,19 +73,7 @@ export default function PageClient() {
 
   const handleDeleteProduct = async (productId: string) => {
     try {
-      const response = await fetch(`/api/latest/internal/payments/products/${productId}`, {
-        method: "DELETE",
-        headers: {
-          "Content-Type": "application/json",
-        },
-      });
-
-      if (!response.ok) {
-        throw new Error(`Error deleting product: ${response.status}`);
-      }
-
-      // Refresh products list
-      await fetchProducts();
+      await stackAdminApp.deleteProduct(productId);
     } catch (err) {
       console.error("Error deleting product:", err);
       setError(err instanceof Error ? err.message : "Failed to delete product");
@@ -174,11 +120,11 @@ export default function PageClient() {
   ];
 
   const getProductFormSchema = (product?: Product | null) => yup.object({
-    name: yup.string().required().label("Product Name").default(product?.name || ""),
+    name: yup.string().defined().label("Product Name").default(product?.name || ""),
     stripe_product_id: yup.string().nullable().label("Stripe Product ID").default(product?.stripe_product_id),
     associated_permission_id: yup.string().nullable().label("Associated Permission ID").default(product?.associated_permission_id),
   });
-  
+
   const productFormSchema = getProductFormSchema();
 
   return (
@@ -199,11 +145,11 @@ export default function PageClient() {
       )}
 
       {!stripeConfigured && (
-        <SettingCard 
-          title="Stripe Configuration Required" 
+        <SettingCard
+          title="Stripe Configuration Required"
           description="Configure Stripe to enable full product functionality"
           actions={
-            <Button onClick={(e) => { 
+            <Button onClick={(e) => {
               e.preventDefault();
               window.location.href = `/projects/${project.id}/payments`;
             }}>
@@ -214,7 +160,7 @@ export default function PageClient() {
           <div className="flex items-center gap-3">
             <Package2 />
             <Typography>
-              For full product functionality, including syncing with Stripe products and subscriptions, 
+              For full product functionality, including syncing with Stripe products and subscriptions,
               you need to configure Stripe in the Payments section.
             </Typography>
           </div>
@@ -225,23 +171,12 @@ export default function PageClient() {
         title="Products"
         description="Manage your application's products"
       >
-        {isLoading ? (
-          <div className="py-4">Loading products...</div>
-        ) : (
-          <DataTable
-            data={products}
-            columns={columns}
-            defaultColumnFilters={[]}
-            defaultSorting={[{ id: "name", desc: false }]}
-            toolbarRender={() => (
-              <div className="text-center py-8">
-                <Package2 className="mx-auto h-12 w-12 text-muted-foreground mb-4" />
-                <Typography className="font-semibold mb-2">No products found</Typography>
-                <Typography variant="secondary">Create your first product to get started</Typography>
-              </div>
-            )}
-          />
-        )}
+        <DataTable
+          data={products}
+          columns={columns}
+          defaultColumnFilters={[]}
+          defaultSorting={[{ id: "name", desc: false }]}
+        />
       </SettingCard>
 
       <SmartFormDialog
