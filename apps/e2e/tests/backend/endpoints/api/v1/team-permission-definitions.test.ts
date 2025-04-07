@@ -31,6 +31,11 @@ it("lists all the team permissions", async ({ expect }) => {
           },
           {
             "contained_permission_ids": [],
+            "description": "Create and manage API keys for the team",
+            "id": "$manage_api_keys",
+          },
+          {
+            "contained_permission_ids": [],
             "description": "Read and list the other members of the team",
             "id": "$read_members",
           },
@@ -48,6 +53,7 @@ it("lists all the team permissions", async ({ expect }) => {
             "contained_permission_ids": [
               "$delete_team",
               "$invite_members",
+              "$manage_api_keys",
               "$read_members",
               "$remove_members",
               "$update_team",
@@ -174,6 +180,11 @@ it("creates, updates, and delete a new team permission", async ({ expect }) => {
           },
           {
             "contained_permission_ids": [],
+            "description": "Create and manage API keys for the team",
+            "id": "$manage_api_keys",
+          },
+          {
+            "contained_permission_ids": [],
             "description": "Read and list the other members of the team",
             "id": "$read_members",
           },
@@ -191,6 +202,7 @@ it("creates, updates, and delete a new team permission", async ({ expect }) => {
             "contained_permission_ids": [
               "$delete_team",
               "$invite_members",
+              "$manage_api_keys",
               "$read_members",
               "$remove_members",
               "$update_team",
@@ -265,6 +277,11 @@ it("creates, updates, and delete a new team permission", async ({ expect }) => {
           },
           {
             "contained_permission_ids": [],
+            "description": "Create and manage API keys for the team",
+            "id": "$manage_api_keys",
+          },
+          {
+            "contained_permission_ids": [],
             "description": "Read and list the other members of the team",
             "id": "$read_members",
           },
@@ -282,6 +299,7 @@ it("creates, updates, and delete a new team permission", async ({ expect }) => {
             "contained_permission_ids": [
               "$delete_team",
               "$invite_members",
+              "$manage_api_keys",
               "$read_members",
               "$remove_members",
               "$update_team",

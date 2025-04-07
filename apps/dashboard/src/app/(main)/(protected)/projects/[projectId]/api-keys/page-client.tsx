@@ -1,9 +1,9 @@
 "use client";
-import { ApiKeyTable } from "@/components/data-table/api-key-table";
+import { InternalApiKeyTable } from "@/components/data-table/api-key-table";
 import EnvKeys from "@/components/env-keys";
 import { SmartFormDialog } from "@/components/form-dialog";
 import { SelectField } from "@/components/form-fields";
-import { ApiKeyFirstView } from "@stackframe/stack";
+import { InternalApiKeyFirstView } from "@stackframe/stack";
 import { ActionDialog, Button, Typography } from "@stackframe/stack-ui";
 import { useSearchParams } from "next/navigation";
 import { useState } from "react";
@@ -14,23 +14,23 @@ import { useAdminApp } from "../use-admin-app";
 
 export default function PageClient() {
   const stackAdminApp = useAdminApp();
-  const apiKeySets = stackAdminApp.useApiKeys();
+  const apiKeySets = stackAdminApp.useInternalApiKeys();
   const params = useSearchParams();
   const create = params.get("create") === "true";
 
   const [isNewApiKeyDialogOpen, setIsNewApiKeyDialogOpen] = useState(create);
-  const [returnedApiKey, setReturnedApiKey] = useState<ApiKeyFirstView | null>(null);
+  const [returnedApiKey, setReturnedApiKey] = useState<InternalApiKeyFirstView | null>(null);
 
   return (
     <PageLayout
-      title="API Keys"
+      title="Stack Auth Keys"
       actions={
         <Button onClick={() => setIsNewApiKeyDialogOpen(true)}>
-          Create API Key
+          Create Stack Auth Keys
         </Button>
       }
     >
-      <ApiKeyTable apiKeys={apiKeySets} />
+      <InternalApiKeyTable apiKeys={apiKeySets} />
 
       <CreateDialog
         open={isNewApiKeyDialogOpen}
@@ -59,7 +59,7 @@ const expiresInOptions = {
 function CreateDialog(props: {
   open: boolean,
   onOpenChange: (open: boolean) => void,
-  onKeyCreated?: (key: ApiKeyFirstView) => void,
+  onKeyCreated?: (key: InternalApiKeyFirstView) => void,
 }) {
   const stackAdminApp = useAdminApp();
   const params = useSearchParams();
@@ -77,12 +77,12 @@ function CreateDialog(props: {
   return <SmartFormDialog
     open={props.open}
     onOpenChange={props.onOpenChange}
-    title="Create API Key"
+    title="Create Stack Auth Keys"
     formSchema={formSchema}
     okButton={{ label: "Create" }}
     onSubmit={async (values) => {
       const expiresIn = parseInt(values.expiresIn);
-      const newKey = await stackAdminApp.createApiKey({
+      const newKey = await stackAdminApp.createInternalApiKey({
         hasPublishableClientKey: true,
         hasSecretServerKey: true,
         hasSuperSecretAdminKey: false,
@@ -96,7 +96,7 @@ function CreateDialog(props: {
 }
 
 function ShowKeyDialog(props: {
-  apiKey?: ApiKeyFirstView,
+  apiKey?: InternalApiKeyFirstView,
   onClose?: () => void,
 }) {
   const stackAdminApp = useAdminApp();
@@ -107,15 +107,15 @@ function ShowKeyDialog(props: {
   return (
     <ActionDialog
       open={!!props.apiKey}
-      title="API Key"
+      title="Stack Auth Keys"
       okButton={{ label: "Close" }}
       onClose={props.onClose}
       preventClose
-      confirmText="I understand that I will not be able to view this key again."
+      confirmText="I understand that I will not be able to view these keys again."
     >
       <div className="flex flex-col gap-4">
         <Typography>
-          Here are your API keys.{" "}
+          Here are your Stack Auth keys.{" "}
           <span className="font-bold">
             Copy them to a safe place. You will not be able to view them again.
           </span>

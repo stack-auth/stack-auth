@@ -6,6 +6,8 @@ node-compile-cache/
 *.cpuprofile
 
 
+.pnpm-store
+
 
 .vercel
 

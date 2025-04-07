@@ -28,6 +28,7 @@ model Project {
   neonProvisionedProject NeonProvisionedProject?
   tenancies              Tenancy[]
   verificationCodes      VerificationCode[]
+  projectApiKey          ProjectApiKey[]
 }
 
 model ProjectConfig {
@@ -54,6 +55,8 @@ model ProjectConfig {
   authMethodConfigs                  AuthMethodConfig[]
   connectedAccountConfigs            ConnectedAccountConfig[]
   oauthAccountMergeStrategy          OAuthAccountMergeStrategy @default(LINK_METHOD)
+  allowUserApiKeys                   Boolean                   @default(false)
+  allowTeamApiKeys                   Boolean                   @default(false)
 }
 
 enum OAuthAccountMergeStrategy {
@@ -84,6 +87,7 @@ model Tenancy {
   connectedAccounts ConnectedAccount[] @relation("TenancyConnectedAccounts")
   SentEmail         SentEmail[]
   cliAuthAttempts   CliAuthAttempt[]
+  projectApiKey     ProjectApiKey[]
 
   @@unique([projectId, branchId, organizationId])
   @@unique([projectId, branchId, hasNoOrganization])
@@ -121,9 +125,10 @@ model Team {
   clientReadOnlyMetadata Json?
   serverMetadata         Json?
 
-  tenancy     Tenancy      @relation("TenancyTeams", fields: [tenancyId], references: [id], onDelete: Cascade)
-  permissions Permission[]
-  teamMembers TeamMember[]
+  tenancy       Tenancy         @relation("TenancyTeams", fields: [tenancyId], references: [id], onDelete: Cascade)
+  permissions   Permission[]
+  teamMembers   TeamMember[]
+  projectApiKey ProjectApiKey[]
 
   @@id([tenancyId, teamId])
   @@unique([mirroredProjectId, mirroredBranchId, teamId])
@@ -242,6 +247,7 @@ enum TeamSystemPermission {
   READ_MEMBERS
   REMOVE_MEMBERS
   INVITE_MEMBERS
+  MANAGE_API_KEYS
 }
 
 model PermissionEdge {
@@ -299,6 +305,7 @@ model ProjectUser {
   otpAuthMethod      OtpAuthMethod[]
   oauthAuthMethod    OAuthAuthMethod[]
   SentEmail          SentEmail[]
+  projectApiKey      ProjectApiKey[]
   directPermissions  ProjectUserDirectPermission[]
 
   @@id([tenancyId, projectUserId])
@@ -779,7 +786,7 @@ enum VerificationCodeType {
 }
 
 //#region API keys
-
+// Internal API keys
 model ApiKeySet {
   projectId String
   project   Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
@@ -795,6 +802,33 @@ model ApiKeySet {
   superSecretAdminKey  String?   @unique
 
   @@id([projectId, id])
+}
+
+model ProjectApiKey {
+  projectId String
+  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  tenancyId String  @db.Uuid
+
+  id           String @default(uuid()) @db.Uuid
+  secretApiKey String @unique
+
+  // Validity and revocation
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+  expiresAt         DateTime?
+  manuallyRevokedAt DateTime?
+  description       String
+  isPublic          Boolean
+
+  // exactly one of [teamId] or [projectUserId] must be set
+  teamId        String? @db.Uuid
+  projectUserId String? @db.Uuid
+
+  tenancy     Tenancy      @relation(fields: [tenancyId], references: [id], onDelete: Cascade)
+  projectUser ProjectUser? @relation(fields: [tenancyId, projectUserId], references: [tenancyId, projectUserId], onDelete: Cascade)
+  team        Team?        @relation(fields: [tenancyId, teamId], references: [tenancyId, teamId], onDelete: Cascade)
+
+  @@id([tenancyId, id])
 }
 
 model EmailServiceConfig {

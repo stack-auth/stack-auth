@@ -1,5 +1,5 @@
 import { createMfaRequiredError } from "@/app/api/latest/auth/mfa/sign-in/verification-code-handler";
-import { checkApiKeySet } from "@/lib/api-keys";
+import { checkApiKeySet } from "@/lib/internal-api-keys";
 import { fullProjectInclude, getProject } from "@/lib/projects";
 import { validateRedirectUrl } from "@/lib/redirect-urls";
 import { getSoleTenancyFromProject } from "@/lib/tenancies";

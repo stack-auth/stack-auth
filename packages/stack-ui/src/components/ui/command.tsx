@@ -1,10 +1,10 @@
 "use client";
 
-import React from "react";
-import { forwardRefIfNeeded } from "@stackframe/stack-shared/dist/utils/react";
 import { type DialogProps } from "@radix-ui/react-dialog";
 import { MagnifyingGlassIcon } from "@radix-ui/react-icons";
+import { forwardRefIfNeeded } from "@stackframe/stack-shared/dist/utils/react";
 import { Command as CommandPrimitive } from "cmdk";
+import React from "react";
 
 import { cn } from "../../lib/utils";
 import { Dialog, DialogBody, DialogContent } from "./dialog";
@@ -16,7 +16,7 @@ const Command: React.FC<React.ComponentPropsWithoutRef<typeof CommandPrimitive>>
   <CommandPrimitive
     ref={ref}
     className={cn(
-      "flex h-full w-full flex-col overflow-hidden rounded-md bg-popover text-popover-foreground",
+      "stack-scope flex h-full w-full flex-col overflow-hidden rounded-md bg-popover text-popover-foreground",
       className
     )}
     {...props}
@@ -148,11 +148,12 @@ CommandShortcut.displayName = "CommandShortcut";
 export {
   Command,
   CommandDialog,
-  CommandInput,
-  CommandList,
   CommandEmpty,
   CommandGroup,
+  CommandInput,
   CommandItem,
-  CommandShortcut,
+  CommandList,
   CommandSeparator,
+  CommandShortcut,
 };
+

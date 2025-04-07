@@ -1,18 +1,18 @@
 import { StackAdminInterface } from "@stackframe/stack-shared";
 import { getProductionModeErrors } from "@stackframe/stack-shared/dist/helpers/production-mode";
-import { ApiKeyCreateCrudResponse } from "@stackframe/stack-shared/dist/interface/adminInterface";
-import { ApiKeysCrud } from "@stackframe/stack-shared/dist/interface/crud/api-keys";
+import { InternalApiKeyCreateCrudResponse } from "@stackframe/stack-shared/dist/interface/adminInterface";
 import { EmailTemplateCrud, EmailTemplateType } from "@stackframe/stack-shared/dist/interface/crud/email-templates";
+import { InternalApiKeysCrud } from "@stackframe/stack-shared/dist/interface/crud/internal-api-keys";
 import { InternalProjectsCrud } from "@stackframe/stack-shared/dist/interface/crud/projects";
 import { StackAssertionError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
 import { pick } from "@stackframe/stack-shared/dist/utils/objects";
 import { Result } from "@stackframe/stack-shared/dist/utils/results";
 import { useMemo } from "react"; // THIS_LINE_PLATFORM react-like
 import { AdminSentEmail } from "../..";
-import { ApiKey, ApiKeyBase, ApiKeyBaseCrudRead, ApiKeyCreateOptions, ApiKeyFirstView, apiKeyCreateOptionsToCrud } from "../../api-keys";
 import { EmailConfig, stackAppInternalsSymbol } from "../../common";
 import { AdminEmailTemplate, AdminEmailTemplateUpdateOptions, adminEmailTemplateUpdateOptionsToCrud } from "../../email-templates";
-import { AdminTeamPermission, AdminTeamPermissionDefinition, AdminTeamPermissionDefinitionCreateOptions, AdminTeamPermissionDefinitionUpdateOptions, AdminProjectPermission, AdminProjectPermissionDefinition, AdminProjectPermissionDefinitionCreateOptions, AdminProjectPermissionDefinitionUpdateOptions, adminTeamPermissionDefinitionCreateOptionsToCrud, adminTeamPermissionDefinitionUpdateOptionsToCrud, adminProjectPermissionDefinitionCreateOptionsToCrud, adminProjectPermissionDefinitionUpdateOptionsToCrud } from "../../permissions";
+import { InternalApiKey, InternalApiKeyBase, InternalApiKeyBaseCrudRead, InternalApiKeyCreateOptions, InternalApiKeyFirstView, internalApiKeyCreateOptionsToCrud } from "../../internal-api-keys";
+import { AdminProjectPermission, AdminProjectPermissionDefinition, AdminProjectPermissionDefinitionCreateOptions, AdminProjectPermissionDefinitionUpdateOptions, AdminTeamPermission, AdminTeamPermissionDefinition, AdminTeamPermissionDefinitionCreateOptions, AdminTeamPermissionDefinitionUpdateOptions, adminProjectPermissionDefinitionCreateOptionsToCrud, adminProjectPermissionDefinitionUpdateOptionsToCrud, adminTeamPermissionDefinitionCreateOptionsToCrud, adminTeamPermissionDefinitionUpdateOptionsToCrud } from "../../permissions";
 import { AdminOwnedProject, AdminProject, AdminProjectUpdateOptions, adminProjectUpdateOptionsToCrud } from "../../projects";
 import { StackAdminApp, StackAdminAppConstructorOptions } from "../interfaces/admin-app";
 import { clientVersion, createCache, getBaseUrl, getDefaultProjectId, getDefaultPublishableClientKey, getDefaultSecretServerKey, getDefaultSuperSecretAdminKey } from "./common";
@@ -28,8 +28,9 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
   private readonly _adminProjectCache = createCache(async () => {
     return await this._interface.getProject();
   });
-  private readonly _apiKeysCache = createCache(async () => {
-    return await this._interface.listApiKeys();
+  private readonly _internalApiKeysCache = createCache(async () => {
+    const res = await this._interface.listInternalApiKeys();
+    return res;
   });
   private readonly _adminEmailTemplatesCache = createCache(async () => {
     return await this._interface.listEmailTemplates();
@@ -105,6 +106,8 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
         clientUserDeletionEnabled: data.config.client_user_deletion_enabled,
         allowLocalhost: data.config.allow_localhost,
         oauthAccountMergeStrategy: data.config.oauth_account_merge_strategy,
+        allowUserApiKeys: data.config.allow_user_api_keys,
+        allowTeamApiKeys: data.config.allow_team_api_keys,
         oauthProviders: data.config.oauth_providers.map((p) => ((p.type === 'shared' ? {
           id: p.id,
           enabled: p.enabled,
@@ -181,7 +184,7 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
   }
   // END_PLATFORM
 
-  protected _createApiKeyBaseFromCrud(data: ApiKeyBaseCrudRead): ApiKeyBase {
+  protected _createInternalApiKeyBaseFromCrud(data: InternalApiKeyBaseCrudRead): InternalApiKeyBase {
     const app = this;
     return {
       id: data.id,
@@ -198,49 +201,49 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
         return null;
       },
       async revoke() {
-        const res = await app._interface.revokeApiKeyById(data.id);
-        await app._refreshApiKeys();
+        const res = await app._interface.revokeInternalApiKeyById(data.id);
+        await app._refreshInternalApiKeys();
         return res;
       }
     };
   }
 
-  protected _createApiKeyFromCrud(data: ApiKeysCrud["Admin"]["Read"]): ApiKey {
+  protected _createInternalApiKeyFromCrud(data: InternalApiKeysCrud["Admin"]["Read"]): InternalApiKey {
     return {
-      ...this._createApiKeyBaseFromCrud(data),
+      ...this._createInternalApiKeyBaseFromCrud(data),
       publishableClientKey: data.publishable_client_key ? { lastFour: data.publishable_client_key.last_four } : null,
       secretServerKey: data.secret_server_key ? { lastFour: data.secret_server_key.last_four } : null,
       superSecretAdminKey: data.super_secret_admin_key ? { lastFour: data.super_secret_admin_key.last_four } : null,
     };
   }
 
-  protected _createApiKeyFirstViewFromCrud(data: ApiKeyCreateCrudResponse): ApiKeyFirstView {
+  protected _createInternalApiKeyFirstViewFromCrud(data: InternalApiKeyCreateCrudResponse): InternalApiKeyFirstView {
     return {
-      ...this._createApiKeyBaseFromCrud(data),
+      ...this._createInternalApiKeyBaseFromCrud(data),
       publishableClientKey: data.publishable_client_key,
       secretServerKey: data.secret_server_key,
       superSecretAdminKey: data.super_secret_admin_key,
     };
   }
 
-  async listApiKeys(): Promise<ApiKey[]> {
-    const crud = Result.orThrow(await this._apiKeysCache.getOrWait([], "write-only"));
-    return crud.map((j) => this._createApiKeyFromCrud(j));
+  async listInternalApiKeys(): Promise<InternalApiKey[]> {
+    const crud = Result.orThrow(await this._internalApiKeysCache.getOrWait([], "write-only"));
+    return crud.map((j) => this._createInternalApiKeyFromCrud(j));
   }
 
   // IF_PLATFORM react-like
-  useApiKeys(): ApiKey[] {
-    const crud = useAsyncCache(this._apiKeysCache, [], "useApiKeys()");
+  useInternalApiKeys(): InternalApiKey[] {
+    const crud = useAsyncCache(this._internalApiKeysCache, [], "useInternalApiKeys()");
     return useMemo(() => {
-      return crud.map((j) => this._createApiKeyFromCrud(j));
+      return crud.map((j) => this._createInternalApiKeyFromCrud(j));
     }, [crud]);
   }
   // END_PLATFORM
 
-  async createApiKey(options: ApiKeyCreateOptions): Promise<ApiKeyFirstView> {
-    const crud = await this._interface.createApiKey(apiKeyCreateOptionsToCrud(options));
-    await this._refreshApiKeys();
-    return this._createApiKeyFirstViewFromCrud(crud);
+  async createInternalApiKey(options: InternalApiKeyCreateOptions): Promise<InternalApiKeyFirstView> {
+    const crud = await this._interface.createInternalApiKey(internalApiKeyCreateOptionsToCrud(options));
+    await this._refreshInternalApiKeys();
+    return this._createInternalApiKeyFirstViewFromCrud(crud);
   }
 
   // IF_PLATFORM react-like
@@ -339,8 +342,8 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
     ]);
   }
 
-  protected async _refreshApiKeys() {
-    await this._apiKeysCache.refresh([]);
+  protected async _refreshInternalApiKeys() {
+    await this._internalApiKeysCache.refresh([]);
   }
 
   get [stackAppInternalsSymbol]() {

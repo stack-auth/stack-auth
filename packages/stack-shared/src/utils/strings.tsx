@@ -223,7 +223,10 @@ export function deindent(code: string): string;
 export function deindent(strings: TemplateStringsArray | readonly string[], ...values: any[]): string;
 export function deindent(strings: string | readonly string[], ...values: any[]): string {
   if (typeof strings === "string") return deindent([strings]);
-  if (strings.length === 0) return "";
+  return templateIdentity(...deindentTemplate(strings, ...values));
+}
+
+export function deindentTemplate(strings: TemplateStringsArray | readonly string[], ...values: any[]): [string[], ...string[]] {
   if (values.length !== strings.length - 1) throw new StackAssertionError("Invalid number of values; must be one less than strings", { strings, values });
 
   const trimmedStrings = [...strings];
@@ -250,7 +253,7 @@ export function deindent(strings: string | readonly string[], ...values: any[]):
     return `${value}`.replaceAll("\n", `\n${firstLineIndentation}`);
   });
 
-  return templateIdentity(deindentedStrings, ...indentedValues);
+  return [deindentedStrings, ...indentedValues];
 }
 import.meta.vitest?.test("deindent", ({ expect }) => {
   // Test with string input
@@ -261,7 +264,6 @@ import.meta.vitest?.test("deindent", ({ expect }) => {
 
   // Test with empty input
   expect(deindent("")).toBe("");
-  expect(deindent([])).toBe("");
 
   // Test with template literal
   expect(deindent`
@@ -498,12 +500,13 @@ export function nicify(
     keyInParent: null,
     hideFields: [],
   };
-  const nestedNicify = (newValue: unknown, newPath: string, keyInParent: PropertyKey | null) => {
+  const nestedNicify = (newValue: unknown, newPath: string, keyInParent: PropertyKey | null, options: Partial<NicifyOptions> = {}) => {
     return nicify(newValue, {
       ...newOptions,
       path: newPath,
       currentIndent: currentIndent + lineIndent,
       keyInParent,
+      ...options,
     });
   };
 
@@ -515,7 +518,7 @@ export function nicify(
       const isDeindentable = (v: string) => deindent(v) === v && v.includes("\n");
       const wrapInDeindent = (v: string) => deindent`
         deindent\`
-        ${currentIndent + lineIndent}${escapeTemplateLiteral(value).replaceAll("\n", nl + lineIndent)}
+        ${currentIndent + lineIndent}${escapeTemplateLiteral(v).replaceAll("\n", nl + lineIndent)}
         ${currentIndent}\`
       `;
       if (isDeindentable(value)) {
@@ -548,7 +551,7 @@ export function nicify(
         const resValues = value.map((v, i) => nestedNicify(v, `${path}[${i}]`, i));
         resValues.push(...extraLines);
         if (resValues.length !== resValueLength) throw new StackAssertionError("nicify of object: resValues.length !== resValueLength", { value, resValues, resValueLength });
-        const shouldIndent = resValues.length > 1 || resValues.some(x => x.includes("\n"));
+        const shouldIndent = resValues.length > 4 || resValues.some(x => (resValues.length > 1 && x.length > 4) || x.includes("\n"));
         if (shouldIndent) {
           return `[${nl}${resValues.map(x => `${lineIndent}${x},${nl}`).join("")}]`;
         } else {
@@ -556,14 +559,30 @@ export function nicify(
         }
       }
       if (value instanceof URL) {
-        return `URL(${nicify(value.toString())})`;
+        return `URL(${nestedNicify(value.toString(), `${path}.toString()`, null)})`;
       }
       if (ArrayBuffer.isView(value)) {
         return `${value.constructor.name}([${value.toString()}])`;
       }
+      if (value instanceof Error) {
+        let stack = value.stack ?? "";
+        const toString = value.toString();
+        if (!stack.startsWith(toString)) stack = `${toString}\n${stack}`;  // some browsers don't include the error message in the stack, some do
+        stack = stack.trimEnd();
+        stack = stack.replace(/\n\s+/g, `\n${lineIndent}${lineIndent}`);
+        stack = stack.replace("\n", `\n${lineIndent}Stack:\n`);
+        if (Object.keys(value).length > 0) {
+          stack += `\n${lineIndent}Extra properties: ${nestedNicify(Object.fromEntries(Object.entries(value)), path, null)}`;
+        }
+        if (value.cause) {
+          stack += `\n${lineIndent}Cause:\n${lineIndent}${lineIndent}${nestedNicify(value.cause, path, null, { currentIndent: currentIndent + lineIndent + lineIndent })}`;
+        }
+        stack = stack.replaceAll("\n", `\n${currentIndent}`);
+        return stack;
+      }
 
       const constructorName = [null, Object.prototype].includes(Object.getPrototypeOf(value)) ? null : (nicifiableClassNameOverrides.get(value.constructor) ?? value.constructor.name);
-      const constructorString = constructorName ? `${nicifyPropertyString(constructorName)} ` : "";
+      const constructorString = constructorName ? `${constructorName} ` : "";
 
       const entries = getNicifiableEntries(value).filter(([k]) => !hideFields.includes(k));
       const extraLines = [
@@ -575,7 +594,7 @@ export function nicify(
       if (maxDepth <= 0) return `${constructorString}{ ... }`;
       const resValues = entries.map(([k, v], keyIndex) => {
         const keyNicified = nestedNicify(k, `Object.keys(${path})[${keyIndex}]`, null);
-        const keyInObjectLiteral = typeof k === "string" ? JSON.stringify(k) : `[${keyNicified}]`;
+        const keyInObjectLiteral = typeof k === "string" ? nicifyPropertyString(k) : `[${keyNicified}]`;
         if (typeof v === "function" && v.name === k) {
           return `${keyInObjectLiteral}(...): { ... }`;
         } else {
@@ -600,24 +619,68 @@ export function nicify(
 }
 
 export function replaceAll(input: string, searchValue: string, replaceValue: string): string {
+  if (searchValue === "") throw new StackAssertionError("replaceAll: searchValue is empty");
   return input.split(searchValue).join(replaceValue);
 }
+import.meta.vitest?.test("replaceAll", ({ expect }) => {
+  expect(replaceAll("hello world", "o", "x")).toBe("hellx wxrld");
+  expect(replaceAll("aaa", "a", "b")).toBe("bbb");
+  expect(replaceAll("", "a", "b")).toBe("");
+  expect(replaceAll("abc", "b", "")).toBe("ac");
+  expect(replaceAll("test.test.test", ".", "_")).toBe("test_test_test");
+  expect(replaceAll("a.b*c", ".", "x")).toBe("axb*c");
+  expect(replaceAll("a*b*c", "*", "x")).toBe("axbxc");
+  expect(replaceAll("hello hello", "hello", "hi")).toBe("hi hi");
+});
 
 function nicifyPropertyString(str: string) {
-  if (/^[_a-zA-Z][_a-zA-Z0-9]*$/.test(str)) return str;
   return JSON.stringify(str);
 }
+import.meta.vitest?.test("nicifyPropertyString", ({ expect }) => {
+  // Test valid identifiers
+  expect(nicifyPropertyString("validName")).toBe('"validName"');
+  expect(nicifyPropertyString("_validName")).toBe('"_validName"');
+  expect(nicifyPropertyString("valid123Name")).toBe('"valid123Name"');
+
+  // Test invalid identifiers
+  expect(nicifyPropertyString("123invalid")).toBe('"123invalid"');
+  expect(nicifyPropertyString("invalid-name")).toBe('"invalid-name"');
+  expect(nicifyPropertyString("invalid space")).toBe('"invalid space"');
+  expect(nicifyPropertyString("$invalid")).toBe('"$invalid"');
+  expect(nicifyPropertyString("")).toBe('""');
+
+  // Test with special characters
+  expect(nicifyPropertyString("property!")).toBe('"property!"');
+  expect(nicifyPropertyString("property.name")).toBe('"property.name"');
+
+  // Test with escaped characters
+  expect(nicifyPropertyString("\\")).toBe('"\\\\"');
+  expect(nicifyPropertyString('"')).toBe('"\\""');
+});
 
 function getNicifiableKeys(value: Nicifiable | object) {
   const overridden = ("getNicifiableKeys" in value ? value.getNicifiableKeys?.bind(value) : null)?.();
   if (overridden != null) return overridden;
   const keys = Object.keys(value).sort();
-  if (value instanceof Error) {
-    if (value.cause) keys.unshift("cause");
-    keys.unshift("message", "stack");
-  }
   return unique(keys);
 }
+import.meta.vitest?.test("getNicifiableKeys", ({ expect }) => {
+  // Test regular object
+  expect(getNicifiableKeys({ b: 1, a: 2, c: 3 })).toEqual(["a", "b", "c"]);
+
+  // Test empty object
+  expect(getNicifiableKeys({})).toEqual([]);
+
+  // Test object with custom getNicifiableKeys
+  const customObject = {
+    a: 1,
+    b: 2,
+    getNicifiableKeys() {
+      return ["customKey1", "customKey2"];
+    }
+  };
+  expect(getNicifiableKeys(customObject)).toEqual(["customKey1", "customKey2"]);
+});
 
 function getNicifiableEntries(value: Nicifiable | object): [PropertyKey, unknown][] {
   const recordLikes = [Headers];

@@ -6,7 +6,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 
 export default function PageClient() {
-  const user = useUser({ or: "anonymous" });
+  const user = useUser();
   const router = useRouter();
   const app = useStackApp();
 

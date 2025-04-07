@@ -500,6 +500,8 @@ export const projectsCrudHandlers = createLazyProxy(() => createCrudHandlers(pro
               clientUserDeletionEnabled: data.config?.client_user_deletion_enabled,
               allowLocalhost: data.config?.allow_localhost,
               createTeamOnSignUp: data.config?.create_team_on_sign_up,
+              allowUserApiKeys: data.config?.allow_user_api_keys,
+              allowTeamApiKeys: data.config?.allow_team_api_keys,
               oauthAccountMergeStrategy: data.config?.oauth_account_merge_strategy ? typedToUppercase(data.config.oauth_account_merge_strategy) : undefined,
               domains: data.config?.domains ? {
                 deleteMany: {},

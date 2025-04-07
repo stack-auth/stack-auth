@@ -1,7 +1,7 @@
 import { StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
 import { describe } from "vitest";
 import { it } from "../../../../helpers";
-import { ApiKey, InternalProjectKeys, Project, backendContext, niceBackendFetch } from "../../../backend-helpers";
+import { InternalApiKey, InternalProjectKeys, Project, backendContext, niceBackendFetch } from "../../../backend-helpers";
 
 describe("without project ID", () => {
   backendContext.set({
@@ -119,7 +119,7 @@ describe("with project keys that don't match the project ID", async () => {
 
     const originalId = getProjectKeys().projectId;
     await Project.createAndSwitch();
-    const apiKeysResult = await ApiKey.create();
+    const apiKeysResult = await InternalApiKey.create();
 
     backendContext.set({
       projectKeys: {

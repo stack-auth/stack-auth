@@ -1,0 +1,50 @@
+{
+  "name": "Stack Auth Development",
+  "image": "mcr.microsoft.com/devcontainers/base:ubuntu",
+  "features": {
+    "ghcr.io/devcontainers/features/node:1": {
+      "version": "22"
+    },
+    "ghcr.io/devcontainers/features/docker-in-docker:2": {},
+    "ghcr.io/devcontainers-contrib/features/pnpm:2": {
+      "version": "9"
+    },
+    "ghcr.io/devcontainers/features/git:1": {}
+  },
+  "hostRequirements": {
+    "cpus": 2,
+    "memory": "16gb"
+  },
+  "forwardPorts": [
+    5432,   // PostgreSQL
+    2500,   // Inbucket SMTP
+    1100,   // Inbucket POP3
+    4318,   // OTel collector
+    8100, 8101, 8102, 8103, 8104, 8105, 8106, 8107, 8108, 8109,
+    8110, 8111, 8112, 8113, 8114, 8115, 8116, 8117, 8118, 8119,
+    8120, 8121, 8122, 8123, 8124, 8125, 8126, 8127, 8128, 8129,
+    8130, 8131, 8132, 8133, 8134, 8135, 8136, 8137, 8138, 8139,
+    8140, 8141, 8142, 8143, 8144, 8145, 8146, 8147, 8148, 8149,
+    8150, 8151, 8152, 8153, 8154, 8155, 8156, 8157, 8158, 8159,
+    8160, 8161, 8162, 8163, 8164, 8165, 8166, 8167, 8168, 8169,
+    8170, 8171, 8172, 8173, 8174, 8175, 8176, 8177, 8178, 8179,
+    8180, 8181, 8182, 8183, 8184, 8185, 8186, 8187, 8188, 8189,
+    8190, 8191, 8192, 8193, 8194, 8195, 8196, 8197, 8198, 8199
+  ],
+  "postCreateCommand": "pnpm install && pnpm build:packages && pnpm codegen && pnpm run start-deps && pnpm run stop-deps",
+  "postStartCommand": "pnpm install && clear && echo 'To start the development server with dependencies, run: pnpm restart-deps && pnpm dev' && echo 'To run the tests, run: pnpm test [<path-filter>]'",
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "dbaeumer.vscode-eslint",
+        "streetsidesoftware.code-spell-checker",
+        "YoavBls.pretty-ts-errors",
+        "mxsdev.typescript-explorer",
+        "github.vscode-github-actions",
+        "fabiospampinato.vscode-highlight",
+        "Prisma.prisma"
+      ]
+    }
+  },
+  "remoteUser": "vscode"
+}

@@ -1,3 +1,4 @@
+import { isApiKey, parseProjectApiKey } from "@stackframe/stack-shared/dist/utils/api-keys";
 import { typedIncludes } from "@stackframe/stack-shared/dist/utils/arrays";
 import { StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
 import { nicify } from "@stackframe/stack-shared/dist/utils/strings";
@@ -60,9 +61,11 @@ const stripFields = [
   "iterator",
   "prevIterator",
   "nextAttempt",
+  "lastFour",
 ] as const;
 
 const stripFieldsIfString = [
+  "secret_api_key",
   "publishable_client_key",
   "secret_server_key",
   "super_secret_admin_key",
@@ -119,6 +122,12 @@ const snapshotSerializer: SnapshotSerializer = {
             const newValue: string = value.replace(regex, replacement);
             if (newValue !== value) return nicify(newValue, options);
           }
+        }
+
+        // Strip all API keys
+        if (typeof value === "string" && isApiKey(value)) {
+          const apiKey = parseProjectApiKey(value);
+          return `${apiKey.prefix}_<stripped ${apiKey.isPublic ? "public " : ""}${apiKey.type} API key>`;
         }
 
         // Strip all UUIDs except all-zero UUID

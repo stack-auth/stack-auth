@@ -37,6 +37,7 @@ const descriptionMap: Record<DBTeamSystemPermission, string> = {
   "READ_MEMBERS": "Read and list the other members of the team",
   "REMOVE_MEMBERS": "Remove other members from the team",
   "INVITE_MEMBERS": "Invite other users to the team",
+  "MANAGE_API_KEYS": "Create and manage API keys for the team",
 };
 
 type ExtendedTeamPermissionDefinition = TeamPermissionDefinitionsCrud["Admin"]["Read"] & {

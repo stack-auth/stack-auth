@@ -244,6 +244,20 @@ import.meta.vitest?.test("filterUndefined", ({ expect }) => {
   expect(filterUndefined({ a: 0, b: "", c: false, d: undefined })).toEqual({ a: 0, b: "", c: false });
 });
 
+export type FilterUndefinedOrNull<T> = FilterUndefined<{ [k in keyof T]: null extends T[k] ? NonNullable<T[k]> | undefined : T[k] }>;
+
+/**
+ * Returns a new object with all undefined and null values removed. Useful when spreading optional parameters on an object, as
+ * TypeScript's `Partial<XYZ>` type allows `undefined` values.
+ */
+export function filterUndefinedOrNull<T extends {}>(obj: T): FilterUndefinedOrNull<T> {
+  return Object.fromEntries(Object.entries(obj).filter(([, v]) => v !== undefined && v !== null)) as any;
+}
+import.meta.vitest?.test("filterUndefinedOrNull", ({ expect }) => {
+  expect(filterUndefinedOrNull({})).toEqual({});
+  expect(filterUndefinedOrNull({ a: 1, b: 2 })).toEqual({ a: 1, b: 2 });
+});
+
 export function pick<T extends {}, K extends keyof T>(obj: T, keys: K[]): Pick<T, K> {
   return Object.fromEntries(Object.entries(obj).filter(([k]) => keys.includes(k as K))) as any;
 }
