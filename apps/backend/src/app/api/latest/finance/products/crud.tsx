@@ -35,7 +35,7 @@ function prismaModelToCrud(prismaModel: Product): ProductReadType {
 
 export const internalPaymentsProductsCrudHandlers = createLazyProxy(() => createCrudHandlers(internalPaymentsProductsCrud, {
   paramsSchema: yupObject({
-    productId: yupString().uuid().optional(),
+    productId: yupString().uuid().defined(),
   }),
   onCreate: async ({ auth, data }) => {
     const product = await prismaClient.product.create({
@@ -43,23 +43,22 @@ export const internalPaymentsProductsCrudHandlers = createLazyProxy(() => create
         name: data.name,
         stripeProductId: data.stripe_product_id,
         associatedPermissionId: data.associated_permission_id,
-        projectId: data.project_id,
+        projectId: auth.project.id,
       },
     });
 
     return prismaModelToCrud(product);
   },
   onRead: async ({ params, auth }) => {
-    const productId = params.productId ?? throwErr("productId is required");
-
     const product = await prismaClient.product.findUnique({
       where: {
-        id: productId,
+        projectId: auth.project.id,
+        id: params.productId,
       },
     });
 
     if (!product) {
-      throwErr(`Product with ID ${productId} not found`);
+      throwErr(`Product with ID ${params.productId} not found`);
     }
 
     return prismaModelToCrud(product);
@@ -77,11 +76,10 @@ export const internalPaymentsProductsCrudHandlers = createLazyProxy(() => create
     };
   },
   onUpdate: async ({ params, auth, data }) => {
-    const productId = params.productId ?? throwErr("productId is required");
-
     const updatedProduct = await prismaClient.product.update({
       where: {
-        id: productId,
+        projectId: auth.project.id,
+        id: params.productId,
       },
       data: {
         name: data.name,
@@ -93,11 +91,10 @@ export const internalPaymentsProductsCrudHandlers = createLazyProxy(() => create
     return prismaModelToCrud(updatedProduct);
   },
   onDelete: async ({ params, auth }: { params: ProductParams, auth: SmartRequestAuth }) => {
-    const productId = params.productId ?? throwErr("productId is required");
-
     await prismaClient.product.delete({
       where: {
-        id: productId,
+        projectId: auth.project.id,
+        id: params.productId,
       },
     });
   },
