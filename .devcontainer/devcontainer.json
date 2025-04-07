@@ -31,6 +31,11 @@
     8180, 8181, 8182, 8183, 8184, 8185, 8186, 8187, 8188, 8189,
     8190, 8191, 8192, 8193, 8194, 8195, 8196, 8197, 8198, 8199
   ],
+  "portsAttributes": {
+    "8102": {
+      "visibility": "public"
+    }
+  },
   "postCreateCommand": "pnpm install && pnpm build:packages && pnpm codegen && pnpm run start-deps && pnpm run stop-deps",
   "postStartCommand": "pnpm install && clear && echo 'To start the development server with dependencies, run: pnpm restart-deps && pnpm dev:basic' && echo 'To run the tests, run: pnpm test [<path-filter>]'",
   "containerEnv": {
