@@ -130,15 +130,15 @@ export async function getEnvironmentConfigOverride(options: environmentOptions):
     configOverride['team.clientTeamCreationEnabled'] = oldConfig.clientTeamCreationEnabled;
   }
 
-  if (oldConfig.clientUserDeletionEnabled !== baseConfig.user.clientUserDeletionEnabled) {
-    configOverride['team.clientUserDeletionEnabled'] = oldConfig.clientUserDeletionEnabled;
-  }
-
   if (oldConfig.createTeamOnSignUp !== baseConfig.team.createTeamOnSignUp) {
     configOverride['team.createTeamOnSignUp'] = oldConfig.createTeamOnSignUp;
   }
 
   // =================== USER ===================
+
+  if (oldConfig.clientUserDeletionEnabled !== baseConfig.user.clientUserDeletionEnabled) {
+    configOverride['user.clientUserDeletionEnabled'] = oldConfig.clientUserDeletionEnabled;
+  }
 
   if (oldConfig.signUpEnabled !== baseConfig.user.signUpEnabled) {
     configOverride['user.signUpEnabled'] = oldConfig.signUpEnabled;
