@@ -1,6 +1,6 @@
 import { prismaClient } from "@/prisma-client";
 import { createCrudHandlers } from "@/route-handlers/crud-handler";
-import { SmartRequestAuth } from "@/route-handlers/smart-request";
+import { getStripeClient } from "@/utils/stripe";
 import { Product } from "@prisma/client";
 import { internalPaymentsProductsCrud } from "@stackframe/stack-shared/dist/interface/crud/internal-payments-products";
 import { yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
@@ -41,12 +41,21 @@ export const internalPaymentsProductsCrudHandlers = createLazyProxy(() => create
     const product = await prismaClient.product.create({
       data: {
         name: data.name,
-        stripeProductId: data.stripe_product_id,
         associatedPermissionId: data.associated_permission_id,
         projectId: auth.project.id,
       },
     });
 
+    // If project has Stripe config and no stripe_product_id was provided, create a Stripe product
+    if (auth.project.config.stripe_config?.stripe_account_id) {
+      const stripe = getStripeClient(auth.project);
+      await stripe.products.create({
+        name: data.name,
+        metadata: {
+          stack_product_id: product.id,
+        }
+      });
+    }
     return prismaModelToCrud(product);
   },
   onRead: async ({ params, auth }) => {
