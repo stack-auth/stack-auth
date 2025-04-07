@@ -220,6 +220,9 @@ importers:
       '@simplewebauthn/types':
         specifier: ^11.0.0
         version: 11.0.0
+      '@types/json-diff':
+        specifier: ^1.0.3
+        version: 1.0.3
       '@types/node':
         specifier: ^20.8.10
         version: 20.14.2
@@ -6028,6 +6031,9 @@ packages:
 
   '@types/js-cookie@3.0.6':
     resolution: {integrity: sha512-wkw9yd1kEXOPnvEeEV1Go1MmxtBJL0RR79aOTAApecWFVu7w0NNXNqhcWgvw2YgZDYadliXkl14pa3WXw5jlCQ==}
+
+  '@types/json-diff@1.0.3':
+    resolution: {integrity: sha512-Qvxm8fpRMv/1zZR3sQWImeRK2mBYJji20xF51Fq9Gt//Ed18u0x6/FNLogLS1xhfUWTEmDyqveJqn95ltB6Kvw==}
 
   '@types/json-schema@7.0.15':
     resolution: {integrity: sha512-5+fP8P8MFNC+AyZCDxrB2pkZFPGzqQWUzpSeuuVLvm8VMcorNYavBqoFcxK8bQz4Qsbn4oUEEem4wDLfcysGHA==}
@@ -16561,6 +16567,8 @@ snapshots:
       rxjs: 7.8.1
 
   '@types/js-cookie@3.0.6': {}
+
+  '@types/json-diff@1.0.3': {}
 
   '@types/json-schema@7.0.15': {}
 
