@@ -335,14 +335,14 @@ export class StackAdminInterface extends StackServerInterface {
 
   // Products endpoints
   async listProducts(): Promise<ProductAdminRead[]> {
-    const response = await this.sendAdminRequest("/products", {}, null);
+    const response = await this.sendAdminRequest("/finance/products", {}, null);
     const result = await response.json() as ProductAdminList;
     return result.items;
   }
 
   async createProduct(data: Omit<ProductAdminCreate, 'project_id'>): Promise<ProductAdminRead> {
     const response = await this.sendAdminRequest(
-      "/products",
+      "/finance/products",
       {
         method: "POST",
         headers: {
@@ -357,7 +357,7 @@ export class StackAdminInterface extends StackServerInterface {
 
   async updateProduct(productId: string, data: ProductAdminUpdate): Promise<ProductAdminRead> {
     const response = await this.sendAdminRequest(
-      `/products/${productId}`,
+      `/finance/products/${productId}`,
       {
         method: "PATCH",
         headers: {
@@ -372,7 +372,7 @@ export class StackAdminInterface extends StackServerInterface {
 
   async deleteProduct(productId: string): Promise<void> {
     await this.sendAdminRequest(
-      `/products/${productId}`,
+      `/finance/products/${productId}`,
       { method: "DELETE" },
       null,
     );
