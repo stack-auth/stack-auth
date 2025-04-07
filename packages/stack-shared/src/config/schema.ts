@@ -19,12 +19,14 @@ export const baseConfig = {
     defaultCreatorTeamPermissions: {},
     defaultMemberTeamPermissions: {},
     teamPermissionDefinitions: {},
+    allowTeamApiKeys: false,
   },
   user: {
     clientUserDeletionEnabled: false,
     signUpEnabled: true,
     defaultProjectPermissions: {},
     userPermissionDefinitions: {},
+    allowUserApiKeys: false,
   },
   domain: {
     allowLocalhost: true,
@@ -143,6 +145,8 @@ export const branchConfigSchema = projectConfigSchema.omit(["project"]).concat(y
     defaultCreatorTeamPermissions: _permissionDefault,
     defaultMemberTeamPermissions: _permissionDefault,
     teamPermissionDefinitions: _permissionDefinitions,
+
+    allowTeamApiKeys: yupBoolean().defined(),
   }).defined(),
 
   user: yupObject({
@@ -151,6 +155,8 @@ export const branchConfigSchema = projectConfigSchema.omit(["project"]).concat(y
 
     defaultProjectPermissions: _permissionDefault,
     userPermissionDefinitions: _permissionDefinitions,
+
+    allowUserApiKeys: yupBoolean().defined(),
   }).defined(),
 
   domain: branchDomain,

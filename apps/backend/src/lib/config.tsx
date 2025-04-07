@@ -261,6 +261,14 @@ export async function getEnvironmentConfigOverride(options: environmentOptions):
     .sort((a, b) => stringCompare(a.id, b.id))
     .map(perm => ({ id: perm.id }));
 
+  if (oldConfig.allowUserApiKeys !== baseConfig.user.allowUserApiKeys) {
+    configOverride['user.allowUserApiKeys'] = oldConfig.allowUserApiKeys;
+  }
+
+  if (oldConfig.allowTeamApiKeys !== baseConfig.team.allowTeamApiKeys) {
+    configOverride['team.allowTeamApiKeys'] = oldConfig.allowTeamApiKeys;
+  }
+
   return configOverride;
 }
 
@@ -450,7 +458,7 @@ export const renderedOrganizationConfigToProjectCrud = (renderedConfig: Organiza
       .map(([_, perm]) => ({ id: perm.id }))
       .sort((a, b) => stringCompare(a.id, b.id)),
 
-    allow_user_api_keys: false, // TODO
-    allow_team_api_keys: false, // TODO
+    allow_user_api_keys: renderedConfig.user.allowUserApiKeys,
+    allow_team_api_keys: renderedConfig.team.allowTeamApiKeys,
   };
 };
