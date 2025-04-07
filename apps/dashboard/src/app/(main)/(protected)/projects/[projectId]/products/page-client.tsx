@@ -173,11 +173,13 @@ export default function PageClient() {
     },
   ];
 
-  const productFormSchema = yup.object({
-    name: yup.string().required().label("Product Name"),
-    stripe_product_id: yup.string().nullable().label("Stripe Product ID"),
-    associated_permission_id: yup.string().nullable().label("Associated Permission ID"),
+  const getProductFormSchema = (product?: Product | null) => yup.object({
+    name: yup.string().required().label("Product Name").default(product?.name || ""),
+    stripe_product_id: yup.string().nullable().label("Stripe Product ID").default(product?.stripe_product_id),
+    associated_permission_id: yup.string().nullable().label("Associated Permission ID").default(product?.associated_permission_id),
   });
+  
+  const productFormSchema = getProductFormSchema();
 
   return (
     <PageLayout
@@ -201,7 +203,10 @@ export default function PageClient() {
           title="Stripe Configuration Required" 
           description="Configure Stripe to enable full product functionality"
           actions={
-            <Button onClick={() => window.location.href = `/projects/${project.id}/payments`}>
+            <Button onClick={(e) => { 
+              e.preventDefault();
+              window.location.href = `/projects/${project.id}/payments`;
+            }}>
               Configure Stripe
             </Button>
           }
@@ -228,13 +233,13 @@ export default function PageClient() {
             columns={columns}
             defaultColumnFilters={[]}
             defaultSorting={[{ id: "name", desc: false }]}
-            emptyState={
+            toolbarRender={() => (
               <div className="text-center py-8">
                 <Package2 className="mx-auto h-12 w-12 text-muted-foreground mb-4" />
                 <Typography className="font-semibold mb-2">No products found</Typography>
                 <Typography variant="secondary">Create your first product to get started</Typography>
               </div>
-            }
+            )}
           />
         )}
       </SettingCard>
@@ -256,12 +261,7 @@ export default function PageClient() {
           onOpenChange={setIsEditProductDialogOpen}
           title="Edit Product"
           description="Update product details"
-          formSchema={productFormSchema}
-          defaultValues={{
-            name: selectedProduct.name,
-            stripe_product_id: selectedProduct.stripe_product_id,
-            associated_permission_id: selectedProduct.associated_permission_id,
-          }}
+          formSchema={getProductFormSchema(selectedProduct)}
           okButton={{ label: "Update" }}
           onSubmit={handleUpdateProduct}
           cancelButton
