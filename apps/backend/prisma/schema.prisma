@@ -1022,7 +1022,7 @@ model StripeConfig {
 
 model Product {
   id        String  @id @default(uuid()) @db.Uuid
-  projectId String  @unique
+  projectId String
   project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
 
   createdAt DateTime @default(now())

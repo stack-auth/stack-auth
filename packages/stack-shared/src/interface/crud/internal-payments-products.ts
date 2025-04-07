@@ -20,6 +20,7 @@ export const internalPaymentsProductsCrud = createCrud({
     stripe_product_id: yupString().nullable().optional(),
     associated_permission_id: yupString().uuid().nullable().optional(),
   }),
+  adminDeleteSchema: yupObject({}),
 });
 
 export type InternalPaymentsProductsCrud = typeof internalPaymentsProductsCrud;

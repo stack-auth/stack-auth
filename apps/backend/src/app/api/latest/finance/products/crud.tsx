@@ -90,7 +90,7 @@ export const internalPaymentsProductsCrudHandlers = createLazyProxy(() => create
 
     return prismaModelToCrud(updatedProduct);
   },
-  onDelete: async ({ params, auth }: { params: ProductParams, auth: SmartRequestAuth }) => {
+  onDelete: async ({ params, auth }) => {
     await prismaClient.product.delete({
       where: {
         projectId: auth.project.id,
