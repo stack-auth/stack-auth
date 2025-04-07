@@ -11,6 +11,9 @@
     },
     "ghcr.io/devcontainers/features/git:1": {}
   },
+  "containerEnv": {
+    "NEXT_PUBLIC_STACK_API_URL": "https://${CODESPACE_NAME}.github.dev:8102"
+  },
   "hostRequirements": {
     "cpus": 2,
     "memory": "16gb"
