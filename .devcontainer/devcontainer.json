@@ -34,7 +34,7 @@
   "postCreateCommand": "pnpm install && pnpm build:packages && pnpm codegen && pnpm run start-deps && pnpm run stop-deps",
   "postStartCommand": "pnpm install && clear && echo 'To start the development server with dependencies, run: pnpm restart-deps && pnpm dev:basic' && echo 'To run the tests, run: pnpm test [<path-filter>]'",
   "containerEnv": {
-    "NEXT_PUBLIC_STACK_API_URL": "https://${localEnv:CODESPACE_NAME}-8102.github.dev"
+    "NEXT_PUBLIC_STACK_API_URL": "https://${localEnv:CODESPACE_NAME}-8102.app.github.dev"
   },
   "customizations": {
     "vscode": {
