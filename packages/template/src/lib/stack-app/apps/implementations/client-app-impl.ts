@@ -2,6 +2,7 @@ import { WebAuthnError, startAuthentication, startRegistration } from "@simplewe
 import { KnownErrors, StackClientInterface } from "@stackframe/stack-shared";
 import { ContactChannelsCrud } from "@stackframe/stack-shared/dist/interface/crud/contact-channels";
 import { CurrentUserCrud } from "@stackframe/stack-shared/dist/interface/crud/current-user";
+import { TeamApiKeysCrud, UserApiKeysCrud, teamApiKeysCreateOutputSchema, userApiKeysCreateOutputSchema } from "@stackframe/stack-shared/dist/interface/crud/project-api-keys";
 import { ProjectPermissionsCrud } from "@stackframe/stack-shared/dist/interface/crud/project-permissions";
 import { ProjectsCrud } from "@stackframe/stack-shared/dist/interface/crud/projects";
 import { SessionsCrud } from "@stackframe/stack-shared/dist/interface/crud/sessions";
@@ -25,9 +26,11 @@ import { deindent, mergeScopeStrings } from "@stackframe/stack-shared/dist/utils
 import { getRelativePart, isRelative } from "@stackframe/stack-shared/dist/utils/urls";
 import { generateUuid } from "@stackframe/stack-shared/dist/utils/uuids";
 import * as cookie from "cookie";
+import type * as yup from "yup";
 import { constructRedirectUrl } from "../../../../utils/url";
 import { addNewOAuthProviderOrScope, callOAuthCallback, signInWithOAuth } from "../../../auth";
 import { CookieHelper, createBrowserCookieHelper, createCookieHelper, createPlaceholderCookieHelper, deleteCookieClient, getCookieClient, setOrDeleteCookie, setOrDeleteCookieClient } from "../../../cookie";
+import { ApiKey, ApiKeyCreationOptions, ApiKeyUpdateOptions, apiKeyCreationOptionsToCrud } from "../../api-keys";
 import { GetUserOptions, HandlerUrls, OAuthScopesOnSignIn, RedirectMethod, RedirectToOptions, RequestLike, TokenStoreInit, stackAppInternalsSymbol } from "../../common";
 import { OAuthConnection } from "../../connected-accounts";
 import { ContactChannel, ContactChannelCreateOptions, ContactChannelUpdateOptions, contactChannelCreateOptionsToCrud, contactChannelUpdateOptionsToCrud } from "../../contact-channels";
@@ -171,6 +174,20 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
   private readonly _clientContactChannelsCache = createCacheBySession<[], ContactChannelsCrud['Client']['Read'][]>(
     async (session) => {
       return await this._interface.listClientContactChannels(session);
+    }
+  );
+
+  private readonly _userApiKeysCache = createCacheBySession<[], UserApiKeysCrud['Client']['Read'][]>(
+    async (session) => {
+      const results = await this._interface.listProjectApiKeys({ user_id: 'me' }, session, "client");
+      return results as UserApiKeysCrud['Client']['Read'][];
+    }
+  );
+
+  private readonly _teamApiKeysCache = createCacheBySession<[string], TeamApiKeysCrud['Client']['Read'][]>(
+    async (session, [teamId]) => {
+      const results = await this._interface.listProjectApiKeys({ team_id: teamId }, session, "client");
+      return results as TeamApiKeysCrud['Client']['Read'][];
     }
   );
 
@@ -584,6 +601,8 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
         passkeyEnabled: crud.config.passkey_enabled,
         clientTeamCreationEnabled: crud.config.client_team_creation_enabled,
         clientUserDeletionEnabled: crud.config.client_user_deletion_enabled,
+        allowTeamApiKeys: crud.config.allow_team_api_keys,
+        allowUserApiKeys: crud.config.allow_user_api_keys,
         oauthProviders: crud.config.enabled_oauth_providers.map((p) => ({
           id: p.id,
         })),
@@ -615,6 +634,56 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
       revoke: async () => {
         await this._interface.revokeTeamInvitation(crud.id, crud.team_id, session);
         await this._teamInvitationsCache.refresh([session, crud.team_id]);
+      },
+    };
+  }
+
+  protected _baseApiKeyFromCrud(
+    crud: TeamApiKeysCrud['Client']['Read'] | UserApiKeysCrud['Client']['Read'] | yup.InferType<typeof teamApiKeysCreateOutputSchema> | yup.InferType<typeof userApiKeysCreateOutputSchema>
+  ): Omit<ApiKey<"user", boolean>, "revoke" | "update"> | Omit<ApiKey<"team", boolean>, "revoke" | "update"> {
+    return {
+      id: crud.id,
+      description: crud.description,
+      expiresAt: crud.expires_at_millis ? new Date(crud.expires_at_millis) : undefined,
+      manuallyRevokedAt: crud.manually_revoked_at_millis ? new Date(crud.manually_revoked_at_millis) : null,
+      createdAt: new Date(crud.created_at_millis),
+      ...(crud.type === "team" ? { type: "team", teamId: crud.team_id } : { type: "user", userId: crud.user_id }),
+      value: typeof crud.value === "string" ? crud.value : {
+        lastFour: crud.value.last_four,
+      },
+      isValid: function() {
+        return this.whyInvalid() === null;
+      },
+      whyInvalid: function() {
+        if (this.manuallyRevokedAt) {
+          return "manually-revoked";
+        }
+        if (this.expiresAt && this.expiresAt < new Date()) {
+          return "expired";
+        }
+        return null;
+      },
+    };
+  }
+
+
+  protected _clientApiKeyFromCrud(session: InternalSession, crud: TeamApiKeysCrud['Client']['Read']): ApiKey<"team">;
+  protected _clientApiKeyFromCrud(session: InternalSession, crud: UserApiKeysCrud['Client']['Read']): ApiKey<"user">;
+  protected _clientApiKeyFromCrud(session: InternalSession, crud: yup.InferType<typeof teamApiKeysCreateOutputSchema>): ApiKey<"team", true>;
+  protected _clientApiKeyFromCrud(session: InternalSession, crud: yup.InferType<typeof userApiKeysCreateOutputSchema>): ApiKey<"user", true>;
+  protected _clientApiKeyFromCrud(session: InternalSession, crud: TeamApiKeysCrud['Client']['Read'] | UserApiKeysCrud['Client']['Read'] | yup.InferType<typeof teamApiKeysCreateOutputSchema> | yup.InferType<typeof userApiKeysCreateOutputSchema>): ApiKey<"user" | "team", boolean> {
+    return {
+      ...this._baseApiKeyFromCrud(crud),
+      async revoke() {
+        await this.update({ revoked: true });
+      },
+      update: async (options: ApiKeyUpdateOptions) => {
+        await this._interface.updateProjectApiKey(crud.type === "team" ? { team_id: crud.team_id } : { user_id: crud.user_id }, crud.id, options, session, "client");
+        if (crud.type === "team") {
+          await this._teamApiKeysCache.refresh([session, crud.team_id]);
+        } else {
+          await this._userApiKeysCache.refresh([session]);
+        }
       },
     };
   }
@@ -663,6 +732,28 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
       async delete() {
         await app._interface.deleteTeam(crud.id, session);
         await app._currentUserTeamsCache.refresh([session]);
+      },
+
+      // IF_PLATFORM react-like
+      useApiKeys() {
+        const result = useAsyncCache(app._teamApiKeysCache, [session, crud.id] as const, "team.useApiKeys()");
+        return result.map((crud) => app._clientApiKeyFromCrud(session, crud));
+      },
+      // END_PLATFORM
+
+      async listApiKeys() {
+        const results = Result.orThrow(await app._teamApiKeysCache.getOrWait([session, crud.id], "write-only"));
+        return results.map((crud) => app._clientApiKeyFromCrud(session, crud));
+      },
+
+      async createApiKey(options: ApiKeyCreationOptions<"team">) {
+        const result = await app._interface.createProjectApiKey(
+          await apiKeyCreationOptionsToCrud("team", crud.id, options),
+          session,
+          "client",
+        );
+        await app._teamApiKeysCache.refresh([session, crud.id]);
+        return app._clientApiKeyFromCrud(session, result);
       },
     };
   }
@@ -985,6 +1076,28 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
         const crud = await app._interface.createClientContactChannel(contactChannelCreateOptionsToCrud('me', data), session);
         await app._clientContactChannelsCache.refresh([session]);
         return app._clientContactChannelFromCrud(crud, session);
+      },
+
+      // IF_PLATFORM react-like
+      useApiKeys() {
+        const result = useAsyncCache(app._userApiKeysCache, [session] as const, "user.useApiKeys()");
+        return result.map((crud) => app._clientApiKeyFromCrud(session, crud));
+      },
+      // END_PLATFORM
+
+      async listApiKeys() {
+        const results = await app._interface.listProjectApiKeys({ user_id: 'me' }, session, "client");
+        return results.map((crud) => app._clientApiKeyFromCrud(session, crud));
+      },
+
+      async createApiKey(options: ApiKeyCreationOptions<"user">) {
+        const result = await app._interface.createProjectApiKey(
+          await apiKeyCreationOptionsToCrud("user", "me", options),
+          session,
+          "client",
+        );
+        await app._userApiKeysCache.refresh([session]);
+        return app._clientApiKeyFromCrud(session, result);
       },
     };
   }

@@ -1,4 +1,4 @@
-import { apiKeyCrudHandlers } from "../crud";
+import { internalApiKeyCrudHandlers } from "../crud";
 
-export const GET = apiKeyCrudHandlers.readHandler;
-export const PATCH = apiKeyCrudHandlers.updateHandler;
+export const GET = internalApiKeyCrudHandlers.readHandler;
+export const PATCH = internalApiKeyCrudHandlers.updateHandler;

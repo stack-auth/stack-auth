@@ -1,4 +1,3 @@
-
 import { AdminTeamPermission } from "../permissions";
 
 
@@ -10,6 +9,8 @@ export type ProjectConfig = {
   readonly clientTeamCreationEnabled: boolean,
   readonly clientUserDeletionEnabled: boolean,
   readonly oauthProviders: OAuthProviderConfig[],
+  readonly allowUserApiKeys: boolean,
+  readonly allowTeamApiKeys: boolean,
 };
 
 export type OAuthProviderConfig = {
@@ -34,6 +35,8 @@ export type AdminProjectConfig = {
   readonly userDefaultPermissions: AdminTeamPermission[],
   readonly oauthAccountMergeStrategy: 'link_method' | 'raise_error' | 'allow_duplicates',
   readonly stripeConfig?: AdminStripeConfig,
+  readonly allowUserApiKeys: boolean,
+  readonly allowTeamApiKeys: boolean,
 };
 
 export type AdminEmailConfig = (
@@ -97,4 +100,6 @@ export type AdminProjectConfigUpdateOptions = {
   userDefaultPermissions?: { id: string }[],
   oauthAccountMergeStrategy?: 'link_method' | 'raise_error' | 'allow_duplicates',
   stripeConfig?: AdminStripeConfig,
+  allowUserApiKeys?: boolean,
+  allowTeamApiKeys?: boolean,
 };

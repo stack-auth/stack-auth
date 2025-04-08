@@ -1,9 +1,9 @@
 import { InternalSession } from "../sessions";
-import { ApiKeysCrud } from "./crud/api-keys";
 import { EmailTemplateCrud, EmailTemplateType } from "./crud/email-templates";
 import { InternalEmailsCrud } from "./crud/emails";
 import { InternalPaymentsPricesCrud } from "./crud/internal-payments-prices";
 import { ProductAdminCreate, ProductAdminList, ProductAdminRead, ProductAdminUpdate } from "./crud/internal-products-types";
+import { InternalApiKeysCrud } from "./crud/internal-api-keys";
 import { ProjectPermissionDefinitionsCrud } from "./crud/project-permissions";
 import { ProjectsCrud } from "./crud/projects";
 import { SvixTokenCrud } from "./crud/svix-token";
@@ -26,7 +26,7 @@ export type AdminAuthApplicationOptions = ServerAuthApplicationOptions &(
   }
 );
 
-export type ApiKeyCreateCrudRequest = {
+export type InternalApiKeyCreateCrudRequest = {
   has_publishable_client_key: boolean,
   has_secret_server_key: boolean,
   has_super_secret_admin_key: boolean,
@@ -34,7 +34,7 @@ export type ApiKeyCreateCrudRequest = {
   description: string,
 };
 
-export type ApiKeyCreateCrudResponse = ApiKeysCrud["Admin"]["Read"] & {
+export type InternalApiKeyCreateCrudResponse = InternalApiKeysCrud["Admin"]["Read"] & {
   publishable_client_key?: string,
   secret_server_key?: string,
   super_secret_admin_key?: string,
@@ -86,9 +86,9 @@ export class StackAdminInterface extends StackServerInterface {
     return await response.json();
   }
 
-  async createApiKey(
-    options: ApiKeyCreateCrudRequest,
-  ): Promise<ApiKeyCreateCrudResponse> {
+  async createInternalApiKey(
+    options: InternalApiKeyCreateCrudRequest,
+  ): Promise<InternalApiKeyCreateCrudResponse> {
     const response = await this.sendAdminRequest(
       "/internal/api-keys",
       {
@@ -103,13 +103,13 @@ export class StackAdminInterface extends StackServerInterface {
     return await response.json();
   }
 
-  async listApiKeys(): Promise<ApiKeysCrud["Admin"]["Read"][]> {
+  async listInternalApiKeys(): Promise<InternalApiKeysCrud["Admin"]["Read"][]> {
     const response = await this.sendAdminRequest("/internal/api-keys", {}, null);
-    const result = await response.json() as ApiKeysCrud["Admin"]["List"];
+    const result = await response.json() as InternalApiKeysCrud["Admin"]["List"];
     return result.items;
   }
 
-  async revokeApiKeyById(id: string) {
+  async revokeInternalApiKeyById(id: string) {
     await this.sendAdminRequest(
       `/internal/api-keys/${id}`, {
         method: "PATCH",
@@ -124,7 +124,7 @@ export class StackAdminInterface extends StackServerInterface {
     );
   }
 
-  async getApiKey(id: string, session: InternalSession): Promise<ApiKeysCrud["Admin"]["Read"]> {
+  async getInternalApiKey(id: string, session: InternalSession): Promise<InternalApiKeysCrud["Admin"]["Read"]> {
     const response = await this.sendAdminRequest(`/internal/api-keys/${id}`, {}, session);
     return await response.json();
   }

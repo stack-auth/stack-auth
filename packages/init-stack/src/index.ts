@@ -1,9 +1,12 @@
 import * as child_process from "child_process";
 import { Command } from "commander";
+import * as crypto from 'crypto';
 import * as fs from "fs";
 import inquirer from "inquirer";
 import open from "open";
+import * as os from 'os';
 import * as path from "path";
+import { PostHog } from 'posthog-node';
 import packageJson from '../package.json';
 
 const jsLikeFileExtensions: string[] = [
@@ -113,6 +116,26 @@ const nextSteps: string[] = [
   `Create an account and Stack Auth API key for your project on https://app.stack-auth.com`,
 ];
 
+
+const STACK_AUTH_PUBLIC_HOG_KEY = "phc_vIUFi0HzHo7oV26OsaZbUASqxvs8qOmap1UBYAutU4k";
+const EVENT_PREFIX = "stack-init-";
+const ph_client = new PostHog(STACK_AUTH_PUBLIC_HOG_KEY, {
+  host: "https://eu.i.posthog.com",
+  flushAt: 1,
+  flushInterval: 0,
+});
+const distinctId = crypto.randomUUID();
+
+
+async function capture(event: string, properties: Record<string, any>) {
+  ph_client.capture({
+    event: `${EVENT_PREFIX}${event}`,
+    distinctId,
+    properties,
+  });
+}
+
+
 async function main(): Promise<void> {
   // Welcome message
   console.log();
@@ -132,6 +155,19 @@ async function main(): Promise<void> {
   `);
   console.log();
 
+  await capture("start", {
+    version: packageJson.version,
+    isDryRun,
+    isNeon,
+    typeFromArgs,
+    packageManagerFromArgs,
+    isClient,
+    isServer,
+    noBrowser,
+    platform: os.platform(),
+    arch: os.arch(),
+    nodeVersion: process.version,
+  });
 
   // Wait just briefly so we can use `Steps` in here (it's defined only after the call to `main()`)
   await new Promise<void>((resolve) => resolve());
@@ -143,8 +179,13 @@ async function main(): Promise<void> {
 
 
   // Steps
-  const { packageJson } = await Steps.getProject();
-  const type = await Steps.getProjectType({ packageJson });
+  const { packageJson: projectPackageJson } = await Steps.getProject();
+  const type = await Steps.getProjectType({ packageJson: projectPackageJson });
+
+  await capture("project-type-selected", {
+    type,
+    wasSpecifiedInArgs: !!typeFromArgs,
+  });
 
   await Steps.addStackPackage(type);
   if (isNeon) packagesToInstall.push('@neondatabase/serverless');
@@ -152,7 +193,7 @@ async function main(): Promise<void> {
   await Steps.writeEnvVars(type);
 
   if (type === "next") {
-    const projectInfo = await Steps.getNextProjectInfo({ packageJson });
+    const projectInfo = await Steps.getNextProjectInfo({ packageJson: projectPackageJson });
     await Steps.updateNextLayoutFile(projectInfo);
     await Steps.writeStackAppFile(projectInfo, "server");
     await Steps.writeNextHandlerFile(projectInfo);
@@ -181,6 +222,12 @@ async function main(): Promise<void> {
   }
 
   const { packageManager } = await Steps.getPackageManager();
+
+  await capture(`package-manager-selected`, {
+    packageManager,
+    wasSpecifiedInArgs: !!packageManagerFromArgs,
+  });
+
   await Steps.ensureReady(type);
 
 
@@ -193,6 +240,10 @@ async function main(): Promise<void> {
     cwd: projectPath,
   });
 
+  await capture(`dependencies-installed`, {
+    packageManager,
+    packages: packagesToInstall,
+  });
 
   // Write files
   console.log();
@@ -220,6 +271,18 @@ async function main(): Promise<void> {
   }
   console.log();
 
+  await capture("complete", {
+    success: true,
+    type,
+    packageManager,
+    isNeon,
+    isClient,
+    isServer,
+    noBrowser,
+    filesCreated,
+    filesModified,
+    commandsExecuted,
+  });
 
   // Success!
   console.log(`
@@ -230,8 +293,8 @@ ${colorize.green`Successfully installed Stack! 🚀🚀🚀`}
 ${colorize.bold`Next steps:`}
 
 1. ${noBrowser ?
-    `Create a project at https://app.stack-auth.com and get your API keys` :
-    `Complete the setup in your browser to get your API keys`}
+      `Create a project at https://app.stack-auth.com and get your API keys` :
+      `Complete the setup in your browser to get your API keys`}
 2. Add the API keys to your .env.local file
 3. Import the Stack components in your app
 4. Add authentication to your app
@@ -239,12 +302,20 @@ ${colorize.bold`Next steps:`}
 For more information, please visit https://docs.stack-auth.com/getting-started/setup
   `.trim());
   if (!process.env.STACK_DISABLE_INTERACTIVE && !noBrowser) {
-    await open("https://app.stack-auth.com/wizard-congrats");
+    await open(`https://app.stack-auth.com/wizard-congrats?stack-init-id=${encodeURIComponent(distinctId)}`);
   }
+  await ph_client.shutdown();
 }
 
 main()
-  .catch((err) => {
+  .catch(async (err) => {
+    try {
+      await capture("error", {
+        error: err.message,
+        errorType: err instanceof UserError ? "UserError" : "SystemError",
+        stack: err.stack,
+      });
+    } catch (e) { }
     if (!(err instanceof UserError)) {
       console.error(err);
     }
@@ -267,6 +338,7 @@ main()
       console.error(`Error message: ${err.message}`);
     }
     console.error();
+    await ph_client.shutdown();
     process.exit(1);
   });
 

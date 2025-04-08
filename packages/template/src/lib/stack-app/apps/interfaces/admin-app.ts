@@ -1,10 +1,10 @@
 import { EmailTemplateType } from "@stackframe/stack-shared/dist/interface/crud/email-templates";
 import { InternalSession } from "@stackframe/stack-shared/dist/sessions";
 import { Result } from "@stackframe/stack-shared/dist/utils/results";
-import { ApiKey, ApiKeyCreateOptions, ApiKeyFirstView } from "../../api-keys";
 import { AsyncStoreProperty, EmailConfig } from "../../common";
 import { AdminSentEmail } from "../../email";
 import { AdminEmailTemplate, AdminEmailTemplateUpdateOptions } from "../../email-templates";
+import { InternalApiKey, InternalApiKeyCreateOptions, InternalApiKeyFirstView } from "../../internal-api-keys";
 import { AdminProjectPermission, AdminProjectPermissionDefinition, AdminProjectPermissionDefinitionCreateOptions, AdminProjectPermissionDefinitionUpdateOptions, AdminTeamPermission, AdminTeamPermissionDefinition, AdminTeamPermissionDefinitionCreateOptions, AdminTeamPermissionDefinitionUpdateOptions } from "../../permissions";
 import { AdminPrice, AdminPriceCreateOptions, AdminPriceUpdateOptions } from "../../prices";
 import { AdminProduct, AdminProductCreateOptions, AdminProductUpdateOptions } from "../../products";
@@ -31,7 +31,7 @@ export type StackAdminAppConstructorOptions<HasTokenStore extends boolean, Proje
 
 export type StackAdminApp<HasTokenStore extends boolean = boolean, ProjectId extends string = string> = (
   & AsyncStoreProperty<"project", [], AdminProject, false>
-  & AsyncStoreProperty<"apiKeys", [], ApiKey[], true>
+  & AsyncStoreProperty<"internalApiKeys", [], InternalApiKey[], true>
   & AsyncStoreProperty<"teamPermissionDefinitions", [], AdminTeamPermissionDefinition[], true>
   & AsyncStoreProperty<"projectPermissionDefinitions", [], AdminProjectPermissionDefinition[], true>
   & AsyncStoreProperty<"products", [], AdminProduct[], true>
@@ -41,7 +41,7 @@ export type StackAdminApp<HasTokenStore extends boolean = boolean, ProjectId ext
     updateEmailTemplate(type: EmailTemplateType, data: AdminEmailTemplateUpdateOptions): Promise<void>,
     resetEmailTemplate(type: EmailTemplateType): Promise<void>,
 
-    createApiKey(options: ApiKeyCreateOptions): Promise<ApiKeyFirstView>,
+    createInternalApiKey(options: InternalApiKeyCreateOptions): Promise<InternalApiKeyFirstView>,
 
     createTeamPermissionDefinition(data: AdminTeamPermissionDefinitionCreateOptions): Promise<AdminTeamPermission>,
     updateTeamPermissionDefinition(permissionId: string, data: AdminTeamPermissionDefinitionUpdateOptions): Promise<void>,
@@ -85,7 +85,7 @@ export type StackAdminApp<HasTokenStore extends boolean = boolean, ProjectId ext
     deleteProduct(productId: string): Promise<void>,
     useProducts(): AdminProduct[], // THIS_LINE_PLATFORM react-like
     getProduct(productId: string): Promise<AdminProduct>,
-    
+
     // Prices endpoints
     listProductPrices(productId: string): Promise<AdminPrice[]>,
     createPrice(options: AdminPriceCreateOptions): Promise<AdminPrice>,
