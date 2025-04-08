@@ -32,14 +32,9 @@
     8180, 8181, 8182, 8183, 8184, 8185, 8186, 8187, 8188, 8189,
     8190, 8191, 8192, 8193, 8194, 8195, 8196, 8197, 8198, 8199
   ],
-  "postCreateCommand": "pnpm install && pnpm build:packages && pnpm codegen && pnpm run start-deps && pnpm run stop-deps",
-  "postStartCommand": "pnpm install && clear && echo 'To start the development server with dependencies, run: pnpm restart-deps && pnpm dev:basic' && echo 'To run the tests, run: pnpm test [<path-filter>]'",
-  "postAttachCommand": "gh codespace ports visibility 8102:public -c $CODESPACE_NAME && gh codespace ports visibility 8114:public -c $CODESPACE_NAME",
-  "containerEnv": {
-    "NEXT_PUBLIC_STACK_API_URL": "https://${localEnv:CODESPACE_NAME}-8102.app.github.dev",
-    "STACK_MOCK_OAUTH_REDIRECT_URIS": "https://${localEnv:CODESPACE_NAME}-8102.app.github.dev/api/v1/auth/oauth/callback/{id}",
-    "NEXT_PUBLIC_STACK_DASHBOARD_URL": "https://${localEnv:CODESPACE_NAME}-8101.app.github.dev"
-  },
+  "postCreateCommand": "chmod +x .devcontainer/set-env.sh && pnpm install && pnpm build:packages && pnpm codegen && pnpm run start-deps && pnpm run stop-deps",
+  "postStartCommand": "pnpm install && clear",
+  "postAttachCommand": ". .devcontainer/set-env.sh",
   "customizations": {
     "vscode": {
       "extensions": [
