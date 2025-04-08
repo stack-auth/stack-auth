@@ -223,7 +223,6 @@ async function main(): Promise<void> {
 
   const { packageManager } = await Steps.getPackageManager();
 
-  // Track package manager selection
   await capture(`package-manager-selected`, {
     packageManager,
     wasSpecifiedInArgs: !!packageManagerFromArgs,
@@ -241,7 +240,6 @@ async function main(): Promise<void> {
     cwd: projectPath,
   });
 
-  // Track dependencies installation
   await capture(`dependencies-installed`, {
     packageManager,
     packages: packagesToInstall,
@@ -304,7 +302,7 @@ ${colorize.bold`Next steps:`}
 For more information, please visit https://docs.stack-auth.com/getting-started/setup
   `.trim());
   if (!process.env.STACK_DISABLE_INTERACTIVE && !noBrowser) {
-    await open(`https://app.stack-auth.com/wizard-congrats?stack-init-id=${distinctId}`);
+    await open(`https://app.stack-auth.com/wizard-congrats?stack-init-id=${encodeURIComponent(distinctId)}`);
   }
   await ph_client.shutdown();
 }
