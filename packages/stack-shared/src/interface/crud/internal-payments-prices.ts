@@ -1,4 +1,4 @@
-import { createCrud } from "../../crud";
+import { CrudTypeOf, createCrud } from "../../crud";
 import { array } from "yup";
 import { yupBoolean, yupNumber, yupObject, yupString } from "../../schema-fields";
 
@@ -16,13 +16,6 @@ const priceSchema = yupObject({
 });
 
 export const internalPaymentsPricesCrud = createCrud({
-  operationTypes: {
-    read: "admin",
-    create: "admin",
-    update: "admin",
-    delete: "admin",
-    list: "admin",
-  },
   adminReadSchema: priceSchema,
   adminCreateSchema: yupObject({
     product_id: yupString().defined(),
@@ -47,4 +40,4 @@ export const internalPaymentsPricesCrud = createCrud({
   }),
 });
 
-export type InternalPaymentsPricesCrud = typeof internalPaymentsPricesCrud;
+export type InternalPaymentsPricesCrud = CrudTypeOf<typeof internalPaymentsPricesCrud>;

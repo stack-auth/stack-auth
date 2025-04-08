@@ -10,6 +10,13 @@ import { SvixTokenCrud } from "./crud/svix-token";
 import { TeamPermissionDefinitionsCrud } from "./crud/team-permissions";
 import { ServerAuthApplicationOptions, StackServerInterface } from "./serverInterface";
 
+export type MetricsResponse = {
+  active_users_last_30_days: number,
+  total_users: number,
+  total_teams: number,
+  [key: string]: number | string | { [key: string]: number | string },
+};
+
 export type AdminAuthApplicationOptions = ServerAuthApplicationOptions &(
   | {
     superSecretAdminKey: string,
@@ -265,7 +272,7 @@ export class StackAdminInterface extends StackServerInterface {
     );
   }
 
-  async getMetrics(): Promise<any> {
+  async getMetrics(): Promise<MetricsResponse> {
     const response = await this.sendAdminRequest(
       "/internal/metrics",
       {
@@ -385,13 +392,13 @@ export class StackAdminInterface extends StackServerInterface {
     return await response.json();
   }
 
-  async listProductPrices(productId: string): Promise<any[]> {
+  async listProductPrices(productId: string): Promise<InternalPaymentsPricesCrud["Admin"]["Read"][]> {
     const response = await this.sendAdminRequest(`/finance/products/${productId}/prices`, {}, null);
-    const result = await response.json();
-    return result.items || [];
+    const result = await response.json() as InternalPaymentsPricesCrud["Admin"]["List"];
+    return result.items;
   }
 
-  async createPrice(data: any): Promise<any> {
+  async createPrice(data: InternalPaymentsPricesCrud["Admin"]["Create"]): Promise<InternalPaymentsPricesCrud["Admin"]["Read"]> {
     const response = await this.sendAdminRequest(
       "/finance/prices",
       {
@@ -406,7 +413,7 @@ export class StackAdminInterface extends StackServerInterface {
     return await response.json();
   }
 
-  async updatePrice(priceId: string, data: any): Promise<any> {
+  async updatePrice(priceId: string, data: InternalPaymentsPricesCrud["Admin"]["Update"]): Promise<InternalPaymentsPricesCrud["Admin"]["Read"]> {
     const response = await this.sendAdminRequest(
       `/finance/prices/${priceId}`,
       {
