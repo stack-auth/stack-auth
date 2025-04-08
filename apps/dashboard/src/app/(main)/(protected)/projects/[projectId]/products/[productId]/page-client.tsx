@@ -24,7 +24,7 @@ export default function ProductDetailsClient() {
   const projectData = stackAdminApp.useProject();
   const adminProducts = stackAdminApp.useProducts();
   const prices = stackAdminApp.useProductPrices(productId);
-  
+
   // Find the current product from the products list
   const product = adminProducts.find(p => p.id === productId);
   const stripeConfig = projectData.config.stripeConfig;
