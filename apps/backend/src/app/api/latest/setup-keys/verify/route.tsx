@@ -1,3 +1,3 @@
-import { setupCodeVerificationCodeHandler } from "../setup-key-handler";
+import { setupCodeVerificationCodeHandler } from "../setup-code-handler";
 
 export const POST = setupCodeVerificationCodeHandler.postHandler;
