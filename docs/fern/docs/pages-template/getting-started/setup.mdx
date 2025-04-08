@@ -437,7 +437,7 @@ For the purpose of this guide, we will use the `requests` library to make HTTP r
       raise Exception(f"Stack Auth API request failed with {res.status_code}: {res.text}")
     return res.json()
 
-  print(stack_auth_request('GET', '/api/v1/internal/projects/current'))
+  print(stack_auth_request('GET', '/api/v1/projects/current'))
   ```
 
   ### Retrieve the access tokens
