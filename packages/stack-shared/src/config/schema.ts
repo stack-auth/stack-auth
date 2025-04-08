@@ -55,64 +55,55 @@ export const projectConfigSchema = yupObject({
   }).defined(),
 });
 
+// key: id of the permission definition.
 const _permissionDefinitions = yupRecord(
   yupString().defined().matches(permissionRegex),
   yupObject({
-    id: yupString().defined(),
     description: yupString().optional(),
-    // keys to the contained permissions are the ids of the permissions.
+    // key: id of the contained permission.
     containedPermissions: yupRecord(
       yupString().defined().matches(permissionRegex),
-      yupObject({
-        id: yupString().defined(),
-      }),
+      yupObject({}),
     ).defined(),
   }).defined(),
 ).defined();
 
 const _permissionDefault = yupRecord(
   yupString().defined().matches(permissionRegex),
-  yupObject({
-    id: yupString().defined(),
-  }),
+  yupObject({}),
 ).defined();
 
 const branchAuth = yupObject({
   oauthAccountMergeStrategy: yupString().oneOf(['link_method', 'raise_error', 'allow_duplicates']).defined(),
 
-  // keys to the oauth providers are the provider ids.
+  // key: id of the oauth provider.
   oauthProviders: yupRecord(
     yupString().defined().matches(permissionRegex),
     yupObject({
-      id: yupString().defined(),
       type: yupString().oneOf(allProviders).defined(),
     }),
   ).defined(),
 
-  // keys to the auth methods are the auth method ids.
+  // key: id of the auth method.
   authMethods: yupRecord(
     yupString().defined().matches(permissionRegex),
     yupUnion(
       yupObject({
-        id: yupString().defined(),
         // @deprecated should remove after the config json db migration
         enabled: yupBoolean().defined(),
         type: yupString().oneOf(['password']).defined(),
       }),
       yupObject({
-        id: yupString().defined(),
         // @deprecated should remove after the config json db migration
         enabled: yupBoolean().defined(),
         type: yupString().oneOf(['otp']).defined(),
       }),
       yupObject({
-        id: yupString().defined(),
         // @deprecated should remove after the config json db migration
         enabled: yupBoolean().defined(),
         type: yupString().oneOf(['passkey']).defined(),
       }),
       yupObject({
-        id: yupString().defined(),
         // @deprecated should remove after the config json db migration
         enabled: yupBoolean().defined(),
         type: yupString().oneOf(['oauth']).defined(),
@@ -121,11 +112,10 @@ const branchAuth = yupObject({
     ),
   ).defined(),
 
-  // keys to the connected accounts are the oauth provider ids.
+  // key: id of the connected account.
   connectedAccounts: yupRecord(
     yupString().defined().matches(permissionRegex),
     yupObject({
-      id: yupString().defined(),
       // @deprecated should remove after the config json db migration
       enabled: yupBoolean().defined(),
       oauthProviderId: yupString().defined(),
@@ -167,10 +157,10 @@ export const branchConfigSchema = projectConfigSchema.omit(["project"]).concat(y
 
 export const environmentConfigSchema = branchConfigSchema.omit(["auth", "domain"]).concat(yupObject({
   auth: branchAuth.omit(["oauthProviders"]).concat(yupObject({
+    // key: id of the oauth provider.
     oauthProviders: yupRecord(
       yupString().defined().matches(permissionRegex),
       yupObject({
-        id: yupString().defined(),
         type: yupString().oneOf(allProviders).defined(),
         isShared: yupBoolean().defined(),
         clientId: schemaFields.yupDefinedAndNonEmptyWhen(schemaFields.oauthClientIdSchema, { type: 'standard', enabled: true }),

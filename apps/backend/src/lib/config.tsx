@@ -165,7 +165,6 @@ export async function getEnvironmentConfigOverride(options: environmentOptions):
 
   for (const authMethodConfig of oldConfig.authMethodConfigs) {
     const baseAuthMethod = {
-      id: authMethodConfig.id,
       enabled: authMethodConfig.enabled,
     };
 
@@ -206,13 +205,11 @@ export async function getEnvironmentConfigOverride(options: environmentOptions):
     let providerOverride: OrganizationRenderedConfig['auth']['oauthProviders'][string];
     if (provider.proxiedOAuthConfig) {
       providerOverride = {
-        id: provider.id,
         type: typedToLowercase(provider.proxiedOAuthConfig.type),
         isShared: true,
       } as const;
     } else if (provider.standardOAuthConfig) {
       providerOverride = filterUndefined({
-        id: provider.id,
         type: typedToLowercase(provider.standardOAuthConfig.type),
         isShared: false,
         clientId: provider.standardOAuthConfig.clientId,
@@ -247,19 +244,19 @@ export async function getEnvironmentConfigOverride(options: environmentOptions):
     .map(permissionDefinitionJsonFromDbType)
     .concat(oldConfig.teamCreateDefaultSystemPermissions.map(db => permissionDefinitionJsonFromSystemDbType(db, oldConfig)))
     .sort((a, b) => stringCompare(a.id, b.id))
-    .map(perm => ({ id: perm.id }));
+    .map(perm => ({}));
 
   configOverride['team.defaultMemberTeamPermissions'] = oldConfig.permissions.filter(perm => perm.isDefaultTeamMemberPermission)
     .map(permissionDefinitionJsonFromDbType)
     .concat(oldConfig.teamMemberDefaultSystemPermissions.map(db => permissionDefinitionJsonFromSystemDbType(db, oldConfig)))
     .sort((a, b) => stringCompare(a.id, b.id))
-    .map(perm => ({ id: perm.id }));
+    .map(perm => ({}));
 
   configOverride['user.defaultProjectPermissions'] = oldConfig.permissions.filter(perm => perm.isDefaultProjectPermission)
     .map(permissionDefinitionJsonFromDbType)
     // TODO: add project default system permissions after creating the first project system permission
     .sort((a, b) => stringCompare(a.id, b.id))
-    .map(perm => ({ id: perm.id }));
+    .map(perm => ({}));
 
   if (oldConfig.allowUserApiKeys !== baseConfig.user.allowUserApiKeys) {
     configOverride['user.allowUserApiKeys'] = oldConfig.allowUserApiKeys;
@@ -449,13 +446,13 @@ export const renderedOrganizationConfigToProjectCrud = (renderedConfig: Organiza
     },
 
     team_creator_default_permissions: typedEntries(renderedConfig.team.defaultCreatorTeamPermissions)
-      .map(([_, perm]) => ({ id: perm.id }))
+      .map(([id, perm]) => ({ id }))
       .sort((a, b) => stringCompare(a.id, b.id)),
     team_member_default_permissions: typedEntries(renderedConfig.team.defaultMemberTeamPermissions)
-      .map(([_, perm]) => ({ id: perm.id }))
+      .map(([id, perm]) => ({ id }))
       .sort((a, b) => stringCompare(a.id, b.id)),
     user_default_permissions: typedEntries(renderedConfig.user.defaultProjectPermissions)
-      .map(([_, perm]) => ({ id: perm.id }))
+      .map(([id, perm]) => ({ id }))
       .sort((a, b) => stringCompare(a.id, b.id)),
 
     allow_user_api_keys: renderedConfig.user.allowUserApiKeys,
