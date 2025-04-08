@@ -200,3 +200,7 @@ div.stack-350h > span > span > img, img.stack-350h {
   height: 350px !important;
   object-fit: contain !important;
 }
+
+.fern-layout-reference-content {
+  grid-template-columns: repeat(1,minmax(0,1fr)) !important;
+}

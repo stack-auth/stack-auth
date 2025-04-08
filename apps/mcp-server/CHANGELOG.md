@@ -1,5 +1,12 @@
 # @stackframe/mcp-server
 
+## 2.8.3
+
+### Patch Changes
+
+- Updated dependencies
+  - @stackframe/js@2.8.3
+
 ## 2.8.2
 
 ### Patch Changes
