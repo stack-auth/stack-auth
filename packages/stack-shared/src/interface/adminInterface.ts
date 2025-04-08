@@ -2,6 +2,7 @@ import { InternalSession } from "../sessions";
 import { ApiKeysCrud } from "./crud/api-keys";
 import { EmailTemplateCrud, EmailTemplateType } from "./crud/email-templates";
 import { InternalEmailsCrud } from "./crud/emails";
+import { InternalPaymentsPricesCrud } from "./crud/internal-payments-prices";
 import { ProductAdminCreate, ProductAdminList, ProductAdminRead, ProductAdminUpdate } from "./crud/internal-products-types";
 import { ProjectPermissionDefinitionsCrud } from "./crud/project-permissions";
 import { ProjectsCrud } from "./crud/projects";
@@ -373,6 +374,56 @@ export class StackAdminInterface extends StackServerInterface {
   async deleteProduct(productId: string): Promise<void> {
     await this.sendAdminRequest(
       `/finance/products/${productId}`,
+      { method: "DELETE" },
+      null,
+    );
+  }
+
+  // Prices endpoints
+  async getProduct(productId: string): Promise<ProductAdminRead> {
+    const response = await this.sendAdminRequest(`/finance/products/${productId}`, {}, null);
+    return await response.json();
+  }
+
+  async listProductPrices(productId: string): Promise<any[]> {
+    const response = await this.sendAdminRequest(`/finance/products/${productId}/prices`, {}, null);
+    const result = await response.json();
+    return result.items || [];
+  }
+
+  async createPrice(data: any): Promise<any> {
+    const response = await this.sendAdminRequest(
+      "/finance/prices",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+        },
+        body: JSON.stringify(data),
+      },
+      null,
+    );
+    return await response.json();
+  }
+
+  async updatePrice(priceId: string, data: any): Promise<any> {
+    const response = await this.sendAdminRequest(
+      `/finance/prices/${priceId}`,
+      {
+        method: "PATCH",
+        headers: {
+          "content-type": "application/json",
+        },
+        body: JSON.stringify(data),
+      },
+      null,
+    );
+    return await response.json();
+  }
+
+  async deletePrice(priceId: string): Promise<void> {
+    await this.sendAdminRequest(
+      `/finance/prices/${priceId}`,
       { method: "DELETE" },
       null,
     );

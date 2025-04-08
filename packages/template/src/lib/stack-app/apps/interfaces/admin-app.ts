@@ -6,6 +6,7 @@ import { AsyncStoreProperty, EmailConfig } from "../../common";
 import { AdminSentEmail } from "../../email";
 import { AdminEmailTemplate, AdminEmailTemplateUpdateOptions } from "../../email-templates";
 import { AdminProjectPermission, AdminProjectPermissionDefinition, AdminProjectPermissionDefinitionCreateOptions, AdminProjectPermissionDefinitionUpdateOptions, AdminTeamPermission, AdminTeamPermissionDefinition, AdminTeamPermissionDefinitionCreateOptions, AdminTeamPermissionDefinitionUpdateOptions } from "../../permissions";
+import { AdminPrice, AdminPriceCreateOptions, AdminPriceUpdateOptions } from "../../prices";
 import { AdminProduct, AdminProductCreateOptions, AdminProductUpdateOptions } from "../../products";
 import { AdminProject } from "../../projects";
 import { _StackAdminAppImpl } from "../implementations";
@@ -83,6 +84,14 @@ export type StackAdminApp<HasTokenStore extends boolean = boolean, ProjectId ext
     updateProduct(productId: string, options: AdminProductUpdateOptions): Promise<AdminProduct>,
     deleteProduct(productId: string): Promise<void>,
     useProducts(): AdminProduct[], // THIS_LINE_PLATFORM react-like
+    getProduct(productId: string): Promise<AdminProduct>,
+    
+    // Prices endpoints
+    listProductPrices(productId: string): Promise<AdminPrice[]>,
+    createPrice(options: AdminPriceCreateOptions): Promise<AdminPrice>,
+    updatePrice(priceId: string, options: AdminPriceUpdateOptions): Promise<AdminPrice>,
+    deletePrice(priceId: string): Promise<void>,
+    useProductPrices(productId: string): AdminPrice[], // THIS_LINE_PLATFORM react-like
   }
   & StackServerApp<HasTokenStore, ProjectId>
 );

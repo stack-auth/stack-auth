@@ -13,6 +13,7 @@ import { ApiKey, ApiKeyBase, ApiKeyBaseCrudRead, ApiKeyCreateOptions, ApiKeyFirs
 import { EmailConfig, stackAppInternalsSymbol } from "../../common";
 import { AdminEmailTemplate, AdminEmailTemplateUpdateOptions, adminEmailTemplateUpdateOptionsToCrud } from "../../email-templates";
 import { AdminProjectPermission, AdminProjectPermissionDefinition, AdminProjectPermissionDefinitionCreateOptions, AdminProjectPermissionDefinitionUpdateOptions, AdminTeamPermission, AdminTeamPermissionDefinition, AdminTeamPermissionDefinitionCreateOptions, AdminTeamPermissionDefinitionUpdateOptions, adminProjectPermissionDefinitionCreateOptionsToCrud, adminProjectPermissionDefinitionUpdateOptionsToCrud, adminTeamPermissionDefinitionCreateOptionsToCrud, adminTeamPermissionDefinitionUpdateOptionsToCrud } from "../../permissions";
+import { AdminPrice, AdminPriceCreateOptions, AdminPriceUpdateOptions, adminPriceCreateOptionsToCrud, adminPriceUpdateOptionsToCrud } from "../../prices";
 import { AdminProduct, AdminProductCreateOptions, AdminProductUpdateOptions, adminProductCreateOptionsToCrud, adminProductUpdateOptionsToCrud } from "../../products";
 import { AdminOwnedProject, AdminProject, AdminProjectUpdateOptions, adminProjectUpdateOptionsToCrud } from "../../projects";
 import { StackAdminApp, StackAdminAppConstructorOptions } from "../interfaces/admin-app";
@@ -44,6 +45,16 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
   private readonly _productsCache = createCache(async () => {
     return await this._interface.listProducts();
   });
+  
+  private readonly _productPricesCache = new Map<string, ReturnType<typeof createCache>>();
+  private _getProductPricesCache(productId: string) {
+    if (!this._productPricesCache.has(productId)) {
+      this._productPricesCache.set(productId, createCache<any[], unknown>(async () => {
+        return await this._interface.listProductPrices(productId);
+      }));
+    }
+    return this._productPricesCache.get(productId)!;
+  }
   private readonly _svixTokenCache = createCache(async () => {
     return await this._interface.getSvixToken();
   });
@@ -494,5 +505,71 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
   async deleteProduct(productId: string): Promise<void> {
     await this._interface.deleteProduct(productId);
     await this._productsCache.refresh([]);
+  }
+  
+  async getProduct(productId: string): Promise<AdminProduct> {
+    const crud = await this._interface.getProduct(productId);
+    return this._createProductFromCrud(crud);
+  }
+  
+  // Prices methods
+  protected _createPriceFromCrud(data: any): AdminPrice {
+    return {
+      id: data.id,
+      productId: data.product_id,
+      name: data.name,
+      amount: data.amount,
+      currency: data.currency,
+      interval: data.interval,
+      intervalCount: data.interval_count,
+      stripePriceId: data.stripe_price_id,
+      active: data.active,
+      createdAt: new Date(parseInt(data.created_at_millis)),
+    };
+  }
+
+  async listProductPrices(productId: string): Promise<AdminPrice[]> {
+    const cache = this._getProductPricesCache(productId);
+    const crud = Result.orThrow(await cache.getOrWait([], "write-only")) as unknown[];
+    return (crud as any[]).map((j) => this._createPriceFromCrud(j));
+  }
+
+  // IF_PLATFORM react-like
+  useProductPrices(productId: string): AdminPrice[] {
+    const cache = this._getProductPricesCache(productId);
+    const crud = useAsyncCache(cache, [], `useProductPrices(${productId})`) as unknown;
+    return useMemo(() => {
+      return (crud as any[]).map((j) => this._createPriceFromCrud(j));
+    }, [crud]);
+  }
+  // END_PLATFORM
+
+  async createPrice(options: AdminPriceCreateOptions): Promise<AdminPrice> {
+    const crud = await this._interface.createPrice(adminPriceCreateOptionsToCrud(options));
+    await this._getProductPricesCache(options.productId).refresh([]);
+    return this._createPriceFromCrud(crud);
+  }
+
+  async updatePrice(priceId: string, options: AdminPriceUpdateOptions): Promise<AdminPrice> {
+    const crud = await this._interface.updatePrice(priceId, adminPriceUpdateOptionsToCrud(options));
+    // Refresh the cache for the product that owns this price
+    await this._getProductPricesCache(crud.product_id).refresh([]);
+    return this._createPriceFromCrud(crud);
+  }
+
+  async deletePrice(priceId: string): Promise<void> {
+    // First, we need to find which product this price belongs to
+    // This is a bit inefficient but necessary since we need to know the product ID to refresh the cache
+    // The API doesn't provide this information in the delete response
+    for (const [_productId, cache] of this._productPricesCache.entries()) {
+      const prices = Result.orThrow(await cache.getOrWait([], "write-only")) as unknown;
+      if ((prices as any[]).some((price: any) => price.id === priceId)) {
+        await this._interface.deletePrice(priceId);
+        await cache.refresh([]);
+        return;
+      }
+    }
+    // If we couldn't find the price in any cache, just delete it anyway
+    await this._interface.deletePrice(priceId);
   }
 }

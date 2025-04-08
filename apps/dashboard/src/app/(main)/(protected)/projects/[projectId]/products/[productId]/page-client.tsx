@@ -7,124 +7,40 @@ import { ActionCell, Button, DataTable, DataTableColumnHeader, TextCell, Typogra
 import { ColumnDef } from "@tanstack/react-table";
 import { ArrowLeft, Plus } from "lucide-react";
 import { useParams } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import * as yup from "yup";
 import { useAdminApp } from "../../use-admin-app";
-
-type Product = {
-  id: string,
-  name: string,
-  stripe_product_id: string | null,
-  associated_permission_id: string | null,
-  created_at_millis: string,
-  project_id: string,
-};
-
-type Price = {
-  id: string,
-  product_id: string,
-  name: string,
-  amount: number,
-  currency: string,
-  interval: string | null,
-  interval_count: number | null,
-  stripe_price_id: string | null,
-  active: boolean,
-  created_at_millis: string,
-};
 
 export default function ProductDetailsClient() {
   const router = useRouter();
   const params = useParams();
   const productId = params.productId as string;
-
-  const [product, setProduct] = useState<Product | null>(null);
-  const [prices, setPrices] = useState<Price[]>([]);
-  const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-
   const [isAddPriceDialogOpen, setIsAddPriceDialogOpen] = useState(false);
   const [isEditPriceDialogOpen, setIsEditPriceDialogOpen] = useState(false);
-  const [selectedPrice, setSelectedPrice] = useState<Price | null>(null);
+  const [selectedPrice, setSelectedPrice] = useState<any>(null);
 
   const stackAdminApp = useAdminApp();
   const projectData = stackAdminApp.useProject();
+  const adminProducts = stackAdminApp.useProducts();
+  const prices = stackAdminApp.useProductPrices(productId);
+  
+  // Find the current product from the products list
+  const product = adminProducts.find(p => p.id === productId);
   const stripeConfig = projectData.config.stripeConfig;
   const stripeConfigured = !!stripeConfig;
 
-  // Fetch product details
-  useEffect(() => {
-    const fetchProductDetails = async () => {
-      try {
-        setLoading(true);
-
-        // Fetch product
-        const response = await fetch(`/api/latest/finance/products/${productId}`, {
-          headers: {
-            "Content-Type": "application/json",
-          },
-        });
-
-        if (!response.ok) {
-          throw new Error(`Failed to fetch product: ${response.statusText}`);
-        }
-
-        const productData = await response.json();
-        setProduct(productData);
-
-        // Fetch prices for this product
-        const pricesResponse = await fetch(`/api/latest/finance/products/${productId}/prices`, {
-          headers: {
-            "Content-Type": "application/json",
-          },
-        });
-
-        if (!pricesResponse.ok) {
-          throw new Error(`Failed to fetch prices: ${pricesResponse.statusText}`);
-        }
-
-        const pricesData = await pricesResponse.json();
-        setPrices(pricesData.items || []);
-
-      } catch (err) {
-        console.error("Error fetching product details:", err);
-        setError(err instanceof Error ? err.message : "Failed to fetch product details");
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    fetchProductDetails();
-  }, [productId]);
-
   const handleAddPrice = async (values: any) => {
     try {
-      const response = await fetch("/api/latest/finance/prices", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          product_id: productId,
-          name: values.name,
-          amount: Number(values.amount), // Convert to number
-          currency: values.currency,
-          interval: values.interval || null,
-          interval_count: values.interval ? Number(values.interval_count) : null,
-          active: values.active !== undefined ? values.active : true,
-        }),
+      await stackAdminApp.createPrice({
+        productId: productId,
+        name: values.name,
+        amount: Number(values.amount),
+        currency: values.currency,
+        interval: values.interval || null,
+        intervalCount: values.interval ? Number(values.interval_count) : null,
+        active: values.active !== undefined ? values.active : true,
       });
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.message || "Failed to create price");
-      }
-
-      const newPrice = await response.json();
-
-      // Update the prices list
-      setPrices((currentPrices) => [newPrice, ...currentPrices]);
-
     } catch (err) {
       console.error("Error creating price:", err);
       setError(err instanceof Error ? err.message : "Failed to create price");
@@ -135,35 +51,14 @@ export default function ProductDetailsClient() {
     if (!selectedPrice) return;
 
     try {
-      const response = await fetch(`/api/latest/finance/prices/${selectedPrice.id}`, {
-        method: "PATCH",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          name: values.name,
-          amount: Number(values.amount),
-          currency: values.currency,
-          interval: values.interval || null,
-          interval_count: values.interval ? Number(values.interval_count) : null,
-          active: values.active,
-        }),
+      await stackAdminApp.updatePrice(selectedPrice.id, {
+        name: values.name,
+        amount: Number(values.amount),
+        currency: values.currency,
+        interval: values.interval || null,
+        intervalCount: values.interval ? Number(values.interval_count) : null,
+        active: values.active,
       });
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.message || "Failed to update price");
-      }
-
-      const updatedPrice = await response.json();
-
-      // Update the prices list
-      setPrices((currentPrices) =>
-        currentPrices.map((price) =>
-          price.id === updatedPrice.id ? updatedPrice : price
-        )
-      );
-
     } catch (err) {
       console.error("Error updating price:", err);
       setError(err instanceof Error ? err.message : "Failed to update price");
@@ -172,23 +67,7 @@ export default function ProductDetailsClient() {
 
   const handleDeletePrice = async (priceId: string) => {
     try {
-      const response = await fetch(`/api/latest/finance/prices/${priceId}`, {
-        method: "DELETE",
-        headers: {
-          "Content-Type": "application/json",
-        },
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.message || "Failed to delete price");
-      }
-
-      // Remove price from the list
-      setPrices((currentPrices) =>
-        currentPrices.filter((price) => price.id !== priceId)
-      );
-
+      await stackAdminApp.deletePrice(priceId);
     } catch (err) {
       console.error("Error deleting price:", err);
       setError(err instanceof Error ? err.message : "Failed to delete price");
@@ -219,19 +98,19 @@ export default function ProductDetailsClient() {
   };
 
   // Define price form schema
-  const getPriceFormSchema = (price?: Price | null) => yup.object({
+  const getPriceFormSchema = (price?: any | null) => yup.object({
     name: yup.string().defined().label("Price Name").default(price?.name || ""),
     amount: yup.number().defined().positive().label("Amount (in cents)").default(price?.amount || 1000),
     currency: yup.string().defined().label("Currency").default(price?.currency || "USD"),
     interval: yup.string().nullable().label("Billing Interval").default(price?.interval || null),
-    interval_count: yup.number().nullable().label("Interval Count").default(price?.interval_count || 1),
+    interval_count: yup.number().nullable().label("Interval Count").default(price?.intervalCount || 1),
     active: yup.boolean().defined().label("Active").default(price?.active !== undefined ? price.active : true),
   });
 
   const priceFormSchema = getPriceFormSchema();
 
   // Define columns for price table
-  const columns: ColumnDef<Price>[] = [
+  const columns: ColumnDef<any>[] = [
     {
       accessorKey: "name",
       header: ({ column }) => <DataTableColumnHeader column={column} columnTitle="Name" />,
@@ -245,7 +124,7 @@ export default function ProductDetailsClient() {
     {
       accessorKey: "interval",
       header: ({ column }) => <DataTableColumnHeader column={column} columnTitle="Billing Period" />,
-      cell: ({ row }) => <TextCell>{formatInterval(row.original.interval, row.original.interval_count)}</TextCell>,
+      cell: ({ row }) => <TextCell>{formatInterval(row.original.interval, row.original.intervalCount)}</TextCell>,
     },
     {
       accessorKey: "active",
@@ -263,9 +142,9 @@ export default function ProductDetailsClient() {
       ),
     },
     {
-      accessorKey: "stripe_price_id",
+      accessorKey: "stripePriceId",
       header: ({ column }) => <DataTableColumnHeader column={column} columnTitle="Stripe Price ID" />,
-      cell: ({ row }) => <TextCell>{row.original.stripe_price_id || "-"}</TextCell>,
+      cell: ({ row }) => <TextCell>{row.original.stripePriceId || "-"}</TextCell>,
     },
     {
       id: "actions",
@@ -289,10 +168,6 @@ export default function ProductDetailsClient() {
       ),
     },
   ];
-
-  if (loading) {
-    return <div className="flex items-center justify-center py-10">Loading product details...</div>;
-  }
 
   if (!product) {
     return (
@@ -329,16 +204,16 @@ export default function ProductDetailsClient() {
             <p className="text-sm font-medium text-gray-500 dark:text-gray-400">Name</p>
             <p className="mt-1">{product.name}</p>
           </div>
-          {product.stripe_product_id && (
+          {product.stripeProductId && (
             <div>
               <p className="text-sm font-medium text-gray-500 dark:text-gray-400">Stripe Product ID</p>
-              <p className="mt-1">{product.stripe_product_id}</p>
+              <p className="mt-1">{product.stripeProductId}</p>
             </div>
           )}
-          {product.associated_permission_id && (
+          {product.associatedPermissionId && (
             <div>
               <p className="text-sm font-medium text-gray-500 dark:text-gray-400">Associated Permission</p>
-              <p className="mt-1">{product.associated_permission_id}</p>
+              <p className="mt-1">{product.associatedPermissionId}</p>
             </div>
           )}
         </div>
@@ -372,7 +247,7 @@ export default function ProductDetailsClient() {
             data={prices}
             columns={columns}
             defaultColumnFilters={[]}
-            defaultSorting={[{ id: "created_at_millis", desc: true }]}
+            defaultSorting={[{ id: "createdAt", desc: true }]}
           />
         )}
       </SettingCard>

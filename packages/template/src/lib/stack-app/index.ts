@@ -82,6 +82,12 @@ export type {
 } from "./products";
 
 export type {
+  AdminPrice,
+  AdminPriceCreateOptions,
+  AdminPriceUpdateOptions
+} from "./prices";
+
+export type {
   EditableTeamMemberProfile,
   ServerListUsersOptions,
   ServerTeam,
