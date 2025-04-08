@@ -7,12 +7,6 @@ import { KnownErrors } from "@stackframe/stack-shared";
 import { yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
 import { StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
 
-// Helper function to determine if a port is secure
-function isSecureEmailPort(port: number | string): boolean {
-  const portNum = typeof port === 'string' ? parseInt(port) : port;
-  return portNum === 465;
-}
-
 export const POST = createSmartRouteHandler({
   metadata: {
     summary: "Revoke an API key",
