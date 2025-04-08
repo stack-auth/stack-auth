@@ -197,12 +197,12 @@ export default function SetupPage() {
                         value: "@stackframe/init@latest",
                         className: "",
                       },
-                      ...(setupCode ? [{
-                        value: `--setup=${setupCode}`,
-                        className: "text-green-600",
-                      }] : []),
                       ...(apiUrl ? [{
                         value: `--api-url=${apiUrl}`,
+                        className: "text-green-600",
+                      }] : []),
+                      ...(setupCode ? [{
+                        value: `--setup=${setupCode}`,
                         className: "text-green-600",
                       }] : []),
                     ],
