@@ -251,39 +251,57 @@ export async function getEnvironmentConfigOverride(options: environmentOptions):
 
   // =================== PERMISSIONS ===================
 
-  configOverride['team.teamPermissionDefinitions'] = oldConfig.permissions.filter(perm => perm.scope === 'TEAM')
+  // Team permission definitions
+  for (const perm of oldConfig.permissions.filter(perm => perm.scope === 'TEAM')
     .map(permissionDefinitionJsonFromDbType)
-    .sort((a, b) => stringCompare(a.id, b.id))
-    .map(perm => filterUndefined({
+    .sort((a, b) => stringCompare(a.id, b.id))) {
+    configOverride[`team.teamPermissionDefinitions.${perm.id}`] = filterUndefined({
       description: perm.description,
       containedPermissions: typedFromEntries(perm.contained_permission_ids.map(containedPerm => [containedPerm, {}]))
-    }));
+    });
+  }
 
-  configOverride['team.defaultCreatorTeamPermissions'] = oldConfig.permissions.filter(perm => perm.isDefaultTeamCreatorPermission)
+  // Default creator team permissions
+  const defaultCreatorTeamPermissions = oldConfig.permissions.filter(perm => perm.isDefaultTeamCreatorPermission)
     .map(permissionDefinitionJsonFromDbType)
     .concat(oldConfig.teamCreateDefaultSystemPermissions.map(db => permissionDefinitionJsonFromSystemDbType(db, oldConfig)))
-    .sort((a, b) => stringCompare(a.id, b.id))
-    .map(perm => ({}));
+    .sort((a, b) => stringCompare(a.id, b.id));
 
-  configOverride['team.defaultMemberTeamPermissions'] = oldConfig.permissions.filter(perm => perm.isDefaultTeamMemberPermission)
+  for (const perm of defaultCreatorTeamPermissions) {
+    configOverride[`team.defaultCreatorTeamPermissions.${perm.id}`] = {};
+  }
+
+  // Default member team permissions
+  const defaultMemberTeamPermissions = oldConfig.permissions.filter(perm => perm.isDefaultTeamMemberPermission)
     .map(permissionDefinitionJsonFromDbType)
     .concat(oldConfig.teamMemberDefaultSystemPermissions.map(db => permissionDefinitionJsonFromSystemDbType(db, oldConfig)))
-    .sort((a, b) => stringCompare(a.id, b.id))
-    .map(perm => ({}));
+    .sort((a, b) => stringCompare(a.id, b.id));
 
-  configOverride['team.projectPermissionDefinitions'] = oldConfig.permissions.filter(perm => perm.scope === 'PROJECT')
+  for (const perm of defaultMemberTeamPermissions) {
+    configOverride[`team.defaultMemberTeamPermissions.${perm.id}`] = {};
+  }
+
+  // Project permission definitions
+  const projectPermissionDefinitions = oldConfig.permissions.filter(perm => perm.scope === 'PROJECT')
     .map(permissionDefinitionJsonFromDbType)
-    .sort((a, b) => stringCompare(a.id, b.id))
-    .map(perm => filterUndefined({
+    .sort((a, b) => stringCompare(a.id, b.id));
+
+  for (const perm of projectPermissionDefinitions) {
+    configOverride[`team.projectPermissionDefinitions.${perm.id}`] = filterUndefined({
       description: perm.description,
       containedPermissions: typedFromEntries(perm.contained_permission_ids.map(containedPerm => [containedPerm, {}]))
-    }));
+    });
+  }
 
-  configOverride['user.defaultProjectPermissions'] = oldConfig.permissions.filter(perm => perm.isDefaultProjectPermission)
+  // Default project permissions
+  const defaultProjectPermissions = oldConfig.permissions.filter(perm => perm.isDefaultProjectPermission)
     .map(permissionDefinitionJsonFromDbType)
     // TODO: add project default system permissions after creating the first project system permission
-    .sort((a, b) => stringCompare(a.id, b.id))
-    .map(perm => ({}));
+    .sort((a, b) => stringCompare(a.id, b.id));
+
+  for (const perm of defaultProjectPermissions) {
+    configOverride[`user.defaultProjectPermissions.${perm.id}`] = {};
+  }
 
   // =================== API KEYS ===================
 
