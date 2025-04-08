@@ -11,7 +11,8 @@ const API_KEY_LENGTHS = {
   SECRET_PART: 45,
   ID_PART: 32,
   TYPE_PART: 4,
-  SCANNER_AND_MARKER: 10,
+  SCANNER: 1,
+  MARKER: 9,
   CHECKSUM: 8,
 } as const;
 
@@ -59,12 +60,13 @@ function createApiKeyParts(options: Pick<ProjectApiKey, "id" | "isPublic" | "isC
 
 function parseApiKeyParts(secret: string) {
   const regex = new RegExp(
-    `^([^_]+)_` + // prefix
-    `(.{${API_KEY_LENGTHS.SECRET_PART}})` + // secretPart
-    `(.{${API_KEY_LENGTHS.ID_PART}})` + // idPart
-    `(.{${API_KEY_LENGTHS.TYPE_PART}})` + // type
-    `(.{${API_KEY_LENGTHS.SCANNER_AND_MARKER}})` + // scannerAndMarker
-    `(.{${API_KEY_LENGTHS.CHECKSUM}})$` // checksum
+    `^([a-zA-Z0-9_]+)_` + // prefix
+    `([a-zA-Z0-9_]{${API_KEY_LENGTHS.SECRET_PART}})` + // secretPart
+    `([a-zA-Z0-9_]{${API_KEY_LENGTHS.ID_PART}})` + // idPart
+    `([a-zA-Z0-9_]{${API_KEY_LENGTHS.TYPE_PART}})` + // type
+    `([a-zA-Z0-9_]{${API_KEY_LENGTHS.SCANNER}})` + // scanner
+    `(${STACK_AUTH_MARKER})` + // marker
+    `([a-zA-Z0-9_]{${API_KEY_LENGTHS.CHECKSUM}})$` // checksum
   );
 
   const match = secret.match(regex);
@@ -72,13 +74,12 @@ function parseApiKeyParts(secret: string) {
     throw new StackAssertionError("Invalid API key format");
   }
 
-  const [, prefix, secretPart, idPart, type, scannerAndMarker, checksum] = match;
+  const [, prefix, secretPart, idPart, type, scannerFlag, marker, checksum] = match;
 
-  const scannerFlag = scannerAndMarker.replace(STACK_AUTH_MARKER, "");
   const isCloudVersion = parseInt(scannerFlag, 32) % 2 === 0;
   const isPublic = (parseInt(scannerFlag, 32) & 2) !== 0;
 
-  const checksummablePart = `${prefix}_${secretPart}${idPart}${type}${scannerAndMarker}`;
+  const checksummablePart = `${prefix}_${secretPart}${idPart}${type}${scannerFlag}${marker}`;
   const restored_id = idPart.replace(/(.{8})(.{4})(.{4})(.{4})(.{12})/, "$1-$2-$3-$4-$5");
 
   if (!["user", "team"].includes(type)) {
