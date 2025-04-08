@@ -1,10 +1,12 @@
 "use client";
 
 import { SmartFormDialog } from "@/components/form-dialog";
+import { useRouter } from "@/components/router";
 import { SettingCard } from "@/components/settings";
 import { ActionCell, Button, DataTable, DataTableColumnHeader, TextCell, Typography } from "@stackframe/stack-ui";
 import { ColumnDef } from "@tanstack/react-table";
 import { Package2, Plus } from "lucide-react";
+import { useParams } from "next/navigation";
 import { useState } from "react";
 import * as yup from "yup";
 import { PageLayout } from "../page-layout";
@@ -20,6 +22,8 @@ type Product = {
 };
 
 export default function PageClient() {
+  const router = useRouter();
+  const params = useParams();
   const [isAddProductDialogOpen, setIsAddProductDialogOpen] = useState(false);
   const [isEditProductDialogOpen, setIsEditProductDialogOpen] = useState(false);
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
@@ -84,7 +88,20 @@ export default function PageClient() {
     {
       accessorKey: "name",
       header: ({ column }) => <DataTableColumnHeader column={column} columnTitle="Name" />,
-      cell: ({ row }) => <TextCell>{row.original.name}</TextCell>,
+      cell: ({ row }) => (
+        <TextCell>
+          <a
+            href={`/projects/${params.projectId}/products/${row.original.id}`}
+            className="text-blue-600 dark:text-blue-400 hover:underline"
+            onClick={(e) => {
+              e.preventDefault();
+              router.push(`/projects/${params.projectId}/products/${row.original.id}`);
+            }}
+          >
+            {row.original.name}
+          </a>
+        </TextCell>
+      ),
     },
     {
       accessorKey: "stripe_product_id",
@@ -101,6 +118,12 @@ export default function PageClient() {
       cell: ({ row }) => (
         <ActionCell
           items={[
+            {
+              item: "View Pricing",
+              onClick: () => {
+                router.push(`/projects/${params.projectId}/products/${row.original.id}`);
+              },
+            },
             {
               item: "Edit",
               onClick: () => {

@@ -1032,4 +1032,26 @@ model Product {
   stripeProductId        String?     @unique
   associatedPermissionId String?     @db.Uuid
   associatedPermission   Permission? @relation(fields: [associatedPermissionId], references: [dbId])
+
+  prices Price[]
+}
+
+model Price {
+  id        String  @id @default(uuid()) @db.Uuid
+  productId String  @db.Uuid
+  product   Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  isDefault     BooleanTrue?
+  name          String
+  amount        Int // Amount in cents (or the currency's smallest unit)
+  currency      String // Currency code (e.g., USD)
+  interval      String? // Subscription interval (e.g., month, year) - null for one-time
+  intervalCount Int? // Number of intervals (e.g., 1 for monthly, 12 for yearly)
+  stripePriceId String?      @unique
+  active        Boolean      @default(true)
+
+  @@unique([productId, isDefault])
 }
