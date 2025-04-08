@@ -1,6 +1,6 @@
 import { wait } from "@stackframe/stack-shared/dist/utils/promises";
 import { it } from "../../../../helpers";
-import { ApiKey, Auth, InternalProjectKeys, Project, Team, Webhook, backendContext, niceBackendFetch } from "../../../backend-helpers";
+import { Auth, InternalApiKey, InternalProjectKeys, Project, Team, Webhook, backendContext, niceBackendFetch } from "../../../backend-helpers";
 
 it("is not allowed to list permissions from the other users on the client", async ({ expect }) => {
   await Auth.Otp.signIn();
@@ -75,7 +75,7 @@ it("can create a new permission and grant it to a user on the server", async ({ 
     },
   });
 
-  await ApiKey.createAndSetProjectKeys(adminAccessToken);
+  await InternalApiKey.createAndSetProjectKeys(adminAccessToken);
 
   const { userId } = await Auth.Password.signUpWithEmail({ password: 'test1234' });
   const { teamId } = await Team.createAndAddCurrent();
@@ -179,7 +179,7 @@ it("can customize default team permissions", async ({ expect }) => {
     },
   });
 
-  await ApiKey.createAndSetProjectKeys(adminAccessToken);
+  await InternalApiKey.createAndSetProjectKeys(adminAccessToken);
 
   expect(response2).toMatchInlineSnapshot(`
     NiceResponse {
@@ -187,6 +187,8 @@ it("can customize default team permissions", async ({ expect }) => {
       "body": {
         "config": {
           "allow_localhost": true,
+          "allow_team_api_keys": false,
+          "allow_user_api_keys": false,
           "client_team_creation_enabled": false,
           "client_user_deletion_enabled": false,
           "create_team_on_sign_up": false,

@@ -228,7 +228,7 @@ const navigationItems: (Label | Item | Hidden)[] = [
     type: 'hidden',
   },
   {
-    name: "API Keys",
+    name: "Stack Auth Keys",
     href: "/api-keys",
     regex: /^\/projects\/[^\/]+\/api-keys$/,
     icon: KeyRound,

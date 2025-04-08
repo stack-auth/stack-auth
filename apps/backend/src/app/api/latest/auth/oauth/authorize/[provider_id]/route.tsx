@@ -1,4 +1,4 @@
-import { checkApiKeySet } from "@/lib/api-keys";
+import { checkApiKeySet } from "@/lib/internal-api-keys";
 import { getSoleTenancyFromProject } from "@/lib/tenancies";
 import { decodeAccessToken, oauthCookieSchema } from "@/lib/tokens";
 import { getProvider } from "@/oauth";
