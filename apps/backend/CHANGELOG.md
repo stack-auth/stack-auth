@@ -1,5 +1,14 @@
 # @stackframe/stack-backend
 
+## 2.8.3
+
+### Patch Changes
+
+- Various changes
+- Updated dependencies
+  - @stackframe/stack-shared@2.8.3
+  - @stackframe/stack-emails@2.8.3
+
 ## 2.8.2
 
 ### Patch Changes

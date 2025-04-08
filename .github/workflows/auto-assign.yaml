@@ -1,0 +1,16 @@
+name: 'Auto Assign PR Creator'
+
+on:
+  pull_request:
+    types: [opened, ready_for_review]
+
+jobs:
+  add-reviews:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - uses: kentaro-m/auto-assign-action@63835bc940442c9eca8d1c8f8a2cc7fe0f45cd7b
+        with:
+          configuration-path: '.github/auto_assign.yml'
