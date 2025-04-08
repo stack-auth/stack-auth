@@ -222,6 +222,19 @@ export async function getEnvironmentConfigOverride(options: environmentOptions):
     configOverride['auth.oauthProviders.' + provider.id] = providerOverride;
   }
 
+  for (const provider of oldConfig.oauthProviderConfigs) {
+    const authMethodConfig = oldConfig.authMethodConfigs.find(config => config.oauthProviderConfig?.id === provider.id);
+
+    if (!authMethodConfig) {
+      throw new StackAssertionError('No auth method config found for oauth provider', { provider });
+    }
+
+    configOverride['auth.connectedAccounts.' + provider.id] = {
+      enabled: authMethodConfig.enabled,
+      oauthProviderId: provider.id,
+    } satisfies OrganizationRenderedConfig['auth']['connectedAccounts'][string];
+  }
+
   // =================== EMAIL ===================
 
   if (oldConfig.emailServiceConfig?.standardEmailServiceConfig) {
