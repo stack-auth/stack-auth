@@ -3,15 +3,13 @@ import { BranchConfigOverride, BranchIncompleteConfig, BranchRenderedConfig, Env
 import { ProjectsCrud } from "@stackframe/stack-shared/dist/interface/crud/projects";
 import { yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
 import { StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
-import { filterUndefined, pick, typedEntries } from "@stackframe/stack-shared/dist/utils/objects";
+import { filterUndefined, pick, typedEntries, typedFromEntries } from "@stackframe/stack-shared/dist/utils/objects";
 import { Result } from "@stackframe/stack-shared/dist/utils/results";
 import { stringCompare, typedToLowercase } from "@stackframe/stack-shared/dist/utils/strings";
 import { base64url } from "jose";
 import * as yup from "yup";
 import { permissionDefinitionJsonFromDbType, permissionDefinitionJsonFromSystemDbType } from "./permissions";
 import { DBProject } from "./projects";
-
-type Project = ProjectsCrud["Admin"]["Read"];
 
 // These are placeholder types that should be replaced after the config json db migration
 type ProjectDB = DBProject;
@@ -240,6 +238,14 @@ export async function getEnvironmentConfigOverride(options: environmentOptions):
 
   // =================== PERMISSIONS ===================
 
+  configOverride['team.teamPermissionDefinitions'] = oldConfig.permissions.filter(perm => perm.scope === 'TEAM')
+    .map(permissionDefinitionJsonFromDbType)
+    .sort((a, b) => stringCompare(a.id, b.id))
+    .map(perm => filterUndefined({
+      description: perm.description,
+      containedPermissions: typedFromEntries(perm.contained_permission_ids.map(containedPerm => [containedPerm, {}]))
+    }));
+
   configOverride['team.defaultCreatorTeamPermissions'] = oldConfig.permissions.filter(perm => perm.isDefaultTeamCreatorPermission)
     .map(permissionDefinitionJsonFromDbType)
     .concat(oldConfig.teamCreateDefaultSystemPermissions.map(db => permissionDefinitionJsonFromSystemDbType(db, oldConfig)))
@@ -252,11 +258,21 @@ export async function getEnvironmentConfigOverride(options: environmentOptions):
     .sort((a, b) => stringCompare(a.id, b.id))
     .map(perm => ({}));
 
+  configOverride['team.projectPermissionDefinitions'] = oldConfig.permissions.filter(perm => perm.scope === 'PROJECT')
+    .map(permissionDefinitionJsonFromDbType)
+    .sort((a, b) => stringCompare(a.id, b.id))
+    .map(perm => filterUndefined({
+      description: perm.description,
+      containedPermissions: typedFromEntries(perm.contained_permission_ids.map(containedPerm => [containedPerm, {}]))
+    }));
+
   configOverride['user.defaultProjectPermissions'] = oldConfig.permissions.filter(perm => perm.isDefaultProjectPermission)
     .map(permissionDefinitionJsonFromDbType)
     // TODO: add project default system permissions after creating the first project system permission
     .sort((a, b) => stringCompare(a.id, b.id))
     .map(perm => ({}));
+
+  // =================== API KEYS ===================
 
   if (oldConfig.allowUserApiKeys !== baseConfig.user.allowUserApiKeys) {
     configOverride['user.allowUserApiKeys'] = oldConfig.allowUserApiKeys;
