@@ -191,6 +191,7 @@ export namespace Auth {
         "refreshTokenId": expect.any(String),
         "aud": expect.any(String),
         "sub": expect.any(String),
+        "role": "authenticated",
         "branchId": "main",
       });
     }
