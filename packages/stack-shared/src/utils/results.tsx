@@ -1,5 +1,5 @@
 import { wait } from "./promises";
-import { deindent } from "./strings";
+import { deindent, nicify } from "./strings";
 
 export type Result<T, E = unknown> =
   | {
@@ -305,7 +305,7 @@ import.meta.vitest?.test("mapResult", ({ expect }) => {
 
 class RetryError extends AggregateError {
   constructor(public readonly errors: unknown[]) {
-    const strings = errors.map(e => String(e));
+    const strings = errors.map(e => nicify(e));
     const isAllSame = strings.length > 1 && strings.every(s => s === strings[0]);
     super(
       errors,
@@ -314,10 +314,10 @@ class RetryError extends AggregateError {
       
       ${isAllSame ? deindent`
         Attempts 1-${errors.length}:
-          ${errors[0]}
-      ` : errors.map((e, i) => deindent`
+          ${strings[0]}
+      ` : strings.map((s, i) => deindent`
           Attempt ${i + 1}:
-            ${e}
+            ${s}
         `).join("\n\n")}
       `,
       { cause: errors[errors.length - 1] }

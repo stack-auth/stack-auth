@@ -1,11 +1,9 @@
 import bcrypt from 'bcrypt';
 import { StackAssertionError } from './errors';
 
-export async function sha512(input: Uint8Array | string) {
+export async function sha512(input: Uint8Array | string): Promise<Uint8Array> {
   const bytes = typeof input === "string" ? new TextEncoder().encode(input) : input;
-  return await crypto.subtle.digest("SHA-512", bytes).then(buf => {
-    return Array.prototype.map.call(new Uint8Array(buf), x=>(('00'+x.toString(16)).slice(-2))).join('');
-  });
+  return new Uint8Array(await crypto.subtle.digest("SHA-512", bytes));
 }
 
 export async function hashPassword(password: string) {
@@ -17,7 +15,7 @@ export async function hashPassword(password: string) {
   return await bcrypt.hash(password, salt);
 }
 
-export async function comparePassword(password: string, hash: string) {
+export async function comparePassword(password: string, hash: string): Promise<boolean> {
   switch (await getPasswordHashAlgorithm(hash)) {
     case "bcrypt": {
       return await bcrypt.compare(password, hash);

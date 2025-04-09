@@ -1,4 +1,4 @@
-import { createApiKeySet } from "@/lib/api-keys";
+import { createApiKeySet } from "@/lib/internal-api-keys";
 import { createProject } from "@/lib/projects";
 import { prismaClient } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
