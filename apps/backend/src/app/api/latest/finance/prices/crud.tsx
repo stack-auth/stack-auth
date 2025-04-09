@@ -18,6 +18,7 @@ type PriceReadType = {
   interval_count: number | null,
   stripe_price_id: string | null,
   active: boolean,
+  is_default: boolean,
   created_at_millis: string,
 };
 
@@ -38,6 +39,7 @@ function prismaModelToCrud(prismaModel: Price): PriceReadType {
     interval_count: prismaModel.intervalCount,
     stripe_price_id: prismaModel.stripePriceId,
     active: prismaModel.active,
+    is_default: prismaModel.isDefault === 'TRUE',
     created_at_millis: prismaModel.createdAt.getTime().toString(),
   };
 }
@@ -60,6 +62,19 @@ export const internalPaymentsPricesCrudHandlers = createLazyProxy(() => createCr
       throwErr(`Product with ID ${data.product_id} not found or doesn't belong to this project`);
     }
 
+    // If setting this price as default, first clear any existing default price for this product
+    if (data.is_default === true) {
+      await prismaClient.price.updateMany({
+        where: {
+          productId: data.product_id,
+          isDefault: 'TRUE',
+        },
+        data: {
+          isDefault: null,
+        },
+      });
+    }
+
     const price = await prismaClient.price.create({
       data: {
         name: data.name,
@@ -69,6 +84,7 @@ export const internalPaymentsPricesCrudHandlers = createLazyProxy(() => createCr
         intervalCount: data.interval_count,
         productId: data.product_id,
         active: data.active !== undefined ? data.active : true,
+        isDefault: data.is_default === true ? 'TRUE' : null,
       },
     });
 
@@ -170,6 +186,20 @@ export const internalPaymentsPricesCrudHandlers = createLazyProxy(() => createCr
       throwErr(`Price with ID ${params.priceId} not found or doesn't belong to this project`);
     }
 
+    // If setting this price as default, first clear any existing default price for this product
+    if (data.is_default === true) {
+      await prismaClient.price.updateMany({
+        where: {
+          productId: existingPrice.productId,
+          isDefault: 'TRUE',
+          id: { not: params.priceId }, // Don't clear the default flag on the current price
+        },
+        data: {
+          isDefault: null,
+        },
+      });
+    }
+
     const updatedPrice = await prismaClient.price.update({
       where: {
         id: params.priceId,
@@ -181,6 +211,9 @@ export const internalPaymentsPricesCrudHandlers = createLazyProxy(() => createCr
         interval: data.interval,
         intervalCount: data.interval_count,
         active: data.active,
+        isDefault: data.is_default !== undefined
+          ? (data.is_default ? 'TRUE' : null)
+          : undefined, // Only update if provided
       },
     });
 

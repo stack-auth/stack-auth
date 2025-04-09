@@ -12,6 +12,7 @@ const priceSchema = yupObject({
   interval_count: yupNumber().nullable().defined(),
   stripe_price_id: yupString().nullable().defined(),
   active: yupBoolean().defined(),
+  is_default: yupBoolean().defined(),
   created_at_millis: yupString().defined(),
 });
 
@@ -25,6 +26,7 @@ export const internalPaymentsPricesCrud = createCrud({
     interval: yupString().nullable(),
     interval_count: yupNumber().nullable(),
     active: yupBoolean().optional(),
+    is_default: yupBoolean().optional(),
   }),
   adminUpdateSchema: yupObject({
     name: yupString().optional(),
@@ -33,6 +35,7 @@ export const internalPaymentsPricesCrud = createCrud({
     interval: yupString().nullable().optional(),
     interval_count: yupNumber().nullable().optional(),
     active: yupBoolean().optional(),
+    is_default: yupBoolean().optional(),
   }),
   adminDeleteSchema: yupObject({}),
   adminListSchema: yupObject({
