@@ -40,7 +40,8 @@
     "@stackframe/stack-shared": "workspace:*",
     "commander": "^13.1.0",
     "inquirer": "^9.2.19",
-    "open": "^10.1.0"
+    "open": "^10.1.0",
+    "posthog-node": "^4.1.0"
   },
   "devDependencies": {
     "@types/inquirer": "^9.0.7",
