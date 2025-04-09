@@ -1592,7 +1592,13 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
    * @param options.expiresInMillis Optional duration in milliseconds before the auth attempt expires (default: 2 hours)
    * @returns Result containing either the refresh token or an error
    */
-  async promptCliLogin(options: { appUrl: string, expiresInMillis?: number, maxAttempts?: number, waitTimeMillis?: number }): Promise<Result<string, KnownErrors["CliAuthError"] | KnownErrors["CliAuthExpiredError"] | KnownErrors["CliAuthUsedError"]>> {
+  async promptCliLogin(options: {
+    appUrl: string,
+    expiresInMillis?: number,
+    maxAttempts?: number,
+    waitTimeMillis?: number,
+    promptLink?: (url: string) => void,
+  }): Promise<Result<string, KnownErrors["CliAuthError"] | KnownErrors["CliAuthExpiredError"] | KnownErrors["CliAuthUsedError"]>> {
     // Step 1: Initiate the CLI auth process
     const response = await this._interface.sendClientRequest(
       "/auth/cli",
@@ -1618,11 +1624,11 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
 
     // Step 2: Open the browser for the user to authenticate
     const url = `${options.appUrl}/handler/cli-auth-confirm?login_code=${encodeURIComponent(loginCode)}`;
-    if (typeof process !== 'undefined' && process.versions?.node != null) {
-      const open = (await import("open")).default;
-      await open(url);
+    if (options.promptLink) {
+      options.promptLink(url);
+    } else {
+      console.log(`Please visit the following URL to authenticate:\n${url}`);
     }
-    console.log(`Please visit the following URL to authenticate:\n${url}`);
 
 
     // Step 3: Poll for the token
