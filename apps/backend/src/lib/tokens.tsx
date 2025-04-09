@@ -103,6 +103,7 @@ export async function generateAccessToken(options: {
       sub: options.userId,
       branchId: options.tenancy.branchId,
       refreshTokenId: options.refreshTokenId,
+      role: 'authenticated',
     },
     expirationTime: getEnvVariable("STACK_ACCESS_TOKEN_EXPIRATION_TIME", "10min"),
   });
