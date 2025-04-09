@@ -1,4 +1,4 @@
-import { NormalizationError, getInvalidConfigReason, normalize, override } from "@stackframe/stack-shared/dist/config/format/index";
+import { NormalizationError, getInvalidConfigReason, normalize, override } from "@stackframe/stack-shared/dist/config/format";
 import { BranchConfigOverride, BranchIncompleteConfig, BranchRenderedConfig, EnvironmentConfigOverride, EnvironmentIncompleteConfig, EnvironmentRenderedConfig, OrganizationConfigOverride, OrganizationIncompleteConfig, OrganizationRenderedConfig, ProjectConfigOverride, ProjectIncompleteConfig, ProjectRenderedConfig, baseConfig, branchConfigSchema, environmentConfigSchema, organizationConfigSchema, projectConfigSchema } from "@stackframe/stack-shared/dist/config/schema";
 import { ProjectsCrud } from "@stackframe/stack-shared/dist/interface/crud/projects";
 import { yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
@@ -124,35 +124,35 @@ export async function getEnvironmentConfigOverride(options: environmentOptions):
 
   // =================== TEAM ===================
 
-  if (oldConfig.clientTeamCreationEnabled !== baseConfig.team.clientTeamCreationEnabled) {
-    configOverride['team.clientTeamCreationEnabled'] = oldConfig.clientTeamCreationEnabled;
+  if (oldConfig.clientTeamCreationEnabled !== baseConfig.teams.clientTeamCreationEnabled) {
+    configOverride['teams.clientTeamCreationEnabled'] = oldConfig.clientTeamCreationEnabled;
   }
 
-  if (oldConfig.createTeamOnSignUp !== baseConfig.team.createTeamOnSignUp) {
-    configOverride['team.createTeamOnSignUp'] = oldConfig.createTeamOnSignUp;
+  if (oldConfig.createTeamOnSignUp !== baseConfig.teams.createTeamOnSignUp) {
+    configOverride['teams.createTeamOnSignUp'] = oldConfig.createTeamOnSignUp;
   }
 
   // =================== USER ===================
 
-  if (oldConfig.clientUserDeletionEnabled !== baseConfig.user.clientUserDeletionEnabled) {
-    configOverride['user.clientUserDeletionEnabled'] = oldConfig.clientUserDeletionEnabled;
+  if (oldConfig.clientUserDeletionEnabled !== baseConfig.users.clientUserDeletionEnabled) {
+    configOverride['users.clientUserDeletionEnabled'] = oldConfig.clientUserDeletionEnabled;
   }
 
-  if (oldConfig.signUpEnabled !== baseConfig.user.signUpEnabled) {
-    configOverride['user.signUpEnabled'] = oldConfig.signUpEnabled;
+  if (oldConfig.signUpEnabled !== baseConfig.users.signUpEnabled) {
+    configOverride['users.signUpEnabled'] = oldConfig.signUpEnabled;
   }
 
   // =================== DOMAIN ===================
 
-  if (oldConfig.allowLocalhost !== baseConfig.domain.allowLocalhost) {
-    configOverride['domain.allowLocalhost'] = oldConfig.allowLocalhost;
+  if (oldConfig.allowLocalhost !== baseConfig.domains.allowLocalhost) {
+    configOverride['domains.allowLocalhost'] = oldConfig.allowLocalhost;
   }
 
   for (const domain of oldConfig.domains) {
-    configOverride['domain.trustedDomains.' + base64url.encode(domain.domain)] = {
+    configOverride['domains.trustedDomains.' + base64url.encode(domain.domain)] = {
       baseUrl: domain.domain,
       handlerPath: domain.handlerPath,
-    } satisfies OrganizationRenderedConfig['domain']['trustedDomains'][string];
+    } satisfies OrganizationRenderedConfig['domains']['trustedDomains'][string];
   }
 
   // =================== AUTH ===================
@@ -238,7 +238,7 @@ export async function getEnvironmentConfigOverride(options: environmentOptions):
   // =================== EMAIL ===================
 
   if (oldConfig.emailServiceConfig?.standardEmailServiceConfig) {
-    configOverride['email.emailServer'] = {
+    configOverride['emails.emailServer'] = {
       isShared: false,
       host: oldConfig.emailServiceConfig.standardEmailServiceConfig.host,
       port: oldConfig.emailServiceConfig.standardEmailServiceConfig.port,
@@ -246,7 +246,7 @@ export async function getEnvironmentConfigOverride(options: environmentOptions):
       password: oldConfig.emailServiceConfig.standardEmailServiceConfig.password,
       senderName: oldConfig.emailServiceConfig.standardEmailServiceConfig.senderName,
       senderEmail: oldConfig.emailServiceConfig.standardEmailServiceConfig.senderEmail,
-    } satisfies OrganizationRenderedConfig['email']['emailServer'];
+    } satisfies OrganizationRenderedConfig['emails']['emailServer'];
   }
 
   // =================== PERMISSIONS ===================
@@ -255,7 +255,7 @@ export async function getEnvironmentConfigOverride(options: environmentOptions):
   for (const perm of oldConfig.permissions.filter(perm => perm.scope === 'TEAM')
     .map(permissionDefinitionJsonFromDbType)
     .sort((a, b) => stringCompare(a.id, b.id))) {
-    configOverride[`team.teamPermissionDefinitions.${perm.id}`] = filterUndefined({
+    configOverride[`teams.teamPermissionDefinitions.${perm.id}`] = filterUndefined({
       description: perm.description,
       containedPermissions: typedFromEntries(perm.contained_permission_ids.map(containedPerm => [containedPerm, {}]))
     });
@@ -268,7 +268,7 @@ export async function getEnvironmentConfigOverride(options: environmentOptions):
     .sort((a, b) => stringCompare(a.id, b.id));
 
   for (const perm of defaultCreatorTeamPermissions) {
-    configOverride[`team.defaultCreatorTeamPermissions.${perm.id}`] = {};
+    configOverride[`teams.defaultCreatorTeamPermissions.${perm.id}`] = {};
   }
 
   // Default member team permissions
@@ -278,7 +278,7 @@ export async function getEnvironmentConfigOverride(options: environmentOptions):
     .sort((a, b) => stringCompare(a.id, b.id));
 
   for (const perm of defaultMemberTeamPermissions) {
-    configOverride[`team.defaultMemberTeamPermissions.${perm.id}`] = {};
+    configOverride[`teams.defaultMemberTeamPermissions.${perm.id}`] = {};
   }
 
   // Project permission definitions
@@ -287,7 +287,7 @@ export async function getEnvironmentConfigOverride(options: environmentOptions):
     .sort((a, b) => stringCompare(a.id, b.id));
 
   for (const perm of projectPermissionDefinitions) {
-    configOverride[`team.projectPermissionDefinitions.${perm.id}`] = filterUndefined({
+    configOverride[`teams.projectPermissionDefinitions.${perm.id}`] = filterUndefined({
       description: perm.description,
       containedPermissions: typedFromEntries(perm.contained_permission_ids.map(containedPerm => [containedPerm, {}]))
     });
@@ -300,17 +300,17 @@ export async function getEnvironmentConfigOverride(options: environmentOptions):
     .sort((a, b) => stringCompare(a.id, b.id));
 
   for (const perm of defaultProjectPermissions) {
-    configOverride[`user.defaultProjectPermissions.${perm.id}`] = {};
+    configOverride[`users.defaultProjectPermissions.${perm.id}`] = {};
   }
 
   // =================== API KEYS ===================
 
-  if (oldConfig.allowUserApiKeys !== baseConfig.user.allowUserApiKeys) {
-    configOverride['user.allowUserApiKeys'] = oldConfig.allowUserApiKeys;
+  if (oldConfig.allowUserApiKeys !== baseConfig.users.allowUserApiKeys) {
+    configOverride['users.allowUserApiKeys'] = oldConfig.allowUserApiKeys;
   }
 
-  if (oldConfig.allowTeamApiKeys !== baseConfig.team.allowTeamApiKeys) {
-    configOverride['team.allowTeamApiKeys'] = oldConfig.allowTeamApiKeys;
+  if (oldConfig.allowTeamApiKeys !== baseConfig.teams.allowTeamApiKeys) {
+    configOverride['teams.allowTeamApiKeys'] = oldConfig.allowTeamApiKeys;
   }
 
   return configOverride;
@@ -460,12 +460,12 @@ export const renderedOrganizationConfigToProjectCrud = (renderedConfig: Organiza
 
   return {
     id: configId,
-    allow_localhost: renderedConfig.domain.allowLocalhost,
-    client_team_creation_enabled: renderedConfig.team.clientTeamCreationEnabled,
-    client_user_deletion_enabled: renderedConfig.user.clientUserDeletionEnabled,
-    sign_up_enabled: renderedConfig.user.signUpEnabled,
+    allow_localhost: renderedConfig.domains.allowLocalhost,
+    client_team_creation_enabled: renderedConfig.teams.clientTeamCreationEnabled,
+    client_user_deletion_enabled: renderedConfig.users.clientUserDeletionEnabled,
+    sign_up_enabled: renderedConfig.users.signUpEnabled,
     oauth_account_merge_strategy: renderedConfig.auth.oauthAccountMergeStrategy,
-    create_team_on_sign_up: renderedConfig.team.createTeamOnSignUp,
+    create_team_on_sign_up: renderedConfig.teams.createTeamOnSignUp,
     credential_enabled: typedEntries(renderedConfig.auth.authMethods).filter(([_, authMethod]) => authMethod.enabled && authMethod.type === 'password').length > 0,
     magic_link_enabled: typedEntries(renderedConfig.auth.authMethods).filter(([_, authMethod]) => authMethod.enabled && authMethod.type === 'otp').length > 0,
     passkey_enabled: typedEntries(renderedConfig.auth.authMethods).filter(([_, authMethod]) => authMethod.enabled && authMethod.type === 'passkey').length > 0,
@@ -473,36 +473,36 @@ export const renderedOrganizationConfigToProjectCrud = (renderedConfig: Organiza
     oauth_providers: oauthProviders,
     enabled_oauth_providers: oauthProviders.filter(provider => provider.enabled),
 
-    domains: typedEntries(renderedConfig.domain.trustedDomains)
+    domains: typedEntries(renderedConfig.domains.trustedDomains)
       .map(([_, domainConfig]) => ({
         domain: domainConfig.baseUrl,
         handler_path: domainConfig.handlerPath,
       }))
       .sort((a, b) => stringCompare(a.domain, b.domain)),
 
-    email_config: renderedConfig.email.emailServer.isShared ? {
+    email_config: renderedConfig.emails.emailServer.isShared ? {
       type: 'shared',
     } : {
       type: 'standard',
-      host: renderedConfig.email.emailServer.host,
-      port: renderedConfig.email.emailServer.port,
-      username: renderedConfig.email.emailServer.username,
-      password: renderedConfig.email.emailServer.password,
-      sender_name: renderedConfig.email.emailServer.senderName,
-      sender_email: renderedConfig.email.emailServer.senderEmail,
+      host: renderedConfig.emails.emailServer.host,
+      port: renderedConfig.emails.emailServer.port,
+      username: renderedConfig.emails.emailServer.username,
+      password: renderedConfig.emails.emailServer.password,
+      sender_name: renderedConfig.emails.emailServer.senderName,
+      sender_email: renderedConfig.emails.emailServer.senderEmail,
     },
 
-    team_creator_default_permissions: typedEntries(renderedConfig.team.defaultCreatorTeamPermissions)
+    team_creator_default_permissions: typedEntries(renderedConfig.teams.defaultCreatorTeamPermissions)
       .map(([id, perm]) => ({ id }))
       .sort((a, b) => stringCompare(a.id, b.id)),
-    team_member_default_permissions: typedEntries(renderedConfig.team.defaultMemberTeamPermissions)
+    team_member_default_permissions: typedEntries(renderedConfig.teams.defaultMemberTeamPermissions)
       .map(([id, perm]) => ({ id }))
       .sort((a, b) => stringCompare(a.id, b.id)),
-    user_default_permissions: typedEntries(renderedConfig.user.defaultProjectPermissions)
+    user_default_permissions: typedEntries(renderedConfig.users.defaultProjectPermissions)
       .map(([id, perm]) => ({ id }))
       .sort((a, b) => stringCompare(a.id, b.id)),
 
-    allow_user_api_keys: renderedConfig.user.allowUserApiKeys,
-    allow_team_api_keys: renderedConfig.team.allowTeamApiKeys,
+    allow_user_api_keys: renderedConfig.users.allowUserApiKeys,
+    allow_team_api_keys: renderedConfig.teams.allowTeamApiKeys,
   };
 };

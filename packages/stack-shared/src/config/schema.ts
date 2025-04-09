@@ -9,11 +9,7 @@ export type ConfigLevel = typeof configLevels[number];
 const permissionRegex = /^\$?[a-z0-9_:]+$/;
 
 export const baseConfig = {
-  // default values belong here
-  project: {
-
-  },
-  team: {
+  teams: {
     createTeamOnSignUp: false,
     clientTeamCreationEnabled: false,
     defaultCreatorTeamPermissions: {},
@@ -21,14 +17,14 @@ export const baseConfig = {
     teamPermissionDefinitions: {},
     allowTeamApiKeys: false,
   },
-  user: {
+  users: {
     clientUserDeletionEnabled: false,
     signUpEnabled: true,
     defaultProjectPermissions: {},
     userPermissionDefinitions: {},
     allowUserApiKeys: false,
   },
-  domain: {
+  domains: {
     allowLocalhost: true,
     trustedDomains: {},
   },
@@ -38,7 +34,7 @@ export const baseConfig = {
     authMethods: {},
     connectedAccounts: {},
   },
-  email: {
+  emails: {
     emailServer: {
       isShared: true,
     },
@@ -50,9 +46,7 @@ export const baseConfig = {
  */
 export const projectConfigSchema = yupObject({
   // This is just an example of a field that can only be configured at the project level. Will be actually implemented in the future.
-  project: yupObject({
-    sourceOfTruthDbConnectionString: yupString().optional(),
-  }).defined(),
+  sourceOfTruthDbConnectionString: yupString().optional(),
 });
 
 // key: id of the permission definition.
@@ -127,8 +121,8 @@ const branchDomain = yupObject({
   allowLocalhost: yupBoolean().defined(),
 }).defined();
 
-export const branchConfigSchema = projectConfigSchema.omit(["project"]).concat(yupObject({
-  team: yupObject({
+export const branchConfigSchema = projectConfigSchema.omit(["sourceOfTruthDbConnectionString"]).concat(yupObject({
+  teams: yupObject({
     createTeamOnSignUp: yupBoolean().defined(),
     clientTeamCreationEnabled: yupBoolean().defined(),
 
@@ -139,7 +133,7 @@ export const branchConfigSchema = projectConfigSchema.omit(["project"]).concat(y
     allowTeamApiKeys: yupBoolean().defined(),
   }).defined(),
 
-  user: yupObject({
+  users: yupObject({
     clientUserDeletionEnabled: yupBoolean().defined(),
     signUpEnabled: yupBoolean().defined(),
 
@@ -149,13 +143,13 @@ export const branchConfigSchema = projectConfigSchema.omit(["project"]).concat(y
     allowUserApiKeys: yupBoolean().defined(),
   }).defined(),
 
-  domain: branchDomain,
+  domains: branchDomain,
 
   auth: branchAuth,
 }));
 
 
-export const environmentConfigSchema = branchConfigSchema.omit(["auth", "domain"]).concat(yupObject({
+export const environmentConfigSchema = branchConfigSchema.omit(["auth", "domains"]).concat(yupObject({
   auth: branchAuth.omit(["oauthProviders"]).concat(yupObject({
     // key: id of the oauth provider.
     oauthProviders: yupRecord(
@@ -171,7 +165,7 @@ export const environmentConfigSchema = branchConfigSchema.omit(["auth", "domain"
     ).defined(),
   }).defined()),
 
-  email: yupObject({
+  emails: yupObject({
     emailServer: yupUnion(
       yupObject({
         isShared: yupBoolean().isTrue().defined(),
@@ -188,7 +182,7 @@ export const environmentConfigSchema = branchConfigSchema.omit(["auth", "domain"
     ).defined(),
   }).defined(),
 
-  domain: branchDomain.concat(yupObject({
+  domains: branchDomain.concat(yupObject({
     // keys to the domains are url base64 encoded
     trustedDomains: yupRecord(
       yupString().defined().matches(permissionRegex),
@@ -204,9 +198,9 @@ export const organizationConfigSchema = environmentConfigSchema.concat(yupObject
 
 
 export type ProjectIncompleteConfig = yup.InferType<typeof projectConfigSchema>;
-export type BranchIncompleteConfig = ProjectIncompleteConfig & yup.InferType<typeof branchConfigSchema>;
-export type EnvironmentIncompleteConfig = BranchIncompleteConfig & yup.InferType<typeof environmentConfigSchema>;
-export type OrganizationIncompleteConfig = EnvironmentIncompleteConfig & yup.InferType<typeof organizationConfigSchema>;
+export type BranchIncompleteConfig = yup.InferType<typeof branchConfigSchema>;
+export type EnvironmentIncompleteConfig = yup.InferType<typeof environmentConfigSchema>;
+export type OrganizationIncompleteConfig = yup.InferType<typeof organizationConfigSchema>;
 
 export const IncompleteConfigSymbol = Symbol('stack-auth-incomplete-config');
 
