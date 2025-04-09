@@ -1,6 +1,7 @@
 import { Confetti } from "@/components/confetti";
 import { Card, CardContent, CardFooter, CardHeader, InlineCode, Typography } from "@stackframe/stack-ui";
 import Actions from "./actions";
+import PostHog from "./posthog";
 
 export const metadata = {
   title: "Setup complete!",
@@ -9,6 +10,7 @@ export const metadata = {
 export default function WizardCongratsPage() {
   return (
     <>
+      <PostHog />
       <Confetti />
       <style>
         {`
