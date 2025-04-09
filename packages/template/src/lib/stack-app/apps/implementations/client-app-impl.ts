@@ -1592,7 +1592,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
    * @param options.expiresInMillis Optional duration in milliseconds before the auth attempt expires (default: 2 hours)
    * @returns Result containing either the refresh token or an error
    */
-  async promptCliLogin(options: { appUrl: string, expiresInMillis?: number }): Promise<Result<string, KnownErrors["CliAuthError"] | KnownErrors["CliAuthExpiredError"] | KnownErrors["CliAuthUsedError"]>> {
+  async promptCliLogin(options: { appUrl: string, expiresInMillis?: number, maxAttempts?: number, waitTimeMillis?: number }): Promise<Result<string, KnownErrors["CliAuthError"] | KnownErrors["CliAuthExpiredError"] | KnownErrors["CliAuthUsedError"]>> {
     // Step 1: Initiate the CLI auth process
     const response = await this._interface.sendClientRequest(
       "/auth/cli",
@@ -1627,9 +1627,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
 
     // Step 3: Poll for the token
     let attempts = 0;
-    const maxAttempts = 300; // 10 minutes with 2-second intervals
-
-    while (attempts < maxAttempts) {
+    while (attempts < (options.maxAttempts ?? Infinity)) {
       attempts++;
       const pollResponse = await this._interface.sendClientRequest("/auth/cli/poll", {
         method: "POST",
@@ -1645,16 +1643,18 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
 
       if (pollResponse.status === 201 && pollResult.status === "success") {
         return Result.ok(pollResult.refresh_token);
-      } else if (pollResult.status === "waiting") {
-        // Wait for 2 seconds before polling again
-        await wait(2000);
-      } else if (pollResult.status === "expired") {
-        return Result.error(new KnownErrors.CliAuthExpiredError("CLI authentication request expired. Please try again."));
-      } else if (pollResult.status === "used") {
-        return Result.error(new KnownErrors.CliAuthUsedError("This authentication token has already been used."));
-      } else {
-        return Result.error(new KnownErrors.CliAuthError(`Unexpected status from CLI auth polling: ${pollResult.status}`));
       }
+      if (pollResult.status === "waiting") {
+        await wait(options.waitTimeMillis ?? 2000);
+        continue;
+      }
+      if (pollResult.status === "expired") {
+        return Result.error(new KnownErrors.CliAuthExpiredError("CLI authentication request expired. Please try again."));
+      }
+      if (pollResult.status === "used") {
+        return Result.error(new KnownErrors.CliAuthUsedError("This authentication token has already been used."));
+      }
+      return Result.error(new KnownErrors.CliAuthError(`Unexpected status from CLI auth polling: ${pollResult.status}`));
     }
 
     return Result.error(new KnownErrors.CliAuthError("Timed out waiting for CLI authentication."));

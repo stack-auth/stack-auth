@@ -1551,6 +1551,9 @@ importers:
       oauth4webapi:
         specifier: ^2.10.3
         version: 2.10.4
+      open:
+        specifier: ^10.1.0
+        version: 10.1.0
       qrcode:
         specifier: ^1.5.4
         version: 1.5.4
