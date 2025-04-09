@@ -26,6 +26,7 @@ export default function SetupPage() {
   const [showPulse, setShowPulse] = useState(false);
   const [setupCode, setSetupCode] = useState<string | undefined>(undefined);
   const apiUrl = getPublicEnvVar('NEXT_PUBLIC_STACK_API_URL') === "https://api.stack-auth.com" ? undefined : getPublicEnvVar('NEXT_PUBLIC_STACK_API_URL');
+  const [selectedFramework, setSelectedFramework] = useState<'nextjs' | 'react' | 'javascript' | 'python'>('nextjs');
 
   useEffect(() => {
     const fetchSetupCode = async () => {
@@ -52,6 +53,31 @@ export default function SetupPage() {
 
     return () => clearTimeout(timer);
   }, []);
+
+  const nextJsSteps = [
+    {
+      step: 2,
+      title: "Install Stack Auth",
+      description: "The wizard will guide you through the setup process",
+      content: <div className="flex flex-col w-0 flex-grow gap-4">
+        In a new or existing Next.js project, run:
+        <CodeSnippet
+          language="bash"
+          content={`npx @stackframe/init@latest${apiUrl ? ` --api-url="${apiUrl}"` : ''}${setupCode ? ` --setup="${setupCode}"` : ''}`}
+          title="Terminal"
+          icon={<Terminal className="w-4 h-4" />}
+        />
+      </div>
+    },
+    {
+      step: 3,
+      title: "Done",
+      description: "You're all set up!",
+      content: <div className="">
+        If you start your Next.js app with npm run dev and navigate to <StyledLink href="http://localhost:3000/handler/signup">http://localhost:3000/handler/signup</StyledLink>, you will see the sign-up page.
+      </div>
+    },
+  ];
 
   return (
     <PageLayout width={1000}>
@@ -146,30 +172,32 @@ export default function SetupPage() {
               description: "Create a new project or use an existing one",
               content: <div>
                 <div className="flex gap-4 flex-wrap">
-                  {[{
+                  {([{
+                    id: 'nextjs',
                     name: 'Next.js',
                     reverseIfDark: true,
                     imgSrc: '/next-logo.svg',
                   }, {
+                    id: 'react',
                     name: 'React',
+                    reverseIfDark: false,
                     imgSrc: '/react-logo.svg',
-                    onClick: () => {
-                      window.open('https://docs.stack-auth.com/react/getting-started/setup', '_blank');
-                    },
                   }, {
+                    id: 'javascript',
                     name: 'JavaScript',
+                    reverseIfDark: false,
                     imgSrc: '/javascript-logo.svg',
-                    onClick: () => {
-                      window.open('https://docs.stack-auth.com/js/getting-started/setup', '_blank');
-                    },
                   }, {
+                    id: 'python',
                     name: 'Python',
+                    reverseIfDark: false,
                     imgSrc: '/python-logo.svg',
-                    onClick: () => {
-                      window.open('https://docs.stack-auth.com/python/getting-started/setup', '_blank');
-                    },
-                  }].map(({ name, imgSrc: src, reverseIfDark, onClick }) => (
-                    <Button variant={name === 'Next.js' ? 'secondary' : 'plain'} className='h-24 w-24 flex flex-col items-center justify-center gap-2 ' key={name} onClick={onClick}>
+                  }] as const).map(({ name, imgSrc: src, reverseIfDark, id }) => (
+                    <Button
+                      key={id}
+                      variant={id === selectedFramework ? 'secondary' : 'plain'} className='h-24 w-24 flex flex-col items-center justify-center gap-2 '
+                      onClick={() => setSelectedFramework(id)}
+                    >
                       <Image
                         src={src}
                         alt={name}
@@ -183,28 +211,7 @@ export default function SetupPage() {
                 </div>
               </div>,
             },
-            {
-              step: 2,
-              title: "Install Stack Auth",
-              description: "The wizard will guide you through the setup process",
-              content: <div className="flex flex-col w-0 flex-grow gap-4">
-                In a new or existing Next.js project, run:
-                <CodeSnippet
-                  language="powershell"
-                  content={`npx @stackframe/init@latest${apiUrl ? ` --api-url="${apiUrl}"` : ''}${setupCode ? ` --setup="${setupCode}"` : ''}`}
-                  title="Terminal"
-                  icon={<Terminal className="w-4 h-4" />}
-                />
-              </div>
-            },
-            {
-              step: 3,
-              title: "Done",
-              description: "You're all set up!",
-              content: <div className="">
-                If you start your Next.js app with npm run dev and navigate to <StyledLink href="http://localhost:3000/handler/signup">http://localhost:3000/handler/signup</StyledLink>, you will see the sign-up page.
-              </div>
-            },
+            ...(selectedFramework === 'nextjs' ? nextJsSteps : []),
           ].map((item, index) => (
             <li key={item.step} className={cn("ms-6 flex flex-col lg:flex-row gap-10", { "mb-20": index < 3 })}>
               <div className="flex flex-col gap-2 max-w-[180px] min-w-[180px]">
@@ -221,7 +228,6 @@ export default function SetupPage() {
           ))}
         </ol>
       </div>
-
     </PageLayout>
   );
 }
