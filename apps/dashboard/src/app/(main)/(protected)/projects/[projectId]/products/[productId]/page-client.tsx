@@ -19,14 +19,14 @@ export default function ProductDetailsClient() {
   const [isAddPriceDialogOpen, setIsAddPriceDialogOpen] = useState(false);
   const [isEditPriceDialogOpen, setIsEditPriceDialogOpen] = useState(false);
   const [selectedPrice, setSelectedPrice] = useState<{
-    id: string;
-    name: string;
-    amount: number;
-    currency: string;
-    interval: string | null;
-    intervalCount: number | null;
-    active: boolean;
-    isDefault: boolean;
+    id: string,
+    name: string,
+    amount: number,
+    currency: string,
+    interval: string | null,
+    intervalCount: number | null,
+    active: boolean,
+    isDefault: boolean,
   } | null>(null);
 
   const stackAdminApp = useAdminApp();
@@ -40,13 +40,13 @@ export default function ProductDetailsClient() {
   const stripeConfigured = !!stripeConfig;
 
   const handleAddPrice = async (values: {
-    name: string;
-    amount: number;
-    currency: string;
-    interval: string | null;
-    interval_count: number | null;
-    active: boolean;
-    isDefault: boolean;
+    name: string,
+    amount: number,
+    currency: string,
+    interval: string | null,
+    interval_count: number | null,
+    active: boolean,
+    isDefault: boolean,
   }) => {
     try {
       await stackAdminApp.createPrice({
@@ -66,13 +66,13 @@ export default function ProductDetailsClient() {
   };
 
   const handleUpdatePrice = async (values: {
-    name: string;
-    amount: number;
-    currency: string;
-    interval: string | null;
-    interval_count: number | null;
-    active: boolean;
-    isDefault: boolean;
+    name: string,
+    amount: number,
+    currency: string,
+    interval: string | null,
+    interval_count: number | null,
+    active: boolean,
+    isDefault: boolean,
   }) => {
     if (!selectedPrice) return;
 
@@ -126,13 +126,13 @@ export default function ProductDetailsClient() {
 
   // Define price form schema
   const getPriceFormSchema = (price?: {
-    name?: string;
-    amount?: number;
-    currency?: string;
-    interval?: string | null;
-    intervalCount?: number | null;
-    active?: boolean;
-    isDefault?: boolean;
+    name?: string,
+    amount?: number,
+    currency?: string,
+    interval?: string | null,
+    intervalCount?: number | null,
+    active?: boolean,
+    isDefault?: boolean,
   } | null) => yup.object({
     name: yup.string().defined().label("Price Name").default(price?.name || ""),
     amount: yup.number().defined().positive().label("Amount (in cents)").default(price?.amount || 1000),
@@ -147,15 +147,15 @@ export default function ProductDetailsClient() {
 
   // Define price type for the table
   type PriceTableData = {
-    id: string;
-    name: string;
-    amount: number;
-    currency: string;
-    interval: string | null;
-    intervalCount: number | null;
-    stripePriceId: string | null;
-    active: boolean;
-    isDefault: boolean;
+    id: string,
+    name: string,
+    amount: number,
+    currency: string,
+    interval: string | null,
+    intervalCount: number | null,
+    stripePriceId: string | null,
+    active: boolean,
+    isDefault: boolean,
   };
 
   // Define columns for price table

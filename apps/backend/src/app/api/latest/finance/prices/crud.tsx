@@ -221,7 +221,7 @@ export const internalPaymentsPricesCrudHandlers = createLazyProxy(() => createCr
     if (updatedPrice.stripePriceId && auth.project.config.stripe_config) {
       try {
         const stripe = getStripeClient(auth.project);
-        
+
         // In Stripe, you can't update the amount, currency, or interval of an existing price
         // So instead, we have to create a new price and archive the old one
         // We only update metadata and active status

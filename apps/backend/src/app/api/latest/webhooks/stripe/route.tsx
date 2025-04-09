@@ -76,15 +76,15 @@ const STRIPE_CONNECT_EVENT_HANDLERS: {
   },
   "price.created": async (stripe, event) => {
     const stripePrice = event.data.object;
-    
+
     await retryTransaction(async (tx) => {
       // If this price has metadata with stack_price_id, link it to our price
-      if (stripePrice.metadata?.stack_price_id) {
+      if (stripePrice.metadata.stack_price_id) {
         const stackPriceId = stripePrice.metadata.stack_price_id;
         const existingPrice = await tx.price.findUnique({
           where: { id: stackPriceId }
         });
-        
+
         if (existingPrice) {
           await tx.price.update({
             where: { id: stackPriceId },
@@ -94,14 +94,14 @@ const STRIPE_CONNECT_EVENT_HANDLERS: {
       } else if (stripePrice.product) {
         // If there's no stack_price_id but we have a product, try to create a matching price
         const productId = typeof stripePrice.product === 'string'
-          ? stripePrice.product 
+          ? stripePrice.product
           : stripePrice.product.id;
-        
+
         // Find our product with this Stripe product ID
         const stackProduct = await tx.product.findUnique({
           where: { stripeProductId: productId }
         });
-        
+
         if (stackProduct) {
           // Create a matching price in our system
           await tx.price.create({
@@ -122,14 +122,14 @@ const STRIPE_CONNECT_EVENT_HANDLERS: {
   },
   "price.updated": async (stripe, event) => {
     const stripePrice = event.data.object;
-    
+
     await retryTransaction(async (tx) => {
       // Update the price in our system if it exists
       if (stripePrice.id) {
         const stackPrice = await tx.price.findUnique({
           where: { stripePriceId: stripePrice.id }
         });
-        
+
         if (stackPrice) {
           await tx.price.update({
             where: { id: stackPrice.id },

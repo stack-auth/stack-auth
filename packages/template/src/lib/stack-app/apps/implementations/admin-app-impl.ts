@@ -50,7 +50,7 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
   private readonly _productPricesCache = new Map<string, ReturnType<typeof createCache>>();
   private _getProductPricesCache(productId: string) {
     if (!this._productPricesCache.has(productId)) {
-      this._productPricesCache.set(productId, createCache<{ 
+      this._productPricesCache.set(productId, createCache<{
         id: string,
         product_id: string,
         name: string,
@@ -614,7 +614,7 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
     // This is a bit inefficient but necessary since we need to know the product ID to refresh the cache
     // The API doesn't provide this information in the delete response
     for (const [_productId, cache] of this._productPricesCache.entries()) {
-      const prices = Result.orThrow(await cache.getOrWait([], "write-only")) as { 
+      const prices = Result.orThrow(await cache.getOrWait([], "write-only")) as {
         id: string,
         product_id: string,
         name: string,
