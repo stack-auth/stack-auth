@@ -192,6 +192,8 @@ export default function SetupPage() {
                 <CodeSnippet
                   language="powershell"
                   content={`npx @stackframe/init@latest${apiUrl ? ` --api-url="${apiUrl}"` : ''}${setupCode ? ` --setup="${setupCode}"` : ''}`}
+                  title="Terminal"
+                  icon={<Terminal className="w-4 h-4" />}
                 />
               </div>
             },
@@ -224,15 +226,15 @@ export default function SetupPage() {
   );
 }
 
-export function CodeSnippet(props: { language: string, content: string }) {
+export function CodeSnippet(props: { language: string, content: string, title: string, icon: React.ReactNode }) {
   const { theme, mounted } = useThemeWatcher();
 
   return (
     <div className="bg-muted rounded-xl overflow-hidden">
-      <div className="text-muted-foreground font-medium py-1 pl-4 pr-1 border-b dark:border-black text-sm flex justify-between items-center">
-        <h5 className="font-medium flex items-center gap-2 h-8">
-          <Terminal className="w-4 h-4" />
-          Terminal
+      <div className="text-muted-foreground font-medium py-2 pl-4 pr-2 border-b dark:border-black text-sm flex justify-between items-center">
+        <h5 className="font-medium flex items-center gap-2">
+          {props.icon}
+          {props.title}
         </h5>
         <CopyButton content={props.content} />
       </div>
