@@ -1,7 +1,7 @@
 import { prismaClient } from "@/prisma-client";
 import { createCrudHandlers } from "@/route-handlers/crud-handler";
 import { getStripeClient } from "@/utils/stripe";
-import { Product } from "@prisma/client";
+import { Price, Product } from "@prisma/client";
 import { internalPaymentsProductsCrud } from "@stackframe/stack-shared/dist/interface/crud/internal-payments-products";
 import { yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
 import { throwErr } from "@stackframe/stack-shared/dist/utils/errors";
@@ -17,6 +17,21 @@ type ProductReadType = {
   project_id: string,
 };
 
+// Define the price read type
+type PriceReadType = {
+  id: string,
+  product_id: string,
+  name: string,
+  amount: number,
+  currency: string,
+  interval: string | null,
+  interval_count: number | null,
+  stripe_price_id: string | null,
+  active: boolean,
+  is_default: boolean,
+  created_at_millis: string,
+};
+
 // Define params type
 type ProductParams = {
   productId?: string,
@@ -30,6 +45,22 @@ function prismaModelToCrud(prismaModel: Product): ProductReadType {
     associated_permission_id: prismaModel.associatedPermissionId,
     created_at_millis: prismaModel.createdAt.getTime().toString(),
     project_id: prismaModel.projectId,
+  };
+}
+
+function priceModelToCrud(price: Price): PriceReadType {
+  return {
+    id: price.id,
+    product_id: price.productId,
+    name: price.name,
+    amount: price.amount,
+    currency: price.currency,
+    interval: price.interval,
+    interval_count: price.intervalCount,
+    stripe_price_id: price.stripePriceId,
+    active: price.active,
+    is_default: price.isDefault === 'TRUE',
+    created_at_millis: price.createdAt.getTime().toString(),
   };
 }
 
@@ -64,23 +95,38 @@ export const internalPaymentsProductsCrudHandlers = createLazyProxy(() => create
         projectId: auth.project.id,
         id: params.productId,
       },
+      include: {
+        prices: true,
+      },
     });
 
     if (!product) {
       throwErr(`Product with ID ${params.productId} not found`);
     }
 
-    return prismaModelToCrud(product);
+    return {
+      ...prismaModelToCrud(product),
+      prices: product.prices.map(priceModelToCrud),
+    };
   },
   onList: async ({ auth }) => {
     const products = await prismaClient.product.findMany({
+      where: {
+        projectId: auth.project.id,
+      },
       orderBy: {
         createdAt: "desc",
+      },
+      include: {
+        prices: true,
       },
     });
 
     return {
-      items: products.map(prismaModelToCrud),
+      items: products.map(product => ({
+        ...prismaModelToCrud(product),
+        prices: product.prices.map(priceModelToCrud),
+      })),
       is_paginated: false,
     };
   },
@@ -95,9 +141,15 @@ export const internalPaymentsProductsCrudHandlers = createLazyProxy(() => create
         stripeProductId: data.stripe_product_id,
         associatedPermissionId: data.associated_permission_id,
       },
+      include: {
+        prices: true,
+      },
     });
 
-    return prismaModelToCrud(updatedProduct);
+    return {
+      ...prismaModelToCrud(updatedProduct),
+      prices: updatedProduct.prices.map(priceModelToCrud),
+    };
   },
   onDelete: async ({ params, auth }) => {
     await prismaClient.product.delete({

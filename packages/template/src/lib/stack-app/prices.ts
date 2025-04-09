@@ -8,6 +8,7 @@ export type AdminPrice = {
   intervalCount: number | null,
   stripePriceId: string | null,
   active: boolean,
+  isDefault: boolean,
   createdAt: Date,
 };
 
@@ -19,6 +20,7 @@ export type AdminPriceCreateOptions = {
   interval?: string | null,
   intervalCount?: number | null,
   active?: boolean,
+  isDefault?: boolean,
 };
 
 export type AdminPriceUpdateOptions = {
@@ -28,6 +30,7 @@ export type AdminPriceUpdateOptions = {
   interval?: string | null,
   intervalCount?: number | null,
   active?: boolean,
+  isDefault?: boolean,
 };
 
 export function adminPriceCreateOptionsToCrud(options: AdminPriceCreateOptions): {
@@ -38,6 +41,7 @@ export function adminPriceCreateOptionsToCrud(options: AdminPriceCreateOptions):
   interval: string | null,
   interval_count: number | null,
   active?: boolean,
+  is_default?: boolean,
 } {
   return {
     product_id: options.productId,
@@ -47,6 +51,7 @@ export function adminPriceCreateOptionsToCrud(options: AdminPriceCreateOptions):
     interval: options.interval ?? null,
     interval_count: options.intervalCount ?? null,
     active: options.active,
+    is_default: options.isDefault,
   };
 }
 
@@ -57,6 +62,7 @@ export function adminPriceUpdateOptionsToCrud(options: AdminPriceUpdateOptions):
   interval?: string | null,
   interval_count?: number | null,
   active?: boolean,
+  is_default?: boolean,
 } {
   return {
     name: options.name,
@@ -65,5 +71,6 @@ export function adminPriceUpdateOptionsToCrud(options: AdminPriceUpdateOptions):
     interval: options.interval,
     interval_count: options.intervalCount,
     active: options.active,
+    is_default: options.isDefault,
   };
 }

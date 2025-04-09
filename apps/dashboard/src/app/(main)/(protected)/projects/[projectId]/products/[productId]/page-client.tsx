@@ -18,7 +18,16 @@ export default function ProductDetailsClient() {
   const [error, setError] = useState<string | null>(null);
   const [isAddPriceDialogOpen, setIsAddPriceDialogOpen] = useState(false);
   const [isEditPriceDialogOpen, setIsEditPriceDialogOpen] = useState(false);
-  const [selectedPrice, setSelectedPrice] = useState<any>(null);
+  const [selectedPrice, setSelectedPrice] = useState<{
+    id: string;
+    name: string;
+    amount: number;
+    currency: string;
+    interval: string | null;
+    intervalCount: number | null;
+    active: boolean;
+    isDefault: boolean;
+  } | null>(null);
 
   const stackAdminApp = useAdminApp();
   const projectData = stackAdminApp.useProject();
@@ -30,16 +39,25 @@ export default function ProductDetailsClient() {
   const stripeConfig = projectData.config.stripeConfig;
   const stripeConfigured = !!stripeConfig;
 
-  const handleAddPrice = async (values: any) => {
+  const handleAddPrice = async (values: {
+    name: string;
+    amount: number;
+    currency: string;
+    interval: string | null;
+    interval_count: number | null;
+    active: boolean;
+    isDefault: boolean;
+  }) => {
     try {
       await stackAdminApp.createPrice({
         productId: productId,
         name: values.name,
-        amount: Number(values.amount),
+        amount: values.amount,
         currency: values.currency,
-        interval: values.interval || null,
-        intervalCount: values.interval ? Number(values.interval_count) : null,
-        active: values.active !== undefined ? values.active : true,
+        interval: values.interval,
+        intervalCount: values.interval_count,
+        active: values.active,
+        isDefault: values.isDefault,
       });
     } catch (err) {
       console.error("Error creating price:", err);
@@ -47,17 +65,26 @@ export default function ProductDetailsClient() {
     }
   };
 
-  const handleUpdatePrice = async (values: any) => {
+  const handleUpdatePrice = async (values: {
+    name: string;
+    amount: number;
+    currency: string;
+    interval: string | null;
+    interval_count: number | null;
+    active: boolean;
+    isDefault: boolean;
+  }) => {
     if (!selectedPrice) return;
 
     try {
       await stackAdminApp.updatePrice(selectedPrice.id, {
         name: values.name,
-        amount: Number(values.amount),
+        amount: values.amount,
         currency: values.currency,
-        interval: values.interval || null,
-        intervalCount: values.interval ? Number(values.interval_count) : null,
+        interval: values.interval,
+        intervalCount: values.interval_count,
         active: values.active,
+        isDefault: values.isDefault,
       });
     } catch (err) {
       console.error("Error updating price:", err);
@@ -98,19 +125,41 @@ export default function ProductDetailsClient() {
   };
 
   // Define price form schema
-  const getPriceFormSchema = (price?: any | null) => yup.object({
+  const getPriceFormSchema = (price?: {
+    name?: string;
+    amount?: number;
+    currency?: string;
+    interval?: string | null;
+    intervalCount?: number | null;
+    active?: boolean;
+    isDefault?: boolean;
+  } | null) => yup.object({
     name: yup.string().defined().label("Price Name").default(price?.name || ""),
     amount: yup.number().defined().positive().label("Amount (in cents)").default(price?.amount || 1000),
     currency: yup.string().defined().label("Currency").default(price?.currency || "USD"),
     interval: yup.string().nullable().label("Billing Interval").default(price?.interval || null),
     interval_count: yup.number().nullable().label("Interval Count").default(price?.intervalCount || 1),
     active: yup.boolean().defined().label("Active").default(price?.active !== undefined ? price.active : true),
+    isDefault: yup.boolean().defined().label("Default Price").default(price?.isDefault || false),
   });
 
   const priceFormSchema = getPriceFormSchema();
 
+  // Define price type for the table
+  type PriceTableData = {
+    id: string;
+    name: string;
+    amount: number;
+    currency: string;
+    interval: string | null;
+    intervalCount: number | null;
+    stripePriceId: string | null;
+    active: boolean;
+    isDefault: boolean;
+  };
+
   // Define columns for price table
-  const columns: ColumnDef<any>[] = [
+  const columns: ColumnDef<PriceTableData>[] = [
     {
       accessorKey: "name",
       header: ({ column }) => <DataTableColumnHeader column={column} columnTitle="Name" />,
@@ -137,6 +186,21 @@ export default function ProductDetailsClient() {
               : "bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-200"
           }`}>
             {row.original.active ? "Active" : "Inactive"}
+          </span>
+        </TextCell>
+      ),
+    },
+    {
+      accessorKey: "isDefault",
+      header: ({ column }) => <DataTableColumnHeader column={column} columnTitle="Default" />,
+      cell: ({ row }) => (
+        <TextCell>
+          <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+            row.original.isDefault
+              ? "bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200"
+              : "bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-200"
+          }`}>
+            {row.original.isDefault ? "Default" : "No"}
           </span>
         </TextCell>
       ),

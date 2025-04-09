@@ -50,7 +50,19 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
   private readonly _productPricesCache = new Map<string, ReturnType<typeof createCache>>();
   private _getProductPricesCache(productId: string) {
     if (!this._productPricesCache.has(productId)) {
-      this._productPricesCache.set(productId, createCache<any[], unknown>(async () => {
+      this._productPricesCache.set(productId, createCache<{ 
+        id: string,
+        product_id: string,
+        name: string,
+        amount: number,
+        currency: string,
+        interval: string | null,
+        interval_count: number | null,
+        stripe_price_id: string | null,
+        active: boolean,
+        is_default: boolean,
+        created_at_millis: string,
+      }[], unknown>(async () => {
         return await this._interface.listProductPrices(productId);
       }));
     }
@@ -516,7 +528,19 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
   }
 
   // Prices methods
-  protected _createPriceFromCrud(data: any): AdminPrice {
+  protected _createPriceFromCrud(data: {
+    id: string,
+    product_id: string,
+    name: string,
+    amount: number,
+    currency: string,
+    interval: string | null,
+    interval_count: number | null,
+    stripe_price_id: string | null,
+    active: boolean,
+    is_default: boolean,
+    created_at_millis: string,
+  }): AdminPrice {
     return {
       id: data.id,
       productId: data.product_id,
@@ -527,22 +551,47 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
       intervalCount: data.interval_count,
       stripePriceId: data.stripe_price_id,
       active: data.active,
+      isDefault: data.is_default,
       createdAt: new Date(parseInt(data.created_at_millis)),
     };
   }
 
   async listProductPrices(productId: string): Promise<AdminPrice[]> {
     const cache = this._getProductPricesCache(productId);
-    const crud = Result.orThrow(await cache.getOrWait([], "write-only")) as unknown[];
-    return (crud as any[]).map((j) => this._createPriceFromCrud(j));
+    const crud = Result.orThrow(await cache.getOrWait([], "write-only")) as {
+      id: string,
+      product_id: string,
+      name: string,
+      amount: number,
+      currency: string,
+      interval: string | null,
+      interval_count: number | null,
+      stripe_price_id: string | null,
+      active: boolean,
+      is_default: boolean,
+      created_at_millis: string,
+    }[];
+    return crud.map((j) => this._createPriceFromCrud(j));
   }
 
   // IF_PLATFORM react-like
   useProductPrices(productId: string): AdminPrice[] {
     const cache = this._getProductPricesCache(productId);
-    const crud = useAsyncCache(cache, [], `useProductPrices(${productId})`) as unknown;
+    const crud = useAsyncCache(cache, [], `useProductPrices(${productId})`) as {
+      id: string,
+      product_id: string,
+      name: string,
+      amount: number,
+      currency: string,
+      interval: string | null,
+      interval_count: number | null,
+      stripe_price_id: string | null,
+      active: boolean,
+      is_default: boolean,
+      created_at_millis: string,
+    }[];
     return useMemo(() => {
-      return (crud as any[]).map((j) => this._createPriceFromCrud(j));
+      return crud.map((j) => this._createPriceFromCrud(j));
     }, [crud]);
   }
   // END_PLATFORM
@@ -565,8 +614,20 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
     // This is a bit inefficient but necessary since we need to know the product ID to refresh the cache
     // The API doesn't provide this information in the delete response
     for (const [_productId, cache] of this._productPricesCache.entries()) {
-      const prices = Result.orThrow(await cache.getOrWait([], "write-only")) as unknown;
-      if ((prices as any[]).some((price: any) => price.id === priceId)) {
+      const prices = Result.orThrow(await cache.getOrWait([], "write-only")) as { 
+        id: string,
+        product_id: string,
+        name: string,
+        amount: number,
+        currency: string,
+        interval: string | null,
+        interval_count: number | null,
+        stripe_price_id: string | null,
+        active: boolean,
+        is_default: boolean,
+        created_at_millis: string,
+      }[];
+      if (prices.some((price) => price.id === priceId)) {
         await this._interface.deletePrice(priceId);
         await cache.refresh([]);
         return;
