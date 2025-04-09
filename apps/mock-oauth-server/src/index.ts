@@ -18,9 +18,12 @@ const providerIds = [
 const clients = providerIds.map((id) => ({
   client_id: id,
   client_secret: 'MOCK-SERVER-SECRET',
-  redirect_uris: [8102, 32102].map(port =>
-    `http://localhost:${port}/api/v1/auth/oauth/callback/${id}`
-  ),
+  redirect_uris: [
+    ...([8102, 32102].map(port =>
+      `http://localhost:${port}/api/v1/auth/oauth/callback/${id}`
+    )),
+    ...(process.env.STACK_MOCK_OAUTH_REDIRECT_URIS ? [process.env.STACK_MOCK_OAUTH_REDIRECT_URIS.replace("{id}", id)] : [])
+  ]
 }));
 
 const configuration = {
