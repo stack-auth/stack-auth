@@ -1645,6 +1645,9 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
         }),
       }, null);
 
+      if (!pollResponse.ok) {
+        return Result.error(new KnownErrors.CliAuthError(`Failed to initiate CLI auth: ${response.status} ${await response.text()}`));
+      }
       const pollResult = await pollResponse.json();
 
       if (pollResponse.status === 201 && pollResult.status === "success") {
