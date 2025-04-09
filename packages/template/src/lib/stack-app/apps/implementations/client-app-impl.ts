@@ -1506,7 +1506,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
     const url = `${options.appUrl}/handler/cli-auth-confirm?login_code=${encodeURIComponent(loginCode)}`;
     if (typeof process !== 'undefined' && process.versions?.node != null) {
       const open = (await import("open")).default;
-      open(url);
+      await open(url);
     }
     console.log(`Please visit the following URL to authenticate:\n${url}`);
 
