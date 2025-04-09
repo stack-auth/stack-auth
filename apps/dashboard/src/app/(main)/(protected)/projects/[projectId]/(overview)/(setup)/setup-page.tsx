@@ -79,6 +79,24 @@ export default function SetupPage() {
     },
   ];
 
+  const reactSteps = [
+    {
+      step: 2,
+      title: "Install Stack Auth",
+      description: "Install the Stack Auth React SDK",
+      content: <div className="flex flex-col w-0 flex-grow gap-4">
+        In a new or existing React project, run:
+        <CodeSnippet
+          language="bash"
+          content={`npm install @stackframe/react`}
+          title="Terminal"
+          icon={<Terminal className="w-4 h-4" />}
+        />
+      </div>
+    },
+
+  ];
+
   return (
     <PageLayout width={1000}>
       <div className="flex gap-4 justify-center items-center border rounded-2xl py-4 px-8">
@@ -130,8 +148,8 @@ export default function SetupPage() {
                 hexPolygonMargin={0.2}
                 hexPolygonAltitude={0.003}
                 hexPolygonColor={() => "rgb(107, 93, 247)"}
-                width={180}
-                height={180}
+                width={160}
+                height={160}
               />
             )}
           </div>
@@ -212,6 +230,7 @@ export default function SetupPage() {
               </div>,
             },
             ...(selectedFramework === 'nextjs' ? nextJsSteps : []),
+            ...(selectedFramework === 'react' ? reactSteps : []),
           ].map((item, index) => (
             <li key={item.step} className={cn("ms-6 flex flex-col lg:flex-row gap-10", { "mb-20": index < 3 })}>
               <div className="flex flex-col gap-2 max-w-[180px] min-w-[180px]">
