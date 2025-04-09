@@ -9,12 +9,13 @@ import dynamic from "next/dynamic";
 import Image from 'next/image';
 import { use, useEffect, useRef, useState } from "react";
 import { GlobeMethods } from "react-globe.gl";
+import SyntaxHighlighter from 'react-syntax-highlighter';
+import { atomOneDark, atomOneLight } from 'react-syntax-highlighter/dist/esm/styles/hljs';
 import { globeImages } from '../(utils)/utils';
 import { PageLayout } from "../../page-layout";
 import { useAdminApp } from '../../use-admin-app';
 import styles from './setup-page.module.css';
 const countriesPromise = import('../(utils)/country-data.geo.json');
-
 const Globe = dynamic(() => import('react-globe.gl').then((mod) => mod.default), { ssr: false });
 
 export default function SetupPage() {
@@ -189,24 +190,8 @@ export default function SetupPage() {
               content: <div className="flex flex-col w-0 flex-grow gap-4">
                 In a new or existing Next.js project, run:
                 <CodeSnippet
-                  type="Terminal"
-                  content={[
-                    [
-                      { value: "npx", className: "text-purple-600" },
-                      {
-                        value: "@stackframe/init@latest",
-                        className: "",
-                      },
-                      ...(apiUrl ? [{
-                        value: `--api-url=${apiUrl}`,
-                        className: "text-green-600",
-                      }] : []),
-                      ...(setupCode ? [{
-                        value: `--setup=${setupCode}`,
-                        className: "text-green-600",
-                      }] : []),
-                    ],
-                  ]}
+                  language="powershell"
+                  content={`npx @stackframe/init@latest${apiUrl ? ` --api-url="${apiUrl}"` : ''}${setupCode ? ` --setup="${setupCode}"` : ''}`}
                 />
               </div>
             },
@@ -227,7 +212,6 @@ export default function SetupPage() {
                 <h3 className="font-medium leading-tight">{item.title}</h3>
                 <p className="text-sm">{item.description}</p>
               </div>
-              {/* <Separator orientation="vertical" className="h-14" /> */}
               <div className="flex flex-grow">
                 {item.content}
               </div>
@@ -240,30 +224,27 @@ export default function SetupPage() {
   );
 }
 
-type CodeLine = { value: string, className?: string }[];
+export function CodeSnippet(props: { language: string, content: string }) {
+  const { theme, mounted } = useThemeWatcher();
 
-export function CodeSnippet(props: { type: string, content: CodeLine[] }) {
   return (
     <div className="bg-muted rounded-xl overflow-hidden">
       <div className="text-muted-foreground font-medium py-1 pl-4 pr-1 border-b dark:border-black text-sm flex justify-between items-center">
-        <h5 className="font-medium flex items-center gap-2">
+        <h5 className="font-medium flex items-center gap-2 h-8">
           <Terminal className="w-4 h-4" />
-          {props.type}
+          Terminal
         </h5>
-        <CopyButton content={props.content.map(line =>
-          line.map(segment => segment.value).join(' ')
-        ).join('\n')} />
+        <CopyButton content={props.content} />
       </div>
-      <div className="font-mono font-medium p-4 pl-5 pb-5 max-h-60 overflow-x-auto whitespace-nowrap">
-        {props.content.map((line, index) => (
-          <div key={index} className="whitespace-nowrap">
-            {line.map((content) => (
-              <span key={content.value} className={content.className}>
-                {content.value}{" "}
-              </span>
-            ))}
-          </div>
-        ))}
+      <div>
+        <SyntaxHighlighter
+          language={props.language}
+          style={theme === 'dark' ? atomOneDark : atomOneLight}
+          customStyle={{ background: 'transparent', paddingLeft: '1em', paddingRight: '1em', paddingTop: '0.75em', paddingBottom: '0.75em' }}
+          wrapLines
+        >
+          {props.content}
+        </SyntaxHighlighter>
       </div>
     </div>
   );
