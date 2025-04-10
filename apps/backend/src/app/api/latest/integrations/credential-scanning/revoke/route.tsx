@@ -6,6 +6,7 @@ import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { KnownErrors } from "@stackframe/stack-shared";
 import { yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
 import { StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
+import { escapeHtml } from "@stackframe/stack-shared/dist/utils/html";
 
 export const POST = createSmartRouteHandler({
   metadata: {
@@ -166,7 +167,7 @@ export const POST = createSmartRouteHandler({
       <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
         <h2 style="color: #333;">API Key Revoked</h2>
         <p style="color: #555; font-size: 16px; line-height: 1.5;">
-          Your API key "${updatedApiKey.description}" for ${project.displayName} has been automatically revoked because it was found in a public repository.
+          Your API key "${escapeHtml(updatedApiKey.description)}" for ${escapeHtml(project.displayName)} has been automatically revoked because it was found in a public repository.
         </p>
         <p style="color: #555; font-size: 16px; line-height: 1.5;">
           This is an automated security measure to protect your api keys from being leaked. If you believe this was a mistake, please contact support.
