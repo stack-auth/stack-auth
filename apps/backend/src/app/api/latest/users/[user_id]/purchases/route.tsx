@@ -1,6 +1,6 @@
 import { getCustomerForUser, GLOBAL_STRIPE } from "@/lib/stripe";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
-import { adaptSchema, userIdOrMeSchema, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
+import { adaptSchema, userIdOrMeSchema, yupArray, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
 
 
 export const POST = createSmartRouteHandler({
@@ -13,8 +13,10 @@ export const POST = createSmartRouteHandler({
       user_id: userIdOrMeSchema.defined(),
     }),
     body: yupObject({
-      product_id: yupString().defined(),
-      quantity: yupNumber().defined(),
+      line_items: yupArray(yupObject({
+        product_id: yupString().defined(),
+        quantity: yupNumber().defined(),
+      })).defined(),
     }),
   }),
   response: yupObject({
@@ -25,14 +27,17 @@ export const POST = createSmartRouteHandler({
     }),
   }),
   async handler({ auth, body }) {
-    const stripeProduct = await GLOBAL_STRIPE.products.retrieve(body.product_id);
+    const lineItems = await Promise.all(body.line_items.map(async item => {
+      const product = await GLOBAL_STRIPE.products.retrieve(item.product_id);
+      return {
+        price: product.default_price as string,
+        quantity: item.quantity,
+      };
+    }));
     const customer = await getCustomerForUser(auth.tenancy.id, auth.user.id);
     const checkoutSession = await GLOBAL_STRIPE.checkout.sessions.create({
       customer: customer.stripeCustomer.id,
-      line_items: [{
-        price: stripeProduct.default_price as string,
-        quantity: 1,
-      }],
+      line_items: lineItems,
     });
 
     return {
