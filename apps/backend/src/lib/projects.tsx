@@ -8,7 +8,7 @@ import { deepPlainEquals, filterUndefined, isNotNull, omit } from "@stackframe/s
 import { stringCompare, typedToLowercase, typedToUppercase } from "@stackframe/stack-shared/dist/utils/strings";
 import { generateUuid } from "@stackframe/stack-shared/dist/utils/uuids";
 import { diffString } from 'json-diff';
-import { getRenderedOrganizationConfig, renderedOrganizationConfigToProjectCrud } from "./config";
+import { getRenderedOrganizationConfigQuery, renderedOrganizationConfigToProjectCrud } from "./config";
 import { fullPermissionInclude, permissionDefinitionJsonFromDbType, permissionDefinitionJsonFromRawDbType, permissionDefinitionJsonFromSystemDbType } from "./permissions";
 import { ensureSharedProvider, ensureStandardProvider } from "./request-checks";
 
@@ -100,7 +100,7 @@ export async function projectPrismaToCrud(
   const otpAuth = prisma.config.authMethodConfigs.find((config) => config.otpConfig && config.enabled);
   const passkeyAuth = prisma.config.authMethodConfigs.find((config) => config.passkeyConfig && config.enabled);
 
-  const result = {
+  return {
     id: prisma.id,
     display_name: prisma.displayName,
     description: prisma.description,
@@ -168,23 +168,6 @@ export async function projectPrismaToCrud(
         .map(perm => ({ id: perm.id })),
     }
   };
-
-  const newResultWithConfigJson = renderedOrganizationConfigToProjectCrud(
-    await getRenderedOrganizationConfig({ project: prisma, branch: { id: 'main' }, environment: {}, organization: { id: null } }),
-    result.config.id,
-  );
-  if (!deepPlainEquals(result.config, newResultWithConfigJson)) {
-    const errorData = { diff: diffString(result.config, newResultWithConfigJson) };
-    const error = new StackAssertionError("Project config mismatch", errorData);
-
-    if (!getNodeEnvironment().includes("prod")) {
-      throw error;
-    } else {
-      captureError("project-config-migration-checker", error);
-    }
-  }
-
-  return result;
 }
 
 function isStringArray(value: any): value is string[] {
@@ -492,6 +475,25 @@ export async function getProject(projectId: string): Promise<ProjectsCrud["Admin
         legacyResult,
       });
     }
+
+    const renderedConfig = await rawQuery(getRenderedOrganizationConfigQuery({ projectId, branchId: "main", organizationId: null }));
+    if (renderedConfig === null || result === null) {
+      if (renderedConfig !== result) {
+        throw new StackAssertionError("Project result mismatch", {
+          result,
+          renderedConfig,
+        });
+      }
+      return result;
+    } else {
+      const newResultWithConfigJson = renderedOrganizationConfigToProjectCrud(renderedConfig, result.config.id);
+      if (!deepPlainEquals(result.config, newResultWithConfigJson)) {
+        const errorData = { diff: diffString(result.config, newResultWithConfigJson) };
+        throw new StackAssertionError("Project config mismatch", errorData);
+      }
+    }
+
+    return result;
   }
 
   return result;

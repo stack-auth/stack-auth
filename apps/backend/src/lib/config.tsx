@@ -1,3 +1,5 @@
+import { RawQuery, prismaClient } from "@/prisma-client";
+import { Prisma } from "@prisma/client";
 import { NormalizationError, getInvalidConfigReason, normalize, override } from "@stackframe/stack-shared/dist/config/format";
 import { BranchConfigOverride, BranchIncompleteConfig, BranchRenderedConfig, EnvironmentConfigOverride, EnvironmentIncompleteConfig, EnvironmentRenderedConfig, OrganizationConfigOverride, OrganizationIncompleteConfig, OrganizationRenderedConfig, ProjectConfigOverride, ProjectIncompleteConfig, ProjectRenderedConfig, baseConfig, branchConfigSchema, environmentConfigSchema, organizationConfigSchema, projectConfigSchema } from "@stackframe/stack-shared/dist/config/schema";
 import { ProjectsCrud } from "@stackframe/stack-shared/dist/interface/crud/projects";
@@ -9,53 +11,85 @@ import { stringCompare, typedToLowercase } from "@stackframe/stack-shared/dist/u
 import { base64url } from "jose";
 import * as yup from "yup";
 import { permissionDefinitionJsonFromDbType, permissionDefinitionJsonFromSystemDbType } from "./permissions";
-import { DBProject } from "./projects";
+import { DBProject, fullProjectInclude } from "./projects";
 
 // These are placeholder types that should be replaced after the config json db migration
-type ProjectDB = DBProject;
-type BranchDB = { id: string };
-type EnvironmentDB = {};
-type OrganizationDB = { id: string | null };
+type ProjectData = DBProject;
+type BranchData = { id: string };
+type EnvironmentData = {};
+type OrganizationData = { id: string | null };
 
-type projectOptions = { project: ProjectDB };
-type branchOptions = projectOptions & { branch: BranchDB };
-type environmentOptions = branchOptions & { environment: EnvironmentDB };
-type organizationOptions = environmentOptions & { organization: OrganizationDB };
+type ProjectOptions = { project: ProjectData };
+type BranchOptions = ProjectOptions & { branch: BranchData };
+type EnvironmentOptions = BranchOptions & { environment: EnvironmentData };
+type OrganizationOptions = EnvironmentOptions & { organization: OrganizationData };
 
 // ---------------------------------------------------------------------------------------------------------------------
 // getRendered<$$$>Config
 // ---------------------------------------------------------------------------------------------------------------------
 
-export async function getRenderedProjectConfig(options: projectOptions): Promise<ProjectRenderedConfig> {
-  // returns the same object as the incomplete config, although with a restricted type so we don't accidentally use the
-  // fields that may still be overridden by other layers
-  // see packages/stack-shared/src/config/README.md for more details
-  // TODO actually strip the fields that are not part of the type
-  return await getIncompleteProjectConfig(options);
+async function _getDbProject(options: { projectId: string }): Promise<ProjectData | null> {
+  return await prismaClient.project.findUnique({
+    where: { id: options.projectId },
+    include: fullProjectInclude,
+  });
 }
 
-export async function getRenderedBranchConfig(options: branchOptions): Promise<BranchRenderedConfig> {
-  // returns the same object as the incomplete config, although with a restricted type so we don't accidentally use the
-  // fields that may still be overridden by other layers
-  // see packages/stack-shared/src/config/README.md for more details
-  // TODO actually strip the fields that are not part of the type
-  return await getIncompleteBranchConfig(options);
+// returns the same object as the incomplete config, although with a restricted type so we don't accidentally use the
+// fields that may still be overridden by other layers
+// see packages/stack-shared/src/config/README.md for more details
+// TODO actually strip the fields that are not part of the type
+
+export function getRenderedProjectConfigQuery(options: { projectId: string }): RawQuery<Promise<ProjectRenderedConfig | null>> {
+  return {
+    sql: Prisma.sql`SELECT 1`,
+    postProcess: async () => {
+      const dbProject = await _getDbProject(options);
+      if (!dbProject) {
+        return null;
+      }
+      return await getIncompleteProjectConfig({ project: dbProject });
+    },
+  };
 }
 
-export async function getRenderedEnvironmentConfig(options: environmentOptions): Promise<EnvironmentRenderedConfig> {
-  // returns the same object as the incomplete config, although with a restricted type so we don't accidentally use the
-  // fields that may still be overridden by other layers
-  // see packages/stack-shared/src/config/README.md for more details
-  // TODO actually strip the fields that are not part of the type
-  return await getIncompleteEnvironmentConfig(options);
+export function getRenderedBranchConfigQuery(options: { projectId: string, branchId: string }): RawQuery<Promise<BranchRenderedConfig | null>> {
+  return {
+    sql: Prisma.sql`SELECT 1`,
+    postProcess: async () => {
+      const dbProject = await _getDbProject(options);
+      if (!dbProject) {
+        return null;
+      }
+      return await getIncompleteBranchConfig({ project: dbProject, branch: { id: options.branchId } });
+    },
+  };
 }
 
-export async function getRenderedOrganizationConfig(options: organizationOptions): Promise<OrganizationRenderedConfig> {
-  // returns the same object as the incomplete config, although with a restricted type so we don't accidentally use the
-  // fields that may still be overridden by other layers
-  // see packages/stack-shared/src/config/README.md for more details
-  // TODO actually strip the fields that are not part of the type
-  return await getIncompleteOrganizationConfig(options);
+export function getRenderedEnvironmentConfigQuery(options: { projectId: string, branchId: string }): RawQuery<Promise<EnvironmentRenderedConfig | null>> {
+  return {
+    sql: Prisma.sql`SELECT 1`,
+    postProcess: async () => {
+      const dbProject = await _getDbProject(options);
+      if (!dbProject) {
+        return null;
+      }
+      return await getIncompleteEnvironmentConfig({ project: dbProject, branch: { id: options.branchId }, environment: {} });
+    },
+  };
+}
+
+export function getRenderedOrganizationConfigQuery(options: { projectId: string, branchId: string, organizationId: string | null }): RawQuery<Promise<OrganizationRenderedConfig | null>> {
+  return {
+    sql: Prisma.sql`SELECT 1`,
+    postProcess: async () => {
+      const dbProject = await _getDbProject(options);
+      if (!dbProject) {
+        return null;
+      }
+      return await getIncompleteOrganizationConfig({ project: dbProject, branch: { id: options.branchId }, environment: {}, organization: { id: options.organizationId } });
+    },
+  };
 }
 
 
@@ -73,21 +107,21 @@ export async function validateProjectConfigOverride(options: { projectConfigOver
 /**
  * Validates a branch config override, based on the given project's rendered project config.
  */
-export async function validateBranchConfigOverride(options: { branchConfigOverride: BranchConfigOverride } & projectOptions): Promise<Result<null, string>> {
+export async function validateBranchConfigOverride(options: { branchConfigOverride: BranchConfigOverride } & ProjectOptions): Promise<Result<null, string>> {
   return await validateAndReturn(branchConfigSchema, await getIncompleteProjectConfig(options), options.branchConfigOverride);
 }
 
 /**
  * Validates an environment config override, based on the given branch's rendered branch config.
  */
-export async function validateEnvironmentConfigOverride(options: { environmentConfigOverride: EnvironmentConfigOverride } & branchOptions): Promise<Result<null, string>> {
+export async function validateEnvironmentConfigOverride(options: { environmentConfigOverride: EnvironmentConfigOverride } & BranchOptions): Promise<Result<null, string>> {
   return await validateAndReturn(environmentConfigSchema, await getIncompleteBranchConfig(options), options.environmentConfigOverride);
 }
 
 /**
  * Validates an organization config override, based on the given environment's rendered environment config.
  */
-export async function validateOrganizationConfigOverride(options: { organizationConfigOverride: OrganizationConfigOverride } & environmentOptions): Promise<Result<null, string>> {
+export async function validateOrganizationConfigOverride(options: { organizationConfigOverride: OrganizationConfigOverride } & EnvironmentOptions): Promise<Result<null, string>> {
   return await validateAndReturn(organizationConfigSchema, await getIncompleteEnvironmentConfig(options), options.organizationConfigOverride);
 }
 
@@ -98,13 +132,13 @@ export async function validateOrganizationConfigOverride(options: { organization
 
 // Placeholder types that should be replaced after the config json db migration
 
-export async function getProjectConfigOverride(options: projectOptions): Promise<ProjectConfigOverride> {
+export async function getProjectConfigOverride(options: ProjectOptions): Promise<ProjectConfigOverride> {
   // fetch project config from our own DB
   // (currently it's just empty)
   return {};
 }
 
-export async function getBranchConfigOverride(options: branchOptions): Promise<BranchConfigOverride> {
+export async function getBranchConfigOverride(options: BranchOptions): Promise<BranchConfigOverride> {
   // fetch branch config from GitHub
   // (currently it's just empty)
   if (options.branch.id !== 'main') {
@@ -113,7 +147,7 @@ export async function getBranchConfigOverride(options: branchOptions): Promise<B
   return {};
 }
 
-export async function getEnvironmentConfigOverride(options: environmentOptions): Promise<EnvironmentConfigOverride> {
+export async function getEnvironmentConfigOverride(options: EnvironmentOptions): Promise<EnvironmentConfigOverride> {
   // fetch environment config from DB (either our own, or the source of truth one)
   if (options.branch.id !== 'main') {
     throw new Error('Not implemented');
@@ -316,7 +350,7 @@ export async function getEnvironmentConfigOverride(options: environmentOptions):
   return configOverride;
 }
 
-export async function getOrganizationConfigOverride(options: organizationOptions): Promise<OrganizationConfigOverride> {
+export async function getOrganizationConfigOverride(options: OrganizationOptions): Promise<OrganizationConfigOverride> {
   // fetch organization config from DB (either our own, or the source of truth one)
   if (options.branch.id !== 'main' || options.organization.id !== null) {
     throw new Error('Not implemented');
@@ -372,19 +406,19 @@ export function setOrganizationConfigOverride(options: {
 // internal functions
 // ---------------------------------------------------------------------------------------------------------------------
 
-async function getIncompleteProjectConfig(options: projectOptions): Promise<ProjectIncompleteConfig> {
+async function getIncompleteProjectConfig(options: ProjectOptions): Promise<ProjectIncompleteConfig> {
   return normalize(override(baseConfig, await getProjectConfigOverride(options)), { onDotIntoNull: "ignore" }) as any;
 }
 
-async function getIncompleteBranchConfig(options: branchOptions): Promise<BranchIncompleteConfig> {
+async function getIncompleteBranchConfig(options: BranchOptions): Promise<BranchIncompleteConfig> {
   return normalize(override(await getIncompleteProjectConfig(options), await getBranchConfigOverride(options)), { onDotIntoNull: "ignore" }) as any;
 }
 
-async function getIncompleteEnvironmentConfig(options: environmentOptions): Promise<EnvironmentIncompleteConfig> {
+async function getIncompleteEnvironmentConfig(options: EnvironmentOptions): Promise<EnvironmentIncompleteConfig> {
   return normalize(override(await getIncompleteBranchConfig(options), await getEnvironmentConfigOverride(options)), { onDotIntoNull: "ignore" }) as any;
 }
 
-async function getIncompleteOrganizationConfig(options: organizationOptions): Promise<OrganizationIncompleteConfig> {
+async function getIncompleteOrganizationConfig(options: OrganizationOptions): Promise<OrganizationIncompleteConfig> {
   return normalize(override(await getIncompleteEnvironmentConfig(options), await getOrganizationConfigOverride(options)), { onDotIntoNull: "ignore" }) as any;
 }
 
