@@ -52,6 +52,12 @@ export type StackClientApp<HasTokenStore extends boolean = boolean, ProjectId ex
     verifyEmail(code: string): Promise<Result<undefined, KnownErrors["VerificationCodeError"]>>,
     signInWithMagicLink(code: string, options?: { noRedirect?: boolean }): Promise<Result<undefined, KnownErrors["VerificationCodeError"] | KnownErrors["InvalidTotpCode"]>>,
 
+    redirectToStripeCheckout(options: {
+      priceId: string,
+      successUrl?: string,
+      cancelUrl?: string,
+    }): Promise<void>,
+
     redirectToOAuthCallback(): Promise<void>,
 
     // IF_PLATFORM react-like

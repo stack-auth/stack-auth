@@ -105,6 +105,9 @@ function SmartFormField(props: {
         return <InputField {...usualProps} />;
       }
     }
+    case 'number': {
+      return <InputField {...usualProps} type="number" />;
+    }
     case 'date': {
       return <DateField {...usualProps} />;
     }

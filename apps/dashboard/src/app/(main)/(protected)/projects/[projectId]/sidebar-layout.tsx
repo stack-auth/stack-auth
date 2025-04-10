@@ -25,6 +25,7 @@ import {
 } from "@stackframe/stack-ui";
 import {
   Book,
+  CreditCard,
   Globe,
   KeyRound,
   Link as LinkIcon,
@@ -32,6 +33,7 @@ import {
   LucideIcon,
   Mail,
   Menu,
+  Package2,
   Settings,
   Settings2,
   ShieldEllipsis,
@@ -240,7 +242,25 @@ const navigationItems: (Label | Item | Hidden)[] = [
     regex: /^\/projects\/[^\/]+\/project-settings$/,
     icon: Settings,
     type: 'item'
-  }
+  },
+  {
+    name: "Finance",
+    type: 'label'
+  },
+  {
+    name: "Payments",
+    href: "/payments",
+    regex: /^\/projects\/[^\/]+\/payments$/,
+    icon: CreditCard,
+    type: 'item'
+  },
+  {
+    name: "Products",
+    href: "/products",
+    regex: /^\/projects\/[^\/]+\/products$/,
+    icon: Package2,
+    type: 'item'
+  },
 ];
 
 function TeamMemberBreadcrumbItem(props: { teamId: string }) {

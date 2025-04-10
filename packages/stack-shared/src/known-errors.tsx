@@ -1209,6 +1209,15 @@ const InvalidPollingCodeError = createKnownErrorConstructor(
   (json: any) => [json] as const,
 );
 
+const StripeConfigurationNotFound = createKnownErrorConstructor(
+  KnownError,
+  "STRIPE_CONFIGURATION_NOT_FOUND",
+  () => [
+    400,
+    "The Stripe configuration is not found.",
+  ] as const,
+  () => [] as const,
+);
 
 const ApiKeyNotValid = createKnownErrorConstructor(
   KnownError,
@@ -1372,6 +1381,7 @@ export const KnownErrors = {
   OAuthProviderAccessDenied,
   ContactChannelAlreadyUsedForAuthBySomeoneElse,
   InvalidPollingCodeError,
+  StripeConfigurationNotFound,
   ApiKeyNotValid,
   ApiKeyExpired,
   ApiKeyRevoked,

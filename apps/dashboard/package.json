@@ -25,6 +25,8 @@
     "@stackframe/stack-emails": "workspace:*",
     "@stackframe/stack-shared": "workspace:*",
     "@stackframe/stack-ui": "workspace:*",
+    "@stripe/connect-js": "^3.3.21",
+    "@stripe/react-connect-js": "^3.3.21",
     "@tanstack/react-table": "^8.20.5",
     "@vercel/analytics": "^1.2.2",
     "@vercel/speed-insights": "^1.0.12",

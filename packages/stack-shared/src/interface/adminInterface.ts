@@ -1,12 +1,21 @@
 import { InternalSession } from "../sessions";
 import { EmailTemplateCrud, EmailTemplateType } from "./crud/email-templates";
 import { InternalEmailsCrud } from "./crud/emails";
+import { InternalPaymentsPricesCrud } from "./crud/internal-payments-prices";
+import { ProductAdminCreate, ProductAdminList, ProductAdminRead, ProductAdminUpdate } from "./crud/internal-products-types";
 import { InternalApiKeysCrud } from "./crud/internal-api-keys";
 import { ProjectPermissionDefinitionsCrud } from "./crud/project-permissions";
 import { ProjectsCrud } from "./crud/projects";
 import { SvixTokenCrud } from "./crud/svix-token";
 import { TeamPermissionDefinitionsCrud } from "./crud/team-permissions";
 import { ServerAuthApplicationOptions, StackServerInterface } from "./serverInterface";
+
+export type MetricsResponse = {
+  active_users_last_30_days: number,
+  total_users: number,
+  total_teams: number,
+  [key: string]: number | string | { [key: string]: number | string },
+};
 
 export type AdminAuthApplicationOptions = ServerAuthApplicationOptions &(
   | {
@@ -263,7 +272,7 @@ export class StackAdminInterface extends StackServerInterface {
     );
   }
 
-  async getMetrics(): Promise<any> {
+  async getMetrics(): Promise<MetricsResponse> {
     const response = await this.sendAdminRequest(
       "/internal/metrics",
       {
@@ -300,5 +309,130 @@ export class StackAdminInterface extends StackServerInterface {
       method: "GET",
     }, null);
     return await response.json();
+  }
+
+  async getStripeAccountSession(): Promise<{ client_secret: string }> {
+    const response = await this.sendAdminRequest(
+      "/integrations/stripe/account-session",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({}),
+      },
+      null,
+    );
+    return await response.json();
+  }
+
+  async getStripeLoginLink(): Promise<{ url: string }> {
+    const response = await this.sendAdminRequest(
+      "/integrations/stripe/login-link",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({}),
+      },
+      null,
+    );
+    return await response.json();
+  }
+
+  // Products endpoints
+  async listProducts(): Promise<ProductAdminRead[]> {
+    const response = await this.sendAdminRequest("/finance/products", {}, null);
+    const result = await response.json() as ProductAdminList;
+    return result.items;
+  }
+
+  async createProduct(data: Omit<ProductAdminCreate, 'project_id'>): Promise<ProductAdminRead> {
+    const response = await this.sendAdminRequest(
+      "/finance/products",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+        },
+        body: JSON.stringify(data),
+      },
+      null,
+    );
+    return await response.json();
+  }
+
+  async updateProduct(productId: string, data: ProductAdminUpdate): Promise<ProductAdminRead> {
+    const response = await this.sendAdminRequest(
+      `/finance/products/${productId}`,
+      {
+        method: "PATCH",
+        headers: {
+          "content-type": "application/json",
+        },
+        body: JSON.stringify(data),
+      },
+      null,
+    );
+    return await response.json();
+  }
+
+  async deleteProduct(productId: string): Promise<void> {
+    await this.sendAdminRequest(
+      `/finance/products/${productId}`,
+      { method: "DELETE" },
+      null,
+    );
+  }
+
+  // Prices endpoints
+  async getProduct(productId: string): Promise<ProductAdminRead> {
+    const response = await this.sendAdminRequest(`/finance/products/${productId}`, {}, null);
+    return await response.json();
+  }
+
+  async listProductPrices(productId: string): Promise<InternalPaymentsPricesCrud["Admin"]["Read"][]> {
+    const response = await this.sendAdminRequest(`/finance/products/${productId}/prices`, {}, null);
+    const result = await response.json() as InternalPaymentsPricesCrud["Admin"]["List"];
+    return result.items;
+  }
+
+  async createPrice(data: InternalPaymentsPricesCrud["Admin"]["Create"]): Promise<InternalPaymentsPricesCrud["Admin"]["Read"]> {
+    const response = await this.sendAdminRequest(
+      "/finance/prices",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+        },
+        body: JSON.stringify(data),
+      },
+      null,
+    );
+    return await response.json();
+  }
+
+  async updatePrice(priceId: string, data: InternalPaymentsPricesCrud["Admin"]["Update"]): Promise<InternalPaymentsPricesCrud["Admin"]["Read"]> {
+    const response = await this.sendAdminRequest(
+      `/finance/prices/${priceId}`,
+      {
+        method: "PATCH",
+        headers: {
+          "content-type": "application/json",
+        },
+        body: JSON.stringify(data),
+      },
+      null,
+    );
+    return await response.json();
+  }
+
+  async deletePrice(priceId: string): Promise<void> {
+    await this.sendAdminRequest(
+      `/finance/prices/${priceId}`,
+      { method: "DELETE" },
+      null,
+    );
   }
 }

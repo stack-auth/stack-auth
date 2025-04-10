@@ -71,6 +71,12 @@ export function adminProjectUpdateOptionsToCrud(options: AdminProjectUpdateOptio
           sender_email: options.config.emailConfig.senderEmail,
         }
       ),
+      stripe_config: options.config?.stripeConfig && {
+        stripe_account_id: options.config.stripeConfig.stripeAccountId,
+        stripe_secret_key: options.config.stripeConfig.stripeSecretKey,
+        stripe_publishable_key: options.config.stripeConfig.stripePublishableKey,
+        stripe_webhook_secret: options.config.stripeConfig.stripeWebhookSecret,
+      },
       sign_up_enabled: options.config?.signUpEnabled,
       credential_enabled: options.config?.credentialEnabled,
       magic_link_enabled: options.config?.magicLinkEnabled,

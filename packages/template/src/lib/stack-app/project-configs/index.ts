@@ -34,6 +34,7 @@ export type AdminProjectConfig = {
   readonly teamMemberDefaultPermissions: AdminTeamPermission[],
   readonly userDefaultPermissions: AdminTeamPermission[],
   readonly oauthAccountMergeStrategy: 'link_method' | 'raise_error' | 'allow_duplicates',
+  readonly stripeConfig?: AdminStripeConfig,
   readonly allowUserApiKeys: boolean,
   readonly allowTeamApiKeys: boolean,
 };
@@ -72,6 +73,13 @@ export type AdminOAuthProviderConfig = {
   }
 ) & OAuthProviderConfig;
 
+export type AdminStripeConfig = {
+  stripeAccountId?: string,
+  stripeSecretKey?: string,
+  stripePublishableKey?: string,
+  stripeWebhookSecret?: string,
+};
+
 export type AdminProjectConfigUpdateOptions = {
   domains?: {
     domain: string,
@@ -91,6 +99,7 @@ export type AdminProjectConfigUpdateOptions = {
   teamMemberDefaultPermissions?: { id: string }[],
   userDefaultPermissions?: { id: string }[],
   oauthAccountMergeStrategy?: 'link_method' | 'raise_error' | 'allow_duplicates',
+  stripeConfig?: AdminStripeConfig,
   allowUserApiKeys?: boolean,
   allowTeamApiKeys?: boolean,
 };

@@ -54,6 +54,7 @@
     "@simplewebauthn/server": "^11.0.0",
     "@stackframe/stack-emails": "workspace:*",
     "@stackframe/stack-shared": "workspace:*",
+    "@stripe/stripe-js": "^6.1.0",
     "@vercel/functions": "^1.4.2",
     "@vercel/otel": "^1.10.0",
     "bcrypt": "^5.1.1",
@@ -69,6 +70,7 @@
     "react-dom": "19.0.0",
     "semver": "^7.6.3",
     "sharp": "^0.32.6",
+    "stripe": "^17.7.0",
     "svix": "^1.25.0",
     "yaml": "^2.4.5",
     "yup": "^1.4.0"

@@ -98,6 +98,13 @@ export function AccountSettings(props: {
               icon: <Icon name="Settings"/>,
               content: <SettingsPage/>,
             },
+            {
+              title: t('Payments'),
+              type: 'item',
+              id: 'payments',
+              icon: <Icon name="CreditCard"/>,
+              content: <PaymentsPage/>,
+            },
             ...(props.extraItems?.map(item => ({
               title: item.title,
               type: 'item',
@@ -1531,6 +1538,20 @@ export function EditableText(props: { value: string, onSave?: (value: string) =>
         </>
       )}
     </div>
+  );
+}
+
+function PaymentsPage() {
+  const app = useStackApp();
+
+  return (
+    <PageLayout>
+      <Section title="Payments" description="Manage your payments">
+        <div>
+          placeholder
+        </div>
+      </Section>
+    </PageLayout>
   );
 }
 
