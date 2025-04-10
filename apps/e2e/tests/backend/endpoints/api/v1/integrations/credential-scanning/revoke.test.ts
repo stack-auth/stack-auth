@@ -15,7 +15,7 @@ it("should send email notification to user when revoking an API key through cred
   // Create a user API key
   const { createUserApiKeyResponse } = await ProjectApiKey.User.create({
     user_id: user1.userId,
-    description: "Test API Key to Revoke",
+    description: "Test API Key to Revoke <HTML Test &>",
     expires_at_millis: null,
   });
 
@@ -24,7 +24,7 @@ it("should send email notification to user when revoking an API key through cred
   expect(checkResponseBeforeRevoke).toMatchInlineSnapshot(`
     {
       "created_at_millis": <stripped field 'created_at_millis'>,
-      "description": "Test API Key to Revoke",
+      "description": "Test API Key to Revoke <HTML Test &>",
       "id": "<stripped UUID>",
       "is_public": false,
       "type": "user",
@@ -65,7 +65,7 @@ it("should send email notification to user when revoking an API key through cred
     [
       MailboxMessage {
         "from": "Stack Auth <noreply@example.com>",
-        "subject": "API Key Revoked: Test API Key to Revoke",
+        "subject": "API Key Revoked: Test API Key to Revoke <HTML Test &>",
         "to": ["<unindexed-mailbox--<stripped UUID>@stack-generated.example.com>"],
         <some fields may have been hidden>,
       },
@@ -74,7 +74,7 @@ it("should send email notification to user when revoking an API key through cred
 
   // Verify the email content
   const emailContent = await user1.mailbox.fetchMessages();
-  const revocationEmail = emailContent.find((m: MailboxMessage) => m.subject === "API Key Revoked: Test API Key to Revoke");
+  const revocationEmail = emailContent.find((m: MailboxMessage) => m.subject === "API Key Revoked: Test API Key to Revoke <HTML Test &>");
   expect(revocationEmail).toBeDefined();
   expect(revocationEmail?.body?.text).toMatchInlineSnapshot(`
     deindent\`
@@ -82,7 +82,7 @@ it("should send email notification to user when revoking an API key through cred
       API Key Revoked
       ---------------
       
-      Your API key "Test API Key to Revoke" for New Project has been automatically revoked because it was found in a public repository.
+      Your API key "Test API Key to Revoke <HTML Test &>" for New Project has been automatically revoked because it was found in a public repository.
       
       This is an automated security measure to protect your api keys from being leaked. If you believe this was a mistake, please contact support.
       
