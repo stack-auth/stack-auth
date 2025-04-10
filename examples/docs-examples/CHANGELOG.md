@@ -1,5 +1,67 @@
 # @stackframe/docs-examples
 
+## 2.8.3
+
+### Patch Changes
+
+- Updated dependencies
+  - @stackframe/stack-shared@2.8.3
+  - @stackframe/stack-ui@2.8.3
+  - @stackframe/stack@2.8.3
+
+## 2.8.2
+
+### Patch Changes
+
+- Updated dependencies
+  - @stackframe/stack-shared@2.8.2
+  - @stackframe/stack@2.8.2
+  - @stackframe/stack-ui@2.8.2
+
+## 2.8.1
+
+### Patch Changes
+
+- @stackframe/stack@2.8.1
+- @stackframe/stack-shared@2.8.1
+- @stackframe/stack-ui@2.8.1
+
+## 2.8.0
+
+### Patch Changes
+
+- Updated dependencies
+  - @stackframe/stack-shared@2.8.0
+  - @stackframe/stack@2.8.0
+  - @stackframe/stack-ui@2.8.0
+
+## 2.7.30
+
+### Patch Changes
+
+- Updated dependencies
+  - @stackframe/stack-shared@2.7.30
+  - @stackframe/stack@2.7.30
+  - @stackframe/stack-ui@2.7.30
+
+## 2.7.29
+
+### Patch Changes
+
+- Updated dependencies
+  - @stackframe/stack-shared@2.7.29
+  - @stackframe/stack@2.7.29
+  - @stackframe/stack-ui@2.7.29
+
+## 2.7.28
+
+### Patch Changes
+
+- Updated dependencies
+  - @stackframe/stack-shared@2.7.28
+  - @stackframe/stack@2.7.28
+  - @stackframe/stack-ui@2.7.28
+
 ## 2.7.27
 
 ### Patch Changes

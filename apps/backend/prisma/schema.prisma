@@ -28,6 +28,7 @@ model Project {
   neonProvisionedProject NeonProvisionedProject?
   tenancies              Tenancy[]
   verificationCodes      VerificationCode[]
+  projectApiKey          ProjectApiKey[]
 }
 
 model ProjectConfig {
@@ -54,6 +55,8 @@ model ProjectConfig {
   authMethodConfigs                  AuthMethodConfig[]
   connectedAccountConfigs            ConnectedAccountConfig[]
   oauthAccountMergeStrategy          OAuthAccountMergeStrategy @default(LINK_METHOD)
+  allowUserApiKeys                   Boolean                   @default(false)
+  allowTeamApiKeys                   Boolean                   @default(false)
 }
 
 enum OAuthAccountMergeStrategy {
@@ -84,6 +87,7 @@ model Tenancy {
   connectedAccounts ConnectedAccount[] @relation("TenancyConnectedAccounts")
   SentEmail         SentEmail[]
   cliAuthAttempts   CliAuthAttempt[]
+  projectApiKey     ProjectApiKey[]
 
   @@unique([projectId, branchId, organizationId])
   @@unique([projectId, branchId, hasNoOrganization])
@@ -121,9 +125,10 @@ model Team {
   clientReadOnlyMetadata Json?
   serverMetadata         Json?
 
-  tenancy     Tenancy      @relation("TenancyTeams", fields: [tenancyId], references: [id], onDelete: Cascade)
-  permissions Permission[]
-  teamMembers TeamMember[]
+  tenancy       Tenancy         @relation("TenancyTeams", fields: [tenancyId], references: [id], onDelete: Cascade)
+  permissions   Permission[]
+  teamMembers   TeamMember[]
+  projectApiKey ProjectApiKey[]
 
   @@id([tenancyId, teamId])
   @@unique([mirroredProjectId, mirroredBranchId, teamId])
@@ -157,6 +162,23 @@ model TeamMember {
 
   @@id([tenancyId, projectUserId, teamId])
   @@unique([tenancyId, projectUserId, isSelected])
+}
+
+model ProjectUserDirectPermission {
+  id             String  @id @default(uuid()) @db.Uuid
+  tenancyId      String  @db.Uuid
+  projectUserId  String  @db.Uuid
+  permissionDbId String? @db.Uuid
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  projectUser ProjectUser @relation(fields: [tenancyId, projectUserId], references: [tenancyId, projectUserId], onDelete: Cascade)
+
+  // no [systemPermission] yet, we'll add it when the need arises
+  permission Permission? @relation(fields: [permissionDbId], references: [dbId], onDelete: Cascade)
+
+  @@unique([tenancyId, projectUserId, permissionDbId])
 }
 
 model TeamMemberDirectPermission {
@@ -194,25 +216,28 @@ model Permission {
 
   description String?
 
-  // The scope of the permission. If projectConfigId is set, may be GLOBAL or TEAM; if teamId is set, must be TEAM.
+  // The scope of the permission. If projectConfigId is set, may be PROJECT or TEAM; if teamId is set, must be PROJECT.
   scope PermissionScope
 
   projectConfig ProjectConfig? @relation(fields: [projectConfigId], references: [id], onDelete: Cascade)
   team          Team?          @relation(fields: [tenancyId, teamId], references: [tenancyId, teamId], onDelete: Cascade)
 
-  parentEdges                PermissionEdge[]             @relation("ChildPermission")
-  childEdges                 PermissionEdge[]             @relation("ParentPermission")
-  teamMemberDirectPermission TeamMemberDirectPermission[]
+  parentEdges                 PermissionEdge[]              @relation("ChildPermission")
+  childEdges                  PermissionEdge[]              @relation("ParentPermission")
+  teamMemberDirectPermission  TeamMemberDirectPermission[]
+  projectUserDirectPermission ProjectUserDirectPermission[]
 
   isDefaultTeamCreatorPermission Boolean @default(false)
   isDefaultTeamMemberPermission  Boolean @default(false)
+  isDefaultProjectPermission     Boolean @default(false)
 
+  @@unique([tenancyId, queryableId])
   @@unique([projectConfigId, queryableId])
   @@unique([tenancyId, teamId, queryableId])
 }
 
 enum PermissionScope {
-  GLOBAL
+  PROJECT
   TEAM
 }
 
@@ -222,6 +247,7 @@ enum TeamSystemPermission {
   READ_MEMBERS
   REMOVE_MEMBERS
   INVITE_MEMBERS
+  MANAGE_API_KEYS
 }
 
 model PermissionEdge {
@@ -261,6 +287,7 @@ model ProjectUser {
   clientMetadata         Json?
   requiresTotpMfa        Boolean @default(false)
   totpSecret             Bytes?
+  isAnonymous            Boolean @default(false)
 
   tenancy                       Tenancy                        @relation("TenancyProjectUsers", fields: [tenancyId], references: [id], onDelete: Cascade)
   project                       Project                        @relation(fields: [mirroredProjectId], references: [id], onDelete: Cascade)
@@ -278,6 +305,8 @@ model ProjectUser {
   otpAuthMethod      OtpAuthMethod[]
   oauthAuthMethod    OAuthAuthMethod[]
   SentEmail          SentEmail[]
+  projectApiKey      ProjectApiKey[]
+  directPermissions  ProjectUserDirectPermission[]
 
   @@id([tenancyId, projectUserId])
   @@unique([mirroredProjectId, mirroredBranchId, projectUserId])
@@ -683,9 +712,9 @@ model OAuthOuterInfo {
 }
 
 model ProjectUserRefreshToken {
-  id            String   @default(uuid()) @db.Uuid
-  tenancyId     String   @db.Uuid
-  projectUserId String   @db.Uuid
+  id            String @default(uuid()) @db.Uuid
+  tenancyId     String @db.Uuid
+  projectUserId String @db.Uuid
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -757,7 +786,7 @@ enum VerificationCodeType {
 }
 
 //#region API keys
-
+// Internal API keys
 model ApiKeySet {
   projectId String
   project   Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
@@ -773,6 +802,33 @@ model ApiKeySet {
   superSecretAdminKey  String?   @unique
 
   @@id([projectId, id])
+}
+
+model ProjectApiKey {
+  projectId String
+  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  tenancyId String  @db.Uuid
+
+  id           String @default(uuid()) @db.Uuid
+  secretApiKey String @unique
+
+  // Validity and revocation
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+  expiresAt         DateTime?
+  manuallyRevokedAt DateTime?
+  description       String
+  isPublic          Boolean
+
+  // exactly one of [teamId] or [projectUserId] must be set
+  teamId        String? @db.Uuid
+  projectUserId String? @db.Uuid
+
+  tenancy     Tenancy      @relation(fields: [tenancyId], references: [id], onDelete: Cascade)
+  projectUser ProjectUser? @relation(fields: [tenancyId, projectUserId], references: [tenancyId, projectUserId], onDelete: Cascade)
+  team        Team?        @relation(fields: [tenancyId, teamId], references: [tenancyId, teamId], onDelete: Cascade)
+
+  @@id([tenancyId, id])
 }
 
 model EmailServiceConfig {
@@ -962,18 +1018,18 @@ model SentEmail {
 }
 
 model CliAuthAttempt {
-  tenancyId    String   @db.Uuid
-  tenancy      Tenancy  @relation(fields: [tenancyId], references: [id], onDelete: Cascade)
-  
-  id           String   @default(uuid()) @db.Uuid
-  pollingCode  String   @unique
-  loginCode    String   @unique
+  tenancyId String  @db.Uuid
+  tenancy   Tenancy @relation(fields: [tenancyId], references: [id], onDelete: Cascade)
+
+  id           String    @default(uuid()) @db.Uuid
+  pollingCode  String    @unique
+  loginCode    String    @unique
   refreshToken String?
   expiresAt    DateTime
   usedAt       DateTime?
-  
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
-  
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
   @@id([tenancyId, id])
 }

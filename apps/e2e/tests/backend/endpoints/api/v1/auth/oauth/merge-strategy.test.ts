@@ -1,5 +1,5 @@
 import { it } from "../../../../../../helpers";
-import { ApiKey, Auth, ContactChannels, Project } from "../../../../../backend-helpers";
+import { Auth, ContactChannels, InternalApiKey, Project } from "../../../../../backend-helpers";
 
 it("should allow duplicates, if the merge strategy is set to allow_duplicates", async ({ expect }) => {
   const proj = await Project.createAndSwitch({
@@ -13,7 +13,7 @@ it("should allow duplicates, if the merge strategy is set to allow_duplicates", 
       }],
     }
   });
-  await ApiKey.createAndSetProjectKeys(proj.adminAccessToken);
+  await InternalApiKey.createAndSetProjectKeys(proj.adminAccessToken);
 
   await Auth.Otp.signIn();
   const cc = await ContactChannels.getTheOnlyContactChannel();
@@ -41,7 +41,7 @@ it("should not allow duplicates, if the merge strategy set to raise_error", asyn
       }],
     }
   });
-  await ApiKey.createAndSetProjectKeys(proj.adminAccessToken);
+  await InternalApiKey.createAndSetProjectKeys(proj.adminAccessToken);
 
   await Auth.Otp.signIn();
   const cc = await ContactChannels.getTheOnlyContactChannel();
@@ -63,7 +63,7 @@ it("should merge accounts, if the merge strategy set to link_method", async ({ e
       }],
     }
   });
-  await ApiKey.createAndSetProjectKeys(proj.adminAccessToken);
+  await InternalApiKey.createAndSetProjectKeys(proj.adminAccessToken);
 
   await Auth.Otp.signIn();
   const cc = await ContactChannels.getTheOnlyContactChannel();

@@ -1,5 +1,6 @@
 import * as oauth from 'oauth4webapi';
 
+import * as yup from 'yup';
 import { KnownError, KnownErrors } from '../known-errors';
 import { AccessToken, InternalSession, RefreshToken } from '../sessions';
 import { generateSecureRandomString } from '../utils/crypto';
@@ -7,7 +8,7 @@ import { StackAssertionError, throwErr } from '../utils/errors';
 import { globalVar } from '../utils/globals';
 import { HTTP_METHODS, HttpMethod } from '../utils/http';
 import { ReadonlyJson } from '../utils/json';
-import { filterUndefined } from '../utils/objects';
+import { filterUndefined, filterUndefinedOrNull } from '../utils/objects';
 import { AuthenticationResponseJSON, PublicKeyCredentialCreationOptionsJSON, PublicKeyCredentialRequestOptionsJSON, RegistrationResponseJSON } from '../utils/passkey';
 import { wait } from '../utils/promises';
 import { Result } from "../utils/results";
@@ -15,6 +16,8 @@ import { deindent } from '../utils/strings';
 import { ContactChannelsCrud } from './crud/contact-channels';
 import { CurrentUserCrud } from './crud/current-user';
 import { ConnectedAccountAccessTokenCrud } from './crud/oauth';
+import { TeamApiKeysCrud, UserApiKeysCrud, teamApiKeysCreateInputSchema, teamApiKeysCreateOutputSchema, userApiKeysCreateInputSchema, userApiKeysCreateOutputSchema } from './crud/project-api-keys';
+import { ProjectPermissionsCrud } from './crud/project-permissions';
 import { InternalProjectsCrud, ProjectsCrud } from './crud/projects';
 import { SessionsCrud } from './crud/sessions';
 import { TeamInvitationCrud } from './crud/team-invitation';
@@ -119,7 +122,7 @@ export class StackClientInterface {
     // try to diagnose the error for the user
     if (retriedResult.status === "error") {
       if (globalVar.navigator && !globalVar.navigator.onLine) {
-        throw new Error("Failed to send Stack network request. It seems like you are offline. (window.navigator.onLine is falsy)", { cause: retriedResult.error });
+        throw new Error("Failed to send Stack network request. It seems like you are offline, please check your internet connection and try again. This is not an error with Stack Auth. (window.navigator.onLine is falsy)", { cause: retriedResult.error });
       }
       throw await this._createNetworkError(retriedResult.error, session, requestType);
     }
@@ -262,7 +265,7 @@ export class StackClientInterface {
     }
     const params: RequestInit = {
       /**
-       * This fetch may be cross-origin, in which case we don't want to send cookies of the
+       * This fetch may be cross-origin, in which case we don't want to send cookies of the
        * original origin (this is the default behavior of `credentials`).
        *
        * To help debugging, also omit cookies on same-origin, so we don't accidentally
@@ -793,7 +796,7 @@ export class StackClientInterface {
     password: string,
     emailVerificationRedirectUrl: string,
     session: InternalSession,
-  ): Promise<Result<{ accessToken: string, refreshToken: string }, KnownErrors["UserEmailAlreadyExists"] | KnownErrors["PasswordRequirementsNotMet"]>> {
+  ): Promise<Result<{ accessToken: string, refreshToken: string }, KnownErrors["UserWithEmailAlreadyExists"] | KnownErrors["PasswordRequirementsNotMet"]>> {
     const res = await this.sendClientRequestAndCatchKnownError(
       "/auth/password/sign-up",
       {
@@ -808,7 +811,28 @@ export class StackClientInterface {
         }),
       },
       session,
-      [KnownErrors.UserEmailAlreadyExists, KnownErrors.PasswordRequirementsNotMet]
+      [KnownErrors.UserWithEmailAlreadyExists, KnownErrors.PasswordRequirementsNotMet]
+    );
+
+    if (res.status === "error") {
+      return Result.error(res.error);
+    }
+
+    const result = await res.data.json();
+    return Result.ok({
+      accessToken: result.access_token,
+      refreshToken: result.refresh_token,
+    });
+  }
+
+  async signUpAnonymously(session: InternalSession): Promise<Result<{ accessToken: string, refreshToken: string }, never>> {
+    const res = await this.sendClientRequestAndCatchKnownError(
+      "/auth/anonymous/sign-up",
+      {
+        method: "POST",
+      },
+      session,
+      [],
     );
 
     if (res.status === "error") {
@@ -1162,6 +1186,21 @@ export class StackClientInterface {
     return result.items;
   }
 
+  async listCurrentUserProjectPermissions(
+    options: {
+      recursive: boolean,
+    },
+    session: InternalSession
+  ): Promise<ProjectPermissionsCrud['Client']['Read'][]> {
+    const response = await this.sendClientRequest(
+      `/project-permissions?user_id=me&recursive=${options.recursive}`,
+      {},
+      session,
+    );
+    const result = await response.json() as ProjectPermissionsCrud['Client']['List'];
+    return result.items;
+  }
+
   async listCurrentUserTeams(session: InternalSession): Promise<TeamsCrud["Client"]["Read"][]> {
     const response = await this.sendClientRequest(
       "/teams?user_id=me",
@@ -1429,6 +1468,141 @@ export class StackClientInterface {
       return Result.error(responseOrError.error);
     }
     return Result.ok(undefined);
+  }
+
+  private async _getApiKeyRequestInfo(options: { user_id: string | null } | { team_id: string }) {
+    if ("user_id" in options && "team_id" in options) {
+      throw new StackAssertionError("Cannot specify both user_id and team_id in _getApiKeyRequestInfo");
+    }
+
+    return {
+      endpoint: "team_id" in options ? "/team-api-keys" : "/user-api-keys",
+      queryParams: new URLSearchParams(filterUndefinedOrNull(options)),
+    };
+  }
+
+  // API Keys CRUD operations
+  listProjectApiKeys(options: { user_id: string }, session: InternalSession | null, requestType: "client" | "server" | "admin"): Promise<UserApiKeysCrud['Client']['Read'][]>;
+  listProjectApiKeys(options: { team_id: string }, session: InternalSession | null, requestType: "client" | "server" | "admin"): Promise<TeamApiKeysCrud['Client']['Read'][]>;
+  listProjectApiKeys(options: { user_id: string } | { team_id: string }, session: InternalSession | null, requestType: "client" | "server" | "admin"): Promise<(UserApiKeysCrud['Client']['Read'] | TeamApiKeysCrud['Client']['Read'])[]>;
+  async listProjectApiKeys(
+    options: { user_id: string } | { team_id: string },
+    session: InternalSession | null,
+    requestType: "client" | "server" | "admin",
+  ): Promise<(UserApiKeysCrud['Client']['Read'] | TeamApiKeysCrud['Client']['Read'])[]> {
+    const sendRequest = (requestType === "client" ? this.sendClientRequest : (this as any).sendServerRequest as never).bind(this);
+    const { endpoint, queryParams } = await this._getApiKeyRequestInfo(options);
+
+    const response = await sendRequest(
+      `${endpoint}?${queryParams.toString()}`,
+      {
+        method: "GET",
+      },
+      session,
+      requestType,
+    );
+    const json = await response.json();
+    return json.items;
+  }
+
+  createProjectApiKey(data: yup.InferType<typeof userApiKeysCreateInputSchema>, session: InternalSession | null, requestType: "client" | "server" | "admin"): Promise<yup.InferType<typeof userApiKeysCreateOutputSchema>>;
+  createProjectApiKey(data: yup.InferType<typeof teamApiKeysCreateInputSchema>, session: InternalSession | null, requestType: "client" | "server" | "admin"): Promise<yup.InferType<typeof teamApiKeysCreateOutputSchema>>;
+  createProjectApiKey(data: yup.InferType<typeof userApiKeysCreateInputSchema> | yup.InferType<typeof teamApiKeysCreateInputSchema>, session: InternalSession | null, requestType: "client" | "server" | "admin"): Promise<yup.InferType<typeof userApiKeysCreateOutputSchema> | yup.InferType<typeof teamApiKeysCreateOutputSchema>>;
+  async createProjectApiKey(
+    data: yup.InferType<typeof userApiKeysCreateInputSchema> | yup.InferType<typeof teamApiKeysCreateInputSchema>,
+    session: InternalSession | null,
+    requestType: "client" | "server" | "admin",
+  ): Promise<yup.InferType<typeof userApiKeysCreateOutputSchema> | yup.InferType<typeof teamApiKeysCreateOutputSchema>> {
+    const sendRequest = (requestType === "client" ? this.sendClientRequest : (this as any).sendServerRequest as never).bind(this);
+    const { endpoint } = await this._getApiKeyRequestInfo(data);
+
+    const response = await sendRequest(
+      `${endpoint}`,
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+        },
+        body: JSON.stringify(data),
+      },
+      session,
+      requestType,
+    );
+    return await response.json();
+  }
+
+  getProjectApiKey(options: { user_id: string | null }, keyId: string, session: InternalSession | null, requestType: "client" | "server" | "admin"): Promise<UserApiKeysCrud['Client']['Read']>;
+  getProjectApiKey(options: { team_id: string }, keyId: string, session: InternalSession | null, requestType: "client" | "server" | "admin"): Promise<TeamApiKeysCrud['Client']['Read']>;
+  getProjectApiKey(options: { user_id: string | null } | { team_id: string }, keyId: string, session: InternalSession | null, requestType: "client" | "server" | "admin"): Promise<UserApiKeysCrud['Client']['Read'] | TeamApiKeysCrud['Client']['Read']>;
+  async getProjectApiKey(
+    options: { user_id: string | null } | { team_id: string },
+    keyId: string,
+    session: InternalSession | null,
+    requestType: "client" | "server" | "admin",
+  ): Promise<UserApiKeysCrud['Client']['Read'] | TeamApiKeysCrud['Client']['Read']> {
+    const sendRequest = (requestType === "client" ? this.sendClientRequest : (this as any).sendServerRequest as never).bind(this);
+    const { endpoint, queryParams } = await this._getApiKeyRequestInfo(options);
+
+    const response = await sendRequest(
+      `${endpoint}/${keyId}?${queryParams.toString()}`,
+      {
+        method: "GET",
+      },
+      session,
+      requestType,
+    );
+    return await response.json();
+  }
+
+  updateProjectApiKey(options: { user_id: string }, keyId: string, data: UserApiKeysCrud['Client']['Update'], session: InternalSession | null, requestType: "client" | "server" | "admin"): Promise<UserApiKeysCrud['Client']['Read']>;
+  updateProjectApiKey(options: { team_id: string }, keyId: string, data: TeamApiKeysCrud['Client']['Update'], session: InternalSession | null, requestType: "client" | "server" | "admin"): Promise<TeamApiKeysCrud['Client']['Read']>;
+  updateProjectApiKey(options: { user_id: string } | { team_id: string }, keyId: string, data: UserApiKeysCrud['Client']['Update'] | TeamApiKeysCrud['Client']['Update'], session: InternalSession | null, requestType: "client" | "server" | "admin"): Promise<UserApiKeysCrud['Client']['Read'] | TeamApiKeysCrud['Client']['Read']>;
+  async updateProjectApiKey(
+    options: { user_id: string } | { team_id: string },
+    keyId: string,
+    data: UserApiKeysCrud['Client']['Update'] | TeamApiKeysCrud['Client']['Update'],
+    session: InternalSession | null,
+    requestType: "client" | "server" | "admin",
+  ): Promise<UserApiKeysCrud['Client']['Read'] | TeamApiKeysCrud['Client']['Read']> {
+    const sendRequest = (requestType === "client" ? this.sendClientRequest : (this as any).sendServerRequest as never).bind(this);
+    const { endpoint, queryParams } = await this._getApiKeyRequestInfo(options);
+
+    const response = await sendRequest(
+      `${endpoint}/${keyId}?${queryParams.toString()}`,
+      {
+        method: "PATCH",
+        headers: {
+          "content-type": "application/json",
+        },
+        body: JSON.stringify(data),
+      },
+      session,
+      requestType,
+    );
+    return await response.json();
+  }
+
+  checkProjectApiKey(type: "user", apiKey: string, session: InternalSession | null, requestType: "client" | "server" | "admin"): Promise<UserApiKeysCrud['Client']['Read'] | null>;
+  checkProjectApiKey(type: "team", apiKey: string, session: InternalSession | null, requestType: "client" | "server" | "admin"): Promise<TeamApiKeysCrud['Client']['Read'] | null>;
+  checkProjectApiKey(type: "user" | "team", apiKey: string, session: InternalSession | null, requestType: "client" | "server" | "admin"): Promise<UserApiKeysCrud['Client']['Read'] | TeamApiKeysCrud['Client']['Read'] | null>;
+  async checkProjectApiKey(type: "user" | "team", apiKey: string, session: InternalSession | null, requestType: "client" | "server" | "admin"): Promise<UserApiKeysCrud['Client']['Read'] | TeamApiKeysCrud['Client']['Read'] | null> {
+    const sendRequest = (requestType === "client" ? this.sendClientRequestAndCatchKnownError : (this as any).sendServerRequestAndCatchKnownError as never).bind(this);
+    const result = await sendRequest(
+      `/${type}-api-keys/check`,
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({ api_key: apiKey }),
+      },
+      session,
+      [KnownErrors.ApiKeyNotValid]
+    );
+    if (result.status === "error") {
+      return null;
+    }
+    return await result.data.json();
   }
 }
 

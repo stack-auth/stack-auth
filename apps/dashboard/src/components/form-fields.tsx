@@ -5,6 +5,9 @@ import { CalendarIcon } from "lucide-react";
 import { Control, FieldValues, Path } from "react-hook-form";
 
 
+import type { JSX } from "react";
+
+
 export function FieldLabel(props: {
   children?: React.ReactNode,
   required?: boolean,

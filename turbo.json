@@ -64,6 +64,11 @@
         "@stackframe/stack-backend#build"
       ]
     },
+    "@stackframe/mcp-server#build": {
+      "dependsOn": [
+        "@stackframe/stack-backend#build"
+      ]
+    },
     "@stackframe/stack-backend#build": {
       "dependsOn": [
         "codegen"

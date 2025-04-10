@@ -1,5 +1,5 @@
 import { it } from "../../../../helpers";
-import { ApiKey, Auth, ContactChannels, Project, backendContext, niceBackendFetch } from "../../../backend-helpers";
+import { Auth, ContactChannels, InternalApiKey, Project, backendContext, niceBackendFetch } from "../../../backend-helpers";
 
 it("should not be able to sign in again after signing in with OTP and disabling auth", async ({ expect }) => {
   await Auth.Otp.signIn();
@@ -28,7 +28,8 @@ it("should not be able to sign in again after signing in with OTP and disabling 
       "status": 409,
       "body": {
         "code": "USER_EMAIL_ALREADY_EXISTS",
-        "error": "User email already exists.",
+        "details": { "email": "default-mailbox--<stripped UUID>@stack-generated.example.com" },
+        "error": "A user with email \\"default-mailbox--<stripped UUID>@stack-generated.example.com\\" already exists.",
       },
       "headers": Headers {
         "x-stack-known-error": "USER_EMAIL_ALREADY_EXISTS",
@@ -61,7 +62,8 @@ it("should not be able to sign in with OTP anymore after signing in with passwor
       "status": 409,
       "body": {
         "code": "USER_EMAIL_ALREADY_EXISTS",
-        "error": "User email already exists.",
+        "details": { "email": "default-mailbox--<stripped UUID>@stack-generated.example.com" },
+        "error": "A user with email \\"default-mailbox--<stripped UUID>@stack-generated.example.com\\" already exists.",
       },
       "headers": Headers {
         "x-stack-known-error": "USER_EMAIL_ALREADY_EXISTS",
@@ -97,7 +99,7 @@ it("signs in with password first, then signs in with oauth should give an accoun
       }],
     }
   });
-  await ApiKey.createAndSetProjectKeys(proj.adminAccessToken);
+  await InternalApiKey.createAndSetProjectKeys(proj.adminAccessToken);
 
 
   await Auth.Password.signUpWithEmail({ password: "some-password" });

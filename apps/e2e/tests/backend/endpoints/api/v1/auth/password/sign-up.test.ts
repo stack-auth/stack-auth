@@ -39,6 +39,7 @@ it("should sign up new users", async ({ expect }) => {
         "display_name": null,
         "has_password": true,
         "id": "<stripped UUID>",
+        "is_anonymous": false,
         "oauth_providers": [],
         "otp_auth_enabled": false,
         "passkey_auth_enabled": false,
@@ -71,7 +72,8 @@ it("should not allow signing up with an e-mail that already exists", async ({ ex
       "status": 409,
       "body": {
         "code": "USER_EMAIL_ALREADY_EXISTS",
-        "error": "User email already exists.",
+        "details": { "email": "default-mailbox--<stripped UUID>@stack-generated.example.com" },
+        "error": "A user with email \\"default-mailbox--<stripped UUID>@stack-generated.example.com\\" already exists.",
       },
       "headers": Headers {
         "x-stack-known-error": "USER_EMAIL_ALREADY_EXISTS",

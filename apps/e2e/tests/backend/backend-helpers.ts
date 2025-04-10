@@ -69,17 +69,17 @@ export type ProjectKeys = "no-project" | {
   adminAccessToken?: string,
 };
 
-export const InternalProjectKeys = {
+export const InternalProjectKeys = Object.freeze({
   projectId: STACK_INTERNAL_PROJECT_ID,
   publishableClientKey: STACK_INTERNAL_PROJECT_CLIENT_KEY,
   secretServerKey: STACK_INTERNAL_PROJECT_SERVER_KEY,
   superSecretAdminKey: STACK_INTERNAL_PROJECT_ADMIN_KEY,
-};
+});
 
-export const InternalProjectClientKeys = {
+export const InternalProjectClientKeys = Object.freeze({
   projectId: STACK_INTERNAL_PROJECT_ID,
   publishableClientKey: STACK_INTERNAL_PROJECT_CLIENT_KEY,
-};
+});
 
 function expectSnakeCase(obj: unknown, path: string): void {
   if (typeof obj !== "object" || obj === null) return;
@@ -765,6 +765,33 @@ export namespace Auth {
       };
     }
   }
+
+  export namespace Anonymous {
+    export async function signUp() {
+      const response = await niceBackendFetch("/api/v1/auth/anonymous/sign-up", {
+        method: "POST",
+        accessType: "client",
+      });
+      expect(response).toMatchInlineSnapshot(`
+        NiceResponse {
+          "status": 200,
+          "body": {
+            "access_token": <stripped field 'access_token'>,
+            "refresh_token": <stripped field 'refresh_token'>,
+            "user_id": "<stripped UUID>",
+          },
+          "headers": Headers { <some fields may have been hidden> },
+        }
+      `);
+      backendContext.set({
+        userAuth: {
+          accessToken: response.body.access_token,
+          refreshToken: response.body.refresh_token,
+        },
+      });
+      return { response };
+    }
+  }
 }
 
 export namespace ContactChannels {
@@ -833,7 +860,61 @@ export namespace ContactChannels {
   }
 }
 
-export namespace ApiKey {
+export namespace ProjectApiKey {
+  export namespace User {
+    export async function create(data?: any) {
+      const response = await niceBackendFetch("/api/v1/user-api-keys", {
+        method: "POST",
+        accessType: "server",
+        body: data,
+      });
+      expect(response.status).toEqual(200);
+      return {
+        createUserApiKeyResponse: response,
+      };
+    }
+
+    export async function check(apiKey: string) {
+      const response = await niceBackendFetch(`/api/v1/user-api-keys/check`, {
+        method: "POST",
+        accessType: "server",
+        body: {
+          api_key: apiKey,
+        },
+      });
+      expect(response.status).oneOf([200, 404]);
+      return response.body;
+    }
+  }
+
+  export namespace Team {
+    export async function create(body?: any) {
+      const response = await niceBackendFetch("/api/v1/team-api-keys", {
+        method: "POST",
+        accessType: "client",
+        body,
+      });
+      expect(response.status).toEqual(200);
+      return {
+        createTeamApiKeyResponse: response,
+      };
+    }
+
+    export async function check(apiKey: string) {
+      const response = await niceBackendFetch(`/api/v1/team-api-keys/check`, {
+        method: "POST",
+        accessType: "server",
+        body: {
+          api_key: apiKey,
+        },
+      });
+      expect(response.status).oneOf([200, 404]);
+      return response.body;
+    }
+  }
+}
+
+export namespace InternalApiKey {
   export async function create(adminAccessToken?: string, body?: any) {
     const oldProjectKeys = backendContext.value.projectKeys;
     if (oldProjectKeys === 'no-project') {
@@ -869,12 +950,12 @@ export namespace ApiKey {
   }
 
   export async function createAndSetProjectKeys(adminAccessToken?: string, body?: any) {
-    const res = await ApiKey.create(adminAccessToken, body);
+    const res = await InternalApiKey.create(adminAccessToken, body);
     backendContext.set({ projectKeys: res.projectKeys });
     return res;
   }
 
-  export async function listAll() {
+  export async function list() {
     const response = await niceBackendFetch("/api/v1/internal/api-keys", {
       accessType: "admin",
     });
@@ -923,6 +1004,7 @@ export namespace Project {
   export async function createAndGetAdminToken(body?: Partial<InternalProjectsCrud["Admin"]["Create"]>) {
     backendContext.set({
       projectKeys: InternalProjectKeys,
+      userAuth: null,
     });
     const oldMailbox = backendContext.value.mailbox;
     await bumpEmailAddress({ unindexed: true });
@@ -956,16 +1038,6 @@ export namespace Project {
       },
     });
     return createResult;
-  }
-
-  export async function resetContext() {
-    backendContext.set({
-      projectKeys: InternalProjectKeys,
-      mailbox: createMailbox(`default-mailbox--${randomUUID()}${generatedEmailSuffix}`),
-      generatedMailboxNamesCount: 0,
-      userAuth: null,
-      ipData: undefined,
-    });
   }
 }
 

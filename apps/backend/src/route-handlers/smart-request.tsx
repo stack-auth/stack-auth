@@ -1,7 +1,7 @@
 import "../polyfills";
 
 import { getUser, getUserQuery } from "@/app/api/latest/users/crud";
-import { checkApiKeySet, checkApiKeySetQuery } from "@/lib/api-keys";
+import { checkApiKeySet, checkApiKeySetQuery } from "@/lib/internal-api-keys";
 import { getProjectQuery, listManagedProjectIds } from "@/lib/projects";
 import { Tenancy, getSoleTenancyFromProject } from "@/lib/tenancies";
 import { decodeAccessToken } from "@/lib/tokens";
@@ -174,7 +174,7 @@ const parseAuth = withTraceSpan('smart request parseAuth', async (req: NextReque
     }
 
     if (result.data.projectId !== options.projectId) {
-      throw new KnownErrors.InvalidProjectForAccessToken();
+      throw new KnownErrors.InvalidProjectForAccessToken(options.projectId, result.data.projectId);
     }
 
     return {

@@ -512,11 +512,15 @@ const AccessTokenExpired = createKnownErrorConstructor(
 const InvalidProjectForAccessToken = createKnownErrorConstructor(
   InvalidAccessToken,
   "INVALID_PROJECT_FOR_ACCESS_TOKEN",
-  () => [
+  (expectedProjectId: string, actualProjectId: string) => [
     401,
-    "Access token not valid for this project.",
+    `Access token not valid for this project. Expected project ID ${JSON.stringify(expectedProjectId)}, but the token is for project ID ${JSON.stringify(actualProjectId)}.`,
+    {
+      expected_project_id: expectedProjectId,
+      actual_project_id: actualProjectId,
+    },
   ] as const,
-  () => [] as const,
+  (json: any) => [json.expected_project_id, json.actual_project_id] as const,
 );
 
 
@@ -558,14 +562,17 @@ const ProviderRejected = createKnownErrorConstructor(
   () => [] as const,
 );
 
-const UserEmailAlreadyExists = createKnownErrorConstructor(
+const UserWithEmailAlreadyExists = createKnownErrorConstructor(
   KnownError,
   "USER_EMAIL_ALREADY_EXISTS",
-  () => [
+  (email: string) => [
     409,
-    "User email already exists.",
+    `A user with email ${JSON.stringify(email)} already exists.`,
+    {
+      email,
+    },
   ] as const,
-  () => [] as const,
+  (json: any) => [json.email] as const,
 );
 
 const EmailNotVerified = createKnownErrorConstructor(
@@ -611,15 +618,6 @@ const UserNotFound = createKnownErrorConstructor(
   () => [] as const,
 );
 
-const ApiKeyNotFound = createKnownErrorConstructor(
-  KnownError,
-  "API_KEY_NOT_FOUND",
-  () => [
-    404,
-    "API key not found.",
-  ] as const,
-  () => [] as const,
-);
 
 const ProjectNotFound = createKnownErrorConstructor(
   KnownError,
@@ -667,6 +665,17 @@ const PasskeyAuthenticationNotEnabled = createKnownErrorConstructor(
   ] as const,
   () => [] as const,
 );
+
+const AnonymousAccountsNotEnabled = createKnownErrorConstructor(
+  KnownError,
+  "ANONYMOUS_ACCOUNTS_NOT_ENABLED",
+  () => [
+    400,
+    "Anonymous accounts are not enabled for this project.",
+  ] as const,
+  () => [] as const,
+);
+
 
 const EmailPasswordMismatch = createKnownErrorConstructor(
   KnownError,
@@ -1086,6 +1095,20 @@ const TeamMembershipAlreadyExists = createKnownErrorConstructor(
   () => [] as const,
 );
 
+const ProjectPermissionRequired = createKnownErrorConstructor(
+  KnownError,
+  "PROJECT_PERMISSION_REQUIRED",
+  (userId, permissionId) => [
+    401,
+    `User ${userId} does not have permission ${permissionId}.`,
+    {
+      user_id: userId,
+      permission_id: permissionId,
+    },
+  ] as const,
+  (json) => [json.user_id, json.permission_id] as const,
+);
+
 const TeamPermissionRequired = createKnownErrorConstructor(
   KnownError,
   "TEAM_PERMISSION_REQUIRED",
@@ -1186,6 +1209,69 @@ const InvalidPollingCodeError = createKnownErrorConstructor(
   (json: any) => [json] as const,
 );
 
+
+const ApiKeyNotValid = createKnownErrorConstructor(
+  KnownError,
+  "API_KEY_NOT_VALID",
+  "inherit",
+  "inherit",
+);
+
+const ApiKeyExpired = createKnownErrorConstructor(
+  ApiKeyNotValid,
+  "API_KEY_EXPIRED",
+  () => [
+    401,
+    "API key has expired.",
+  ] as const,
+  () => [] as const,
+);
+
+const ApiKeyRevoked = createKnownErrorConstructor(
+  ApiKeyNotValid,
+  "API_KEY_REVOKED",
+  () => [
+    401,
+    "API key has been revoked.",
+  ] as const,
+  () => [] as const,
+);
+
+const WrongApiKeyType = createKnownErrorConstructor(
+  ApiKeyNotValid,
+  "WRONG_API_KEY_TYPE",
+  (expectedType: string, actualType: string) => [
+    400,
+    `This endpoint is for ${expectedType} API keys, but a ${actualType} API key was provided.`,
+    { expected_type: expectedType, actual_type: actualType },
+  ] as const,
+  (json) => [json.expected_type, json.actual_type] as const,
+);
+
+const ApiKeyNotFound = createKnownErrorConstructor(
+  ApiKeyNotValid,
+  "API_KEY_NOT_FOUND",
+  () => [
+    404,
+    "API key not found.",
+  ] as const,
+  () => [] as const,
+);
+
+
+const PermissionIdAlreadyExists = createKnownErrorConstructor(
+  KnownError,
+  "PERMISSION_ID_ALREADY_EXISTS",
+  (permissionId: string) => [
+    400,
+    `Permission with ID "${permissionId}" already exists. Choose a different ID.`,
+    {
+      permission_id: permissionId,
+    },
+  ] as const,
+  (json: any) => [json.permission_id] as const,
+);
+
 export type KnownErrors = {
   [K in keyof typeof KnownErrors]: InstanceType<typeof KnownErrors[K]>;
 };
@@ -1197,6 +1283,7 @@ export const KnownErrors = {
   SchemaError,
   AllOverloadsFailed,
   ProjectAuthenticationError,
+  PermissionIdAlreadyExists,
   InvalidProjectAuthentication,
   ProjectKeyWithoutAccessType,
   InvalidAccessType,
@@ -1229,7 +1316,7 @@ export const KnownErrors = {
   RefreshTokenError,
   ProviderRejected,
   RefreshTokenNotFoundOrExpired,
-  UserEmailAlreadyExists,
+  UserWithEmailAlreadyExists,
   EmailNotVerified,
   UserIdDoesNotExist,
   UserNotFound,
@@ -1238,6 +1325,7 @@ export const KnownErrors = {
   SignUpNotEnabled,
   PasswordAuthenticationNotEnabled,
   PasskeyAuthenticationNotEnabled,
+  AnonymousAccountsNotEnabled,
   EmailPasswordMismatch,
   RedirectUrlNotWhitelisted,
   PasswordRequirementsNotMet,
@@ -1275,6 +1363,7 @@ export const KnownErrors = {
   InvalidTotpCode,
   UserAuthenticationRequired,
   TeamMembershipAlreadyExists,
+  ProjectPermissionRequired,
   TeamPermissionRequired,
   InvalidSharedOAuthProviderId,
   InvalidStandardOAuthProviderId,
@@ -1283,6 +1372,10 @@ export const KnownErrors = {
   OAuthProviderAccessDenied,
   ContactChannelAlreadyUsedForAuthBySomeoneElse,
   InvalidPollingCodeError,
+  ApiKeyNotValid,
+  ApiKeyExpired,
+  ApiKeyRevoked,
+  WrongApiKeyType,
 } satisfies Record<string, KnownErrorConstructor<any, any>>;
 
 

@@ -31,6 +31,11 @@ it("lists all the team permissions", async ({ expect }) => {
           },
           {
             "contained_permission_ids": [],
+            "description": "Create and manage API keys for the team",
+            "id": "$manage_api_keys",
+          },
+          {
+            "contained_permission_ids": [],
             "description": "Read and list the other members of the team",
             "id": "$read_members",
           },
@@ -48,6 +53,7 @@ it("lists all the team permissions", async ({ expect }) => {
             "contained_permission_ids": [
               "$delete_team",
               "$invite_members",
+              "$manage_api_keys",
               "$read_members",
               "$remove_members",
               "$update_team",
@@ -174,6 +180,11 @@ it("creates, updates, and delete a new team permission", async ({ expect }) => {
           },
           {
             "contained_permission_ids": [],
+            "description": "Create and manage API keys for the team",
+            "id": "$manage_api_keys",
+          },
+          {
+            "contained_permission_ids": [],
             "description": "Read and list the other members of the team",
             "id": "$read_members",
           },
@@ -191,6 +202,7 @@ it("creates, updates, and delete a new team permission", async ({ expect }) => {
             "contained_permission_ids": [
               "$delete_team",
               "$invite_members",
+              "$manage_api_keys",
               "$read_members",
               "$remove_members",
               "$update_team",
@@ -265,6 +277,11 @@ it("creates, updates, and delete a new team permission", async ({ expect }) => {
           },
           {
             "contained_permission_ids": [],
+            "description": "Create and manage API keys for the team",
+            "id": "$manage_api_keys",
+          },
+          {
+            "contained_permission_ids": [],
             "description": "Read and list the other members of the team",
             "id": "$read_members",
           },
@@ -282,6 +299,7 @@ it("creates, updates, and delete a new team permission", async ({ expect }) => {
             "contained_permission_ids": [
               "$delete_team",
               "$invite_members",
+              "$manage_api_keys",
               "$read_members",
               "$remove_members",
               "$update_team",
@@ -306,4 +324,83 @@ it("creates, updates, and delete a new team permission", async ({ expect }) => {
       "headers": Headers { <some fields may have been hidden> },
     }
   `);
+});
+
+it("handles duplicate permission IDs correctly", async ({ expect }) => {
+  backendContext.set({ projectKeys: InternalProjectKeys });
+  const { adminAccessToken } = await Project.createAndGetAdminToken();
+
+  // Create first permission
+  const response1 = await niceBackendFetch(`/api/v1/team-permission-definitions`, {
+    accessType: "admin",
+    method: "POST",
+    body: {
+      id: 'duplicate_test',
+      description: "Test permission"
+    },
+    headers: {
+      'x-stack-admin-access-token': adminAccessToken
+    },
+  });
+  expect(response1.status).toBe(201);
+
+  // Try to create another permission with the same ID
+  const response2 = await niceBackendFetch(`/api/v1/team-permission-definitions`, {
+    accessType: "admin",
+    method: "POST",
+    body: {
+      id: 'duplicate_test',
+      description: "Another test permission"
+    },
+    headers: {
+      'x-stack-admin-access-token': adminAccessToken
+    },
+  });
+  expect(response2.status).toBe(400);
+  expect(response2.body).toHaveProperty("code", "PERMISSION_ID_ALREADY_EXISTS");
+
+  // Create another permission
+  const response3 = await niceBackendFetch(`/api/v1/team-permission-definitions`, {
+    accessType: "admin",
+    method: "POST",
+    body: {
+      id: 'update_test',
+      description: "Test permission for update"
+    },
+    headers: {
+      'x-stack-admin-access-token': adminAccessToken
+    },
+  });
+  expect(response3.status).toBe(201);
+
+  // Update the first permission to have the ID of the second (which should fail)
+  const response4 = await niceBackendFetch(`/api/v1/team-permission-definitions/duplicate_test`, {
+    accessType: "admin",
+    method: "PATCH",
+    body: {
+      id: 'update_test',
+      description: "Updated description"
+    },
+    headers: {
+      'x-stack-admin-access-token': adminAccessToken
+    },
+  });
+  expect(response4.status).toBe(400);
+  expect(response4.body).toHaveProperty("code", "PERMISSION_ID_ALREADY_EXISTS");
+
+  // Clean up
+  await niceBackendFetch(`/api/v1/team-permission-definitions/duplicate_test`, {
+    accessType: "admin",
+    method: "DELETE",
+    headers: {
+      'x-stack-admin-access-token': adminAccessToken
+    },
+  });
+  await niceBackendFetch(`/api/v1/team-permission-definitions/update_test`, {
+    accessType: "admin",
+    method: "DELETE",
+    headers: {
+      'x-stack-admin-access-token': adminAccessToken
+    },
+  });
 });

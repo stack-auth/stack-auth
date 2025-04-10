@@ -7,6 +7,7 @@ import { GeoInfo } from "@stackframe/stack-shared/dist/utils/geo";
 import { ReadonlyJson } from "@stackframe/stack-shared/dist/utils/json";
 import { ProviderType } from "@stackframe/stack-shared/dist/utils/oauth";
 import { Result } from "@stackframe/stack-shared/dist/utils/results";
+import { ApiKeyCreationOptions, UserApiKey, UserApiKeyFirstView } from "../api-keys";
 import { AsyncStoreProperty } from "../common";
 import { OAuthConnection } from "../connected-accounts";
 import { ContactChannel, ContactChannelCreateOptions, ServerContactChannel, ServerContactChannelCreateOptions } from "../contact-channels";
@@ -147,6 +148,7 @@ export type BaseUser = {
   readonly passkeyAuthEnabled: boolean,
 
   readonly isMultiFactorRequired: boolean,
+  readonly isAnonymous: boolean,
   toClientJson(): CurrentUserCrud["Client"]["Read"],
 
   /**
@@ -187,6 +189,21 @@ export type UserExtra = {
   // END_PLATFORM
 
   hasPermission(scope: Team, permissionId: string): Promise<boolean>,
+  hasPermission(permissionId: string): Promise<boolean>,
+
+  getPermission(scope: Team, permissionId: string): Promise<TeamPermission | null>,
+  getPermission(permissionId: string): Promise<TeamPermission | null>,
+
+  listPermissions(scope: Team, options?: { recursive?: boolean }): Promise<TeamPermission[]>,
+  listPermissions(options?: { recursive?: boolean }): Promise<TeamPermission[]>,
+
+  // IF_PLATFORM react-like
+  usePermissions(scope: Team, options?: { recursive?: boolean }): TeamPermission[],
+  usePermissions(options?: { recursive?: boolean }): TeamPermission[],
+
+  usePermission(scope: Team, permissionId: string): TeamPermission | null,
+  usePermission(permissionId: string): TeamPermission | null,
+  // END_PLATFORM
 
   readonly selectedTeam: Team | null,
   setSelectedTeam(team: Team | null): Promise<void>,
@@ -197,7 +214,10 @@ export type UserExtra = {
   revokeSession(sessionId: string): Promise<void>,
   getTeamProfile(team: Team): Promise<EditableTeamMemberProfile>,
   useTeamProfile(team: Team): EditableTeamMemberProfile, // THIS_LINE_PLATFORM react-like
+
+  createApiKey(options: ApiKeyCreationOptions<"user">): Promise<UserApiKeyFirstView>,
 }
+& AsyncStoreProperty<"apiKeys", [], UserApiKey[], true>
 & AsyncStoreProperty<"team", [id: string], Team | null, false>
 & AsyncStoreProperty<"teams", [], Team[], true>
 & AsyncStoreProperty<"permission", [scope: Team, permissionId: string, options?: { recursive?: boolean }], TeamPermission | null, false>
@@ -269,6 +289,23 @@ export type ServerBaseUser = {
 
   grantPermission(scope: Team, permissionId: string): Promise<void>,
   revokePermission(scope: Team, permissionId: string): Promise<void>,
+
+  getPermission(scope: Team, permissionId: string): Promise<TeamPermission | null>,
+  getPermission(permissionId: string): Promise<TeamPermission | null>,
+
+  hasPermission(scope: Team, permissionId: string): Promise<boolean>,
+  hasPermission(permissionId: string): Promise<boolean>,
+
+  listPermissions(scope: Team, options?: { recursive?: boolean }): Promise<TeamPermission[]>,
+  listPermissions(options?: { recursive?: boolean }): Promise<TeamPermission[]>,
+
+  // IF_PLATFORM react-like
+  usePermissions(scope: Team, options?: { recursive?: boolean }): TeamPermission[],
+  usePermissions(options?: { recursive?: boolean }): TeamPermission[],
+
+  usePermission(scope: Team, permissionId: string): TeamPermission | null,
+  usePermission(permissionId: string): TeamPermission | null,
+  // END_PLATFORM
 
   /**
    * Creates a new session object with a refresh token for this user. Can be used to impersonate them.

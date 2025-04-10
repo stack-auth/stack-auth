@@ -26,7 +26,7 @@ export default function PageClient() {
     <div className='flex flex-col items-center justify-center h-full w-full gap-10'>
       {user ? (
         <div className='flex flex-col gap-5 justify-center items-center'>
-          <Typography type='h3'>Logged in as: <span className='font-bold'>{user.primaryEmail}</span></Typography>
+          <Typography type='h3'>Logged in as: <span className='font-bold'>{user.displayName ?? user.primaryEmail}</span></Typography>
           <Typography>Click on your user&apos;s image at the top right to see your account settings.</Typography>
           <Typography>Like what you see? <Link href="https://app.stack-auth.com">Create your own project</Link> on our dashboard.</Typography>
           <Link href={app.urls.signOut}>
