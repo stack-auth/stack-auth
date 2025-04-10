@@ -323,8 +323,8 @@ importers:
         specifier: ^0.2.1
         version: 0.2.1(next@15.2.3(@babel/core@7.26.0)(@opentelemetry/api@1.9.0)(react-dom@19.0.0(react@19.0.0))(react@19.0.0))(react-dom@19.0.0(react@19.0.0))(react@19.0.0)
       posthog-js:
-        specifier: ^1.235.0
-        version: 1.235.0
+        specifier: ^1.234.9
+        version: 1.234.9
       react:
         specifier: 19.0.0
         version: 19.0.0
@@ -844,6 +844,9 @@ importers:
       open:
         specifier: ^10.1.0
         version: 10.1.0
+      posthog-node:
+        specifier: ^4.1.0
+        version: 4.1.0
     devDependencies:
       '@types/inquirer':
         specifier: ^9.0.7
@@ -10126,8 +10129,8 @@ packages:
     resolution: {integrity: sha512-9ZhXKM/rw350N1ovuWHbGxnGh/SNJ4cnxHiM0rxE4VN41wsg8P8zWn9hv/buK00RP4WvlOyr/RBDiptyxVbkZQ==}
     engines: {node: '>=0.10.0'}
 
-  posthog-js@1.235.0:
-    resolution: {integrity: sha512-H/s2lgqXhp4lBmYUxue1RlObnt1rfYAg0kLXIU5fUrP6gFLe1OIqs46ip3zGHonCkh+6ZB0oRLnFApWsA1+1YQ==}
+  posthog-js@1.234.9:
+    resolution: {integrity: sha512-Qxpg9YOlLa59lbkYcONZ9efmB6KTgkePnkhCTSnKIyUd826cs4J6VDTKHu+V/lugRtWLWB9R7CckvFE8QPaTbg==}
     peerDependencies:
       '@rrweb/types': 2.0.0-alpha.17
       rrweb-snapshot: 2.0.0-alpha.17
@@ -21596,7 +21599,7 @@ snapshots:
     dependencies:
       xtend: 4.0.2
 
-  posthog-js@1.235.0:
+  posthog-js@1.234.9:
     dependencies:
       core-js: 3.41.0
       fflate: 0.4.8
@@ -21605,7 +21608,7 @@ snapshots:
 
   posthog-node@4.1.0:
     dependencies:
-      axios: 1.7.4
+      axios: 1.7.7
       rusha: 0.8.14
     transitivePeerDependencies:
       - debug
