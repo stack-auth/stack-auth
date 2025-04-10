@@ -1,31 +1,20 @@
 'use client';
 
-import { Separator, Skeleton, Typography } from '@stackframe/stack-ui';
+import { Skeleton, Typography } from '@stackframe/stack-ui';
 import { icons } from 'lucide-react';
 import React, { Suspense } from "react";
-import { Team, useStackApp, useUser } from '..';
+import { useStackApp, useUser } from '..';
 import { MaybeFullPage } from "../components/elements/maybe-full-page";
 import { SidebarLayout } from '../components/elements/sidebar-layout';
 import { TeamIcon } from '../components/team-icon';
 import { useTranslation } from "../lib/translations";
 import { ActiveSessionsPage } from "./account-settings/active-sessions-page";
 import { ApiKeysPage } from "./account-settings/api-keys-page";
-import { DeleteAccountSection } from "./account-settings/delete-account-section";
-import { EmailsSection } from "./account-settings/emails-section";
-import { LeaveTeamSection } from "./account-settings/leave-team-section";
-import { MfaSection } from "./account-settings/mfa-section";
-import { OtpSection } from "./account-settings/otp-section";
-import { PasskeySection } from "./account-settings/passkey-section";
-import { PasswordSection } from "./account-settings/password-section";
+import { EmailsAndAuthPage } from './account-settings/email-and-auth-page';
 import { ProfilePage } from "./account-settings/profile-page";
-import { SignOutSection } from "./account-settings/sign-out-section";
-import { TeamApiKeysSection } from "./account-settings/team-api-keys-section";
+import { SettingsPage } from './account-settings/settings-page';
 import { TeamCreationPage } from './account-settings/team-creation-page';
-import { TeamDisplayNameSection } from "./account-settings/team-display-name-section";
-import { TeamMemberInvitationSection } from "./account-settings/team-member-invitation-section";
-import { TeamMemberListSection } from "./account-settings/team-member-list-section";
-import { TeamProfileImageSection } from "./account-settings/team-profile-image-section";
-import { TeamUserProfileSection } from "./account-settings/team-profile-user-section";
+import { TeamPage } from './account-settings/team-page';
 
 
 
@@ -145,45 +134,11 @@ export function AccountSettings(props: {
   );
 }
 
-function Section(props: { title: string, description?: string, children: React.ReactNode }) {
-  return (
-    <>
-      <Separator />
-      <div className='flex flex-col sm:flex-row gap-2'>
-        <div className='sm:flex-1 flex flex-col justify-center'>
-          <Typography className='font-medium'>
-            {props.title}
-          </Typography>
-          {props.description && <Typography variant='secondary' type='footnote'>
-            {props.description}
-          </Typography>}
-        </div>
-        <div className='sm:flex-1 sm:items-end flex flex-col gap-2 '>
-          {props.children}
-        </div>
-      </div>
-    </>
-  );
-}
-
 function PageLayout(props: { children: React.ReactNode }) {
   return (
     <div className='flex flex-col gap-6'>
       {props.children}
     </div>
-  );
-}
-
-
-function EmailsAndAuthPage() {
-  return (
-    <PageLayout>
-      <EmailsSection/>
-      <PasswordSection />
-      <PasskeySection />
-      <OtpSection />
-      <MfaSection />
-    </PageLayout>
   );
 }
 
@@ -203,34 +158,6 @@ function ActiveSessionsPageSkeleton() {
     <Skeleton className="h-[200px] w-full mt-1 rounded-md"/>
   </PageLayout>;
 }
-
-
-
-function SettingsPage() {
-  return (
-    <PageLayout>
-      <DeleteAccountSection />
-      <SignOutSection />
-    </PageLayout>
-  );
-}
-
-
-function TeamPage(props: { team: Team }) {
-  return (
-    <PageLayout>
-      <TeamUserProfileSection key={`user-profile-${props.team.id}`} team={props.team} />
-      <TeamProfileImageSection key={`profile-image-${props.team.id}`} team={props.team} />
-      <TeamDisplayNameSection key={`display-name-${props.team.id}`} team={props.team} />
-      <TeamMemberListSection key={`member-list-${props.team.id}`} team={props.team} />
-      <TeamMemberInvitationSection key={`member-invitation-${props.team.id}`} team={props.team} />
-      <TeamApiKeysSection key={`api-keys-${props.team.id}`} team={props.team} />
-      <LeaveTeamSection key={`leave-team-${props.team.id}`} team={props.team} />
-    </PageLayout>
-  );
-}
-
-
 
 function ApiKeysPageSkeleton() {
   return <PageLayout>
