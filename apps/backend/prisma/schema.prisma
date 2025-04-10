@@ -57,6 +57,7 @@ model ProjectConfig {
   oauthAccountMergeStrategy          OAuthAccountMergeStrategy @default(LINK_METHOD)
   allowUserApiKeys                   Boolean                   @default(false)
   allowTeamApiKeys                   Boolean                   @default(false)
+  PaymentConfig                      PaymentConfig?
 }
 
 enum OAuthAccountMergeStrategy {
@@ -1036,9 +1037,57 @@ model CliAuthAttempt {
   @@id([tenancyId, id])
 }
 
+// #region Payments
+model PaymentConfig {
+  id String @id @default(uuid()) @db.Uuid
+
+  projectConfigId String        @unique @db.Uuid
+  projectConfig   ProjectConfig @relation(fields: [projectConfigId], references: [id], onDelete: Cascade)
+
+  provider        PaymentProvider
+  stripeAccountId String?         @unique
+  Product         Product[]
+}
+
+enum PaymentProvider {
+  STRIPE_GLOBAL // Used by the internal project / prototyping; might be removed later
+  STRIPE_CONNECT // Used with Stripe Connect: stripeAccountId must be set
+  STRIPE_DIRECT // Used through providing Stack Auth with Stripe keys
+}
+
+model Product {
+  id   String @id @default(uuid()) @db.Uuid
+  name String
+
+  paymentConfigId String        @db.Uuid
+  paymentConfig   PaymentConfig @relation(fields: [paymentConfigId], references: [id], onDelete: Cascade)
+
+  stripeProductId String?  @unique
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  prices          Price[]
+
+  @@index([paymentConfigId])
+}
+
+model Price {
+  id   String  @id @default(uuid()) @db.Uuid
+  name String?
+
+  productId String  @db.Uuid
+  product   Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  stripePriceId String?        @unique
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+  subscriptions Subscription[]
+
+  @@index([productId])
+}
+
 model Customer {
   tenancyId  String @db.Uuid
-  customerId String @db.Uuid @default(uuid())
+  customerId String @default(uuid()) @db.Uuid
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -1068,16 +1117,25 @@ enum SubscriptionStatus {
 }
 
 model Subscription {
+  id String @id @default(uuid()) @db.Uuid
+
   tenancyId  String   @db.Uuid
-  customerId String   @db.Uuid @default(uuid())
+  customerId String   @default(uuid()) @db.Uuid
   customer   Customer @relation(fields: [tenancyId, customerId], references: [tenancyId, customerId], onDelete: Cascade)
 
-  stripeSubscriptionId String             @unique
-  status               SubscriptionStatus
+  stripeSubscriptionId     String?
+  stripeSubscriptionItemId String?
+  status                   SubscriptionStatus
+
+  priceId String? @db.Uuid
+  price   Price?  @relation(fields: [priceId], references: [id], onDelete: Cascade)
 
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
   cancelledAt DateTime?
 
-  @@id([tenancyId, customerId])
+  @@index([tenancyId, customerId])
+  @@index([priceId])
 }
+
+// #endregion Payments
