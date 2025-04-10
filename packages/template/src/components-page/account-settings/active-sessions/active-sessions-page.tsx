@@ -8,9 +8,6 @@ import { ActiveSession } from "../../../lib/stack-app/users";
 import { useTranslation } from "../../../lib/translations";
 import { PageLayout } from "../page-layout";
 
-
-
-
 export function ActiveSessionsPage() {
   const { t } = useTranslation();
   const user = useUser({ or: "throw" });
@@ -35,7 +32,7 @@ export function ActiveSessionsPage() {
       await user.revokeSession(sessionId);
 
       // Remove the session from the list
-      setSessions(sessions.filter(session => session.id !== sessionId));
+      setSessions(prev => prev.filter(session => session.id !== sessionId));
     } catch (error) {
       captureError("Failed to revoke session", { sessionId ,error });
       throw error;
