@@ -180,16 +180,15 @@ export async function runQueryAndMigrateIfNeeded<T>(options: {
     return await options.fn();
   } catch (e) {
     const migrationError = getMigrationError(e);
-    // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
-    if (migrationError === 'MIGRATION_NEEDED') {
-      await applyMigrations({
-        prismaClient: options.prismaClient,
-        migrationFiles: options.migrationFiles,
-        artificialDelayInSeconds: options.artificialDelayInSeconds,
-      });
-      return await options.fn();
-    } else {
-      throw e;
+    switch (migrationError) {
+      case 'MIGRATION_NEEDED': {
+        await applyMigrations({
+          prismaClient: options.prismaClient,
+          migrationFiles: options.migrationFiles,
+          artificialDelayInSeconds: options.artificialDelayInSeconds,
+        });
+        return await options.fn();
+      }
     }
   }
 }
