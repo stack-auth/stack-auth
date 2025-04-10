@@ -388,4 +388,9 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
       error: email.error,
     }));
   }
+
+  async createSetupCode(): Promise<{ code: string }> {
+    const response = await this._interface.createSetupCode();
+    return response;
+  }
 }

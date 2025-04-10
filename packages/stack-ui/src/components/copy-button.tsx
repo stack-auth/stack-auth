@@ -1,8 +1,8 @@
 "use client";
 
+import { forwardRefIfNeeded } from "@stackframe/stack-shared/dist/utils/react";
 import { Copy } from "lucide-react";
 import React from "react";
-import { forwardRefIfNeeded } from "@stackframe/stack-shared/dist/utils/react";
 import { Button, cn, useToast } from "..";
 
 const CopyButton = forwardRefIfNeeded<
