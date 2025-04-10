@@ -204,6 +204,9 @@ importers:
       sharp:
         specifier: ^0.32.6
         version: 0.32.6
+      stripe:
+        specifier: ^18.0.0
+        version: 18.0.0
       svix:
         specifier: ^1.25.0
         version: 1.25.0
@@ -11050,6 +11053,10 @@ packages:
 
   strip-literal@2.1.0:
     resolution: {integrity: sha512-Op+UycaUt/8FbN/Z2TWPBLge3jWrP3xj10f3fnYxf052bKuS3EKs1ZQcVGjnEMdsNVAM+plXRdmjrZ/KgG3Skw==}
+
+  stripe@18.0.0:
+    resolution: {integrity: sha512-3Fs33IzKUby//9kCkCa1uRpinAoTvj6rJgQ2jrBEysoxEvfsclvXdna1amyEYbA2EKkjynuB4+L/kleCCaWTpA==}
+    engines: {node: '>=12.*'}
 
   styled-jsx@5.1.1:
     resolution: {integrity: sha512-pW7uC1l4mBZ8ugbiZrcIsiIvVx1UmTfw7UkC3Um2tmfUq9Bhk8IiyEIPl6F8agHgjzku6j0xQEZbfA5uSgSaCw==}
@@ -22855,6 +22862,11 @@ snapshots:
   strip-literal@2.1.0:
     dependencies:
       js-tokens: 9.0.0
+
+  stripe@18.0.0:
+    dependencies:
+      '@types/node': 20.17.6
+      qs: 6.14.0
 
   styled-jsx@5.1.1(@babel/core@7.26.0)(react@18.2.0):
     dependencies:

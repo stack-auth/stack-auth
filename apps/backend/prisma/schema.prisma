@@ -129,6 +129,7 @@ model Team {
   permissions   Permission[]
   teamMembers   TeamMember[]
   projectApiKey ProjectApiKey[]
+  customer      Customer[]
 
   @@id([tenancyId, teamId])
   @@unique([mirroredProjectId, mirroredBranchId, teamId])
@@ -307,6 +308,7 @@ model ProjectUser {
   SentEmail          SentEmail[]
   projectApiKey      ProjectApiKey[]
   directPermissions  ProjectUserDirectPermission[]
+  customer           Customer?
 
   @@id([tenancyId, projectUserId])
   @@unique([mirroredProjectId, mirroredBranchId, projectUserId])
@@ -1032,4 +1034,50 @@ model CliAuthAttempt {
   updatedAt DateTime @updatedAt
 
   @@id([tenancyId, id])
+}
+
+model Customer {
+  tenancyId  String @db.Uuid
+  customerId String @db.Uuid @default(uuid())
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  stripeCustomerId String? @unique
+
+  // only one of [projectUserId] or [teamId] can be set
+  projectUserId String?      @db.Uuid
+  projectUser   ProjectUser? @relation(fields: [tenancyId, projectUserId], references: [tenancyId, projectUserId], onDelete: Cascade)
+
+  teamId String? @unique @db.Uuid
+  team   Team?   @relation(fields: [tenancyId, teamId], references: [tenancyId, teamId], onDelete: Cascade)
+
+  subscriptions Subscription[]
+
+  @@id([tenancyId, customerId])
+  @@unique([tenancyId, projectUserId])
+  @@unique([tenancyId, teamId])
+}
+
+enum SubscriptionStatus {
+  INACTIVE
+  ACTIVE
+  CANCELLED
+  TRIAL
+  PAUSED
+}
+
+model Subscription {
+  tenancyId  String   @db.Uuid
+  customerId String   @db.Uuid @default(uuid())
+  customer   Customer @relation(fields: [tenancyId, customerId], references: [tenancyId, customerId], onDelete: Cascade)
+
+  stripeSubscriptionId String             @unique
+  status               SubscriptionStatus
+
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  cancelledAt DateTime?
+
+  @@id([tenancyId, customerId])
 }
