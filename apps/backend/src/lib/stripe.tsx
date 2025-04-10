@@ -5,27 +5,60 @@ import Stripe from "stripe";
 
 export const GLOBAL_STRIPE = new Stripe(getEnvVariable("STACK_STRIPE_SECRET_KEY"));
 
-async function getCustomerForUser(tenancyId: string, userId: string): Promise<Customer & { stripeCustomer: Stripe.Customer }> {
-  const customer = await prismaClient.customer.findUnique({
+// get the customer for a user; create a new one (as well as a stripe customer) if it doesn't exist
+export async function getCustomerForUser(tenancyId: string, userId: string): Promise<Customer & { stripeCustomer: Stripe.Customer }> {
+  let customer = await prismaClient.customer.findUnique({
     where: {
       tenancyId_projectUserId: {
-        tenancyId: tenancyId,
-        projectUserId: userId,
-      },
-    },
+        tenancyId,
+        projectUserId: userId
+      }
+    }
   });
 
-  let stripeCustomer: Stripe.Customer;
-  if (!customer) {
-    stripeCustomer = await GLOBAL_STRIPE.customers.create({});
-    await prismaClient.customer.create({
-      data: {
-        tenancyId: tenancyId,
-        projectUserId: userId,
-        stripeCustomerId: stripeCustomer.id,
-      },
+  if (!customer || !customer.stripeCustomerId) {
+    const stripeCustomer = await GLOBAL_STRIPE.customers.create({
+      metadata: {
+        tenancyId,
+        projectUserId: userId
+      }
     });
-  } else {
-    // stripeCustomer = await GLOBAL_STRIPE.customers.retrieve(customer.stripeCustomerId);
+
+    if (!customer) {
+      customer = await prismaClient.customer.create({
+        data: {
+          tenancyId,
+          projectUserId: userId,
+          stripeCustomerId: stripeCustomer.id
+        }
+      });
+    } else {
+      customer = await prismaClient.customer.update({
+        where: {
+          tenancyId_projectUserId: {
+            tenancyId,
+            projectUserId: userId
+          }
+        },
+        data: {
+          stripeCustomerId: stripeCustomer.id
+        }
+      });
+    }
   }
+
+  if (!customer.stripeCustomerId) {
+    throw new Error("Customer exists but stripeCustomerId is still null after updates");
+  }
+
+  const stripeCustomer = await GLOBAL_STRIPE.customers.retrieve(customer.stripeCustomerId);
+
+  if (stripeCustomer.deleted) {
+    throw new Error(`Stripe customer ${customer.stripeCustomerId} was deleted`);
+  }
+
+  return {
+    ...customer,
+    stripeCustomer
+  };
 }
