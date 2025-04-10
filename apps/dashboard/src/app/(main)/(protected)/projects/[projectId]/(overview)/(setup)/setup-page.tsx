@@ -1,18 +1,16 @@
 'use client';
 
+import { CodeBlock } from '@/components/code-block';
 import { StyledLink } from '@/components/link';
 import { getPublicEnvVar } from '@/lib/env';
 import { useThemeWatcher } from '@/lib/theme';
-import { Button, CopyButton, Typography, cn } from "@stackframe/stack-ui";
-import { Book, Terminal } from "lucide-react";
+import { Button, Typography, cn } from "@stackframe/stack-ui";
+import { ArrowLeft, Book } from "lucide-react";
 import dynamic from "next/dynamic";
 import Image from 'next/image';
 import { use, useEffect, useRef, useState } from "react";
 import { GlobeMethods } from "react-globe.gl";
-import SyntaxHighlighter from 'react-syntax-highlighter';
-import { atomOneDark, atomOneLight } from 'react-syntax-highlighter/dist/esm/styles/hljs';
 import { globeImages } from '../(utils)/utils';
-import { ArrowLeft } from 'lucide-react';
 import { PageLayout } from "../../page-layout";
 import { useAdminApp } from '../../use-admin-app';
 import styles from './setup-page.module.css';
@@ -62,11 +60,11 @@ export default function SetupPage(props: { toMetrics: () => void }) {
       description: "The wizard will guide you through the setup process",
       content: <div className="flex flex-col w-0 flex-grow gap-4">
         In a new or existing Next.js project, run:
-        <CodeSnippet
+        <CodeBlock
           language="bash"
           content={`npx @stackframe/init@latest${apiUrl ? ` --api-url="${apiUrl}"` : ''}${setupCode ? ` --setup="${setupCode}"` : ''}`}
           title="Terminal"
-          icon={<Terminal className="w-4 h-4" />}
+          icon="terminal"
         />
       </div>
     },
@@ -87,11 +85,11 @@ export default function SetupPage(props: { toMetrics: () => void }) {
       description: "Install the Stack Auth React SDK",
       content: <div className="flex flex-col w-0 flex-grow gap-4">
         In a new or existing React project, run:
-        <CodeSnippet
+        <CodeBlock
           language="bash"
           content={`npm install @stackframe/react`}
           title="Terminal"
-          icon={<Terminal className="w-4 h-4" />}
+          icon="terminal"
         />
       </div>
     },
@@ -255,31 +253,5 @@ export default function SetupPage(props: { toMetrics: () => void }) {
         </ol>
       </div>
     </PageLayout>
-  );
-}
-
-export function CodeSnippet(props: { language: string, content: string, title: string, icon: React.ReactNode }) {
-  const { theme, mounted } = useThemeWatcher();
-
-  return (
-    <div className="bg-muted rounded-xl overflow-hidden">
-      <div className="text-muted-foreground font-medium py-2 pl-4 pr-2 border-b dark:border-black text-sm flex justify-between items-center">
-        <h5 className="font-medium flex items-center gap-2">
-          {props.icon}
-          {props.title}
-        </h5>
-        <CopyButton content={props.content} />
-      </div>
-      <div>
-        <SyntaxHighlighter
-          language={props.language}
-          style={theme === 'dark' ? atomOneDark : atomOneLight}
-          customStyle={{ background: 'transparent', paddingLeft: '1em', paddingRight: '1em', paddingTop: '0.75em', paddingBottom: '0.75em' }}
-          wrapLines
-        >
-          {props.content}
-        </SyntaxHighlighter>
-      </div>
-    </div>
   );
 }
