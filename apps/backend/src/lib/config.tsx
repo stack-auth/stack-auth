@@ -1,4 +1,3 @@
-import { RawQuery, prismaClient } from "@/prisma-client";
 import { Prisma } from "@prisma/client";
 import { NormalizationError, getInvalidConfigReason, normalize, override } from "@stackframe/stack-shared/dist/config/format";
 import { BranchConfigOverride, BranchIncompleteConfig, BranchRenderedConfig, EnvironmentConfigOverride, EnvironmentIncompleteConfig, EnvironmentRenderedConfig, OrganizationConfigOverride, OrganizationIncompleteConfig, OrganizationRenderedConfig, ProjectConfigOverride, ProjectIncompleteConfig, ProjectRenderedConfig, baseConfig, branchConfigSchema, environmentConfigSchema, organizationConfigSchema, projectConfigSchema } from "@stackframe/stack-shared/dist/config/schema";
@@ -10,6 +9,7 @@ import { Result } from "@stackframe/stack-shared/dist/utils/results";
 import { stringCompare, typedToLowercase } from "@stackframe/stack-shared/dist/utils/strings";
 import { base64url } from "jose";
 import * as yup from "yup";
+import { RawQuery, prismaClient } from "../prisma-client";
 import { permissionDefinitionJsonFromDbType, permissionDefinitionJsonFromSystemDbType } from "./permissions";
 import { DBProject, fullProjectInclude } from "./projects";
 
