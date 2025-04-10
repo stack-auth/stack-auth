@@ -1,9 +1,9 @@
 import { Button, Typography } from "@stackframe/stack-ui";
 import { useState } from "react";
-import { useStackApp } from "../..";
-import { useUser } from "../../lib/hooks";
-import { useTranslation } from "../../lib/translations";
-import { Section } from "./section";
+import { useStackApp } from "../../..";
+import { useUser } from "../../../lib/hooks";
+import { useTranslation } from "../../../lib/translations";
+import { Section } from "../section";
 
 export function PasskeySection() {
   const { t } = useTranslation();

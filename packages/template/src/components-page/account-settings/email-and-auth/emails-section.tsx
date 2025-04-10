@@ -6,9 +6,9 @@ import { ActionCell, Badge, Button, Input, Table, TableBody, TableCell, TableRow
 import { useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
 import * as yup from "yup";
-import { FormWarningText } from "../../components/elements/form-warning";
-import { useUser } from "../../lib/hooks";
-import { useTranslation } from "../../lib/translations";
+import { FormWarningText } from "../../../components/elements/form-warning";
+import { useUser } from "../../../lib/hooks";
+import { useTranslation } from "../../../lib/translations";
 
 export function EmailsSection() {
   const { t } = useTranslation();

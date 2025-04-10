@@ -6,11 +6,11 @@ import { Trash } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
 import * as yup from "yup";
-import { Team } from "../..";
-import { FormWarningText } from "../../components/elements/form-warning";
-import { useUser } from "../../lib/hooks";
-import { useTranslation } from "../../lib/translations";
-import { Section } from "./section";
+import { Team } from "../../..";
+import { FormWarningText } from "../../../components/elements/form-warning";
+import { useUser } from "../../../lib/hooks";
+import { useTranslation } from "../../../lib/translations";
+import { Section } from "../section";
 
 export function TeamMemberInvitationSection(props: { team: Team }) {
   const user = useUser({ or: 'redirect' });

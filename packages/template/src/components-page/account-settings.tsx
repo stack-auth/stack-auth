@@ -8,13 +8,13 @@ import { MaybeFullPage } from "../components/elements/maybe-full-page";
 import { SidebarLayout } from '../components/elements/sidebar-layout';
 import { TeamIcon } from '../components/team-icon';
 import { useTranslation } from "../lib/translations";
-import { ActiveSessionsPage } from "./account-settings/active-sessions-page";
-import { ApiKeysPage } from "./account-settings/api-keys-page";
-import { EmailsAndAuthPage } from './account-settings/email-and-auth-page';
-import { ProfilePage } from "./account-settings/profile-page";
-import { SettingsPage } from './account-settings/settings-page';
-import { TeamCreationPage } from './account-settings/team-creation-page';
-import { TeamPage } from './account-settings/team-page';
+import { ActiveSessionsPage } from "./account-settings/active-sessions/active-sessions-page";
+import { ApiKeysPage } from "./account-settings/api-keys/api-keys-page";
+import { EmailsAndAuthPage } from './account-settings/email-and-auth/email-and-auth-page';
+import { ProfilePage } from "./account-settings/profile-page/profile-page";
+import { SettingsPage } from './account-settings/settings/settings-page';
+import { TeamCreationPage } from './account-settings/teams/team-creation-page';
+import { TeamPage } from './account-settings/teams/team-page';
 
 const Icon = ({ name }: { name: keyof typeof icons }) => {
   const LucideIcon = icons[name];

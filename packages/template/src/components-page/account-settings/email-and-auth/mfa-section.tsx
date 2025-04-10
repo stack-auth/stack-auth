@@ -6,10 +6,10 @@ import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/
 import { Button, Input, Typography } from "@stackframe/stack-ui";
 import * as QRCode from 'qrcode';
 import { useEffect, useState } from "react";
-import { CurrentUser, Project } from '../..';
-import { useStackApp, useUser } from "../../lib/hooks";
-import { useTranslation } from "../../lib/translations";
-import { Section } from "./section";
+import { CurrentUser, Project } from '../../..';
+import { useStackApp, useUser } from "../../../lib/hooks";
+import { useTranslation } from "../../../lib/translations";
+import { Section } from "../section";
 
 export function MfaSection() {
   const { t } = useTranslation();

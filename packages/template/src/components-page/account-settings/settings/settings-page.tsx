@@ -1,5 +1,5 @@
+import { PageLayout } from "../page-layout";
 import { DeleteAccountSection } from "./delete-account-section";
-import { PageLayout } from "./page-layout";
 import { SignOutSection } from "./sign-out-section";
 
 

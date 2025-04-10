@@ -6,11 +6,11 @@ import { Button, Input, Label, PasswordInput, Typography } from "@stackframe/sta
 import { useState } from "react";
 import { useForm } from "react-hook-form";
 import * as yup from "yup";
-import { useStackApp } from '../..';
-import { FormWarningText } from "../../components/elements/form-warning";
-import { useUser } from "../../lib/hooks";
-import { useTranslation } from "../../lib/translations";
-import { Section } from "./section";
+import { useStackApp } from '../../..';
+import { FormWarningText } from "../../../components/elements/form-warning";
+import { useUser } from "../../../lib/hooks";
+import { useTranslation } from "../../../lib/translations";
+import { Section } from "../section";
 
 
 export function PasswordSection() {

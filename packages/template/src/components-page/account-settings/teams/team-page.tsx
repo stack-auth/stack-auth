@@ -1,6 +1,6 @@
-import { Team } from "../..";
+import { Team } from "../../..";
+import { PageLayout } from "../page-layout";
 import { LeaveTeamSection } from "./leave-team-section";
-import { PageLayout } from "./page-layout";
 import { TeamApiKeysSection } from "./team-api-keys-section";
 import { TeamDisplayNameSection } from "./team-display-name-section";
 import { TeamMemberInvitationSection } from "./team-member-invitation-section";

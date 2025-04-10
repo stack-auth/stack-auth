@@ -1,8 +1,8 @@
-import { Team } from "../..";
-import { useUser } from "../../lib/hooks";
-import { useTranslation } from "../../lib/translations";
-import { EditableText } from "./editable-text";
-import { Section } from "./section";
+import { Team } from "../../..";
+import { useUser } from "../../../lib/hooks";
+import { useTranslation } from "../../../lib/translations";
+import { EditableText } from "../editable-text";
+import { Section } from "../section";
 
 export function TeamUserProfileSection(props: { team: Team }) {
   const { t } = useTranslation();

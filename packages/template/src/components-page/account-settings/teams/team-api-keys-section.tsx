@@ -1,13 +1,13 @@
 import { StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
 import { Button } from "@stackframe/stack-ui";
 import { useState } from "react";
-import { CreateApiKeyDialog, ShowApiKeyDialog } from "../../components/api-key-dialogs";
-import { ApiKeyTable } from "../../components/api-key-table";
-import { useUser } from "../../lib/hooks";
-import { TeamApiKeyFirstView } from "../../lib/stack-app/api-keys";
-import { Team } from "../../lib/stack-app/teams";
-import { useTranslation } from "../../lib/translations";
-import { Section } from "./section";
+import { CreateApiKeyDialog, ShowApiKeyDialog } from "../../../components/api-key-dialogs";
+import { ApiKeyTable } from "../../../components/api-key-table";
+import { useUser } from "../../../lib/hooks";
+import { TeamApiKeyFirstView } from "../../../lib/stack-app/api-keys";
+import { Team } from "../../../lib/stack-app/teams";
+import { useTranslation } from "../../../lib/translations";
+import { Section } from "../section";
 
 
 export function TeamApiKeysSection(props: { team: Team }) {

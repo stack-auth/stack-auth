@@ -1,9 +1,9 @@
-import { ProfileImageEditor } from "../../components/profile-image-editor";
-import { useUser } from "../../lib/hooks";
-import { useTranslation } from "../../lib/translations";
-import { EditableText } from "./editable-text";
-import { PageLayout } from "./page-layout";
-import { Section } from "./section";
+import { ProfileImageEditor } from "../../../components/profile-image-editor";
+import { useUser } from "../../../lib/hooks";
+import { useTranslation } from "../../../lib/translations";
+import { EditableText } from "../editable-text";
+import { PageLayout } from "../page-layout";
+import { Section } from "../section";
 
 export function ProfilePage() {
   const { t } = useTranslation();

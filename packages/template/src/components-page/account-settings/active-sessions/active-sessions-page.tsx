@@ -3,10 +3,10 @@ import { captureError } from "@stackframe/stack-shared/dist/utils/errors";
 import { runAsynchronously } from "@stackframe/stack-shared/dist/utils/promises";
 import { ActionCell, Badge, Button, Skeleton, Table, TableBody, TableCell, TableHead, TableHeader, TableRow, Typography } from "@stackframe/stack-ui";
 import { useEffect, useState } from "react";
-import { useUser } from "../../lib/hooks";
-import { ActiveSession } from "../../lib/stack-app/users";
-import { useTranslation } from "../../lib/translations";
-import { PageLayout } from "./page-layout";
+import { useUser } from "../../../lib/hooks";
+import { ActiveSession } from "../../../lib/stack-app/users";
+import { useTranslation } from "../../../lib/translations";
+import { PageLayout } from "../page-layout";
 
 
 

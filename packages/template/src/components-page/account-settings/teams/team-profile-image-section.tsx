@@ -1,8 +1,8 @@
-import { Team } from "../..";
-import { ProfileImageEditor } from "../../components/profile-image-editor";
-import { useUser } from "../../lib/hooks";
-import { useTranslation } from "../../lib/translations";
-import { Section } from "./section";
+import { Team } from "../../..";
+import { ProfileImageEditor } from "../../../components/profile-image-editor";
+import { useUser } from "../../../lib/hooks";
+import { useTranslation } from "../../../lib/translations";
+import { Section } from "../section";
 
 export function TeamProfileImageSection(props: { team: Team }) {
   const { t } = useTranslation();

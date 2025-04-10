@@ -5,12 +5,12 @@ import { Button, Input } from "@stackframe/stack-ui";
 import { useState } from "react";
 import { useForm } from "react-hook-form";
 import * as yup from "yup";
-import { FormWarningText } from "../../components/elements/form-warning";
-import { MessageCard } from "../../components/message-cards/message-card";
-import { useStackApp, useUser } from "../../lib/hooks";
-import { useTranslation } from "../../lib/translations";
-import { PageLayout } from "./page-layout";
-import { Section } from "./section";
+import { FormWarningText } from "../../../components/elements/form-warning";
+import { MessageCard } from "../../../components/message-cards/message-card";
+import { useStackApp, useUser } from "../../../lib/hooks";
+import { useTranslation } from "../../../lib/translations";
+import { PageLayout } from "../page-layout";
+import { Section } from "../section";
 
 export function TeamCreationPage() {
   const { t } = useTranslation();

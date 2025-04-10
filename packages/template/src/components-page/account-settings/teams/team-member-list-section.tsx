@@ -1,8 +1,8 @@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow, Typography } from "@stackframe/stack-ui";
-import { Team } from "../..";
-import { UserAvatar } from "../../components/elements/user-avatar";
-import { useUser } from "../../lib/hooks";
-import { useTranslation } from "../../lib/translations";
+import { Team } from "../../..";
+import { UserAvatar } from "../../../components/elements/user-avatar";
+import { useUser } from "../../../lib/hooks";
+import { useTranslation } from "../../../lib/translations";
 
 export function TeamMemberListSection(props: { team: Team }) {
   const user = useUser({ or: 'redirect' });

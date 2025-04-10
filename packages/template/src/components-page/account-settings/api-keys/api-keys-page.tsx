@@ -1,11 +1,11 @@
 import { Button } from "@stackframe/stack-ui";
 import { useState } from "react";
-import { CreateApiKeyDialog, ShowApiKeyDialog } from "../../components/api-key-dialogs";
-import { ApiKeyTable } from "../../components/api-key-table";
-import { useUser } from "../../lib/hooks";
-import { ApiKey, ApiKeyCreationOptions } from "../../lib/stack-app/api-keys";
-import { useTranslation } from "../../lib/translations";
-import { PageLayout } from "./page-layout";
+import { CreateApiKeyDialog, ShowApiKeyDialog } from "../../../components/api-key-dialogs";
+import { ApiKeyTable } from "../../../components/api-key-table";
+import { useUser } from "../../../lib/hooks";
+import { ApiKey, ApiKeyCreationOptions } from "../../../lib/stack-app/api-keys";
+import { useTranslation } from "../../../lib/translations";
+import { PageLayout } from "../page-layout";
 
 
 export function ApiKeysPage() {
