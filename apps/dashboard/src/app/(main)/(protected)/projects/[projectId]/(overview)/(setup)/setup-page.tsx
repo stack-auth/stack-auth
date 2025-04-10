@@ -12,13 +12,14 @@ import { GlobeMethods } from "react-globe.gl";
 import SyntaxHighlighter from 'react-syntax-highlighter';
 import { atomOneDark, atomOneLight } from 'react-syntax-highlighter/dist/esm/styles/hljs';
 import { globeImages } from '../(utils)/utils';
+import { ArrowLeft } from 'lucide-react';
 import { PageLayout } from "../../page-layout";
 import { useAdminApp } from '../../use-admin-app';
 import styles from './setup-page.module.css';
 const countriesPromise = import('../(utils)/country-data.geo.json');
 const Globe = dynamic(() => import('react-globe.gl').then((mod) => mod.default), { ssr: false });
 
-export default function SetupPage() {
+export default function SetupPage(props: { toMetrics: () => void }) {
   const adminApp = useAdminApp();
   const countries = use(countriesPromise);
   const globeEl = useRef<GlobeMethods | undefined>(undefined);
@@ -99,6 +100,12 @@ export default function SetupPage() {
 
   return (
     <PageLayout width={1000}>
+      <div className="flex">
+        <Button variant='plain' onClick={props.toMetrics}>
+          <ArrowLeft className="w-4 h-4 mr-2" />
+          Back to Metrics
+        </Button>
+      </div>
       <div className="flex gap-4 justify-center items-center border rounded-2xl py-4 px-8">
         <div className="w-[200px] h-[200px] relative hidden md:block">
           {showPulse && (
