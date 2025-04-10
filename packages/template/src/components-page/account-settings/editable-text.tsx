@@ -4,8 +4,6 @@ import { useState } from "react";
 import { useTranslation } from "../../lib/translations";
 
 
-
-
 export function EditableText(props: { value: string, onSave?: (value: string) => void | Promise<void> }) {
   const [editing, setEditing] = useState(false);
   const [editingValue, setEditingValue] = useState(props.value);

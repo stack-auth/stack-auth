@@ -11,6 +11,3 @@ export function SettingsPage() {
     </PageLayout>
   );
 }
-
-
-

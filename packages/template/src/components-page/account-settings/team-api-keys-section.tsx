@@ -10,8 +10,6 @@ import { useTranslation } from "../../lib/translations";
 import { Section } from "./section";
 
 
-
-
 export function TeamApiKeysSection(props: { team: Team }) {
   const user = useUser({ or: 'redirect' });
   const team = user.useTeam(props.team.id);

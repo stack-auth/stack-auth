@@ -16,8 +16,6 @@ import { SettingsPage } from './account-settings/settings-page';
 import { TeamCreationPage } from './account-settings/team-creation-page';
 import { TeamPage } from './account-settings/team-page';
 
-
-
 const Icon = ({ name }: { name: keyof typeof icons }) => {
   const LucideIcon = icons[name];
   return <LucideIcon className="mr-2 h-4 w-4"/>;
