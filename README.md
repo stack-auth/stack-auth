@@ -163,10 +163,10 @@ pnpm run prisma studio
 
 ### Database migrations
 
-If you make changes to the Prisma schema, you need to run the following command to create a migration:
+If you make changes to the Prisma schema, you need to run the following command to create a migration file:
 
 ```sh
-pnpm run prisma migrate dev
+pnpm run db:migration-gen
 ```
 
 ### Chat with the codebase

@@ -99,9 +99,6 @@
     "codegen": {
       "cache": false
     },
-    "prisma": {
-      "cache": false
-    },
     "typecheck": {
       "dependsOn": []
     },
@@ -109,6 +106,18 @@
       "cache": false
     },
     "generate-keys": {
+      "cache": false
+    },
+    "db:migration-gen": {
+      "cache": false
+    },
+    "db:reset": {
+      "cache": false
+    },
+    "db:seed": {
+      "cache": false
+    },
+    "db:init": {
       "cache": false
     }
   }

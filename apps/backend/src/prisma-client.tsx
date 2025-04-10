@@ -3,6 +3,7 @@ import { withAccelerate } from "@prisma/extension-accelerate";
 import { getEnvVariable, getNodeEnvironment } from '@stackframe/stack-shared/dist/utils/env';
 import { deepPlainEquals, filterUndefined, typedFromEntries, typedKeys } from "@stackframe/stack-shared/dist/utils/objects";
 import { Result } from "@stackframe/stack-shared/dist/utils/results";
+import { getMigrationCheckQuery, runQueryAndMigrateIfNeeded } from "./auto-migrations";
 import { traceSpan } from "./utils/telemetry";
 
 // In dev mode, fast refresh causes us to recreate many Prisma clients, eventually overloading the database.
@@ -18,7 +19,6 @@ if (getNodeEnvironment() !== 'production') {
   globalForPrisma.prisma = prismaClient;
 }
 
-
 export async function retryTransaction<T>(fn: (...args: Parameters<Parameters<typeof prismaClient.$transaction>[0]>) => Promise<T>): Promise<T> {
   // disable serializable transactions for now, later we may re-add them
   const enableSerializable = false as boolean;
@@ -28,9 +28,18 @@ export async function retryTransaction<T>(fn: (...args: Parameters<Parameters<ty
       return await traceSpan(`transaction attempt #${attemptIndex}`, async (attemptSpan) => {
         const attemptRes = await (async () => {
           try {
-            return await prismaClient.$transaction(async (...args) => {
+            return await prismaClient.$transaction(async (tx, ...args) => {
               try {
-                return Result.ok(await fn(...args));
+                await runQueryAndMigrateIfNeeded({
+                  prismaClient,
+                  fn: async () => {
+                    // this uses prismaClient, not tx, intentionally
+                    // because if this fails, we want to retry this query instead of failing the whole transaction
+                    await prismaClient.$queryRaw(getMigrationCheckQuery());
+                  },
+                });
+
+                return Result.ok(await fn(tx, ...args));
               } catch (e) {
                 if (e instanceof Prisma.PrismaClientKnownRequestError || e instanceof Prisma.PrismaClientUnknownRequestError) {
                   // retry
@@ -123,7 +132,14 @@ async function rawQueryArray<Q extends RawQuery<any>[]>(queries: Q): Promise<[] 
     // Since ours starts with "WITH", we prepend a SELECT to it
     const query = Prisma.sql`SELECT * FROM (${withQuery}) AS _`;
 
-    const rawResult = await prismaClient.$queryRaw(query) as { type: string, json: any }[];
+    const [_, rawResult] = await runQueryAndMigrateIfNeeded({
+      prismaClient,
+      fn: async () => await prismaClient.$transaction([
+        prismaClient.$queryRaw(getMigrationCheckQuery()),
+        prismaClient.$queryRaw(query),
+      ])
+    }) as [unknown, { type: string, json: any }[]];
+
     const unprocessed = new Array(queries.length).fill(null).map(() => [] as any[]);
     for (const row of rawResult) {
       const type = row.type;
