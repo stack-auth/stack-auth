@@ -12,6 +12,7 @@ export const POST = createSmartRouteHandler({
     summary: "Revoke an API key",
     description: "Revoke an API key that was found through credential scanning",
     tags: ["Credential Scanning"],
+    hidden: true,
   },
   request: yupObject({
     body: yupObject({
@@ -40,6 +41,10 @@ export const POST = createSmartRouteHandler({
 
       if (apiKey.isPublic) {
         throw new KnownErrors.PublicApiKeyCannotBeRevoked();
+      }
+
+      if (apiKey.expiresAt && apiKey.expiresAt < new Date()) {
+        throw new KnownErrors.ApiKeyExpired();
       }
 
       if (apiKey.manuallyRevokedAt) {
@@ -145,6 +150,15 @@ export const POST = createSmartRouteHandler({
       }
     }
 
+    const project = await prismaClient.project.findUnique({
+      where: {
+        id: updatedApiKey.projectId,
+      },
+    });
+
+    if (!project) {
+      throw new StackAssertionError("Project not found");
+    }
 
     // Create email content
     const subject = `API Key Revoked: ${updatedApiKey.description}`;
@@ -152,7 +166,7 @@ export const POST = createSmartRouteHandler({
       <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
         <h2 style="color: #333;">API Key Revoked</h2>
         <p style="color: #555; font-size: 16px; line-height: 1.5;">
-          Your API key "${updatedApiKey.description}" has been automatically revoked because it was found in a public repository.
+          Your API key "${updatedApiKey.description}" for ${project.displayName} has been automatically revoked because it was found in a public repository.
         </p>
         <p style="color: #555; font-size: 16px; line-height: 1.5;">
           This is an automated security measure to protect your api keys from being leaked. If you believe this was a mistake, please contact support.

@@ -82,7 +82,7 @@ it("should send email notification to user when revoking an API key through cred
       API Key Revoked
       ---------------
       
-      Your API key "Test API Key to Revoke" has been automatically revoked because it was found in a public repository.
+      Your API key "Test API Key to Revoke" for New Project has been automatically revoked because it was found in a public repository.
       
       This is an automated security measure to protect your api keys from being leaked. If you believe this was a mistake, please contact support.
       
@@ -173,13 +173,13 @@ it("should send email notification to team members when revoking a team API key 
       MailboxMessage {
         "attachments": [],
         "body": {
-          "html": "\\n      <div style=\\"font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;\\">\\n        <h2 style=\\"color: #333;\\">API Key Revoked</h2>\\n        <p style=\\"color: #555; font-size: 16px; line-height: 1.5;\\">\\n          Your API key \\"Test Team API Key to Revoke\\" has been automatically revoked because it was found in a public repository.\\n        </p>\\n        <p style=\\"color: #555; font-size: 16px; line-height: 1.5;\\">\\n          This is an automated security measure to protect your api keys from being leaked. If you believe this was a mistake, please contact support.\\n        </p>\\n        <p style=\\"color: #555; font-size: 16px; line-height: 1.5;\\">\\n          Please create a new API key if needed.\\n        </p>\\n      </div>\\n    \\n",
+          "html": "\\n      <div style=\\"font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;\\">\\n        <h2 style=\\"color: #333;\\">API Key Revoked</h2>\\n        <p style=\\"color: #555; font-size: 16px; line-height: 1.5;\\">\\n          Your API key \\"Test Team API Key to Revoke\\" for New Project has been automatically revoked because it was found in a public repository.\\n        </p>\\n        <p style=\\"color: #555; font-size: 16px; line-height: 1.5;\\">\\n          This is an automated security measure to protect your api keys from being leaked. If you believe this was a mistake, please contact support.\\n        </p>\\n        <p style=\\"color: #555; font-size: 16px; line-height: 1.5;\\">\\n          Please create a new API key if needed.\\n        </p>\\n      </div>\\n    \\n",
           "text": deindent\`
             ---------------
             API Key Revoked
             ---------------
             
-            Your API key "Test Team API Key to Revoke" has been automatically revoked because it was found in a public repository.
+            Your API key "Test Team API Key to Revoke" for New Project has been automatically revoked because it was found in a public repository.
             
             This is an automated security measure to protect your api keys from being leaked. If you believe this was a mistake, please contact support.
             
@@ -198,13 +198,13 @@ it("should send email notification to team members when revoking a team API key 
       MailboxMessage {
         "attachments": [],
         "body": {
-          "html": "\\n      <div style=\\"font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;\\">\\n        <h2 style=\\"color: #333;\\">API Key Revoked</h2>\\n        <p style=\\"color: #555; font-size: 16px; line-height: 1.5;\\">\\n          Your API key \\"Test Team API Key to Revoke\\" has been automatically revoked because it was found in a public repository.\\n        </p>\\n        <p style=\\"color: #555; font-size: 16px; line-height: 1.5;\\">\\n          This is an automated security measure to protect your api keys from being leaked. If you believe this was a mistake, please contact support.\\n        </p>\\n        <p style=\\"color: #555; font-size: 16px; line-height: 1.5;\\">\\n          Please create a new API key if needed.\\n        </p>\\n      </div>\\n    \\n",
+          "html": "\\n      <div style=\\"font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;\\">\\n        <h2 style=\\"color: #333;\\">API Key Revoked</h2>\\n        <p style=\\"color: #555; font-size: 16px; line-height: 1.5;\\">\\n          Your API key \\"Test Team API Key to Revoke\\" for New Project has been automatically revoked because it was found in a public repository.\\n        </p>\\n        <p style=\\"color: #555; font-size: 16px; line-height: 1.5;\\">\\n          This is an automated security measure to protect your api keys from being leaked. If you believe this was a mistake, please contact support.\\n        </p>\\n        <p style=\\"color: #555; font-size: 16px; line-height: 1.5;\\">\\n          Please create a new API key if needed.\\n        </p>\\n      </div>\\n    \\n",
           "text": deindent\`
             ---------------
             API Key Revoked
             ---------------
             
-            Your API key "Test Team API Key to Revoke" has been automatically revoked because it was found in a public repository.
+            Your API key "Test Team API Key to Revoke" for New Project has been automatically revoked because it was found in a public repository.
             
             This is an automated security measure to protect your api keys from being leaked. If you believe this was a mistake, please contact support.
             
