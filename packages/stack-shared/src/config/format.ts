@@ -160,41 +160,32 @@ export function normalize(c: Config, options: NormalizeOptions = {}): Normalized
   const result: NormalizedConfig = {};
   const keysByDepth = Object.keys(c).sort((a, b) => countDots(a) - countDots(b));
 
-  for (const key of keysByDepth) {
-    if (key.includes('.')) {
-      const segments = key.split('.');
-      let current: NormalizedConfig = result;
-      let currentKey = segments[0];
-      let ignored = false;
+  outer: for (const key of keysByDepth) {
+    const keySegmentsWithoutLast = key.split('.');
+    const last = keySegmentsWithoutLast.pop();
+    if (!last) {
+      throw new NormalizationError(`Tried to normalize ${JSON.stringify(key)}, but it doesn't contain any dots. Maybe this config is not normalizable?`);
+    }
 
-      // Create or traverse the path for all segments except the last one
-      for (let i = 0; i < segments.length - 1; i++) {
-        if (!has(current, currentKey)) {
-          switch (onDotIntoNull) {
-            case "throw": {
-              throw new NormalizationError(`Tried to use dot notation to access ${JSON.stringify(key)}, but ${JSON.stringify(currentKey)} doesn't exist on the object (or is null). Maybe this config is not normalizable?`);
-            }
-            case "ignore": {
-              ignored = true;
-              continue;
-            }
+    let current: NormalizedConfig = result;
+    for (const keySegment of keySegmentsWithoutLast) {
+      if (!has(current, keySegment)) {
+        switch (onDotIntoNull) {
+          case "throw": {
+            throw new NormalizationError(`Tried to use dot notation to access ${JSON.stringify(key)}, but ${JSON.stringify(keySegment)} doesn't exist on the object (or is null). Maybe this config is not normalizable?`);
+          }
+          case "ignore": {
+            continue outer;
           }
         }
-        const value = get(current, currentKey);
-        if (typeof value !== 'object') {
-          throw new NormalizationError(`Tried to use dot notation to access ${JSON.stringify(key)}, but ${JSON.stringify(currentKey)} is not an object. Maybe this config is not normalizable?`);
-        }
-        current = value as NormalizedConfig;
-        currentKey = segments[i + 1];
       }
-
-      // Set the final value
-      if (!ignored) {
-        setNormalizedValue(current, currentKey, get(c, key));
+      const value = get(current, keySegment);
+      if (typeof value !== 'object') {
+        throw new NormalizationError(`Tried to use dot notation to access ${JSON.stringify(key)}, but ${JSON.stringify(keySegment)} is not an object. Maybe this config is not normalizable?`);
       }
-    } else {
-      setNormalizedValue(result, key, get(c, key));
+      current = value as NormalizedConfig;
     }
+    setNormalizedValue(current, last, get(c, key));
   }
   return result;
 }

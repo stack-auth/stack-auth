@@ -218,7 +218,7 @@ export type EnvironmentRenderedConfig = Omit<EnvironmentIncompleteConfig,
 >;
 export type OrganizationRenderedConfig = OrganizationIncompleteConfig;
 
-export type ProjectConfigOverride = NormalizesTo<ProjectIncompleteConfig>;
-export type BranchConfigOverride = NormalizesTo<BranchIncompleteConfig>;
-export type EnvironmentConfigOverride = NormalizesTo<EnvironmentIncompleteConfig>;
-export type OrganizationConfigOverride = NormalizesTo<OrganizationIncompleteConfig>;
+export type ProjectConfigOverride = NormalizesTo<yup.InferType<typeof projectConfigSchema>>;
+export type BranchConfigOverride = NormalizesTo<yup.InferType<typeof branchConfigSchema>>;
+export type EnvironmentConfigOverride = NormalizesTo<yup.InferType<typeof environmentConfigSchema>>;
+export type OrganizationConfigOverride = NormalizesTo<yup.InferType<typeof organizationConfigSchema>>;
