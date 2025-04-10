@@ -149,6 +149,4 @@ export async function createAuthTokens(options: {
     }
     throw error;
   }
-
-
 }

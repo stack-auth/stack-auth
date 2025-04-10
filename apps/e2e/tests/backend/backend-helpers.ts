@@ -1,4 +1,4 @@
-import { InternalProjectsCrud } from "@stackframe/stack-shared/dist/interface/crud/projects";
+import { AdminUserProjectsCrud } from "@stackframe/stack-shared/dist/interface/crud/projects";
 import { encodeBase64 } from "@stackframe/stack-shared/dist/utils/bytes";
 import { generateSecureRandomString } from "@stackframe/stack-shared/dist/utils/crypto";
 import { StackAssertionError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
@@ -1010,8 +1010,8 @@ export namespace Project {
     };
   }
 
-  export async function updateCurrent(adminAccessToken: string, body: Partial<InternalProjectsCrud["Admin"]["Create"]>) {
-    const response = await niceBackendFetch(`/api/v1/projects/current`, {
+  export async function updateCurrent(adminAccessToken: string, body: Partial<AdminUserProjectsCrud["Admin"]["Create"]>) {
+    const response = await niceBackendFetch(`/api/v1/internal/projects/current`, {
       accessType: "admin",
       method: "PATCH",
       body,
@@ -1025,7 +1025,7 @@ export namespace Project {
     };
   }
 
-  export async function createAndGetAdminToken(body?: Partial<InternalProjectsCrud["Admin"]["Create"]>) {
+  export async function createAndGetAdminToken(body?: Partial<AdminUserProjectsCrud["Admin"]["Create"]>) {
     backendContext.set({
       projectKeys: InternalProjectKeys,
       userAuth: null,
@@ -1053,7 +1053,7 @@ export namespace Project {
     };
   }
 
-  export async function createAndSwitch(body?: Partial<InternalProjectsCrud["Admin"]["Create"]>) {
+  export async function createAndSwitch(body?: Partial<AdminUserProjectsCrud["Admin"]["Create"]>) {
     const createResult = await Project.createAndGetAdminToken(body);
     backendContext.set({
       projectKeys: {
