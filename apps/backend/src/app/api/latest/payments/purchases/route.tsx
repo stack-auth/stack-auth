@@ -1,6 +1,6 @@
 import { getCustomerForUser, GLOBAL_STRIPE } from "@/lib/stripe";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
-import { adaptSchema, userIdOrMeSchema, yupArray, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
+import { adaptSchema, yupArray, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
 
 
 export const POST = createSmartRouteHandler({
@@ -8,9 +8,6 @@ export const POST = createSmartRouteHandler({
     auth: yupObject({
       tenancy: adaptSchema.defined(),
       user: adaptSchema.defined(),
-    }),
-    params: yupObject({
-      user_id: userIdOrMeSchema.defined(),
     }),
     body: yupObject({
       line_items: yupArray(yupObject({
