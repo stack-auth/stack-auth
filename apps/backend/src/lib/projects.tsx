@@ -1,4 +1,3 @@
-import { RawQuery, prismaClient, rawQuery, retryTransaction } from "@/prisma-client";
 import { Prisma, TeamSystemPermission } from "@prisma/client";
 import { AdminUserProjectsCrud, ProjectsCrud } from "@stackframe/stack-shared/dist/interface/crud/projects";
 import { UsersCrud } from "@stackframe/stack-shared/dist/interface/crud/users";
@@ -8,6 +7,7 @@ import { deepPlainEquals, filterUndefined, isNotNull, omit } from "@stackframe/s
 import { stringCompare, typedToLowercase, typedToUppercase } from "@stackframe/stack-shared/dist/utils/strings";
 import { generateUuid } from "@stackframe/stack-shared/dist/utils/uuids";
 import { diffString } from 'json-diff';
+import { RawQuery, prismaClient, rawQuery, retryTransaction } from "../prisma-client";
 import { getRenderedOrganizationConfigQuery, renderedOrganizationConfigToProjectCrud } from "./config";
 import { fullPermissionInclude, permissionDefinitionJsonFromDbType, permissionDefinitionJsonFromRawDbType, permissionDefinitionJsonFromSystemDbType } from "./permissions";
 import { ensureSharedProvider, ensureStandardProvider } from "./request-checks";
