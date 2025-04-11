@@ -134,6 +134,12 @@ services:
     - svix-redis
     - svix-db
 
+# ================= Stripe Mock =================
+  stripe-mock:
+    image: stripe/stripe-mock:latest
+    ports:
+      - 8119:12111
+
 # ================= volumes =================
 
 volumes:
