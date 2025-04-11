@@ -3,13 +3,13 @@ import * as schemaFields from "../../schema-fields";
 import { yupObject } from "../../schema-fields";
 
 
-export const teamInvitationDetailsClientReadSchema = yupObject({
+export const teamInvitationDetailsBasicClientReadSchema = yupObject({
   team_id: schemaFields.teamIdSchema.defined(),
   team_display_name: schemaFields.teamDisplayNameSchema.defined(),
 }).defined();
 
 export const teamInvitationDetailsCrud = createCrud({
-  clientReadSchema: teamInvitationDetailsClientReadSchema,
+  clientReadSchema: teamInvitationDetailsBasicClientReadSchema,
   docs: {
     clientRead: {
       summary: "Get the team details with invitation code",
