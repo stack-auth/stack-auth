@@ -138,17 +138,17 @@ const user = await stackServerApp.getUser();
 await user.revokePermission(team, 'read');
 ```
 
-## User Permissions
+## Project Permissions
 
-User permissions are global permissions that apply to a user across the entire project, regardless of team context. These permissions are useful for handling things like premium plan subscriptions or global admin access.
+Project permissions are global permissions that apply to a user across the entire project, regardless of team context. These permissions are useful for handling things like premium plan subscriptions or global admin access.
 
-### Creating a User Permission
+### Creating a Project Permission
 
-To create a new user permission, navigate to the `User Permissions` section of the Stack dashboard. Similar to team permissions, you can select other permissions that the new permission will contain, creating a hierarchical structure.
+To create a new project permission, navigate to the `Project Permissions` section of the Stack dashboard. Similar to team permissions, you can select other permissions that the new permission will contain, creating a hierarchical structure.
 
-### Checking if a User has a User Permission
+### Checking if a User has a Project Permission
 
-To check whether a user has a specific user permission, use the `getUserPermission` method or the `useUserPermission` hook. Here's an example:
+To check whether a user has a specific project permission, use the `getPermission` method or the `usePermission` hook. Here's an example:
 
 <Tabs>
   <Tab title="Client Component">
@@ -159,7 +159,7 @@ To check whether a user has a specific user permission, use the `getUserPermissi
 
     export function CheckGlobalPermission() {
       const user = useUser({ or: 'redirect' });
-      const permission = user.useUserPermission('access_admin_dashboard');
+      const permission = user.usePermission('access_admin_dashboard');
 
       return (
         <div>
@@ -176,7 +176,7 @@ To check whether a user has a specific user permission, use the `getUserPermissi
 
     export default async function CheckGlobalPermission() {
       const user = await stackServerApp.getUser({ or: 'redirect' });
-      const permission = await user.getUserPermission('access_admin_dashboard');
+      const permission = await user.getPermission('access_admin_dashboard');
 
       return (
         <div>
@@ -188,9 +188,9 @@ To check whether a user has a specific user permission, use the `getUserPermissi
   </Tab>
 </Tabs>
 
-### Listing All User Permissions
+### Listing All Project Permissions
 
-To get a list of all global permissions a user has, use the `listUserPermissions` method or the `useUserPermissions` hook:
+To get a list of all global permissions a user has, use the `listPermissions` method or the `usePermissions` hook:
 
 <Tabs>
   <Tab title="Client Component" default>
@@ -201,7 +201,7 @@ To get a list of all global permissions a user has, use the `listUserPermissions
 
     export function DisplayGlobalPermissions() {
       const user = useUser({ or: 'redirect' });
-      const permissions = user.useUserPermissions();
+      const permissions = user.usePermissions();
 
       return (
         <div>
@@ -220,7 +220,7 @@ To get a list of all global permissions a user has, use the `listUserPermissions
 
     export default async function DisplayGlobalPermissions() {
       const user = await stackServerApp.getUser({ or: 'redirect' });
-      const permissions = await user.listUserPermissions();
+      const permissions = await user.listPermissions();
 
       return (
         <div>
@@ -234,22 +234,22 @@ To get a list of all global permissions a user has, use the `listUserPermissions
   </Tab>
 </Tabs>
 
-### Granting a User Permission
+### Granting a Project Permission
 
-To grant a global permission to a user, use the `grantUserPermission` method:
+To grant a global permission to a user, use the `grantPermission` method:
 
 ```tsx
 const user = await stackServerApp.getUser();
-await user.grantUserPermission('access_admin_dashboard');
+await user.grantPermission('access_admin_dashboard');
 ```
 
-### Revoking a User Permission
+### Revoking a Project Permission
 
-To revoke a global permission from a user, use the `revokeUserPermission` method:
+To revoke a global permission from a user, use the `revokePermission` method:
 
 ```tsx
 const user = await stackServerApp.getUser();
-await user.revokeUserPermission('access_admin_dashboard');
+await user.revokePermission('access_admin_dashboard');
 ```
 
 By following these guidelines, you can efficiently manage and verify both team and user permissions within your application.
