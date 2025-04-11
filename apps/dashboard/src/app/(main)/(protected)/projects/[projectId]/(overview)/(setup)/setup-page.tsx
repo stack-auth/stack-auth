@@ -1,9 +1,12 @@
 'use client';
 
 import { CodeBlock } from '@/components/code-block';
+import { APIEnvKeys } from '@/components/env-keys';
+import { InlineCode } from '@/components/inline-code';
 import { StyledLink } from '@/components/link';
 import { getPublicEnvVar } from '@/lib/env';
 import { useThemeWatcher } from '@/lib/theme';
+import { deindent } from '@stackframe/stack-shared/dist/utils/strings';
 import { Button, Typography, cn } from "@stackframe/stack-ui";
 import { ArrowLeft, Book } from "lucide-react";
 import dynamic from "next/dynamic";
@@ -57,7 +60,6 @@ export default function SetupPage(props: { toMetrics: () => void }) {
     {
       step: 2,
       title: "Install Stack Auth",
-      description: "The wizard will guide you through the setup process",
       content: <div className="flex flex-col w-0 flex-grow gap-4">
         In a new or existing Next.js project, run:
         <CodeBlock
@@ -71,7 +73,6 @@ export default function SetupPage(props: { toMetrics: () => void }) {
     {
       step: 3,
       title: "Done",
-      description: "You're all set up!",
       content: <div className="">
         If you start your Next.js app with npm run dev and navigate to <StyledLink href="http://localhost:3000/handler/signup">http://localhost:3000/handler/signup</StyledLink>, you will see the sign-up page.
       </div>
@@ -82,7 +83,6 @@ export default function SetupPage(props: { toMetrics: () => void }) {
     {
       step: 2,
       title: "Install Stack Auth",
-      description: "Install the Stack Auth React SDK",
       content: <div className="flex flex-col w-0 flex-grow gap-4">
         In a new or existing React project, run:
         <CodeBlock
@@ -96,8 +96,87 @@ export default function SetupPage(props: { toMetrics: () => void }) {
     {
       step: 3,
       title: "Create Stack Auth Keys",
-      description: "Keep the keys for the following steps",
       content: <StackAuthKeys />
+    },
+    {
+      step: 4,
+      title: "Create stack.ts file",
+      content: <div className="flex flex-col w-0 flex-grow gap-4">
+        <p>
+          Create a new file called <InlineCode>stack.ts</InlineCode> and add the following code:
+        </p>
+        <CodeBlock
+          language="tsx"
+          content={deindent`
+            import { StackClientApp } from "@stackframe/react";
+            import { useNavigate } from "react-router-dom";
+            export const stackClientApp = new StackClientApp({
+              // You should store these in environment variables based on your project setup
+              projectId: "your-project-id",
+              publishableClientKey: "your-publishable-client-key",
+              tokenStore: "cookie",
+              redirectMethod: {
+                useNavigate,
+              }
+            });
+          `}
+          title="stack.ts"
+          icon="code"
+        />
+      </div>
+    },
+    {
+      step: 5,
+      title: "Update App.tsx",
+      content: <div className="flex flex-col w-0 flex-grow gap-4">
+        <p>
+          Update your App.tsx file to wrap the entire app with a <InlineCode>StackProvider</InlineCode> and <InlineCode>StackTheme</InlineCode> and add a <InlineCode>StackHandler</InlineCode> component to handle the authentication flow. (here we use react-router-dom as an example)
+        </p>
+        <CodeBlock
+          language="tsx"
+          maxHeight={300}
+          content={deindent`
+            import { StackHandler, StackProvider, StackTheme } from "@stackframe/react";
+            import { Suspense } from "react";
+            import { BrowserRouter, Route, Routes, useLocation } from "react-router-dom";
+            import { stackClientApp } from "./stack";
+
+            function HandlerRoutes() {
+              const location = useLocation();
+              
+              return (
+                <StackHandler app={stackClientApp} location={location.pathname} fullPage />
+              );
+            }
+
+            export default function App() {
+              return (
+                <Suspense fallback={null}>
+                  <BrowserRouter>
+                    <StackProvider app={stackClientApp}>
+                      <StackTheme>
+                        <Routes>
+                          <Route path="/handler/*" element={<HandlerRoutes />} />
+                          <Route path="/" element={<div>hello world</div>} />
+                        </Routes>
+                      </StackTheme>
+                    </StackProvider>
+                  </BrowserRouter>
+                </Suspense>
+              );
+            }
+          `}
+          title="App.tsx"
+          icon="code"
+        />
+      </div>
+    },
+    {
+      step: 6,
+      title: "Done",
+      content: <div>
+        If you start your React app with npm run dev and navigate to <StyledLink href="http://localhost:5173/handler/signup">http://localhost:5173/handler/signup</StyledLink>, you will see the sign-up page.
+      </div>
     }
   ];
 
@@ -192,12 +271,11 @@ export default function SetupPage(props: { toMetrics: () => void }) {
       </div>
 
       <div className="flex flex-col mt-10 mx-4">
-        <ol className="relative text-gray-500 border-s border-gray-200 dark:border-gray-700 dark:text-gray-400">
+        <ol className="relative text-gray-500 border-s border-gray-200 dark:border-gray-700 dark:text-gray-400 ">
           {[
             {
               step: 1,
               title: "Select your framework",
-              description: "Create a new project or use an existing one",
               content: <div>
                 <div className="flex gap-4 flex-wrap">
                   {([{
@@ -242,13 +320,13 @@ export default function SetupPage(props: { toMetrics: () => void }) {
             ...(selectedFramework === 'nextjs' ? nextJsSteps : []),
             ...(selectedFramework === 'react' ? reactSteps : []),
           ].map((item, index) => (
-            <li key={item.step} className={cn("ms-6 flex flex-col lg:flex-row gap-10", { "mb-20": index < 3 })}>
+            <li key={item.step} className={cn("ms-6 flex flex-col lg:flex-row gap-10 mb-20")}>
               <div className="flex flex-col gap-2 max-w-[180px] min-w-[180px]">
                 <span className={`absolute flex items-center justify-center w-8 h-8 bg-gray-100 dark:bg-gray-70 rounded-full -start-4 ring-4 ring-white dark:ring-gray-900`}>
                   <span className={`text-gray-500 dark:text-gray-700 font-medium`}>{item.step}</span>
                 </span>
                 <h3 className="font-medium leading-tight">{item.title}</h3>
-                <p className="text-sm">{item.description}</p>
+                {/* <p className="text-sm">{item.description}</p> */}
               </div>
               <div className="flex flex-grow">
                 {item.content}
@@ -262,7 +340,28 @@ export default function SetupPage(props: { toMetrics: () => void }) {
 }
 
 function StackAuthKeys() {
-  return <div>
-    keys
-  </div>;
+  const [keys, setKeys] = useState<{ projectId: string, publishableClientKey: string } | null>(null);
+
+  return (
+    <div className="w-full border rounded-xl p-8 gap-4 flex flex-col">
+      {keys ? (
+        <>
+          <APIEnvKeys
+            projectId={keys.projectId}
+            publishableClientKey={keys.publishableClientKey}
+          />
+
+          <Typography type="label" variant="secondary">
+            {`Save these keys securely - they won't be shown again after leaving this page.`}
+          </Typography>
+        </>
+      ) : (
+        <div className="flex items-center justify-center">
+          <Button onClick={() => setKeys({ projectId: 'asdfasdf', publishableClientKey: 'asdfasdf' })}>
+            Generate Keys
+          </Button>
+        </div>
+      )}
+    </div>
+  );
 }
