@@ -69,6 +69,7 @@ export type HandlerUrls = {
   magicLinkCallback: string,
   accountSettings: string,
   teamInvitation: string,
+  paymentCallback: string,
   error: string,
 }
 

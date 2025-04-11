@@ -15,6 +15,7 @@ import { ForgotPassword } from "./forgot-password";
 import { MagicLinkCallback } from "./magic-link-callback";
 import { OAuthCallback } from "./oauth-callback";
 import { PasswordReset } from "./password-reset";
+import { PaymentCallback } from "./payment-callback";
 import { SignOut } from "./sign-out";
 import { TeamInvitation } from "./team-invitation";
 
@@ -31,6 +32,7 @@ type Components = {
   ErrorPage: typeof ErrorPage,
   AccountSettings: typeof AccountSettings,
   CliAuthConfirmation: typeof CliAuthConfirmation,
+  PaymentCallback: typeof PaymentCallback,
 };
 
 type RouteProps = {
@@ -52,6 +54,7 @@ const availablePaths = {
   teamInvitation: 'team-invitation',
   accountSettings: 'account-settings',
   cliAuthConfirm: 'cli-auth-confirm',
+  paymentCallback: 'payment-callback',
   error: 'error',
 } as const;
 
@@ -167,6 +170,14 @@ function renderComponent(props: {
       return <CliAuthConfirmation
         fullPage={fullPage}
         {...filterUndefinedINU(componentProps?.CliAuthConfirmation)}
+      />;
+    }
+    case availablePaths.paymentCallback: {
+      redirectIfNotHandler?.('paymentCallback');
+      return <PaymentCallback
+        searchParams={searchParams}
+        fullPage={fullPage}
+        {...filterUndefinedINU(componentProps?.PaymentCallback)}
       />;
     }
     default: {

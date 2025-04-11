@@ -11,6 +11,7 @@ export { AuthPage } from "./components-page/auth-page";
 export { EmailVerification } from "./components-page/email-verification";
 export { ForgotPassword } from "./components-page/forgot-password";
 export { PasswordReset } from "./components-page/password-reset";
+export { PaymentCallback } from "./components-page/payment-callback";
 export { SignIn } from "./components-page/sign-in";
 export { SignUp } from "./components-page/sign-up";
 export { CredentialSignIn as CredentialSignIn } from "./components/credential-sign-in";

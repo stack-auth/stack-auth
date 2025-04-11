@@ -1271,6 +1271,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
   async redirectToAccountSettings(options?: RedirectToOptions) { return await this._redirectToHandler("accountSettings", options); }
   async redirectToError(options?: RedirectToOptions) { return await this._redirectToHandler("error", options); }
   async redirectToTeamInvitation(options?: RedirectToOptions) { return await this._redirectToHandler("teamInvitation", options); }
+  async redirectToPaymentCallback(options?: RedirectToOptions) { return await this._redirectToHandler("paymentCallback", options); }
 
   async sendForgotPasswordEmail(email: string, options?: { callbackUrl?: string }): Promise<Result<undefined, KnownErrors["UserNotFound"]>> {
     return await this._interface.sendForgotPasswordEmail(email, options?.callbackUrl ?? constructRedirectUrl(this.urls.passwordReset, "callbackUrl"));
@@ -1742,10 +1743,14 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
       quantity: item.quantity
     }));
 
+    const currentUrl = new URL(window.location.href);
+    const baseUrl = `${currentUrl.protocol}//${currentUrl.host}`;
+
     const response = await this._interface.sendClientRequest('/payments/checkout', {
       method: 'POST',
       body: JSON.stringify({
-        line_items: transformedLineItems
+        line_items: transformedLineItems,
+        callback_url: baseUrl
       }),
       headers: {
         'Content-Type': 'application/json',

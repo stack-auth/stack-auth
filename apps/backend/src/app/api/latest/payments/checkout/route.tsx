@@ -14,6 +14,7 @@ export const POST = createSmartRouteHandler({
         product_id: yupString().defined(),
         quantity: yupNumber().defined(),
       })).defined(),
+      callback_url: yupString().defined(),
     }),
   }),
   response: yupObject({
@@ -36,7 +37,7 @@ export const POST = createSmartRouteHandler({
       customer: customer.stripeCustomer.id,
       mode: 'subscription',
       line_items: lineItems,
-      success_url: `https://example.com/checkout-success`,
+      success_url: `${body.callback_url}/handler/payment-callback?session_id={CHECKOUT_SESSION_ID}`,
     });
 
     return {
