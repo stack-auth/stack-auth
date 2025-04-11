@@ -136,7 +136,7 @@ services:
 
 # ================= Stripe Mock =================
   stripe-mock:
-    image: stripe/stripe-mock:latest
+    image: stripe/stripe-mock:v0.193.0
     ports:
       - 8119:12111
 
