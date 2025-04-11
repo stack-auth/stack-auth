@@ -144,17 +144,23 @@ export const projectsCrudAdminCreateSchema = projectsCrudAdminUpdateSchema.conca
 
 export const projectsCrudAdminDeleteSchema = schemaFields.yupMixed();
 
-export const projectsCrud = createCrud({
+export const clientProjectsCrud = createCrud({
   clientReadSchema: projectsCrudClientReadSchema,
-  adminReadSchema: projectsCrudAdminReadSchema,
-  adminUpdateSchema: projectsCrudAdminUpdateSchema,
-  adminDeleteSchema: projectsCrudAdminDeleteSchema,
   docs: {
     clientRead: {
       summary: 'Get the current project',
       description: 'Get the current project information including display name, OAuth providers and authentication methods. Useful for display the available login options to the user.',
       tags: ['Projects'],
     },
+  },
+});
+export type ClientProjectsCrud = CrudTypeOf<typeof clientProjectsCrud>;
+
+export const projectsCrud = createCrud({
+  adminReadSchema: projectsCrudAdminReadSchema,
+  adminUpdateSchema: projectsCrudAdminUpdateSchema,
+  adminDeleteSchema: projectsCrudAdminDeleteSchema,
+  docs: {
     adminRead: {
       summary: 'Get the current project',
       description: 'Get the current project information and configuration including display name, OAuth providers, email configuration, etc.',
@@ -174,7 +180,7 @@ export const projectsCrud = createCrud({
 });
 export type ProjectsCrud = CrudTypeOf<typeof projectsCrud>;
 
-export const internalProjectsCrud = createCrud({
+export const adminUserProjectsCrud = createCrud({
   clientReadSchema: projectsCrudAdminReadSchema,
   clientCreateSchema: projectsCrudAdminCreateSchema,
   docs: {
@@ -186,4 +192,4 @@ export const internalProjectsCrud = createCrud({
     },
   },
 });
-export type InternalProjectsCrud = CrudTypeOf<typeof internalProjectsCrud>;
+export type AdminUserProjectsCrud = CrudTypeOf<typeof adminUserProjectsCrud>;

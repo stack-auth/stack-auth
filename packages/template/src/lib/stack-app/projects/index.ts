@@ -1,5 +1,5 @@
 import { ProductionModeError } from "@stackframe/stack-shared/dist/helpers/production-mode";
-import { InternalProjectsCrud, ProjectsCrud } from "@stackframe/stack-shared/dist/interface/crud/projects";
+import { AdminUserProjectsCrud, ProjectsCrud } from "@stackframe/stack-shared/dist/interface/crud/projects";
 
 import { StackAdminApp } from "../apps/interfaces/admin-app";
 import { AdminProjectConfig, AdminProjectConfigUpdateOptions, ProjectConfig } from "../project-configs";
@@ -92,7 +92,7 @@ export function adminProjectUpdateOptionsToCrud(options: AdminProjectUpdateOptio
 export type AdminProjectCreateOptions = Omit<AdminProjectUpdateOptions, 'displayName'> & {
   displayName: string,
 };
-export function adminProjectCreateOptionsToCrud(options: AdminProjectCreateOptions): InternalProjectsCrud["Server"]["Create"] {
+export function adminProjectCreateOptionsToCrud(options: AdminProjectCreateOptions): AdminUserProjectsCrud["Server"]["Create"] {
   return {
     ...adminProjectUpdateOptionsToCrud(options),
     display_name: options.displayName,

@@ -8,6 +8,6 @@ export default defineConfig({
   outDir: 'dist',
   target: 'node22',
   platform: 'node',
-  noExternal: ['@stackframe/stack-shared', '@prisma/client', '@prisma/extension-accelerate', 'jose'],
+  noExternal: ['@stackframe/stack-shared', '@prisma/client', '@prisma/extension-accelerate', 'jose', 'yup', 'json-diff'],
   clean: true
 });
