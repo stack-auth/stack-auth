@@ -93,7 +93,12 @@ export default function SetupPage(props: { toMetrics: () => void }) {
         />
       </div>
     },
-
+    {
+      step: 3,
+      title: "Create Stack Auth Keys",
+      description: "Keep the keys for the following steps",
+      content: <StackAuthKeys />
+    }
   ];
 
   return (
@@ -254,4 +259,10 @@ export default function SetupPage(props: { toMetrics: () => void }) {
       </div>
     </PageLayout>
   );
+}
+
+function StackAuthKeys() {
+  return <div>
+    keys
+  </div>;
 }

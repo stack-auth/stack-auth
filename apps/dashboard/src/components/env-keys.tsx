@@ -41,6 +41,7 @@ export default function EnvKeys(props: {
       </TabsList>
       <TabsContent value={"env"}>
         <CopyField
+          type="textarea"
           monospace
           height={160}
           value={envFileContent}
@@ -48,9 +49,10 @@ export default function EnvKeys(props: {
         />
       </TabsContent>
       <TabsContent value={"keys"}>
-        <div className="flex flex-col gap-2">
+        <div className="flex flex-col gap-4">
           {props.projectId && (
             <CopyField
+              type="input"
               monospace
               value={props.projectId}
               label="Project ID"
@@ -59,6 +61,7 @@ export default function EnvKeys(props: {
           )}
           {props.publishableClientKey && (
             <CopyField
+              type="input"
               monospace
               value={props.publishableClientKey}
               label="Publishable Client Key"
@@ -67,6 +70,7 @@ export default function EnvKeys(props: {
           )}
           {props.secretServerKey && (
             <CopyField
+              type="input"
               monospace
               value={props.secretServerKey}
               label="Secret Server Key"
@@ -75,6 +79,7 @@ export default function EnvKeys(props: {
           )}
           {props.superSecretAdminKey && (
             <CopyField
+              type="input"
               monospace
               value={props.superSecretAdminKey}
               label="Super Secret Admin Key"
@@ -83,7 +88,7 @@ export default function EnvKeys(props: {
           )}
         </div>
       </TabsContent>
-      <Button variant="secondary" className="w-full mt-1.5" onClick={handleDownloadKeys}>
+      <Button variant="secondary" className="w-full mt-4" onClick={handleDownloadKeys}>
         Download Keys
       </Button>
     </Tabs>
