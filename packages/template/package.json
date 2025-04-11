@@ -45,7 +45,6 @@
   ],
   "dependencies": {
     "@hookform/resolvers": "^3.3.4",
-    "@oslojs/otp": "^1.1.0",
     "@simplewebauthn/browser": "^11.0.0",
     "@stackframe/stack-sc": "workspace:*",
     "@stackframe/stack-shared": "workspace:*",
@@ -58,7 +57,7 @@
     "js-cookie": "^3.0.5",
     "lucide-react": "^0.378.0",
     "oauth4webapi": "^2.10.3",
-    "open": "^10.1.0",
+    "@oslojs/otp": "^1.1.0",
     "qrcode": "^1.5.4",
     "react-avatar-editor": "^13.0.2",
     "react-hook-form": "^7.51.4",
