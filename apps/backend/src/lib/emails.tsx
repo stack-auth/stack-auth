@@ -300,16 +300,7 @@ async function getEmailConfig(tenancy: Tenancy): Promise<EmailConfig> {
   const projectEmailConfig = tenancy.config.email_config;
 
   if (projectEmailConfig.type === 'shared') {
-    return {
-      host: getEnvVariable('STACK_EMAIL_HOST'),
-      port: parseInt(getEnvVariable('STACK_EMAIL_PORT')),
-      username: getEnvVariable('STACK_EMAIL_USERNAME'),
-      password: getEnvVariable('STACK_EMAIL_PASSWORD'),
-      senderEmail: getEnvVariable('STACK_EMAIL_SENDER'),
-      senderName: tenancy.project.display_name,
-      secure: isSecureEmailPort(getEnvVariable('STACK_EMAIL_PORT')),
-      type: 'shared',
-    };
+    return await getSharedEmailConfig(tenancy.project.display_name);
   } else {
     if (!projectEmailConfig.host || !projectEmailConfig.port || !projectEmailConfig.username || !projectEmailConfig.password || !projectEmailConfig.sender_email || !projectEmailConfig.sender_name) {
       throw new StackAssertionError("Email config is not complete despite not being shared. This should never happen?", { projectId: tenancy.id, emailConfig: projectEmailConfig });
@@ -325,4 +316,18 @@ async function getEmailConfig(tenancy: Tenancy): Promise<EmailConfig> {
       type: 'standard',
     };
   }
+}
+
+
+export async function getSharedEmailConfig(displayName: string): Promise<EmailConfig> {
+  return {
+    host: getEnvVariable('STACK_EMAIL_HOST'),
+    port: parseInt(getEnvVariable('STACK_EMAIL_PORT')),
+    username: getEnvVariable('STACK_EMAIL_USERNAME'),
+    password: getEnvVariable('STACK_EMAIL_PASSWORD'),
+    senderEmail: getEnvVariable('STACK_EMAIL_SENDER'),
+    senderName: displayName,
+    secure: isSecureEmailPort(getEnvVariable('STACK_EMAIL_PORT')),
+    type: 'shared',
+  };
 }
