@@ -103,13 +103,14 @@ export default function SetupPage(props: { toMetrics: () => void }) {
       title: "Create stack.ts file",
       content: <div className="flex flex-col w-0 flex-grow gap-4">
         <p>
-          Create a new file called <InlineCode>stack.ts</InlineCode> and add the following code:
+          Create a new file called <InlineCode>stack.ts</InlineCode> and add the following code. Here we use react-router-dom as an example.
         </p>
         <CodeBlock
           language="tsx"
           content={deindent`
             import { StackClientApp } from "@stackframe/react";
             import { useNavigate } from "react-router-dom";
+            
             export const stackClientApp = new StackClientApp({
               // You should store these in environment variables based on your project setup
               projectId: "your-project-id",
@@ -130,7 +131,7 @@ export default function SetupPage(props: { toMetrics: () => void }) {
       title: "Update App.tsx",
       content: <div className="flex flex-col w-0 flex-grow gap-4">
         <p>
-          Update your App.tsx file to wrap the entire app with a <InlineCode>StackProvider</InlineCode> and <InlineCode>StackTheme</InlineCode> and add a <InlineCode>StackHandler</InlineCode> component to handle the authentication flow. (here we use react-router-dom as an example)
+          Update your App.tsx file to wrap the entire app with a <InlineCode>StackProvider</InlineCode> and <InlineCode>StackTheme</InlineCode> and add a <InlineCode>StackHandler</InlineCode> component to handle the authentication flow.
         </p>
         <CodeBlock
           language="tsx"
