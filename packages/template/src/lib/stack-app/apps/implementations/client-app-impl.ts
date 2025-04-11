@@ -1590,6 +1590,9 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
    * @param options Options for the CLI login
    * @param options.appUrl The URL of the app that will handle the CLI auth confirmation
    * @param options.expiresInMillis Optional duration in milliseconds before the auth attempt expires (default: 2 hours)
+   * @param options.maxAttempts Optional maximum number of polling attempts (default: Infinity)
+   * @param options.waitTimeMillis Optional time to wait between polling attempts (default: 2 seconds)
+   * @param options.promptLink Optional function to call with the login URL to prompt the user to open the browser
    * @returns Result containing either the refresh token or an error
    */
   async promptCliLogin(options: {
@@ -1646,7 +1649,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
       }, null);
 
       if (!pollResponse.ok) {
-        return Result.error(new KnownErrors.CliAuthError(`Failed to initiate CLI auth: ${response.status} ${await response.text()}`));
+        return Result.error(new KnownErrors.CliAuthError(`Failed to initiate CLI auth: ${pollResponse.status} ${await pollResponse.text()}`));
       }
       const pollResult = await pollResponse.json();
 
