@@ -34,7 +34,9 @@ export const POST = createSmartRouteHandler({
     const customer = await getCustomerForUser(auth.tenancy.id, auth.user.id);
     const checkoutSession = await GLOBAL_STRIPE.checkout.sessions.create({
       customer: customer.stripeCustomer.id,
+      mode: 'subscription',
       line_items: lineItems,
+      success_url: `https://example.com/checkout-success`,
     });
 
     return {

@@ -17,6 +17,9 @@ export default function Header() {
           <Link href="/apikey-demo" className="text-sm hover:text-gray-600 dark:hover:text-gray-300">
             API Key Demo
           </Link>
+          <Link href="/checkout-demo" className="text-sm hover:text-gray-600 dark:hover:text-gray-300">
+            Checkout Demo
+          </Link>
         </div>
 
         <div className="flex items-center justify-end gap-5">
