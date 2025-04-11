@@ -1046,7 +1046,7 @@ model PaymentConfig {
 
   provider        PaymentProvider
   stripeAccountId String?         @unique
-  Product         Product[]
+  products        Product[]
 }
 
 enum PaymentProvider {
@@ -1087,7 +1087,7 @@ model Price {
 
 model Customer {
   tenancyId  String @db.Uuid
-  customerId String @db.Uuid @default(uuid())
+  customerId String @default(uuid()) @db.Uuid
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

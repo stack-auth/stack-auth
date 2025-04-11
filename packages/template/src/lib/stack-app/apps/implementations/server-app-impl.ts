@@ -21,6 +21,7 @@ import { GetUserOptions, HandlerUrls, OAuthScopesOnSignIn, TokenStoreInit } from
 import { OAuthConnection } from "../../connected-accounts";
 import { ServerContactChannel, ServerContactChannelCreateOptions, ServerContactChannelUpdateOptions, serverContactChannelCreateOptionsToCrud, serverContactChannelUpdateOptionsToCrud } from "../../contact-channels";
 import { AdminProjectPermissionDefinition, AdminTeamPermission, AdminTeamPermissionDefinition } from "../../permissions";
+import { PaymentLineItem } from "../../payments";
 import { EditableTeamMemberProfile, ServerListUsersOptions, ServerTeam, ServerTeamCreateOptions, ServerTeamUpdateOptions, ServerTeamUser, Team, TeamInvitation, serverTeamCreateOptionsToCrud, serverTeamUpdateOptionsToCrud } from "../../teams";
 import { ProjectCurrentServerUser, ServerUser, ServerUserCreateOptions, ServerUserUpdateOptions, serverUserCreateOptionsToCrud, serverUserUpdateOptionsToCrud } from "../../users";
 import { StackServerAppConstructorOptions } from "../interfaces/server-app";
@@ -848,6 +849,19 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
     const team = await this._interface.createServerTeam(serverTeamCreateOptionsToCrud(data));
     await this._serverTeamsCache.refresh([undefined]);
     return this._serverTeamFromCrud(team);
+  }
+  
+  async createCheckoutUrl(lineItems: PaymentLineItem[]): Promise<string> {
+    const transformedLineItems = lineItems.map(item => ({
+      product_id: item.productId,
+      quantity: item.quantity
+    }));
+    
+    const response = await this._interface.post('/payments/checkout', {
+      line_items: transformedLineItems
+    });
+    
+    return response.purchase_url;
   }
 
   // IF_PLATFORM react-like

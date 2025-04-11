@@ -1,4 +1,5 @@
 import { AsyncStoreProperty, GetUserOptions } from "../../common";
+import { PaymentLineItem } from "../../payments";
 import { ServerListUsersOptions, ServerTeam, ServerTeamCreateOptions } from "../../teams";
 import { ProjectCurrentServerUser, ServerUser, ServerUserCreateOptions } from "../../users";
 import { _StackServerAppImpl } from "../implementations";
@@ -43,9 +44,9 @@ export type StackServerApp<HasTokenStore extends boolean = boolean, ProjectId ex
     getTeam(id: string): Promise<ServerTeam | null>,
     getTeam(options: { apiKey: string }): Promise<ServerTeam | null>,
 
-
     useUsers(options?: ServerListUsersOptions): ServerUser[] & { nextCursor: string | null }, // THIS_LINE_PLATFORM react-like
     listUsers(options?: ServerListUsersOptions): Promise<ServerUser[] & { nextCursor: string | null }>,
+    createCheckoutUrl(lineItems: PaymentLineItem[]): Promise<string>,
   }
   & AsyncStoreProperty<"user", [id: string], ServerUser | null, false>
   & Omit<AsyncStoreProperty<"users", [], ServerUser[], true>, "listUsers" | "useUsers">
