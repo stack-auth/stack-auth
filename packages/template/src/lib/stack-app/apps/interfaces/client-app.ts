@@ -2,6 +2,7 @@ import { KnownErrors } from "@stackframe/stack-shared";
 import { CurrentUserCrud } from "@stackframe/stack-shared/dist/interface/crud/current-user";
 import { Result } from "@stackframe/stack-shared/dist/utils/results";
 import { AsyncStoreProperty, GetUserOptions, HandlerUrls, OAuthScopesOnSignIn, RedirectMethod, RedirectToOptions, TokenStoreInit, stackAppInternalsSymbol } from "../../common";
+import { PaymentLineItem } from "../../payments";
 import { Project } from "../../projects";
 import { ProjectCurrentUser } from "../../users";
 import { _StackClientAppImpl } from "../implementations";
@@ -72,6 +73,7 @@ export type StackClientApp<HasTokenStore extends boolean = boolean, ProjectId ex
       toClientJson(): StackClientAppJson<HasTokenStore, ProjectId>,
       setCurrentUser(userJsonPromise: Promise<CurrentUserCrud['Client']['Read'] | null>): void,
     },
+    createCheckoutUrl(lineItems: PaymentLineItem[]): Promise<string>,
   }
   & AsyncStoreProperty<"project", [], Project, false>
   & { [K in `redirectTo${Capitalize<keyof Omit<HandlerUrls, 'handler' | 'oauthCallback'>>}`]: (options?: RedirectToOptions) => Promise<void> }

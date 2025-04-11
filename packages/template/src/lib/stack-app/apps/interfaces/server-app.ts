@@ -46,7 +46,6 @@ export type StackServerApp<HasTokenStore extends boolean = boolean, ProjectId ex
 
     useUsers(options?: ServerListUsersOptions): ServerUser[] & { nextCursor: string | null }, // THIS_LINE_PLATFORM react-like
     listUsers(options?: ServerListUsersOptions): Promise<ServerUser[] & { nextCursor: string | null }>,
-    createCheckoutUrl(lineItems: PaymentLineItem[]): Promise<string>,
   }
   & AsyncStoreProperty<"user", [id: string], ServerUser | null, false>
   & Omit<AsyncStoreProperty<"users", [], ServerUser[], true>, "listUsers" | "useUsers">

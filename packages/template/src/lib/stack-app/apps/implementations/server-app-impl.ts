@@ -851,18 +851,6 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
     return this._serverTeamFromCrud(team);
   }
   
-  async createCheckoutUrl(lineItems: PaymentLineItem[]): Promise<string> {
-    const transformedLineItems = lineItems.map(item => ({
-      product_id: item.productId,
-      quantity: item.quantity
-    }));
-    
-    const response = await this._interface.post('/payments/checkout', {
-      line_items: transformedLineItems
-    });
-    
-    return response.purchase_url;
-  }
 
   // IF_PLATFORM react-like
   useTeams(): ServerTeam[] {

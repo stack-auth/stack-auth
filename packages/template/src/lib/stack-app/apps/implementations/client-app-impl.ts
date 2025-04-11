@@ -34,6 +34,7 @@ import { ApiKey, ApiKeyCreationOptions, ApiKeyUpdateOptions, apiKeyCreationOptio
 import { GetUserOptions, HandlerUrls, OAuthScopesOnSignIn, RedirectMethod, RedirectToOptions, RequestLike, TokenStoreInit, stackAppInternalsSymbol } from "../../common";
 import { OAuthConnection } from "../../connected-accounts";
 import { ContactChannel, ContactChannelCreateOptions, ContactChannelUpdateOptions, contactChannelCreateOptionsToCrud, contactChannelUpdateOptionsToCrud } from "../../contact-channels";
+import { PaymentLineItem } from "../../payments";
 import { TeamPermission } from "../../permissions";
 import { AdminOwnedProject, AdminProjectUpdateOptions, Project, adminProjectCreateOptionsToCrud } from "../../projects";
 import { EditableTeamMemberProfile, Team, TeamCreateOptions, TeamInvitation, TeamUpdateOptions, TeamUser, teamCreateOptionsToCrud, teamUpdateOptionsToCrud } from "../../teams";
@@ -1732,6 +1733,27 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
 
   protected async _refreshOwnedProjects(session: InternalSession) {
     await this._ownedProjectsCache.refresh([session]);
+  }
+
+  async createCheckoutUrl(lineItems: PaymentLineItem[]): Promise<string> {
+    const session = await this._getSession();
+    const transformedLineItems = lineItems.map(item => ({
+      product_id: item.productId,
+      quantity: item.quantity
+    }));
+
+    const response = await this._interface.sendClientRequest('/payments/checkout', {
+      method: 'POST',
+      body: JSON.stringify({
+        line_items: transformedLineItems
+      }),
+      headers: {
+        'Content-Type': 'application/json',
+      },
+    }, session);
+
+    const data = await response.json();
+    return data.purchase_url;
   }
 
   static get [stackAppInternalsSymbol]() {
