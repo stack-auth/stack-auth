@@ -9,9 +9,9 @@ export type Config = {
   [keyOrDotNotation: string]: ConfigValue,
 };
 
-export type NormalizedConfigValue = string | number | boolean | NormalizedConfigValue[] | NormalizedConfig;
+export type NormalizedConfigValue = string | number | boolean | NormalizedConfig | NormalizedConfigValue[];
 export type NormalizedConfig = {
-  [key: string]: NormalizedConfigValue,
+  [key: string]: NormalizedConfigValue | undefined,
 };
 
 export type _NormalizesTo<N> = N extends object ? (

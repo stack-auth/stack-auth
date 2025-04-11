@@ -17,10 +17,10 @@ declare module "yup" {
 
   // eslint-disable-next-line @typescript-eslint/consistent-type-definitions
   interface Schema<TType, TContext, TDefault, TFlags> {
-    getNested<K extends keyof TType>(path: K): yup.Schema<TType[K], TContext, TDefault, TFlags>,
+    getNested<K extends keyof NonNullable<TType>>(path: K): yup.Schema<NonNullable<TType>[K], TContext, TDefault, TFlags>,
 
     // the default types for concat kinda suck, so let's fix that
-    concat<U extends yup.AnySchema>(schema: U): yup.Schema<Omit<TType, keyof yup.InferType<U>> & yup.InferType<U>, TContext, TDefault, TFlags>,
+    concat<U extends yup.AnySchema>(schema: U): yup.Schema<Omit<NonNullable<TType>, keyof yup.InferType<U>> & yup.InferType<U> | (TType & (null | undefined)), TContext, TDefault, TFlags>,
   }
 }
 
