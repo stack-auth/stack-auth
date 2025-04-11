@@ -4,7 +4,7 @@ import { ContactChannelsCrud } from "@stackframe/stack-shared/dist/interface/cru
 import { CurrentUserCrud } from "@stackframe/stack-shared/dist/interface/crud/current-user";
 import { TeamApiKeysCrud, UserApiKeysCrud, teamApiKeysCreateOutputSchema, userApiKeysCreateOutputSchema } from "@stackframe/stack-shared/dist/interface/crud/project-api-keys";
 import { ProjectPermissionsCrud } from "@stackframe/stack-shared/dist/interface/crud/project-permissions";
-import { ProjectsCrud } from "@stackframe/stack-shared/dist/interface/crud/projects";
+import { ClientProjectsCrud } from "@stackframe/stack-shared/dist/interface/crud/projects";
 import { SessionsCrud } from "@stackframe/stack-shared/dist/interface/crud/sessions";
 import { TeamInvitationCrud } from "@stackframe/stack-shared/dist/interface/crud/team-invitation";
 import { TeamMemberProfilesCrud } from "@stackframe/stack-shared/dist/interface/crud/team-member-profiles";
@@ -590,7 +590,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
     }
   }
 
-  protected _clientProjectFromCrud(crud: ProjectsCrud['Client']['Read']): Project {
+  protected _clientProjectFromCrud(crud: ClientProjectsCrud['Client']['Read']): Project {
     return {
       id: crud.id,
       displayName: crud.display_name,

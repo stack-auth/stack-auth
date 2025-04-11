@@ -7,7 +7,7 @@ it("should not have have access to the project without project keys", async ({ e
   backendContext.set({
     projectKeys: 'no-project'
   });
-  const response = await niceBackendFetch("/api/v1/projects/current", { accessType: "client" });
+  const response = await niceBackendFetch("/api/v1/internal/projects/current", { accessType: "client" });
   expect(response).toMatchInlineSnapshot(`
     NiceResponse {
       "status": 400,
@@ -359,12 +359,12 @@ it("should not allow protocols other than http(s) in trusted domains", async ({ 
         "code": "SCHEMA_ERROR",
         "details": {
           "message": deindent\`
-            Request validation failed on PATCH /api/v1/projects/current:
+            Request validation failed on PATCH /api/v1/internal/projects/current:
               - URL must start with http:// or https://
           \`,
         },
         "error": deindent\`
-          Request validation failed on PATCH /api/v1/projects/current:
+          Request validation failed on PATCH /api/v1/internal/projects/current:
             - URL must start with http:// or https://
         \`,
       },
@@ -663,12 +663,12 @@ it("does not update project email config to empty host", async ({ expect }) => {
         "code": "SCHEMA_ERROR",
         "details": {
           "message": deindent\`
-            Request validation failed on PATCH /api/v1/projects/current:
+            Request validation failed on PATCH /api/v1/internal/projects/current:
               - body.config.email_config.host must not be empty
           \`,
         },
         "error": deindent\`
-          Request validation failed on PATCH /api/v1/projects/current:
+          Request validation failed on PATCH /api/v1/internal/projects/current:
             - body.config.email_config.host must not be empty
         \`,
       },
@@ -698,12 +698,12 @@ it("updates the project email configuration with invalid parameters", async ({ e
         "code": "SCHEMA_ERROR",
         "details": {
           "message": deindent\`
-            Request validation failed on PATCH /api/v1/projects/current:
+            Request validation failed on PATCH /api/v1/internal/projects/current:
               - body.config.email_config contains unknown properties: client_id
           \`,
         },
         "error": deindent\`
-          Request validation failed on PATCH /api/v1/projects/current:
+          Request validation failed on PATCH /api/v1/internal/projects/current:
             - body.config.email_config contains unknown properties: client_id
         \`,
       },
@@ -729,7 +729,7 @@ it("updates the project email configuration with invalid parameters", async ({ e
           "code": "SCHEMA_ERROR",
           "details": {
             "message": deindent\`
-              Request validation failed on PATCH /api/v1/projects/current:
+              Request validation failed on PATCH /api/v1/internal/projects/current:
                 - body.config.email_config.host must be defined
                 - body.config.email_config.port must be defined
                 - body.config.email_config.username must be defined
@@ -739,7 +739,7 @@ it("updates the project email configuration with invalid parameters", async ({ e
             \`,
           },
           "error": deindent\`
-            Request validation failed on PATCH /api/v1/projects/current:
+            Request validation failed on PATCH /api/v1/internal/projects/current:
               - body.config.email_config.host must be defined
               - body.config.email_config.port must be defined
               - body.config.email_config.username must be defined
@@ -1072,7 +1072,7 @@ it("updates the project oauth configuration", async ({ expect }) => {
 
 it("fails when trying to update OAuth provider with empty client_secret", async ({ expect }) => {
   await Project.createAndSwitch();
-  const response = await niceBackendFetch(`/api/v1/projects/current`, {
+  const response = await niceBackendFetch(`/api/v1/internal/projects/current`, {
     accessType: "admin",
     method: "PATCH",
     body: {
@@ -1094,12 +1094,12 @@ it("fails when trying to update OAuth provider with empty client_secret", async 
         "code": "SCHEMA_ERROR",
         "details": {
           "message": deindent\`
-            Request validation failed on PATCH /api/v1/projects/current:
+            Request validation failed on PATCH /api/v1/internal/projects/current:
               - body.config.oauth_providers[0].client_secret must not be empty
           \`,
         },
         "error": deindent\`
-          Request validation failed on PATCH /api/v1/projects/current:
+          Request validation failed on PATCH /api/v1/internal/projects/current:
             - body.config.oauth_providers[0].client_secret must not be empty
         \`,
       },
@@ -1116,7 +1116,7 @@ it("deletes a project with admin access", async ({ expect }) => {
   const { adminAccessToken } = await Project.createAndGetAdminToken();
 
   // Delete the project
-  const deleteResponse = await niceBackendFetch(`/api/v1/projects/current`, {
+  const deleteResponse = await niceBackendFetch(`/api/v1/internal/projects/current`, {
     accessType: "admin",
     method: "DELETE",
     headers: {
@@ -1138,7 +1138,7 @@ it("deletes a project with server access", async ({ expect }) => {
   const { adminAccessToken } = await Project.createAndGetAdminToken();
 
   // Delete the project
-  const deleteResponse = await niceBackendFetch(`/api/v1/projects/current`, {
+  const deleteResponse = await niceBackendFetch(`/api/v1/internal/projects/current`, {
     accessType: "server",
     method: "DELETE",
     headers: {
@@ -1229,7 +1229,7 @@ it("deletes a project with users, teams, and permissions", async ({ expect }) =>
   expect(teamPermissionResponse.status).toBe(201);
 
   // Delete the project
-  const deleteResponse = await niceBackendFetch(`/api/v1/projects/current`, {
+  const deleteResponse = await niceBackendFetch(`/api/v1/internal/projects/current`, {
     accessType: "admin",
     method: "DELETE",
     headers: {
@@ -1265,7 +1265,7 @@ it("makes sure user don't have managed project ID after project deletion", async
   const { creatorUserId, adminAccessToken } = await Project.createAndGetAdminToken();
 
   // Delete the project
-  const deleteResponse = await niceBackendFetch(`/api/v1/projects/current`, {
+  const deleteResponse = await niceBackendFetch(`/api/v1/internal/projects/current`, {
     accessType: "admin",
     method: "DELETE",
     headers: {
@@ -1299,7 +1299,7 @@ it("makes sure other users are not affected by project deletion", async ({ expec
   const { adminAccessToken } = await Project.createAndGetAdminToken();
 
   // Delete the project
-  await niceBackendFetch(`/api/v1/projects/current`, {
+  await niceBackendFetch(`/api/v1/internal/projects/current`, {
     accessType: "admin",
     method: "DELETE",
     headers: {
@@ -1342,7 +1342,7 @@ it("should increment and decrement userCount when a user is added to a project",
       magic_link_enabled: true,
     }
   });
-  const initialProjectResponse = await niceBackendFetch("/api/v1/projects/current", { accessType: "admin" });
+  const initialProjectResponse = await niceBackendFetch("/api/v1/internal/projects/current", { accessType: "admin" });
   expect(initialProjectResponse.status).toBe(200);
   expect(initialProjectResponse.body.user_count).toBe(0);
 
@@ -1351,7 +1351,7 @@ it("should increment and decrement userCount when a user is added to a project",
   await Auth.Password.signUpWithEmail();
 
   // Check that the userCount has been incremented
-  const updatedProjectResponse = await niceBackendFetch("/api/v1/projects/current", { accessType: "admin" });
+  const updatedProjectResponse = await niceBackendFetch("/api/v1/internal/projects/current", { accessType: "admin" });
   expect(updatedProjectResponse.status).toBe(200);
   expect(updatedProjectResponse).toMatchInlineSnapshot(`
     NiceResponse {
@@ -1398,7 +1398,7 @@ it("should increment and decrement userCount when a user is added to a project",
   expect(deleteRes.status).toBe(200);
 
   // Check that the userCount has been decremented
-  const finalProjectResponse = await niceBackendFetch("/api/v1/projects/current", { accessType: "admin" });
+  const finalProjectResponse = await niceBackendFetch("/api/v1/internal/projects/current", { accessType: "admin" });
   expect(finalProjectResponse.status).toBe(200);
   expect(finalProjectResponse.body.user_count).toBe(0);
 });
