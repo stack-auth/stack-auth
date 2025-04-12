@@ -2,7 +2,9 @@ import { Prisma, PrismaClient } from "@prisma/client";
 import { withAccelerate } from "@prisma/extension-accelerate";
 import { getEnvVariable, getNodeEnvironment } from '@stackframe/stack-shared/dist/utils/env';
 import { deepPlainEquals, filterUndefined, typedFromEntries, typedKeys } from "@stackframe/stack-shared/dist/utils/objects";
+import { ignoreUnhandledRejection } from "@stackframe/stack-shared/dist/utils/promises";
 import { Result } from "@stackframe/stack-shared/dist/utils/results";
+import { isPromise } from "util/types";
 import { traceSpan } from "./utils/telemetry";
 
 // In dev mode, fast refresh causes us to recreate many Prisma clients, eventually overloading the database.
@@ -130,8 +132,16 @@ async function rawQueryArray<Q extends RawQuery<any>[]>(queries: Q): Promise<[] 
       const index = +type.slice(1);
       unprocessed[index].push(row.json);
     }
-    const postProcessed = queries.map((q, index) => q.postProcess(unprocessed[index]));
-    return postProcessed as any;
+    const postProcessed = queries.map((q, index) => {
+      const postProcessed = q.postProcess(unprocessed[index]);
+      // If the postProcess is async, postProcessed is a Promise. If that Promise is rejected, it will cause an unhandled promise rejection.
+      // We don't want that, because Vercel crashes on unhandled promise rejections.
+      if (isPromise(postProcessed)) {
+        ignoreUnhandledRejection(postProcessed);
+      }
+      return postProcessed;
+    });
+    return postProcessed;
   });
 }
 
