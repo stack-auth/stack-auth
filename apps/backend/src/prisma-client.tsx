@@ -139,6 +139,7 @@ async function rawQueryArray<Q extends RawQuery<any>[]>(queries: Q): Promise<[] 
       if (isPromise(postProcessed)) {
         ignoreUnhandledRejection(postProcessed);
       }
+      return postProcessed;
     });
     return postProcessed;
   });
