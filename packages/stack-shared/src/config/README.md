@@ -16,7 +16,7 @@ All the logic required for generic usage of the config format are in `format/`. 
 - Base config: The defaults that come with Stack Auth
 - `$Level` config override: Overrides that are applied to the base config (in the following order: project -> branch -> environment -> organization)
 - `$Level` incomplete config: The base config after some overrides have been applied
-- `$Level` rendered config: An incomplete config with those fields removed that can be overridden by a future override
+- `$Level` rendered config: An incomplete config with those fields removed that can be overridden by a future override, deeply merged into `configDefaults` (with properties in the former taking precedence)
 - Complete config: The organization rendered config.
 
 <details>

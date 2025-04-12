@@ -2,15 +2,13 @@ import * as yup from "yup";
 import * as schemaFields from "../schema-fields";
 import { yupBoolean, yupObject, yupRecord, yupString } from "../schema-fields";
 import { allProviders } from "../utils/oauth";
+import { DeepMerge } from "../utils/objects";
+import { PrettifyType } from "../utils/types";
 import { NormalizesTo } from "./format";
 
 export const configLevels = ['project', 'branch', 'environment', 'organization'] as const;
 export type ConfigLevel = typeof configLevels[number];
 const permissionRegex = /^\$?[a-z0-9_:]+$/;
-
-export const baseConfig = {
-  // must be empty
-};
 
 /**
  * All fields that can be overridden at this level.
@@ -105,14 +103,14 @@ export const environmentConfigSchema = branchConfigSchema.concat(yupObject({
         yupObject({
           type: yupString().oneOf(allProviders).optional(),
           isShared: yupBoolean().optional(),
-          clientId: schemaFields.yupDefinedAndNonEmptyWhen(schemaFields.oauthClientIdSchema, { type: 'standard', enabled: true }),
-          clientSecret: schemaFields.yupDefinedAndNonEmptyWhen(schemaFields.oauthClientSecretSchema, { type: 'standard', enabled: true }),
+          clientId: schemaFields.oauthClientIdSchema.optional(),
+          clientSecret: schemaFields.oauthClientSecretSchema.optional(),
           facebookConfigId: schemaFields.oauthFacebookConfigIdSchema.optional(),
           microsoftTenantId: schemaFields.oauthMicrosoftTenantIdSchema.optional(),
         }),
       ).optional(),
     }).optional()),
-  })).optional(),
+  })),
 
   emails: branchConfigSchema.getNested("emails").concat(yupObject({
     server: yupObject({
@@ -140,31 +138,100 @@ export const environmentConfigSchema = branchConfigSchema.concat(yupObject({
 export const organizationConfigSchema = environmentConfigSchema.concat(yupObject({}));
 
 
-export type ProjectIncompleteConfig = yup.InferType<typeof projectConfigSchema>;
-export type BranchIncompleteConfig = yup.InferType<typeof branchConfigSchema>;
-export type EnvironmentIncompleteConfig = yup.InferType<typeof environmentConfigSchema>;
-export type OrganizationIncompleteConfig = yup.InferType<typeof organizationConfigSchema>;
+// Defaults
+export const projectConfigDefaults = {} satisfies ProjectConfigStrippedNormalizedOverride;
 
-export const IncompleteConfigSymbol = Symbol('stack-auth-incomplete-config');
+export const branchConfigDefaults = {} satisfies BranchConfigStrippedNormalizedOverride;
 
-export type ProjectRenderedConfig = Omit<ProjectIncompleteConfig,
-  | keyof yup.InferType<typeof branchConfigSchema>
-  | keyof yup.InferType<typeof environmentConfigSchema>
-  | keyof yup.InferType<typeof organizationConfigSchema>
->;
-export type BranchRenderedConfig = Omit<BranchIncompleteConfig,
-  | keyof yup.InferType<typeof environmentConfigSchema>
-  | keyof yup.InferType<typeof organizationConfigSchema>
->;
-export type EnvironmentRenderedConfig = Omit<EnvironmentIncompleteConfig,
-  | keyof yup.InferType<typeof organizationConfigSchema>
->;
-export type OrganizationRenderedConfig = OrganizationIncompleteConfig;
+export const environmentConfigDefaults = {} satisfies EnvironmentConfigStrippedNormalizedOverride;
 
-export type ProjectConfigOverride = NormalizesTo<yup.InferType<typeof projectConfigSchema>>;
-export type BranchConfigOverride = NormalizesTo<yup.InferType<typeof branchConfigSchema>>;
-export type EnvironmentConfigOverride = NormalizesTo<yup.InferType<typeof environmentConfigSchema>>;
-export type OrganizationConfigOverride = NormalizesTo<yup.InferType<typeof organizationConfigSchema>>;
+export const organizationConfigDefaults = {
+  rbac: {
+    permissions: {},
+    defaultPermissions: {
+      teamCreator: {},
+      teamMember: {},
+      signUp: {},
+    },
+  },
+
+  apiKeys: {
+    enabled: {
+      team: false,
+      user: false,
+    },
+  },
+
+  teams: {
+    createPersonalTeamOnSignUp: false,
+    allowClientTeamCreation: false,
+  },
+
+  users: {
+    allowClientUserDeletion: false,
+  },
+
+  domains: {
+    allowLocalhost: false,
+    trustedDomains: {},
+  },
+
+  auth: {
+    allowSignUp: true,
+    allowPasswordSignIn: false,
+    allowOtpSignIn: false,
+    allowPasskeySignIn: false,
+    oauth: {
+      accountMergeStrategy: 'link_method',
+      providers: {},
+    },
+  },
+
+  emails: {
+    server: {
+      isShared: true,
+    },
+  },
+} satisfies OrganizationConfigStrippedNormalizedOverride;
+
+// Normalized overrides
+export type ProjectConfigNormalizedOverride = yup.InferType<typeof projectConfigSchema>;
+export type BranchConfigNormalizedOverride = yup.InferType<typeof branchConfigSchema>;
+export type EnvironmentConfigNormalizedOverride = yup.InferType<typeof environmentConfigSchema>;
+export type OrganizationConfigNormalizedOverride = yup.InferType<typeof organizationConfigSchema>;
+
+// Normalized overrides, without the properties that may be overridden still
+export type ProjectConfigStrippedNormalizedOverride = Omit<ProjectConfigNormalizedOverride,
+  | keyof BranchConfigNormalizedOverride
+  | keyof EnvironmentConfigNormalizedOverride
+  | keyof OrganizationConfigNormalizedOverride
+>;
+export type BranchConfigStrippedNormalizedOverride = Omit<BranchConfigNormalizedOverride,
+  | keyof EnvironmentConfigNormalizedOverride
+  | keyof OrganizationConfigNormalizedOverride
+>;
+export type EnvironmentConfigStrippedNormalizedOverride = Omit<EnvironmentConfigNormalizedOverride,
+  | keyof OrganizationConfigNormalizedOverride
+>;
+export type OrganizationConfigStrippedNormalizedOverride = OrganizationConfigNormalizedOverride;
+
+// Overrides
+export type ProjectConfigOverride = NormalizesTo<ProjectConfigNormalizedOverride>;
+export type BranchConfigOverride = NormalizesTo<BranchConfigNormalizedOverride>;
+export type EnvironmentConfigOverride = NormalizesTo<EnvironmentConfigNormalizedOverride>;
+export type OrganizationConfigOverride = NormalizesTo<OrganizationConfigNormalizedOverride>;
+
+// Incomplete configs
+export type ProjectIncompleteConfig = ProjectConfigNormalizedOverride;
+export type BranchIncompleteConfig = ProjectIncompleteConfig & BranchConfigNormalizedOverride;
+export type EnvironmentIncompleteConfig = BranchIncompleteConfig & EnvironmentConfigNormalizedOverride;
+export type OrganizationIncompleteConfig = EnvironmentIncompleteConfig & OrganizationConfigNormalizedOverride;
+
+// Rendered configs
+export type ProjectRenderedConfig = PrettifyType<DeepMerge<typeof projectConfigDefaults, ProjectConfigStrippedNormalizedOverride>>;
+export type BranchRenderedConfig = ProjectRenderedConfig & PrettifyType<DeepMerge<typeof branchConfigDefaults, BranchConfigStrippedNormalizedOverride>>;
+export type EnvironmentRenderedConfig = BranchRenderedConfig & PrettifyType<DeepMerge<typeof environmentConfigDefaults, EnvironmentConfigStrippedNormalizedOverride>>;
+export type OrganizationRenderedConfig = EnvironmentRenderedConfig & PrettifyType<DeepMerge<typeof organizationConfigDefaults, OrganizationConfigStrippedNormalizedOverride>>;
 
 
 const exampleOrgConfig: OrganizationRenderedConfig = {
@@ -226,9 +293,9 @@ const exampleOrgConfig: OrganizationRenderedConfig = {
 
   auth: {
     allowSignUp: true,
-    passwordAuthEnabled: true,
-    otpAuthEnabled: true,
-    passkeyAuthEnabled: true,
+    allowPasswordSignIn: true,
+    allowOtpSignIn: true,
+    allowPasskeySignIn: true,
     oauth: {
       accountMergeStrategy: 'link_method',
       providers: {
@@ -237,7 +304,7 @@ const exampleOrgConfig: OrganizationRenderedConfig = {
           isShared: false,
           clientId: 'google-client-id-for-org',
           clientSecret: 'google-client-secret-for-org',
-          allowAuth: true,
+          allowSignIn: true,
           allowConnectedAccounts: true,
         },
         'github_enterprise': {
@@ -245,7 +312,7 @@ const exampleOrgConfig: OrganizationRenderedConfig = {
           isShared: false,
           clientId: 'github-client-id-for-org',
           clientSecret: 'github-client-secret-for-org',
-          allowAuth: true,
+          allowSignIn: true,
           allowConnectedAccounts: true,
         },
         'azure_prod': {
@@ -254,14 +321,14 @@ const exampleOrgConfig: OrganizationRenderedConfig = {
           clientId: 'azure-client-id-for-org',
           clientSecret: 'azure-client-secret-for-org',
           microsoftTenantId: 'specific-org-tenant-id',
-          allowAuth: true,
+          allowSignIn: true,
           allowConnectedAccounts: true,
         },
         'shared_facebook': {
           type: 'facebook',
           isShared: true,
           facebookConfigId: 'optional-shared-fb-config-id',
-          allowAuth: true,
+          allowSignIn: true,
           allowConnectedAccounts: true,
         }
       },

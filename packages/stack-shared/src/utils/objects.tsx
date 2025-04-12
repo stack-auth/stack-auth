@@ -14,6 +14,7 @@ import.meta.vitest?.test("isNotNull", ({ expect }) => {
 });
 
 export type DeepPartial<T> = T extends object ? { [P in keyof T]?: DeepPartial<T[P]> } : T;
+export type DeepRequired<T> = T extends object ? { [P in keyof T]-?: DeepRequired<T[P]> } : T;
 
 /**
  * Assumes both objects are primitives, arrays, or non-function plain objects, and compares them deeply.
@@ -120,6 +121,45 @@ import.meta.vitest?.test("deepPlainClone", ({ expect }) => {
   // Error cases
   expect(() => deepPlainClone(() => {})).toThrow();
   expect(() => deepPlainClone(Symbol())).toThrow();
+});
+
+export type DeepMerge<T, U> = Omit<T, keyof U> & {
+  [K in keyof U]-?:
+    undefined extends U[K]
+      ? K extends keyof T
+          ? T[K] extends object
+              ? Exclude<U[K], undefined> extends object
+                  ? DeepMerge<T[K], Exclude<U[K], undefined>>
+                  : T[K] | Exclude<U[K], undefined>
+              : T[K] | Exclude<U[K], undefined>
+          : Exclude<U[K], undefined>
+      : K extends keyof T
+          ? T[K] extends object
+              ? U[K] extends object
+                  ? DeepMerge<T[K], U[K]>
+                  : U[K]
+              : U[K]
+          : U[K];
+};
+export function deepMerge<T extends {}, U extends {}>(baseObj: T, mergeObj: U): DeepMerge<T, U> {
+  if (typeof baseObj === 'function' || typeof mergeObj === 'function') throw new StackAssertionError("deepMerge does not support functions");
+  if (typeof baseObj === 'symbol' || typeof mergeObj === 'symbol') throw new StackAssertionError("deepMerge does not support symbols");
+
+  const res: any = deepPlainClone(baseObj);
+  for (const [key, mergeValue] of Object.entries(mergeObj)) {
+    if (has(res, key as any)) {
+      const baseValue = get(res, key as any);
+      if (isObjectLike(baseValue) && isObjectLike(mergeValue)) {
+        set(res, key, deepMerge(baseValue, mergeValue));
+        continue;
+      }
+    }
+    set(res, key, mergeValue);
+  }
+  return res as any;
+}
+import.meta.vitest?.test("deepMerge", ({ expect }) => {
+  expect(deepMerge({ a: 1 }, { b: 2 })).toEqual({ a: 1, b: 2 });
 });
 
 export function typedEntries<T extends {}>(obj: T): [keyof T, T[keyof T]][] {
@@ -315,4 +355,8 @@ export function deleteKey<T extends object, K extends keyof T>(obj: T, key: K) {
   } else {
     throw new StackAssertionError(`deleteKey: key ${String(key)} does not exist`, { obj, key });
   }
+}
+
+export function isObjectLike(value: unknown): value is object {
+  return (typeof value === 'object' || typeof value === 'function') && value !== null;
 }
