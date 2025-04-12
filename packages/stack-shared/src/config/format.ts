@@ -33,7 +33,7 @@ export function getInvalidConfigReason(c: unknown, options: { configName?: strin
   if (c === null || typeof c !== 'object') return `${configName} must be a non-null object`;
   for (const [key, value] of Object.entries(c)) {
     if (typeof key !== 'string') return `${configName} must have only string keys (found: ${typeof key})`;
-    if (!key.match(/^[a-zA-Z0-9_$][a-zA-Z_$0-9\-]*(?:\.[a-zA-Z0-9_$][a-zA-Z_$0-9\-]*)*$/)) return `All keys of ${configName} must consist of only alphanumeric characters, dots, underscores, dollar signs, or hyphens and start with a character other than a hyphen (found: ${key})`;
+    if (!key.match(/^[a-zA-Z0-9_:$][a-zA-Z_:$0-9\-]*(?:\.[a-zA-Z0-9_:$][a-zA-Z_:$0-9\-]*)*$/)) return `All keys of ${configName} must consist of only alphanumeric characters, dots, underscores, colons, dollar signs, or hyphens and start with a character other than a hyphen (found: ${key})`;
 
     const entryName = `${configName}.${key}`;
     const reason = getInvalidConfigValueReason(value, { valueName: entryName });
