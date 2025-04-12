@@ -1,10 +1,10 @@
 import { Prisma } from "@prisma/client";
 import { NormalizationError, getInvalidConfigReason, normalize, override } from "@stackframe/stack-shared/dist/config/format";
-import { BranchConfigOverride, BranchIncompleteConfig, BranchRenderedConfig, EnvironmentConfigOverride, EnvironmentIncompleteConfig, EnvironmentRenderedConfig, OrganizationConfigOverride, OrganizationIncompleteConfig, OrganizationRenderedConfig, ProjectConfigOverride, ProjectIncompleteConfig, ProjectRenderedConfig, baseConfig, branchConfigSchema, environmentConfigSchema, organizationConfigSchema, projectConfigSchema } from "@stackframe/stack-shared/dist/config/schema";
+import { BranchConfigOverride, BranchIncompleteConfig, BranchRenderedConfig, EnvironmentConfigOverride, EnvironmentIncompleteConfig, EnvironmentRenderedConfig, OrganizationConfigOverride, OrganizationIncompleteConfig, OrganizationRenderedConfig, ProjectConfigOverride, ProjectIncompleteConfig, ProjectRenderedConfig, branchConfigDefaults, branchConfigSchema, environmentConfigDefaults, environmentConfigSchema, organizationConfigDefaults, organizationConfigSchema, projectConfigDefaults, projectConfigSchema } from "@stackframe/stack-shared/dist/config/schema";
 import { ProjectsCrud } from "@stackframe/stack-shared/dist/interface/crud/projects";
 import { yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
 import { StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
-import { filterUndefined, pick, typedEntries, typedFromEntries } from "@stackframe/stack-shared/dist/utils/objects";
+import { deepMerge, filterUndefined, pick, typedEntries, typedFromEntries } from "@stackframe/stack-shared/dist/utils/objects";
 import { Result } from "@stackframe/stack-shared/dist/utils/results";
 import { stringCompare, typedToLowercase } from "@stackframe/stack-shared/dist/utils/strings";
 import { base64url } from "jose";
@@ -48,7 +48,7 @@ export function getRenderedProjectConfigQuery(options: { projectId: string }): R
       if (!dbProject) {
         return null;
       }
-      return await getIncompleteProjectConfig({ project: dbProject });
+      return deepMerge(projectConfigDefaults, await getIncompleteProjectConfig({ project: dbProject }));
     },
   };
 }
@@ -61,7 +61,7 @@ export function getRenderedBranchConfigQuery(options: { projectId: string, branc
       if (!dbProject) {
         return null;
       }
-      return await getIncompleteBranchConfig({ project: dbProject, branch: { id: options.branchId } });
+      return deepMerge(branchConfigDefaults, await getIncompleteBranchConfig({ project: dbProject, branch: { id: options.branchId } }));
     },
   };
 }
@@ -74,7 +74,7 @@ export function getRenderedEnvironmentConfigQuery(options: { projectId: string, 
       if (!dbProject) {
         return null;
       }
-      return await getIncompleteEnvironmentConfig({ project: dbProject, branch: { id: options.branchId }, environment: {} });
+      return deepMerge(environmentConfigDefaults, await getIncompleteEnvironmentConfig({ project: dbProject, branch: { id: options.branchId }, environment: {} }));
     },
   };
 }
@@ -87,7 +87,7 @@ export function getRenderedOrganizationConfigQuery(options: { projectId: string,
       if (!dbProject) {
         return null;
       }
-      return await getIncompleteOrganizationConfig({ project: dbProject, branch: { id: options.branchId }, environment: {}, organization: { id: options.organizationId } });
+      return deepMerge(organizationConfigDefaults, await getIncompleteOrganizationConfig({ project: dbProject, branch: { id: options.branchId }, environment: {}, organization: { id: options.organizationId } }));
     },
   };
 }
@@ -98,31 +98,37 @@ export function getRenderedOrganizationConfigQuery(options: { projectId: string,
 // ---------------------------------------------------------------------------------------------------------------------
 
 /**
- * Validates a project config override, based on the base config.
+ * Validates a project config override ([sanity-check valid](./README.md)).
  */
 export async function validateProjectConfigOverride(options: { projectConfigOverride: ProjectConfigOverride }): Promise<Result<null, string>> {
-  return await validateAndReturn(projectConfigSchema, baseConfig, options.projectConfigOverride);
+  return await schematicallyValidateAndReturn(projectConfigSchema, {}, options.projectConfigOverride);
 }
 
 /**
- * Validates a branch config override, based on the given project's rendered project config.
+ * Validates a branch config override ([sanity-check valid](./README.md)), based on the given project's rendered project config.
  */
 export async function validateBranchConfigOverride(options: { branchConfigOverride: BranchConfigOverride } & ProjectOptions): Promise<Result<null, string>> {
-  return await validateAndReturn(branchConfigSchema, await getIncompleteProjectConfig(options), options.branchConfigOverride);
+  return await schematicallyValidateAndReturn(branchConfigSchema, await getIncompleteProjectConfig(options), options.branchConfigOverride);
+  // TODO add some more checks that depend on the base config; eg. an override config shouldn't set email server connection if isShared==true
+  // (these are schematically valid, but make no sense, so we should be nice and reject them)
 }
 
 /**
- * Validates an environment config override, based on the given branch's rendered branch config.
+ * Validates an environment config override ([sanity-check valid](./README.md)), based on the given branch's rendered branch config.
  */
 export async function validateEnvironmentConfigOverride(options: { environmentConfigOverride: EnvironmentConfigOverride } & BranchOptions): Promise<Result<null, string>> {
-  return await validateAndReturn(environmentConfigSchema, await getIncompleteBranchConfig(options), options.environmentConfigOverride);
+  return await schematicallyValidateAndReturn(environmentConfigSchema, await getIncompleteBranchConfig(options), options.environmentConfigOverride);
+  // TODO add some more checks that depend on the base config; eg. an override config shouldn't set email server connection if isShared==true
+  // (these are schematically valid, but make no sense, so we should be nice and reject them)
 }
 
 /**
- * Validates an organization config override, based on the given environment's rendered environment config.
+ * Validates an organization config override ([sanity-check valid](./README.md)), based on the given environment's rendered environment config.
  */
 export async function validateOrganizationConfigOverride(options: { organizationConfigOverride: OrganizationConfigOverride } & EnvironmentOptions): Promise<Result<null, string>> {
-  return await validateAndReturn(organizationConfigSchema, await getIncompleteEnvironmentConfig(options), options.organizationConfigOverride);
+  return await schematicallyValidateAndReturn(organizationConfigSchema, await getIncompleteEnvironmentConfig(options), options.organizationConfigOverride);
+  // TODO add some more checks that depend on the base config; eg. an override config shouldn't set email server connection if isShared==true
+  // (these are schematically valid, but make no sense, so we should be nice and reject them)
 }
 
 
@@ -157,31 +163,15 @@ export async function getEnvironmentConfigOverride(options: EnvironmentOptions):
   const oldConfig = options.project.config;
 
   // =================== TEAM ===================
-
-  if (oldConfig.clientTeamCreationEnabled !== baseConfig.teams.clientTeamCreationEnabled) {
-    configOverride['teams.clientTeamCreationEnabled'] = oldConfig.clientTeamCreationEnabled;
-  }
-
-  if (oldConfig.createTeamOnSignUp !== baseConfig.teams.createTeamOnSignUp) {
-    configOverride['teams.createTeamOnSignUp'] = oldConfig.createTeamOnSignUp;
-  }
+  configOverride['teams.clientTeamCreationEnabled'] = oldConfig.clientTeamCreationEnabled;
+  configOverride['teams.createTeamOnSignUp'] = oldConfig.createTeamOnSignUp;
 
   // =================== USER ===================
-
-  if (oldConfig.clientUserDeletionEnabled !== baseConfig.users.clientUserDeletionEnabled) {
-    configOverride['users.clientUserDeletionEnabled'] = oldConfig.clientUserDeletionEnabled;
-  }
-
-  if (oldConfig.signUpEnabled !== baseConfig.users.signUpEnabled) {
-    configOverride['users.signUpEnabled'] = oldConfig.signUpEnabled;
-  }
+  configOverride['users.clientUserDeletionEnabled'] = oldConfig.clientUserDeletionEnabled;
+  configOverride['users.signUpEnabled'] = oldConfig.signUpEnabled;
 
   // =================== DOMAIN ===================
-
-  if (oldConfig.allowLocalhost !== baseConfig.domains.allowLocalhost) {
-    configOverride['domains.allowLocalhost'] = oldConfig.allowLocalhost;
-  }
-
+  configOverride['domains.allowLocalhost'] = oldConfig.allowLocalhost;
   for (const domain of oldConfig.domains) {
     configOverride['domains.trustedDomains.' + base64url.encode(domain.domain)] = {
       baseUrl: domain.domain,
@@ -190,11 +180,7 @@ export async function getEnvironmentConfigOverride(options: EnvironmentOptions):
   }
 
   // =================== AUTH ===================
-
-  if (oldConfig.oauthAccountMergeStrategy !== baseConfig.auth.oauthAccountMergeStrategy) {
-    configOverride['auth.oauthAccountMergeStrategy'] = typedToLowercase(oldConfig.oauthAccountMergeStrategy) satisfies OrganizationRenderedConfig['auth']['oauthAccountMergeStrategy'];
-  }
-
+  configOverride['auth.oauthAccountMergeStrategy'] = typedToLowercase(oldConfig.oauthAccountMergeStrategy) satisfies OrganizationRenderedConfig['auth']['oauth']['accountMergeStrategy'];
   for (const authMethodConfig of oldConfig.authMethodConfigs) {
     const baseAuthMethod = {
       enabled: authMethodConfig.enabled,
@@ -338,13 +324,18 @@ export async function getEnvironmentConfigOverride(options: EnvironmentOptions):
   }
 
   // =================== API KEYS ===================
+  configOverride['users.allowUserApiKeys'] = oldConfig.allowUserApiKeys;
+  configOverride['teams.allowTeamApiKeys'] = oldConfig.allowTeamApiKeys;
 
-  if (oldConfig.allowUserApiKeys !== baseConfig.users.allowUserApiKeys) {
-    configOverride['users.allowUserApiKeys'] = oldConfig.allowUserApiKeys;
-  }
 
-  if (oldConfig.allowTeamApiKeys !== baseConfig.teams.allowTeamApiKeys) {
-    configOverride['teams.allowTeamApiKeys'] = oldConfig.allowTeamApiKeys;
+  // validate, just to make sure we didn't miss anything
+  const validationResult = await validateEnvironmentConfigOverride({
+    project: options.project,
+    branch: options.branch,
+    environmentConfigOverride: configOverride,
+  });
+  if (validationResult.status === 'error') {
+    throw new StackAssertionError('Invalid environment config override: ' + validationResult.error, { validationResult });
   }
 
   return configOverride;
@@ -407,7 +398,7 @@ export function setOrganizationConfigOverride(options: {
 // ---------------------------------------------------------------------------------------------------------------------
 
 async function getIncompleteProjectConfig(options: ProjectOptions): Promise<ProjectIncompleteConfig> {
-  return normalize(override(baseConfig, await getProjectConfigOverride(options)), { onDotIntoNull: "ignore" }) as any;
+  return normalize(override({}, await getProjectConfigOverride(options)), { onDotIntoNull: "ignore" }) as any;
 }
 
 async function getIncompleteBranchConfig(options: BranchOptions): Promise<BranchIncompleteConfig> {
@@ -422,7 +413,26 @@ async function getIncompleteOrganizationConfig(options: OrganizationOptions): Pr
   return normalize(override(await getIncompleteEnvironmentConfig(options), await getOrganizationConfigOverride(options)), { onDotIntoNull: "ignore" }) as any;
 }
 
-async function validateAndReturn(schema: yup.ObjectSchema<any>, base: any, configOverride: any): Promise<Result<null, string>> {
+/**
+ * For the difference between schematically valid and sanity-check valid, see `README.md`.
+ */
+async function schematicallyValidateAndReturn(schema: yup.ObjectSchema<any>, base: any, configOverride: any): Promise<Result<null, string>> {
+  // First, we check whether the override is valid on its own, in the hypothetical case where all parent configs are empty.
+  const basicRes = await schematicallyValidateAndReturnImpl(schema, {}, configOverride);
+  if (basicRes.status === "error") return basicRes;
+
+  // As a sanity check, we also validate that the override is valid if we merge it with the base config. Because of
+  // how we design schemas, this should always be the case (as changing a base config should not make the yup schema
+  // invalid).
+  const mergedRes = await schematicallyValidateAndReturnImpl(schema, base, configOverride);
+  if (mergedRes.status === "error") {
+    throw new StackAssertionError('Invalid override is not compatible with the base config: ' + mergedRes.error, { mergedRes });
+  }
+
+  return Result.ok(null);
+}
+
+async function schematicallyValidateAndReturnImpl(schema: yup.ObjectSchema<any>, base: any, configOverride: any): Promise<Result<null, string>> {
   const reason = getInvalidConfigReason(configOverride, { configName: 'override' });
   if (reason) return Result.error(reason);
   const value = override(pick(base, Object.keys(schema.fields)), configOverride);
@@ -456,14 +466,14 @@ import.meta.vitest?.test('validateAndReturn(...)', async ({ expect }) => {
     a: yupString().optional(),
   });
 
-  expect(await validateAndReturn(schema1, {}, {})).toEqual(Result.ok(null));
-  expect(await validateAndReturn(schema1, { a: 'b' }, {})).toEqual(Result.ok(null));
-  expect(await validateAndReturn(schema1, {}, { a: 'b' })).toEqual(Result.ok(null));
-  expect(await validateAndReturn(schema1, { a: 'b' }, { a: 'c' })).toEqual(Result.ok(null));
-  expect(await validateAndReturn(schema1, {}, { a: null })).toEqual(Result.ok(null));
-  expect(await validateAndReturn(schema1, { a: 'b' }, { a: null })).toEqual(Result.ok(null));
+  expect(await schematicallyValidateAndReturn(schema1, {}, {})).toEqual(Result.ok(null));
+  expect(await schematicallyValidateAndReturn(schema1, { a: 'b' }, {})).toEqual(Result.ok(null));
+  expect(await schematicallyValidateAndReturn(schema1, {}, { a: 'b' })).toEqual(Result.ok(null));
+  expect(await schematicallyValidateAndReturn(schema1, { a: 'b' }, { a: 'c' })).toEqual(Result.ok(null));
+  expect(await schematicallyValidateAndReturn(schema1, {}, { a: null })).toEqual(Result.ok(null));
+  expect(await schematicallyValidateAndReturn(schema1, { a: 'b' }, { a: null })).toEqual(Result.ok(null));
 
-  expect(await validateAndReturn(yupObject({}), { a: 'b' }, { "a.b": "c" })).toEqual(Result.error(`Tried to use dot notation to access "a.b", but "a" doesn't exist on the object (or is null). Maybe this config is not normalizable?`));
+  expect(await schematicallyValidateAndReturn(yupObject({}), { a: 'b' }, { "a.b": "c" })).toEqual(Result.error(`Tried to use dot notation to access "a.b", but "a" doesn't exist on the object (or is null). Maybe this config is not normalizable?`));
 });
 
 // ---------------------------------------------------------------------------------------------------------------------
