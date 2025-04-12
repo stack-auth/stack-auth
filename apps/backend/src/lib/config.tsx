@@ -321,7 +321,7 @@ export async function getEnvironmentConfigOverride(options: EnvironmentOptions):
     .sort((a, b) => stringCompare(a.id, b.id));
 
   for (const perm of projectPermissionDefinitions) {
-    configOverride[`teams.projectPermissionDefinitions.${perm.id}`] = filterUndefined({
+    configOverride[`users.userPermissionDefinitions.${perm.id}`] = filterUndefined({
       description: perm.description,
       containedPermissions: typedFromEntries(perm.contained_permission_ids.map(containedPerm => [containedPerm, {}]))
     });
