@@ -132,7 +132,9 @@ export function rejected<T>(reason: unknown): ReactPromise<T> {
     return rejectedCache.get([reason]) as ReactPromise<T>;
   }
 
-  const res = Object.assign(ignoreUnhandledRejection(Promise.reject(reason)), {
+  const promise = Promise.reject(reason);
+  ignoreUnhandledRejection(promise);
+  const res = Object.assign(promise, {
     status: "rejected",
     reason: reason,
   } as const);
@@ -223,26 +225,22 @@ import.meta.vitest?.test("pending", async ({ expect }) => {
  *
  * Vercel kills serverless functions on unhandled promise rejection errors, so this is important.
  */
-export function ignoreUnhandledRejection<T extends Promise<any>>(promise: T): T {
+export function ignoreUnhandledRejection<T extends Promise<any>>(promise: T): void {
   promise.catch(() => {});
-  return promise;
 }
 import.meta.vitest?.test("ignoreUnhandledRejection", async ({ expect }) => {
   // Test with a promise that resolves
   const resolvePromise = Promise.resolve(42);
-  const ignoredResolvePromise = ignoreUnhandledRejection(resolvePromise);
-  expect(ignoredResolvePromise).toBe(resolvePromise); // Should return the same promise
-  expect(await ignoredResolvePromise).toBe(42); // Should still resolve to the same value
+  ignoreUnhandledRejection(resolvePromise);
+  expect(await resolvePromise).toBe(42); // Should still resolve to the same value
 
   // Test with a promise that rejects
-  const error = new Error("Test error");
-  const rejectPromise = Promise.reject(error);
-  const ignoredRejectPromise = ignoreUnhandledRejection(rejectPromise);
-  expect(ignoredRejectPromise).toBe(rejectPromise); // Should return the same promise
-
   // The promise should still reject, but the rejection is caught internally
   // so it doesn't cause an unhandled rejection error
-  await expect(ignoredRejectPromise).rejects.toBe(error);
+  const error = new Error("Test error");
+  const rejectPromise = Promise.reject(error);
+  ignoreUnhandledRejection(rejectPromise);
+  await expect(rejectPromise).rejects.toBe(error);
 });
 
 export async function wait(ms: number) {

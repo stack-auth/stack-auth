@@ -1258,6 +1258,15 @@ const ApiKeyNotFound = createKnownErrorConstructor(
   () => [] as const,
 );
 
+const PublicApiKeyCannotBeRevoked = createKnownErrorConstructor(
+  ApiKeyNotValid,
+  "PUBLIC_API_KEY_CANNOT_BE_REVOKED",
+  () => [
+    400,
+    "Public API keys cannot be revoked by the secretscanner endpoint.",
+  ] as const,
+  () => [] as const,
+);
 
 const PermissionIdAlreadyExists = createKnownErrorConstructor(
   KnownError,
@@ -1321,6 +1330,7 @@ export const KnownErrors = {
   UserIdDoesNotExist,
   UserNotFound,
   ApiKeyNotFound,
+  PublicApiKeyCannotBeRevoked,
   ProjectNotFound,
   SignUpNotEnabled,
   PasswordAuthenticationNotEnabled,
