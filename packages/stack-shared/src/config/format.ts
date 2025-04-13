@@ -242,13 +242,16 @@ import.meta.vitest?.test("normalize(...)", ({ expect }) => {
   });
 
   // dotting into null
+  expect(normalize({
+    "b.c": 2,
+  })).toEqual({ b: { c: 2 } });
   expect(() => normalize({
     "b.c": 2,
-  })).toThrow(`Tried to use dot notation to access "b.c", but "b" doesn't exist on the object (or is null). Maybe this config is not normalizable?`);
+  }, { onDotIntoNull: "throw" })).toThrow(`Tried to use dot notation to access "b.c", but "b" doesn't exist on the object (or is null). Maybe this config is not normalizable?`);
   expect(() => normalize({
     b: null,
     "b.c": 2,
-  })).toThrow(`Tried to use dot notation to access "b.c", but "b" doesn't exist on the object (or is null). Maybe this config is not normalizable?`);
+  }, { onDotIntoNull: "throw" })).toThrow(`Tried to use dot notation to access "b.c", but "b" doesn't exist on the object (or is null). Maybe this config is not normalizable?`);
   expect(normalize({
     "b.c": 2,
   }, { onDotIntoNull: "ignore" })).toEqual({});

@@ -151,7 +151,7 @@ export function yupObject<A extends yup.Maybe<yup.AnyObject>, B extends yup.Obje
           if (unknownKeys.length > 0) {
             // TODO "did you mean XYZ"
             return context.createError({
-              message: `${context.path} contains unknown properties: ${unknownKeys.join(', ')}`,
+              message: `${context.path || "Object"} contains unknown properties: ${unknownKeys.join(', ')}`,
               path: context.path,
               params: { unknownKeys, availableKeys },
             });

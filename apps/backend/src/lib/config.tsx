@@ -2,7 +2,7 @@ import { Prisma } from "@prisma/client";
 import { NormalizationError, getInvalidConfigReason, normalize, override } from "@stackframe/stack-shared/dist/config/format";
 import { BranchConfigOverride, BranchIncompleteConfig, BranchRenderedConfig, EnvironmentConfigOverride, EnvironmentIncompleteConfig, EnvironmentRenderedConfig, OrganizationConfigOverride, OrganizationIncompleteConfig, OrganizationRenderedConfig, ProjectConfigOverride, ProjectIncompleteConfig, ProjectRenderedConfig, applyDefaults, branchConfigDefaults, branchConfigSchema, environmentConfigDefaults, environmentConfigSchema, organizationConfigDefaults, organizationConfigSchema, projectConfigDefaults, projectConfigSchema } from "@stackframe/stack-shared/dist/config/schema";
 import { ProjectsCrud } from "@stackframe/stack-shared/dist/interface/crud/projects";
-import { yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
+import { yupMixed, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
 import { isTruthy } from "@stackframe/stack-shared/dist/utils/booleans";
 import { StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
 import { filterUndefined, pick, typedEntries, typedFromEntries } from "@stackframe/stack-shared/dist/utils/objects";
@@ -267,7 +267,7 @@ export async function getEnvironmentConfigOverride(options: EnvironmentOptions):
       filterUndefined({
         scope: typedToLowercase(p.scope),
         description: p.description ?? undefined,
-        containedPermissions: typedFromEntries(
+        containedPermissionIds: typedFromEntries(
           p.parentEdges
             .map(edge => {
               if (edge.parentPermission) {
@@ -279,7 +279,7 @@ export async function getEnvironmentConfigOverride(options: EnvironmentOptions):
               }
             })
             .sort((a, b) => stringCompare(a, b))
-            .map(id => [id, true])
+            .map(id => [id, true] as const)
         ),
       }) satisfies OrganizationRenderedConfig['rbac']['permissions'][string],
     ] as const);
@@ -438,7 +438,7 @@ async function schematicallyValidateAndReturnImpl(schema: yup.ObjectSchema<any>,
   }
 }
 
-import.meta.vitest?.test('validateAndReturn(...)', async ({ expect }) => {
+import.meta.vitest?.test('schematicallyValidateAndReturn(...)', async ({ expect }) => {
   const schema1 = yupObject({
     a: yupString().optional(),
   });
@@ -449,8 +449,12 @@ import.meta.vitest?.test('validateAndReturn(...)', async ({ expect }) => {
   expect(await schematicallyValidateAndReturn(schema1, { a: 'b' }, { a: 'c' })).toEqual(Result.ok(null));
   expect(await schematicallyValidateAndReturn(schema1, {}, { a: null })).toEqual(Result.ok(null));
   expect(await schematicallyValidateAndReturn(schema1, { a: 'b' }, { a: null })).toEqual(Result.ok(null));
+  expect(await schematicallyValidateAndReturn(yupObject({ a: yupMixed() }), {}, { "a.b": "c" })).toEqual(Result.ok(null));
 
-  expect(await schematicallyValidateAndReturn(yupObject({}), { a: 'b' }, { "a.b": "c" })).toEqual(Result.error(`Tried to use dot notation to access "a.b", but "a" doesn't exist on the object (or is null). Maybe this config is not normalizable?`));
+  expect(await schematicallyValidateAndReturn(yupObject({}), { a: 'b' }, { "a.b": "c" })).toEqual(Result.error(`Object contains unknown properties: a`));
+  expect(await schematicallyValidateAndReturn(schema1, {}, { a: 123 })).toEqual(Result.error('a must be a `string` type, but the final value was: `123`.'));
+
+  await expect(schematicallyValidateAndReturn(yupObject({ a: yupMixed() }), { a: 'b' }, { "a.b": "c" })).rejects.toThrow(`Invalid override is not compatible with the base config: Tried to use dot notation to access "a.b", but "a" is not an object. Maybe this config is not normalizable?`);
 });
 
 // ---------------------------------------------------------------------------------------------------------------------
