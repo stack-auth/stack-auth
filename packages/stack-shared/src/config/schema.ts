@@ -2,7 +2,7 @@ import * as yup from "yup";
 import * as schemaFields from "../schema-fields";
 import { yupBoolean, yupObject, yupRecord, yupString } from "../schema-fields";
 import { allProviders } from "../utils/oauth";
-import { DeepMerge, get, has, isObjectLike, set, shallowClone } from "../utils/objects";
+import { DeepMerge, get, has, isObjectLike, set } from "../utils/objects";
 import { PrettifyType } from "../utils/types";
 import { NormalizesTo } from "./format";
 
@@ -68,7 +68,7 @@ const branchAuthSchema = yupObject({
         type: yupString().oneOf(allProviders).optional(),
         allowSignIn: yupBoolean().optional(),
         allowConnectedAccounts: yupBoolean().optional(),
-      }),
+      }).defined(),
     ).optional(),
   }).optional(),
 }).optional();
@@ -111,6 +111,8 @@ export const environmentConfigSchema = branchConfigSchema.concat(yupObject({
           clientSecret: schemaFields.oauthClientSecretSchema.optional(),
           facebookConfigId: schemaFields.oauthFacebookConfigIdSchema.optional(),
           microsoftTenantId: schemaFields.oauthMicrosoftTenantIdSchema.optional(),
+          allowSignIn: yupBoolean().optional(),
+          allowConnectedAccounts: yupBoolean().optional(),
         }),
       ).optional(),
     }).optional()),
@@ -209,7 +211,7 @@ export type DeepReplaceAllowFunctionsForObjects<T> = T extends object ? { [K in 
 export type DeepReplaceFunctionsWithObjects<T> = T extends (arg: infer K extends string) => infer R ? DeepReplaceFunctionsWithObjects<Record<K, R>> : (T extends object ? { [K in keyof T]: DeepReplaceFunctionsWithObjects<T[K]> } : T);
 export type ApplyDefaults<D extends object, C extends object> = DeepMerge<DeepReplaceFunctionsWithObjects<D>, C>;
 export function applyDefaults<D extends object, C extends object>(defaults: D, config: C): ApplyDefaults<D, C> {
-  const res: any = shallowClone(defaults);
+  const res: any = { ...defaults };
   for (const [key, mergeValue] of Object.entries(config)) {
     if (has(res, key as any)) {
       const baseValue = typeof res === 'function' ? res(key) : get(res, key as any);

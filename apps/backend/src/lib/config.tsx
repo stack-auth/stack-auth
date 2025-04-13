@@ -163,12 +163,11 @@ export async function getEnvironmentConfigOverride(options: EnvironmentOptions):
   const oldConfig = options.project.config;
 
   // =================== TEAM ===================
-  configOverride['teams.clientTeamCreationEnabled'] = oldConfig.clientTeamCreationEnabled;
-  configOverride['teams.createTeamOnSignUp'] = oldConfig.createTeamOnSignUp;
+  configOverride['teams.allowClientTeamCreation'] = oldConfig.clientTeamCreationEnabled;
+  configOverride['teams.createPersonalTeamOnSignUp'] = oldConfig.createTeamOnSignUp;
 
   // =================== USER ===================
-  configOverride['users.clientUserDeletionEnabled'] = oldConfig.clientUserDeletionEnabled;
-  configOverride['users.signUpEnabled'] = oldConfig.signUpEnabled;
+  configOverride['users.allowClientUserDeletion'] = oldConfig.clientUserDeletionEnabled;
 
   // =================== DOMAIN ===================
   configOverride['domains.allowLocalhost'] = oldConfig.allowLocalhost;
@@ -180,6 +179,7 @@ export async function getEnvironmentConfigOverride(options: EnvironmentOptions):
   }
 
   // =================== AUTH ===================
+  configOverride['auth.allowSignUp'] = oldConfig.signUpEnabled;
   configOverride['auth.oauth.accountMergeStrategy'] = typedToLowercase(oldConfig.oauthAccountMergeStrategy) satisfies OrganizationRenderedConfig['auth']['oauth']['accountMergeStrategy'];
 
   const authEnabledOAuthProviders = new Set<string>();
@@ -312,7 +312,7 @@ export async function getEnvironmentConfigOverride(options: EnvironmentOptions):
     environmentConfigOverride: configOverride,
   });
   if (validationResult.status === 'error') {
-    throw new StackAssertionError('Invalid environment config override: ' + validationResult.error, { validationResult });
+    throw new StackAssertionError('getEnvironmentConfigOverride returned an invalid config override: ' + validationResult.error, { validationResult });
   }
 
   return configOverride;

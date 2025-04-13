@@ -158,7 +158,7 @@ NormalizationError.prototype.name = "NormalizationError";
 
 export function normalize(c: Config, options: NormalizeOptions = {}): NormalizedConfig {
   assertValidConfig(c);
-  const onDotIntoNull = options.onDotIntoNull ?? "throw";
+  const onDotIntoNull = options.onDotIntoNull ?? "empty";
 
   const countDots = (s: string) => s.match(/\./g)?.length ?? 0;
   const result: NormalizedConfig = {};

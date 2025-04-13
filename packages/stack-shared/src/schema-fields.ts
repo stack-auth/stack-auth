@@ -153,7 +153,7 @@ export function yupObject<A extends yup.Maybe<yup.AnyObject>, B extends yup.Obje
             return context.createError({
               message: `${context.path} contains unknown properties: ${unknownKeys.join(', ')}`,
               path: context.path,
-              params: { unknownKeys },
+              params: { unknownKeys, availableKeys },
             });
           }
         }
@@ -205,8 +205,9 @@ export function yupRecord<K extends yup.StringSchema, T extends yup.AnySchema>(
     'record',
     '${path} must be a record of valid values',
     async function (value: unknown, context: yup.TestContext) {
+      if (value == null) return true;
       const { path, createError } = this as any;
-      if (typeof value !== 'object' || value === null) {
+      if (typeof value !== 'object') {
         return createError({ message: `${path} must be an object` });
       }
 
@@ -217,7 +218,13 @@ export function yupRecord<K extends yup.StringSchema, T extends yup.AnySchema>(
 
         // Validate the value
         try {
-          await yupValidate(valueSchema, (value as Record<string, unknown>)[key], context.options);
+          await yupValidate(valueSchema, (value as Record<string, unknown>)[key], {
+            ...context.options,
+            context: {
+              ...context.options.context,
+              path: path ? `${path}.${key}` : key,
+            },
+          });
         } catch (e: any) {
           return createError({
             path: path ? `${path}.${key}` : key,
