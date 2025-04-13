@@ -9,7 +9,7 @@ export default function Header() {
 
   return (
     <>
-      <div className="fixed w-full z-50 p-4 h-12 flex items-center py-4 border-b justify-between bg-white dark:bg-black">
+      <div className="fixed w-full z-50 p-4 h-12 flex items-center py-4 border-b justify-between dark:bg-black dark:border-gray-800">
         <div className="flex items-center gap-4">
           <Link href="/" className="font-semibold">
             Stack Demo
