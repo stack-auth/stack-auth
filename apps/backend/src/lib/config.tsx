@@ -375,19 +375,19 @@ export function setOrganizationConfigOverride(options: {
 // ---------------------------------------------------------------------------------------------------------------------
 
 async function getIncompleteProjectConfig(options: ProjectOptions): Promise<ProjectIncompleteConfig> {
-  return normalize(override({}, await getProjectConfigOverride(options)), { onDotIntoNull: "ignore" }) as any;
+  return normalize(override({}, await getProjectConfigOverride(options))) as any;
 }
 
 async function getIncompleteBranchConfig(options: BranchOptions): Promise<BranchIncompleteConfig> {
-  return normalize(override(await getIncompleteProjectConfig(options), await getBranchConfigOverride(options)), { onDotIntoNull: "ignore" }) as any;
+  return normalize(override(await getIncompleteProjectConfig(options), await getBranchConfigOverride(options))) as any;
 }
 
 async function getIncompleteEnvironmentConfig(options: EnvironmentOptions): Promise<EnvironmentIncompleteConfig> {
-  return normalize(override(await getIncompleteBranchConfig(options), await getEnvironmentConfigOverride(options)), { onDotIntoNull: "ignore" }) as any;
+  return normalize(override(await getIncompleteBranchConfig(options), await getEnvironmentConfigOverride(options))) as any;
 }
 
 async function getIncompleteOrganizationConfig(options: OrganizationOptions): Promise<OrganizationIncompleteConfig> {
-  return normalize(override(await getIncompleteEnvironmentConfig(options), await getOrganizationConfigOverride(options)), { onDotIntoNull: "ignore" }) as any;
+  return normalize(override(await getIncompleteEnvironmentConfig(options), await getOrganizationConfigOverride(options))) as any;
 }
 
 /**

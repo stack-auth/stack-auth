@@ -142,13 +142,11 @@ type NormalizeOptions = {
   /**
    * What to do if a dot notation is used on null.
    *
-   * - "throw" (default): Throw an error. This is the safest option, and you should return this to the user if they
-   *   attempt to save a config which you know is invalid given the current set of overloads.
-   * - "ignore": Ignore the dot notation field. This is useful for applying the config, as we don't want to error out
-   *   if a base config has changed to delete a value that was overridden in another config. Note that you should
-   *   still show a warning to the user, and notify them to update their config.
+   * - "empty" (default): Replace the null with an empty object.
+   * - "throw": Throw an error.
+   * - "ignore": Ignore the dot notation field.
    */
-  onDotIntoNull?: "throw" | "ignore",
+  onDotIntoNull?: "empty" | "throw" | "ignore",
 }
 
 export class NormalizationError extends Error {
@@ -176,6 +174,10 @@ export function normalize(c: Config, options: NormalizeOptions = {}): Normalized
     for (const keySegment of keySegmentsWithoutLast) {
       if (!hasAndNotUndefined(current, keySegment)) {
         switch (onDotIntoNull) {
+          case "empty": {
+            set(current, keySegment, {});
+            break;
+          }
           case "throw": {
             throw new NormalizationError(`Tried to use dot notation to access ${JSON.stringify(key)}, but ${JSON.stringify(keySegment)} doesn't exist on the object (or is null). Maybe this config is not normalizable?`);
           }
