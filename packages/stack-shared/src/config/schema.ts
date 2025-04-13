@@ -2,9 +2,13 @@ import * as yup from "yup";
 import * as schemaFields from "../schema-fields";
 import { yupBoolean, yupObject, yupRecord, yupString } from "../schema-fields";
 import { allProviders } from "../utils/oauth";
-import { DeepMerge } from "../utils/objects";
+import { DeepMerge, get, has, isObjectLike, set, shallowClone } from "../utils/objects";
 import { PrettifyType } from "../utils/types";
 import { NormalizesTo } from "./format";
+
+// NOTE: The validation schemas in here are all schematic validators, not sanity-check validators.
+// For more info, see ./README.md
+
 
 export const configLevels = ['project', 'branch', 'environment', 'organization'] as const;
 export type ConfigLevel = typeof configLevels[number];
@@ -139,15 +143,17 @@ export const organizationConfigSchema = environmentConfigSchema.concat(yupObject
 
 
 // Defaults
-export const projectConfigDefaults = {} satisfies ProjectConfigStrippedNormalizedOverride;
+// these are objects that are merged together to form the rendered config (see ./README.md)
+// Wherever an object could be used as a value, a function can instead be used to generate the default values on a per-key basis
+export const projectConfigDefaults = {} satisfies DeepReplaceAllowFunctionsForObjects<ProjectConfigStrippedNormalizedOverride>;
 
-export const branchConfigDefaults = {} satisfies BranchConfigStrippedNormalizedOverride;
+export const branchConfigDefaults = {} satisfies DeepReplaceAllowFunctionsForObjects<BranchConfigStrippedNormalizedOverride>;
 
-export const environmentConfigDefaults = {} satisfies EnvironmentConfigStrippedNormalizedOverride;
+export const environmentConfigDefaults = {} satisfies DeepReplaceAllowFunctionsForObjects<EnvironmentConfigStrippedNormalizedOverride>;
 
 export const organizationConfigDefaults = {
   rbac: {
-    permissions: {},
+    permissions: (key: string) => ({}),
     defaultPermissions: {
       teamCreator: {},
       teamMember: {},
@@ -173,7 +179,9 @@ export const organizationConfigDefaults = {
 
   domains: {
     allowLocalhost: false,
-    trustedDomains: {},
+    trustedDomains: (key: string) => ({
+      handlerPath: '/handler',
+    }),
   },
 
   auth: {
@@ -183,7 +191,10 @@ export const organizationConfigDefaults = {
     allowPasskeySignIn: false,
     oauth: {
       accountMergeStrategy: 'link_method',
-      providers: {},
+      providers: (key: string) => ({
+        allowSignIn: false,
+        allowConnectedAccounts: false,
+      }),
     },
   },
 
@@ -192,7 +203,25 @@ export const organizationConfigDefaults = {
       isShared: true,
     },
   },
-} satisfies OrganizationConfigStrippedNormalizedOverride;
+} satisfies DeepReplaceAllowFunctionsForObjects<OrganizationConfigStrippedNormalizedOverride>;
+
+export type DeepReplaceAllowFunctionsForObjects<T> = T extends object ? { [K in keyof T]: DeepReplaceAllowFunctionsForObjects<T[K]> } | ((arg: keyof T) => DeepReplaceAllowFunctionsForObjects<T[keyof T]>) : T;
+export type DeepReplaceFunctionsWithObjects<T> = T extends (arg: infer K extends string) => infer R ? DeepReplaceFunctionsWithObjects<Record<K, R>> : (T extends object ? { [K in keyof T]: DeepReplaceFunctionsWithObjects<T[K]> } : T);
+export type ApplyDefaults<D extends object, C extends object> = DeepMerge<DeepReplaceFunctionsWithObjects<D>, C>;
+export function applyDefaults<D extends object, C extends object>(defaults: D, config: C): ApplyDefaults<D, C> {
+  const res: any = shallowClone(defaults);
+  for (const [key, mergeValue] of Object.entries(config)) {
+    if (has(res, key as any)) {
+      const baseValue = typeof res === 'function' ? res(key) : get(res, key as any);
+      if (isObjectLike(baseValue) && isObjectLike(mergeValue)) {
+        set(res, key, applyDefaults(baseValue, mergeValue));
+        continue;
+      }
+    }
+    set(res, key, mergeValue);
+  }
+  return res as any;
+}
 
 // Normalized overrides
 export type ProjectConfigNormalizedOverride = yup.InferType<typeof projectConfigSchema>;
@@ -228,10 +257,10 @@ export type EnvironmentIncompleteConfig = BranchIncompleteConfig & EnvironmentCo
 export type OrganizationIncompleteConfig = EnvironmentIncompleteConfig & OrganizationConfigNormalizedOverride;
 
 // Rendered configs
-export type ProjectRenderedConfig = PrettifyType<DeepMerge<typeof projectConfigDefaults, ProjectConfigStrippedNormalizedOverride>>;
-export type BranchRenderedConfig = ProjectRenderedConfig & PrettifyType<DeepMerge<typeof branchConfigDefaults, BranchConfigStrippedNormalizedOverride>>;
-export type EnvironmentRenderedConfig = BranchRenderedConfig & PrettifyType<DeepMerge<typeof environmentConfigDefaults, EnvironmentConfigStrippedNormalizedOverride>>;
-export type OrganizationRenderedConfig = EnvironmentRenderedConfig & PrettifyType<DeepMerge<typeof organizationConfigDefaults, OrganizationConfigStrippedNormalizedOverride>>;
+export type ProjectRenderedConfig = PrettifyType<ApplyDefaults<typeof projectConfigDefaults, ProjectConfigStrippedNormalizedOverride>>;
+export type BranchRenderedConfig = PrettifyType<ProjectRenderedConfig & ApplyDefaults<typeof branchConfigDefaults, BranchConfigStrippedNormalizedOverride>>;
+export type EnvironmentRenderedConfig = PrettifyType<BranchRenderedConfig & ApplyDefaults<typeof environmentConfigDefaults, EnvironmentConfigStrippedNormalizedOverride>>;
+export type OrganizationRenderedConfig = PrettifyType<EnvironmentRenderedConfig & ApplyDefaults<typeof organizationConfigDefaults, OrganizationConfigStrippedNormalizedOverride>>;
 
 
 const exampleOrgConfig: OrganizationRenderedConfig = {

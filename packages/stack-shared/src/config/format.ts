@@ -1,17 +1,17 @@
 // see https://github.com/stack-auth/info/blob/main/eng-handbook/random-thoughts/config-json-format.md
 
-import { StackAssertionError } from "../utils/errors";
-import { deleteKey, get, has, set } from "../utils/objects";
+import { StackAssertionError, throwErr } from "../utils/errors";
+import { deleteKey, filterUndefined, get, hasAndNotUndefined, set } from "../utils/objects";
 
 
 export type ConfigValue = string | number | boolean | null | ConfigValue[] | Config;
 export type Config = {
-  [keyOrDotNotation: string]: ConfigValue,
+  [keyOrDotNotation: string]: ConfigValue | undefined,  // must support undefined for optional values
 };
 
 export type NormalizedConfigValue = string | number | boolean | NormalizedConfig | NormalizedConfigValue[];
 export type NormalizedConfig = {
-  [key: string]: NormalizedConfigValue | undefined,
+  [key: string]: NormalizedConfigValue | undefined,  // must support undefined for optional values
 };
 
 export type _NormalizesTo<N> = N extends object ? (
@@ -32,6 +32,7 @@ export function getInvalidConfigReason(c: unknown, options: { configName?: strin
   const configName = options.configName ?? 'config';
   if (c === null || typeof c !== 'object') return `${configName} must be a non-null object`;
   for (const [key, value] of Object.entries(c)) {
+    if (value === undefined) continue;
     if (typeof key !== 'string') return `${configName} must have only string keys (found: ${typeof key})`;
     if (!key.match(/^[a-zA-Z0-9_:$][a-zA-Z_:$0-9\-]*(?:\.[a-zA-Z0-9_:$][a-zA-Z_:$0-9\-]*)*$/)) return `All keys of ${configName} must consist of only alphanumeric characters, dots, underscores, colons, dollar signs, or hyphens and start with a character other than a hyphen (found: ${key})`;
 
@@ -85,7 +86,7 @@ export function override(c1: Config, ...configs: Config[]) {
   assertValidConfig(c2);
 
   let result = c1;
-  for (const key of Object.keys(c2)) {
+  for (const key of Object.keys(filterUndefined(c2))) {
     result = Object.fromEntries(
       Object.entries(result).filter(([k]) => k !== key && !k.startsWith(key + '.'))
     );
@@ -93,7 +94,7 @@ export function override(c1: Config, ...configs: Config[]) {
 
   return {
     ...result,
-    ...c2,
+    ...filterUndefined(c2),
   };
 }
 
@@ -107,6 +108,8 @@ import.meta.vitest?.test("override(...)", ({ expect }) => {
         "c.e.f": 4,
         "c.g": 5,
         h: [6, { i: 7 }, 8],
+        k: 123,
+        l: undefined,
       },
       {
         a: 9,
@@ -116,6 +119,7 @@ import.meta.vitest?.test("override(...)", ({ expect }) => {
         "h.1": {
           j: 12,
         },
+        k: undefined,
       },
     )
   ).toEqual({
@@ -129,6 +133,8 @@ import.meta.vitest?.test("override(...)", ({ expect }) => {
     "h.1": {
       j: 12,
     },
+    k: 123,
+    l: undefined,
   });
 });
 
@@ -162,14 +168,13 @@ export function normalize(c: Config, options: NormalizeOptions = {}): Normalized
 
   outer: for (const key of keysByDepth) {
     const keySegmentsWithoutLast = key.split('.');
-    const last = keySegmentsWithoutLast.pop();
-    if (!last) {
-      throw new NormalizationError(`Tried to normalize ${JSON.stringify(key)}, but it doesn't contain any dots. Maybe this config is not normalizable?`);
-    }
+    const last = keySegmentsWithoutLast.pop() ?? throwErr('split returns empty array?');
+    const value = get(c, key);
+    if (value === undefined) continue;
 
     let current: NormalizedConfig = result;
     for (const keySegment of keySegmentsWithoutLast) {
-      if (!has(current, keySegment)) {
+      if (!hasAndNotUndefined(current, keySegment)) {
         switch (onDotIntoNull) {
           case "throw": {
             throw new NormalizationError(`Tried to use dot notation to access ${JSON.stringify(key)}, but ${JSON.stringify(keySegment)} doesn't exist on the object (or is null). Maybe this config is not normalizable?`);
@@ -185,7 +190,7 @@ export function normalize(c: Config, options: NormalizeOptions = {}): Normalized
       }
       current = value as NormalizedConfig;
     }
-    setNormalizedValue(current, last, get(c, key));
+    setNormalizedValue(current, last, value);
   }
   return result;
 }
@@ -199,7 +204,7 @@ function normalizeValue(value: ConfigValue): NormalizedConfigValue {
 
 function setNormalizedValue(result: NormalizedConfig, key: string, value: ConfigValue) {
   if (value === null) {
-    if (has(result, key)) {
+    if (hasAndNotUndefined(result, key)) {
       deleteKey(result, key);
     }
   } else {
@@ -222,6 +227,7 @@ import.meta.vitest?.test("normalize(...)", ({ expect }) => {
     },
     k: { l: {} },
     "k.l.m": 13,
+    n: undefined,
   })).toEqual({
     a: 9,
     b: 2,

@@ -1,16 +1,16 @@
 import { Prisma } from "@prisma/client";
 import { NormalizationError, getInvalidConfigReason, normalize, override } from "@stackframe/stack-shared/dist/config/format";
-import { BranchConfigOverride, BranchIncompleteConfig, BranchRenderedConfig, EnvironmentConfigOverride, EnvironmentIncompleteConfig, EnvironmentRenderedConfig, OrganizationConfigOverride, OrganizationIncompleteConfig, OrganizationRenderedConfig, ProjectConfigOverride, ProjectIncompleteConfig, ProjectRenderedConfig, branchConfigDefaults, branchConfigSchema, environmentConfigDefaults, environmentConfigSchema, organizationConfigDefaults, organizationConfigSchema, projectConfigDefaults, projectConfigSchema } from "@stackframe/stack-shared/dist/config/schema";
+import { BranchConfigOverride, BranchIncompleteConfig, BranchRenderedConfig, EnvironmentConfigOverride, EnvironmentIncompleteConfig, EnvironmentRenderedConfig, OrganizationConfigOverride, OrganizationIncompleteConfig, OrganizationRenderedConfig, ProjectConfigOverride, ProjectIncompleteConfig, ProjectRenderedConfig, applyDefaults, branchConfigDefaults, branchConfigSchema, environmentConfigDefaults, environmentConfigSchema, organizationConfigDefaults, organizationConfigSchema, projectConfigDefaults, projectConfigSchema } from "@stackframe/stack-shared/dist/config/schema";
 import { ProjectsCrud } from "@stackframe/stack-shared/dist/interface/crud/projects";
 import { yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
+import { isTruthy } from "@stackframe/stack-shared/dist/utils/booleans";
 import { StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
-import { deepMerge, filterUndefined, pick, typedEntries, typedFromEntries } from "@stackframe/stack-shared/dist/utils/objects";
+import { filterUndefined, pick, typedEntries, typedFromEntries } from "@stackframe/stack-shared/dist/utils/objects";
 import { Result } from "@stackframe/stack-shared/dist/utils/results";
 import { stringCompare, typedToLowercase } from "@stackframe/stack-shared/dist/utils/strings";
 import { base64url } from "jose";
 import * as yup from "yup";
 import { RawQuery, prismaClient } from "../prisma-client";
-import { permissionDefinitionJsonFromDbType, permissionDefinitionJsonFromSystemDbType } from "./permissions";
 import { DBProject, fullProjectInclude } from "./projects";
 
 // These are placeholder types that should be replaced after the config json db migration
@@ -48,7 +48,7 @@ export function getRenderedProjectConfigQuery(options: { projectId: string }): R
       if (!dbProject) {
         return null;
       }
-      return deepMerge(projectConfigDefaults, await getIncompleteProjectConfig({ project: dbProject }));
+      return applyDefaults(projectConfigDefaults, await getIncompleteProjectConfig({ project: dbProject }));
     },
   };
 }
@@ -61,7 +61,7 @@ export function getRenderedBranchConfigQuery(options: { projectId: string, branc
       if (!dbProject) {
         return null;
       }
-      return deepMerge(branchConfigDefaults, await getIncompleteBranchConfig({ project: dbProject, branch: { id: options.branchId } }));
+      return applyDefaults(branchConfigDefaults, await getIncompleteBranchConfig({ project: dbProject, branch: { id: options.branchId } }));
     },
   };
 }
@@ -74,7 +74,7 @@ export function getRenderedEnvironmentConfigQuery(options: { projectId: string, 
       if (!dbProject) {
         return null;
       }
-      return deepMerge(environmentConfigDefaults, await getIncompleteEnvironmentConfig({ project: dbProject, branch: { id: options.branchId }, environment: {} }));
+      return applyDefaults(environmentConfigDefaults, await getIncompleteEnvironmentConfig({ project: dbProject, branch: { id: options.branchId }, environment: {} }));
     },
   };
 }
@@ -87,7 +87,7 @@ export function getRenderedOrganizationConfigQuery(options: { projectId: string,
       if (!dbProject) {
         return null;
       }
-      return deepMerge(organizationConfigDefaults, await getIncompleteOrganizationConfig({ project: dbProject, branch: { id: options.branchId }, environment: {}, organization: { id: options.organizationId } }));
+      return applyDefaults(organizationConfigDefaults, await getIncompleteOrganizationConfig({ project: dbProject, branch: { id: options.branchId }, environment: {}, organization: { id: options.organizationId } }));
     },
   };
 }
@@ -180,51 +180,50 @@ export async function getEnvironmentConfigOverride(options: EnvironmentOptions):
   }
 
   // =================== AUTH ===================
-  configOverride['auth.oauthAccountMergeStrategy'] = typedToLowercase(oldConfig.oauthAccountMergeStrategy) satisfies OrganizationRenderedConfig['auth']['oauth']['accountMergeStrategy'];
-  for (const authMethodConfig of oldConfig.authMethodConfigs) {
-    const baseAuthMethod = {
-      enabled: authMethodConfig.enabled,
-    };
+  configOverride['auth.oauth.accountMergeStrategy'] = typedToLowercase(oldConfig.oauthAccountMergeStrategy) satisfies OrganizationRenderedConfig['auth']['oauth']['accountMergeStrategy'];
 
-    let authMethodOverride: OrganizationRenderedConfig['auth']['authMethods'][string];
+  const authEnabledOAuthProviders = new Set<string>();
+  for (const authMethodConfig of oldConfig.authMethodConfigs) {
     if (authMethodConfig.oauthProviderConfig) {
       const oauthConfig = authMethodConfig.oauthProviderConfig.proxiedOAuthConfig || authMethodConfig.oauthProviderConfig.standardOAuthConfig;
       if (!oauthConfig) {
         throw new StackAssertionError('Either ProxiedOAuthConfig or StandardOAuthConfig must be set on authMethodConfigs.oauthProviderConfig', { authMethodConfig });
       }
-      authMethodOverride = {
-        ...baseAuthMethod,
-        type: 'oauth',
-        oauthProviderId: oauthConfig.id,
-      } as const;
-    } else if (authMethodConfig.passwordConfig) {
-      authMethodOverride = {
-        ...baseAuthMethod,
-        type: 'password',
-      } as const;
-    } else if (authMethodConfig.otpConfig) {
-      authMethodOverride = {
-        ...baseAuthMethod,
-        type: 'otp',
-      } as const;
+      if (authMethodConfig.enabled) {
+        authEnabledOAuthProviders.add(oauthConfig.id);
+      }
+    } else if (authMethodConfig.passwordConfig && authMethodConfig.enabled) {
+      configOverride['auth.allowPasswordSignIn'] = true;
+    } else if (authMethodConfig.otpConfig && authMethodConfig.enabled) {
+      configOverride['auth.allowOtpSignIn'] = true;
     } else if (authMethodConfig.passkeyConfig) {
-      authMethodOverride = {
-        ...baseAuthMethod,
-        type: 'passkey',
-      } as const;
+      configOverride['auth.allowPasskeySignIn'] = true;
     } else {
       throw new StackAssertionError('Unknown auth method config', { authMethodConfig });
     }
+  }
 
-    configOverride['auth.authMethods.' + authMethodConfig.id] = authMethodOverride;
+  const connectedAccountsEnabledOAuthProviders = new Set<string>();
+  for (const provider of oldConfig.oauthProviderConfigs) {
+    const authMethodConfig = oldConfig.authMethodConfigs.find(config => config.oauthProviderConfig?.id === provider.id);
+
+    if (!authMethodConfig) {
+      throw new StackAssertionError('No auth method config found for oauth provider', { provider });
+    }
+
+    if (authMethodConfig.enabled) {
+      connectedAccountsEnabledOAuthProviders.add(provider.id);
+    }
   }
 
   for (const provider of oldConfig.oauthProviderConfigs) {
-    let providerOverride: OrganizationRenderedConfig['auth']['oauthProviders'][string];
+    let providerOverride: OrganizationRenderedConfig['auth']['oauth']['providers'][string];
     if (provider.proxiedOAuthConfig) {
       providerOverride = {
         type: typedToLowercase(provider.proxiedOAuthConfig.type),
         isShared: true,
+        allowSignIn: authEnabledOAuthProviders.has(provider.id),
+        allowConnectedAccounts: connectedAccountsEnabledOAuthProviders.has(provider.id),
       } as const;
     } else if (provider.standardOAuthConfig) {
       providerOverride = filterUndefined({
@@ -234,31 +233,20 @@ export async function getEnvironmentConfigOverride(options: EnvironmentOptions):
         clientSecret: provider.standardOAuthConfig.clientSecret,
         facebookConfigId: provider.standardOAuthConfig.facebookConfigId ?? undefined,
         microsoftTenantId: provider.standardOAuthConfig.microsoftTenantId ?? undefined,
+        allowSignIn: authEnabledOAuthProviders.has(provider.id),
+        allowConnectedAccounts: connectedAccountsEnabledOAuthProviders.has(provider.id),
       } as const);
     } else {
       throw new StackAssertionError('Unknown oauth provider config', { provider });
     }
 
-    configOverride['auth.oauthProviders.' + provider.id] = providerOverride;
-  }
-
-  for (const provider of oldConfig.oauthProviderConfigs) {
-    const authMethodConfig = oldConfig.authMethodConfigs.find(config => config.oauthProviderConfig?.id === provider.id);
-
-    if (!authMethodConfig) {
-      throw new StackAssertionError('No auth method config found for oauth provider', { provider });
-    }
-
-    configOverride['auth.connectedAccounts.' + provider.id] = {
-      enabled: authMethodConfig.enabled,
-      oauthProviderId: provider.id,
-    } satisfies OrganizationRenderedConfig['auth']['connectedAccounts'][string];
+    configOverride['auth.oauth.providers.' + provider.id] = providerOverride;
   }
 
   // =================== EMAIL ===================
 
   if (oldConfig.emailServiceConfig?.standardEmailServiceConfig) {
-    configOverride['emails.emailServer'] = {
+    configOverride['emails.server'] = {
       isShared: false,
       host: oldConfig.emailServiceConfig.standardEmailServiceConfig.host,
       port: oldConfig.emailServiceConfig.standardEmailServiceConfig.port,
@@ -266,66 +254,55 @@ export async function getEnvironmentConfigOverride(options: EnvironmentOptions):
       password: oldConfig.emailServiceConfig.standardEmailServiceConfig.password,
       senderName: oldConfig.emailServiceConfig.standardEmailServiceConfig.senderName,
       senderEmail: oldConfig.emailServiceConfig.standardEmailServiceConfig.senderEmail,
-    } satisfies OrganizationRenderedConfig['emails']['emailServer'];
+    } satisfies OrganizationRenderedConfig['emails']['server'];
   }
 
-  // =================== PERMISSIONS ===================
+  // =================== RBAC ===================
 
-  // Team permission definitions
-  for (const perm of oldConfig.permissions.filter(perm => perm.scope === 'TEAM')
-    .map(permissionDefinitionJsonFromDbType)
-    .sort((a, b) => stringCompare(a.id, b.id))) {
-    configOverride[`teams.teamPermissionDefinitions.${perm.id}`] = filterUndefined({
-      description: perm.description,
-      containedPermissions: typedFromEntries(perm.contained_permission_ids.map(containedPerm => [containedPerm, {}]))
-    });
-  }
+  // Permission definitions
+  const permissions = oldConfig.permissions
+    .sort((a, b) => stringCompare(a.queryableId, b.queryableId))
+    .map(p => [
+      p.queryableId,
+      filterUndefined({
+        scope: typedToLowercase(p.scope),
+        description: p.description ?? undefined,
+        containedPermissions: typedFromEntries(
+          p.parentEdges
+            .map(edge => {
+              if (edge.parentPermission) {
+                return edge.parentPermission.queryableId;
+              } else if (edge.parentTeamSystemPermission) {
+                return '$' + typedToLowercase(edge.parentTeamSystemPermission);
+              } else {
+                throw new StackAssertionError('Permission edge should have either parentPermission or parentSystemPermission', { edge });
+              }
+            })
+            .sort((a, b) => stringCompare(a, b))
+            .map(id => [id, true])
+        ),
+      }) satisfies OrganizationRenderedConfig['rbac']['permissions'][string],
+    ] as const);
+  configOverride['rbac.permissions'] = typedFromEntries(permissions);
 
-  // Default creator team permissions
-  const defaultCreatorTeamPermissions = oldConfig.permissions.filter(perm => perm.isDefaultTeamCreatorPermission)
-    .map(permissionDefinitionJsonFromDbType)
-    .concat(oldConfig.teamCreateDefaultSystemPermissions.map(db => permissionDefinitionJsonFromSystemDbType(db, oldConfig)))
-    .sort((a, b) => stringCompare(a.id, b.id));
-
-  for (const perm of defaultCreatorTeamPermissions) {
-    configOverride[`teams.defaultCreatorTeamPermissions.${perm.id}`] = {};
-  }
-
-  // Default member team permissions
-  const defaultMemberTeamPermissions = oldConfig.permissions.filter(perm => perm.isDefaultTeamMemberPermission)
-    .map(permissionDefinitionJsonFromDbType)
-    .concat(oldConfig.teamMemberDefaultSystemPermissions.map(db => permissionDefinitionJsonFromSystemDbType(db, oldConfig)))
-    .sort((a, b) => stringCompare(a.id, b.id));
-
-  for (const perm of defaultMemberTeamPermissions) {
-    configOverride[`teams.defaultMemberTeamPermissions.${perm.id}`] = {};
-  }
-
-  // Project permission definitions
-  const projectPermissionDefinitions = oldConfig.permissions.filter(perm => perm.scope === 'PROJECT')
-    .map(permissionDefinitionJsonFromDbType)
-    .sort((a, b) => stringCompare(a.id, b.id));
-
-  for (const perm of projectPermissionDefinitions) {
-    configOverride[`users.userPermissionDefinitions.${perm.id}`] = filterUndefined({
-      description: perm.description,
-      containedPermissions: typedFromEntries(perm.contained_permission_ids.map(containedPerm => [containedPerm, {}]))
-    });
-  }
-
-  // Default project permissions
-  const defaultProjectPermissions = oldConfig.permissions.filter(perm => perm.isDefaultProjectPermission)
-    .map(permissionDefinitionJsonFromDbType)
-    // TODO: add project default system permissions after creating the first project system permission
-    .sort((a, b) => stringCompare(a.id, b.id));
-
-  for (const perm of defaultProjectPermissions) {
-    configOverride[`users.defaultProjectPermissions.${perm.id}`] = {};
-  }
+  // Default permissions
+  configOverride['rbac.defaultPermissions'] = {
+    teamCreator: typedFromEntries([
+      ...oldConfig.permissions.filter(perm => perm.isDefaultTeamCreatorPermission).map(perm => perm.queryableId),
+      ...oldConfig.teamCreateDefaultSystemPermissions,
+    ].map((id) => [id, true])),
+    teamMember: typedFromEntries([
+      ...oldConfig.permissions.filter(perm => perm.isDefaultTeamMemberPermission).map(perm => perm.queryableId),
+      ...oldConfig.teamMemberDefaultSystemPermissions,
+    ].map((id) => [id, true])),
+    signUp: typedFromEntries([
+      ...oldConfig.permissions.filter(perm => perm.isDefaultProjectPermission).map(perm => perm.queryableId),
+    ].map((id) => [id, true])),
+  };
 
   // =================== API KEYS ===================
-  configOverride['users.allowUserApiKeys'] = oldConfig.allowUserApiKeys;
-  configOverride['teams.allowTeamApiKeys'] = oldConfig.allowTeamApiKeys;
+  configOverride['apiKeys.enabled.user'] = oldConfig.allowUserApiKeys;
+  configOverride['apiKeys.enabled.team'] = oldConfig.allowTeamApiKeys;
 
 
   // validate, just to make sure we didn't miss anything
@@ -482,17 +459,14 @@ import.meta.vitest?.test('validateAndReturn(...)', async ({ expect }) => {
 
 // C -> A
 export const renderedOrganizationConfigToProjectCrud = (renderedConfig: OrganizationRenderedConfig, configId: string): ProjectsCrud["Admin"]["Read"]['config'] => {
-  const oauthProviders = typedEntries(renderedConfig.auth.authMethods)
-    .filter(([_, authMethod]) => authMethod.type === 'oauth')
-    .map(([_, authMethod]) => {
-      if (authMethod.type !== 'oauth') {
-        throw new StackAssertionError('Expected oauth provider', { authMethod });
+  const oauthProviders = typedEntries(renderedConfig.auth.oauth.providers)
+    .map(([oauthProviderId, oauthProvider]) => {
+      if (!oauthProvider.type) {
+        return undefined;
       }
-      const oauthProvider = renderedConfig.auth.oauthProviders[authMethod.oauthProviderId];
-
       return filterUndefined({
         id: oauthProvider.type,
-        enabled: authMethod.enabled,
+        enabled: oauthProvider.allowSignIn,
         type: oauthProvider.isShared ? 'shared' : 'standard',
         client_id: oauthProvider.clientId,
         client_secret: oauthProvider.clientSecret,
@@ -500,53 +474,58 @@ export const renderedOrganizationConfigToProjectCrud = (renderedConfig: Organiza
         microsoft_tenant_id: oauthProvider.microsoftTenantId,
       } as const) satisfies ProjectsCrud["Admin"]["Read"]['config']['oauth_providers'][number];
     })
+    .filter(isTruthy)
     .sort((a, b) => stringCompare(a.id, b.id));
 
   return {
     id: configId,
     allow_localhost: renderedConfig.domains.allowLocalhost,
-    client_team_creation_enabled: renderedConfig.teams.clientTeamCreationEnabled,
-    client_user_deletion_enabled: renderedConfig.users.clientUserDeletionEnabled,
-    sign_up_enabled: renderedConfig.users.signUpEnabled,
-    oauth_account_merge_strategy: renderedConfig.auth.oauthAccountMergeStrategy,
-    create_team_on_sign_up: renderedConfig.teams.createTeamOnSignUp,
-    credential_enabled: typedEntries(renderedConfig.auth.authMethods).filter(([_, authMethod]) => authMethod.enabled && authMethod.type === 'password').length > 0,
-    magic_link_enabled: typedEntries(renderedConfig.auth.authMethods).filter(([_, authMethod]) => authMethod.enabled && authMethod.type === 'otp').length > 0,
-    passkey_enabled: typedEntries(renderedConfig.auth.authMethods).filter(([_, authMethod]) => authMethod.enabled && authMethod.type === 'passkey').length > 0,
+    client_team_creation_enabled: renderedConfig.teams.allowClientTeamCreation,
+    client_user_deletion_enabled: renderedConfig.users.allowClientUserDeletion,
+    sign_up_enabled: renderedConfig.auth.allowSignUp,
+    oauth_account_merge_strategy: renderedConfig.auth.oauth.accountMergeStrategy,
+    create_team_on_sign_up: renderedConfig.teams.createPersonalTeamOnSignUp,
+    credential_enabled: renderedConfig.auth.allowPasswordSignIn,
+    magic_link_enabled: renderedConfig.auth.allowOtpSignIn,
+    passkey_enabled: renderedConfig.auth.allowPasskeySignIn,
 
     oauth_providers: oauthProviders,
     enabled_oauth_providers: oauthProviders.filter(provider => provider.enabled),
 
     domains: typedEntries(renderedConfig.domains.trustedDomains)
-      .map(([_, domainConfig]) => ({
+      .map(([_, domainConfig]) => domainConfig.baseUrl === undefined ? undefined : ({
         domain: domainConfig.baseUrl,
         handler_path: domainConfig.handlerPath,
       }))
+      .filter(isTruthy)
       .sort((a, b) => stringCompare(a.domain, b.domain)),
 
-    email_config: renderedConfig.emails.emailServer.isShared ? {
+    email_config: renderedConfig.emails.server.isShared ? {
       type: 'shared',
     } : {
       type: 'standard',
-      host: renderedConfig.emails.emailServer.host,
-      port: renderedConfig.emails.emailServer.port,
-      username: renderedConfig.emails.emailServer.username,
-      password: renderedConfig.emails.emailServer.password,
-      sender_name: renderedConfig.emails.emailServer.senderName,
-      sender_email: renderedConfig.emails.emailServer.senderEmail,
+      host: renderedConfig.emails.server.host,
+      port: renderedConfig.emails.server.port,
+      username: renderedConfig.emails.server.username,
+      password: renderedConfig.emails.server.password,
+      sender_name: renderedConfig.emails.server.senderName,
+      sender_email: renderedConfig.emails.server.senderEmail,
     },
 
-    team_creator_default_permissions: typedEntries(renderedConfig.teams.defaultCreatorTeamPermissions)
+    team_creator_default_permissions: typedEntries(renderedConfig.rbac.defaultPermissions.teamCreator)
+      .filter(([_, perm]) => perm)
       .map(([id, perm]) => ({ id }))
       .sort((a, b) => stringCompare(a.id, b.id)),
-    team_member_default_permissions: typedEntries(renderedConfig.teams.defaultMemberTeamPermissions)
+    team_member_default_permissions: typedEntries(renderedConfig.rbac.defaultPermissions.teamMember)
+      .filter(([_, perm]) => perm)
       .map(([id, perm]) => ({ id }))
       .sort((a, b) => stringCompare(a.id, b.id)),
-    user_default_permissions: typedEntries(renderedConfig.users.defaultProjectPermissions)
+    user_default_permissions: typedEntries(renderedConfig.rbac.defaultPermissions.signUp)
+      .filter(([_, perm]) => perm)
       .map(([id, perm]) => ({ id }))
       .sort((a, b) => stringCompare(a.id, b.id)),
 
-    allow_user_api_keys: renderedConfig.users.allowUserApiKeys,
-    allow_team_api_keys: renderedConfig.teams.allowTeamApiKeys,
+    allow_user_api_keys: renderedConfig.apiKeys.enabled.user,
+    allow_team_api_keys: renderedConfig.apiKeys.enabled.team,
   };
 };
