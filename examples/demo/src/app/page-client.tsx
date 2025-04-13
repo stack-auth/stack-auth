@@ -1,7 +1,7 @@
 'use client';
 
-import { useStackApp, useUser } from '@stackframe/stack';
-import { Button, buttonVariants, Card, CardContent, CardFooter, CardHeader, CardSubtitle, CardTitle, Typography } from '@stackframe/stack-ui';
+import { UserAvatar, useStackApp, useUser } from '@stackframe/stack';
+import { Button, buttonVariants, Card, CardContent, CardFooter, CardHeader, Typography } from '@stackframe/stack-ui';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 
@@ -28,8 +28,13 @@ export default function PageClient() {
         <div className='flex flex-col gap-5 justify-center items-center'>
           <Card className='stack-scope'>
             <CardHeader>
-              <CardTitle>You are currently logged in as</CardTitle>
-              <CardSubtitle>{user.displayName ?? user.primaryEmail}</CardSubtitle>
+              <div className='flex gap-6 items-center'>
+                <UserAvatar user={user} size={100} />
+                <div>
+                  <Typography className='text-sm'>logged in as</Typography>
+                  <Typography className='text-2xl font-semibold'>{user.displayName ?? user.primaryEmail}</Typography>
+                </div>
+              </div>
             </CardHeader>
             <CardContent>
               <Typography>Click on your user&apos;s image at the top right to see your account settings.</Typography>
