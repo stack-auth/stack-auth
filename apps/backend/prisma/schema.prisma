@@ -1087,7 +1087,7 @@ model Price {
 
 model Customer {
   tenancyId  String @db.Uuid
-  customerId String @default(uuid()) @db.Uuid
+  customerId String @unique @default(uuid()) @db.Uuid
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

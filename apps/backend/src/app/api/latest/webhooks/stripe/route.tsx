@@ -36,6 +36,7 @@ export const POST = async (req: NextApiRequest) => {
     let event: Stripe.Event;
     try {
       event = stripe.webhooks.constructEvent(body, signature, STACK_STRIPE_WEBHOOK_SECRET);
+      // console.log('stripe event', event);
     } catch (error) {
       return Response.json({ error: `Webhook error: ${error}` }, { status: 400 });
     }
@@ -51,7 +52,7 @@ export const POST = async (req: NextApiRequest) => {
     return Response.json({ received: true });
   } catch (error) {
     console.error('Error processing Stripe Connect webhook:', error);
-    return Response.json({ error: 'Webhook error' }, { status: 400 });
+    return Response.json({ error: `Webhook error: ${error}` }, { status: 400 });
   }
 };
 
