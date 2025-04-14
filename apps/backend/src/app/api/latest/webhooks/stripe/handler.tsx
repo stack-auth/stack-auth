@@ -1,4 +1,4 @@
-import { getTenancyFromProject } from "@/lib/tenancies";
+import { getSoleTenancyFromProject, getTenancyFromProject } from "@/lib/tenancies";
 import { prismaClient } from "@/prisma-client";
 import { ProjectsCrud } from "@stackframe/stack-shared/dist/interface/crud/projects";
 import { StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
@@ -14,10 +14,7 @@ export const STRIPE_CONNECT_EVENT_HANDLERS: {
   [T in Stripe.Event.Type]?: StripeConnectEventHandler<T>
 } = {
   "customer.subscription.created": async (stripe, event, project) => {
-    const tenancy = await getTenancyFromProject(project.id, 'main', null);
-    if (!tenancy) {
-      throw new StackAssertionError('Default tenancy not found; this should never happen');
-    }
+    const tenancy = await getSoleTenancyFromProject(project.id);
     const customer = await prismaClient.customer.findUnique({
       where: {
         stripeCustomerId: typeof event.data.object.customer === 'string' ? event.data.object.customer : event.data.object.customer.id,

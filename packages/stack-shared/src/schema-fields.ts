@@ -130,6 +130,10 @@ export function yupMixed<A extends {}>(...args: Parameters<typeof yup.mixed<A>>)
   // eslint-disable-next-line no-restricted-syntax
   return yup.mixed(...args);
 }
+export function yupEnum<T extends string>(values: readonly T[]): yup.StringSchema<T> {
+  // eslint-disable-next-line no-restricted-syntax
+  return yup.string().oneOf(values as T[]) as yup.StringSchema<T>;
+}
 export function yupArray<A extends yup.Maybe<yup.AnyObject> = yup.AnyObject, B = any>(...args: Parameters<typeof yup.array<A, B>>) {
   // eslint-disable-next-line no-restricted-syntax
   return yup.array(...args);

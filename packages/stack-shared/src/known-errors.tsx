@@ -1288,6 +1288,16 @@ const ApiKeyNotFound = createKnownErrorConstructor(
   () => [] as const,
 );
 
+const NotFound = createKnownErrorConstructor(
+  KnownError,
+  "NOT_FOUND",
+  (message: string = "Resource not found") => [
+    404,
+    message,
+  ] as const,
+  (json: any) => [json.message] as const,
+);
+
 const PublicApiKeyCannotBeRevoked = createKnownErrorConstructor(
   ApiKeyNotValid,
   "PUBLIC_API_KEY_CANNOT_BE_REVOKED",
@@ -1363,6 +1373,7 @@ export const KnownErrors = {
   UserIdDoesNotExist,
   UserNotFound,
   ApiKeyNotFound,
+  NotFound,
   PublicApiKeyCannotBeRevoked,
   ProjectNotFound,
   SignUpNotEnabled,
