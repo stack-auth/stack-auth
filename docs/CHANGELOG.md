@@ -1,5 +1,11 @@
 # @stackframe/docs
 
+## 2.8.5
+
+### Patch Changes
+
+- Various changes
+
 ## 2.8.4
 
 ### Patch Changes
