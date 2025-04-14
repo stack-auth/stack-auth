@@ -193,11 +193,11 @@ export async function getEnvironmentConfigOverride(options: EnvironmentOptions):
         authEnabledOAuthProviders.add(oauthConfig.id);
       }
     } else if (authMethodConfig.passwordConfig && authMethodConfig.enabled) {
-      configOverride['auth.allowPasswordSignIn'] = true;
+      configOverride['auth.password.allowSignIn'] = true;
     } else if (authMethodConfig.otpConfig && authMethodConfig.enabled) {
-      configOverride['auth.allowOtpSignIn'] = true;
+      configOverride['auth.otp.allowSignIn'] = true;
     } else if (authMethodConfig.passkeyConfig) {
-      configOverride['auth.allowPasskeySignIn'] = true;
+      configOverride['auth.passkey.allowSignIn'] = true;
     } else {
       throw new StackAssertionError('Unknown auth method config', { authMethodConfig });
     }
@@ -489,9 +489,9 @@ export const renderedOrganizationConfigToProjectCrud = (renderedConfig: Organiza
     sign_up_enabled: renderedConfig.auth.allowSignUp,
     oauth_account_merge_strategy: renderedConfig.auth.oauth.accountMergeStrategy,
     create_team_on_sign_up: renderedConfig.teams.createPersonalTeamOnSignUp,
-    credential_enabled: renderedConfig.auth.allowPasswordSignIn,
-    magic_link_enabled: renderedConfig.auth.allowOtpSignIn,
-    passkey_enabled: renderedConfig.auth.allowPasskeySignIn,
+    credential_enabled: renderedConfig.auth.password.allowSignIn,
+    magic_link_enabled: renderedConfig.auth.otp.allowSignIn,
+    passkey_enabled: renderedConfig.auth.passkey.allowSignIn,
 
     oauth_providers: oauthProviders,
     enabled_oauth_providers: oauthProviders.filter(provider => provider.enabled),

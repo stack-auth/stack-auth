@@ -57,9 +57,15 @@ const branchApiKeysSchema = yupObject({
 
 const branchAuthSchema = yupObject({
   allowSignUp: yupBoolean().optional(),
-  allowPasswordSignIn: yupBoolean().optional(),
-  allowOtpSignIn: yupBoolean().optional(),
-  allowPasskeySignIn: yupBoolean().optional(),
+  password: yupObject({
+    allowSignIn: yupBoolean().optional(),
+  }).optional(),
+  otp: yupObject({
+    allowSignIn: yupBoolean().optional(),
+  }).optional(),
+  passkey: yupObject({
+    allowSignIn: yupBoolean().optional(),
+  }).optional(),
   oauth: yupObject({
     accountMergeStrategy: yupString().oneOf(['link_method', 'raise_error', 'allow_duplicates']).optional(),
     providers: yupRecord(
@@ -188,9 +194,15 @@ export const organizationConfigDefaults = {
 
   auth: {
     allowSignUp: true,
-    allowPasswordSignIn: false,
-    allowOtpSignIn: false,
-    allowPasskeySignIn: false,
+    password: {
+      allowSignIn: false,
+    },
+    otp: {
+      allowSignIn: false,
+    },
+    passkey: {
+      allowSignIn: false,
+    },
     oauth: {
       accountMergeStrategy: 'link_method',
       providers: (key: string) => ({
@@ -209,8 +221,8 @@ export const organizationConfigDefaults = {
 
 export type DeepReplaceAllowFunctionsForObjects<T> = T extends object ? { [K in keyof T]: DeepReplaceAllowFunctionsForObjects<T[K]> } | ((arg: keyof T) => DeepReplaceAllowFunctionsForObjects<T[keyof T]>) : T;
 export type DeepReplaceFunctionsWithObjects<T> = T extends (arg: infer K extends string) => infer R ? DeepReplaceFunctionsWithObjects<Record<K, R>> : (T extends object ? { [K in keyof T]: DeepReplaceFunctionsWithObjects<T[K]> } : T);
-export type ApplyDefaults<D extends object | Function, C extends object> = DeepMerge<DeepReplaceFunctionsWithObjects<D>, C>;
-export function applyDefaults<D extends object | Function, C extends object>(defaults: D, config: C): ApplyDefaults<D, C> {
+export type ApplyDefaults<D extends object | ((key: string) => unknown), C extends object> = DeepMerge<DeepReplaceFunctionsWithObjects<D>, C>;
+export function applyDefaults<D extends object | ((key: string) => unknown), C extends object>(defaults: D, config: C): ApplyDefaults<D, C> {
   const res: any = { ...typeof defaults === 'function' ? {} : defaults };
   for (const [key, mergeValue] of Object.entries(config)) {
     const baseValue = typeof defaults === 'function' ? defaults(key) : (has(defaults, key as any) ? get(defaults, key as any) : undefined);
@@ -269,118 +281,3 @@ export type ProjectRenderedConfig = PrettifyType<ApplyDefaults<typeof projectCon
 export type BranchRenderedConfig = PrettifyType<ProjectRenderedConfig & ApplyDefaults<typeof branchConfigDefaults, BranchConfigStrippedNormalizedOverride>>;
 export type EnvironmentRenderedConfig = PrettifyType<BranchRenderedConfig & ApplyDefaults<typeof environmentConfigDefaults, EnvironmentConfigStrippedNormalizedOverride>>;
 export type OrganizationRenderedConfig = PrettifyType<EnvironmentRenderedConfig & ApplyDefaults<typeof organizationConfigDefaults, OrganizationConfigStrippedNormalizedOverride>>;
-
-
-const exampleOrgConfig: OrganizationRenderedConfig = {
-  rbac: {
-    permissions: {
-      'admin': {
-        scope: 'team',
-        containedPermissionIds: {
-          'member': true,
-        },
-      },
-      'something': {
-        scope: 'project',
-        containedPermissionIds: {},
-      },
-    },
-    defaultPermissions: {
-      teamCreator: {
-        'admin': true,
-      },
-      teamMember: {
-        'member': true,
-      },
-      signUp: {
-        'something': true,
-      },
-    },
-  },
-
-  apiKeys: {
-    enabled: {
-      team: true,
-      user: false,
-    },
-  },
-
-  teams: {
-    createPersonalTeamOnSignUp: true,
-    allowClientTeamCreation: true,
-  },
-
-  users: {
-    allowClientUserDeletion: false,
-  },
-
-  domains: {
-    allowLocalhost: false,
-    trustedDomains: {
-      'prod_app_domain': {
-        baseUrl: 'https://app.my-saas.com',
-        handlerPath: '/api/auth/callback',
-      },
-      'staging_app_domain': {
-        baseUrl: 'https://staging.my-saas.com',
-        handlerPath: '/auth/handler',
-      },
-    },
-  },
-
-  auth: {
-    allowSignUp: true,
-    allowPasswordSignIn: true,
-    allowOtpSignIn: true,
-    allowPasskeySignIn: true,
-    oauth: {
-      accountMergeStrategy: 'link_method',
-      providers: {
-        'google_workspace': {
-          type: 'google',
-          isShared: false,
-          clientId: 'google-client-id-for-org',
-          clientSecret: 'google-client-secret-for-org',
-          allowSignIn: true,
-          allowConnectedAccounts: true,
-        },
-        'github_enterprise': {
-          type: 'github',
-          isShared: false,
-          clientId: 'github-client-id-for-org',
-          clientSecret: 'github-client-secret-for-org',
-          allowSignIn: true,
-          allowConnectedAccounts: true,
-        },
-        'azure_prod': {
-          type: 'microsoft',
-          isShared: false,
-          clientId: 'azure-client-id-for-org',
-          clientSecret: 'azure-client-secret-for-org',
-          microsoftTenantId: 'specific-org-tenant-id',
-          allowSignIn: true,
-          allowConnectedAccounts: true,
-        },
-        'shared_facebook': {
-          type: 'facebook',
-          isShared: true,
-          facebookConfigId: 'optional-shared-fb-config-id',
-          allowSignIn: true,
-          allowConnectedAccounts: true,
-        }
-      },
-    },
-  },
-
-  emails: {
-    server: {
-      isShared: false,
-      host: 'smtp.organization.com',
-      port: 587,
-      username: 'org-smtp-username',
-      password: 'org-smtp-password',
-      senderName: 'My Org App Name',
-      senderEmail: 'noreply@my-saas-org.com',
-    },
-  },
-};
