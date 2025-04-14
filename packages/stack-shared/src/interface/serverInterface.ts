@@ -628,7 +628,7 @@ export class StackServerInterface extends StackClientInterface {
       return res.error;
     }
   }
-  
+
   async post(path: string, data: any): Promise<any> {
     const response = await this.sendServerRequest(
       path,

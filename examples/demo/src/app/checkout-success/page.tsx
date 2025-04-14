@@ -24,19 +24,19 @@ export default function CheckoutSuccessPage() {
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
           </svg>
         </div>
-        
+
         <Typography type="h2">Payment Successful!</Typography>
-        
+
         <Typography>
           Thank you for your purchase. Your payment has been processed successfully.
         </Typography>
-        
+
         {sessionId && (
           <Typography className="text-gray-500">
             Session ID: {sessionId}
           </Typography>
         )}
-        
+
         <div className="pt-8">
           <Button onClick={() => router.push('/checkout-demo')}>
             Return to Checkout Demo

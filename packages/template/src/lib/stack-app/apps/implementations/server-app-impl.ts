@@ -850,7 +850,7 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
     await this._serverTeamsCache.refresh([undefined]);
     return this._serverTeamFromCrud(team);
   }
-  
+
 
   // IF_PLATFORM react-like
   useTeams(): ServerTeam[] {
