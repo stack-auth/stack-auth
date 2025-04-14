@@ -8,6 +8,7 @@ export const configLevels = ['project', 'branch', 'environment', 'organization']
 export type ConfigLevel = typeof configLevels[number];
 const permissionRegex = /^\$?[a-z0-9_:]+$/;
 
+
 export const baseConfig = {
   teams: {
     createTeamOnSignUp: false,
