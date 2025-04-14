@@ -209,12 +209,12 @@ export const organizationConfigDefaults = {
 
 export type DeepReplaceAllowFunctionsForObjects<T> = T extends object ? { [K in keyof T]: DeepReplaceAllowFunctionsForObjects<T[K]> } | ((arg: keyof T) => DeepReplaceAllowFunctionsForObjects<T[keyof T]>) : T;
 export type DeepReplaceFunctionsWithObjects<T> = T extends (arg: infer K extends string) => infer R ? DeepReplaceFunctionsWithObjects<Record<K, R>> : (T extends object ? { [K in keyof T]: DeepReplaceFunctionsWithObjects<T[K]> } : T);
-export type ApplyDefaults<D extends object, C extends object> = DeepMerge<DeepReplaceFunctionsWithObjects<D>, C>;
-export function applyDefaults<D extends object, C extends object>(defaults: D, config: C): ApplyDefaults<D, C> {
-  const res: any = { ...defaults };
+export type ApplyDefaults<D extends object | Function, C extends object> = DeepMerge<DeepReplaceFunctionsWithObjects<D>, C>;
+export function applyDefaults<D extends object | Function, C extends object>(defaults: D, config: C): ApplyDefaults<D, C> {
+  const res: any = { ...typeof defaults === 'function' ? {} : defaults };
   for (const [key, mergeValue] of Object.entries(config)) {
-    if (has(res, key as any)) {
-      const baseValue = typeof res === 'function' ? res(key) : get(res, key as any);
+    const baseValue = typeof defaults === 'function' ? defaults(key) : (has(defaults, key as any) ? get(defaults, key as any) : undefined);
+    if (baseValue !== undefined) {
       if (isObjectLike(baseValue) && isObjectLike(mergeValue)) {
         set(res, key, applyDefaults(baseValue, mergeValue));
         continue;
@@ -224,6 +224,12 @@ export function applyDefaults<D extends object, C extends object>(defaults: D, c
   }
   return res as any;
 }
+import.meta.vitest?.test("applyDefaults", ({ expect }) => {
+  expect(applyDefaults({ a: 1 }, { a: 2 })).toEqual({ a: 2 });
+  expect(applyDefaults({ a: { b: 1 } }, { a: { c: 2 } })).toEqual({ a: { b: 1, c: 2 } });
+  expect(applyDefaults((key: string) => ({ b: key }), { a: {} })).toEqual({ a: { b: "a" } });
+  expect(applyDefaults({ a: (key: string) => ({ b: key }) }, { a: { c: { d: 1 } } })).toEqual({ a: { c: { b: "c", d: 1 } } });
+});
 
 // Normalized overrides
 export type ProjectConfigNormalizedOverride = yup.InferType<typeof projectConfigSchema>;
