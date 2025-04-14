@@ -8,7 +8,7 @@ import { StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors"
 import { filterUndefined, pick, typedEntries, typedFromEntries } from "@stackframe/stack-shared/dist/utils/objects";
 import { Result } from "@stackframe/stack-shared/dist/utils/results";
 import { stringCompare, typedToLowercase } from "@stackframe/stack-shared/dist/utils/strings";
-import { base64url } from "jose";
+import { generateUuid } from "@stackframe/stack-shared/dist/utils/uuids";
 import * as yup from "yup";
 import { RawQuery, prismaClient } from "../prisma-client";
 import { DBProject, fullProjectInclude } from "./projects";
@@ -172,7 +172,7 @@ export async function getEnvironmentConfigOverride(options: EnvironmentOptions):
   // =================== DOMAIN ===================
   configOverride['domains.allowLocalhost'] = oldConfig.allowLocalhost;
   for (const domain of oldConfig.domains) {
-    configOverride['domains.trustedDomains.' + base64url.encode(domain.domain)] = {
+    configOverride['domains.trustedDomains.' + generateUuid()] = {
       baseUrl: domain.domain,
       handlerPath: domain.handlerPath,
     } satisfies OrganizationRenderedConfig['domains']['trustedDomains'][string];
@@ -192,10 +192,14 @@ export async function getEnvironmentConfigOverride(options: EnvironmentOptions):
       if (authMethodConfig.enabled) {
         authEnabledOAuthProviders.add(oauthConfig.id);
       }
-    } else if (authMethodConfig.passwordConfig && authMethodConfig.enabled) {
-      configOverride['auth.password.allowSignIn'] = true;
-    } else if (authMethodConfig.otpConfig && authMethodConfig.enabled) {
-      configOverride['auth.otp.allowSignIn'] = true;
+    } else if (authMethodConfig.passwordConfig) {
+      if (authMethodConfig.enabled) {
+        configOverride['auth.password.allowSignIn'] = true;
+      }
+    } else if (authMethodConfig.otpConfig) {
+      if (authMethodConfig.enabled) {
+        configOverride['auth.otp.allowSignIn'] = true;
+      }
     } else if (authMethodConfig.passkeyConfig) {
       configOverride['auth.passkey.allowSignIn'] = true;
     } else {

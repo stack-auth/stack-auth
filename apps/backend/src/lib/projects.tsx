@@ -379,7 +379,7 @@ export function getProjectQuery(projectId: string): RawQuery<ProjectsCrud["Admin
                 type: "shared",
               } as const;
             } else if (providerConfig.StandardOAuthConfig) {
-              return {
+              return filterUndefined({
                 id: typedToLowercase(providerConfig.StandardOAuthConfig.type),
                 enabled: authMethodConfig.enabled,
                 type: "standard",
@@ -387,7 +387,7 @@ export function getProjectQuery(projectId: string): RawQuery<ProjectsCrud["Admin
                 client_secret: providerConfig.StandardOAuthConfig.clientSecret,
                 facebook_config_id: providerConfig.StandardOAuthConfig.facebookConfigId ?? undefined,
                 microsoft_tenant_id: providerConfig.StandardOAuthConfig.microsoftTenantId ?? undefined,
-              } as const;
+              } as const);
             } else {
               throw new StackAssertionError(`Exactly one of the OAuth provider configs should be set on auth method config ${authMethodConfig.id} of project ${row.id}`, { row });
             }
