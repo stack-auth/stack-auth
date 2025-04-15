@@ -211,15 +211,9 @@ export async function getEnvironmentConfigOverride(options: EnvironmentOptions):
   }
 
   const connectedAccountsEnabledOAuthProviders = new Set<string>();
-  for (const provider of oldConfig.oauthProviderConfigs) {
-    const authMethodConfig = oldConfig.authMethodConfigs.find(config => config.oauthProviderConfig?.id === provider.id);
-
-    if (!authMethodConfig) {
-      throw new StackAssertionError('No auth method config found for oauth provider', { provider });
-    }
-
-    if (authMethodConfig.enabled) {
-      connectedAccountsEnabledOAuthProviders.add(provider.id);
+  for (const connectedAccountConfig of oldConfig.connectedAccountConfigs) {
+    if (connectedAccountConfig.enabled) {
+      connectedAccountsEnabledOAuthProviders.add(connectedAccountConfig.id);
     }
   }
 
@@ -230,7 +224,7 @@ export async function getEnvironmentConfigOverride(options: EnvironmentOptions):
         type: typedToLowercase(provider.proxiedOAuthConfig.type),
         isShared: true,
         allowSignIn: authEnabledOAuthProviders.has(provider.id),
-        allowConnectedAccounts: connectedAccountsEnabledOAuthProviders.has(provider.id),
+        allowConnectedAccounts: connectedAccountsEnabledOAuthProviders.has(provider.connectedAccountConfigId ?? undefined as any),
       } as const;
     } else if (provider.standardOAuthConfig) {
       providerOverride = filterUndefined({
@@ -241,7 +235,7 @@ export async function getEnvironmentConfigOverride(options: EnvironmentOptions):
         facebookConfigId: provider.standardOAuthConfig.facebookConfigId ?? undefined,
         microsoftTenantId: provider.standardOAuthConfig.microsoftTenantId ?? undefined,
         allowSignIn: authEnabledOAuthProviders.has(provider.id),
-        allowConnectedAccounts: connectedAccountsEnabledOAuthProviders.has(provider.id),
+        allowConnectedAccounts: connectedAccountsEnabledOAuthProviders.has(provider.connectedAccountConfigId ?? undefined as any),
       } as const);
     } else {
       throw new StackAssertionError('Unknown oauth provider config', { provider });
@@ -273,7 +267,7 @@ export async function getEnvironmentConfigOverride(options: EnvironmentOptions):
       p.queryableId,
       filterUndefined({
         scope: typedToLowercase(p.scope),
-        description: p.description ?? undefined,
+        description: p.description || undefined,
         containedPermissionIds: typedFromEntries(
           p.parentEdges
             .map(edge => {

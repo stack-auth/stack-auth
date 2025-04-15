@@ -2,7 +2,7 @@ import * as yup from "yup";
 import * as schemaFields from "../schema-fields";
 import { yupBoolean, yupObject, yupRecord, yupString } from "../schema-fields";
 import { allProviders } from "../utils/oauth";
-import { DeepMerge, get, has, isObjectLike, set } from "../utils/objects";
+import { DeepMerge, get, has, isObjectLike, mapValues, set } from "../utils/objects";
 import { PrettifyType } from "../utils/types";
 import { NormalizesTo } from "./format";
 
@@ -223,7 +223,7 @@ export type DeepReplaceAllowFunctionsForObjects<T> = T extends object ? { [K in 
 export type DeepReplaceFunctionsWithObjects<T> = T extends (arg: infer K extends string) => infer R ? DeepReplaceFunctionsWithObjects<Record<K, R>> : (T extends object ? { [K in keyof T]: DeepReplaceFunctionsWithObjects<T[K]> } : T);
 export type ApplyDefaults<D extends object | ((key: string) => unknown), C extends object> = DeepMerge<DeepReplaceFunctionsWithObjects<D>, C>;
 export function applyDefaults<D extends object | ((key: string) => unknown), C extends object>(defaults: D, config: C): ApplyDefaults<D, C> {
-  const res: any = { ...typeof defaults === 'function' ? {} : defaults };
+  const res: any = typeof defaults === 'function' ? {} : mapValues(defaults, v => typeof v === 'function' ? {} : v);
   for (const [key, mergeValue] of Object.entries(config)) {
     const baseValue = typeof defaults === 'function' ? defaults(key) : (has(defaults, key as any) ? get(defaults, key as any) : undefined);
     if (baseValue !== undefined) {
@@ -241,6 +241,7 @@ import.meta.vitest?.test("applyDefaults", ({ expect }) => {
   expect(applyDefaults({ a: { b: 1 } }, { a: { c: 2 } })).toEqual({ a: { b: 1, c: 2 } });
   expect(applyDefaults((key: string) => ({ b: key }), { a: {} })).toEqual({ a: { b: "a" } });
   expect(applyDefaults({ a: (key: string) => ({ b: key }) }, { a: { c: { d: 1 } } })).toEqual({ a: { c: { b: "c", d: 1 } } });
+  expect(applyDefaults({ a: (key: string) => ({ b: key }) }, {})).toEqual({ a: {} });
 });
 
 // Normalized overrides
