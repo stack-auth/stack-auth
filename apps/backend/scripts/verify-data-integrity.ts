@@ -93,6 +93,11 @@ async function main() {
             "x-stack-development-override-key": getEnvVariable("STACK_SEED_INTERNAL_PROJECT_SUPER_SECRET_ADMIN_KEY"),
           },
         }),
+        // this endpoint calls the legacy function, so it's a great way to check for config integrity
+        // once the legacy getProject function is gone, we can remove this too
+        expectStatusCode(200, `/api/v1/projects/${projectId}/.well-known/jwks.json`, {
+          method: "GET",
+        }),
       ]);
       if (users.pagination?.next_cursor) throwErr("Users are paginated? Please update the verify-data-integrity.ts script to handle this.");
       if (currentProject.user_count !== users.items.length) throwErr("User count mismatch.", {
