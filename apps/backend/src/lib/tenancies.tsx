@@ -3,13 +3,7 @@ import { Prisma } from "@prisma/client";
 import { ProjectsCrud } from "@stackframe/stack-shared/dist/interface/crud/projects";
 import { getNodeEnvironment } from "@stackframe/stack-shared/dist/utils/env";
 import { StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
-import { fullProjectInclude, getProject, projectPrismaToCrud } from "./projects";
-
-export const fullTenancyInclude = {
-  project: {
-    include: fullProjectInclude,
-  },
-} as const satisfies Prisma.TenancyInclude;
+import { getProject } from "./projects";
 
 export async function tenancyPrismaToCrud(prisma: Prisma.TenancyGetPayload<{ include: typeof fullTenancyInclude }>) {
   if (prisma.hasNoOrganization && prisma.organizationId !== null) {
@@ -46,12 +40,12 @@ const soleTenancyIdsCache = new Map<string, string>();
   * @deprecated This is a temporary function for the situation where every project has exactly one tenancy. Later,
   * we will support multiple tenancies per project, and all uses of this function will be refactored.
   */
-export async function getSoleTenancyFromProject(project: ProjectsCrud["Admin"]["Read"] | string): Promise<Tenancy>;
+export function getSoleTenancyFromProject(project: ProjectsCrud["Admin"]["Read"] | string): Promise<Tenancy>;
 /**
   * @deprecated This is a temporary function for the situation where every project has exactly one tenancy. Later,
   * we will support multiple tenancies per project, and all uses of this function will be refactored.
   */
-export async function getSoleTenancyFromProject(project: ProjectsCrud["Admin"]["Read"] | string, returnNullIfNotFound: boolean): Promise<Tenancy | null>;
+export function getSoleTenancyFromProject(project: ProjectsCrud["Admin"]["Read"] | string, returnNullIfNotFound: boolean): Promise<Tenancy | null>;
 export async function getSoleTenancyFromProject(projectOrId: ProjectsCrud["Admin"]["Read"] | string, returnNullIfNotFound: boolean = false): Promise<Tenancy | null> {
   let project;
   if (!projectOrId) {
