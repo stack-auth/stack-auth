@@ -13,7 +13,7 @@ const Slider = forwardRefIfNeeded<
   <SliderPrimitive.Root
     ref={ref}
     className={cn(
-      "relative flex w-full touch-none select-none items-center",
+      "stack-scope relative flex w-full touch-none select-none items-center",
       className
     )}
     {...props}
