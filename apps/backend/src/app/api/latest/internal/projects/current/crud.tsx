@@ -609,7 +609,7 @@ export const projectsCrudHandlers = createLazyProxy(() => createCrudHandlers(pro
         password: data.config.email_config.password,
         senderName: data.config.email_config.sender_name,
         senderEmail: data.config.email_config.sender_email,
-      } satisfies OrganizationRenderedConfig['emails']['emailServer'];
+      } satisfies OrganizationRenderedConfig['emails']['server'];
     }
 
 
