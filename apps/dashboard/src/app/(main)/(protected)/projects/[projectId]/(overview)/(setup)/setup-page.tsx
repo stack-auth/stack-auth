@@ -29,7 +29,11 @@ export default function SetupPage(props: { toMetrics: () => void }) {
   const [setupCode, setSetupCode] = useState<string | undefined>(undefined);
   const apiUrl = getPublicEnvVar('NEXT_PUBLIC_STACK_API_URL') === "https://api.stack-auth.com" ? undefined : getPublicEnvVar('NEXT_PUBLIC_STACK_API_URL');
   const [selectedFramework, setSelectedFramework] = useState<'nextjs' | 'react' | 'javascript' | 'python'>('nextjs');
-  const [keys, setKeys] = useState<{ projectId: string, publishableClientKey: string } | null>({ projectId: 'asdfasdf', publishableClientKey: 'asdfasdf' });
+  const [keys, setKeys] = useState<{ projectId: string, publishableClientKey: string } | null>(null);
+
+  const onGenerateKeys = () => {
+    setKeys({ projectId: 'asdfasdf', publishableClientKey: 'asdfasdf' });
+  };
 
   useEffect(() => {
     const fetchSetupCode = async () => {
@@ -61,7 +65,7 @@ export default function SetupPage(props: { toMetrics: () => void }) {
     {
       step: 2,
       title: "Install Stack Auth",
-      content: <div className="flex flex-col w-0 flex-grow gap-4">
+      content: <>
         In a new or existing Next.js project, run:
         <CodeBlock
           language="bash"
@@ -69,14 +73,16 @@ export default function SetupPage(props: { toMetrics: () => void }) {
           title="Terminal"
           icon="terminal"
         />
-      </div>
+      </>
     },
     {
       step: 3,
       title: "Done",
-      content: <div className="">
-        If you start your Next.js app with npm run dev and navigate to <StyledLink href="http://localhost:3000/handler/signup">http://localhost:3000/handler/signup</StyledLink>, you will see the sign-up page.
-      </div>
+      content: <>
+        <div>
+          If you start your Next.js app with npm run dev and navigate to <StyledLink href="http://localhost:3000/handler/signup">http://localhost:3000/handler/signup</StyledLink>, you will see the sign-up page.
+        </div>
+      </>
     },
   ];
 
@@ -84,7 +90,7 @@ export default function SetupPage(props: { toMetrics: () => void }) {
     {
       step: 2,
       title: "Install Stack Auth",
-      content: <div className="flex flex-col w-0 flex-grow gap-4">
+      content: <>
         In a new or existing React project, run:
         <CodeBlock
           language="bash"
@@ -92,17 +98,17 @@ export default function SetupPage(props: { toMetrics: () => void }) {
           title="Terminal"
           icon="terminal"
         />
-      </div>
+      </>
     },
     {
       step: 3,
       title: "Create Stack Auth Keys",
-      content: <StackAuthKeys keys={keys} onGenerateKeys={() => { }} />
+      content: <StackAuthKeys keys={keys} onGenerateKeys={onGenerateKeys} />
     },
     {
       step: 4,
       title: "Create stack.ts file",
-      content: <div className="flex flex-col w-0 flex-grow gap-4">
+      content: <>
         <p>
           Create a new file called <InlineCode>stack.ts</InlineCode> and add the following code. Here we use react-router-dom as an example.
         </p>
@@ -125,12 +131,12 @@ export default function SetupPage(props: { toMetrics: () => void }) {
           title="stack.ts"
           icon="code"
         />
-      </div>
+      </>
     },
     {
       step: 5,
       title: "Update App.tsx",
-      content: <div className="flex flex-col w-0 flex-grow gap-4">
+      content: <>
         <p>
           Update your App.tsx file to wrap the entire app with a <InlineCode>StackProvider</InlineCode> and <InlineCode>StackTheme</InlineCode> and add a <InlineCode>StackHandler</InlineCode> component to handle the authentication flow.
         </p>
@@ -171,7 +177,7 @@ export default function SetupPage(props: { toMetrics: () => void }) {
           title="App.tsx"
           icon="code"
         />
-      </div>
+      </>
     },
     {
       step: 6,
@@ -180,6 +186,27 @@ export default function SetupPage(props: { toMetrics: () => void }) {
         If you start your React app with npm run dev and navigate to <StyledLink href="http://localhost:5173/handler/signup">http://localhost:5173/handler/signup</StyledLink>, you will see the sign-up page.
       </div>
     }
+  ];
+
+  const javascriptSteps = [
+    {
+      step: 2,
+      title: "Install Stack Auth",
+      content: <>
+        Install Stack Auth using npm:
+        <CodeBlock
+          language="bash"
+          content={`npm install @stackframe/js`}
+          title="Terminal"
+          icon="terminal"
+        />
+      </>
+    },
+    {
+      step: 3,
+      title: "Create Stack Auth Keys",
+      content: <StackAuthKeys keys={keys} onGenerateKeys={onGenerateKeys} />
+    },
   ];
 
   return (
@@ -321,6 +348,7 @@ export default function SetupPage(props: { toMetrics: () => void }) {
             },
             ...(selectedFramework === 'nextjs' ? nextJsSteps : []),
             ...(selectedFramework === 'react' ? reactSteps : []),
+            ...(selectedFramework === 'javascript' ? javascriptSteps : []),
           ].map((item, index) => (
             <li key={item.step} className={cn("ms-6 flex flex-col lg:flex-row gap-10 mb-20")}>
               <div className="flex flex-col gap-2 max-w-[180px] min-w-[180px]">
@@ -330,7 +358,7 @@ export default function SetupPage(props: { toMetrics: () => void }) {
                 <h3 className="font-medium leading-tight">{item.title}</h3>
                 {/* <p className="text-sm">{item.description}</p> */}
               </div>
-              <div className="flex flex-grow">
+              <div className="flex flex-grow flex-col w-0 gap-4">
                 {item.content}
               </div>
             </li>
@@ -364,4 +392,7 @@ function StackAuthKeys(props: { keys: { projectId: string, publishableClientKey:
       )}
     </div>
   );
+}
+
+function SimpleTabs(props: { tabs: { label: string, content: React.ReactNode }[] }) {
 }
