@@ -29,6 +29,7 @@ export default function SetupPage(props: { toMetrics: () => void }) {
   const [setupCode, setSetupCode] = useState<string | undefined>(undefined);
   const apiUrl = getPublicEnvVar('NEXT_PUBLIC_STACK_API_URL') === "https://api.stack-auth.com" ? undefined : getPublicEnvVar('NEXT_PUBLIC_STACK_API_URL');
   const [selectedFramework, setSelectedFramework] = useState<'nextjs' | 'react' | 'javascript' | 'python'>('nextjs');
+  const [keys, setKeys] = useState<{ projectId: string, publishableClientKey: string } | null>({ projectId: 'asdfasdf', publishableClientKey: 'asdfasdf' });
 
   useEffect(() => {
     const fetchSetupCode = async () => {
@@ -96,7 +97,7 @@ export default function SetupPage(props: { toMetrics: () => void }) {
     {
       step: 3,
       title: "Create Stack Auth Keys",
-      content: <StackAuthKeys />
+      content: <StackAuthKeys keys={keys} onGenerateKeys={() => { }} />
     },
     {
       step: 4,
@@ -340,16 +341,14 @@ export default function SetupPage(props: { toMetrics: () => void }) {
   );
 }
 
-function StackAuthKeys() {
-  const [keys, setKeys] = useState<{ projectId: string, publishableClientKey: string } | null>(null);
-
+function StackAuthKeys(props: { keys: { projectId: string, publishableClientKey: string } | null, onGenerateKeys: () => void }) {
   return (
     <div className="w-full border rounded-xl p-8 gap-4 flex flex-col">
-      {keys ? (
+      {props.keys ? (
         <>
           <APIEnvKeys
-            projectId={keys.projectId}
-            publishableClientKey={keys.publishableClientKey}
+            projectId={props.keys.projectId}
+            publishableClientKey={props.keys.publishableClientKey}
           />
 
           <Typography type="label" variant="secondary">
@@ -358,7 +357,7 @@ function StackAuthKeys() {
         </>
       ) : (
         <div className="flex items-center justify-center">
-          <Button onClick={() => setKeys({ projectId: 'asdfasdf', publishableClientKey: 'asdfasdf' })}>
+          <Button onClick={() => props.onGenerateKeys()}>
             Generate Keys
           </Button>
         </div>
