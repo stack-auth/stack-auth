@@ -22,7 +22,7 @@ const DialogOverlay = forwardRefIfNeeded<
   <DialogPrimitive.Overlay
     ref={ref}
     className={cn(
-      "fixed inset-0 z-50 bg-black/80  data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0",
+      "stack-scope fixed inset-0 z-50 bg-black/80  data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0",
       className
     )}
     {...props}
@@ -58,7 +58,7 @@ const DialogBody = ({
   className,
   ...props
 }: React.HTMLAttributes<HTMLDivElement>) => (
-  <div className={cn("overflow-y-auto flex flex-col gap-4 w-[calc(100%+3rem)] -mx-6 px-6 my-2 py-2", className)} {...props} />
+  <div className={cn("stack-scope overflow-y-auto flex flex-col gap-4 w-[calc(100%+3rem)] -mx-6 px-6 my-2 py-2", className)} {...props} />
 );
 
 const DialogHeader = ({
@@ -67,7 +67,7 @@ const DialogHeader = ({
 }: React.HTMLAttributes<HTMLDivElement>) => (
   <div
     className={cn(
-      "flex flex-col space-y-1.5 text-center sm:text-left",
+      "stack-scope flex flex-col space-y-1.5 text-center sm:text-left",
       className
     )}
     {...props}
@@ -81,7 +81,7 @@ const DialogFooter = ({
 }: React.HTMLAttributes<HTMLDivElement>) => (
   <div
     className={cn(
-      "flex flex-col-reverse sm:flex-row sm:justify-end sm:space-x-2",
+      "stack-scope flex flex-col-reverse sm:flex-row sm:justify-end sm:space-x-2",
       className
     )}
     {...props}
@@ -96,7 +96,7 @@ const DialogTitle = forwardRefIfNeeded<
   <DialogPrimitive.Title
     ref={ref}
     className={cn(
-      "text-lg font-semibold leading-none tracking-tight",
+      "stack-scope text-lg font-semibold leading-none tracking-tight",
       className
     )}
     {...props}
@@ -110,7 +110,7 @@ const DialogDescription = forwardRefIfNeeded<
 >(({ className, ...props }, ref) => (
   <DialogPrimitive.Description
     ref={ref}
-    className={cn("text-sm text-muted-foreground", className)}
+    className={cn("stack-scope text-sm text-muted-foreground", className)}
     {...props}
   />
 ));
