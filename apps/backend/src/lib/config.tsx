@@ -319,12 +319,12 @@ export async function getEnvironmentConfigOverride(options: EnvironmentOptions):
     environmentConfigOverride: configOverride,
   });
   if (validationResult.status === 'error') {
-    console.log({
+    throw new StackAssertionError('getEnvironmentConfigOverride returned an invalid config override: ' + validationResult.error, {
+      validationResult,
       project: options.project,
       branch: options.branch,
       environmentConfigOverride: configOverride,
     });
-    throw new StackAssertionError('getEnvironmentConfigOverride returned an invalid config override: ' + validationResult.error, { validationResult });
   }
 
   return configOverride;
