@@ -26,4 +26,4 @@ export type IfAndOnlyIf<Value, Extends, Then, Otherwise> =
 /**
  * Can be used to prettify a type in the IDE; for example, some complicated intersected types can be flattened into a single type.
  */
-export type PrettifyType<T> = { [K in keyof T]: T[K] } & {};
+export type PrettifyType<T> = T extends object ? { [K in keyof T]: T[K] } & {} : T;

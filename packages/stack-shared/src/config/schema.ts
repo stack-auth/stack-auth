@@ -1,224 +1,283 @@
 import * as yup from "yup";
 import * as schemaFields from "../schema-fields";
-import { yupBoolean, yupObject, yupRecord, yupString, yupUnion } from "../schema-fields";
+import { yupBoolean, yupObject, yupRecord, yupString } from "../schema-fields";
 import { allProviders } from "../utils/oauth";
+import { DeepMerge, get, has, isObjectLike, set } from "../utils/objects";
+import { PrettifyType } from "../utils/types";
 import { NormalizesTo } from "./format";
+
+// NOTE: The validation schemas in here are all schematic validators, not sanity-check validators.
+// For more info, see ./README.md
+
 
 export const configLevels = ['project', 'branch', 'environment', 'organization'] as const;
 export type ConfigLevel = typeof configLevels[number];
 const permissionRegex = /^\$?[a-z0-9_:]+$/;
 
-export const baseConfig = {
-  teams: {
-    createTeamOnSignUp: false,
-    clientTeamCreationEnabled: false,
-    defaultCreatorTeamPermissions: {},
-    defaultMemberTeamPermissions: {},
-    teamPermissionDefinitions: {},
-    allowTeamApiKeys: false,
-  },
-  users: {
-    clientUserDeletionEnabled: false,
-    signUpEnabled: true,
-    defaultProjectPermissions: {},
-    userPermissionDefinitions: {},
-    allowUserApiKeys: false,
-  },
-  domains: {
-    allowLocalhost: true,
-    trustedDomains: {},
-  },
-  auth: {
-    oauthAccountMergeStrategy: 'link_method',
-    oauthProviders: {},
-    authMethods: {},
-    connectedAccounts: {},
-  },
-  emails: {
-    emailServer: {
-      isShared: true,
-    },
-  },
-};
-
 /**
  * All fields that can be overridden at this level.
  */
-export const projectConfigSchema = yupObject({
-  // This is just an example of a field that can only be configured at the project level. Will be actually implemented in the future.
-  sourceOfTruthDbConnectionString: yupString().optional(),
-});
+export const projectConfigSchema = yupObject({});
 
-// key: id of the permission definition.
-const _permissionDefinitions = yupRecord(
-  yupString().defined().matches(permissionRegex),
-  yupObject({
-    description: yupString().optional(),
-    // key: id of the contained permission.
-    containedPermissions: yupRecord(
-      yupString().defined().matches(permissionRegex),
-      yupObject({}),
-    ).defined(),
-  }).defined(),
-).defined();
+// --- NEW RBAC Schema ---
+const branchRbacDefaultPermissions = yupRecord(
+  yupString().optional().matches(permissionRegex),
+  yupBoolean().isTrue().optional(),
+).optional();
 
-const _permissionDefault = yupRecord(
-  yupString().defined().matches(permissionRegex),
-  yupObject({}),
-).defined();
-
-const branchAuth = yupObject({
-  oauthAccountMergeStrategy: yupString().oneOf(['link_method', 'raise_error', 'allow_duplicates']).defined(),
-
-  // key: id of the oauth provider.
-  oauthProviders: yupRecord(
-    yupString().defined().matches(permissionRegex),
+const branchRbacSchema = yupObject({
+  permissions: yupRecord(
+    yupString().optional().matches(permissionRegex),
     yupObject({
-      type: yupString().oneOf(allProviders).defined(),
-    }),
-  ).defined(),
+      description: yupString().optional(),
+      scope: yupString().oneOf(['team', 'project']).optional(),
+      containedPermissionIds: yupRecord(
+        yupString().optional().matches(permissionRegex),
+        yupBoolean().isTrue().optional()
+      ).optional(),
+    }).optional(),
+  ).optional(),
+  defaultPermissions: yupObject({
+    teamCreator: branchRbacDefaultPermissions,
+    teamMember: branchRbacDefaultPermissions,
+    signUp: branchRbacDefaultPermissions,
+  }).optional(),
+}).optional();
+// --- END NEW RBAC Schema ---
 
-  // key: id of the auth method.
-  authMethods: yupRecord(
-    yupString().defined().matches(permissionRegex),
-    yupUnion(
-      yupObject({
-        // @deprecated should remove after the config json db migration
-        enabled: yupBoolean().defined(),
-        type: yupString().oneOf(['password']).defined(),
-      }),
-      yupObject({
-        // @deprecated should remove after the config json db migration
-        enabled: yupBoolean().defined(),
-        type: yupString().oneOf(['otp']).defined(),
-      }),
-      yupObject({
-        // @deprecated should remove after the config json db migration
-        enabled: yupBoolean().defined(),
-        type: yupString().oneOf(['passkey']).defined(),
-      }),
-      yupObject({
-        // @deprecated should remove after the config json db migration
-        enabled: yupBoolean().defined(),
-        type: yupString().oneOf(['oauth']).defined(),
-        oauthProviderId: yupString().defined(),
-      }),
-    ),
-  ).defined(),
+// --- NEW API Keys Schema ---
+const branchApiKeysSchema = yupObject({
+  enabled: yupObject({
+    team: yupBoolean().optional(),
+    user: yupBoolean().optional(),
+  }).optional(),
+}).optional();
+// --- END NEW API Keys Schema ---
 
-  // key: id of the connected account.
-  connectedAccounts: yupRecord(
-    yupString().defined().matches(permissionRegex),
-    yupObject({
-      // @deprecated should remove after the config json db migration
-      enabled: yupBoolean().defined(),
-      oauthProviderId: yupString().defined(),
-    }),
-  ).defined(),
-}).defined();
+
+const branchAuthSchema = yupObject({
+  allowSignUp: yupBoolean().optional(),
+  password: yupObject({
+    allowSignIn: yupBoolean().optional(),
+  }).optional(),
+  otp: yupObject({
+    allowSignIn: yupBoolean().optional(),
+  }).optional(),
+  passkey: yupObject({
+    allowSignIn: yupBoolean().optional(),
+  }).optional(),
+  oauth: yupObject({
+    accountMergeStrategy: yupString().oneOf(['link_method', 'raise_error', 'allow_duplicates']).optional(),
+    providers: yupRecord(
+      yupString().optional().matches(permissionRegex),
+      yupObject({
+        type: yupString().oneOf(allProviders).optional(),
+        allowSignIn: yupBoolean().optional(),
+        allowConnectedAccounts: yupBoolean().optional(),
+      }).defined(),
+    ).optional(),
+  }).optional(),
+}).optional();
 
 const branchDomain = yupObject({
-  allowLocalhost: yupBoolean().defined(),
-}).defined();
+  allowLocalhost: yupBoolean().optional(),
+}).optional();
 
-export const branchConfigSchema = projectConfigSchema.omit(["sourceOfTruthDbConnectionString"]).concat(yupObject({
+export const branchConfigSchema = projectConfigSchema.concat(yupObject({
+  rbac: branchRbacSchema,
+
   teams: yupObject({
-    createTeamOnSignUp: yupBoolean().defined(),
-    clientTeamCreationEnabled: yupBoolean().defined(),
-
-    defaultCreatorTeamPermissions: _permissionDefault,
-    defaultMemberTeamPermissions: _permissionDefault,
-    teamPermissionDefinitions: _permissionDefinitions,
-
-    allowTeamApiKeys: yupBoolean().defined(),
-  }).defined(),
+    createPersonalTeamOnSignUp: yupBoolean().optional(),
+    allowClientTeamCreation: yupBoolean().optional(),
+  }).optional(),
 
   users: yupObject({
-    clientUserDeletionEnabled: yupBoolean().defined(),
-    signUpEnabled: yupBoolean().defined(),
+    allowClientUserDeletion: yupBoolean().optional(),
+  }).optional(),
 
-    defaultProjectPermissions: _permissionDefault,
-    userPermissionDefinitions: _permissionDefinitions,
-
-    allowUserApiKeys: yupBoolean().defined(),
-  }).defined(),
+  apiKeys: branchApiKeysSchema,
 
   domains: branchDomain,
 
-  auth: branchAuth,
+  auth: branchAuthSchema,
+
+  emails: yupObject({}),
 }));
 
 
-export const environmentConfigSchema = branchConfigSchema.omit(["auth", "domains"]).concat(yupObject({
-  auth: branchAuth.omit(["oauthProviders"]).concat(yupObject({
-    // key: id of the oauth provider.
-    oauthProviders: yupRecord(
-      yupString().defined().matches(permissionRegex),
-      yupObject({
-        type: yupString().oneOf(allProviders).defined(),
-        isShared: yupBoolean().defined(),
-        clientId: schemaFields.yupDefinedAndNonEmptyWhen(schemaFields.oauthClientIdSchema, { type: 'standard', enabled: true }),
-        clientSecret: schemaFields.yupDefinedAndNonEmptyWhen(schemaFields.oauthClientSecretSchema, { type: 'standard', enabled: true }),
-        facebookConfigId: schemaFields.oauthFacebookConfigIdSchema.optional(),
-        microsoftTenantId: schemaFields.oauthMicrosoftTenantIdSchema.optional(),
-      }),
-    ).defined(),
-  }).defined()),
+export const environmentConfigSchema = branchConfigSchema.concat(yupObject({
+  auth: branchConfigSchema.getNested("auth").concat(yupObject({
+    oauth: branchConfigSchema.getNested("auth").getNested("oauth").concat(yupObject({
+      providers: yupRecord(
+        yupString().optional().matches(permissionRegex),
+        yupObject({
+          type: yupString().oneOf(allProviders).optional(),
+          isShared: yupBoolean().optional(),
+          clientId: schemaFields.oauthClientIdSchema.optional(),
+          clientSecret: schemaFields.oauthClientSecretSchema.optional(),
+          facebookConfigId: schemaFields.oauthFacebookConfigIdSchema.optional(),
+          microsoftTenantId: schemaFields.oauthMicrosoftTenantIdSchema.optional(),
+          allowSignIn: yupBoolean().optional(),
+          allowConnectedAccounts: yupBoolean().optional(),
+        }),
+      ).optional(),
+    }).optional()),
+  })),
 
-  emails: yupObject({
-    emailServer: yupUnion(
-      yupObject({
-        isShared: yupBoolean().isTrue().defined(),
-      }),
-      yupObject({
-        isShared: yupBoolean().isFalse().defined(),
-        host: schemaFields.emailHostSchema.defined().nonEmpty(),
-        port: schemaFields.emailPortSchema.defined(),
-        username: schemaFields.emailUsernameSchema.defined().nonEmpty(),
-        password: schemaFields.emailPasswordSchema.defined().nonEmpty(),
-        senderName: schemaFields.emailSenderNameSchema.defined().nonEmpty(),
-        senderEmail: schemaFields.emailSenderEmailSchema.defined().nonEmpty(),
-      })
-    ).defined(),
-  }).defined(),
+  emails: branchConfigSchema.getNested("emails").concat(yupObject({
+    server: yupObject({
+      isShared: yupBoolean().optional(),
+      host: schemaFields.emailHostSchema.optional().nonEmpty(),
+      port: schemaFields.emailPortSchema.optional(),
+      username: schemaFields.emailUsernameSchema.optional().nonEmpty(),
+      password: schemaFields.emailPasswordSchema.optional().nonEmpty(),
+      senderName: schemaFields.emailSenderNameSchema.optional().nonEmpty(),
+      senderEmail: schemaFields.emailSenderEmailSchema.optional().nonEmpty(),
+    }),
+  }).optional()),
 
-  domains: branchDomain.concat(yupObject({
-    // keys to the domains are url base64 encoded
+  domains: branchConfigSchema.getNested("domains").concat(yupObject({
     trustedDomains: yupRecord(
-      yupString().defined().matches(permissionRegex),
+      yupString().uuid().optional(),
       yupObject({
-        baseUrl: schemaFields.urlSchema.defined(),
-        handlerPath: schemaFields.handlerPathSchema.defined(),
+        baseUrl: schemaFields.urlSchema.optional(),
+        handlerPath: schemaFields.handlerPathSchema.optional(),
       }),
-    ).defined(),
+    ).optional(),
   })),
 }));
 
 export const organizationConfigSchema = environmentConfigSchema.concat(yupObject({}));
 
 
-export type ProjectIncompleteConfig = yup.InferType<typeof projectConfigSchema>;
-export type BranchIncompleteConfig = yup.InferType<typeof branchConfigSchema>;
-export type EnvironmentIncompleteConfig = yup.InferType<typeof environmentConfigSchema>;
-export type OrganizationIncompleteConfig = yup.InferType<typeof organizationConfigSchema>;
+// Defaults
+// these are objects that are merged together to form the rendered config (see ./README.md)
+// Wherever an object could be used as a value, a function can instead be used to generate the default values on a per-key basis
+export const projectConfigDefaults = {} satisfies DeepReplaceAllowFunctionsForObjects<ProjectConfigStrippedNormalizedOverride>;
 
-export const IncompleteConfigSymbol = Symbol('stack-auth-incomplete-config');
+export const branchConfigDefaults = {} satisfies DeepReplaceAllowFunctionsForObjects<BranchConfigStrippedNormalizedOverride>;
 
-export type ProjectRenderedConfig = Omit<ProjectIncompleteConfig,
-  | keyof yup.InferType<typeof branchConfigSchema>
-  | keyof yup.InferType<typeof environmentConfigSchema>
-  | keyof yup.InferType<typeof organizationConfigSchema>
->;
-export type BranchRenderedConfig = Omit<BranchIncompleteConfig,
-  | keyof yup.InferType<typeof environmentConfigSchema>
-  | keyof yup.InferType<typeof organizationConfigSchema>
->;
-export type EnvironmentRenderedConfig = Omit<EnvironmentIncompleteConfig,
-  | keyof yup.InferType<typeof organizationConfigSchema>
->;
-export type OrganizationRenderedConfig = OrganizationIncompleteConfig;
+export const environmentConfigDefaults = {} satisfies DeepReplaceAllowFunctionsForObjects<EnvironmentConfigStrippedNormalizedOverride>;
 
-export type ProjectConfigOverride = NormalizesTo<yup.InferType<typeof projectConfigSchema>>;
-export type BranchConfigOverride = NormalizesTo<yup.InferType<typeof branchConfigSchema>>;
-export type EnvironmentConfigOverride = NormalizesTo<yup.InferType<typeof environmentConfigSchema>>;
-export type OrganizationConfigOverride = NormalizesTo<yup.InferType<typeof organizationConfigSchema>>;
+export const organizationConfigDefaults = {
+  rbac: {
+    permissions: (key: string) => ({}),
+    defaultPermissions: {
+      teamCreator: {},
+      teamMember: {},
+      signUp: {},
+    },
+  },
+
+  apiKeys: {
+    enabled: {
+      team: false,
+      user: false,
+    },
+  },
+
+  teams: {
+    createPersonalTeamOnSignUp: false,
+    allowClientTeamCreation: false,
+  },
+
+  users: {
+    allowClientUserDeletion: false,
+  },
+
+  domains: {
+    allowLocalhost: false,
+    trustedDomains: (key: string) => ({
+      handlerPath: '/handler',
+    }),
+  },
+
+  auth: {
+    allowSignUp: true,
+    password: {
+      allowSignIn: false,
+    },
+    otp: {
+      allowSignIn: false,
+    },
+    passkey: {
+      allowSignIn: false,
+    },
+    oauth: {
+      accountMergeStrategy: 'link_method',
+      providers: (key: string) => ({
+        allowSignIn: false,
+        allowConnectedAccounts: false,
+      }),
+    },
+  },
+
+  emails: {
+    server: {
+      isShared: true,
+    },
+  },
+} satisfies DeepReplaceAllowFunctionsForObjects<OrganizationConfigStrippedNormalizedOverride>;
+
+export type DeepReplaceAllowFunctionsForObjects<T> = T extends object ? { [K in keyof T]: DeepReplaceAllowFunctionsForObjects<T[K]> } | ((arg: keyof T) => DeepReplaceAllowFunctionsForObjects<T[keyof T]>) : T;
+export type DeepReplaceFunctionsWithObjects<T> = T extends (arg: infer K extends string) => infer R ? DeepReplaceFunctionsWithObjects<Record<K, R>> : (T extends object ? { [K in keyof T]: DeepReplaceFunctionsWithObjects<T[K]> } : T);
+export type ApplyDefaults<D extends object | ((key: string) => unknown), C extends object> = DeepMerge<DeepReplaceFunctionsWithObjects<D>, C>;
+export function applyDefaults<D extends object | ((key: string) => unknown), C extends object>(defaults: D, config: C): ApplyDefaults<D, C> {
+  const res: any = { ...typeof defaults === 'function' ? {} : defaults };
+  for (const [key, mergeValue] of Object.entries(config)) {
+    const baseValue = typeof defaults === 'function' ? defaults(key) : (has(defaults, key as any) ? get(defaults, key as any) : undefined);
+    if (baseValue !== undefined) {
+      if (isObjectLike(baseValue) && isObjectLike(mergeValue)) {
+        set(res, key, applyDefaults(baseValue, mergeValue));
+        continue;
+      }
+    }
+    set(res, key, mergeValue);
+  }
+  return res as any;
+}
+import.meta.vitest?.test("applyDefaults", ({ expect }) => {
+  expect(applyDefaults({ a: 1 }, { a: 2 })).toEqual({ a: 2 });
+  expect(applyDefaults({ a: { b: 1 } }, { a: { c: 2 } })).toEqual({ a: { b: 1, c: 2 } });
+  expect(applyDefaults((key: string) => ({ b: key }), { a: {} })).toEqual({ a: { b: "a" } });
+  expect(applyDefaults({ a: (key: string) => ({ b: key }) }, { a: { c: { d: 1 } } })).toEqual({ a: { c: { b: "c", d: 1 } } });
+});
+
+// Normalized overrides
+export type ProjectConfigNormalizedOverride = yup.InferType<typeof projectConfigSchema>;
+export type BranchConfigNormalizedOverride = yup.InferType<typeof branchConfigSchema>;
+export type EnvironmentConfigNormalizedOverride = yup.InferType<typeof environmentConfigSchema>;
+export type OrganizationConfigNormalizedOverride = yup.InferType<typeof organizationConfigSchema>;
+
+// Normalized overrides, without the properties that may be overridden still
+export type ProjectConfigStrippedNormalizedOverride = Omit<ProjectConfigNormalizedOverride,
+  | keyof BranchConfigNormalizedOverride
+  | keyof EnvironmentConfigNormalizedOverride
+  | keyof OrganizationConfigNormalizedOverride
+>;
+export type BranchConfigStrippedNormalizedOverride = Omit<BranchConfigNormalizedOverride,
+  | keyof EnvironmentConfigNormalizedOverride
+  | keyof OrganizationConfigNormalizedOverride
+>;
+export type EnvironmentConfigStrippedNormalizedOverride = Omit<EnvironmentConfigNormalizedOverride,
+  | keyof OrganizationConfigNormalizedOverride
+>;
+export type OrganizationConfigStrippedNormalizedOverride = OrganizationConfigNormalizedOverride;
+
+// Overrides
+export type ProjectConfigOverride = NormalizesTo<ProjectConfigNormalizedOverride>;
+export type BranchConfigOverride = NormalizesTo<BranchConfigNormalizedOverride>;
+export type EnvironmentConfigOverride = NormalizesTo<EnvironmentConfigNormalizedOverride>;
+export type OrganizationConfigOverride = NormalizesTo<OrganizationConfigNormalizedOverride>;
+
+// Incomplete configs
+export type ProjectIncompleteConfig = ProjectConfigNormalizedOverride;
+export type BranchIncompleteConfig = ProjectIncompleteConfig & BranchConfigNormalizedOverride;
+export type EnvironmentIncompleteConfig = BranchIncompleteConfig & EnvironmentConfigNormalizedOverride;
+export type OrganizationIncompleteConfig = EnvironmentIncompleteConfig & OrganizationConfigNormalizedOverride;
+
+// Rendered configs
+export type ProjectRenderedConfig = PrettifyType<ApplyDefaults<typeof projectConfigDefaults, ProjectConfigStrippedNormalizedOverride>>;
+export type BranchRenderedConfig = PrettifyType<ProjectRenderedConfig & ApplyDefaults<typeof branchConfigDefaults, BranchConfigStrippedNormalizedOverride>>;
+export type EnvironmentRenderedConfig = PrettifyType<BranchRenderedConfig & ApplyDefaults<typeof environmentConfigDefaults, EnvironmentConfigStrippedNormalizedOverride>>;
+export type OrganizationRenderedConfig = PrettifyType<EnvironmentRenderedConfig & ApplyDefaults<typeof organizationConfigDefaults, OrganizationConfigStrippedNormalizedOverride>>;
