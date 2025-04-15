@@ -7,7 +7,7 @@ import { StyledLink } from '@/components/link';
 import { getPublicEnvVar } from '@/lib/env';
 import { useThemeWatcher } from '@/lib/theme';
 import { deindent } from '@stackframe/stack-shared/dist/utils/strings';
-import { Button, Typography, cn } from "@stackframe/stack-ui";
+import { Button, Tabs, TabsContent, TabsList, TabsTrigger, Typography, cn } from "@stackframe/stack-ui";
 import { ArrowLeft, Book } from "lucide-react";
 import dynamic from "next/dynamic";
 import Image from 'next/image';
@@ -395,4 +395,20 @@ function StackAuthKeys(props: { keys: { projectId: string, publishableClientKey:
 }
 
 function SimpleTabs(props: { tabs: { label: string, content: React.ReactNode }[] }) {
+  return (
+    <Tabs defaultValue={props.tabs[0].label}>
+      <TabsList className="flex">
+        {props.tabs.map((tab) => (
+          <TabsTrigger key={tab.label} value={tab.label} className="flex-grow">
+            {tab.label}
+          </TabsTrigger>
+        ))}
+      </TabsList>
+      {props.tabs.map((tab) => (
+        <TabsContent key={tab.label} value={tab.label}>
+          {tab.content}
+        </TabsContent>
+      ))}
+    </Tabs>
+  );
 }
