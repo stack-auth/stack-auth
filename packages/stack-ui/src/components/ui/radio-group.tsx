@@ -13,7 +13,7 @@ const RadioGroup = forwardRefIfNeeded<
 >(({ className, ...props }, ref) => {
   return (
     <RadioGroupPrimitive.Root
-      className={cn("grid gap-2", className)}
+      className={cn("stack-scope grid gap-2", className)}
       {...props}
       ref={ref}
     />
