@@ -201,7 +201,9 @@ export async function getEnvironmentConfigOverride(options: EnvironmentOptions):
         configOverride['auth.otp.allowSignIn'] = true;
       }
     } else if (authMethodConfig.passkeyConfig) {
-      configOverride['auth.passkey.allowSignIn'] = true;
+      if (authMethodConfig.enabled) {
+        configOverride['auth.passkey.allowSignIn'] = true;
+      }
     } else {
       throw new StackAssertionError('Unknown auth method config', { authMethodConfig });
     }
