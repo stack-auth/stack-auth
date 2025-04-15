@@ -21,15 +21,15 @@ export function isTeamSystemPermission(permission: string): permission is `$${Lo
   return permission.startsWith('$') && permission.slice(1).toUpperCase() in DBTeamSystemPermission;
 }
 
-export function teamSystemPermissionStringToDBType(permission: `$${Lowercase<DBTeamSystemPermission>}`): DBTeamSystemPermission {
+export function systemPermissionStringToDBType(permission: `$${Lowercase<DBTeamSystemPermission>}`): DBTeamSystemPermission {
   return typedToUppercase(permission.slice(1)) as DBTeamSystemPermission;
 }
 
-export function teamDBTypeToSystemPermissionString(permission: DBTeamSystemPermission): `$${Lowercase<DBTeamSystemPermission>}` {
+export function systemPermissionDBTypeToString(permission: DBTeamSystemPermission): `$${Lowercase<DBTeamSystemPermission>}` {
   return '$' + typedToLowercase(permission) as `$${Lowercase<DBTeamSystemPermission>}`;
 }
 
-export type TeamSystemPermission = ReturnType<typeof teamDBTypeToSystemPermissionString>;
+export type TeamSystemPermission = ReturnType<typeof systemPermissionDBTypeToString>;
 
 const descriptionMap: Record<DBTeamSystemPermission, string> = {
   "UPDATE_TEAM": "Update the team information",
@@ -147,7 +147,7 @@ export async function listUserTeamPermissions(
     const [userId, teamId] = JSON.parse(compositeKey) as [string, string];
     const idsToProcess = [...userTeamResults.map(p =>
       p.permission?.queryableId ||
-      (p.systemPermission ? teamDBTypeToSystemPermissionString(p.systemPermission) : null) ||
+      (p.systemPermission ? systemPermissionDBTypeToString(p.systemPermission) : null) ||
       throwErr(new StackAssertionError(`Permission should have either queryableId or systemPermission`, { p }))
     )];
 
@@ -191,11 +191,11 @@ export async function grantTeamPermission(
           tenancyId: options.tenancy.id,
           projectUserId: options.userId,
           teamId: options.teamId,
-          systemPermission: teamSystemPermissionStringToDBType(options.permissionId),
+          systemPermission: systemPermissionStringToDBType(options.permissionId),
         },
       },
       create: {
-        systemPermission: teamSystemPermissionStringToDBType(options.permissionId),
+        systemPermission: systemPermissionStringToDBType(options.permissionId),
         teamMember: {
           connect: {
             tenancyId_projectUserId_teamId: {
@@ -282,7 +282,7 @@ export async function revokeTeamPermission(
           tenancyId: options.tenancy.id,
           projectUserId: options.userId,
           teamId: options.teamId,
-          systemPermission: teamSystemPermissionStringToDBType(options.permissionId),
+          systemPermission: systemPermissionStringToDBType(options.permissionId),
         },
       },
     });
@@ -390,7 +390,7 @@ export async function createPermissionDefinition(
         create: parentDbIds.map(parentDbId => {
           if (isTeamSystemPermission(parentDbId)) {
             return {
-              parentTeamSystemPermission: teamSystemPermissionStringToDBType(parentDbId),
+              parentTeamSystemPermission: systemPermissionStringToDBType(parentDbId),
             };
           } else {
             return {
@@ -436,7 +436,7 @@ export async function updatePermissionDefinitions(
         create: parentDbIds.map(parentDbId => {
           if (isTeamSystemPermission(parentDbId)) {
             return {
-              parentTeamSystemPermission: teamSystemPermissionStringToDBType(parentDbId),
+              parentTeamSystemPermission: systemPermissionStringToDBType(parentDbId),
             };
           } else {
             return {

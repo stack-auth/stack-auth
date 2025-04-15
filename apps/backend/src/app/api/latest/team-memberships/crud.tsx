@@ -1,4 +1,4 @@
-import { isTeamSystemPermission, teamSystemPermissionStringToDBType } from "@/lib/permissions";
+import { isTeamSystemPermission, systemPermissionStringToDBType } from "@/lib/permissions";
 import { ensureTeamExists, ensureTeamMembershipDoesNotExist, ensureTeamMembershipExists, ensureUserExists, ensureUserTeamPermissionExists } from "@/lib/request-checks";
 import { Tenancy } from "@/lib/tenancies";
 import { PrismaTransaction } from "@/lib/types";
@@ -30,7 +30,7 @@ export async function addUserToTeam(tx: PrismaTransaction, options: {
         create: options.tenancy.config[permissionAttributeName].map((p) => {
           if (isTeamSystemPermission(p.id)) {
             return {
-              systemPermission: teamSystemPermissionStringToDBType(p.id),
+              systemPermission: systemPermissionStringToDBType(p.id),
             };
           } else {
             return {
