@@ -5,92 +5,51 @@ import { ProjectsCrud } from "@stackframe/stack-shared/dist/interface/crud/proje
 import { yupMixed, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
 import { isTruthy } from "@stackframe/stack-shared/dist/utils/booleans";
 import { StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
-import { filterUndefined, pick, typedEntries, typedFromEntries } from "@stackframe/stack-shared/dist/utils/objects";
+import { filterUndefined, pick, typedEntries } from "@stackframe/stack-shared/dist/utils/objects";
 import { Result } from "@stackframe/stack-shared/dist/utils/results";
-import { stringCompare, typedToLowercase } from "@stackframe/stack-shared/dist/utils/strings";
-import { generateUuid } from "@stackframe/stack-shared/dist/utils/uuids";
+import { stringCompare } from "@stackframe/stack-shared/dist/utils/strings";
 import * as yup from "yup";
-import { RawQuery, prismaClient } from "../prisma-client";
-import { systemPermissionDBTypeToString } from "./permissions";
-import { DBProject, fullProjectInclude } from "./projects";
+import { RawQuery, rawQuery } from "../prisma-client";
 
-// These are placeholder types that should be replaced after the config json db migration
-type ProjectData = DBProject;
-type BranchData = { id: string };
-type EnvironmentData = {};
-type OrganizationData = { id: string | null };
-
-type ProjectOptions = { project: ProjectData };
-type BranchOptions = ProjectOptions & { branch: BranchData };
-type EnvironmentOptions = BranchOptions & { environment: EnvironmentData };
-type OrganizationOptions = EnvironmentOptions & { organization: OrganizationData };
+type ProjectOptions = { projectId: string };
+type BranchOptions = ProjectOptions & { branchId: string };
+type EnvironmentOptions = BranchOptions;
+type OrganizationOptions = EnvironmentOptions & { organizationId: string | null };
 
 // ---------------------------------------------------------------------------------------------------------------------
 // getRendered<$$$>Config
 // ---------------------------------------------------------------------------------------------------------------------
-
-async function _getDbProject(options: { projectId: string }): Promise<ProjectData | null> {
-  return await prismaClient.project.findUnique({
-    where: { id: options.projectId },
-    include: fullProjectInclude,
-  });
-}
-
 // returns the same object as the incomplete config, although with a restricted type so we don't accidentally use the
 // fields that may still be overridden by other layers
 // see packages/stack-shared/src/config/README.md for more details
 // TODO actually strip the fields that are not part of the type
 
-export function getRenderedProjectConfigQuery(options: { projectId: string }): RawQuery<Promise<ProjectRenderedConfig | null>> {
-  return {
-    sql: Prisma.sql`SELECT 1`,
-    postProcess: async () => {
-      const dbProject = await _getDbProject(options);
-      if (!dbProject) {
-        return null;
-      }
-      return applyDefaults(projectConfigDefaults, await getIncompleteProjectConfig({ project: dbProject }));
-    },
-  };
+export function getRenderedProjectConfigQuery(options: ProjectOptions): RawQuery<Promise<ProjectRenderedConfig>> {
+  return RawQuery.then(
+    getIncompleteProjectConfigQuery(options),
+    async (incompleteConfig) => applyDefaults(projectConfigDefaults, await incompleteConfig),
+  );
 }
 
-export function getRenderedBranchConfigQuery(options: { projectId: string, branchId: string }): RawQuery<Promise<BranchRenderedConfig | null>> {
-  return {
-    sql: Prisma.sql`SELECT 1`,
-    postProcess: async () => {
-      const dbProject = await _getDbProject(options);
-      if (!dbProject) {
-        return null;
-      }
-      return applyDefaults(branchConfigDefaults, await getIncompleteBranchConfig({ project: dbProject, branch: { id: options.branchId } }));
-    },
-  };
+export function getRenderedBranchConfigQuery(options: BranchOptions): RawQuery<Promise<BranchRenderedConfig>> {
+  return RawQuery.then(
+    getIncompleteBranchConfigQuery(options),
+    async (incompleteConfig) => applyDefaults(branchConfigDefaults, await incompleteConfig),
+  );
 }
 
-export function getRenderedEnvironmentConfigQuery(options: { projectId: string, branchId: string }): RawQuery<Promise<EnvironmentRenderedConfig | null>> {
-  return {
-    sql: Prisma.sql`SELECT 1`,
-    postProcess: async () => {
-      const dbProject = await _getDbProject(options);
-      if (!dbProject) {
-        return null;
-      }
-      return applyDefaults(environmentConfigDefaults, await getIncompleteEnvironmentConfig({ project: dbProject, branch: { id: options.branchId }, environment: {} }));
-    },
-  };
+export function getRenderedEnvironmentConfigQuery(options: EnvironmentOptions): RawQuery<Promise<EnvironmentRenderedConfig>> {
+  return RawQuery.then(
+    getIncompleteEnvironmentConfigQuery(options),
+    async (incompleteConfig) => applyDefaults(environmentConfigDefaults, await incompleteConfig),
+  );
 }
 
-export function getRenderedOrganizationConfigQuery(options: { projectId: string, branchId: string, organizationId: string | null }): RawQuery<Promise<OrganizationRenderedConfig | null>> {
-  return {
-    sql: Prisma.sql`SELECT 1`,
-    postProcess: async () => {
-      const dbProject = await _getDbProject(options);
-      if (!dbProject) {
-        return null;
-      }
-      return applyDefaults(organizationConfigDefaults, await getIncompleteOrganizationConfig({ project: dbProject, branch: { id: options.branchId }, environment: {}, organization: { id: options.organizationId } }));
-    },
-  };
+export function getRenderedOrganizationConfigQuery(options: OrganizationOptions): RawQuery<Promise<OrganizationRenderedConfig>> {
+  return RawQuery.then(
+    getIncompleteOrganizationConfigQuery(options),
+    async (incompleteConfig) => applyDefaults(organizationConfigDefaults, await incompleteConfig),
+  );
 }
 
 
@@ -109,7 +68,7 @@ export async function validateProjectConfigOverride(options: { projectConfigOver
  * Validates a branch config override ([sanity-check valid](./README.md)), based on the given project's rendered project config.
  */
 export async function validateBranchConfigOverride(options: { branchConfigOverride: BranchConfigOverride } & ProjectOptions): Promise<Result<null, string>> {
-  return await schematicallyValidateAndReturn(branchConfigSchema, await getIncompleteProjectConfig(options), options.branchConfigOverride);
+  return await schematicallyValidateAndReturn(branchConfigSchema, await rawQuery(getIncompleteProjectConfigQuery(options)), options.branchConfigOverride);
   // TODO add some more checks that depend on the base config; eg. an override config shouldn't set email server connection if isShared==true
   // (these are schematically valid, but make no sense, so we should be nice and reject them)
 }
@@ -118,7 +77,7 @@ export async function validateBranchConfigOverride(options: { branchConfigOverri
  * Validates an environment config override ([sanity-check valid](./README.md)), based on the given branch's rendered branch config.
  */
 export async function validateEnvironmentConfigOverride(options: { environmentConfigOverride: EnvironmentConfigOverride } & BranchOptions): Promise<Result<null, string>> {
-  return await schematicallyValidateAndReturn(environmentConfigSchema, await getIncompleteBranchConfig(options), options.environmentConfigOverride);
+  return await schematicallyValidateAndReturn(environmentConfigSchema, await rawQuery(getIncompleteBranchConfigQuery(options)), options.environmentConfigOverride);
   // TODO add some more checks that depend on the base config; eg. an override config shouldn't set email server connection if isShared==true
   // (these are schematically valid, but make no sense, so we should be nice and reject them)
 }
@@ -127,7 +86,7 @@ export async function validateEnvironmentConfigOverride(options: { environmentCo
  * Validates an organization config override ([sanity-check valid](./README.md)), based on the given environment's rendered environment config.
  */
 export async function validateOrganizationConfigOverride(options: { organizationConfigOverride: OrganizationConfigOverride } & EnvironmentOptions): Promise<Result<null, string>> {
-  return await schematicallyValidateAndReturn(organizationConfigSchema, await getIncompleteEnvironmentConfig(options), options.organizationConfigOverride);
+  return await schematicallyValidateAndReturn(organizationConfigSchema, await rawQuery(getIncompleteEnvironmentConfigQuery(options)), options.organizationConfigOverride);
   // TODO add some more checks that depend on the base config; eg. an override config shouldn't set email server connection if isShared==true
   // (these are schematically valid, but make no sense, so we should be nice and reject them)
 }
@@ -139,198 +98,53 @@ export async function validateOrganizationConfigOverride(options: { organization
 
 // Placeholder types that should be replaced after the config json db migration
 
-export async function getProjectConfigOverride(options: ProjectOptions): Promise<ProjectConfigOverride> {
+export function getProjectConfigOverrideQuery(options: ProjectOptions): RawQuery<Promise<ProjectConfigOverride>> {
   // fetch project config from our own DB
   // (currently it's just empty)
-  return {};
+  return {
+    sql: Prisma.sql`SELECT 1`,
+    postProcess: async () => {
+      return {};
+    },
+  };
 }
 
-export async function getBranchConfigOverride(options: BranchOptions): Promise<BranchConfigOverride> {
+export function getBranchConfigOverrideQuery(options: BranchOptions): RawQuery<Promise<BranchConfigOverride>> {
   // fetch branch config from GitHub
   // (currently it's just empty)
-  if (options.branch.id !== 'main') {
+  if (options.branchId !== 'main') {
     throw new Error('Not implemented');
   }
-  return {};
-}
-
-export async function getEnvironmentConfigOverride(options: EnvironmentOptions): Promise<EnvironmentConfigOverride> {
-  // fetch environment config from DB (either our own, or the source of truth one)
-  if (options.branch.id !== 'main') {
-    throw new Error('Not implemented');
-  }
-  const configOverride: EnvironmentConfigOverride = {};
-
-  const oldConfig = options.project.config;
-
-  // =================== TEAM ===================
-  configOverride['teams.allowClientTeamCreation'] = oldConfig.clientTeamCreationEnabled;
-  configOverride['teams.createPersonalTeamOnSignUp'] = oldConfig.createTeamOnSignUp;
-
-  // =================== USER ===================
-  configOverride['users.allowClientUserDeletion'] = oldConfig.clientUserDeletionEnabled;
-
-  // =================== DOMAIN ===================
-  configOverride['domains.allowLocalhost'] = oldConfig.allowLocalhost;
-  for (const domain of oldConfig.domains) {
-    configOverride['domains.trustedDomains.' + generateUuid()] = {
-      baseUrl: domain.domain,
-      handlerPath: domain.handlerPath,
-    } satisfies OrganizationRenderedConfig['domains']['trustedDomains'][string];
-  }
-
-  // =================== AUTH ===================
-  configOverride['auth.allowSignUp'] = oldConfig.signUpEnabled;
-  configOverride['auth.oauth.accountMergeStrategy'] = typedToLowercase(oldConfig.oauthAccountMergeStrategy) satisfies OrganizationRenderedConfig['auth']['oauth']['accountMergeStrategy'];
-
-  const authEnabledOAuthProviders = new Set<string>();
-  for (const authMethodConfig of oldConfig.authMethodConfigs) {
-    if (authMethodConfig.oauthProviderConfig) {
-      const oauthConfig = authMethodConfig.oauthProviderConfig.proxiedOAuthConfig || authMethodConfig.oauthProviderConfig.standardOAuthConfig;
-      if (!oauthConfig) {
-        throw new StackAssertionError('Either ProxiedOAuthConfig or StandardOAuthConfig must be set on authMethodConfigs.oauthProviderConfig', { authMethodConfig });
-      }
-      if (authMethodConfig.enabled) {
-        authEnabledOAuthProviders.add(oauthConfig.id);
-      }
-    } else if (authMethodConfig.passwordConfig) {
-      if (authMethodConfig.enabled) {
-        configOverride['auth.password.allowSignIn'] = true;
-      }
-    } else if (authMethodConfig.otpConfig) {
-      if (authMethodConfig.enabled) {
-        configOverride['auth.otp.allowSignIn'] = true;
-      }
-    } else if (authMethodConfig.passkeyConfig) {
-      if (authMethodConfig.enabled) {
-        configOverride['auth.passkey.allowSignIn'] = true;
-      }
-    } else {
-      throw new StackAssertionError('Unknown auth method config', { authMethodConfig });
-    }
-  }
-
-  const connectedAccountsEnabledOAuthProviders = new Set<string>();
-  for (const connectedAccountConfig of oldConfig.connectedAccountConfigs) {
-    if (connectedAccountConfig.enabled) {
-      connectedAccountsEnabledOAuthProviders.add(connectedAccountConfig.id);
-    }
-  }
-
-  for (const provider of oldConfig.oauthProviderConfigs) {
-    let providerOverride: OrganizationRenderedConfig['auth']['oauth']['providers'][string];
-    if (provider.proxiedOAuthConfig) {
-      providerOverride = {
-        type: typedToLowercase(provider.proxiedOAuthConfig.type),
-        isShared: true,
-        allowSignIn: authEnabledOAuthProviders.has(provider.id),
-        allowConnectedAccounts: connectedAccountsEnabledOAuthProviders.has(provider.connectedAccountConfigId ?? undefined as any),
-      } as const;
-    } else if (provider.standardOAuthConfig) {
-      providerOverride = filterUndefined({
-        type: typedToLowercase(provider.standardOAuthConfig.type),
-        isShared: false,
-        clientId: provider.standardOAuthConfig.clientId,
-        clientSecret: provider.standardOAuthConfig.clientSecret,
-        facebookConfigId: provider.standardOAuthConfig.facebookConfigId ?? undefined,
-        microsoftTenantId: provider.standardOAuthConfig.microsoftTenantId ?? undefined,
-        allowSignIn: authEnabledOAuthProviders.has(provider.id),
-        allowConnectedAccounts: connectedAccountsEnabledOAuthProviders.has(provider.connectedAccountConfigId ?? undefined as any),
-      } as const);
-    } else {
-      throw new StackAssertionError('Unknown oauth provider config', { provider });
-    }
-
-    configOverride['auth.oauth.providers.' + provider.id] = providerOverride;
-  }
-
-  // =================== EMAIL ===================
-
-  if (oldConfig.emailServiceConfig?.standardEmailServiceConfig) {
-    configOverride['emails.server'] = {
-      isShared: false,
-      host: oldConfig.emailServiceConfig.standardEmailServiceConfig.host,
-      port: oldConfig.emailServiceConfig.standardEmailServiceConfig.port,
-      username: oldConfig.emailServiceConfig.standardEmailServiceConfig.username,
-      password: oldConfig.emailServiceConfig.standardEmailServiceConfig.password,
-      senderName: oldConfig.emailServiceConfig.standardEmailServiceConfig.senderName,
-      senderEmail: oldConfig.emailServiceConfig.standardEmailServiceConfig.senderEmail,
-    } satisfies OrganizationRenderedConfig['emails']['server'];
-  }
-
-  // =================== RBAC ===================
-
-  // Permission definitions
-  const permissions = oldConfig.permissions
-    .sort((a, b) => stringCompare(a.queryableId, b.queryableId))
-    .map(p => [
-      p.queryableId,
-      filterUndefined({
-        scope: typedToLowercase(p.scope),
-        description: p.description || undefined,
-        containedPermissionIds: typedFromEntries(
-          p.parentEdges
-            .map(edge => {
-              if (edge.parentPermission) {
-                return edge.parentPermission.queryableId;
-              } else if (edge.parentTeamSystemPermission) {
-                return '$' + typedToLowercase(edge.parentTeamSystemPermission);
-              } else {
-                throw new StackAssertionError('Permission edge should have either parentPermission or parentSystemPermission', { edge });
-              }
-            })
-            .sort((a, b) => stringCompare(a, b))
-            .map(id => [id, true] as const)
-        ),
-      }) satisfies OrganizationRenderedConfig['rbac']['permissions'][string],
-    ] as const);
-  configOverride['rbac.permissions'] = typedFromEntries(permissions);
-
-  // Default permissions
-  configOverride['rbac.defaultPermissions'] = {
-    teamCreator: typedFromEntries([
-      ...oldConfig.permissions.filter(perm => perm.isDefaultTeamCreatorPermission).map(perm => perm.queryableId),
-      ...oldConfig.teamCreateDefaultSystemPermissions.map(perm => systemPermissionDBTypeToString(perm)),
-    ].map((id) => [id, true])),
-    teamMember: typedFromEntries([
-      ...oldConfig.permissions.filter(perm => perm.isDefaultTeamMemberPermission).map(perm => perm.queryableId),
-      ...oldConfig.teamMemberDefaultSystemPermissions.map(perm => systemPermissionDBTypeToString(perm)),
-    ].map((id) => [id, true])),
-    signUp: typedFromEntries([
-      ...oldConfig.permissions.filter(perm => perm.isDefaultProjectPermission).map(perm => perm.queryableId),
-    ].map((id) => [id, true])),
+  return {
+    sql: Prisma.sql`SELECT 1`,
+    postProcess: async () => {
+      return {};
+    },
   };
-
-  // =================== API KEYS ===================
-  configOverride['apiKeys.enabled.user'] = oldConfig.allowUserApiKeys;
-  configOverride['apiKeys.enabled.team'] = oldConfig.allowTeamApiKeys;
-
-
-  // validate, just to make sure we didn't miss anything
-  const validationResult = await validateEnvironmentConfigOverride({
-    project: options.project,
-    branch: options.branch,
-    environmentConfigOverride: configOverride,
-  });
-  if (validationResult.status === 'error') {
-    throw new StackAssertionError('getEnvironmentConfigOverride returned an invalid config override: ' + validationResult.error, {
-      validationResult,
-      project: options.project,
-      branch: options.branch,
-      environmentConfigOverride: configOverride,
-    });
-  }
-
-  return configOverride;
 }
 
-export async function getOrganizationConfigOverride(options: OrganizationOptions): Promise<OrganizationConfigOverride> {
+export function getEnvironmentConfigOverrideQuery(options: EnvironmentOptions): RawQuery<Promise<EnvironmentConfigOverride>> {
+  // fetch environment config from DB (either our own, or the source of truth one)
+  return {
+    sql: Prisma.sql`SELECT 1`,
+    postProcess: async () => {
+      return {};
+    },
+  };
+}
+
+export function getOrganizationConfigOverrideQuery(options: OrganizationOptions): RawQuery<Promise<OrganizationConfigOverride>> {
   // fetch organization config from DB (either our own, or the source of truth one)
-  if (options.branch.id !== 'main' || options.organization.id !== null) {
+  if (options.organizationId !== null) {
     throw new Error('Not implemented');
   }
 
-  return {};
+  return {
+    sql: Prisma.sql`SELECT 1`,
+    postProcess: async () => {
+      return {};
+    },
+  };
 }
 
 
@@ -380,20 +194,41 @@ export function setOrganizationConfigOverride(options: {
 // internal functions
 // ---------------------------------------------------------------------------------------------------------------------
 
-async function getIncompleteProjectConfig(options: ProjectOptions): Promise<ProjectIncompleteConfig> {
-  return normalize(override({}, await getProjectConfigOverride(options))) as any;
+function getIncompleteProjectConfigQuery(options: ProjectOptions): RawQuery<Promise<ProjectIncompleteConfig>> {
+  return RawQuery.then(
+    getProjectConfigOverrideQuery(options),
+    async (overrideConfig) => normalize(override({}, await overrideConfig)) as any,
+  );
 }
 
-async function getIncompleteBranchConfig(options: BranchOptions): Promise<BranchIncompleteConfig> {
-  return normalize(override(await getIncompleteProjectConfig(options), await getBranchConfigOverride(options))) as any;
+function getIncompleteBranchConfigQuery(options: BranchOptions): RawQuery<Promise<BranchIncompleteConfig>> {
+  return RawQuery.then(
+    RawQuery.all([
+      getIncompleteProjectConfigQuery(options),
+      getBranchConfigOverrideQuery(options),
+    ] as const),
+    async ([projectConfig, branchConfigOverride]) => normalize(override(await projectConfig, await branchConfigOverride)) as any,
+  );
 }
 
-async function getIncompleteEnvironmentConfig(options: EnvironmentOptions): Promise<EnvironmentIncompleteConfig> {
-  return normalize(override(await getIncompleteBranchConfig(options), await getEnvironmentConfigOverride(options))) as any;
+function getIncompleteEnvironmentConfigQuery(options: EnvironmentOptions): RawQuery<Promise<EnvironmentIncompleteConfig>> {
+  return RawQuery.then(
+    RawQuery.all([
+      getIncompleteBranchConfigQuery(options),
+      getEnvironmentConfigOverrideQuery(options),
+    ] as const),
+    async ([branchConfig, environmentConfigOverride]) => normalize(override(await branchConfig, await environmentConfigOverride)) as any,
+  );
 }
 
-async function getIncompleteOrganizationConfig(options: OrganizationOptions): Promise<OrganizationIncompleteConfig> {
-  return normalize(override(await getIncompleteEnvironmentConfig(options), await getOrganizationConfigOverride(options))) as any;
+function getIncompleteOrganizationConfigQuery(options: OrganizationOptions): RawQuery<Promise<OrganizationIncompleteConfig>> {
+  return RawQuery.then(
+    RawQuery.all([
+      getIncompleteEnvironmentConfigQuery(options),
+      getOrganizationConfigOverrideQuery(options),
+    ] as const),
+    async ([environmentConfig, organizationConfigOverride]) => normalize(override(await environmentConfig, await organizationConfigOverride)) as any,
+  );
 }
 
 /**
@@ -468,7 +303,7 @@ import.meta.vitest?.test('schematicallyValidateAndReturn(...)', async ({ expect 
 // ---------------------------------------------------------------------------------------------------------------------
 
 // C -> A
-export const renderedOrganizationConfigToProjectCrud = (renderedConfig: OrganizationRenderedConfig, configId: string): ProjectsCrud["Admin"]["Read"]['config'] => {
+export const renderedOrganizationConfigToProjectCrud = (renderedConfig: OrganizationRenderedConfig): ProjectsCrud["Admin"]["Read"]['config'] => {
   const oauthProviders = typedEntries(renderedConfig.auth.oauth.providers)
     .map(([oauthProviderId, oauthProvider]) => {
       if (!oauthProvider.type) {
@@ -488,7 +323,6 @@ export const renderedOrganizationConfigToProjectCrud = (renderedConfig: Organiza
     .sort((a, b) => stringCompare(a.id, b.id));
 
   return {
-    id: configId,
     allow_localhost: renderedConfig.domains.allowLocalhost,
     client_team_creation_enabled: renderedConfig.teams.allowClientTeamCreation,
     client_user_deletion_enabled: renderedConfig.users.allowClientUserDeletion,
