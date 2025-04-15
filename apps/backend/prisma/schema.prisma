@@ -23,12 +23,13 @@ model Project {
   isProductionMode Boolean
   userCount        Int           @default(0)
 
-  apiKeySets             ApiKeySet[]
-  projectUsers           ProjectUser[]
-  neonProvisionedProject NeonProvisionedProject?
-  tenancies              Tenancy[]
-  verificationCodes      VerificationCode[]
-  projectApiKey          ProjectApiKey[]
+  apiKeySets                 ApiKeySet[]
+  projectUsers               ProjectUser[]
+  neonProvisionedProject     NeonProvisionedProject?
+  tenancies                  Tenancy[]
+  verificationCodes          VerificationCode[]
+  projectApiKey              ProjectApiKey[]
+  environmentConfigOverrides EnvironmentConfigOverride[]
 }
 
 model ProjectConfig {
@@ -91,6 +92,20 @@ model Tenancy {
 
   @@unique([projectId, branchId, organizationId])
   @@unique([projectId, branchId, hasNoOrganization])
+}
+
+model EnvironmentConfigOverride {
+  projectId String
+  branchId  String
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  config Json
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@id([projectId, branchId])
 }
 
 model ProjectDomain {
