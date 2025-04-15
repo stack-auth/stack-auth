@@ -4,12 +4,12 @@
 
 
 :root {
-  --background: white;
+  --background: rgb(240, 240, 240);
   --foreground: black;
 }
 
 html:has(head > [data-stack-theme="dark"]) {
-  --background: black;
+  --background: rgb(16, 16, 18);
   --foreground: white;
 }
 

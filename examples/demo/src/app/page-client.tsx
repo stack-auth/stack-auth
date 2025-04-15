@@ -41,6 +41,21 @@ export default function PageClient() {
             </CardHeader>
             <CardContent>
               <Typography>Click on your user&apos;s image at the top right to see your account settings.</Typography>
+              <div className="mt-4 space-y-2">
+                <Typography className="font-medium">User Information:</Typography>
+                <div className="flex flex-col gap-2 text-sm">
+                  <div className="flex">
+                    <div className="w-32 font-semibold">User ID:</div>
+                    <div className="font-mono">{user.id}</div>
+                  </div>
+                  {user.primaryEmail && (
+                    <div className="flex">
+                      <div className="w-32 font-semibold">Email:</div>
+                      <div>{user.primaryEmail}</div>
+                    </div>
+                  )}
+                </div>
+              </div>
             </CardContent>
             <CardFooter>
               <div className='flex gap-2'>
