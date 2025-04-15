@@ -36,6 +36,24 @@ export const projectsCrudHandlers = createLazyProxy(() => createCrudHandlers(pro
       configOverride['auth.oauth.accountMergeStrategy'] = data.config.oauth_account_merge_strategy;
     }
 
+    if (data.config?.oauth_providers) {
+      for (const provider of data.config.oauth_providers) {
+        if (provider.enabled) {
+          configOverride[`auth.oauth.providers.${provider.id}`] = {
+            type: provider.id,
+            allowSignIn: true,
+            allowConnectedAccounts: true,
+          } satisfies OrganizationRenderedConfig['auth']['oauth']['providers'][string];
+        }
+      }
+
+      for (const [id, provider] of typedEntries(oldConfigOverride.auth.oauth.providers)) {
+        if (!data.config.oauth_providers.find((p) => p.id === id)) {
+          delete configOverride[`auth.oauth.providers.${id}`];
+        }
+      }
+    }
+
     // ======================= users =======================
 
     if (data.config?.client_user_deletion_enabled !== undefined) {
@@ -60,15 +78,15 @@ export const projectsCrudHandlers = createLazyProxy(() => createCrudHandlers(pro
 
     const domains = data.config?.domains;
     if (domains) {
-      for (const [key, domain] of typedEntries(oldConfigOverride.domains.trustedDomains)) {
+      for (const [id, domain] of typedEntries(oldConfigOverride.domains.trustedDomains)) {
         const newDomain = domains.find((d) => d.domain === domain.baseUrl);
         if (newDomain) {
-          configOverride[`domains.trustedDomains.${key}`] = {
+          configOverride[`domains.trustedDomains.${id}`] = {
             baseUrl: newDomain.domain,
             handlerPath: newDomain.handler_path,
           } satisfies OrganizationRenderedConfig['domains']['trustedDomains'][string];
         } else {
-          delete configOverride[`domains.trustedDomains.${key}`];
+          delete configOverride[`domains.trustedDomains.${id}`];
         }
       }
 
