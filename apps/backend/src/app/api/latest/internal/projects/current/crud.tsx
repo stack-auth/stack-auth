@@ -77,9 +77,9 @@ export const projectsCrudHandlers = createLazyProxy(() => createCrudHandlers(pro
     //       throw new StatusError(StatusError.BadRequest, "Invalid team default permission ids");
     //     }
 
-    //     const systemPerms = defaultPerms
-    //       .filter(p => isTeamSystemPermission(p))
-    //       .map(p => teamSystemPermissionStringToDBType(p as any));
+    //    const systemPerms = defaultPerms
+    //          .filter(p => isTeamSystemPermission(p))
+    //          .map(p => systemPermissionStringToDBType(p as any));
 
     //     await tx.projectConfig.update({
     //       where: { id: oldProject.config.id },

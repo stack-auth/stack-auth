@@ -1,4 +1,5 @@
 import { StackAssertionError } from "./errors";
+import { identity } from "./functions";
 
 export function isNotNull<T>(value: T): value is NonNullable<T> {
   return value !== null && value !== undefined;
@@ -14,6 +15,7 @@ import.meta.vitest?.test("isNotNull", ({ expect }) => {
 });
 
 export type DeepPartial<T> = T extends object ? { [P in keyof T]?: DeepPartial<T[P]> } : T;
+export type DeepRequired<T> = T extends object ? { [P in keyof T]-?: DeepRequired<T[P]> } : T;
 
 /**
  * Assumes both objects are primitives, arrays, or non-function plain objects, and compares them deeply.
@@ -83,6 +85,22 @@ import.meta.vitest?.test("deepPlainEquals", ({ expect }) => {
   expect(deepPlainEquals({ a: 1, b: undefined }, { a: 1 })).toBe(false);
 });
 
+export function isCloneable<T>(obj: T): obj is Exclude<T, symbol | Function> {
+  return typeof obj !== 'symbol' && typeof obj !== 'function';
+}
+
+export function shallowClone<T extends object>(obj: T): T {
+  if (!isCloneable(obj)) throw new StackAssertionError("shallowClone does not support symbols or functions", { obj });
+
+  if (Array.isArray(obj)) return obj.map(identity) as T;
+  return { ...obj };
+}
+import.meta.vitest?.test("shallowClone", ({ expect }) => {
+  expect(shallowClone({ a: 1, b: 2 })).toEqual({ a: 1, b: 2 });
+  expect(shallowClone([1, 2, 3])).toEqual([1, 2, 3]);
+  expect(() => shallowClone(() => {})).toThrow();
+});
+
 export function deepPlainClone<T>(obj: T): T {
   if (typeof obj === 'function') throw new StackAssertionError("deepPlainClone does not support functions");
   if (typeof obj === 'symbol') throw new StackAssertionError("deepPlainClone does not support symbols");
@@ -122,6 +140,119 @@ import.meta.vitest?.test("deepPlainClone", ({ expect }) => {
   expect(() => deepPlainClone(Symbol())).toThrow();
 });
 
+export type DeepMerge<T, U> = Omit<T, keyof U> & Omit<U, keyof T> & DeepMergeInner<Pick<T, keyof U & keyof T>, Pick<U, keyof U & keyof T>>;
+type DeepMergeInner<T, U> = {
+  [K in keyof U]-?:
+    undefined extends U[K]
+      ? K extends keyof T
+          ? T[K] extends object
+              ? Exclude<U[K], undefined> extends object
+                  ? DeepMerge<T[K], Exclude<U[K], undefined>>
+                  : T[K] | Exclude<U[K], undefined>
+              : T[K] | Exclude<U[K], undefined>
+          : Exclude<U[K], undefined>
+      : K extends keyof T
+          ? T[K] extends object
+              ? U[K] extends object
+                  ? DeepMerge<T[K], U[K]>
+                  : U[K]
+              : U[K]
+          : U[K];
+};
+export function deepMerge<T extends {}, U extends {}>(baseObj: T, mergeObj: U): DeepMerge<T, U> {
+  if ([baseObj, mergeObj, ...Object.values(baseObj), ...Object.values(mergeObj)].some(o => !isCloneable(o))) throw new StackAssertionError("deepMerge does not support functions or symbols", { baseObj, mergeObj });
+
+  const res: any = shallowClone(baseObj);
+  for (const [key, mergeValue] of Object.entries(mergeObj)) {
+    if (has(res, key as any)) {
+      const baseValue = get(res, key as any);
+      if (isObjectLike(baseValue) && isObjectLike(mergeValue)) {
+        set(res, key, deepMerge(baseValue, mergeValue));
+        continue;
+      }
+    }
+    set(res, key, mergeValue);
+  }
+  return res as any;
+}
+import.meta.vitest?.test("deepMerge", ({ expect }) => {
+  // Test merging flat objects
+  expect(deepMerge({ a: 1 }, { b: 2 })).toEqual({ a: 1, b: 2 });
+  expect(deepMerge({ a: 1 }, { a: 2 })).toEqual({ a: 2 });
+  expect(deepMerge({ a: 1, b: 2 }, { b: 3, c: 4 })).toEqual({ a: 1, b: 3, c: 4 });
+
+  // Test with nested objects
+  expect(deepMerge(
+    { a: { x: 1, y: 2 }, b: 3 },
+    { a: { y: 3, z: 4 }, c: 5 }
+  )).toEqual({ a: { x: 1, y: 3, z: 4 }, b: 3, c: 5 });
+
+  // Test with arrays
+  expect(deepMerge(
+    { a: [1, 2], b: 3 },
+    { a: [3, 4], c: 5 }
+  )).toEqual({ a: [3, 4], b: 3, c: 5 });
+
+  // Test with null values
+  expect(deepMerge(
+    { a: { x: 1 }, b: null },
+    { a: { y: 2 }, b: { z: 3 } }
+  )).toEqual({ a: { x: 1, y: 2 }, b: { z: 3 } });
+
+  // Test with undefined values
+  expect(deepMerge(
+    { a: 1, b: undefined },
+    { b: 2, c: 3 }
+  )).toEqual({ a: 1, b: 2, c: 3 });
+
+  // Test deeply nested structures
+  expect(deepMerge(
+    {
+      a: {
+        x: { deep: 1 },
+        y: [1, 2]
+      },
+      b: 2
+    },
+    {
+      a: {
+        x: { deeper: 3 },
+        y: [3, 4]
+      },
+      c: 3
+    }
+  )).toEqual({
+    a: {
+      x: { deep: 1, deeper: 3 },
+      y: [3, 4]
+    },
+    b: 2,
+    c: 3
+  });
+
+  // Test with empty objects
+  expect(deepMerge({}, { a: 1 })).toEqual({ a: 1 });
+  expect(deepMerge({ a: 1 }, {})).toEqual({ a: 1 });
+  expect(deepMerge({}, {})).toEqual({});
+
+  // Test that original objects are not modified
+  const base = { a: { x: 1 }, b: 2 };
+  const merge = { a: { y: 2 }, c: 3 };
+  const baseClone = deepPlainClone(base);
+  const mergeClone = deepPlainClone(merge);
+
+  const result = deepMerge(base, merge);
+  expect(base).toEqual(baseClone);
+  expect(merge).toEqual(mergeClone);
+  expect(result).toEqual({ a: { x: 1, y: 2 }, b: 2, c: 3 });
+
+  // Test error cases
+  expect(() => deepMerge({ a: () => {} }, { b: 2 })).toThrow();
+  expect(() => deepMerge({ a: 1 }, { b: () => {} })).toThrow();
+  expect(() => deepMerge({ a: Symbol() }, { b: 2 })).toThrow();
+  expect(() => deepMerge({ a: 1 }, { b: Symbol() })).toThrow();
+});
+
 export function typedEntries<T extends {}>(obj: T): [keyof T, T[keyof T]][] {
   return Object.entries(obj) as any;
 }
@@ -140,7 +271,7 @@ import.meta.vitest?.test("typedEntries", ({ expect }) => {
   expect(typeof entries[1][1]).toBe("function");
 });
 
-export function typedFromEntries<K extends PropertyKey, V>(entries: [K, V][]): Record<K, V> {
+export function typedFromEntries<K extends PropertyKey, V>(entries: (readonly [K, V])[]): Record<K, V> {
   return Object.fromEntries(entries) as any;
 }
 import.meta.vitest?.test("typedFromEntries", ({ expect }) => {
@@ -232,7 +363,7 @@ export type FilterUndefined<T> =
  * Returns a new object with all undefined values removed. Useful when spreading optional parameters on an object, as
  * TypeScript's `Partial<XYZ>` type allows `undefined` values.
  */
-export function filterUndefined<T extends {}>(obj: T): FilterUndefined<T> {
+export function filterUndefined<T extends object>(obj: T): FilterUndefined<T> {
   return Object.fromEntries(Object.entries(obj).filter(([, v]) => v !== undefined)) as any;
 }
 import.meta.vitest?.test("filterUndefined", ({ expect }) => {
@@ -250,12 +381,21 @@ export type FilterUndefinedOrNull<T> = FilterUndefined<{ [k in keyof T]: null ex
  * Returns a new object with all undefined and null values removed. Useful when spreading optional parameters on an object, as
  * TypeScript's `Partial<XYZ>` type allows `undefined` values.
  */
-export function filterUndefinedOrNull<T extends {}>(obj: T): FilterUndefinedOrNull<T> {
+export function filterUndefinedOrNull<T extends object>(obj: T): FilterUndefinedOrNull<T> {
   return Object.fromEntries(Object.entries(obj).filter(([, v]) => v !== undefined && v !== null)) as any;
 }
 import.meta.vitest?.test("filterUndefinedOrNull", ({ expect }) => {
   expect(filterUndefinedOrNull({})).toEqual({});
   expect(filterUndefinedOrNull({ a: 1, b: 2 })).toEqual({ a: 1, b: 2 });
+});
+
+export type DeepFilterUndefined<T> = T extends object ? FilterUndefined<{ [K in keyof T]: DeepFilterUndefined<T[K]> }> : T;
+
+export function deepFilterUndefined<T extends object>(obj: T): DeepFilterUndefined<T> {
+  return Object.fromEntries(Object.entries(obj).filter(([, v]) => v !== undefined).map(([k, v]) => [k, isObjectLike(v) ? deepFilterUndefined(v) : v])) as any;
+}
+import.meta.vitest?.test("deepFilterUndefined", ({ expect }) => {
+  expect(deepFilterUndefined({ a: 1, b: undefined })).toEqual({ a: 1 });
 });
 
 export function pick<T extends {}, K extends keyof T>(obj: T, keys: K[]): Pick<T, K> {
@@ -305,8 +445,12 @@ export function get<T extends object, K extends keyof T>(obj: T, key: K): T[K] {
   return descriptor.value;
 }
 
-export function has<T extends object, K extends keyof T>(obj: T, key: K): obj is T {
+export function has<T extends object, K extends keyof T>(obj: T, key: K): obj is T & { [k in K]: unknown } {
   return Object.prototype.hasOwnProperty.call(obj, key);
+}
+
+export function hasAndNotUndefined<T extends object, K extends keyof T>(obj: T, key: K): obj is T & { [k in K]: Exclude<T[K], undefined> } {
+  return has(obj, key) && get(obj, key) !== undefined;
 }
 
 export function deleteKey<T extends object, K extends keyof T>(obj: T, key: K) {
@@ -315,4 +459,8 @@ export function deleteKey<T extends object, K extends keyof T>(obj: T, key: K) {
   } else {
     throw new StackAssertionError(`deleteKey: key ${String(key)} does not exist`, { obj, key });
   }
+}
+
+export function isObjectLike(value: unknown): value is object {
+  return (typeof value === 'object' || typeof value === 'function') && value !== null;
 }
