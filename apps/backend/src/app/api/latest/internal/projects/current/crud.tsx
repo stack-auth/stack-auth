@@ -519,48 +519,48 @@ export const projectsCrudHandlers = createLazyProxy(() => createCrudHandlers(pro
     const oldConfigOverride = null as unknown as OrganizationRenderedConfig;
     const configOverride: OrganizationConfigOverride = {};
 
+    // ======================= auth =======================
+
     if (data.config?.sign_up_enabled !== undefined) {
-      configOverride['auth.signUpEnabled'] = data.config.sign_up_enabled;
+      configOverride['auth.allowSignUp'] = data.config.sign_up_enabled;
     }
 
     if (data.config?.credential_enabled !== undefined) {
-      configOverride['auth.credentialEnabled'] = data.config.credential_enabled;
+      configOverride['auth.password.allowSignIn'] = data.config.credential_enabled;
     }
 
     if (data.config?.magic_link_enabled !== undefined) {
-      configOverride['auth.magicLinkEnabled'] = data.config.magic_link_enabled;
+      configOverride['auth.otp.allowSignIn'] = data.config.magic_link_enabled;
     }
 
     if (data.config?.passkey_enabled !== undefined) {
-      configOverride['auth.passkeyEnabled'] = data.config.passkey_enabled;
-    }
-
-    if (data.config?.client_team_creation_enabled !== undefined) {
-      configOverride['auth.clientTeamCreationEnabled'] = data.config.client_team_creation_enabled;
-    }
-
-    if (data.config?.client_user_deletion_enabled !== undefined) {
-      configOverride['auth.clientUserDeletionEnabled'] = data.config.client_user_deletion_enabled;
-    }
-
-    if (data.config?.allow_localhost !== undefined) {
-      configOverride['auth.allowLocalhost'] = data.config.allow_localhost;
-    }
-
-    if (data.config?.allow_user_api_keys !== undefined) {
-      configOverride['auth.allowUserApiKeys'] = data.config.allow_user_api_keys;
-    }
-
-    if (data.config?.allow_team_api_keys !== undefined) {
-      configOverride['auth.allowTeamApiKeys'] = data.config.allow_team_api_keys;
+      configOverride['auth.passkey.allowSignIn'] = data.config.passkey_enabled;
     }
 
     if (data.config?.oauth_account_merge_strategy !== undefined) {
-      configOverride['auth.oauthAccountMergeStrategy'] = data.config.oauth_account_merge_strategy;
+      configOverride['auth.oauth.accountMergeStrategy'] = data.config.oauth_account_merge_strategy;
+    }
+
+    // ======================= users =======================
+
+    if (data.config?.client_user_deletion_enabled !== undefined) {
+      configOverride['users.allowClientUserDeletion'] = data.config.client_user_deletion_enabled;
+    }
+
+    // ======================= teams =======================
+
+    if (data.config?.client_team_creation_enabled !== undefined) {
+      configOverride['teams.allowClientTeamCreation'] = data.config.client_team_creation_enabled;
     }
 
     if (data.config?.create_team_on_sign_up !== undefined) {
-      configOverride['auth.createTeamOnSignUp'] = data.config.create_team_on_sign_up;
+      configOverride['teams.createPersonalTeamOnSignUp'] = data.config.create_team_on_sign_up;
+    }
+
+    // ======================= domains =======================
+
+    if (data.config?.allow_localhost !== undefined) {
+      configOverride['domains.allowLocalhost'] = data.config.allow_localhost;
     }
 
     const domains = data.config?.domains;
@@ -586,6 +586,19 @@ export const projectsCrudHandlers = createLazyProxy(() => createCrudHandlers(pro
         }
       }
     }
+
+
+    // ======================= api keys =======================
+
+    if (data.config?.allow_user_api_keys !== undefined) {
+      configOverride['apiKeys.enabled.user'] = data.config.allow_user_api_keys;
+    }
+
+    if (data.config?.allow_team_api_keys !== undefined) {
+      configOverride['apiKeys.enabled.team'] = data.config.allow_team_api_keys;
+    }
+
+    // ======================= emails =======================
 
     if (data.config?.email_config) {
       configOverride['emails.emailServer'] = {
