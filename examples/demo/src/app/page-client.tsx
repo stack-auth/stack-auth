@@ -18,7 +18,7 @@ export default function PageClient() {
       <Typography type='h3'>Welcome to the Stack demo app!</Typography>
       <Typography>Try signing in/up with the buttons below!</Typography>
       <Typography>Also feel free to check out the things on the top right corner.</Typography>
-      <div className='stack-scope flex gap-2'>
+      <div className='flex gap-2'>
         <Button onClick={() => router.push(app.urls.signIn)}>Sign In</Button>
         <Button onClick={() => router.push(app.urls.signUp)}>Sign Up</Button>
       </div>
@@ -29,7 +29,7 @@ export default function PageClient() {
     <div className='flex flex-col items-center justify-center h-full w-full gap-10'>
       {user ? (
         <div className='flex flex-col gap-5 justify-center items-center'>
-          <Card className='stack-scope'>
+          <Card>
             <CardHeader>
               <div className='flex gap-6 items-center'>
                 <UserAvatar user={user} size={100} />
