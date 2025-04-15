@@ -10,7 +10,7 @@ const Table = forwardRefIfNeeded<
   <div className="relative w-full overflow-auto">
     <table
       ref={ref}
-      className={cn("w-full caption-bottom text-sm", className)}
+      className={cn("stack-scope w-full caption-bottom text-sm", className)}
       {...props}
     />
   </div>
