@@ -1,7 +1,7 @@
 /* eslint-disable no-restricted-syntax */
 import { getSoleTenancyFromProject } from '@/lib/tenancies';
 import { PrismaClient } from '@prisma/client';
-import { throwErr } from '@stackframe/stack-shared/dist/utils/errors';
+import { errorToNiceString, throwErr } from '@stackframe/stack-shared/dist/utils/errors';
 import { hashPassword } from "@stackframe/stack-shared/dist/utils/hashes";
 import { generateUuid } from '@stackframe/stack-shared/dist/utils/uuids';
 
@@ -513,7 +513,7 @@ async function seed() {
 }
 
 seed().catch(async (e) => {
-  console.error(e);
+  console.error(errorToNiceString(e));
   await prisma.$disconnect();
   process.exit(1);
 // eslint-disable-next-line @typescript-eslint/no-misused-promises

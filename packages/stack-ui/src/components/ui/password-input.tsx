@@ -15,7 +15,7 @@ const PasswordInput = forwardRefIfNeeded<HTMLInputElement, InputProps>(
 	    <div className="relative">
 	      <Input
 	        type={showPassword ? "text" : "password"}
-	        className={cn("hide-password-toggle pr-10", className)}
+	        className={cn("stack-scope hide-password-toggle pr-10", className)}
 	        ref={ref}
 	        {...props}
 	      />
