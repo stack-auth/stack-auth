@@ -47,7 +47,7 @@ export const projectsCrudHandlers = createLazyProxy(() => createCrudHandlers(pro
         }
       }
 
-      for (const [id, provider] of typedEntries(oldConfigOverride.auth.oauth.providers)) {
+      for (const [id, _] of typedEntries(oldConfigOverride.auth.oauth.providers)) {
         if (!data.config.oauth_providers.find((p) => p.id === id)) {
           delete configOverride[`auth.oauth.providers.${id}`];
         }
