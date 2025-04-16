@@ -1,7 +1,6 @@
-import { createOrUpdatePermissionDefinition, deletePermissionDefinition, isErrorForNonUniquePermission, listPermissionDefinitions } from "@/lib/permissions";
+import { createOrUpdatePermissionDefinition, deletePermissionDefinition, listPermissionDefinitions } from "@/lib/permissions";
 import { retryTransaction } from "@/prisma-client";
 import { createCrudHandlers } from "@/route-handlers/crud-handler";
-import { KnownErrors } from "@stackframe/stack-shared";
 import { teamPermissionDefinitionsCrud } from '@stackframe/stack-shared/dist/interface/crud/team-permissions';
 import { permissionDefinitionIdSchema, yupObject } from "@stackframe/stack-shared/dist/schema-fields";
 import { createLazyProxy } from "@stackframe/stack-shared/dist/utils/proxies";
@@ -12,22 +11,26 @@ export const teamPermissionDefinitionsCrudHandlers = createLazyProxy(() => creat
   }),
   async onCreate({ auth, data }) {
     return await retryTransaction(async (tx) => {
-      try {
-        return await createOrUpdatePermissionDefinition(tx, {
-          scope: "TEAM",
-          tenancy: auth.tenancy,
-          data,
-        });
-      } catch (error) {
-        if (isErrorForNonUniquePermission(error)) {
-          throw new KnownErrors.PermissionIdAlreadyExists(data.id);
-        }
-        throw error;
-      }
+      return await createOrUpdatePermissionDefinition(tx, {
+        type: "create",
+        scope: "team",
+        tenancy: auth.tenancy,
+        data,
+      });
     });
   },
   async onUpdate({ auth, data, params }) {
-
+    return await retryTransaction(async (tx) => {
+      return await createOrUpdatePermissionDefinition(tx, {
+        type: "update",
+        scope: "team",
+        tenancy: auth.tenancy,
+        data: {
+          ...data,
+          id: params.permission_id,
+        }
+      });
+    });
   },
   async onDelete({ auth, params }) {
     return await retryTransaction(async (tx) => {
@@ -38,11 +41,12 @@ export const teamPermissionDefinitionsCrudHandlers = createLazyProxy(() => creat
     });
   },
   async onList({ auth }) {
-    return await retryTransaction(async (tx) => {
-      return {
-        items: await listPermissionDefinitions(tx, "TEAM", auth.tenancy),
-        is_paginated: false,
-      };
-    });
+    return {
+      items: await listPermissionDefinitions({
+        scope: "team",
+        tenancy: auth.tenancy,
+      }),
+      is_paginated: false,
+    };
   },
 }));
