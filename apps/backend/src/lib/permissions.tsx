@@ -1,43 +1,23 @@
-import { TeamSystemPermission as DBTeamSystemPermission, Prisma } from "@prisma/client";
+import { Prisma } from "@prisma/client";
 import { KnownErrors } from "@stackframe/stack-shared";
+import { EnvironmentConfigOverride, OrganizationRenderedConfig } from "@stackframe/stack-shared/dist/config/schema";
 import { ProjectPermissionsCrud } from "@stackframe/stack-shared/dist/interface/crud/project-permissions";
 import { TeamPermissionDefinitionsCrud, TeamPermissionsCrud } from "@stackframe/stack-shared/dist/interface/crud/team-permissions";
 import { groupBy } from "@stackframe/stack-shared/dist/utils/arrays";
 import { StackAssertionError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
-import { stringCompare, typedToLowercase, typedToUppercase } from "@stackframe/stack-shared/dist/utils/strings";
+import { typedFromEntries } from "@stackframe/stack-shared/dist/utils/objects";
+import { stringCompare, typedToLowercase } from "@stackframe/stack-shared/dist/utils/strings";
 import { isPrismaUniqueConstraintViolation } from "../prisma-client";
 import { Tenancy } from "./tenancies";
 import { PrismaTransaction } from "./types";
 
-export const fullPermissionInclude = {
-  parentEdges: {
-    include: {
-      parentPermission: true,
-    },
-  },
-} as const satisfies Prisma.PermissionInclude;
-
-export function isTeamSystemPermission(permission: string): permission is `$${Lowercase<DBTeamSystemPermission>}` {
-  return permission.startsWith('$') && permission.slice(1).toUpperCase() in DBTeamSystemPermission;
-}
-
-export function systemPermissionStringToDBType(permission: `$${Lowercase<DBTeamSystemPermission>}`): DBTeamSystemPermission {
-  return typedToUppercase(permission.slice(1)) as DBTeamSystemPermission;
-}
-
-export function systemPermissionDBTypeToString(permission: DBTeamSystemPermission): `$${Lowercase<DBTeamSystemPermission>}` {
-  return '$' + typedToLowercase(permission) as `$${Lowercase<DBTeamSystemPermission>}`;
-}
-
-export type TeamSystemPermission = ReturnType<typeof systemPermissionDBTypeToString>;
-
 const descriptionMap: Record<DBTeamSystemPermission, string> = {
-  "UPDATE_TEAM": "Update the team information",
-  "DELETE_TEAM": "Delete the team",
-  "READ_MEMBERS": "Read and list the other members of the team",
-  "REMOVE_MEMBERS": "Remove other members from the team",
-  "INVITE_MEMBERS": "Invite other users to the team",
-  "MANAGE_API_KEYS": "Create and manage API keys for the team",
+  "$update_team": "Update the team information",
+  "$delete_team": "Delete the team",
+  "$read_members": "Read and list the other members of the team",
+  "$remove_members": "Remove other members from the team",
+  "$invite_members": "Invite other users to the team",
+  "$manage_api_keys": "Create and manage API keys for the team",
 };
 
 type ExtendedTeamPermissionDefinition = TeamPermissionDefinitionsCrud["Admin"]["Read"] & {
@@ -363,7 +343,7 @@ export function getPermissionDefinitionsFromProjectConfig(
   return [...nonSystemPermissions, ...systemPermissions].sort((a, b) => stringCompare(a.id, b.id));
 }
 
-export async function createPermissionDefinition(
+export async function createOrUpdatePermissionDefinition(
   tx: PrismaTransaction,
   options: {
     scope: "TEAM" | "PROJECT",
@@ -375,98 +355,43 @@ export async function createPermissionDefinition(
     },
   }
 ) {
-  const parentDbIds = await getParentDbIds(tx, {
-    tenancy: options.tenancy,
-    scope: options.scope,
-    containedPermissionIds: options.data.contained_permission_ids
-  });
-  const dbPermission = await tx.permission.create({
-    data: {
-      scope: options.scope,
-      queryableId: options.data.id,
-      description: options.data.description,
-      projectConfigId: options.tenancy.config.id,
-      parentEdges: {
-        create: parentDbIds.map(parentDbId => {
-          if (isTeamSystemPermission(parentDbId)) {
-            return {
-              parentTeamSystemPermission: systemPermissionStringToDBType(parentDbId),
-            };
-          } else {
-            return {
-              parentPermission: {
-                connect: {
-                  dbId: parentDbId,
-                },
-              },
-            };
-          }
-        })
-      },
-    },
-    include: fullPermissionInclude,
-  });
-  return permissionDefinitionJsonFromDbType(dbPermission);
-}
-
-export async function updatePermissionDefinitions(
-  tx: PrismaTransaction,
-  options: {
-    scope: "TEAM" | "PROJECT",
-    tenancy: Tenancy,
-    permissionId: string,
-    data: {
-      id?: string,
-      description?: string,
-      contained_permission_ids?: string[],
-    },
-  }
-) {
-  const parentDbIds = await getParentDbIds(tx, {
-    tenancy: options.tenancy,
-    scope: options.scope,
-    containedPermissionIds: options.data.contained_permission_ids
-  });
-
-  let edgeUpdateData = {};
-  if (options.data.contained_permission_ids) {
-    edgeUpdateData = {
-      parentEdges: {
-        deleteMany: {},
-        create: parentDbIds.map(parentDbId => {
-          if (isTeamSystemPermission(parentDbId)) {
-            return {
-              parentTeamSystemPermission: systemPermissionStringToDBType(parentDbId),
-            };
-          } else {
-            return {
-              parentPermission: {
-                connect: {
-                  dbId: parentDbId,
-                },
-              },
-            };
-          }
-        }),
-      },
-    };
-  }
-
-  const db = await tx.permission.update({
+  const dbOverride = await tx.environmentConfigOverride.findUnique({
     where: {
-      projectConfigId_queryableId: {
-        projectConfigId: options.tenancy.config.id,
-        queryableId: options.permissionId,
-      },
+      projectId_branchId: {
+        projectId: options.tenancy.project.id,
+        branchId: options.tenancy.branchId,
+      }
+    }
+  });
+
+  if (!dbOverride) {
+    throw new StackAssertionError(`Couldn't find config override`, { tenancy: options.tenancy });
+  }
+
+  const configOverride = dbOverride.config as unknown as EnvironmentConfigOverride;
+
+  configOverride[`rbac.permissions.${options.data.id}`] = {
+    description: options.data.description,
+    containedPermissionIds: typedFromEntries((options.data.contained_permission_ids ?? []).map(id => [id, true])),
+  } satisfies OrganizationRenderedConfig['rbac']['permissions'][string];
+
+  await tx.environmentConfigOverride.update({
+    where: {
+      projectId_branchId: {
+        projectId: options.tenancy.project.id,
+        branchId: options.tenancy.branchId,
+      }
     },
     data: {
-      queryableId: options.data.id,
-      description: options.data.description,
-      ...edgeUpdateData,
-    },
-    include: fullPermissionInclude,
+      config: configOverride,
+    }
   });
-  return permissionDefinitionJsonFromDbType(db);
+
+  return {
+    id: options.data.id,
+    description: options.data.description,
+    contained_permission_ids: options.data.contained_permission_ids,
+  };
 }
 
 export async function deletePermissionDefinition(
