@@ -2276,3 +2276,6 @@ describe("with server access", () => {
     `);
   });
 });
+
+it.todo("creating a new user with an OAuth provider ID that does not exist should fail");
+it.todo("creating a new user with password enabled when password sign in is disabled in the config should fail");

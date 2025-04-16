@@ -2,10 +2,10 @@ import { prismaClient } from "@/prisma-client";
 import { Prisma } from "@prisma/client";
 import { ProjectsCrud } from "@stackframe/stack-shared/dist/interface/crud/projects";
 import { getNodeEnvironment } from "@stackframe/stack-shared/dist/utils/env";
-import { StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
+import { StackAssertionError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
 import { getProject } from "./projects";
 
-export async function tenancyPrismaToCrud(prisma: Prisma.TenancyGetPayload<{ include: typeof fullTenancyInclude }>) {
+export async function tenancyPrismaToCrud(prisma: Prisma.TenancyGetPayload<{}>) {
   if (prisma.hasNoOrganization && prisma.organizationId !== null) {
     throw new StackAssertionError("Organization ID is not null for a tenancy with hasNoOrganization", { tenancyId: prisma.id, prisma });
   }
@@ -13,7 +13,7 @@ export async function tenancyPrismaToCrud(prisma: Prisma.TenancyGetPayload<{ inc
     throw new StackAssertionError("Organization ID is null for a tenancy without hasNoOrganization", { tenancyId: prisma.id, prisma });
   }
 
-  const projectCrud = await projectPrismaToCrud(prisma.project);
+  const projectCrud = await getProject(prisma.projectId) ?? throwErr("Project in tenancy not found");
   return {
     id: prisma.id,
     config: projectCrud.config,
@@ -81,7 +81,6 @@ export async function getTenancy(tenancyId: string) {
   }
   const prisma = await prismaClient.tenancy.findUnique({
     where: { id: tenancyId },
-    include: fullTenancyInclude,
   });
   if (!prisma) return null;
   return await tenancyPrismaToCrud(prisma);
@@ -104,7 +103,6 @@ export async function getTenancyFromProject(projectId: string, branchId: string,
         }
       }),
     },
-    include: fullTenancyInclude,
   });
   if (!prisma) return null;
   return await tenancyPrismaToCrud(prisma);

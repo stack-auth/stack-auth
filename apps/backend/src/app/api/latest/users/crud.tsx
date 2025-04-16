@@ -1,3 +1,4 @@
+import { getRenderedOrganizationConfigQuery } from "@/lib/config";
 import { grantDefaultProjectPermissions } from "@/lib/permissions";
 import { ensureTeamMembershipExists, ensureUserExists } from "@/lib/request-checks";
 import { getSoleTenancyFromProject, getTenancy } from "@/lib/tenancies";
@@ -17,18 +18,13 @@ import { decodeBase64 } from "@stackframe/stack-shared/dist/utils/bytes";
 import { getNodeEnvironment } from "@stackframe/stack-shared/dist/utils/env";
 import { StackAssertionError, StatusError, captureError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
 import { hashPassword, isPasswordHashValid } from "@stackframe/stack-shared/dist/utils/hashes";
-import { deepPlainEquals } from "@stackframe/stack-shared/dist/utils/objects";
+import { deepPlainEquals, get, has } from "@stackframe/stack-shared/dist/utils/objects";
 import { createLazyProxy } from "@stackframe/stack-shared/dist/utils/proxies";
-import { typedToLowercase } from "@stackframe/stack-shared/dist/utils/strings";
 import { isUuid } from "@stackframe/stack-shared/dist/utils/uuids";
 import { teamPrismaToCrud, teamsCrudHandlers } from "../teams/crud";
 
 export const userFullInclude = {
-  projectUserOAuthAccounts: {
-    include: {
-      providerConfig: true,
-    },
-  },
+  projectUserOAuthAccounts: true,
   authMethods: {
     include: {
       passwordAuthMethod: true,
@@ -47,27 +43,6 @@ export const userFullInclude = {
     },
   },
 } satisfies Prisma.ProjectUserInclude;
-
-export const oauthProviderConfigToCrud = (
-  config: Prisma.OAuthProviderConfigGetPayload<{ include: {
-    proxiedOAuthConfig: true,
-    standardOAuthConfig: true,
-  }, }>
-) => {
-  let type;
-  if (config.proxiedOAuthConfig) {
-    type = config.proxiedOAuthConfig.type;
-  } else if (config.standardOAuthConfig) {
-    type = config.standardOAuthConfig.type;
-  } else {
-    throw new StackAssertionError(`OAuthProviderConfig ${config.id} violates the union constraint`, config);
-  }
-
-  return {
-    id: config.id,
-    type: typedToLowercase(type),
-  } as const;
-};
 
 export const userPrismaToCrud = (
   prisma: Prisma.ProjectUserGetPayload<{ include: typeof userFullInclude }>,
@@ -101,7 +76,7 @@ export const userPrismaToCrud = (
     requires_totp_mfa: prisma.requiresTotpMfa,
     passkey_auth_enabled: !!passkeyAuth,
     oauth_providers: prisma.projectUserOAuthAccounts.map((a) => ({
-      id: a.oauthProviderConfigId,
+      id: a.configOAuthProviderId,
       account_id: a.providerAccountId,
       email: a.email,
     })),
@@ -170,48 +145,6 @@ async function checkAuthData(
   }
 }
 
-// TODO: retrieve in the tenancy
-async function getPasswordConfig(tx: PrismaTransaction, projectConfigId: string) {
-  const passwordConfig = await tx.passwordAuthMethodConfig.findMany({
-    where: {
-      projectConfigId: projectConfigId,
-      authMethodConfig: {
-        enabled: true,
-      }
-    },
-    include: {
-      authMethodConfig: true,
-    }
-  });
-
-  if (passwordConfig.length > 1) {
-    throw new StackAssertionError("Multiple password auth methods found in the project", passwordConfig);
-  }
-
-  return passwordConfig.length === 0 ? null : passwordConfig[0];
-}
-
-// TODO: retrieve in the tenancy
-async function getOtpConfig(tx: PrismaTransaction, projectConfigId: string) {
-  const otpConfig = await tx.otpAuthMethodConfig.findMany({
-    where: {
-      projectConfigId: projectConfigId,
-      authMethodConfig: {
-        enabled: true,
-      }
-    },
-    include: {
-      authMethodConfig: true,
-    }
-  });
-
-  if (otpConfig.length > 1) {
-    throw new StackAssertionError("Multiple OTP auth methods found in the tenancy", otpConfig);
-  }
-
-  return otpConfig.length === 0 ? null : otpConfig[0];
-}
-
 export const getUserLastActiveAtMillis = async (tenancyId: string, userId: string): Promise<number | null> => {
   const res = (await getUsersLastActiveAtMillis(tenancyId, [userId], [0]))[0];
   if (res === 0) {
@@ -268,14 +201,7 @@ export function getUserQuery(projectId: string, branchId: string | null, userId:
               ),
               'ProjectUserOAuthAccounts', (
                 SELECT COALESCE(ARRAY_AGG(
-                  to_jsonb("ProjectUserOAuthAccount") ||
-                  jsonb_build_object(
-                    'ProviderConfig', (
-                      SELECT to_jsonb("OAuthProviderConfig")
-                      FROM "OAuthProviderConfig"
-                      WHERE "ProjectConfig"."id" = "OAuthProviderConfig"."projectConfigId" AND "OAuthProviderConfig"."id" = "ProjectUserOAuthAccount"."oauthProviderConfigId"
-                    )
-                  )
+                  to_jsonb("ProjectUserOAuthAccount")
                 ), '{}')
                 FROM "ProjectUserOAuthAccount"
                 WHERE "ProjectUserOAuthAccount"."tenancyId" = "ProjectUser"."tenancyId" AND "ProjectUserOAuthAccount"."projectUserId" = "ProjectUser"."projectUserId"
@@ -552,7 +478,9 @@ export const usersCrudHandlers = createLazyProxy(() => createCrudHandlers(usersC
     log("create_user_endpoint_primaryAuthEnabled", {
       value: data.primary_email_auth_enabled,
       email: data.primary_email ?? undefined,
+      projectId: auth.project.id,
     });
+
     const result = await retryTransaction(async (tx) => {
       const passwordHash = await getPasswordHashFromData(data);
       await checkAuthData(tx, {
@@ -561,6 +489,12 @@ export const usersCrudHandlers = createLazyProxy(() => createCrudHandlers(usersC
         primaryEmailVerified: !!data.primary_email_verified,
         primaryEmailAuthEnabled: !!data.primary_email_auth_enabled,
       });
+
+      const config = await rawQuery(getRenderedOrganizationConfigQuery({
+        projectId: auth.project.id,
+        branchId: auth.tenancy.branchId,
+        organizationId: auth.tenancy.organization?.id ?? null,
+      }));
 
       const newUser = await tx.projectUser.create({
         data: {
@@ -579,43 +513,27 @@ export const usersCrudHandlers = createLazyProxy(() => createCrudHandlers(usersC
       });
 
       if (data.oauth_providers) {
-        // TODO: include this in the tenancy
-        const authMethodConfigs = await tx.authMethodConfig.findMany({
-          where: {
-            projectConfigId: auth.tenancy.config.id,
-            oauthProviderConfig: {
-              isNot: null,
-            }
-          },
-          include: {
-            oauthProviderConfig: true,
-          }
-        });
-        const connectedAccountConfigs = await tx.connectedAccountConfig.findMany({
-          where: {
-            projectConfigId: auth.tenancy.config.id,
-            oauthProviderConfig: {
-              isNot: null,
-            }
-          },
-          include: {
-            oauthProviderConfig: true,
-          }
-        });
-
         // create many does not support nested create, so we have to use loop
         for (const provider of data.oauth_providers) {
-          const connectedAccountConfig = connectedAccountConfigs.find((c) => c.oauthProviderConfig?.id === provider.id);
-          const authMethodConfig = authMethodConfigs.find((c) => c.oauthProviderConfig?.id === provider.id);
+          if (!has(config.auth.oauth.providers, provider.id)) {
+            throw new StatusError(StatusError.BadRequest, `OAuth provider ${provider.id} not found`);
+
+          }
+          const oauthProvider = get(config.auth.oauth.providers, provider.id);
 
           let authMethod;
-          if (authMethodConfig) {
+          if (oauthProvider.allowSignIn) {
             authMethod = await tx.authMethod.create({
               data: {
                 tenancyId: auth.tenancy.id,
                 projectUserId: newUser.projectUserId,
-                projectConfigId: auth.tenancy.config.id,
-                authMethodConfigId: authMethodConfig.id,
+                oauthAuthMethod: {
+                  create: {
+                    projectUserId: newUser.projectUserId,
+                    configOAuthProviderId: provider.id,
+                    providerAccountId: provider.account_id,
+                  },
+                },
               }
             });
           }
@@ -624,27 +542,25 @@ export const usersCrudHandlers = createLazyProxy(() => createCrudHandlers(usersC
             data: {
               tenancyId: auth.tenancy.id,
               projectUserId: newUser.projectUserId,
-              projectConfigId: auth.tenancy.config.id,
-              oauthProviderConfigId: provider.id,
+              configOAuthProviderId: provider.id,
               providerAccountId: provider.account_id,
               email: provider.email,
-              ...connectedAccountConfig ? {
+              ...oauthProvider.allowConnectedAccounts ? {
                 connectedAccount: {
                   create: {
-                    connectedAccountConfigId: connectedAccountConfig.id,
                     projectUserId: newUser.projectUserId,
-                    projectConfigId: auth.tenancy.config.id,
                   }
                 }
               } : {},
-              ...authMethodConfig ? {
+              ...authMethod ? {
                 oauthAuthMethod: {
-                  create: {
-                    projectUserId: newUser.projectUserId,
-                    projectConfigId: auth.tenancy.config.id,
-                    authMethodId: authMethod?.id || throwErr("authMethodConfig is set but authMethod is not"),
-                  }
-                }
+                  connect: {
+                    tenancyId_authMethodId: {
+                      tenancyId: auth.tenancy.id,
+                      authMethodId: authMethod.id || throwErr("authMethodConfig is set but authMethod is not"),
+                    },
+                  },
+                },
               } : {},
             }
           });
@@ -667,18 +583,13 @@ export const usersCrudHandlers = createLazyProxy(() => createCrudHandlers(usersC
       }
 
       if (passwordHash) {
-        const passwordConfig = await getPasswordConfig(tx, auth.tenancy.config.id);
-
-        if (!passwordConfig) {
+        if (!config.auth.password.allowSignIn) {
           throw new StatusError(StatusError.BadRequest, "Password auth not enabled in the project");
         }
-
         await tx.authMethod.create({
           data: {
             tenancyId: auth.tenancy.id,
-            projectConfigId: auth.tenancy.config.id,
             projectUserId: newUser.projectUserId,
-            authMethodConfigId: passwordConfig.authMethodConfigId,
             passwordAuthMethod: {
               create: {
                 passwordHash,
@@ -690,18 +601,13 @@ export const usersCrudHandlers = createLazyProxy(() => createCrudHandlers(usersC
       }
 
       if (data.otp_auth_enabled) {
-        const otpConfig = await getOtpConfig(tx, auth.tenancy.config.id);
-
-        if (!otpConfig) {
+        if (!config.auth.otp.allowSignIn) {
           throw new StatusError(StatusError.BadRequest, "OTP auth not enabled in the project");
         }
-
         await tx.authMethod.create({
           data: {
             tenancyId: auth.tenancy.id,
-            projectConfigId: auth.tenancy.config.id,
             projectUserId: newUser.projectUserId,
-            authMethodConfigId: otpConfig.authMethodConfigId,
             otpAuthMethod: {
               create: {
                 projectUserId: newUser.projectUserId,
@@ -773,6 +679,12 @@ export const usersCrudHandlers = createLazyProxy(() => createCrudHandlers(usersC
     const passwordHash = await getPasswordHashFromData(data);
     const result = await retryTransaction(async (tx) => {
       await ensureUserExists(tx, { tenancyId: auth.tenancy.id, userId: params.user_id });
+
+      const config = await rawQuery(getRenderedOrganizationConfigQuery({
+        projectId: auth.project.id,
+        branchId: auth.tenancy.branchId,
+        organizationId: auth.tenancy.organization?.id ?? null,
+      }));
 
       if (data.selected_team_id !== undefined) {
         if (data.selected_team_id !== null) {
@@ -909,23 +821,20 @@ export const usersCrudHandlers = createLazyProxy(() => createCrudHandlers(usersC
       if (data.otp_auth_enabled !== undefined) {
         if (data.otp_auth_enabled) {
           if (!otpAuth) {
-            const otpConfig = await getOtpConfig(tx, auth.tenancy.config.id);
-
-            if (otpConfig) {
-              await tx.authMethod.create({
-                data: {
-                  tenancyId: auth.tenancy.id,
-                  projectConfigId: auth.tenancy.config.id,
-                  projectUserId: params.user_id,
-                  authMethodConfigId: otpConfig.authMethodConfigId,
-                  otpAuthMethod: {
-                    create: {
-                      projectUserId: params.user_id,
-                    }
+            if (!config.auth.otp.allowSignIn) {
+              throw new StatusError(StatusError.BadRequest, "OTP auth not enabled in the project");
+            }
+            await tx.authMethod.create({
+              data: {
+                tenancyId: auth.tenancy.id,
+                projectUserId: params.user_id,
+                otpAuthMethod: {
+                  create: {
+                    projectUserId: params.user_id,
                   }
                 }
-              });
-            }
+              }
+            });
           }
         } else {
           if (otpAuth) {
@@ -1007,18 +916,14 @@ export const usersCrudHandlers = createLazyProxy(() => createCrudHandlers(usersC
               throw new StackAssertionError("password is set but primary_email is not set");
             }
 
-            const passwordConfig = await getPasswordConfig(tx, auth.tenancy.config.id);
-
-            if (!passwordConfig) {
+            if (!config.auth.password.allowSignIn) {
               throw new StatusError(StatusError.BadRequest, "Password auth not enabled in the project");
             }
 
             await tx.authMethod.create({
               data: {
                 tenancyId: auth.tenancy.id,
-                projectConfigId: auth.tenancy.config.id,
                 projectUserId: params.user_id,
-                authMethodConfigId: passwordConfig.authMethodConfigId,
                 passwordAuthMethod: {
                   create: {
                     passwordHash,
