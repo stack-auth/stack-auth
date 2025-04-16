@@ -13,6 +13,7 @@ import { NormalizesTo } from "./format";
 export const configLevels = ['project', 'branch', 'environment', 'organization'] as const;
 export type ConfigLevel = typeof configLevels[number];
 const permissionRegex = /^\$?[a-z0-9_:]+$/;
+const customPermissionRegex = /^\[a-z0-9_:]+$/;
 
 /**
  * All fields that can be overridden at this level.
@@ -27,7 +28,7 @@ const branchRbacDefaultPermissions = yupRecord(
 
 const branchRbacSchema = yupObject({
   permissions: yupRecord(
-    yupString().optional().matches(permissionRegex),
+    yupString().optional().matches(customPermissionRegex),
     yupObject({
       description: yupString().optional(),
       scope: yupString().oneOf(['team', 'project']).optional(),
