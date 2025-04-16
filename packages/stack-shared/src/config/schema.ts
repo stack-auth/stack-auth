@@ -13,7 +13,7 @@ import { NormalizesTo } from "./format";
 export const configLevels = ['project', 'branch', 'environment', 'organization'] as const;
 export type ConfigLevel = typeof configLevels[number];
 const permissionRegex = /^\$?[a-z0-9_:]+$/;
-const customPermissionRegex = /^\[a-z0-9_:]+$/;
+const customPermissionRegex = /^[a-z0-9_:]+$/;
 
 /**
  * All fields that can be overridden at this level.
