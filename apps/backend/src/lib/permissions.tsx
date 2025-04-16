@@ -5,7 +5,7 @@ import { EnvironmentConfigOverride, OrganizationRenderedConfig } from "@stackfra
 import { ProjectPermissionsCrud } from "@stackframe/stack-shared/dist/interface/crud/project-permissions";
 import { TeamPermissionDefinitionsCrud, TeamPermissionsCrud } from "@stackframe/stack-shared/dist/interface/crud/team-permissions";
 import { groupBy } from "@stackframe/stack-shared/dist/utils/arrays";
-import { StackAssertionError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
+import { StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
 import { typedEntries, typedFromEntries } from "@stackframe/stack-shared/dist/utils/objects";
 import { stringCompare, typedToLowercase } from "@stackframe/stack-shared/dist/utils/strings";
 import { getRenderedOrganizationConfigQuery } from "./config";
@@ -76,39 +76,48 @@ export function permissionDefinitionJsonFromSystemDbType(db: DBTeamSystemPermiss
 }
 
 
-export async function listUserTeamPermissions(
+export async function listPermissions<S extends "team" | "project">(
   tx: PrismaTransaction,
   options: {
     tenancy: Tenancy,
-    teamId?: string,
     userId?: string,
     permissionId?: string,
     recursive: boolean,
-  }
-): Promise<TeamPermissionsCrud["Admin"]["Read"][]> {
-  const permissionDefs = await listPermissionDefinitions(tx, "TEAM", options.tenancy);
-  const permissionsMap = new Map(permissionDefs.map(p => [p.id, p]));
-  const results = await tx.teamMemberDirectPermission.findMany({
-    where: {
-      tenancyId: options.tenancy.id,
-      projectUserId: options.userId,
-      teamId: options.teamId,
-    },
-    include: {
-      permission: true,
-    }
+    scope: S,
+  } & (S extends "team" ? {
+    scope: "team",
+    teamId?: string,
+  } : {
+    scope: "project",
+  })
+): Promise<S extends "team" ? TeamPermissionsCrud["Admin"]["Read"][] : ProjectPermissionsCrud["Admin"]["Read"][]> {
+  const permissionDefs = await listPermissionDefinitions({
+    scope: options.scope,
+    tenancy: options.tenancy,
   });
+  const permissionsMap = new Map(permissionDefs.map(p => [p.id, p]));
+  const results = options.scope === "team" ?
+    await tx.teamMemberDirectPermission.findMany({
+      where: {
+        tenancyId: options.tenancy.id,
+        projectUserId: options.userId,
+        teamId: options.teamId,
+      },
+    }) :
+    await tx.projectUserDirectPermission.findMany({
+      where: {
+        tenancyId: options.tenancy.id,
+        projectUserId: options.userId,
+      },
+    });
 
-  const finalResults: { id: string, team_id: string, user_id: string }[] = [];
-  for (const [compositeKey, userTeamResults] of groupBy(results, (result) => JSON.stringify([result.projectUserId, result.teamId]))) {
-    const [userId, teamId] = JSON.parse(compositeKey) as [string, string];
-    const idsToProcess = [...userTeamResults.map(p =>
-      p.permission?.queryableId ||
-      (p.systemPermission ? systemPermissionDBTypeToString(p.systemPermission) : null) ||
-      throwErr(new StackAssertionError(`Permission should have either queryableId or systemPermission`, { p }))
-    )];
+  const finalResults: { id: string, team_id?: string, user_id: string }[] = [];
+  const groupedBy = groupBy(results, (result) => JSON.stringify([result.projectUserId, ...(options.scope === "team" ? [(result as any).teamId] : [])]));
+  for (const [compositeKey, groupedResults] of groupedBy) {
+    const [userId, teamId] = JSON.parse(compositeKey) as [string, string | undefined];
+    const idsToProcess = groupedResults.map(p => p.permissionId);
 
-    const result = new Map<string, ReturnType<typeof permissionDefinitionJsonFromDbType>>();
+    const result = new Map<string, typeof permissionDefs[number]>();
     while (idsToProcess.length > 0) {
       const currentId = idsToProcess.pop()!;
       const current = permissionsMap.get(currentId);
@@ -128,8 +137,8 @@ export async function listUserTeamPermissions(
   }
 
   return finalResults
-    .sort((a, b) => stringCompare(a.team_id, b.team_id) || stringCompare(a.user_id, b.user_id) || stringCompare(a.id, b.id))
-    .filter(p => options.permissionId ? p.id === options.permissionId : true);
+    .sort((a, b) => (options.scope === 'team' ? stringCompare((a as any).team_id, (b as any).team_id) : 0) || stringCompare(a.user_id, b.user_id) || stringCompare(a.id, b.id))
+    .filter(p => options.permissionId ? p.id === options.permissionId : true) as any;
 }
 
 export async function grantTeamPermission(
@@ -420,59 +429,6 @@ export async function deletePermissionDefinition(
     }
   });
 
-}
-
-// User permission functions
-
-export async function listProjectPermissions(
-  tx: PrismaTransaction,
-  options: {
-    tenancy: Tenancy,
-    userId?: string,
-    permissionId?: string,
-    recursive: boolean,
-  }
-): Promise<ProjectPermissionsCrud["Admin"]["Read"][]> {
-  const permissionDefs = await listPermissionDefinitions(tx, "PROJECT", options.tenancy);
-  const permissionsMap = new Map(permissionDefs.map(p => [p.id, p]));
-  const results = await tx.projectUserDirectPermission.findMany({
-    where: {
-      tenancyId: options.tenancy.id,
-      projectUserId: options.userId,
-    },
-    include: {
-      permission: true,
-    }
-  });
-
-  const finalResults: { id: string, user_id: string }[] = [];
-  for (const [userId, userResults] of groupBy(results, (result) => result.projectUserId)) {
-    const idsToProcess = [...userResults.map(p =>
-      p.permission?.queryableId ||
-      throwErr(new StackAssertionError(`Permission should have queryableId`, { p }))
-    )];
-
-    const result = new Map<string, ReturnType<typeof permissionDefinitionJsonFromDbType>>();
-    while (idsToProcess.length > 0) {
-      const currentId = idsToProcess.pop()!;
-      const current = permissionsMap.get(currentId);
-      if (!current) throw new StackAssertionError(`Couldn't find permission in DB`, { currentId, result, idsToProcess });
-      if (result.has(current.id)) continue;
-      result.set(current.id, current);
-      if (options.recursive) {
-        idsToProcess.push(...current.contained_permission_ids);
-      }
-    }
-
-    finalResults.push(...[...result.values()].map(p => ({
-      id: p.id,
-      user_id: userId,
-    })));
-  }
-
-  return finalResults
-    .sort((a, b) => stringCompare(a.user_id, b.user_id) || stringCompare(a.id, b.id))
-    .filter(p => options.permissionId ? p.id === options.permissionId : true);
 }
 
 export async function grantProjectPermission(

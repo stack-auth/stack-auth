@@ -3,7 +3,7 @@ import { KnownErrors } from "@stackframe/stack-shared";
 import { StatusError } from "@stackframe/stack-shared/dist/utils/errors";
 import { ProviderType, sharedProviders, standardProviders } from "@stackframe/stack-shared/dist/utils/oauth";
 import { typedToUppercase } from "@stackframe/stack-shared/dist/utils/strings";
-import { listProjectPermissions, listUserTeamPermissions } from "./permissions";
+import { listPermissions, listProjectPermissions } from "./permissions";
 import { Tenancy } from "./tenancies";
 import { PrismaTransaction } from "./types";
 
@@ -96,7 +96,7 @@ export async function ensureUserTeamPermissionExists(
     userId: options.userId,
   });
 
-  const result = await listUserTeamPermissions(tx, {
+  const result = await listPermissions(tx, {
     tenancy: options.tenancy,
     teamId: options.teamId,
     userId: options.userId,

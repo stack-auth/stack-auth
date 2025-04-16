@@ -124,10 +124,10 @@ model TeamMember {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  projectUser                ProjectUser                  @relation(fields: [tenancyId, projectUserId], references: [tenancyId, projectUserId], onDelete: Cascade)
-  team                       Team                         @relation(fields: [tenancyId, teamId], references: [tenancyId, teamId], onDelete: Cascade)
-  isSelected                 BooleanTrue?
-  TeamMemberDirectPermission TeamMemberDirectPermission[]
+  projectUser                 ProjectUser                  @relation(fields: [tenancyId, projectUserId], references: [tenancyId, projectUserId], onDelete: Cascade)
+  team                        Team                         @relation(fields: [tenancyId, teamId], references: [tenancyId, teamId], onDelete: Cascade)
+  isSelected                  BooleanTrue?
+  teamMemberDirectPermissions TeamMemberDirectPermission[]
 
   @@id([tenancyId, projectUserId, teamId])
   @@unique([tenancyId, projectUserId, isSelected])
