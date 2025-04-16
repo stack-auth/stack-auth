@@ -1,5 +1,5 @@
-import { createPermissionDefinition, deletePermissionDefinition, isErrorForNonUniquePermission, listPermissionDefinitions, updatePermissionDefinitions } from "@/lib/permissions";
-import { isPrismaUniqueConstraintViolation, retryTransaction } from "@/prisma-client";
+import { createOrUpdatePermissionDefinition, deletePermissionDefinition, isErrorForNonUniquePermission, listPermissionDefinitions, updatePermissionDefinitions } from "@/lib/permissions";
+import { retryTransaction } from "@/prisma-client";
 import { createCrudHandlers } from "@/route-handlers/crud-handler";
 import { KnownErrors } from "@stackframe/stack-shared";
 import { projectPermissionDefinitionsCrud } from '@stackframe/stack-shared/dist/interface/crud/project-permissions';
@@ -14,7 +14,7 @@ export const projectPermissionDefinitionsCrudHandlers = createLazyProxy(() => cr
   async onCreate({ auth, data }) {
     return await retryTransaction(async (tx) => {
       try {
-        return await createPermissionDefinition(tx, {
+        return await createOrUpdatePermissionDefinition(tx, {
           scope: "PROJECT",
           tenancy: auth.tenancy,
           data,

@@ -1,4 +1,4 @@
-import { createPermissionDefinition, deletePermissionDefinition, isErrorForNonUniquePermission, listPermissionDefinitions, updatePermissionDefinitions } from "@/lib/permissions";
+import { createOrUpdatePermissionDefinition, deletePermissionDefinition, isErrorForNonUniquePermission, listPermissionDefinitions } from "@/lib/permissions";
 import { retryTransaction } from "@/prisma-client";
 import { createCrudHandlers } from "@/route-handlers/crud-handler";
 import { KnownErrors } from "@stackframe/stack-shared";
@@ -13,7 +13,7 @@ export const teamPermissionDefinitionsCrudHandlers = createLazyProxy(() => creat
   async onCreate({ auth, data }) {
     return await retryTransaction(async (tx) => {
       try {
-        return await createPermissionDefinition(tx, {
+        return await createOrUpdatePermissionDefinition(tx, {
           scope: "TEAM",
           tenancy: auth.tenancy,
           data,
@@ -27,21 +27,7 @@ export const teamPermissionDefinitionsCrudHandlers = createLazyProxy(() => creat
     });
   },
   async onUpdate({ auth, data, params }) {
-    return await retryTransaction(async (tx) => {
-      try {
-        return await updatePermissionDefinitions(tx, {
-          scope: "TEAM",
-          tenancy: auth.tenancy,
-          permissionId: params.permission_id,
-          data,
-        });
-      } catch (error) {
-        if (isErrorForNonUniquePermission(error)) {
-          throw new KnownErrors.PermissionIdAlreadyExists(data.id ?? '');
-        }
-        throw error;
-      }
-    });
+
   },
   async onDelete({ auth, params }) {
     return await retryTransaction(async (tx) => {
