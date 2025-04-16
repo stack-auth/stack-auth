@@ -1,4 +1,4 @@
-import { isTeamSystemPermission, listPermissionDefinitions, teamSystemPermissionStringToDBType } from "@/lib/permissions";
+import { isTeamSystemPermission, listPermissionDefinitions, systemPermissionStringToDBType } from "@/lib/permissions";
 import { fullProjectInclude, projectPrismaToCrud } from "@/lib/projects";
 import { ensureSharedProvider } from "@/lib/request-checks";
 import { retryTransaction } from "@/prisma-client";
@@ -81,7 +81,7 @@ export const projectsCrudHandlers = createLazyProxy(() => createCrudHandlers(pro
 
         const systemPerms = defaultPerms
           .filter(p => isTeamSystemPermission(p))
-          .map(p => teamSystemPermissionStringToDBType(p as any));
+          .map(p => systemPermissionStringToDBType(p as any));
 
         await tx.projectConfig.update({
           where: { id: oldProject.config.id },

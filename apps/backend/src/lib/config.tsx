@@ -11,6 +11,7 @@ import { stringCompare, typedToLowercase } from "@stackframe/stack-shared/dist/u
 import { generateUuid } from "@stackframe/stack-shared/dist/utils/uuids";
 import * as yup from "yup";
 import { RawQuery, prismaClient } from "../prisma-client";
+import { systemPermissionDBTypeToString } from "./permissions";
 import { DBProject, fullProjectInclude } from "./projects";
 
 // These are placeholder types that should be replaced after the config json db migration
@@ -201,7 +202,9 @@ export async function getEnvironmentConfigOverride(options: EnvironmentOptions):
         configOverride['auth.otp.allowSignIn'] = true;
       }
     } else if (authMethodConfig.passkeyConfig) {
-      configOverride['auth.passkey.allowSignIn'] = true;
+      if (authMethodConfig.enabled) {
+        configOverride['auth.passkey.allowSignIn'] = true;
+      }
     } else {
       throw new StackAssertionError('Unknown auth method config', { authMethodConfig });
     }
@@ -293,11 +296,11 @@ export async function getEnvironmentConfigOverride(options: EnvironmentOptions):
   configOverride['rbac.defaultPermissions'] = {
     teamCreator: typedFromEntries([
       ...oldConfig.permissions.filter(perm => perm.isDefaultTeamCreatorPermission).map(perm => perm.queryableId),
-      ...oldConfig.teamCreateDefaultSystemPermissions,
+      ...oldConfig.teamCreateDefaultSystemPermissions.map(perm => systemPermissionDBTypeToString(perm)),
     ].map((id) => [id, true])),
     teamMember: typedFromEntries([
       ...oldConfig.permissions.filter(perm => perm.isDefaultTeamMemberPermission).map(perm => perm.queryableId),
-      ...oldConfig.teamMemberDefaultSystemPermissions,
+      ...oldConfig.teamMemberDefaultSystemPermissions.map(perm => systemPermissionDBTypeToString(perm)),
     ].map((id) => [id, true])),
     signUp: typedFromEntries([
       ...oldConfig.permissions.filter(perm => perm.isDefaultProjectPermission).map(perm => perm.queryableId),
@@ -316,7 +319,12 @@ export async function getEnvironmentConfigOverride(options: EnvironmentOptions):
     environmentConfigOverride: configOverride,
   });
   if (validationResult.status === 'error') {
-    throw new StackAssertionError('getEnvironmentConfigOverride returned an invalid config override: ' + validationResult.error, { validationResult });
+    throw new StackAssertionError('getEnvironmentConfigOverride returned an invalid config override: ' + validationResult.error, {
+      validationResult,
+      project: options.project,
+      branch: options.branch,
+      environmentConfigOverride: configOverride,
+    });
   }
 
   return configOverride;
