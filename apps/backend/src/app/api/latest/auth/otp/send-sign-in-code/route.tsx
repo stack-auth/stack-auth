@@ -3,7 +3,7 @@ import { prismaClient } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { KnownErrors } from "@stackframe/stack-shared";
 import { adaptSchema, clientOrHigherAuthTypeSchema, emailOtpSignInCallbackUrlSchema, signInEmailSchema, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
-import { StatusError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
+import { StatusError } from "@stackframe/stack-shared/dist/utils/errors";
 import semver from "semver";
 import { usersCrudHandlers } from "../../../users/crud";
 import { signInVerificationCodeHandler } from "../sign-in/verification-code-handler";
@@ -64,26 +64,12 @@ export const POST = createSmartRouteHandler({
             where: {
               id: tenancy.project.id,
             },
-            include: {
-              config: {
-                include: {
-                  authMethodConfigs: {
-                    include: {
-                      otpConfig: true,
-                    }
-                  }
-                }
-              }
-            }
           });
 
-          const otpAuthMethodConfig = rawProject?.config.authMethodConfigs.find((m) => m.otpConfig) ?? throwErr("OTP auth method config not found.");
           await prismaClient.authMethod.create({
             data: {
               projectUserId: contactChannel.projectUser.projectUserId,
               tenancyId: tenancy.id,
-              projectConfigId: tenancy.config.id,
-              authMethodConfigId: otpAuthMethodConfig.id,
             },
           });
         }
