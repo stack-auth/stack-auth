@@ -1,10 +1,11 @@
-import { createOrUpdateProject, listManagedProjectIds } from "@/lib/projects";
-import { prismaClient } from "@/prisma-client";
+import { createOrUpdateProject, getProjectQuery, listManagedProjectIds } from "@/lib/projects";
+import { rawQueryAll } from "@/prisma-client";
 import { createCrudHandlers } from "@/route-handlers/crud-handler";
 import { KnownErrors } from "@stackframe/stack-shared";
 import { adminUserProjectsCrud } from "@stackframe/stack-shared/dist/interface/crud/projects";
 import { projectIdSchema, yupObject } from "@stackframe/stack-shared/dist/schema-fields";
-import { throwErr } from "@stackframe/stack-shared/dist/utils/errors";
+import { StackAssertionError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
+import { typedEntries, typedFromEntries } from "@stackframe/stack-shared/dist/utils/objects";
 import { createLazyProxy } from "@stackframe/stack-shared/dist/utils/proxies";
 
 // if one of these users creates a project, the others will be added as owners
@@ -35,15 +36,16 @@ export const adminUserProjectsCrudHandlers = createLazyProxy(() => createCrudHan
     });
   },
   onList: async ({ auth }) => {
-    const results = await prismaClient.project.findMany({
-      where: {
-        id: { in: listManagedProjectIds(auth.user ?? throwErr('auth.user is required')) },
-      },
-      orderBy: { createdAt: 'desc' },
-    });
+    const projectIds = listManagedProjectIds(auth.user ?? throwErr('auth.user is required'));
+    const projectsRecord = await rawQueryAll(typedFromEntries(projectIds.map((id, index) => [index, getProjectQuery(id)])));
+    const projects = typedEntries(projectsRecord).map(([_, project]) => project);
+
+    if (projects.filter(x => x !== null).length !== projectIds.length) {
+      throw new StackAssertionError('Failed to fetch all projects of a user');
+    }
 
     return {
-      items: await Promise.all(results.map(x => projectPrismaToCrud(x))),
+      items: projects as NonNullable<typeof projects[number]>[],
       is_paginated: false,
     } as const;
   }
