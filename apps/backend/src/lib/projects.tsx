@@ -79,7 +79,7 @@ export async function getProject(projectId: string): Promise<ProjectsCrud["Admin
 
 export async function createOrUpdateProject(
   options: {
-    ownerIds: string[],
+    ownerIds?: string[],
     branchId: string,
   } & ({
     type: "create",
@@ -222,7 +222,7 @@ export async function createOrUpdateProject(
     });
 
     // Update owner metadata
-    for (const userId of options.ownerIds) {
+    for (const userId of options.ownerIds ?? []) {
       const projectUserTx = await tx.projectUser.findUnique({
         where: {
           mirroredProjectId_mirroredBranchId_projectUserId: {
