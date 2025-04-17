@@ -1,12 +1,12 @@
-import { Prisma } from "@prisma/client";
+import { Prisma, Project } from "@prisma/client";
+import { KnownErrors } from "@stackframe/stack-shared";
 import { AdminUserProjectsCrud, ProjectsCrud } from "@stackframe/stack-shared/dist/interface/crud/projects";
 import { UsersCrud } from "@stackframe/stack-shared/dist/interface/crud/users";
-import { StackAssertionError, captureError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
-import { typedToUppercase } from "@stackframe/stack-shared/dist/utils/strings";
+import { StackAssertionError, captureError } from "@stackframe/stack-shared/dist/utils/errors";
 import { generateUuid } from "@stackframe/stack-shared/dist/utils/uuids";
 import { RawQuery, rawQuery, retryTransaction } from "../prisma-client";
 import { getRenderedOrganizationConfigQuery, renderedOrganizationConfigToProjectCrud } from "./config";
-import { ensureSharedProvider, ensureStandardProvider } from "./request-checks";
+import { getSoleTenancyFromProject } from "./tenancies";
 
 function isStringArray(value: any): value is string[] {
   return Array.isArray(value) && value.every((id) => typeof id === "string");
@@ -87,150 +87,39 @@ export async function createOrUpdateProject(
   })
 ) {
   const projectId = await retryTransaction(async (tx) => {
-    const project = await tx.project.create({
-      data: {
-        id: generateUuid(),
-        displayName: data.display_name,
-        description: data.description ?? "",
-        isProductionMode: data.is_production_mode ?? false,
-        config: {
-          create: {
-            signUpEnabled: data.config?.sign_up_enabled,
-            allowLocalhost: data.config?.allow_localhost ?? true,
-            createTeamOnSignUp: data.config?.create_team_on_sign_up ?? false,
-            clientTeamCreationEnabled: data.config?.client_team_creation_enabled ?? false,
-            clientUserDeletionEnabled: data.config?.client_user_deletion_enabled ?? false,
-            allowUserApiKeys: data.config?.allow_user_api_keys ?? false,
-            allowTeamApiKeys: data.config?.allow_team_api_keys ?? false,
-            oauthAccountMergeStrategy: data.config?.oauth_account_merge_strategy ? typedToUppercase(data.config.oauth_account_merge_strategy): 'LINK_METHOD',
-            domains: data.config?.domains ? {
-              create: data.config.domains.map(item => ({
-                domain: item.domain,
-                handlerPath: item.handler_path,
-              }))
-            } : undefined,
-            oauthProviderConfigs: data.config?.oauth_providers ? {
-              create: data.config.oauth_providers.map(item => ({
-                id: item.id,
-                proxiedOAuthConfig: item.type === "shared" ? {
-                  create: {
-                    type: typedToUppercase(ensureSharedProvider(item.id)),
-                  }
-                } : undefined,
-                standardOAuthConfig: item.type === "standard" ? {
-                  create: {
-                    type: typedToUppercase(ensureStandardProvider(item.id)),
-                    clientId: item.client_id ?? throwErr('client_id is required'),
-                    clientSecret: item.client_secret ?? throwErr('client_secret is required'),
-                    facebookConfigId: item.facebook_config_id,
-                    microsoftTenantId: item.microsoft_tenant_id,
-                  }
-                } : undefined,
-              }))
-            } : undefined,
-            emailServiceConfig: data.config?.email_config ? {
-              create: {
-                proxiedEmailServiceConfig: data.config.email_config.type === "shared" ? {
-                  create: {}
-                } : undefined,
-                standardEmailServiceConfig: data.config.email_config.type === "standard" ? {
-                  create: {
-                    host: data.config.email_config.host ?? throwErr('host is required'),
-                    port: data.config.email_config.port ?? throwErr('port is required'),
-                    username: data.config.email_config.username ?? throwErr('username is required'),
-                    password: data.config.email_config.password ?? throwErr('password is required'),
-                    senderEmail: data.config.email_config.sender_email ?? throwErr('sender_email is required'),
-                    senderName: data.config.email_config.sender_name ?? throwErr('sender_name is required'),
-                  }
-                } : undefined,
-              }
-            } : {
-              create: {
-                proxiedEmailServiceConfig: {
-                  create: {}
-                },
-              },
-            },
-          },
-        }
-      },
-      include: fullProjectInclude,
-    });
+    let project: Project;
+    let tenancyId: string;
+    if (options.type === "create") {
+      project = await tx.project.create({
+        data: {
+          id: generateUuid(),
+          displayName: options.data.display_name,
+          description: options.data.description ?? "",
+          isProductionMode: options.data.is_production_mode ?? false,
+        },
+      });
 
-    const tenancy = await tx.tenancy.create({
-      data: {
-        projectId: project.id,
-        branchId: "main",
-        organizationId: null,
-        hasNoOrganization: "TRUE",
-      },
-    });
+      tenancyId = (await tx.tenancy.create({
+        data: {
+          projectId: project.id,
+          branchId: "main",
+          organizationId: null,
+          hasNoOrganization: "TRUE",
+        },
+      })).id;
+    } else {
+      const projectFound = await tx.project.findUnique({
+        where: {
+          id: options.projectId,
+        },
+      });
 
-    // all oauth providers are created as auth methods for backwards compatibility
-    await tx.projectConfig.update({
-      where: {
-        id: project.config.id,
-      },
-      data: {
-        authMethodConfigs: {
-          create: [
-            ...data.config?.oauth_providers ? project.config.oauthProviderConfigs.map(item => ({
-              enabled: (data.config?.oauth_providers?.find(p => p.id === item.id) ?? throwErr("oauth provider not found")).enabled,
-              oauthProviderConfig: {
-                connect: {
-                  projectConfigId_id: {
-                    projectConfigId: project.config.id,
-                    id: item.id,
-                  }
-                }
-              }
-            })) : [],
-            ...data.config?.magic_link_enabled ? [{
-              enabled: true,
-              otpConfig: {
-                create: {
-                  contactChannelType: 'EMAIL',
-                }
-              },
-            }] : [],
-            ...(data.config?.credential_enabled ?? true) ? [{
-              enabled: true,
-              passwordConfig: {
-                create: {}
-              },
-            }] : [],
-            ...data.config?.passkey_enabled ? [{
-              enabled: true,
-              passkeyConfig: {
-                create: {}
-              },
-            }] : [],
-          ]
-        }
+      if (!projectFound) {
+        throw new KnownErrors.ProjectNotFound(options.projectId);
       }
-    });
 
-    // all standard oauth providers are created as connected accounts for backwards compatibility
-    await tx.projectConfig.update({
-      where: {
-        id: project.config.id,
-      },
-      data: {
-        connectedAccountConfigs: data.config?.oauth_providers ? {
-          create: project.config.oauthProviderConfigs.map(item => ({
-            enabled: (data.config?.oauth_providers?.find(p => p.id === item.id) ?? throwErr("oauth provider not found")).enabled,
-            oauthProviderConfig: {
-              connect: {
-                projectConfigId_id: {
-                  projectConfigId: project.config.id,
-                  id: item.id,
-                }
-              }
-            }
-          })),
-        } : undefined,
-      }
-    });
+      tenancyId = (await getSoleTenancyFromProject(projectFound.id)).id;
+    }
 
     await tx.permission.create({
       data: {
