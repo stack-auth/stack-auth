@@ -1,9 +1,11 @@
 import { Prisma } from "@prisma/client";
 import { KnownErrors } from "@stackframe/stack-shared";
+import { override } from "@stackframe/stack-shared/dist/config/format";
 import { EnvironmentConfigOverride, OrganizationRenderedConfig } from "@stackframe/stack-shared/dist/config/schema";
 import { AdminUserProjectsCrud, ProjectsCrud } from "@stackframe/stack-shared/dist/interface/crud/projects";
 import { UsersCrud } from "@stackframe/stack-shared/dist/interface/crud/users";
 import { StackAssertionError, captureError } from "@stackframe/stack-shared/dist/utils/errors";
+import { filterUndefined } from "@stackframe/stack-shared/dist/utils/objects";
 import { generateUuid } from "@stackframe/stack-shared/dist/utils/uuids";
 import { RawQuery, rawQuery, retryTransaction } from "../prisma-client";
 import { getRenderedOrganizationConfigQuery, renderedOrganizationConfigToProjectCrud } from "./config";
@@ -131,33 +133,81 @@ export async function createOrUpdateProject(
       tenancyId = (await getSoleTenancyFromProject(projectFound.id)).id;
     }
 
-    const configOverride = project.environmentConfigOverrides.find((override) => override.branchId === options.branchId)?.config as EnvironmentConfigOverride | undefined;
-    if (!configOverride) {
+    const dataOptions = options.data.config || {};
+    const newConfigOverride: EnvironmentConfigOverride = filterUndefined({
+      // ======================= auth =======================
+      'auth.allowSignUp': dataOptions.sign_up_enabled,
+      'auth.password.allowSignIn': dataOptions.credential_enabled,
+      'auth.otp.allowSignIn': dataOptions.magic_link_enabled,
+      'auth.passkey.allowSignIn': dataOptions.passkey_enabled,
+      'auth.oauth.accountMergeStrategy': dataOptions.oauth_account_merge_strategy,
+      'auth.oauth.providers': dataOptions.oauth_providers ? dataOptions.oauth_providers
+        .filter((provider) => provider.enabled)
+        .map((provider) => {
+          return {
+            type: provider.id,
+            allowSignIn: true,
+            allowConnectedAccounts: true,
+          } satisfies OrganizationRenderedConfig['auth']['oauth']['providers'][string];
+        }) : undefined,
+      // ======================= users =======================
+      'users.allowClientUserDeletion': dataOptions.client_user_deletion_enabled,
+      // ======================= teams =======================
+      'teams.allowClientTeamCreation': dataOptions.client_team_creation_enabled,
+      'teams.createPersonalTeamOnSignUp': dataOptions.create_team_on_sign_up,
+      // ======================= domains =======================
+      'domains.allowLocalhost': dataOptions.allow_localhost,
+      'domains.trustedDomains': dataOptions.domains ? dataOptions.domains.map((domain) => {
+        return {
+          baseUrl: domain.domain,
+          handlerPath: domain.handler_path,
+        } satisfies OrganizationRenderedConfig['domains']['trustedDomains'][string];
+      }) : undefined,
+      // ======================= api keys =======================
+      'apiKeys.enabled.user': dataOptions.allow_user_api_keys,
+      'apiKeys.enabled.team': dataOptions.allow_team_api_keys,
+      // ======================= emails =======================
+      'emails.emailServer': dataOptions.email_config ? {
+        isShared: dataOptions.email_config.type === 'shared',
+        host: dataOptions.email_config.host,
+        port: dataOptions.email_config.port,
+        username: dataOptions.email_config.username,
+        password: dataOptions.email_config.password,
+        senderName: dataOptions.email_config.sender_name,
+        senderEmail: dataOptions.email_config.sender_email,
+      } satisfies OrganizationRenderedConfig['emails']['server'] : undefined,
+    });
+
+    if (options.type === "create") {
+      newConfigOverride['rbac.permissions'] = {
+        'member': {
+          description: "Default permission for team members",
+          scope: "team",
+          containedPermissionIds: {
+            '$read_members': true,
+            '$invite_members': true,
+          },
+        },
+        'team_admin': {
+          description: "Default permission for team admins",
+          scope: "team",
+          containedPermissionIds: {
+            '$update_team': true,
+            '$delete_team': true,
+            '$read_members': true,
+            '$invite_members': true,
+            '$manage_api_keys': true,
+          },
+        }
+      } satisfies OrganizationRenderedConfig['rbac']['permissions'];
+    }
+
+    const oldConfigOverride = project.environmentConfigOverrides.find((override) => override.branchId === options.branchId)?.config as EnvironmentConfigOverride | undefined;
+    if (!oldConfigOverride) {
       // TODO: make this a KnownError once we have branches
       throw new StackAssertionError(`Expected config override for branch ${options.branchId}, but none found`, { project });
     }
 
-    configOverride['rbac.permissions'] = {
-      'member': {
-        description: "Default permission for team members",
-        scope: "team",
-        containedPermissionIds: {
-          '$read_members': true,
-          '$invite_members': true,
-        },
-      },
-      'team_admin': {
-        description: "Default permission for team admins",
-        scope: "team",
-        containedPermissionIds: {
-          '$update_team': true,
-          '$delete_team': true,
-          '$read_members': true,
-          '$invite_members': true,
-          '$manage_api_keys': true,
-        },
-      }
-    } satisfies OrganizationRenderedConfig['rbac']['permissions'];
 
     await tx.environmentConfigOverride.update({
       where: {
@@ -167,7 +217,7 @@ export async function createOrUpdateProject(
         },
       },
       data: {
-        config: configOverride,
+        config: override(oldConfigOverride, newConfigOverride),
       },
     });
 
