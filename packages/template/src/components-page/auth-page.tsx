@@ -63,23 +63,23 @@ function Fallback(props: Props) {
   );
 }
 
-function Inner (props: Props) {
+function Inner(props: Props) {
   const stackApp = useStackApp();
   const user = useUser();
   const projectFromHook = stackApp.useProject();
   const project = props.mockProject || projectFromHook;
   const { t } = useTranslation();
 
-
   useEffect(() => {
-    if (props.automaticRedirect) {
-      if (user && !props.mockProject) {
-        runAsynchronously(props.type === 'sign-in' ? stackApp.redirectToAfterSignIn({ replace: true }) : stackApp.redirectToAfterSignUp({ replace: true }));
-      }
+    if (props.automaticRedirect && user && !props.mockProject) {
+      runAsynchronously(props.type === 'sign-in'
+        ? stackApp.redirectToAfterSignIn({ replace: true })
+        : stackApp.redirectToAfterSignUp({ replace: true })
+      );
     }
   }, [user, props.mockProject, stackApp, props.automaticRedirect]);
 
-  if (user && !props.mockProject) {
+  if (user && !props.mockProject && !props.automaticRedirect) {
     return <PredefinedMessageCard type='signedIn' fullPage={props.fullPage} />;
   }
 
@@ -135,16 +135,16 @@ function Inner (props: Props) {
               <TabsTrigger value='password' className='flex-1'>{t("Email & Password")}</TabsTrigger>
             </TabsList>
             <TabsContent value='magic-link'>
-              <MagicLinkSignIn/>
+              <MagicLinkSignIn />
             </TabsContent>
             <TabsContent value='password'>
-              {props.type === 'sign-up' ? <CredentialSignUp noPasswordRepeat={props.noPasswordRepeat} /> : <CredentialSignIn/>}
+              {props.type === 'sign-up' ? <CredentialSignUp noPasswordRepeat={props.noPasswordRepeat} /> : <CredentialSignIn />}
             </TabsContent>
           </Tabs>
         ) : project.config.credentialEnabled ? (
-          props.type === 'sign-up' ? <CredentialSignUp noPasswordRepeat={props.noPasswordRepeat} /> : <CredentialSignIn/>
+          props.type === 'sign-up' ? <CredentialSignUp noPasswordRepeat={props.noPasswordRepeat} /> : <CredentialSignIn />
         ) : project.config.magicLinkEnabled ? (
-          <MagicLinkSignIn/>
+          <MagicLinkSignIn />
         ) : !(hasOAuthProviders || hasPasskey) ? <Typography variant={"destructive"} className="text-center">{t("No authentication method enabled.")}</Typography> : null}
         {props.extraInfo && (
           <div className={cn('flex flex-col items-center text-center text-sm text-gray-500', {
