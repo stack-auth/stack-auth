@@ -1,4 +1,4 @@
-import { createProject, fullProjectInclude, listManagedProjectIds, projectPrismaToCrud } from "@/lib/projects";
+import { createOrUpdateProject, fullProjectInclude, listManagedProjectIds, projectPrismaToCrud } from "@/lib/projects";
 import { prismaClient } from "@/prisma-client";
 import { createCrudHandlers } from "@/route-handlers/crud-handler";
 import { KnownErrors } from "@stackframe/stack-shared";
@@ -34,7 +34,7 @@ export const adminUserProjectsCrudHandlers = createLazyProxy(() => createCrudHan
     const ownerPack = ownerPacks.find(p => p.has(user.id));
     const userIds = ownerPack ? [...ownerPack] : [user.id];
 
-    return await createProject(userIds, {
+    return await createOrUpdateProject(userIds, {
       ...data,
       config: {
         ...data.config,

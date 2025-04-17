@@ -1,5 +1,5 @@
 import { createApiKeySet } from "@/lib/internal-api-keys";
-import { createProject } from "@/lib/projects";
+import { createOrUpdateProject } from "@/lib/projects";
 import { prismaClient } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { neonAuthorizationHeaderSchema, projectDisplayNameSchema, yupNumber, yupObject, yupString, yupTuple } from "@stackframe/stack-shared/dist/schema-fields";
@@ -28,7 +28,7 @@ export const POST = createSmartRouteHandler({
   handler: async (req) => {
     const [clientId] = decodeBasicAuthorizationHeader(req.headers.authorization[0])!;
 
-    const createdProject = await createProject([], {
+    const createdProject = await createOrUpdateProject([], {
       display_name: req.body.display_name,
       description: "Created with Neon",
       config: {

@@ -74,8 +74,19 @@ export async function getProject(projectId: string): Promise<ProjectsCrud["Admin
   return result;
 }
 
-export async function createProject(ownerIds: string[], data: AdminUserProjectsCrud["Admin"]["Create"]) {
-  const result = await retryTransaction(async (tx) => {
+export async function createOrUpdateProject(
+  options: {
+    ownerIds: string[],
+  } & ({
+    type: "create",
+    data: AdminUserProjectsCrud["Admin"]["Create"],
+  } | {
+    type: "update",
+    projectId: string,
+    data: ProjectsCrud["Admin"]["Update"],
+  })
+) {
+  const projectId = await retryTransaction(async (tx) => {
     const project = await tx.project.create({
       data: {
         id: generateUuid(),
@@ -291,16 +302,8 @@ export async function createProject(ownerIds: string[], data: AdminUserProjectsC
       });
     }
 
-    const result = await tx.project.findUnique({
-      where: { id: project.id },
-      include: fullProjectInclude,
-    });
-
-    if (!result) {
-      throw new StackAssertionError(`Project with id '${project.id}' not found after creation`, { project });
-    }
-    return result;
+    return project.id;
   });
 
-  return await projectPrismaToCrud(result);
+  return await getProject(projectId);
 }
