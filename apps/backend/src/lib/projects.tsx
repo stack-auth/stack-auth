@@ -416,7 +416,7 @@ export function getProjectQuery(projectId: string): RawQuery<ProjectsCrud["Admin
           allow_user_api_keys: row.ProjectConfig.allowUserApiKeys,
           allow_team_api_keys: row.ProjectConfig.allowTeamApiKeys,
           domains: row.ProjectConfig.Domains
-            .sort((a: any, b: any) => new Date(a.createdAt + "Z").getTime() - new Date(b.createdAt + "Z").getTime())
+            .sort((a: any, b: any) => stringCompare(a.domain, b.domain))
             .map((domain: any) => ({
               domain: domain.domain,
               handler_path: domain.handlerPath,
