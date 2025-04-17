@@ -212,5 +212,11 @@ export async function createOrUpdateProject(
     return project.id;
   });
 
-  return await getProject(projectId);
+  const result = await getProject(projectId);
+
+  if (!result) {
+    throw new StackAssertionError("Project not found after creation/update");
+  }
+
+  return result;
 }

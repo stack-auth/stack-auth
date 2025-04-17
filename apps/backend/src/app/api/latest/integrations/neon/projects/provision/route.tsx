@@ -28,23 +28,28 @@ export const POST = createSmartRouteHandler({
   handler: async (req) => {
     const [clientId] = decodeBasicAuthorizationHeader(req.headers.authorization[0])!;
 
-    const createdProject = await createOrUpdateProject([], {
-      display_name: req.body.display_name,
-      description: "Created with Neon",
-      config: {
-        oauth_providers: [
-          {
-            id: "google",
-            type: "shared",
-            enabled: true,
-          },
-          {
-            id: "github",
-            type: "shared",
-            enabled: true,
-          },
-        ],
-      },
+    const createdProject = await createOrUpdateProject({
+      ownerIds: [],
+      branchId: 'main',
+      type: 'create',
+      data: {
+        display_name: req.body.display_name,
+        description: "Created with Neon",
+        config: {
+          oauth_providers: [
+            {
+              id: "google",
+              type: "shared",
+              enabled: true,
+            },
+            {
+              id: "github",
+              type: "shared",
+              enabled: true,
+            },
+          ],
+        },
+      }
     });
 
     await prismaClient.neonProvisionedProject.create({
