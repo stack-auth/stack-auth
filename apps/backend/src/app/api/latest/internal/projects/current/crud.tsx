@@ -1,9 +1,8 @@
-import { retryTransaction } from "@/prisma-client";
+import { prismaClient, retryTransaction } from "@/prisma-client";
 import { createCrudHandlers } from "@/route-handlers/crud-handler";
 import { OrganizationConfigOverride, OrganizationRenderedConfig } from "@stackframe/stack-shared/dist/config/schema";
 import { projectsCrud } from "@stackframe/stack-shared/dist/interface/crud/projects";
 import { yupObject } from "@stackframe/stack-shared/dist/schema-fields";
-import { StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
 import { typedEntries } from "@stackframe/stack-shared/dist/utils/objects";
 import { createLazyProxy } from "@stackframe/stack-shared/dist/utils/proxies";
 import { randomUUID } from "crypto";
@@ -132,23 +131,10 @@ export const projectsCrudHandlers = createLazyProxy(() => createCrudHandlers(pro
   },
   onDelete: async ({ auth }) => {
     await retryTransaction(async (tx) => {
-      const configs = await tx.projectConfig.findMany({
+      await prismaClient.project.delete({
         where: {
-          id: auth.project.config.id
-        },
-        include: {
-          projects: true
+          id: auth.project.id
         }
-      });
-
-      if (configs.length !== 1) {
-        throw new StackAssertionError("Project config should be unique", { configs });
-      }
-
-      await tx.projectConfig.delete({
-        where: {
-          id: auth.project.config.id
-        },
       });
 
       // delete managed ids from users
