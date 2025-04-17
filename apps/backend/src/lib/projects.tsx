@@ -1,4 +1,4 @@
-import { Prisma, Project } from "@prisma/client";
+import { Prisma } from "@prisma/client";
 import { KnownErrors } from "@stackframe/stack-shared";
 import { AdminUserProjectsCrud, ProjectsCrud } from "@stackframe/stack-shared/dist/interface/crud/projects";
 import { UsersCrud } from "@stackframe/stack-shared/dist/interface/crud/users";
@@ -87,7 +87,7 @@ export async function createOrUpdateProject(
   })
 ) {
   const projectId = await retryTransaction(async (tx) => {
-    let project: Project;
+    let project: Prisma.ProjectGetPayload<{ include: { environmentConfigOverrides: true } }>;
     let tenancyId: string;
     if (options.type === "create") {
       project = await tx.project.create({
@@ -96,6 +96,9 @@ export async function createOrUpdateProject(
           displayName: options.data.display_name,
           description: options.data.description ?? "",
           isProductionMode: options.data.is_production_mode ?? false,
+        },
+        include: {
+          environmentConfigOverrides: true,
         },
       });
 
@@ -112,14 +115,21 @@ export async function createOrUpdateProject(
         where: {
           id: options.projectId,
         },
+        include: {
+          environmentConfigOverrides: true,
+        },
       });
 
       if (!projectFound) {
         throw new KnownErrors.ProjectNotFound(options.projectId);
       }
 
+      project = projectFound;
+
       tenancyId = (await getSoleTenancyFromProject(projectFound.id)).id;
     }
+
+    const configOverride = project.environmentConfigOverrides[0];
 
     await tx.permission.create({
       data: {
