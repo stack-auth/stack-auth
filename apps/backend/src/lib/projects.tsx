@@ -1,5 +1,6 @@
 import { Prisma } from "@prisma/client";
 import { KnownErrors } from "@stackframe/stack-shared";
+import { EnvironmentConfigOverride, OrganizationRenderedConfig } from "@stackframe/stack-shared/dist/config/schema";
 import { AdminUserProjectsCrud, ProjectsCrud } from "@stackframe/stack-shared/dist/interface/crud/projects";
 import { UsersCrud } from "@stackframe/stack-shared/dist/interface/crud/users";
 import { StackAssertionError, captureError } from "@stackframe/stack-shared/dist/utils/errors";
@@ -77,6 +78,7 @@ export async function getProject(projectId: string): Promise<ProjectsCrud["Admin
 export async function createOrUpdateProject(
   options: {
     ownerIds: string[],
+    branchId: string,
   } & ({
     type: "create",
     data: AdminUserProjectsCrud["Admin"]["Create"],
@@ -105,7 +107,7 @@ export async function createOrUpdateProject(
       tenancyId = (await tx.tenancy.create({
         data: {
           projectId: project.id,
-          branchId: "main",
+          branchId: options.branchId,
           organizationId: null,
           hasNoOrganization: "TRUE",
         },
@@ -129,42 +131,48 @@ export async function createOrUpdateProject(
       tenancyId = (await getSoleTenancyFromProject(projectFound.id)).id;
     }
 
-    const configOverride = project.environmentConfigOverrides[0];
+    const configOverride = project.environmentConfigOverrides.find((override) => override.branchId === options.branchId)?.config as EnvironmentConfigOverride | undefined;
+    if (!configOverride) {
+      // TODO: make this a KnownError once we have branches
+      throw new StackAssertionError(`Expected config override for branch ${options.branchId}, but none found`, { project });
+    }
 
-    await tx.permission.create({
-      data: {
-        tenancyId: tenancy.id,
-        projectConfigId: project.config.id,
-        queryableId: "member",
+    configOverride['rbac.permissions'] = {
+      'member': {
         description: "Default permission for team members",
-        scope: 'TEAM',
-        parentEdges: {
-          createMany: {
-            data: (['READ_MEMBERS', 'INVITE_MEMBERS'] as const).map(p => ({ parentTeamSystemPermission: p })),
-          },
+        scope: "team",
+        containedPermissionIds: {
+          '$read_members': true,
+          '$invite_members': true,
         },
-        isDefaultTeamMemberPermission: true,
       },
-    });
-
-    await tx.permission.create({
-      data: {
-        tenancyId: tenancy.id,
-        projectConfigId: project.config.id,
-        queryableId: "admin",
-        description: "Default permission for team creators",
-        scope: 'TEAM',
-        parentEdges: {
-          createMany: {
-            data: (['UPDATE_TEAM', 'DELETE_TEAM', 'READ_MEMBERS', 'REMOVE_MEMBERS', 'INVITE_MEMBERS', 'MANAGE_API_KEYS'] as const).map(p =>({ parentTeamSystemPermission: p }))
-          },
+      'team_admin': {
+        description: "Default permission for team admins",
+        scope: "team",
+        containedPermissionIds: {
+          '$update_team': true,
+          '$delete_team': true,
+          '$read_members': true,
+          '$invite_members': true,
+          '$manage_api_keys': true,
         },
-        isDefaultTeamCreatorPermission: true,
+      }
+    } satisfies OrganizationRenderedConfig['rbac']['permissions'];
+
+    await tx.environmentConfigOverride.update({
+      where: {
+        projectId_branchId: {
+          projectId: project.id,
+          branchId: options.branchId,
+        },
+      },
+      data: {
+        config: configOverride,
       },
     });
 
     // Update owner metadata
-    for (const userId of ownerIds) {
+    for (const userId of options.ownerIds) {
       const projectUserTx = await tx.projectUser.findUnique({
         where: {
           mirroredProjectId_mirroredBranchId_projectUserId: {
@@ -175,7 +183,7 @@ export async function createOrUpdateProject(
         },
       });
       if (!projectUserTx) {
-        captureError("project-creation-owner-not-found", new StackAssertionError(`Attempted to create project, but owner user ID ${userId} not found. Did they delete their account? Continuing silently, but if the user is coming from an owner pack you should probably update it.`, { ownerIds }));
+        captureError("project-creation-owner-not-found", new StackAssertionError(`Attempted to create project, but owner user ID ${userId} not found. Did they delete their account? Continuing silently, but if the user is coming from an owner pack you should probably update it.`, { ownerIds: options.ownerIds }));
         continue;
       }
 
