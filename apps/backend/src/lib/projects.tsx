@@ -100,6 +100,12 @@ export async function createOrUpdateProject(
           displayName: options.data.display_name,
           description: options.data.description ?? "",
           isProductionMode: options.data.is_production_mode ?? false,
+          environmentConfigOverrides: {
+            create: {
+              branchId: options.branchId,
+              config: {},
+            },
+          },
         },
         include: {
           environmentConfigOverrides: true,
