@@ -38,7 +38,7 @@ export const adminUserProjectsCrudHandlers = createLazyProxy(() => createCrudHan
   onList: async ({ auth }) => {
     const projectIds = listManagedProjectIds(auth.user ?? throwErr('auth.user is required'));
     const projectsRecord = await rawQueryAll(typedFromEntries(projectIds.map((id, index) => [index, getProjectQuery(id)])));
-    const projects = typedEntries(projectsRecord).map(([_, project]) => project);
+    const projects = await Promise.all(typedEntries(projectsRecord).map(async ([_, project]) => await project));
 
     if (projects.filter(x => x !== null).length !== projectIds.length) {
       throw new StackAssertionError('Failed to fetch all projects of a user');

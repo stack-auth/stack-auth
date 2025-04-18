@@ -133,7 +133,7 @@ export async function rawQuery<Q extends RawQuery<any>>(query: Q): Promise<Await
   return result[0];
 }
 
-export async function rawQueryAll<Q extends Record<string, undefined | RawQuery<any>>>(queries: Q): Promise<{ [K in keyof Q]: Awaited<ReturnType<NonNullable<Q[K]>["postProcess"]>> }> {
+export async function rawQueryAll<Q extends Record<string, undefined | RawQuery<any>>>(queries: Q): Promise<{ [K in keyof Q]: ReturnType<NonNullable<Q[K]>["postProcess"]> }> {
   const keys = typedKeys(filterUndefined(queries));
   const result = await rawQueryArray(keys.map(key => queries[key as any] as any));
   return typedFromEntries(keys.map((key, index) => [key, result[index]])) as any;

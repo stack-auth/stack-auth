@@ -226,6 +226,7 @@ const parseAuth = withTraceSpan('smart request parseAuth', async (req: NextReque
     project: projectId ? getProjectQuery(projectId) : undefined,
   };
   const queriesResults = await rawQueryAll(bundledQueries);
+  const project = await queriesResults.project;
 
   const eitherKeyOrToken = !!(publishableClientKey || secretServerKey || superSecretAdminKey || adminAccessToken);
 
@@ -245,7 +246,7 @@ const parseAuth = withTraceSpan('smart request parseAuth', async (req: NextReque
   } else if (adminAccessToken) {
     // TODO put the assertion below into the bundled queries above (not so important because this path is quite rare)
     await extractUserFromAdminAccessToken({ token: adminAccessToken, projectId });  // assert that the admin token is valid
-    if (!queriesResults.project) {
+    if (!project) {
       // this happens if the project is still in the user's managedProjectIds, but has since been deleted
       throw new KnownErrors.InvalidProjectForAdminAccessToken();
     }
@@ -272,7 +273,6 @@ const parseAuth = withTraceSpan('smart request parseAuth', async (req: NextReque
     }
   }
 
-  const project = queriesResults.project;
   if (!project) {
     // This happens when the JWT tokens are still valid, but the project has been deleted
     throw new KnownErrors.ProjectNotFound(projectId);
