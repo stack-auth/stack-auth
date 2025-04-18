@@ -288,7 +288,10 @@ export type ServerBaseUser = {
   update(user: ServerUserUpdateOptions): Promise<void>,
 
   grantPermission(scope: Team, permissionId: string): Promise<void>,
+  grantPermission(permissionId: string): Promise<void>,
+
   revokePermission(scope: Team, permissionId: string): Promise<void>,
+  revokePermission(permissionId: string): Promise<void>,
 
   getPermission(scope: Team, permissionId: string): Promise<TeamPermission | null>,
   getPermission(permissionId: string): Promise<TeamPermission | null>,
