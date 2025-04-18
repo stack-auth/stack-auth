@@ -48,6 +48,7 @@ export function ImpersonateUserDialog(props: {
       Open your website and paste the following code into the browser console:
     </Typography>
     <CopyField
+      type="textarea"
       monospace
       height={60}
       value={props.impersonateSnippet ?? ""}

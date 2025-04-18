@@ -1,0 +1,30 @@
+.livePulse {
+  width: 6px;
+  aspect-ratio: 1;
+  border-radius: 50%;
+  background: currentColor;
+  box-shadow: 0 0 0 0 currentColor;
+  animation: livePulseAnim 4s infinite;
+}
+
+@keyframes livePulseAnim {
+  25% {box-shadow: 0 0 0 8px #0000}
+  100% {box-shadow: 0 0 0 8px #0000}
+}
+
+@keyframes pulseOut {
+  0% {
+    transform: scale(1);
+    opacity: 0.8;
+  }
+  100% {
+    transform: scale(5);
+    opacity: 0;
+  }
+}
+
+.pulse-circle {
+  animation: pulseOut 8s infinite ease-out;
+  position: absolute;
+  transform-origin: center;
+}
