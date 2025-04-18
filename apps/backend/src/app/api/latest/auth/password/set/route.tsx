@@ -38,23 +38,6 @@ export const POST = createSmartRouteHandler({
     }
 
     await retryTransaction(async (tx) => {
-      const authMethodConfig = await tx.passwordAuthMethodConfig.findMany({
-        where: {
-          projectConfigId: tenancy.config.id,
-          authMethodConfig: {
-            enabled: true,
-          },
-        },
-      });
-
-      if (authMethodConfig.length > 1) {
-        throw new StackAssertionError("Tenancy has multiple password auth method configs.", { tenancyId: tenancy.id });
-      }
-
-      if (authMethodConfig.length === 0) {
-        throw new KnownErrors.PasswordAuthenticationNotEnabled();
-      }
-
       const authMethods = await tx.passwordAuthMethod.findMany({
         where: {
           tenancyId: tenancy.id,
@@ -75,8 +58,6 @@ export const POST = createSmartRouteHandler({
         data: {
           tenancyId: tenancy.id,
           projectUserId: user.id,
-          projectConfigId: tenancy.config.id,
-          authMethodConfigId: authMethodConfig[0].authMethodConfigId,
           passwordAuthMethod: {
             create: {
               passwordHash: await hashPassword(password),

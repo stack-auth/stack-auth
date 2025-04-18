@@ -1,5 +1,5 @@
-import { grantProjectPermission, listProjectPermissions, revokeProjectPermission } from "@/lib/permissions";
-import { ensureUserExists, ensureProjectPermissionExists } from "@/lib/request-checks";
+import { grantProjectPermission, listPermissions, revokeProjectPermission } from "@/lib/permissions";
+import { ensureProjectPermissionExists, ensureUserExists } from "@/lib/request-checks";
 import { sendProjectPermissionCreatedWebhook, sendProjectPermissionDeletedWebhook } from "@/lib/webhooks";
 import { retryTransaction } from "@/prisma-client";
 import { createCrudHandlers } from "@/route-handlers/crud-handler";
@@ -79,7 +79,8 @@ export const projectPermissionsCrudHandlers = createLazyProxy(() => createCrudHa
 
     return await retryTransaction(async (tx) => {
       return {
-        items: await listProjectPermissions(tx, {
+        items: await listPermissions(tx, {
+          scope: 'project',
           tenancy: auth.tenancy,
           permissionId: query.permission_id,
           userId: query.user_id,

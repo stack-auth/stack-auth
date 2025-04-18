@@ -73,7 +73,6 @@ export const projectsCrudAdminReadSchema = yupObject({
   user_count: schemaFields.projectUserCountSchema.defined(),
   is_production_mode: schemaFields.projectIsProductionModeSchema.defined(),
   config: yupObject({
-    id: schemaFields.projectConfigIdSchema.defined(),
     allow_localhost: schemaFields.projectAllowLocalhostSchema.defined(),
     sign_up_enabled: schemaFields.projectSignUpEnabledSchema.defined(),
     credential_enabled: schemaFields.projectCredentialEnabledSchema.defined(),

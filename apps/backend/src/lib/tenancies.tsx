@@ -2,16 +2,10 @@ import { prismaClient } from "@/prisma-client";
 import { Prisma } from "@prisma/client";
 import { ProjectsCrud } from "@stackframe/stack-shared/dist/interface/crud/projects";
 import { getNodeEnvironment } from "@stackframe/stack-shared/dist/utils/env";
-import { StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
-import { fullProjectInclude, getProject, projectPrismaToCrud } from "./projects";
+import { StackAssertionError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
+import { getProject } from "./projects";
 
-export const fullTenancyInclude = {
-  project: {
-    include: fullProjectInclude,
-  },
-} as const satisfies Prisma.TenancyInclude;
-
-export async function tenancyPrismaToCrud(prisma: Prisma.TenancyGetPayload<{ include: typeof fullTenancyInclude }>) {
+export async function tenancyPrismaToCrud(prisma: Prisma.TenancyGetPayload<{}>) {
   if (prisma.hasNoOrganization && prisma.organizationId !== null) {
     throw new StackAssertionError("Organization ID is not null for a tenancy with hasNoOrganization", { tenancyId: prisma.id, prisma });
   }
@@ -19,7 +13,7 @@ export async function tenancyPrismaToCrud(prisma: Prisma.TenancyGetPayload<{ inc
     throw new StackAssertionError("Organization ID is null for a tenancy without hasNoOrganization", { tenancyId: prisma.id, prisma });
   }
 
-  const projectCrud = await projectPrismaToCrud(prisma.project);
+  const projectCrud = await getProject(prisma.projectId) ?? throwErr("Project in tenancy not found");
   return {
     id: prisma.id,
     config: projectCrud.config,
@@ -46,12 +40,12 @@ const soleTenancyIdsCache = new Map<string, string>();
   * @deprecated This is a temporary function for the situation where every project has exactly one tenancy. Later,
   * we will support multiple tenancies per project, and all uses of this function will be refactored.
   */
-export async function getSoleTenancyFromProject(project: ProjectsCrud["Admin"]["Read"] | string): Promise<Tenancy>;
+export function getSoleTenancyFromProject(project: ProjectsCrud["Admin"]["Read"] | string): Promise<Tenancy>;
 /**
   * @deprecated This is a temporary function for the situation where every project has exactly one tenancy. Later,
   * we will support multiple tenancies per project, and all uses of this function will be refactored.
   */
-export async function getSoleTenancyFromProject(project: ProjectsCrud["Admin"]["Read"] | string, returnNullIfNotFound: boolean): Promise<Tenancy | null>;
+export function getSoleTenancyFromProject(project: ProjectsCrud["Admin"]["Read"] | string, returnNullIfNotFound: boolean): Promise<Tenancy | null>;
 export async function getSoleTenancyFromProject(projectOrId: ProjectsCrud["Admin"]["Read"] | string, returnNullIfNotFound: boolean = false): Promise<Tenancy | null> {
   let project;
   if (!projectOrId) {
@@ -87,7 +81,6 @@ export async function getTenancy(tenancyId: string) {
   }
   const prisma = await prismaClient.tenancy.findUnique({
     where: { id: tenancyId },
-    include: fullTenancyInclude,
   });
   if (!prisma) return null;
   return await tenancyPrismaToCrud(prisma);
@@ -110,7 +103,6 @@ export async function getTenancyFromProject(projectId: string, branchId: string,
         }
       }),
     },
-    include: fullTenancyInclude,
   });
   if (!prisma) return null;
   return await tenancyPrismaToCrud(prisma);

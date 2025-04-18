@@ -17,46 +17,17 @@ model Project {
   updatedAt DateTime @updatedAt
 
   displayName      String
-  description      String        @default("")
-  configId         String        @db.Uuid
-  config           ProjectConfig @relation(fields: [configId], references: [id], onDelete: Cascade)
+  description      String  @default("")
   isProductionMode Boolean
-  userCount        Int           @default(0)
+  userCount        Int     @default(0)
 
-  apiKeySets             ApiKeySet[]
-  projectUsers           ProjectUser[]
-  neonProvisionedProject NeonProvisionedProject?
-  tenancies              Tenancy[]
-  verificationCodes      VerificationCode[]
-  projectApiKey          ProjectApiKey[]
-}
-
-model ProjectConfig {
-  id String @id @default(uuid()) @db.Uuid
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  allowLocalhost            Boolean
-  signUpEnabled             Boolean @default(true)
-  createTeamOnSignUp        Boolean
-  clientTeamCreationEnabled Boolean
-  clientUserDeletionEnabled Boolean @default(false)
-  // TODO: remove this after moving everyone to project specific JWTs
-  legacyGlobalJwtSigning    Boolean @default(false)
-
-  teamCreateDefaultSystemPermissions TeamSystemPermission[]
-  teamMemberDefaultSystemPermissions TeamSystemPermission[]
-  projects                           Project[]
-  oauthProviderConfigs               OAuthProviderConfig[]
-  emailServiceConfig                 EmailServiceConfig?
-  domains                            ProjectDomain[]
-  permissions                        Permission[]
-  authMethodConfigs                  AuthMethodConfig[]
-  connectedAccountConfigs            ConnectedAccountConfig[]
-  oauthAccountMergeStrategy          OAuthAccountMergeStrategy @default(LINK_METHOD)
-  allowUserApiKeys                   Boolean                   @default(false)
-  allowTeamApiKeys                   Boolean                   @default(false)
+  apiKeySets                 ApiKeySet[]
+  projectUsers               ProjectUser[]
+  neonProvisionedProject     NeonProvisionedProject?
+  tenancies                  Tenancy[]
+  verificationCodes          VerificationCode[]
+  projectApiKey              ProjectApiKey[]
+  environmentConfigOverrides EnvironmentConfigOverride[]
 }
 
 enum OAuthAccountMergeStrategy {
@@ -93,18 +64,18 @@ model Tenancy {
   @@unique([projectId, branchId, hasNoOrganization])
 }
 
-model ProjectDomain {
-  projectConfigId String @db.Uuid
+model EnvironmentConfigOverride {
+  projectId String
+  branchId  String
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  domain      String
-  handlerPath String
+  config Json
 
-  projectConfig ProjectConfig @relation(fields: [projectConfigId], references: [id], onDelete: Cascade)
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
 
-  @@unique([projectConfigId, domain])
+  @@id([projectId, branchId])
 }
 
 model Team {
@@ -126,7 +97,6 @@ model Team {
   serverMetadata         Json?
 
   tenancy       Tenancy         @relation("TenancyTeams", fields: [tenancyId], references: [id], onDelete: Cascade)
-  permissions   Permission[]
   teamMembers   TeamMember[]
   projectApiKey ProjectApiKey[]
 
@@ -154,118 +124,42 @@ model TeamMember {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  projectUser ProjectUser  @relation(fields: [tenancyId, projectUserId], references: [tenancyId, projectUserId], onDelete: Cascade)
-  team        Team         @relation(fields: [tenancyId, teamId], references: [tenancyId, teamId], onDelete: Cascade)
-  isSelected  BooleanTrue?
-
-  directPermissions TeamMemberDirectPermission[]
+  projectUser                 ProjectUser                  @relation(fields: [tenancyId, projectUserId], references: [tenancyId, projectUserId], onDelete: Cascade)
+  team                        Team                         @relation(fields: [tenancyId, teamId], references: [tenancyId, teamId], onDelete: Cascade)
+  isSelected                  BooleanTrue?
+  teamMemberDirectPermissions TeamMemberDirectPermission[]
 
   @@id([tenancyId, projectUserId, teamId])
   @@unique([tenancyId, projectUserId, isSelected])
 }
 
 model ProjectUserDirectPermission {
-  id             String  @id @default(uuid()) @db.Uuid
-  tenancyId      String  @db.Uuid
-  projectUserId  String  @db.Uuid
-  permissionDbId String? @db.Uuid
+  id            String @id @default(uuid()) @db.Uuid
+  tenancyId     String @db.Uuid
+  projectUserId String @db.Uuid
+  permissionId  String
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   projectUser ProjectUser @relation(fields: [tenancyId, projectUserId], references: [tenancyId, projectUserId], onDelete: Cascade)
 
-  // no [systemPermission] yet, we'll add it when the need arises
-  permission Permission? @relation(fields: [permissionDbId], references: [dbId], onDelete: Cascade)
-
-  @@unique([tenancyId, projectUserId, permissionDbId])
+  @@unique([tenancyId, projectUserId, permissionId])
 }
 
 model TeamMemberDirectPermission {
-  id             String  @id @default(uuid()) @db.Uuid
-  tenancyId      String  @db.Uuid
-  projectUserId  String  @db.Uuid
-  teamId         String  @db.Uuid
-  permissionDbId String? @db.Uuid
+  id            String @id @default(uuid()) @db.Uuid
+  tenancyId     String @db.Uuid
+  projectUserId String @db.Uuid
+  teamId        String @db.Uuid
+  permissionId  String
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   teamMember TeamMember @relation(fields: [tenancyId, projectUserId, teamId], references: [tenancyId, projectUserId, teamId], onDelete: Cascade)
 
-  // exactly one of [permissionId && permission] or [systemPermission] must be set
-  permission       Permission?           @relation(fields: [permissionDbId], references: [dbId], onDelete: Cascade)
-  systemPermission TeamSystemPermission?
-
-  @@unique([tenancyId, projectUserId, teamId, permissionDbId])
-  @@unique([tenancyId, projectUserId, teamId, systemPermission])
-}
-
-model Permission {
-  // The ID of this permission, as is chosen by and exposed to the user. It is different from the database ID, which is randomly generated and only used internally.
-  queryableId     String
-  // The database ID of this permission. This is never exposed to any client and is only used to make sure the database has an ID column.
-  dbId            String  @id @default(uuid()) @db.Uuid
-  // exactly one of [projectConfigId && projectConfig] or [projectId && teamId && team] must be set
-  projectConfigId String? @db.Uuid
-  tenancyId       String? @db.Uuid
-  teamId          String? @db.Uuid
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  description String?
-
-  // The scope of the permission. If projectConfigId is set, may be PROJECT or TEAM; if teamId is set, must be PROJECT.
-  scope PermissionScope
-
-  projectConfig ProjectConfig? @relation(fields: [projectConfigId], references: [id], onDelete: Cascade)
-  team          Team?          @relation(fields: [tenancyId, teamId], references: [tenancyId, teamId], onDelete: Cascade)
-
-  parentEdges                 PermissionEdge[]              @relation("ChildPermission")
-  childEdges                  PermissionEdge[]              @relation("ParentPermission")
-  teamMemberDirectPermission  TeamMemberDirectPermission[]
-  projectUserDirectPermission ProjectUserDirectPermission[]
-
-  isDefaultTeamCreatorPermission Boolean @default(false)
-  isDefaultTeamMemberPermission  Boolean @default(false)
-  isDefaultProjectPermission     Boolean @default(false)
-
-  @@unique([tenancyId, queryableId])
-  @@unique([projectConfigId, queryableId])
-  @@unique([tenancyId, teamId, queryableId])
-}
-
-enum PermissionScope {
-  PROJECT
-  TEAM
-}
-
-enum TeamSystemPermission {
-  UPDATE_TEAM
-  DELETE_TEAM
-  READ_MEMBERS
-  REMOVE_MEMBERS
-  INVITE_MEMBERS
-  MANAGE_API_KEYS
-}
-
-model PermissionEdge {
-  edgeId String @id @default(uuid()) @db.Uuid
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  // exactly one of [parentPermissionDbId && parentPermission] or [parentTeamSystemPermission] must be set
-  parentPermissionDbId       String?               @db.Uuid
-  parentPermission           Permission?           @relation("ParentPermission", fields: [parentPermissionDbId], references: [dbId], onDelete: Cascade)
-  parentTeamSystemPermission TeamSystemPermission?
-
-  childPermissionDbId String     @db.Uuid
-  childPermission     Permission @relation("ChildPermission", fields: [childPermissionDbId], references: [dbId], onDelete: Cascade)
-
-  @@index([parentPermissionDbId])
-  @@index([childPermissionDbId])
+  @@unique([tenancyId, projectUserId, teamId, permissionId])
 }
 
 model ProjectUser {
@@ -322,8 +216,7 @@ model ProjectUser {
 model ProjectUserOAuthAccount {
   tenancyId             String @db.Uuid
   projectUserId         String @db.Uuid
-  projectConfigId       String @db.Uuid
-  oauthProviderConfigId String
+  configOAuthProviderId String
   providerAccountId     String
 
   createdAt DateTime @default(now())
@@ -333,9 +226,8 @@ model ProjectUserOAuthAccount {
   // we might want to add more user info here later
   email String?
 
-  providerConfig   OAuthProviderConfig @relation(fields: [projectConfigId, oauthProviderConfigId], references: [projectConfigId, id], onDelete: Cascade)
   // Before the OAuth account is connected to a use (for example, in the link oauth process), the projectUser is null.
-  projectUser      ProjectUser?        @relation(fields: [tenancyId, projectUserId], references: [tenancyId, projectUserId], onDelete: Cascade)
+  projectUser      ProjectUser?       @relation(fields: [tenancyId, projectUserId], references: [tenancyId, projectUserId], onDelete: Cascade)
   oauthTokens      OAuthToken[]
   oauthAccessToken OAuthAccessToken[]
 
@@ -343,7 +235,7 @@ model ProjectUserOAuthAccount {
   connectedAccount ConnectedAccount?
   oauthAuthMethod  OAuthAuthMethod?
 
-  @@id([tenancyId, oauthProviderConfigId, providerAccountId])
+  @@id([tenancyId, configOAuthProviderId, providerAccountId])
   @@index([tenancyId, projectUserId])
 }
 
@@ -378,149 +270,25 @@ model ContactChannel {
   @@unique([tenancyId, type, value, usedForAuth])
 }
 
-model ConnectedAccountConfig {
-  projectConfigId String @db.Uuid
-  id              String @default(uuid()) @db.Uuid
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  enabled Boolean @default(true)
-
-  // this should never be null
-  oauthProviderConfig OAuthProviderConfig?
-  projectConfig       ProjectConfig        @relation(fields: [projectConfigId], references: [id], onDelete: Cascade)
-  connectedAccounts   ConnectedAccount[]
-
-  @@id([projectConfigId, id])
-}
-
 model ConnectedAccount {
-  tenancyId                String @db.Uuid
-  id                       String @default(uuid()) @db.Uuid
-  projectConfigId          String @db.Uuid
-  connectedAccountConfigId String @db.Uuid
-  projectUserId            String @db.Uuid
-  oauthProviderConfigId    String
-  providerAccountId        String
+  tenancyId             String @db.Uuid
+  id                    String @default(uuid()) @db.Uuid
+  projectUserId         String @db.Uuid
+  configOAuthProviderId String
+  providerAccountId     String
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  oauthAccount           ProjectUserOAuthAccount @relation(fields: [tenancyId, oauthProviderConfigId, providerAccountId], references: [tenancyId, oauthProviderConfigId, providerAccountId])
-  tenancy                Tenancy                 @relation("TenancyConnectedAccounts", fields: [tenancyId], references: [id], onDelete: Cascade)
-  projectUser            ProjectUser             @relation(fields: [tenancyId, projectUserId], references: [tenancyId, projectUserId], onDelete: Cascade)
-  connectedAccountConfig ConnectedAccountConfig  @relation(fields: [projectConfigId, connectedAccountConfigId], references: [projectConfigId, id], onDelete: Cascade)
-  oauthProviderConfig    OAuthProviderConfig     @relation(fields: [projectConfigId, oauthProviderConfigId], references: [projectConfigId, id], onDelete: Cascade)
+  oauthAccount ProjectUserOAuthAccount @relation(fields: [tenancyId, configOAuthProviderId, providerAccountId], references: [tenancyId, configOAuthProviderId, providerAccountId])
+  tenancy      Tenancy                 @relation("TenancyConnectedAccounts", fields: [tenancyId], references: [id], onDelete: Cascade)
+  projectUser  ProjectUser             @relation(fields: [tenancyId, projectUserId], references: [tenancyId, projectUserId], onDelete: Cascade)
 
   @@id([tenancyId, id])
-  @@unique([tenancyId, oauthProviderConfigId, providerAccountId])
-}
-
-model AuthMethodConfig {
-  projectConfigId String @db.Uuid
-  id              String @default(uuid()) @db.Uuid
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  enabled Boolean @default(true)
-
-  // exactly one of xyzConfig should be set
-  otpConfig           OtpAuthMethodConfig?
-  oauthProviderConfig OAuthProviderConfig?
-  passwordConfig      PasswordAuthMethodConfig?
-  passkeyConfig       PasskeyAuthMethodConfig?
-
-  projectConfig ProjectConfig @relation(fields: [projectConfigId], references: [id], onDelete: Cascade)
-  authMethods   AuthMethod[]
-
-  @@id([projectConfigId, id])
-}
-
-model OtpAuthMethodConfig {
-  projectConfigId    String @db.Uuid
-  authMethodConfigId String @db.Uuid
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  contactChannelType ContactChannelType
-
-  authMethodConfig AuthMethodConfig @relation(fields: [projectConfigId, authMethodConfigId], references: [projectConfigId, id], onDelete: Cascade)
-
-  @@id([projectConfigId, authMethodConfigId])
-}
-
-model PasswordAuthMethodConfig {
-  projectConfigId    String @db.Uuid
-  authMethodConfigId String @db.Uuid
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  authMethodConfig AuthMethodConfig @relation(fields: [projectConfigId, authMethodConfigId], references: [projectConfigId, id], onDelete: Cascade)
-
-  @@id([projectConfigId, authMethodConfigId])
-}
-
-model PasskeyAuthMethodConfig {
-  projectConfigId    String @db.Uuid
-  authMethodConfigId String @db.Uuid
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  authMethodConfig AuthMethodConfig @relation(fields: [projectConfigId, authMethodConfigId], references: [projectConfigId, id], onDelete: Cascade)
-
-  @@id([projectConfigId, authMethodConfigId])
+  @@unique([tenancyId, configOAuthProviderId, providerAccountId])
 }
 
 // Both the connected account and auth methods can use this configuration.
-model OAuthProviderConfig {
-  projectConfigId          String  @db.Uuid
-  id                       String
-  authMethodConfigId       String? @db.Uuid
-  connectedAccountConfigId String? @db.Uuid
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  // Exactly one of the xyzOAuthConfig variables should be set.
-  proxiedOAuthConfig  ProxiedOAuthProviderConfig?
-  standardOAuthConfig StandardOAuthProviderConfig?
-
-  // At least one of authMethodConfig or connectedAccountConfig should be set.
-  // The config relation will never be unset, but the enabled field might be set to false on authMethodConfig or connectedAccountConfig.
-  authMethodConfig       AuthMethodConfig?       @relation(fields: [projectConfigId, authMethodConfigId], references: [projectConfigId, id], onDelete: Cascade)
-  connectedAccountConfig ConnectedAccountConfig? @relation(fields: [projectConfigId, connectedAccountConfigId], references: [projectConfigId, id], onDelete: Cascade)
-
-  projectConfig            ProjectConfig             @relation(fields: [projectConfigId], references: [id], onDelete: Cascade)
-  projectUserOAuthAccounts ProjectUserOAuthAccount[]
-  connectedAccounts        ConnectedAccount[]
-  oauthAuthMethod          OAuthAuthMethod[]
-
-  @@id([projectConfigId, id])
-  @@unique([projectConfigId, authMethodConfigId])
-  @@unique([projectConfigId, connectedAccountConfigId])
-}
-
-model ProxiedOAuthProviderConfig {
-  projectConfigId String @db.Uuid
-  id              String
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  type ProxiedOAuthProviderType
-
-  providerConfig OAuthProviderConfig @relation(fields: [projectConfigId, id], references: [projectConfigId, id], onDelete: Cascade)
-
-  @@id([projectConfigId, id])
-  // each type of proxied OAuth provider can only be used once per project
-  @@unique([projectConfigId, type])
-}
-
 enum ProxiedOAuthProviderType {
   GITHUB
   GOOGLE
@@ -528,35 +296,10 @@ enum ProxiedOAuthProviderType {
   SPOTIFY
 }
 
-model StandardOAuthProviderConfig {
-  projectConfigId String @db.Uuid
-  id              String
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  type         StandardOAuthProviderType
-  clientId     String
-  clientSecret String
-
-  // optional extra parameters for specific oauth providers
-  // Facebook business integration requires a config_id
-  facebookConfigId  String?
-  // Microsoft organizational directory (tenant)
-  microsoftTenantId String?
-
-  providerConfig OAuthProviderConfig @relation(fields: [projectConfigId, id], references: [projectConfigId, id], onDelete: Cascade)
-
-  // each type of standard OAuth provider can only be used once per project
-  @@id([projectConfigId, id])
-}
-
 model AuthMethod {
-  tenancyId          String @db.Uuid
-  id                 String @default(uuid()) @db.Uuid
-  projectUserId      String @db.Uuid
-  authMethodConfigId String @db.Uuid
-  projectConfigId    String @db.Uuid
+  tenancyId     String @db.Uuid
+  id            String @default(uuid()) @db.Uuid
+  projectUserId String @db.Uuid
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -567,9 +310,8 @@ model AuthMethod {
   passkeyAuthMethod  PasskeyAuthMethod?
   oauthAuthMethod    OAuthAuthMethod?
 
-  tenancy          Tenancy          @relation("TenancyAuthMethods", fields: [tenancyId], references: [id], onDelete: Cascade)
-  projectUser      ProjectUser      @relation(fields: [tenancyId, projectUserId], references: [tenancyId, projectUserId], onDelete: Cascade)
-  authMethodConfig AuthMethodConfig @relation(fields: [projectConfigId, authMethodConfigId], references: [projectConfigId, id], onDelete: Cascade)
+  tenancy     Tenancy     @relation("TenancyAuthMethods", fields: [tenancyId], references: [id], onDelete: Cascade)
+  projectUser ProjectUser @relation(fields: [tenancyId, projectUserId], references: [tenancyId, projectUserId], onDelete: Cascade)
 
   @@id([tenancyId, id])
   @@index([tenancyId, projectUserId])
@@ -635,22 +377,20 @@ model PasskeyAuthMethod {
 // This connects to projectUserOauthAccount, which might be shared between auth method and connected account.
 model OAuthAuthMethod {
   tenancyId             String @db.Uuid
-  projectConfigId       String @db.Uuid
   authMethodId          String @db.Uuid
-  oauthProviderConfigId String
+  configOAuthProviderId String
   providerAccountId     String
   projectUserId         String @db.Uuid
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  authMethod          AuthMethod              @relation(fields: [tenancyId, authMethodId], references: [tenancyId, id], onDelete: Cascade)
-  oauthAccount        ProjectUserOAuthAccount @relation(fields: [tenancyId, oauthProviderConfigId, providerAccountId], references: [tenancyId, oauthProviderConfigId, providerAccountId])
-  projectUser         ProjectUser             @relation(fields: [tenancyId, projectUserId], references: [tenancyId, projectUserId], onDelete: Cascade)
-  oauthProviderConfig OAuthProviderConfig     @relation(fields: [projectConfigId, oauthProviderConfigId], references: [projectConfigId, id], onDelete: Cascade)
+  authMethod   AuthMethod              @relation(fields: [tenancyId, authMethodId], references: [tenancyId, id], onDelete: Cascade)
+  oauthAccount ProjectUserOAuthAccount @relation(fields: [tenancyId, configOAuthProviderId, providerAccountId], references: [tenancyId, configOAuthProviderId, providerAccountId])
+  projectUser  ProjectUser             @relation(fields: [tenancyId, projectUserId], references: [tenancyId, projectUserId], onDelete: Cascade)
 
   @@id([tenancyId, authMethodId])
-  @@unique([tenancyId, oauthProviderConfigId, providerAccountId])
+  @@unique([tenancyId, configOAuthProviderId, providerAccountId])
 }
 
 enum StandardOAuthProviderType {
@@ -671,13 +411,13 @@ model OAuthToken {
   id String @id @default(uuid()) @db.Uuid
 
   tenancyId             String @db.Uuid
-  oAuthProviderConfigId String
+  configOAuthProviderId String
   providerAccountId     String
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  projectUserOAuthAccount ProjectUserOAuthAccount @relation(fields: [tenancyId, oAuthProviderConfigId, providerAccountId], references: [tenancyId, oauthProviderConfigId, providerAccountId], onDelete: Cascade)
+  projectUserOAuthAccount ProjectUserOAuthAccount @relation(fields: [tenancyId, configOAuthProviderId, providerAccountId], references: [tenancyId, configOAuthProviderId, providerAccountId], onDelete: Cascade)
 
   refreshToken String
   scopes       String[]
@@ -687,13 +427,13 @@ model OAuthAccessToken {
   id String @id @default(uuid()) @db.Uuid
 
   tenancyId             String @db.Uuid
-  oAuthProviderConfigId String
+  configOAuthProviderId String
   providerAccountId     String
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  projectUserOAuthAccount ProjectUserOAuthAccount @relation(fields: [tenancyId, oAuthProviderConfigId, providerAccountId], references: [tenancyId, oauthProviderConfigId, providerAccountId], onDelete: Cascade)
+  projectUserOAuthAccount ProjectUserOAuthAccount @relation(fields: [tenancyId, configOAuthProviderId, providerAccountId], references: [tenancyId, configOAuthProviderId, providerAccountId], onDelete: Cascade)
 
   accessToken String
   scopes      String[]
@@ -831,19 +571,6 @@ model ProjectApiKey {
   @@id([tenancyId, id])
 }
 
-model EmailServiceConfig {
-  projectConfigId String        @id @db.Uuid
-  projectConfig   ProjectConfig @relation(fields: [projectConfigId], references: [id], onDelete: Cascade)
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  proxiedEmailServiceConfig  ProxiedEmailServiceConfig?
-  standardEmailServiceConfig StandardEmailServiceConfig?
-
-  emailTemplates EmailTemplate[]
-}
-
 enum EmailTemplateType {
   EMAIL_VERIFICATION
   PASSWORD_RESET
@@ -852,8 +579,7 @@ enum EmailTemplateType {
 }
 
 model EmailTemplate {
-  projectConfigId    String             @db.Uuid
-  emailServiceConfig EmailServiceConfig @relation(fields: [projectConfigId], references: [projectConfigId], onDelete: Cascade)
+  projectId String
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -862,28 +588,7 @@ model EmailTemplate {
   type    EmailTemplateType
   subject String
 
-  @@id([projectConfigId, type])
-}
-
-model ProxiedEmailServiceConfig {
-  projectConfigId    String             @id @db.Uuid
-  emailServiceConfig EmailServiceConfig @relation(fields: [projectConfigId], references: [projectConfigId], onDelete: Cascade)
-  createdAt          DateTime           @default(now())
-  updatedAt          DateTime           @updatedAt
-}
-
-model StandardEmailServiceConfig {
-  projectConfigId    String             @id @db.Uuid
-  emailServiceConfig EmailServiceConfig @relation(fields: [projectConfigId], references: [projectConfigId], onDelete: Cascade)
-  createdAt          DateTime           @default(now())
-  updatedAt          DateTime           @updatedAt
-
-  senderName  String
-  senderEmail String
-  host        String
-  port        Int
-  username    String
-  password    String
+  @@id([projectId, type])
 }
 
 //#endregion

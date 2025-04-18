@@ -1,6 +1,6 @@
 import { createMfaRequiredError } from "@/app/api/latest/auth/mfa/sign-in/verification-code-handler";
 import { checkApiKeySet } from "@/lib/internal-api-keys";
-import { fullProjectInclude, getProject } from "@/lib/projects";
+import { getProject } from "@/lib/projects";
 import { validateRedirectUrl } from "@/lib/redirect-urls";
 import { getSoleTenancyFromProject } from "@/lib/tenancies";
 import { decodeAccessToken, generateAccessToken } from "@/lib/tokens";
@@ -147,11 +147,6 @@ export class OAuthModel implements AuthorizationCodeModel {
           tenancyId_projectUserId: {
             tenancyId: tenancy.id,
             projectUserId: user.id,
-          },
-        },
-        include: {
-          project: {
-            include: fullProjectInclude,
           },
         },
       });

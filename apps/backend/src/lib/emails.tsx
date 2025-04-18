@@ -21,8 +21,8 @@ export async function getEmailTemplate(projectId: string, type: keyof typeof EMA
 
   const template = await prismaClient.emailTemplate.findUnique({
     where: {
-      projectConfigId_type: {
-        projectConfigId: project.config.id,
+      projectId_type: {
+        projectId,
         type: typedToUppercase(type),
       },
     },
