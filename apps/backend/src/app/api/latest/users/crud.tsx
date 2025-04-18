@@ -269,7 +269,6 @@ export function getUserQuery(projectId: string, branchId: string | null, userId:
           FROM "ProjectUser"
           LEFT JOIN "Tenancy" ON "Tenancy"."id" = "ProjectUser"."tenancyId"
           LEFT JOIN "Project" ON "Project"."id" = "Tenancy"."projectId"
-          LEFT JOIN "ProjectConfig" ON "ProjectConfig"."id" = "Project"."configId"
           WHERE "Tenancy"."projectId" = ${projectId} AND "Tenancy"."branchId" = ${branchId ?? "main"} AND "ProjectUser"."projectUserId" = ${userId}::UUID
         )
       ) AS "row_data_json"
