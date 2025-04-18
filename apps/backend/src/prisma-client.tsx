@@ -160,8 +160,6 @@ async function rawQueryArray<Q extends RawQuery<any>[]>(queries: Q): Promise<[] 
     // Since ours starts with "WITH", we prepend a SELECT to it
     const sqlQuery = Prisma.sql`SELECT * FROM (${combinedQuery.sql}) AS _`;
     const rawResult = await prismaClient.$queryRaw(sqlQuery);
-    console.log(sqlQuery);
-    console.log(rawResult);
 
     const postProcessed = combinedQuery.postProcess(rawResult as any);
     // If the postProcess is async, postProcessed is a Promise. If that Promise is rejected, it will cause an unhandled promise rejection.
