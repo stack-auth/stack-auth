@@ -137,7 +137,7 @@ model ProjectUserDirectPermission {
   id            String @id @default(uuid()) @db.Uuid
   tenancyId     String @db.Uuid
   projectUserId String @db.Uuid
-  permissionId  String @db.Uuid
+  permissionId  String
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -152,7 +152,7 @@ model TeamMemberDirectPermission {
   tenancyId     String @db.Uuid
   projectUserId String @db.Uuid
   teamId        String @db.Uuid
-  permissionId  String @db.Uuid
+  permissionId  String
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

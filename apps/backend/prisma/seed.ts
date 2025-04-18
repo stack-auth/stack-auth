@@ -60,7 +60,7 @@ async function seed() {
 
   const internalTenancy = await getSoleTenancyFromProject("internal");
 
-  await createOrUpdateProject({
+  internalProject = await createOrUpdateProject({
     projectId: 'internal',
     type: 'update',
     branchId: 'main',
@@ -76,6 +76,8 @@ async function seed() {
       },
     },
   });
+
+  console.log(internalProject.config, '!!!!!!!!!!');
 
   const keySet = {
     publishableClientKey: process.env.STACK_SEED_INTERNAL_PROJECT_PUBLISHABLE_CLIENT_KEY || throwErr('STACK_SEED_INTERNAL_PROJECT_PUBLISHABLE_CLIENT_KEY is not set'),

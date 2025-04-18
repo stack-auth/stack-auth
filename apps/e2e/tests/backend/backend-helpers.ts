@@ -996,6 +996,11 @@ export namespace Project {
       body: {
         display_name: body?.display_name || 'New Project',
         ...body,
+        config: {
+          credential_enabled: true,
+          allow_localhost: true,
+          ...body?.config,
+        },
       },
     });
     expect(response).toMatchObject({
