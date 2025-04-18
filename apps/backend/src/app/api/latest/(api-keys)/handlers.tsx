@@ -58,6 +58,7 @@ async function ensureUserCanManageApiKeys(
       const userId = auth.user.id;
       const hasManageApiKeysPermission = await prismaClient.$transaction(async (tx) => {
         const permissions = await listPermissions(tx, {
+          scope: 'team',
           tenancy: auth.tenancy,
           teamId: options.teamId,
           userId,
