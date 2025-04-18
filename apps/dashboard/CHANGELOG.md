@@ -1,5 +1,15 @@
 # @stackframe/stack-dashboard
 
+## 2.8.6
+
+### Patch Changes
+
+- Updated dependencies
+  - @stackframe/stack-shared@2.8.6
+  - @stackframe/stack-ui@2.8.6
+  - @stackframe/stack@2.8.6
+  - @stackframe/stack-emails@2.8.6
+
 ## 2.8.5
 
 ### Patch Changes

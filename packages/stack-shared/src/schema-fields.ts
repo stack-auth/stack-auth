@@ -290,9 +290,37 @@ export const passwordSchema = yupString().max(70);
  * `emailSchema` instead until we do the DB migration.
  */
 // eslint-disable-next-line no-restricted-syntax
-export const strictEmailSchema = (message: string | undefined) => yupString().email(message).matches(/^[^.].*@.*\.[^.][^.]+$/, message);
+export const strictEmailSchema = (message: string | undefined) => yupString().email(message).matches(/^[^.]+(\.[^.]+)*@.*\.[^.][^.]+$/, message);
 // eslint-disable-next-line no-restricted-syntax
 export const emailSchema = yupString().email();
+
+import.meta.vitest?.test('strictEmailSchema', ({ expect }) => {
+  const validEmails = [
+    "a@example.com",
+    "abc@example.com",
+    "a.b@example.com",
+    "throwaway.mail+token@example.com",
+    "email-alt-dash@demo-mail.com",
+    "test-account@weird-domain.net",
+    "%!~&+{}=|`#@domain.test",
+    "admin@a.longtldexample",
+  ];
+  for (const email of validEmails) {
+    expect(strictEmailSchema(undefined).validateSync(email)).toBe(email);
+  }
+  const invalidEmails = [
+    "test@localhost",
+    "test@gmail",
+    "test@gmail.com.a",
+    "test@gmail.a",
+    "test.@example.com",
+    "test..test@example.com",
+    ".test@example.com",
+  ];
+  for (const email of invalidEmails) {
+    expect(() => strictEmailSchema(undefined).validateSync(email)).toThrow();
+  }
+});
 
 // Request auth
 export const clientOrHigherAuthTypeSchema = yupString().oneOf(['client', 'server', 'admin']).defined();

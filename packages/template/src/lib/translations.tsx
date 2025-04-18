@@ -1,4 +1,3 @@
-import "client-only"; // THIS_LINE_PLATFORM next
 import React from "react";
 import { TranslationContext } from "../providers/translation-provider-client";
 
