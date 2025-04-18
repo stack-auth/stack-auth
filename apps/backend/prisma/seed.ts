@@ -103,87 +103,85 @@ async function seed() {
   // This user will be able to login to the dashboard with both email/password and magic link.
 
   if ((adminEmail && adminPassword) || adminGithubId) {
-    await prisma.$transaction(async (tx) => {
-      const oldAdminUser = await tx.projectUser.findFirst({
-        where: {
+    const oldAdminUser = await prisma.projectUser.findFirst({
+      where: {
+        mirroredProjectId: 'internal',
+        mirroredBranchId: 'main',
+        projectUserId: defaultUserId
+      }
+    });
+
+    if (oldAdminUser) {
+        console.log(`Admin user already exists, skipping creation`);
+    } else {
+      const newUser = await prisma.projectUser.create({
+        data: {
+          displayName: 'Administrator (created by seed script)',
+          projectUserId: defaultUserId,
+          tenancyId: internalTenancy.id,
           mirroredProjectId: 'internal',
           mirroredBranchId: 'main',
-          projectUserId: defaultUserId
+          serverMetadata: adminInternalAccess
+            ? { managedProjectIds: ['internal'] }
+            : undefined,
         }
       });
 
-      if (oldAdminUser) {
-        console.log(`Admin user already exists, skipping creation`);
-      } else {
-        const newUser = await tx.projectUser.create({
+      if (adminEmail && adminPassword) {
+        await usersCrudHandlers.adminUpdate({
+          tenancy: internalTenancy,
+          user_id: defaultUserId,
           data: {
-            displayName: 'Administrator (created by seed script)',
-            projectUserId: defaultUserId,
+            password: adminPassword,
+            primary_email: adminEmail,
+            primary_email_auth_enabled: true,
+          },
+        });
+
+          console.log(`Added admin user with email ${adminEmail}`);
+      }
+
+      if (adminGithubId) {
+        const githubAccount = await prisma.projectUserOAuthAccount.findFirst({
+          where: {
             tenancyId: internalTenancy.id,
-            mirroredProjectId: 'internal',
-            mirroredBranchId: 'main',
-            serverMetadata: adminInternalAccess
-              ? { managedProjectIds: ['internal'] }
-              : undefined,
+            configOAuthProviderId: 'github',
+            providerAccountId: adminGithubId,
           }
         });
 
-        if (adminEmail && adminPassword) {
-          await usersCrudHandlers.adminUpdate({
-            tenancy: internalTenancy,
-            user_id: newUser.projectUserId,
-            data: {
-              password: adminPassword,
-              primary_email: adminEmail,
-              primary_email_auth_enabled: true,
-            },
-          });
-
-          console.log(`Added admin user with email ${adminEmail}`);
-        }
-
-        if (adminGithubId) {
-          const githubAccount = await tx.projectUserOAuthAccount.findFirst({
-            where: {
-              tenancyId: internalTenancy.id,
-              configOAuthProviderId: 'github',
-              providerAccountId: adminGithubId,
-            }
-          });
-
-          if (githubAccount) {
-            console.log(`GitHub account already exists, skipping creation`);
-          } else {
-            await tx.projectUserOAuthAccount.create({
-              data: {
-                tenancyId: internalTenancy.id,
-                projectUserId: newUser.projectUserId,
-                configOAuthProviderId: 'github',
-                providerAccountId: adminGithubId
-              }
-            });
-
-            console.log(`Added GitHub account for admin user`);
-          }
-
-          await tx.authMethod.create({
+        if (githubAccount) {
+          console.log(`GitHub account already exists, skipping creation`);
+        } else {
+          await prisma.projectUserOAuthAccount.create({
             data: {
               tenancyId: internalTenancy.id,
               projectUserId: newUser.projectUserId,
-              oauthAuthMethod: {
-                create: {
-                  projectUserId: newUser.projectUserId,
-                  configOAuthProviderId: 'github',
-                  providerAccountId: adminGithubId,
-                }
-              }
+              configOAuthProviderId: 'github',
+              providerAccountId: adminGithubId
             }
           });
 
-          console.log(`Added admin user with GitHub ID ${adminGithubId}`);
+            console.log(`Added GitHub account for admin user`);
         }
+
+        await prisma.authMethod.create({
+          data: {
+            tenancyId: internalTenancy.id,
+            projectUserId: newUser.projectUserId,
+            oauthAuthMethod: {
+              create: {
+                projectUserId: newUser.projectUserId,
+                configOAuthProviderId: 'github',
+                providerAccountId: adminGithubId,
+              }
+            }
+          }
+        });
+
+          console.log(`Added admin user with GitHub ID ${adminGithubId}`);
       }
-    });
+    }
   }
 
   if (emulatorEnabled) {
@@ -191,44 +189,42 @@ async function seed() {
       throw new Error('STACK_EMULATOR_PROJECT_ID is not set');
     }
 
-    await prisma.$transaction(async (tx) => {
-      const existingUser = await tx.projectUser.findFirst({
-        where: {
+    const existingUser = await prisma.projectUser.findFirst({
+      where: {
+        mirroredProjectId: 'internal',
+        mirroredBranchId: 'main',
+        projectUserId: emulatorAdminUserId,
+      }
+    });
+
+    if (existingUser) {
+        console.log('Emulator user already exists, skipping creation');
+    } else {
+      const newEmulatorUser = await prisma.projectUser.create({
+        data: {
+          displayName: 'Local Emulator User',
+          projectUserId: emulatorAdminUserId,
+          tenancyId: internalTenancy.id,
           mirroredProjectId: 'internal',
           mirroredBranchId: 'main',
-          projectUserId: emulatorAdminUserId,
+          serverMetadata: {
+            managedProjectIds: [emulatorProjectId],
+          },
         }
       });
 
-      if (existingUser) {
-        console.log('Emulator user already exists, skipping creation');
-      } else {
-        const newEmulatorUser = await tx.projectUser.create({
-          data: {
-            displayName: 'Local Emulator User',
-            projectUserId: emulatorAdminUserId,
-            tenancyId: internalTenancy.id,
-            mirroredProjectId: 'internal',
-            mirroredBranchId: 'main',
-            serverMetadata: {
-              managedProjectIds: [emulatorProjectId],
-            },
-          }
-        });
+      await usersCrudHandlers.adminUpdate({
+        tenancy: internalTenancy,
+        user_id: newEmulatorUser.projectUserId,
+        data: {
+          password: 'LocalEmulatorPassword',
+          primary_email: 'local-emulator@stack-auth.com',
+          primary_email_auth_enabled: true,
+        },
+      });
 
-        await usersCrudHandlers.adminUpdate({
-          tenancy: internalTenancy,
-          user_id: newEmulatorUser.projectUserId,
-          data: {
-            password: 'LocalEmulatorPassword',
-            primary_email: 'local-emulator@stack-auth.com',
-            primary_email_auth_enabled: true,
-          },
-        });
-
-        console.log('Created emulator user');
-      }
-    });
+      console.log('Created emulator user');
+    }
 
     console.log('Created emulator user');
 

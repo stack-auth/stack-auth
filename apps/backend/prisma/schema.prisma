@@ -579,7 +579,7 @@ enum EmailTemplateType {
 }
 
 model EmailTemplate {
-  projectId String @db.Uuid
+  projectId String
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

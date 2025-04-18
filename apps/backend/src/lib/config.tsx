@@ -126,9 +126,20 @@ export function getBranchConfigOverrideQuery(options: BranchOptions): RawQuery<P
 export function getEnvironmentConfigOverrideQuery(options: EnvironmentOptions): RawQuery<Promise<EnvironmentConfigOverride>> {
   // fetch environment config from DB (either our own, or the source of truth one)
   return {
-    sql: Prisma.sql`SELECT 1`,
-    postProcess: async () => {
-      return {};
+    sql: Prisma.sql`
+      SELECT "EnvironmentConfigOverride".*
+      FROM "EnvironmentConfigOverride"
+      WHERE "EnvironmentConfigOverride"."branchId" = ${options.branchId}
+      AND "EnvironmentConfigOverride"."projectId" = ${options.projectId}
+    `,
+    postProcess: async (queryResult) => {
+      if (queryResult.length > 1) {
+        throw new StackAssertionError(`Expected 0 or 1 environment config overrides for project ${options.projectId} and branch ${options.branchId}, got ${queryResult.length}`, { queryResult });
+      }
+      if (queryResult.length === 0) {
+        return {};
+      }
+      return queryResult[0].config;
     },
   };
 }
