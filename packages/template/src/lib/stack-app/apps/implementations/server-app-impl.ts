@@ -21,6 +21,7 @@ import { GetUserOptions, HandlerUrls, OAuthScopesOnSignIn, TokenStoreInit } from
 import { OAuthConnection } from "../../connected-accounts";
 import { ServerContactChannel, ServerContactChannelCreateOptions, ServerContactChannelUpdateOptions, serverContactChannelCreateOptionsToCrud, serverContactChannelUpdateOptionsToCrud } from "../../contact-channels";
 import { AdminProjectPermissionDefinition, AdminTeamPermission, AdminTeamPermissionDefinition } from "../../permissions";
+import { PaymentLineItem } from "../../payments";
 import { EditableTeamMemberProfile, ServerListUsersOptions, ServerTeam, ServerTeamCreateOptions, ServerTeamUpdateOptions, ServerTeamUser, Team, TeamInvitation, serverTeamCreateOptionsToCrud, serverTeamUpdateOptionsToCrud } from "../../teams";
 import { ProjectCurrentServerUser, ServerUser, ServerUserCreateOptions, ServerUserUpdateOptions, serverUserCreateOptionsToCrud, serverUserUpdateOptionsToCrud } from "../../users";
 import { StackServerAppConstructorOptions } from "../interfaces/server-app";
@@ -849,6 +850,7 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
     await this._serverTeamsCache.refresh([undefined]);
     return this._serverTeamFromCrud(team);
   }
+
 
   // IF_PLATFORM react-like
   useTeams(): ServerTeam[] {

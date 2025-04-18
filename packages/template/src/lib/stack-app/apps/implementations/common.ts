@@ -55,6 +55,7 @@ export function getUrls(partial: Partial<HandlerUrls>): HandlerUrls {
     forgotPassword: `${handler}/forgot-password`,
     oauthCallback: `${handler}/oauth-callback`,
     magicLinkCallback: `${handler}/magic-link-callback`,
+    paymentCallback: `${handler}/payment-callback`,
     home: home,
     accountSettings: `${handler}/account-settings`,
     error: `${handler}/error`,

@@ -13,6 +13,7 @@ import { ApiKeysPage } from "./account-settings/api-keys/api-keys-page";
 import { EmailsAndAuthPage } from './account-settings/email-and-auth/email-and-auth-page';
 import { ProfilePage } from "./account-settings/profile-page/profile-page";
 import { SettingsPage } from './account-settings/settings/settings-page';
+import { SubscriptionsPage } from './account-settings/subscriptions/subscriptions-page';
 import { TeamCreationPage } from './account-settings/teams/team-creation-page';
 import { TeamPage } from './account-settings/teams/team-page';
 
@@ -84,6 +85,15 @@ export function AccountSettings(props: {
               id: 'settings',
               icon: <Icon name="Settings"/>,
               content: <SettingsPage/>,
+            },
+            {
+              title: t('Subscriptions'),
+              type: 'item',
+              id: 'subscriptions',
+              icon: <Icon name="CreditCard"/>,
+              content: <Suspense fallback={<SubscriptionsPageSkeleton/>}>
+                <SubscriptionsPage/>
+              </Suspense>,
             },
             ...(props.extraItems?.map(item => ({
               title: item.title,
@@ -160,6 +170,13 @@ function ActiveSessionsPageSkeleton() {
 function ApiKeysPageSkeleton() {
   return <PageLayout>
     <Skeleton className="h-9 w-full mt-1"/>
+    <Skeleton className="h-[200px] w-full mt-1 rounded-md"/>
+  </PageLayout>;
+}
+
+function SubscriptionsPageSkeleton() {
+  return <PageLayout>
+    <Skeleton className="h-12 w-48 mb-2"/>
     <Skeleton className="h-[200px] w-full mt-1 rounded-md"/>
   </PageLayout>;
 }

@@ -34,6 +34,7 @@ import { ApiKey, ApiKeyCreationOptions, ApiKeyUpdateOptions, apiKeyCreationOptio
 import { GetUserOptions, HandlerUrls, OAuthScopesOnSignIn, RedirectMethod, RedirectToOptions, RequestLike, TokenStoreInit, stackAppInternalsSymbol } from "../../common";
 import { OAuthConnection } from "../../connected-accounts";
 import { ContactChannel, ContactChannelCreateOptions, ContactChannelUpdateOptions, contactChannelCreateOptionsToCrud, contactChannelUpdateOptionsToCrud } from "../../contact-channels";
+import { PaymentLineItem } from "../../payments";
 import { TeamPermission } from "../../permissions";
 import { AdminOwnedProject, AdminProjectUpdateOptions, Project, adminProjectCreateOptionsToCrud } from "../../projects";
 import { EditableTeamMemberProfile, Team, TeamCreateOptions, TeamInvitation, TeamUpdateOptions, TeamUser, teamCreateOptionsToCrud, teamUpdateOptionsToCrud } from "../../teams";
@@ -1270,6 +1271,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
   async redirectToAccountSettings(options?: RedirectToOptions) { return await this._redirectToHandler("accountSettings", options); }
   async redirectToError(options?: RedirectToOptions) { return await this._redirectToHandler("error", options); }
   async redirectToTeamInvitation(options?: RedirectToOptions) { return await this._redirectToHandler("teamInvitation", options); }
+  async redirectToPaymentCallback(options?: RedirectToOptions) { return await this._redirectToHandler("paymentCallback", options); }
 
   async sendForgotPasswordEmail(email: string, options?: { callbackUrl?: string }): Promise<Result<undefined, KnownErrors["UserNotFound"]>> {
     return await this._interface.sendForgotPasswordEmail(email, options?.callbackUrl ?? constructRedirectUrl(this.urls.passwordReset, "callbackUrl"));
@@ -1828,6 +1830,31 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
 
   protected async _refreshOwnedProjects(session: InternalSession) {
     await this._ownedProjectsCache.refresh([session]);
+  }
+
+  async createCheckoutUrl(lineItems: PaymentLineItem[]): Promise<string> {
+    const session = await this._getSession();
+    const transformedLineItems = lineItems.map(item => ({
+      product_id: item.productId,
+      quantity: item.quantity
+    }));
+
+    const currentUrl = new URL(window.location.href);
+    const baseUrl = `${currentUrl.protocol}//${currentUrl.host}`;
+
+    const response = await this._interface.sendClientRequest('/payments/checkout', {
+      method: 'POST',
+      body: JSON.stringify({
+        line_items: transformedLineItems,
+        callback_url: baseUrl
+      }),
+      headers: {
+        'Content-Type': 'application/json',
+      },
+    }, session);
+
+    const data = await response.json();
+    return data.purchase_url;
   }
 
   static get [stackAppInternalsSymbol]() {
