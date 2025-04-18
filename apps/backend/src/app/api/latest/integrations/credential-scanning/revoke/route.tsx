@@ -119,6 +119,7 @@ export const POST = createSmartRouteHandler({
         }
 
         const permissions = await listPermissions(tx, {
+          scope: 'team',
           tenancy,
           teamId: updatedApiKey.teamId,
           permissionId: '$manage_api_keys',
