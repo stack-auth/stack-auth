@@ -83,6 +83,7 @@ export async function createOrUpdateProject(
     branchId: string,
   } & ({
     type: "create",
+    projectId?: string,
     data: AdminUserProjectsCrud["Admin"]["Create"],
   } | {
     type: "update",
@@ -96,7 +97,7 @@ export async function createOrUpdateProject(
     if (options.type === "create") {
       project = await tx.project.create({
         data: {
-          id: generateUuid(),
+          id: options.projectId ?? generateUuid(),
           displayName: options.data.display_name,
           description: options.data.description ?? "",
           isProductionMode: options.data.is_production_mode ?? false,

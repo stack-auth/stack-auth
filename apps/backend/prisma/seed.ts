@@ -36,6 +36,7 @@ async function seed() {
     internalProject = await createOrUpdateProject({
       type: 'create',
       branchId: 'main',
+      projectId: 'internal',
       data: {
         display_name: 'Stack Dashboard',
         description: 'Stack\'s admin dashboard',
@@ -59,13 +60,6 @@ async function seed() {
 
   const internalTenancy = await getSoleTenancyFromProject("internal");
 
-  if (dashboardDomain) {
-    const url = new URL(dashboardDomain);
-    if (url.hostname === 'localhost') {
-      throw new Error('Cannot use localhost as a trusted domain for the internal project');
-    }
-  }
-
   await createOrUpdateProject({
     projectId: 'internal',
     type: 'update',
@@ -76,7 +70,7 @@ async function seed() {
         magic_link_enabled: otpEnabled,
         allow_localhost: allowLocalhost,
         domains: [
-          ...(dashboardDomain ? [{ domain: dashboardDomain, handler_path: '/handler' }] : []),
+          ...(dashboardDomain && new URL(dashboardDomain).hostname !== 'localhost' ? [{ domain: dashboardDomain, handler_path: '/handler' }] : []),
           ...internalProject.config.domains.filter((d) => d.domain !== dashboardDomain),
         ]
       },
