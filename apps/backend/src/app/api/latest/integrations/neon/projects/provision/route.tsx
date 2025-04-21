@@ -46,6 +46,8 @@ export const POST = createSmartRouteHandler({
               type: "shared",
             },
           ],
+          allow_localhost: true,
+          credential_enabled: true
         },
       }
     });
