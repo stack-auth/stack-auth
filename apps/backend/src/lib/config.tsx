@@ -322,7 +322,6 @@ export const renderedOrganizationConfigToProjectCrud = (renderedConfig: Organiza
       }
       return filterUndefined({
         id: oauthProvider.type,
-        enabled: oauthProvider.allowSignIn,
         type: oauthProvider.isShared ? 'shared' : 'standard',
         client_id: oauthProvider.clientId,
         client_secret: oauthProvider.clientSecret,
@@ -345,7 +344,7 @@ export const renderedOrganizationConfigToProjectCrud = (renderedConfig: Organiza
     passkey_enabled: renderedConfig.auth.passkey.allowSignIn,
 
     oauth_providers: oauthProviders,
-    enabled_oauth_providers: oauthProviders.filter(provider => provider.enabled),
+    enabled_oauth_providers: oauthProviders,
 
     domains: typedEntries(renderedConfig.domains.trustedDomains)
       .map(([_, domainConfig]) => domainConfig.baseUrl === undefined ? undefined : ({
