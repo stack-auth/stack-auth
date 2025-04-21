@@ -536,6 +536,15 @@ export function has<T extends object, K extends keyof T>(obj: T, key: K): obj is
   return Object.prototype.hasOwnProperty.call(obj, key);
 }
 
+import.meta.vitest?.test("has", ({ expect }) => {
+  const obj = { a: 1, b: undefined, c: null };
+  expect(has(obj, "a")).toBe(true);
+  expect(has(obj, "b")).toBe(true);
+  expect(has(obj, "c")).toBe(true);
+  expect(has(obj, "d" as keyof typeof obj)).toBe(false);
+});
+
+
 export function hasAndNotUndefined<T extends object, K extends keyof T>(obj: T, key: K): obj is T & { [k in K]: Exclude<T[K], undefined> } {
   return has(obj, key) && get(obj, key) !== undefined;
 }

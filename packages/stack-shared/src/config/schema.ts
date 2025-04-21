@@ -207,6 +207,7 @@ export const organizationConfigDefaults = {
     oauth: {
       accountMergeStrategy: 'link_method',
       providers: (key: string) => ({
+        isShared: true,
         allowSignIn: false,
         allowConnectedAccounts: false,
       }),

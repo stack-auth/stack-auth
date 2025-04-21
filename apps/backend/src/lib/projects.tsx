@@ -5,7 +5,7 @@ import { EnvironmentConfigOverride, OrganizationRenderedConfig } from "@stackfra
 import { AdminUserProjectsCrud, ProjectsCrud } from "@stackframe/stack-shared/dist/interface/crud/projects";
 import { UsersCrud } from "@stackframe/stack-shared/dist/interface/crud/users";
 import { StackAssertionError, captureError } from "@stackframe/stack-shared/dist/utils/errors";
-import { filterUndefined } from "@stackframe/stack-shared/dist/utils/objects";
+import { filterUndefined, typedFromEntries } from "@stackframe/stack-shared/dist/utils/objects";
 import { generateUuid } from "@stackframe/stack-shared/dist/utils/uuids";
 import { RawQuery, rawQuery, retryTransaction } from "../prisma-client";
 import { getRenderedOrganizationConfigQuery, renderedOrganizationConfigToProjectCrud } from "./config";
@@ -158,19 +158,22 @@ export async function createOrUpdateProject(
       'auth.otp.allowSignIn': dataOptions.magic_link_enabled,
       'auth.passkey.allowSignIn': dataOptions.passkey_enabled,
       'auth.oauth.accountMergeStrategy': dataOptions.oauth_account_merge_strategy,
-      'auth.oauth.providers': dataOptions.oauth_providers ? dataOptions.oauth_providers
+      'auth.oauth.providers': dataOptions.oauth_providers ? typedFromEntries(dataOptions.oauth_providers
         .map((provider) => {
-          return {
-            type: provider.id,
-            isShared: provider.type === "shared",
-            clientId: provider.client_id,
-            clientSecret: provider.client_secret,
-            facebookConfigId: provider.facebook_config_id,
-            microsoftTenantId: provider.microsoft_tenant_id,
-            allowSignIn: true,
-            allowConnectedAccounts: true,
-          } satisfies OrganizationRenderedConfig['auth']['oauth']['providers'][string];
-        }) : undefined,
+          return [
+            provider.id,
+            {
+              type: provider.id,
+              isShared: provider.type === "shared",
+              clientId: provider.client_id,
+              clientSecret: provider.client_secret,
+              facebookConfigId: provider.facebook_config_id,
+              microsoftTenantId: provider.microsoft_tenant_id,
+              allowSignIn: true,
+              allowConnectedAccounts: true,
+            } satisfies OrganizationRenderedConfig['auth']['oauth']['providers'][string]
+          ];
+        })) : undefined,
       // ======================= users =======================
       'users.allowClientUserDeletion': dataOptions.client_user_deletion_enabled,
       // ======================= teams =======================
