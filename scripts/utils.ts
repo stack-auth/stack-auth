@@ -6,12 +6,13 @@ export const COMMENT_LINE = "THIS FILE IS AUTO-GENERATED FROM TEMPLATE. DO NOT E
 export const COMMENT_BLOCK = `\n//===========================================\n// ${COMMENT_LINE}\n//===========================================\n`
 
 export const PLATFORMS = {
-  "next": ['next', 'react-like', 'js-like'],
+  "next": ['next', 'react-like', 'js-like', 'next-like'],
+  "neon-next": ['neon-next', 'react-like', 'js-like', 'next-like'],
   "js": ['js', 'js-like'],
   "neon-js": ['js-like', 'neon-js'],
   "react": ['react', 'react-like', 'js-like'],
   "neon-react": ['react-like', 'neon-react', 'js-like'],
-  "template": ['template', 'react-like', 'next', 'js', 'js-like', 'python-like'],
+  "template": ['template', 'react-like', 'next', 'js', 'js-like', 'python-like', 'next-like', 'neon-js', 'neon-next'],
   "python": ['python', 'python-like'],
 }
 

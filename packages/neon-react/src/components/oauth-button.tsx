@@ -23,9 +23,11 @@ const changeColor = (c: Color, value: number) => {
 export function OAuthButton({
   provider,
   type,
+  isMock = false,
 }: {
   provider: string,
   type: 'sign-in' | 'sign-up',
+  isMock?: boolean,
 }) {
   const { t } = useTranslation();
   const stackApp = useStackApp();
@@ -177,7 +179,7 @@ export function OAuthButton({
         }}
         className={`stack-oauth-button-${styleId} stack-scope relative`}
       >
-        {lastUsed === provider && (
+        {!isMock && lastUsed === provider && (
           <span className="absolute -top-2 -right-2 bg-blue-500 text-white text-xs px-2 py-1 rounded-md">
             last
           </span>

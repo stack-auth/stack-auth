@@ -21,12 +21,12 @@ export type {
 } from "./project-configs";
 
 export type {
-  ApiKey,
-  ApiKeyBase,
-  ApiKeyBaseCrudRead,
-  ApiKeyCreateOptions,
-  ApiKeyFirstView
-} from "./api-keys";
+  InternalApiKey,
+  InternalApiKeyBase,
+  InternalApiKeyBaseCrudRead,
+  InternalApiKeyCreateOptions,
+  InternalApiKeyFirstView
+} from "./internal-api-keys";
 
 export {
   stackAppInternalsSymbol
@@ -43,15 +43,23 @@ export type {
 } from "./connected-accounts";
 
 export type {
-  ContactChannel
+  ContactChannel,
+  ServerContactChannel
 } from "./contact-channels";
+
+export type {
+  AdminSentEmail
+} from "./email";
 
 export type {
   AdminTeamPermission,
   AdminTeamPermissionDefinition,
   AdminTeamPermissionDefinitionCreateOptions,
   AdminTeamPermissionDefinitionUpdateOptions,
-  TeamPermission
+  AdminProjectPermission,
+  AdminProjectPermissionDefinition,
+  AdminProjectPermissionDefinitionCreateOptions,
+  AdminProjectPermissionDefinitionUpdateOptions,
 } from "./permissions";
 
 export type {

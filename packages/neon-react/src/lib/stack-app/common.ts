@@ -11,7 +11,7 @@ export type RedirectToOptions = {
 
 export type AsyncStoreProperty<Name extends string, Args extends any[], Value, IsMultiple extends boolean> =
   & { [key in `${IsMultiple extends true ? "list" : "get"}${Capitalize<Name>}`]: (...args: Args) => Promise<Value> }
-  & { [key in `use${Capitalize<Name>}`]: (...args: Args) => Value }
+  & { [key in `use${Capitalize<Name>}`]: (...args: Args) => Value } // THIS_LINE_PLATFORM react-like
 
 export type EmailConfig = {
   host: string,
@@ -32,7 +32,7 @@ export type RedirectMethod = "window"
 
 export type GetUserOptions<HasTokenStore> =
   & {
-    or?: 'redirect' | 'throw' | 'return-null',
+    or?: 'redirect' | 'throw' | 'return-null' | 'anonymous' | 'anonymous-if-exists',
     tokenStore?: TokenStoreInit,
   }
   & (HasTokenStore extends false ? {

@@ -26,13 +26,20 @@ export type StackServerApp<HasTokenStore extends boolean = boolean, ProjectId ex
 
     getUser(options: GetUserOptions<HasTokenStore> & { or: 'redirect' }): Promise<ProjectCurrentServerUser<ProjectId>>,
     getUser(options: GetUserOptions<HasTokenStore> & { or: 'throw' }): Promise<ProjectCurrentServerUser<ProjectId>>,
+    getUser(options: GetUserOptions<HasTokenStore> & { or: 'anonymous' }): Promise<ProjectCurrentServerUser<ProjectId>>,
     getUser(options?: GetUserOptions<HasTokenStore>): Promise<ProjectCurrentServerUser<ProjectId> | null>,
+    getUser(id: string): Promise<ServerUser | null>,
+    getUser(options: { apiKey: string }): Promise<ServerUser | null>,
+
+
+    getTeam(id: string): Promise<ServerTeam | null>,
+    getTeam(options: { apiKey: string }): Promise<ServerTeam | null>,
+
 
     listUsers(options?: ServerListUsersOptions): Promise<ServerUser[] & { nextCursor: string | null }>,
   }
   & AsyncStoreProperty<"user", [id: string], ServerUser | null, false>
   & Omit<AsyncStoreProperty<"users", [], ServerUser[], true>, "listUsers" | "useUsers">
-  & AsyncStoreProperty<"team", [id: string], ServerTeam | null, false>
   & AsyncStoreProperty<"teams", [], ServerTeam[], true>
   & StackClientApp<HasTokenStore, ProjectId>
 );

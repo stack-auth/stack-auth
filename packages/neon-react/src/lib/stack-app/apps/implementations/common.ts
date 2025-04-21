@@ -11,8 +11,8 @@ import { ReactPromise } from "@stackframe/stack-shared/dist/utils/promises";
 import { suspendIfSsr } from "@stackframe/stack-shared/dist/utils/react";
 import { Result } from "@stackframe/stack-shared/dist/utils/results";
 import { Store } from "@stackframe/stack-shared/dist/utils/stores";
+import React, { useCallback } from "react"; // THIS_LINE_PLATFORM react-like
 import { HandlerUrls } from "../../common";
-import React, { useCallback } from "react";
 
 // hack to make sure process is defined in non-node environments
 
@@ -82,6 +82,10 @@ export function getDefaultSuperSecretAdminKey() {
   return process.env.STACK_SUPER_SECRET_ADMIN_KEY || throwErr(new Error("No super secret admin key provided. Please copy your key from the Stack dashboard and put it in the STACK_SUPER_SECRET_ADMIN_KEY environment variable."));
 }
 
+export function getDefaultExtraRequestHeaders() {
+  return JSON.parse(process.env.NEXT_PUBLIC_STACK_EXTRA_REQUEST_HEADERS || '{}');
+}
+
 /**
  * Returns the base URL for the Stack API.
  *
@@ -138,7 +142,7 @@ export function createEmptyTokenStore() {
 }
 
 
-const cachePromiseByComponentId = new Map<string, ReactPromise<Result<unknown>>>();
+const cachePromiseByHookId = new Map<string, ReactPromise<Result<unknown>>>();
 export function useAsyncCache<D extends any[], T>(cache: AsyncCache<D, Result<T>>, dependencies: D, caller: string): T {
   // we explicitly don't want to run this hook in SSR
   suspendIfSsr(caller);
@@ -147,7 +151,7 @@ export function useAsyncCache<D extends any[], T>(cache: AsyncCache<D, Result<T>
 
   const subscribe = useCallback((cb: () => void) => {
     const { unsubscribe } = cache.onStateChange(dependencies, () => {
-      cachePromiseByComponentId.delete(id);
+      cachePromiseByHookId.delete(id);
       cb();
     });
     return unsubscribe;
@@ -155,14 +159,14 @@ export function useAsyncCache<D extends any[], T>(cache: AsyncCache<D, Result<T>
   const getSnapshot = useCallback(() => {
     // React checks whether a promise passed to `use` is still the same as the previous one by comparing the reference.
     // If we didn't cache here, this wouldn't work because the promise would be recreated every time the value changes.
-    if (!cachePromiseByComponentId.has(id)) {
-      cachePromiseByComponentId.set(id, cache.getOrWait(dependencies, "read-write"));
+    if (!cachePromiseByHookId.has(id)) {
+      cachePromiseByHookId.set(id, cache.getOrWait(dependencies, "read-write"));
     }
-    return cachePromiseByComponentId.get(id) as ReactPromise<Result<T>>;
+    return cachePromiseByHookId.get(id) as ReactPromise<Result<T>>;
   }, [cache, ...dependencies]);
 
   // note: we must use React.useSyncExternalStore instead of importing the function directly, as it will otherwise
-  // throw an error ("can't import useSyncExternalStore from the server")
+  // throw an error on Next.js ("can't import useSyncExternalStore from the server")
   const promise = React.useSyncExternalStore(
     subscribe,
     getSnapshot,

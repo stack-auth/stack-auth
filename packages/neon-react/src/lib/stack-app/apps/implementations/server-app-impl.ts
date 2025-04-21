@@ -4,30 +4,34 @@
 //===========================================
 import { KnownErrors, StackServerInterface } from "@stackframe/stack-shared";
 import { ContactChannelsCrud } from "@stackframe/stack-shared/dist/interface/crud/contact-channels";
+import { TeamApiKeysCrud, UserApiKeysCrud, teamApiKeysCreateOutputSchema, userApiKeysCreateOutputSchema } from "@stackframe/stack-shared/dist/interface/crud/project-api-keys";
+import { ProjectPermissionDefinitionsCrud, ProjectPermissionsCrud } from "@stackframe/stack-shared/dist/interface/crud/project-permissions";
 import { TeamInvitationCrud } from "@stackframe/stack-shared/dist/interface/crud/team-invitation";
 import { TeamMemberProfilesCrud } from "@stackframe/stack-shared/dist/interface/crud/team-member-profiles";
 import { TeamPermissionDefinitionsCrud, TeamPermissionsCrud } from "@stackframe/stack-shared/dist/interface/crud/team-permissions";
 import { TeamsCrud } from "@stackframe/stack-shared/dist/interface/crud/teams";
 import { UsersCrud } from "@stackframe/stack-shared/dist/interface/crud/users";
 import { InternalSession } from "@stackframe/stack-shared/dist/sessions";
-import { StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
+import { StackAssertionError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
 import { ProviderType } from "@stackframe/stack-shared/dist/utils/oauth";
 import { runAsynchronously } from "@stackframe/stack-shared/dist/utils/promises";
 import { suspend } from "@stackframe/stack-shared/dist/utils/react";
 import { Result } from "@stackframe/stack-shared/dist/utils/results";
-import { useMemo } from "react";
+import { useMemo } from "react"; // THIS_LINE_PLATFORM react-like
+import * as yup from "yup";
 import { constructRedirectUrl } from "../../../../utils/url";
+import { ApiKey, ApiKeyCreationOptions, ApiKeyUpdateOptions, apiKeyCreationOptionsToCrud, apiKeyUpdateOptionsToCrud } from "../../api-keys";
 import { GetUserOptions, HandlerUrls, OAuthScopesOnSignIn, TokenStoreInit } from "../../common";
 import { OAuthConnection } from "../../connected-accounts";
 import { ServerContactChannel, ServerContactChannelCreateOptions, ServerContactChannelUpdateOptions, serverContactChannelCreateOptionsToCrud, serverContactChannelUpdateOptionsToCrud } from "../../contact-channels";
-import { AdminTeamPermission, AdminTeamPermissionDefinition } from "../../permissions";
+import { AdminProjectPermissionDefinition, AdminTeamPermission, AdminTeamPermissionDefinition } from "../../permissions";
 import { EditableTeamMemberProfile, ServerListUsersOptions, ServerTeam, ServerTeamCreateOptions, ServerTeamUpdateOptions, ServerTeamUser, Team, TeamInvitation, serverTeamCreateOptionsToCrud, serverTeamUpdateOptionsToCrud } from "../../teams";
 import { ProjectCurrentServerUser, ServerUser, ServerUserCreateOptions, ServerUserUpdateOptions, serverUserCreateOptionsToCrud, serverUserUpdateOptionsToCrud } from "../../users";
 import { StackServerAppConstructorOptions } from "../interfaces/server-app";
 import { _StackClientAppImplIncomplete } from "./client-app-impl";
 import { clientVersion, createCache, createCacheBySession, getBaseUrl, getDefaultProjectId, getDefaultPublishableClientKey, getDefaultSecretServerKey } from "./common";
-import { useAsyncCache } from "./common";
 
+import { useAsyncCache } from "./common";
 
 export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, ProjectId extends string> extends _StackClientAppImplIncomplete<HasTokenStore, ProjectId>
 {
@@ -62,6 +66,12 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
     TeamPermissionsCrud['Server']['Read'][]
   >(async ([teamId, userId, recursive]) => {
     return await this._interface.listServerTeamPermissions({ teamId, userId, recursive }, null);
+  });
+  private readonly _serverUserProjectPermissionsCache = createCache<
+    [string, boolean],
+    ProjectPermissionsCrud['Server']['Read'][]
+  >(async ([userId, recursive]) => {
+    return await this._interface.listServerProjectPermissions({ userId, recursive }, null);
   });
   private readonly _serverUserOAuthConnectionAccessTokensCache = createCache<[string, string, string], { accessToken: string } | null>(
     async ([userId, providerId, scope]) => {
@@ -110,6 +120,34 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
     }
   );
 
+  private readonly _serverUserApiKeysCache = createCache<[string], UserApiKeysCrud['Server']['Read'][]>(
+    async ([userId]) => {
+      const result = await this._interface.listProjectApiKeys({
+        user_id: userId,
+      }, null, "server");
+      return result as UserApiKeysCrud['Server']['Read'][];
+    }
+  );
+
+  private readonly _serverTeamApiKeysCache = createCache<[string], TeamApiKeysCrud['Server']['Read'][]>(
+    async ([teamId]) => {
+      const result = await this._interface.listProjectApiKeys({
+        team_id: teamId,
+      }, null, "server");
+      return result as TeamApiKeysCrud['Server']['Read'][];
+    }
+  );
+
+  private readonly _serverCheckApiKeyCache = createCache<["user" | "team", string], UserApiKeysCrud['Server']['Read'] | TeamApiKeysCrud['Server']['Read'] | null>(async ([type, apiKey]) => {
+    const result = await this._interface.checkProjectApiKey(
+      type,
+      apiKey,
+      null,
+      "server",
+    );
+    return result;
+  });
+
   private async _updateServerUser(userId: string, update: ServerUserUpdateOptions): Promise<UsersCrud['Server']['Read']> {
     const result = await this._interface.updateServerUser(userId, serverUserUpdateOptionsToCrud(update));
     await this._refreshUsers();
@@ -145,17 +183,21 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
       isPrimary: crud.is_primary,
       usedForAuth: crud.used_for_auth,
       async sendVerificationEmail(options?: { callbackUrl?: string }) {
-        if (!options?.callbackUrl && !await app._getCurrentUrl()) {
-          throw new Error("Cannot send verification email without a callback URL from the server or without a redirect method. Make sure you pass the `callbackUrl` option: `sendVerificationEmail({ callbackUrl: ... })`");
-        }
-
-        await app._interface.sendServerContactChannelVerificationEmail(userId, crud.id, options?.callbackUrl ?? constructRedirectUrl(app.urls.emailVerification));
+        await app._interface.sendServerContactChannelVerificationEmail(userId, crud.id, options?.callbackUrl ?? constructRedirectUrl(app.urls.emailVerification, "callbackUrl"));
       },
       async update(data: ServerContactChannelUpdateOptions) {
         await app._interface.updateServerContactChannel(userId, crud.id, serverContactChannelUpdateOptionsToCrud(data));
+        await Promise.all([
+          app._serverContactChannelsCache.refresh([userId]),
+          app._serverUserCache.refresh([userId])
+        ]);
       },
       async delete() {
         await app._interface.deleteServerContactChannel(userId, crud.id);
+        await Promise.all([
+          app._serverContactChannelsCache.refresh([userId]),
+          app._serverUserCache.refresh([userId])
+        ]);
       },
     };
   }
@@ -178,18 +220,47 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
       interface: new StackServerInterface({
         getBaseUrl: () => getBaseUrl(options.baseUrl),
         projectId: options.projectId ?? getDefaultProjectId(),
+        extraRequestHeaders: options.extraRequestHeaders ?? {},
         clientVersion,
         publishableClientKey: options.publishableClientKey ?? getDefaultPublishableClientKey(),
         secretServerKey: options.secretServerKey ?? getDefaultSecretServerKey(),
       }),
       baseUrl: options.baseUrl,
+      extraRequestHeaders: options.extraRequestHeaders,
       projectId: options.projectId,
       publishableClientKey: options.publishableClientKey,
       tokenStore: options.tokenStore,
-      urls: options.urls ?? {},
-      oauthScopesOnSignIn: options.oauthScopesOnSignIn ?? {},
+      urls: options.urls,
+      oauthScopesOnSignIn: options.oauthScopesOnSignIn,
       redirectMethod: options.redirectMethod,
     });
+  }
+
+
+  protected _serverApiKeyFromCrud(crud: TeamApiKeysCrud['Client']['Read']): ApiKey<"team">;
+  protected _serverApiKeyFromCrud(crud: UserApiKeysCrud['Client']['Read']): ApiKey<"user">;
+  protected _serverApiKeyFromCrud(crud: yup.InferType<typeof teamApiKeysCreateOutputSchema>): ApiKey<"team", true>;
+  protected _serverApiKeyFromCrud(crud: yup.InferType<typeof userApiKeysCreateOutputSchema>): ApiKey<"user", true>;
+  protected _serverApiKeyFromCrud(crud: TeamApiKeysCrud['Client']['Read'] | UserApiKeysCrud['Client']['Read'] | yup.InferType<typeof teamApiKeysCreateOutputSchema> | yup.InferType<typeof userApiKeysCreateOutputSchema>): ApiKey<"user" | "team", boolean> {
+    return {
+      ...this._baseApiKeyFromCrud(crud),
+      async revoke() {
+        await this.update({ revoked: true });
+      },
+      update: async (options: ApiKeyUpdateOptions) => {
+        await this._interface.updateProjectApiKey(
+          crud.type === "team" ? { team_id: crud.team_id } : { user_id: crud.user_id },
+          crud.id,
+          await apiKeyUpdateOptionsToCrud(crud.type, options),
+          null,
+          "server");
+        if (crud.type === "team") {
+          await this._serverTeamApiKeysCache.refresh([crud.team_id]);
+        } else {
+          await this._serverUserApiKeysCache.refresh([crud.user_id]);
+        }
+      },
+    };
   }
 
   protected _serverUserFromCrud(crud: UsersCrud['Server']['Read']): ServerUser {
@@ -233,14 +304,23 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
         await app._refreshUsers();
         return res;
       },
-      async createSession(options: { expiresInMillis?: number }) {
+      async createSession(options: { expiresInMillis?: number, isImpersonation?: boolean }) {
         // TODO this should also refresh the access token when it expires (like InternalSession)
-        const tokens = await app._interface.createServerUserSession(crud.id, options.expiresInMillis ?? 1000 * 60 * 60 * 24 * 365);
+        const tokens = await app._interface.createServerUserSession(crud.id, options.expiresInMillis ?? 1000 * 60 * 60 * 24 * 365, options.isImpersonation ?? false);
         return {
           async getTokens() {
             return tokens;
           },
         };
+      },
+
+      async getActiveSessions() {
+        const sessions = await app._interface.listServerSessions(crud.id);
+        return sessions.map((session) => app._clientSessionFromCrud(session));
+      },
+
+      async revokeSession(sessionId: string) {
+        await app._interface.deleteServerSession(sessionId);
       },
       async setDisplayName(displayName: string) {
         return await this.update({ displayName });
@@ -258,7 +338,7 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
         return await this.update({ selectedTeamId: team?.id ?? null });
       },
       getConnectedAccount,
-      useConnectedAccount,
+      useConnectedAccount, // THIS_LINE_PLATFORM react-like
       selectedTeam: crud.selected_team ? app._serverTeamFromCrud(crud.selected_team) : null,
       async getTeam(teamId: string) {
         const teams = await this.listTeams();
@@ -284,32 +364,69 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
           ...data,
         }));
         await app._serverTeamsCache.refresh([undefined]);
+        await app._updateServerUser(crud.id, { selectedTeamId: team.id });
         return app._serverTeamFromCrud(team);
       },
       leaveTeam: async (team: Team) => {
         await app._interface.leaveServerTeam({ teamId: team.id, userId: crud.id });
         // TODO: refresh cache
       },
-      async listPermissions(scope: Team, options?: { recursive?: boolean }): Promise<AdminTeamPermission[]> {
-        const recursive = options?.recursive ?? true;
-        const permissions = Result.orThrow(await app._serverTeamUserPermissionsCache.getOrWait([scope.id, crud.id, recursive], "write-only"));
-        return permissions.map((crud) => app._serverPermissionFromCrud(crud));
+      async listPermissions(scopeOrOptions?: Team | { recursive?: boolean }, options?: { recursive?: boolean }): Promise<AdminTeamPermission[]> {
+        if (scopeOrOptions && 'id' in scopeOrOptions) {
+          const scope = scopeOrOptions;
+          const recursive = options?.recursive ?? true;
+          const permissions = Result.orThrow(await app._serverTeamUserPermissionsCache.getOrWait([scope.id, crud.id, recursive], "write-only"));
+          return permissions.map((crud) => app._serverPermissionFromCrud(crud));
+        } else {
+          const opts = scopeOrOptions;
+          const recursive = opts?.recursive ?? true;
+          const permissions = Result.orThrow(await app._serverUserProjectPermissionsCache.getOrWait([crud.id, recursive], "write-only"));
+          return permissions.map((crud) => app._serverPermissionFromCrud(crud));
+        }
       },
-      usePermissions(scope: Team, options?: { recursive?: boolean }): AdminTeamPermission[] {
-        const recursive = options?.recursive ?? true;
-        const permissions = useAsyncCache(app._serverTeamUserPermissionsCache, [scope.id, crud.id, recursive] as const, "user.usePermissions()");
-        return useMemo(() => permissions.map((crud) => app._serverPermissionFromCrud(crud)), [permissions]);
+      usePermissions(scopeOrOptions?: Team | { recursive?: boolean }, options?: { recursive?: boolean }): AdminTeamPermission[] {
+        if (scopeOrOptions && 'id' in scopeOrOptions) {
+          const scope = scopeOrOptions;
+          const recursive = options?.recursive ?? true;
+          const permissions = useAsyncCache(app._serverTeamUserPermissionsCache, [scope.id, crud.id, recursive] as const, "user.usePermissions()");
+          return useMemo(() => permissions.map((crud) => app._serverPermissionFromCrud(crud)), [permissions]);
+        } else {
+          const opts = scopeOrOptions;
+          const recursive = opts?.recursive ?? true;
+          const permissions = useAsyncCache(app._serverUserProjectPermissionsCache, [crud.id, recursive] as const, "user.usePermissions()");
+          return useMemo(() => permissions.map((crud) => app._serverPermissionFromCrud(crud)), [permissions]);
+        }
       },
-      async getPermission(scope: Team, permissionId: string): Promise<AdminTeamPermission | null> {
-        const permissions = await this.listPermissions(scope);
-        return permissions.find((p) => p.id === permissionId) ?? null;
+      async getPermission(scopeOrPermissionId: Team | string, permissionId?: string): Promise<AdminTeamPermission | null> {
+        if (scopeOrPermissionId && typeof scopeOrPermissionId !== 'string') {
+          const scope = scopeOrPermissionId;
+          const permissions = await this.listPermissions(scope);
+          return permissions.find((p) => p.id === permissionId) ?? null;
+        } else {
+          const pid = scopeOrPermissionId;
+          const permissions = await this.listPermissions();
+          return permissions.find((p) => p.id === pid) ?? null;
+        }
       },
-      usePermission(scope: Team, permissionId: string): AdminTeamPermission | null {
-        const permissions = this.usePermissions(scope);
-        return useMemo(() => permissions.find((p) => p.id === permissionId) ?? null, [permissions, permissionId]);
+      usePermission(scopeOrPermissionId: Team | string, permissionId?: string): AdminTeamPermission | null {
+        if (scopeOrPermissionId && typeof scopeOrPermissionId !== 'string') {
+          const scope = scopeOrPermissionId;
+          const permissions = this.usePermissions(scope);
+          return useMemo(() => permissions.find((p) => p.id === permissionId) ?? null, [permissions, permissionId]);
+        } else {
+          const pid = scopeOrPermissionId;
+          const permissions = this.usePermissions();
+          return useMemo(() => permissions.find((p) => p.id === pid) ?? null, [permissions, pid]);
+        }
       },
-      async hasPermission(scope: Team, permissionId: string): Promise<boolean> {
-        return await this.getPermission(scope, permissionId) !== null;
+      async hasPermission(scopeOrPermissionId: Team | string, permissionId?: string): Promise<boolean> {
+        if (scopeOrPermissionId && typeof scopeOrPermissionId !== 'string') {
+          const scope = scopeOrPermissionId;
+          return (await this.getPermission(scope, permissionId as string)) !== null;
+        } else {
+          const pid = scopeOrPermissionId;
+          return (await this.getPermission(pid)) !== null;
+        }
       },
       async update(update: ServerUserUpdateOptions) {
         await app._updateServerUser(crud.id, update);
@@ -317,8 +434,8 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
       async sendVerificationEmail() {
         return await app._checkFeatureSupport("sendVerificationEmail() on ServerUser", {});
       },
-      async updatePassword(options: { oldPassword?: string, newPassword: string}) {
-        const result = await this.update({ password: options.newPassword });
+      async updatePassword(options: { oldPassword: string, newPassword: string}) {
+        const result = await app._interface.updatePassword(options);
         await app._serverUserCache.refresh([crud.id]);
         return result;
       },
@@ -345,8 +462,28 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
       },
       createContactChannel: async (data: ServerContactChannelCreateOptions) => {
         const contactChannel = await app._interface.createServerContactChannel(serverContactChannelCreateOptionsToCrud(crud.id, data));
-        await app._serverContactChannelsCache.refresh([crud.id]);
+        await Promise.all([
+          app._serverContactChannelsCache.refresh([crud.id]),
+          app._serverUserCache.refresh([crud.id])
+        ]);
         return app._serverContactChannelFromCrud(crud.id, contactChannel);
+      },
+      useApiKeys() {
+        const result = useAsyncCache(app._serverUserApiKeysCache, [crud.id] as const, "user.useApiKeys()");
+        return result.map((apiKey) => app._serverApiKeyFromCrud(apiKey));
+      },
+      async listApiKeys() {
+        const result = Result.orThrow(await app._serverUserApiKeysCache.getOrWait([crud.id], "write-only"));
+        return result.map((apiKey) => app._serverApiKeyFromCrud(apiKey));
+      },
+      async createApiKey(options: ApiKeyCreationOptions<"user">) {
+        const result = await app._interface.createProjectApiKey(
+          await apiKeyCreationOptionsToCrud("user", crud.id, options),
+          null,
+          "server",
+        );
+        await app._serverUserApiKeysCache.refresh([crud.id]);
+        return app._serverApiKeyFromCrud(result);
       },
     };
   }
@@ -425,14 +562,10 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
         await app._serverTeamMemberProfilesCache.refresh([crud.id]);
       },
       async inviteUser(options: { email: string, callbackUrl?: string }) {
-        if (!options.callbackUrl && !await app._getCurrentUrl()) {
-          throw new Error("Cannot invite user without a callback URL from the server or without a redirect method. Make sure you pass the `callbackUrl` option: `inviteUser({ email, callbackUrl: ... })`");
-        }
-
         await app._interface.sendServerTeamInvitation({
           teamId: crud.id,
           email: options.email,
-          callbackUrl: options.callbackUrl ?? constructRedirectUrl(app.urls.teamInvitation),
+          callbackUrl: options.callbackUrl ?? constructRedirectUrl(app.urls.teamInvitation, "callbackUrl"),
         });
         await app._serverTeamInvitationsCache.refresh([crud.id]);
       },
@@ -444,7 +577,71 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
         const result = useAsyncCache(app._serverTeamInvitationsCache, [crud.id] as const, "team.useInvitations()");
         return useMemo(() => result.map((crud) => app._serverTeamInvitationFromCrud(crud)), [result]);
       },
+      useApiKeys() {
+        const result = useAsyncCache(app._serverTeamApiKeysCache, [crud.id] as const, "team.useApiKeys()");
+        return result.map((apiKey) => app._serverApiKeyFromCrud(apiKey));
+      },
+      async listApiKeys() {
+        const result = Result.orThrow(await app._serverTeamApiKeysCache.getOrWait([crud.id], "write-only"));
+        return result.map((apiKey) => app._serverApiKeyFromCrud(apiKey));
+      },
+      async createApiKey(options: ApiKeyCreationOptions<"team">) {
+        const result = await app._interface.createProjectApiKey(
+          await apiKeyCreationOptionsToCrud("team", crud.id, options),
+          null,
+          "server",
+        );
+        await app._serverTeamApiKeysCache.refresh([crud.id]);
+        return app._serverApiKeyFromCrud(result);
+      },
     };
+  }
+
+  protected async _getUserApiKey(options: { apiKey: string }): Promise<ApiKey<"user"> | null> {
+    const crud = Result.orThrow(await this._serverCheckApiKeyCache.getOrWait(["user", options.apiKey], "write-only")) as UserApiKeysCrud['Server']['Read'] | null;
+    return crud ? this._serverApiKeyFromCrud(crud) : null;
+  }
+
+  protected async _getTeamApiKey(options: { apiKey: string }): Promise<ApiKey<"team"> | null> {
+    const crud = Result.orThrow(await this._serverCheckApiKeyCache.getOrWait(["team", options.apiKey], "write-only")) as TeamApiKeysCrud['Server']['Read'] | null;
+    return crud ? this._serverApiKeyFromCrud(crud) : null;
+  }
+  protected _useUserApiKey(options: { apiKey: string }): ApiKey<"user"> | null {
+    const crud = useAsyncCache(this._serverCheckApiKeyCache, ["user", options.apiKey] as const, "useUserApiKey()") as UserApiKeysCrud['Server']['Read'] | null;
+    return useMemo(() => crud ? this._serverApiKeyFromCrud(crud) : null, [crud]);
+  }
+  protected _useTeamApiKey(options: { apiKey: string }): ApiKey<"team"> | null {
+    const crud = useAsyncCache(this._serverCheckApiKeyCache, ["team", options.apiKey] as const, "useTeamApiKey()") as TeamApiKeysCrud['Server']['Read'] | null;
+    return useMemo(() => crud ? this._serverApiKeyFromCrud(crud) : null, [crud]);
+  }
+  protected async _getUserByApiKey(apiKey: string): Promise<ServerUser | null> {
+    const apiKeyObject = await this._getUserApiKey({ apiKey });
+    if (apiKeyObject === null) {
+      return null;
+    }
+    return await this.getServerUserById(apiKeyObject.userId);
+  }
+  protected _useUserByApiKey(apiKey: string): ServerUser | null {
+    const apiKeyObject = this._useUserApiKey({ apiKey });
+    if (apiKeyObject === null) {
+      return null;
+    }
+    return this.useUserById(apiKeyObject.userId);
+  }
+
+  protected async _getTeamByApiKey(apiKey: string): Promise<ServerTeam | null> {
+    const apiKeyObject = await this._getTeamApiKey({ apiKey });
+    if (apiKeyObject === null) {
+      return null;
+    }
+    return await this.getTeam(apiKeyObject.teamId);
+  }
+  protected _useTeamByApiKey(apiKey: string): ServerTeam | null {
+    const apiKeyObject = this._useTeamApiKey({ apiKey });
+    if (apiKeyObject === null) {
+      return null;
+    }
+    return this.useTeam(apiKeyObject.teamId);
   }
 
   async createUser(options: ServerUserCreateOptions): Promise<ServerUser> {
@@ -455,16 +652,23 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
 
   async getUser(options: GetUserOptions<HasTokenStore> & { or: 'redirect' }): Promise<ProjectCurrentServerUser<ProjectId>>;
   async getUser(options: GetUserOptions<HasTokenStore> & { or: 'throw' }): Promise<ProjectCurrentServerUser<ProjectId>>;
+  async getUser(options: GetUserOptions<HasTokenStore> & { or: 'anonymous' }): Promise<ProjectCurrentServerUser<ProjectId>>;
   async getUser(options?: GetUserOptions<HasTokenStore>): Promise<ProjectCurrentServerUser<ProjectId> | null>;
   async getUser(id: string): Promise<ServerUser | null>;
-  async getUser(options?: string | GetUserOptions<HasTokenStore>): Promise<ProjectCurrentServerUser<ProjectId> | ServerUser | null> {
+  async getUser(options: { apiKey: string }): Promise<ServerUser | null>;
+  async getUser(options?: string | GetUserOptions<HasTokenStore> | { apiKey: string }): Promise<ProjectCurrentServerUser<ProjectId> | ServerUser | null> {
     if (typeof options === "string") {
       return await this.getServerUserById(options);
+    } else if (typeof options === "object" && "apiKey" in options) {
+      return await this._getUserByApiKey(options.apiKey);
     } else {
       // TODO this code is duplicated from the client app; fix that
       this._ensurePersistentTokenStore(options?.tokenStore);
       const session = await this._getSession(options?.tokenStore);
-      const crud = Result.orThrow(await this._currentServerUserCache.getOrWait([session], "write-only"));
+      let crud = Result.orThrow(await this._currentServerUserCache.getOrWait([session], "write-only"));
+      if (crud?.is_anonymous && options?.or !== "anonymous" && options?.or !== "anonymous-if-exists") {
+        crud = null;
+      }
 
       if (crud === null) {
         switch (options?.or) {
@@ -475,7 +679,13 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
           case 'throw': {
             throw new Error("User is not signed in but getUser was called with { or: 'throw' }");
           }
-          default: {
+          case 'anonymous': {
+            const tokens = await this._signUpAnonymously();
+            return await this.getUser({ tokenStore: tokens, or: "anonymous-if-exists" }) ?? throwErr("Something went wrong while signing up anonymously");
+          }
+          case undefined:
+          case "anonymous-if-exists":
+          case "return-null": {
             return null;
           }
         }
@@ -497,17 +707,24 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
 
   useUser(options: GetUserOptions<HasTokenStore> & { or: 'redirect' }): ProjectCurrentServerUser<ProjectId>;
   useUser(options: GetUserOptions<HasTokenStore> & { or: 'throw' }): ProjectCurrentServerUser<ProjectId>;
+  useUser(options: GetUserOptions<HasTokenStore> & { or: 'anonymous' }): ProjectCurrentServerUser<ProjectId>;
   useUser(options?: GetUserOptions<HasTokenStore>): ProjectCurrentServerUser<ProjectId> | null;
   useUser(id: string): ServerUser | null;
-  useUser(options?: GetUserOptions<HasTokenStore> | string): ProjectCurrentServerUser<ProjectId> | ServerUser | null {
+  useUser(options: { apiKey: string }): ServerUser | null;
+  useUser(options?: GetUserOptions<HasTokenStore> | string | { apiKey: string }): ProjectCurrentServerUser<ProjectId> | ServerUser | null {
     if (typeof options === "string") {
       return this.useUserById(options);
+    } else if (typeof options === "object" && "apiKey" in options) {
+      return this._useUserByApiKey(options.apiKey);
     } else {
       // TODO this code is duplicated from the client app; fix that
       this._ensurePersistentTokenStore(options?.tokenStore);
 
       const session = this._useSession(options?.tokenStore);
-      const crud = useAsyncCache(this._currentServerUserCache, [session], "useUser()");
+      let crud = useAsyncCache(this._currentServerUserCache, [session] as const, "useUser()");
+      if (crud?.is_anonymous && options?.or !== "anonymous" && options?.or !== "anonymous-if-exists") {
+        crud = null;
+      }
 
       if (crud === null) {
         switch (options?.or) {
@@ -519,7 +736,20 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
           case 'throw': {
             throw new Error("User is not signed in but useUser was called with { or: 'throw' }");
           }
+          case 'anonymous': {
+            // TODO we should think about the behavior when calling useUser (or getUser) in anonymous with a custom token store. signUpAnonymously always sets the current token store on app level, instead of the one passed to this function
+            // TODO we shouldn't reload & suspend here, instead we should use a promise that resolves to the new anonymous user
+            runAsynchronously(async () => {
+              await this._signUpAnonymously();
+              if (typeof window !== "undefined") {
+                window.location.reload();
+              }
+            });
+            suspend();
+            throw new StackAssertionError("suspend should never return");
+          }
           case undefined:
+          case "anonymous-if-exists":
           case "return-null": {
             // do nothing
           }
@@ -552,13 +782,21 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
     return result as any;
   }
 
-  _serverPermissionFromCrud(crud: TeamPermissionsCrud['Server']['Read']): AdminTeamPermission {
+  _serverPermissionFromCrud(crud: TeamPermissionsCrud['Server']['Read'] | ProjectPermissionsCrud['Server']['Read']): AdminTeamPermission {
     return {
       id: crud.id,
     };
   }
 
   _serverTeamPermissionDefinitionFromCrud(crud: TeamPermissionDefinitionsCrud['Admin']['Read']): AdminTeamPermissionDefinition {
+    return {
+      id: crud.id,
+      description: crud.description,
+      containedPermissionIds: crud.contained_permission_ids,
+    };
+  }
+
+  _serverProjectPermissionDefinitionFromCrud(crud: ProjectPermissionDefinitionsCrud['Admin']['Read']): AdminProjectPermissionDefinition {
     return {
       id: crud.id,
       description: crud.description,
@@ -584,16 +822,30 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
     }, [teams]);
   }
 
-  async getTeam(teamId: string): Promise<ServerTeam | null> {
-    const teams = await this.listTeams();
-    return teams.find((t) => t.id === teamId) ?? null;
+  async getTeam(options: { apiKey: string }): Promise<ServerTeam | null>;
+  async getTeam(teamId: string): Promise<ServerTeam | null>;
+  async getTeam(options?: { apiKey: string } | string): Promise<ServerTeam | null> {
+    if (typeof options === "object" && "apiKey" in options) {
+      return await this._getTeamByApiKey(options.apiKey);
+    } else {
+      const teamId = options;
+      const teams = await this.listTeams();
+      return teams.find((t) => t.id === teamId) ?? null;
+    }
   }
 
-  useTeam(teamId: string): ServerTeam | null {
-    const teams = this.useTeams();
-    return useMemo(() => {
-      return teams.find((t) => t.id === teamId) ?? null;
-    }, [teams, teamId]);
+  useTeam(options: { apiKey: string }): ServerTeam | null;
+  useTeam(teamId: string): ServerTeam | null;
+  useTeam(options?: { apiKey: string } | string): ServerTeam | null {
+    if (typeof options === "object" && "apiKey" in options) {
+      return this._useTeamByApiKey(options.apiKey);
+    } else {
+      const teamId = options;
+      const teams = this.useTeams();
+      return useMemo(() => {
+        return teams.find((t) => t.id === teamId) ?? null;
+      }, [teams, teamId]);
+    }
   }
 
   protected override async _refreshSession(session: InternalSession) {

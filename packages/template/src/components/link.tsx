@@ -1,7 +1,7 @@
 'use client';
 
 import { cn } from "@stackframe/stack-ui";
-import NextLink from 'next/link'; // THIS_LINE_PLATFORM next
+import NextLink from 'next/link'; // THIS_LINE_PLATFORM next-like
 
 type LinkProps = {
   href: string,
@@ -13,7 +13,7 @@ type LinkProps = {
 };
 
 function Link(props: LinkProps) {
-  // IF_PLATFORM next
+  // IF_PLATFORM next-like
   return <NextLink
     href={props.href}
     target={props.target}

@@ -5,6 +5,8 @@
 import { TeamsCrud } from "@stackframe/stack-shared/dist/interface/crud/teams";
 import { ReadonlyJson } from "@stackframe/stack-shared/dist/utils/json";
 
+import { ApiKeyCreationOptions, TeamApiKey, TeamApiKeyFirstView } from "../api-keys";
+import { AsyncStoreProperty } from "../common";
 import { ServerUser } from "../users";
 
 
@@ -42,12 +44,13 @@ export type Team = {
   clientReadOnlyMetadata: any,
   inviteUser(options: { email: string, callbackUrl?: string }): Promise<void>,
   listUsers(): Promise<TeamUser[]>,
-  useUsers(): TeamUser[],
+  useUsers(): TeamUser[], // THIS_LINE_PLATFORM react-like
   listInvitations(): Promise<TeamInvitation[]>,
-  useInvitations(): TeamInvitation[],
+  useInvitations(): TeamInvitation[], // THIS_LINE_PLATFORM react-like
   update(update: TeamUpdateOptions): Promise<void>,
   delete(): Promise<void>,
-};
+  createApiKey(options: ApiKeyCreationOptions<"team">): Promise<TeamApiKeyFirstView>,
+} & AsyncStoreProperty<"apiKeys", [], TeamApiKey[], true>;
 
 export type TeamUpdateOptions = {
   displayName?: string,
@@ -85,7 +88,7 @@ export type ServerTeam = {
   createdAt: Date,
   serverMetadata: any,
   listUsers(): Promise<ServerTeamUser[]>,
-  useUsers(): ServerUser[],
+  useUsers(): ServerUser[], // THIS_LINE_PLATFORM react-like
   update(update: ServerTeamUpdateOptions): Promise<void>,
   delete(): Promise<void>,
   addUser(userId: string): Promise<void>,

@@ -5,12 +5,12 @@
 // THIS FILE IS AUTO-GENERATED FROM TEMPLATE. DO NOT EDIT IT DIRECTLY
 //===========================================
 
+import { deindent } from "@stackframe/stack-shared/dist/utils/strings";
+import Color from "color";
 import React from "react";
 import { globalCSS } from "../generated/global-css";
 import { BrowserScript } from "../utils/browser-script";
 import { DEFAULT_THEME } from "../utils/constants";
-import Color from "color";
-import { deindent } from "@stackframe/stack-shared/dist/utils/strings";
 
 type Colors = {
   background: string,

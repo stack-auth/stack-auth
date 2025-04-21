@@ -8,7 +8,7 @@ function UserFetcher(props: { app: StackClientApp<true> }) {
   return <UserSetter userJsonPromise={userPromise} />;
 }
 
-// IF_PLATFORM next
+// IF_PLATFORM next-like
 function NextStackProvider({
   children,
   app,
@@ -70,7 +70,7 @@ function ReactStackProvider({
 }
 // END_PLATFORM
 
-// IF_PLATFORM next
+// IF_PLATFORM next-like
 export default NextStackProvider;
 /* ELSE_PLATFORM
 export default ReactStackProvider;

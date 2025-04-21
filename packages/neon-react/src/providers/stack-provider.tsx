@@ -8,7 +8,7 @@ import { StackProviderClient, UserSetter } from './stack-provider-client';
 import { TranslationProvider } from './translation-provider';
 
 function UserFetcher(props: { app: StackClientApp<true> }) {
-  const userPromise = props.app.getUser().then((user) => user?.toClientJson() ?? null);
+  const userPromise = props.app.getUser({ or: "anonymous-if-exists" }).then((user) => user?.toClientJson() ?? null);
   return <UserSetter userJsonPromise={userPromise} />;
 }
 

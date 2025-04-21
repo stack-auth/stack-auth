@@ -11,6 +11,8 @@
   "name": "@stackframe/neon-react",
   "//": "ELSE_IF_PLATFORM neon-js",
   "name": "@stackframe/neon-js",
+  "//": "ELSE_IF_PLATFORM neon-next",
+  "name": "@stackframe/neon-next",
   "//": "END_PLATFORM",
   
   "//": "NEXT_LINE_PLATFORM template",
@@ -73,7 +75,7 @@
   "dependencies": {
     "@hookform/resolvers": "^3.3.4",
     "@simplewebauthn/browser": "^11.0.0",
-    "//": "NEXT_LINE_PLATFORM next",
+    "//": "NEXT_LINE_PLATFORM next-like",
     "@stackframe/stack-sc": "workspace:*",
     "@stackframe/stack-shared": "workspace:*",
     "//": "NEXT_LINE_PLATFORM react-like",
@@ -104,7 +106,7 @@
   "peerDependencies": {
     "@types/react": ">=18.2 || >=19.0.0-rc.0",
     "@types/react-dom": ">=18.2 || >=19.0.0-rc.0",
-    "//": "NEXT_LINE_PLATFORM next",
+    "//": "NEXT_LINE_PLATFORM next-like",
     "next": ">=14.1 || >=15.0.0-canary.0 || >=15.0.0-rc.0",
     "react": ">=18.2 || >=19.0.0-rc.0",
     "react-dom": ">=18.2 || >=19.0.0-rc.0"
@@ -132,7 +134,7 @@
     "esbuild": "^0.20.2",
     "i18next": "^23.14.0",
     "i18next-parser": "^9.0.2",
-    "//": "NEXT_LINE_PLATFORM next",
+    "//": "NEXT_LINE_PLATFORM next-like",
     "next": "^14.1.0",
     "postcss": "^8.4.38",
     "postcss-nested": "^6.0.1",

@@ -13,6 +13,7 @@ import { _StackClientAppImpl } from "../implementations";
 
 export type StackClientAppConstructorOptions<HasTokenStore extends boolean, ProjectId extends string> = {
   baseUrl?: string | { browser: string, server: string },
+  extraRequestHeaders?: Record<string, string>,
   projectId?: ProjectId,
   publishableClientKey?: string,
   urls?: Partial<HandlerUrls>,
@@ -42,9 +43,10 @@ export type StackClientApp<HasTokenStore extends boolean = boolean, ProjectId ex
 
     signInWithOAuth(provider: string): Promise<void>,
     signInWithCredential(options: { email: string, password: string, noRedirect?: boolean }): Promise<Result<undefined, KnownErrors["EmailPasswordMismatch"] | KnownErrors["InvalidTotpCode"]>>,
-    signUpWithCredential(options: { email: string, password: string, noRedirect?: boolean, verificationCallbackUrl?: string }): Promise<Result<undefined, KnownErrors["UserEmailAlreadyExists"] | KnownErrors["PasswordRequirementsNotMet"]>>,
+    signUpWithCredential(options: { email: string, password: string, noRedirect?: boolean, verificationCallbackUrl?: string }): Promise<Result<undefined, KnownErrors["UserWithEmailAlreadyExists"] | KnownErrors["PasswordRequirementsNotMet"]>>,
     signInWithPasskey(): Promise<Result<undefined, KnownErrors["PasskeyAuthenticationFailed"]| KnownErrors["InvalidTotpCode"] | KnownErrors["PasskeyWebAuthnError"]>>,
     callOAuthCallback(): Promise<boolean>,
+    promptCliLogin(options: { appUrl: string, expiresInMillis?: number }): Promise<Result<string, KnownErrors["CliAuthError"] | KnownErrors["CliAuthExpiredError"] | KnownErrors["CliAuthUsedError"]>>,
     sendForgotPasswordEmail(email: string, options?: { callbackUrl?: string }): Promise<Result<undefined, KnownErrors["UserNotFound"]>>,
     sendMagicLinkEmail(email: string, options?: { callbackUrl?: string }): Promise<Result<{ nonce: string }, KnownErrors["RedirectUrlNotWhitelisted"]>>,
     resetPassword(options: { code: string, password: string }): Promise<Result<undefined, KnownErrors["VerificationCodeError"]>>,
@@ -53,19 +55,21 @@ export type StackClientApp<HasTokenStore extends boolean = boolean, ProjectId ex
     acceptTeamInvitation(code: string): Promise<Result<undefined, KnownErrors["VerificationCodeError"]>>,
     getTeamInvitationDetails(code: string): Promise<Result<{ teamDisplayName: string }, KnownErrors["VerificationCodeError"]>>,
     verifyEmail(code: string): Promise<Result<undefined, KnownErrors["VerificationCodeError"]>>,
-    signInWithMagicLink(code: string): Promise<Result<undefined, KnownErrors["VerificationCodeError"] | KnownErrors["InvalidTotpCode"]>>,
+    signInWithMagicLink(code: string, options?: { noRedirect?: boolean }): Promise<Result<undefined, KnownErrors["VerificationCodeError"] | KnownErrors["InvalidTotpCode"]>>,
 
     redirectToOAuthCallback(): Promise<void>,
 
     useUser(options: GetUserOptions<HasTokenStore> & { or: 'redirect' }): ProjectCurrentUser<ProjectId>,
     useUser(options: GetUserOptions<HasTokenStore> & { or: 'throw' }): ProjectCurrentUser<ProjectId>,
+    useUser(options: GetUserOptions<HasTokenStore> & { or: 'anonymous' }): ProjectCurrentUser<ProjectId>,
     useUser(options?: GetUserOptions<HasTokenStore>): ProjectCurrentUser<ProjectId> | null,
 
     getUser(options: GetUserOptions<HasTokenStore> & { or: 'redirect' }): Promise<ProjectCurrentUser<ProjectId>>,
     getUser(options: GetUserOptions<HasTokenStore> & { or: 'throw' }): Promise<ProjectCurrentUser<ProjectId>>,
+    getUser(options: GetUserOptions<HasTokenStore> & { or: 'anonymous' }): Promise<ProjectCurrentUser<ProjectId>>,
     getUser(options?: GetUserOptions<HasTokenStore>): Promise<ProjectCurrentUser<ProjectId> | null>,
 
-    useNavigate(): (to: string) => void,
+    useNavigate(): (to: string) => void, // THIS_LINE_PLATFORM react-like
 
     [stackAppInternalsSymbol]: {
       toClientJson(): StackClientAppJson<HasTokenStore, ProjectId>,

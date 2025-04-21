@@ -4,38 +4,43 @@
 //===========================================
 import { StackAdminInterface } from "@stackframe/stack-shared";
 import { getProductionModeErrors } from "@stackframe/stack-shared/dist/helpers/production-mode";
-import { ApiKeyCreateCrudResponse } from "@stackframe/stack-shared/dist/interface/adminInterface";
-import { ApiKeysCrud } from "@stackframe/stack-shared/dist/interface/crud/api-keys";
+import { InternalApiKeyCreateCrudResponse } from "@stackframe/stack-shared/dist/interface/adminInterface";
 import { EmailTemplateCrud, EmailTemplateType } from "@stackframe/stack-shared/dist/interface/crud/email-templates";
-import { InternalProjectsCrud } from "@stackframe/stack-shared/dist/interface/crud/projects";
+import { InternalApiKeysCrud } from "@stackframe/stack-shared/dist/interface/crud/internal-api-keys";
+import { ProjectsCrud } from "@stackframe/stack-shared/dist/interface/crud/projects";
 import { StackAssertionError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
 import { pick } from "@stackframe/stack-shared/dist/utils/objects";
 import { Result } from "@stackframe/stack-shared/dist/utils/results";
-import { ApiKey, ApiKeyBase, ApiKeyBaseCrudRead, ApiKeyCreateOptions, ApiKeyFirstView, apiKeyCreateOptionsToCrud } from "../../api-keys";
+import { AdminSentEmail } from "../..";
 import { EmailConfig, stackAppInternalsSymbol } from "../../common";
 import { AdminEmailTemplate, AdminEmailTemplateUpdateOptions, adminEmailTemplateUpdateOptionsToCrud } from "../../email-templates";
-import { AdminTeamPermission, AdminTeamPermissionDefinition, AdminTeamPermissionDefinitionCreateOptions, AdminTeamPermissionDefinitionUpdateOptions, adminTeamPermissionDefinitionCreateOptionsToCrud, adminTeamPermissionDefinitionUpdateOptionsToCrud } from "../../permissions";
+import { InternalApiKey, InternalApiKeyBase, InternalApiKeyBaseCrudRead, InternalApiKeyCreateOptions, InternalApiKeyFirstView, internalApiKeyCreateOptionsToCrud } from "../../internal-api-keys";
+import { AdminProjectPermission, AdminProjectPermissionDefinition, AdminProjectPermissionDefinitionCreateOptions, AdminProjectPermissionDefinitionUpdateOptions, AdminTeamPermission, AdminTeamPermissionDefinition, AdminTeamPermissionDefinitionCreateOptions, AdminTeamPermissionDefinitionUpdateOptions, adminProjectPermissionDefinitionCreateOptionsToCrud, adminProjectPermissionDefinitionUpdateOptionsToCrud, adminTeamPermissionDefinitionCreateOptionsToCrud, adminTeamPermissionDefinitionUpdateOptionsToCrud } from "../../permissions";
 import { AdminOwnedProject, AdminProject, AdminProjectUpdateOptions, adminProjectUpdateOptionsToCrud } from "../../projects";
 import { StackAdminApp, StackAdminAppConstructorOptions } from "../interfaces/admin-app";
 import { clientVersion, createCache, getBaseUrl, getDefaultProjectId, getDefaultPublishableClientKey, getDefaultSecretServerKey, getDefaultSuperSecretAdminKey } from "./common";
 import { _StackServerAppImplIncomplete } from "./server-app-impl";
 
 
-export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, ProjectId extends string> extends _StackServerAppImplIncomplete<HasTokenStore, ProjectId>
+export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, ProjectId extends string> extends _StackServerAppImplIncomplete<HasTokenStore, ProjectId> implements StackAdminApp<HasTokenStore, ProjectId>
 {
   declare protected _interface: StackAdminInterface;
 
   private readonly _adminProjectCache = createCache(async () => {
     return await this._interface.getProject();
   });
-  private readonly _apiKeysCache = createCache(async () => {
-    return await this._interface.listApiKeys();
+  private readonly _internalApiKeysCache = createCache(async () => {
+    const res = await this._interface.listInternalApiKeys();
+    return res;
   });
   private readonly _adminEmailTemplatesCache = createCache(async () => {
     return await this._interface.listEmailTemplates();
   });
   private readonly _adminTeamPermissionDefinitionsCache = createCache(async () => {
-    return await this._interface.listPermissionDefinitions();
+    return await this._interface.listTeamPermissionDefinitions();
+  });
+  private readonly _adminProjectPermissionDefinitionsCache = createCache(async () => {
+    return await this._interface.listProjectPermissionDefinitions();
   });
   private readonly _svixTokenCache = createCache(async () => {
     return await this._interface.getSvixToken();
@@ -49,6 +54,7 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
       interface: new StackAdminInterface({
         getBaseUrl: () => getBaseUrl(options.baseUrl),
         projectId: options.projectId ?? getDefaultProjectId(),
+        extraRequestHeaders: options.extraRequestHeaders ?? {},
         clientVersion,
         ..."projectOwnerSession" in options ? {
           projectOwnerSession: options.projectOwnerSession,
@@ -59,6 +65,7 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
         },
       }),
       baseUrl: options.baseUrl,
+      extraRequestHeaders: options.extraRequestHeaders,
       projectId: options.projectId,
       tokenStore: options.tokenStore,
       urls: options.urls,
@@ -67,7 +74,7 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
     });
   }
 
-  _adminOwnedProjectFromCrud(data: InternalProjectsCrud['Admin']['Read'], onRefresh: () => Promise<void>): AdminOwnedProject {
+  _adminOwnedProjectFromCrud(data: ProjectsCrud['Admin']['Read'], onRefresh: () => Promise<void>): AdminOwnedProject {
     if (this._tokenStoreInit !== null) {
       throw new StackAssertionError("Owned apps must always have tokenStore === null — did you not create this project with app._createOwnedApp()?");;
     }
@@ -77,7 +84,7 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
     };
   }
 
-  _adminProjectFromCrud(data: InternalProjectsCrud['Admin']['Read'], onRefresh: () => Promise<void>): AdminProject {
+  _adminProjectFromCrud(data: ProjectsCrud['Admin']['Read'], onRefresh: () => Promise<void>): AdminProject {
     if (data.id !== this.projectId) {
       throw new StackAssertionError(`The project ID of the provided project JSON (${data.id}) does not match the project ID of the app (${this.projectId})!`);
     }
@@ -99,6 +106,9 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
         clientTeamCreationEnabled: data.config.client_team_creation_enabled,
         clientUserDeletionEnabled: data.config.client_user_deletion_enabled,
         allowLocalhost: data.config.allow_localhost,
+        oauthAccountMergeStrategy: data.config.oauth_account_merge_strategy,
+        allowUserApiKeys: data.config.allow_user_api_keys,
+        allowTeamApiKeys: data.config.allow_team_api_keys,
         oauthProviders: data.config.oauth_providers.map((p) => ((p.type === 'shared' ? {
           id: p.id,
           enabled: p.enabled,
@@ -130,6 +140,7 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
         createTeamOnSignUp: data.config.create_team_on_sign_up,
         teamCreatorDefaultPermissions: data.config.team_creator_default_permissions,
         teamMemberDefaultPermissions: data.config.team_member_default_permissions,
+        userDefaultPermissions: data.config.user_default_permissions,
       },
 
       async update(update: AdminProjectUpdateOptions) {
@@ -165,7 +176,7 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
   }
 
 
-  protected _createApiKeyBaseFromCrud(data: ApiKeyBaseCrudRead): ApiKeyBase {
+  protected _createInternalApiKeyBaseFromCrud(data: InternalApiKeyBaseCrudRead): InternalApiKeyBase {
     const app = this;
     return {
       id: data.id,
@@ -182,41 +193,41 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
         return null;
       },
       async revoke() {
-        const res = await app._interface.revokeApiKeyById(data.id);
-        await app._refreshApiKeys();
+        const res = await app._interface.revokeInternalApiKeyById(data.id);
+        await app._refreshInternalApiKeys();
         return res;
       }
     };
   }
 
-  protected _createApiKeyFromCrud(data: ApiKeysCrud["Admin"]["Read"]): ApiKey {
+  protected _createInternalApiKeyFromCrud(data: InternalApiKeysCrud["Admin"]["Read"]): InternalApiKey {
     return {
-      ...this._createApiKeyBaseFromCrud(data),
+      ...this._createInternalApiKeyBaseFromCrud(data),
       publishableClientKey: data.publishable_client_key ? { lastFour: data.publishable_client_key.last_four } : null,
       secretServerKey: data.secret_server_key ? { lastFour: data.secret_server_key.last_four } : null,
       superSecretAdminKey: data.super_secret_admin_key ? { lastFour: data.super_secret_admin_key.last_four } : null,
     };
   }
 
-  protected _createApiKeyFirstViewFromCrud(data: ApiKeyCreateCrudResponse): ApiKeyFirstView {
+  protected _createInternalApiKeyFirstViewFromCrud(data: InternalApiKeyCreateCrudResponse): InternalApiKeyFirstView {
     return {
-      ...this._createApiKeyBaseFromCrud(data),
+      ...this._createInternalApiKeyBaseFromCrud(data),
       publishableClientKey: data.publishable_client_key,
       secretServerKey: data.secret_server_key,
       superSecretAdminKey: data.super_secret_admin_key,
     };
   }
 
-  async listApiKeys(): Promise<ApiKey[]> {
-    const crud = Result.orThrow(await this._apiKeysCache.getOrWait([], "write-only"));
-    return crud.map((j) => this._createApiKeyFromCrud(j));
+  async listInternalApiKeys(): Promise<InternalApiKey[]> {
+    const crud = Result.orThrow(await this._internalApiKeysCache.getOrWait([], "write-only"));
+    return crud.map((j) => this._createInternalApiKeyFromCrud(j));
   }
 
 
-  async createApiKey(options: ApiKeyCreateOptions): Promise<ApiKeyFirstView> {
-    const crud = await this._interface.createApiKey(apiKeyCreateOptionsToCrud(options));
-    await this._refreshApiKeys();
-    return this._createApiKeyFirstViewFromCrud(crud);
+  async createInternalApiKey(options: InternalApiKeyCreateOptions): Promise<InternalApiKeyFirstView> {
+    const crud = await this._interface.createInternalApiKey(internalApiKeyCreateOptionsToCrud(options));
+    await this._refreshInternalApiKeys();
+    return this._createInternalApiKeyFirstViewFromCrud(crud);
   }
 
   async listEmailTemplates(): Promise<AdminEmailTemplate[]> {
@@ -235,24 +246,46 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
   }
 
   async createTeamPermissionDefinition(data: AdminTeamPermissionDefinitionCreateOptions): Promise<AdminTeamPermission>{
-    const crud = await this._interface.createPermissionDefinition(adminTeamPermissionDefinitionCreateOptionsToCrud(data));
+    const crud = await this._interface.createTeamPermissionDefinition(adminTeamPermissionDefinitionCreateOptionsToCrud(data));
     await this._adminTeamPermissionDefinitionsCache.refresh([]);
     return this._serverTeamPermissionDefinitionFromCrud(crud);
   }
 
   async updateTeamPermissionDefinition(permissionId: string, data: AdminTeamPermissionDefinitionUpdateOptions) {
-    await this._interface.updatePermissionDefinition(permissionId, adminTeamPermissionDefinitionUpdateOptionsToCrud(data));
+    await this._interface.updateTeamPermissionDefinition(permissionId, adminTeamPermissionDefinitionUpdateOptionsToCrud(data));
     await this._adminTeamPermissionDefinitionsCache.refresh([]);
   }
 
   async deleteTeamPermissionDefinition(permissionId: string): Promise<void> {
-    await this._interface.deletePermissionDefinition(permissionId);
+    await this._interface.deleteTeamPermissionDefinition(permissionId);
     await this._adminTeamPermissionDefinitionsCache.refresh([]);
   }
 
   async listTeamPermissionDefinitions(): Promise<AdminTeamPermissionDefinition[]> {
     const crud = Result.orThrow(await this._adminTeamPermissionDefinitionsCache.getOrWait([], "write-only"));
     return crud.map((p) => this._serverTeamPermissionDefinitionFromCrud(p));
+  }
+
+
+  async createProjectPermissionDefinition(data: AdminProjectPermissionDefinitionCreateOptions): Promise<AdminProjectPermission> {
+    const crud = await this._interface.createProjectPermissionDefinition(adminProjectPermissionDefinitionCreateOptionsToCrud(data));
+    await this._adminProjectPermissionDefinitionsCache.refresh([]);
+    return this._serverProjectPermissionDefinitionFromCrud(crud);
+  }
+
+  async updateProjectPermissionDefinition(permissionId: string, data: AdminProjectPermissionDefinitionUpdateOptions) {
+    await this._interface.updateProjectPermissionDefinition(permissionId, adminProjectPermissionDefinitionUpdateOptionsToCrud(data));
+    await this._adminProjectPermissionDefinitionsCache.refresh([]);
+  }
+
+  async deleteProjectPermissionDefinition(permissionId: string): Promise<void> {
+    await this._interface.deleteProjectPermissionDefinition(permissionId);
+    await this._adminProjectPermissionDefinitionsCache.refresh([]);
+  }
+
+  async listProjectPermissionDefinitions(): Promise<AdminProjectPermissionDefinition[]> {
+    const crud = Result.orThrow(await this._adminProjectPermissionDefinitionsCache.getOrWait([], "write-only"));
+    return crud.map((p) => this._serverProjectPermissionDefinitionFromCrud(p));
   }
 
 
@@ -263,8 +296,8 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
     ]);
   }
 
-  protected async _refreshApiKeys() {
-    await this._apiKeysCache.refresh([]);
+  protected async _refreshInternalApiKeys() {
+    await this._internalApiKeysCache.refresh([]);
   }
 
   get [stackAppInternalsSymbol]() {
@@ -291,5 +324,17 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
     } else {
       return Result.error({ errorMessage: response.error_message ?? throwErr("Email test error not specified") });
     }
+  }
+
+  async listSentEmails(): Promise<AdminSentEmail[]> {
+    const response = await this._interface.listSentEmails();
+    return response.items.map((email) => ({
+      id: email.id,
+      to: email.to ?? [],
+      subject: email.subject,
+      recipient: email.to?.[0] ?? "",
+      sentAt: new Date(email.sent_at_millis),
+      error: email.error,
+    }));
   }
 }

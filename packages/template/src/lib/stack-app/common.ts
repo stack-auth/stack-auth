@@ -19,7 +19,7 @@ export type EmailConfig = {
 }
 
 export type RedirectMethod = "window"
-  | "nextjs" // THIS_LINE_PLATFORM next
+  | "nextjs" // THIS_LINE_PLATFORM next-like
   | "none"
   | {
     useNavigate: () => (to: string) => void,

@@ -213,6 +213,14 @@ withGeneratorLock(async () => {
 
   generateFromTemplate({
     src: srcDir,
+    dest: path.resolve(baseDir, "neon-next"),
+    editFn: (relativePath, content) => {
+      return baseEditFn({ relativePath, content, platforms: PLATFORMS["neon-next"] });
+    },
+  });
+
+  generateFromTemplate({
+    src: srcDir,
     dest: path.resolve(baseDir, "react"),
     editFn: (relativePath, content) => {
       return baseEditFn({ relativePath, content, platforms: PLATFORMS["react"] });
