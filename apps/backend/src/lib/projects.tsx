@@ -153,6 +153,11 @@ export async function createOrUpdateProject(
         .map((provider) => {
           return {
             type: provider.id,
+            isShared: provider.type === "shared",
+            clientId: provider.client_id,
+            clientSecret: provider.client_secret,
+            facebookConfigId: provider.facebook_config_id,
+            microsoftTenantId: provider.microsoft_tenant_id,
             allowSignIn: true,
             allowConnectedAccounts: true,
           } satisfies OrganizationRenderedConfig['auth']['oauth']['providers'][string];
