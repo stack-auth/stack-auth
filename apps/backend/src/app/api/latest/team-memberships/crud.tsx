@@ -19,19 +19,19 @@ export async function addUserToTeam(tx: PrismaTransaction, options: {
   userId: string,
   type: 'member' | 'creator',
 }) {
-  const result = await grantDefaultTeamPermissions(tx, {
-    tenancy: options.tenancy,
-    userId: options.userId,
-    teamId: options.teamId,
-    type: options.type,
-  });
-
-  const teamMember = await tx.teamMember.create({
+  await tx.teamMember.create({
     data: {
       projectUserId: options.userId,
       teamId: options.teamId,
       tenancyId: options.tenancy.id,
     },
+  });
+
+  const result = await grantDefaultTeamPermissions(tx, {
+    tenancy: options.tenancy,
+    userId: options.userId,
+    teamId: options.teamId,
+    type: options.type,
   });
 
   return {

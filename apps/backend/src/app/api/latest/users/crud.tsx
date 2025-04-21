@@ -520,22 +520,12 @@ export const usersCrudHandlers = createLazyProxy(() => createCrudHandlers(usersC
           }
           const oauthProvider = get(config.auth.oauth.providers, provider.id);
 
-          let authMethod;
-          if (oauthProvider.allowSignIn) {
-            authMethod = await tx.authMethod.create({
-              data: {
-                tenancyId: auth.tenancy.id,
-                projectUserId: newUser.projectUserId,
-                oauthAuthMethod: {
-                  create: {
-                    projectUserId: newUser.projectUserId,
-                    configOAuthProviderId: provider.id,
-                    providerAccountId: provider.account_id,
-                  },
-                },
-              }
-            });
-          }
+          const authMethod = await tx.authMethod.create({
+            data: {
+              tenancyId: auth.tenancy.id,
+              projectUserId: newUser.projectUserId,
+            }
+          });
 
           await tx.projectUserOAuthAccount.create({
             data: {
@@ -551,16 +541,12 @@ export const usersCrudHandlers = createLazyProxy(() => createCrudHandlers(usersC
                   }
                 }
               } : {},
-              ...authMethod ? {
-                oauthAuthMethod: {
-                  connect: {
-                    tenancyId_authMethodId: {
-                      tenancyId: auth.tenancy.id,
-                      authMethodId: authMethod.id || throwErr("authMethodConfig is set but authMethod is not"),
-                    },
-                  },
-                },
-              } : {},
+              oauthAuthMethod: {
+                create: {
+                  projectUserId: newUser.projectUserId,
+                  authMethodId: authMethod.id,
+                }
+              },
             }
           });
         }

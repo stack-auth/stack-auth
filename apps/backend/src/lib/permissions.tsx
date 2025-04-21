@@ -110,10 +110,10 @@ export async function grantTeamPermission(
       },
     },
     create: {
-      permissionId: options.permissionId,
-      teamId: options.teamId,
-      projectUserId: options.userId,
       tenancyId: options.tenancy.id,
+      projectUserId: options.userId,
+      teamId: options.teamId,
+      permissionId: options.permissionId,
     },
     update: {},
   });
