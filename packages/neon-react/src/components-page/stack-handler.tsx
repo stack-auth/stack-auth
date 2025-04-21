@@ -1,14 +1,16 @@
+
+//===========================================
+// THIS FILE IS AUTO-GENERATED FROM TEMPLATE. DO NOT EDIT IT DIRECTLY
+//===========================================
 import { StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
 import { FilterUndefined, filterUndefined, pick } from "@stackframe/stack-shared/dist/utils/objects";
 import { getRelativePart } from "@stackframe/stack-shared/dist/utils/urls";
-import { RedirectType, notFound, redirect } from 'next/navigation'; // THIS_LINE_PLATFORM next
 import { useMemo } from 'react';
 import { SignIn, SignUp, StackServerApp } from "..";
 import { IframePreventer } from "../components/iframe-preventer";
 import { MessageCard } from "../components/message-cards/message-card";
 import { HandlerUrls, StackClientApp } from "../lib/stack-app";
 import { AccountSettings } from "./account-settings";
-import { CliAuthConfirmation } from "./cli-auth-confirm";
 import { EmailVerification } from "./email-verification";
 import { ErrorPage } from "./error-page";
 import { ForgotPassword } from "./forgot-password";
@@ -30,7 +32,6 @@ type Components = {
   TeamInvitation: typeof TeamInvitation,
   ErrorPage: typeof ErrorPage,
   AccountSettings: typeof AccountSettings,
-  CliAuthConfirmation: typeof CliAuthConfirmation,
 };
 
 type RouteProps = {
@@ -51,7 +52,6 @@ const availablePaths = {
   magicLinkCallback: 'magic-link-callback',
   teamInvitation: 'team-invitation',
   accountSettings: 'account-settings',
-  cliAuthConfirm: 'cli-auth-confirm',
   error: 'error',
 } as const;
 
@@ -163,12 +163,6 @@ function renderComponent(props: {
         {...filterUndefinedINU(componentProps?.ErrorPage)}
       />;
     }
-    case availablePaths.cliAuthConfirm: {
-      return <CliAuthConfirmation
-        fullPage={fullPage}
-        {...filterUndefinedINU(componentProps?.CliAuthConfirmation)}
-      />;
-    }
     default: {
       if (Object.values(availablePaths).includes(path as any)) {
         throw new StackAssertionError(`Path alias ${path} not included in switch statement, but in availablePaths?`, { availablePaths });
@@ -184,78 +178,6 @@ function renderComponent(props: {
   }
 }
 
-// IF_PLATFORM next
-async function NextStackHandler<HasTokenStore extends boolean>(props: BaseHandlerProps & {
-  app: StackServerApp<HasTokenStore>,
-} & (
-  | Partial<RouteProps>
-  | {
-    routeProps: RouteProps | unknown,
-  }
-)): Promise<any> {
-  if (!("routeProps" in props)) {
-    console.warn(next15DeprecationWarning);
-  }
-
-  const routeProps = "routeProps" in props ? props.routeProps as RouteProps : pick(props, ["params", "searchParams"] as any);
-  const params = await routeProps.params;
-  const searchParams = await routeProps.searchParams;
-
-  if (!params?.stack) {
-    return (
-      <MessageCard title="Invalid Stack Handler Setup" fullPage={props.fullPage}>
-        <p>Can't use {"<StackHandler />"} at this location. Make sure that the file is in a folder called [...stack] and you are passing the routeProps prop.</p>
-      </MessageCard>
-    );
-  }
-
-  const path = params.stack.join('/');
-
-  const redirectIfNotHandler = (name: keyof HandlerUrls) => {
-    const url = props.app.urls[name];
-    const handlerUrl = props.app.urls.handler;
-
-    if (url !== handlerUrl && url.startsWith(handlerUrl + "/")) {
-      return;
-    }
-
-    const urlObj = new URL(url, "http://example.com");
-    if (searchParams) {
-      for (const [key, value] of Object.entries(searchParams)) {
-        urlObj.searchParams.set(key, value);
-      }
-    }
-
-    redirect(getRelativePart(urlObj), RedirectType.replace);
-  };
-
-  const result = renderComponent({
-    path,
-    searchParams: searchParams ?? {},
-    fullPage: props.fullPage,
-    componentProps: props.componentProps,
-    redirectIfNotHandler,
-    onNotFound: () => notFound(),
-    app: props.app,
-  });
-
-  if (result && 'redirect' in result) {
-    redirect(result.redirect, RedirectType.replace);
-  }
-
-  return <>
-    {process.env.NODE_ENV === "development" && !("routeProps" in props) && (
-      <span style={{ color: "red" }}>
-        {next15DeprecationWarning}. This warning will not be shown in production.
-      </span>
-    )}
-    <IframePreventer>
-      {result}
-    </IframePreventer>
-  </>;
-}
-
-// ELSE_IF_PLATFORM react-like
 
 function ReactStackHandler<HasTokenStore extends boolean>(props: BaseHandlerProps & {
   app: StackClientApp<HasTokenStore>,
@@ -324,15 +246,9 @@ function ReactStackHandler<HasTokenStore extends boolean>(props: BaseHandlerProp
   );
 }
 
-// END_PLATFORM
 
-// IF_PLATFORM next
-export default NextStackHandler;
-/* ELSE_IF_PLATFORM react-like
 export default ReactStackHandler;
-END_PLATFORM */
 
-// filter undefined values in object. if object itself is undefined, return undefined
 function filterUndefinedINU<T extends {}>(value: T | undefined): FilterUndefined<T> | undefined {
   return value === undefined ? value : filterUndefined(value);
 }

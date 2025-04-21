@@ -173,6 +173,38 @@ withGeneratorLock(async () => {
 
   generateFromTemplate({
     src: srcDir,
+    dest: path.resolve(baseDir, "neon-js"),
+    editFn: (relativePath, content) => {
+      return baseEditFn({ relativePath, content, platforms: PLATFORMS["neon-js"] });
+    },
+    filterFn: (relativePath) => {
+      const ignores = [
+        "postcss.config.js",
+        "tailwind.config.js",
+        "quetzal.config.json",
+        "components.json",
+        ".env",
+        ".env.local",
+        "scripts/",
+        "quetzal-translations/",
+        "src/components/",
+        "src/components-page/",
+        "src/generated/",
+        "src/providers/",
+        "src/global.css",
+        "src/global.d.ts",
+      ];
+
+      if (ignores.some((ignorePath) => relativePath.startsWith(ignorePath)) || relativePath.endsWith(".tsx")) {
+        return false;
+      } else {
+        return true;
+      }
+    },
+  });
+  
+  generateFromTemplate({
+    src: srcDir,
     dest: path.resolve(baseDir, "stack"),
     editFn: (relativePath, content) => {
       return baseEditFn({ relativePath, content, platforms: PLATFORMS["next"] });
@@ -184,6 +216,14 @@ withGeneratorLock(async () => {
     dest: path.resolve(baseDir, "react"),
     editFn: (relativePath, content) => {
       return baseEditFn({ relativePath, content, platforms: PLATFORMS["react"] });
+    },
+  });
+
+  generateFromTemplate({
+    src: srcDir,
+    dest: path.resolve(baseDir, "neon-react"),
+    editFn: (relativePath, content) => {
+      return baseEditFn({ relativePath, content, platforms: PLATFORMS["neon-react"] });
     },
   });
 }).catch(console.error);

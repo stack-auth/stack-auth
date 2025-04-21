@@ -1,20 +1,6 @@
 {
-  "//": "IF_PLATFORM template",
-  "name": "@stackframe/template",
-  "//": "ELSE_IF_PLATFORM js",
-  "name": "@stackframe/js",
-  "//": "ELSE_IF_PLATFORM next",
-  "name": "@stackframe/stack",
-  "//": "ELSE_IF_PLATFORM react",
-  "name": "@stackframe/react",
-  "//": "ELSE_IF_PLATFORM neon-react",
+  "//": "THIS FILE IS AUTO-GENERATED FROM TEMPLATE. DO NOT EDIT IT DIRECTLY",
   "name": "@stackframe/neon-react",
-  "//": "ELSE_IF_PLATFORM neon-js",
-  "name": "@stackframe/neon-js",
-  "//": "END_PLATFORM",
-  
-  "//": "NEXT_LINE_PLATFORM template",
-  "private": true,
   "version": "2.8.6",
   "sideEffects": false,
   "main": "./dist/index.js",
@@ -35,34 +21,16 @@
     "typecheck": "tsc --noEmit",
     "clean": "rimraf dist && rimraf node_modules",
     "lint": "eslint --ext .tsx,.ts .",
-
-    "//": "IF_PLATFORM template react-like",
     "build": "rimraf dist && pnpm run css && tsup-node",
-    "dev": "rimraf dist && concurrently -n \"build,codegen\" -k \"tsup-node --watch\" \"pnpm run codegen:watch\"",
+    "dev": "rimraf dist && concurrently -n \"build,codegen\" -k \"NODE_OPTIONS='--max_old_space_size=4096' tsup-node --watch\" \"pnpm run codegen:watch\"",
     "codegen": "pnpm run css",
-    "codegen:watch": "pnpm run css:watch"
-    ,"//": "ELSE_PLATFORM",
-    "build": "rimraf dist && tsup-node",
-    "dev": "rimraf dist && tsup-node --watch"
-    ,"//": "END_PLATFORM"
-
-    "//": "IF_PLATFORM template react-like",
-    ,"css": "pnpm run css-tw && pnpm run css-sc",
+    "codegen:watch": "pnpm run css:watch",
+    "css": "pnpm run css-tw && pnpm run css-sc",
     "css:watch": "concurrently -n \"tw,sc\" -k \"pnpm run css-tw:watch\" \"pnpm run css-sc:watch\"",
     "css-tw:watch": "tailwindcss -i ./src/global.css -o ./src/generated/tailwind.css --watch",
     "css-tw": "tailwindcss -i ./src/global.css -o ./src/generated/tailwind.css",
     "css-sc": "tsx ./scripts/process-css.ts ./src/generated/tailwind.css ./src/generated/global-css.ts",
     "css-sc:watch": "chokidar --silent './src/generated/tailwind.css' -c 'pnpm run css-sc' --throttle 2000"
-    ,"//": "END_PLATFORM"
-
-    "//": "IF_PLATFORM template",
-    ,"codegen": "pnpm run css && pnpm run quetzal",
-    "codegen:watch": "concurrently -n \"css,quetzal\" -k \"pnpm run css:watch\" \"pnpm run quetzal:watch\"",
-    "override-env-local-for-quetzal": "echo \"\\n$STACK_ENV_LOCAL_PACKAGE_BUILD_OVERRIDE_FOR_QUETZAL\\n\" >> .env.local",
-    "quetzal": "rimraf quetzal-translations && pnpm run override-env-local-for-quetzal && quetzal-process-translations && tsx ./scripts/merge-quetzal-translations.ts",
-    "quetzal:ignore-errors": "pnpm run quetzal || echo Quetzal failed, probably because the API key is missing. We will just ignore it",
-    "quetzal:watch": "chokidar --silent \"src/**/*\" -i \"src/generated/quetzal-translations.ts\" -c 'pnpm run quetzal:ignore-errors' --throttle 2000"
-    ,"//": "END_PLATFORM"
   },
   "files": [
     "README.md",
@@ -73,44 +41,30 @@
   "dependencies": {
     "@hookform/resolvers": "^3.3.4",
     "@simplewebauthn/browser": "^11.0.0",
-    "//": "NEXT_LINE_PLATFORM next",
-    "@stackframe/stack-sc": "workspace:*",
     "@stackframe/stack-shared": "workspace:*",
-    "//": "NEXT_LINE_PLATFORM react-like",
     "@stackframe/stack-ui": "workspace:*",
-    "@tanstack/react-table": "^8.20.5",
-    "//": "NEXT_LINE_PLATFORM react-like",
     "browser-image-compression": "^2.0.2",
     "color": "^4.2.3",
     "cookie": "^0.6.0",
     "jose": "^5.2.2",
     "js-cookie": "^3.0.5",
-    "//": "NEXT_LINE_PLATFORM react-like",
     "lucide-react": "^0.378.0",
     "oauth4webapi": "^2.10.3",
-    "@oslojs/otp": "^1.1.0",
+    "oslo": "^1.2.1",
     "qrcode": "^1.5.4",
-    "//": "NEXT_LINE_PLATFORM react-like",
     "react-avatar-editor": "^13.0.2",
-    "//": "NEXT_LINE_PLATFORM react-like",
     "react-hook-form": "^7.51.4",
     "rimraf": "^5.0.5",
-    "//": "NEXT_LINE_PLATFORM react-like",
     "tailwindcss-animate": "^1.0.7",
     "tsx": "^4.7.2",
     "yup": "^1.4.0"
   },
-  "//": "IF_PLATFORM react-like",
   "peerDependencies": {
     "@types/react": ">=18.2 || >=19.0.0-rc.0",
     "@types/react-dom": ">=18.2 || >=19.0.0-rc.0",
-    "//": "NEXT_LINE_PLATFORM next",
-    "next": ">=14.1 || >=15.0.0-canary.0 || >=15.0.0-rc.0",
     "react": ">=18.2 || >=19.0.0-rc.0",
     "react-dom": ">=18.2 || >=19.0.0-rc.0"
   },
-  "//": "END_PLATFORM",
-  "//": "IF_PLATFORM react-like",
   "peerDependenciesMeta": {
     "@types/react": {
       "optional": true
@@ -119,7 +73,6 @@
       "optional": true
     }
   },
-  "//": "END_PLATFORM",
   "devDependencies": {
     "@quetzallabs/i18n": "^0.1.19",
     "@types/color": "^3.0.6",
@@ -132,12 +85,9 @@
     "esbuild": "^0.20.2",
     "i18next": "^23.14.0",
     "i18next-parser": "^9.0.2",
-    "//": "NEXT_LINE_PLATFORM next",
-    "next": "^14.1.0",
     "postcss": "^8.4.38",
     "postcss-nested": "^6.0.1",
     "react": "^18.2.0",
-    "//": "NEXT_LINE_PLATFORM react-like",
     "react-dom": "^18.2.0",
     "rimraf": "^5.0.5",
     "tailwindcss": "^3.4.4",

@@ -1,0 +1,67 @@
+{
+  "//": "THIS FILE IS AUTO-GENERATED FROM TEMPLATE. DO NOT EDIT IT DIRECTLY",
+  "name": "@stackframe/neon-js",
+  "version": "2.8.6",
+  "sideEffects": false,
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": {
+        "default": "./dist/esm/index.js"
+      },
+      "require": {
+        "default": "./dist/index.js"
+      }
+    }
+  },
+  "homepage": "https://stack-auth.com",
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "clean": "rimraf dist && rimraf node_modules",
+    "lint": "eslint --ext .tsx,.ts .",
+    "build": "rimraf dist && tsup-node",
+    "dev": "rimraf dist && tsup-node --watch"
+  },
+  "files": [
+    "README.md",
+    "dist",
+    "CHANGELOG.md",
+    "LICENSE"
+  ],
+  "dependencies": {
+    "@hookform/resolvers": "^3.3.4",
+    "@simplewebauthn/browser": "^11.0.0",
+    "@stackframe/stack-shared": "workspace:*",
+    "color": "^4.2.3",
+    "cookie": "^0.6.0",
+    "jose": "^5.2.2",
+    "js-cookie": "^3.0.5",
+    "oauth4webapi": "^2.10.3",
+    "oslo": "^1.2.1",
+    "qrcode": "^1.5.4",
+    "rimraf": "^5.0.5",
+    "tsx": "^4.7.2",
+    "yup": "^1.4.0"
+  },
+  "devDependencies": {
+    "@quetzallabs/i18n": "^0.1.19",
+    "@types/color": "^3.0.6",
+    "@types/cookie": "^0.6.0",
+    "@types/js-cookie": "^3.0.6",
+    "@types/qrcode": "^1.5.5",
+    "@types/react-avatar-editor": "^13.0.3",
+    "autoprefixer": "^10.4.17",
+    "chokidar-cli": "^3.0.0",
+    "esbuild": "^0.20.2",
+    "i18next": "^23.14.0",
+    "i18next-parser": "^9.0.2",
+    "postcss": "^8.4.38",
+    "postcss-nested": "^6.0.1",
+    "react": "^18.2.0",
+    "rimraf": "^5.0.5",
+    "tailwindcss": "^3.4.4",
+    "tsup": "^8.0.2"
+  }
+}

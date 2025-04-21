@@ -1,3 +1,7 @@
+
+//===========================================
+// THIS FILE IS AUTO-GENERATED FROM TEMPLATE. DO NOT EDIT IT DIRECTLY
+//===========================================
 /** @type {import('tailwindcss').Config} */
 module.exports = {
   darkMode: ["selector", 'html:has(head > [data-stack-theme="dark"])'],

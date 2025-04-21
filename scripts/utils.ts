@@ -8,7 +8,9 @@ export const COMMENT_BLOCK = `\n//===========================================\n/
 export const PLATFORMS = {
   "next": ['next', 'react-like', 'js-like'],
   "js": ['js', 'js-like'],
+  "neon-js": ['js-like', 'neon-js'],
   "react": ['react', 'react-like', 'js-like'],
+  "neon-react": ['react-like', 'neon-react', 'js-like'],
   "template": ['template', 'react-like', 'next', 'js', 'js-like', 'python-like'],
   "python": ['python', 'python-like'],
 }
