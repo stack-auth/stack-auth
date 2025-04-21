@@ -46,7 +46,6 @@ async function seed() {
           oauth_providers: oauthProviderIds.map((id) => ({
             id: id as any,
             type: 'shared',
-            enabled: true,
           })),
           sign_up_enabled: signUpEnabled,
           credential_enabled: true,
@@ -250,7 +249,6 @@ async function seed() {
             oauth_providers: oauthProviderIds.map((id) => ({
               id: id as any,
               type: 'shared',
-              enabled: true,
             })),
           }
         }

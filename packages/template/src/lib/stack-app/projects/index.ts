@@ -49,7 +49,6 @@ export function adminProjectUpdateOptionsToCrud(options: AdminProjectUpdateOptio
       })),
       oauth_providers: options.config?.oauthProviders?.map((p) => ({
         id: p.id as any,
-        enabled: p.enabled,
         type: p.type,
         ...(p.type === 'standard' && {
           client_id: p.clientId,

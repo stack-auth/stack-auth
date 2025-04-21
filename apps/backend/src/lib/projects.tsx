@@ -135,8 +135,18 @@ export async function createOrUpdateProject(
         throw new KnownErrors.ProjectNotFound(options.projectId);
       }
 
-      project = projectFound;
+      await tx.project.update({
+        where: {
+          id: projectFound.id,
+        },
+        data: {
+          displayName: options.data.display_name,
+          description: options.data.description === null ? "" : options.data.description,
+          isProductionMode: options.data.is_production_mode,
+        },
+      });
 
+      project = projectFound;
       tenancyId = (await getSoleTenancyFromProject(projectFound.id)).id;
     }
 
