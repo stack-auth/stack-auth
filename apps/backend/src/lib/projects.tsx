@@ -187,7 +187,7 @@ export async function createOrUpdateProject(
 
     if (options.type === "create") {
       newConfigOverride['rbac.permissions'] = {
-        'member': {
+        'team_member': {
           description: "Default permission for team members",
           scope: "team",
           containedPermissionIds: {
@@ -207,6 +207,9 @@ export async function createOrUpdateProject(
           },
         }
       } satisfies OrganizationRenderedConfig['rbac']['permissions'];
+
+      newConfigOverride['rbac.defaultPermissions.teamCreator'] = { 'team_admin': true };
+      newConfigOverride['rbac.defaultPermissions.teamMember'] = { 'team_member': true };
     }
 
     const oldConfigOverride = project.environmentConfigOverrides.find((override) => override.branchId === options.branchId)?.config as EnvironmentConfigOverride | undefined;
