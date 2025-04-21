@@ -766,7 +766,6 @@ it("updates the project oauth configuration", async ({ expect }) => {
       oauth_providers: [{
         id: "google",
         type: "shared",
-        enabled: true,
       }]
     },
   });
@@ -818,7 +817,6 @@ it("updates the project oauth configuration", async ({ expect }) => {
       oauth_providers: [{
         id: "google",
         type: "shared",
-        enabled: true,
       }]
     },
   });
@@ -870,7 +868,6 @@ it("updates the project oauth configuration", async ({ expect }) => {
       oauth_providers: [{
         id: "google",
         type: "standard",
-        enabled: true,
         client_id: "client_id",
         client_secret: "client_secret",
       }]
@@ -926,7 +923,6 @@ it("updates the project oauth configuration", async ({ expect }) => {
       oauth_providers: [{
         id: "spotify",
         type: "shared",
-        enabled: true,
       }]
     },
   });
@@ -945,12 +941,10 @@ it("updates the project oauth configuration", async ({ expect }) => {
         {
           id: "spotify",
           type: "shared",
-          enabled: true,
         },
         {
           id: "google",
           type: "shared",
-          enabled: true,
         }
       ]
     },
@@ -1012,12 +1006,10 @@ it("updates the project oauth configuration", async ({ expect }) => {
         {
           id: "spotify",
           type: "shared",
-          enabled: true,
         },
         {
           id: "google",
           type: "shared",
-          enabled: false,
         }
       ]
     },
@@ -1174,12 +1166,10 @@ it("deletes a project with users, teams, and permissions", async ({ expect }) =>
         {
           id: "google",
           type: "shared",
-          enabled: true,
         },
         {
           id: "spotify",
           type: "standard",
-          enabled: true,
           client_id: "client_id",
           client_secret: "client_secret",
         }

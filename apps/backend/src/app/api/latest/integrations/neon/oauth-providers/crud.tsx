@@ -1,5 +1,4 @@
 import { createOrUpdateProject } from "@/lib/projects";
-import { Tenancy } from "@/lib/tenancies";
 import { createCrudHandlers } from "@/route-handlers/crud-handler";
 import { createCrud } from "@stackframe/stack-shared/dist/crud";
 import * as schemaFields from "@stackframe/stack-shared/dist/schema-fields";
@@ -69,13 +68,6 @@ const oauthProvidersCrud = createCrud({
   },
 });
 
-const getProvider = (tenancy: Tenancy, id: string, enabledRequired: boolean) => {
-  return tenancy.config.oauth_providers
-    .filter(provider => enabledRequired ? provider.enabled : true)
-    .find(provider => provider.id === id);
-};
-
-
 export const oauthProvidersCrudHandlers = createLazyProxy(() => createCrudHandlers(oauthProvidersCrud, {
   paramsSchema: yupObject({
     oauth_provider_id: schemaFields.oauthIdSchema.defined(),
@@ -96,7 +88,6 @@ export const oauthProvidersCrudHandlers = createLazyProxy(() => createCrudHandle
             {
               id: data.id,
               type: data.type ?? 'shared',
-              enabled: true,
               client_id: data.client_id,
               client_secret: data.client_secret,
             }
@@ -131,7 +122,7 @@ export const oauthProvidersCrudHandlers = createLazyProxy(() => createCrudHandle
   },
   onList: async ({ auth }) => {
     return {
-      items: auth.tenancy.config.oauth_providers.filter(provider => provider.enabled),
+      items: auth.tenancy.config.oauth_providers,
       is_paginated: false,
     };
   },

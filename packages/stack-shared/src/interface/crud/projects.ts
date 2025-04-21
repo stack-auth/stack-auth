@@ -8,21 +8,14 @@ const teamPermissionSchema = yupObject({
 
 const oauthProviderSchema = yupObject({
   id: schemaFields.oauthIdSchema.defined(),
-  enabled: schemaFields.oauthEnabledSchema.defined(),
   type: schemaFields.oauthTypeSchema.defined(),
   client_id: schemaFields.yupDefinedAndNonEmptyWhen(
     schemaFields.oauthClientIdSchema,
-    {
-      type: 'standard',
-      enabled: true,
-    },
+    { type: 'standard' },
   ),
   client_secret: schemaFields.yupDefinedAndNonEmptyWhen(
     schemaFields.oauthClientSecretSchema,
-    {
-      type: 'standard',
-      enabled: true,
-    },
+    { type: 'standard' },
   ),
 
   // extra params

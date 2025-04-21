@@ -149,7 +149,6 @@ export async function createOrUpdateProject(
       'auth.passkey.allowSignIn': dataOptions.passkey_enabled,
       'auth.oauth.accountMergeStrategy': dataOptions.oauth_account_merge_strategy,
       'auth.oauth.providers': dataOptions.oauth_providers ? dataOptions.oauth_providers
-        .filter((provider) => provider.enabled)
         .map((provider) => {
           return {
             type: provider.id,

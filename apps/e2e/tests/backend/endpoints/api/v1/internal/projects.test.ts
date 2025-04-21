@@ -157,14 +157,6 @@ it("creates a new project with different configurations", async ({ expect }) => 
         {
           id: "google",
           type: "shared",
-          enabled: true,
-        },
-        {
-          id: "spotify",
-          type: "standard",
-          enabled: false,
-          client_id: "client_id",
-          client_secret: "client_secret",
         }
       ]
     },
@@ -188,7 +180,6 @@ it("creates a new project with different configurations", async ({ expect }) => 
           "oauth_account_merge_strategy": "link_method",
           "oauth_providers": [
             {
-              "enabled": true,
               "id": "google",
               "type": "shared",
             },

@@ -40,12 +40,10 @@ export const POST = createSmartRouteHandler({
             {
               id: "google",
               type: "shared",
-              enabled: true,
             },
             {
               id: "github",
               type: "shared",
-              enabled: true,
             },
           ],
         },
