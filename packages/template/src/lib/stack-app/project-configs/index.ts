@@ -59,7 +59,6 @@ export type AdminDomainConfig = {
 
 export type AdminOAuthProviderConfig = {
   id: string,
-  enabled: boolean,
 } & (
   | { type: 'shared' }
   | {
