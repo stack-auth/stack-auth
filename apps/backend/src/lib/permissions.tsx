@@ -1,7 +1,7 @@
 import { rawQuery } from "@/prisma-client";
 import { KnownErrors } from "@stackframe/stack-shared";
 import { override } from "@stackframe/stack-shared/dist/config/format";
-import { EnvironmentConfigOverride, OrganizationRenderedConfig } from "@stackframe/stack-shared/dist/config/schema";
+import { OrganizationRenderedConfig } from "@stackframe/stack-shared/dist/config/schema";
 import { ProjectPermissionsCrud } from "@stackframe/stack-shared/dist/interface/crud/project-permissions";
 import { TeamPermissionDefinitionsCrud, TeamPermissionsCrud } from "@stackframe/stack-shared/dist/interface/crud/team-permissions";
 import { groupBy } from "@stackframe/stack-shared/dist/utils/arrays";
@@ -187,19 +187,6 @@ export async function createPermissionDefinition(
     },
   }
 ) {
-  const dbOverride = await tx.environmentConfigOverride.findUnique({
-    where: {
-      projectId_branchId: {
-        projectId: options.tenancy.project.id,
-        branchId: options.tenancy.branchId,
-      }
-    }
-  });
-
-  if (!dbOverride) {
-    throw new StackAssertionError(`Couldn't find config override`, { tenancy: options.tenancy });
-  }
-
   const oldConfig = await rawQuery(getRenderedOrganizationConfigQuery({
     projectId: options.tenancy.project.id,
     branchId: options.tenancy.branchId,
@@ -263,19 +250,6 @@ export async function updatePermissionDefinition(
     },
   }
 ) {
-  const dbOverride = await tx.environmentConfigOverride.findUnique({
-    where: {
-      projectId_branchId: {
-        projectId: options.tenancy.project.id,
-        branchId: options.tenancy.branchId,
-      }
-    }
-  });
-
-  if (!dbOverride) {
-    throw new StackAssertionError(`Couldn't find config override`, { tenancy: options.tenancy });
-  }
-
   const oldConfig = await rawQuery(getRenderedOrganizationConfigQuery({
     projectId: options.tenancy.project.id,
     branchId: options.tenancy.branchId,
@@ -331,32 +305,25 @@ export async function updatePermissionDefinition(
   });
 
   // update permissions for all users/teams
-  switch (options.scope) {
-    case "team": {
-      await tx.teamMemberDirectPermission.updateMany({
-        where: {
-          tenancyId: options.tenancy.id,
-          permissionId: options.oldId,
-        },
-        data: {
-          permissionId: options.data.id,
-        },
-      });
-      break;
-    }
-    case "project": {
-      await tx.projectUserDirectPermission.updateMany({
-        where: {
-          tenancyId: options.tenancy.id,
-          permissionId: options.oldId,
-        },
-        data: {
-          permissionId: options.data.id,
-        },
-      });
-      break;
-    }
-  }
+  await tx.teamMemberDirectPermission.updateMany({
+    where: {
+      tenancyId: options.tenancy.id,
+      permissionId: options.oldId,
+    },
+    data: {
+      permissionId: options.data.id,
+    },
+  });
+
+  await tx.projectUserDirectPermission.updateMany({
+    where: {
+      tenancyId: options.tenancy.id,
+      permissionId: options.oldId,
+    },
+    data: {
+      permissionId: options.data.id,
+    },
+  });
 
   return {
     id: options.data.id,
@@ -368,33 +335,24 @@ export async function updatePermissionDefinition(
 export async function deletePermissionDefinition(
   tx: PrismaTransaction,
   options: {
+    scope: "team" | "project",
     tenancy: Tenancy,
     permissionId: string,
   }
 ) {
-  const dbOverride = await tx.environmentConfigOverride.findUnique({
-    where: {
-      projectId_branchId: {
-        projectId: options.tenancy.project.id,
-        branchId: options.tenancy.branchId,
-      }
-    }
-  });
+  const oldConfig = await rawQuery(getRenderedOrganizationConfigQuery({
+    projectId: options.tenancy.project.id,
+    branchId: options.tenancy.branchId,
+    organizationId: options.tenancy.organization?.id || null,
+  }));
 
-  if (!dbOverride) {
-    throw new StackAssertionError(`Couldn't find config override`, { tenancy: options.tenancy });
-  }
+  const existingPermission = oldConfig.rbac.permissions[options.permissionId] as OrganizationRenderedConfig['rbac']['permissions'][string] | undefined;
 
-  const configOverride = dbOverride.config as unknown as EnvironmentConfigOverride;
-  const configKey = `rbac.permissions.${options.permissionId}`;
-
-  if (!configOverride[configKey]) {
+  if (!existingPermission || existingPermission.scope !== options.scope) {
     throw new KnownErrors.PermissionNotFound(options.permissionId);
   }
 
-  // Remove the permission definition from the config
-  delete configOverride[configKey];
-
+  // Remove the permission from the config and update other permissions' containedPermissionIds
   await tx.environmentConfigOverride.update({
     where: {
       projectId_branchId: {
@@ -403,10 +361,39 @@ export async function deletePermissionDefinition(
       }
     },
     data: {
-      config: configOverride,
+      config: override(
+        oldConfig,
+        {
+          "rbac.permissions": typedFromEntries(
+            typedEntries(oldConfig.rbac.permissions)
+              .filter(([id]) => id !== options.permissionId)
+              .map(([id, p]) => [id, {
+                ...p,
+                containedPermissionIds: typedFromEntries(
+                  typedEntries(p.containedPermissionIds || {})
+                    .filter(([containedId]) => containedId !== options.permissionId)
+                )
+              }])
+          )
+        }
+      )
     }
   });
 
+  // Remove all direct permissions for this permission ID
+  await tx.teamMemberDirectPermission.deleteMany({
+    where: {
+      tenancyId: options.tenancy.id,
+      permissionId: options.permissionId,
+    },
+  });
+
+  await tx.projectUserDirectPermission.deleteMany({
+    where: {
+      tenancyId: options.tenancy.id,
+      permissionId: options.permissionId,
+    },
+  });
 }
 
 export async function grantProjectPermission(

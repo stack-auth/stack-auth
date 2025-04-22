@@ -32,6 +32,7 @@ export const projectPermissionDefinitionsCrudHandlers = createLazyProxy(() => cr
   async onDelete({ auth, params }) {
     return await retryTransaction(async (tx) => {
       await deletePermissionDefinition(tx, {
+        scope: "project",
         tenancy: auth.tenancy,
         permissionId: params.permission_id
       });
