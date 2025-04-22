@@ -204,13 +204,6 @@ it("creates, updates, and delete a new team permission", async ({ expect }) => {
           },
           {
             "contained_permission_ids": [
-              "$read_members",
-              "p1",
-            ],
-            "id": "p2",
-          },
-          {
-            "contained_permission_ids": [
               "$update_team",
               "p1",
             ],
@@ -312,13 +305,6 @@ it("creates, updates, and delete a new team permission", async ({ expect }) => {
           {
             "contained_permission_ids": [],
             "id": "p1",
-          },
-          {
-            "contained_permission_ids": [
-              "$read_members",
-              "p1",
-            ],
-            "id": "p2",
           },
           {
             "contained_permission_ids": [
