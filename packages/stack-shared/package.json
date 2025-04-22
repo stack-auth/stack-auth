@@ -21,11 +21,21 @@
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
-      "default": "./dist/index.js"
+      "require": {
+        "default": "./dist/index.js"
+      },
+      "import": {
+        "default": "./dist/esm/index.js"
+      }
     },
     "./dist/*": {
       "types": "./dist/*.d.ts",
-      "default": "./dist/*.js"
+      "require": {
+        "default": "./dist/*.js"
+      },
+      "import": {
+        "default": "./dist/esm/*.js"
+      }
     }
   },
   "peerDependencies": {
