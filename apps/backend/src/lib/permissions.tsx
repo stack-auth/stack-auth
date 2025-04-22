@@ -175,7 +175,7 @@ export async function listPermissionDefinitions(
   ].sort((a, b) => stringCompare(a.id, b.id));
 }
 
-export async function createOrUpdatePermissionDefinition(
+export async function createPermissionDefinition(
   tx: PrismaTransaction,
   options: {
     scope: "team" | "project",
@@ -185,12 +185,7 @@ export async function createOrUpdatePermissionDefinition(
       description?: string,
       contained_permission_ids?: string[],
     },
-  } & ({
-    type: "update",
-    oldId: string,
-  } | {
-    type: "create",
-  })
+  }
 ) {
   const dbOverride = await tx.environmentConfigOverride.findUnique({
     where: {
@@ -210,19 +205,91 @@ export async function createOrUpdatePermissionDefinition(
     branchId: options.tenancy.branchId,
     organizationId: options.tenancy.organization?.id || null,
   }));
-  const configKey = `rbac.permissions.${options.data.id}`;
 
-  const existingPermission = oldConfig.rbac.permissions[options.type === 'update' ? options.oldId : options.data.id] as OrganizationRenderedConfig['rbac']['permissions'][string] | undefined;
+  const existingPermission = oldConfig.rbac.permissions[options.data.id] as OrganizationRenderedConfig['rbac']['permissions'][string] | undefined;
+  const allIds = Object.keys(oldConfig.rbac.permissions)
+    .filter(id => oldConfig.rbac.permissions[id].scope === options.scope)
+    .concat(Object.keys(options.scope === "team" ? teamSystemPermissionMap : {}));
 
-  if (options.type === "create" && existingPermission) {
+  if (existingPermission) {
     throw new KnownErrors.PermissionIdAlreadyExists(options.data.id);
   }
-  if (options.type === "update" && !existingPermission) {
+
+  if (allIds.some(id => !allIds.includes(id))) {
+    throw new KnownErrors.ContainedPermissionNotFound(allIds.find(id => !allIds.includes(id))!);
+  }
+
+  await tx.environmentConfigOverride.update({
+    where: {
+      projectId_branchId: {
+        projectId: options.tenancy.project.id,
+        branchId: options.tenancy.branchId,
+      }
+    },
+    data: {
+      config: override(
+        oldConfig,
+        {
+          "rbac.permissions": {
+            ...oldConfig.rbac.permissions,
+            [options.data.id]: {
+              description: getDescription(options.data.id, options.data.description),
+              scope: options.scope,
+              containedPermissionIds: typedFromEntries((options.data.contained_permission_ids ?? []).map(id => [id, true]))
+            },
+          },
+        },
+      )
+    }
+  });
+
+  return {
+    id: options.data.id,
+    description: getDescription(options.data.id, options.data.description),
+    contained_permission_ids: options.data.contained_permission_ids?.sort(stringCompare) || [],
+  };
+}
+
+export async function updatePermissionDefinition(
+  tx: PrismaTransaction,
+  options: {
+    scope: "team" | "project",
+    tenancy: Tenancy,
+    oldId: string,
+    data: {
+      id: string,
+      description?: string,
+      contained_permission_ids?: string[],
+    },
+  }
+) {
+  const dbOverride = await tx.environmentConfigOverride.findUnique({
+    where: {
+      projectId_branchId: {
+        projectId: options.tenancy.project.id,
+        branchId: options.tenancy.branchId,
+      }
+    }
+  });
+
+  if (!dbOverride) {
+    throw new StackAssertionError(`Couldn't find config override`, { tenancy: options.tenancy });
+  }
+
+  const oldConfig = await rawQuery(getRenderedOrganizationConfigQuery({
+    projectId: options.tenancy.project.id,
+    branchId: options.tenancy.branchId,
+    organizationId: options.tenancy.organization?.id || null,
+  }));
+
+  const existingPermission = oldConfig.rbac.permissions[options.oldId] as OrganizationRenderedConfig['rbac']['permissions'][string] | undefined;
+
+  if (!existingPermission) {
     throw new KnownErrors.PermissionNotFound(options.oldId);
   }
 
   // check if the target new id already exists
-  if (options.type === "update" && options.data.id !== options.oldId && oldConfig.rbac.permissions[options.data.id] as any !== undefined) {
+  if (options.data.id !== options.oldId && oldConfig.rbac.permissions[options.data.id] as any !== undefined) {
     throw new KnownErrors.PermissionIdAlreadyExists(options.data.id);
   }
 
@@ -237,43 +304,57 @@ export async function createOrUpdatePermissionDefinition(
       config: override(
         oldConfig,
         {
-          [configKey]: {
-            description: getDescription(options.data.id, options.data.description),
-            scope: options.scope,
-            containedPermissionIds: typedFromEntries((options.data.contained_permission_ids ?? []).map(id => [id, true]))
-          } satisfies OrganizationRenderedConfig['rbac']['permissions'][string]
+          "rbac.permissions": {
+            ...typedFromEntries(
+              typedEntries(oldConfig.rbac.permissions)
+                .filter(([id]) => id !== options.oldId)
+                .map(([id, p]) => [id, {
+                  ...p,
+                  containedPermissionIds: typedFromEntries(typedEntries(p.containedPermissionIds || {}).map(([id]) => {
+                    if (id === options.oldId) {
+                      return [options.data.id, true];
+                    } else {
+                      return [id, true];
+                    }
+                  }))
+                }])
+            ),
+            [options.data.id]: {
+              description: getDescription(options.data.id, options.data.description),
+              scope: options.scope,
+              containedPermissionIds: typedFromEntries((options.data.contained_permission_ids ?? []).map(id => [id, true]))
+            }
+          }
         },
       )
     }
   });
 
   // update permissions for all users/teams
-  if (options.type === "update") {
-    switch (options.scope) {
-      case "team": {
-        await tx.teamMemberDirectPermission.updateMany({
-          where: {
-            tenancyId: options.tenancy.id,
-            permissionId: options.oldId,
-          },
-          data: {
-            permissionId: options.data.id,
-          },
-        });
-        break;
-      }
-      case "project": {
-        await tx.projectUserDirectPermission.updateMany({
-          where: {
-            tenancyId: options.tenancy.id,
-            permissionId: options.oldId,
-          },
-          data: {
-            permissionId: options.data.id,
-          },
-        });
-        break;
-      }
+  switch (options.scope) {
+    case "team": {
+      await tx.teamMemberDirectPermission.updateMany({
+        where: {
+          tenancyId: options.tenancy.id,
+          permissionId: options.oldId,
+        },
+        data: {
+          permissionId: options.data.id,
+        },
+      });
+      break;
+    }
+    case "project": {
+      await tx.projectUserDirectPermission.updateMany({
+        where: {
+          tenancyId: options.tenancy.id,
+          permissionId: options.oldId,
+        },
+        data: {
+          permissionId: options.data.id,
+        },
+      });
+      break;
     }
   }
 

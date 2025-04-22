@@ -199,6 +199,24 @@ it("creates, updates, and delete a new team permission", async ({ expect }) => {
             "id": "$update_team",
           },
           {
+            "contained_permission_ids": [],
+            "id": "p1",
+          },
+          {
+            "contained_permission_ids": [
+              "$read_members",
+              "p1",
+            ],
+            "id": "p2",
+          },
+          {
+            "contained_permission_ids": [
+              "$update_team",
+              "p1",
+            ],
+            "id": "p3",
+          },
+          {
             "contained_permission_ids": [
               "$delete_team",
               "$invite_members",
@@ -207,8 +225,8 @@ it("creates, updates, and delete a new team permission", async ({ expect }) => {
               "$remove_members",
               "$update_team",
             ],
-            "description": "Default permission for team creators",
-            "id": "admin",
+            "description": "Default permission for team admins",
+            "id": "team_admin",
           },
           {
             "contained_permission_ids": [
@@ -216,18 +234,7 @@ it("creates, updates, and delete a new team permission", async ({ expect }) => {
               "$read_members",
             ],
             "description": "Default permission for team members",
-            "id": "member",
-          },
-          {
-            "contained_permission_ids": [],
-            "id": "p1",
-          },
-          {
-            "contained_permission_ids": [
-              "$update_team",
-              "p1",
-            ],
-            "id": "p3",
+            "id": "team_member",
           },
         ],
       },
@@ -245,9 +252,16 @@ it("creates, updates, and delete a new team permission", async ({ expect }) => {
   });
   expect(response5).toMatchInlineSnapshot(`
     NiceResponse {
-      "status": 200,
-      "body": { "success": true },
-      "headers": Headers { <some fields may have been hidden> },
+      "status": 404,
+      "body": {
+        "code": "PERMISSION_NOT_FOUND",
+        "details": { "permission_id": "p1" },
+        "error": "Permission \\"p1\\" not found. Make sure you created it on the dashboard.",
+      },
+      "headers": Headers {
+        "x-stack-known-error": "PERMISSION_NOT_FOUND",
+        <some fields may have been hidden>,
+      },
     }
   `);
 
@@ -296,6 +310,24 @@ it("creates, updates, and delete a new team permission", async ({ expect }) => {
             "id": "$update_team",
           },
           {
+            "contained_permission_ids": [],
+            "id": "p1",
+          },
+          {
+            "contained_permission_ids": [
+              "$read_members",
+              "p1",
+            ],
+            "id": "p2",
+          },
+          {
+            "contained_permission_ids": [
+              "$update_team",
+              "p1",
+            ],
+            "id": "p3",
+          },
+          {
             "contained_permission_ids": [
               "$delete_team",
               "$invite_members",
@@ -304,8 +336,8 @@ it("creates, updates, and delete a new team permission", async ({ expect }) => {
               "$remove_members",
               "$update_team",
             ],
-            "description": "Default permission for team creators",
-            "id": "admin",
+            "description": "Default permission for team admins",
+            "id": "team_admin",
           },
           {
             "contained_permission_ids": [
@@ -313,11 +345,7 @@ it("creates, updates, and delete a new team permission", async ({ expect }) => {
               "$read_members",
             ],
             "description": "Default permission for team members",
-            "id": "member",
-          },
-          {
-            "contained_permission_ids": ["$update_team"],
-            "id": "p3",
+            "id": "team_member",
           },
         ],
       },

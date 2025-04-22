@@ -1,4 +1,4 @@
-import { createOrUpdatePermissionDefinition, deletePermissionDefinition, listPermissionDefinitions } from "@/lib/permissions";
+import { createPermissionDefinition, deletePermissionDefinition, listPermissionDefinitions, updatePermissionDefinition } from "@/lib/permissions";
 import { retryTransaction } from "@/prisma-client";
 import { createCrudHandlers } from "@/route-handlers/crud-handler";
 import { teamPermissionDefinitionsCrud } from '@stackframe/stack-shared/dist/interface/crud/team-permissions';
@@ -11,8 +11,7 @@ export const teamPermissionDefinitionsCrudHandlers = createLazyProxy(() => creat
   }),
   async onCreate({ auth, data }) {
     return await retryTransaction(async (tx) => {
-      return await createOrUpdatePermissionDefinition(tx, {
-        type: "create",
+      return await createPermissionDefinition(tx, {
         scope: "team",
         tenancy: auth.tenancy,
         data,
@@ -21,8 +20,7 @@ export const teamPermissionDefinitionsCrudHandlers = createLazyProxy(() => creat
   },
   async onUpdate({ auth, data, params }) {
     return await retryTransaction(async (tx) => {
-      return await createOrUpdatePermissionDefinition(tx, {
-        type: "update",
+      return await updatePermissionDefinition(tx, {
         oldId: params.permission_id,
         scope: "team",
         tenancy: auth.tenancy,
