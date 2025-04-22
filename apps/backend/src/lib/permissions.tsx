@@ -1,5 +1,6 @@
 import { rawQuery } from "@/prisma-client";
 import { KnownErrors } from "@stackframe/stack-shared";
+import { override } from "@stackframe/stack-shared/dist/config/format";
 import { EnvironmentConfigOverride, OrganizationRenderedConfig } from "@stackframe/stack-shared/dist/config/schema";
 import { ProjectPermissionsCrud } from "@stackframe/stack-shared/dist/interface/crud/project-permissions";
 import { TeamPermissionDefinitionsCrud, TeamPermissionsCrud } from "@stackframe/stack-shared/dist/interface/crud/team-permissions";
@@ -163,7 +164,7 @@ export async function listPermissionDefinitions(
   return permissions.map(([id, p]) => ({
     id,
     description: getDescription(id, p.description),
-    contained_permission_ids: typedEntries(p.containedPermissionIds || {}).map(([id]) => id),
+    contained_permission_ids: typedEntries(p.containedPermissionIds || {}).map(([id]) => id).sort(stringCompare),
   }));
 }
 
@@ -193,20 +194,26 @@ export async function createOrUpdatePermissionDefinition(
     throw new StackAssertionError(`Couldn't find config override`, { tenancy: options.tenancy });
   }
 
-  const configOverride = dbOverride.config as unknown as EnvironmentConfigOverride;
+  const oldConfig = await rawQuery(getRenderedOrganizationConfigQuery({
+    projectId: options.tenancy.project.id,
+    branchId: options.tenancy.branchId,
+    organizationId: options.tenancy.organization?.id || null,
+  }));
   const configKey = `rbac.permissions.${options.data.id}`;
 
-  if (options.type === "create" && configOverride[configKey]) {
+  const existingPermission = oldConfig.rbac.permissions[options.data.id] as OrganizationRenderedConfig['rbac']['permissions'][string] | undefined;
+
+  if (options.type === "create" && existingPermission?.scope === options.scope) {
     throw new KnownErrors.PermissionIdAlreadyExists(options.data.id);
   }
-  if (options.type === "update" && !configOverride[configKey]) {
+  if (options.type === "update" && existingPermission?.scope !== options.scope) {
     throw new KnownErrors.PermissionNotFound(options.data.id);
   }
 
-  configOverride[configKey] = {
-    description: getDescription(options.data.id, options.data.description),
-    containedPermissionIds: typedFromEntries((options.data.contained_permission_ids ?? []).map(id => [id, true])),
-  } satisfies OrganizationRenderedConfig['rbac']['permissions'][string];
+  // configOverride[configKey] = {
+  //   description: getDescription(options.data.id, options.data.description),
+  //   containedPermissionIds: typedFromEntries((options.data.contained_permission_ids ?? []).map(id => [id, true]))
+  // } satisfies OrganizationRenderedConfig['rbac']['permissions'][string];
 
   await tx.environmentConfigOverride.update({
     where: {
@@ -216,14 +223,22 @@ export async function createOrUpdatePermissionDefinition(
       }
     },
     data: {
-      config: configOverride,
+      config: override(
+        {
+          [configKey]: {
+            description: getDescription(options.data.id, options.data.description),
+            containedPermissionIds: typedFromEntries((options.data.contained_permission_ids ?? []).map(id => [id, true]))
+          } satisfies OrganizationRenderedConfig['rbac']['permissions'][string]
+        },
+        oldConfig,
+      )
     }
   });
 
   return {
     id: options.data.id,
     description: getDescription(options.data.id, options.data.description),
-    contained_permission_ids: options.data.contained_permission_ids || [],
+    contained_permission_ids: options.data.contained_permission_ids?.sort(stringCompare) || [],
   };
 }
 
