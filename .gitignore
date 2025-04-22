@@ -129,7 +129,13 @@ packages/js/*
 packages/react/*
 packages/next/*
 packages/stack/*
+packages/neon-next/*
+packages/neon-js/*
+packages/neon-react/*
 !packages/js/package.json
 !packages/react/package.json
 !packages/next/package.json
 !packages/stack/package.json
+!packages/neon-next/package.json
+!packages/neon-js/package.json
+!packages/neon-react/package.json

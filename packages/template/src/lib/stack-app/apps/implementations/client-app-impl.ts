@@ -42,12 +42,12 @@ import { StackClientApp, StackClientAppConstructorOptions, StackClientAppJson } 
 import { _StackAdminAppImplIncomplete } from "./admin-app-impl";
 import { TokenObject, clientVersion, createCache, createCacheBySession, createEmptyTokenStore, getBaseUrl, getDefaultExtraRequestHeaders, getDefaultProjectId, getDefaultPublishableClientKey, getUrls, } from "./common";
 
-import * as NextNavigationUnscrambled from "next/navigation"; // import the entire module to get around some static compiler warnings emitted by Next.js in some cases | THIS_LINE_PLATFORM next
+import * as NextNavigationUnscrambled from "next/navigation"; // import the entire module to get around some static compiler warnings emitted by Next.js in some cases | THIS_LINE_PLATFORM next-like
 import React, { useCallback, useMemo } from "react"; // THIS_LINE_PLATFORM react-like
 import { useAsyncCache } from "./common"; // THIS_LINE_PLATFORM react-like
 
 let isReactServer = false;
-// IF_PLATFORM next
+// IF_PLATFORM next-like
 import * as sc from "@stackframe/stack-sc";
 import { cookies } from '@stackframe/stack-sc';
 isReactServer = sc.isReactServer;
@@ -291,14 +291,14 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
         clientVersion,
         publishableClientKey: _options.publishableClientKey ?? getDefaultPublishableClientKey(),
         prepareRequest: async () => {
-          await cookies?.(); // THIS_LINE_PLATFORM next
+          await cookies?.(); // THIS_LINE_PLATFORM next-like
         }
       });
     }
 
     this._tokenStoreInit = _options.tokenStore;
     this._redirectMethod = _options.redirectMethod || "none";
-    this._redirectMethod = _options.redirectMethod || "nextjs"; // THIS_LINE_PLATFORM next
+    this._redirectMethod = _options.redirectMethod || "nextjs"; // THIS_LINE_PLATFORM next-like
     this._urlOptions = _options.urls ?? {};
     this._oauthScopesOnSignIn = _options.oauthScopesOnSignIn ?? {};
 
@@ -1178,7 +1178,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
   protected async _redirectTo(options: { url: URL | string, replace?: boolean }) {
     if (this._redirectMethod === "none") {
       return;
-    // IF_PLATFORM next
+    // IF_PLATFORM next-like
     } else if (isReactServer && this._redirectMethod === "nextjs") {
       NextNavigation.redirect(options.url.toString(), options.replace ? NextNavigation.RedirectType.replace : NextNavigation.RedirectType.push);
     // END_PLATFORM
@@ -1201,7 +1201,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
       return this._redirectMethod.useNavigate();
     } else if (this._redirectMethod === "window") {
       return (to: string) => window.location.assign(to);
-    // IF_PLATFORM next
+    // IF_PLATFORM next-like
     } else if (this._redirectMethod === "nextjs") {
       const router = NextNavigation.useRouter();
       return (to: string) => router.push(to);

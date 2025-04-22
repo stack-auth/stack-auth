@@ -1,7 +1,7 @@
 import { StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
 import { FilterUndefined, filterUndefined, pick } from "@stackframe/stack-shared/dist/utils/objects";
 import { getRelativePart } from "@stackframe/stack-shared/dist/utils/urls";
-import { RedirectType, notFound, redirect } from 'next/navigation'; // THIS_LINE_PLATFORM next
+import { RedirectType, notFound, redirect } from 'next/navigation'; // THIS_LINE_PLATFORM next-like
 import { useMemo } from 'react';
 import { SignIn, SignUp, StackServerApp } from "..";
 import { IframePreventer } from "../components/iframe-preventer";
@@ -184,7 +184,7 @@ function renderComponent(props: {
   }
 }
 
-// IF_PLATFORM next
+// IF_PLATFORM next-like
 async function NextStackHandler<HasTokenStore extends boolean>(props: BaseHandlerProps & {
   app: StackServerApp<HasTokenStore>,
 } & (
@@ -255,7 +255,7 @@ async function NextStackHandler<HasTokenStore extends boolean>(props: BaseHandle
   </>;
 }
 
-// ELSE_IF_PLATFORM react
+// ELSE_IF_PLATFORM react-like
 
 function ReactStackHandler<HasTokenStore extends boolean>(props: BaseHandlerProps & {
   app: StackClientApp<HasTokenStore>,
@@ -326,9 +326,9 @@ function ReactStackHandler<HasTokenStore extends boolean>(props: BaseHandlerProp
 
 // END_PLATFORM
 
-// IF_PLATFORM next
+// IF_PLATFORM next-like
 export default NextStackHandler;
-/* ELSE_IF_PLATFORM react
+/* ELSE_IF_PLATFORM react-like
 export default ReactStackHandler;
 END_PLATFORM */
 

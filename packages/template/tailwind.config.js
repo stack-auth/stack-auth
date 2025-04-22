@@ -16,42 +16,42 @@ module.exports = {
     },
     extend: {
       colors: {
-        border: "hsl(var(--border))",
-        input: "hsl(var(--input))",
-        ring: "hsl(var(--ring))",
-        background: "hsl(var(--background))",
-        foreground: "hsl(var(--foreground))",
+        border: "rgb(209 213 219)",
+        input: "rgb(209 213 219)",
+        ring: "rgb(16 185 129)",
+        background: "rgb(255 255 255)",
+        foreground: "rgb(17 24 39)",
         primary: {
-          DEFAULT: "hsl(var(--primary))",
-          foreground: "hsl(var(--primary-foreground))",
+          DEFAULT: "rgb(16 185 129)",
+          foreground: "rgb(255 255 255)",
         },
         secondary: {
-          DEFAULT: "hsl(var(--secondary))",
-          foreground: "hsl(var(--secondary-foreground))",
+          DEFAULT: "rgb(52 211 153)",
+          foreground: "rgb(17 24 39)",
         },
         destructive: {
-          DEFAULT: "hsl(var(--destructive))",
-          foreground: "hsl(var(--destructive-foreground))",
+          DEFAULT: "rgb(239 68 68)",
+          foreground: "rgb(255 255 255)",
         },
         success: {
-          DEFAULT: "hsl(var(--success))",
-          foreground: "hsl(var(--success-foreground))",
+          DEFAULT: "rgb(16 185 129)",
+          foreground: "rgb(255 255 255)",
         },
         muted: {
-          DEFAULT: "hsl(var(--muted))",
-          foreground: "hsl(var(--muted-foreground))",
+          DEFAULT: "rgb(243 244 246)",
+          foreground: "rgb(107 114 128)",
         },
         accent: {
-          DEFAULT: "hsl(var(--accent))",
-          foreground: "hsl(var(--accent-foreground))",
+          DEFAULT: "rgb(110 231 183)",
+          foreground: "rgb(17 24 39)",
         },
         popover: {
-          DEFAULT: "hsl(var(--popover))",
-          foreground: "hsl(var(--popover-foreground))",
+          DEFAULT: "rgb(255 255 255)",
+          foreground: "rgb(17 24 39)",
         },
         card: {
-          DEFAULT: "hsl(var(--card))",
-          foreground: "hsl(var(--card-foreground))",
+          DEFAULT: "rgb(255 255 255)",
+          foreground: "rgb(17 24 39)",
         },
       },
       borderRadius: {
