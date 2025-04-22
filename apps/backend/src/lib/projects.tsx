@@ -219,6 +219,7 @@ export async function createOrUpdateProject(
             '$update_team': true,
             '$delete_team': true,
             '$read_members': true,
+            '$remove_members': true,
             '$invite_members': true,
             '$manage_api_keys': true,
           },

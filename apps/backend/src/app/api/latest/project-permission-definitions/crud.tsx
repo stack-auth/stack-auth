@@ -24,12 +24,10 @@ export const projectPermissionDefinitionsCrudHandlers = createLazyProxy(() => cr
     return await retryTransaction(async (tx) => {
       return await createOrUpdatePermissionDefinition(tx, {
         type: "update",
+        oldId: params.permission_id,
         scope: "project",
         tenancy: auth.tenancy,
-        data: {
-          ...data,
-          id: params.permission_id,
-        },
+        data,
       });
     });
   },

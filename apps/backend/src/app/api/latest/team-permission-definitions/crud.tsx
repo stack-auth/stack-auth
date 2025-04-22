@@ -23,11 +23,13 @@ export const teamPermissionDefinitionsCrudHandlers = createLazyProxy(() => creat
     return await retryTransaction(async (tx) => {
       return await createOrUpdatePermissionDefinition(tx, {
         type: "update",
+        oldId: params.permission_id,
         scope: "team",
         tenancy: auth.tenancy,
         data: {
-          ...data,
-          id: params.permission_id,
+          id: data.id,
+          description: data.description,
+          contained_permission_ids: data.contained_permission_ids,
         }
       });
     });

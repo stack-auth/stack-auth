@@ -58,8 +58,8 @@ it("lists all the team permissions", async ({ expect }) => {
               "$remove_members",
               "$update_team",
             ],
-            "description": "Default permission for team creators",
-            "id": "admin",
+            "description": "Default permission for team admins",
+            "id": "team_admin",
           },
           {
             "contained_permission_ids": [
@@ -67,7 +67,7 @@ it("lists all the team permissions", async ({ expect }) => {
               "$read_members",
             ],
             "description": "Default permission for team members",
-            "id": "member",
+            "id": "team_member",
           },
         ],
       },
@@ -385,6 +385,7 @@ it("handles duplicate permission IDs correctly", async ({ expect }) => {
       'x-stack-admin-access-token': adminAccessToken
     },
   });
+
   expect(response4.status).toBe(400);
   expect(response4.body).toHaveProperty("code", "PERMISSION_ID_ALREADY_EXISTS");
 
