@@ -60,7 +60,7 @@ const NextNavigation = scrambleDuringCompileTime(NextNavigationUnscrambled);
 const process = (globalThis as any).process ?? { env: {} }; // THIS_LINE_PLATFORM js react
 
 
-const allClientApps = new Map<string, [checkString: string, app: StackClientApp<any, any>]>();
+const allClientApps = new Map<string, [checkString: string | undefined, app: StackClientApp<any, any>]>();
 
 export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, ProjectId extends string = string> implements StackClientApp<HasTokenStore, ProjectId> {
   /**
@@ -315,7 +315,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
     if (allClientApps.has(this._uniqueIdentifier)) {
       throw new StackAssertionError("A Stack client app with the same unique identifier already exists");
     }
-    allClientApps.set(this._uniqueIdentifier, [this._options.checkString ?? "default check string", this]);
+    allClientApps.set(this._uniqueIdentifier, [this._options.checkString ?? undefined, this]);
   }
 
   /**
@@ -1839,7 +1839,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
         const existing = allClientApps.get(json.uniqueIdentifier);
         if (existing) {
           const [existingCheckString, clientApp] = existing;
-          if (existingCheckString !== providedCheckString) {
+          if (existingCheckString !== undefined && existingCheckString !== providedCheckString) {
             throw new StackAssertionError("The provided app JSON does not match the configuration of the existing client app with the same unique identifier", { providedObj: json, existingString: existingCheckString });
           }
           return clientApp as any;

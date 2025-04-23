@@ -20,6 +20,12 @@ if (getNodeEnvironment() !== 'production') {
   globalForPrisma.prisma = prismaClient;
 }
 
+class TransactionErrorThatShouldBeRetried extends Error {
+  constructor(...args: ConstructorParameters<typeof Error>) {
+    super(...args);
+    this.name = 'TransactionErrorThatShouldBeRetried';
+  }
+}
 
 export async function retryTransaction<T>(fn: (...args: Parameters<Parameters<typeof prismaClient.$transaction>[0]>) => Promise<T>): Promise<T> {
   // disable serializable transactions for now, later we may re-add them
@@ -30,22 +36,34 @@ export async function retryTransaction<T>(fn: (...args: Parameters<Parameters<ty
       return await traceSpan(`transaction attempt #${attemptIndex}`, async (attemptSpan) => {
         const attemptRes = await (async () => {
           try {
-            return await prismaClient.$transaction(async (...args) => {
+            return await prismaClient.$transaction(async (tx, ...args) => {
               try {
-                return Result.ok(await fn(...args));
-              } catch (e) {
-                if (e instanceof Prisma.PrismaClientKnownRequestError || e instanceof Prisma.PrismaClientUnknownRequestError) {
-                  // retry
-                  return Result.error(e);
+                const res = await fn(tx, ...args);
+                if (getNodeEnvironment() === 'development' || getNodeEnvironment() === 'test') {
+                  // In dev/test, let's just fail the transaction with a certain probability, if we haven't already failed multiple times
+                  // this is to test the logic that every transaction is retryable
+                  if (attemptIndex < 3 && Math.random() < 0.5) {
+                    throw new TransactionErrorThatShouldBeRetried("Test error for dev/test. This should automatically be retried.");
+                  }
                 }
+                return Result.ok(res);
+              } catch (e) {
+                // we can aggressively retry the transaction here, because we know that the error will cause the transaction to be rolled back
+                if (e instanceof Prisma.PrismaClientKnownRequestError || e instanceof Prisma.PrismaClientUnknownRequestError) {
+                  throw new TransactionErrorThatShouldBeRetried("Prisma error inside a transaction. The transaction will be rolled back, and it can be retried.", { cause: e });
+                }
+                // to make debugging easier, we don't retry errors that are not related to Prisma
                 throw e;
               }
             }, {
               isolationLevel: enableSerializable && attemptIndex < 4 ? Prisma.TransactionIsolationLevel.Serializable : undefined,
             });
           } catch (e) {
-            // we don't want to retry as aggressively here, because the error may have been thrown after the transaction was already committed
+            // we don't want to retry as aggressively as inside the transaction here, because the error may have been thrown after the transaction was already committed
             // so, we select the specific errors that we know are safe to retry
+            if (e instanceof TransactionErrorThatShouldBeRetried) {
+              return Result.error(e);
+            }
             if ([
               "Transaction failed due to a write conflict or a deadlock. Please retry your transaction",
               "Transaction already closed: A commit cannot be executed on an expired transaction. The timeout for this transaction",
