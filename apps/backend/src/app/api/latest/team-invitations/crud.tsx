@@ -58,7 +58,7 @@ export const teamInvitationsCrudHandlers = createLazyProxy(() => createCrudHandl
     });
   },
   onDelete: async ({ auth, query, params }) => {
-    return await retryTransaction(async (tx) => {
+    await retryTransaction(async (tx) => {
       if (auth.type === 'client') {
         // Client can only:
         // - delete invitations in their own team if they have the $remove_members permissions
@@ -78,11 +78,11 @@ export const teamInvitationsCrudHandlers = createLazyProxy(() => createCrudHandl
       } else {
         await ensureTeamExists(tx, { tenancyId: auth.tenancy.id, teamId: query.team_id });
       }
+    });
 
-      await teamInvitationCodeHandler.revokeCode({
-        tenancy: auth.tenancy,
-        id: params.id,
-      });
+    await teamInvitationCodeHandler.revokeCode({
+      tenancy: auth.tenancy,
+      id: params.id,
     });
   },
 }));

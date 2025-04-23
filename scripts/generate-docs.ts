@@ -95,4 +95,7 @@ withGeneratorLock(async () => {
       }
     });
   }
-}).catch(console.error);
+}).catch((error) => {
+  console.error(error);
+  process.exit(1);
+});
