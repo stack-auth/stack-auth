@@ -1,4 +1,5 @@
 import { AdminProjectUpdateOptions, StackAdminApp, StackClientApp, StackServerApp } from '@stackframe/js';
+import { Result } from '@stackframe/stack-shared/dist/utils/results';
 import { STACK_BACKEND_BASE_URL, STACK_INTERNAL_PROJECT_ADMIN_KEY, STACK_INTERNAL_PROJECT_CLIENT_KEY, STACK_INTERNAL_PROJECT_SERVER_KEY } from '../helpers';
 
 export async function scaffoldProject(body?: AdminProjectUpdateOptions) {
@@ -13,11 +14,11 @@ export async function scaffoldProject(body?: AdminProjectUpdateOptions) {
 
   const fakeEmail = `${crypto.randomUUID()}@stack-js-test.example.com`;
 
-  await internalApp.signUpWithCredential({
+  Result.orThrow(await internalApp.signUpWithCredential({
     email: fakeEmail,
     password: "password",
     verificationCallbackUrl: "https://stack-js-test.example.com/verify",
-  });
+  }));
   const adminUser = await internalApp.getUser({
     or: 'throw',
   });
