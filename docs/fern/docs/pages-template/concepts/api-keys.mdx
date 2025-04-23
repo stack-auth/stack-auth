@@ -4,16 +4,26 @@ subtitle: Create and manage API keys for users and teams
 ---
 
 API keys provide a secure way for your users to authenticate with your application's backend. 
-They enable programmatic access to your API services, allowing users to interact with their own data without requiring username/password authentication for each request. 
-yourou can offer both user-specific and team-based API keys that can be created, managed, and revoked as needed.
+They enable programmatic access to your API services, allowing developers to associate requests with specific users or teams.
+Stack Auth provides prebuilt UI components for the users and teams to manage their own API keys.
 
 ## Overview
 
-API keys allow your users to access your backend services programmatically. Stack Auth provides two types of API keys:
+API keys allow your users to access your backend services programmatically. 
+
+```mermaid
+flowchart LR
+    User[User/Client] --> |API key request with API key| YourServer[Your application server]
+    YourServer --> |Validate| StackAuth[Stack Auth Service]
+    StackAuth --> |Return authenticated User object| YourServer
+    YourServer --> |Process request & respond| User
+```
+
+Stack Auth provides two types of API keys:
 
 ### User API keys
 
-User API keys are associated with individual users and allow them to authenticate with your API to access their own data. These keys can be created by users themselves or by administrators on behalf of users.
+User API keys are associated with individual users and allow them to authenticate with your API.
 
 <Tabs>
   <Tab title="Client">
@@ -42,7 +52,7 @@ User API keys are associated with individual users and allow them to authenticat
 
 ### Team API keys
 
-Team API keys are associated with teams and provide access to team resources. These are useful for shared services or applications that need to access team data.
+Team API keys are associated with teams and can be used to provide access to team resources over your API.
 
 <Tabs>
   <Tab title="Client">
@@ -70,7 +80,7 @@ Team API keys are associated with teams and provide access to team resources. Th
   </Tab>
 </Tabs>
 
-## Setting Up API Keys in stack auth
+## Setting Up API Keys in Stack Auth
 
 To use API keys in your application, you need to enable them in your project settings. Navigate to the Stack Auth dashboard, select your project, and enable User API Keys and/or Team API Keys in the project settings.
 
