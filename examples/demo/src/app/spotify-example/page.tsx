@@ -21,7 +21,10 @@ export default function Page() {
       setPlayList(data);
     }
 
-    getPlayList().catch(console.error);
+    getPlayList().catch((error) => {
+      alert("An error occurred.");
+      console.error(error);
+    });
   }, [token]);
 
   return (
