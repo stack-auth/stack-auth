@@ -1,7 +1,7 @@
 {
   "//": "THIS FILE IS AUTO-GENERATED FROM TEMPLATE. DO NOT EDIT IT DIRECTLY",
   "name": "@stackframe/stack",
-  "version": "2.8.6",
+  "version": "2.8.7",
   "sideEffects": false,
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -64,15 +64,15 @@
   "peerDependencies": {
     "@types/react": ">=18.2 || >=19.0.0-rc.0",
     "@types/react-dom": ">=18.2 || >=19.0.0-rc.0",
+    "react-dom": ">=18.2 || >=19.0.0-rc.0",
     "next": ">=14.1 || >=15.0.0-canary.0 || >=15.0.0-rc.0",
-    "react": ">=18.2 || >=19.0.0-rc.0",
-    "react-dom": ">=18.2 || >=19.0.0-rc.0"
+    "react": ">=18.2 || >=19.0.0-rc.0"
   },
   "peerDependenciesMeta": {
-    "@types/react": {
+    "@types/react-dom": {
       "optional": true
     },
-    "@types/react-dom": {
+    "@types/react": {
       "optional": true
     }
   },
