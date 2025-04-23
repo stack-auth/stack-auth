@@ -11,7 +11,7 @@
   
   "//": "NEXT_LINE_PLATFORM template",
   "private": true,
-  "version": "2.8.6",
+  "version": "2.8.7",
   "sideEffects": false,
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -40,18 +40,18 @@
     ,"//": "ELSE_PLATFORM",
     "build": "rimraf dist && tsup-node",
     "dev": "rimraf dist && tsup-node --watch"
-    ,"//": "END_PLATFORM"
+    ,"//": "END_PLATFORM",
 
-    "//": "IF_PLATFORM template react-like",
+    "//": "IF_PLATFORM template react-like"
     ,"css": "pnpm run css-tw && pnpm run css-sc",
     "css:watch": "concurrently -n \"tw,sc\" -k \"pnpm run css-tw:watch\" \"pnpm run css-sc:watch\"",
     "css-tw:watch": "tailwindcss -i ./src/global.css -o ./src/generated/tailwind.css --watch",
     "css-tw": "tailwindcss -i ./src/global.css -o ./src/generated/tailwind.css",
     "css-sc": "tsx ./scripts/process-css.ts ./src/generated/tailwind.css ./src/generated/global-css.ts",
     "css-sc:watch": "chokidar --silent './src/generated/tailwind.css' -c 'pnpm run css-sc' --throttle 2000"
-    ,"//": "END_PLATFORM"
+    ,"//": "END_PLATFORM",
 
-    "//": "IF_PLATFORM template",
+    "//": "IF_PLATFORM template"
     ,"codegen": "pnpm run css && pnpm run quetzal",
     "codegen:watch": "concurrently -n \"css,quetzal\" -k \"pnpm run css:watch\" \"pnpm run quetzal:watch\"",
     "override-env-local-for-quetzal": "echo \"\\n$STACK_ENV_LOCAL_PACKAGE_BUILD_OVERRIDE_FOR_QUETZAL\\n\" >> .env.local",
@@ -99,19 +99,22 @@
   "//": "IF_PLATFORM react-like",
   "peerDependencies": {
     "@types/react": ">=18.2 || >=19.0.0-rc.0",
+    "//": "IF_PLATFORM next",
     "@types/react-dom": ">=18.2 || >=19.0.0-rc.0",
-    "//": "NEXT_LINE_PLATFORM next",
+    "react-dom": ">=18.2 || >=19.0.0-rc.0",
     "next": ">=14.1 || >=15.0.0-canary.0 || >=15.0.0-rc.0",
-    "react": ">=18.2 || >=19.0.0-rc.0",
-    "react-dom": ">=18.2 || >=19.0.0-rc.0"
+    "//": "END_PLATFORM",
+    "react": ">=18.2 || >=19.0.0-rc.0"
   },
   "//": "END_PLATFORM",
   "//": "IF_PLATFORM react-like",
   "peerDependenciesMeta": {
-    "@types/react": {
+    "//": "IF_PLATFORM next",
+    "@types/react-dom": {
       "optional": true
     },
-    "@types/react-dom": {
+    "//": "END_PLATFORM",
+    "@types/react": {
       "optional": true
     }
   },
