@@ -23,10 +23,10 @@ On this page:
 API keys provide a way for users to authenticate with your backend services without using their primary credentials. They can be created for individual users or for teams, allowing programmatic access to your application.
 
 API keys can be obtained through:
-- [`user.createApiKey()`](../types/user.mdx#currentusercreatekeyoptions)
+- [`user.createApiKey()`](../types/user.mdx#currentusercreateapikeyoptions)
 - [`user.listApiKeys()`](../types/user.mdx#currentuserlistapikeys)
 - [`user.useApiKeys()`](../types/user.mdx#currentuseruseapikeys) (React hook)
-- [`team.createApiKey()`](../types/team.mdx#teamcreatekeyoptions)
+- [`team.createApiKey()`](../types/team.mdx#teamcreateapikeyoptions)
 - [`team.listApiKeys()`](../types/team.mdx#teamlistapikeys)
 - [`team.useApiKeys()`](../types/team.mdx#teamuseapikeys) (React hook)
 
@@ -37,7 +37,7 @@ type ApiKey<Type extends "user" | "team" = "user" | "team", IsFirstView extends 
   id: string;  //$stack-link-to:#apikeyid
   description: string;  //$stack-link-to:#apikeydescription
   expiresAt?: Date;  //$stack-link-to:#apikeyexpiresat
-  manuallyRevokedAt: Date | null;  //$stack-link-to:#apikeymanuallyrevoked
+  manuallyRevokedAt: Date | null;  //$stack-link-to:#apikeymanuallyrevokedat
   createdAt: Date;  //$stack-link-to:#apikeycreatedat
   value: IsFirstView extends true ? string : { lastFour: string };  //$stack-link-to:#apikeyvalue
   
@@ -96,7 +96,7 @@ declare const description: string;
 ## `apiKey.expiresAt`
 </div><div className="stack-content">
 
-The date and time when this API key will expire. If undefined, the key does not expire.
+The date and time when this API key will expire. If not set, the key does not expire.
 
 </div><div className="stack-aside"><div className="stack-sticky">
 ### Type Definition
@@ -432,8 +432,8 @@ type ApiKeyCreationOptions = {
   <ParamField path="isPublic" type="boolean">
     Whether the API key is public. Defaults to false.
     
-    - **Secret API Keys** (default) begin with `sk_` and are monitored by Stack Auth's secret scanner, which can revoke them if detected in public code repositories.
-    - **Public API Keys** begin with `pk_` and are designed for client-side code where exposure is not a concern.
+    - **Secret API Keys** (default) are monitored by Stack Auth's secret scanner, which can revoke them if detected in public code repositories.
+    - **Public API Keys** are designed for client-side code where exposure is not a concern.
   </ParamField>
 </div>
 
