@@ -20,7 +20,6 @@ export const teamInvitationsCrudHandlers = createLazyProxy(() => createCrudHandl
       if (auth.type === 'client') {
         // Client can only:
         // - list invitations in their own team if they have the $read_members AND $invite_members permissions
-
         const currentUserId = auth.user?.id ?? throwErr(new KnownErrors.CannotGetOwnUserWithoutUser());
 
         await ensureTeamMembershipExists(tx, { tenancyId: auth.tenancy.id, teamId: query.team_id, userId: currentUserId });
@@ -59,7 +58,7 @@ export const teamInvitationsCrudHandlers = createLazyProxy(() => createCrudHandl
     });
   },
   onDelete: async ({ auth, query, params }) => {
-    return await retryTransaction(async (tx) => {
+    await retryTransaction(async (tx) => {
       if (auth.type === 'client') {
         // Client can only:
         // - delete invitations in their own team if they have the $remove_members permissions
@@ -79,11 +78,11 @@ export const teamInvitationsCrudHandlers = createLazyProxy(() => createCrudHandl
       } else {
         await ensureTeamExists(tx, { tenancyId: auth.tenancy.id, teamId: query.team_id });
       }
+    });
 
-      await teamInvitationCodeHandler.revokeCode({
-        tenancy: auth.tenancy,
-        id: params.id,
-      });
+    await teamInvitationCodeHandler.revokeCode({
+      tenancy: auth.tenancy,
+      id: params.id,
     });
   },
 }));

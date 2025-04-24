@@ -1,13 +1,15 @@
-import { RawQuery, prismaClient, rawQuery, retryTransaction } from "@/prisma-client";
 import { Prisma, TeamSystemPermission } from "@prisma/client";
-import { InternalProjectsCrud, ProjectsCrud } from "@stackframe/stack-shared/dist/interface/crud/projects";
+import { AdminUserProjectsCrud, ProjectsCrud } from "@stackframe/stack-shared/dist/interface/crud/projects";
 import { UsersCrud } from "@stackframe/stack-shared/dist/interface/crud/users";
 import { getNodeEnvironment } from "@stackframe/stack-shared/dist/utils/env";
 import { StackAssertionError, captureError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
-import { deepPlainEquals, isNotNull, omit } from "@stackframe/stack-shared/dist/utils/objects";
+import { deepPlainEquals, filterUndefined, isNotNull, omit } from "@stackframe/stack-shared/dist/utils/objects";
 import { stringCompare, typedToLowercase, typedToUppercase } from "@stackframe/stack-shared/dist/utils/strings";
 import { generateUuid } from "@stackframe/stack-shared/dist/utils/uuids";
-import { fullPermissionInclude, teamPermissionDefinitionJsonFromDbType, teamPermissionDefinitionJsonFromRawDbType, teamPermissionDefinitionJsonFromTeamSystemDbType } from "./permissions";
+import { diffString } from 'json-diff';
+import { RawQuery, prismaClient, rawQuery, retryTransaction } from "../prisma-client";
+import { getRenderedOrganizationConfigQuery, renderedOrganizationConfigToProjectCrud } from "./config";
+import { fullPermissionInclude, permissionDefinitionJsonFromDbType, permissionDefinitionJsonFromRawDbType, permissionDefinitionJsonFromSystemDbType } from "./permissions";
 import { ensureSharedProvider, ensureStandardProvider } from "./request-checks";
 
 export const fullProjectInclude = {
@@ -61,26 +63,11 @@ export const fullProjectInclude = {
   },
 } as const satisfies Prisma.ProjectInclude;
 
-export type ProjectDB = Prisma.ProjectGetPayload<{ include: typeof fullProjectInclude }> & {
-  config: {
-    oauthProviderConfigs: (Prisma.OAuthProviderConfigGetPayload<
-      typeof fullProjectInclude.config.include.oauthProviderConfigs
-    >)[],
-    emailServiceConfig: Prisma.EmailServiceConfigGetPayload<
-      typeof fullProjectInclude.config.include.emailServiceConfig
-    > | null,
-    domains: Prisma.ProjectDomainGetPayload<
-      typeof fullProjectInclude.config.include.domains
-    >[],
-    permissions: Prisma.PermissionGetPayload<
-      typeof fullProjectInclude.config.include.permissions
-    >[],
-  },
-};
+export type DBProject = Prisma.ProjectGetPayload<{ include: typeof fullProjectInclude }>;
 
-export function projectPrismaToCrud(
-  prisma: Prisma.ProjectGetPayload<{ include: typeof fullProjectInclude }>
-): ProjectsCrud["Admin"]["Read"] {
+export async function projectPrismaToCrud(
+  prisma: DBProject
+): Promise<ProjectsCrud["Admin"]["Read"]> {
   const oauthProviders = prisma.config.authMethodConfigs
     .map((config) => {
       if (config.oauthProviderConfig) {
@@ -92,7 +79,7 @@ export function projectPrismaToCrud(
             type: "shared",
           } as const;
         } else if (providerConfig.standardOAuthConfig) {
-          return {
+          return filterUndefined({
             id: typedToLowercase(providerConfig.standardOAuthConfig.type),
             enabled: config.enabled,
             type: "standard",
@@ -100,7 +87,7 @@ export function projectPrismaToCrud(
             client_secret: providerConfig.standardOAuthConfig.clientSecret,
             facebook_config_id: providerConfig.standardOAuthConfig.facebookConfigId ?? undefined,
             microsoft_tenant_id: providerConfig.standardOAuthConfig.microsoftTenantId ?? undefined,
-          } as const;
+          } as const);
         } else {
           throw new StackAssertionError(`Exactly one of the provider configs should be set on provider config '${config.id}' of project '${prisma.id}'`, { prisma });
         }
@@ -130,12 +117,14 @@ export function projectPrismaToCrud(
       create_team_on_sign_up: prisma.config.createTeamOnSignUp,
       client_team_creation_enabled: prisma.config.clientTeamCreationEnabled,
       client_user_deletion_enabled: prisma.config.clientUserDeletionEnabled,
+      allow_user_api_keys: prisma.config.allowUserApiKeys,
+      allow_team_api_keys: prisma.config.allowTeamApiKeys,
       domains: prisma.config.domains
-        .sort((a: any, b: any) => a.createdAt.getTime() - b.createdAt.getTime())
         .map((domain) => ({
           domain: domain.domain,
           handler_path: domain.handlerPath,
-        })),
+        }))
+        .sort((a: any, b: any) => stringCompare(a.domain, b.domain)),
       oauth_providers: oauthProviders,
       enabled_oauth_providers: oauthProviders.filter(provider => provider.enabled),
       oauth_account_merge_strategy: typedToLowercase(prisma.config.oauthAccountMergeStrategy),
@@ -164,13 +153,17 @@ export function projectPrismaToCrud(
         }
       })(),
       team_creator_default_permissions: prisma.config.permissions.filter(perm => perm.isDefaultTeamCreatorPermission)
-        .map(teamPermissionDefinitionJsonFromDbType)
-        .concat(prisma.config.teamCreateDefaultSystemPermissions.map(db => teamPermissionDefinitionJsonFromTeamSystemDbType(db, prisma.config)))
+        .map(permissionDefinitionJsonFromDbType)
+        .concat(prisma.config.teamCreateDefaultSystemPermissions.map(db => permissionDefinitionJsonFromSystemDbType(db, prisma.config)))
         .sort((a, b) => stringCompare(a.id, b.id))
         .map(perm => ({ id: perm.id })),
       team_member_default_permissions: prisma.config.permissions.filter(perm => perm.isDefaultTeamMemberPermission)
-        .map(teamPermissionDefinitionJsonFromDbType)
-        .concat(prisma.config.teamMemberDefaultSystemPermissions.map(db => teamPermissionDefinitionJsonFromTeamSystemDbType(db, prisma.config)))
+        .map(permissionDefinitionJsonFromDbType)
+        .concat(prisma.config.teamMemberDefaultSystemPermissions.map(db => permissionDefinitionJsonFromSystemDbType(db, prisma.config)))
+        .sort((a, b) => stringCompare(a.id, b.id))
+        .map(perm => ({ id: perm.id })),
+      user_default_permissions: prisma.config.permissions.filter(perm => perm.isDefaultProjectPermission)
+        .map(permissionDefinitionJsonFromDbType)
         .sort((a, b) => stringCompare(a.id, b.id))
         .map(perm => ({ id: perm.id })),
     }
@@ -371,8 +364,8 @@ export function getProjectQuery(projectId: string): RawQuery<ProjectsCrud["Admin
       }
 
       const teamPermissions = [
-        ...row.ProjectConfig.Permissions.map((perm: any) => teamPermissionDefinitionJsonFromRawDbType(perm)),
-        ...Object.values(TeamSystemPermission).map(systemPermission => teamPermissionDefinitionJsonFromTeamSystemDbType(systemPermission, row.ProjectConfig)),
+        ...row.ProjectConfig.Permissions.map((perm: any) => permissionDefinitionJsonFromRawDbType(perm)),
+        ...Object.values(TeamSystemPermission).map(systemPermission => permissionDefinitionJsonFromSystemDbType(systemPermission, row.ProjectConfig)),
       ].sort((a, b) => stringCompare(a.id, b.id));
 
       const oauthProviderAuthMethods = row.ProjectConfig.AuthMethodConfigs
@@ -386,7 +379,7 @@ export function getProjectQuery(projectId: string): RawQuery<ProjectsCrud["Admin
                 type: "shared",
               } as const;
             } else if (providerConfig.StandardOAuthConfig) {
-              return {
+              return filterUndefined({
                 id: typedToLowercase(providerConfig.StandardOAuthConfig.type),
                 enabled: authMethodConfig.enabled,
                 type: "standard",
@@ -394,7 +387,7 @@ export function getProjectQuery(projectId: string): RawQuery<ProjectsCrud["Admin
                 client_secret: providerConfig.StandardOAuthConfig.clientSecret,
                 facebook_config_id: providerConfig.StandardOAuthConfig.facebookConfigId ?? undefined,
                 microsoft_tenant_id: providerConfig.StandardOAuthConfig.microsoftTenantId ?? undefined,
-              } as const;
+              } as const);
             } else {
               throw new StackAssertionError(`Exactly one of the OAuth provider configs should be set on auth method config ${authMethodConfig.id} of project ${row.id}`, { row });
             }
@@ -420,8 +413,10 @@ export function getProjectQuery(projectId: string): RawQuery<ProjectsCrud["Admin
           create_team_on_sign_up: row.ProjectConfig.createTeamOnSignUp,
           client_team_creation_enabled: row.ProjectConfig.clientTeamCreationEnabled,
           client_user_deletion_enabled: row.ProjectConfig.clientUserDeletionEnabled,
+          allow_user_api_keys: row.ProjectConfig.allowUserApiKeys,
+          allow_team_api_keys: row.ProjectConfig.allowTeamApiKeys,
           domains: row.ProjectConfig.Domains
-            .sort((a: any, b: any) => new Date(a.createdAt + "Z").getTime() - new Date(b.createdAt + "Z").getTime())
+            .sort((a: any, b: any) => stringCompare(a.domain, b.domain))
             .map((domain: any) => ({
               domain: domain.domain,
               handler_path: domain.handlerPath,
@@ -459,6 +454,9 @@ export function getProjectQuery(projectId: string): RawQuery<ProjectsCrud["Admin
           team_member_default_permissions: teamPermissions
             .filter(perm => perm.__is_default_team_member_permission)
             .map(perm => ({ id: perm.id })),
+          user_default_permissions: teamPermissions
+            .filter(perm => perm.__is_default_project_permission)
+            .map(perm => ({ id: perm.id })),
         },
       };
     },
@@ -472,11 +470,30 @@ export async function getProject(projectId: string): Promise<ProjectsCrud["Admin
   if (!getNodeEnvironment().includes("prod")) {
     const legacyResult = await getProjectLegacy(projectId);
     if (!deepPlainEquals(omit(result ?? {}, ["user_count"] as any), omit(legacyResult ?? {}, ["user_count"] as any))) {
-      throw new StackAssertionError("Project result mismatch", {
+      throw new StackAssertionError("Legacy project result mismatch", {
         result,
         legacyResult,
       });
     }
+
+    const renderedConfig = await rawQuery(getRenderedOrganizationConfigQuery({ projectId, branchId: "main", organizationId: null }));
+    if (renderedConfig === null || result === null) {
+      if (renderedConfig !== result) {
+        throw new StackAssertionError("Config.json project config result mismatch", {
+          result,
+          renderedConfig,
+        });
+      }
+      return result;
+    } else {
+      const newResultWithConfigJson = renderedOrganizationConfigToProjectCrud(renderedConfig, result.config.id);
+      if (!deepPlainEquals(result.config, newResultWithConfigJson)) {
+        const errorData = { diff: diffString(result.config, newResultWithConfigJson) };
+        throw new StackAssertionError("Project config mismatch", errorData);
+      }
+    }
+
+    return result;
   }
 
   return result;
@@ -492,10 +509,10 @@ async function getProjectLegacy(projectId: string): Promise<ProjectsCrud["Admin"
     return null;
   }
 
-  return projectPrismaToCrud(rawProject);
+  return await projectPrismaToCrud(rawProject);
 }
 
-export async function createProject(ownerIds: string[], data: InternalProjectsCrud["Admin"]["Create"]) {
+export async function createProject(ownerIds: string[], data: AdminUserProjectsCrud["Admin"]["Create"]) {
   const result = await retryTransaction(async (tx) => {
     const project = await tx.project.create({
       data: {
@@ -510,6 +527,8 @@ export async function createProject(ownerIds: string[], data: InternalProjectsCr
             createTeamOnSignUp: data.config?.create_team_on_sign_up ?? false,
             clientTeamCreationEnabled: data.config?.client_team_creation_enabled ?? false,
             clientUserDeletionEnabled: data.config?.client_user_deletion_enabled ?? false,
+            allowUserApiKeys: data.config?.allow_user_api_keys ?? false,
+            allowTeamApiKeys: data.config?.allow_team_api_keys ?? false,
             oauthAccountMergeStrategy: data.config?.oauth_account_merge_strategy ? typedToUppercase(data.config.oauth_account_merge_strategy): 'LINK_METHOD',
             domains: data.config?.domains ? {
               create: data.config.domains.map(item => ({
@@ -665,7 +684,7 @@ export async function createProject(ownerIds: string[], data: InternalProjectsCr
         scope: 'TEAM',
         parentEdges: {
           createMany: {
-            data: (['UPDATE_TEAM', 'DELETE_TEAM', 'READ_MEMBERS', 'REMOVE_MEMBERS', 'INVITE_MEMBERS'] as const).map(p =>({ parentTeamSystemPermission: p }))
+            data: (['UPDATE_TEAM', 'DELETE_TEAM', 'READ_MEMBERS', 'REMOVE_MEMBERS', 'INVITE_MEMBERS', 'MANAGE_API_KEYS'] as const).map(p =>({ parentTeamSystemPermission: p }))
           },
         },
         isDefaultTeamCreatorPermission: true,
@@ -721,5 +740,5 @@ export async function createProject(ownerIds: string[], data: InternalProjectsCr
     return result;
   });
 
-  return projectPrismaToCrud(result);
+  return await projectPrismaToCrud(result);
 }

@@ -1,4 +1,5 @@
 import { fileToBase64 } from '@stackframe/stack-shared/dist/utils/base64';
+import { runAsynchronouslyWithAlert } from '@stackframe/stack-shared/dist/utils/promises';
 import { Button, Slider, Typography } from '@stackframe/stack-ui';
 import imageCompression from 'browser-image-compression';
 import { Upload } from 'lucide-react';
@@ -39,17 +40,16 @@ export function ProfileImageEditor(props: {
     input.onchange = (e) => {
       const file = (e.target as HTMLInputElement).files?.[0];
       if (!file) return;
-      fileToBase64(file)
-        .then(async (rawUrl) => {
-          if (await checkImageUrl(rawUrl)) {
-            setRawUrl(rawUrl);
-            setError(null);
-          } else {
-            setError(t('Invalid image'));
-          }
-        })
-        .then(() => input.remove())
-        .catch(console.error);
+      runAsynchronouslyWithAlert(async () => {
+        const rawUrl = await fileToBase64(file);
+        if (await checkImageUrl(rawUrl)) {
+          setRawUrl(rawUrl);
+          setError(null);
+        } else {
+          setError(t('Invalid image'));
+        }
+        input.remove();
+      });
     };
     input.click();
   }

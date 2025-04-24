@@ -1,4 +1,4 @@
-import { InternalProjectsCrud } from "@stackframe/stack-shared/dist/interface/crud/projects";
+import { AdminUserProjectsCrud } from "@stackframe/stack-shared/dist/interface/crud/projects";
 import { encodeBase64 } from "@stackframe/stack-shared/dist/utils/bytes";
 import { generateSecureRandomString } from "@stackframe/stack-shared/dist/utils/crypto";
 import { StackAssertionError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
@@ -191,6 +191,7 @@ export namespace Auth {
         "refreshTokenId": expect.any(String),
         "aud": expect.any(String),
         "sub": expect.any(String),
+        "role": "authenticated",
         "branchId": "main",
       });
     }
@@ -335,11 +336,23 @@ export namespace Auth {
     }
 
     export async function signIn() {
-      const mailbox = backendContext.value.mailbox;
       const sendSignInCodeRes = await sendSignInCode();
+      const signInResult = await signInWithCode(await getSignInCodeFromMailbox());
+      return {
+        ...sendSignInCodeRes,
+        ...signInResult,
+      };
+    }
+
+    export async function getSignInCodeFromMailbox() {
+      const mailbox = backendContext.value.mailbox;
       const messages = await mailbox.fetchMessages();
       const message = messages.findLast((message) => message.subject.includes("Sign in to")) ?? throwErr("Sign-in code message not found");
       const signInCode = message.body?.text.match(/http:\/\/localhost:12345\/some-callback-url\?code=([a-zA-Z0-9]+)/)?.[1] ?? throwErr("Sign-in URL not found");
+      return signInCode;
+    }
+
+    export async function signInWithCode(signInCode: string) {
       const response = await niceBackendFetch("/api/v1/auth/otp/sign-in", {
         method: "POST",
         accessType: "client",
@@ -366,7 +379,6 @@ export namespace Auth {
       });
 
       return {
-        ...sendSignInCodeRes,
         userId: response.body.user_id,
         signInResponse: response,
       };
@@ -860,7 +872,84 @@ export namespace ContactChannels {
   }
 }
 
-export namespace ApiKey {
+export namespace ProjectApiKey {
+  export namespace User {
+    export async function create(data?: any) {
+      const response = await niceBackendFetch("/api/v1/user-api-keys", {
+        method: "POST",
+        accessType: "server",
+        body: data,
+      });
+      expect(response.status).toEqual(200);
+      return {
+        createUserApiKeyResponse: response,
+      };
+    }
+
+    export async function check(apiKey: string) {
+      const response = await niceBackendFetch(`/api/v1/user-api-keys/check`, {
+        method: "POST",
+        accessType: "server",
+        body: {
+          api_key: apiKey,
+        },
+      });
+      expect(response.status).oneOf([200, 401, 404]);
+      return response.body;
+    }
+
+    export async function revoke(apiKeyId: string) {
+      const response = await niceBackendFetch(`/api/v1/user-api-keys/${apiKeyId}`, {
+        method: "PATCH",
+        accessType: "server",
+        body: {
+          revoked: true,
+        },
+      });
+      return response;
+    }
+  }
+
+  export namespace Team {
+    export async function create(body?: any) {
+      const response = await niceBackendFetch("/api/v1/team-api-keys", {
+        method: "POST",
+        accessType: "client",
+        body,
+      });
+      expect(response.status).toEqual(200);
+      return {
+        createTeamApiKeyResponse: response,
+      };
+    }
+
+    export async function check(apiKey: string) {
+      const response = await niceBackendFetch(`/api/v1/team-api-keys/check`, {
+        method: "POST",
+        accessType: "server",
+        body: {
+          api_key: apiKey,
+        },
+      });
+      expect(response.status).oneOf([200, 401, 404]);
+      return response.body;
+    }
+
+
+    export async function revoke(apiKeyId: string) {
+      const response = await niceBackendFetch(`/api/v1/team-api-keys/${apiKeyId}`, {
+        method: "PATCH",
+        accessType: "server",
+        body: {
+          revoked: true,
+        },
+      });
+      return response;
+    }
+  }
+}
+
+export namespace InternalApiKey {
   export async function create(adminAccessToken?: string, body?: any) {
     const oldProjectKeys = backendContext.value.projectKeys;
     if (oldProjectKeys === 'no-project') {
@@ -896,12 +985,12 @@ export namespace ApiKey {
   }
 
   export async function createAndSetProjectKeys(adminAccessToken?: string, body?: any) {
-    const res = await ApiKey.create(adminAccessToken, body);
+    const res = await InternalApiKey.create(adminAccessToken, body);
     backendContext.set({ projectKeys: res.projectKeys });
     return res;
   }
 
-  export async function listAll() {
+  export async function list() {
     const response = await niceBackendFetch("/api/v1/internal/api-keys", {
       accessType: "admin",
     });
@@ -932,8 +1021,8 @@ export namespace Project {
     };
   }
 
-  export async function updateCurrent(adminAccessToken: string, body: Partial<InternalProjectsCrud["Admin"]["Create"]>) {
-    const response = await niceBackendFetch(`/api/v1/projects/current`, {
+  export async function updateCurrent(adminAccessToken: string, body: Partial<AdminUserProjectsCrud["Admin"]["Create"]>) {
+    const response = await niceBackendFetch(`/api/v1/internal/projects/current`, {
       accessType: "admin",
       method: "PATCH",
       body,
@@ -947,7 +1036,7 @@ export namespace Project {
     };
   }
 
-  export async function createAndGetAdminToken(body?: Partial<InternalProjectsCrud["Admin"]["Create"]>) {
+  export async function createAndGetAdminToken(body?: Partial<AdminUserProjectsCrud["Admin"]["Create"]>) {
     backendContext.set({
       projectKeys: InternalProjectKeys,
       userAuth: null,
@@ -975,7 +1064,7 @@ export namespace Project {
     };
   }
 
-  export async function createAndSwitch(body?: Partial<InternalProjectsCrud["Admin"]["Create"]>) {
+  export async function createAndSwitch(body?: Partial<AdminUserProjectsCrud["Admin"]["Create"]>) {
     const createResult = await Project.createAndGetAdminToken(body);
     backendContext.set({
       projectKeys: {
@@ -1042,6 +1131,15 @@ export namespace Team {
     `);
   }
 
+  export async function addPermission(teamId: string, userId: string, permissionId: string) {
+    const response = await niceBackendFetch(`/api/v1/team-permissions/${teamId}/${userId}/${permissionId}`, {
+      method: "POST",
+      accessType: "server",
+      body: {},
+    });
+    return response;
+  }
+
   export async function sendInvitation(mail: string | Mailbox, teamId: string) {
     const response = await niceBackendFetch("/api/v1/team-invitations/send-code", {
       method: "POST",
@@ -1092,6 +1190,60 @@ export namespace Team {
     };
   }
 }
+
+export namespace User {
+  export function setBackendContextFromUser({ mailbox, accessToken, refreshToken }: {mailbox: Mailbox, accessToken: string, refreshToken: string}) {
+      backendContext.set({
+        mailbox,
+        userAuth: {
+          accessToken,
+          refreshToken,
+        },
+      });
+  }
+
+
+  export async function create({ emailAddress }: {emailAddress?: string} = {}) {
+    // Create new mailbox
+    const email = emailAddress ?? `unindexed-mailbox--${randomUUID()}${generatedEmailSuffix}`;
+    const mailbox = createMailbox(email);
+    const password = generateSecureRandomString();
+    const createUserResponse = await niceBackendFetch("/api/v1/auth/password/sign-up", {
+      method: "POST",
+      accessType: "client",
+      body: {
+        email,
+        password,
+        verification_callback_url: "http://localhost:12345/some-callback-url",
+      },
+    });
+      expect(createUserResponse).toMatchObject({
+        status: 200,
+        body: {
+          access_token: expect.any(String),
+          refresh_token: expect.any(String),
+          user_id: expect.any(String),
+        },
+        headers: expect.anything(),
+      });
+      return {
+        userId: createUserResponse.body.user_id,
+        mailbox,
+        accessToken: createUserResponse.body.access_token,
+        refreshToken: createUserResponse.body.refresh_token,
+      };
+  }
+
+  export async function createMultiple(count: number) {
+    const users = [];
+    for (let i = 0; i < count; i++) {
+      const user = await User.create({});
+        users.push(user);
+    }
+    return users;
+  }
+}
+
 
 export namespace Webhook {
   export async function createProjectWithEndpoint() {

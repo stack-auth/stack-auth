@@ -1,5 +1,5 @@
 import { ProductionModeError } from "@stackframe/stack-shared/dist/helpers/production-mode";
-import { InternalProjectsCrud, ProjectsCrud } from "@stackframe/stack-shared/dist/interface/crud/projects";
+import { AdminUserProjectsCrud, ProjectsCrud } from "@stackframe/stack-shared/dist/interface/crud/projects";
 
 import { StackAdminApp } from "../apps/interfaces/admin-app";
 import { AdminProjectConfig, AdminProjectConfigUpdateOptions, ProjectConfig } from "../project-configs";
@@ -81,7 +81,10 @@ export function adminProjectUpdateOptionsToCrud(options: AdminProjectUpdateOptio
       client_user_deletion_enabled: options.config?.clientUserDeletionEnabled,
       team_creator_default_permissions: options.config?.teamCreatorDefaultPermissions,
       team_member_default_permissions: options.config?.teamMemberDefaultPermissions,
+      user_default_permissions: options.config?.userDefaultPermissions,
       oauth_account_merge_strategy: options.config?.oauthAccountMergeStrategy,
+      allow_user_api_keys: options.config?.allowUserApiKeys,
+      allow_team_api_keys: options.config?.allowTeamApiKeys,
     },
   };
 }
@@ -89,7 +92,7 @@ export function adminProjectUpdateOptionsToCrud(options: AdminProjectUpdateOptio
 export type AdminProjectCreateOptions = Omit<AdminProjectUpdateOptions, 'displayName'> & {
   displayName: string,
 };
-export function adminProjectCreateOptionsToCrud(options: AdminProjectCreateOptions): InternalProjectsCrud["Server"]["Create"] {
+export function adminProjectCreateOptionsToCrud(options: AdminProjectCreateOptions): AdminUserProjectsCrud["Server"]["Create"] {
   return {
     ...adminProjectUpdateOptionsToCrud(options),
     display_name: options.displayName,

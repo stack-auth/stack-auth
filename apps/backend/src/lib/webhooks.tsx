@@ -1,3 +1,4 @@
+import { projectPermissionCreatedWebhookEvent, projectPermissionDeletedWebhookEvent } from "@stackframe/stack-shared/dist/interface/crud/project-permissions";
 import { teamMembershipCreatedWebhookEvent, teamMembershipDeletedWebhookEvent } from "@stackframe/stack-shared/dist/interface/crud/team-memberships";
 import { teamPermissionCreatedWebhookEvent, teamPermissionDeletedWebhookEvent } from "@stackframe/stack-shared/dist/interface/crud/team-permissions";
 import { teamCreatedWebhookEvent, teamDeletedWebhookEvent, teamUpdatedWebhookEvent } from "@stackframe/stack-shared/dist/interface/crud/teams";
@@ -73,3 +74,5 @@ export const sendTeamMembershipCreatedWebhook = createWebhookSender(teamMembersh
 export const sendTeamMembershipDeletedWebhook = createWebhookSender(teamMembershipDeletedWebhookEvent);
 export const sendTeamPermissionCreatedWebhook = createWebhookSender(teamPermissionCreatedWebhookEvent);
 export const sendTeamPermissionDeletedWebhook = createWebhookSender(teamPermissionDeletedWebhookEvent);
+export const sendProjectPermissionCreatedWebhook = createWebhookSender(projectPermissionCreatedWebhookEvent);
+export const sendProjectPermissionDeletedWebhook = createWebhookSender(projectPermissionDeletedWebhookEvent);

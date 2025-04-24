@@ -6,6 +6,8 @@ node-compile-cache/
 *.cpuprofile
 
 
+.pnpm-store
+
 
 .vercel
 
@@ -14,6 +16,7 @@ node-compile-cache/
 .eslintcache
 .env.local
 .env.*.local
+scratch/
 
 npm-debug.log*
 yarn-debug.log*

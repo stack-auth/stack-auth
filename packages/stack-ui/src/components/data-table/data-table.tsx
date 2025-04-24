@@ -1,5 +1,6 @@
 "use client";
 
+import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
 import {
   Table,
   TableBody,
@@ -187,15 +188,16 @@ export function DataTableManualPagination<TData, TValue>({
   const [refreshCounter, setRefreshCounter] = React.useState(0);
 
   React.useEffect(() => {
-    onUpdate({
-      cursor: cursors[pagination.pageIndex],
-      limit: pagination.pageSize,
-      sorting,
-      columnFilters,
-      globalFilters: globalFilter,
-    }).then(({ nextCursor }) => {
+    runAsynchronouslyWithAlert(async () => {
+      const { nextCursor } = await onUpdate({
+        cursor: cursors[pagination.pageIndex],
+        limit: pagination.pageSize,
+        sorting,
+        columnFilters,
+        globalFilters: globalFilter,
+      });
       setCursors(c => nextCursor ? { ...c, [pagination.pageIndex + 1]: nextCursor } : c);
-    }).catch(console.error);
+    });
   }, [pagination, sorting, columnFilters, refreshCounter]);
 
   // Reset to first page when filters change

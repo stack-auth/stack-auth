@@ -34,7 +34,7 @@ it("should be able to provision a new project if neon client details are correct
       superSecretAdminKey: response.body.super_secret_admin_key,
     },
   });
-  const project = await niceBackendFetch(`/api/v1/projects/current`, {
+  const project = await niceBackendFetch(`/api/v1/internal/projects/current`, {
     method: "GET",
     accessType: "admin",
   });
@@ -44,6 +44,8 @@ it("should be able to provision a new project if neon client details are correct
       "body": {
         "config": {
           "allow_localhost": true,
+          "allow_team_api_keys": false,
+          "allow_user_api_keys": false,
           "client_team_creation_enabled": false,
           "client_user_deletion_enabled": false,
           "create_team_on_sign_up": false,
@@ -73,6 +75,7 @@ it("should be able to provision a new project if neon client details are correct
           "sign_up_enabled": true,
           "team_creator_default_permissions": [{ "id": "admin" }],
           "team_member_default_permissions": [{ "id": "member" }],
+          "user_default_permissions": [],
         },
         "created_at_millis": <stripped field 'created_at_millis'>,
         "description": "Created with Neon",

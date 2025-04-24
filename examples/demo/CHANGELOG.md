@@ -1,5 +1,92 @@
 # @stackframe/example-demo-app
 
+## 2.8.8
+
+### Patch Changes
+
+- Various changes
+- Updated dependencies
+  - @stackframe/stack-ui@2.8.8
+  - @stackframe/stack@2.8.8
+  - @stackframe/stack-shared@2.8.8
+
+## 2.8.7
+
+### Patch Changes
+
+- @stackframe/stack@2.8.7
+- @stackframe/stack-shared@2.8.7
+- @stackframe/stack-ui@2.8.7
+
+## 2.8.6
+
+### Patch Changes
+
+- Various changes
+- Updated dependencies
+  - @stackframe/stack-shared@2.8.6
+  - @stackframe/stack-ui@2.8.6
+  - @stackframe/stack@2.8.6
+
+## 2.8.5
+
+### Patch Changes
+
+- Updated dependencies
+  - @stackframe/stack-shared@2.8.5
+  - @stackframe/stack@2.8.5
+  - @stackframe/stack-ui@2.8.5
+
+## 2.8.4
+
+### Patch Changes
+
+- Updated dependencies
+  - @stackframe/stack-shared@2.8.4
+  - @stackframe/stack@2.8.4
+  - @stackframe/stack-ui@2.8.4
+
+## 2.8.3
+
+### Patch Changes
+
+- Various changes
+- Updated dependencies
+  - @stackframe/stack-shared@2.8.3
+  - @stackframe/stack-ui@2.8.3
+  - @stackframe/stack@2.8.3
+
+## 2.8.2
+
+### Patch Changes
+
+- Various changes
+- Updated dependencies
+  - @stackframe/stack-shared@2.8.2
+  - @stackframe/stack@2.8.2
+  - @stackframe/stack-ui@2.8.2
+
+## 2.8.1
+
+### Patch Changes
+
+- @stackframe/stack@2.8.1
+- @stackframe/stack-shared@2.8.1
+- @stackframe/stack-ui@2.8.1
+
+## 2.8.0
+
+### Minor Changes
+
+- Various changes
+
+### Patch Changes
+
+- Updated dependencies
+  - @stackframe/stack-shared@2.8.0
+  - @stackframe/stack@2.8.0
+  - @stackframe/stack-ui@2.8.0
+
 ## 2.7.30
 
 ### Patch Changes

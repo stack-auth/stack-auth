@@ -17,10 +17,10 @@ declare module "yup" {
 
   // eslint-disable-next-line @typescript-eslint/consistent-type-definitions
   interface Schema<TType, TContext, TDefault, TFlags> {
-    getNested<K extends keyof TType>(path: K): yup.Schema<TType[K], TContext, TDefault, TFlags>,
+    getNested<K extends keyof NonNullable<TType>>(path: K): yup.Schema<NonNullable<TType>[K], TContext, TDefault, TFlags>,
 
     // the default types for concat kinda suck, so let's fix that
-    concat<U extends yup.AnySchema>(schema: U): yup.Schema<Omit<TType, keyof yup.InferType<U>> & yup.InferType<U>, TContext, TDefault, TFlags>,
+    concat<U extends yup.AnySchema>(schema: U): yup.Schema<Omit<NonNullable<TType>, keyof yup.InferType<U>> & yup.InferType<U> | (TType & (null | undefined)), TContext, TDefault, TFlags>,
   }
 }
 
@@ -151,9 +151,9 @@ export function yupObject<A extends yup.Maybe<yup.AnyObject>, B extends yup.Obje
           if (unknownKeys.length > 0) {
             // TODO "did you mean XYZ"
             return context.createError({
-              message: `${context.path} contains unknown properties: ${unknownKeys.join(', ')}`,
+              message: `${context.path || "Object"} contains unknown properties: ${unknownKeys.join(', ')}`,
               path: context.path,
-              params: { unknownKeys },
+              params: { unknownKeys, availableKeys },
             });
           }
         }
@@ -184,7 +184,7 @@ export function yupUnion<T extends yup.ISchema<any>[]>(...args: T): yup.MixedSch
     const errors = [];
     for (const schema of args) {
       try {
-        await schema.validate(value, context.options);
+        await yupValidate(schema, value, context.options);
         return true;
       } catch (e) {
         errors.push(e);
@@ -195,6 +195,47 @@ export function yupUnion<T extends yup.ISchema<any>[]>(...args: T): yup.MixedSch
       path: context.path,
     });
   });
+}
+
+export function yupRecord<K extends yup.StringSchema, T extends yup.AnySchema>(
+  keySchema: K,
+  valueSchema: T,
+): yup.MixedSchema<Record<string, yup.InferType<T>>> {
+  return yupObject().unknown(true).test(
+    'record',
+    '${path} must be a record of valid values',
+    async function (value: unknown, context: yup.TestContext) {
+      if (value == null) return true;
+      const { path, createError } = this as any;
+      if (typeof value !== 'object') {
+        return createError({ message: `${path} must be an object` });
+      }
+
+      // Validate each property using the provided valueSchema
+      for (const key of Object.keys(value)) {
+        // Validate the key
+        await yupValidate(keySchema, key, context.options);
+
+        // Validate the value
+        try {
+          await yupValidate(valueSchema, (value as Record<string, unknown>)[key], {
+            ...context.options,
+            context: {
+              ...context.options.context,
+              path: path ? `${path}.${key}` : key,
+            },
+          });
+        } catch (e: any) {
+          return createError({
+            path: path ? `${path}.${key}` : key,
+            message: e.message,
+          });
+        }
+      }
+
+      return true;
+    },
+  ) as any;
 }
 
 export function ensureObjectSchema<T extends yup.AnyObject>(schema: yup.Schema<T>): yup.ObjectSchema<T> & typeof schema {
@@ -249,9 +290,37 @@ export const passwordSchema = yupString().max(70);
  * `emailSchema` instead until we do the DB migration.
  */
 // eslint-disable-next-line no-restricted-syntax
-export const strictEmailSchema = (message: string | undefined) => yupString().email(message).matches(/^[^.].*@.*\.[^.][^.]+$/, message);
+export const strictEmailSchema = (message: string | undefined) => yupString().email(message).matches(/^[^.]+(\.[^.]+)*@.*\.[^.][^.]+$/, message);
 // eslint-disable-next-line no-restricted-syntax
 export const emailSchema = yupString().email();
+
+import.meta.vitest?.test('strictEmailSchema', ({ expect }) => {
+  const validEmails = [
+    "a@example.com",
+    "abc@example.com",
+    "a.b@example.com",
+    "throwaway.mail+token@example.com",
+    "email-alt-dash@demo-mail.com",
+    "test-account@weird-domain.net",
+    "%!~&+{}=|`#@domain.test",
+    "admin@a.longtldexample",
+  ];
+  for (const email of validEmails) {
+    expect(strictEmailSchema(undefined).validateSync(email)).toBe(email);
+  }
+  const invalidEmails = [
+    "test@localhost",
+    "test@gmail",
+    "test@gmail.com.a",
+    "test@gmail.a",
+    "test.@example.com",
+    "test..test@example.com",
+    ".test@example.com",
+  ];
+  for (const email of invalidEmails) {
+    expect(() => strictEmailSchema(undefined).validateSync(email)).toThrow();
+  }
+});
 
 // Request auth
 export const clientOrHigherAuthTypeSchema = yupString().oneOf(['client', 'server', 'admin']).defined();
@@ -358,8 +427,9 @@ export const teamSystemPermissions = [
   '$read_members',
   '$remove_members',
   '$invite_members',
+  '$manage_api_keys',
 ] as const;
-export const teamPermissionDefinitionIdSchema = yupString()
+export const permissionDefinitionIdSchema = yupString()
   .matches(/^\$?[a-z0-9_:]+$/, 'Only lowercase letters, numbers, ":", "_" and optional "$" at the beginning are allowed')
   .test('is-system-permission', 'System permissions must start with a dollar sign', (value, ctx) => {
     if (!value) return true;
@@ -369,11 +439,11 @@ export const teamPermissionDefinitionIdSchema = yupString()
     return true;
   })
   .meta({ openapiField: { description: `The permission ID used to uniquely identify a permission. Can either be a custom permission with lowercase letters, numbers, \`:\`, and \`_\` characters, or one of the system permissions: ${teamSystemPermissions.map(x => `\`${x}\``).join(', ')}`, exampleValue: 'read_secret_info' } });
-export const customTeamPermissionDefinitionIdSchema = yupString()
+export const customPermissionDefinitionIdSchema = yupString()
   .matches(/^[a-z0-9_:]+$/, 'Only lowercase letters, numbers, ":", "_" are allowed')
   .meta({ openapiField: { description: 'The permission ID used to uniquely identify a permission. Can only contain lowercase letters, numbers, ":", and "_" characters', exampleValue: 'read_secret_info' } });
 export const teamPermissionDescriptionSchema = yupString().meta({ openapiField: { description: 'A human-readable description of the permission', exampleValue: 'Read secret information' } });
-export const containedPermissionIdsSchema = yupArray(teamPermissionDefinitionIdSchema.defined()).meta({ openapiField: { description: 'The IDs of the permissions that are contained in this permission', exampleValue: ['read_public_info'] } });
+export const containedPermissionIdsSchema = yupArray(permissionDefinitionIdSchema.defined()).meta({ openapiField: { description: 'The IDs of the permissions that are contained in this permission', exampleValue: ['read_public_info'] } });
 
 // Teams
 export const teamIdSchema = yupString().uuid().meta({ openapiField: { description: _idDescription('team'), exampleValue: 'ad962777-8244-496a-b6a2-e0c6a449c79e' } });

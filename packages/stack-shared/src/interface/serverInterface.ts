@@ -11,6 +11,7 @@ import {
 import { ContactChannelsCrud } from "./crud/contact-channels";
 import { CurrentUserCrud } from "./crud/current-user";
 import { ConnectedAccountAccessTokenCrud } from "./crud/oauth";
+import { ProjectPermissionsCrud } from "./crud/project-permissions";
 import { SessionsCrud } from "./crud/sessions";
 import { TeamInvitationCrud } from "./crud/team-invitation";
 import { TeamMemberProfilesCrud } from "./crud/team-member-profiles";
@@ -195,6 +196,25 @@ export class StackServerInterface extends StackClientInterface {
     return result.items;
   }
 
+  async listServerProjectPermissions(
+    options: {
+      userId?: string,
+      recursive: boolean,
+    },
+    session: InternalSession | null,
+  ): Promise<ProjectPermissionsCrud['Server']['Read'][]> {
+    const response = await this.sendServerRequest(
+      `/project-permissions?${new URLSearchParams(filterUndefined({
+        user_id: options.userId,
+        recursive: options.recursive.toString(),
+      }))}`,
+      {},
+      session,
+    );
+    const result = await response.json() as ProjectPermissionsCrud['Server']['List'];
+    return result.items;
+  }
+
   async listServerUsers(options: {
     cursor?: string,
     limit?: number,
@@ -232,6 +252,16 @@ export class StackServerInterface extends StackClientInterface {
     const result = await response.json() as TeamsCrud['Server']['List'];
     return result.items;
   }
+
+  async getServerTeam(teamId: string): Promise<TeamsCrud['Server']['Read']> {
+    const response = await this.sendServerRequest(
+      `/teams/${teamId}`,
+      {},
+      null
+    );
+    return await response.json();
+  }
+
 
   async listServerTeamUsers(teamId: string): Promise<UsersCrud['Server']['Read'][]> {
     const response = await this.sendServerRequest(`/users?team_id=${teamId}`, {}, null);

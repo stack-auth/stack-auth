@@ -263,13 +263,16 @@ export function createSmartRouteHandler<
         "stack.smart-request.user.display-name": fullReq.auth?.user?.display_name ?? "<none>",
         "stack.smart-request.user.primary-email": fullReq.auth?.user?.primary_email ?? "<none>",
         "stack.smart-request.access-type": fullReq.auth?.type ?? "<none>",
+        "stack.smart-request.client-version.platform": fullReq.clientVersion?.platform ?? "<none>",
+        "stack.smart-request.client-version.version": fullReq.clientVersion?.version ?? "<none>",
+        "stack.smart-request.client-version.sdk": fullReq.clientVersion?.sdk ?? "<none>",
       },
     }, async () => {
       return await handler.handler(smartReq as any, fullReq);
     });
 
     return await traceSpan("validating smart response", async () => {
-      return await validateSmartResponse(nextRequest, smartRes, handler.response);
+      return await validateSmartResponse(nextRequest, fullReq, smartRes, handler.response);
     });
   };
 

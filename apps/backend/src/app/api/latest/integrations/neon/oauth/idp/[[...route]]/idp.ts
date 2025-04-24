@@ -1,6 +1,6 @@
 import { prismaClient, retryTransaction } from '@/prisma-client';
 import { Prisma } from '@prisma/client';
-import { decodeBase64OrBase64Url } from '@stackframe/stack-shared/dist/utils/bytes';
+import { decodeBase64OrBase64Url, toHexString } from '@stackframe/stack-shared/dist/utils/bytes';
 import { getEnvVariable } from '@stackframe/stack-shared/dist/utils/env';
 import { StackAssertionError, captureError, throwErr } from '@stackframe/stack-shared/dist/utils/errors';
 import { sha512 } from '@stackframe/stack-shared/dist/utils/hashes';
@@ -19,26 +19,18 @@ function createAdapter(options: {
     model: string,
     idOrWhere: string | { propertyKey: keyof AdapterPayload, propertyValue: string },
     updater: (old: AdapterData | undefined) => AdapterData | undefined
-  ) => void | Promise<void>,
+  ) => Promise<AdapterData | undefined>,
 }): AdapterConstructor {
   const niceUpdate = async (
     model: string,
     idOrWhere: string | { propertyKey: keyof AdapterPayload, propertyValue: string },
     updater?: (old: AdapterData | undefined) => AdapterData | undefined,
   ): Promise<AdapterPayload | undefined> => {
-    let wasCalled = false as boolean;  // casting due to https://stackoverflow.com/a/76698580
-    let updated: AdapterData | undefined;
-    await options.onUpdateUnique(
+    const updated = await options.onUpdateUnique(
       model,
       idOrWhere,
-      (old) => {
-        if (wasCalled) throw new StackAssertionError('Adapter update called more than once');
-        wasCalled = true;
-        updated = (updater ? updater(old) : old);
-        return updated;
-      },
+      updater ? updater : (old) => old,
     );
-    if (!wasCalled) throw new StackAssertionError('Adapter update was not called');
     return updated?.payload;
   };
 
@@ -94,7 +86,7 @@ function createAdapter(options: {
 function createPrismaAdapter(idpId: string) {
   return createAdapter({
     async onUpdateUnique(model, idOrWhere, updater) {
-      await retryTransaction(async (tx) => {
+      return await retryTransaction(async (tx) => {
         const oldAll = await tx.idPAdapterData.findMany({
           where: typeof idOrWhere === 'string' ? {
             idpId,
@@ -163,6 +155,8 @@ function createPrismaAdapter(idpId: string) {
             });
           }
         }
+
+        return updated;
       });
     },
   });
@@ -186,7 +180,7 @@ export async function createOidcProvider(options: { id: string, baseUrl: string 
     ttl: {},
     cookies: {
       keys: [
-        await sha512(`oidc-idp-cookie-encryption-key:${getEnvVariable("STACK_SERVER_SECRET")}`),
+        toHexString(await sha512(`oidc-idp-cookie-encryption-key:${getEnvVariable("STACK_SERVER_SECRET")}`)),
       ],
     },
     jwks: privateJwks,

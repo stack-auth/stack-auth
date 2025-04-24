@@ -2,7 +2,9 @@ import { WebAuthnError, startAuthentication, startRegistration } from "@simplewe
 import { KnownErrors, StackClientInterface } from "@stackframe/stack-shared";
 import { ContactChannelsCrud } from "@stackframe/stack-shared/dist/interface/crud/contact-channels";
 import { CurrentUserCrud } from "@stackframe/stack-shared/dist/interface/crud/current-user";
-import { ProjectsCrud } from "@stackframe/stack-shared/dist/interface/crud/projects";
+import { TeamApiKeysCrud, UserApiKeysCrud, teamApiKeysCreateOutputSchema, userApiKeysCreateOutputSchema } from "@stackframe/stack-shared/dist/interface/crud/project-api-keys";
+import { ProjectPermissionsCrud } from "@stackframe/stack-shared/dist/interface/crud/project-permissions";
+import { ClientProjectsCrud } from "@stackframe/stack-shared/dist/interface/crud/projects";
 import { SessionsCrud } from "@stackframe/stack-shared/dist/interface/crud/sessions";
 import { TeamInvitationCrud } from "@stackframe/stack-shared/dist/interface/crud/team-invitation";
 import { TeamMemberProfilesCrud } from "@stackframe/stack-shared/dist/interface/crud/team-member-profiles";
@@ -24,11 +26,11 @@ import { deindent, mergeScopeStrings } from "@stackframe/stack-shared/dist/utils
 import { getRelativePart, isRelative } from "@stackframe/stack-shared/dist/utils/urls";
 import { generateUuid } from "@stackframe/stack-shared/dist/utils/uuids";
 import * as cookie from "cookie";
-import * as NextNavigationUnscrambled from "next/navigation"; // import the entire module to get around some static compiler warnings emitted by Next.js in some cases | THIS_LINE_PLATFORM next
-import React, { useCallback, useMemo } from "react"; // THIS_LINE_PLATFORM react-like
+import type * as yup from "yup";
 import { constructRedirectUrl } from "../../../../utils/url";
 import { addNewOAuthProviderOrScope, callOAuthCallback, signInWithOAuth } from "../../../auth";
 import { CookieHelper, createBrowserCookieHelper, createCookieHelper, createPlaceholderCookieHelper, deleteCookieClient, getCookieClient, setOrDeleteCookie, setOrDeleteCookieClient } from "../../../cookie";
+import { ApiKey, ApiKeyCreationOptions, ApiKeyUpdateOptions, apiKeyCreationOptionsToCrud } from "../../api-keys";
 import { GetUserOptions, HandlerUrls, OAuthScopesOnSignIn, RedirectMethod, RedirectToOptions, RequestLike, TokenStoreInit, stackAppInternalsSymbol } from "../../common";
 import { OAuthConnection } from "../../connected-accounts";
 import { ContactChannel, ContactChannelCreateOptions, ContactChannelUpdateOptions, contactChannelCreateOptionsToCrud, contactChannelUpdateOptionsToCrud } from "../../contact-channels";
@@ -38,8 +40,10 @@ import { EditableTeamMemberProfile, Team, TeamCreateOptions, TeamInvitation, Tea
 import { ActiveSession, Auth, BaseUser, CurrentUser, InternalUserExtra, ProjectCurrentUser, UserExtra, UserUpdateOptions, userUpdateOptionsToCrud } from "../../users";
 import { StackClientApp, StackClientAppConstructorOptions, StackClientAppJson } from "../interfaces/client-app";
 import { _StackAdminAppImplIncomplete } from "./admin-app-impl";
-import { TokenObject, clientVersion, createCache, createCacheBySession, createEmptyTokenStore, getBaseUrl, getDefaultExtraRequestHeaders, getDefaultProjectId, getDefaultPublishableClientKey, getUrls } from "./common";
+import { TokenObject, clientVersion, createCache, createCacheBySession, createEmptyTokenStore, getBaseUrl, getDefaultExtraRequestHeaders, getDefaultProjectId, getDefaultPublishableClientKey, getUrls, } from "./common";
 
+import * as NextNavigationUnscrambled from "next/navigation"; // import the entire module to get around some static compiler warnings emitted by Next.js in some cases | THIS_LINE_PLATFORM next
+import React, { useCallback, useMemo } from "react"; // THIS_LINE_PLATFORM react-like
 import { useAsyncCache } from "./common"; // THIS_LINE_PLATFORM react-like
 
 let isReactServer = false;
@@ -56,7 +60,7 @@ const NextNavigation = scrambleDuringCompileTime(NextNavigationUnscrambled);
 const process = (globalThis as any).process ?? { env: {} }; // THIS_LINE_PLATFORM js react
 
 
-const allClientApps = new Map<string, [checkString: string, app: StackClientApp<any, any>]>();
+const allClientApps = new Map<string, [checkString: string | undefined, app: StackClientApp<any, any>]>();
 
 export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, ProjectId extends string = string> implements StackClientApp<HasTokenStore, ProjectId> {
   /**
@@ -115,6 +119,12 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
   >(async (session, [teamId, recursive]) => {
     return await this._interface.listCurrentUserTeamPermissions({ teamId, recursive }, session);
   });
+  private readonly _currentUserProjectPermissionsCache = createCacheBySession<
+    [boolean],
+    ProjectPermissionsCrud['Client']['Read'][]
+  >(async (session, [recursive]) => {
+    return await this._interface.listCurrentUserProjectPermissions({ recursive }, session);
+  });
   private readonly _currentUserTeamsCache = createCacheBySession(async (session) => {
     return await this._interface.listCurrentUserTeams(session);
   });
@@ -164,6 +174,20 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
   private readonly _clientContactChannelsCache = createCacheBySession<[], ContactChannelsCrud['Client']['Read'][]>(
     async (session) => {
       return await this._interface.listClientContactChannels(session);
+    }
+  );
+
+  private readonly _userApiKeysCache = createCacheBySession<[], UserApiKeysCrud['Client']['Read'][]>(
+    async (session) => {
+      const results = await this._interface.listProjectApiKeys({ user_id: 'me' }, session, "client");
+      return results as UserApiKeysCrud['Client']['Read'][];
+    }
+  );
+
+  private readonly _teamApiKeysCache = createCacheBySession<[string], TeamApiKeysCrud['Client']['Read'][]>(
+    async (session, [teamId]) => {
+      const results = await this._interface.listProjectApiKeys({ team_id: teamId }, session, "client");
+      return results as TeamApiKeysCrud['Client']['Read'][];
     }
   );
 
@@ -291,7 +315,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
     if (allClientApps.has(this._uniqueIdentifier)) {
       throw new StackAssertionError("A Stack client app with the same unique identifier already exists");
     }
-    allClientApps.set(this._uniqueIdentifier, [this._options.checkString ?? "default check string", this]);
+    allClientApps.set(this._uniqueIdentifier, [this._options.checkString ?? undefined, this]);
   }
 
   /**
@@ -566,7 +590,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
     }
   }
 
-  protected _clientProjectFromCrud(crud: ProjectsCrud['Client']['Read']): Project {
+  protected _clientProjectFromCrud(crud: ClientProjectsCrud['Client']['Read']): Project {
     return {
       id: crud.id,
       displayName: crud.display_name,
@@ -577,6 +601,8 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
         passkeyEnabled: crud.config.passkey_enabled,
         clientTeamCreationEnabled: crud.config.client_team_creation_enabled,
         clientUserDeletionEnabled: crud.config.client_user_deletion_enabled,
+        allowTeamApiKeys: crud.config.allow_team_api_keys,
+        allowUserApiKeys: crud.config.allow_user_api_keys,
         oauthProviders: crud.config.enabled_oauth_providers.map((p) => ({
           id: p.id,
         })),
@@ -584,7 +610,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
     };
   }
 
-  protected _clientTeamPermissionFromCrud(crud: TeamPermissionsCrud['Client']['Read']): TeamPermission {
+  protected _clientPermissionFromCrud(crud: TeamPermissionsCrud['Client']['Read'] | ProjectPermissionsCrud['Client']['Read']): TeamPermission {
     return {
       id: crud.id,
     };
@@ -612,6 +638,56 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
     };
   }
 
+  protected _baseApiKeyFromCrud(
+    crud: TeamApiKeysCrud['Client']['Read'] | UserApiKeysCrud['Client']['Read'] | yup.InferType<typeof teamApiKeysCreateOutputSchema> | yup.InferType<typeof userApiKeysCreateOutputSchema>
+  ): Omit<ApiKey<"user", boolean>, "revoke" | "update"> | Omit<ApiKey<"team", boolean>, "revoke" | "update"> {
+    return {
+      id: crud.id,
+      description: crud.description,
+      expiresAt: crud.expires_at_millis ? new Date(crud.expires_at_millis) : undefined,
+      manuallyRevokedAt: crud.manually_revoked_at_millis ? new Date(crud.manually_revoked_at_millis) : null,
+      createdAt: new Date(crud.created_at_millis),
+      ...(crud.type === "team" ? { type: "team", teamId: crud.team_id } : { type: "user", userId: crud.user_id }),
+      value: typeof crud.value === "string" ? crud.value : {
+        lastFour: crud.value.last_four,
+      },
+      isValid: function() {
+        return this.whyInvalid() === null;
+      },
+      whyInvalid: function() {
+        if (this.manuallyRevokedAt) {
+          return "manually-revoked";
+        }
+        if (this.expiresAt && this.expiresAt < new Date()) {
+          return "expired";
+        }
+        return null;
+      },
+    };
+  }
+
+
+  protected _clientApiKeyFromCrud(session: InternalSession, crud: TeamApiKeysCrud['Client']['Read']): ApiKey<"team">;
+  protected _clientApiKeyFromCrud(session: InternalSession, crud: UserApiKeysCrud['Client']['Read']): ApiKey<"user">;
+  protected _clientApiKeyFromCrud(session: InternalSession, crud: yup.InferType<typeof teamApiKeysCreateOutputSchema>): ApiKey<"team", true>;
+  protected _clientApiKeyFromCrud(session: InternalSession, crud: yup.InferType<typeof userApiKeysCreateOutputSchema>): ApiKey<"user", true>;
+  protected _clientApiKeyFromCrud(session: InternalSession, crud: TeamApiKeysCrud['Client']['Read'] | UserApiKeysCrud['Client']['Read'] | yup.InferType<typeof teamApiKeysCreateOutputSchema> | yup.InferType<typeof userApiKeysCreateOutputSchema>): ApiKey<"user" | "team", boolean> {
+    return {
+      ...this._baseApiKeyFromCrud(crud),
+      async revoke() {
+        await this.update({ revoked: true });
+      },
+      update: async (options: ApiKeyUpdateOptions) => {
+        await this._interface.updateProjectApiKey(crud.type === "team" ? { team_id: crud.team_id } : { user_id: crud.user_id }, crud.id, options, session, "client");
+        if (crud.type === "team") {
+          await this._teamApiKeysCache.refresh([session, crud.team_id]);
+        } else {
+          await this._userApiKeysCache.refresh([session]);
+        }
+      },
+    };
+  }
+
   protected _clientTeamFromCrud(crud: TeamsCrud['Client']['Read'], session: InternalSession): Team {
     const app = this;
     return {
@@ -621,14 +697,11 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
       clientMetadata: crud.client_metadata,
       clientReadOnlyMetadata: crud.client_read_only_metadata,
       async inviteUser(options: { email: string, callbackUrl?: string }) {
-        if (!options.callbackUrl && !await app._getCurrentUrl()) {
-          throw new Error("Cannot invite user without a callback URL from the server or without a redirect method. Make sure you pass the `callbackUrl` option: `inviteUser({ email, callbackUrl: ... })`");
-        }
         await app._interface.sendTeamInvitation({
           teamId: crud.id,
           email: options.email,
           session,
-          callbackUrl: options.callbackUrl ?? constructRedirectUrl(app.urls.teamInvitation),
+          callbackUrl: options.callbackUrl ?? constructRedirectUrl(app.urls.teamInvitation, "callbackUrl"),
         });
         await app._teamInvitationsCache.refresh([session, crud.id]);
       },
@@ -660,6 +733,28 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
         await app._interface.deleteTeam(crud.id, session);
         await app._currentUserTeamsCache.refresh([session]);
       },
+
+      // IF_PLATFORM react-like
+      useApiKeys() {
+        const result = useAsyncCache(app._teamApiKeysCache, [session, crud.id] as const, "team.useApiKeys()");
+        return result.map((crud) => app._clientApiKeyFromCrud(session, crud));
+      },
+      // END_PLATFORM
+
+      async listApiKeys() {
+        const results = Result.orThrow(await app._teamApiKeysCache.getOrWait([session, crud.id], "write-only"));
+        return results.map((crud) => app._clientApiKeyFromCrud(session, crud));
+      },
+
+      async createApiKey(options: ApiKeyCreationOptions<"team">) {
+        const result = await app._interface.createProjectApiKey(
+          await apiKeyCreationOptionsToCrud("team", crud.id, options),
+          session,
+          "client",
+        );
+        await app._teamApiKeysCache.refresh([session, crud.id]);
+        return app._clientApiKeyFromCrud(session, result);
+      },
     };
   }
 
@@ -673,8 +768,12 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
       isPrimary: crud.is_primary,
       usedForAuth: crud.used_for_auth,
 
-      async sendVerificationEmail() {
-        await app._interface.sendCurrentUserContactChannelVerificationEmail(crud.id, constructRedirectUrl(app.urls.emailVerification), session);
+      async sendVerificationEmail(options?: { callbackUrl?: string }) {
+        await app._interface.sendCurrentUserContactChannelVerificationEmail(
+          crud.id,
+          options?.callbackUrl || constructRedirectUrl(app.urls.emailVerification, "callbackUrl"),
+          session
+        );
       },
       async update(data: ContactChannelUpdateOptions) {
         await app._interface.updateClientContactChannel(crud.id, contactChannelUpdateOptionsToCrud(data), session);
@@ -789,6 +888,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
       oauthProviders: crud.oauth_providers,
       passkeyAuthEnabled: crud.passkey_auth_enabled,
       isMultiFactorRequired: crud.requires_totp_mfa,
+      isAnonymous: crud.is_anonymous,
       toClientJson(): CurrentUserCrud['Client']['Read'] {
         return crud;
       }
@@ -856,36 +956,73 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
       async createTeam(data: TeamCreateOptions) {
         const crud = await app._interface.createClientTeam(teamCreateOptionsToCrud(data, 'me'), session);
         await app._currentUserTeamsCache.refresh([session]);
+        await this.update({ selectedTeamId: crud.id });
         return app._clientTeamFromCrud(crud, session);
       },
       async leaveTeam(team: Team) {
         await app._interface.leaveTeam(team.id, session);
         // TODO: refresh cache
       },
-      async listPermissions(scope: Team, options?: { recursive?: boolean }): Promise<TeamPermission[]> {
-        const recursive = options?.recursive ?? true;
-        const permissions = Result.orThrow(await app._currentUserPermissionsCache.getOrWait([session, scope.id, recursive], "write-only"));
-        return permissions.map((crud) => app._clientTeamPermissionFromCrud(crud));
+      async listPermissions(scopeOrOptions?: Team | { recursive?: boolean }, options?: { recursive?: boolean }): Promise<TeamPermission[]> {
+        if (scopeOrOptions && 'id' in scopeOrOptions) {
+          const scope = scopeOrOptions;
+          const recursive = options?.recursive ?? true;
+          const permissions = Result.orThrow(await app._currentUserPermissionsCache.getOrWait([session, scope.id, recursive], "write-only"));
+          return permissions.map((crud) => app._clientPermissionFromCrud(crud));
+        } else {
+          const opts = scopeOrOptions;
+          const recursive = opts?.recursive ?? true;
+          const permissions = Result.orThrow(await app._currentUserProjectPermissionsCache.getOrWait([session, recursive], "write-only"));
+          return permissions.map((crud) => app._clientPermissionFromCrud(crud));
+        }
       },
       // IF_PLATFORM react-like
-      usePermissions(scope: Team, options?: { recursive?: boolean }): TeamPermission[] {
-        const recursive = options?.recursive ?? true;
-        const permissions = useAsyncCache(app._currentUserPermissionsCache, [session, scope.id, recursive] as const, "user.usePermissions()");
-        return useMemo(() => permissions.map((crud) => app._clientTeamPermissionFromCrud(crud)), [permissions]);
+      usePermissions(scopeOrOptions?: Team | { recursive?: boolean }, options?: { recursive?: boolean }): TeamPermission[] {
+        if (scopeOrOptions && 'id' in scopeOrOptions) {
+          const scope = scopeOrOptions;
+          const recursive = options?.recursive ?? true;
+          const permissions = useAsyncCache(app._currentUserPermissionsCache, [session, scope.id, recursive] as const, "user.usePermissions()");
+          return useMemo(() => permissions.map((crud) => app._clientPermissionFromCrud(crud)), [permissions]);
+        } else {
+          const opts = scopeOrOptions;
+          const recursive = opts?.recursive ?? true;
+          const permissions = useAsyncCache(app._currentUserProjectPermissionsCache, [session, recursive] as const, "user.usePermissions()");
+          return useMemo(() => permissions.map((crud) => app._clientPermissionFromCrud(crud)), [permissions]);
+        }
       },
       // END_PLATFORM
       // IF_PLATFORM react-like
-      usePermission(scope: Team, permissionId: string): TeamPermission | null {
-        const permissions = this.usePermissions(scope);
-        return useMemo(() => permissions.find((p) => p.id === permissionId) ?? null, [permissions, permissionId]);
+      usePermission(scopeOrPermissionId: Team | string, permissionId?: string): TeamPermission | null {
+        if (scopeOrPermissionId && typeof scopeOrPermissionId !== 'string') {
+          const scope = scopeOrPermissionId;
+          const permissions = this.usePermissions(scope);
+          return useMemo(() => permissions.find((p) => p.id === permissionId) ?? null, [permissions, permissionId]);
+        } else {
+          const pid = scopeOrPermissionId;
+          const permissions = this.usePermissions();
+          return useMemo(() => permissions.find((p) => p.id === pid) ?? null, [permissions, pid]);
+        }
       },
       // END_PLATFORM
-      async getPermission(scope: Team, permissionId: string): Promise<TeamPermission | null> {
-        const permissions = await this.listPermissions(scope);
-        return permissions.find((p) => p.id === permissionId) ?? null;
+      async getPermission(scopeOrPermissionId: Team | string, permissionId?: string): Promise<TeamPermission | null> {
+        if (scopeOrPermissionId && typeof scopeOrPermissionId !== 'string') {
+          const scope = scopeOrPermissionId;
+          const permissions = await this.listPermissions(scope);
+          return permissions.find((p) => p.id === permissionId) ?? null;
+        } else {
+          const pid = scopeOrPermissionId;
+          const permissions = await this.listPermissions();
+          return permissions.find((p) => p.id === pid) ?? null;
+        }
       },
-      async hasPermission(scope: Team, permissionId: string): Promise<boolean> {
-        return (await this.getPermission(scope, permissionId)) !== null;
+      async hasPermission(scopeOrPermissionId: Team | string, permissionId?: string): Promise<boolean> {
+        if (scopeOrPermissionId && typeof scopeOrPermissionId !== 'string') {
+          const scope = scopeOrPermissionId;
+          return (await this.getPermission(scope, permissionId as string)) !== null;
+        } else {
+          const pid = scopeOrPermissionId;
+          return (await this.getPermission(pid)) !== null;
+        }
       },
       async update(update) {
         return await app._updateClientUser(update, session);
@@ -894,10 +1031,11 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
         if (!crud.primary_email) {
           throw new StackAssertionError("User does not have a primary email");
         }
-        if (!options?.callbackUrl && !await app._getCurrentUrl()) {
-          throw new Error("Cannot send verification email without a callback URL from the server or without a redirect method. Make sure you pass the `callbackUrl` option: `sendVerificationEmail({ callbackUrl: ... })`");
-        }
-        return await app._interface.sendVerificationEmail(crud.primary_email, options?.callbackUrl ?? constructRedirectUrl(app.urls.emailVerification), session);
+        return await app._interface.sendVerificationEmail(
+          crud.primary_email,
+          options?.callbackUrl ?? constructRedirectUrl(app.urls.emailVerification, "callbackUrl"),
+          session
+        );
       },
       async updatePassword(options: { oldPassword: string, newPassword: string}) {
         const result = await app._interface.updatePassword(options, session);
@@ -938,6 +1076,28 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
         const crud = await app._interface.createClientContactChannel(contactChannelCreateOptionsToCrud('me', data), session);
         await app._clientContactChannelsCache.refresh([session]);
         return app._clientContactChannelFromCrud(crud, session);
+      },
+
+      // IF_PLATFORM react-like
+      useApiKeys() {
+        const result = useAsyncCache(app._userApiKeysCache, [session] as const, "user.useApiKeys()");
+        return result.map((crud) => app._clientApiKeyFromCrud(session, crud));
+      },
+      // END_PLATFORM
+
+      async listApiKeys() {
+        const results = await app._interface.listProjectApiKeys({ user_id: 'me' }, session, "client");
+        return results.map((crud) => app._clientApiKeyFromCrud(session, crud));
+      },
+
+      async createApiKey(options: ApiKeyCreationOptions<"user">) {
+        const result = await app._interface.createProjectApiKey(
+          await apiKeyCreationOptionsToCrud("user", "me", options),
+          session,
+          "client",
+        );
+        await app._userApiKeysCache.refresh([session]);
+        return app._clientApiKeyFromCrud(session, result);
       },
     };
   }
@@ -1067,18 +1227,14 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
     if (!options?.noRedirectBack) {
       if (handlerName === "afterSignIn" || handlerName === "afterSignUp") {
         if (isReactServer || typeof window === "undefined") {
-          try {
-            await this._checkFeatureSupport("rsc-handler-" + handlerName, {});
-          } catch (e) {}
+          // TODO implement this
         } else {
           const queryParams = new URLSearchParams(window.location.search);
           url = queryParams.get("after_auth_return_to") || url;
         }
       } else if (handlerName === "signIn" || handlerName === "signUp") {
         if (isReactServer || typeof window === "undefined") {
-          try {
-            await this._checkFeatureSupport("rsc-handler-" + handlerName, {});
-          } catch (e) {}
+          // TODO implement this
         } else {
           const currentUrl = new URL(window.location.href);
           const nextUrl = new URL(url, currentUrl);
@@ -1112,17 +1268,11 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
   async redirectToTeamInvitation(options?: RedirectToOptions) { return await this._redirectToHandler("teamInvitation", options); }
 
   async sendForgotPasswordEmail(email: string, options?: { callbackUrl?: string }): Promise<Result<undefined, KnownErrors["UserNotFound"]>> {
-    if (!options?.callbackUrl && !await this._getCurrentUrl()) {
-      throw new Error("Cannot send forgot password email without a callback URL from the server or without a redirect method. Make sure you pass the `callbackUrl` option: `sendForgotPasswordEmail({ email, callbackUrl: ... })`");
-    }
-    return await this._interface.sendForgotPasswordEmail(email, options?.callbackUrl ?? constructRedirectUrl(this.urls.passwordReset));
+    return await this._interface.sendForgotPasswordEmail(email, options?.callbackUrl ?? constructRedirectUrl(this.urls.passwordReset, "callbackUrl"));
   }
 
   async sendMagicLinkEmail(email: string, options?: { callbackUrl?: string }): Promise<Result<{ nonce: string }, KnownErrors["RedirectUrlNotWhitelisted"]>> {
-    if (!options?.callbackUrl && !await this._getCurrentUrl()) {
-      throw new Error("Cannot send magic link email without a callback URL from the server or without a redirect method. Make sure you pass the `callbackUrl` option: `sendMagicLinkEmail({ email, callbackUrl: ... })`");
-    }
-    return await this._interface.sendMagicLinkEmail(email, options?.callbackUrl ?? constructRedirectUrl(this.urls.magicLinkCallback));
+    return await this._interface.sendMagicLinkEmail(email, options?.callbackUrl ?? constructRedirectUrl(this.urls.magicLinkCallback, "callbackUrl"));
   }
 
   async resetPassword(options: { password: string, code: string }): Promise<Result<undefined, KnownErrors["VerificationCodeError"]>> {
@@ -1199,7 +1349,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
         }
         case 'anonymous': {
           const tokens = await this._signUpAnonymously();
-          return await this.getUser({ tokenStore: tokens }) ?? throwErr("Something went wrong while signing up anonymously");
+          return await this.getUser({ tokenStore: tokens, or: "anonymous-if-exists" }) ?? throwErr("Something went wrong while signing up anonymously");
         }
         case undefined:
         case "anonymous-if-exists":
@@ -1354,7 +1504,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
   }): Promise<Result<undefined, KnownErrors["UserWithEmailAlreadyExists"] | KnownErrors['PasswordRequirementsNotMet']>> {
     this._ensurePersistentTokenStore();
     const session = await this._getSession();
-    const emailVerificationRedirectUrl = options.verificationCallbackUrl ?? constructRedirectUrl(this.urls.emailVerification);
+    const emailVerificationRedirectUrl = options.verificationCallbackUrl ?? constructRedirectUrl(this.urls.emailVerification, "verificationCallbackUrl");
     const result = await this._interface.signUpWithCredential(
       options.email,
       options.password,
@@ -1420,6 +1570,102 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
     } else {
       return Result.error(result.error);
     }
+  }
+
+  /**
+   * Initiates a CLI authentication process that allows a command line application
+   * to get a refresh token for a user's account.
+   *
+   * This process works as follows:
+   * 1. The CLI app calls this method, which initiates the auth process with the server
+   * 2. The server returns a polling code and a login code
+   * 3. The CLI app opens a browser window to the appUrl with the login code as a parameter
+   * 4. The user logs in through the browser and confirms the authorization
+   * 5. The CLI app polls for the refresh token using the polling code
+   *
+   * @param options Options for the CLI login
+   * @param options.appUrl The URL of the app that will handle the CLI auth confirmation
+   * @param options.expiresInMillis Optional duration in milliseconds before the auth attempt expires (default: 2 hours)
+   * @param options.maxAttempts Optional maximum number of polling attempts (default: Infinity)
+   * @param options.waitTimeMillis Optional time to wait between polling attempts (default: 2 seconds)
+   * @param options.promptLink Optional function to call with the login URL to prompt the user to open the browser
+   * @returns Result containing either the refresh token or an error
+   */
+  async promptCliLogin(options: {
+    appUrl: string,
+    expiresInMillis?: number,
+    maxAttempts?: number,
+    waitTimeMillis?: number,
+    promptLink?: (url: string) => void,
+  }): Promise<Result<string, KnownErrors["CliAuthError"] | KnownErrors["CliAuthExpiredError"] | KnownErrors["CliAuthUsedError"]>> {
+    // Step 1: Initiate the CLI auth process
+    const response = await this._interface.sendClientRequest(
+      "/auth/cli",
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          expires_in_millis: options.expiresInMillis,
+        }),
+      },
+      null
+    );
+
+    if (!response.ok) {
+      return Result.error(new KnownErrors.CliAuthError(`Failed to initiate CLI auth: ${response.status} ${await response.text()}`));
+    }
+
+    const initResult = await response.json();
+    const pollingCode = initResult.polling_code;
+    const loginCode = initResult.login_code;
+
+    // Step 2: Open the browser for the user to authenticate
+    const url = `${options.appUrl}/handler/cli-auth-confirm?login_code=${encodeURIComponent(loginCode)}`;
+    if (options.promptLink) {
+      options.promptLink(url);
+    } else {
+      console.log(`Please visit the following URL to authenticate:\n${url}`);
+    }
+
+
+    // Step 3: Poll for the token
+    let attempts = 0;
+    while (attempts < (options.maxAttempts ?? Infinity)) {
+      attempts++;
+      const pollResponse = await this._interface.sendClientRequest("/auth/cli/poll", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          polling_code: pollingCode,
+        }),
+      }, null);
+
+      if (!pollResponse.ok) {
+        return Result.error(new KnownErrors.CliAuthError(`Failed to initiate CLI auth: ${pollResponse.status} ${await pollResponse.text()}`));
+      }
+      const pollResult = await pollResponse.json();
+
+      if (pollResponse.status === 201 && pollResult.status === "success") {
+        return Result.ok(pollResult.refresh_token);
+      }
+      if (pollResult.status === "waiting") {
+        await wait(options.waitTimeMillis ?? 2000);
+        continue;
+      }
+      if (pollResult.status === "expired") {
+        return Result.error(new KnownErrors.CliAuthExpiredError("CLI authentication request expired. Please try again."));
+      }
+      if (pollResult.status === "used") {
+        return Result.error(new KnownErrors.CliAuthUsedError("This authentication token has already been used."));
+      }
+      return Result.error(new KnownErrors.CliAuthError(`Unexpected status from CLI auth polling: ${pollResult.status}`));
+    }
+
+    return Result.error(new KnownErrors.CliAuthError("Timed out waiting for CLI authentication."));
   }
 
   async signInWithPasskey(): Promise<Result<undefined, KnownErrors["PasskeyAuthenticationFailed"] | KnownErrors["InvalidTotpCode"] | KnownErrors["PasskeyWebAuthnError"]>> {
@@ -1589,7 +1835,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
         const existing = allClientApps.get(json.uniqueIdentifier);
         if (existing) {
           const [existingCheckString, clientApp] = existing;
-          if (existingCheckString !== providedCheckString) {
+          if (existingCheckString !== undefined && existingCheckString !== providedCheckString) {
             throw new StackAssertionError("The provided app JSON does not match the configuration of the existing client app with the same unique identifier", { providedObj: json, existingString: existingCheckString });
           }
           return clientApp as any;

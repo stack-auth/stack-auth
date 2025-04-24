@@ -1,7 +1,7 @@
 import { encodeBase64Url } from "@stackframe/stack-shared/dist/utils/bytes";
 import { expect } from "vitest";
 import { it, updateCookiesFromResponse } from "../../../../../../helpers";
-import { ApiKey, Auth, Project, backendContext, niceBackendFetch } from "../../../../../backend-helpers";
+import { Auth, InternalApiKey, Project, backendContext, niceBackendFetch } from "../../../../../backend-helpers";
 
 async function authorizePart1(redirectUri: string = "http://localhost:30000/api/v2/auth/authorize") {
   let cookies = "";
@@ -225,7 +225,7 @@ it(`should exchange the authorization code for an admin API key that works`, asy
     },
     userAuth: null,
   });
-  const listApiKeysResponse = await ApiKey.listAll();
+  const listApiKeysResponse = await InternalApiKey.list();
   expect(listApiKeysResponse).toMatchInlineSnapshot(`
     {
       "is_paginated": false,

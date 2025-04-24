@@ -2,7 +2,7 @@
   "//": "THIS FILE IS AUTO-GENERATED FROM TEMPLATE. DO NOT EDIT IT DIRECTLY",
   "name": "@stackframe/template",
   "private": true,
-  "version": "2.7.30",
+  "version": "2.8.8",
   "sideEffects": false,
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -49,6 +49,7 @@
     "@stackframe/stack-sc": "workspace:*",
     "@stackframe/stack-shared": "workspace:*",
     "@stackframe/stack-ui": "workspace:*",
+    "@tanstack/react-table": "^8.20.5",
     "browser-image-compression": "^2.0.2",
     "color": "^4.2.3",
     "cookie": "^0.6.0",
@@ -56,7 +57,7 @@
     "js-cookie": "^3.0.5",
     "lucide-react": "^0.378.0",
     "oauth4webapi": "^2.10.3",
-    "oslo": "^1.2.1",
+    "@oslojs/otp": "^1.1.0",
     "qrcode": "^1.5.4",
     "react-avatar-editor": "^13.0.2",
     "react-hook-form": "^7.51.4",
@@ -68,15 +69,15 @@
   "peerDependencies": {
     "@types/react": ">=18.2 || >=19.0.0-rc.0",
     "@types/react-dom": ">=18.2 || >=19.0.0-rc.0",
+    "react-dom": ">=18.2 || >=19.0.0-rc.0",
     "next": ">=14.1 || >=15.0.0-canary.0 || >=15.0.0-rc.0",
-    "react": ">=18.2 || >=19.0.0-rc.0",
-    "react-dom": ">=18.2 || >=19.0.0-rc.0"
+    "react": ">=18.2 || >=19.0.0-rc.0"
   },
   "peerDependenciesMeta": {
-    "@types/react": {
+    "@types/react-dom": {
       "optional": true
     },
-    "@types/react-dom": {
+    "@types/react": {
       "optional": true
     }
   },

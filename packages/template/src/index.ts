@@ -22,4 +22,5 @@ export { OAuthButton } from "./components/oauth-button";
 export { OAuthButtonGroup } from "./components/oauth-button-group";
 export { SelectedTeamSwitcher } from "./components/selected-team-switcher";
 export { UserButton } from "./components/user-button";
+export { CliAuthConfirmation } from "./components-page/cli-auth-confirm";
 // END_PLATFORM
