@@ -79,6 +79,7 @@ export const projectPermissionDefinitionsCrudAdminCreateSchema = yupObject({
 }).defined();
 
 export const projectPermissionDefinitionsCrudAdminUpdateSchema = yupObject({
+  id: schemaFields.customPermissionDefinitionIdSchema.optional(),
   description: schemaFields.teamPermissionDescriptionSchema.optional(),
   contained_permission_ids: schemaFields.containedPermissionIdsSchema.optional(),
 }).defined();

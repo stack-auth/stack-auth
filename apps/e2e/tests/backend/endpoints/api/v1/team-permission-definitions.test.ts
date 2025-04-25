@@ -245,16 +245,9 @@ it("creates, updates, and delete a new team permission", async ({ expect }) => {
   });
   expect(response5).toMatchInlineSnapshot(`
     NiceResponse {
-      "status": 404,
-      "body": {
-        "code": "PERMISSION_NOT_FOUND",
-        "details": { "permission_id": "p1" },
-        "error": "Permission \\"p1\\" not found. Make sure you created it on the dashboard.",
-      },
-      "headers": Headers {
-        "x-stack-known-error": "PERMISSION_NOT_FOUND",
-        <some fields may have been hidden>,
-      },
+      "status": 200,
+      "body": { "success": true },
+      "headers": Headers { <some fields may have been hidden> },
     }
   `);
 
@@ -303,14 +296,7 @@ it("creates, updates, and delete a new team permission", async ({ expect }) => {
             "id": "$update_team",
           },
           {
-            "contained_permission_ids": [],
-            "id": "p1",
-          },
-          {
-            "contained_permission_ids": [
-              "$update_team",
-              "p1",
-            ],
+            "contained_permission_ids": ["$update_team"],
             "id": "p3",
           },
           {
