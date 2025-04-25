@@ -405,3 +405,74 @@ it("handles duplicate permission IDs correctly", async ({ expect }) => {
     },
   });
 });
+
+it("cannot create a team permission that contains a permission that doesn't exist", async ({ expect }) => {
+  await Project.createAndSwitch();
+
+  const response = await niceBackendFetch(`/api/v1/team-permission-definitions`, {
+    accessType: "admin",
+    method: "POST",
+    body: {
+      id: 'p1',
+      contained_permission_ids: ['p2']
+    },
+  });
+  expect(response).toMatchInlineSnapshot(`
+    NiceResponse {
+      "status": 400,
+      "body": {
+        "code": "CONTAINED_PERMISSION_NOT_FOUND",
+        "details": { "permission_id": "p2" },
+        "error": "Contained permission with ID \\"p2\\" not found. Make sure you created it on the dashboard.",
+      },
+      "headers": Headers {
+        "x-stack-known-error": "CONTAINED_PERMISSION_NOT_FOUND",
+        <some fields may have been hidden>,
+      },
+    }
+  `);
+});
+
+it("cannot create a team permission that contains a project permission", async ({ expect }) => {
+  await Project.createAndSwitch();
+
+  const response1 = await niceBackendFetch(`/api/v1/project-permission-definitions`, {
+    accessType: "admin",
+    method: "POST",
+    body: { id: 'p2' },
+  });
+  expect(response1).toMatchInlineSnapshot(`
+    NiceResponse {
+      "status": 201,
+      "body": {
+        "contained_permission_ids": [],
+        "id": "p2",
+      },
+      "headers": Headers { <some fields may have been hidden> },
+    }
+  `);
+
+  const response2 = await niceBackendFetch(`/api/v1/team-permission-definitions`, {
+    accessType: "admin",
+    method: "POST",
+    body: {
+      id: 'p1',
+      contained_permission_ids: ['p2']
+    },
+  });
+  expect(response2).toMatchInlineSnapshot(`
+    NiceResponse {
+      "status": 400,
+      "body": {
+        "code": "CONTAINED_PERMISSION_NOT_FOUND",
+        "details": { "permission_id": "p2" },
+        "error": "Contained permission with ID \\"p2\\" not found. Make sure you created it on the dashboard.",
+      },
+      "headers": Headers {
+        "x-stack-known-error": "CONTAINED_PERMISSION_NOT_FOUND",
+        <some fields may have been hidden>,
+      },
+    }
+  `);
+});
+

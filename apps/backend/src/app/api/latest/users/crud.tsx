@@ -1,4 +1,3 @@
-import { getRenderedOrganizationConfigQuery } from "@/lib/config";
 import { grantDefaultProjectPermissions } from "@/lib/permissions";
 import { ensureTeamMembershipExists, ensureUserExists } from "@/lib/request-checks";
 import { getSoleTenancyFromProject, getTenancy } from "@/lib/tenancies";
@@ -489,11 +488,7 @@ export const usersCrudHandlers = createLazyProxy(() => createCrudHandlers(usersC
         primaryEmailAuthEnabled: !!data.primary_email_auth_enabled,
       });
 
-      const config = await rawQuery(getRenderedOrganizationConfigQuery({
-        projectId: auth.project.id,
-        branchId: auth.tenancy.branchId,
-        organizationId: auth.tenancy.organization?.id ?? null,
-      }));
+      const config = auth.tenancy.completeConfig;
 
       const newUser = await tx.projectUser.create({
         data: {
@@ -665,11 +660,7 @@ export const usersCrudHandlers = createLazyProxy(() => createCrudHandlers(usersC
     const result = await retryTransaction(async (tx) => {
       await ensureUserExists(tx, { tenancyId: auth.tenancy.id, userId: params.user_id });
 
-      const config = await rawQuery(getRenderedOrganizationConfigQuery({
-        projectId: auth.project.id,
-        branchId: auth.tenancy.branchId,
-        organizationId: auth.tenancy.organization?.id ?? null,
-      }));
+      const config = auth.tenancy.completeConfig;
 
       if (data.selected_team_id !== undefined) {
         if (data.selected_team_id !== null) {

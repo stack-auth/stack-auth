@@ -1,6 +1,6 @@
 import { Prisma } from "@prisma/client";
 import { NormalizationError, getInvalidConfigReason, normalize, override } from "@stackframe/stack-shared/dist/config/format";
-import { BranchConfigOverride, BranchIncompleteConfig, BranchRenderedConfig, EnvironmentConfigOverride, EnvironmentIncompleteConfig, EnvironmentRenderedConfig, OrganizationConfigOverride, OrganizationIncompleteConfig, OrganizationRenderedConfig, ProjectConfigOverride, ProjectIncompleteConfig, ProjectRenderedConfig, applyDefaults, branchConfigDefaults, branchConfigSchema, environmentConfigDefaults, environmentConfigSchema, organizationConfigDefaults, organizationConfigSchema, projectConfigDefaults, projectConfigSchema } from "@stackframe/stack-shared/dist/config/schema";
+import { BranchConfigOverride, BranchConfigOverrideOverride, BranchIncompleteConfig, BranchRenderedConfig, EnvironmentConfigOverride, EnvironmentConfigOverrideOverride, EnvironmentIncompleteConfig, EnvironmentRenderedConfig, OrganizationConfigOverride, OrganizationConfigOverrideOverride, OrganizationIncompleteConfig, OrganizationRenderedConfig, ProjectConfigOverride, ProjectConfigOverrideOverride, ProjectIncompleteConfig, ProjectRenderedConfig, applyDefaults, branchConfigDefaults, branchConfigSchema, environmentConfigDefaults, environmentConfigSchema, organizationConfigDefaults, organizationConfigSchema, projectConfigDefaults, projectConfigSchema } from "@stackframe/stack-shared/dist/config/schema";
 import { ProjectsCrud } from "@stackframe/stack-shared/dist/interface/crud/projects";
 import { yupMixed, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
 import { isTruthy } from "@stackframe/stack-shared/dist/utils/booleans";
@@ -9,7 +9,7 @@ import { filterUndefined, pick, typedEntries } from "@stackframe/stack-shared/di
 import { Result } from "@stackframe/stack-shared/dist/utils/results";
 import { stringCompare } from "@stackframe/stack-shared/dist/utils/strings";
 import * as yup from "yup";
-import { RawQuery, rawQuery } from "../prisma-client";
+import { RawQuery, prismaClient, rawQuery } from "../prisma-client";
 
 type ProjectOptions = { projectId: string };
 type BranchOptions = ProjectOptions & { branchId: string };
@@ -160,41 +160,59 @@ export function getOrganizationConfigOverrideQuery(options: OrganizationOptions)
 
 
 // ---------------------------------------------------------------------------------------------------------------------
-// set<$$$>ConfigOverride
+// override<$$$>ConfigOverride
 // ---------------------------------------------------------------------------------------------------------------------
 
-export async function setProjectConfigOverride(options: {
+// Note that the arguments passed in here override the override; they are therefore OverrideOverrides.
+
+export async function overrideProjectConfigOverride(options: {
   projectId: string,
-  projectConfigOverride: ProjectConfigOverride,
+  projectConfigOverrideOverride: ProjectConfigOverrideOverride,
 }): Promise<void> {
   // set project config override on our own DB
   throw new Error('Not implemented');
 }
 
-export function setBranchConfigOverride(options: {
+export function overrideBranchConfigOverride(options: {
   projectId: string,
   branchId: string,
-  branchConfigOverride: BranchConfigOverride,
+  branchConfigOverrideOverride: BranchConfigOverrideOverride,
 }): Promise<void> {
   // update config.json if on local emulator
   // throw error otherwise
   throw new Error('Not implemented');
 }
 
-export function setEnvironmentConfigOverride(options: {
+export async function overrideEnvironmentConfigOverride(options: {
   projectId: string,
   branchId: string,
-  environmentConfigOverride: EnvironmentConfigOverride,
+  environmentConfigOverrideOverride: EnvironmentConfigOverrideOverride,
 }): Promise<void> {
   // save environment config override on DB (either our own, or the source of truth one)
-  throw new Error('Not implemented');
+
+  // TODO put this in a serializable transaction to prevent race conditions
+  const oldConfig = await rawQuery(getEnvironmentConfigOverrideQuery(options));
+  await prismaClient.environmentConfigOverride.update({
+    where: {
+      projectId_branchId: {
+        projectId: options.projectId,
+        branchId: options.branchId,
+      }
+    },
+    data: {
+      config: override(
+        oldConfig,
+        options.environmentConfigOverrideOverride,
+      )
+    }
+  });
 }
 
-export function setOrganizationConfigOverride(options: {
+export function overrideOrganizationConfigOverride(options: {
   projectId: string,
   branchId: string,
   organizationId: string | null,
-  organizationConfigOverride: OrganizationConfigOverride,
+  organizationConfigOverrideOverride: OrganizationConfigOverrideOverride,
 }): Promise<void> {
   // save organization config override on DB (either our own, or the source of truth one)
   throw new Error('Not implemented');

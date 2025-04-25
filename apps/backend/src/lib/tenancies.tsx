@@ -1,8 +1,9 @@
-import { prismaClient } from "@/prisma-client";
+import { prismaClient, rawQuery } from "@/prisma-client";
 import { Prisma } from "@prisma/client";
 import { ProjectsCrud } from "@stackframe/stack-shared/dist/interface/crud/projects";
 import { getNodeEnvironment } from "@stackframe/stack-shared/dist/utils/env";
 import { StackAssertionError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
+import { getRenderedOrganizationConfigQuery } from "./config";
 import { getProject } from "./projects";
 
 export async function tenancyPrismaToCrud(prisma: Prisma.TenancyGetPayload<{}>) {
@@ -14,9 +15,18 @@ export async function tenancyPrismaToCrud(prisma: Prisma.TenancyGetPayload<{}>) 
   }
 
   const projectCrud = await getProject(prisma.projectId) ?? throwErr("Project in tenancy not found");
+
+  const completeConfig = await rawQuery(getRenderedOrganizationConfigQuery({
+    projectId: projectCrud.id,
+    branchId: prisma.branchId,
+    organizationId: prisma.organizationId,
+  }));
+
   return {
     id: prisma.id,
+    /** @deprecated */
     config: projectCrud.config,
+    completeConfig,
     branchId: prisma.branchId,
     organization: prisma.organizationId === null ? null : {
       // TODO actual organization type
@@ -66,9 +76,17 @@ export async function getSoleTenancyFromProject(projectOrId: ProjectsCrud["Admin
     throw new StackAssertionError(`No tenancy found for project ${project.id}`, { project });
   }
   soleTenancyIdsCache.set(project.id, tenancyId);
+
+  const completeConfig = await rawQuery(getRenderedOrganizationConfigQuery({
+    projectId: project.id,
+    branchId: "main",
+    organizationId: null,
+  }));
+
   return {
     id: tenancyId,
     config: project.config,
+    completeConfig,
     branchId: "main",
     organization: null,
     project: project,

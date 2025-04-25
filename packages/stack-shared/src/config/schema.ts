@@ -2,9 +2,9 @@ import * as yup from "yup";
 import * as schemaFields from "../schema-fields";
 import { yupBoolean, yupObject, yupRecord, yupString } from "../schema-fields";
 import { allProviders } from "../utils/oauth";
-import { DeepMerge, get, has, isObjectLike, mapValues, set } from "../utils/objects";
+import { DeepMerge, DeepPartial, get, has, isObjectLike, mapValues, set } from "../utils/objects";
 import { PrettifyType } from "../utils/types";
-import { NormalizesTo } from "./format";
+import { Config, NormalizesTo } from "./format";
 
 // NOTE: The validation schemas in here are all schematic validators, not sanity-check validators.
 // For more info, see ./README.md
@@ -273,6 +273,12 @@ export type ProjectConfigOverride = NormalizesTo<ProjectConfigNormalizedOverride
 export type BranchConfigOverride = NormalizesTo<BranchConfigNormalizedOverride>;
 export type EnvironmentConfigOverride = NormalizesTo<EnvironmentConfigNormalizedOverride>;
 export type OrganizationConfigOverride = NormalizesTo<OrganizationConfigNormalizedOverride>;
+
+// Override overrides (used to update the overrides)
+export type ProjectConfigOverrideOverride = Config & DeepPartial<ProjectConfigOverride>;
+export type BranchConfigOverrideOverride = Config & DeepPartial<BranchConfigOverride>;
+export type EnvironmentConfigOverrideOverride = Config & DeepPartial<EnvironmentConfigOverride>;
+export type OrganizationConfigOverrideOverride = Config & DeepPartial<OrganizationConfigOverride>;
 
 // Incomplete configs
 export type ProjectIncompleteConfig = ProjectConfigNormalizedOverride;

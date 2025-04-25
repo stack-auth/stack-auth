@@ -885,6 +885,21 @@ const PermissionNotFound = createKnownErrorConstructor(
   (json: any) => [json.permission_id] as const,
 );
 
+const PermissionScopeMismatch = createKnownErrorConstructor(
+  KnownError,
+  "WRONG_PERMISSION_SCOPE",
+  (permissionId: string, expectedScope: "team" | "project", actualScope: "team" | "project" | null) => [
+    404,
+    `Permission ${JSON.stringify(permissionId)} not found. (It was found for a different scope ${JSON.stringify(actualScope)}, but scope ${JSON.stringify(expectedScope)} was expected.)`,
+    {
+      permission_id: permissionId,
+      expected_scope: expectedScope,
+      actual_scope: actualScope,
+    },
+  ] as const,
+  (json: any) => [json.permission_id, json.expected_scope, json.actual_scope] as const,
+);
+
 const ContainedPermissionNotFound = createKnownErrorConstructor(
   KnownError,
   "CONTAINED_PERMISSION_NOT_FOUND",
@@ -1388,6 +1403,7 @@ export const KnownErrors = {
   PasskeyWebAuthnError,
   PasskeyAuthenticationFailed,
   PermissionNotFound,
+  PermissionScopeMismatch,
   ContainedPermissionNotFound,
   TeamNotFound,
   TeamMembershipNotFound,
