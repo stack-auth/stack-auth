@@ -6,7 +6,7 @@ import { ProjectPermissionsCrud } from "@stackframe/stack-shared/dist/interface/
 import { TeamPermissionDefinitionsCrud, TeamPermissionsCrud } from "@stackframe/stack-shared/dist/interface/crud/team-permissions";
 import { groupBy } from "@stackframe/stack-shared/dist/utils/arrays";
 import { StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
-import { get, typedEntries, typedFromEntries } from "@stackframe/stack-shared/dist/utils/objects";
+import { getOrUndefined, typedEntries, typedFromEntries } from "@stackframe/stack-shared/dist/utils/objects";
 import { stringCompare } from "@stackframe/stack-shared/dist/utils/strings";
 import { getRenderedOrganizationConfigQuery } from "./config";
 import { Tenancy } from "./tenancies";
@@ -101,12 +101,12 @@ export async function grantTeamPermission(
     permissionId: string,
   }
 ) {
-  const permissionDefinition = get(options.tenancy.completeConfig.rbac.permissions, options.permissionId);
+  const permissionDefinition = getOrUndefined(options.tenancy.completeConfig.rbac.permissions, options.permissionId);
   if (permissionDefinition === undefined) {
     throw new KnownErrors.PermissionNotFound(options.permissionId);
   }
   if (permissionDefinition.scope !== "team") {
-    throw new KnownErrors.PermissionNotTeamPermission(options.permissionId);
+    throw new KnownErrors.PermissionScopeMismatch(options.permissionId, "team", permissionDefinition.scope ?? null);
   }
 
   await tx.teamMemberDirectPermission.upsert({
@@ -251,6 +251,7 @@ export async function updatePermissionDefinition(
     },
   }
 ) {
+  const newId = options.data.id ?? options.oldId;
   const oldConfig = options.tenancy.completeConfig;
 
   const existingPermission = oldConfig.rbac.permissions[options.oldId] as OrganizationRenderedConfig['rbac']['permissions'][string] | undefined;
@@ -260,8 +261,16 @@ export async function updatePermissionDefinition(
   }
 
   // check if the target new id already exists
-  if (options.data.id !== undefined && options.data.id !== options.oldId && oldConfig.rbac.permissions[options.data.id] as any !== undefined) {
-    throw new KnownErrors.PermissionIdAlreadyExists(options.data.id);
+  if (newId !== options.oldId && oldConfig.rbac.permissions[newId] as any !== undefined) {
+    throw new KnownErrors.PermissionIdAlreadyExists(newId);
+  }
+
+  const allIds = Object.keys(oldConfig.rbac.permissions)
+    .filter(id => oldConfig.rbac.permissions[id].scope === options.scope)
+    .concat(Object.keys(options.scope === "team" ? teamSystemPermissionMap : {}));
+  const containedPermissionIdThatWasNotFound = options.data.contained_permission_ids?.find(id => !allIds.includes(id));
+  if (containedPermissionIdThatWasNotFound !== undefined) {
+    throw new KnownErrors.ContainedPermissionNotFound(containedPermissionIdThatWasNotFound);
   }
 
   await tx.environmentConfigOverride.update({
@@ -283,15 +292,15 @@ export async function updatePermissionDefinition(
                   ...p,
                   containedPermissionIds: typedFromEntries(typedEntries(p.containedPermissionIds || {}).map(([id]) => {
                     if (id === options.oldId) {
-                      return [options.data.id ?? id, true];
+                      return [newId, true];
                     } else {
                       return [id, true];
                     }
                   }))
                 }])
             ),
-            [options.data.id]: {
-              description: getDescription(options.data.id, options.data.description),
+            [newId]: {
+              description: getDescription(newId, options.data.description),
               scope: options.scope,
               containedPermissionIds: typedFromEntries((options.data.contained_permission_ids ?? []).map(id => [id, true]))
             }
@@ -308,7 +317,7 @@ export async function updatePermissionDefinition(
       permissionId: options.oldId,
     },
     data: {
-      permissionId: options.data.id,
+      permissionId: newId,
     },
   });
 
@@ -318,13 +327,13 @@ export async function updatePermissionDefinition(
       permissionId: options.oldId,
     },
     data: {
-      permissionId: options.data.id,
+      permissionId: newId,
     },
   });
 
   return {
-    id: options.data.id,
-    description: getDescription(options.data.id, options.data.description),
+    id: newId,
+    description: getDescription(newId, options.data.description),
     contained_permission_ids: options.data.contained_permission_ids?.sort(stringCompare) || [],
   };
 }

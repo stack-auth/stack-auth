@@ -532,6 +532,10 @@ export function get<T extends object, K extends keyof T>(obj: T, key: K): T[K] {
   return descriptor.value;
 }
 
+export function getOrUndefined<T extends object, K extends keyof T>(obj: T, key: K): T[K] | undefined {
+  return has(obj, key) ? get(obj, key) : undefined;
+}
+
 export function has<T extends object, K extends keyof T>(obj: T, key: K): obj is T & { [k in K]: unknown } {
   return Object.prototype.hasOwnProperty.call(obj, key);
 }
