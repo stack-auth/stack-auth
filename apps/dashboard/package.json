@@ -52,7 +52,7 @@
   "devDependencies": {
     "@types/canvas-confetti": "^1.6.4",
     "@types/lodash": "^4.17.5",
-    "@types/node": "^20.8.10",
+    "@types/node": "20.17.6",
     "@types/react": "19.0.12",
     "@types/react-dom": "19.0.4",
     "autoprefixer": "^10.4.17",

@@ -80,15 +80,11 @@ function renderComponent(props: {
   redirectIfNotHandler?: (name: keyof HandlerUrls) => void,
   onNotFound: () => any,
   app: StackClientApp<any> | StackServerApp<any>,
-  user: any,
 }) {
-  const { path, searchParams, fullPage, componentProps, redirectIfNotHandler, onNotFound, app, user } = props;
+  const { path, searchParams, fullPage, componentProps, redirectIfNotHandler, onNotFound, app } = props;
 
   switch (path) {
     case availablePaths.signIn: {
-      if (user) {
-        redirect(app.urls.afterSignIn);
-      }
       redirectIfNotHandler?.('signIn');
       return <SignIn
         fullPage={fullPage}
@@ -97,9 +93,6 @@ function renderComponent(props: {
       />;
     }
     case availablePaths.signUp: {
-      if (user) {
-        redirect(app.urls.afterSignUp);
-      }
       redirectIfNotHandler?.('signUp');
       return <SignUp
         fullPage={fullPage}
@@ -116,9 +109,6 @@ function renderComponent(props: {
       />;
     }
     case availablePaths.passwordReset: {
-      if (user) {
-        redirect(app.urls.afterSignIn);
-      }
       redirectIfNotHandler?.('passwordReset');
       return <PasswordReset
         searchParams={searchParams}
@@ -127,9 +117,6 @@ function renderComponent(props: {
       />;
     }
     case availablePaths.forgotPassword: {
-      if (user) {
-        redirect(app.urls.afterSignIn);
-      }
       redirectIfNotHandler?.('forgotPassword');
       return <ForgotPassword
         fullPage={fullPage}
@@ -137,9 +124,6 @@ function renderComponent(props: {
       />;
     }
     case availablePaths.signOut: {
-      if (!user) {
-        redirect(app.urls.signIn);
-      }
       redirectIfNotHandler?.('signOut');
       return <SignOut
         fullPage={fullPage}
@@ -147,9 +131,6 @@ function renderComponent(props: {
       />;
     }
     case availablePaths.oauthCallback: {
-      if (user) {
-        redirect(app.urls.afterSignIn);
-      }
       redirectIfNotHandler?.('oauthCallback');
       return <OAuthCallback
         fullPage={fullPage}
@@ -157,9 +138,6 @@ function renderComponent(props: {
       />;
     }
     case availablePaths.magicLinkCallback: {
-      if (user) {
-        redirect(app.urls.afterSignIn);
-      }
       redirectIfNotHandler?.('magicLinkCallback');
       return <MagicLinkCallback
         searchParams={searchParams}
@@ -176,17 +154,12 @@ function renderComponent(props: {
       />;
     }
     case availablePaths.accountSettings: {
-      if (!user) {
-        redirect(app.urls.signIn);
-      }
-      redirectIfNotHandler?.('accountSettings');
       return <AccountSettings
         fullPage={fullPage}
         {...filterUndefinedINU(componentProps?.AccountSettings)}
       />;
     }
     case availablePaths.error: {
-      redirectIfNotHandler?.('error');
       return <ErrorPage
         searchParams={searchParams}
         fullPage={fullPage}
@@ -238,7 +211,7 @@ async function NextStackHandler<HasTokenStore extends boolean>(props: BaseHandle
   const routeProps = "routeProps" in props ? props.routeProps as RouteProps : pick(props, ["params", "searchParams"] as any);
   const params = await routeProps.params;
   const searchParams = await routeProps.searchParams;
-  const user = await props.app.getUser();
+
   if (!params?.stack) {
     return (
       <MessageCard title="Invalid Stack Handler Setup" fullPage={props.fullPage}>
@@ -275,7 +248,6 @@ async function NextStackHandler<HasTokenStore extends boolean>(props: BaseHandle
     redirectIfNotHandler,
     onNotFound: () => notFound(),
     app: props.app,
-    user,
   });
 
   if (result && 'redirect' in result) {
@@ -316,8 +288,6 @@ function ReactStackHandler<HasTokenStore extends boolean>(props: BaseHandlerProp
     };
   }, [props.location, props.app.urls.handler]);
 
-  const user = props.app.useUser();
-
   const redirectIfNotHandler = (name: keyof HandlerUrls) => {
     const url = props.app.urls[name];
     const handlerUrl = props.app.urls.handler;
@@ -351,7 +321,6 @@ function ReactStackHandler<HasTokenStore extends boolean>(props: BaseHandlerProp
       </MessageCard>
     ),
     app: props.app,
-    user,
   });
 
   if (result && 'redirect' in result) {
