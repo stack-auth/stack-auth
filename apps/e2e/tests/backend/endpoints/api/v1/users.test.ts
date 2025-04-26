@@ -701,7 +701,7 @@ describe("with client access", () => {
 
   it("should be able to update selected team", async ({ expect }) => {
     await Auth.Otp.signIn();
-    const { teamId } = await Team.createAndAddCurrent({});
+    const { teamId } = await Team.createWithCurrentAsCreator({});
     const response1 = await niceBackendFetch("/api/v1/users/me", {
       accessType: "client",
     });

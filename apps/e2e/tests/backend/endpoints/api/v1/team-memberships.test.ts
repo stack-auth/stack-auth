@@ -5,7 +5,7 @@ import { Auth, InternalApiKey, InternalProjectKeys, Project, Team, Webhook, back
 
 it("is not allowed to add user to team on client", async ({ expect }) => {
   const { userId: userId1 } = await Auth.Otp.signIn();
-  const { teamId } = await Team.createAndAddCurrent();
+  const { teamId } = await Team.createWithCurrentAsCreator();
 
   const response = await niceBackendFetch(`/api/v1/team-memberships/${teamId}/${userId1}`, {
     accessType: "client",
@@ -38,7 +38,7 @@ it("creates a team and allows managing users on the server", async ({ expect }) 
   const { userId: userId1 } = await Auth.Otp.signIn();
   await bumpEmailAddress();
   const { userId: userId2 } = await Auth.Otp.signIn();
-  const { teamId } = await Team.createAndAddCurrent();
+  const { teamId } = await Team.createWithCurrentAsCreator();
 
   const response = await niceBackendFetch(`/api/v1/team-memberships/${teamId}/${userId1}`, {
     accessType: "server",
@@ -173,8 +173,8 @@ it("creates a team and allows managing users on the server", async ({ expect }) 
 
 it("lets users be on multiple teams", async ({ expect }) => {
   const { userId: creatorUserId } = await Auth.Otp.signIn();
-  const { teamId: teamId1 } = await Team.createAndAddCurrent();
-  const { teamId: teamId2 } = await Team.createAndAddCurrent();
+  const { teamId: teamId1 } = await Team.createWithCurrentAsCreator();
+  const { teamId: teamId2 } = await Team.createWithCurrentAsCreator();
 
   await bumpEmailAddress();
   const { userId } = await Auth.Otp.signIn();
@@ -314,7 +314,7 @@ it("lets users be on multiple teams", async ({ expect }) => {
 
 it("does not allow adding a user to a team if the user is already a member of the team", async ({ expect }) => {
   const { userId: userId1 } = await Auth.Otp.signIn();
-  const { teamId } = await Team.createAndAddCurrent();
+  const { teamId } = await Team.createWithCurrentAsCreator();
 
   const response1 = await niceBackendFetch(`/api/v1/team-memberships/${teamId}/${userId1}`, {
     accessType: "server",
@@ -368,7 +368,7 @@ it("should give team creator default permissions", async ({ expect }) => {
   const { userId: userId1 } = await Auth.Password.signUpWithEmail({ password: 'test1234' });
   await bumpEmailAddress();
   const { userId: userId2 } = await Auth.Password.signUpWithEmail({ password: 'test1234' });
-  const { teamId } = await Team.createAndAddCurrent();
+  const { teamId } = await Team.createWithCurrentAsCreator();
 
   await niceBackendFetch(`/api/v1/team-memberships/${teamId}/${userId1}`, {
     accessType: "server",
@@ -400,7 +400,7 @@ it("should give team creator default permissions", async ({ expect }) => {
 
 it("allows leaving team", async ({ expect }) => {
   await Auth.Otp.signIn();
-  const { teamId } = await Team.createAndAddCurrent();
+  const { teamId } = await Team.createWithCurrentAsCreator();
 
   // Does not have permission to remove user from team
   const response1 = await niceBackendFetch(`/api/v1/team-memberships/${teamId}/me`, {
@@ -421,7 +421,7 @@ it("removes user from team on the client", async ({ expect }) => {
   const { userId: userId1 } = await Auth.Otp.signIn();
   await bumpEmailAddress();
   const { userId: userId2 } = await Auth.Otp.signIn();
-  const { teamId } = await Team.createAndAddCurrent();
+  const { teamId } = await Team.createWithCurrentAsCreator();
 
   await niceBackendFetch(`/api/v1/team-memberships/${teamId}/${userId1}`, {
     accessType: "server",
@@ -537,7 +537,7 @@ it("should trigger team membership webhook when a user is added to a team", asyn
   const { projectId, svixToken, endpointId } = await Webhook.createProjectWithEndpoint();
 
   await Auth.Otp.signIn();
-  const { teamId } = await Team.createAndAddCurrent();
+  const { teamId } = await Team.createWithCurrentAsCreator();
 
   await bumpEmailAddress();
   const { userId } = await Auth.Otp.signIn();
@@ -580,7 +580,7 @@ it("should trigger team membership webhook when a user is removed from a team", 
   const { projectId, svixToken, endpointId } = await Webhook.createProjectWithEndpoint();
 
   await Auth.Otp.signIn();
-  const { teamId } = await Team.createAndAddCurrent();
+  const { teamId } = await Team.createWithCurrentAsCreator();
 
   await bumpEmailAddress();
   const { userId } = await Auth.Otp.signIn();
@@ -628,7 +628,7 @@ it("should trigger team permission webhook when a user is added to a team", asyn
   const { projectId, svixToken, endpointId } = await Webhook.createProjectWithEndpoint();
 
   await Auth.Otp.signIn();
-  const { teamId } = await Team.createAndAddCurrent();
+  const { teamId } = await Team.createWithCurrentAsCreator();
 
   await bumpEmailAddress();
   const { userId } = await Auth.Otp.signIn();
@@ -731,7 +731,7 @@ it("should trigger multiple permission webhooks when a custom permission is incl
 
   // Create a user and team
   await Auth.Otp.signIn();
-  const { teamId } = await Team.createAndAddCurrent();
+  const { teamId } = await Team.createWithCurrentAsCreator();
 
   await bumpEmailAddress();
   const { userId } = await Auth.Otp.signIn();

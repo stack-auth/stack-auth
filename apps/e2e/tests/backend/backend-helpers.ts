@@ -1103,7 +1103,7 @@ export namespace Team {
     };
   }
 
-  export async function createAndAddCurrent(options: { accessType?: "client" | "server" } = {}, body?: any) {
+  export async function createWithCurrentAsCreator(options: { accessType?: "client" | "server" } = {}, body?: any) {
     return await Team.create({ ...options, addCurrentUser: true }, body);
   }
 
