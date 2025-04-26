@@ -421,13 +421,9 @@ it("removes user from team on the client", async ({ expect }) => {
   const { userId: userId1 } = await Auth.Otp.signIn();
   await bumpEmailAddress();
   const { userId: userId2 } = await Auth.Otp.signIn();
-  const { teamId } = await Team.createWithCurrentAsCreator();
-
-  await niceBackendFetch(`/api/v1/team-memberships/${teamId}/${userId1}`, {
-    accessType: "server",
-    method: "POST",
-    body: {},
-  });
+  const { teamId } = await Team.create();
+  await Team.addMember(teamId, userId1);
+  await Team.addMember(teamId, userId2);
 
   // Does not have permission to remove user from team
   const response1 = await niceBackendFetch(`/api/v1/team-memberships/${teamId}/${userId1}`, {
@@ -661,7 +657,7 @@ it("should trigger team permission webhook when a user is added to a team", asyn
       "id": "<stripped svix message id>",
       "payload": {
         "data": {
-          "id": "member",
+          "id": "team_member",
           "team_id": "<stripped UUID>",
           "user_id": "<stripped UUID>",
         },
@@ -695,10 +691,10 @@ it("should trigger multiple permission webhooks when a custom permission is incl
   });
   expect(createPermissionResponse.status).toBe(201);
 
-  // Update project config to include the custom permission as default member permission
+  // Update project config to include the custom permission as default team_member permission
   const { updateProjectResponse } = await Project.updateCurrent(adminAccessToken, {
     config: {
-      team_member_default_permissions: [{ id: 'member' }, { id: 'custom_permission' }],
+      team_member_default_permissions: [{ id: 'team_member' }, { id: 'custom_permission' }],
     },
   });
   expect(updateProjectResponse.status).toBe(200);
@@ -743,7 +739,16 @@ it("should trigger multiple permission webhooks when a custom permission is incl
     body: {},
   });
 
-  expect(addUserResponse.status).toBe(201);
+  expect(addUserResponse).toMatchInlineSnapshot(`
+    NiceResponse {
+      "status": 201,
+      "body": {
+        "team_id": "<stripped UUID>",
+        "user_id": "<stripped UUID>",
+      },
+      "headers": Headers { <some fields may have been hidden> },
+    }
+  `);
 
   // Wait for webhooks to be triggered
   await wait(3000);
@@ -781,9 +786,9 @@ it("should trigger multiple permission webhooks when a custom permission is incl
     }
   `);
 
-  // Check for the standard member permission event
+  // Check for the standard team_member permission event
   const memberPermissionEvent = teamPermissionCreatedEvents.find(event =>
-    event.payload.data.id === "member"
+    event.payload.data.id === "team_member"
   );
 
   expect(memberPermissionEvent).toBeDefined();
@@ -795,7 +800,7 @@ it("should trigger multiple permission webhooks when a custom permission is incl
       "id": "<stripped svix message id>",
       "payload": {
         "data": {
-          "id": "member",
+          "id": "team_member",
           "team_id": "<stripped UUID>",
           "user_id": "<stripped UUID>",
         },
