@@ -44,6 +44,53 @@ it("is not allowed to grant non-existing permission to a user on the server", as
   `);
 });
 
+it("does not grant a project permission to a user", async ({ expect }) => {
+  await Project.createAndSwitch({ config: { magic_link_enabled: true } });
+  const { userId } = await Auth.Otp.signIn();
+  const { teamId } = await Team.createAndAddCurrent();
+
+  const projectPermissionDefinitionResponse = await niceBackendFetch(`/api/v1/project-permission-definitions`, {
+    accessType: "admin",
+    method: "POST",
+    body: { id: 'p1' },
+  });
+  expect(projectPermissionDefinitionResponse).toMatchInlineSnapshot(`
+    NiceResponse {
+      "status": 201,
+      "body": {
+        "contained_permission_ids": [],
+        "id": "p1",
+      },
+      "headers": Headers { <some fields may have been hidden> },
+    }
+  `);
+
+  const response = await niceBackendFetch(`/api/v1/team-permissions/${teamId}/${userId}/p1`, {
+    accessType: "server",
+    method: "POST",
+    body: {},
+  });
+  expect(response).toMatchInlineSnapshot(`
+    NiceResponse {
+      "status": 404,
+      "body": {
+        "code": "WRONG_PERMISSION_SCOPE",
+        "details": {
+          "actual_scope": "project",
+          "expected_scope": "team",
+          "permission_id": "p1",
+        },
+        "error": "Permission \\"p1\\" not found. (It was found for a different scope \\"project\\", but scope \\"team\\" was expected.)",
+      },
+      "headers": Headers {
+        "x-stack-known-error": "WRONG_PERMISSION_SCOPE",
+        <some fields may have been hidden>,
+      },
+    }
+  `);
+});
+
+
 it("can create a new permission and grant it to a user on the server", async ({ expect }) => {
   backendContext.set({ projectKeys: InternalProjectKeys });
   const { adminAccessToken } = await Project.createAndGetAdminToken({ config: { magic_link_enabled: true } });
@@ -92,7 +139,7 @@ it("can create a new permission and grant it to a user on the server", async ({ 
         "is_paginated": false,
         "items": [
           {
-            "id": "admin",
+            "id": "team_admin",
             "team_id": "<stripped UUID>",
             "user_id": "<stripped UUID>",
           },
@@ -132,12 +179,12 @@ it("can create a new permission and grant it to a user on the server", async ({ 
         "is_paginated": false,
         "items": [
           {
-            "id": "admin",
+            "id": "parent",
             "team_id": "<stripped UUID>",
             "user_id": "<stripped UUID>",
           },
           {
-            "id": "parent",
+            "id": "team_admin",
             "team_id": "<stripped UUID>",
             "user_id": "<stripped UUID>",
           },
@@ -196,13 +243,12 @@ it("can customize default team permissions", async ({ expect }) => {
           "domains": [],
           "email_config": { "type": "shared" },
           "enabled_oauth_providers": [],
-          "id": "<stripped UUID>",
           "magic_link_enabled": false,
           "oauth_account_merge_strategy": "link_method",
           "oauth_providers": [],
           "passkey_enabled": false,
           "sign_up_enabled": true,
-          "team_creator_default_permissions": [{ "id": "admin" }],
+          "team_creator_default_permissions": [{ "id": "team_admin" }],
           "team_member_default_permissions": [{ "id": "test" }],
           "user_default_permissions": [],
         },
@@ -230,7 +276,17 @@ it("should trigger team permission webhook when a permission is granted to a use
     body: {},
   });
 
-  expect(grantPermissionResponse.status).toBe(201);
+  expect(grantPermissionResponse).toMatchInlineSnapshot(`
+    NiceResponse {
+      "status": 201,
+      "body": {
+        "id": "$update_team",
+        "team_id": "<stripped UUID>",
+        "user_id": "<stripped UUID>",
+      },
+      "headers": Headers { <some fields may have been hidden> },
+    }
+  `);
 
   await wait(3000);
 

@@ -6,7 +6,7 @@ import { ProjectPermissionsCrud } from "@stackframe/stack-shared/dist/interface/
 import { TeamPermissionDefinitionsCrud, TeamPermissionsCrud } from "@stackframe/stack-shared/dist/interface/crud/team-permissions";
 import { groupBy } from "@stackframe/stack-shared/dist/utils/arrays";
 import { StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
-import { getOrUndefined, typedEntries, typedFromEntries } from "@stackframe/stack-shared/dist/utils/objects";
+import { getOrUndefined, has, typedEntries, typedFromEntries } from "@stackframe/stack-shared/dist/utils/objects";
 import { stringCompare } from "@stackframe/stack-shared/dist/utils/strings";
 import { getRenderedOrganizationConfigQuery } from "./config";
 import { Tenancy } from "./tenancies";
@@ -101,12 +101,14 @@ export async function grantTeamPermission(
     permissionId: string,
   }
 ) {
+  // sanity check: make sure that the permission exists
   const permissionDefinition = getOrUndefined(options.tenancy.completeConfig.rbac.permissions, options.permissionId);
   if (permissionDefinition === undefined) {
-    throw new KnownErrors.PermissionNotFound(options.permissionId);
-  }
-  if (permissionDefinition.scope !== "team") {
-    throw new KnownErrors.PermissionScopeMismatch(options.permissionId, "team", permissionDefinition.scope ?? null);
+    if (!has(teamSystemPermissionMap, options.permissionId)) {
+      throw new KnownErrors.PermissionNotFound(options.permissionId);
+    }
+  } else if (permissionDefinition?.scope !== "team") {
+    throw new KnownErrors.PermissionScopeMismatch(options.permissionId, "team", permissionDefinition?.scope ?? null);
   }
 
   await tx.teamMemberDirectPermission.upsert({
@@ -408,6 +410,14 @@ export async function grantProjectPermission(
     permissionId: string,
   }
 ) {
+  // sanity check: make sure that the permission exists
+  const permissionDefinition = getOrUndefined(options.tenancy.completeConfig.rbac.permissions, options.permissionId);
+  if (permissionDefinition === undefined) {
+    throw new KnownErrors.PermissionNotFound(options.permissionId);
+  } else if (permissionDefinition.scope !== "project") {
+    throw new KnownErrors.PermissionScopeMismatch(options.permissionId, "project", permissionDefinition.scope ?? null);
+  }
+
   await tx.projectUserDirectPermission.upsert({
     where: {
       tenancyId_projectUserId_permissionId: {

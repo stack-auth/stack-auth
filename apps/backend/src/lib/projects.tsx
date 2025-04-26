@@ -150,6 +150,10 @@ export async function createOrUpdateProject(
       tenancyId = (await getSoleTenancyFromProject(projectFound.id)).id;
     }
 
+    const translateDefaultPermissions = (permissions: { id: string }[] | undefined) => {
+      return permissions ? typedFromEntries(permissions.map((permission) => [permission.id, true])) : undefined;
+    };
+
     const dataOptions = options.data.config || {};
     const newConfigOverride: EnvironmentConfigOverride = filterUndefined({
       // ======================= auth =======================
@@ -200,6 +204,10 @@ export async function createOrUpdateProject(
         senderName: dataOptions.email_config.sender_name,
         senderEmail: dataOptions.email_config.sender_email,
       } satisfies OrganizationRenderedConfig['emails']['server'] : undefined,
+      // ======================= rbac =======================
+      'rbac.defaultPermissions.teamMember': translateDefaultPermissions(dataOptions.team_member_default_permissions),
+      'rbac.defaultPermissions.teamCreator': translateDefaultPermissions(dataOptions.team_creator_default_permissions),
+      'rbac.defaultPermissions.signUp': translateDefaultPermissions(dataOptions.user_default_permissions),
     });
 
     if (options.type === "create") {
