@@ -14,7 +14,7 @@
   "dependencies": {
     "@stackframe/js": "workspace:*",
     "dotenv-cli": "^7.4.1",
-    "typescript": "^5.7.3",
+    "typescript": "5.3.3",
     "vite": "^6.1.0"
   }
 }
