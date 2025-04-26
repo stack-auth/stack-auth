@@ -5,7 +5,6 @@ import { OrganizationRenderedConfig } from "@stackframe/stack-shared/dist/config
 import { ProjectPermissionsCrud } from "@stackframe/stack-shared/dist/interface/crud/project-permissions";
 import { TeamPermissionDefinitionsCrud, TeamPermissionsCrud } from "@stackframe/stack-shared/dist/interface/crud/team-permissions";
 import { groupBy } from "@stackframe/stack-shared/dist/utils/arrays";
-import { StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
 import { getOrUndefined, has, typedEntries, typedFromEntries } from "@stackframe/stack-shared/dist/utils/objects";
 import { stringCompare } from "@stackframe/stack-shared/dist/utils/strings";
 import { getRenderedOrganizationConfigQuery } from "./config";
@@ -72,7 +71,11 @@ export async function listPermissions<S extends "team" | "project">(
     while (idsToProcess.length > 0) {
       const currentId = idsToProcess.pop()!;
       const current = permissionsMap.get(currentId);
-      if (!current) throw new StackAssertionError(`Couldn't find permission in DB`, { currentId, result, idsToProcess });
+      if (!current) {
+        // can't find the permission definition in the config, so most likely it has been deleted from the config in the meantime
+        // so we just skip it
+        continue;
+      }
       if (result.has(current.id)) continue;
       result.set(current.id, current);
       if (options.recursive) {

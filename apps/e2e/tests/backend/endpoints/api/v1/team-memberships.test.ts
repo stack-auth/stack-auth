@@ -387,7 +387,7 @@ it("should give team creator default permissions", async ({ expect }) => {
         "is_paginated": false,
         "items": [
           {
-            "id": "admin",
+            "id": "team_admin",
             "team_id": "<stripped UUID>",
             "user_id": "<stripped UUID>",
           },
