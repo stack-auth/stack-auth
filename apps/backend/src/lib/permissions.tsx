@@ -383,19 +383,21 @@ export async function deletePermissionDefinition(
   });
 
   // Remove all direct permissions for this permission ID
-  await tx.teamMemberDirectPermission.deleteMany({
-    where: {
-      tenancyId: options.tenancy.id,
-      permissionId: options.permissionId,
-    },
-  });
-
-  await tx.projectUserDirectPermission.deleteMany({
-    where: {
-      tenancyId: options.tenancy.id,
-      permissionId: options.permissionId,
-    },
-  });
+  if (options.scope === "team") {
+    await tx.teamMemberDirectPermission.deleteMany({
+      where: {
+        tenancyId: options.tenancy.id,
+        permissionId: options.permissionId,
+      },
+    });
+  } else {
+    await tx.projectUserDirectPermission.deleteMany({
+      where: {
+        tenancyId: options.tenancy.id,
+        permissionId: options.permissionId,
+      },
+    });
+  }
 }
 
 export async function grantProjectPermission(
