@@ -261,11 +261,35 @@ it("requires $invite_members permission to list invitations", async ({ expect })
   const { userId: teamAdmin } = await Auth.Otp.signIn();
   await Team.addMember(teamId, teamAdmin);
 
-  await niceBackendFetch(`/api/v1/team-permissions/${teamId}/${teamAdmin}/$invite_members`, {
+  const deletePermissionResponse = await niceBackendFetch(`/api/v1/team-permissions/${teamId}/${teamAdmin}/team_member`, {
     accessType: "server",
     method: "DELETE",
     body: {},
   });
+  expect(deletePermissionResponse).toMatchInlineSnapshot(`
+    NiceResponse {
+      "status": 200,
+      "body": { "success": true },
+      "headers": Headers { <some fields may have been hidden> },
+    }
+  `);
+
+  const grantPermissionResponse = await niceBackendFetch(`/api/v1/team-permissions/${teamId}/${teamAdmin}/$read_members`, {
+    accessType: "server",
+    method: "POST",
+    body: {},
+  });
+  expect(grantPermissionResponse).toMatchInlineSnapshot(`
+    NiceResponse {
+      "status": 201,
+      "body": {
+        "id": "$read_members",
+        "team_id": "<stripped UUID>",
+        "user_id": "<stripped UUID>",
+      },
+      "headers": Headers { <some fields may have been hidden> },
+    }
+  `);
 
   const listInvitationsResponse = await niceBackendFetch(`/api/v1/team-invitations?team_id=${teamId}`, {
     accessType: "client",
@@ -306,6 +330,11 @@ it("requires $read_members permission to list invitations", async ({ expect }) =
   await bumpEmailAddress();
   const { userId: teamAdmin } = await Auth.Otp.signIn();
   await Team.addMember(teamId, teamAdmin);
+  await niceBackendFetch(`/api/v1/team-permissions/${teamId}/${teamAdmin}/team_member`, {
+    accessType: "server",
+    method: "DELETE",
+    body: {},
+  });
 
   await niceBackendFetch(`/api/v1/team-permissions/${teamId}/${teamAdmin}/$invite_members`, {
     accessType: "server",

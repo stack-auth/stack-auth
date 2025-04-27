@@ -108,8 +108,8 @@ export async function grantTeamPermission(
     if (!has(teamSystemPermissionMap, options.permissionId)) {
       throw new KnownErrors.PermissionNotFound(options.permissionId);
     }
-  } else if (permissionDefinition?.scope !== "team") {
-    throw new KnownErrors.PermissionScopeMismatch(options.permissionId, "team", permissionDefinition?.scope ?? null);
+  } else if (permissionDefinition.scope !== "team") {
+    throw new KnownErrors.PermissionScopeMismatch(options.permissionId, "team", permissionDefinition.scope ?? null);
   }
 
   await tx.teamMemberDirectPermission.upsert({

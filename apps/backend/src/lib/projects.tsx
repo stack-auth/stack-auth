@@ -213,7 +213,7 @@ export async function createOrUpdateProject(
           '$read_members': true,
           '$invite_members': true,
         },
-      };
+      } satisfies OrganizationRenderedConfig['rbac']['permissions'][string];
       configOverrideOverride['rbac.permissions.team_admin'] ??= {
         description: "Default permission for team admins",
         scope: "team",
@@ -225,7 +225,7 @@ export async function createOrUpdateProject(
           '$invite_members': true,
           '$manage_api_keys': true,
         },
-      } satisfies OrganizationRenderedConfig['rbac']['permissions'];
+      } satisfies OrganizationRenderedConfig['rbac']['permissions'][string];
 
       configOverrideOverride['rbac.defaultPermissions.teamCreator'] ??= { 'team_admin': true };
       configOverrideOverride['rbac.defaultPermissions.teamMember'] ??= { 'team_member': true };

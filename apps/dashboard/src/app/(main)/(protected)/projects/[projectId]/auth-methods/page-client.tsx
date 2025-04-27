@@ -86,7 +86,7 @@ function DisabledProvidersDialog({ open, onOpenChange }: { open?: boolean, onOpe
     .filter((id) => id.toLowerCase().includes(providerSearch.toLowerCase()))
     .map((id) => [id, oauthProviders.find((provider) => provider.id === id)] as const)
     .filter(([, provider]) => {
-      return !provider?.enabled;
+      return !provider;
     });
 
   return <ActionDialog
@@ -118,6 +118,12 @@ function DisabledProvidersDialog({ open, onOpenChange }: { open?: boolean, onOpe
                 config: { oauthProviders: newOAuthProviders },
               });
             }}
+            deleteProvider={async (id) => {
+              const newOAuthProviders = oauthProviders.filter((p) => p.id !== id);
+              await project.update({
+                config: { oauthProviders: newOAuthProviders },
+              });
+            }}
           />;
         })}
 
@@ -137,10 +143,16 @@ function OAuthActionCell({ config }: { config: AdminOAuthProviderConfig }) {
 
   const updateProvider = async (provider: AdminOAuthProviderConfig & OAuthProviderConfig) => {
     const alreadyExist = oauthProviders.some((p) => p.id === config.id);
-    const newOAuthProviders = oauthProviders.map((p) => p.id === config.id ? provider : p);
+    const newOAuthProviders = oauthProviders.filter((p) => p.id !== config.id).map((p) => p.id === config.id ? provider : p);
     if (!alreadyExist) {
       newOAuthProviders.push(provider);
     }
+    await project.update({
+      config: { oauthProviders: newOAuthProviders },
+    });
+  };
+  const deleteProvider = async (id: string) => {
+    const newOAuthProviders = oauthProviders.filter((p) => p.id !== id);
     await project.update({
       config: { oauthProviders: newOAuthProviders },
     });
@@ -153,11 +165,7 @@ function OAuthActionCell({ config }: { config: AdminOAuthProviderConfig }) {
         onClose={() => setTurnOffProviderDialogOpen(false)}
         providerId={config.id}
         onConfirm={async () => {
-          await updateProvider({
-            ...config,
-            id: config.id,
-            enabled: false
-          });
+          await deleteProvider(config.id);
         }}
       />
       <ProviderSettingDialog
@@ -166,6 +174,7 @@ function OAuthActionCell({ config }: { config: AdminOAuthProviderConfig }) {
         onClose={() => setProviderSettingDialogOpen(false)}
         provider={config}
         updateProvider={updateProvider}
+        deleteProvider={deleteProvider}
       />
 
       <DropdownMenuTrigger asChild>
@@ -201,7 +210,7 @@ export default function PageClient() {
 
   const enabledProviders = allProviders
     .map((id) => [id, oauthProviders.find((provider) => provider.id === id)] as const)
-    .filter(([, provider]) => provider?.enabled);
+    .filter(([, provider]) => !!provider);
 
   return (
     <PageLayout title="Auth Methods" description="Configure how users can sign in to your app">

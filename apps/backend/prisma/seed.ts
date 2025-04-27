@@ -62,7 +62,6 @@ async function seed() {
   internalProject = await createOrUpdateProject({
     projectId: 'internal',
     type: 'update',
-    initialBranchId: 'main',
     data: {
       config: {
         sign_up_enabled: signUpEnabled,
@@ -225,8 +224,6 @@ async function seed() {
       console.log('Created emulator user');
     }
 
-    console.log('Created emulator user');
-
     const existingProject = await prisma.project.findUnique({
       where: {
         id: emulatorProjectId,
@@ -239,7 +236,6 @@ async function seed() {
       const emulatorProject = await createOrUpdateProject({
         projectId: emulatorProjectId,
         type: 'update',
-        initialBranchId: 'main',
         data: {
           config: {
             allow_localhost: true,
