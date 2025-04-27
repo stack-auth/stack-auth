@@ -190,7 +190,7 @@ export async function createOrUpdateProject(
       'apiKeys.enabled.user': dataOptions.allow_user_api_keys,
       'apiKeys.enabled.team': dataOptions.allow_team_api_keys,
       // ======================= emails =======================
-      'emails.emailServer': dataOptions.email_config ? {
+      'emails.server': dataOptions.email_config ? {
         isShared: dataOptions.email_config.type === 'shared',
         host: dataOptions.email_config.host,
         port: dataOptions.email_config.port,
