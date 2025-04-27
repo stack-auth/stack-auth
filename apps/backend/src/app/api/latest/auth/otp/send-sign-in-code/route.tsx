@@ -70,6 +70,11 @@ export const POST = createSmartRouteHandler({
             data: {
               projectUserId: contactChannel.projectUser.projectUserId,
               tenancyId: tenancy.id,
+              otpAuthMethod: {
+                create: {
+                  projectUserId: contactChannel.projectUser.projectUserId,
+                }
+              }
             },
           });
         }
