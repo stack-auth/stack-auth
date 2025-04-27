@@ -11,7 +11,7 @@ export const projectsCrudHandlers = createLazyProxy(() => createCrudHandlers(pro
     return await createOrUpdateProject({
       type: "update",
       projectId: auth.project.id,
-      branchId: auth.tenancy.branchId,
+      initialBranchId: auth.tenancy.branchId,
       data: data,
     });
   },

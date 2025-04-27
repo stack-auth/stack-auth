@@ -7,6 +7,8 @@ import { Result } from "@stackframe/stack-shared/dist/utils/results";
 import { isPromise } from "util/types";
 import { traceSpan } from "./utils/telemetry";
 
+export type PrismaClientTransaction = PrismaClient | Parameters<Parameters<typeof prismaClient.$transaction>[0]>[0];
+
 // In dev mode, fast refresh causes us to recreate many Prisma clients, eventually overloading the database.
 // Therefore, only create one Prisma client in dev mode.
 const globalForPrisma = global as unknown as { prisma: PrismaClient };
@@ -21,7 +23,7 @@ if (getNodeEnvironment() !== 'production') {
 }
 
 
-export async function retryTransaction<T>(fn: (...args: Parameters<Parameters<typeof prismaClient.$transaction>[0]>) => Promise<T>): Promise<T> {
+export async function retryTransaction<T>(fn: (tx: PrismaClientTransaction) => Promise<T>): Promise<T> {
   // disable serializable transactions for now, later we may re-add them
   const enableSerializable = false as boolean;
 
@@ -128,18 +130,18 @@ export const RawQuery = {
   },
 };
 
-export async function rawQuery<Q extends RawQuery<any>>(query: Q): Promise<Awaited<ReturnType<Q["postProcess"]>>> {
-  const result = await rawQueryArray([query]);
+export async function rawQuery<Q extends RawQuery<any>>(tx: PrismaClientTransaction, query: Q): Promise<Awaited<ReturnType<Q["postProcess"]>>> {
+  const result = await rawQueryArray(tx, [query]);
   return result[0];
 }
 
-export async function rawQueryAll<Q extends Record<string, undefined | RawQuery<any>>>(queries: Q): Promise<{ [K in keyof Q]: ReturnType<NonNullable<Q[K]>["postProcess"]> }> {
+export async function rawQueryAll<Q extends Record<string, undefined | RawQuery<any>>>(tx: PrismaClientTransaction, queries: Q): Promise<{ [K in keyof Q]: ReturnType<NonNullable<Q[K]>["postProcess"]> }> {
   const keys = typedKeys(filterUndefined(queries));
-  const result = await rawQueryArray(keys.map(key => queries[key as any] as any));
+  const result = await rawQueryArray(tx, keys.map(key => queries[key as any] as any));
   return typedFromEntries(keys.map((key, index) => [key, result[index]])) as any;
 }
 
-async function rawQueryArray<Q extends RawQuery<any>[]>(queries: Q): Promise<[] & { [K in keyof Q]: Awaited<ReturnType<Q[K]["postProcess"]>> }> {
+async function rawQueryArray<Q extends RawQuery<any>[]>(tx: PrismaClientTransaction, queries: Q): Promise<[] & { [K in keyof Q]: Awaited<ReturnType<Q[K]["postProcess"]>> }> {
   return await traceSpan({
     description: `raw SQL quer${queries.length === 1 ? "y" : `ies (${queries.length} total)`}`,
     attributes: {
@@ -159,7 +161,7 @@ async function rawQueryArray<Q extends RawQuery<any>[]>(queries: Q): Promise<[] 
     // Supabase's index advisor only analyzes rows that start with "SELECT" (for some reason)
     // Since ours starts with "WITH", we prepend a SELECT to it
     const sqlQuery = Prisma.sql`SELECT * FROM (${combinedQuery.sql}) AS _`;
-    const rawResult = await prismaClient.$queryRaw(sqlQuery);
+    const rawResult = await tx.$queryRaw(sqlQuery);
 
     const postProcessed = combinedQuery.postProcess(rawResult as any);
     // If the postProcess is async, postProcessed is a Promise. If that Promise is rejected, it will cause an unhandled promise rejection.

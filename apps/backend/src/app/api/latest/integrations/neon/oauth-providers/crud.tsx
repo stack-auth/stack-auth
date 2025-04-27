@@ -79,7 +79,7 @@ export const oauthProvidersCrudHandlers = createLazyProxy(() => createCrudHandle
 
     const updated = await createOrUpdateProject({
       type: 'update',
-      branchId: 'main',
+      initialBranchId: 'main',
       projectId: auth.project.id,
       data: {
         config: {
@@ -105,7 +105,7 @@ export const oauthProvidersCrudHandlers = createLazyProxy(() => createCrudHandle
 
     const updated = await createOrUpdateProject({
       type: 'update',
-      branchId: 'main',
+      initialBranchId: 'main',
       projectId: auth.project.id,
       data: {
         config: {
@@ -133,7 +133,7 @@ export const oauthProvidersCrudHandlers = createLazyProxy(() => createCrudHandle
 
     const updated = await createOrUpdateProject({
       type: 'update',
-      branchId: 'main',
+      initialBranchId: 'main',
       projectId: auth.project.id,
       data: {
         config: {

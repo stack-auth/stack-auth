@@ -5,7 +5,7 @@ import { checkApiKeySet, checkApiKeySetQuery } from "@/lib/internal-api-keys";
 import { getProjectQuery, listManagedProjectIds } from "@/lib/projects";
 import { Tenancy, getSoleTenancyFromProject } from "@/lib/tenancies";
 import { decodeAccessToken } from "@/lib/tokens";
-import { rawQueryAll } from "@/prisma-client";
+import { prismaClient, rawQueryAll } from "@/prisma-client";
 import { traceSpan, withTraceSpan } from "@/utils/telemetry";
 import { KnownErrors } from "@stackframe/stack-shared";
 import { ProjectsCrud } from "@stackframe/stack-shared/dist/interface/crud/projects";
@@ -225,7 +225,7 @@ const parseAuth = withTraceSpan('smart request parseAuth', async (req: NextReque
     isAdminKeyValid: projectId && superSecretAdminKey && requestType === "admin" ? checkApiKeySetQuery(projectId, { superSecretAdminKey }) : undefined,
     project: projectId ? getProjectQuery(projectId) : undefined,
   };
-  const queriesResults = await rawQueryAll(bundledQueries);
+  const queriesResults = await rawQueryAll(prismaClient, bundledQueries);
   const project = await queriesResults.project;
 
   const eitherKeyOrToken = !!(publishableClientKey || secretServerKey || superSecretAdminKey || adminAccessToken);

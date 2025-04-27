@@ -1,7 +1,7 @@
-import { AdminProjectUpdateOptions, StackAdminApp, StackClientApp, StackServerApp } from '@stackframe/js';
+import { AdminProjectCreateOptions, StackAdminApp, StackClientApp, StackServerApp } from '@stackframe/js';
 import { STACK_BACKEND_BASE_URL, STACK_INTERNAL_PROJECT_ADMIN_KEY, STACK_INTERNAL_PROJECT_CLIENT_KEY, STACK_INTERNAL_PROJECT_SERVER_KEY } from '../helpers';
 
-export async function scaffoldProject(body?: AdminProjectUpdateOptions) {
+export async function scaffoldProject(body?: Omit<AdminProjectCreateOptions, 'displayName'> & { displayName?: string }) {
   const internalApp = new StackAdminApp({
     projectId: 'internal',
     baseUrl: STACK_BACKEND_BASE_URL,
@@ -33,7 +33,7 @@ export async function scaffoldProject(body?: AdminProjectUpdateOptions) {
   };
 }
 
-export async function createApp(body?: AdminProjectUpdateOptions) {
+export async function createApp(body?: Parameters<typeof scaffoldProject>[0]) {
   const { project, adminUser } = await scaffoldProject(body);
   const adminApp = new StackAdminApp({
     projectId: project.id,

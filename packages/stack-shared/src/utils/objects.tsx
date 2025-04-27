@@ -15,8 +15,8 @@ import.meta.vitest?.test("isNotNull", ({ expect }) => {
   expect(isNotNull([])).toBe(true);
 });
 
-export type DeepPartial<T> = T extends object ? { [P in keyof T]?: DeepPartial<T[P]> } : T;
-export type DeepRequired<T> = T extends object ? { [P in keyof T]-?: DeepRequired<T[P]> } : T;
+export type DeepPartial<T> = T extends object ? (T extends (infer E)[] ? T : { [P in keyof T]?: DeepPartial<T[P]> }) : T;
+export type DeepRequired<T> = T extends object ? (T extends (infer E)[] ? T : { [P in keyof T]-?: DeepRequired<T[P]> }) : T;
 
 /**
  * Assumes both objects are primitives, arrays, or non-function plain objects, and compares them deeply.

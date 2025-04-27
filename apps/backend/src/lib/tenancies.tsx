@@ -16,7 +16,7 @@ export async function tenancyPrismaToCrud(prisma: Prisma.TenancyGetPayload<{}>) 
 
   const projectCrud = await getProject(prisma.projectId) ?? throwErr("Project in tenancy not found");
 
-  const completeConfig = await rawQuery(getRenderedOrganizationConfigQuery({
+  const completeConfig = await rawQuery(prismaClient, getRenderedOrganizationConfigQuery({
     projectId: projectCrud.id,
     branchId: prisma.branchId,
     organizationId: prisma.organizationId,
@@ -77,7 +77,7 @@ export async function getSoleTenancyFromProject(projectOrId: ProjectsCrud["Admin
   }
   soleTenancyIdsCache.set(project.id, tenancyId);
 
-  const completeConfig = await rawQuery(getRenderedOrganizationConfigQuery({
+  const completeConfig = await rawQuery(prismaClient, getRenderedOrganizationConfigQuery({
     projectId: project.id,
     branchId: "main",
     organizationId: null,

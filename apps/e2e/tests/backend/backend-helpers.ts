@@ -1187,15 +1187,24 @@ export namespace Team {
 
 export namespace User {
   export function setBackendContextFromUser({ mailbox, accessToken, refreshToken }: {mailbox: Mailbox, accessToken: string, refreshToken: string}) {
-      backendContext.set({
-        mailbox,
-        userAuth: {
-          accessToken,
-          refreshToken,
-        },
-      });
+    backendContext.set({
+      mailbox,
+      userAuth: {
+        accessToken,
+        refreshToken,
+      },
+    });
   }
 
+  export async function getCurrent() {
+    const response = await niceBackendFetch("/api/v1/users/me", {
+      accessType: "client",
+    });
+    expect(response).toMatchObject({
+      status: 200,
+    });
+    return response.body;
+  }
 
   export async function create({ emailAddress }: {emailAddress?: string} = {}) {
     // Create new mailbox

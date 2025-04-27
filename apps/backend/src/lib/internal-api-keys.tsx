@@ -37,7 +37,7 @@ export function checkApiKeySetQuery(projectId: string, key: KeyType): RawQuery<b
 }
 
 export async function checkApiKeySet(projectId: string, key: KeyType): Promise<boolean> {
-  const result = await rawQuery(checkApiKeySetQuery(projectId, key));
+  const result = await rawQuery(prismaClient, checkApiKeySetQuery(projectId, key));
 
   // In non-prod environments, let's also call the legacy function and ensure the result is the same
   if (!getNodeEnvironment().includes("prod")) {

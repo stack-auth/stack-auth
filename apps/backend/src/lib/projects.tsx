@@ -1,14 +1,13 @@
 import { Prisma } from "@prisma/client";
 import { KnownErrors } from "@stackframe/stack-shared";
-import { override } from "@stackframe/stack-shared/dist/config/format";
-import { EnvironmentConfigOverride, OrganizationRenderedConfig } from "@stackframe/stack-shared/dist/config/schema";
+import { EnvironmentConfigOverrideOverride, OrganizationRenderedConfig } from "@stackframe/stack-shared/dist/config/schema";
 import { AdminUserProjectsCrud, ProjectsCrud } from "@stackframe/stack-shared/dist/interface/crud/projects";
 import { UsersCrud } from "@stackframe/stack-shared/dist/interface/crud/users";
 import { StackAssertionError, captureError } from "@stackframe/stack-shared/dist/utils/errors";
 import { filterUndefined, typedFromEntries } from "@stackframe/stack-shared/dist/utils/objects";
 import { generateUuid } from "@stackframe/stack-shared/dist/utils/uuids";
-import { RawQuery, rawQuery, retryTransaction } from "../prisma-client";
-import { getRenderedOrganizationConfigQuery, renderedOrganizationConfigToProjectCrud } from "./config";
+import { RawQuery, prismaClient, rawQuery, retryTransaction } from "../prisma-client";
+import { getRenderedOrganizationConfigQuery, overrideEnvironmentConfigOverride, renderedOrganizationConfigToProjectCrud } from "./config";
 import { getSoleTenancyFromProject } from "./tenancies";
 
 function isStringArray(value: any): value is string[] {
@@ -73,17 +72,17 @@ export function getProjectQuery(projectId: string): RawQuery<Promise<ProjectsCru
 }
 
 export async function getProject(projectId: string): Promise<ProjectsCrud["Admin"]["Read"] | null> {
-  const result = await rawQuery(getProjectQuery(projectId));
+  const result = await rawQuery(prismaClient, getProjectQuery(projectId));
   return result;
 }
 
 export async function createOrUpdateProject(
   options: {
     ownerIds?: string[],
-    branchId: string,
   } & ({
     type: "create",
     projectId?: string,
+    initialBranchId: string,
     data: AdminUserProjectsCrud["Admin"]["Create"],
   } | {
     type: "update",
@@ -92,9 +91,11 @@ export async function createOrUpdateProject(
   })
 ) {
   const projectId = await retryTransaction(async (tx) => {
-    let project: Prisma.ProjectGetPayload<{ include: { environmentConfigOverrides: true } }>;
+    let project: Prisma.ProjectGetPayload<{}>;
     let tenancyId: string;
+    let branchId: string;
     if (options.type === "create") {
+      branchId = options.initialBranchId;
       project = await tx.project.create({
         data: {
           id: options.projectId ?? generateUuid(),
@@ -103,20 +104,17 @@ export async function createOrUpdateProject(
           isProductionMode: options.data.is_production_mode ?? false,
           environmentConfigOverrides: {
             create: {
-              branchId: options.branchId,
+              branchId,
               config: {},
             },
           },
-        },
-        include: {
-          environmentConfigOverrides: true,
         },
       });
 
       tenancyId = (await tx.tenancy.create({
         data: {
           projectId: project.id,
-          branchId: options.branchId,
+          branchId,
           organizationId: null,
           hasNoOrganization: "TRUE",
         },
@@ -126,16 +124,13 @@ export async function createOrUpdateProject(
         where: {
           id: options.projectId,
         },
-        include: {
-          environmentConfigOverrides: true,
-        },
       });
 
       if (!projectFound) {
         throw new KnownErrors.ProjectNotFound(options.projectId);
       }
 
-      await tx.project.update({
+      project = await tx.project.update({
         where: {
           id: projectFound.id,
         },
@@ -145,9 +140,9 @@ export async function createOrUpdateProject(
           isProductionMode: options.data.is_production_mode,
         },
       });
-
-      project = projectFound;
-      tenancyId = (await getSoleTenancyFromProject(projectFound.id)).id;
+      const tenancy = await getSoleTenancyFromProject(projectFound.id);
+      tenancyId = tenancy.id;
+      branchId = tenancy.branchId;
     }
 
     const translateDefaultPermissions = (permissions: { id: string }[] | undefined) => {
@@ -155,7 +150,7 @@ export async function createOrUpdateProject(
     };
 
     const dataOptions = options.data.config || {};
-    const newConfigOverride: EnvironmentConfigOverride = filterUndefined({
+    const configOverrideOverride: EnvironmentConfigOverrideOverride = filterUndefined({
       // ======================= auth =======================
       'auth.allowSignUp': dataOptions.sign_up_enabled,
       'auth.password.allowSignIn': dataOptions.credential_enabled,
@@ -211,50 +206,38 @@ export async function createOrUpdateProject(
     });
 
     if (options.type === "create") {
-      newConfigOverride['rbac.permissions'] ??= {
-        'team_member': {
-          description: "Default permission for team members",
-          scope: "team",
-          containedPermissionIds: {
-            '$read_members': true,
-            '$invite_members': true,
-          },
+      configOverrideOverride['rbac.permissions.team_member'] ??= {
+        description: "Default permission for team members",
+        scope: "team",
+        containedPermissionIds: {
+          '$read_members': true,
+          '$invite_members': true,
         },
-        'team_admin': {
-          description: "Default permission for team admins",
-          scope: "team",
-          containedPermissionIds: {
-            '$update_team': true,
-            '$delete_team': true,
-            '$read_members': true,
-            '$remove_members': true,
-            '$invite_members': true,
-            '$manage_api_keys': true,
-          },
-        }
+      };
+      configOverrideOverride['rbac.permissions.team_admin'] ??= {
+        description: "Default permission for team admins",
+        scope: "team",
+        containedPermissionIds: {
+          '$update_team': true,
+          '$delete_team': true,
+          '$read_members': true,
+          '$remove_members': true,
+          '$invite_members': true,
+          '$manage_api_keys': true,
+        },
       } satisfies OrganizationRenderedConfig['rbac']['permissions'];
 
-      newConfigOverride['rbac.defaultPermissions.teamCreator'] ??= { 'team_admin': true };
-      newConfigOverride['rbac.defaultPermissions.teamMember'] ??= { 'team_member': true };
+      configOverrideOverride['rbac.defaultPermissions.teamCreator'] ??= { 'team_admin': true };
+      configOverrideOverride['rbac.defaultPermissions.teamMember'] ??= { 'team_member': true };
+
+      configOverrideOverride['auth.password.allowSignIn'] ??= true;
     }
 
-    const oldConfigOverride = project.environmentConfigOverrides.find((override) => override.branchId === options.branchId)?.config as EnvironmentConfigOverride | undefined;
-    if (!oldConfigOverride) {
-      // TODO: make this a KnownError once we have branches
-      throw new StackAssertionError(`Expected config override for branch ${options.branchId}, but none found`, { project });
-    }
-
-
-    await tx.environmentConfigOverride.update({
-      where: {
-        projectId_branchId: {
-          projectId: project.id,
-          branchId: options.branchId,
-        },
-      },
-      data: {
-        config: override(oldConfigOverride, newConfigOverride),
-      },
+    await overrideEnvironmentConfigOverride({
+      tx,
+      projectId: project.id,
+      branchId: branchId,
+      environmentConfigOverrideOverride: configOverrideOverride,
     });
 
     // Update owner metadata
@@ -301,7 +284,7 @@ export async function createOrUpdateProject(
   const result = await getProject(projectId);
 
   if (!result) {
-    throw new StackAssertionError("Project not found after creation/update");
+    throw new StackAssertionError("Project not found after creation/update", { projectId });
   }
 
   return result;

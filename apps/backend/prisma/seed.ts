@@ -35,7 +35,7 @@ async function seed() {
   if (!internalProject) {
     internalProject = await createOrUpdateProject({
       type: 'create',
-      branchId: 'main',
+      initialBranchId: 'main',
       projectId: 'internal',
       data: {
         display_name: 'Stack Dashboard',
@@ -62,7 +62,7 @@ async function seed() {
   internalProject = await createOrUpdateProject({
     projectId: 'internal',
     type: 'update',
-    branchId: 'main',
+    initialBranchId: 'main',
     data: {
       config: {
         sign_up_enabled: signUpEnabled,
@@ -239,7 +239,7 @@ async function seed() {
       const emulatorProject = await createOrUpdateProject({
         projectId: emulatorProjectId,
         type: 'update',
-        branchId: 'main',
+        initialBranchId: 'main',
         data: {
           config: {
             allow_localhost: true,

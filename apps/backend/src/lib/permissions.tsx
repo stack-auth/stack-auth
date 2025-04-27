@@ -1,4 +1,3 @@
-import { rawQuery } from "@/prisma-client";
 import { KnownErrors } from "@stackframe/stack-shared";
 import { override } from "@stackframe/stack-shared/dist/config/format";
 import { OrganizationRenderedConfig } from "@stackframe/stack-shared/dist/config/schema";
@@ -7,7 +6,6 @@ import { TeamPermissionDefinitionsCrud, TeamPermissionsCrud } from "@stackframe/
 import { groupBy } from "@stackframe/stack-shared/dist/utils/arrays";
 import { getOrUndefined, has, typedEntries, typedFromEntries } from "@stackframe/stack-shared/dist/utils/objects";
 import { stringCompare } from "@stackframe/stack-shared/dist/utils/strings";
-import { getRenderedOrganizationConfigQuery } from "./config";
 import { Tenancy } from "./tenancies";
 import { PrismaTransaction } from "./types";
 
@@ -501,11 +499,7 @@ export async function grantDefaultTeamPermissions(
     type: "creator" | "member",
   }
 ) {
-  const config = await rawQuery(getRenderedOrganizationConfigQuery({
-    projectId: options.tenancy.project.id,
-    branchId: options.tenancy.branchId,
-    organizationId: options.tenancy.organization?.id || null,
-  }));
+  const config = options.tenancy.completeConfig;
 
   const defaultPermissions = config.rbac.defaultPermissions[options.type === "creator" ? "teamCreator" : "teamMember"];
 

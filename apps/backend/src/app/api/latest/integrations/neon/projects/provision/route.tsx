@@ -30,7 +30,7 @@ export const POST = createSmartRouteHandler({
 
     const createdProject = await createOrUpdateProject({
       ownerIds: [],
-      branchId: 'main',
+      initialBranchId: 'main',
       type: 'create',
       data: {
         display_name: req.body.display_name,
