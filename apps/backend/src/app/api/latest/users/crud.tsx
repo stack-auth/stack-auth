@@ -58,7 +58,7 @@ export const userPrismaToCrud = (
   const otpAuth = prisma.authMethods.find((m) => m.otpAuthMethod);
   const passkeyAuth = prisma.authMethods.find((m) => m.passkeyAuthMethod);
 
-  return {
+  const result = {
     id: prisma.projectUserId,
     display_name: prisma.displayName || null,
     primary_email: primaryEmailContactChannel?.value || null,
@@ -84,6 +84,7 @@ export const userPrismaToCrud = (
     last_active_at_millis: lastActiveAtMillis,
     is_anonymous: prisma.isAnonymous,
   };
+  return result;
 };
 
 async function getPasswordHashFromData(data: {
@@ -310,7 +311,7 @@ export function getUserQuery(projectId: string, branchId: string | null, userId:
         requires_totp_mfa: row.requiresTotpMfa,
         passkey_auth_enabled: !!passkeyAuth,
         oauth_providers: row.ProjectUserOAuthAccounts.map((a: any) => ({
-          id: a.oauthProviderConfigId,
+          id: a.configOAuthProviderId,
           account_id: a.providerAccountId,
           email: a.email,
         })),

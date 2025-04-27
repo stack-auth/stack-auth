@@ -145,7 +145,7 @@ export async function niceBackendFetch(url: string | URL, options?: Omit<NiceReq
     }),
   });
   if (res.status >= 500 && res.status < 600) {
-    throw new StackAssertionError(`Unexpected internal server error: ${res.status} ${typeof res.body === "string" ? res.body : nicify(res.body)}`);
+    throw new StackAssertionError(`API threw ISE in ${otherOptions.method ?? "GET"} ${url}: ${res.status} ${typeof res.body === "string" ? res.body : nicify(res.body)}`);
   }
   if (res.headers.has("x-stack-known-error")) {
     expect(res.status).toBeGreaterThanOrEqual(400);
