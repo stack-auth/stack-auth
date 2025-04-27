@@ -480,8 +480,8 @@ export const usersCrudHandlers = createLazyProxy(() => createCrudHandlers(usersC
       projectId: auth.project.id,
     });
 
+    const passwordHash = await getPasswordHashFromData(data);
     const result = await retryTransaction(async (tx) => {
-      const passwordHash = await getPasswordHashFromData(data);
       await checkAuthData(tx, {
         tenancyId: auth.tenancy.id,
         primaryEmail: data.primary_email,

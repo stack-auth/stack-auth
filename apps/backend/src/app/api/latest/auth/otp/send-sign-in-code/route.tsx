@@ -1,12 +1,8 @@
-import { getAuthContactChannel } from "@/lib/contact-channel";
-import { prismaClient } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
-import { KnownErrors } from "@stackframe/stack-shared";
 import { adaptSchema, clientOrHigherAuthTypeSchema, emailOtpSignInCallbackUrlSchema, signInEmailSchema, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
 import { StatusError } from "@stackframe/stack-shared/dist/utils/errors";
 import semver from "semver";
-import { usersCrudHandlers } from "../../../users/crud";
-import { signInVerificationCodeHandler } from "../sign-in/verification-code-handler";
+import { ensureUserForEmailAllowsOtp, signInVerificationCodeHandler } from "../sign-in/verification-code-handler";
 
 export const POST = createSmartRouteHandler({
   metadata: {
@@ -40,59 +36,7 @@ export const POST = createSmartRouteHandler({
       throw new StatusError(StatusError.Forbidden, "Magic link is not enabled for this project");
     }
 
-    const contactChannel = await getAuthContactChannel(
-      prismaClient,
-      {
-        tenancyId: tenancy.id,
-        type: "EMAIL",
-        value: email,
-      }
-    );
-
-    let user;
-    let isNewUser;
-
-    if (contactChannel) {
-      const otpAuthMethod = contactChannel.projectUser.authMethods.find((m) => m.otpAuthMethod)?.otpAuthMethod;
-
-      if (contactChannel.isVerified) {
-        if (!otpAuthMethod) {
-          // automatically merge the otp auth method with the existing account
-
-          // TODO: use an existing crud handler
-          const rawProject = await prismaClient.project.findUnique({
-            where: {
-              id: tenancy.project.id,
-            },
-          });
-
-          await prismaClient.authMethod.create({
-            data: {
-              projectUserId: contactChannel.projectUser.projectUserId,
-              tenancyId: tenancy.id,
-              otpAuthMethod: {
-                create: {
-                  projectUserId: contactChannel.projectUser.projectUserId,
-                }
-              }
-            },
-          });
-        }
-
-        user = await usersCrudHandlers.adminRead({
-          tenancy,
-          user_id: contactChannel.projectUser.projectUserId,
-        });
-      } else {
-        throw new KnownErrors.UserWithEmailAlreadyExists(contactChannel.value);
-      }
-      isNewUser = false;
-    } else {
-      if (!tenancy.config.sign_up_enabled) {
-        throw new KnownErrors.SignUpNotEnabled();
-      }
-      isNewUser = true;
-    }
+    const user = await ensureUserForEmailAllowsOtp(tenancy, email);
 
     let type: "legacy" | "standard";
     if (clientVersion?.sdk === "@stackframe/stack" && semver.valid(clientVersion.version) && semver.lte(clientVersion.version, "2.5.37")) {
@@ -106,10 +50,7 @@ export const POST = createSmartRouteHandler({
         tenancy,
         callbackUrl,
         method: { email, type },
-        data: {
-          user_id: user?.id,
-          is_new_user: isNewUser,
-        },
+        data: {},
       },
       { email }
     );

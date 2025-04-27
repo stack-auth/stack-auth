@@ -336,11 +336,23 @@ export namespace Auth {
     }
 
     export async function signIn() {
-      const mailbox = backendContext.value.mailbox;
       const sendSignInCodeRes = await sendSignInCode();
+      const signInResult = await signInWithCode(await getSignInCodeFromMailbox());
+      return {
+        ...sendSignInCodeRes,
+        ...signInResult,
+      };
+    }
+
+    export async function getSignInCodeFromMailbox() {
+      const mailbox = backendContext.value.mailbox;
       const messages = await mailbox.fetchMessages();
       const message = messages.findLast((message) => message.subject.includes("Sign in to")) ?? throwErr("Sign-in code message not found");
       const signInCode = message.body?.text.match(/http:\/\/localhost:12345\/some-callback-url\?code=([a-zA-Z0-9]+)/)?.[1] ?? throwErr("Sign-in URL not found");
+      return signInCode;
+    }
+
+    export async function signInWithCode(signInCode: string) {
       const response = await niceBackendFetch("/api/v1/auth/otp/sign-in", {
         method: "POST",
         accessType: "client",
@@ -367,7 +379,6 @@ export namespace Auth {
       });
 
       return {
-        ...sendSignInCodeRes,
         userId: response.body.user_id,
         signInResponse: response,
       };

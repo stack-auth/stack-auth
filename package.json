@@ -62,7 +62,7 @@
   "devDependencies": {
     "@changesets/cli": "^2.27.9",
     "@testing-library/react": "^15.0.7",
-    "@types/node": "^20.17.6",
+    "@types/node": "20.17.6",
     "@types/supertest": "^6.0.2",
     "@typescript-eslint/eslint-plugin": "^6.21.0",
     "@typescript-eslint/parser": "^6.21.0",
