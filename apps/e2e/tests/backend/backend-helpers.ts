@@ -187,7 +187,7 @@ export namespace Auth {
       expect(payload).toEqual({
         "exp": expect.any(Number),
         "iat": expect.any(Number),
-        "iss": "https://access-token.jwt-signature.stack-auth.com",
+        "iss": "https://api.stack-auth.com",
         "refreshTokenId": expect.any(String),
         "aud": expect.any(String),
         "sub": expect.any(String),
