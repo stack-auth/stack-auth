@@ -412,6 +412,7 @@ import.meta.vitest?.test("pick", ({ expect }) => {
 });
 
 export function omit<T extends {}, K extends keyof T>(obj: T, keys: K[]): Omit<T, K> {
+  if (!Array.isArray(keys)) throw new StackAssertionError("omit: keys must be an array", { obj, keys });
   return Object.fromEntries(Object.entries(obj).filter(([k]) => !keys.includes(k as K))) as any;
 }
 import.meta.vitest?.test("omit", ({ expect }) => {
