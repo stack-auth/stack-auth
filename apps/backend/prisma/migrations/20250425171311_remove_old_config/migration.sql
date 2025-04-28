@@ -265,7 +265,7 @@ END $$;
 
 -- Update permissionId using systemPermission when available
 UPDATE "TeamMemberDirectPermission"
-SET "permissionId" = "systemPermission"
+SET "permissionId" = '$' || LOWER("systemPermission")
 WHERE "systemPermission" IS NOT NULL;
 
 -- Update permissionId using Permission.queryableId when permissionDbId is available
