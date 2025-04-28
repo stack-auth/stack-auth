@@ -143,7 +143,7 @@ function OAuthActionCell({ config }: { config: AdminOAuthProviderConfig }) {
 
   const updateProvider = async (provider: AdminOAuthProviderConfig & OAuthProviderConfig) => {
     const alreadyExist = oauthProviders.some((p) => p.id === config.id);
-    const newOAuthProviders = oauthProviders.filter((p) => p.id !== config.id).map((p) => p.id === config.id ? provider : p);
+    const newOAuthProviders = oauthProviders.map((p) => p.id === config.id ? provider : p);
     if (!alreadyExist) {
       newOAuthProviders.push(provider);
     }
@@ -274,7 +274,7 @@ export default function PageClient() {
                 <div className="flex items-center gap-2">
                   <div
                     className="flex items-center justify-center w-12 h-12 rounded-md border border-gray-800"
-                    style={{ backgroundColor: BrandIcons.BRAND_COLORS[provider.id] ?? undefined }}
+                    style={{ backgroundColor: provider.id in BrandIcons.BRAND_COLORS ? BrandIcons.BRAND_COLORS[provider.id] : undefined }}
                   >
                     <BrandIcons.Mapping iconSize={24} provider={provider.id} />
                   </div>
