@@ -35,9 +35,10 @@ export const adminUserProjectsCrudHandlers = createLazyProxy(() => createCrudHan
       type: 'create',
       data,
     });
+    const tenancy = await getSoleTenancyFromProject(project);
     return {
       ...project,
-      config: auth.tenancy.config,
+      config: tenancy.config,
     };
   },
   onList: async ({ auth }) => {
