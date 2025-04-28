@@ -175,18 +175,29 @@ ALTER TABLE "ConnectedAccount" DROP COLUMN "connectedAccountConfigId";
 ALTER TABLE "ConnectedAccount" DROP COLUMN "projectConfigId";
 
 -- AlterTable
-ALTER TABLE "EmailTemplate" DROP CONSTRAINT "EmailTemplate_pkey",
-ADD COLUMN     "projectId" TEXT,
-ADD CONSTRAINT "EmailTemplate_pkey" PRIMARY KEY ("projectId", "type");
+ALTER TABLE "EmailTemplate" DROP CONSTRAINT "EmailTemplate_pkey";
+ALTER TABLE "EmailTemplate" ADD COLUMN "projectId" TEXT;
 
--- Update projectId with values from ProjectConfig
-UPDATE "EmailTemplate"
-SET "projectId" = "ProjectConfig"."projectId"
-FROM "ProjectConfig"
-WHERE "EmailTemplate"."projectConfigId" = "ProjectConfig"."id";
+-- Update projectId with values from Project through ProjectConfig join
+UPDATE "EmailTemplate" ET
+SET "projectId" = P."id"
+FROM "ProjectConfig" PC
+JOIN "Project" P ON P."configId" = PC."id"
+WHERE ET."projectConfigId" = PC."id";
+
+-- Check if we have any null projectId values
+DO $$
+BEGIN
+    IF EXISTS (SELECT 1 FROM "EmailTemplate" WHERE "projectId" IS NULL) THEN
+        RAISE EXCEPTION 'Some EmailTemplate records have null projectId values after migration';
+    END IF;
+END $$;
 
 -- Now make the column NOT NULL
 ALTER TABLE "EmailTemplate" ALTER COLUMN "projectId" SET NOT NULL;
+
+-- Add the primary key constraint
+ALTER TABLE "EmailTemplate" ADD CONSTRAINT "EmailTemplate_pkey" PRIMARY KEY ("projectId", "type");
 
 -- Drop the old column
 ALTER TABLE "EmailTemplate" DROP COLUMN "projectConfigId";
@@ -220,7 +231,7 @@ ALTER TABLE "ProjectUserDirectPermission" ADD COLUMN "permissionId" TEXT;
 UPDATE "ProjectUserDirectPermission"
 SET "permissionId" = "Permission"."queryableId"
 FROM "Permission"
-WHERE "ProjectUserDirectPermission"."permissionDbId" = "Permission"."id";
+WHERE "ProjectUserDirectPermission"."permissionDbId" = "Permission"."dbId";
 
 -- Now make the column NOT NULL
 ALTER TABLE "ProjectUserDirectPermission" ALTER COLUMN "permissionId" SET NOT NULL;
@@ -261,7 +272,7 @@ WHERE "systemPermission" IS NOT NULL;
 UPDATE "TeamMemberDirectPermission"
 SET "permissionId" = "Permission"."queryableId"
 FROM "Permission"
-WHERE "TeamMemberDirectPermission"."permissionDbId" = "Permission"."id";
+WHERE "TeamMemberDirectPermission"."permissionDbId" = "Permission"."dbId";
 
 -- Now make the column NOT NULL
 ALTER TABLE "TeamMemberDirectPermission" ALTER COLUMN "permissionId" SET NOT NULL;
