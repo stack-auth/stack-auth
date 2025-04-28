@@ -188,9 +188,9 @@ async function main() {
               },
             });
             for (const projectPermission of projectPermissions.items) {
-              if (!projectPermissionDefinitions.items.some((p: any) => p.id === projectPermission.permission_definition_id)) {
+              if (!projectPermissionDefinitions.items.some((p: any) => p.id === projectPermission.id)) {
                 throw new StackAssertionError(deindent`
-                  Project permission ${projectPermission.permission_definition_id} not found in project permission definitions.
+                  Project permission ${projectPermission.id} not found in project permission definitions.
                 `);
               }
             }
