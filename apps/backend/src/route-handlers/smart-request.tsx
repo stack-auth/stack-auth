@@ -21,7 +21,7 @@ import * as yup from "yup";
 const allowedMethods = ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"] as const;
 
 export type SmartRequestAuth = {
-  project: ProjectsCrud["Admin"]["Read"],
+  project: Omit<ProjectsCrud["Admin"]["Read"], "config">,
   branchId: string,
   tenancy: Tenancy,
   user?: UsersCrud["Admin"]["Read"] | undefined,

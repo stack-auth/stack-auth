@@ -49,22 +49,23 @@ export class OAuthModel implements AuthorizationCodeModel {
     if (!project) {
       return false;
     }
+    const tenancy = await getSoleTenancyFromProject(project.id);
 
     let redirectUris: string[] = [];
     try {
-      redirectUris = project.config.domains.map(
+      redirectUris = tenancy.config.domains.map(
         ({ domain, handler_path }) => new URL(handler_path, domain).toString()
       );
     } catch (e) {
       captureError("get redirect uris", {
         error: e,
         projectId: clientId,
-        domains: project.config.domains,
+        domains: tenancy.config.domains,
       });
       throw e;
     }
 
-    if (redirectUris.length === 0 && project.config.allow_localhost) {
+    if (redirectUris.length === 0 && tenancy.config.allow_localhost) {
       redirectUris.push("http://localhost");
     }
 
@@ -367,16 +368,16 @@ export class OAuthModel implements AuthorizationCodeModel {
 
   async validateRedirectUri(redirect_uri: string, client: Client): Promise<boolean> {
     const project = await getProject(client.id);
-
     if (!project) {
       // This should in theory never happen, make typescript happy
       throw new StackAssertionError("Project not found");
     }
+    const tenancy = await getSoleTenancyFromProject(project.id);
 
     return validateRedirectUrl(
       redirect_uri,
-      project.config.domains,
-      project.config.allow_localhost,
+      tenancy.config.domains,
+      tenancy.config.allow_localhost,
     );
   }
 }

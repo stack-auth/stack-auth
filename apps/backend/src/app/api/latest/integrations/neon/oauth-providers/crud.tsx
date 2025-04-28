@@ -107,7 +107,7 @@ export const oauthProvidersCrudHandlers = createLazyProxy(() => createCrudHandle
       projectId: auth.project.id,
       data: {
         config: {
-          oauth_providers: auth.project.config.oauth_providers
+          oauth_providers: auth.tenancy.config.oauth_providers
             .map(provider => provider.id === params.oauth_provider_id ? {
               ...provider,
               ...data,
@@ -134,7 +134,7 @@ export const oauthProvidersCrudHandlers = createLazyProxy(() => createCrudHandle
       projectId: auth.project.id,
       data: {
         config: {
-          oauth_providers: auth.project.config.oauth_providers.filter(provider =>
+          oauth_providers: auth.tenancy.config.oauth_providers.filter(provider =>
             provider.id !== params.oauth_provider_id
           )
         }
