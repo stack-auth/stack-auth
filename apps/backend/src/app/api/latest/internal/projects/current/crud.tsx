@@ -1,25 +1,29 @@
 import { createOrUpdateProject } from "@/lib/projects";
+import { getSoleTenancyFromProject } from "@/lib/tenancies";
 import { retryTransaction } from "@/prisma-client";
 import { createCrudHandlers } from "@/route-handlers/crud-handler";
 import { projectsCrud } from "@stackframe/stack-shared/dist/interface/crud/projects";
 import { yupObject } from "@stackframe/stack-shared/dist/schema-fields";
-import { StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
 import { createLazyProxy } from "@stackframe/stack-shared/dist/utils/proxies";
 
 export const projectsCrudHandlers = createLazyProxy(() => createCrudHandlers(projectsCrud, {
   paramsSchema: yupObject({}),
   onUpdate: async ({ auth, data }) => {
-    return await createOrUpdateProject({
+    const project = await createOrUpdateProject({
       type: "update",
       projectId: auth.project.id,
       data: data,
     });
+    return {
+      ...project,
+      config: (await getSoleTenancyFromProject(project)).config, // since we updated the project, we need tore-fetch the new config
+    };
   },
   onRead: async ({ auth }) => {
-    if (!("config" in auth.project)) {
-      throw new StackAssertionError("Project config is not available, even though it should be");
-    }
-    return auth.project as any;
+    return {
+      ...auth.project,
+      config: auth.tenancy.config,
+    };
   },
   onDelete: async ({ auth }) => {
     await retryTransaction(async (tx) => {

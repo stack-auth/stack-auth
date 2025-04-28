@@ -7,7 +7,7 @@ import { StackAssertionError, captureError } from "@stackframe/stack-shared/dist
 import { filterUndefined, typedFromEntries } from "@stackframe/stack-shared/dist/utils/objects";
 import { generateUuid } from "@stackframe/stack-shared/dist/utils/uuids";
 import { RawQuery, prismaClient, rawQuery, retryTransaction } from "../prisma-client";
-import { getRenderedOrganizationConfigQuery, overrideEnvironmentConfigOverride, renderedOrganizationConfigToProjectCrud } from "./config";
+import { overrideEnvironmentConfigOverride } from "./config";
 import { getSoleTenancyFromProject } from "./tenancies";
 
 function isStringArray(value: any): value is string[] {
@@ -27,51 +27,34 @@ export function listManagedProjectIds(projectUser: UsersCrud["Admin"]["Read"]) {
   return managedProjectIds;
 }
 
-export function getProjectQuery(projectId: string): RawQuery<Promise<ProjectsCrud["Admin"]["Read"] | null>> {
-  return RawQuery.then(
-    RawQuery.all([
-      {
-        sql: Prisma.sql`
+export function getProjectQuery(projectId: string): RawQuery<Promise<Omit<ProjectsCrud["Admin"]["Read"], "config"> | null>> {
+  return {
+    sql: Prisma.sql`
           SELECT "Project".*
           FROM "Project"
           WHERE "Project"."id" = ${projectId}
         `,
-        postProcess: (queryResult) => {
-          if (queryResult.length > 1) {
-            throw new StackAssertionError(`Expected 0 or 1 projects with id ${projectId}, got ${queryResult.length}`, { queryResult });
-          }
-          if (queryResult.length === 0) {
-            return null;
-          }
-          const row = queryResult[0];
-          return {
-            id: row.id,
-            display_name: row.displayName,
-            description: row.description,
-            created_at_millis: new Date(row.createdAt + "Z").getTime(),
-            user_count: row.userCount,
-            is_production_mode: row.isProductionMode,
-          };
-        },
-      } as const,
-      getRenderedOrganizationConfigQuery({ projectId, branchId: "main", organizationId: null }),
-    ] as const),
-    async (result) => {
-      const projectPart = result[0];
-      if (!projectPart) {
+    postProcess: async (queryResult) => {
+      if (queryResult.length > 1) {
+        throw new StackAssertionError(`Expected 0 or 1 projects with id ${projectId}, got ${queryResult.length}`, { queryResult });
+      }
+      if (queryResult.length === 0) {
         return null;
       }
-      const renderedConfig = await result[1];
-
+      const row = queryResult[0];
       return {
-        ...projectPart,
-        config: renderedOrganizationConfigToProjectCrud(renderedConfig),
+        id: row.id,
+        display_name: row.displayName,
+        description: row.description,
+        created_at_millis: new Date(row.createdAt + "Z").getTime(),
+        user_count: row.userCount,
+        is_production_mode: row.isProductionMode,
       };
-    }
-  );
+    },
+  };
 }
 
-export async function getProject(projectId: string): Promise<ProjectsCrud["Admin"]["Read"] | null> {
+export async function getProject(projectId: string): Promise<Omit<ProjectsCrud["Admin"]["Read"], "config"> | null> {
   const result = await rawQuery(prismaClient, getProjectQuery(projectId));
   return result;
 }

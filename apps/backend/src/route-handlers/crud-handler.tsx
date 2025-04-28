@@ -76,7 +76,7 @@ type CrudHandlerDirectByAccess<
       user?: UsersCrud["Admin"]["Read"],
       allowedErrorTypes?: (new (...args: any) => any)[],
     }
-    & ({ project: ProjectsCrud["Admin"]["Read"], branchId: string } | { tenancy: Tenancy })
+    & ({ project: Omit<ProjectsCrud["Admin"]["Read"], "config">, branchId: string } | { tenancy: Tenancy })
     & (({} extends yup.InferType<QS> ? {} : never) | { query: yup.InferType<QS> })
     & (L extends "Create" | "List" ? Partial<yup.InferType<PS>> : yup.InferType<PS>)
     & (K extends "Read" | "List" | "Delete" ? {} : (K extends keyof T[A] ? { data: T[A][K] } : "TYPE ERROR: something went wrong here"))
@@ -243,7 +243,7 @@ export function createCrudHandlers<
               async ({ user, project, branchId, tenancy, data, query, allowedErrorTypes, ...params }: yup.InferType<PS> & {
                 query?: yup.InferType<QS>,
                 user?: UsersCrud["Admin"]["Read"],
-                project?: ProjectsCrud["Admin"]["Read"],
+                project?: Omit<ProjectsCrud["Admin"]["Read"], "config">,
                 branchId?: string,
                 tenancy?: Tenancy,
                 data: any,

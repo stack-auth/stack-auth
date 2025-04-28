@@ -3,7 +3,7 @@ import { Prisma } from "@prisma/client";
 import { ProjectsCrud } from "@stackframe/stack-shared/dist/interface/crud/projects";
 import { getNodeEnvironment } from "@stackframe/stack-shared/dist/utils/env";
 import { StackAssertionError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
-import { getRenderedOrganizationConfigQuery } from "./config";
+import { getRenderedOrganizationConfigQuery, renderedOrganizationConfigToProjectCrud } from "./config";
 import { getProject } from "./projects";
 
 export async function tenancyPrismaToCrud(prisma: Prisma.TenancyGetPayload<{}>) {
@@ -21,11 +21,12 @@ export async function tenancyPrismaToCrud(prisma: Prisma.TenancyGetPayload<{}>) 
     branchId: prisma.branchId,
     organizationId: prisma.organizationId,
   }));
+  const oldProjectConfig = renderedOrganizationConfigToProjectCrud(completeConfig);
 
   return {
     id: prisma.id,
     /** @deprecated */
-    config: projectCrud.config,
+    config: oldProjectConfig,
     completeConfig,
     branchId: prisma.branchId,
     organization: prisma.organizationId === null ? null : {
@@ -50,13 +51,13 @@ const soleTenancyIdsCache = new Map<string, string>();
   * @deprecated This is a temporary function for the situation where every project has exactly one tenancy. Later,
   * we will support multiple tenancies per project, and all uses of this function will be refactored.
   */
-export function getSoleTenancyFromProject(project: ProjectsCrud["Admin"]["Read"] | string): Promise<Tenancy>;
+export function getSoleTenancyFromProject(project: Omit<ProjectsCrud["Admin"]["Read"], "config"> | string): Promise<Tenancy>;
 /**
   * @deprecated This is a temporary function for the situation where every project has exactly one tenancy. Later,
   * we will support multiple tenancies per project, and all uses of this function will be refactored.
   */
-export function getSoleTenancyFromProject(project: ProjectsCrud["Admin"]["Read"] | string, returnNullIfNotFound: boolean): Promise<Tenancy | null>;
-export async function getSoleTenancyFromProject(projectOrId: ProjectsCrud["Admin"]["Read"] | string, returnNullIfNotFound: boolean = false): Promise<Tenancy | null> {
+export function getSoleTenancyFromProject(project: Omit<ProjectsCrud["Admin"]["Read"], "config"> | string, returnNullIfNotFound: boolean): Promise<Tenancy | null>;
+export async function getSoleTenancyFromProject(projectOrId: Omit<ProjectsCrud["Admin"]["Read"], "config"> | string, returnNullIfNotFound: boolean = false): Promise<Tenancy | null> {
   let project;
   if (!projectOrId) {
     throw new StackAssertionError("Project is required", { projectOrId });
@@ -82,10 +83,11 @@ export async function getSoleTenancyFromProject(projectOrId: ProjectsCrud["Admin
     branchId: "main",
     organizationId: null,
   }));
+  const oldProjectConfig = renderedOrganizationConfigToProjectCrud(completeConfig);
 
   return {
     id: tenancyId,
-    config: project.config,
+    config: oldProjectConfig,
     completeConfig,
     branchId: "main",
     organization: null,

@@ -3,6 +3,8 @@ import { it } from "../../../../helpers";
 import { Auth, InternalProjectKeys, Project, backendContext, niceBackendFetch } from "../../../backend-helpers";
 
 
+// TODO some of the tests here test /api/v1/projects/current, the others test /api/v1/internal/projects/current. We should split them into different test files
+
 it("should not have have access to the project without project keys", async ({ expect }) => {
   backendContext.set({
     projectKeys: 'no-project'

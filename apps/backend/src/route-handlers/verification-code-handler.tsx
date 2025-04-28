@@ -51,7 +51,7 @@ type VerificationCodeHandler<Data, SendCodeExtraOptions extends {}, SendCodeRetu
 };
 
 type ProjectBranchCombo<AlreadyParsed extends boolean> = (
-  | { project: ProjectsCrud["Admin"]["Read"], branchId: string, tenancy?: undefined }
+  | { project: Omit<ProjectsCrud["Admin"]["Read"], "config">, branchId: string, tenancy?: undefined }
   | (AlreadyParsed extends true ? never : { tenancy: Tenancy, project?: undefined, branchId?: undefined })
 );
 
