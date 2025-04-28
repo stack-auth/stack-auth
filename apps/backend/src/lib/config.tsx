@@ -113,7 +113,7 @@ export function getBranchConfigOverrideQuery(options: BranchOptions): RawQuery<P
   // fetch branch config from GitHub
   // (currently it's just empty)
   if (options.branchId !== 'main') {
-    throw new Error('Not implemented');
+    throw new StackAssertionError('Not implemented');
   }
   return {
     sql: Prisma.sql`SELECT 1`,
@@ -147,7 +147,7 @@ export function getEnvironmentConfigOverrideQuery(options: EnvironmentOptions): 
 export function getOrganizationConfigOverrideQuery(options: OrganizationOptions): RawQuery<Promise<OrganizationConfigOverride>> {
   // fetch organization config from DB (either our own, or the source of truth one)
   if (options.organizationId !== null) {
-    throw new Error('Not implemented');
+    throw new StackAssertionError('Not implemented');
   }
 
   return {
@@ -170,7 +170,7 @@ export async function overrideProjectConfigOverride(options: {
   projectConfigOverrideOverride: ProjectConfigOverrideOverride,
 }): Promise<void> {
   // set project config override on our own DB
-  throw new Error('Not implemented');
+  throw new StackAssertionError('Not implemented');
 }
 
 export function overrideBranchConfigOverride(options: {
@@ -180,7 +180,7 @@ export function overrideBranchConfigOverride(options: {
 }): Promise<void> {
   // update config.json if on local emulator
   // throw error otherwise
-  throw new Error('Not implemented');
+  throw new StackAssertionError('Not implemented');
 }
 
 export async function overrideEnvironmentConfigOverride(options: {
@@ -222,7 +222,7 @@ export function overrideOrganizationConfigOverride(options: {
   organizationConfigOverrideOverride: OrganizationConfigOverrideOverride,
 }): Promise<void> {
   // save organization config override on DB (either our own, or the source of truth one)
-  throw new Error('Not implemented');
+  throw new StackAssertionError('Not implemented');
 }
 
 

@@ -144,7 +144,7 @@ it("can send invitation without a current user on the server", async ({ expect }
 
 it("can list invitations on the server", async ({ expect }) => {
   const { userId: inviter } = await Auth.Otp.signIn();
-  const { teamId } = await createAndAddCurrentUserWithoutMemberPermission();;
+  const { teamId } = await createAndAddCurrentUserWithoutMemberPermission();
 
   await niceBackendFetch(`/api/v1/team-permissions/${teamId}/${inviter}/$invite_members`, {
     accessType: "server",
@@ -209,7 +209,7 @@ it("can't list invitations across teams", async ({ expect }) => {
 
 it("allows team admins to list invitations", async ({ expect }) => {
   const { userId: inviter } = await Auth.Otp.signIn();
-  const { teamId } = await createAndAddCurrentUserWithoutMemberPermission();;
+  const { teamId } = await createAndAddCurrentUserWithoutMemberPermission();
 
   await niceBackendFetch(`/api/v1/team-permissions/${teamId}/${inviter}/$invite_members`, {
     accessType: "server",
@@ -318,7 +318,7 @@ it("requires $invite_members permission to list invitations", async ({ expect })
 
 it("requires $read_members permission to list invitations", async ({ expect }) => {
   const { userId: inviter } = await Auth.Otp.signIn();
-  const { teamId } = await createAndAddCurrentUserWithoutMemberPermission();;
+  const { teamId } = await createAndAddCurrentUserWithoutMemberPermission();
 
   await niceBackendFetch(`/api/v1/team-permissions/${teamId}/${inviter}/$invite_members`, {
     accessType: "server",
@@ -368,7 +368,7 @@ it("requires $read_members permission to list invitations", async ({ expect }) =
 
 it("allows team admins to revoke invitations", async ({ expect }) => {
   const { userId: inviter } = await Auth.Otp.signIn();
-  const { teamId } = await createAndAddCurrentUserWithoutMemberPermission();;
+  const { teamId } = await createAndAddCurrentUserWithoutMemberPermission();
   await niceBackendFetch(`/api/v1/team-permissions/${teamId}/${inviter}/$invite_members`, {
     accessType: "server",
     method: "POST",
@@ -428,7 +428,7 @@ it("allows team admins to revoke invitations", async ({ expect }) => {
 
 it("requires $remove_members permission to revoke invitations", async ({ expect }) => {
   const { userId: inviter } = await Auth.Otp.signIn();
-  const { teamId } = await createAndAddCurrentUserWithoutMemberPermission();;
+  const { teamId } = await createAndAddCurrentUserWithoutMemberPermission();
 
   await niceBackendFetch(`/api/v1/team-permissions/${teamId}/${inviter}/$invite_members`, {
     accessType: "server",

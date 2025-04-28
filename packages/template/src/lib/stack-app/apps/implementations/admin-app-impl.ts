@@ -74,7 +74,7 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
 
   _adminOwnedProjectFromCrud(data: ProjectsCrud['Admin']['Read'], onRefresh: () => Promise<void>): AdminOwnedProject {
     if (this._tokenStoreInit !== null) {
-      throw new StackAssertionError("Owned apps must always have tokenStore === null — did you not create this project with app._createOwnedApp()?");;
+      throw new StackAssertionError("Owned apps must always have tokenStore === null — did you not create this project with app._createOwnedApp()?");
     }
     return {
       ...this._adminProjectFromCrud(data, onRefresh),
