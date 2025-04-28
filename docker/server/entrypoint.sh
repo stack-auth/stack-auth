@@ -45,7 +45,7 @@ if [ "$STACK_SKIP_SEED_SCRIPT" = "true" ]; then
 else
   echo "Running seed script..."
   cd apps/backend
-  pnpm exec node seed.js
+  node seed.js
   cd ../..
 fi
 
