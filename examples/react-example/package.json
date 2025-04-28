@@ -8,6 +8,7 @@
     "build": "tsc -b && vite build",
     "clean": "rimraf dist && rimraf node_modules",
     "lint": "eslint .",
+    "typecheck": "tsc --noEmit",
     "preview": "vite preview"
   },
   "dependencies": {
