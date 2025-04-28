@@ -1,4 +1,5 @@
 import { createOrUpdateProject } from "@/lib/projects";
+import { getTenancy } from "@/lib/tenancies";
 import { createCrudHandlers } from "@/route-handlers/crud-handler";
 import { createCrud } from "@stackframe/stack-shared/dist/crud";
 import * as schemaFields from "@stackframe/stack-shared/dist/schema-fields";
@@ -94,8 +95,9 @@ export const oauthProvidersCrudHandlers = createLazyProxy(() => createCrudHandle
         }
       }
     });
+    const updatedTenancy = await getTenancy(auth.tenancy.id) ?? throwErr('Tenancy not found after update?'); // since we updated the config, we need to re-fetch the tenancy
 
-    return updated.config.oauth_providers.find(provider => provider.id === data.id) ?? throwErr('Provider not found');
+    return updatedTenancy.config.oauth_providers.find(provider => provider.id === data.id) ?? throwErr('Provider not found');
   },
   onUpdate: async ({ auth, data, params }) => {
     if (!auth.tenancy.config.oauth_providers.find(provider => provider.id === params.oauth_provider_id)) {
@@ -115,8 +117,9 @@ export const oauthProvidersCrudHandlers = createLazyProxy(() => createCrudHandle
         }
       }
     });
+    const updatedTenancy = await getTenancy(auth.tenancy.id) ?? throwErr('Tenancy not found after update?'); // since we updated the config, we need to re-fetch the tenancy
 
-    return updated.config.oauth_providers.find(provider => provider.id === params.oauth_provider_id) ?? throwErr('Provider not found');
+    return updatedTenancy.config.oauth_providers.find(provider => provider.id === params.oauth_provider_id) ?? throwErr('Provider not found');
   },
   onList: async ({ auth }) => {
     return {

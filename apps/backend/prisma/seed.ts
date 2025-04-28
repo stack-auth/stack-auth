@@ -69,7 +69,7 @@ async function seed() {
         allow_localhost: allowLocalhost,
         domains: [
           ...(dashboardDomain && new URL(dashboardDomain).hostname !== 'localhost' ? [{ domain: dashboardDomain, handler_path: '/handler' }] : []),
-          ...internalProject.config.domains.filter((d) => d.domain !== dashboardDomain),
+          ...internalTenancy.config.domains.filter((d) => d.domain !== dashboardDomain),
         ]
       },
     },
