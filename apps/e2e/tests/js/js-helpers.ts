@@ -1,4 +1,4 @@
-import { AdminProjectUpdateOptions, StackAdminApp, StackClientApp, StackServerApp } from '@stackframe/js';
+import { AdminProjectCreateOptions, StackAdminApp, StackClientApp, StackServerApp } from '@stackframe/js';
 import { Result } from '@stackframe/stack-shared/dist/utils/results';
 import { STACK_BACKEND_BASE_URL, STACK_INTERNAL_PROJECT_ADMIN_KEY, STACK_INTERNAL_PROJECT_CLIENT_KEY, STACK_INTERNAL_PROJECT_SERVER_KEY } from '../helpers';
 
