@@ -23,7 +23,6 @@ FROM base AS pruner
 
 COPY . .
 
-RUN pnpm i
 RUN tsx ./scripts/generate-sdks.ts
 
 # https://turbo.build/repo/docs/guides/tools/docker
