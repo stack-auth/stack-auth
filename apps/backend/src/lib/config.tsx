@@ -345,6 +345,9 @@ export const renderedOrganizationConfigToProjectCrud = (renderedConfig: Organiza
       if (!oauthProvider.type) {
         return undefined;
       }
+      if (!oauthProvider.allowSignIn) {
+        return undefined;
+      }
       return filterUndefined({
         id: oauthProvider.type,
         type: oauthProvider.isShared ? 'shared' : 'standard',

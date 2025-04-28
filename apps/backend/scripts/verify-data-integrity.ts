@@ -93,9 +93,9 @@ async function main() {
         targetOutputData["/api/v1/internal/projects/current"] = targetOutputData["/api/v1/internal/projects/current"].map(output => {
           if ("config" in output.responseJson) {
             delete output.responseJson.config.id;
-            output.responseJson.config.oauth_providers = output.responseJson.config.oauth_providers.map((provider: any) => {
-              return omit(provider, ["enabled"]);
-            });
+            output.responseJson.config.oauth_providers = output.responseJson.config.oauth_providers
+              .filter((provider: any) => provider.enabled)
+              .map((provider: any) => omit(provider, ["enabled"]));
           }
           return output;
         });
