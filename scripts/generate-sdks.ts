@@ -102,8 +102,13 @@ function generateFromTemplate(options: {
   });
 }
 
-function processPackageJson(content: string) {
-  const jsonObj = JSON.parse(content);
+function processPackageJson(path: string, content: string) {
+  let jsonObj: any;
+  try {
+    jsonObj = JSON.parse(content);
+  } catch (error) {
+    throw new Error(`Failed to parse package.json at ${path}`, { cause: error });
+  }
   return JSON.stringify({ "//": COMMENT_LINE, ...jsonObj }, null, 2);
 }
 
@@ -117,7 +122,7 @@ function baseEditFn(options: {
   }
   const result = processMacros(options.content, options.platforms);
   if (options.relativePath === 'package-template.json') {
-    return processPackageJson(result);
+    return processPackageJson(options.relativePath, result);
   }
   return result;
 }
@@ -136,7 +141,7 @@ withGeneratorLock(async () => {
   const processedPackageJson = processMacros(packageTemplateContent, PLATFORMS["template"]);
   writeFileSyncIfChanged(
     path.join(srcDir, "package.json"),
-    processPackageJson(processedPackageJson)
+    processPackageJson(path.join(srcDir, "package-template.json"), processedPackageJson)
   );
 
   generateFromTemplate({
@@ -186,4 +191,7 @@ withGeneratorLock(async () => {
       return baseEditFn({ relativePath, content, platforms: PLATFORMS["react"] });
     },
   });
-}).catch(console.error);
+}).catch((error) => {
+  console.error(error);
+  process.exit(1);
+});

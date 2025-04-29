@@ -1,5 +1,11 @@
 # @stackframe/stack-shared
 
+## 2.8.9
+
+## 2.8.8
+
+## 2.8.7
+
 ## 2.8.6
 
 ### Patch Changes

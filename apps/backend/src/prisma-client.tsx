@@ -20,6 +20,19 @@ if (getNodeEnvironment() !== 'production') {
   globalForPrisma.prisma = prismaClient;
 }
 
+class TransactionErrorThatShouldBeRetried extends Error {
+  constructor(cause: unknown) {
+    super("This is an internal error used by Stack Auth to rollback Prisma transactions. It should not be visible to you, so please report this.", { cause });
+    this.name = 'TransactionErrorThatShouldBeRetried';
+  }
+}
+
+class TransactionErrorThatShouldNotBeRetried extends Error {
+  constructor(cause: unknown) {
+    super("This is an internal error used by Stack Auth to rollback Prisma transactions. It should not be visible to you, so please report this.", { cause });
+    this.name = 'TransactionErrorThatShouldNotBeRetried';
+  }
+}
 
 export async function retryTransaction<T>(fn: (...args: Parameters<Parameters<typeof prismaClient.$transaction>[0]>) => Promise<T>): Promise<T> {
   // disable serializable transactions for now, later we may re-add them
@@ -30,22 +43,40 @@ export async function retryTransaction<T>(fn: (...args: Parameters<Parameters<ty
       return await traceSpan(`transaction attempt #${attemptIndex}`, async (attemptSpan) => {
         const attemptRes = await (async () => {
           try {
-            return await prismaClient.$transaction(async (...args) => {
+            return Result.ok(await prismaClient.$transaction(async (tx, ...args) => {
+              let res;
               try {
-                return Result.ok(await fn(...args));
+                res = await fn(tx, ...args);
               } catch (e) {
-                if (e instanceof Prisma.PrismaClientKnownRequestError || e instanceof Prisma.PrismaClientUnknownRequestError) {
-                  // retry
-                  return Result.error(e);
+                // we don't want to retry errors that happened in the function, because otherwise we may be retrying due
+                // to other (nested) transactions failing
+                // however, we make an exception for "Transaction already closed", as those are (annoyingly) thrown on
+                // the actual query, not the $transaction function itself
+                if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2028") { // Transaction already closed
+                  throw new TransactionErrorThatShouldBeRetried(e);
                 }
-                throw e;
+                throw new TransactionErrorThatShouldNotBeRetried(e);
               }
+              if (getNodeEnvironment() === 'development' || getNodeEnvironment() === 'test') {
+                // In dev/test, let's just fail the transaction with a certain probability, if we haven't already failed multiple times
+                // this is to test the logic that every transaction is retryable
+                if (attemptIndex < 3 && Math.random() < 0.5) {
+                  throw new TransactionErrorThatShouldBeRetried(new Error("Test error for dev/test. This should automatically be retried."));
+                }
+              }
+              return res;
             }, {
               isolationLevel: enableSerializable && attemptIndex < 4 ? Prisma.TransactionIsolationLevel.Serializable : undefined,
-            });
+            }));
           } catch (e) {
-            // we don't want to retry as aggressively here, because the error may have been thrown after the transaction was already committed
+            // we don't want to retry too aggressively here, because the error may have been thrown after the transaction was already committed
             // so, we select the specific errors that we know are safe to retry
+            if (e instanceof TransactionErrorThatShouldBeRetried) {
+              return Result.error(e.cause);
+            }
+            if (e instanceof TransactionErrorThatShouldNotBeRetried) {
+              throw e.cause;
+            }
             if ([
               "Transaction failed due to a write conflict or a deadlock. Please retry your transaction",
               "Transaction already closed: A commit cannot be executed on an expired transaction. The timeout for this transaction",
@@ -62,7 +93,7 @@ export async function retryTransaction<T>(fn: (...args: Parameters<Parameters<ty
         return attemptRes;
       });
     }, 5, {
-      exponentialDelayBase: 250,
+      exponentialDelayBase: getNodeEnvironment() === 'development' || getNodeEnvironment() === 'test' ? 3 : 250,
     });
 
     span.setAttribute("stack.prisma.transaction.success", res.status === "ok");
