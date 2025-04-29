@@ -1,4 +1,3 @@
-import { wait } from "@stackframe/stack-shared/dist/utils/promises";
 import { it } from "../../../../helpers";
 import { Auth, InternalApiKey, Project, Team, Webhook, bumpEmailAddress, niceBackendFetch } from "../../../backend-helpers";
 
@@ -772,32 +771,28 @@ it("should trigger team webhook when a team is created", async ({ expect }) => {
     }
   `);
 
-  await wait(5000);
-
-  const attemptResponse = await Webhook.listWebhookAttempts(projectId, endpointId, svixToken);
+  const attemptResponse = await Webhook.findWebhookAttempt(projectId, endpointId, svixToken, event => true);
 
   expect(attemptResponse).toMatchInlineSnapshot(`
-    [
-      {
-        "channels": null,
-        "eventId": null,
-        "eventType": "team.created",
-        "id": "<stripped svix message id>",
-        "payload": {
-          "data": {
-            "client_metadata": null,
-            "client_read_only_metadata": null,
-            "created_at_millis": <stripped field 'created_at_millis'>,
-            "display_name": "Test Team",
-            "id": "<stripped UUID>",
-            "profile_image_url": null,
-            "server_metadata": null,
-          },
-          "type": "team.created",
+    {
+      "channels": null,
+      "eventId": null,
+      "eventType": "team.created",
+      "id": "<stripped svix message id>",
+      "payload": {
+        "data": {
+          "client_metadata": null,
+          "client_read_only_metadata": null,
+          "created_at_millis": <stripped field 'created_at_millis'>,
+          "display_name": "Test Team",
+          "id": "<stripped UUID>",
+          "profile_image_url": null,
+          "server_metadata": null,
         },
-        "timestamp": <stripped field 'timestamp'>,
+        "type": "team.created",
       },
-    ]
+      "timestamp": <stripped field 'timestamp'>,
+    }
   `);
 });
 
