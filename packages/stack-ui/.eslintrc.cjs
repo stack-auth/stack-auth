@@ -1,6 +1,6 @@
 module.exports = {
   "extends": [
-    "../../eslint-configs/defaults.js",
+    "../../configs/eslint/defaults.js",
   ],
   "ignorePatterns": ['/*', '!/src'],
 };

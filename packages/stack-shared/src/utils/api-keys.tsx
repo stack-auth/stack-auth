@@ -1,7 +1,7 @@
-import { getBase32CharacterFromIndex } from "@stackframe/stack-shared/dist/utils/bytes";
-import { generateSecureRandomString } from "@stackframe/stack-shared/dist/utils/crypto";
-import { StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
 import crc32 from 'crc/crc32';
+import { getBase32CharacterFromIndex } from "./bytes";
+import { generateSecureRandomString } from "./crypto";
+import { StackAssertionError } from "./errors";
 
 
 const STACK_AUTH_MARKER = "574ck4u7h";
