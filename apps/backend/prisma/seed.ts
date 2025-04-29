@@ -235,9 +235,9 @@ async function seed() {
     } else {
       const emulatorProject = await createOrUpdateProject({
         projectId: emulatorProjectId,
-        type: 'update',
-        branchId: DEFAULT_BRANCH_ID,
+        type: 'create',
         data: {
+          display_name: 'Emulator Project',
           config: {
             allow_localhost: true,
             create_team_on_sign_up: false,

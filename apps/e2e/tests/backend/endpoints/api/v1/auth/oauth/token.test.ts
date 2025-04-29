@@ -86,6 +86,7 @@ describe("with grant_type === 'authorization_code'", async () => {
         },
       }
     `);
+    await Auth.expectToBeSignedIn();
   });
 
   it("should fail when called with an invalid code_challenge", async ({ expect }) => {

@@ -16,7 +16,7 @@ export const projectsCrudHandlers = createLazyProxy(() => createCrudHandlers(pro
       branchId: auth.branchId,
       data: data,
     });
-    const tenancy = await getTenancy(auth.tenancy.id) ?? throwErr("Tenancy not found after project update?"); // since we updated the project, we need tore-fetch the new tenancy config
+    const tenancy = await getTenancy(auth.tenancy.id) ?? throwErr("Tenancy not found after project update?"); // since we updated the project, we need to re-fetch the new tenancy config
     return {
       ...project,
       config: tenancy.config,
