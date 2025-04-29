@@ -24,7 +24,9 @@ export const createBasePlugin = (options: { customNoExternal: "all" | Set<string
 
       build.onResolve({ filter: /^.*$/m }, async (args) => {
         if (options.customNoExternal === "all") {
-          return undefined;
+          return {
+            external: false,
+          };
         }
 
         if (args.kind === "entry-point" || options.customNoExternal.has(args.path)) {
