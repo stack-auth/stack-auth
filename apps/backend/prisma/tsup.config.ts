@@ -1,4 +1,15 @@
 import { defineConfig } from 'tsup';
+import { createBasePlugin } from '../../../configs/tsup/plugins';
+
+const customNoExternal = new Set([
+  '@stackframe/stack-shared',
+  '@prisma/client',
+  '@prisma/extension-accelerate',
+  'jose',
+  'yup',
+  'json-diff',
+  'svix',
+]);
 
 // tsup config to build the self-hosting seed script so it can be
 // run in the Docker container with no extra dependencies.
@@ -8,6 +19,9 @@ export default defineConfig({
   outDir: 'dist',
   target: 'node22',
   platform: 'node',
-  noExternal: ['@stackframe/stack-shared', '@prisma/client', '@prisma/extension-accelerate', 'jose', 'yup', 'json-diff'],
-  clean: true
+  noExternal: [...customNoExternal],
+  clean: true,
+  esbuildPlugins: [
+    createBasePlugin({ customNoExternal }),
+  ],
 });
