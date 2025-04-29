@@ -250,11 +250,8 @@ export function createCrudHandlers<
                 allowedErrorTypes?: (new (...args: any) => any)[],
               }) => {
                 if (tenancy) {
-                  if (project) {
-                    throw new StackAssertionError("Must specify either project or tenancy, not both");
-                  }
-                  if (branchId) {
-                    throw new StackAssertionError("Must specify either branchId or tenancy, not both");
+                  if (project || branchId) {
+                    throw new StackAssertionError("Must specify either project and branchId or tenancy, not both");
                   }
                   project = tenancy.project;
                   branchId = tenancy.branchId;
@@ -264,7 +261,7 @@ export function createCrudHandlers<
                   }
                   tenancy = await getSoleTenancyFromProjectBranch(project.id, branchId);
                 } else {
-                  throw new StackAssertionError("Must specify either project or tenancy");
+                  throw new StackAssertionError("Must specify either project and branchId or tenancy");
                 }
 
                 try {
