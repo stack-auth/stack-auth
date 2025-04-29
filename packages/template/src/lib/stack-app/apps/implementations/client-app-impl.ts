@@ -1227,18 +1227,14 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
     if (!options?.noRedirectBack) {
       if (handlerName === "afterSignIn" || handlerName === "afterSignUp") {
         if (isReactServer || typeof window === "undefined") {
-          try {
-            await this._checkFeatureSupport("rsc-handler-" + handlerName, {});
-          } catch (e) {}
+          // TODO implement this
         } else {
           const queryParams = new URLSearchParams(window.location.search);
           url = queryParams.get("after_auth_return_to") || url;
         }
       } else if (handlerName === "signIn" || handlerName === "signUp") {
         if (isReactServer || typeof window === "undefined") {
-          try {
-            await this._checkFeatureSupport("rsc-handler-" + handlerName, {});
-          } catch (e) {}
+          // TODO implement this
         } else {
           const currentUrl = new URL(window.location.href);
           const nextUrl = new URL(url, currentUrl);

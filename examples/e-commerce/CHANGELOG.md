@@ -1,5 +1,19 @@
 # @stackframe/e-commerce-demo
 
+## 2.8.9
+
+### Patch Changes
+
+- Various changes
+  - @stackframe/stack@2.8.9
+
+## 2.8.8
+
+### Patch Changes
+
+- Updated dependencies
+  - @stackframe/stack@2.8.8
+
 ## 2.8.7
 
 ### Patch Changes
