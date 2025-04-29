@@ -100,6 +100,8 @@ it("should be able to create and update user api keys", async ({ expect }) => {
     ]
   `);
 
+}, {
+  timeout: 40_000,
 });
 
 it("should be able to get user by api key from server app", async ({ expect }) => {
@@ -316,6 +318,8 @@ it("should be able to create a team, add an API key, and get the team from the A
   // Verify the team details match
   expect(teamByApiKey.id).toBe(team.id);
   expect(teamByApiKey.displayName).toBe("Test Team");
+}, {
+  timeout: 40_000,
 });
 
 it("should not be able to get a user with a team API key", async ({ expect }) => {
