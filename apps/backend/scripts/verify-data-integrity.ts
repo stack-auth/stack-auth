@@ -107,6 +107,8 @@ async function main() {
     console.log(`Starting at project ${startAt}.`);
   }
 
+  const maxUsersPerProject = 10000;
+
   const endAt = Math.min(startAt + count, projects.length);
   for (let i = startAt; i < endAt; i++) {
     const projectId = projects[i].id;
@@ -120,7 +122,7 @@ async function main() {
             "x-stack-development-override-key": getEnvVariable("STACK_SEED_INTERNAL_PROJECT_SUPER_SECRET_ADMIN_KEY"),
           },
         }),
-        expectStatusCode(200, `/api/v1/users?limit=10000`, {
+        expectStatusCode(200, `/api/v1/users?limit=${maxUsersPerProject}`, {
           method: "GET",
           headers: {
             "x-stack-project-id": projectId,
@@ -145,7 +147,7 @@ async function main() {
           },
         }),
       ]);
-      if (currentProject.user_count !== users.items.length) throwErr("User count mismatch.", {
+      if (Math.min(currentProject.user_count, maxUsersPerProject) !== users.items.length) throwErr("User count mismatch.", {
         projectUserCount: currentProject.user_count,
         usersUserCount: users.items.length,
       });
