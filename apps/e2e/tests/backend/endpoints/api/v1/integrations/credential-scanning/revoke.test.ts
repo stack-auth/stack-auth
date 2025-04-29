@@ -1,7 +1,7 @@
 import { generateSecureRandomString } from "@stackframe/stack-shared/dist/utils/crypto";
 import type { MailboxMessage } from "../../../../../../helpers";
 import { it } from "../../../../../../helpers";
-import { Project, ProjectApiKey, Team, User, niceBackendFetch } from "../../../../../backend-helpers";
+import { InternalApiKey, Project, ProjectApiKey, Team, User, niceBackendFetch } from "../../../../../backend-helpers";
 
 it("should send email notification to user when revoking an API key through credential scanning", async ({ expect }: { expect: any }) => {
 
