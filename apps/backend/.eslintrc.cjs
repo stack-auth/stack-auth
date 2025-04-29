@@ -1,8 +1,8 @@
-const defaults = require("../../eslint-configs/defaults.js");
-const publicVars = require("../../eslint-configs/extra-rules.js");
+const defaults = require("../../configs/eslint/defaults.js");
+const publicVars = require("../../configs/eslint/extra-rules.js");
 
 module.exports = {
-  extends: ["../../eslint-configs/defaults.js", "../../eslint-configs/next.js"],
+  extends: ["../../configs/eslint/defaults.js", "../../configs/eslint/next.js"],
   ignorePatterns: ["/*", "!/src", "!/scripts", "!/prisma"],
   rules: {
     "no-restricted-syntax": [
