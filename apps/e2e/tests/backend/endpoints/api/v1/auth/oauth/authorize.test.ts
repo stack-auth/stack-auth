@@ -28,7 +28,7 @@ it("should fail if an invalid client_id is provided", async ({ expect }) => {
       "body": {
         "code": "INVALID_OAUTH_CLIENT_ID_OR_SECRET",
         "details": { "client_id": "some-invalid-client-id" },
-        "error": "The OAuth client ID or secret is invalid. The client ID must be equal to the project ID, and the client secret must be a publishable client key.",
+        "error": "The OAuth client ID or secret is invalid. The client ID must be equal to the project ID (potentially with a hash and a branch ID), and the client secret must be a publishable client key.",
       },
       "headers": Headers {
         "x-stack-known-error": "INVALID_OAUTH_CLIENT_ID_OR_SECRET",
