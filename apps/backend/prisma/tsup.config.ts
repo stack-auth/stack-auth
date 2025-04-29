@@ -1,6 +1,6 @@
 import { defineConfig } from 'tsup';
 import { createBasePlugin } from '../../../configs/tsup/plugins';
-import packageJson from '../../../package.json';
+import packageJson from '../package.json';
 
 const customNoExternal = new Set([
   ...Object.keys(packageJson.dependencies),
