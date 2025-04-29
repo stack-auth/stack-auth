@@ -1,5 +1,5 @@
 import { createOrUpdateProject, getProjectQuery, listManagedProjectIds } from "@/lib/projects";
-import { getSoleTenancyFromProject } from "@/lib/tenancies";
+import { DEFAULT_BRANCH_ID, getSoleTenancyFromProjectBranch } from "@/lib/tenancies";
 import { prismaClient, rawQueryAll } from "@/prisma-client";
 import { createCrudHandlers } from "@/route-handlers/crud-handler";
 import { KnownErrors } from "@stackframe/stack-shared";
@@ -31,11 +31,10 @@ export const adminUserProjectsCrudHandlers = createLazyProxy(() => createCrudHan
 
     const project = await createOrUpdateProject({
       ownerIds: userIds,
-      initialBranchId: 'main',
       type: 'create',
       data,
     });
-    const tenancy = await getSoleTenancyFromProject(project);
+    const tenancy = await getSoleTenancyFromProjectBranch(project.id, DEFAULT_BRANCH_ID);
     return {
       ...project,
       config: tenancy.config,
@@ -53,7 +52,7 @@ export const adminUserProjectsCrudHandlers = createLazyProxy(() => createCrudHan
     const projectsWithConfig = await Promise.all(projects.map(async (project) => {
       return {
         ...project,
-        config: (await getSoleTenancyFromProject(project)).config,
+        config: (await getSoleTenancyFromProjectBranch(project.id, DEFAULT_BRANCH_ID)).config,
       };
     }));
 

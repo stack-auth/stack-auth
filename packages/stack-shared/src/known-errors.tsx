@@ -635,6 +635,20 @@ const ProjectNotFound = createKnownErrorConstructor(
   (json: any) => [json.project_id] as const,
 );
 
+const BranchDoesNotExist = createKnownErrorConstructor(
+  KnownError,
+  "BRANCH_DOES_NOT_EXIST",
+  (branchId: string) => [
+    400,
+    `The branch with ID ${branchId} does not exist.`,
+    {
+      branch_id: branchId,
+    },
+  ] as const,
+  (json: any) => [json.branch_id] as const,
+);
+
+
 const SignUpNotEnabled = createKnownErrorConstructor(
   KnownError,
   "SIGN_UP_NOT_ENABLED",
@@ -1019,7 +1033,7 @@ const InvalidOAuthClientIdOrSecret = createKnownErrorConstructor(
   "INVALID_OAUTH_CLIENT_ID_OR_SECRET",
   (clientId?: string) => [
     400,
-    "The OAuth client ID or secret is invalid. The client ID must be equal to the project ID, and the client secret must be a publishable client key.",
+    "The OAuth client ID or secret is invalid. The client ID must be equal to the project ID (potentially with a hash and a branch ID), and the client secret must be a publishable client key.",
     {
       client_id: clientId ?? null,
     },
@@ -1380,6 +1394,7 @@ export const KnownErrors = {
   ApiKeyNotFound,
   PublicApiKeyCannotBeRevoked,
   ProjectNotFound,
+  BranchDoesNotExist,
   SignUpNotEnabled,
   PasswordAuthenticationNotEnabled,
   PasskeyAuthenticationNotEnabled,

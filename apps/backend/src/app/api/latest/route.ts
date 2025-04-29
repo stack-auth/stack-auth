@@ -21,6 +21,7 @@ export const GET = createSmartRouteHandler({
     headers: yupObject({
       // we list all automatically parsed headers here so the documentation shows them
       "X-Stack-Project-Id": yupTuple([projectIdSchema]),
+      "X-Stack-Branch-Id": yupTuple([projectIdSchema]).optional(),
       "X-Stack-Access-Type": yupTuple([yupString().oneOf(["client", "server", "admin"])]),
       "X-Stack-Access-Token": yupTuple([yupString()]),
       "X-Stack-Refresh-Token": yupTuple([yupString()]),

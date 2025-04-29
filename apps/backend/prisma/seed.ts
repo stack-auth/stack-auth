@@ -1,7 +1,7 @@
 /* eslint-disable no-restricted-syntax */
 import { usersCrudHandlers } from '@/app/api/latest/users/crud';
 import { createOrUpdateProject, getProject } from '@/lib/projects';
-import { getSoleTenancyFromProject } from '@/lib/tenancies';
+import { DEFAULT_BRANCH_ID, getSoleTenancyFromProjectBranch } from '@/lib/tenancies';
 import { PrismaClient } from '@prisma/client';
 import { errorToNiceString, throwErr } from '@stackframe/stack-shared/dist/utils/errors';
 
@@ -35,7 +35,6 @@ async function seed() {
   if (!internalProject) {
     internalProject = await createOrUpdateProject({
       type: 'create',
-      initialBranchId: 'main',
       projectId: 'internal',
       data: {
         display_name: 'Stack Dashboard',
@@ -57,10 +56,11 @@ async function seed() {
     console.log('Internal project created');
   }
 
-  const internalTenancy = await getSoleTenancyFromProject("internal");
+  const internalTenancy = await getSoleTenancyFromProjectBranch("internal", DEFAULT_BRANCH_ID);
 
   internalProject = await createOrUpdateProject({
     projectId: 'internal',
+    branchId: DEFAULT_BRANCH_ID,
     type: 'update',
     data: {
       config: {
@@ -104,7 +104,7 @@ async function seed() {
     const oldAdminUser = await prisma.projectUser.findFirst({
       where: {
         mirroredProjectId: 'internal',
-        mirroredBranchId: 'main',
+        mirroredBranchId: DEFAULT_BRANCH_ID,
         projectUserId: defaultUserId
       }
     });
@@ -118,7 +118,7 @@ async function seed() {
           projectUserId: defaultUserId,
           tenancyId: internalTenancy.id,
           mirroredProjectId: 'internal',
-          mirroredBranchId: 'main',
+          mirroredBranchId: DEFAULT_BRANCH_ID,
           serverMetadata: adminInternalAccess
             ? { managedProjectIds: ['internal'] }
             : undefined,
@@ -190,7 +190,7 @@ async function seed() {
     const existingUser = await prisma.projectUser.findFirst({
       where: {
         mirroredProjectId: 'internal',
-        mirroredBranchId: 'main',
+        mirroredBranchId: DEFAULT_BRANCH_ID,
         projectUserId: emulatorAdminUserId,
       }
     });
@@ -204,7 +204,7 @@ async function seed() {
           projectUserId: emulatorAdminUserId,
           tenancyId: internalTenancy.id,
           mirroredProjectId: 'internal',
-          mirroredBranchId: 'main',
+          mirroredBranchId: DEFAULT_BRANCH_ID,
           serverMetadata: {
             managedProjectIds: [emulatorProjectId],
           },
@@ -236,6 +236,7 @@ async function seed() {
       const emulatorProject = await createOrUpdateProject({
         projectId: emulatorProjectId,
         type: 'update',
+        branchId: DEFAULT_BRANCH_ID,
         data: {
           config: {
             allow_localhost: true,

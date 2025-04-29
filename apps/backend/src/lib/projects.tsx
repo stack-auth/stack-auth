@@ -8,7 +8,7 @@ import { filterUndefined, typedFromEntries } from "@stackframe/stack-shared/dist
 import { generateUuid } from "@stackframe/stack-shared/dist/utils/uuids";
 import { RawQuery, prismaClient, rawQuery, retryTransaction } from "../prisma-client";
 import { overrideEnvironmentConfigOverride } from "./config";
-import { getSoleTenancyFromProject } from "./tenancies";
+import { DEFAULT_BRANCH_ID } from "./tenancies";
 
 function isStringArray(value: any): value is string[] {
   return Array.isArray(value) && value.every((id) => typeof id === "string");
@@ -65,20 +65,20 @@ export async function createOrUpdateProject(
   } & ({
     type: "create",
     projectId?: string,
-    initialBranchId: string,
     data: AdminUserProjectsCrud["Admin"]["Create"],
   } | {
     type: "update",
     projectId: string,
+    /** The old config is specific to a tenancy, so this branchId specifies which tenancy it will update */
+    branchId: string,
     data: ProjectsCrud["Admin"]["Update"],
   })
 ) {
   const projectId = await retryTransaction(async (tx) => {
     let project: Prisma.ProjectGetPayload<{}>;
-    let tenancyId: string;
     let branchId: string;
     if (options.type === "create") {
-      branchId = options.initialBranchId;
+      branchId = DEFAULT_BRANCH_ID;
       project = await tx.project.create({
         data: {
           id: options.projectId ?? generateUuid(),
@@ -88,14 +88,14 @@ export async function createOrUpdateProject(
         },
       });
 
-      tenancyId = (await tx.tenancy.create({
+      await tx.tenancy.create({
         data: {
           projectId: project.id,
           branchId,
           organizationId: null,
           hasNoOrganization: "TRUE",
         },
-      })).id;
+      });
     } else {
       const projectFound = await tx.project.findUnique({
         where: {
@@ -117,9 +117,7 @@ export async function createOrUpdateProject(
           isProductionMode: options.data.is_production_mode,
         },
       });
-      const tenancy = await getSoleTenancyFromProject(projectFound.id);
-      tenancyId = tenancy.id;
-      branchId = tenancy.branchId;
+      branchId = options.branchId;
     }
 
     const translateDefaultPermissions = (permissions: { id: string }[] | undefined) => {
@@ -223,7 +221,7 @@ export async function createOrUpdateProject(
         where: {
           mirroredProjectId_mirroredBranchId_projectUserId: {
             mirroredProjectId: "internal",
-            mirroredBranchId: "main",
+            mirroredBranchId: DEFAULT_BRANCH_ID,
             projectUserId: userId,
           },
         },
@@ -239,7 +237,7 @@ export async function createOrUpdateProject(
         where: {
           mirroredProjectId_mirroredBranchId_projectUserId: {
             mirroredProjectId: "internal",
-            mirroredBranchId: "main",
+            mirroredBranchId: DEFAULT_BRANCH_ID,
             projectUserId: projectUserTx.projectUserId,
           },
         },

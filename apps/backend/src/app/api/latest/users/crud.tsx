@@ -1,6 +1,6 @@
 import { grantDefaultProjectPermissions } from "@/lib/permissions";
 import { ensureTeamMembershipExists, ensureUserExists } from "@/lib/request-checks";
-import { getSoleTenancyFromProject, getTenancy } from "@/lib/tenancies";
+import { getTenancy } from "@/lib/tenancies";
 import { PrismaTransaction } from "@/lib/types";
 import { sendTeamMembershipDeletedWebhook, sendUserCreatedWebhook, sendUserDeletedWebhook, sendUserUpdatedWebhook } from "@/lib/webhooks";
 import { RawQuery, prismaClient, rawQuery, retryTransaction } from "@/prisma-client";
@@ -145,8 +145,8 @@ async function checkAuthData(
   }
 }
 
-export const getUserLastActiveAtMillis = async (tenancyId: string, userId: string): Promise<number | null> => {
-  const res = (await getUsersLastActiveAtMillis(tenancyId, [userId], [0]))[0];
+export const getUserLastActiveAtMillis = async (projectId: string, branchId: string, userId: string): Promise<number | null> => {
+  const res = (await getUsersLastActiveAtMillis(projectId, branchId, [userId], [0]))[0];
   if (res === 0) {
     return null;
   }
@@ -156,17 +156,16 @@ export const getUserLastActiveAtMillis = async (tenancyId: string, userId: strin
 /**
  * Same as userIds.map(userId => getUserLastActiveAtMillis(tenancyId, userId)), but uses a single query
  */
-export const getUsersLastActiveAtMillis = async (tenancyId: string, userIds: string[], userSignedUpAtMillis: (number | Date)[]): Promise<number[]> => {
+export const getUsersLastActiveAtMillis = async (projectId: string, branchId: string, userIds: string[], userSignedUpAtMillis: (number | Date)[]): Promise<number[]> => {
   if (userIds.length === 0) {
     // Prisma.join throws an error if the array is empty, so we need to handle that case
     return [];
   }
-  const tenancy = await getTenancy(tenancyId) ?? throwErr("Tenancy not found", { tenancyId });
 
   const events = await prismaClient.$queryRaw<Array<{ userId: string, lastActiveAt: Date }>>`
     SELECT data->>'userId' as "userId", MAX("eventStartedAt") as "lastActiveAt"
     FROM "Event"
-    WHERE data->>'userId' = ANY(${Prisma.sql`ARRAY[${Prisma.join(userIds)}]`}) AND data->>'projectId' = ${tenancy.project.id} AND COALESCE("data"->>'branchId', 'main') = ${tenancy.branchId} AND "systemEventTypeIds" @> '{"$user-activity"}'
+    WHERE data->>'userId' = ANY(${Prisma.sql`ARRAY[${Prisma.join(userIds)}]`}) AND data->>'projectId' = ${projectId} AND COALESCE("data"->>'branchId', 'main') = ${branchId} AND "systemEventTypeIds" @> '{"$user-activity"}'
     GROUP BY data->>'userId'
   `;
 
@@ -178,7 +177,7 @@ export const getUsersLastActiveAtMillis = async (tenancyId: string, userIds: str
   });
 };
 
-export function getUserQuery(projectId: string, branchId: string | null, userId: string): RawQuery<UsersCrud["Admin"]["Read"] | null> {
+export function getUserQuery(projectId: string, branchId: string, userId: string): RawQuery<UsersCrud["Admin"]["Read"] | null> {
   return {
     sql: Prisma.sql`
       SELECT to_json(
@@ -269,7 +268,7 @@ export function getUserQuery(projectId: string, branchId: string | null, userId:
           FROM "ProjectUser"
           LEFT JOIN "Tenancy" ON "Tenancy"."id" = "ProjectUser"."tenancyId"
           LEFT JOIN "Project" ON "Project"."id" = "Tenancy"."projectId"
-          WHERE "Tenancy"."projectId" = ${projectId} AND "Tenancy"."branchId" = ${branchId ?? "main"} AND "ProjectUser"."projectUserId" = ${userId}::UUID
+          WHERE "Tenancy"."projectId" = ${projectId} AND "Tenancy"."branchId" = ${branchId} AND "ProjectUser"."projectUserId" = ${userId}::UUID
         )
       ) AS "row_data_json"
     `,
@@ -333,23 +332,26 @@ export function getUserQuery(projectId: string, branchId: string | null, userId:
 }
 
 export async function getUser(options: { userId: string } & ({ projectId: string, branchId: string } | { tenancyId: string })) {
-  let tenancy;
+  let projectId, branchId;
   if (!("tenancyId" in options)) {
-    tenancy = await getSoleTenancyFromProject(options.projectId);
+    projectId = options.projectId;
+    branchId = options.branchId;
   } else {
-    tenancy = await getTenancy(options.tenancyId) ?? throwErr("Tenancy not found", { tenancyId: options.tenancyId });
+    const tenancy = await getTenancy(options.tenancyId) ?? throwErr("Tenancy not found", { tenancyId: options.tenancyId });
+    projectId = tenancy.project.id;
+    branchId = tenancy.branchId;
   }
 
-  const result = await rawQuery(prismaClient, getUserQuery(tenancy.project.id, tenancy.branchId, options.userId));
+  const result = await rawQuery(prismaClient, getUserQuery(projectId, branchId, options.userId));
 
   // In non-prod environments, let's also call the legacy function and ensure the result is the same
   if (!getNodeEnvironment().includes("prod")) {
-    const legacyResult = await getUserLegacy({ tenancyId: tenancy.id, userId: options.userId });
+    const legacyResult = await getUserLegacy({ projectId, branchId, userId: options.userId });
     if (!deepPlainEquals(result, legacyResult)) {
       // Coincidentally, it can happen that a user is modified in the database right between these two queries.
       // While unlikely, it makes the tests flakey sometimes, so let's make sure that requesting the raw query again
       // still causes the same mismatch.
-      const newResult = await rawQuery(prismaClient, getUserQuery(tenancy.project.id, tenancy.branchId, options.userId));
+      const newResult = await rawQuery(prismaClient, getUserQuery(projectId, branchId, options.userId));
       if (!deepPlainEquals(newResult, legacyResult)) {
         throw new StackAssertionError("User result mismatch", {
           result,
@@ -363,18 +365,19 @@ export async function getUser(options: { userId: string } & ({ projectId: string
   return result;
 }
 
-async function getUserLegacy(options: { tenancyId: string, userId: string }) {
+async function getUserLegacy(options: { projectId: string, branchId: string, userId: string }) {
   const [db, lastActiveAtMillis] = await Promise.all([
     prismaClient.projectUser.findUnique({
       where: {
-        tenancyId_projectUserId: {
-          tenancyId: options.tenancyId,
+        mirroredProjectId_mirroredBranchId_projectUserId: {
+          mirroredProjectId: options.projectId,
+          mirroredBranchId: options.branchId,
           projectUserId: options.userId,
         },
       },
       include: userFullInclude,
     }),
-    getUserLastActiveAtMillis(options.tenancyId, options.userId),
+    getUserLastActiveAtMillis(options.projectId, options.branchId, options.userId),
   ]);
 
   if (!db) {
@@ -462,7 +465,7 @@ export const usersCrudHandlers = createLazyProxy(() => createCrudHandlers(usersC
       } : {},
     });
 
-    const lastActiveAtMillis = await getUsersLastActiveAtMillis(auth.tenancy.id, db.map(user => user.projectUserId), db.map(user => user.createdAt));
+    const lastActiveAtMillis = await getUsersLastActiveAtMillis(auth.project.id, auth.branchId, db.map(user => user.projectUserId), db.map(user => user.createdAt));
     return {
       // remove the last item because it's the next cursor
       items: db.map((user, index) => userPrismaToCrud(user, lastActiveAtMillis[index])).slice(0, query.limit),
@@ -495,7 +498,7 @@ export const usersCrudHandlers = createLazyProxy(() => createCrudHandlers(usersC
         data: {
           tenancyId: auth.tenancy.id,
           mirroredProjectId: auth.project.id,
-          mirroredBranchId: auth.tenancy.branchId,
+          mirroredBranchId: auth.branchId,
           displayName: data.display_name === undefined ? undefined : (data.display_name || null),
           clientMetadata: data.client_metadata === null ? Prisma.JsonNull : data.client_metadata,
           clientReadOnlyMetadata: data.client_read_only_metadata === null ? Prisma.JsonNull : data.client_read_only_metadata,
@@ -618,7 +621,7 @@ export const usersCrudHandlers = createLazyProxy(() => createCrudHandlers(usersC
         throw new StackAssertionError("User was created but not found", newUser);
       }
 
-      return userPrismaToCrud(user, await getUserLastActiveAtMillis(auth.tenancy.id, user.projectUserId) ?? user.createdAt.getTime());
+      return userPrismaToCrud(user, await getUserLastActiveAtMillis(auth.project.id, auth.branchId, user.projectUserId) ?? user.createdAt.getTime());
     });
 
     if (auth.tenancy.config.create_team_on_sign_up) {
@@ -943,7 +946,7 @@ export const usersCrudHandlers = createLazyProxy(() => createCrudHandlers(usersC
         });
       }
 
-      return userPrismaToCrud(db, await getUserLastActiveAtMillis(auth.tenancy.id, params.user_id) ?? db.createdAt.getTime());
+      return userPrismaToCrud(db, await getUserLastActiveAtMillis(auth.project.id, auth.branchId, params.user_id) ?? db.createdAt.getTime());
     });
 
 

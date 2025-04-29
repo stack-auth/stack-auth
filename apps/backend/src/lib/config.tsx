@@ -10,6 +10,7 @@ import { Result } from "@stackframe/stack-shared/dist/utils/results";
 import { stringCompare } from "@stackframe/stack-shared/dist/utils/strings";
 import * as yup from "yup";
 import { PrismaClientTransaction, RawQuery, prismaClient, rawQuery } from "../prisma-client";
+import { DEFAULT_BRANCH_ID } from "./tenancies";
 
 type ProjectOptions = { projectId: string };
 type BranchOptions = ProjectOptions & { branchId: string };
@@ -112,7 +113,7 @@ export function getProjectConfigOverrideQuery(options: ProjectOptions): RawQuery
 export function getBranchConfigOverrideQuery(options: BranchOptions): RawQuery<Promise<BranchConfigOverride>> {
   // fetch branch config from GitHub
   // (currently it's just empty)
-  if (options.branchId !== 'main') {
+  if (options.branchId !== DEFAULT_BRANCH_ID) {
     throw new StackAssertionError('Not implemented');
   }
   return {

@@ -1,6 +1,6 @@
 import "../polyfills";
 
-import { Tenancy, getSoleTenancyFromProject } from "@/lib/tenancies";
+import { Tenancy, getSoleTenancyFromProjectBranch, } from "@/lib/tenancies";
 import { traceSpan } from "@/utils/telemetry";
 import { CrudSchema, CrudTypeOf, CrudlOperation } from "@stackframe/stack-shared/dist/crud";
 import { ProjectsCrud } from "@stackframe/stack-shared/dist/interface/crud/projects";
@@ -249,13 +249,20 @@ export function createCrudHandlers<
                 data: any,
                 allowedErrorTypes?: (new (...args: any) => any)[],
               }) => {
-                if (tenancy && project) {
-                  throw new StackAssertionError("Must specify either project or tenancy, not both");
-                } else if (tenancy) {
+                if (tenancy) {
+                  if (project) {
+                    throw new StackAssertionError("Must specify either project or tenancy, not both");
+                  }
+                  if (branchId) {
+                    throw new StackAssertionError("Must specify either branchId or tenancy, not both");
+                  }
                   project = tenancy.project;
                   branchId = tenancy.branchId;
                 } else if (project) {
-                  tenancy = await getSoleTenancyFromProject(project);
+                  if (!branchId) {
+                    throw new StackAssertionError("Must specify branchId when specifying project");
+                  }
+                  tenancy = await getSoleTenancyFromProjectBranch(project.id, branchId);
                 } else {
                   throw new StackAssertionError("Must specify either project or tenancy");
                 }
@@ -268,9 +275,9 @@ export function createCrudHandlers<
                       data,
                       auth: {
                         user,
-                        project: project ?? throwErr("Project not found in CRUD handler invocation", { project, tenancy }),
-                        branchId: branchId ?? throwErr("Branch ID not found in CRUD handler invocation", { project, branchId }),
-                        tenancy: tenancy ?? throwErr("Tenancy not found in CRUD handler invocation", { project, tenancy }),
+                        project: project ?? throwErr("Project not found in CRUD handler invocation", { project, tenancy, branchId }),
+                        branchId: branchId ?? throwErr("Branch ID not found in CRUD handler invocation", { project, tenancy, branchId }),
+                        tenancy: tenancy ?? throwErr("Tenancy not found in CRUD handler invocation", { project, tenancy, branchId }),
                         type: accessType,
                       },
                     });
