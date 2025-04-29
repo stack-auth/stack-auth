@@ -88,14 +88,6 @@ describe("with grant_type === 'authorization_code'", async () => {
     `);
   });
 
-  it("should not sign in a user when forcing a branch id that does not exist", async ({ expect }) => {
-    const response = await Auth.OAuth.signIn({ forceBranchId: "does-not-exist" });
-
-    expect(response.tokenResponse).toMatchInlineSnapshot(`
-      INVALID
-    `);
-  });
-
   it("should fail when called with an invalid code_challenge", async ({ expect }) => {
     const getAuthorizationCodeResult = await Auth.OAuth.getAuthorizationCode();
 

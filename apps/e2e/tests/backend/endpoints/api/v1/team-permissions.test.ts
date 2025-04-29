@@ -1,4 +1,3 @@
-import { wait } from "@stackframe/stack-shared/dist/utils/promises";
 import { it } from "../../../../helpers";
 import { Auth, InternalApiKey, InternalProjectKeys, Project, Team, Webhook, backendContext, niceBackendFetch } from "../../../backend-helpers";
 
@@ -288,10 +287,7 @@ it("should trigger team permission webhook when a permission is granted to a use
     }
   `);
 
-  await wait(3000);
-
-  const attemptResponse = await Webhook.listWebhookAttempts(projectId, endpointId, svixToken);
-  const teamPermissionCreatedEvent = attemptResponse.find(event => event.eventType === "team_permission.created");
+  const teamPermissionCreatedEvent = await Webhook.findWebhookAttempt(projectId, endpointId, svixToken, event => event.eventType === "team_permission.created");
 
   expect(teamPermissionCreatedEvent).toMatchInlineSnapshot(`
     {
@@ -335,10 +331,7 @@ it("should trigger team permission webhook when a permission is revoked from a u
 
   expect(revokePermissionResponse.status).toBe(200);
 
-  await wait(3000);
-
-  const attemptResponse = await Webhook.listWebhookAttempts(projectId, endpointId, svixToken);
-  const teamPermissionDeletedEvent = attemptResponse.find(event => event.eventType === "team_permission.deleted");
+  const teamPermissionDeletedEvent = await Webhook.findWebhookAttempt(projectId, endpointId, svixToken, event => event.eventType === "team_permission.deleted");
 
   expect(teamPermissionDeletedEvent).toMatchInlineSnapshot(`
     {

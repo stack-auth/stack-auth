@@ -3,6 +3,7 @@ import { encodeBase64 } from "@stackframe/stack-shared/dist/utils/bytes";
 import { generateSecureRandomString } from "@stackframe/stack-shared/dist/utils/crypto";
 import { StackAssertionError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
 import { filterUndefined } from "@stackframe/stack-shared/dist/utils/objects";
+import { wait } from "@stackframe/stack-shared/dist/utils/promises";
 import { nicify } from "@stackframe/stack-shared/dist/utils/strings";
 import * as jose from "jose";
 import { randomUUID } from "node:crypto";
@@ -1303,6 +1304,23 @@ export namespace Webhook {
       svixToken,
       endpointId: createEndpointResponse.body.id
     };
+  }
+
+  export async function findWebhookAttempt(projectId: string, endpointId: string, svixToken: string, fn: (msg: any) => boolean) {
+    // retry many times because Svix sucks and is slow
+    for (let i = 0; i < 20; i++) {
+      const attempts = await Webhook.listWebhookAttempts(projectId, endpointId, svixToken);
+      const filtered = attempts.filter(fn);
+      if (filtered.length === 0) {
+        await wait(500);
+        continue;
+      } else if (filtered.length === 1) {
+        return filtered[0];
+      } else {
+        throw new Error(`Found ${filtered.length} webhook attempts for project ${projectId}, endpoint ${endpointId}`);
+      }
+    }
+    throw new Error(`Webhook attempt not found for project ${projectId}, endpoint ${endpointId}`);
   }
 
   export async function listWebhookAttempts(projectId: string, endpointId: string, svixToken: string) {

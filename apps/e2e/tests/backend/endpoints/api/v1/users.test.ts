@@ -2125,7 +2125,7 @@ describe("with server access", () => {
 
     expect(createUserResponse.status).toBe(201);
 
-    await wait(3000);
+    await wait(5000);
 
     const attemptResponse = await Webhook.listWebhookAttempts(projectId, endpointId, svixToken);
 
@@ -2191,10 +2191,7 @@ describe("with server access", () => {
 
     expect(updateUserResponse.status).toBe(200);
 
-    await wait(3000);
-
-    const attemptResponse = await Webhook.listWebhookAttempts(projectId, endpointId, svixToken);
-    const userUpdatedEvent = attemptResponse.find(event => event.eventType === "user.updated");
+    const userUpdatedEvent = await Webhook.findWebhookAttempt(projectId, endpointId, svixToken, event => event.eventType === "user.updated");
 
     expect(userUpdatedEvent).toMatchInlineSnapshot(`
       {
@@ -2253,10 +2250,7 @@ describe("with server access", () => {
 
     expect(deleteUserResponse.status).toBe(200);
 
-    await wait(3000);
-
-    const attemptResponse = await Webhook.listWebhookAttempts(projectId, endpointId, svixToken);
-    const userDeletedEvent = attemptResponse.find(event => event.eventType === "user.deleted");
+    const userDeletedEvent = await Webhook.findWebhookAttempt(projectId, endpointId, svixToken, event => event.eventType === "user.deleted");
 
     expect(userDeletedEvent).toMatchInlineSnapshot(`
       {

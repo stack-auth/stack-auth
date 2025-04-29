@@ -772,7 +772,7 @@ it("should trigger team webhook when a team is created", async ({ expect }) => {
     }
   `);
 
-  await wait(3000);
+  await wait(5000);
 
   const attemptResponse = await Webhook.listWebhookAttempts(projectId, endpointId, svixToken);
 
@@ -825,10 +825,7 @@ it("should trigger team webhook when a team is updated", async ({ expect }) => {
 
   expect(updateTeamResponse.status).toBe(200);
 
-  await wait(3000);
-
-  const attemptResponse = await Webhook.listWebhookAttempts(projectId, endpointId, svixToken);
-  const teamUpdatedEvent = attemptResponse.find(event => event.eventType === "team.updated");
+  const teamUpdatedEvent = await Webhook.findWebhookAttempt(projectId, endpointId, svixToken, event => event.eventType === "team.updated");
 
   expect(teamUpdatedEvent).toMatchInlineSnapshot(`
     {
@@ -874,10 +871,7 @@ it("should trigger team webhook when a team is deleted", async ({ expect }) => {
 
   expect(deleteTeamResponse.status).toBe(200);
 
-  await wait(3000);
-
-  const attemptResponse = await Webhook.listWebhookAttempts(projectId, endpointId, svixToken);
-  const teamDeletedEvent = attemptResponse.find(event => event.eventType === "team.deleted");
+  const teamDeletedEvent = await Webhook.findWebhookAttempt(projectId, endpointId, svixToken, event => event.eventType === "team.deleted");
 
   expect(teamDeletedEvent).toMatchInlineSnapshot(`
     {
