@@ -1,9 +1,9 @@
 /* eslint-disable no-restricted-syntax */
-import { usersCrudHandlers } from '@/app/api/latest/users/crud';
-import { createOrUpdateProject, getProject } from '@/lib/projects';
-import { getSoleTenancyFromProject } from '@/lib/tenancies';
 import { PrismaClient } from '@prisma/client';
 import { errorToNiceString, throwErr } from '@stackframe/stack-shared/dist/utils/errors';
+import { usersCrudHandlers } from '../src/app/api/latest/users/crud';
+import { createOrUpdateProject, getProject } from '../src/lib/projects';
+import { getSoleTenancyFromProject } from '../src/lib/tenancies';
 
 const prisma = new PrismaClient();
 

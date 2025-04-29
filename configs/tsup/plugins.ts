@@ -2,7 +2,7 @@ import type { Plugin } from "esbuild";
 import fs from 'fs';
 import path from "path";
 
-export const createBasePlugin = (options: { customNoExternal: Set<string> }): Plugin => {
+export const createBasePlugin = (options: { customNoExternal: "all" | Set<string> }): Plugin => {
   const packageJson = JSON.parse(fs.readFileSync("./package.json", "utf-8"));
   return {
     name: 'stackframe tsup plugin (private)',
@@ -23,6 +23,10 @@ export const createBasePlugin = (options: { customNoExternal: Set<string> }): Pl
       });
 
       build.onResolve({ filter: /^.*$/m }, async (args) => {
+        if (options.customNoExternal === "all") {
+          return undefined;
+        }
+
         if (args.kind === "entry-point" || options.customNoExternal.has(args.path)) {
           return undefined;
         }

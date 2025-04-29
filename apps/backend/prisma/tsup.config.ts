@@ -22,6 +22,6 @@ export default defineConfig({
   noExternal: [...customNoExternal],
   clean: true,
   esbuildPlugins: [
-    createBasePlugin({ customNoExternal }),
+    createBasePlugin({ customNoExternal: "all" }),
   ],
 });
