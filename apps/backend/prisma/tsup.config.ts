@@ -1,13 +1,8 @@
 import { defineConfig } from 'tsup';
 import { createBasePlugin } from '../../../configs/tsup/plugins';
 import packageJson from '../../../package.json';
+
 const customNoExternal = new Set([
-  '@stackframe/stack-shared',
-  '@prisma/client',
-  '@prisma/extension-accelerate',
-  'jose',
-  'yup',
-  'json-diff',
   ...Object.keys(packageJson.dependencies),
 ]);
 
