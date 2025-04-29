@@ -17,6 +17,23 @@ export default function createJsLibraryTsupConfig(options: { barrelFile: boolean
     legacyOutput: true,
     esbuildPlugins: [
       createBasePlugin({ customNoExternal }),
+      {
+        name: 'stackframe: force most files to be external',
+        setup(build) {
+          build.onResolve({ filter: /^.*$/m }, async (args) => {
+            if (options.customNoExternal === "all") {
+              return undefined;
+            }
+    
+            if (args.kind === "entry-point" || options.customNoExternal.has(args.path)) {
+              return undefined;
+            }
+            return {
+              external: true,
+            };
+          });
+        },
+      }
     ],
   });
 }
