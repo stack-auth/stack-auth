@@ -877,7 +877,6 @@ it("updates the project oauth configuration", async ({ expect }) => {
     }
   `);
 
-  // add another oauth provider with invalid type
   const { updateProjectResponse: response4 } = await Project.updateCurrent(adminAccessToken, {
     config: {
       oauth_providers: [{
