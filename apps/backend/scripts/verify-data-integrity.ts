@@ -1,7 +1,7 @@
 import { PrismaClient } from "@prisma/client";
 import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
 import { StackAssertionError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
-import { deepPlainEquals, filterUndefined } from "@stackframe/stack-shared/dist/utils/objects";
+import { deepPlainEquals, filterUndefined, omit } from "@stackframe/stack-shared/dist/utils/objects";
 import { wait } from "@stackframe/stack-shared/dist/utils/promises";
 import { deindent } from "@stackframe/stack-shared/dist/utils/strings";
 import fs from "fs";
@@ -87,6 +87,20 @@ async function main() {
     }
     try {
       targetOutputData = JSON.parse(fs.readFileSync(OUTPUT_FILE_PATH, 'utf8'));
+
+      // TODO next-release these are hacks for the migration, delete them
+      if (targetOutputData) {
+        targetOutputData["/api/v1/internal/projects/current"] = targetOutputData["/api/v1/internal/projects/current"].map(output => {
+          if ("config" in output.responseJson) {
+            delete output.responseJson.config.id;
+            output.responseJson.config.oauth_providers = output.responseJson.config.oauth_providers
+              .filter((provider: any) => provider.enabled)
+              .map((provider: any) => omit(provider, ["enabled"]));
+          }
+          return output;
+        });
+      }
+
       console.log(`Loaded previous output data for verification`);
     } catch (error) {
       throw new Error(`Failed to parse output file: ${error}`);
@@ -307,9 +321,9 @@ function appendOutputData(endpoint: string, output: EndpointOutput) {
       throw new StackAssertionError(deindent`
         Output data mismatch for endpoint ${endpoint}:
           Expected output[${JSON.stringify(endpoint)}][${newLength - 1}] to be:
-            ${JSON.stringify(output, null, 2)}
+            ${JSON.stringify(targetOutputData[endpoint][newLength - 1], null, 2)}
           but got:
-            ${JSON.stringify(targetOutputData[endpoint][newLength - 1], null, 2)}.
+            ${JSON.stringify(output, null, 2)}.
       `, { endpoint });
     }
   }

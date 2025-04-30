@@ -184,7 +184,7 @@ export function Mapping({
       return <X iconSize={iconSize} />;
     }
     default: {
-      throw new StackAssertionError(`Icon not found for provider: ${provider}`);;
+      throw new StackAssertionError(`Icon not found for provider: ${provider}`);
     }
   }
 }

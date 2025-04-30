@@ -1,14 +1,9 @@
 import { defineConfig } from 'tsup';
 import { createBasePlugin } from '../../../configs/tsup/plugins';
+import packageJson from '../package.json';
 
 const customNoExternal = new Set([
-  '@stackframe/stack-shared',
-  '@prisma/client',
-  '@prisma/extension-accelerate',
-  'jose',
-  'yup',
-  'json-diff',
-  'svix',
+  ...Object.keys(packageJson.dependencies),
 ]);
 
 // tsup config to build the self-hosting seed script so it can be
@@ -22,6 +17,6 @@ export default defineConfig({
   noExternal: [...customNoExternal],
   clean: true,
   esbuildPlugins: [
-    createBasePlugin({ customNoExternal }),
+    createBasePlugin({}),
   ],
 });

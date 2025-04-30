@@ -1,4 +1,4 @@
-import { grantTeamPermission, listUserTeamPermissions, revokeTeamPermission } from "@/lib/permissions";
+import { grantTeamPermission, listPermissions, revokeTeamPermission } from "@/lib/permissions";
 import { ensureTeamMembershipExists, ensureUserTeamPermissionExists } from "@/lib/request-checks";
 import { sendTeamPermissionCreatedWebhook, sendTeamPermissionDeletedWebhook } from "@/lib/webhooks";
 import { retryTransaction } from "@/prisma-client";
@@ -86,7 +86,8 @@ export const teamPermissionsCrudHandlers = createLazyProxy(() => createCrudHandl
 
     return await retryTransaction(async (tx) => {
       return {
-        items: await listUserTeamPermissions(tx, {
+        items: await listPermissions(tx, {
+          scope: 'team',
           tenancy: auth.tenancy,
           teamId: query.team_id,
           permissionId: query.permission_id,

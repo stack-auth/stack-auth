@@ -8,7 +8,6 @@ import { VerificationCodeType } from "@prisma/client";
 import { KnownErrors } from "@stackframe/stack-shared";
 import { UsersCrud } from "@stackframe/stack-shared/dist/interface/crud/users";
 import { emailSchema, signInResponseSchema, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
-import { throwErr } from "@stackframe/stack-shared/dist/utils/errors";
 import { usersCrudHandlers } from "../../../users/crud";
 import { createMfaRequiredError } from "../../mfa/sign-in/verification-code-handler";
 
@@ -34,26 +33,17 @@ export async function ensureUserForEmailAllowsOtp(tenancy: Tenancy, email: strin
           where: {
             id: tenancy.project.id,
           },
-          include: {
-            config: {
-              include: {
-                authMethodConfigs: {
-                  include: {
-                    otpConfig: true,
-                  }
-                }
-              }
-            }
-          }
         });
 
-        const otpAuthMethodConfig = rawProject?.config.authMethodConfigs.find((m) => m.otpConfig) ?? throwErr("OTP auth method config not found.");
         await prismaClient.authMethod.create({
           data: {
             projectUserId: contactChannel.projectUser.projectUserId,
             tenancyId: tenancy.id,
-            projectConfigId: tenancy.config.id,
-            authMethodConfigId: otpAuthMethodConfig.id,
+            otpAuthMethod: {
+              create: {
+                projectUserId: contactChannel.projectUser.projectUserId,
+              }
+            }
           },
         });
       }

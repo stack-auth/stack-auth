@@ -7,6 +7,8 @@ import { Result } from "@stackframe/stack-shared/dist/utils/results";
 import { isPromise } from "util/types";
 import { traceSpan } from "./utils/telemetry";
 
+export type PrismaClientTransaction = PrismaClient | Parameters<Parameters<typeof prismaClient.$transaction>[0]>[0];
+
 // In dev mode, fast refresh causes us to recreate many Prisma clients, eventually overloading the database.
 // Therefore, only create one Prisma client in dev mode.
 const globalForPrisma = global as unknown as { prisma: PrismaClient };
@@ -34,7 +36,7 @@ class TransactionErrorThatShouldNotBeRetried extends Error {
   }
 }
 
-export async function retryTransaction<T>(fn: (...args: Parameters<Parameters<typeof prismaClient.$transaction>[0]>) => Promise<T>): Promise<T> {
+export async function retryTransaction<T>(fn: (tx: PrismaClientTransaction) => Promise<T>): Promise<T> {
   // disable serializable transactions for now, later we may re-add them
   const enableSerializable = false as boolean;
 
@@ -109,18 +111,68 @@ export type RawQuery<T> = {
   postProcess: (rows: any[]) => T,  // Tip: If your postProcess is async, just set T = Promise<any> (compared to doing Promise.all in rawQuery, this ensures that there are no accidental timing attacks)
 };
 
-export async function rawQuery<Q extends RawQuery<any>>(query: Q): Promise<Awaited<ReturnType<Q["postProcess"]>>> {
-  const result = await rawQueryArray([query]);
+export const RawQuery = {
+  then: <T, R>(query: RawQuery<T>, fn: (result: T) => R): RawQuery<R> => {
+    return {
+      sql: query.sql,
+      postProcess: (rows) => {
+        const result = query.postProcess(rows);
+        return fn(result);
+      },
+    };
+  },
+  all: <T extends readonly any[]>(queries: { [K in keyof T]: RawQuery<T[K]> }): RawQuery<T> => {
+    return {
+      sql: Prisma.sql`
+        WITH ${Prisma.join(queries.map((q, index) => {
+          return Prisma.sql`${Prisma.raw("q" + index)} AS (
+            ${q.sql}
+          )`;
+        }), ",\n")}
+
+        ${Prisma.join(queries.map((q, index) => {
+          return Prisma.sql`
+            SELECT
+              ${"q" + index} AS type,
+              row_to_json(c) AS json
+            FROM (SELECT * FROM ${Prisma.raw("q" + index)}) c
+          `;
+        }), "\nUNION ALL\n")}
+      `,
+      postProcess: (rows) => {
+        const unprocessed = new Array(queries.length).fill(null).map(() => [] as any[]);
+        for (const row of rows) {
+          const type = row.type;
+          const index = +type.slice(1);
+          unprocessed[index].push(row.json);
+        }
+        const postProcessed = queries.map((q, index) => {
+          const postProcessed = q.postProcess(unprocessed[index]);
+          // If the postProcess is async, postProcessed is a Promise. If that Promise is rejected, it will cause an unhandled promise rejection.
+          // We don't want that, because Vercel crashes on unhandled promise rejections.
+          if (isPromise(postProcessed)) {
+            ignoreUnhandledRejection(postProcessed);
+          }
+          return postProcessed;
+        });
+        return postProcessed as any;
+      },
+    };
+  },
+};
+
+export async function rawQuery<Q extends RawQuery<any>>(tx: PrismaClientTransaction, query: Q): Promise<Awaited<ReturnType<Q["postProcess"]>>> {
+  const result = await rawQueryArray(tx, [query]);
   return result[0];
 }
 
-export async function rawQueryAll<Q extends Record<string, undefined | RawQuery<any>>>(queries: Q): Promise<{ [K in keyof Q]: Awaited<ReturnType<NonNullable<Q[K]>["postProcess"]>> }> {
+export async function rawQueryAll<Q extends Record<string, undefined | RawQuery<any>>>(tx: PrismaClientTransaction, queries: Q): Promise<{ [K in keyof Q]: ReturnType<NonNullable<Q[K]>["postProcess"]> }> {
   const keys = typedKeys(filterUndefined(queries));
-  const result = await rawQueryArray(keys.map(key => queries[key as any] as any));
+  const result = await rawQueryArray(tx, keys.map(key => queries[key as any] as any));
   return typedFromEntries(keys.map((key, index) => [key, result[index]])) as any;
 }
 
-async function rawQueryArray<Q extends RawQuery<any>[]>(queries: Q): Promise<[] & { [K in keyof Q]: Awaited<ReturnType<Q[K]["postProcess"]>> }> {
+async function rawQueryArray<Q extends RawQuery<any>[]>(tx: PrismaClientTransaction, queries: Q): Promise<[] & { [K in keyof Q]: Awaited<ReturnType<Q[K]["postProcess"]>> }> {
   return await traceSpan({
     description: `raw SQL quer${queries.length === 1 ? "y" : `ies (${queries.length} total)`}`,
     attributes: {
@@ -134,44 +186,21 @@ async function rawQueryArray<Q extends RawQuery<any>[]>(queries: Q): Promise<[] 
     if (queries.length === 0) return [] as any;
 
     // Prisma does a query for every rawQuery call by default, even if we batch them with transactions
-    // So, instead we combine all queries into one using WITH, and then return them as a single JSON result
-    const withQuery = Prisma.sql`
-      WITH ${Prisma.join(queries.map((q, index) => {
-        return Prisma.sql`${Prisma.raw("q" + index)} AS (
-          ${q.sql}
-        )`;
-      }), ",\n")}
-
-      ${Prisma.join(queries.map((q, index) => {
-        return Prisma.sql`
-          SELECT
-            ${"q" + index} AS type,
-            row_to_json(c) AS json
-          FROM (SELECT * FROM ${Prisma.raw("q" + index)}) c
-        `;
-      }), "\nUNION ALL\n")}
-    `;
+    // So, instead we combine all queries into one, and then return them as a single JSON result
+    const combinedQuery = RawQuery.all(queries);
 
     // Supabase's index advisor only analyzes rows that start with "SELECT" (for some reason)
     // Since ours starts with "WITH", we prepend a SELECT to it
-    const query = Prisma.sql`SELECT * FROM (${withQuery}) AS _`;
+    const sqlQuery = Prisma.sql`SELECT * FROM (${combinedQuery.sql}) AS _`;
+    const rawResult = await tx.$queryRaw(sqlQuery);
 
-    const rawResult = await prismaClient.$queryRaw(query) as { type: string, json: any }[];
-    const unprocessed = new Array(queries.length).fill(null).map(() => [] as any[]);
-    for (const row of rawResult) {
-      const type = row.type;
-      const index = +type.slice(1);
-      unprocessed[index].push(row.json);
+    const postProcessed = combinedQuery.postProcess(rawResult as any);
+    // If the postProcess is async, postProcessed is a Promise. If that Promise is rejected, it will cause an unhandled promise rejection.
+    // We don't want that, because Vercel crashes on unhandled promise rejections.
+    if (isPromise(postProcessed)) {
+      ignoreUnhandledRejection(postProcessed);
     }
-    const postProcessed = queries.map((q, index) => {
-      const postProcessed = q.postProcess(unprocessed[index]);
-      // If the postProcess is async, postProcessed is a Promise. If that Promise is rejected, it will cause an unhandled promise rejection.
-      // We don't want that, because Vercel crashes on unhandled promise rejections.
-      if (isPromise(postProcessed)) {
-        ignoreUnhandledRejection(postProcessed);
-      }
-      return postProcessed;
-    });
+
     return postProcessed;
   });
 }

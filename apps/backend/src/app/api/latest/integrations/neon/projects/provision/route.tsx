@@ -1,5 +1,5 @@
 import { createApiKeySet } from "@/lib/internal-api-keys";
-import { createProject } from "@/lib/projects";
+import { createOrUpdateProject } from "@/lib/projects";
 import { prismaClient } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { neonAuthorizationHeaderSchema, projectDisplayNameSchema, yupNumber, yupObject, yupString, yupTuple } from "@stackframe/stack-shared/dist/schema-fields";
@@ -28,23 +28,28 @@ export const POST = createSmartRouteHandler({
   handler: async (req) => {
     const [clientId] = decodeBasicAuthorizationHeader(req.headers.authorization[0])!;
 
-    const createdProject = await createProject([], {
-      display_name: req.body.display_name,
-      description: "Created with Neon",
-      config: {
-        oauth_providers: [
-          {
-            id: "google",
-            type: "shared",
-            enabled: true,
-          },
-          {
-            id: "github",
-            type: "shared",
-            enabled: true,
-          },
-        ],
-      },
+    const createdProject = await createOrUpdateProject({
+      ownerIds: [],
+      initialBranchId: 'main',
+      type: 'create',
+      data: {
+        display_name: req.body.display_name,
+        description: "Created with Neon",
+        config: {
+          oauth_providers: [
+            {
+              id: "google",
+              type: "shared",
+            },
+            {
+              id: "github",
+              type: "shared",
+            },
+          ],
+          allow_localhost: true,
+          credential_enabled: true
+        },
+      }
     });
 
     await prismaClient.neonProvisionedProject.create({

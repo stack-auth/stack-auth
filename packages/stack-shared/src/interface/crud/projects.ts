@@ -8,21 +8,14 @@ const teamPermissionSchema = yupObject({
 
 const oauthProviderSchema = yupObject({
   id: schemaFields.oauthIdSchema.defined(),
-  enabled: schemaFields.oauthEnabledSchema.defined(),
   type: schemaFields.oauthTypeSchema.defined(),
   client_id: schemaFields.yupDefinedAndNonEmptyWhen(
     schemaFields.oauthClientIdSchema,
-    {
-      type: 'standard',
-      enabled: true,
-    },
+    { type: 'standard' },
   ),
   client_secret: schemaFields.yupDefinedAndNonEmptyWhen(
     schemaFields.oauthClientSecretSchema,
-    {
-      type: 'standard',
-      enabled: true,
-    },
+    { type: 'standard' },
   ),
 
   // extra params
@@ -73,7 +66,6 @@ export const projectsCrudAdminReadSchema = yupObject({
   user_count: schemaFields.projectUserCountSchema.defined(),
   is_production_mode: schemaFields.projectIsProductionModeSchema.defined(),
   config: yupObject({
-    id: schemaFields.projectConfigIdSchema.defined(),
     allow_localhost: schemaFields.projectAllowLocalhostSchema.defined(),
     sign_up_enabled: schemaFields.projectSignUpEnabledSchema.defined(),
     credential_enabled: schemaFields.projectCredentialEnabledSchema.defined(),
