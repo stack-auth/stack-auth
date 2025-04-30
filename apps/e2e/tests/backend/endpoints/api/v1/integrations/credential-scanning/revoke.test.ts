@@ -1,7 +1,7 @@
 import { generateSecureRandomString } from "@stackframe/stack-shared/dist/utils/crypto";
 import type { MailboxMessage } from "../../../../../../helpers";
 import { it } from "../../../../../../helpers";
-import { Project, ProjectApiKey, Team, User, niceBackendFetch } from "../../../../../backend-helpers";
+import { InternalApiKey, Project, ProjectApiKey, Team, User, niceBackendFetch } from "../../../../../backend-helpers";
 
 it("should send email notification to user when revoking an API key through credential scanning", async ({ expect }: { expect: any }) => {
 
@@ -98,6 +98,9 @@ it("should send email notification to user when revoking an API key through cred
 
 it("should send email notification to team members when revoking a team API key through credential scanning", async ({ expect }: { expect: any }) => {
   await Project.createAndSwitch({ config: { magic_link_enabled: true, allow_team_api_keys: true, allow_user_api_keys: true } });
+
+  // this test may run longer than the admin access token is valid for, so let's create API keys
+  await InternalApiKey.createAndSetProjectKeys();
 
   const [user1, user2, user3] = await User.createMultiple(3);
   // Create a team and add both users

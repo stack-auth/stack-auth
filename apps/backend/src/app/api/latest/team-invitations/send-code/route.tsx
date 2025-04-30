@@ -34,7 +34,7 @@ export const POST = createSmartRouteHandler({
   async handler({ auth, body }) {
     await retryTransaction(async (tx) => {
       if (auth.type === "client") {
-        if (!auth.user) throw new KnownErrors.UserAuthenticationRequired;
+        if (!auth.user) throw new KnownErrors.UserAuthenticationRequired();
 
         await ensureUserTeamPermissionExists(tx, {
           tenancy: auth.tenancy,

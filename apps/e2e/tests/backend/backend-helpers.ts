@@ -145,7 +145,7 @@ export async function niceBackendFetch(url: string | URL, options?: Omit<NiceReq
     }),
   });
   if (res.status >= 500 && res.status < 600) {
-    throw new StackAssertionError(`Unexpected internal server error: ${res.status} ${typeof res.body === "string" ? res.body : nicify(res.body)}`);
+    throw new StackAssertionError(`API threw ISE in ${otherOptions.method ?? "GET"} ${url}: ${res.status} ${typeof res.body === "string" ? res.body : nicify(res.body)}`);
   }
   if (res.headers.has("x-stack-known-error")) {
     expect(res.status).toBeGreaterThanOrEqual(400);
@@ -1007,6 +1007,11 @@ export namespace Project {
       body: {
         display_name: body?.display_name || 'New Project',
         ...body,
+        config: {
+          credential_enabled: true,
+          allow_localhost: true,
+          ...body?.config,
+        },
       },
     });
     expect(response).toMatchObject({
@@ -1109,7 +1114,7 @@ export namespace Team {
     };
   }
 
-  export async function createAndAddCurrent(options: { accessType?: "client" | "server" } = {}, body?: any) {
+  export async function createWithCurrentAsCreator(options: { accessType?: "client" | "server" } = {}, body?: any) {
     return await Team.create({ ...options, addCurrentUser: true }, body);
   }
 
@@ -1193,15 +1198,24 @@ export namespace Team {
 
 export namespace User {
   export function setBackendContextFromUser({ mailbox, accessToken, refreshToken }: {mailbox: Mailbox, accessToken: string, refreshToken: string}) {
-      backendContext.set({
-        mailbox,
-        userAuth: {
-          accessToken,
-          refreshToken,
-        },
-      });
+    backendContext.set({
+      mailbox,
+      userAuth: {
+        accessToken,
+        refreshToken,
+      },
+    });
   }
 
+  export async function getCurrent() {
+    const response = await niceBackendFetch("/api/v1/users/me", {
+      accessType: "client",
+    });
+    expect(response).toMatchObject({
+      status: 200,
+    });
+    return response.body;
+  }
 
   export async function create({ emailAddress }: {emailAddress?: string} = {}) {
     // Create new mailbox

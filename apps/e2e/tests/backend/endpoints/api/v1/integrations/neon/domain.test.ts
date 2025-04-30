@@ -44,43 +44,6 @@ it("creates domains for internal project", async ({ expect }) => {
   `);
 });
 
-it("fails to add duplicated domain", async ({ expect }) => {
-  await Auth.Otp.signIn();
-  const { adminAccessToken } = await Project.createAndGetAdminToken();
-
-  // Add first domain
-  await niceBackendFetch("/api/v1/integrations/neon/domains", {
-    accessType: "admin",
-    headers: {
-      'x-stack-admin-access-token': adminAccessToken,
-    },
-    method: "POST",
-    body: {
-      domain: "https://duplicate-domain.example.com",
-    },
-  });
-
-  // Try to add the same domain again
-  const duplicateResponse = await niceBackendFetch("/api/v1/integrations/neon/domains", {
-    accessType: "admin",
-    headers: {
-      'x-stack-admin-access-token': adminAccessToken,
-    },
-    method: "POST",
-    body: {
-      domain: "https://duplicate-domain.example.com",
-    },
-  });
-
-  expect(duplicateResponse).toMatchInlineSnapshot(`
-    NiceResponse {
-      "status": 400,
-      "body": "Duplicated domain found",
-      "headers": Headers { <some fields may have been hidden> },
-    }
-  `);
-});
-
 it("adds two different domains", async ({ expect }) => {
   await Auth.Otp.signIn();
   const { adminAccessToken } = await Project.createAndGetAdminToken();

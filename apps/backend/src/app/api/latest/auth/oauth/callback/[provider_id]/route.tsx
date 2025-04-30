@@ -20,7 +20,6 @@ import { oauthResponseToSmartResponse } from "../../oauth-helpers";
  */
 async function createProjectUserOAuthAccount(params: {
   tenancyId: string,
-  projectConfigId: string,
   providerId: string,
   providerAccountId: string,
   email?: string | null,
@@ -28,16 +27,9 @@ async function createProjectUserOAuthAccount(params: {
 }) {
   return await prismaClient.projectUserOAuthAccount.create({
     data: {
+      configOAuthProviderId: params.providerId,
       providerAccountId: params.providerAccountId,
       email: params.email,
-      providerConfig: {
-        connect: {
-          projectConfigId_id: {
-            projectConfigId: params.projectConfigId,
-            id: params.providerId,
-          },
-        },
-      },
       projectUser: {
         connect: {
           tenancyId_projectUserId: {
@@ -126,7 +118,7 @@ const handler = createSmartRouteHandler({
       }
 
       const provider = tenancy.config.oauth_providers.find((p) => p.id === params.provider_id);
-      if (!provider || !provider.enabled) {
+      if (!provider) {
         throw new KnownErrors.OAuthProviderNotFoundOrNotEnabled();
       }
 
@@ -163,18 +155,14 @@ const handler = createSmartRouteHandler({
             },
           },
           include: {
-            projectUserOAuthAccounts: {
-              include: {
-                providerConfig: true,
-              }
-            }
+            projectUserOAuthAccounts: true,
           }
         });
         if (!user) {
           throw new StackAssertionError("User not found");
         }
 
-        const account = user.projectUserOAuthAccounts.find((a) => a.providerConfig.id === provider.id);
+        const account = user.projectUserOAuthAccounts.find((a) => a.configOAuthProviderId === provider.id);
         if (account && account.providerAccountId !== userInfo.accountId) {
           throw new KnownErrors.UserAlreadyConnectedToAnotherOAuthConnection();
         }
@@ -202,7 +190,7 @@ const handler = createSmartRouteHandler({
           await prismaClient.oAuthToken.create({
             data: {
               tenancyId: outerInfo.tenancyId,
-              oAuthProviderConfigId: provider.id,
+              configOAuthProviderId: provider.id,
               refreshToken: tokenSet.refreshToken,
               providerAccountId: userInfo.accountId,
               scopes: extractScopes(providerObj.scope + " " + providerScope),
@@ -213,7 +201,7 @@ const handler = createSmartRouteHandler({
         await prismaClient.oAuthAccessToken.create({
           data: {
             tenancyId: outerInfo.tenancyId,
-            oAuthProviderConfigId: provider.id,
+            configOAuthProviderId: provider.id,
             accessToken: tokenSet.accessToken,
             providerAccountId: userInfo.accountId,
             scopes: extractScopes(providerObj.scope + " " + providerScope),
@@ -232,9 +220,9 @@ const handler = createSmartRouteHandler({
               handle: async () => {
                 const oldAccount = await prismaClient.projectUserOAuthAccount.findUnique({
                   where: {
-                    tenancyId_oauthProviderConfigId_providerAccountId: {
+                    tenancyId_configOAuthProviderId_providerAccountId: {
                       tenancyId: outerInfo.tenancyId,
-                      oauthProviderConfigId: provider.id,
+                      configOAuthProviderId: provider.id,
                       providerAccountId: userInfo.accountId,
                     },
                   },
@@ -256,7 +244,6 @@ const handler = createSmartRouteHandler({
                     // ========================== connect account with user ==========================
                     await createProjectUserOAuthAccount({
                       tenancyId: outerInfo.tenancyId,
-                      projectConfigId: tenancy.config.id,
                       providerId: provider.id,
                       providerAccountId: userInfo.accountId,
                       email: userInfo.email,
@@ -323,39 +310,20 @@ const handler = createSmartRouteHandler({
                           // First create the OAuth account
                           await createProjectUserOAuthAccount({
                             tenancyId: outerInfo.tenancyId,
-                            projectConfigId: tenancy.config.id,
                             providerId: provider.id,
                             providerAccountId: userInfo.accountId,
                             email: userInfo.email,
                             projectUserId: existingUser.projectUserId,
                           });
 
-                          // Then create the auth method that uses this OAuth account
-                          // Find auth method config for this provider from the provider list
-                          const authMethodConfig = await prismaClient.authMethodConfig.findFirst({
-                            where: {
-                              projectConfigId: tenancy.config.id,
-                              oauthProviderConfig: {
-                                id: provider.id,
-                              }
-                            }
-                          });
-
-                          if (!authMethodConfig) {
-                            throw new StackAssertionError("Auth method config not found, this is most likely a bug.");
-                          }
-
                           await prismaClient.authMethod.create({
                             data: {
                               tenancyId: outerInfo.tenancyId,
                               projectUserId: existingUser.projectUserId,
-                              projectConfigId: tenancy.config.id,
-                              authMethodConfigId: authMethodConfig.id,
                               oauthAuthMethod: {
                                 create: {
                                   projectUserId: existingUser.projectUserId,
-                                  projectConfigId: tenancy.config.id,
-                                  oauthProviderConfigId: provider.id,
+                                  configOAuthProviderId: provider.id,
                                   providerAccountId: userInfo.accountId,
                                 }
                               }

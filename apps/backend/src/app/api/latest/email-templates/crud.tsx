@@ -29,8 +29,8 @@ export const emailTemplateCrudHandlers = createLazyProxy(() => createCrudHandler
     const dbType = typedToUppercase(params.type);
     const emailTemplate = await prismaClient.emailTemplate.findUnique({
       where: {
-        projectConfigId_type: {
-          projectConfigId: auth.tenancy.config.id,
+        projectId_type: {
+          projectId: auth.tenancy.project.id,
           type: dbType,
         },
       },
@@ -58,8 +58,8 @@ export const emailTemplateCrudHandlers = createLazyProxy(() => createCrudHandler
     const dbType = typedToUppercase(params.type);
     const oldTemplate = await prismaClient.emailTemplate.findUnique({
       where: {
-        projectConfigId_type: {
-          projectConfigId: auth.tenancy.config.id,
+        projectId_type: {
+          projectId: auth.tenancy.project.id,
           type: dbType,
         },
       },
@@ -70,8 +70,8 @@ export const emailTemplateCrudHandlers = createLazyProxy(() => createCrudHandler
 
     const db = await prismaClient.emailTemplate.upsert({
       where: {
-        projectConfigId_type: {
-          projectConfigId: auth.tenancy.config.id,
+        projectId_type: {
+          projectId: auth.tenancy.project.id,
           type: dbType,
         },
       },
@@ -80,7 +80,7 @@ export const emailTemplateCrudHandlers = createLazyProxy(() => createCrudHandler
         subject,
       },
       create: {
-        projectConfigId: auth.tenancy.config.id,
+        projectId: auth.tenancy.project.id,
         type: dbType,
         content,
         subject,
@@ -97,8 +97,8 @@ export const emailTemplateCrudHandlers = createLazyProxy(() => createCrudHandler
     }
     await prismaClient.emailTemplate.delete({
       where: {
-        projectConfigId_type: {
-          projectConfigId: auth.tenancy.config.id,
+        projectId_type: {
+          projectId: auth.tenancy.project.id,
           type: dbType,
         },
       },
@@ -107,7 +107,7 @@ export const emailTemplateCrudHandlers = createLazyProxy(() => createCrudHandler
   async onList({ auth }) {
     const templates = await prismaClient.emailTemplate.findMany({
       where: {
-        projectConfigId: auth.tenancy.config.id,
+        projectId: auth.tenancy.project.id,
       },
     });
 

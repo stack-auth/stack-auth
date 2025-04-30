@@ -74,7 +74,7 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
 
   _adminOwnedProjectFromCrud(data: ProjectsCrud['Admin']['Read'], onRefresh: () => Promise<void>): AdminOwnedProject {
     if (this._tokenStoreInit !== null) {
-      throw new StackAssertionError("Owned apps must always have tokenStore === null — did you not create this project with app._createOwnedApp()?");;
+      throw new StackAssertionError("Owned apps must always have tokenStore === null — did you not create this project with app._createOwnedApp()?");
     }
     return {
       ...this._adminProjectFromCrud(data, onRefresh),
@@ -96,7 +96,6 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
       userCount: data.user_count,
       isProductionMode: data.is_production_mode,
       config: {
-        id: data.config.id,
         signUpEnabled: data.config.sign_up_enabled,
         credentialEnabled: data.config.credential_enabled,
         magicLinkEnabled: data.config.magic_link_enabled,
@@ -109,11 +108,9 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
         allowTeamApiKeys: data.config.allow_team_api_keys,
         oauthProviders: data.config.oauth_providers.map((p) => ((p.type === 'shared' ? {
           id: p.id,
-          enabled: p.enabled,
           type: 'shared',
         } as const : {
           id: p.id,
-          enabled: p.enabled,
           type: 'standard',
           clientId: p.client_id ?? throwErr("Client ID is missing"),
           clientSecret: p.client_secret ?? throwErr("Client secret is missing"),

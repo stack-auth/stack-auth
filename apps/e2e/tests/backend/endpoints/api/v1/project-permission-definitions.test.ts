@@ -252,3 +252,111 @@ it("handles duplicate permission IDs correctly", async ({ expect }) => {
     },
   });
 });
+
+it("cannot create a project permission that contains a permission that doesn't exist", async ({ expect }) => {
+  await Project.createAndSwitch();
+
+  const response = await niceBackendFetch(`/api/v1/project-permission-definitions`, {
+    accessType: "admin",
+    method: "POST",
+    body: {
+      id: 'p1',
+      contained_permission_ids: ['p2']
+    },
+  });
+  expect(response).toMatchInlineSnapshot(`
+    NiceResponse {
+      "status": 400,
+      "body": {
+        "code": "CONTAINED_PERMISSION_NOT_FOUND",
+        "details": { "permission_id": "p2" },
+        "error": "Contained permission with ID \\"p2\\" not found. Make sure you created it on the dashboard.",
+      },
+      "headers": Headers {
+        "x-stack-known-error": "CONTAINED_PERMISSION_NOT_FOUND",
+        <some fields may have been hidden>,
+      },
+    }
+  `);
+});
+
+it("cannot create a project permission that contains a team permission", async ({ expect }) => {
+  await Project.createAndSwitch();
+
+  const response = await niceBackendFetch(`/api/v1/team-permission-definitions`, {
+    accessType: "admin",
+    method: "POST",
+    body: { id: 't1' },
+  });
+
+  expect(response).toMatchInlineSnapshot(`
+    NiceResponse {
+      "status": 201,
+      "body": {
+        "contained_permission_ids": [],
+        "id": "t1",
+      },
+      "headers": Headers { <some fields may have been hidden> },
+    }
+  `);
+
+  const response2 = await niceBackendFetch(`/api/v1/project-permission-definitions`, {
+    accessType: "admin",
+    method: "POST",
+    body: { id: 'p1', contained_permission_ids: ['t1'] },
+  });
+  expect(response2).toMatchInlineSnapshot(`
+    NiceResponse {
+      "status": 400,
+      "body": {
+        "code": "CONTAINED_PERMISSION_NOT_FOUND",
+        "details": { "permission_id": "t1" },
+        "error": "Contained permission with ID \\"t1\\" not found. Make sure you created it on the dashboard.",
+      },
+      "headers": Headers {
+        "x-stack-known-error": "CONTAINED_PERMISSION_NOT_FOUND",
+        <some fields may have been hidden>,
+      },
+    }
+  `);
+});
+
+it("cannot update a project permission definition to contain a permission that doesn't exist", async ({ expect }) => {
+  await Project.createAndSwitch();
+
+  const response1 = await niceBackendFetch(`/api/v1/project-permission-definitions`, {
+    accessType: "admin",
+    method: "POST",
+    body: { id: 'p1' },
+  });
+  expect(response1).toMatchInlineSnapshot(`
+    NiceResponse {
+      "status": 201,
+      "body": {
+        "contained_permission_ids": [],
+        "id": "p1",
+      },
+      "headers": Headers { <some fields may have been hidden> },
+    }
+  `);
+
+  const response2 = await niceBackendFetch(`/api/v1/project-permission-definitions/p1`, {
+    accessType: "admin",
+    method: "PATCH",
+    body: { id: 'p1', contained_permission_ids: ['p2'] },
+  });
+  expect(response2).toMatchInlineSnapshot(`
+    NiceResponse {
+      "status": 400,
+      "body": {
+        "code": "CONTAINED_PERMISSION_NOT_FOUND",
+        "details": { "permission_id": "p2" },
+        "error": "Contained permission with ID \\"p2\\" not found. Make sure you created it on the dashboard.",
+      },
+      "headers": Headers {
+        "x-stack-known-error": "CONTAINED_PERMISSION_NOT_FOUND",
+        <some fields may have been hidden>,
+      },
+    }
+  `);
+});

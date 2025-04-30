@@ -1,4 +1,4 @@
-import { listUserTeamPermissions } from "@/lib/permissions";
+import { listPermissions } from "@/lib/permissions";
 import { prismaClient } from "@/prisma-client";
 import { createCrudHandlers } from "@/route-handlers/crud-handler";
 import { SmartRequestAuth } from "@/route-handlers/smart-request";
@@ -57,7 +57,8 @@ async function ensureUserCanManageApiKeys(
     if (options.teamId !== undefined) {
       const userId = auth.user.id;
       const hasManageApiKeysPermission = await prismaClient.$transaction(async (tx) => {
-        const permissions = await listUserTeamPermissions(tx, {
+        const permissions = await listPermissions(tx, {
+          scope: 'team',
           tenancy: auth.tenancy,
           teamId: options.teamId,
           userId,
