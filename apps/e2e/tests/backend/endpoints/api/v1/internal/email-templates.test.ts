@@ -46,7 +46,7 @@ it("should not allow updating email templates when using shared email config", a
 it("should allow adding and updating email templates with custom email config", async ({ expect }) => {
   // Create a project with custom email config
   await Auth.Otp.signIn();
-  const { adminAccessToken } = await Project.createAndGetAdminToken({
+  await Project.createAndSwitch({
     config: {
       email_config: {
         type: 'standard',
@@ -76,9 +76,6 @@ it("should allow adding and updating email templates with custom email config", 
   const updateResponse = await niceBackendFetch("/api/v1/email-templates/password_reset", {
     method: "PATCH",
     accessType: "admin",
-    headers: {
-      'x-stack-admin-access-token': adminAccessToken,
-    },
     body: {
       subject: "Custom Password Reset",
       content: emptyEmailTemplate,

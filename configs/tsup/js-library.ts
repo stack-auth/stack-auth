@@ -16,7 +16,20 @@ export default function createJsLibraryTsupConfig(options: { barrelFile: boolean
     format: ['esm', 'cjs'],
     legacyOutput: true,
     esbuildPlugins: [
-      createBasePlugin({ customNoExternal }),
+      createBasePlugin({}),
+      {
+        name: 'stackframe: force most files to be external',
+        setup(build) {
+          build.onResolve({ filter: /^.*$/m }, async (args) => {
+            if (args.kind === "entry-point" || customNoExternal.has(args.path)) {
+              return undefined;
+            }
+            return {
+              external: true,
+            };
+          });
+        },
+      }
     ],
   });
 }

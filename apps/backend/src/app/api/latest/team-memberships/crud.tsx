@@ -1,4 +1,4 @@
-import { isTeamSystemPermission, systemPermissionStringToDBType } from "@/lib/permissions";
+import { grantDefaultTeamPermissions } from "@/lib/permissions";
 import { ensureTeamExists, ensureTeamMembershipDoesNotExist, ensureTeamMembershipExists, ensureUserExists, ensureUserTeamPermissionExists } from "@/lib/request-checks";
 import { Tenancy } from "@/lib/tenancies";
 import { PrismaTransaction } from "@/lib/types";
@@ -19,45 +19,23 @@ export async function addUserToTeam(tx: PrismaTransaction, options: {
   userId: string,
   type: 'member' | 'creator',
 }) {
-  const permissionAttributeName = options.type === 'creator' ? 'team_creator_default_permissions' : 'team_member_default_permissions';
-
-  const teamMember = await tx.teamMember.create({
+  await tx.teamMember.create({
     data: {
       projectUserId: options.userId,
       teamId: options.teamId,
       tenancyId: options.tenancy.id,
-      directPermissions: {
-        create: options.tenancy.config[permissionAttributeName].map((p) => {
-          if (isTeamSystemPermission(p.id)) {
-            return {
-              systemPermission: systemPermissionStringToDBType(p.id),
-            };
-          } else {
-            return {
-              permission: {
-                connect: {
-                  projectConfigId_queryableId: {
-                    projectConfigId: options.tenancy.config.id,
-                    queryableId: p.id,
-                  },
-                }
-              }
-            };
-          }
-        }),
-      }
     },
-    include: {
-      directPermissions: {
-        include: {
-          permission: true,
-        }
-      }
-    }
+  });
+
+  const result = await grantDefaultTeamPermissions(tx, {
+    tenancy: options.tenancy,
+    userId: options.userId,
+    teamId: options.teamId,
+    type: options.type,
   });
 
   return {
-    directPermissionIds: teamMember.directPermissions.map((p) => p.permission?.queryableId || p.systemPermission || throwErr("Neither permission nor system permission found")),
+    directPermissionIds: result.grantedPermissionIds,
   };
 }
 

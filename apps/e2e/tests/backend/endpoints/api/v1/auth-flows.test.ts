@@ -94,7 +94,6 @@ it("signs in with password first, then signs in with oauth should give an accoun
       oauth_account_merge_strategy: "allow_duplicates",
       oauth_providers: [{
         id: "spotify",
-        enabled: true,
         type: "shared",
       }],
     }

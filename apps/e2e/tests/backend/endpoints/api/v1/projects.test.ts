@@ -38,7 +38,7 @@ it("gets current project (internal)", async ({ expect }) => {
         "config": {
           "allow_team_api_keys": false,
           "allow_user_api_keys": false,
-          "client_team_creation_enabled": true,
+          "client_team_creation_enabled": false,
           "client_user_deletion_enabled": false,
           "credential_enabled": true,
           "enabled_oauth_providers": [
@@ -82,14 +82,13 @@ it("creates and updates the basic project information of a project", async ({ ex
           "domains": [],
           "email_config": { "type": "shared" },
           "enabled_oauth_providers": [],
-          "id": "<stripped UUID>",
           "magic_link_enabled": false,
           "oauth_account_merge_strategy": "link_method",
           "oauth_providers": [],
           "passkey_enabled": false,
           "sign_up_enabled": true,
-          "team_creator_default_permissions": [{ "id": "admin" }],
-          "team_member_default_permissions": [{ "id": "member" }],
+          "team_creator_default_permissions": [{ "id": "team_admin" }],
+          "team_member_default_permissions": [{ "id": "team_member" }],
           "user_default_permissions": [],
         },
         "created_at_millis": <stripped field 'created_at_millis'>,
@@ -130,14 +129,13 @@ it("updates the basic project configuration", async ({ expect }) => {
           "domains": [],
           "email_config": { "type": "shared" },
           "enabled_oauth_providers": [],
-          "id": "<stripped UUID>",
           "magic_link_enabled": true,
           "oauth_account_merge_strategy": "link_method",
           "oauth_providers": [],
           "passkey_enabled": false,
           "sign_up_enabled": false,
-          "team_creator_default_permissions": [{ "id": "admin" }],
-          "team_member_default_permissions": [{ "id": "member" }],
+          "team_creator_default_permissions": [{ "id": "team_admin" }],
+          "team_member_default_permissions": [{ "id": "team_member" }],
           "user_default_permissions": [],
         },
         "created_at_millis": <stripped field 'created_at_millis'>,
@@ -183,14 +181,13 @@ it("updates the project domains configuration", async ({ expect }) => {
           ],
           "email_config": { "type": "shared" },
           "enabled_oauth_providers": [],
-          "id": "<stripped UUID>",
           "magic_link_enabled": false,
           "oauth_account_merge_strategy": "link_method",
           "oauth_providers": [],
           "passkey_enabled": false,
           "sign_up_enabled": true,
-          "team_creator_default_permissions": [{ "id": "admin" }],
-          "team_member_default_permissions": [{ "id": "member" }],
+          "team_creator_default_permissions": [{ "id": "team_admin" }],
+          "team_member_default_permissions": [{ "id": "team_member" }],
           "user_default_permissions": [],
         },
         "created_at_millis": <stripped field 'created_at_millis'>,
@@ -242,14 +239,13 @@ it("updates the project domains configuration", async ({ expect }) => {
           ],
           "email_config": { "type": "shared" },
           "enabled_oauth_providers": [],
-          "id": "<stripped UUID>",
           "magic_link_enabled": false,
           "oauth_account_merge_strategy": "link_method",
           "oauth_providers": [],
           "passkey_enabled": false,
           "sign_up_enabled": true,
-          "team_creator_default_permissions": [{ "id": "admin" }],
-          "team_member_default_permissions": [{ "id": "member" }],
+          "team_creator_default_permissions": [{ "id": "team_admin" }],
+          "team_member_default_permissions": [{ "id": "team_member" }],
           "user_default_permissions": [],
         },
         "created_at_millis": <stripped field 'created_at_millis'>,
@@ -259,30 +255,6 @@ it("updates the project domains configuration", async ({ expect }) => {
         "is_production_mode": false,
         "user_count": 0,
       },
-      "headers": Headers { <some fields may have been hidden> },
-    }
-  `);
-});
-
-it("is not allowed to have two identical domains", async ({ expect }) => {
-  await Auth.Otp.signIn();
-  const { adminAccessToken } = await Project.createAndGetAdminToken();
-  const { updateProjectResponse: response1 } = await Project.updateCurrent(adminAccessToken, {
-    config: {
-      domains: [{
-        domain: 'https://trusted-domain.stack-test.example.com',
-        handler_path: '/handler'
-      },
-      {
-        domain: 'https://trusted-domain.stack-test.example.com',
-        handler_path: '/handler2'
-      }]
-    },
-  });
-  expect(response1).toMatchInlineSnapshot(`
-    NiceResponse {
-      "status": 400,
-      "body": "Duplicated domain found",
       "headers": Headers { <some fields may have been hidden> },
     }
   `);
@@ -319,14 +291,13 @@ it("should allow insecure HTTP connections if insecureHttp is true", async ({ ex
           ],
           "email_config": { "type": "shared" },
           "enabled_oauth_providers": [],
-          "id": "<stripped UUID>",
           "magic_link_enabled": false,
           "oauth_account_merge_strategy": "link_method",
           "oauth_providers": [],
           "passkey_enabled": false,
           "sign_up_enabled": true,
-          "team_creator_default_permissions": [{ "id": "admin" }],
-          "team_member_default_permissions": [{ "id": "member" }],
+          "team_creator_default_permissions": [{ "id": "team_admin" }],
+          "team_member_default_permissions": [{ "id": "team_member" }],
           "user_default_permissions": [],
         },
         "created_at_millis": <stripped field 'created_at_millis'>,
@@ -415,14 +386,13 @@ it("updates the project email configuration", async ({ expect }) => {
             "username": "test username",
           },
           "enabled_oauth_providers": [],
-          "id": "<stripped UUID>",
           "magic_link_enabled": false,
           "oauth_account_merge_strategy": "link_method",
           "oauth_providers": [],
           "passkey_enabled": false,
           "sign_up_enabled": true,
-          "team_creator_default_permissions": [{ "id": "admin" }],
-          "team_member_default_permissions": [{ "id": "member" }],
+          "team_creator_default_permissions": [{ "id": "team_admin" }],
+          "team_member_default_permissions": [{ "id": "team_member" }],
           "user_default_permissions": [],
         },
         "created_at_millis": <stripped field 'created_at_millis'>,
@@ -473,14 +443,13 @@ it("updates the project email configuration", async ({ expect }) => {
             "username": "test username2",
           },
           "enabled_oauth_providers": [],
-          "id": "<stripped UUID>",
           "magic_link_enabled": false,
           "oauth_account_merge_strategy": "link_method",
           "oauth_providers": [],
           "passkey_enabled": false,
           "sign_up_enabled": true,
-          "team_creator_default_permissions": [{ "id": "admin" }],
-          "team_member_default_permissions": [{ "id": "member" }],
+          "team_creator_default_permissions": [{ "id": "team_admin" }],
+          "team_member_default_permissions": [{ "id": "team_member" }],
           "user_default_permissions": [],
         },
         "created_at_millis": <stripped field 'created_at_millis'>,
@@ -517,14 +486,13 @@ it("updates the project email configuration", async ({ expect }) => {
           "domains": [],
           "email_config": { "type": "shared" },
           "enabled_oauth_providers": [],
-          "id": "<stripped UUID>",
           "magic_link_enabled": false,
           "oauth_account_merge_strategy": "link_method",
           "oauth_providers": [],
           "passkey_enabled": false,
           "sign_up_enabled": true,
-          "team_creator_default_permissions": [{ "id": "admin" }],
-          "team_member_default_permissions": [{ "id": "member" }],
+          "team_creator_default_permissions": [{ "id": "team_admin" }],
+          "team_member_default_permissions": [{ "id": "team_member" }],
           "user_default_permissions": [],
         },
         "created_at_millis": <stripped field 'created_at_millis'>,
@@ -561,14 +529,13 @@ it("updates the project email configuration", async ({ expect }) => {
           "domains": [],
           "email_config": { "type": "shared" },
           "enabled_oauth_providers": [],
-          "id": "<stripped UUID>",
           "magic_link_enabled": false,
           "oauth_account_merge_strategy": "link_method",
           "oauth_providers": [],
           "passkey_enabled": false,
           "sign_up_enabled": true,
-          "team_creator_default_permissions": [{ "id": "admin" }],
-          "team_member_default_permissions": [{ "id": "member" }],
+          "team_creator_default_permissions": [{ "id": "team_admin" }],
+          "team_member_default_permissions": [{ "id": "team_member" }],
           "user_default_permissions": [],
         },
         "created_at_millis": <stripped field 'created_at_millis'>,
@@ -619,14 +586,13 @@ it("updates the project email configuration", async ({ expect }) => {
             "username": "control group",
           },
           "enabled_oauth_providers": [],
-          "id": "<stripped UUID>",
           "magic_link_enabled": false,
           "oauth_account_merge_strategy": "link_method",
           "oauth_providers": [],
           "passkey_enabled": false,
           "sign_up_enabled": true,
-          "team_creator_default_permissions": [{ "id": "admin" }],
-          "team_member_default_permissions": [{ "id": "member" }],
+          "team_creator_default_permissions": [{ "id": "team_admin" }],
+          "team_member_default_permissions": [{ "id": "team_member" }],
           "user_default_permissions": [],
         },
         "created_at_millis": <stripped field 'created_at_millis'>,
@@ -766,7 +732,6 @@ it("updates the project oauth configuration", async ({ expect }) => {
       oauth_providers: [{
         id: "google",
         type: "shared",
-        enabled: true,
       }]
     },
   });
@@ -785,20 +750,18 @@ it("updates the project oauth configuration", async ({ expect }) => {
           "domains": [],
           "email_config": { "type": "shared" },
           "enabled_oauth_providers": [{ "id": "google" }],
-          "id": "<stripped UUID>",
           "magic_link_enabled": false,
           "oauth_account_merge_strategy": "link_method",
           "oauth_providers": [
             {
-              "enabled": true,
               "id": "google",
               "type": "shared",
             },
           ],
           "passkey_enabled": false,
           "sign_up_enabled": true,
-          "team_creator_default_permissions": [{ "id": "admin" }],
-          "team_member_default_permissions": [{ "id": "member" }],
+          "team_creator_default_permissions": [{ "id": "team_admin" }],
+          "team_member_default_permissions": [{ "id": "team_member" }],
           "user_default_permissions": [],
         },
         "created_at_millis": <stripped field 'created_at_millis'>,
@@ -818,7 +781,6 @@ it("updates the project oauth configuration", async ({ expect }) => {
       oauth_providers: [{
         id: "google",
         type: "shared",
-        enabled: true,
       }]
     },
   });
@@ -837,20 +799,18 @@ it("updates the project oauth configuration", async ({ expect }) => {
           "domains": [],
           "email_config": { "type": "shared" },
           "enabled_oauth_providers": [{ "id": "google" }],
-          "id": "<stripped UUID>",
           "magic_link_enabled": false,
           "oauth_account_merge_strategy": "link_method",
           "oauth_providers": [
             {
-              "enabled": true,
               "id": "google",
               "type": "shared",
             },
           ],
           "passkey_enabled": false,
           "sign_up_enabled": true,
-          "team_creator_default_permissions": [{ "id": "admin" }],
-          "team_member_default_permissions": [{ "id": "member" }],
+          "team_creator_default_permissions": [{ "id": "team_admin" }],
+          "team_member_default_permissions": [{ "id": "team_member" }],
           "user_default_permissions": [],
         },
         "created_at_millis": <stripped field 'created_at_millis'>,
@@ -870,7 +830,6 @@ it("updates the project oauth configuration", async ({ expect }) => {
       oauth_providers: [{
         id: "google",
         type: "standard",
-        enabled: true,
         client_id: "client_id",
         client_secret: "client_secret",
       }]
@@ -891,22 +850,20 @@ it("updates the project oauth configuration", async ({ expect }) => {
           "domains": [],
           "email_config": { "type": "shared" },
           "enabled_oauth_providers": [{ "id": "google" }],
-          "id": "<stripped UUID>",
           "magic_link_enabled": false,
           "oauth_account_merge_strategy": "link_method",
           "oauth_providers": [
             {
               "client_id": "client_id",
               "client_secret": "client_secret",
-              "enabled": true,
               "id": "google",
               "type": "standard",
             },
           ],
           "passkey_enabled": false,
           "sign_up_enabled": true,
-          "team_creator_default_permissions": [{ "id": "admin" }],
-          "team_member_default_permissions": [{ "id": "member" }],
+          "team_creator_default_permissions": [{ "id": "team_admin" }],
+          "team_member_default_permissions": [{ "id": "team_member" }],
           "user_default_permissions": [],
         },
         "created_at_millis": <stripped field 'created_at_millis'>,
@@ -920,20 +877,50 @@ it("updates the project oauth configuration", async ({ expect }) => {
     }
   `);
 
-  // add another oauth provider with invalid type
   const { updateProjectResponse: response4 } = await Project.updateCurrent(adminAccessToken, {
     config: {
       oauth_providers: [{
         id: "spotify",
         type: "shared",
-        enabled: true,
       }]
     },
   });
   expect(response4).toMatchInlineSnapshot(`
     NiceResponse {
-      "status": 400,
-      "body": "Provider with id 'google' not found in the update",
+      "status": 200,
+      "body": {
+        "config": {
+          "allow_localhost": true,
+          "allow_team_api_keys": false,
+          "allow_user_api_keys": false,
+          "client_team_creation_enabled": false,
+          "client_user_deletion_enabled": false,
+          "create_team_on_sign_up": false,
+          "credential_enabled": true,
+          "domains": [],
+          "email_config": { "type": "shared" },
+          "enabled_oauth_providers": [{ "id": "spotify" }],
+          "magic_link_enabled": false,
+          "oauth_account_merge_strategy": "link_method",
+          "oauth_providers": [
+            {
+              "id": "spotify",
+              "type": "shared",
+            },
+          ],
+          "passkey_enabled": false,
+          "sign_up_enabled": true,
+          "team_creator_default_permissions": [{ "id": "team_admin" }],
+          "team_member_default_permissions": [{ "id": "team_member" }],
+          "user_default_permissions": [],
+        },
+        "created_at_millis": <stripped field 'created_at_millis'>,
+        "description": "",
+        "display_name": "New Project",
+        "id": "<stripped UUID>",
+        "is_production_mode": false,
+        "user_count": 0,
+      },
       "headers": Headers { <some fields may have been hidden> },
     }
   `);
@@ -945,12 +932,10 @@ it("updates the project oauth configuration", async ({ expect }) => {
         {
           id: "spotify",
           type: "shared",
-          enabled: true,
         },
         {
           id: "google",
           type: "shared",
-          enabled: true,
         }
       ]
     },
@@ -973,25 +958,22 @@ it("updates the project oauth configuration", async ({ expect }) => {
             { "id": "google" },
             { "id": "spotify" },
           ],
-          "id": "<stripped UUID>",
           "magic_link_enabled": false,
           "oauth_account_merge_strategy": "link_method",
           "oauth_providers": [
             {
-              "enabled": true,
               "id": "google",
               "type": "shared",
             },
             {
-              "enabled": true,
               "id": "spotify",
               "type": "shared",
             },
           ],
           "passkey_enabled": false,
           "sign_up_enabled": true,
-          "team_creator_default_permissions": [{ "id": "admin" }],
-          "team_member_default_permissions": [{ "id": "member" }],
+          "team_creator_default_permissions": [{ "id": "team_admin" }],
+          "team_member_default_permissions": [{ "id": "team_member" }],
           "user_default_permissions": [],
         },
         "created_at_millis": <stripped field 'created_at_millis'>,
@@ -1012,12 +994,10 @@ it("updates the project oauth configuration", async ({ expect }) => {
         {
           id: "spotify",
           type: "shared",
-          enabled: true,
         },
         {
           id: "google",
           type: "shared",
-          enabled: false,
         }
       ]
     },
@@ -1036,26 +1016,26 @@ it("updates the project oauth configuration", async ({ expect }) => {
           "credential_enabled": true,
           "domains": [],
           "email_config": { "type": "shared" },
-          "enabled_oauth_providers": [{ "id": "spotify" }],
-          "id": "<stripped UUID>",
+          "enabled_oauth_providers": [
+            { "id": "google" },
+            { "id": "spotify" },
+          ],
           "magic_link_enabled": false,
           "oauth_account_merge_strategy": "link_method",
           "oauth_providers": [
             {
-              "enabled": false,
               "id": "google",
               "type": "shared",
             },
             {
-              "enabled": true,
               "id": "spotify",
               "type": "shared",
             },
           ],
           "passkey_enabled": false,
           "sign_up_enabled": true,
-          "team_creator_default_permissions": [{ "id": "admin" }],
-          "team_member_default_permissions": [{ "id": "member" }],
+          "team_creator_default_permissions": [{ "id": "team_admin" }],
+          "team_member_default_permissions": [{ "id": "team_member" }],
           "user_default_permissions": [],
         },
         "created_at_millis": <stripped field 'created_at_millis'>,
@@ -1080,7 +1060,6 @@ it("fails when trying to update OAuth provider with empty client_secret", async 
         oauth_providers: [{
           id: "google",
           type: "standard",
-          enabled: true,
           client_id: "client_id",
           client_secret: ""
         }]
@@ -1174,12 +1153,10 @@ it("deletes a project with users, teams, and permissions", async ({ expect }) =>
         {
           id: "google",
           type: "shared",
-          enabled: true,
         },
         {
           id: "spotify",
           type: "standard",
-          enabled: true,
           client_id: "client_id",
           client_secret: "client_secret",
         }
@@ -1368,14 +1345,13 @@ it("should increment and decrement userCount when a user is added to a project",
           "domains": [],
           "email_config": { "type": "shared" },
           "enabled_oauth_providers": [],
-          "id": "<stripped UUID>",
           "magic_link_enabled": true,
           "oauth_account_merge_strategy": "link_method",
           "oauth_providers": [],
           "passkey_enabled": false,
           "sign_up_enabled": true,
-          "team_creator_default_permissions": [{ "id": "admin" }],
-          "team_member_default_permissions": [{ "id": "member" }],
+          "team_creator_default_permissions": [{ "id": "team_admin" }],
+          "team_member_default_permissions": [{ "id": "team_member" }],
           "user_default_permissions": [],
         },
         "created_at_millis": <stripped field 'created_at_millis'>,

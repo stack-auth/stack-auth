@@ -18,7 +18,6 @@ export type OAuthProviderConfig = {
 };
 
 export type AdminProjectConfig = {
-  readonly id: string,
   readonly signUpEnabled: boolean,
   readonly credentialEnabled: boolean,
   readonly magicLinkEnabled: boolean,
@@ -60,7 +59,6 @@ export type AdminDomainConfig = {
 
 export type AdminOAuthProviderConfig = {
   id: string,
-  enabled: boolean,
 } & (
   | { type: 'shared' }
   | {

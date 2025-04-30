@@ -1,6 +1,6 @@
 {
   "name": "@stackframe/stack-sc",
-  "version": "2.8.9",
+  "version": "2.8.10",
   "exports": {
     "./force-react-server": {
       "types": "./dist/index.react-server.d.ts",

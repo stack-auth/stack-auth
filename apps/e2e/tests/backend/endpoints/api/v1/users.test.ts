@@ -701,7 +701,7 @@ describe("with client access", () => {
 
   it("should be able to update selected team", async ({ expect }) => {
     await Auth.Otp.signIn();
-    const { teamId } = await Team.createAndAddCurrent({});
+    const { teamId } = await Team.createWithCurrentAsCreator({});
     const response1 = await niceBackendFetch("/api/v1/users/me", {
       accessType: "client",
     });
@@ -2276,3 +2276,6 @@ describe("with server access", () => {
     `);
   });
 });
+
+it.todo("creating a new user with an OAuth provider ID that does not exist should fail");
+it.todo("creating a new user with password enabled when password sign in is disabled in the config should fail");
