@@ -1438,11 +1438,6 @@ type ServerUser =
 
     grantPermission(scope, permissionId): Promise<void>; //$stack-link-to:#serverusergrantpermissionscope-permissionid
     revokePermission(scope, permissionId): Promise<void>; //$stack-link-to:#serveruserrevokepermissionscope-permissionid
-    
-    createApiKey(options): Promise<UserApiKeyFirstView>; //$stack-link-to:#serverusercreateapikeyoptions
-    listApiKeys(): Promise<UserApiKey[]>; //$stack-link-to:#serveruserlistapikeys
-    // NEXT_LINE_PLATFORM react-like
-     ⤷ useApiKeys(): UserApiKey[]; //$stack-link-to:#serveruseruseapikeys
   };
 ```
 
