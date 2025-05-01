@@ -16,6 +16,7 @@
     "build:demo": "pnpm pre && turbo run build --filter=demo-app...",
     "build:packages": "pnpm pre && turbo run build --filter=./packages/*",
     "claude-code": "pnpm pre && npx -y @anthropic-ai/claude-code@latest",
+    "codebuff": "pnpm pre && npx codebuff",
     "restart-dev-in-background": "pnpm pre && pnpm run kill-dev:named && (pnpm run dev:named > dev-server.log.untracked.txt 2>&1 &) && echo 'Starting dev server in background... (Logs are in dev-server.log.untracked.txt)' && npx wait-on http://localhost:8102 -t 120000 && echo 'Dev server running.'",
     "restart-dev-environment": "pnpm pre && concurrently \"pnpm run build:packages && pnpm run codegen\" \"pnpm run restart-deps\" && pnpm run restart-dev-in-background",
     "stop-dev-environment": "pnpm pre && pnpm run kill-dev:named && pnpm run stop-deps",
