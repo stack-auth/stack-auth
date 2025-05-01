@@ -5,7 +5,7 @@ import sharedConfig from '../../vitest.shared'
 export default mergeConfig(
   sharedConfig,
   defineConfig({
-    plugins: [react()],
+    plugins: [react() as any],
     test: {
       environment: 'node',
       testTimeout: process.env.CI ? 40_000 : 20_000,

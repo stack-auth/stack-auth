@@ -50,7 +50,7 @@ export const domainCrudHandlers = createLazyProxy(() => createCrudHandlers(domai
     domain: domainSchema.optional(),
   }),
   onCreate: async ({ auth, data, params }) => {
-    const oldDomains = auth.project.config.domains;
+    const oldDomains = auth.tenancy.config.domains;
     await projectsCrudHandlers.adminUpdate({
       data: {
         config: {
@@ -64,7 +64,7 @@ export const domainCrudHandlers = createLazyProxy(() => createCrudHandlers(domai
     return { domain: data.domain };
   },
   onDelete: async ({ auth, params }) => {
-    const oldDomains = auth.project.config.domains;
+    const oldDomains = auth.tenancy.config.domains;
     await projectsCrudHandlers.adminUpdate({
       data: {
         config: { domains: oldDomains.filter((domain) => domain.domain !== params.domain) },
@@ -75,7 +75,7 @@ export const domainCrudHandlers = createLazyProxy(() => createCrudHandlers(domai
   },
   onList: async ({ auth }) => {
     return {
-      items: auth.project.config.domains.map((domain) => ({ domain: domain.domain })),
+      items: auth.tenancy.config.domains.map((domain) => ({ domain: domain.domain })),
       is_paginated: false,
     };
   },

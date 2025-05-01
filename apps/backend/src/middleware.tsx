@@ -14,6 +14,7 @@ const corsAllowedRequestHeaders = [
   'content-type',
   'authorization',  // used for OAuth basic authentication
   'x-stack-project-id',
+  'x-stack-branch-id',
   'x-stack-override-error-status',
   'x-stack-random-nonce',  // used to forcefully disable some caches
   'x-stack-client-version',

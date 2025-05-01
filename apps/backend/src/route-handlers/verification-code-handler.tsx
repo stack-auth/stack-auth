@@ -1,5 +1,5 @@
 import { validateRedirectUrl } from "@/lib/redirect-urls";
-import { Tenancy } from "@/lib/tenancies";
+import { getSoleTenancyFromProjectBranch, Tenancy } from "@/lib/tenancies";
 import { prismaClient } from "@/prisma-client";
 import { Prisma, VerificationCodeType } from "@prisma/client";
 import { KnownErrors } from "@stackframe/stack-shared";
@@ -12,7 +12,7 @@ import { DeepPartial } from "@stackframe/stack-shared/dist/utils/objects";
 import * as yup from "yup";
 import { SmartRequest } from "./smart-request";
 import { SmartResponse } from "./smart-response";
-import { SmartRouteHandler, SmartRouteHandlerOverloadMetadata, createSmartRouteHandler } from "./smart-route-handler";
+import { createSmartRouteHandler, SmartRouteHandler, SmartRouteHandlerOverloadMetadata } from "./smart-route-handler";
 
 const MAX_ATTEMPTS_PER_CODE = 20;
 
@@ -51,7 +51,7 @@ type VerificationCodeHandler<Data, SendCodeExtraOptions extends {}, SendCodeRetu
 };
 
 type ProjectBranchCombo<AlreadyParsed extends boolean> = (
-  | { project: ProjectsCrud["Admin"]["Read"], branchId: string, tenancy?: undefined }
+  | { project: Omit<ProjectsCrud["Admin"]["Read"], "config">, branchId: string, tenancy?: undefined }
   | (AlreadyParsed extends true ? never : { tenancy: Tenancy, project?: undefined, branchId?: undefined })
 );
 
@@ -120,6 +120,7 @@ export function createVerificationCodeHandler<
       auth: yupObject({
         tenancy: adaptSchema.defined(),
         project: adaptSchema.defined(),
+        branchId: adaptSchema.defined(),
         user: adaptSchema,
       }).defined(),
       body: yupObject({
@@ -148,7 +149,7 @@ export function createVerificationCodeHandler<
         where: {
           projectId_branchId_code: {
             projectId: auth.project.id,
-            branchId: auth.tenancy.branchId,
+            branchId: auth.branchId,
             code,
           },
           type: options.type,
@@ -159,7 +160,7 @@ export function createVerificationCodeHandler<
       await prismaClient.verificationCode.updateMany({
         where: {
           projectId: auth.project.id,
-          branchId: auth.tenancy.branchId,
+          branchId: auth.branchId,
           code: {
             endsWith: code.slice(6),
           }
@@ -225,11 +226,12 @@ export function createVerificationCodeHandler<
       const validatedData = await options.data.validate(data, {
         strict: true,
       });
+      const tenancy = await getSoleTenancyFromProjectBranch(project.id, branchId);
 
       if (callbackUrl !== undefined && !validateRedirectUrl(
         callbackUrl,
-        project.config.domains,
-        project.config.allow_localhost,
+        tenancy.config.domains,
+        tenancy.config.allow_localhost,
       )) {
         throw new KnownErrors.RedirectUrlNotWhitelisted();
       }

@@ -63,6 +63,32 @@ describe("with grant_type === 'authorization_code'", async () => {
     `);
   });
 
+  it("should sign in a user even when forcing a branch id", async ({ expect }) => {
+    const response = await Auth.OAuth.signIn({ forceBranchId: "main" });
+
+    expect(response.tokenResponse).toMatchInlineSnapshot(`
+      NiceResponse {
+        "status": 200,
+        "body": {
+          "access_token": <stripped field 'access_token'>,
+          "afterCallbackRedirectUrl": null,
+          "after_callback_redirect_url": null,
+          "expires_in": 3599,
+          "is_new_user": true,
+          "newUser": true,
+          "refresh_token": <stripped field 'refresh_token'>,
+          "scope": "legacy",
+          "token_type": "Bearer",
+        },
+        "headers": Headers {
+          "pragma": "no-cache",
+          <some fields may have been hidden>,
+        },
+      }
+    `);
+    await Auth.expectToBeSignedIn();
+  });
+
   it("should fail when called with an invalid code_challenge", async ({ expect }) => {
     const getAuthorizationCodeResult = await Auth.OAuth.getAuthorizationCode();
 

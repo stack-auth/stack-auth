@@ -1,21 +1,32 @@
 import { createOrUpdateProject } from "@/lib/projects";
+import { getTenancy } from "@/lib/tenancies";
 import { retryTransaction } from "@/prisma-client";
 import { createCrudHandlers } from "@/route-handlers/crud-handler";
 import { projectsCrud } from "@stackframe/stack-shared/dist/interface/crud/projects";
 import { yupObject } from "@stackframe/stack-shared/dist/schema-fields";
+import { throwErr } from "@stackframe/stack-shared/dist/utils/errors";
 import { createLazyProxy } from "@stackframe/stack-shared/dist/utils/proxies";
 
 export const projectsCrudHandlers = createLazyProxy(() => createCrudHandlers(projectsCrud, {
   paramsSchema: yupObject({}),
   onUpdate: async ({ auth, data }) => {
-    return await createOrUpdateProject({
+    const project = await createOrUpdateProject({
       type: "update",
       projectId: auth.project.id,
+      branchId: auth.branchId,
       data: data,
     });
+    const tenancy = await getTenancy(auth.tenancy.id) ?? throwErr("Tenancy not found after project update?"); // since we updated the project, we need to re-fetch the new tenancy config
+    return {
+      ...project,
+      config: tenancy.config,
+    };
   },
   onRead: async ({ auth }) => {
-    return auth.project;
+    return {
+      ...auth.project,
+      config: auth.tenancy.config,
+    };
   },
   onDelete: async ({ auth }) => {
     await retryTransaction(async (tx) => {

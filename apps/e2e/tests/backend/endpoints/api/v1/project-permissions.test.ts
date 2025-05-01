@@ -1,4 +1,3 @@
-import { wait } from "@stackframe/stack-shared/dist/utils/promises";
 import { it } from "../../../../helpers";
 import { Auth, InternalApiKey, InternalProjectKeys, Project, Webhook, backendContext, niceBackendFetch } from "../../../backend-helpers";
 
@@ -288,10 +287,7 @@ it("should trigger project permission webhook when a permission is granted to a 
 
   expect(grantPermissionResponse.status).toBe(201);
 
-  await wait(3000);
-
-  const attemptResponse = await Webhook.listWebhookAttempts(projectId, endpointId, svixToken);
-  const projectPermissionCreatedEvent = attemptResponse.find(event => event.eventType === "project_permission.created");
+  const projectPermissionCreatedEvent = await Webhook.findWebhookAttempt(projectId, endpointId, svixToken, event => event.eventType === "project_permission.created");
 
   expect(projectPermissionCreatedEvent).toMatchInlineSnapshot(`
     {
@@ -339,10 +335,7 @@ it("should trigger project permission webhook when a permission is revoked from 
 
   expect(revokePermissionResponse.status).toBe(200);
 
-  await wait(3000);
-
-  const attemptResponse = await Webhook.listWebhookAttempts(projectId, endpointId, svixToken);
-  const projectPermissionDeletedEvent = attemptResponse.find(event => event.eventType === "project_permission.deleted");
+  const projectPermissionDeletedEvent = await Webhook.findWebhookAttempt(projectId, endpointId, svixToken, event => event.eventType === "project_permission.deleted");
 
   expect(projectPermissionDeletedEvent).toMatchInlineSnapshot(`
     {
