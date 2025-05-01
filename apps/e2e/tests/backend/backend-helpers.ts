@@ -3,6 +3,7 @@ import { encodeBase64 } from "@stackframe/stack-shared/dist/utils/bytes";
 import { generateSecureRandomString } from "@stackframe/stack-shared/dist/utils/crypto";
 import { StackAssertionError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
 import { filterUndefined } from "@stackframe/stack-shared/dist/utils/objects";
+import { wait } from "@stackframe/stack-shared/dist/utils/promises";
 import { nicify } from "@stackframe/stack-shared/dist/utils/strings";
 import * as jose from "jose";
 import { randomUUID } from "node:crypto";
@@ -12,6 +13,7 @@ import { Context, Mailbox, NiceRequestInit, NiceResponse, STACK_BACKEND_BASE_URL
 type BackendContext = {
   readonly projectKeys: ProjectKeys,
   readonly defaultProjectKeys: ProjectKeys,
+  readonly currentBranchId: string | null,
   readonly mailbox: Mailbox,
   readonly userAuth: {
     readonly refreshToken?: string,
@@ -33,6 +35,7 @@ export const backendContext = new Context<BackendContext, Partial<BackendContext
   () => ({
     defaultProjectKeys: InternalProjectKeys,
     projectKeys: InternalProjectKeys,
+    currentBranchId: null,
     mailbox: createMailbox(`default-mailbox--${randomUUID()}${generatedEmailSuffix}`),
     generatedMailboxNamesCount: 0,
     userAuth: null,
@@ -127,6 +130,7 @@ export async function niceBackendFetch(url: string | URL, options?: Omit<NiceReq
         "x-stack-super-secret-admin-key": projectKeys.superSecretAdminKey,
         'x-stack-admin-access-token': projectKeys.adminAccessToken,
       } : {},
+      "x-stack-branch-id": backendContext.value.currentBranchId ?? undefined,
       "x-stack-access-token": userAuth?.accessToken,
       "x-stack-refresh-token": userAuth?.refreshToken,
       ...backendContext.value.ipData ? {
@@ -566,12 +570,13 @@ export namespace Auth {
 
 
   export namespace OAuth {
-    export async function getAuthorizeQuery() {
+    export async function getAuthorizeQuery(options: { forceBranchId?: string } = {}) {
       const projectKeys = backendContext.value.projectKeys;
       if (projectKeys === "no-project") throw new Error("No project keys found in the backend context");
+      const branchId = options.forceBranchId ?? backendContext.value.currentBranchId;
 
       return {
-        client_id: projectKeys.projectId,
+        client_id: !branchId ? projectKeys.projectId : `${projectKeys.projectId}#${branchId}`,
         client_secret: projectKeys.publishableClientKey ?? throwErr("No publishable client key found in the backend context"),
         redirect_uri: localRedirectUrl,
         scope: "legacy",
@@ -583,14 +588,14 @@ export namespace Auth {
       };
     }
 
-    export async function authorize(options?: { redirectUrl?: string, errorRedirectUrl?: string }) {
+    export async function authorize(options: { redirectUrl?: string, errorRedirectUrl?: string, forceBranchId?: string } = {}) {
       const response = await niceBackendFetch("/api/v1/auth/oauth/authorize/spotify", {
         redirect: "manual",
         query: {
-          ...await Auth.OAuth.getAuthorizeQuery(),
+          ...await Auth.OAuth.getAuthorizeQuery(options),
           ...filterUndefined({
-            redirect_uri: options?.redirectUrl ?? undefined,
-            error_redirect_uri: options?.errorRedirectUrl ?? undefined,
+            redirect_uri: options.redirectUrl ?? undefined,
+            error_redirect_uri: options.errorRedirectUrl ?? undefined,
           }),
         },
       });
@@ -602,10 +607,10 @@ export namespace Auth {
       };
     }
 
-    export async function getInnerCallbackUrl(options?: { authorizeResponse: NiceResponse }) {
-      options ??= await Auth.OAuth.authorize();
+    export async function getInnerCallbackUrl(options: { authorizeResponse?: NiceResponse, forceBranchId?: string } = {}) {
+      const authorizeResponse = options.authorizeResponse ?? (await Auth.OAuth.authorize(options)).authorizeResponse;
       const providerPassword = generateSecureRandomString();
-      const authLocation = new URL(options.authorizeResponse.headers.get("location")!);
+      const authLocation = new URL(authorizeResponse.headers.get("location")!);
       const redirectResponse1 = await niceFetch(authLocation, {
         redirect: "manual",
       });
@@ -678,15 +683,23 @@ export namespace Auth {
       expect(innerCallbackUrl.origin).toBe("http://localhost:8102");
       expect(innerCallbackUrl.pathname).toBe("/api/v1/auth/oauth/callback/spotify");
       return {
-        ...options,
+        authorizeResponse,
         innerCallbackUrl,
       };
     }
 
-    export async function getAuthorizationCode(options?: { innerCallbackUrl: URL, authorizeResponse: NiceResponse }) {
-      options ??= await Auth.OAuth.getInnerCallbackUrl();
-      const cookie = updateCookiesFromResponse("", options.authorizeResponse);
-      const response = await niceBackendFetch(options.innerCallbackUrl.toString(), {
+    export async function getAuthorizationCode(options: { innerCallbackUrl?: URL, authorizeResponse?: NiceResponse, forceBranchId?: string } = {}) {
+      let authorizeResponse, innerCallbackUrl;
+      if (options.innerCallbackUrl && options.authorizeResponse) {
+        innerCallbackUrl = options.innerCallbackUrl;
+        authorizeResponse = options.authorizeResponse;
+      } else if (!options.innerCallbackUrl) {
+        ({ authorizeResponse, innerCallbackUrl } = await Auth.OAuth.getInnerCallbackUrl(options));
+      } else {
+        throw new Error("If innerCallbackUrl is provided, authorizeResponse must also be provided");
+      }
+      const cookie = updateCookiesFromResponse("", authorizeResponse!);
+      const response = await niceBackendFetch(innerCallbackUrl.toString(), {
         redirect: "manual",
         headers: {
           cookie,
@@ -712,7 +725,7 @@ export namespace Auth {
       };
     }
 
-    export async function signIn() {
+    export async function signIn(options: { forceBranchId?: string } = {}) {
       const getAuthorizationCodeResult = await Auth.OAuth.getAuthorizationCode();
 
       const projectKeys = backendContext.value.projectKeys;
@@ -1291,6 +1304,23 @@ export namespace Webhook {
       svixToken,
       endpointId: createEndpointResponse.body.id
     };
+  }
+
+  export async function findWebhookAttempt(projectId: string, endpointId: string, svixToken: string, fn: (msg: any) => boolean) {
+    // retry many times because Svix sucks and is slow
+    for (let i = 0; i < 20; i++) {
+      const attempts = await Webhook.listWebhookAttempts(projectId, endpointId, svixToken);
+      const filtered = attempts.filter(fn);
+      if (filtered.length === 0) {
+        await wait(500);
+        continue;
+      } else if (filtered.length === 1) {
+        return filtered[0];
+      } else {
+        throw new Error(`Found ${filtered.length} webhook attempts for project ${projectId}, endpoint ${endpointId}`);
+      }
+    }
+    throw new Error(`Webhook attempt not found for project ${projectId}, endpoint ${endpointId}`);
   }
 
   export async function listWebhookAttempts(projectId: string, endpointId: string, svixToken: string) {

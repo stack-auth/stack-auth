@@ -1,7 +1,7 @@
 import { checkApiKeySet } from "@/lib/internal-api-keys";
-import { getSoleTenancyFromProject } from "@/lib/tenancies";
+import { getSoleTenancyFromProjectBranch } from "@/lib/tenancies";
 import { decodeAccessToken, oauthCookieSchema } from "@/lib/tokens";
-import { getProvider } from "@/oauth";
+import { getProjectBranchFromClientId, getProvider } from "@/oauth";
 import { prismaClient } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { KnownErrors } from "@stackframe/stack-shared/dist/known-errors";
@@ -55,14 +55,13 @@ export const GET = createSmartRouteHandler({
     bodyType: yupString().oneOf(["empty"]).defined(),
   }),
   async handler({ params, query }, fullReq) {
-    const tenancy = await getSoleTenancyFromProject(query.client_id, true);
-
+    const tenancy = await getSoleTenancyFromProjectBranch(...getProjectBranchFromClientId(query.client_id), true);
     if (!tenancy) {
       throw new KnownErrors.InvalidOAuthClientIdOrSecret(query.client_id);
     }
 
-    if (!(await checkApiKeySet(query.client_id, { publishableClientKey: query.client_secret }))) {
-      throw new KnownErrors.InvalidPublishableClientKey(query.client_id);
+    if (!(await checkApiKeySet(tenancy.project.id, { publishableClientKey: query.client_secret }))) {
+      throw new KnownErrors.InvalidPublishableClientKey(tenancy.project.id);
     }
 
     const provider = tenancy.config.oauth_providers.find((p) => p.id === params.provider_id);
@@ -79,7 +78,7 @@ export const GET = createSmartRouteHandler({
       }
       const { userId, projectId: accessTokenProjectId, branchId: accessTokenBranchId } = result.data;
 
-      if (accessTokenProjectId !== query.client_id) {
+      if (accessTokenProjectId !== tenancy.project.id) {
         throw new StatusError(StatusError.Forbidden, "The access token is not valid for this project");
       }
       if (accessTokenBranchId !== tenancy.branchId) {
@@ -106,7 +105,7 @@ export const GET = createSmartRouteHandler({
         innerState,
         info: {
           tenancyId: tenancy.id,
-          publishableClientKey: query.client_id,
+          publishableClientKey: query.client_secret,
           redirectUri: query.redirect_uri.split('#')[0], // remove hash
           scope: query.scope,
           state: query.state,

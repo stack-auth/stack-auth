@@ -6,6 +6,9 @@ import { createLazyProxy } from "@stackframe/stack-shared/dist/utils/proxies";
 export const clientProjectsCrudHandlers = createLazyProxy(() => createCrudHandlers(clientProjectsCrud, {
   paramsSchema: yupObject({}),
   onRead: async ({ auth }) => {
-    return auth.project;
+    return {
+      ...auth.project,
+      config: auth.tenancy.config,
+    };
   },
 }));

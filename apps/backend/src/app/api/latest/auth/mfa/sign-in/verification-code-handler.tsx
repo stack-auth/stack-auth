@@ -73,7 +73,7 @@ export const mfaVerificationCodeHandler = createVerificationCodeHandler({
   },
 });
 
-export async function createMfaRequiredError(options: { project: ProjectsCrud["Admin"]["Read"], branchId: string, isNewUser: boolean, userId: string }) {
+export async function createMfaRequiredError(options: { project: Omit<ProjectsCrud["Admin"]["Read"], "config">, branchId: string, isNewUser: boolean, userId: string }) {
   const attemptCode = await mfaVerificationCodeHandler.createCode({
     expiresInMs: 1000 * 60 * 5,
     project: options.project,

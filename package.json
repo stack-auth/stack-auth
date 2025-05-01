@@ -82,6 +82,7 @@
     "turbo": "^2.2.3",
     "typescript": "5.3.3",
     "vitest": "^1.6.0",
+    "vite-tsconfig-paths": "^4.3.2",
     "wait-on": "^8.0.1",
     "esbuild": "^0.24.0"
   },

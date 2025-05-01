@@ -1,9 +1,9 @@
 /* eslint-disable no-restricted-syntax */
+import { usersCrudHandlers } from '@/app/api/latest/users/crud';
+import { createOrUpdateProject, getProject } from '@/lib/projects';
+import { DEFAULT_BRANCH_ID, getSoleTenancyFromProjectBranch } from '@/lib/tenancies';
 import { PrismaClient } from '@prisma/client';
 import { errorToNiceString, throwErr } from '@stackframe/stack-shared/dist/utils/errors';
-import { usersCrudHandlers } from '../src/app/api/latest/users/crud';
-import { createOrUpdateProject, getProject } from '../src/lib/projects';
-import { getSoleTenancyFromProject } from '../src/lib/tenancies';
 
 const prisma = new PrismaClient();
 
@@ -35,7 +35,6 @@ async function seed() {
   if (!internalProject) {
     internalProject = await createOrUpdateProject({
       type: 'create',
-      initialBranchId: 'main',
       projectId: 'internal',
       data: {
         display_name: 'Stack Dashboard',
@@ -57,10 +56,11 @@ async function seed() {
     console.log('Internal project created');
   }
 
-  const internalTenancy = await getSoleTenancyFromProject("internal");
+  const internalTenancy = await getSoleTenancyFromProjectBranch("internal", DEFAULT_BRANCH_ID);
 
   internalProject = await createOrUpdateProject({
     projectId: 'internal',
+    branchId: DEFAULT_BRANCH_ID,
     type: 'update',
     data: {
       config: {
@@ -69,7 +69,7 @@ async function seed() {
         allow_localhost: allowLocalhost,
         domains: [
           ...(dashboardDomain && new URL(dashboardDomain).hostname !== 'localhost' ? [{ domain: dashboardDomain, handler_path: '/handler' }] : []),
-          ...internalProject.config.domains.filter((d) => d.domain !== dashboardDomain),
+          ...internalTenancy.config.domains.filter((d) => d.domain !== dashboardDomain),
         ]
       },
     },
@@ -104,7 +104,7 @@ async function seed() {
     const oldAdminUser = await prisma.projectUser.findFirst({
       where: {
         mirroredProjectId: 'internal',
-        mirroredBranchId: 'main',
+        mirroredBranchId: DEFAULT_BRANCH_ID,
         projectUserId: defaultUserId
       }
     });
@@ -118,7 +118,7 @@ async function seed() {
           projectUserId: defaultUserId,
           tenancyId: internalTenancy.id,
           mirroredProjectId: 'internal',
-          mirroredBranchId: 'main',
+          mirroredBranchId: DEFAULT_BRANCH_ID,
           serverMetadata: adminInternalAccess
             ? { managedProjectIds: ['internal'] }
             : undefined,
@@ -190,7 +190,7 @@ async function seed() {
     const existingUser = await prisma.projectUser.findFirst({
       where: {
         mirroredProjectId: 'internal',
-        mirroredBranchId: 'main',
+        mirroredBranchId: DEFAULT_BRANCH_ID,
         projectUserId: emulatorAdminUserId,
       }
     });
@@ -204,7 +204,7 @@ async function seed() {
           projectUserId: emulatorAdminUserId,
           tenancyId: internalTenancy.id,
           mirroredProjectId: 'internal',
-          mirroredBranchId: 'main',
+          mirroredBranchId: DEFAULT_BRANCH_ID,
           serverMetadata: {
             managedProjectIds: [emulatorProjectId],
           },
@@ -235,8 +235,9 @@ async function seed() {
     } else {
       const emulatorProject = await createOrUpdateProject({
         projectId: emulatorProjectId,
-        type: 'update',
+        type: 'create',
         data: {
+          display_name: 'Emulator Project',
           config: {
             allow_localhost: true,
             create_team_on_sign_up: false,

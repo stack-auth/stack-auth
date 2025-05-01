@@ -3,7 +3,7 @@ import "../polyfills";
 import { getUser, getUserQuery } from "@/app/api/latest/users/crud";
 import { checkApiKeySet, checkApiKeySetQuery } from "@/lib/internal-api-keys";
 import { getProjectQuery, listManagedProjectIds } from "@/lib/projects";
-import { Tenancy, getSoleTenancyFromProject } from "@/lib/tenancies";
+import { DEFAULT_BRANCH_ID, getSoleTenancyFromProjectBranch, Tenancy } from "@/lib/tenancies";
 import { decodeAccessToken } from "@/lib/tokens";
 import { prismaClient, rawQueryAll } from "@/prisma-client";
 import { traceSpan, withTraceSpan } from "@/utils/telemetry";
@@ -13,7 +13,7 @@ import { UsersCrud } from "@stackframe/stack-shared/dist/interface/crud/users";
 import { StackAdaptSentinel, yupValidate } from "@stackframe/stack-shared/dist/schema-fields";
 import { groupBy, typedIncludes } from "@stackframe/stack-shared/dist/utils/arrays";
 import { getNodeEnvironment } from "@stackframe/stack-shared/dist/utils/env";
-import { StackAssertionError, StatusError, captureError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
+import { captureError, StackAssertionError, StatusError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
 import { deindent } from "@stackframe/stack-shared/dist/utils/strings";
 import { NextRequest } from "next/server";
 import * as yup from "yup";
@@ -21,7 +21,7 @@ import * as yup from "yup";
 const allowedMethods = ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"] as const;
 
 export type SmartRequestAuth = {
-  project: ProjectsCrud["Admin"]["Read"],
+  project: Omit<ProjectsCrud["Admin"]["Read"], "config">,
   branchId: string,
   tenancy: Tenancy,
   user?: UsersCrud["Admin"]["Read"] | undefined,
@@ -159,6 +159,7 @@ async function parseBody(req: NextRequest, bodyBuffer: ArrayBuffer): Promise<Sma
 
 const parseAuth = withTraceSpan('smart request parseAuth', async (req: NextRequest): Promise<SmartRequestAuth | null> => {
   const projectId = req.headers.get("x-stack-project-id");
+  const branchId = req.headers.get("x-stack-branch-id") ?? DEFAULT_BRANCH_ID;
   let requestType = req.headers.get("x-stack-access-type");
   const publishableClientKey = req.headers.get("x-stack-publishable-client-key");
   const secretServerKey = req.headers.get("x-stack-secret-server-key");
@@ -166,6 +167,15 @@ const parseAuth = withTraceSpan('smart request parseAuth', async (req: NextReque
   const adminAccessToken = req.headers.get("x-stack-admin-access-token");
   const accessToken = req.headers.get("x-stack-access-token");
   const developmentKeyOverride = req.headers.get("x-stack-development-override-key");  // in development, the internal project's API key can optionally be used to access any project
+
+  // Ensure header combinations are valid
+  const eitherKeyOrToken = !!(publishableClientKey || secretServerKey || superSecretAdminKey || adminAccessToken);
+  if (!requestType && eitherKeyOrToken) {
+    throw new KnownErrors.ProjectKeyWithoutAccessType();
+  }
+  if (!requestType) return null;
+  if (!typedIncludes(["client", "server", "admin"] as const, requestType)) throw new KnownErrors.InvalidAccessType(requestType);
+  if (!projectId) throw new KnownErrors.AccessTypeWithoutProjectId(requestType);
 
   const extractUserIdAndRefreshTokenIdFromAccessToken = async (options: { token: string, projectId: string }) => {
     const result = await decodeAccessToken(options.token);
@@ -197,7 +207,7 @@ const parseAuth = withTraceSpan('smart request parseAuth', async (req: NextReque
       throw new KnownErrors.AdminAccessTokenIsNotAdmin();
     }
 
-    const user = await getUser({ projectId: 'internal', branchId: 'main', userId: result.data.userId });
+    const user = await getUser({ projectId: 'internal', branchId: DEFAULT_BRANCH_ID, userId: result.data.userId });
     if (!user) {
       // this is the case when access token is still valid, but the user is deleted from the database
       // this should be very rare, let's log it on Sentry when it happens
@@ -213,29 +223,21 @@ const parseAuth = withTraceSpan('smart request parseAuth', async (req: NextReque
     return user;
   };
 
-  const { userId, refreshTokenId } =  projectId && accessToken ? await extractUserIdAndRefreshTokenIdFromAccessToken({ token: accessToken, projectId }): { userId: null, refreshTokenId: null };
+  const { userId, refreshTokenId } = projectId && accessToken ? await extractUserIdAndRefreshTokenIdFromAccessToken({ token: accessToken, projectId }): { userId: null, refreshTokenId: null };
 
   // Prisma does a query for every function call by default, even if we batch them with transactions
   // Because smart route handlers are always called, we instead send over a single raw query that fetches all the
   // data at the same time, saving us a lot of requests
   const bundledQueries = {
-    user: userId && projectId ? getUserQuery(projectId, null, userId) : undefined,
-    isClientKeyValid: projectId && publishableClientKey && requestType === "client" ? checkApiKeySetQuery(projectId, { publishableClientKey }) : undefined,
-    isServerKeyValid: projectId && secretServerKey && requestType === "server" ? checkApiKeySetQuery(projectId, { secretServerKey }) : undefined,
-    isAdminKeyValid: projectId && superSecretAdminKey && requestType === "admin" ? checkApiKeySetQuery(projectId, { superSecretAdminKey }) : undefined,
-    project: projectId ? getProjectQuery(projectId) : undefined,
+    user: userId ? getUserQuery(projectId, branchId, userId) : undefined,
+    isClientKeyValid: publishableClientKey && requestType === "client" ? checkApiKeySetQuery(projectId, { publishableClientKey }) : undefined,
+    isServerKeyValid: secretServerKey && requestType === "server" ? checkApiKeySetQuery(projectId, { secretServerKey }) : undefined,
+    isAdminKeyValid: superSecretAdminKey && requestType === "admin" ? checkApiKeySetQuery(projectId, { superSecretAdminKey }) : undefined,
+    project: getProjectQuery(projectId),
   };
   const queriesResults = await rawQueryAll(prismaClient, bundledQueries);
   const project = await queriesResults.project;
-
-  const eitherKeyOrToken = !!(publishableClientKey || secretServerKey || superSecretAdminKey || adminAccessToken);
-
-  if (!requestType && eitherKeyOrToken) {
-    throw new KnownErrors.ProjectKeyWithoutAccessType();
-  }
-  if (!requestType) return null;
-  if (!typedIncludes(["client", "server", "admin"] as const, requestType)) throw new KnownErrors.InvalidAccessType(requestType);
-  if (!projectId) throw new KnownErrors.AccessTypeWithoutProjectId(requestType);
+  const tenancy = await getSoleTenancyFromProjectBranch(projectId, branchId, true);
 
   if (developmentKeyOverride) {
     if (getNodeEnvironment() !== "development" && getNodeEnvironment() !== "test") {
@@ -275,14 +277,18 @@ const parseAuth = withTraceSpan('smart request parseAuth', async (req: NextReque
 
   if (!project) {
     // This happens when the JWT tokens are still valid, but the project has been deleted
+    // note that we do the check only here as we don't want to leak whether a project exists or not unless its keys have been shown to be valid
     throw new KnownErrors.ProjectNotFound(projectId);
+  }
+  if (!tenancy) {
+    throw new KnownErrors.BranchDoesNotExist(branchId);
   }
 
   return {
     project,
-    branchId: "main",
+    branchId,
     refreshTokenId: refreshTokenId ?? undefined,
-    tenancy: await getSoleTenancyFromProject(project),
+    tenancy,
     user: queriesResults.user ?? undefined,
     type: requestType,
   };
