@@ -1,5 +1,5 @@
 import { Prisma } from "@prisma/client";
-import { NormalizationError, getInvalidConfigReason, normalize, override } from "@stackframe/stack-shared/dist/config/format";
+import { Config, NormalizationError, NormalizedConfig, getInvalidConfigReason, normalize, override } from "@stackframe/stack-shared/dist/config/format";
 import { BranchConfigOverride, BranchConfigOverrideOverride, BranchIncompleteConfig, BranchRenderedConfig, EnvironmentConfigOverride, EnvironmentConfigOverrideOverride, EnvironmentIncompleteConfig, EnvironmentRenderedConfig, OrganizationConfigOverride, OrganizationConfigOverrideOverride, OrganizationIncompleteConfig, OrganizationRenderedConfig, ProjectConfigOverride, ProjectConfigOverrideOverride, ProjectIncompleteConfig, ProjectRenderedConfig, applyDefaults, branchConfigDefaults, branchConfigSchema, environmentConfigDefaults, environmentConfigSchema, organizationConfigDefaults, organizationConfigSchema, projectConfigDefaults, projectConfigSchema } from "@stackframe/stack-shared/dist/config/schema";
 import { ProjectsCrud } from "@stackframe/stack-shared/dist/interface/crud/projects";
 import { yupMixed, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
@@ -232,39 +232,43 @@ export function overrideOrganizationConfigOverride(options: {
 // ---------------------------------------------------------------------------------------------------------------------
 
 function getIncompleteProjectConfigQuery(options: ProjectOptions): RawQuery<Promise<ProjectIncompleteConfig>> {
-  return RawQuery.then(
-    getProjectConfigOverrideQuery(options),
-    async (overrideConfig) => normalize(override({}, await overrideConfig)) as any,
-  );
+  return makeIncompleteConfigQuery({
+    override: getProjectConfigOverrideQuery(options),
+    defaults: projectConfigDefaults,
+  });
 }
 
 function getIncompleteBranchConfigQuery(options: BranchOptions): RawQuery<Promise<BranchIncompleteConfig>> {
-  return RawQuery.then(
-    RawQuery.all([
-      getIncompleteProjectConfigQuery(options),
-      getBranchConfigOverrideQuery(options),
-    ] as const),
-    async ([projectConfig, branchConfigOverride]) => normalize(override(await projectConfig, await branchConfigOverride)) as any,
-  );
+  return makeIncompleteConfigQuery({
+    previous: getIncompleteProjectConfigQuery(options),
+    override: getBranchConfigOverrideQuery(options),
+    defaults: branchConfigDefaults,
+  });
 }
 
 function getIncompleteEnvironmentConfigQuery(options: EnvironmentOptions): RawQuery<Promise<EnvironmentIncompleteConfig>> {
-  return RawQuery.then(
-    RawQuery.all([
-      getIncompleteBranchConfigQuery(options),
-      getEnvironmentConfigOverrideQuery(options),
-    ] as const),
-    async ([branchConfig, environmentConfigOverride]) => normalize(override(await branchConfig, await environmentConfigOverride)) as any,
-  );
+  return makeIncompleteConfigQuery({
+    previous: getIncompleteBranchConfigQuery(options),
+    override: getEnvironmentConfigOverrideQuery(options),
+    defaults: environmentConfigDefaults,
+  });
 }
 
 function getIncompleteOrganizationConfigQuery(options: OrganizationOptions): RawQuery<Promise<OrganizationIncompleteConfig>> {
+  return makeIncompleteConfigQuery({
+    previous: getIncompleteEnvironmentConfigQuery(options),
+    override: getOrganizationConfigOverrideQuery(options),
+    defaults: organizationConfigDefaults,
+  });
+}
+
+function makeIncompleteConfigQuery<T, O>(options: { previous?: RawQuery<Promise<NormalizedConfig>>, override: RawQuery<Promise<Config>>, defaults: any }): RawQuery<Promise<any>> {
   return RawQuery.then(
     RawQuery.all([
-      getIncompleteEnvironmentConfigQuery(options),
-      getOrganizationConfigOverrideQuery(options),
+      options.previous ?? RawQuery.resolve(Promise.resolve({})),
+      options.override,
     ] as const),
-    async ([environmentConfig, organizationConfigOverride]) => normalize(override(await environmentConfig, await organizationConfigOverride)) as any,
+    async ([prev, over]) => applyDefaults(options.defaults, normalize(override(await prev, await over))),
   );
 }
 

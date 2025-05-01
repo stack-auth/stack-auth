@@ -1,6 +1,6 @@
 generator client {
   provider        = "prisma-client-js"
-  previewFeatures = ["tracing", "relationJoins"]
+  previewFeatures = ["driverAdapters", "relationJoins"]
 }
 
 datasource db {
@@ -28,12 +28,6 @@ model Project {
   verificationCodes          VerificationCode[]
   projectApiKey              ProjectApiKey[]
   environmentConfigOverrides EnvironmentConfigOverride[]
-}
-
-enum OAuthAccountMergeStrategy {
-  LINK_METHOD
-  RAISE_ERROR
-  ALLOW_DUPLICATES
 }
 
 model Tenancy {
@@ -571,6 +565,8 @@ model ProjectApiKey {
   @@id([tenancyId, id])
 }
 
+//#endregion
+
 enum EmailTemplateType {
   EMAIL_VERIFICATION
   PASSWORD_RESET
@@ -590,8 +586,6 @@ model EmailTemplate {
 
   @@id([projectId, type])
 }
-
-//#endregion
 
 //#region IdP
 model IdPAccountToCdfcResultMapping {

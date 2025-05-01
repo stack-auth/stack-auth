@@ -1,26 +1,58 @@
+import { PrismaNeon } from "@prisma/adapter-neon";
 import { Prisma, PrismaClient } from "@prisma/client";
-import { withAccelerate } from "@prisma/extension-accelerate";
-import { getEnvVariable, getNodeEnvironment } from '@stackframe/stack-shared/dist/utils/env';
+import { OrganizationRenderedConfig } from "@stackframe/stack-shared/dist/config/schema";
+import { getNodeEnvironment } from '@stackframe/stack-shared/dist/utils/env';
+import { StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
+import { globalVar } from "@stackframe/stack-shared/dist/utils/globals";
 import { deepPlainEquals, filterUndefined, typedFromEntries, typedKeys } from "@stackframe/stack-shared/dist/utils/objects";
 import { ignoreUnhandledRejection } from "@stackframe/stack-shared/dist/utils/promises";
 import { Result } from "@stackframe/stack-shared/dist/utils/results";
 import { isPromise } from "util/types";
 import { traceSpan } from "./utils/telemetry";
 
-export type PrismaClientTransaction = PrismaClient | Parameters<Parameters<typeof prismaClient.$transaction>[0]>[0];
-
-// In dev mode, fast refresh causes us to recreate many Prisma clients, eventually overloading the database.
-// Therefore, only create one Prisma client in dev mode.
-const globalForPrisma = global as unknown as { prisma: PrismaClient };
-
-const useAccelerate = getEnvVariable('STACK_ACCELERATE_ENABLED', 'false') === 'true';
+export type PrismaClientTransaction = PrismaClient | Parameters<Parameters<PrismaClient['$transaction']>[0]>[0];
 
 // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
-export const prismaClient = globalForPrisma.prisma || (useAccelerate ? new PrismaClient().$extends(withAccelerate()) : new PrismaClient());
-
-if (getNodeEnvironment() !== 'production') {
-  globalForPrisma.prisma = prismaClient;
+const prismaClientsStore = (globalVar.__stack_prisma_clients as undefined) || {
+  global: new PrismaClient(),
+  neon: new Map<string, PrismaClient>(),
+};
+if (getNodeEnvironment().includes('development')) {
+  globalVar.__stack_prisma_clients = prismaClientsStore;  // store globally so fast refresh doesn't recreate too many Prisma clients
 }
+
+export const globalPrismaClient = prismaClientsStore.global;
+
+export const prismaClient = globalPrismaClient;
+
+function getNeonPrismaClient(connectionString: string) {
+  let neonPrismaClient = prismaClientsStore.neon.get(connectionString);
+  if (!neonPrismaClient) {
+    const adapter = new PrismaNeon({ connectionString });
+    neonPrismaClient = new PrismaClient({ adapter });
+    prismaClientsStore.neon.set(connectionString, neonPrismaClient);
+  }
+  return neonPrismaClient;
+}
+
+export function getPrismaClientForSourceOfTruth(sourceOfTruth: OrganizationRenderedConfig["sourceOfTruth"]) {
+  switch (sourceOfTruth.type) {
+    case 'neon': {
+      if (!sourceOfTruth.connectionString) {
+        throw new Error("No connection string provided for Neon source of truth");
+      }
+      return getNeonPrismaClient(sourceOfTruth.connectionString);
+    }
+    case 'hosted': {
+      return globalPrismaClient;
+    }
+    default: {
+      // @ts-expect-error sourceOfTruth should be never, otherwise we're missing a switch-case
+      throw new StackAssertionError(`Unknown source of truth type: ${sourceOfTruth.type}`);
+    }
+  }
+}
+
 
 class TransactionErrorThatShouldBeRetried extends Error {
   constructor(cause: unknown) {
@@ -36,7 +68,7 @@ class TransactionErrorThatShouldNotBeRetried extends Error {
   }
 }
 
-export async function retryTransaction<T>(fn: (tx: PrismaClientTransaction) => Promise<T>): Promise<T> {
+export async function retryTransaction<T>(client: PrismaClient, fn: (tx: PrismaClientTransaction) => Promise<T>): Promise<T> {
   // disable serializable transactions for now, later we may re-add them
   const enableSerializable = false as boolean;
 
@@ -45,7 +77,7 @@ export async function retryTransaction<T>(fn: (tx: PrismaClientTransaction) => P
       return await traceSpan(`transaction attempt #${attemptIndex}`, async (attemptSpan) => {
         const attemptRes = await (async () => {
           try {
-            return Result.ok(await prismaClient.$transaction(async (tx, ...args) => {
+            return Result.ok(await client.$transaction(async (tx, ...args) => {
               let res;
               try {
                 res = await fn(tx, ...args);
@@ -156,6 +188,14 @@ export const RawQuery = {
           return postProcessed;
         });
         return postProcessed as any;
+      },
+    };
+  },
+  resolve: <T,>(obj: T): RawQuery<T> => {
+    return {
+      sql: Prisma.sql`SELECT 1`,
+      postProcess: (rows) => {
+        return obj;
       },
     };
   },
