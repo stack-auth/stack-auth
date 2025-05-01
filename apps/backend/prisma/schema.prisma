@@ -530,6 +530,8 @@ model ApiKeySet {
   @@id([projectId, id])
 }
 
+//#endregion
+
 model ProjectApiKey {
   projectId String
   project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
@@ -556,8 +558,6 @@ model ProjectApiKey {
 
   @@id([tenancyId, id])
 }
-
-//#endregion
 
 enum EmailTemplateType {
   EMAIL_VERIFICATION
