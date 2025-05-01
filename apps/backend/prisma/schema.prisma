@@ -282,14 +282,6 @@ model ConnectedAccount {
   @@unique([tenancyId, configOAuthProviderId, providerAccountId])
 }
 
-// Both the connected account and auth methods can use this configuration.
-enum ProxiedOAuthProviderType {
-  GITHUB
-  GOOGLE
-  MICROSOFT
-  SPOTIFY
-}
-
 model AuthMethod {
   tenancyId     String @db.Uuid
   id            String @default(uuid()) @db.Uuid
