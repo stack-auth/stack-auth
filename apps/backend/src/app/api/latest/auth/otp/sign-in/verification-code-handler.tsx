@@ -1,6 +1,6 @@
 import { getAuthContactChannel } from "@/lib/contact-channel";
 import { sendEmailFromTemplate } from "@/lib/emails";
-import { getSoleTenancyFromProject, Tenancy } from "@/lib/tenancies";
+import { getSoleTenancyFromProjectBranch, Tenancy } from "@/lib/tenancies";
 import { createAuthTokens } from "@/lib/tokens";
 import { prismaClient } from "@/prisma-client";
 import { createVerificationCodeHandler } from "@/route-handlers/verification-code-handler";
@@ -89,7 +89,7 @@ export const signInVerificationCodeHandler = createVerificationCodeHandler({
     body: signInResponseSchema.defined(),
   }),
   async send(codeObj, createOptions, sendOptions: { email: string }) {
-    const tenancy = await getSoleTenancyFromProject(createOptions.project);
+    const tenancy = await getSoleTenancyFromProjectBranch(createOptions.project.id, createOptions.branchId);
     await sendEmailFromTemplate({
       tenancy,
       email: createOptions.method.email,

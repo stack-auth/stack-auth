@@ -1,10 +1,20 @@
 import { prismaClient, rawQuery } from "@/prisma-client";
 import { Prisma } from "@prisma/client";
 import { ProjectsCrud } from "@stackframe/stack-shared/dist/interface/crud/projects";
-import { getNodeEnvironment } from "@stackframe/stack-shared/dist/utils/env";
 import { StackAssertionError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
-import { getRenderedOrganizationConfigQuery } from "./config";
+import { getRenderedOrganizationConfigQuery, renderedOrganizationConfigToProjectCrud } from "./config";
 import { getProject } from "./projects";
+
+/**
+ * @deprecated YOU PROBABLY ALMOST NEVER WANT TO USE THIS, UNLESS YOU ACTUALLY NEED THE DEFAULT BRANCH ID. DON'T JUST USE THIS TO GET A TENANCY BECAUSE YOU DON'T HAVE ONE
+ *
+ * one day we will replace this with a dynamic default branch ID that depends on the project, but for now you can use this constant
+ *
+ * NEVER EVER use the string "main" (otherwise we don't know what to replace when we add the dynamic default branch ID)
+ *
+ * // TODO do the thing above
+ */
+export const DEFAULT_BRANCH_ID = "main";
 
 export async function tenancyPrismaToCrud(prisma: Prisma.TenancyGetPayload<{}>) {
   if (prisma.hasNoOrganization && prisma.organizationId !== null) {
@@ -21,11 +31,12 @@ export async function tenancyPrismaToCrud(prisma: Prisma.TenancyGetPayload<{}>) 
     branchId: prisma.branchId,
     organizationId: prisma.organizationId,
   }));
+  const oldProjectConfig = renderedOrganizationConfigToProjectCrud(completeConfig);
 
   return {
     id: prisma.id,
     /** @deprecated */
-    config: projectCrud.config,
+    config: oldProjectConfig,
     completeConfig,
     branchId: prisma.branchId,
     organization: prisma.organizationId === null ? null : {
@@ -39,58 +50,22 @@ export async function tenancyPrismaToCrud(prisma: Prisma.TenancyGetPayload<{}>) 
 export type Tenancy = Awaited<ReturnType<typeof tenancyPrismaToCrud>>;
 
 /**
- * while not necessary, this cache just makes performance a little better
- *
- * eventually, we'll nicely pass around tenancies and won't need this function anymore, so the cache is a good temp
- * solution
- */
-const soleTenancyIdsCache = new Map<string, string>();
-
-/**
-  * @deprecated This is a temporary function for the situation where every project has exactly one tenancy. Later,
-  * we will support multiple tenancies per project, and all uses of this function will be refactored.
+  * @deprecated This is a temporary function for the situation where every project-branch has exactly one tenancy. Later,
+  * we will support multiple tenancies per project-branch, and all uses of this function will be refactored.
   */
-export function getSoleTenancyFromProject(project: ProjectsCrud["Admin"]["Read"] | string): Promise<Tenancy>;
+export function getSoleTenancyFromProjectBranch(project: Omit<ProjectsCrud["Admin"]["Read"], "config"> | string, branchId: string): Promise<Tenancy>;
 /**
-  * @deprecated This is a temporary function for the situation where every project has exactly one tenancy. Later,
-  * we will support multiple tenancies per project, and all uses of this function will be refactored.
+  * @deprecated This is a temporary function for the situation where every project-branch has exactly one tenancy. Later,
+  * we will support multiple tenancies per project-branch, and all uses of this function will be refactored.
   */
-export function getSoleTenancyFromProject(project: ProjectsCrud["Admin"]["Read"] | string, returnNullIfNotFound: boolean): Promise<Tenancy | null>;
-export async function getSoleTenancyFromProject(projectOrId: ProjectsCrud["Admin"]["Read"] | string, returnNullIfNotFound: boolean = false): Promise<Tenancy | null> {
-  let project;
-  if (!projectOrId) {
-    throw new StackAssertionError("Project is required", { projectOrId });
-  }
-  if (typeof projectOrId === 'string') {
-    project = await getProject(projectOrId);
-  } else {
-    project = projectOrId;
-  }
-  if (!project) {
+export function getSoleTenancyFromProjectBranch(project: Omit<ProjectsCrud["Admin"]["Read"], "config"> | string, branchId: string, returnNullIfNotFound: boolean): Promise<Tenancy | null>;
+export async function getSoleTenancyFromProjectBranch(projectOrId: Omit<ProjectsCrud["Admin"]["Read"], "config"> | string, branchId: string, returnNullIfNotFound: boolean = false): Promise<Tenancy | null> {
+  const res = await getTenancyFromProject(typeof projectOrId === 'string' ? projectOrId : projectOrId.id, branchId, null);
+  if (!res) {
     if (returnNullIfNotFound) return null;
-    throw new StackAssertionError(`Project ${projectOrId} does not exist`, { projectOrId });
+    throw new StackAssertionError(`No tenancy found for project ${typeof projectOrId === 'string' ? projectOrId : projectOrId.id}`, { projectOrId });
   }
-  const tenancyId = (!getNodeEnvironment().includes('development') ? soleTenancyIdsCache.get(project.id) : null) ?? (await getTenancyFromProject(project.id, 'main', null))?.id;
-  if (!tenancyId) {
-    if (returnNullIfNotFound) return null;
-    throw new StackAssertionError(`No tenancy found for project ${project.id}`, { project });
-  }
-  soleTenancyIdsCache.set(project.id, tenancyId);
-
-  const completeConfig = await rawQuery(prismaClient, getRenderedOrganizationConfigQuery({
-    projectId: project.id,
-    branchId: "main",
-    organizationId: null,
-  }));
-
-  return {
-    id: tenancyId,
-    config: project.config,
-    completeConfig,
-    branchId: "main",
-    organization: null,
-    project: project,
-  };
+  return res;
 }
 
 export async function getTenancy(tenancyId: string) {
@@ -104,6 +79,9 @@ export async function getTenancy(tenancyId: string) {
   return await tenancyPrismaToCrud(prisma);
 }
 
+/**
+ * @deprecated Not actually deprecated but if you're using this you're probably doing something wrong — ask Konsti for help
+ */
 export async function getTenancyFromProject(projectId: string, branchId: string, organizationId: string | null) {
   const prisma = await prismaClient.tenancy.findUnique({
     where: {

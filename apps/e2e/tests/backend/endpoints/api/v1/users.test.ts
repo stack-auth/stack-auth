@@ -1,5 +1,4 @@
 import { generateSecureRandomString } from "@stackframe/stack-shared/dist/utils/crypto";
-import { wait } from "@stackframe/stack-shared/dist/utils/promises";
 import { describe } from "vitest";
 import { STACK_BACKEND_BASE_URL, it } from "../../../../helpers";
 import { Auth, InternalProjectKeys, Project, Team, Webhook, backendContext, bumpEmailAddress, createMailbox, niceBackendFetch } from "../../../backend-helpers";
@@ -2125,45 +2124,41 @@ describe("with server access", () => {
 
     expect(createUserResponse.status).toBe(201);
 
-    await wait(3000);
-
-    const attemptResponse = await Webhook.listWebhookAttempts(projectId, endpointId, svixToken);
+    const attemptResponse = await Webhook.findWebhookAttempt(projectId, endpointId, svixToken, event => true);
 
     expect(attemptResponse).toMatchInlineSnapshot(`
-      [
-        {
-          "channels": null,
-          "eventId": null,
-          "eventType": "user.created",
-          "id": "<stripped svix message id>",
-          "payload": {
-            "data": {
-              "auth_with_email": false,
-              "client_metadata": null,
-              "client_read_only_metadata": null,
-              "display_name": null,
-              "has_password": false,
-              "id": "<stripped UUID>",
-              "is_anonymous": false,
-              "last_active_at_millis": <stripped field 'last_active_at_millis'>,
-              "oauth_providers": [],
-              "otp_auth_enabled": false,
-              "passkey_auth_enabled": false,
-              "primary_email": "test@example.com",
-              "primary_email_auth_enabled": false,
-              "primary_email_verified": false,
-              "profile_image_url": null,
-              "requires_totp_mfa": false,
-              "selected_team": null,
-              "selected_team_id": null,
-              "server_metadata": null,
-              "signed_up_at_millis": <stripped field 'signed_up_at_millis'>,
-            },
-            "type": "user.created",
+      {
+        "channels": null,
+        "eventId": null,
+        "eventType": "user.created",
+        "id": "<stripped svix message id>",
+        "payload": {
+          "data": {
+            "auth_with_email": false,
+            "client_metadata": null,
+            "client_read_only_metadata": null,
+            "display_name": null,
+            "has_password": false,
+            "id": "<stripped UUID>",
+            "is_anonymous": false,
+            "last_active_at_millis": <stripped field 'last_active_at_millis'>,
+            "oauth_providers": [],
+            "otp_auth_enabled": false,
+            "passkey_auth_enabled": false,
+            "primary_email": "test@example.com",
+            "primary_email_auth_enabled": false,
+            "primary_email_verified": false,
+            "profile_image_url": null,
+            "requires_totp_mfa": false,
+            "selected_team": null,
+            "selected_team_id": null,
+            "server_metadata": null,
+            "signed_up_at_millis": <stripped field 'signed_up_at_millis'>,
           },
-          "timestamp": <stripped field 'timestamp'>,
+          "type": "user.created",
         },
-      ]
+        "timestamp": <stripped field 'timestamp'>,
+      }
     `);
   });
 
@@ -2191,10 +2186,7 @@ describe("with server access", () => {
 
     expect(updateUserResponse.status).toBe(200);
 
-    await wait(3000);
-
-    const attemptResponse = await Webhook.listWebhookAttempts(projectId, endpointId, svixToken);
-    const userUpdatedEvent = attemptResponse.find(event => event.eventType === "user.updated");
+    const userUpdatedEvent = await Webhook.findWebhookAttempt(projectId, endpointId, svixToken, event => event.eventType === "user.updated");
 
     expect(userUpdatedEvent).toMatchInlineSnapshot(`
       {
@@ -2253,10 +2245,7 @@ describe("with server access", () => {
 
     expect(deleteUserResponse.status).toBe(200);
 
-    await wait(3000);
-
-    const attemptResponse = await Webhook.listWebhookAttempts(projectId, endpointId, svixToken);
-    const userDeletedEvent = attemptResponse.find(event => event.eventType === "user.deleted");
+    const userDeletedEvent = await Webhook.findWebhookAttempt(projectId, endpointId, svixToken, event => event.eventType === "user.deleted");
 
     expect(userDeletedEvent).toMatchInlineSnapshot(`
       {

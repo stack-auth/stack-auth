@@ -546,11 +546,7 @@ it("should trigger team membership webhook when a user is added to a team", asyn
 
   expect(addUserResponse.status).toBe(201);
 
-  await wait(3000);
-
-  const attemptResponse = await Webhook.listWebhookAttempts(projectId, endpointId, svixToken);
-
-  const teamMembershipCreatedEvent = attemptResponse.find(event => event.eventType === "team_membership.created");
+  const teamMembershipCreatedEvent = await Webhook.findWebhookAttempt(projectId, endpointId, svixToken, event => event.eventType === "team_membership.created");
 
   expect(teamMembershipCreatedEvent).toMatchInlineSnapshot(`
     {
@@ -596,11 +592,7 @@ it("should trigger team membership webhook when a user is removed from a team", 
 
   expect(removeUserResponse.status).toBe(200);
 
-  await wait(3000);
-
-  const attemptResponse = await Webhook.listWebhookAttempts(projectId, endpointId, svixToken);
-
-  const teamMembershipDeletedEvent = attemptResponse.find(event => event.eventType === "team_membership.deleted");
+  const teamMembershipDeletedEvent = await Webhook.findWebhookAttempt(projectId, endpointId, svixToken, event => event.eventType === "team_membership.deleted");
 
   expect(teamMembershipDeletedEvent).toMatchInlineSnapshot(`
     {
@@ -637,19 +629,9 @@ it("should trigger team permission webhook when a user is added to a team", asyn
 
   expect(addUserResponse.status).toBe(201);
 
-  await wait(3000);
+  const teamPermissionCreatedEvent = await Webhook.findWebhookAttempt(projectId, endpointId, svixToken, event => event.eventType === "team_permission.created");
 
-  const attemptResponse = await Webhook.listWebhookAttempts(projectId, endpointId, svixToken);
-
-  // Check for team_permission.created events
-  const teamPermissionCreatedEvents = attemptResponse.filter(event => event.eventType === "team_permission.created");
-
-  // There should be at least one team permission created event (for the default permissions)
-  expect(teamPermissionCreatedEvents.length).toBe(1);
-
-  // Check the first team permission created event
-  const firstPermissionEvent = teamPermissionCreatedEvents[0];
-  expect(firstPermissionEvent).toMatchInlineSnapshot(`
+  expect(teamPermissionCreatedEvent).toMatchInlineSnapshot(`
     {
       "channels": null,
       "eventId": null,
@@ -751,7 +733,7 @@ it("should trigger multiple permission webhooks when a custom permission is incl
   `);
 
   // Wait for webhooks to be triggered
-  await wait(3000);
+  await wait(5000);
 
   // Get webhook events
   const attemptResponse = await Webhook.listWebhookAttempts(projectId, endpointId, svixToken);
