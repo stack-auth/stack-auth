@@ -1,5 +1,5 @@
 import { createAuthTokens } from "@/lib/tokens";
-import { prismaClient } from "@/prisma-client";
+import { oldDeprecatedPrismaClient } from "@/prisma-client";
 import { createVerificationCodeHandler } from "@/route-handlers/verification-code-handler";
 import { VerificationCodeType } from "@prisma/client";
 import { verifyAuthenticationResponse } from "@simplewebauthn/server";
@@ -47,7 +47,7 @@ export const passkeySignInVerificationCodeHandler = createVerificationCodeHandle
 
 
     // Get passkey from DB with userHandle
-    const passkey = await prismaClient.passkeyAuthMethod.findFirst({
+    const passkey = await oldDeprecatedPrismaClient.passkeyAuthMethod.findFirst({
       where: {
         credentialId,
         tenancyId: tenancy.id,
@@ -110,7 +110,7 @@ export const passkeySignInVerificationCodeHandler = createVerificationCodeHandle
     const authenticationInfo = authVerify.authenticationInfo;
 
     // Update counter
-    await prismaClient.passkeyAuthMethod.update({
+    await oldDeprecatedPrismaClient.passkeyAuthMethod.update({
       where: {
         tenancyId_projectUserId: {
           tenancyId: tenancy.id,

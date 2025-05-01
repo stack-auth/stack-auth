@@ -1,7 +1,7 @@
 import { getSharedEmailConfig, sendEmail } from "@/lib/emails";
 import { listPermissions } from "@/lib/permissions";
 import { getTenancy } from "@/lib/tenancies";
-import { prismaClient } from "@/prisma-client";
+import { oldDeprecatedPrismaClient } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { KnownErrors } from "@stackframe/stack-shared";
 import { yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
@@ -28,7 +28,7 @@ export const POST = createSmartRouteHandler({
 
 
     // Get the API key and revoke it. We use a transaction to ensure we do not send emails multiple times.
-    const updatedApiKey = await prismaClient.$transaction(async (tx) => {
+    const updatedApiKey = await oldDeprecatedPrismaClient.$transaction(async (tx) => {
       // Find the API key in the database
       const apiKey = await tx.projectApiKey.findUnique({
         where: {
@@ -82,7 +82,7 @@ export const POST = createSmartRouteHandler({
     if (updatedApiKey.projectUserId) {
       // For user API keys, notify the user
 
-      const projectUser = await prismaClient.projectUser.findUnique({
+      const projectUser = await oldDeprecatedPrismaClient.projectUser.findUnique({
         where: {
           tenancyId_projectUserId: {
             tenancyId: updatedApiKey.tenancyId,
@@ -107,7 +107,7 @@ export const POST = createSmartRouteHandler({
     } else if (updatedApiKey.teamId) {
       // For team API keys, notify users with manage_api_keys permission
 
-      const userIdsWithManageApiKeysPermission = await prismaClient.$transaction(async (tx) => {
+      const userIdsWithManageApiKeysPermission = await oldDeprecatedPrismaClient.$transaction(async (tx) => {
         const tenancy = await getTenancy(updatedApiKey.tenancyId);
 
         if (!tenancy) {
@@ -130,7 +130,7 @@ export const POST = createSmartRouteHandler({
       });
 
 
-      const usersWithManageApiKeysPermission = await prismaClient.projectUser.findMany({
+      const usersWithManageApiKeysPermission = await oldDeprecatedPrismaClient.projectUser.findMany({
         where: {
           tenancyId: updatedApiKey.tenancyId,
           projectUserId: {
@@ -152,7 +152,7 @@ export const POST = createSmartRouteHandler({
       }
     }
 
-    const project = await prismaClient.project.findUnique({
+    const project = await oldDeprecatedPrismaClient.project.findUnique({
       where: {
         id: updatedApiKey.projectId,
       },

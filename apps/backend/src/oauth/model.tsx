@@ -3,7 +3,7 @@ import { checkApiKeySet } from "@/lib/internal-api-keys";
 import { validateRedirectUrl } from "@/lib/redirect-urls";
 import { getSoleTenancyFromProjectBranch } from "@/lib/tenancies";
 import { decodeAccessToken, generateAccessToken } from "@/lib/tokens";
-import { prismaClient } from "@/prisma-client";
+import { oldDeprecatedPrismaClient } from "@/prisma-client";
 import { AuthorizationCode, AuthorizationCodeModel, Client, Falsey, RefreshToken, Token, User } from "@node-oauth/oauth2-server";
 import { PrismaClientKnownRequestError } from "@prisma/client/runtime/library";
 import { KnownErrors } from "@stackframe/stack-shared";
@@ -96,7 +96,7 @@ export class OAuthModel implements AuthorizationCodeModel {
       const refreshToken = await this.generateRefreshToken(client, user, scope);
       // save it in user, then we just access it in refresh
       // HACK: This is a hack to ensure the refresh token is already there so we can associate the access token with it
-      const newRefreshToken = await prismaClient.projectUserRefreshToken.create({
+      const newRefreshToken = await oldDeprecatedPrismaClient.projectUserRefreshToken.create({
         data: {
           refreshToken,
           projectUser: {
@@ -125,7 +125,7 @@ export class OAuthModel implements AuthorizationCodeModel {
 
     if (user.refreshTokenId) {
       const tenancy = await getSoleTenancyFromProjectBranch(...getProjectBranchFromClientId(client.id));
-      const refreshToken = await prismaClient.projectUserRefreshToken.findUniqueOrThrow({
+      const refreshToken = await oldDeprecatedPrismaClient.projectUserRefreshToken.findUniqueOrThrow({
         where: {
           tenancyId_id: {
             tenancyId: tenancy.id,
@@ -142,7 +142,7 @@ export class OAuthModel implements AuthorizationCodeModel {
   async saveToken(token: Token, client: Client, user: User): Promise<Token | Falsey> {
     if (token.refreshToken) {
       const tenancy = await getSoleTenancyFromProjectBranch(...getProjectBranchFromClientId(client.id));
-      const projectUser = await prismaClient.projectUser.findUniqueOrThrow({
+      const projectUser = await oldDeprecatedPrismaClient.projectUser.findUniqueOrThrow({
         where: {
           tenancyId_projectUserId: {
             tenancyId: tenancy.id,
@@ -160,7 +160,7 @@ export class OAuthModel implements AuthorizationCodeModel {
       }
 
 
-      await prismaClient.projectUserRefreshToken.upsert({
+      await oldDeprecatedPrismaClient.projectUserRefreshToken.upsert({
         where: {
           tenancyId_id: {
             tenancyId: tenancy.id,
@@ -227,7 +227,7 @@ export class OAuthModel implements AuthorizationCodeModel {
   }
 
   async getRefreshToken(refreshToken: string): Promise<RefreshToken | Falsey> {
-    const token = await prismaClient.projectUserRefreshToken.findUnique({
+    const token = await oldDeprecatedPrismaClient.projectUserRefreshToken.findUnique({
       where: {
         refreshToken,
       },
@@ -282,7 +282,7 @@ export class OAuthModel implements AuthorizationCodeModel {
     }
     assertScopeIsValid(code.scope);
     const tenancy = await getSoleTenancyFromProjectBranch(...getProjectBranchFromClientId(client.id));
-    await prismaClient.projectUserAuthorizationCode.create({
+    await oldDeprecatedPrismaClient.projectUserAuthorizationCode.create({
       data: {
         authorizationCode: code.authorizationCode,
         codeChallenge: code.codeChallenge || "",
@@ -310,7 +310,7 @@ export class OAuthModel implements AuthorizationCodeModel {
   }
 
   async getAuthorizationCode(authorizationCode: string): Promise<AuthorizationCode | Falsey> {
-    const code = await prismaClient.projectUserAuthorizationCode.findUnique({
+    const code = await oldDeprecatedPrismaClient.projectUserAuthorizationCode.findUnique({
       where: {
         authorizationCode,
       },
@@ -350,7 +350,7 @@ export class OAuthModel implements AuthorizationCodeModel {
 
   async revokeAuthorizationCode(code: AuthorizationCode): Promise<boolean> {
     try {
-      const deletedCode = await prismaClient.projectUserAuthorizationCode.delete({
+      const deletedCode = await oldDeprecatedPrismaClient.projectUserAuthorizationCode.delete({
         where: {
           authorizationCode: code.authorizationCode,
         }

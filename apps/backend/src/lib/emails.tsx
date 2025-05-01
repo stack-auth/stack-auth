@@ -1,5 +1,5 @@
 import { getProject } from '@/lib/projects';
-import { prismaClient } from '@/prisma-client';
+import { oldDeprecatedPrismaClient } from '@/prisma-client';
 import { traceSpan } from '@/utils/telemetry';
 import { TEditorConfiguration } from '@stackframe/stack-emails/dist/editor/documents/editor/core';
 import { EMAIL_TEMPLATES_METADATA, renderEmailTemplate } from '@stackframe/stack-emails/dist/utils';
@@ -19,7 +19,7 @@ export async function getEmailTemplate(projectId: string, type: keyof typeof EMA
     throw new Error("Project not found");
   }
 
-  const template = await prismaClient.emailTemplate.findUnique({
+  const template = await oldDeprecatedPrismaClient.emailTemplate.findUnique({
     where: {
       projectId_type: {
         projectId,
@@ -229,7 +229,7 @@ export async function sendEmailWithoutRetries(options: SendEmailOptions): Promis
   message?: string,
 }>> {
   const res = await _sendEmailWithoutRetries(options);
-  await prismaClient.sentEmail.create({
+  await oldDeprecatedPrismaClient.sentEmail.create({
     data: {
       tenancyId: options.tenancyId,
       to: typeof options.to === 'string' ? [options.to] : options.to,

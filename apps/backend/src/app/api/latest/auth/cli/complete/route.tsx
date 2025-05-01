@@ -1,4 +1,4 @@
-import { prismaClient } from "@/prisma-client";
+import { oldDeprecatedPrismaClient } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { adaptSchema, clientOrHigherAuthTypeSchema, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
 import { StatusError } from "@stackframe/stack-shared/dist/utils/errors";
@@ -25,7 +25,7 @@ export const POST = createSmartRouteHandler({
   }),
   async handler({ auth: { tenancy }, body: { login_code, refresh_token } }) {
     // Find the CLI auth attempt
-    const cliAuth = await prismaClient.cliAuthAttempt.findUnique({
+    const cliAuth = await oldDeprecatedPrismaClient.cliAuthAttempt.findUnique({
       where: {
         loginCode: login_code,
         refreshToken: null,
@@ -44,7 +44,7 @@ export const POST = createSmartRouteHandler({
     }
 
     // Update with refresh token
-    await prismaClient.cliAuthAttempt.update({
+    await oldDeprecatedPrismaClient.cliAuthAttempt.update({
       where: {
         tenancyId_id: {
           tenancyId: tenancy.id,

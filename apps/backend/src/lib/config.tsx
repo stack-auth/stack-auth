@@ -9,7 +9,7 @@ import { filterUndefined, pick, typedEntries } from "@stackframe/stack-shared/di
 import { Result } from "@stackframe/stack-shared/dist/utils/results";
 import { stringCompare } from "@stackframe/stack-shared/dist/utils/strings";
 import * as yup from "yup";
-import { PrismaClientTransaction, RawQuery, prismaClient, rawQuery } from "../prisma-client";
+import { PrismaClientTransaction, RawQuery, oldDeprecatedPrismaClient, rawQuery } from "../prisma-client";
 import { DEFAULT_BRANCH_ID } from "./tenancies";
 
 type ProjectOptions = { projectId: string };
@@ -69,7 +69,7 @@ export async function validateProjectConfigOverride(options: { projectConfigOver
  * Validates a branch config override ([sanity-check valid](./README.md)), based on the given project's rendered project config.
  */
 export async function validateBranchConfigOverride(options: { branchConfigOverride: BranchConfigOverride } & ProjectOptions): Promise<Result<null, string>> {
-  return await schematicallyValidateAndReturn(branchConfigSchema, await rawQuery(prismaClient, getIncompleteProjectConfigQuery(options)), options.branchConfigOverride);
+  return await schematicallyValidateAndReturn(branchConfigSchema, await rawQuery(oldDeprecatedPrismaClient, getIncompleteProjectConfigQuery(options)), options.branchConfigOverride);
   // TODO add some more checks that depend on the base config; eg. an override config shouldn't set email server connection if isShared==true
   // (these are schematically valid, but make no sense, so we should be nice and reject them)
 }
@@ -78,7 +78,7 @@ export async function validateBranchConfigOverride(options: { branchConfigOverri
  * Validates an environment config override ([sanity-check valid](./README.md)), based on the given branch's rendered branch config.
  */
 export async function validateEnvironmentConfigOverride(options: { environmentConfigOverride: EnvironmentConfigOverride } & BranchOptions): Promise<Result<null, string>> {
-  return await schematicallyValidateAndReturn(environmentConfigSchema, await rawQuery(prismaClient, getIncompleteBranchConfigQuery(options)), options.environmentConfigOverride);
+  return await schematicallyValidateAndReturn(environmentConfigSchema, await rawQuery(oldDeprecatedPrismaClient, getIncompleteBranchConfigQuery(options)), options.environmentConfigOverride);
   // TODO add some more checks that depend on the base config; eg. an override config shouldn't set email server connection if isShared==true
   // (these are schematically valid, but make no sense, so we should be nice and reject them)
 }
@@ -87,7 +87,7 @@ export async function validateEnvironmentConfigOverride(options: { environmentCo
  * Validates an organization config override ([sanity-check valid](./README.md)), based on the given environment's rendered environment config.
  */
 export async function validateOrganizationConfigOverride(options: { organizationConfigOverride: OrganizationConfigOverride } & EnvironmentOptions): Promise<Result<null, string>> {
-  return await schematicallyValidateAndReturn(organizationConfigSchema, await rawQuery(prismaClient, getIncompleteEnvironmentConfigQuery(options)), options.organizationConfigOverride);
+  return await schematicallyValidateAndReturn(organizationConfigSchema, await rawQuery(oldDeprecatedPrismaClient, getIncompleteEnvironmentConfigQuery(options)), options.organizationConfigOverride);
   // TODO add some more checks that depend on the base config; eg. an override config shouldn't set email server connection if isShared==true
   // (these are schematically valid, but make no sense, so we should be nice and reject them)
 }

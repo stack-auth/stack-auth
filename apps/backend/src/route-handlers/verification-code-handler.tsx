@@ -1,6 +1,6 @@
 import { validateRedirectUrl } from "@/lib/redirect-urls";
 import { getSoleTenancyFromProjectBranch, Tenancy } from "@/lib/tenancies";
-import { prismaClient } from "@/prisma-client";
+import { oldDeprecatedPrismaClient } from "@/prisma-client";
 import { Prisma, VerificationCodeType } from "@prisma/client";
 import { KnownErrors } from "@stackframe/stack-shared";
 import { ProjectsCrud } from "@stackframe/stack-shared/dist/interface/crud/projects";
@@ -145,7 +145,7 @@ export function createVerificationCodeHandler<
       // To not confuse the developers, we always convert the code to lowercase
       const code = codeRaw.toLowerCase();
 
-      const verificationCode = await prismaClient.verificationCode.findUnique({
+      const verificationCode = await oldDeprecatedPrismaClient.verificationCode.findUnique({
         where: {
           projectId_branchId_code: {
             projectId: auth.project.id,
@@ -157,7 +157,7 @@ export function createVerificationCodeHandler<
       });
 
       // Increment the attempt count for all codes that match except for the first 6 characters
-      await prismaClient.verificationCode.updateMany({
+      await oldDeprecatedPrismaClient.verificationCode.updateMany({
         where: {
           projectId: auth.project.id,
           branchId: auth.branchId,
@@ -188,7 +188,7 @@ export function createVerificationCodeHandler<
 
       switch (handlerType) {
         case 'post': {
-          await prismaClient.verificationCode.update({
+          await oldDeprecatedPrismaClient.verificationCode.update({
             where: {
               projectId_branchId_code: {
                 projectId: auth.project.id,
@@ -236,7 +236,7 @@ export function createVerificationCodeHandler<
         throw new KnownErrors.RedirectUrlNotWhitelisted();
       }
 
-      const verificationCodePrisma = await prismaClient.verificationCode.create({
+      const verificationCodePrisma = await oldDeprecatedPrismaClient.verificationCode.create({
         data: {
           projectId: project.id,
           branchId,
@@ -260,7 +260,7 @@ export function createVerificationCodeHandler<
     },
     async listCodes(listOptions) {
       const { project, branchId } = parseProjectBranchCombo(listOptions);
-      const codes = await prismaClient.verificationCode.findMany({
+      const codes = await oldDeprecatedPrismaClient.verificationCode.findMany({
         where: {
           projectId: project.id,
           branchId,
@@ -276,7 +276,7 @@ export function createVerificationCodeHandler<
     },
     async revokeCode(options) {
       const { project, branchId } = parseProjectBranchCombo(options);
-      await prismaClient.verificationCode.delete({
+      await oldDeprecatedPrismaClient.verificationCode.delete({
         where: {
           projectId_branchId_id: {
             projectId: project.id,

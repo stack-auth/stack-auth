@@ -3,7 +3,7 @@ import { ensureTeamMembershipExists, ensureUserExists } from "@/lib/request-chec
 import { getTenancy } from "@/lib/tenancies";
 import { PrismaTransaction } from "@/lib/types";
 import { sendTeamMembershipDeletedWebhook, sendUserCreatedWebhook, sendUserDeletedWebhook, sendUserUpdatedWebhook } from "@/lib/webhooks";
-import { RawQuery, prismaClient, rawQuery, retryTransaction } from "@/prisma-client";
+import { RawQuery, oldDeprecatedPrismaClient, rawQuery, retryTransaction } from "@/prisma-client";
 import { createCrudHandlers } from "@/route-handlers/crud-handler";
 import { log } from "@/utils/telemetry";
 import { runAsynchronouslyAndWaitUntil } from "@/utils/vercel";
@@ -162,7 +162,7 @@ export const getUsersLastActiveAtMillis = async (projectId: string, branchId: st
     return [];
   }
 
-  const events = await prismaClient.$queryRaw<Array<{ userId: string, lastActiveAt: Date }>>`
+  const events = await oldDeprecatedPrismaClient.$queryRaw<Array<{ userId: string, lastActiveAt: Date }>>`
     SELECT data->>'userId' as "userId", MAX("eventStartedAt") as "lastActiveAt"
     FROM "Event"
     WHERE data->>'userId' = ANY(${Prisma.sql`ARRAY[${Prisma.join(userIds)}]`}) AND data->>'projectId' = ${projectId} AND COALESCE("data"->>'branchId', 'main') = ${branchId} AND "systemEventTypeIds" @> '{"$user-activity"}'
@@ -342,7 +342,7 @@ export async function getUser(options: { userId: string } & ({ projectId: string
     branchId = tenancy.branchId;
   }
 
-  const result = await rawQuery(prismaClient, getUserQuery(projectId, branchId, options.userId));
+  const result = await rawQuery(oldDeprecatedPrismaClient, getUserQuery(projectId, branchId, options.userId));
 
   // In non-prod environments, let's also call the legacy function and ensure the result is the same
   if (!getNodeEnvironment().includes("prod")) {
@@ -351,7 +351,7 @@ export async function getUser(options: { userId: string } & ({ projectId: string
       // Coincidentally, it can happen that a user is modified in the database right between these two queries.
       // While unlikely, it makes the tests flakey sometimes, so let's make sure that requesting the raw query again
       // still causes the same mismatch.
-      const newResult = await rawQuery(prismaClient, getUserQuery(projectId, branchId, options.userId));
+      const newResult = await rawQuery(oldDeprecatedPrismaClient, getUserQuery(projectId, branchId, options.userId));
       if (!deepPlainEquals(newResult, legacyResult)) {
         throw new StackAssertionError("User result mismatch", {
           result,
@@ -367,7 +367,7 @@ export async function getUser(options: { userId: string } & ({ projectId: string
 
 async function getUserLegacy(options: { projectId: string, branchId: string, userId: string }) {
   const [db, lastActiveAtMillis] = await Promise.all([
-    prismaClient.projectUser.findUnique({
+    oldDeprecatedPrismaClient.projectUser.findUnique({
       where: {
         mirroredProjectId_mirroredBranchId_projectUserId: {
           mirroredProjectId: options.projectId,
@@ -445,7 +445,7 @@ export const usersCrudHandlers = createLazyProxy(() => createCrudHandlers(usersC
       } : {},
     };
 
-    const db = await prismaClient.projectUser.findMany({
+    const db = await oldDeprecatedPrismaClient.projectUser.findMany({
       where,
       include: userFullInclude,
       orderBy: {
@@ -484,7 +484,7 @@ export const usersCrudHandlers = createLazyProxy(() => createCrudHandlers(usersC
     });
 
     const passwordHash = await getPasswordHashFromData(data);
-    const result = await retryTransaction(async (tx) => {
+    const result = await retryTransaction(oldDeprecatedPrismaClient, async (tx) => {
       await checkAuthData(tx, {
         tenancyId: auth.tenancy.id,
         primaryEmail: data.primary_email,
@@ -638,7 +638,7 @@ export const usersCrudHandlers = createLazyProxy(() => createCrudHandlers(usersC
         user: result,
       });
 
-      await prismaClient.teamMember.update({
+      await oldDeprecatedPrismaClient.teamMember.update({
         where: {
           tenancyId_projectUserId_teamId: {
             tenancyId: auth.tenancy.id,
@@ -661,7 +661,7 @@ export const usersCrudHandlers = createLazyProxy(() => createCrudHandlers(usersC
   },
   onUpdate: async ({ auth, data, params }) => {
     const passwordHash = await getPasswordHashFromData(data);
-    const result = await retryTransaction(async (tx) => {
+    const result = await retryTransaction(oldDeprecatedPrismaClient, async (tx) => {
       await ensureUserExists(tx, { tenancyId: auth.tenancy.id, userId: params.user_id });
 
       const config = auth.tenancy.completeConfig;
@@ -938,7 +938,7 @@ export const usersCrudHandlers = createLazyProxy(() => createCrudHandlers(usersC
 
       // if user password changed, reset all refresh tokens
       if (passwordHash !== undefined) {
-        await prismaClient.projectUserRefreshToken.deleteMany({
+        await oldDeprecatedPrismaClient.projectUserRefreshToken.deleteMany({
           where: {
             tenancyId: auth.tenancy.id,
             projectUserId: params.user_id,
@@ -958,7 +958,7 @@ export const usersCrudHandlers = createLazyProxy(() => createCrudHandlers(usersC
     return result;
   },
   onDelete: async ({ auth, params }) => {
-    const { teams } = await retryTransaction(async (tx) => {
+    const { teams } = await retryTransaction(oldDeprecatedPrismaClient, async (tx) => {
       await ensureUserExists(tx, { tenancyId: auth.tenancy.id, userId: params.user_id });
 
       const teams = await tx.team.findMany({

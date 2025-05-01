@@ -1,6 +1,6 @@
 import { getProject } from "@/lib/projects";
 import { DEFAULT_BRANCH_ID, getSoleTenancyFromProjectBranch } from "@/lib/tenancies";
-import { prismaClient } from "@/prisma-client";
+import { oldDeprecatedPrismaClient } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { neonAuthorizationHeaderSchema, urlSchema, yupNumber, yupObject, yupString, yupTuple } from "@stackframe/stack-shared/dist/schema-fields";
 import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
@@ -12,7 +12,7 @@ async function validateAndGetTransferInfo(authorizationHeader: string, projectId
   const [clientId, clientSecret] = decodeBasicAuthorizationHeader(authorizationHeader)!;
   const internalProject = await getProject("internal") ?? throwErr("Internal project not found");
 
-  const neonProvisionedProject = await prismaClient.neonProvisionedProject.findUnique({
+  const neonProvisionedProject = await oldDeprecatedPrismaClient.neonProvisionedProject.findUnique({
     where: {
       projectId,
       neonClientId: clientId,

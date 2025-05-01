@@ -2,7 +2,7 @@ import { getAuthContactChannel } from "@/lib/contact-channel";
 import { sendEmailFromTemplate } from "@/lib/emails";
 import { getSoleTenancyFromProjectBranch, Tenancy } from "@/lib/tenancies";
 import { createAuthTokens } from "@/lib/tokens";
-import { prismaClient } from "@/prisma-client";
+import { oldDeprecatedPrismaClient } from "@/prisma-client";
 import { createVerificationCodeHandler } from "@/route-handlers/verification-code-handler";
 import { VerificationCodeType } from "@prisma/client";
 import { KnownErrors } from "@stackframe/stack-shared";
@@ -13,7 +13,7 @@ import { createMfaRequiredError } from "../../mfa/sign-in/verification-code-hand
 
 export async function ensureUserForEmailAllowsOtp(tenancy: Tenancy, email: string): Promise<UsersCrud["Admin"]["Read"] | null> {
   const contactChannel = await getAuthContactChannel(
-    prismaClient,
+    oldDeprecatedPrismaClient,
     {
       tenancyId: tenancy.id,
       type: "EMAIL",
@@ -29,13 +29,13 @@ export async function ensureUserForEmailAllowsOtp(tenancy: Tenancy, email: strin
         // automatically merge the otp auth method with the existing account
 
         // TODO: use an existing crud handler
-        const rawProject = await prismaClient.project.findUnique({
+        const rawProject = await oldDeprecatedPrismaClient.project.findUnique({
           where: {
             id: tenancy.project.id,
           },
         });
 
-        await prismaClient.authMethod.create({
+        await oldDeprecatedPrismaClient.authMethod.create({
           data: {
             projectUserId: contactChannel.projectUser.projectUserId,
             tenancyId: tenancy.id,
@@ -108,7 +108,7 @@ export const signInVerificationCodeHandler = createVerificationCodeHandler({
   },
   async handler(tenancy, { email }) {
     const contactChannel = await getAuthContactChannel(
-      prismaClient,
+      oldDeprecatedPrismaClient,
       {
         tenancyId: tenancy.id,
         type: "EMAIL",

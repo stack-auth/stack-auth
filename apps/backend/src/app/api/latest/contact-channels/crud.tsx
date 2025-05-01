@@ -1,5 +1,5 @@
 import { ensureContactChannelDoesNotExists, ensureContactChannelExists } from "@/lib/request-checks";
-import { prismaClient, retryTransaction } from "@/prisma-client";
+import { oldDeprecatedPrismaClient, retryTransaction } from "@/prisma-client";
 import { createCrudHandlers } from "@/route-handlers/crud-handler";
 import { Prisma } from "@prisma/client";
 import { KnownErrors } from "@stackframe/stack-shared";
@@ -38,7 +38,7 @@ export const contactChannelsCrudHandlers = createLazyProxy(() => createCrudHandl
       }
     }
 
-    const contactChannel = await prismaClient.contactChannel.findUnique({
+    const contactChannel = await oldDeprecatedPrismaClient.contactChannel.findUnique({
       where: {
         tenancyId_projectUserId_id: {
           tenancyId: auth.tenancy.id,
@@ -62,7 +62,7 @@ export const contactChannelsCrudHandlers = createLazyProxy(() => createCrudHandl
       }
     }
 
-    const contactChannel = await retryTransaction(async (tx) => {
+    const contactChannel = await retryTransaction(oldDeprecatedPrismaClient, async (tx) => {
       await ensureContactChannelDoesNotExists(tx, {
         tenancyId: auth.tenancy.id,
         userId: data.user_id,
@@ -145,7 +145,7 @@ export const contactChannelsCrudHandlers = createLazyProxy(() => createCrudHandl
       }
     }
 
-    const updatedContactChannel = await retryTransaction(async (tx) => {
+    const updatedContactChannel = await retryTransaction(oldDeprecatedPrismaClient, async (tx) => {
       const existingContactChannel = await ensureContactChannelExists(tx, {
         tenancyId: auth.tenancy.id,
         userId: params.user_id,
@@ -209,7 +209,7 @@ export const contactChannelsCrudHandlers = createLazyProxy(() => createCrudHandl
       }
     }
 
-    await retryTransaction(async (tx) => {
+    await retryTransaction(oldDeprecatedPrismaClient, async (tx) => {
       await ensureContactChannelExists(tx, {
         tenancyId: auth.tenancy.id,
         userId: params.user_id,
@@ -235,7 +235,7 @@ export const contactChannelsCrudHandlers = createLazyProxy(() => createCrudHandl
       }
     }
 
-    const contactChannels = await prismaClient.contactChannel.findMany({
+    const contactChannels = await oldDeprecatedPrismaClient.contactChannel.findMany({
       where: {
         tenancyId: auth.tenancy.id,
         projectUserId: query.user_id,

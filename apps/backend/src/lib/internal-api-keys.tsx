@@ -1,6 +1,6 @@
 // TODO remove and replace with CRUD handler
 
-import { RawQuery, prismaClient, rawQuery } from '@/prisma-client';
+import { RawQuery, oldDeprecatedPrismaClient, rawQuery } from '@/prisma-client';
 import { ApiKeySet, Prisma } from '@prisma/client';
 import { InternalApiKeysCrud } from '@stackframe/stack-shared/dist/interface/crud/internal-api-keys';
 import { yupString } from '@stackframe/stack-shared/dist/schema-fields';
@@ -37,7 +37,7 @@ export function checkApiKeySetQuery(projectId: string, key: KeyType): RawQuery<b
 }
 
 export async function checkApiKeySet(projectId: string, key: KeyType): Promise<boolean> {
-  const result = await rawQuery(prismaClient, checkApiKeySetQuery(projectId, key));
+  const result = await rawQuery(oldDeprecatedPrismaClient, checkApiKeySetQuery(projectId, key));
 
   // In non-prod environments, let's also call the legacy function and ensure the result is the same
   if (!getNodeEnvironment().includes("prod")) {
@@ -106,7 +106,7 @@ export async function getApiKeySet(
       projectId,
     };
 
-  const set = await prismaClient.apiKeySet.findUnique({
+  const set = await oldDeprecatedPrismaClient.apiKeySet.findUnique({
     where,
   });
 
@@ -146,7 +146,7 @@ export const createApiKeySet = async (data: {
   has_secret_server_key: boolean,
   has_super_secret_admin_key: boolean,
 }) => {
-  const set = await prismaClient.apiKeySet.create({
+  const set = await oldDeprecatedPrismaClient.apiKeySet.create({
     data: {
       id: generateUuid(),
       projectId: data.projectId,

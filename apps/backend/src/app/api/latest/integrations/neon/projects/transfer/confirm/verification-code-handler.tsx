@@ -1,4 +1,4 @@
-import { prismaClient } from "@/prisma-client";
+import { oldDeprecatedPrismaClient } from "@/prisma-client";
 import { createVerificationCodeHandler } from "@/route-handlers/verification-code-handler";
 import { VerificationCodeType } from "@prisma/client";
 import { KnownErrors } from "@stackframe/stack-shared";
@@ -31,7 +31,7 @@ export const neonIntegrationProjectTransferCodeHandler = createVerificationCodeH
   async validate(tenancy, method, data) {
     const project = tenancy.project;
     if (project.id !== "internal") throw new StatusError(400, "This endpoint is only available for internal projects.");
-    const neonProvisionedProjects = await prismaClient.neonProvisionedProject.findMany({
+    const neonProvisionedProjects = await oldDeprecatedPrismaClient.neonProvisionedProject.findMany({
       where: {
         projectId: data.project_id,
         neonClientId: data.neon_client_id,
@@ -44,7 +44,7 @@ export const neonIntegrationProjectTransferCodeHandler = createVerificationCodeH
     const project = tenancy.project;
     if (!user) throw new KnownErrors.UserAuthenticationRequired;
 
-    await prismaClient.$transaction(async (tx) => {
+    await oldDeprecatedPrismaClient.$transaction(async (tx) => {
       const neonProvisionedProject = await tx.neonProvisionedProject.deleteMany({
         where: {
           projectId: data.project_id,

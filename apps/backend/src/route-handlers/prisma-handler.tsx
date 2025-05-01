@@ -1,4 +1,4 @@
-import { prismaClient } from "@/prisma-client";
+import { oldDeprecatedPrismaClient } from "@/prisma-client";
 import { Prisma } from "@prisma/client";
 import { GetResult } from "@prisma/client/runtime/library";
 import { CrudSchema, CrudTypeOf } from "@stackframe/stack-shared/dist/crud";
@@ -108,7 +108,7 @@ export function createPrismaCrudHandlers<
     querySchema: options.querySchema,
     onPrepare: options.onPrepare,
     onRead: wrapper(true, async (data, context) => {
-      const prisma = await (prismaClient[prismaModelName].findUnique as any)({
+      const prisma = await (oldDeprecatedPrismaClient[prismaModelName].findUnique as any)({
         include: await options.include(context),
         where: {
           ...await options.baseFields(context),
@@ -119,7 +119,7 @@ export function createPrismaCrudHandlers<
       return await prismaOrNullToCrud(prisma, context);
     }),
     onList: wrapper(false, async (data, context) => {
-      const prisma: any[] = await (prismaClient[prismaModelName].findMany as any)({
+      const prisma: any[] = await (oldDeprecatedPrismaClient[prismaModelName].findMany as any)({
         include: await options.include(context),
         where: {
           ...await options.baseFields(context),
@@ -134,7 +134,7 @@ export function createPrismaCrudHandlers<
       };
     }),
     onCreate: wrapper(false, async (data, context) => {
-      const prisma = await (prismaClient[prismaModelName].create as any)({
+      const prisma = await (oldDeprecatedPrismaClient[prismaModelName].create as any)({
         include: await options.include(context),
         data: {
           ...await options.baseFields(context),
@@ -156,13 +156,13 @@ export function createPrismaCrudHandlers<
         },
       };
       // TODO transaction here for the read and write
-      const prismaRead = await (prismaClient[prismaModelName].findUnique as any)({
+      const prismaRead = await (oldDeprecatedPrismaClient[prismaModelName].findUnique as any)({
         ...baseQuery,
       });
       if (prismaRead === null) {
         return await prismaOrNullToCrud(null, context);
       } else {
-        const prisma = await (prismaClient[prismaModelName].update as any)({
+        const prisma = await (oldDeprecatedPrismaClient[prismaModelName].update as any)({
           ...baseQuery,
           data: await crudToPrisma(data, { ...context, type: 'update' }),
         });
@@ -179,11 +179,11 @@ export function createPrismaCrudHandlers<
         },
       };
       // TODO transaction here for the read and write
-      const prismaRead = await (prismaClient[prismaModelName].findUnique as any)({
+      const prismaRead = await (oldDeprecatedPrismaClient[prismaModelName].findUnique as any)({
         ...baseQuery,
       });
       if (prismaRead !== null) {
-        await (prismaClient[prismaModelName].delete as any)({
+        await (oldDeprecatedPrismaClient[prismaModelName].delete as any)({
           ...baseQuery
         });
       }

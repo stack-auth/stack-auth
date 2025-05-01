@@ -1,5 +1,5 @@
 import { listPermissions } from "@/lib/permissions";
-import { prismaClient } from "@/prisma-client";
+import { oldDeprecatedPrismaClient } from "@/prisma-client";
 import { createCrudHandlers } from "@/route-handlers/crud-handler";
 import { SmartRequestAuth } from "@/route-handlers/smart-request";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
@@ -56,7 +56,7 @@ async function ensureUserCanManageApiKeys(
     // Check team API key permissions
     if (options.teamId !== undefined) {
       const userId = auth.user.id;
-      const hasManageApiKeysPermission = await prismaClient.$transaction(async (tx) => {
+      const hasManageApiKeysPermission = await oldDeprecatedPrismaClient.$transaction(async (tx) => {
         const permissions = await listPermissions(tx, {
           scope: 'team',
           tenancy: auth.tenancy,
@@ -194,7 +194,7 @@ function createApiKeyHandlers<Type extends "user" | "team">(type: Type) {
           type,
         });
 
-        const apiKey = await prismaClient.projectApiKey.create({
+        const apiKey = await oldDeprecatedPrismaClient.projectApiKey.create({
           data: {
             id: apiKeyId,
             projectId: auth.project.id,
@@ -236,7 +236,7 @@ function createApiKeyHandlers<Type extends "user" | "team">(type: Type) {
       handler: async ({ auth, body }) => {
         await throwIfFeatureDisabled(auth.tenancy.config, type);
 
-        const apiKey = await prismaClient.projectApiKey.findUnique({
+        const apiKey = await oldDeprecatedPrismaClient.projectApiKey.findUnique({
           where: {
             projectId: auth.project.id,
             secretApiKey: body.api_key,
@@ -290,7 +290,7 @@ function createApiKeyHandlers<Type extends "user" | "team">(type: Type) {
             teamId,
           });
 
-          const apiKeys = await prismaClient.projectApiKey.findMany({
+          const apiKeys = await oldDeprecatedPrismaClient.projectApiKey.findMany({
             where: {
               projectId: auth.project.id,
               projectUserId: userId,
@@ -310,7 +310,7 @@ function createApiKeyHandlers<Type extends "user" | "team">(type: Type) {
         onRead: async ({ auth, query, params }) => {
           await throwIfFeatureDisabled(auth.tenancy.config, type);
 
-          const apiKey = await prismaClient.projectApiKey.findUnique({
+          const apiKey = await oldDeprecatedPrismaClient.projectApiKey.findUnique({
             where: {
               tenancyId_id: {
                 tenancyId: auth.tenancy.id,
@@ -333,7 +333,7 @@ function createApiKeyHandlers<Type extends "user" | "team">(type: Type) {
         onUpdate: async ({ auth, data, params, query }) => {
           await throwIfFeatureDisabled(auth.tenancy.config, type);
 
-          const existingApiKey = await prismaClient.projectApiKey.findUnique({
+          const existingApiKey = await oldDeprecatedPrismaClient.projectApiKey.findUnique({
             where: {
               tenancyId_id: {
                 tenancyId: auth.tenancy.id,
@@ -352,7 +352,7 @@ function createApiKeyHandlers<Type extends "user" | "team">(type: Type) {
           });
 
           // Update the API key
-          const updatedApiKey = await prismaClient.projectApiKey.update({
+          const updatedApiKey = await oldDeprecatedPrismaClient.projectApiKey.update({
             where: {
               tenancyId_id: {
                 tenancyId: auth.tenancy.id,

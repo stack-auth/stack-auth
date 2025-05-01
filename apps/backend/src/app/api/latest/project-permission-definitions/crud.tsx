@@ -1,5 +1,5 @@
 import { createPermissionDefinition, deletePermissionDefinition, listPermissionDefinitions, updatePermissionDefinition } from "@/lib/permissions";
-import { retryTransaction } from "@/prisma-client";
+import { oldDeprecatedPrismaClient, retryTransaction } from "@/prisma-client";
 import { createCrudHandlers } from "@/route-handlers/crud-handler";
 import { projectPermissionDefinitionsCrud } from '@stackframe/stack-shared/dist/interface/crud/project-permissions';
 import { permissionDefinitionIdSchema, yupObject } from "@stackframe/stack-shared/dist/schema-fields";
@@ -11,7 +11,7 @@ export const projectPermissionDefinitionsCrudHandlers = createLazyProxy(() => cr
     permission_id: permissionDefinitionIdSchema.defined(),
   }),
   async onCreate({ auth, data }) {
-    return await retryTransaction(async (tx) => {
+    return await retryTransaction(oldDeprecatedPrismaClient, async (tx) => {
       return await createPermissionDefinition(tx, {
         scope: "project",
         tenancy: auth.tenancy,
@@ -20,7 +20,7 @@ export const projectPermissionDefinitionsCrudHandlers = createLazyProxy(() => cr
     });
   },
   async onUpdate({ auth, data, params }) {
-    return await retryTransaction(async (tx) => {
+    return await retryTransaction(oldDeprecatedPrismaClient, async (tx) => {
       return await updatePermissionDefinition(tx, {
         oldId: params.permission_id,
         scope: "project",
@@ -30,7 +30,7 @@ export const projectPermissionDefinitionsCrudHandlers = createLazyProxy(() => cr
     });
   },
   async onDelete({ auth, params }) {
-    return await retryTransaction(async (tx) => {
+    return await retryTransaction(oldDeprecatedPrismaClient, async (tx) => {
       await deletePermissionDefinition(tx, {
         scope: "project",
         tenancy: auth.tenancy,
