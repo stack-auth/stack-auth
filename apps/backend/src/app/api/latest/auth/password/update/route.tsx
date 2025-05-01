@@ -1,4 +1,4 @@
-import { oldDeprecatedPrismaClient, retryTransaction } from "@/prisma-client";
+import { getPrismaClientForSourceOfTruth, retryTransaction } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { KnownErrors } from "@stackframe/stack-shared";
 import { getPasswordError } from "@stackframe/stack-shared/dist/helpers/password";
@@ -40,7 +40,8 @@ export const POST = createSmartRouteHandler({
       throw passwordError;
     }
 
-    await retryTransaction(oldDeprecatedPrismaClient, async (tx) => {
+    const prisma = getPrismaClientForSourceOfTruth(tenancy.completeConfig.sourceOfTruth);
+    await retryTransaction(prisma, async (tx) => {
       const authMethods = await tx.passwordAuthMethod.findMany({
         where: {
           tenancyId: tenancy.id,

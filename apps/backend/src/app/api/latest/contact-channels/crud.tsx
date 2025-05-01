@@ -1,5 +1,5 @@
 import { ensureContactChannelDoesNotExists, ensureContactChannelExists } from "@/lib/request-checks";
-import { oldDeprecatedPrismaClient, retryTransaction } from "@/prisma-client";
+import { getPrismaClientForSourceOfTruth, retryTransaction } from "@/prisma-client";
 import { createCrudHandlers } from "@/route-handlers/crud-handler";
 import { Prisma } from "@prisma/client";
 import { KnownErrors } from "@stackframe/stack-shared";
@@ -38,7 +38,7 @@ export const contactChannelsCrudHandlers = createLazyProxy(() => createCrudHandl
       }
     }
 
-    const contactChannel = await oldDeprecatedPrismaClient.contactChannel.findUnique({
+    const contactChannel = await getPrismaClientForSourceOfTruth(auth.tenancy.completeConfig.sourceOfTruth).contactChannel.findUnique({
       where: {
         tenancyId_projectUserId_id: {
           tenancyId: auth.tenancy.id,
@@ -62,7 +62,7 @@ export const contactChannelsCrudHandlers = createLazyProxy(() => createCrudHandl
       }
     }
 
-    const contactChannel = await retryTransaction(oldDeprecatedPrismaClient, async (tx) => {
+    const contactChannel = await retryTransaction(getPrismaClientForSourceOfTruth(auth.tenancy.completeConfig.sourceOfTruth), async (tx) => {
       await ensureContactChannelDoesNotExists(tx, {
         tenancyId: auth.tenancy.id,
         userId: data.user_id,
@@ -145,7 +145,7 @@ export const contactChannelsCrudHandlers = createLazyProxy(() => createCrudHandl
       }
     }
 
-    const updatedContactChannel = await retryTransaction(oldDeprecatedPrismaClient, async (tx) => {
+    const updatedContactChannel = await retryTransaction(getPrismaClientForSourceOfTruth(auth.tenancy.completeConfig.sourceOfTruth), async (tx) => {
       const existingContactChannel = await ensureContactChannelExists(tx, {
         tenancyId: auth.tenancy.id,
         userId: params.user_id,
@@ -209,7 +209,7 @@ export const contactChannelsCrudHandlers = createLazyProxy(() => createCrudHandl
       }
     }
 
-    await retryTransaction(oldDeprecatedPrismaClient, async (tx) => {
+    await retryTransaction(getPrismaClientForSourceOfTruth(auth.tenancy.completeConfig.sourceOfTruth), async (tx) => {
       await ensureContactChannelExists(tx, {
         tenancyId: auth.tenancy.id,
         userId: params.user_id,
@@ -235,7 +235,7 @@ export const contactChannelsCrudHandlers = createLazyProxy(() => createCrudHandl
       }
     }
 
-    const contactChannels = await oldDeprecatedPrismaClient.contactChannel.findMany({
+    const contactChannels = await getPrismaClientForSourceOfTruth(auth.tenancy.completeConfig.sourceOfTruth).contactChannel.findMany({
       where: {
         tenancyId: auth.tenancy.id,
         projectUserId: query.user_id,

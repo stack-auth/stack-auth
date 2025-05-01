@@ -6,7 +6,7 @@ import { UsersCrud } from "@stackframe/stack-shared/dist/interface/crud/users";
 import { StackAssertionError, captureError } from "@stackframe/stack-shared/dist/utils/errors";
 import { filterUndefined, typedFromEntries } from "@stackframe/stack-shared/dist/utils/objects";
 import { generateUuid } from "@stackframe/stack-shared/dist/utils/uuids";
-import { RawQuery, oldDeprecatedPrismaClient, rawQuery, retryTransaction } from "../prisma-client";
+import { RawQuery, globalPrismaClient, rawQuery, retryTransaction } from "../prisma-client";
 import { overrideEnvironmentConfigOverride } from "./config";
 import { DEFAULT_BRANCH_ID } from "./tenancies";
 
@@ -55,7 +55,7 @@ export function getProjectQuery(projectId: string): RawQuery<Promise<Omit<Projec
 }
 
 export async function getProject(projectId: string): Promise<Omit<ProjectsCrud["Admin"]["Read"], "config"> | null> {
-  const result = await rawQuery(oldDeprecatedPrismaClient, getProjectQuery(projectId));
+  const result = await rawQuery(globalPrismaClient, getProjectQuery(projectId));
   return result;
 }
 
@@ -74,7 +74,7 @@ export async function createOrUpdateProject(
     data: ProjectsCrud["Admin"]["Update"],
   })
 ) {
-  const projectId = await retryTransaction(oldDeprecatedPrismaClient, async (tx) => {
+  const projectId = await retryTransaction(globalPrismaClient, async (tx) => {
     let project: Prisma.ProjectGetPayload<{}>;
     let branchId: string;
     if (options.type === "create") {

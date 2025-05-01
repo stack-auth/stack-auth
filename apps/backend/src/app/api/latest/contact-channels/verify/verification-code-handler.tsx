@@ -1,6 +1,6 @@
 import { sendEmailFromTemplate } from "@/lib/emails";
 import { getSoleTenancyFromProjectBranch } from "@/lib/tenancies";
-import { oldDeprecatedPrismaClient } from "@/prisma-client";
+import { getPrismaClientForSourceOfTruth } from "@/prisma-client";
 import { createVerificationCodeHandler } from "@/route-handlers/verification-code-handler";
 import { VerificationCodeType } from "@prisma/client";
 import { UsersCrud } from "@stackframe/stack-shared/dist/interface/crud/users";
@@ -44,7 +44,7 @@ export const contactChannelVerificationCodeHandler = createVerificationCodeHandl
     });
   },
   async handler(tenancy, { email }, data) {
-    await oldDeprecatedPrismaClient.contactChannel.update({
+    await getPrismaClientForSourceOfTruth(tenancy.completeConfig.sourceOfTruth).contactChannel.update({
       where: {
         tenancyId_projectUserId_type_value: {
           tenancyId: tenancy.id,

@@ -1,5 +1,5 @@
 import { generateAccessToken } from "@/lib/tokens";
-import { oldDeprecatedPrismaClient } from "@/prisma-client";
+import { getPrismaClientForSourceOfTruth } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { KnownErrors } from "@stackframe/stack-shared";
 import { adaptSchema, clientOrHigherAuthTypeSchema, yupNumber, yupObject, yupString, yupTuple } from "@stackframe/stack-shared/dist/schema-fields";
@@ -29,7 +29,8 @@ export const POST = createSmartRouteHandler({
   async handler({ auth: { tenancy }, headers: { "x-stack-refresh-token": refreshTokenHeaders } }, fullReq) {
     const refreshToken = refreshTokenHeaders[0];
 
-    const sessionObj = await oldDeprecatedPrismaClient.projectUserRefreshToken.findFirst({
+    const prisma = getPrismaClientForSourceOfTruth(tenancy.completeConfig.sourceOfTruth);
+    const sessionObj = await prisma.projectUserRefreshToken.findFirst({
       where: {
         tenancyId: tenancy.id,
         refreshToken,

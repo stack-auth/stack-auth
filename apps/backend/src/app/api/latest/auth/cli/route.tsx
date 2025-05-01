@@ -1,4 +1,4 @@
-import { oldDeprecatedPrismaClient } from "@/prisma-client";
+import { getPrismaClientForSourceOfTruth } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { adaptSchema, clientOrHigherAuthTypeSchema, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
 import { generateSecureRandomString } from "@stackframe/stack-shared/dist/utils/crypto";
@@ -33,7 +33,8 @@ export const POST = createSmartRouteHandler({
     const expiresAt = new Date(Date.now() + expires_in_millis);
 
     // Create a new CLI auth attempt
-    const cliAuth = await oldDeprecatedPrismaClient.cliAuthAttempt.create({
+    const prisma = getPrismaClientForSourceOfTruth(tenancy.completeConfig.sourceOfTruth);
+    const cliAuth = await prisma.cliAuthAttempt.create({
       data: {
         tenancyId: tenancy.id,
         pollingCode,

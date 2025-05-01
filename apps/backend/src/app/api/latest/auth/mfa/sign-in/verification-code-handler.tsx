@@ -1,5 +1,5 @@
 import { createAuthTokens } from "@/lib/tokens";
-import { oldDeprecatedPrismaClient } from "@/prisma-client";
+import { getPrismaClientForSourceOfTruth } from "@/prisma-client";
 import { createVerificationCodeHandler } from "@/route-handlers/verification-code-handler";
 import { verifyTOTP } from "@oslojs/otp";
 import { VerificationCodeType } from "@prisma/client";
@@ -37,7 +37,8 @@ export const mfaVerificationCodeHandler = createVerificationCodeHandler({
     body: signInResponseSchema.defined(),
   }),
   async validate(tenancy, method, data, body) {
-    const user = await oldDeprecatedPrismaClient.projectUser.findUniqueOrThrow({
+    const prisma = getPrismaClientForSourceOfTruth(tenancy.completeConfig.sourceOfTruth);
+    const user = await prisma.projectUser.findUniqueOrThrow({
       where: {
         tenancyId_projectUserId: {
           tenancyId: tenancy.id,

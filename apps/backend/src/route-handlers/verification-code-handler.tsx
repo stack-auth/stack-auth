@@ -1,6 +1,6 @@
 import { validateRedirectUrl } from "@/lib/redirect-urls";
 import { getSoleTenancyFromProjectBranch, Tenancy } from "@/lib/tenancies";
-import { oldDeprecatedPrismaClient } from "@/prisma-client";
+import { getPrismaClientForSourceOfTruth } from "@/prisma-client";
 import { Prisma, VerificationCodeType } from "@prisma/client";
 import { KnownErrors } from "@stackframe/stack-shared";
 import { ProjectsCrud } from "@stackframe/stack-shared/dist/interface/crud/projects";
@@ -145,7 +145,7 @@ export function createVerificationCodeHandler<
       // To not confuse the developers, we always convert the code to lowercase
       const code = codeRaw.toLowerCase();
 
-      const verificationCode = await oldDeprecatedPrismaClient.verificationCode.findUnique({
+      const verificationCode = await getPrismaClientForSourceOfTruth(auth.tenancy.completeConfig.sourceOfTruth).verificationCode.findUnique({
         where: {
           projectId_branchId_code: {
             projectId: auth.project.id,
@@ -157,7 +157,7 @@ export function createVerificationCodeHandler<
       });
 
       // Increment the attempt count for all codes that match except for the first 6 characters
-      await oldDeprecatedPrismaClient.verificationCode.updateMany({
+      await getPrismaClientForSourceOfTruth(auth.tenancy.completeConfig.sourceOfTruth).verificationCode.updateMany({
         where: {
           projectId: auth.project.id,
           branchId: auth.branchId,
@@ -188,7 +188,7 @@ export function createVerificationCodeHandler<
 
       switch (handlerType) {
         case 'post': {
-          await oldDeprecatedPrismaClient.verificationCode.update({
+          await getPrismaClientForSourceOfTruth(auth.tenancy.completeConfig.sourceOfTruth).verificationCode.update({
             where: {
               projectId_branchId_code: {
                 projectId: auth.project.id,
@@ -236,7 +236,7 @@ export function createVerificationCodeHandler<
         throw new KnownErrors.RedirectUrlNotWhitelisted();
       }
 
-      const verificationCodePrisma = await oldDeprecatedPrismaClient.verificationCode.create({
+      const verificationCodePrisma = await getPrismaClientForSourceOfTruth(tenancy.completeConfig.sourceOfTruth).verificationCode.create({
         data: {
           projectId: project.id,
           branchId,
@@ -260,23 +260,26 @@ export function createVerificationCodeHandler<
     },
     async listCodes(listOptions) {
       const { project, branchId } = parseProjectBranchCombo(listOptions);
-      const codes = await oldDeprecatedPrismaClient.verificationCode.findMany({
+      const tenancy = await getSoleTenancyFromProjectBranch(project.id, branchId);
+
+      const codes = await getPrismaClientForSourceOfTruth(tenancy.completeConfig.sourceOfTruth).verificationCode.findMany({
         where: {
           projectId: project.id,
           branchId,
           type: options.type,
-          data: listOptions.dataFilter,
-          expiresAt: {
-            gt: new Date(),
-          },
           usedAt: null,
+          expiresAt: { gt: new Date() },
+          data: listOptions.dataFilter,
         },
       });
+
       return codes.map(code => createCodeObjectFromPrismaCode(code));
     },
     async revokeCode(options) {
       const { project, branchId } = parseProjectBranchCombo(options);
-      await oldDeprecatedPrismaClient.verificationCode.delete({
+      const tenancy = await getSoleTenancyFromProjectBranch(project.id, branchId);
+
+      await getPrismaClientForSourceOfTruth(tenancy.completeConfig.sourceOfTruth).verificationCode.delete({
         where: {
           projectId_branchId_id: {
             projectId: project.id,

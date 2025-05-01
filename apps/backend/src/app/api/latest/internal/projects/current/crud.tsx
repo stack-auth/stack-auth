@@ -1,6 +1,6 @@
 import { createOrUpdateProject } from "@/lib/projects";
 import { getTenancy } from "@/lib/tenancies";
-import { oldDeprecatedPrismaClient, retryTransaction } from "@/prisma-client";
+import { globalPrismaClient, retryTransaction } from "@/prisma-client";
 import { createCrudHandlers } from "@/route-handlers/crud-handler";
 import { projectsCrud } from "@stackframe/stack-shared/dist/interface/crud/projects";
 import { yupObject } from "@stackframe/stack-shared/dist/schema-fields";
@@ -29,7 +29,7 @@ export const projectsCrudHandlers = createLazyProxy(() => createCrudHandlers(pro
     };
   },
   onDelete: async ({ auth }) => {
-    await retryTransaction(oldDeprecatedPrismaClient, async (tx) => {
+    await retryTransaction(globalPrismaClient, async (tx) => {
       await tx.project.delete({
         where: {
           id: auth.project.id

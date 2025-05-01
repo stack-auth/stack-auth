@@ -1,4 +1,4 @@
-import { oldDeprecatedPrismaClient } from '@/prisma-client';
+import { getPrismaClientForSourceOfTruth } from '@/prisma-client';
 import { traceSpan } from '@/utils/telemetry';
 import { Prisma } from '@prisma/client';
 import { KnownErrors } from '@stackframe/stack-shared';
@@ -121,7 +121,7 @@ export async function createAuthTokens(options: {
   const refreshToken = generateSecureRandomString();
 
   try {
-    const refreshTokenObj = await oldDeprecatedPrismaClient.projectUserRefreshToken.create({
+    const refreshTokenObj = await getPrismaClientForSourceOfTruth(options.tenancy.completeConfig.sourceOfTruth).projectUserRefreshToken.create({
       data: {
         tenancyId: options.tenancy.id,
         projectUserId: options.projectUserId,

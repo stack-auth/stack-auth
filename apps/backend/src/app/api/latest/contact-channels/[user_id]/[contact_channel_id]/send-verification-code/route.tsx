@@ -1,5 +1,5 @@
 import { usersCrudHandlers } from "@/app/api/latest/users/crud";
-import { oldDeprecatedPrismaClient } from "@/prisma-client";
+import { getPrismaClientForSourceOfTruth } from "@/prisma-client";
 import { CrudHandlerInvocationError } from "@/route-handlers/crud-handler";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { KnownErrors } from "@stackframe/stack-shared";
@@ -53,7 +53,7 @@ export const POST = createSmartRouteHandler({
       }
     }
 
-    const contactChannel = await oldDeprecatedPrismaClient.contactChannel.findUnique({
+    const contactChannel = await getPrismaClientForSourceOfTruth(auth.tenancy.completeConfig.sourceOfTruth).contactChannel.findUnique({
       where: {
         tenancyId_projectUserId_id: {
           tenancyId: auth.tenancy.id,

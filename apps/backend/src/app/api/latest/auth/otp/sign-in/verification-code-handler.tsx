@@ -2,7 +2,7 @@ import { getAuthContactChannel } from "@/lib/contact-channel";
 import { sendEmailFromTemplate } from "@/lib/emails";
 import { getSoleTenancyFromProjectBranch, Tenancy } from "@/lib/tenancies";
 import { createAuthTokens } from "@/lib/tokens";
-import { oldDeprecatedPrismaClient } from "@/prisma-client";
+import { getPrismaClientForSourceOfTruth } from "@/prisma-client";
 import { createVerificationCodeHandler } from "@/route-handlers/verification-code-handler";
 import { VerificationCodeType } from "@prisma/client";
 import { KnownErrors } from "@stackframe/stack-shared";
@@ -12,8 +12,9 @@ import { usersCrudHandlers } from "../../../users/crud";
 import { createMfaRequiredError } from "../../mfa/sign-in/verification-code-handler";
 
 export async function ensureUserForEmailAllowsOtp(tenancy: Tenancy, email: string): Promise<UsersCrud["Admin"]["Read"] | null> {
+  const prisma = getPrismaClientForSourceOfTruth(tenancy.completeConfig.sourceOfTruth);
   const contactChannel = await getAuthContactChannel(
-    oldDeprecatedPrismaClient,
+    prisma,
     {
       tenancyId: tenancy.id,
       type: "EMAIL",
@@ -28,14 +29,7 @@ export async function ensureUserForEmailAllowsOtp(tenancy: Tenancy, email: strin
       if (!otpAuthMethod) {
         // automatically merge the otp auth method with the existing account
 
-        // TODO: use an existing crud handler
-        const rawProject = await oldDeprecatedPrismaClient.project.findUnique({
-          where: {
-            id: tenancy.project.id,
-          },
-        });
-
-        await oldDeprecatedPrismaClient.authMethod.create({
+        await prisma.authMethod.create({
           data: {
             projectUserId: contactChannel.projectUser.projectUserId,
             tenancyId: tenancy.id,
@@ -107,8 +101,9 @@ export const signInVerificationCodeHandler = createVerificationCodeHandler({
     };
   },
   async handler(tenancy, { email }) {
+    const prisma = getPrismaClientForSourceOfTruth(tenancy.completeConfig.sourceOfTruth);
     const contactChannel = await getAuthContactChannel(
-      oldDeprecatedPrismaClient,
+      prisma,
       {
         tenancyId: tenancy.id,
         type: "EMAIL",

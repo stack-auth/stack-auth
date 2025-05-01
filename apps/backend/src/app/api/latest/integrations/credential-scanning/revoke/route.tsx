@@ -1,7 +1,7 @@
 import { getSharedEmailConfig, sendEmail } from "@/lib/emails";
 import { listPermissions } from "@/lib/permissions";
 import { getTenancy } from "@/lib/tenancies";
-import { oldDeprecatedPrismaClient } from "@/prisma-client";
+import { getPrismaClientForSourceOfTruth, globalPrismaClient } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { KnownErrors } from "@stackframe/stack-shared";
 import { yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
@@ -25,10 +25,9 @@ export const POST = createSmartRouteHandler({
     bodyType: yupString().oneOf(["success"]).defined(),
   }),
   async handler({ body }) {
-
-
     // Get the API key and revoke it. We use a transaction to ensure we do not send emails multiple times.
-    const updatedApiKey = await oldDeprecatedPrismaClient.$transaction(async (tx) => {
+    // We don't support revoking API keys in tenancies with non-global source of truth atm.
+    const updatedApiKey = await globalPrismaClient.$transaction(async (tx) => {
       // Find the API key in the database
       const apiKey = await tx.projectApiKey.findUnique({
         where: {
@@ -78,11 +77,15 @@ export const POST = createSmartRouteHandler({
     // Get affected users and their emails
     const affectedEmails = new Set<string>();
 
-
     if (updatedApiKey.projectUserId) {
       // For user API keys, notify the user
+      const tenancy = await getTenancy(updatedApiKey.tenancyId);
+      if (!tenancy) {
+        throw new StackAssertionError("Tenancy not found");
+      }
 
-      const projectUser = await oldDeprecatedPrismaClient.projectUser.findUnique({
+      const prisma = getPrismaClientForSourceOfTruth(tenancy.completeConfig.sourceOfTruth);
+      const projectUser = await prisma.projectUser.findUnique({
         where: {
           tenancyId_projectUserId: {
             tenancyId: updatedApiKey.tenancyId,
@@ -106,14 +109,11 @@ export const POST = createSmartRouteHandler({
       }
     } else if (updatedApiKey.teamId) {
       // For team API keys, notify users with manage_api_keys permission
-
-      const userIdsWithManageApiKeysPermission = await oldDeprecatedPrismaClient.$transaction(async (tx) => {
-        const tenancy = await getTenancy(updatedApiKey.tenancyId);
-
-        if (!tenancy) {
-          throw new StackAssertionError("Tenancy not found");
-        }
-
+      const tenancy = await getTenancy(updatedApiKey.tenancyId);
+      if (!tenancy) {
+        throw new StackAssertionError("Tenancy not found");
+      }
+      const userIdsWithManageApiKeysPermission = await getPrismaClientForSourceOfTruth(tenancy.completeConfig.sourceOfTruth).$transaction(async (tx) => {
         if (!updatedApiKey.teamId) {
           throw new StackAssertionError("Team ID not specified in team API key");
         }
@@ -129,8 +129,7 @@ export const POST = createSmartRouteHandler({
         return permissions.map(p => p.user_id);
       });
 
-
-      const usersWithManageApiKeysPermission = await oldDeprecatedPrismaClient.projectUser.findMany({
+      const usersWithManageApiKeysPermission = await getPrismaClientForSourceOfTruth(tenancy.completeConfig.sourceOfTruth).projectUser.findMany({
         where: {
           tenancyId: updatedApiKey.tenancyId,
           projectUserId: {
@@ -152,7 +151,7 @@ export const POST = createSmartRouteHandler({
       }
     }
 
-    const project = await oldDeprecatedPrismaClient.project.findUnique({
+    const project = await globalPrismaClient.project.findUnique({
       where: {
         id: updatedApiKey.projectId,
       },
@@ -179,9 +178,7 @@ export const POST = createSmartRouteHandler({
       </div>
     `;
 
-
     const emailConfig = await getSharedEmailConfig("Stack Auth");
-
 
     // Send email notifications
     for (const email of affectedEmails) {

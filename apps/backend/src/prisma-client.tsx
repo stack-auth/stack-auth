@@ -23,8 +23,6 @@ if (getNodeEnvironment().includes('development')) {
 
 export const globalPrismaClient = prismaClientsStore.global;
 
-export const oldDeprecatedPrismaClient = globalPrismaClient;
-
 function getNeonPrismaClient(connectionString: string) {
   let neonPrismaClient = prismaClientsStore.neon.get(connectionString);
   if (!neonPrismaClient) {

@@ -1,5 +1,5 @@
 import { getProject } from '@/lib/projects';
-import { oldDeprecatedPrismaClient } from '@/prisma-client';
+import { getPrismaClientForSourceOfTruth, globalPrismaClient } from '@/prisma-client';
 import { traceSpan } from '@/utils/telemetry';
 import { TEditorConfiguration } from '@stackframe/stack-emails/dist/editor/documents/editor/core';
 import { EMAIL_TEMPLATES_METADATA, renderEmailTemplate } from '@stackframe/stack-emails/dist/utils';
@@ -11,7 +11,7 @@ import { runAsynchronously, wait } from '@stackframe/stack-shared/dist/utils/pro
 import { Result } from '@stackframe/stack-shared/dist/utils/results';
 import { typedToUppercase } from '@stackframe/stack-shared/dist/utils/strings';
 import nodemailer from 'nodemailer';
-import { Tenancy } from './tenancies';
+import { Tenancy, getTenancy } from './tenancies';
 
 export async function getEmailTemplate(projectId: string, type: keyof typeof EMAIL_TEMPLATES_METADATA) {
   const project = await getProject(projectId);
@@ -19,7 +19,7 @@ export async function getEmailTemplate(projectId: string, type: keyof typeof EMA
     throw new Error("Project not found");
   }
 
-  const template = await oldDeprecatedPrismaClient.emailTemplate.findUnique({
+  const template = await globalPrismaClient.emailTemplate.findUnique({
     where: {
       projectId_type: {
         projectId,
@@ -229,7 +229,12 @@ export async function sendEmailWithoutRetries(options: SendEmailOptions): Promis
   message?: string,
 }>> {
   const res = await _sendEmailWithoutRetries(options);
-  await oldDeprecatedPrismaClient.sentEmail.create({
+  const tenancy = await getTenancy(options.tenancyId);
+  if (!tenancy) {
+    throw new StackAssertionError("Tenancy not found");
+  }
+
+  await getPrismaClientForSourceOfTruth(tenancy.completeConfig.sourceOfTruth).sentEmail.create({
     data: {
       tenancyId: options.tenancyId,
       to: typeof options.to === 'string' ? [options.to] : options.to,

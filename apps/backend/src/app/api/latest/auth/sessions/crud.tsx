@@ -1,4 +1,4 @@
-import { oldDeprecatedPrismaClient } from "@/prisma-client";
+import { getPrismaClientForSourceOfTruth } from "@/prisma-client";
 import { createCrudHandlers } from "@/route-handlers/crud-handler";
 import { SmartRequestAuth } from "@/route-handlers/smart-request";
 import { Prisma } from "@prisma/client";
@@ -17,7 +17,7 @@ export const sessionsCrudHandlers = createLazyProxy(() => createCrudHandlers(ses
     user_id: userIdOrMeSchema.defined(),
   }).defined(),
   onList: async ({ auth, query }) => {
-
+    const prisma = getPrismaClientForSourceOfTruth(auth.tenancy.completeConfig.sourceOfTruth);
     const listImpersonations = auth.type === 'admin';
 
     if (auth.type === 'client') {
@@ -27,7 +27,7 @@ export const sessionsCrudHandlers = createLazyProxy(() => createCrudHandlers(ses
       }
     }
 
-    const refreshTokenObjs = await oldDeprecatedPrismaClient.projectUserRefreshToken.findMany({
+    const refreshTokenObjs = await prisma.projectUserRefreshToken.findMany({
       where: {
         tenancyId: auth.tenancy.id,
         projectUserId: query.user_id,
@@ -40,7 +40,7 @@ export const sessionsCrudHandlers = createLazyProxy(() => createCrudHandlers(ses
 
 
     // Get the latest event for each session
-    const events = await oldDeprecatedPrismaClient.$queryRaw<Array<{ sessionId: string, lastActiveAt: Date, geo: GeoInfo | null, isEndUserIpInfoGuessTrusted: boolean }>>`
+    const events = await prisma.$queryRaw<Array<{ sessionId: string, lastActiveAt: Date, geo: GeoInfo | null, isEndUserIpInfoGuessTrusted: boolean }>>`
       WITH latest_events AS (
         SELECT data->>'sessionId' as "sessionId", 
                MAX("eventStartedAt") as "lastActiveAt"
@@ -84,8 +84,8 @@ export const sessionsCrudHandlers = createLazyProxy(() => createCrudHandlers(ses
     return result;
   },
   onDelete: async ({ auth, params }: { auth: SmartRequestAuth, params: { id: string }, query: { user_id?: string } }) => {
-
-    const session = await oldDeprecatedPrismaClient.projectUserRefreshToken.findFirst({
+    const prisma = getPrismaClientForSourceOfTruth(auth.tenancy.completeConfig.sourceOfTruth);
+    const session = await prisma.projectUserRefreshToken.findFirst({
       where: {
         tenancyId: auth.tenancy.id,
         id: params.id,
@@ -101,7 +101,7 @@ export const sessionsCrudHandlers = createLazyProxy(() => createCrudHandlers(ses
       throw new KnownErrors.CannotDeleteCurrentSession();
     }
 
-    await oldDeprecatedPrismaClient.projectUserRefreshToken.deleteMany({
+    await prisma.projectUserRefreshToken.deleteMany({
       where: {
         tenancyId: auth.tenancy.id,
         id: params.id,

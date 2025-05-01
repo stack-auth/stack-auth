@@ -1,5 +1,5 @@
 import { createPermissionDefinition, deletePermissionDefinition, listPermissionDefinitions, updatePermissionDefinition } from "@/lib/permissions";
-import { oldDeprecatedPrismaClient, retryTransaction } from "@/prisma-client";
+import { getPrismaClientForSourceOfTruth, retryTransaction } from "@/prisma-client";
 import { createCrudHandlers } from "@/route-handlers/crud-handler";
 import { teamPermissionDefinitionsCrud } from '@stackframe/stack-shared/dist/interface/crud/team-permissions';
 import { permissionDefinitionIdSchema, yupObject } from "@stackframe/stack-shared/dist/schema-fields";
@@ -10,7 +10,7 @@ export const teamPermissionDefinitionsCrudHandlers = createLazyProxy(() => creat
     permission_id: permissionDefinitionIdSchema.defined(),
   }),
   async onCreate({ auth, data }) {
-    return await retryTransaction(oldDeprecatedPrismaClient, async (tx) => {
+    return await retryTransaction(getPrismaClientForSourceOfTruth(auth.tenancy.completeConfig.sourceOfTruth), async (tx) => {
       return await createPermissionDefinition(tx, {
         scope: "team",
         tenancy: auth.tenancy,
@@ -19,7 +19,7 @@ export const teamPermissionDefinitionsCrudHandlers = createLazyProxy(() => creat
     });
   },
   async onUpdate({ auth, data, params }) {
-    return await retryTransaction(oldDeprecatedPrismaClient, async (tx) => {
+    return await retryTransaction(getPrismaClientForSourceOfTruth(auth.tenancy.completeConfig.sourceOfTruth), async (tx) => {
       return await updatePermissionDefinition(tx, {
         oldId: params.permission_id,
         scope: "team",
@@ -33,12 +33,10 @@ export const teamPermissionDefinitionsCrudHandlers = createLazyProxy(() => creat
     });
   },
   async onDelete({ auth, params }) {
-    return await retryTransaction(oldDeprecatedPrismaClient, async (tx) => {
-      await deletePermissionDefinition(tx, {
-        scope: "team",
-        tenancy: auth.tenancy,
-        permissionId: params.permission_id
-      });
+    await deletePermissionDefinition({
+      scope: "team",
+      tenancy: auth.tenancy,
+      permissionId: params.permission_id
     });
   },
   async onList({ auth }) {

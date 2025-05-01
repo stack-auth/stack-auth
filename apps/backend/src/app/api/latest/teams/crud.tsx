@@ -1,6 +1,6 @@
 import { ensureTeamExists, ensureTeamMembershipExists, ensureUserExists, ensureUserTeamPermissionExists } from "@/lib/request-checks";
 import { sendTeamCreatedWebhook, sendTeamDeletedWebhook, sendTeamUpdatedWebhook } from "@/lib/webhooks";
-import { oldDeprecatedPrismaClient, retryTransaction } from "@/prisma-client";
+import { getPrismaClientForSourceOfTruth, retryTransaction } from "@/prisma-client";
 import { createCrudHandlers } from "@/route-handlers/crud-handler";
 import { runAsynchronouslyAndWaitUntil } from "@/utils/vercel";
 import { Prisma } from "@prisma/client";
@@ -68,7 +68,7 @@ export const teamsCrudHandlers = createLazyProxy(() => createCrudHandlers(teamsC
       addUserId = auth.user.id;
     }
 
-    const db = await retryTransaction(oldDeprecatedPrismaClient, async (tx) => {
+    const db = await retryTransaction(getPrismaClientForSourceOfTruth(auth.tenancy.completeConfig.sourceOfTruth), async (tx) => {
       const db = await tx.team.create({
         data: {
           displayName: data.display_name,
@@ -106,14 +106,14 @@ export const teamsCrudHandlers = createLazyProxy(() => createCrudHandlers(teamsC
   },
   onRead: async ({ params, auth }) => {
     if (auth.type === 'client') {
-      await ensureTeamMembershipExists(oldDeprecatedPrismaClient, {
+      await ensureTeamMembershipExists(getPrismaClientForSourceOfTruth(auth.tenancy.completeConfig.sourceOfTruth), {
         tenancyId: auth.tenancy.id,
         teamId: params.team_id,
         userId: auth.user?.id ?? throwErr(new KnownErrors.UserAuthenticationRequired),
       });
     }
 
-    const db = await oldDeprecatedPrismaClient.team.findUnique({
+    const db = await getPrismaClientForSourceOfTruth(auth.tenancy.completeConfig.sourceOfTruth).team.findUnique({
       where: {
         tenancyId_teamId: {
           tenancyId: auth.tenancy.id,
@@ -129,7 +129,7 @@ export const teamsCrudHandlers = createLazyProxy(() => createCrudHandlers(teamsC
     return teamPrismaToCrud(db);
   },
   onUpdate: async ({ params, auth, data }) => {
-    const db = await retryTransaction(oldDeprecatedPrismaClient, async (tx) => {
+    const db = await retryTransaction(getPrismaClientForSourceOfTruth(auth.tenancy.completeConfig.sourceOfTruth), async (tx) => {
       if (auth.type === 'client' && data.profile_image_url && !validateBase64Image(data.profile_image_url)) {
         throw new StatusError(400, "Invalid profile image URL");
       }
@@ -174,7 +174,7 @@ export const teamsCrudHandlers = createLazyProxy(() => createCrudHandlers(teamsC
     return result;
   },
   onDelete: async ({ params, auth }) => {
-    await retryTransaction(oldDeprecatedPrismaClient, async (tx) => {
+    await retryTransaction(getPrismaClientForSourceOfTruth(auth.tenancy.completeConfig.sourceOfTruth), async (tx) => {
       if (auth.type === 'client') {
         await ensureUserTeamPermissionExists(tx, {
           tenancy: auth.tenancy,
@@ -213,7 +213,7 @@ export const teamsCrudHandlers = createLazyProxy(() => createCrudHandlers(teamsC
       }
     }
 
-    const db = await oldDeprecatedPrismaClient.team.findMany({
+    const db = await getPrismaClientForSourceOfTruth(auth.tenancy.completeConfig.sourceOfTruth).team.findMany({
       where: {
         tenancyId: auth.tenancy.id,
         ...query.user_id ? {

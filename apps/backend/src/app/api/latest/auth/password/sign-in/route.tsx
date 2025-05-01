@@ -1,6 +1,6 @@
 import { getAuthContactChannel } from "@/lib/contact-channel";
 import { createAuthTokens } from "@/lib/tokens";
-import { oldDeprecatedPrismaClient } from "@/prisma-client";
+import { getPrismaClientForSourceOfTruth } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { KnownErrors } from "@stackframe/stack-shared";
 import { adaptSchema, clientOrHigherAuthTypeSchema, emailSchema, passwordSchema, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
@@ -38,8 +38,9 @@ export const POST = createSmartRouteHandler({
       throw new KnownErrors.PasswordAuthenticationNotEnabled();
     }
 
+    const prisma = getPrismaClientForSourceOfTruth(tenancy.completeConfig.sourceOfTruth);
     const contactChannel = await getAuthContactChannel(
-      oldDeprecatedPrismaClient,
+      prisma,
       {
         tenancyId: tenancy.id,
         type: "EMAIL",

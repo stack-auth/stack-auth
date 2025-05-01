@@ -1,4 +1,4 @@
-import { oldDeprecatedPrismaClient, retryTransaction } from '@/prisma-client';
+import { globalPrismaClient, retryTransaction } from '@/prisma-client';
 import { Prisma } from '@prisma/client';
 import { decodeBase64OrBase64Url, toHexString } from '@stackframe/stack-shared/dist/utils/bytes';
 import { getEnvVariable } from '@stackframe/stack-shared/dist/utils/env';
@@ -86,7 +86,7 @@ function createAdapter(options: {
 function createPrismaAdapter(idpId: string) {
   return createAdapter({
     async onUpdateUnique(model, idOrWhere, updater) {
-      return await retryTransaction(oldDeprecatedPrismaClient, async (tx) => {
+      return await retryTransaction(globalPrismaClient, async (tx) => {
         const oldAll = await tx.idPAdapterData.findMany({
           where: typeof idOrWhere === 'string' ? {
             idpId,
@@ -298,7 +298,7 @@ export async function createOidcProvider(options: { id: string, baseUrl: string 
         }
         case 'POST': {
           const authorizationCode = `${ctx.request.query.code}`;
-          const authorizationCodeObj = await oldDeprecatedPrismaClient.projectWrapperCodes.findUnique({
+          const authorizationCodeObj = await globalPrismaClient.projectWrapperCodes.findUnique({
             where: {
               idpId: "stack-preconfigured-idp:integrations/neon",
               authorizationCode,
@@ -312,7 +312,7 @@ export async function createOidcProvider(options: { id: string, baseUrl: string 
             return;
           }
 
-          await oldDeprecatedPrismaClient.projectWrapperCodes.delete({
+          await globalPrismaClient.projectWrapperCodes.delete({
             where: {
               idpId_id: {
                 idpId: authorizationCodeObj.idpId,
@@ -331,7 +331,7 @@ export async function createOidcProvider(options: { id: string, baseUrl: string 
             return;
           }
 
-          const account = await oldDeprecatedPrismaClient.idPAccountToCdfcResultMapping.create({
+          const account = await globalPrismaClient.idPAccountToCdfcResultMapping.create({
             data: {
               idpId: authorizationCodeObj.idpId,
               id: authorizationCodeObj.id,
