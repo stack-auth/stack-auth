@@ -46,7 +46,7 @@ export function AddUserDialog(props: {
       }
       await props.team.inviteUser({
         email: values.email,
-        callbackUrl: new URL(`/handler/team-invitation`, domain).toString(),
+        callbackUrl: new URL(adminApp.urls.teamInvitation, domain).toString(),
       });
       setSubmitted(true);
     } finally {
