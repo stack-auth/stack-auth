@@ -1,3 +1,4 @@
+import { DEFAULT_BRANCH_ID } from "@/lib/tenancies";
 import { DiscordProvider } from "@/oauth/providers/discord";
 import OAuth2Server from "@node-oauth/oauth2-server";
 import { ProjectsCrud } from "@stackframe/stack-shared/dist/interface/crud/projects";
@@ -39,6 +40,20 @@ const _getEnvForProvider = (provider: keyof typeof _providers) => {
     clientSecret: getEnvVariable(`STACK_${provider.toUpperCase()}_CLIENT_SECRET`),
   };
 };
+
+export function getProjectBranchFromClientId(clientId: string): [projectId: string, branchId: string] {
+  const hashIndex = clientId.indexOf("#");
+  let projectId: string;
+  let branchId: string;
+  if (hashIndex === -1) {
+    projectId = clientId;
+    branchId = DEFAULT_BRANCH_ID;
+  } else {
+    projectId = clientId.slice(0, hashIndex);
+    branchId = clientId.slice(hashIndex + 1);
+  }
+  return [projectId, branchId];
+}
 
 export async function getProvider(provider: ProjectsCrud['Admin']['Read']['config']['oauth_providers'][number]): Promise<OAuthBaseProvider> {
   if (provider.type === 'shared') {

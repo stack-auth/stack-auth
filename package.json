@@ -62,7 +62,7 @@
   "devDependencies": {
     "@changesets/cli": "^2.27.9",
     "@testing-library/react": "^15.0.7",
-    "@types/node": "^20.17.6",
+    "@types/node": "20.17.6",
     "@types/supertest": "^6.0.2",
     "@typescript-eslint/eslint-plugin": "^6.21.0",
     "@typescript-eslint/parser": "^6.21.0",
@@ -82,7 +82,9 @@
     "turbo": "^2.2.3",
     "typescript": "5.3.3",
     "vitest": "^1.6.0",
-    "wait-on": "^8.0.1"
+    "vite-tsconfig-paths": "^4.3.2",
+    "wait-on": "^8.0.1",
+    "esbuild": "^0.24.0"
   },
   "pnpm": {
     "overrides": {

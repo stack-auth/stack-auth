@@ -66,6 +66,8 @@ export const POST = createSmartRouteHandler({
     if (result.status === 'error' && result.error.errorType === 'UNKNOWN') {
       if (result.error.rawError.message && result.error.rawError.message.includes("ETIMEDOUT")) {
         errorMessage = "Timed out. Make sure the email server is running and accepting connections.";
+      } else if (result.error.rawError.code === "EMESSAGE") {
+        errorMessage = "Email server rejected the email: " + result.error.rawError.message;
       } else {
         captureError("send-test-email", new StackAssertionError("Unknown error while sending test email. We should add a better error description for the user.", {
           cause: result.error,

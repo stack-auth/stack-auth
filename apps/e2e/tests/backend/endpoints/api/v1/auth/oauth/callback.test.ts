@@ -38,7 +38,7 @@ it("should fail when inner callback has invalid provider ID", async ({ expect })
 });
 
 it("should fail when account is new and sign ups are disabled", async ({ expect }) => {
-  await Project.createAndSwitch({ config: { sign_up_enabled: false, oauth_providers: [ { id: "spotify", type: "shared", enabled: true } ] } });
+  await Project.createAndSwitch({ config: { sign_up_enabled: false, oauth_providers: [ { id: "spotify", type: "shared" } ] } });
   await InternalApiKey.createAndSetProjectKeys();
   const getInnerCallbackUrlResponse = await Auth.OAuth.getInnerCallbackUrl();
   const cookie = updateCookiesFromResponse("", getInnerCallbackUrlResponse.authorizeResponse);

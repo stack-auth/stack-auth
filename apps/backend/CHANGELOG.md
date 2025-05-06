@@ -1,5 +1,46 @@
 # @stackframe/stack-backend
 
+## 2.8.11
+
+### Patch Changes
+
+- Various changes
+- Updated dependencies
+  - @stackframe/stack-shared@2.8.11
+  - @stackframe/stack-emails@2.8.11
+
+## 2.8.10
+
+### Patch Changes
+
+- Various changes
+- Updated dependencies
+  - @stackframe/stack-shared@2.8.10
+  - @stackframe/stack-emails@2.8.10
+
+## 2.8.9
+
+### Patch Changes
+
+- Various changes
+  - @stackframe/stack-emails@2.8.9
+  - @stackframe/stack-shared@2.8.9
+
+## 2.8.8
+
+### Patch Changes
+
+- Various changes
+  - @stackframe/stack-emails@2.8.8
+  - @stackframe/stack-shared@2.8.8
+
+## 2.8.7
+
+### Patch Changes
+
+- @stackframe/stack-emails@2.8.7
+- @stackframe/stack-shared@2.8.7
+
 ## 2.8.6
 
 ### Patch Changes

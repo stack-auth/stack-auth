@@ -21,7 +21,7 @@ export const connectedAccountAccessTokenCrudHandlers = createLazyProxy(() =>crea
     }
 
     const provider = auth.tenancy.config.oauth_providers.find((p) => p.id === params.provider_id);
-    if (!provider || !provider.enabled) {
+    if (!provider) {
       throw new KnownErrors.OAuthProviderNotFoundOrNotEnabled();
     }
 
@@ -39,7 +39,7 @@ export const connectedAccountAccessTokenCrudHandlers = createLazyProxy(() =>crea
     const accessTokens = await prismaClient.oAuthAccessToken.findMany({
       where: {
         tenancyId: auth.tenancy.id,
-        oAuthProviderConfigId: params.provider_id,
+        configOAuthProviderId: params.provider_id,
         projectUserOAuthAccount: {
           projectUserId: params.user_id,
         },
@@ -61,7 +61,7 @@ export const connectedAccountAccessTokenCrudHandlers = createLazyProxy(() =>crea
     const refreshTokens = await prismaClient.oAuthToken.findMany({
       where: {
         tenancyId: auth.tenancy.id,
-        oAuthProviderConfigId: params.provider_id,
+        configOAuthProviderId: params.provider_id,
         projectUserOAuthAccount: {
           projectUserId: params.user_id,
         }
@@ -88,7 +88,7 @@ export const connectedAccountAccessTokenCrudHandlers = createLazyProxy(() =>crea
     await prismaClient.oAuthAccessToken.create({
       data: {
         tenancyId: auth.tenancy.id,
-        oAuthProviderConfigId: provider.id,
+        configOAuthProviderId: params.provider_id,
         accessToken: tokenSet.accessToken,
         providerAccountId: filteredRefreshTokens[0].providerAccountId,
         scopes: filteredRefreshTokens[0].scopes,
@@ -106,7 +106,7 @@ export const connectedAccountAccessTokenCrudHandlers = createLazyProxy(() =>crea
       await prismaClient.oAuthToken.create({
         data: {
           tenancyId: auth.tenancy.id,
-          oAuthProviderConfigId: provider.id,
+          configOAuthProviderId: params.provider_id,
           refreshToken: tokenSet.refreshToken,
           providerAccountId: filteredRefreshTokens[0].providerAccountId,
           scopes: filteredRefreshTokens[0].scopes,

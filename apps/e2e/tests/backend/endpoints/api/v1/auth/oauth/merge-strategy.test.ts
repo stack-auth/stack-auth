@@ -8,7 +8,6 @@ it("should allow duplicates, if the merge strategy is set to allow_duplicates", 
       oauth_account_merge_strategy: "allow_duplicates",
       oauth_providers: [{
         id: "spotify",
-        enabled: true,
         type: "shared",
       }],
     }
@@ -36,7 +35,6 @@ it("should not allow duplicates, if the merge strategy set to raise_error", asyn
       oauth_account_merge_strategy: "raise_error",
       oauth_providers: [{
         id: "spotify",
-        enabled: true,
         type: "shared",
       }],
     }
@@ -58,7 +56,6 @@ it("should merge accounts, if the merge strategy set to link_method", async ({ e
       oauth_account_merge_strategy: "link_method",
       oauth_providers: [{
         id: "spotify",
-        enabled: true,
         type: "shared",
       }],
     }

@@ -109,8 +109,7 @@ async function loadLoginMethods(tenancyId: string): Promise<{method: string, cou
     WITH tab AS (
       SELECT
         COALESCE(
-          soapc."type"::text,
-          poapc."type"::text,
+          CASE WHEN oaam IS NOT NULL THEN oaam."configOAuthProviderId"::text ELSE NULL END,
           CASE WHEN pam IS NOT NULL THEN 'password' ELSE NULL END,
           CASE WHEN pkm IS NOT NULL THEN 'passkey' ELSE NULL END,
           CASE WHEN oam IS NOT NULL THEN 'otp' ELSE NULL END,
@@ -120,12 +119,6 @@ async function loadLoginMethods(tenancyId: string): Promise<{method: string, cou
       FROM
         "AuthMethod" method
       LEFT JOIN "OAuthAuthMethod" oaam ON method.id = oaam."authMethodId"
-      LEFT JOIN "OAuthProviderConfig" oapc
-        ON oaam."projectConfigId" = oapc."projectConfigId" AND oaam."oauthProviderConfigId" = oapc.id
-      LEFT JOIN "StandardOAuthProviderConfig" soapc
-        ON oapc."projectConfigId" = soapc."projectConfigId" AND oapc.id = soapc.id
-      LEFT JOIN "ProxiedOAuthProviderConfig" poapc
-        ON oapc."projectConfigId" = poapc."projectConfigId" AND oapc.id = poapc.id
       LEFT JOIN "PasswordAuthMethod" pam ON method.id = pam."authMethodId"
       LEFT JOIN "PasskeyAuthMethod" pkm ON method.id = pkm."authMethodId"
       LEFT JOIN "OtpAuthMethod" oam ON method.id = oam."authMethodId"

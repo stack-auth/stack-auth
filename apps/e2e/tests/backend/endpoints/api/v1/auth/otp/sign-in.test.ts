@@ -302,7 +302,45 @@ it("should set the code to invalid after too many attempts", async ({ expect }) 
   `);
 });
 
+it("should sign in with both codes when requesting two sign in codes before using either of them", async ({ expect }) => {
+  await Auth.Otp.sendSignInCode();
+  const signInCode1 = await Auth.Otp.getSignInCodeFromMailbox();
+  await Auth.Otp.sendSignInCode();
+  const signInCode2 = await Auth.Otp.getSignInCodeFromMailbox();
 
-it.todo("should not sign in if primary e-mail changed since sign-in code was sent");
+  const res1 = await Auth.Otp.signInWithCode(signInCode1);
+  expect(res1.signInResponse).toMatchInlineSnapshot(`
+    NiceResponse {
+      "status": 200,
+      "body": {
+        "access_token": <stripped field 'access_token'>,
+        "is_new_user": true,
+        "refresh_token": <stripped field 'refresh_token'>,
+        "user_id": "<stripped UUID>",
+      },
+      "headers": Headers { <some fields may have been hidden> },
+    }
+  `);
+
+  const res2 = await Auth.Otp.signInWithCode(signInCode2);
+  expect(res2.signInResponse).toMatchInlineSnapshot(`
+    NiceResponse {
+      "status": 200,
+      "body": {
+        "access_token": <stripped field 'access_token'>,
+        "is_new_user": false,
+        "refresh_token": <stripped field 'refresh_token'>,
+        "user_id": "<stripped UUID>",
+      },
+      "headers": Headers { <some fields may have been hidden> },
+    }
+  `);
+});
+
+it.todo("should not sign in if e-mail's usedForAuth status has changed since sign-in code was sent");
+
+it.todo("should not sign in if account's otpEnabled status has changed since sign-in code was sent");
+
+it.todo("should not sign up for a new account if account was deleted after sign-in code was sent");
 
 it.todo("should verify primary e-mail");

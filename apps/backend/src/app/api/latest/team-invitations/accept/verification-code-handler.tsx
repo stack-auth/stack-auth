@@ -1,6 +1,6 @@
 import { teamMembershipsCrudHandlers } from "@/app/api/latest/team-memberships/crud";
 import { sendEmailFromTemplate } from "@/lib/emails";
-import { getSoleTenancyFromProject } from "@/lib/tenancies";
+import { getSoleTenancyFromProjectBranch } from "@/lib/tenancies";
 import { prismaClient } from "@/prisma-client";
 import { createVerificationCodeHandler } from "@/route-handlers/verification-code-handler";
 import { VerificationCodeType } from "@prisma/client";
@@ -54,7 +54,7 @@ export const teamInvitationCodeHandler = createVerificationCodeHandler({
     });
 
     await sendEmailFromTemplate({
-      tenancy: await getSoleTenancyFromProject(createOptions.project),
+      tenancy: await getSoleTenancyFromProjectBranch(createOptions.project, createOptions.branchId),
       user: null,
       email: createOptions.method.email,
       templateType: "team_invitation",

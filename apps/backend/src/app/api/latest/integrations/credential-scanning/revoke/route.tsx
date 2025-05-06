@@ -1,5 +1,5 @@
 import { getSharedEmailConfig, sendEmail } from "@/lib/emails";
-import { listUserTeamPermissions } from "@/lib/permissions";
+import { listPermissions } from "@/lib/permissions";
 import { getTenancy } from "@/lib/tenancies";
 import { prismaClient } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
@@ -118,7 +118,8 @@ export const POST = createSmartRouteHandler({
           throw new StackAssertionError("Team ID not specified in team API key");
         }
 
-        const permissions = await listUserTeamPermissions(tx, {
+        const permissions = await listPermissions(tx, {
+          scope: 'team',
           tenancy,
           teamId: updatedApiKey.teamId,
           permissionId: '$manage_api_keys',

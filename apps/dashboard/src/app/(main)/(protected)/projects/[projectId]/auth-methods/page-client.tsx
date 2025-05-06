@@ -86,7 +86,7 @@ function DisabledProvidersDialog({ open, onOpenChange }: { open?: boolean, onOpe
     .filter((id) => id.toLowerCase().includes(providerSearch.toLowerCase()))
     .map((id) => [id, oauthProviders.find((provider) => provider.id === id)] as const)
     .filter(([, provider]) => {
-      return !provider?.enabled;
+      return !provider;
     });
 
   return <ActionDialog
@@ -118,6 +118,12 @@ function DisabledProvidersDialog({ open, onOpenChange }: { open?: boolean, onOpe
                 config: { oauthProviders: newOAuthProviders },
               });
             }}
+            deleteProvider={async (id) => {
+              const newOAuthProviders = oauthProviders.filter((p) => p.id !== id);
+              await project.update({
+                config: { oauthProviders: newOAuthProviders },
+              });
+            }}
           />;
         })}
 
@@ -145,6 +151,12 @@ function OAuthActionCell({ config }: { config: AdminOAuthProviderConfig }) {
       config: { oauthProviders: newOAuthProviders },
     });
   };
+  const deleteProvider = async (id: string) => {
+    const newOAuthProviders = oauthProviders.filter((p) => p.id !== id);
+    await project.update({
+      config: { oauthProviders: newOAuthProviders },
+    });
+  };
 
   return (
     <DropdownMenu>
@@ -153,11 +165,7 @@ function OAuthActionCell({ config }: { config: AdminOAuthProviderConfig }) {
         onClose={() => setTurnOffProviderDialogOpen(false)}
         providerId={config.id}
         onConfirm={async () => {
-          await updateProvider({
-            ...config,
-            id: config.id,
-            enabled: false
-          });
+          await deleteProvider(config.id);
         }}
       />
       <ProviderSettingDialog
@@ -166,6 +174,7 @@ function OAuthActionCell({ config }: { config: AdminOAuthProviderConfig }) {
         onClose={() => setProviderSettingDialogOpen(false)}
         provider={config}
         updateProvider={updateProvider}
+        deleteProvider={deleteProvider}
       />
 
       <DropdownMenuTrigger asChild>
@@ -201,7 +210,7 @@ export default function PageClient() {
 
   const enabledProviders = allProviders
     .map((id) => [id, oauthProviders.find((provider) => provider.id === id)] as const)
-    .filter(([, provider]) => provider?.enabled);
+    .filter(([, provider]) => !!provider);
 
   return (
     <PageLayout title="Auth Methods" description="Configure how users can sign in to your app">
@@ -265,7 +274,7 @@ export default function PageClient() {
                 <div className="flex items-center gap-2">
                   <div
                     className="flex items-center justify-center w-12 h-12 rounded-md border border-gray-800"
-                    style={{ backgroundColor: BrandIcons.BRAND_COLORS[provider.id] ?? undefined }}
+                    style={{ backgroundColor: provider.id in BrandIcons.BRAND_COLORS ? BrandIcons.BRAND_COLORS[provider.id] : undefined }}
                   >
                     <BrandIcons.Mapping iconSize={24} provider={provider.id} />
                   </div>
