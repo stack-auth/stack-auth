@@ -204,3 +204,61 @@ div.stack-350h > span > span > img, img.stack-350h {
 .fern-layout-reference-content {
   grid-template-columns: repeat(1,minmax(0,1fr)) !important;
 }
+
+/* API Reference Layout Adjustments */
+/* Change API examples to be side-by-side instead of stacked */
+.fern-endpoint-code-snippets {
+  display: grid;
+  grid-template-rows: none !important;
+  grid-template-columns: 70% 30% !important;
+  gap: 1rem !important;
+}
+
+/* For mobile devices, revert to stacked layout */
+@media (max-width: 768px) {
+  .fern-endpoint-code-snippets {
+    grid-template-rows: auto !important;
+    grid-template-columns: 100% !important;
+  }
+}
+
+/* Fix for fern-endpoint-code-snippets positioning - ONLY for REST API pages */
+.fern-layout-reference-content[data-kind="api"][data-cols="2"] {
+  display: grid;
+  grid-template-columns: 50% 50% !important;
+  gap: 4rem;
+  max-width: 100%;
+  overflow-x: hidden;
+}
+
+.fern-layout-reference-content[data-kind="api"][data-cols="2"] > .fern-layout-reference-aside {
+  grid-column: 2;
+  max-width: 100%;
+  overflow-x: hidden;
+  padding-right: 10px;
+}
+
+.fern-layout-reference-content[data-kind="api"][data-cols="2"] > .fern-prose {
+  grid-column: 1;
+  max-width: 100%;
+  overflow-x: hidden;
+}
+
+/* Adjust endpoint code snippets to fit their container */
+.fern-layout-reference-content[data-kind="api"][data-cols="2"] .fern-endpoint-code-snippets {
+  width: 100%;
+  grid-template-columns: 90% !important;
+  grid-template-rows: auto !important;
+}
+
+/* Ensure code blocks don't overflow */
+.fern-layout-reference-content[data-kind="api"][data-cols="2"] .code-block,
+.fern-layout-reference-content[data-kind="api"][data-cols="2"] .code-block-inner,
+.fern-layout-reference-content[data-kind="api"][data-cols="2"] .code-block-line-content {
+  max-width: 100%;
+  overflow-x: auto;
+}
+
+.fern-layout-reference-content[data-kind="api"][data-cols="2"] .fern-scroll-area-viewport {
+  max-width: 100%;
+}
