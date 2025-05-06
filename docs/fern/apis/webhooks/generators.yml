@@ -1,2 +1,3 @@
-api: 
-  - path: ../../openapi/webhooks.yaml
+api:
+  specs:
+    - openapi: ../../openapi/webhooks.yaml

@@ -1,2 +1,3 @@
-api: 
-  - path: ../../openapi/admin.yaml
+api:
+  specs:
+    - openapi: ../../openapi/admin.yaml
