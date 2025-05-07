@@ -42,6 +42,11 @@ type Team = {
   listInvitations(): Promise<{ ... }[]>;  //$stack-link-to:#teamlistinvitations
   // NEXT_LINE_PLATFORM react-like
    ⤷ useInvitations(): { ... }[];  //$stack-link-to:#teamuseinvitations
+  
+  createApiKey(options): Promise<TeamApiKeyFirstView>;  //$stack-link-to:#teamcreateapikeyoptions
+  listApiKeys(): Promise<TeamApiKey[]>;  //$stack-link-to:#teamlistapikeys
+  // NEXT_LINE_PLATFORM react-like
+   ⤷ useApiKeys(): TeamApiKey[];  //$stack-link-to:#teamuseapikeys
 };
 ```
 
@@ -421,7 +426,121 @@ invitations.forEach(invitation => {
 </div></div><div className="stack-content">
 
 </div><div className="stack-full-size">
-<Markdown src="../../snippets/big-divider.mdx" />
+<Markdown src="../../snippets/divider.mdx" />
+
+{/* END_PLATFORM */}
+
+## `team.createApiKey(options)`
+</div><div className="stack-content">
+
+Creates a new API key for the team.
+
+### Parameters
+
+<div className="indented">
+  <ParamField path="options" type="object" required>
+    An object containing multiple properties.
+    <Accordion title={<span className="accordion-show-properties" />}>
+      <ParamField path="name" type="string" required>
+        The name of the API key.
+      </ParamField>
+
+      <ParamField path="description" type="string">
+        The description of the API key.
+      </ParamField>
+
+      <ParamField path="expiresAt" type="Date" required>
+        The expiration date of the API key.
+      </ParamField>
+    </Accordion>
+  </ParamField>
+</div>
+
+### Returns
+
+<div className="indented">
+  `Promise<TeamApiKeyFirstView>`
+</div>
+
+</div><div className="stack-aside"><div className="stack-sticky">
+### Signature
+
+```typescript
+declare function createApiKey(options: {
+  name: string;
+  description: string;
+  expiresAt: Date;
+}): Promise<TeamApiKeyFirstView>;
+```
+
+### Examples
+
+<div className="small-codeblock-tabs"><CodeBlocks>
+```typescript Creating a new API key
+await team.createApiKey({
+  name: 'New API Key',
+  description: 'This is a new API key',
+  expiresAt: new Date('2024-01-01'),
+});
+```
+<Markdown src="../../snippets/always-tab-codeblock.mdx" /></CodeBlocks></div>
+</div></div><div className="stack-content">
+
+</div><div className="stack-full-size">
+<Markdown src="../../snippets/divider.mdx" />
+
+
+## `team.listApiKeys()`
+</div><div className="stack-content">
+
+Gets a list of API keys for the team.
+
+### Parameters
+
+<div className="indented">
+  None.
+</div>
+
+### Returns
+
+<div className="indented">
+  `Promise<TeamApiKey[]>`
+</div>
+
+</div><div className="stack-aside"><div className="stack-sticky">
+### Signature
+
+```typescript
+declare function listApiKeys(): Promise<TeamApiKey[]>;
+```
+
+### Examples
+
+<div className="small-codeblock-tabs"><CodeBlocks>
+```typescript Listing API keys
+const apiKeys = await team.listApiKeys();
+apiKeys.forEach(key => {
+  console.log(key.id, key.name);
+});
+```
+<Markdown src="../../snippets/always-tab-codeblock.mdx" /></CodeBlocks></div>
+</div></div><div className="stack-content">
+
+</div><div className="stack-full-size">
+<Markdown src="../../snippets/divider.mdx" />
+
+{/* IF_PLATFORM next */}
+
+## `team.useApiKeys()`
+</div><div className="stack-content">
+
+<Markdown src="../../snippets/use-on-server-callout.mdx" />
+
+Functionally equivalent to [`listApiKeys()`](#teamlistapikeys), but as a React hook.
+
+</div><div className="stack-full-size">
+
+<Markdown src="../../snippets/divider.mdx" />
 
 {/* END_PLATFORM */}
 
