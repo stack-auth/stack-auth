@@ -1,4 +1,3 @@
-
 tabs:
   documentation:
     display-name: Documentation
@@ -78,6 +77,9 @@ navigation:
           - page: Permissions & RBAC
             icon: fa-regular fa-user-lock
             path: ./docs/pages-{platform}/concepts/permissions.mdx
+          - page: API Keys
+            icon: fa-regular fa-key
+            path: ./docs/pages-{platform}/concepts/api-keys.mdx
           - page: Webhooks
             icon: fa-regular fa-webhook
             path: ./docs/pages-{platform}/concepts/webhooks.mdx
@@ -202,6 +204,16 @@ navigation:
               - link: ServerContactChannel
                 icon: fa-duotone fa-square-t
                 href: /sdk/types/contact-channel#servercontactchannel
+          - section: API Key
+            icon: fa-duotone fa-square-t
+            path: ./docs/pages-{platform}/sdk/types/api-key.mdx
+            contents:
+              - link: UserApiKey
+                icon: fa-duotone fa-square-t
+                href: /sdk/types/api-key#userapikey
+              - link: TeamApiKey
+                icon: fa-duotone fa-square-t
+                href: /sdk/types/api-key#teamapikey
           - page: Project
             icon: fa-duotone fa-square-t
             path: ./docs/pages-{platform}/sdk/types/project.mdx

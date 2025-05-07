@@ -3,7 +3,7 @@ import { Button } from "@stackframe/stack-ui";
 import { useState } from "react";
 import { CreateApiKeyDialog, ShowApiKeyDialog } from "../../../components/api-key-dialogs";
 import { ApiKeyTable } from "../../../components/api-key-table";
-import { useUser } from "../../../lib/hooks";
+import { useStackApp, useUser } from "../../../lib/hooks";
 import { TeamApiKeyFirstView } from "../../../lib/stack-app/api-keys";
 import { Team } from "../../../lib/stack-app/teams";
 import { useTranslation } from "../../../lib/translations";
@@ -13,13 +13,16 @@ import { Section } from "../section";
 export function TeamApiKeysSection(props: { team: Team }) {
   const user = useUser({ or: 'redirect' });
   const team = user.useTeam(props.team.id);
+  const stackApp = useStackApp();
+  const project = stackApp.useProject();
 
   if (!team) {
     throw new StackAssertionError("Team not found");
   }
 
+  const teamApiKeysEnabled = project.config.allowTeamApiKeys;
   const manageApiKeysPermission = user.usePermission(props.team, '$manage_api_keys');
-  if (!manageApiKeysPermission) {
+  if (!manageApiKeysPermission || !teamApiKeysEnabled) {
     return null;
   }
 

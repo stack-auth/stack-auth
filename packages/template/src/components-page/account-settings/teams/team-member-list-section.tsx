@@ -38,7 +38,12 @@ function MemberListSectionInner(props: { team: Team }) {
                   <UserAvatar user={teamProfile} />
                 </TableCell>
                 <TableCell>
-                  <Typography>{teamProfile.displayName}</Typography>
+                  {teamProfile.displayName && (
+                    <Typography>{teamProfile.displayName}</Typography>
+                  )}
+                  {!teamProfile.displayName && (
+                    <Typography className="text-muted-foreground italic">{t("No display name set")}</Typography>
+                  )}
                 </TableCell>
               </TableRow>
             ))}
