@@ -150,7 +150,10 @@ function createApiKeyHandlers<Type extends "user" | "team">(type: Type) {
   return {
     create: createSmartRouteHandler({
       metadata: {
-        hidden: true,
+        hidden: false,
+        description: "Create a new API key for a user or team",
+        summary: "Create API key",
+        tags: ["API Keys"],
       },
       request: yupObject({
         auth: yupObject({
@@ -218,6 +221,12 @@ function createApiKeyHandlers<Type extends "user" | "team">(type: Type) {
       },
     }),
     check: createSmartRouteHandler({
+      metadata: {
+        hidden: false,
+        description: `Validate a ${type} API key`,
+        summary: `Check ${type} API key validity`,
+        tags: ["API Keys"],
+      },
       request: yupObject({
         auth: yupObject({
           type: serverOrHigherAuthTypeSchema,

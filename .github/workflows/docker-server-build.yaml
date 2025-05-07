@@ -62,5 +62,6 @@ jobs:
           context: .
           file: ./docker/server/Dockerfile
           push: ${{ steps.push-condition.outputs.should_push }}
+          platforms: linux/amd64,linux/arm64
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
