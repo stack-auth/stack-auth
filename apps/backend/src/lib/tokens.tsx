@@ -43,7 +43,7 @@ export const oauthCookieSchema = yupObject({
   afterCallbackRedirectUrl: yupString().optional(),
 });
 
-const jwtIssuer = "https://access-token.jwt-signature.stack-auth.com";
+const jwtIssuer = "https://api.stack-auth.com";
 
 export async function decodeAccessToken(accessToken: string) {
   return await traceSpan("decoding access token", async (span) => {
