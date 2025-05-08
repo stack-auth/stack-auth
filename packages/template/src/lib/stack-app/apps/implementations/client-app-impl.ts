@@ -1266,6 +1266,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
   async redirectToAccountSettings(options?: RedirectToOptions) { return await this._redirectToHandler("accountSettings", options); }
   async redirectToError(options?: RedirectToOptions) { return await this._redirectToHandler("error", options); }
   async redirectToTeamInvitation(options?: RedirectToOptions) { return await this._redirectToHandler("teamInvitation", options); }
+  async redirectToMfa(options?: RedirectToOptions) { return await this._redirectToHandler("mfa", options); }
 
   async sendForgotPasswordEmail(email: string, options?: { callbackUrl?: string }): Promise<Result<undefined, KnownErrors["UserNotFound"]>> {
     return await this._interface.sendForgotPasswordEmail(email, options?.callbackUrl ?? constructRedirectUrl(this.urls.passwordReset, "callbackUrl"));
@@ -1435,20 +1436,18 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
   }
 
   /**
-   * @deprecated
-   * TODO remove
+   * Handles MFA verification by redirecting to the OTP page
    */
-  protected async _experimentalMfa(error: KnownErrors['MultiFactorAuthenticationRequired'], session: InternalSession) {
-    const otp = prompt('Please enter the six-digit TOTP code from your authenticator app.');
-    if (!otp) {
-      throw new KnownErrors.InvalidTotpCode();
+  protected async _experimentalMfa(error: KnownErrors['MultiFactorAuthenticationRequired'], session: InternalSession): Promise<never> {
+    // Store the attempt code in session storage so the OTP page can access it
+    if (typeof window !== 'undefined') {
+      window.sessionStorage.setItem('stack_mfa_attempt_code', (error.details as any)?.attempt_code ?? throwErr("attempt code missing"));
     }
 
-    return await this._interface.totpMfa(
-      (error.details as any)?.attempt_code ?? throwErr("attempt code missing"),
-      otp,
-      session
-    );
+    // Redirect to the MFA page
+    await this.redirectToMfa();
+
+    throw new StackAssertionError("we should have redirected in redirectToMfa()");
   }
 
   /**
@@ -1666,6 +1665,41 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
     }
 
     return Result.error(new KnownErrors.CliAuthError("Timed out waiting for CLI authentication."));
+  }
+
+  /*
+   * Completes the MFA sign-in process by verifying the provided OTP code
+   * @param totp The TOTP (Time-based One-Time Password) provided by the user
+   * @param code The Attempt code provided by the user
+   * @param options Additional options for the sign-in process
+   * @returns A Result indicating success or failure
+   */
+  async signInWithMfa(totp: string, code: string, options?: { noRedirect?: boolean }): Promise<Result<undefined, KnownErrors["VerificationCodeError"] | KnownErrors["InvalidTotpCode"]>> {
+    this._ensurePersistentTokenStore();
+    let result;
+    try {
+      result = await this._catchMfaRequiredError(async () => {
+        return await this._interface.signInWithMfa(totp, code);
+      });
+    } catch (e) {
+      if (e instanceof KnownErrors.InvalidTotpCode) {
+        return Result.error(e);
+      }
+      throw e;
+    }
+
+    if (result.status === 'ok') {
+      await this._signInToAccountWithTokens(result.data);
+      if (!(options?.noRedirect)) {
+        if (result.data.newUser) {
+          await this.redirectToAfterSignUp({ replace: true });
+        } else {
+          await this.redirectToAfterSignIn({ replace: true });
+        }
+      }
+      return Result.ok(undefined);
+    }
+    return Result.error(result.error);
   }
 
   async signInWithPasskey(): Promise<Result<undefined, KnownErrors["PasskeyAuthenticationFailed"] | KnownErrors["InvalidTotpCode"] | KnownErrors["PasskeyWebAuthnError"]>> {
