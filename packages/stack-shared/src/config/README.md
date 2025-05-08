@@ -15,8 +15,8 @@ All the logic required for generic usage of the config format are in `format/`. 
 **Stack Auth**: There are four levels, project, branch, environment, organization.
 - Base config: The defaults that come with Stack Auth
 - `$Level` config override: Overrides that are applied to the base config (in the following order: project -> branch -> environment -> organization)
-- `$Level` incomplete config: The base config after some overrides have been applied
-- `$Level` rendered config: An incomplete config with those fields removed that can be overridden by a future override, deeply merged into `configDefaults` (with properties in the former taking precedence)
+- `$Level` incomplete config: The base config after some overrides have been applied, deeply merged into `configDefaults`
+- `$Level` rendered config: An incomplete config with those fields removed that can be overridden by a future override
 - Complete config: The organization rendered config.
 
 **Validation**: A config override can be both "schematically valid" and "sanity-check valid" (I would call it "semantically valid" but that word is so easily confused with "schematically"). The `validateXYZ` functions in `config.ts` check for the latter, while the yup schemas in `schema.ts` check for the former. The main difference is that whether an override is schematically valid depends only on the override itself; while its sanity-check validity depends on the base config that it overrides.

@@ -1,9 +1,8 @@
 import * as yup from "yup";
 import * as schemaFields from "../schema-fields";
-import { yupBoolean, yupObject, yupRecord, yupString } from "../schema-fields";
+import { yupBoolean, yupObject, yupRecord, yupString, yupUnion } from "../schema-fields";
 import { allProviders } from "../utils/oauth";
 import { DeepMerge, DeepPartial, get, has, isObjectLike, mapValues, set } from "../utils/objects";
-import { PrettifyType } from "../utils/types";
 import { Config, NormalizesTo } from "./format";
 
 // NOTE: The validation schemas in here are all schematic validators, not sanity-check validators.
@@ -107,6 +106,16 @@ export const branchConfigSchema = projectConfigSchema.concat(yupObject({
 
 
 export const environmentConfigSchema = branchConfigSchema.concat(yupObject({
+  sourceOfTruth: yupUnion(
+    yupObject({
+      type: yupString().oneOf(['neon']).optional(),
+      connectionString: schemaFields.urlSchema.optional(),
+    }).defined(),
+    yupObject({
+      type: yupString().oneOf(['hosted']).optional(),
+    }).defined(),
+  ).optional(),
+
   auth: branchConfigSchema.getNested("auth").concat(yupObject({
     oauth: branchConfigSchema.getNested("auth").getNested("oauth").concat(yupObject({
       providers: yupRecord(
@@ -148,7 +157,7 @@ export const environmentConfigSchema = branchConfigSchema.concat(yupObject({
   })),
 }));
 
-export const organizationConfigSchema = environmentConfigSchema.concat(yupObject({}));
+export const organizationConfigSchema = environmentConfigSchema.omit(['sourceOfTruth']).concat(yupObject({}));
 
 
 // Defaults
@@ -158,7 +167,11 @@ export const projectConfigDefaults = {} satisfies DeepReplaceAllowFunctionsForOb
 
 export const branchConfigDefaults = {} satisfies DeepReplaceAllowFunctionsForObjects<BranchConfigStrippedNormalizedOverride>;
 
-export const environmentConfigDefaults = {} satisfies DeepReplaceAllowFunctionsForObjects<EnvironmentConfigStrippedNormalizedOverride>;
+export const environmentConfigDefaults = {
+  sourceOfTruth: {
+    type: 'hosted',
+  },
+} satisfies DeepReplaceAllowFunctionsForObjects<EnvironmentConfigStrippedNormalizedOverride>;
 
 export const organizationConfigDefaults = {
   rbac: {
@@ -253,7 +266,7 @@ export type BranchConfigNormalizedOverride = yup.InferType<typeof branchConfigSc
 export type EnvironmentConfigNormalizedOverride = yup.InferType<typeof environmentConfigSchema>;
 export type OrganizationConfigNormalizedOverride = yup.InferType<typeof organizationConfigSchema>;
 
-// Normalized overrides, without the properties that may be overridden still
+// Normalized overrides, but only the fields that will NOT be overridden by a future level anymore
 export type ProjectConfigStrippedNormalizedOverride = Omit<ProjectConfigNormalizedOverride,
   | keyof BranchConfigNormalizedOverride
   | keyof EnvironmentConfigNormalizedOverride
@@ -281,13 +294,22 @@ export type EnvironmentConfigOverrideOverride = Config & DeepPartial<Environment
 export type OrganizationConfigOverrideOverride = Config & DeepPartial<OrganizationConfigOverride>;
 
 // Incomplete configs
-export type ProjectIncompleteConfig = ProjectConfigNormalizedOverride;
-export type BranchIncompleteConfig = ProjectIncompleteConfig & BranchConfigNormalizedOverride;
-export type EnvironmentIncompleteConfig = BranchIncompleteConfig & EnvironmentConfigNormalizedOverride;
-export type OrganizationIncompleteConfig = EnvironmentIncompleteConfig & OrganizationConfigNormalizedOverride;
+export type ProjectIncompleteConfig = ApplyDefaults<typeof projectConfigDefaults, ProjectConfigNormalizedOverride>;
+export type BranchIncompleteConfig = ApplyDefaults<typeof branchConfigDefaults, ProjectIncompleteConfig & BranchConfigNormalizedOverride>;
+export type EnvironmentIncompleteConfig = ApplyDefaults<typeof environmentConfigDefaults, BranchIncompleteConfig & EnvironmentConfigNormalizedOverride>;
+export type OrganizationIncompleteConfig = ApplyDefaults<typeof organizationConfigDefaults, EnvironmentIncompleteConfig & OrganizationConfigNormalizedOverride>;
 
 // Rendered configs
-export type ProjectRenderedConfig = PrettifyType<ApplyDefaults<typeof projectConfigDefaults, ProjectConfigStrippedNormalizedOverride>>;
-export type BranchRenderedConfig = PrettifyType<ProjectRenderedConfig & ApplyDefaults<typeof branchConfigDefaults, BranchConfigStrippedNormalizedOverride>>;
-export type EnvironmentRenderedConfig = PrettifyType<BranchRenderedConfig & ApplyDefaults<typeof environmentConfigDefaults, EnvironmentConfigStrippedNormalizedOverride>>;
-export type OrganizationRenderedConfig = PrettifyType<EnvironmentRenderedConfig & ApplyDefaults<typeof organizationConfigDefaults, OrganizationConfigStrippedNormalizedOverride>>;
+export type ProjectRenderedConfig = Omit<ProjectIncompleteConfig,
+  | keyof BranchIncompleteConfig
+  | keyof EnvironmentIncompleteConfig
+  | keyof OrganizationIncompleteConfig
+>;
+export type BranchRenderedConfig = Omit<BranchIncompleteConfig,
+  | keyof EnvironmentIncompleteConfig
+  | keyof OrganizationIncompleteConfig
+>;
+export type EnvironmentRenderedConfig = Omit<EnvironmentIncompleteConfig,
+  | keyof OrganizationIncompleteConfig
+>;
+export type OrganizationRenderedConfig = OrganizationIncompleteConfig;
