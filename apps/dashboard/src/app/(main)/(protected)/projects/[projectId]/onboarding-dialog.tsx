@@ -1,5 +1,5 @@
 "use client";
-import EnvKeys from "@/components/env-keys";
+import { EnvKeys } from "@/components/env-keys";
 import { StyledLink } from "@/components/link";
 import { InternalApiKeyFirstView } from "@stackframe/stack";
 import { runAsynchronously } from "@stackframe/stack-shared/dist/utils/promises";

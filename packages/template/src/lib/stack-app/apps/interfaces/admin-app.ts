@@ -56,6 +56,8 @@ export type StackAdminApp<HasTokenStore extends boolean = boolean, ProjectId ext
     }): Promise<Result<undefined, { errorMessage: string }>>,
 
     listSentEmails(): Promise<AdminSentEmail[]>,
+
+    createSetupCode(): Promise<{ code: string }>,
   }
   & StackServerApp<HasTokenStore, ProjectId>
 );
