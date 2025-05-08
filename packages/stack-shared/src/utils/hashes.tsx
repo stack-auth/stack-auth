@@ -1,4 +1,4 @@
-import bcrypt from 'bcrypt';
+import bcrypt from 'bcryptjs';
 import { StackAssertionError } from './errors';
 
 export async function sha512(input: Uint8Array | string): Promise<Uint8Array> {

@@ -18,11 +18,6 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Fail temporarily
-        run: |
-          echo "This workflow is temporarily disabled!"
-          exit 1
-
       - name: Docker meta
         id: meta
         uses: docker/metadata-action@v5
