@@ -262,7 +262,6 @@ export class StackServerInterface extends StackClientInterface {
     return await response.json();
   }
 
-
   async listServerTeamUsers(teamId: string): Promise<UsersCrud['Server']['Read'][]> {
     const response = await this.sendServerRequest(`/users?team_id=${teamId}`, {}, null);
     const result = await response.json() as UsersCrud['Server']['List'];
@@ -451,9 +450,37 @@ export class StackServerInterface extends StackClientInterface {
     );
   }
 
+  async grantServerProjectPermission(userId: string, permissionId: string) {
+    await this.sendServerRequest(
+      urlString`/project-permissions/${userId}/${permissionId}`,
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({}),
+      },
+      null,
+    );
+  }
+
   async revokeServerTeamUserPermission(teamId: string, userId: string, permissionId: string) {
     await this.sendServerRequest(
       urlString`/team-permissions/${teamId}/${userId}/${permissionId}`,
+      {
+        method: "DELETE",
+        headers: {
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({}),
+      },
+      null,
+    );
+  }
+
+  async revokeServerProjectPermission(userId: string, permissionId: string) {
+    await this.sendServerRequest(
+      urlString`/project-permissions/${userId}/${permissionId}`,
       {
         method: "DELETE",
         headers: {
