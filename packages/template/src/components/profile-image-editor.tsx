@@ -3,8 +3,8 @@ import { runAsynchronouslyWithAlert } from '@stackframe/stack-shared/dist/utils/
 import { Button, Slider, Typography } from '@stackframe/stack-ui';
 import imageCompression from 'browser-image-compression';
 import { Upload } from 'lucide-react';
-import { ComponentProps, useRef, useState } from 'react';
-import AvatarEditor from 'react-avatar-editor';
+import { ComponentProps, useCallback, useState } from 'react';
+import Cropper, { Area } from 'react-easy-crop';
 import { useTranslation } from '../lib/translations';
 import { UserAvatar } from './elements/user-avatar';
 
@@ -18,21 +18,80 @@ export async function checkImageUrl(url: string){
   }
 }
 
+const createImage = (url: string): Promise<HTMLImageElement> =>
+  new Promise((resolve, reject) => {
+    const image = new Image();
+    image.addEventListener('load', () => resolve(image));
+    image.addEventListener('error', (error) => reject(error));
+    image.setAttribute('crossOrigin', 'anonymous');
+    image.src = url;
+  });
+
+export async function getCroppedImg(imageSrc: string, pixelCrop: Area): Promise<string | null> {
+  const image = await createImage(imageSrc);
+  const canvas = document.createElement('canvas');
+  const ctx = canvas.getContext('2d');
+
+  if (!ctx) {
+    return null;
+  }
+
+  const safeCrop = {
+    x: Math.max(0, pixelCrop.x),
+    y: Math.max(0, pixelCrop.y),
+    width: Math.max(1, pixelCrop.width),
+    height: Math.max(1, pixelCrop.height),
+  };
+
+  canvas.width = safeCrop.width;
+  canvas.height = safeCrop.height;
+
+  ctx.drawImage(
+    image,
+    safeCrop.x,
+    safeCrop.y,
+    safeCrop.width,
+    safeCrop.height,
+    0,
+    0,
+    safeCrop.width,
+    safeCrop.height
+  );
+
+  return canvas.toDataURL('image/jpeg');
+}
+
 export function ProfileImageEditor(props: {
   user: NonNullable<ComponentProps<typeof UserAvatar>['user']>,
   onProfileImageUrlChange: (profileImageUrl: string | null) => void | Promise<void>,
 }) {
   const { t } = useTranslation();
-  const cropRef = useRef<AvatarEditor>(null);
-  const [slideValue, setSlideValue] = useState(1);
   const [rawUrl, setRawUrl] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [crop, setCrop] = useState({ x: 0, y: 0 });
+  const [zoom, setZoom] = useState(1);
+  const [croppedAreaPixels, setCroppedAreaPixels] = useState<Area | null>(null);
 
   function reset() {
-    setSlideValue(1);
     setRawUrl(null);
     setError(null);
+    setCrop({ x: 0, y: 0 });
+    setZoom(1);
+    setCroppedAreaPixels(null);
   }
+
+  const onCropChange = useCallback((crop: { x: number, y: number }) => {
+    setCrop(crop);
+  }, []);
+
+  const onCropComplete = useCallback((croppedArea: Area, croppedAreaPixels: Area) => {
+    setCroppedAreaPixels(croppedAreaPixels);
+  }, []);
+
+  const onZoomChange = useCallback((zoom: number) => {
+    setZoom(zoom);
+  }, []);
+
 
   function upload() {
     const input = document.createElement('input');
@@ -74,40 +133,46 @@ export function ProfileImageEditor(props: {
 
   return (
     <div className='flex flex-col items-center gap-4'>
-      <AvatarEditor
-        ref={cropRef}
-        image={rawUrl || props.user.profileImageUrl || ""}
-        borderRadius={1000}
-        color={[0, 0, 0, 0.72]}
-        scale={slideValue}
-        rotate={0}
-        border={20}
-        className='border'
-      />
+      <div className='relative w-64 h-64'>
+        <Cropper
+          image={rawUrl || props.user.profileImageUrl || ""}
+          crop={crop}
+          zoom={zoom}
+          aspect={1}
+          cropShape="round"
+          showGrid={false}
+          onCropChange={onCropChange}
+          onCropComplete={onCropComplete}
+          onZoomChange={onZoomChange}
+        />
+      </div>
       <Slider
         min={1}
-        max={5}
+        max={3}
         step={0.1}
-        defaultValue={[slideValue]}
-        value={[slideValue]}
-        onValueChange={(v) => setSlideValue(v[0])}
+        value={[zoom]}
+        onValueChange={(v) => onZoomChange(v[0])}
       />
 
       <div className='flex flex-row gap-2'>
         <Button
           onClick={async () => {
-            if (cropRef.current && rawUrl) {
-              const croppedUrl = cropRef.current.getImage().toDataURL('image/jpeg');
-              const compressedFile = await imageCompression(
-                await imageCompression.getFilefromDataUrl(croppedUrl, 'profile-image'),
-                {
-                  maxSizeMB: 0.1,
-                  fileType: "image/jpeg",
-                }
-              );
-              const compressedUrl = await imageCompression.getDataUrlFromFile(compressedFile);
-              await props.onProfileImageUrlChange(compressedUrl);
-              reset();
+            if (rawUrl && croppedAreaPixels) {
+              const croppedImageUrl = await getCroppedImg(rawUrl, croppedAreaPixels);
+              if (croppedImageUrl) {
+                const compressedFile = await imageCompression(
+                  await imageCompression.getFilefromDataUrl(croppedImageUrl, 'profile-image'),
+                  {
+                    maxSizeMB: 0.1,
+                    fileType: "image/jpeg",
+                  }
+                );
+                const compressedUrl = await imageCompression.getDataUrlFromFile(compressedFile);
+                await props.onProfileImageUrlChange(compressedUrl);
+                reset();
+              } else {
+                setError(t('Could not crop image.'));
+              }
             }
           }}
         >

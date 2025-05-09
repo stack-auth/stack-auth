@@ -4,6 +4,7 @@
     "outDir": "dist",
     "rootDir": "src",
     "declaration": true,
+    "declarationMap": true,
     "target": "ES2021",
     "lib": ["DOM", "DOM.Iterable", "ES2021", "ES2022.Error"],
     "module": "ES2020",

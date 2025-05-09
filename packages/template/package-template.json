@@ -87,7 +87,7 @@
     "@oslojs/otp": "^1.1.0",
     "qrcode": "^1.5.4",
     "//": "NEXT_LINE_PLATFORM react-like",
-    "react-avatar-editor": "^13.0.2",
+    "react-easy-crop": "^5.4.1",
     "//": "NEXT_LINE_PLATFORM react-like",
     "react-hook-form": "^7.51.4",
     "rimraf": "^5.0.5",

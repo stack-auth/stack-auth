@@ -53,7 +53,7 @@
     "react-email": "2.1.0",
     "@react-email/components": "^0.0.14",
     "@react-email/render": "^0.0.12",
-    "lucide-react": "^0.378.0",
+    "lucide-react": "^0.508.0",
     "react-colorful": "^5.6.1",
     "zustand": "^4.5.2",
     "zod": "^3.23.8",
