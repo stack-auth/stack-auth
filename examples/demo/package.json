@@ -9,11 +9,13 @@
     "dev": "next dev --turbopack --port 8103",
     "build": "next build",
     "start": "next start --port 8103",
-    "lint": "next lint"
+    "lint": "next lint",
+    "analyze": "ANALYZE=true pnpm build"
   },
   "dependencies": {
     "@emotion/react": "^11.13.3",
     "@emotion/styled": "^11.13.0",
+    "@next/bundle-analyzer": "15.2.3",
     "@stackframe/stack": "workspace:*",
     "@stackframe/stack-shared": "workspace:*",
     "@stackframe/stack-ui": "workspace:*",
