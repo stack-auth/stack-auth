@@ -40,7 +40,6 @@ function Calendar({
         week: "flex w-full mt-2",
         day: cn(
           "relative p-0 text-center text-sm focus-within:relative focus-within:z-20 [&:has([aria-selected])]:bg-accent [&:has([aria-selected].outside)]:bg-accent/50 [&:has([aria-selected].range_end)]:rounded-r-md",
-          "[&:has([data-outside])]:bg-red-500",
           props.mode === "range"
             ? "[&:has(>.range_end)]:rounded-r-md [&:has(>.range_start)]:rounded-l-md first:[&:has([aria-selected])]:rounded-l-md last:[&:has([aria-selected])]:rounded-r-md"
             : "[&:has([aria-selected])]:rounded-md"
