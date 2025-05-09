@@ -59,7 +59,7 @@
     "oauth4webapi": "^2.10.3",
     "@oslojs/otp": "^1.1.0",
     "qrcode": "^1.5.4",
-    "react-avatar-editor": "^13.0.2",
+    "react-easy-crop": "^5.4.1",
     "react-hook-form": "^7.51.4",
     "rimraf": "^5.0.5",
     "tailwindcss-animate": "^1.0.7",
