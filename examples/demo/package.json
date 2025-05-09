@@ -15,7 +15,6 @@
   "dependencies": {
     "@emotion/react": "^11.13.3",
     "@emotion/styled": "^11.13.0",
-    "@next/bundle-analyzer": "15.2.3",
     "@stackframe/stack": "workspace:*",
     "@stackframe/stack-shared": "workspace:*",
     "@stackframe/stack-ui": "workspace:*",
@@ -28,6 +27,7 @@
   "devDependencies": {
     "@types/react": "19.0.12",
     "@types/react-dom": "19.0.4",
+    "@next/bundle-analyzer": "15.2.3",
     "autoprefixer": "^10.4.20",
     "postcss": "^8.4.47",
     "rimraf": "^5.0.10",
