@@ -1,8 +1,6 @@
 {
   "name": "@stackframe/stack-shared",
   "version": "2.8.11",
-  "main": "./dist/index.js",
-  "types": "./dist/index.d.ts",
   "type": "module",
   "scripts": {
     "build": "rimraf dist && tsup-node",
@@ -21,11 +19,21 @@
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
-      "default": "./dist/esm/index.js"
+      "import": {
+        "default": "./dist/esm/index.js"
+      },
+      "require": {
+        "default": "./dist/index.js"
+      }
     },
     "./dist/*": {
       "types": "./dist/*.d.ts",
-      "default": "./dist/esm/*.js"
+      "import": {
+        "default": "./dist/esm/*.js"
+      },
+      "require": {
+        "default": "./dist/*.js"
+      }
     }
   },
   "peerDependencies": {
