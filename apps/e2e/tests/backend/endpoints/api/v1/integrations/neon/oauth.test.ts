@@ -1,4 +1,4 @@
-import { encodeBase64Url } from "@stackframe/stack-shared/dist/utils/bytes";
+import { encodeBase64Url } from "@stackframe/stack-shared/utils/bytes";
 import { expect } from "vitest";
 import { it, updateCookiesFromResponse } from "../../../../../../helpers";
 import { Auth, InternalApiKey, Project, backendContext, niceBackendFetch } from "../../../../../backend-helpers";

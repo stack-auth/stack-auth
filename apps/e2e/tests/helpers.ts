@@ -1,7 +1,7 @@
-import { generateSecureRandomString } from "@stackframe/stack-shared/dist/utils/crypto";
-import { StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
-import { filterUndefined, omit } from "@stackframe/stack-shared/dist/utils/objects";
-import { Nicifiable } from "@stackframe/stack-shared/dist/utils/strings";
+import { generateSecureRandomString } from "@stackframe/stack-shared/utils/crypto";
+import { StackAssertionError } from "@stackframe/stack-shared/utils/errors";
+import { filterUndefined, omit } from "@stackframe/stack-shared/utils/objects";
+import { Nicifiable } from "@stackframe/stack-shared/utils/strings";
 import { AsyncLocalStorage } from "node:async_hooks";
 // eslint-disable-next-line no-restricted-imports
 import { afterEach, beforeEach, test as vitestTest } from "vitest";

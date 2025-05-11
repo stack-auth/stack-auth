@@ -1,4 +1,4 @@
-import { forwardRefIfNeeded } from "@stackframe/stack-shared/dist/utils/react";
+import { forwardRefIfNeeded } from "@stackframe/stack-shared/utils/react";
 import React from "react";
 
 import { cn } from "../../lib/utils";
@@ -111,7 +111,7 @@ const TableCaption = forwardRefIfNeeded<
 TableCaption.displayName = "TableCaption";
 
 export {
-  Table, TableBody, TableCaption, TableCell, TableFooter,
-  TableHead, TableHeader, TableRow
+    Table, TableBody, TableCaption, TableCell, TableFooter,
+    TableHead, TableHeader, TableRow
 };
 

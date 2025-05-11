@@ -1,4 +1,4 @@
-import { isBase64Url } from "@stackframe/stack-shared/dist/utils/bytes";
+import { isBase64Url } from "@stackframe/stack-shared/utils/bytes";
 import { it } from "../../../../helpers";
 import { Auth, InternalProjectKeys, Project, backendContext, niceBackendFetch } from "../../../backend-helpers";
 

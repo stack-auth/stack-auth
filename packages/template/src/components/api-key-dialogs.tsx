@@ -1,9 +1,9 @@
 'use client';
 
 import { yupResolver } from "@hookform/resolvers/yup";
-import { yupObject, yupString } from '@stackframe/stack-shared/dist/schema-fields';
-import { captureError } from '@stackframe/stack-shared/dist/utils/errors';
-import { runAsynchronously } from '@stackframe/stack-shared/dist/utils/promises';
+import { yupObject, yupString } from '@stackframe/stack-shared/schema-fields';
+import { captureError } from '@stackframe/stack-shared/utils/errors';
+import { runAsynchronously } from '@stackframe/stack-shared/utils/promises';
 import { ActionDialog, Button, CopyField, Input, Label, Typography } from '@stackframe/stack-ui';
 import { useState } from "react";
 import { useForm } from 'react-hook-form';

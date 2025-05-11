@@ -4,9 +4,9 @@ import { getTenancy } from "@/lib/tenancies";
 import { prismaClient } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { KnownErrors } from "@stackframe/stack-shared";
-import { yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
-import { StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
-import { escapeHtml } from "@stackframe/stack-shared/dist/utils/html";
+import { yupNumber, yupObject, yupString } from "@stackframe/stack-shared/schema-fields";
+import { StackAssertionError } from "@stackframe/stack-shared/utils/errors";
+import { escapeHtml } from "@stackframe/stack-shared/utils/html";
 
 export const POST = createSmartRouteHandler({
   metadata: {

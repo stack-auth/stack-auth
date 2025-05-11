@@ -1,12 +1,12 @@
 import { StackAdminInterface } from "@stackframe/stack-shared";
-import { getProductionModeErrors } from "@stackframe/stack-shared/dist/helpers/production-mode";
-import { InternalApiKeyCreateCrudResponse } from "@stackframe/stack-shared/dist/interface/adminInterface";
-import { EmailTemplateCrud, EmailTemplateType } from "@stackframe/stack-shared/dist/interface/crud/email-templates";
-import { InternalApiKeysCrud } from "@stackframe/stack-shared/dist/interface/crud/internal-api-keys";
-import { ProjectsCrud } from "@stackframe/stack-shared/dist/interface/crud/projects";
-import { StackAssertionError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
-import { pick } from "@stackframe/stack-shared/dist/utils/objects";
-import { Result } from "@stackframe/stack-shared/dist/utils/results";
+import { getProductionModeErrors } from "@stackframe/stack-shared/helpers/production-mode";
+import { InternalApiKeyCreateCrudResponse } from "@stackframe/stack-shared/interface/adminInterface";
+import { EmailTemplateCrud, EmailTemplateType } from "@stackframe/stack-shared/interface/crud/email-templates";
+import { InternalApiKeysCrud } from "@stackframe/stack-shared/interface/crud/internal-api-keys";
+import { ProjectsCrud } from "@stackframe/stack-shared/interface/crud/projects";
+import { StackAssertionError, throwErr } from "@stackframe/stack-shared/utils/errors";
+import { pick } from "@stackframe/stack-shared/utils/objects";
+import { Result } from "@stackframe/stack-shared/utils/results";
 import { useMemo } from "react"; // THIS_LINE_PLATFORM react-like
 import { AdminSentEmail } from "../..";
 import { EmailConfig, stackAppInternalsSymbol } from "../../common";

@@ -1,7 +1,7 @@
 import { prismaClient, rawQuery } from "@/prisma-client";
 import { Prisma } from "@prisma/client";
-import { ProjectsCrud } from "@stackframe/stack-shared/dist/interface/crud/projects";
-import { StackAssertionError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
+import { ProjectsCrud } from "@stackframe/stack-shared/interface/crud/projects";
+import { StackAssertionError, throwErr } from "@stackframe/stack-shared/utils/errors";
 import { getRenderedOrganizationConfigQuery, renderedOrganizationConfigToProjectCrud } from "./config";
 import { getProject } from "./projects";
 

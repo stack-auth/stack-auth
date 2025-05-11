@@ -2,8 +2,8 @@ import { Tenancy } from "@/lib/tenancies";
 import { prismaClient } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { KnownErrors } from "@stackframe/stack-shared";
-import { UsersCrud } from "@stackframe/stack-shared/dist/interface/crud/users";
-import { adaptSchema, adminAuthTypeSchema, yupArray, yupMixed, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
+import { UsersCrud } from "@stackframe/stack-shared/interface/crud/users";
+import { adaptSchema, adminAuthTypeSchema, yupArray, yupMixed, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/schema-fields";
 import yup from 'yup';
 import { usersCrudHandlers } from "../../users/crud";
 

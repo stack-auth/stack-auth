@@ -1,6 +1,6 @@
-import { EmailTemplateType } from "@stackframe/stack-shared/dist/interface/crud/email-templates";
-import { InternalSession } from "@stackframe/stack-shared/dist/sessions";
-import { Result } from "@stackframe/stack-shared/dist/utils/results";
+import { EmailTemplateType } from "@stackframe/stack-shared/interface/crud/email-templates";
+import { InternalSession } from "@stackframe/stack-shared/sessions";
+import { Result } from "@stackframe/stack-shared/utils/results";
 import { AsyncStoreProperty, EmailConfig } from "../../common";
 import { AdminSentEmail } from "../../email";
 import { AdminEmailTemplate, AdminEmailTemplateUpdateOptions } from "../../email-templates";

@@ -3,12 +3,12 @@ import { prismaClient } from "@/prisma-client";
 import { createCrudHandlers } from "@/route-handlers/crud-handler";
 import { Prisma } from "@prisma/client";
 import { EMAIL_TEMPLATES_METADATA, validateEmailTemplateContent } from "@stackframe/stack-emails/dist/utils";
-import { emailTemplateCrud, emailTemplateTypes } from "@stackframe/stack-shared/dist/interface/crud/email-templates";
-import { yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
-import { StatusError } from "@stackframe/stack-shared/dist/utils/errors";
-import { typedEntries } from "@stackframe/stack-shared/dist/utils/objects";
-import { createLazyProxy } from "@stackframe/stack-shared/dist/utils/proxies";
-import { typedToLowercase, typedToUppercase } from "@stackframe/stack-shared/dist/utils/strings";
+import { emailTemplateCrud, emailTemplateTypes } from "@stackframe/stack-shared/interface/crud/email-templates";
+import { yupObject, yupString } from "@stackframe/stack-shared/schema-fields";
+import { StatusError } from "@stackframe/stack-shared/utils/errors";
+import { typedEntries } from "@stackframe/stack-shared/utils/objects";
+import { createLazyProxy } from "@stackframe/stack-shared/utils/proxies";
+import { typedToLowercase, typedToUppercase } from "@stackframe/stack-shared/utils/strings";
 
 const CURRENT_VERSION = 2;
 

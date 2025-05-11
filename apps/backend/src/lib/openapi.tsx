@@ -1,11 +1,11 @@
 import { SmartRouteHandler } from '@/route-handlers/smart-route-handler';
-import { CrudlOperation, EndpointDocumentation } from '@stackframe/stack-shared/dist/crud';
-import { WebhookEvent } from '@stackframe/stack-shared/dist/interface/webhooks';
-import { yupNumber, yupObject, yupString } from '@stackframe/stack-shared/dist/schema-fields';
-import { StackAssertionError, throwErr } from '@stackframe/stack-shared/dist/utils/errors';
-import { HttpMethod } from '@stackframe/stack-shared/dist/utils/http';
-import { typedEntries, typedFromEntries } from '@stackframe/stack-shared/dist/utils/objects';
-import { deindent, stringCompare } from '@stackframe/stack-shared/dist/utils/strings';
+import { CrudlOperation, EndpointDocumentation } from '@stackframe/stack-shared/crud';
+import { WebhookEvent } from '@stackframe/stack-shared/interface/webhooks';
+import { yupNumber, yupObject, yupString } from '@stackframe/stack-shared/schema-fields';
+import { StackAssertionError, throwErr } from '@stackframe/stack-shared/utils/errors';
+import { HttpMethod } from '@stackframe/stack-shared/utils/http';
+import { typedEntries, typedFromEntries } from '@stackframe/stack-shared/utils/objects';
+import { deindent, stringCompare } from '@stackframe/stack-shared/utils/strings';
 import * as yup from 'yup';
 
 export function parseOpenAPI(options: {

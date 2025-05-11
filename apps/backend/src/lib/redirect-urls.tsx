@@ -1,5 +1,5 @@
-import { StackAssertionError, captureError } from "@stackframe/stack-shared/dist/utils/errors";
-import { createUrlIfValid, isLocalhost } from "@stackframe/stack-shared/dist/utils/urls";
+import { StackAssertionError, captureError } from "@stackframe/stack-shared/utils/errors";
+import { createUrlIfValid, isLocalhost } from "@stackframe/stack-shared/utils/urls";
 
 export function validateRedirectUrl(urlOrString: string | URL, domains: { domain: string, handler_path: string }[], allowLocalhost: boolean): boolean {
   const url = createUrlIfValid(urlOrString);

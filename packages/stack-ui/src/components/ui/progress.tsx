@@ -1,8 +1,8 @@
 "use client";
 
-import React from "react";
-import { forwardRefIfNeeded } from "@stackframe/stack-shared/dist/utils/react";
 import * as ProgressPrimitive from "@radix-ui/react-progress";
+import { forwardRefIfNeeded } from "@stackframe/stack-shared/utils/react";
+import React from "react";
 
 import { cn } from "../../lib/utils";
 

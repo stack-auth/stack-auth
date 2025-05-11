@@ -1,5 +1,5 @@
-import { InternalApiKeyCreateCrudRequest } from "@stackframe/stack-shared/dist/interface/adminInterface";
-import { InternalApiKeysCrud } from "@stackframe/stack-shared/dist/interface/crud/internal-api-keys";
+import { InternalApiKeyCreateCrudRequest } from "@stackframe/stack-shared/interface/adminInterface";
+import { InternalApiKeysCrud } from "@stackframe/stack-shared/interface/crud/internal-api-keys";
 
 export type InternalApiKeyBase = {
   id: string,

@@ -1,8 +1,8 @@
 "use client";
 
-import React from "react";
-import { forwardRefIfNeeded } from "@stackframe/stack-shared/dist/utils/react";
 import * as PopoverPrimitive from "@radix-ui/react-popover";
+import { forwardRefIfNeeded } from "@stackframe/stack-shared/utils/react";
+import React from "react";
 
 import { cn } from "../../lib/utils";
 
@@ -31,4 +31,5 @@ const PopoverContent = forwardRefIfNeeded<
 ));
 PopoverContent.displayName = PopoverPrimitive.Content.displayName;
 
-export { Popover, PopoverTrigger, PopoverContent, PopoverAnchor };
+export { Popover, PopoverAnchor, PopoverContent, PopoverTrigger };
+

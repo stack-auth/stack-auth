@@ -1,8 +1,8 @@
 import { FieldLabel } from "@/components/form-fields";
 import { AdminTeamPermissionDefinition, ServerTeam, ServerUser } from "@stackframe/stack";
-import { generateSecureRandomString } from "@stackframe/stack-shared/dist/utils/crypto";
-import { throwErr } from "@stackframe/stack-shared/dist/utils/errors";
-import { runAsynchronously } from "@stackframe/stack-shared/dist/utils/promises";
+import { generateSecureRandomString } from "@stackframe/stack-shared/utils/crypto";
+import { throwErr } from "@stackframe/stack-shared/utils/errors";
+import { runAsynchronously } from "@stackframe/stack-shared/utils/promises";
 import { Checkbox, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@stackframe/stack-ui";
 import { useEffect, useState } from "react";
 import { Control, FieldValues, Path } from "react-hook-form";

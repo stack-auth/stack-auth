@@ -4,7 +4,7 @@ import { confirmAlertMessage, useRouter, useRouterConfirm } from "@/components/r
 import { TEditorConfiguration } from "@stackframe/stack-emails/dist/editor/documents/editor/core";
 import EmailEditor from "@stackframe/stack-emails/dist/editor/editor";
 import { EMAIL_TEMPLATES_METADATA, validateEmailTemplateContent } from "@stackframe/stack-emails/dist/utils";
-import { EmailTemplateType } from "@stackframe/stack-shared/dist/interface/crud/email-templates";
+import { EmailTemplateType } from "@stackframe/stack-shared/interface/crud/email-templates";
 import { useToast } from "@stackframe/stack-ui";
 import { usePathname } from "next/navigation";
 import { useAdminApp } from "../../../use-admin-app";

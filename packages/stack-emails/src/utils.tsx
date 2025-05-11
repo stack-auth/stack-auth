@@ -1,6 +1,6 @@
 import { Body, Head, Html, Preview } from "@react-email/components";
 import { render } from "@react-email/render";
-import { typedFromEntries } from "@stackframe/stack-shared/dist/utils/objects";
+import { typedFromEntries } from "@stackframe/stack-shared/utils/objects";
 import * as Handlebars from 'handlebars/dist/handlebars.js';
 import { EditorBlockSchema, TEditorConfiguration } from "./editor/documents/editor/core";
 import { Reader } from "./editor/email-builder/index";

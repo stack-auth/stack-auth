@@ -1,8 +1,8 @@
 "use client";
 
-import React from "react";
-import { forwardRefIfNeeded } from "@stackframe/stack-shared/dist/utils/react";
 import * as AvatarPrimitive from "@radix-ui/react-avatar";
+import { forwardRefIfNeeded } from "@stackframe/stack-shared/utils/react";
+import React from "react";
 
 import { cn } from "../../lib/utils";
 
@@ -48,4 +48,5 @@ const AvatarFallback = forwardRefIfNeeded<
 ));
 AvatarFallback.displayName = AvatarPrimitive.Fallback.displayName;
 
-export { Avatar, AvatarImage, AvatarFallback };
+export { Avatar, AvatarFallback, AvatarImage };
+

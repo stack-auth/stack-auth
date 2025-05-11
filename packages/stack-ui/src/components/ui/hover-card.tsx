@@ -1,8 +1,8 @@
 "use client";
 
-import React from "react";
-import { forwardRefIfNeeded } from "@stackframe/stack-shared/dist/utils/react";
 import * as HoverCardPrimitive from "@radix-ui/react-hover-card";
+import { forwardRefIfNeeded } from "@stackframe/stack-shared/utils/react";
+import React from "react";
 
 import { cn } from "../../lib/utils";
 
@@ -27,4 +27,5 @@ const HoverCardContent = forwardRefIfNeeded<
 ));
 HoverCardContent.displayName = HoverCardPrimitive.Content.displayName;
 
-export { HoverCard, HoverCardTrigger, HoverCardContent };
+export { HoverCard, HoverCardContent, HoverCardTrigger };
+

@@ -1,10 +1,10 @@
 import { Slot } from "@radix-ui/react-slot";
-import { forwardRefIfNeeded } from "@stackframe/stack-shared/dist/utils/react";
+import { forwardRefIfNeeded } from "@stackframe/stack-shared/utils/react";
 import { cva, type VariantProps } from "class-variance-authority";
 import React from "react";
 
-import { useAsyncCallback } from "@stackframe/stack-shared/dist/hooks/use-async-callback";
-import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
+import { useAsyncCallback } from "@stackframe/stack-shared/hooks/use-async-callback";
+import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/utils/promises";
 import { cn } from "../../lib/utils";
 import { Spinner } from "./spinner";
 

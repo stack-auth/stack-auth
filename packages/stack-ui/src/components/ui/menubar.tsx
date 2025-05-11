@@ -1,7 +1,7 @@
 "use client";
 
 import React from "react";
-import { forwardRefIfNeeded } from "@stackframe/stack-shared/dist/utils/react";
+import { forwardRefIfNeeded } from "@stackframe/stack-shared/utils/react";
 import {
   CheckIcon,
   ChevronRightIcon,

@@ -1,11 +1,11 @@
 import { KnownErrors } from "@stackframe/stack-shared";
-import { override } from "@stackframe/stack-shared/dist/config/format";
-import { OrganizationRenderedConfig } from "@stackframe/stack-shared/dist/config/schema";
-import { ProjectPermissionsCrud } from "@stackframe/stack-shared/dist/interface/crud/project-permissions";
-import { TeamPermissionDefinitionsCrud, TeamPermissionsCrud } from "@stackframe/stack-shared/dist/interface/crud/team-permissions";
-import { groupBy } from "@stackframe/stack-shared/dist/utils/arrays";
-import { getOrUndefined, has, typedEntries, typedFromEntries } from "@stackframe/stack-shared/dist/utils/objects";
-import { stringCompare } from "@stackframe/stack-shared/dist/utils/strings";
+import { override } from "@stackframe/stack-shared/config/format";
+import { OrganizationRenderedConfig } from "@stackframe/stack-shared/config/schema";
+import { ProjectPermissionsCrud } from "@stackframe/stack-shared/interface/crud/project-permissions";
+import { TeamPermissionDefinitionsCrud, TeamPermissionsCrud } from "@stackframe/stack-shared/interface/crud/team-permissions";
+import { groupBy } from "@stackframe/stack-shared/utils/arrays";
+import { getOrUndefined, has, typedEntries, typedFromEntries } from "@stackframe/stack-shared/utils/objects";
+import { stringCompare } from "@stackframe/stack-shared/utils/strings";
 import { Tenancy } from "./tenancies";
 import { PrismaTransaction } from "./types";
 

@@ -1,5 +1,5 @@
-import { ProductionModeError } from "@stackframe/stack-shared/dist/helpers/production-mode";
-import { AdminUserProjectsCrud, ProjectsCrud } from "@stackframe/stack-shared/dist/interface/crud/projects";
+import { ProductionModeError } from "@stackframe/stack-shared/helpers/production-mode";
+import { AdminUserProjectsCrud, ProjectsCrud } from "@stackframe/stack-shared/interface/crud/projects";
 
 import { StackAdminApp } from "../apps/interfaces/admin-app";
 import { AdminProjectConfig, AdminProjectConfigUpdateOptions, ProjectConfig } from "../project-configs";

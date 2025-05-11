@@ -5,10 +5,10 @@ import { retryTransaction } from "@/prisma-client";
 import { createCrudHandlers } from "@/route-handlers/crud-handler";
 import { runAsynchronouslyAndWaitUntil } from "@/utils/vercel";
 import { KnownErrors } from "@stackframe/stack-shared";
-import { projectPermissionsCrud } from '@stackframe/stack-shared/dist/interface/crud/project-permissions';
-import { permissionDefinitionIdSchema, userIdOrMeSchema, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
-import { StatusError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
-import { createLazyProxy } from "@stackframe/stack-shared/dist/utils/proxies";
+import { projectPermissionsCrud } from '@stackframe/stack-shared/interface/crud/project-permissions';
+import { permissionDefinitionIdSchema, userIdOrMeSchema, yupObject, yupString } from "@stackframe/stack-shared/schema-fields";
+import { StatusError, throwErr } from "@stackframe/stack-shared/utils/errors";
+import { createLazyProxy } from "@stackframe/stack-shared/utils/proxies";
 
 export const projectPermissionsCrudHandlers = createLazyProxy(() => createCrudHandlers(projectPermissionsCrud, {
   querySchema: yupObject({

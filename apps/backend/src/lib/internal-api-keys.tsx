@@ -2,13 +2,13 @@
 
 import { RawQuery, prismaClient, rawQuery } from '@/prisma-client';
 import { ApiKeySet, Prisma } from '@prisma/client';
-import { InternalApiKeysCrud } from '@stackframe/stack-shared/dist/interface/crud/internal-api-keys';
-import { yupString } from '@stackframe/stack-shared/dist/schema-fields';
-import { typedIncludes } from '@stackframe/stack-shared/dist/utils/arrays';
-import { generateSecureRandomString } from '@stackframe/stack-shared/dist/utils/crypto';
-import { getNodeEnvironment } from '@stackframe/stack-shared/dist/utils/env';
-import { StackAssertionError } from '@stackframe/stack-shared/dist/utils/errors';
-import { generateUuid } from '@stackframe/stack-shared/dist/utils/uuids';
+import { InternalApiKeysCrud } from '@stackframe/stack-shared/interface/crud/internal-api-keys';
+import { yupString } from '@stackframe/stack-shared/schema-fields';
+import { typedIncludes } from '@stackframe/stack-shared/utils/arrays';
+import { generateSecureRandomString } from '@stackframe/stack-shared/utils/crypto';
+import { getNodeEnvironment } from '@stackframe/stack-shared/utils/env';
+import { StackAssertionError } from '@stackframe/stack-shared/utils/errors';
+import { generateUuid } from '@stackframe/stack-shared/utils/uuids';
 
 export const publishableClientKeyHeaderSchema = yupString().matches(/^[a-zA-Z0-9_-]*$/);
 export const secretServerKeyHeaderSchema = publishableClientKeyHeaderSchema;

@@ -1,6 +1,6 @@
 import { stackServerApp } from "@/stack";
-import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
-import { StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
+import { getEnvVariable } from "@stackframe/stack-shared/utils/env";
+import { StackAssertionError } from "@stackframe/stack-shared/utils/errors";
 import { redirect } from "next/navigation";
 import NeonConfirmCard from "./neon-confirm-card";
 

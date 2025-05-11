@@ -5,11 +5,11 @@ import { createCrudHandlers } from "@/route-handlers/crud-handler";
 import { runAsynchronouslyAndWaitUntil } from "@/utils/vercel";
 import { Prisma } from "@prisma/client";
 import { KnownErrors } from "@stackframe/stack-shared";
-import { teamsCrud } from "@stackframe/stack-shared/dist/interface/crud/teams";
-import { userIdOrMeSchema, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
-import { validateBase64Image } from "@stackframe/stack-shared/dist/utils/base64";
-import { StatusError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
-import { createLazyProxy } from "@stackframe/stack-shared/dist/utils/proxies";
+import { teamsCrud } from "@stackframe/stack-shared/interface/crud/teams";
+import { userIdOrMeSchema, yupObject, yupString } from "@stackframe/stack-shared/schema-fields";
+import { validateBase64Image } from "@stackframe/stack-shared/utils/base64";
+import { StatusError, throwErr } from "@stackframe/stack-shared/utils/errors";
+import { createLazyProxy } from "@stackframe/stack-shared/utils/proxies";
 import { addUserToTeam } from "../team-memberships/crud";
 
 

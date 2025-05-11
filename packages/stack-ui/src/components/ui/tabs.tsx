@@ -1,8 +1,8 @@
 "use client";
 
-import React from "react";
-import { forwardRefIfNeeded } from "@stackframe/stack-shared/dist/utils/react";
 import * as TabsPrimitive from "@radix-ui/react-tabs";
+import { forwardRefIfNeeded } from "@stackframe/stack-shared/utils/react";
+import React from "react";
 
 import { cn } from "../../lib/utils";
 
@@ -53,4 +53,5 @@ const TabsContent = forwardRefIfNeeded<
 ));
 TabsContent.displayName = TabsPrimitive.Content.displayName;
 
-export { Tabs, TabsList, TabsTrigger, TabsContent };
+export { Tabs, TabsContent, TabsList, TabsTrigger };
+

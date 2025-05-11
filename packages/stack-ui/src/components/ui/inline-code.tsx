@@ -1,11 +1,10 @@
 "use client";
 
-import { cn } from "../../lib/utils";
+import { hasClickableParent } from "@stackframe/stack-shared/utils/dom";
+import { runAsynchronously } from "@stackframe/stack-shared/utils/promises";
+import { forwardRefIfNeeded, getNodeText } from "@stackframe/stack-shared/utils/react";
 import React from "react";
-import { forwardRefIfNeeded } from "@stackframe/stack-shared/dist/utils/react";
-import { hasClickableParent } from "@stackframe/stack-shared/dist/utils/dom";
-import { getNodeText } from "@stackframe/stack-shared/dist/utils/react";
-import { runAsynchronously } from "@stackframe/stack-shared/dist/utils/promises";
+import { cn } from "../../lib/utils";
 import { useToast } from "./use-toast";
 
 const InlineCode = forwardRefIfNeeded<

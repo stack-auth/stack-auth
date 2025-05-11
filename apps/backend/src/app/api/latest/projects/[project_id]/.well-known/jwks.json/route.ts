@@ -1,7 +1,7 @@
-import { yupArray, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
-import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
-import { StatusError } from "@stackframe/stack-shared/dist/utils/errors";
-import { getPerAudienceSecret, getPublicJwkSet } from "@stackframe/stack-shared/dist/utils/jwt";
+import { yupArray, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/schema-fields";
+import { getEnvVariable } from "@stackframe/stack-shared/utils/env";
+import { StatusError } from "@stackframe/stack-shared/utils/errors";
+import { getPerAudienceSecret, getPublicJwkSet } from "@stackframe/stack-shared/utils/jwt";
 import { getProject } from "../../../../../../../lib/projects";
 import { createSmartRouteHandler } from "../../../../../../../route-handlers/smart-route-handler";
 

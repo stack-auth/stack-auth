@@ -1,6 +1,6 @@
 import * as Sentry from "@sentry/nextjs";
-import { getNodeEnvironment } from "@stackframe/stack-shared/dist/utils/env";
-import { captureError, registerErrorSink } from "@stackframe/stack-shared/dist/utils/errors";
+import { getNodeEnvironment } from "@stackframe/stack-shared/utils/env";
+import { captureError, registerErrorSink } from "@stackframe/stack-shared/utils/errors";
 import * as util from "util";
 
 const sentryErrorSink = (location: string, error: unknown) => {

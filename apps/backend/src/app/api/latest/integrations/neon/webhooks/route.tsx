@@ -1,6 +1,6 @@
 import { getSvixClient } from "@/lib/webhooks";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
-import { adaptSchema, neonAuthorizationHeaderSchema, urlSchema, yupNumber, yupObject, yupString, yupTuple } from "@stackframe/stack-shared/dist/schema-fields";
+import { adaptSchema, neonAuthorizationHeaderSchema, urlSchema, yupNumber, yupObject, yupString, yupTuple } from "@stackframe/stack-shared/schema-fields";
 
 export const POST = createSmartRouteHandler({
   metadata: {

@@ -1,5 +1,5 @@
-import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
-import { StatusError } from "@stackframe/stack-shared/dist/utils/errors";
+import { getEnvVariable } from "@stackframe/stack-shared/utils/env";
+import { StatusError } from "@stackframe/stack-shared/utils/errors";
 import { OAuthUserInfo, validateUserInfo } from "../utils";
 import { OAuthBaseProvider, TokenSet } from "./base";
 

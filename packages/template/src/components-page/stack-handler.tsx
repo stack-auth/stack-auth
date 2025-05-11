@@ -1,6 +1,6 @@
-import { StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
-import { FilterUndefined, filterUndefined, pick } from "@stackframe/stack-shared/dist/utils/objects";
-import { getRelativePart } from "@stackframe/stack-shared/dist/utils/urls";
+import { StackAssertionError } from "@stackframe/stack-shared/utils/errors";
+import { FilterUndefined, filterUndefined, pick } from "@stackframe/stack-shared/utils/objects";
+import { getRelativePart } from "@stackframe/stack-shared/utils/urls";
 import { RedirectType, notFound, redirect } from 'next/navigation'; // THIS_LINE_PLATFORM next
 import { useMemo } from 'react';
 import { SignIn, SignUp, StackServerApp } from "..";

@@ -1,4 +1,4 @@
-import { runAsynchronously } from "@stackframe/stack-shared/dist/utils/promises";
+import { runAsynchronously } from "@stackframe/stack-shared/utils/promises";
 // eslint-disable-next-line no-restricted-imports
 import { waitUntil as waitUntilVercel } from "@vercel/functions";
 

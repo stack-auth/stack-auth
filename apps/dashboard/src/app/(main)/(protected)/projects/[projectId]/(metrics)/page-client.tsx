@@ -3,7 +3,7 @@
 import { useRouter } from "@/components/router";
 import { ErrorBoundary } from '@sentry/nextjs';
 import { UserAvatar } from '@stackframe/stack';
-import { fromNow } from '@stackframe/stack-shared/dist/utils/dates';
+import { fromNow } from '@stackframe/stack-shared/utils/dates';
 import { Card, CardContent, CardHeader, CardTitle, Table, TableBody, TableCell, TableRow, Typography } from '@stackframe/stack-ui';
 import { PageLayout } from "../page-layout";
 import { useAdminApp } from '../use-admin-app';

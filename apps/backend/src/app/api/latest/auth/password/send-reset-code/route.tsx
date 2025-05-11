@@ -2,8 +2,8 @@ import { getAuthContactChannel } from "@/lib/contact-channel";
 import { prismaClient } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { KnownErrors } from "@stackframe/stack-shared";
-import { adaptSchema, clientOrHigherAuthTypeSchema, emailSchema, urlSchema, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
-import { wait } from "@stackframe/stack-shared/dist/utils/promises";
+import { adaptSchema, clientOrHigherAuthTypeSchema, emailSchema, urlSchema, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/schema-fields";
+import { wait } from "@stackframe/stack-shared/utils/promises";
 import { usersCrudHandlers } from "../../../users/crud";
 import { resetPasswordVerificationCodeHandler } from "../reset/verification-code-handler";
 

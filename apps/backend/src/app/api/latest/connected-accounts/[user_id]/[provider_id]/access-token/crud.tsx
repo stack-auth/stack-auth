@@ -3,11 +3,11 @@ import { getProvider } from "@/oauth";
 import { prismaClient } from "@/prisma-client";
 import { createCrudHandlers } from "@/route-handlers/crud-handler";
 import { KnownErrors } from "@stackframe/stack-shared";
-import { connectedAccountAccessTokenCrud } from "@stackframe/stack-shared/dist/interface/crud/oauth";
-import { userIdOrMeSchema, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
-import { StackAssertionError, StatusError } from "@stackframe/stack-shared/dist/utils/errors";
-import { createLazyProxy } from "@stackframe/stack-shared/dist/utils/proxies";
-import { extractScopes } from "@stackframe/stack-shared/dist/utils/strings";
+import { connectedAccountAccessTokenCrud } from "@stackframe/stack-shared/interface/crud/oauth";
+import { userIdOrMeSchema, yupObject, yupString } from "@stackframe/stack-shared/schema-fields";
+import { StackAssertionError, StatusError } from "@stackframe/stack-shared/utils/errors";
+import { createLazyProxy } from "@stackframe/stack-shared/utils/proxies";
+import { extractScopes } from "@stackframe/stack-shared/utils/strings";
 
 
 export const connectedAccountAccessTokenCrudHandlers = createLazyProxy(() =>createCrudHandlers(connectedAccountAccessTokenCrud, {

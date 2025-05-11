@@ -1,8 +1,8 @@
 'use client';
 
 import { yupResolver } from "@hookform/resolvers/yup";
-import { yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
-import { runAsynchronously } from "@stackframe/stack-shared/dist/utils/promises";
+import { yupObject, yupString } from "@stackframe/stack-shared/schema-fields";
+import { runAsynchronously } from "@stackframe/stack-shared/utils/promises";
 import { Button, Input, Label, Typography } from "@stackframe/stack-ui";
 import { useState } from "react";
 import { useForm } from "react-hook-form";

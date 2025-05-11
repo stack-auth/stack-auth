@@ -1,12 +1,12 @@
-import { projectPermissionCreatedWebhookEvent, projectPermissionDeletedWebhookEvent } from "@stackframe/stack-shared/dist/interface/crud/project-permissions";
-import { teamMembershipCreatedWebhookEvent, teamMembershipDeletedWebhookEvent } from "@stackframe/stack-shared/dist/interface/crud/team-memberships";
-import { teamPermissionCreatedWebhookEvent, teamPermissionDeletedWebhookEvent } from "@stackframe/stack-shared/dist/interface/crud/team-permissions";
-import { teamCreatedWebhookEvent, teamDeletedWebhookEvent, teamUpdatedWebhookEvent } from "@stackframe/stack-shared/dist/interface/crud/teams";
-import { userCreatedWebhookEvent, userDeletedWebhookEvent, userUpdatedWebhookEvent } from "@stackframe/stack-shared/dist/interface/crud/users";
-import { WebhookEvent } from "@stackframe/stack-shared/dist/interface/webhooks";
-import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
-import { StackAssertionError, captureError } from "@stackframe/stack-shared/dist/utils/errors";
-import { Result } from "@stackframe/stack-shared/dist/utils/results";
+import { projectPermissionCreatedWebhookEvent, projectPermissionDeletedWebhookEvent } from "@stackframe/stack-shared/interface/crud/project-permissions";
+import { teamMembershipCreatedWebhookEvent, teamMembershipDeletedWebhookEvent } from "@stackframe/stack-shared/interface/crud/team-memberships";
+import { teamPermissionCreatedWebhookEvent, teamPermissionDeletedWebhookEvent } from "@stackframe/stack-shared/interface/crud/team-permissions";
+import { teamCreatedWebhookEvent, teamDeletedWebhookEvent, teamUpdatedWebhookEvent } from "@stackframe/stack-shared/interface/crud/teams";
+import { userCreatedWebhookEvent, userDeletedWebhookEvent, userUpdatedWebhookEvent } from "@stackframe/stack-shared/interface/crud/users";
+import { WebhookEvent } from "@stackframe/stack-shared/interface/webhooks";
+import { getEnvVariable } from "@stackframe/stack-shared/utils/env";
+import { StackAssertionError, captureError } from "@stackframe/stack-shared/utils/errors";
+import { Result } from "@stackframe/stack-shared/utils/results";
 import { Svix } from "svix";
 import * as yup from "yup";
 

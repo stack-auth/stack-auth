@@ -1,5 +1,5 @@
-import { writeFileSyncIfChanged } from '@stackframe/stack-shared/dist/utils/fs';
-import { replaceAll } from '@stackframe/stack-shared/dist/utils/strings';
+import { writeFileSyncIfChanged } from '@stackframe/stack-shared/utils/fs';
+import { replaceAll } from '@stackframe/stack-shared/utils/strings';
 import autoprefixer from 'autoprefixer';
 import * as fs from 'fs';
 import * as path from 'path';

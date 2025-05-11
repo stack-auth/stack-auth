@@ -1,7 +1,7 @@
 import { createAuthTokens } from "@/lib/tokens";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { KnownErrors } from "@stackframe/stack-shared";
-import { adaptSchema, clientOrHigherAuthTypeSchema, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
+import { adaptSchema, clientOrHigherAuthTypeSchema, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/schema-fields";
 import { usersCrudHandlers } from "../../../users/crud";
 
 // Define the allowed project IDs for anonymous sign-up

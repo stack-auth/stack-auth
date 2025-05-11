@@ -2,7 +2,7 @@
 import { Link } from "@/components/link";
 import { useFromNow } from '@/hooks/use-from-now';
 import { AdminProject } from '@stackframe/stack';
-import { urlString } from "@stackframe/stack-shared/dist/utils/urls";
+import { urlString } from "@stackframe/stack-shared/utils/urls";
 import { Card, CardDescription, CardFooter, CardHeader, CardTitle, Typography } from '@stackframe/stack-ui';
 
 export function ProjectCard({ project }: { project: AdminProject }) {

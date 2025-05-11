@@ -2,9 +2,9 @@ import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { generateAuthenticationOptions } from "@simplewebauthn/server";
 import { isoUint8Array } from "@simplewebauthn/server/helpers";
 import { KnownErrors } from "@stackframe/stack-shared";
-import { adaptSchema, clientOrHigherAuthTypeSchema, yupMixed, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
-import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
-import { PublicKeyCredentialRequestOptionsJSON } from "@stackframe/stack-shared/dist/utils/passkey";
+import { adaptSchema, clientOrHigherAuthTypeSchema, yupMixed, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/schema-fields";
+import { getEnvVariable } from "@stackframe/stack-shared/utils/env";
+import { PublicKeyCredentialRequestOptionsJSON } from "@stackframe/stack-shared/utils/passkey";
 import { passkeySignInVerificationCodeHandler } from "../sign-in/verification-code-handler";
 
 export const POST = createSmartRouteHandler({

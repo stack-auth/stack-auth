@@ -7,10 +7,10 @@ import { retryTransaction } from "@/prisma-client";
 import { createCrudHandlers } from "@/route-handlers/crud-handler";
 import { runAsynchronouslyAndWaitUntil } from "@/utils/vercel";
 import { KnownErrors } from "@stackframe/stack-shared";
-import { teamMembershipsCrud } from "@stackframe/stack-shared/dist/interface/crud/team-memberships";
-import { userIdOrMeSchema, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
-import { throwErr } from "@stackframe/stack-shared/dist/utils/errors";
-import { createLazyProxy } from "@stackframe/stack-shared/dist/utils/proxies";
+import { teamMembershipsCrud } from "@stackframe/stack-shared/interface/crud/team-memberships";
+import { userIdOrMeSchema, yupObject, yupString } from "@stackframe/stack-shared/schema-fields";
+import { throwErr } from "@stackframe/stack-shared/utils/errors";
+import { createLazyProxy } from "@stackframe/stack-shared/utils/proxies";
 
 
 export async function addUserToTeam(tx: PrismaTransaction, options: {

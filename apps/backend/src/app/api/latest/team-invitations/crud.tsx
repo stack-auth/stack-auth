@@ -2,10 +2,10 @@ import { ensureTeamExists, ensureTeamMembershipExists, ensureUserTeamPermissionE
 import { retryTransaction } from "@/prisma-client";
 import { createCrudHandlers } from "@/route-handlers/crud-handler";
 import { KnownErrors } from "@stackframe/stack-shared";
-import { teamInvitationCrud } from "@stackframe/stack-shared/dist/interface/crud/team-invitation";
-import { yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
-import { throwErr } from "@stackframe/stack-shared/dist/utils/errors";
-import { createLazyProxy } from "@stackframe/stack-shared/dist/utils/proxies";
+import { teamInvitationCrud } from "@stackframe/stack-shared/interface/crud/team-invitation";
+import { yupObject, yupString } from "@stackframe/stack-shared/schema-fields";
+import { throwErr } from "@stackframe/stack-shared/utils/errors";
+import { createLazyProxy } from "@stackframe/stack-shared/utils/proxies";
 import { teamInvitationCodeHandler } from "./accept/verification-code-handler";
 
 export const teamInvitationsCrudHandlers = createLazyProxy(() => createCrudHandlers(teamInvitationCrud, {

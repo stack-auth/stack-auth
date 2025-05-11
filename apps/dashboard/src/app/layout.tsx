@@ -6,7 +6,7 @@ import { ThemeProvider } from '@/components/theme-provider';
 import { getPublicEnvVar } from '@/lib/env';
 import { stackServerApp } from '@/stack';
 import { StackProvider, StackTheme } from '@stackframe/stack';
-import { getEnvVariable, getNodeEnvironment } from '@stackframe/stack-shared/dist/utils/env';
+import { getEnvVariable, getNodeEnvironment } from '@stackframe/stack-shared/utils/env';
 import { Toaster, cn } from '@stackframe/stack-ui';
 import { Analytics } from "@vercel/analytics/react";
 import { SpeedInsights } from "@vercel/speed-insights/next";

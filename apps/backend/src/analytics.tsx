@@ -1,4 +1,4 @@
-import { getEnvVariable } from '@stackframe/stack-shared/dist/utils/env';
+import { getEnvVariable } from '@stackframe/stack-shared/utils/env';
 import { PostHog } from 'posthog-node';
 
 export default async function withPostHog<T>(callback: (posthog: PostHog) => Promise<T>) {

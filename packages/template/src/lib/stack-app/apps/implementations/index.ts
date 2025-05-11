@@ -1,5 +1,5 @@
 
-import { scrambleDuringCompileTime } from "@stackframe/stack-shared/dist/utils/compile-time";
+import { scrambleDuringCompileTime } from "@stackframe/stack-shared/utils/compile-time";
 import { _StackAdminAppImplIncomplete } from "./admin-app-impl";
 import { _StackClientAppImplIncomplete } from "./client-app-impl";
 import { _StackServerAppImplIncomplete } from "./server-app-impl";

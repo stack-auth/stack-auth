@@ -1,6 +1,6 @@
 import { KnownErrors } from "@stackframe/stack-shared";
-import { CurrentUserCrud } from "@stackframe/stack-shared/dist/interface/crud/current-user";
-import { Result } from "@stackframe/stack-shared/dist/utils/results";
+import { CurrentUserCrud } from "@stackframe/stack-shared/interface/crud/current-user";
+import { Result } from "@stackframe/stack-shared/utils/results";
 import { AsyncStoreProperty, GetUserOptions, HandlerUrls, OAuthScopesOnSignIn, RedirectMethod, RedirectToOptions, TokenStoreInit, stackAppInternalsSymbol } from "../../common";
 import { Project } from "../../projects";
 import { ProjectCurrentUser } from "../../users";

@@ -1,14 +1,14 @@
-import { isTruthy } from "@stackframe/stack-shared/dist/utils/booleans";
-import { StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
-import { numberCompare } from "@stackframe/stack-shared/dist/utils/numbers";
+import { isTruthy } from "@stackframe/stack-shared/utils/booleans";
+import { StackAssertionError } from "@stackframe/stack-shared/utils/errors";
+import { numberCompare } from "@stackframe/stack-shared/utils/numbers";
 
 
 // SmartRouter may be imported on the edge, so we can't import fs at the top level
 // hence, we define some wrapper functions
-const listRecursively: typeof import("@stackframe/stack-shared/dist/utils/fs").listRecursively = async (...args) => {
+const listRecursively: typeof import("@stackframe/stack-shared/utils/fs").listRecursively = async (...args) => {
   // SmartRouter may be imported on the edge, so we can't import fs at the top level
   // hence, this wrapper function
-  const m = await import("@stackframe/stack-shared/dist/utils/fs");
+  const m = await import("@stackframe/stack-shared/utils/fs");
   return await m.listRecursively(...args);
 };
 const readFile = async (path: string) => {

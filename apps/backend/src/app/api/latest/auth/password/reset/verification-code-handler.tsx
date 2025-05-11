@@ -3,9 +3,9 @@ import { getSoleTenancyFromProjectBranch } from "@/lib/tenancies";
 import { createVerificationCodeHandler } from "@/route-handlers/verification-code-handler";
 import { VerificationCodeType } from "@prisma/client";
 import { KnownErrors } from "@stackframe/stack-shared";
-import { getPasswordError } from "@stackframe/stack-shared/dist/helpers/password";
-import { UsersCrud } from "@stackframe/stack-shared/dist/interface/crud/users";
-import { emailSchema, passwordSchema, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
+import { getPasswordError } from "@stackframe/stack-shared/helpers/password";
+import { UsersCrud } from "@stackframe/stack-shared/interface/crud/users";
+import { emailSchema, passwordSchema, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/schema-fields";
 import { usersCrudHandlers } from "../../../users/crud";
 
 export const resetPasswordVerificationCodeHandler = createVerificationCodeHandler({

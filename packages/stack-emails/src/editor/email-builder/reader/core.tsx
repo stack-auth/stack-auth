@@ -17,7 +17,7 @@ import ContainerReader from '../blocks/container/container-reader';
 import { EmailLayoutPropsSchema } from '../blocks/email-layout/email-layout-props-schema';
 import EmailLayoutReader from '../blocks/email-layout/email-layout-reader';
 import { TEditorConfiguration } from '../../documents/editor/core';
-import { StackAssertionError } from '@stackframe/stack-shared/dist/utils/errors';
+import { StackAssertionError } from '@stackframe/stack-shared/utils/errors';
 
 const READER_DICTIONARY = buildBlockConfigurationDictionary({
   ColumnsContainer: {

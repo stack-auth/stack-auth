@@ -3,11 +3,11 @@ import { DEFAULT_BRANCH_ID, getSoleTenancyFromProjectBranch } from "@/lib/tenanc
 import { prismaClient, rawQueryAll } from "@/prisma-client";
 import { createCrudHandlers } from "@/route-handlers/crud-handler";
 import { KnownErrors } from "@stackframe/stack-shared";
-import { adminUserProjectsCrud } from "@stackframe/stack-shared/dist/interface/crud/projects";
-import { projectIdSchema, yupObject } from "@stackframe/stack-shared/dist/schema-fields";
-import { StackAssertionError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
-import { isNotNull, typedEntries, typedFromEntries } from "@stackframe/stack-shared/dist/utils/objects";
-import { createLazyProxy } from "@stackframe/stack-shared/dist/utils/proxies";
+import { adminUserProjectsCrud } from "@stackframe/stack-shared/interface/crud/projects";
+import { projectIdSchema, yupObject } from "@stackframe/stack-shared/schema-fields";
+import { StackAssertionError, throwErr } from "@stackframe/stack-shared/utils/errors";
+import { isNotNull, typedEntries, typedFromEntries } from "@stackframe/stack-shared/utils/objects";
+import { createLazyProxy } from "@stackframe/stack-shared/utils/proxies";
 
 // if one of these users creates a project, the others will be added as owners
 const ownerPacks: Set<string>[] = [];

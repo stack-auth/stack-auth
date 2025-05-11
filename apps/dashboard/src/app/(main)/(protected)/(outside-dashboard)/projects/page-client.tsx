@@ -4,8 +4,8 @@ import { ProjectCard } from "@/components/project-card";
 import { useRouter } from "@/components/router";
 import { SearchBar } from "@/components/search-bar";
 import { useUser } from "@stackframe/stack";
-import { wait } from "@stackframe/stack-shared/dist/utils/promises";
-import { stringCompare } from "@stackframe/stack-shared/dist/utils/strings";
+import { wait } from "@stackframe/stack-shared/utils/promises";
+import { stringCompare } from "@stackframe/stack-shared/utils/strings";
 import { Button, Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from "@stackframe/stack-ui";
 import { useEffect, useMemo, useState } from "react";
 

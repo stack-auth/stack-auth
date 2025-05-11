@@ -1,8 +1,8 @@
 import { oauthServer } from "@/oauth";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { InvalidClientError, InvalidGrantError, InvalidRequestError, Request as OAuthRequest, Response as OAuthResponse, ServerError } from "@node-oauth/oauth2-server";
-import { KnownErrors } from "@stackframe/stack-shared/dist/known-errors";
-import { yupMixed, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
+import { KnownErrors } from "@stackframe/stack-shared/known-errors";
+import { yupMixed, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/schema-fields";
 import { oauthResponseToSmartResponse } from "../oauth-helpers";
 
 export const POST = createSmartRouteHandler({

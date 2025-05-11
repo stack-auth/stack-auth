@@ -1,4 +1,4 @@
-import { wait } from "@stackframe/stack-shared/dist/utils/promises";
+import { wait } from "@stackframe/stack-shared/utils/promises";
 import { STACK_SVIX_SERVER_URL, it, niceFetch } from "../../../../helpers";
 import { Auth, InternalApiKey, InternalProjectKeys, Project, Team, Webhook, backendContext, bumpEmailAddress, niceBackendFetch } from "../../../backend-helpers";
 

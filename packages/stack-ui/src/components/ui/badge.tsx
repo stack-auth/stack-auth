@@ -1,4 +1,4 @@
-import { forwardRefIfNeeded } from "@stackframe/stack-shared/dist/utils/react";
+import { forwardRefIfNeeded } from "@stackframe/stack-shared/utils/react";
 import { cva, type VariantProps } from "class-variance-authority";
 import React from "react";
 

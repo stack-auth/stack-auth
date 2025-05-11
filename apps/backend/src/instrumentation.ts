@@ -1,8 +1,8 @@
 import { PrismaInstrumentation } from "@prisma/instrumentation";
 import * as Sentry from "@sentry/nextjs";
-import { getEnvVariable, getNextRuntime, getNodeEnvironment } from "@stackframe/stack-shared/dist/utils/env";
-import { sentryBaseConfig } from "@stackframe/stack-shared/dist/utils/sentry";
-import { nicify } from "@stackframe/stack-shared/dist/utils/strings";
+import { getEnvVariable, getNextRuntime, getNodeEnvironment } from "@stackframe/stack-shared/utils/env";
+import { sentryBaseConfig } from "@stackframe/stack-shared/utils/sentry";
+import { nicify } from "@stackframe/stack-shared/utils/strings";
 import { registerOTel } from '@vercel/otel';
 import "./polyfills";
 

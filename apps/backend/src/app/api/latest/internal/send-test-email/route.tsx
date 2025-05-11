@@ -1,10 +1,10 @@
 import { isSecureEmailPort, sendEmailWithoutRetries } from "@/lib/emails";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
-import * as schemaFields from "@stackframe/stack-shared/dist/schema-fields";
-import { adaptSchema, adminAuthTypeSchema, emailSchema, yupBoolean, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
-import { StackAssertionError, captureError } from "@stackframe/stack-shared/dist/utils/errors";
-import { timeout } from "@stackframe/stack-shared/dist/utils/promises";
-import { Result } from "@stackframe/stack-shared/dist/utils/results";
+import * as schemaFields from "@stackframe/stack-shared/schema-fields";
+import { adaptSchema, adminAuthTypeSchema, emailSchema, yupBoolean, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/schema-fields";
+import { StackAssertionError, captureError } from "@stackframe/stack-shared/utils/errors";
+import { timeout } from "@stackframe/stack-shared/utils/promises";
+import { Result } from "@stackframe/stack-shared/utils/results";
 
 export const POST = createSmartRouteHandler({
   metadata: {
