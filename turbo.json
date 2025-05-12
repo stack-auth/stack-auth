@@ -16,6 +16,8 @@
     "build": {
       "inputs": [
         "$TURBO_DEFAULT$",
+        "tsup.config.ts",
+        "config/js-library.ts",
         ".env",
         ".env.local",
         ".env.development",
