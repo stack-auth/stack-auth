@@ -1,4 +1,4 @@
-import { deepPlainEquals } from '@stackframe/stack-shared/utils/objects';
+import { deepPlainEquals } from '@stackframe/stack-shared/dist/utils/objects';
 import { useEffect, useMemo } from 'react';
 import { EmailTemplateMetadata, convertEmailTemplateMetadataExampleValues } from '../utils';
 import { TEditorConfiguration } from './documents/editor/core';

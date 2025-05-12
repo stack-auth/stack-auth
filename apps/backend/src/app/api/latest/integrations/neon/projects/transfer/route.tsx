@@ -2,10 +2,10 @@ import { getProject } from "@/lib/projects";
 import { DEFAULT_BRANCH_ID, getSoleTenancyFromProjectBranch } from "@/lib/tenancies";
 import { prismaClient } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
-import { neonAuthorizationHeaderSchema, urlSchema, yupNumber, yupObject, yupString, yupTuple } from "@stackframe/stack-shared/schema-fields";
-import { getEnvVariable } from "@stackframe/stack-shared/utils/env";
-import { StatusError, throwErr } from "@stackframe/stack-shared/utils/errors";
-import { decodeBasicAuthorizationHeader } from "@stackframe/stack-shared/utils/http";
+import { neonAuthorizationHeaderSchema, urlSchema, yupNumber, yupObject, yupString, yupTuple } from "@stackframe/stack-shared/dist/schema-fields";
+import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
+import { StatusError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
+import { decodeBasicAuthorizationHeader } from "@stackframe/stack-shared/dist/utils/http";
 import { neonIntegrationProjectTransferCodeHandler } from "./confirm/verification-code-handler";
 
 async function validateAndGetTransferInfo(authorizationHeader: string, projectId: string) {

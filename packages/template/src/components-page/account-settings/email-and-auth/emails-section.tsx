@@ -1,7 +1,7 @@
 import { yupResolver } from "@hookform/resolvers/yup";
-import { KnownErrors } from "@stackframe/stack-shared/known-errors";
-import { strictEmailSchema, yupObject } from "@stackframe/stack-shared/schema-fields";
-import { runAsynchronously } from "@stackframe/stack-shared/utils/promises";
+import { KnownErrors } from "@stackframe/stack-shared/dist/known-errors";
+import { strictEmailSchema, yupObject } from "@stackframe/stack-shared/dist/schema-fields";
+import { runAsynchronously } from "@stackframe/stack-shared/dist/utils/promises";
 import { ActionCell, Badge, Button, Input, Table, TableBody, TableCell, TableRow, Typography } from "@stackframe/stack-ui";
 import { useEffect, useState } from "react";
 import { useForm } from "react-hook-form";

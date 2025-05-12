@@ -1,4 +1,4 @@
-import { StackAssertionError, throwErr } from "@stackframe/stack-shared/utils/errors";
+import { StackAssertionError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
 import { expect } from "vitest";
 import { it, localRedirectUrl, localRedirectUrlRegex } from "../../../../../../helpers";
 import { Auth, backendContext, niceBackendFetch } from "../../../../../backend-helpers";

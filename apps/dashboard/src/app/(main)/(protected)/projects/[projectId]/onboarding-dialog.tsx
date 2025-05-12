@@ -2,7 +2,7 @@
 import EnvKeys from "@/components/env-keys";
 import { StyledLink } from "@/components/link";
 import { InternalApiKeyFirstView } from "@stackframe/stack";
-import { runAsynchronously } from "@stackframe/stack-shared/utils/promises";
+import { runAsynchronously } from "@stackframe/stack-shared/dist/utils/promises";
 import { ActionDialog, InlineCode, Typography } from "@stackframe/stack-ui";
 import { useEffect, useState } from "react";
 import { useAdminApp } from "./use-admin-app";

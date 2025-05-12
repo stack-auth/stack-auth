@@ -7,8 +7,8 @@ import { prismaClient } from "@/prisma-client";
 import { AuthorizationCode, AuthorizationCodeModel, Client, Falsey, RefreshToken, Token, User } from "@node-oauth/oauth2-server";
 import { PrismaClientKnownRequestError } from "@prisma/client/runtime/library";
 import { KnownErrors } from "@stackframe/stack-shared";
-import { generateSecureRandomString } from "@stackframe/stack-shared/utils/crypto";
-import { captureError, throwErr } from "@stackframe/stack-shared/utils/errors";
+import { generateSecureRandomString } from "@stackframe/stack-shared/dist/utils/crypto";
+import { captureError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
 import { getProjectBranchFromClientId } from ".";
 
 declare module "@node-oauth/oauth2-server" {

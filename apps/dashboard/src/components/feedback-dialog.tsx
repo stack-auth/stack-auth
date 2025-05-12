@@ -1,5 +1,5 @@
 import { useUser } from "@stackframe/stack";
-import { emailSchema } from "@stackframe/stack-shared/schema-fields";
+import { emailSchema } from "@stackframe/stack-shared/dist/schema-fields";
 import { useToast } from "@stackframe/stack-ui";
 import * as yup from "yup";
 import { SmartFormDialog } from "./form-dialog";

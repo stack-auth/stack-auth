@@ -1,6 +1,7 @@
 "use client";
 
-import { captureError } from "@stackframe/stack-shared/utils/errors";
+import * as Sentry from "@sentry/nextjs";
+import { captureError } from "@stackframe/stack-shared/dist/utils/errors";
 import Error from "next/error";
 import { useEffect } from "react";
 

@@ -1,6 +1,6 @@
-import { getPublicEnvVar } from "@/lib/env";
 import { StackServerApp } from '@stackframe/stack';
-import { throwErr } from '@stackframe/stack-shared/utils/errors';
+import { getPublicEnvVar } from "@/lib/env";
+import { throwErr } from '@stackframe/stack-shared/dist/utils/errors';
 import './polyfills';
 
 if (getPublicEnvVar("NEXT_PUBLIC_STACK_PROJECT_ID") !== "internal") {

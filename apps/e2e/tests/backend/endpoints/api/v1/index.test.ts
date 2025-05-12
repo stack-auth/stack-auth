@@ -1,4 +1,4 @@
-import { StackAssertionError } from "@stackframe/stack-shared/utils/errors";
+import { StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
 import { describe } from "vitest";
 import { it } from "../../../../helpers";
 import { InternalApiKey, InternalProjectKeys, Project, backendContext, niceBackendFetch } from "../../../backend-helpers";

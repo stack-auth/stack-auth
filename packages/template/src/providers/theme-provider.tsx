@@ -1,6 +1,6 @@
 'use client';
 
-import { deindent } from "@stackframe/stack-shared/utils/strings";
+import { deindent } from "@stackframe/stack-shared/dist/utils/strings";
 import Color from "color";
 import React from "react";
 import { globalCSS } from "../generated/global-css";

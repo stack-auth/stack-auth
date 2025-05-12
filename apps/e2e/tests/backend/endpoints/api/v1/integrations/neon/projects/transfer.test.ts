@@ -1,4 +1,4 @@
-import { urlString } from "@stackframe/stack-shared/utils/urls";
+import { urlString } from "@stackframe/stack-shared/dist/utils/urls";
 import { expect } from "vitest";
 import { it } from "../../../../../../../helpers";
 import { Auth, Project, niceBackendFetch } from "../../../../../../backend-helpers";

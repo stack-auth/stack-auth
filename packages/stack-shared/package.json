@@ -28,7 +28,7 @@
       },
       "default": "./dist/esm/index.js"
     },
-    "./*": {
+    "./dist/*": {
       "types": "./dist/*.d.ts",
       "require": {
         "node": {

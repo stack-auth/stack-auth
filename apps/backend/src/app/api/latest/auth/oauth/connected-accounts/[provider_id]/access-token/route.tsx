@@ -1,6 +1,6 @@
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
-import { yupMixed, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/schema-fields";
-import { getEnvVariable } from "@stackframe/stack-shared/utils/env";
+import { yupMixed, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
+import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
 
 // TODO: Deprecated route, remove together with the v1 dashboard endpoints
 export const POST = createSmartRouteHandler({

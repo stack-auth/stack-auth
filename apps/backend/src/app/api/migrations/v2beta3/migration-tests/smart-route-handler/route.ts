@@ -1,7 +1,7 @@
 import { GET as v2beta4Handler } from "@/app/api/migrations/v2beta4/migration-tests/smart-route-handler/route";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
-import { ensureObjectSchema, yupString } from "@stackframe/stack-shared/schema-fields";
-import { omit } from "@stackframe/stack-shared/utils/objects";
+import { ensureObjectSchema, yupString } from "@stackframe/stack-shared/dist/schema-fields";
+import { omit } from "@stackframe/stack-shared/dist/utils/objects";
 
 export const GET = createSmartRouteHandler({
   ...v2beta4Handler.initArgs[0],

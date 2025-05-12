@@ -1,6 +1,6 @@
 'use client';
 
-import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/utils/promises";
+import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger, Skeleton, Typography } from "@stackframe/stack-ui";
 import { CircleUser, LogIn, LogOut, SunMoon, UserPlus } from "lucide-react";
 import React, { Suspense } from "react";

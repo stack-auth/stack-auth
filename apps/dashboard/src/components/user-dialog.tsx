@@ -1,7 +1,7 @@
 import { useAdminApp } from "@/app/(main)/(protected)/projects/[projectId]/use-admin-app";
 import { ServerUser } from "@stackframe/stack";
 import { KnownErrors } from "@stackframe/stack-shared";
-import { emailSchema, jsonStringOrEmptySchema, passwordSchema } from "@stackframe/stack-shared/schema-fields";
+import { emailSchema, jsonStringOrEmptySchema, passwordSchema } from "@stackframe/stack-shared/dist/schema-fields";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger, Button, Typography, useToast } from "@stackframe/stack-ui";
 import * as yup from "yup";
 import { FormDialog } from "./form-dialog";

@@ -3,11 +3,11 @@ import { prismaClient, retryTransaction } from "@/prisma-client";
 import { createCrudHandlers } from "@/route-handlers/crud-handler";
 import { Prisma } from "@prisma/client";
 import { KnownErrors } from "@stackframe/stack-shared";
-import { contactChannelsCrud } from "@stackframe/stack-shared/interface/crud/contact-channels";
-import { userIdOrMeSchema, yupObject, yupString } from "@stackframe/stack-shared/schema-fields";
-import { StatusError, throwErr } from "@stackframe/stack-shared/utils/errors";
-import { createLazyProxy } from "@stackframe/stack-shared/utils/proxies";
-import { typedToLowercase, typedToUppercase } from "@stackframe/stack-shared/utils/strings";
+import { contactChannelsCrud } from "@stackframe/stack-shared/dist/interface/crud/contact-channels";
+import { userIdOrMeSchema, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
+import { StatusError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
+import { createLazyProxy } from "@stackframe/stack-shared/dist/utils/proxies";
+import { typedToLowercase, typedToUppercase } from "@stackframe/stack-shared/dist/utils/strings";
 
 export const contactChannelToCrud = (channel: Prisma.ContactChannelGetPayload<{}>) => {
   return {

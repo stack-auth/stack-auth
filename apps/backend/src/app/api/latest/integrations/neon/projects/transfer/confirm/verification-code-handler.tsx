@@ -2,8 +2,8 @@ import { prismaClient } from "@/prisma-client";
 import { createVerificationCodeHandler } from "@/route-handlers/verification-code-handler";
 import { VerificationCodeType } from "@prisma/client";
 import { KnownErrors } from "@stackframe/stack-shared";
-import { yupNumber, yupObject, yupString } from "@stackframe/stack-shared/schema-fields";
-import { StatusError, throwErr } from "@stackframe/stack-shared/utils/errors";
+import { yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
+import { StatusError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
 
 export const neonIntegrationProjectTransferCodeHandler = createVerificationCodeHandler({
   metadata: {

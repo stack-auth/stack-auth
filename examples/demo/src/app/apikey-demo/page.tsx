@@ -1,6 +1,6 @@
 "use client";
 
-import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/utils/promises";
+import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
 import { Button, Card, Input, Typography } from "@stackframe/stack-ui";
 import { useState } from "react";
 

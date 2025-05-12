@@ -1,5 +1,5 @@
 'use client';
-import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/utils/promises";
+import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
 import {
   Button,
   Select,

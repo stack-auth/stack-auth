@@ -1,7 +1,7 @@
 "use client";
 
-import { CurrentUserCrud } from "@stackframe/stack-shared/interface/crud/current-user";
-import { globalVar } from "@stackframe/stack-shared/utils/globals";
+import { CurrentUserCrud } from "@stackframe/stack-shared/dist/interface/crud/current-user";
+import { globalVar } from "@stackframe/stack-shared/dist/utils/globals";
 import React, { useEffect } from "react";
 import { useStackApp } from "..";
 import { StackClientApp, StackClientAppJson, stackAppInternalsSymbol } from "../lib/stack-app";

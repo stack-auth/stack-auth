@@ -1,4 +1,4 @@
-import { ProviderType } from "@stackframe/stack-shared/utils/oauth";
+import { ProviderType } from "@stackframe/stack-shared/dist/utils/oauth";
 
 export type RedirectToOptions = {
   replace?: boolean,

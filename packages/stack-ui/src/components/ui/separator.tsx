@@ -1,8 +1,8 @@
 "use client";
 
-import * as SeparatorPrimitive from "@radix-ui/react-separator";
-import { forwardRefIfNeeded } from "@stackframe/stack-shared/utils/react";
 import React from "react";
+import { forwardRefIfNeeded } from "@stackframe/stack-shared/dist/utils/react";
+import * as SeparatorPrimitive from "@radix-ui/react-separator";
 
 import { cn } from "../../lib/utils";
 

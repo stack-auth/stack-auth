@@ -1,5 +1,5 @@
-import { yupNumber, yupObject, yupString } from "@stackframe/stack-shared/schema-fields";
-import { deindent } from "@stackframe/stack-shared/utils/strings";
+import { yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
+import { deindent } from "@stackframe/stack-shared/dist/utils/strings";
 import { createSmartRouteHandler } from "./smart-route-handler";
 
 export const NotFoundHandler = createSmartRouteHandler({

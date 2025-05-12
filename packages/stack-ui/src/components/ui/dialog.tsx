@@ -2,7 +2,7 @@
 
 import * as DialogPrimitive from "@radix-ui/react-dialog";
 import { Cross2Icon } from "@radix-ui/react-icons";
-import { forwardRefIfNeeded } from "@stackframe/stack-shared/utils/react";
+import { forwardRefIfNeeded } from "@stackframe/stack-shared/dist/utils/react";
 import React from "react";
 
 import { cn } from "../../lib/utils";
@@ -117,16 +117,15 @@ const DialogDescription = forwardRefIfNeeded<
 DialogDescription.displayName = DialogPrimitive.Description.displayName;
 
 export {
-    Dialog,
-    DialogBody,
-    DialogClose,
-    DialogContent,
-    DialogDescription,
-    DialogFooter,
-    DialogHeader,
-    DialogOverlay,
-    DialogPortal,
-    DialogTitle,
-    DialogTrigger
+  Dialog,
+  DialogBody,
+  DialogClose,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogOverlay,
+  DialogPortal,
+  DialogTitle,
+  DialogTrigger,
 };
-

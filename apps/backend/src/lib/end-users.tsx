@@ -1,6 +1,6 @@
-import { StackAssertionError } from "@stackframe/stack-shared/utils/errors";
-import { isIpAddress } from "@stackframe/stack-shared/utils/ips";
-import { pick } from "@stackframe/stack-shared/utils/objects";
+import { StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
+import { isIpAddress } from "@stackframe/stack-shared/dist/utils/ips";
+import { pick } from "@stackframe/stack-shared/dist/utils/objects";
 import { headers } from "next/headers";
 
 // An end user is a person sitting behind a computer screen.

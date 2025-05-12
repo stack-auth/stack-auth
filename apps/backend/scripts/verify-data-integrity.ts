@@ -1,9 +1,9 @@
 import { PrismaClient } from "@prisma/client";
-import { getEnvVariable } from "@stackframe/stack-shared/utils/env";
-import { StackAssertionError, throwErr } from "@stackframe/stack-shared/utils/errors";
-import { deepPlainEquals, filterUndefined, omit } from "@stackframe/stack-shared/utils/objects";
-import { wait } from "@stackframe/stack-shared/utils/promises";
-import { deindent } from "@stackframe/stack-shared/utils/strings";
+import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
+import { StackAssertionError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
+import { deepPlainEquals, filterUndefined, omit } from "@stackframe/stack-shared/dist/utils/objects";
+import { wait } from "@stackframe/stack-shared/dist/utils/promises";
+import { deindent } from "@stackframe/stack-shared/dist/utils/strings";
 import fs from "fs";
 
 const prismaClient = new PrismaClient();

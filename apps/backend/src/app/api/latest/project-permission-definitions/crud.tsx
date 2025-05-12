@@ -1,9 +1,9 @@
 import { createPermissionDefinition, deletePermissionDefinition, listPermissionDefinitions, updatePermissionDefinition } from "@/lib/permissions";
 import { retryTransaction } from "@/prisma-client";
 import { createCrudHandlers } from "@/route-handlers/crud-handler";
-import { projectPermissionDefinitionsCrud } from '@stackframe/stack-shared/interface/crud/project-permissions';
-import { permissionDefinitionIdSchema, yupObject } from "@stackframe/stack-shared/schema-fields";
-import { createLazyProxy } from "@stackframe/stack-shared/utils/proxies";
+import { projectPermissionDefinitionsCrud } from '@stackframe/stack-shared/dist/interface/crud/project-permissions';
+import { permissionDefinitionIdSchema, yupObject } from "@stackframe/stack-shared/dist/schema-fields";
+import { createLazyProxy } from "@stackframe/stack-shared/dist/utils/proxies";
 
 
 export const projectPermissionDefinitionsCrudHandlers = createLazyProxy(() => createCrudHandlers(projectPermissionDefinitionsCrud, {

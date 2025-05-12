@@ -6,10 +6,10 @@ import { DeleteUserDialog, ImpersonateUserDialog } from "@/components/user-dialo
 import { useThemeWatcher } from '@/lib/theme';
 import MonacoEditor from '@monaco-editor/react';
 import { ServerContactChannel, ServerUser } from "@stackframe/stack";
-import { useAsyncCallback } from "@stackframe/stack-shared/hooks/use-async-callback";
-import { fromNow } from "@stackframe/stack-shared/utils/dates";
-import { throwErr } from '@stackframe/stack-shared/utils/errors';
-import { deindent } from "@stackframe/stack-shared/utils/strings";
+import { useAsyncCallback } from "@stackframe/stack-shared/dist/hooks/use-async-callback";
+import { fromNow } from "@stackframe/stack-shared/dist/utils/dates";
+import { throwErr } from '@stackframe/stack-shared/dist/utils/errors';
+import { deindent } from "@stackframe/stack-shared/dist/utils/strings";
 import { ActionCell, Avatar, AvatarFallback, AvatarImage, Button, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger, Input, Separator, SimpleTooltip, Table, TableBody, TableCell, TableHead, TableHeader, TableRow, Typography, cn } from "@stackframe/stack-ui";
 import { AtSign, Calendar, Check, Hash, Mail, MoreHorizontal, Shield, SquareAsterisk, X } from "lucide-react";
 import { useMemo, useRef, useState } from "react";

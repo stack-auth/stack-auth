@@ -1,6 +1,6 @@
 'use client';
 
-import { throwErr } from '@stackframe/stack-shared/utils/errors';
+import { throwErr } from '@stackframe/stack-shared/dist/utils/errors';
 // eslint-disable-next-line
 import { useRouter as useNextRouter } from 'next/navigation';
 import React from 'react';

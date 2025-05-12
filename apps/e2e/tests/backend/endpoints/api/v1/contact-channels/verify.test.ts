@@ -1,4 +1,4 @@
-import { throwErr } from "@stackframe/stack-shared/utils/errors";
+import { throwErr } from "@stackframe/stack-shared/dist/utils/errors";
 import { it } from "../../../../../helpers";
 import { Auth, ContactChannels, backendContext, niceBackendFetch } from "../../../../backend-helpers";
 

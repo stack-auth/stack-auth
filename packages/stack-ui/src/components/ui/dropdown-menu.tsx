@@ -2,12 +2,12 @@
 
 import * as DropdownMenuPrimitive from "@radix-ui/react-dropdown-menu";
 import { CheckIcon, ChevronRightIcon, DotFilledIcon } from "@radix-ui/react-icons";
-import { forwardRefIfNeeded } from "@stackframe/stack-shared/utils/react";
+import { forwardRefIfNeeded } from "@stackframe/stack-shared/dist/utils/react";
 import React from "react";
 
-import { useAsyncCallback } from "@stackframe/stack-shared/hooks/use-async-callback";
-import { throwErr } from "@stackframe/stack-shared/utils/errors";
-import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/utils/promises";
+import { useAsyncCallback } from "@stackframe/stack-shared/dist/hooks/use-async-callback";
+import { throwErr } from "@stackframe/stack-shared/dist/utils/errors";
+import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
 import { cn } from "../../lib/utils";
 import { Spinner } from "./spinner";
 

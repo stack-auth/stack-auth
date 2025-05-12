@@ -3,7 +3,7 @@ import { usersCrudHandlers } from '@/app/api/latest/users/crud';
 import { createOrUpdateProject, getProject } from '@/lib/projects';
 import { DEFAULT_BRANCH_ID, getSoleTenancyFromProjectBranch } from '@/lib/tenancies';
 import { PrismaClient } from '@prisma/client';
-import { errorToNiceString, throwErr } from '@stackframe/stack-shared/utils/errors';
+import { errorToNiceString, throwErr } from '@stackframe/stack-shared/dist/utils/errors';
 
 const prisma = new PrismaClient();
 

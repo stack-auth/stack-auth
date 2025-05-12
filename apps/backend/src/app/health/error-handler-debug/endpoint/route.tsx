@@ -1,6 +1,6 @@
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
-import { yupNumber, yupObject, yupString } from "@stackframe/stack-shared/schema-fields";
-import { StackAssertionError } from "@stackframe/stack-shared/utils/errors";
+import { yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
+import { StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
 
 export const dynamic = "force-dynamic";
 

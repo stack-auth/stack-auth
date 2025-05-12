@@ -1,6 +1,6 @@
 import useResizeObserver from '@react-hook/resize-observer';
 import { useUser } from '@stackframe/stack';
-import { getFlagEmoji } from '@stackframe/stack-shared/utils/unicode';
+import { getFlagEmoji } from '@stackframe/stack-shared/dist/utils/unicode';
 import { Typography } from '@stackframe/stack-ui';
 import dynamic from 'next/dynamic';
 import { RefObject, use, useEffect, useId, useLayoutEffect, useRef, useState } from 'react';

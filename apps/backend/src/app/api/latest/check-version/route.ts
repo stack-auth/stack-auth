@@ -1,5 +1,5 @@
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
-import { yupBoolean, yupNumber, yupObject, yupString, yupUnion } from "@stackframe/stack-shared/schema-fields";
+import { yupBoolean, yupNumber, yupObject, yupString, yupUnion } from "@stackframe/stack-shared/dist/schema-fields";
 import semver from "semver";
 import packageJson from "../../../../../package.json";
 

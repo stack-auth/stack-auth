@@ -1,6 +1,6 @@
 import { SmartResponse } from "@/route-handlers/smart-response";
 import { Response as OAuthResponse } from "@node-oauth/oauth2-server";
-import { StackAssertionError, StatusError, throwErr } from "@stackframe/stack-shared/utils/errors";
+import { StackAssertionError, StatusError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
 
 export function oauthResponseToSmartResponse(oauthResponse: OAuthResponse): SmartResponse {
   if (!oauthResponse.status) {

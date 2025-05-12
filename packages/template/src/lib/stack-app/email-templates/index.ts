@@ -1,4 +1,4 @@
-import { EmailTemplateCrud, EmailTemplateType } from "@stackframe/stack-shared/interface/crud/email-templates";
+import { EmailTemplateCrud, EmailTemplateType } from "@stackframe/stack-shared/dist/interface/crud/email-templates";
 
 
 export type AdminEmailTemplate = {

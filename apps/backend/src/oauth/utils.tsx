@@ -1,4 +1,4 @@
-import { emailSchema, yupBoolean, yupObject, yupString } from "@stackframe/stack-shared/schema-fields";
+import { emailSchema, yupBoolean, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
 import * as yup from 'yup';
 
 export type OAuthUserInfo = yup.InferType<typeof OAuthUserInfoSchema>;

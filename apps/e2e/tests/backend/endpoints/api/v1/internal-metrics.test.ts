@@ -1,4 +1,4 @@
-import { wait } from "@stackframe/stack-shared/utils/promises";
+import { wait } from "@stackframe/stack-shared/dist/utils/promises";
 import { it } from "../../../../helpers";
 import { Auth, InternalApiKey, Project, backendContext, createMailbox, niceBackendFetch } from "../../../backend-helpers";
 

@@ -1,5 +1,5 @@
 
-import { throwErr } from "@stackframe/stack-shared/utils/errors";
+import { throwErr } from "@stackframe/stack-shared/dist/utils/errors";
 import { describe } from "vitest";
 import { it, localRedirectUrl } from "../../../../../../helpers";
 import { Auth, backendContext, niceBackendFetch } from "../../../../../backend-helpers";

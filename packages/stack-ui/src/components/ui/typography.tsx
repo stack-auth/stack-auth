@@ -1,7 +1,7 @@
-import { forwardRefIfNeeded } from "@stackframe/stack-shared/utils/react";
+import { cn } from "../../lib/utils";
 import { cva, type VariantProps } from "class-variance-authority";
 import React from "react";
-import { cn } from "../../lib/utils";
+import { forwardRefIfNeeded } from "@stackframe/stack-shared/dist/utils/react";
 
 const typographyVariants = cva("stack-scope text-md", {
   variants: {

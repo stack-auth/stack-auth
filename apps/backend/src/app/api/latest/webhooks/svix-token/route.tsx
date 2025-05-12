@@ -1,8 +1,8 @@
 import { getSvixClient } from "@/lib/webhooks";
 import { createCrudHandlers } from "@/route-handlers/crud-handler";
-import { svixTokenCrud } from "@stackframe/stack-shared/interface/crud/svix-token";
-import { yupObject } from "@stackframe/stack-shared/schema-fields";
-import { createLazyProxy } from "@stackframe/stack-shared/utils/proxies";
+import { svixTokenCrud } from "@stackframe/stack-shared/dist/interface/crud/svix-token";
+import { yupObject } from "@stackframe/stack-shared/dist/schema-fields";
+import { createLazyProxy } from "@stackframe/stack-shared/dist/utils/proxies";
 
 const appPortalCrudHandlers = createLazyProxy(() => createCrudHandlers(svixTokenCrud, {
   paramsSchema: yupObject({}),

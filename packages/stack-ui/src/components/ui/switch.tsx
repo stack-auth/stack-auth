@@ -1,12 +1,12 @@
 "use client";
 
-import * as SwitchPrimitives from "@radix-ui/react-switch";
-import { forwardRefIfNeeded } from "@stackframe/stack-shared/utils/react";
 import React from "react";
+import { forwardRefIfNeeded } from "@stackframe/stack-shared/dist/utils/react";
+import * as SwitchPrimitives from "@radix-ui/react-switch";
 
-import { useAsyncCallback } from "@stackframe/stack-shared/hooks/use-async-callback";
-import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/utils/promises";
 import { cn } from "../../lib/utils";
+import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
+import { useAsyncCallback } from "@stackframe/stack-shared/dist/hooks/use-async-callback";
 import { Spinner } from "./spinner";
 
 type OriginalSwitchProps = {} & React.ComponentProps<typeof SwitchPrimitives.Root>

@@ -1,6 +1,6 @@
 "use client";
 
-import { throwErr } from "@stackframe/stack-shared/utils/errors";
+import { throwErr } from "@stackframe/stack-shared/dist/utils/errors";
 
 export default function Page() {
   return <div>

@@ -1,8 +1,8 @@
-import { getEnvVariable, getNodeEnvironment } from '@stackframe/stack-shared/utils/env';
+import { getEnvVariable, getNodeEnvironment } from '@stackframe/stack-shared/dist/utils/env';
 import './polyfills';
 
-import { StackAssertionError } from '@stackframe/stack-shared/utils/errors';
-import { wait } from '@stackframe/stack-shared/utils/promises';
+import { StackAssertionError } from '@stackframe/stack-shared/dist/utils/errors';
+import { wait } from '@stackframe/stack-shared/dist/utils/promises';
 import type { NextRequest } from 'next/server';
 import { NextResponse } from 'next/server';
 

@@ -1,6 +1,6 @@
-import { emailTemplateTypes } from "@stackframe/stack-shared/interface/crud/email-templates";
-import { notFound } from "next/navigation";
+import { emailTemplateTypes } from "@stackframe/stack-shared/dist/interface/crud/email-templates";
 import PageClient from "./page-client";
+import { notFound } from "next/navigation";
 
 export const metadata = {
   title: 'Email Template',

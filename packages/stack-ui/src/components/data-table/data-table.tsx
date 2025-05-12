@@ -1,31 +1,31 @@
 "use client";
 
-import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/utils/promises";
+import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
 import {
-    Table,
-    TableBody,
-    TableCell,
-    TableHead,
-    TableHeader,
-    TableRow,
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
 } from "@stackframe/stack-ui";
 import {
-    ColumnDef,
-    ColumnFiltersState,
-    GlobalFiltering,
-    OnChangeFn,
-    PaginationState,
-    SortingState,
-    Table as TableType,
-    VisibilityState,
-    flexRender,
-    getCoreRowModel,
-    getFacetedRowModel,
-    getFacetedUniqueValues,
-    getFilteredRowModel,
-    getPaginationRowModel,
-    getSortedRowModel,
-    useReactTable,
+  ColumnDef,
+  ColumnFiltersState,
+  GlobalFiltering,
+  OnChangeFn,
+  PaginationState,
+  SortingState,
+  Table as TableType,
+  VisibilityState,
+  flexRender,
+  getCoreRowModel,
+  getFacetedRowModel,
+  getFacetedUniqueValues,
+  getFilteredRowModel,
+  getPaginationRowModel,
+  getSortedRowModel,
+  useReactTable,
 } from "@tanstack/react-table";
 import React from "react";
 import { DataTablePagination } from "./pagination";

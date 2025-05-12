@@ -3,9 +3,9 @@
 // https://docs.sentry.io/platforms/javascript/guides/nextjs/
 
 import * as Sentry from "@sentry/nextjs";
-import { getBrowserCompatibilityReport } from "@stackframe/stack-shared/utils/browser-compat";
-import { sentryBaseConfig } from "@stackframe/stack-shared/utils/sentry";
-import { nicify } from "@stackframe/stack-shared/utils/strings";
+import { getBrowserCompatibilityReport } from "@stackframe/stack-shared/dist/utils/browser-compat";
+import { sentryBaseConfig } from "@stackframe/stack-shared/dist/utils/sentry";
+import { nicify } from "@stackframe/stack-shared/dist/utils/strings";
 
 Sentry.init({
   ...sentryBaseConfig,

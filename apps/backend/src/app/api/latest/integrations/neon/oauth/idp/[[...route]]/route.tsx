@@ -1,7 +1,7 @@
 import { handleApiRequest } from "@/route-handlers/smart-route-handler";
-import { getEnvVariable } from "@stackframe/stack-shared/utils/env";
-import { StackAssertionError } from "@stackframe/stack-shared/utils/errors";
-import { createNodeHttpServerDuplex } from "@stackframe/stack-shared/utils/node-http";
+import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
+import { StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
+import { createNodeHttpServerDuplex } from "@stackframe/stack-shared/dist/utils/node-http";
 import { NextRequest, NextResponse } from "next/server";
 import { createOidcProvider } from "./idp";
 

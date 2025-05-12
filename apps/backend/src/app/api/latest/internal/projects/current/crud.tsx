@@ -2,10 +2,10 @@ import { createOrUpdateProject } from "@/lib/projects";
 import { getTenancy } from "@/lib/tenancies";
 import { retryTransaction } from "@/prisma-client";
 import { createCrudHandlers } from "@/route-handlers/crud-handler";
-import { projectsCrud } from "@stackframe/stack-shared/interface/crud/projects";
-import { yupObject } from "@stackframe/stack-shared/schema-fields";
-import { throwErr } from "@stackframe/stack-shared/utils/errors";
-import { createLazyProxy } from "@stackframe/stack-shared/utils/proxies";
+import { projectsCrud } from "@stackframe/stack-shared/dist/interface/crud/projects";
+import { yupObject } from "@stackframe/stack-shared/dist/schema-fields";
+import { throwErr } from "@stackframe/stack-shared/dist/utils/errors";
+import { createLazyProxy } from "@stackframe/stack-shared/dist/utils/proxies";
 
 export const projectsCrudHandlers = createLazyProxy(() => createCrudHandlers(projectsCrud, {
   paramsSchema: yupObject({}),

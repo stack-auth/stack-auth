@@ -1,10 +1,10 @@
 "use client";
 
+import React from "react";
+import { forwardRefIfNeeded } from "@stackframe/stack-shared/dist/utils/react";
 import * as SheetPrimitive from "@radix-ui/react-dialog";
 import { Cross2Icon } from "@radix-ui/react-icons";
-import { forwardRefIfNeeded } from "@stackframe/stack-shared/utils/react";
 import { cva, type VariantProps } from "class-variance-authority";
-import React from "react";
 
 import { cn } from "../../lib/utils";
 
@@ -126,7 +126,14 @@ const SheetDescription = forwardRefIfNeeded<
 SheetDescription.displayName = SheetPrimitive.Description.displayName;
 
 export {
-    Sheet, SheetClose,
-    SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetOverlay, SheetPortal, SheetTitle, SheetTrigger
+  Sheet,
+  SheetPortal,
+  SheetOverlay,
+  SheetTrigger,
+  SheetClose,
+  SheetContent,
+  SheetHeader,
+  SheetFooter,
+  SheetTitle,
+  SheetDescription,
 };
-

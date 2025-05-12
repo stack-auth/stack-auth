@@ -1,11 +1,11 @@
 import { Prisma } from "@prisma/client";
 import { KnownErrors } from "@stackframe/stack-shared";
-import { EnvironmentConfigOverrideOverride, OrganizationRenderedConfig } from "@stackframe/stack-shared/config/schema";
-import { AdminUserProjectsCrud, ProjectsCrud } from "@stackframe/stack-shared/interface/crud/projects";
-import { UsersCrud } from "@stackframe/stack-shared/interface/crud/users";
-import { StackAssertionError, captureError } from "@stackframe/stack-shared/utils/errors";
-import { filterUndefined, typedFromEntries } from "@stackframe/stack-shared/utils/objects";
-import { generateUuid } from "@stackframe/stack-shared/utils/uuids";
+import { EnvironmentConfigOverrideOverride, OrganizationRenderedConfig } from "@stackframe/stack-shared/dist/config/schema";
+import { AdminUserProjectsCrud, ProjectsCrud } from "@stackframe/stack-shared/dist/interface/crud/projects";
+import { UsersCrud } from "@stackframe/stack-shared/dist/interface/crud/users";
+import { StackAssertionError, captureError } from "@stackframe/stack-shared/dist/utils/errors";
+import { filterUndefined, typedFromEntries } from "@stackframe/stack-shared/dist/utils/objects";
+import { generateUuid } from "@stackframe/stack-shared/dist/utils/uuids";
 import { RawQuery, prismaClient, rawQuery, retryTransaction } from "../prisma-client";
 import { overrideEnvironmentConfigOverride } from "./config";
 import { DEFAULT_BRANCH_ID } from "./tenancies";

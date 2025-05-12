@@ -1,6 +1,6 @@
-import { fromNow } from "@stackframe/stack-shared/utils/dates";
-import { captureError } from "@stackframe/stack-shared/utils/errors";
-import { runAsynchronously } from "@stackframe/stack-shared/utils/promises";
+import { fromNow } from "@stackframe/stack-shared/dist/utils/dates";
+import { captureError } from "@stackframe/stack-shared/dist/utils/errors";
+import { runAsynchronously } from "@stackframe/stack-shared/dist/utils/promises";
 import { ActionCell, Badge, Button, Skeleton, Table, TableBody, TableCell, TableHead, TableHeader, TableRow, Typography } from "@stackframe/stack-ui";
 import { useEffect, useState } from "react";
 import { useUser } from "../../../lib/hooks";

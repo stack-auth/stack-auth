@@ -2,10 +2,10 @@
 
 import { yupResolver } from "@hookform/resolvers/yup";
 import { KnownErrors } from "@stackframe/stack-shared";
-import { getPasswordError } from "@stackframe/stack-shared/helpers/password";
-import { passwordSchema, yupObject, yupString } from "@stackframe/stack-shared/schema-fields";
-import { cacheFunction } from "@stackframe/stack-shared/utils/caches";
-import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/utils/promises";
+import { getPasswordError } from "@stackframe/stack-shared/dist/helpers/password";
+import { passwordSchema, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
+import { cacheFunction } from "@stackframe/stack-shared/dist/utils/caches";
+import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
 import { Button, Label, PasswordInput, Typography, cn } from "@stackframe/stack-ui";
 import React, { useState } from "react";
 import { useForm } from "react-hook-form";

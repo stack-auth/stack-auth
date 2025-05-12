@@ -1,9 +1,9 @@
 import { Prisma, PrismaClient } from "@prisma/client";
 import { withAccelerate } from "@prisma/extension-accelerate";
-import { getEnvVariable, getNodeEnvironment } from '@stackframe/stack-shared/utils/env';
-import { deepPlainEquals, filterUndefined, typedFromEntries, typedKeys } from "@stackframe/stack-shared/utils/objects";
-import { ignoreUnhandledRejection } from "@stackframe/stack-shared/utils/promises";
-import { Result } from "@stackframe/stack-shared/utils/results";
+import { getEnvVariable, getNodeEnvironment } from '@stackframe/stack-shared/dist/utils/env';
+import { deepPlainEquals, filterUndefined, typedFromEntries, typedKeys } from "@stackframe/stack-shared/dist/utils/objects";
+import { ignoreUnhandledRejection } from "@stackframe/stack-shared/dist/utils/promises";
+import { Result } from "@stackframe/stack-shared/dist/utils/results";
 import { isPromise } from "util/types";
 import { traceSpan } from "./utils/telemetry";
 
