@@ -295,6 +295,7 @@ export class StackClientInterface {
         ...(adminTokenObj ? {
           "X-Stack-Admin-Access-Token": adminTokenObj.accessToken.token,
         } : {}),
+        'ngrok-skip-browser-warning': 'true',
         /**
          * Next.js until v15 would cache fetch requests by default, and forcefully disabling it was nearly impossible.
          *
