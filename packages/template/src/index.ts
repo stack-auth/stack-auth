@@ -1,4 +1,4 @@
-export * from './lib/stack-app';
+export * from './lib/stack-app/all-exports';
 
 // IF_PLATFORM react-like
 export { default as StackHandler } from "./components-page/stack-handler";
@@ -8,6 +8,7 @@ export { StackTheme } from './providers/theme-provider';
 
 export { AccountSettings } from "./components-page/account-settings";
 export { AuthPage } from "./components-page/auth-page";
+export { CliAuthConfirmation } from "./components-page/cli-auth-confirm";
 export { EmailVerification } from "./components-page/email-verification";
 export { ForgotPassword } from "./components-page/forgot-password";
 export { PasswordReset } from "./components-page/password-reset";
@@ -22,5 +23,4 @@ export { OAuthButton } from "./components/oauth-button";
 export { OAuthButtonGroup } from "./components/oauth-button-group";
 export { SelectedTeamSwitcher } from "./components/selected-team-switcher";
 export { UserButton } from "./components/user-button";
-export { CliAuthConfirmation } from "./components-page/cli-auth-confirm";
 // END_PLATFORM

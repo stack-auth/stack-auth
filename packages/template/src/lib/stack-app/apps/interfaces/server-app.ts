@@ -1,7 +1,7 @@
 import { AsyncStoreProperty, GetUserOptions } from "../../common";
 import { ServerListUsersOptions, ServerTeam, ServerTeamCreateOptions } from "../../teams";
 import { ProjectCurrentServerUser, ServerUser, ServerUserCreateOptions } from "../../users";
-import { _StackServerAppImpl } from "../implementations";
+import { _StackServerAppImpl } from "../implementations/all-exports";
 import { StackClientApp, StackClientAppConstructorOptions } from "./client-app";
 
 

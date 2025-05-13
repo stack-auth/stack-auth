@@ -45,17 +45,16 @@ export type {
 
 export type {
   AdminSentEmail
-} from "./email";
+} from "./emails";
 
 export type {
-  AdminTeamPermission,
-  AdminTeamPermissionDefinition,
-  AdminTeamPermissionDefinitionCreateOptions,
-  AdminTeamPermissionDefinitionUpdateOptions,
   AdminProjectPermission,
   AdminProjectPermissionDefinition,
   AdminProjectPermissionDefinitionCreateOptions,
-  AdminProjectPermissionDefinitionUpdateOptions,
+  AdminProjectPermissionDefinitionUpdateOptions, AdminTeamPermission,
+  AdminTeamPermissionDefinition,
+  AdminTeamPermissionDefinitionCreateOptions,
+  AdminTeamPermissionDefinitionUpdateOptions
 } from "./permissions";
 
 export type {

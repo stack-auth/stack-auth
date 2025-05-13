@@ -1,5 +1,5 @@
 import React, { Suspense } from 'react';
-import { StackAdminApp, StackClientApp, StackServerApp, stackAppInternalsSymbol } from '../lib/stack-app';
+import { StackAdminApp, StackClientApp, StackServerApp, stackAppInternalsSymbol } from '../lib/stack-app/all-exports';
 import { StackProviderClient, UserSetter } from './stack-provider-client';
 import { TranslationProvider } from './translation-provider';
 

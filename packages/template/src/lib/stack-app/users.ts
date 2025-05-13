@@ -7,13 +7,13 @@ import { GeoInfo } from "@stackframe/stack-shared/dist/utils/geo";
 import { ReadonlyJson } from "@stackframe/stack-shared/dist/utils/json";
 import { ProviderType } from "@stackframe/stack-shared/dist/utils/oauth";
 import { Result } from "@stackframe/stack-shared/dist/utils/results";
-import { ApiKeyCreationOptions, UserApiKey, UserApiKeyFirstView } from "../api-keys";
-import { AsyncStoreProperty } from "../common";
-import { OAuthConnection } from "../connected-accounts";
-import { ContactChannel, ContactChannelCreateOptions, ServerContactChannel, ServerContactChannelCreateOptions } from "../contact-channels";
-import { AdminTeamPermission, TeamPermission } from "../permissions";
-import { AdminOwnedProject, AdminProjectUpdateOptions } from "../projects";
-import { EditableTeamMemberProfile, ServerTeam, ServerTeamCreateOptions, Team, TeamCreateOptions } from "../teams";
+import { ApiKeyCreationOptions, UserApiKey, UserApiKeyFirstView } from "./api-keys";
+import { AsyncStoreProperty } from "./common";
+import { OAuthConnection } from "./connected-accounts";
+import { ContactChannel, ContactChannelCreateOptions, ServerContactChannel, ServerContactChannelCreateOptions } from "./contact-channels";
+import { AdminTeamPermission, TeamPermission } from "./permissions";
+import { AdminOwnedProject, AdminProjectUpdateOptions } from "./projects";
+import { EditableTeamMemberProfile, ServerTeam, ServerTeamCreateOptions, Team, TeamCreateOptions } from "./teams";
 
 
 export type Session = {

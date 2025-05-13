@@ -6,7 +6,7 @@ import { useMemo } from 'react';
 import { SignIn, SignUp, StackServerApp } from "..";
 import { IframePreventer } from "../components/iframe-preventer";
 import { MessageCard } from "../components/message-cards/message-card";
-import { HandlerUrls, StackClientApp } from "../lib/stack-app";
+import { HandlerUrls, StackClientApp } from "../lib/stack-app/all-exports";
 import { AccountSettings } from "./account-settings";
 import { CliAuthConfirmation } from "./cli-auth-confirm";
 import { EmailVerification } from "./email-verification";

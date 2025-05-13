@@ -4,7 +4,7 @@ import { Result } from "@stackframe/stack-shared/dist/utils/results";
 import { AsyncStoreProperty, GetUserOptions, HandlerUrls, OAuthScopesOnSignIn, RedirectMethod, RedirectToOptions, TokenStoreInit, stackAppInternalsSymbol } from "../../common";
 import { Project } from "../../projects";
 import { ProjectCurrentUser } from "../../users";
-import { _StackClientAppImpl } from "../implementations";
+import { _StackClientAppImpl } from "../implementations/all-exports";
 
 
 export type StackClientAppConstructorOptions<HasTokenStore extends boolean, ProjectId extends string> = {

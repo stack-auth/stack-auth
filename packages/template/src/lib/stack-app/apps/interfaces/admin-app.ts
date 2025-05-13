@@ -2,12 +2,12 @@ import { EmailTemplateType } from "@stackframe/stack-shared/dist/interface/crud/
 import { InternalSession } from "@stackframe/stack-shared/dist/sessions";
 import { Result } from "@stackframe/stack-shared/dist/utils/results";
 import { AsyncStoreProperty, EmailConfig } from "../../common";
-import { AdminSentEmail } from "../../email";
 import { AdminEmailTemplate, AdminEmailTemplateUpdateOptions } from "../../email-templates";
+import { AdminSentEmail } from "../../emails";
 import { InternalApiKey, InternalApiKeyCreateOptions, InternalApiKeyFirstView } from "../../internal-api-keys";
 import { AdminProjectPermission, AdminProjectPermissionDefinition, AdminProjectPermissionDefinitionCreateOptions, AdminProjectPermissionDefinitionUpdateOptions, AdminTeamPermission, AdminTeamPermissionDefinition, AdminTeamPermissionDefinitionCreateOptions, AdminTeamPermissionDefinitionUpdateOptions } from "../../permissions";
 import { AdminProject } from "../../projects";
-import { _StackAdminAppImpl } from "../implementations";
+import { _StackAdminAppImpl } from "../implementations/all-exports";
 import { StackServerApp, StackServerAppConstructorOptions } from "./server-app";
 
 

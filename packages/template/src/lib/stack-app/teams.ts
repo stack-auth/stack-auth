@@ -1,9 +1,9 @@
 import { TeamsCrud } from "@stackframe/stack-shared/dist/interface/crud/teams";
 import { ReadonlyJson } from "@stackframe/stack-shared/dist/utils/json";
 
-import { ApiKeyCreationOptions, TeamApiKey, TeamApiKeyFirstView } from "../api-keys";
-import { AsyncStoreProperty } from "../common";
-import { ServerUser } from "../users";
+import { ApiKeyCreationOptions, TeamApiKey, TeamApiKeyFirstView } from "./api-keys";
+import { AsyncStoreProperty } from "./common";
+import { ServerUser } from "./users";
 
 
 export type TeamMemberProfile = {

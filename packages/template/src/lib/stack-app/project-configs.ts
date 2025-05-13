@@ -1,4 +1,4 @@
-import { AdminTeamPermission } from "../permissions";
+import { AdminTeamPermission } from "./permissions";
 
 
 export type ProjectConfig = {

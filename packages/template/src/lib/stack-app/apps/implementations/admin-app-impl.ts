@@ -8,7 +8,7 @@ import { StackAssertionError, throwErr } from "@stackframe/stack-shared/dist/uti
 import { pick } from "@stackframe/stack-shared/dist/utils/objects";
 import { Result } from "@stackframe/stack-shared/dist/utils/results";
 import { useMemo } from "react"; // THIS_LINE_PLATFORM react-like
-import { AdminSentEmail } from "../..";
+import { AdminSentEmail } from "../../all-exports";
 import { EmailConfig, stackAppInternalsSymbol } from "../../common";
 import { AdminEmailTemplate, AdminEmailTemplateUpdateOptions, adminEmailTemplateUpdateOptionsToCrud } from "../../email-templates";
 import { InternalApiKey, InternalApiKeyBase, InternalApiKeyBaseCrudRead, InternalApiKeyCreateOptions, InternalApiKeyFirstView, internalApiKeyCreateOptionsToCrud } from "../../internal-api-keys";
