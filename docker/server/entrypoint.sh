@@ -94,7 +94,7 @@ done
 # ============= START BACKEND AND DASHBOARD =============
 
 echo "Starting backend on port $BACKEND_PORT..."
-cd $WORK_DIR
+cd "$WORK_DIR"
 PORT=$BACKEND_PORT HOSTNAME=0.0.0.0 node apps/backend/server.js &
 
 echo "Starting dashboard on port $DASHBOARD_PORT..."
