@@ -187,11 +187,12 @@ export namespace Auth {
         new URL(`api/v1/projects/${aud}/.well-known/jwks.json`, STACK_BACKEND_BASE_URL),
         { timeoutDuration: 10_000 },
       );
+      const expectedIssuer = new URL(`/api/v1/projects/${aud}`, STACK_BACKEND_BASE_URL).toString();
       const { payload } = await jose.jwtVerify(accessToken, jwks);
       expect(payload).toEqual({
         "exp": expect.any(Number),
         "iat": expect.any(Number),
-        "iss": "https://access-token.jwt-signature.stack-auth.com",
+        "iss": expectedIssuer,
         "refreshTokenId": expect.any(String),
         "aud": expect.any(String),
         "sub": expect.any(String),
@@ -706,7 +707,7 @@ export namespace Auth {
         },
       });
       expect(response).toMatchObject({
-        status: 307,
+        status: 303,
         headers: expect.any(Headers),
         body: {},
       });
