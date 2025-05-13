@@ -52,10 +52,10 @@ fi
 # ============= ENV VARS =============
 
 # Create a working directory for our processed files
+# This is necessary because we need to replace the env vars in all files and we might want to run the seed script multiple times with different env vars.
 WORK_DIR="/tmp/processed"
 mkdir -p "$WORK_DIR"
 
-# Copy all files from /app to the working directory (instead of just /app/apps)
 echo "Copying files to working directory..."
 cp -r /app/. "$WORK_DIR"/.
 
