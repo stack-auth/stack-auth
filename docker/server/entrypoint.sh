@@ -60,7 +60,7 @@ echo "Copying files to working directory..."
 cp -r /app/* $WORK_DIR/
 
 # Find all files in the working directory that contain a STACK_ENV_VAR_SENTINEL and extract the unique sentinel strings.
-unhandled_sentinels=$(find $WORK_DIR/apps -type f -exec grep -l "STACK_ENV_VAR_SENTINEL" {} + | \
+unhandled_sentinels=$(find "$WORK_DIR/apps" -type f -exec grep -l "STACK_ENV_VAR_SENTINEL" {} + | \
   xargs grep -h "STACK_ENV_VAR_SENTINEL" | \
   grep -o "STACK_ENV_VAR_SENTINEL[A-Z_]*" | \
   sort -u | grep -v "^STACK_ENV_VAR_SENTINEL$")
