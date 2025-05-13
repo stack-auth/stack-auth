@@ -17,7 +17,6 @@ const fixImportExtensions = (extension: string = ".js")  => ({
         const filePath = path.join(args.resolveDir, args.path);
         let resolvedPath;
 
-        console.log(filePath);
         
         if (fs.existsSync(filePath + ".ts") || fs.existsSync(filePath + ".tsx")) {
           resolvedPath = args.path + extension;
