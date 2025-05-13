@@ -53,7 +53,7 @@ fi
 
 # Create a working directory for our processed files
 WORK_DIR="/tmp/processed"
-mkdir -p $WORK_DIR
+mkdir -p "$WORK_DIR"
 
 # Copy all files from /app to the working directory (instead of just /app/apps)
 echo "Copying files to working directory..."
