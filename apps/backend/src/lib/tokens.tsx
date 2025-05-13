@@ -52,25 +52,27 @@ const legacyIssuer = "access-token.jwt-signature.stack-auth.com";
 
 export async function decodeAccessToken(accessToken: string) {
   return await traceSpan("decoding access token", async (span) => {
-    const decoded = jose.decodeJwt(accessToken);
     let payload: jose.JWTPayload;
-
-    let expectedIssuer: string | undefined;
-    // TODO: next-release: This is for backwards compatibility with old tokens
-    if (decoded.iss === legacyIssuer) {
-      expectedIssuer = legacyIssuer;
-    } else {
-      expectedIssuer = getIssuer(decoded.aud?.toString() ?? "");
-    }
+    let decoded: jose.JWTPayload | undefined;
 
     try {
+      decoded = jose.decodeJwt(accessToken);
+
+      let expectedIssuer: string;
+      // TODO: next-release: This is for backwards compatibility with old tokens
+      if (decoded.iss === legacyIssuer) {
+        expectedIssuer = legacyIssuer;
+      } else {
+        expectedIssuer = getIssuer(decoded.aud?.toString() ?? "");
+      }
+
       payload = await verifyJWT({
         issuer: expectedIssuer,
         jwt: accessToken,
       });
     } catch (error) {
       if (error instanceof JWTExpired) {
-        return Result.error(new KnownErrors.AccessTokenExpired(decoded.exp ? new Date(decoded.exp * 1000) : undefined));
+        return Result.error(new KnownErrors.AccessTokenExpired(decoded?.exp ? new Date(decoded.exp * 1000) : undefined));
       } else if (error instanceof JOSEError) {
         return Result.error(new KnownErrors.UnparsableAccessToken());
       }
