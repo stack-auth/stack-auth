@@ -459,7 +459,7 @@ it("prevents creating API keys for other users", async ({ expect }: { expect: an
 it("can manage API keys if and only if the respective team permission is granted", async ({ expect }: { expect: any }) => {
   await createAndSwitchToAPIEnabledProject();
   const { userId: userId1 } = await Auth.Otp.signIn();
-  const { teamId } = await Team.createAndAddCurrent();
+  const { teamId } = await Team.createWithCurrentAsCreator();
 
 
   await niceBackendFetch(`/api/v1/team-permissions/${teamId}/${userId1}/$manage_api_keys`, {

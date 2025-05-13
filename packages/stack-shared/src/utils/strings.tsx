@@ -49,6 +49,7 @@ import.meta.vitest?.test("typedCapitalize", ({ expect }) => {
  * Compares two strings in a way that is not dependent on the current locale.
  */
 export function stringCompare(a: string, b: string): number {
+  if (typeof a !== "string" || typeof b !== "string") throw new StackAssertionError(`Expected two strings for stringCompare, found ${typeof a} and ${typeof b}`, { a, b });
   const cmp = (a: string, b: string) => a < b ? -1 : a > b ? 1 : 0;
   return cmp(a.toUpperCase(), b.toUpperCase()) || cmp(b, a);
 }

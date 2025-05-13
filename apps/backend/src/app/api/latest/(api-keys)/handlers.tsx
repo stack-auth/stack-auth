@@ -1,4 +1,4 @@
-import { listUserTeamPermissions } from "@/lib/permissions";
+import { listPermissions } from "@/lib/permissions";
 import { prismaClient } from "@/prisma-client";
 import { createCrudHandlers } from "@/route-handlers/crud-handler";
 import { SmartRequestAuth } from "@/route-handlers/smart-request";
@@ -57,7 +57,8 @@ async function ensureUserCanManageApiKeys(
     if (options.teamId !== undefined) {
       const userId = auth.user.id;
       const hasManageApiKeysPermission = await prismaClient.$transaction(async (tx) => {
-        const permissions = await listUserTeamPermissions(tx, {
+        const permissions = await listPermissions(tx, {
+          scope: 'team',
           tenancy: auth.tenancy,
           teamId: options.teamId,
           userId,
@@ -149,7 +150,10 @@ function createApiKeyHandlers<Type extends "user" | "team">(type: Type) {
   return {
     create: createSmartRouteHandler({
       metadata: {
-        hidden: true,
+        hidden: false,
+        description: "Create a new API key for a user or team",
+        summary: "Create API key",
+        tags: ["API Keys"],
       },
       request: yupObject({
         auth: yupObject({
@@ -168,7 +172,7 @@ function createApiKeyHandlers<Type extends "user" | "team">(type: Type) {
         body: type === 'user' ? userApiKeysCreateOutputSchema.defined() : teamApiKeysCreateOutputSchema.defined(),
       }),
       handler: async ({ url, auth, body }) => {
-        await throwIfFeatureDisabled(auth.project.config, type);
+        await throwIfFeatureDisabled(auth.tenancy.config, type);
         const { userId, teamId } = await parseTypeAndParams({ type, params: body });
         await ensureUserCanManageApiKeys(auth, {
           userId,
@@ -217,10 +221,17 @@ function createApiKeyHandlers<Type extends "user" | "team">(type: Type) {
       },
     }),
     check: createSmartRouteHandler({
+      metadata: {
+        hidden: false,
+        description: `Validate a ${type} API key`,
+        summary: `Check ${type} API key validity`,
+        tags: ["API Keys"],
+      },
       request: yupObject({
         auth: yupObject({
           type: serverOrHigherAuthTypeSchema,
           project: adaptSchema.defined(),
+          tenancy: adaptSchema.defined(),
         }).defined(),
         body: yupObject({
           api_key: yupString().defined(),
@@ -232,7 +243,7 @@ function createApiKeyHandlers<Type extends "user" | "team">(type: Type) {
         body: (type === 'user' ? userApiKeysCrud : teamApiKeysCrud).server.readSchema.defined(),
       }),
       handler: async ({ auth, body }) => {
-        await throwIfFeatureDisabled(auth.project.config, type);
+        await throwIfFeatureDisabled(auth.tenancy.config, type);
 
         const apiKey = await prismaClient.projectApiKey.findUnique({
           where: {
@@ -281,7 +292,7 @@ function createApiKeyHandlers<Type extends "user" | "team">(type: Type) {
         }),
 
         onList: async ({ auth, query }) => {
-          await throwIfFeatureDisabled(auth.project.config, type);
+          await throwIfFeatureDisabled(auth.tenancy.config, type);
           const { userId, teamId } = await parseTypeAndParams({ type, params: query });
           await ensureUserCanManageApiKeys(auth, {
             userId,
@@ -306,7 +317,7 @@ function createApiKeyHandlers<Type extends "user" | "team">(type: Type) {
         },
 
         onRead: async ({ auth, query, params }) => {
-          await throwIfFeatureDisabled(auth.project.config, type);
+          await throwIfFeatureDisabled(auth.tenancy.config, type);
 
           const apiKey = await prismaClient.projectApiKey.findUnique({
             where: {
@@ -329,7 +340,7 @@ function createApiKeyHandlers<Type extends "user" | "team">(type: Type) {
         },
 
         onUpdate: async ({ auth, data, params, query }) => {
-          await throwIfFeatureDisabled(auth.project.config, type);
+          await throwIfFeatureDisabled(auth.tenancy.config, type);
 
           const existingApiKey = await prismaClient.projectApiKey.findUnique({
             where: {

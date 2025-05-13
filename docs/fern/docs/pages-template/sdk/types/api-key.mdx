@@ -1,0 +1,465 @@
+
+---
+slug: sdk/types/api-key
+---
+
+<Markdown src="../../snippets/make-full-page.mdx" />
+<div className="stack-aside-container"><div className="stack-content">
+
+`ApiKey` represents an authentication token that allows programmatic access to your application's backend. API keys can be associated with individual users or teams.
+
+On this page:
+- [`ApiKey`](#apikey)
+- Types:
+  - [`UserApiKey`](#userapikey)
+  - [`TeamApiKey`](#teamapikey)
+
+</div><div className="stack-full-size">
+<Markdown src="../../snippets/big-divider.mdx" />
+
+# `ApiKey`
+</div><div className="stack-content">
+
+API keys provide a way for users to authenticate with your backend services without using their primary credentials. They can be created for individual users or for teams, allowing programmatic access to your application.
+
+API keys can be obtained through:
+- [`user.createApiKey()`](../types/user.mdx#currentusercreateapikeyoptions)
+- [`user.listApiKeys()`](../types/user.mdx#currentuserlistapikeys)
+- [`user.useApiKeys()`](../types/user.mdx#currentuseruseapikeys) (React hook)
+- [`team.createApiKey()`](../types/team.mdx#teamcreateapikeyoptions)
+- [`team.listApiKeys()`](../types/team.mdx#teamlistapikeys)
+- [`team.useApiKeys()`](../types/team.mdx#teamuseapikeys) (React hook)
+
+### Table of Contents
+
+```typescript
+type ApiKey<Type extends "user" | "team" = "user" | "team", IsFirstView extends boolean = false> = {
+  id: string;  //$stack-link-to:#apikeyid
+  description: string;  //$stack-link-to:#apikeydescription
+  expiresAt?: Date;  //$stack-link-to:#apikeyexpiresat
+  manuallyRevokedAt: Date | null;  //$stack-link-to:#apikeymanuallyrevokedat
+  createdAt: Date;  //$stack-link-to:#apikeycreatedat
+  value: IsFirstView extends true ? string : { lastFour: string };  //$stack-link-to:#apikeyvalue
+  
+  // User or Team properties based on Type
+  ...(Type extends "user" ? {
+    type: "user";
+    userId: string;  //$stack-link-to:#apikeyuserid
+  } : {
+    type: "team";
+    teamId: string;  //$stack-link-to:#apikeyteamid
+  })
+  
+  // Methods
+  isValid(): boolean;  //$stack-link-to:#apikeyisvalid
+  whyInvalid(): "manually-revoked" | "expired" | null;  //$stack-link-to:#apikeywhyinvalid
+  revoke(): Promise<void>;  //$stack-link-to:#apikeyrevoke
+  update(options): Promise<void>;  //$stack-link-to:#apikeyupdateoptions
+};
+```
+
+</div><div className="stack-full-size">
+<Markdown src="../../snippets/divider.mdx" />
+
+## `apiKey.id`
+</div><div className="stack-content">
+
+The unique identifier for this API key.
+
+</div><div className="stack-aside"><div className="stack-sticky">
+### Type Definition
+
+```typescript
+declare const id: string;
+```
+</div></div><div className="stack-content">
+
+</div><div className="stack-full-size">
+<Markdown src="../../snippets/divider.mdx" />
+
+## `apiKey.description`
+</div><div className="stack-content">
+
+A human-readable description of the API key's purpose.
+
+</div><div className="stack-aside"><div className="stack-sticky">
+### Type Definition
+
+```typescript
+declare const description: string;
+```
+</div></div><div className="stack-content">
+
+</div><div className="stack-full-size">
+<Markdown src="../../snippets/divider.mdx" />
+
+## `apiKey.expiresAt`
+</div><div className="stack-content">
+
+The date and time when this API key will expire. If not set, the key does not expire.
+
+</div><div className="stack-aside"><div className="stack-sticky">
+### Type Definition
+
+```typescript
+declare const expiresAt?: Date;
+```
+</div></div><div className="stack-content">
+
+</div><div className="stack-full-size">
+<Markdown src="../../snippets/divider.mdx" />
+
+## `apiKey.manuallyRevokedAt`
+</div><div className="stack-content">
+
+The date and time when this API key was manually revoked. If null, the key has not been revoked.
+
+</div><div className="stack-aside"><div className="stack-sticky">
+### Type Definition
+
+```typescript
+declare const manuallyRevokedAt: Date | null;
+```
+</div></div><div className="stack-content">
+
+</div><div className="stack-full-size">
+<Markdown src="../../snippets/divider.mdx" />
+
+## `apiKey.createdAt`
+</div><div className="stack-content">
+
+The date and time when this API key was created.
+
+</div><div className="stack-aside"><div className="stack-sticky">
+### Type Definition
+
+```typescript
+declare const createdAt: Date;
+```
+</div></div><div className="stack-content">
+
+</div><div className="stack-full-size">
+<Markdown src="../../snippets/divider.mdx" />
+
+## `apiKey.value`
+</div><div className="stack-content">
+
+The value of the API key. When the key is first created, this is the full API key string. After that, only the last four characters are available for security reasons.
+
+</div><div className="stack-aside"><div className="stack-sticky">
+### Type Definition
+
+```typescript
+// On first creation
+declare const value: string;
+
+// On subsequent retrievals
+declare const value: { lastFour: string };
+```
+</div></div><div className="stack-content">
+
+</div><div className="stack-full-size">
+<Markdown src="../../snippets/divider.mdx" />
+
+## `apiKey.userId`
+</div><div className="stack-content">
+
+For user API keys, the ID of the user that owns this API key.
+
+</div><div className="stack-aside"><div className="stack-sticky">
+### Type Definition
+
+```typescript
+declare const userId: string;
+```
+</div></div><div className="stack-content">
+
+</div><div className="stack-full-size">
+<Markdown src="../../snippets/divider.mdx" />
+
+## `apiKey.teamId`
+</div><div className="stack-content">
+
+For team API keys, the ID of the team that owns this API key.
+
+</div><div className="stack-aside"><div className="stack-sticky">
+### Type Definition
+
+```typescript
+declare const teamId: string;
+```
+</div></div><div className="stack-content">
+
+</div><div className="stack-full-size">
+<Markdown src="../../snippets/divider.mdx" />
+
+## `apiKey.isValid()`
+</div><div className="stack-content">
+
+Checks if the API key is still valid (not expired and not revoked).
+
+### Parameters
+
+<div className="indented">
+  None.
+</div>
+
+### Returns
+
+<div className="indented">
+  `boolean`: True if the key is valid, false otherwise.
+</div>
+
+</div><div className="stack-aside"><div className="stack-sticky">
+### Signature
+
+```typescript
+declare function isValid(): boolean;
+```
+
+### Examples
+
+<div className="small-codeblock-tabs"><CodeBlocks>
+```typescript Checking if an API key is valid
+if (apiKey.isValid()) {
+  console.log("API key is still valid");
+} else {
+  console.log("API key is invalid");
+}
+```
+<Markdown src="../../snippets/always-tab-codeblock.mdx" /></CodeBlocks></div>
+</div></div><div className="stack-content">
+
+</div><div className="stack-full-size">
+<Markdown src="../../snippets/divider.mdx" />
+
+## `apiKey.whyInvalid()`
+</div><div className="stack-content">
+
+Returns the reason why the API key is invalid, or null if it is valid.
+
+### Parameters
+
+<div className="indented">
+  None.
+</div>
+
+### Returns
+
+<div className="indented">
+  `"manually-revoked" | "expired" | null`: The reason the key is invalid, or null if it's valid.
+</div>
+
+</div><div className="stack-aside"><div className="stack-sticky">
+### Signature
+
+```typescript
+declare function whyInvalid(): "manually-revoked" | "expired" | null;
+```
+
+### Examples
+
+<div className="small-codeblock-tabs"><CodeBlocks>
+```typescript Checking why an API key is invalid
+const reason = apiKey.whyInvalid();
+if (reason) {
+  console.log(`API key is invalid because it was ${reason}`);
+} else {
+  console.log("API key is valid");
+}
+```
+<Markdown src="../../snippets/always-tab-codeblock.mdx" /></CodeBlocks></div>
+</div></div><div className="stack-content">
+
+</div><div className="stack-full-size">
+<Markdown src="../../snippets/divider.mdx" />
+
+## `apiKey.revoke()`
+</div><div className="stack-content">
+
+Revokes the API key, preventing it from being used for authentication.
+
+### Parameters
+
+<div className="indented">
+  None.
+</div>
+
+### Returns
+
+<div className="indented">
+  `Promise<void>`
+</div>
+
+</div><div className="stack-aside"><div className="stack-sticky">
+### Signature
+
+```typescript
+declare function revoke(): Promise<void>;
+```
+
+### Examples
+
+<div className="small-codeblock-tabs"><CodeBlocks>
+```typescript Revoking an API key
+await apiKey.revoke();
+console.log("API key has been revoked");
+```
+<Markdown src="../../snippets/always-tab-codeblock.mdx" /></CodeBlocks></div>
+</div></div><div className="stack-content">
+
+</div><div className="stack-full-size">
+<Markdown src="../../snippets/divider.mdx" />
+
+## `apiKey.update(options)`
+</div><div className="stack-content">
+
+Updates the API key properties.
+
+### Parameters
+
+<div className="indented">
+  <ParamField path="options" type="object" required>
+    An object containing properties for updating.
+    <Accordion title={<span className="accordion-show-properties" />}>
+      <ParamField path="description" type="string">
+        A new description for the API key.
+      </ParamField>
+      <ParamField path="expiresAt" type="Date | null">
+        A new expiration date, or null to remove the expiration.
+      </ParamField>
+      <ParamField path="revoked" type="boolean">
+        Set to true to revoke the API key.
+      </ParamField>
+    </Accordion>
+  </ParamField>
+</div>
+
+### Returns
+
+<div className="indented">
+  `Promise<void>`
+</div>
+
+</div><div className="stack-aside"><div className="stack-sticky">
+### Signature
+
+```typescript
+declare function update(options: {
+  description?: string;
+  expiresAt?: Date | null;
+  revoked?: boolean;
+}): Promise<void>;
+```
+
+### Examples
+
+<div className="small-codeblock-tabs"><CodeBlocks>
+```typescript Updating an API key
+await apiKey.update({
+  description: "Updated description",
+  expiresAt: new Date(Date.now() + 60 * 24 * 60 * 60 * 1000), // 60 days
+});
+```
+<Markdown src="../../snippets/always-tab-codeblock.mdx" /></CodeBlocks></div>
+</div></div><div className="stack-content">
+
+</div><div className="stack-full-size">
+<Markdown src="../../snippets/divider.mdx" />
+
+# Types
+
+</div><div className="stack-content">
+
+## `UserApiKey`
+
+A type alias for an API key owned by a user:
+
+```typescript
+type UserApiKey = ApiKey<"user", false>;
+```
+
+## `UserApiKeyFirstView`
+
+A type alias for a newly created user API key, which includes the full key value:
+
+```typescript
+type UserApiKeyFirstView = ApiKey<"user", true>;
+```
+
+## `TeamApiKey`
+
+A type alias for an API key owned by a team:
+
+```typescript
+type TeamApiKey = ApiKey<"team", false>;
+```
+
+## `TeamApiKeyFirstView`
+
+A type alias for a newly created team API key, which includes the full key value:
+
+```typescript
+type TeamApiKeyFirstView = ApiKey<"team", true>;
+```
+
+</div><div className="stack-full-size">
+<Markdown src="../../snippets/divider.mdx" />
+
+# Creation options
+
+</div><div className="stack-content">
+
+When creating an API key using [`user.createApiKey()`](../types/user.mdx#currentusercreatekeyoptions) or [`team.createApiKey()`](../types/team.mdx#teamcreatekeyoptions), you need to provide an options object with the following properties:
+
+```typescript
+type ApiKeyCreationOptions = {
+  description: string;
+  expiresAt: Date | null;
+  isPublic?: boolean;
+};
+```
+
+### Properties
+
+<div className="indented">
+  <ParamField path="description" type="string" required>
+    A human-readable description of the API key's purpose.
+  </ParamField>
+  <ParamField path="expiresAt" type="Date | null" required>
+    The date when the API key will expire. Use null for keys that don't expire.
+  </ParamField>
+  <ParamField path="isPublic" type="boolean">
+    Whether the API key is public. Defaults to false.
+    
+    - **Secret API Keys** (default) are monitored by Stack Auth's secret scanner, which can revoke them if detected in public code repositories.
+    - **Public API Keys** are designed for client-side code where exposure is not a concern.
+  </ParamField>
+</div>
+
+</div><div className="stack-aside"><div className="stack-sticky">
+### Examples
+
+<div className="small-codeblock-tabs"><CodeBlocks>
+```typescript Creating a user API key
+// Get the current user
+const user = await stackApp.getUser();
+
+// Create a secret API key (default)
+const secretKey = await user.createApiKey({
+  description: "Backend integration",
+  expiresAt: new Date(Date.now() + 90 * 24 * 60 * 60 * 1000), // 90 days
+  isPublic: false,
+});
+
+// Create a public API key
+const publicKey = await user.createApiKey({
+  description: "Client-side access",
+  expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000), // 30 days
+  isPublic: true,
+});
+```
+<Markdown src="../../snippets/always-tab-codeblock.mdx" /></CodeBlocks></div>
+</div></div><div className="stack-content">
+
+</div></div>

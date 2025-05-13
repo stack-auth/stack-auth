@@ -1,6 +1,3 @@
-import fs from 'fs';
-import path from 'path';
-import { defineConfig, Options } from 'tsup';
 
 const customNoExternal = new Set([
   "oauth4webapi",

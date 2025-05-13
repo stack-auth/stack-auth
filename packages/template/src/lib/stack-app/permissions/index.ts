@@ -1,5 +1,5 @@
-import { TeamPermissionDefinitionsCrud } from "@stackframe/stack-shared/dist/interface/crud/team-permissions";
 import { ProjectPermissionDefinitionsCrud } from "@stackframe/stack-shared/dist/interface/crud/project-permissions";
+import { TeamPermissionDefinitionsCrud } from "@stackframe/stack-shared/dist/interface/crud/team-permissions";
 
 
 export type TeamPermission = {
@@ -29,10 +29,9 @@ export function adminTeamPermissionDefinitionCreateOptionsToCrud(options: AdminT
   };
 }
 
-export type AdminTeamPermissionDefinitionUpdateOptions = Partial<AdminTeamPermissionDefinitionCreateOptions>;
+export type AdminTeamPermissionDefinitionUpdateOptions = Pick<Partial<AdminTeamPermissionDefinitionCreateOptions>, "description" | "containedPermissionIds">;
 export function adminTeamPermissionDefinitionUpdateOptionsToCrud(options: AdminTeamPermissionDefinitionUpdateOptions): TeamPermissionDefinitionsCrud["Admin"]["Update"] {
   return {
-    id: options.id,
     description: options.description,
     contained_permission_ids: options.containedPermissionIds,
   };
@@ -63,10 +62,9 @@ export function adminProjectPermissionDefinitionCreateOptionsToCrud(options: Adm
   };
 }
 
-export type AdminProjectPermissionDefinitionUpdateOptions = Partial<AdminProjectPermissionDefinitionCreateOptions>;
+export type AdminProjectPermissionDefinitionUpdateOptions = Pick<Partial<AdminProjectPermissionDefinitionCreateOptions>, "description" | "containedPermissionIds">;
 export function adminProjectPermissionDefinitionUpdateOptionsToCrud(options: AdminProjectPermissionDefinitionUpdateOptions): ProjectPermissionDefinitionsCrud["Admin"]["Update"] {
   return {
-    id: options.id,
     description: options.description,
     contained_permission_ids: options.containedPermissionIds,
   };

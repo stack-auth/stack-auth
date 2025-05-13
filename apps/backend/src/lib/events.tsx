@@ -10,6 +10,7 @@ import { UnionToIntersection } from "@stackframe/stack-shared/dist/utils/types";
 import { generateUuid } from "@stackframe/stack-shared/dist/utils/uuids";
 import * as yup from "yup";
 import { getEndUserInfo } from "./end-users";
+import { DEFAULT_BRANCH_ID } from "./tenancies";
 
 type EventType = {
   id: string,
@@ -45,8 +46,8 @@ const ProjectActivityEventType = {
 const UserActivityEventType = {
   id: "$user-activity",
   dataSchema: yupObject({
-    // old events of this type may not have a branchId field, so we default to "main"
-    branchId: yupString().defined().default("main"),
+    // old events of this type may not have a branchId field, so we default to the default branch ID
+    branchId: yupString().defined().default(DEFAULT_BRANCH_ID),
     userId: yupString().uuid().defined(),
   }),
   inherits: [ProjectActivityEventType],

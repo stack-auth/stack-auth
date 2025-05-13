@@ -66,6 +66,11 @@ type CurrentUser = {
   listContactChannels(): Promise<ContactChannel[]>; //$stack-link-to:#currentuserlistcontactchannels
   // NEXT_LINE_PLATFORM react-like
    ⤷ useContactChannels(): ContactChannel[]; //$stack-link-to:#currentuserusecontactchannels
+   
+  createApiKey(options): Promise<UserApiKeyFirstView>; //$stack-link-to:#currentusercreateapikeyoptions
+  listApiKeys(): Promise<UserApiKey[]>; //$stack-link-to:#currentuserlistapikeys
+  // NEXT_LINE_PLATFORM react-like
+   ⤷ useApiKeys(): UserApiKey[]; //$stack-link-to:#currentuseruseapikeys
 };
 ```
 
@@ -993,6 +998,168 @@ const contactChannels = user.useContactChannels();
 
 {/* END_PLATFORM */}
 
+## `currentUser.createApiKey(options)`
+</div><div className="stack-content">
+
+Creates a new API key for the user, which can be used for programmatic access to your application's backend.
+
+### Parameters
+
+<div className="indented">
+  <ParamField path="options" type="object" required>
+    Options for creating the API key.
+    <Accordion title={<span className="accordion-show-properties" />}>
+      <ParamField path="description" type="string" required>
+        A human-readable description of the API key's purpose.
+      </ParamField>
+      <ParamField path="expiresAt" type="Date | null" required>
+        The date when the API key will expire. Use null for keys that don't expire.
+      </ParamField>
+      <ParamField path="isPublic" type="boolean">
+        Whether the API key is public. Defaults to false.
+        
+        - **Secret API Keys** (default) begin with `sk_` and are monitored by Stack Auth's secret scanner, which can revoke them if detected in public code repositories.
+        - **Public API Keys** begin with `pk_` and are designed for client-side code where exposure is not a concern.
+      </ParamField>
+    </Accordion>
+  </ParamField>
+</div>
+
+### Returns
+
+<div className="indented">
+  `Promise<UserApiKeyFirstView>`: The newly created API key. Note that this is the only time the full API key value will be visible.
+</div>
+
+</div><div className="stack-aside"><div className="stack-sticky">
+### Signature
+
+```typescript
+declare function createApiKey(options: {
+  description: string;
+  expiresAt: Date | null;
+  isPublic?: boolean;
+}): Promise<UserApiKeyFirstView>;
+```
+
+### Examples
+
+<div className="small-codeblock-tabs"><CodeBlocks>
+```typescript Creating an API key
+const apiKey = await user.createApiKey({
+  description: "Backend integration",
+  expiresAt: new Date(Date.now() + 90 * 24 * 60 * 60 * 1000), // 90 days
+  isPublic: false,
+});
+
+// Save the API key value securely, as it won't be retrievable later
+console.log("API Key:", apiKey.value);
+```
+<Markdown src="../../snippets/always-tab-codeblock.mdx" /></CodeBlocks></div>
+</div></div><div className="stack-content">
+
+</div><div className="stack-full-size">
+<Markdown src="../../snippets/divider.mdx" />
+
+## `currentUser.listApiKeys()`
+</div><div className="stack-content">
+
+Lists all API keys that belong to the user.
+
+### Parameters
+
+<div className="indented">
+  None.
+</div>
+
+### Returns
+
+<div className="indented">
+  `Promise<UserApiKey[]>`: An array of API keys belonging to the user.
+</div>
+
+</div><div className="stack-aside"><div className="stack-sticky">
+### Signature
+
+```typescript
+declare function listApiKeys(): Promise<UserApiKey[]>;
+```
+
+### Examples
+
+<div className="small-codeblock-tabs"><CodeBlocks>
+```typescript Listing API keys
+const apiKeys = await user.listApiKeys();
+console.log(`You have ${apiKeys.length} API keys`);
+
+// Find keys that are about to expire
+const soonToExpire = apiKeys.filter(key => 
+  key.expiresAt && key.expiresAt.getTime() - Date.now() < 7 * 24 * 60 * 60 * 1000
+);
+```
+<Markdown src="../../snippets/always-tab-codeblock.mdx" /></CodeBlocks></div>
+</div></div><div className="stack-content">
+
+</div><div className="stack-full-size">
+<Markdown src="../../snippets/divider.mdx" />
+
+
+{/* IF_PLATFORM next */}
+## `currentUser.useApiKeys()`
+</div><div className="stack-content">
+
+Lists all API keys that belong to the user, used as a React hook.
+
+### Parameters
+
+<div className="indented">
+  None.
+</div>
+
+### Returns
+
+<div className="indented">
+  `UserApiKey[]`: An array of API keys belonging to the user.
+</div>
+
+</div><div className="stack-aside"><div className="stack-sticky">
+### Signature
+
+```typescript
+declare function useApiKeys(): UserApiKey[];
+```
+
+### Examples
+
+<div className="small-codeblock-tabs"><CodeBlocks>
+```typescript Using API keys in a React component
+function ApiKeysList() {
+  const user = useUser();
+  const apiKeys = user.useApiKeys();
+  
+  return (
+    <div>
+      <h2>Your API Keys ({apiKeys.length})</h2>
+      <ul>
+        {apiKeys.map(key => (
+          <li key={key.id}>
+            {key.description} - Last four: {key.value.lastFour}
+            {key.isValid() ? ' (valid)' : ` (invalid: ${key.whyInvalid()})`}
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+```
+<Markdown src="../../snippets/always-tab-codeblock.mdx" /></CodeBlocks></div>
+</div></div><div className="stack-content">
+
+</div><div className="stack-full-size">
+<Markdown src="../../snippets/divider.mdx" />
+
+{/* END_PLATFORM */}
+
 ## `currentUser.updatePassword(data)`
 </div><div className="stack-content">
 
@@ -1528,6 +1695,172 @@ await serverUser.revokePermission(team, "read_secret_info");
 ```
 <Markdown src="../../snippets/always-tab-codeblock.mdx" /></CodeBlocks></div>
 </div></div><div className="stack-content">
+
+</div><div className="stack-full-size">
+<Markdown src="../../snippets/divider.mdx" />
+
+
+## `serverUser.createApiKey(options)`
+</div><div className="stack-content">
+
+Creates a new API key for the user, which can be used for programmatic access to your application's backend.
+
+### Parameters
+
+<div className="indented">
+  <ParamField path="options" type="object" required>
+    Options for creating the API key.
+    <Accordion title={<span className="accordion-show-properties" />}>
+      <ParamField path="description" type="string" required>
+        A human-readable description of the API key's purpose.
+      </ParamField>
+      <ParamField path="expiresAt" type="Date | null" required>
+        The date when the API key will expire. Use null for keys that don't expire.
+      </ParamField>
+      <ParamField path="isPublic" type="boolean">
+        Whether the API key is public. Defaults to false.
+        
+        - **Secret API Keys** (default) begin with `sk_` and are monitored by Stack Auth's secret scanner, which can revoke them if detected in public code repositories.
+        - **Public API Keys** begin with `pk_` and are designed for client-side code where exposure is not a concern.
+      </ParamField>
+    </Accordion>
+  </ParamField>
+</div>
+
+### Returns
+
+<div className="indented">
+  `Promise<UserApiKeyFirstView>`: The newly created API key. Note that this is the only time the full API key value will be visible.
+</div>
+
+</div><div className="stack-aside"><div className="stack-sticky">
+### Signature
+
+```typescript
+declare function createApiKey(options: {
+  description: string;
+  expiresAt: Date | null;
+  isPublic?: boolean;
+}): Promise<UserApiKeyFirstView>;
+```
+
+### Examples
+
+<div className="small-codeblock-tabs"><CodeBlocks>
+```typescript Creating an API key
+const apiKey = await serverUser.createApiKey({
+  description: "Backend integration",
+  expiresAt: new Date(Date.now() + 90 * 24 * 60 * 60 * 1000), // 90 days
+  isPublic: false,
+});
+
+// Save the API key value securely, as it won't be retrievable later
+console.log("API Key:", apiKey.value);
+```
+<Markdown src="../../snippets/always-tab-codeblock.mdx" /></CodeBlocks></div>
+</div></div><div className="stack-content">
+
+</div><div className="stack-full-size">
+<Markdown src="../../snippets/divider.mdx" />
+
+## `serverUser.listApiKeys()`
+</div><div className="stack-content">
+
+Lists all API keys that belong to the user.
+
+### Parameters
+
+<div className="indented">
+  None.
+</div>
+
+### Returns
+
+<div className="indented">
+  `Promise<UserApiKey[]>`: An array of API keys belonging to the user.
+</div>
+
+</div><div className="stack-aside"><div className="stack-sticky">
+### Signature
+
+```typescript
+declare function listApiKeys(): Promise<UserApiKey[]>;
+```
+
+### Examples
+
+<div className="small-codeblock-tabs"><CodeBlocks>
+```typescript Listing API keys
+const apiKeys = await serverUser.listApiKeys();
+console.log(`You have ${apiKeys.length} API keys`);
+
+// Find keys that are about to expire
+const soonToExpire = apiKeys.filter(key => 
+  key.expiresAt && key.expiresAt.getTime() - Date.now() < 7 * 24 * 60 * 60 * 1000
+);
+```
+<Markdown src="../../snippets/always-tab-codeblock.mdx" /></CodeBlocks></div>
+</div></div><div className="stack-content">
+
+</div><div className="stack-full-size">
+<Markdown src="../../snippets/divider.mdx" />
+
+
+{/* IF_PLATFORM next */}
+## `serverUser.useApiKeys()`
+</div><div className="stack-content">
+
+Lists all API keys that belong to the user, used as a React hook.
+
+### Parameters
+
+<div className="indented">
+  None.
+</div>
+
+### Returns
+
+<div className="indented">
+  `UserApiKey[]`: An array of API keys belonging to the user.
+</div>
+
+</div><div className="stack-aside"><div className="stack-sticky">
+### Signature
+
+```typescript
+declare function useApiKeys(): UserApiKey[];
+```
+
+### Examples
+
+<div className="small-codeblock-tabs"><CodeBlocks>
+```typescript Using API keys in a React component
+function ApiKeysList() {
+  const user = useUser();
+  const apiKeys = user.useApiKeys();
+  
+  return (
+    <div>
+      <h2>Your API Keys ({apiKeys.length})</h2>
+      <ul>
+        {apiKeys.map(key => (
+          <li key={key.id}>
+            {key.description} - Last four: {key.value.lastFour}
+            {key.isValid() ? ' (valid)' : ` (invalid: ${key.whyInvalid()})`}
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+```
+<Markdown src="../../snippets/always-tab-codeblock.mdx" /></CodeBlocks></div>
+</div></div><div className="stack-content">
+
+</div><div className="stack-full-size">
+<Markdown src="../../snippets/divider.mdx" />
+
+{/* END_PLATFORM */}
 
 </div><div className="stack-full-size">
 <Markdown src="../../snippets/big-divider.mdx" />

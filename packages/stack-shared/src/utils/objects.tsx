@@ -1,5 +1,6 @@
 import { StackAssertionError } from "./errors";
 import { identity } from "./functions";
+import { stringCompare } from "./strings";
 
 export function isNotNull<T>(value: T): value is NonNullable<T> {
   return value !== null && value !== undefined;
@@ -14,8 +15,8 @@ import.meta.vitest?.test("isNotNull", ({ expect }) => {
   expect(isNotNull([])).toBe(true);
 });
 
-export type DeepPartial<T> = T extends object ? { [P in keyof T]?: DeepPartial<T[P]> } : T;
-export type DeepRequired<T> = T extends object ? { [P in keyof T]-?: DeepRequired<T[P]> } : T;
+export type DeepPartial<T> = T extends object ? (T extends (infer E)[] ? T : { [P in keyof T]?: DeepPartial<T[P]> }) : T;
+export type DeepRequired<T> = T extends object ? (T extends (infer E)[] ? T : { [P in keyof T]-?: DeepRequired<T[P]> }) : T;
 
 /**
  * Assumes both objects are primitives, arrays, or non-function plain objects, and compares them deeply.
@@ -411,6 +412,7 @@ import.meta.vitest?.test("pick", ({ expect }) => {
 });
 
 export function omit<T extends {}, K extends keyof T>(obj: T, keys: K[]): Omit<T, K> {
+  if (!Array.isArray(keys)) throw new StackAssertionError("omit: keys must be an array", { obj, keys });
   return Object.fromEntries(Object.entries(obj).filter(([k]) => !keys.includes(k as K))) as any;
 }
 import.meta.vitest?.test("omit", ({ expect }) => {
@@ -425,7 +427,6 @@ import.meta.vitest?.test("omit", ({ expect }) => {
 export function split<T extends {}, K extends keyof T>(obj: T, keys: K[]): [Pick<T, K>, Omit<T, K>] {
   return [pick(obj, keys), omit(obj, keys)];
 }
-
 import.meta.vitest?.test("split", ({ expect }) => {
   const obj = { a: 1, b: 2, c: 3, d: 4 };
   expect(split(obj, ["a", "c"])).toEqual([{ a: 1, c: 3 }, { b: 2, d: 4 }]);
@@ -433,6 +434,93 @@ import.meta.vitest?.test("split", ({ expect }) => {
   expect(split(obj, ["a", "e" as keyof typeof obj])).toEqual([{ a: 1 }, { b: 2, c: 3, d: 4 }]);
   // Use type assertion for empty object to avoid TypeScript error
   expect(split({} as Record<string, unknown>, ["a"])).toEqual([{}, {}]);
+});
+
+export function mapValues<T extends object, U>(obj: T, fn: (value: T extends (infer E)[] ? E : T[keyof T]) => U): Record<keyof T, U> {
+  if (Array.isArray(obj)) {
+    return obj.map(v => fn(v)) as any;
+  }
+  return Object.fromEntries(Object.entries(obj).map(([k, v]) => [k, fn(v)])) as any;
+}
+import.meta.vitest?.test("mapValues", ({ expect }) => {
+  expect(mapValues({ a: 1, b: 2 }, v => v * 2)).toEqual({ a: 2, b: 4 });
+  expect(mapValues([1, 2, 3], v => v * 2)).toEqual([2, 4, 6]);
+});
+
+export function sortKeys<T extends object>(obj: T): T {
+  if (Array.isArray(obj)) {
+    return [...obj] as any;
+  }
+  return Object.fromEntries(Object.entries(obj).sort(([a], [b]) => stringCompare(a, b))) as any;
+}
+import.meta.vitest?.test("sortKeys", ({ expect }) => {
+  const obj = {
+    "1": 0,
+    "10": 1,
+    b: 2,
+    "2": 3,
+    a: 4,
+    "-3.33": 5,
+    "-4": 6,
+    "-3": 7,
+    abc: 8,
+    "a-b": 9,
+    ab: 10,
+    ac: 11,
+    aa: 12,
+    aab: 13,
+  };
+  expect(Object.entries(sortKeys(obj))).toEqual([
+    ["1", 0],
+    ["2", 3],
+    ["10", 1],
+    ["-3", 7],
+    ["-3.33", 5],
+    ["-4", 6],
+    ["a", 4],
+    ["a-b", 9],
+    ["aa", 12],
+    ["aab", 13],
+    ["ab", 10],
+    ["abc", 8],
+    ["ac", 11],
+    ["b", 2],
+  ]);
+});
+
+export function deepSortKeys<T extends object>(obj: T): T {
+  return sortKeys(mapValues(obj, v => isObjectLike(v) ? deepSortKeys(v) : v)) as any;
+}
+import.meta.vitest?.test("deepSortKeys", ({ expect }) => {
+  const obj = {
+    h: { i: { k: 9, j: 8 }, l: 10 },
+    b: { d: 3, c: 2 },
+    a: 1,
+    e: [4, 5, { g: 7, f: 6 }],
+  };
+  const sorted = deepSortKeys(obj);
+  expect(Object.entries(sorted)).toEqual([
+    ["a", 1],
+    ["b", { c: 2, d: 3 }],
+    ["e", [4, 5, { f: 6, g: 7 }]],
+    ["h", { i: { j: 8, k: 9 }, l: 10 }],
+  ]);
+  expect(Object.entries(sorted.b)).toEqual([
+    ["c", 2],
+    ["d", 3],
+  ]);
+  expect(Object.entries(sorted.e[2])).toEqual([
+    ["f", 6],
+    ["g", 7],
+  ]);
+  expect(Object.entries(sorted.h)).toEqual([
+    ["i", { j: 8, k: 9 }],
+    ["l", 10],
+  ]);
+  expect(Object.entries(sorted.h.i)).toEqual([
+    ["j", 8],
+    ["k", 9],
+  ]);
 });
 
 export function set<T extends object, K extends keyof T>(obj: T, key: K, value: T[K]) {
@@ -445,9 +533,22 @@ export function get<T extends object, K extends keyof T>(obj: T, key: K): T[K] {
   return descriptor.value;
 }
 
+export function getOrUndefined<T extends object, K extends keyof T>(obj: T, key: K): T[K] | undefined {
+  return has(obj, key) ? get(obj, key) : undefined;
+}
+
 export function has<T extends object, K extends keyof T>(obj: T, key: K): obj is T & { [k in K]: unknown } {
   return Object.prototype.hasOwnProperty.call(obj, key);
 }
+
+import.meta.vitest?.test("has", ({ expect }) => {
+  const obj = { a: 1, b: undefined, c: null };
+  expect(has(obj, "a")).toBe(true);
+  expect(has(obj, "b")).toBe(true);
+  expect(has(obj, "c")).toBe(true);
+  expect(has(obj, "d" as keyof typeof obj)).toBe(false);
+});
+
 
 export function hasAndNotUndefined<T extends object, K extends keyof T>(obj: T, key: K): obj is T & { [k in K]: Exclude<T[K], undefined> } {
   return has(obj, key) && get(obj, key) !== undefined;
