@@ -2,7 +2,7 @@ import { SmartResponse } from "@/route-handlers/smart-response";
 import { Response as OAuthResponse } from "@node-oauth/oauth2-server";
 import { StackAssertionError, StatusError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
 
-export function oauthResponseToSmartResponse(oauthResponse: OAuthResponse): SmartResponse {
+export function oauthResponseToSmartResponse(oauthResponse: OAuthResponse) {
   if (!oauthResponse.status) {
     throw new StackAssertionError(`OAuth response status is missing`, { oauthResponse });
   } else if (oauthResponse.status >= 500 && oauthResponse.status < 600) {
@@ -10,14 +10,12 @@ export function oauthResponseToSmartResponse(oauthResponse: OAuthResponse): Smar
   } else if (oauthResponse.status >= 200 && oauthResponse.status < 500) {
     return {
       statusCode: {
-        // our API never returns 301 or 302 by convention, so transform them to 307 or 308
-        301: 308,
-        302: 307,
+        302: 303,
       }[oauthResponse.status] ?? oauthResponse.status,
       bodyType: "json",
       body: oauthResponse.body,
       headers: Object.fromEntries(Object.entries(oauthResponse.headers || {}).map(([k, v]) => ([k, [v]]))),
-    };
+    } as const satisfies SmartResponse;
   } else {
     throw new StackAssertionError(`Invalid OAuth response status code: ${oauthResponse.status}`, { oauthResponse });
   }

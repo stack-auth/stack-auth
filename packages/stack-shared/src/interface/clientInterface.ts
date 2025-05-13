@@ -304,6 +304,8 @@ export class StackClientInterface {
          * the case (I haven't actually tested.)
          */
         "X-Stack-Random-Nonce": generateSecureRandomString(),
+        // don't show a warning when proxying the API through ngrok (only relevant if the API url is an ngrok site)
+        'ngrok-skip-browser-warning': 'true',
         ...this.options.extraRequestHeaders,
         ...options.headers,
       },
