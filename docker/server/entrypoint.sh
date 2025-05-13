@@ -57,7 +57,7 @@ mkdir -p $WORK_DIR
 
 # Copy all files from /app to the working directory (instead of just /app/apps)
 echo "Copying files to working directory..."
-cp -r /app/* $WORK_DIR/
+cp -r /app/. "$WORK_DIR"/.
 
 # Find all files in the working directory that contain a STACK_ENV_VAR_SENTINEL and extract the unique sentinel strings.
 unhandled_sentinels=$(find "$WORK_DIR/apps" -type f -exec grep -l "STACK_ENV_VAR_SENTINEL" {} + | \
