@@ -14,6 +14,7 @@ type Props = {
   id: string,
   provider?: AdminProject['config']['oauthProviders'][number],
   updateProvider: (provider: AdminProject['config']['oauthProviders'][number]) => Promise<void>,
+  deleteProvider: (id: string) => Promise<void>,
 };
 
 function toTitle(id: string) {
@@ -64,12 +65,11 @@ export function ProviderSettingDialog(props: Props & { open: boolean, onClose: (
 
   const onSubmit = async (values: ProviderFormValues) => {
     if (values.shared) {
-      await props.updateProvider({ id: props.id, type: 'shared', enabled: true });
+      await props.updateProvider({ id: props.id, type: 'shared' });
     } else {
       await props.updateProvider({
         id: props.id,
         type: 'standard',
-        enabled: true,
         clientId: values.clientId || "",
         clientSecret: values.clientSecret || "",
         facebookConfigId: values.facebookConfigId,
@@ -185,18 +185,21 @@ export function TurnOffProviderDialog(props: {
 }
 
 export function ProviderSettingSwitch(props: Props) {
-  const enabled = !!props.provider?.enabled;
+  const enabled = !!props.provider;
   const isShared = props.provider?.type === 'shared';
   const [TurnOffProviderDialogOpen, setTurnOffProviderDialogOpen] = useState(false);
   const [ProviderSettingDialogOpen, setProviderSettingDialogOpen] = useState(false);
 
   const updateProvider = async (checked: boolean) => {
-    await props.updateProvider({
-      id: props.id,
-      type: 'shared',
-      ...props.provider,
-      enabled: checked
-    });
+    if (checked) {
+      await props.updateProvider({
+        id: props.id,
+        type: 'shared',
+        ...props.provider,
+      });
+    } else {
+      await props.deleteProvider(props.id);
+    }
   };
 
   return (

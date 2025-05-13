@@ -1,6 +1,6 @@
 import { grantDefaultProjectPermissions } from "@/lib/permissions";
 import { ensureTeamMembershipExists, ensureUserExists } from "@/lib/request-checks";
-import { getSoleTenancyFromProject, getTenancy } from "@/lib/tenancies";
+import { getTenancy } from "@/lib/tenancies";
 import { PrismaTransaction } from "@/lib/types";
 import { sendTeamMembershipDeletedWebhook, sendUserCreatedWebhook, sendUserDeletedWebhook, sendUserUpdatedWebhook } from "@/lib/webhooks";
 import { RawQuery, prismaClient, rawQuery, retryTransaction } from "@/prisma-client";
@@ -17,18 +17,13 @@ import { decodeBase64 } from "@stackframe/stack-shared/dist/utils/bytes";
 import { getNodeEnvironment } from "@stackframe/stack-shared/dist/utils/env";
 import { StackAssertionError, StatusError, captureError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
 import { hashPassword, isPasswordHashValid } from "@stackframe/stack-shared/dist/utils/hashes";
-import { deepPlainEquals } from "@stackframe/stack-shared/dist/utils/objects";
+import { deepPlainEquals, get, has } from "@stackframe/stack-shared/dist/utils/objects";
 import { createLazyProxy } from "@stackframe/stack-shared/dist/utils/proxies";
-import { typedToLowercase } from "@stackframe/stack-shared/dist/utils/strings";
 import { isUuid } from "@stackframe/stack-shared/dist/utils/uuids";
 import { teamPrismaToCrud, teamsCrudHandlers } from "../teams/crud";
 
 export const userFullInclude = {
-  projectUserOAuthAccounts: {
-    include: {
-      providerConfig: true,
-    },
-  },
+  projectUserOAuthAccounts: true,
   authMethods: {
     include: {
       passwordAuthMethod: true,
@@ -48,27 +43,6 @@ export const userFullInclude = {
   },
 } satisfies Prisma.ProjectUserInclude;
 
-export const oauthProviderConfigToCrud = (
-  config: Prisma.OAuthProviderConfigGetPayload<{ include: {
-    proxiedOAuthConfig: true,
-    standardOAuthConfig: true,
-  }, }>
-) => {
-  let type;
-  if (config.proxiedOAuthConfig) {
-    type = config.proxiedOAuthConfig.type;
-  } else if (config.standardOAuthConfig) {
-    type = config.standardOAuthConfig.type;
-  } else {
-    throw new StackAssertionError(`OAuthProviderConfig ${config.id} violates the union constraint`, config);
-  }
-
-  return {
-    id: config.id,
-    type: typedToLowercase(type),
-  } as const;
-};
-
 export const userPrismaToCrud = (
   prisma: Prisma.ProjectUserGetPayload<{ include: typeof userFullInclude }>,
   lastActiveAtMillis: number,
@@ -84,7 +58,7 @@ export const userPrismaToCrud = (
   const otpAuth = prisma.authMethods.find((m) => m.otpAuthMethod);
   const passkeyAuth = prisma.authMethods.find((m) => m.passkeyAuthMethod);
 
-  return {
+  const result = {
     id: prisma.projectUserId,
     display_name: prisma.displayName || null,
     primary_email: primaryEmailContactChannel?.value || null,
@@ -101,7 +75,7 @@ export const userPrismaToCrud = (
     requires_totp_mfa: prisma.requiresTotpMfa,
     passkey_auth_enabled: !!passkeyAuth,
     oauth_providers: prisma.projectUserOAuthAccounts.map((a) => ({
-      id: a.oauthProviderConfigId,
+      id: a.configOAuthProviderId,
       account_id: a.providerAccountId,
       email: a.email,
     })),
@@ -110,6 +84,7 @@ export const userPrismaToCrud = (
     last_active_at_millis: lastActiveAtMillis,
     is_anonymous: prisma.isAnonymous,
   };
+  return result;
 };
 
 async function getPasswordHashFromData(data: {
@@ -170,50 +145,8 @@ async function checkAuthData(
   }
 }
 
-// TODO: retrieve in the tenancy
-async function getPasswordConfig(tx: PrismaTransaction, projectConfigId: string) {
-  const passwordConfig = await tx.passwordAuthMethodConfig.findMany({
-    where: {
-      projectConfigId: projectConfigId,
-      authMethodConfig: {
-        enabled: true,
-      }
-    },
-    include: {
-      authMethodConfig: true,
-    }
-  });
-
-  if (passwordConfig.length > 1) {
-    throw new StackAssertionError("Multiple password auth methods found in the project", passwordConfig);
-  }
-
-  return passwordConfig.length === 0 ? null : passwordConfig[0];
-}
-
-// TODO: retrieve in the tenancy
-async function getOtpConfig(tx: PrismaTransaction, projectConfigId: string) {
-  const otpConfig = await tx.otpAuthMethodConfig.findMany({
-    where: {
-      projectConfigId: projectConfigId,
-      authMethodConfig: {
-        enabled: true,
-      }
-    },
-    include: {
-      authMethodConfig: true,
-    }
-  });
-
-  if (otpConfig.length > 1) {
-    throw new StackAssertionError("Multiple OTP auth methods found in the tenancy", otpConfig);
-  }
-
-  return otpConfig.length === 0 ? null : otpConfig[0];
-}
-
-export const getUserLastActiveAtMillis = async (tenancyId: string, userId: string): Promise<number | null> => {
-  const res = (await getUsersLastActiveAtMillis(tenancyId, [userId], [0]))[0];
+export const getUserLastActiveAtMillis = async (projectId: string, branchId: string, userId: string): Promise<number | null> => {
+  const res = (await getUsersLastActiveAtMillis(projectId, branchId, [userId], [0]))[0];
   if (res === 0) {
     return null;
   }
@@ -223,17 +156,16 @@ export const getUserLastActiveAtMillis = async (tenancyId: string, userId: strin
 /**
  * Same as userIds.map(userId => getUserLastActiveAtMillis(tenancyId, userId)), but uses a single query
  */
-export const getUsersLastActiveAtMillis = async (tenancyId: string, userIds: string[], userSignedUpAtMillis: (number | Date)[]): Promise<number[]> => {
+export const getUsersLastActiveAtMillis = async (projectId: string, branchId: string, userIds: string[], userSignedUpAtMillis: (number | Date)[]): Promise<number[]> => {
   if (userIds.length === 0) {
     // Prisma.join throws an error if the array is empty, so we need to handle that case
     return [];
   }
-  const tenancy = await getTenancy(tenancyId) ?? throwErr("Tenancy not found", { tenancyId });
 
   const events = await prismaClient.$queryRaw<Array<{ userId: string, lastActiveAt: Date }>>`
     SELECT data->>'userId' as "userId", MAX("eventStartedAt") as "lastActiveAt"
     FROM "Event"
-    WHERE data->>'userId' = ANY(${Prisma.sql`ARRAY[${Prisma.join(userIds)}]`}) AND data->>'projectId' = ${tenancy.project.id} AND COALESCE("data"->>'branchId', 'main') = ${tenancy.branchId} AND "systemEventTypeIds" @> '{"$user-activity"}'
+    WHERE data->>'userId' = ANY(${Prisma.sql`ARRAY[${Prisma.join(userIds)}]`}) AND data->>'projectId' = ${projectId} AND COALESCE("data"->>'branchId', 'main') = ${branchId} AND "systemEventTypeIds" @> '{"$user-activity"}'
     GROUP BY data->>'userId'
   `;
 
@@ -245,7 +177,7 @@ export const getUsersLastActiveAtMillis = async (tenancyId: string, userIds: str
   });
 };
 
-export function getUserQuery(projectId: string, branchId: string | null, userId: string): RawQuery<UsersCrud["Admin"]["Read"] | null> {
+export function getUserQuery(projectId: string, branchId: string, userId: string): RawQuery<UsersCrud["Admin"]["Read"] | null> {
   return {
     sql: Prisma.sql`
       SELECT to_json(
@@ -268,14 +200,7 @@ export function getUserQuery(projectId: string, branchId: string | null, userId:
               ),
               'ProjectUserOAuthAccounts', (
                 SELECT COALESCE(ARRAY_AGG(
-                  to_jsonb("ProjectUserOAuthAccount") ||
-                  jsonb_build_object(
-                    'ProviderConfig', (
-                      SELECT to_jsonb("OAuthProviderConfig")
-                      FROM "OAuthProviderConfig"
-                      WHERE "ProjectConfig"."id" = "OAuthProviderConfig"."projectConfigId" AND "OAuthProviderConfig"."id" = "ProjectUserOAuthAccount"."oauthProviderConfigId"
-                    )
-                  )
+                  to_jsonb("ProjectUserOAuthAccount")
                 ), '{}')
                 FROM "ProjectUserOAuthAccount"
                 WHERE "ProjectUserOAuthAccount"."tenancyId" = "ProjectUser"."tenancyId" AND "ProjectUserOAuthAccount"."projectUserId" = "ProjectUser"."projectUserId"
@@ -343,8 +268,7 @@ export function getUserQuery(projectId: string, branchId: string | null, userId:
           FROM "ProjectUser"
           LEFT JOIN "Tenancy" ON "Tenancy"."id" = "ProjectUser"."tenancyId"
           LEFT JOIN "Project" ON "Project"."id" = "Tenancy"."projectId"
-          LEFT JOIN "ProjectConfig" ON "ProjectConfig"."id" = "Project"."configId"
-          WHERE "Tenancy"."projectId" = ${projectId} AND "Tenancy"."branchId" = ${branchId ?? "main"} AND "ProjectUser"."projectUserId" = ${userId}::UUID
+          WHERE "Tenancy"."projectId" = ${projectId} AND "Tenancy"."branchId" = ${branchId} AND "ProjectUser"."projectUserId" = ${userId}::UUID
         )
       ) AS "row_data_json"
     `,
@@ -386,7 +310,7 @@ export function getUserQuery(projectId: string, branchId: string | null, userId:
         requires_totp_mfa: row.requiresTotpMfa,
         passkey_auth_enabled: !!passkeyAuth,
         oauth_providers: row.ProjectUserOAuthAccounts.map((a: any) => ({
-          id: a.oauthProviderConfigId,
+          id: a.configOAuthProviderId,
           account_id: a.providerAccountId,
           email: a.email,
         })),
@@ -408,23 +332,26 @@ export function getUserQuery(projectId: string, branchId: string | null, userId:
 }
 
 export async function getUser(options: { userId: string } & ({ projectId: string, branchId: string } | { tenancyId: string })) {
-  let tenancy;
+  let projectId, branchId;
   if (!("tenancyId" in options)) {
-    tenancy = await getSoleTenancyFromProject(options.projectId);
+    projectId = options.projectId;
+    branchId = options.branchId;
   } else {
-    tenancy = await getTenancy(options.tenancyId) ?? throwErr("Tenancy not found", { tenancyId: options.tenancyId });
+    const tenancy = await getTenancy(options.tenancyId) ?? throwErr("Tenancy not found", { tenancyId: options.tenancyId });
+    projectId = tenancy.project.id;
+    branchId = tenancy.branchId;
   }
 
-  const result = await rawQuery(getUserQuery(tenancy.project.id, tenancy.branchId, options.userId));
+  const result = await rawQuery(prismaClient, getUserQuery(projectId, branchId, options.userId));
 
   // In non-prod environments, let's also call the legacy function and ensure the result is the same
   if (!getNodeEnvironment().includes("prod")) {
-    const legacyResult = await getUserLegacy({ tenancyId: tenancy.id, userId: options.userId });
+    const legacyResult = await getUserLegacy({ projectId, branchId, userId: options.userId });
     if (!deepPlainEquals(result, legacyResult)) {
       // Coincidentally, it can happen that a user is modified in the database right between these two queries.
       // While unlikely, it makes the tests flakey sometimes, so let's make sure that requesting the raw query again
       // still causes the same mismatch.
-      const newResult = await rawQuery(getUserQuery(tenancy.project.id, tenancy.branchId, options.userId));
+      const newResult = await rawQuery(prismaClient, getUserQuery(projectId, branchId, options.userId));
       if (!deepPlainEquals(newResult, legacyResult)) {
         throw new StackAssertionError("User result mismatch", {
           result,
@@ -438,18 +365,19 @@ export async function getUser(options: { userId: string } & ({ projectId: string
   return result;
 }
 
-async function getUserLegacy(options: { tenancyId: string, userId: string }) {
+async function getUserLegacy(options: { projectId: string, branchId: string, userId: string }) {
   const [db, lastActiveAtMillis] = await Promise.all([
     prismaClient.projectUser.findUnique({
       where: {
-        tenancyId_projectUserId: {
-          tenancyId: options.tenancyId,
+        mirroredProjectId_mirroredBranchId_projectUserId: {
+          mirroredProjectId: options.projectId,
+          mirroredBranchId: options.branchId,
           projectUserId: options.userId,
         },
       },
       include: userFullInclude,
     }),
-    getUserLastActiveAtMillis(options.tenancyId, options.userId),
+    getUserLastActiveAtMillis(options.projectId, options.branchId, options.userId),
   ]);
 
   if (!db) {
@@ -537,7 +465,7 @@ export const usersCrudHandlers = createLazyProxy(() => createCrudHandlers(usersC
       } : {},
     });
 
-    const lastActiveAtMillis = await getUsersLastActiveAtMillis(auth.tenancy.id, db.map(user => user.projectUserId), db.map(user => user.createdAt));
+    const lastActiveAtMillis = await getUsersLastActiveAtMillis(auth.project.id, auth.branchId, db.map(user => user.projectUserId), db.map(user => user.createdAt));
     return {
       // remove the last item because it's the next cursor
       items: db.map((user, index) => userPrismaToCrud(user, lastActiveAtMillis[index])).slice(0, query.limit),
@@ -552,7 +480,9 @@ export const usersCrudHandlers = createLazyProxy(() => createCrudHandlers(usersC
     log("create_user_endpoint_primaryAuthEnabled", {
       value: data.primary_email_auth_enabled,
       email: data.primary_email ?? undefined,
+      projectId: auth.project.id,
     });
+
     const passwordHash = await getPasswordHashFromData(data);
     const result = await retryTransaction(async (tx) => {
       await checkAuthData(tx, {
@@ -562,11 +492,13 @@ export const usersCrudHandlers = createLazyProxy(() => createCrudHandlers(usersC
         primaryEmailAuthEnabled: !!data.primary_email_auth_enabled,
       });
 
+      const config = auth.tenancy.completeConfig;
+
       const newUser = await tx.projectUser.create({
         data: {
           tenancyId: auth.tenancy.id,
           mirroredProjectId: auth.project.id,
-          mirroredBranchId: auth.tenancy.branchId,
+          mirroredBranchId: auth.branchId,
           displayName: data.display_name === undefined ? undefined : (data.display_name || null),
           clientMetadata: data.client_metadata === null ? Prisma.JsonNull : data.client_metadata,
           clientReadOnlyMetadata: data.client_read_only_metadata === null ? Prisma.JsonNull : data.client_read_only_metadata,
@@ -579,73 +511,41 @@ export const usersCrudHandlers = createLazyProxy(() => createCrudHandlers(usersC
       });
 
       if (data.oauth_providers) {
-        // TODO: include this in the tenancy
-        const authMethodConfigs = await tx.authMethodConfig.findMany({
-          where: {
-            projectConfigId: auth.tenancy.config.id,
-            oauthProviderConfig: {
-              isNot: null,
-            }
-          },
-          include: {
-            oauthProviderConfig: true,
-          }
-        });
-        const connectedAccountConfigs = await tx.connectedAccountConfig.findMany({
-          where: {
-            projectConfigId: auth.tenancy.config.id,
-            oauthProviderConfig: {
-              isNot: null,
-            }
-          },
-          include: {
-            oauthProviderConfig: true,
-          }
-        });
-
         // create many does not support nested create, so we have to use loop
         for (const provider of data.oauth_providers) {
-          const connectedAccountConfig = connectedAccountConfigs.find((c) => c.oauthProviderConfig?.id === provider.id);
-          const authMethodConfig = authMethodConfigs.find((c) => c.oauthProviderConfig?.id === provider.id);
+          if (!has(config.auth.oauth.providers, provider.id)) {
+            throw new StatusError(StatusError.BadRequest, `OAuth provider ${provider.id} not found`);
 
-          let authMethod;
-          if (authMethodConfig) {
-            authMethod = await tx.authMethod.create({
-              data: {
-                tenancyId: auth.tenancy.id,
-                projectUserId: newUser.projectUserId,
-                projectConfigId: auth.tenancy.config.id,
-                authMethodConfigId: authMethodConfig.id,
-              }
-            });
           }
+          const oauthProvider = get(config.auth.oauth.providers, provider.id);
+
+          const authMethod = await tx.authMethod.create({
+            data: {
+              tenancyId: auth.tenancy.id,
+              projectUserId: newUser.projectUserId,
+            }
+          });
 
           await tx.projectUserOAuthAccount.create({
             data: {
               tenancyId: auth.tenancy.id,
               projectUserId: newUser.projectUserId,
-              projectConfigId: auth.tenancy.config.id,
-              oauthProviderConfigId: provider.id,
+              configOAuthProviderId: provider.id,
               providerAccountId: provider.account_id,
               email: provider.email,
-              ...connectedAccountConfig ? {
+              ...oauthProvider.allowConnectedAccounts ? {
                 connectedAccount: {
                   create: {
-                    connectedAccountConfigId: connectedAccountConfig.id,
                     projectUserId: newUser.projectUserId,
-                    projectConfigId: auth.tenancy.config.id,
                   }
                 }
               } : {},
-              ...authMethodConfig ? {
-                oauthAuthMethod: {
-                  create: {
-                    projectUserId: newUser.projectUserId,
-                    projectConfigId: auth.tenancy.config.id,
-                    authMethodId: authMethod?.id || throwErr("authMethodConfig is set but authMethod is not"),
-                  }
+              oauthAuthMethod: {
+                create: {
+                  projectUserId: newUser.projectUserId,
+                  authMethodId: authMethod.id,
                 }
-              } : {},
+              },
             }
           });
         }
@@ -667,18 +567,13 @@ export const usersCrudHandlers = createLazyProxy(() => createCrudHandlers(usersC
       }
 
       if (passwordHash) {
-        const passwordConfig = await getPasswordConfig(tx, auth.tenancy.config.id);
-
-        if (!passwordConfig) {
+        if (!config.auth.password.allowSignIn) {
           throw new StatusError(StatusError.BadRequest, "Password auth not enabled in the project");
         }
-
         await tx.authMethod.create({
           data: {
             tenancyId: auth.tenancy.id,
-            projectConfigId: auth.tenancy.config.id,
             projectUserId: newUser.projectUserId,
-            authMethodConfigId: passwordConfig.authMethodConfigId,
             passwordAuthMethod: {
               create: {
                 passwordHash,
@@ -690,18 +585,13 @@ export const usersCrudHandlers = createLazyProxy(() => createCrudHandlers(usersC
       }
 
       if (data.otp_auth_enabled) {
-        const otpConfig = await getOtpConfig(tx, auth.tenancy.config.id);
-
-        if (!otpConfig) {
+        if (!config.auth.otp.allowSignIn) {
           throw new StatusError(StatusError.BadRequest, "OTP auth not enabled in the project");
         }
-
         await tx.authMethod.create({
           data: {
             tenancyId: auth.tenancy.id,
-            projectConfigId: auth.tenancy.config.id,
             projectUserId: newUser.projectUserId,
-            authMethodConfigId: otpConfig.authMethodConfigId,
             otpAuthMethod: {
               create: {
                 projectUserId: newUser.projectUserId,
@@ -731,7 +621,7 @@ export const usersCrudHandlers = createLazyProxy(() => createCrudHandlers(usersC
         throw new StackAssertionError("User was created but not found", newUser);
       }
 
-      return userPrismaToCrud(user, await getUserLastActiveAtMillis(auth.tenancy.id, user.projectUserId) ?? user.createdAt.getTime());
+      return userPrismaToCrud(user, await getUserLastActiveAtMillis(auth.project.id, auth.branchId, user.projectUserId) ?? user.createdAt.getTime());
     });
 
     if (auth.tenancy.config.create_team_on_sign_up) {
@@ -773,6 +663,8 @@ export const usersCrudHandlers = createLazyProxy(() => createCrudHandlers(usersC
     const passwordHash = await getPasswordHashFromData(data);
     const result = await retryTransaction(async (tx) => {
       await ensureUserExists(tx, { tenancyId: auth.tenancy.id, userId: params.user_id });
+
+      const config = auth.tenancy.completeConfig;
 
       if (data.selected_team_id !== undefined) {
         if (data.selected_team_id !== null) {
@@ -909,23 +801,20 @@ export const usersCrudHandlers = createLazyProxy(() => createCrudHandlers(usersC
       if (data.otp_auth_enabled !== undefined) {
         if (data.otp_auth_enabled) {
           if (!otpAuth) {
-            const otpConfig = await getOtpConfig(tx, auth.tenancy.config.id);
-
-            if (otpConfig) {
-              await tx.authMethod.create({
-                data: {
-                  tenancyId: auth.tenancy.id,
-                  projectConfigId: auth.tenancy.config.id,
-                  projectUserId: params.user_id,
-                  authMethodConfigId: otpConfig.authMethodConfigId,
-                  otpAuthMethod: {
-                    create: {
-                      projectUserId: params.user_id,
-                    }
+            if (!config.auth.otp.allowSignIn) {
+              throw new StatusError(StatusError.BadRequest, "OTP auth not enabled in the project");
+            }
+            await tx.authMethod.create({
+              data: {
+                tenancyId: auth.tenancy.id,
+                projectUserId: params.user_id,
+                otpAuthMethod: {
+                  create: {
+                    projectUserId: params.user_id,
                   }
                 }
-              });
-            }
+              }
+            });
           }
         } else {
           if (otpAuth) {
@@ -1007,18 +896,14 @@ export const usersCrudHandlers = createLazyProxy(() => createCrudHandlers(usersC
               throw new StackAssertionError("password is set but primary_email is not set");
             }
 
-            const passwordConfig = await getPasswordConfig(tx, auth.tenancy.config.id);
-
-            if (!passwordConfig) {
+            if (!config.auth.password.allowSignIn) {
               throw new StatusError(StatusError.BadRequest, "Password auth not enabled in the project");
             }
 
             await tx.authMethod.create({
               data: {
                 tenancyId: auth.tenancy.id,
-                projectConfigId: auth.tenancy.config.id,
                 projectUserId: params.user_id,
-                authMethodConfigId: passwordConfig.authMethodConfigId,
                 passwordAuthMethod: {
                   create: {
                     passwordHash,
@@ -1061,7 +946,7 @@ export const usersCrudHandlers = createLazyProxy(() => createCrudHandlers(usersC
         });
       }
 
-      return userPrismaToCrud(db, await getUserLastActiveAtMillis(auth.tenancy.id, params.user_id) ?? db.createdAt.getTime());
+      return userPrismaToCrud(db, await getUserLastActiveAtMillis(auth.project.id, auth.branchId, params.user_id) ?? db.createdAt.getTime());
     });
 
 

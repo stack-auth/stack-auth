@@ -97,23 +97,6 @@ export const registerVerificationCodeHandler = createVerificationCodeHandler({
     const registrationInfo = verification.registrationInfo;
 
     await retryTransaction(async (tx) => {
-      const authMethodConfig = await tx.passkeyAuthMethodConfig.findMany({
-        where: {
-          projectConfigId: tenancy.config.id,
-          authMethodConfig: {
-            enabled: true,
-          },
-        },
-      });
-
-      if (authMethodConfig.length > 1) {
-        throw new StackAssertionError("Project has multiple passkey auth method configs.", { tenancyId: tenancy.id });
-      }
-
-      if (authMethodConfig.length === 0) {
-        throw new StackAssertionError("Project has no passkey auth method config. This should never happen if passkey is enabled on the tenancy.", { tenancyId: tenancy.id });
-      }
-
       const authMethods = await tx.passkeyAuthMethod.findMany({
         where: {
           tenancyId: tenancy.id,
@@ -135,8 +118,6 @@ export const registerVerificationCodeHandler = createVerificationCodeHandler({
           data: {
             tenancyId: tenancy.id,
             projectUserId: user.id,
-            projectConfigId: tenancy.config.id,
-            authMethodConfigId: authMethodConfig[0].authMethodConfigId,
             passkeyAuthMethod: {
               create: {
                 publicKey: Buffer.from(registrationInfo.credential.publicKey).toString('base64url'),

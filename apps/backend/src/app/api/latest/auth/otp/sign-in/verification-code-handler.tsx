@@ -1,6 +1,6 @@
 import { getAuthContactChannel } from "@/lib/contact-channel";
 import { sendEmailFromTemplate } from "@/lib/emails";
-import { getSoleTenancyFromProject, Tenancy } from "@/lib/tenancies";
+import { getSoleTenancyFromProjectBranch, Tenancy } from "@/lib/tenancies";
 import { createAuthTokens } from "@/lib/tokens";
 import { prismaClient } from "@/prisma-client";
 import { createVerificationCodeHandler } from "@/route-handlers/verification-code-handler";
@@ -8,7 +8,6 @@ import { VerificationCodeType } from "@prisma/client";
 import { KnownErrors } from "@stackframe/stack-shared";
 import { UsersCrud } from "@stackframe/stack-shared/dist/interface/crud/users";
 import { emailSchema, signInResponseSchema, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
-import { throwErr } from "@stackframe/stack-shared/dist/utils/errors";
 import { usersCrudHandlers } from "../../../users/crud";
 import { createMfaRequiredError } from "../../mfa/sign-in/verification-code-handler";
 
@@ -34,26 +33,17 @@ export async function ensureUserForEmailAllowsOtp(tenancy: Tenancy, email: strin
           where: {
             id: tenancy.project.id,
           },
-          include: {
-            config: {
-              include: {
-                authMethodConfigs: {
-                  include: {
-                    otpConfig: true,
-                  }
-                }
-              }
-            }
-          }
         });
 
-        const otpAuthMethodConfig = rawProject?.config.authMethodConfigs.find((m) => m.otpConfig) ?? throwErr("OTP auth method config not found.");
         await prismaClient.authMethod.create({
           data: {
             projectUserId: contactChannel.projectUser.projectUserId,
             tenancyId: tenancy.id,
-            projectConfigId: tenancy.config.id,
-            authMethodConfigId: otpAuthMethodConfig.id,
+            otpAuthMethod: {
+              create: {
+                projectUserId: contactChannel.projectUser.projectUserId,
+              }
+            }
           },
         });
       }
@@ -99,7 +89,7 @@ export const signInVerificationCodeHandler = createVerificationCodeHandler({
     body: signInResponseSchema.defined(),
   }),
   async send(codeObj, createOptions, sendOptions: { email: string }) {
-    const tenancy = await getSoleTenancyFromProject(createOptions.project);
+    const tenancy = await getSoleTenancyFromProjectBranch(createOptions.project.id, createOptions.branchId);
     await sendEmailFromTemplate({
       tenancy,
       email: createOptions.method.email,
