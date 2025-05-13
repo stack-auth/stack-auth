@@ -1,7 +1,7 @@
 export {
   StackAdminApp, StackClientApp,
   StackServerApp
-} from "./apps";
+} from "./apps/all-exports";
 export type {
   StackAdminAppConstructor,
   StackAdminAppConstructorOptions,
@@ -10,7 +10,7 @@ export type {
   StackClientAppJson,
   StackServerAppConstructor,
   StackServerAppConstructorOptions
-} from "./apps";
+} from "./apps/all-exports";
 
 export type {
   ProjectConfig
