@@ -706,7 +706,7 @@ export namespace Auth {
         },
       });
       expect(response).toMatchObject({
-        status: 307,
+        status: 303,
         headers: expect.any(Headers),
         body: {},
       });
