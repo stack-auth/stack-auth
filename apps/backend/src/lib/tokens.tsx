@@ -56,6 +56,7 @@ export async function decodeAccessToken(accessToken: string) {
     let payload: jose.JWTPayload;
 
     let expectedIssuer: string | undefined;
+    // TODO: next-release: This is for backwards compatibility with old tokens
     if (decoded.iss === legacyIssuer) {
       expectedIssuer = legacyIssuer;
     } else {
