@@ -69,6 +69,26 @@
         "@stackframe/stack-backend#build"
       ]
     },
+
+    "@stackframe/js#build": {
+      "dependsOn": [
+        "@stackframe/template#build"
+      ]
+    },
+
+    "@stackframe/react#build": {
+      "dependsOn": [
+        "@stackframe/template#build"
+      ]
+    },
+
+    "@stackframe/stack#build": {
+      "dependsOn": [
+        "@stackframe/template#build"
+      ]
+    },
+
+
     "@stackframe/stack-backend#build": {
       "dependsOn": [
         "codegen"
