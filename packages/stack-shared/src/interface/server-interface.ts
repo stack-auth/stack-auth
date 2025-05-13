@@ -7,7 +7,7 @@ import { urlString } from "../utils/urls";
 import {
   ClientInterfaceOptions,
   StackClientInterface
-} from "./clientInterface";
+} from "./client-interface";
 import { ContactChannelsCrud } from "./crud/contact-channels";
 import { CurrentUserCrud } from "./crud/current-user";
 import { ConnectedAccountAccessTokenCrud } from "./crud/oauth";
