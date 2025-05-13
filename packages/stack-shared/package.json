@@ -5,11 +5,11 @@
   "types": "./dist/index.d.ts",
   "type": "module",
   "scripts": {
-    "build": "tsc",
+    "build": "rimraf dist && tsup-node",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "clean": "rimraf dist && rimraf node_modules",
-    "dev": "tsc -w --preserveWatchOutput --declarationMap",
+    "dev": "rimraf dist && tsup-node --watch",
     "lint": "eslint --ext .tsx,.ts ."
   },
   "files": [
@@ -21,11 +21,21 @@
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
-      "default": "./dist/index.js"
+      "import": {
+        "default": "./dist/esm/index.js"
+      },
+      "require": {
+        "default": "./dist/index.js"
+      }
     },
     "./dist/*": {
-      "types": "./dist/*.d.ts",
-      "default": "./dist/*.js"
+      "types": "./dist/index.d.ts",
+      "import": {
+        "default": "./dist/esm/*.js"
+      },
+      "require": {
+        "default": "./dist/*.js"
+      }
     }
   },
   "peerDependencies": {
@@ -62,6 +72,7 @@
     "uuid": "^9.0.1"
   },
   "devDependencies": {
+    "@microsoft/api-extractor": "^7.52.5",
     "@sentry/nextjs": "^8.40.0",
     "@simplewebauthn/types": "^11.0.0",
     "@types/bcrypt": "^5.0.2",
@@ -70,6 +81,7 @@
     "@types/uuid": "^9.0.8",
     "react": "^18.2",
     "react-dom": "^18.2",
-    "rimraf": "^5.0.5"
+    "rimraf": "^5.0.5",
+    "tsup": "^8.4.0"
   }
 }

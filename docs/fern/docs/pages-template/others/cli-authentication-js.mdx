@@ -1,0 +1,38 @@
+---
+title: CLI Authentication
+description: How to authenticate a node.js command line application using Stack Auth
+---
+
+If you're building a command line application that runs in a terminal, you can use Stack Auth to let your users log in to their accounts.
+
+To do so, we provide a node.js template that you can use as a starting point. [Download it here](https://github.com/stack-auth/stack-auth/examples/cli-demo) 
+
+
+You can use the `promptCliLogin` from the `@stackframe/js` package to do the CLI authentication process.
+
+```ts
+
+  const stack = new StackClientApp({
+    tokenStore: "memory",
+    projectId: STACK_PROJECT_ID,
+    publishableClientKey: STACK_PUBLISHABLE_CLIENT_KEY,
+    baseUrl: STACK_API_URL,
+  });
+
+  // The promptCliLogin function handles opening the browser and polling.
+  const result = await stack.promptCliLogin({
+    appUrl: CLI_AUTH_BASE_URL,
+    promptLink: (url) => {
+      open(url);
+    },
+  });
+
+  if (result.status === "ok") {
+    console.log("CLI Login Successful!");
+    console.log("Refresh Token:", result.data);
+  } else {
+    console.error("CLI Login Failed:");
+
+  }
+
+
