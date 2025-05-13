@@ -3,7 +3,6 @@
   "version": "2.8.11",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
-  "type": "module",
   "scripts": {
     "build": "rimraf dist && tsup-node",
     "typecheck": "tsc --noEmit",
@@ -21,10 +20,16 @@
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
+      "require": {
+        "default": "./dist/index.js"
+      },
       "default": "./dist/esm/index.js"
     },
     "./dist/*": {
       "types": "./dist/*.d.ts",
+      "require": {
+        "default": "./dist/*.js"
+      },
       "default": "./dist/esm/*.js"
     }
   },
