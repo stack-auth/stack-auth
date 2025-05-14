@@ -37,6 +37,9 @@ const corsAllowedRequestHeaders = [
 
   // Vercel
   'x-vercel-protection-bypass',
+
+  // ngrok
+  'ngrok-skip-browser-warning',
 ];
 
 const corsAllowedResponseHeaders = [

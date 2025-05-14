@@ -1,6 +1,6 @@
 {
   "name": "@stackframe/stack-shared",
-  "version": "2.8.11",
+  "version": "2.8.12",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "type": "module",
@@ -21,10 +21,16 @@
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
+      "require": {
+        "default": "./dist/index.js"
+      },
       "default": "./dist/esm/index.js"
     },
     "./dist/*": {
       "types": "./dist/*.d.ts",
+      "require": {
+        "default": "./dist/*.js"
+      },
       "default": "./dist/esm/*.js"
     }
   },
