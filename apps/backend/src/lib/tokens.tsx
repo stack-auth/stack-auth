@@ -6,7 +6,7 @@ import { yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/s
 import { generateSecureRandomString } from '@stackframe/stack-shared/dist/utils/crypto';
 import { getEnvVariable } from '@stackframe/stack-shared/dist/utils/env';
 import { throwErr } from '@stackframe/stack-shared/dist/utils/errors';
-import { legacyVerifyGlobalJWT, signJWT, verifyJWT } from '@stackframe/stack-shared/dist/utils/jwt';
+import { signJWT, verifyJWT } from '@stackframe/stack-shared/dist/utils/jwt';
 import { Result } from '@stackframe/stack-shared/dist/utils/results';
 import * as jose from 'jose';
 import { JOSEError, JWTExpired } from 'jose/errors';
@@ -43,23 +43,33 @@ export const oauthCookieSchema = yupObject({
   afterCallbackRedirectUrl: yupString().optional(),
 });
 
-const jwtIssuer = "https://access-token.jwt-signature.stack-auth.com";
+const getIssuer = (projectId: string) => {
+  const url = new URL(`/api/v1/projects/${projectId}`, getEnvVariable("NEXT_PUBLIC_STACK_API_URL"));
+  return url.toString();
+};
+
+const legacyIssuer = "access-token.jwt-signature.stack-auth.com";
 
 export async function decodeAccessToken(accessToken: string) {
   return await traceSpan("decoding access token", async (span) => {
     let payload: jose.JWTPayload;
     let decoded: jose.JWTPayload | undefined;
+
     try {
       decoded = jose.decodeJwt(accessToken);
 
-      if (!decoded.aud) {
-        payload = await legacyVerifyGlobalJWT(jwtIssuer, accessToken);
+      let expectedIssuer: string;
+      // TODO: next-release: This is for backwards compatibility with old tokens
+      if (decoded.iss === legacyIssuer) {
+        expectedIssuer = legacyIssuer;
       } else {
-        payload = await verifyJWT({
-          issuer: jwtIssuer,
-          jwt: accessToken,
-        });
+        expectedIssuer = getIssuer(decoded.aud?.toString() ?? "");
       }
+
+      payload = await verifyJWT({
+        issuer: expectedIssuer,
+        jwt: accessToken,
+      });
     } catch (error) {
       if (error instanceof JWTExpired) {
         return Result.error(new KnownErrors.AccessTokenExpired(decoded?.exp ? new Date(decoded.exp * 1000) : undefined));
@@ -97,7 +107,7 @@ export async function generateAccessToken(options: {
   );
 
   return await signJWT({
-    issuer: jwtIssuer,
+    issuer: getIssuer(options.tenancy.project.id),
     audience: options.tenancy.project.id,
     payload: {
       sub: options.userId,
