@@ -1,6 +1,6 @@
 "use client";
 
-import { buttonVariants, cn } from "@stackframe/stack-ui";
+import { Typography, buttonVariants, cn } from "@stackframe/stack-ui";
 import { GripHorizontal } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { UserAvatar, useStackApp, useUser } from "..";
@@ -60,7 +60,7 @@ export function DemoFloatingWindow() {
     <div
       ref={windowRef}
       className={cn(
-        "stack-scope fixed flex flex-col gap-3 p-5 rounded-lg shadow-lg bg-background/50 backdrop-blur-sm border border-border w-64",
+        "stack-scope fixed flex flex-col gap-3 p-5 rounded-lg shadow-lg bg-background/50 backdrop-blur-sm border border-border w-64 select-none",
         isDragging && "cursor-grabbing"
       )}
       style={{
@@ -79,13 +79,14 @@ export function DemoFloatingWindow() {
       <div className="mt-4 flex flex-col gap-2">
         {user ? (
           <>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 mb-2">
               <UserAvatar />
               <div className="flex flex-col">
                 <p className="text-sm font-medium">{user.displayName}</p>
                 <p className="text-xs text-muted-foreground">{user.primaryEmail}</p>
               </div>
             </div>
+
             <Link
               className={buttonClass}
               href={app.urls.accountSettings}
@@ -115,6 +116,12 @@ export function DemoFloatingWindow() {
             </Link>
           </>
         )}
+      </div>
+
+      <div className="flex justify-center text-center">
+        <Typography type='footnote' variant='secondary'>
+          You can remove this window in the layout.tsx file.
+        </Typography>
       </div>
     </div>
   );
