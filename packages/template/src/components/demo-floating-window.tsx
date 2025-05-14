@@ -1,8 +1,8 @@
 "use client";
 
-import { Typography, buttonVariants, cn } from "@stackframe/stack-ui";
+import { Skeleton, Typography, buttonVariants, cn } from "@stackframe/stack-ui";
 import { GripHorizontal } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { Suspense, useEffect, useRef, useState } from "react";
 import { UserAvatar, useStackApp, useUser } from "..";
 import { Link } from "./link";
 
@@ -11,14 +11,81 @@ type Position = {
   y: number,
 };
 
+function DemoFloatingWindowContent() {
+  const user = useUser();
+  const app = useStackApp();
+  const buttonClass = cn("w-full", buttonVariants({ variant: "outline" }));
+
+  return (
+    <div className="mt-4 flex flex-col gap-2">
+      {user ? (
+        <>
+          <div className="flex items-center gap-2 mb-2">
+            <UserAvatar />
+            <div className="flex flex-col">
+              <p className="text-sm font-medium">{user.displayName}</p>
+              <p className="text-xs text-muted-foreground">{user.primaryEmail}</p>
+            </div>
+          </div>
+
+          <Link
+            className={buttonClass}
+            href={app.urls.accountSettings}
+          >
+            Account Settings
+          </Link>
+          <Link
+            className={buttonClass}
+            href={app.urls.signOut}
+          >
+            Sign Out
+          </Link>
+        </>
+      ) : (
+        <>
+          <Link
+            className={buttonClass}
+            href={app.urls.signIn}
+          >
+            Sign In
+          </Link>
+          <Link
+            className={buttonClass}
+            href={app.urls.signUp}
+          >
+            Sign Up
+          </Link>
+        </>
+      )}
+    </div>
+  );
+}
+
+function DemoFloatingWindowSkeleton() {
+  return (
+    <div className="mt-4 flex flex-col gap-2">
+      <div className="flex items-center gap-2 mb-2">
+        <Skeleton className="w-8 h-8 rounded-full" />
+        <div className="flex flex-col gap-1">
+          <Skeleton className="h-4 w-24" />
+          <Skeleton className="h-3 w-32" />
+        </div>
+      </div>
+      <Skeleton className="h-9 w-full" />
+      <Skeleton className="h-9 w-full" />
+    </div>
+  );
+}
+
 export function DemoFloatingWindow() {
   const [position, setPosition] = useState<Position>({ x: 20, y: 20 });
   const [isDragging, setIsDragging] = useState(false);
   const [dragOffset, setDragOffset] = useState<Position>({ x: 0, y: 0 });
   const windowRef = useRef<HTMLDivElement>(null);
-  const user = useUser();
-  const app = useStackApp();
-  const buttonClass = cn("w-full", buttonVariants({ variant: "outline" }));
+
+  if (process.env.NODE_ENV !== "development") {
+    return null;
+  }
 
   const handleMouseDown = (e: React.MouseEvent) => {
     if (windowRef.current) {
@@ -76,51 +143,13 @@ export function DemoFloatingWindow() {
         <GripHorizontal className="w-4 h-4" />
       </div>
 
-      <div className="mt-4 flex flex-col gap-2">
-        {user ? (
-          <>
-            <div className="flex items-center gap-2 mb-2">
-              <UserAvatar />
-              <div className="flex flex-col">
-                <p className="text-sm font-medium">{user.displayName}</p>
-                <p className="text-xs text-muted-foreground">{user.primaryEmail}</p>
-              </div>
-            </div>
-
-            <Link
-              className={buttonClass}
-              href={app.urls.accountSettings}
-            >
-              Account Settings
-            </Link>
-            <Link
-              className={buttonClass}
-              href={app.urls.signOut}
-            >
-              Sign Out
-            </Link>
-          </>
-        ) : (
-          <>
-            <Link
-              className={buttonClass}
-              href={app.urls.signIn}
-            >
-              Sign In
-            </Link>
-            <Link
-              className={buttonClass}
-              href={app.urls.signUp}
-            >
-              Sign Up
-            </Link>
-          </>
-        )}
-      </div>
+      <Suspense fallback={<DemoFloatingWindowSkeleton />}>
+        <DemoFloatingWindowContent />
+      </Suspense>
 
       <div className="flex justify-center text-center">
         <Typography type='footnote' variant='secondary'>
-          You can remove this window in the layout.tsx file.
+          This is only visible in dev. Remove in layout.tsx.
         </Typography>
       </div>
     </div>
