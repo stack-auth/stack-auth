@@ -80,7 +80,10 @@ export function DemoFloatingWindow() {
     return null;
   }
 
-  const handleMouseDown = (e: React.MouseEvent) => {
+  const handlePointerDown = (e: React.PointerEvent) => {
+    // Prevent text selection during drag
+    e.preventDefault();
+
     if (windowRef.current) {
       const rect = windowRef.current.getBoundingClientRect();
       setDragOffset({
@@ -92,7 +95,7 @@ export function DemoFloatingWindow() {
   };
 
   useEffect(() => {
-    const handleMouseMove = (e: MouseEvent) => {
+    const handlePointerMove = (e: PointerEvent) => {
       if (isDragging) {
         setPosition({
           x: e.clientX - dragOffset.x,
@@ -101,18 +104,20 @@ export function DemoFloatingWindow() {
       }
     };
 
-    const handleMouseUp = () => {
+    const handlePointerUp = () => {
       setIsDragging(false);
     };
 
     if (isDragging) {
-      document.addEventListener("mousemove", handleMouseMove);
-      document.addEventListener("mouseup", handleMouseUp);
+      document.addEventListener("pointermove", handlePointerMove);
+      document.addEventListener("pointerup", handlePointerUp);
+      document.addEventListener("pointercancel", handlePointerUp);
     }
 
     return () => {
-      document.removeEventListener("mousemove", handleMouseMove);
-      document.removeEventListener("mouseup", handleMouseUp);
+      document.removeEventListener("pointermove", handlePointerMove);
+      document.removeEventListener("pointerup", handlePointerUp);
+      document.removeEventListener("pointercancel", handlePointerUp);
     };
   }, [isDragging, dragOffset]);
 
@@ -120,7 +125,7 @@ export function DemoFloatingWindow() {
     <div
       ref={windowRef}
       className={cn(
-        "stack-scope fixed flex flex-col gap-3 p-5 rounded-lg shadow-lg bg-background/50 backdrop-blur-sm border border-border w-64 select-none",
+        "stack-scope fixed flex flex-col gap-3 p-5 rounded-lg shadow-lg bg-background/50 backdrop-blur-sm border border-border w-64",
         isDragging && "cursor-grabbing"
       )}
       style={{
@@ -131,7 +136,8 @@ export function DemoFloatingWindow() {
     >
       <div
         className="absolute top-0 left-0 right-0 h-6 bg-muted/70 rounded-t-lg cursor-grab flex items-center justify-center"
-        onMouseDown={handleMouseDown}
+        onPointerDown={handlePointerDown}
+        touch-action="none"
       >
         <GripHorizontal className="w-4 h-4" />
       </div>
