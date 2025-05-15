@@ -135,7 +135,7 @@ type StatusErrorConstructorParameters =
 ];
 
 export class StatusError extends Error {
-  private __stackStatusErrorBrand = "stack-status-error-brand-sentinel" as const;
+  private readonly __stackStatusErrorBrand = "stack-status-error-brand-sentinel" as const;
   public name = "StatusError";
   public readonly statusCode: number;
 

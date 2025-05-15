@@ -5,8 +5,8 @@ import { filterUndefined } from "../utils/objects";
 import { Result } from "../utils/results";
 import { urlString } from "../utils/urls";
 import {
-  ClientInterfaceOptions,
-  StackClientInterface
+    ClientInterfaceOptions,
+    StackClientInterface
 } from "./clientInterface";
 import { ContactChannelsCrud } from "./crud/contact-channels";
 import { CurrentUserCrud } from "./crud/current-user";
@@ -101,7 +101,7 @@ export class StackServerInterface extends StackClientInterface {
       [KnownErrors.CannotGetOwnUserWithoutUser],
     );
     if (responseOrError.status === "error") {
-      if (responseOrError.error instanceof KnownErrors.CannotGetOwnUserWithoutUser) {
+      if (KnownErrors.CannotGetOwnUserWithoutUser.isInstance(responseOrError.error)) {
         return null;
       } else {
         throw new StackAssertionError("Unexpected uncaught error", { cause: responseOrError.error });

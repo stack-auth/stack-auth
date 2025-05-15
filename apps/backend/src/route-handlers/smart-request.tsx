@@ -196,7 +196,7 @@ const parseAuth = withTraceSpan('smart request parseAuth', async (req: NextReque
   const extractUserFromAdminAccessToken = async (options: { token: string, projectId: string }) => {
     const result = await decodeAccessToken(options.token);
     if (result.status === "error") {
-      if (result.error instanceof KnownErrors.AccessTokenExpired) {
+      if (KnownErrors.AccessTokenExpired.isInstance(result.error)) {
         throw new KnownErrors.AdminAccessTokenExpired(result.error.constructorArgs[0]);
       } else {
         throw new KnownErrors.UnparsableAdminAccessToken();

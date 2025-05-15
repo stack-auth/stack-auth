@@ -324,8 +324,8 @@ function mergeOverloadErrors(errors: StatusError[]): StatusError[] {
 
       // Merge "InsufficientAccessType" errors
       if (
-        a instanceof KnownErrors.InsufficientAccessType
-        && b instanceof KnownErrors.InsufficientAccessType
+        KnownErrors.InsufficientAccessType.isInstance(a)
+        && KnownErrors.InsufficientAccessType.isInstance(b)
         && a.constructorArgs[0] === b.constructorArgs[0]
       ) {
         return [new KnownErrors.InsufficientAccessType(a.constructorArgs[0], [...new Set([...a.constructorArgs[1], ...b.constructorArgs[1]])])];

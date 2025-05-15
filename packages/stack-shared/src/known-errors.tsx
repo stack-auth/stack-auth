@@ -23,7 +23,7 @@ export type KnownErrorConstructor<SuperInstance extends KnownError, Args extends
 };
 
 export abstract class KnownError extends StatusError {
-  private __stackKnownErrorBrand = "stack-known-error-brand-sentinel" as const;
+  private readonly __stackKnownErrorBrand = "stack-known-error-brand-sentinel" as const;
   public name = "KnownError";
 
   constructor(
@@ -141,13 +141,29 @@ function createKnownErrorConstructor<ErrorCode extends string, Super extends Abs
     }
 
     static isInstance(error: unknown): error is InstanceType<Super> & { constructorArgs: Args } {
-      return KnownError.isKnownError(error) && error.constructor === KnownErrorImpl;
+      if (!KnownError.isKnownError(error)) return false;
+      let current: unknown = error;
+      while (true) {
+        current = Object.getPrototypeOf(current);
+        if (!current) break;
+        if ("errorCode" in current.constructor && current.constructor.errorCode === errorCode) return true;
+      }
+      return false;
     }
   };
 
   // @ts-expect-error
   return KnownErrorImpl;
 }
+import.meta.vitest?.test("KnownError.isInstance", ({ expect }) => {
+  expect(KnownErrors.InvalidProjectAuthentication.isInstance(undefined)).toBe(false);
+  expect(KnownErrors.InvalidProjectAuthentication.isInstance(new Error())).toBe(false);
+
+  const error = new KnownErrors.ProjectKeyWithoutAccessType();
+  expect(KnownErrors.ProjectKeyWithoutAccessType.isInstance(error)).toBe(true);
+  expect(KnownErrors.InvalidProjectAuthentication.isInstance(error)).toBe(true);
+  expect(KnownErrors.InvalidAccessType.isInstance(error)).toBe(false);
+});
 
 const UnsupportedError = createKnownErrorConstructor(
   KnownError,
