@@ -239,7 +239,7 @@ const parseAuth = withTraceSpan('smart request parseAuth', async (req: NextReque
   const project = await queriesResults.project;
 
   // TODO HACK tenancy is not needed for /users/me, so let's not fetch it as a hack to make the endpoint faster. Once we refactor this stuff, we can fetch the tenancy in the rawQuery and won't need this anymore
-  const tenancy = req.url.endsWith("/users/me") ? "tenancy not available in /users/me as a performance hack" as never : await getSoleTenancyFromProjectBranch(projectId, branchId, true);
+  const tenancy = req.method === "GET" && req.url.endsWith("/users/me") ? "tenancy not available in /users/me as a performance hack" as never : await getSoleTenancyFromProjectBranch(projectId, branchId, true);
 
   if (developmentKeyOverride) {
     if (getNodeEnvironment() !== "development" && getNodeEnvironment() !== "test") {
