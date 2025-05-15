@@ -196,7 +196,7 @@ const parseAuth = withTraceSpan('smart request parseAuth', async (req: NextReque
   const extractUserFromAdminAccessToken = async (options: { token: string, projectId: string }) => {
     const result = await decodeAccessToken(options.token);
     if (result.status === "error") {
-      if (result.error instanceof KnownErrors.AccessTokenExpired) {
+      if (KnownErrors.AccessTokenExpired.isInstance(result.error)) {
         throw new KnownErrors.AdminAccessTokenExpired(result.error.constructorArgs[0]);
       } else {
         throw new KnownErrors.UnparsableAdminAccessToken();
@@ -239,7 +239,7 @@ const parseAuth = withTraceSpan('smart request parseAuth', async (req: NextReque
   const project = await queriesResults.project;
 
   // TODO HACK tenancy is not needed for /users/me, so let's not fetch it as a hack to make the endpoint faster. Once we refactor this stuff, we can fetch the tenancy in the rawQuery and won't need this anymore
-  const tenancy = req.url.endsWith("/users/me") ? "tenancy not available in /users/me as a performance hack" as never : await getSoleTenancyFromProjectBranch(projectId, branchId, true);
+  const tenancy = req.method === "GET" && req.url.endsWith("/users/me") ? "tenancy not available in /users/me as a performance hack" as never : await getSoleTenancyFromProjectBranch(projectId, branchId, true);
 
   if (developmentKeyOverride) {
     if (getNodeEnvironment() !== "development" && getNodeEnvironment() !== "test") {

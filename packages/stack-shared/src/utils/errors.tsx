@@ -135,6 +135,7 @@ type StatusErrorConstructorParameters =
 ];
 
 export class StatusError extends Error {
+  private readonly __stackStatusErrorBrand = "stack-status-error-brand-sentinel" as const;
   public name = "StatusError";
   public readonly statusCode: number;
 
@@ -195,6 +196,11 @@ export class StatusError extends Error {
     if (!message) {
       throw new StackAssertionError("StatusError always requires a message unless a Status object is passed", { cause: this });
     }
+  }
+
+  public static isStatusError(error: unknown): error is StatusError {
+    // like instanceof, but also works for errors thrown in other realms or by different versions of the same package
+    return typeof error === "object" && error !== null && "__stackStatusErrorBrand" in error && error.__stackStatusErrorBrand === "stack-status-error-brand-sentinel";
   }
 
   public isClientError() {
