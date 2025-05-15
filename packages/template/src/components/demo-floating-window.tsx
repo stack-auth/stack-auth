@@ -137,7 +137,7 @@ export function DemoFloatingWindow() {
       <div
         className="absolute top-0 left-0 right-0 h-6 bg-muted/70 rounded-t-lg cursor-grab flex items-center justify-center"
         onPointerDown={handlePointerDown}
-        touch-action="none"
+        style={{ touchAction: "none" }}
       >
         <GripHorizontal className="w-4 h-4" />
       </div>
