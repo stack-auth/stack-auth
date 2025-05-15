@@ -1,4 +1,4 @@
-import { Typography, cn } from "@stackframe/stack-ui";
+import { Typography } from "@stackframe/stack-ui";
 
 export function PageLayout(props: {
   children: React.ReactNode,
@@ -6,10 +6,20 @@ export function PageLayout(props: {
   description?: string,
   actions?: React.ReactNode,
   fillWidth?: boolean,
-}) {
+} & ({
+  fillWidth: true,
+} | {
+  width?: number,
+})) {
   return (
     <div className="py-4 px-4 md:px-6 flex justify-center">
-      <div className={cn("min-w-0", props.fillWidth ? "w-full" : "max-w-[1250px] w-[1250px]")}>
+      <div
+        className={"min-w-0"}
+        style={{
+          maxWidth: props.fillWidth ? undefined : (props.width ?? 1250),
+          width: props.fillWidth ? '100%' : (props.width ?? 1250),
+        }}
+      >
         <div className="flex flex-col gap-4 sm:flex-row sm:justify-between sm:items-end">
           <div>
             {props.title && <Typography type="h2">
