@@ -9,7 +9,7 @@ import { useState } from "react";
 import { CardSubtitle } from "../../../../../../../../../packages/stack-ui/dist/components/ui/card";
 import { PageLayout } from "../page-layout";
 import { useAdminApp } from "../use-admin-app";
-import { ProviderSettingDialog, ProviderSettingSwitch, TurnOffProviderDialog } from "./providers";
+import { ProviderIcon, ProviderSettingDialog, ProviderSettingSwitch, TurnOffProviderDialog } from "./providers";
 
 type OAuthAccountMergeStrategy = 'link_method' | 'raise_error' | 'allow_duplicates';
 
@@ -272,12 +272,7 @@ export default function PageClient() {
             .filter((provider): provider is AdminOAuthProviderConfig => !!provider).map(provider => {
               return <div key={provider.id} className="flex h-10 items-center justify-between">
                 <div className="flex items-center gap-2">
-                  <div
-                    className="flex items-center justify-center w-12 h-12 rounded-md border border-gray-800"
-                    style={{ backgroundColor: provider.id in BrandIcons.BRAND_COLORS ? BrandIcons.BRAND_COLORS[provider.id] : undefined }}
-                  >
-                    <BrandIcons.Mapping iconSize={24} provider={provider.id} />
-                  </div>
+                  <ProviderIcon id={provider.id} />
                   <span className="text-sm font-semibold">{BrandIcons.toTitle(provider.id)}</span>
                   {provider.type === 'shared' && <SimpleTooltip tooltip={SHARED_TOOLTIP}>
                     <Badge variant="secondary">Shared keys</Badge>
