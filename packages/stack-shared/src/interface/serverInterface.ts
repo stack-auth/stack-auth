@@ -5,8 +5,8 @@ import { filterUndefined } from "../utils/objects";
 import { Result } from "../utils/results";
 import { urlString } from "../utils/urls";
 import {
-    ClientInterfaceOptions,
-    StackClientInterface
+  ClientInterfaceOptions,
+  StackClientInterface
 } from "./clientInterface";
 import { ContactChannelsCrud } from "./crud/contact-channels";
 import { CurrentUserCrud } from "./crud/current-user";
@@ -70,7 +70,7 @@ export class StackServerInterface extends StackClientInterface {
       return Result.ok(await this.sendServerRequest(path, requestOptions, tokenStoreOrNull));
     } catch (e) {
       for (const errorType of errorsToCatch) {
-        if (e instanceof errorType) {
+        if (errorType.isInstance(e)) {
           return Result.error(e as InstanceType<E>);
         }
       }

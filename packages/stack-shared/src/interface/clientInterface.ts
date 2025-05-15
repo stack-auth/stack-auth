@@ -229,7 +229,7 @@ export class StackClientInterface {
       return Result.ok(await this.sendClientRequest(path, requestOptions, tokenStoreOrNull));
     } catch (e) {
       for (const errorType of errorsToCatch) {
-        if (e instanceof errorType) {
+        if (errorType.isInstance(e)) {
           return Result.error(e as InstanceType<E>);
         }
       }
