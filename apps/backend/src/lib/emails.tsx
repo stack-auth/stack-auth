@@ -262,7 +262,7 @@ export async function sendEmail(options: SendEmailOptions) {
       }
 
       // TODO if using custom email config, we should notify the developer instead of throwing an error
-      throw new StackAssertionError('Failed to send email', extraData);
+      throw new StackAssertionError('Failed to send email: ' + result.error.rawError?.message, extraData);
     }
 
     return result;
