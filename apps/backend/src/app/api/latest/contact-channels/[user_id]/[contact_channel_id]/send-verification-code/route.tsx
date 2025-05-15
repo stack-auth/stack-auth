@@ -46,7 +46,7 @@ export const POST = createSmartRouteHandler({
           user_id: params.user_id
         });
       } catch (e) {
-        if (e instanceof CrudHandlerInvocationError && e.cause instanceof KnownErrors.UserNotFound) {
+        if (e instanceof CrudHandlerInvocationError && KnownErrors.UserNotFound.isInstance(e.cause)) {
           throw new KnownErrors.UserIdDoesNotExist(params.user_id);
         }
         throw e;

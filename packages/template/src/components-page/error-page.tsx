@@ -30,7 +30,7 @@ export function ErrorPage(props: { fullPage?: boolean, searchParams: Record<stri
     return unknownErrorCard;
   }
 
-  if (error instanceof KnownErrors.OAuthConnectionAlreadyConnectedToAnotherUser) {
+  if (KnownErrors.OAuthConnectionAlreadyConnectedToAnotherUser.isInstance(error)) {
     // TODO: add "Connect a different account" button
     return (
       <MessageCard
@@ -46,7 +46,7 @@ export function ErrorPage(props: { fullPage?: boolean, searchParams: Record<stri
     );
   }
 
-  if (error instanceof KnownErrors.UserAlreadyConnectedToAnotherOAuthConnection) {
+  if (KnownErrors.UserAlreadyConnectedToAnotherOAuthConnection.isInstance(error)) {
     // TODO: add "Connect again" button
     return (
       <MessageCard
@@ -62,7 +62,7 @@ export function ErrorPage(props: { fullPage?: boolean, searchParams: Record<stri
     );
   }
 
-  if (error instanceof KnownErrors.OAuthProviderAccessDenied) {
+  if (KnownErrors.OAuthProviderAccessDenied.isInstance(error)) {
     return (
       <MessageCard
         title={t("OAuth provider access denied")}

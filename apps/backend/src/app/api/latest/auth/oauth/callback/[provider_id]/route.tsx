@@ -134,7 +134,7 @@ const handler = createSmartRouteHandler({
           },
         });
       } catch (error) {
-        if (error instanceof KnownErrors['OAuthProviderAccessDenied']) {
+        if (KnownErrors['OAuthProviderAccessDenied'].isInstance(error)) {
           redirectOrThrowError(error, tenancy, errorRedirectUrl);
         }
         throw error;
@@ -396,7 +396,7 @@ const handler = createSmartRouteHandler({
 
       return oauthResponseToSmartResponse(oauthResponse);
     } catch (error) {
-      if (error instanceof KnownError) {
+      if (KnownError.isKnownError(error)) {
         redirectOrThrowError(error, tenancy, errorRedirectUrl);
       }
       throw error;
