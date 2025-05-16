@@ -32,6 +32,50 @@ navigation:
           - page: Installation & Setup
             icon: fa-regular fa-download
             path: ./docs/pages-{platform}/getting-started/setup.mdx
+          - section: Auth Providers
+            icon: fa-solid fa-lock
+            contents:
+              - page: Overview
+                path: ./docs/pages-{platform}/getting-started/auth-providers/overview.mdx
+              - page: GitHub
+                icon: fa-brands fa-github
+                path: ./docs/pages-{platform}/getting-started/auth-providers/github.mdx
+              - page: Google
+                icon: fa-brands fa-google
+                path: ./docs/pages-{platform}/getting-started/auth-providers/google.mdx
+              - page: Facebook
+                icon: fa-brands fa-facebook
+                path: ./docs/pages-{platform}/getting-started/auth-providers/facebook.mdx
+              - page: Microsoft
+                icon: fa-brands fa-microsoft
+                path: ./docs/pages-{platform}/getting-started/auth-providers/microsoft.mdx
+              - page: Spotify
+                icon: fa-brands fa-spotify
+                path: ./docs/pages-{platform}/getting-started/auth-providers/spotify.mdx
+              - page: Discord
+                icon: fa-brands fa-discord
+                path: ./docs/pages-{platform}/getting-started/auth-providers/discord.mdx
+              - page: GitLab
+                icon: fa-brands fa-gitlab
+                path: ./docs/pages-{platform}/getting-started/auth-providers/gitlab.mdx
+              - page: Apple
+                icon: fa-brands fa-apple
+                path: ./docs/pages-{platform}/getting-started/auth-providers/apple.mdx
+              - page: BitBucket
+                icon: fa-brands fa-bitbucket
+                path: ./docs/pages-{platform}/getting-started/auth-providers/bitbucket.mdx
+              - page: LinkedIn
+                icon: fa-brands fa-linkedin
+                path: ./docs/pages-{platform}/getting-started/auth-providers/linkedin.mdx
+              - page: X (Twitter)
+                icon: fa-brands fa-twitter
+                path: ./docs/pages-{platform}/getting-started/auth-providers/x-twitter.mdx
+              - page: Passkey
+                icon: fa-regular fa-key
+                path: ./docs/pages-{platform}/getting-started/auth-providers/passkey.mdx
+              - page: Two-Factor Auth (2FA)
+                icon: fa-regular fa-shield-check
+                path: ./docs/pages-{platform}/getting-started/auth-providers/two-factor-auth.mdx
           - page: Components
             icon: fa-regular fa-puzzle
             path: ./docs/pages-{platform}/getting-started/components.mdx
