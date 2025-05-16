@@ -10,6 +10,17 @@ import clsx from "clsx";
 import { useState } from "react";
 import * as yup from "yup";
 
+export function ProviderIcon(props: { id: string }) {
+  return (
+    <div
+      className="flex items-center justify-center w-12 h-12 rounded-md border border-gray-800"
+      style={{ backgroundColor: props.id in BrandIcons.BRAND_COLORS ? BrandIcons.BRAND_COLORS[props.id] : undefined }}
+    >
+      <BrandIcons.Mapping iconSize={24} provider={props.id} />
+    </div>
+  );
+}
+
 type Props = {
   id: string,
   provider?: AdminProject['config']['oauthProviders'][number],
@@ -204,18 +215,17 @@ export function ProviderSettingSwitch(props: Props) {
 
   return (
     <>
-      <div className={clsx("flex flex-col items-center justify-center gap-2 py-2 border border-1 rounded-lg p-2 w-[120px] h-[120px] cursor-pointer transition-all",
-        enabled ? "border-white" : "border-gray-800 hover:border-gray-400"
-      )}
-      onClick={() => {
-        if (enabled) {
-          setTurnOffProviderDialogOpen(true);
-        } else {
-          setProviderSettingDialogOpen(true);
-        }
-      }}
+      <div
+        className={clsx("flex flex-col items-center justify-center gap-2 py-2 border border-1 rounded-lg p-2 w-[120px] h-[120px] cursor-pointer transition-all", enabled ? "border-white" : "border-gray-800 hover:border-gray-400")}
+        onClick={() => {
+          if (enabled) {
+            setTurnOffProviderDialogOpen(true);
+          } else {
+            setProviderSettingDialogOpen(true);
+          }
+        }}
       >
-        <BrandIcons.Mapping iconSize={28} provider={props.id} />
+        <ProviderIcon id={props.id} />
         <span className="text-sm">{toTitle(props.id)}</span>
         {isShared && enabled &&
           <SimpleTooltip tooltip={"Shared keys are automatically created by Stack, but show Stack's logo on the OAuth sign-in page.\n\nYou should replace these before you go into production."}>

@@ -3,7 +3,7 @@ import "../polyfills";
 import { getUser, getUserQuery } from "@/app/api/latest/users/crud";
 import { checkApiKeySet, checkApiKeySetQuery } from "@/lib/internal-api-keys";
 import { getProjectQuery, listManagedProjectIds } from "@/lib/projects";
-import { DEFAULT_BRANCH_ID, getSoleTenancyFromProjectBranch, Tenancy } from "@/lib/tenancies";
+import { DEFAULT_BRANCH_ID, Tenancy, getSoleTenancyFromProjectBranch } from "@/lib/tenancies";
 import { decodeAccessToken } from "@/lib/tokens";
 import { prismaClient, rawQueryAll } from "@/prisma-client";
 import { traceSpan, withTraceSpan } from "@/utils/telemetry";
@@ -13,7 +13,7 @@ import { UsersCrud } from "@stackframe/stack-shared/dist/interface/crud/users";
 import { StackAdaptSentinel, yupValidate } from "@stackframe/stack-shared/dist/schema-fields";
 import { groupBy, typedIncludes } from "@stackframe/stack-shared/dist/utils/arrays";
 import { getNodeEnvironment } from "@stackframe/stack-shared/dist/utils/env";
-import { captureError, StackAssertionError, StatusError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
+import { StackAssertionError, StatusError, captureError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
 import { deindent } from "@stackframe/stack-shared/dist/utils/strings";
 import { NextRequest } from "next/server";
 import * as yup from "yup";
@@ -196,7 +196,7 @@ const parseAuth = withTraceSpan('smart request parseAuth', async (req: NextReque
   const extractUserFromAdminAccessToken = async (options: { token: string, projectId: string }) => {
     const result = await decodeAccessToken(options.token);
     if (result.status === "error") {
-      if (result.error instanceof KnownErrors.AccessTokenExpired) {
+      if (KnownErrors.AccessTokenExpired.isInstance(result.error)) {
         throw new KnownErrors.AdminAccessTokenExpired(result.error.constructorArgs[0]);
       } else {
         throw new KnownErrors.UnparsableAdminAccessToken();
@@ -237,7 +237,9 @@ const parseAuth = withTraceSpan('smart request parseAuth', async (req: NextReque
   };
   const queriesResults = await rawQueryAll(prismaClient, bundledQueries);
   const project = await queriesResults.project;
-  const tenancy = await getSoleTenancyFromProjectBranch(projectId, branchId, true);
+
+  // TODO HACK tenancy is not needed for /users/me, so let's not fetch it as a hack to make the endpoint faster. Once we refactor this stuff, we can fetch the tenancy in the rawQuery and won't need this anymore
+  const tenancy = req.method === "GET" && req.url.endsWith("/users/me") ? "tenancy not available in /users/me as a performance hack" as never : await getSoleTenancyFromProjectBranch(projectId, branchId, true);
 
   if (developmentKeyOverride) {
     if (getNodeEnvironment() !== "development" && getNodeEnvironment() !== "test") {

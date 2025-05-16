@@ -28,9 +28,9 @@ function OTP(props: {
       stackApp.signInWithMagicLink(otp + props.nonce)
         .then(result => {
           if (result.status === 'error') {
-            if (result.error instanceof KnownErrors.VerificationCodeError) {
+            if (KnownErrors.VerificationCodeError.isInstance(result.error)) {
               setError(t("Invalid code"));
-            } else if (result.error instanceof KnownErrors.InvalidTotpCode) {
+            } else if (KnownErrors.InvalidTotpCode.isInstance(result.error)) {
               setError(t("Invalid TOTP code"));
             } else {
               throw result.error;
@@ -100,7 +100,7 @@ export function MagicLinkSignIn() {
         setNonce(result.data.nonce);
       }
     } catch (e) {
-      if (e instanceof KnownErrors.SignUpNotEnabled) {
+      if (KnownErrors.SignUpNotEnabled.isInstance(e)) {
         setError('email', { type: 'manual', message: t('New account registration is not allowed') });
       } else {
         throw e;

@@ -134,7 +134,7 @@ export async function callOAuthCallback(
       state: consumed.state,
     }));
   } catch (e) {
-    if (e instanceof KnownError) {
+    if (KnownError.isKnownError(e)) {
       throw e;
     }
     throw new StackAssertionError("Error signing in during OAuth callback. Please try again.", { cause: e });
