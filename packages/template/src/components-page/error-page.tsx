@@ -73,7 +73,7 @@ export function ErrorPage(props: { fullPage?: boolean, searchParams: Record<stri
         secondaryAction={() => stackApp.redirectToHome()}
       >
         <Typography>
-          {t("The sign-in operation has been cancelled. Please try again. [access_denied]")}
+          {t("The sign-in operation has been cancelled or denied. Please try again.")}
         </Typography>
       </MessageCard>
     );
