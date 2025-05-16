@@ -161,7 +161,7 @@ async function loadRecentlyActiveUsers(tenancy: Tenancy): Promise<UsersCrud["Adm
         ],
       });
     } catch (e) {
-      if (e instanceof KnownErrors.UserNotFound) {
+      if (KnownErrors.UserNotFound.isInstance(e)) {
         // user probably deleted their account, skip
         continue;
       }
