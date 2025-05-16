@@ -45,7 +45,9 @@ export const sessionsCrudHandlers = createLazyProxy(() => createCrudHandlers(ses
         SELECT data->>'sessionId' as "sessionId", 
                MAX("eventStartedAt") as "lastActiveAt"
         FROM "Event" 
-        WHERE data->>'sessionId' = ANY(${Prisma.sql`ARRAY[${Prisma.join(refreshTokenObjs.map(s => s.id))}]`})
+        WHERE ${refreshTokenObjs.length > 0
+          ? Prisma.sql`data->>'sessionId' = ANY(${Prisma.sql`ARRAY[${Prisma.join(refreshTokenObjs.map(s => s.id))}]`})`
+          : Prisma.sql`FALSE`}
         AND "systemEventTypeIds" @> '{"$session-activity"}'
         GROUP BY data->>'sessionId'
       )

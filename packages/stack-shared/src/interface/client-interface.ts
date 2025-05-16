@@ -161,7 +161,7 @@ export class StackClientInterface {
 
     if (response.status === "error") {
       const error = response.error;
-      if (error instanceof KnownErrors.RefreshTokenError) {
+      if (KnownErrors.RefreshTokenError.isInstance(error)) {
         return null;
       }
       throw error;
@@ -229,7 +229,7 @@ export class StackClientInterface {
       return Result.ok(await this.sendClientRequest(path, requestOptions, tokenStoreOrNull));
     } catch (e) {
       for (const errorType of errorsToCatch) {
-        if (e instanceof errorType) {
+        if (errorType.isInstance(e)) {
           return Result.error(e as InstanceType<E>);
         }
       }
@@ -335,7 +335,7 @@ export class StackClientInterface {
     const processedRes = await this._processResponse(rawRes);
     if (processedRes.status === "error") {
       // If the access token is invalid, reset it and retry
-      if (processedRes.error instanceof KnownErrors.InvalidAccessToken) {
+      if (KnownErrors.InvalidAccessToken.isInstance(processedRes.error)) {
         if (!tokenObj) {
           throw new StackAssertionError("Received invalid access token, but session is not logged in", { tokenObj, processedRes });
         }
@@ -345,7 +345,7 @@ export class StackClientInterface {
 
       // Same for the admin access token
       // TODO HACK: Some of the backend hasn't been ported to use the new error codes, so if we have project owner tokens we need to check for ApiKeyNotFound too. Once the migration to smartRouteHandlers is complete, we can check for InvalidAdminAccessToken only.
-      if (adminSession && (processedRes.error instanceof KnownErrors.InvalidAdminAccessToken || processedRes.error instanceof KnownErrors.ApiKeyNotFound)) {
+      if (adminSession && (KnownErrors.InvalidAdminAccessToken.isInstance(processedRes.error) || KnownErrors.ApiKeyNotFound.isInstance(processedRes.error))) {
         if (!adminTokenObj) {
           throw new StackAssertionError("Received invalid admin access token, but admin session is not logged in", { adminTokenObj, processedRes });
         }
@@ -1020,7 +1020,7 @@ export class StackClientInterface {
         [KnownErrors.RefreshTokenError]
       );
       if (resOrError.status === "error") {
-        if (resOrError.error instanceof KnownErrors.RefreshTokenError) {
+        if (KnownErrors.RefreshTokenError.isInstance(resOrError.error)) {
           // refresh token was already invalid, just continue like nothing happened
         } else {
           // this should never happen
@@ -1041,7 +1041,7 @@ export class StackClientInterface {
       [KnownErrors.CannotGetOwnUserWithoutUser],
     );
     if (responseOrError.status === "error") {
-      if (responseOrError.error instanceof KnownErrors.CannotGetOwnUserWithoutUser) {
+      if (KnownErrors.CannotGetOwnUserWithoutUser.isInstance(responseOrError.error)) {
         return null;
       } else {
         throw new StackAssertionError("Unexpected uncaught error", { cause: responseOrError.error });
