@@ -6,7 +6,7 @@ import { ProjectPermissionDefinitionsCrud } from "./crud/project-permissions";
 import { ProjectsCrud } from "./crud/projects";
 import { SvixTokenCrud } from "./crud/svix-token";
 import { TeamPermissionDefinitionsCrud } from "./crud/team-permissions";
-import { ServerAuthApplicationOptions, StackServerInterface } from "./serverInterface";
+import { ServerAuthApplicationOptions, StackServerInterface } from "./server-interface";
 
 export type AdminAuthApplicationOptions = ServerAuthApplicationOptions &(
   | {

@@ -734,7 +734,7 @@ async function getUpdatedLayout(originalLayout: string): Promise<LayoutResult | 
   const importInsertLocationM1 =
     firstImportLocationM1 ?? (hasStringAsFirstLine ? layout.indexOf("\n") : -1);
   const importInsertLocation = importInsertLocationM1 + 1;
-  const importStatement = `import { StackProvider, StackTheme } from "@stackframe/stack";\nimport { stackServerApp } from "../stack";\n`;
+  const importStatement = `import { StackProvider, StackTheme, DemoFloatingWindow } from "@stackframe/stack";\nimport { stackServerApp } from "../stack";\n`;
   layout =
     layout.slice(0, importInsertLocation) +
     importStatement +
@@ -751,17 +751,7 @@ async function getUpdatedLayout(originalLayout: string): Promise<LayoutResult | 
     return undefined;
   }
 
-  const lines = layout.split("\n");
-  const [bodyOpenEndLine, bodyOpenEndIndexInLine] = getLineIndex(
-    lines,
-    bodyOpenEndIndex
-  );
-  const [bodyCloseStartLine, bodyCloseStartIndexInLine] = getLineIndex(
-    lines,
-    bodyCloseStartIndex
-  );
-
-  const insertOpen = "<StackProvider app={stackServerApp}><StackTheme>";
+  const insertOpen = "<StackProvider app={stackServerApp}><StackTheme><DemoFloatingWindow />";
   const insertClose = "</StackTheme></StackProvider>";
 
   layout =
