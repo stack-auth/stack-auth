@@ -61,7 +61,7 @@ navigation:
               - page: Apple
                 icon: fa-brands fa-apple
                 path: ./docs/pages-{platform}/getting-started/auth-providers/apple.mdx
-              - page: BitBucket
+              - page: Bitbucket
                 icon: fa-brands fa-bitbucket
                 path: ./docs/pages-{platform}/getting-started/auth-providers/bitbucket.mdx
               - page: LinkedIn
