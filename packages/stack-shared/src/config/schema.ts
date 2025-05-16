@@ -154,6 +154,7 @@ export const organizationConfigSchema = environmentConfigSchema.concat(yupObject
 // Defaults
 // these are objects that are merged together to form the rendered config (see ./README.md)
 // Wherever an object could be used as a value, a function can instead be used to generate the default values on a per-key basis
+// NOTE: These values are the defaults of the schema, NOT the defaults for newly created projects. The values here signify what `null` means for each property. If you want new projects by default to have a certain value set to true, you should update the corresponding function in the backend instead.
 export const projectConfigDefaults = {} satisfies DeepReplaceAllowFunctionsForObjects<ProjectConfigStrippedNormalizedOverride>;
 
 export const branchConfigDefaults = {} satisfies DeepReplaceAllowFunctionsForObjects<BranchConfigStrippedNormalizedOverride>;

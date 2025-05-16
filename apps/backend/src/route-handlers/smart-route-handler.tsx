@@ -23,14 +23,14 @@ class InternalServerError extends StatusError {
 }
 
 /**
- * Known errors that are common and should not be logged with their stacktrace.
+ * Some errors that are common and should not be logged with their stacktrace.
  */
-const commonErrors = [
-  ...getNodeEnvironment() === "development" ? [KnownError] : [],
-  KnownErrors.AccessTokenExpired,
-  KnownErrors.CannotGetOwnUserWithoutUser,
-  InternalServerError,
-];
+function isCommonError(error: unknown): boolean {
+  return KnownError.isKnownError(error)
+    || error instanceof InternalServerError
+    || KnownErrors.AccessTokenExpired.isInstance(error)
+    || KnownErrors.CannotGetOwnUserWithoutUser.isInstance(error);
+}
 
 /**
  * Catches the given error, logs it if needed and returns it as a StatusError. Errors that are not actually errors
@@ -47,7 +47,7 @@ function catchError(error: unknown, requestId: string): StatusError {
     }
   }
 
-  if (error instanceof StatusError) return error;
+  if (StatusError.isStatusError(error)) return error;
   captureError(`route-handler`, error);
   return new InternalServerError(error, requestId);
 }
@@ -130,7 +130,7 @@ export function handleApiRequest(handler: (req: NextRequest, options: any, reque
 
           if (!disableExtendedLogging) console.log(`[    ERR] [${requestId}] ${req.method} ${req.url}: ${statusError.message}`);
 
-          if (!commonErrors.some(e => statusError instanceof e)) {
+          if (!isCommonError(statusError)) {
             // HACK: Log a nicified version of the error instead of statusError to get around buggy Next.js pretty-printing
             // https://www.reddit.com/r/nextjs/comments/1gkxdqe/comment/m19kxgn/?utm_source=share&utm_medium=web3x&utm_name=web3xcss&utm_term=1&utm_content=share_button
             if (!disableExtendedLogging) console.debug(`For the error above with request ID ${requestId}, the full error is:`, errorToNiceString(statusError));
@@ -324,8 +324,8 @@ function mergeOverloadErrors(errors: StatusError[]): StatusError[] {
 
       // Merge "InsufficientAccessType" errors
       if (
-        a instanceof KnownErrors.InsufficientAccessType
-        && b instanceof KnownErrors.InsufficientAccessType
+        KnownErrors.InsufficientAccessType.isInstance(a)
+        && KnownErrors.InsufficientAccessType.isInstance(b)
         && a.constructorArgs[0] === b.constructorArgs[0]
       ) {
         return [new KnownErrors.InsufficientAccessType(a.constructorArgs[0], [...new Set([...a.constructorArgs[1], ...b.constructorArgs[1]])])];

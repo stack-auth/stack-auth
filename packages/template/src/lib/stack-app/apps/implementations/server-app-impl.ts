@@ -76,7 +76,7 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
         const result = await this._interface.createServerProviderAccessToken(userId, providerId, scope || "");
         return { accessToken: result.access_token };
       } catch (err) {
-        if (!(err instanceof KnownErrors.OAuthConnectionDoesNotHaveRequiredScope || err instanceof KnownErrors.OAuthConnectionNotConnectedToUser)) {
+        if (!(KnownErrors.OAuthConnectionDoesNotHaveRequiredScope.isInstance(err) || KnownErrors.OAuthConnectionNotConnectedToUser.isInstance(err))) {
           throw err;
         }
       }

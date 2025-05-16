@@ -134,7 +134,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
         const result = await this._interface.createProviderAccessToken(providerId, scope || "", session);
         return { accessToken: result.access_token };
       } catch (err) {
-        if (!(err instanceof KnownErrors.OAuthConnectionDoesNotHaveRequiredScope || err instanceof KnownErrors.OAuthConnectionNotConnectedToUser)) {
+        if (!(KnownErrors.OAuthConnectionDoesNotHaveRequiredScope.isInstance(err) || KnownErrors.OAuthConnectionNotConnectedToUser.isInstance(err))) {
           throw err;
         }
       }
@@ -1459,7 +1459,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
     try {
       return await callback();
     } catch (e) {
-      if (e instanceof KnownErrors.MultiFactorAuthenticationRequired) {
+      if (KnownErrors.MultiFactorAuthenticationRequired.isInstance(e)) {
         return Result.ok(await this._experimentalMfa(e, await this._getSession()));
       }
       throw e;
@@ -1479,7 +1479,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
         return await this._interface.signInWithCredential(options.email, options.password, session);
       });
     } catch (e) {
-      if (e instanceof KnownErrors.InvalidTotpCode) {
+      if (KnownErrors.InvalidTotpCode.isInstance(e)) {
         return Result.error(e);
       }
       throw e;
@@ -1551,7 +1551,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
         return await this._interface.signInWithMagicLink(code);
       });
     } catch (e) {
-      if (e instanceof KnownErrors.InvalidTotpCode) {
+      if (KnownErrors.InvalidTotpCode.isInstance(e)) {
         return Result.error(e);
       }
       throw e;
@@ -1720,7 +1720,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
         return await callOAuthCallback(this._interface, this.urls.oauthCallback);
       });
     } catch (e) {
-      if (e instanceof KnownErrors.InvalidTotpCode) {
+      if (KnownErrors.InvalidTotpCode.isInstance(e)) {
         alert("Invalid TOTP code. Please try signing in again.");
         return false;
       } else {
