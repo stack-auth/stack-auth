@@ -64,11 +64,11 @@ export function MagicLinkCallback(props: {
     />;
   } else {
     if (result.status === 'error') {
-      if (result.error instanceof KnownErrors.VerificationCodeNotFound) {
+      if (KnownErrors.VerificationCodeNotFound.isInstance(result.error)) {
         return invalidJsx;
-      } else if (result.error instanceof KnownErrors.VerificationCodeExpired) {
+      } else if (KnownErrors.VerificationCodeExpired.isInstance(result.error)) {
         return expiredJsx;
-      } else if (result.error instanceof KnownErrors.VerificationCodeAlreadyUsed) {
+      } else if (KnownErrors.VerificationCodeAlreadyUsed.isInstance(result.error)) {
         return alreadyUsedJsx;
       } else {
         throw result.error;

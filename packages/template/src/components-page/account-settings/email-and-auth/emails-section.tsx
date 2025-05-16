@@ -139,7 +139,7 @@ export function EmailsSection() {
                             try {
                               await x.update({ usedForAuth: true });
                             } catch (e) {
-                              if (e instanceof KnownErrors.ContactChannelAlreadyUsedForAuthBySomeoneElse) {
+                              if (KnownErrors.ContactChannelAlreadyUsedForAuthBySomeoneElse.isInstance(e)) {
                                 alert(t("This email is already used for sign-in by another user."));
                               }
                             }
