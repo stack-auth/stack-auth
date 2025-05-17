@@ -214,9 +214,9 @@ export function isBase32(input: string): boolean {
   return true;
 }
 import.meta.vitest?.test("isBase32", ({ expect }) => {
-  expect(isBase32("ABCDEFGHIJKLMNOPQRSTVWXYZ234567")).toBe(true);
+  expect(isBase32("0123456789ABCDEFGHJKMNPQRSTVWXYZ")).toBe(true);
+  expect(isBase32("0OIJ")).toBe(false); // O and I are not allowed
   expect(isBase32("ABC DEF")).toBe(true); // Spaces are allowed
-  expect(isBase32("abc")).toBe(false); // Lowercase not in Crockford alphabet
   expect(isBase32("ABC!")).toBe(false); // Special characters not allowed
   expect(isBase32("")).toBe(true);
 });
@@ -229,20 +229,22 @@ export function isBase64(input: string): boolean {
 import.meta.vitest?.test("isBase64", ({ expect }) => {
   expect(isBase64("SGVsbG8gV29ybGQ=")).toBe(true);
   expect(isBase64("SGVsbG8gV29ybGQ")).toBe(false); // No padding
-  expect(isBase64("SGVsbG8gV29ybGQ==")).toBe(true);
+  expect(isBase64("SGVsbG8gV29ybGQ==")).toBe(false); // Wrong padding
   expect(isBase64("SGVsbG8!V29ybGQ=")).toBe(false); // Invalid character
   expect(isBase64("")).toBe(true);
 });
 
 export function isBase64Url(input: string): boolean {
+  if (input === "") {
+    return true;
+  }
   const regex = /^[0-9a-zA-Z_-]+$/;
   return regex.test(input);
 }
 import.meta.vitest?.test("isBase64Url", ({ expect }) => {
-  expect(isBase64Url("SGVsbG8gV29ybGQ")).toBe(false); // Space is not valid
-  expect(isBase64Url("SGVsbG8_V29ybGQ")).toBe(false); // Invalid character
+  expect(isBase64Url("SGVsbG8gV2 9ybGQ")).toBe(false); // Space is not valid
+  expect(isBase64Url("SGVsbG8_V29ybGQ")).toBe(true); // _ is a valid character
   expect(isBase64Url("SGVsbG8-V29ybGQ")).toBe(true); // - is valid
   expect(isBase64Url("SGVsbG8_V29ybGQ=")).toBe(false); // = not allowed
-  expect(isBase64Url("SGVsbG8_V2 9ybGQ")).toBe(false); // space not allowed
   expect(isBase64Url("")).toBe(true); // Empty string is valid
 });
