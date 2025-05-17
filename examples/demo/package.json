@@ -9,7 +9,8 @@
     "dev": "next dev --turbopack --port 8103",
     "build": "next build",
     "start": "next start --port 8103",
-    "lint": "next lint"
+    "lint": "next lint",
+    "analyze": "ANALYZE=true pnpm build"
   },
   "dependencies": {
     "@emotion/react": "^11.13.3",
@@ -26,6 +27,7 @@
   "devDependencies": {
     "@types/react": "19.0.12",
     "@types/react-dom": "19.0.4",
+    "@next/bundle-analyzer": "15.2.3",
     "autoprefixer": "^10.4.20",
     "postcss": "^8.4.47",
     "rimraf": "^5.0.10",
