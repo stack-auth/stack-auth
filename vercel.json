@@ -4,6 +4,12 @@
       "maxDuration": 300
     }
   },
+  "crons": [
+    {
+      "path": "/api/latest/cron/send-email-digest",
+      "schedule": "0 0 * * *"
+    }
+  ],
   "github": {
     "autoJobCancelation": false
   }
