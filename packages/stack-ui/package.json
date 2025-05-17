@@ -79,8 +79,8 @@
     "date-fns": "^3.6.0",
     "export-to-csv": "^1.4.0",
     "input-otp": "^1.4.1",
-    "lucide-react": "^0.378.0",
-    "react-day-picker": "^8.10.1",
+    "lucide-react": "^0.508.0",
+    "react-day-picker": "^9.6.7",
     "react-hook-form": "^7.53.1",
     "react-resizable-panels": "^2.1.6",
     "tailwind-merge": "^2.5.4"
