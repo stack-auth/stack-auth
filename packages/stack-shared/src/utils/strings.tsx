@@ -662,6 +662,9 @@ import.meta.vitest?.test("nicifyPropertyString", ({ expect }) => {
 function getNicifiableKeys(value: Nicifiable | object) {
   const overridden = ("getNicifiableKeys" in value ? value.getNicifiableKeys?.bind(value) : null)?.();
   if (overridden != null) return overridden;
+  if (value instanceof Response) {
+    return ['status', 'headers'];
+  }
   const keys = Object.keys(value).sort();
   return unique(keys);
 }
@@ -671,6 +674,9 @@ import.meta.vitest?.test("getNicifiableKeys", ({ expect }) => {
 
   // Test empty object
   expect(getNicifiableKeys({})).toEqual([]);
+
+
+  expect(getNicifiableKeys(new Response())).toEqual(["status", "headers"]);
 
   // Test object with custom getNicifiableKeys
   const customObject = {
