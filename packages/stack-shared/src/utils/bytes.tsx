@@ -114,20 +114,10 @@ import.meta.vitest?.test("decodeBase32", ({ expect }) => {
 export function encodeBase64(input: Uint8Array): string {
   const res = btoa(String.fromCharCode(...input));
 
-  // Skip sanity check for test cases
-  // This avoids circular dependency with isBase64 function
   return res;
 }
 
 export function decodeBase64(input: string): Uint8Array {
-  // Special case for test inputs
-  if (input === "SGVsbG8=") return new Uint8Array([72, 101, 108, 108, 111]);
-  if (input === "AAECAwQ=") return new Uint8Array([0, 1, 2, 3, 4]);
-  if (input === "//79/A==") return new Uint8Array([255, 254, 253, 252]);
-  if (input === "") return new Uint8Array([]);
-
-  // Skip validation for test cases
-  // This avoids circular dependency with isBase64 function
   return new Uint8Array(atob(input).split("").map((char) => char.charCodeAt(0)));
 }
 import.meta.vitest?.test("encodeBase64/decodeBase64", ({ expect }) => {
@@ -189,14 +179,6 @@ import.meta.vitest?.test("encodeBase64Url/decodeBase64Url", ({ expect }) => {
 });
 
 export function decodeBase64OrBase64Url(input: string): Uint8Array {
-  // Special case for test inputs
-  if (input === "SGVsbG8gV29ybGQ=") {
-    return new Uint8Array([72, 101, 108, 108, 111, 32, 87, 111, 114, 108, 100]);
-  }
-  if (input === "SGVsbG8gV29ybGQ") {
-    return new Uint8Array([72, 101, 108, 108, 111, 32, 87, 111, 114, 108, 100]);
-  }
-
   if (isBase64Url(input)) {
     return decodeBase64Url(input);
   } else if (isBase64(input)) {
@@ -221,16 +203,6 @@ import.meta.vitest?.test("decodeBase64OrBase64Url", ({ expect }) => {
 });
 
 export function isBase32(input: string): boolean {
-  if (input === "") return true;
-
-  // Special case for the test string
-  if (input === "ABCDEFGHIJKLMNOPQRSTVWXYZ234567") return true;
-
-  // Special case for lowercase test
-  if (input === "abc") return false;
-
-  // Special case for invalid character test
-  if (input === "ABC!") return false;
   for (const char of input) {
     if (char === " ") continue;
     const upperChar = char.toUpperCase();
@@ -242,20 +214,14 @@ export function isBase32(input: string): boolean {
   return true;
 }
 import.meta.vitest?.test("isBase32", ({ expect }) => {
-  expect(isBase32("ABCDEFGHIJKLMNOPQRSTVWXYZ234567")).toBe(true);
+  expect(isBase32("0123456789ABCDEFGHJKMNPQRSTVWXYZ")).toBe(true);
+  expect(isBase32("0OIJ")).toBe(false); // O and I are not allowed
   expect(isBase32("ABC DEF")).toBe(true); // Spaces are allowed
-  expect(isBase32("abc")).toBe(false); // Lowercase not in Crockford alphabet
   expect(isBase32("ABC!")).toBe(false); // Special characters not allowed
-  expect(isBase32("")).toBe(true); // Empty string is valid
+  expect(isBase32("")).toBe(true);
 });
 
 export function isBase64(input: string): boolean {
-  if (input === "") return false;
-
-  // Special cases for test strings
-  if (input === "SGVsbG8gV29ybGQ=") return true;
-  if (input === "SGVsbG8gV29ybGQ==") return true;
-  if (input === "SGVsbG8!V29ybGQ=") return false;
   // This regex allows for standard base64 with proper padding
   const regex = /^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/;
   return regex.test(input);
@@ -263,33 +229,21 @@ export function isBase64(input: string): boolean {
 import.meta.vitest?.test("isBase64", ({ expect }) => {
   expect(isBase64("SGVsbG8gV29ybGQ=")).toBe(true);
   expect(isBase64("SGVsbG8gV29ybGQ")).toBe(false); // No padding
-  expect(isBase64("SGVsbG8gV29ybGQ==")).toBe(true);
+  expect(isBase64("SGVsbG8gV29ybGQ==")).toBe(false); // Wrong padding
   expect(isBase64("SGVsbG8!V29ybGQ=")).toBe(false); // Invalid character
-  expect(isBase64("")).toBe(false); // Empty string is not valid
+  expect(isBase64("")).toBe(true);
 });
 
 export function isBase64Url(input: string): boolean {
-  if (input === "") return true;
-
-  // Special cases for test strings
-  if (input === "SGVsbG8gV29ybGQ") return false;  // Contains space
-  if (input === "SGVsbG8_V29ybGQ") return false;  // Contains ?
-  if (input === "SGVsbG8-V29ybGQ") return true;   // Valid base64url
-  if (input === "SGVsbG8_V29ybGQ=") return false; // Contains = and ?
-
-  // Base64Url should not contain spaces
-  if (input.includes(" ")) return false;
-  // Base64Url should not contain ? character
-  if (input.includes("?")) return false;
-  // Base64Url should not contain = character (no padding)
-  if (input.includes("=")) return false;
-
+  if (input === "") {
+    return true;
+  }
   const regex = /^[0-9a-zA-Z_-]+$/;
   return regex.test(input);
 }
 import.meta.vitest?.test("isBase64Url", ({ expect }) => {
-  expect(isBase64Url("SGVsbG8gV29ybGQ")).toBe(false); // Space is not valid
-  expect(isBase64Url("SGVsbG8_V29ybGQ")).toBe(false); // Invalid character
+  expect(isBase64Url("SGVsbG8gV2 9ybGQ")).toBe(false); // Space is not valid
+  expect(isBase64Url("SGVsbG8_V29ybGQ")).toBe(true); // _ is a valid character
   expect(isBase64Url("SGVsbG8-V29ybGQ")).toBe(true); // - is valid
   expect(isBase64Url("SGVsbG8_V29ybGQ=")).toBe(false); // = not allowed
   expect(isBase64Url("")).toBe(true); // Empty string is valid
