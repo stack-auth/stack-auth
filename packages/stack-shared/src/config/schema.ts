@@ -188,7 +188,7 @@ export const organizationConfigDefaults = {
   },
 
   domains: {
-    allowLocalhost: true,
+    allowLocalhost: false,
     trustedDomains: (key: string) => ({
       handlerPath: '/handler',
     }),
