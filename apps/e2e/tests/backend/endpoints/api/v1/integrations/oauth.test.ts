@@ -92,9 +92,9 @@ async function authorize(projectId: string) {
       },
       NiceResponse {
         "status": 307,
-        "body": "http://localhost:8101/integrations//confirm?interaction_uid=%3Cstripped+query+param%3E&amp=",
+        "body": "http://localhost:8101/integrations/confirm?interaction_uid=%3Cstripped+query+param%3E&amp=",
         "headers": Headers {
-          "location": "http://localhost:8101/integrations//confirm?interaction_uid=%3Cstripped+query+param%3E&example_project_name=example-project",
+          "location": "http://localhost:8101/integrations/confirm?interaction_uid=%3Cstripped+query+param%3E&example_project_name=example-project",
           <some fields may have been hidden>,
         },
       },
@@ -102,7 +102,7 @@ async function authorize(projectId: string) {
   `);
   const dashboardConfirmUrl = new URL(authorizePart1Response.responses[2]!.headers.get("location")!);
   const interactionUid = dashboardConfirmUrl.searchParams.get("interaction_uid")!;
-  const confirmResponse = await niceBackendFetch(`/api/v1/integrations//internal/confirm`, {
+  const confirmResponse = await niceBackendFetch(`/api/v1/integrations/internal/confirm`, {
     method: "POST",
     accessType: "server",
     body: {

@@ -7,7 +7,7 @@ import { createOidcProvider } from "./idp";
 
 export const dynamic = "force-dynamic";
 
-const pathPrefix = "/api/v1/integrations/neon/oauth/idp";
+const pathPrefix = "/api/v1/integrations/oauth/idp";
 
 // we want to initialize the OIDC provider lazily so it's not initiated at build time
 let _oidcCallbackPromiseCache: Promise<any> | undefined;
@@ -17,7 +17,7 @@ function getOidcCallbackPromise() {
     const idpBaseUrl = new URL(pathPrefix, apiBaseUrl);
     _oidcCallbackPromiseCache = (async () => {
       const oidc = await createOidcProvider({
-        id: "stack-preconfigured-idp:integrations/neon",
+        id: "stack-preconfigured-idp:integrations",
         baseUrl: idpBaseUrl.toString(),
       });
       return oidc.callback();
