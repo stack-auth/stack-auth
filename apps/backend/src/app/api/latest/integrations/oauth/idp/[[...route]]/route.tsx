@@ -3,7 +3,7 @@ import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
 import { StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
 import { createNodeHttpServerDuplex } from "@stackframe/stack-shared/dist/utils/node-http";
 import { NextRequest, NextResponse } from "next/server";
-import { createOidcProvider } from "../../../../oauth/idp/[[...route]]/idp";
+import { createOidcProvider } from "./idp";
 
 export const dynamic = "force-dynamic";
 
