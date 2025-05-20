@@ -93,7 +93,7 @@ it("should fail if the neon client details are incorrect", async ({ expect }) =>
       display_name: "Test project",
     },
     headers: {
-      "Authorization": "Basic bmVvbi1sb2NhbDpuZW9uLWxvY2FsLXMlY3JldA==",
+      "Authorization": "Basic bmVvbi1sb2NhbDpuZW9uLWxvY2FsLXMlY2JldA==",
     },
   });
   expect(response).toMatchInlineSnapshot(`
