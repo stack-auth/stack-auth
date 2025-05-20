@@ -112,11 +112,11 @@ export function TeamInvitation({ fullPage=false, searchParams }: { fullPage?: bo
 
   if (verificationResult.status === 'error') {
     const error = verificationResult.error;
-    if (error instanceof KnownErrors.VerificationCodeNotFound) {
+    if (KnownErrors.VerificationCodeNotFound.isInstance(error)) {
       return invalidJsx;
-    } else if (error instanceof KnownErrors.VerificationCodeExpired) {
+    } else if (KnownErrors.VerificationCodeExpired.isInstance(error)) {
       return expiredJsx;
-    } else if (error instanceof KnownErrors.VerificationCodeAlreadyUsed) {
+    } else if (KnownErrors.VerificationCodeAlreadyUsed.isInstance(error)) {
       return usedJsx;
     } else {
       throw error;

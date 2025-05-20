@@ -66,7 +66,7 @@ const handler = createSmartRouteHandler({
     body: yupMixed().optional(),
   }),
   response: yupObject({
-    statusCode: yupNumber().oneOf([307]).defined(),
+    statusCode: yupNumber().oneOf([307, 303]).defined(),
     bodyType: yupString().oneOf(["json"]).defined(),
     body: yupMixed().defined(),
     headers: yupMixed().defined(),
@@ -134,7 +134,7 @@ const handler = createSmartRouteHandler({
           },
         });
       } catch (error) {
-        if (error instanceof KnownErrors['OAuthProviderAccessDenied']) {
+        if (KnownErrors['OAuthProviderAccessDenied'].isInstance(error)) {
           redirectOrThrowError(error, tenancy, errorRedirectUrl);
         }
         throw error;
@@ -396,7 +396,7 @@ const handler = createSmartRouteHandler({
 
       return oauthResponseToSmartResponse(oauthResponse);
     } catch (error) {
-      if (error instanceof KnownError) {
+      if (KnownError.isKnownError(error)) {
         redirectOrThrowError(error, tenancy, errorRedirectUrl);
       }
       throw error;
