@@ -1,4 +1,4 @@
-import { DemoFloatingWindow, StackProvider, StackTheme } from "@stackframe/stack";
+import { StackProvider, StackTheme } from "@stackframe/stack";
 import { Metadata } from "next";
 import React from "react";
 import Header from "src/components/header";
@@ -23,7 +23,6 @@ export default function RootLayout({
         <StackProvider app={stackServerApp}>
           <StackTheme>
             <Provider>
-              <DemoFloatingWindow />
               <div className="flex flex-col h-screen">
                 <Header />
                 <div className="flex flex-grow">
