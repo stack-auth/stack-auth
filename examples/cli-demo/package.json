@@ -12,7 +12,7 @@
     "dev": "tsc --watch",
     "lint": "eslint --ext .tsx,.ts .",
     "typecheck": "tsc --noEmit",
-    "cli": "node --experimental-specifier-resolution=module dist/index.js"
+    "cli": "node dist/index.js"
   },
   "homepage": "https://stack-auth.com",
   "keywords": [],
@@ -26,8 +26,6 @@
   },
   "devDependencies": {
     "@types/node": "^22.13.5",
-    "rimraf": "^6.0.1",
-    "tsup": "^8.4.0",
-    "typescript": "^5.7.3"
+    "rimraf": "^6.0.1"
   }
 }
