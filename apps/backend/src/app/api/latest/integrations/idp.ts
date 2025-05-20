@@ -176,7 +176,7 @@ export async function createOidcProvider(options: { id: string, baseUrl: string,
 
   const oidc = new Provider(options.baseUrl, {
     adapter: createPrismaAdapter(options.id),
-    clients: JSON.parse(getEnvVariable("STACK_NEON_INTEGRATION_CLIENTS_CONFIG", "[]")),
+    clients: JSON.parse(getEnvVariable("STACK_INTEGRATION_CLIENTS_CONFIG", "[]")),
     ttl: {},
     cookies: {
       keys: [

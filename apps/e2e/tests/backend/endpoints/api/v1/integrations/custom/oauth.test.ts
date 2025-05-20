@@ -1,17 +1,17 @@
 import { encodeBase64Url } from "@stackframe/stack-shared/dist/utils/bytes";
 import { expect } from "vitest";
-import { it, updateCookiesFromResponse } from "../../../../../helpers";
-import { Auth, InternalApiKey, Project, backendContext, niceBackendFetch } from "../../../../backend-helpers";
+import { it, updateCookiesFromResponse } from "../../../../../../helpers";
+import { Auth, InternalApiKey, Project, backendContext, niceBackendFetch } from "../../../../../backend-helpers";
 
 async function authorizePart1(redirectUri: string = "http://localhost:30000/api/v2/auth/authorize") {
   let cookies = "";
-  const first = await niceBackendFetch("/api/v1/integrations/oauth/authorize", {
+  const first = await niceBackendFetch("/api/v1/integrations/custom/oauth/authorize", {
     method: "GET",
     query: {
       response_type: "code",
-      client_id: "example-local",
+      client_id: "custom-local",
       redirect_uri: redirectUri,
-      state: encodeBase64Url(new TextEncoder().encode(JSON.stringify({ details: { example_project_name: 'example-project' } }))),
+      state: encodeBase64Url(new TextEncoder().encode(JSON.stringify({ details: { neon_project_name: 'custom-project' } }))),
       code_challenge: "xf6HY7PIgoaCf_eMniSt-45brYE2J_05C9BnfIbueik",
       code_challenge_method: "S256",
     },
@@ -32,7 +32,7 @@ async function authorizePart1(redirectUri: string = "http://localhost:30000/api/
 }
 
 async function authorizePart2(interactionUid: string, authorizationCode: string, cookies: string) {
-  const first = await niceBackendFetch(`/api/v1/integrations/oauth/idp/interaction/${encodeURIComponent(interactionUid)}/done`, {
+  const first = await niceBackendFetch(`/api/v1/integrations/custom/oauth/idp/interaction/${encodeURIComponent(interactionUid)}/done`, {
     query: {
       code: authorizationCode,
     },
@@ -45,7 +45,7 @@ async function authorizePart2(interactionUid: string, authorizationCode: string,
   let second = undefined;
   let third = undefined;
   if (first.status === 200) {
-    second = await niceBackendFetch(`/api/v1/integrations/oauth/idp/interaction/${encodeURIComponent(interactionUid)}/done`, {
+    second = await niceBackendFetch(`/api/v1/integrations/custom/oauth/idp/interaction/${encodeURIComponent(interactionUid)}/done`, {
       method: "POST",
       query: {
         code: authorizationCode,
@@ -74,27 +74,27 @@ async function authorize(projectId: string) {
       NiceResponse {
         "status": 307,
         "headers": Headers {
-          "location": "http://localhost:8102/api/v1/integrations/oauth/idp/auth?response_type=code&client_id=example-local&redirect_uri=%3Cstripped+query+param%3E&state=%3Cstripped+query+param%3E&code_challenge=%3Cstripped+query+param%3E&code_challenge_method=S256&scope=openid",
+          "location": "http://localhost:8102/api/v1/integrations/custom/oauth/idp/auth?response_type=code&client_id=custom-local&redirect_uri=%3Cstripped+query+param%3E&state=%3Cstripped+query+param%3E&code_challenge=%3Cstripped+query+param%3E&code_challenge_method=S256&scope=openid",
           <some fields may have been hidden>,
         },
       },
       NiceResponse {
         "status": 303,
-        "body": "Redirecting to <a href=\\"http://localhost:8102/api/v1/integrations/oauth/idp/interaction/<stripped interaction UID>\\">http://localhost:8102/api/v1/integrations/oauth/idp/interaction/<stripped interaction UID></a>.",
+        "body": "Redirecting to <a href=\\"http://localhost:8102/api/v1/integrations/custom/oauth/idp/interaction/<stripped interaction UID>\\">http://localhost:8102/api/v1/integrations/custom/oauth/idp/interaction/<stripped interaction UID></a>.",
         "headers": Headers {
-          "location": "http://localhost:8102/api/v1/integrations/oauth/idp/interaction/<stripped interaction UID>",
-          "set-cookie": <setting cookie "_interaction" at path "/api/v1/integrations/oauth/idp/interaction/<stripped interaction UID>" to <stripped cookie value>>,
-          "set-cookie": <setting cookie "_interaction.sig" at path "/api/v1/integrations/oauth/idp/interaction/<stripped interaction UID>" to <stripped cookie value>>,
-          "set-cookie": <setting cookie "_interaction_resume" at path "/api/v1/integrations/oauth/idp/auth/<stripped auth UID>" to <stripped cookie value>>,
-          "set-cookie": <setting cookie "_interaction_resume.sig" at path "/api/v1/integrations/oauth/idp/auth/<stripped auth UID>" to <stripped cookie value>>,
+          "location": "http://localhost:8102/api/v1/integrations/custom/oauth/idp/interaction/<stripped interaction UID>",
+          "set-cookie": <setting cookie "_interaction" at path "/api/v1/integrations/custom/oauth/idp/interaction/<stripped interaction UID>" to <stripped cookie value>>,
+          "set-cookie": <setting cookie "_interaction.sig" at path "/api/v1/integrations/custom/oauth/idp/interaction/<stripped interaction UID>" to <stripped cookie value>>,
+          "set-cookie": <setting cookie "_interaction_resume" at path "/api/v1/integrations/custom/oauth/idp/auth/<stripped auth UID>" to <stripped cookie value>>,
+          "set-cookie": <setting cookie "_interaction_resume.sig" at path "/api/v1/integrations/custom/oauth/idp/auth/<stripped auth UID>" to <stripped cookie value>>,
           <some fields may have been hidden>,
         },
       },
       NiceResponse {
         "status": 307,
-        "body": "http://localhost:8101/integrations/confirm?interaction_uid=%3Cstripped+query+param%3E&amp=",
+        "body": "http://localhost:8101/integrations/custom/confirm?interaction_uid=%3Cstripped+query+param%3E&amp=",
         "headers": Headers {
-          "location": "http://localhost:8101/integrations/confirm?interaction_uid=%3Cstripped+query+param%3E&example_project_name=example-project",
+          "location": "http://localhost:8101/integrations/custom/confirm?interaction_uid=%3Cstripped+query+param%3E&neon_project_name=custom-project",
           <some fields may have been hidden>,
         },
       },
@@ -102,7 +102,7 @@ async function authorize(projectId: string) {
   `);
   const dashboardConfirmUrl = new URL(authorizePart1Response.responses[2]!.headers.get("location")!);
   const interactionUid = dashboardConfirmUrl.searchParams.get("interaction_uid")!;
-  const confirmResponse = await niceBackendFetch(`/api/v1/integrations/internal/confirm`, {
+  const confirmResponse = await niceBackendFetch(`/api/v1/integrations/custom/internal/confirm`, {
     method: "POST",
     accessType: "server",
     body: {
@@ -129,7 +129,7 @@ async function authorize(projectId: string) {
       NiceResponse {
         "status": 303,
         "headers": Headers {
-          "location": "http://localhost:8102/api/v1/integrations/oauth/idp/auth/<stripped auth UID>",
+          "location": "http://localhost:8102/api/v1/integrations/custom/oauth/idp/auth/<stripped auth UID>",
           <some fields may have been hidden>,
         },
       },
@@ -137,9 +137,9 @@ async function authorize(projectId: string) {
         "status": 303,
         "body": "http://localhost:30000/api/v2/auth/authorize?code=%3Cstripped+query+param%3E&amp=",
         "headers": Headers {
-          "location": "http://localhost:30000/api/v2/auth/authorize?code=%3Cstripped+query+param%3E&state=%3Cstripped+query+param%3E&iss=http%3A%2F%2Flocalhost%3A8102%2Fapi%2Fv1%2Fintegrations%2Fexample%2Foauth%2Fidp",
-          "set-cookie": <setting cookie "_interaction_resume" at path "/api/v1/integrations/oauth/idp/auth/<stripped auth UID>" to <stripped cookie value>>,
-          "set-cookie": <setting cookie "_interaction_resume.sig" at path "/api/v1/integrations/oauth/idp/auth/<stripped auth UID>" to <stripped cookie value>>,
+          "location": "http://localhost:30000/api/v2/auth/authorize?code=%3Cstripped+query+param%3E&state=%3Cstripped+query+param%3E&iss=http%3A%2F%2Flocalhost%3A8102%2Fapi%2Fv1%2Fintegrations%2Fcustom%2Foauth%2Fidp",
+          "set-cookie": <setting cookie "_interaction_resume" at path "/api/v1/integrations/custom/oauth/idp/auth/<stripped auth UID>" to <stripped cookie value>>,
+          "set-cookie": <setting cookie "_interaction_resume.sig" at path "/api/v1/integrations/custom/oauth/idp/auth/<stripped auth UID>" to <stripped cookie value>>,
           <some fields may have been hidden>,
         },
       },
@@ -168,7 +168,7 @@ it(`should not redirect to the incorrect callback URL`, async ({}) => {
         NiceResponse {
           "status": 307,
           "headers": Headers {
-            "location": "http://localhost:8102/api/v1/integrations/oauth/idp/auth?response_type=code&client_id=example-local&redirect_uri=%3Cstripped+query+param%3E&state=%3Cstripped+query+param%3E&code_challenge=%3Cstripped+query+param%3E&code_challenge_method=S256&scope=openid",
+            "location": "http://localhost:8102/api/v1/integrations/custom/oauth/idp/auth?response_type=code&client_id=custom-local&redirect_uri=%3Cstripped+query+param%3E&state=%3Cstripped+query+param%3E&code_challenge=%3Cstripped+query+param%3E&code_challenge_method=S256&scope=openid",
             <some fields may have been hidden>,
           },
         },
@@ -177,8 +177,8 @@ it(`should not redirect to the incorrect callback URL`, async ({}) => {
           "body": {
             "error": "invalid_redirect_uri",
             "error_description": "redirect_uri did not match any of the client's registered redirect_uris",
-            "iss": "http://localhost:8102/api/v1/integrations/oauth/idp",
-            "state": "eyJkZXRhaWxzIjp7Im5lb25fcHJvamVjdF9uYW1lIjoibmVvbi1wcm9qZWN0In19",
+            "iss": "http://localhost:8102/api/v1/integrations/custom/oauth/idp",
+            "state": "eyJkZXRhaWxzIjp7Im5lb25fcHJvamVjdF9uYW1lIjoiY3VzdG9tLXByb2plY3QifX0",
           },
           "headers": Headers { <some fields may have been hidden> },
         },
@@ -193,7 +193,7 @@ it(`should exchange the authorization code for an admin API key that works`, asy
   const createdProject = await Project.create();
 
   const { authorizationCode } = await authorize(createdProject.projectId);
-  const tokenResponse = await niceBackendFetch(`/api/v1/integrations/oauth/token`, {
+  const tokenResponse = await niceBackendFetch(`/api/v1/integrations/custom/oauth/token`, {
     method: "POST",
     body: {
       grant_type: "authorization_code",
@@ -232,7 +232,7 @@ it(`should exchange the authorization code for an admin API key that works`, asy
       "items": [
         {
           "created_at_millis": <stripped field 'created_at_millis'>,
-          "description": "Auto-generated for Example",
+          "description": "Auto-generated for Neon",
           "expires_at_millis": <stripped field 'expires_at_millis'>,
           "id": "<stripped UUID>",
           "super_secret_admin_key": { "last_four": <stripped field 'last_four'> },
@@ -247,7 +247,7 @@ it(`should not exchange the authorization code when the client secret is incorre
   const createdProject = await Project.create();
 
   const { authorizationCode } = await authorize(createdProject.projectId);
-  const tokenResponse = await niceBackendFetch(`/api/v1/integrations/oauth/token`, {
+  const tokenResponse = await niceBackendFetch(`/api/v1/integrations/custom/oauth/token`, {
     method: "POST",
     body: {
       grant_type: "authorization_code",
@@ -266,13 +266,13 @@ it(`should not exchange the authorization code when the client secret is incorre
         "code": "SCHEMA_ERROR",
         "details": {
           "message": deindent\`
-            Request validation failed on POST /api/v1/integrations/oauth/token:
-              - Invalid client_id:client_secret values; did you use the correct values for the Example integration?
+            Request validation failed on POST /api/v1/integrations/custom/oauth/token:
+              - Invalid client_id:client_secret values; did you use the correct values for the Neon integration?
           \`,
         },
         "error": deindent\`
-          Request validation failed on POST /api/v1/integrations/oauth/token:
-            - Invalid client_id:client_secret values; did you use the correct values for the Example integration?
+          Request validation failed on POST /api/v1/integrations/custom/oauth/token:
+            - Invalid client_id:client_secret values; did you use the correct values for the Neon integration?
         \`,
       },
       "headers": Headers {

@@ -1,10 +1,10 @@
-import { it } from "../../../../../helpers";
-import { Auth, Project, niceBackendFetch } from "../../../../backend-helpers";
+import { it } from "../../../../../../helpers";
+import { Auth, Project, niceBackendFetch } from "../../../../../backend-helpers";
 
 it("list domains", async ({ expect }) => {
   await Auth.Otp.signIn();
   const { adminAccessToken } = await Project.createAndGetAdminToken();
-  const response = await niceBackendFetch("/api/v1/integrations/domains", {
+  const response = await niceBackendFetch("/api/v1/integrations/custom/domains", {
     accessType: "admin",
     headers: {
       'x-stack-admin-access-token': adminAccessToken,
@@ -25,7 +25,7 @@ it("list domains", async ({ expect }) => {
 it("creates domains for internal project", async ({ expect }) => {
   await Auth.Otp.signIn();
   const { adminAccessToken } = await Project.createAndGetAdminToken();
-  const response = await niceBackendFetch("/api/v1/integrations/domains", {
+  const response = await niceBackendFetch("/api/v1/integrations/custom/domains", {
     accessType: "admin",
     headers: {
       'x-stack-admin-access-token': adminAccessToken,
@@ -49,7 +49,7 @@ it("adds two different domains", async ({ expect }) => {
   const { adminAccessToken } = await Project.createAndGetAdminToken();
 
   // Add first domain
-  await niceBackendFetch("/api/v1/integrations/domains", {
+  await niceBackendFetch("/api/v1/integrations/custom/domains", {
     accessType: "admin",
     headers: {
       'x-stack-admin-access-token': adminAccessToken,
@@ -61,7 +61,7 @@ it("adds two different domains", async ({ expect }) => {
   });
 
   // Add second domain
-  await niceBackendFetch("/api/v1/integrations/domains", {
+  await niceBackendFetch("/api/v1/integrations/custom/domains", {
     accessType: "admin",
     headers: {
       'x-stack-admin-access-token': adminAccessToken,
@@ -73,7 +73,7 @@ it("adds two different domains", async ({ expect }) => {
   });
 
   // List domains to verify both were added
-  const listResponse = await niceBackendFetch("/api/v1/integrations/domains", {
+  const listResponse = await niceBackendFetch("/api/v1/integrations/custom/domains", {
     accessType: "admin",
     headers: {
       'x-stack-admin-access-token': adminAccessToken,
@@ -100,7 +100,7 @@ it("adds two domains and deletes one", async ({ expect }) => {
   const { adminAccessToken } = await Project.createAndGetAdminToken();
 
   // Add first domain
-  await niceBackendFetch("/api/v1/integrations/domains", {
+  await niceBackendFetch("/api/v1/integrations/custom/domains", {
     accessType: "admin",
     headers: {
       'x-stack-admin-access-token': adminAccessToken,
@@ -112,7 +112,7 @@ it("adds two domains and deletes one", async ({ expect }) => {
   });
 
   // Add second domain
-  await niceBackendFetch("/api/v1/integrations/domains", {
+  await niceBackendFetch("/api/v1/integrations/custom/domains", {
     accessType: "admin",
     headers: {
       'x-stack-admin-access-token': adminAccessToken,
@@ -124,7 +124,7 @@ it("adds two domains and deletes one", async ({ expect }) => {
   });
 
   // Delete the second domain
-  const deleteResponse = await niceBackendFetch(`/api/v1/integrations/domains/${encodeURIComponent("https://domain-to-delete.example.com")}`, {
+  const deleteResponse = await niceBackendFetch(`/api/v1/integrations/custom/domains/${encodeURIComponent("https://domain-to-delete.example.com")}`, {
     accessType: "admin",
     headers: {
       'x-stack-admin-access-token': adminAccessToken,
@@ -141,7 +141,7 @@ it("adds two domains and deletes one", async ({ expect }) => {
   `);
 
   // List domains to verify only one remains
-  const listResponse = await niceBackendFetch("/api/v1/integrations/domains", {
+  const listResponse = await niceBackendFetch("/api/v1/integrations/custom/domains", {
     accessType: "admin",
     headers: {
       'x-stack-admin-access-token': adminAccessToken,

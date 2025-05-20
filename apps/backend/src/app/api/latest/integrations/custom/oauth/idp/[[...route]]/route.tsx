@@ -3,11 +3,11 @@ import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
 import { StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
 import { createNodeHttpServerDuplex } from "@stackframe/stack-shared/dist/utils/node-http";
 import { NextRequest, NextResponse } from "next/server";
-import { createOidcProvider } from "./idp";
+import { createOidcProvider } from "../../../../idp";
 
 export const dynamic = "force-dynamic";
 
-const pathPrefix = "/api/v1/integrations/oauth/idp";
+const pathPrefix = "/api/v1/integrations/custom/oauth/idp";
 
 // we want to initialize the OIDC provider lazily so it's not initiated at build time
 let _oidcCallbackPromiseCache: Promise<any> | undefined;
@@ -17,9 +17,9 @@ function getOidcCallbackPromise() {
     const idpBaseUrl = new URL(pathPrefix, apiBaseUrl);
     _oidcCallbackPromiseCache = (async () => {
       const oidc = await createOidcProvider({
-        id: "stack-preconfigured-idp:integrations",
+        id: "stack-preconfigured-idp:integrations/custom",
         baseUrl: idpBaseUrl.toString(),
-        clientInteractionUrl: new URL(`/integrations/confirm`, getEnvVariable("NEXT_PUBLIC_STACK_DASHBOARD_URL")).toString(),
+        clientInteractionUrl: new URL(`/integrations/custom/confirm`, getEnvVariable("NEXT_PUBLIC_STACK_DASHBOARD_URL")).toString(),
       });
       return oidc.callback();
     })();

@@ -483,7 +483,7 @@ export const basicAuthorizationHeaderSchema = yupString().test('is-basic-authori
 export const neonAuthorizationHeaderSchema = basicAuthorizationHeaderSchema.test('is-neon-authorization-header', 'Invalid client_id:client_secret values; did you use the correct values for the Neon integration?', (value) => {
   if (!value) return true;
   const [clientId, clientSecret] = decodeBasicAuthorizationHeader(value) ?? throwErr(`Neon authz header invalid? This should've been validated by basicAuthorizationHeaderSchema: ${value}`);
-  for (const neonClientConfig of JSON.parse(process.env.STACK_NEON_INTEGRATION_CLIENTS_CONFIG || '[]')) {
+  for (const neonClientConfig of JSON.parse(process.env.STACK_INTEGRATION_CLIENTS_CONFIG || '[]')) {
     if (clientId === neonClientConfig.client_id && clientSecret === neonClientConfig.client_secret) return true;
   }
   return false;

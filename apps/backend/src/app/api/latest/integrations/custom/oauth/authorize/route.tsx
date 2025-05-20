@@ -21,10 +21,10 @@ export const GET = createSmartRouteHandler({
   response: yupNever(),
   handler: async (req) => {
     const url = new URL(req.url);
-    if (url.pathname !== "/api/v1/integrations/oauth/authorize") {
+    if (url.pathname !== "/api/v1/integrations/custom/oauth/authorize") {
       throw new StackAssertionError(`Expected pathname to be authorize endpoint but got ${JSON.stringify(url.pathname)}`, { url });
     }
-    url.pathname = "/api/v1/integrations/oauth/idp/auth";
+    url.pathname = "/api/v1/integrations/custom/oauth/idp/auth";
     url.search = new URLSearchParams({ ...req.query, scope: "openid" }).toString();
     redirect(url.toString());
   },
