@@ -91,7 +91,7 @@ export const POST = createSmartRouteHandler({
         project_id: neonProvisionedProject.projectId,
         neon_client_id: neonProvisionedProject.neonClientId,
       },
-      callbackUrl: new URL("/integrations/neon/projects/transfer/confirm", getEnvVariable("NEXT_PUBLIC_STACK_DASHBOARD_URL")),
+      callbackUrl: new URL("/integrations/projects/transfer/confirm", getEnvVariable("NEXT_PUBLIC_STACK_DASHBOARD_URL")),
       expiresInMs: 1000 * 60 * 60,
     });
 

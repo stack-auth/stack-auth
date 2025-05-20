@@ -162,7 +162,7 @@ function createPrismaAdapter(idpId: string) {
   });
 }
 
-export async function createOidcProvider(options: { id: string, baseUrl: string }) {
+export async function createOidcProvider(options: { id: string, baseUrl: string, clientInteractionUrl: string }) {
   const privateJwk = await getPrivateJwk(getPerAudienceSecret({
     audience: `https://idp-jwk-audience.stack-auth.com/${encodeURIComponent(options.id)}`,
     secret: getEnvVariable("STACK_SERVER_SECRET"),
@@ -300,7 +300,7 @@ export async function createOidcProvider(options: { id: string, baseUrl: string 
           const authorizationCode = `${ctx.request.query.code}`;
           const authorizationCodeObj = await prismaClient.projectWrapperCodes.findUnique({
             where: {
-              idpId: "stack-preconfigured-idp:integrations/neon",
+              idpId: options.id,
               authorizationCode,
             },
           });
@@ -383,7 +383,7 @@ export async function createOidcProvider(options: { id: string, baseUrl: string 
       }
 
       const uid = ctx.path.split('/')[2];
-      const interactionUrl = new URL(`/integrations/neon/confirm`, getEnvVariable("NEXT_PUBLIC_STACK_DASHBOARD_URL"));
+      const interactionUrl = new URL(options.clientInteractionUrl);
       interactionUrl.searchParams.set("interaction_uid", uid);
       if (neonProjectName) {
         interactionUrl.searchParams.set("neon_project_name", neonProjectName);

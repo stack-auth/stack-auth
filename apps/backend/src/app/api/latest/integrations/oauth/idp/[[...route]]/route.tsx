@@ -19,6 +19,7 @@ function getOidcCallbackPromise() {
       const oidc = await createOidcProvider({
         id: "stack-preconfigured-idp:integrations",
         baseUrl: idpBaseUrl.toString(),
+        clientInteractionUrl: new URL(`/integrations/confirm`, getEnvVariable("NEXT_PUBLIC_STACK_DASHBOARD_URL")).toString(),
       });
       return oidc.callback();
     })();
