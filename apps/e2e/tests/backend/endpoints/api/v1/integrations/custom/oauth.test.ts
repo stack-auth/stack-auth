@@ -1,4 +1,5 @@
 import { encodeBase64Url } from "@stackframe/stack-shared/dist/utils/bytes";
+import { encodeBasicAuthorizationHeader } from "@stackframe/stack-shared/dist/utils/http";
 import { expect } from "vitest";
 import { it, updateCookiesFromResponse } from "../../../../../../helpers";
 import { Auth, InternalApiKey, Project, backendContext, niceBackendFetch } from "../../../../../backend-helpers";
@@ -202,7 +203,7 @@ it(`should exchange the authorization code for an admin API key that works`, asy
       redirect_uri: "http://localhost:30000/api/v2/auth/authorize",
     },
     headers: {
-      "Authorization": "Basic bmVvbi1sb2NhbDpuZW9uLWxvY2FsLXNlY3JldA=="
+      "Authorization": encodeBasicAuthorizationHeader("custom-local", "custom-local-secret")
     },
   });
   expect(tokenResponse).toMatchInlineSnapshot(`
@@ -256,7 +257,7 @@ it(`should not exchange the authorization code when the client secret is incorre
       redirect_uri: "http://localhost:30000/api/v2/auth/authorize",
     },
     headers: {
-      "Authorization": "Basic bmVvbi1sb2NhbDpuZW9uLWxvY2FsLXNlY2JldA=="
+      "Authorization": encodeBasicAuthorizationHeader("custom-local", "wrong-secret")
     },
   });
   expect(tokenResponse).toMatchInlineSnapshot(`
