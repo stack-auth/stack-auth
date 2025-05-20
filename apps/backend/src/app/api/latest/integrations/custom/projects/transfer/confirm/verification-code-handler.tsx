@@ -14,7 +14,7 @@ export const neonIntegrationProjectTransferCodeHandler = createVerificationCodeH
       hidden: true,
     },
   },
-  type: VerificationCodeType.NEON_INTEGRATION_PROJECT_TRANSFER,
+  type: VerificationCodeType.INTEGRATION_PROJECT_TRANSFER,
   data: yupObject({
     neon_client_id: yupString().defined(),
     project_id: yupString().defined(),
@@ -31,13 +31,13 @@ export const neonIntegrationProjectTransferCodeHandler = createVerificationCodeH
   async validate(tenancy, method, data) {
     const project = tenancy.project;
     if (project.id !== "internal") throw new StatusError(400, "This endpoint is only available for internal projects.");
-    const neonProvisionedProjects = await prismaClient.neonProvisionedProject.findMany({
+    const provisionedProjects = await prismaClient.provisionedProject.findMany({
       where: {
         projectId: data.project_id,
         neonClientId: data.neon_client_id,
       },
     });
-    if (neonProvisionedProjects.length === 0) throw new StatusError(400, "The project to transfer was not provisioned by Neon or has already been transferred.");
+    if (provisionedProjects.length === 0) throw new StatusError(400, "The project to transfer was not provisioned by Neon or has already been transferred.");
   },
 
   async handler(tenancy, method, data, body, user) {
@@ -45,14 +45,14 @@ export const neonIntegrationProjectTransferCodeHandler = createVerificationCodeH
     if (!user) throw new KnownErrors.UserAuthenticationRequired;
 
     await prismaClient.$transaction(async (tx) => {
-      const neonProvisionedProject = await tx.neonProvisionedProject.deleteMany({
+      const provisionedProject = await tx.provisionedProject.deleteMany({
         where: {
           projectId: data.project_id,
           neonClientId: data.neon_client_id,
         },
       });
 
-      if (neonProvisionedProject.count === 0) throw new StatusError(400, "The project to transfer was not provisioned by Neon or has already been transferred.");
+      if (provisionedProject.count === 0) throw new StatusError(400, "The project to transfer was not provisioned by Neon or has already been transferred.");
 
       const recentDbUser = await tx.projectUser.findUnique({
         where: {

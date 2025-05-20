@@ -51,7 +51,7 @@ export const POST = createSmartRouteHandler({
       }
     });
 
-    await prismaClient.neonProvisionedProject.create({
+    await prismaClient.provisionedProject.create({
       data: {
         projectId: createdProject.id,
         neonClientId: clientId,

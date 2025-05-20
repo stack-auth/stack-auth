@@ -12,19 +12,19 @@ async function validateAndGetTransferInfo(authorizationHeader: string, projectId
   const [clientId, clientSecret] = decodeBasicAuthorizationHeader(authorizationHeader)!;
   const internalProject = await getProject("internal") ?? throwErr("Internal project not found");
 
-  const neonProvisionedProject = await prismaClient.neonProvisionedProject.findUnique({
+  const provisionedProject = await prismaClient.provisionedProject.findUnique({
     where: {
       projectId,
       neonClientId: clientId,
     },
   });
-  if (!neonProvisionedProject) {
+  if (!provisionedProject) {
     // note: Neon relies on this exact status code and error message, so don't change it without consulting them first
     throw new StatusError(400, "This project either doesn't exist or the current Neon client is not authorized to transfer it. Note that projects can only be transferred once.");
   }
 
   return {
-    neonProvisionedProject,
+    provisionedProject,
     internalProject,
   };
 }
@@ -82,14 +82,14 @@ export const POST = createSmartRouteHandler({
     }).defined(),
   }),
   handler: async (req) => {
-    const { neonProvisionedProject } = await validateAndGetTransferInfo(req.headers.authorization[0], req.body.project_id);
+    const { provisionedProject } = await validateAndGetTransferInfo(req.headers.authorization[0], req.body.project_id);
 
     const transferCodeObj = await neonIntegrationProjectTransferCodeHandler.createCode({
       tenancy: await getSoleTenancyFromProjectBranch("internal", DEFAULT_BRANCH_ID),
       method: {},
       data: {
-        project_id: neonProvisionedProject.projectId,
-        neon_client_id: neonProvisionedProject.neonClientId,
+        project_id: provisionedProject.projectId,
+        neon_client_id: provisionedProject.neonClientId,
       },
       callbackUrl: new URL("/integrations/neon/projects/transfer/confirm", getEnvVariable("NEXT_PUBLIC_STACK_DASHBOARD_URL")),
       expiresInMs: 1000 * 60 * 60,
