@@ -6,7 +6,7 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "clean": "rimraf dist && rimraf node_modules",
-    "dev": "rimraf dist && tsup-node --watch",
+    "dev": "tsup-node --watch",
     "lint": "eslint --ext .tsx,.ts ."
   },
   "files": [
@@ -65,7 +65,6 @@
     "uuid": "^9.0.1"
   },
   "devDependencies": {
-    "@microsoft/api-extractor": "^7.52.5",
     "@sentry/nextjs": "^8.40.0",
     "@simplewebauthn/types": "^11.0.0",
     "@types/bcryptjs": "^3.0.0",
@@ -74,7 +73,6 @@
     "@types/uuid": "^9.0.8",
     "react": "^18.2",
     "react-dom": "^18.2",
-    "rimraf": "^5.0.5",
-    "tsup": "^8.4.0"
+    "rimraf": "^5.0.5"
   }
 }
