@@ -34,7 +34,7 @@ export const neonIntegrationProjectTransferCodeHandler = createVerificationCodeH
     const provisionedProjects = await prismaClient.provisionedProject.findMany({
       where: {
         projectId: data.project_id,
-        neonClientId: data.neon_client_id,
+        externalProjectId: data.neon_client_id,
       },
     });
     if (provisionedProjects.length === 0) throw new StatusError(400, "The project to transfer was not provisioned by Neon or has already been transferred.");
@@ -48,7 +48,7 @@ export const neonIntegrationProjectTransferCodeHandler = createVerificationCodeH
       const provisionedProject = await tx.provisionedProject.deleteMany({
         where: {
           projectId: data.project_id,
-          neonClientId: data.neon_client_id,
+          externalProjectId: data.neon_client_id,
         },
       });
 

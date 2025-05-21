@@ -5,7 +5,7 @@ import { KnownErrors } from "@stackframe/stack-shared";
 import { yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
 import { StatusError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
 
-export const neonIntegrationProjectTransferCodeHandler = createVerificationCodeHandler({
+export const integrationProjectTransferCodeHandler = createVerificationCodeHandler({
   metadata: {
     post: {
       hidden: true,
@@ -16,7 +16,7 @@ export const neonIntegrationProjectTransferCodeHandler = createVerificationCodeH
   },
   type: VerificationCodeType.INTEGRATION_PROJECT_TRANSFER,
   data: yupObject({
-    neon_client_id: yupString().defined(),
+    external_project_id: yupString().defined(),
     project_id: yupString().defined(),
   }).defined(),
   method: yupObject({}),
@@ -34,7 +34,7 @@ export const neonIntegrationProjectTransferCodeHandler = createVerificationCodeH
     const provisionedProjects = await prismaClient.provisionedProject.findMany({
       where: {
         projectId: data.project_id,
-        neonClientId: data.neon_client_id,
+        externalProjectId: data.external_project_id,
       },
     });
     if (provisionedProjects.length === 0) throw new StatusError(400, "The project to transfer was not provisioned by Neon or has already been transferred.");
@@ -48,7 +48,7 @@ export const neonIntegrationProjectTransferCodeHandler = createVerificationCodeH
       const provisionedProject = await tx.provisionedProject.deleteMany({
         where: {
           projectId: data.project_id,
-          neonClientId: data.neon_client_id,
+          externalProjectId: data.external_project_id,
         },
       });
 

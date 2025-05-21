@@ -367,13 +367,13 @@ export async function createOidcProvider(options: { id: string, baseUrl: string,
       if (typeof state !== 'string') {
         throwErr(`state is not a string`);
       }
-      let neonProjectName: string | undefined;
+      let externalProjectName: string | undefined;
       try {
         const base64Decoded = new TextDecoder().decode(decodeBase64OrBase64Url(state));
         const json = JSON.parse(base64Decoded);
-        neonProjectName = json?.details?.neon_project_name;
-        if (typeof neonProjectName !== 'string') {
-          throwErr(`neon_project_name is not a string`, { type: typeof neonProjectName, neonProjectName });
+        externalProjectName = json?.details?.external_project_name ?? json?.details?.neon_project_name;
+        if (typeof externalProjectName !== 'string') {
+          throwErr(`external_project_name is not a string`, { type: typeof externalProjectName, externalProjectName });
         }
       } catch (e) {
         // this probably shouldn't happen, because it means Neon messed up the configuration
@@ -385,8 +385,8 @@ export async function createOidcProvider(options: { id: string, baseUrl: string,
       const uid = ctx.path.split('/')[2];
       const interactionUrl = new URL(options.clientInteractionUrl);
       interactionUrl.searchParams.set("interaction_uid", uid);
-      if (neonProjectName) {
-        interactionUrl.searchParams.set("neon_project_name", neonProjectName);
+      if (externalProjectName) {
+        interactionUrl.searchParams.set("external_project_name", externalProjectName);
       }
       return ctx.redirect(interactionUrl.toString());
     }

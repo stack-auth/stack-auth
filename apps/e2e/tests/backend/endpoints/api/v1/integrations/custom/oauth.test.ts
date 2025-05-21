@@ -12,7 +12,7 @@ async function authorizePart1(redirectUri: string = "http://localhost:30000/api/
       response_type: "code",
       client_id: "custom-local",
       redirect_uri: redirectUri,
-      state: encodeBase64Url(new TextEncoder().encode(JSON.stringify({ details: { neon_project_name: 'custom-project' } }))),
+      state: encodeBase64Url(new TextEncoder().encode(JSON.stringify({ details: { external_project_name: 'custom-project' } }))),
       code_challenge: "xf6HY7PIgoaCf_eMniSt-45brYE2J_05C9BnfIbueik",
       code_challenge_method: "S256",
     },
@@ -95,7 +95,7 @@ async function authorize(projectId: string) {
         "status": 307,
         "body": "http://localhost:8101/integrations/custom/confirm?interaction_uid=%3Cstripped+query+param%3E&amp=",
         "headers": Headers {
-          "location": "http://localhost:8101/integrations/custom/confirm?interaction_uid=%3Cstripped+query+param%3E&neon_project_name=custom-project",
+          "location": "http://localhost:8101/integrations/custom/confirm?interaction_uid=%3Cstripped+query+param%3E&external_project_name=custom-project",
           <some fields may have been hidden>,
         },
       },
@@ -179,7 +179,7 @@ it(`should not redirect to the incorrect callback URL`, async ({}) => {
             "error": "invalid_redirect_uri",
             "error_description": "redirect_uri did not match any of the client's registered redirect_uris",
             "iss": "http://localhost:8102/api/v1/integrations/custom/oauth/idp",
-            "state": "eyJkZXRhaWxzIjp7Im5lb25fcHJvamVjdF9uYW1lIjoiY3VzdG9tLXByb2plY3QifX0",
+            "state": "eyJkZXRhaWxzIjp7ImV4dGVybmFsX3Byb2plY3RfbmFtZSI6ImN1c3RvbS1wcm9qZWN0In19",
           },
           "headers": Headers { <some fields may have been hidden> },
         },
@@ -233,7 +233,7 @@ it(`should exchange the authorization code for an admin API key that works`, asy
       "items": [
         {
           "created_at_millis": <stripped field 'created_at_millis'>,
-          "description": "Auto-generated for Neon",
+          "description": "Auto-generated for an external project",
           "expires_at_millis": <stripped field 'expires_at_millis'>,
           "id": "<stripped UUID>",
           "super_secret_admin_key": { "last_four": <stripped field 'last_four'> },

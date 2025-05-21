@@ -641,7 +641,7 @@ model ProvisionedProject {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  neonClientId String?
+  externalProjectId String
 }
 
 //#region Events

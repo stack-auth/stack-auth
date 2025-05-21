@@ -95,7 +95,7 @@ async function authorize(projectId: string) {
         "status": 307,
         "body": "http://localhost:8101/integrations/neon/confirm?interaction_uid=%3Cstripped+query+param%3E&amp=",
         "headers": Headers {
-          "location": "http://localhost:8101/integrations/neon/confirm?interaction_uid=%3Cstripped+query+param%3E&neon_project_name=neon-project",
+          "location": "http://localhost:8101/integrations/neon/confirm?interaction_uid=%3Cstripped+query+param%3E&external_project_name=neon-project",
           <some fields may have been hidden>,
         },
       },
@@ -233,7 +233,7 @@ it(`should exchange the authorization code for an admin API key that works`, asy
       "items": [
         {
           "created_at_millis": <stripped field 'created_at_millis'>,
-          "description": "Auto-generated for Neon",
+          "description": "Auto-generated for an external project",
           "expires_at_millis": <stripped field 'expires_at_millis'>,
           "id": "<stripped UUID>",
           "super_secret_admin_key": { "last_four": <stripped field 'last_four'> },

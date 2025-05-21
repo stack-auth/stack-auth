@@ -1,3 +1,3 @@
-import { neonIntegrationProjectTransferCodeHandler } from "./verification-code-handler";
+import { integrationProjectTransferCodeHandler } from "./verification-code-handler";
 
-export const POST = neonIntegrationProjectTransferCodeHandler.postHandler;
+export const POST = integrationProjectTransferCodeHandler.postHandler;
