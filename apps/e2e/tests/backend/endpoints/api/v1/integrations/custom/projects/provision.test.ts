@@ -13,7 +13,7 @@ export async function provisionProject() {
   });
 }
 
-it("should be able to provision a new project if neon client details are correct", async ({ expect }) => {
+it("should be able to provision a new project if client details are correct", async ({ expect }) => {
   const response = await provisionProject();
   expect(response).toMatchInlineSnapshot(`
     NiceResponse {
@@ -86,7 +86,7 @@ it("should be able to provision a new project if neon client details are correct
   `);
 });
 
-it("should fail if the neon client details are incorrect", async ({ expect }) => {
+it("should fail if the client details are incorrect", async ({ expect }) => {
   const response = await niceBackendFetch("/api/v1/integrations/custom/projects/provision", {
     method: "POST",
     body: {
@@ -104,12 +104,12 @@ it("should fail if the neon client details are incorrect", async ({ expect }) =>
         "details": {
           "message": deindent\`
             Request validation failed on POST /api/v1/integrations/custom/projects/provision:
-              - Invalid client_id:client_secret values; did you use the correct values for the Neon integration?
+              - Invalid client_id:client_secret values; did you use the correct values for the integration?
           \`,
         },
         "error": deindent\`
           Request validation failed on POST /api/v1/integrations/custom/projects/provision:
-            - Invalid client_id:client_secret values; did you use the correct values for the Neon integration?
+            - Invalid client_id:client_secret values; did you use the correct values for the integration?
         \`,
       },
       "headers": Headers {

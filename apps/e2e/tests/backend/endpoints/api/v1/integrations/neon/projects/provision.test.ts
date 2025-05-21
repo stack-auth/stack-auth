@@ -104,12 +104,12 @@ it("should fail if the neon client details are incorrect", async ({ expect }) =>
         "details": {
           "message": deindent\`
             Request validation failed on POST /api/v1/integrations/neon/projects/provision:
-              - Invalid client_id:client_secret values; did you use the correct values for the Neon integration?
+              - Invalid client_id:client_secret values; did you use the correct values for the integration?
           \`,
         },
         "error": deindent\`
           Request validation failed on POST /api/v1/integrations/neon/projects/provision:
-            - Invalid client_id:client_secret values; did you use the correct values for the Neon integration?
+            - Invalid client_id:client_secret values; did you use the correct values for the integration?
         \`,
       },
       "headers": Headers {

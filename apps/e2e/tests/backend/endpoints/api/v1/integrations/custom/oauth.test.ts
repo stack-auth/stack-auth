@@ -268,12 +268,12 @@ it(`should not exchange the authorization code when the client secret is incorre
         "details": {
           "message": deindent\`
             Request validation failed on POST /api/v1/integrations/custom/oauth/token:
-              - Invalid client_id:client_secret values; did you use the correct values for the Neon integration?
+              - Invalid client_id:client_secret values; did you use the correct values for the integration?
           \`,
         },
         "error": deindent\`
           Request validation failed on POST /api/v1/integrations/custom/oauth/token:
-            - Invalid client_id:client_secret values; did you use the correct values for the Neon integration?
+            - Invalid client_id:client_secret values; did you use the correct values for the integration?
         \`,
       },
       "headers": Headers {
