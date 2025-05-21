@@ -33,7 +33,7 @@ export const POST = createSmartRouteHandler({
       type: 'create',
       data: {
         display_name: req.body.display_name,
-        description: "Created with Neon",
+        description: "Project created by an external integration",
         config: {
           oauth_providers: [
             {

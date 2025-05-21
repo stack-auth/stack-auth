@@ -49,7 +49,7 @@ async function provisionAndTransferProject() {
   return { provisioned, projectId };
 }
 
-it("should return that the project is transferrable if it is provisioned by Neon", async ({ expect }) => {
+it("should return that the project is transferrable if it is provisioned", async ({ expect }) => {
   const provisioned = await provisionProject();
   const projectId = provisioned.body.project_id;
   const response = await niceBackendFetch(urlString`/api/v1/integrations/custom/projects/transfer?project_id=${projectId}`, {
@@ -67,7 +67,7 @@ it("should return that the project is transferrable if it is provisioned by Neon
   `);
 });
 
-it("should return that the project is not transferrable if it is not provisioned by Neon", async ({ expect }) => {
+it("should return that the project is not transferrable if it is not provisioned", async ({ expect }) => {
   await Auth.Otp.signIn();
   const createdProject = await Project.create();
   const response = await niceBackendFetch(urlString`/api/v1/integrations/custom/projects/transfer?project_id=${createdProject.createProjectResponse.body.id}`, {
@@ -79,7 +79,7 @@ it("should return that the project is not transferrable if it is not provisioned
   expect(response).toMatchInlineSnapshot(`
     NiceResponse {
       "status": 400,
-      "body": "This project either doesn't exist or the current Neon client is not authorized to transfer it. Note that projects can only be transferred once.",
+      "body": "This project either doesn't exist or the current external project is not authorized to transfer it. Note that projects can only be transferred once.",
       "headers": Headers { <some fields may have been hidden> },
     }
   `);
@@ -96,7 +96,7 @@ it("should return that the project is not transferrable if it has already been t
   expect(getResponse).toMatchInlineSnapshot(`
     NiceResponse {
       "status": 400,
-      "body": "This project either doesn't exist or the current Neon client is not authorized to transfer it. Note that projects can only be transferred once.",
+      "body": "This project either doesn't exist or the current external project is not authorized to transfer it. Note that projects can only be transferred once.",
       "headers": Headers { <some fields may have been hidden> },
     }
   `);
@@ -117,7 +117,7 @@ it("should transfer a project exactly once", async ({ expect }) => {
   expect(response2).toMatchInlineSnapshot(`
     NiceResponse {
       "status": 400,
-      "body": "This project either doesn't exist or the current Neon client is not authorized to transfer it. Note that projects can only be transferred once.",
+      "body": "This project either doesn't exist or the current external project is not authorized to transfer it. Note that projects can only be transferred once.",
       "headers": Headers { <some fields may have been hidden> },
     }
   `);
@@ -156,7 +156,7 @@ it("should initiate multiple transfers for the same project, but only one can be
   expect(response2).toMatchInlineSnapshot(`
     NiceResponse {
       "status": 400,
-      "body": "The project to transfer was not provisioned by Neon or has already been transferred.",
+      "body": "The project to transfer was not provisioned or has already been transferred.",
       "headers": Headers { <some fields may have been hidden> },
     }
   `);
@@ -177,7 +177,7 @@ it("should fail if the project to transfer was not provisioned by Neon", async (
   expect(response).toMatchInlineSnapshot(`
     NiceResponse {
       "status": 400,
-      "body": "This project either doesn't exist or the current Neon client is not authorized to transfer it. Note that projects can only be transferred once.",
+      "body": "This project either doesn't exist or the current external project is not authorized to transfer it. Note that projects can only be transferred once.",
       "headers": Headers { <some fields may have been hidden> },
     }
   `);

@@ -75,7 +75,7 @@ it("should be able to provision a new project if client details are correct", as
           "user_default_permissions": [],
         },
         "created_at_millis": <stripped field 'created_at_millis'>,
-        "description": "Created with Neon",
+        "description": "Project created by an external integration",
         "display_name": "Test project",
         "id": "<stripped UUID>",
         "is_production_mode": false,

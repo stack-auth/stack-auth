@@ -37,7 +37,7 @@ export const integrationProjectTransferCodeHandler = createVerificationCodeHandl
         externalProjectId: data.external_project_id,
       },
     });
-    if (provisionedProjects.length === 0) throw new StatusError(400, "The project to transfer was not provisioned by Neon or has already been transferred.");
+    if (provisionedProjects.length === 0) throw new StatusError(400, "The project to transfer was not provisioned or has already been transferred.");
   },
 
   async handler(tenancy, method, data, body, user) {
@@ -52,7 +52,7 @@ export const integrationProjectTransferCodeHandler = createVerificationCodeHandl
         },
       });
 
-      if (provisionedProject.count === 0) throw new StatusError(400, "The project to transfer was not provisioned by Neon or has already been transferred.");
+      if (provisionedProject.count === 0) throw new StatusError(400, "The project to transfer was not provisioned or has already been transferred.");
 
       const recentDbUser = await tx.projectUser.findUnique({
         where: {
