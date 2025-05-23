@@ -26,3 +26,10 @@ yarn-error.log*
 .env*.local
 .vercel
 next-env.d.ts
+
+pages-js/
+pages-next/
+pages-python/
+pages-react/
+/content/docs/index.mdx
+/content/docs/meta.json

@@ -6,7 +6,8 @@
     "build": "next build",
     "dev": "next dev --turbo",
     "start": "next start",
-    "postinstall": "fumadocs-mdx"
+    "postinstall": "fumadocs-mdx",
+    "generate-docs": "node scripts/generate-docs.js"
   },
   "dependencies": {
     "@radix-ui/react-collapsible": "^1.1.11",
