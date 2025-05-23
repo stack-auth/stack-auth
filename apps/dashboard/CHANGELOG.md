@@ -1,5 +1,16 @@
 # @stackframe/stack-dashboard
 
+## 2.8.13
+
+### Patch Changes
+
+- Various changes
+- Updated dependencies
+  - @stackframe/stack-emails@2.8.13
+  - @stackframe/stack-shared@2.8.13
+  - @stackframe/stack-ui@2.8.13
+  - @stackframe/stack@2.8.13
+
 ## 2.8.12
 
 ### Patch Changes
