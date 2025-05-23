@@ -66,23 +66,23 @@ export default function IntegrationProjectTransferConfirmPageClient(props: { typ
               transform: "rotate(45deg)",
             }} />
           </div>
+          <div className="relative self-center w-10 block dark:hidden">
+            <div style={{
+              position: "absolute",
+              width: 40,
+              height: 6,
+              backgroundImage: "repeating-linear-gradient(135deg, #52525B, #52525B)",
+              transform: "rotate(-45deg)",
+            }} />
+            <div style={{
+              position: "absolute",
+              width: 40,
+              height: 6,
+              backgroundImage: "repeating-linear-gradient(45deg, #52525B, #52525B)",
+              transform: "rotate(45deg)",
+            }} />
+          </div>
         </>)}
-        <div className="relative self-center w-10 block dark:hidden">
-          <div style={{
-            position: "absolute",
-            width: 40,
-            height: 6,
-            backgroundImage: "repeating-linear-gradient(135deg, #52525B, #52525B)",
-            transform: "rotate(-45deg)",
-          }} />
-          <div style={{
-            position: "absolute",
-            width: 40,
-            height: 6,
-            backgroundImage: "repeating-linear-gradient(45deg, #52525B, #52525B)",
-            transform: "rotate(45deg)",
-          }} />
-        </div>
         <Logo noLink alt="Stack" width={50} />
       </CardHeader>
       <CardContent className="flex flex-col gap-4">
