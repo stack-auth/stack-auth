@@ -23,7 +23,7 @@ model Project {
 
   apiKeySets                 ApiKeySet[]
   projectUsers               ProjectUser[]
-  neonProvisionedProject     NeonProvisionedProject?
+  provisionedProject         ProvisionedProject?
   tenancies                  Tenancy[]
   verificationCodes          VerificationCode[]
   projectApiKey              ProjectApiKey[]
@@ -522,7 +522,7 @@ enum VerificationCodeType {
   MFA_ATTEMPT
   PASSKEY_REGISTRATION_CHALLENGE
   PASSKEY_AUTHENTICATION_CHALLENGE
-  NEON_INTEGRATION_PROJECT_TRANSFER
+  INTEGRATION_PROJECT_TRANSFER
 }
 
 //#region API keys
@@ -634,18 +634,15 @@ model IdPAdapterData {
 
 //#endregion
 
-//#region Neon integration
-model NeonProvisionedProject {
+model ProvisionedProject {
   projectId String  @id
   project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  neonClientId String
+  externalProjectId String
 }
-
-//#endregion
 
 //#region Events
 

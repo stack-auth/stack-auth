@@ -8,11 +8,11 @@ import { Button, Card, CardContent, CardFooter, CardHeader, Input, Typography } 
 import Image from "next/image";
 import { useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
-import NeonLogo from "../../../../../../../../public/neon.png";
+import NeonLogo from "../../../../public/neon.png";
 
 export const stackAppInternalsSymbol = Symbol.for("StackAuth--DO-NOT-USE-OR-YOU-WILL-BE-FIRED--StackAppInternals");
 
-export default function NeonIntegrationProjectTransferConfirmPageClient() {
+export default function IntegrationProjectTransferConfirmPageClient(props: { type: "neon" | "custom" }) {
   const app = useStackApp();
   const user = useUser({ projectIdMustMatch: "internal" });
   const router = useRouter();
@@ -23,7 +23,7 @@ export default function NeonIntegrationProjectTransferConfirmPageClient() {
   useEffect(() => {
     runAsynchronously(async () => {
       try {
-        await (app as any)[stackAppInternalsSymbol].sendRequest("/integrations/neon/projects/transfer/confirm/check", {
+        await (app as any)[stackAppInternalsSymbol].sendRequest(`/integrations/${props.type}/projects/transfer/confirm/check`, {
           method: "POST",
           body: JSON.stringify({
             code: searchParams.get("code"),
@@ -38,7 +38,7 @@ export default function NeonIntegrationProjectTransferConfirmPageClient() {
       }
     });
 
-  }, [app, searchParams]);
+  }, [app, searchParams, props.type]);
 
   const currentUrl = new URL(window.location.href);
   const signUpSearchParams = new URLSearchParams();
@@ -48,39 +48,41 @@ export default function NeonIntegrationProjectTransferConfirmPageClient() {
   return (
     <Card className="max-w-lg text-center">
       <CardHeader className="flex-row items-end justify-center gap-4">
-        <Image src={NeonLogo} alt="Neon" width={55} />
-        <div className="relative self-center w-10 hidden dark:block">
-          <div style={{
-            position: "absolute",
-            width: 40,
-            height: 6,
-            backgroundImage: "repeating-linear-gradient(135deg, #ccc, #ccc)",
-            transform: "rotate(-45deg)",
-          }} />
-          <div style={{
-            position: "absolute",
-            width: 40,
-            height: 6,
-            backgroundImage: "repeating-linear-gradient(45deg, #ccc, #ccc)",
-            transform: "rotate(45deg)",
-          }} />
-        </div>
-        <div className="relative self-center w-10 block dark:hidden">
-          <div style={{
-            position: "absolute",
-            width: 40,
-            height: 6,
-            backgroundImage: "repeating-linear-gradient(135deg, #52525B, #52525B)",
-            transform: "rotate(-45deg)",
-          }} />
-          <div style={{
-            position: "absolute",
-            width: 40,
-            height: 6,
-            backgroundImage: "repeating-linear-gradient(45deg, #52525B, #52525B)",
-            transform: "rotate(45deg)",
-          }} />
-        </div>
+        {props.type === "neon" && (<>
+          <Image src={NeonLogo} alt="Neon" width={55} />
+          <div className="relative self-center w-10 hidden dark:block">
+            <div style={{
+              position: "absolute",
+              width: 40,
+              height: 6,
+              backgroundImage: "repeating-linear-gradient(135deg, #ccc, #ccc)",
+              transform: "rotate(-45deg)",
+            }} />
+            <div style={{
+              position: "absolute",
+              width: 40,
+              height: 6,
+              backgroundImage: "repeating-linear-gradient(45deg, #ccc, #ccc)",
+              transform: "rotate(45deg)",
+            }} />
+          </div>
+          <div className="relative self-center w-10 block dark:hidden">
+            <div style={{
+              position: "absolute",
+              width: 40,
+              height: 6,
+              backgroundImage: "repeating-linear-gradient(135deg, #52525B, #52525B)",
+              transform: "rotate(-45deg)",
+            }} />
+            <div style={{
+              position: "absolute",
+              width: 40,
+              height: 6,
+              backgroundImage: "repeating-linear-gradient(45deg, #52525B, #52525B)",
+              transform: "rotate(45deg)",
+            }} />
+          </div>
+        </>)}
         <Logo noLink alt="Stack" width={50} />
       </CardHeader>
       <CardContent className="flex flex-col gap-4">
@@ -89,12 +91,12 @@ export default function NeonIntegrationProjectTransferConfirmPageClient() {
         </h1>
         {state === 'success' && <>
           <Typography className="text-sm">
-            Neon would like to transfer a Stack Auth project and link it to your own account. This will let you access the project from Stack Auth&apos;s dashboard.
+            {props.type === "neon" ? "Neon" : "A third party"} would like to transfer a Stack Auth project and link it to your own account. This will let you access the project from Stack Auth&apos;s dashboard.
           </Typography>
           {user ? (
             <>
               <Typography className="mb-3 text-sm">
-                Which Stack Auth account would you like to transfer the project to? (You&apos;ll still be able to access your project from Neon&apos;s dashboard.)
+                Which Stack Auth account would you like to transfer the project to? (You&apos;ll still be able to access your project from {props.type === "neon" ? "Neon" : "the third party"}&apos;s dashboard.)
               </Typography>
               <Input type="text" disabled prefixItem={<Logo noLink width={15} height={15} />} value={`Signed in as ${user.primaryEmail || user.displayName || "Unnamed user"}`} />
               <Button variant="secondary" onClick={async () => await user.signOut({ redirectUrl: signUpUrl })}>
@@ -122,7 +124,7 @@ export default function NeonIntegrationProjectTransferConfirmPageClient() {
           </Button>
           <Button onClick={async () => {
             if (user) {
-              const confirmRes = await (app as any)[stackAppInternalsSymbol].sendRequest("/integrations/neon/projects/transfer/confirm", {
+              const confirmRes = await (app as any)[stackAppInternalsSymbol].sendRequest(`/integrations/${props.type}/projects/transfer/confirm`, {
                 method: "POST",
                 body: JSON.stringify({
                   code: searchParams.get("code"),
