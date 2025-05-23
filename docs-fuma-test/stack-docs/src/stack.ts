@@ -1,8 +1,8 @@
 import { StackServerApp } from '@stackframe/stack';
 import "server-only";
 
-// Create a mock stackServerApp instance with fake credentials
-// This will still use the real components but won't try to connect to the real Stack Auth service
+// Need to create a mock stackServerApp instance with fake credentials so that real components don not work
+// within the docs.
 export const stackServerApp = new StackServerApp({
   tokenStore: "nextjs-cookie",
 }); 
