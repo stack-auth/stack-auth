@@ -8,7 +8,7 @@ import { Button, Card, CardContent, CardFooter, CardHeader, Input, Typography } 
 import Image from "next/image";
 import { useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
-import NeonLogo from "../../../../../../../../public/neon.png";
+import NeonLogo from "../../../../public/neon.png";
 
 export const stackAppInternalsSymbol = Symbol.for("StackAuth--DO-NOT-USE-OR-YOU-WILL-BE-FIRED--StackAppInternals");
 
