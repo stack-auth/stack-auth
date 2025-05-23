@@ -7,12 +7,18 @@ import {
 import { source } from '@/lib/source';
 import { getMDXComponents } from '@/mdx-components';
 import { createRelativeLink } from 'fumadocs-ui/mdx';
-import { notFound } from 'next/navigation';
+import { notFound, redirect } from 'next/navigation';
 
 export default async function Page(props: {
   params: Promise<{ slug?: string[] }>;
 }) {
   const params = await props.params;
+  
+  // Handle redirect when no slug is provided (i.e., accessing /docs directly)
+  if (!params.slug || params.slug.length === 0) {
+    redirect("/docs/pages-next/getting-started/setup");
+  }
+  
   const page = source.getPage(params.slug);
   if (!page) notFound();
 
