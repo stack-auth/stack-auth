@@ -214,4 +214,5 @@ export const BRAND_COLORS: Record<string, string> = {
   discord: '#5661F5',
   linkedin: '#0A66C2',
   x: '#000000',
+  apple: '#000000',
 };

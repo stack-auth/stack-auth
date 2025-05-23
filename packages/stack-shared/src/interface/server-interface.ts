@@ -7,7 +7,7 @@ import { urlString } from "../utils/urls";
 import {
   ClientInterfaceOptions,
   StackClientInterface
-} from "./clientInterface";
+} from "./client-interface";
 import { ContactChannelsCrud } from "./crud/contact-channels";
 import { CurrentUserCrud } from "./crud/current-user";
 import { ConnectedAccountAccessTokenCrud } from "./crud/oauth";
@@ -70,7 +70,7 @@ export class StackServerInterface extends StackClientInterface {
       return Result.ok(await this.sendServerRequest(path, requestOptions, tokenStoreOrNull));
     } catch (e) {
       for (const errorType of errorsToCatch) {
-        if (e instanceof errorType) {
+        if (errorType.isInstance(e)) {
           return Result.error(e as InstanceType<E>);
         }
       }
@@ -101,7 +101,7 @@ export class StackServerInterface extends StackClientInterface {
       [KnownErrors.CannotGetOwnUserWithoutUser],
     );
     if (responseOrError.status === "error") {
-      if (responseOrError.error instanceof KnownErrors.CannotGetOwnUserWithoutUser) {
+      if (KnownErrors.CannotGetOwnUserWithoutUser.isInstance(responseOrError.error)) {
         return null;
       } else {
         throw new StackAssertionError("Unexpected uncaught error", { cause: responseOrError.error });

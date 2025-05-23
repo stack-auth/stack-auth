@@ -156,7 +156,7 @@ export abstract class OAuthBaseProvider {
         captureError("inner-oauth-callback", { error, params });
         throw new StatusError(400, "Inner OAuth callback failed due to invalid grant. Please try again.");
       }
-      if (error?.error === 'access_denied') {
+      if (error?.error === 'access_denied' || error?.error === 'consent_required') {
         throw new KnownErrors.OAuthProviderAccessDenied();
       }
       if (error?.error === 'invalid_client') {

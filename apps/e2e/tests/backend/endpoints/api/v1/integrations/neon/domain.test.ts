@@ -159,3 +159,40 @@ it("adds two domains and deletes one", async ({ expect }) => {
     }
   `);
 });
+
+it("fails when not specifying a domain", async ({ expect }) => {
+  await Auth.Otp.signIn();
+  const { adminAccessToken } = await Project.createAndGetAdminToken();
+
+  const response = await niceBackendFetch("/api/v1/integrations/neon/domains", {
+    accessType: "admin",
+    headers: {
+      'x-stack-admin-access-token': adminAccessToken,
+    },
+    method: "POST",
+    body: {},
+  });
+
+  expect(response).toMatchInlineSnapshot(`
+    NiceResponse {
+      "status": 400,
+      "body": {
+        "code": "SCHEMA_ERROR",
+        "details": {
+          "message": deindent\`
+            Request validation failed on POST /api/v1/integrations/neon/domains:
+              - body.domain must be defined
+          \`,
+        },
+        "error": deindent\`
+          Request validation failed on POST /api/v1/integrations/neon/domains:
+            - body.domain must be defined
+        \`,
+      },
+      "headers": Headers {
+        "x-stack-known-error": "SCHEMA_ERROR",
+        <some fields may have been hidden>,
+      },
+    }
+  `);
+});
