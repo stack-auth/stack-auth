@@ -1,0 +1,71 @@
+---
+title: "Sign Up"
+description: "Sign Up component"
+---
+
+Renders a sign-up component with customizable options.
+
+<div className="my-8 flex flex-col items-center bg-fd-background rounded-lg p-6">
+  <SignInStackAuth />
+</div>
+
+For more information, please refer to the [custom pages guide](../customization/custom-pages.mdx).
+
+## Props
+
+- `fullPage` (optional): `boolean` - If true, renders the sign-up page in full-page mode.
+- `automaticRedirect` (optional): `boolean` - If true, redirect to afterSignIn/afterSignUp URL when user is already signed in without showing the 'You are signed in' message.
+- `extraInfo` (optional): `React.ReactNode` - Additional content to be displayed on the sign-up page.
+- `firstTab` (optional): `'magic-link' | 'password'` - Determines which tab is initially active. Defaults to 'magic-link' if not specified.
+- `noPasswordRepeat` (optional): `boolean` - If true, don't show password repeat field.
+
+## Examples
+
+### Basic Usage
+
+```tsx
+import { SignUp } from '@stackframe/stack';
+
+export default function Page() {
+  return <SignUp />;
+}
+```
+
+### With Password Tab Active
+
+<div className="my-8 flex flex-col items-center bg-fd-background rounded-lg p-6">
+  <SignInPasswordFirstTab />
+</div>
+
+```tsx
+import { SignUp } from '@stackframe/stack';
+
+export default function Page() {
+  return <SignUp firstTab="password" />;
+}
+```
+
+### With Extra Information
+
+<div className="my-8 flex flex-col items-center bg-fd-background rounded-lg p-6">
+  <SignInExtraInfo />
+</div>
+
+```tsx
+import { SignUp } from '@stackframe/stack';
+
+export default function Page() {
+  return (
+    <SignUp
+      extraInfo={
+        <>
+          By signing up, you agree to our{' '}
+          <a href="/terms" className="text-fd-primary hover:underline">
+            Terms of Service
+          </a>
+        </>
+      }
+    />
+  );
+}
+``` 

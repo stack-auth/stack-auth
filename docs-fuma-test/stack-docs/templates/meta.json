@@ -1,0 +1,13 @@
+{
+  "root": true,
+  "pages": [
+    "---Getting Started---",
+    "getting-started/setup",
+    "getting-started/components",
+    "getting-started/users",
+    "getting-started/production",
+
+    "---Concepts---",
+    "concepts/authentication"
+  ]
+}
