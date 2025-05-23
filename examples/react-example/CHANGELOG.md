@@ -1,5 +1,12 @@
 # react-example
 
+## 2.8.13
+
+### Patch Changes
+
+- Updated dependencies
+  - @stackframe/react@2.8.13
+
 ## 2.8.12
 
 ### Patch Changes
