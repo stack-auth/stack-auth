@@ -4,7 +4,6 @@ import { CodeBlock } from '@/components/code-block';
 import { APIEnvKeys } from '@/components/env-keys';
 import { InlineCode } from '@/components/inline-code';
 import { StyledLink } from '@/components/link';
-import { getPublicEnvVar } from '@/lib/env';
 import { useThemeWatcher } from '@/lib/theme';
 import { deindent } from '@stackframe/stack-shared/dist/utils/strings';
 import { Button, Tabs, TabsContent, TabsList, TabsTrigger, Typography, cn } from "@stackframe/stack-ui";
@@ -15,42 +14,21 @@ import { use, useEffect, useRef, useState } from "react";
 import { GlobeMethods } from "react-globe.gl";
 import { globeImages } from '../(utils)/utils';
 import { PageLayout } from "../../page-layout";
-import { useAdminApp } from '../../use-admin-app';
 import styles from './setup-page.module.css';
 const countriesPromise = import('../(utils)/country-data.geo.json');
 const Globe = dynamic(() => import('react-globe.gl').then((mod) => mod.default), { ssr: false });
 
 export default function SetupPage(props: { toMetrics: () => void }) {
-  const adminApp = useAdminApp();
   const countries = use(countriesPromise);
   const globeEl = useRef<GlobeMethods | undefined>(undefined);
   const { theme, mounted } = useThemeWatcher();
   const [showPulse, setShowPulse] = useState(false);
-  const [setupCode, setSetupCode] = useState<string | undefined>(undefined);
-  const apiUrl = getPublicEnvVar('NEXT_PUBLIC_STACK_API_URL') === "https://api.stack-auth.com" ? undefined : getPublicEnvVar('NEXT_PUBLIC_STACK_API_URL');
   const [selectedFramework, setSelectedFramework] = useState<'nextjs' | 'react' | 'javascript' | 'python'>('nextjs');
   const [keys, setKeys] = useState<{ projectId: string, publishableClientKey: string } | null>(null);
 
   const onGenerateKeys = () => {
     setKeys({ projectId: 'asdfasdf', publishableClientKey: 'asdfasdf' });
   };
-
-  useEffect(() => {
-    const fetchSetupCode = async () => {
-      const code = await adminApp.createSetupCode();
-      setSetupCode(code.code);
-    };
-    fetchSetupCode().catch(console.error);
-
-    // Refresh the setup code every 10 minutes
-    const refreshInterval = 10 * 60 * 1000; // 10 minutes in milliseconds
-    const intervalId = setInterval(() => {
-      fetchSetupCode().catch(console.error);
-    }, refreshInterval);
-
-    // Clean up interval on component unmount
-    return () => clearInterval(intervalId);
-  }, [adminApp]);
 
   useEffect(() => {
     // Add delay before showing pulse circles in order to allow the globe to animate in
@@ -69,7 +47,7 @@ export default function SetupPage(props: { toMetrics: () => void }) {
         In a new or existing Next.js project, run:
         <CodeBlock
           language="bash"
-          content={`npx @stackframe/init@latest${apiUrl ? ` --api-url="${apiUrl}"` : ''}${setupCode ? ` --setup="${setupCode}"` : ''}`}
+          content={`npx @stackframe/init@latest`}
           title="Terminal"
           icon="terminal"
         />
@@ -77,6 +55,11 @@ export default function SetupPage(props: { toMetrics: () => void }) {
     },
     {
       step: 3,
+      title: "Create Keys",
+      content: <StackAuthKeys keys={keys} onGenerateKeys={onGenerateKeys} />
+    },
+    {
+      step: 4,
       title: "Done",
       content: <>
         <div>
@@ -102,7 +85,7 @@ export default function SetupPage(props: { toMetrics: () => void }) {
     },
     {
       step: 3,
-      title: "Create Stack Auth Keys",
+      title: "Create Keys",
       content: <StackAuthKeys keys={keys} onGenerateKeys={onGenerateKeys} />
     },
     {
@@ -204,7 +187,7 @@ export default function SetupPage(props: { toMetrics: () => void }) {
     },
     {
       step: 3,
-      title: "Create Stack Auth Keys",
+      title: "Create Keys",
       content: <StackAuthKeys keys={keys} onGenerateKeys={onGenerateKeys} />
     },
   ];
