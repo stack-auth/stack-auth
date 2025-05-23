@@ -1,5 +1,14 @@
 # @stackframe/docs-examples
 
+## 2.8.13
+
+### Patch Changes
+
+- Updated dependencies
+  - @stackframe/stack-shared@2.8.13
+  - @stackframe/stack-ui@2.8.13
+  - @stackframe/stack@2.8.13
+
 ## 2.8.12
 
 ### Patch Changes
