@@ -523,16 +523,14 @@ enum VerificationCodeType {
   PASSKEY_REGISTRATION_CHALLENGE
   PASSKEY_AUTHENTICATION_CHALLENGE
   NEON_INTEGRATION_PROJECT_TRANSFER
-  SETUP
 }
 
 //#region API keys
 // Internal API keys
 model ApiKeySet {
   projectId String
-  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  id        String  @default(uuid()) @db.Uuid
-
+  project   Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  id        String   @default(uuid()) @db.Uuid
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 

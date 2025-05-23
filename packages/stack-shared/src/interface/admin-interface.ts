@@ -301,18 +301,4 @@ export class StackAdminInterface extends StackServerInterface {
     }, null);
     return await response.json();
   }
-
-  async createSetupCode(): Promise<{
-    code: string,
-  }> {
-    const response = await this.sendAdminRequest("/setup-keys", {
-      method: "POST",
-      headers: {
-        "content-type": "application/json",
-      },
-      body: JSON.stringify({}),
-    }, null);
-    return await response.json();
-  }
-
 }
