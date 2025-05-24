@@ -6,7 +6,7 @@ import { neonAuthorizationHeaderSchema, urlSchema, yupNumber, yupObject, yupStri
 import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
 import { StatusError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
 import { decodeBasicAuthorizationHeader } from "@stackframe/stack-shared/dist/utils/http";
-import { neonIntegrationProjectTransferCodeHandler } from "./confirm/verification-code-handler";
+import { integrationProjectTransferCodeHandler } from "./confirm/verification-code-handler";
 
 async function validateAndGetTransferInfo(authorizationHeader: string, projectId: string) {
   const [clientId, clientSecret] = decodeBasicAuthorizationHeader(authorizationHeader)!;
@@ -20,7 +20,7 @@ async function validateAndGetTransferInfo(authorizationHeader: string, projectId
   });
   if (!provisionedProject) {
     // note: Neon relies on this exact status code and error message, so don't change it without consulting them first
-    throw new StatusError(400, "This project either doesn't exist or the current Neon client is not authorized to transfer it. Note that projects can only be transferred once.");
+    throw new StatusError(400, "This project either doesn't exist or the current external project is not authorized to transfer it. Note that projects can only be transferred once.");
   }
 
   return {
@@ -84,14 +84,14 @@ export const POST = createSmartRouteHandler({
   handler: async (req) => {
     const { provisionedProject } = await validateAndGetTransferInfo(req.headers.authorization[0], req.body.project_id);
 
-    const transferCodeObj = await neonIntegrationProjectTransferCodeHandler.createCode({
+    const transferCodeObj = await integrationProjectTransferCodeHandler.createCode({
       tenancy: await getSoleTenancyFromProjectBranch("internal", DEFAULT_BRANCH_ID),
       method: {},
       data: {
         project_id: provisionedProject.projectId,
-        neon_client_id: provisionedProject.externalProjectId,
+        external_project_id: provisionedProject.externalProjectId,
       },
-      callbackUrl: new URL("/integrations/neon/projects/transfer/confirm", getEnvVariable("NEXT_PUBLIC_STACK_DASHBOARD_URL")),
+      callbackUrl: new URL("/integrations/custom/projects/transfer/confirm", getEnvVariable("NEXT_PUBLIC_STACK_DASHBOARD_URL")),
       expiresInMs: 1000 * 60 * 60,
     });
 
