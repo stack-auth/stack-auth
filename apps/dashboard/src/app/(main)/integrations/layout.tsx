@@ -3,7 +3,7 @@ export const metadata = {
   title: "Neon x Stack Auth",
 };
 
-export default async function NeonIntegrationConfirmPage(props: { children: React.ReactNode }) {
+export default async function Page(props: { children: React.ReactNode }) {
   return (
     <>
       <style>
