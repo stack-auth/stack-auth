@@ -23,11 +23,7 @@ export function useThemeWatcher() {
     const observer = new MutationObserver((mutations) => {
       for (const mutation of mutations) {
         if (mutation.type === 'attributes' && mutation.attributeName === 'data-stack-theme') {
-          setMounted(false);
-          setTimeout(() => {
-            updateTheme();
-            setMounted(true);
-          }, 0);
+          updateTheme();
           break;
         }
       }

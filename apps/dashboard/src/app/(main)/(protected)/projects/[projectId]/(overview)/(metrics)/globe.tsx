@@ -1,3 +1,4 @@
+import { useThemeWatcher } from '@/lib/theme';
 import useResizeObserver from '@react-hook/resize-observer';
 import { useUser } from '@stackframe/stack';
 import { getFlagEmoji } from '@stackframe/stack-shared/dist/utils/unicode';
@@ -5,10 +6,11 @@ import { Typography } from '@stackframe/stack-ui';
 import dynamic from 'next/dynamic';
 import { RefObject, use, useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
 import { GlobeMethods } from 'react-globe.gl';
+import { globeImages } from '../(utils)/utils';
 
 // https://github.com/vasturiano/react-globe.gl/issues/1#issuecomment-554459831
 const Globe = dynamic(() => import('react-globe.gl').then((mod) => mod.default), { ssr: false });
-const countriesPromise = import('./country-data.geo.json');
+const countriesPromise = import('../(utils)/country-data.geo.json');
 
 function useSize(target: RefObject<HTMLDivElement | null>) {
   const [size, setSize] = useState<DOMRectReadOnly>();
@@ -73,20 +75,7 @@ export function GlobeSection({ countryData, totalUsers, children }: {countryData
   const user = useUser({ or: "redirect" });
   const displayName = user.displayName ?? user.primaryEmail;
 
-  const [isLightMode, setIsLightMode] = useState<boolean | null>(null);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  useEffect(() => {
-    const updateIsLightMode = () => {
-      const shouldBeLight = getComputedStyle(document.documentElement).getPropertyValue('color-scheme') === 'light';
-      if (shouldBeLight !== isLightMode) {
-        setIsLightMode(shouldBeLight);
-      }
-      resumeRender();
-    };
-    updateIsLightMode();
-    const interval = setInterval(updateIsLightMode, 10);
-    return () => clearInterval(interval);
-  }, [isLightMode]);
+  const { theme, mounted } = useThemeWatcher();
 
   // Chromium's WebGL is much faster than other browsers, so we can do some extra animations
   const [isFastEngine, setIsFastEngine] = useState<boolean | null>(null);
@@ -172,16 +161,12 @@ export function GlobeSection({ countryData, totalUsers, children }: {countryData
             </div>
           </div>
         )}
-        {isLightMode !== null && isFastEngine !== null && (
+        {mounted && isFastEngine !== null && (
           <Globe
             key={errorRefreshCount}
             ref={globeRef}
             backgroundColor='#00000000'
-            globeImageUrl={
-              isLightMode
-                ? 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAAXNSR0IArs4c6QAAAERlWElmTU0AKgAAAAgAAYdpAAQAAAABAAAAGgAAAAAAA6ABAAMAAAABAAEAAKACAAQAAAABAAAAAaADAAQAAAABAAAAAQAAAAD5Ip3+AAAADUlEQVQIHWO48vjffwAI+QO1AqIWWgAAAABJRU5ErkJggg=='
-                : 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAAXNSR0IArs4c6QAAAERlWElmTU0AKgAAAAgAAYdpAAQAAAABAAAAGgAAAAAAA6ABAAMAAAABAAEAAKACAAQAAAABAAAAAaADAAQAAAABAAAAAQAAAAD5Ip3+AAAADUlEQVQIHWPgF9f8DwAB1wFPLWQXmAAAAABJRU5ErkJggg=='
-            }
+            globeImageUrl={globeImages[theme]}
             width={globeSize?.[0] ?? 64}
             height={128 + (globeSize?.[1] ?? 0)}
             onGlobeReady={() => {
@@ -226,7 +211,7 @@ export function GlobeSection({ countryData, totalUsers, children }: {countryData
                 const highlight = isFastEngine && country.properties.ISO_A2_EH === selectedCountry?.code;
 
                 if (Number.isNaN(value) || value === null || maxColorValue < 0.0001) {
-                  if (isLightMode) {
+                  if (theme === 'light') {
                     return `hsl(210, 17.20%, ${highlight ? '55.5%' : '45.5%'})`;
                   } else {
                     if (value === null && maxColorValue < 0.0001) {
@@ -238,7 +223,7 @@ export function GlobeSection({ countryData, totalUsers, children }: {countryData
                   }
                 }
                 const scaled = value / maxColorValue;
-                if (isLightMode) {
+                if (theme === 'light') {
                   return `hsl(${175 * (1 - scaled)}, 100%, ${20 + 40 * scaled + (highlight ? 10 : 0)}%)`;
                 } else {
                   return `hsl(240, 84%, ${24 + 60 * scaled + (highlight ? 10 : 0)}%)`;
