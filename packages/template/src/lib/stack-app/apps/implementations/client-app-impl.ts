@@ -1584,7 +1584,8 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
    * 5. The CLI app polls for the refresh token using the polling code
    *
    * @param options Options for the CLI login
-   * @param options.appUrl The URL of the app that will handle the CLI auth confirmation
+   * @param options.appUrl The base URL of the app that will handle the CLI auth confirmation
+   * @param options.path The path to the CLI auth confirmation handler (default: "/handler/cli-auth-confirm")
    * @param options.expiresInMillis Optional duration in milliseconds before the auth attempt expires (default: 2 hours)
    * @param options.maxAttempts Optional maximum number of polling attempts (default: Infinity)
    * @param options.waitTimeMillis Optional time to wait between polling attempts (default: 2 seconds)
@@ -1593,6 +1594,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
    */
   async promptCliLogin(options: {
     appUrl: string,
+    path?: string,
     expiresInMillis?: number,
     maxAttempts?: number,
     waitTimeMillis?: number,
@@ -1621,8 +1623,8 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
     const pollingCode = initResult.polling_code;
     const loginCode = initResult.login_code;
 
+    const url = `${options.appUrl}/${options.path ?? "handler/cli-auth-confirm"}?login_code=${encodeURIComponent(loginCode)}`;
     // Step 2: Open the browser for the user to authenticate
-    const url = `${options.appUrl}/handler/cli-auth-confirm?login_code=${encodeURIComponent(loginCode)}`;
     if (options.promptLink) {
       options.promptLink(url);
     } else {
