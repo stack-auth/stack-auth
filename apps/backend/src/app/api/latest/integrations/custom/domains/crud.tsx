@@ -11,11 +11,11 @@ const domainSchema = schemaFields.urlSchema.defined()
   .meta({ openapiField: { description: 'URL. Must start with http:// or https://', exampleValue: 'https://example.com' } });
 
 const domainReadSchema = yupObject({
-  domain: domainSchema.defined(),
+  domain: domainSchema,
 });
 
 const domainCreateSchema = yupObject({
-  domain: domainSchema.defined(),
+  domain: domainSchema,
 });
 
 export const domainDeleteSchema = yupMixed();

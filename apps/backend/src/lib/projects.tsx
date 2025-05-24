@@ -154,7 +154,7 @@ export async function createOrUpdateProject(
       'teams.allowClientTeamCreation': dataOptions.client_team_creation_enabled,
       'teams.createPersonalTeamOnSignUp': dataOptions.create_team_on_sign_up,
       // ======================= domains =======================
-      'domains.allowLocalhost': dataOptions.allow_localhost,
+      'domains.allowLocalhost': dataOptions.allow_localhost ?? true,
       'domains.trustedDomains': dataOptions.domains ? dataOptions.domains.map((domain) => {
         return {
           baseUrl: domain.domain,
