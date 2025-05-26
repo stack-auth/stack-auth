@@ -10,7 +10,7 @@ async function authorizePart1(redirectUri: string = "http://localhost:30000/api/
     method: "GET",
     query: {
       response_type: "code",
-      client_id: "neon-dev",
+      client_id: "neon-local",
       redirect_uri: redirectUri,
       state: encodeBase64Url(new TextEncoder().encode(JSON.stringify({ details: { neon_project_name: 'neon-project' } }))),
       code_challenge: "xf6HY7PIgoaCf_eMniSt-45brYE2J_05C9BnfIbueik",
@@ -75,7 +75,7 @@ async function authorize(projectId: string) {
       NiceResponse {
         "status": 307,
         "headers": Headers {
-          "location": "http://localhost:8102/api/v1/integrations/neon/oauth/idp/auth?response_type=code&client_id=neon-dev&redirect_uri=%3Cstripped+query+param%3E&state=%3Cstripped+query+param%3E&code_challenge=%3Cstripped+query+param%3E&code_challenge_method=S256&scope=openid",
+          "location": "http://localhost:8102/api/v1/integrations/neon/oauth/idp/auth?response_type=code&client_id=neon-local&redirect_uri=%3Cstripped+query+param%3E&state=%3Cstripped+query+param%3E&code_challenge=%3Cstripped+query+param%3E&code_challenge_method=S256&scope=openid",
           <some fields may have been hidden>,
         },
       },
@@ -169,7 +169,7 @@ it(`should not redirect to the incorrect callback URL`, async ({}) => {
         NiceResponse {
           "status": 307,
           "headers": Headers {
-            "location": "http://localhost:8102/api/v1/integrations/neon/oauth/idp/auth?response_type=code&client_id=neon-dev&redirect_uri=%3Cstripped+query+param%3E&state=%3Cstripped+query+param%3E&code_challenge=%3Cstripped+query+param%3E&code_challenge_method=S256&scope=openid",
+            "location": "http://localhost:8102/api/v1/integrations/neon/oauth/idp/auth?response_type=code&client_id=neon-local&redirect_uri=%3Cstripped+query+param%3E&state=%3Cstripped+query+param%3E&code_challenge=%3Cstripped+query+param%3E&code_challenge_method=S256&scope=openid",
             <some fields may have been hidden>,
           },
         },
@@ -203,7 +203,7 @@ it(`should exchange the authorization code for an admin API key that works`, asy
       redirect_uri: "http://localhost:30000/api/v2/auth/authorize",
     },
     headers: {
-      "Authorization": encodeBasicAuthorizationHeader("neon-dev", "neon-dev-secret")
+      "Authorization": encodeBasicAuthorizationHeader("neon-local", "neon-local-secret")
     },
   });
   expect(tokenResponse).toMatchInlineSnapshot(`
@@ -257,7 +257,7 @@ it(`should not exchange the authorization code when the client secret is incorre
       redirect_uri: "http://localhost:30000/api/v2/auth/authorize",
     },
     headers: {
-      "Authorization": encodeBasicAuthorizationHeader("neon-dev", "wrong-secret")
+      "Authorization": encodeBasicAuthorizationHeader("neon-local", "wrong-secret")
     },
   });
   expect(tokenResponse).toMatchInlineSnapshot(`
