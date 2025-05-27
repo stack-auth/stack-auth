@@ -1,6 +1,6 @@
 import { docs } from '@/.source';
 import { loader } from 'fumadocs-core/source';
-import { attachFile, createOpenAPI } from 'fumadocs-openapi/server';
+import { attachFile } from 'fumadocs-openapi/server';
 
 // See https://fumadocs.vercel.app/docs/headless/source-api for more info
 export const source = loader({
@@ -10,8 +10,4 @@ export const source = loader({
   pageTree: {
     attachFile,
   },
-});
-
-export const openapi = createOpenAPI({
-  // OpenAPI configuration for Fumadocs
 });
