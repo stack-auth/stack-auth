@@ -31,5 +31,6 @@ pages-js/
 pages-next/
 pages-python/
 pages-react/
-/content/docs/index.mdx
-/content/docs/meta.json
+/content/docs/
+/public/openapi/
+
