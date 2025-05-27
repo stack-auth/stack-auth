@@ -1,5 +1,5 @@
 ---
-title: Users
+title: users
 description: Reading and writing user information, and protecting pages
 ---
 
@@ -41,7 +41,7 @@ export default async function MyServerComponent() {
 }
 ```
 
-<Info type="info">
+<Info>
 Since `useUser()` is a hook, it will re-render the component on user changes (eg. signout), while `getUser()` will only fetch the user once (on page load). You can also call `useStackApp().getUser()` on the client side to get the user in a non-component context.
 </Info>
 
@@ -55,8 +55,14 @@ On Client Components, the `useUser({ or: 'redirect' })` hook will redirect the u
 Middleware can be used whenever it is easy to tell whether a page should be protected given just the URL, for example, when you have a `/private` section only accessible to logged-in users.
 
 
-<Tabs items={["Client Component", "Server Component", "Middleware"]}>
-  <Tab>
+<Tabs defaultValue="client">
+  <TabsList>
+    <TabsTrigger value="client">Client Component</TabsTrigger>
+    <TabsTrigger value="server">Server Component</TabsTrigger>
+    <TabsTrigger value="middleware">Middleware</TabsTrigger>
+  </TabsList>
+  
+  <TabsContent value="client">
     ```tsx title="my-protected-client-component.tsx"
     "use client";
     import { useUser } from "@stackframe/stack";
@@ -66,9 +72,9 @@ Middleware can be used whenever it is easy to tell whether a page should be prot
       return <h1>You can only see this if you are logged in</h1>
     }
     ```
-  </Tab>
+  </TabsContent>
 
-  <Tab>
+  <TabsContent value="server">
     ```tsx title="my-protected-server-component.tsx"
     import { stackServerApp } from "@/stack";
 
@@ -77,9 +83,9 @@ Middleware can be used whenever it is easy to tell whether a page should be prot
       return <h1>You can only see this if you are logged in</h1>
     }
     ```
-  </Tab>
+  </TabsContent>
 
-  <Tab>
+  <TabsContent value="middleware">
     ```tsx title="middleware.tsx"
     export async function middleware(request: NextRequest) {
       const user = await stackServerApp.getUser();
@@ -95,10 +101,10 @@ Middleware can be used whenever it is easy to tell whether a page should be prot
       matcher: '/protected/:path*',
     };
     ```
-  </Tab>
+  </TabsContent>
 </Tabs>
 
-<Info type="info">
+<Info>
   If you have sensitive information hidden in the page HTML itself, be aware of Next.js differences when using Server vs. Client Components.
 
   - **Client Components**: Client components are always sent to the browser, regardless of page protection. This is standard Next.js behavior. For more information, please refer to the [Next.js documentation](https://nextjs.org/docs/app/building-your-application/rendering/composition-patterns#keeping-server-only-code-out-of-the-client-environment).
@@ -138,8 +144,13 @@ You can also store custom user data in the `clientMetadata`, `serverMetadata`, o
 
 You can sign out the user by redirecting them to `/handler/sign-out` or simply by calling `user.signOut()`. They will be redirected to the URL [configured as `afterSignOut` in the `StackServerApp`](/sdk/objects/stack-app).
 
-<Tabs items={["user.signOut()", "Redirect"]}>
-  <Tab>
+<Tabs defaultValue="signout">
+  <TabsList>
+    <TabsTrigger value="signout">user.signOut()</TabsTrigger>
+    <TabsTrigger value="redirect">Redirect</TabsTrigger>
+  </TabsList>
+  
+  <TabsContent value="signout">
     ```tsx title="sign-out-button.tsx"
     "use client";
     import { useUser } from "@stackframe/stack";
@@ -149,9 +160,9 @@ You can sign out the user by redirecting them to `/handler/sign-out` or simply b
       return user ? <button onClick={() => user.signOut()}>Sign Out</button> : "Not signed in";
     }
     ```
-  </Tab>
+  </TabsContent>
 
-  <Tab>
+  <TabsContent value="redirect">
     ```tsx title="sign-out-link.tsx"
     import { stackServerApp } from "@/stack";
 
@@ -160,15 +171,20 @@ You can sign out the user by redirecting them to `/handler/sign-out` or simply b
       return <a href={stackServerApp.urls.signOut}>Sign Out</a>;
     }
     ```
-  </Tab>
+  </TabsContent>
 </Tabs>
 
 ## Example: Custom profile page
 
 Stack automatically creates a user profile on sign-up. Let's build a page that displays this information. In `app/profile/page.tsx`:
 
-<Tabs items={["Client Component", "Server Component"]}>
-  <Tab>
+<Tabs defaultValue="client">
+  <TabsList>
+    <TabsTrigger value="client">Client Component</TabsTrigger>
+    <TabsTrigger value="server">Server Component</TabsTrigger>
+  </TabsList>
+  
+  <TabsContent value="client">
     ```tsx title="app/profile/page.tsx"
     'use client';
     import { useUser, useStackApp, UserButton } from "@stackframe/stack";
@@ -196,9 +212,9 @@ Stack automatically creates a user profile on sign-up. Let's build a page that d
       );
     }
     ```
-  </Tab>
+  </TabsContent>
 
-  <Tab>
+  <TabsContent value="server">
     ```tsx title="app/profile/page.tsx"
     import { stackServerApp } from "@/stack";
     import { UserButton } from "@stackframe/stack";
@@ -225,7 +241,7 @@ Stack automatically creates a user profile on sign-up. Let's build a page that d
       );
     }
     ```
-  </Tab>
+  </TabsContent>
 </Tabs>
 
 After saving your code, you can see the profile page on [http://localhost:3000/profile](http://localhost:3000/profile).

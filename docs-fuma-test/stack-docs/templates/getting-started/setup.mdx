@@ -1,5 +1,5 @@
 ---
-title: Test
+title: setup
 description: Getting started with Stack in 5 minutes
 ---
 
@@ -15,143 +15,151 @@ Before getting started, make sure you have a [Next.js project](https://nextjs.or
 
 We recommend using our **setup wizard** for a seamless installation experience. The wizard automatically detects your project structure and walks you through the setup process. If you encounter any issues with the wizard, you can follow our manual installation steps instead.
 
-<Tabs items={["Setup wizard (recommended)", "Manual installation"]}>
-  <Tab value="Setup wizard (recommended)">
+<Tabs defaultValue="wizard">
+  <TabsList>
+    <TabsTrigger value="wizard">Setup wizard (recommended)</TabsTrigger>
+    <TabsTrigger value="manual">Manual installation</TabsTrigger>
+  </TabsList>
+  
+  <TabsContent value="wizard">
     <Steps>
       <Step>
-        <strong className="text-lg font-semibold mt-0 mb-2 block" data-toc-exclude>Run installation wizard</strong>
-        Run Stack's installation wizard with the following command:
-
-        ```sh title="Terminal"
-        npx @stackframe/init-stack@latest
-        ```
+      ### Run installation wizard
       </Step>
+      Run Stack's installation wizard with the following command:
+
+      ```sh title="Terminal"
+      npx @stackframe/init-stack@latest
+      ```
 
       <Step>
-        <strong className="text-lg font-semibold mt-0 mb-2 block" data-toc-exclude>Update API keys</strong>
-        Then, create an account on [the Stack Auth dashboard](https://app.stack-auth.com/projects), create a new project with an API key, and copy its environment variables into the `.env.local` file of your Next.js project:
-
-        ```sh title=".env.local"
-        NEXT_PUBLIC_STACK_PROJECT_ID=<your-project-id>
-        NEXT_PUBLIC_STACK_PUBLISHABLE_CLIENT_KEY=<your-publishable-client-key>
-        STACK_SECRET_SERVER_KEY=<your-secret-server-key>
-        ```
+      ### Update API keys
       </Step>
+      Then, create an account on [the Stack Auth dashboard](https://app.stack-auth.com/projects), create a new project with an API key, and copy its environment variables into the `.env.local` file of your Next.js project:
+
+      ```sh title=".env.local"
+      NEXT_PUBLIC_STACK_PROJECT_ID=<your-project-id>
+      NEXT_PUBLIC_STACK_PUBLISHABLE_CLIENT_KEY=<your-publishable-client-key>
+      STACK_SECRET_SERVER_KEY=<your-secret-server-key>
+      ```
 
       <Step>
-        <strong className="text-lg font-semibold mt-0 mb-2 block" data-toc-exclude>Done!</strong>
-        That's it! The following files should have been created or updated in your project:
-
-        - `app/handler/[...stack]/page.tsx`: This file contains the default pages for sign-in, sign-out, account settings, and more. If you prefer, later you will learn how to [use custom pages](../customization/custom-pages.mdx) instead.
-        - `app/layout.tsx`: The layout file was updated to wrap the entire body with `StackProvider` and `StackTheme`.
-        - `app/loading.tsx`: If not yet found, Stack automatically adds a Suspense boundary to your app. This is shown to the user while Stack's async hooks, like `useUser`, are loading.
-        - `stack.ts`: This file contains the `stackServerApp` which you can use to access Stack from Server Components, Server Actions, API routes, and middleware.
+      ### Done!
       </Step>
+      That's it! The following files should have been created or updated in your project:
+
+      - `app/handler/[...stack]/page.tsx`: This file contains the default pages for sign-in, sign-out, account settings, and more. If you prefer, later you will learn how to [use custom pages](../customization/custom-pages.mdx) instead.
+      - `app/layout.tsx`: The layout file was updated to wrap the entire body with `StackProvider` and `StackTheme`.
+      - `app/loading.tsx`: If not yet found, Stack automatically adds a Suspense boundary to your app. This is shown to the user while Stack's async hooks, like `useUser`, are loading.
+      - `stack.ts`: This file contains the `stackServerApp` which you can use to access Stack from Server Components, Server Actions, API routes, and middleware.
     </Steps>
-  </Tab>
-  <Tab value="Manual installation">
-    Note: The setup wizard also supports existing, complicated projects. Cases where manual installation is necessary are rare.
+  </TabsContent>
+  
+  <TabsContent value="manual">
+    <Info>
+      Note: The setup wizard also supports existing, complicated projects. Cases where manual installation is necessary are rare.
+    </Info>
 
     If you are struggling with the setup wizard, please reach out to us on our [Discord](https://discord.stack-auth.com) first, where we'll be happy to help you.
     <Steps>
       <Step>
-        <strong className="text-lg font-semibold mt-0 mb-2 block" data-toc-exclude>Install npm package</strong>
-        First, install Stack with npm, yarn, or pnpm:
-
-        ```bash title="Terminal"
-        npm install @stackframe/stack
-        ```
+      ### Install npm package
       </Step>
+      First, install Stack with npm, yarn, or pnpm:
+
+      ```bash title="Terminal"
+      npm install @stackframe/stack
+      ```
 
       <Step>
-        <strong className="text-lg font-semibold mt-0 mb-2 block" data-toc-exclude>Create API keys</strong>
-        If you haven't already, [register a new account on Stack](https://app.stack-auth.com/handler/sign-up). Create a project in the dashboard, create a new API key from the left sidebar, and copy the project ID, publishable client key, and secret server key into a new file called `.env.local` in the root of your Next.js project:
-
-        ```sh title=".env.local"
-        NEXT_PUBLIC_STACK_PROJECT_ID=<your-project-id>
-        NEXT_PUBLIC_STACK_PUBLISHABLE_CLIENT_KEY=<your-publishable-client-key>
-        STACK_SECRET_SERVER_KEY=<your-secret-server-key>
-        ```
+      ### Create API keys
       </Step>
+      If you haven't already, [register a new account on Stack](https://app.stack-auth.com/handler/sign-up). Create a project in the dashboard, create a new API key from the left sidebar, and copy the project ID, publishable client key, and secret server key into a new file called `.env.local` in the root of your Next.js project:
+
+      ```sh title=".env.local"
+      NEXT_PUBLIC_STACK_PROJECT_ID=<your-project-id>
+      NEXT_PUBLIC_STACK_PUBLISHABLE_CLIENT_KEY=<your-publishable-client-key>
+      STACK_SECRET_SERVER_KEY=<your-secret-server-key>
+      ```
 
       <Step>
-        <strong className="text-lg font-semibold mt-0 mb-2 block" data-toc-exclude>Create `stack.ts` file</strong>
-        Create a new file `stack.ts` in your root directory and fill it with the following:
-        
-        ```tsx title="stack.ts"
-        import "server-only";
-        import { StackServerApp } from "@stackframe/stack";
-
-        export const stackServerApp = new StackServerApp({
-          tokenStore: "nextjs-cookie", // storing auth tokens in cookies
-        });
-        ```
+      ### Create `stack.ts` file
+      </Step>
+      Create a new file `stack.ts` in your root directory and fill it with the following:
       
-        This will read the environment variables automatically and create a server app that you can later use to access Stack from your Next.js server.
-        
-        Check out the [`StackServerApp` documentation](../sdk/objects/stack-app.mdx) to learn more about its other options.
-      </Step>
+      ```tsx title="stack.ts"
+      import "server-only";
+      import { StackServerApp } from "@stackframe/stack";
+
+      export const stackServerApp = new StackServerApp({
+        tokenStore: "nextjs-cookie", // storing auth tokens in cookies
+      });
+      ```
+    
+      This will read the environment variables automatically and create a server app that you can later use to access Stack from your Next.js server.
+      
+      Check out the [`StackServerApp` documentation](../sdk/objects/stack-app.mdx) to learn more about its other options.
 
       <Step>
-        <strong className="text-lg font-semibold mt-0 mb-2 block" data-toc-exclude>Create Stack handler</strong>
-        Create a new file in `app/handler/[...stack]/page.tsx` and paste the following code: 
-
-        ```tsx title="app/handler/[...stack]/page.tsx"
-        import { StackHandler } from "@stackframe/stack";
-        import { stackServerApp } from "@/stack";
-
-        export default function Handler(props: unknown) {
-          return <StackHandler fullPage app={stackServerApp} routeProps={props} />;
-        }
-        ```
-
-        This will create pages for sign-in, sign-up, password reset, and others. Additionally, it will be used as a callback URL for OAuth. You can [replace them with your own pages](../customization/custom-pages.mdx) later.
+      ### Create Stack handler 
       </Step>
+      Create a new file in `app/handler/[...stack]/page.tsx` and paste the following code: 
+
+      ```tsx title="app/handler/[...stack]/page.tsx"
+      import { StackHandler } from "@stackframe/stack";
+      import { stackServerApp } from "@/stack";
+
+      export default function Handler(props: unknown) {
+        return <StackHandler fullPage app={stackServerApp} routeProps={props} />;
+      }
+      ```
+
+      This will create pages for sign-in, sign-up, password reset, and others. Additionally, it will be used as a callback URL for OAuth. You can [replace them with your own pages](../customization/custom-pages.mdx) later.
 
       <Step>
-        <strong className="text-lg font-semibold mt-0 mb-2 block" data-toc-exclude>Add StackProvider to `layout.tsx`</strong>
-        In your `app/layout.tsx`, wrap the entire body with a `StackProvider` and `StackTheme`. Afterwards, it should look like this:
-
-        ```tsx title="app/layout.tsx"
-        import React from "react";
-        import { StackProvider, StackTheme } from "@stackframe/stack";
-        import { stackServerApp } from "@/stack";
-
-        export default function RootLayout({ children }: { children: React.ReactNode }) {
-          return (
-            <html lang="en">
-              <body>
-                <StackProvider app={stackServerApp}>
-                  <StackTheme>
-                    {children}
-                  </StackTheme>
-                </StackProvider>
-              </body>
-            </html>
-          );
-        }
-        ```
+      ### Add StackProvider to `layout.tsx`
       </Step>
+      In your `app/layout.tsx`, wrap the entire body with a `StackProvider` and `StackTheme`. Afterwards, it should look like this:
+
+      ```tsx title="app/layout.tsx"
+      import React from "react";
+      import { StackProvider, StackTheme } from "@stackframe/stack";
+      import { stackServerApp } from "@/stack";
+
+      export default function RootLayout({ children }: { children: React.ReactNode }) {
+        return (
+          <html lang="en">
+            <body>
+              <StackProvider app={stackServerApp}>
+                <StackTheme>
+                  {children}
+                </StackTheme>
+              </StackProvider>
+            </body>
+          </html>
+        );
+      }
+      ```
+      
+      <Step>
+      ### Add Suspense boundary
+      </Step>
+      By default, Stack uses [`Suspense`](https://react.dev/reference/react/Suspense) to handle loading states. To show a loading indicator while Stack is fetching user data, make sure there is a `loading.tsx` file in your `app` directory:
+
+      ```tsx title="app/loading.tsx"
+      export default function Loading() {
+        // You can use any loading indicator here
+        return <>
+          Loading...
+        </>;
+      }
+      ```
 
       <Step>
-        <strong className="text-lg font-semibold mt-0 mb-2 block" data-toc-exclude>Add Suspense boundary</strong>
-        By default, Stack uses [`Suspense`](https://react.dev/reference/react/Suspense) to handle loading states. To show a loading indicator while Stack is fetching user data, make sure there is a `loading.tsx` file in your `app` directory:
-
-        ```tsx title="app/loading.tsx"
-        export default function Loading() {
-          // You can use any loading indicator here
-          return <>
-            Loading...
-          </>;
-        }
-        ```
-      </Step>
-
-      <Step>
-        <strong className="text-lg font-semibold mt-0 mb-2 block" data-toc-exclude>Done!</strong>
+      ### Done!
       </Step>
     </Steps>
-  </Tab>
+  </TabsContent>
 </Tabs>
 
 ## Post-setup
@@ -159,12 +167,12 @@ We recommend using our **setup wizard** for a seamless installation experience. 
 That's it! Stack is now configured in your Next.js project. If you start your Next.js app with `npm run dev` and navigate to [http://localhost:3000/handler/signup](http://localhost:3000/handler/sign-up), you will see the sign-up page.
 
 <div className="stack-white-image-showcase stack-350h">
-  <img src="/imgs/sign-in.png" alt="SignIn" />
+  <img src="../imgs/sign-in.png" alt="SignIn" />
 </div>
 
 After signing up/in, you will be redirected back to the home page. We will show you how to add user information to it in the next section. You can also check out the [http://localhost:3000/handler/account-settings](http://localhost:3000/handler/account-settings) page which looks like this:
 
-![Stack account settings page](/imgs/account-settings.png)
+![Stack account settings page](../imgs/account-settings.png)
 
 
 ## Next steps
@@ -173,7 +181,7 @@ Next up, we will show you how to [retrieve and update user information](./users.
 
 {/* ELSE_IF_PLATFORM react */}
 
-<Info type="info">
+<Info>
 Welcome to the React SDK setup guide! If you're looking for guides for other frameworks, check out the [Next.js SDK Setup](/next/getting-started/setup), or the [JavaScript SDK Setup](/js/getting-started/setup).
 </Info>
 
@@ -181,92 +189,92 @@ Before getting started, make sure you have a [React project](https://react.dev/l
 
 <Steps>
   <Step>
-    <strong className="text-lg font-semibold mt-0 mb-2 block" data-toc-exclude>Install npm package</strong>
-
-    ```bash title="Terminal"
-    npm install @stackframe/react
-    ```
+    ### Install npm package
   </Step>
 
-  <Step>
-    <strong className="text-lg font-semibold mt-0 mb-2 block" data-toc-exclude>Create API keys</strong>
+  ```bash title="Terminal"
+  npm install @stackframe/react
+  ```
 
-    If you haven't already, [register a new account on Stack](https://app.stack-auth.com/projects), create a project in the dashboard, create a new API key from the left sidebar, and copy the project ID, publishable client key, and secret server key into a new file called `.env.local` in the root of your React project:
+  <Step>
+    ### Create API keys
   </Step>
 
+  If you haven't already, [register a new account on Stack](https://app.stack-auth.com/projects), create a project in the dashboard, create a new API key from the left sidebar, and copy the project ID, publishable client key, and secret server key into a new file called `.env.local` in the root of your React project:
+
   <Step>
-    <strong className="text-lg font-semibold mt-0 mb-2 block" data-toc-exclude>Create `stack.ts` file</strong>
-
-    Create a new file `stack.ts` in your root directory and fill it with the following Stack app initialization code:
-
-    ```tsx title="stack.ts"
-    import { StackClientApp } from "@stackframe/react";
-    import { useNavigate } from "react-router-dom";
-
-    export const stackClientApp = new StackClientApp({
-      // You should store these in environment variables based on your project setup
-      projectId: "your-project-id",
-      publishableClientKey: "your-publishable-client-key",
-      tokenStore: "cookie",
-      redirectMethod: {
-        useNavigate,
-      }
-    });
-    ```
+    ### Create `stack.ts` file
   </Step>
+  Create a new file `stack.ts` in your root directory and fill it with the following Stack app initialization code:
 
-  <Step>
-    <strong className="text-lg font-semibold mt-0 mb-2 block" data-toc-exclude>Update `App.tsx`</strong>
+  ```tsx title="stack.ts"
+  import { StackClientApp } from "@stackframe/react";
+  import { useNavigate } from "react-router-dom";
 
-    Update your `App.tsx` file to wrap the entire app with a `StackProvider` and `StackTheme` and add a `StackHandler` component to handle the authentication flow.
-
-    ```tsx title="App.tsx"
-    import { StackHandler, StackProvider, StackTheme } from "@stackframe/react";
-    import { Suspense } from "react";
-    import { BrowserRouter, Route, Routes, useLocation } from "react-router-dom";
-    import { stackClientApp } from "./stack";
-
-    function HandlerRoutes() {
-      const location = useLocation();
-      
-      return (
-        <StackHandler app={stackClientApp} location={location.pathname} fullPage />
-      );
+  export const stackClientApp = new StackClientApp({
+    // You should store these in environment variables based on your project setup
+    projectId: "your-project-id",
+    publishableClientKey: "your-publishable-client-key",
+    tokenStore: "cookie",
+    redirectMethod: {
+      useNavigate,
     }
+  });
+  ```
 
-    export default function App() {
-      return (
-        <Suspense fallback={null}>
-          <BrowserRouter>
-            <StackProvider app={stackClientApp}>
-              <StackTheme>
-                <Routes>
-                  <Route path="/handler/*" element={<HandlerRoutes />} />
-                  <Route path="/" element={<div>hello world</div>} />
-                </Routes>
-              </StackTheme>
-            </StackProvider>
-          </BrowserRouter>
-        </Suspense>
-      );
-    }
-    ```
+  <Step>
+    ### Update `App.tsx`
   </Step>
+
+  Update your `App.tsx` file to wrap the entire app with a `StackProvider` and `StackTheme` and add a `StackHandler` component to handle the authentication flow.
+
+  ```tsx title="App.tsx"
+  import { StackHandler, StackProvider, StackTheme } from "@stackframe/react";
+  import { Suspense } from "react";
+  import { BrowserRouter, Route, Routes, useLocation } from "react-router-dom";
+  import { stackClientApp } from "./stack";
+
+  function HandlerRoutes() {
+    const location = useLocation();
+    
+    return (
+      <StackHandler app={stackClientApp} location={location.pathname} fullPage />
+    );
+  }
+
+  export default function App() {
+    return (
+      <Suspense fallback={null}>
+        <BrowserRouter>
+          <StackProvider app={stackClientApp}>
+            <StackTheme>
+              <Routes>
+                <Route path="/handler/*" element={<HandlerRoutes />} />
+                <Route path="/" element={<div>hello world</div>} />
+              </Routes>
+            </StackTheme>
+          </StackProvider>
+        </BrowserRouter>
+      </Suspense>
+    );
+  }
+  ```
   
   <Step>
-    <strong className="text-lg font-semibold mt-0 mb-2 block" data-toc-exclude>Done!</strong>
-
-    That's it! Stack is now configured in your React project. If you start your React app and navigate to [http://localhost:5173/handler/sign-up](http://localhost:5173/handler/sign-up), you will see the sign-up page.
-
-
-    <div className="stack-white-image-showcase stack-350h">
-      <img src="/imgs/sign-in.png" alt="SignIn" />
-    </div>
-
-    After signing up/in, you will be redirected back to the home page. We will show you how to add user information to it in the next section. You can also check out the [http://localhost:5173/handler/account-settings](http://localhost:5173/handler/account-settings) page which looks like this:
-
-    ![Stack account settings page](/imgs/account-settings.png)
+    ### Done!
   </Step>
+
+  That's it! Stack is now configured in your React project. If you start your React app and navigate to [http://localhost:5173/handler/sign-up](http://localhost:5173/handler/sign-up), you will see the sign-up page.
+
+
+  <div className="stack-white-image-showcase stack-350h">
+    <img src="../imgs/sign-in.png" alt="SignIn" />
+  </div>
+
+  After signing up/in, you will be redirected back to the home page. We will show you how to add user information to it in the next section. You can also check out the [http://localhost:5173/handler/account-settings](http://localhost:5173/handler/account-settings) page which looks like this:
+
+  ![Stack account settings page](../imgs/account-settings.png)
+  
 </Steps>
 
 
@@ -280,105 +288,128 @@ Before getting started, make sure you have a JavaScript project set up (such as 
 
 We recommend using our **setup wizard** for a seamless installation experience. The wizard automatically detects your project structure and walks you through the setup process. If you encounter any issues with the wizard, you can follow our manual installation steps instead.
 
-<Tabs items={["Setup wizard (recommended)", "Manual installation"]}>
-  <Tab value="Setup wizard (recommended)">
+<Tabs defaultValue="wizard">
+  <TabsList>
+    <TabsTrigger value="wizard">Setup wizard (recommended)</TabsTrigger>
+    <TabsTrigger value="manual">Manual installation</TabsTrigger>
+  </TabsList>
+  
+  <TabsContent value="wizard">
     <Steps>
       <Step>
-        <strong className="text-lg font-semibold mt-0 mb-2 block" data-toc-exclude>Run installation wizard</strong>
-        Run Stack's installation wizard with the following command:
-
-        ```sh title="Terminal"
-        npx @stackframe/init-stack@latest
-        ```
+      ### Run installation wizard
       </Step>
+      Run Stack's installation wizard with the following command:
+
+      ```sh title="Terminal"
+      npx @stackframe/init-stack@latest
+      ```
 
       <Step>
-        <strong className="text-lg font-semibold mt-0 mb-2 block" data-toc-exclude>Update API keys</strong>
-        Then, create an account on [the Stack Auth dashboard](https://app.stack-auth.com/projects), create a new project with an API key, and copy its values into the `stack/server.ts` or `stack/client.ts` file.
-
-        <Tabs items={["Server", "Client"]}>
-          <Tab value="Server">
-            ```tsx title="stack/server.ts"
-            import { StackServerApp } from "@stackframe/js";
-
-            export const stackServerApp = new StackServerApp({
-              // You should store these in environment variables based on your project setup
-              projectId: "your-project-id",
-              publishableClientKey: "your-publishable-client-key",
-              secretServerKey: "your-secret-server-key",
-              tokenStore: "memory",
-            });
-            ```
-          </Tab>
-          <Tab value="Client">
-            ```tsx title="stack/client.ts"
-            import { StackClientApp } from "@stackframe/js";
-
-            export const stackClientApp = new StackClientApp({
-              // You should store these in environment variables based on your project setup
-              projectId: "your-project-id",
-              publishableClientKey: "your-publishable-client-key",
-              tokenStore: "cookie",
-            });
-            ```
-          </Tab>
-        </Tabs>
+      ### Update API keys
       </Step>
+      Then, create an account on [the Stack Auth dashboard](https://app.stack-auth.com/projects), create a new project with an API key, and copy its values into the `stack/server.ts` or `stack/client.ts` file.
+
+      <Tabs defaultValue="server">
+        <TabsList>
+          <TabsTrigger value="server">Server</TabsTrigger>
+          <TabsTrigger value="client">Client</TabsTrigger>
+        </TabsList>
+        
+        <TabsContent value="server">
+          ```tsx title="stack/server.ts"
+          import { StackServerApp } from "@stackframe/js";
+
+          export const stackServerApp = new StackServerApp({
+            // You should store these in environment variables based on your project setup
+            projectId: "your-project-id",
+            publishableClientKey: "your-publishable-client-key",
+            secretServerKey: "your-secret-server-key",
+            tokenStore: "memory",
+          });
+          ```
+        </TabsContent>
+        
+        <TabsContent value="client">
+          ```tsx title="stack/client.ts"
+          import { StackClientApp } from "@stackframe/js";
+
+          export const stackClientApp = new StackClientApp({
+            // You should store these in environment variables based on your project setup
+            projectId: "your-project-id",
+            publishableClientKey: "your-publishable-client-key",
+            tokenStore: "cookie",
+          });
+          ```
+        </TabsContent>
+      </Tabs>
     </Steps>
-  </Tab>
-  <Tab value="Manual installation">
+  </TabsContent>
+  
+  <TabsContent value="manual">
     <Steps>
       <Step>
-        <strong className="text-lg font-semibold mt-0 mb-2 block" data-toc-exclude>Install npm package</strong>
-
-        ```bash title="Terminal"
-        npm install @stackframe/js
-        ```
+      ### Install npm package
       </Step>
+
+      ```bash title="Terminal"
+      npm install @stackframe/js
+      ```
 
       <Step>
-        <strong className="text-lg font-semibold mt-0 mb-2 block" data-toc-exclude>Update API keys</strong>
-        Then, create an account on [the Stack Auth dashboard](https://app.stack-auth.com/projects), create a new project with an API key, and copy its values into the `stack/server.ts` or `stack/client.ts` file.
+      ### Update API keys
       </Step>
+      Then, create an account on [the Stack Auth dashboard](https://app.stack-auth.com/projects), create a new project with an API key, and copy its values into the `stack/server.ts` or `stack/client.ts` file.
 
       <Step>
-        <strong className="text-lg font-semibold mt-0 mb-2 block" data-toc-exclude>Initialize the app</strong>
-        <Tabs items={["Server", "Client"]}>
-          <Tab value="Server">
-            ```typescript title="stack/server.ts"
-            import { StackServerApp } from "@stackframe/js";
-
-            const stackServerApp = new StackServerApp({
-              // You should store these in environment variables based on your project setup
-              projectId: "your-project-id-from-dashboard",
-              publishableClientKey: "your-publishable-client-key-from-dashboard",
-              secretServerKey: "your-secret-server-key-from-dashboard",
-              tokenStore: "memory",
-            });
-            ```
-          </Tab>
-          <Tab value="Client">
-            ```tsx title="stack/client.ts"
-            import { StackClientApp } from "@stackframe/js";
-
-            const stackClientApp = new StackClientApp({
-              // You should store these in environment variables based on your project setup
-              projectId: "your-project-id",
-              publishableClientKey: "your-publishable-client-key",
-              tokenStore: "cookie",
-            });
-            ```
-          </Tab>
-        </Tabs>
+      ### Initialize the app
       </Step>
+      <Tabs defaultValue="server">
+        <TabsList>
+          <TabsTrigger value="server">Server</TabsTrigger>
+          <TabsTrigger value="client">Client</TabsTrigger>
+        </TabsList>
+        
+        <TabsContent value="server">
+          ```typescript title="stack/server.ts"
+          import { StackServerApp } from "@stackframe/js";
+
+          const stackServerApp = new StackServerApp({
+            // You should store these in environment variables based on your project setup
+            projectId: "your-project-id-from-dashboard",
+            publishableClientKey: "your-publishable-client-key-from-dashboard",
+            secretServerKey: "your-secret-server-key-from-dashboard",
+            tokenStore: "memory",
+          });
+          ```
+        </TabsContent>
+        
+        <TabsContent value="client">
+          ```tsx title="stack/client.ts"
+          import { StackClientApp } from "@stackframe/js";
+
+          const stackClientApp = new StackClientApp({
+            // You should store these in environment variables based on your project setup
+            projectId: "your-project-id",
+            publishableClientKey: "your-publishable-client-key",
+            tokenStore: "cookie",
+          });
+          ```
+        </TabsContent>
+      </Tabs>
     </Steps>
-  </Tab>
+  </TabsContent>
 </Tabs>
 
 ## Example usage
 
-<Tabs items={["Server", "Client"]}>
-  <Tab value="Server">
+<Tabs defaultValue="server">
+  <TabsList>
+    <TabsTrigger value="server">Server</TabsTrigger>
+    <TabsTrigger value="client">Client</TabsTrigger>
+  </TabsList>
+  
+  <TabsContent value="server">
     ```typescript
     import { stackServerApp } from "@/stack/server";
 
@@ -394,8 +425,9 @@ We recommend using our **setup wizard** for a seamless installation experience. 
 
     await team.addUser(user.id);
     ```
-  </Tab>
-  <Tab value="Client">
+  </TabsContent>
+  
+  <TabsContent value="client">
     ```typescript
     import { stackClientApp } from "@/stack/client";
 
@@ -412,7 +444,7 @@ We recommend using our **setup wizard** for a seamless installation experience. 
 
     await user.signOut();
     ```
-  </Tab>
+  </TabsContent>
 </Tabs>
 
 ## Next steps
@@ -431,70 +463,62 @@ Our recommended way to use Stack Auth with Python is with the [REST API](../rest
 For the purpose of this guide, we will use the `requests` library to make HTTP requests to the Stack Auth API. If you haven't already, you can install it in your environment with `pip install requests`.
 
 <Steps>
-  <Step>
-    <strong className="text-lg font-semibold mt-0 mb-2 block" data-toc-exclude>Create API keys</strong>
+  ### Create API keys
 
-    First, create an account on [the Stack Auth dashboard](https://app.stack-auth.com/projects), and copy your project ID, publishable client key, and secret server key into a safe place (eg. environment variables).
+  First, create an account on [the Stack Auth dashboard](https://app.stack-auth.com/projects), and copy your project ID, publishable client key, and secret server key into a safe place (eg. environment variables).
 
-    From there, you can access them in your Python code. You can then read them like this:
+  From there, you can access them in your Python code. You can then read them like this:
 
-    ```python
-    import os
+  ```python
+  import os
 
-    stack_project_id = os.getenv("STACK_PROJECT_ID")
-    stack_publishable_client_key = os.getenv("STACK_PUBLISHABLE_CLIENT_KEY")
-    stack_secret_server_key = os.getenv("STACK_SECRET_SERVER_KEY")
-    ```
-  </Step>
+  stack_project_id = os.getenv("STACK_PROJECT_ID")
+  stack_publishable_client_key = os.getenv("STACK_PUBLISHABLE_CLIENT_KEY")
+  stack_secret_server_key = os.getenv("STACK_SECRET_SERVER_KEY")
+  ```
 
-  <Step>
-    <strong className="text-lg font-semibold mt-0 mb-2 block" data-toc-exclude>Make a request</strong>
+  ### Make a request
 
-    Next, create a helper function to make requests to the Stack Auth API:
+  Next, create a helper function to make requests to the Stack Auth API:
 
-    ```python
-    import requests
+  ```python
+  import requests
 
-    def stack_auth_request(method, endpoint, **kwargs):
-      res = requests.request(
-        method,
-        f'https://api.stack-auth.com/{endpoint}',
-        headers={
-          'x-stack-access-type': 'server',  # or 'client' if you're only accessing the client API
-          'x-stack-project-id': stack_project_id,
-          'x-stack-publishable-client-key': stack_publishable_client_key,
-          'x-stack-secret-server-key': stack_secret_server_key,  # not necessary if access type is 'client'
-          **kwargs.pop('headers', {}),
-        },
-        **kwargs,
-      )
-      if res.status_code >= 400:
-        raise Exception(f"Stack Auth API request failed with {res.status_code}: {res.text}")
-      return res.json()
+  def stack_auth_request(method, endpoint, **kwargs):
+    res = requests.request(
+      method,
+      f'https://api.stack-auth.com/{endpoint}',
+      headers={
+        'x-stack-access-type': 'server',  # or 'client' if you're only accessing the client API
+        'x-stack-project-id': stack_project_id,
+        'x-stack-publishable-client-key': stack_publishable_client_key,
+        'x-stack-secret-server-key': stack_secret_server_key,  # not necessary if access type is 'client'
+        **kwargs.pop('headers', {}),
+      },
+      **kwargs,
+    )
+    if res.status_code >= 400:
+      raise Exception(f"Stack Auth API request failed with {res.status_code}: {res.text}")
+    return res.json()
 
-    print(stack_auth_request('GET', '/api/v1/projects/current'))
-    ```
-  </Step>
+  print(stack_auth_request('GET', '/api/v1/projects/current'))
+  ```
 
-  <Step>
-    <strong className="text-lg font-semibold mt-0 mb-2 block" data-toc-exclude>Retrieve the access tokens</strong>
+  ### Retrieve the access tokens
 
-    If you're building a backend server, most likely you'll want to use the currently signed in user's access token. Most normally, you would send this with all your requests to the backend in an HTTP header.
+  If you're building a backend server, most likely you'll want to use the currently signed in user's access token. Most normally, you would send this with all your requests to the backend in an HTTP header.
 
-    In Stack Auth's JavaScript SDK, you can retrieve the access token [from the `stackClientApp` object](/sdk/types/user#currentusergetauthjson). Then, you can use said access token to make requests to Stack Auth:
+  In Stack Auth's JavaScript SDK, you can retrieve the access token [from the `stackClientApp` object](/sdk/types/user#currentusergetauthjson). Then, you can use said access token to make requests to Stack Auth:
 
-    ```python
-    access_token = # access token retrieved from the JavaScript SDK
+  ```python
+  access_token = # access token retrieved from the JavaScript SDK
 
-    print(stack_auth_request('GET', '/api/v1/users/me', headers={
-      'x-stack-access-token': access_token,
-    }))
-    ```
-  </Step>
+  print(stack_auth_request('GET', '/api/v1/users/me', headers={
+    'x-stack-access-token': access_token,
+  }))
+  ```
 
-  <Step>
-    <strong className="text-lg font-semibold mt-0 mb-2 block" data-toc-exclude>Done!</strong>
-  </Step>
+  ### Done!
 </Steps>
 
 ## Next steps

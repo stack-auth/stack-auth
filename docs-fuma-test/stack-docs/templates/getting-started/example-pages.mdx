@@ -1,6 +1,6 @@
 ---
-title: Example Pages
-description: Example Pages
+title: example-pages
+description: This guide demonstrates how to integrate Stack Auth with Vite. The same principles apply to other JavaScript frameworks as well. You can find the complete example code in our [GitHub repository](https://github.com/stack-auth/stack-auth/tree/main/examples/js-example).
 ---
 
 
@@ -35,8 +35,13 @@ export const stackClientApp = new StackClientApp({
 
 ### Index page with user information
 
-<Tabs items={["index.html", "index-script.ts"]}>
-  <Tab>
+<Tabs defaultValue="html">
+  <TabsList>
+    <TabsTrigger value="html">index.html</TabsTrigger>
+    <TabsTrigger value="script">index-script.ts</TabsTrigger>
+  </TabsList>
+  
+  <TabsContent value="html">
     ```html
     <!DOCTYPE html>
     <html lang="en">
@@ -68,8 +73,9 @@ export const stackClientApp = new StackClientApp({
     </body>
     </html>
     ```
-  </Tab>
-  <Tab>
+  </TabsContent>
+  
+  <TabsContent value="script">
     ```typescript
     import { stackClientApp } from "./stack";
 
@@ -100,14 +106,19 @@ export const stackClientApp = new StackClientApp({
       }
     }); 
     ```
-  </Tab>
+  </TabsContent>
 </Tabs>
 
 
 ### Sign in with password
 
-<Tabs items={["password-sign-in.html", "password-sign-in-script.ts"]}>
-  <Tab>
+<Tabs defaultValue="html">
+  <TabsList>
+    <TabsTrigger value="html">password-sign-in.html</TabsTrigger>
+    <TabsTrigger value="script">password-sign-in-script.ts</TabsTrigger>
+  </TabsList>
+  
+  <TabsContent value="html">
     ```html
     <!DOCTYPE html>
     <html lang="en">
@@ -134,8 +145,9 @@ export const stackClientApp = new StackClientApp({
     </body>
     </html> 
     ```
-  </Tab>
-  <Tab>
+  </TabsContent>
+  
+  <TabsContent value="script">
     ```typescript
     import { stackClientApp } from "./stack";
 
@@ -200,13 +212,18 @@ export const stackClientApp = new StackClientApp({
       }
     });
     ```
-  </Tab>
+  </TabsContent>
 </Tabs>
 
 ### Sign up with password
 
-<Tabs items={["password-sign-up.html", "password-sign-up-script.ts"]}>
-  <Tab>
+<Tabs defaultValue="html">
+  <TabsList>
+    <TabsTrigger value="html">password-sign-up.html</TabsTrigger>
+    <TabsTrigger value="script">password-sign-up-script.ts</TabsTrigger>
+  </TabsList>
+  
+  <TabsContent value="html">
     ```html
     <!DOCTYPE html>
     <html lang="en">
@@ -233,8 +250,9 @@ export const stackClientApp = new StackClientApp({
     </body>
     </html> 
     ```
-  </Tab>
-  <Tab>
+  </TabsContent>
+  
+  <TabsContent value="script">
     ```typescript
     import { stackClientApp } from "./stack";
 
@@ -272,13 +290,18 @@ export const stackClientApp = new StackClientApp({
       }
     }); 
     ```
-  </Tab>
+  </TabsContent>
 </Tabs>
 
 ### Sign in with OTP/Magic Link
 
-<Tabs items={["otp-sign-in.html", "otp-sign-in-script.ts"]}>
-  <Tab>
+<Tabs defaultValue="html">
+  <TabsList>
+    <TabsTrigger value="html">otp-sign-in.html</TabsTrigger>
+    <TabsTrigger value="script">otp-sign-in-script.ts</TabsTrigger>
+  </TabsList>
+  
+  <TabsContent value="html">
     ```html
     <!DOCTYPE html>
     <html lang="en">
@@ -309,8 +332,9 @@ export const stackClientApp = new StackClientApp({
     </body>
     </html> 
     ```
-  </Tab>
-  <Tab>
+  </TabsContent>
+  
+  <TabsContent value="script">
     ```typescript
     import { stackClientApp } from "./stack";
 
@@ -348,13 +372,18 @@ export const stackClientApp = new StackClientApp({
       }
     }); 
     ```
-  </Tab>
+  </TabsContent>
 </Tabs>
 
 ### OAuth sign in
 
-<Tabs items={["oauth.html", "oauth-script.ts"]}>
-  <Tab>
+<Tabs defaultValue="html">
+  <TabsList>
+    <TabsTrigger value="html">oauth.html</TabsTrigger>
+    <TabsTrigger value="script">oauth-script.ts</TabsTrigger>
+  </TabsList>
+  
+  <TabsContent value="html">
     ```html
     <!DOCTYPE html>
     <html lang="en">
@@ -381,8 +410,9 @@ export const stackClientApp = new StackClientApp({
     </body>
     </html> 
     ```
-  </Tab>
-  <Tab>
+  </TabsContent>
+  
+  <TabsContent value="script">
     ```typescript
     import { stackClientApp } from "./stack";
 
@@ -422,5 +452,5 @@ export const stackClientApp = new StackClientApp({
       }
     });
     ```
-  </Tab>
+  </TabsContent>
 </Tabs>
