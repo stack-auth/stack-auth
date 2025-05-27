@@ -641,7 +641,7 @@ model ProvisionedProject {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  externalProjectId String
+  clientId String
 }
 
 //#region Events

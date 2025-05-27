@@ -15,7 +15,7 @@ async function validateAndGetTransferInfo(authorizationHeader: string, projectId
   const provisionedProject = await prismaClient.provisionedProject.findUnique({
     where: {
       projectId,
-      externalProjectId: clientId,
+      clientId: clientId,
     },
   });
   if (!provisionedProject) {
@@ -89,7 +89,7 @@ export const POST = createSmartRouteHandler({
       method: {},
       data: {
         project_id: provisionedProject.projectId,
-        external_project_id: provisionedProject.externalProjectId,
+        client_id: provisionedProject.clientId,
       },
       callbackUrl: new URL("/integrations/custom/projects/transfer/confirm", getEnvVariable("NEXT_PUBLIC_STACK_DASHBOARD_URL")),
       expiresInMs: 1000 * 60 * 60,
