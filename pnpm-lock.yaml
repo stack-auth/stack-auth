@@ -883,7 +883,7 @@ importers:
     dependencies:
       '@hookform/resolvers':
         specifier: ^3.3.4
-        version: 3.6.0(react-hook-form@7.53.1(react@18.3.1))
+        version: 3.6.0(react-hook-form@7.56.4(react@18.3.1))
       '@oslojs/otp':
         specifier: ^1.1.0
         version: 1.1.0
@@ -1041,7 +1041,11 @@ importers:
     devDependencies:
       '@quetzallabs/i18n':
         specifier: ^0.1.19
+<<<<<<< Updated upstream
         version: 0.1.19(next@15.2.3(@babel/core@7.26.0)(@opentelemetry/api@1.9.0)(react-dom@18.3.1(react@18.3.1))(react@18.3.1))
+=======
+        version: 0.1.19(next@15.3.2(@babel/core@7.26.0)(@opentelemetry/api@1.9.0)(react-dom@18.3.1(react@18.3.1))(react@18.3.1))
+>>>>>>> Stashed changes
       '@types/color':
         specifier: ^3.0.6
         version: 3.0.6
@@ -10191,6 +10195,14 @@ packages:
     peerDependencies:
       react: ^19.0.0
 
+<<<<<<< Updated upstream
+=======
+  react-dom@19.1.0:
+    resolution: {integrity: sha512-Xs1hdnE+DyKgeHJeJznQmYMIBG3TKIHJJT95Q58nHLSrElKlGQqDTR2HQ9fx5CN/Gk6Vh/kupBTDLU11/nDk/g==}
+    peerDependencies:
+      react: ^19.1.0
+
+>>>>>>> Stashed changes
   react-easy-crop@5.4.1:
     resolution: {integrity: sha512-Djtsi7bWO75vkKYkVxNRrJWY69pXLahIAkUN0mmt9cXNnaq2tpG59ctSY6P7ipJgBc7COJDRMRuwb2lYwtACNQ==}
     peerDependencies:
@@ -12140,7 +12152,11 @@ snapshots:
 
   '@babel/helper-plugin-utils@7.25.9': {}
 
+<<<<<<< Updated upstream
   '@babel/helper-replace-supers@7.25.0(@babel/core@7.26.0)':
+=======
+  '@babel/helper-replace-supers@7.25.0(@babel/core@7.26.9)':
+>>>>>>> Stashed changes
     dependencies:
       '@babel/core': 7.26.0
       '@babel/helper-member-expression-to-functions': 7.24.8
@@ -13214,6 +13230,13 @@ snapshots:
     dependencies:
       react-hook-form: 7.53.1(react@19.0.0)
 
+<<<<<<< Updated upstream
+=======
+  '@hookform/resolvers@3.6.0(react-hook-form@7.56.4(react@18.3.1))':
+    dependencies:
+      react-hook-form: 7.56.4(react@18.3.1)
+
+>>>>>>> Stashed changes
   '@humanfs/core@0.19.1': {}
 
   '@humanfs/node@0.16.6':
@@ -14221,7 +14244,7 @@ snapshots:
       - next
       - supports-color
 
-  '@quetzallabs/i18n@0.1.19(next@15.2.3(@babel/core@7.26.0)(@opentelemetry/api@1.9.0)(react-dom@18.3.1(react@18.3.1))(react@18.3.1))':
+  '@quetzallabs/i18n@0.1.19(next@15.3.2(@babel/core@7.26.0)(@opentelemetry/api@1.9.0)(react-dom@18.3.1(react@18.3.1))(react@18.3.1))':
     dependencies:
       '@babel/parser': 7.25.6
       '@babel/traverse': 7.25.6
@@ -14229,7 +14252,7 @@ snapshots:
       dotenv: 10.0.0
       i18next: 21.10.0
       i18next-parser: 9.0.2
-      next-intl: 3.19.1(next@15.2.3(@babel/core@7.26.0)(@opentelemetry/api@1.9.0)(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(react@18.3.1)
+      next-intl: 3.19.1(next@15.3.2(@babel/core@7.26.0)(@opentelemetry/api@1.9.0)(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(react@18.3.1)
       path: 0.12.7
       react: 18.3.1
       react-dom: 18.3.1(react@18.3.1)
@@ -16133,6 +16156,15 @@ snapshots:
       react: 19.0.0
       react-dom: 19.0.0(react@19.0.0)
 
+<<<<<<< Updated upstream
+=======
+  '@tanstack/react-table@8.20.5(react-dom@19.1.0(react@18.3.1))(react@18.3.1)':
+    dependencies:
+      '@tanstack/table-core': 8.20.5
+      react: 18.3.1
+      react-dom: 19.1.0(react@18.3.1)
+
+>>>>>>> Stashed changes
   '@tanstack/table-core@8.20.5': {}
 
   '@testing-library/dom@10.4.0':
@@ -16459,7 +16491,11 @@ snapshots:
 
   '@types/through@0.0.33':
     dependencies:
+<<<<<<< Updated upstream
       '@types/node': 20.17.6
+=======
+      '@types/node': 22.15.18
+>>>>>>> Stashed changes
 
   '@types/uuid@9.0.8': {}
 
@@ -16641,7 +16677,11 @@ snapshots:
       '@typescript-eslint/types': 8.25.0
       eslint-visitor-keys: 4.2.0
 
+<<<<<<< Updated upstream
   '@vercel/analytics@1.3.1(next@15.2.3(@babel/core@7.26.0)(@opentelemetry/api@1.9.0)(react-dom@19.0.0(react@19.0.0))(react@19.0.0))(react@19.0.0)':
+=======
+  '@vercel/analytics@1.3.1(next@15.2.3(@babel/core@7.26.9)(@opentelemetry/api@1.9.0)(react-dom@19.0.0(react@19.0.0))(react@19.0.0))(react@19.0.0)':
+>>>>>>> Stashed changes
     dependencies:
       server-only: 0.0.1
     optionalDependencies:
@@ -17966,6 +18006,12 @@ snapshots:
 
   detect-libc@2.0.3: {}
 
+<<<<<<< Updated upstream
+=======
+  detect-libc@2.0.4:
+    optional: true
+
+>>>>>>> Stashed changes
   detect-node-es@1.1.0: {}
 
   didyoumean@1.2.2: {}
@@ -18472,11 +18518,15 @@ snapshots:
       - eslint-import-resolver-webpack
       - supports-color
 
+<<<<<<< Updated upstream
   eslint-config-prettier@9.0.0(eslint@9.21.0(jiti@2.4.2)):
     dependencies:
       eslint: 9.21.0(jiti@2.4.2)
 
   eslint-config-turbo@1.10.12(eslint@9.21.0(jiti@2.4.2)):
+=======
+  eslint-config-prettier@9.0.0(eslint@9.27.0(jiti@2.4.2)):
+>>>>>>> Stashed changes
     dependencies:
       eslint: 9.21.0(jiti@2.4.2)
       eslint-plugin-turbo: 1.10.12(eslint@9.21.0(jiti@2.4.2))
@@ -18525,7 +18575,11 @@ snapshots:
       - eslint-import-resolver-webpack
       - supports-color
 
+<<<<<<< Updated upstream
   eslint-module-utils@2.12.0(@typescript-eslint/parser@6.21.0(eslint@8.30.0)(typescript@5.3.3))(eslint-import-resolver-node@0.3.9)(eslint-import-resolver-typescript@3.6.1(@typescript-eslint/parser@6.21.0(eslint@8.30.0)(typescript@5.3.3))(eslint-import-resolver-node@0.3.9)(eslint-plugin-import@2.31.0)(eslint@8.30.0))(eslint@8.30.0):
+=======
+  eslint-module-utils@2.12.0(@typescript-eslint/parser@6.21.0(eslint@8.30.0)(typescript@5.3.3))(eslint-import-resolver-node@0.3.9)(eslint-import-resolver-typescript@3.6.1(@typescript-eslint/parser@6.21.0(eslint@8.30.0)(typescript@5.3.3))(eslint-import-resolver-node@0.3.9)(eslint-plugin-import@2.31.0(@typescript-eslint/parser@6.21.0(eslint@8.30.0)(typescript@5.3.3))(eslint@8.30.0))(eslint@8.30.0))(eslint@8.30.0):
+>>>>>>> Stashed changes
     dependencies:
       debug: 3.2.7
     optionalDependencies:
@@ -18547,6 +18601,19 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
+<<<<<<< Updated upstream
+=======
+  eslint-module-utils@2.12.0(@typescript-eslint/parser@6.21.0(eslint@8.30.0)(typescript@5.3.3))(eslint-import-resolver-node@0.3.9)(eslint@8.30.0):
+    dependencies:
+      debug: 3.2.7
+    optionalDependencies:
+      '@typescript-eslint/parser': 6.21.0(eslint@8.30.0)(typescript@5.3.3)
+      eslint: 8.30.0
+      eslint-import-resolver-node: 0.3.9
+    transitivePeerDependencies:
+      - supports-color
+
+>>>>>>> Stashed changes
   eslint-plugin-es@3.0.1(eslint@8.30.0):
     dependencies:
       eslint: 8.30.0
@@ -18611,6 +18678,38 @@ snapshots:
       - eslint-import-resolver-webpack
       - supports-color
 
+<<<<<<< Updated upstream
+=======
+  eslint-plugin-import@2.31.0(@typescript-eslint/parser@6.21.0(eslint@8.30.0)(typescript@5.3.3))(eslint@8.30.0):
+    dependencies:
+      '@rtsao/scc': 1.1.0
+      array-includes: 3.1.8
+      array.prototype.findlastindex: 1.2.5
+      array.prototype.flat: 1.3.2
+      array.prototype.flatmap: 1.3.2
+      debug: 3.2.7
+      doctrine: 2.1.0
+      eslint: 8.30.0
+      eslint-import-resolver-node: 0.3.9
+      eslint-module-utils: 2.12.0(@typescript-eslint/parser@6.21.0(eslint@8.30.0)(typescript@5.3.3))(eslint-import-resolver-node@0.3.9)(eslint@8.30.0)
+      hasown: 2.0.2
+      is-core-module: 2.15.1
+      is-glob: 4.0.3
+      minimatch: 3.1.2
+      object.fromentries: 2.0.8
+      object.groupby: 1.0.3
+      object.values: 1.2.0
+      semver: 6.3.1
+      string.prototype.trimend: 1.0.8
+      tsconfig-paths: 3.15.0
+    optionalDependencies:
+      '@typescript-eslint/parser': 6.21.0(eslint@8.30.0)(typescript@5.3.3)
+    transitivePeerDependencies:
+      - eslint-import-resolver-typescript
+      - eslint-import-resolver-webpack
+      - supports-color
+
+>>>>>>> Stashed changes
   eslint-plugin-jsx-a11y@6.10.2(eslint@8.30.0):
     dependencies:
       aria-query: 5.3.2
@@ -20135,6 +20234,7 @@ snapshots:
     dependencies:
       detect-libc: 1.0.3
     optionalDependencies:
+<<<<<<< Updated upstream
       lightningcss-darwin-arm64: 1.29.1
       lightningcss-darwin-x64: 1.29.1
       lightningcss-freebsd-x64: 1.29.1
@@ -20145,6 +20245,18 @@ snapshots:
       lightningcss-linux-x64-musl: 1.29.1
       lightningcss-win32-arm64-msvc: 1.29.1
       lightningcss-win32-x64-msvc: 1.29.1
+=======
+      lightningcss-darwin-arm64: 1.30.1
+      lightningcss-darwin-x64: 1.30.1
+      lightningcss-freebsd-x64: 1.30.1
+      lightningcss-linux-arm-gnueabihf: 1.30.1
+      lightningcss-linux-arm64-gnu: 1.30.1
+      lightningcss-linux-arm64-musl: 1.30.1
+      lightningcss-linux-x64-gnu: 1.30.1
+      lightningcss-linux-x64-musl: 1.30.1
+      lightningcss-win32-arm64-msvc: 1.30.1
+      lightningcss-win32-x64-msvc: 1.30.1
+>>>>>>> Stashed changes
     optional: true
 
   lilconfig@2.1.0: {}
@@ -20272,7 +20384,11 @@ snapshots:
     dependencies:
       marked: 7.0.4
       react: 18.3.1
+<<<<<<< Updated upstream
       react-email: 2.1.0(@babel/core@7.26.0)(@opentelemetry/api@1.9.0)(@swc/helpers@0.5.15)(eslint@9.21.0(jiti@2.4.2))
+=======
+      react-email: 2.1.0(@babel/core@7.26.0)(@opentelemetry/api@1.9.0)(@swc/helpers@0.5.15)(eslint@9.27.0(jiti@2.4.2))
+>>>>>>> Stashed changes
 
   media-typer@0.3.0: {}
 
@@ -20464,11 +20580,11 @@ snapshots:
       react: 18.3.1
       use-intl: 3.19.1(react@18.3.1)
 
-  next-intl@3.19.1(next@15.2.3(@babel/core@7.26.0)(@opentelemetry/api@1.9.0)(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(react@18.3.1):
+  next-intl@3.19.1(next@15.3.2(@babel/core@7.26.0)(@opentelemetry/api@1.9.0)(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(react@18.3.1):
     dependencies:
       '@formatjs/intl-localematcher': 0.5.4
       negotiator: 0.6.3
-      next: 15.2.3(@babel/core@7.26.0)(@opentelemetry/api@1.9.0)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
+      next: 15.3.2(@babel/core@7.26.0)(@opentelemetry/api@1.9.0)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
       react: 18.3.1
       use-intl: 3.19.1(react@18.3.1)
 
@@ -20680,6 +20796,7 @@ snapshots:
       - '@babel/core'
       - babel-plugin-macros
 
+<<<<<<< Updated upstream
   next@15.2.3(@babel/core@7.26.0)(@opentelemetry/api@1.9.0)(react-dom@18.2.0(react@18.2.0))(react@18.2.0):
     dependencies:
       '@next/env': 15.2.3
@@ -20758,6 +20875,8 @@ snapshots:
       - '@babel/core'
       - babel-plugin-macros
 
+=======
+>>>>>>> Stashed changes
   next@15.2.3(@babel/core@7.26.0)(@opentelemetry/api@1.9.0)(react-dom@19.0.0(react@19.0.0))(react@19.0.0):
     dependencies:
       '@next/env': 15.2.3
@@ -20784,6 +20903,113 @@ snapshots:
       - '@babel/core'
       - babel-plugin-macros
 
+<<<<<<< Updated upstream
+=======
+  next@15.2.3(@babel/core@7.26.9)(@opentelemetry/api@1.9.0)(react-dom@19.0.0(react@19.0.0))(react@19.0.0):
+    dependencies:
+      '@next/env': 15.2.3
+      '@swc/counter': 0.1.3
+      '@swc/helpers': 0.5.15
+      busboy: 1.6.0
+      caniuse-lite: 1.0.30001696
+      postcss: 8.4.31
+      react: 19.0.0
+      react-dom: 19.0.0(react@19.0.0)
+      styled-jsx: 5.1.6(@babel/core@7.26.9)(react@19.0.0)
+    optionalDependencies:
+      '@next/swc-darwin-arm64': 15.2.3
+      '@next/swc-darwin-x64': 15.2.3
+      '@next/swc-linux-arm64-gnu': 15.2.3
+      '@next/swc-linux-arm64-musl': 15.2.3
+      '@next/swc-linux-x64-gnu': 15.2.3
+      '@next/swc-linux-x64-musl': 15.2.3
+      '@next/swc-win32-arm64-msvc': 15.2.3
+      '@next/swc-win32-x64-msvc': 15.2.3
+      '@opentelemetry/api': 1.9.0
+      sharp: 0.33.5
+    transitivePeerDependencies:
+      - '@babel/core'
+      - babel-plugin-macros
+
+  next@15.3.2(@babel/core@7.26.0)(@opentelemetry/api@1.9.0)(react-dom@18.2.0(react@18.2.0))(react@18.2.0):
+    dependencies:
+      '@next/env': 15.3.2
+      '@swc/counter': 0.1.3
+      '@swc/helpers': 0.5.15
+      busboy: 1.6.0
+      caniuse-lite: 1.0.30001718
+      postcss: 8.4.31
+      react: 18.2.0
+      react-dom: 18.2.0(react@18.2.0)
+      styled-jsx: 5.1.6(@babel/core@7.26.0)(react@18.2.0)
+    optionalDependencies:
+      '@next/swc-darwin-arm64': 15.3.2
+      '@next/swc-darwin-x64': 15.3.2
+      '@next/swc-linux-arm64-gnu': 15.3.2
+      '@next/swc-linux-arm64-musl': 15.3.2
+      '@next/swc-linux-x64-gnu': 15.3.2
+      '@next/swc-linux-x64-musl': 15.3.2
+      '@next/swc-win32-arm64-msvc': 15.3.2
+      '@next/swc-win32-x64-msvc': 15.3.2
+      '@opentelemetry/api': 1.9.0
+      sharp: 0.34.1
+    transitivePeerDependencies:
+      - '@babel/core'
+      - babel-plugin-macros
+
+  next@15.3.2(@babel/core@7.26.0)(@opentelemetry/api@1.9.0)(react-dom@18.3.1(react@18.3.1))(react@18.3.1):
+    dependencies:
+      '@next/env': 15.3.2
+      '@swc/counter': 0.1.3
+      '@swc/helpers': 0.5.15
+      busboy: 1.6.0
+      caniuse-lite: 1.0.30001718
+      postcss: 8.4.31
+      react: 18.3.1
+      react-dom: 18.3.1(react@18.3.1)
+      styled-jsx: 5.1.6(@babel/core@7.26.0)(react@18.3.1)
+    optionalDependencies:
+      '@next/swc-darwin-arm64': 15.3.2
+      '@next/swc-darwin-x64': 15.3.2
+      '@next/swc-linux-arm64-gnu': 15.3.2
+      '@next/swc-linux-arm64-musl': 15.3.2
+      '@next/swc-linux-x64-gnu': 15.3.2
+      '@next/swc-linux-x64-musl': 15.3.2
+      '@next/swc-win32-arm64-msvc': 15.3.2
+      '@next/swc-win32-x64-msvc': 15.3.2
+      '@opentelemetry/api': 1.9.0
+      sharp: 0.34.1
+    transitivePeerDependencies:
+      - '@babel/core'
+      - babel-plugin-macros
+
+  next@15.3.2(@babel/core@7.26.0)(@opentelemetry/api@1.9.0)(react-dom@19.1.0(react@18.3.1))(react@18.3.1):
+    dependencies:
+      '@next/env': 15.3.2
+      '@swc/counter': 0.1.3
+      '@swc/helpers': 0.5.15
+      busboy: 1.6.0
+      caniuse-lite: 1.0.30001718
+      postcss: 8.4.31
+      react: 18.3.1
+      react-dom: 19.1.0(react@18.3.1)
+      styled-jsx: 5.1.6(@babel/core@7.26.0)(react@18.3.1)
+    optionalDependencies:
+      '@next/swc-darwin-arm64': 15.3.2
+      '@next/swc-darwin-x64': 15.3.2
+      '@next/swc-linux-arm64-gnu': 15.3.2
+      '@next/swc-linux-arm64-musl': 15.3.2
+      '@next/swc-linux-x64-gnu': 15.3.2
+      '@next/swc-linux-x64-musl': 15.3.2
+      '@next/swc-win32-arm64-msvc': 15.3.2
+      '@next/swc-win32-x64-msvc': 15.3.2
+      '@opentelemetry/api': 1.9.0
+      sharp: 0.34.1
+    transitivePeerDependencies:
+      - '@babel/core'
+      - babel-plugin-macros
+
+>>>>>>> Stashed changes
   node-abi@3.65.0:
     dependencies:
       semver: 7.6.3
@@ -21537,6 +21763,19 @@ snapshots:
       react: 19.0.0
       scheduler: 0.25.0
 
+<<<<<<< Updated upstream
+=======
+  react-dom@19.1.0(react@18.3.1):
+    dependencies:
+      react: 18.3.1
+      scheduler: 0.26.0
+
+  react-dom@19.1.0(react@19.1.0):
+    dependencies:
+      react: 19.1.0
+      scheduler: 0.26.0
+
+>>>>>>> Stashed changes
   react-easy-crop@5.4.1(react-dom@18.3.1(react@18.2.0))(react@18.2.0):
     dependencies:
       normalize-wheel: 1.0.1
@@ -21551,7 +21790,11 @@ snapshots:
       react-dom: 18.3.1(react@18.3.1)
       tslib: 2.8.1
 
+<<<<<<< Updated upstream
   react-email@2.1.0(@babel/core@7.26.0)(@opentelemetry/api@1.9.0)(@swc/helpers@0.5.15)(eslint@9.21.0(jiti@2.4.2)):
+=======
+  react-email@2.1.0(@babel/core@7.26.0)(@opentelemetry/api@1.9.0)(@swc/helpers@0.5.15)(eslint@9.27.0(jiti@2.4.2)):
+>>>>>>> Stashed changes
     dependencies:
       '@radix-ui/colors': 1.0.1
       '@radix-ui/react-collapsible': 1.0.3(@types/react-dom@18.3.1)(@types/react@18.3.12)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
@@ -21628,6 +21871,13 @@ snapshots:
     dependencies:
       react: 19.0.0
 
+<<<<<<< Updated upstream
+=======
+  react-hook-form@7.56.4(react@18.3.1):
+    dependencies:
+      react: 18.3.1
+
+>>>>>>> Stashed changes
   react-icons@5.2.1(react@18.3.1):
     dependencies:
       react: 18.3.1
@@ -22602,6 +22852,16 @@ snapshots:
     optionalDependencies:
       '@babel/core': 7.26.0
 
+<<<<<<< Updated upstream
+=======
+  styled-jsx@5.1.6(@babel/core@7.26.9)(react@19.0.0):
+    dependencies:
+      client-only: 0.0.1
+      react: 19.0.0
+    optionalDependencies:
+      '@babel/core': 7.26.9
+
+>>>>>>> Stashed changes
   stylis@4.2.0: {}
 
   sucrase@3.35.0:
