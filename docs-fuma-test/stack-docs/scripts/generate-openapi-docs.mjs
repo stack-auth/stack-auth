@@ -1,18 +1,14 @@
 import fs from 'fs';
 import { generateFiles } from 'fumadocs-openapi';
 import path from 'path';
-import { fileURLToPath } from 'url';
 
-// Get __dirname equivalent in ESM
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-
-const OPENAPI_DIR = path.resolve(__dirname, '../public/openapi');
-const OUTPUT_DIR = path.resolve(__dirname, '../content/docs');
+// Use relative paths to avoid path duplication issues
+const OPENAPI_DIR = './public/openapi';
+const OUTPUT_DIR = './content/docs';
 
 async function generateOpenAPIDocs() {
   console.log('Starting Fumadocs OpenAPI documentation generation...');
-
+  
   // Ensure the OpenAPI directory exists
   if (!fs.existsSync(OPENAPI_DIR)) {
     console.log('Creating OpenAPI directory...');
@@ -54,28 +50,10 @@ async function generateOpenAPIDocs() {
   // Generate meta.json for API section navigation
   const apiMetaPath = path.join(OUTPUT_DIR, 'api', 'meta.json');
   const apiMeta = {
-    title: 'REST API Reference',
     pages: [
-      {
-        title: 'Client API',
-        href: '/docs/api/client',
-        description: 'Client-side API endpoints for frontend applications'
-      },
-      {
-        title: 'Server API', 
-        href: '/docs/api/server',
-        description: 'Server-side API endpoints for backend applications'
-      },
-      {
-        title: 'Admin API',
-        href: '/docs/api/admin', 
-        description: 'Administrative API endpoints for project management'
-      },
-      {
-        title: 'Webhooks',
-        href: '/docs/api/webhooks',
-        description: 'Webhook events and schemas'
-      }
+      'client',
+      'server',
+      'webhooks'
     ]
   };
 
@@ -83,7 +61,7 @@ async function generateOpenAPIDocs() {
   fs.writeFileSync(apiMetaPath, JSON.stringify(apiMeta, null, 2));
   
   console.log('🎉 Fumadocs OpenAPI documentation generation complete!');
-  console.log(`📂 Documentation generated in: ${OUTPUT_DIR}/api/`);
+  console.log(`📂 Documentation generated in: ${path.resolve(OUTPUT_DIR)}/api/`);
 }
 
 // Run the generator

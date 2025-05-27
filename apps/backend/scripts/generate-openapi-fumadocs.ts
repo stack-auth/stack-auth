@@ -4,6 +4,7 @@ import { webhookEvents } from '@stackframe/stack-shared/dist/interface/webhooks'
 import { writeFileSyncIfChanged } from '@stackframe/stack-shared/dist/utils/fs';
 import { HTTP_METHODS } from '@stackframe/stack-shared/dist/utils/http';
 import { typedKeys } from '@stackframe/stack-shared/dist/utils/objects';
+import fs from 'fs';
 import { glob } from 'glob';
 import path from 'path';
 
@@ -12,6 +13,12 @@ async function main() {
 
   // Create openapi directory in Fumadocs project
   const fumaDocsOpenApiDir = path.resolve("../../docs-fuma-test/stack-docs/public/openapi");
+  
+  // Ensure the openapi directory exists
+  if (!fs.existsSync(fumaDocsOpenApiDir)) {
+    console.log('Creating OpenAPI directory...');
+    fs.mkdirSync(fumaDocsOpenApiDir, { recursive: true });
+  }
   
   for (const audience of ['client', 'server', 'admin'] as const) {
     const filePathPrefix = path.resolve(process.platform === "win32" ? "apps/src/app/api/latest" : "src/app/api/latest");
