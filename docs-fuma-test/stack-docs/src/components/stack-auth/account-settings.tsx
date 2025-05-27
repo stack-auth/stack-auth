@@ -1,11 +1,11 @@
 import { AccountSettings } from '@stackframe/stack';
-import { Suspense } from 'react';
+import * as React from 'react';
 import { StackContainer } from '../mdx';
 
 export function AccountSettingsStackAuth() {
   return (
-    <StackContainer color="amber" size="xlarge">
-      <Suspense fallback={
+    <StackContainer color="amber" size="full">
+      <React.Suspense fallback={
         <div className="flex items-center justify-center p-8">
           <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-amber-600"></div>
         </div>
@@ -38,7 +38,7 @@ export function AccountSettingsStackAuth() {
              }
            ]}
         />
-      </Suspense>
+      </React.Suspense>
     </StackContainer>
   );
 }
