@@ -16,7 +16,7 @@ export const integrationProjectTransferCodeHandler = createVerificationCodeHandl
   },
   type: VerificationCodeType.INTEGRATION_PROJECT_TRANSFER,
   data: yupObject({
-    external_project_id: yupString().defined(),
+    client_id: yupString().defined(),
     project_id: yupString().defined(),
   }).defined(),
   method: yupObject({}),
@@ -34,7 +34,7 @@ export const integrationProjectTransferCodeHandler = createVerificationCodeHandl
     const provisionedProjects = await prismaClient.provisionedProject.findMany({
       where: {
         projectId: data.project_id,
-        externalProjectId: data.external_project_id,
+        clientId: data.client_id,
       },
     });
     if (provisionedProjects.length === 0) throw new StatusError(400, "The project to transfer was not provisioned or has already been transferred.");
@@ -48,7 +48,7 @@ export const integrationProjectTransferCodeHandler = createVerificationCodeHandl
       const provisionedProject = await tx.provisionedProject.deleteMany({
         where: {
           projectId: data.project_id,
-          externalProjectId: data.external_project_id,
+          clientId: data.client_id,
         },
       });
 
