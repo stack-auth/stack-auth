@@ -24,6 +24,9 @@ export default function Header() {
           <Link href="/apikey-demo" className="text-sm hover:text-gray-600 dark:hover:text-gray-300">
             API Key Demo
           </Link>
+          <Link href="/cli-auth/init" className="text-sm hover:text-gray-600 dark:hover:text-gray-300">
+            CLI Auth Demo
+          </Link>
         </div>
 
         <div className="flex items-center justify-end gap-5">
