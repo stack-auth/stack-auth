@@ -33,7 +33,7 @@ export function useDynamicNavigation(): LinkItemType[] {
     {
       type: 'main',
       text: "REST API & Webhooks",
-      url: getPlatformUrl(currentPlatform, "rest-api/overview"),
+      url: getPlatformUrl(currentPlatform, "api/overview"),
       active: "url",
       icon: <Code2 />
     }
