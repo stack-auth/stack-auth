@@ -1,9 +1,10 @@
 'use client';
 
 import type {
-  TabsContentProps,
   TabsProps as BaseProps,
+  TabsContentProps,
 } from '@radix-ui/react-tabs';
+import { useEffectEvent } from 'fumadocs-core/utils/use-effect-event';
 import {
   createContext,
   type ReactNode,
@@ -16,7 +17,6 @@ import {
 } from 'react';
 import { cn } from '../lib/cn';
 import * as Primitive from './ui/tabs';
-import { useEffectEvent } from 'fumadocs-core/utils/use-effect-event';
 
 type CollectionKey = string | symbol;
 type ChangeListener = (v: string) => void;

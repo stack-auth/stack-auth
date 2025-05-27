@@ -1,15 +1,14 @@
 'use client';
 
-import React, { ReactNode } from 'react';
+import React from 'react';
 import { cn } from '../../lib/cn';
 
-interface InfoProps {
-  children: ReactNode;
+export interface InfoProps {
+  children: React.ReactNode;
   type?: 'info' | 'warning' | 'success';
 }
 
-export const Info: React.FC<InfoProps> = ({ children, type = 'info' }) => {
-  // Define color variants based on type
+export function Info({ children, type = 'info' }: InfoProps) {
   const colorVariants = {
     info: {
       border: 'border-blue-400/30 dark:border-blue-400/20',
@@ -65,6 +64,4 @@ export const Info: React.FC<InfoProps> = ({ children, type = 'info' }) => {
       </div>
     </div>
   );
-};
-
-export default Info; 
+} 
