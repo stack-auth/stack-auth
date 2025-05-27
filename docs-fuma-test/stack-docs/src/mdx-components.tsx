@@ -54,5 +54,5 @@ export function getMDXComponents(components?: MDXComponents): MDXComponents {
     Accordion,
     CodeBlocks,
     Icon,
-  };
+  } as MDXComponents;
 }
