@@ -10,18 +10,17 @@ import { APIPage } from 'fumadocs-openapi/ui';
 import { SignIn } from '@stackframe/stack';
 
 // Custom components from @stackframe/stack
-import { AccountSettingsStackAuth } from './components/stack-auth/account-settings';
-import { SignInExtraInfo, SignInPasswordFirstTab, SignInStackAuth } from './components/stack-auth/sign-in';
-import { StackUserButton } from './components/stack-auth/stack-user-button';
-import { UserButtonDemo } from './components/stack-auth/user-button-demo';
-
 import { Card, CardGroup, Info } from './components/mdx';
 import { AuthCard } from './components/mdx/AuthCard';
+import { DynamicCodeblock } from './components/mdx/DynamicCodeblock';
 import { Accordion, CodeBlocks, Icon, Markdown, ParamField } from './components/mdx/SDKComponents';
 import { PropTable } from './components/PropTable';
+import { AccountSettingsStackAuth } from './components/stack-auth/account-settings';
+import { SignInDemo, SignInExtraInfo, SignInPasswordFirstTab, SignInStackAuth } from './components/stack-auth/sign-in';
+import { StackUserButton } from './components/stack-auth/stack-user-button';
+import { UserButtonDemo } from './components/stack-auth/user-button-demo';
 import { Step, Steps } from './components/steps';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from './components/ui/tabs';
-
 // use this function to get MDX components, you will need it for rendering MDX
 export function getMDXComponents(components?: MDXComponents): MDXComponents {
   return {
@@ -34,6 +33,7 @@ export function getMDXComponents(components?: MDXComponents): MDXComponents {
     Info,
     SignInStackAuth,
     SignInPasswordFirstTab,
+    SignInDemo,
     AuthCard,
     AccountSettingsStackAuth,
     SignInExtraInfo,
@@ -54,5 +54,6 @@ export function getMDXComponents(components?: MDXComponents): MDXComponents {
     Accordion,
     CodeBlocks,
     Icon,
+    DynamicCodeblock,
   } as MDXComponents;
 }
