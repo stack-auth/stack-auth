@@ -12,7 +12,7 @@ export function Info({ children, type = 'info' }: InfoProps) {
   const colorVariants = {
     info: {
       border: 'border-blue-400/30 dark:border-blue-400/20',
-      bg: 'bg-blue-50/50 dark:bg-blue-900/10',
+      bg: 'bg-blue-50/50 dark:bg-blue-900/10', 
       icon: 'text-blue-500 dark:text-blue-400',
       title: 'text-blue-700 dark:text-blue-300'
     },
