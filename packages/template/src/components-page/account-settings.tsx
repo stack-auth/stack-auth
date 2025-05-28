@@ -161,7 +161,7 @@ export function AccountSettings(props: {
               type: 'item',
               id: 'team-creation',
               content: <Suspense fallback={<TeamCreationSkeleton/>}>
-                <TeamCreationPage />
+                <TeamCreationPage mockMode={!!props.mockUser} />
               </Suspense>,
             }] as const : [],
           ] as const).filter((p) => p.type === 'divider' || (p as any).content )}
