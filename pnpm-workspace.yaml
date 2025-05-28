@@ -4,4 +4,4 @@ packages:
   - examples/*
   - docs
   - docs-fuma
-  - docs-fuma-test
+  - docs-fuma-test/stack-docs
