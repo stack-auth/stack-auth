@@ -58,19 +58,19 @@ export function AccountSettings(props: {
     geoInfo?: {
       ip?: string,
       cityName?: string,
-    }
+    },
   }>,
 }) {
   const { t } = useTranslation();
   const userFromHook = useUser({ or: props.mockUser ? 'return-null' : 'redirect' });
   const stackApp = useStackApp();
   const projectFromHook = stackApp.useProject();
-  
+
   // Use mock data if provided, otherwise use real data
   const user = props.mockUser ? {
     useTeams: () => [], // Mock empty teams for now
   } : userFromHook;
-  
+
   const project = props.mockProject || projectFromHook;
   const teams = user?.useTeams() || [];
 
