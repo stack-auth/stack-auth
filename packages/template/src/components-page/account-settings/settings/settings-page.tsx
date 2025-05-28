@@ -8,8 +8,8 @@ export function SettingsPage(props?: {
 }) {
   return (
     <PageLayout>
-      <DeleteAccountSection />
-      <SignOutSection />
+      <DeleteAccountSection mockMode={props?.mockMode} />
+      <SignOutSection mockMode={props?.mockMode} />
     </PageLayout>
   );
 }
