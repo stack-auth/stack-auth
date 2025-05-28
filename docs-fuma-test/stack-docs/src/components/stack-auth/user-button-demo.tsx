@@ -2,9 +2,9 @@
 
 import { UserButton } from "@stackframe/stack";
 import { Wrench } from "lucide-react";
-import { useEffect, useState } from "react";
-import { codeToHtml } from "shiki";
+import { useState } from "react";
 import { StackContainer } from "../mdx";
+import { DynamicCodeblock } from "../mdx/DynamicCodeblock";
 
 interface UserButtonDemoProps {
   showUserInfo: boolean;
@@ -18,8 +18,6 @@ export function UserButtonDemo() {
     colorModeToggle: false,
     extraItems: false,
   });
-
-  const [highlightedCode, setHighlightedCode] = useState<string>("");
 
   // Mock user data
   const mockUser = {
@@ -58,38 +56,6 @@ export function MyComponent() {
   );
 }`;
   };
-
-  // Update syntax highlighted code when props change
-  useEffect(() => {
-    const updateHighlightedCode = async () => {
-      try {
-        const html = await codeToHtml(generateCodeExample(), {
-          lang: 'tsx',
-          theme: 'github-dark',
-          transformers: [{
-            pre(node) {
-              // Remove background styles from pre element
-              if (node.properties.style) {
-                node.properties.style = (node.properties.style as string).replace(/background[^;]*;?/g, '');
-              }
-            },
-            code(node) {
-              // Remove background styles from code element
-              if (node.properties.style) {
-                node.properties.style = (node.properties.style as string).replace(/background[^;]*;?/g, '');
-              }
-            }
-          }]
-        });
-        setHighlightedCode(html);
-      } catch (error) {
-        console.error('Error highlighting code:', error);
-        setHighlightedCode(`<pre><code>${generateCodeExample()}</code></pre>`);
-      }
-    };
-
-    updateHighlightedCode();
-  }, [props]);
 
   return (
     <div className="w-full max-w-6xl mx-auto p-6 space-y-6">
@@ -140,8 +106,6 @@ export function MyComponent() {
             </label>
             <p className="text-xs text-gray-600">Additional menu items to display in the dropdown.</p>
           </div>
-
-
         </div>
 
         {/* Component Preview */}
@@ -163,22 +127,10 @@ export function MyComponent() {
       </div>
 
       {/* Code Example */}
-      <div className="space-y-4">
-        <h3 className="text-lg font-semibold">Code Example</h3>
-        <div className="relative">
-          <div 
-            className="rounded-lg border bg-[#0a0a0a] p-4 overflow-auto max-h-[500px] text-sm"
-            style={{ 
-              background: '#0a0a0a !important',
-            }}
-          >
-            <div 
-              className="[&_*]:!bg-transparent [&_pre]:!bg-transparent [&_code]:!bg-transparent"
-              dangerouslySetInnerHTML={{ __html: highlightedCode }}
-            />
-          </div>
-        </div>
-      </div>
+      <DynamicCodeblock 
+        code={generateCodeExample()}
+        title="Code Example"
+      />
     </div>
   );
 } 
