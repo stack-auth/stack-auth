@@ -32,12 +32,52 @@ export function AccountSettings(props: {
   } | {
     iconName?: keyof typeof icons,
   }))[],
+  mockUser?: {
+    displayName?: string,
+    profileImageUrl?: string,
+  },
+  mockApiKeys?: Array<{
+    id: string,
+    description: string,
+    createdAt: string,
+    expiresAt?: string,
+    manuallyRevokedAt?: string,
+  }>,
+  mockProject?: {
+    config: {
+      allowUserApiKeys: boolean,
+      clientTeamCreationEnabled: boolean,
+    },
+  },
+  mockSessions?: Array<{
+    id: string,
+    isCurrentSession: boolean,
+    isImpersonation?: boolean,
+    createdAt: string,
+    lastUsedAt?: string,
+    geoInfo?: {
+      ip?: string,
+      cityName?: string,
+    },
+  }>,
 }) {
   const { t } = useTranslation();
-  const user = useUser({ or: 'redirect' });
-  const teams = user.useTeams();
+  const userFromHook = useUser({ or: props.mockUser ? 'return-null' : 'redirect' });
   const stackApp = useStackApp();
-  const project = stackApp.useProject();
+  const projectFromHook = stackApp.useProject();
+
+  // Use mock data if provided, otherwise use real data
+  const user = props.mockUser ? {
+    useTeams: () => [], // Mock empty teams for now
+  } : userFromHook;
+
+  const project = props.mockProject || projectFromHook;
+  const teams = user?.useTeams() || [];
+
+  // If we're not in mock mode and don't have a user, the useUser hook will handle redirect
+  if (!props.mockUser && !userFromHook) {
+    return null;
+  }
 
   return (
     <MaybeFullPage fullPage={!!props.fullPage}>
@@ -49,7 +89,7 @@ export function AccountSettings(props: {
               type: 'item',
               id: 'profile',
               icon: <Icon name="Contact"/>,
-              content: <ProfilePage/>,
+              content: <ProfilePage mockUser={props.mockUser}/>,
             },
             {
               title: t('Emails & Auth'),
@@ -57,7 +97,7 @@ export function AccountSettings(props: {
               id: 'auth',
               icon: <Icon name="ShieldCheck"/>,
               content: <Suspense fallback={<EmailsAndAuthPageSkeleton/>}>
-                <EmailsAndAuthPage/>
+                <EmailsAndAuthPage mockMode={!!props.mockUser}/>
               </Suspense>,
             },
             {
@@ -66,7 +106,7 @@ export function AccountSettings(props: {
               id: 'sessions',
               icon: <Icon name="Monitor"/>,
               content: <Suspense fallback={<ActiveSessionsPageSkeleton/>}>
-                <ActiveSessionsPage/>
+                <ActiveSessionsPage mockSessions={props.mockSessions} mockMode={!!props.mockUser}/>
               </Suspense>,
             },
             ...(project.config.allowUserApiKeys ? [{
@@ -75,7 +115,7 @@ export function AccountSettings(props: {
               id: 'api-keys',
               icon: <Icon name="Key" />,
               content: <Suspense fallback={<ApiKeysPageSkeleton/>}>
-                <ApiKeysPage />
+                <ApiKeysPage mockApiKeys={props.mockApiKeys} mockMode={!!props.mockUser} />
               </Suspense>,
             }] as const : []),
             {
@@ -83,7 +123,7 @@ export function AccountSettings(props: {
               type: 'item',
               id: 'settings',
               icon: <Icon name="Settings"/>,
-              content: <SettingsPage/>,
+              content: <SettingsPage mockMode={!!props.mockUser}/>,
             },
             ...(props.extraItems?.map(item => ({
               title: item.title,
@@ -121,7 +161,7 @@ export function AccountSettings(props: {
               type: 'item',
               id: 'team-creation',
               content: <Suspense fallback={<TeamCreationSkeleton/>}>
-                <TeamCreationPage />
+                <TeamCreationPage mockMode={!!props.mockUser} />
               </Suspense>,
             }] as const : [],
           ] as const).filter((p) => p.type === 'divider' || (p as any).content )}
