@@ -1,0 +1,10 @@
+{
+  "title": "Stack Auth Documentation",
+  "root": true,
+  "pages": [
+    "pages-next",
+    "pages-react",
+    "pages-js",
+    "pages-python"
+  ]
+}
