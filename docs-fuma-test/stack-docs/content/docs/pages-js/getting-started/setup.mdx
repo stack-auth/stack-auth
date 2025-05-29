@@ -1,0 +1,178 @@
+---
+title: setup
+description: Getting started with Stack in 5 minutes
+---
+
+
+<Info>
+Welcome to the JavaScript SDK setup guide. If you're looking for guides for other frameworks, check out the [React SDK Setup](/react/getting-started/setup), or the [Next.js SDK Setup](/next/getting-started/setup).
+</Info>
+
+Before getting started, make sure you have a JavaScript project set up (such as Node.js, Vite, or any other JavaScript framework).
+
+We recommend using our **setup wizard** for a seamless installation experience. The wizard automatically detects your project structure and walks you through the setup process. If you encounter any issues with the wizard, you can follow our manual installation steps instead.
+
+<Tabs defaultValue="wizard">
+  <TabsList>
+    <TabsTrigger value="wizard">Setup wizard (recommended)</TabsTrigger>
+    <TabsTrigger value="manual">Manual installation</TabsTrigger>
+  </TabsList>
+  
+  <TabsContent value="wizard">
+    <Steps>
+      <Step>
+      ### Run installation wizard
+      </Step>
+      Run Stack's installation wizard with the following command:
+
+      ```sh title="Terminal"
+      npx @stackframe/init-stack@latest
+      ```
+
+      <Step>
+      ### Update API keys
+      </Step>
+      Then, create an account on [the Stack Auth dashboard](https://app.stack-auth.com/projects), create a new project with an API key, and copy its values into the `stack/server.ts` or `stack/client.ts` file.
+
+      <Tabs defaultValue="server">
+        <TabsList>
+          <TabsTrigger value="server">Server</TabsTrigger>
+          <TabsTrigger value="client">Client</TabsTrigger>
+        </TabsList>
+        
+        <TabsContent value="server">
+          ```tsx title="stack/server.ts"
+          import { StackServerApp } from "@stackframe/js";
+
+          export const stackServerApp = new StackServerApp({
+            // You should store these in environment variables based on your project setup
+            projectId: "your-project-id",
+            publishableClientKey: "your-publishable-client-key",
+            secretServerKey: "your-secret-server-key",
+            tokenStore: "memory",
+          });
+          ```
+        </TabsContent>
+        
+        <TabsContent value="client">
+          ```tsx title="stack/client.ts"
+          import { StackClientApp } from "@stackframe/js";
+
+          export const stackClientApp = new StackClientApp({
+            // You should store these in environment variables based on your project setup
+            projectId: "your-project-id",
+            publishableClientKey: "your-publishable-client-key",
+            tokenStore: "cookie",
+          });
+          ```
+        </TabsContent>
+      </Tabs>
+    </Steps>
+  </TabsContent>
+  
+  <TabsContent value="manual">
+    <Steps>
+      <Step>
+      ### Install npm package
+      </Step>
+
+      ```bash title="Terminal"
+      npm install @stackframe/js
+      ```
+
+      <Step>
+      ### Update API keys
+      </Step>
+      Then, create an account on [the Stack Auth dashboard](https://app.stack-auth.com/projects), create a new project with an API key, and copy its values into the `stack/server.ts` or `stack/client.ts` file.
+
+      <Step>
+      ### Initialize the app
+      </Step>
+      <Tabs defaultValue="server">
+        <TabsList>
+          <TabsTrigger value="server">Server</TabsTrigger>
+          <TabsTrigger value="client">Client</TabsTrigger>
+        </TabsList>
+        
+        <TabsContent value="server">
+          ```typescript title="stack/server.ts"
+          import { StackServerApp } from "@stackframe/js";
+
+          const stackServerApp = new StackServerApp({
+            // You should store these in environment variables based on your project setup
+            projectId: "your-project-id-from-dashboard",
+            publishableClientKey: "your-publishable-client-key-from-dashboard",
+            secretServerKey: "your-secret-server-key-from-dashboard",
+            tokenStore: "memory",
+          });
+          ```
+        </TabsContent>
+        
+        <TabsContent value="client">
+          ```tsx title="stack/client.ts"
+          import { StackClientApp } from "@stackframe/js";
+
+          const stackClientApp = new StackClientApp({
+            // You should store these in environment variables based on your project setup
+            projectId: "your-project-id",
+            publishableClientKey: "your-publishable-client-key",
+            tokenStore: "cookie",
+          });
+          ```
+        </TabsContent>
+      </Tabs>
+    </Steps>
+  </TabsContent>
+</Tabs>
+
+## Example usage
+
+<Tabs defaultValue="server">
+  <TabsList>
+    <TabsTrigger value="server">Server</TabsTrigger>
+    <TabsTrigger value="client">Client</TabsTrigger>
+  </TabsList>
+  
+  <TabsContent value="server">
+    ```typescript
+    import { stackServerApp } from "@/stack/server";
+
+    const user = await stackServerApp.getUser("user_id");
+
+    await user.update({
+      displayName: "New Display Name",
+    });
+
+    const team = await stackServerApp.createTeam({
+      name: "New Team",
+    });
+
+    await team.addUser(user.id);
+    ```
+  </TabsContent>
+  
+  <TabsContent value="client">
+    ```typescript
+    import { stackClientApp } from "@/stack/client";
+
+    await stackClientApp.signInWithCredential({
+      email: "test@example.com",
+      password: "password123",
+    });
+
+    const user = await stackClientApp.getUser();
+
+    await user.update({
+      displayName: "New Display Name",
+    });
+
+    await user.signOut();
+    ```
+  </TabsContent>
+</Tabs>
+
+## Next steps
+
+Check out the [Users](./users.mdx) to learn how to retrieve and update user information, or [Example pages](./example-pages.mdx) to see how to build your sign-in/up pages.
+
+
