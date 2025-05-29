@@ -1,8 +1,0 @@
-{
-  "title": "Sign In",
-  "description": "Sign In component",
-  "icon": "lucide:user-round-check",
-  "tags": ["auth", "sign-in", "sign-up"],
-  "category": "auth",
-  "order": 1
-}
