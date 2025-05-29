@@ -53,6 +53,7 @@
     "test:unit": "pnpm pre && vitest src",
     "verify-data-integrity": "pnpm pre && pnpm -C apps/backend run verify-data-integrity",
     "generate-openapi": "pnpm pre && turbo run generate-openapi",
+    "generate-openapi-fumadocs": "pnpm pre && turbo run generate-openapi-fumadocs",
     "generate-keys": "pnpm pre && turbo run generate-keys",
     "generate-sdks": "npx --package=tsx tsx ./scripts/generate-sdks.ts",
     "generate-sdks:watch": "chokidar --silent -c 'pnpm run generate-sdks' './packages/template' --ignore './packages/template/package.json' --ignore '**/node_modules/**' --ignore '**/dist/**' --ignore '**/.turbo/**' --throttle 2000",

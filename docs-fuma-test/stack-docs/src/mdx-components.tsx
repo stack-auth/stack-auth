@@ -2,6 +2,9 @@ import * as CodeBlock from 'fumadocs-ui/components/codeblock';
 import defaultMdxComponents from 'fumadocs-ui/mdx';
 import type { MDXComponents } from 'mdx/types';
 
+// OpenAPI sources
+import { openapi } from '../lib/source';
+
 // Raw @stackframe/stack components
 import { SignIn } from '@stackframe/stack';
 
@@ -32,5 +35,6 @@ export function getMDXComponents(components?: MDXComponents): MDXComponents {
     Step,
     Tabs,
     Tab,
+    APIPage: openapi.APIPage,
   };
 }

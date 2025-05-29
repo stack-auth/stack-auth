@@ -108,6 +108,9 @@
     "generate-openapi": {
       "cache": false
     },
+    "generate-openapi-fumadocs": {
+      "cache": false
+    },
     "generate-keys": {
       "cache": false
     }

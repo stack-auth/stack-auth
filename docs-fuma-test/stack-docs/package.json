@@ -7,7 +7,9 @@
     "dev": "next dev --turbo",
     "start": "next start",
     "postinstall": "fumadocs-mdx",
-    "generate-docs": "node scripts/generate-docs.js"
+    "generate-docs": "node scripts/generate-docs.js",
+    "generate-openapi-docs": "node scripts/generate-openapi-docs.mjs",
+    "setup-openapi": "node scripts/setup-openapi.mjs"
   },
   "dependencies": {
     "@radix-ui/react-collapsible": "^1.1.11",
@@ -20,6 +22,7 @@
     "class-variance-authority": "^0.7.1",
     "fumadocs-core": "15.3.3",
     "fumadocs-mdx": "11.6.4",
+    "fumadocs-openapi": "^5.12.0",
     "fumadocs-ui": "15.3.3",
     "lucide-react": "^0.511.0",
     "next": "15.3.2",
@@ -27,6 +30,7 @@
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
     "react-remove-scroll": "^2.7.0",
+    "shiki": "^1.29.2",
     "tailwind-merge": "^3.3.0"
   },
   "devDependencies": {
