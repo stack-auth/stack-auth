@@ -1,8 +1,7 @@
 import fs from 'fs';
-import pkg from 'glob';
+import { glob } from 'glob';
 import path from 'path';
 import { fileURLToPath } from 'url';
-const { glob } = pkg;
 
 // Get __dirname equivalent in ESM
 const __filename = fileURLToPath(import.meta.url);
