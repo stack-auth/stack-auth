@@ -395,7 +395,7 @@ export const usersCrudHandlers = createLazyProxy(() => createCrudHandlers(usersC
     team_id: yupString().uuid().optional().meta({ openapiField: { onlyShowInOperations: [ 'List' ], description: "Only return users who are members of the given team" } }),
     limit: yupNumber().integer().min(1).optional().meta({ openapiField: { onlyShowInOperations: [ 'List' ], description: "The maximum number of items to return" } }),
     cursor: yupString().uuid().optional().meta({ openapiField: { onlyShowInOperations: [ 'List' ], description: "The cursor to start the result set from." } }),
-    order_by: yupString().oneOf(['signed_up_at']).optional().meta({ openapiField: { onlyShowInOperations: [ 'List' ], description: "The field to sort the results by. Defaults to signed_up_at" } }),
+    order_by: yupString().oneOf(['signed_up_at', 'display_name', 'primary_email', 'last_active_at']).optional().meta({ openapiField: { onlyShowInOperations: [ 'List' ], description: "The field to sort the results by. Defaults to signed_up_at" } }),
     desc: yupBoolean().optional().meta({ openapiField: { onlyShowInOperations: [ 'List' ], description: "Whether to sort the results in descending order. Defaults to false" } }),
     query: yupString().optional().meta({ openapiField: { onlyShowInOperations: [ 'List' ], description: "A search query to filter the results by. This is a free-text search that is applied to the user's id (exact-match only), display name and primary email." } }),
   }),
@@ -445,33 +445,101 @@ export const usersCrudHandlers = createLazyProxy(() => createCrudHandlers(usersC
       } : {},
     };
 
-    const db = await prismaClient.projectUser.findMany({
-      where,
-      include: userFullInclude,
-      orderBy: {
-        [({
-          signed_up_at: 'createdAt',
-        } as const)[query.order_by ?? 'signed_up_at']]: query.desc ? 'desc' : 'asc',
-      },
-      // +1 because we need to know if there is a next page
-      take: query.limit ? query.limit + 1 : undefined,
-      ...query.cursor ? {
-        cursor: {
-          tenancyId_projectUserId: {
-            tenancyId: auth.tenancy.id,
-            projectUserId: query.cursor,
-          },
-        },
-      } : {},
-    });
+    const orderByField = query.order_by ?? 'signed_up_at';
+    const sortDirection = query.desc ? 'desc' : 'asc';
 
-    const lastActiveAtMillis = await getUsersLastActiveAtMillis(auth.project.id, auth.branchId, db.map(user => user.projectUserId), db.map(user => user.createdAt));
+    let db;
+    if (orderByField === 'primary_email') {
+      const allUsers = await prismaClient.projectUser.findMany({
+        where,
+        include: userFullInclude,
+      });
+
+      allUsers.sort((a, b) => {
+        const aEmail = a.contactChannels.find(c => c.type === 'EMAIL' && c.isPrimary)?.value || '';
+        const bEmail = b.contactChannels.find(c => c.type === 'EMAIL' && c.isPrimary)?.value || '';
+        const comparison = aEmail.localeCompare(bEmail);
+        return sortDirection === 'desc' ? -comparison : comparison;
+      });
+
+      let startIndex = 0;
+      if (query.cursor) {
+        startIndex = allUsers.findIndex(user => user.projectUserId === query.cursor);
+        if (startIndex === -1) startIndex = 0;
+        else startIndex += 1; // Start after the cursor
+      }
+
+      const limit = query.limit || allUsers.length;
+      db = allUsers.slice(startIndex, startIndex + limit + 1); // +1 for next page detection
+    } else if (orderByField === 'last_active_at') {
+      const allUsers = await prismaClient.projectUser.findMany({
+        where,
+        include: userFullInclude,
+      });
+
+      const lastActiveAtMillis = await getUsersLastActiveAtMillis(
+        auth.project.id,
+        auth.branchId,
+        allUsers.map(user => user.projectUserId),
+        allUsers.map(user => user.createdAt)
+      );
+
+      const usersWithLastActive = allUsers.map((user, index) => ({
+        user,
+        lastActiveAt: lastActiveAtMillis[index],
+      }));
+
+      usersWithLastActive.sort((a, b) => {
+        const comparison = a.lastActiveAt - b.lastActiveAt;
+        return sortDirection === 'desc' ? -comparison : comparison;
+      });
+
+      let startIndex = 0;
+      if (query.cursor) {
+        startIndex = usersWithLastActive.findIndex(item => item.user.projectUserId === query.cursor);
+        if (startIndex === -1) startIndex = 0;
+        else startIndex += 1;
+      }
+
+      const limit = query.limit || usersWithLastActive.length;
+      db = usersWithLastActive
+        .slice(startIndex, startIndex + limit + 1)
+        .map(item => item.user);
+    } else {
+      const orderByMapping = {
+        signed_up_at: 'createdAt',
+        display_name: 'displayName',
+      } as const;
+
+      db = await prismaClient.projectUser.findMany({
+        where,
+        include: userFullInclude,
+        orderBy: {
+          [orderByMapping[orderByField as keyof typeof orderByMapping]]: sortDirection,
+        },
+        take: query.limit ? query.limit + 1 : undefined,
+        ...query.cursor ? {
+          cursor: {
+            tenancyId_projectUserId: {
+              tenancyId: auth.tenancy.id,
+              projectUserId: query.cursor,
+            },
+          },
+        } : {},
+      });
+    }
+
+    const lastActiveAtMillis = await getUsersLastActiveAtMillis(
+      auth.project.id,
+      auth.branchId,
+      db.map(user => user.projectUserId),
+      db.map(user => user.createdAt)
+    );
+
     return {
-      // remove the last item because it's the next cursor
       items: db.map((user, index) => userPrismaToCrud(user, lastActiveAtMillis[index])).slice(0, query.limit),
       is_paginated: true,
       pagination: {
-        // if result is not full length, there is no next cursor
         next_cursor: query.limit && db.length >= query.limit + 1 ? db[db.length - 1].projectUserId : null,
       },
     };
