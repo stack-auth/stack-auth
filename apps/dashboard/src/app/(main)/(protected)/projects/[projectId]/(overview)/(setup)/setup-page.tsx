@@ -1,7 +1,7 @@
 'use client';
 
 import { CodeBlock } from '@/components/code-block';
-import { APIEnvKeys } from '@/components/env-keys';
+import { APIEnvKeys, NextJsEnvKeys } from '@/components/env-keys';
 import { InlineCode } from '@/components/inline-code';
 import { StyledLink } from '@/components/link';
 import { useThemeWatcher } from '@/lib/theme';
@@ -44,7 +44,9 @@ export default function SetupPage(props: { toMetrics: () => void }) {
       step: 2,
       title: "Install Stack Auth",
       content: <>
-        In a new or existing Next.js project, run:
+        <Typography>
+          In a new or existing Next.js project, run:
+        </Typography>
         <CodeBlock
           language="bash"
           content={`npx @stackframe/init@latest`}
@@ -56,7 +58,12 @@ export default function SetupPage(props: { toMetrics: () => void }) {
     {
       step: 3,
       title: "Create Keys",
-      content: <StackAuthKeys keys={keys} onGenerateKeys={onGenerateKeys} />
+      content: <>
+        <Typography>
+          Put these keys in the <InlineCode>.env.local</InlineCode> file.
+        </Typography>
+        <StackAuthKeys keys={keys} onGenerateKeys={onGenerateKeys} type="next" />
+      </>
     },
     {
       step: 4,
@@ -74,7 +81,9 @@ export default function SetupPage(props: { toMetrics: () => void }) {
       step: 2,
       title: "Install Stack Auth",
       content: <>
-        In a new or existing React project, run:
+        <Typography>
+          In a new or existing React project, run:
+        </Typography>
         <CodeBlock
           language="bash"
           content={`npm install @stackframe/react`}
@@ -86,15 +95,15 @@ export default function SetupPage(props: { toMetrics: () => void }) {
     {
       step: 3,
       title: "Create Keys",
-      content: <StackAuthKeys keys={keys} onGenerateKeys={onGenerateKeys} />
+      content: <StackAuthKeys keys={keys} onGenerateKeys={onGenerateKeys} type="raw" />
     },
     {
       step: 4,
       title: "Create stack.ts file",
       content: <>
-        <p>
+        <Typography>
           Create a new file called <InlineCode>stack.ts</InlineCode> and add the following code. Here we use react-router-dom as an example.
-        </p>
+        </Typography>
         <CodeBlock
           language="tsx"
           content={deindent`
@@ -120,9 +129,9 @@ export default function SetupPage(props: { toMetrics: () => void }) {
       step: 5,
       title: "Update App.tsx",
       content: <>
-        <p>
+        <Typography>
           Update your App.tsx file to wrap the entire app with a <InlineCode>StackProvider</InlineCode> and <InlineCode>StackTheme</InlineCode> and add a <InlineCode>StackHandler</InlineCode> component to handle the authentication flow.
-        </p>
+        </Typography>
         <CodeBlock
           language="tsx"
           maxHeight={300}
@@ -165,9 +174,11 @@ export default function SetupPage(props: { toMetrics: () => void }) {
     {
       step: 6,
       title: "Done",
-      content: <div>
-        If you start your React app with npm run dev and navigate to <StyledLink href="http://localhost:5173/handler/signup">http://localhost:5173/handler/signup</StyledLink>, you will see the sign-up page.
-      </div>
+      content: <>
+        <Typography>
+          If you start your React app with npm run dev and navigate to <StyledLink href="http://localhost:5173/handler/signup">http://localhost:5173/handler/signup</StyledLink>, you will see the sign-up page.
+        </Typography>
+      </>
     }
   ];
 
@@ -176,7 +187,9 @@ export default function SetupPage(props: { toMetrics: () => void }) {
       step: 2,
       title: "Install Stack Auth",
       content: <>
-        Install Stack Auth using npm:
+        <Typography>
+          Install Stack Auth using npm:
+        </Typography>
         <CodeBlock
           language="bash"
           content={`npm install @stackframe/js`}
@@ -188,13 +201,15 @@ export default function SetupPage(props: { toMetrics: () => void }) {
     {
       step: 3,
       title: "Create Keys",
-      content: <StackAuthKeys keys={keys} onGenerateKeys={onGenerateKeys} />
+      content: <StackAuthKeys keys={keys} onGenerateKeys={onGenerateKeys} type="raw" />
     },
     {
       step: 4,
       title: "Initialize the app",
       content: <>
-        <p>Create a new file for your Stack app initialization:</p>
+        <Typography>
+          Create a new file for your Stack app initialization:
+        </Typography>
         <Tabs defaultValue="server">
           <TabsList>
             <TabsTrigger value="server">Server</TabsTrigger>
@@ -302,7 +317,9 @@ export default function SetupPage(props: { toMetrics: () => void }) {
       step: 2,
       title: "Install requests",
       content: <>
-        Install the requests library to make HTTP requests to the Stack Auth API:
+        <Typography>
+          Install the requests library to make HTTP requests to the Stack Auth API:
+        </Typography>
         <CodeBlock
           language="bash"
           content={`pip install requests`}
@@ -314,13 +331,15 @@ export default function SetupPage(props: { toMetrics: () => void }) {
     {
       step: 3,
       title: "Create Keys",
-      content: <StackAuthKeys keys={keys} onGenerateKeys={onGenerateKeys} />
+      content: <StackAuthKeys keys={keys} onGenerateKeys={onGenerateKeys} type="raw" />
     },
     {
       step: 4,
       title: "Create helper function",
       content: <>
-        <p>Create a helper function to make requests to the Stack Auth API:</p>
+        <Typography>
+          Create a helper function to make requests to the Stack Auth API:
+        </Typography>
         <CodeBlock
           language="python"
           content={deindent`
@@ -352,7 +371,9 @@ export default function SetupPage(props: { toMetrics: () => void }) {
       step: 5,
       title: "Make requests",
       content: <>
-        <p>You can now make requests to the Stack Auth API:</p>
+        <Typography>
+          You can now make requests to the Stack Auth API:
+        </Typography>
         <CodeBlock
           language="python"
           content={deindent`
@@ -533,15 +554,26 @@ export default function SetupPage(props: { toMetrics: () => void }) {
   );
 }
 
-function StackAuthKeys(props: { keys: { projectId: string, publishableClientKey: string } | null, onGenerateKeys: () => void }) {
+function StackAuthKeys(props: {
+  keys: { projectId: string, publishableClientKey: string } | null,
+  onGenerateKeys: () => void,
+  type: 'next' | 'raw',
+}) {
   return (
     <div className="w-full border rounded-xl p-8 gap-4 flex flex-col">
       {props.keys ? (
         <>
-          <APIEnvKeys
-            projectId={props.keys.projectId}
-            publishableClientKey={props.keys.publishableClientKey}
-          />
+          {props.type === 'next' ? (
+            <NextJsEnvKeys
+              projectId={props.keys.projectId}
+              publishableClientKey={props.keys.publishableClientKey}
+            />
+          ) : (
+            <APIEnvKeys
+              projectId={props.keys.projectId}
+              publishableClientKey={props.keys.publishableClientKey}
+            />
+          )}
 
           <Typography type="label" variant="secondary">
             {`Save these keys securely - they won't be shown again after leaving this page.`}

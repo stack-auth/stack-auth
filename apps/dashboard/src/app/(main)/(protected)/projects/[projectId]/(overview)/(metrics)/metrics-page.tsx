@@ -4,8 +4,7 @@ import { useRouter } from "@/components/router";
 import { ErrorBoundary } from '@sentry/nextjs';
 import { UserAvatar } from '@stackframe/stack';
 import { fromNow } from '@stackframe/stack-shared/dist/utils/dates';
-import { Button, Card, CardContent, CardHeader, CardTitle, Table, TableBody, TableCell, TableRow, Typography } from '@stackframe/stack-ui';
-import { BookOpen } from "lucide-react";
+import { Card, CardContent, CardHeader, CardTitle, Table, TableBody, TableCell, TableRow, Typography } from '@stackframe/stack-ui';
 import { PageLayout } from "../../page-layout";
 import { useAdminApp } from '../../use-admin-app';
 import { GlobeSection } from './globe';
@@ -44,12 +43,6 @@ export default function MetricsPage(props: { toSetup: () => void }) {
 
   return (
     <PageLayout fillWidth>
-      <div className="flex justify-end">
-        <Button variant='outline' onClick={props.toSetup}>
-          <BookOpen className="w-4 h-4 mr-2" />
-          Show Setup Guide
-        </Button>
-      </div>
       <ErrorBoundary fallback={<div className='text-center text-sm text-red-500'>Error initializing globe visualization. Please try updating your browser or enabling WebGL.</div>}>
         <GlobeSection countryData={data.users_by_country} totalUsers={data.total_users} />
       </ErrorBoundary>

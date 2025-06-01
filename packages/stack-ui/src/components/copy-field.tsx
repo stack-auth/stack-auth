@@ -6,6 +6,7 @@ export function CopyField(props: {
   label?: React.ReactNode,
   helper?: React.ReactNode,
   monospace?: boolean,
+  fixedSize?: boolean,
 } & ({
   type: "textarea",
   height?: number,
@@ -29,6 +30,7 @@ export function CopyField(props: {
               height: props.height,
               fontFamily: props.monospace ? "ui-monospace, monospace" : "inherit",
               whiteSpace: props.monospace ? "pre" : "normal",
+              resize: props.fixedSize ? "none" : "vertical"
             }}
           />
           <CopyButton content={props.value} className="absolute right-4 top-2" />

@@ -1,7 +1,7 @@
 import { getPublicEnvVar } from '@/lib/env';
 import { Button, CopyField, Tabs, TabsContent, TabsList, TabsTrigger } from "@stackframe/stack-ui";
 
-export function EnvKeys(props: {
+function getEnvFileContent(props: {
   projectId: string,
   publishableClientKey?: string,
   secretServerKey?: string,
@@ -18,8 +18,17 @@ export function EnvKeys(props: {
     .map(([k, v]) => `${k}=${v}`)
     .join("\n");
 
+  return envFileContent;
+}
+
+export function EnvKeys(props: {
+  projectId: string,
+  publishableClientKey?: string,
+  secretServerKey?: string,
+  superSecretAdminKey?: string,
+}) {
   const handleDownloadKeys = () => {
-    const blob = new Blob([envFileContent], { type: "text/plain" });
+    const blob = new Blob([getEnvFileContent(props)], { type: "text/plain" });
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.href = url;
@@ -40,13 +49,7 @@ export function EnvKeys(props: {
         </TabsTrigger>
       </TabsList>
       <TabsContent value={"env"}>
-        <CopyField
-          type="textarea"
-          monospace
-          height={160}
-          value={envFileContent}
-          label="Next.js Environment variables"
-        />
+        <NextJsEnvKeys {...props} />
       </TabsContent>
       <TabsContent value={"keys"}>
         <APIEnvKeys {...props} />
@@ -103,5 +106,24 @@ export function APIEnvKeys(props: {
         />
       )}
     </div>
+  );
+}
+
+export function NextJsEnvKeys(props: {
+  projectId: string,
+  publishableClientKey?: string,
+  secretServerKey?: string,
+  superSecretAdminKey?: string,
+}) {
+  const envFileContent = getEnvFileContent(props);
+
+  return (
+    <CopyField
+      type="textarea"
+      monospace
+      height={envFileContent.split("\n").length * 26}
+      value={envFileContent}
+      fixedSize
+    />
   );
 }
