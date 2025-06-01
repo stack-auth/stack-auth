@@ -190,7 +190,187 @@ export default function SetupPage(props: { toMetrics: () => void }) {
       title: "Create Keys",
       content: <StackAuthKeys keys={keys} onGenerateKeys={onGenerateKeys} />
     },
+    {
+      step: 4,
+      title: "Initialize the app",
+      content: <>
+        <p>Create a new file for your Stack app initialization:</p>
+        <Tabs defaultValue="server">
+          <TabsList>
+            <TabsTrigger value="server">Server</TabsTrigger>
+            <TabsTrigger value="client">Client</TabsTrigger>
+          </TabsList>
+          <TabsContent value="server">
+            <CodeBlock
+              language="typescript"
+              content={deindent`
+                import { StackServerApp } from "@stackframe/js";
+
+                const stackServerApp = new StackServerApp({
+                  // You should store these in environment variables based on your project setup
+                  projectId: "your-project-id-from-dashboard",
+                  publishableClientKey: "your-publishable-client-key-from-dashboard", 
+                  secretServerKey: "your-secret-server-key-from-dashboard",
+                  tokenStore: "memory",
+                });
+              `}
+              title="stack/server.ts"
+              icon="code"
+            />
+          </TabsContent>
+          <TabsContent value="client">
+            <CodeBlock
+              language="typescript"
+              content={deindent`
+                import { StackClientApp } from "@stackframe/js";
+
+                const stackClientApp = new StackClientApp({
+                  // You should store these in environment variables based on your project setup
+                  projectId: "your-project-id",
+                  publishableClientKey: "your-publishable-client-key",
+                  tokenStore: "cookie",
+                });
+              `}
+              title="stack/client.ts"
+              icon="code"
+            />
+          </TabsContent>
+        </Tabs>
+      </>
+    },
+    {
+      step: 5,
+      title: "Example usage",
+      content: <>
+        <Tabs defaultValue="server">
+          <TabsList>
+            <TabsTrigger value="server">Server</TabsTrigger>
+            <TabsTrigger value="client">Client</TabsTrigger>
+          </TabsList>
+          <TabsContent value="server">
+            <CodeBlock
+              language="typescript"
+              content={deindent`
+                import { stackServerApp } from "@/stack/server";
+
+                const user = await stackServerApp.getUser("user_id");
+
+                await user.update({
+                  displayName: "New Display Name",
+                });
+
+                const team = await stackServerApp.createTeam({
+                  name: "New Team",
+                });
+
+                await team.addUser(user.id);
+              `}
+              title="Example server usage"
+              icon="code"
+            />
+          </TabsContent>
+          <TabsContent value="client">
+            <CodeBlock
+              language="typescript"
+              content={deindent`
+                import { stackClientApp } from "@/stack/client";
+
+                await stackClientApp.signInWithCredential({
+                  email: "test@example.com",
+                  password: "password123",
+                });
+
+                const user = await stackClientApp.getUser();
+
+                await user.update({
+                  displayName: "New Display Name",
+                });
+
+                await user.signOut();
+              `}
+              title="Example client usage"
+              icon="code"
+            />
+          </TabsContent>
+        </Tabs>
+      </>
+    }
   ];
+
+  const pythonSteps = [
+    {
+      step: 2,
+      title: "Install requests",
+      content: <>
+        Install the requests library to make HTTP requests to the Stack Auth API:
+        <CodeBlock
+          language="bash"
+          content={`pip install requests`}
+          title="Terminal"
+          icon="terminal"
+        />
+      </>
+    },
+    {
+      step: 3,
+      title: "Create Keys",
+      content: <StackAuthKeys keys={keys} onGenerateKeys={onGenerateKeys} />
+    },
+    {
+      step: 4,
+      title: "Create helper function",
+      content: <>
+        <p>Create a helper function to make requests to the Stack Auth API:</p>
+        <CodeBlock
+          language="python"
+          content={deindent`
+            import requests
+
+            def stack_auth_request(method, endpoint, **kwargs):
+              res = requests.request(
+                method,
+                f'https://api.stack-auth.com/{endpoint}',
+                headers={
+                  'x-stack-access-type': 'server',
+                  'x-stack-project-id': stack_project_id,
+                  'x-stack-publishable-client-key': stack_publishable_client_key,
+                  'x-stack-secret-server-key': stack_secret_server_key,
+                  **kwargs.pop('headers', {}),
+                },
+                **kwargs,
+              )
+              if res.status_code >= 400:
+                raise Exception(f"Stack Auth API request failed with {res.status_code}: {res.text}")
+              return res.json()
+          `}
+          title="stack_auth.py"
+          icon="code"
+        />
+      </>
+    },
+    {
+      step: 5,
+      title: "Make requests",
+      content: <>
+        <p>You can now make requests to the Stack Auth API:</p>
+        <CodeBlock
+          language="python"
+          content={deindent`
+            # Get current project info
+            print(stack_auth_request('GET', '/api/v1/projects/current'))
+
+            # Get user info with access token
+            print(stack_auth_request('GET', '/api/v1/users/me', headers={
+              'x-stack-access-token': access_token,
+            }))
+          `}
+          title="example.py"
+          icon="code"
+        />
+      </>
+    }
+  ];
+
 
   return (
     <PageLayout width={1000}>
@@ -332,6 +512,7 @@ export default function SetupPage(props: { toMetrics: () => void }) {
             ...(selectedFramework === 'nextjs' ? nextJsSteps : []),
             ...(selectedFramework === 'react' ? reactSteps : []),
             ...(selectedFramework === 'javascript' ? javascriptSteps : []),
+            ...(selectedFramework === 'python' ? pythonSteps : []),
           ].map((item, index) => (
             <li key={item.step} className={cn("ms-6 flex flex-col lg:flex-row gap-10 mb-20")}>
               <div className="flex flex-col gap-2 max-w-[180px] min-w-[180px]">
