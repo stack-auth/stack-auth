@@ -15,6 +15,7 @@ import { ProfilePage } from "./account-settings/profile-page/profile-page";
 import { SettingsPage } from './account-settings/settings/settings-page';
 import { TeamCreationPage } from './account-settings/teams/team-creation-page';
 import { TeamPage } from './account-settings/teams/team-page';
+import { pluralize } from "pluralize";
 
 const Icon = ({ name }: { name: keyof typeof icons }) => {
   const LucideIcon = icons[name];
@@ -23,6 +24,7 @@ const Icon = ({ name }: { name: keyof typeof icons }) => {
 
 export function AccountSettings(props: {
   fullPage?: boolean,
+  entityName?: string
   extraItems?: ({
     title: string,
     content: React.ReactNode,
@@ -38,6 +40,7 @@ export function AccountSettings(props: {
   const teams = user.useTeams();
   const stackApp = useStackApp();
   const project = stackApp.useProject();
+  const entityName = props.entityName ? props.entityName : "Team";
 
   return (
     <MaybeFullPage fullPage={!!props.fullPage}>
@@ -101,7 +104,7 @@ export function AccountSettings(props: {
               content: item.content,
             } as const)) || []),
             ...(teams.length > 0 || project.config.clientTeamCreationEnabled) ? [{
-              title: t('Teams'),
+              title: t(`${pluralize(entityName)}`),
               type: 'divider',
             }] as const : [],
             ...teams.map(team => ({
@@ -110,16 +113,16 @@ export function AccountSettings(props: {
                 <Typography className="max-w-[320px] md:w-[90%] truncate">{team.displayName}</Typography>
               </div>,
               type: 'item',
-              id: `team-${team.id}`,
+              id: `${entityName.toLowerCase()}-${team.id}`,
               content: <Suspense fallback={<TeamPageSkeleton/>}>
                 <TeamPage team={team}/>
               </Suspense>,
             } as const)),
             ...project.config.clientTeamCreationEnabled ? [{
-              title: t('Create a team'),
+              title: t(`Create a ${entityName.toLowerCase()}`),
               icon: <Icon name="CirclePlus"/>,
               type: 'item',
-              id: 'team-creation',
+              id: `team-creation`,
               content: <Suspense fallback={<TeamCreationSkeleton/>}>
                 <TeamCreationPage />
               </Suspense>,

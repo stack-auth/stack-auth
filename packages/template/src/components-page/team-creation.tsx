@@ -12,11 +12,15 @@ import { FormWarningText } from "../components/elements/form-warning";
 import { MaybeFullPage } from "../components/elements/maybe-full-page";
 import { useTranslation } from "../lib/translations";
 
-export function TeamCreation(props: { fullPage?: boolean }) {
+export function TeamCreation(props: { 
+  fullPage?: boolean,
+  entityName?: string,
+ }) {
   const { t } = useTranslation();
+  const entityName = props.entityName ? props.entityName : "Team";
 
   const schema = yupObject({
-    displayName: yupString().defined().nonEmpty(t('Please enter a team name')),
+    displayName: yupString().defined().nonEmpty(t(`Please enter ${entityName.toLowerCase()} name`)),
   });
 
   const { register, handleSubmit, formState: { errors } } = useForm({
@@ -29,7 +33,7 @@ export function TeamCreation(props: { fullPage?: boolean }) {
   const navigate = app.useNavigate();
 
   if (!project.config.clientTeamCreationEnabled) {
-    return <MessageCard title={t('Team creation is not enabled')} />;
+    return <MessageCard title={t(`${entityName} creation is not enabled`)} />;
   }
 
   const onSubmit = async (data: yup.InferType<typeof schema>) => {
@@ -48,7 +52,7 @@ export function TeamCreation(props: { fullPage?: boolean }) {
       <div className='stack-scope flex flex-col items-stretch' style={{ maxWidth: '380px', flexBasis: '380px', padding: props.fullPage ? '1rem' : 0 }}>
         <div className="text-center mb-6">
           <Typography type='h2'>
-            {t('Create a Team')}
+            {t(`Create ${entityName}`)}
           </Typography>
         </div>
         <form
