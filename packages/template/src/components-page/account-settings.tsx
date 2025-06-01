@@ -40,7 +40,7 @@ export function AccountSettings(props: {
   const teams = user.useTeams();
   const stackApp = useStackApp();
   const project = stackApp.useProject();
-  const entityName = props.entityName ? props.entityName : "Team";
+  const entityName = props.entityName ?? "Team";
 
   return (
     <MaybeFullPage fullPage={!!props.fullPage}>
