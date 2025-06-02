@@ -6,13 +6,13 @@ import { Auth, InternalApiKey, Project, backendContext, niceBackendFetch } from 
 
 async function authorizePart1(redirectUri: string = "http://localhost:30000/api/v2/auth/authorize") {
   let cookies = "";
-  const first = await niceBackendFetch("/api/v1/integrations/neon/oauth/authorize", {
+  const first = await niceBackendFetch("/api/v1/integrations/custom/oauth/authorize", {
     method: "GET",
     query: {
       response_type: "code",
-      client_id: "neon-local",
+      client_id: "custom-local",
       redirect_uri: redirectUri,
-      state: encodeBase64Url(new TextEncoder().encode(JSON.stringify({ details: { neon_project_name: 'neon-project' } }))),
+      state: encodeBase64Url(new TextEncoder().encode(JSON.stringify({ details: { external_project_name: 'custom-project' } }))),
       code_challenge: "xf6HY7PIgoaCf_eMniSt-45brYE2J_05C9BnfIbueik",
       code_challenge_method: "S256",
     },
@@ -33,7 +33,7 @@ async function authorizePart1(redirectUri: string = "http://localhost:30000/api/
 }
 
 async function authorizePart2(interactionUid: string, authorizationCode: string, cookies: string) {
-  const first = await niceBackendFetch(`/api/v1/integrations/neon/oauth/idp/interaction/${encodeURIComponent(interactionUid)}/done`, {
+  const first = await niceBackendFetch(`/api/v1/integrations/custom/oauth/idp/interaction/${encodeURIComponent(interactionUid)}/done`, {
     query: {
       code: authorizationCode,
     },
@@ -46,7 +46,7 @@ async function authorizePart2(interactionUid: string, authorizationCode: string,
   let second = undefined;
   let third = undefined;
   if (first.status === 200) {
-    second = await niceBackendFetch(`/api/v1/integrations/neon/oauth/idp/interaction/${encodeURIComponent(interactionUid)}/done`, {
+    second = await niceBackendFetch(`/api/v1/integrations/custom/oauth/idp/interaction/${encodeURIComponent(interactionUid)}/done`, {
       method: "POST",
       query: {
         code: authorizationCode,
@@ -75,27 +75,27 @@ async function authorize(projectId: string) {
       NiceResponse {
         "status": 307,
         "headers": Headers {
-          "location": "http://localhost:8102/api/v1/integrations/neon/oauth/idp/auth?response_type=code&client_id=neon-local&redirect_uri=%3Cstripped+query+param%3E&state=%3Cstripped+query+param%3E&code_challenge=%3Cstripped+query+param%3E&code_challenge_method=S256&scope=openid",
+          "location": "http://localhost:8102/api/v1/integrations/custom/oauth/idp/auth?response_type=code&client_id=custom-local&redirect_uri=%3Cstripped+query+param%3E&state=%3Cstripped+query+param%3E&code_challenge=%3Cstripped+query+param%3E&code_challenge_method=S256&scope=openid",
           <some fields may have been hidden>,
         },
       },
       NiceResponse {
         "status": 303,
-        "body": "Redirecting to <a href=\\"http://localhost:8102/api/v1/integrations/neon/oauth/idp/interaction/<stripped interaction UID>\\">http://localhost:8102/api/v1/integrations/neon/oauth/idp/interaction/<stripped interaction UID></a>.",
+        "body": "Redirecting to <a href=\\"http://localhost:8102/api/v1/integrations/custom/oauth/idp/interaction/<stripped interaction UID>\\">http://localhost:8102/api/v1/integrations/custom/oauth/idp/interaction/<stripped interaction UID></a>.",
         "headers": Headers {
-          "location": "http://localhost:8102/api/v1/integrations/neon/oauth/idp/interaction/<stripped interaction UID>",
-          "set-cookie": <setting cookie "_interaction" at path "/api/v1/integrations/neon/oauth/idp/interaction/<stripped interaction UID>" to <stripped cookie value>>,
-          "set-cookie": <setting cookie "_interaction.sig" at path "/api/v1/integrations/neon/oauth/idp/interaction/<stripped interaction UID>" to <stripped cookie value>>,
-          "set-cookie": <setting cookie "_interaction_resume" at path "/api/v1/integrations/neon/oauth/idp/auth/<stripped auth UID>" to <stripped cookie value>>,
-          "set-cookie": <setting cookie "_interaction_resume.sig" at path "/api/v1/integrations/neon/oauth/idp/auth/<stripped auth UID>" to <stripped cookie value>>,
+          "location": "http://localhost:8102/api/v1/integrations/custom/oauth/idp/interaction/<stripped interaction UID>",
+          "set-cookie": <setting cookie "_interaction" at path "/api/v1/integrations/custom/oauth/idp/interaction/<stripped interaction UID>" to <stripped cookie value>>,
+          "set-cookie": <setting cookie "_interaction.sig" at path "/api/v1/integrations/custom/oauth/idp/interaction/<stripped interaction UID>" to <stripped cookie value>>,
+          "set-cookie": <setting cookie "_interaction_resume" at path "/api/v1/integrations/custom/oauth/idp/auth/<stripped auth UID>" to <stripped cookie value>>,
+          "set-cookie": <setting cookie "_interaction_resume.sig" at path "/api/v1/integrations/custom/oauth/idp/auth/<stripped auth UID>" to <stripped cookie value>>,
           <some fields may have been hidden>,
         },
       },
       NiceResponse {
         "status": 307,
-        "body": "http://localhost:8101/integrations/neon/confirm?interaction_uid=%3Cstripped+query+param%3E&amp=",
+        "body": "http://localhost:8101/integrations/custom/confirm?interaction_uid=%3Cstripped+query+param%3E&amp=",
         "headers": Headers {
-          "location": "http://localhost:8101/integrations/neon/confirm?interaction_uid=%3Cstripped+query+param%3E&external_project_name=neon-project",
+          "location": "http://localhost:8101/integrations/custom/confirm?interaction_uid=%3Cstripped+query+param%3E&external_project_name=custom-project",
           <some fields may have been hidden>,
         },
       },
@@ -103,7 +103,7 @@ async function authorize(projectId: string) {
   `);
   const dashboardConfirmUrl = new URL(authorizePart1Response.responses[2]!.headers.get("location")!);
   const interactionUid = dashboardConfirmUrl.searchParams.get("interaction_uid")!;
-  const confirmResponse = await niceBackendFetch(`/api/v1/integrations/neon/internal/confirm`, {
+  const confirmResponse = await niceBackendFetch(`/api/v1/integrations/custom/internal/confirm`, {
     method: "POST",
     accessType: "server",
     body: {
@@ -130,7 +130,7 @@ async function authorize(projectId: string) {
       NiceResponse {
         "status": 303,
         "headers": Headers {
-          "location": "http://localhost:8102/api/v1/integrations/neon/oauth/idp/auth/<stripped auth UID>",
+          "location": "http://localhost:8102/api/v1/integrations/custom/oauth/idp/auth/<stripped auth UID>",
           <some fields may have been hidden>,
         },
       },
@@ -138,9 +138,9 @@ async function authorize(projectId: string) {
         "status": 303,
         "body": "http://localhost:30000/api/v2/auth/authorize?code=%3Cstripped+query+param%3E&amp=",
         "headers": Headers {
-          "location": "http://localhost:30000/api/v2/auth/authorize?code=%3Cstripped+query+param%3E&state=%3Cstripped+query+param%3E&iss=http%3A%2F%2Flocalhost%3A8102%2Fapi%2Fv1%2Fintegrations%2Fneon%2Foauth%2Fidp",
-          "set-cookie": <setting cookie "_interaction_resume" at path "/api/v1/integrations/neon/oauth/idp/auth/<stripped auth UID>" to <stripped cookie value>>,
-          "set-cookie": <setting cookie "_interaction_resume.sig" at path "/api/v1/integrations/neon/oauth/idp/auth/<stripped auth UID>" to <stripped cookie value>>,
+          "location": "http://localhost:30000/api/v2/auth/authorize?code=%3Cstripped+query+param%3E&state=%3Cstripped+query+param%3E&iss=http%3A%2F%2Flocalhost%3A8102%2Fapi%2Fv1%2Fintegrations%2Fcustom%2Foauth%2Fidp",
+          "set-cookie": <setting cookie "_interaction_resume" at path "/api/v1/integrations/custom/oauth/idp/auth/<stripped auth UID>" to <stripped cookie value>>,
+          "set-cookie": <setting cookie "_interaction_resume.sig" at path "/api/v1/integrations/custom/oauth/idp/auth/<stripped auth UID>" to <stripped cookie value>>,
           <some fields may have been hidden>,
         },
       },
@@ -169,7 +169,7 @@ it(`should not redirect to the incorrect callback URL`, async ({}) => {
         NiceResponse {
           "status": 307,
           "headers": Headers {
-            "location": "http://localhost:8102/api/v1/integrations/neon/oauth/idp/auth?response_type=code&client_id=neon-local&redirect_uri=%3Cstripped+query+param%3E&state=%3Cstripped+query+param%3E&code_challenge=%3Cstripped+query+param%3E&code_challenge_method=S256&scope=openid",
+            "location": "http://localhost:8102/api/v1/integrations/custom/oauth/idp/auth?response_type=code&client_id=custom-local&redirect_uri=%3Cstripped+query+param%3E&state=%3Cstripped+query+param%3E&code_challenge=%3Cstripped+query+param%3E&code_challenge_method=S256&scope=openid",
             <some fields may have been hidden>,
           },
         },
@@ -178,8 +178,8 @@ it(`should not redirect to the incorrect callback URL`, async ({}) => {
           "body": {
             "error": "invalid_redirect_uri",
             "error_description": "redirect_uri did not match any of the client's registered redirect_uris",
-            "iss": "http://localhost:8102/api/v1/integrations/neon/oauth/idp",
-            "state": "eyJkZXRhaWxzIjp7Im5lb25fcHJvamVjdF9uYW1lIjoibmVvbi1wcm9qZWN0In19",
+            "iss": "http://localhost:8102/api/v1/integrations/custom/oauth/idp",
+            "state": "eyJkZXRhaWxzIjp7ImV4dGVybmFsX3Byb2plY3RfbmFtZSI6ImN1c3RvbS1wcm9qZWN0In19",
           },
           "headers": Headers { <some fields may have been hidden> },
         },
@@ -194,7 +194,7 @@ it(`should exchange the authorization code for an admin API key that works`, asy
   const createdProject = await Project.create();
 
   const { authorizationCode } = await authorize(createdProject.projectId);
-  const tokenResponse = await niceBackendFetch(`/api/v1/integrations/neon/oauth/token`, {
+  const tokenResponse = await niceBackendFetch(`/api/v1/integrations/custom/oauth/token`, {
     method: "POST",
     body: {
       grant_type: "authorization_code",
@@ -203,7 +203,7 @@ it(`should exchange the authorization code for an admin API key that works`, asy
       redirect_uri: "http://localhost:30000/api/v2/auth/authorize",
     },
     headers: {
-      "Authorization": encodeBasicAuthorizationHeader("neon-local", "neon-local-secret")
+      "Authorization": encodeBasicAuthorizationHeader("custom-local", "custom-local-secret")
     },
   });
   expect(tokenResponse).toMatchInlineSnapshot(`
@@ -248,7 +248,7 @@ it(`should not exchange the authorization code when the client secret is incorre
   const createdProject = await Project.create();
 
   const { authorizationCode } = await authorize(createdProject.projectId);
-  const tokenResponse = await niceBackendFetch(`/api/v1/integrations/neon/oauth/token`, {
+  const tokenResponse = await niceBackendFetch(`/api/v1/integrations/custom/oauth/token`, {
     method: "POST",
     body: {
       grant_type: "authorization_code",
@@ -257,7 +257,7 @@ it(`should not exchange the authorization code when the client secret is incorre
       redirect_uri: "http://localhost:30000/api/v2/auth/authorize",
     },
     headers: {
-      "Authorization": encodeBasicAuthorizationHeader("neon-local", "wrong-secret")
+      "Authorization": encodeBasicAuthorizationHeader("custom-local", "wrong-secret")
     },
   });
   expect(tokenResponse).toMatchInlineSnapshot(`
@@ -267,12 +267,12 @@ it(`should not exchange the authorization code when the client secret is incorre
         "code": "SCHEMA_ERROR",
         "details": {
           "message": deindent\`
-            Request validation failed on POST /api/v1/integrations/neon/oauth/token:
+            Request validation failed on POST /api/v1/integrations/custom/oauth/token:
               - Invalid client_id:client_secret values; did you use the correct values for the integration?
           \`,
         },
         "error": deindent\`
-          Request validation failed on POST /api/v1/integrations/neon/oauth/token:
+          Request validation failed on POST /api/v1/integrations/custom/oauth/token:
             - Invalid client_id:client_secret values; did you use the correct values for the integration?
         \`,
       },

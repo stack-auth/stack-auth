@@ -14,7 +14,7 @@ export default async function Page(props: { searchParams: Promise<{ code?: strin
 
   return (
     <>
-      <IntegrationProjectTransferConfirmPageClient type="neon" />
+      <IntegrationProjectTransferConfirmPageClient type="custom" />
     </>
   );
 }

@@ -2,7 +2,7 @@ import { it } from "../../../../../../../helpers";
 import { backendContext, niceBackendFetch } from "../../../../../../backend-helpers";
 
 export async function provisionProject() {
-  return await niceBackendFetch("/api/v1/integrations/neon/projects/provision", {
+  return await niceBackendFetch("/api/v1/integrations/custom/projects/provision", {
     method: "POST",
     body: {
       display_name: "Test project",
@@ -13,7 +13,7 @@ export async function provisionProject() {
   });
 }
 
-it("should be able to provision a new project if neon client details are correct", async ({ expect }) => {
+it("should be able to provision a new project if client details are correct", async ({ expect }) => {
   const response = await provisionProject();
   expect(response).toMatchInlineSnapshot(`
     NiceResponse {
@@ -75,7 +75,7 @@ it("should be able to provision a new project if neon client details are correct
           "user_default_permissions": [],
         },
         "created_at_millis": <stripped field 'created_at_millis'>,
-        "description": "Created with Neon",
+        "description": "Project created by an external integration",
         "display_name": "Test project",
         "id": "<stripped UUID>",
         "is_production_mode": false,
@@ -86,14 +86,14 @@ it("should be able to provision a new project if neon client details are correct
   `);
 });
 
-it("should fail if the neon client details are incorrect", async ({ expect }) => {
-  const response = await niceBackendFetch("/api/v1/integrations/neon/projects/provision", {
+it("should fail if the client details are incorrect", async ({ expect }) => {
+  const response = await niceBackendFetch("/api/v1/integrations/custom/projects/provision", {
     method: "POST",
     body: {
       display_name: "Test project",
     },
     headers: {
-      "Authorization": "Basic bmVvbi1sb2NhbDpuZW9uLWxvY2FsLXMlY2JldA==",
+      "Authorization": "Basic bmVvbi1sb2NhbDpuZW9uLWxvY2FsLXMlY3JldA==",
     },
   });
   expect(response).toMatchInlineSnapshot(`
@@ -103,12 +103,12 @@ it("should fail if the neon client details are incorrect", async ({ expect }) =>
         "code": "SCHEMA_ERROR",
         "details": {
           "message": deindent\`
-            Request validation failed on POST /api/v1/integrations/neon/projects/provision:
+            Request validation failed on POST /api/v1/integrations/custom/projects/provision:
               - Invalid client_id:client_secret values; did you use the correct values for the integration?
           \`,
         },
         "error": deindent\`
-          Request validation failed on POST /api/v1/integrations/neon/projects/provision:
+          Request validation failed on POST /api/v1/integrations/custom/projects/provision:
             - Invalid client_id:client_secret values; did you use the correct values for the integration?
         \`,
       },
@@ -122,7 +122,7 @@ it("should fail if the neon client details are incorrect", async ({ expect }) =>
 
 
 it("should fail if the neon client details are missing", async ({ expect }) => {
-  const response = await niceBackendFetch("/api/v1/integrations/neon/projects/provision", {
+  const response = await niceBackendFetch("/api/v1/integrations/custom/projects/provision", {
     method: "POST",
     body: {
       display_name: "Test project",
@@ -135,12 +135,12 @@ it("should fail if the neon client details are missing", async ({ expect }) => {
       "code": "SCHEMA_ERROR",
       "details": {
         "message": deindent\`
-          Request validation failed on POST /api/v1/integrations/neon/projects/provision:
+          Request validation failed on POST /api/v1/integrations/custom/projects/provision:
             - headers.authorization must be defined
         \`,
       },
       "error": deindent\`
-        Request validation failed on POST /api/v1/integrations/neon/projects/provision:
+        Request validation failed on POST /api/v1/integrations/custom/projects/provision:
           - headers.authorization must be defined
       \`,
     },

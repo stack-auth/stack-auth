@@ -43,7 +43,7 @@ export const POST = createSmartRouteHandler({
     const authorizationCode = generateSecureRandomString();
     await prismaClient.projectWrapperCodes.create({
       data: {
-        idpId: "stack-preconfigured-idp:integrations/neon",
+        idpId: "stack-preconfigured-idp:integrations/custom",
         interactionUid: req.body.interaction_uid,
         authorizationCode,
         cdfcResult: {

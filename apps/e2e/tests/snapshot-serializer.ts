@@ -95,7 +95,7 @@ const keyedCookieNamePrefixes = [
 ] as const;
 
 const stringRegexReplacements = [
-  [/(\/integrations\/neon\/oauth\/idp\/(interaction|auth)\/)[a-zA-Z0-9_-]+/gi, "$1<stripped $2 UID>"],
+  [/(\/integrations\/(neon|custom)\/oauth\/idp\/(interaction|auth)\/)[a-zA-Z0-9_-]+/gi, "$1<stripped $3 UID>"],
 ] as const;
 
 function addAll<T>(set: Set<T>, values: readonly T[]) {
