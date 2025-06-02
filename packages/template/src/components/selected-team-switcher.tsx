@@ -18,11 +18,13 @@ import { Suspense, useEffect, useMemo } from "react";
 import { Team, useStackApp, useUser } from "..";
 import { useTranslation } from "../lib/translations";
 import { TeamIcon } from "./team-icon";
+import { pluralize } from 'pluralize';
 
 type SelectedTeamSwitcherProps = {
   urlMap?: (team: Team) => string,
   selectedTeam?: Team,
   noUpdateSelectedTeam?: boolean,
+  entityName?: string,
 };
 
 export function SelectedTeamSwitcher(props: SelectedTeamSwitcherProps) {
@@ -44,6 +46,7 @@ function Inner(props: SelectedTeamSwitcherProps) {
   const selectedTeam = user?.selectedTeam || props.selectedTeam;
   const rawTeams = user?.useTeams();
   const teams = useMemo(() => rawTeams?.sort((a, b) => b.id === selectedTeam?.id ? 1 : -1), [rawTeams, selectedTeam]);
+  const entityName = props.entityName ? props.entityName : "Team";
 
   useEffect(() => {
     if (!props.noUpdateSelectedTeam && props.selectedTeam) {
@@ -58,7 +61,7 @@ function Inner(props: SelectedTeamSwitcherProps) {
         runAsynchronouslyWithAlert(async () => {
           const team = teams?.find(team => team.id === value);
           if (!team) {
-            throw new Error('Team not found, this should not happen');
+            throw new Error(`${entityName} not found, this should not happen`);
           }
 
           if (!props.noUpdateSelectedTeam) {
@@ -71,14 +74,14 @@ function Inner(props: SelectedTeamSwitcherProps) {
       }}
     >
       <SelectTrigger className="stack-scope max-w-64">
-        <SelectValue placeholder="Select team"/>
+        <SelectValue placeholder={`Select ${entityName.toLowerCase()}`}/>
       </SelectTrigger>
       <SelectContent className="stack-scope">
         {user?.selectedTeam ? <SelectGroup>
           <SelectLabel>
             <div className="flex items-center justify-between">
               <span>
-                {t('Current team')}
+                {t(`Current ${entityName.toLowerCase()}`)}
               </span>
               <Button variant='ghost' size='icon' className="h-6 w-6" onClick={() => navigate(`${app.urls.accountSettings}#team-${user.selectedTeam?.id}`)}>
                 <Settings className="h-4 w-4"/>
@@ -95,7 +98,7 @@ function Inner(props: SelectedTeamSwitcherProps) {
 
         {teams?.length ?
           <SelectGroup>
-            <SelectLabel>{t('Other teams')}</SelectLabel>
+            <SelectLabel>{t(`Other ${pluralize(entityName.toLowerCase())}`)}</SelectLabel>
             {teams.filter(team => team.id !== user?.selectedTeam?.id)
               .map(team => (
                 <SelectItem value={team.id} key={team.id}>
@@ -107,7 +110,7 @@ function Inner(props: SelectedTeamSwitcherProps) {
               ))}
           </SelectGroup> :
           <SelectGroup>
-            <SelectLabel>{t('No teams yet')}</SelectLabel>
+            <SelectLabel>{t(`No ${pluralize(entityName.toLowerCase())} yet`)}</SelectLabel>
           </SelectGroup>}
 
         {project.config.clientTeamCreationEnabled && <>
@@ -118,7 +121,7 @@ function Inner(props: SelectedTeamSwitcherProps) {
               className="w-full"
               variant='ghost'
             >
-              <PlusCircle className="mr-2 h-4 w-4"/> {t('Create a team')}
+              <PlusCircle className="mr-2 h-4 w-4"/> {t(`Create ${entityName.toLowerCase()}`)}
             </Button>
           </div>
         </>}
