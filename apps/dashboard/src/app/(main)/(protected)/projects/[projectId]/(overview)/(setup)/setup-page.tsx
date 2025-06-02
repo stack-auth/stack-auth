@@ -14,20 +14,35 @@ import { use, useEffect, useRef, useState } from "react";
 import { GlobeMethods } from "react-globe.gl";
 import { globeImages } from '../(utils)/utils';
 import { PageLayout } from "../../page-layout";
+import { useAdminApp } from '../../use-admin-app';
 import styles from './setup-page.module.css';
 const countriesPromise = import('../(utils)/country-data.geo.json');
 const Globe = dynamic(() => import('react-globe.gl').then((mod) => mod.default), { ssr: false });
 
 export default function SetupPage(props: { toMetrics: () => void }) {
+  const adminApp = useAdminApp();
   const countries = use(countriesPromise);
   const globeEl = useRef<GlobeMethods | undefined>(undefined);
   const { theme, mounted } = useThemeWatcher();
   const [showPulse, setShowPulse] = useState(false);
   const [selectedFramework, setSelectedFramework] = useState<'nextjs' | 'react' | 'javascript' | 'python'>('nextjs');
-  const [keys, setKeys] = useState<{ projectId: string, publishableClientKey: string } | null>(null);
+  const [keys, setKeys] = useState<{ projectId: string, publishableClientKey: string, secretServerKey: string, superSecretAdminKey: string } | null>(null);
 
-  const onGenerateKeys = () => {
-    setKeys({ projectId: 'asdfasdf', publishableClientKey: 'asdfasdf' });
+  const onGenerateKeys = async () => {
+    const newKey = await adminApp.createInternalApiKey({
+      hasPublishableClientKey: true,
+      hasSecretServerKey: true,
+      hasSuperSecretAdminKey: false,
+      expiresAt: new Date(Date.now() + 1000 * 60 * 60 * 24 * 30),
+      description: 'Onboarding',
+    });
+
+    setKeys({
+      projectId: adminApp.projectId,
+      publishableClientKey: newKey.publishableClientKey!,
+      secretServerKey: newKey.secretServerKey!,
+      superSecretAdminKey: newKey.superSecretAdminKey!,
+    });
   };
 
   useEffect(() => {
@@ -555,8 +570,8 @@ export default function SetupPage(props: { toMetrics: () => void }) {
 }
 
 function StackAuthKeys(props: {
-  keys: { projectId: string, publishableClientKey: string } | null,
-  onGenerateKeys: () => void,
+  keys: { projectId: string, publishableClientKey: string, secretServerKey: string, superSecretAdminKey: string } | null,
+  onGenerateKeys: () => Promise<void>,
   type: 'next' | 'raw',
 }) {
   return (
@@ -581,7 +596,7 @@ function StackAuthKeys(props: {
         </>
       ) : (
         <div className="flex items-center justify-center">
-          <Button onClick={() => props.onGenerateKeys()}>
+          <Button onClick={props.onGenerateKeys}>
             Generate Keys
           </Button>
         </div>
