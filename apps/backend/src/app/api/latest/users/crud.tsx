@@ -722,7 +722,7 @@ export const usersCrudHandlers = createLazyProxy(() => createCrudHandlers(usersC
       const passwordAuth = oldUser.authMethods.find((m) => m.passwordAuthMethod)?.passwordAuthMethod;
       const passkeyAuth = oldUser.authMethods.find((m) => m.passkeyAuthMethod)?.passkeyAuthMethod;
 
-      const primaryEmailAuthEnabled = data.primary_email_auth_enabled || !!primaryEmailContactChannel?.usedForAuth;
+      const primaryEmailAuthEnabled = data.primary_email_auth_enabled ?? !!primaryEmailContactChannel?.usedForAuth;
       const primaryEmailVerified = data.primary_email_verified || !!primaryEmailContactChannel?.isVerified;
       await checkAuthData(tx, {
         tenancyId: auth.tenancy.id,
@@ -755,7 +755,7 @@ export const usersCrudHandlers = createLazyProxy(() => createCrudHandlers(usersC
               tenancyId_projectUserId_type_isPrimary: {
                 tenancyId: auth.tenancy.id,
                 projectUserId: params.user_id,
-                type: 'EMAIL',
+                type: 'EMAIL' as const,
                 isPrimary: "TRUE",
               },
             },
@@ -790,6 +790,24 @@ export const usersCrudHandlers = createLazyProxy(() => createCrudHandlers(usersC
           },
           data: {
             isVerified: data.primary_email_verified,
+          },
+        });
+      }
+
+      // if primary_email_auth_enabled is being updated without changing the email
+      // - update the primary email contact channel's usedForAuth field
+      if (data.primary_email_auth_enabled !== undefined && data.primary_email === undefined) {
+        await tx.contactChannel.update({
+          where: {
+            tenancyId_projectUserId_type_isPrimary: {
+              tenancyId: auth.tenancy.id,
+              projectUserId: params.user_id,
+              type: 'EMAIL',
+              isPrimary: "TRUE",
+            },
+          },
+          data: {
+            usedForAuth: primaryEmailAuthEnabled ? BooleanTrue.TRUE : null,
           },
         });
       }
