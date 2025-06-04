@@ -5,6 +5,7 @@ import { createVerificationCodeHandler } from "@/route-handlers/verification-cod
 import { VerificationCodeType } from "@prisma/client";
 import { UsersCrud } from "@stackframe/stack-shared/dist/interface/crud/users";
 import { emailSchema, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
+import { StatusError } from "@stackframe/stack-shared/dist/utils/errors";
 
 export const contactChannelVerificationCodeHandler = createVerificationCodeHandler({
   metadata: {
@@ -32,6 +33,21 @@ export const contactChannelVerificationCodeHandler = createVerificationCodeHandl
   }),
   async send(codeObj, createOptions, sendOptions: { user: UsersCrud["Admin"]["Read"] }) {
     const tenancy = await getSoleTenancyFromProjectBranch(createOptions.project.id, createOptions.branchId);
+
+    const contactChannel = await prismaClient.contactChannel.findUnique({
+      where: {
+        tenancyId_projectUserId_type_value: {
+          tenancyId: tenancy.id,
+          projectUserId: codeObj.data.user_id,
+          type: "EMAIL",
+          value: createOptions.method.email,
+        },
+      },
+    });
+
+    if (!contactChannel) {
+      throw new StatusError(StatusError.NotFound, "Contact channel not found");
+    }
 
     await sendEmailFromTemplate({
       tenancy,
