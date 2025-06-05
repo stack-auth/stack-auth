@@ -1,11 +1,7 @@
 ---
-title: "&lt;UserButton /&gt;"
+title: "<UserButton />"
 description: Renders a user button component with optional user information, color mode toggle, and extra menu items.
 ---
-
-{/* <div className="stack-white-image-showcase stack-250h">
-  <img src="../imgs/user-button.png" alt="UserButton" />
-</div> */}
 
 <StackUserButton />
 
@@ -16,10 +12,6 @@ Try out the UserButton component with different props and see the changes in rea
 <UserButtonDemo />
 
 ## Props
-
-- `showUserInfo`: `boolean` - Whether to display user information (display name and email) or only show the avatar.
-- `colorModeToggle`: `() => void | Promise<void>` - Function to be called when the color mode toggle button is clicked. If specified, a color mode toggle button will be shown.
-- `extraItems`: `Array<{text: string, icon: React.ReactNode, onClick: Function}>` - Additional menu items to display.
 
 <PropTable
   props={[
