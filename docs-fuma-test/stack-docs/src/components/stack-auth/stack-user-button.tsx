@@ -1,18 +1,16 @@
-import { UserButton } from "@stackframe/stack";
-import { StackContainer } from "../mdx";
+import { UserButton } from '@stackframe/stack';
+import { StackContainer } from '../mdx';
 
+const mockUser = {
+  displayName: "John Doe",
+  primaryEmail: "john.doe@example.com",
+  profileImageUrl: undefined,
+};
 
 export function StackUserButton() {
   return (
-    <StackContainer color="amber" size="small">
-    <UserButton 
-      showUserInfo={true}
-      mockUser={{
-        displayName: "John Doe",
-        primaryEmail: "john.doe@example.com",
-        profileImageUrl: undefined,
-      }}
-    />
+    <StackContainer color="blue" size="small">
+      <UserButton mockUser={mockUser} />
     </StackContainer>
-  )
+  );
 }

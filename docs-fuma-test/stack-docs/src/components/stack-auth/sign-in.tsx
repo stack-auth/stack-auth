@@ -98,7 +98,7 @@ export function MySignInPage() {
               />
               <span className="text-sm font-medium">automaticRedirect</span>
             </label>
-            <p className="text-xs text-gray-600">If true, automatically redirects when user is already signed in without showing the 'You are signed in' message.</p>
+            <p className="text-xs text-gray-600">If true, automatically redirects when user is already signed in without showing the &apos;You are signed in&apos; message.</p>
           </div>
 
           {/* First Tab Selection */}

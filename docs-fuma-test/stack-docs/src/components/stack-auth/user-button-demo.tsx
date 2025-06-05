@@ -1,6 +1,6 @@
 'use client';
 
-import { UserButton } from "@stackframe/stack";
+import { UserButton } from '@stackframe/stack';
 import { Wrench } from "lucide-react";
 import { useState } from "react";
 import { StackContainer } from "../mdx";

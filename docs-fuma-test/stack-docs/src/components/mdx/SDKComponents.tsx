@@ -31,10 +31,30 @@ export function ParamField({
 
 export function Accordion({ title, children }: { title: React.ReactNode; children: React.ReactNode }) {
   return (
-    <details className="accordion">
-      <summary className="accordion-title">{title}</summary>
-      <div className="accordion-content">{children}</div>
+    <details className="group border border-fd-border rounded-lg bg-fd-card">
+      <summary className="flex items-center justify-between px-4 py-3 cursor-pointer font-medium text-fd-foreground hover:bg-fd-accent/50 rounded-lg list-none [&::-webkit-details-marker]:hidden">
+        {title}
+        <svg 
+          className="w-4 h-4 transition-transform group-open:rotate-180" 
+          fill="none" 
+          stroke="currentColor" 
+          viewBox="0 0 24 24"
+        >
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+        </svg>
+      </summary>
+      <div className="px-4 pb-4 text-fd-muted-foreground">
+        {children}
+      </div>
     </details>
+  );
+}
+
+export function AccordionGroup({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="accordion-group space-y-3 mb-6">
+      {children}
+    </div>
   );
 }
 

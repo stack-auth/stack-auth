@@ -124,24 +124,28 @@ export function Sidebar({
           />
         </Presence>
         <Presence present={open}>
-          {({ present }) => (
-            <RemoveScroll
-              as="aside"
-              enabled={present}
-              id="nd-sidebar-mobile"
-              {...props}
-              data-state={state}
-              className={cn(
-                'fixed text-[15px] flex flex-col py-3 rounded-xl shadow-lg start-0 ms-3 mt-3 mb-3 inset-y-0 w-[85%] max-w-[360px] z-40 bg-fd-background/95 backdrop-blur-md data-[state=open]:animate-fd-enterFromLeft data-[state=closed]:animate-fd-exitToLeft',
-                !present && 'invisible',
-                props.className,
-              )}
-            >
-              <Context.Provider value={context}>
-                {props.children}
-              </Context.Provider>
-            </RemoveScroll>
-          )}
+          {({ present }) => {
+            // eslint-disable-next-line @typescript-eslint/no-unused-vars
+            const { ref, ...restProps } = props;
+            return (
+              <RemoveScroll
+                as="aside"
+                enabled={present}
+                id="nd-sidebar-mobile"
+                {...restProps}
+                data-state={state}
+                className={cn(
+                  'fixed text-[15px] flex flex-col py-3 rounded-xl shadow-lg start-0 ms-3 mt-3 mb-3 inset-y-0 w-[85%] max-w-[360px] z-40 bg-fd-background/95 backdrop-blur-md data-[state=open]:animate-fd-enterFromLeft data-[state=closed]:animate-fd-exitToLeft',
+                  !present && 'invisible',
+                  props.className,
+                )}
+              >
+                <Context.Provider value={context}>
+                  {props.children}
+                </Context.Provider>
+              </RemoveScroll>
+            );
+          }}
         </Presence>
       </>
     );
@@ -245,22 +249,21 @@ export function SidebarViewport(props: ScrollAreaProps) {
 }
 
 export function SidebarSeparator(props: ComponentProps<'p'>) {
-  const { level } = useInternalContext();
-
   return (
-    <p
-      {...props}
-      className={cn(
-        'inline-flex items-center gap-2 mb-2 px-3 py-1 font-medium text-xs uppercase tracking-wider text-fd-muted-foreground/80 empty:mb-0 [&_svg]:size-4 [&_svg]:shrink-0',
-        props.className,
-      )}
-      style={{
-        paddingInlineStart: getOffset(level),
-        ...props.style,
-      }}
-    >
-      {props.children}
-    </p>
+    <div className="flex justify-center w-full mb-4 mt-6">
+      <p
+        {...props}
+        className={cn(
+          'inline-flex items-center justify-center gap-2 px-6 py-2.5 font-bold text-xs uppercase tracking-widest text-fd-foreground bg-fd-accent/10 border border-fd-accent/40 rounded-full shadow-md relative overflow-hidden empty:mb-0 [&_svg]:size-4 [&_svg]:shrink-0',
+          props.className,
+        )}
+        style={{
+          ...props.style,
+        }}
+      >
+        {props.children}
+      </p>
+    </div>
   );
 }
 
