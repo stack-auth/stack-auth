@@ -1,7 +1,7 @@
-import { stackServerApp } from '@/stack';
 import { StackProvider, StackTheme } from '@stackframe/stack';
 import { RootProvider } from 'fumadocs-ui/provider';
 import { Inter } from 'next/font/google';
+import { stackServerApp } from '../stack';
 import './global.css';
 
 const inter = Inter({

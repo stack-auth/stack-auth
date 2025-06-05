@@ -27,10 +27,7 @@ yarn-error.log*
 .vercel
 next-env.d.ts
 
-pages-js/
-pages-next/
-pages-python/
-pages-react/
+# ignore all generated docs content
 /content/docs/
 /public/openapi/
 

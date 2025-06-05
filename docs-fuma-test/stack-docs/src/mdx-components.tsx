@@ -7,18 +7,24 @@ import type { MDXComponents } from 'mdx/types';
 import { APIPage } from 'fumadocs-openapi/ui';
 
 // Raw @stackframe/stack components
-import { SignIn } from '@stackframe/stack';
+//import { SignIn } from '@stackframe/stack';
 
 // Custom components from @stackframe/stack
 import { Card, CardGroup, Info } from './components/mdx';
+import ApiSequenceDiagram from './components/mdx/api-sequence-diagram';
 import { AuthCard } from './components/mdx/AuthCard';
 import { DynamicCodeblock } from './components/mdx/DynamicCodeblock';
-import { Accordion, CodeBlocks, Icon, Markdown, ParamField } from './components/mdx/SDKComponents';
+import { Accordion, AccordionGroup, CodeBlocks, Icon, Markdown, ParamField } from './components/mdx/SDKComponents';
 import { PropTable } from './components/PropTable';
+
+
 import { AccountSettingsStackAuth } from './components/stack-auth/account-settings';
 import { SignInDemo, SignInExtraInfo, SignInPasswordFirstTab, SignInStackAuth } from './components/stack-auth/sign-in';
 import { StackUserButton } from './components/stack-auth/stack-user-button';
+import { TeamSwitcherDemo } from './components/stack-auth/team-switcher';
 import { UserButtonDemo } from './components/stack-auth/user-button-demo';
+
+import { Mermaid } from './components/mdx/mermaid';
 import { Step, Steps } from './components/steps';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from './components/ui/tabs';
 // use this function to get MDX components, you will need it for rendering MDX
@@ -27,7 +33,7 @@ export function getMDXComponents(components?: MDXComponents): MDXComponents {
     ...defaultMdxComponents,
     ...components,
     ...CodeBlock,
-    SignIn,
+    //SignIn
     Card,
     CardGroup,
     Info,
@@ -39,6 +45,7 @@ export function getMDXComponents(components?: MDXComponents): MDXComponents {
     SignInExtraInfo,
     StackUserButton,
     UserButtonDemo,
+    TeamSwitcherDemo,
     Steps,
     Step,
     Tabs,
@@ -48,12 +55,15 @@ export function getMDXComponents(components?: MDXComponents): MDXComponents {
     APIPage,
     TypeTable,
     PropTable,
+    ApiSequenceDiagram,
     // SDK Documentation Components
     Markdown,
     ParamField,
     Accordion,
+    AccordionGroup,
     CodeBlocks,
     Icon,
     DynamicCodeblock,
+    Mermaid,
   } as MDXComponents;
 }

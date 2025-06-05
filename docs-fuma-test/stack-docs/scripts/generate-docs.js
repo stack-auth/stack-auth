@@ -17,6 +17,17 @@ function getFolderName(platform) {
   return `pages-${platform}`;
 }
 
+// Platform display names
+function getPlatformDisplayName(platform) {
+  const platformNames = {
+    'next': 'Next.js',
+    'react': 'React',
+    'js': 'JavaScript',
+    'python': 'Python'
+  };
+  return platformNames[platform] || platform;
+}
+
 // Platform-specific content markers
 const PLATFORM_START_MARKER = /{\s*\/\*\s*IF_PLATFORM:\s*(\w+)\s*\*\/\s*}/;
 const PLATFORM_ELSE_MARKER = /{\s*\/\*\s*ELSE_IF_PLATFORM\s+(\w+)\s*\*\/\s*}/;
@@ -73,23 +84,10 @@ function processTemplateForPlatform(content, targetPlatform) {
  * Generate meta.json files for Fumadocs navigation
  */
 function generateMetaFiles() {
-  // Create the root meta.json file - this is the only one we generate custom
-  const rootMeta = {
-    title: "Stack Auth Documentation",
-    root: true,
-    pages: PLATFORMS.map(platform => getFolderName(platform))
-  };
-  
-  fs.writeFileSync(
-    path.join(OUTPUT_BASE_DIR, 'meta.json'),
-    JSON.stringify(rootMeta, null, 2)
-  );
-  
-  console.log('Generated root meta.json');
-  
-  // Copy meta.json files for each platform
+  // Process meta.json files for each platform from templates
   for (const platform of PLATFORMS) {
     const folderName = getFolderName(platform);
+    const platformDisplayName = getPlatformDisplayName(platform);
     
     // Find all meta.json files in the template directory
     const metaFiles = glob.sync('**/meta.json', { cwd: TEMPLATE_DIR });
@@ -98,12 +96,20 @@ function generateMetaFiles() {
       const srcPath = path.join(TEMPLATE_DIR, metaFile);
       const destPath = path.join(OUTPUT_BASE_DIR, folderName, metaFile);
       
+      // Read and parse the template meta.json
+      const templateContent = fs.readFileSync(srcPath, 'utf8');
+      const metaData = JSON.parse(templateContent);
+      
+      // Update title and description for this platform
+      metaData.title = platformDisplayName;
+      metaData.description = `Stack Auth ${platformDisplayName}`;
+      
       // Create directory if it doesn't exist
       fs.mkdirSync(path.dirname(destPath), { recursive: true });
       
-      // Copy the file
-      fs.copyFileSync(srcPath, destPath);
-      console.log(`Copied meta.json: ${srcPath} -> ${destPath}`);
+      // Write the processed meta.json
+      fs.writeFileSync(destPath, JSON.stringify(metaData, null, 2));
+      console.log(`Generated platform-specific meta.json: ${destPath}`);
     }
   }
 }

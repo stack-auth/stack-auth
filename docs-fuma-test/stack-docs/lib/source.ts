@@ -1,6 +1,8 @@
 import { docs } from '@/.source';
 import { loader } from 'fumadocs-core/source';
 import { attachFile } from 'fumadocs-openapi/server';
+import { icons } from 'lucide-react';
+import { createElement } from 'react';
 
 // See https://fumadocs.vercel.app/docs/headless/source-api for more info
 export const source = loader({
@@ -9,5 +11,18 @@ export const source = loader({
   source: docs.toFumadocsSource(),
   pageTree: {
     attachFile,
+  },
+  icon(icon) {
+    if (!icon) {
+      // You may set a default icon here if needed
+      return;
+    }
+
+    if (icon in icons) {
+      return createElement(icons[icon as keyof typeof icons]);
+    }
+
+    // Fallback to undefined if icon is not found
+    return;
   },
 });
