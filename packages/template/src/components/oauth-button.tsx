@@ -171,7 +171,7 @@ export function OAuthButton({
       <style>{styleSheet}</style>
       <SimpleTooltip
         disabled={!isIframe}
-        tooltip={isIframe ? "OAuth is disabled in iFrame" : undefined}
+        tooltip={isIframe ? "This auth provider is not supported in an iframe for security reasons." : undefined}
         className='stack-scope w-full inline-flex'
       >
         <Button
