@@ -4,7 +4,6 @@ import { getRelativePart } from "@stackframe/stack-shared/dist/utils/urls";
 import { RedirectType, notFound, redirect } from 'next/navigation'; // THIS_LINE_PLATFORM next
 import { useMemo } from 'react';
 import { SignIn, SignUp, StackServerApp } from "..";
-import { IframePreventer } from "../components/iframe-preventer";
 import { MessageCard } from "../components/message-cards/message-card";
 import { HandlerUrls, StackClientApp } from "../lib/stack-app";
 import { AccountSettings } from "./account-settings";
@@ -249,9 +248,7 @@ async function NextStackHandler<HasTokenStore extends boolean>(props: BaseHandle
         {next15DeprecationWarning}. This warning will not be shown in production.
       </span>
     )}
-    <IframePreventer>
-      {result}
-    </IframePreventer>
+    {result}
   </>;
 }
 
@@ -317,11 +314,7 @@ function ReactStackHandler<HasTokenStore extends boolean>(props: BaseHandlerProp
     return null;
   }
 
-  return (
-    <IframePreventer>
-      {result}
-    </IframePreventer>
-  );
+  return result;
 }
 
 // END_PLATFORM
