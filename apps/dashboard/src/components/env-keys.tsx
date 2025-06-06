@@ -1,7 +1,7 @@
 import { getPublicEnvVar } from '@/lib/env';
 import { Button, CopyField, Tabs, TabsContent, TabsList, TabsTrigger } from "@stackframe/stack-ui";
 
-export default function EnvKeys(props: {
+function getEnvFileContent(props: {
   projectId: string,
   publishableClientKey?: string,
   secretServerKey?: string,
@@ -18,8 +18,17 @@ export default function EnvKeys(props: {
     .map(([k, v]) => `${k}=${v}`)
     .join("\n");
 
+  return envFileContent;
+}
+
+export function EnvKeys(props: {
+  projectId: string,
+  publishableClientKey?: string,
+  secretServerKey?: string,
+  superSecretAdminKey?: string,
+}) {
   const handleDownloadKeys = () => {
-    const blob = new Blob([envFileContent], { type: "text/plain" });
+    const blob = new Blob([getEnvFileContent(props)], { type: "text/plain" });
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.href = url;
@@ -40,52 +49,81 @@ export default function EnvKeys(props: {
         </TabsTrigger>
       </TabsList>
       <TabsContent value={"env"}>
-        <CopyField
-          monospace
-          height={160}
-          value={envFileContent}
-          label="Next.js Environment variables"
-        />
+        <NextJsEnvKeys {...props} />
       </TabsContent>
       <TabsContent value={"keys"}>
-        <div className="flex flex-col gap-2">
-          {props.projectId && (
-            <CopyField
-              monospace
-              value={props.projectId}
-              label="Project ID"
-              helper="This ID is used in your client-side code and is safe to expose to the public."
-            />
-          )}
-          {props.publishableClientKey && (
-            <CopyField
-              monospace
-              value={props.publishableClientKey}
-              label="Publishable Client Key"
-              helper="This key is used in your client-side code and is safe to expose to the public."
-            />
-          )}
-          {props.secretServerKey && (
-            <CopyField
-              monospace
-              value={props.secretServerKey}
-              label="Secret Server Key"
-              helper="This key is used on the server-side and can be used to perform actions on behalf of your users. Keep it safe."
-            />
-          )}
-          {props.superSecretAdminKey && (
-            <CopyField
-              monospace
-              value={props.superSecretAdminKey}
-              label="Super Secret Admin Key"
-              helper="This key is for administrative use only. Anyone owning this key will be able to create unlimited new keys and revoke any other keys. Be careful!"
-            />
-          )}
-        </div>
+        <APIEnvKeys {...props} />
       </TabsContent>
-      <Button variant="secondary" className="w-full mt-1.5" onClick={handleDownloadKeys}>
+      <Button variant="secondary" className="w-full mt-4" onClick={handleDownloadKeys}>
         Download Keys
       </Button>
     </Tabs>
+  );
+}
+
+export function APIEnvKeys(props: {
+  projectId: string,
+  publishableClientKey?: string,
+  secretServerKey?: string,
+  superSecretAdminKey?: string,
+}) {
+  return (
+    <div className="flex flex-col gap-4 w-full">
+      {props.projectId && (
+        <CopyField
+          type="input"
+          monospace
+          value={props.projectId}
+          label="Project ID"
+          helper="This ID is used in your client-side code and is safe to expose to the public."
+        />
+      )}
+      {props.publishableClientKey && (
+        <CopyField
+          type="input"
+          monospace
+          value={props.publishableClientKey}
+          label="Publishable Client Key"
+          helper="This key is used in your client-side code and is safe to expose to the public."
+        />
+      )}
+      {props.secretServerKey && (
+        <CopyField
+          type="input"
+          monospace
+          value={props.secretServerKey}
+          label="Secret Server Key"
+          helper="This key is used on the server-side and can be used to perform actions on behalf of your users. Keep it safe."
+        />
+      )}
+      {props.superSecretAdminKey && (
+        <CopyField
+          type="input"
+          monospace
+          value={props.superSecretAdminKey}
+          label="Super Secret Admin Key"
+          helper="This key is for administrative use only. Anyone owning this key will be able to create unlimited new keys and revoke any other keys. Be careful!"
+        />
+      )}
+    </div>
+  );
+}
+
+export function NextJsEnvKeys(props: {
+  projectId: string,
+  publishableClientKey?: string,
+  secretServerKey?: string,
+  superSecretAdminKey?: string,
+}) {
+  const envFileContent = getEnvFileContent(props);
+
+  return (
+    <CopyField
+      type="textarea"
+      monospace
+      height={envFileContent.split("\n").length * 26}
+      value={envFileContent}
+      fixedSize
+    />
   );
 }

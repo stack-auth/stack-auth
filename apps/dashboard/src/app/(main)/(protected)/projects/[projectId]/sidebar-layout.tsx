@@ -69,7 +69,7 @@ const navigationItems: (Label | Item | Hidden)[] = [
   {
     name: "Overview",
     href: "/",
-    regex: /^\/projects\/[^\/]+$/,
+    regex: /^\/projects\/[^\/]+\/?$/,
     icon: Globe,
     type: 'item'
   },
