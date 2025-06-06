@@ -9,6 +9,7 @@ import { dark, prism } from 'react-syntax-highlighter/dist/esm/styles/prism';
 export function CodeBlock(props: {
   language: string,
   content: string,
+  customRender?: React.ReactNode,
   title: string,
   icon: 'terminal' | 'code',
   maxHeight?: number,
@@ -37,14 +38,14 @@ export function CodeBlock(props: {
         <CopyButton content={props.content} />
       </div>
       <div>
-        <SyntaxHighlighter
+        {props.customRender ?? <SyntaxHighlighter
           language={props.language}
           style={theme === 'dark' ? dark : prism}
           customStyle={{ background: 'transparent', padding: '1em', border: 0, boxShadow: 'none', margin: 0, fontSize: '0.875rem', maxHeight: props.maxHeight, overflow: 'auto' }}
           wrapLines
         >
           {props.content}
-        </SyntaxHighlighter>
+        </SyntaxHighlighter>}
       </div>
     </div>
   );

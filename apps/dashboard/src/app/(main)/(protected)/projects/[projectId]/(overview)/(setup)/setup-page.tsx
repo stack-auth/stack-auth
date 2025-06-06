@@ -7,7 +7,7 @@ import { StyledLink } from '@/components/link';
 import { useThemeWatcher } from '@/lib/theme';
 import { deindent } from '@stackframe/stack-shared/dist/utils/strings';
 import { Button, Tabs, TabsContent, TabsList, TabsTrigger, Typography, cn } from "@stackframe/stack-ui";
-import { ArrowLeft, Book } from "lucide-react";
+import { Book, X } from "lucide-react";
 import dynamic from "next/dynamic";
 import Image from 'next/image';
 import { use, useEffect, useRef, useState } from "react";
@@ -18,6 +18,9 @@ import { useAdminApp } from '../../use-admin-app';
 import styles from './setup-page.module.css';
 const countriesPromise = import('../(utils)/country-data.geo.json');
 const Globe = dynamic(() => import('react-globe.gl').then((mod) => mod.default), { ssr: false });
+
+const commandClasses = "text-red-600 dark:text-red-400";
+const nameClasses = "text-green-600 dark:text-green-500";
 
 export default function SetupPage(props: { toMetrics: () => void }) {
   const adminApp = useAdminApp();
@@ -64,7 +67,12 @@ export default function SetupPage(props: { toMetrics: () => void }) {
         </Typography>
         <CodeBlock
           language="bash"
-          content={`npx @stackframe/init@latest`}
+          content={`npx @stackframe/init-stack@latest`}
+          customRender={
+            <div className="p-4 font-mono text-sm">
+              <span className={commandClasses}>npx</span> <span className={nameClasses}>@stackframe/init-stack@latest</span>
+            </div>
+          }
           title="Terminal"
           icon="terminal"
         />
@@ -102,6 +110,11 @@ export default function SetupPage(props: { toMetrics: () => void }) {
         <CodeBlock
           language="bash"
           content={`npm install @stackframe/react`}
+          customRender={
+            <div className="p-4 font-mono text-sm">
+              <span className={commandClasses}>npm install</span> <span className={nameClasses}>@stackframe/react</span>
+            </div>
+          }
           title="Terminal"
           icon="terminal"
         />
@@ -208,6 +221,11 @@ export default function SetupPage(props: { toMetrics: () => void }) {
         <CodeBlock
           language="bash"
           content={`npm install @stackframe/js`}
+          customRender={
+            <div className="p-4 font-mono text-sm">
+              <span className={commandClasses}>npm install</span> <span className={nameClasses}>@stackframe/js</span>
+            </div>
+          }
           title="Terminal"
           icon="terminal"
         />
@@ -338,6 +356,11 @@ export default function SetupPage(props: { toMetrics: () => void }) {
         <CodeBlock
           language="bash"
           content={`pip install requests`}
+          customRender={
+            <div className="p-4 font-mono text-sm">
+              <span className={commandClasses}>pip install</span> <span className={nameClasses}>requests</span>
+            </div>
+          }
           title="Terminal"
           icon="terminal"
         />
@@ -410,10 +433,10 @@ export default function SetupPage(props: { toMetrics: () => void }) {
 
   return (
     <PageLayout width={1000}>
-      <div className="flex">
+      <div className="flex justify-end">
         <Button variant='plain' onClick={props.toMetrics}>
-          <ArrowLeft className="w-4 h-4 mr-2" />
-          Back to Metrics
+          Close Setup
+          <X className="w-4 h-4 ml-1 mt-0.5" />
         </Button>
       </div>
       <div className="flex gap-4 justify-center items-center border rounded-2xl py-4 px-8">
@@ -535,9 +558,12 @@ export default function SetupPage(props: { toMetrics: () => void }) {
                       <Image
                         src={src}
                         alt={name}
-                        width={30}
-                        height={30}
+
                         className={reverseIfDark ? "dark:invert" : undefined}
+                        width="0"
+                        height="0"
+                        sizes="100vw"
+                        style={{ width: '30px', height: 'auto' }}
                       />
                       <Typography type='label'>{name}</Typography>
                     </Button>
@@ -558,7 +584,7 @@ export default function SetupPage(props: { toMetrics: () => void }) {
                 <h3 className="font-medium leading-tight">{item.title}</h3>
                 {/* <p className="text-sm">{item.description}</p> */}
               </div>
-              <div className="flex flex-grow flex-col w-0 gap-4">
+              <div className="flex flex-grow flex-col gap-4">
                 {item.content}
               </div>
             </li>
