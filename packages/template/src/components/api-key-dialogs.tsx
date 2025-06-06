@@ -156,6 +156,7 @@ export function ShowApiKeyDialog<Type extends ApiKeyType = ApiKeyType>(props: {
           </span>
         </Typography>
         <CopyField
+          type="input"
           monospace
           value={props.apiKey?.value ?? ''}
           label={t("Secret API Key")}

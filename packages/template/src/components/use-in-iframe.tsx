@@ -1,9 +1,7 @@
 'use client';
 import { useEffect, useState } from "react";
 
-export function IframePreventer({ children }: {
-  children: React.ReactNode,
-}) {
+export function useInIframe() {
   const [isIframe, setIsIframe] = useState(false);
   useEffect(() => {
     if (window.self !== window.top) {
@@ -11,9 +9,5 @@ export function IframePreventer({ children }: {
     }
   }, []);
 
-  if (isIframe) {
-    return <div>Stack Auth components may not run in an {'<'}iframe{'>'}.</div>;
-  }
-
-  return children;
+  return isIframe;
 }
