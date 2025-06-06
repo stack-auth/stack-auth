@@ -7,6 +7,7 @@ export function SimpleTooltip(props: {
   type?: 'info' | 'warning',
   inline?: boolean,
   className?: string,
+  disabled?: boolean,
 }) {
   const iconClassName = cn("w-4 h-4 text-zinc-500", props.inline && "inline");
   const icon = props.type === 'warning' ?
@@ -21,7 +22,7 @@ export function SimpleTooltip(props: {
 
   return (
     <TooltipProvider>
-      <Tooltip>
+      <Tooltip open={props.disabled ? false : undefined}>
         <TooltipTrigger asChild>
           {props.inline ? (
             <span className={cn(props.className)}>
