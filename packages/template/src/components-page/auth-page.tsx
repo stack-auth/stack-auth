@@ -42,8 +42,6 @@ export function AuthPage(props: Props) {
 }
 
 function Fallback(props: Props) {
-  const { t } = useTranslation();
-
   return (
     <MaybeFullPage fullPage={!!props.fullPage}>
       <div className='stack-scope flex flex-col items-stretch' style={{ maxWidth: '380px', flexBasis: '380px', padding: props.fullPage ? '1rem' : 0 }}>
