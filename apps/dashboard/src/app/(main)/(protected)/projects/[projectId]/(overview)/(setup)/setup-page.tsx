@@ -92,9 +92,9 @@ export default function SetupPage(props: { toMetrics: () => void }) {
       step: 4,
       title: "Done",
       content: <>
-        <div>
+        <Typography>
           If you start your Next.js app with npm run dev and navigate to <StyledLink href="http://localhost:3000/handler/signup">http://localhost:3000/handler/signup</StyledLink>, you will see the sign-up page.
-        </div>
+        </Typography>
       </>
     },
   ];
@@ -139,9 +139,9 @@ export default function SetupPage(props: { toMetrics: () => void }) {
             import { useNavigate } from "react-router-dom";
             
             export const stackClientApp = new StackClientApp({
-              // You should store these in environment variables based on your project setup
-              projectId: "your-project-id",
-              publishableClientKey: "your-publishable-client-key",
+              // You should store these in environment variables
+              projectId: "${keys?.projectId ?? "..."}",
+              publishableClientKey: "${keys?.publishableClientKey ?? "..."}",
               tokenStore: "cookie",
               redirectMethod: {
                 useNavigate,
@@ -256,9 +256,9 @@ export default function SetupPage(props: { toMetrics: () => void }) {
 
                 const stackServerApp = new StackServerApp({
                   // You should store these in environment variables based on your project setup
-                  projectId: "your-project-id-from-dashboard",
-                  publishableClientKey: "your-publishable-client-key-from-dashboard", 
-                  secretServerKey: "your-secret-server-key-from-dashboard",
+                  projectId: "${keys?.projectId ?? "..."}",
+                  publishableClientKey: "${keys?.publishableClientKey ?? "..."}",
+                  secretServerKey: "${keys?.secretServerKey ?? "..."}",
                   tokenStore: "memory",
                 });
               `}
@@ -273,7 +273,7 @@ export default function SetupPage(props: { toMetrics: () => void }) {
                 import { StackClientApp } from "@stackframe/js";
 
                 const stackClientApp = new StackClientApp({
-                  // You should store these in environment variables based on your project setup
+                  // You should store these in environment variables
                   projectId: "your-project-id",
                   publishableClientKey: "your-publishable-client-key",
                   tokenStore: "cookie",
@@ -389,9 +389,10 @@ export default function SetupPage(props: { toMetrics: () => void }) {
                 f'https://api.stack-auth.com/{endpoint}',
                 headers={
                   'x-stack-access-type': 'server',
-                  'x-stack-project-id': stack_project_id,
-                  'x-stack-publishable-client-key': stack_publishable_client_key,
-                  'x-stack-secret-server-key': stack_secret_server_key,
+                  # You should store these in environment variables
+                  'x-stack-project-id': "${keys?.projectId ?? "..."}",
+                  'x-stack-publishable-client-key': "${keys?.publishableClientKey ?? "..."}",
+                  'x-stack-secret-server-key': "${keys?.secretServerKey ?? "..."}",
                   **kwargs.pop('headers', {}),
                 },
                 **kwargs,
@@ -577,12 +578,11 @@ export default function SetupPage(props: { toMetrics: () => void }) {
             ...(selectedFramework === 'python' ? pythonSteps : []),
           ].map((item, index) => (
             <li key={item.step} className={cn("ms-6 flex flex-col lg:flex-row gap-10 mb-20")}>
-              <div className="flex flex-col gap-2 max-w-[180px] min-w-[180px]">
+              <div className="flex flex-col justify-center gap-2 max-w-[180px] min-w-[180px]">
                 <span className={`absolute flex items-center justify-center w-8 h-8 bg-gray-100 dark:bg-gray-70 rounded-full -start-4 ring-4 ring-white dark:ring-gray-900`}>
                   <span className={`text-gray-500 dark:text-gray-700 font-medium`}>{item.step}</span>
                 </span>
                 <h3 className="font-medium leading-tight">{item.title}</h3>
-                {/* <p className="text-sm">{item.description}</p> */}
               </div>
               <div className="flex flex-grow flex-col gap-4">
                 {item.content}
