@@ -604,22 +604,3 @@ function StackAuthKeys(props: {
     </div>
   );
 }
-
-function SimpleTabs(props: { tabs: { label: string, content: React.ReactNode }[] }) {
-  return (
-    <Tabs defaultValue={props.tabs[0].label}>
-      <TabsList className="flex">
-        {props.tabs.map((tab) => (
-          <TabsTrigger key={tab.label} value={tab.label} className="flex-grow">
-            {tab.label}
-          </TabsTrigger>
-        ))}
-      </TabsList>
-      {props.tabs.map((tab) => (
-        <TabsContent key={tab.label} value={tab.label}>
-          {tab.content}
-        </TabsContent>
-      ))}
-    </Tabs>
-  );
-}
