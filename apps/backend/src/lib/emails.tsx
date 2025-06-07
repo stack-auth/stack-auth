@@ -253,12 +253,12 @@ export async function sendEmail(options: SendEmailOptions) {
         from: options.emailConfig.senderEmail,
         to: options.to,
         subject: options.subject,
-        cause: result.error.rawError,
+        error: result.error,
       };
 
       if (result.error.canRetry) {
-            console.warn("Failed to send email, but error is possibly transient so retrying.", extraData, result.error.rawError);
-            return Result.error(result.error);
+        console.warn("Failed to send email, but error is possibly transient so retrying.", extraData, result.error.rawError);
+        return Result.error(result.error);
       }
 
       // TODO if using custom email config, we should notify the developer instead of throwing an error
