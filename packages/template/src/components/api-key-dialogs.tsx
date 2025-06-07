@@ -32,9 +32,10 @@ export function CreateApiKeyDialog<Type extends ApiKeyType = ApiKeyType>(props: 
   onOpenChange: (open: boolean) => void,
   onKeyCreated?: (key: ApiKey<Type, true>) => void,
   createApiKey: (data: ApiKeyCreationOptions<Type>) => Promise<ApiKey<Type, true>>,
+  mockMode?: boolean,
 }) {
   const { t } = useTranslation();
-  const user = useUser({ or: 'redirect' });
+  const user = useUser({ or: props.mockMode ? 'return-null' : 'redirect' });
   const [loading, setLoading] = useState(false);
 
   const apiKeySchema = yupObject({
