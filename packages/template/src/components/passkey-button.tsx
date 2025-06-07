@@ -1,10 +1,10 @@
 'use client';
 
 import { Button } from '@stackframe/stack-ui';
+import { KeyRound } from 'lucide-react';
 import { useId } from 'react';
 import { useStackApp } from '..';
 import { useTranslation } from '../lib/translations';
-import { KeyRound } from 'lucide-react';
 
 
 export function PasskeyButton({
