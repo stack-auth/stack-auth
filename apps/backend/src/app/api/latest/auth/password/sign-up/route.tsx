@@ -1,3 +1,4 @@
+import { validateRedirectUrl } from "@/lib/redirect-urls";
 import { createAuthTokens } from "@/lib/tokens";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { runAsynchronouslyAndWaitUntil } from "@/utils/vercel";
@@ -37,6 +38,14 @@ export const POST = createSmartRouteHandler({
   async handler({ auth: { tenancy }, body: { email, password, verification_callback_url: verificationCallbackUrl } }, fullReq) {
     if (!tenancy.config.credential_enabled) {
       throw new KnownErrors.PasswordAuthenticationNotEnabled();
+    }
+
+    if (!validateRedirectUrl(
+      verificationCallbackUrl,
+      tenancy.config.domains,
+      tenancy.config.allow_localhost,
+    )) {
+      throw new KnownErrors.RedirectUrlNotWhitelisted();
     }
 
     const passwordError = getPasswordError(password);
