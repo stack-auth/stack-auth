@@ -485,12 +485,12 @@ function ContactChannelsSection({ user }: ContactChannelsSectionProps) {
                   <TableCell align="right">
                     <ActionCell
                       items={[
-                        ...(!channel.isVerified ? [{
-                          item: "Send verification email",
-                          onClick: async () => {
-                            await channel.sendVerificationEmail();
-                          },
-                        }] : []),
+                        // ...(!channel.isVerified ? [{
+                        //   item: "Send verification email",
+                        //   onClick: async () => {
+                        //     await channel.sendVerificationEmail();
+                        //   },
+                        // }] : []),
                         {
                           item: channel.isVerified ? "Mark as unverified" : "Mark as verified",
                           onClick: async () => {
