@@ -123,19 +123,6 @@ function EditDialog(props: {
             },
           });
         } else {
-          console.log({
-            config: {
-              domains: [...props.domains].map((domain, i) => {
-                if (i === props.editIndex) {
-                  return {
-                    domain: (values.insecureHttp ? 'http://' : 'https://') + values.domain,
-                    handlerPath: values.handlerPath,
-                  };
-                }
-                return domain;
-              }),
-            },
-          });
           await props.project.update({
             config: {
               domains: [...props.domains].map((domain, i) => {
