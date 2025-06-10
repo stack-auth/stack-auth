@@ -59,9 +59,10 @@
       ],
       "outputLogs": "new-only"
     },
-    "@stackframe/docs#build": {
+    "stack-docs#build": {
       "dependsOn": [
-        "@stackframe/stack-backend#build"
+        "@stackframe/stack-backend#build",
+        "@stackframe/stack-backend#generate-openapi-fumadocs"
       ]
     },
     "@stackframe/mcp-server#build": {
@@ -79,7 +80,7 @@
         "^build"
       ],
       "outputs": [
-        "../../docs/fern/openapi"
+        "../../docs-fuma-test/stack-docs/public/openapi"
       ]
     },
     "clean": {

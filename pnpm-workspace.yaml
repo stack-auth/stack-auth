@@ -2,6 +2,4 @@ packages:
   - packages/*
   - apps/*
   - examples/*
-  - docs
-  - docs-fuma
   - docs-fuma-test/stack-docs
