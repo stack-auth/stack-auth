@@ -1,4 +1,10 @@
-import type { LinkItemType } from '../links';
+import type { PageTree } from 'fumadocs-core/server';
+import {
+  getSidebarTabs,
+  type GetSidebarTabsOptions,
+} from 'fumadocs-ui/utils/get-sidebar-tabs';
+import type { ReactNode } from 'react';
+import type { Option } from '../../layout/root-toggle';
 import {
   type SidebarComponents,
   SidebarFolder,
@@ -8,13 +14,7 @@ import {
   SidebarItem,
   type SidebarProps,
 } from '../../layout/sidebar';
-import type { PageTree } from 'fumadocs-core/server';
-import type { ReactNode } from 'react';
-import type { Option } from '../../layout/root-toggle';
-import {
-  getSidebarTabs,
-  type GetSidebarTabsOptions,
-} from 'fumadocs-ui/utils/get-sidebar-tabs';
+import type { LinkItemType } from '../links';
 
 export const layoutVariables = {
   '--fd-layout-offset': 'max(calc(50vw - var(--fd-layout-width) / 2), 0px)',

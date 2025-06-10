@@ -1,3 +1,39 @@
+/**
+ * DOCS BASE LAYOUT
+ * 
+ * This file contains the core documentation layout structure and styling.
+ * It provides the foundational DocsLayout component that handles the actual
+ * rendering of the documentation interface.
+ * 
+ * ARCHITECTURE:
+ * 1. app/docs/layout.tsx 
+ *    ↓ imports DynamicDocsLayout
+ * 2. docs-layout-router.tsx (ROUTER)
+ *    ↓ routes to appropriate config → imports DocsLayout
+ * 3. docs.tsx (THIS FILE - BASE LAYOUT)
+ *    ↓ renders the actual layout structure
+ * 
+ * RESPONSIBILITIES:
+ * - Core layout structure (sidebar, main content, navigation)
+ * - Sidebar rendering with custom content injection
+ * - Platform tab integration
+ * - Page tree navigation for general docs
+ * - Theme and responsive behavior
+ * 
+ * EXPORTED COMPONENTS:
+ * - DocsLayout: Main layout component used by router
+ * - SdkSidebarContent: SDK-specific navigation content
+ * - DocsLayoutSidebar: Fixed sidebar with custom content support
+ * - DocsLayoutSidebarFooter: Sidebar footer with theme toggle
+ * 
+ * CUSTOM UI COMPONENTS:
+ * - DocsSidebarLink: Styled navigation links
+ * - DocsSeparator: Section dividers
+ * - CollapsibleSection: Expandable navigation groups
+ * - PageTreeItem: Recursive page tree rendering
+ */
+
+import { baseOptions } from '@/app/layout.config';
 import Link from 'fumadocs-core/link';
 import type { PageTree } from 'fumadocs-core/server';
 import {
@@ -6,39 +42,33 @@ import {
   StylesProvider,
 } from 'fumadocs-ui/contexts/layout';
 import { TreeContextProvider } from 'fumadocs-ui/contexts/tree';
-import { Languages, Sidebar as SidebarIcon } from 'lucide-react';
-import { type HTMLAttributes, type ReactNode, useMemo } from 'react';
+import { ArrowLeft, ChevronDown, ChevronRight, Languages } from 'lucide-react';
+import { usePathname } from 'next/navigation';
+import { type HTMLAttributes, type ReactNode, useMemo, useState } from 'react';
 import { cn } from '../../lib/cn';
+import { getCurrentPlatform } from '../../lib/platform-utils';
 import {
   LanguageToggle,
   LanguageToggleText,
 } from '../layout/language-toggle';
 import { RootToggle } from '../layout/root-toggle';
 import {
-  LargeSearchToggle,
-  SearchToggle,
+  SearchToggle
 } from '../layout/search-toggle';
-import {
-  Sidebar,
-  SidebarCollapseTrigger,
-  SidebarFooter,
-  SidebarHeader,
-  SidebarPageTree,
-  SidebarViewport,
-} from '../layout/sidebar';
 import { ThemeToggle } from '../layout/theme-toggle';
 import { buttonVariants } from '../ui/button';
 import { HideIfEmpty } from '../ui/hide-if-empty';
+import { ScrollArea, ScrollViewport } from '../ui/scroll-area';
 import {
   CollapsibleControl,
   Navbar,
   NavbarSidebarTrigger,
 } from './docs-client';
+import { ComponentsSidebarContent } from './docs-layout-router';
 import {
   getSidebarTabsFromOptions,
   layoutVariables,
-  SidebarLinkItem,
-  type SidebarOptions,
+  type SidebarOptions
 } from './docs/shared';
 import {
   BaseLinkItem,
@@ -46,6 +76,262 @@ import {
   type LinkItemType,
 } from './links';
 import { type BaseLayoutProps, getLinks, omit, slot, slots } from './shared';
+import {
+  isInApiSection,
+  isInComponentsSection,
+  isInSdkSection
+} from './shared/section-utils';
+
+// Custom Link Component for docs sidebar - matches API sidebar
+function DocsSidebarLink({ 
+  href, 
+  children, 
+  external = false
+}: { 
+  href: string; 
+  children: ReactNode;
+  external?: boolean;
+}) {
+  const pathname = usePathname();
+  const isActive = pathname === href;
+  
+  return (
+    <Link 
+      href={href}
+      className={`flex items-center gap-2 px-2 py-1.5 rounded-md text-xs transition-colors ${
+        isActive 
+          ? 'bg-fd-primary/10 text-fd-primary font-medium' 
+          : 'text-fd-muted-foreground hover:text-fd-foreground hover:bg-fd-muted/50'
+      }`}
+      {...(external && { target: '_blank', rel: 'noopener noreferrer' })}
+    >
+      <span className="flex-1">{children}</span>
+    </Link>
+  );
+}
+
+// Custom separator component - matches API sidebar
+function DocsSeparator({ children }: { children: ReactNode }) {
+  return (
+    <div className="mt-6 mb-3 first:mt-2">
+      <span className="text-xs font-bold text-fd-foreground uppercase tracking-wider">
+        {children}
+      </span>
+    </div>
+  );
+}
+
+// Custom collapsible section component - matches API sidebar
+function CollapsibleSection({ 
+  title, 
+  children, 
+  defaultOpen = false 
+}: { 
+  title: string; 
+  children: ReactNode; 
+  defaultOpen?: boolean; 
+}) {
+  const [isOpen, setIsOpen] = useState(defaultOpen);
+  
+  return (
+    <div className="space-y-1">
+      <button
+        onClick={() => setIsOpen(!isOpen)}
+        className="flex items-center gap-2 w-full text-left px-2 py-1.5 text-sm font-medium text-fd-muted-foreground hover:text-fd-foreground transition-colors"
+      >
+        {isOpen ? (
+          <ChevronDown className="h-3 w-3" />
+        ) : (
+          <ChevronRight className="h-3 w-3" />
+        )}
+        {title}
+      </button>
+      {isOpen && (
+        <div className="ml-4 space-y-1">
+          {children}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// SDK-specific sidebar content
+export function SdkSidebarContent() {
+  const pathname = usePathname();
+  const currentPlatform = getCurrentPlatform(pathname) || undefined;
+  
+  if (!currentPlatform) return null;
+
+  const baseUrl = `/docs/${currentPlatform}/sdk`;
+  const isReactLike = ['next', 'react'].includes(currentPlatform);
+
+  return (
+    <>
+      <DocsSidebarLink href={`${baseUrl}/overview`}>
+        Overview
+      </DocsSidebarLink>
+      
+      <DocsSeparator>
+        Objects
+      </DocsSeparator>
+      <DocsSidebarLink href={`${baseUrl}/objects/stack-app`}>
+        StackApp
+      </DocsSidebarLink>
+      
+      <DocsSeparator>
+        Types
+      </DocsSeparator>
+      <DocsSidebarLink href={`${baseUrl}/types/user`}>
+        User
+      </DocsSidebarLink>
+      <DocsSidebarLink href={`${baseUrl}/types/team`}>
+        Team
+      </DocsSidebarLink>
+      <DocsSidebarLink href={`${baseUrl}/types/team-user`}>
+        TeamUser
+      </DocsSidebarLink>
+      <DocsSidebarLink href={`${baseUrl}/types/team-permission`}>
+        TeamPermission
+      </DocsSidebarLink>
+      <DocsSidebarLink href={`${baseUrl}/types/team-profile`}>
+        TeamProfile
+      </DocsSidebarLink>
+      <DocsSidebarLink href={`${baseUrl}/types/contact-channel`}>
+        ContactChannel
+      </DocsSidebarLink>
+      <DocsSidebarLink href={`${baseUrl}/types/api-key`}>
+        API Key
+      </DocsSidebarLink>
+      <DocsSidebarLink href={`${baseUrl}/types/project`}>
+        Project
+      </DocsSidebarLink>
+
+      {isReactLike && (
+        <>
+          <DocsSeparator>
+            Hooks
+          </DocsSeparator>
+          <DocsSidebarLink href={`${baseUrl}/hooks/use-stack-app`}>
+            useStackApp()
+          </DocsSidebarLink>
+          <DocsSidebarLink href={`${baseUrl}/hooks/use-user`}>
+            useUser()
+          </DocsSidebarLink>
+        </>
+      )}
+    </>
+  );
+}
+
+// Function to find platform-specific content in the page tree
+function findPlatformContent(tree: PageTree.Root, platform: string): PageTree.Node[] {
+  const platformMappings: Record<string, string[]> = {
+    'next': ['next', 'next.js', 'nextjs'],
+    'react': ['react', 'react.js', 'reactjs'], 
+    'js': ['js', 'javascript'],
+    'python': ['python', 'py']
+  };
+
+  const possibleNames = platformMappings[platform.toLowerCase()] || [platform.toLowerCase()];
+  
+  for (const item of tree.children) {
+    if (item.type === 'folder') {
+      const itemName = typeof item.name === 'string' ? item.name.toLowerCase() : '';
+      
+      if (possibleNames.some(name => itemName === name || itemName.includes(name))) {
+        return item.children;
+      }
+    }
+  }
+  
+  return [];
+}
+
+// Recursive component to render page tree items with API styling
+function PageTreeItem({ item, currentPlatform }: { item: PageTree.Node; currentPlatform?: string }) {
+  const pathname = usePathname();
+
+  if (item.type === 'separator') {
+    return <DocsSeparator>{item.name}</DocsSeparator>;
+  }
+
+  if (item.type === 'folder') {
+    const hasIndexPage = 'index' in item && item.index;
+    const folderUrl = hasIndexPage ? item.index!.url : '';
+    const isCurrentPath = folderUrl && pathname.startsWith(folderUrl);
+    const itemName = typeof item.name === 'string' ? item.name : '';
+    
+    return (
+      <CollapsibleSection 
+        title={itemName || 'Folder'} 
+        defaultOpen={!!isCurrentPath}
+      >
+        {hasIndexPage && (
+          <DocsSidebarLink href={item.index!.url} external={item.index!.external}>
+            Overview
+          </DocsSidebarLink>
+        )}
+        {item.children.map((child, index) => (
+          <PageTreeItem key={child.type === 'page' ? child.url : index} item={child} currentPlatform={currentPlatform} />
+        ))}
+      </CollapsibleSection>
+    );
+  }
+
+  if (item.type === 'page') {
+    return (
+      <DocsSidebarLink href={item.url} external={item.external}>
+        {item.name}
+      </DocsSidebarLink>
+    );
+  }
+
+  return null;
+}
+
+// Function to render sidebar content based on context
+function renderSidebarContent(tree: PageTree.Root) {
+  const pathname = usePathname();
+  const currentPlatform = getCurrentPlatform(pathname) || undefined;
+
+  // For SDK section, show SDK-specific content
+  if (isInSdkSection(pathname)) {
+    return <SdkSidebarContent />;
+  }
+
+  // For Components section, show Components-specific content  
+  if (isInComponentsSection(pathname)) {
+    return <ComponentsSidebarContent />;
+  }
+
+  // For API section, don't show anything (API has its own sidebar)
+  if (isInApiSection(pathname)) {
+    return null;
+  }
+
+  // For platform-specific docs, show the platform folder's content
+  if (currentPlatform) {
+    const platformContent = findPlatformContent(tree, currentPlatform);
+    if (platformContent.length > 0) {
+      return (
+        <>
+          {platformContent.map((item, index) => (
+            <PageTreeItem key={item.type === 'page' ? item.url : index} item={item} currentPlatform={currentPlatform} />
+          ))}
+        </>
+      );
+    }
+  }
+
+  // For general docs, show root level content
+  return (
+    <>
+      {tree.children.map((item, index) => (
+        <PageTreeItem key={item.type === 'page' ? item.url : index} item={item} currentPlatform={currentPlatform} />
+      ))}
+    </>
+  );
+}
 
 export interface DocsLayoutProps extends BaseLayoutProps {
   tree: PageTree.Root;
@@ -78,7 +364,7 @@ export function DocsLayout({
   const links = getLinks(props.links ?? [], props.githubUrl);
 
   const variables = cn(
-    '[--fd-tocnav-height:36px] md:[--fd-sidebar-width:268px] lg:[--fd-sidebar-width:290px] xl:[--fd-toc-width:290px] xl:[--fd-tocnav-height:0px]',
+    '[--fd-tocnav-height:36px] [--fd-sidebar-width:268px] [--fd-toc-width:200px]',
     !nav.component && nav.enabled !== false
       ? '[--fd-nav-height:56px] md:[--fd-nav-height:0px]'
       : undefined,
@@ -110,7 +396,7 @@ export function DocsLayout({
           id="nd-docs-layout"
           {...props.containerProps}
           className={cn(
-            'flex flex-1 flex-row pe-(--fd-layout-offset)',
+            'flex flex-1 flex-row pl-64',
             variables,
             props.containerProps?.className,
           )}
@@ -124,6 +410,7 @@ export function DocsLayout({
             <DocsLayoutSidebar
               {...omit(sidebar, 'enabled', 'component', 'tabs')}
               links={links}
+              tree={props.tree}
               nav={
                 <>
                   <Link
@@ -138,14 +425,6 @@ export function DocsLayout({
               banner={
                 <>
                   {tabs.length > 0 ? <RootToggle options={tabs} /> : null}
-                  {slots(
-                    'lg',
-                    searchToggle,
-                    <LargeSearchToggle
-                      hideIfDisabled
-                      className="max-md:hidden"
-                    />,
-                  )}
                   {sidebar.banner}
                 </>
               }
@@ -179,55 +458,60 @@ export function DocsLayoutSidebar({
 }: Omit<SidebarOptions, 'tabs'> & {
   links?: LinkItemType[];
   nav?: ReactNode;
+  tree?: PageTree.Root;
 }) {
   return (
     <>
       {collapsible ? <CollapsibleControl /> : null}
-      <Sidebar
-        {...props}
-        collapsible={collapsible}
-        className={cn(
-          'data-[collapsed=false]:w-[calc(var(--fd-sidebar-width)+var(--fd-layout-offset))] data-[collapsed=true]:me-[calc(var(--fd-layout-offset)-var(--fd-sidebar-width))]',
-          props.className,
-        )}
-      >
-        <HideIfEmpty>
-          <SidebarHeader>
-            <div className="flex max-md:hidden">
-              {nav}
-              {collapsible && (
-                <SidebarCollapseTrigger
-                  className={cn(
-                    buttonVariants({
-                      color: 'ghost',
-                      size: 'icon-sm',
-                    }),
-                    'ms-auto mb-auto text-fd-muted-foreground max-md:hidden',
-                  )}
+      {/* API-style sidebar wrapper - fixed position, full height */}
+      <div className="fixed left-0 top-0 w-64 border-r border-fd-border bg-fd-background z-40">
+        <div className="h-screen flex flex-col">
+          {/* Header - matches API layout */}
+          <div className="h-14 px-4 border-b border-fd-border flex items-center flex-shrink-0">
+            <Link
+              href="/"
+              className="inline-flex text-[15px] items-center gap-2.5 font-medium"
+            >
+              {baseOptions.nav?.title}
+            </Link>
+          </div>
+          
+          {/* Scrollable content area */}
+          <div className="flex-1 min-h-0 overflow-hidden">
+            <ScrollArea className="h-full">
+              <ScrollViewport className="p-4">
+                <Link 
+                  href="/"
+                  className="flex items-center gap-2 px-2 py-1.5 mb-2 text-sm text-fd-muted-foreground hover:text-fd-foreground transition-colors"
                 >
-                  <SidebarIcon />
-                </SidebarCollapseTrigger>
-              )}
+                  <ArrowLeft className="h-3 w-3" />
+                  Back to home
+                </Link>
+                
+                {/* Platform tabs/banner */}
+                {banner && (
+                  <div className="mb-4">
+                    {banner}
+                  </div>
+                )}
+                
+                {/* Page tree content */}
+                <div className="space-y-1">
+                  {renderSidebarContent(props.tree || { name: 'root', children: [] } as PageTree.Root)}
+                </div>
+              </ScrollViewport>
+            </ScrollArea>
+          </div>
+          
+          {/* Footer - matches API layout */}
+          <div className="border-t border-fd-border p-4 flex-shrink-0">
+            <div className="flex items-center justify-between">
+              <span className="text-xs text-fd-muted-foreground">Stack Auth Docs</span>
+              <ThemeToggle mode="light-dark" />
             </div>
-            {banner}
-          </SidebarHeader>
-        </HideIfEmpty>
-        <SidebarViewport>
-          {links
-            .filter((v) => v.type !== 'icon')
-            .map((item, i, list) => (
-              <SidebarLinkItem
-                key={i}
-                item={item}
-                className={cn(i === list.length - 1 && 'mb-4')}
-              />
-            ))}
-          <SidebarPageTree components={components} />
-        </SidebarViewport>
-        <HideIfEmpty>
-          <SidebarFooter>{footer}</SidebarFooter>
-        </HideIfEmpty>
-      </Sidebar>
+          </div>
+        </div>
+      </div>
     </>
   );
 }

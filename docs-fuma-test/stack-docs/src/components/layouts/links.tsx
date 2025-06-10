@@ -1,6 +1,6 @@
 'use client';
-import Link from 'fumadocs-core/link';
 import { usePathname } from 'fumadocs-core/framework';
+import Link from 'fumadocs-core/link';
 import {
   type AnchorHTMLAttributes,
   forwardRef,
@@ -49,7 +49,6 @@ export interface IconItemType extends BaseLinkType {
    */
   secondary?: boolean;
 }
-
 interface ButtonItem extends BaseLinkType {
   type: 'button';
   icon?: ReactNode;

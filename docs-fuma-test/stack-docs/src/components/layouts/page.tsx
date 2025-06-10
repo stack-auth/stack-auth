@@ -173,7 +173,7 @@ export function DocsPage({
         <PageArticle
           {...props.article}
           className={cn(
-            full || !tocEnabled ? 'max-w-[1120px]' : 'max-w-[860px]',
+            full || !tocEnabled ? 'max-w-[1400px]' : 'max-w-[860px]',
             'pb-8',
             props.article?.className,
           )}
