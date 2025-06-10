@@ -8,40 +8,47 @@ import fs from 'fs';
 import { glob } from 'glob';
 import path from 'path';
 
+
 async function main() {
   console.log("Started Fumadocs OpenAPI schema generator");
 
   // Create openapi directory in Fumadocs project
   const fumaDocsOpenApiDir = path.resolve("../../docs-fuma-test/stack-docs/public/openapi");
-  
+
   // Ensure the openapi directory exists
   if (!fs.existsSync(fumaDocsOpenApiDir)) {
     console.log('Creating OpenAPI directory...');
     fs.mkdirSync(fumaDocsOpenApiDir, { recursive: true });
   }
-  
-  for (const audience of ['client', 'server', 'admin'] as const) {
-    const filePathPrefix = path.resolve(process.platform === "win32" ? "apps/src/app/api/latest" : "src/app/api/latest");
-    const importPathPrefix = "@/app/api/latest";
-    const filePaths = [...await glob(filePathPrefix + "/**/route.{js,jsx,ts,tsx}")];
 
+  // Generate OpenAPI specs for each audience (let parseOpenAPI handle the filtering)
+  const filePathPrefix = path.resolve(process.platform === "win32" ? "apps/src/app/api/latest" : "src/app/api/latest");
+  const importPathPrefix = "@/app/api/latest";
+  const filePaths = [...await glob(filePathPrefix + "/**/route.{js,jsx,ts,tsx}")];
+
+  const endpoints = new Map(await Promise.all(filePaths.map(async (filePath) => {
+    if (!filePath.startsWith(filePathPrefix)) {
+      throw new Error(`Invalid file path: ${filePath}`);
+    }
+    const suffix = filePath.slice(filePathPrefix.length);
+    const midfix = suffix.slice(0, suffix.lastIndexOf("/route."));
+    const importPath = `${importPathPrefix}${suffix}`;
+    const urlPath = midfix.replaceAll("[", "{").replaceAll("]", "}").replaceAll(/\/\(.*\)/g, "");
+    const myModule = require(importPath);
+    const handlersByMethod = new Map(
+      typedKeys(HTTP_METHODS).map(method => [method, myModule[method]] as const)
+        .filter(([_, handler]) => isSmartRouteHandler(handler))
+    );
+    return [urlPath, handlersByMethod] as const;
+  })));
+
+  console.log(`Found ${endpoints.size} total endpoint files`);
+
+  // Generate specs for each audience using parseOpenAPI's built-in filtering
+  for (const audience of ['client', 'server', 'admin'] as const) {
     const openApiSchemaObject = parseOpenAPI({
-      endpoints: new Map(await Promise.all(filePaths.map(async (filePath) => {
-        if (!filePath.startsWith(filePathPrefix)) {
-          throw new Error(`Invalid file path: ${filePath}`);
-        }
-        const suffix = filePath.slice(filePathPrefix.length);
-        const midfix = suffix.slice(0, suffix.lastIndexOf("/route."));
-        const importPath = `${importPathPrefix}${suffix}`;
-        const urlPath = midfix.replaceAll("[", "{").replaceAll("]", "}").replaceAll(/\/\(.*\)/g, "");
-        const myModule = require(importPath);
-        const handlersByMethod = new Map(
-          typedKeys(HTTP_METHODS).map(method => [method, myModule[method]] as const)
-            .filter(([_, handler]) => isSmartRouteHandler(handler))
-        );
-        return [urlPath, handlersByMethod] as const;
-      }))),
-      audience,
+      endpoints,
+      audience, // Let parseOpenAPI handle the audience-specific filtering
     });
 
     // Update server URL for Fumadocs
@@ -50,9 +57,11 @@ async function main() {
       description: 'Stack REST API',
     }];
 
+    console.log(`Generated ${Object.keys(openApiSchemaObject.paths || {}).length} endpoints for ${audience} audience`);
+
     // Write JSON files for Fumadocs (they prefer JSON over YAML)
     writeFileSyncIfChanged(
-      path.join(fumaDocsOpenApiDir, `${audience}.json`), 
+      path.join(fumaDocsOpenApiDir, `${audience}.json`),
       JSON.stringify(openApiSchemaObject, null, 2)
     );
   }
@@ -61,16 +70,16 @@ async function main() {
   const webhookOpenAPISchema = parseWebhookOpenAPI({
     webhooks: webhookEvents,
   });
-  
+
   writeFileSyncIfChanged(
-    path.join(fumaDocsOpenApiDir, 'webhooks.json'), 
+    path.join(fumaDocsOpenApiDir, 'webhooks.json'),
     JSON.stringify(webhookOpenAPISchema, null, 2)
   );
 
-  console.log("Successfully updated Fumadocs OpenAPI schemas");
+  console.log("Successfully updated Fumadocs OpenAPI schemas with proper audience filtering");
 }
 
 main().catch((...args) => {
   console.error(`ERROR! Could not update Fumadocs OpenAPI schema`, ...args);
   process.exit(1);
-}); 
+});
