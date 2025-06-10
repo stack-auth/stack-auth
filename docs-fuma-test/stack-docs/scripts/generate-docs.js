@@ -12,9 +12,9 @@ const TEMPLATE_DIR = path.resolve(__dirname, '../templates');
 const OUTPUT_BASE_DIR = path.resolve(__dirname, '../content/docs');
 const PLATFORMS = ['next', 'react', 'js', 'python'];
 
-// Platform folder naming
+// Platform folder naming - now using root folders
 function getFolderName(platform) {
-  return `pages-${platform}`;
+  return platform; // Use direct platform names instead of pages-{platform}
 }
 
 // Platform display names
@@ -100,9 +100,12 @@ function generateMetaFiles() {
       const templateContent = fs.readFileSync(srcPath, 'utf8');
       const metaData = JSON.parse(templateContent);
       
-      // Update title and description for this platform
-      metaData.title = platformDisplayName;
-      metaData.description = `Stack Auth ${platformDisplayName}`;
+      // If this is the root meta.json, mark it as a root folder
+      if (metaFile === 'meta.json') {
+        metaData.title = platformDisplayName;
+        metaData.description = `Stack Auth for ${platformDisplayName} applications`;
+        metaData.root = true; // Mark as root folder for Fumadocs
+      }
       
       // Create directory if it doesn't exist
       fs.mkdirSync(path.dirname(destPath), { recursive: true });
