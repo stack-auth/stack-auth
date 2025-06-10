@@ -1,4 +1,5 @@
 import type { BaseLayoutProps } from 'fumadocs-ui/layouts/shared';
+import { Code2, Hammer } from 'lucide-react';
 /**
  * Shared layout configurations
  *
@@ -25,5 +26,20 @@ export const baseOptions: BaseLayoutProps = {
     ),
     transparentMode: "top",
   },
-  // Links are now handled dynamically in DynamicDocsLayout
+  links: [
+    {
+      type: 'main',
+      text: "REST API & Webhooks",
+      url: "/api/overview",
+      active: "url",
+      icon: <Code2 />
+    },
+    {
+      type: 'main', 
+      text: "SDK Reference",
+      url: "/docs/sdk/overview",
+      active: "url",
+      icon: <Hammer />
+    }
+  ]
 };

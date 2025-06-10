@@ -1,8 +1,8 @@
 import {
-    DocsBody,
-    DocsDescription,
-    DocsPage,
-    DocsTitle,
+  DocsBody,
+  DocsDescription,
+  DocsPage,
+  DocsTitle,
 } from '@/components/layouts/page';
 import { getMDXComponents } from '@/mdx-components';
 import { createRelativeLink } from 'fumadocs-ui/mdx';
@@ -16,7 +16,7 @@ export default async function Page(props: {
   
   // Handle redirect when no slug is provided (i.e., accessing /docs directly)
   if (!params.slug || params.slug.length === 0) {
-    redirect("/docs/pages-next/getting-started/setup");
+    redirect("/docs/next/overview");
   }
   
   const page = source.getPage(params.slug);

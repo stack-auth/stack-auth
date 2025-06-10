@@ -93,4 +93,10 @@ article blockquote {
 
 article blockquote p {
   margin-bottom: 0;
-} 
+}
+
+/* Remove dashed border from method title h2 elements */
+article h2:has(a[href^="#"]) {
+  border-bottom: none !important;
+  padding-bottom: 0 !important;
+}
