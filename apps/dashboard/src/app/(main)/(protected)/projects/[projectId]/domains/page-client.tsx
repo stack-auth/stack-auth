@@ -94,7 +94,7 @@ function EditDialog(props: {
     open={props.open}
     defaultValues={{
       addWww: props.type === 'create',
-      domain: props.type === 'update' ? props.defaultDomain.replace(/^https:\/\//, "") : undefined,
+      domain: props.type === 'update' ? props.defaultDomain.replace(/^https?:\/\//, "") : undefined,
       handlerPath: props.type === 'update' ? props.defaultHandlerPath : "/handler",
       insecureHttp: false,
     }}
@@ -123,12 +123,25 @@ function EditDialog(props: {
             },
           });
         } else {
+          console.log({
+            config: {
+              domains: [...props.domains].map((domain, i) => {
+                if (i === props.editIndex) {
+                  return {
+                    domain: (values.insecureHttp ? 'http://' : 'https://') + values.domain,
+                    handlerPath: values.handlerPath,
+                  };
+                }
+                return domain;
+              }),
+            },
+          });
           await props.project.update({
             config: {
               domains: [...props.domains].map((domain, i) => {
                 if (i === props.editIndex) {
                   return {
-                    domain: values.domain,
+                    domain: (values.insecureHttp ? 'http://' : 'https://') + values.domain,
                     handlerPath: values.handlerPath,
                   };
                 }
