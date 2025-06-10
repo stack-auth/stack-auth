@@ -29,5 +29,6 @@ next-env.d.ts
 
 # ignore all generated docs content
 /content/docs/
+/content/api/
 /public/openapi/
 
