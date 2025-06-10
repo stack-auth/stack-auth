@@ -16,6 +16,17 @@ export const docs = defineDocs({
   },
 });
 
+// Separate collection for API content
+export const api = defineDocs({
+  dir: './content/api',
+  docs: {
+    schema: frontmatterSchema,
+  },
+  meta: {
+    schema: metaSchema,
+  },
+});
+
 export default defineConfig({
   mdxOptions: {
     // MDX options

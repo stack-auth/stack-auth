@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "build": "next build",
-    "dev": "next dev",
+    "dev": "next dev --port 3000 --hostname 0.0.0.0",
     "start": "next start",
     "postinstall": "fumadocs-mdx",
     "generate-docs": "node scripts/generate-docs.js",

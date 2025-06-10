@@ -1,11 +1,18 @@
 /**
  * Extract the current platform from the URL path
- * @param pathname - The current pathname (e.g., "/docs/pages-next/overview")
+ * @param pathname - The current pathname (e.g., "/docs/next/overview")
  * @returns The platform name (e.g., "next") or null if not found
  */
 export function getCurrentPlatform(pathname: string): string | null {
-  const match = pathname.match(/^\/docs\/pages-(\w+)/);
-  return match ? match[1] : null;
+  const match = pathname.match(/^\/docs\/(\w+)/);
+  if (match) {
+    const platform = match[1];
+    // Only return if it's a valid platform, not other sections like 'api'
+    if (PLATFORMS.includes(platform as Platform)) {
+      return platform;
+    }
+  }
+  return null;
 }
 
 /**
@@ -15,7 +22,7 @@ export function getCurrentPlatform(pathname: string): string | null {
  * @returns The full platform-specific URL
  */
 export function getPlatformUrl(platform: string, path: string): string {
-  return `/docs/pages-${platform}/${path}`;
+  return `/docs/${platform}/${path}`;
 }
 
 /**
