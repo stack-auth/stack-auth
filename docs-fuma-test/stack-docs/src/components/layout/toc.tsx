@@ -1,6 +1,8 @@
 'use client';
 import type { TOCItemType } from 'fumadocs-core/server';
 import * as Primitive from 'fumadocs-core/toc';
+import { useI18n } from 'fumadocs-ui/contexts/i18n';
+import { usePageStyles } from 'fumadocs-ui/contexts/layout';
 import {
   type ComponentProps,
   type HTMLAttributes,
@@ -8,9 +10,7 @@ import {
   useRef,
 } from 'react';
 import { cn } from '../../lib/cn';
-import { useI18n } from 'fumadocs-ui/contexts/i18n';
 import { TocThumb } from './toc-thumb';
-import { usePageStyles } from 'fumadocs-ui/contexts/layout';
 
 export interface TOCProps {
   /**
@@ -34,7 +34,7 @@ export function Toc(props: HTMLAttributes<HTMLDivElement>) {
       id="nd-toc"
       {...props}
       className={cn(
-        'sticky top-[calc(var(--fd-banner-height)+var(--fd-nav-height))] h-(--fd-toc-height) pb-2 pt-12',
+        'sticky top-[calc(var(--fd-banner-height)+var(--fd-nav-height)+3.5rem)] h-(--fd-toc-height) pb-2 pt-4',
         toc,
         props.className,
       )}
@@ -42,7 +42,7 @@ export function Toc(props: HTMLAttributes<HTMLDivElement>) {
         {
           ...props.style,
           '--fd-toc-height':
-            'calc(100dvh - var(--fd-banner-height) - var(--fd-nav-height))',
+            'calc(100dvh - var(--fd-banner-height) - var(--fd-nav-height) - 3.5rem)',
         } as object
       }
     >
