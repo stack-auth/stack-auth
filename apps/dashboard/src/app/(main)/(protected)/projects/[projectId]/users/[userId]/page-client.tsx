@@ -604,6 +604,8 @@ function SendResetPasswordEmailDialog({ channel, open, onOpenChange }: SendReset
 }
 
 function ContactChannelsSection({ user }: ContactChannelsSectionProps) {
+  const stackAdminApp = useAdminApp();
+  const project = stackAdminApp.useProject();
   const contactChannels = user.useContactChannels();
   const [isAddEmailDialogOpen, setIsAddEmailDialogOpen] = useState(false);
   const [sendVerificationEmailDialog, setSendVerificationEmailDialog] = useState<{
@@ -725,7 +727,7 @@ function ContactChannelsSection({ user }: ContactChannelsSectionProps) {
                             });
                           },
                         }] : []),
-                        {
+                        ...(project.config.credentialEnabled ? [{
                           item: "Send reset password email",
                           onClick: async () => {
                             setSendResetPasswordEmailDialog({
@@ -733,7 +735,7 @@ function ContactChannelsSection({ user }: ContactChannelsSectionProps) {
                               isOpen: true,
                             });
                           },
-                        },
+                        }] : []),
                         {
                           item: channel.isVerified ? "Mark as unverified" : "Mark as verified",
                           onClick: async () => {
