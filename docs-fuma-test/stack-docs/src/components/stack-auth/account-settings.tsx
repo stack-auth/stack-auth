@@ -25,15 +25,15 @@ export function AccountSettingsStackAuth() {
              {
                id: 'key-1',
                description: 'Development Key',
-               createdAt: new Date(Date.now() - 172800000).toISOString(), // 2 days ago
+               createdAt: '2024-01-15T10:30:00.000Z', // Fixed date for consistency
                expiresAt: undefined,
                manuallyRevokedAt: undefined,
              },
              {
                id: 'key-2', 
                description: 'Production Key',
-               createdAt: new Date(Date.now() - 604800000).toISOString(), // 1 week ago
-               expiresAt: new Date(Date.now() + 2592000000).toISOString(), // 30 days from now
+               createdAt: '2024-01-08T14:22:00.000Z', // One week before the first key
+               expiresAt: '2024-02-17T14:22:00.000Z', // 30 days after creation
                manuallyRevokedAt: undefined,
              }
            ]}

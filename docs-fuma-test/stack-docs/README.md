@@ -26,6 +26,7 @@ In the project, you can see:
 | ------------------------- | ------------------------------------------------------ |
 | `app/(home)`              | The route group for your landing page and other pages. |
 | `app/docs`                | The documentation layout and pages.                    |
+| `app/api`                 | The documentation for API pages.                       |
 | `app/api/search/route.ts` | The Route Handler for search.                          |
 
 ### Fumadocs MDX
@@ -42,4 +43,4 @@ resources:
 - [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js
   features and API.
 - [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-- [Fumadocs](https://fumadocs.vercel.app) - learn about Fumadocs
+- [Fumadocs](https://fumadocs.dev) - learn about Fumadocs

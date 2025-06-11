@@ -58,7 +58,7 @@ export function Navbar(props: ComponentProps<'header'>) {
       id="nd-subnav"
       {...props}
       className={cn(
-        'sticky top-(--fd-banner-height) z-30 flex items-center px-4 border-b transition-colors backdrop-blur-sm',
+        'sticky top-[--fd-banner-height] z-30 flex items-center px-4 border-b transition-colors backdrop-blur-sm',
         (!isTransparent || open) && 'bg-fd-background/80',
         props.className,
       )}

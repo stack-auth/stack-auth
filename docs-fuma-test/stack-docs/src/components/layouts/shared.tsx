@@ -79,7 +79,7 @@ export function getLinks(
       {
         type: 'icon',
         url: githubUrl,
-        text: 'Github',
+        text: 'GitHub',
         label: 'GitHub',
         icon: (
           <svg role="img" viewBox="0 0 24 24" fill="currentColor">

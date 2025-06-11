@@ -4,7 +4,7 @@
  * @returns The platform name (e.g., "next") or null if not found
  */
 export function getCurrentPlatform(pathname: string): string | null {
-  const match = pathname.match(/^\/docs\/(\w+)/);
+  const match = pathname.match(/^\/docs\/([a-z]+)/);
   if (match) {
     const platform = match[1];
     // Only return if it's a valid platform, not other sections like 'api'
