@@ -38,12 +38,15 @@ function clearDirectory(dirPath) {
 
 function main() {
   const docsPath = path.join(__dirname, '..', 'content', 'docs');
+  const apiDocsPath = path.join(__dirname, '..', 'content', 'api');
   
-  console.log('🧹 Clearing all files and directories in content/docs...');
+  console.log('🧹 Clearing all files and directories in content/docs, and content/api');
   console.log(`Target directory: ${docsPath}`);
+  console.log(`Target directory: ${apiDocsPath}`);
   
   try {
     clearDirectory(docsPath);
+    clearDirectory(apiDocsPath);
     console.log('✅ Successfully cleared content/docs directory!');
   } catch (error) {
     console.error('❌ Error clearing content/docs directory:', error.message);

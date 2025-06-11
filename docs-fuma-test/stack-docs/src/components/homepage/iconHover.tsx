@@ -249,8 +249,8 @@ const DocsIcon3D: React.FC<DocsIcon3DProps> = ({
                 hover:before:opacity-100 before:transition-opacity before:duration-500
                 ${hoveredSection === section.id ? "border-opacity-100 shadow-2xl" : "border-opacity-50"}
               `}
-                style={{
-                  transformStyle: "preserve-3d",
+                        style={{
+                          transformStyle: "preserve-3d",
                   perspective: "1000px",
                   borderColor: hoveredSection === section.id ? section.color : undefined,
                   boxShadow:
@@ -265,7 +265,7 @@ const DocsIcon3D: React.FC<DocsIcon3DProps> = ({
                   absolute inset-0 rounded-2xl transition-opacity duration-500
                   ${hoveredSection === section.id ? "opacity-100" : "opacity-0"}
                 `}
-                  style={{
+                          style={{
                     background: `
                     radial-gradient(circle at 30% 20%, ${section.color}15 0%, transparent 50%),
                     linear-gradient(135deg, ${section.color}08, ${section.color}03, transparent)
@@ -390,7 +390,7 @@ const DocsIcon3D: React.FC<DocsIcon3DProps> = ({
                     transition-all duration-500 ease-out
                     ${hoveredSection === section.id ? "scale-x-100" : "scale-x-0"}
                   `}
-                  style={{
+                      style={{
                     transformOrigin: "left",
                     backgroundColor: section.color,
                     boxShadow: hoveredSection === section.id ? `0 0 20px ${section.color}60` : undefined,

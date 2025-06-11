@@ -1,5 +1,6 @@
 import fs from 'fs';
 import { glob } from 'glob';
+import yaml from 'js-yaml';
 import path from 'path';
 import { fileURLToPath } from 'url';
 
@@ -10,7 +11,19 @@ const __dirname = path.dirname(__filename);
 // Configure paths
 const TEMPLATE_DIR = path.resolve(__dirname, '../templates');
 const OUTPUT_BASE_DIR = path.resolve(__dirname, '../content/docs');
+const CONFIG_FILE = path.resolve(__dirname, '../docs-platform.yml');
 const PLATFORMS = ['next', 'react', 'js', 'python'];
+
+// Load platform configuration
+let platformConfig = {};
+try {
+  const configContent = fs.readFileSync(CONFIG_FILE, 'utf8');
+  platformConfig = yaml.load(configContent);
+  console.log('Loaded platform configuration from docs-platform.yml');
+} catch (error) {
+  console.error('Failed to load platform configuration:', error.message);
+  console.log('Falling back to include all files for all platforms');
+}
 
 // Platform folder naming - now using root folders
 function getFolderName(platform) {
@@ -32,6 +45,28 @@ function getPlatformDisplayName(platform) {
 const PLATFORM_START_MARKER = /{\s*\/\*\s*IF_PLATFORM:\s*(\w+)\s*\*\/\s*}/;
 const PLATFORM_ELSE_MARKER = /{\s*\/\*\s*ELSE_IF_PLATFORM\s+(\w+)\s*\*\/\s*}/;
 const PLATFORM_END_MARKER = /{\s*\/\*\s*END_PLATFORM\s*\*\/\s*}/;
+
+/**
+ * Check if a file should be included for a specific platform
+ */
+function shouldIncludeFileForPlatform(platform, filePath) {
+  // If no configuration loaded, include everything
+  if (!platformConfig.pages) {
+    return true;
+  }
+  
+  // Find the page configuration for this file
+  const pageConfig = platformConfig.pages.find(page => page.path === filePath);
+  
+  // If no specific configuration found, exclude by default
+  if (!pageConfig) {
+    console.log(`No configuration found for ${filePath}, excluding by default`);
+    return false;
+  }
+  
+  // Check if the platform is in the allowed list
+  return pageConfig.platforms.includes(platform);
+}
 
 /**
  * Process a template file for a specific platform
@@ -96,15 +131,91 @@ function generateMetaFiles() {
       const srcPath = path.join(TEMPLATE_DIR, metaFile);
       const destPath = path.join(OUTPUT_BASE_DIR, folderName, metaFile);
       
+      // If this is a nested meta.json (not root), check if the folder should exist for this platform
+      if (metaFile !== 'meta.json') {
+        const folderPath = path.dirname(metaFile);
+        
+        // Check if any pages in this folder are included for this platform
+        const hasContentInFolder = platformConfig.pages && platformConfig.pages.some(configPage => 
+          configPage.path.startsWith(`${folderPath}/`) && 
+          configPage.platforms.includes(platform)
+        );
+        
+        if (!hasContentInFolder) {
+          console.log(`Skipped meta.json for ${folderPath} (no content for ${platform})`);
+          continue; // Skip this meta.json file
+        }
+      }
+      
       // Read and parse the template meta.json
       const templateContent = fs.readFileSync(srcPath, 'utf8');
       const metaData = JSON.parse(templateContent);
       
-      // If this is the root meta.json, mark it as a root folder
+      // If this is the root meta.json, customize it for the platform
       if (metaFile === 'meta.json') {
         metaData.title = platformDisplayName;
         metaData.description = `Stack Auth for ${platformDisplayName} applications`;
-        metaData.root = true; // Mark as root folder for Fumadocs
+        metaData.root = true;
+        
+        // Filter pages based on platform configuration
+        if (platformConfig.pages && metaData.pages) {
+          const cleanedPages = [];
+          let currentSectionPages = [];
+          let currentSectionHeader = null;
+          
+          for (let i = 0; i < metaData.pages.length; i++) {
+            const page = metaData.pages[i];
+            
+            // If this is a section divider
+            if (typeof page === 'string' && page.startsWith('---')) {
+              // Process the previous section first
+              if (currentSectionHeader !== null) {
+                // Only add the section header if it has actual pages
+                if (currentSectionPages.length > 0) {
+                  cleanedPages.push(currentSectionHeader);
+                  cleanedPages.push(...currentSectionPages);
+                }
+              }
+              
+              // Start new section
+              currentSectionHeader = page;
+              currentSectionPages = [];
+            } 
+            // If this is a folder reference (like "...customization")
+            else if (typeof page === 'string' && page.startsWith('...')) {
+              // Only include folder references if they have content for this platform
+              const folderName = page.substring(3); // Remove "..."
+              const hasContentInFolder = platformConfig.pages.some(configPage => 
+                configPage.path.startsWith(`${folderName}/`) && 
+                configPage.platforms.includes(platform)
+              );
+              
+              if (hasContentInFolder) {
+                currentSectionPages.push(page);
+              }
+            }
+            // Regular page
+            else {
+              const pagePath = `${page}.mdx`;
+              if (shouldIncludeFileForPlatform(platform, pagePath)) {
+                currentSectionPages.push(page);
+              }
+            }
+          }
+          
+          // Don't forget the last section
+          if (currentSectionHeader !== null && currentSectionPages.length > 0) {
+            cleanedPages.push(currentSectionHeader);
+            cleanedPages.push(...currentSectionPages);
+          }
+          
+          // Handle pages that weren't in any section (at the beginning)
+          if (currentSectionHeader === null && currentSectionPages.length > 0) {
+            cleanedPages.push(...currentSectionPages);
+          }
+          
+          metaData.pages = cleanedPages;
+        }
       }
       
       // Create directory if it doesn't exist
@@ -112,7 +223,7 @@ function generateMetaFiles() {
       
       // Write the processed meta.json
       fs.writeFileSync(destPath, JSON.stringify(metaData, null, 2));
-      console.log(`Generated platform-specific meta.json: ${destPath}`);
+      console.log(`Generated platform-specific meta.json for ${platform}: ${destPath}`);
     }
   }
 }
@@ -171,6 +282,12 @@ function generateDocs() {
     
     // Process each template file
     for (const file of templateFiles) {
+      // Check if this file should be included for this platform
+      if (!shouldIncludeFileForPlatform(platform, file)) {
+        console.log(`Skipped file (not configured for platform): ${file} for ${platform}`);
+        continue;
+      }
+      
       const inputFile = path.join(TEMPLATE_DIR, file);
       const outputFile = path.join(outputDir, file);
       

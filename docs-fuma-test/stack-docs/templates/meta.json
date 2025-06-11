@@ -18,6 +18,9 @@
     "concepts/orgs-and-teams",
     "concepts/permissions",
     "concepts/stack-app",
+    "concepts/team-selection",
+    "concepts/user-onboarding",
+    "concepts/webhooks",
     "---Customization---",
     "...customization"
   ]
