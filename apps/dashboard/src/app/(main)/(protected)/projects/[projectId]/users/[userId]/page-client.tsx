@@ -1,6 +1,7 @@
 "use client";
 
-import { SmartFormDialog } from "@/components/form-dialog";
+import { FormDialog, SmartFormDialog } from "@/components/form-dialog";
+import { InputField, SelectField } from "@/components/form-fields";
 import { SettingCard } from "@/components/settings";
 import { DeleteUserDialog, ImpersonateUserDialog } from "@/components/user-dialogs";
 import { useThemeWatcher } from '@/lib/theme';
@@ -10,9 +11,9 @@ import { useAsyncCallback } from "@stackframe/stack-shared/dist/hooks/use-async-
 import { fromNow } from "@stackframe/stack-shared/dist/utils/dates";
 import { throwErr } from '@stackframe/stack-shared/dist/utils/errors';
 import { deindent } from "@stackframe/stack-shared/dist/utils/strings";
-import { ActionCell, Avatar, AvatarFallback, AvatarImage, Button, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger, Input, Separator, SimpleTooltip, Table, TableBody, TableCell, TableHead, TableHeader, TableRow, Typography, cn } from "@stackframe/stack-ui";
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger, ActionCell, Avatar, AvatarFallback, AvatarImage, Button, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger, Input, Separator, SimpleTooltip, Table, TableBody, TableCell, TableHead, TableHeader, TableRow, Typography, cn } from "@stackframe/stack-ui";
 import { AtSign, Calendar, Check, Hash, Mail, MoreHorizontal, Shield, SquareAsterisk, X } from "lucide-react";
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import * as yup from "yup";
 import { PageLayout } from "../../page-layout";
 import { useAdminApp } from "../../use-admin-app";
@@ -167,6 +168,7 @@ type MetadataEditorProps = {
 function MetadataEditor({ title, initialValue, onUpdate, hint }: MetadataEditorProps) {
   const formatJson = (json: string) => JSON.stringify(JSON.parse(json), null, 2);
   const [hasChanged, setHasChanged] = useState(false);
+  const [isMounted, setIsMounted] = useState(false);
 
   const { mounted, theme } = useThemeWatcher();
 
@@ -180,6 +182,14 @@ function MetadataEditor({ title, initialValue, onUpdate, hint }: MetadataEditorP
     }
   }, [value]);
 
+  // Ensure proper mounting lifecycle
+  useEffect(() => {
+    setIsMounted(true);
+    return () => {
+      setIsMounted(false);
+    };
+  }, []);
+
   const handleSave = async () => {
     if (isJson) {
       const formatted = formatJson(value);
@@ -189,14 +199,18 @@ function MetadataEditor({ title, initialValue, onUpdate, hint }: MetadataEditorP
     }
   };
 
+  // Only render Monaco when both mounted states are true
+  const shouldRenderMonaco = mounted && isMounted;
+
   return <div className="flex flex-col">
     <h3 className='text-sm mb-4 font-semibold'>
       {title}
       <SimpleTooltip tooltip={hint} type="info" inline className="ml-2 mb-[2px]" />
     </h3>
-    {mounted && (
+    {shouldRenderMonaco ? (
       <div className={cn("rounded-md overflow-hidden", theme !== 'dark' && "border")}>
         <MonacoEditor
+          key={`monaco-${theme}`} // Force recreation on theme change
           height="240px"
           defaultLanguage="json"
           value={value}
@@ -216,6 +230,10 @@ function MetadataEditor({ title, initialValue, onUpdate, hint }: MetadataEditorP
             showFoldingControls: 'never',
           }}
         />
+      </div>
+    ) : (
+      <div className={cn("rounded-md overflow-hidden h-[240px] flex items-center justify-center", theme !== 'dark' && "border")}>
+        <div className="text-sm text-muted-foreground">Loading editor...</div>
       </div>
     )}
     <div className={cn('self-end flex items-end gap-2 transition-all h-0 opacity-0 overflow-hidden', hasChanged && 'h-[48px] opacity-100')}>
@@ -404,9 +422,101 @@ function AddEmailDialog({ user, open, onOpenChange }: AddEmailDialogProps) {
   );
 }
 
+type SendVerificationEmailDialogProps = {
+  channel: ServerContactChannel,
+  open: boolean,
+  onOpenChange: (open: boolean) => void,
+};
+
+function SendVerificationEmailDialog({ channel, open, onOpenChange }: SendVerificationEmailDialogProps) {
+  const stackAdminApp = useAdminApp();
+  const project = stackAdminApp.useProject();
+  const domains = project.config.domains;
+
+  return (
+    <FormDialog
+      title="Send Verification Email"
+      description={`Send a verification email to ${channel.value}? The email will contain a callback link to your domain.`}
+      open={open}
+      onOpenChange={onOpenChange}
+      formSchema={yup.object({
+        selected: yup.string().defined(),
+        localhostPort: yup.number().test("required-if-localhost", "Required if localhost is selected", (value, context) => {
+          return context.parent.selected === "localhost" ? value !== undefined : true;
+        }),
+        handlerPath: yup.string().optional(),
+      })}
+      okButton={{
+        label: "Send",
+      }}
+      render={({ control, watch }) => (
+        <>
+          <SelectField
+            control={control}
+            name="selected"
+            label="Domain"
+            options={[
+              ...domains.map((domain, index) => ({ value: index.toString(), label: domain.domain })),
+              ...(project.config.allowLocalhost ? [{ value: "localhost", label: "localhost" }] : [])
+            ]}
+          />
+          {watch("selected") === "localhost" && (
+            <>
+              <InputField
+                control={control}
+                name="localhostPort"
+                label="Localhost Port"
+                placeholder="3000"
+                type="number"
+              />
+              <Accordion type="single" collapsible className="w-full">
+                <AccordionItem value="item-1">
+                  <AccordionTrigger>Advanced</AccordionTrigger>
+                  <AccordionContent className="flex flex-col gap-8">
+                    <div className="flex flex-col gap-2">
+                      <InputField
+                        label="Handler path"
+                        name="handlerPath"
+                        control={control}
+                        placeholder='/handler'
+                      />
+                      <Typography variant="secondary" type="footnote">
+                        only modify this if you changed the default handler path in your app
+                      </Typography>
+                    </div>
+                  </AccordionContent>
+                </AccordionItem>
+              </Accordion>
+            </>
+          )}
+        </>
+      )}
+      onSubmit={async (values) => {
+        let baseUrl: string;
+        let handlerPath: string;
+        if (values.selected === "localhost") {
+          baseUrl = `http://localhost:${values.localhostPort}`;
+          handlerPath = values.handlerPath || '/handler';
+        } else {
+          const domain = domains[parseInt(values.selected)];
+          baseUrl = domain.domain;
+          handlerPath = domain.handlerPath;
+        }
+        const callbackUrl = new URL(handlerPath + '/email-verification', baseUrl).toString();
+        console.log(callbackUrl);
+        await channel.sendVerificationEmail({ callbackUrl });
+      }}
+    />
+  );
+}
+
 function ContactChannelsSection({ user }: ContactChannelsSectionProps) {
   const contactChannels = user.useContactChannels();
   const [isAddEmailDialogOpen, setIsAddEmailDialogOpen] = useState(false);
+  const [sendVerificationEmailDialog, setSendVerificationEmailDialog] = useState<{
+    channel: ServerContactChannel,
+    isOpen: boolean,
+  } | null>(null);
 
   const toggleUsedForAuth = async (channel: ServerContactChannel) => {
     await channel.update({ usedForAuth: !channel.usedForAuth });
@@ -440,6 +550,18 @@ function ContactChannelsSection({ user }: ContactChannelsSectionProps) {
         open={isAddEmailDialogOpen}
         onOpenChange={setIsAddEmailDialogOpen}
       />
+
+      {sendVerificationEmailDialog && (
+        <SendVerificationEmailDialog
+          channel={sendVerificationEmailDialog.channel}
+          open={sendVerificationEmailDialog.isOpen}
+          onOpenChange={(open) => {
+            if (!open) {
+              setSendVerificationEmailDialog(null);
+            }
+          }}
+        />
+      )}
 
       {contactChannels.length === 0 ? (
         <div className="flex flex-col items-center gap-2 p-4 border rounded-md bg-muted/10">
@@ -488,7 +610,10 @@ function ContactChannelsSection({ user }: ContactChannelsSectionProps) {
                         ...(!channel.isVerified ? [{
                           item: "Send verification email",
                           onClick: async () => {
-                            await channel.sendVerificationEmail();
+                            setSendVerificationEmailDialog({
+                              channel,
+                              isOpen: true,
+                            });
                           },
                         }] : []),
                         {
