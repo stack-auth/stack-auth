@@ -431,7 +431,7 @@ function AddEmailDialog({ user, open, onOpenChange }: AddEmailDialogProps) {
       onSubmit={async (values) => {
         if (!values.email.trim()) return;
 
-        const channel = await user.createContactChannel({
+        await user.createContactChannel({
           type: 'email',
           value: values.email.trim(),
           isVerified: values.isVerified,
