@@ -5,6 +5,7 @@ import path from 'path';
 // Use relative paths to avoid path duplication issues
 const OPENAPI_DIR = './public/openapi';
 const OUTPUT_DIR = './content/api';
+const TEMPLATES_API_DIR = './templates-api';
 
 // Define the functional tag order based on user requirements
 const FUNCTIONAL_TAGS = [
@@ -185,6 +186,29 @@ function updateDocumentReferences(functionalCategoryPath, newDocumentPath) {
   }
 }
 
+/**
+ * Copy the API overview page from template
+ */
+function copyAPIOverviewFromTemplate() {
+  console.log('📄 Copying API overview page from template...');
+  
+  const templatePath = path.join(TEMPLATES_API_DIR, 'overview.mdx');
+  const outputPath = path.join(OUTPUT_DIR, 'overview.mdx');
+  
+  if (!fs.existsSync(templatePath)) {
+    console.error(`❌ Template file not found: ${templatePath}`);
+    console.log('   Please create the template file first.');
+    return;
+  }
+  
+  // Ensure output directory exists
+  fs.mkdirSync(path.dirname(outputPath), { recursive: true });
+  
+  // Copy the template file
+  fs.copyFileSync(templatePath, outputPath);
+  console.log('✅ Copied API overview page from template');
+}
+
 async function generateFunctionalAPIDocs() {
   console.log('🚀 Starting functional OpenAPI documentation generation...\n');
   
@@ -200,6 +224,9 @@ async function generateFunctionalAPIDocs() {
   for (const apiType of apiTypes) {
     await processApiTypeInIsolation(apiType);
   }
+
+  // Copy API overview page from template
+  copyAPIOverviewFromTemplate();
 
   // Generate main API meta.json
   console.log('📁 Generating main API navigation...');
