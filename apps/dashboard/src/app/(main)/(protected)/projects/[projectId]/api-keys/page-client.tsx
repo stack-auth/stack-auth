@@ -1,6 +1,6 @@
 "use client";
 import { InternalApiKeyTable } from "@/components/data-table/api-key-table";
-import EnvKeys from "@/components/env-keys";
+import { EnvKeys } from "@/components/env-keys";
 import { SmartFormDialog } from "@/components/form-dialog";
 import { SelectField } from "@/components/form-fields";
 import { InternalApiKeyFirstView } from "@stackframe/stack";
