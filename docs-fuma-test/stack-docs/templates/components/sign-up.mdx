@@ -13,11 +13,43 @@ For more information, please refer to the [custom pages guide](../customization/
 
 ## Props
 
-- `fullPage` (optional): `boolean` - If true, renders the sign-up page in full-page mode.
-- `automaticRedirect` (optional): `boolean` - If true, redirect to afterSignIn/afterSignUp URL when user is already signed in without showing the 'You are signed in' message.
-- `noPasswordRepeat` (optional): `boolean` - If true, removes the password confirmation field.
-- `extraInfo` (optional): `React.ReactNode` - Additional information to display on the sign-up page.
-- `firstTab` (optional): `'magic-link' | 'password' - Determines which tab is initially active. Defaults to 'magic-link' if not specified.
+<PropTable
+  props={[
+    {
+      name: "fullPage",
+      type: "boolean",
+      description: "If true, renders the sign-up page in full-page mode.",
+      optional: true,
+      default: "false"
+    },
+    {
+      name: "automaticRedirect",
+      type: "boolean",
+      description: "If true, redirect to afterSignIn/afterSignUp URL when user is already signed in without showing the 'You are signed in' message.",
+      optional: true,
+      default: "false"
+    },
+    {
+      name: "noPasswordRepeat",
+      type: "boolean",
+      description: "If true, removes the password confirmation field.",
+      optional: true,
+      default: "false"
+    },
+    {
+      name: "extraInfo",
+      type: "React.ReactNode",
+      description: "Additional information to display on the sign-up page.",
+      optional: true
+    },
+    {
+      name: "firstTab",
+      type: "'magic-link' | 'password'",
+      description: "Determines which tab is initially active. Defaults to 'magic-link' if not specified.",
+      optional: true
+    }
+  ]}
+/>
 
 ## Example
 

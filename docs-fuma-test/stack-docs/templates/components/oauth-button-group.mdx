@@ -9,13 +9,21 @@ Renders all the OAuth buttons enabled on the project dashboard.
   <img src="../imgs/oauth-button-group.png" alt="OAuthButtonGroup" className="stack-250h" />
 </div>
 
-<Callout>
+<Info type="info">
 If there are no OAuth providers enabled in the dashboard, this component will be empty.
-</Callout>
+</Info>
 
 ## Props
 
-- `type`: `'sign-in' | 'sign-up'` - Specifies whether the buttons text are for sign-in or sign-up (both are the same in terms of functionality).
+<PropTable
+  props={[
+    {
+      name: "type",
+      type: "'sign-in' | 'sign-up'",
+      description: "Specifies whether the buttons text are for sign-in or sign-up (both are the same in terms of functionality)."
+    }
+  ]}
+/>
 
 ## Example
 

@@ -9,10 +9,30 @@ For detailed usage instructions, please refer to the manual section of the [setu
 
 ## Props
 
-- `app`: `StackServerApp` - The Stack server application instance.
-- `routeProps`: `NextRouteProps` - The Next.js route props, usually the first argument of the page component (see below)
-- `fullPage`: `boolean` - Whether to render the component in full-page mode.
-- `componentProps`: `{ [K in keyof Components]?: Partial<ComponentProps<Components[K]>> }` - Props to pass to the rendered components.
+<PropTable
+  props={[
+    {
+      name: "app",
+      type: "StackServerApp",
+      description: "The Stack server application instance."
+    },
+    {
+      name: "routeProps",
+      type: "NextRouteProps",
+      description: "The Next.js route props, usually the first argument of the page component (see below)"
+    },
+    {
+      name: "fullPage",
+      type: "boolean",
+      description: "Whether to render the component in full-page mode."
+    },
+    {
+      name: "componentProps",
+      type: "{ [K in keyof Components]?: Partial<ComponentProps<Components[K]>> }",
+      description: "Props to pass to the rendered components."
+    }
+  ]}
+/>
 
 ## Example
 
