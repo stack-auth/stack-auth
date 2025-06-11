@@ -9,7 +9,7 @@ export type ContactChannel = {
   isVerified: boolean,
   usedForAuth: boolean,
 
-  sendVerificationEmail(options?: { callbackUrl?: string }): Promise<void>,
+  sendVerificationEmail(): Promise<void>,
   update(data: ContactChannelUpdateOptions): Promise<void>,
   delete(): Promise<void>,
 }
