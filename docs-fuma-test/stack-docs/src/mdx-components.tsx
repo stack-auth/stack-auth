@@ -8,8 +8,8 @@ import { APIPage } from 'fumadocs-openapi/ui';
 
 import { Card, CardGroup, Info } from './components/mdx';
 import ApiSequenceDiagram from './components/mdx/api-sequence-diagram';
-import { AuthCard } from './components/mdx/AuthCard';
-import { DynamicCodeblock } from './components/mdx/DynamicCodeblock';
+import { AuthCard } from './components/mdx/auth-card';
+import { DynamicCodeblock } from './components/mdx/dynamic-code-block';
 
 import { CollapsibleMethodSection, CollapsibleTypesSection, MethodAside, MethodContent, MethodLayout, MethodSection, MethodTitle } from './components/ui/method-layout';
 

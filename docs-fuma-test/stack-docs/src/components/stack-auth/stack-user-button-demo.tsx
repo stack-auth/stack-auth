@@ -4,7 +4,7 @@ import { UserButton } from '@stackframe/stack';
 import { Wrench } from "lucide-react";
 import { useState } from "react";
 import { StackContainer } from "../mdx";
-import { DynamicCodeblock } from "../mdx/DynamicCodeblock";
+import { DynamicCodeblock } from "../mdx/dynamic-code-block";
 
 interface UserButtonDemoProps {
   showUserInfo: boolean;

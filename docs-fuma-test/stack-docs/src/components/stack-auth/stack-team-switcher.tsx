@@ -3,7 +3,7 @@
 import { SelectedTeamSwitcher } from '@stackframe/stack';
 import { useState } from 'react';
 import { StackContainer } from '../mdx';
-import { DynamicCodeblock } from '../mdx/DynamicCodeblock';
+import { DynamicCodeblock } from '../mdx/dynamic-code-block';
 
 // Mock data for demo purposes
 const mockUser = {
