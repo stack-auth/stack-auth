@@ -84,8 +84,8 @@ function EditableInput({ value, initialEditValue, onUpdate, readOnly, placeholde
       placeholder={placeholder}
       tabIndex={readOnly ? -1 : undefined}
       className={cn(
-        "w-full px-1 py-0 h-[unset] [&:not(:hover)]:border-transparent",
-        readOnly && "border-transparent focus-visible:ring-0",
+        "w-full px-1 py-0 h-[unset] border-transparent",
+        readOnly && "focus-visible:ring-0",
         shiftTextToLeft && "ml-[-7px]",
         inputClassName,
       )}
@@ -140,7 +140,9 @@ function EditableInput({ value, initialEditValue, onUpdate, readOnly, placeholde
             }
           }}
         >
-          {action === "accept" ? <Check size={15} /> : <X size={15} />}
+          {action === "accept" ?
+            <Check size={15} className="text-white dark:text-black" /> :
+            <X size={15} className="text-white dark:text-black" />}
         </Button>
       ))}
     </div>
