@@ -1,5 +1,6 @@
 import { LargeSearchToggle } from '@/components/layout/search-toggle';
 import Waves from '@/components/layouts/api/Waves';
+import { isInApiSection, isInComponentsSection, isInSdkSection } from '@/components/layouts/shared/section-utils';
 import { type NavLink } from '@/lib/navigation-utils';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
@@ -22,17 +23,17 @@ interface SharedHeaderProps {
  */
 function isNavLinkActive(pathname: string, navLink: NavLink): boolean {
   // More specific matches first
-  if (navLink.label === 'SDK' && pathname.includes('/sdk')) {
+  if (navLink.label === 'SDK' && isInSdkSection(pathname)) {
     return true;
   }
-  if (navLink.label === 'Components' && pathname.includes('/components')) {
+  if (navLink.label === 'Components' && isInComponentsSection(pathname)) {
     return true;
   }
-  if (navLink.label === 'API Reference' && pathname.startsWith('/api')) {
+  if (navLink.label === 'API Reference' && isInApiSection(pathname)) {
     return true;
   }
   if (navLink.label === 'Documentation' && pathname.startsWith('/docs') && 
-      !pathname.includes('/components') && !pathname.includes('/sdk')) {
+      !isInComponentsSection(pathname) && !isInSdkSection(pathname)) {
     return true;
   }
   return false;

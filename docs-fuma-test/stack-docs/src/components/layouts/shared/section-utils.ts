@@ -4,11 +4,11 @@
 
 // Helper functions to detect sections
 export function isInSdkSection(pathname: string): boolean {
-  return /\/docs\/\w+\/sdk(?:\/|$)/.test(pathname);
+  return /\/docs\/[a-z]+\/sdk(?:\/.*)?$/.test(pathname);
 }
 
 export function isInComponentsSection(pathname: string): boolean {
-  return /\/docs\/\w+\/components(?:\/|$)/.test(pathname);
+  return /\/docs\/[a-z]+\/components(?:\/.*)?$/.test(pathname);
 }
 
 export function isInApiSection(pathname: string): boolean {
@@ -16,7 +16,7 @@ export function isInApiSection(pathname: string): boolean {
 }
 
 export function isInCustomizationSection(pathname: string): boolean {
-  return /\/docs\/pages-\w+\/customization(?:\/|$)/.test(pathname);
+  return /\/docs\/[a-z]+\/customization(?:\/.*)?$/.test(pathname);
 }
 
 // Platform display name mapping

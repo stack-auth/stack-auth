@@ -27,11 +27,11 @@ export function platformSupportsSDK(platform: Platform): boolean {
  * redirects to the overview page instead.
  */
 export function getSmartRedirectUrl(currentPath: string, newPlatform: Platform): string {
-  // Check for components section specifically: /docs/{platform}/components/*
-  const componentsMatch = currentPath.match(/^\/docs\/[^/]+\/components(\/.*)$/);
+  // Check for components section specifically: /docs/{platform}/components/...
+  const componentsMatch = currentPath.match(/^\/docs\/[a-z]+\/components(?:\/.*)?$/);
   if (componentsMatch) {
     if (platformSupportsComponents(newPlatform)) {
-      const componentPath = componentsMatch[1];
+      const componentPath = currentPath.replace(/^\/docs\/[a-z]+\/components/, '');
       return `/docs/${newPlatform}/components${componentPath}`;
     } else {
       // Redirect to overview if platform doesn't support components
@@ -39,11 +39,11 @@ export function getSmartRedirectUrl(currentPath: string, newPlatform: Platform):
     }
   }
 
-  // Check for SDK section specifically: /docs/{platform}/sdk/*
-  const sdkMatch = currentPath.match(/^\/docs\/[^/]+\/sdk(\/.*)$/);
+  // Check for SDK section specifically: /docs/{platform}/sdk/...
+  const sdkMatch = currentPath.match(/^\/docs\/[a-z]+\/sdk(?:\/.*)?$/);
   if (sdkMatch) {
     if (platformSupportsSDK(newPlatform)) {
-      const sdkPath = sdkMatch[1];
+      const sdkPath = currentPath.replace(/^\/docs\/[a-z]+\/sdk/, '');
       return `/docs/${newPlatform}/sdk${sdkPath}`;
     } else {
       // Redirect to overview if platform doesn't support SDK
@@ -57,7 +57,7 @@ export function getSmartRedirectUrl(currentPath: string, newPlatform: Platform):
   }
 
   // For general docs within a platform: /docs/{platform}/*
-  const generalMatch = currentPath.match(/^\/docs\/[^/]+(\/.*)$/);
+  const generalMatch = currentPath.match(/^\/docs\/[a-z]+(\/.*)$/);
   if (generalMatch) {
     const pathAfterPlatform = generalMatch[1];
     return `/docs/${newPlatform}${pathAfterPlatform}`;
@@ -71,22 +71,22 @@ export function getSmartRedirectUrl(currentPath: string, newPlatform: Platform):
  * Gets the current platform's URL for the current path
  */
 export function getCurrentPlatformUrl(currentPath: string, platform: Platform): string {
-  // Check for components section specifically: /docs/{platform}/components/*
-  const componentsMatch = currentPath.match(/^\/docs\/[^/]+\/components(\/.*)$/);
+  // Check for components section specifically: /docs/{platform}/components/...
+  const componentsMatch = currentPath.match(/^\/docs\/[a-z]+\/components(?:\/.*)?$/);
   if (componentsMatch) {
-    const componentPath = componentsMatch[1];
+    const componentPath = currentPath.replace(/^\/docs\/[a-z]+\/components/, '');
     return `/docs/${platform}/components${componentPath}`;
   }
 
-  // Check for SDK section specifically: /docs/{platform}/sdk/*
-  const sdkMatch = currentPath.match(/^\/docs\/[^/]+\/sdk(\/.*)$/);
+  // Check for SDK section specifically: /docs/{platform}/sdk/...
+  const sdkMatch = currentPath.match(/^\/docs\/[a-z]+\/sdk(?:\/.*)?$/);
   if (sdkMatch) {
-    const sdkPath = sdkMatch[1];
+    const sdkPath = currentPath.replace(/^\/docs\/[a-z]+\/sdk/, '');
     return `/docs/${platform}/sdk${sdkPath}`;
   }
 
   // For general docs within a platform: /docs/{platform}/*
-  const generalMatch = currentPath.match(/^\/docs\/[^/]+(\/.*)$/);
+  const generalMatch = currentPath.match(/^\/docs\/[a-z]+(\/.*)$/);
   if (generalMatch) {
     const pathAfterPlatform = generalMatch[1];
     return `/docs/${platform}${pathAfterPlatform}`;
