@@ -21,7 +21,7 @@ import {
   TocPopover,
   TocPopoverContent,
   TocPopoverTrigger,
-} from '../pageClient';
+} from '../page-client';
 import { BackToTop } from '../ui/back-to-top';
 import { buttonVariants } from '../ui/button';
 import { slot } from './shared';

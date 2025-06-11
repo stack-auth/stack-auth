@@ -16,14 +16,14 @@ import { CollapsibleMethodSection, CollapsibleTypesSection, MethodAside, MethodC
 import { SDKOverview } from './components/sdk/overview';
 
 import { Mermaid } from './components/mdx/mermaid';
-import { Accordion, AccordionGroup, ClickableTableOfContents, CodeBlocks, Icon, Markdown, ParamField } from './components/mdx/SDKComponents';
-import { PropTable } from './components/PropTable';
+import { Accordion, AccordionGroup, ClickableTableOfContents, CodeBlocks, Icon, Markdown, ParamField } from './components/mdx/sdk-components';
+import { PropTable } from './components/prop-table';
 
-import { AccountSettingsStackAuth } from './components/stack-auth/account-settings';
 import { SignInDemo, SignInExtraInfo, SignInPasswordFirstTab, SignInStackAuth } from './components/stack-auth/sign-in';
+import { AccountSettingsStackAuth } from './components/stack-auth/stack-account-settings';
+import { TeamSwitcherDemo } from './components/stack-auth/stack-team-switcher';
 import { StackUserButton } from './components/stack-auth/stack-user-button';
-import { TeamSwitcherDemo } from './components/stack-auth/team-switcher';
-import { UserButtonDemo } from './components/stack-auth/user-button-demo';
+import { UserButtonDemo } from './components/stack-auth/stack-user-button-demo';
 import { Step, Steps } from './components/steps';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from './components/ui/tabs';
 export function getMDXComponents(components?: MDXComponents): MDXComponents {
