@@ -449,6 +449,64 @@ type SendVerificationEmailDialogProps = {
   onOpenChange: (open: boolean) => void,
 };
 
+type SendResetPasswordEmailDialogProps = {
+  channel: ServerContactChannel,
+  open: boolean,
+  onOpenChange: (open: boolean) => void,
+};
+
+type DomainSelectorProps = {
+  control: any,
+  watch: any,
+  domains: Array<{ domain: string, handlerPath: string }>,
+  allowLocalhost: boolean,
+};
+
+function DomainSelector({ control, watch, domains, allowLocalhost }: DomainSelectorProps) {
+  return (
+    <>
+      <SelectField
+        control={control}
+        name="selected"
+        label="Domain"
+        options={[
+          ...domains.map((domain, index) => ({ value: index.toString(), label: domain.domain })),
+          ...(allowLocalhost ? [{ value: "localhost", label: "localhost" }] : [])
+        ]}
+      />
+      {watch("selected") === "localhost" && (
+        <>
+          <InputField
+            control={control}
+            name="localhostPort"
+            label="Localhost Port"
+            placeholder="3000"
+            type="number"
+          />
+          <Accordion type="single" collapsible className="w-full">
+            <AccordionItem value="item-1">
+              <AccordionTrigger>Advanced</AccordionTrigger>
+              <AccordionContent className="flex flex-col gap-8">
+                <div className="flex flex-col gap-2">
+                  <InputField
+                    label="Handler path"
+                    name="handlerPath"
+                    control={control}
+                    placeholder='/handler'
+                  />
+                  <Typography variant="secondary" type="footnote">
+                    only modify this if you changed the default handler path in your app
+                  </Typography>
+                </div>
+              </AccordionContent>
+            </AccordionItem>
+          </Accordion>
+        </>
+      )}
+    </>
+  );
+}
+
 function SendVerificationEmailDialog({ channel, open, onOpenChange }: SendVerificationEmailDialogProps) {
   const stackAdminApp = useAdminApp();
   const project = stackAdminApp.useProject();
@@ -471,46 +529,12 @@ function SendVerificationEmailDialog({ channel, open, onOpenChange }: SendVerifi
         label: "Send",
       }}
       render={({ control, watch }) => (
-        <>
-          <SelectField
-            control={control}
-            name="selected"
-            label="Domain"
-            options={[
-              ...domains.map((domain, index) => ({ value: index.toString(), label: domain.domain })),
-              ...(project.config.allowLocalhost ? [{ value: "localhost", label: "localhost" }] : [])
-            ]}
-          />
-          {watch("selected") === "localhost" && (
-            <>
-              <InputField
-                control={control}
-                name="localhostPort"
-                label="Localhost Port"
-                placeholder="3000"
-                type="number"
-              />
-              <Accordion type="single" collapsible className="w-full">
-                <AccordionItem value="item-1">
-                  <AccordionTrigger>Advanced</AccordionTrigger>
-                  <AccordionContent className="flex flex-col gap-8">
-                    <div className="flex flex-col gap-2">
-                      <InputField
-                        label="Handler path"
-                        name="handlerPath"
-                        control={control}
-                        placeholder='/handler'
-                      />
-                      <Typography variant="secondary" type="footnote">
-                        only modify this if you changed the default handler path in your app
-                      </Typography>
-                    </div>
-                  </AccordionContent>
-                </AccordionItem>
-              </Accordion>
-            </>
-          )}
-        </>
+        <DomainSelector
+          control={control}
+          watch={watch}
+          domains={domains}
+          allowLocalhost={project.config.allowLocalhost}
+        />
       )}
       onSubmit={async (values) => {
         let baseUrl: string;
@@ -531,10 +555,62 @@ function SendVerificationEmailDialog({ channel, open, onOpenChange }: SendVerifi
   );
 }
 
+function SendResetPasswordEmailDialog({ channel, open, onOpenChange }: SendResetPasswordEmailDialogProps) {
+  const stackAdminApp = useAdminApp();
+  const project = stackAdminApp.useProject();
+  const domains = project.config.domains;
+
+  return (
+    <FormDialog
+      title="Send Reset Password Email"
+      description={`Send a password reset email to ${channel.value}? The email will contain a callback link to your domain.`}
+      open={open}
+      onOpenChange={onOpenChange}
+      formSchema={yup.object({
+        selected: yup.string().defined(),
+        localhostPort: yup.number().test("required-if-localhost", "Required if localhost is selected", (value, context) => {
+          return context.parent.selected === "localhost" ? value !== undefined : true;
+        }),
+        handlerPath: yup.string().optional(),
+      })}
+      okButton={{
+        label: "Send",
+      }}
+      render={({ control, watch }) => (
+        <DomainSelector
+          control={control}
+          watch={watch}
+          domains={domains}
+          allowLocalhost={project.config.allowLocalhost}
+        />
+      )}
+      onSubmit={async (values) => {
+        let baseUrl: string;
+        let handlerPath: string;
+        if (values.selected === "localhost") {
+          baseUrl = `http://localhost:${values.localhostPort}`;
+          handlerPath = values.handlerPath || '/handler';
+        } else {
+          const domain = domains[parseInt(values.selected)];
+          baseUrl = domain.domain;
+          handlerPath = domain.handlerPath;
+        }
+        const callbackUrl = new URL(handlerPath + '/password-reset', baseUrl).toString();
+        console.log(callbackUrl);
+        await stackAdminApp.sendForgotPasswordEmail(channel.value, { callbackUrl });
+      }}
+    />
+  );
+}
+
 function ContactChannelsSection({ user }: ContactChannelsSectionProps) {
   const contactChannels = user.useContactChannels();
   const [isAddEmailDialogOpen, setIsAddEmailDialogOpen] = useState(false);
   const [sendVerificationEmailDialog, setSendVerificationEmailDialog] = useState<{
+    channel: ServerContactChannel,
+    isOpen: boolean,
+  } | null>(null);
+  const [sendResetPasswordEmailDialog, setSendResetPasswordEmailDialog] = useState<{
     channel: ServerContactChannel,
     isOpen: boolean,
   } | null>(null);
@@ -579,6 +655,18 @@ function ContactChannelsSection({ user }: ContactChannelsSectionProps) {
           onOpenChange={(open) => {
             if (!open) {
               setSendVerificationEmailDialog(null);
+            }
+          }}
+        />
+      )}
+
+      {sendResetPasswordEmailDialog && (
+        <SendResetPasswordEmailDialog
+          channel={sendResetPasswordEmailDialog.channel}
+          open={sendResetPasswordEmailDialog.isOpen}
+          onOpenChange={(open) => {
+            if (!open) {
+              setSendResetPasswordEmailDialog(null);
             }
           }}
         />
@@ -637,6 +725,15 @@ function ContactChannelsSection({ user }: ContactChannelsSectionProps) {
                             });
                           },
                         }] : []),
+                        {
+                          item: "Send reset password email",
+                          onClick: async () => {
+                            setSendResetPasswordEmailDialog({
+                              channel,
+                              isOpen: true,
+                            });
+                          },
+                        },
                         {
                           item: channel.isVerified ? "Mark as unverified" : "Mark as verified",
                           onClick: async () => {
