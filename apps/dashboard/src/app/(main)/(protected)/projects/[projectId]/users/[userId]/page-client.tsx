@@ -33,9 +33,19 @@ type EditableInputProps = {
   placeholder?: string,
   inputClassName?: string,
   shiftTextToLeft?: boolean,
+  mode?: 'text' | 'password',
 };
 
-function EditableInput({ value, initialEditValue, onUpdate, readOnly, placeholder, inputClassName, shiftTextToLeft }: EditableInputProps) {
+function EditableInput({
+  value,
+  initialEditValue,
+  onUpdate,
+  readOnly,
+  placeholder,
+  inputClassName,
+  shiftTextToLeft,
+  mode = 'text',
+}: EditableInputProps) {
   const [editValue, setEditValue] = useState<string | null>(null);
   const editing = editValue !== null;
   const [hasChanged, setHasChanged] = useState(false);
@@ -78,6 +88,7 @@ function EditableInput({ value, initialEditValue, onUpdate, readOnly, placeholde
     }}
   >
     <Input
+      type={mode === 'password' ? 'password' : 'text'}
       ref={inputRef}
       readOnly={readOnly}
       disabled={isLoading}
@@ -337,6 +348,7 @@ type UserDetailsProps = {
 };
 
 function UserDetails({ user }: UserDetailsProps) {
+  const [newPassword, setNewPassword] = useState<string | null>(null);
   return (
     <div className="grid grid-cols-[min-content_1fr] lg:grid-cols-[min-content_1fr_min-content_1fr] gap-2 text-sm px-4">
       <UserInfo icon={<Hash size={16}/>} name="User ID">
@@ -351,7 +363,14 @@ function UserDetails({ user }: UserDetailsProps) {
         }}/>
       </UserInfo>
       <UserInfo icon={<SquareAsterisk size={16}/>} name="Password">
-        <EditableInput value={user.hasPassword ? '************' : ''} placeholder="-" readOnly />
+        <EditableInput
+          value={""}
+          placeholder={user.hasPassword ? "************" : "-"}
+          mode="password"
+          onUpdate={async (newPassword) => {
+            await user.setPassword({ password: newPassword });
+          }}
+        />
       </UserInfo>
       <UserInfo icon={<Shield size={16}/>} name="2-factor auth">
         <EditableInput value={user.otpAuthEnabled ? 'Enabled' : ''} placeholder='Disabled' readOnly />
