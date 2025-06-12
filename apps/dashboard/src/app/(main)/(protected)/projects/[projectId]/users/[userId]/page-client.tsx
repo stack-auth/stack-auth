@@ -513,15 +513,31 @@ function DomainSelector({ control, watch, domains, allowLocalhost }: DomainSelec
   );
 }
 
-function SendVerificationEmailDialog({ channel, open, onOpenChange }: SendVerificationEmailDialogProps) {
+type SendEmailWithDomainDialogProps = {
+  title: string,
+  description: string,
+  open: boolean,
+  onOpenChange: (open: boolean) => void,
+  endpointPath: string,
+  onSubmit: (callbackUrl: string) => Promise<void>,
+};
+
+function SendEmailWithDomainDialog({
+  title,
+  description,
+  open,
+  onOpenChange,
+  endpointPath,
+  onSubmit
+}: SendEmailWithDomainDialogProps) {
   const stackAdminApp = useAdminApp();
   const project = stackAdminApp.useProject();
   const domains = project.config.domains;
 
   return (
     <FormDialog
-      title="Send Verification Email"
-      description={`Send a verification email to ${channel.value}? The email will contain a callback link to your domain.`}
+      title={title}
+      description={description}
       open={open}
       onOpenChange={onOpenChange}
       formSchema={yup.object({
@@ -553,8 +569,22 @@ function SendVerificationEmailDialog({ channel, open, onOpenChange }: SendVerifi
           baseUrl = domain.domain;
           handlerPath = domain.handlerPath;
         }
-        const callbackUrl = new URL(handlerPath + '/email-verification', baseUrl).toString();
-        console.log(callbackUrl);
+        const callbackUrl = new URL(handlerPath + endpointPath, baseUrl).toString();
+        await onSubmit(callbackUrl);
+      }}
+    />
+  );
+}
+
+function SendVerificationEmailDialog({ channel, open, onOpenChange }: SendVerificationEmailDialogProps) {
+  return (
+    <SendEmailWithDomainDialog
+      title="Send Verification Email"
+      description={`Send a verification email to ${channel.value}? The email will contain a callback link to your domain.`}
+      open={open}
+      onOpenChange={onOpenChange}
+      endpointPath="/email-verification"
+      onSubmit={async (callbackUrl) => {
         await channel.sendVerificationEmail({ callbackUrl });
       }}
     />
@@ -563,46 +593,15 @@ function SendVerificationEmailDialog({ channel, open, onOpenChange }: SendVerifi
 
 function SendResetPasswordEmailDialog({ channel, open, onOpenChange }: SendResetPasswordEmailDialogProps) {
   const stackAdminApp = useAdminApp();
-  const project = stackAdminApp.useProject();
-  const domains = project.config.domains;
 
   return (
-    <FormDialog
+    <SendEmailWithDomainDialog
       title="Send Reset Password Email"
       description={`Send a password reset email to ${channel.value}? The email will contain a callback link to your domain.`}
       open={open}
       onOpenChange={onOpenChange}
-      formSchema={yup.object({
-        selected: yup.string().defined(),
-        localhostPort: yup.number().test("required-if-localhost", "Required if localhost is selected", (value, context) => {
-          return context.parent.selected === "localhost" ? value !== undefined : true;
-        }),
-        handlerPath: yup.string().optional(),
-      })}
-      okButton={{
-        label: "Send",
-      }}
-      render={({ control, watch }) => (
-        <DomainSelector
-          control={control}
-          watch={watch}
-          domains={domains}
-          allowLocalhost={project.config.allowLocalhost}
-        />
-      )}
-      onSubmit={async (values) => {
-        let baseUrl: string;
-        let handlerPath: string;
-        if (values.selected === "localhost") {
-          baseUrl = `http://localhost:${values.localhostPort}`;
-          handlerPath = values.handlerPath || '/handler';
-        } else {
-          const domain = domains[parseInt(values.selected)];
-          baseUrl = domain.domain;
-          handlerPath = domain.handlerPath;
-        }
-        const callbackUrl = new URL(handlerPath + '/password-reset', baseUrl).toString();
-        console.log(callbackUrl);
+      endpointPath="/password-reset"
+      onSubmit={async (callbackUrl) => {
         await stackAdminApp.sendForgotPasswordEmail(channel.value, { callbackUrl });
       }}
     />
@@ -611,45 +610,15 @@ function SendResetPasswordEmailDialog({ channel, open, onOpenChange }: SendReset
 
 function SendSignInInvitationDialog({ channel, open, onOpenChange }: SendSignInInvitationDialogProps) {
   const stackAdminApp = useAdminApp();
-  const project = stackAdminApp.useProject();
-  const domains = project.config.domains;
 
   return (
-    <FormDialog
+    <SendEmailWithDomainDialog
       title="Send Sign-In Invitation"
       description={`Send a sign-in invitation email to ${channel.value}? The email will contain a callback link to your domain.`}
       open={open}
       onOpenChange={onOpenChange}
-      formSchema={yup.object({
-        selected: yup.string().defined(),
-        localhostPort: yup.number().test("required-if-localhost", "Required if localhost is selected", (value, context) => {
-          return context.parent.selected === "localhost" ? value !== undefined : true;
-        }),
-        handlerPath: yup.string().optional(),
-      })}
-      okButton={{
-        label: "Send",
-      }}
-      render={({ control, watch }) => (
-        <DomainSelector
-          control={control}
-          watch={watch}
-          domains={domains}
-          allowLocalhost={project.config.allowLocalhost}
-        />
-      )}
-      onSubmit={async (values) => {
-        let baseUrl: string;
-        let handlerPath: string;
-        if (values.selected === "localhost") {
-          baseUrl = `http://localhost:${values.localhostPort}`;
-          handlerPath = values.handlerPath || '/handler';
-        } else {
-          const domain = domains[parseInt(values.selected)];
-          baseUrl = domain.domain;
-          handlerPath = domain.handlerPath;
-        }
-        const callbackUrl = new URL(handlerPath + '/sign-in', baseUrl).toString();
+      endpointPath="/sign-in"
+      onSubmit={async (callbackUrl) => {
         await stackAdminApp.sendSignInInvitationEmail(channel.value, callbackUrl);
       }}
     />
