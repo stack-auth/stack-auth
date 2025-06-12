@@ -301,4 +301,24 @@ export class StackAdminInterface extends StackServerInterface {
     }, null);
     return await response.json();
   }
+
+  async sendSignInInvitationEmail(
+    email: string,
+    callbackUrl: string,
+  ): Promise<void> {
+    await this.sendAdminRequest(
+      "/internal/send-sign-in-invitation",
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          email,
+          callback_url: callbackUrl,
+        }),
+      },
+      null,
+    );
+  }
 }

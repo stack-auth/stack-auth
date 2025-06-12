@@ -8,7 +8,6 @@ import { ActionCell, AvatarCell, BadgeCell, DataTableColumnHeader, DataTableManu
 import { ColumnDef, ColumnFiltersState, Row, SortingState, Table } from "@tanstack/react-table";
 import { useState } from "react";
 import { Link } from '../link';
-import { UserDialog } from '../user-dialog';
 import { DeleteUserDialog, ImpersonateUserDialog } from '../user-dialogs';
 
 export type ExtendedServerUser = ServerUser & {
@@ -25,14 +24,12 @@ function userToolbarRender<TData>(table: Table<TData>) {
 }
 
 function UserActions({ row }: { row: Row<ExtendedServerUser> }) {
-  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
   const [impersonateSnippet, setImpersonateSnippet] = useState<string | null>(null);
   const app = useAdminApp();
   const router = useRouter();
   return (
     <>
-      <UserDialog user={row.original} type="edit" open={isEditModalOpen} onOpenChange={setIsEditModalOpen} />
       <DeleteUserDialog user={row.original} open={isDeleteModalOpen} onOpenChange={setIsDeleteModalOpen} />
       <ImpersonateUserDialog user={row.original} impersonateSnippet={impersonateSnippet} onClose={() => setImpersonateSnippet(null)} />
       <ActionCell
@@ -43,11 +40,6 @@ function UserActions({ row }: { row: Row<ExtendedServerUser> }) {
               router.push(`/projects/${encodeURIComponent(app.projectId)}/users/${encodeURIComponent(row.original.id)}`);
             },
           },
-          {
-            item: "Edit",
-            onClick: () => setIsEditModalOpen(true),
-          },
-          '-',
           {
             item: "Impersonate",
             onClick: async () => {
