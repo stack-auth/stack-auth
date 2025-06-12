@@ -62,7 +62,7 @@ export const signInInvitationTemplate: TEditorConfiguration = {
         "fullWidth": false,
         "size": "medium",
         "text": "Sign in",
-        "url": "{{ SignInInvitationLink }}"
+        "url": "{{ signInInvitationLink }}"
       }
     }
   },

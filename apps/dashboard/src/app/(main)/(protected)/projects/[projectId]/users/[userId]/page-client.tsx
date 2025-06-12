@@ -455,6 +455,12 @@ type SendResetPasswordEmailDialogProps = {
   onOpenChange: (open: boolean) => void,
 };
 
+type SendSignInInvitationDialogProps = {
+  channel: ServerContactChannel,
+  open: boolean,
+  onOpenChange: (open: boolean) => void,
+};
+
 type DomainSelectorProps = {
   control: any,
   watch: any,
@@ -603,6 +609,53 @@ function SendResetPasswordEmailDialog({ channel, open, onOpenChange }: SendReset
   );
 }
 
+function SendSignInInvitationDialog({ channel, open, onOpenChange }: SendSignInInvitationDialogProps) {
+  const stackAdminApp = useAdminApp();
+  const project = stackAdminApp.useProject();
+  const domains = project.config.domains;
+
+  return (
+    <FormDialog
+      title="Send Sign-In Invitation"
+      description={`Send a sign-in invitation email to ${channel.value}? The email will contain a callback link to your domain.`}
+      open={open}
+      onOpenChange={onOpenChange}
+      formSchema={yup.object({
+        selected: yup.string().defined(),
+        localhostPort: yup.number().test("required-if-localhost", "Required if localhost is selected", (value, context) => {
+          return context.parent.selected === "localhost" ? value !== undefined : true;
+        }),
+        handlerPath: yup.string().optional(),
+      })}
+      okButton={{
+        label: "Send",
+      }}
+      render={({ control, watch }) => (
+        <DomainSelector
+          control={control}
+          watch={watch}
+          domains={domains}
+          allowLocalhost={project.config.allowLocalhost}
+        />
+      )}
+      onSubmit={async (values) => {
+        let baseUrl: string;
+        let handlerPath: string;
+        if (values.selected === "localhost") {
+          baseUrl = `http://localhost:${values.localhostPort}`;
+          handlerPath = values.handlerPath || '/handler';
+        } else {
+          const domain = domains[parseInt(values.selected)];
+          baseUrl = domain.domain;
+          handlerPath = domain.handlerPath;
+        }
+        const callbackUrl = new URL(handlerPath + '/sign-in', baseUrl).toString();
+        await stackAdminApp.sendSignInInvitationEmail(channel.value, callbackUrl);
+      }}
+    />
+  );
+}
+
 function ContactChannelsSection({ user }: ContactChannelsSectionProps) {
   const stackAdminApp = useAdminApp();
   const project = stackAdminApp.useProject();
@@ -613,6 +666,10 @@ function ContactChannelsSection({ user }: ContactChannelsSectionProps) {
     isOpen: boolean,
   } | null>(null);
   const [sendResetPasswordEmailDialog, setSendResetPasswordEmailDialog] = useState<{
+    channel: ServerContactChannel,
+    isOpen: boolean,
+  } | null>(null);
+  const [sendSignInInvitationDialog, setSendSignInInvitationDialog] = useState<{
     channel: ServerContactChannel,
     isOpen: boolean,
   } | null>(null);
@@ -674,6 +731,18 @@ function ContactChannelsSection({ user }: ContactChannelsSectionProps) {
         />
       )}
 
+      {sendSignInInvitationDialog && (
+        <SendSignInInvitationDialog
+          channel={sendSignInInvitationDialog.channel}
+          open={sendSignInInvitationDialog.isOpen}
+          onOpenChange={(open) => {
+            if (!open) {
+              setSendSignInInvitationDialog(null);
+            }
+          }}
+        />
+      )}
+
       {contactChannels.length === 0 ? (
         <div className="flex flex-col items-center gap-2 p-4 border rounded-md bg-muted/10">
           <p className='text-sm text-gray-500 text-center'>
@@ -718,6 +787,15 @@ function ContactChannelsSection({ user }: ContactChannelsSectionProps) {
                   <TableCell align="right">
                     <ActionCell
                       items={[
+                        {
+                          item: "Send sign-in invitation",
+                          onClick: async () => {
+                            setSendSignInInvitationDialog({
+                              channel,
+                              isOpen: true,
+                            });
+                          },
+                        },
                         ...(!channel.isVerified ? [{
                           item: "Send verification email",
                           onClick: async () => {
