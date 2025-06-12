@@ -17,7 +17,7 @@ export async function scaffoldProject(body?: Omit<AdminProjectCreateOptions, 'di
   Result.orThrow(await internalApp.signUpWithCredential({
     email: fakeEmail,
     password: "password",
-    verificationCallbackUrl: "https://stack-js-test.example.com/verify",
+    verificationCallbackUrl: "http://localhost:3000",
   }));
   const adminUser = await internalApp.getUser({
     or: 'throw',
