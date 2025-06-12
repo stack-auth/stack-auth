@@ -1,0 +1,36 @@
+---
+title: StackApp Constructor Options Before SSK
+description: The options for the StackApp constructor.
+---
+
+<ParamField path="tokenStore" type="union" required>
+  Where to store the user's session tokens. In most cases, this is `"nextjs-cookie"`, which will store the tokens in cookies using Next.js.
+
+  <Accordion title={<span className="accordion-show-possible-values" />}>
+    <ParamField path={`"nextjs-cookie"`}>
+      Persists the session tokens in `window.cookie` in browser environments, or Next.js cookies in server environments. This is the most common choice.
+    </ParamField>
+    <ParamField path={`"cookie"`}>
+      Persists the session tokens in `window.cookie` in browser environments. Will not read or write cookies on the server.
+    </ParamField>
+    <ParamField path={`{ accessToken: string, refreshToken: string }`}>
+      Reads the initial value for the session tokens from the provided object. It expects the same format as the object returned by [`currentUser.getAuthJson()`](../types/user.mdx#getauthjson).
+
+      Does not persist changes to the tokens.
+    </ParamField>
+    <ParamField path={<a href="https://developer.mozilla.org/en-US/docs/Web/API/Request">Request</a>}>
+      Reads the initial value for the session tokens from headers of the request object. For more information, see the documentation for [`currentUser.getAuthHeaders()`](../types/user.mdx#getauthheaders).
+
+      Does not persist changes to the tokens.
+    </ParamField>
+  </Accordion>
+</ParamField>
+<ParamField path="baseUrl" type="string">
+  The base URL for Stack Auth's API. Only override this if you are self-hosting Stack Auth. Defaults to `https://api.stack-auth.com`, unless overridden by the `NEXT_PUBLIC_STACK_API_URL` environment variable.
+</ParamField>
+<ParamField path="projectId" type="string">
+  The ID of the project that the app is associated with, as found on Stack Auth's dashboard. Defaults to the value of the `NEXT_PUBLIC_STACK_PROJECT_ID` environment variable.
+</ParamField>
+<ParamField path="publishableClientKey" type="string">
+  The publishable client key of the app, as found on Stack Auth's dashboard. Defaults to the value of the `NEXT_PUBLIC_STACK_PUBLISHABLE_CLIENT_KEY` environment variable.
+</ParamField>

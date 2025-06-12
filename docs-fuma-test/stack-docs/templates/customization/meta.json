@@ -1,0 +1,10 @@
+{
+  "title": "Customization",
+  "pages": [
+    "custom-pages",
+    "custom-styles", 
+    "dark-mode",
+    "internationalization",
+    "page-examples"
+  ]
+} 

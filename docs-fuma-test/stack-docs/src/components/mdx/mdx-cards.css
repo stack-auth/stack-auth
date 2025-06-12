@@ -1,0 +1,48 @@
+.components-cards .fern-card > .flex {
+  align-items: stretch !important;
+}
+
+.components-cards .components-card-content {
+  display: flex;
+  justify-content: center;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+  color: var(--fd-foreground);
+  font-weight: bold;
+}
+
+.components-cards .components-card-content > .img-wrapper {
+  pointer-events: none;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+  -moz-user-select: none;
+  height: 200px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.components-cards .components-card-content > .img-wrapper img {
+  object-fit: contain;
+  border-radius: 12px;
+  box-shadow: 1px 1px 5px 0px rgba(0, 0, 0, 0.1);
+}
+
+/* Image height classes */
+.stack-50h {
+  height: 50px;
+}
+
+.stack-100h {
+  height: 100px;
+}
+
+.stack-150h {
+  height: 150px;
+}
+
+.stack-200h {
+  height: 200px;
+} 

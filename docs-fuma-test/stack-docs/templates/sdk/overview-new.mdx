@@ -1,0 +1,52 @@
+---
+title: SDK Overview
+description: This is the SDK reference for Stack Auth's Next.js SDK.
+---
+
+
+This is the SDK reference for Stack Auth's Next.js SDK.
+
+For a list of components, see the [Components](../components) page. For instructions on how to get started and how to use the SDK, see the [Setup & Installation](../getting-started/setup.mdx) page. If you are using a framework or programming language other than Next.js, you can use [our REST API](../rest-api).
+
+export const sdkSections = [
+  {
+    title: "General",
+    items: [
+      { name: "StackClientApp", href: "./objects/stack-app#stackclientapp", icon: "object" },
+      { name: "StackServerApp", href: "./sdk/objects/stack-app#stackserverapp", icon: "object" },
+      { name: "Project", href: "./sdk/types/project#project", icon: "type" },
+    ]
+  },
+  {
+    title: "Users & user data",
+    items: [
+      { name: "CurrentUser", href: "./sdk/types/user#currentuser", icon: "type" },
+      { name: "ServerUser", href: "./sdk/types/user#serveruser", icon: "type" },
+      { name: "CurrentServerUser", href: "./sdk/types/user#currentserveruser", icon: "type" },
+      { name: "ContactChannel", href: "./sdk/types/contact-channel#contactchannel", icon: "type" },
+      { name: "ServerContactChannel", href: "./sdk/types/contact-channel#servercontactchannel", icon: "type" },
+    ]
+  },
+  {
+    title: "Teams",
+    items: [
+      { name: "Team", href: "./sdk/types/team#team", icon: "type" },
+      { name: "ServerTeam", href: "./sdk/types/team#serverteam", icon: "type" },
+      { name: "TeamPermission", href: "./sdk/types/team-permission#teampermission", icon: "type" },
+      { name: "ServerTeamPermission", href: "./sdk/types/team-permission#serverteampermission", icon: "type" },
+      { name: "TeamUser", href: "./sdk/types/team-user#teamuser", icon: "type" },
+      { name: "ServerTeamUser", href: "./sdk/types/team-user#serverteamuser", icon: "type" },
+      { name: "TeamProfile", href: "./sdk/types/team-profile#teamprofile", icon: "type" },
+      { name: "ServerTeamProfile", href: "./sdk/types/team-profile#serverteamprofile", icon: "type" },
+    ]
+  },
+  {
+    title: "Hooks", 
+    items: [
+      { name: "useStackApp", href: "./sdk/hooks/use-stack-app", icon: "hook" },
+      { name: "useUser", href: "./sdk/hooks/use-user", icon: "hook" },
+    ]
+  }
+];
+
+<SDKOverview sections={sdkSections} /> 

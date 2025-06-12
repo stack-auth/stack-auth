@@ -1,0 +1,11 @@
+{
+  "title": "Page Examples",
+  "defaultOpen": false,
+  "pages": [
+    "index",
+    "forgot-password",
+    "password-reset", 
+    "sign-in",
+    "sign-up"
+  ]
+} 

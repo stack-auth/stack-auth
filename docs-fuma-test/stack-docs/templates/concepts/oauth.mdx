@@ -1,0 +1,118 @@
+---
+title: OAuth
+description: Managing third-party OAuth access tokens
+---
+
+Stack has good support for working with OAuth and OIDC providers, such as Google, Facebook, Microsoft, and others.
+
+Beyond using OAuth for signing in, Stack can manage your users' access token so you can invoke APIs on their behalf. For example, you can use this to send emails with Gmail, access repositories on GitHub, or access files on OneDrive.
+
+A connected account is simply an external account that is linked to the user in some way. If you are not using shared keys (see note below), any user created with "Sign up with OAuth" is automatically connected to the account they signed up with, but it's also possible to connect a user with a provider that is unavailable for sign in.
+
+<Info>
+  You cannot connect a user's accounts with shared OAuth keys. You need to set up your own OAuth client ID and client secret in Stack's dashboard. For more details, check [Going to Production](../getting-started/production#oauth-providers).
+</Info>
+
+## Connecting with OAuth providers
+
+You can access a user's connected account with the `user.getConnectedAccount(providerId)` function or `user.useConnectedAccount(providerId)` hook.
+
+Often, you'll want to redirect the user to the OAuth provider's authorization page if they have not connected the account yet. Just like the `getUser(...)` function, `getConnectedAccount(...)` can also take an `{ or: "redirect" }` argument to achieve this.
+
+Here's how to connect with Google:
+
+```jsx
+'use client';
+
+import { useUser } from "@stackframe/stack";
+
+export default function Page() {
+  const user = useUser({ or: 'redirect' });
+  // Redirects to Google authorization if not already connected
+  const account = user.useConnectedAccount('google', { or: 'redirect' });
+  // Account is always defined because of the redirect
+  return <div>Google account connected</div>;
+}
+```
+
+
+## Providing scopes
+
+Most providers have access control in the form of OAuth scopes. These are the permissions that the user will see on the authorization screen (eg. "Your App wants access to your calendar"). For instance, to read Google Drive content, you need the `https://www.googleapis.com/auth/drive.readonly` scope:
+
+```jsx
+'use client';
+
+import { useUser } from "@stackframe/stack";
+
+export default function Page() {
+  const user = useUser({ or: 'redirect' });
+  // Redirects to the Google authorization page, requesting access to Google Drive
+  const account = user.useConnectedAccount('google', { or: 'redirect', scopes: ['https://www.googleapis.com/authdrive.readonly'] });
+  // Account is always defined because of the redirect
+  return <div>Google Drive connected</div>;
+}
+```
+
+Check your provider's API documentation to find a list of available scopes.
+
+## Retrieving the access token
+
+Once connected with an OAuth provider, obtain the access token with the `account.getAccessToken()` function. Check your provider's API documentation to understand how you can use this token to authorize the user in requests.
+
+```jsx
+'use client';
+
+import { useEffect, useState } from 'react';
+import { useUser } from "@stackframe/stack";
+
+export default function Page() {
+  const user = useUser({ or: 'redirect' });
+  const account = user.useConnectedAccount('google', { or: 'redirect', scopes: ['https://www.googleapis.com/auth/drive.readonly'] });
+  const { accessToken } = account.useAccessToken();
+  const [response, setResponse] = useState<any>();
+
+  useEffect(() => {
+    fetch('https://www.googleapis.com/drive/v3/files', {
+      headers: { Authorization: `Bearer ${accessToken}` }
+    })
+      .then((res) => res.json())
+      .then((data) => setResponse(data))
+      .catch((err) => console.error(err));
+  }, [accessToken]);
+
+  return <div>{response ? JSON.stringify(response) : 'Loading...'}</div>;
+}
+```
+
+## Sign-in default scopes
+
+To avoid showing the authorization page twice, you can already request scopes during the sign-in flow. This approach is optional. Some applications may prefer to request extra permissions only when needed, while others might want to obtain all necessary permissions upfront.
+
+To do this, edit the `oauthScopesOnSignIn` setting of your `stackServerApp`:
+
+```jsx title='stack.ts'
+export const stackServerApp = new StackServerApp({
+  // ...your other settings...
+  oauthScopesOnSignIn: {
+    google: ['https://www.googleapis.com/authdrive.readonly']
+  }
+});
+```
+
+## OAuth account merging strategies
+
+When a user attempts to sign in with an OAuth provider that matches an existing account, Stack provides different strategies for handling the authentication flow.
+
+The available strategies are:
+
+- Allow duplicates (legacy default)
+- Link method (new default)
+- Block duplicates (most secure)
+
+The "Link" strategy is the default behavior. If a user attempts to sign in with an OAuth provider that matches an existing account, Stack will link the OAuth identity to the existing account, and the user will be signed into that account.
+This requires both of the credentials to be verified, or otherwise the link will be blocked, in the same way as the "Block" strategy.
+
+The "Allow" strategy is the default behavior for old projects. If a user attempts to sign in with an OAuth provider that has an existing account with the same email address, Stack will create a separate account for the user.
+
+The "Block" strategy will explicitly raise an error if a user attempts to sign in with an OAuth provider that matches an existing account.

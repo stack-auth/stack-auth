@@ -1,0 +1,102 @@
+/* Custom styles for the docs section */
+
+/* Custom scrollbar */
+.custom-scrollbar::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-track {
+  background-color: transparent;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background-color: rgba(155, 155, 155, 0.5);
+  border-radius: 4px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background-color: rgba(155, 155, 155, 0.7);
+}
+
+/* Enhanced typographic rhythm */
+article p {
+  line-height: 1.8;
+  margin-bottom: 1.5em;
+}
+
+article h2 {
+  font-size: 1.75rem;
+  margin-top: 2.5em;
+  margin-bottom: 1em;
+  border-bottom: 1px dashed rgba(255, 255, 255, 0.1);
+  padding-bottom: 0.5em;
+}
+
+article h3 {
+  font-size: 1.4rem;
+  margin-top: 2em;
+  margin-bottom: 0.75em;
+}
+
+article h4 {
+  font-size: 1.2rem;
+  margin-top: 1.75em;
+  margin-bottom: 0.75em;
+}
+
+/* Lists styling */
+article ul, article ol {
+  padding-left: 1.5em;
+  margin-bottom: 1.5em;
+}
+
+article li {
+  margin-bottom: 0.5em;
+}
+
+/* Tables */
+article table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  margin: 2em 0;
+  border-radius: 8px;
+  overflow: hidden;
+  border: 1px dashed rgba(255, 255, 255, 0.1);
+}
+
+article th {
+  background: rgba(255, 255, 255, 0.05);
+  font-weight: 600;
+  text-align: left;
+  padding: 0.75em 1em;
+}
+
+article td {
+  padding: 0.75em 1em;
+  border-top: 1px dashed rgba(255, 255, 255, 0.05);
+}
+
+article tr:nth-child(even) {
+  background: rgba(255, 255, 255, 0.025);
+}
+
+/* Blockquotes */
+article blockquote {
+  background: rgba(255, 255, 255, 0.03);
+  border-left: 4px dashed var(--fd-primary);
+  padding: 1em 1.5em;
+  margin: 1.5em 0;
+  border-radius: 0 8px 8px 0;
+}
+
+article blockquote p {
+  margin-bottom: 0;
+}
+
+/* Remove dashed border from method title h2 elements */
+article h2:has(a[href^="#"]) {
+  border-bottom: none !important;
+  padding-bottom: 0 !important;
+}
