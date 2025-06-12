@@ -2,7 +2,7 @@
   "//": "THIS FILE IS AUTO-GENERATED FROM TEMPLATE. DO NOT EDIT IT DIRECTLY",
   "name": "@stackframe/template",
   "private": true,
-  "version": "2.8.13",
+  "version": "2.8.14",
   "sideEffects": false,
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
