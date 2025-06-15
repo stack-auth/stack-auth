@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { codeToHtml } from "shiki";
 
 // Custom ClickableCodeblock component that includes overlays inside the scrollable area
@@ -20,6 +20,31 @@ function ClickableCodeblock({
   }>;
 }) {
   const [highlightedCode, setHighlightedCode] = useState<string>("");
+  const [lineHeight, setLineHeight] = useState<number>(20); // Default fallback
+  const codeRef = useRef<HTMLDivElement>(null);
+
+  // Measure actual line height after code is rendered
+  useEffect(() => {
+    if (codeRef.current && highlightedCode) {
+      const codeElement = codeRef.current.querySelector('code');
+      if (codeElement) {
+        const lines = codeElement.querySelectorAll('.line, span');
+        if (lines.length > 0) {
+          const firstLine = lines[0] as HTMLElement;
+          const computedStyle = window.getComputedStyle(firstLine);
+          const measuredLineHeight = parseFloat(computedStyle.lineHeight);
+          
+          // If lineHeight is 'normal' or invalid, calculate from font size
+          if (isNaN(measuredLineHeight)) {
+            const fontSize = parseFloat(computedStyle.fontSize);
+            setLineHeight(fontSize * 1.5); // Typical line-height multiplier
+          } else {
+            setLineHeight(measuredLineHeight);
+          }
+        }
+      }
+    }
+  }, [highlightedCode]);
 
   // Update syntax highlighted code when code changes
   useEffect(() => {
@@ -63,28 +88,34 @@ function ClickableCodeblock({
           }}
         >
           <div 
+            ref={codeRef}
             className="[&_*]:!bg-transparent [&_pre]:!bg-transparent [&_code]:!bg-transparent"
             dangerouslySetInnerHTML={{ __html: highlightedCode }}
           />
           
           {/* Clickable overlays - now inside the scrollable container */}
           <div className="absolute inset-0 pointer-events-none">
-            {clickableAreas.map((area, index) => (
-              <div
-                key={index}
-                className="absolute left-4 right-4 pointer-events-auto hover:bg-blue-500/20 transition-colors rounded cursor-pointer"
-                style={{
-                  top: `${area.lineNumber * 20 + 16}px`,
-                  height: '20px',
-                }}
-              >
-                <a
-                  href={area.anchor}
-                  className="block w-full h-full no-underline"
-                  aria-label={`Navigate to ${area.anchor}`}
-                />
-              </div>
-            ))}
+            {clickableAreas.map((area, index) => {
+              const topPosition = area.lineNumber * lineHeight + 16; // 16px is the padding
+              
+              return (
+                <div
+                  key={index}
+                  className="absolute left-4 right-4 pointer-events-auto hover:bg-blue-500/20 transition-colors rounded cursor-pointer"
+                  style={{
+                    top: `${topPosition}px`,
+                    height: `${lineHeight}px`,
+                  }}
+                  title={`Line ${area.lineNumber + 1}: ${area.anchor}`} // Debug info
+                >
+                  <a
+                    href={area.anchor}
+                    className="block w-full h-full no-underline"
+                    aria-label={`Navigate to ${area.anchor}`}
+                  />
+                </div>
+              );
+            })}
           </div>
         </div>
       </div>
@@ -291,18 +322,32 @@ export function ClickableTableOfContents({ code, platform = 'react-like' }: Clic
     const linkMatch = line.match(/(.+?)\/\/\$stack-link-to:(.+)$/);
     if (linkMatch) {
       const [, codeText, anchor] = linkMatch;
+      
+      // Clean up the anchor by removing method parameters if present
+      let cleanAnchor = anchor.trim();
+      
+      // If the anchor contains method parameters like (data), remove them
+      // This handles cases like #currentusercreateteamdata -> #currentusercreateteam
+      if (cleanAnchor.includes('(') && cleanAnchor.includes(')')) {
+        // Find the method name part before the parameters
+        const methodMatch = cleanAnchor.match(/^(#[^(]+)/);
+        if (methodMatch) {
+          cleanAnchor = methodMatch[1];
+        }
+      }
+      
       return {
         type: 'clickable' as const,
         code: codeText.trim(),
-        anchor: anchor.trim(),
-        lineIndex: index
+        anchor: cleanAnchor,
+        originalLineIndex: index
       };
     }
     
     return {
       type: 'normal' as const,
       code: line,
-      lineIndex: index
+      originalLineIndex: index
     };
   }).filter(item => item !== null);
   
@@ -311,12 +356,19 @@ export function ClickableTableOfContents({ code, platform = 'react-like' }: Clic
   
   // Generate clickable areas data with accurate line mapping
   const clickableAreas = processedLines
-    .map((item, index) => ({
-      ...item,
-      lineNumber: index,
-      originalLineNumber: item.lineIndex // Keep track of original line number for better mapping
-    }))
-    .filter(item => item.type === 'clickable');
+    .filter(item => item.type === 'clickable')
+    .map((item, clickableIndex) => {
+      // Find the actual line number in the rendered code
+      const renderedLineIndex = processedLines.findIndex(processedItem => processedItem === item);
+      
+      return {
+        type: item.type,
+        code: item.code,
+        anchor: item.anchor,
+        lineNumber: renderedLineIndex, // This is the line number in the rendered code
+        originalLineNumber: item.originalLineIndex // Keep track of original line number for debugging
+      };
+    });
   
   return (
     <ClickableCodeblock 
