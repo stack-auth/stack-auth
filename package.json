@@ -57,7 +57,7 @@
     "generate-sdks": "npx --package=tsx tsx ./scripts/generate-sdks.ts",
     "generate-sdks:watch": "chokidar --silent -c 'pnpm run generate-sdks' './packages/template' --ignore './packages/template/package.json' --ignore '**/node_modules/**' --ignore '**/dist/**' --ignore '**/.turbo/**' --throttle 2000",
     "generate-docs": "pnpm run --filter=@stackframe/stack-docs generate-docs",
-    "generate-docs:watch": "chokidar --silent -c 'pnpm run generate-docs' './docs-fuma-test/stack-docs/templates' --throttle 2000"
+    "generate-docs:watch": "chokidar --silent -c 'pnpm run generate-docs' './docs/templates' --throttle 2000"
   },
   "devDependencies": {
     "@changesets/cli": "^2.27.9",
