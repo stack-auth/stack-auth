@@ -1,6 +1,7 @@
 'use client';
 import { usePlatformPersistence } from '@/hooks/use-platform-persistence';
 import { generateNavLinks } from '@/lib/navigation-utils';
+import type { ReactNode } from 'react';
 import { SharedHeader } from './shared-header';
 
 interface PlatformAwareHeaderProps {
@@ -8,6 +9,12 @@ interface PlatformAwareHeaderProps {
   showSearch?: boolean;
   /** Custom positioning classes */
   className?: string;
+  /** Whether to show mobile menu button */
+  showMobileMenu?: boolean;
+  /** Mobile menu click handler */
+  onMobileMenuClick?: () => void;
+  /** Sidebar content to show in mobile navigation */
+  sidebarContent?: ReactNode;
 }
 
 /**
@@ -19,7 +26,10 @@ interface PlatformAwareHeaderProps {
  */
 export function PlatformAwareHeader({ 
   showSearch = false, 
-  className 
+  className,
+  showMobileMenu = false,
+  onMobileMenuClick,
+  sidebarContent
 }: PlatformAwareHeaderProps) {
   const platform = usePlatformPersistence();
   const navLinks = generateNavLinks(platform);
@@ -29,6 +39,9 @@ export function PlatformAwareHeader({
       navLinks={navLinks}
       showSearch={showSearch}
       className={className}
+      showMobileMenu={showMobileMenu}
+      onMobileMenuClick={onMobileMenuClick}
+      sidebarContent={sidebarContent}
     />
   );
 } 

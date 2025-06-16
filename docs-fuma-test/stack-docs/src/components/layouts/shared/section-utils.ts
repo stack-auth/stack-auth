@@ -12,7 +12,7 @@ export function isInComponentsSection(pathname: string): boolean {
 }
 
 export function isInApiSection(pathname: string): boolean {
-  return /\/docs\/api(?:\/|$)/.test(pathname);
+  return pathname.startsWith('/api');
 }
 
 export function isInCustomizationSection(pathname: string): boolean {

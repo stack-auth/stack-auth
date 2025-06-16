@@ -396,7 +396,7 @@ export function DocsLayout({
           id="nd-docs-layout"
           {...props.containerProps}
           className={cn(
-            'flex flex-1 flex-row pl-64',
+            'flex flex-1 flex-row md:pl-64',
             variables,
             props.containerProps?.className,
           )}
@@ -463,8 +463,8 @@ export function DocsLayoutSidebar({
   return (
     <>
       {collapsible ? <CollapsibleControl /> : null}
-      {/* API-style sidebar wrapper - fixed position, full height */}
-      <div className="fixed left-0 top-0 w-64 border-r border-fd-border bg-fd-background z-40">
+      {/* API-style sidebar wrapper - fixed position, full height, hidden on mobile */}
+      <div className="hidden md:block fixed left-0 top-0 w-64 border-r border-fd-border bg-fd-background z-40">
         <div className="h-screen flex flex-col">
           {/* Header - matches API layout */}
           <div className="h-14 px-4 border-b border-fd-border flex items-center flex-shrink-0">

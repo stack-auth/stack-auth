@@ -207,6 +207,9 @@ export function DynamicDocsLayout({ children, ...props }: DynamicDocsLayoutProps
       <DocsLayout 
         {...baseOptions} 
         {...props}
+        nav={{
+          enabled: false, // Disable Fumadocs navbar - using SharedHeader instead
+        }}
         links={[
           {
             type: 'custom',
@@ -235,6 +238,9 @@ export function DynamicDocsLayout({ children, ...props }: DynamicDocsLayoutProps
       <DocsLayout 
         {...baseOptions} 
         {...props}
+        nav={{
+          enabled: false, // Disable Fumadocs navbar - using SharedHeader instead
+        }}
         links={[]}
         sidebar={{
           ...props.sidebar,
@@ -256,6 +262,9 @@ export function DynamicDocsLayout({ children, ...props }: DynamicDocsLayoutProps
         <DocsLayout 
           {...baseOptions} 
           {...props}
+          nav={{
+            enabled: false, // Disable Fumadocs navbar - using SharedHeader instead
+          }}
           links={[]}
           sidebar={{
             ...props.sidebar,
@@ -271,6 +280,9 @@ export function DynamicDocsLayout({ children, ...props }: DynamicDocsLayoutProps
       <DocsLayout 
         {...baseOptions} 
         {...props}
+        nav={{
+          enabled: false, // Disable Fumadocs navbar - using SharedHeader instead
+        }}
         links={[
           {
             type: 'custom',
@@ -303,6 +315,9 @@ export function DynamicDocsLayout({ children, ...props }: DynamicDocsLayoutProps
         <DocsLayout 
           {...baseOptions} 
           {...props}
+          nav={{
+            enabled: false, // Disable Fumadocs navbar - using SharedHeader instead
+          }}
           links={[]}
           sidebar={{
             ...props.sidebar,
@@ -318,6 +333,9 @@ export function DynamicDocsLayout({ children, ...props }: DynamicDocsLayoutProps
       <DocsLayout 
         {...baseOptions} 
         {...props}
+        nav={{
+          enabled: false, // Disable Fumadocs navbar - using SharedHeader instead
+        }}
         links={[
           {
             type: 'custom',
@@ -345,6 +363,9 @@ export function DynamicDocsLayout({ children, ...props }: DynamicDocsLayoutProps
     <DocsLayout 
       {...baseOptions} 
       {...props}
+      nav={{
+        enabled: false, // Disable Fumadocs navbar - using SharedHeader instead
+      }}
       links={[]}
       sidebar={{
         ...props.sidebar,
