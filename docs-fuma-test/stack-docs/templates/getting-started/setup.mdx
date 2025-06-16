@@ -167,12 +167,12 @@ We recommend using our **setup wizard** for a seamless installation experience. 
 That's it! Stack is now configured in your Next.js project. If you start your Next.js app with `npm run dev` and navigate to [http://localhost:3000/handler/signup](http://localhost:3000/handler/sign-up), you will see the sign-up page.
 
 <div className="stack-white-image-showcase stack-350h">
-  <img src="../imgs/sign-in.png" alt="SignIn" />
+  <img src="/imgs/sign-in.png" alt="SignIn" />
 </div>
 
 After signing up/in, you will be redirected back to the home page. We will show you how to add user information to it in the next section. You can also check out the [http://localhost:3000/handler/account-settings](http://localhost:3000/handler/account-settings) page which looks like this:
 
-![Stack account settings page](../imgs/account-settings.png)
+![Stack account settings page](/imgs/account-settings.png)
 
 
 ## Next steps
@@ -268,12 +268,12 @@ Before getting started, make sure you have a [React project](https://react.dev/l
 
 
   <div className="stack-white-image-showcase stack-350h">
-    <img src="../imgs/sign-in.png" alt="SignIn" />
+    <img src="/imgs/sign-in.png" alt="SignIn" />
   </div>
 
   After signing up/in, you will be redirected back to the home page. We will show you how to add user information to it in the next section. You can also check out the [http://localhost:5173/handler/account-settings](http://localhost:5173/handler/account-settings) page which looks like this:
 
-  ![Stack account settings page](../imgs/account-settings.png)
+  ![Stack account settings page](/imgs/account-settings.png)
   
 </Steps>
 
@@ -503,7 +503,6 @@ For the purpose of this guide, we will use the `requests` library to make HTTP r
 
   print(stack_auth_request('GET', '/api/v1/projects/current'))
   ```
-
   ### Retrieve the access tokens
 
   If you're building a backend server, most likely you'll want to use the currently signed in user's access token. Most normally, you would send this with all your requests to the backend in an HTTP header.
@@ -526,3 +525,4 @@ For the purpose of this guide, we will use the `requests` library to make HTTP r
 Check out the [REST API documentation](../rest-api/overview.mdx) to learn more about the available endpoints and how to use them in your Python application.
 
 {/* END_PLATFORM */}
+
