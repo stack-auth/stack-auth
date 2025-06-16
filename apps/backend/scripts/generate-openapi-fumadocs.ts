@@ -13,7 +13,7 @@ async function main() {
   console.log("Started Fumadocs OpenAPI schema generator");
 
   // Create openapi directory in Fumadocs project
-  const fumaDocsOpenApiDir = path.resolve("../../docs-fuma-test/stack-docs/public/openapi");
+  const fumaDocsOpenApiDir = path.resolve("../../docs/public/openapi");
 
   // Ensure the openapi directory exists
   if (!fs.existsSync(fumaDocsOpenApiDir)) {
