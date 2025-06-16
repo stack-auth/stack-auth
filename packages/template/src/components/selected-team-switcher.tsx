@@ -20,9 +20,10 @@ import { useTranslation } from "../lib/translations";
 import { TeamIcon } from "./team-icon";
 
 type SelectedTeamSwitcherProps = {
-  urlMap?: (team: Team) => string,
+  urlMap?: (team: Team | null) => string,
   selectedTeam?: Team,
   noUpdateSelectedTeam?: boolean,
+  nullAsPersonalTeam?: boolean,
 };
 
 export function SelectedTeamSwitcher(props: SelectedTeamSwitcherProps) {
@@ -53,12 +54,17 @@ function Inner(props: SelectedTeamSwitcherProps) {
 
   return (
     <Select
-      value={selectedTeam?.id}
+      value={selectedTeam?.id || (props.nullAsPersonalTeam ? 'personal' : undefined)}
       onValueChange={(value) => {
         runAsynchronouslyWithAlert(async () => {
-          const team = teams?.find(team => team.id === value);
-          if (!team) {
-            throw new Error('Team not found, this should not happen');
+          let team: Team | null = null;
+          if (value !== 'personal') {
+            team = teams?.find(team => team.id === value) || null;
+            if (!team) {
+              throw new Error('Team not found, this should not happen');
+            }
+          } else {
+            team = null;
           }
 
           if (!props.noUpdateSelectedTeam) {
@@ -92,6 +98,15 @@ function Inner(props: SelectedTeamSwitcherProps) {
             </div>
           </SelectItem>
         </SelectGroup> : undefined}
+
+        {props.nullAsPersonalTeam && <SelectGroup>
+          <SelectItem value="personal">
+            <div className="flex items-center gap-2">
+              <TeamIcon team='personal' />
+              <Typography className="max-w-40 truncate">{t('Personal team')}</Typography>
+            </div>
+          </SelectItem>
+        </SelectGroup>}
 
         {teams?.length ?
           <SelectGroup>
