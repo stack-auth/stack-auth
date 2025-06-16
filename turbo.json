@@ -59,7 +59,7 @@
       ],
       "outputLogs": "new-only"
     },
-    "stack-docs#build": {
+    "@stackframe/stack-docs#build": {
       "dependsOn": [
         "@stackframe/stack-backend#build",
         "@stackframe/stack-backend#generate-openapi-fumadocs"
@@ -80,7 +80,7 @@
         "^build"
       ],
       "outputs": [
-        "../../docs-fuma-test/stack-docs/public/openapi"
+        "../../docs/public/openapi"
       ]
     },
     "clean": {
