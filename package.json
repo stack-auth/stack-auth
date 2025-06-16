@@ -53,11 +53,11 @@
     "test:unit": "pnpm pre && vitest src",
     "verify-data-integrity": "pnpm pre && pnpm -C apps/backend run verify-data-integrity",
     "generate-openapi": "pnpm pre && turbo run generate-openapi",
-    "generate-openapi-fumadocs": "pnpm pre && turbo run generate-openapi-fumadocs",
+    "generate-openapi-fumadocs": "turbo run generate-openapi-fumadocs",
     "generate-keys": "pnpm pre && turbo run generate-keys",
     "generate-sdks": "npx --package=tsx tsx ./scripts/generate-sdks.ts",
     "generate-sdks:watch": "chokidar --silent -c 'pnpm run generate-sdks' './packages/template' --ignore './packages/template/package.json' --ignore '**/node_modules/**' --ignore '**/dist/**' --ignore '**/.turbo/**' --throttle 2000",
-    "generate-docs": "pnpm run --filter=@stackframe/stack-docs generate-docs && pnpm run --filter=@stackframe/stack-docs generate-openapi-docs",
+    "generate-docs": "turbo run generate-openapi-fumadocs && pnpm run --filter=@stackframe/stack-docs generate-docs && pnpm run --filter=@stackframe/stack-docs generate-openapi-docs",
     "generate-docs:watch": "chokidar --silent -c 'pnpm run generate-docs' './docs/templates' --throttle 2000",
     "generate-openapi-docs:watch": "chokidar --silent -c 'pnpm run --filter=@stackframe/stack-docs generate-openapi-docs' './docs/public/openapi/{admin,client,server,webhooks}.json' --throttle 2000"
   },
