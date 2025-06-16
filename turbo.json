@@ -72,13 +72,20 @@
     },
     "@stackframe/stack-backend#build": {
       "dependsOn": [
-        "codegen"
+        "^build"
       ]
     },
     "@stackframe/stack-backend#codegen": {
       "dependsOn": [
         "^build"
       ],
+      "outputs": [
+        "../../docs/public/openapi"
+      ]
+    },
+    "@stackframe/stack-backend#generate-openapi-fumadocs": {
+      "cache": false,
+      "dependsOn": ["@stackframe/stack-backend#build"],
       "outputs": [
         "../../docs/public/openapi"
       ]
@@ -107,9 +114,6 @@
       "dependsOn": []
     },
     "generate-openapi": {
-      "cache": false
-    },
-    "generate-openapi-fumadocs": {
       "cache": false
     },
     "generate-keys": {
