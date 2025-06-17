@@ -105,6 +105,8 @@ jobs:
               if [ -n "$PR_HEAD_SHA" ] && [ "$PR_HEAD_SHA" != "$COMMIT" ]; then
                 echo "$pr_response" | jq -r '.check_runs[] | select(.conclusion != "success") | .name' | sed 's/^/  - /'
               fi
+              echo "$commit_response"
+              echo "$pr_response"
               exit 1
             fi
           done
