@@ -1,7 +1,7 @@
 {
   "extends": [
-    "../../configs/eslint/defaults.js",
-    "../../configs/eslint/next.js"
+    "../configs/eslint/defaults.js",
+    "../configs/eslint/next.js"
   ],
   "ignorePatterns": ["/*", "!/src"],
   "rules": {
