@@ -60,10 +60,7 @@
       "outputLogs": "new-only"
     },
     "@stackframe/stack-docs#build": {
-      "dependsOn": [
-        "@stackframe/stack-backend#build",
-        "@stackframe/stack-backend#generate-openapi-fumadocs"
-      ]
+      "dependsOn": []
     },
     "@stackframe/mcp-server#build": {
       "dependsOn": [
@@ -72,23 +69,16 @@
     },
     "@stackframe/stack-backend#build": {
       "dependsOn": [
-        "^build"
+        "codegen"
       ]
     },
     "@stackframe/stack-backend#codegen": {
       "dependsOn": [
         "^build"
-      ],
-      "outputs": [
-        "../../docs/public/openapi"
       ]
     },
     "@stackframe/stack-backend#generate-openapi-fumadocs": {
-      "cache": false,
-      "dependsOn": ["@stackframe/stack-backend#build"],
-      "outputs": [
-        "../../docs/public/openapi"
-      ]
+      "cache": false
     },
     "clean": {
       "cache": false
