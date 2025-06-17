@@ -85,14 +85,14 @@ describe("with valid credentials", () => {
       userAuth: null,
     });
 
-    await niceBackendFetch("/api/v1/internal/send-test-email", {
+    const testEmailResponse = await niceBackendFetch("/api/v1/internal/send-test-email", {
       method: "POST",
       accessType: "admin",
       headers: {
         "x-stack-admin-access-token": adminAccessToken,
       },
       body: {
-        "recipient_email": "test-email-recipient@stackframe.co",
+        "recipient_email": "test-email-recipient@stack-auth-test.example.com",
         "email_config": {
           "host": "123",
           "port": 123,
@@ -103,6 +103,16 @@ describe("with valid credentials", () => {
         }
       },
     });
+    expect(testEmailResponse).toMatchInlineSnapshot(`
+      NiceResponse {
+        "status": 200,
+        "body": {
+          "error_message": "Unknown error while sending test email. Make sure the email server is running and accepting connections.",
+          "success": false,
+        },
+        "headers": Headers { <some fields may have been hidden> },
+      }
+    `);
 
     const response = await niceBackendFetch("/api/v1/internal/failed-emails-digest", {
       method: "POST",
