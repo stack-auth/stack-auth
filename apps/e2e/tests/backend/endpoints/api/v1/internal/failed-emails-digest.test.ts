@@ -107,7 +107,7 @@ describe("with valid credentials", () => {
       NiceResponse {
         "status": 200,
         "body": {
-          "error_message": "Unknown error while sending test email. Make sure the email server is running and accepting connections.",
+          "error_message": "Failed to connect to the email host. Please make sure the email host configuration is correct.",
           "success": false,
         },
         "headers": Headers { <some fields may have been hidden> },
