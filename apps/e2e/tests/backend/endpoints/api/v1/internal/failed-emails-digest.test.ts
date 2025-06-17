@@ -114,12 +114,18 @@ describe("with valid credentials", () => {
     const mockProjectFailedEmails = failedEmailsByTenancy.filter(
       (batch: any) => batch.tenant_owner_email === backendContext.value.mailbox.emailAddress
     );
-    expect(mockProjectFailedEmails.length).toBe(1);
-    expect(mockProjectFailedEmails[0].emails).toMatchInlineSnapshot(`
+    expect(mockProjectFailedEmails).toMatchInlineSnapshot(`
       [
         {
-          "subject": "Test Email from Stack Auth",
-          "to": ["test-email-recipient@stackframe.co"],
+          "emails": [
+            {
+              "subject": "Test Email from Stack Auth",
+              "to": ["test-email-recipient@stackframe.co"],
+            },
+          ],
+          "project_id": "<stripped UUID>",
+          "tenancy_id": "<stripped UUID>",
+          "tenant_owner_email": "default-mailbox--<stripped UUID>@stack-generated.example.com",
         },
       ]
     `);
@@ -157,7 +163,7 @@ describe("with valid credentials", () => {
     const mockProjectFailedEmails = failedEmailsByTenancy.filter(
       (batch: any) => batch.tenant_owner_email === backendContext.value.mailbox.emailAddress
     );
-    expect(mockProjectFailedEmails.length).toBe(0);
+    expect(mockProjectFailedEmails).toMatchInlineSnapshot(`[]`);
 
     const messages = await backendContext.value.mailbox.fetchMessages();
     const digestEmail = messages.find(msg => msg.subject === "Failed emails digest");
