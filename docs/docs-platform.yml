@@ -54,7 +54,7 @@ pages:
     platforms: ["next", "react", "js"]  # No Python
   
   - path: concepts/backend-integration.mdx
-    platforms: ["next", "react", "js"]  # No Python
+    platforms: ["next", "react", "js", "python"]
 
   # Components (React-like only)
   - path: components/overview.mdx
