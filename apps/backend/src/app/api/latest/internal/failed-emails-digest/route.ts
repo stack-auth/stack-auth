@@ -4,6 +4,7 @@ import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { yupArray, yupBoolean, yupNumber, yupObject, yupString, yupTuple } from "@stackframe/stack-shared/dist/schema-fields";
 import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
 import { StatusError } from "@stackframe/stack-shared/dist/utils/errors";
+import { escapeHtml } from "@stackframe/stack-shared/dist/utils/html";
 import { getFailedEmailsByTenancy } from "./crud";
 
 export const POST = createSmartRouteHandler({
@@ -35,7 +36,7 @@ export const POST = createSmartRouteHandler({
   }),
   handler: async ({ headers }) => {
     const authHeader = headers.authorization[0];
-    if (authHeader !== `Bearer ${getEnvVariable('STACK_CRON_SECRET')}`) {
+    if (authHeader !== `Bearer ${getEnvVariable('CRON_SECRET')}`) {
       throw new StatusError(401, "Unauthorized");
     }
 
@@ -45,14 +46,17 @@ export const POST = createSmartRouteHandler({
     const dashboardUrl = getEnvVariable("NEXT_PUBLIC_STACK_DASHBOARD_URL", "https://app.stack-auth.com");
 
     for (const failedEmailsBatch of failedEmailsByTenancy.values()) {
-      const viewInStackAuth = `<a href="${dashboardUrl}/projects/${failedEmailsBatch.projectId}/emails">View all email logs on the Dashboard</a>`;
+      const viewInStackAuth = `<a href="${dashboardUrl}/projects/${encodeURIComponent(failedEmailsBatch.projectId)}/emails">View all email logs on the Dashboard</a>`;
       const emailHtml = `
-        <p>You have ${failedEmailsBatch.emails.length} emails that failed to be sent in the last 24 hours. Please check your email server configuration.</p>
+        <p>Thank you for using Stack Auth!</p>
+        <p>We detected that, on your project, there have been ${failedEmailsBatch.emails.length} emails that failed to deliver in the last 24 hours. Please check your email server configuration.</p>
         <p>${viewInStackAuth}</p>
         <p>Last failing emails:</p>
-        ${failedEmailsBatch.emails.slice(-10).map(
-          (failedEmail) => `<div><p>Subject: ${failedEmail.subject}<br />To: ${failedEmail.to.join(", ")}</p></div>`
-        ).join("")}
+        ${failedEmailsBatch.emails.slice(-10).map((failedEmail) => {
+          const escapedSubject = escapeHtml(failedEmail.subject).replace(/\s+/g, ' ').slice(0, 50);
+          const escapedTo = failedEmail.to.map(to => escapeHtml(to)).join(", ");
+          return `<div><p>Subject: ${escapedSubject}<br />To: ${escapedTo}</p></div>`;
+        }).join("")}
         ${failedEmailsBatch.emails.length > 10 ? `<div>...</div>` : ""}
       `;
       await sendEmail({

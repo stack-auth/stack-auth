@@ -25,6 +25,7 @@ export const getFailedEmailsByTenancy = async (after: Date) => {
   FROM "SentEmail" se
   INNER JOIN "Tenancy" t ON se."tenancyId" = t.id
   LEFT JOIN "ProjectUser" pu ON pu."mirroredProjectId" = 'internal'
+    AND pu."mirroredBranchId" = 'main'
     AND pu."serverMetadata"->'managedProjectIds' ? t."projectId"
   LEFT JOIN "ContactChannel" cc ON pu."projectUserId" = cc."projectUserId" 
     AND cc."isPrimary" = 'TRUE' 
@@ -33,16 +34,15 @@ export const getFailedEmailsByTenancy = async (after: Date) => {
     AND se."createdAt" >= ${after}
 `;
 
-  const failedEmailsByTenancy= new Map<string, FailedEmailsByTenancyData>();
+  const failedEmailsByTenancy = new Map<string, FailedEmailsByTenancyData>();
   for (const failedEmail of result) {
-    if (!failedEmailsByTenancy.has(failedEmail.tenancyId)) {
-      failedEmailsByTenancy.set(failedEmail.tenancyId, {
-        emails: [],
-        tenantOwnerEmail: failedEmail.contactEmail,
-        projectId: failedEmail.projectId
-      });
-    }
-    failedEmailsByTenancy.get(failedEmail.tenancyId)?.emails.push({ subject: failedEmail.subject, to: failedEmail.to });
+    let failedEmails = failedEmailsByTenancy.get(failedEmail.tenancyId) ?? {
+      emails: [],
+      tenantOwnerEmail: failedEmail.contactEmail,
+      projectId: failedEmail.projectId
+    };
+   failedEmails.emails.push({ subject: failedEmail.subject, to: failedEmail.to });
+   failedEmailsByTenancy.set(failedEmail.tenancyId, failedEmails);
   }
   return failedEmailsByTenancy;
 };
