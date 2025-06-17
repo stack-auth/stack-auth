@@ -1,10 +1,10 @@
 import { BookOpen, FlaskConical, Hammer, Puzzle, type LucideIcon } from 'lucide-react';
 import type { Platform } from './platform-utils';
 
-export interface NavLink {
-  href: string;
-  label: string;
-  icon: LucideIcon;
+export type NavLink = {
+  href: string,
+  label: string,
+  icon: LucideIcon,
 }
 
 /**
@@ -102,13 +102,13 @@ export function getCurrentPlatformUrl(currentPath: string, platform: Platform): 
  */
 export function generateNavLinks(platform: Platform): NavLink[] {
   const baseLinks = [
-    { 
-      href: `/docs/${platform}/overview`, 
+    {
+      href: `/docs/${platform}/overview`,
       label: "Documentation",
       icon: BookOpen
     },
-    { 
-      href: "/api/overview", 
+    {
+      href: "/api/overview",
       label: "API Reference",
       icon: FlaskConical
     }
@@ -117,7 +117,7 @@ export function generateNavLinks(platform: Platform): NavLink[] {
   // Add Components link only for platforms that support React components
   if (platformSupportsComponents(platform)) {
     baseLinks.push({
-      href: `/docs/${platform}/components/overview`, 
+      href: `/docs/${platform}/components/overview`,
       label: "Components",
       icon: Puzzle
     });
@@ -126,11 +126,11 @@ export function generateNavLinks(platform: Platform): NavLink[] {
   // Add SDK link only for platforms that support SDK
   if (platformSupportsSDK(platform)) {
     baseLinks.push({
-      href: `/docs/${platform}/sdk/overview`, 
+      href: `/docs/${platform}/sdk/overview`,
       label: "SDK",
       icon: Hammer
     });
   }
 
   return baseLinks;
-} 
+}

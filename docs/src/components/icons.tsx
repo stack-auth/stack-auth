@@ -28,9 +28,9 @@ type SVGElementType =
   | 'polyline'
   | 'rect';
 
-export interface LucideProps extends ComponentProps<'svg'> {
-  size?: string | number;
-}
+export type LucideProps = {
+  size?: string | number,
+} & ComponentProps<'svg'>
 
 export type IconNode = [
   elementName: SVGElementType,

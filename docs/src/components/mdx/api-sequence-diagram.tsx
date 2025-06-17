@@ -13,14 +13,14 @@ import {
 import '@xyflow/react/dist/style.css';
 
 // Actor node component - vertical lifelines with alternating sections
-const ActorNode = ({ data }: { data: { label: string; sections: { highlighted: boolean; id: string }[] } }) => {
+const ActorNode = ({ data }: { data: { label: string, sections: { highlighted: boolean, id: string }[] } }) => {
   return (
     <div className="flex flex-col items-center">
       {/* Actor header */}
       <div className="px-4 py-2 bg-gray-800 border border-gray-600 rounded-lg text-white text-center font-medium text-sm mb-2">
         {data.label}
       </div>
-      
+
       {/* Vertical lifeline with sections */}
       <div className="flex flex-col items-center">
         {data.sections.map((section, index) => (
@@ -28,15 +28,15 @@ const ActorNode = ({ data }: { data: { label: string; sections: { highlighted: b
             {section.highlighted ? (
               // Highlighted section (box)
               <div className="w-12 h-16 bg-gray-800 border border-gray-600 rounded flex items-center justify-center">
-                <Handle 
-                  type="target" 
-                  position={Position.Left} 
+                <Handle
+                  type="target"
+                  position={Position.Left}
                   id={`${section.id}-left`}
                   style={{ left: -8, background: 'transparent', border: 'none', width: 16, height: 16 }}
                 />
-                <Handle 
-                  type="source" 
-                  position={Position.Right} 
+                <Handle
+                  type="source"
+                  position={Position.Right}
                   id={`${section.id}-right`}
                   style={{ right: -8, background: 'transparent', border: 'none', width: 16, height: 16 }}
                 />
@@ -44,15 +44,15 @@ const ActorNode = ({ data }: { data: { label: string; sections: { highlighted: b
             ) : (
               // Regular line section
               <div className="w-0.5 h-16 bg-gray-400 flex items-center justify-center relative">
-                <Handle 
-                  type="target" 
-                  position={Position.Left} 
+                <Handle
+                  type="target"
+                  position={Position.Left}
                   id={`${section.id}-left`}
                   style={{ left: -8, background: 'transparent', border: 'none', width: 16, height: 16 }}
                 />
-                <Handle 
-                  type="source" 
-                  position={Position.Right} 
+                <Handle
+                  type="source"
+                  position={Position.Right}
                   id={`${section.id}-right`}
                   style={{ right: -8, background: 'transparent', border: 'none', width: 16, height: 16 }}
                 />
@@ -66,7 +66,7 @@ const ActorNode = ({ data }: { data: { label: string; sections: { highlighted: b
 };
 
 // Action node component - text between actors
-const ActionNode = ({ data }: { data: { label: string; dashed?: boolean } }) => {
+const ActionNode = ({ data }: { data: { label: string, dashed?: boolean } }) => {
   return (
     <div className={`px-3 py-1 bg-gray-800 border border-gray-600 rounded text-white text-sm font-medium whitespace-nowrap ${data.dashed ? 'border-dashed' : ''}`}>
       {data.label}
@@ -87,7 +87,7 @@ const initialNodes: Node[] = [
     id: 'user-actor',
     type: 'actor',
     position: { x: 50, y: 50 },
-    data: { 
+    data: {
       label: 'User/Client',
       sections: [
         { highlighted: true, id: 'user-1' },
@@ -103,7 +103,7 @@ const initialNodes: Node[] = [
     id: 'server-actor',
     type: 'actor',
     position: { x: 300, y: 50 },
-    data: { 
+    data: {
       label: 'Your Application Server',
       sections: [
         { highlighted: true, id: 'server-1' },
@@ -119,7 +119,7 @@ const initialNodes: Node[] = [
     id: 'auth-actor',
     type: 'actor',
     position: { x: 600, y: 50 },
-    data: { 
+    data: {
       label: 'Stack Auth Service',
       sections: [
         { highlighted: false, id: 'auth-1' },
@@ -131,7 +131,7 @@ const initialNodes: Node[] = [
     },
     draggable: false,
   },
-  
+
   // Action nodes
   {
     id: 'action-1',
@@ -188,7 +188,7 @@ const initialEdges: Edge[] = [
     style: { stroke: '#ffffff', strokeWidth: 2 },
     markerEnd: { type: MarkerType.ArrowClosed, color: '#ffffff' },
   },
-  
+
   // Step 2: Validate API key
   {
     id: 'edge-2',
@@ -206,7 +206,7 @@ const initialEdges: Edge[] = [
     style: { stroke: '#ffffff', strokeWidth: 2 },
     markerEnd: { type: MarkerType.ArrowClosed, color: '#ffffff' },
   },
-  
+
   // Step 3: Return user object (dashed)
   {
     id: 'edge-3',
@@ -224,7 +224,7 @@ const initialEdges: Edge[] = [
     style: { stroke: '#ffffff', strokeWidth: 2, strokeDasharray: '5,5' },
     markerEnd: { type: MarkerType.ArrowClosed, color: '#ffffff' },
   },
-  
+
   // Step 4: Process request (self-loop)
   {
     id: 'edge-4',
@@ -242,7 +242,7 @@ const initialEdges: Edge[] = [
     style: { stroke: '#ffffff', strokeWidth: 2 },
     markerEnd: { type: MarkerType.ArrowClosed, color: '#ffffff' },
   },
-  
+
   // Step 5: Response with data (dashed)
   {
     id: 'edge-5',

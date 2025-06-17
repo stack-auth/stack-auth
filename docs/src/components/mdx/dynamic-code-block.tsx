@@ -3,10 +3,10 @@
 import { useEffect, useState } from "react";
 import { codeToHtml } from "shiki";
 
-interface DynamicCodeblockProps {
-  code: string;
-  language?: string;
-  title?: string;
+type DynamicCodeblockProps = {
+  code: string,
+  language?: string,
+  title?: string,
 }
 
 export function DynamicCodeblock({ code, language = 'tsx', title }: DynamicCodeblockProps) {
@@ -41,20 +41,22 @@ export function DynamicCodeblock({ code, language = 'tsx', title }: DynamicCodeb
       }
     };
 
-    updateHighlightedCode();
+    updateHighlightedCode().catch(error => {
+      console.error('Error updating highlighted code:', error);
+    });
   }, [code, language]);
 
   return (
     <div className="space-y-4">
       {title && <h3 className="text-lg font-semibold">{title}</h3>}
       <div className="relative">
-        <div 
+        <div
           className="rounded-lg border bg-[#0a0a0a] p-4 overflow-auto max-h-[500px] text-sm"
-          style={{ 
+          style={{
             background: '#0a0a0a !important',
           }}
         >
-          <div 
+          <div
             className="[&_*]:!bg-transparent [&_pre]:!bg-transparent [&_code]:!bg-transparent"
             dangerouslySetInnerHTML={{ __html: highlightedCode }}
           />
@@ -62,4 +64,4 @@ export function DynamicCodeblock({ code, language = 'tsx', title }: DynamicCodeb
       </div>
     </div>
   );
-} 
+}

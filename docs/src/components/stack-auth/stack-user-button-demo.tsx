@@ -6,10 +6,10 @@ import { useState } from "react";
 import { StackContainer } from "../mdx";
 import { DynamicCodeblock } from "../mdx/dynamic-code-block";
 
-interface UserButtonDemoProps {
-  showUserInfo: boolean;
-  colorModeToggle: boolean;
-  extraItems: boolean;
+type UserButtonDemoProps = {
+  showUserInfo: boolean,
+  colorModeToggle: boolean,
+  extraItems: boolean,
 }
 
 export function UserButtonDemo() {
@@ -64,7 +64,7 @@ export function MyComponent() {
         {/* Controls Panel */}
         <div className="space-y-6">
           <h3 className="text-lg font-semibold">Component Options</h3>
-          
+
           {/* Show User Info Toggle */}
           <div className="space-y-2">
             <label className="flex items-center space-x-2">
@@ -112,7 +112,7 @@ export function MyComponent() {
         <div className="space-y-4">
           <h3 className="text-lg font-semibold">Live Preview</h3>
           <StackContainer color="blue" size="medium">
-            <UserButton 
+            <UserButton
               showUserInfo={props.showUserInfo}
               mockUser={mockUser}
               colorModeToggle={props.colorModeToggle ? () => console.log("color mode toggle clicked") : undefined}
@@ -127,10 +127,10 @@ export function MyComponent() {
       </div>
 
       {/* Code Example */}
-      <DynamicCodeblock 
+      <DynamicCodeblock
         code={generateCodeExample()}
         title="Code Example"
       />
     </div>
   );
-} 
+}

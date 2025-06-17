@@ -3,9 +3,9 @@
 import React from 'react';
 import { cn } from '../../lib/cn';
 
-export interface InfoProps {
-  children: React.ReactNode;
-  type?: 'info' | 'warning' | 'success';
+export type InfoProps = {
+  children: React.ReactNode,
+  type?: 'info' | 'warning' | 'success',
 }
 
 export function Info({ children, type = 'info' }: InfoProps) {
@@ -31,7 +31,7 @@ export function Info({ children, type = 'info' }: InfoProps) {
   };
 
   const colors = colorVariants[type];
-  
+
   return (
     <div className={cn(
       'relative my-6 overflow-hidden rounded-lg',

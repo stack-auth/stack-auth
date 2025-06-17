@@ -30,4 +30,5 @@ next-env.d.ts
 /content/docs/
 /content/api/
 /public/openapi/
+/openapi/
 

@@ -30,38 +30,37 @@ const ClerkTOCItems = lazy(() => import('@/components/layout/toc-clerk'));
 
 type TableOfContentOptions = Omit<TOCProps, 'items' | 'children'> &
   Pick<AnchorProviderProps, 'single'> & {
-    enabled: boolean;
-    component: ReactNode;
+    enabled: boolean,
+    component: ReactNode,
 
     /**
      * @defaultValue 'normal'
      */
-    style?: 'normal' | 'clerk';
+    style?: 'normal' | 'clerk',
   };
 
 type TableOfContentPopoverOptions = Omit<TableOfContentOptions, 'single'>;
 
-interface EditOnGitHubOptions
-  extends Omit<ComponentProps<'a'>, 'href' | 'children'> {
-  owner: string;
-  repo: string;
+type EditOnGitHubOptions = {
+  owner: string,
+  repo: string,
 
   /**
    * SHA or ref (branch or tag) name.
    *
    * @defaultValue main
    */
-  sha?: string;
+  sha?: string,
 
   /**
    * File path in the repo
    */
-  path: string;
-}
+  path: string,
+} & Omit<ComponentProps<'a'>, 'href' | 'children'>
 
-interface BreadcrumbOptions extends BreadcrumbProps {
-  enabled: boolean;
-  component: ReactNode;
+type BreadcrumbOptions = {
+  enabled: boolean,
+  component: ReactNode,
 
   /**
    * Show the full path to the current page
@@ -69,43 +68,43 @@ interface BreadcrumbOptions extends BreadcrumbProps {
    * @defaultValue false
    * @deprecated use `includePage` instead
    */
-  full?: boolean;
-}
+  full?: boolean,
+} & BreadcrumbProps
 
-interface FooterOptions extends FooterProps {
-  enabled: boolean;
-  component: ReactNode;
-}
+type FooterOptions = {
+  enabled: boolean,
+  component: ReactNode,
+} & FooterProps
 
-export interface DocsPageProps {
-  toc?: TableOfContents;
+export type DocsPageProps = {
+  toc?: TableOfContents,
 
   /**
    * Extend the page to fill all available space
    *
    * @defaultValue false
    */
-  full?: boolean;
+  full?: boolean,
 
-  tableOfContent?: Partial<TableOfContentOptions>;
-  tableOfContentPopover?: Partial<TableOfContentPopoverOptions>;
+  tableOfContent?: Partial<TableOfContentOptions>,
+  tableOfContentPopover?: Partial<TableOfContentPopoverOptions>,
 
   /**
    * Replace or disable breadcrumb
    */
-  breadcrumb?: Partial<BreadcrumbOptions>;
+  breadcrumb?: Partial<BreadcrumbOptions>,
 
   /**
    * Footer navigation, you can disable it by passing `false`
    */
-  footer?: Partial<FooterOptions>;
+  footer?: Partial<FooterOptions>,
 
-  editOnGithub?: EditOnGitHubOptions;
-  lastUpdate?: Date | string | number;
+  editOnGithub?: EditOnGitHubOptions,
+  lastUpdate?: Date | string | number,
 
-  container?: ComponentProps<'div'>;
-  article?: ComponentProps<'article'>;
-  children: ReactNode;
+  container?: ComponentProps<'div'>,
+  article?: ComponentProps<'article'>,
+  children: ReactNode,
 }
 
 export function DocsPage({

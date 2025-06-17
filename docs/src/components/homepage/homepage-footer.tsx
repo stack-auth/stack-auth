@@ -1,4 +1,4 @@
-import Link from 'next/link'
+import Link from 'next/link';
 
 export default function Footer() {
   const footerLinks = [
@@ -22,7 +22,7 @@ export default function Footer() {
         { name: "Careers", href: "https://jobs.gem.com/stack-auth-com" }
       ]
     }
-  ]
+  ];
 
   return (
     <footer className="border-t border-border bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
@@ -82,5 +82,5 @@ export default function Footer() {
         </div>
       </div>
     </footer>
-  )
-} 
+  );
+}

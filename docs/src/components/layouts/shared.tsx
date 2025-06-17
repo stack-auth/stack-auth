@@ -4,62 +4,62 @@ import type { NavProviderProps } from 'fumadocs-ui/contexts/layout';
 import type { ReactNode } from 'react';
 import type { LinkItemType } from './links';
 
-export interface NavOptions extends NavProviderProps {
-  enabled: boolean;
-  component: ReactNode;
+export type NavOptions = {
+  enabled: boolean,
+  component: ReactNode,
 
-  title?: ReactNode;
+  title?: ReactNode,
 
   /**
    * Redirect url of title
    * @defaultValue '/'
    */
-  url?: string;
+  url?: string,
 
-  children?: ReactNode;
-}
+  children?: ReactNode,
+} & NavProviderProps
 
-export interface BaseLayoutProps {
+export type BaseLayoutProps = {
   themeSwitch?: {
-    enabled?: boolean;
-    component?: ReactNode;
-    mode?: 'light-dark' | 'light-dark-system';
-  };
+    enabled?: boolean,
+    component?: ReactNode,
+    mode?: 'light-dark' | 'light-dark-system',
+  },
 
   searchToggle?: Partial<{
-    enabled: boolean;
+    enabled: boolean,
     components: Partial<{
-      sm: ReactNode;
-      lg: ReactNode;
-    }>;
-  }>;
+      sm: ReactNode,
+      lg: ReactNode,
+    }>,
+  }>,
 
   /**
    * Remove theme switcher component
    *
    * @deprecated Use `themeSwitch.enabled` instead.
    */
-  disableThemeSwitch?: boolean;
+  disableThemeSwitch?: boolean,
 
   /**
    * I18n options
    *
    * @defaultValue false
    */
-  i18n?: boolean | I18nConfig;
+  i18n?: boolean | I18nConfig,
 
   /**
    * GitHub url
    */
-  githubUrl?: string;
+  githubUrl?: string,
 
-  links?: LinkItemType[];
+  links?: LinkItemType[],
   /**
    * Replace or disable navbar
    */
-  nav?: Partial<NavOptions>;
+  nav?: Partial<NavOptions>,
 
-  children?: ReactNode;
+  children?: ReactNode,
 }
 
 export { type LinkItemType };
@@ -71,7 +71,7 @@ export function getLinks(
   links: LinkItemType[] = [],
   githubUrl?: string,
 ): LinkItemType[] {
-  let result = links ?? [];
+  let result = links;
 
   if (githubUrl)
     result = [
@@ -96,8 +96,8 @@ export function getLinks(
 export function slot(
   obj:
     | {
-        enabled?: boolean;
-        component?: ReactNode;
+        enabled?: boolean,
+        component?: ReactNode,
       }
     | undefined,
   def: ReactNode,
@@ -115,8 +115,8 @@ export function slots<Comp extends Record<string, ReactNode>>(
   variant: keyof Comp,
   obj:
     | {
-        enabled?: boolean;
-        components?: Comp;
+        enabled?: boolean,
+        components?: Comp,
       }
     | undefined,
   def: ReactNode,

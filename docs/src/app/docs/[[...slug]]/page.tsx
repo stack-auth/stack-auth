@@ -10,15 +10,15 @@ import { source } from 'lib/source';
 import { notFound, redirect } from 'next/navigation';
 
 export default async function Page(props: {
-  params: Promise<{ slug?: string[] }>;
+  params: Promise<{ slug?: string[] }>,
 }) {
   const params = await props.params;
-  
+
   // Handle redirect when no slug is provided (i.e., accessing /docs directly)
   if (!params.slug || params.slug.length === 0) {
     redirect("/docs/next/overview");
   }
-  
+
   const page = source.getPage(params.slug);
   if (!page) notFound();
 
@@ -45,7 +45,7 @@ export async function generateStaticParams() {
 }
 
 export async function generateMetadata(props: {
-  params: Promise<{ slug?: string[] }>;
+  params: Promise<{ slug?: string[] }>,
 }) {
   const params = await props.params;
   const page = source.getPage(params.slug);

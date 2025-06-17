@@ -1,24 +1,24 @@
 /**
  * DOCS LAYOUT ROUTER
- * 
+ *
  * This file contains the routing logic that determines which layout configuration
- * to use based on the current URL path. It acts as a smart wrapper around the 
+ * to use based on the current URL path. It acts as a smart wrapper around the
  * base DocsLayout component.
- * 
+ *
  * ARCHITECTURE:
- * 1. app/docs/layout.tsx 
+ * 1. app/docs/layout.tsx
  *    ↓ imports DynamicDocsLayout
  * 2. docs-layout-router.tsx (THIS FILE)
- *    ↓ routes to appropriate config → imports DocsLayout 
+ *    ↓ routes to appropriate config → imports DocsLayout
  * 3. docs.tsx (BASE LAYOUT)
  *    ↓ renders the actual layout structure
- * 
+ *
  * RESPONSIBILITIES:
  * - Route detection (SDK, Components, API, etc.)
  * - Platform tab configuration
  * - Custom sidebar content selection
  * - Passing appropriate props to base DocsLayout
- * 
+ *
  * CUSTOM SIDEBAR COMPONENTS:
  * - ComponentsSidebarContent: Full components navigation
  * - SdkSidebarContent: Imported from docs.tsx
@@ -44,29 +44,29 @@ import {
   isInSdkSection
 } from './shared/section-utils';
 
-interface DynamicDocsLayoutProps extends Omit<DocsLayoutProps, 'links'> {
-  children: ReactNode;
-}
+type DynamicDocsLayoutProps = {
+  children: ReactNode,
+} & Omit<DocsLayoutProps, 'links'>
 
 // Custom Link Component for docs sidebar - matches the one in docs.tsx
-function DocsSidebarLink({ 
-  href, 
-  children, 
+function DocsSidebarLink({
+  href,
+  children,
   external = false
-}: { 
-  href: string; 
-  children: ReactNode;
-  external?: boolean;
+}: {
+  href: string,
+  children: ReactNode,
+  external?: boolean,
 }) {
   const pathname = usePathname();
   const isActive = pathname === href;
-  
+
   return (
-    <Link 
+    <Link
       href={href}
       className={`flex items-center gap-2 px-2 py-1.5 rounded-md text-xs transition-colors ${
-        isActive 
-          ? 'bg-fd-primary/10 text-fd-primary font-medium' 
+        isActive
+          ? 'bg-fd-primary/10 text-fd-primary font-medium'
           : 'text-fd-muted-foreground hover:text-fd-foreground hover:bg-fd-muted/50'
       }`}
       {...(external && { target: '_blank', rel: 'noopener noreferrer' })}
@@ -91,7 +91,7 @@ function DocsSeparator({ children }: { children: ReactNode }) {
 export function ComponentsSidebarContent() {
   const pathname = usePathname();
   const currentPlatform = getCurrentPlatform(pathname);
-  
+
   if (!currentPlatform) return null;
 
   const baseUrl = `/docs/${currentPlatform}/components`;
@@ -101,7 +101,7 @@ export function ComponentsSidebarContent() {
       <DocsSidebarLink href={`${baseUrl}/overview`}>
         Overview
       </DocsSidebarLink>
-      
+
       <DocsSeparator>
         Authentication
       </DocsSeparator>
@@ -168,19 +168,19 @@ export function ComponentsSidebarContent() {
 
 export function DynamicDocsLayout({ children, ...props }: DynamicDocsLayoutProps) {
   const pathname = usePathname();
-  
+
   const platformOptions: Option[] = useMemo(() => {
     const currentPlatform = getCurrentPlatform(pathname);
-    
+
     return PLATFORMS.map(platform => {
       const url = getSmartRedirectUrl(pathname, platform);
       const currentUrl = getCurrentPlatformUrl(pathname, platform);
       const isCurrentPlatform = currentPlatform === platform;
-      
+
       // Check for specific sections using proper regex
       const componentsMatch = pathname.match(/^\/docs\/[^/]+\/components(\/.*)$/);
       const sdkMatch = pathname.match(/^\/docs\/[^/]+\/sdk(\/.*)$/);
-      
+
       return {
         url,
         title: getPlatformDisplayName(platform),
@@ -204,8 +204,8 @@ export function DynamicDocsLayout({ children, ...props }: DynamicDocsLayoutProps
   // For API docs, use minimal layout without platform tabs
   if (isInApiSection(pathname)) {
     return (
-      <DocsLayout 
-        {...baseOptions} 
+      <DocsLayout
+        {...baseOptions}
         {...props}
         nav={{
           enabled: false, // Disable Fumadocs navbar - using SharedHeader instead
@@ -235,8 +235,8 @@ export function DynamicDocsLayout({ children, ...props }: DynamicDocsLayoutProps
   // For customization section, use normal page tree without platform tabs
   if (isInCustomizationSection(pathname)) {
     return (
-      <DocsLayout 
-        {...baseOptions} 
+      <DocsLayout
+        {...baseOptions}
         {...props}
         nav={{
           enabled: false, // Disable Fumadocs navbar - using SharedHeader instead
@@ -259,8 +259,8 @@ export function DynamicDocsLayout({ children, ...props }: DynamicDocsLayoutProps
     if (!currentPlatform || !['next', 'react', 'js'].includes(currentPlatform)) {
       // Redirect to overview if platform doesn't support SDK
       return (
-        <DocsLayout 
-          {...baseOptions} 
+        <DocsLayout
+          {...baseOptions}
           {...props}
           nav={{
             enabled: false, // Disable Fumadocs navbar - using SharedHeader instead
@@ -277,8 +277,8 @@ export function DynamicDocsLayout({ children, ...props }: DynamicDocsLayoutProps
     }
 
     return (
-      <DocsLayout 
-        {...baseOptions} 
+      <DocsLayout
+        {...baseOptions}
         {...props}
         nav={{
           enabled: false, // Disable Fumadocs navbar - using SharedHeader instead
@@ -312,8 +312,8 @@ export function DynamicDocsLayout({ children, ...props }: DynamicDocsLayoutProps
     if (!currentPlatform || !['next', 'react'].includes(currentPlatform)) {
       // Redirect to overview if platform doesn't support components
       return (
-        <DocsLayout 
-          {...baseOptions} 
+        <DocsLayout
+          {...baseOptions}
           {...props}
           nav={{
             enabled: false, // Disable Fumadocs navbar - using SharedHeader instead
@@ -330,8 +330,8 @@ export function DynamicDocsLayout({ children, ...props }: DynamicDocsLayoutProps
     }
 
     return (
-      <DocsLayout 
-        {...baseOptions} 
+      <DocsLayout
+        {...baseOptions}
         {...props}
         nav={{
           enabled: false, // Disable Fumadocs navbar - using SharedHeader instead
@@ -360,8 +360,8 @@ export function DynamicDocsLayout({ children, ...props }: DynamicDocsLayoutProps
 
   // Default: show normal platform docs with page tree navigation
   return (
-    <DocsLayout 
-      {...baseOptions} 
+    <DocsLayout
+      {...baseOptions}
       {...props}
       nav={{
         enabled: false, // Disable Fumadocs navbar - using SharedHeader instead
@@ -375,4 +375,4 @@ export function DynamicDocsLayout({ children, ...props }: DynamicDocsLayoutProps
       {children}
     </DocsLayout>
   );
-} 
+}

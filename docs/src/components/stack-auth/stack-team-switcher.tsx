@@ -21,13 +21,13 @@ const mockTeams = [
     profileImageUrl: null,
   },
   {
-    id: "team-2", 
+    id: "team-2",
     displayName: "Marketing Team",
     profileImageUrl: "https://images.unsplash.com/photo-1522071820081-009f0129c71c?w=100&h=100&fit=crop&crop=face",
   },
   {
     id: "team-3",
-    displayName: "Design Team", 
+    displayName: "Design Team",
     profileImageUrl: null,
   },
   {
@@ -43,10 +43,10 @@ const mockProject = {
   },
 };
 
-interface TeamSwitcherDemoProps {
-  noUpdateSelectedTeam: boolean;
-  urlMap: boolean;
-  teamScenario: 'normal' | 'no-teams' | 'many-teams' | 'no-creation';
+type TeamSwitcherDemoProps = {
+  noUpdateSelectedTeam: boolean,
+  urlMap: boolean,
+  teamScenario: 'normal' | 'no-teams' | 'many-teams' | 'no-creation',
 }
 
 export function TeamSwitcherDemo() {
@@ -59,13 +59,14 @@ export function TeamSwitcherDemo() {
   // Generate mock data based on current scenario
   const getMockData = () => {
     switch (props.teamScenario) {
-      case 'no-teams':
+      case 'no-teams': {
         return {
           mockUser: { selectedTeam: undefined },
           mockTeams: [],
           mockProject,
         };
-      case 'many-teams':
+      }
+      case 'many-teams': {
         return {
           mockUser,
           mockTeams: [
@@ -77,7 +78,7 @@ export function TeamSwitcherDemo() {
             },
             {
               id: "team-6",
-              displayName: "Engineering - Frontend", 
+              displayName: "Engineering - Frontend",
               profileImageUrl: null,
             },
             {
@@ -88,7 +89,8 @@ export function TeamSwitcherDemo() {
           ],
           mockProject,
         };
-      case 'no-creation':
+      }
+      case 'no-creation': {
         return {
           mockUser,
           mockTeams,
@@ -98,12 +100,14 @@ export function TeamSwitcherDemo() {
             },
           },
         };
-      default:
+      }
+      default: {
         return {
           mockUser,
           mockTeams,
           mockProject,
         };
+      }
     }
   };
 
@@ -139,7 +143,7 @@ export function MyTeamSwitcher() {
         {/* Controls Panel */}
         <div className="space-y-6">
           <h3 className="text-lg font-semibold">Component Options</h3>
-          
+
           {/* No Update Selected Team Toggle */}
           <div className="space-y-2">
             <label className="flex items-center space-x-2">
@@ -226,7 +230,7 @@ export function MyTeamSwitcher() {
           <h3 className="text-lg font-semibold">Live Preview</h3>
           <StackContainer color="green" size="medium">
             <div className="flex items-center justify-center p-4">
-              <SelectedTeamSwitcher 
+              <SelectedTeamSwitcher
                 noUpdateSelectedTeam={props.noUpdateSelectedTeam}
                 urlMap={props.urlMap ? (team: { id: string }) => `/teams/${team.id}/dashboard` : undefined}
                 mockUser={currentMockUser}
@@ -239,7 +243,7 @@ export function MyTeamSwitcher() {
       </div>
 
       {/* Code Example */}
-      <DynamicCodeblock 
+      <DynamicCodeblock
         code={generateCodeExample()}
         title="Code Example"
       />
@@ -252,7 +256,7 @@ export function TeamSwitcherStackAuth() {
   return (
     <StackContainer color="green" size="medium">
       <div className="flex items-center justify-center p-4">
-        <SelectedTeamSwitcher 
+        <SelectedTeamSwitcher
           mockUser={mockUser}
           mockTeams={mockTeams}
           mockProject={mockProject}
@@ -266,7 +270,7 @@ export function TeamSwitcherNoTeams() {
   return (
     <StackContainer color="amber" size="medium">
       <div className="flex items-center justify-center p-4">
-        <SelectedTeamSwitcher 
+        <SelectedTeamSwitcher
           mockUser={{ selectedTeam: undefined }}
           mockTeams={[]}
           mockProject={mockProject}
@@ -280,7 +284,7 @@ export function TeamSwitcherNoCreation() {
   return (
     <StackContainer color="purple" size="medium">
       <div className="flex items-center justify-center p-4">
-        <SelectedTeamSwitcher 
+        <SelectedTeamSwitcher
           mockUser={mockUser}
           mockTeams={mockTeams}
           mockProject={{
@@ -304,7 +308,7 @@ export function TeamSwitcherManyTeams() {
     },
     {
       id: "team-6",
-      displayName: "Engineering - Frontend", 
+      displayName: "Engineering - Frontend",
       profileImageUrl: null,
     },
     {
@@ -317,7 +321,7 @@ export function TeamSwitcherManyTeams() {
   return (
     <StackContainer color="blue" size="medium">
       <div className="flex items-center justify-center p-4">
-        <SelectedTeamSwitcher 
+        <SelectedTeamSwitcher
           mockUser={mockUser}
           mockTeams={manyTeams}
           mockProject={mockProject}
@@ -325,4 +329,4 @@ export function TeamSwitcherManyTeams() {
       </div>
     </StackContainer>
   );
-} 
+}

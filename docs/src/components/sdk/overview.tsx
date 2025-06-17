@@ -5,44 +5,52 @@ import { Box, Code, Zap } from 'lucide-react';
 import type { ReactNode } from 'react';
 import { cn } from '../../lib/cn';
 
-interface SDKItem {
-  name: string;
-  href: string;
-  icon: 'object' | 'type' | 'hook';
+type SDKItem = {
+  name: string,
+  href: string,
+  icon: 'object' | 'type' | 'hook',
 }
 
-interface SDKSection {
-  title: string;
-  items: SDKItem[];
+type SDKSection = {
+  title: string,
+  items: SDKItem[],
 }
 
-interface SDKOverviewProps {
-  sections: SDKSection[];
+type SDKOverviewProps = {
+  sections: SDKSection[],
 }
 
 function getIconForType(type: string): ReactNode {
   switch (type) {
-    case 'object':
+    case 'object': {
       return <Box className="h-4 w-4" />;
-    case 'type':
+    }
+    case 'type': {
       return <Code className="h-4 w-4" />;
-    case 'hook':
+    }
+    case 'hook': {
       return <Zap className="h-4 w-4" />;
-    default:
+    }
+    default: {
       return <Box className="h-4 w-4" />;
+    }
   }
 }
 
 function getColorForType(type: string): string {
   switch (type) {
-    case 'object':
+    case 'object': {
       return 'text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/50 border-emerald-200 dark:border-emerald-800/50';
-    case 'type':
+    }
+    case 'type': {
       return 'text-violet-600 dark:text-violet-400 bg-violet-50 dark:bg-violet-950/50 border-violet-200 dark:border-violet-800/50';
-    case 'hook':
+    }
+    case 'hook': {
       return 'text-orange-600 dark:text-orange-400 bg-orange-50 dark:bg-orange-950/50 border-orange-200 dark:border-orange-800/50';
-    default:
+    }
+    default: {
       return 'text-gray-600 dark:text-gray-400 bg-gray-50 dark:bg-gray-950/50 border-gray-200 dark:border-gray-800/50';
+    }
   }
 }
 
@@ -54,7 +62,7 @@ export function SDKOverview({ sections }: SDKOverviewProps) {
           <div className="border-b border-fd-border pb-2">
             <h3 className="text-lg font-semibold text-fd-foreground">{section.title}</h3>
           </div>
-          
+
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
             {section.items.map((item, itemIndex) => (
               <Link
@@ -73,7 +81,7 @@ export function SDKOverview({ sections }: SDKOverviewProps) {
                 )}>
                   {getIconForType(item.icon)}
                 </div>
-                
+
                 <div className="flex-1 min-w-0">
                   <div className="font-medium text-fd-foreground group-hover:text-fd-primary transition-colors">
                     {item.name}
@@ -82,7 +90,7 @@ export function SDKOverview({ sections }: SDKOverviewProps) {
                     {item.icon}
                   </div>
                 </div>
-                
+
                 {/* Subtle arrow indicator */}
                 <div className="text-fd-muted-foreground group-hover:text-fd-primary transition-colors opacity-0 group-hover:opacity-100">
                   <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -96,4 +104,4 @@ export function SDKOverview({ sections }: SDKOverviewProps) {
       ))}
     </div>
   );
-} 
+}

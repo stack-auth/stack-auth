@@ -1,6 +1,6 @@
 'use client';
 import { LargeSearchToggle } from '@/components/layout/search-toggle';
-import Waves from '@/components/layouts/api/Waves';
+import Waves from '@/components/layouts/api/waves';
 import { isInApiSection, isInComponentsSection, isInSdkSection } from '@/components/layouts/shared/section-utils';
 import { type NavLink } from '@/lib/navigation-utils';
 import { Menu, X } from 'lucide-react';
@@ -9,21 +9,21 @@ import { usePathname } from 'next/navigation';
 import type { ReactNode } from 'react';
 import { useEffect, useState } from 'react';
 
-interface SharedHeaderProps {
+type SharedHeaderProps = {
   /** Navigation links to display */
-  navLinks: NavLink[];
+  navLinks: NavLink[],
   /** Whether to show the search bar */
-  showSearch?: boolean;
+  showSearch?: boolean,
   /** Custom positioning classes - defaults to fixed positioning for docs */
-  className?: string;
+  className?: string,
   /** Additional content to render after nav links */
-  children?: ReactNode;
+  children?: ReactNode,
   /** Whether to show mobile menu button */
-  showMobileMenu?: boolean;
+  showMobileMenu?: boolean,
   /** Mobile menu click handler */
-  onMobileMenuClick?: () => void;
+  onMobileMenuClick?: () => void,
   /** Sidebar content to show in mobile navigation */
-  sidebarContent?: ReactNode;
+  sidebarContent?: ReactNode,
 }
 
 /**
@@ -41,7 +41,7 @@ function isNavLinkActive(pathname: string, navLink: NavLink): boolean {
   if (navLink.label === 'API Reference' && isInApiSection(pathname)) {
     return true;
   }
-  if (navLink.label === 'Documentation' && pathname.startsWith('/docs') && 
+  if (navLink.label === 'Documentation' && pathname.startsWith('/docs') &&
       !isInComponentsSection(pathname) && !isInSdkSection(pathname)) {
     return true;
   }
@@ -50,11 +50,11 @@ function isNavLinkActive(pathname: string, navLink: NavLink): boolean {
 
 /**
  * SHARED HEADER COMPONENT
- * 
+ *
  * Reusable header with Waves background used across docs and API layouts.
  * Provides consistent styling and behavior while allowing customization
  * for different layout requirements.
- * 
+ *
  * FEATURES:
  * - Animated Waves background
  * - Configurable navigation links with icons and active states
@@ -66,9 +66,9 @@ function isNavLinkActive(pathname: string, navLink: NavLink): boolean {
  * - Independent mobile navigation overlay
  * - Dynamic sidebar content integration
  */
-export function SharedHeader({ 
-  navLinks, 
-  showSearch = false, 
+export function SharedHeader({
+  navLinks,
+  showSearch = false,
   className = "fixed top-0 left-0 right-0 md:left-64 z-50 h-14 border-b border-fd-border flex items-center justify-between px-4 md:px-6 bg-fd-background",
   children,
   showMobileMenu = false,
@@ -90,7 +90,7 @@ export function SharedHeader({
     } else {
       document.body.style.overflow = '';
     }
-    
+
     return () => {
       document.body.style.overflow = '';
     };
@@ -109,7 +109,7 @@ export function SharedHeader({
       <header className={className}>
         {/* Waves Background */}
         <div className="absolute inset-0 pointer-events-none">
-          <Waves 
+          <Waves
             lineColor="rgba(29, 29, 29, 0.3)"
             backgroundColor="transparent"
             waveSpeedX={0.01}
@@ -121,20 +121,20 @@ export function SharedHeader({
             className="opacity-10 dark:opacity-100"
           />
         </div>
-        
+
         {/* Desktop Navigation Links - Hidden on mobile */}
         <div className="hidden lg:flex items-center gap-6 relative z-10">
           {navLinks.map((link, index) => {
             const isActive = isNavLinkActive(pathname, link);
             const IconComponent = link.icon;
-            
+
             return (
               <Link
                 key={index}
                 href={link.href}
                 className={`flex items-center gap-2 text-sm font-medium transition-colors relative py-1 whitespace-nowrap ${
-                  isActive 
-                    ? 'text-fd-foreground' 
+                  isActive
+                    ? 'text-fd-foreground'
                     : 'text-fd-muted-foreground hover:text-fd-foreground'
                 }`}
               >
@@ -161,11 +161,11 @@ export function SharedHeader({
             <span>{showMobileNav ? 'Close' : 'Menu'}</span>
           </button>
         </div>
-        
+
         {/* Search Bar - Responsive sizing */}
         {showSearch && (
           <div className="relative z-10 w-32 sm:w-48 lg:w-64">
-            <LargeSearchToggle 
+            <LargeSearchToggle
               hideIfDisabled
               className="w-full"
             />
@@ -177,11 +177,11 @@ export function SharedHeader({
       {showMobileNav && (
         <>
           {/* Backdrop */}
-          <div 
+          <div
             className="fixed inset-0 bg-black/50 backdrop-blur-sm z-40 lg:hidden"
             onClick={() => setShowMobileNav(false)}
           />
-          
+
           {/* Mobile Navigation Panel */}
           <div className="fixed top-14 left-0 right-0 bottom-0 z-50 bg-fd-background lg:hidden overflow-y-auto">
             <div className="p-6 space-y-6">
@@ -192,15 +192,15 @@ export function SharedHeader({
                   {navLinks.map((link, index) => {
                     const isActive = isNavLinkActive(pathname, link);
                     const IconComponent = link.icon;
-                    
+
                     return (
                       <Link
                         key={index}
                         href={link.href}
                         onClick={() => setShowMobileNav(false)}
                         className={`flex items-center gap-4 px-4 py-3 rounded-lg text-base font-medium transition-colors ${
-                          isActive 
-                            ? 'bg-fd-primary/10 text-fd-primary' 
+                          isActive
+                            ? 'bg-fd-primary/10 text-fd-primary'
                             : 'text-fd-muted-foreground hover:text-fd-foreground hover:bg-fd-muted/50'
                         }`}
                       >
@@ -227,4 +227,4 @@ export function SharedHeader({
       )}
     </>
   );
-} 
+}

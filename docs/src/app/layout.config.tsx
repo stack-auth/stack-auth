@@ -35,7 +35,7 @@ export const baseOptions: BaseLayoutProps = {
       icon: <Code2 />
     },
     {
-      type: 'main', 
+      type: 'main',
       text: "SDK Reference",
       url: "/docs/sdk/overview",
       active: "url",

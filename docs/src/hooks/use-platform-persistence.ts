@@ -7,7 +7,7 @@ const STORAGE_KEY = 'stack-docs-platform';
 
 /**
  * Hook that manages platform persistence across docs and API navigation.
- * 
+ *
  * When user is on docs pages, it detects and stores the current platform.
  * When user is on API pages, it returns the stored platform or default.
  * This allows seamless navigation back to the correct platform.
@@ -20,7 +20,7 @@ export function usePlatformPersistence(): Platform {
   // Handle client-side hydration
   useEffect(() => {
     setIsClient(true);
-    
+
     // Load stored platform from localStorage on client mount
     const stored = localStorage.getItem(STORAGE_KEY);
     if (stored && ['next', 'react', 'js', 'python'].includes(stored)) {
@@ -30,10 +30,10 @@ export function usePlatformPersistence(): Platform {
 
   useEffect(() => {
     if (!isClient) return;
-    
+
     // Get current platform from URL (if on docs pages)
     const currentPlatform = getCurrentPlatform(pathname);
-    
+
     if (currentPlatform) {
       // On docs pages - store the current platform
       localStorage.setItem(STORAGE_KEY, currentPlatform);
@@ -44,4 +44,4 @@ export function usePlatformPersistence(): Platform {
   }, [pathname, isClient]);
 
   return storedPlatform;
-} 
+}

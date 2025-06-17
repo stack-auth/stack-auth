@@ -34,4 +34,4 @@ export type Platform = typeof PLATFORMS[number];
 /**
  * Default platform to redirect to when no platform is specified
  */
-export const DEFAULT_PLATFORM: Platform = 'next'; 
+export const DEFAULT_PLATFORM: Platform = 'next';

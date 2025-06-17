@@ -31,8 +31,8 @@ import {
 } from './ui/collapsible';
 
 const TocPopoverContext = createContext<{
-  open: boolean;
-  setOpen: (open: boolean) => void;
+  open: boolean,
+  setOpen: (open: boolean) => void,
 }>('TocPopoverContext');
 
 export function TocPopoverTrigger({
@@ -88,14 +88,13 @@ export function TocPopoverTrigger({
   );
 }
 
-interface ProgressCircleProps
-  extends Omit<React.ComponentProps<'svg'>, 'strokeWidth'> {
-  value: number;
-  strokeWidth?: number;
-  size?: number;
-  min?: number;
-  max?: number;
-}
+type ProgressCircleProps = {
+  value: number,
+  strokeWidth?: number,
+  size?: number,
+  min?: number,
+  max?: number,
+} & Omit<React.ComponentProps<'svg'>, 'strokeWidth'>
 
 function clamp(input: number, min: number, max: number): number {
   if (input < min) return min;
@@ -264,14 +263,14 @@ export function LastUpdate(props: { date: Date }) {
 }
 
 type Item = Pick<PageTree.Item, 'name' | 'description' | 'url'>;
-export interface FooterProps {
+export type FooterProps = {
   /**
    * Items including information for the next and previous page
    */
   items?: {
-    previous?: Item;
-    next?: Item;
-  };
+    previous?: Item,
+    next?: Item,
+  },
 }
 
 function scanNavigationList(tree: PageTree.Node[]) {
@@ -330,7 +329,7 @@ export function Footer({ items }: FooterProps) {
   );
 }
 
-function FooterItem({ item, index }: { item: Item; index: 0 | 1 }) {
+function FooterItem({ item, index }: { item: Item, index: 0 | 1 }) {
   const { text } = useI18n();
   const Icon = index === 0 ? ChevronLeft : ChevronRight;
 

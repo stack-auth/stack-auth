@@ -28,7 +28,7 @@ export function ThemeToggle({
   mode = 'light-dark',
   ...props
 }: HTMLAttributes<HTMLElement> & {
-  mode?: 'light-dark' | 'light-dark-system';
+  mode?: 'light-dark' | 'light-dark-system',
 }) {
   const { setTheme, theme, resolvedTheme } = useTheme();
   const [mounted, setMounted] = useState(false);

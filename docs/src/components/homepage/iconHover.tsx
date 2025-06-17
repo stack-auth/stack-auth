@@ -1,23 +1,23 @@
-"use client"
+"use client";
 
-import { platformSupportsComponents, platformSupportsSDK } from "@/lib/navigation-utils"
-import { PLATFORMS, type Platform } from "@/lib/platform-utils"
-import { Book, ChevronDown, Code, Layers, Zap } from "lucide-react"
-import React, { useState } from "react"
+import { platformSupportsComponents, platformSupportsSDK } from "@/lib/navigation-utils";
+import { PLATFORMS, type Platform } from "@/lib/platform-utils";
+import { Book, ChevronDown, Code, Layers, Zap } from "lucide-react";
+import React, { useState } from "react";
 
-interface DocsSection {
-  id: string
-  title: string
-  description: string
-  icon: React.ReactNode
-  url: string
-  color: string
+type DocsSection = {
+  id: string,
+  title: string,
+  description: string,
+  icon: React.ReactNode,
+  url: string,
+  color: string,
 }
 
-interface DocsIcon3DProps {
-  sections?: DocsSection[]
-  onSectionSelect?: (section: DocsSection) => void
-  selectedPlatform?: Platform
+type DocsIcon3DProps = {
+  sections?: DocsSection[],
+  onSectionSelect?: (section: DocsSection) => void,
+  selectedPlatform?: Platform,
 }
 
 const createPlatformSections = (platform: Platform): DocsSection[] => {
@@ -30,7 +30,7 @@ const createPlatformSections = (platform: Platform): DocsSection[] => {
       url: `/docs/${platform}/overview`,
       color: "rgb(59, 130, 246)",
     },
-  ]
+  ];
 
   // Add SDK if platform supports it
   if (platformSupportsSDK(platform)) {
@@ -41,7 +41,7 @@ const createPlatformSections = (platform: Platform): DocsSection[] => {
       icon: <Code size={24} />,
       url: `/docs/${platform}/sdk/overview`,
       color: "rgb(16, 185, 129)",
-    })
+    });
   }
 
   // Add Components if platform supports it
@@ -53,7 +53,7 @@ const createPlatformSections = (platform: Platform): DocsSection[] => {
       icon: <Layers size={24} />,
       url: `/docs/${platform}/components/overview`,
       color: "rgb(245, 101, 101)",
-    })
+    });
   }
 
   // Always add API (platform agnostic)
@@ -64,30 +64,30 @@ const createPlatformSections = (platform: Platform): DocsSection[] => {
     icon: <Zap size={24} />,
     url: "/api/overview",
     color: "rgb(168, 85, 247)",
-  })
+  });
 
-  return sections
-}
+  return sections;
+};
 
 const PlatformSelector: React.FC<{
-  selectedPlatform: Platform
-  onPlatformChange: (platform: Platform) => void
+  selectedPlatform: Platform,
+  onPlatformChange: (platform: Platform) => void,
 }> = ({ selectedPlatform, onPlatformChange }) => {
-  const [isOpen, setIsOpen] = useState(false)
+  const [isOpen, setIsOpen] = useState(false);
 
   const platformNames: Record<Platform, string> = {
     next: "Next.js",
     react: "React",
     js: "JavaScript",
     python: "Python",
-  }
+  };
 
   const platformColors: Record<Platform, string> = {
     next: "rgb(59, 130, 246)", // Blue
     react: "rgb(16, 185, 129)", // Green
     js: "rgb(245, 158, 11)", // Yellow
     python: "rgb(168, 85, 247)", // Purple
-  }
+  };
 
   return (
     <div className="relative mb-8">
@@ -95,7 +95,7 @@ const PlatformSelector: React.FC<{
         <h3 className="text-lg font-semibold text-foreground mb-2">Choose Your Platform</h3>
         <p className="text-sm text-muted-foreground">Select your development environment</p>
       </div>
-      
+
       <div className="relative inline-block w-64 mx-auto">
         <button
           onClick={() => setIsOpen(!isOpen)}
@@ -124,8 +124,8 @@ const PlatformSelector: React.FC<{
               <button
                 key={platform}
                 onClick={() => {
-                  onPlatformChange(platform)
-                  setIsOpen(false)
+                  onPlatformChange(platform);
+                  setIsOpen(false);
                 }}
                 className={`
                   w-full px-4 py-3 text-left transition-all duration-200
@@ -167,26 +167,26 @@ const PlatformSelector: React.FC<{
         )}
       </div>
     </div>
-  )
-}
+  );
+};
 
-const DocsIcon3D: React.FC<DocsIcon3DProps> = ({ 
-  sections, 
-  onSectionSelect, 
-  selectedPlatform = "next" 
+const DocsIcon3D: React.FC<DocsIcon3DProps> = ({
+  sections,
+  onSectionSelect,
+  selectedPlatform = "next"
 }) => {
-  const [hoveredSection, setHoveredSection] = useState<string | null>(null)
-  
+  const [hoveredSection, setHoveredSection] = useState<string | null>(null);
+
   // Use platform-based sections if none provided
-  const platformSections = sections || createPlatformSections(selectedPlatform)
+  const platformSections = sections || createPlatformSections(selectedPlatform);
 
   const handleSectionClick = (section: DocsSection) => {
     if (onSectionSelect) {
-      onSectionSelect(section)
+      onSectionSelect(section);
     } else {
-      window.location.href = section.url
+      window.location.href = section.url;
     }
-  }
+  };
 
   // Add custom CSS for the floating animation
   const floatingDotsStyle = `
@@ -209,13 +209,13 @@ const DocsIcon3D: React.FC<DocsIcon3DProps> = ({
   .animate-float-up {
     animation: float-up 3s ease-out infinite;
   }
-`
+`;
 
   return (
     <>
       <style dangerouslySetInnerHTML={{ __html: floatingDotsStyle }} />
       <div className="flex justify-center items-center p-4">
-        <div 
+        <div
           className={`
             grid gap-4 max-w-4xl w-full justify-center
             ${platformSections.length === 1 ? 'grid-cols-1 max-w-xs' : ''}
@@ -249,8 +249,8 @@ const DocsIcon3D: React.FC<DocsIcon3DProps> = ({
                 hover:before:opacity-100 before:transition-opacity before:duration-500
                 ${hoveredSection === section.id ? "border-opacity-100 shadow-2xl" : "border-opacity-50"}
               `}
-                        style={{
-                          transformStyle: "preserve-3d",
+                style={{
+                  transformStyle: "preserve-3d",
                   perspective: "1000px",
                   borderColor: hoveredSection === section.id ? section.color : undefined,
                   boxShadow:
@@ -265,7 +265,7 @@ const DocsIcon3D: React.FC<DocsIcon3DProps> = ({
                   absolute inset-0 rounded-2xl transition-opacity duration-500
                   ${hoveredSection === section.id ? "opacity-100" : "opacity-0"}
                 `}
-                          style={{
+                  style={{
                     background: `
                     radial-gradient(circle at 30% 20%, ${section.color}15 0%, transparent 50%),
                     linear-gradient(135deg, ${section.color}08, ${section.color}03, transparent)
@@ -390,7 +390,7 @@ const DocsIcon3D: React.FC<DocsIcon3DProps> = ({
                     transition-all duration-500 ease-out
                     ${hoveredSection === section.id ? "scale-x-100" : "scale-x-0"}
                   `}
-                      style={{
+                  style={{
                     transformOrigin: "left",
                     backgroundColor: section.color,
                     boxShadow: hoveredSection === section.id ? `0 0 20px ${section.color}60` : undefined,
@@ -441,37 +441,37 @@ const DocsIcon3D: React.FC<DocsIcon3DProps> = ({
         </div>
       </div>
     </>
-  )
-}
+  );
+};
 
 export default function DocsSelector() {
-  const [selectedPlatform, setSelectedPlatform] = useState<Platform>("next")
+  const [selectedPlatform, setSelectedPlatform] = useState<Platform>("next");
 
   const handleSectionSelect = (section: DocsSection) => {
-    console.log("Selected section:", section)
+    console.log("Selected section:", section);
     // Navigate to the selected section
     if (section.url) {
-      window.location.href = section.url
+      window.location.href = section.url;
     }
-  }
+  };
 
   const handlePlatformChange = (platform: Platform) => {
-    setSelectedPlatform(platform)
-  }
+    setSelectedPlatform(platform);
+  };
 
   return (
     <div className="w-full max-w-4xl mx-auto">
-      <PlatformSelector 
-        selectedPlatform={selectedPlatform} 
-        onPlatformChange={handlePlatformChange} 
-      />
-      <DocsIcon3D 
+      <PlatformSelector
         selectedPlatform={selectedPlatform}
-        onSectionSelect={handleSectionSelect} 
+        onPlatformChange={handlePlatformChange}
+      />
+      <DocsIcon3D
+        selectedPlatform={selectedPlatform}
+        onSectionSelect={handleSectionSelect}
       />
     </div>
-  )
+  );
 }
 
 // Export the core component for direct use
-export { DocsIcon3D }
+export { DocsIcon3D };

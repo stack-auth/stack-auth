@@ -9,88 +9,88 @@ import {
 } from 'react';
 import { isActive } from '../../lib/is-active';
 
-interface BaseItem {
+type BaseItem = {
   /**
    * Restrict where the item is displayed
    *
    * @defaultValue 'all'
    */
-  on?: 'menu' | 'nav' | 'all';
+  on?: 'menu' | 'nav' | 'all',
 }
 
-export interface BaseLinkType extends BaseItem {
-  url: string;
+export type BaseLinkType = {
+  url: string,
   /**
    * When the item is marked as active
    *
    * @defaultValue 'url'
    */
-  active?: 'url' | 'nested-url' | 'none';
-  external?: boolean;
-}
+  active?: 'url' | 'nested-url' | 'none',
+  external?: boolean,
+} & BaseItem
 
-export interface MainItemType extends BaseLinkType {
-  type?: 'main';
-  icon?: ReactNode;
-  text: ReactNode;
-  description?: ReactNode;
-}
+export type MainItemType = {
+  type?: 'main',
+  icon?: ReactNode,
+  text: ReactNode,
+  description?: ReactNode,
+} & BaseLinkType
 
-export interface IconItemType extends BaseLinkType {
-  type: 'icon';
+export type IconItemType = {
+  type: 'icon',
   /**
    * `aria-label` of icon button
    */
-  label?: string;
-  icon: ReactNode;
-  text: ReactNode;
+  label?: string,
+  icon: ReactNode,
+  text: ReactNode,
   /**
    * @defaultValue true
    */
-  secondary?: boolean;
-}
-interface ButtonItem extends BaseLinkType {
-  type: 'button';
-  icon?: ReactNode;
-  text: ReactNode;
+  secondary?: boolean,
+} & BaseLinkType
+type ButtonItem = {
+  type: 'button',
+  icon?: ReactNode,
+  text: ReactNode,
   /**
    * @defaultValue false
    */
-  secondary?: boolean;
-}
+  secondary?: boolean,
+} & BaseLinkType
 
-export interface MenuItemType extends BaseItem {
-  type: 'menu';
-  icon?: ReactNode;
-  text: ReactNode;
+export type MenuItemType = {
+  type: 'menu',
+  icon?: ReactNode,
+  text: ReactNode,
 
-  url?: string;
+  url?: string,
   items: (
     | (MainItemType & {
         /**
          * Options when displayed on navigation menu
          */
         menu?: HTMLAttributes<HTMLElement> & {
-          banner?: ReactNode;
-        };
+          banner?: ReactNode,
+        },
       })
     | CustomItem
-  )[];
+  )[],
 
   /**
    * @defaultValue false
    */
-  secondary?: boolean;
-}
+  secondary?: boolean,
+} & BaseItem
 
-interface CustomItem extends BaseItem {
-  type: 'custom';
+type CustomItem = {
+  type: 'custom',
   /**
    * @defaultValue false
    */
-  secondary?: boolean;
-  children: ReactNode;
-}
+  secondary?: boolean,
+  children: ReactNode,
+} & BaseItem
 
 export type LinkItemType =
   | MainItemType

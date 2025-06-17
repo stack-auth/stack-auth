@@ -4,28 +4,28 @@ import { generateNavLinks } from '@/lib/navigation-utils';
 import type { ReactNode } from 'react';
 import { SharedHeader } from './shared-header';
 
-interface PlatformAwareHeaderProps {
+type PlatformAwareHeaderProps = {
   /** Whether to show the search bar */
-  showSearch?: boolean;
+  showSearch?: boolean,
   /** Custom positioning classes */
-  className?: string;
+  className?: string,
   /** Whether to show mobile menu button */
-  showMobileMenu?: boolean;
+  showMobileMenu?: boolean,
   /** Mobile menu click handler */
-  onMobileMenuClick?: () => void;
+  onMobileMenuClick?: () => void,
   /** Sidebar content to show in mobile navigation */
-  sidebarContent?: ReactNode;
+  sidebarContent?: ReactNode,
 }
 
 /**
  * PLATFORM-AWARE HEADER WRAPPER
- * 
+ *
  * Client component that wraps SharedHeader with platform persistence logic.
  * This allows the header to remember the user's last visited platform
  * when navigating between docs and API sections.
  */
-export function PlatformAwareHeader({ 
-  showSearch = false, 
+export function PlatformAwareHeader({
+  showSearch = false,
   className,
   showMobileMenu = false,
   onMobileMenuClick,
@@ -35,7 +35,7 @@ export function PlatformAwareHeader({
   const navLinks = generateNavLinks(platform);
 
   return (
-    <SharedHeader 
+    <SharedHeader
       navLinks={navLinks}
       showSearch={showSearch}
       className={className}
@@ -44,4 +44,4 @@ export function PlatformAwareHeader({
       sidebarContent={sidebarContent}
     />
   );
-} 
+}

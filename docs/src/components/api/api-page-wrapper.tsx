@@ -15,11 +15,11 @@ const STACK_AUTH_HEADERS = {
 };
 
 // Context for sharing headers across all API components on the page
-interface APIPageContextType {
-  sharedHeaders: Record<string, string>;
-  updateSharedHeaders: (headers: Record<string, string>) => void;
-  reportError: (status: number, error: any) => void;
-  isHeadersPanelOpen: boolean;
+type APIPageContextType = {
+  sharedHeaders: Record<string, string>,
+  updateSharedHeaders: (headers: Record<string, string>) => void,
+  reportError: (status: number, error: any) => void,
+  isHeadersPanelOpen: boolean,
 }
 
 const APIPageContext = createContext<APIPageContextType | null>(null);
@@ -32,14 +32,14 @@ export function useAPIPageContext() {
   return context;
 }
 
-interface APIPageWrapperProps {
-  children: ReactNode;
+type APIPageWrapperProps = {
+  children: ReactNode,
 }
 
 export function APIPageWrapper({ children }: APIPageWrapperProps) {
   const [sharedHeaders, setSharedHeaders] = useState<Record<string, string>>(STACK_AUTH_HEADERS);
   const [isHeadersPanelOpen, setIsHeadersPanelOpen] = useState(false);
-  const [lastError, setLastError] = useState<{ status: number; error: any } | null>(null);
+  const [lastError, setLastError] = useState<{ status: number, error: any } | null>(null);
   const [highlightMissingHeaders, setHighlightMissingHeaders] = useState(false);
 
   const updateSharedHeaders = (headers: Record<string, string>) => {
@@ -52,12 +52,12 @@ export function APIPageWrapper({ children }: APIPageWrapperProps) {
 
   const reportError = (status: number, error: any) => {
     setLastError({ status, error });
-    
+
     // Auto-open panel and highlight missing headers on 400/401/403 errors
     if ([400, 401, 403].includes(status)) {
       setIsHeadersPanelOpen(true);
       setHighlightMissingHeaders(true);
-      
+
       // Auto-hide highlighting after 10 seconds
       setTimeout(() => {
         setHighlightMissingHeaders(false);
@@ -75,7 +75,7 @@ export function APIPageWrapper({ children }: APIPageWrapperProps) {
   ];
 
   const missingRequiredHeaders = stackAuthHeaders.filter(
-    header => header.required && !sharedHeaders[header.key]?.trim()
+    header => header.required && !sharedHeaders[header.key].trim()
   );
 
   return (
@@ -91,8 +91,8 @@ export function APIPageWrapper({ children }: APIPageWrapperProps) {
               <Button
                 onClick={() => setIsHeadersPanelOpen(!isHeadersPanelOpen)}
                 className={`flex items-center justify-center gap-2 shadow-lg transition-all duration-300 w-24 ${
-                  highlightMissingHeaders 
-                    ? 'bg-red-500 hover:bg-red-600 text-white animate-pulse' 
+                  highlightMissingHeaders
+                    ? 'bg-red-500 hover:bg-red-600 text-white animate-pulse'
                     : 'bg-fd-primary hover:bg-fd-primary/90'
                 } ${isHeadersPanelOpen ? 'rounded-t-xl rounded-b-none' : 'rounded-t-xl rounded-b-none'}`}
               >
@@ -118,8 +118,8 @@ export function APIPageWrapper({ children }: APIPageWrapperProps) {
                   <div className="p-4 bg-fd-muted/30 border-b border-fd-border">
                     <div className="flex items-center gap-3">
                       <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${
-                        highlightMissingHeaders 
-                          ? 'bg-red-100 dark:bg-red-900/30' 
+                        highlightMissingHeaders
+                          ? 'bg-red-100 dark:bg-red-900/30'
                           : 'bg-blue-100 dark:bg-blue-900/30'
                       }`}>
                         {highlightMissingHeaders ? (
@@ -133,14 +133,14 @@ export function APIPageWrapper({ children }: APIPageWrapperProps) {
                           {highlightMissingHeaders ? 'Authentication Required' : 'Global Authentication'}
                         </h3>
                         <p className="text-sm text-fd-muted-foreground">
-                          {highlightMissingHeaders 
+                          {highlightMissingHeaders
                             ? 'Please configure the required headers below'
                             : 'Configure headers for all API requests'
                           }
                         </p>
                       </div>
                     </div>
-                    
+
                     {/* Error Message */}
                     {highlightMissingHeaders && lastError && (
                       <div className="mt-3 p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg">
@@ -163,20 +163,20 @@ export function APIPageWrapper({ children }: APIPageWrapperProps) {
                   <div className="flex-1 overflow-y-auto p-4">
                     <div className="space-y-4">
                       {stackAuthHeaders.map((header) => {
-                        const isMissing = highlightMissingHeaders && header.required && !sharedHeaders[header.key]?.trim();
-                        
+                        const isMissing = highlightMissingHeaders && header.required && !sharedHeaders[header.key].trim();
+
                         return (
                           <div key={header.key} className={`space-y-2 p-3 rounded-lg transition-all duration-300 ${
-                            isMissing 
-                              ? 'bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800' 
+                            isMissing
+                              ? 'bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800'
                               : 'bg-fd-muted/20'
                           }`}>
                             <label className="text-sm font-medium text-fd-foreground flex items-center gap-2">
                               {header.label}
                               {header.required && (
                                 <span className={`text-xs px-2 py-0.5 rounded-full ${
-                                  isMissing 
-                                    ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300 animate-pulse' 
+                                  isMissing
+                                    ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300 animate-pulse'
                                     : 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300'
                                 }`}>
                                   required
@@ -192,8 +192,8 @@ export function APIPageWrapper({ children }: APIPageWrapperProps) {
                               value={sharedHeaders[header.key] || ''}
                               onChange={(e) => updateSharedHeaders({ ...sharedHeaders, [header.key]: e.target.value })}
                               className={`w-full px-3 py-2 border rounded-lg bg-fd-background text-fd-foreground text-sm focus:outline-none focus:ring-2 focus:border-transparent transition-all duration-200 ${
-                                isMissing 
-                                  ? 'border-red-300 focus:ring-red-500 dark:border-red-700' 
+                                isMissing
+                                  ? 'border-red-300 focus:ring-red-500 dark:border-red-700'
                                   : 'border-fd-border focus:ring-fd-primary'
                               }`}
                             />
@@ -207,7 +207,7 @@ export function APIPageWrapper({ children }: APIPageWrapperProps) {
                       <div className="flex items-center gap-2 text-sm">
                         <div className={`w-2 h-2 rounded-full ${
                           missingRequiredHeaders.length === 0
-                            ? 'bg-green-500' 
+                            ? 'bg-green-500'
                             : 'bg-red-500'
                         }`} />
                         <span className="text-fd-muted-foreground">
@@ -236,8 +236,8 @@ export function APIPageWrapper({ children }: APIPageWrapperProps) {
             <Button
               onClick={() => setIsHeadersPanelOpen(!isHeadersPanelOpen)}
               className={`flex items-center justify-center gap-2 shadow-2xl transition-all duration-300 w-14 h-14 rounded-full border-2 border-white/20 ${
-                highlightMissingHeaders 
-                  ? 'bg-red-500 hover:bg-red-600 text-white animate-pulse' 
+                highlightMissingHeaders
+                  ? 'bg-red-500 hover:bg-red-600 text-white animate-pulse'
                   : 'bg-fd-primary hover:bg-fd-primary/90 text-white'
               }`}
             >
@@ -256,8 +256,8 @@ export function APIPageWrapper({ children }: APIPageWrapperProps) {
             <div className="flex items-center justify-between p-4 border-b border-fd-border bg-fd-card">
               <div className="flex items-center gap-3">
                 <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${
-                  highlightMissingHeaders 
-                    ? 'bg-red-100 dark:bg-red-900/30' 
+                  highlightMissingHeaders
+                    ? 'bg-red-100 dark:bg-red-900/30'
                     : 'bg-blue-100 dark:bg-blue-900/30'
                 }`}>
                   {highlightMissingHeaders ? (
@@ -303,20 +303,20 @@ export function APIPageWrapper({ children }: APIPageWrapperProps) {
             <div className="flex-1 overflow-y-auto p-4">
               <div className="space-y-4">
                 {stackAuthHeaders.map((header) => {
-                  const isMissing = highlightMissingHeaders && header.required && !sharedHeaders[header.key]?.trim();
-                  
+                  const isMissing = highlightMissingHeaders && header.required && !sharedHeaders[header.key].trim();
+
                   return (
                     <div key={header.key} className={`space-y-2 p-4 rounded-lg transition-all duration-300 ${
-                      isMissing 
-                        ? 'bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800' 
+                      isMissing
+                        ? 'bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800'
                         : 'bg-fd-card border border-fd-border'
                     }`}>
                       <label className="text-sm font-medium text-fd-foreground flex items-center gap-2">
                         {header.label}
                         {header.required && (
                           <span className={`text-xs px-2 py-0.5 rounded-full ${
-                            isMissing 
-                              ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300 animate-pulse' 
+                            isMissing
+                              ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300 animate-pulse'
                               : 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300'
                           }`}>
                             required
@@ -332,8 +332,8 @@ export function APIPageWrapper({ children }: APIPageWrapperProps) {
                         value={sharedHeaders[header.key] || ''}
                         onChange={(e) => updateSharedHeaders({ ...sharedHeaders, [header.key]: e.target.value })}
                         className={`w-full px-4 py-3 border rounded-lg bg-fd-background text-fd-foreground text-base focus:outline-none focus:ring-2 focus:border-transparent transition-all duration-200 ${
-                          isMissing 
-                            ? 'border-red-300 focus:ring-red-500 dark:border-red-700' 
+                          isMissing
+                            ? 'border-red-300 focus:ring-red-500 dark:border-red-700'
                             : 'border-fd-border focus:ring-fd-primary'
                         }`}
                       />
@@ -349,7 +349,7 @@ export function APIPageWrapper({ children }: APIPageWrapperProps) {
                 <div className="flex items-center gap-2 text-sm">
                   <div className={`w-2 h-2 rounded-full ${
                     missingRequiredHeaders.length === 0
-                      ? 'bg-green-500' 
+                      ? 'bg-green-500'
                       : 'bg-red-500'
                   }`} />
                   <span className="text-fd-muted-foreground">
@@ -383,4 +383,4 @@ export function APIPageWrapper({ children }: APIPageWrapperProps) {
       </div>
     </APIPageContext.Provider>
   );
-} 
+}

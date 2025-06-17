@@ -7,7 +7,7 @@ import { APIPageWrapper } from '../../../components/api/api-page-wrapper';
 export default async function ApiPage({
   params,
 }: {
-  params: Promise<{ slug?: string[] }>;
+  params: Promise<{ slug?: string[] }>,
 }) {
   const { slug } = await params;
   const page = apiSource.getPage(slug ?? []);
@@ -23,4 +23,4 @@ export default async function ApiPage({
       </article>
     </APIPageWrapper>
   );
-} 
+}

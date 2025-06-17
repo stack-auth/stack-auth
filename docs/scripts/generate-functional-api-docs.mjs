@@ -3,7 +3,7 @@ import { generateFiles } from 'fumadocs-openapi';
 import path from 'path';
 
 // Use relative paths to avoid path duplication issues
-const OPENAPI_DIR = './public/openapi';
+const OPENAPI_DIR = './openapi';
 const OUTPUT_DIR = './content/api';
 const TEMPLATES_API_DIR = './templates-api';
 
@@ -174,8 +174,9 @@ function updateDocumentReferences(functionalCategoryPath, newDocumentPath) {
     const content = fs.readFileSync(filePath, 'utf8');
     
     // Update the document reference in the APIPage component
+    // Match both old public/openapi paths and temp files
     const updatedContent = content.replace(
-      /document=\{"public\/openapi\/temp-[^"]+"\}/g,
+      /document=\{"(public\/openapi\/|openapi\/)[^"]+"\}/g,
       `document={"${newDocumentPath}"}`
     );
     
@@ -319,7 +320,7 @@ async function processApiTypeInIsolation(apiType) {
         
         // Update document references in MDX files
         console.log(`   🔗 Updating document references for ${tag}...`);
-        updateDocumentReferences(outputPath, `public/openapi/${apiType}-${tagToSlug(tag)}.json`);
+        updateDocumentReferences(outputPath, `openapi/${apiType}-${tagToSlug(tag)}.json`);
         
       } catch (error) {
         console.error(`   ❌ Error generating ${tag} docs for ${apiType}:`, error);

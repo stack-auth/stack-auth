@@ -3,31 +3,31 @@
 import { type ReactNode } from 'react';
 import { cn } from '../../lib/cn';
 
-export interface StackContainerProps {
+export type StackContainerProps = {
   /**
    * Title for the container
    */
-  title?: string;
-  
+  title?: string,
+
   /**
    * Container content
    */
-  children: ReactNode;
-  
+  children: ReactNode,
+
   /**
    * Color theme for the container (default: blue)
    */
-  color?: 'blue' | 'purple' | 'green' | 'amber';
-  
+  color?: 'blue' | 'purple' | 'green' | 'amber',
+
   /**
    * Size variant for the container (default: medium)
    */
-  size?: 'small' | 'medium' | 'large' | 'xlarge' | 'full';
-  
+  size?: 'small' | 'medium' | 'large' | 'xlarge' | 'full',
+
   /**
    * Additional CSS classes to apply to the container
    */
-  className?: string;
+  className?: string,
 }
 
 export function StackContainer({
@@ -69,13 +69,13 @@ export function StackContainer({
     xlarge: 'max-w-4xl',
     full: 'max-w-full'
   };
-  
+
   const colors = colorVariants[color];
   const sizeClass = sizeVariants[size];
-  
+
   return (
     <div className="flex justify-center w-full my-8">
-      <div 
+      <div
         className={cn(
           'relative overflow-hidden rounded-lg border border-dashed',
           'bg-gray-200/90 dark:bg-slate-900/30',
@@ -91,14 +91,14 @@ export function StackContainer({
         <div className="absolute top-0 right-0 px-2 py-1 text-xs font-medium rounded-bl-md bg-gray-200/90 dark:bg-slate-800/80 border-l border-b border-gray-400/60 dark:border-gray-600/40">
           <span className={colors.label}>Component Demo</span>
         </div>
-        
+
         <div className="p-8 flex justify-center">
           {title && (
             <h3 className={cn("text-sm font-medium mb-3", colors.title)}>
               {title}
             </h3>
           )}
-          
+
           {/* Content area with subtle background */}
           <div className="flex justify-center w-full">
             {children}
@@ -107,4 +107,4 @@ export function StackContainer({
       </div>
     </div>
   );
-} 
+}

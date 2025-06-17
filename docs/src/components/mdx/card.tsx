@@ -4,26 +4,26 @@ import Link from 'next/link';
 import { type ReactNode } from 'react';
 import { cn } from '../../lib/cn';
 
-export interface CardProps {
+export type CardProps = {
   /**
    * Optional URL for the card to link to
    */
-  href?: string;
-  
+  href?: string,
+
   /**
    * Card content
    */
-  children: ReactNode;
-  
+  children: ReactNode,
+
   /**
    * Additional CSS classes to apply to the card
    */
-  className?: string;
-  
+  className?: string,
+
   /**
    * Apply hover effects (default: true)
    */
-  hover?: boolean;
+  hover?: boolean,
 }
 
 export function Card({
@@ -33,7 +33,7 @@ export function Card({
   hover = true,
 }: CardProps) {
   const cardContent = (
-    <div 
+    <div
       className={cn(
         'fern-card relative overflow-hidden rounded-xl border border-fd-border/50 bg-fd-card p-5 shadow-sm',
         hover && 'transition-all duration-200 hover:shadow-md hover:border-fd-border/80 hover:-translate-y-0.5',
@@ -55,4 +55,4 @@ export function Card({
   }
 
   return cardContent;
-} 
+}

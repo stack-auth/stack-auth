@@ -31,28 +31,30 @@ export function Mermaid({ chart }: { chart: string }) {
         );
 
         bindFunctions?.(container!);
-        
+
         // Add padding to the SVG to prevent cut-off
         const modifiedSvg = svg.replace(
           /<svg([^>]*)>/,
           '<svg$1 style="padding: 20px;">'
         );
-        
+
         setSvg(modifiedSvg);
       } catch (error) {
         console.error('Error while rendering mermaid', error);
       }
     }
 
-    void renderChart();
+    renderChart().catch(error => {
+      console.error('Failed to render Mermaid chart:', error);
+    });
   }, [chart, id, resolvedTheme]);
 
   return (
-    <div 
-      ref={containerRef} 
+    <div
+      ref={containerRef}
       className="my-6 pb-4 overflow-x-auto flex justify-center"
       dangerouslySetInnerHTML={{ __html: svg }}
-      style={{ 
+      style={{
         minHeight: 'fit-content',
       }}
     />

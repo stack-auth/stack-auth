@@ -14,39 +14,39 @@ import {
   isInSdkSection
 } from './shared/section-utils';
 
-interface DocsHeaderWrapperProps {
-  showSearch?: boolean;
-  pageTree?: PageTree.Root;
-  className?: string;
+type DocsHeaderWrapperProps = {
+  showSearch?: boolean,
+  pageTree?: PageTree.Root,
+  className?: string,
   apiPages?: Array<{
-    url: string;
-    slugs: string[];
+    url: string,
+    slugs: string[],
     data: {
-      title?: string;
-      method?: string;
-    };
-  }>;
+      title?: string,
+      method?: string,
+    },
+  }>,
 }
 
 // Custom Link Component for mobile sidebar - matches the styling from docs.tsx
-function MobileSidebarLink({ 
-  href, 
-  children, 
+function MobileSidebarLink({
+  href,
+  children,
   external = false
-}: { 
-  href: string; 
-  children: React.ReactNode;
-  external?: boolean;
+}: {
+  href: string,
+  children: React.ReactNode,
+  external?: boolean,
 }) {
   const pathname = usePathname();
   const isActive = pathname === href;
-  
+
   return (
-    <a 
+    <a
       href={href}
       className={`flex items-center gap-2 px-2 py-1.5 rounded-md text-xs transition-colors ${
-        isActive 
-          ? 'bg-fd-primary/10 text-fd-primary font-medium' 
+        isActive
+          ? 'bg-fd-primary/10 text-fd-primary font-medium'
           : 'text-fd-muted-foreground hover:text-fd-foreground hover:bg-fd-muted/50'
       }`}
       {...(external && { target: '_blank', rel: 'noopener noreferrer' })}
@@ -68,17 +68,17 @@ function MobileSidebarSeparator({ children }: { children: React.ReactNode }) {
 }
 
 // Custom collapsible section component - matches the styling from docs.tsx
-function MobileCollapsibleSection({ 
-  title, 
-  children, 
-  defaultOpen = false 
-}: { 
-  title: string; 
-  children: React.ReactNode; 
-  defaultOpen?: boolean; 
+function MobileCollapsibleSection({
+  title,
+  children,
+  defaultOpen = false
+}: {
+  title: string,
+  children: React.ReactNode,
+  defaultOpen?: boolean,
 }) {
   const [isOpen, setIsOpen] = useState(defaultOpen);
-  
+
   return (
     <div className="space-y-1">
       <button
@@ -102,7 +102,7 @@ function MobileCollapsibleSection({
 }
 
 // Recursive component to render page tree items for mobile
-function MobilePageTreeItem({ item, currentPlatform }: { item: PageTree.Node; currentPlatform?: string }) {
+function MobilePageTreeItem({ item, currentPlatform }: { item: PageTree.Node, currentPlatform?: string }) {
   const pathname = usePathname();
 
   if (item.type === 'separator') {
@@ -114,10 +114,10 @@ function MobilePageTreeItem({ item, currentPlatform }: { item: PageTree.Node; cu
     const folderUrl = hasIndexPage ? item.index!.url : '';
     const isCurrentPath = folderUrl && pathname.startsWith(folderUrl);
     const itemName = typeof item.name === 'string' ? item.name : '';
-    
+
     return (
-      <MobileCollapsibleSection 
-        title={itemName || 'Folder'} 
+      <MobileCollapsibleSection
+        title={itemName || 'Folder'}
         defaultOpen={!!isCurrentPath}
       >
         {hasIndexPage && (
@@ -132,38 +132,37 @@ function MobilePageTreeItem({ item, currentPlatform }: { item: PageTree.Node; cu
     );
   }
 
-  if (item.type === 'page') {
-    return (
-      <MobileSidebarLink href={item.url} external={item.external}>
-        {item.name}
-      </MobileSidebarLink>
-    );
-  }
-
-  return null;
+  return (
+    <MobileSidebarLink href={item.url} external={item.external}>
+      {item.name}
+    </MobileSidebarLink>
+  );
 }
 
 // Function to find platform-specific content in the page tree
 function findPlatformContent(tree: PageTree.Root, platform: string): PageTree.Node[] {
-  const platformMappings: Record<string, string[]> = {
+  const platformMappings = {
     'next': ['next', 'next.js', 'nextjs'],
-    'react': ['react', 'react.js', 'reactjs'], 
+    'react': ['react', 'react.js', 'reactjs'],
     'js': ['js', 'javascript'],
     'python': ['python', 'py']
   };
 
-  const possibleNames = platformMappings[platform.toLowerCase()] || [platform.toLowerCase()];
-  
+  const platformKey = platform.toLowerCase();
+  const possibleNames = platformKey in platformMappings
+    ? platformMappings[platformKey as keyof typeof platformMappings]
+    : [platform.toLowerCase()];
+
   for (const item of tree.children) {
     if (item.type === 'folder') {
       const itemName = typeof item.name === 'string' ? item.name.toLowerCase() : '';
-      
+
       if (possibleNames.some(name => itemName === name || itemName.includes(name))) {
         return item.children;
       }
     }
   }
-  
+
   return [];
 }
 
@@ -171,9 +170,9 @@ function findPlatformContent(tree: PageTree.Root, platform: string): PageTree.No
 function GeneralDocsSidebarContent({ pageTree }: { pageTree?: PageTree.Root }) {
   const pathname = usePathname();
   const currentPlatform = getCurrentPlatform(pathname);
-  
+
   if (!currentPlatform || !pageTree) return null;
-  
+
   // For platform-specific docs, show the platform folder's content
   const platformContent = findPlatformContent(pageTree, currentPlatform);
   if (platformContent.length > 0) {
@@ -185,7 +184,7 @@ function GeneralDocsSidebarContent({ pageTree }: { pageTree?: PageTree.Root }) {
       </>
     );
   }
-  
+
   // For general docs, show root level content
   return (
     <>
@@ -198,7 +197,7 @@ function GeneralDocsSidebarContent({ pageTree }: { pageTree?: PageTree.Root }) {
 
 /**
  * CLIENT-SIDE HEADER WRAPPER
- * 
+ *
  * This component wraps the PlatformAwareHeader and dynamically provides
  * sidebar content based on the current route. It's a client component
  * that can use hooks to determine the current section and provide
@@ -215,34 +214,34 @@ export function DocsHeaderWrapper({ showSearch = true, pageTree, className, apiP
         return <SdkSidebarContent />;
       }
     }
-    
+
     if (isInComponentsSection(pathname)) {
       const currentPlatform = getCurrentPlatform(pathname);
       if (currentPlatform && ['next', 'react'].includes(currentPlatform)) {
         return <ComponentsSidebarContent />;
       }
     }
-    
+
     if (isInApiSection(pathname)) {
       return <ApiSidebarContent pages={apiPages} />;
     }
-    
+
     // For general documentation pages
-    if (pathname.startsWith('/docs') && 
-        !isInComponentsSection(pathname) && 
-        !isInSdkSection(pathname) && 
+    if (pathname.startsWith('/docs') &&
+        !isInComponentsSection(pathname) &&
+        !isInSdkSection(pathname) &&
         !isInApiSection(pathname)) {
       return <GeneralDocsSidebarContent pageTree={pageTree} />;
     }
-    
+
     return null;
   }, [pathname, pageTree, apiPages]);
 
   return (
-    <PlatformAwareHeader 
+    <PlatformAwareHeader
       showSearch={showSearch}
       sidebarContent={sidebarContent}
       className={className}
     />
   );
-} 
+}

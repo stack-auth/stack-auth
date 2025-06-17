@@ -6,81 +6,81 @@ import { useAPIPageContext } from './api-page-wrapper';
 import { Button } from './button';
 
 // Types for OpenAPI specification
-interface OpenAPISpec {
-  openapi: string;
+type OpenAPISpec = {
+  openapi: string,
   info: {
-    title: string;
-    version: string;
-    description?: string;
-  };
+    title: string,
+    version: string,
+    description?: string,
+  },
   servers: Array<{
-    url: string;
-    description?: string;
-  }>;
-  paths: Record<string, Record<string, OpenAPIOperation>>;
-  webhooks?: Record<string, Record<string, OpenAPIOperation>>;
+    url: string,
+    description?: string,
+  }>,
+  paths: Record<string, Record<string, OpenAPIOperation>>,
+  webhooks?: Record<string, Record<string, OpenAPIOperation>>,
   components?: {
-    schemas?: Record<string, any>;
-    securitySchemes?: Record<string, any>;
-  };
+    schemas?: Record<string, any>,
+    securitySchemes?: Record<string, any>,
+  },
 }
 
-interface OpenAPIOperation {
-  summary?: string;
-  description?: string;
-  operationId?: string;
-  tags?: string[];
-  parameters?: OpenAPIParameter[];
+type OpenAPIOperation = {
+  summary?: string,
+  description?: string,
+  operationId?: string,
+  tags?: string[],
+  parameters?: OpenAPIParameter[],
   requestBody?: {
-    required?: boolean;
+    required?: boolean,
     content: Record<string, {
-      schema: any;
-    }>;
-  };
+      schema: any,
+    }>,
+  },
   responses: Record<string, {
-    description: string;
+    description: string,
     content?: Record<string, {
-      schema: any;
-    }>;
-  }>;
-  security?: Array<Record<string, string[]>>;
+      schema: any,
+    }>,
+  }>,
+  security?: Array<Record<string, string[]>>,
 }
 
-interface OpenAPIParameter {
-  name: string;
-  in: 'query' | 'path' | 'header' | 'cookie';
-  required?: boolean;
-  description?: string;
-  schema: any;
-  example?: any;
+type OpenAPIParameter = {
+  name: string,
+  in: 'query' | 'path' | 'header' | 'cookie',
+  required?: boolean,
+  description?: string,
+  schema: any,
+  example?: any,
 }
 
-interface EnhancedAPIPageProps {
-  document: string;
+type EnhancedAPIPageProps = {
+  document: string,
   operations: Array<{
-    path: string;
-    method: string;
-  }>;
+    path: string,
+    method: string,
+  }>,
   webhooks?: Array<{
-    name: string;
-    method: string;
-  }>;
-  hasHead?: boolean;
+    name: string,
+    method: string,
+  }>,
+  hasHead?: boolean,
 }
 
-interface RequestState {
-  parameters: Record<string, any>;
-  headers: Record<string, string>;
-  body: string;
+type RequestState = {
+  parameters: Record<string, any>,
+  headers: Record<string, string>,
+  body: string,
   response: {
-    status?: number;
-    data?: any;
-    headers?: Record<string, string>;
-    loading: boolean;
-    error?: string;
-    timestamp?: number;
-    duration?: number;
-  };
+    status?: number,
+    data?: any,
+    headers?: Record<string, string>,
+    loading: boolean,
+    error?: string,
+    timestamp?: number,
+    duration?: number,
+  },
 }
 
 const HTTP_METHOD_COLORS = {
@@ -92,11 +92,11 @@ const HTTP_METHOD_COLORS = {
 } as const;
 
 // Custom Tooltip Component
-function Tooltip({ children, content }: { children: React.ReactNode; content: string }) {
+function Tooltip({ children, content }: { children: React.ReactNode, content: string }) {
   const [isVisible, setIsVisible] = useState(false);
 
   return (
-    <div 
+    <div
       className="relative inline-block"
       onMouseEnter={() => setIsVisible(true)}
       onMouseLeave={() => setIsVisible(false)}
@@ -138,17 +138,17 @@ export function EnhancedAPIPage({ document, operations, webhooks = [], hasHead =
     if (operations.length > 0) {
       const firstOperation = operations[0];
       const operation = spec?.paths[firstOperation.path]?.[firstOperation.method.toLowerCase()];
-      
+
       if (operation?.requestBody) {
         const content = operation.requestBody.content;
         const jsonContent = content['application/json'];
-        
-        if (jsonContent?.schema) {
+
+        if (jsonContent.schema) {
           console.log('OpenAPI Schema for', firstOperation.path, ':', jsonContent.schema);
           const exampleBody = generateExampleFromSchema(jsonContent.schema, spec || undefined);
           console.log('Generated example body:', exampleBody);
-          setRequestState(prev => ({ 
-            ...prev, 
+          setRequestState(prev => ({
+            ...prev,
             body: JSON.stringify(exampleBody, null, 2)
           }));
         }
@@ -159,9 +159,9 @@ export function EnhancedAPIPage({ document, operations, webhooks = [], hasHead =
   // Helper function to generate example data from OpenAPI schema
   const generateExampleFromSchema = (schema: any, spec?: OpenAPISpec): any => {
     console.log('Processing schema:', JSON.stringify(schema, null, 2));
-    
+
     if (!schema) return {};
-    
+
     // Handle $ref references first
     if (schema.$ref) {
       console.log('Found $ref:', schema.$ref);
@@ -174,7 +174,7 @@ export function EnhancedAPIPage({ document, operations, webhooks = [], hasHead =
         return generateExampleFromSchema(refSchema, spec);
       }
     }
-    
+
     // Handle allOf (merge all schemas)
     if (schema.allOf) {
       console.log('Found allOf with', schema.allOf.length, 'schemas');
@@ -185,7 +185,7 @@ export function EnhancedAPIPage({ document, operations, webhooks = [], hasHead =
       }
       return merged;
     }
-    
+
     // Handle oneOf/anyOf (use first schema)
     if (schema.oneOf || schema.anyOf) {
       const schemas = schema.oneOf || schema.anyOf;
@@ -194,15 +194,15 @@ export function EnhancedAPIPage({ document, operations, webhooks = [], hasHead =
         return generateExampleFromSchema(schemas[0], spec);
       }
     }
-    
+
     // Handle object type - prioritize this over top-level examples
     if (schema.type === 'object' && schema.properties) {
       console.log('Processing object with properties:', Object.keys(schema.properties));
       const example: any = {};
-      
+
       Object.entries(schema.properties).forEach(([key, prop]: [string, any]) => {
         console.log(`Processing property ${key}:`, prop);
-        
+
         if (prop.example !== undefined) {
           example[key] = prop.example;
         } else {
@@ -210,17 +210,17 @@ export function EnhancedAPIPage({ document, operations, webhooks = [], hasHead =
           example[key] = key;
         }
       });
-      
+
       console.log('Generated object example:', example);
       return example;
     }
-    
+
     // Handle direct examples only for non-object types
     if (schema.example !== undefined) {
       console.log('Found direct example:', schema.example);
       return schema.example;
     }
-    
+
     // Handle array type
     if (schema.type === 'array') {
       if (schema.items) {
@@ -229,7 +229,7 @@ export function EnhancedAPIPage({ document, operations, webhooks = [], hasHead =
       }
       return [];
     }
-    
+
     // For primitive types, return empty string
     return "";
   };
@@ -254,7 +254,9 @@ export function EnhancedAPIPage({ document, operations, webhooks = [], hasHead =
       }
     };
 
-    loadSpec();
+    loadSpec().catch(err => {
+      setError(err instanceof Error ? err.message : 'Failed to load API specification');
+    });
   }, [document]);
 
   const copyToClipboard = useCallback(async (text: string) => {
@@ -273,9 +275,9 @@ export function EnhancedAPIPage({ document, operations, webhooks = [], hasHead =
     }));
 
     try {
-      const baseUrl = spec?.servers?.[0]?.url || '';
+      const baseUrl = spec?.servers[0]?.url || '';
       let url = baseUrl + path;
-      
+
       // Replace path parameters
       const pathParams = operation.parameters?.filter(p => p.in === 'path') || [];
       pathParams.forEach(param => {
@@ -334,10 +336,10 @@ export function EnhancedAPIPage({ document, operations, webhooks = [], hasHead =
       }));
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Request failed';
-      
+
       // Report network errors as well
       reportError(0, { message: errorMessage });
-      
+
       setRequestState(prev => ({
         ...prev,
         response: {
@@ -393,7 +395,7 @@ export function EnhancedAPIPage({ document, operations, webhooks = [], hasHead =
           </div>
           <div className="bg-fd-card border border-fd-border rounded-xl px-6 py-4 shadow-sm">
             <code className="text-fd-foreground font-mono text-sm font-medium">
-              {spec.servers?.[0]?.url || 'https://api.stack-auth.com/api/v1'}
+              {spec.servers[0]?.url || 'https://api.stack-auth.com/api/v1'}
             </code>
           </div>
         </div>
@@ -401,9 +403,7 @@ export function EnhancedAPIPage({ document, operations, webhooks = [], hasHead =
 
       {/* Operations */}
       {operations.map(({ path, method }) => {
-        const operation = spec.paths[path]?.[method.toLowerCase()];
-        if (!operation) return null;
-
+        const operation = spec.paths[path][method.toLowerCase()];
         return (
           <ModernAPIPlayground
             key={`${method}-${path}`}
@@ -413,8 +413,14 @@ export function EnhancedAPIPage({ document, operations, webhooks = [], hasHead =
             spec={spec}
             requestState={requestState}
             setRequestState={setRequestState}
-            onExecute={() => executeRequest(operation, path, method)}
-            onCopy={copyToClipboard}
+            onExecute={() => {
+              executeRequest(operation, path, method)
+                .catch(error => console.error('Failed to execute request:', error));
+            }}
+            onCopy={(text: string) => {
+              copyToClipboard(text)
+                .catch(error => console.error('Failed to copy to clipboard:', error));
+            }}
             isHeadersPanelOpen={isHeadersPanelOpen}
           />
         );
@@ -435,30 +441,30 @@ function ModernAPIPlayground({
   onCopy,
   isHeadersPanelOpen,
 }: {
-  operation: OpenAPIOperation;
-  path: string;
-  method: string;
-  spec: OpenAPISpec;
-  requestState: RequestState;
-  setRequestState: React.Dispatch<React.SetStateAction<RequestState>>;
-  onExecute: () => void;
-  onCopy: (text: string) => void;
-  isHeadersPanelOpen: boolean;
+  operation: OpenAPIOperation,
+  path: string,
+  method: string,
+  spec: OpenAPISpec,
+  requestState: RequestState,
+  setRequestState: React.Dispatch<React.SetStateAction<RequestState>>,
+  onExecute: () => void,
+  onCopy: (text: string) => void,
+  isHeadersPanelOpen: boolean,
 }) {
   const [copied, setCopied] = useState(false);
   const [activeCodeTab, setActiveCodeTab] = useState<'curl' | 'javascript' | 'python'>('curl');
-  const methodColorClass = HTTP_METHOD_COLORS[method as keyof typeof HTTP_METHOD_COLORS] || HTTP_METHOD_COLORS.GET;
+  const methodColorClass = HTTP_METHOD_COLORS[method.toUpperCase() as keyof typeof HTTP_METHOD_COLORS];
 
   const handleCopy = async (text: string) => {
-    await onCopy(text);
+    onCopy(text);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
 
   const generateCurlCommand = useCallback(() => {
-    const baseUrl = spec.servers?.[0]?.url || '';
+    const baseUrl = spec.servers[0]?.url || '';
     let url = baseUrl + path;
-    
+
     // Replace path parameters
     const pathParams = operation.parameters?.filter(p => p.in === 'path') || [];
     pathParams.forEach(param => {
@@ -480,7 +486,7 @@ function ModernAPIPlayground({
     }
 
     let curlCommand = `curl -X ${method} "${url}"`;
-    
+
     // Add headers (only non-empty ones)
     Object.entries(requestState.headers).forEach(([key, value]) => {
       if (key && value) {
@@ -497,9 +503,9 @@ function ModernAPIPlayground({
   }, [operation, path, method, spec, requestState]);
 
   const generateJavaScriptCode = useCallback(() => {
-    const baseUrl = spec.servers?.[0]?.url || '';
+    const baseUrl = spec.servers[0]?.url || '';
     let url = baseUrl + path;
-    
+
     // Replace path parameters
     const pathParams = operation.parameters?.filter(p => p.in === 'path') || [];
     pathParams.forEach(param => {
@@ -525,7 +531,7 @@ function ModernAPIPlayground({
     );
 
     let jsCode = `const response = await fetch("${url}", {\n  method: "${method}"`;
-    
+
     if (Object.keys(headers).length > 0) {
       jsCode += `,\n  headers: ${JSON.stringify(headers, null, 4).replace(/^/gm, '  ')}`;
     }
@@ -540,9 +546,9 @@ function ModernAPIPlayground({
   }, [operation, path, method, spec, requestState]);
 
   const generatePythonCode = useCallback(() => {
-    const baseUrl = spec.servers?.[0]?.url || '';
+    const baseUrl = spec.servers[0]?.url || '';
     let url = baseUrl + path;
-    
+
     // Replace path parameters
     const pathParams = operation.parameters?.filter(p => p.in === 'path') || [];
     pathParams.forEach(param => {
@@ -569,7 +575,7 @@ function ModernAPIPlayground({
 
     let pythonCode = `import requests\nimport json\n\n`;
     pythonCode += `url = "${url}"\n`;
-    
+
     if (Object.keys(headers).length > 0) {
       pythonCode += `headers = ${JSON.stringify(headers, null, 2).replace(/"/g, "'")}\n`;
     }
@@ -588,14 +594,18 @@ function ModernAPIPlayground({
 
   const getCodeExample = () => {
     switch (activeCodeTab) {
-      case 'curl':
+      case 'curl': {
         return generateCurlCommand();
-      case 'javascript':
+      }
+      case 'javascript': {
         return generateJavaScriptCode();
-      case 'python':
+      }
+      case 'python': {
         return generatePythonCode();
-      default:
+      }
+      default: {
         return generateCurlCommand();
+      }
     }
   };
 
@@ -616,14 +626,14 @@ function ModernAPIPlayground({
                 {operation.summary || 'API Endpoint'}
               </h1>
             </div>
-            
+
             {/* Description */}
             {operation.description && (
               <p className="text-fd-muted-foreground mb-4 text-base leading-relaxed">
                 {operation.description}
               </p>
             )}
-            
+
             {/* Endpoint Path */}
             <div className="flex items-center gap-2">
               <span className="text-sm text-fd-muted-foreground font-medium">ENDPOINT</span>
@@ -632,7 +642,7 @@ function ModernAPIPlayground({
               </code>
             </div>
           </div>
-          
+
           {/* Try It Button */}
           <Button
             onClick={onExecute}
@@ -666,7 +676,7 @@ function ModernAPIPlayground({
               <h3 className="font-semibold text-fd-foreground">Request</h3>
             </div>
           </div>
-          
+
           <div className="p-6 space-y-6">
             {/* Parameters */}
             {operation.parameters && operation.parameters.length > 0 && (
@@ -704,7 +714,12 @@ function ModernAPIPlayground({
               <Button
                 variant="outline"
                 size="sm"
-                onClick={() => handleCopy(getCodeExample())}
+                onClick={() => {
+                  handleCopy(getCodeExample())
+                    .catch(error => {
+                      console.error('Failed to copy code example', error);
+                    });
+                }}
               >
                 {copied ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
               </Button>
@@ -750,12 +765,12 @@ function ParametersSection({
   values,
   onChange,
 }: {
-  parameters: OpenAPIParameter[];
-  values: Record<string, any>;
-  onChange: (values: Record<string, any>) => void;
+  parameters: OpenAPIParameter[],
+  values: Record<string, any>,
+  onChange: (values: Record<string, any>) => void,
 }) {
   const groupedParams = parameters.reduce((acc, param) => {
-    if (!acc[param.in]) acc[param.in] = [];
+    if (!(param.in in acc)) acc[param.in] = [];
     acc[param.in].push(param);
     return acc;
   }, {} as Record<string, OpenAPIParameter[]>);
@@ -807,9 +822,9 @@ function RequestBodySection({
   value,
   onChange,
 }: {
-  requestBody: OpenAPIOperation['requestBody'];
-  value: string;
-  onChange: (value: string) => void;
+  requestBody: OpenAPIOperation['requestBody'],
+  value: string,
+  onChange: (value: string) => void,
 }) {
   if (!requestBody) return null;
 
@@ -888,17 +903,17 @@ function ResponsePanel({ response }: { response: RequestState['response'] }) {
             <Zap className="w-6 h-6 text-fd-muted-foreground" />
           </div>
           <p className="text-fd-muted-foreground text-center text-sm">
-            Click "Try it out" to see the API response
+            Click &quot;Try it out&quot; to see the API response
           </p>
         </div>
       </div>
     );
   }
 
-  const statusColor = response.status < 300 
-    ? 'from-green-500 to-green-600' 
-    : response.status < 400 
-      ? 'from-yellow-500 to-yellow-600' 
+  const statusColor = response.status < 300
+    ? 'from-green-500 to-green-600'
+    : response.status < 400
+      ? 'from-yellow-500 to-yellow-600'
       : 'from-red-500 to-red-600';
 
   return (
@@ -949,4 +964,4 @@ function ResponsePanel({ response }: { response: RequestState['response'] }) {
       </div>
     </div>
   );
-} 
+}

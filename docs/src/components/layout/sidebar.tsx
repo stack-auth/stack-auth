@@ -36,34 +36,34 @@ import {
 } from '../ui/collapsible';
 import { ScrollArea, ScrollViewport } from '../ui/scroll-area';
 
-export interface SidebarProps extends ComponentProps<'aside'> {
+export type SidebarProps = {
   /**
    * Open folders by default if their level is lower or equal to a specific level
    * (Starting from 1)
    *
    * @defaultValue 0
    */
-  defaultOpenLevel?: number;
+  defaultOpenLevel?: number,
 
   /**
    * Prefetch links
    *
    * @defaultValue true
    */
-  prefetch?: boolean;
+  prefetch?: boolean,
 
   /**
    * Support collapsing the sidebar on desktop mode
    *
    * @defaultValue true
    */
-  collapsible?: boolean;
-}
+  collapsible?: boolean,
+} & ComponentProps<'aside'>
 
-interface InternalContext {
-  defaultOpenLevel: number;
-  prefetch: boolean;
-  level: number;
+type InternalContext = {
+  defaultOpenLevel: number,
+  prefetch: boolean,
+  level: number,
 }
 
 const itemVariants = cva(
@@ -81,8 +81,8 @@ const itemVariants = cva(
 
 const Context = createContext<InternalContext | null>(null);
 const FolderContext = createContext<{
-  open: boolean;
-  setOpen: React.Dispatch<React.SetStateAction<boolean>>;
+  open: boolean,
+  setOpen: React.Dispatch<React.SetStateAction<boolean>>,
 } | null>(null);
 
 export function Sidebar({
@@ -271,7 +271,7 @@ export function SidebarItem({
   icon,
   ...props
 }: LinkProps & {
-  icon?: ReactNode;
+  icon?: ReactNode,
 }) {
   const pathname = usePathname();
   const active =
@@ -300,7 +300,7 @@ export function SidebarFolder({
   defaultOpen = false,
   ...props
 }: ComponentProps<'div'> & {
-  defaultOpen?: boolean;
+  defaultOpen?: boolean,
 }) {
   const [open, setOpen] = useState(defaultOpen);
 
@@ -329,9 +329,9 @@ export function SidebarFolderTrigger({
   return (
     <CollapsibleTrigger
       className={cn(
-        itemVariants({ active: false }), 
+        itemVariants({ active: false }),
         'w-full group',
-        open && 'bg-fd-accent/30', 
+        open && 'bg-fd-accent/30',
         className
       )}
       {...props}
@@ -366,7 +366,7 @@ export function SidebarFolderLink(props: LinkProps) {
       {...props}
       data-active={active}
       className={cn(
-        itemVariants({ active }), 
+        itemVariants({ active }),
         'w-full group',
         open && !active && 'bg-fd-accent/30',
         props.className
@@ -405,8 +405,8 @@ export function SidebarFolderContent(props: CollapsibleContentProps) {
   const ctx = useInternalContext();
 
   return (
-    <CollapsibleContent 
-      {...props} 
+    <CollapsibleContent
+      {...props}
       className={cn(
         'relative overflow-hidden transition-all duration-200',
         props.className
@@ -468,17 +468,17 @@ function useInternalContext() {
   return ctx;
 }
 
-export interface SidebarComponents {
-  Item: FC<{ item: PageTree.Item }>;
-  Folder: FC<{ item: PageTree.Folder; level: number; children: ReactNode }>;
-  Separator: FC<{ item: PageTree.Separator }>;
+export type SidebarComponents = {
+  Item: FC<{ item: PageTree.Item }>,
+  Folder: FC<{ item: PageTree.Folder, level: number, children: ReactNode }>,
+  Separator: FC<{ item: PageTree.Separator }>,
 }
 
 /**
  * Render sidebar items from page tree
  */
 export function SidebarPageTree(props: {
-  components?: Partial<SidebarComponents>;
+  components?: Partial<SidebarComponents>,
 }) {
   const { root } = useTreeContext();
 
@@ -540,7 +540,7 @@ function PageTreeFolder({
   item,
   ...props
 }: HTMLAttributes<HTMLElement> & {
-  item: PageTree.Folder;
+  item: PageTree.Folder,
 }) {
   const { defaultOpenLevel, level } = useInternalContext();
   const path = useTreePath();
@@ -575,7 +575,7 @@ function getOffset(level: number) {
   return `calc(var(--spacing) * ${level > 1 ? (level - 1) * 3 + 3 : 2})`;
 }
 
-function Border({ level, active }: { level: number; active?: boolean }) {
+function Border({ level, active }: { level: number, active?: boolean }) {
   if (level <= 1) return null;
 
   return (

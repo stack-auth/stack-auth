@@ -3,21 +3,21 @@
 import { type ReactNode } from 'react';
 import { cn } from '../../lib/cn';
 
-export interface CardGroupProps {
+export type CardGroupProps = {
   /**
    * Card components to display in the grid
    */
-  children: ReactNode;
-  
+  children: ReactNode,
+
   /**
    * Additional CSS classes to apply to the card group
    */
-  className?: string;
-  
+  className?: string,
+
   /**
    * Number of columns on larger screens (default: 2)
    */
-  cols?: 1 | 2 | 3 | 4;
+  cols?: 1 | 2 | 3 | 4,
 }
 
 export function CardGroup({
@@ -33,7 +33,7 @@ export function CardGroup({
   }[cols];
 
   return (
-    <div 
+    <div
       className={cn(
         'grid grid-cols-1 gap-4 mb-8',
         columns,
@@ -43,4 +43,4 @@ export function CardGroup({
       {children}
     </div>
   );
-} 
+}

@@ -3,40 +3,40 @@ import type { ReactNode } from 'react';
 import { useState } from 'react';
 import { cn } from '../../lib/cn';
 
-interface ParamFieldProps {
-  path: string;
-  type: string;
-  required?: boolean;
-  children: ReactNode;
-  className?: string;
-  expandable?: boolean;
-  expandableContent?: ReactNode;
-  expandTitle?: ReactNode;
+type ParamFieldProps = {
+  path: string,
+  type: string,
+  required?: boolean,
+  children: ReactNode,
+  className?: string,
+  expandable?: boolean,
+  expandableContent?: ReactNode,
+  expandTitle?: ReactNode,
   properties?: Array<{
-    path: string;
-    type: string;
-    required?: boolean;
-    description: string;
-  }>;
+    path: string,
+    type: string,
+    required?: boolean,
+    description: string,
+  }>,
 }
 
-interface AccordionProps {
-  title: ReactNode;
-  children: ReactNode;
-  className?: string;
+type AccordionProps = {
+  title: ReactNode,
+  children: ReactNode,
+  className?: string,
 }
 
-export function ParamField({ 
-    path, 
-    type, 
-    required = false, 
-    children, 
-    className,
-    expandable = false,
-    expandableContent,
-    expandTitle = <ShowProperties />,
-    properties
-  }: ParamFieldProps) {
+export function ParamField({
+  path,
+  type,
+  required = false,
+  children,
+  className,
+  expandable = false,
+  expandableContent,
+  expandTitle = <ShowProperties />,
+  properties
+}: ParamFieldProps) {
     console.log('ParamField props:', { path, expandable, hasExpandableContent: !!expandableContent, hasProperties: !!properties });
 
     return (
@@ -68,10 +68,10 @@ export function ParamField({
           {properties && properties.length > 0 && (
             <Accordion title={expandTitle} className="mt-3">
               {properties.map((prop) => (
-                <ParamField 
+                <ParamField
                   key={prop.path}
-                  path={prop.path} 
-                  type={prop.type} 
+                  path={prop.path}
+                  type={prop.type}
                   required={prop.required}
                 >
                   {prop.description}
@@ -112,4 +112,4 @@ export function Accordion({ title, children, className }: AccordionProps) {
 // Helper component for show properties text
 export function ShowProperties() {
   return <span className="text-xs">Show properties</span>;
-} 
+}

@@ -19,11 +19,11 @@ const mockProject = {
   },
 };
 
-interface SignInDemoProps {
-  fullPage: boolean;
-  automaticRedirect: boolean;
-  firstTab: 'magic-link' | 'password';
-  showExtraInfo: boolean;
+type SignInDemoProps = {
+  fullPage: boolean,
+  automaticRedirect: boolean,
+  firstTab: 'magic-link' | 'password',
+  showExtraInfo: boolean,
 }
 
 export function SignInDemo() {
@@ -72,7 +72,7 @@ export function MySignInPage() {
         {/* Controls Panel */}
         <div className="space-y-6">
           <h3 className="text-lg font-semibold">Component Options</h3>
-          
+
           {/* Full Page Toggle */}
           <div className="space-y-2">
             <label className="flex items-center space-x-2">
@@ -150,7 +150,7 @@ export function MySignInPage() {
         <div className="space-y-4">
           <h3 className="text-lg font-semibold">Live Preview</h3>
           <StackContainer color="amber" size={props.fullPage ? "full" : "large"}>
-            <SignIn 
+            <SignIn
               fullPage={props.fullPage}
               automaticRedirect={props.automaticRedirect}
               firstTab={props.firstTab}
@@ -162,7 +162,7 @@ export function MySignInPage() {
       </div>
 
       {/* Code Example */}
-      <DynamicCodeblock 
+      <DynamicCodeblock
         code={generateCodeExample()}
         title="Code Example"
       />
@@ -182,8 +182,8 @@ export function SignInStackAuth() {
 export function SignInPasswordFirstTab() {
   return (
     <StackContainer color="green">
-      <SignIn 
-        firstTab="password" 
+      <SignIn
+        firstTab="password"
         mockProject={mockProject}
       />
     </StackContainer>
@@ -193,7 +193,7 @@ export function SignInPasswordFirstTab() {
 export function SignInExtraInfo() {
   return (
     <StackContainer color="blue">
-      <SignIn 
+      <SignIn
         extraInfo={<>By signing in, you agree to our <a href="#" className="text-fd-primary hover:underline">Terms of Service</a></>}
         mockProject={mockProject}
       />

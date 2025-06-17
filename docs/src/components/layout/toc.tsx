@@ -12,18 +12,18 @@ import {
 import { cn } from '../../lib/cn';
 import { TocThumb } from './toc-thumb';
 
-export interface TOCProps {
+export type TOCProps = {
   /**
    * Custom content in TOC container, before the main TOC
    */
-  header?: ReactNode;
+  header?: ReactNode,
 
   /**
    * Custom content in TOC container, after the main TOC
    */
-  footer?: ReactNode;
+  footer?: ReactNode,
 
-  children: ReactNode;
+  children: ReactNode,
 }
 
 export function Toc(props: HTMLAttributes<HTMLDivElement>) {

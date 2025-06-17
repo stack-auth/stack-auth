@@ -20,24 +20,24 @@ export const layoutVariables = {
   '--fd-layout-offset': 'max(calc(50vw - var(--fd-layout-width) / 2), 0px)',
 };
 
-export interface SidebarOptions extends SidebarProps {
-  components?: Partial<SidebarComponents>;
+export type SidebarOptions = {
+  components?: Partial<SidebarComponents>,
 
   /**
    * Root Toggle options
    */
-  tabs?: Option[] | GetSidebarTabsOptions | false;
+  tabs?: Option[] | GetSidebarTabsOptions | false,
 
-  banner?: ReactNode;
-  footer?: ReactNode;
-}
+  banner?: ReactNode,
+  footer?: ReactNode,
+} & SidebarProps
 
 export function SidebarLinkItem({
   item,
   ...props
 }: {
-  item: LinkItemType;
-  className?: string;
+  item: LinkItemType,
+  className?: string,
 }) {
   if (item.type === 'menu')
     return (

@@ -3,16 +3,16 @@ import type { TOCItemType } from 'fumadocs-core/server';
 import * as Primitive from 'fumadocs-core/toc';
 import { useEffect, useRef, useState } from 'react';
 import { cn } from '../../lib/cn';
-import { TocThumb } from './toc-thumb';
 import { TocItemsEmpty } from './toc';
+import { TocThumb } from './toc-thumb';
 
 export default function ClerkTOCItems({ items }: { items: TOCItemType[] }) {
   const containerRef = useRef<HTMLDivElement>(null);
 
   const [svg, setSvg] = useState<{
-    path: string;
-    width: number;
-    height: number;
+    path: string,
+    width: number,
+    height: number,
   }>();
 
   useEffect(() => {
@@ -114,9 +114,9 @@ function TOCItem({
   upper = item.depth,
   lower = item.depth,
 }: {
-  item: TOCItemType;
-  upper?: number;
-  lower?: number;
+  item: TOCItemType,
+  upper?: number,
+  lower?: number,
 }) {
   const offset = getLineOffset(item.depth),
     upperOffset = getLineOffset(upper),

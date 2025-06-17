@@ -8,22 +8,22 @@ import { cn } from '../../lib/cn';
 import { isActive } from '../../lib/is-active';
 import { Popover, PopoverContent, PopoverTrigger } from '../ui/popover';
 
-export interface Option {
+export type Option = {
   /**
    * Redirect URL of the folder, usually the index page
    */
-  url: string;
+  url: string,
 
-  icon?: ReactNode;
-  title: ReactNode;
-  description?: ReactNode;
+  icon?: ReactNode,
+  title: ReactNode,
+  description?: ReactNode,
 
   /**
    * Detect from a list of urls
    */
-  urls?: Set<string>;
+  urls?: Set<string>,
 
-  props?: ComponentProps<'a'>;
+  props?: ComponentProps<'a'>,
 }
 
 export function RootToggle({
@@ -31,8 +31,8 @@ export function RootToggle({
   placeholder,
   ...props
 }: {
-  placeholder?: ReactNode;
-  options: Option[];
+  placeholder?: ReactNode,
+  options: Option[],
 } & ComponentProps<'button'>) {
   const [open, setOpen] = useState(false);
   const { closeOnRedirect } = useSidebar();
@@ -60,8 +60,8 @@ export function RootToggle({
           Platform
         </span>
       </div>
-      
-    <Popover open={open} onOpenChange={setOpen}>
+
+      <Popover open={open} onOpenChange={setOpen}>
         <PopoverTrigger
           {...props}
           className={cn(
@@ -78,27 +78,27 @@ export function RootToggle({
           </div>
           <ChevronsUpDown className="size-4 text-fd-muted-foreground flex-shrink-0" />
         </PopoverTrigger>
-        
+
         <PopoverContent className="w-(--radix-popover-trigger-width) overflow-hidden p-1">
-        {options.map((item) => (
-          <Link
-            key={item.url}
-            href={item.url}
-            onClick={onClick}
-            {...item.props}
-            className={cn(
+          {options.map((item) => (
+            <Link
+              key={item.url}
+              href={item.url}
+              onClick={onClick}
+              {...item.props}
+              className={cn(
                 'flex w-full flex-row items-center gap-2 px-3 py-2.5 rounded-md transition-colors',
               selected === item
-                  ? 'bg-fd-primary/10 text-fd-primary'
-                  : 'hover:bg-fd-muted/50',
+                ? 'bg-fd-primary/10 text-fd-primary'
+                : 'hover:bg-fd-muted/50',
               item.props?.className,
             )}
-          >
-            <Item {...item} />
-          </Link>
-        ))}
-      </PopoverContent>
-    </Popover>
+            >
+              <Item {...item} />
+            </Link>
+          ))}
+        </PopoverContent>
+      </Popover>
     </div>
   );
 }

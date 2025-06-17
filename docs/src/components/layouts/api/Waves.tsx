@@ -99,53 +99,53 @@ class Noise {
   }
 }
 
-interface Point {
-  x: number;
-  y: number;
-  wave: { x: number; y: number };
-  cursor: { x: number; y: number; vx: number; vy: number };
+type Point = {
+  x: number,
+  y: number,
+  wave: { x: number, y: number },
+  cursor: { x: number, y: number, vx: number, vy: number },
 }
 
-interface Mouse {
-  x: number;
-  y: number;
-  lx: number;
-  ly: number;
-  sx: number;
-  sy: number;
-  v: number;
-  vs: number;
-  a: number;
-  set: boolean;
+type Mouse = {
+  x: number,
+  y: number,
+  lx: number,
+  ly: number,
+  sx: number,
+  sy: number,
+  v: number,
+  vs: number,
+  a: number,
+  set: boolean,
 }
 
-interface Config {
-  lineColor: string;
-  waveSpeedX: number;
-  waveSpeedY: number;
-  waveAmpX: number;
-  waveAmpY: number;
-  friction: number;
-  tension: number;
-  maxCursorMove: number;
-  xGap: number;
-  yGap: number;
+type Config = {
+  lineColor: string,
+  waveSpeedX: number,
+  waveSpeedY: number,
+  waveAmpX: number,
+  waveAmpY: number,
+  friction: number,
+  tension: number,
+  maxCursorMove: number,
+  xGap: number,
+  yGap: number,
 }
 
-interface WavesProps {
-  lineColor?: string;
-  backgroundColor?: string;
-  waveSpeedX?: number;
-  waveSpeedY?: number;
-  waveAmpX?: number;
-  waveAmpY?: number;
-  xGap?: number;
-  yGap?: number;
-  friction?: number;
-  tension?: number;
-  maxCursorMove?: number;
-  style?: CSSProperties;
-  className?: string;
+type WavesProps = {
+  lineColor?: string,
+  backgroundColor?: string,
+  waveSpeedX?: number,
+  waveSpeedY?: number,
+  waveAmpX?: number,
+  waveAmpY?: number,
+  xGap?: number,
+  yGap?: number,
+  friction?: number,
+  tension?: number,
+  maxCursorMove?: number,
+  style?: CSSProperties,
+  className?: string,
 }
 
 const Waves: React.FC<WavesProps> = ({
@@ -167,10 +167,10 @@ const Waves: React.FC<WavesProps> = ({
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const ctxRef = useRef<CanvasRenderingContext2D | null>(null);
   const boundingRef = useRef<{
-    width: number;
-    height: number;
-    left: number;
-    top: number;
+    width: number,
+    height: number,
+    left: number,
+    top: number,
   }>({
     width: 0,
     height: 0,
@@ -328,7 +328,7 @@ const Waves: React.FC<WavesProps> = ({
       });
     }
 
-    function moved(point: Point, withCursor = true): { x: number; y: number } {
+    function moved(point: Point, withCursor = true): { x: number, y: number } {
       const x = point.x + point.wave.x + (withCursor ? point.cursor.x : 0);
       const y = point.y + point.wave.y + (withCursor ? point.cursor.y : 0);
       return { x: Math.round(x * 10) / 10, y: Math.round(y * 10) / 10 };

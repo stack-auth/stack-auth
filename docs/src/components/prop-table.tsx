@@ -1,24 +1,24 @@
 import React from 'react';
 import { cn } from '../lib/cn';
 
-export interface PropDefinition {
-  name: string;
-  type: string;
-  description: string;
-  optional?: boolean;
-  default?: string;
-  nested?: PropDefinition[];
+export type PropDefinition = {
+  name: string,
+  type: string,
+  description: string,
+  optional?: boolean,
+  default?: string,
+  nested?: PropDefinition[],
 }
 
-export interface PropTableProps {
-  props: PropDefinition[];
-  className?: string;
+export type PropTableProps = {
+  props: PropDefinition[],
+  className?: string,
 }
 
 export function PropTable({ props, className }: PropTableProps) {
   const renderProp = (prop: PropDefinition, level: number = 0) => {
     const isNested = level > 0;
-    
+
     return (
       <React.Fragment key={`${prop.name}-${level}`}>
         <tr className={cn(
@@ -47,8 +47,8 @@ export function PropTable({ props, className }: PropTableProps) {
               {prop.optional && (
                 <span className={cn(
                   "text-xs px-1.5 py-0.5 rounded",
-                  isNested 
-                    ? "text-fd-muted-foreground/80 bg-fd-muted/60" 
+                  isNested
+                    ? "text-fd-muted-foreground/80 bg-fd-muted/60"
                     : "text-fd-muted-foreground bg-fd-muted"
                 )}>
                   optional
@@ -59,8 +59,8 @@ export function PropTable({ props, className }: PropTableProps) {
           <td className="py-3 px-4">
             <code className={cn(
               "text-sm px-2 py-1 rounded",
-              isNested 
-                ? "bg-fd-muted/40 text-fd-muted-foreground/90 text-xs" 
+              isNested
+                ? "bg-fd-muted/40 text-fd-muted-foreground/90 text-xs"
                 : "bg-fd-muted text-fd-accent-foreground"
             )}>
               {prop.type}
@@ -70,7 +70,7 @@ export function PropTable({ props, className }: PropTableProps) {
             {prop.default && (
               <code className={cn(
                 "px-2 py-1 rounded mr-2",
-                isNested 
+                isNested
                   ? "bg-fd-muted/40 text-fd-muted-foreground/90 text-xs"
                   : "bg-fd-muted text-fd-muted-foreground"
               )}>
@@ -118,4 +118,4 @@ export function PropTable({ props, className }: PropTableProps) {
       </table>
     </div>
   );
-} 
+}

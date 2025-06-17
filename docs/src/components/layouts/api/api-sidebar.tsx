@@ -9,30 +9,35 @@ import { ThemeToggle } from '../../layout/theme-toggle';
 import { ScrollArea, ScrollViewport } from '../../ui/scroll-area';
 
 // Types for the page data
-interface PageData {
-  url: string;
-  slugs: string[];
+type PageData = {
+  url: string,
+  slugs: string[],
   data: {
-    title?: string;
-    method?: string;
-  };
+    title?: string,
+    method?: string,
+  },
 }
 
 // HTTP Method Badge Component
 function HttpMethodBadge({ method }: { method: 'GET' | 'POST' | 'PATCH' | 'DELETE' | 'PUT' }) {
   const getBadgeStyles = (method: string) => {
     switch (method) {
-      case 'GET':
+      case 'GET': {
         return 'bg-green-100 text-green-800 border-green-200 dark:bg-green-900/30 dark:text-green-300 dark:border-green-700';
-      case 'POST':
+      }
+      case 'POST': {
         return 'bg-blue-100 text-blue-800 border-blue-200 dark:bg-blue-900/30 dark:text-blue-300 dark:border-blue-700';
+      }
       case 'PATCH':
-      case 'PUT':
+      case 'PUT': {
         return 'bg-orange-100 text-orange-800 border-orange-200 dark:bg-orange-900/30 dark:text-orange-300 dark:border-orange-700';
-      case 'DELETE':
+      }
+      case 'DELETE': {
         return 'bg-red-100 text-red-800 border-red-200 dark:bg-red-900/30 dark:text-red-300 dark:border-red-700';
-      default:
+      }
+      default: {
         return 'bg-gray-100 text-gray-800 border-gray-200 dark:bg-gray-900/30 dark:text-gray-300 dark:border-gray-700';
+      }
     }
   };
 
@@ -44,24 +49,24 @@ function HttpMethodBadge({ method }: { method: 'GET' | 'POST' | 'PATCH' | 'DELET
 }
 
 // Custom Link Component for API sidebar
-function ApiSidebarLink({ 
-  href, 
-  children, 
-  method 
-}: { 
-  href: string; 
-  children: ReactNode;
-  method?: 'GET' | 'POST' | 'PATCH' | 'DELETE' | 'PUT';
+function ApiSidebarLink({
+  href,
+  children,
+  method
+}: {
+  href: string,
+  children: ReactNode,
+  method?: 'GET' | 'POST' | 'PATCH' | 'DELETE' | 'PUT',
 }) {
   const pathname = usePathname();
   const isActive = pathname === href;
-  
+
   return (
-    <Link 
+    <Link
       href={href}
       className={`flex items-center gap-2 px-2 py-1.5 rounded-md text-xs transition-colors ${
-        isActive 
-          ? 'bg-fd-primary/10 text-fd-primary font-medium' 
+        isActive
+          ? 'bg-fd-primary/10 text-fd-primary font-medium'
           : 'text-fd-muted-foreground hover:text-fd-foreground hover:bg-fd-muted/50'
       }`}
     >
@@ -83,17 +88,17 @@ function ApiSeparator({ children }: { children: ReactNode }) {
 }
 
 // Custom collapsible section component
-function CollapsibleSection({ 
-  title, 
-  children, 
-  defaultOpen = false 
-}: { 
-  title: string; 
-  children: ReactNode; 
-  defaultOpen?: boolean; 
+function CollapsibleSection({
+  title,
+  children,
+  defaultOpen = false
+}: {
+  title: string,
+  children: ReactNode,
+  defaultOpen?: boolean,
 }) {
   const [isOpen, setIsOpen] = useState(defaultOpen);
-  
+
   return (
     <div className="space-y-1">
       <button
@@ -136,7 +141,7 @@ function formatTitle(filename: string): string {
     .split('-')
     .map(word => word.charAt(0).toUpperCase() + word.slice(1))
     .join(' ');
-  
+
   return cleanName;
 }
 
@@ -152,11 +157,11 @@ function formatSectionTitle(sectionName: string): string {
 function getApiSectionTitle(sectionName: string): string {
   const titleMap: Record<string, string> = {
     'client': 'Client API',
-    'server': 'Server API', 
+    'server': 'Server API',
     'admin': 'Admin API',
     'webhooks': 'Webhooks'
   };
-  
+
   return titleMap[sectionName] || formatSectionTitle(sectionName);
 }
 
@@ -169,7 +174,7 @@ function getHttpMethod(page: PageData): 'GET' | 'POST' | 'PATCH' | 'DELETE' | 'P
       return method as 'GET' | 'POST' | 'PATCH' | 'DELETE' | 'PUT';
     }
   }
-  
+
   // Fallback to filename extraction
   return extractMethodFromFilename(page.slugs[page.slugs.length - 1]);
 }
@@ -178,20 +183,20 @@ function getHttpMethod(page: PageData): 'GET' | 'POST' | 'PATCH' | 'DELETE' | 'P
 export function ApiSidebarContent({ pages = [] }: { pages?: PageData[] }) {
   const organizedPages = useMemo(() => {
     const organized: Record<string, any> = {};
-    
+
     pages.forEach(page => {
       // Skip overview page, we handle it separately
       if (page.slugs[0] === 'overview') return;
-      
+
       const [section, ...rest] = page.slugs;
-      
+
       if (!organized[section]) {
         organized[section] = {
           title: getApiSectionTitle(section),
           groups: {}
         };
       }
-      
+
       if (rest.length === 1) {
         // This is a top-level page for the section (section/page)
         if (!organized[section].pages) organized[section].pages = [];
@@ -208,7 +213,7 @@ export function ApiSidebarContent({ pages = [] }: { pages?: PageData[] }) {
         organized[section].groups[groupName].pages.push(page);
       }
     });
-    
+
     return organized;
   }, [pages]);
 
@@ -216,40 +221,40 @@ export function ApiSidebarContent({ pages = [] }: { pages?: PageData[] }) {
     <div className="h-full flex flex-col">
       <ScrollArea className="flex-1">
         <ScrollViewport className="p-4 space-y-1">
-          <Link 
+          <Link
             href="/docs"
             className="flex items-center gap-2 px-2 py-1.5 mb-2 text-sm text-fd-muted-foreground hover:text-fd-foreground transition-colors"
           >
             <ArrowLeft className="h-3 w-3" />
             Back to docs
           </Link>
-          
+
           <ApiSidebarLink href="/api/overview">
             Overview
           </ApiSidebarLink>
-          
+
           {Object.entries(organizedPages).map(([sectionKey, section]) => (
             <div key={sectionKey} className="mb-4">
               <ApiSeparator>{section.title}</ApiSeparator>
-              
+
               {/* Section-level pages */}
               {section.pages && section.pages.map((page: PageData) => (
-                <ApiSidebarLink 
-                  key={page.url} 
+                <ApiSidebarLink
+                  key={page.url}
                   href={page.url}
                   method={getHttpMethod(page)}
                 >
                   {page.data.title || formatTitle(page.slugs[page.slugs.length - 1])}
                 </ApiSidebarLink>
               ))}
-              
+
               {/* Grouped pages */}
               {Object.entries(section.groups).map(([groupKey, group]: [string, any]) => (
                 <CollapsibleSection key={groupKey} title={group.title}>
                   {group.pages.map((page: PageData) => {
                     const method = getHttpMethod(page);
                     const title = page.data.title || formatTitle(page.slugs[page.slugs.length - 1]);
-                    
+
                     // Special handling for webhooks (EVENT badge instead of HTTP method)
                     if (sectionKey === 'webhooks') {
                       return (
@@ -263,10 +268,10 @@ export function ApiSidebarContent({ pages = [] }: { pages?: PageData[] }) {
                         </ApiSidebarLink>
                       );
                     }
-                    
+
                     return (
-                      <ApiSidebarLink 
-                        key={page.url} 
+                      <ApiSidebarLink
+                        key={page.url}
                         href={page.url}
                         method={method}
                       >
@@ -280,7 +285,7 @@ export function ApiSidebarContent({ pages = [] }: { pages?: PageData[] }) {
           ))}
         </ScrollViewport>
       </ScrollArea>
-      
+
       {/* Footer with theme toggle */}
       <div className="border-t border-fd-border p-4">
         <div className="flex items-center justify-between">
@@ -290,4 +295,4 @@ export function ApiSidebarContent({ pages = [] }: { pages?: PageData[] }) {
       </div>
     </div>
   );
-} 
+}

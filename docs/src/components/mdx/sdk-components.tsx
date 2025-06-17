@@ -4,20 +4,20 @@ import React, { useEffect, useRef, useState } from 'react';
 import { codeToHtml } from "shiki";
 
 // Custom ClickableCodeblock component that includes overlays inside the scrollable area
-function ClickableCodeblock({ 
-  code, 
-  language = 'typescript', 
-  clickableAreas 
-}: { 
-  code: string; 
-  language?: string; 
+function ClickableCodeblock({
+  code,
+  language = 'typescript',
+  clickableAreas
+}: {
+  code: string,
+  language?: string,
   clickableAreas: Array<{
-    type: 'clickable';
-    code: string;
-    anchor: string;
-    lineNumber: number;
-    originalLineNumber: number;
-  }>;
+    type: 'clickable',
+    code: string,
+    anchor: string,
+    lineNumber: number,
+    originalLineNumber: number,
+  }>,
 }) {
   const [highlightedCode, setHighlightedCode] = useState<string>("");
   const [lineHeight, setLineHeight] = useState<number>(20); // Default fallback
@@ -33,7 +33,7 @@ function ClickableCodeblock({
           const firstLine = lines[0] as HTMLElement;
           const computedStyle = window.getComputedStyle(firstLine);
           const measuredLineHeight = parseFloat(computedStyle.lineHeight);
-          
+
           // If lineHeight is 'normal' or invalid, calculate from font size
           if (isNaN(measuredLineHeight)) {
             const fontSize = parseFloat(computedStyle.fontSize);
@@ -75,29 +75,31 @@ function ClickableCodeblock({
       }
     };
 
-    updateHighlightedCode();
+    updateHighlightedCode().catch(error => {
+      console.error('Error updating highlighted code:', error);
+    });
   }, [code, language]);
 
   return (
     <div className="space-y-4 mb-6">
       <div className="relative">
-        <div 
+        <div
           className="rounded-lg border bg-[#0a0a0a] p-4 overflow-auto max-h-[500px] text-sm relative"
-          style={{ 
+          style={{
             background: '#0a0a0a !important',
           }}
         >
-          <div 
+          <div
             ref={codeRef}
             className="[&_*]:!bg-transparent [&_pre]:!bg-transparent [&_code]:!bg-transparent"
             dangerouslySetInnerHTML={{ __html: highlightedCode }}
           />
-          
+
           {/* Clickable overlays - now inside the scrollable container */}
           <div className="absolute inset-0 pointer-events-none">
             {clickableAreas.map((area, index) => {
               const topPosition = area.lineNumber * lineHeight + 16; // 16px is the padding
-              
+
               return (
                 <div
                   key={index}
@@ -130,7 +132,7 @@ export function Markdown({ src }: { src: string }) {
     '../../snippets/stack-app-constructor-options-before-ssk.mdx': () => (
       <>
         <ParamField path="tokenStore" type="union" required>
-          Where to store the user's session tokens. In most cases, this is `"nextjs-cookie"`, which will store the tokens in cookies using Next.js.
+          Where to store the user&apos;s session tokens. In most cases, this is `&quot;nextjs-cookie&quot;`, which will store the tokens in cookies using Next.js.
 
           <Accordion title="Show possible values">
             <ParamField path={`"nextjs-cookie"`} type="string">
@@ -152,13 +154,13 @@ export function Markdown({ src }: { src: string }) {
           </Accordion>
         </ParamField>
         <ParamField path="baseUrl" type="string">
-          The base URL for Stack Auth's API. Only override this if you are self-hosting Stack Auth. Defaults to `https://api.stack-auth.com`, unless overridden by the `NEXT_PUBLIC_STACK_API_URL` environment variable.
+          The base URL for Stack Auth&apos;s API. Only override this if you are self-hosting Stack Auth. Defaults to `https://api.stack-auth.com`, unless overridden by the `NEXT_PUBLIC_STACK_API_URL` environment variable.
         </ParamField>
         <ParamField path="projectId" type="string">
-          The ID of the project that the app is associated with, as found on Stack Auth's dashboard. Defaults to the value of the `NEXT_PUBLIC_STACK_PROJECT_ID` environment variable.
+          The ID of the project that the app is associated with, as found on Stack Auth&apos;s dashboard. Defaults to the value of the `NEXT_PUBLIC_STACK_PROJECT_ID` environment variable.
         </ParamField>
         <ParamField path="publishableClientKey" type="string">
-          The publishable client key of the app, as found on Stack Auth's dashboard. Defaults to the value of the `NEXT_PUBLIC_STACK_PUBLISHABLE_CLIENT_KEY` environment variable.
+          The publishable client key of the app, as found on Stack Auth&apos;s dashboard. Defaults to the value of the `NEXT_PUBLIC_STACK_PUBLISHABLE_CLIENT_KEY` environment variable.
         </ParamField>
       </>
     ),
@@ -199,20 +201,20 @@ export function Markdown({ src }: { src: string }) {
               The URL of the account settings page.
             </ParamField>
             <ParamField path="handler" type="string">
-              The URL of the handler root. 
+              The URL of the handler root.
             </ParamField>
           </Accordion>
         </ParamField>
         <ParamField path="noAutomaticPrefetch" type="boolean">
-          By default, the Stack app will automatically prefetch some data from Stack's server when this app is first constructed. Those network requests may be unnecessary if the app is never used or disposed of immediately. By setting this option to `true`, you can disable the prefetching behavior.
+          By default, the Stack app will automatically prefetch some data from Stack&apos;s server when this app is first constructed. Those network requests may be unnecessary if the app is never used or disposed of immediately. By setting this option to `true`, you can disable the prefetching behavior.
         </ParamField>
       </>
     )
   };
 
   const ContentComponent = snippetContent[src];
-  
-  if (!ContentComponent) {
+
+  if (!snippetContent.hasOwnProperty(src)) {
     console.warn(`Snippet not found: ${src}`);
     return <div className="markdown-include text-red-500">Snippet not found: {src}</div>;
   }
@@ -220,16 +222,16 @@ export function Markdown({ src }: { src: string }) {
   return <ContentComponent />;
 }
 
-export function ParamField({ 
-  path, 
-  type, 
-  required, 
-  children 
-}: { 
-  path: string; 
-  type: string; 
-  required?: boolean; 
-  children: React.ReactNode;
+export function ParamField({
+  path,
+  type,
+  required,
+  children
+}: {
+  path: string,
+  type: string,
+  required?: boolean,
+  children: React.ReactNode,
 }) {
   return (
     <div className="param-field mb-4">
@@ -253,15 +255,15 @@ export function ParamField({
   );
 }
 
-export function Accordion({ title, children }: { title: React.ReactNode; children: React.ReactNode }) {
+export function Accordion({ title, children }: { title: React.ReactNode, children: React.ReactNode }) {
   return (
     <details className="group mb-3 border border-fd-border/30 rounded-lg bg-fd-card/20">
       <summary className="flex items-center justify-between px-3 py-2 cursor-pointer text-fd-foreground hover:bg-fd-accent/30 rounded-lg list-none [&::-webkit-details-marker]:hidden transition-colors">
         <span className="text-sm font-medium">{title}</span>
-        <svg 
-          className="w-4 h-4 transition-transform group-open:rotate-180 text-fd-muted-foreground" 
-          fill="none" 
-          stroke="currentColor" 
+        <svg
+          className="w-4 h-4 transition-transform group-open:rotate-180 text-fd-muted-foreground"
+          fill="none"
+          stroke="currentColor"
           viewBox="0 0 24 24"
         >
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
@@ -291,41 +293,41 @@ export function Icon({ icon }: { icon: string }) {
   return <span className={`icon ${icon}`} />;
 }
 
-interface ClickableTableOfContentsProps {
-  code: string;
-  platform?: string;
+type ClickableTableOfContentsProps = {
+  code: string,
+  platform?: string,
 }
 
 export function ClickableTableOfContents({ code, platform = 'react-like' }: ClickableTableOfContentsProps) {
   const lines = code.trim().split('\n');
   let skipNext = false;
-  
+
   const processedLines = lines.map((line, index) => {
     // Handle skip directive from previous line
     if (skipNext) {
       skipNext = false;
       return null;
     }
-    
+
     // Handle platform-specific lines
     if (line.trim().startsWith('// NEXT_LINE_PLATFORM')) {
       const platformMatch = line.match(/\/\/ NEXT_LINE_PLATFORM\s+(.+)/);
       const requiredPlatform = platformMatch?.[1]?.trim();
-      
+
       if (requiredPlatform !== platform) {
         skipNext = true; // Skip the next line
       }
       return null; // Always skip the directive line itself
     }
-    
+
     // Handle clickable links
     const linkMatch = line.match(/(.+?)\/\/\$stack-link-to:(.+)$/);
     if (linkMatch) {
       const [, codeText, anchor] = linkMatch;
-      
+
       // Clean up the anchor by removing method parameters if present
       let cleanAnchor = anchor.trim();
-      
+
       // If the anchor contains method parameters like (data), remove them
       // This handles cases like #currentusercreateteamdata -> #currentusercreateteam
       if (cleanAnchor.includes('(') && cleanAnchor.includes(')')) {
@@ -335,7 +337,7 @@ export function ClickableTableOfContents({ code, platform = 'react-like' }: Clic
           cleanAnchor = methodMatch[1];
         }
       }
-      
+
       return {
         type: 'clickable' as const,
         code: codeText.trim(),
@@ -343,24 +345,24 @@ export function ClickableTableOfContents({ code, platform = 'react-like' }: Clic
         originalLineIndex: index
       };
     }
-    
+
     return {
       type: 'normal' as const,
       code: line,
       originalLineIndex: index
     };
   }).filter(item => item !== null);
-  
+
   // Generate clean TypeScript code for syntax highlighting
   const cleanCode = processedLines.map(item => item.code).join('\n');
-  
+
   // Generate clickable areas data with accurate line mapping
   const clickableAreas = processedLines
     .filter(item => item.type === 'clickable')
     .map((item, clickableIndex) => {
       // Find the actual line number in the rendered code
       const renderedLineIndex = processedLines.findIndex(processedItem => processedItem === item);
-      
+
       return {
         type: item.type,
         code: item.code,
@@ -369,9 +371,9 @@ export function ClickableTableOfContents({ code, platform = 'react-like' }: Clic
         originalLineNumber: item.originalLineIndex // Keep track of original line number for debugging
       };
     });
-  
+
   return (
-    <ClickableCodeblock 
+    <ClickableCodeblock
       code={cleanCode}
       language="typescript"
       clickableAreas={clickableAreas}

@@ -36,44 +36,44 @@ function removeChangeListener(id: string, listener: ChangeListener): void {
   );
 }
 
-export interface TabsProps extends BaseProps {
+export type TabsProps = {
   /**
    * Identifier for Sharing value of tabs
    */
-  groupId?: string;
+  groupId?: string,
 
   /**
    * Enable persistent
    */
-  persist?: boolean;
+  persist?: boolean,
 
   /**
    * If true, updates the URL hash based on the tab's id
    */
-  updateAnchor?: boolean;
+  updateAnchor?: boolean,
 
   /**
    * Use simple mode instead of advanced usage as documented in https://radix-ui.com/primitives/docs/components/tabs.
    */
-  items?: string[];
+  items?: string[],
 
   /**
    * Shortcut for `defaultValue` when `items` is provided.
    *
    * @defaultValue 0
    */
-  defaultIndex?: number;
+  defaultIndex?: number,
 
   /**
    * Additional label in tabs list when `items` is provided.
    */
-  label?: ReactNode;
-}
+  label?: ReactNode,
+} & BaseProps
 
 const TabsContext = createContext<{
-  items?: string[];
-  valueToIdMap: Map<string, string>;
-  collection: CollectionKey[];
+  items?: string[],
+  valueToIdMap: Map<string, string>,
+  collection: CollectionKey[],
 } | null>(null);
 
 function useTabContext() {
@@ -183,7 +183,7 @@ export type TabProps = Omit<TabsContentProps, 'value'> & {
   /**
    * Value of tab, detect from index if unspecified.
    */
-  value?: string;
+  value?: string,
 };
 
 export function Tab({ value, ...props }: TabProps) {

@@ -24,8 +24,8 @@ export function getPlatformDisplayName(platform: string): string {
   const platformNames: Record<string, string> = {
     'next': 'Next.js',
     'react': 'React',
-    'js': 'JavaScript', 
+    'js': 'JavaScript',
     'python': 'Python'
   };
   return platformNames[platform] || platform;
-} 
+}
