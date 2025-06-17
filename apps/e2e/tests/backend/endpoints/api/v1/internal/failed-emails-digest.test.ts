@@ -94,7 +94,7 @@ describe("with valid credentials", () => {
       body: {
         "recipient_email": "test-email-recipient@stackframe.co",
         "email_config": {
-          "host": "123",
+          "host": "this-is-not-a-valid-host.example.com",
           "port": 123,
           "username": "123",
           "password": "123",
