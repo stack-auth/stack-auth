@@ -119,6 +119,7 @@ describe("with valid credentials", () => {
       headers: { "Authorization": "Bearer mock_cron_secret" }
     });
     expect(response.status).toBe(200);
+    console.log(response.body);
 
     const failedEmailsByTenancy = response.body.failed_emails_by_tenancy;
     const mockProjectFailedEmails = failedEmailsByTenancy.filter(
