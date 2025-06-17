@@ -92,7 +92,7 @@ describe("with valid credentials", () => {
         "x-stack-admin-access-token": adminAccessToken,
       },
       body: {
-        "recipient_email": "test-email-recipient@stack-auth-test.example.com",
+        "recipient_email": "test-email-recipient@stackframe.co",
         "email_config": {
           "host": "123",
           "port": 123,
