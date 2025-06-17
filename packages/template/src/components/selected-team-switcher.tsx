@@ -120,10 +120,12 @@ function Inner(props: SelectedTeamSwitcherProps) {
                   </div>
                 </SelectItem>
               ))}
-          </SelectGroup> :
+          </SelectGroup> : null}
+
+        {!teams?.length && !props.nullAsPersonalTeam ?
           <SelectGroup>
             <SelectLabel>{t('No teams yet')}</SelectLabel>
-          </SelectGroup>}
+          </SelectGroup> : null}
 
         {project.config.clientTeamCreationEnabled && <>
           <SelectSeparator/>
