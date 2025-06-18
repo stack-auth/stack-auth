@@ -1,0 +1,8 @@
+{
+  "crons": [
+    {
+      "path": "/api/latest/internal/failed-emails-digest",
+      "schedule": "0 0 * * *"
+    }
+  ]
+} 
