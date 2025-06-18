@@ -191,13 +191,13 @@ function generateMetaFiles() {
             
             // If this is a section divider
             if (typeof page === 'string' && page.startsWith('---')) {
-              // Process the previous section first
-              if (currentSectionHeader !== null) {
-                // Only add the section header if it has actual pages
-                if (currentSectionPages.length > 0) {
+              // Process the previous section first (or pages before first section)
+              if (currentSectionPages.length > 0) {
+                if (currentSectionHeader !== null) {
+                  // Add section header if we had one
                   cleanedPages.push(currentSectionHeader);
-                  cleanedPages.push(...currentSectionPages);
                 }
+                cleanedPages.push(...currentSectionPages);
               }
               
               // Start new section
@@ -226,14 +226,11 @@ function generateMetaFiles() {
             }
           }
           
-          // Don't forget the last section
-          if (currentSectionHeader !== null && currentSectionPages.length > 0) {
-            cleanedPages.push(currentSectionHeader);
-            cleanedPages.push(...currentSectionPages);
-          }
-          
-          // Handle pages that weren't in any section (at the beginning)
-          if (currentSectionHeader === null && currentSectionPages.length > 0) {
+          // Don't forget the last section (or remaining pages)
+          if (currentSectionPages.length > 0) {
+            if (currentSectionHeader !== null) {
+              cleanedPages.push(currentSectionHeader);
+            }
             cleanedPages.push(...currentSectionPages);
           }
           

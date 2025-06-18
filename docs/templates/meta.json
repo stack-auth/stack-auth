@@ -22,6 +22,10 @@
     "concepts/user-onboarding",
     "concepts/webhooks",
     "---Customization---",
-    "...customization"
+    "...customization",
+    "---Other---",
+    "others/cli-authentication",
+    "others/self-host",
+    "others/supabase"
   ]
 }
