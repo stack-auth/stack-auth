@@ -1,5 +1,4 @@
 import type { BaseLayoutProps } from 'fumadocs-ui/layouts/shared';
-import { Code2, Hammer } from 'lucide-react';
 /**
  * Shared layout configurations
  *
@@ -26,20 +25,23 @@ export const baseOptions: BaseLayoutProps = {
     ),
     transparentMode: "top",
   },
+  searchToggle: {
+    enabled: false,
+  },
   links: [
     {
       type: 'main',
-      text: "REST API & Webhooks",
-      url: "/api/overview",
+      text: "GitHub",
+      url: "https://github.com/stack-auth/stack-auth",
       active: "url",
-      icon: <Code2 />
+      external: true
     },
     {
       type: 'main',
-      text: "SDK Reference",
-      url: "/docs/sdk/overview",
+      text: "Discord",
+      url: "https://discord.stack-auth.com",
       active: "url",
-      icon: <Hammer />
+      external: true
     }
   ]
 };

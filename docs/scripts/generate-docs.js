@@ -14,6 +14,12 @@ const OUTPUT_BASE_DIR = path.resolve(__dirname, '../content/docs');
 const CONFIG_FILE = path.resolve(__dirname, '../docs-platform.yml');
 const PLATFORMS = ['next', 'react', 'js', 'python'];
 
+// Platform groups mapping
+const PLATFORM_GROUPS = {
+  'react-like': ['next', 'react'],  // Platforms that use React components
+  'js-like': ['js']                 
+};
+
 // Load platform configuration
 let platformConfig = {};
 try {
@@ -41,10 +47,27 @@ function getPlatformDisplayName(platform) {
   return platformNames[platform] || platform;
 }
 
-// Platform-specific content markers
-const PLATFORM_START_MARKER = /{\s*\/\*\s*IF_PLATFORM:\s*(\w+)\s*\*\/\s*}/;
-const PLATFORM_ELSE_MARKER = /{\s*\/\*\s*ELSE_IF_PLATFORM\s+(\w+)\s*\*\/\s*}/;
+// Platform-specific content markers - Updated regex to handle hyphens and other characters
+const PLATFORM_START_MARKER = /{\s*\/\*\s*IF_PLATFORM:\s*([\w-]+)\s*\*\/\s*}/;
+const PLATFORM_ELSE_MARKER = /{\s*\/\*\s*ELSE_IF_PLATFORM\s+([\w-]+)\s*\*\/\s*}/;
 const PLATFORM_END_MARKER = /{\s*\/\*\s*END_PLATFORM\s*\*\/\s*}/;
+
+/**
+ * Check if a platform or platform group includes the target platform
+ */
+function isPlatformMatch(platformSpec, targetPlatform) {
+  // Direct platform match
+  if (platformSpec === targetPlatform) {
+    return true;
+  }
+  
+  // Platform group match
+  if (PLATFORM_GROUPS[platformSpec]) {
+    return PLATFORM_GROUPS[platformSpec].includes(targetPlatform);
+  }
+  
+  return false;
+}
 
 /**
  * Check if a file should be included for a specific platform
@@ -74,7 +97,7 @@ function shouldIncludeFileForPlatform(platform, filePath) {
 function processTemplateForPlatform(content, targetPlatform) {
   const lines = content.split('\n');
   let result = [];
-  let currentPlatform = null;
+  let currentPlatformSpec = null;
   let isIncluding = true;
   let platformSection = false;
 
@@ -85,16 +108,16 @@ function processTemplateForPlatform(content, targetPlatform) {
     const startMatch = line.match(PLATFORM_START_MARKER);
     if (startMatch) {
       platformSection = true;
-      currentPlatform = startMatch[1];
-      isIncluding = currentPlatform === targetPlatform;
+      currentPlatformSpec = startMatch[1];
+      isIncluding = isPlatformMatch(currentPlatformSpec, targetPlatform);
       continue;
     }
 
     // Check for platform else
     const elseMatch = line.match(PLATFORM_ELSE_MARKER);
     if (elseMatch && platformSection) {
-      currentPlatform = elseMatch[1];
-      isIncluding = currentPlatform === targetPlatform;
+      currentPlatformSpec = elseMatch[1];
+      isIncluding = isPlatformMatch(currentPlatformSpec, targetPlatform);
       continue;
     }
 

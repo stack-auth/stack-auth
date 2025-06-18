@@ -1,9 +1,10 @@
 "use client";
 
+import { LargeSearchToggle } from '@/components/layout/search-toggle';
 import { platformSupportsComponents, platformSupportsSDK } from "@/lib/navigation-utils";
 import { PLATFORMS, type Platform } from "@/lib/platform-utils";
 import { Book, ChevronDown, Code, Layers, Zap } from "lucide-react";
-import React, { useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 
 type DocsSection = {
   id: string,
@@ -23,8 +24,8 @@ type DocsIcon3DProps = {
 const createPlatformSections = (platform: Platform): DocsSection[] => {
   const sections: DocsSection[] = [
     {
-      id: "docs",
-      title: "Documentation",
+      id: "guides",
+      title: "Guides",
       description: "Complete guides and tutorials",
       icon: <Book size={24} />,
       url: `/docs/${platform}/overview`,
@@ -74,6 +75,8 @@ const PlatformSelector: React.FC<{
   onPlatformChange: (platform: Platform) => void,
 }> = ({ selectedPlatform, onPlatformChange }) => {
   const [isOpen, setIsOpen] = useState(false);
+  const [hoveredPlatform, setHoveredPlatform] = useState<Platform | null>(null);
+  const dropdownRef = useRef<HTMLDivElement>(null);
 
   const platformNames: Record<Platform, string> = {
     next: "Next.js",
@@ -89,6 +92,24 @@ const PlatformSelector: React.FC<{
     python: "rgb(168, 85, 247)", // Purple
   };
 
+  // Click outside to close dropdown
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+        setIsOpen(false);
+        setHoveredPlatform(null);
+      }
+    };
+
+    if (isOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [isOpen]);
+
   return (
     <div className="relative mb-8">
       <div className="text-center mb-4">
@@ -96,7 +117,7 @@ const PlatformSelector: React.FC<{
         <p className="text-sm text-muted-foreground">Select your development environment</p>
       </div>
 
-      <div className="relative inline-block w-64 mx-auto">
+      <div className="relative inline-block w-64 mx-auto" ref={dropdownRef}>
         <button
           onClick={() => setIsOpen(!isOpen)}
           className="w-full flex items-center justify-between px-4 py-3 bg-background border-2 border-border rounded-xl shadow-lg hover:shadow-xl transition-all duration-300 hover:-translate-y-1"
@@ -120,49 +141,66 @@ const PlatformSelector: React.FC<{
 
         {isOpen && (
           <div className="absolute top-full left-0 right-0 mt-2 bg-background/95 backdrop-blur-lg border-2 border-border rounded-xl shadow-2xl z-50 overflow-hidden">
-            {PLATFORMS.map((platform) => (
-              <button
-                key={platform}
-                onClick={() => {
-                  onPlatformChange(platform);
-                  setIsOpen(false);
-                }}
-                className={`
-                  w-full px-4 py-3 text-left transition-all duration-200
-                  hover:bg-muted/50 border-l-4 border-transparent
-                  ${selectedPlatform === platform ? "bg-muted/70 border-l-4" : ""}
-                `}
-                style={{
-                  borderLeftColor: selectedPlatform === platform ? platformColors[platform] : "transparent",
-                  backgroundColor: selectedPlatform === platform ? `${platformColors[platform]}15` : undefined,
-                }}
-              >
-                <div className="flex items-center justify-between">
-                  <span
-                    className={`font-medium ${
-                      selectedPlatform === platform ? "font-semibold" : ""
-                    }`}
-                    style={{
-                      color: selectedPlatform === platform ? platformColors[platform] : undefined,
-                    }}
-                  >
-                    {platformNames[platform]}
-                  </span>
-                  {selectedPlatform === platform && (
-                    <div
-                      className="w-2 h-2 rounded-full"
-                      style={{ backgroundColor: platformColors[platform] }}
-                    />
-                  )}
-                </div>
-                <div className="text-xs text-muted-foreground mt-1">
-                  {platform === "next" && "Full-stack React framework"}
-                  {platform === "react" && "Client-side React applications"}
-                  {platform === "js" && "Vanilla JavaScript integration"}
-                  {platform === "python" && "Backend Python applications"}
-                </div>
-              </button>
-            ))}
+            {PLATFORMS.map((platform) => {
+              const isSelected = selectedPlatform === platform;
+              const isHovered = hoveredPlatform === platform;
+              const isHighlighted = isSelected || isHovered;
+
+              return (
+                <button
+                  key={platform}
+                  onClick={() => {
+                    onPlatformChange(platform);
+                    setIsOpen(false);
+                    setHoveredPlatform(null);
+                  }}
+                  onMouseEnter={() => setHoveredPlatform(platform)}
+                  onMouseLeave={() => setHoveredPlatform(null)}
+                  className={`
+                    w-full px-4 py-3 text-left transition-all duration-200
+                    border-l-4 border-transparent
+                    ${isHighlighted ? "bg-muted/70" : "hover:bg-muted/30"}
+                  `}
+                  style={{
+                    borderLeftColor: isHighlighted ? platformColors[platform] : "transparent",
+                    backgroundColor: isHighlighted ? `${platformColors[platform]}15` : undefined,
+                  }}
+                >
+                  <div className="flex items-center justify-between">
+                    <span
+                      className={`font-medium transition-all duration-200 ${
+                        isHighlighted ? "font-semibold" : ""
+                      }`}
+                      style={{
+                        color: isHighlighted ? platformColors[platform] : undefined,
+                      }}
+                    >
+                      {platformNames[platform]}
+                    </span>
+                    {isSelected && (
+                      <div
+                        className="w-2 h-2 rounded-full transition-all duration-200"
+                        style={{ backgroundColor: platformColors[platform] }}
+                      />
+                    )}
+                    {isHovered && !isSelected && (
+                      <div
+                        className="w-1.5 h-1.5 rounded-full transition-all duration-200"
+                        style={{ backgroundColor: platformColors[platform], opacity: 0.6 }}
+                      />
+                    )}
+                  </div>
+                  <div className={`text-xs mt-1 transition-all duration-200 ${
+                    isHighlighted ? "text-muted-foreground" : "text-muted-foreground/70"
+                  }`}>
+                    {platform === "next" && "Full-stack React framework"}
+                    {platform === "react" && "Client-side React applications"}
+                    {platform === "js" && "Vanilla JavaScript integration"}
+                    {platform === "python" && "Backend Python applications"}
+                  </div>
+                </button>
+              );
+            })}
           </div>
         )}
       </div>
@@ -465,6 +503,14 @@ export default function DocsSelector() {
         selectedPlatform={selectedPlatform}
         onPlatformChange={handlePlatformChange}
       />
+
+      {/* Search Bar */}
+      <div className="mb-8 flex justify-center">
+        <div className="w-full max-w-md">
+          <LargeSearchToggle className="w-full" />
+        </div>
+      </div>
+
       <DocsIcon3D
         selectedPlatform={selectedPlatform}
         onSectionSelect={handleSectionSelect}

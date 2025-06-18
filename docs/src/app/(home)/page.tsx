@@ -4,7 +4,7 @@ export default function HomePage() {
   return (
     <main className="flex flex-1 flex-col">
       {/* Hero Section */}
-      <section className="relative px-6 py-24 text-center">
+      <section className="relative px-6 py-12 md:py-24 text-center">
         <div className="max-w-4xl mx-auto">
           <div className="mb-8">
             <svg

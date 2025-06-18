@@ -35,7 +35,7 @@ export function CardGroup({
   return (
     <div
       className={cn(
-        'grid grid-cols-1 gap-4 mb-8',
+        'grid grid-cols-1 gap-4 mb-8 items-stretch',
         columns,
         className
       )}
