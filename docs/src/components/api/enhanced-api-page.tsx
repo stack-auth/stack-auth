@@ -66,6 +66,7 @@ type EnhancedAPIPageProps = {
     method: string,
   }>,
   hasHead?: boolean,
+  description?: string,
 }
 
 type RequestState = {
@@ -91,30 +92,8 @@ const HTTP_METHOD_COLORS = {
   DELETE: 'from-red-500 to-red-600 text-white shadow-red-500/25',
 } as const;
 
-// Custom Tooltip Component
-function Tooltip({ children, content }: { children: React.ReactNode, content: string }) {
-  const [isVisible, setIsVisible] = useState(false);
 
-  return (
-    <div
-      className="relative inline-block"
-      onMouseEnter={() => setIsVisible(true)}
-      onMouseLeave={() => setIsVisible(false)}
-    >
-      {children}
-      {isVisible && (
-        <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 z-50">
-          <div className="bg-fd-popover text-fd-popover-foreground text-xs font-medium px-3 py-2 rounded-lg shadow-lg border border-fd-border whitespace-nowrap">
-            {content}
-            <div className="absolute top-full left-1/2 transform -translate-x-1/2 w-0 h-0 border-l-4 border-r-4 border-t-4 border-transparent border-t-fd-popover"></div>
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
-
-export function EnhancedAPIPage({ document, operations, webhooks = [], hasHead = true }: EnhancedAPIPageProps) {
+export function EnhancedAPIPage({ document, operations, webhooks = [], hasHead = true, description }: EnhancedAPIPageProps) {
   const { sharedHeaders, reportError, isHeadersPanelOpen } = useAPIPageContext();
   const [spec, setSpec] = useState<OpenAPISpec | null>(null);
   const [loading, setLoading] = useState(true);
@@ -360,7 +339,7 @@ export function EnhancedAPIPage({ document, operations, webhooks = [], hasHead =
             <div className="animate-spin rounded-full h-12 w-12 border-4 border-fd-muted"></div>
             <div className="animate-spin rounded-full h-12 w-12 border-4 border-t-fd-primary absolute top-0"></div>
           </div>
-          <p className="text-fd-muted-foreground text-sm">Loading API specification...</p>
+          <p className="text-fd-muted-foreground text-sm text-center leading-relaxed m-0">Loading API specification...</p>
         </div>
       </div>
     );
@@ -372,13 +351,13 @@ export function EnhancedAPIPage({ document, operations, webhooks = [], hasHead =
         <div className="border border-red-200 dark:border-red-800 rounded-xl p-8 bg-gradient-to-br from-red-50 to-red-100/50 dark:from-red-900/20 dark:to-red-800/20">
           <div className="flex items-center gap-3 mb-4">
             <div className="w-10 h-10 rounded-full bg-red-100 dark:bg-red-900/30 flex items-center justify-center">
-              <span className="text-red-600 dark:text-red-400 text-xl">⚠️</span>
+              <span className="text-red-600 dark:text-red-400 text-xl leading-none">⚠️</span>
             </div>
-            <h3 className="text-lg font-semibold text-red-800 dark:text-red-300">
+            <h3 className="text-lg font-semibold text-red-800 dark:text-red-300 leading-tight m-0">
               Failed to load API specification
             </h3>
           </div>
-          <p className="text-red-600 dark:text-red-400 leading-relaxed">{error || 'Unknown error occurred'}</p>
+          <p className="text-red-600 dark:text-red-400 leading-relaxed m-0">{error || 'Unknown error occurred'}</p>
         </div>
       </div>
     );
@@ -386,21 +365,6 @@ export function EnhancedAPIPage({ document, operations, webhooks = [], hasHead =
 
   return (
     <div className="min-h-screen bg-fd-background">
-      {/* Base URL - Enhanced design */}
-      <div className="text-center mb-12">
-        <div className="inline-block">
-          <div className="flex items-center justify-center gap-2 mb-3">
-            <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
-            <span className="text-xs text-fd-muted-foreground font-semibold tracking-wider uppercase">API Base URL</span>
-          </div>
-          <div className="bg-fd-card border border-fd-border rounded-xl px-6 py-4 shadow-sm">
-            <code className="text-fd-foreground font-mono text-sm font-medium">
-              {spec.servers[0]?.url || 'https://api.stack-auth.com/api/v1'}
-            </code>
-          </div>
-        </div>
-      </div>
-
       {/* Operations */}
       {operations.map(({ path, method }) => {
         const operation = spec.paths[path][method.toLowerCase()];
@@ -422,6 +386,7 @@ export function EnhancedAPIPage({ document, operations, webhooks = [], hasHead =
                 .catch(error => console.error('Failed to copy to clipboard:', error));
             }}
             isHeadersPanelOpen={isHeadersPanelOpen}
+            description={description || operation.description}
           />
         );
       })}
@@ -440,6 +405,7 @@ function ModernAPIPlayground({
   onExecute,
   onCopy,
   isHeadersPanelOpen,
+  description,
 }: {
   operation: OpenAPIOperation,
   path: string,
@@ -450,6 +416,7 @@ function ModernAPIPlayground({
   onExecute: () => void,
   onCopy: (text: string) => void,
   isHeadersPanelOpen: boolean,
+  description?: string,
 }) {
   const [copied, setCopied] = useState(false);
   const [activeCodeTab, setActiveCodeTab] = useState<'curl' | 'javascript' | 'python'>('curl');
@@ -617,50 +584,57 @@ function ModernAPIPlayground({
       <div className="mb-8 border-b border-fd-border pb-8">
         <div className="flex items-start justify-between gap-8">
           <div className="flex-1 min-w-0">
-            {/* Method and Title */}
-            <div className="flex items-center gap-4 mb-4">
-              <span className={`inline-flex items-center px-3 py-1 rounded-md bg-gradient-to-r ${methodColorClass} font-mono font-bold text-xs tracking-wider`}>
+            {/* Method Badge and Title Row */}
+            <div className="flex items-center gap-4 mb-6">
+              <span className={`inline-flex items-center justify-center px-3 py-1 rounded-md bg-gradient-to-r ${methodColorClass} font-mono font-bold text-sm tracking-wider leading-none min-w-[70px] h-7`}>
                 {method}
               </span>
-              <h1 className="text-2xl font-bold text-fd-foreground">
+              <div className="h-8 w-px bg-fd-border"></div>
+              <div className="text-2xl font-bold text-fd-foreground leading-none">
                 {operation.summary || 'API Endpoint'}
-              </h1>
+              </div>
             </div>
 
-            {/* Description */}
-            {operation.description && (
-              <p className="text-fd-muted-foreground mb-4 text-base leading-relaxed">
-                {operation.description}
-              </p>
-            )}
-
             {/* Endpoint Path */}
-            <div className="flex items-center gap-2">
-              <span className="text-sm text-fd-muted-foreground font-medium">ENDPOINT</span>
-              <code className="text-fd-foreground font-mono text-sm bg-fd-muted px-3 py-1 rounded border">
+            <div className="flex items-center gap-3 mb-4">
+              <span className="text-xs text-fd-muted-foreground font-semibold uppercase tracking-wider leading-none">
+                ENDPOINT
+              </span>
+              <code className="text-fd-foreground font-mono text-sm bg-fd-muted px-3 py-2 rounded-md border leading-none font-medium">
                 {path}
               </code>
             </div>
+
+            {/* Description */}
+            {description && (
+              <div className="mt-6">
+                <p className="text-fd-muted-foreground text-base leading-relaxed max-w-3xl">
+                  {description}
+                </p>
+              </div>
+            )}
           </div>
 
           {/* Try It Button */}
-          <Button
-            onClick={onExecute}
-            disabled={requestState.response.loading}
-            className="px-6 py-3 bg-fd-primary text-fd-primary-foreground font-semibold rounded-lg border-0"
-          >
-            {requestState.response.loading ? (
-              <>
-                <div className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent mr-2" />
-                Sending...
-              </>
-            ) : (
-              <>
-                <Play className="w-4 h-4 mr-2" />
-                Try it out
-              </>
-            )}
-          </Button>
+          <div className="flex-shrink-0">
+            <Button
+              onClick={onExecute}
+              disabled={requestState.response.loading}
+              className="px-6 py-3 bg-fd-primary text-fd-primary-foreground font-semibold rounded-lg border-0 shadow-sm hover:shadow-md transition-all duration-200"
+            >
+              {requestState.response.loading ? (
+                <>
+                  <div className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent mr-2" />
+                  Sending...
+                </>
+              ) : (
+                <>
+                  <Play className="w-4 h-4 mr-2" />
+                  Try it out
+                </>
+              )}
+            </Button>
+          </div>
         </div>
       </div>
 
@@ -669,11 +643,9 @@ function ModernAPIPlayground({
         {/* Request Panel */}
         <div className="bg-fd-card border border-fd-border rounded-lg">
           <div className="px-6 py-4 border-b border-fd-border bg-fd-muted/30">
-            <div className="flex items-center gap-3">
-              <div className="w-8 h-8 rounded-lg bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center">
-                <Send className="w-4 h-4 text-blue-600 dark:text-blue-400" />
-              </div>
-              <h3 className="font-semibold text-fd-foreground">Request</h3>
+            <div className="flex items-center gap-2">
+              <Send className="w-4 h-4 text-blue-600 dark:text-blue-400" />
+              <div className="font-semibold text-fd-foreground text-base leading-none">Request</div>
             </div>
           </div>
 
@@ -705,11 +677,9 @@ function ModernAPIPlayground({
         <div className="bg-fd-card border border-fd-border rounded-lg">
           <div className="px-6 py-4 border-b border-fd-border bg-fd-muted/30">
             <div className="flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <div className="w-8 h-8 rounded-lg bg-green-100 dark:bg-green-900/30 flex items-center justify-center">
-                  <Code className="w-4 h-4 text-green-600 dark:text-green-400" />
-                </div>
-                <h3 className="font-semibold text-fd-foreground">Code Examples</h3>
+              <div className="flex items-center gap-2">
+                <Code className="w-4 h-4 text-green-600 dark:text-green-400" />
+                <div className="font-semibold text-fd-foreground text-base leading-none">Code Examples</div>
               </div>
               <Button
                 variant="outline"
@@ -736,7 +706,7 @@ function ModernAPIPlayground({
               <button
                 key={tab.id}
                 onClick={() => setActiveCodeTab(tab.id as any)}
-                className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
+                className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors leading-none ${
                   activeCodeTab === tab.id
                     ? 'border-fd-primary text-fd-primary bg-fd-primary/5'
                     : 'border-transparent text-fd-muted-foreground hover:text-fd-foreground'
@@ -749,8 +719,8 @@ function ModernAPIPlayground({
 
           {/* Code Content */}
           <div className="p-6">
-            <pre className="bg-fd-muted rounded-lg p-4 text-sm font-mono overflow-x-auto whitespace-pre-wrap break-words">
-              <code className="text-fd-foreground">{getCodeExample()}</code>
+            <pre className="bg-fd-muted rounded-lg p-4 text-sm font-mono overflow-x-auto whitespace-pre-wrap break-words m-0">
+              <code className="text-fd-foreground leading-relaxed">{getCodeExample()}</code>
             </pre>
           </div>
         </div>
@@ -777,36 +747,51 @@ function ParametersSection({
 
   return (
     <div className="space-y-4">
-      <h4 className="font-semibold text-fd-foreground flex items-center gap-2">
+      <div className="font-semibold text-fd-foreground flex items-center gap-2 leading-none">
         <Settings className="w-4 h-4" />
         Parameters
-      </h4>
+      </div>
       {Object.entries(groupedParams).map(([type, params]) => (
         <div key={type} className="space-y-3">
-          <h5 className="text-xs font-medium text-fd-muted-foreground uppercase tracking-wider">
+          <div className="text-xs font-medium text-fd-muted-foreground uppercase tracking-wider leading-none">
             {type} Parameters
-          </h5>
-          <div className="space-y-3">
+          </div>
+          <div className="space-y-4">
             {params.map((param) => (
-              <div key={param.name} className="space-y-1">
-                <label className="text-sm font-medium text-fd-foreground flex items-center gap-2">
-                  {param.name}
+              <div key={param.name}>
+                {/* Single line with all info */}
+                <div className="flex items-center gap-2 flex-wrap mb-2">
+                  <span className="text-sm font-semibold text-fd-foreground leading-none">
+                    {param.name}
+                  </span>
+                  {param.schema?.type && (
+                    <span className="text-xs bg-fd-muted text-fd-muted-foreground px-2 py-0.5 rounded font-mono leading-none">
+                      {param.schema.type}
+                    </span>
+                  )}
                   {param.required && (
-                    <span className="text-xs bg-red-100 text-red-700 px-2 py-0.5 rounded dark:bg-red-900/30 dark:text-red-300">
+                    <span className="text-xs bg-red-100 text-red-700 px-2 py-0.5 rounded dark:bg-red-900/30 dark:text-red-300 leading-none">
                       required
                     </span>
                   )}
-                </label>
+                  {param.description && (
+                    <>
+                      <span className="text-fd-muted-foreground">-</span>
+                      <span className="text-xs text-fd-muted-foreground leading-relaxed">
+                        {param.description}
+                      </span>
+                    </>
+                  )}
+                </div>
+
+                {/* Input Field */}
                 <input
                   type={param.schema?.type === 'number' ? 'number' : 'text'}
-                  placeholder={param.example || param.description || `Enter ${param.name}`}
+                  placeholder={param.example || `Enter ${param.name}`}
                   value={values[param.name] || ''}
                   onChange={(e) => onChange({ ...values, [param.name]: e.target.value })}
-                  className="w-full px-3 py-2 border border-fd-border rounded-lg bg-fd-background text-fd-foreground text-sm focus:outline-none focus:ring-2 focus:ring-fd-primary focus:border-fd-primary"
+                  className="w-full px-3 py-2 border border-fd-border rounded-md bg-fd-background text-fd-foreground text-sm focus:outline-none focus:ring-2 focus:ring-fd-primary focus:border-fd-primary"
                 />
-                {param.description && (
-                  <p className="text-xs text-fd-muted-foreground">{param.description}</p>
-                )}
               </div>
             ))}
           </div>
@@ -830,7 +815,7 @@ function RequestBodySection({
 
   return (
     <div className="space-y-3">
-      <h4 className="font-semibold text-fd-foreground">Request Body</h4>
+      <div className="font-semibold text-fd-foreground leading-none">Request Body</div>
       <textarea
         value={value}
         onChange={(e) => onChange(e.target.value)}
@@ -848,11 +833,9 @@ function ResponsePanel({ response }: { response: RequestState['response'] }) {
     return (
       <div className="bg-fd-card border border-fd-border rounded-lg">
         <div className="px-6 py-4 border-b border-fd-border bg-fd-muted/30">
-          <div className="flex items-center gap-3">
-            <div className="w-8 h-8 rounded-lg bg-purple-100 dark:bg-purple-900/30 flex items-center justify-center">
-              <Sparkles className="w-4 h-4 text-purple-600 dark:text-purple-400" />
-            </div>
-            <h3 className="font-semibold text-fd-foreground">Response</h3>
+          <div className="flex items-center gap-2">
+            <Sparkles className="w-4 h-4 text-purple-600 dark:text-purple-400" />
+            <div className="font-semibold text-fd-foreground text-base leading-none">Response</div>
           </div>
         </div>
         <div className="p-12 flex flex-col items-center justify-center">
@@ -860,7 +843,7 @@ function ResponsePanel({ response }: { response: RequestState['response'] }) {
             <div className="animate-spin rounded-full h-8 w-8 border-2 border-fd-muted"></div>
             <div className="animate-spin rounded-full h-8 w-8 border-2 border-t-purple-500 absolute top-0"></div>
           </div>
-          <p className="text-fd-muted-foreground text-sm">Sending request...</p>
+          <p className="text-fd-muted-foreground text-sm text-center leading-relaxed m-0">Sending request...</p>
         </div>
       </div>
     );
@@ -870,17 +853,15 @@ function ResponsePanel({ response }: { response: RequestState['response'] }) {
     return (
       <div className="bg-fd-card border border-fd-border rounded-lg">
         <div className="px-6 py-4 border-b border-fd-border bg-fd-muted/30">
-          <div className="flex items-center gap-3">
-            <div className="w-8 h-8 rounded-lg bg-red-100 dark:bg-red-900/30 flex items-center justify-center">
-              <span className="text-red-600 dark:text-red-400">❌</span>
-            </div>
-            <h3 className="font-semibold text-fd-foreground">Error</h3>
+          <div className="flex items-center gap-2">
+            <span className="text-red-600 dark:text-red-400 text-base leading-none">❌</span>
+            <div className="font-semibold text-fd-foreground text-base leading-none">Error</div>
           </div>
         </div>
         <div className="p-6">
           <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-4">
-            <p className="text-red-800 dark:text-red-300 font-medium mb-2">Request Failed</p>
-            <p className="text-red-600 dark:text-red-400 text-sm whitespace-pre-wrap break-words">{response.error}</p>
+            <p className="text-red-800 dark:text-red-300 font-medium mb-2 leading-none">Request Failed</p>
+            <p className="text-red-600 dark:text-red-400 text-sm whitespace-pre-wrap break-words leading-relaxed m-0">{response.error}</p>
           </div>
         </div>
       </div>
@@ -891,18 +872,16 @@ function ResponsePanel({ response }: { response: RequestState['response'] }) {
     return (
       <div className="bg-fd-card border border-fd-border rounded-lg">
         <div className="px-6 py-4 border-b border-fd-border bg-fd-muted/30">
-          <div className="flex items-center gap-3">
-            <div className="w-8 h-8 rounded-lg bg-gray-100 dark:bg-gray-900/30 flex items-center justify-center">
-              <ArrowRight className="w-4 h-4 text-gray-600 dark:text-gray-400" />
-            </div>
-            <h3 className="font-semibold text-fd-foreground">Response</h3>
+          <div className="flex items-center gap-2">
+            <ArrowRight className="w-4 h-4 text-gray-600 dark:text-gray-400" />
+            <div className="font-semibold text-fd-foreground text-base leading-none">Response</div>
           </div>
         </div>
         <div className="p-12 flex flex-col items-center justify-center">
           <div className="w-12 h-12 rounded-full bg-fd-muted/30 flex items-center justify-center mb-4">
             <Zap className="w-6 h-6 text-fd-muted-foreground" />
           </div>
-          <p className="text-fd-muted-foreground text-center text-sm">
+          <p className="text-fd-muted-foreground text-center text-sm leading-relaxed m-0">
             Click &quot;Try it out&quot; to see the API response
           </p>
         </div>
@@ -920,19 +899,17 @@ function ResponsePanel({ response }: { response: RequestState['response'] }) {
     <div className="bg-fd-card border border-fd-border rounded-lg">
       <div className="px-6 py-4 border-b border-fd-border bg-fd-muted/30">
         <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="w-8 h-8 rounded-lg bg-green-100 dark:bg-green-900/30 flex items-center justify-center">
-              <span className="text-green-600 dark:text-green-400">✓</span>
-            </div>
-            <h3 className="font-semibold text-fd-foreground">Response</h3>
+          <div className="flex items-center gap-2">
+            <span className="text-green-600 dark:text-green-400 text-base leading-none">✓</span>
+            <div className="font-semibold text-fd-foreground text-base leading-none">Response</div>
           </div>
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2">
             {response.duration && (
-              <span className="text-xs text-fd-muted-foreground bg-fd-muted px-2 py-1 rounded">
+              <span className="text-xs text-fd-muted-foreground bg-fd-muted px-2 py-1 rounded flex items-center leading-none">
                 {response.duration}ms
               </span>
             )}
-            <span className={`inline-flex items-center px-3 py-1 rounded-md bg-gradient-to-r ${statusColor} text-white font-mono font-bold text-xs`}>
+            <span className={`inline-flex items-center px-3 py-1 rounded-md bg-gradient-to-r ${statusColor} text-white font-mono font-bold text-xs leading-none`}>
               {response.status}
             </span>
           </div>
@@ -942,9 +919,9 @@ function ResponsePanel({ response }: { response: RequestState['response'] }) {
       <div className="p-6 space-y-4">
         {response.headers && Object.keys(response.headers).length > 0 && (
           <div>
-            <h4 className="text-sm font-semibold text-fd-foreground mb-2">Response Headers</h4>
+            <div className="text-sm font-semibold text-fd-foreground mb-2 leading-none">Response Headers</div>
             <div className="bg-fd-muted rounded-lg p-3 border">
-              <pre className="text-xs font-mono overflow-auto max-h-32 whitespace-pre-wrap break-words">
+              <pre className="text-xs font-mono overflow-auto max-h-32 whitespace-pre-wrap break-words text-fd-foreground m-0">
                 {JSON.stringify(response.headers, null, 2)}
               </pre>
             </div>
@@ -953,9 +930,9 @@ function ResponsePanel({ response }: { response: RequestState['response'] }) {
 
         {response.data && (
           <div>
-            <h4 className="text-sm font-semibold text-fd-foreground mb-2">Response Body</h4>
+            <div className="text-sm font-semibold text-fd-foreground mb-2 leading-none">Response Body</div>
             <div className="bg-fd-muted rounded-lg p-3 border">
-              <pre className="text-sm font-mono overflow-auto max-h-96 text-fd-foreground whitespace-pre-wrap break-words">
+              <pre className="text-sm font-mono overflow-auto max-h-96 text-fd-foreground whitespace-pre-wrap break-words m-0">
                 {JSON.stringify(response.data, null, 2)}
               </pre>
             </div>

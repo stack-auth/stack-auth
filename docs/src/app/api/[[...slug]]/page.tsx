@@ -1,5 +1,5 @@
+import { EnhancedAPIPage } from '@/components/api/enhanced-api-page';
 import { getMDXComponents } from '@/mdx-components';
-import { APIPage } from 'fumadocs-openapi/ui';
 import { apiSource } from 'lib/source';
 import { notFound } from 'next/navigation';
 import { APIPageWrapper } from '../../../components/api/api-page-wrapper';
@@ -19,7 +19,7 @@ export default async function ApiPage({
   return (
     <APIPageWrapper>
       <article className="prose prose-neutral dark:prose-invert max-w-none">
-        <MDX components={getMDXComponents({ APIPage })} />
+        <MDX components={getMDXComponents({ EnhancedAPIPage })} />
       </article>
     </APIPageWrapper>
   );
