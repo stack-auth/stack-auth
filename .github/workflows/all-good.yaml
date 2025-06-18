@@ -98,7 +98,15 @@ jobs:
               echo "All check runs passed!"
               exit 0
             else
-              echo "Some check runs failed. Exiting with error."
+              echo "The following check run(s) failed:"
+              # Failed checks on the current commit
+              echo "$commit_response" | jq -r '.check_runs[] | select(.conclusion != "success") | .name' | sed 's/^/  - /'
+              # Failed checks on the PR head commit (if different)
+              if [ -n "$PR_HEAD_SHA" ] && [ "$PR_HEAD_SHA" != "$COMMIT" ]; then
+                echo "$pr_response" | jq -r '.check_runs[] | select(.conclusion != "success") | .name' | sed 's/^/  - /'
+              fi
+              echo "$commit_response"
+              echo "$pr_response"
               exit 1
             fi
           done
