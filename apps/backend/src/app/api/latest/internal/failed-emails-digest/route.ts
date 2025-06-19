@@ -3,7 +3,7 @@ import { DEFAULT_BRANCH_ID, getSoleTenancyFromProjectBranch } from "@/lib/tenanc
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { yupArray, yupBoolean, yupNumber, yupObject, yupString, yupTuple } from "@stackframe/stack-shared/dist/schema-fields";
 import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
-import { StatusError } from "@stackframe/stack-shared/dist/utils/errors";
+import { StatusError, captureError } from "@stackframe/stack-shared/dist/utils/errors";
 import { escapeHtml } from "@stackframe/stack-shared/dist/utils/html";
 import { getFailedEmailsByTenancy } from "./crud";
 
@@ -63,13 +63,17 @@ export const POST = createSmartRouteHandler({
         ${failedEmailsBatch.emails.length > 10 ? `<div>...</div>` : ""}
       `;
       if (query.dry_run !== "true") {
-        await sendEmail({
-          tenancyId: internalTenancy.id,
-          emailConfig,
-          to: failedEmailsBatch.tenantOwnerEmail,
-          subject: "Failed emails digest",
-          html: emailHtml,
-        });
+        try {
+          await sendEmail({
+            tenancyId: internalTenancy.id,
+            emailConfig,
+            to: failedEmailsBatch.tenantOwnerEmail,
+            subject: "Failed emails digest",
+            html: emailHtml,
+          });
+        } catch (error) {
+          captureError("send-failed-emails-digest", error);
+        }
       }
     }
 

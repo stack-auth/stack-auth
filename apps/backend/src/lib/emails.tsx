@@ -244,6 +244,10 @@ export async function sendEmailWithoutRetries(options: SendEmailOptions): Promis
 }
 
 export async function sendEmail(options: SendEmailOptions) {
+  if (!options.to) {
+    throw new StackAssertionError("No recipient email address provided to sendEmail", omit(options, ['emailConfig']));
+  }
+
   return Result.orThrow(await Result.retry(async (attempt) => {
     const result = await sendEmailWithoutRetries(options);
 
