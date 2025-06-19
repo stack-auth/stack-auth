@@ -117,7 +117,13 @@ async function _sendEmailWithoutRetries(options: SendEmailOptions): Promise<Resu
       });
     }
 
-    return await traceSpan('sending email to ' + JSON.stringify(options.to), async () => {
+    if (toArray.length === 0) {
+      // no valid emails, so we can just return ok
+      // (we skip silently because this is not an error)
+      return Result.ok(undefined);
+    }
+
+    return await traceSpan('sending email to ' + JSON.stringify(toArray), async () => {
       try {
         const transporter = nodemailer.createTransport({
           host: options.emailConfig.host,
