@@ -1,272 +1,168 @@
-# @stackframe/init-stack
+# @stackframe/stack-docs
 
 ## 2.8.15
-
-### Patch Changes
-
-- @stackframe/stack-shared@2.8.15
 
 ## 2.8.14
 
 ### Patch Changes
 
-- Updated dependencies
-  - @stackframe/stack-shared@2.8.14
+- Various changes
 
 ## 2.8.13
 
 ### Patch Changes
 
-- Updated dependencies
-  - @stackframe/stack-shared@2.8.13
+- Various changes
 
 ## 2.8.12
 
 ### Patch Changes
 
-- Updated dependencies
-  - @stackframe/stack-shared@2.8.12
+- Various changes
 
 ## 2.8.11
 
-### Patch Changes
-
-- Updated dependencies
-  - @stackframe/stack-shared@2.8.11
-
 ## 2.8.10
-
-### Patch Changes
-
-- Updated dependencies
-  - @stackframe/stack-shared@2.8.10
 
 ## 2.8.9
 
-### Patch Changes
-
-- Various changes
-  - @stackframe/stack-shared@2.8.9
-
 ## 2.8.8
-
-### Patch Changes
-
-- @stackframe/stack-shared@2.8.8
 
 ## 2.8.7
 
-### Patch Changes
-
-- @stackframe/stack-shared@2.8.7
-
 ## 2.8.6
-
-### Patch Changes
-
-- Updated dependencies
-  - @stackframe/stack-shared@2.8.6
 
 ## 2.8.5
 
 ### Patch Changes
 
-- Updated dependencies
-  - @stackframe/stack-shared@2.8.5
+- Various changes
 
 ## 2.8.4
 
 ### Patch Changes
 
 - Various changes
-- Updated dependencies
-  - @stackframe/stack-shared@2.8.4
 
 ## 2.8.3
 
 ### Patch Changes
 
-- Updated dependencies
-  - @stackframe/stack-shared@2.8.3
+- Various changes
 
 ## 2.8.2
 
 ### Patch Changes
 
-- Updated dependencies
-  - @stackframe/stack-shared@2.8.2
+- Various changes
 
 ## 2.8.1
 
-### Patch Changes
-
-- @stackframe/stack-shared@2.8.1
-
 ## 2.8.0
 
-### Patch Changes
+### Minor Changes
 
-- Updated dependencies
-  - @stackframe/stack-shared@2.8.0
+- Various changes
 
 ## 2.7.30
-
-### Patch Changes
-
-- Updated dependencies
-  - @stackframe/stack-shared@2.7.30
 
 ## 2.7.29
 
 ### Patch Changes
 
-- Updated dependencies
-  - @stackframe/stack-shared@2.7.29
+- Various changes
 
 ## 2.7.28
-
-### Patch Changes
-
-- Updated dependencies
-  - @stackframe/stack-shared@2.7.28
 
 ## 2.7.27
 
 ### Patch Changes
 
 - Various changes
-- Updated dependencies
-  - @stackframe/stack-shared@2.7.27
 
 ## 2.7.26
 
 ### Patch Changes
 
-- Updated dependencies
-  - @stackframe/stack-shared@2.7.26
+- Various changes
 
 ## 2.7.25
 
 ### Patch Changes
 
 - Various changes
-  - @stackframe/stack-shared@2.7.25
 
 ## 2.7.24
 
 ### Patch Changes
 
-- @stackframe/stack-shared@2.7.24
+- Various changes
 
 ## 2.7.23
 
 ### Patch Changes
 
 - Various changes
-- Updated dependencies
-  - @stackframe/stack-shared@2.7.23
 
 ## 2.7.22
 
 ### Patch Changes
 
-- Updated dependencies
-  - @stackframe/stack-shared@2.7.22
+- Various changes
 
 ## 2.7.21
 
 ### Patch Changes
 
-- Updated dependencies
-  - @stackframe/stack-shared@2.7.21
+- Various changes
 
 ## 2.7.20
 
-### Patch Changes
-
-- Updated dependencies
-  - @stackframe/stack-shared@2.7.20
-
 ## 2.7.19
-
-### Patch Changes
-
-- Various changes
-  - @stackframe/stack-shared@2.7.19
 
 ## 2.7.18
 
 ### Patch Changes
 
 - Various changes
-- Updated dependencies
-  - @stackframe/stack-shared@2.7.18
 
 ## 2.7.17
 
 ### Patch Changes
 
 - Various changes
-- Updated dependencies
-  - @stackframe/stack-shared@2.7.17
 
 ## 2.7.16
 
 ### Patch Changes
 
-- Updated dependencies
-  - @stackframe/stack-shared@2.7.16
+- Various changes
 
 ## 2.7.15
 
-### Patch Changes
-
-- Updated dependencies
-  - @stackframe/stack-shared@2.7.15
-
 ## 2.7.14
-
-### Patch Changes
-
-- Updated dependencies
-  - @stackframe/stack-shared@2.7.14
 
 ## 2.7.13
 
 ### Patch Changes
 
-- Updated dependencies
-  - @stackframe/stack-shared@2.7.13
+- Various changes
 
 ## 2.7.12
 
 ### Patch Changes
 
 - Various changes
-- Updated dependencies
-  - @stackframe/stack-shared@2.7.12
 
 ## 2.7.11
-
-### Patch Changes
-
-- Various changes
-  - @stackframe/stack-shared@2.7.11
 
 ## 2.7.10
 
 ### Patch Changes
 
 - Various changes
-- Updated dependencies
-  - @stackframe/stack-shared@2.7.10
 
 ## 2.7.9
-
-### Patch Changes
-
-- Updated dependencies
-  - @stackframe/stack-shared@2.7.9
 
 ## 2.7.8
 
@@ -284,6 +180,10 @@
 
 ## 2.7.5
 
+### Patch Changes
+
+- Various changes
+
 ## 2.7.4
 
 ## 2.7.3
@@ -298,6 +198,10 @@
 
 ## 2.6.38
 
+### Patch Changes
+
+- Various changes
+
 ## 2.6.37
 
 ## 2.6.36
@@ -306,19 +210,39 @@
 
 ## 2.6.34
 
+### Patch Changes
+
+- Bugfixes
+
 ## 2.6.33
 
 ## 2.6.32
 
 ## 2.6.31
 
+### Patch Changes
+
+- Bugfixes
+
 ## 2.6.30
 
+### Patch Changes
+
+- Bugfixes
+
 ## 2.6.29
+
+### Patch Changes
+
+- Bugfixes
 
 ## 2.6.28
 
 ## 2.6.27
+
+### Patch Changes
+
+- Bugfixes
 
 ## 2.6.26
 
@@ -327,6 +251,10 @@
 - Various bugfixes
 
 ## 2.6.25
+
+### Patch Changes
+
+- Translation overrides
 
 ## 2.6.24
 
@@ -378,11 +306,20 @@
 
 ## 2.6.16
 
+### Patch Changes
+
+- - list user pagination
+  - fixed visual glitches
+
 ## 2.6.15
 
 ## 2.6.14
 
 ## 2.6.13
+
+### Patch Changes
+
+- Updated docs
 
 ## 2.6.12
 
@@ -432,7 +369,15 @@
 
 ## 2.6.2
 
+### Patch Changes
+
+- Several bugfixes & typos
+
 ## 2.6.1
+
+### Patch Changes
+
+- Bugfixes
 
 ## 2.6.0
 
@@ -442,6 +387,10 @@
 
 ## 2.5.37
 
+### Patch Changes
+
+- client side account deletion; new account setting style;
+
 ## 2.5.36
 
 ### Patch Changes
@@ -450,7 +399,15 @@
 
 ## 2.5.35
 
+### Patch Changes
+
+- Doc improvements
+
 ## 2.5.34
+
+### Patch Changes
+
+- Internationalization
 
 ## 2.5.33
 
@@ -462,7 +419,15 @@
 
 ## 2.5.31
 
+### Patch Changes
+
+- JWKS
+
 ## 2.5.30
+
+### Patch Changes
+
+- More OAuth providers
 
 ## 2.5.29
 
@@ -486,15 +451,35 @@
 
 ## 2.5.25
 
+### Patch Changes
+
+- GitLab OAuth provider
+
 ## 2.5.24
 
 ## 2.5.23
 
+### Patch Changes
+
+- Various bugfixes and performance improvements
+
 ## 2.5.22
+
+### Patch Changes
+
+- Team metadata
 
 ## 2.5.21
 
+### Patch Changes
+
+- Discord OAuth provider
+
 ## 2.5.20
+
+### Patch Changes
+
+- Improved account settings
 
 ## 2.5.19
 
@@ -520,6 +505,10 @@
 
 ## 2.5.14
 
+### Patch Changes
+
+- added oauth token table
+
 ## 2.5.13
 
 ## 2.5.12
@@ -533,6 +522,10 @@
 - Facebook Business support
 
 ## 2.5.9
+
+### Patch Changes
+
+- Impersonation
 
 ## 2.5.8
 
@@ -554,96 +547,61 @@
 
 ## 2.5.3
 
+### Patch Changes
+
+- Updated dependencies
+  - @stackframe/stack-backend@2.5.3
+
 ## 2.5.2
+
+### Patch Changes
+
+- Updated dependencies
+  - @stackframe/stack-backend@2.5.2
 
 ## 2.5.1
 
 ### Patch Changes
 
 - New backend endpoints
+- Updated dependencies
+  - @stackframe/stack-backend@2.5.1
 
 ## 2.5.0
 
+### Minor Changes
+
+- Client teams and many bugfixes
+
+### Patch Changes
+
+- Updated dependencies
+  - @stackframe/stack-backend@2.5.0
+
 ## 2.4.28
+
+### Patch Changes
+
+- Bugfixes
+- Updated dependencies
+  - @stackframe/stack-backend@2.4.28
 
 ## 2.4.27
 
+### Patch Changes
+
+- @stackframe/stack-server@2.4.27
+
 ## 2.4.26
+
+### Patch Changes
+
+- Improve docs
+- Updated dependencies
+  - @stackframe/stack-server@2.4.26
 
 ## 2.4.25
 
-## 2.4.24
-
-## 2.4.23
-
-## 2.4.22
-
 ### Patch Changes
 
-- OAuth scopes
-
-## 2.4.21
-
-### Patch Changes
-
-- Bugfixes
-
-## 2.4.20
-
-### Patch Changes
-
-- Support multiple projects on the same domain
-
-## 2.4.19
-
-### Patch Changes
-
-- Sync package versions
-
-## 1.0.8
-
-### Patch Changes
-
-- Improve setup flow
-
-## 1.0.7
-
-### Patch Changes
-
-- Bug fixes
-
-## 1.0.6
-
-### Patch Changes
-
-- Bugfixes
-
-## 1.0.5
-
-### Patch Changes
-
-- Bugfixes
-
-## 1.0.4
-
-### Patch Changes
-
-- Remove crypto-browserify dependency
-
-## 1.0.3
-
-### Patch Changes
-
-- Partial pre-rendering
-
-## 1.0.2
-
-### Patch Changes
-
-- E2E tests and various fixes
-
-## 1.0.1
-
-### Patch Changes
-
-- Setup wizard
+- Docs update
