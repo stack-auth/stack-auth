@@ -161,9 +161,11 @@ export function DocsPage({
           className={props.article?.className}
         >
           {slot(props.breadcrumb, <Breadcrumb {...props.breadcrumb} />)}
-          {props.children}
+          <div className="mb-12">
+            {props.children}
+          </div>
           <div role="none" className="flex-1" />
-          <div className="flex flex-row flex-wrap items-center justify-between gap-4 empty:hidden mt-8 pt-4 border-t border-dashed border-fd-border/20">
+          <div className="flex flex-row flex-wrap items-center justify-between gap-4 empty:hidden mt-16 pt-4 border-t border-dashed border-fd-border/20">
             {editOnGithub && (
               <EditOnGitHub
                 href={`https://github.com/${editOnGithub.owner}/${editOnGithub.repo}/blob/${editOnGithub.sha}/${editOnGithub.path.startsWith('/') ? editOnGithub.path.slice(1) : editOnGithub.path}`}
