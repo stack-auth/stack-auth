@@ -330,7 +330,7 @@ export function SidebarFolderTrigger({
     <CollapsibleTrigger
       className={cn(
         itemVariants({ active: false }),
-        'w-full group',
+        'w-full group !py-2 !px-3',
         open && 'bg-fd-accent/30',
         className
       )}

@@ -136,7 +136,7 @@ function CollapsibleSection({
     <div className="space-y-1">
       <button
         onClick={() => setIsOpen(!isOpen)}
-        className="flex items-center gap-2 w-full text-left px-2 py-1.5 text-sm font-medium text-fd-muted-foreground hover:text-fd-foreground transition-colors"
+        className="flex items-center gap-2 w-full text-left px-2 py-1.5 text-xs font-medium text-fd-muted-foreground hover:text-fd-foreground transition-colors"
       >
         {isOpen ? (
           <ChevronDown className="h-3 w-3" />
