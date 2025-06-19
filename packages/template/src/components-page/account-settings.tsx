@@ -11,6 +11,7 @@ import { useTranslation } from "../lib/translations";
 import { ActiveSessionsPage } from "./account-settings/active-sessions/active-sessions-page";
 import { ApiKeysPage } from "./account-settings/api-keys/api-keys-page";
 import { EmailsAndAuthPage } from './account-settings/email-and-auth/email-and-auth-page';
+import { NotificationsPage } from './account-settings/notifications/notifications-page';
 import { ProfilePage } from "./account-settings/profile-page/profile-page";
 import { SettingsPage } from './account-settings/settings/settings-page';
 import { TeamCreationPage } from './account-settings/teams/team-creation-page';
@@ -58,6 +59,15 @@ export function AccountSettings(props: {
               icon: <Icon name="ShieldCheck"/>,
               content: <Suspense fallback={<EmailsAndAuthPageSkeleton/>}>
                 <EmailsAndAuthPage/>
+              </Suspense>,
+            },
+            {
+              title: t('Notifications'),
+              type: 'item',
+              id: 'notifications',
+              icon: <Icon name="Bell"/>,
+              content: <Suspense fallback={<NotificationsPageSkeleton/>}>
+                <NotificationsPage/>
               </Suspense>,
             },
             {
@@ -174,6 +184,13 @@ function TeamPageSkeleton() {
 }
 
 function TeamCreationSkeleton() {
+  return <PageLayout>
+    <Skeleton className="h-9 w-full mt-1"/>
+    <Skeleton className="h-9 w-full mt-1"/>
+  </PageLayout>;
+}
+
+function NotificationsPageSkeleton() {
   return <PageLayout>
     <Skeleton className="h-9 w-full mt-1"/>
     <Skeleton className="h-9 w-full mt-1"/>

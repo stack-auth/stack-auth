@@ -3,6 +3,16 @@ import { describe } from "vitest";
 import { it } from "../../../../helpers";
 import { niceBackendFetch, Project, User } from "../../../backend-helpers";
 
+const testEmailConfig = {
+  type: "standard",
+  host: "localhost",
+  port: 2500,
+  username: "test",
+  password: "test",
+  sender_name: "Test Project",
+  sender_email: "test@example.com",
+} as const;
+
 describe("invalid requests", () => {
   it("should return 401 when invalid access type is provided", async ({ expect }) => {
     const response = await niceBackendFetch(
@@ -40,6 +50,12 @@ describe("invalid requests", () => {
   });
 
   it("should return 404 when user is not found", async ({ expect }) => {
+    await Project.createAndSwitch({
+      display_name: "Test Successful Email Project",
+      config: {
+        email_config: testEmailConfig,
+      },
+    });
     const response = await niceBackendFetch(
       "/api/v1/emails",
       {
@@ -49,6 +65,7 @@ describe("invalid requests", () => {
           user_id: randomUUID(),
           html: "<p>Test email</p>",
           subject: "Test Subject",
+          notification_category_name: "Marketing",
         }
       }
     );
@@ -62,6 +79,12 @@ describe("invalid requests", () => {
   });
 
   it("should return 400 when user does not have a primary email", async ({ expect }) => {
+    await Project.createAndSwitch({
+      display_name: "Test Successful Email Project",
+      config: {
+        email_config: testEmailConfig,
+      },
+    });
     const createUserResponse = await niceBackendFetch("/api/v1/users", {
       method: "POST",
       accessType: "server",
@@ -78,6 +101,7 @@ describe("invalid requests", () => {
           user_id: createUserResponse.body.id,
           html: "<p>Test email</p>",
           subject: "Test Subject",
+          notification_category_name: "Marketing",
         }
       }
     );
@@ -107,6 +131,7 @@ describe("invalid requests", () => {
           user_id: createUserResponse.body.id,
           html: "<p>Test email</p>",
           subject: "Test Subject",
+          notification_category_name: "Marketing",
         }
       }
     );
@@ -118,6 +143,42 @@ describe("invalid requests", () => {
       }
     `);
   });
+
+  it("should return 404 when invalid notification category name is provided", async ({ expect }) => {
+    await Project.createAndSwitch({
+      display_name: "Test Successful Email Project",
+      config: {
+        email_config: testEmailConfig,
+      },
+    });
+    const createUserResponse = await niceBackendFetch("/api/v1/users", {
+      method: "POST",
+      accessType: "server",
+      body: {
+        primary_email: "test@example.com",
+      },
+    });
+    const response = await niceBackendFetch(
+      "/api/v1/emails",
+      {
+        method: "POST",
+        accessType: "server",
+        body: {
+          user_id: createUserResponse.body.id,
+          html: "<p>Test email</p>",
+          subject: "Test Subject",
+          notification_category_name: "Invalid",
+        }
+      }
+    );
+    expect(response).toMatchInlineSnapshot(`
+      NiceResponse {
+        "status": 404,
+        "body": "Notification category not found",
+        "headers": Headers { <some fields may have been hidden> },
+      }
+    `);
+  });
 });
 
 describe("with valid credentials", () => {
@@ -125,15 +186,7 @@ describe("with valid credentials", () => {
     await Project.createAndSwitch({
       display_name: "Test Successful Email Project",
       config: {
-        email_config: {
-          type: "standard",
-          host: "localhost",
-          port: 2500,
-          username: "test",
-          password: "test",
-          sender_name: "Test Project",
-          sender_email: "test@example.com",
-        },
+        email_config: testEmailConfig,
       },
     });
     const user = await User.create();
@@ -146,6 +199,7 @@ describe("with valid credentials", () => {
           user_id: user.userId,
           html: "<h1>Test Email</h1><p>This is a test email with HTML content.</p>",
           subject: "Custom Test Email Subject",
+          notification_category_name: "Marketing",
         }
       }
     );

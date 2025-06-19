@@ -24,6 +24,7 @@ import { TeamInvitationCrud } from './crud/team-invitation';
 import { TeamMemberProfilesCrud } from './crud/team-member-profiles';
 import { TeamPermissionsCrud } from './crud/team-permissions';
 import { TeamsCrud } from './crud/teams';
+import { NotificationPreferenceCrud } from './crud/notification-preferences';
 
 export type ClientInterfaceOptions = {
   clientVersion: string,
@@ -1605,6 +1606,40 @@ export class StackClientInterface {
       return null;
     }
     return await result.data.json();
+  }
+
+  async listNotificationCategories(
+    session: InternalSession,
+  ): Promise<NotificationPreferenceCrud['Client']['Read'][]> {
+    const response = await this.sendClientRequest(
+      `/emails/notification-preference?user_id=me`,
+      {},
+      session,
+    );
+    const result = await response.json() as NotificationPreferenceCrud['Client']['List'];
+    return result.items;
+  }
+
+  async setNotificationsEnabled(
+    notificationCategoryId: string,
+    enabled: boolean,
+    session: InternalSession,
+  ): Promise<void> {
+    await this.sendClientRequest(
+      `/emails/notification-preference`,
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          user_id: "me",
+          notification_category_id: notificationCategoryId,
+          enabled,
+        }),
+      },
+      session,
+    );
   }
 }
 
