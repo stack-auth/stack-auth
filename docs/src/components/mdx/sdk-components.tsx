@@ -340,7 +340,7 @@ export function ClickableTableOfContents({ code, platform = 'react-like' }: Clic
 
       return {
         type: 'clickable' as const,
-        code: codeText.trim(),
+        code: codeText.trimEnd(), // Only trim trailing whitespace, preserve leading indentation
         anchor: cleanAnchor,
         originalLineIndex: index
       };

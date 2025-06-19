@@ -17,53 +17,53 @@ You can call `useUser()` or `stackServerApp.getUser()` to get the `CurrentUser` 
 ### Table of Contents
 
 <ClickableTableOfContents code={`type CurrentUser = {
-  id: string; //$stack-link-to:#currentuserid
-  displayName: string | null; //$stack-link-to:#currentuserdisplayname
-  primaryEmail: string | null; //$stack-link-to:#currentuserprimaryemail
-  primaryEmailVerified: boolean; //$stack-link-to:#currentuserprimaryemailverified
-  profileImageUrl: string | null; //$stack-link-to:#currentuserprofileimageurl
-  signedUpAt: Date; //$stack-link-to:#currentusersignedupat
-  hasPassword: boolean; //$stack-link-to:#currentuserhaspassword
-  clientMetadata: Json; //$stack-link-to:#currentuserclientmetadata
-  clientReadOnlyMetadata: Json; //$stack-link-to:#currentuserclientreadonlymetadata
-  selectedTeam: Team | null; //$stack-link-to:#currentuserselectedteam
+    id: string; //$stack-link-to:#currentuserid
+    displayName: string | null; //$stack-link-to:#currentuserdisplayname
+    primaryEmail: string | null; //$stack-link-to:#currentuserprimaryemail
+    primaryEmailVerified: boolean; //$stack-link-to:#currentuserprimaryemailverified
+    profileImageUrl: string | null; //$stack-link-to:#currentuserprofileimageurl
+    signedUpAt: Date; //$stack-link-to:#currentusersignedupat
+    hasPassword: boolean; //$stack-link-to:#currentuserhaspassword
+    clientMetadata: Json; //$stack-link-to:#currentuserclientmetadata
+    clientReadOnlyMetadata: Json; //$stack-link-to:#currentuserclientreadonlymetadata
+    selectedTeam: Team | null; //$stack-link-to:#currentuserselectedteam
 
-  update(data): Promise<void>; //$stack-link-to:#currentuserupdate
-  updatePassword(data): Promise<void>; //$stack-link-to:#currentuserupdatepassword
-  getAuthHeaders(): Promise<Record<string, string>>; //$stack-link-to:#currentusergetauthheaders
-  getAuthJson(): Promise<{ accessToken: string | null }>; //$stack-link-to:#currentusergetauthjson
-  signOut([options]): Promise<void>; //$stack-link-to:#currentusersignout
-  delete(): Promise<void>; //$stack-link-to:#currentuserdelete
+    update(data): Promise<void>; //$stack-link-to:#currentuserupdate
+    updatePassword(data): Promise<void>; //$stack-link-to:#currentuserupdatepassword
+    getAuthHeaders(): Promise<Record<string, string>>; //$stack-link-to:#currentusergetauthheaders
+    getAuthJson(): Promise<{ accessToken: string | null }>; //$stack-link-to:#currentusergetauthjson
+    signOut([options]): Promise<void>; //$stack-link-to:#currentusersignout
+    delete(): Promise<void>; //$stack-link-to:#currentuserdelete
 
-  getTeam(id): Promise<Team | null>; //$stack-link-to:#currentusergetteam
-  // NEXT_LINE_PLATFORM react-like
-   ⤷ useTeam(id): Team | null; //$stack-link-to:#currentuseruseteam
-  listTeams(): Promise<Team[]>; //$stack-link-to:#currentuserlistteams
-  // NEXT_LINE_PLATFORM react-like
-   ⤷ useTeams(): Team[]; //$stack-link-to:#currentuseruseteams
-  setSelectedTeam(team): Promise<void>; //$stack-link-to:#currentusersetselectedteam
-  createTeam(data): Promise<Team>; //$stack-link-to:#currentusercreateteam
-  leaveTeam(team): Promise<void>; //$stack-link-to:#currentuserleaveteam
-  getTeamProfile(team): Promise<EditableTeamMemberProfile>; //$stack-link-to:#currentusergetteamprofile
-  // NEXT_LINE_PLATFORM react-like
-   ⤷ useTeamProfile(team): EditableTeamMemberProfile; //$stack-link-to:#currentuseruseteamprofile
+    getTeam(id): Promise<Team | null>; //$stack-link-to:#currentusergetteam
+    // NEXT_LINE_PLATFORM react-like
+    ⤷ useTeam(id): Team | null; //$stack-link-to:#currentuseruseteam
+    listTeams(): Promise<Team[]>; //$stack-link-to:#currentuserlistteams
+    // NEXT_LINE_PLATFORM react-like
+    ⤷ useTeams(): Team[]; //$stack-link-to:#currentuseruseteams
+    setSelectedTeam(team): Promise<void>; //$stack-link-to:#currentusersetselectedteam
+    createTeam(data): Promise<Team>; //$stack-link-to:#currentusercreateteam
+    leaveTeam(team): Promise<void>; //$stack-link-to:#currentuserleaveteam
+    getTeamProfile(team): Promise<EditableTeamMemberProfile>; //$stack-link-to:#currentusergetteamprofile
+    // NEXT_LINE_PLATFORM react-like
+    ⤷ useTeamProfile(team): EditableTeamMemberProfile; //$stack-link-to:#currentuseruseteamprofile
 
-  hasPermission(scope, permissionId): Promise<boolean>; //$stack-link-to:#currentuserhaspermission
-  getPermission(scope, permissionId[, options]): Promise<TeamPermission | null>; //$stack-link-to:#currentusergetpermission
-  // NEXT_LINE_PLATFORM react-like
-   ⤷ usePermission(scope, permissionId[, options]): TeamPermission | null; //$stack-link-to:#currentuserusepermission
-  listPermissions(scope[, options]): Promise<TeamPermission[]>; //$stack-link-to:#currentuserlistpermissions
-  // NEXT_LINE_PLATFORM react-like
-   ⤷ usePermissions(scope[, options]): TeamPermission[]; //$stack-link-to:#currentuserusepermissions
+    hasPermission(scope, permissionId): Promise<boolean>; //$stack-link-to:#currentuserhaspermission
+    getPermission(scope, permissionId[, options]): Promise<TeamPermission | null>; //$stack-link-to:#currentusergetpermission
+    // NEXT_LINE_PLATFORM react-like
+    ⤷ usePermission(scope, permissionId[, options]): TeamPermission | null; //$stack-link-to:#currentuserusepermission
+    listPermissions(scope[, options]): Promise<TeamPermission[]>; //$stack-link-to:#currentuserlistpermissions
+    // NEXT_LINE_PLATFORM react-like
+    ⤷ usePermissions(scope[, options]): TeamPermission[]; //$stack-link-to:#currentuserusepermissions
 
-  listContactChannels(): Promise<ContactChannel[]>; //$stack-link-to:#currentuserlistcontactchannels
-  // NEXT_LINE_PLATFORM react-like
-   ⤷ useContactChannels(): ContactChannel[]; //$stack-link-to:#currentuserusecontactchannels
-   
-  createApiKey(options): Promise<UserApiKeyFirstView>; //$stack-link-to:#currentusercreateapikey
-  listApiKeys(): Promise<UserApiKey[]>; //$stack-link-to:#currentuserlistapikeys
-  // NEXT_LINE_PLATFORM react-like
-   ⤷ useApiKeys(): UserApiKey[]; //$stack-link-to:#currentuseruseapikeys
+    listContactChannels(): Promise<ContactChannel[]>; //$stack-link-to:#currentuserlistcontactchannels
+    // NEXT_LINE_PLATFORM react-like
+    ⤷ useContactChannels(): ContactChannel[]; //$stack-link-to:#currentuserusecontactchannels
+    
+    createApiKey(options): Promise<UserApiKeyFirstView>; //$stack-link-to:#currentusercreateapikey
+    listApiKeys(): Promise<UserApiKey[]>; //$stack-link-to:#currentuserlistapikeys
+    // NEXT_LINE_PLATFORM react-like
+    ⤷ useApiKeys(): UserApiKey[]; //$stack-link-to:#currentuseruseapikeys
 };`} />
 
 <CollapsibleTypesSection type="currentUser" property="id" defaultOpen={false}>
@@ -1178,20 +1178,20 @@ The `ServerUser` object contains most `CurrentUser` properties and methods with 
 ### Table of Contents
 
 <ClickableTableOfContents code={`type ServerUser = 
-  // Inherits most functionality from CurrentUser
-  & Omit<CurrentUser, "getAuthJson" | "signOut">  //$stack-link-to:#currentuser
-  & {
-    lastActiveAt: Date; //$stack-link-to:#serveruserlastactiveat
-    serverMetadata: Json; //$stack-link-to:#serveruserservermetadata
+    // Inherits most functionality from CurrentUser
+    & Omit<CurrentUser, "getAuthJson" | "signOut">  //$stack-link-to:#currentuser
+    & {
+      lastActiveAt: Date; //$stack-link-to:#serveruserlastactiveat
+      serverMetadata: Json; //$stack-link-to:#serveruserservermetadata
 
-    update(data): Promise<void>; //$stack-link-to:#serveruserupdate
+      update(data): Promise<void>; //$stack-link-to:#serveruserupdate
 
-    listContactChannels(): Promise<ContactChannel[]>; //$stack-link-to:#serveruserlistcontactchannels
-    // NEXT_LINE_PLATFORM react-like
-     ⤷ useContactChannels(): ContactChannel[]; //$stack-link-to:#serveruserusecontactchannels
+      listContactChannels(): Promise<ContactChannel[]>; //$stack-link-to:#serveruserlistcontactchannels
+      // NEXT_LINE_PLATFORM react-like
+      ⤷ useContactChannels(): ContactChannel[]; //$stack-link-to:#serveruserusecontactchannels
 
-    grantPermission(scope, permissionId): Promise<void>; //$stack-link-to:#serverusergrantpermission
-    revokePermission(scope, permissionId): Promise<void>; //$stack-link-to:#serveruserrevokepermission
+      grantPermission(scope, permissionId): Promise<void>; //$stack-link-to:#serverusergrantpermission
+      revokePermission(scope, permissionId): Promise<void>; //$stack-link-to:#serveruserrevokepermission
   };`} />
 
 <CollapsibleTypesSection type="serverUser" property="lastActiveAt" defaultOpen={false}>
