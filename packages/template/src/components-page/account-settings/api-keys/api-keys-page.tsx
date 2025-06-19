@@ -22,19 +22,19 @@ export function ApiKeysPage(props?: {
 
   // Check if we're in any kind of mock mode first
   const isInMockMode = !!(props?.mockApiKeys || props?.mockMode);
-  
+
   const userFromHook = useUser({ or: isInMockMode ? 'return-null' : 'redirect' });
-  
+
   // In mock mode, we don't need a user - just show mock data
   if (isInMockMode && !userFromHook) {
     // This is expected in mock mode, continue with mock data
   }
-  
+
   // Only return null if we're not in mock mode and don't have a user
   if (!isInMockMode && !userFromHook) {
     return null; // This shouldn't happen due to redirect, but just in case
   }
-  
+
   // Use mock data if provided
   const mockApiKeysData = props?.mockApiKeys ? props.mockApiKeys.map(mockKey => ({
     id: mockKey.id,
@@ -126,7 +126,7 @@ export function ApiKeysPage(props?: {
       };
       return mockApiKey as any;
     }
-    
+
     if (!userFromHook) throw new Error('User not available');
     return await userFromHook.createApiKey(data);
   };

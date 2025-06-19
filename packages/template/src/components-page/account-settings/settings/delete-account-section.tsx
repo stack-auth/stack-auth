@@ -10,10 +10,10 @@ export function DeleteAccountSection(props?: { mockMode?: boolean }) {
   const app = useStackApp();
   const project = app.useProject();
   const [deleting, setDeleting] = useState(false);
-  
+
   // In mock mode, always show the delete section
   const showDeleteSection = props?.mockMode || project.config.clientUserDeletionEnabled;
-  
+
   if (!showDeleteSection) {
     return null;
   }
@@ -25,7 +25,7 @@ export function DeleteAccountSection(props?: { mockMode?: boolean }) {
       setDeleting(false);
       return;
     }
-    
+
     if (user) {
       await user.delete();
       await app.redirectToHome();

@@ -18,7 +18,7 @@ export function ActiveSessionsPage(props?: {
     geoInfo?: {
       ip?: string,
       cityName?: string,
-    }
+    },
   }>,
   mockMode?: boolean,
 }) {

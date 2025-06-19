@@ -4,7 +4,7 @@ import { SignOutSection } from "./sign-out-section";
 
 
 export function SettingsPage(props?: {
-  mockMode?: boolean
+  mockMode?: boolean,
 }) {
   return (
     <PageLayout>
