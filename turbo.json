@@ -59,9 +59,6 @@
       ],
       "outputLogs": "new-only"
     },
-    "@stackframe/stack-docs#build": {
-      "dependsOn": []
-    },
     "@stackframe/mcp-server#build": {
       "dependsOn": [
         "@stackframe/stack-backend#build"
