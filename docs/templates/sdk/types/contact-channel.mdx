@@ -38,8 +38,7 @@ or [`user.useContactChannels()`](../types/user.mdx#currentuserusecontactchannels
     <MethodContent>
       The id of the contact channel as a `string`.
     </MethodContent>
-    <MethodAside>
-      ### Type Definition
+    <MethodAside title="Type Definition">
 
       ```typescript
       declare const id: string;
@@ -53,8 +52,7 @@ or [`user.useContactChannels()`](../types/user.mdx#currentuserusecontactchannels
     <MethodContent>
       The value of the contact channel. If type is `"email"`, this is an email address.
     </MethodContent>
-    <MethodAside>
-      ### Type Definition
+    <MethodAside title="Type Definition">
 
       ```typescript
       declare const value: string;
@@ -68,8 +66,7 @@ or [`user.useContactChannels()`](../types/user.mdx#currentuserusecontactchannels
     <MethodContent>
       The type of the contact channel. Currently always `"email"`.
     </MethodContent>
-    <MethodAside>
-      ### Type Definition
+    <MethodAside title="Type Definition">
 
       ```typescript
       declare const type: 'email';
@@ -83,8 +80,7 @@ or [`user.useContactChannels()`](../types/user.mdx#currentuserusecontactchannels
     <MethodContent>
       Indicates whether the contact channel is the user's primary contact channel. If an email is set to primary, it will be the value on the `user.primaryEmail` field.
     </MethodContent>
-    <MethodAside>
-      ### Type Definition
+    <MethodAside title="Type Definition">
 
       ```typescript
       declare const isPrimary: boolean;
@@ -98,8 +94,7 @@ or [`user.useContactChannels()`](../types/user.mdx#currentuserusecontactchannels
     <MethodContent>
       Indicates whether the contact channel is verified.
     </MethodContent>
-    <MethodAside>
-      ### Type Definition
+    <MethodAside title="Type Definition">
 
       ```typescript
       declare const isVerified: boolean;
@@ -113,8 +108,7 @@ or [`user.useContactChannels()`](../types/user.mdx#currentuserusecontactchannels
     <MethodContent>
       Indicates whether the contact channel is used for authentication. If set to `true`, the user can use this contact channel with OTP or password to sign in.
     </MethodContent>
-    <MethodAside>
-      ### Type Definition
+    <MethodAside title="Type Definition">
 
       ```typescript
       declare const usedForAuth: boolean;
@@ -137,17 +131,17 @@ or [`user.useContactChannels()`](../types/user.mdx#currentuserusecontactchannels
       `Promise<void>`
     </MethodContent>
     <MethodAside>
-      ### Signature
+      <AsideSection title="Signature">
 
       ```typescript
       declare function sendVerificationEmail(): Promise<void>;
       ```
-
-      ### Examples
-
+      </AsideSection>
+      <AsideSection title="Examples">
       ```typescript Sending verification email
       await contactChannel.sendVerificationEmail();
       ```
+      </AsideSection>
     </MethodAside>
   </MethodLayout>
 </CollapsibleTypesSection>
@@ -182,7 +176,7 @@ or [`user.useContactChannels()`](../types/user.mdx#currentuserusecontactchannels
       `Promise<void>`
     </MethodContent>
     <MethodAside>
-      ### Signature
+      <AsideSection title="Signature">
 
       ```typescript
       declare function update(options: {
@@ -192,15 +186,15 @@ or [`user.useContactChannels()`](../types/user.mdx#currentuserusecontactchannels
         isPrimary?: boolean;
       }): Promise<void>;
       ```
-
-      ### Examples
-
+      </AsideSection>
+      <AsideSection title="Examples">
       ```typescript Updating contact channel
       await contactChannel.update({
         value: "new-email@example.com",
         usedForAuth: true,
       });
       ```
+      </AsideSection>
     </MethodAside>
   </MethodLayout>
 </CollapsibleTypesSection>
@@ -219,17 +213,17 @@ or [`user.useContactChannels()`](../types/user.mdx#currentuserusecontactchannels
       `Promise<void>`
     </MethodContent>
     <MethodAside>
-      ### Signature
+      <AsideSection title="Signature">
 
       ```typescript
       declare function delete(): Promise<void>;
       ```
-
-      ### Examples
-
+      </AsideSection>
+      <AsideSection title="Examples">
       ```typescript Deleting contact channel
       await contactChannel.delete();
       ```
+      </AsideSection>
     </MethodAside>
   </MethodLayout>
 </CollapsibleTypesSection>
@@ -288,7 +282,7 @@ or [`serverUser.useContactChannels()`](../types/user.mdx#serveruserusecontactcha
       `Promise<void>`
     </MethodContent>
     <MethodAside>
-      ### Signature
+      <AsideSection title="Signature">
 
       ```typescript
       declare function update(options: {
@@ -299,9 +293,8 @@ or [`serverUser.useContactChannels()`](../types/user.mdx#serveruserusecontactcha
         isPrimary?: boolean;
       }): Promise<void>;
       ```
-
-      ### Examples
-
+      </AsideSection>
+      <AsideSection title="Examples">
       ```typescript Updating server contact channel
       await serverContactChannel.update({
         value: "new-email@example.com",
@@ -309,6 +302,7 @@ or [`serverUser.useContactChannels()`](../types/user.mdx#serveruserusecontactcha
         isVerified: true,
       });
       ```
+      </AsideSection>
     </MethodAside>
   </MethodLayout>
 </CollapsibleTypesSection>

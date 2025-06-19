@@ -18,6 +18,7 @@ type MethodContentProps = {
 type MethodAsideProps = {
   children: ReactNode,
   className?: string,
+  title?: string,
 }
 
 // Enhanced collapsible wrapper for individual method sections with borders
@@ -97,14 +98,39 @@ export function MethodContent({ children, className }: MethodContentProps) {
   );
 }
 
-export function MethodAside({ children, className }: MethodAsideProps) {
+export function MethodAside({ children, className, title }: MethodAsideProps) {
   return (
     <div className={cn(
       'lg:sticky lg:top-8 lg:self-start',
       'bg-fd-card/50 rounded-lg border border-fd-border p-4',
       'backdrop-blur-sm',
+      '[&_h3]:!mt-0 [&_h3]:!mb-4',
       className
     )}>
+      {title && (
+        <div className="text-sm font-semibold text-fd-foreground mb-4">
+          {title}
+        </div>
+      )}
+      {children}
+    </div>
+  );
+}
+
+export function AsideSection({
+  children,
+  title,
+  className
+}: {
+  children: ReactNode,
+  title: string,
+  className?: string,
+}) {
+  return (
+    <div className={cn('mb-4 last:mb-0', className)}>
+      <div className="text-sm font-semibold text-fd-foreground mb-3">
+        {title}
+      </div>
       {children}
     </div>
   );
@@ -174,6 +200,26 @@ export function CollapsibleMethodSection({
   const signaturePart = signature ? signature.replace(/[^a-z0-9]/gi, '').toLowerCase() : '';
   const anchorId = `${appType.toLowerCase()}${methodName}${signaturePart}`;
 
+  // Full display name with optional signature (e.g., "StackClientApp.getUser()" or "StackServerApp.listUsers()")
+  const fullName = signature
+    ? `${method}(${signature})`
+    : method;
+
+  // Type-based styling for different app types
+  const getAppTypeStyle = (appTypeName: string) => {
+    switch (appTypeName) {
+      case 'StackClientApp': {
+        return 'bg-emerald-50 dark:bg-emerald-950/50 text-emerald-700 dark:text-emerald-300';
+      }
+      case 'StackServerApp': {
+        return 'bg-violet-50 dark:bg-violet-950/50 text-violet-700 dark:text-violet-300';
+      }
+      default: {
+        return 'bg-gray-50 dark:bg-gray-950/50 text-gray-700 dark:text-gray-300';
+      }
+    }
+  };
+
   return (
     <div className={cn(
         'border border-fd-border rounded-lg bg-gradient-to-br from-fd-card/20 to-fd-card/30 mb-2',
@@ -181,27 +227,23 @@ export function CollapsibleMethodSection({
       )}>
       <button
         onClick={() => setIsOpen(!isOpen)}
-        className="w-full flex items-center justify-between px-3 py-4 mb-2 text-left hover:bg-fd-accent/5 transition-colors rounded-t-lg h-18 min-h-0"
+        className="w-full flex items-center justify-between px-3 py-2 text-left hover:bg-fd-accent/5 transition-colors rounded-t-lg"
       >
-        <div className="flex items-baseline gap-1.5">
-          <h2 id={anchorId} className="text-sm font-bold text-fd-foreground m-0 font-mono scroll-mt-20 leading-tight">
-            <a href={`#${anchorId}`} className="hover:text-fd-accent-foreground transition-colors !no-underline decoration-none underline-none" style={{ textDecoration: 'none !important', textDecorationLine: 'none', borderBottom: 'none', outline: 'none' }}>
-              {method}
+        <div className="flex items-center gap-1.5">
+          <div id={anchorId} className="text-m font-medium text-fd-foreground font-mono scroll-mt-20 leading-none">
+            <a
+              href={`#${anchorId}`}
+              className="hover:text-fd-accent-foreground transition-colors !no-underline decoration-none underline-none"
+              style={{ textDecoration: 'none !important', textDecorationLine: 'none', borderBottom: 'none', outline: 'none' }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              {fullName}
             </a>
-          </h2>
-          {signature && (
-            <span className="text-sm text-fd-foreground/70 font-mono font-medium">
-              ({signature})
-            </span>
-          )}
+          </div>
         </div>
 
         <div className="flex items-center gap-2">
-          <span className={`px-2 py-0.5 rounded text-sm font-medium ${
-              appType === 'StackClientApp'
-                ? 'bg-emerald-50 dark:bg-emerald-950/50 text-emerald-700 dark:text-emerald-300'
-                : 'bg-violet-50 dark:bg-violet-950/50 text-violet-700 dark:text-violet-300'
-            }`}>
+          <span className={`px-1.5 py-0.5 rounded text-xs font-medium ${getAppTypeStyle(appType)}`}>
             {appType}
           </span>
           {isOpen ? (
@@ -329,19 +371,24 @@ export function CollapsibleTypesSection({
       )}>
         <button
           onClick={() => setIsOpen(!isOpen)}
-          className="w-full flex items-center justify-between px-3 py-4 mb-2 text-left hover:bg-fd-accent/5 transition-colors rounded-t-lg h-18 min-h-0"
+          className="w-full flex items-center justify-between px-3 py-2 text-left hover:bg-fd-accent/5 transition-colors rounded-t-lg"
         >
-          <div className="flex items-baseline gap-1.5">
-            <h2 id={anchorId} className="text-sm font-bold text-fd-foreground m-0 font-mono scroll-mt-20 leading-tight">
-              <a href={`#${anchorId}`} className="hover:text-fd-accent-foreground transition-colors !no-underline decoration-none underline-none" style={{ textDecoration: 'none !important', textDecorationLine: 'none', borderBottom: 'none', outline: 'none' }}>
+          <div className="flex items-center gap-1.5">
+            <div id={anchorId} className="text-m font-medium text-fd-foreground font-mono scroll-mt-20 leading-none">
+              <a
+                href={`#${anchorId}`}
+                className="hover:text-fd-accent-foreground transition-colors !no-underline decoration-none underline-none"
+                style={{ textDecoration: 'none !important', textDecorationLine: 'none', borderBottom: 'none', outline: 'none' }}
+                onClick={(e) => e.stopPropagation()}
+              >
                 {fullName}
               </a>
-            </h2>
+            </div>
           </div>
 
           <div className="flex items-center gap-2">
             {type && (
-              <span className={`px-2 py-0.5 rounded text-sm font-medium ${getTypeStyle(type)}`}>
+              <span className={`px-1.5 py-0.5 rounded text-xs font-medium ${getTypeStyle(type)}`}>
                 {type}
               </span>
             )}

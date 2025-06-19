@@ -9,6 +9,8 @@ On this page:
 - [Team](#team)
 - [ServerTeam](#serverteam)
 
+---
+
 # `Team`
 
 A `Team` object contains basic information and functions about a team, to the extent of which a member of the team would have access to it.
@@ -46,8 +48,7 @@ You can get `Team` objects with the
     <MethodContent>
       The team ID as a `string`. This value is always unique.
     </MethodContent>
-    <MethodAside>
-      ### Type Definition
+    <MethodAside title="Type Definition">
 
       ```typescript
       declare const id: string;
@@ -61,8 +62,7 @@ You can get `Team` objects with the
     <MethodContent>
       The display name of the team as a `string`.
     </MethodContent>
-    <MethodAside>
-      ### Type Definition
+    <MethodAside title="Type Definition">
 
       ```typescript
       declare const displayName: string;
@@ -76,8 +76,7 @@ You can get `Team` objects with the
     <MethodContent>
       The profile image URL of the team as a `string`, or `null` if no profile image is set.
     </MethodContent>
-    <MethodAside>
-      ### Type Definition
+    <MethodAside title="Type Definition">
 
       ```typescript
       declare const profileImageUrl: string | null;
@@ -91,8 +90,7 @@ You can get `Team` objects with the
     <MethodContent>
       The client metadata of the team as a `Json` object.
     </MethodContent>
-    <MethodAside>
-      ### Type Definition
+    <MethodAside title="Type Definition">
 
       ```typescript
       declare const clientMetadata: Json;
@@ -106,8 +104,7 @@ You can get `Team` objects with the
     <MethodContent>
       The client read-only metadata of the team as a `Json` object.
     </MethodContent>
-    <MethodAside>
-      ### Type Definition
+    <MethodAside title="Type Definition">
 
       ```typescript
       declare const clientReadOnlyMetadata: Json;
@@ -147,7 +144,7 @@ You can get `Team` objects with the
       `Promise<void>`
     </MethodContent>
     <MethodAside>
-      ### Signature
+      <AsideSection title="Signature">
 
       ```typescript
       declare function update(options: {
@@ -156,9 +153,8 @@ You can get `Team` objects with the
         clientMetadata?: Json;
       }): Promise<void>;
       ```
-
-      ### Examples
-
+      </AsideSection>
+      <AsideSection title="Examples">
       ```typescript Updating team details
       await team.update({
         displayName: 'New Team Name',
@@ -168,6 +164,7 @@ You can get `Team` objects with the
         },
       });
       ```
+      </AsideSection>
     </MethodAside>
   </MethodLayout>
 </CollapsibleTypesSection>
@@ -205,7 +202,7 @@ You can get `Team` objects with the
       `Promise<void>`
     </MethodContent>
     <MethodAside>
-      ### Signature
+      <AsideSection title="Signature">
 
       ```typescript
       declare function inviteUser(options: {
@@ -213,14 +210,14 @@ You can get `Team` objects with the
         callbackUrl?: string;
       }): Promise<void>;
       ```
-
-      ### Examples
-
+      </AsideSection>
+      <AsideSection title="Examples">
       ```typescript Sending a team invitation
       await team.inviteUser({
         email: 'user@example.com',
       });
       ```
+      </AsideSection>
     </MethodAside>
   </MethodLayout>
 </CollapsibleTypesSection>
@@ -241,20 +238,20 @@ You can get `Team` objects with the
       `Promise<TeamUser[]>`
     </MethodContent>
     <MethodAside>
-      ### Signature
+      <AsideSection title="Signature">
 
       ```typescript
       declare function listUsers(): Promise<TeamUser[]>;
       ```
-
-      ### Examples
-
+      </AsideSection>
+      <AsideSection title="Examples">
       ```typescript Listing team members
       const users = await team.listUsers();
       users.forEach(user => {
         console.log(user.id, user.teamProfile.displayName);
       });
       ```
+      </AsideSection>
     </MethodAside>
   </MethodLayout>
 </CollapsibleTypesSection>
@@ -274,20 +271,20 @@ You can get `Team` objects with the
       `TeamUser[]`
     </MethodContent>
     <MethodAside>
-      ### Signature
+      <AsideSection title="Signature">
 
       ```typescript
       declare function useUsers(): TeamUser[];
       ```
-
-      ### Examples
-
+      </AsideSection>
+      <AsideSection title="Examples">
       ```typescript Listing team members in React component
       const users = team.useUsers();
       users.forEach(user => {
         console.log(user.id, user.teamProfile.displayName);
       });
       ```
+      </AsideSection>
     </MethodAside>
   </MethodLayout>
 </CollapsibleTypesSection>
@@ -309,20 +306,20 @@ You can get `Team` objects with the
       `Promise<{ id: string, email: string, expiresAt: Date }[]>`
     </MethodContent>
     <MethodAside>
-      ### Signature
+      <AsideSection title="Signature">
 
       ```typescript
       declare function listInvitations(): Promise<{ id: string, email: string, expiresAt: Date }[]>;
       ```
-
-      ### Examples
-
+      </AsideSection>
+      <AsideSection title="Examples">
       ```typescript Listing team invitations
       const invitations = await team.listInvitations();
       invitations.forEach(invitation => {
         console.log(invitation.id, invitation.email);
       });
       ```
+      </AsideSection>
     </MethodAside>
   </MethodLayout>
 </CollapsibleTypesSection>
@@ -342,20 +339,20 @@ You can get `Team` objects with the
       `{ id: string, email: string, expiresAt: Date }[]`
     </MethodContent>
     <MethodAside>
-      ### Signature
+      <AsideSection title="Signature">
 
       ```typescript
       declare function useInvitations(): { id: string, email: string, expiresAt: Date }[];
       ```
-
-      ### Examples
-
+      </AsideSection>
+      <AsideSection title="Examples">
       ```typescript Listing team invitations in React component
       const invitations = team.useInvitations();
       invitations.forEach(invitation => {
         console.log(invitation.id, invitation.email);
       });
       ```
+      </AsideSection>
     </MethodAside>
   </MethodLayout>
 </CollapsibleTypesSection>
@@ -390,7 +387,7 @@ You can get `Team` objects with the
       `Promise<TeamApiKeyFirstView>`
     </MethodContent>
     <MethodAside>
-      ### Signature
+      <AsideSection title="Signature">
 
       ```typescript
       declare function createApiKey(options: {
@@ -399,9 +396,8 @@ You can get `Team` objects with the
         expiresAt: Date;
       }): Promise<TeamApiKeyFirstView>;
       ```
-
-      ### Examples
-
+      </AsideSection>
+      <AsideSection title="Examples">
       ```typescript Creating a new API key
       await team.createApiKey({
         name: 'New API Key',
@@ -409,6 +405,7 @@ You can get `Team` objects with the
         expiresAt: new Date('2024-01-01'),
       });
       ```
+      </AsideSection>
     </MethodAside>
   </MethodLayout>
 </CollapsibleTypesSection>
@@ -427,20 +424,20 @@ You can get `Team` objects with the
       `Promise<TeamApiKey[]>`
     </MethodContent>
     <MethodAside>
-      ### Signature
+      <AsideSection title="Signature">
 
       ```typescript
       declare function listApiKeys(): Promise<TeamApiKey[]>;
       ```
-
-      ### Examples
-
+      </AsideSection>
+      <AsideSection title="Examples">
       ```typescript Listing API keys
       const apiKeys = await team.listApiKeys();
       apiKeys.forEach(key => {
         console.log(key.id, key.name);
       });
       ```
+      </AsideSection>
     </MethodAside>
   </MethodLayout>
 </CollapsibleTypesSection>
@@ -460,20 +457,20 @@ You can get `Team` objects with the
       `TeamApiKey[]`
     </MethodContent>
     <MethodAside>
-      ### Signature
+      <AsideSection title="Signature">
 
       ```typescript
       declare function useApiKeys(): TeamApiKey[];
       ```
-
-      ### Examples
-
+      </AsideSection>
+      <AsideSection title="Examples">
       ```typescript Using API keys in React component
       const apiKeys = team.useApiKeys();
       apiKeys.forEach(key => {
         console.log(key.id, key.name);
       });
       ```
+      </AsideSection>
     </MethodAside>
   </MethodLayout>
 </CollapsibleTypesSection>
@@ -511,9 +508,7 @@ Calling `serverUser.getTeam(...)` and `serverUser.listTeams()` will return `Serv
     <MethodContent>
       The date and time when the team was created.
     </MethodContent>
-    <MethodAside>
-      ### Type Definition
-      
+    <MethodAside title="Type Definition">
       ```typescript
       declare const createdAt: Date;
       ```
@@ -526,9 +521,7 @@ Calling `serverUser.getTeam(...)` and `serverUser.listTeams()` will return `Serv
     <MethodContent>
       The server metadata of the team as a `Json` object.
     </MethodContent>
-    <MethodAside>
-      ### Type Definition
-      
+    <MethodAside title="Type Definition">
       ```typescript
       declare const serverMetadata: Json;
       ```
@@ -552,20 +545,20 @@ Calling `serverUser.getTeam(...)` and `serverUser.listTeams()` will return `Serv
       `Promise<ServerTeamUser[]>`
     </MethodContent>
     <MethodAside>
-      ### Signature
+      <AsideSection title="Signature">
 
       ```typescript
       declare function listUsers(): Promise<ServerTeamUser[]>;
       ```
-
-      ### Examples
-
+      </AsideSection>
+      <AsideSection title="Examples">
       ```typescript Listing server team members
       const users = await team.listUsers();
       users.forEach(user => {
         console.log(user.id, user.teamProfile.displayName);
       });
       ```
+      </AsideSection>
     </MethodAside>
   </MethodLayout>
 </CollapsibleTypesSection>
@@ -585,20 +578,20 @@ Calling `serverUser.getTeam(...)` and `serverUser.listTeams()` will return `Serv
       `ServerTeamUser[]`
     </MethodContent>
     <MethodAside>
-      ### Signature
+      <AsideSection title="Signature">
 
       ```typescript
       declare function useUsers(): ServerTeamUser[];
       ```
-
-      ### Examples
-
+      </AsideSection>
+      <AsideSection title="Examples">
       ```typescript Using server team members in React component
       const users = team.useUsers();
       users.forEach(user => {
         console.log(user.id, user.teamProfile.displayName);
       });
       ```
+      </AsideSection>
     </MethodAside>
   </MethodLayout>
 </CollapsibleTypesSection>
@@ -620,17 +613,17 @@ Calling `serverUser.getTeam(...)` and `serverUser.listTeams()` will return `Serv
       `Promise<void>`
     </MethodContent>
     <MethodAside>
-      ### Signature
+      <AsideSection title="Signature">
 
       ```typescript
       declare function addUser(userId: string): Promise<void>;
       ```
-
-      ### Examples
-
+      </AsideSection>
+      <AsideSection title="Examples">
       ```typescript Adding a user to the team
       await team.addUser('user_id_123');
       ```
+      </AsideSection>
     </MethodAside>
   </MethodLayout>
 </CollapsibleTypesSection>
@@ -651,7 +644,7 @@ Calling `serverUser.getTeam(...)` and `serverUser.listTeams()` will return `Serv
       `Promise<void>`
     </MethodContent>
     <MethodAside>
-      ### Signature
+      <AsideSection title="Signature">
 
       ```typescript
       declare function removeUser(userId: string): Promise<void>;
@@ -662,6 +655,7 @@ Calling `serverUser.getTeam(...)` and `serverUser.listTeams()` will return `Serv
       ```typescript Removing a user from the team
       await team.removeUser('user_id_123');
       ```
+      </AsideSection>
     </MethodAside>
   </MethodLayout>
 </CollapsibleTypesSection>
@@ -680,17 +674,17 @@ Calling `serverUser.getTeam(...)` and `serverUser.listTeams()` will return `Serv
       `Promise<void>`
     </MethodContent>
     <MethodAside>
-      ### Signature
+      <AsideSection title="Signature">
 
       ```typescript
       declare function delete(): Promise<void>;
       ```
-
-      ### Examples
-
+      </AsideSection>
+      <AsideSection title="Examples">
       ```typescript Deleting a team
       await team.delete();
       ```
+      </AsideSection>
     </MethodAside>
   </MethodLayout>
 </CollapsibleTypesSection>

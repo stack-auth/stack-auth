@@ -71,8 +71,7 @@ You can call `useUser()` or `stackServerApp.getUser()` to get the `CurrentUser` 
     <MethodContent>
       The user ID as a `string`. This is the unique identifier of the user.
     </MethodContent>
-    <MethodAside>
-      ### Type Definition
+    <MethodAside title="Type Definition">
 
       ```typescript
       declare const id: string;
@@ -86,8 +85,7 @@ You can call `useUser()` or `stackServerApp.getUser()` to get the `CurrentUser` 
     <MethodContent>
       The display name of the user as a `string` or `null` if not set. The user can modify this value.
     </MethodContent>
-    <MethodAside>
-      ### Type Definition
+    <MethodAside title="Type Definition">
 
       ```typescript
       declare const displayName: string | null;
@@ -101,8 +99,7 @@ You can call `useUser()` or `stackServerApp.getUser()` to get the `CurrentUser` 
     <MethodContent>
       The primary email of the user as a `string` or `null`. Note that this is not necessarily unique.
     </MethodContent>
-    <MethodAside>
-      ### Type Definition
+    <MethodAside title="Type Definition">
 
       ```typescript
       declare const primaryEmail: string | null;
@@ -116,8 +113,7 @@ You can call `useUser()` or `stackServerApp.getUser()` to get the `CurrentUser` 
     <MethodContent>
       A `boolean` indicating whether the primary email of the user is verified.
     </MethodContent>
-    <MethodAside>
-      ### Type Definition
+    <MethodAside title="Type Definition">
 
       ```typescript
       declare const primaryEmailVerified: boolean;
@@ -131,8 +127,7 @@ You can call `useUser()` or `stackServerApp.getUser()` to get the `CurrentUser` 
     <MethodContent>
       The profile image URL of the user as a `string` or `null` if no profile image is set.
     </MethodContent>
-    <MethodAside>
-      ### Type Definition
+    <MethodAside title="Type Definition">
 
       ```typescript
       declare const profileImageUrl: string | null;
@@ -146,8 +141,7 @@ You can call `useUser()` or `stackServerApp.getUser()` to get the `CurrentUser` 
     <MethodContent>
       The date and time when the user signed up, as a `Date`.
     </MethodContent>
-    <MethodAside>
-      ### Type Definition
+    <MethodAside title="Type Definition">
 
       ```typescript
       declare const signedUpAt: Date;
@@ -161,8 +155,7 @@ You can call `useUser()` or `stackServerApp.getUser()` to get the `CurrentUser` 
     <MethodContent>
       A `boolean` indicating whether the user has a password set.
     </MethodContent>
-    <MethodAside>
-      ### Type Definition
+    <MethodAside title="Type Definition">
 
       ```typescript
       declare const hasPassword: boolean;
@@ -176,8 +169,7 @@ You can call `useUser()` or `stackServerApp.getUser()` to get the `CurrentUser` 
     <MethodContent>
       The client metadata of the user as an `object`. This metadata is visible on the client side but should not contain sensitive or server-only information.
     </MethodContent>
-    <MethodAside>
-      ### Type Definition
+    <MethodAside title="Type Definition">
 
       ```typescript
       declare const clientMetadata: Json;
@@ -191,8 +183,7 @@ You can call `useUser()` or `stackServerApp.getUser()` to get the `CurrentUser` 
     <MethodContent>
       Read-only metadata visible on the client side. This metadata can only be modified on the server side.
     </MethodContent>
-    <MethodAside>
-      ### Type Definition
+    <MethodAside title="Type Definition">
 
       ```typescript
       declare const clientReadOnlyMetadata: Json;
@@ -206,8 +197,7 @@ You can call `useUser()` or `stackServerApp.getUser()` to get the `CurrentUser` 
     <MethodContent>
       The currently selected team for the user, if applicable, as a `Team` object or `null` if no team is selected.
     </MethodContent>
-    <MethodAside>
-      ### Type Definition
+    <MethodAside title="Type Definition">
 
       ```typescript
       declare const selectedTeam: Team | null;
@@ -246,8 +236,7 @@ You can call `useUser()` or `stackServerApp.getUser()` to get the `CurrentUser` 
       `Promise<void>`
     </MethodContent>
     <MethodAside>
-      ### Signature
-
+      <AsideSection title="Signature">
       ```typescript
       declare function update(data: {
         displayName?: string;
@@ -256,9 +245,8 @@ You can call `useUser()` or `stackServerApp.getUser()` to get the `CurrentUser` 
         profileImageUrl?: string | null;
       }): Promise<void>;
       ```
-
-      ### Examples
-
+      </AsideSection>
+      <AsideSection title="Examples">
       ```typescript Updating user details
       await user.update({
         displayName: "New Display Name",
@@ -267,6 +255,7 @@ You can call `useUser()` or `stackServerApp.getUser()` to get the `CurrentUser` 
         },
       });
       ```
+      </AsideSection>
     </MethodAside>
   </MethodLayout>
 </CollapsibleTypesSection>
@@ -287,17 +276,17 @@ You can call `useUser()` or `stackServerApp.getUser()` to get the `CurrentUser` 
       `Promise<Team | null>`: The team object, or `null` if the team is not found or the user is not a member of the team.
     </MethodContent>
     <MethodAside>
-      ### Signature
+      <AsideSection title="Signature">
 
       ```typescript
       declare function getTeam(id: string): Promise<Team | null>;
       ```
-
-      ### Examples
-
+      </AsideSection>
+      <AsideSection title="Examples">
       ```typescript Getting a team by ID
       const team = await user.getTeam("teamId");
       ```
+      </AsideSection>
     </MethodAside>
   </MethodLayout>
 </CollapsibleTypesSection>
@@ -319,17 +308,17 @@ You can call `useUser()` or `stackServerApp.getUser()` to get the `CurrentUser` 
       `Team | null`: The team object, or `null` if the team is not found or the user is not a member of the team.
     </MethodContent>
     <MethodAside>
-      ### Signature
+      <AsideSection title="Signature">
+        ```typescript
+        declare function useTeam(id: string): Team | null;
+        ```
+      </AsideSection>
 
-      ```typescript
-      declare function useTeam(id: string): Team | null;
-      ```
-
-      ### Examples
-
-      ```typescript Using a team in a React component
-      const team = user.useTeam("teamId");
-      ```
+      <AsideSection title="Examples">
+        ```typescript Using a team in a React component
+        const team = user.useTeam("teamId");
+        ```
+      </AsideSection>
     </MethodAside>
   </MethodLayout>
 </CollapsibleTypesSection>
@@ -349,17 +338,17 @@ You can call `useUser()` or `stackServerApp.getUser()` to get the `CurrentUser` 
       `Promise<Team[]>`: The list of teams.
     </MethodContent>
     <MethodAside>
-      ### Signature
+      <AsideSection title="Signature">
 
       ```typescript
       declare function listTeams(): Promise<Team[]>;
       ```
-
-      ### Examples
-
+      </AsideSection>
+      <AsideSection title="Examples">
       ```typescript Listing all teams
       const teams = await user.listTeams();
       ```
+      </AsideSection>
     </MethodAside>
   </MethodLayout>
 </CollapsibleTypesSection>
@@ -379,17 +368,17 @@ You can call `useUser()` or `stackServerApp.getUser()` to get the `CurrentUser` 
       `Team[]`: The list of teams.
     </MethodContent>
     <MethodAside>
-      ### Signature
+      <AsideSection title="Signature">
 
       ```typescript
       declare function useTeams(): Team[];
       ```
-
-      ### Examples
-
+      </AsideSection>
+      <AsideSection title="Examples">
       ```typescript Using teams in a React component
       const teams = user.useTeams();
       ```
+      </AsideSection>
     </MethodAside>
   </MethodLayout>
 </CollapsibleTypesSection>
@@ -411,20 +400,20 @@ You can call `useUser()` or `stackServerApp.getUser()` to get the `CurrentUser` 
       `Promise<void>`
     </MethodContent>
     <MethodAside>
-      ### Signature
+      <AsideSection title="Signature">
 
       ```typescript
       declare function setSelectedTeam(team: Team | null): Promise<void>;
       ```
-
-      ### Examples
-
+      </AsideSection>
+      <AsideSection title="Examples">
       ```typescript Setting the selected team
       const team = await user.getTeam("team_id_123");
       await user.setSelectedTeam(team);
       ```
-    </MethodAside>
-  </MethodLayout>
+    </AsideSection>
+  </MethodAside>
+</MethodLayout>
 </CollapsibleTypesSection>
 
 <CollapsibleTypesSection type="currentUser" property="createTeam" signature="data" defaultOpen={false}>
@@ -453,7 +442,7 @@ You can call `useUser()` or `stackServerApp.getUser()` to get the `CurrentUser` 
       `Promise<Team>`: The created team.
     </MethodContent>
     <MethodAside>
-      ### Signature
+      <AsideSection title="Signature">
 
       ```typescript
       declare function createTeam(data: {
@@ -461,15 +450,15 @@ You can call `useUser()` or `stackServerApp.getUser()` to get the `CurrentUser` 
         profileImageUrl?: string | null;
       }): Promise<Team>;
       ```
-
-      ### Examples
-
+      </AsideSection>
+      <AsideSection title="Examples">
       ```typescript Creating a new team
       const team = await user.createTeam({
         displayName: "New Team",
         profileImageUrl: "https://example.com/profile.jpg",
       });
       ```
+      </AsideSection>
     </MethodAside>
   </MethodLayout>
 </CollapsibleTypesSection>
@@ -490,17 +479,17 @@ You can call `useUser()` or `stackServerApp.getUser()` to get the `CurrentUser` 
       `Promise<void>`
     </MethodContent>
     <MethodAside>
-      ### Signature
+      <AsideSection title="Signature">
 
       ```typescript
       declare function leaveTeam(team: Team): Promise<void>;
       ```
-
-      ### Examples
-
+      </AsideSection>
+      <AsideSection title="Examples">
       ```typescript Leaving a team
       await user.leaveTeam(team);
       ```
+      </AsideSection>
     </MethodAside>
   </MethodLayout>
 </CollapsibleTypesSection>
@@ -521,17 +510,17 @@ You can call `useUser()` or `stackServerApp.getUser()` to get the `CurrentUser` 
       `Promise<EditableTeamMemberProfile>`: The user's editable profile for the specified team.
     </MethodContent>
     <MethodAside>
-      ### Signature
+      <AsideSection title="Signature">
 
       ```typescript
       declare function getTeamProfile(team: Team): Promise<EditableTeamMemberProfile>;
       ```
-
-      ### Examples
-
+      </AsideSection>
+      <AsideSection title="Examples">
       ```typescript Getting a team profile
       const profile = await user.getTeamProfile(team);
       ```
+      </AsideSection>
     </MethodAside>
   </MethodLayout>
 </CollapsibleTypesSection>
@@ -553,17 +542,17 @@ You can call `useUser()` or `stackServerApp.getUser()` to get the `CurrentUser` 
       `EditableTeamMemberProfile`: The user's editable profile for the specified team.
     </MethodContent>
     <MethodAside>
-      ### Signature
+      <AsideSection title="Signature">
 
       ```typescript
       declare function useTeamProfile(team: Team): EditableTeamMemberProfile;
       ```
-
-      ### Examples
-
+      </AsideSection>
+      <AsideSection title="Examples">
       ```typescript Using a team profile in React
       const profile = user.useTeamProfile(team);
       ```
+      </AsideSection>
     </MethodAside>
   </MethodLayout>
 </CollapsibleTypesSection>
@@ -588,17 +577,17 @@ You can call `useUser()` or `stackServerApp.getUser()` to get the `CurrentUser` 
       `Promise<boolean>`: Whether the user has the specified permission.
     </MethodContent>
     <MethodAside>
-      ### Signature
+      <AsideSection title="Signature">
 
       ```typescript
       declare function hasPermission(scope: Team, permissionId: string): Promise<boolean>;
       ```
-
-      ### Examples
-
+      </AsideSection>
+      <AsideSection title="Examples">
       ```typescript Checking user permission
       const hasPermission = await user.hasPermission(team, "permissionId");
       ```
+      </AsideSection>
     </MethodAside>
   </MethodLayout>
 </CollapsibleTypesSection>
@@ -630,17 +619,17 @@ You can call `useUser()` or `stackServerApp.getUser()` to get the `CurrentUser` 
       `Promise<TeamPermission | null>`: The permission object, or `null` if not found.
     </MethodContent>
     <MethodAside>
-      ### Signature
+      <AsideSection title="Signature">
 
       ```typescript
       declare function getPermission(scope: Team, permissionId: string, options?: { recursive?: boolean }): Promise<TeamPermission | null>;
       ```
-
-      ### Examples
-
+      </AsideSection>
+      <AsideSection title="Examples">
       ```typescript Getting a permission
       const permission = await user.getPermission(team, "read_secret_info");
       ```
+      </AsideSection>
     </MethodAside>
   </MethodLayout>
 </CollapsibleTypesSection>
@@ -673,17 +662,17 @@ You can call `useUser()` or `stackServerApp.getUser()` to get the `CurrentUser` 
       `TeamPermission | null`: The permission object, or `null` if not found.
     </MethodContent>
     <MethodAside>
-      ### Signature
+      <AsideSection title="Signature">
 
       ```typescript
       declare function usePermission(scope: Team, permissionId: string, options?: { recursive?: boolean }): TeamPermission | null;
       ```
-
-      ### Examples
-
+      </AsideSection>
+      <AsideSection title="Examples">
       ```typescript Using a permission in React
       const permission = user.usePermission(team, "read_secret_info");
       ```
+      </AsideSection>
     </MethodAside>
   </MethodLayout>
 </CollapsibleTypesSection>
@@ -713,17 +702,17 @@ You can call `useUser()` or `stackServerApp.getUser()` to get the `CurrentUser` 
       `Promise<TeamPermission[]>`: An array of permissions.
     </MethodContent>
     <MethodAside>
-      ### Signature
+      <AsideSection title="Signature">
 
       ```typescript
       declare function listPermissions(scope: Team, options?: { recursive?: boolean }): Promise<TeamPermission[]>;
       ```
-
-      ### Examples
-
+      </AsideSection>
+      <AsideSection title="Examples">
       ```typescript Listing user permissions
       const permissions = await user.listPermissions(team);
       ```
+      </AsideSection>
     </MethodAside>
   </MethodLayout>
 </CollapsibleTypesSection>
@@ -753,17 +742,17 @@ You can call `useUser()` or `stackServerApp.getUser()` to get the `CurrentUser` 
       `TeamPermission[]`: An array of permissions.
     </MethodContent>
     <MethodAside>
-      ### Signature
+      <AsideSection title="Signature">
 
       ```typescript
       declare function usePermissions(scope: Team, options?: { recursive?: boolean }): TeamPermission[];
       ```
-
-      ### Examples
-
+      </AsideSection>
+      <AsideSection title="Examples">
       ```typescript Using permissions in a React component
       const permissions = user.usePermissions(team);
       ```
+      </AsideSection>
     </MethodAside>
   </MethodLayout>
 </CollapsibleTypesSection>
@@ -783,17 +772,17 @@ You can call `useUser()` or `stackServerApp.getUser()` to get the `CurrentUser` 
       `Promise<ContactChannel[]>`: An array of contact channels.
     </MethodContent>
     <MethodAside>
-      ### Signature
+      <AsideSection title="Signature">
 
       ```typescript
       declare function listContactChannels(): Promise<ContactChannel[]>;
       ```
-
-      ### Examples
-
+      </AsideSection>
+      <AsideSection title="Examples">
       ```typescript Listing contact channels
       const contactChannels = await user.listContactChannels();
       ```
+      </AsideSection>
     </MethodAside>
   </MethodLayout>
 </CollapsibleTypesSection>
@@ -813,17 +802,17 @@ You can call `useUser()` or `stackServerApp.getUser()` to get the `CurrentUser` 
       `ContactChannel[]`: An array of contact channels.
     </MethodContent>
     <MethodAside>
-      ### Signature
+      <AsideSection title="Signature">
 
       ```typescript
       declare function useContactChannels(): ContactChannel[];
       ```
-
-      ### Examples
-
+      </AsideSection>
+      <AsideSection title="Examples">
       ```typescript Using contact channels in React
       const contactChannels = user.useContactChannels();
       ```
+      </AsideSection>
     </MethodAside>
   </MethodLayout>
 </CollapsibleTypesSection>
@@ -859,7 +848,7 @@ You can call `useUser()` or `stackServerApp.getUser()` to get the `CurrentUser` 
       `Promise<UserApiKeyFirstView>`: The newly created API key. Note that this is the only time the full API key value will be visible.
     </MethodContent>
     <MethodAside>
-      ### Signature
+      <AsideSection title="Signature">
 
       ```typescript
       declare function createApiKey(options: {
@@ -868,9 +857,8 @@ You can call `useUser()` or `stackServerApp.getUser()` to get the `CurrentUser` 
         isPublic?: boolean;
       }): Promise<UserApiKeyFirstView>;
       ```
-
-      ### Examples
-
+      </AsideSection>
+      <AsideSection title="Examples">
       ```typescript Creating an API key
       const apiKey = await user.createApiKey({
         description: "Backend integration",
@@ -881,6 +869,7 @@ You can call `useUser()` or `stackServerApp.getUser()` to get the `CurrentUser` 
       // Save the API key value securely, as it won't be retrievable later
       console.log("API Key:", apiKey.value);
       ```
+      </AsideSection>
     </MethodAside>
   </MethodLayout>
 </CollapsibleTypesSection>
@@ -899,14 +888,13 @@ You can call `useUser()` or `stackServerApp.getUser()` to get the `CurrentUser` 
       `Promise<UserApiKey[]>`: An array of API keys belonging to the user.
     </MethodContent>
     <MethodAside>
-      ### Signature
+      <AsideSection title="Signature">
 
       ```typescript
       declare function listApiKeys(): Promise<UserApiKey[]>;
       ```
-
-      ### Examples
-
+      </AsideSection>
+      <AsideSection title="Examples">
       ```typescript Listing API keys
       const apiKeys = await user.listApiKeys();
       console.log(`You have ${apiKeys.length} API keys`);
@@ -916,6 +904,7 @@ You can call `useUser()` or `stackServerApp.getUser()` to get the `CurrentUser` 
         key.expiresAt && key.expiresAt.getTime() - Date.now() < 7 * 24 * 60 * 60 * 1000
       );
       ```
+      </AsideSection>
     </MethodAside>
   </MethodLayout>
 </CollapsibleTypesSection>
@@ -935,14 +924,13 @@ You can call `useUser()` or `stackServerApp.getUser()` to get the `CurrentUser` 
       `UserApiKey[]`: An array of API keys belonging to the user.
     </MethodContent>
     <MethodAside>
-      ### Signature
+      <AsideSection title="Signature">
 
       ```typescript
       declare function useApiKeys(): UserApiKey[];
       ```
-
-      ### Examples
-
+      </AsideSection>
+      <AsideSection title="Examples">
       ```typescript Using API keys in a React component
       function ApiKeysList() {
         const user = useUser();
@@ -963,6 +951,7 @@ You can call `useUser()` or `stackServerApp.getUser()` to get the `CurrentUser` 
         );
       }
       ```
+      </AsideSection>
     </MethodAside>
   </MethodLayout>
 </CollapsibleTypesSection>
@@ -992,7 +981,7 @@ You can call `useUser()` or `stackServerApp.getUser()` to get the `CurrentUser` 
       `Promise<void>`
     </MethodContent>
     <MethodAside>
-      ### Signature
+      <AsideSection title="Signature">
 
       ```typescript
       declare function updatePassword(data: {
@@ -1000,9 +989,8 @@ You can call `useUser()` or `stackServerApp.getUser()` to get the `CurrentUser` 
         newPassword: string;
       }): Promise<void>;
       ```
-
-      ### Examples
-
+      </AsideSection>
+      <AsideSection title="Examples">
       ```typescript Updating user password
       const result = await user.updatePassword({
         oldPassword: "currentPassword",
@@ -1014,6 +1002,7 @@ You can call `useUser()` or `stackServerApp.getUser()` to get the `CurrentUser` 
         console.log("Password updated");
       }
       ```
+      </AsideSection>
     </MethodAside>
   </MethodLayout>
 </CollapsibleTypesSection>
@@ -1045,14 +1034,13 @@ You can call `useUser()` or `stackServerApp.getUser()` to get the `CurrentUser` 
       `Promise<Record<string, string>>`: An object containing the authentication headers.
     </MethodContent>
     <MethodAside>
-      ### Signature
+      <AsideSection title="Signature">
 
       ```typescript
       declare function getAuthHeaders(): Promise<Record<string, string>>;
       ```
-
-      ### Examples
-
+      </AsideSection>
+      <AsideSection title="Examples">
       ```typescript Passing auth headers to an external server
       // client
       const res = await fetch("https://api.example.com", {
@@ -1068,6 +1056,7 @@ You can call `useUser()` or `stackServerApp.getUser()` to get the `CurrentUser` 
         return new Response("Welcome, " + user.displayName);
       }
       ```
+      </AsideSection>
     </MethodAside>
   </MethodLayout>
 </CollapsibleTypesSection>
@@ -1091,14 +1080,13 @@ You can call `useUser()` or `stackServerApp.getUser()` to get the `CurrentUser` 
       `Promise<{ accessToken: string | null }>`: An object containing the access token.
     </MethodContent>
     <MethodAside>
-      ### Signature
+      <AsideSection title="Signature">
 
       ```typescript
       declare function getAuthJson(): Promise<{ accessToken: string | null }>;
       ```
-
-      ### Examples
-
+      </AsideSection>
+      <AsideSection title="Examples">
       ```typescript Passing auth tokens over an RPC call
       // client
       const res = await rpcCall(rpcEndpoint, {
@@ -1113,6 +1101,7 @@ You can call `useUser()` or `stackServerApp.getUser()` to get the `CurrentUser` 
         return new Response("Welcome, " + user.displayName);
       }
       ```
+      </AsideSection>
     </MethodAside>
   </MethodLayout>
 </CollapsibleTypesSection>
@@ -1138,17 +1127,17 @@ You can call `useUser()` or `stackServerApp.getUser()` to get the `CurrentUser` 
       `Promise<void>`
     </MethodContent>
     <MethodAside>
-      ### Signature
+      <AsideSection title="Signature">
 
       ```typescript
       declare function signOut(options?: { redirectUrl?: string }): Promise<void>;
       ```
-
-      ### Examples
-
+      </AsideSection>
+      <AsideSection title="Examples">
       ```typescript Signing out
       await user.signOut();
       ```
+      </AsideSection>
     </MethodAside>
   </MethodLayout>
 </CollapsibleTypesSection>
@@ -1167,17 +1156,17 @@ You can call `useUser()` or `stackServerApp.getUser()` to get the `CurrentUser` 
       `Promise<void>`
     </MethodContent>
     <MethodAside>
-      ### Signature
+      <AsideSection title="Signature">
 
       ```typescript
       declare function delete(): Promise<void>;
       ```
-
-      ### Examples
-
+      </AsideSection>
+      <AsideSection title="Examples">
       ```typescript Deleting the user
       await user.delete();
       ```
+      </AsideSection>
     </MethodAside>
   </MethodLayout>
 </CollapsibleTypesSection>
@@ -1210,8 +1199,7 @@ The `ServerUser` object contains most `CurrentUser` properties and methods with 
     <MethodContent>
       The last active date and time of the user as a `Date`.
     </MethodContent>
-    <MethodAside>
-      ### Type Definition
+    <MethodAside title="Type Definition">
 
       ```typescript
       declare const lastActiveAt: Date;
@@ -1225,8 +1213,7 @@ The `ServerUser` object contains most `CurrentUser` properties and methods with 
     <MethodContent>
       The server metadata of the user, accessible only on the server side.
     </MethodContent>
-    <MethodAside>
-      ### Type Definition
+    <MethodAside title="Type Definition">
 
       ```typescript
       declare const serverMetadata: Json;
@@ -1283,7 +1270,7 @@ The `ServerUser` object contains most `CurrentUser` properties and methods with 
       `Promise<void>`
     </MethodContent>
     <MethodAside>
-      ### Signature
+      <AsideSection title="Signature">
 
       ```typescript
       declare function update(data: {
@@ -1299,9 +1286,8 @@ The `ServerUser` object contains most `CurrentUser` properties and methods with 
         serverMetadata?: Json;
       }): Promise<void>;
       ```
-
-      ### Examples
-
+      </AsideSection>
+      <AsideSection title="Examples">
       ```typescript Updating user details on the server
       await serverUser.update({
         displayName: "Updated Display Name",
@@ -1311,6 +1297,7 @@ The `ServerUser` object contains most `CurrentUser` properties and methods with 
         },
       });
       ```
+      </AsideSection>
     </MethodAside>
   </MethodLayout>
 </CollapsibleTypesSection>
@@ -1329,17 +1316,17 @@ The `ServerUser` object contains most `CurrentUser` properties and methods with 
       `Promise<ServerContactChannel[]>`: An array of server-specific contact channels.
     </MethodContent>
     <MethodAside>
-      ### Signature
+      <AsideSection title="Signature">
 
       ```typescript
       declare function listContactChannels(): Promise<ServerContactChannel[]>;
       ```
-
-      ### Examples
-
+      </AsideSection>
+      <AsideSection title="Examples">
       ```typescript Listing server-specific contact channels
       const contactChannels = await serverUser.listContactChannels();
       ```
+      </AsideSection>
     </MethodAside>
   </MethodLayout>
 </CollapsibleTypesSection>
@@ -1352,8 +1339,7 @@ The `ServerUser` object contains most `CurrentUser` properties and methods with 
 
       Functionally equivalent to [`listContactChannels()`](#serveruserlistcontactchannels), but as a React hook.
     </MethodContent>
-    <MethodAside>
-      ### Signature
+    <MethodAside title="Signature">
 
       ```typescript
       declare function useContactChannels(): ContactChannel[];
@@ -1382,17 +1368,17 @@ The `ServerUser` object contains most `CurrentUser` properties and methods with 
       `Promise<void>`
     </MethodContent>
     <MethodAside>
-      ### Signature
+      <AsideSection title="Signature">
 
       ```typescript
       declare function grantPermission(scope: Team, permissionId: string): Promise<void>;
       ```
-
-      ### Examples
-
+      </AsideSection>
+      <AsideSection title="Examples">
       ```typescript Granting permission to a user
       await serverUser.grantPermission(team, "read_secret_info");
       ```
+      </AsideSection>
     </MethodAside>
   </MethodLayout>
 </CollapsibleTypesSection>
@@ -1416,17 +1402,17 @@ The `ServerUser` object contains most `CurrentUser` properties and methods with 
       `Promise<void>`
     </MethodContent>
     <MethodAside>
-      ### Signature
+      <AsideSection title="Signature">
 
       ```typescript
       declare function revokePermission(scope: Team, permissionId: string): Promise<void>;
       ```
-
-      ### Examples
-
+      </AsideSection>
+      <AsideSection title="Examples">
       ```typescript Revoking permission from a user
       await serverUser.revokePermission(team, "read_secret_info");
       ```
+      </AsideSection>
     </MethodAside>
   </MethodLayout>
 </CollapsibleTypesSection>
@@ -1461,7 +1447,7 @@ The `ServerUser` object contains most `CurrentUser` properties and methods with 
       `Promise<UserApiKeyFirstView>`: The newly created API key. Note that this is the only time the full API key value will be visible.
     </MethodContent>
     <MethodAside>
-      ### Signature
+      <AsideSection title="Signature">
 
       ```typescript
       declare function createApiKey(options: {
@@ -1470,9 +1456,8 @@ The `ServerUser` object contains most `CurrentUser` properties and methods with 
         isPublic?: boolean;
       }): Promise<UserApiKeyFirstView>;
       ```
-
-      ### Examples
-
+      </AsideSection>
+      <AsideSection title="Examples">
       ```typescript Creating an API key
       const apiKey = await serverUser.createApiKey({
         description: "Backend integration",
@@ -1483,6 +1468,7 @@ The `ServerUser` object contains most `CurrentUser` properties and methods with 
       // Save the API key value securely, as it won't be retrievable later
       console.log("API Key:", apiKey.value);
       ```
+      </AsideSection>
     </MethodAside>
   </MethodLayout>
 </CollapsibleTypesSection>
@@ -1501,14 +1487,13 @@ The `ServerUser` object contains most `CurrentUser` properties and methods with 
       `Promise<UserApiKey[]>`: An array of API keys belonging to the user.
     </MethodContent>
     <MethodAside>
-      ### Signature
+      <AsideSection title="Signature">
 
       ```typescript
       declare function listApiKeys(): Promise<UserApiKey[]>;
       ```
-
-      ### Examples
-
+      </AsideSection>
+      <AsideSection title="Examples">
       ```typescript Listing API keys
       const apiKeys = await serverUser.listApiKeys();
       console.log(`You have ${apiKeys.length} API keys`);
@@ -1518,6 +1503,7 @@ The `ServerUser` object contains most `CurrentUser` properties and methods with 
         key.expiresAt && key.expiresAt.getTime() - Date.now() < 7 * 24 * 60 * 60 * 1000
       );
       ```
+      </AsideSection>
     </MethodAside>
   </MethodLayout>
 </CollapsibleTypesSection>
@@ -1537,14 +1523,13 @@ The `ServerUser` object contains most `CurrentUser` properties and methods with 
       `UserApiKey[]`: An array of API keys belonging to the user.
     </MethodContent>
     <MethodAside>
-      ### Signature
+      <AsideSection title="Signature">
 
       ```typescript
       declare function useApiKeys(): UserApiKey[];
       ```
-
-      ### Examples
-
+      </AsideSection>
+      <AsideSection title="Examples">
       ```typescript Using API keys in a React component
       function ApiKeysList() {
         const user = useUser();
@@ -1565,6 +1550,7 @@ The `ServerUser` object contains most `CurrentUser` properties and methods with 
         );
       }
       ```
+      </AsideSection>
     </MethodAside>
   </MethodLayout>
 </CollapsibleTypesSection>

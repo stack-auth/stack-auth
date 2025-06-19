@@ -12,7 +12,7 @@ import ApiSequenceDiagram from './components/mdx/api-sequence-diagram';
 import { AuthCard } from './components/mdx/auth-card';
 import { DynamicCodeblock } from './components/mdx/dynamic-code-block';
 
-import { CollapsibleMethodSection, CollapsibleTypesSection, MethodAside, MethodContent, MethodLayout, MethodSection, MethodTitle } from './components/ui/method-layout';
+import { AsideSection, CollapsibleMethodSection, CollapsibleTypesSection, MethodAside, MethodContent, MethodLayout, MethodSection, MethodTitle } from './components/ui/method-layout';
 
 import { SDKOverview } from './components/sdk/overview';
 
@@ -69,6 +69,7 @@ export function getMDXComponents(components?: MDXComponents): MDXComponents {
     MethodContent,
     MethodAside,
     MethodTitle,
+    AsideSection,
     MethodSection,
     ClickableTableOfContents,
     CollapsibleMethodSection,

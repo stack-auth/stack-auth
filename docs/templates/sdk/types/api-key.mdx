@@ -11,6 +11,8 @@ On this page:
   - [`UserApiKey`](#userapikey)
   - [`TeamApiKey`](#teamapikey)
 
+---
+
 # `ApiKey`
 
 API keys provide a way for users to authenticate with your backend services without using their primary credentials. They can be created for individual users or for teams, allowing programmatic access to your application.
@@ -56,8 +58,7 @@ API keys can be obtained through:
     <MethodContent>
       The unique identifier for this API key.
     </MethodContent>
-    <MethodAside>
-      ### Type Definition
+    <MethodAside title="Type Definition">
 
       ```typescript
       declare const id: string;
@@ -71,8 +72,7 @@ API keys can be obtained through:
     <MethodContent>
       A human-readable description of the API key's purpose.
     </MethodContent>
-    <MethodAside>
-      ### Type Definition
+    <MethodAside title="Type Definition">
 
       ```typescript
       declare const description: string;
@@ -86,8 +86,7 @@ API keys can be obtained through:
     <MethodContent>
       The date and time when this API key will expire. If not set, the key does not expire.
     </MethodContent>
-    <MethodAside>
-      ### Type Definition
+    <MethodAside title="Type Definition">
 
       ```typescript
       declare const expiresAt?: Date;
@@ -101,8 +100,7 @@ API keys can be obtained through:
     <MethodContent>
       The date and time when this API key was manually revoked. If null, the key has not been revoked.
     </MethodContent>
-    <MethodAside>
-      ### Type Definition
+    <MethodAside title="Type Definition">
 
       ```typescript
       declare const manuallyRevokedAt: Date | null;
@@ -116,8 +114,7 @@ API keys can be obtained through:
     <MethodContent>
       The date and time when this API key was created.
     </MethodContent>
-    <MethodAside>
-      ### Type Definition
+    <MethodAside title="Type Definition">
 
       ```typescript
       declare const createdAt: Date;
@@ -131,8 +128,7 @@ API keys can be obtained through:
     <MethodContent>
       The value of the API key. When the key is first created, this is the full API key string. After that, only the last four characters are available for security reasons.
     </MethodContent>
-    <MethodAside>
-      ### Type Definition
+    <MethodAside title="Type Definition">
 
       ```typescript
       // On first creation
@@ -150,8 +146,7 @@ API keys can be obtained through:
     <MethodContent>
       For user API keys, the ID of the user that owns this API key.
     </MethodContent>
-    <MethodAside>
-      ### Type Definition
+    <MethodAside title="Type Definition">
 
       ```typescript
       declare const userId: string;
@@ -165,8 +160,7 @@ API keys can be obtained through:
     <MethodContent>
       For team API keys, the ID of the team that owns this API key.
     </MethodContent>
-    <MethodAside>
-      ### Type Definition
+    <MethodAside title="Type Definition">
 
       ```typescript
       declare const teamId: string;
@@ -189,14 +183,13 @@ API keys can be obtained through:
       `boolean`: True if the key is valid, false otherwise.
     </MethodContent>
     <MethodAside>
-      ### Signature
+      <AsideSection title="Signature">
 
       ```typescript
       declare function isValid(): boolean;
       ```
-
-      ### Examples
-
+      </AsideSection>
+      <AsideSection title="Examples">
       ```typescript Checking if an API key is valid
       if (apiKey.isValid()) {
         console.log("API key is still valid");
@@ -204,6 +197,7 @@ API keys can be obtained through:
         console.log("API key is invalid");
       }
       ```
+      </AsideSection>
     </MethodAside>
   </MethodLayout>
 </CollapsibleTypesSection>
@@ -222,14 +216,13 @@ API keys can be obtained through:
       `"manually-revoked" | "expired" | null`: The reason the key is invalid, or null if it's valid.
     </MethodContent>
     <MethodAside>
-      ### Signature
+      <AsideSection title="Signature">
 
       ```typescript
       declare function whyInvalid(): "manually-revoked" | "expired" | null;
       ```
-
-      ### Examples
-
+      </AsideSection>
+      <AsideSection title="Examples">
       ```typescript Checking why an API key is invalid
       const reason = apiKey.whyInvalid();
       if (reason) {
@@ -238,6 +231,7 @@ API keys can be obtained through:
         console.log("API key is valid");
       }
       ```
+      </AsideSection>
     </MethodAside>
   </MethodLayout>
 </CollapsibleTypesSection>
@@ -256,18 +250,18 @@ API keys can be obtained through:
       `Promise<void>`
     </MethodContent>
     <MethodAside>
-      ### Signature
+      <AsideSection title="Signature">
 
       ```typescript
       declare function revoke(): Promise<void>;
       ```
-
-      ### Examples
-
+      </AsideSection>
+      <AsideSection title="Examples">
       ```typescript Revoking an API key
       await apiKey.revoke();
       console.log("API key has been revoked");
       ```
+      </AsideSection>
     </MethodAside>
   </MethodLayout>
 </CollapsibleTypesSection>
@@ -299,7 +293,7 @@ API keys can be obtained through:
       `Promise<void>`
     </MethodContent>
     <MethodAside>
-      ### Signature
+      <AsideSection title="Signature">
 
       ```typescript
       declare function update(options: {
@@ -308,15 +302,15 @@ API keys can be obtained through:
         revoked?: boolean;
       }): Promise<void>;
       ```
-
-      ### Examples
-
+      </AsideSection>
+      <AsideSection title="Examples">
       ```typescript Updating an API key
       await apiKey.update({
         description: "Updated description",
         expiresAt: new Date(Date.now() + 60 * 24 * 60 * 60 * 1000), // 60 days
       });
       ```
+      </AsideSection>
     </MethodAside>
   </MethodLayout>
 </CollapsibleTypesSection>
@@ -330,8 +324,7 @@ API keys can be obtained through:
     <MethodContent>
       A type alias for an API key owned by a user.
     </MethodContent>
-    <MethodAside>
-      ### Type Definition
+    <MethodAside title="Type Definition">
 
       ```typescript
       type UserApiKey = ApiKey<"user", false>;
@@ -345,8 +338,7 @@ API keys can be obtained through:
     <MethodContent>
       A type alias for a newly created user API key, which includes the full key value instead of just the last four characters.
     </MethodContent>
-    <MethodAside>
-      ### Type Definition
+    <MethodAside title="Type Definition">
 
       ```typescript
       type UserApiKeyFirstView = ApiKey<"user", true>;
@@ -360,8 +352,7 @@ API keys can be obtained through:
     <MethodContent>
       A type alias for an API key owned by a team.
     </MethodContent>
-    <MethodAside>
-      ### Type Definition
+    <MethodAside title="Type Definition">
 
       ```typescript
       type TeamApiKey = ApiKey<"team", false>;
@@ -375,8 +366,7 @@ API keys can be obtained through:
     <MethodContent>
       A type alias for a newly created team API key, which includes the full key value instead of just the last four characters.
     </MethodContent>
-    <MethodAside>
-      ### Type Definition
+    <MethodAside title="Type Definition">
 
       ```typescript
       type TeamApiKeyFirstView = ApiKey<"team", true>;
@@ -411,7 +401,7 @@ When creating an API key using [`user.createApiKey()`](../types/user.mdx#current
     </ParamField>
   </MethodContent>
   <MethodAside>
-    ### Type Definition
+    <AsideSection title="Type Definition">
 
     ```typescript
     type ApiKeyCreationOptions = {
@@ -420,9 +410,8 @@ When creating an API key using [`user.createApiKey()`](../types/user.mdx#current
       isPublic?: boolean;
     };
     ```
-
-    ### Examples
-
+    </AsideSection>
+    <AsideSection title="Examples">
     <CodeBlocks>
     ```typescript Creating a user API key
     // Get the current user
@@ -443,5 +432,6 @@ When creating an API key using [`user.createApiKey()`](../types/user.mdx#current
     });
     ```
     </CodeBlocks>
+    </AsideSection>
   </MethodAside>
 </MethodLayout>
