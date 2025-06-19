@@ -17,7 +17,7 @@ const PLATFORMS = ['next', 'react', 'js', 'python'];
 // Platform groups mapping
 const PLATFORM_GROUPS = {
   'react-like': ['next', 'react'],  // Platforms that use React components
-  'js-like': ['js']                 
+  'js-like': ['next', 'react', 'js']  // Platforms that use JavaScript SDK (includes React-based platforms)
 };
 
 // Load platform configuration
