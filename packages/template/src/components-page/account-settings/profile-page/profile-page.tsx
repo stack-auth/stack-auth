@@ -9,11 +9,11 @@ export function ProfilePage(props?: {
   mockUser?: {
     displayName?: string,
     profileImageUrl?: string,
-  }
+  },
 }) {
   const { t } = useTranslation();
   const userFromHook = useUser({ or: props?.mockUser ? 'return-null' : 'redirect' });
-  
+
   // Use mock data if provided, otherwise use real user
   const user = props?.mockUser ? {
     displayName: props.mockUser.displayName || 'John Doe',

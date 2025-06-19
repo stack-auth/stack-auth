@@ -17,7 +17,7 @@ export function MfaSection(props?: {
   const { t } = useTranslation();
   const project = useStackApp().useProject();
   const user = useUser({ or: props?.mockMode ? 'return-null' : "throw" });
-  
+
   // In mock mode, show a placeholder message
   if (props?.mockMode && !user) {
     return (
@@ -29,7 +29,7 @@ export function MfaSection(props?: {
       </Section>
     );
   }
-  
+
   if (!user) {
     return null; // This shouldn't happen in non-mock mode due to throw
   }

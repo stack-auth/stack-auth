@@ -18,7 +18,7 @@ export function PasswordSection(props?: {
 }) {
   const { t } = useTranslation();
   const user = useUser({ or: props?.mockMode ? 'return-null' : "throw" });
-  
+
   // In mock mode, show a placeholder message
   if (props?.mockMode && !user) {
     return (
@@ -30,7 +30,7 @@ export function PasswordSection(props?: {
       </Section>
     );
   }
-  
+
   if (!user) {
     return null; // This shouldn't happen in non-mock mode due to throw
   }

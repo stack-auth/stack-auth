@@ -7,13 +7,15 @@ export function SignOutSection(props?: { mockMode?: boolean }) {
   const { t } = useTranslation();
   const user = useUser({ or: props?.mockMode ? "return-null" : "throw" });
 
-  const handleSignOut = () => {
+  const handleSignOut = async () => {
     if (props?.mockMode) {
       // Mock mode - just show an alert or do nothing
       alert("Mock mode: Sign out clicked");
       return;
     }
-    user?.signOut();
+    if (user) {
+      await user.signOut();
+    }
   };
 
   return (

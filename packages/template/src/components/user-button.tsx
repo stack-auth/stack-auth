@@ -44,7 +44,7 @@ export function UserButton(props: UserButtonProps) {
 
 function UserButtonInner(props: UserButtonProps) {
   const userFromHook = useUser({ or: props.mockUser ? 'return-null' : 'redirect' });
-  
+
   // Use mock user if provided, otherwise use real user
   const user = props.mockUser ? {
     displayName: props.mockUser.displayName || 'Mock User',
@@ -55,7 +55,7 @@ function UserButtonInner(props: UserButtonProps) {
       return Promise.resolve();
     }
   } as CurrentUser : userFromHook;
-  
+
   return <UserButtonInnerInner {...props} user={user} />;
 }
 
@@ -137,11 +137,11 @@ function UserButtonInnerInner(props: UserButtonProps & { user: CurrentUser | nul
         )}
         {user && <Item
           text={t('Sign out')}
-          onClick={() => {
+          onClick={async () => {
             if (props.mockUser) {
               console.log('Mock sign out - no action taken in demo mode');
             } else {
-              user.signOut();
+              await user.signOut();
             }
           }}
           icon={<LogOut {...iconProps} />}

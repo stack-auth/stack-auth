@@ -13,7 +13,7 @@ import { PageLayout } from "../page-layout";
 import { Section } from "../section";
 
 export function TeamCreationPage(props?: {
-  mockMode?: boolean
+  mockMode?: boolean,
 }) {
   const { t } = useTranslation();
 

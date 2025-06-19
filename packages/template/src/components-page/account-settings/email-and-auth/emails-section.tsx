@@ -15,7 +15,7 @@ export function EmailsSection(props?: {
 }) {
   const { t } = useTranslation();
   const user = useUser({ or: props?.mockMode ? 'return-null' : 'redirect' });
-  
+
   // In mock mode, show a placeholder message
   if (props?.mockMode && !user) {
     return (
@@ -27,11 +27,11 @@ export function EmailsSection(props?: {
       </div>
     );
   }
-  
+
   if (!user) {
     return null; // This shouldn't happen in non-mock mode due to redirect
   }
-  
+
   const contactChannels = user.useContactChannels();
   const [addingEmail, setAddingEmail] = useState(contactChannels.length === 0);
   const [addingEmailLoading, setAddingEmailLoading] = useState(false);
