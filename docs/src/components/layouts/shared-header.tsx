@@ -94,6 +94,18 @@ function TOCToggleButtonInner() {
 }
 
 /**
+ * TOC Toggle Button Wrapper that safely checks full page state
+ */
+function TOCToggleButtonWrapper() {
+  const { isFullPage } = useTOC();
+
+  // Hide TOC button on full pages
+  if (isFullPage) return null;
+
+  return <TOCToggleButtonInner />;
+}
+
+/**
  * TOC Toggle Button - Only shows on docs pages
  */
 function TOCToggleButton() {
@@ -105,7 +117,7 @@ function TOCToggleButton() {
   if (!isDocsPage) return null;
 
   try {
-    return <TOCToggleButtonInner />;
+    return <TOCToggleButtonWrapper />;
   } catch {
     // TOC context not available
     return null;

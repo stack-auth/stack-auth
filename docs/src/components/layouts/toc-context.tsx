@@ -6,6 +6,8 @@ type TOCContextType = {
   isTocOpen: boolean,
   setIsTocOpen: (open: boolean) => void,
   toggleToc: () => void,
+  isFullPage: boolean,
+  setIsFullPage: (fullPage: boolean) => void,
 }
 
 const TOCContext = createContext<TOCContextType | null>(null);
@@ -20,11 +22,18 @@ export function useTOC() {
 
 export function TOCProvider({ children }: { children: ReactNode }) {
   const [isTocOpen, setIsTocOpen] = useState(false); // Default closed
+  const [isFullPage, setIsFullPage] = useState(false); // Default not full page
 
   const toggleToc = () => setIsTocOpen(!isTocOpen);
 
   return (
-    <TOCContext.Provider value={{ isTocOpen, setIsTocOpen, toggleToc }}>
+    <TOCContext.Provider value={{
+      isTocOpen,
+      setIsTocOpen,
+      toggleToc,
+      isFullPage,
+      setIsFullPage
+    }}>
       {children}
     </TOCContext.Provider>
   );

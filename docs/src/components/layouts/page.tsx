@@ -1,8 +1,10 @@
+'use client';
+
 import type { TableOfContents } from 'fumadocs-core/server';
 import { AnchorProvider, type AnchorProviderProps } from 'fumadocs-core/toc';
 import { I18nLabel } from 'fumadocs-ui/contexts/i18n';
 import { Edit, Text } from 'lucide-react';
-import { type ComponentProps, forwardRef, lazy, type ReactNode } from 'react';
+import { type ComponentProps, forwardRef, lazy, type ReactNode, useEffect } from 'react';
 import { cn } from '../../lib/cn';
 import {
   Toc,
@@ -22,6 +24,7 @@ import {
 import { BackToTop } from '../ui/back-to-top';
 import { buttonVariants } from '../ui/button';
 import { slot } from './shared';
+import { useTOC } from './toc-context';
 
 const ClerkTOCItems = lazy(() => import('@/components/layout/toc-clerk'));
 
@@ -120,6 +123,16 @@ export function DocsPage({
   } = {},
   ...props
 }: DocsPageProps) {
+  const { setIsFullPage } = useTOC();
+
+  // Update the full page state in the context
+  useEffect(() => {
+    setIsFullPage(full);
+
+    // Cleanup: reset to false when component unmounts
+    return () => setIsFullPage(false);
+  }, [full, setIsFullPage]);
+
   const isTocRequired =
     toc.length > 0 ||
     tocOptions.footer !== undefined ||
