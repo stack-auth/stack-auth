@@ -29,7 +29,7 @@ export default function SetupPage(props: { toMetrics: () => void }) {
   const { theme, mounted } = useThemeWatcher();
   const [showPulse, setShowPulse] = useState(false);
   const [selectedFramework, setSelectedFramework] = useState<'nextjs' | 'react' | 'javascript' | 'python'>('nextjs');
-  const [keys, setKeys] = useState<{ projectId: string, publishableClientKey: string, secretServerKey: string, superSecretAdminKey: string } | null>(null);
+  const [keys, setKeys] = useState<{ projectId: string, publishableClientKey: string, secretServerKey: string } | null>(null);
 
   const onGenerateKeys = async () => {
     const newKey = await adminApp.createInternalApiKey({
@@ -44,7 +44,6 @@ export default function SetupPage(props: { toMetrics: () => void }) {
       projectId: adminApp.projectId,
       publishableClientKey: newKey.publishableClientKey!,
       secretServerKey: newKey.secretServerKey!,
-      superSecretAdminKey: newKey.superSecretAdminKey!,
     });
   };
 
@@ -596,7 +595,7 @@ export default function SetupPage(props: { toMetrics: () => void }) {
 }
 
 function StackAuthKeys(props: {
-  keys: { projectId: string, publishableClientKey: string, secretServerKey: string, superSecretAdminKey: string } | null,
+  keys: { projectId: string, publishableClientKey: string, secretServerKey: string } | null,
   onGenerateKeys: () => Promise<void>,
   type: 'next' | 'raw',
 }) {
@@ -608,11 +607,13 @@ function StackAuthKeys(props: {
             <NextJsEnvKeys
               projectId={props.keys.projectId}
               publishableClientKey={props.keys.publishableClientKey}
+              secretServerKey={props.keys.secretServerKey}
             />
           ) : (
             <APIEnvKeys
               projectId={props.keys.projectId}
               publishableClientKey={props.keys.publishableClientKey}
+              secretServerKey={props.keys.secretServerKey}
             />
           )}
 
