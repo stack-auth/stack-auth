@@ -21,7 +21,7 @@ export const POST = createSmartRouteHandler({
     method: yupString().oneOf(["POST"]).defined(),
   }),
   response: yupObject({
-    statusCode: yupNumber().oneOf([200, 401]).defined(),
+    statusCode: yupNumber().oneOf([200, 500]).defined(),
     bodyType: yupString().oneOf(["json"]).defined(),
     body: yupObject({
       success: yupBoolean().defined(),
@@ -48,6 +48,7 @@ export const POST = createSmartRouteHandler({
     const emailConfig = await getSharedEmailConfig("Stack Auth");
     const dashboardUrl = getEnvVariable("NEXT_PUBLIC_STACK_DASHBOARD_URL", "https://app.stack-auth.com");
 
+    let anyDigestsFailedToSend = false;
     for (const failedEmailsBatch of failedEmailsByTenancy.values()) {
       const viewInStackAuth = `<a href="${dashboardUrl}/projects/${encodeURIComponent(failedEmailsBatch.projectId)}/emails">View all email logs on the Dashboard</a>`;
       const emailHtml = `
@@ -72,16 +73,17 @@ export const POST = createSmartRouteHandler({
             html: emailHtml,
           });
         } catch (error) {
+          anyDigestsFailedToSend = true;
           captureError("send-failed-emails-digest", error);
         }
       }
     }
 
     return {
-      statusCode: 200,
+      statusCode: anyDigestsFailedToSend ? 500 : 200,
       bodyType: 'json',
       body: {
-        success: true,
+        success: !anyDigestsFailedToSend,
         failed_emails_by_tenancy: Array.from(failedEmailsByTenancy.entries()).map(([tenancyId, batch]) => (
           {
             emails: batch.emails,
