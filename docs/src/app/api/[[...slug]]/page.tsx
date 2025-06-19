@@ -3,6 +3,7 @@ import { getMDXComponents } from '@/mdx-components';
 import { apiSource } from 'lib/source';
 import { notFound } from 'next/navigation';
 import { APIPageWrapper } from '../../../components/api/api-page-wrapper';
+import { SharedContentLayout } from '../../../components/layouts/shared-content-layout';
 
 export default async function ApiPage({
   params,
@@ -18,9 +19,9 @@ export default async function ApiPage({
 
   return (
     <APIPageWrapper>
-      <article className="prose prose-neutral dark:prose-invert max-w-none">
+      <SharedContentLayout className="prose prose-neutral dark:prose-invert max-w-none">
         <MDX components={getMDXComponents({ EnhancedAPIPage })} />
-      </article>
+      </SharedContentLayout>
     </APIPageWrapper>
   );
 }

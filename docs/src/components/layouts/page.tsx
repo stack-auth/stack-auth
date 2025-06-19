@@ -17,10 +17,7 @@ import {
   type FooterProps,
   LastUpdate,
   PageArticle,
-  PageBody,
-  TocPopover,
-  TocPopoverContent,
-  TocPopoverTrigger,
+  PageBody
 } from '../page-client';
 import { BackToTop } from '../ui/back-to-top';
 import { buttonVariants } from '../ui/button';
@@ -131,10 +128,8 @@ export function DocsPage({
   // disable TOC on full mode, you can still enable it with `enabled` option.
   tocEnabled ??= !full && isTocRequired;
 
-  tocPopoverEnabled ??=
-    toc.length > 0 ||
-    tocPopoverOptions.header !== undefined ||
-    tocPopoverOptions.footer !== undefined;
+  // Disable the mobile popover completely since we have our custom TOC toggle
+  tocPopoverEnabled = false;
 
   return (
     <AnchorProvider toc={toc} single={tocOptions.single}>
@@ -143,39 +138,14 @@ export function DocsPage({
         className={cn('custom-scrollbar', props.container?.className)}
         style={
           {
-            '--fd-tocnav-height': !tocPopoverEnabled ? '0px' : undefined,
+            '--fd-tocnav-height': '0px',
             ...props.container?.style,
           } as object
         }
       >
-        {slot(
-          { enabled: tocPopoverEnabled, component: tocPopoverReplace },
-          <TocPopover className="h-10">
-            <TocPopoverTrigger className="w-full" items={toc} />
-            <TocPopoverContent>
-              {tocPopoverOptions.header}
-              <TOCScrollArea className="px-4 md:px-6">
-                {tocPopoverOptions.style === 'clerk' ? (
-                  <ClerkTOCItems items={toc} />
-                ) : (
-                  <TOCItems items={toc} />
-                )}
-              </TOCScrollArea>
-              {tocPopoverOptions.footer}
-            </TocPopoverContent>
-          </TocPopover>,
-          {
-            items: toc,
-            ...tocPopoverOptions,
-          },
-        )}
         <PageArticle
           {...props.article}
-          className={cn(
-            full || !tocEnabled ? 'max-w-[1400px]' : 'max-w-[860px]',
-            'pb-8',
-            props.article?.className,
-          )}
+          className={props.article?.className}
         >
           {slot(props.breadcrumb, <Breadcrumb {...props.breadcrumb} />)}
           {props.children}
@@ -250,7 +220,7 @@ export function EditOnGitHub(props: ComponentProps<'a'>) {
  */
 export const DocsBody = forwardRef<HTMLDivElement, ComponentProps<'div'>>(
   (props, ref) => (
-    <div ref={ref} {...props} className={cn('prose prose-lg prose-slate max-w-none', props.className)}>
+    <div ref={ref} {...props} className={cn('prose prose-neutral dark:prose-invert max-w-none', props.className)}>
       {props.children}
     </div>
   ),
@@ -284,7 +254,7 @@ export const DocsTitle = forwardRef<HTMLHeadingElement, ComponentProps<'h1'>>(
       <h1
         ref={ref}
         {...props}
-        className={cn('text-3xl font-semibold mb-2 pb-2 border-b border-dashed border-fd-border/20', props.className)}
+        className={cn('text-4xl font-bold mb-4', props.className)}
       >
         {props.children}
       </h1>

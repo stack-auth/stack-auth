@@ -3,11 +3,12 @@ import { LargeSearchToggle } from '@/components/layout/search-toggle';
 import Waves from '@/components/layouts/api/waves';
 import { isInApiSection, isInComponentsSection, isInSdkSection } from '@/components/layouts/shared/section-utils';
 import { type NavLink } from '@/lib/navigation-utils';
-import { Menu, X } from 'lucide-react';
+import { List, Menu, X } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import type { ReactNode } from 'react';
 import { useEffect, useState } from 'react';
+import { useTOC } from './toc-context';
 
 type SharedHeaderProps = {
   /** Navigation links to display */
@@ -66,6 +67,49 @@ function isNavLinkActive(pathname: string, navLink: NavLink): boolean {
     return true;
   }
   return false;
+}
+
+/**
+ * Inner TOC Toggle Button that uses the context
+ */
+function TOCToggleButtonInner() {
+  const { isTocOpen, toggleToc } = useTOC();
+
+  return (
+    <button
+      onClick={toggleToc}
+      className={`flex items-center justify-center gap-2 shadow-lg transition-all duration-300 w-24 h-8 rounded-lg text-sm font-medium ${
+        isTocOpen
+          ? 'bg-fd-foreground text-fd-background'
+          : 'bg-fd-muted text-fd-muted-foreground hover:text-fd-foreground hover:bg-fd-muted/80'
+      }`}
+      title={isTocOpen ? 'Hide table of contents' : 'Show table of contents'}
+    >
+      <List className="w-4 h-4 flex-shrink-0" />
+      <span className="hidden sm:inline">
+        {isTocOpen ? 'Hide' : 'TOC'}
+      </span>
+    </button>
+  );
+}
+
+/**
+ * TOC Toggle Button - Only shows on docs pages
+ */
+function TOCToggleButton() {
+  const pathname = usePathname();
+
+  // Only show on docs pages (not API pages)
+  const isDocsPage = pathname.startsWith('/docs') && !isInApiSection(pathname);
+
+  if (!isDocsPage) return null;
+
+  try {
+    return <TOCToggleButtonInner />;
+  } catch {
+    // TOC context not available
+    return null;
+  }
 }
 
 /**
@@ -188,6 +232,11 @@ export function SharedHeader({
               />
             </div>
           )}
+
+          {/* TOC Toggle Button - Only on docs pages */}
+          <div className="hidden md:block">
+            <TOCToggleButton />
+          </div>
 
           {/* Mobile Hamburger Menu - Shown on mobile */}
           <div className="flex lg:hidden">

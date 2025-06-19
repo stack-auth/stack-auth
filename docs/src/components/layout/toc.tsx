@@ -10,6 +10,7 @@ import {
   useRef,
 } from 'react';
 import { cn } from '../../lib/cn';
+import { useTOC } from '../layouts/toc-context';
 import { TocThumb } from './toc-thumb';
 
 export type TOCProps = {
@@ -28,25 +29,22 @@ export type TOCProps = {
 
 export function Toc(props: HTMLAttributes<HTMLDivElement>) {
   const { toc } = usePageStyles();
+  const { isTocOpen } = useTOC();
+
+  if (!isTocOpen) return null;
 
   return (
     <div
       id="nd-toc"
       {...props}
       className={cn(
-        'sticky top-[calc(var(--fd-banner-height)+var(--fd-nav-height)+3.5rem)] h-(--fd-toc-height) pb-2 pt-4',
+        'fixed right-4 top-16 bottom-4 z-10 max-xl:hidden',
+        'w-64',
         toc,
         props.className,
       )}
-      style={
-        {
-          ...props.style,
-          '--fd-toc-height':
-            'calc(100dvh - var(--fd-banner-height) - var(--fd-nav-height) - 3.5rem)',
-        } as object
-      }
     >
-      <div className="flex h-full w-(--fd-toc-width) max-w-full flex-col pe-4">
+      <div className="flex h-full max-w-full flex-col p-4">
         {props.children}
       </div>
     </div>

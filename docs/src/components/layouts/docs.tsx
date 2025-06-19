@@ -80,6 +80,7 @@ import {
   isInComponentsSection,
   isInSdkSection
 } from './shared/section-utils';
+import { useTOC } from './toc-context';
 
 // Custom Link Component for docs sidebar - matches API sidebar
 function DocsSidebarLink({
@@ -351,6 +352,7 @@ export function DocsLayout({
   children,
   ...props
 }: DocsLayoutProps): ReactNode {
+  const { isTocOpen } = useTOC();
   const tabs = useMemo(
     () => getSidebarTabsFromOptions(sidebar.tabs, props.tree) ?? [],
     [sidebar.tabs, props.tree],
@@ -390,7 +392,7 @@ export function DocsLayout({
           id="nd-docs-layout"
           {...props.containerProps}
           className={cn(
-            'flex flex-1 flex-row md:pl-64 pt-14',
+            'flex flex-1 flex-row md:ml-64 pt-14 min-w-0',
             variables,
             props.containerProps?.className,
           )}
@@ -434,7 +436,12 @@ export function DocsLayout({
               }
             />,
           )}
-          <StylesProvider {...pageStyles}>{children}</StylesProvider>
+          <div className={cn(
+            'flex-1 transition-all duration-300 min-w-0',
+            isTocOpen && 'xl:mr-72'
+          )}>
+            <StylesProvider {...pageStyles}>{children}</StylesProvider>
+          </div>
         </main>
       </NavProvider>
     </TreeContextProvider>

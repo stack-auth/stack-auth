@@ -24,6 +24,7 @@ import {
 } from 'react';
 import { cn } from '../lib/cn';
 import { isActive } from '../lib/is-active';
+import { SharedContentLayout } from './layouts/shared-content-layout';
 import {
   Collapsible,
   CollapsibleContent,
@@ -233,16 +234,15 @@ export function PageArticle(props: HTMLAttributes<HTMLElement>) {
   const { article } = usePageStyles();
 
   return (
-    <article
+    <SharedContentLayout
       {...props}
       className={cn(
-        'flex w-full flex-1 flex-col gap-6 px-4 md:px-6 pt-8 md:pt-12 xl:px-12 xl:mx-auto',
         article,
         props.className,
       )}
     >
       {props.children}
-    </article>
+    </SharedContentLayout>
   );
 }
 
