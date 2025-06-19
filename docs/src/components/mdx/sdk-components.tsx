@@ -2,6 +2,7 @@
 
 import React, { useEffect, useRef, useState } from 'react';
 import { codeToHtml } from "shiki";
+import './clickable-code-styles.css';
 
 // Custom ClickableCodeblock component that includes overlays inside the scrollable area
 function ClickableCodeblock({
@@ -20,29 +21,79 @@ function ClickableCodeblock({
   }>,
 }) {
   const [highlightedCode, setHighlightedCode] = useState<string>("");
-  const [lineHeight, setLineHeight] = useState<number>(20); // Default fallback
+  const [linePositions, setLinePositions] = useState<Array<{ top: number, height: number }>>([]);
   const codeRef = useRef<HTMLDivElement>(null);
 
-  // Measure actual line height after code is rendered
+  // Measure actual line positions after code is rendered
   useEffect(() => {
     if (codeRef.current && highlightedCode) {
-      const codeElement = codeRef.current.querySelector('code');
-      if (codeElement) {
-        const lines = codeElement.querySelectorAll('.line, span');
-        if (lines.length > 0) {
-          const firstLine = lines[0] as HTMLElement;
-          const computedStyle = window.getComputedStyle(firstLine);
-          const measuredLineHeight = parseFloat(computedStyle.lineHeight);
-
-          // If lineHeight is 'normal' or invalid, calculate from font size
-          if (isNaN(measuredLineHeight)) {
-            const fontSize = parseFloat(computedStyle.fontSize);
-            setLineHeight(fontSize * 1.5); // Typical line-height multiplier
+      // Wait for fonts to load and CSS to be applied
+      const measurePositions = () => {
+        const codeElement = codeRef.current?.querySelector('code');
+        if (codeElement) {
+          // Try different approaches to find line elements
+          let lines: NodeListOf<Element> | null = null;
+          
+          // First, try to find explicit line elements
+          lines = codeElement.querySelectorAll('.line');
+          
+          // If no .line elements, try other common patterns
+          if (lines.length === 0) {
+            lines = codeElement.querySelectorAll('[data-line]');
+          }
+          
+          if (lines.length > 0) {
+            // We found line elements, measure their actual positions
+            const containerRect = codeRef.current!.getBoundingClientRect();
+            const positions = Array.from(lines).map((line) => {
+              const lineRect = line.getBoundingClientRect();
+              return {
+                top: lineRect.top - containerRect.top,
+                height: lineRect.height || 24, // fallback height
+              };
+            });
+            setLinePositions(positions);
           } else {
-            setLineHeight(measuredLineHeight);
+            // Fallback: manually calculate positions based on text content and font metrics
+            const codeText = codeElement.textContent || '';
+            const codeLines = codeText.split('\n');
+            
+            // Get computed styles for consistent measurements
+            const computedStyle = window.getComputedStyle(codeElement);
+            let lineHeight = parseFloat(computedStyle.lineHeight);
+            
+            // If lineHeight is 'normal' or invalid, calculate from font size
+            if (isNaN(lineHeight)) {
+              const fontSize = parseFloat(computedStyle.fontSize) || 14;
+              lineHeight = fontSize * 1.5; // Use consistent 1.5 multiplier
+            }
+            
+            // Generate positions for each line
+            const positions = codeLines.map((_, index) => ({
+              top: index * lineHeight,
+              height: lineHeight,
+            }));
+            setLinePositions(positions);
           }
         }
-      }
+      };
+
+      // Initial measurement
+      measurePositions();
+
+      // Re-measure after delays to account for font loading and rendering
+      const timeoutId1 = setTimeout(measurePositions, 100);
+      const timeoutId2 = setTimeout(measurePositions, 300);
+      
+      // Re-measure on window resize
+      const handleResize = () => measurePositions();
+      window.addEventListener('resize', handleResize);
+
+      return () => {
+        clearTimeout(timeoutId1);
+        clearTimeout(timeoutId2);
+        window.removeEventListener('resize', handleResize);
+      };
     }
   }, [highlightedCode]);
 
@@ -65,6 +116,9 @@ function ClickableCodeblock({
               if (node.properties.style) {
                 node.properties.style = (node.properties.style as string).replace(/background[^;]*;?/g, '');
               }
+              // Add line-height CSS for consistent rendering
+              const existingStyle = (node.properties.style as string) || '';
+              node.properties.style = `${existingStyle}; line-height: 1.5; font-family: ui-monospace, 'Cascadia Code', 'Source Code Pro', Menlo, Consolas, 'DejaVu Sans Mono', monospace;`;
             }
           }]
         });
@@ -84,21 +138,35 @@ function ClickableCodeblock({
     <div className="space-y-4 mb-6">
       <div className="relative">
         <div
-          className="rounded-lg border bg-[#0a0a0a] p-4 overflow-auto max-h-[500px] text-sm relative"
+          className="rounded-lg border bg-[#0a0a0a] p-4 overflow-auto max-h-[500px] text-sm relative clickable-code-container"
           style={{
             background: '#0a0a0a !important',
+            fontFamily: 'ui-monospace, "Cascadia Code", "Source Code Pro", Menlo, Consolas, "DejaVu Sans Mono", monospace',
+            lineHeight: '1.5',
           }}
         >
           <div
             ref={codeRef}
-            className="[&_*]:!bg-transparent [&_pre]:!bg-transparent [&_code]:!bg-transparent"
+            className="[&_*]:!bg-transparent [&_pre]:!bg-transparent [&_code]:!bg-transparent [&_pre]:!leading-6 [&_code]:!leading-6"
+            style={{
+              fontFamily: 'inherit',
+              lineHeight: 'inherit',
+            }}
             dangerouslySetInnerHTML={{ __html: highlightedCode }}
           />
 
           {/* Clickable overlays - now inside the scrollable container */}
           <div className="absolute inset-0 pointer-events-none">
             {clickableAreas.map((area, index) => {
-              const topPosition = area.lineNumber * lineHeight + 16; // 16px is the padding
+              // Use measured line positions instead of calculated ones
+              const linePosition = linePositions[area.lineNumber];
+              
+              if (!linePosition) {
+                return null; // Skip if position not measured yet
+              }
+
+              const topPosition = linePosition.top + 16; // 16px is the padding
+              const height = linePosition.height;
 
               return (
                 <div
@@ -106,9 +174,9 @@ function ClickableCodeblock({
                   className="absolute left-4 right-4 pointer-events-auto hover:bg-blue-500/20 transition-colors rounded cursor-pointer"
                   style={{
                     top: `${topPosition}px`,
-                    height: `${lineHeight}px`,
+                    height: `${height}px`,
                   }}
-                  title={`Line ${area.lineNumber + 1}: ${area.anchor}`} // Debug info
+                  title={`Line ${area.lineNumber + 1}: ${area.anchor} (pos: ${topPosition}px, height: ${height}px)`} // Enhanced debug info
                 >
                   <a
                     href={area.anchor}
@@ -121,6 +189,19 @@ function ClickableCodeblock({
           </div>
         </div>
       </div>
+      {/* Debug info for development */}
+      {process.env.NODE_ENV === 'development' && (
+        <details className="text-xs text-gray-500">
+          <summary>Debug Info (dev only)</summary>
+          <pre className="mt-2 p-2 bg-gray-100 rounded text-xs">
+            {JSON.stringify({
+              linePositions: linePositions.length,
+              clickableAreas: clickableAreas.length,
+              positions: linePositions.slice(0, 5), // Show first 5 positions
+            }, null, 2)}
+          </pre>
+        </details>
+      )}
     </div>
   );
 }
