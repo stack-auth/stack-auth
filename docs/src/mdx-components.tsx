@@ -6,6 +6,7 @@ import type { MDXComponents } from 'mdx/types';
 // OpenAPI sources
 import { APIPage } from 'fumadocs-openapi/ui';
 import { EnhancedAPIPage } from './components/api/enhanced-api-page';
+import { WebhooksAPIPage } from './components/api/webhooks-api-page';
 
 import { Card, CardGroup, Info } from './components/mdx';
 import ApiSequenceDiagram from './components/mdx/api-sequence-diagram';
@@ -53,6 +54,7 @@ export function getMDXComponents(components?: MDXComponents): MDXComponents {
     TabsContent,
     APIPage,
     EnhancedAPIPage,
+    WebhooksAPIPage,
     TypeTable,
     PropTable,
     ApiSequenceDiagram,

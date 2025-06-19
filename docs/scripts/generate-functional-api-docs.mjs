@@ -210,6 +210,28 @@ function replaceAPIPageWithEnhanced(functionalCategoryPath) {
 }
 
 /**
+ * Replace APIPage with WebhooksAPIPage in generated MDX files for webhooks
+ */
+function replaceAPIPageWithWebhooks(functionalCategoryPath) {
+  const mdxFiles = findMdxFiles(functionalCategoryPath);
+  
+  for (const filePath of mdxFiles) {
+    const content = fs.readFileSync(filePath, 'utf8');
+    
+    // Replace APIPage with WebhooksAPIPage
+    const updatedContent = content.replace(
+      /<APIPage\s+/g,
+      '<WebhooksAPIPage '
+    );
+    
+    if (content !== updatedContent) {
+      fs.writeFileSync(filePath, updatedContent);
+      console.log(`   🔄 Replaced APIPage with WebhooksAPIPage in ${path.basename(filePath)}`);
+    }
+  }
+}
+
+/**
  * Add description prop to EnhancedAPIPage components from frontmatter
  */
 function addDescriptionToEnhancedAPIPage(functionalCategoryPath) {
@@ -264,6 +286,65 @@ function addDescriptionToEnhancedAPIPage(functionalCategoryPath) {
     if (content !== updatedContent) {
       fs.writeFileSync(filePath, updatedContent);
       console.log(`   📝 Added description prop to EnhancedAPIPage in ${path.basename(filePath)}`);
+    }
+  }
+}
+
+/**
+ * Add description prop to WebhooksAPIPage components from frontmatter
+ */
+function addDescriptionToWebhooksAPIPage(functionalCategoryPath) {
+  const mdxFiles = findMdxFiles(functionalCategoryPath);
+  
+  for (const filePath of mdxFiles) {
+    const content = fs.readFileSync(filePath, 'utf8');
+    
+    // Extract description from frontmatter
+    const frontmatterMatch = content.match(/^---\n([\s\S]*?)\n---/);
+    if (!frontmatterMatch) continue;
+    
+    const frontmatterContent = frontmatterMatch[1];
+    let description = null;
+    
+    // Handle multiline YAML descriptions (">-" or ">" syntax)
+    if (frontmatterContent.includes('description: >')) {
+      // Extract multiline description
+      const multilineMatch = frontmatterContent.match(/description:\s*>-?\s*\n((?:\s{2,}.*\n?)*)/);
+      if (multilineMatch) {
+        // Join the indented lines and clean up
+        description = multilineMatch[1]
+          .split('\n')
+          .map(line => line.replace(/^\s{2,}/, '')) // Remove leading indentation
+          .filter(line => line.trim()) // Remove empty lines
+          .join(' ')
+          .trim();
+      }
+    } else {
+      // Handle single-line descriptions
+      const singleLineMatch = frontmatterContent.match(/description:\s*['"]?([^'"]+?)['"]?\s*$/m);
+      if (singleLineMatch) {
+        description = singleLineMatch[1].trim();
+      }
+    }
+    
+    if (!description) continue;
+    
+    // Add description prop to WebhooksAPIPage if not already present
+    const updatedContent = content.replace(
+      /(<WebhooksAPIPage[^>]*?)(\s+\/?>)/g,
+      (match, componentStart, componentEnd) => {
+        // Check if description prop already exists
+        if (componentStart.includes('description=')) {
+          return match;
+        }
+        // Add description prop
+        return `${componentStart} description={"${description.replace(/"/g, '\\"')}"}${componentEnd}`;
+      }
+    );
+    
+    if (content !== updatedContent) {
+      fs.writeFileSync(filePath, updatedContent);
+      console.log(`   📝 Added description prop to WebhooksAPIPage in ${path.basename(filePath)}`);
     }
   }
 }
@@ -403,13 +484,22 @@ async function processApiTypeInIsolation(apiType) {
         console.log(`   🔗 Updating document references for ${tag}...`);
         updateDocumentReferences(outputPath, `openapi/${apiType}-${tagToSlug(tag)}.json`);
         
-        // Replace APIPage with EnhancedAPIPage
-        console.log(`   🔄 Replacing APIPage with EnhancedAPIPage for ${tag}...`);
-        replaceAPIPageWithEnhanced(outputPath);
-        
-        // Add description prop to EnhancedAPIPage
-        console.log(`   📝 Adding description prop to EnhancedAPIPage for ${tag}...`);
-        addDescriptionToEnhancedAPIPage(outputPath);
+        // Replace APIPage with appropriate component based on API type
+        if (apiType === 'webhooks') {
+          console.log(`   🔄 Replacing APIPage with WebhooksAPIPage for ${tag}...`);
+          replaceAPIPageWithWebhooks(outputPath);
+          
+          // Add description prop to WebhooksAPIPage
+          console.log(`   📝 Adding description prop to WebhooksAPIPage for ${tag}...`);
+          addDescriptionToWebhooksAPIPage(outputPath);
+        } else {
+          console.log(`   🔄 Replacing APIPage with EnhancedAPIPage for ${tag}...`);
+          replaceAPIPageWithEnhanced(outputPath);
+          
+          // Add description prop to EnhancedAPIPage
+          console.log(`   📝 Adding description prop to EnhancedAPIPage for ${tag}...`);
+          addDescriptionToEnhancedAPIPage(outputPath);
+        }
         
       } catch (error) {
         console.error(`   ❌ Error generating ${tag} docs for ${apiType}:`, error);
