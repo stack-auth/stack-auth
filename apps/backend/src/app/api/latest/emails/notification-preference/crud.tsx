@@ -4,7 +4,7 @@ import { prismaClient } from "@/prisma-client";
 import { createCrudHandlers } from "@/route-handlers/crud-handler";
 import { KnownErrors } from "@stackframe/stack-shared";
 import { notificationPreferenceCrud, NotificationPreferenceCrud } from "@stackframe/stack-shared/dist/interface/crud/notification-preferences";
-import { userIdOrMeSchema, yupObject } from "@stackframe/stack-shared/dist/schema-fields";
+import { userIdOrMeSchema, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
 import { StatusError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
 import { createLazyProxy } from "@stackframe/stack-shared/dist/utils/proxies";
 
@@ -13,7 +13,9 @@ export const notificationPreferencesCrudHandlers = createLazyProxy(() => createC
   querySchema: yupObject({
     user_id: userIdOrMeSchema.optional(),
   }),
-  paramsSchema: yupObject({}),
+  paramsSchema: yupObject({
+    _temp: yupString().optional(), // Need something in paramsSchema to fix type issues in onList. TODO: fix this.
+  }),
   onCreate: async ({ auth, data }) => {
     const userId = data.user_id === 'me' ? (auth.user?.id ?? throwErr(new KnownErrors.UserAuthenticationRequired)) : data.user_id;
     const notificationCategories = listNotificationCategories();
@@ -60,6 +62,9 @@ export const notificationPreferencesCrudHandlers = createLazyProxy(() => createC
   onList: async ({ auth, query }) => {
     const userId = query.user_id === 'me' ? (auth.user?.id ?? throwErr(new KnownErrors.UserAuthenticationRequired)) : query.user_id;
 
+    if (!userId) {
+      throw new KnownErrors.UserAuthenticationRequired;
+    }
     if (auth.type === 'client') {
       if (!auth.user) {
         throw new KnownErrors.UserAuthenticationRequired;
