@@ -35,6 +35,7 @@ Stack Auth provides two methods for authenticating users on your server endpoint
 <Tabs defaultValue="nodejs">
   <TabsList>
     <TabsTrigger value="nodejs">Node.js</TabsTrigger>
+    <TabsTrigger value="python">Python</TabsTrigger>
   </TabsList>
   <TabsContent value="nodejs">
     ```javascript
@@ -55,6 +56,35 @@ Stack Auth provides two methods for authenticating users on your server endpoint
     }
     ```
   </TabsContent>
+  <TabsContent value="python">
+    ```python
+    # you need to install PyJWT and cryptography libraries if they're not already installed
+    # pip install PyJWT[crypto] requests
+
+    import jwt
+    import requests
+    from jwt import PyJWKClient
+    from jwt.exceptions import InvalidTokenError
+
+    # you can cache this and refresh it with a low frequency
+    jwks_client = PyJWKClient("https://api.stack-auth.com/api/v1/projects/<your-project-id>/.well-known/jwks.json")
+
+    access_token = 'access token from the headers'
+
+    try:
+        signing_key = jwks_client.get_signing_key_from_jwt(access_token)
+        payload = jwt.decode(
+            access_token,
+            signing_key.key,
+            algorithms=["ES256"],
+            audience=config.stack_project_id
+        )
+        print('Authenticated user with ID:', payload['sub'])
+    except Exception as error:
+        print(error)
+        print('Invalid user')
+    ```
+    </TabsContent>
 </Tabs>
 
 
