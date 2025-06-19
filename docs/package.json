@@ -22,7 +22,7 @@
     "@radix-ui/react-scroll-area": "^1.2.9",
     "@radix-ui/react-slot": "^1.2.3",
     "@radix-ui/react-tabs": "^1.1.12",
-    "@stackframe/stack": "workspace:^",
+    "@stackframe/stack": "workspace:*",
     "@xyflow/react": "^12.6.4",
     "class-variance-authority": "^0.7.1",
     "fumadocs-core": "15.3.3",
