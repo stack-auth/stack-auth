@@ -14,7 +14,10 @@ export const POST = createSmartRouteHandler({
   request: yupObject({
     headers: yupObject({
       "authorization": yupTuple([yupString()]).defined(),
-    }),
+    }).defined(),
+    query: yupObject({
+      dry_run: yupString().oneOf(["true", "false"]).optional(),
+    }).defined(),
     method: yupString().oneOf(["POST"]).defined(),
   }),
   response: yupObject({
@@ -34,7 +37,7 @@ export const POST = createSmartRouteHandler({
       })).optional(),
     }).defined(),
   }),
-  handler: async ({ headers }) => {
+  handler: async ({ headers, query }) => {
     const authHeader = headers.authorization[0];
     if (authHeader !== `Bearer ${getEnvVariable('CRON_SECRET')}`) {
       throw new StatusError(401, "Unauthorized");
@@ -59,13 +62,15 @@ export const POST = createSmartRouteHandler({
         }).join("")}
         ${failedEmailsBatch.emails.length > 10 ? `<div>...</div>` : ""}
       `;
-      await sendEmail({
-        tenancyId: internalTenancy.id,
-        emailConfig,
-        to: failedEmailsBatch.tenantOwnerEmail,
-        subject: "Failed emails digest",
-        html: emailHtml,
-      });
+      if (query.dry_run !== "true") {
+        await sendEmail({
+          tenancyId: internalTenancy.id,
+          emailConfig,
+          to: failedEmailsBatch.tenantOwnerEmail,
+          subject: "Failed emails digest",
+          html: emailHtml,
+        });
+      }
     }
 
     return {
