@@ -47,9 +47,9 @@ function getPlatformDisplayName(platform) {
   return platformNames[platform] || platform;
 }
 
-// Platform-specific content markers - Updated regex to handle hyphens and other characters
-const PLATFORM_START_MARKER = /{\s*\/\*\s*IF_PLATFORM:\s*([\w-]+)\s*\*\/\s*}/;
-const PLATFORM_ELSE_MARKER = /{\s*\/\*\s*ELSE_IF_PLATFORM\s+([\w-]+)\s*\*\/\s*}/;
+// Platform-specific content markers - Updated regex to handle both syntaxes (with and without colon)
+const PLATFORM_START_MARKER = /{\s*\/\*\s*IF_PLATFORM:?\s*([\w-]+)\s*\*\/\s*}/;
+const PLATFORM_ELSE_MARKER = /{\s*\/\*\s*ELSE_IF_PLATFORM:?\s+([\w-]+)\s*\*\/\s*}/;
 const PLATFORM_END_MARKER = /{\s*\/\*\s*END_PLATFORM\s*\*\/\s*}/;
 
 /**
