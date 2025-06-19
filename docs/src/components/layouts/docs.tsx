@@ -33,7 +33,6 @@
  * - PageTreeItem: Recursive page tree rendering
  */
 
-import { baseOptions } from '@/app/layout.config';
 import Link from 'fumadocs-core/link';
 import type { PageTree } from 'fumadocs-core/server';
 import {
@@ -361,7 +360,7 @@ export function DocsLayout({
   const variables = cn(
     '[--fd-tocnav-height:36px] [--fd-sidebar-width:268px] [--fd-toc-width:200px]',
     !nav.component && nav.enabled !== false
-      ? '[--fd-nav-height:56px] md:[--fd-nav-height:0px]'
+      ? '[--fd-nav-height:56px] md:[--fd-nav-height:56px]'
       : undefined,
   );
 
@@ -391,7 +390,7 @@ export function DocsLayout({
           id="nd-docs-layout"
           {...props.containerProps}
           className={cn(
-            'flex flex-1 flex-row md:pl-64',
+            'flex flex-1 flex-row md:pl-64 pt-14',
             variables,
             props.containerProps?.className,
           )}
@@ -460,20 +459,10 @@ export function DocsLayoutSidebar({
   return (
     <>
       {collapsible ? <CollapsibleControl /> : null}
-      {/* API-style sidebar wrapper - fixed position, full height, hidden on mobile */}
-      <div className="hidden md:block fixed left-0 top-0 w-64 border-r border-fd-border bg-fd-background z-40">
-        <div className="h-screen flex flex-col">
-          {/* Header - matches API layout */}
-          <div className="h-14 px-4 border-b border-fd-border flex items-center flex-shrink-0">
-            <Link
-              href="/"
-              className="inline-flex text-[15px] items-center gap-2.5 font-medium"
-            >
-              {baseOptions.nav?.title}
-            </Link>
-          </div>
-
-          {/* Scrollable content area */}
+      {/* Sidebar positioned under the header */}
+      <div className="hidden md:block fixed left-0 top-14 w-64 border-r border-fd-border bg-fd-background z-30">
+        <div className="h-[calc(100vh-3.5rem)] flex flex-col">
+          {/* Scrollable content area - no header needed since branding is in main header */}
           <div className="flex-1 min-h-0 overflow-hidden">
             <ScrollArea className="h-full">
               <ScrollViewport className="p-4">

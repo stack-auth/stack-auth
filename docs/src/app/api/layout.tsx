@@ -1,7 +1,5 @@
-import { baseOptions } from '@/app/layout.config';
 import { ApiSidebar } from '@/components/layouts/api/api-sidebar-server';
 import { DocsHeaderWrapper } from '@/components/layouts/docs-header-wrapper';
-import Link from 'next/link';
 import { apiSource } from '../../../lib/source';
 
 // Configuration for which sections to show/hide
@@ -71,36 +69,21 @@ export default function ApiLayout({ children }: { children: React.ReactNode }) {
   }
 
   return (
-    <div className="flex h-screen bg-fd-background">
-      {/* Custom API Sidebar - hidden on mobile, shown on desktop */}
-      <div className="hidden md:block w-64 flex-shrink-0 border-r border-fd-border">
-        <div className="h-full flex flex-col">
-          {/* Header */}
-          <div className="h-14 px-4 border-b border-fd-border flex items-center">
-            <Link
-              href="/"
-              className="inline-flex text-[15px] items-center gap-2.5 font-medium"
-            >
-              {baseOptions.nav?.title}
-            </Link>
-          </div>
+    <div className="flex min-h-screen bg-fd-background">
+      {/* Full-width header with Stack Auth branding */}
+      <DocsHeaderWrapper
+        showSearch={false}
+        className="fixed top-0 left-0 right-0 z-50 h-14 border-b border-fd-border flex items-center justify-between px-4 md:px-6 bg-fd-background"
+        apiPages={apiPages}
+      />
 
-          {/* API Sidebar Content */}
-          <div className="flex-1 overflow-hidden">
-            <ApiSidebar />
-          </div>
-        </div>
+      {/* Custom API Sidebar - positioned under header, hidden on mobile */}
+      <div className="hidden md:block w-64 flex-shrink-0 border-r border-fd-border fixed left-0 top-14 h-[calc(100vh-3.5rem)] z-30">
+        <ApiSidebar />
       </div>
 
-      {/* Main content area - full width on mobile, with left margin on desktop */}
-      <div className="flex-1 flex flex-col min-w-0">
-        {/* Docs Header Wrapper - provides API sidebar content to mobile navigation */}
-        <DocsHeaderWrapper
-          showSearch={false}
-          className="h-14 border-b border-fd-border flex items-center px-6 relative overflow-hidden"
-          apiPages={apiPages}
-        />
-
+      {/* Main content area - full width on mobile, with left margin on desktop, accounting for header */}
+      <div className="flex-1 flex flex-col min-w-0 md:ml-64 pt-14">
         {/* Page content */}
         <main className="flex-1 overflow-auto">
           <div className="container max-w-6xl mx-auto px-6 py-8">

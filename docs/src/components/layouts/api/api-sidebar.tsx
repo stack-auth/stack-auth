@@ -287,7 +287,7 @@ export function ApiSidebarContent({ pages = [] }: { pages?: PageData[] }) {
       </ScrollArea>
 
       {/* Footer with theme toggle */}
-      <div className="border-t border-fd-border p-4">
+      <div className="border-t border-fd-border p-4 flex-shrink-0">
         <div className="flex items-center justify-between">
           <span className="text-xs text-fd-muted-foreground">Stack Auth API</span>
           <ThemeToggle mode="light-dark" />
