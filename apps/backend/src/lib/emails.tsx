@@ -92,6 +92,31 @@ async function _sendEmailWithoutRetries(options: SendEmailOptions): Promise<Resu
     }
   });
   try {
+    let toArray = typeof options.to === 'string' ? [options.to] : options.to;
+
+    // use Emailable to check if the email is valid. skip the ones that are not (it's as if they had bounced)
+    const emailableApiKey = getEnvVariable('STACK_EMAILABLE_API_KEY');
+    if (emailableApiKey) {
+      await traceSpan('verifying email addresses with Emailable', async () => {
+        toArray = (await Promise.all(toArray.map(async (to) => {
+          const emailableResponse = await fetch(`https://api.emailable.com/v1/verify?email=${encodeURIComponent(options.to as string)}&api_key=${emailableApiKey}`);
+          if (!emailableResponse.ok) {
+            throw new StackAssertionError("Failed to verify email address with Emailable", {
+              to: options.to,
+              emailableResponse,
+              emailableResponseText: await emailableResponse.text(),
+            });
+          }
+          const json = await emailableResponse.json();
+          if (json.state !== 'deliverable') {
+            console.log('email not deliverable', to, json);
+            return null;
+          }
+          return to;
+        }))).filter((to): to is string => to !== null);
+      });
+    }
+
     return await traceSpan('sending email to ' + JSON.stringify(options.to), async () => {
       try {
         const transporter = nodemailer.createTransport({
@@ -107,6 +132,7 @@ async function _sendEmailWithoutRetries(options: SendEmailOptions): Promise<Resu
         await transporter.sendMail({
           from: `"${options.emailConfig.senderName}" <${options.emailConfig.senderEmail}>`,
           ...options,
+          to: toArray,
         });
 
         return Result.ok(undefined);
@@ -244,6 +270,10 @@ export async function sendEmailWithoutRetries(options: SendEmailOptions): Promis
 }
 
 export async function sendEmail(options: SendEmailOptions) {
+  if (!options.to) {
+    throw new StackAssertionError("No recipient email address provided to sendEmail", omit(options, ['emailConfig']));
+  }
+
   return Result.orThrow(await Result.retry(async (attempt) => {
     const result = await sendEmailWithoutRetries(options);
 

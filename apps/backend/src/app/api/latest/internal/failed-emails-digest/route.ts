@@ -3,7 +3,7 @@ import { DEFAULT_BRANCH_ID, getSoleTenancyFromProjectBranch } from "@/lib/tenanc
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { yupArray, yupBoolean, yupNumber, yupObject, yupString, yupTuple } from "@stackframe/stack-shared/dist/schema-fields";
 import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
-import { StatusError } from "@stackframe/stack-shared/dist/utils/errors";
+import { StatusError, captureError } from "@stackframe/stack-shared/dist/utils/errors";
 import { escapeHtml } from "@stackframe/stack-shared/dist/utils/html";
 import { getFailedEmailsByTenancy } from "./crud";
 
@@ -14,11 +14,14 @@ export const POST = createSmartRouteHandler({
   request: yupObject({
     headers: yupObject({
       "authorization": yupTuple([yupString()]).defined(),
-    }),
+    }).defined(),
+    query: yupObject({
+      dry_run: yupString().oneOf(["true", "false"]).optional(),
+    }).defined(),
     method: yupString().oneOf(["POST"]).defined(),
   }),
   response: yupObject({
-    statusCode: yupNumber().oneOf([200, 401]).defined(),
+    statusCode: yupNumber().oneOf([200, 500]).defined(),
     bodyType: yupString().oneOf(["json"]).defined(),
     body: yupObject({
       success: yupBoolean().defined(),
@@ -34,7 +37,7 @@ export const POST = createSmartRouteHandler({
       })).optional(),
     }).defined(),
   }),
-  handler: async ({ headers }) => {
+  handler: async ({ headers, query }) => {
     const authHeader = headers.authorization[0];
     if (authHeader !== `Bearer ${getEnvVariable('CRON_SECRET')}`) {
       throw new StatusError(401, "Unauthorized");
@@ -45,6 +48,7 @@ export const POST = createSmartRouteHandler({
     const emailConfig = await getSharedEmailConfig("Stack Auth");
     const dashboardUrl = getEnvVariable("NEXT_PUBLIC_STACK_DASHBOARD_URL", "https://app.stack-auth.com");
 
+    let anyDigestsFailedToSend = false;
     for (const failedEmailsBatch of failedEmailsByTenancy.values()) {
       const viewInStackAuth = `<a href="${dashboardUrl}/projects/${encodeURIComponent(failedEmailsBatch.projectId)}/emails">View all email logs on the Dashboard</a>`;
       const emailHtml = `
@@ -59,20 +63,27 @@ export const POST = createSmartRouteHandler({
         }).join("")}
         ${failedEmailsBatch.emails.length > 10 ? `<div>...</div>` : ""}
       `;
-      await sendEmail({
-        tenancyId: internalTenancy.id,
-        emailConfig,
-        to: failedEmailsBatch.tenantOwnerEmail,
-        subject: "Failed emails digest",
-        html: emailHtml,
-      });
+      if (query.dry_run !== "true") {
+        try {
+          await sendEmail({
+            tenancyId: internalTenancy.id,
+            emailConfig,
+            to: failedEmailsBatch.tenantOwnerEmail,
+            subject: "Failed emails digest",
+            html: emailHtml,
+          });
+        } catch (error) {
+          anyDigestsFailedToSend = true;
+          captureError("send-failed-emails-digest", error);
+        }
+      }
     }
 
     return {
-      statusCode: 200,
+      statusCode: anyDigestsFailedToSend ? 500 : 200,
       bodyType: 'json',
       body: {
-        success: true,
+        success: !anyDigestsFailedToSend,
         failed_emails_by_tenancy: Array.from(failedEmailsByTenancy.entries()).map(([tenancyId, batch]) => (
           {
             emails: batch.emails,
