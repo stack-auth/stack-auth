@@ -231,14 +231,7 @@ export function CollapsibleMethodSection({
       >
         <div className="flex items-center gap-1.5">
           <div id={anchorId} className="text-m font-medium text-fd-foreground font-mono scroll-mt-20 leading-none">
-            <a
-              href={`#${anchorId}`}
-              className="hover:text-fd-accent-foreground transition-colors !no-underline decoration-none underline-none"
-              style={{ textDecoration: 'none !important', textDecorationLine: 'none', borderBottom: 'none', outline: 'none' }}
-              onClick={(e) => e.stopPropagation()}
-            >
-              {fullName}
-            </a>
+            {fullName}
           </div>
         </div>
 
@@ -375,14 +368,7 @@ export function CollapsibleTypesSection({
         >
           <div className="flex items-center gap-1.5">
             <div id={anchorId} className="text-m font-medium text-fd-foreground font-mono scroll-mt-20 leading-none">
-              <a
-                href={`#${anchorId}`}
-                className="hover:text-fd-accent-foreground transition-colors !no-underline decoration-none underline-none"
-                style={{ textDecoration: 'none !important', textDecorationLine: 'none', borderBottom: 'none', outline: 'none' }}
-                onClick={(e) => e.stopPropagation()}
-              >
-                {fullName}
-              </a>
+              {fullName}
             </div>
           </div>
 
