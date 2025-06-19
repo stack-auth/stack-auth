@@ -1,0 +1,264 @@
+---
+title: Permissions
+---
+
+Permissions are a way to control what each user can do and access within your application.
+
+## Permission Types
+
+Stack supports two types of permissions:
+
+1. **Team Permissions**: Control what a user can do within a specific team
+2. **User Permissions**: Control what a user can do globally, across the entire project
+
+Both permission types can be managed from the dashboard, and both support arbitrary nesting.
+
+## Team Permissions
+
+Team permissions control what a user can do within each team. You can create and assign permissions to team members from the Stack dashboard. These permissions could include actions like `create_post` or `read_secret_info`, or roles like `admin` or `moderator`. Within your app, you can verify if a user has a specific permission within a team.
+
+Permissions can be nested to create a hierarchical structure. For example, an `admin` permission can include both `moderator` and `user` permissions. We provide tools to help you verify whether a user has a permission directly or indirectly.
+
+### Creating a Permission
+
+To create a new permission, navigate to the `Team Permissions` section of the Stack dashboard. You can select the permissions that the new permission will contain. Any permissions included within these selected permissions will also be recursively included.
+
+### System Permissions
+
+Stack comes with a few predefined team permissions known as system permissions. These permissions start with a dollar sign (`$`). While you can assign these permissions to members or include them within other permissions, you cannot modify them as they are integral to the Stack backend system.
+
+### Checking if a User has a Permission
+
+To check whether a user has a specific permission, use the `getPermission` method or the `usePermission` hook on the `User` object. This returns the `Permission` object if the user has it; otherwise, it returns `null`. Always perform permission checks on the server side for business logic, as client-side checks can be bypassed. Here's an example:
+
+<Tabs defaultValue="client">
+  <TabsList>
+    <TabsTrigger value="client">Client Component</TabsTrigger>
+    <TabsTrigger value="server">Server Component</TabsTrigger>
+  </TabsList>
+  <TabsContent value="client">
+    ```tsx title="Check user permission on the client"
+    "use client";
+    import { useUser } from "@stackframe/stack";
+
+    export function CheckUserPermission() {
+      const user = useUser({ or: 'redirect' });
+      const team = user.useTeam('some-team-id');
+      const permission = user.usePermission(team, 'read');
+
+      // Don't rely on client-side permission checks for business logic.
+      return (
+        <div>
+          {permission ? 'You have the read permission' : 'You shall not pass'}
+        </div>
+      );
+    }
+    ```
+  </TabsContent>
+  <TabsContent value="server">
+    ```tsx title="Check user permission on the server"
+    import { stackServerApp } from "@/stack";
+
+    export default async function CheckUserPermission() {
+      const user = await stackServerApp.getUser({ or: 'redirect' });
+      const team = await stackServerApp.getTeam('some-team-id');
+      const permission = await user.getPermission(team, 'read');
+
+      // This is a server-side check, so it's secure.
+      return (
+        <div>
+          {permission ? 'You have the read permission' : 'You shall not pass'}
+        </div>
+      );
+    }
+    ```
+  </TabsContent>
+</Tabs>
+
+### Listing All Permissions of a User
+
+To get a list of all permissions a user has, use the `listPermissions` method or the `usePermissions` hook on the `User` object. This method retrieves both direct and indirect permissions. Here is an example:
+
+<Tabs defaultValue="client">
+  <TabsList>
+    <TabsTrigger value="client">Client Component</TabsTrigger>
+    <TabsTrigger value="server">Server Component</TabsTrigger>
+  </TabsList>
+  <TabsContent value="client">
+    ```tsx title="List user permissions on the client"
+    "use client";
+    import { useUser } from "@stackframe/stack";
+
+    export function DisplayUserPermissions() {
+      const user = useUser({ or: 'redirect' });
+      const permissions = user.usePermissions();
+
+      return (
+        <div>
+          {permissions.map(permission => (
+            <div key={permission.id}>{permission.id}</div>
+          ))}
+        </div>
+      );
+    }
+    ```
+  </TabsContent>
+  <TabsContent value="server">
+    ```tsx title="List user permissions on the server"
+    import { stackServerApp } from "@/stack";
+
+    export default async function DisplayUserPermissions() {
+      const user = await stackServerApp.getUser({ or: 'redirect' });
+      const permissions = await user.listPermissions();
+
+      return (
+        <div>
+          {permissions.map(permission => (
+            <div key={permission.id}>{permission.id}</div>
+          ))}
+        </div>
+      );
+    }
+    ```
+  </TabsContent>
+</Tabs>
+
+### Granting a Permission to a User
+
+To grant a permission to a user, use the `grantPermission` method on the `ServerUser`. Here's an example:
+
+```tsx
+const team = await stackServerApp.getTeam('teamId');
+const user = await stackServerApp.getUser();
+await user.grantPermission(team, 'read');
+```
+
+### Revoking a Permission from a User
+
+To revoke a permission from a user, use the `revokePermission` method on the `ServerUser`. Here's an example:
+
+```tsx
+const team = await stackServerApp.getTeam('teamId');
+const user = await stackServerApp.getUser();
+await user.revokePermission(team, 'read');
+```
+
+## Project Permissions
+
+Project permissions are global permissions that apply to a user across the entire project, regardless of team context. These permissions are useful for handling things like premium plan subscriptions or global admin access.
+
+### Creating a Project Permission
+
+To create a new project permission, navigate to the `Project Permissions` section of the Stack dashboard. Similar to team permissions, you can select other permissions that the new permission will contain, creating a hierarchical structure.
+
+### Checking if a User has a Project Permission
+
+To check whether a user has a specific project permission, use the `getPermission` method or the `usePermission` hook. Here's an example:
+
+<Tabs defaultValue="client">
+  <TabsList>
+    <TabsTrigger value="client">Client Component</TabsTrigger>
+    <TabsTrigger value="server">Server Component</TabsTrigger>
+  </TabsList>
+  <TabsContent value="client">
+    ```tsx title="Check user permission on the client"
+    "use client";
+    import { useUser } from "@stackframe/stack";
+
+    export function CheckGlobalPermission() {
+      const user = useUser({ or: 'redirect' });
+      const permission = user.usePermission('access_admin_dashboard');
+
+      return (
+        <div>
+          {permission ? 'You can access the admin dashboard' : 'Access denied'}
+        </div>
+      );
+    }
+    ```
+  </TabsContent>
+  <TabsContent value="server">
+    ```tsx title="Check user permission on the server"
+    import { stackServerApp } from "@/stack";
+
+    export default async function CheckGlobalPermission() {
+      const user = await stackServerApp.getUser({ or: 'redirect' });
+      const permission = await user.getPermission('access_admin_dashboard');
+
+      return (
+        <div>
+          {permission ? 'You can access the admin dashboard' : 'Access denied'}
+        </div>
+      );
+    }
+    ```
+  </TabsContent>
+</Tabs>
+
+### Listing All Project Permissions
+
+To get a list of all global permissions a user has, use the `listPermissions` method or the `usePermissions` hook:
+
+<Tabs defaultValue="client">
+  <TabsList>
+    <TabsTrigger value="client">Client Component</TabsTrigger>
+    <TabsTrigger value="server">Server Component</TabsTrigger>
+  </TabsList>
+  <TabsContent value="client">
+    ```tsx title="List global permissions on the client"
+    "use client";
+    import { useUser } from "@stackframe/stack";
+
+    export function DisplayGlobalPermissions() {
+      const user = useUser({ or: 'redirect' });
+      const permissions = user.usePermissions();
+
+      return (
+        <div>
+          {permissions.map(permission => (
+            <div key={permission.id}>{permission.id}</div>
+          ))}
+        </div>
+      );
+    }
+    ```
+  </TabsContent>
+  <TabsContent value="server">
+    ```tsx title="List global permissions on the server"
+    import { stackServerApp } from "@/stack";
+
+    export default async function DisplayGlobalPermissions() {
+      const user = await stackServerApp.getUser({ or: 'redirect' });
+      const permissions = await user.listPermissions();
+
+      return (
+        <div>
+          {permissions.map(permission => (
+            <div key={permission.id}>{permission.id}</div>
+          ))}
+        </div>
+      );
+    }
+    ```
+  </TabsContent>
+</Tabs>
+
+### Granting a Project Permission
+
+To grant a global permission to a user, use the `grantPermission` method:
+
+```tsx
+const user = await stackServerApp.getUser();
+await user.grantPermission('access_admin_dashboard');
+```
+
+### Revoking a Project Permission
+
+To revoke a global permission from a user, use the `revokePermission` method:
+
+```tsx
+const user = await stackServerApp.getUser();
+await user.revokePermission('access_admin_dashboard');
+```
+
+By following these guidelines, you can efficiently manage and verify both team and user permissions within your application.

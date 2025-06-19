@@ -1,0 +1,56 @@
+/* 
+ * DEPRECATED - This file is kept for backward compatibility 
+ * The styling is now handled with Tailwind in the Info component directly
+ */
+
+/* These styles are no longer used but kept for reference */
+
+.stack-info-box {
+  padding: 1rem;
+  margin: 1.5rem 0;
+  border-radius: 0.5rem;
+  display: flex;
+  align-items: flex-start;
+}
+
+.stack-info-icon {
+  flex-shrink: 0;
+  margin-right: 0.75rem;
+  font-size: 1.25rem;
+}
+
+.stack-info-content {
+  flex: 1;
+}
+
+.stack-info-content p:last-child {
+  margin-bottom: 0;
+}
+
+.stack-info-info {
+  background-color: rgba(59, 130, 246, 0.1);
+  border-left: 4px solid rgb(59, 130, 246);
+}
+
+.stack-info-warning {
+  background-color: rgba(245, 158, 11, 0.1);
+  border-left: 4px solid rgb(245, 158, 11);
+}
+
+.stack-info-success {
+  background-color: rgba(34, 197, 94, 0.1);
+  border-left: 4px solid rgb(34, 197, 94);
+}
+
+/* Dark mode styles */
+:root.dark .stack-info-info {
+  background-color: rgba(59, 130, 246, 0.2);
+}
+
+:root.dark .stack-info-warning {
+  background-color: rgba(245, 158, 11, 0.2);
+}
+
+:root.dark .stack-info-success {
+  background-color: rgba(34, 197, 94, 0.2);
+} 
