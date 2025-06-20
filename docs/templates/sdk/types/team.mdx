@@ -1,0 +1,690 @@
+---
+title: Team
+full: true
+---
+
+This is a detailed reference for the `Team` object. If you're looking for a more high-level overview, please refer to our [guide on teams](../../concepts/orgs-and-teams.mdx).
+
+On this page:
+- [Team](#team)
+- [ServerTeam](#serverteam)
+
+---
+
+# `Team`
+
+A `Team` object contains basic information and functions about a team, to the extent of which a member of the team would have access to it.
+
+You can get `Team` objects with the 
+`user.useTeams()` or {/* THIS_LINE_PLATFORM react-like */}
+`user.listTeams()` functions. The created team will then inherit the permissions of that user; for example, the `team.update(...)` function can only succeed if the user is allowed to make updates to the team.
+
+### Table of Contents
+
+<ClickableTableOfContents code={`type Team = {
+  id: string;  //$stack-link-to:#teamid
+  displayName: string;  //$stack-link-to:#teamdisplayname
+  profileImageUrl: string | null;  //$stack-link-to:#teamprofileimageurl
+  clientMetadata: Json;  //$stack-link-to:#teamclientmetadata
+  clientReadOnlyMetadata: Json;  //$stack-link-to:#teamclientreadonlymetadata
+
+  update(data): Promise<void>;  //$stack-link-to:#teamupdatedata
+  inviteUser(options): Promise<void>;  //$stack-link-to:#teaminviteuseroptions
+  listUsers(): Promise<TeamUser[]>;  //$stack-link-to:#teamlistusers
+  // NEXT_LINE_PLATFORM react-like
+   ⤷ useUsers(): TeamUser[];  //$stack-link-to:#teamuseusers
+  listInvitations(): Promise<{ ... }[]>;  //$stack-link-to:#teamlistinvitations
+  // NEXT_LINE_PLATFORM react-like
+   ⤷ useInvitations(): { ... }[];  //$stack-link-to:#teamuseinvitations
+  
+  createApiKey(options): Promise<TeamApiKeyFirstView>;  //$stack-link-to:#teamcreateapikeyoptions
+  listApiKeys(): Promise<TeamApiKey[]>;  //$stack-link-to:#teamlistapikeys
+  // NEXT_LINE_PLATFORM react-like
+   ⤷ useApiKeys(): TeamApiKey[];  //$stack-link-to:#teamuseapikeys
+};`} />
+
+<CollapsibleTypesSection type="team" property="id" defaultOpen={false}>
+  <MethodLayout>
+    <MethodContent>
+      The team ID as a `string`. This value is always unique.
+    </MethodContent>
+    <MethodAside title="Type Definition">
+
+      ```typescript
+      declare const id: string;
+      ```
+    </MethodAside>
+  </MethodLayout>
+</CollapsibleTypesSection>
+
+<CollapsibleTypesSection type="team" property="displayName" defaultOpen={false}>
+  <MethodLayout>
+    <MethodContent>
+      The display name of the team as a `string`.
+    </MethodContent>
+    <MethodAside title="Type Definition">
+
+      ```typescript
+      declare const displayName: string;
+      ```
+    </MethodAside>
+  </MethodLayout>
+</CollapsibleTypesSection>
+
+<CollapsibleTypesSection type="team" property="profileImageUrl" defaultOpen={false}>
+  <MethodLayout>
+    <MethodContent>
+      The profile image URL of the team as a `string`, or `null` if no profile image is set.
+    </MethodContent>
+    <MethodAside title="Type Definition">
+
+      ```typescript
+      declare const profileImageUrl: string | null;
+      ```
+    </MethodAside>
+  </MethodLayout>
+</CollapsibleTypesSection>
+
+<CollapsibleTypesSection type="team" property="clientMetadata" defaultOpen={false}>
+  <MethodLayout>
+    <MethodContent>
+      The client metadata of the team as a `Json` object.
+    </MethodContent>
+    <MethodAside title="Type Definition">
+
+      ```typescript
+      declare const clientMetadata: Json;
+      ```
+    </MethodAside>
+  </MethodLayout>
+</CollapsibleTypesSection>
+
+<CollapsibleTypesSection type="team" property="clientReadOnlyMetadata" defaultOpen={false}>
+  <MethodLayout>
+    <MethodContent>
+      The client read-only metadata of the team as a `Json` object.
+    </MethodContent>
+    <MethodAside title="Type Definition">
+
+      ```typescript
+      declare const clientReadOnlyMetadata: Json;
+      ```
+    </MethodAside>
+  </MethodLayout>
+</CollapsibleTypesSection>
+
+<CollapsibleTypesSection type="team" property="update" signature="data" defaultOpen={false}>
+  <MethodLayout>
+    <MethodContent>
+      Updates the team information.
+
+      Note that this operation requires the current user to have the `$update_team` permission. If the user lacks this permission, an error will be thrown.
+
+      ### Parameters
+
+      <ParamField path="data" type="TeamUpdateOptions" required>
+        The fields to update.
+        <Accordion title="Show Properties">
+          <ParamField path="displayName" type="string">
+            The display name of the team.
+          </ParamField>
+
+          <ParamField path="profileImageUrl" type="string | null">
+            The profile image URL of the team.
+          </ParamField>
+
+          <ParamField path="clientMetadata" type="Json">
+            The client metadata of the team.
+          </ParamField>
+        </Accordion>
+      </ParamField>
+
+      ### Returns
+
+      `Promise<void>`
+    </MethodContent>
+    <MethodAside>
+      <AsideSection title="Signature">
+
+      ```typescript
+      declare function update(options: {
+        displayName?: string;
+        profileImageUrl?: string | null;
+        clientMetadata?: Json;
+      }): Promise<void>;
+      ```
+      </AsideSection>
+      <AsideSection title="Examples">
+      ```typescript Updating team details
+      await team.update({
+        displayName: 'New Team Name',
+        profileImageUrl: 'https://example.com/profile.png',
+        clientMetadata: {
+          address: '123 Main St, Anytown, USA',
+        },
+      });
+      ```
+      </AsideSection>
+    </MethodAside>
+  </MethodLayout>
+</CollapsibleTypesSection>
+
+<CollapsibleTypesSection type="team" property="inviteUser" signature="options" defaultOpen={false}>
+  <MethodLayout>
+    <MethodContent>
+      Sends an invitation email to a user to join the team. 
+
+      Note that this operation requires the current user to have the `$invite_members` permission. If the user lacks this permission, an error will be thrown.
+
+      An invitation email containing a magic link will be sent to the specified user. If the user has an existing account, they will be automatically added to the team upon clicking the link. For users without an account, the link will guide them through the sign-up process before adding them to the team.
+
+      ### Parameters
+
+      <ParamField path="options" type="object" required>
+        An object containing multiple properties.
+        <Accordion title="Show Properties">
+          <ParamField path="email" type="string" required>
+            The email of the user to invite.
+          </ParamField>
+
+          <ParamField path="callbackUrl" type="string">
+            The URL where users will be redirected after accepting the team invitation.
+            
+            Required when calling `inviteUser()` in the server environment since the URL cannot be automatically determined.
+            
+            Example: `https://your-app-url.com/handler/team-invitation`
+          </ParamField>
+        </Accordion>
+      </ParamField>
+
+      ### Returns
+
+      `Promise<void>`
+    </MethodContent>
+    <MethodAside>
+      <AsideSection title="Signature">
+
+      ```typescript
+      declare function inviteUser(options: {
+        email: string;
+        callbackUrl?: string;
+      }): Promise<void>;
+      ```
+      </AsideSection>
+      <AsideSection title="Examples">
+      ```typescript Sending a team invitation
+      await team.inviteUser({
+        email: 'user@example.com',
+      });
+      ```
+      </AsideSection>
+    </MethodAside>
+  </MethodLayout>
+</CollapsibleTypesSection>
+
+<CollapsibleTypesSection type="team" property="listUsers" defaultOpen={false}>
+  <MethodLayout>
+    <MethodContent>
+      Gets a list of users in the team.
+
+      Note that this operation requires the current user to have the `$read_members` permission. If the user lacks this permission, an error will be thrown.
+
+      ### Parameters
+
+      None.
+
+      ### Returns
+
+      `Promise<TeamUser[]>`
+    </MethodContent>
+    <MethodAside>
+      <AsideSection title="Signature">
+
+      ```typescript
+      declare function listUsers(): Promise<TeamUser[]>;
+      ```
+      </AsideSection>
+      <AsideSection title="Examples">
+      ```typescript Listing team members
+      const users = await team.listUsers();
+      users.forEach(user => {
+        console.log(user.id, user.teamProfile.displayName);
+      });
+      ```
+      </AsideSection>
+    </MethodAside>
+  </MethodLayout>
+</CollapsibleTypesSection>
+
+{/* IF_PLATFORM next */}
+<CollapsibleTypesSection type="team" property="useUsers" defaultOpen={false}>
+  <MethodLayout>
+    <MethodContent>
+      Functionally equivalent to [`listUsers()`](#teamlistusers), but as a React hook.
+
+      ### Parameters
+
+      None.
+
+      ### Returns
+
+      `TeamUser[]`
+    </MethodContent>
+    <MethodAside>
+      <AsideSection title="Signature">
+
+      ```typescript
+      declare function useUsers(): TeamUser[];
+      ```
+      </AsideSection>
+      <AsideSection title="Examples">
+      ```typescript Listing team members in React component
+      const users = team.useUsers();
+      users.forEach(user => {
+        console.log(user.id, user.teamProfile.displayName);
+      });
+      ```
+      </AsideSection>
+    </MethodAside>
+  </MethodLayout>
+</CollapsibleTypesSection>
+{/* END_PLATFORM */}
+
+<CollapsibleTypesSection type="team" property="listInvitations" defaultOpen={false}>
+  <MethodLayout>
+    <MethodContent>
+      Gets a list of invitations to the team.
+
+      Note that this operation requires the current user to have the `$read_members` and `$invite_members` permissions. If the user lacks this permission, an error will be thrown.
+
+      ### Parameters
+
+      None.
+
+      ### Returns
+
+      `Promise<{ id: string, email: string, expiresAt: Date }[]>`
+    </MethodContent>
+    <MethodAside>
+      <AsideSection title="Signature">
+
+      ```typescript
+      declare function listInvitations(): Promise<{ id: string, email: string, expiresAt: Date }[]>;
+      ```
+      </AsideSection>
+      <AsideSection title="Examples">
+      ```typescript Listing team invitations
+      const invitations = await team.listInvitations();
+      invitations.forEach(invitation => {
+        console.log(invitation.id, invitation.email);
+      });
+      ```
+      </AsideSection>
+    </MethodAside>
+  </MethodLayout>
+</CollapsibleTypesSection>
+
+{/* IF_PLATFORM next */}
+<CollapsibleTypesSection type="team" property="useInvitations" defaultOpen={false}>
+  <MethodLayout>
+    <MethodContent>
+      Functionally equivalent to [`listInvitations()`](#teamlistinvitations), but as a React hook.
+
+      ### Parameters
+
+      None.
+
+      ### Returns
+
+      `{ id: string, email: string, expiresAt: Date }[]`
+    </MethodContent>
+    <MethodAside>
+      <AsideSection title="Signature">
+
+      ```typescript
+      declare function useInvitations(): { id: string, email: string, expiresAt: Date }[];
+      ```
+      </AsideSection>
+      <AsideSection title="Examples">
+      ```typescript Listing team invitations in React component
+      const invitations = team.useInvitations();
+      invitations.forEach(invitation => {
+        console.log(invitation.id, invitation.email);
+      });
+      ```
+      </AsideSection>
+    </MethodAside>
+  </MethodLayout>
+</CollapsibleTypesSection>
+{/* END_PLATFORM */}
+
+<CollapsibleTypesSection type="team" property="createApiKey" signature="options" defaultOpen={false}>
+  <MethodLayout>
+    <MethodContent>
+      Creates a new API key for the team.
+
+      ### Parameters
+
+      <ParamField path="options" type="object" required>
+        An object containing multiple properties.
+        <Accordion title="Show Properties">
+          <ParamField path="name" type="string" required>
+            The name of the API key.
+          </ParamField>
+
+          <ParamField path="description" type="string">
+            The description of the API key.
+          </ParamField>
+
+          <ParamField path="expiresAt" type="Date" required>
+            The expiration date of the API key.
+          </ParamField>
+        </Accordion>
+      </ParamField>
+
+      ### Returns
+
+      `Promise<TeamApiKeyFirstView>`
+    </MethodContent>
+    <MethodAside>
+      <AsideSection title="Signature">
+
+      ```typescript
+      declare function createApiKey(options: {
+        name: string;
+        description: string;
+        expiresAt: Date;
+      }): Promise<TeamApiKeyFirstView>;
+      ```
+      </AsideSection>
+      <AsideSection title="Examples">
+      ```typescript Creating a new API key
+      await team.createApiKey({
+        name: 'New API Key',
+        description: 'This is a new API key',
+        expiresAt: new Date('2024-01-01'),
+      });
+      ```
+      </AsideSection>
+    </MethodAside>
+  </MethodLayout>
+</CollapsibleTypesSection>
+
+<CollapsibleTypesSection type="team" property="listApiKeys" defaultOpen={false}>
+  <MethodLayout>
+    <MethodContent>
+      Gets a list of API keys for the team.
+
+      ### Parameters
+
+      None.
+
+      ### Returns
+
+      `Promise<TeamApiKey[]>`
+    </MethodContent>
+    <MethodAside>
+      <AsideSection title="Signature">
+
+      ```typescript
+      declare function listApiKeys(): Promise<TeamApiKey[]>;
+      ```
+      </AsideSection>
+      <AsideSection title="Examples">
+      ```typescript Listing API keys
+      const apiKeys = await team.listApiKeys();
+      apiKeys.forEach(key => {
+        console.log(key.id, key.name);
+      });
+      ```
+      </AsideSection>
+    </MethodAside>
+  </MethodLayout>
+</CollapsibleTypesSection>
+
+{/* IF_PLATFORM next */}
+<CollapsibleTypesSection type="team" property="useApiKeys" defaultOpen={false}>
+  <MethodLayout>
+    <MethodContent>
+      Functionally equivalent to [`listApiKeys()`](#teamlistapikeys), but as a React hook.
+
+      ### Parameters
+
+      None.
+
+      ### Returns
+
+      `TeamApiKey[]`
+    </MethodContent>
+    <MethodAside>
+      <AsideSection title="Signature">
+
+      ```typescript
+      declare function useApiKeys(): TeamApiKey[];
+      ```
+      </AsideSection>
+      <AsideSection title="Examples">
+      ```typescript Using API keys in React component
+      const apiKeys = team.useApiKeys();
+      apiKeys.forEach(key => {
+        console.log(key.id, key.name);
+      });
+      ```
+      </AsideSection>
+    </MethodAside>
+  </MethodLayout>
+</CollapsibleTypesSection>
+{/* END_PLATFORM */}
+
+---
+
+# `ServerTeam`
+
+Like [`Team`](#team), but with [server permissions](../../concepts/stack-app.mdx#client-vs-server). Has full read and write access to everything.
+
+Calling `serverUser.getTeam(...)` and `serverUser.listTeams()` will return `ServerTeam` objects if the user is a [`ServerUser`](../types/user.mdx#serveruser). Alternatively, you can call `stackServerApp.getTeam('team_id_123')` or `stackServerApp.listTeams()` to query all teams of the project.
+
+`ServerTeam` extends the `Team` object, providing additional functions and properties as detailed below. It's important to note that while the `Team` object's functions may require specific user permissions, the corresponding functions in `ServerTeam` can be executed without these permission checks. This allows for more flexible and unrestricted team management on the server side.
+
+### Table of Contents
+
+<ClickableTableOfContents code={`type ServerTeam =
+  // Inherits all functionality from Team
+  & Team //$stack-link-to:#team
+  & {
+    createdAt: Date;  //$stack-link-to:#serverteamcreatedat
+    serverMetadata: Json;  //$stack-link-to:#serverteamservermetadata
+
+    listUsers(): Promise<ServerTeamUser[]>;  //$stack-link-to:#serverteamlistusers
+    // NEXT_LINE_PLATFORM react-like
+     ⤷ useUsers(): ServerTeamUser[];  //$stack-link-to:#serverteamuseusers
+    addUser(userId): Promise<void>;  //$stack-link-to:#serverteamadduseruserid
+    removeUser(userId): Promise<void>;  //$stack-link-to:#serverteamremoveuseruserid
+    delete(): Promise<void>;  //$stack-link-to:#serverteamdelete
+  };`} />
+
+<CollapsibleTypesSection type="serverTeam" property="createdAt" defaultOpen={false}>
+  <MethodLayout>
+    <MethodContent>
+      The date and time when the team was created.
+    </MethodContent>
+    <MethodAside title="Type Definition">
+      ```typescript
+      declare const createdAt: Date;
+      ```
+    </MethodAside>
+  </MethodLayout>
+</CollapsibleTypesSection>
+
+<CollapsibleTypesSection type="serverTeam" property="serverMetadata" defaultOpen={false}>
+  <MethodLayout>
+    <MethodContent>
+      The server metadata of the team as a `Json` object.
+    </MethodContent>
+    <MethodAside title="Type Definition">
+      ```typescript
+      declare const serverMetadata: Json;
+      ```
+    </MethodAside>
+  </MethodLayout>
+</CollapsibleTypesSection>
+
+<CollapsibleTypesSection type="serverTeam" property="listUsers" defaultOpen={false}>
+  <MethodLayout>
+    <MethodContent>
+      Gets a list of users in the team.
+
+      This is similar to the `listUsers` method on the `Team` object, but it returns `ServerTeamUser` objects instead of `TeamUser` objects and does not require any permissions.
+
+      ### Parameters
+
+      None.
+
+      ### Returns
+
+      `Promise<ServerTeamUser[]>`
+    </MethodContent>
+    <MethodAside>
+      <AsideSection title="Signature">
+
+      ```typescript
+      declare function listUsers(): Promise<ServerTeamUser[]>;
+      ```
+      </AsideSection>
+      <AsideSection title="Examples">
+      ```typescript Listing server team members
+      const users = await team.listUsers();
+      users.forEach(user => {
+        console.log(user.id, user.teamProfile.displayName);
+      });
+      ```
+      </AsideSection>
+    </MethodAside>
+  </MethodLayout>
+</CollapsibleTypesSection>
+
+{/* IF_PLATFORM next */}
+<CollapsibleTypesSection type="serverTeam" property="useUsers" defaultOpen={false}>
+  <MethodLayout>
+    <MethodContent>
+      Functionally equivalent to [`listUsers()`](#serverteamlistusers), but as a React hook.
+
+      ### Parameters
+
+      None.
+
+      ### Returns
+
+      `ServerTeamUser[]`
+    </MethodContent>
+    <MethodAside>
+      <AsideSection title="Signature">
+
+      ```typescript
+      declare function useUsers(): ServerTeamUser[];
+      ```
+      </AsideSection>
+      <AsideSection title="Examples">
+      ```typescript Using server team members in React component
+      const users = team.useUsers();
+      users.forEach(user => {
+        console.log(user.id, user.teamProfile.displayName);
+      });
+      ```
+      </AsideSection>
+    </MethodAside>
+  </MethodLayout>
+</CollapsibleTypesSection>
+{/* END_PLATFORM */}
+
+<CollapsibleTypesSection type="serverTeam" property="addUser" signature="userId" defaultOpen={false}>
+  <MethodLayout>
+    <MethodContent>
+      Adds a user to the team directly without sending an invitation email.
+
+      ### Parameters
+
+      <ParamField path="userId" type="string" required>
+        The ID of the user to add.
+      </ParamField>
+
+      ### Returns
+
+      `Promise<void>`
+    </MethodContent>
+    <MethodAside>
+      <AsideSection title="Signature">
+
+      ```typescript
+      declare function addUser(userId: string): Promise<void>;
+      ```
+      </AsideSection>
+      <AsideSection title="Examples">
+      ```typescript Adding a user to the team
+      await team.addUser('user_id_123');
+      ```
+      </AsideSection>
+    </MethodAside>
+  </MethodLayout>
+</CollapsibleTypesSection>
+
+<CollapsibleTypesSection type="serverTeam" property="removeUser" signature="userId" defaultOpen={false}>
+  <MethodLayout>
+    <MethodContent>
+      Removes a user from the team.
+
+      ### Parameters
+
+      <ParamField path="userId" type="string" required>
+        The ID of the user to remove.
+      </ParamField>
+
+      ### Returns
+
+      `Promise<void>`
+    </MethodContent>
+    <MethodAside>
+      <AsideSection title="Signature">
+
+      ```typescript
+      declare function removeUser(userId: string): Promise<void>;
+      ```
+
+      ### Examples
+
+      ```typescript Removing a user from the team
+      await team.removeUser('user_id_123');
+      ```
+      </AsideSection>
+    </MethodAside>
+  </MethodLayout>
+</CollapsibleTypesSection>
+
+<CollapsibleTypesSection type="serverTeam" property="delete" defaultOpen={false}>
+  <MethodLayout>
+    <MethodContent>
+      Deletes the team.
+
+      ### Parameters
+
+      None.
+
+      ### Returns
+
+      `Promise<void>`
+    </MethodContent>
+    <MethodAside>
+      <AsideSection title="Signature">
+
+      ```typescript
+      declare function delete(): Promise<void>;
+      ```
+      </AsideSection>
+      <AsideSection title="Examples">
+      ```typescript Deleting a team
+      await team.delete();
+      ```
+      </AsideSection>
+    </MethodAside>
+  </MethodLayout>
+</CollapsibleTypesSection>
