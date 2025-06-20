@@ -295,7 +295,7 @@ export function Markdown({ src }: { src: string }) {
 
   const ContentComponent = snippetContent[src];
 
-  if (!snippetContent.hasOwnProperty(src)) {
+  if (!(src in snippetContent)) {
     console.warn(`Snippet not found: ${src}`);
     return <div className="markdown-include text-red-500">Snippet not found: {src}</div>;
   }
