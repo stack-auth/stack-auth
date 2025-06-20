@@ -6,6 +6,27 @@ import { useAPIPageContext } from './api-page-wrapper';
 import { Button } from './button';
 
 // Types for OpenAPI specification
+type OpenAPISchema = {
+  type?: 'string' | 'number' | 'integer' | 'boolean' | 'array' | 'object' | 'null',
+  properties?: Record<string, OpenAPISchema>,
+  items?: OpenAPISchema,
+  required?: string[],
+  example?: unknown,
+  description?: string,
+  $ref?: string,
+  allOf?: OpenAPISchema[],
+  oneOf?: OpenAPISchema[],
+  anyOf?: OpenAPISchema[],
+  enum?: unknown[],
+  format?: string,
+  minimum?: number,
+  maximum?: number,
+  minLength?: number,
+  maxLength?: number,
+  pattern?: string,
+  additionalProperties?: boolean | OpenAPISchema,
+}
+
 type OpenAPISpec = {
   openapi: string,
   info: {
@@ -20,8 +41,8 @@ type OpenAPISpec = {
   paths: Record<string, Record<string, OpenAPIOperation>>,
   webhooks?: Record<string, Record<string, OpenAPIOperation>>,
   components?: {
-    schemas?: Record<string, any>,
-    securitySchemes?: Record<string, any>,
+    schemas?: Record<string, OpenAPISchema>,
+    securitySchemes?: Record<string, unknown>,
   },
 }
 
@@ -34,13 +55,13 @@ type OpenAPIOperation = {
   requestBody?: {
     required?: boolean,
     content: Record<string, {
-      schema: any,
+      schema: OpenAPISchema,
     }>,
   },
   responses: Record<string, {
     description: string,
     content?: Record<string, {
-      schema: any,
+      schema: OpenAPISchema,
     }>,
   }>,
   security?: Array<Record<string, string[]>>,
@@ -51,8 +72,8 @@ type OpenAPIParameter = {
   in: 'query' | 'path' | 'header' | 'cookie',
   required?: boolean,
   description?: string,
-  schema: any,
-  example?: any,
+  schema: OpenAPISchema,
+  example?: unknown,
 }
 
 type EnhancedAPIPageProps = {
@@ -61,21 +82,16 @@ type EnhancedAPIPageProps = {
     path: string,
     method: string,
   }>,
-  webhooks?: Array<{
-    name: string,
-    method: string,
-  }>,
-  hasHead?: boolean,
   description?: string,
 }
 
 type RequestState = {
-  parameters: Record<string, any>,
+  parameters: Record<string, unknown>,
   headers: Record<string, string>,
   body: string,
   response: {
     status?: number,
-    data?: any,
+    data?: unknown,
     headers?: Record<string, string>,
     loading: boolean,
     error?: string,
@@ -93,7 +109,7 @@ const HTTP_METHOD_COLORS = {
 } as const;
 
 
-export function EnhancedAPIPage({ document, operations, webhooks = [], hasHead = true, description }: EnhancedAPIPageProps) {
+export function EnhancedAPIPage({ document, operations, description }: EnhancedAPIPageProps) {
   const { sharedHeaders, reportError, isHeadersPanelOpen } = useAPIPageContext();
   const [spec, setSpec] = useState<OpenAPISpec | null>(null);
   const [loading, setLoading] = useState(true);
@@ -112,74 +128,47 @@ export function EnhancedAPIPage({ document, operations, webhooks = [], hasHead =
     setRequestState(prev => ({ ...prev, headers: sharedHeaders }));
   }, [sharedHeaders]);
 
-  // Auto-populate request body based on OpenAPI schema
-  useEffect(() => {
-    if (operations.length > 0) {
-      const firstOperation = operations[0];
-      const operation = spec?.paths[firstOperation.path]?.[firstOperation.method.toLowerCase()];
-
-      if (operation?.requestBody) {
-        const content = operation.requestBody.content;
-        const jsonContent = content['application/json'];
-
-        if (jsonContent.schema) {
-          console.log('OpenAPI Schema for', firstOperation.path, ':', jsonContent.schema);
-          const exampleBody = generateExampleFromSchema(jsonContent.schema, spec || undefined);
-          console.log('Generated example body:', exampleBody);
-          setRequestState(prev => ({
-            ...prev,
-            body: JSON.stringify(exampleBody, null, 2)
-          }));
-        }
-      }
-    }
-  }, [spec, operations]);
-
   // Helper function to generate example data from OpenAPI schema
-  const generateExampleFromSchema = (schema: any, spec?: OpenAPISpec): any => {
+  const generateExampleFromSchema = useCallback((schema: OpenAPISchema, spec?: OpenAPISpec): unknown => {
     console.log('Processing schema:', JSON.stringify(schema, null, 2));
-
-    if (!schema) return {};
 
     // Handle $ref references first
     if (schema.$ref) {
       console.log('Found $ref:', schema.$ref);
       const refPath = schema.$ref.replace('#/', '').split('/');
-      let refSchema: any = spec;
+      let refSchema: OpenAPISchema | undefined = spec as unknown as OpenAPISchema;
       for (const part of refPath) {
-        refSchema = refSchema?.[part];
+        refSchema = (refSchema as Record<string, unknown>)[part] as OpenAPISchema;
       }
-      if (refSchema) {
-        return generateExampleFromSchema(refSchema, spec);
-      }
+      return generateExampleFromSchema(refSchema!, spec);
     }
 
     // Handle allOf (merge all schemas)
-    if (schema.allOf) {
+    if (schema.allOf?.length) {
       console.log('Found allOf with', schema.allOf.length, 'schemas');
-      const merged = {};
+      const merged: Record<string, unknown> = {};
       for (const subSchema of schema.allOf) {
         const subExample = generateExampleFromSchema(subSchema, spec);
-        Object.assign(merged, subExample);
+        if (typeof subExample === 'object' && subExample !== null) {
+          Object.assign(merged, subExample);
+        }
       }
       return merged;
     }
 
     // Handle oneOf/anyOf (use first schema)
-    if (schema.oneOf || schema.anyOf) {
+    if (schema.oneOf?.length || schema.anyOf?.length) {
       const schemas = schema.oneOf || schema.anyOf;
-      console.log('Found oneOf/anyOf with', schemas.length, 'schemas');
-      if (schemas.length > 0) {
-        return generateExampleFromSchema(schemas[0], spec);
-      }
+      console.log('Found oneOf/anyOf with', schemas?.length, 'schemas');
+      return generateExampleFromSchema(schemas![0], spec);
     }
 
     // Handle object type - prioritize this over top-level examples
     if (schema.type === 'object' && schema.properties) {
       console.log('Processing object with properties:', Object.keys(schema.properties));
-      const example: any = {};
+      const example: Record<string, unknown> = {};
 
-      Object.entries(schema.properties).forEach(([key, prop]: [string, any]) => {
+      Object.entries(schema.properties).forEach(([key, prop]: [string, OpenAPISchema]) => {
         console.log(`Processing property ${key}:`, prop);
 
         if (prop.example !== undefined) {
@@ -211,7 +200,26 @@ export function EnhancedAPIPage({ document, operations, webhooks = [], hasHead =
 
     // For primitive types, return empty string
     return "";
-  };
+  }, []);
+
+  // Auto-populate request body based on OpenAPI schema
+  useEffect(() => {
+    if (operations.length > 0 && spec) {
+      const firstOperation = operations[0];
+      const operation = spec.paths[firstOperation.path][firstOperation.method.toLowerCase()];
+
+      if (operation.requestBody?.content['application/json']?.schema) {
+        const { schema: jsonSchema } = operation.requestBody.content['application/json'];
+        console.log('OpenAPI Schema for', firstOperation.path, ':', jsonSchema);
+        const exampleBody = generateExampleFromSchema(jsonSchema, spec);
+        console.log('Generated example body:', exampleBody);
+        setRequestState(prev => ({
+          ...prev,
+          body: JSON.stringify(exampleBody, null, 2)
+        }));
+      }
+    }
+  }, [spec, operations, generateExampleFromSchema]);
 
   // Load OpenAPI specification
   useEffect(() => {
@@ -261,9 +269,8 @@ export function EnhancedAPIPage({ document, operations, webhooks = [], hasHead =
       const pathParams = operation.parameters?.filter(p => p.in === 'path') || [];
       pathParams.forEach(param => {
         const value = requestState.parameters[param.name];
-        if (value) {
-          url = url.replace(`{${param.name}}`, encodeURIComponent(value));
-        }
+        const stringValue = typeof value === 'string' || typeof value === 'number' ? String(value) : `{${param.name}}`;
+        url = url.replace(`{${param.name}}`, stringValue);
       });
 
       // Add query parameters
@@ -272,7 +279,7 @@ export function EnhancedAPIPage({ document, operations, webhooks = [], hasHead =
       queryParams.forEach(param => {
         const value = requestState.parameters[param.name];
         if (value !== undefined && value !== '') {
-          searchParams.append(param.name, value);
+          searchParams.append(param.name, String(value));
         }
       });
       if (searchParams.toString()) {
@@ -435,8 +442,9 @@ function ModernAPIPlayground({
     // Replace path parameters
     const pathParams = operation.parameters?.filter(p => p.in === 'path') || [];
     pathParams.forEach(param => {
-      const value = requestState.parameters[param.name] || `{${param.name}}`;
-      url = url.replace(`{${param.name}}`, value);
+      const value = requestState.parameters[param.name];
+      const stringValue = typeof value === 'string' || typeof value === 'number' ? String(value) : `{${param.name}}`;
+      url = url.replace(`{${param.name}}`, stringValue);
     });
 
     // Add query parameters
@@ -445,7 +453,7 @@ function ModernAPIPlayground({
     queryParams.forEach(param => {
       const value = requestState.parameters[param.name];
       if (value !== undefined && value !== '') {
-        searchParams.append(param.name, value);
+        searchParams.append(param.name, String(value));
       }
     });
     if (searchParams.toString()) {
@@ -476,8 +484,9 @@ function ModernAPIPlayground({
     // Replace path parameters
     const pathParams = operation.parameters?.filter(p => p.in === 'path') || [];
     pathParams.forEach(param => {
-      const value = requestState.parameters[param.name] || `{${param.name}}`;
-      url = url.replace(`{${param.name}}`, value);
+      const value = requestState.parameters[param.name];
+      const stringValue = typeof value === 'string' || typeof value === 'number' ? String(value) : `{${param.name}}`;
+      url = url.replace(`{${param.name}}`, stringValue);
     });
 
     // Add query parameters
@@ -486,7 +495,7 @@ function ModernAPIPlayground({
     queryParams.forEach(param => {
       const value = requestState.parameters[param.name];
       if (value !== undefined && value !== '') {
-        searchParams.append(param.name, value);
+        searchParams.append(param.name, String(value));
       }
     });
     if (searchParams.toString()) {
@@ -519,8 +528,9 @@ function ModernAPIPlayground({
     // Replace path parameters
     const pathParams = operation.parameters?.filter(p => p.in === 'path') || [];
     pathParams.forEach(param => {
-      const value = requestState.parameters[param.name] || `{${param.name}}`;
-      url = url.replace(`{${param.name}}`, value);
+      const value = requestState.parameters[param.name];
+      const stringValue = typeof value === 'string' || typeof value === 'number' ? String(value) : `{${param.name}}`;
+      url = url.replace(`{${param.name}}`, stringValue);
     });
 
     // Add query parameters
@@ -529,7 +539,7 @@ function ModernAPIPlayground({
     queryParams.forEach(param => {
       const value = requestState.parameters[param.name];
       if (value !== undefined && value !== '') {
-        searchParams.append(param.name, value);
+        searchParams.append(param.name, String(value));
       }
     });
     if (searchParams.toString()) {
@@ -705,7 +715,7 @@ function ModernAPIPlayground({
             ].map((tab) => (
               <button
                 key={tab.id}
-                onClick={() => setActiveCodeTab(tab.id as any)}
+                onClick={() => setActiveCodeTab(tab.id as 'curl' | 'javascript' | 'python')}
                 className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors leading-none ${
                   activeCodeTab === tab.id
                     ? 'border-fd-primary text-fd-primary bg-fd-primary/5'
@@ -736,8 +746,8 @@ function ParametersSection({
   onChange,
 }: {
   parameters: OpenAPIParameter[],
-  values: Record<string, any>,
-  onChange: (values: Record<string, any>) => void,
+  values: Record<string, unknown>,
+  onChange: (values: Record<string, unknown>) => void,
 }) {
   const groupedParams = parameters.reduce((acc, param) => {
     if (!(param.in in acc)) acc[param.in] = [];
@@ -764,7 +774,7 @@ function ParametersSection({
                   <span className="text-sm font-semibold text-fd-foreground leading-none">
                     {param.name}
                   </span>
-                  {param.schema?.type && (
+                  {param.schema.type && (
                     <span className="text-xs bg-fd-muted text-fd-muted-foreground px-2 py-0.5 rounded font-mono leading-none">
                       {param.schema.type}
                     </span>
@@ -786,9 +796,9 @@ function ParametersSection({
 
                 {/* Input Field */}
                 <input
-                  type={param.schema?.type === 'number' ? 'number' : 'text'}
-                  placeholder={param.example || `Enter ${param.name}`}
-                  value={values[param.name] || ''}
+                  type={param.schema.type === 'number' ? 'number' : 'text'}
+                  placeholder={param.example ? String(param.example) : `Enter ${param.name}`}
+                  value={String(values[param.name] || '')}
                   onChange={(e) => onChange({ ...values, [param.name]: e.target.value })}
                   className="w-full px-3 py-2 border border-fd-border rounded-md bg-fd-background text-fd-foreground text-sm focus:outline-none focus:ring-2 focus:ring-fd-primary focus:border-fd-primary"
                 />
@@ -928,12 +938,12 @@ function ResponsePanel({ response }: { response: RequestState['response'] }) {
           </div>
         )}
 
-        {response.data && (
+        {response.data !== undefined && (
           <div>
             <div className="text-sm font-semibold text-fd-foreground mb-2 leading-none">Response Body</div>
             <div className="bg-fd-muted rounded-lg p-3 border">
               <pre className="text-sm font-mono overflow-auto max-h-96 text-fd-foreground whitespace-pre-wrap break-words m-0">
-                {JSON.stringify(response.data, null, 2)}
+                {typeof response.data === 'string' ? response.data : JSON.stringify(response.data, null, 2)}
               </pre>
             </div>
           </div>

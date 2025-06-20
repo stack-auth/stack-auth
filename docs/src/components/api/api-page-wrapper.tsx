@@ -14,11 +14,20 @@ const STACK_AUTH_HEADERS = {
   'X-Stack-Access-Token': '', // user's access token
 };
 
+// Type for API error objects
+type APIError = {
+  message?: string,
+  error?: string,
+  details?: string,
+  code?: string | number,
+  [key: string]: unknown,
+}
+
 // Context for sharing headers across all API components on the page
 type APIPageContextType = {
   sharedHeaders: Record<string, string>,
   updateSharedHeaders: (headers: Record<string, string>) => void,
-  reportError: (status: number, error: any) => void,
+  reportError: (status: number, error: APIError) => void,
   isHeadersPanelOpen: boolean,
 }
 
@@ -39,7 +48,7 @@ type APIPageWrapperProps = {
 export function APIPageWrapper({ children }: APIPageWrapperProps) {
   const [sharedHeaders, setSharedHeaders] = useState<Record<string, string>>(STACK_AUTH_HEADERS);
   const [isHeadersPanelOpen, setIsHeadersPanelOpen] = useState(false);
-  const [lastError, setLastError] = useState<{ status: number, error: any } | null>(null);
+  const [lastError, setLastError] = useState<{ status: number, error: APIError } | null>(null);
   const [highlightMissingHeaders, setHighlightMissingHeaders] = useState(false);
 
   const updateSharedHeaders = (headers: Record<string, string>) => {
@@ -50,7 +59,7 @@ export function APIPageWrapper({ children }: APIPageWrapperProps) {
     }
   };
 
-  const reportError = (status: number, error: any) => {
+  const reportError = (status: number, error: APIError) => {
     setLastError({ status, error });
 
     // Auto-open panel and highlight missing headers on 400/401/403 errors

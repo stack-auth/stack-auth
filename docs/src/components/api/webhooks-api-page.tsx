@@ -7,6 +7,38 @@ import { useAPIPageContext } from './api-page-wrapper';
 import { Button } from './button';
 
 // Types for OpenAPI specification (focused on webhooks)
+type OpenAPISchema = {
+  type?: 'string' | 'number' | 'integer' | 'boolean' | 'array' | 'object' | 'null',
+  properties?: Record<string, OpenAPISchema>,
+  items?: OpenAPISchema,
+  required?: string[],
+  example?: unknown,
+  description?: string,
+  $ref?: string,
+  allOf?: OpenAPISchema[],
+  oneOf?: OpenAPISchema[],
+  anyOf?: OpenAPISchema[],
+  enum?: unknown[],
+  format?: string,
+  minimum?: number,
+  maximum?: number,
+  minLength?: number,
+  maxLength?: number,
+  pattern?: string,
+  additionalProperties?: boolean | OpenAPISchema,
+}
+
+type ShikiNode = {
+  properties: {
+    style?: string,
+  },
+}
+
+type ShikiTransformer = {
+  pre?: (node: ShikiNode) => void,
+  code?: (node: ShikiNode) => void,
+}
+
 type OpenAPISpec = {
   openapi: string,
   info: {
@@ -16,8 +48,8 @@ type OpenAPISpec = {
   },
   webhooks?: Record<string, Record<string, OpenAPIWebhookOperation>>,
   components?: {
-    schemas?: Record<string, any>,
-    securitySchemes?: Record<string, any>,
+    schemas?: Record<string, OpenAPISchema>,
+    securitySchemes?: Record<string, unknown>,
   },
 }
 
@@ -29,13 +61,13 @@ type OpenAPIWebhookOperation = {
   requestBody?: {
     required?: boolean,
     content: Record<string, {
-      schema: any,
+      schema: OpenAPISchema,
     }>,
   },
   responses?: Record<string, {
     description: string,
     content?: Record<string, {
-      schema: any,
+      schema: OpenAPISchema,
     }>,
   }>,
 }
@@ -46,11 +78,10 @@ type WebhooksAPIPageProps = {
     name: string,
     method: string,
   }>,
-  hasHead?: boolean,
   description?: string,
 }
 
-export function WebhooksAPIPage({ document, webhooks, hasHead = true, description }: WebhooksAPIPageProps) {
+export function WebhooksAPIPage({ document, webhooks, description }: WebhooksAPIPageProps) {
   const { isHeadersPanelOpen } = useAPIPageContext();
   const [spec, setSpec] = useState<OpenAPISpec | null>(null);
   const [loading, setLoading] = useState(true);
@@ -178,62 +209,8 @@ function ModernWebhookDisplay({
     setTimeout(() => setCopied(false), 2000);
   };
 
-  // Update syntax highlighted code when active tab changes
-  useEffect(() => {
-    const updateHighlightedCode = async () => {
-      try {
-        const code = getCodeExample();
-        let language = 'javascript';
-
-        switch (activeCodeTab) {
-          case 'payload': {
-            language = 'json';
-            break;
-          }
-          case 'javascript': {
-            language = 'javascript';
-            break;
-          }
-          case 'python': {
-            language = 'python';
-            break;
-          }
-        }
-
-        const html = await codeToHtml(code, {
-          lang: language,
-          theme: language === 'json' ? 'one-dark-pro' : 'github-dark',
-          transformers: [{
-            pre(node: any) {
-              // Remove background styles from pre element
-              if (node.properties.style) {
-                node.properties.style = (node.properties.style as string).replace(/background[^;]*;?/g, '');
-              }
-            },
-            code(node: any) {
-              // Remove background styles from code element
-              if (node.properties.style) {
-                node.properties.style = (node.properties.style as string).replace(/background[^;]*;?/g, '');
-              }
-            }
-          }]
-        });
-        setHighlightedCode(html);
-      } catch (error) {
-        console.error('Error highlighting code:', error);
-        setHighlightedCode(`<pre><code>${getCodeExample()}</code></pre>`);
-      }
-    };
-
-    updateHighlightedCode().catch(error => {
-      console.error('Error updating highlighted code:', error);
-    });
-  }, [activeCodeTab, webhook, name, spec]);
-
   // Helper function to generate example data from OpenAPI schema
-  const generateExampleFromSchema = (schema: any, spec?: OpenAPISpec, visited = new Set()): any => {
-    if (!schema) return {};
-
+  const generateExampleFromSchema = useCallback((schema: OpenAPISchema, spec?: OpenAPISpec, visited = new Set()): unknown => {
     // Prevent infinite recursion with circular references
     const schemaKey = JSON.stringify(schema);
     if (visited.has(schemaKey)) {
@@ -244,18 +221,16 @@ function ModernWebhookDisplay({
     // Handle $ref references
     if (schema.$ref) {
       const refPath = schema.$ref.replace('#/', '').split('/');
-      let refSchema: any = spec;
+      let refSchema: OpenAPISchema | undefined = spec as unknown as OpenAPISchema;
       for (const part of refPath) {
-        refSchema = refSchema?.[part];
+        refSchema = (refSchema as Record<string, unknown>)[part] as OpenAPISchema;
       }
-      if (refSchema) {
-        return generateExampleFromSchema(refSchema, spec, visited);
-      }
+      return generateExampleFromSchema(refSchema!, spec, visited);
     }
 
     // Handle allOf (merge all schemas)
-    if (schema.allOf) {
-      let merged: any = {};
+    if (schema.allOf?.length) {
+      let merged: Record<string, unknown> = {};
       for (const subSchema of schema.allOf) {
         const subExample = generateExampleFromSchema(subSchema, spec, visited);
         if (typeof subExample === 'object' && subExample !== null) {
@@ -266,29 +241,27 @@ function ModernWebhookDisplay({
     }
 
     // Handle oneOf/anyOf (use first schema)
-    if (schema.oneOf || schema.anyOf) {
+    if (schema.oneOf?.length || schema.anyOf?.length) {
       const schemas = schema.oneOf || schema.anyOf;
-      if (schemas.length > 0) {
-        return generateExampleFromSchema(schemas[0], spec, visited);
-      }
+      return generateExampleFromSchema(schemas![0], spec, visited);
     }
 
     // Handle object type
     if (schema.type === 'object' && schema.properties) {
-      const example: any = {};
+      const example: Record<string, unknown> = {};
 
       const requiredFields = schema.required || [];
       const allFields = Object.keys(schema.properties);
 
       // First add required fields in the order they appear in the required array
       requiredFields.forEach((key: string) => {
-        example[key] = generateExampleFromSchema(schema.properties[key], spec, visited);
+        example[key] = generateExampleFromSchema(schema.properties![key], spec, visited);
       });
 
       // Then add optional fields
       allFields.forEach((key: string) => {
         if (!requiredFields.includes(key)) {
-          example[key] = generateExampleFromSchema(schema.properties[key], spec, visited);
+          example[key] = generateExampleFromSchema(schema.properties![key], spec, visited);
         }
       });
 
@@ -317,19 +290,15 @@ function ModernWebhookDisplay({
 
     // Fallback for unknown schemas
     return "string";
-  };
+  }, []);
 
   const getPayloadExample = useCallback(() => {
-    if (webhook.requestBody) {
-      const content = webhook.requestBody.content;
-
-      if ('application/json' in content && content['application/json'].schema) {
-        const jsonContent = content['application/json'];
-        console.log('Webhook schema:', JSON.stringify(jsonContent.schema, null, 2));
-        const examplePayload = generateExampleFromSchema(jsonContent.schema, spec);
-        console.log('Generated payload:', JSON.stringify(examplePayload, null, 2));
-        return JSON.stringify(examplePayload, null, 2);
-      }
+    if (webhook.requestBody?.content['application/json']?.schema) {
+      const jsonContent = webhook.requestBody.content['application/json'];
+      console.log('Webhook schema:', JSON.stringify(jsonContent.schema, null, 2));
+      const examplePayload = generateExampleFromSchema(jsonContent.schema, spec);
+      console.log('Generated payload:', JSON.stringify(examplePayload, null, 2));
+      return JSON.stringify(examplePayload, null, 2);
     }
 
     // Fallback example
@@ -339,7 +308,7 @@ function ModernWebhookDisplay({
         "string": {}
       }
     }, null, 2);
-  }, [webhook, name, spec, generateExampleFromSchema]);
+  }, [webhook, spec, generateExampleFromSchema]);
 
   const generateJavaScriptHandler = useCallback(() => {
     return `// Express.js webhook handler example
@@ -380,7 +349,7 @@ def handle_webhook():
         return jsonify({'error': 'Unknown event type'}), 400`;
   }, [webhook, name]);
 
-  const getCodeExample = () => {
+  const getCodeExample = useCallback(() => {
     switch (activeCodeTab) {
       case 'payload': {
         return getPayloadExample();
@@ -395,7 +364,59 @@ def handle_webhook():
         return getPayloadExample();
       }
     }
-  };
+  }, [activeCodeTab, getPayloadExample, generateJavaScriptHandler, generatePythonHandler]);
+
+  // Update syntax highlighted code when active tab changes
+  useEffect(() => {
+    const updateHighlightedCode = async () => {
+      try {
+        const code = getCodeExample();
+        let language = 'javascript';
+
+        switch (activeCodeTab) {
+          case 'payload': {
+            language = 'json';
+            break;
+          }
+          case 'javascript': {
+            language = 'javascript';
+            break;
+          }
+          case 'python': {
+            language = 'python';
+            break;
+          }
+        }
+
+        const html = await codeToHtml(code, {
+          lang: language,
+          theme: language === 'json' ? 'one-dark-pro' : 'github-dark',
+          transformers: [{
+            pre(node: ShikiNode) {
+              // Remove background styles from pre element
+              if (node.properties.style) {
+                node.properties.style = (node.properties.style as string).replace(/background[^;]*;?/g, '');
+              }
+            },
+            code(node: ShikiNode) {
+              // Remove background styles from code element
+              if (node.properties.style) {
+                node.properties.style = (node.properties.style as string).replace(/background[^;]*;?/g, '');
+              }
+            }
+          } as ShikiTransformer]
+        });
+        setHighlightedCode(html);
+      } catch (error) {
+        console.error('Error highlighting code:', error);
+        setHighlightedCode(`<pre><code>${getCodeExample()}</code></pre>`);
+      }
+    };
+
+    updateHighlightedCode().catch(error => {
+      console.error('Error updating highlighted code:', error);
+    });
+  }, [activeCodeTab, getCodeExample]);
 
   return (
     <div className={`max-w-6xl mx-auto px-6 py-8 transition-all duration-200 ${
@@ -519,7 +540,7 @@ def handle_webhook():
             ].map((tab) => (
               <button
                 key={tab.id}
-                onClick={() => setActiveCodeTab(tab.id as any)}
+                onClick={() => setActiveCodeTab(tab.id as 'javascript' | 'python' | 'payload')}
                 className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors leading-none ${
                   activeCodeTab === tab.id
                     ? 'border-fd-primary text-fd-primary bg-fd-primary/5'
@@ -560,26 +581,22 @@ function PayloadStructureSection({
 }) {
   if (!requestBody) return null;
 
-  const renderSchema = (schema: any, depth = 0): React.ReactElement => {
-    if (!schema) return <div className="text-fd-muted-foreground text-sm">No schema available</div>;
-
+  const renderSchema = (schema: OpenAPISchema, depth = 0): React.ReactElement => {
     // Handle $ref references
     if (schema.$ref) {
       const refPath = schema.$ref.replace('#/', '').split('/');
-      let refSchema: any = spec;
+      let refSchema: OpenAPISchema | undefined = spec as unknown as OpenAPISchema;
       for (const part of refPath) {
-        refSchema = refSchema?.[part];
+        refSchema = (refSchema as Record<string, unknown>)[part] as OpenAPISchema;
       }
-      if (refSchema) {
-        return renderSchema(refSchema, depth);
-      }
+      return renderSchema(refSchema!, depth);
     }
 
     // Handle object type
     if (schema.type === 'object' && schema.properties) {
       return (
         <div className={`space-y-2 ${depth > 0 ? 'ml-4 border-l border-fd-border pl-4' : ''}`}>
-          {Object.entries(schema.properties).map(([key, prop]: [string, any]) => (
+          {Object.entries(schema.properties).map(([key, prop]: [string, OpenAPISchema]) => (
             <div key={key} className="space-y-1">
               <div className="flex items-center gap-2 flex-wrap">
                 <code className="text-sm font-semibold text-fd-foreground bg-fd-muted px-2 py-0.5 rounded">

@@ -450,10 +450,6 @@ export function DocsLayout({
 
 export function DocsLayoutSidebar({
   collapsible = true,
-  components,
-  nav,
-  links = [],
-  footer,
   banner,
   ...props
 }: Omit<SidebarOptions, 'tabs'> & {

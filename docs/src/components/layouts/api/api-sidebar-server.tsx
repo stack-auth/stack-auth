@@ -1,6 +1,21 @@
 import { apiSource } from '../../../../lib/source';
 import { ApiSidebarContent } from './api-sidebar';
 
+// Types for the page object structure
+type PageData = {
+  title: string,
+  method?: string,
+  _openapi?: {
+    method?: string,
+  },
+}
+
+type Page = {
+  slugs: string[],
+  data: PageData,
+  url: string,
+}
+
 // Configuration for which sections to show/hide
 const SECTION_VISIBILITY = {
   client: true,
@@ -15,14 +30,14 @@ function isSectionVisible(sectionName: string): boolean {
 }
 
 // Helper function to extract HTTP method from filename or frontmatter
-function getHttpMethod(page: any): string | undefined {
+function getHttpMethod(page: Page): string | undefined {
   // First try frontmatter _openapi.method
-  if (page.data?._openapi?.method) {
+  if (page.data._openapi?.method) {
     return page.data._openapi.method.toUpperCase();
   }
 
   // Also try direct method field (fallback)
-  if (page.data?.method) {
+  if (page.data.method) {
     return page.data.method.toUpperCase();
   }
 

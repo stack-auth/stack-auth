@@ -111,11 +111,6 @@ export function DocsPage({
   toc = [],
   full = false,
   editOnGithub,
-  tableOfContentPopover: {
-    enabled: tocPopoverEnabled,
-    component: tocPopoverReplace,
-    ...tocPopoverOptions
-  } = {},
   tableOfContent: {
     enabled: tocEnabled,
     component: tocReplace,
@@ -140,9 +135,6 @@ export function DocsPage({
 
   // disable TOC on full mode, you can still enable it with `enabled` option.
   tocEnabled ??= !full && isTocRequired;
-
-  // Disable the mobile popover completely since we have our custom TOC toggle
-  tocPopoverEnabled = false;
 
   return (
     <AnchorProvider toc={toc} single={tocOptions.single}>

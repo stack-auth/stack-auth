@@ -23,7 +23,7 @@ const ActorNode = ({ data }: { data: { label: string, sections: { highlighted: b
 
       {/* Vertical lifeline with sections */}
       <div className="flex flex-col items-center">
-        {data.sections.map((section, index) => (
+        {data.sections.map((section) => (
           <div key={section.id} className="relative">
             {section.highlighted ? (
               // Highlighted section (box)

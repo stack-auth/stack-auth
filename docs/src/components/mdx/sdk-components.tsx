@@ -436,7 +436,7 @@ export function ClickableTableOfContents({ code, platform = 'react-like' }: Clic
   // Generate clickable areas data with accurate line mapping
   const clickableAreas = processedLines
     .filter(item => item.type === 'clickable')
-    .map((item, clickableIndex) => {
+    .map((item) => {
       // Find the actual line number in the rendered code
       const renderedLineIndex = processedLines.findIndex(processedItem => processedItem === item);
 

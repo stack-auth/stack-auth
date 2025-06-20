@@ -18,6 +18,18 @@ type PageData = {
   },
 }
 
+// Types for organized sidebar structure
+type OrganizedGroup = {
+  title: string,
+  pages: PageData[],
+}
+
+type OrganizedSection = {
+  title: string,
+  pages: PageData[],
+  groups: Record<string, OrganizedGroup>,
+}
+
 // HTTP Method Badge Component
 function HttpMethodBadge({ method }: { method: 'GET' | 'POST' | 'PATCH' | 'DELETE' | 'PUT' }) {
   const getBadgeStyles = (method: string) => {
@@ -182,7 +194,7 @@ function getHttpMethod(page: PageData): 'GET' | 'POST' | 'PATCH' | 'DELETE' | 'P
 // Client component for API sidebar content
 export function ApiSidebarContent({ pages = [] }: { pages?: PageData[] }) {
   const organizedPages = useMemo(() => {
-    const organized: Record<string, any> = {};
+    const organized: Record<string, OrganizedSection> = {};
 
     pages.forEach(page => {
       // Skip overview page, we handle it separately
@@ -190,26 +202,23 @@ export function ApiSidebarContent({ pages = [] }: { pages?: PageData[] }) {
 
       const [section, ...rest] = page.slugs;
 
-      if (!organized[section]) {
-        organized[section] = {
-          title: getApiSectionTitle(section),
-          groups: {}
-        };
-      }
+      // Initialize section using nullish coalescing
+      organized[section] ??= {
+        title: getApiSectionTitle(section),
+        pages: [],
+        groups: {}
+      };
 
       if (rest.length === 1) {
         // This is a top-level page for the section (section/page)
-        if (!organized[section].pages) organized[section].pages = [];
         organized[section].pages.push(page);
       } else if (rest.length >= 2) {
         // This is a group page - use the first segment as the group name
         const groupName = rest[0];
-        if (!organized[section].groups[groupName]) {
-          organized[section].groups[groupName] = {
-            title: formatSectionTitle(groupName),
-            pages: []
-          };
-        }
+        organized[section].groups[groupName] ??= {
+          title: formatSectionTitle(groupName),
+          pages: []
+        };
         organized[section].groups[groupName].pages.push(page);
       }
     });
@@ -238,7 +247,7 @@ export function ApiSidebarContent({ pages = [] }: { pages?: PageData[] }) {
               <ApiSeparator>{section.title}</ApiSeparator>
 
               {/* Section-level pages */}
-              {section.pages && section.pages.map((page: PageData) => (
+              {section.pages.length > 0 && section.pages.map((page: PageData) => (
                 <ApiSidebarLink
                   key={page.url}
                   href={page.url}
@@ -249,7 +258,7 @@ export function ApiSidebarContent({ pages = [] }: { pages?: PageData[] }) {
               ))}
 
               {/* Grouped pages */}
-              {Object.entries(section.groups).map(([groupKey, group]: [string, any]) => (
+              {Object.entries(section.groups).map(([groupKey, group]: [string, OrganizedGroup]) => (
                 <CollapsibleSection key={groupKey} title={group.title}>
                   {group.pages.map((page: PageData) => {
                     const method = getHttpMethod(page);

@@ -1,7 +1,6 @@
 'use client';
 import { usePathname } from 'fumadocs-core/framework';
 import Link from 'fumadocs-core/link';
-import { useSidebar } from 'fumadocs-ui/contexts/sidebar';
 import { ChevronsUpDown } from 'lucide-react';
 import { type ComponentProps, type ReactNode, useMemo, useState } from 'react';
 import { cn } from '../../lib/cn';
@@ -28,14 +27,11 @@ export type Option = {
 
 export function RootToggle({
   options,
-  placeholder,
   ...props
 }: {
-  placeholder?: ReactNode,
   options: Option[],
 } & ComponentProps<'button'>) {
   const [open, setOpen] = useState(false);
-  const { closeOnRedirect } = useSidebar();
   const pathname = usePathname();
 
   const selected = useMemo(() => {

@@ -19,8 +19,6 @@ type SharedHeaderProps = {
   className?: string,
   /** Additional content to render after nav links */
   children?: ReactNode,
-  /** Whether to show mobile menu button */
-  showMobileMenu?: boolean,
   /** Mobile menu click handler */
   onMobileMenuClick?: () => void,
   /** Sidebar content to show in mobile navigation */
@@ -148,7 +146,6 @@ export function SharedHeader({
   showSearch = false,
   className = "fixed top-0 left-0 right-0 z-50 h-14 border-b border-fd-border flex items-center justify-between px-4 md:px-6 bg-fd-background",
   children,
-  showMobileMenu = false,
   onMobileMenuClick,
   sidebarContent
 }: SharedHeaderProps) {

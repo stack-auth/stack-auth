@@ -6,7 +6,7 @@ import { type ReactNode } from 'react';
 import { cn } from '../../lib/cn';
 
 // Icon mapping for common FontAwesome classes to Lucide components
-const iconMap: Record<string, React.ComponentType<any>> = {
+const iconMap: Record<string, React.ComponentType<{ className?: string }>> = {
   'fa-regular fa-play': Play,
   'fa-solid fa-puzzle': Puzzle,
   'fa-regular fa-file-lines': FileText,
