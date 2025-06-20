@@ -1,4 +1,4 @@
-import { prismaClient } from "@/prisma-client";
+import { globalPrismaClient } from "@/prisma-client";
 import { Prisma } from "@prisma/client";
 import { GetResult } from "@prisma/client/runtime/library";
 import { CrudSchema, CrudTypeOf } from "@stackframe/stack-shared/dist/crud";
@@ -57,6 +57,11 @@ type ExtraDataFromCrudType<
   transformPrismaToCrudObject(prismaOrNull: PRead<PrismaModelName, W & B, I> | null, params: yup.InferType<PS>, query: yup.InferType<QS>, context: Pick<Context<false, PS, QS>, "auth">): Promise<CRead<CrudTypeOf<S>>>,
 };
 
+/**
+ * @deprecated Use `createCrudHandlers` instead.
+ *
+ * Only used for internal API keys, which will also soon migrate off of this.
+ */
 export function createPrismaCrudHandlers<
   S extends CrudSchema,
   PrismaModelName extends AllPrismaModelNames,
@@ -108,7 +113,7 @@ export function createPrismaCrudHandlers<
     querySchema: options.querySchema,
     onPrepare: options.onPrepare,
     onRead: wrapper(true, async (data, context) => {
-      const prisma = await (prismaClient[prismaModelName].findUnique as any)({
+      const prisma = await (globalPrismaClient[prismaModelName].findUnique as any)({
         include: await options.include(context),
         where: {
           ...await options.baseFields(context),
@@ -119,7 +124,7 @@ export function createPrismaCrudHandlers<
       return await prismaOrNullToCrud(prisma, context);
     }),
     onList: wrapper(false, async (data, context) => {
-      const prisma: any[] = await (prismaClient[prismaModelName].findMany as any)({
+      const prisma: any[] = await (globalPrismaClient[prismaModelName].findMany as any)({
         include: await options.include(context),
         where: {
           ...await options.baseFields(context),
@@ -134,7 +139,7 @@ export function createPrismaCrudHandlers<
       };
     }),
     onCreate: wrapper(false, async (data, context) => {
-      const prisma = await (prismaClient[prismaModelName].create as any)({
+      const prisma = await (globalPrismaClient[prismaModelName].create as any)({
         include: await options.include(context),
         data: {
           ...await options.baseFields(context),
@@ -155,14 +160,13 @@ export function createPrismaCrudHandlers<
           ...await options.whereUnique?.(context),
         },
       };
-      // TODO transaction here for the read and write
-      const prismaRead = await (prismaClient[prismaModelName].findUnique as any)({
+      const prismaRead = await (globalPrismaClient[prismaModelName].findUnique as any)({
         ...baseQuery,
       });
       if (prismaRead === null) {
         return await prismaOrNullToCrud(null, context);
       } else {
-        const prisma = await (prismaClient[prismaModelName].update as any)({
+        const prisma = await (globalPrismaClient[prismaModelName].update as any)({
           ...baseQuery,
           data: await crudToPrisma(data, { ...context, type: 'update' }),
         });
@@ -178,12 +182,11 @@ export function createPrismaCrudHandlers<
           ...await options.whereUnique?.(context),
         },
       };
-      // TODO transaction here for the read and write
-      const prismaRead = await (prismaClient[prismaModelName].findUnique as any)({
+      const prismaRead = await (globalPrismaClient[prismaModelName].findUnique as any)({
         ...baseQuery,
       });
       if (prismaRead !== null) {
-        await (prismaClient[prismaModelName].delete as any)({
+        await (globalPrismaClient[prismaModelName].delete as any)({
           ...baseQuery
         });
       }

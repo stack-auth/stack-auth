@@ -1,6 +1,6 @@
 generator client {
   provider        = "prisma-client-js"
-  previewFeatures = ["tracing", "relationJoins"]
+  previewFeatures = ["driverAdapters", "relationJoins"]
 }
 
 datasource db {
@@ -28,12 +28,6 @@ model Project {
   verificationCodes          VerificationCode[]
   projectApiKey              ProjectApiKey[]
   environmentConfigOverrides EnvironmentConfigOverride[]
-}
-
-enum OAuthAccountMergeStrategy {
-  LINK_METHOD
-  RAISE_ERROR
-  ALLOW_DUPLICATES
 }
 
 model Tenancy {
@@ -288,14 +282,6 @@ model ConnectedAccount {
   @@unique([tenancyId, configOAuthProviderId, providerAccountId])
 }
 
-// Both the connected account and auth methods can use this configuration.
-enum ProxiedOAuthProviderType {
-  GITHUB
-  GOOGLE
-  MICROSOFT
-  SPOTIFY
-}
-
 model AuthMethod {
   tenancyId     String @db.Uuid
   id            String @default(uuid()) @db.Uuid
@@ -544,6 +530,8 @@ model ApiKeySet {
   @@id([projectId, id])
 }
 
+//#endregion
+
 model ProjectApiKey {
   projectId String
   project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
@@ -590,8 +578,6 @@ model EmailTemplate {
 
   @@id([projectId, type])
 }
-
-//#endregion
 
 //#region IdP
 model IdPAccountToCdfcResultMapping {

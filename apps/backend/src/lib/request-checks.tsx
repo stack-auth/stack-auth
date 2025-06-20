@@ -1,7 +1,7 @@
-import { ProxiedOAuthProviderType, StandardOAuthProviderType } from "@prisma/client";
+import { StandardOAuthProviderType } from "@prisma/client";
 import { KnownErrors } from "@stackframe/stack-shared";
 import { StatusError } from "@stackframe/stack-shared/dist/utils/errors";
-import { ProviderType, sharedProviders, standardProviders } from "@stackframe/stack-shared/dist/utils/oauth";
+import { ProviderType, standardProviders } from "@stackframe/stack-shared/dist/utils/oauth";
 import { typedToUppercase } from "@stackframe/stack-shared/dist/utils/strings";
 import { listPermissions } from "./permissions";
 import { Tenancy } from "./tenancies";
@@ -165,15 +165,6 @@ export async function ensureUserExists(
   if (!user) {
     throw new KnownErrors.UserNotFound();
   }
-}
-
-export function ensureSharedProvider(
-  providerId: ProviderType
-): Lowercase<ProxiedOAuthProviderType> {
-  if (!sharedProviders.includes(providerId as any)) {
-    throw new KnownErrors.InvalidSharedOAuthProviderId(providerId);
-  }
-  return providerId as any;
 }
 
 export function ensureStandardProvider(
