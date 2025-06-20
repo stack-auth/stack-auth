@@ -108,7 +108,7 @@ export const getCommonUserColumns = <T extends ExtendedServerUser>() => [
     accessorKey: "displayName",
     header: ({ column }) => <DataTableColumnHeader column={column} columnTitle="Display Name" />,
     cell: ({ row }) =>  <TextCell size={120}><span className={row.original.displayName === null ? 'text-slate-400' : ''}>{row.original.displayName ?? '–'}</span></TextCell>,
-    enableSorting: false,
+    enableSorting: true,
   },
   {
     accessorKey: "primaryEmail",
@@ -118,13 +118,13 @@ export const getCommonUserColumns = <T extends ExtendedServerUser>() => [
       icon={row.original.primaryEmail && row.original.emailVerified === "unverified" && <SimpleTooltip tooltip='Email not verified' type='warning'/>}>
       {row.original.primaryEmail ?? '–'}
     </TextCell>,
-    enableSorting: false,
+    enableSorting: true,
   },
   {
     accessorKey: "lastActiveAt",
     header: ({ column }) => <DataTableColumnHeader column={column} columnTitle="Last Active" />,
     cell: ({ row }) => <DateCell date={row.original.lastActiveAt} />,
-    enableSorting: false,
+    enableSorting: true,
   },
   {
     accessorKey: "emailVerified",
@@ -188,7 +188,10 @@ export function UserTable() {
     };
 
     const orderMap = {
-      signedUpAt: "signedUpAt",
+      signedUpAt: "signed_up_at",
+      displayName: "display_name",
+      primaryEmail: "primary_email",
+      lastActiveAt: "last_active_at",
     } as const;
     if (options.sorting.length > 0 && options.sorting[0].id in orderMap) {
       newFilters.orderBy = orderMap[options.sorting[0].id as keyof typeof orderMap];
