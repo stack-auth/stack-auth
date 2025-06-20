@@ -4,9 +4,27 @@ import { useStackApp, useUser } from "../../../lib/hooks";
 import { useTranslation } from "../../../lib/translations";
 import { Section } from "../section";
 
-export function OtpSection() {
+export function OtpSection(props?: {
+  mockMode?: boolean,
+}) {
   const { t } = useTranslation();
-  const user = useUser({ or: "throw" });
+  const user = useUser({ or: props?.mockMode ? 'return-null' : "throw" });
+
+  // In mock mode, show a placeholder message
+  if (props?.mockMode && !user) {
+    return (
+      <Section
+        title={t("One-Time Password")}
+        description={t("OTP management is not available in demo mode.")}
+      >
+        <Typography variant='secondary'>{t("OTP management is not available in demo mode.")}</Typography>
+      </Section>
+    );
+  }
+
+  if (!user) {
+    return null; // This shouldn't happen in non-mock mode due to throw
+  }
   const project = useStackApp().useProject();
   const contactChannels = user.useContactChannels();
   const isLastAuth = user.otpAuthEnabled && !user.hasPassword && user.oauthProviders.length === 0 && !user.passkeyAuthEnabled;

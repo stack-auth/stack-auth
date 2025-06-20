@@ -1,0 +1,7 @@
+@import 'tailwindcss';
+@import 'fumadocs-ui/css/black.css';
+@import 'fumadocs-ui/css/preset.css';
+@import 'fumadocs-openapi/css/preset.css';
+@import '../components/mdx/mdx-info.css';
+@import '../components/mdx/mdx-cards.css';
+@import '../components/mdx/reset-code-styles.css';
