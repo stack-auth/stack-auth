@@ -11,7 +11,7 @@
   
   "//": "NEXT_LINE_PLATFORM template",
   "private": true,
-  "version": "2.8.14",
+  "version": "2.8.15",
   "sideEffects": false,
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
