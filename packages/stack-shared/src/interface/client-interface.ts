@@ -1628,7 +1628,7 @@ export class StackClientInterface {
     await this.sendClientRequest(
       `/emails/notification-preference`,
       {
-        method: "POST",
+        method: "PATCH",
         headers: {
           "content-type": "application/json",
         },

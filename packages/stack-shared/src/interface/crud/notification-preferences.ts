@@ -8,17 +8,15 @@ const notificationPreferenceReadSchema = yupObject({
   enabled: yupBoolean().defined(),
 }).defined();
 
-const notificationPreferenceCreateSchema = yupObject({
+const notificationPreferenceUpdateSchema = yupObject({
   user_id: yupString().defined(),
   notification_category_id: yupString().defined(),
   enabled: yupBoolean().defined(),
 }).defined();
 
 export const notificationPreferenceCrud = createCrud({
-  adminReadSchema: notificationPreferenceReadSchema,
-  adminCreateSchema: notificationPreferenceCreateSchema,
   clientReadSchema: notificationPreferenceReadSchema,
-  clientCreateSchema: notificationPreferenceCreateSchema,
+  clientUpdateSchema: notificationPreferenceUpdateSchema,
 });
 
 export type NotificationPreferenceCrud = CrudTypeOf<typeof notificationPreferenceCrud>;

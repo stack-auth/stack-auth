@@ -7,7 +7,7 @@ describe("invalid requests", () => {
     const response = await niceBackendFetch(
       "/api/v1/emails/notification-preference",
       {
-        method: "POST",
+        method: "PATCH",
         accessType: "client",
         body: {
           user_id: "me",
@@ -36,7 +36,7 @@ describe("invalid requests", () => {
     const response = await niceBackendFetch(
       "/api/v1/emails/notification-preference",
       {
-        method: "POST",
+        method: "PATCH",
         accessType: "client",
         body: {
           user_id: "me",
@@ -95,7 +95,7 @@ it("updates notification preferences", async ({ expect }) => {
   const response = await niceBackendFetch(
     "/api/v1/emails/notification-preference",
     {
-      method: "POST",
+      method: "PATCH",
       accessType: "client",
       body: {
         user_id: "me",
@@ -106,7 +106,7 @@ it("updates notification preferences", async ({ expect }) => {
   );
   expect(response).toMatchInlineSnapshot(`
     NiceResponse {
-      "status": 201,
+      "status": 200,
       "body": {
         "enabled": false,
         "notification_category_id": "<stripped UUID>",

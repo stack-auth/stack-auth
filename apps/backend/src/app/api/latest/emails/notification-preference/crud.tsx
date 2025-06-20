@@ -8,7 +8,6 @@ import { userIdOrMeSchema, yupObject, yupString } from "@stackframe/stack-shared
 import { StatusError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
 import { createLazyProxy } from "@stackframe/stack-shared/dist/utils/proxies";
 
-
 export const notificationPreferencesCrudHandlers = createLazyProxy(() => createCrudHandlers(notificationPreferenceCrud, {
   querySchema: yupObject({
     user_id: userIdOrMeSchema.optional(),
@@ -16,7 +15,7 @@ export const notificationPreferencesCrudHandlers = createLazyProxy(() => createC
   paramsSchema: yupObject({
     _temp: yupString().optional(), // Need something in paramsSchema to fix type issues in onList. TODO: fix this.
   }),
-  onCreate: async ({ auth, data }) => {
+  onUpdate: async ({ auth, data }) => {
     const userId = data.user_id === 'me' ? (auth.user?.id ?? throwErr(new KnownErrors.UserAuthenticationRequired)) : data.user_id;
     const notificationCategories = listNotificationCategories();
     const notificationCategory = notificationCategories.find(c => c.id === data.notification_category_id);
