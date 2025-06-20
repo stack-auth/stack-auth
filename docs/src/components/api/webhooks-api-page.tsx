@@ -184,17 +184,20 @@ function ModernWebhookDisplay({
       try {
         const code = getCodeExample();
         let language = 'javascript';
-        
+
         switch (activeCodeTab) {
-          case 'payload':
+          case 'payload': {
             language = 'json';
             break;
-          case 'javascript':
+          }
+          case 'javascript': {
             language = 'javascript';
             break;
-          case 'python':
+          }
+          case 'python': {
             language = 'python';
             break;
+          }
         }
 
         const html = await codeToHtml(code, {
@@ -271,34 +274,30 @@ function ModernWebhookDisplay({
     }
 
     // Handle object type
-    if (schema.type === 'object' || schema.properties) {
-      // Handle generic objects (like metadata) - objects without specific properties
-      if (schema.type === 'object' && !schema.properties && !schema.allOf && !schema.oneOf && !schema.anyOf) {
-        return { "string": {} };
-      }
-      
+    if (schema.type === 'object' && schema.properties) {
       const example: any = {};
-      
-      if (schema.properties) {
-        const requiredFields = schema.required || [];
-        const allFields = Object.keys(schema.properties);
-        
-        // First add required fields in the order they appear in the required array
-        requiredFields.forEach((key: string) => {
-          if (schema.properties[key]) {
-            example[key] = generateExampleFromSchema(schema.properties[key], spec, visited);
-          }
-        });
-        
-        // Then add optional fields
-        allFields.forEach((key: string) => {
-          if (!requiredFields.includes(key)) {
-            example[key] = generateExampleFromSchema(schema.properties[key], spec, visited);
-          }
-        });
-      }
-      
+
+      const requiredFields = schema.required || [];
+      const allFields = Object.keys(schema.properties);
+
+      // First add required fields in the order they appear in the required array
+      requiredFields.forEach((key: string) => {
+        example[key] = generateExampleFromSchema(schema.properties[key], spec, visited);
+      });
+
+      // Then add optional fields
+      allFields.forEach((key: string) => {
+        if (!requiredFields.includes(key)) {
+          example[key] = generateExampleFromSchema(schema.properties[key], spec, visited);
+        }
+      });
+
       return example;
+    }
+
+    // Handle generic objects (like metadata) - objects without specific properties
+    if (schema.type === 'object') {
+      return { "string": {} };
     }
 
     // Handle array type
@@ -323,16 +322,16 @@ function ModernWebhookDisplay({
   const getPayloadExample = useCallback(() => {
     if (webhook.requestBody) {
       const content = webhook.requestBody.content;
-      const jsonContent = content['application/json'];
-      
-      if (jsonContent?.schema) {
+
+      if ('application/json' in content && content['application/json'].schema) {
+        const jsonContent = content['application/json'];
         console.log('Webhook schema:', JSON.stringify(jsonContent.schema, null, 2));
         const examplePayload = generateExampleFromSchema(jsonContent.schema, spec);
         console.log('Generated payload:', JSON.stringify(examplePayload, null, 2));
         return JSON.stringify(examplePayload, null, 2);
       }
     }
-    
+
     // Fallback example
     return JSON.stringify({
       type: "string",
@@ -340,7 +339,7 @@ function ModernWebhookDisplay({
         "string": {}
       }
     }, null, 2);
-  }, [webhook, name, spec]);
+  }, [webhook, name, spec, generateExampleFromSchema]);
 
   const generateJavaScriptHandler = useCallback(() => {
     return `// Express.js webhook handler example
@@ -643,9 +642,7 @@ function PayloadStructureSection({
         </div>
       </div>
       <div className="p-6">
-        {jsonContent?.schema ? renderSchema(jsonContent.schema) : (
-          <div className="text-fd-muted-foreground text-sm">No payload schema available</div>
-        )}
+        {renderSchema(jsonContent.schema)}
       </div>
     </div>
   );

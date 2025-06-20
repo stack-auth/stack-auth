@@ -33,15 +33,15 @@ function ClickableCodeblock({
         if (codeElement) {
           // Try different approaches to find line elements
           let lines: NodeListOf<Element> | null = null;
-          
+
           // First, try to find explicit line elements
           lines = codeElement.querySelectorAll('.line');
-          
+
           // If no .line elements, try other common patterns
           if (lines.length === 0) {
             lines = codeElement.querySelectorAll('[data-line]');
           }
-          
+
           if (lines.length > 0) {
             // We found line elements, measure their actual positions
             const containerRect = codeRef.current!.getBoundingClientRect();
@@ -57,17 +57,17 @@ function ClickableCodeblock({
             // Fallback: manually calculate positions based on text content and font metrics
             const codeText = codeElement.textContent || '';
             const codeLines = codeText.split('\n');
-            
+
             // Get computed styles for consistent measurements
             const computedStyle = window.getComputedStyle(codeElement);
             let lineHeight = parseFloat(computedStyle.lineHeight);
-            
+
             // If lineHeight is 'normal' or invalid, calculate from font size
             if (isNaN(lineHeight)) {
               const fontSize = parseFloat(computedStyle.fontSize) || 14;
               lineHeight = fontSize * 1.5; // Use consistent 1.5 multiplier
             }
-            
+
             // Generate positions for each line
             const positions = codeLines.map((_, index) => ({
               top: index * lineHeight,
@@ -84,7 +84,7 @@ function ClickableCodeblock({
       // Re-measure after delays to account for font loading and rendering
       const timeoutId1 = setTimeout(measurePositions, 100);
       const timeoutId2 = setTimeout(measurePositions, 300);
-      
+
       // Re-measure on window resize
       const handleResize = () => measurePositions();
       window.addEventListener('resize', handleResize);
@@ -160,10 +160,6 @@ function ClickableCodeblock({
             {clickableAreas.map((area, index) => {
               // Use measured line positions instead of calculated ones
               const linePosition = linePositions[area.lineNumber];
-              
-              if (!linePosition) {
-                return null; // Skip if position not measured yet
-              }
 
               const topPosition = linePosition.top + 16; // 16px is the padding
               const height = linePosition.height;
