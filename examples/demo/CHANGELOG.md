@@ -1,5 +1,32 @@
 # @stackframe/example-demo-app
 
+## 2.8.15
+
+### Patch Changes
+
+- @stackframe/stack@2.8.15
+- @stackframe/stack-shared@2.8.15
+- @stackframe/stack-ui@2.8.15
+
+## 2.8.14
+
+### Patch Changes
+
+- Updated dependencies
+  - @stackframe/stack-shared@2.8.14
+  - @stackframe/stack-ui@2.8.14
+  - @stackframe/stack@2.8.14
+
+## 2.8.13
+
+### Patch Changes
+
+- Various changes
+- Updated dependencies
+  - @stackframe/stack-shared@2.8.13
+  - @stackframe/stack-ui@2.8.13
+  - @stackframe/stack@2.8.13
+
 ## 2.8.12
 
 ### Patch Changes

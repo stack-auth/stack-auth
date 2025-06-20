@@ -1,5 +1,24 @@
 # @stackframe/example-cjs-test
 
+## 2.8.15
+
+### Patch Changes
+
+- @stackframe/stack@2.8.15
+
+## 2.8.14
+
+### Patch Changes
+
+- @stackframe/stack@2.8.14
+
+## 2.8.13
+
+### Patch Changes
+
+- Updated dependencies
+  - @stackframe/stack@2.8.13
+
 ## 2.8.12
 
 ### Patch Changes

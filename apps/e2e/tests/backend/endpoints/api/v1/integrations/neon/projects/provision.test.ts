@@ -93,7 +93,7 @@ it("should fail if the neon client details are incorrect", async ({ expect }) =>
       display_name: "Test project",
     },
     headers: {
-      "Authorization": "Basic bmVvbi1sb2NhbDpuZW9uLWxvY2FsLXMlY3JldA==",
+      "Authorization": "Basic bmVvbi1sb2NhbDpuZW9uLWxvY2FsLXMlY2JldA==",
     },
   });
   expect(response).toMatchInlineSnapshot(`
@@ -104,12 +104,12 @@ it("should fail if the neon client details are incorrect", async ({ expect }) =>
         "details": {
           "message": deindent\`
             Request validation failed on POST /api/v1/integrations/neon/projects/provision:
-              - Invalid client_id:client_secret values; did you use the correct values for the Neon integration?
+              - Invalid client_id:client_secret values; did you use the correct values for the integration?
           \`,
         },
         "error": deindent\`
           Request validation failed on POST /api/v1/integrations/neon/projects/provision:
-            - Invalid client_id:client_secret values; did you use the correct values for the Neon integration?
+            - Invalid client_id:client_secret values; did you use the correct values for the integration?
         \`,
       },
       "headers": Headers {

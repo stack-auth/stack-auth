@@ -1,0 +1,47 @@
+---
+title: StackApp Constructor Options After SSK
+description: The options for the StackApp constructor.
+---
+
+<ParamField path="urls" type="object">
+  The URLs that Stack uses to route and redirect.
+
+  <Accordion title={<span className="accordion-show-properties" />}>
+    <ParamField path="home" type="string">
+      The URL of the home page.
+    </ParamField>
+    <ParamField path="signIn" type="string">
+      The URL of the sign-in page.
+    </ParamField>
+    <ParamField path="afterSignIn" type="string">
+      The URL that the user will be redirected to after successful signing in.
+    </ParamField>
+    <ParamField path="signUp" type="string">
+      The URL of the sign-up page.
+    </ParamField>
+    <ParamField path="afterSignUp" type="string">
+      The URL that the user will be redirected to after successful signing up.
+    </ParamField>
+    <ParamField path="afterSignOut" type="string">
+      The URL that the user will be redirected to after successful signing out.
+    </ParamField>
+    <ParamField path="emailVerification" type="string">
+      The URL of the email verification page.
+    </ParamField>
+    <ParamField path="passwordReset" type="string">
+      The URL of the password reset page.
+    </ParamField>
+    <ParamField path="forgotPassword" type="string">
+      The URL of the forgot password page.
+    </ParamField>
+    <ParamField path="accountSettings" type="string">
+      The URL of the account settings page.
+    </ParamField>
+    <ParamField path="handler" type="string">
+      The URL of the handler root. 
+    </ParamField>
+  </Accordion>
+</ParamField>
+<ParamField path="noAutomaticPrefetch" type="boolean">
+  By default, the Stack app will automatically prefetch some data from Stack's server when this app is first constructed. Those network requests may be unnecessary if the app is never used or disposed of immediately. By setting this option to `true`, you can disable the prefetching behavior.
+</ParamField>

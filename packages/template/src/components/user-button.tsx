@@ -27,6 +27,11 @@ type UserButtonProps = {
     icon: React.ReactNode,
     onClick: () => void | Promise<void>,
   }[],
+  mockUser?: {
+    displayName?: string,
+    primaryEmail?: string,
+    profileImageUrl?: string,
+  },
 };
 
 export function UserButton(props: UserButtonProps) {
@@ -38,7 +43,19 @@ export function UserButton(props: UserButtonProps) {
 }
 
 function UserButtonInner(props: UserButtonProps) {
-  const user = useUser();
+  const userFromHook = useUser({ or: props.mockUser ? 'return-null' : 'redirect' });
+
+  // Use mock user if provided, otherwise use real user
+  const user = props.mockUser ? {
+    displayName: props.mockUser.displayName || 'Mock User',
+    primaryEmail: props.mockUser.primaryEmail || 'mock@example.com',
+    profileImageUrl: props.mockUser.profileImageUrl,
+    signOut: () => {
+      console.log('Mock sign out - no action taken in demo mode');
+      return Promise.resolve();
+    }
+  } as CurrentUser : userFromHook;
+
   return <UserButtonInnerInner {...props} user={user} />;
 }
 
@@ -77,17 +94,35 @@ function UserButtonInnerInner(props: UserButtonProps & { user: CurrentUser | nul
         <DropdownMenuSeparator />
         {user && <Item
           text={t('Account settings')}
-          onClick={async () => await app.redirectToAccountSettings()}
+          onClick={async () => {
+            if (props.mockUser) {
+              console.log('Mock account settings - no navigation in demo mode');
+            } else {
+              await app.redirectToAccountSettings();
+            }
+          }}
           icon={<CircleUser {...iconProps} />}
         />}
         {!user && <Item
           text={t('Sign in')}
-          onClick={async () => await app.redirectToSignIn()}
+          onClick={async () => {
+            if (props.mockUser) {
+              console.log('Mock sign in - no navigation in demo mode');
+            } else {
+              await app.redirectToSignIn();
+            }
+          }}
           icon={<LogIn {...iconProps} />}
         />}
         {!user && <Item
           text={t('Sign up')}
-          onClick={async () => await app.redirectToSignUp()}
+          onClick={async () => {
+            if (props.mockUser) {
+              console.log('Mock sign up - no navigation in demo mode');
+            } else {
+              await app.redirectToSignUp();
+            }
+          }}
           icon={<UserPlus {...iconProps}/> }
         />}
         {user && props.extraItems && props.extraItems.map((item, index) => (
@@ -102,7 +137,13 @@ function UserButtonInnerInner(props: UserButtonProps & { user: CurrentUser | nul
         )}
         {user && <Item
           text={t('Sign out')}
-          onClick={() => user.signOut()}
+          onClick={async () => {
+            if (props.mockUser) {
+              console.log('Mock sign out - no action taken in demo mode');
+            } else {
+              await user.signOut();
+            }
+          }}
           icon={<LogOut {...iconProps} />}
         />}
       </DropdownMenuContent>

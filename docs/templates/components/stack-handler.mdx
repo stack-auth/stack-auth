@@ -1,0 +1,56 @@
+---
+title: "<StackHandler />"
+---
+
+Renders the appropriate authentication or account-related component based on the current route.
+
+For detailed usage instructions, please refer to the manual section of the [setup guide](../getting-started/setup.mdx).
+
+## Props
+
+<PropTable
+  props={[
+    {
+      name: "app",
+      type: "StackServerApp",
+      description: "The Stack server application instance."
+    },
+    {
+      name: "routeProps",
+      type: "NextRouteProps",
+      description: "The Next.js route props, usually the first argument of the page component (see below)"
+    },
+    {
+      name: "fullPage",
+      type: "boolean",
+      description: "Whether to render the component in full-page mode."
+    },
+    {
+      name: "componentProps",
+      type: "{ [K in keyof Components]?: Partial<ComponentProps<Components[K]>> }",
+      description: "Props to pass to the rendered components."
+    }
+  ]}
+/>
+
+## Example
+
+```tsx title="app/handler/[...stack].tsx"
+import { StackHandler } from '@stackframe/stack';
+import { stackServerApp } from "@/stack";
+
+export default function Handler(props: { params: any, searchParams: any }) {
+  return (
+    <StackHandler
+      app={stackServerApp}
+      routeProps={props}
+      fullPage={true}
+      componentProps={{
+        SignIn: { /* SignIn component props */ },
+        SignUp: { /* SignUp component props */ },
+        // ... other component props
+      }}
+    />
+  );
+}
+```

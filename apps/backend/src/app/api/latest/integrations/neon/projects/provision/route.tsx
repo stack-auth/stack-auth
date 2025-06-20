@@ -51,10 +51,11 @@ export const POST = createSmartRouteHandler({
       }
     });
 
+
     await globalPrismaClient.neonProvisionedProject.create({
       data: {
         projectId: createdProject.id,
-        neonClientId: clientId,
+        clientId: clientId,
       },
     });
 

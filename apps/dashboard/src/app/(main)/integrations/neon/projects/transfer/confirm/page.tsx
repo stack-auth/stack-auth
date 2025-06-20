@@ -1,10 +1,10 @@
-import NeonIntegrationProjectTransferConfirmPageClient from "./page-client";
+import IntegrationProjectTransferConfirmPageClient from "@/app/(main)/integrations/transfer-confirm-page";
 
 export const metadata = {
   title: "Project transfer",
 };
 
-export default async function NeonIntegrationProjectTransferConfirmPage(props: { searchParams: Promise<{ code?: string }> }) {
+export default async function Page(props: { searchParams: Promise<{ code?: string }> }) {
   const transferCode = (await props.searchParams).code;
   if (!transferCode) {
     return <>
@@ -14,7 +14,7 @@ export default async function NeonIntegrationProjectTransferConfirmPage(props: {
 
   return (
     <>
-      <NeonIntegrationProjectTransferConfirmPageClient />
+      <IntegrationProjectTransferConfirmPageClient type="neon" />
     </>
   );
 }

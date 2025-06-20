@@ -1,7 +1,7 @@
 {
   "//": "THIS FILE IS AUTO-GENERATED FROM TEMPLATE. DO NOT EDIT IT DIRECTLY",
   "name": "@stackframe/stack",
-  "version": "2.8.12",
+  "version": "2.8.15",
   "sideEffects": false,
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -54,7 +54,7 @@
     "oauth4webapi": "^2.10.3",
     "@oslojs/otp": "^1.1.0",
     "qrcode": "^1.5.4",
-    "react-avatar-editor": "^13.0.2",
+    "react-easy-crop": "^5.4.1",
     "react-hook-form": "^7.51.4",
     "rimraf": "^5.0.5",
     "tailwindcss-animate": "^1.0.7",

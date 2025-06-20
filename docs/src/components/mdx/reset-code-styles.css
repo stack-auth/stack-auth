@@ -1,0 +1,83 @@
+/* Reset for fumadocs code blocks */
+pre,
+code,
+.fumadocs-code-block,
+div[data-rehype-pretty-code-fragment],
+[data-rehype-pretty-code-figure],
+div[data-theme="dark"],
+div[data-theme="light"],
+[data-language] {
+  border: none !important;
+  border-style: none !important;
+  border-radius: 0.5rem !important;
+}
+
+[data-rehype-pretty-code-title] {
+  border: none !important;
+  border-bottom: none !important;
+}
+
+[data-theme="dark"] pre,
+[data-theme="light"] pre {
+  border: none !important;
+}
+
+/* More specific selectors to override Fumadocs styles */
+.fumadocs-content [data-rehype-pretty-code-figure] {
+  border: none !important;
+  border-style: none !important;
+}
+
+.fumadocs-content pre {
+  border: none !important;
+  border-style: none !important;
+}
+
+/* Ensure code blocks are visible in light mode */
+:root:not(.dark) [data-theme="light"] [data-highlighted-line],
+:root:not(.dark) [data-theme="light"] [data-highlighted-chars],
+:root:not(.dark) [data-theme="light"] [data-line] {
+  color: currentColor !important;
+}
+
+/* Fix code block background in light mode */
+:root:not(.dark) [data-theme="light"],
+:root:not(.dark) [data-theme="light"] pre {
+  background-color: rgb(243, 244, 246) !important; /* light gray background */
+  color: rgb(31, 41, 55) !important; /* dark text for light mode */
+}
+
+/* Fix terminal code block */
+pre[data-language="sh"],
+pre[data-language="bash"],
+pre[data-language="terminal"] {
+  background-color: rgb(45, 45, 45) !important;
+  color: rgb(230, 230, 230) !important;
+}
+
+pre[data-language="sh"] [data-line],
+pre[data-language="bash"] [data-line],
+pre[data-language="terminal"] [data-line] {
+  color: rgb(230, 230, 230) !important;
+}
+
+/* Specific styling for keywords in code blocks */
+:root:not(.dark) [data-theme="light"] .token.keyword,
+:root:not(.dark) [data-theme="light"] .token.selector,
+:root:not(.dark) [data-theme="light"] .token.property {
+  color: rgb(153, 27, 155) !important; /* purple for keywords */
+}
+
+:root:not(.dark) [data-theme="light"] .token.string,
+:root:not(.dark) [data-theme="light"] .token.attr-value {
+  color: rgb(5, 131, 72) !important; /* green for strings */
+}
+
+:root:not(.dark) [data-theme="light"] .token.function,
+:root:not(.dark) [data-theme="light"] .token.method {
+  color: rgb(54, 106, 173) !important; /* blue for functions */
+}
+
+:root:not(.dark) [data-theme="light"] .token.comment {
+  color: rgb(113, 113, 113) !important; /* gray for comments */
+} 
