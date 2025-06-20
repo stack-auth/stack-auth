@@ -69,15 +69,13 @@ export const POST = createSmartRouteHandler({
       `;
       if (query.dry_run !== "true") {
         try {
-          for (const tenantOwnerEmail of failedEmailsBatch.tenantOwnerEmails) {
-            await sendEmail({
-              tenancyId: internalTenancy.id,
-              emailConfig,
-              to: tenantOwnerEmail,
-              subject: "Failed emails digest",
-              html: emailHtml,
-            });
-          }
+          await sendEmail({
+            tenancyId: internalTenancy.id,
+            emailConfig,
+            to: failedEmailsBatch.tenantOwnerEmails,
+            subject: "Failed emails digest",
+            html: emailHtml,
+          });
         } catch (error) {
           anyDigestsFailedToSend = true;
           captureError("send-failed-emails-digest", error);

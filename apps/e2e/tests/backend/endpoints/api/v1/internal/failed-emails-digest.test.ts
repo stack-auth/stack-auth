@@ -62,24 +62,13 @@ describe("with valid credentials", () => {
       userAuth: null,
     });
     await Auth.Otp.signIn();
-    const adminAccessToken = backendContext.value.userAuth?.accessToken;
-    const { projectId } = await Project.create({
+    await Project.createAndSwitch({
       display_name: "Test Failed Emails Project",
-    });
-
-    backendContext.set({
-      projectKeys: {
-        projectId,
-      },
-      userAuth: null,
-    });
+    }, true);
 
     const testEmailResponse = await niceBackendFetch("/api/v1/internal/send-test-email", {
       method: "POST",
       accessType: "admin",
-      headers: {
-        "x-stack-admin-access-token": adminAccessToken,
-      },
       body: {
         "recipient_email": "test-email-recipient@stackframe.co",
         "email_config": {
@@ -165,11 +154,6 @@ describe("with valid credentials", () => {
       userAuth: null,
     });
     const { userId } = await Auth.Otp.signIn();
-    const adminAccessToken = backendContext.value.userAuth?.accessToken;
-    expect(adminAccessToken).toBeDefined();
-    await Project.create({
-      display_name: "Test Project No Owner Email",
-    });
 
     // Remove primary email from the user
     const updateEmailResponse = await niceBackendFetch(`/api/v1/users/${userId}`, {
@@ -181,13 +165,14 @@ describe("with valid credentials", () => {
     });
     expect(updateEmailResponse.status).toBe(200);
 
+    await Project.createAndSwitch({
+      display_name: "Test Project No Owner Email",
+    });
+
     // Send a test email that will fail
     await niceBackendFetch("/api/v1/internal/send-test-email", {
       method: "POST",
       accessType: "admin",
-      headers: {
-        "x-stack-admin-access-token": adminAccessToken,
-      },
       body: {
         "recipient_email": "test-email-recipient@stackframe.co",
         "email_config": {
@@ -201,7 +186,6 @@ describe("with valid credentials", () => {
       },
     });
 
-    const initialMessageCount = (await backendContext.value.mailbox.fetchMessages()).length;
     const response = await niceBackendFetch("/api/v1/internal/failed-emails-digest", {
       method: "POST",
       headers: { "Authorization": "Bearer mock_cron_secret" }
@@ -209,8 +193,7 @@ describe("with valid credentials", () => {
     expect(response.status).toBe(200);
 
     const messages = await backendContext.value.mailbox.fetchMessages();
-    const newMessages = messages.slice(initialMessageCount);
-    const digestEmail = newMessages.find(msg => msg.subject === "Failed emails digest");
+    const digestEmail = messages.find(msg => msg.subject === "Failed emails digest");
     expect(digestEmail).toBeUndefined();
   });
 
@@ -247,8 +230,6 @@ describe("with valid credentials", () => {
     });
     expect(deleteUserResponse.body).toMatchInlineSnapshot(`{ "success": true }`);
 
-    const initialMessageCount = (await backendContext.value.mailbox.fetchMessages()).length;
-
     const response = await niceBackendFetch("/api/v1/internal/failed-emails-digest", {
       method: "POST",
       headers: { "Authorization": "Bearer mock_cron_secret" }
@@ -257,8 +238,7 @@ describe("with valid credentials", () => {
 
     // Should not send digest email when project owner is deleted
     const messages = await backendContext.value.mailbox.fetchMessages();
-    const newMessages = messages.slice(initialMessageCount);
-    const digestEmail = newMessages.find(msg => msg.subject === "Failed emails digest");
+    const digestEmail = messages.find(msg => msg.subject === "Failed emails digest");
     expect(digestEmail).toBeUndefined();
   });
 
@@ -292,7 +272,6 @@ describe("with valid credentials", () => {
     });
     expect(deleteProjectResponse.body).toMatchInlineSnapshot(`{ "success": true }`);
 
-    const initialMessageCount = (await backendContext.value.mailbox.fetchMessages()).length;
     const response = await niceBackendFetch("/api/v1/internal/failed-emails-digest", {
       method: "POST",
       headers: { "Authorization": "Bearer mock_cron_secret" }
@@ -301,8 +280,7 @@ describe("with valid credentials", () => {
 
     // Should not send digest email when project is deleted
     const messages = await backendContext.value.mailbox.fetchMessages();
-    const newMessages = messages.slice(initialMessageCount);
-    const digestEmail = newMessages.find(msg => msg.subject === "Failed emails digest");
+    const digestEmail = messages.find(msg => msg.subject === "Failed emails digest");
     expect(digestEmail).toBeUndefined();
   });
 
