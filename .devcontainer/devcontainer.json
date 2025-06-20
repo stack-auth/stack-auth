@@ -6,9 +6,6 @@
       "version": "22"
     },
     "ghcr.io/devcontainers/features/docker-in-docker:2": {},
-    "ghcr.io/devcontainers-contrib/features/pnpm:2": {
-      "version": "9"
-    },
     "ghcr.io/devcontainers/features/git:1": {},
     "github-cli": "latest"
   },
