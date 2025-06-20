@@ -6,6 +6,7 @@ const notificationPreferenceReadSchema = yupObject({
   notification_category_id: yupString().defined(),
   notification_category_name: yupString().defined(),
   enabled: yupBoolean().defined(),
+  can_disable: yupBoolean().defined(),
 }).defined();
 
 const notificationPreferenceUpdateSchema = yupObject({

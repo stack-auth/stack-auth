@@ -800,6 +800,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
       id: crud.notification_category_id,
       name: crud.notification_category_name,
       enabled: crud.enabled,
+      canDisable: crud.can_disable,
 
       async setEnabled(enabled: boolean) {
         await app._interface.setNotificationsEnabled(crud.notification_category_id, enabled, session);

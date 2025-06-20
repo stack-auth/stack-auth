@@ -74,11 +74,13 @@ it("lists default notification preferences", async ({ expect }) => {
         "is_paginated": false,
         "items": [
           {
+            "can_disable": false,
             "enabled": true,
             "notification_category_id": "<stripped UUID>",
             "notification_category_name": "Transactional",
           },
           {
+            "can_disable": true,
             "enabled": true,
             "notification_category_id": "<stripped UUID>",
             "notification_category_name": "Marketing",
@@ -108,6 +110,7 @@ it("updates notification preferences", async ({ expect }) => {
     NiceResponse {
       "status": 200,
       "body": {
+        "can_disable": true,
         "enabled": false,
         "notification_category_id": "<stripped UUID>",
         "notification_category_name": "Marketing",
@@ -133,11 +136,13 @@ it("updates notification preferences", async ({ expect }) => {
         "is_paginated": false,
         "items": [
           {
+            "can_disable": false,
             "enabled": true,
             "notification_category_id": "<stripped UUID>",
             "notification_category_name": "Transactional",
           },
           {
+            "can_disable": true,
             "enabled": false,
             "notification_category_id": "<stripped UUID>",
             "notification_category_name": "Marketing",

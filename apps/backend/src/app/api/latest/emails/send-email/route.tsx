@@ -1,9 +1,9 @@
 import { getEmailConfig, sendEmail } from "@/lib/emails";
 import { getNotificationCategoryByName, hasNotificationEnabled } from "@/lib/notification-categories";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
-import { adaptSchema, serverOrHigherAuthTypeSchema, yupBoolean, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
+import { adaptSchema, serverOrHigherAuthTypeSchema, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
 import { StatusError } from "@stackframe/stack-shared/dist/utils/errors";
-import { getUser } from "../users/crud";
+import { getUser } from "../../users/crud";
 
 export const POST = createSmartRouteHandler({
   metadata: {
@@ -26,8 +26,7 @@ export const POST = createSmartRouteHandler({
     statusCode: yupNumber().oneOf([200]).defined(),
     bodyType: yupString().oneOf(["json"]).defined(),
     body: yupObject({
-      success: yupBoolean().defined(),
-      error_message: yupString().optional(),
+      user_email: yupString().defined(),
     }).defined(),
   }),
   handler: async ({ body, auth }) => {
@@ -47,14 +46,7 @@ export const POST = createSmartRouteHandler({
     }
     const isNotificationEnabled = await hasNotificationEnabled(auth.tenancy.id, user.id, notificationCategory.id);
     if (!isNotificationEnabled) {
-      return {
-        statusCode: 200,
-        bodyType: 'json',
-        body: {
-          success: false,
-          error_message: "User has disabled notifications for this notification category",
-        },
-      };
+      throw new StatusError(400, "User has disabled notifications for this category");
     }
 
     await sendEmail({
@@ -69,7 +61,7 @@ export const POST = createSmartRouteHandler({
       statusCode: 200,
       bodyType: 'json',
       body: {
-        success: true,
+        user_email: user.primary_email,
       },
     };
   },

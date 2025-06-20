@@ -24,10 +24,10 @@ export function NotificationsPage() {
             <Switch
               checked={category.enabled}
               onCheckedChange={(value) => void category.setEnabled(value)}
-              disabled={category.name === "Transactional"}
+              disabled={!category.canDisable}
             />
             <Typography>{category.name}</Typography>
-            {category.name === "Transactional" && (
+            {!category.canDisable && (
               <Typography variant='secondary' type='footnote'>
                 (cannot be disabled)
               </Typography>

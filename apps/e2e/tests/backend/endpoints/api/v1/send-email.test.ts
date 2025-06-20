@@ -16,7 +16,7 @@ const testEmailConfig = {
 describe("invalid requests", () => {
   it("should return 401 when invalid access type is provided", async ({ expect }) => {
     const response = await niceBackendFetch(
-      "/api/v1/emails",
+      "/api/v1/emails/send-email",
       {
         method: "POST",
         accessType: "client",
@@ -57,7 +57,7 @@ describe("invalid requests", () => {
       },
     });
     const response = await niceBackendFetch(
-      "/api/v1/emails",
+      "/api/v1/emails/send-email",
       {
         method: "POST",
         accessType: "server",
@@ -78,42 +78,6 @@ describe("invalid requests", () => {
     `);
   });
 
-  it("should return 400 when user does not have a primary email", async ({ expect }) => {
-    await Project.createAndSwitch({
-      display_name: "Test Successful Email Project",
-      config: {
-        email_config: testEmailConfig,
-      },
-    });
-    const createUserResponse = await niceBackendFetch("/api/v1/users", {
-      method: "POST",
-      accessType: "server",
-      body: {},
-    });
-    expect(createUserResponse.status).toBe(201);
-
-    const response = await niceBackendFetch(
-      "/api/v1/emails",
-      {
-        method: "POST",
-        accessType: "server",
-        body: {
-          user_id: createUserResponse.body.id,
-          html: "<p>Test email</p>",
-          subject: "Test Subject",
-          notification_category_name: "Marketing",
-        }
-      }
-    );
-    expect(response).toMatchInlineSnapshot(`
-      NiceResponse {
-        "status": 400,
-        "body": "User does not have a primary email",
-        "headers": Headers { <some fields may have been hidden> },
-      }
-    `);
-  });
-
   it("should return 400 when using shared email config", async ({ expect }) => {
     const createUserResponse = await niceBackendFetch("/api/v1/users", {
       method: "POST",
@@ -123,7 +87,7 @@ describe("invalid requests", () => {
       },
     });
     const response = await niceBackendFetch(
-      "/api/v1/emails",
+      "/api/v1/emails/send-email",
       {
         method: "POST",
         accessType: "server",
@@ -159,7 +123,7 @@ describe("invalid requests", () => {
       },
     });
     const response = await niceBackendFetch(
-      "/api/v1/emails",
+      "/api/v1/emails/send-email",
       {
         method: "POST",
         accessType: "server",
@@ -181,42 +145,130 @@ describe("invalid requests", () => {
   });
 });
 
-describe("with valid credentials", () => {
-  it("should return 200 and send email successfully", async ({ expect }) => {
-    await Project.createAndSwitch({
-      display_name: "Test Successful Email Project",
-      config: {
-        email_config: testEmailConfig,
-      },
-    });
-    const user = await User.create();
-    const response = await niceBackendFetch(
-      "/api/v1/emails",
-      {
-        method: "POST",
-        accessType: "server",
-        body: {
-          user_id: user.userId,
-          html: "<h1>Test Email</h1><p>This is a test email with HTML content.</p>",
-          subject: "Custom Test Email Subject",
-          notification_category_name: "Marketing",
-        }
-      }
-    );
+it("should return 400 when user has disabled notifications for the category", async ({ expect }) => {
+  await Project.createAndSwitch({
+    display_name: "Test Successful Email Project",
+    config: {
+      email_config: testEmailConfig,
+    },
+  });
+  const user = await User.create();
 
-    expect(response).toMatchInlineSnapshot(`
+  // Disable notifications for Marketing category
+  const disableNotificationsResponse = await niceBackendFetch("/api/v1/emails/notification-preference", {
+    method: "PATCH",
+    accessType: "server",
+    body: {
+      user_id: user.userId,
+      notification_category_id: "4f6f8873-3d04-46bd-8bef-18338b1a1b4c",
+      enabled: false,
+    },
+  });
+  expect(disableNotificationsResponse).toMatchInlineSnapshot(`
+    NiceResponse {
+      "status": 200,
+      "body": {
+        "can_disable": true,
+        "enabled": false,
+        "notification_category_id": "<stripped UUID>",
+        "notification_category_name": "Marketing",
+      },
+      "headers": Headers { <some fields may have been hidden> },
+    }
+  `);
+
+  const response = await niceBackendFetch(
+    "/api/v1/emails/send-email",
+    {
+      method: "POST",
+      accessType: "server",
+      body: {
+        user_id: user.userId,
+        html: "<p>Test email</p>",
+        subject: "Test Subject",
+        notification_category_name: "Marketing",
+      }
+    }
+  );
+  expect(response).toMatchInlineSnapshot(`
+    NiceResponse {
+      "status": 400,
+      "body": "User has disabled notifications for this category",
+      "headers": Headers { <some fields may have been hidden> },
+    }
+  `);
+});
+
+it("should return 400 when user does not have a primary email", async ({ expect }) => {
+  await Project.createAndSwitch({
+    display_name: "Test Successful Email Project",
+    config: {
+      email_config: testEmailConfig,
+    },
+  });
+  const createUserResponse = await niceBackendFetch("/api/v1/users", {
+    method: "POST",
+    accessType: "server",
+    body: {},
+  });
+  expect(createUserResponse.status).toBe(201);
+
+  const response = await niceBackendFetch(
+    "/api/v1/emails/send-email",
+    {
+      method: "POST",
+      accessType: "server",
+      body: {
+        user_id: createUserResponse.body.id,
+        html: "<p>Test email</p>",
+        subject: "Test Subject",
+        notification_category_name: "Marketing",
+      }
+    }
+  );
+  expect(response).toMatchInlineSnapshot(`
+    NiceResponse {
+      "status": 400,
+      "body": "User does not have a primary email",
+      "headers": Headers { <some fields may have been hidden> },
+    }
+  `);
+});
+
+it("should return 200 and send email successfully", async ({ expect }) => {
+  await Project.createAndSwitch({
+    display_name: "Test Successful Email Project",
+    config: {
+      email_config: testEmailConfig,
+    },
+  });
+  const user = await User.create();
+  const response = await niceBackendFetch(
+    "/api/v1/emails/send-email",
+    {
+      method: "POST",
+      accessType: "server",
+      body: {
+        user_id: user.userId,
+        html: "<h1>Test Email</h1><p>This is a test email with HTML content.</p>",
+        subject: "Custom Test Email Subject",
+        notification_category_name: "Marketing",
+      }
+    }
+  );
+
+  expect(response).toMatchInlineSnapshot(`
       NiceResponse {
         "status": 200,
-        "body": { "success": true },
+        "body": { "user_email": "unindexed-mailbox--<stripped UUID>@stack-generated.example.com" },
         "headers": Headers { <some fields may have been hidden> },
       }
     `);
 
-    // Verify the email was actually sent by checking the mailbox
-    const messages = await user.mailbox.fetchMessages();
-    const sentEmail = messages.find(msg => msg.subject === "Custom Test Email Subject");
-    expect(sentEmail).toBeDefined();
-    expect(sentEmail!.body?.html).toContain("<h1>Test Email</h1>");
-    expect(sentEmail!.body?.html).toContain("<p>This is a test email with HTML content.</p>");
-  });
+  // Verify the email was actually sent by checking the mailbox
+  const messages = await user.mailbox.fetchMessages();
+  const sentEmail = messages.find(msg => msg.subject === "Custom Test Email Subject");
+  expect(sentEmail).toBeDefined();
+  expect(sentEmail!.body?.html).toContain("<h1>Test Email</h1>");
+  expect(sentEmail!.body?.html).toContain("<p>This is a test email with HTML content.</p>");
 });

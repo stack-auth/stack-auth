@@ -11,12 +11,13 @@ import { createLazyProxy } from "@stackframe/stack-shared/dist/utils/proxies";
 export const notificationPreferencesCrudHandlers = createLazyProxy(() => createCrudHandlers(notificationPreferenceCrud, {
   querySchema: yupObject({
     user_id: userIdOrMeSchema.optional(),
+
   }),
   paramsSchema: yupObject({
     _temp: yupString().optional(), // Need something in paramsSchema to fix type issues in onList. TODO: fix this.
   }),
   onUpdate: async ({ auth, data }) => {
-    const userId = data.user_id === 'me' ? (auth.user?.id ?? throwErr(new KnownErrors.UserAuthenticationRequired)) : data.user_id;
+    const userId = data.user_id === 'me' ? (auth.user?.id ?? throwErr(new KnownErrors.UserAuthenticationRequired())) : data.user_id;
     const notificationCategories = listNotificationCategories();
     const notificationCategory = notificationCategories.find(c => c.id === data.notification_category_id);
     if (!notificationCategory) {
@@ -25,7 +26,7 @@ export const notificationPreferencesCrudHandlers = createLazyProxy(() => createC
 
     if (auth.type === 'client') {
       if (!auth.user) {
-        throw new KnownErrors.UserAuthenticationRequired;
+        throw new KnownErrors.UserAuthenticationRequired();
       }
       if (userId !== auth.user.id) {
         throw new StatusError(StatusError.Forbidden, "You can only manage your own notification preferences");
@@ -56,6 +57,7 @@ export const notificationPreferencesCrudHandlers = createLazyProxy(() => createC
       notification_category_id: notificationPreference.notificationCategoryId,
       notification_category_name: notificationCategory.name,
       enabled: notificationPreference.enabled,
+      can_disable: notificationCategory.can_disable,
     };
   },
   onList: async ({ auth, query }) => {
@@ -91,7 +93,8 @@ export const notificationPreferencesCrudHandlers = createLazyProxy(() => createC
       return {
         notification_category_id: category.id,
         notification_category_name: category.name,
-        enabled: preference?.enabled ?? true,
+        enabled: preference?.enabled ?? category.default_enabled,
+        can_disable: category.can_disable,
       };
     });
 
