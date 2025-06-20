@@ -9,8 +9,6 @@ type PlatformAwareHeaderProps = {
   showSearch?: boolean,
   /** Custom positioning classes */
   className?: string,
-  /** Whether to show mobile menu button */
-  showMobileMenu?: boolean,
   /** Mobile menu click handler */
   onMobileMenuClick?: () => void,
   /** Sidebar content to show in mobile navigation */
@@ -27,7 +25,6 @@ type PlatformAwareHeaderProps = {
 export function PlatformAwareHeader({
   showSearch = false,
   className,
-  showMobileMenu = false,
   onMobileMenuClick,
   sidebarContent
 }: PlatformAwareHeaderProps) {
@@ -39,7 +36,6 @@ export function PlatformAwareHeader({
       navLinks={navLinks}
       showSearch={showSearch}
       className={className}
-      showMobileMenu={showMobileMenu}
       onMobileMenuClick={onMobileMenuClick}
       sidebarContent={sidebarContent}
     />

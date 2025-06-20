@@ -158,6 +158,11 @@ function ClickableCodeblock({
           {/* Clickable overlays - now inside the scrollable container */}
           <div className="absolute inset-0 pointer-events-none">
             {clickableAreas.map((area, index) => {
+              // Skip if linePositions array is not ready or line index is out of bounds
+              if (linePositions.length === 0 || area.lineNumber >= linePositions.length) {
+                return null;
+              }
+
               // Use measured line positions instead of calculated ones
               const linePosition = linePositions[area.lineNumber];
 
