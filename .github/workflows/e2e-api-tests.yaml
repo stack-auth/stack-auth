@@ -59,6 +59,9 @@ jobs:
       - name: Create .env.test.local file for apps/e2e
         run: cp apps/e2e/.env.development apps/e2e/.env.test.local
 
+      - name: Create .env.test.local file for docs
+        run: cp docs/.env.development docs/.env.test.local
+
       - name: Create .env.test.local file for examples/cjs-test
         run: cp examples/cjs-test/.env.development examples/cjs-test/.env.test.local
       

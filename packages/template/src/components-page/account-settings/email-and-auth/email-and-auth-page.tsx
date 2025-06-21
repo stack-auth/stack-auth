@@ -5,14 +5,16 @@ import { OtpSection } from "./otp-section";
 import { PasskeySection } from "./passkey-section";
 import { PasswordSection } from "./password-section";
 
-export function EmailsAndAuthPage() {
+export function EmailsAndAuthPage(props?: {
+  mockMode?: boolean,
+}) {
   return (
     <PageLayout>
-      <EmailsSection/>
-      <PasswordSection />
-      <PasskeySection />
-      <OtpSection />
-      <MfaSection />
+      <EmailsSection mockMode={props?.mockMode}/>
+      <PasswordSection mockMode={props?.mockMode} />
+      <PasskeySection mockMode={props?.mockMode} />
+      <OtpSection mockMode={props?.mockMode} />
+      <MfaSection mockMode={props?.mockMode} />
     </PageLayout>
   );
 }

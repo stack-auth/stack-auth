@@ -1,0 +1,81 @@
+---
+title: "<UserButton />"
+---
+
+The `<StackUserButton>` renders a user button component with optional user information, color mode toggle, and extra menu items.
+
+<StackUserButton />
+
+## Interactive Demo
+
+Try out the UserButton component with different props and see the changes in real-time:
+
+<UserButtonDemo />
+
+## Props
+
+<PropTable
+  props={[
+    {
+      name: "showUserInfo",
+      type: "boolean",
+      description: "If true, displays user information (display name and email) in the button.",
+      optional: true,
+      default: "false"
+    },
+    {
+      name: "colorModeToggle",
+      type: "() => void | Promise<void>",
+      description: "Function to be called when the color mode toggle button is clicked. If specified, a color mode toggle button will be shown.",
+      optional: true,
+      default: "undefined"
+    },
+    {
+      name: "extraItems",
+      type: "Array",
+      description: "Additional menu items to display. Each item should have the following properties:",
+      optional: true,
+      nested: [
+        {
+          name: "text",
+          type: "string",
+          description: "The text to display for the item."
+        },
+        {
+          name: "icon",
+          type: "React.ReactNode",
+          description: "The icon to display for the item."
+        },
+        {
+          name: "onClick",
+          type: "() => void | Promise<void>",
+          description: "Function to be called when the item is clicked."
+        }
+      ]
+    }
+  ]}
+/>
+
+## Example
+
+```tsx
+'use client';
+import { UserButton } from '@stackframe/stack';
+
+export default function Page() {
+  return (
+    <div>
+      <h1>User Button</h1>
+      <UserButton
+        showUserInfo={true}
+        colorModeToggle={() => { console.log("color mode toggle clicked") }}
+        extraItems={[{
+          text: 'Custom Action',
+          icon: <CustomIcon />,
+          onClick: () => console.log('Custom action clicked')
+        }]}
+      />
+    </div>
+  );
+}
+```
