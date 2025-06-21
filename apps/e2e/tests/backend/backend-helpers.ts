@@ -1056,11 +1056,9 @@ export namespace Project {
   }
 
   export async function createAndGetAdminToken(body?: Partial<AdminUserProjectsCrud["Admin"]["Create"]>, useExistingUser?: boolean) {
-    const oldProjectKeys = backendContext.value.projectKeys;
     backendContext.set({
       projectKeys: InternalProjectKeys,
     });
-    const oldUserAuth = backendContext.value.userAuth;
     const oldMailbox = backendContext.value.mailbox;
     let userId: string | undefined;
     if (!useExistingUser) {
@@ -1073,8 +1071,10 @@ export namespace Project {
     const { projectId, createProjectResponse } = await Project.create(body);
 
     backendContext.set({
-      projectKeys: oldProjectKeys,
-      userAuth: oldUserAuth,
+      projectKeys: {
+        projectId,
+      },
+      userAuth: null,
       mailbox: oldMailbox,
     });
 
