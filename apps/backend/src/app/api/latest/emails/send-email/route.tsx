@@ -4,6 +4,8 @@ import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { adaptSchema, serverOrHigherAuthTypeSchema, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
 import { StatusError } from "@stackframe/stack-shared/dist/utils/errors";
 import { getUser } from "../../users/crud";
+import { unsubscribeLinkVerificationCodeHandler } from "../unsubscribe-link/verification-handler";
+import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
 
 export const POST = createSmartRouteHandler({
   metadata: {
@@ -49,12 +51,29 @@ export const POST = createSmartRouteHandler({
       throw new StatusError(400, "User has disabled notifications for this category");
     }
 
+    let html = body.html;
+    if (notificationCategory.can_disable) {
+      const { code } = await unsubscribeLinkVerificationCodeHandler.createCode({
+        tenancy: auth.tenancy,
+        method: {},
+        data: {
+          user_id: user.id,
+          notification_category_id: notificationCategory.id,
+        },
+        callbackUrl: undefined
+      });
+      const unsubscribeLink = new URL(getEnvVariable("NEXT_PUBLIC_STACK_API_URL"));
+      unsubscribeLink.pathname = "/api/v1/emails/unsubscribe-link";
+      unsubscribeLink.searchParams.set("code", code);
+      html += `<br /><a href="${unsubscribeLink.toString()}">Click here to unsubscribe</a>`;
+    }
+
     await sendEmail({
       tenancyId: auth.tenancy.id,
       emailConfig: await getEmailConfig(auth.tenancy),
       to: user.primary_email,
       subject: body.subject,
-      html: body.html,
+      html,
     });
 
     return {

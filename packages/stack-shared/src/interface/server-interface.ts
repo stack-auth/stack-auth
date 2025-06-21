@@ -574,7 +574,7 @@ export class StackServerInterface extends StackClientInterface {
     userId: string,
   ): Promise<NotificationPreferenceCrud['Server']['Read'][]> {
     const response = await this.sendServerRequest(
-      urlString`/emails/notification-preference?user_id=${userId}`,
+      urlString`/emails/notification-preference/${userId}`,
       {
         method: "GET",
       },
@@ -590,15 +590,13 @@ export class StackServerInterface extends StackClientInterface {
     enabled: boolean,
   ): Promise<void> {
     await this.sendServerRequest(
-      urlString`/emails/notification-preference`,
+      urlString`/emails/notification-preference/${userId}/${notificationCategoryId}`,
       {
         method: "PATCH",
         headers: {
           "content-type": "application/json",
         },
         body: JSON.stringify({
-          user_id: userId,
-          notification_category_id: notificationCategoryId,
           enabled,
         }),
       },

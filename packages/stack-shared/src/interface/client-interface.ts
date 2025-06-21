@@ -15,6 +15,7 @@ import { Result } from "../utils/results";
 import { deindent } from '../utils/strings';
 import { ContactChannelsCrud } from './crud/contact-channels';
 import { CurrentUserCrud } from './crud/current-user';
+import { NotificationPreferenceCrud } from './crud/notification-preferences';
 import { ConnectedAccountAccessTokenCrud } from './crud/oauth';
 import { TeamApiKeysCrud, UserApiKeysCrud, teamApiKeysCreateInputSchema, teamApiKeysCreateOutputSchema, userApiKeysCreateInputSchema, userApiKeysCreateOutputSchema } from './crud/project-api-keys';
 import { ProjectPermissionsCrud } from './crud/project-permissions';
@@ -24,7 +25,6 @@ import { TeamInvitationCrud } from './crud/team-invitation';
 import { TeamMemberProfilesCrud } from './crud/team-member-profiles';
 import { TeamPermissionsCrud } from './crud/team-permissions';
 import { TeamsCrud } from './crud/teams';
-import { NotificationPreferenceCrud } from './crud/notification-preferences';
 
 export type ClientInterfaceOptions = {
   clientVersion: string,
@@ -1612,7 +1612,7 @@ export class StackClientInterface {
     session: InternalSession,
   ): Promise<NotificationPreferenceCrud['Client']['Read'][]> {
     const response = await this.sendClientRequest(
-      `/emails/notification-preference?user_id=me`,
+      `/emails/notification-preference/me`,
       {},
       session,
     );
@@ -1626,15 +1626,13 @@ export class StackClientInterface {
     session: InternalSession,
   ): Promise<void> {
     await this.sendClientRequest(
-      `/emails/notification-preference`,
+      `/emails/notification-preference/me/${notificationCategoryId}`,
       {
         method: "PATCH",
         headers: {
           "content-type": "application/json",
         },
         body: JSON.stringify({
-          user_id: "me",
-          notification_category_id: notificationCategoryId,
           enabled,
         }),
       },

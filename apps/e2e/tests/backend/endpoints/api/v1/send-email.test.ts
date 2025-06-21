@@ -155,12 +155,10 @@ it("should return 400 when user has disabled notifications for the category", as
   const user = await User.create();
 
   // Disable notifications for Marketing category
-  const disableNotificationsResponse = await niceBackendFetch("/api/v1/emails/notification-preference", {
+  const disableNotificationsResponse = await niceBackendFetch(`/api/v1/emails/notification-preference/${user.userId}/4f6f8873-3d04-46bd-8bef-18338b1a1b4c`, {
     method: "PATCH",
     accessType: "server",
     body: {
-      user_id: user.userId,
-      notification_category_id: "4f6f8873-3d04-46bd-8bef-18338b1a1b4c",
       enabled: false,
     },
   });

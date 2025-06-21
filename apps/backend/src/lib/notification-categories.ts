@@ -1,5 +1,8 @@
+import { Tenancy } from "@/lib/tenancies";
 import { prismaClient } from "@/prisma-client";
+import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
 import { StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
+import { signInVerificationCodeHandler } from "../app/api/latest/auth/otp/sign-in/verification-code-handler";
 
 // For now, we only have two hardcoded notification categories. TODO: query from database instead and create UI to manage them in dashboard
 export const listNotificationCategories = () => {
@@ -39,4 +42,18 @@ export const hasNotificationEnabled = async (tenancyId: string, userId: string, 
     return notificationCategory.default_enabled;
   }
   return userNotificationPreference.enabled;
+};
+
+export const generateUnsubscribeLink = async (tenancy: Tenancy, userId: string, notificationCategoryId: string) => {
+  const { code } = await signInVerificationCodeHandler.createCode({
+    tenancy,
+    expiresInMs: 1000 * 60 * 60 * 24 * 30,
+    data: {},
+    method: {
+      email: "test@test.com",
+      type: "standard",
+    },
+    callbackUrl: undefined,
+  });
+  return `${getEnvVariable("NEXT_PUBLIC_STACK_API_URL")}/api/v1/emails/unsubscribe-link?token=${code}&notification_category_id=${notificationCategoryId}`;
 };

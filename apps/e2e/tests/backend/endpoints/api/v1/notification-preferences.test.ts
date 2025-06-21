@@ -1,3 +1,4 @@
+import { randomUUID } from "crypto";
 import { describe } from "vitest";
 import { it } from "../../../../helpers";
 import { Auth, niceBackendFetch } from "../../../backend-helpers";
@@ -5,42 +6,38 @@ import { Auth, niceBackendFetch } from "../../../backend-helpers";
 describe("invalid requests", () => {
   it("should return 401 when invalid authorization is provided", async ({ expect }) => {
     const response = await niceBackendFetch(
-      "/api/v1/emails/notification-preference",
+      `/api/v1/emails/notification-preference/me/${randomUUID()}`,
       {
         method: "PATCH",
         accessType: "client",
         body: {
-          user_id: "me",
-          notification_category_id: "marketing",
           enabled: true,
         }
       }
     );
     expect(response).toMatchInlineSnapshot(`
       NiceResponse {
-       "status": 401,
-       "body": {
-         "code": "USER_AUTHENTICATION_REQUIRED",
-         "error": "User authentication required for this endpoint.",
-       },
-       "headers": Headers {
-         "x-stack-known-error": "USER_AUTHENTICATION_REQUIRED",
-         <some fields may have been hidden>,
-       },
-     }
+        "status": 400,
+        "body": {
+          "code": "CANNOT_GET_OWN_USER_WITHOUT_USER",
+          "error": "You have specified 'me' as a userId, but did not provide authentication for a user.",
+        },
+        "headers": Headers {
+          "x-stack-known-error": "CANNOT_GET_OWN_USER_WITHOUT_USER",
+          <some fields may have been hidden>,
+        },
+      }
     `);
   });
 
   it("should return 404 when invalid notification category id is provided", async ({ expect }) => {
     await Auth.Otp.signIn();
     const response = await niceBackendFetch(
-      "/api/v1/emails/notification-preference",
+      `/api/v1/emails/notification-preference/me/${randomUUID()}`,
       {
         method: "PATCH",
         accessType: "client",
         body: {
-          user_id: "me",
-          notification_category_id: "invalid-notification-category-id",
           enabled: true,
         }
       }
@@ -58,13 +55,10 @@ describe("invalid requests", () => {
 it("lists default notification preferences", async ({ expect }) => {
   await Auth.Otp.signIn();
   const response = await niceBackendFetch(
-    "/api/v1/emails/notification-preference",
+    "/api/v1/emails/notification-preference/me",
     {
       method: "GET",
       accessType: "client",
-      query: {
-        user_id: "me",
-      }
     }
   );
   expect(response).toMatchInlineSnapshot(`
@@ -95,13 +89,11 @@ it("lists default notification preferences", async ({ expect }) => {
 it("updates notification preferences", async ({ expect }) => {
   await Auth.Otp.signIn();
   const response = await niceBackendFetch(
-    "/api/v1/emails/notification-preference",
+    "/api/v1/emails/notification-preference/me/4f6f8873-3d04-46bd-8bef-18338b1a1b4c",
     {
       method: "PATCH",
       accessType: "client",
       body: {
-        user_id: "me",
-        notification_category_id: "4f6f8873-3d04-46bd-8bef-18338b1a1b4c",
         enabled: false,
       }
     }
@@ -120,13 +112,10 @@ it("updates notification preferences", async ({ expect }) => {
   `);
 
   const listPreferencesResponse = await niceBackendFetch(
-    "/api/v1/emails/notification-preference",
+    "/api/v1/emails/notification-preference/me",
     {
       method: "GET",
       accessType: "client",
-      query: {
-        user_id: "me",
-      }
     }
   );
   expect(listPreferencesResponse).toMatchInlineSnapshot(`

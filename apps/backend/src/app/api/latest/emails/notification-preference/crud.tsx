@@ -9,18 +9,15 @@ import { StatusError, throwErr } from "@stackframe/stack-shared/dist/utils/error
 import { createLazyProxy } from "@stackframe/stack-shared/dist/utils/proxies";
 
 export const notificationPreferencesCrudHandlers = createLazyProxy(() => createCrudHandlers(notificationPreferenceCrud, {
-  querySchema: yupObject({
-    user_id: userIdOrMeSchema.optional(),
-
-  }),
   paramsSchema: yupObject({
-    _temp: yupString().optional(), // Need something in paramsSchema to fix type issues in onList. TODO: fix this.
+    user_id: userIdOrMeSchema.defined(),
+    notification_category_id: yupString().uuid().optional(),
   }),
-  onUpdate: async ({ auth, data }) => {
-    const userId = data.user_id === 'me' ? (auth.user?.id ?? throwErr(new KnownErrors.UserAuthenticationRequired())) : data.user_id;
+  onUpdate: async ({ auth, params, data }) => {
+    const userId = params.user_id === 'me' ? (auth.user?.id ?? throwErr(new KnownErrors.UserAuthenticationRequired())) : params.user_id;
     const notificationCategories = listNotificationCategories();
-    const notificationCategory = notificationCategories.find(c => c.id === data.notification_category_id);
-    if (!notificationCategory) {
+    const notificationCategory = notificationCategories.find(c => c.id === params.notification_category_id);
+    if (!notificationCategory || !params.notification_category_id) {
       throw new StatusError(404, "Notification category not found");
     }
 
@@ -39,7 +36,7 @@ export const notificationPreferencesCrudHandlers = createLazyProxy(() => createC
         tenancyId_projectUserId_notificationCategoryId: {
           tenancyId: auth.tenancy.id,
           projectUserId: userId,
-          notificationCategoryId: data.notification_category_id,
+          notificationCategoryId: params.notification_category_id,
         },
       },
       update: {
@@ -48,7 +45,7 @@ export const notificationPreferencesCrudHandlers = createLazyProxy(() => createC
       create: {
         tenancyId: auth.tenancy.id,
         projectUserId: userId,
-        notificationCategoryId: data.notification_category_id,
+        notificationCategoryId: params.notification_category_id,
         enabled: data.enabled,
       },
     });
@@ -60,8 +57,8 @@ export const notificationPreferencesCrudHandlers = createLazyProxy(() => createC
       can_disable: notificationCategory.can_disable,
     };
   },
-  onList: async ({ auth, query }) => {
-    const userId = query.user_id === 'me' ? (auth.user?.id ?? throwErr(new KnownErrors.UserAuthenticationRequired)) : query.user_id;
+  onList: async ({ auth, params }) => {
+    const userId = params.user_id === 'me' ? (auth.user?.id ?? throwErr(new KnownErrors.UserAuthenticationRequired)) : params.user_id;
 
     if (!userId) {
       throw new KnownErrors.UserAuthenticationRequired;
