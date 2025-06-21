@@ -5,24 +5,27 @@ import posthog from 'posthog-js';
 import { PostHogProvider } from 'posthog-js/react';
 import { Suspense, useEffect, useState } from 'react';
 
-if (typeof window !== 'undefined') {
-  const postHogKey = getPublicEnvVar('NEXT_PUBLIC_POSTHOG_KEY') ?? "phc_vIUFi0HzHo7oV26OsaZbUASqxvs8qOmap1UBYAutU4k";
-  if (postHogKey.length > 5) {
-    posthog.init(postHogKey, {
-      session_recording: {
-        maskAllInputs: false,
-        maskInputOptions: {
-          password: true,
-        },
-      },
-      api_host: "/consume",
-      ui_host: "https://eu.i.posthog.com",
-      capture_pageview: false,
-      capture_pageleave: true,
-    });
-  }
-}
 export function CSPostHogProvider({ children }: { children: React.ReactNode }) {
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const postHogKey = getPublicEnvVar('NEXT_PUBLIC_POSTHOG_KEY') ?? "phc_vIUFi0HzHo7oV26OsaZbUASqxvs8qOmap1UBYAutU4k";
+      if (postHogKey.length > 5) {
+        posthog.init(postHogKey, {
+          session_recording: {
+            maskAllInputs: false,
+            maskInputOptions: {
+              password: true,
+            },
+          },
+          api_host: "/consume",
+          ui_host: "https://eu.i.posthog.com",
+          capture_pageview: false,
+          capture_pageleave: true,
+        });
+      }
+    }
+  }, []);
+
   return <PostHogProvider client={posthog}>{children}</PostHogProvider>;
 }
 

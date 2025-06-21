@@ -1,12 +1,10 @@
-import { parseOpenAPI, parseWebhookOpenAPI } from '@/lib/openapi';
+import { parseOpenAPI } from '@/lib/openapi';
 import { isSmartRouteHandler } from '@/route-handlers/smart-route-handler';
-import { webhookEvents } from '@stackframe/stack-shared/dist/interface/webhooks';
 import { writeFileSyncIfChanged } from '@stackframe/stack-shared/dist/utils/fs';
 import { HTTP_METHODS } from '@stackframe/stack-shared/dist/utils/http';
 import { typedKeys } from '@stackframe/stack-shared/dist/utils/objects';
 import { glob } from 'glob';
 import path from 'path';
-import yaml from 'yaml';
 
 async function main() {
   console.log("Started docs schema generator");
@@ -24,7 +22,7 @@ async function main() {
         const suffix = filePath.slice(filePathPrefix.length);
         const midfix = suffix.slice(0, suffix.lastIndexOf("/route."));
         const importPath = `${importPathPrefix}${suffix}`;
-        const urlPath = midfix.replaceAll("[", "{").replaceAll("]", "}");
+        const urlPath = midfix.replaceAll("[", "{").replaceAll("]", "}").replaceAll(/\/\(.*\)/g, "");
         const myModule = require(importPath);
         const handlersByMethod = new Map(
           typedKeys(HTTP_METHODS).map(method => [method, myModule[method]] as const)
@@ -34,14 +32,7 @@ async function main() {
       }))),
       audience,
     });
-    const openAPISchema = yaml.stringify(openApiSchemaObject);
     writeFileSyncIfChanged(`../mcp-server/openapi/${audience}.json`, JSON.stringify(openApiSchemaObject, null, 2));
-    writeFileSyncIfChanged(`../../docs/fern/openapi/${audience}.yaml`, openAPISchema);
-
-    const webhookOpenAPISchema = yaml.stringify(parseWebhookOpenAPI({
-      webhooks: webhookEvents,
-    }));
-    writeFileSyncIfChanged(`../../docs/fern/openapi/webhooks.yaml`, webhookOpenAPISchema);
   }
   console.log("Successfully updated docs schemas");
 }

@@ -1,8 +1,34 @@
-fern/js.yml
-fern/next.yml
-fern/react.yml
-fern/python.yml
-fern/docs/pages-js
-fern/docs/pages-next
-fern/docs/pages-react
-fern/docs/pages-python
+# deps
+/node_modules
+
+# generated content
+.contentlayer
+.content-collections
+.source
+
+# test & build
+/coverage
+/.next/
+/out/
+/build
+*.tsbuildinfo
+
+# misc
+.DS_Store
+*.pem
+/.pnp
+.pnp.js
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# others
+.vercel
+next-env.d.ts
+
+# ignore all generated docs content
+/content/docs/
+/content/api/
+/public/openapi/
+/openapi/
+

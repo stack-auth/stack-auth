@@ -1,8 +1,9 @@
-import { InternalProjectsCrud } from "@stackframe/stack-shared/dist/interface/crud/projects";
+import { AdminUserProjectsCrud } from "@stackframe/stack-shared/dist/interface/crud/projects";
 import { encodeBase64 } from "@stackframe/stack-shared/dist/utils/bytes";
 import { generateSecureRandomString } from "@stackframe/stack-shared/dist/utils/crypto";
 import { StackAssertionError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
 import { filterUndefined } from "@stackframe/stack-shared/dist/utils/objects";
+import { wait } from "@stackframe/stack-shared/dist/utils/promises";
 import { nicify } from "@stackframe/stack-shared/dist/utils/strings";
 import * as jose from "jose";
 import { randomUUID } from "node:crypto";
@@ -12,6 +13,7 @@ import { Context, Mailbox, NiceRequestInit, NiceResponse, STACK_BACKEND_BASE_URL
 type BackendContext = {
   readonly projectKeys: ProjectKeys,
   readonly defaultProjectKeys: ProjectKeys,
+  readonly currentBranchId: string | null,
   readonly mailbox: Mailbox,
   readonly userAuth: {
     readonly refreshToken?: string,
@@ -33,6 +35,7 @@ export const backendContext = new Context<BackendContext, Partial<BackendContext
   () => ({
     defaultProjectKeys: InternalProjectKeys,
     projectKeys: InternalProjectKeys,
+    currentBranchId: null,
     mailbox: createMailbox(`default-mailbox--${randomUUID()}${generatedEmailSuffix}`),
     generatedMailboxNamesCount: 0,
     userAuth: null,
@@ -127,6 +130,7 @@ export async function niceBackendFetch(url: string | URL, options?: Omit<NiceReq
         "x-stack-super-secret-admin-key": projectKeys.superSecretAdminKey,
         'x-stack-admin-access-token': projectKeys.adminAccessToken,
       } : {},
+      "x-stack-branch-id": backendContext.value.currentBranchId ?? undefined,
       "x-stack-access-token": userAuth?.accessToken,
       "x-stack-refresh-token": userAuth?.refreshToken,
       ...backendContext.value.ipData ? {
@@ -145,7 +149,7 @@ export async function niceBackendFetch(url: string | URL, options?: Omit<NiceReq
     }),
   });
   if (res.status >= 500 && res.status < 600) {
-    throw new StackAssertionError(`Unexpected internal server error: ${res.status} ${typeof res.body === "string" ? res.body : nicify(res.body)}`);
+    throw new StackAssertionError(`API threw ISE in ${otherOptions.method ?? "GET"} ${url}: ${res.status} ${typeof res.body === "string" ? res.body : nicify(res.body)}`);
   }
   if (res.headers.has("x-stack-known-error")) {
     expect(res.status).toBeGreaterThanOrEqual(400);
@@ -183,11 +187,12 @@ export namespace Auth {
         new URL(`api/v1/projects/${aud}/.well-known/jwks.json`, STACK_BACKEND_BASE_URL),
         { timeoutDuration: 10_000 },
       );
+      const expectedIssuer = new URL(`/api/v1/projects/${aud}`, STACK_BACKEND_BASE_URL).toString();
       const { payload } = await jose.jwtVerify(accessToken, jwks);
       expect(payload).toEqual({
         "exp": expect.any(Number),
         "iat": expect.any(Number),
-        "iss": "https://access-token.jwt-signature.stack-auth.com",
+        "iss": expectedIssuer,
         "refreshTokenId": expect.any(String),
         "aud": expect.any(String),
         "sub": expect.any(String),
@@ -336,11 +341,23 @@ export namespace Auth {
     }
 
     export async function signIn() {
-      const mailbox = backendContext.value.mailbox;
       const sendSignInCodeRes = await sendSignInCode();
+      const signInResult = await signInWithCode(await getSignInCodeFromMailbox());
+      return {
+        ...sendSignInCodeRes,
+        ...signInResult,
+      };
+    }
+
+    export async function getSignInCodeFromMailbox() {
+      const mailbox = backendContext.value.mailbox;
       const messages = await mailbox.fetchMessages();
       const message = messages.findLast((message) => message.subject.includes("Sign in to")) ?? throwErr("Sign-in code message not found");
       const signInCode = message.body?.text.match(/http:\/\/localhost:12345\/some-callback-url\?code=([a-zA-Z0-9]+)/)?.[1] ?? throwErr("Sign-in URL not found");
+      return signInCode;
+    }
+
+    export async function signInWithCode(signInCode: string) {
       const response = await niceBackendFetch("/api/v1/auth/otp/sign-in", {
         method: "POST",
         accessType: "client",
@@ -367,7 +384,6 @@ export namespace Auth {
       });
 
       return {
-        ...sendSignInCodeRes,
         userId: response.body.user_id,
         signInResponse: response,
       };
@@ -555,12 +571,13 @@ export namespace Auth {
 
 
   export namespace OAuth {
-    export async function getAuthorizeQuery() {
+    export async function getAuthorizeQuery(options: { forceBranchId?: string } = {}) {
       const projectKeys = backendContext.value.projectKeys;
       if (projectKeys === "no-project") throw new Error("No project keys found in the backend context");
+      const branchId = options.forceBranchId ?? backendContext.value.currentBranchId;
 
       return {
-        client_id: projectKeys.projectId,
+        client_id: !branchId ? projectKeys.projectId : `${projectKeys.projectId}#${branchId}`,
         client_secret: projectKeys.publishableClientKey ?? throwErr("No publishable client key found in the backend context"),
         redirect_uri: localRedirectUrl,
         scope: "legacy",
@@ -572,14 +589,14 @@ export namespace Auth {
       };
     }
 
-    export async function authorize(options?: { redirectUrl?: string, errorRedirectUrl?: string }) {
+    export async function authorize(options: { redirectUrl?: string, errorRedirectUrl?: string, forceBranchId?: string } = {}) {
       const response = await niceBackendFetch("/api/v1/auth/oauth/authorize/spotify", {
         redirect: "manual",
         query: {
-          ...await Auth.OAuth.getAuthorizeQuery(),
+          ...await Auth.OAuth.getAuthorizeQuery(options),
           ...filterUndefined({
-            redirect_uri: options?.redirectUrl ?? undefined,
-            error_redirect_uri: options?.errorRedirectUrl ?? undefined,
+            redirect_uri: options.redirectUrl ?? undefined,
+            error_redirect_uri: options.errorRedirectUrl ?? undefined,
           }),
         },
       });
@@ -591,10 +608,10 @@ export namespace Auth {
       };
     }
 
-    export async function getInnerCallbackUrl(options?: { authorizeResponse: NiceResponse }) {
-      options ??= await Auth.OAuth.authorize();
+    export async function getInnerCallbackUrl(options: { authorizeResponse?: NiceResponse, forceBranchId?: string } = {}) {
+      const authorizeResponse = options.authorizeResponse ?? (await Auth.OAuth.authorize(options)).authorizeResponse;
       const providerPassword = generateSecureRandomString();
-      const authLocation = new URL(options.authorizeResponse.headers.get("location")!);
+      const authLocation = new URL(authorizeResponse.headers.get("location")!);
       const redirectResponse1 = await niceFetch(authLocation, {
         redirect: "manual",
       });
@@ -667,22 +684,30 @@ export namespace Auth {
       expect(innerCallbackUrl.origin).toBe("http://localhost:8102");
       expect(innerCallbackUrl.pathname).toBe("/api/v1/auth/oauth/callback/spotify");
       return {
-        ...options,
+        authorizeResponse,
         innerCallbackUrl,
       };
     }
 
-    export async function getAuthorizationCode(options?: { innerCallbackUrl: URL, authorizeResponse: NiceResponse }) {
-      options ??= await Auth.OAuth.getInnerCallbackUrl();
-      const cookie = updateCookiesFromResponse("", options.authorizeResponse);
-      const response = await niceBackendFetch(options.innerCallbackUrl.toString(), {
+    export async function getAuthorizationCode(options: { innerCallbackUrl?: URL, authorizeResponse?: NiceResponse, forceBranchId?: string } = {}) {
+      let authorizeResponse, innerCallbackUrl;
+      if (options.innerCallbackUrl && options.authorizeResponse) {
+        innerCallbackUrl = options.innerCallbackUrl;
+        authorizeResponse = options.authorizeResponse;
+      } else if (!options.innerCallbackUrl) {
+        ({ authorizeResponse, innerCallbackUrl } = await Auth.OAuth.getInnerCallbackUrl(options));
+      } else {
+        throw new Error("If innerCallbackUrl is provided, authorizeResponse must also be provided");
+      }
+      const cookie = updateCookiesFromResponse("", authorizeResponse!);
+      const response = await niceBackendFetch(innerCallbackUrl.toString(), {
         redirect: "manual",
         headers: {
           cookie,
         },
       });
       expect(response).toMatchObject({
-        status: 307,
+        status: 303,
         headers: expect.any(Headers),
         body: {},
       });
@@ -701,7 +726,7 @@ export namespace Auth {
       };
     }
 
-    export async function signIn() {
+    export async function signIn(options: { forceBranchId?: string } = {}) {
       const getAuthorizationCodeResult = await Auth.OAuth.getAuthorizationCode();
 
       const projectKeys = backendContext.value.projectKeys;
@@ -883,8 +908,19 @@ export namespace ProjectApiKey {
           api_key: apiKey,
         },
       });
-      expect(response.status).oneOf([200, 404]);
+      expect(response.status).oneOf([200, 401, 404]);
       return response.body;
+    }
+
+    export async function revoke(apiKeyId: string) {
+      const response = await niceBackendFetch(`/api/v1/user-api-keys/${apiKeyId}`, {
+        method: "PATCH",
+        accessType: "server",
+        body: {
+          revoked: true,
+        },
+      });
+      return response;
     }
   }
 
@@ -909,8 +945,20 @@ export namespace ProjectApiKey {
           api_key: apiKey,
         },
       });
-      expect(response.status).oneOf([200, 404]);
+      expect(response.status).oneOf([200, 401, 404]);
       return response.body;
+    }
+
+
+    export async function revoke(apiKeyId: string) {
+      const response = await niceBackendFetch(`/api/v1/team-api-keys/${apiKeyId}`, {
+        method: "PATCH",
+        accessType: "server",
+        body: {
+          revoked: true,
+        },
+      });
+      return response;
     }
   }
 }
@@ -973,6 +1021,11 @@ export namespace Project {
       body: {
         display_name: body?.display_name || 'New Project',
         ...body,
+        config: {
+          credential_enabled: true,
+          allow_localhost: true,
+          ...body?.config,
+        },
       },
     });
     expect(response).toMatchObject({
@@ -987,8 +1040,8 @@ export namespace Project {
     };
   }
 
-  export async function updateCurrent(adminAccessToken: string, body: Partial<InternalProjectsCrud["Admin"]["Create"]>) {
-    const response = await niceBackendFetch(`/api/v1/projects/current`, {
+  export async function updateCurrent(adminAccessToken: string, body: Partial<AdminUserProjectsCrud["Admin"]["Create"]>) {
+    const response = await niceBackendFetch(`/api/v1/internal/projects/current`, {
       accessType: "admin",
       method: "PATCH",
       body,
@@ -1002,7 +1055,7 @@ export namespace Project {
     };
   }
 
-  export async function createAndGetAdminToken(body?: Partial<InternalProjectsCrud["Admin"]["Create"]>) {
+  export async function createAndGetAdminToken(body?: Partial<AdminUserProjectsCrud["Admin"]["Create"]>) {
     backendContext.set({
       projectKeys: InternalProjectKeys,
       userAuth: null,
@@ -1030,7 +1083,7 @@ export namespace Project {
     };
   }
 
-  export async function createAndSwitch(body?: Partial<InternalProjectsCrud["Admin"]["Create"]>) {
+  export async function createAndSwitch(body?: Partial<AdminUserProjectsCrud["Admin"]["Create"]>) {
     const createResult = await Project.createAndGetAdminToken(body);
     backendContext.set({
       projectKeys: {
@@ -1075,7 +1128,7 @@ export namespace Team {
     };
   }
 
-  export async function createAndAddCurrent(options: { accessType?: "client" | "server" } = {}, body?: any) {
+  export async function createWithCurrentAsCreator(options: { accessType?: "client" | "server" } = {}, body?: any) {
     return await Team.create({ ...options, addCurrentUser: true }, body);
   }
 
@@ -1095,6 +1148,15 @@ export namespace Team {
         "headers": Headers { <some fields may have been hidden> },
       }
     `);
+  }
+
+  export async function addPermission(teamId: string, userId: string, permissionId: string) {
+    const response = await niceBackendFetch(`/api/v1/team-permissions/${teamId}/${userId}/${permissionId}`, {
+      method: "POST",
+      accessType: "server",
+      body: {},
+    });
+    return response;
   }
 
   export async function sendInvitation(mail: string | Mailbox, teamId: string) {
@@ -1148,6 +1210,69 @@ export namespace Team {
   }
 }
 
+export namespace User {
+  export function setBackendContextFromUser({ mailbox, accessToken, refreshToken }: {mailbox: Mailbox, accessToken: string, refreshToken: string}) {
+    backendContext.set({
+      mailbox,
+      userAuth: {
+        accessToken,
+        refreshToken,
+      },
+    });
+  }
+
+  export async function getCurrent() {
+    const response = await niceBackendFetch("/api/v1/users/me", {
+      accessType: "client",
+    });
+    expect(response).toMatchObject({
+      status: 200,
+    });
+    return response.body;
+  }
+
+  export async function create({ emailAddress }: {emailAddress?: string} = {}) {
+    // Create new mailbox
+    const email = emailAddress ?? `unindexed-mailbox--${randomUUID()}${generatedEmailSuffix}`;
+    const mailbox = createMailbox(email);
+    const password = generateSecureRandomString();
+    const createUserResponse = await niceBackendFetch("/api/v1/auth/password/sign-up", {
+      method: "POST",
+      accessType: "client",
+      body: {
+        email,
+        password,
+        verification_callback_url: "http://localhost:12345/some-callback-url",
+      },
+    });
+      expect(createUserResponse).toMatchObject({
+        status: 200,
+        body: {
+          access_token: expect.any(String),
+          refresh_token: expect.any(String),
+          user_id: expect.any(String),
+        },
+        headers: expect.anything(),
+      });
+      return {
+        userId: createUserResponse.body.user_id,
+        mailbox,
+        accessToken: createUserResponse.body.access_token,
+        refreshToken: createUserResponse.body.refresh_token,
+      };
+  }
+
+  export async function createMultiple(count: number) {
+    const users = [];
+    for (let i = 0; i < count; i++) {
+      const user = await User.create({});
+        users.push(user);
+    }
+    return users;
+  }
+}
+
+
 export namespace Webhook {
   export async function createProjectWithEndpoint() {
     const { projectId } = await Project.createAndSwitch({
@@ -1180,6 +1305,23 @@ export namespace Webhook {
       svixToken,
       endpointId: createEndpointResponse.body.id
     };
+  }
+
+  export async function findWebhookAttempt(projectId: string, endpointId: string, svixToken: string, fn: (msg: any) => boolean) {
+    // retry many times because Svix sucks and is slow
+    for (let i = 0; i < 20; i++) {
+      const attempts = await Webhook.listWebhookAttempts(projectId, endpointId, svixToken);
+      const filtered = attempts.filter(fn);
+      if (filtered.length === 0) {
+        await wait(500);
+        continue;
+      } else if (filtered.length === 1) {
+        return filtered[0];
+      } else {
+        throw new Error(`Found ${filtered.length} webhook attempts for project ${projectId}, endpoint ${endpointId}`);
+      }
+    }
+    throw new Error(`Webhook attempt not found for project ${projectId}, endpoint ${endpointId}`);
   }
 
   export async function listWebhookAttempts(projectId: string, endpointId: string, svixToken: string) {

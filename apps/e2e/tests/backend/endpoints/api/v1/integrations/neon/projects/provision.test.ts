@@ -34,7 +34,7 @@ it("should be able to provision a new project if neon client details are correct
       superSecretAdminKey: response.body.super_secret_admin_key,
     },
   });
-  const project = await niceBackendFetch(`/api/v1/projects/current`, {
+  const project = await niceBackendFetch(`/api/v1/internal/projects/current`, {
     method: "GET",
     accessType: "admin",
   });
@@ -56,25 +56,22 @@ it("should be able to provision a new project if neon client details are correct
             { "id": "github" },
             { "id": "google" },
           ],
-          "id": "<stripped UUID>",
           "magic_link_enabled": false,
           "oauth_account_merge_strategy": "link_method",
           "oauth_providers": [
             {
-              "enabled": true,
               "id": "github",
               "type": "shared",
             },
             {
-              "enabled": true,
               "id": "google",
               "type": "shared",
             },
           ],
           "passkey_enabled": false,
           "sign_up_enabled": true,
-          "team_creator_default_permissions": [{ "id": "admin" }],
-          "team_member_default_permissions": [{ "id": "member" }],
+          "team_creator_default_permissions": [{ "id": "team_admin" }],
+          "team_member_default_permissions": [{ "id": "team_member" }],
           "user_default_permissions": [],
         },
         "created_at_millis": <stripped field 'created_at_millis'>,
@@ -96,7 +93,7 @@ it("should fail if the neon client details are incorrect", async ({ expect }) =>
       display_name: "Test project",
     },
     headers: {
-      "Authorization": "Basic bmVvbi1sb2NhbDpuZW9uLWxvY2FsLXMlY3JldA==",
+      "Authorization": "Basic bmVvbi1sb2NhbDpuZW9uLWxvY2FsLXMlY2JldA==",
     },
   });
   expect(response).toMatchInlineSnapshot(`
@@ -107,12 +104,12 @@ it("should fail if the neon client details are incorrect", async ({ expect }) =>
         "details": {
           "message": deindent\`
             Request validation failed on POST /api/v1/integrations/neon/projects/provision:
-              - Invalid client_id:client_secret values; did you use the correct values for the Neon integration?
+              - Invalid client_id:client_secret values; did you use the correct values for the integration?
           \`,
         },
         "error": deindent\`
           Request validation failed on POST /api/v1/integrations/neon/projects/provision:
-            - Invalid client_id:client_secret values; did you use the correct values for the Neon integration?
+            - Invalid client_id:client_secret values; did you use the correct values for the integration?
         \`,
       },
       "headers": Headers {

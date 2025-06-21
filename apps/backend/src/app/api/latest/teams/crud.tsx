@@ -73,7 +73,7 @@ export const teamsCrudHandlers = createLazyProxy(() => createCrudHandlers(teamsC
         data: {
           displayName: data.display_name,
           mirroredProjectId: auth.project.id,
-          mirroredBranchId: auth.tenancy.branchId,
+          mirroredBranchId: auth.branchId,
           tenancyId: auth.tenancy.id,
           profileImageUrl: data.profile_image_url,
           clientMetadata: data.client_metadata === null ? Prisma.JsonNull : data.client_metadata,

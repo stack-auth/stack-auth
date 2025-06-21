@@ -17,10 +17,10 @@ declare module "yup" {
 
   // eslint-disable-next-line @typescript-eslint/consistent-type-definitions
   interface Schema<TType, TContext, TDefault, TFlags> {
-    getNested<K extends keyof TType>(path: K): yup.Schema<TType[K], TContext, TDefault, TFlags>,
+    getNested<K extends keyof NonNullable<TType>>(path: K): yup.Schema<NonNullable<TType>[K], TContext, TDefault, TFlags>,
 
     // the default types for concat kinda suck, so let's fix that
-    concat<U extends yup.AnySchema>(schema: U): yup.Schema<Omit<TType, keyof yup.InferType<U>> & yup.InferType<U>, TContext, TDefault, TFlags>,
+    concat<U extends yup.AnySchema>(schema: U): yup.Schema<Omit<NonNullable<TType>, keyof yup.InferType<U>> & yup.InferType<U> | (TType & (null | undefined)), TContext, TDefault, TFlags>,
   }
 }
 
@@ -151,9 +151,9 @@ export function yupObject<A extends yup.Maybe<yup.AnyObject>, B extends yup.Obje
           if (unknownKeys.length > 0) {
             // TODO "did you mean XYZ"
             return context.createError({
-              message: `${context.path} contains unknown properties: ${unknownKeys.join(', ')}`,
+              message: `${context.path || "Object"} contains unknown properties: ${unknownKeys.join(', ')}`,
               path: context.path,
-              params: { unknownKeys },
+              params: { unknownKeys, availableKeys },
             });
           }
         }
@@ -195,6 +195,47 @@ export function yupUnion<T extends yup.ISchema<any>[]>(...args: T): yup.MixedSch
       path: context.path,
     });
   });
+}
+
+export function yupRecord<K extends yup.StringSchema, T extends yup.AnySchema>(
+  keySchema: K,
+  valueSchema: T,
+): yup.MixedSchema<Record<string, yup.InferType<T>>> {
+  return yupObject().unknown(true).test(
+    'record',
+    '${path} must be a record of valid values',
+    async function (value: unknown, context: yup.TestContext) {
+      if (value == null) return true;
+      const { path, createError } = this as any;
+      if (typeof value !== 'object') {
+        return createError({ message: `${path} must be an object` });
+      }
+
+      // Validate each property using the provided valueSchema
+      for (const key of Object.keys(value)) {
+        // Validate the key
+        await yupValidate(keySchema, key, context.options);
+
+        // Validate the value
+        try {
+          await yupValidate(valueSchema, (value as Record<string, unknown>)[key], {
+            ...context.options,
+            context: {
+              ...context.options.context,
+              path: path ? `${path}.${key}` : key,
+            },
+          });
+        } catch (e: any) {
+          return createError({
+            path: path ? `${path}.${key}` : key,
+            message: e.message,
+          });
+        }
+      }
+
+      return true;
+    },
+  ) as any;
 }
 
 export function ensureObjectSchema<T extends yup.AnyObject>(schema: yup.Schema<T>): yup.ObjectSchema<T> & typeof schema {
@@ -249,9 +290,37 @@ export const passwordSchema = yupString().max(70);
  * `emailSchema` instead until we do the DB migration.
  */
 // eslint-disable-next-line no-restricted-syntax
-export const strictEmailSchema = (message: string | undefined) => yupString().email(message).matches(/^[^.].*@.*\.[^.][^.]+$/, message);
+export const strictEmailSchema = (message: string | undefined) => yupString().email(message).matches(/^[^.]+(\.[^.]+)*@.*\.[^.][^.]+$/, message);
 // eslint-disable-next-line no-restricted-syntax
 export const emailSchema = yupString().email();
+
+import.meta.vitest?.test('strictEmailSchema', ({ expect }) => {
+  const validEmails = [
+    "a@example.com",
+    "abc@example.com",
+    "a.b@example.com",
+    "throwaway.mail+token@example.com",
+    "email-alt-dash@demo-mail.com",
+    "test-account@weird-domain.net",
+    "%!~&+{}=|`#@domain.test",
+    "admin@a.longtldexample",
+  ];
+  for (const email of validEmails) {
+    expect(strictEmailSchema(undefined).validateSync(email)).toBe(email);
+  }
+  const invalidEmails = [
+    "test@localhost",
+    "test@gmail",
+    "test@gmail.com.a",
+    "test@gmail.a",
+    "test.@example.com",
+    "test..test@example.com",
+    ".test@example.com",
+  ];
+  for (const email of invalidEmails) {
+    expect(() => strictEmailSchema(undefined).validateSync(email)).toThrow();
+  }
+});
 
 // Request auth
 export const clientOrHigherAuthTypeSchema = yupString().oneOf(['client', 'server', 'admin']).defined();
@@ -260,6 +329,7 @@ export const adminAuthTypeSchema = yupString().oneOf(['admin']).defined();
 
 // Projects
 export const projectIdSchema = yupString().test((v) => v === undefined || v === "internal" || isUuid(v)).meta({ openapiField: { description: _idDescription('project'), exampleValue: 'e0b52f4d-dece-408c-af49-d23061bb0f8d' } });
+export const projectBranchIdSchema = yupString().nonEmpty().max(255).meta({ openapiField: { description: _idDescription('project branch'), exampleValue: 'main' } });
 export const projectDisplayNameSchema = yupString().meta({ openapiField: { description: _displayNameDescription('project'), exampleValue: 'MyMusic' } });
 export const projectDescriptionSchema = yupString().nullable().meta({ openapiField: { description: 'A human readable description of the project', exampleValue: 'A music streaming service' } });
 export const projectCreatedAtMillisSchema = yupNumber().meta({ openapiField: { description: _createdAtMillisDescription('project'), exampleValue: 1630000000000 } });
@@ -410,10 +480,10 @@ export const basicAuthorizationHeaderSchema = yupString().test('is-basic-authori
 });
 
 // Neon integration
-export const neonAuthorizationHeaderSchema = basicAuthorizationHeaderSchema.test('is-neon-authorization-header', 'Invalid client_id:client_secret values; did you use the correct values for the Neon integration?', (value) => {
+export const neonAuthorizationHeaderSchema = basicAuthorizationHeaderSchema.test('is-authorization-header', 'Invalid client_id:client_secret values; did you use the correct values for the integration?', (value) => {
   if (!value) return true;
-  const [clientId, clientSecret] = decodeBasicAuthorizationHeader(value) ?? throwErr(`Neon authz header invalid? This should've been validated by basicAuthorizationHeaderSchema: ${value}`);
-  for (const neonClientConfig of JSON.parse(process.env.STACK_NEON_INTEGRATION_CLIENTS_CONFIG || '[]')) {
+  const [clientId, clientSecret] = decodeBasicAuthorizationHeader(value) ?? throwErr(`Authz header invalid? This should've been validated by basicAuthorizationHeaderSchema: ${value}`);
+  for (const neonClientConfig of JSON.parse(process.env.STACK_INTEGRATION_CLIENTS_CONFIG || '[]')) {
     if (clientId === neonClientConfig.client_id && clientSecret === neonClientConfig.client_secret) return true;
   }
   return false;

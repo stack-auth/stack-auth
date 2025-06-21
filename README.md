@@ -7,7 +7,7 @@
   | <a href="https://discord.stack-auth.com">🎮 Discord</a>
 </h4>
 
-# Stack Auth: Open-source Clerk/Auth0 alternative
+# Stack Auth: The open-source auth platform
 
 Stack Auth is a managed user authentication solution. It is developer-friendly and fully open-source (licensed under MIT and AGPL).
 

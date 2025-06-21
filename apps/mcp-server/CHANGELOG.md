@@ -1,5 +1,73 @@
 # @stackframe/mcp-server
 
+## 2.8.15
+
+### Patch Changes
+
+- @stackframe/js@2.8.15
+
+## 2.8.14
+
+### Patch Changes
+
+- @stackframe/js@2.8.14
+
+## 2.8.13
+
+### Patch Changes
+
+- @stackframe/js@2.8.13
+
+## 2.8.12
+
+### Patch Changes
+
+- Various changes
+  - @stackframe/js@2.8.12
+
+## 2.8.11
+
+### Patch Changes
+
+- @stackframe/js@2.8.11
+
+## 2.8.10
+
+### Patch Changes
+
+- @stackframe/js@2.8.10
+
+## 2.8.9
+
+### Patch Changes
+
+- Various changes
+  - @stackframe/js@2.8.9
+
+## 2.8.8
+
+### Patch Changes
+
+- @stackframe/js@2.8.8
+
+## 2.8.7
+
+### Patch Changes
+
+- @stackframe/js@2.8.7
+
+## 2.8.6
+
+### Patch Changes
+
+- @stackframe/js@2.8.6
+
+## 2.8.5
+
+### Patch Changes
+
+- @stackframe/js@2.8.5
+
 ## 2.8.4
 
 ### Patch Changes

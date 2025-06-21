@@ -1,11 +1,24 @@
 import { PrismaClient } from "@prisma/client";
 import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
 import { StackAssertionError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
-import { filterUndefined } from "@stackframe/stack-shared/dist/utils/objects";
+import { deepPlainEquals, filterUndefined, omit } from "@stackframe/stack-shared/dist/utils/objects";
 import { wait } from "@stackframe/stack-shared/dist/utils/promises";
 import { deindent } from "@stackframe/stack-shared/dist/utils/strings";
+import fs from "fs";
 
 const prismaClient = new PrismaClient();
+const OUTPUT_FILE_PATH = "./verify-data-integrity-output.untracked.json";
+
+type EndpointOutput = {
+  status: number,
+  responseJson: any,
+};
+
+type OutputData = Record<string, EndpointOutput[]>;
+
+let targetOutputData: OutputData | undefined = undefined;
+const currentOutputData: OutputData = {};
+
 
 async function main() {
   console.log();
@@ -55,7 +68,44 @@ async function main() {
   console.log();
   console.log();
 
-  const startAt = Math.max(0, +(process.argv[2] || "1") - 1);
+  const numericArgs = process.argv.filter(arg => arg.match(/^[0-9]+$/)).map(arg => +arg);
+  const startAt = Math.max(0, (numericArgs[0] ?? 1) - 1);
+  const count = numericArgs[1] ?? Infinity;
+  const flags = process.argv.slice(1);
+  const skipUsers = flags.includes("--skip-users");
+  const shouldSaveOutput = flags.includes("--save-output");
+  const shouldVerifyOutput = flags.includes("--verify-output");
+
+
+  if (shouldSaveOutput) {
+    console.log(`Will save output to ${OUTPUT_FILE_PATH}`);
+  }
+
+  if (shouldVerifyOutput) {
+    if (!fs.existsSync(OUTPUT_FILE_PATH)) {
+      throw new Error(`Cannot verify output: ${OUTPUT_FILE_PATH} does not exist`);
+    }
+    try {
+      targetOutputData = JSON.parse(fs.readFileSync(OUTPUT_FILE_PATH, 'utf8'));
+
+      // TODO next-release these are hacks for the migration, delete them
+      if (targetOutputData) {
+        targetOutputData["/api/v1/internal/projects/current"] = targetOutputData["/api/v1/internal/projects/current"].map(output => {
+          if ("config" in output.responseJson) {
+            delete output.responseJson.config.id;
+            output.responseJson.config.oauth_providers = output.responseJson.config.oauth_providers
+              .filter((provider: any) => provider.enabled)
+              .map((provider: any) => omit(provider, ["enabled"]));
+          }
+          return output;
+        });
+      }
+
+      console.log(`Loaded previous output data for verification`);
+    } catch (error) {
+      throw new Error(`Failed to parse output file: ${error}`);
+    }
+  }
 
   const projects = await prismaClient.project.findMany({
     select: {
@@ -71,11 +121,14 @@ async function main() {
     console.log(`Starting at project ${startAt}.`);
   }
 
-  for (let i = startAt; i < projects.length; i++) {
+  const maxUsersPerProject = 10000;
+
+  const endAt = Math.min(startAt + count, projects.length);
+  for (let i = startAt; i < endAt; i++) {
     const projectId = projects[i].id;
-    await recurse(`[project ${i + 1}/${projects.length}] ${projectId} ${projects[i].displayName}`, async (recurse) => {
-      const [currentProject, users] = await Promise.all([
-        expectStatusCode(200, `/api/v1/projects/current`, {
+    await recurse(`[project ${(i + 1) - startAt}/${endAt - startAt}] ${projectId} ${projects[i].displayName}`, async (recurse) => {
+      const [currentProject, users, projectPermissionDefinitions, teamPermissionDefinitions] = await Promise.all([
+        expectStatusCode(200, `/api/v1/internal/projects/current`, {
           method: "GET",
           headers: {
             "x-stack-project-id": projectId,
@@ -83,7 +136,23 @@ async function main() {
             "x-stack-development-override-key": getEnvVariable("STACK_SEED_INTERNAL_PROJECT_SUPER_SECRET_ADMIN_KEY"),
           },
         }),
-        expectStatusCode(200, `/api/v1/users`, {
+        expectStatusCode(200, `/api/v1/users?limit=${maxUsersPerProject}`, {
+          method: "GET",
+          headers: {
+            "x-stack-project-id": projectId,
+            "x-stack-access-type": "admin",
+            "x-stack-development-override-key": getEnvVariable("STACK_SEED_INTERNAL_PROJECT_SUPER_SECRET_ADMIN_KEY"),
+          },
+        }),
+        expectStatusCode(200, `/api/v1/project-permission-definitions`, {
+          method: "GET",
+          headers: {
+            "x-stack-project-id": projectId,
+            "x-stack-access-type": "admin",
+            "x-stack-development-override-key": getEnvVariable("STACK_SEED_INTERNAL_PROJECT_SUPER_SECRET_ADMIN_KEY"),
+          },
+        }),
+        expectStatusCode(200, `/api/v1/team-permission-definitions`, {
           method: "GET",
           headers: {
             "x-stack-project-id": projectId,
@@ -92,23 +161,86 @@ async function main() {
           },
         }),
       ]);
-      if (users.pagination?.next_cursor) throwErr("Users are paginated? Please update the verify-data-integrity.ts script to handle this.");
-      if (currentProject.user_count !== users.items.length) throwErr("User count mismatch.");
+      if (Math.min(currentProject.user_count, maxUsersPerProject) !== users.items.length) throwErr("User count mismatch.", {
+        projectUserCount: currentProject.user_count,
+        usersUserCount: users.items.length,
+      });
 
-      for (let j = 0; j < users.items.length; j++) {
-        const user = users.items[j];
-        await recurse(`[user ${j + 1}/${users.items.length}] ${user.display_name ?? user.primary_email}`, async (recurse) => {
-          await expectStatusCode(200, `/api/v1/users/${user.id}`, {
-            method: "GET",
-            headers: {
-              "x-stack-project-id": projectId,
-              "x-stack-access-type": "admin",
-              "x-stack-development-override-key": getEnvVariable("STACK_SEED_INTERNAL_PROJECT_SUPER_SECRET_ADMIN_KEY"),
-            },
+      if (!skipUsers) {
+        for (let j = 0; j < users.items.length; j++) {
+          const user = users.items[j];
+          await recurse(`[user ${j + 1}/${users.items.length}] ${user.display_name ?? user.primary_email}`, async (recurse) => {
+            // get user individually
+            await expectStatusCode(200, `/api/v1/users/${user.id}`, {
+              method: "GET",
+              headers: {
+                "x-stack-project-id": projectId,
+                "x-stack-access-type": "admin",
+                "x-stack-development-override-key": getEnvVariable("STACK_SEED_INTERNAL_PROJECT_SUPER_SECRET_ADMIN_KEY"),
+              },
+            });
+
+            // list project permissions
+            const projectPermissions = await expectStatusCode(200, `/api/v1/project-permissions?user_id=${user.id}`, {
+              method: "GET",
+              headers: {
+                "x-stack-project-id": projectId,
+                "x-stack-access-type": "admin",
+                "x-stack-development-override-key": getEnvVariable("STACK_SEED_INTERNAL_PROJECT_SUPER_SECRET_ADMIN_KEY"),
+              },
+            });
+            for (const projectPermission of projectPermissions.items) {
+              if (!projectPermissionDefinitions.items.some((p: any) => p.id === projectPermission.id)) {
+                throw new StackAssertionError(deindent`
+                  Project permission ${projectPermission.id} not found in project permission definitions.
+                `);
+              }
+            }
+
+            // list teams
+            const teams = await expectStatusCode(200, `/api/v1/teams?user_id=${user.id}`, {
+              method: "GET",
+              headers: {
+                "x-stack-project-id": projectId,
+                "x-stack-access-type": "admin",
+                "x-stack-development-override-key": getEnvVariable("STACK_SEED_INTERNAL_PROJECT_SUPER_SECRET_ADMIN_KEY"),
+              },
+            });
+
+            for (const team of teams.items) {
+              await recurse(`[team ${team.id}] ${team.name}`, async (recurse) => {
+                // list team permissions
+                const teamPermissions = await expectStatusCode(200, `/api/v1/team-permissions?team_id=${team.id}`, {
+                  method: "GET",
+                  headers: {
+                    "x-stack-project-id": projectId,
+                    "x-stack-access-type": "admin",
+                    "x-stack-development-override-key": getEnvVariable("STACK_SEED_INTERNAL_PROJECT_SUPER_SECRET_ADMIN_KEY"),
+                  },
+                });
+                for (const teamPermission of teamPermissions.items) {
+                  if (!teamPermissionDefinitions.items.some((p: any) => p.id === teamPermission.id)) {
+                    throw new StackAssertionError(deindent`
+                      Team permission ${teamPermission.id} not found in team permission definitions.
+                    `);
+                  }
+                }
+              });
+            }
           });
-        });
+        }
       }
     });
+  }
+
+  if (targetOutputData && !deepPlainEquals(currentOutputData, targetOutputData)) {
+    throw new StackAssertionError(deindent`
+      Output data mismatch between final and target output data.
+    `);
+  }
+  if (shouldSaveOutput) {
+    fs.writeFileSync(OUTPUT_FILE_PATH, JSON.stringify(currentOutputData, null, 2));
+    console.log(`Output saved to ${OUTPUT_FILE_PATH}`);
   }
 
   console.log();
@@ -145,15 +277,56 @@ async function expectStatusCode(expectedStatusCode: number, endpoint: string, re
       ...filterUndefined(request.headers ?? {}),
     },
   });
+
+  const responseText = await response.text();
+
   if (response.status !== expectedStatusCode) {
     throw new StackAssertionError(deindent`
       Expected status code ${expectedStatusCode} but got ${response.status} for ${endpoint}:
 
-          ${await response.text()}
+          ${responseText}
     `, { request, response });
   }
-  const json = await response.json();
-  return json;
+
+  const responseJson = JSON.parse(responseText);
+  const currentOutput: EndpointOutput = {
+    status: response.status,
+    responseJson,
+  };
+
+  appendOutputData(endpoint, currentOutput);
+
+  return responseJson;
+}
+
+function appendOutputData(endpoint: string, output: EndpointOutput) {
+  if (!(endpoint in currentOutputData)) {
+    currentOutputData[endpoint] = [];
+  }
+  const newLength = currentOutputData[endpoint].push(output);
+  if (targetOutputData) {
+    if (!(endpoint in targetOutputData)) {
+      throw new StackAssertionError(deindent`
+        Output data mismatch for endpoint ${endpoint}:
+          Expected ${endpoint} to be in targetOutputData, but it is not.
+      `, { endpoint });
+    }
+    if (targetOutputData[endpoint].length < newLength) {
+      throw new StackAssertionError(deindent`
+        Output data mismatch for endpoint ${endpoint}:
+          Expected ${targetOutputData[endpoint].length} outputs but got at least ${newLength}.
+      `, { endpoint });
+    }
+    if (!(deepPlainEquals(targetOutputData[endpoint][newLength - 1], output))) {
+      throw new StackAssertionError(deindent`
+        Output data mismatch for endpoint ${endpoint}:
+          Expected output[${JSON.stringify(endpoint)}][${newLength - 1}] to be:
+            ${JSON.stringify(targetOutputData[endpoint][newLength - 1], null, 2)}
+          but got:
+            ${JSON.stringify(output, null, 2)}.
+      `, { endpoint });
+    }
+  }
 }
 
 let lastProgress = performance.now() - 9999999999;

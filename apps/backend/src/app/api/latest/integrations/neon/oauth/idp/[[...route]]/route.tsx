@@ -3,7 +3,7 @@ import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
 import { StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
 import { createNodeHttpServerDuplex } from "@stackframe/stack-shared/dist/utils/node-http";
 import { NextRequest, NextResponse } from "next/server";
-import { createOidcProvider } from "./idp";
+import { createOidcProvider } from "../../../../idp";
 
 export const dynamic = "force-dynamic";
 
@@ -19,6 +19,7 @@ function getOidcCallbackPromise() {
       const oidc = await createOidcProvider({
         id: "stack-preconfigured-idp:integrations/neon",
         baseUrl: idpBaseUrl.toString(),
+        clientInteractionUrl: new URL(`/integrations/neon/confirm`, getEnvVariable("NEXT_PUBLIC_STACK_DASHBOARD_URL")).toString(),
       });
       return oidc.callback();
     })();

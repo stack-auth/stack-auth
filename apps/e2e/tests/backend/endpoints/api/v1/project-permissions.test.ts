@@ -1,4 +1,3 @@
-import { wait } from "@stackframe/stack-shared/dist/utils/promises";
 import { it } from "../../../../helpers";
 import { Auth, InternalApiKey, InternalProjectKeys, Project, Webhook, backendContext, niceBackendFetch } from "../../../backend-helpers";
 
@@ -36,6 +35,51 @@ it("is not allowed to grant non-existing permission to a user on the server", as
       },
       "headers": Headers {
         "x-stack-known-error": "PERMISSION_NOT_FOUND",
+        <some fields may have been hidden>,
+      },
+    }
+  `);
+});
+
+it("does not grant a team permission to a user", async ({ expect }) => {
+  await Project.createAndSwitch({ config: { magic_link_enabled: true } });
+  const { userId } = await Auth.Otp.signIn();
+
+  const teamPermissionDefinitionResponse = await niceBackendFetch(`/api/v1/team-permission-definitions`, {
+    accessType: "admin",
+    method: "POST",
+    body: { id: 't1' },
+  });
+  expect(teamPermissionDefinitionResponse).toMatchInlineSnapshot(`
+    NiceResponse {
+      "status": 201,
+      "body": {
+        "contained_permission_ids": [],
+        "id": "t1",
+      },
+      "headers": Headers { <some fields may have been hidden> },
+    }
+  `);
+
+  const response = await niceBackendFetch(`/api/v1/project-permissions/${userId}/t1`, {
+    accessType: "server",
+    method: "POST",
+    body: {},
+  });
+  expect(response).toMatchInlineSnapshot(`
+    NiceResponse {
+      "status": 404,
+      "body": {
+        "code": "WRONG_PERMISSION_SCOPE",
+        "details": {
+          "actual_scope": "team",
+          "expected_scope": "project",
+          "permission_id": "t1",
+        },
+        "error": "Permission \\"t1\\" not found. (It was found for a different scope \\"team\\", but scope \\"project\\" was expected.)",
+      },
+      "headers": Headers {
+        "x-stack-known-error": "WRONG_PERMISSION_SCOPE",
         <some fields may have been hidden>,
       },
     }
@@ -180,14 +224,13 @@ it("can customize default user permissions", async ({ expect }) => {
           "domains": [],
           "email_config": { "type": "shared" },
           "enabled_oauth_providers": [],
-          "id": "<stripped UUID>",
           "magic_link_enabled": false,
           "oauth_account_merge_strategy": "link_method",
           "oauth_providers": [],
           "passkey_enabled": false,
           "sign_up_enabled": true,
-          "team_creator_default_permissions": [{ "id": "admin" }],
-          "team_member_default_permissions": [{ "id": "member" }],
+          "team_creator_default_permissions": [{ "id": "team_admin" }],
+          "team_member_default_permissions": [{ "id": "team_member" }],
           "user_default_permissions": [{ "id": "test" }],
         },
         "created_at_millis": <stripped field 'created_at_millis'>,
@@ -244,10 +287,7 @@ it("should trigger project permission webhook when a permission is granted to a 
 
   expect(grantPermissionResponse.status).toBe(201);
 
-  await wait(3000);
-
-  const attemptResponse = await Webhook.listWebhookAttempts(projectId, endpointId, svixToken);
-  const projectPermissionCreatedEvent = attemptResponse.find(event => event.eventType === "project_permission.created");
+  const projectPermissionCreatedEvent = await Webhook.findWebhookAttempt(projectId, endpointId, svixToken, event => event.eventType === "project_permission.created");
 
   expect(projectPermissionCreatedEvent).toMatchInlineSnapshot(`
     {
@@ -295,10 +335,7 @@ it("should trigger project permission webhook when a permission is revoked from 
 
   expect(revokePermissionResponse.status).toBe(200);
 
-  await wait(3000);
-
-  const attemptResponse = await Webhook.listWebhookAttempts(projectId, endpointId, svixToken);
-  const projectPermissionDeletedEvent = attemptResponse.find(event => event.eventType === "project_permission.deleted");
+  const projectPermissionDeletedEvent = await Webhook.findWebhookAttempt(projectId, endpointId, svixToken, event => event.eventType === "project_permission.deleted");
 
   expect(projectPermissionDeletedEvent).toMatchInlineSnapshot(`
     {

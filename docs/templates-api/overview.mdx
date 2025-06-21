@@ -1,0 +1,100 @@
+---
+title: API Reference
+description: Complete REST API documentation for Stack Auth
+full: true
+---
+
+# REST API & Webhooks
+
+Stack offers a REST API for backends & frontends of any programming language or framework. This API is used to authenticate users, manage user data, and more.
+
+## Authentication
+
+The following authentication headers are common to every endpoint:
+
+```http
+curl https://api.stack-auth.com/api/v1/ \
+     -H "X-Stack-Access-Type: <either 'client' or 'server'>" \
+     -H "X-Stack-Project-Id: <your project UUID>" \
+     -H "X-Stack-Publishable-Client-Key: pck_<your publishable client key>" \
+     -H "X-Stack-Secret-Server-Key: ssk_<your secret server key>" \
+     -H "X-Stack-Access-Token: <the current user's access token>"
+```
+
+| Header | Type | Description |
+| ------ | ---- | ----------- |
+| `X-Stack-Access-Type` | "client" \| "server" | Required. "client" (without quotes) for the frontend API, or "server" for the backend API. |
+| `X-Stack-Project-Id` | UUID | Required. The project ID as found on the Stack dashboard. |
+| `X-Stack-Publishable-Client-Key` | string | Required for client access. The API key as found on the Stack dashboard. |
+| `X-Stack-Secret-Server-Key` | string | Required for server access. The API key as found on the Stack dashboard. |
+| `X-Stack-Access-Token` | string | Optional. The access token for the current user. If not given, the request is considered to be logged out. |
+
+<Info type="info">
+{/* IF_PLATFORM python */}
+To see how to use these headers in various programming languages, see the [Getting Started guide](./../getting-started/setup.mdx).
+{/* ELSE_IF_PLATFORM js-like */}
+To see how to use these headers in various programming languages, see the [examples](./../concepts/backend-integration.mdx).
+{/* END_IF_PLATFORM */}
+</Info>
+
+## Getting Started
+
+<Steps>
+  <Step>
+    **Choose the right API**: Select the API category that matches your use case from the cards above
+  </Step>
+  <Step>
+    **Set up authentication**: Configure the appropriate authentication method (sessions, API keys, or webhook verification)
+  </Step>
+  <Step>
+    **Make requests**: Use the documented endpoints with proper authentication headers
+  </Step>
+  <Step>
+    **Handle responses**: Process the API responses according to the documentation and error handling guidelines
+  </Step>
+</Steps>
+
+## FAQ
+
+<AccordionGroup>
+  <Accordion title="Which languages are supported?">
+    Any language that has the ability to send HTTP requests can use the Stack REST API. This includes JavaScript, Python, Ruby, Java, Go, C#, Dart, and many more.
+  </Accordion>
+  
+  <Accordion title="Should I use client or server access type?">
+    **Client access type** is mostly used for client-side applications, like a browser or mobile app. The client APIs can only read and update the currently authenticated user's data, and it is usually fine to post the publishable client key in the client-side code.
+
+    **Server access type**, on the other hand, is for your backend server that you control. It has full access over all user data, and the secret server key should never be exposed to client-side code.
+
+    For more information, see the concept documentation on [StackApp](../concepts/stack-app#client-vs-server).
+  </Accordion>
+  
+  <Accordion title="What is this 'admin' access type that I see?">
+    If you'd like to build your own version of the Stack dashboard (or update project configuration programmatically), you can use the `admin` access type. These endpoints are very dangerous and you should only use them if you know what you're doing.
+
+    For more information, see the concept documentation on [StackApp](../concepts/stack-app#client-vs-server).
+  </Accordion>
+
+  <Accordion title="How do I handle API errors?">
+    Stack Auth API returns standard HTTP status codes. Common error responses include:
+    
+    - `400 Bad Request` - Invalid request parameters
+    - `401 Unauthorized` - Invalid or missing authentication
+    - `403 Forbidden` - Insufficient permissions
+    - `404 Not Found` - Resource not found
+    - `429 Too Many Requests` - Rate limit exceeded
+    - `500 Internal Server Error` - Server error
+
+    Error responses include a JSON body with additional details about the error.
+  </Accordion>
+
+  <Accordion title="Are there rate limits?">
+    Yes, Stack Auth implements rate limiting to ensure fair usage and system stability. Rate limits vary by endpoint and access type. When you exceed the rate limit, you'll receive a `429 Too Many Requests` response with headers indicating when you can retry.
+  </Accordion>
+</AccordionGroup>
+
+## Need Help?
+
+- Check out our [Getting Started Guide](/docs/next/getting-started/setup) for initial setup
+- Visit our [Concepts](/docs/next/concepts) section to understand Stack Auth fundamentals  
+- Join our [Discord community](https://discord.stack-auth.com/) for support and discussions

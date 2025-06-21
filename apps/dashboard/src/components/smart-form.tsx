@@ -15,6 +15,7 @@ declare module 'yup' {
   export interface CustomSchemaMetadata {
     stackFormFieldRender?: (props: { control: ReturnType<typeof useForm>['control'], name: string, label: string, disabled: boolean }) => React.ReactNode,
     stackFormFieldPlaceholder?: string,
+    stackFormFieldExtraProps?: Record<string, unknown>,
     type?: "text" | "textarea",
     description?: string,
   }
@@ -79,6 +80,7 @@ function SmartFormField(props: {
       typeof props.defaultValue === "string" ? `Eg.: ${props.defaultValue}` : undefined,
     defaultValue: props.defaultValue,
     description: "meta" in props.description ? props.description.meta?.description : undefined,
+    ..."meta" in props.description ? props.description.meta?.stackFormFieldExtraProps ?? {} : {},
   };
 
   if ("meta" in props.description) {

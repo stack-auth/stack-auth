@@ -1,10 +1,11 @@
 'use client';
 
-import { BrandIcons, Button } from '@stackframe/stack-ui';
+import { BrandIcons, Button, SimpleTooltip } from '@stackframe/stack-ui';
 import Color from 'color';
 import { useEffect, useId, useState } from 'react';
 import { useStackApp } from '..';
 import { useTranslation } from '../lib/translations';
+import { useInIframe } from './use-in-iframe';
 
 const iconSize = 22;
 
@@ -27,6 +28,7 @@ export function OAuthButton({
   const { t } = useTranslation();
   const stackApp = useStackApp();
   const styleId = useId().replaceAll(':', '-');
+  const isIframe = useInIframe();
 
   const [lastUsed, setLastUsed] = useState<string | null>(null);
   useEffect(() => {
@@ -167,28 +169,35 @@ export function OAuthButton({
   return (
     <>
       <style>{styleSheet}</style>
-      <Button
-        onClick={async () => {
-          localStorage.setItem('_STACK_AUTH.lastUsed', provider);
-          await stackApp.signInWithOAuth(provider);
-        }}
-        className={`stack-oauth-button-${styleId} stack-scope relative`}
+      <SimpleTooltip
+        disabled={!isIframe}
+        tooltip={isIframe ? "This auth provider is not supported in an iframe for security reasons." : undefined}
+        className='stack-scope w-full inline-flex'
       >
-        {!isMock && lastUsed === provider && (
-          <span className="absolute -top-2 -right-2 bg-blue-500 text-white text-xs px-2 py-1 rounded-md">
+        <Button
+          onClick={async () => {
+            localStorage.setItem('_STACK_AUTH.lastUsed', provider);
+            await stackApp.signInWithOAuth(provider);
+          }}
+          className={`stack-oauth-button-${styleId} stack-scope relative w-full`}
+          disabled={isIframe}
+        >
+          {!isMock && lastUsed === provider && (
+            <span className="absolute -top-2 -right-2 bg-blue-500 text-white text-xs px-2 py-1 rounded-md">
             last
-          </span>
-        )}
-        <div className='flex items-center w-full gap-4'>
-          {style.icon}
-          <span className='flex-1'>
-            {type === 'sign-up' ?
+            </span>
+          )}
+          <div className='flex items-center w-full gap-4'>
+            {style.icon}
+            <span className='flex-1'>
+              {type === 'sign-up' ?
               t('Sign up with {provider}', { provider: style.name }) :
               t('Sign in with {provider}', { provider: style.name })
-            }
-          </span>
-        </div>
-      </Button>
+              }
+            </span>
+          </div>
+        </Button>
+      </SimpleTooltip>
     </>
   );
 }

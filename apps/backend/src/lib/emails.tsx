@@ -21,8 +21,8 @@ export async function getEmailTemplate(projectId: string, type: keyof typeof EMA
 
   const template = await prismaClient.emailTemplate.findUnique({
     where: {
-      projectConfigId_type: {
-        projectConfigId: project.config.id,
+      projectId_type: {
+        projectId,
         type: typedToUppercase(type),
       },
     },
@@ -92,7 +92,38 @@ async function _sendEmailWithoutRetries(options: SendEmailOptions): Promise<Resu
     }
   });
   try {
-    return await traceSpan('sending email to ' + JSON.stringify(options.to), async () => {
+    let toArray = typeof options.to === 'string' ? [options.to] : options.to;
+
+    // use Emailable to check if the email is valid. skip the ones that are not (it's as if they had bounced)
+    const emailableApiKey = getEnvVariable('STACK_EMAILABLE_API_KEY');
+    if (emailableApiKey) {
+      await traceSpan('verifying email addresses with Emailable', async () => {
+        toArray = (await Promise.all(toArray.map(async (to) => {
+          const emailableResponse = await fetch(`https://api.emailable.com/v1/verify?email=${encodeURIComponent(options.to as string)}&api_key=${emailableApiKey}`);
+          if (!emailableResponse.ok) {
+            throw new StackAssertionError("Failed to verify email address with Emailable", {
+              to: options.to,
+              emailableResponse,
+              emailableResponseText: await emailableResponse.text(),
+            });
+          }
+          const json = await emailableResponse.json();
+          if (json.state !== 'deliverable') {
+            console.log('email not deliverable', to, json);
+            return null;
+          }
+          return to;
+        }))).filter((to): to is string => to !== null);
+      });
+    }
+
+    if (toArray.length === 0) {
+      // no valid emails, so we can just return ok
+      // (we skip silently because this is not an error)
+      return Result.ok(undefined);
+    }
+
+    return await traceSpan('sending email to ' + JSON.stringify(toArray), async () => {
       try {
         const transporter = nodemailer.createTransport({
           host: options.emailConfig.host,
@@ -107,6 +138,7 @@ async function _sendEmailWithoutRetries(options: SendEmailOptions): Promise<Resu
         await transporter.sendMail({
           from: `"${options.emailConfig.senderName}" <${options.emailConfig.senderEmail}>`,
           ...options,
+          to: toArray,
         });
 
         return Result.ok(undefined);
@@ -244,6 +276,10 @@ export async function sendEmailWithoutRetries(options: SendEmailOptions): Promis
 }
 
 export async function sendEmail(options: SendEmailOptions) {
+  if (!options.to) {
+    throw new StackAssertionError("No recipient email address provided to sendEmail", omit(options, ['emailConfig']));
+  }
+
   return Result.orThrow(await Result.retry(async (attempt) => {
     const result = await sendEmailWithoutRetries(options);
 
@@ -253,16 +289,16 @@ export async function sendEmail(options: SendEmailOptions) {
         from: options.emailConfig.senderEmail,
         to: options.to,
         subject: options.subject,
-        cause: result.error.rawError,
+        error: result.error,
       };
 
       if (result.error.canRetry) {
-            console.warn("Failed to send email, but error is possibly transient so retrying.", extraData, result.error.rawError);
-            return Result.error(result.error);
+        console.warn("Failed to send email, but error is possibly transient so retrying.", extraData, result.error.rawError);
+        return Result.error(result.error);
       }
 
       // TODO if using custom email config, we should notify the developer instead of throwing an error
-      throw new StackAssertionError('Failed to send email', extraData);
+      throw new StackAssertionError('Failed to send email: ' + result.error.rawError?.message, extraData);
     }
 
     return result;
@@ -300,16 +336,7 @@ async function getEmailConfig(tenancy: Tenancy): Promise<EmailConfig> {
   const projectEmailConfig = tenancy.config.email_config;
 
   if (projectEmailConfig.type === 'shared') {
-    return {
-      host: getEnvVariable('STACK_EMAIL_HOST'),
-      port: parseInt(getEnvVariable('STACK_EMAIL_PORT')),
-      username: getEnvVariable('STACK_EMAIL_USERNAME'),
-      password: getEnvVariable('STACK_EMAIL_PASSWORD'),
-      senderEmail: getEnvVariable('STACK_EMAIL_SENDER'),
-      senderName: tenancy.project.display_name,
-      secure: isSecureEmailPort(getEnvVariable('STACK_EMAIL_PORT')),
-      type: 'shared',
-    };
+    return await getSharedEmailConfig(tenancy.project.display_name);
   } else {
     if (!projectEmailConfig.host || !projectEmailConfig.port || !projectEmailConfig.username || !projectEmailConfig.password || !projectEmailConfig.sender_email || !projectEmailConfig.sender_name) {
       throw new StackAssertionError("Email config is not complete despite not being shared. This should never happen?", { projectId: tenancy.id, emailConfig: projectEmailConfig });
@@ -325,4 +352,18 @@ async function getEmailConfig(tenancy: Tenancy): Promise<EmailConfig> {
       type: 'standard',
     };
   }
+}
+
+
+export async function getSharedEmailConfig(displayName: string): Promise<EmailConfig> {
+  return {
+    host: getEnvVariable('STACK_EMAIL_HOST'),
+    port: parseInt(getEnvVariable('STACK_EMAIL_PORT')),
+    username: getEnvVariable('STACK_EMAIL_USERNAME'),
+    password: getEnvVariable('STACK_EMAIL_PASSWORD'),
+    senderEmail: getEnvVariable('STACK_EMAIL_SENDER'),
+    senderName: displayName,
+    secure: isSecureEmailPort(getEnvVariable('STACK_EMAIL_PORT')),
+    type: 'shared',
+  };
 }

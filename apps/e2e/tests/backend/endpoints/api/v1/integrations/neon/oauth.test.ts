@@ -1,4 +1,5 @@
 import { encodeBase64Url } from "@stackframe/stack-shared/dist/utils/bytes";
+import { encodeBasicAuthorizationHeader } from "@stackframe/stack-shared/dist/utils/http";
 import { expect } from "vitest";
 import { it, updateCookiesFromResponse } from "../../../../../../helpers";
 import { Auth, InternalApiKey, Project, backendContext, niceBackendFetch } from "../../../../../backend-helpers";
@@ -94,7 +95,7 @@ async function authorize(projectId: string) {
         "status": 307,
         "body": "http://localhost:8101/integrations/neon/confirm?interaction_uid=%3Cstripped+query+param%3E&amp=",
         "headers": Headers {
-          "location": "http://localhost:8101/integrations/neon/confirm?interaction_uid=%3Cstripped+query+param%3E&neon_project_name=neon-project",
+          "location": "http://localhost:8101/integrations/neon/confirm?interaction_uid=%3Cstripped+query+param%3E&external_project_name=neon-project",
           <some fields may have been hidden>,
         },
       },
@@ -202,7 +203,7 @@ it(`should exchange the authorization code for an admin API key that works`, asy
       redirect_uri: "http://localhost:30000/api/v2/auth/authorize",
     },
     headers: {
-      "Authorization": "Basic bmVvbi1sb2NhbDpuZW9uLWxvY2FsLXNlY3JldA=="
+      "Authorization": encodeBasicAuthorizationHeader("neon-local", "neon-local-secret")
     },
   });
   expect(tokenResponse).toMatchInlineSnapshot(`
@@ -232,7 +233,7 @@ it(`should exchange the authorization code for an admin API key that works`, asy
       "items": [
         {
           "created_at_millis": <stripped field 'created_at_millis'>,
-          "description": "Auto-generated for Neon",
+          "description": "Auto-generated for an external project",
           "expires_at_millis": <stripped field 'expires_at_millis'>,
           "id": "<stripped UUID>",
           "super_secret_admin_key": { "last_four": <stripped field 'last_four'> },
@@ -256,7 +257,7 @@ it(`should not exchange the authorization code when the client secret is incorre
       redirect_uri: "http://localhost:30000/api/v2/auth/authorize",
     },
     headers: {
-      "Authorization": "Basic bmVvbi1sb2NhbDpuZW9uLWxvY2FsLXNlY2JldA=="
+      "Authorization": encodeBasicAuthorizationHeader("neon-local", "wrong-secret")
     },
   });
   expect(tokenResponse).toMatchInlineSnapshot(`
@@ -267,12 +268,12 @@ it(`should not exchange the authorization code when the client secret is incorre
         "details": {
           "message": deindent\`
             Request validation failed on POST /api/v1/integrations/neon/oauth/token:
-              - Invalid client_id:client_secret values; did you use the correct values for the Neon integration?
+              - Invalid client_id:client_secret values; did you use the correct values for the integration?
           \`,
         },
         "error": deindent\`
           Request validation failed on POST /api/v1/integrations/neon/oauth/token:
-            - Invalid client_id:client_secret values; did you use the correct values for the Neon integration?
+            - Invalid client_id:client_secret values; did you use the correct values for the integration?
         \`,
       },
       "headers": Headers {

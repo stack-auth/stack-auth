@@ -51,8 +51,16 @@ fi
 
 # ============= ENV VARS =============
 
-# Find all files in /app/apps that contain a STACK_ENV_VAR_SENTINEL and extract the unique sentinel strings.
-unhandled_sentinels=$(find /app/apps -type f -exec grep -l "STACK_ENV_VAR_SENTINEL" {} + | \
+# Create a working directory for our processed files
+# This is necessary because we need to replace the env vars in all files and we might want to run the seed script multiple times with different env vars.
+WORK_DIR="/tmp/processed"
+mkdir -p "$WORK_DIR"
+
+echo "Copying files to working directory..."
+cp -r /app/. "$WORK_DIR"/.
+
+# Find all files in the working directory that contain a STACK_ENV_VAR_SENTINEL and extract the unique sentinel strings.
+unhandled_sentinels=$(find "$WORK_DIR/apps" -type f -exec grep -l "STACK_ENV_VAR_SENTINEL" {} + | \
   xargs grep -h "STACK_ENV_VAR_SENTINEL" | \
   grep -o "STACK_ENV_VAR_SENTINEL[A-Z_]*" | \
   sort -u | grep -v "^STACK_ENV_VAR_SENTINEL$")
@@ -79,13 +87,14 @@ for sentinel in $unhandled_sentinels; do
   # the chosen delimiter and the '&' (which has special meaning in sed replacements).
   escaped_value=$(printf '%s\n' "$value" | sed -e 's/\\/\\\\/g' -e "s/[${delimiter}&]/\\\\&/g")
 
-  # Now replace the sentinel with the (properly escaped) value in all files.
-  find /app/apps -type f -exec sed -i "s${delimiter}${escaped_sentinel}${delimiter}${escaped_value}${delimiter}g" {} +
+  # Now replace the sentinel with the (properly escaped) value in all files in the working directory.
+  find $WORK_DIR/apps -type f -exec sed -i "s${delimiter}${escaped_sentinel}${delimiter}${escaped_value}${delimiter}g" {} +
 done
 
 # ============= START BACKEND AND DASHBOARD =============
 
 echo "Starting backend on port $BACKEND_PORT..."
+cd "$WORK_DIR"
 PORT=$BACKEND_PORT HOSTNAME=0.0.0.0 node apps/backend/server.js &
 
 echo "Starting dashboard on port $DASHBOARD_PORT..."

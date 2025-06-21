@@ -1,13 +1,67 @@
+import { getAuthContactChannel } from "@/lib/contact-channel";
 import { sendEmailFromTemplate } from "@/lib/emails";
-import { getSoleTenancyFromProject } from "@/lib/tenancies";
+import { getSoleTenancyFromProjectBranch, Tenancy } from "@/lib/tenancies";
 import { createAuthTokens } from "@/lib/tokens";
+import { prismaClient } from "@/prisma-client";
 import { createVerificationCodeHandler } from "@/route-handlers/verification-code-handler";
 import { VerificationCodeType } from "@prisma/client";
 import { KnownErrors } from "@stackframe/stack-shared";
-import { emailSchema, signInResponseSchema, yupBoolean, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
-import { StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
+import { UsersCrud } from "@stackframe/stack-shared/dist/interface/crud/users";
+import { emailSchema, signInResponseSchema, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
 import { usersCrudHandlers } from "../../../users/crud";
 import { createMfaRequiredError } from "../../mfa/sign-in/verification-code-handler";
+
+export async function ensureUserForEmailAllowsOtp(tenancy: Tenancy, email: string): Promise<UsersCrud["Admin"]["Read"] | null> {
+  const contactChannel = await getAuthContactChannel(
+    prismaClient,
+    {
+      tenancyId: tenancy.id,
+      type: "EMAIL",
+      value: email,
+    }
+  );
+
+  if (contactChannel) {
+    const otpAuthMethod = contactChannel.projectUser.authMethods.find((m) => m.otpAuthMethod)?.otpAuthMethod;
+
+    if (contactChannel.isVerified) {
+      if (!otpAuthMethod) {
+        // automatically merge the otp auth method with the existing account
+
+        // TODO: use an existing crud handler
+        const rawProject = await prismaClient.project.findUnique({
+          where: {
+            id: tenancy.project.id,
+          },
+        });
+
+        await prismaClient.authMethod.create({
+          data: {
+            projectUserId: contactChannel.projectUser.projectUserId,
+            tenancyId: tenancy.id,
+            otpAuthMethod: {
+              create: {
+                projectUserId: contactChannel.projectUser.projectUserId,
+              }
+            }
+          },
+        });
+      }
+
+      return await usersCrudHandlers.adminRead({
+        tenancy,
+        user_id: contactChannel.projectUser.projectUserId,
+      });
+    } else {
+      throw new KnownErrors.UserWithEmailAlreadyExists(contactChannel.value);
+    }
+  } else {
+    if (!tenancy.config.sign_up_enabled) {
+      throw new KnownErrors.SignUpNotEnabled();
+    }
+    return null;
+  }
+}
 
 export const signInVerificationCodeHandler = createVerificationCodeHandler({
   metadata: {
@@ -21,13 +75,10 @@ export const signInVerificationCodeHandler = createVerificationCodeHandler({
       description: "Check if a sign in code is valid without using it",
       tags: ["OTP"],
     },
-    codeDescription: `A 45-character verification code. For magic links, this is the code found in the "code" URL query parameter. For OTP, this is formed by concatenating the nonce (received during code creation) with the 6-digit code entered by the user`,
+    codeDescription: `A 45-character verification code. For magic links, this is the code found in the "code" URL query parameter. For OTP, this is formed by concatenating the 6-digit code entered by the user with the nonce (received during code creation)`,
   },
   type: VerificationCodeType.ONE_TIME_PASSWORD,
-  data: yupObject({
-    user_id: yupString().uuid().optional(),
-    is_new_user: yupBoolean().defined(),
-  }),
+  data: yupObject({}),
   method: yupObject({
     email: emailSchema.defined(),
     type: yupString().oneOf(["legacy", "standard"]).defined(),
@@ -38,7 +89,7 @@ export const signInVerificationCodeHandler = createVerificationCodeHandler({
     body: signInResponseSchema.defined(),
   }),
   async send(codeObj, createOptions, sendOptions: { email: string }) {
-    const tenancy = await getSoleTenancyFromProject(createOptions.project);
+    const tenancy = await getSoleTenancyFromProjectBranch(createOptions.project.id, createOptions.branchId);
     await sendEmailFromTemplate({
       tenancy,
       email: createOptions.method.email,
@@ -55,15 +106,20 @@ export const signInVerificationCodeHandler = createVerificationCodeHandler({
       nonce: codeObj.code.slice(6),
     };
   },
-  async handler(tenancy, { email }, data) {
-    let user;
-    // the user_id check is just for the migration
-    // we can rely only on is_new_user starting from the next release
-    if (!data.user_id) {
-      if (!data.is_new_user) {
-        throw new StackAssertionError("When user ID is not provided, the user must be new");
+  async handler(tenancy, { email }) {
+    const contactChannel = await getAuthContactChannel(
+      prismaClient,
+      {
+        tenancyId: tenancy.id,
+        type: "EMAIL",
+        value: email,
       }
+    );
 
+    let user = await ensureUserForEmailAllowsOtp(tenancy, email);
+    let isNewUser = false;
+    if (!user) {
+      isNewUser = true;
       user = await usersCrudHandlers.adminCreate({
         tenancy,
         data: {
@@ -72,14 +128,6 @@ export const signInVerificationCodeHandler = createVerificationCodeHandler({
           primary_email_auth_enabled: true,
           otp_auth_enabled: true,
         },
-        allowedErrorTypes: [KnownErrors.UserWithEmailAlreadyExists],
-      });
-    } else {
-      user = await usersCrudHandlers.adminRead({
-        tenancy,
-        user_id: data.user_id,
-        // This might happen if the user was deleted but the code is still valid
-        allowedErrorTypes: [KnownErrors.UserNotFound],
       });
     }
 
@@ -87,8 +135,8 @@ export const signInVerificationCodeHandler = createVerificationCodeHandler({
       throw await createMfaRequiredError({
         project: tenancy.project,
         branchId: tenancy.branchId,
-        isNewUser: data.is_new_user,
         userId: user.id,
+        isNewUser,
       });
     }
 
@@ -103,7 +151,7 @@ export const signInVerificationCodeHandler = createVerificationCodeHandler({
       body: {
         refresh_token: refreshToken,
         access_token: accessToken,
-        is_new_user: data.is_new_user,
+        is_new_user: isNewUser,
         user_id: user.id,
       },
     };

@@ -1,12 +1,12 @@
 export {
   StackAdminInterface
-} from "./interface/adminInterface";
+} from "./interface/admin-interface";
 export {
   StackClientInterface
-} from "./interface/clientInterface";
+} from "./interface/client-interface";
 export {
   StackServerInterface
-} from "./interface/serverInterface";
+} from "./interface/server-interface";
 export {
   KnownError,
   KnownErrors

@@ -76,7 +76,7 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
         const result = await this._interface.createServerProviderAccessToken(userId, providerId, scope || "");
         return { accessToken: result.access_token };
       } catch (err) {
-        if (!(err instanceof KnownErrors.OAuthConnectionDoesNotHaveRequiredScope || err instanceof KnownErrors.OAuthConnectionNotConnectedToUser)) {
+        if (!(KnownErrors.OAuthConnectionDoesNotHaveRequiredScope.isInstance(err) || KnownErrors.OAuthConnectionNotConnectedToUser.isInstance(err))) {
           throw err;
         }
       }
@@ -288,16 +288,38 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
       async setPrimaryEmail(email: string | null, options?: { verified?: boolean }) {
         await app._updateServerUser(crud.id, { primaryEmail: email, primaryEmailVerified: options?.verified });
       },
-      async grantPermission(scope: Team, permissionId: string): Promise<void> {
-        await app._interface.grantServerTeamUserPermission(scope.id, crud.id, permissionId);
-        for (const recursive of [true, false]) {
-          await app._serverTeamUserPermissionsCache.refresh([scope.id, crud.id, recursive]);
+      async grantPermission(scopeOrPermissionId: Team | string, permissionId?: string): Promise<void> {
+        if (scopeOrPermissionId && typeof scopeOrPermissionId !== 'string' && permissionId) {
+          const scope = scopeOrPermissionId;
+          await app._interface.grantServerTeamUserPermission(scope.id, crud.id, permissionId);
+
+          for (const recursive of [true, false]) {
+            await app._serverTeamUserPermissionsCache.refresh([scope.id, crud.id, recursive]);
+          }
+        } else {
+          const pId = scopeOrPermissionId as string;
+          await app._interface.grantServerProjectPermission(crud.id, pId);
+
+          for (const recursive of [true, false]) {
+            await app._serverUserProjectPermissionsCache.refresh([crud.id, recursive]);
+          }
         }
       },
-      async revokePermission(scope: Team, permissionId: string): Promise<void> {
-        await app._interface.revokeServerTeamUserPermission(scope.id, crud.id, permissionId);
-        for (const recursive of [true, false]) {
-          await app._serverTeamUserPermissionsCache.refresh([scope.id, crud.id, recursive]);
+      async revokePermission(scopeOrPermissionId: Team | string, permissionId?: string): Promise<void> {
+        if (scopeOrPermissionId && typeof scopeOrPermissionId !== 'string' && permissionId) {
+          const scope = scopeOrPermissionId;
+          await app._interface.revokeServerTeamUserPermission(scope.id, crud.id, permissionId);
+
+          for (const recursive of [true, false]) {
+            await app._serverTeamUserPermissionsCache.refresh([scope.id, crud.id, recursive]);
+          }
+        } else {
+          const pId = scopeOrPermissionId as string;
+          await app._interface.revokeServerProjectPermission(crud.id, pId);
+
+          for (const recursive of [true, false]) {
+            await app._serverUserProjectPermissionsCache.refresh([crud.id, recursive]);
+          }
         }
       },
       async delete() {

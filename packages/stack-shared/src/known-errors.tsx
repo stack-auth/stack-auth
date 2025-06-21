@@ -19,9 +19,11 @@ export type KnownErrorConstructor<SuperInstance extends KnownError, Args extends
   new (...args: Args): SuperInstance & { constructorArgs: Args },
   errorCode: string,
   constructorArgsFromJson: (json: KnownErrorJson) => Args,
+  isInstance: (error: unknown) => error is SuperInstance & { constructorArgs: Args },
 };
 
 export abstract class KnownError extends StatusError {
+  private readonly __stackKnownErrorBrand = "stack-known-error-brand-sentinel" as const;
   public name = "KnownError";
 
   constructor(
@@ -33,6 +35,11 @@ export abstract class KnownError extends StatusError {
       statusCode,
       humanReadableMessage
     );
+  }
+
+  public static isKnownError(error: unknown): error is KnownError {
+    // like instanceof, but also works for errors thrown in other realms or by different versions of the same package
+    return typeof error === "object" && error !== null && "__stackKnownErrorBrand" in error && error.__stackKnownErrorBrand === "stack-known-error-brand-sentinel";
   }
 
   public override getBody(): Uint8Array {
@@ -132,11 +139,31 @@ function createKnownErrorConstructor<ErrorCode extends string, Super extends Abs
     static constructorArgsFromJson(json: KnownErrorJson): Args {
       return constructorArgsFromJsonFn(json.details);
     }
+
+    static isInstance(error: unknown): error is InstanceType<Super> & { constructorArgs: Args } {
+      if (!KnownError.isKnownError(error)) return false;
+      let current: unknown = error;
+      while (true) {
+        current = Object.getPrototypeOf(current);
+        if (!current) break;
+        if ("errorCode" in current.constructor && current.constructor.errorCode === errorCode) return true;
+      }
+      return false;
+    }
   };
 
   // @ts-expect-error
   return KnownErrorImpl;
 }
+import.meta.vitest?.test("KnownError.isInstance", ({ expect }) => {
+  expect(KnownErrors.InvalidProjectAuthentication.isInstance(undefined)).toBe(false);
+  expect(KnownErrors.InvalidProjectAuthentication.isInstance(new Error())).toBe(false);
+
+  const error = new KnownErrors.ProjectKeyWithoutAccessType();
+  expect(KnownErrors.ProjectKeyWithoutAccessType.isInstance(error)).toBe(true);
+  expect(KnownErrors.InvalidProjectAuthentication.isInstance(error)).toBe(true);
+  expect(KnownErrors.InvalidAccessType.isInstance(error)).toBe(false);
+});
 
 const UnsupportedError = createKnownErrorConstructor(
   KnownError,
@@ -635,6 +662,20 @@ const ProjectNotFound = createKnownErrorConstructor(
   (json: any) => [json.project_id] as const,
 );
 
+const BranchDoesNotExist = createKnownErrorConstructor(
+  KnownError,
+  "BRANCH_DOES_NOT_EXIST",
+  (branchId: string) => [
+    400,
+    `The branch with ID ${branchId} does not exist.`,
+    {
+      branch_id: branchId,
+    },
+  ] as const,
+  (json: any) => [json.branch_id] as const,
+);
+
+
 const SignUpNotEnabled = createKnownErrorConstructor(
   KnownError,
   "SIGN_UP_NOT_ENABLED",
@@ -885,6 +926,21 @@ const PermissionNotFound = createKnownErrorConstructor(
   (json: any) => [json.permission_id] as const,
 );
 
+const PermissionScopeMismatch = createKnownErrorConstructor(
+  KnownError,
+  "WRONG_PERMISSION_SCOPE",
+  (permissionId: string, expectedScope: "team" | "project", actualScope: "team" | "project" | null) => [
+    404,
+    `Permission ${JSON.stringify(permissionId)} not found. (It was found for a different scope ${JSON.stringify(actualScope)}, but scope ${JSON.stringify(expectedScope)} was expected.)`,
+    {
+      permission_id: permissionId,
+      expected_scope: expectedScope,
+      actual_scope: actualScope,
+    },
+  ] as const,
+  (json: any) => [json.permission_id, json.expected_scope, json.actual_scope] as const,
+);
+
 const ContainedPermissionNotFound = createKnownErrorConstructor(
   KnownError,
   "CONTAINED_PERMISSION_NOT_FOUND",
@@ -1004,7 +1060,7 @@ const InvalidOAuthClientIdOrSecret = createKnownErrorConstructor(
   "INVALID_OAUTH_CLIENT_ID_OR_SECRET",
   (clientId?: string) => [
     400,
-    "The OAuth client ID or secret is invalid. The client ID must be equal to the project ID, and the client secret must be a publishable client key.",
+    "The OAuth client ID or secret is invalid. The client ID must be equal to the project ID (potentially with a hash and a branch ID), and the client secret must be a publishable client key.",
     {
       client_id: clientId ?? null,
     },
@@ -1209,6 +1265,36 @@ const InvalidPollingCodeError = createKnownErrorConstructor(
   (json: any) => [json] as const,
 );
 
+const CliAuthError = createKnownErrorConstructor(
+  KnownError,
+  "CLI_AUTH_ERROR",
+  (message: string) => [
+    400,
+    message,
+  ] as const,
+  (json: any) => [json.message] as const,
+);
+
+const CliAuthExpiredError = createKnownErrorConstructor(
+  KnownError,
+  "CLI_AUTH_EXPIRED_ERROR",
+  (message: string = "CLI authentication request expired. Please try again.") => [
+    400,
+    message,
+  ] as const,
+  (json: any) => [json.message] as const,
+);
+
+const CliAuthUsedError = createKnownErrorConstructor(
+  KnownError,
+  "CLI_AUTH_USED_ERROR",
+  (message: string = "This authentication token has already been used.") => [
+    400,
+    message,
+  ] as const,
+  (json: any) => [json.message] as const,
+);
+
 
 const ApiKeyNotValid = createKnownErrorConstructor(
   KnownError,
@@ -1258,6 +1344,15 @@ const ApiKeyNotFound = createKnownErrorConstructor(
   () => [] as const,
 );
 
+const PublicApiKeyCannotBeRevoked = createKnownErrorConstructor(
+  ApiKeyNotValid,
+  "PUBLIC_API_KEY_CANNOT_BE_REVOKED",
+  () => [
+    400,
+    "Public API keys cannot be revoked by the secretscanner endpoint.",
+  ] as const,
+  () => [] as const,
+);
 
 const PermissionIdAlreadyExists = createKnownErrorConstructor(
   KnownError,
@@ -1284,6 +1379,9 @@ export const KnownErrors = {
   AllOverloadsFailed,
   ProjectAuthenticationError,
   PermissionIdAlreadyExists,
+  CliAuthError,
+  CliAuthExpiredError,
+  CliAuthUsedError,
   InvalidProjectAuthentication,
   ProjectKeyWithoutAccessType,
   InvalidAccessType,
@@ -1321,7 +1419,9 @@ export const KnownErrors = {
   UserIdDoesNotExist,
   UserNotFound,
   ApiKeyNotFound,
+  PublicApiKeyCannotBeRevoked,
   ProjectNotFound,
+  BranchDoesNotExist,
   SignUpNotEnabled,
   PasswordAuthenticationNotEnabled,
   PasskeyAuthenticationNotEnabled,
@@ -1345,6 +1445,7 @@ export const KnownErrors = {
   PasskeyWebAuthnError,
   PasskeyAuthenticationFailed,
   PermissionNotFound,
+  PermissionScopeMismatch,
   ContainedPermissionNotFound,
   TeamNotFound,
   TeamMembershipNotFound,

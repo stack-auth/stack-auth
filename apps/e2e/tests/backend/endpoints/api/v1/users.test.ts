@@ -1,5 +1,4 @@
 import { generateSecureRandomString } from "@stackframe/stack-shared/dist/utils/crypto";
-import { wait } from "@stackframe/stack-shared/dist/utils/promises";
 import { describe } from "vitest";
 import { STACK_BACKEND_BASE_URL, it } from "../../../../helpers";
 import { Auth, InternalProjectKeys, Project, Team, Webhook, backendContext, bumpEmailAddress, createMailbox, niceBackendFetch } from "../../../backend-helpers";
@@ -701,7 +700,7 @@ describe("with client access", () => {
 
   it("should be able to update selected team", async ({ expect }) => {
     await Auth.Otp.signIn();
-    const { teamId } = await Team.createAndAddCurrent({});
+    const { teamId } = await Team.createWithCurrentAsCreator({});
     const response1 = await niceBackendFetch("/api/v1/users/me", {
       accessType: "client",
     });
@@ -2125,45 +2124,41 @@ describe("with server access", () => {
 
     expect(createUserResponse.status).toBe(201);
 
-    await wait(3000);
-
-    const attemptResponse = await Webhook.listWebhookAttempts(projectId, endpointId, svixToken);
+    const attemptResponse = await Webhook.findWebhookAttempt(projectId, endpointId, svixToken, event => true);
 
     expect(attemptResponse).toMatchInlineSnapshot(`
-      [
-        {
-          "channels": null,
-          "eventId": null,
-          "eventType": "user.created",
-          "id": "<stripped svix message id>",
-          "payload": {
-            "data": {
-              "auth_with_email": false,
-              "client_metadata": null,
-              "client_read_only_metadata": null,
-              "display_name": null,
-              "has_password": false,
-              "id": "<stripped UUID>",
-              "is_anonymous": false,
-              "last_active_at_millis": <stripped field 'last_active_at_millis'>,
-              "oauth_providers": [],
-              "otp_auth_enabled": false,
-              "passkey_auth_enabled": false,
-              "primary_email": "test@example.com",
-              "primary_email_auth_enabled": false,
-              "primary_email_verified": false,
-              "profile_image_url": null,
-              "requires_totp_mfa": false,
-              "selected_team": null,
-              "selected_team_id": null,
-              "server_metadata": null,
-              "signed_up_at_millis": <stripped field 'signed_up_at_millis'>,
-            },
-            "type": "user.created",
+      {
+        "channels": null,
+        "eventId": null,
+        "eventType": "user.created",
+        "id": "<stripped svix message id>",
+        "payload": {
+          "data": {
+            "auth_with_email": false,
+            "client_metadata": null,
+            "client_read_only_metadata": null,
+            "display_name": null,
+            "has_password": false,
+            "id": "<stripped UUID>",
+            "is_anonymous": false,
+            "last_active_at_millis": <stripped field 'last_active_at_millis'>,
+            "oauth_providers": [],
+            "otp_auth_enabled": false,
+            "passkey_auth_enabled": false,
+            "primary_email": "test@example.com",
+            "primary_email_auth_enabled": false,
+            "primary_email_verified": false,
+            "profile_image_url": null,
+            "requires_totp_mfa": false,
+            "selected_team": null,
+            "selected_team_id": null,
+            "server_metadata": null,
+            "signed_up_at_millis": <stripped field 'signed_up_at_millis'>,
           },
-          "timestamp": <stripped field 'timestamp'>,
+          "type": "user.created",
         },
-      ]
+        "timestamp": <stripped field 'timestamp'>,
+      }
     `);
   });
 
@@ -2191,10 +2186,7 @@ describe("with server access", () => {
 
     expect(updateUserResponse.status).toBe(200);
 
-    await wait(3000);
-
-    const attemptResponse = await Webhook.listWebhookAttempts(projectId, endpointId, svixToken);
-    const userUpdatedEvent = attemptResponse.find(event => event.eventType === "user.updated");
+    const userUpdatedEvent = await Webhook.findWebhookAttempt(projectId, endpointId, svixToken, event => event.eventType === "user.updated");
 
     expect(userUpdatedEvent).toMatchInlineSnapshot(`
       {
@@ -2253,10 +2245,7 @@ describe("with server access", () => {
 
     expect(deleteUserResponse.status).toBe(200);
 
-    await wait(3000);
-
-    const attemptResponse = await Webhook.listWebhookAttempts(projectId, endpointId, svixToken);
-    const userDeletedEvent = attemptResponse.find(event => event.eventType === "user.deleted");
+    const userDeletedEvent = await Webhook.findWebhookAttempt(projectId, endpointId, svixToken, event => event.eventType === "user.deleted");
 
     expect(userDeletedEvent).toMatchInlineSnapshot(`
       {
@@ -2275,4 +2264,132 @@ describe("with server access", () => {
       }
     `);
   });
+
+  it("should be able to properly disable primary_email_auth_enabled", async ({ expect }) => {
+    // Test for the fix where primary_email_auth_enabled couldn't be disabled properly
+    // due to an OR operator issue that always kept it true
+
+    // Create a user with email auth enabled
+    const response1 = await niceBackendFetch("/api/v1/users", {
+      accessType: "server",
+      method: "POST",
+      body: {
+        primary_email: backendContext.value.mailbox.emailAddress,
+        primary_email_auth_enabled: true,
+        display_name: "Test User",
+      },
+    });
+    expect(response1.status).toEqual(201);
+    expect(response1.body.primary_email_auth_enabled).toEqual(true);
+    const userId = response1.body.id;
+
+    // Update the user to disable email auth
+    const response2 = await niceBackendFetch("/api/v1/users/" + userId, {
+      accessType: "server",
+      method: "PATCH",
+      body: {
+        primary_email_auth_enabled: false,
+      },
+    });
+    expect(response2).toMatchInlineSnapshot(`
+      NiceResponse {
+        "status": 200,
+        "body": {
+          "auth_with_email": false,
+          "client_metadata": null,
+          "client_read_only_metadata": null,
+          "display_name": "Test User",
+          "has_password": false,
+          "id": "<stripped UUID>",
+          "is_anonymous": false,
+          "last_active_at_millis": <stripped field 'last_active_at_millis'>,
+          "oauth_providers": [],
+          "otp_auth_enabled": false,
+          "passkey_auth_enabled": false,
+          "primary_email": "default-mailbox--<stripped UUID>@stack-generated.example.com",
+          "primary_email_auth_enabled": false,
+          "primary_email_verified": false,
+          "profile_image_url": null,
+          "requires_totp_mfa": false,
+          "selected_team": null,
+          "selected_team_id": null,
+          "server_metadata": null,
+          "signed_up_at_millis": <stripped field 'signed_up_at_millis'>,
+        },
+        "headers": Headers { <some fields may have been hidden> },
+      }
+    `);
+
+    // Verify the change persisted by reading the user again
+    const response3 = await niceBackendFetch("/api/v1/users/" + userId, {
+      accessType: "server",
+    });
+    expect(response3.status).toEqual(200);
+    expect(response3.body.primary_email_auth_enabled).toEqual(false);
+    expect(response3.body.auth_with_email).toEqual(false);
+
+    // Test that we can re-enable it
+    const response4 = await niceBackendFetch("/api/v1/users/" + userId, {
+      accessType: "server",
+      method: "PATCH",
+      body: {
+        primary_email_auth_enabled: true,
+      },
+    });
+    expect(response4.status).toEqual(200);
+    expect(response4.body.primary_email_auth_enabled).toEqual(true);
+    expect(response4.body.auth_with_email).toEqual(false); // Still false because no password/otp is set
+
+    // Verify re-enabling persisted
+    const response5 = await niceBackendFetch("/api/v1/users/" + userId, {
+      accessType: "server",
+    });
+    expect(response5.status).toEqual(200);
+    expect(response5.body.primary_email_auth_enabled).toEqual(true);
+  });
+
+  it("should be able to disable primary_email_auth_enabled on current user", async ({ expect }) => {
+    // Test the same functionality when updating the current user via /me endpoint
+    await Auth.Otp.signIn();
+
+    // First verify the user has email auth enabled (from OTP sign in)
+    const initialResponse = await niceBackendFetch("/api/v1/users/me", {
+      accessType: "server",
+    });
+    expect(initialResponse.status).toEqual(200);
+    expect(initialResponse.body.primary_email_auth_enabled).toEqual(true);
+
+    // Disable email auth on current user
+    const response1 = await niceBackendFetch("/api/v1/users/me", {
+      accessType: "server",
+      method: "PATCH",
+      body: {
+        primary_email_auth_enabled: false,
+      },
+    });
+    expect(response1.status).toEqual(200);
+    expect(response1.body.primary_email_auth_enabled).toEqual(false);
+    expect(response1.body.auth_with_email).toEqual(true); // May still be true due to existing auth methods
+
+    // Verify the change persisted by reading the user again
+    const response2 = await niceBackendFetch("/api/v1/users/me", {
+      accessType: "server",
+    });
+    expect(response2.status).toEqual(200);
+    expect(response2.body.primary_email_auth_enabled).toEqual(false);
+
+    // Re-enable email auth
+    const response3 = await niceBackendFetch("/api/v1/users/me", {
+      accessType: "server",
+      method: "PATCH",
+      body: {
+        primary_email_auth_enabled: true,
+      },
+    });
+    expect(response3.status).toEqual(200);
+    expect(response3.body.primary_email_auth_enabled).toEqual(true);
+  });
 });
+
+it.todo("creating a new user with an OAuth provider ID that does not exist should fail");
+it.todo("creating a new user with password enabled when password sign in is disabled in the config should fail");

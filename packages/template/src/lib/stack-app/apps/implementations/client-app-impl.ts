@@ -4,7 +4,7 @@ import { ContactChannelsCrud } from "@stackframe/stack-shared/dist/interface/cru
 import { CurrentUserCrud } from "@stackframe/stack-shared/dist/interface/crud/current-user";
 import { TeamApiKeysCrud, UserApiKeysCrud, teamApiKeysCreateOutputSchema, userApiKeysCreateOutputSchema } from "@stackframe/stack-shared/dist/interface/crud/project-api-keys";
 import { ProjectPermissionsCrud } from "@stackframe/stack-shared/dist/interface/crud/project-permissions";
-import { ProjectsCrud } from "@stackframe/stack-shared/dist/interface/crud/projects";
+import { ClientProjectsCrud } from "@stackframe/stack-shared/dist/interface/crud/projects";
 import { SessionsCrud } from "@stackframe/stack-shared/dist/interface/crud/sessions";
 import { TeamInvitationCrud } from "@stackframe/stack-shared/dist/interface/crud/team-invitation";
 import { TeamMemberProfilesCrud } from "@stackframe/stack-shared/dist/interface/crud/team-member-profiles";
@@ -60,7 +60,7 @@ const NextNavigation = scrambleDuringCompileTime(NextNavigationUnscrambled);
 const process = (globalThis as any).process ?? { env: {} }; // THIS_LINE_PLATFORM js react
 
 
-const allClientApps = new Map<string, [checkString: string, app: StackClientApp<any, any>]>();
+const allClientApps = new Map<string, [checkString: string | undefined, app: StackClientApp<any, any>]>();
 
 export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, ProjectId extends string = string> implements StackClientApp<HasTokenStore, ProjectId> {
   /**
@@ -134,7 +134,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
         const result = await this._interface.createProviderAccessToken(providerId, scope || "", session);
         return { accessToken: result.access_token };
       } catch (err) {
-        if (!(err instanceof KnownErrors.OAuthConnectionDoesNotHaveRequiredScope || err instanceof KnownErrors.OAuthConnectionNotConnectedToUser)) {
+        if (!(KnownErrors.OAuthConnectionDoesNotHaveRequiredScope.isInstance(err) || KnownErrors.OAuthConnectionNotConnectedToUser.isInstance(err))) {
           throw err;
         }
       }
@@ -315,7 +315,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
     if (allClientApps.has(this._uniqueIdentifier)) {
       throw new StackAssertionError("A Stack client app with the same unique identifier already exists");
     }
-    allClientApps.set(this._uniqueIdentifier, [this._options.checkString ?? "default check string", this]);
+    allClientApps.set(this._uniqueIdentifier, [this._options.checkString ?? undefined, this]);
   }
 
   /**
@@ -590,7 +590,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
     }
   }
 
-  protected _clientProjectFromCrud(crud: ProjectsCrud['Client']['Read']): Project {
+  protected _clientProjectFromCrud(crud: ClientProjectsCrud['Client']['Read']): Project {
     return {
       id: crud.id,
       displayName: crud.display_name,
@@ -1227,18 +1227,14 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
     if (!options?.noRedirectBack) {
       if (handlerName === "afterSignIn" || handlerName === "afterSignUp") {
         if (isReactServer || typeof window === "undefined") {
-          try {
-            await this._checkFeatureSupport("rsc-handler-" + handlerName, {});
-          } catch (e) {}
+          // TODO implement this
         } else {
           const queryParams = new URLSearchParams(window.location.search);
           url = queryParams.get("after_auth_return_to") || url;
         }
       } else if (handlerName === "signIn" || handlerName === "signUp") {
         if (isReactServer || typeof window === "undefined") {
-          try {
-            await this._checkFeatureSupport("rsc-handler-" + handlerName, {});
-          } catch (e) {}
+          // TODO implement this
         } else {
           const currentUrl = new URL(window.location.href);
           const nextUrl = new URL(url, currentUrl);
@@ -1463,7 +1459,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
     try {
       return await callback();
     } catch (e) {
-      if (e instanceof KnownErrors.MultiFactorAuthenticationRequired) {
+      if (KnownErrors.MultiFactorAuthenticationRequired.isInstance(e)) {
         return Result.ok(await this._experimentalMfa(e, await this._getSession()));
       }
       throw e;
@@ -1483,7 +1479,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
         return await this._interface.signInWithCredential(options.email, options.password, session);
       });
     } catch (e) {
-      if (e instanceof KnownErrors.InvalidTotpCode) {
+      if (KnownErrors.InvalidTotpCode.isInstance(e)) {
         return Result.error(e);
       }
       throw e;
@@ -1555,7 +1551,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
         return await this._interface.signInWithMagicLink(code);
       });
     } catch (e) {
-      if (e instanceof KnownErrors.InvalidTotpCode) {
+      if (KnownErrors.InvalidTotpCode.isInstance(e)) {
         return Result.error(e);
       }
       throw e;
@@ -1574,6 +1570,102 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
     } else {
       return Result.error(result.error);
     }
+  }
+
+  /**
+   * Initiates a CLI authentication process that allows a command line application
+   * to get a refresh token for a user's account.
+   *
+   * This process works as follows:
+   * 1. The CLI app calls this method, which initiates the auth process with the server
+   * 2. The server returns a polling code and a login code
+   * 3. The CLI app opens a browser window to the appUrl with the login code as a parameter
+   * 4. The user logs in through the browser and confirms the authorization
+   * 5. The CLI app polls for the refresh token using the polling code
+   *
+   * @param options Options for the CLI login
+   * @param options.appUrl The URL of the app that will handle the CLI auth confirmation
+   * @param options.expiresInMillis Optional duration in milliseconds before the auth attempt expires (default: 2 hours)
+   * @param options.maxAttempts Optional maximum number of polling attempts (default: Infinity)
+   * @param options.waitTimeMillis Optional time to wait between polling attempts (default: 2 seconds)
+   * @param options.promptLink Optional function to call with the login URL to prompt the user to open the browser
+   * @returns Result containing either the refresh token or an error
+   */
+  async promptCliLogin(options: {
+    appUrl: string,
+    expiresInMillis?: number,
+    maxAttempts?: number,
+    waitTimeMillis?: number,
+    promptLink?: (url: string) => void,
+  }): Promise<Result<string, KnownErrors["CliAuthError"] | KnownErrors["CliAuthExpiredError"] | KnownErrors["CliAuthUsedError"]>> {
+    // Step 1: Initiate the CLI auth process
+    const response = await this._interface.sendClientRequest(
+      "/auth/cli",
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          expires_in_millis: options.expiresInMillis,
+        }),
+      },
+      null
+    );
+
+    if (!response.ok) {
+      return Result.error(new KnownErrors.CliAuthError(`Failed to initiate CLI auth: ${response.status} ${await response.text()}`));
+    }
+
+    const initResult = await response.json();
+    const pollingCode = initResult.polling_code;
+    const loginCode = initResult.login_code;
+
+    // Step 2: Open the browser for the user to authenticate
+    const url = `${options.appUrl}/handler/cli-auth-confirm?login_code=${encodeURIComponent(loginCode)}`;
+    if (options.promptLink) {
+      options.promptLink(url);
+    } else {
+      console.log(`Please visit the following URL to authenticate:\n${url}`);
+    }
+
+
+    // Step 3: Poll for the token
+    let attempts = 0;
+    while (attempts < (options.maxAttempts ?? Infinity)) {
+      attempts++;
+      const pollResponse = await this._interface.sendClientRequest("/auth/cli/poll", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          polling_code: pollingCode,
+        }),
+      }, null);
+
+      if (!pollResponse.ok) {
+        return Result.error(new KnownErrors.CliAuthError(`Failed to initiate CLI auth: ${pollResponse.status} ${await pollResponse.text()}`));
+      }
+      const pollResult = await pollResponse.json();
+
+      if (pollResponse.status === 201 && pollResult.status === "success") {
+        return Result.ok(pollResult.refresh_token);
+      }
+      if (pollResult.status === "waiting") {
+        await wait(options.waitTimeMillis ?? 2000);
+        continue;
+      }
+      if (pollResult.status === "expired") {
+        return Result.error(new KnownErrors.CliAuthExpiredError("CLI authentication request expired. Please try again."));
+      }
+      if (pollResult.status === "used") {
+        return Result.error(new KnownErrors.CliAuthUsedError("This authentication token has already been used."));
+      }
+      return Result.error(new KnownErrors.CliAuthError(`Unexpected status from CLI auth polling: ${pollResult.status}`));
+    }
+
+    return Result.error(new KnownErrors.CliAuthError("Timed out waiting for CLI authentication."));
   }
 
   async signInWithPasskey(): Promise<Result<undefined, KnownErrors["PasskeyAuthenticationFailed"] | KnownErrors["InvalidTotpCode"] | KnownErrors["PasskeyWebAuthnError"]>> {
@@ -1628,7 +1720,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
         return await callOAuthCallback(this._interface, this.urls.oauthCallback);
       });
     } catch (e) {
-      if (e instanceof KnownErrors.InvalidTotpCode) {
+      if (KnownErrors.InvalidTotpCode.isInstance(e)) {
         alert("Invalid TOTP code. Please try signing in again.");
         return false;
       } else {
@@ -1743,7 +1835,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
         const existing = allClientApps.get(json.uniqueIdentifier);
         if (existing) {
           const [existingCheckString, clientApp] = existing;
-          if (existingCheckString !== providedCheckString) {
+          if (existingCheckString !== undefined && existingCheckString !== providedCheckString) {
             throw new StackAssertionError("The provided app JSON does not match the configuration of the existing client app with the same unique identifier", { providedObj: json, existingString: existingCheckString });
           }
           return clientApp as any;

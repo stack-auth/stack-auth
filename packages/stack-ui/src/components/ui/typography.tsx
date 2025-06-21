@@ -3,7 +3,7 @@ import { cva, type VariantProps } from "class-variance-authority";
 import React from "react";
 import { forwardRefIfNeeded } from "@stackframe/stack-shared/dist/utils/react";
 
-const typographyVariants = cva("text-md", {
+const typographyVariants = cva("stack-scope text-md", {
   variants: {
     type: {
       h1: "text-3xl font-bold",

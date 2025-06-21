@@ -8,21 +8,14 @@ const teamPermissionSchema = yupObject({
 
 const oauthProviderSchema = yupObject({
   id: schemaFields.oauthIdSchema.defined(),
-  enabled: schemaFields.oauthEnabledSchema.defined(),
   type: schemaFields.oauthTypeSchema.defined(),
   client_id: schemaFields.yupDefinedAndNonEmptyWhen(
     schemaFields.oauthClientIdSchema,
-    {
-      type: 'standard',
-      enabled: true,
-    },
+    { type: 'standard' },
   ),
   client_secret: schemaFields.yupDefinedAndNonEmptyWhen(
     schemaFields.oauthClientSecretSchema,
-    {
-      type: 'standard',
-      enabled: true,
-    },
+    { type: 'standard' },
   ),
 
   // extra params
@@ -72,8 +65,8 @@ export const projectsCrudAdminReadSchema = yupObject({
   created_at_millis: schemaFields.projectCreatedAtMillisSchema.defined(),
   user_count: schemaFields.projectUserCountSchema.defined(),
   is_production_mode: schemaFields.projectIsProductionModeSchema.defined(),
+  /** @deprecated */
   config: yupObject({
-    id: schemaFields.projectConfigIdSchema.defined(),
     allow_localhost: schemaFields.projectAllowLocalhostSchema.defined(),
     sign_up_enabled: schemaFields.projectSignUpEnabledSchema.defined(),
     credential_enabled: schemaFields.projectCredentialEnabledSchema.defined(),
@@ -93,7 +86,7 @@ export const projectsCrudAdminReadSchema = yupObject({
     team_member_default_permissions: yupArray(teamPermissionSchema.defined()).defined(),
     user_default_permissions: yupArray(teamPermissionSchema.defined()).defined(),
     oauth_account_merge_strategy: schemaFields.oauthAccountMergeStrategySchema.defined(),
-  }).defined(),
+  }).defined().meta({ openapiField: { hidden: true } }),
 }).defined();
 
 export const projectsCrudClientReadSchema = yupObject({
@@ -109,7 +102,7 @@ export const projectsCrudClientReadSchema = yupObject({
     allow_user_api_keys: schemaFields.yupBoolean().defined(),
     allow_team_api_keys: schemaFields.yupBoolean().defined(),
     enabled_oauth_providers: yupArray(enabledOAuthProviderSchema.defined()).defined().meta({ openapiField: { hidden: true } }),
-  }).defined(),
+  }).defined().meta({ openapiField: { hidden: true } }),
 }).defined();
 
 
@@ -144,17 +137,23 @@ export const projectsCrudAdminCreateSchema = projectsCrudAdminUpdateSchema.conca
 
 export const projectsCrudAdminDeleteSchema = schemaFields.yupMixed();
 
-export const projectsCrud = createCrud({
+export const clientProjectsCrud = createCrud({
   clientReadSchema: projectsCrudClientReadSchema,
-  adminReadSchema: projectsCrudAdminReadSchema,
-  adminUpdateSchema: projectsCrudAdminUpdateSchema,
-  adminDeleteSchema: projectsCrudAdminDeleteSchema,
   docs: {
     clientRead: {
       summary: 'Get the current project',
       description: 'Get the current project information including display name, OAuth providers and authentication methods. Useful for display the available login options to the user.',
       tags: ['Projects'],
     },
+  },
+});
+export type ClientProjectsCrud = CrudTypeOf<typeof clientProjectsCrud>;
+
+export const projectsCrud = createCrud({
+  adminReadSchema: projectsCrudAdminReadSchema,
+  adminUpdateSchema: projectsCrudAdminUpdateSchema,
+  adminDeleteSchema: projectsCrudAdminDeleteSchema,
+  docs: {
     adminRead: {
       summary: 'Get the current project',
       description: 'Get the current project information and configuration including display name, OAuth providers, email configuration, etc.',
@@ -174,7 +173,7 @@ export const projectsCrud = createCrud({
 });
 export type ProjectsCrud = CrudTypeOf<typeof projectsCrud>;
 
-export const internalProjectsCrud = createCrud({
+export const adminUserProjectsCrud = createCrud({
   clientReadSchema: projectsCrudAdminReadSchema,
   clientCreateSchema: projectsCrudAdminCreateSchema,
   docs: {
@@ -186,4 +185,4 @@ export const internalProjectsCrud = createCrud({
     },
   },
 });
-export type InternalProjectsCrud = CrudTypeOf<typeof internalProjectsCrud>;
+export type AdminUserProjectsCrud = CrudTypeOf<typeof adminUserProjectsCrud>;
