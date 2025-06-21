@@ -1055,14 +1055,17 @@ export namespace Project {
     };
   }
 
-  export async function createAndGetAdminToken(body?: Partial<AdminUserProjectsCrud["Admin"]["Create"]>) {
+  export async function createAndGetAdminToken(body?: Partial<AdminUserProjectsCrud["Admin"]["Create"]>, useExistingUser?: boolean) {
     backendContext.set({
       projectKeys: InternalProjectKeys,
-      userAuth: null,
     });
     const oldMailbox = backendContext.value.mailbox;
-    await bumpEmailAddress({ unindexed: true });
-    const { userId } = await Auth.Otp.signIn();
+    let userId: string | undefined;
+    if (!useExistingUser) {
+      await bumpEmailAddress({ unindexed: true });
+      const { userId: newUserId } = await Auth.Otp.signIn();
+      userId = newUserId;
+    }
     const adminAccessToken = backendContext.value.userAuth?.accessToken;
     expect(adminAccessToken).toBeDefined();
     const { projectId, createProjectResponse } = await Project.create(body);
@@ -1083,13 +1086,14 @@ export namespace Project {
     };
   }
 
-  export async function createAndSwitch(body?: Partial<AdminUserProjectsCrud["Admin"]["Create"]>) {
-    const createResult = await Project.createAndGetAdminToken(body);
+  export async function createAndSwitch(body?: Partial<AdminUserProjectsCrud["Admin"]["Create"]>, useExistingUser?: boolean) {
+    const createResult = await Project.createAndGetAdminToken(body, useExistingUser);
     backendContext.set({
       projectKeys: {
         projectId: createResult.projectId,
         adminAccessToken: createResult.adminAccessToken,
       },
+      userAuth: null
     });
     return createResult;
   }
