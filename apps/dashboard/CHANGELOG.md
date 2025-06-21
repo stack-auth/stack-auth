@@ -1,5 +1,15 @@
 # @stackframe/stack-dashboard
 
+## 2.8.15
+
+### Patch Changes
+
+- Various changes
+  - @stackframe/stack@2.8.15
+  - @stackframe/stack-emails@2.8.15
+  - @stackframe/stack-shared@2.8.15
+  - @stackframe/stack-ui@2.8.15
+
 ## 2.8.14
 
 ### Patch Changes

@@ -1,0 +1,65 @@
+---
+title: TeamProfile
+full: true
+---
+
+This is a detailed reference for the `TeamProfile` and `ServerTeamProfile` objects.
+
+On this page:
+- [TeamProfile](#teamprofile)
+- [ServerTeamProfile](#serverteamprofile)
+
+# `TeamProfile`
+
+The `TeamProfile` object represents the profile of a user within the context of a team. It includes the user's profile information specific to the team and can be accessed through the `teamUser.teamProfile` property on a `TeamUser` object.
+
+### Table of Contents
+
+<ClickableTableOfContents code={`type TeamProfile = {
+  displayName: string | null;  //$stack-link-to:#teamprofiledisplayname
+  profileImageUrl: string | null;  //$stack-link-to:#teamprofileprofileimageurl
+};`} />
+
+---
+
+<CollapsibleTypesSection type="teamProfile" property="displayName" defaultOpen={false}>
+  <MethodLayout>
+    <MethodContent>
+      The display name of the user within the team context as a `string` or `null` if no display name is set.
+    </MethodContent>
+    <MethodAside title="Type Definition">
+
+      ```typescript
+      declare const displayName: string | null;
+      ```
+    </MethodAside>
+  </MethodLayout>
+</CollapsibleTypesSection>
+
+<CollapsibleTypesSection type="teamProfile" property="profileImageUrl" defaultOpen={false}>
+  <MethodLayout>
+    <MethodContent>
+      The profile image URL of the user within the team context as a `string`, or `null` if no profile image is set.
+    </MethodContent>
+    <MethodAside title="Type Definition">
+
+      ```typescript
+      declare const profileImageUrl: string | null;
+      ```
+    </MethodAside>
+  </MethodLayout>
+</CollapsibleTypesSection>
+
+---
+
+# `ServerTeamProfile`
+
+The `ServerTeamProfile` object is currently the same as `TeamProfile`.
+
+### Table of Contents
+
+<ClickableTableOfContents code={`type ServerTeamProfile =
+  // Inherits all functionality from TeamProfile
+  & TeamProfile; //$stack-link-to:#teamprofile`} />
+
+---

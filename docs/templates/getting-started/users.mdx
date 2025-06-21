@@ -1,0 +1,253 @@
+---
+title: Users
+icon: "users"
+---
+
+You will inevitably build custom components that access the user in one way or another. In this section, we will take a closer look at the functions and hooks that let you do this.
+
+## Client Component basics
+
+The `useUser()` hook returns the current user in a Client Component. By default, it will return `null` if the user is not signed in.
+
+```tsx title="my-client-component.tsx"
+"use client";
+import { useUser } from "@stackframe/stack"
+
+export function MyClientComponent() {
+  const user = useUser();
+  return <div>{user ? `Hello, ${user.displayName ?? "anon"}` : 'You are not logged in'}</div>;
+}
+```
+
+The `useUser()` hook is simply a shorthand for `useStackApp().useUser()`. `useStackApp()` also contains other useful hooks and methods for clients, which will be described later.
+
+Sometimes, you want to retrieve the user only if they're signed in, and redirect to the sign-in page otherwise. In this case, simply pass `{ or: "redirect" }`, and the function will never return `null`.
+
+```tsx
+  const user = useUser({ or: "redirect" });
+  return <div>{`Hello, ${user.displayName ?? "anon"}`}</div>;
+```
+
+## Server Component basics
+
+Since `useUser()` is a stateful hook, you can't use it on server components. Instead, you can import `stackServerApp` from `stack.ts` and call `getUser()`:
+
+```tsx title="my-server-component.tsx"
+import { stackServerApp } from "@/stack";
+
+export default async function MyServerComponent() {
+  const user = await stackServerApp.getUser();  // or: stackServerApp.getUser({ or: "redirect" })
+  return <div>{user ? `Hello, ${user.displayName ?? "anon"}` : 'You are not logged in'}</div>;
+}
+```
+
+<Info>
+Since `useUser()` is a hook, it will re-render the component on user changes (eg. signout), while `getUser()` will only fetch the user once (on page load). You can also call `useStackApp().getUser()` on the client side to get the user in a non-component context.
+</Info>
+
+
+## Protecting a page
+
+There are three ways to protect a page: in Client Components with `useUser({ or: "redirect" })`, in Server Components with `await getUser({ or: "redirect" })`, or with middleware.
+
+On Client Components, the `useUser({ or: 'redirect' })` hook will redirect the user to the sign-in page if they are not logged in. Similarly, on Server Components, call `await getUser({ or: "redirect" })` to protect a page (or component).
+
+Middleware can be used whenever it is easy to tell whether a page should be protected given just the URL, for example, when you have a `/private` section only accessible to logged-in users.
+
+
+<Tabs defaultValue="client">
+  <TabsList>
+    <TabsTrigger value="client">Client Component</TabsTrigger>
+    <TabsTrigger value="server">Server Component</TabsTrigger>
+    <TabsTrigger value="middleware">Middleware</TabsTrigger>
+  </TabsList>
+  
+  <TabsContent value="client">
+    ```tsx title="my-protected-client-component.tsx"
+    "use client";
+    import { useUser } from "@stackframe/stack";
+
+    export default function MyProtectedClientComponent() {
+      useUser({ or: 'redirect' });
+      return <h1>You can only see this if you are logged in</h1>
+    }
+    ```
+  </TabsContent>
+
+  <TabsContent value="server">
+    ```tsx title="my-protected-server-component.tsx"
+    import { stackServerApp } from "@/stack";
+
+    export default async function MyProtectedServerComponent() {
+      await stackServerApp.getUser({ or: 'redirect' });
+      return <h1>You can only see this if you are logged in</h1>
+    }
+    ```
+  </TabsContent>
+
+  <TabsContent value="middleware">
+    ```tsx title="middleware.tsx"
+    export async function middleware(request: NextRequest) {
+      const user = await stackServerApp.getUser();
+      if (!user) {
+        return NextResponse.redirect(new URL('/handler/sign-in', request.url));
+      }
+      return NextResponse.next();
+    }
+
+    export const config = {
+      // You can add your own route protection logic here
+      // Make sure not to protect the root URL, as it would prevent users from accessing static Next.js files or Stack's /handler path
+      matcher: '/protected/:path*',
+    };
+    ```
+  </TabsContent>
+</Tabs>
+
+<Info>
+  If you have sensitive information hidden in the page HTML itself, be aware of Next.js differences when using Server vs. Client Components.
+
+  - **Client Components**: Client components are always sent to the browser, regardless of page protection. This is standard Next.js behavior. For more information, please refer to the [Next.js documentation](https://nextjs.org/docs/app/building-your-application/rendering/composition-patterns#keeping-server-only-code-out-of-the-client-environment).
+
+  - **Server Components**: If a component is protected, it is guaranteed that its bundled HTML will not be sent to the browser if the user is not logged in. However, this is not necessarily true for its children and the rest of the page, as Next.js may split components on the same page and send them to the client separately for performance.
+  
+    For example, if your page is `<Parent><Child /></Parent>`, where `Parent` is protected and `Child` is not, Next.js may still send `<Child />` to the browser even if the user is not logged in. (Normal browsers will never display it, but attackers may be able to retrieve it.) Notably, this also applies to unprotected pages inside protected layouts.
+  
+    To remediate this, every component/page that contains sensitive information should protect itself, instead of relying on an outer layout. This is good practice anyways; it prevents you from accidentally exposing the data.
+  
+  - **Middleware**: Prior to Next.js v15.2.3, Next.js allowed attackers to see unprotected components if you only protect on a middleware level. Since v15.2.3, this is no longer possible, and you don't have to worry about leaking sensitive information when using middleware to protect a route.
+  
+  No matter which method you use, attackers will never be able to, say, impersonate a user.
+
+</Info>
+
+
+## User data
+
+You can update attributes on a user object with the `user.update()` function.
+
+```tsx title="my-client-component.tsx"
+'use client';
+import { useUser } from "@stackframe/stack";
+
+export default function MyClientComponent() {
+  const user = useUser();
+  return <button onClick={async () => await user.update({ displayName: "New Name" })}>
+    Change Name
+  </button>;
+}
+```
+
+You can also store custom user data in the `clientMetadata`, `serverMetadata`, or `clientReadonlyMetadata` fields. More information [here](../concepts/custom-user-data).
+
+## Signing out
+
+You can sign out the user by redirecting them to `/handler/sign-out` or simply by calling `user.signOut()`. They will be redirected to the URL [configured as `afterSignOut` in the `StackServerApp`](../sdk/objects/stack-app).
+
+<Tabs defaultValue="signout">
+  <TabsList>
+    <TabsTrigger value="signout">user.signOut()</TabsTrigger>
+    <TabsTrigger value="redirect">Redirect</TabsTrigger>
+  </TabsList>
+  
+  <TabsContent value="signout">
+    ```tsx title="sign-out-button.tsx"
+    "use client";
+    import { useUser } from "@stackframe/stack";
+
+    export default function SignOutButton() {
+      const user = useUser();
+      return user ? <button onClick={() => user.signOut()}>Sign Out</button> : "Not signed in";
+    }
+    ```
+  </TabsContent>
+
+  <TabsContent value="redirect">
+    ```tsx title="sign-out-link.tsx"
+    import { stackServerApp } from "@/stack";
+
+    export default async function SignOutLink() {
+      // stackServerApp.urls.signOut is equal to /handler/sign-out
+      return <a href={stackServerApp.urls.signOut}>Sign Out</a>;
+    }
+    ```
+  </TabsContent>
+</Tabs>
+
+## Example: Custom profile page
+
+Stack automatically creates a user profile on sign-up. Let's build a page that displays this information. In `app/profile/page.tsx`:
+
+<Tabs defaultValue="client">
+  <TabsList>
+    <TabsTrigger value="client">Client Component</TabsTrigger>
+    <TabsTrigger value="server">Server Component</TabsTrigger>
+  </TabsList>
+  
+  <TabsContent value="client">
+    ```tsx title="app/profile/page.tsx"
+    'use client';
+    import { useUser, useStackApp, UserButton } from "@stackframe/stack";
+
+    export default function PageClient() {
+      const user = useUser();
+      const app = useStackApp();
+      return (
+        <div>
+          {user ? (
+            <div>
+              <UserButton />
+              <p>Welcome, {user.displayName ?? "unnamed user"}</p>
+              <p>Your e-mail: {user.primaryEmail}</p>
+              <button onClick={() => user.signOut()}>Sign Out</button>
+            </div>
+          ) : (
+            <div>
+              <p>You are not logged in</p>
+              <button onClick={() => app.redirectToSignIn()}>Sign in</button>
+              <button onClick={() => app.redirectToSignUp()}>Sign up</button>
+            </div>
+          )}
+        </div>
+      );
+    }
+    ```
+  </TabsContent>
+
+  <TabsContent value="server">
+    ```tsx title="app/profile/page.tsx"
+    import { stackServerApp } from "@/stack";
+    import { UserButton } from "@stackframe/stack";
+
+    export default async function Page() {
+      const user = await stackServerApp.getUser();
+      return (
+        <div>
+          {user ? (
+            <div>
+              <UserButton />
+              <p>Welcome, {user.displayName ?? "unnamed user"}</p>
+              <p>Your e-mail: {user.primaryEmail}</p>
+              <p><a href={stackServerApp.urls.signOut}>Sign Out</a></p>
+            </div>
+          ) : (
+            <div>
+              <p>You are not logged in</p>
+              <p><a href={stackServerApp.urls.signIn}>Sign in</a></p>
+              <p><a href={stackServerApp.urls.signUp}>Sign up</a></p>
+            </div>
+          )}
+        </div>
+      );
+    }
+    ```
+  </TabsContent>
+</Tabs>
+
+After saving your code, you can see the profile page on [http://localhost:3000/profile](http://localhost:3000/profile).
+
+For more examples on how to use the `User` object, check the [the SDK documentation](../sdk/types/user.mdx).
+
+## Next steps
+
+In the next guide, we will show you how to put [your application into production](./production.mdx).
