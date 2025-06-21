@@ -332,7 +332,7 @@ export async function sendEmailFromTemplate(options: {
   });
 }
 
-async function getEmailConfig(tenancy: Tenancy): Promise<EmailConfig> {
+export async function getEmailConfig(tenancy: Tenancy): Promise<EmailConfig> {
   const projectEmailConfig = tenancy.config.email_config;
 
   if (projectEmailConfig.type === 'shared') {

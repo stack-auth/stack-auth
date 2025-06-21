@@ -10,6 +10,7 @@ import {
 } from "./client-interface";
 import { ContactChannelsCrud } from "./crud/contact-channels";
 import { CurrentUserCrud } from "./crud/current-user";
+import { NotificationPreferenceCrud } from "./crud/notification-preferences";
 import { ConnectedAccountAccessTokenCrud } from "./crud/oauth";
 import { ProjectPermissionsCrud } from "./crud/project-permissions";
 import { SessionsCrud } from "./crud/sessions";
@@ -567,6 +568,40 @@ export class StackServerInterface extends StackClientInterface {
     );
     const json = await response.json() as ContactChannelsCrud['Server']['List'];
     return json.items;
+  }
+
+  async listServerNotificationCategories(
+    userId: string,
+  ): Promise<NotificationPreferenceCrud['Server']['Read'][]> {
+    const response = await this.sendServerRequest(
+      urlString`/emails/notification-preference/${userId}`,
+      {
+        method: "GET",
+      },
+      null,
+    );
+    const json = await response.json() as NotificationPreferenceCrud['Server']['List'];
+    return json.items;
+  }
+
+  async setServerNotificationsEnabled(
+    userId: string,
+    notificationCategoryId: string,
+    enabled: boolean,
+  ): Promise<void> {
+    await this.sendServerRequest(
+      urlString`/emails/notification-preference/${userId}/${notificationCategoryId}`,
+      {
+        method: "PATCH",
+        headers: {
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          enabled,
+        }),
+      },
+      null,
+    );
   }
 
   async sendServerContactChannelVerificationEmail(
