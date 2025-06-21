@@ -1,0 +1,31 @@
+{
+  "title": "Stack Auth",
+  "description": "Stack Auth Documentation",
+  "root": true,
+  "pages": [
+    "overview",
+    "faq",
+    "---Getting Started---",
+    "getting-started/setup",
+    "getting-started/components",
+    "getting-started/users",
+    "getting-started/production",
+    "---Concepts---",
+    "concepts/api-keys",
+    "concepts/backend-integration",
+    "concepts/custom-user-data",
+    "concepts/oauth",
+    "concepts/orgs-and-teams",
+    "concepts/permissions",
+    "concepts/stack-app",
+    "concepts/team-selection",
+    "concepts/user-onboarding",
+    "concepts/webhooks",
+    "---Customization---",
+    "...customization",
+    "---Other---",
+    "others/cli-authentication",
+    "others/self-host",
+    "others/supabase"
+  ]
+}

@@ -1,0 +1,90 @@
+---
+title: Project
+full: true
+---
+
+The `Project` object contains the information and configuration of a project, such as the name, description, and enabled authentication methods.
+
+Each [Stack app](../../concepts/stack-app.mdx) corresponds to a project. You can obtain its `Project` object by calling [`stackApp.getProject()`](../objects/stack-app.mdx#stackappgetproject)
+or [`stackApp.useProject()`](../objects/stack-app.mdx#stackappuseproject) {/* THIS_LINE_PLATFORM react-like */}
+.
+
+### Table of Contents
+
+<ClickableTableOfContents code={`type Project = {
+  id: string;  //$stack-link-to:#projectid
+  displayName: string;  //$stack-link-to:#projectdisplayname
+  config: { ... };  //$stack-link-to:#projectconfig
+};`} />
+
+---
+
+<CollapsibleTypesSection type="project" property="id" defaultOpen={false}>
+  <MethodLayout>
+    <MethodContent>
+      The unique ID of the project as a `string`.
+    </MethodContent>
+    <MethodAside title="Type Definition">
+
+      ```typescript
+      declare const id: string;
+      ```
+    </MethodAside>
+  </MethodLayout>
+</CollapsibleTypesSection>
+
+<CollapsibleTypesSection type="project" property="displayName" defaultOpen={false}>
+  <MethodLayout>
+    <MethodContent>
+      The display name of the project as a `string`.
+    </MethodContent>
+    <MethodAside title="Type Definition">
+
+      ```typescript
+      declare const displayName: string;
+      ```
+    </MethodAside>
+  </MethodLayout>
+</CollapsibleTypesSection>
+
+<CollapsibleTypesSection type="project" property="config" defaultOpen={false}>
+  <MethodLayout>
+    <MethodContent>
+      The configuration settings for the project.
+
+      ### Properties
+
+      <ParamField path="signUpEnabled" type="boolean">
+        Indicates if sign-up is enabled for the project.
+      </ParamField>
+
+      <ParamField path="credentialEnabled" type="boolean">
+        Specifies if credential-based authentication is enabled for the project.
+      </ParamField>
+
+      <ParamField path="magicLinkEnabled" type="boolean">
+        States whether magic link authentication is enabled for the project.
+      </ParamField>
+
+      <ParamField path="clientTeamCreationEnabled" type="boolean">
+        Determines if client-side team creation is permitted within the project.
+      </ParamField>
+
+      <ParamField path="clientUserDeletionEnabled" type="boolean">
+        Indicates if client-side user deletion is enabled for the project.
+      </ParamField>
+    </MethodContent>
+    <MethodAside title="Type Definition">
+
+      ```typescript
+      declare const config: {
+        signUpEnabled: boolean;
+        credentialEnabled: boolean;
+        magicLinkEnabled: boolean;
+        clientTeamCreationEnabled: boolean;
+        clientUserDeletionEnabled: boolean;
+      };
+      ```
+    </MethodAside>
+  </MethodLayout>
+</CollapsibleTypesSection>

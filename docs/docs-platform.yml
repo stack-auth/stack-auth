@@ -1,0 +1,217 @@
+# Platform-specific content filtering configuration
+# Explicit page-by-page listing approach
+
+pages:
+  # Root pages
+  - path: overview.mdx
+    platforms: ["next", "react", "js", "python"]
+  
+  - path: faq.mdx
+    platforms: ["next", "react", "js", "python"]
+
+  # Getting Started
+  - path: getting-started/setup.mdx
+    platforms: ["next", "react", "js", "python"]
+  
+  - path: getting-started/components.mdx
+    platforms: ["next", "react"]  # Only React-like platforms
+  
+  - path: getting-started/users.mdx
+    platforms: ["next", "react", "js"]  # No Python
+  
+  - path: getting-started/example-pages.mdx
+    platforms: ["js"]  # Only vanilla JS
+  
+  - path: getting-started/production.mdx
+    platforms: ["next", "react", "js"]  # No Python
+
+  # Concepts
+  - path: concepts/stack-app.mdx
+    platforms: ["next", "react", "js"]  # No Python
+  
+  - path: concepts/custom-user-data.mdx
+    platforms: ["next", "react", "js"]  # No Python
+  
+  - path: concepts/user-onboarding.mdx
+    platforms: ["next", "react"]  # No JS or Python
+  
+  - path: concepts/oauth.mdx
+    platforms: ["next", "react", "js"]  # No Python
+  
+  - path: concepts/orgs-and-teams.mdx
+    platforms: ["next", "react", "js"]  # No Python
+  
+  - path: concepts/team-selection.mdx
+    platforms: ["next", "react", "js"]  # No Python
+  
+  - path: concepts/permissions.mdx
+    platforms: ["next", "react", "js"]  # No Python
+  
+  - path: concepts/api-keys.mdx
+    platforms: ["next", "react", "js"]  # No Python
+  
+  - path: concepts/webhooks.mdx
+    platforms: ["next", "react", "js"]  # No Python
+  
+  - path: concepts/backend-integration.mdx
+    platforms: ["next", "react", "js", "python"]
+
+  # Components (React-like only)
+  - path: components/overview.mdx
+    platforms: ["next", "react"]
+  
+  - path: components/user-button.mdx
+    platforms: ["next", "react"]
+  
+  - path: components/selected-team-switcher.mdx
+    platforms: ["next", "react"]
+  
+  - path: components/account-settings.mdx
+    platforms: ["next", "react"]
+  
+  - path: components/sign-in.mdx
+    platforms: ["next", "react"]
+  
+  - path: components/sign-up.mdx
+    platforms: ["next", "react"]
+  
+  - path: components/credential-sign-in.mdx
+    platforms: ["next", "react"]
+  
+  - path: components/credential-sign-up.mdx
+    platforms: ["next", "react"]
+  
+  - path: components/magic-link-sign-in.mdx
+    platforms: ["next", "react"]
+  
+  - path: components/forgot-password.mdx
+    platforms: ["next", "react"]
+  
+  - path: components/password-reset.mdx
+    platforms: ["next", "react"]
+  
+  - path: components/oauth-button.mdx
+    platforms: ["next", "react"]
+  
+  - path: components/oauth-button-group.mdx
+    platforms: ["next", "react"]
+  
+  - path: components/stack-handler.mdx
+    platforms: ["next", "react"]
+  
+  - path: components/stack-provider.mdx
+    platforms: ["next", "react"]
+  
+  - path: components/stack-theme.mdx
+    platforms: ["next", "react"]
+
+  # Customization (React-like only)
+  - path: customization/dark-mode.mdx
+    platforms: ["next", "react"]
+  
+  - path: customization/custom-styles.mdx
+    platforms: ["next", "react"]
+  
+  - path: customization/internationalization.mdx
+    platforms: ["next", "react"]
+  
+  - path: customization/custom-pages.mdx
+    platforms: ["next", "react"]
+  
+  - path: customization/page-examples/index.mdx
+    platforms: ["next", "react"]
+  
+  - path: customization/page-examples/sign-in.mdx
+    platforms: ["next", "react"]
+  
+  - path: customization/page-examples/sign-up.mdx
+    platforms: ["next", "react"]
+  
+  - path: customization/page-examples/forgot-password.mdx
+    platforms: ["next", "react"]
+  
+  - path: customization/page-examples/password-reset.mdx
+    platforms: ["next", "react"]
+
+  # SDK Reference
+  - path: sdk/overview.mdx
+    platforms: ["next", "react", "js"]  # No Python
+  
+  - path: sdk/overview-new.mdx
+    platforms: ["next", "react", "js"]  # No Python
+  
+  - path: sdk/objects/stack-app.mdx
+    platforms: ["next", "react", "js"]  # No Python
+  
+  - path: sdk/objects/stack-app-test.mdx
+    platforms: ["next", "react", "js"]  # No Python
+  
+  - path: sdk/types/api-key.mdx
+    platforms: ["next", "react", "js"]  # No Python
+  
+  - path: sdk/types/connected-account.mdx
+    platforms: ["next", "react", "js"]  # No Python
+  
+  - path: sdk/types/contact-channel.mdx
+    platforms: ["next", "react", "js"]  # No Python
+  
+  - path: sdk/types/project.mdx
+    platforms: ["next", "react", "js"]  # No Python
+  
+  - path: sdk/types/team.mdx
+    platforms: ["next", "react", "js"]  # No Python
+  
+  - path: sdk/types/team-permission.mdx
+    platforms: ["next", "react", "js"]  # No Python
+  
+  - path: sdk/types/team-profile.mdx
+    platforms: ["next", "react", "js"]  # No Python
+  
+  - path: sdk/types/team-user.mdx
+    platforms: ["next", "react", "js"]  # No Python
+  
+  - path: sdk/types/user.mdx
+    platforms: ["next", "react", "js"]  # No Python
+
+  # SDK Hooks (React-like only)
+  - path: sdk/hooks/use-stack-app.mdx
+    platforms: ["next", "react"]  # No JS or Python
+  
+  - path: sdk/hooks/use-user.mdx
+    platforms: ["next", "react"]  # No JS or Python
+
+  # Snippets (utility files - exclude from Python)
+  - path: snippets/always-tab-codeblock.mdx
+    platforms: ["next", "react", "js"]  # No Python
+  
+  - path: snippets/big-divider.mdx
+    platforms: ["next", "react", "js"]  # No Python
+  
+  - path: snippets/divider.mdx
+    platforms: ["next", "react", "js"]  # No Python
+  
+  - path: snippets/get-user-or-parameter.mdx
+    platforms: ["next", "react", "js"]  # No Python
+  
+  - path: snippets/make-full-page.mdx
+    platforms: ["next", "react", "js"]  # No Python
+  
+  - path: snippets/stack-app-constructor-options-after-ssk.mdx
+    platforms: ["next", "react", "js"]  # No Python
+  
+  - path: snippets/stack-app-constructor-options-before-ssk.mdx
+    platforms: ["next", "react", "js"]  # No Python
+  
+  - path: snippets/use-on-server-callout.mdx
+    platforms: ["next", "react", "js"]  # No Python
+
+  # Others
+  - path: others/self-host.mdx
+    platforms: ["next", "react", "js", "python"] # All platforms
+
+  - path: others/supabase.mdx
+    platforms: ["next"] # Next only
+
+  - path: others/cli-authentication.mdx
+    platforms: ["python"] # Python only
+
