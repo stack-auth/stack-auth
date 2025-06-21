@@ -146,13 +146,7 @@ pnpm start:dashboard
 You need to initialize the database with the following command with the backend environment variables set:
 
 ```sh
-pnpm prisma migrate deploy
-```
-
-The database is still empty; you need to create a project with the ID "internal" used by the dashboard to authenticate itself. You can do this with the following command:
-
-```sh
-pnpm prisma db seed
+pnpm db:init
 ```
 
 Now you can go to the dashboard (e.g., https://your-dashboard-url.com) and sign up for an account.
