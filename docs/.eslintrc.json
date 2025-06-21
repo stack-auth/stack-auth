@@ -1,0 +1,13 @@
+{
+  "extends": [
+    "../configs/eslint/defaults.js",
+    "../configs/eslint/next.js"
+  ],
+  "ignorePatterns": ["/*", "!/src"],
+  "rules": {
+    // Temporarily downgrade some rules to warnings during migration
+    // Remove these overrides once all issues are fixed
+    "@typescript-eslint/no-unused-vars": "warn",
+    "@typescript-eslint/no-explicit-any": "warn"
+  }
+}

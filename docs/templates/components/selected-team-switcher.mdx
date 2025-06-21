@@ -1,0 +1,56 @@
+---
+title: "<SelectedTeamSwitcher />"
+---
+
+<TeamSwitcherDemo />
+
+For a comprehensive guide on using this component, refer to our [Team Selection documentation](../concepts/team-selection.mdx).
+
+## Props
+ 
+<PropTable 
+  props={[
+    {
+      name: "urlMap",
+      type: "function",
+      description: "A function that maps a team to a URL. If provided, the component will navigate to this URL when a team is selected.",
+      optional: true,
+    },
+    {
+      name: "selectedTeam",
+      type: "Team",
+      description: "The initially selected team.",
+      optional: true,
+    },
+    {
+      name: "noUpdateSelectedTeam",
+      type: "boolean",
+      description: "If true, prevents updating the selected team in the user's settings when a new team is selected.",
+      optional: true,
+      default: "false",
+    },
+    {
+      name: "mockUser",
+    }
+  ]}
+/>
+
+
+## Example
+
+```tsx
+import { SelectedTeamSwitcher } from '@stackframe/stack';
+
+export default function Page() {
+  return (
+    <div>
+      <h1>Team Switcher</h1>
+      <SelectedTeamSwitcher
+        urlMap={(team) => `/team/${team.id}`}
+        selectedTeam={currentTeam}
+        noUpdateSelectedTeam={false}
+      />
+    </div>
+  );
+}
+```
