@@ -5,9 +5,27 @@ import { useUser } from "../../../lib/hooks";
 import { useTranslation } from "../../../lib/translations";
 import { Section } from "../section";
 
-export function PasskeySection() {
+export function PasskeySection(props?: {
+  mockMode?: boolean,
+}) {
   const { t } = useTranslation();
-  const user = useUser({ or: "throw" });
+  const user = useUser({ or: props?.mockMode ? 'return-null' : "throw" });
+
+  // In mock mode, show a placeholder message
+  if (props?.mockMode && !user) {
+    return (
+      <Section
+        title={t("Passkey")}
+        description={t("Passkey management is not available in demo mode.")}
+      >
+        <Typography variant='secondary'>{t("Passkey management is not available in demo mode.")}</Typography>
+      </Section>
+    );
+  }
+
+  if (!user) {
+    return null; // This shouldn't happen in non-mock mode due to throw
+  }
   const stackApp = useStackApp();
   const project = stackApp.useProject();
   const contactChannels = user.useContactChannels();

@@ -19,10 +19,26 @@ import { Team, useStackApp, useUser } from "..";
 import { useTranslation } from "../lib/translations";
 import { TeamIcon } from "./team-icon";
 
+type MockTeam = {
+  id: string,
+  displayName: string,
+  profileImageUrl?: string | null,
+};
+
 type SelectedTeamSwitcherProps = {
   urlMap?: (team: Team) => string,
   selectedTeam?: Team,
   noUpdateSelectedTeam?: boolean,
+  // Mock data props
+  mockUser?: {
+    selectedTeam?: MockTeam,
+  },
+  mockTeams?: MockTeam[],
+  mockProject?: {
+    config: {
+      clientTeamCreationEnabled: boolean,
+    },
+  },
 };
 
 export function SelectedTeamSwitcher(props: SelectedTeamSwitcherProps) {
@@ -37,8 +53,22 @@ function Fallback() {
 
 function Inner(props: SelectedTeamSwitcherProps) {
   const { t } = useTranslation();
-  const app = useStackApp();
-  const user = useUser();
+  const appFromHook = useStackApp();
+  const userFromHook = useUser({ or: props.mockUser ? 'return-null' : undefined });
+
+  // Use mock data if provided, otherwise use real data
+  const app = props.mockUser ? {
+    useProject: () => props.mockProject || { config: { clientTeamCreationEnabled: false } },
+    useNavigate: () => () => {}, // Mock navigate function
+    urls: { accountSettings: '/account-settings' },
+  } : appFromHook;
+
+  const user = props.mockUser ? {
+    selectedTeam: props.mockUser.selectedTeam,
+    useTeams: () => props.mockTeams || [],
+    setSelectedTeam: async () => {}, // Mock function
+  } : userFromHook;
+
   const project = app.useProject();
   const navigate = app.useNavigate();
   const selectedTeam = user?.selectedTeam || props.selectedTeam;
@@ -46,15 +76,18 @@ function Inner(props: SelectedTeamSwitcherProps) {
   const teams = useMemo(() => rawTeams?.sort((a, b) => b.id === selectedTeam?.id ? 1 : -1), [rawTeams, selectedTeam]);
 
   useEffect(() => {
-    if (!props.noUpdateSelectedTeam && props.selectedTeam) {
+    if (!props.noUpdateSelectedTeam && props.selectedTeam && !props.mockUser) {
       runAsynchronouslyWithAlert(user?.setSelectedTeam(props.selectedTeam));
     }
-  }, [props.noUpdateSelectedTeam, props.selectedTeam]);
+  }, [props.noUpdateSelectedTeam, props.selectedTeam, props.mockUser]);
 
   return (
     <Select
       value={selectedTeam?.id}
       onValueChange={(value) => {
+        // Skip actual navigation/updates in mock mode
+        if (props.mockUser) return;
+
         runAsynchronouslyWithAlert(async () => {
           const team = teams?.find(team => team.id === value);
           if (!team) {
@@ -62,10 +95,10 @@ function Inner(props: SelectedTeamSwitcherProps) {
           }
 
           if (!props.noUpdateSelectedTeam) {
-            await user?.setSelectedTeam(team);
+            await user?.setSelectedTeam(team as Team);
           }
           if (props.urlMap) {
-            navigate(props.urlMap(team));
+            navigate(props.urlMap(team as Team));
           }
         });
       }}
@@ -80,14 +113,24 @@ function Inner(props: SelectedTeamSwitcherProps) {
               <span>
                 {t('Current team')}
               </span>
-              <Button variant='ghost' size='icon' className="h-6 w-6" onClick={() => navigate(`${app.urls.accountSettings}#team-${user.selectedTeam?.id}`)}>
+              <Button
+                variant='ghost'
+                size='icon'
+                className="h-6 w-6"
+                onClick={() => {
+                  // Skip navigation in mock mode
+                  if (!props.mockUser) {
+                    navigate(`${app.urls.accountSettings}#team-${user.selectedTeam?.id}`);
+                  }
+                }}
+              >
                 <Settings className="h-4 w-4"/>
               </Button>
             </div>
           </SelectLabel>
           <SelectItem value={user.selectedTeam.id}>
             <div className="flex items-center gap-2">
-              <TeamIcon team={user.selectedTeam} />
+              <TeamIcon team={user.selectedTeam as Team} />
               <Typography className="max-w-40 truncate">{user.selectedTeam.displayName}</Typography>
             </div>
           </SelectItem>
@@ -100,7 +143,7 @@ function Inner(props: SelectedTeamSwitcherProps) {
               .map(team => (
                 <SelectItem value={team.id} key={team.id}>
                   <div className="flex items-center gap-2">
-                    <TeamIcon team={team} />
+                    <TeamIcon team={team as Team} />
                     <Typography className="max-w-64 truncate">{team.displayName}</Typography>
                   </div>
                 </SelectItem>
@@ -114,7 +157,12 @@ function Inner(props: SelectedTeamSwitcherProps) {
           <SelectSeparator/>
           <div>
             <Button
-              onClick={() => navigate(`${app.urls.accountSettings}#team-creation`)}
+              onClick={() => {
+                // Skip navigation in mock mode
+                if (!props.mockUser) {
+                  navigate(`${app.urls.accountSettings}#team-creation`);
+                }
+              }}
               className="w-full"
               variant='ghost'
             >

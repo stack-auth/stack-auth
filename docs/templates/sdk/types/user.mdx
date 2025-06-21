@@ -1,0 +1,1569 @@
+---
+title: User
+full: true
+---
+
+This is a detailed reference for the `User` object. If you're looking for a more high-level overview, please refer to our guide on users [here](../../getting-started/users.mdx).
+
+On this page:
+- [CurrentUser](#currentuser)
+- [ServerUser](#serveruser)
+- [CurrentServerUser](#currentserveruser)
+
+# `CurrentUser`
+
+You can call `useUser()` or `stackServerApp.getUser()` to get the `CurrentUser` object.
+
+### Table of Contents
+
+<ClickableTableOfContents code={`type CurrentUser = {
+    id: string; //$stack-link-to:#currentuserid
+    displayName: string | null; //$stack-link-to:#currentuserdisplayname
+    primaryEmail: string | null; //$stack-link-to:#currentuserprimaryemail
+    primaryEmailVerified: boolean; //$stack-link-to:#currentuserprimaryemailverified
+    profileImageUrl: string | null; //$stack-link-to:#currentuserprofileimageurl
+    signedUpAt: Date; //$stack-link-to:#currentusersignedupat
+    hasPassword: boolean; //$stack-link-to:#currentuserhaspassword
+    clientMetadata: Json; //$stack-link-to:#currentuserclientmetadata
+    clientReadOnlyMetadata: Json; //$stack-link-to:#currentuserclientreadonlymetadata
+    selectedTeam: Team | null; //$stack-link-to:#currentuserselectedteam
+
+    update(data): Promise<void>; //$stack-link-to:#currentuserupdate
+    updatePassword(data): Promise<void>; //$stack-link-to:#currentuserupdatepassword
+    getAuthHeaders(): Promise<Record<string, string>>; //$stack-link-to:#currentusergetauthheaders
+    getAuthJson(): Promise<{ accessToken: string | null }>; //$stack-link-to:#currentusergetauthjson
+    signOut([options]): Promise<void>; //$stack-link-to:#currentusersignout
+    delete(): Promise<void>; //$stack-link-to:#currentuserdelete
+
+    getTeam(id): Promise<Team | null>; //$stack-link-to:#currentusergetteam
+    // NEXT_LINE_PLATFORM react-like
+    ⤷ useTeam(id): Team | null; //$stack-link-to:#currentuseruseteam
+    listTeams(): Promise<Team[]>; //$stack-link-to:#currentuserlistteams
+    // NEXT_LINE_PLATFORM react-like
+    ⤷ useTeams(): Team[]; //$stack-link-to:#currentuseruseteams
+    setSelectedTeam(team): Promise<void>; //$stack-link-to:#currentusersetselectedteam
+    createTeam(data): Promise<Team>; //$stack-link-to:#currentusercreateteam
+    leaveTeam(team): Promise<void>; //$stack-link-to:#currentuserleaveteam
+    getTeamProfile(team): Promise<EditableTeamMemberProfile>; //$stack-link-to:#currentusergetteamprofile
+    // NEXT_LINE_PLATFORM react-like
+    ⤷ useTeamProfile(team): EditableTeamMemberProfile; //$stack-link-to:#currentuseruseteamprofile
+
+    hasPermission(scope, permissionId): Promise<boolean>; //$stack-link-to:#currentuserhaspermission
+    getPermission(scope, permissionId[, options]): Promise<TeamPermission | null>; //$stack-link-to:#currentusergetpermission
+    // NEXT_LINE_PLATFORM react-like
+    ⤷ usePermission(scope, permissionId[, options]): TeamPermission | null; //$stack-link-to:#currentuserusepermission
+    listPermissions(scope[, options]): Promise<TeamPermission[]>; //$stack-link-to:#currentuserlistpermissions
+    // NEXT_LINE_PLATFORM react-like
+    ⤷ usePermissions(scope[, options]): TeamPermission[]; //$stack-link-to:#currentuserusepermissions
+
+    listContactChannels(): Promise<ContactChannel[]>; //$stack-link-to:#currentuserlistcontactchannels
+    // NEXT_LINE_PLATFORM react-like
+    ⤷ useContactChannels(): ContactChannel[]; //$stack-link-to:#currentuserusecontactchannels
+    
+    createApiKey(options): Promise<UserApiKeyFirstView>; //$stack-link-to:#currentusercreateapikey
+    listApiKeys(): Promise<UserApiKey[]>; //$stack-link-to:#currentuserlistapikeys
+    // NEXT_LINE_PLATFORM react-like
+    ⤷ useApiKeys(): UserApiKey[]; //$stack-link-to:#currentuseruseapikeys
+};`} />
+
+<CollapsibleTypesSection type="currentUser" property="id" defaultOpen={false}>
+  <MethodLayout>
+    <MethodContent>
+      The user ID as a `string`. This is the unique identifier of the user.
+    </MethodContent>
+    <MethodAside title="Type Definition">
+
+      ```typescript
+      declare const id: string;
+      ```
+    </MethodAside>
+  </MethodLayout>
+</CollapsibleTypesSection>
+
+<CollapsibleTypesSection type="currentUser" property="displayName" defaultOpen={false}>
+  <MethodLayout>
+    <MethodContent>
+      The display name of the user as a `string` or `null` if not set. The user can modify this value.
+    </MethodContent>
+    <MethodAside title="Type Definition">
+
+      ```typescript
+      declare const displayName: string | null;
+      ```
+    </MethodAside>
+  </MethodLayout>
+</CollapsibleTypesSection>
+
+<CollapsibleTypesSection type="currentUser" property="primaryEmail" defaultOpen={false}>
+  <MethodLayout>
+    <MethodContent>
+      The primary email of the user as a `string` or `null`. Note that this is not necessarily unique.
+    </MethodContent>
+    <MethodAside title="Type Definition">
+
+      ```typescript
+      declare const primaryEmail: string | null;
+      ```
+    </MethodAside>
+  </MethodLayout>
+</CollapsibleTypesSection>
+
+<CollapsibleTypesSection type="currentUser" property="primaryEmailVerified" defaultOpen={false}>
+  <MethodLayout>
+    <MethodContent>
+      A `boolean` indicating whether the primary email of the user is verified.
+    </MethodContent>
+    <MethodAside title="Type Definition">
+
+      ```typescript
+      declare const primaryEmailVerified: boolean;
+      ```
+    </MethodAside>
+  </MethodLayout>
+</CollapsibleTypesSection>
+
+<CollapsibleTypesSection type="currentUser" property="profileImageUrl" defaultOpen={false}>
+  <MethodLayout>
+    <MethodContent>
+      The profile image URL of the user as a `string` or `null` if no profile image is set.
+    </MethodContent>
+    <MethodAside title="Type Definition">
+
+      ```typescript
+      declare const profileImageUrl: string | null;
+      ```
+    </MethodAside>
+  </MethodLayout>
+</CollapsibleTypesSection>
+
+<CollapsibleTypesSection type="currentUser" property="signedUpAt" defaultOpen={false}>
+  <MethodLayout>
+    <MethodContent>
+      The date and time when the user signed up, as a `Date`.
+    </MethodContent>
+    <MethodAside title="Type Definition">
+
+      ```typescript
+      declare const signedUpAt: Date;
+      ```
+    </MethodAside>
+  </MethodLayout>
+</CollapsibleTypesSection>
+
+<CollapsibleTypesSection type="currentUser" property="hasPassword" defaultOpen={false}>
+  <MethodLayout>
+    <MethodContent>
+      A `boolean` indicating whether the user has a password set.
+    </MethodContent>
+    <MethodAside title="Type Definition">
+
+      ```typescript
+      declare const hasPassword: boolean;
+      ```
+    </MethodAside>
+  </MethodLayout>
+</CollapsibleTypesSection>
+
+<CollapsibleTypesSection type="currentUser" property="clientMetadata" defaultOpen={false}>
+  <MethodLayout>
+    <MethodContent>
+      The client metadata of the user as an `object`. This metadata is visible on the client side but should not contain sensitive or server-only information.
+    </MethodContent>
+    <MethodAside title="Type Definition">
+
+      ```typescript
+      declare const clientMetadata: Json;
+      ```
+    </MethodAside>
+  </MethodLayout>
+</CollapsibleTypesSection>
+
+<CollapsibleTypesSection type="currentUser" property="clientReadOnlyMetadata" defaultOpen={false}>
+  <MethodLayout>
+    <MethodContent>
+      Read-only metadata visible on the client side. This metadata can only be modified on the server side.
+    </MethodContent>
+    <MethodAside title="Type Definition">
+
+      ```typescript
+      declare const clientReadOnlyMetadata: Json;
+      ```
+    </MethodAside>
+  </MethodLayout>
+</CollapsibleTypesSection>
+
+<CollapsibleTypesSection type="currentUser" property="selectedTeam" defaultOpen={false}>
+  <MethodLayout>
+    <MethodContent>
+      The currently selected team for the user, if applicable, as a `Team` object or `null` if no team is selected.
+    </MethodContent>
+    <MethodAside title="Type Definition">
+
+      ```typescript
+      declare const selectedTeam: Team | null;
+      ```
+    </MethodAside>
+  </MethodLayout>
+</CollapsibleTypesSection>
+
+<CollapsibleTypesSection type="currentUser" property="update" signature="data" defaultOpen={false}>
+  <MethodLayout>
+    <MethodContent>
+      Updates the user information.
+
+      ### Parameters
+
+      <ParamField path="data" type="object" required>
+        The fields to update.
+        <Accordion title="Show Properties">
+          <ParamField path="displayName" type="string">
+            The new display name for the user.
+          </ParamField>
+          <ParamField path="clientMetadata" type="object">
+            Custom metadata visible to the client.
+          </ParamField>
+          <ParamField path="selectedTeamId" type="string | null">
+            The ID of the team to set as selected, or `null` to clear selection.
+          </ParamField>
+          <ParamField path="profileImageUrl" type="string | null">
+            The URL of the user's new profile image, or `null` to remove it.
+          </ParamField>
+        </Accordion>
+      </ParamField>
+
+      ### Returns
+
+      `Promise<void>`
+    </MethodContent>
+    <MethodAside>
+      <AsideSection title="Signature">
+      ```typescript
+      declare function update(data: {
+        displayName?: string;
+        clientMetadata?: Json;
+        selectedTeamId?: string | null;
+        profileImageUrl?: string | null;
+      }): Promise<void>;
+      ```
+      </AsideSection>
+      <AsideSection title="Examples">
+      ```typescript Updating user details
+      await user.update({
+        displayName: "New Display Name",
+        clientMetadata: {
+          address: "123 Main St",
+        },
+      });
+      ```
+      </AsideSection>
+    </MethodAside>
+  </MethodLayout>
+</CollapsibleTypesSection>
+
+<CollapsibleTypesSection type="currentUser" property="getTeam" signature="id" defaultOpen={false}>
+  <MethodLayout>
+    <MethodContent>
+      Gets the team with the specified ID.
+
+      ### Parameters
+
+      <ParamField path="id" type="string" required>
+        The ID of the team to get.
+      </ParamField>
+
+      ### Returns
+
+      `Promise<Team | null>`: The team object, or `null` if the team is not found or the user is not a member of the team.
+    </MethodContent>
+    <MethodAside>
+      <AsideSection title="Signature">
+
+      ```typescript
+      declare function getTeam(id: string): Promise<Team | null>;
+      ```
+      </AsideSection>
+      <AsideSection title="Examples">
+      ```typescript Getting a team by ID
+      const team = await user.getTeam("teamId");
+      ```
+      </AsideSection>
+    </MethodAside>
+  </MethodLayout>
+</CollapsibleTypesSection>
+
+{/* IF_PLATFORM next */}
+<CollapsibleTypesSection type="currentUser" property="useTeam" signature="id" defaultOpen={false}>
+  <MethodLayout>
+    <MethodContent>
+      Gets the team with the given ID. This is the same as `getTeam` but is used as a React hook.
+
+      ### Parameters
+
+      <ParamField path="id" type="string" required>
+        The ID of the team to get.
+      </ParamField>
+
+      ### Returns
+
+      `Team | null`: The team object, or `null` if the team is not found or the user is not a member of the team.
+    </MethodContent>
+    <MethodAside>
+      <AsideSection title="Signature">
+        ```typescript
+        declare function useTeam(id: string): Team | null;
+        ```
+      </AsideSection>
+
+      <AsideSection title="Examples">
+        ```typescript Using a team in a React component
+        const team = user.useTeam("teamId");
+        ```
+      </AsideSection>
+    </MethodAside>
+  </MethodLayout>
+</CollapsibleTypesSection>
+{/* END_PLATFORM */}
+
+<CollapsibleTypesSection type="currentUser" property="listTeams" defaultOpen={false}>
+  <MethodLayout>
+    <MethodContent>
+      Lists all the teams the user is a member of.
+
+      ### Parameters
+
+      None.
+
+      ### Returns
+
+      `Promise<Team[]>`: The list of teams.
+    </MethodContent>
+    <MethodAside>
+      <AsideSection title="Signature">
+
+      ```typescript
+      declare function listTeams(): Promise<Team[]>;
+      ```
+      </AsideSection>
+      <AsideSection title="Examples">
+      ```typescript Listing all teams
+      const teams = await user.listTeams();
+      ```
+      </AsideSection>
+    </MethodAside>
+  </MethodLayout>
+</CollapsibleTypesSection>
+
+{/* IF_PLATFORM next */}
+<CollapsibleTypesSection type="currentUser" property="useTeams" defaultOpen={false}>
+  <MethodLayout>
+    <MethodContent>
+      Lists all the teams the user is a member of. This is the same as `listTeams` but is used as a React hook.
+
+      ### Parameters
+
+      None.
+
+      ### Returns
+
+      `Team[]`: The list of teams.
+    </MethodContent>
+    <MethodAside>
+      <AsideSection title="Signature">
+
+      ```typescript
+      declare function useTeams(): Team[];
+      ```
+      </AsideSection>
+      <AsideSection title="Examples">
+      ```typescript Using teams in a React component
+      const teams = user.useTeams();
+      ```
+      </AsideSection>
+    </MethodAside>
+  </MethodLayout>
+</CollapsibleTypesSection>
+{/* END_PLATFORM */}
+
+<CollapsibleTypesSection type="currentUser" property="setSelectedTeam" signature="team" defaultOpen={false}>
+  <MethodLayout>
+    <MethodContent>
+      Sets the currently selected team for the user.
+
+      ### Parameters
+
+      <ParamField path="team" type="Team | null" required>
+        The team to set as selected, or `null` to clear selection.
+      </ParamField>
+
+      ### Returns
+
+      `Promise<void>`
+    </MethodContent>
+    <MethodAside>
+      <AsideSection title="Signature">
+
+      ```typescript
+      declare function setSelectedTeam(team: Team | null): Promise<void>;
+      ```
+      </AsideSection>
+      <AsideSection title="Examples">
+      ```typescript Setting the selected team
+      const team = await user.getTeam("team_id_123");
+      await user.setSelectedTeam(team);
+      ```
+    </AsideSection>
+  </MethodAside>
+</MethodLayout>
+</CollapsibleTypesSection>
+
+<CollapsibleTypesSection type="currentUser" property="createTeam" signature="data" defaultOpen={false}>
+  <MethodLayout>
+    <MethodContent>
+      Creates a new team for the user. The user will be added to the team and given creator permissions.
+
+      **Note**: If client-side team creation is disabled in the Stack dashboard, this will throw an error.
+
+      ### Parameters
+
+      <ParamField path="data" type="object" required>
+        The data for creating the team.
+        <Accordion title="Show Properties">
+          <ParamField path="displayName" type="string">
+            The display name for the team.
+          </ParamField>
+          <ParamField path="profileImageUrl" type="string | null">
+            The URL of the team's profile image, or `null` to remove it.
+          </ParamField>
+        </Accordion>
+      </ParamField>
+
+      ### Returns
+
+      `Promise<Team>`: The created team.
+    </MethodContent>
+    <MethodAside>
+      <AsideSection title="Signature">
+
+      ```typescript
+      declare function createTeam(data: {
+        displayName: string;
+        profileImageUrl?: string | null;
+      }): Promise<Team>;
+      ```
+      </AsideSection>
+      <AsideSection title="Examples">
+      ```typescript Creating a new team
+      const team = await user.createTeam({
+        displayName: "New Team",
+        profileImageUrl: "https://example.com/profile.jpg",
+      });
+      ```
+      </AsideSection>
+    </MethodAside>
+  </MethodLayout>
+</CollapsibleTypesSection>
+
+<CollapsibleTypesSection type="currentUser" property="leaveTeam" signature="team" defaultOpen={false}>
+  <MethodLayout>
+    <MethodContent>
+      Allows the user to leave a team. If the user is not a member of the team, this will throw an error.
+
+      ### Parameters
+
+      <ParamField path="team" type="Team" required>
+        The team to leave.
+      </ParamField>
+
+      ### Returns
+
+      `Promise<void>`
+    </MethodContent>
+    <MethodAside>
+      <AsideSection title="Signature">
+
+      ```typescript
+      declare function leaveTeam(team: Team): Promise<void>;
+      ```
+      </AsideSection>
+      <AsideSection title="Examples">
+      ```typescript Leaving a team
+      await user.leaveTeam(team);
+      ```
+      </AsideSection>
+    </MethodAside>
+  </MethodLayout>
+</CollapsibleTypesSection>
+
+<CollapsibleTypesSection type="currentUser" property="getTeamProfile" signature="team" defaultOpen={false}>
+  <MethodLayout>
+    <MethodContent>
+      Retrieves the user's profile within a specific team.
+
+      ### Parameters
+
+      <ParamField path="team" type="Team" required>
+        The team to retrieve the profile for.
+      </ParamField>
+
+      ### Returns
+
+      `Promise<EditableTeamMemberProfile>`: The user's editable profile for the specified team.
+    </MethodContent>
+    <MethodAside>
+      <AsideSection title="Signature">
+
+      ```typescript
+      declare function getTeamProfile(team: Team): Promise<EditableTeamMemberProfile>;
+      ```
+      </AsideSection>
+      <AsideSection title="Examples">
+      ```typescript Getting a team profile
+      const profile = await user.getTeamProfile(team);
+      ```
+      </AsideSection>
+    </MethodAside>
+  </MethodLayout>
+</CollapsibleTypesSection>
+
+{/* IF_PLATFORM next */}
+<CollapsibleTypesSection type="currentUser" property="useTeamProfile" signature="team" defaultOpen={false}>
+  <MethodLayout>
+    <MethodContent>
+      Retrieves the user's profile within a specific team. This is the same as `getTeamProfile` but is used as a React hook.
+
+      ### Parameters
+
+      <ParamField path="team" type="Team" required>
+        The team to retrieve the profile for.
+      </ParamField>
+
+      ### Returns
+
+      `EditableTeamMemberProfile`: The user's editable profile for the specified team.
+    </MethodContent>
+    <MethodAside>
+      <AsideSection title="Signature">
+
+      ```typescript
+      declare function useTeamProfile(team: Team): EditableTeamMemberProfile;
+      ```
+      </AsideSection>
+      <AsideSection title="Examples">
+      ```typescript Using a team profile in React
+      const profile = user.useTeamProfile(team);
+      ```
+      </AsideSection>
+    </MethodAside>
+  </MethodLayout>
+</CollapsibleTypesSection>
+{/* END_PLATFORM */}
+
+<CollapsibleTypesSection type="currentUser" property="hasPermission" signature="scope, permissionId" defaultOpen={false}>
+  <MethodLayout>
+    <MethodContent>
+      Checks if the user has a specific permission for a team.
+
+      ### Parameters
+
+      <ParamField path="scope" type="Team" required>
+        The team to check the permission for.
+      </ParamField>
+      <ParamField path="permissionId" type="string" required>
+        The ID of the permission to check.
+      </ParamField>
+
+      ### Returns
+
+      `Promise<boolean>`: Whether the user has the specified permission.
+    </MethodContent>
+    <MethodAside>
+      <AsideSection title="Signature">
+
+      ```typescript
+      declare function hasPermission(scope: Team, permissionId: string): Promise<boolean>;
+      ```
+      </AsideSection>
+      <AsideSection title="Examples">
+      ```typescript Checking user permission
+      const hasPermission = await user.hasPermission(team, "permissionId");
+      ```
+      </AsideSection>
+    </MethodAside>
+  </MethodLayout>
+</CollapsibleTypesSection>
+
+<CollapsibleTypesSection type="currentUser" property="getPermission" signature="scope, permissionId, options?" defaultOpen={false}>
+  <MethodLayout>
+    <MethodContent>
+      Retrieves a specific permission for a user within a team.
+
+      ### Parameters
+
+      <ParamField path="scope" type="Team" required>
+        The team to retrieve the permission for.
+      </ParamField>
+      <ParamField path="permissionId" type="string" required>
+        The ID of the permission to retrieve.
+      </ParamField>
+      <ParamField path="options" type="object">
+        An object containing multiple properties.
+        <Accordion title="Show Properties">
+          <ParamField path="recursive" type="boolean">
+            Whether to retrieve the permission recursively. Default is `true`.
+          </ParamField>
+        </Accordion>
+      </ParamField>
+
+      ### Returns
+
+      `Promise<TeamPermission | null>`: The permission object, or `null` if not found.
+    </MethodContent>
+    <MethodAside>
+      <AsideSection title="Signature">
+
+      ```typescript
+      declare function getPermission(scope: Team, permissionId: string, options?: { recursive?: boolean }): Promise<TeamPermission | null>;
+      ```
+      </AsideSection>
+      <AsideSection title="Examples">
+      ```typescript Getting a permission
+      const permission = await user.getPermission(team, "read_secret_info");
+      ```
+      </AsideSection>
+    </MethodAside>
+  </MethodLayout>
+</CollapsibleTypesSection>
+
+{/* IF_PLATFORM next */}
+<CollapsibleTypesSection type="currentUser" property="usePermission" signature="scope, permissionId, options?" defaultOpen={false}>
+  <MethodLayout>
+    <MethodContent>
+      Retrieves a specific permission for a user within a team, used as a React hook.
+
+      ### Parameters
+
+      <ParamField path="scope" type="Team" required>
+        The team to retrieve the permission for.
+      </ParamField>
+      <ParamField path="permissionId" type="string" required>
+        The ID of the permission to retrieve.
+      </ParamField>
+      <ParamField path="options" type="object">
+        An object containing multiple properties.
+        <Accordion title="Show Properties">
+          <ParamField path="recursive" type="boolean">
+            Whether to retrieve the permission recursively. Default is `true`.
+          </ParamField>
+        </Accordion>
+      </ParamField>
+
+      ### Returns
+
+      `TeamPermission | null`: The permission object, or `null` if not found.
+    </MethodContent>
+    <MethodAside>
+      <AsideSection title="Signature">
+
+      ```typescript
+      declare function usePermission(scope: Team, permissionId: string, options?: { recursive?: boolean }): TeamPermission | null;
+      ```
+      </AsideSection>
+      <AsideSection title="Examples">
+      ```typescript Using a permission in React
+      const permission = user.usePermission(team, "read_secret_info");
+      ```
+      </AsideSection>
+    </MethodAside>
+  </MethodLayout>
+</CollapsibleTypesSection>
+{/* END_PLATFORM */}
+
+<CollapsibleTypesSection type="currentUser" property="listPermissions" signature="scope[, options]" defaultOpen={false}>
+  <MethodLayout>
+    <MethodContent>
+      Lists all permissions the user has for a specified team.
+
+      ### Parameters
+
+      <ParamField path="scope" type="Team" required>
+        The team to list permissions for.
+      </ParamField>
+      <ParamField path="options" type="object">
+        An object containing multiple properties.
+        <Accordion title="Show Properties">
+          <ParamField path="recursive" type="boolean">
+            Whether to list the permissions recursively. Default is `true`.
+          </ParamField>
+        </Accordion>
+      </ParamField>
+
+      ### Returns
+
+      `Promise<TeamPermission[]>`: An array of permissions.
+    </MethodContent>
+    <MethodAside>
+      <AsideSection title="Signature">
+
+      ```typescript
+      declare function listPermissions(scope: Team, options?: { recursive?: boolean }): Promise<TeamPermission[]>;
+      ```
+      </AsideSection>
+      <AsideSection title="Examples">
+      ```typescript Listing user permissions
+      const permissions = await user.listPermissions(team);
+      ```
+      </AsideSection>
+    </MethodAside>
+  </MethodLayout>
+</CollapsibleTypesSection>
+
+{/* IF_PLATFORM next */}
+<CollapsibleTypesSection type="currentUser" property="usePermissions" signature="scope[, options]" defaultOpen={false}>
+  <MethodLayout>
+    <MethodContent>
+      Lists all permissions the user has for a specified team, used as a React hook.
+
+      ### Parameters
+
+      <ParamField path="scope" type="Team" required>
+        The team to retrieve permissions for.
+      </ParamField>
+      <ParamField path="options" type="object">
+        An object containing multiple properties.
+        <Accordion title="Show Properties">
+          <ParamField path="recursive" type="boolean">
+            Whether to list the permissions recursively. Default is `true`.
+          </ParamField>
+        </Accordion>
+      </ParamField>
+
+      ### Returns
+
+      `TeamPermission[]`: An array of permissions.
+    </MethodContent>
+    <MethodAside>
+      <AsideSection title="Signature">
+
+      ```typescript
+      declare function usePermissions(scope: Team, options?: { recursive?: boolean }): TeamPermission[];
+      ```
+      </AsideSection>
+      <AsideSection title="Examples">
+      ```typescript Using permissions in a React component
+      const permissions = user.usePermissions(team);
+      ```
+      </AsideSection>
+    </MethodAside>
+  </MethodLayout>
+</CollapsibleTypesSection>
+{/* END_PLATFORM */}
+
+<CollapsibleTypesSection type="currentUser" property="listContactChannels" defaultOpen={false}>
+  <MethodLayout>
+    <MethodContent>
+      Lists all the contact channels of the user.
+
+      ### Parameters
+
+      No parameters.
+
+      ### Returns
+
+      `Promise<ContactChannel[]>`: An array of contact channels.
+    </MethodContent>
+    <MethodAside>
+      <AsideSection title="Signature">
+
+      ```typescript
+      declare function listContactChannels(): Promise<ContactChannel[]>;
+      ```
+      </AsideSection>
+      <AsideSection title="Examples">
+      ```typescript Listing contact channels
+      const contactChannels = await user.listContactChannels();
+      ```
+      </AsideSection>
+    </MethodAside>
+  </MethodLayout>
+</CollapsibleTypesSection>
+
+{/* IF_PLATFORM next */}
+<CollapsibleTypesSection type="currentUser" property="useContactChannels" defaultOpen={false}>
+  <MethodLayout>
+    <MethodContent>
+      Lists all the contact channels of the user, used as a React hook.
+
+      ### Parameters
+
+      No parameters.
+
+      ### Returns
+
+      `ContactChannel[]`: An array of contact channels.
+    </MethodContent>
+    <MethodAside>
+      <AsideSection title="Signature">
+
+      ```typescript
+      declare function useContactChannels(): ContactChannel[];
+      ```
+      </AsideSection>
+      <AsideSection title="Examples">
+      ```typescript Using contact channels in React
+      const contactChannels = user.useContactChannels();
+      ```
+      </AsideSection>
+    </MethodAside>
+  </MethodLayout>
+</CollapsibleTypesSection>
+{/* END_PLATFORM */}
+
+<CollapsibleTypesSection type="currentUser" property="createApiKey" signature="options" defaultOpen={false}>
+  <MethodLayout>
+    <MethodContent>
+      Creates a new API key for the user, which can be used for programmatic access to your application's backend.
+
+      ### Parameters
+
+      <ParamField path="options" type="object" required>
+        Options for creating the API key.
+        <Accordion title="Show Properties">
+          <ParamField path="description" type="string" required>
+            A human-readable description of the API key's purpose.
+          </ParamField>
+          <ParamField path="expiresAt" type="Date | null" required>
+            The date when the API key will expire. Use null for keys that don't expire.
+          </ParamField>
+          <ParamField path="isPublic" type="boolean">
+            Whether the API key is public. Defaults to false.
+            
+            - **Secret API Keys** (default) begin with `sk_` and are monitored by Stack Auth's secret scanner, which can revoke them if detected in public code repositories.
+            - **Public API Keys** begin with `pk_` and are designed for client-side code where exposure is not a concern.
+          </ParamField>
+        </Accordion>
+      </ParamField>
+
+      ### Returns
+
+      `Promise<UserApiKeyFirstView>`: The newly created API key. Note that this is the only time the full API key value will be visible.
+    </MethodContent>
+    <MethodAside>
+      <AsideSection title="Signature">
+
+      ```typescript
+      declare function createApiKey(options: {
+        description: string;
+        expiresAt: Date | null;
+        isPublic?: boolean;
+      }): Promise<UserApiKeyFirstView>;
+      ```
+      </AsideSection>
+      <AsideSection title="Examples">
+      ```typescript Creating an API key
+      const apiKey = await user.createApiKey({
+        description: "Backend integration",
+        expiresAt: new Date(Date.now() + 90 * 24 * 60 * 60 * 1000), // 90 days
+        isPublic: false,
+      });
+
+      // Save the API key value securely, as it won't be retrievable later
+      console.log("API Key:", apiKey.value);
+      ```
+      </AsideSection>
+    </MethodAside>
+  </MethodLayout>
+</CollapsibleTypesSection>
+
+<CollapsibleTypesSection type="currentUser" property="listApiKeys" defaultOpen={false}>
+  <MethodLayout>
+    <MethodContent>
+      Lists all API keys that belong to the user.
+
+      ### Parameters
+
+      None.
+
+      ### Returns
+
+      `Promise<UserApiKey[]>`: An array of API keys belonging to the user.
+    </MethodContent>
+    <MethodAside>
+      <AsideSection title="Signature">
+
+      ```typescript
+      declare function listApiKeys(): Promise<UserApiKey[]>;
+      ```
+      </AsideSection>
+      <AsideSection title="Examples">
+      ```typescript Listing API keys
+      const apiKeys = await user.listApiKeys();
+      console.log(`You have ${apiKeys.length} API keys`);
+
+      // Find keys that are about to expire
+      const soonToExpire = apiKeys.filter(key => 
+        key.expiresAt && key.expiresAt.getTime() - Date.now() < 7 * 24 * 60 * 60 * 1000
+      );
+      ```
+      </AsideSection>
+    </MethodAside>
+  </MethodLayout>
+</CollapsibleTypesSection>
+
+{/* IF_PLATFORM next */}
+<CollapsibleTypesSection type="currentUser" property="useApiKeys" defaultOpen={false}>
+  <MethodLayout>
+    <MethodContent>
+      Lists all API keys that belong to the user, used as a React hook.
+
+      ### Parameters
+
+      None.
+
+      ### Returns
+
+      `UserApiKey[]`: An array of API keys belonging to the user.
+    </MethodContent>
+    <MethodAside>
+      <AsideSection title="Signature">
+
+      ```typescript
+      declare function useApiKeys(): UserApiKey[];
+      ```
+      </AsideSection>
+      <AsideSection title="Examples">
+      ```typescript Using API keys in a React component
+      function ApiKeysList() {
+        const user = useUser();
+        const apiKeys = user.useApiKeys();
+        
+        return (
+          <div>
+            <h2>Your API Keys ({apiKeys.length})</h2>
+            <ul>
+              {apiKeys.map(key => (
+                <li key={key.id}>
+                  {key.description} - Last four: {key.value.lastFour}
+                  {key.isValid() ? ' (valid)' : ` (invalid: ${key.whyInvalid()})`}
+                </li>
+              ))}
+            </ul>
+          </div>
+        );
+      }
+      ```
+      </AsideSection>
+    </MethodAside>
+  </MethodLayout>
+</CollapsibleTypesSection>
+{/* END_PLATFORM */}
+
+<CollapsibleTypesSection type="currentUser" property="updatePassword" signature="data" defaultOpen={false}>
+  <MethodLayout>
+    <MethodContent>
+      Updates the user's password.
+
+      ### Parameters
+
+      <ParamField path="data" type="object" required>
+        The fields required for updating the password.
+        <Accordion title="Show Properties">
+          <ParamField path="oldPassword" type="string" required>
+            The current password of the user.
+          </ParamField>
+          <ParamField path="newPassword" type="string" required>
+            The new password for the user.
+          </ParamField>
+        </Accordion>
+      </ParamField>
+
+      ### Returns
+
+      `Promise<void>`
+    </MethodContent>
+    <MethodAside>
+      <AsideSection title="Signature">
+
+      ```typescript
+      declare function updatePassword(data: {
+        oldPassword: string;
+        newPassword: string;
+      }): Promise<void>;
+      ```
+      </AsideSection>
+      <AsideSection title="Examples">
+      ```typescript Updating user password
+      const result = await user.updatePassword({
+        oldPassword: "currentPassword",
+        newPassword: "newPassword",
+      });
+      if (result.status === "error") {
+        console.error("Error updating password", result.error);
+      } else {
+        console.log("Password updated");
+      }
+      ```
+      </AsideSection>
+    </MethodAside>
+  </MethodLayout>
+</CollapsibleTypesSection>
+
+<CollapsibleTypesSection type="currentUser" property="getAuthHeaders" defaultOpen={false}>
+  <MethodLayout>
+    <MethodContent>
+      Returns headers for sending authenticated HTTP requests to external servers. Most commonly used in cross-origin
+      requests. Similar to `getAuthJson`, but specifically for HTTP requests.
+
+      If you are using `tokenStore: "cookie"`, you don't need this for same-origin requests. However, most
+      browsers now disable third-party cookies by default, so we must pass authentication tokens by header instead
+      if the client and server are on different origins.
+
+      This function returns a header object that can be used with `fetch` or other HTTP request libraries to send
+      authenticated requests.
+
+      On the server, you can then pass in the `Request` object to the `tokenStore` option
+      of your Stack app. Please note that CORS does not allow most headers by default, so you
+      must include `x-stack-auth` in the [`Access-Control-Allow-Headers` header](https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Access-Control-Allow-Headers)
+      of the CORS preflight response.
+
+      ### Parameters
+
+      No parameters.
+
+      ### Returns
+
+      `Promise<Record<string, string>>`: An object containing the authentication headers.
+    </MethodContent>
+    <MethodAside>
+      <AsideSection title="Signature">
+
+      ```typescript
+      declare function getAuthHeaders(): Promise<Record<string, string>>;
+      ```
+      </AsideSection>
+      <AsideSection title="Examples">
+      ```typescript Passing auth headers to an external server
+      // client
+      const res = await fetch("https://api.example.com", {
+        headers: {
+          ...await stackApp.getAuthHeaders()
+          // you can also add your own headers here
+        },
+      });
+
+      // server
+      function handleRequest(req: Request) {
+        const user = await stackServerApp.getUser({ tokenStore: req });
+        return new Response("Welcome, " + user.displayName);
+      }
+      ```
+      </AsideSection>
+    </MethodAside>
+  </MethodLayout>
+</CollapsibleTypesSection>
+
+<CollapsibleTypesSection type="currentUser" property="getAuthJson" defaultOpen={false}>
+  <MethodLayout>
+    <MethodContent>
+      Creates a JSON-serializable object containing the information to authenticate a user on an external server.
+
+      While `getAuthHeaders` is the recommended way to send authentication tokens over HTTP, your app may use
+      a different protocol, for example WebSockets or gRPC. This function returns a token object that can be JSON-serialized and sent to the server in any way you like.
+
+      On the server, you can pass in this token object into the `tokenStore` option to fetch user details.
+
+      ### Parameters
+
+      No parameters.
+
+      ### Returns
+
+      `Promise<{ accessToken: string | null }>`: An object containing the access token.
+    </MethodContent>
+    <MethodAside>
+      <AsideSection title="Signature">
+
+      ```typescript
+      declare function getAuthJson(): Promise<{ accessToken: string | null }>;
+      ```
+      </AsideSection>
+      <AsideSection title="Examples">
+      ```typescript Passing auth tokens over an RPC call
+      // client
+      const res = await rpcCall(rpcEndpoint, {
+        data: {
+          auth: await stackApp.getAuthJson(),
+        },
+      });
+
+      // server
+      function handleRequest(data) {
+        const user = await stackServerApp.getUser({ tokenStore: data.auth });
+        return new Response("Welcome, " + user.displayName);
+      }
+      ```
+      </AsideSection>
+    </MethodAside>
+  </MethodLayout>
+</CollapsibleTypesSection>
+
+<CollapsibleTypesSection type="currentUser" property="signOut" signature="options" defaultOpen={false}>
+  <MethodLayout>
+    <MethodContent>
+      Signs out the user and clears the session.
+
+      ### Parameters
+
+      <ParamField path="options" type="object">
+        An object containing multiple properties.
+        <Accordion title="Show Properties">
+          <ParamField path="redirectUrl" type="string">
+            The URL to redirect to after signing out. Defaults to the `afterSignOut` URL from the Stack app's `urls` object.
+          </ParamField>
+        </Accordion>
+      </ParamField>
+
+      ### Returns
+
+      `Promise<void>`
+    </MethodContent>
+    <MethodAside>
+      <AsideSection title="Signature">
+
+      ```typescript
+      declare function signOut(options?: { redirectUrl?: string }): Promise<void>;
+      ```
+      </AsideSection>
+      <AsideSection title="Examples">
+      ```typescript Signing out
+      await user.signOut();
+      ```
+      </AsideSection>
+    </MethodAside>
+  </MethodLayout>
+</CollapsibleTypesSection>
+
+<CollapsibleTypesSection type="currentUser" property="delete" defaultOpen={false}>
+  <MethodLayout>
+    <MethodContent>
+      Deletes the user. This action is irreversible and can only be used if client-side user deletion is enabled in the Stack dashboard.
+
+      ### Parameters
+
+      No parameters.
+
+      ### Returns
+
+      `Promise<void>`
+    </MethodContent>
+    <MethodAside>
+      <AsideSection title="Signature">
+
+      ```typescript
+      declare function delete(): Promise<void>;
+      ```
+      </AsideSection>
+      <AsideSection title="Examples">
+      ```typescript Deleting the user
+      await user.delete();
+      ```
+      </AsideSection>
+    </MethodAside>
+  </MethodLayout>
+</CollapsibleTypesSection>
+
+# `ServerUser`
+
+The `ServerUser` object contains most `CurrentUser` properties and methods with the exception of those that require an active session (`getAuthJson` and `signOut`). It also contains some additional functions that require [server-level permissions](../../concepts/stack-app.mdx#client-vs-server).
+
+### Table of Contents
+
+<ClickableTableOfContents code={`type ServerUser = 
+    // Inherits most functionality from CurrentUser
+    & Omit<CurrentUser, "getAuthJson" | "signOut">  //$stack-link-to:#currentuser
+    & {
+      lastActiveAt: Date; //$stack-link-to:#serveruserlastactiveat
+      serverMetadata: Json; //$stack-link-to:#serveruserservermetadata
+
+      update(data): Promise<void>; //$stack-link-to:#serveruserupdate
+
+      listContactChannels(): Promise<ContactChannel[]>; //$stack-link-to:#serveruserlistcontactchannels
+      // NEXT_LINE_PLATFORM react-like
+      ⤷ useContactChannels(): ContactChannel[]; //$stack-link-to:#serveruserusecontactchannels
+
+      grantPermission(scope, permissionId): Promise<void>; //$stack-link-to:#serverusergrantpermission
+      revokePermission(scope, permissionId): Promise<void>; //$stack-link-to:#serveruserrevokepermission
+  };`} />
+
+<CollapsibleTypesSection type="serverUser" property="lastActiveAt" defaultOpen={false}>
+  <MethodLayout>
+    <MethodContent>
+      The last active date and time of the user as a `Date`.
+    </MethodContent>
+    <MethodAside title="Type Definition">
+
+      ```typescript
+      declare const lastActiveAt: Date;
+      ```
+    </MethodAside>
+  </MethodLayout>
+</CollapsibleTypesSection>
+
+<CollapsibleTypesSection type="serverUser" property="serverMetadata" defaultOpen={false}>
+  <MethodLayout>
+    <MethodContent>
+      The server metadata of the user, accessible only on the server side.
+    </MethodContent>
+    <MethodAside title="Type Definition">
+
+      ```typescript
+      declare const serverMetadata: Json;
+      ```
+    </MethodAside>
+  </MethodLayout>
+</CollapsibleTypesSection>
+
+<CollapsibleTypesSection type="serverUser" property="update" signature="data" defaultOpen={false}>
+  <MethodLayout>
+    <MethodContent>
+      Updates the user's information on the server side. This is similar to the `CurrentUser.update()` method but includes additional capabilities, such as updating server metadata or setting a new password directly.
+
+      ### Parameters
+
+      <ParamField path="data" type="object" required>
+        The fields to update.
+        <Accordion title="Show Properties">
+          <ParamField path="displayName" type="string">
+            The new display name for the user.
+          </ParamField>
+          <ParamField path="primaryEmail" type="string">
+            The new primary email for the user.
+          </ParamField>
+          <ParamField path="primaryEmailVerified" type="boolean">
+            Whether the primary email is verified.
+          </ParamField>
+          <ParamField path="primaryEmailAuthEnabled" type="boolean">
+            Whether auth should be enabled for the primary email.
+          </ParamField>
+          <ParamField path="password" type="string">
+            The new password for the user.
+          </ParamField>
+          <ParamField path="selectedTeamId" type="string | null">
+            The ID of the team to set as selected, or `null` to clear selection.
+          </ParamField>
+          <ParamField path="profileImageUrl" type="string | null">
+            The URL of the user's new profile image, or `null` to remove.
+          </ParamField>
+          <ParamField path="clientMetadata" type="object">
+            Metadata visible on the client side.
+          </ParamField>
+          <ParamField path="clientReadOnlyMetadata" type="object">
+            Metadata that is read-only on the client but modifiable on the server side.
+          </ParamField>
+          <ParamField path="serverMetadata" type="object">
+            Metadata only accessible and modifiable on the server side.
+          </ParamField>
+        </Accordion>
+      </ParamField>
+
+      ### Returns
+
+      `Promise<void>`
+    </MethodContent>
+    <MethodAside>
+      <AsideSection title="Signature">
+
+      ```typescript
+      declare function update(data: {
+        displayName?: string;
+        profileImageUrl?: string | null;
+        primaryEmail?: string,
+        primaryEmailVerified?: boolean,
+        primaryEmailAuthEnabled?: boolean,
+        password?: string;
+        selectedTeamId?: string | null;
+        clientMetadata?: Json;
+        clientReadOnlyMetadata?: Json;
+        serverMetadata?: Json;
+      }): Promise<void>;
+      ```
+      </AsideSection>
+      <AsideSection title="Examples">
+      ```typescript Updating user details on the server
+      await serverUser.update({
+        displayName: "Updated Display Name",
+        password: "newSecurePassword",
+        serverMetadata: {
+          internalNote: "Confidential information",
+        },
+      });
+      ```
+      </AsideSection>
+    </MethodAside>
+  </MethodLayout>
+</CollapsibleTypesSection>
+
+<CollapsibleTypesSection type="serverUser" property="listContactChannels" defaultOpen={false}>
+  <MethodLayout>
+    <MethodContent>
+      Lists all the contact channels of the user on the server side. This is similar to `CurrentUser.listContactChannels()` but returns a list of `ServerContactChannel` objects, which may include additional server-only details.
+
+      ### Parameters
+
+      No parameters.
+
+      ### Returns
+
+      `Promise<ServerContactChannel[]>`: An array of server-specific contact channels.
+    </MethodContent>
+    <MethodAside>
+      <AsideSection title="Signature">
+
+      ```typescript
+      declare function listContactChannels(): Promise<ServerContactChannel[]>;
+      ```
+      </AsideSection>
+      <AsideSection title="Examples">
+      ```typescript Listing server-specific contact channels
+      const contactChannels = await serverUser.listContactChannels();
+      ```
+      </AsideSection>
+    </MethodAside>
+  </MethodLayout>
+</CollapsibleTypesSection>
+
+{/* IF_PLATFORM next */}
+<CollapsibleTypesSection type="serverUser" property="useContactChannels" defaultOpen={false}>
+  <MethodLayout>
+    <MethodContent>
+      <Markdown src="../../snippets/use-on-server-callout.mdx" />
+
+      Functionally equivalent to [`listContactChannels()`](#serveruserlistcontactchannels), but as a React hook.
+    </MethodContent>
+    <MethodAside title="Signature">
+
+      ```typescript
+      declare function useContactChannels(): ContactChannel[];
+      ```
+    </MethodAside>
+  </MethodLayout>
+</CollapsibleTypesSection>
+{/* END_PLATFORM */}
+
+<CollapsibleTypesSection type="serverUser" property="grantPermission" signature="scope, permissionId" defaultOpen={false}>
+  <MethodLayout>
+    <MethodContent>
+      Grants a specific permission to the user for a given team.
+
+      ### Parameters
+
+      <ParamField path="scope" type="Team" required>
+        The team to grant the permission for.
+      </ParamField>
+      <ParamField path="permissionId" type="string" required>
+        The ID of the permission to grant.
+      </ParamField>
+
+      ### Returns
+
+      `Promise<void>`
+    </MethodContent>
+    <MethodAside>
+      <AsideSection title="Signature">
+
+      ```typescript
+      declare function grantPermission(scope: Team, permissionId: string): Promise<void>;
+      ```
+      </AsideSection>
+      <AsideSection title="Examples">
+      ```typescript Granting permission to a user
+      await serverUser.grantPermission(team, "read_secret_info");
+      ```
+      </AsideSection>
+    </MethodAside>
+  </MethodLayout>
+</CollapsibleTypesSection>
+
+<CollapsibleTypesSection type="serverUser" property="revokePermission" signature="scope, permissionId" defaultOpen={false}>
+  <MethodLayout>
+    <MethodContent>
+      Revokes a specific permission from the user for a given team.
+
+      ### Parameters
+
+      <ParamField path="scope" type="Team" required>
+        The team to revoke the permission from.
+      </ParamField>
+      <ParamField path="permissionId" type="string" required>
+        The ID of the permission to revoke.
+      </ParamField>
+
+      ### Returns
+
+      `Promise<void>`
+    </MethodContent>
+    <MethodAside>
+      <AsideSection title="Signature">
+
+      ```typescript
+      declare function revokePermission(scope: Team, permissionId: string): Promise<void>;
+      ```
+      </AsideSection>
+      <AsideSection title="Examples">
+      ```typescript Revoking permission from a user
+      await serverUser.revokePermission(team, "read_secret_info");
+      ```
+      </AsideSection>
+    </MethodAside>
+  </MethodLayout>
+</CollapsibleTypesSection>
+
+<CollapsibleTypesSection type="serverUser" property="createApiKey" signature="options" defaultOpen={false}>
+  <MethodLayout>
+    <MethodContent>
+      Creates a new API key for the user, which can be used for programmatic access to your application's backend.
+
+      ### Parameters
+
+      <ParamField path="options" type="object" required>
+        Options for creating the API key.
+        <Accordion title="Show Properties">
+          <ParamField path="description" type="string" required>
+            A human-readable description of the API key's purpose.
+          </ParamField>
+          <ParamField path="expiresAt" type="Date | null" required>
+            The date when the API key will expire. Use null for keys that don't expire.
+          </ParamField>
+          <ParamField path="isPublic" type="boolean">
+            Whether the API key is public. Defaults to false.
+            
+            - **Secret API Keys** (default) begin with `sk_` and are monitored by Stack Auth's secret scanner, which can revoke them if detected in public code repositories.
+            - **Public API Keys** begin with `pk_` and are designed for client-side code where exposure is not a concern.
+          </ParamField>
+        </Accordion>
+      </ParamField>
+
+      ### Returns
+
+      `Promise<UserApiKeyFirstView>`: The newly created API key. Note that this is the only time the full API key value will be visible.
+    </MethodContent>
+    <MethodAside>
+      <AsideSection title="Signature">
+
+      ```typescript
+      declare function createApiKey(options: {
+        description: string;
+        expiresAt: Date | null;
+        isPublic?: boolean;
+      }): Promise<UserApiKeyFirstView>;
+      ```
+      </AsideSection>
+      <AsideSection title="Examples">
+      ```typescript Creating an API key
+      const apiKey = await serverUser.createApiKey({
+        description: "Backend integration",
+        expiresAt: new Date(Date.now() + 90 * 24 * 60 * 60 * 1000), // 90 days
+        isPublic: false,
+      });
+
+      // Save the API key value securely, as it won't be retrievable later
+      console.log("API Key:", apiKey.value);
+      ```
+      </AsideSection>
+    </MethodAside>
+  </MethodLayout>
+</CollapsibleTypesSection>
+
+<CollapsibleTypesSection type="serverUser" property="listApiKeys" defaultOpen={false}>
+  <MethodLayout>
+    <MethodContent>
+      Lists all API keys that belong to the user.
+
+      ### Parameters
+
+      None.
+
+      ### Returns
+
+      `Promise<UserApiKey[]>`: An array of API keys belonging to the user.
+    </MethodContent>
+    <MethodAside>
+      <AsideSection title="Signature">
+
+      ```typescript
+      declare function listApiKeys(): Promise<UserApiKey[]>;
+      ```
+      </AsideSection>
+      <AsideSection title="Examples">
+      ```typescript Listing API keys
+      const apiKeys = await serverUser.listApiKeys();
+      console.log(`You have ${apiKeys.length} API keys`);
+
+      // Find keys that are about to expire
+      const soonToExpire = apiKeys.filter(key => 
+        key.expiresAt && key.expiresAt.getTime() - Date.now() < 7 * 24 * 60 * 60 * 1000
+      );
+      ```
+      </AsideSection>
+    </MethodAside>
+  </MethodLayout>
+</CollapsibleTypesSection>
+
+{/* IF_PLATFORM next */}
+<CollapsibleTypesSection type="serverUser" property="useApiKeys" defaultOpen={false}>
+  <MethodLayout>
+    <MethodContent>
+      Lists all API keys that belong to the user, used as a React hook.
+
+      ### Parameters
+
+      None.
+
+      ### Returns
+
+      `UserApiKey[]`: An array of API keys belonging to the user.
+    </MethodContent>
+    <MethodAside>
+      <AsideSection title="Signature">
+
+      ```typescript
+      declare function useApiKeys(): UserApiKey[];
+      ```
+      </AsideSection>
+      <AsideSection title="Examples">
+      ```typescript Using API keys in a React component
+      function ApiKeysList() {
+        const user = useUser();
+        const apiKeys = user.useApiKeys();
+        
+        return (
+          <div>
+            <h2>Your API Keys ({apiKeys.length})</h2>
+            <ul>
+              {apiKeys.map(key => (
+                <li key={key.id}>
+                  {key.description} - Last four: {key.value.lastFour}
+                  {key.isValid() ? ' (valid)' : ` (invalid: ${key.whyInvalid()})`}
+                </li>
+              ))}
+            </ul>
+          </div>
+        );
+      }
+      ```
+      </AsideSection>
+    </MethodAside>
+  </MethodLayout>
+</CollapsibleTypesSection>
+{/* END_PLATFORM */}
+
+# `CurrentServerUser`
+
+The `CurrentServerUser` object combines all the properties and methods of both `CurrentUser` and `ServerUser`. You can obtain a `CurrentServerUser` by calling `stackServerApp.getUser()` on the server side.
+
+### Table of Contents
+
+<ClickableTableOfContents code={`type CurrentServerUser =
+  // Inherits all functionality from CurrentUser
+  & CurrentUser  //$stack-link-to:#currentuser
+  // Inherits all functionality from ServerUser
+  & ServerUser;  //$stack-link-to:#serveruser`} />

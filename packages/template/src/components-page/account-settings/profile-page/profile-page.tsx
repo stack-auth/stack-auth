@@ -5,9 +5,28 @@ import { EditableText } from "../editable-text";
 import { PageLayout } from "../page-layout";
 import { Section } from "../section";
 
-export function ProfilePage() {
+export function ProfilePage(props?: {
+  mockUser?: {
+    displayName?: string,
+    profileImageUrl?: string,
+  },
+}) {
   const { t } = useTranslation();
-  const user = useUser({ or: 'redirect' });
+  const userFromHook = useUser({ or: props?.mockUser ? 'return-null' : 'redirect' });
+
+  // Use mock data if provided, otherwise use real user
+  const user = props?.mockUser ? {
+    displayName: props.mockUser.displayName || 'John Doe',
+    profileImageUrl: props.mockUser.profileImageUrl || null,
+    update: async () => {
+      // Mock update - do nothing in demo mode
+      console.log('Mock update called');
+    }
+  } : userFromHook;
+
+  if (!user) {
+    return null; // This shouldn't happen in practice
+  }
 
   return (
     <PageLayout>
@@ -27,8 +46,8 @@ export function ProfilePage() {
         description={t("Upload your own image as your avatar")}
       >
         <ProfileImageEditor
-          user={user}
-          onProfileImageUrlChange={async (profileImageUrl) => {
+          user={user as any}
+          onProfileImageUrlChange={async (profileImageUrl: string | null) => {
             await user.update({ profileImageUrl });
           }}
         />

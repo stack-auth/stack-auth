@@ -1,0 +1,30 @@
+/* Consistent styles for ClickableCodeblock component */
+.clickable-code-container {
+  font-family: ui-monospace, 'Cascadia Code', 'Source Code Pro', Menlo, Consolas, 'DejaVu Sans Mono', monospace !important;
+  line-height: 1.5 !important;
+  font-size: 0.875rem !important;
+}
+
+.clickable-code-container pre,
+.clickable-code-container code {
+  font-family: inherit !important;
+  line-height: inherit !important;
+  font-size: inherit !important;
+  background: transparent !important;
+}
+
+/* Ensure consistent line heights for different elements */
+.clickable-code-container .line,
+.clickable-code-container [data-line],
+.clickable-code-container span {
+  line-height: 1.5 !important;
+  min-height: 1.3125rem; /* 21px for 14px font at 1.5 line-height */
+}
+
+/* Force consistent font loading */
+.clickable-code-container {
+  font-display: block;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+} 

@@ -11,10 +11,28 @@ import { useStackApp, useUser } from "../../../lib/hooks";
 import { useTranslation } from "../../../lib/translations";
 import { Section } from "../section";
 
-export function MfaSection() {
+export function MfaSection(props?: {
+  mockMode?: boolean,
+}) {
   const { t } = useTranslation();
   const project = useStackApp().useProject();
-  const user = useUser({ or: "throw" });
+  const user = useUser({ or: props?.mockMode ? 'return-null' : "throw" });
+
+  // In mock mode, show a placeholder message
+  if (props?.mockMode && !user) {
+    return (
+      <Section
+        title={t("Multi-factor authentication")}
+        description={t("MFA management is not available in demo mode.")}
+      >
+        <Typography variant='secondary'>{t("MFA management is not available in demo mode.")}</Typography>
+      </Section>
+    );
+  }
+
+  if (!user) {
+    return null; // This shouldn't happen in non-mock mode due to throw
+  }
   const [generatedSecret, setGeneratedSecret] = useState<Uint8Array | null>(null);
   const [qrCodeUrl, setQrCodeUrl] = useState<string | null>(null);
   const [mfaCode, setMfaCode] = useState<string>("");
