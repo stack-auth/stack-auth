@@ -1,0 +1,58 @@
+---
+title: "<StackProvider />"
+---
+
+A React component that provides Stack context to its children.
+
+For detailed usage instructions, please refer to the manual section of the [setup guide](../getting-started/setup.mdx).
+
+## Props
+
+<PropTable
+  props={[
+    {
+      name: "children",
+      type: "React.ReactNode",
+      description: "The child components to be wrapped by the StackProvider."
+    },
+    {
+      name: "app",
+      type: "StackClientApp | StackServerApp",
+      description: "The Stack app instance to be used."
+    },
+    {
+      name: "lang",
+      type: '"en-US" | "de-DE" | "es-419" | "es-ES" | "fr-CA" | "fr-FR" | "it-IT" | "pt-BR" | "pt-PT"',
+      description: "The language to be used for translations.",
+      optional: true
+    },
+    {
+      name: "translationOverrides",
+      type: "Record<string, string>",
+      description: "A mapping of English translations to translated equivalents. These will take priority over the translations from the language specified in the lang property. Note that the keys are case-sensitive. You can find a full list of supported strings on GitHub.",
+      optional: true
+    }
+  ]}
+/>
+
+## Example
+
+```tsx title="layout.tsx"
+import { StackProvider } from '@stackframe/stack';
+import { stackServerApp } from '@/stack';
+
+function App() {
+  return (
+    <StackProvider
+      app={stackServerApp}
+      lang="de-DE"
+      translationOverrides={{
+        "Sign in": "Einloggen",
+        "Sign In": "Einloggen",
+      }}
+    >
+      {/* Your app content */}
+    </StackProvider>
+  );
+}
+```

@@ -4,15 +4,33 @@ import { useStackApp, useUser } from "../../../lib/hooks";
 import { useTranslation } from "../../../lib/translations";
 import { Section } from "../section";
 
-export function DeleteAccountSection() {
+export function DeleteAccountSection(props?: { mockMode?: boolean }) {
   const { t } = useTranslation();
-  const user = useUser({ or: 'redirect' });
+  const user = useUser({ or: props?.mockMode ? 'return-null' : 'redirect' });
   const app = useStackApp();
   const project = app.useProject();
   const [deleting, setDeleting] = useState(false);
-  if (!project.config.clientUserDeletionEnabled) {
+
+  // In mock mode, always show the delete section
+  const showDeleteSection = props?.mockMode || project.config.clientUserDeletionEnabled;
+
+  if (!showDeleteSection) {
     return null;
   }
+
+  const handleDeleteAccount = async () => {
+    if (props?.mockMode) {
+      // Mock mode - just show an alert
+      alert("Mock mode: Account deletion clicked");
+      setDeleting(false);
+      return;
+    }
+
+    if (user) {
+      await user.delete();
+      await app.redirectToHome();
+    }
+  };
 
   return (
     <Section
@@ -41,10 +59,7 @@ export function DeleteAccountSection() {
                   <div className='flex gap-2'>
                     <Button
                       variant='destructive'
-                      onClick={async () => {
-                        await user.delete();
-                        await app.redirectToHome();
-                      }}
+                      onClick={handleDeleteAccount}
                     >
                       {t("Delete Account")}
                     </Button>
