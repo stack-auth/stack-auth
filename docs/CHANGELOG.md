@@ -1,4 +1,4 @@
-# @stackframe/docs
+# @stackframe/stack-docs
 
 ## 2.8.15
 
