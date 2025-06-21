@@ -1,0 +1,47 @@
+---
+title: "<StackTheme />"
+---
+
+A component that applies a theme to its children.
+
+For more information, please refer to the [color and styles guide](../customization/custom-styles.mdx).
+
+## Props
+
+<PropTable
+  props={[
+    {
+      name: "theme",
+      type: "ThemeConfig",
+      description: "Custom theme configuration to override the default theme.",
+      optional: true
+    },
+    {
+      name: "children",
+      type: "React.ReactNode",
+      description: "Child components to be rendered within the themed context.",
+      optional: true
+    }
+  ]}
+/>
+
+## Example
+
+```tsx
+const theme = {
+  light: {
+    primary: 'red',
+  },
+  dark: {
+    primary: '#00FF00',
+  },
+  radius: '8px',
+}
+
+// ...
+
+<StackTheme theme={theme}>
+  {/* children */}
+</StackTheme>
+
+```

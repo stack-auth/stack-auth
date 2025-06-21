@@ -10,9 +10,28 @@ import { FormWarningText } from "../../../components/elements/form-warning";
 import { useUser } from "../../../lib/hooks";
 import { useTranslation } from "../../../lib/translations";
 
-export function EmailsSection() {
+export function EmailsSection(props?: {
+  mockMode?: boolean,
+}) {
   const { t } = useTranslation();
-  const user = useUser({ or: 'redirect' });
+  const user = useUser({ or: props?.mockMode ? 'return-null' : 'redirect' });
+
+  // In mock mode, show a placeholder message
+  if (props?.mockMode && !user) {
+    return (
+      <div>
+        <div className='flex flex-col md:flex-row justify-between mb-4 gap-4'>
+          <Typography className='font-medium'>{t("Emails")}</Typography>
+        </div>
+        <Typography variant='secondary'>{t("Email management is not available in demo mode.")}</Typography>
+      </div>
+    );
+  }
+
+  if (!user) {
+    return null; // This shouldn't happen in non-mock mode due to redirect
+  }
+
   const contactChannels = user.useContactChannels();
   const [addingEmail, setAddingEmail] = useState(contactChannels.length === 0);
   const [addingEmailLoading, setAddingEmailLoading] = useState(false);

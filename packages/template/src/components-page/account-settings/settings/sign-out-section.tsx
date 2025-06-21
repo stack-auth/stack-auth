@@ -3,9 +3,20 @@ import { useUser } from "../../../lib/hooks";
 import { useTranslation } from "../../../lib/translations";
 import { Section } from "../section";
 
-export function SignOutSection() {
+export function SignOutSection(props?: { mockMode?: boolean }) {
   const { t } = useTranslation();
-  const user = useUser({ or: "throw" });
+  const user = useUser({ or: props?.mockMode ? "return-null" : "throw" });
+
+  const handleSignOut = async () => {
+    if (props?.mockMode) {
+      // Mock mode - just show an alert or do nothing
+      alert("Mock mode: Sign out clicked");
+      return;
+    }
+    if (user) {
+      await user.signOut();
+    }
+  };
 
   return (
     <Section
@@ -15,7 +26,7 @@ export function SignOutSection() {
       <div>
         <Button
           variant='secondary'
-          onClick={() => user.signOut()}
+          onClick={handleSignOut}
         >
           {t("Sign out")}
         </Button>
