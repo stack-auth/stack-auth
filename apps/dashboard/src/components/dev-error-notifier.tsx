@@ -12,7 +12,7 @@ const neverNotify = [
 let callbacks: ((prop: string, args: any[]) => void)[] = [];
 
 if (process.env.NODE_ENV === 'development' && isBrowserLike()) {
-  for (const prop of ["warn", "error"] as const) {
+  for (const prop of ["error"] as const) {
     const original = console[prop];
     console[prop] = (...args) => {
       original(...args);
@@ -31,7 +31,7 @@ export function DevErrorNotifier() {
       setTimeout(() => {
         toast.toast({
           title: `[DEV] console.${prop} called!`,
-          description: `Please check the browser console. ${args.join(" ")}`,
+          description: `Please check the browser console. ${args.join(" ").slice(0, 100)}...`,
           variant: "destructive",
         });
       });
