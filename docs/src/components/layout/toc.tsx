@@ -38,8 +38,12 @@ export function Toc(props: HTMLAttributes<HTMLDivElement>) {
       id="nd-toc"
       {...props}
       className={cn(
-        'fixed right-4 top-16 bottom-4 z-10 max-xl:hidden',
+        'fixed right-4 top-16 bottom-4 z-10',
         'w-64',
+        // On smaller screens (< xl), show as overlay with backdrop
+        'max-xl:left-4 max-xl:bg-fd-background max-xl:border max-xl:rounded-lg max-xl:shadow-lg max-xl:z-50',
+        // On larger screens (xl+), show as fixed sidebar
+        'xl:max-w-64',
         toc,
         props.className,
       )}
