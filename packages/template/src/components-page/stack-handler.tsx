@@ -13,6 +13,7 @@ import { ErrorPage } from "./error-page";
 import { ForgotPassword } from "./forgot-password";
 import { MagicLinkCallback } from "./magic-link-callback";
 import { OAuthCallback } from "./oauth-callback";
+import { MFA } from "./mfa";
 import { PasswordReset } from "./password-reset";
 import { SignOut } from "./sign-out";
 import { TeamInvitation } from "./team-invitation";
@@ -30,6 +31,7 @@ type Components = {
   ErrorPage: typeof ErrorPage,
   AccountSettings: typeof AccountSettings,
   CliAuthConfirmation: typeof CliAuthConfirmation,
+  MFA: typeof MFA,
 };
 
 type RouteProps = {
@@ -51,6 +53,7 @@ const availablePaths = {
   teamInvitation: 'team-invitation',
   accountSettings: 'account-settings',
   cliAuthConfirm: 'cli-auth-confirm',
+  mfa: 'mfa',
   error: 'error',
 } as const;
 
@@ -166,6 +169,13 @@ function renderComponent(props: {
       return <CliAuthConfirmation
         fullPage={fullPage}
         {...filterUndefinedINU(componentProps?.CliAuthConfirmation)}
+      />;
+    }
+    case availablePaths.mfa: {
+      redirectIfNotHandler?.('mfa');
+      return <MFA
+        fullPage={fullPage}
+        {...filterUndefinedINU(componentProps?.MFA)}
       />;
     }
     default: {
