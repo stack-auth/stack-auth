@@ -4,6 +4,7 @@ import { BranchConfigOverride, BranchConfigOverrideOverride, BranchIncompleteCon
 import { ProjectsCrud } from "@stackframe/stack-shared/dist/interface/crud/projects";
 import { yupMixed, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
 import { isTruthy } from "@stackframe/stack-shared/dist/utils/booleans";
+import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
 import { StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
 import { filterUndefined, pick, typedEntries } from "@stackframe/stack-shared/dist/utils/objects";
 import { Result } from "@stackframe/stack-shared/dist/utils/results";
@@ -105,7 +106,12 @@ export function getProjectConfigOverrideQuery(options: ProjectOptions): RawQuery
   return {
     sql: Prisma.sql`SELECT 1`,
     postProcess: async () => {
-      return {};
+      return {
+        sourceOfTruth: {
+          type: 'neon',
+          connectionString: getEnvVariable('STACK_SEED_INTERNAL_PROJECT_NEON_CONNECTION_STRING'),
+        },
+      };
     },
   };
 }

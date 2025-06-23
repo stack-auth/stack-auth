@@ -287,37 +287,19 @@ export class OAuthModel implements AuthorizationCodeModel {
       throw new KnownErrors.RedirectUrlNotWhitelisted();
     }
 
-    try {
-      await getPrismaClientForSourceOfTruth(tenancy.completeConfig.sourceOfTruth).projectUserAuthorizationCode.create({
-        data: {
-          code: code.authorizationCode,
-          expiresAt: code.expiresAt,
-          scope: code.scope,
-          redirectUri: code.redirectUri,
-          client: {
-            connect: {
-              id: client.id,
-            },
-          },
-          projectUser: {
-            connect: {
-              tenancyId_projectUserId: {
-                tenancyId: tenancy.id,
-                projectUserId: user.id,
-              },
-            },
-          },
-          isImpersonation: user.isImpersonation,
-          codeChallenge: code.codeChallenge,
-          codeChallengeMethod: code.codeChallengeMethod,
-        },
-      });
-    } catch (error) {
-      if (!(error instanceof PrismaClientKnownRequestError)) {
-        throw error;
-      }
-      return false;
-    }
+    await getPrismaClientForSourceOfTruth(tenancy.completeConfig.sourceOfTruth).projectUserAuthorizationCode.create({
+      data: {
+        authorizationCode: code.authorizationCode,
+        codeChallenge: code.codeChallenge || "",
+        codeChallengeMethod: code.codeChallengeMethod || "",
+        redirectUri: code.redirectUri,
+        expiresAt: code.expiresAt,
+        projectUserId: user.id,
+        newUser: user.newUser,
+        afterCallbackRedirectUrl: user.afterCallbackRedirectUrl,
+        tenancyId: tenancy.id,
+      },
+    });
 
     return {
       authorizationCode: code.authorizationCode,
@@ -335,13 +317,16 @@ export class OAuthModel implements AuthorizationCodeModel {
   async getAuthorizationCode(authorizationCode: string): Promise<AuthorizationCode | Falsey> {
     const code = await getPrismaClientForSourceOfTruth({ type: 'hosted' }).projectUserAuthorizationCode.findUnique({
       where: {
-        code: authorizationCode,
+        authorizationCode,
       },
       include: {
-        client: true,
         projectUser: {
           include: {
-            tenancy: true,
+            tenancy: {
+              include: {
+                project: true,
+              },
+            },
           },
         },
       },
@@ -357,7 +342,7 @@ export class OAuthModel implements AuthorizationCodeModel {
       codeChallenge: code.codeChallenge,
       codeChallengeMethod: code.codeChallengeMethod,
       client: {
-        id: code.client.id,
+        id: code.projectUser.tenancy.project.id,
         grants: ["authorization_code", "refresh_token"],
       },
       user: {
@@ -372,7 +357,7 @@ export class OAuthModel implements AuthorizationCodeModel {
     try {
       const deletedCode = await getPrismaClientForSourceOfTruth({ type: 'hosted' }).projectUserAuthorizationCode.delete({
         where: {
-          code: code.authorizationCode,
+          authorizationCode: code.authorizationCode,
         },
       });
 
