@@ -136,7 +136,10 @@ export async function retryTransaction<T>(client: PrismaClient, fn: (tx: PrismaC
   });
 }
 
+const allSupportedPrismaClients = ["global", "source-of-truth"] as const;
+
 export type RawQuery<T> = {
+  supportedPrismaClients: readonly (typeof allSupportedPrismaClients)[number][],
   sql: Prisma.Sql,
   postProcess: (rows: any[]) => T,  // Tip: If your postProcess is async, just set T = Promise<any> (compared to doing Promise.all in rawQuery, this ensures that there are no accidental timing attacks)
 };
@@ -144,6 +147,7 @@ export type RawQuery<T> = {
 export const RawQuery = {
   then: <T, R>(query: RawQuery<T>, fn: (result: T) => R): RawQuery<R> => {
     return {
+      supportedPrismaClients: query.supportedPrismaClients,
       sql: query.sql,
       postProcess: (rows) => {
         const result = query.postProcess(rows);
@@ -152,7 +156,15 @@ export const RawQuery = {
     };
   },
   all: <T extends readonly any[]>(queries: { [K in keyof T]: RawQuery<T[K]> }): RawQuery<T> => {
+    const supportedPrismaClients = queries.reduce((acc, q) => {
+      return acc.filter(c => q.supportedPrismaClients.includes(c));
+    }, allSupportedPrismaClients as RawQuery<any>["supportedPrismaClients"]);
+    if (supportedPrismaClients.length === 0) {
+      throw new StackAssertionError("The queries must have at least one overlapping supported Prisma client");
+    }
+
     return {
+      supportedPrismaClients,
       sql: Prisma.sql`
         WITH ${Prisma.join(queries.map((q, index) => {
           return Prisma.sql`${Prisma.raw("q" + index)} AS (
@@ -191,6 +203,7 @@ export const RawQuery = {
   },
   resolve: <T,>(obj: T): RawQuery<T> => {
     return {
+      supportedPrismaClients: allSupportedPrismaClients,
       sql: Prisma.sql`SELECT 1`,
       postProcess: (rows) => {
         return obj;
@@ -226,6 +239,8 @@ async function rawQueryArray<Q extends RawQuery<any>[]>(tx: PrismaClientTransact
     // Prisma does a query for every rawQuery call by default, even if we batch them with transactions
     // So, instead we combine all queries into one, and then return them as a single JSON result
     const combinedQuery = RawQuery.all(queries);
+
+    // TODO: check that combinedQuery supports the prisma client that created tx
 
     // Supabase's index advisor only analyzes rows that start with "SELECT" (for some reason)
     // Since ours starts with "WITH", we prepend a SELECT to it

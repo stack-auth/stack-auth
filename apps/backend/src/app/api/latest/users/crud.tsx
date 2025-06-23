@@ -1,3 +1,4 @@
+import { getRenderedEnvironmentConfigQuery } from "@/lib/config";
 import { grantDefaultProjectPermissions } from "@/lib/permissions";
 import { ensureTeamMembershipExists, ensureUserExists } from "@/lib/request-checks";
 import { getSoleTenancyFromProjectBranch, getTenancy } from "@/lib/tenancies";
@@ -182,6 +183,7 @@ export const getUsersLastActiveAtMillis = async (projectId: string, branchId: st
 
 export function getUserQuery(projectId: string, branchId: string, userId: string): RawQuery<UsersCrud["Admin"]["Read"] | null> {
   return {
+    supportedPrismaClients: ["source-of-truth"],
     sql: Prisma.sql`
       SELECT to_json(
         (
@@ -191,7 +193,7 @@ export function getUserQuery(projectId: string, branchId: string, userId: string
               'lastActiveAt', (
                 SELECT MAX("eventStartedAt") as "lastActiveAt"
                 FROM "Event"
-                WHERE data->>'projectId' = ("Tenancy"."projectId") AND COALESCE("data"->>'branchId', 'main') = ("Tenancy"."branchId") AND "data"->>'userId' = ("ProjectUser"."projectUserId")::text AND "systemEventTypeIds" @> '{"$user-activity"}'
+                WHERE data->>'projectId' = ("ProjectUser"."mirroredProjectId") AND COALESCE("data"->>'branchId', 'main') = ("ProjectUser"."mirroredBranchId") AND "data"->>'userId' = ("ProjectUser"."projectUserId")::text AND "systemEventTypeIds" @> '{"$user-activity"}'
               ),
               'ContactChannels', (
                 SELECT COALESCE(ARRAY_AGG(
@@ -269,9 +271,7 @@ export function getUserQuery(projectId: string, branchId: string, userId: string
             )
           )
           FROM "ProjectUser"
-          LEFT JOIN "Tenancy" ON "Tenancy"."id" = "ProjectUser"."tenancyId"
-          LEFT JOIN "Project" ON "Project"."id" = "Tenancy"."projectId"
-          WHERE "Tenancy"."projectId" = ${projectId} AND "Tenancy"."branchId" = ${branchId} AND "ProjectUser"."projectUserId" = ${userId}::UUID
+          WHERE "ProjectUser"."mirroredProjectId" = ${projectId} AND "ProjectUser"."mirroredBranchId" = ${branchId} AND "ProjectUser"."projectUserId" = ${userId}::UUID
         )
       ) AS "row_data_json"
     `,
@@ -334,6 +334,16 @@ export function getUserQuery(projectId: string, branchId: string, userId: string
   };
 }
 
+/**
+ * Returns the user object if the source-of-truth is the same as the global Prisma client, otherwise an unspecified value is returned.
+ */
+export function getUserIfOnGlobalPrismaClientQuery(projectId: string, branchId: string, userId: string): RawQuery<UsersCrud["Admin"]["Read"] | null> {
+  return {
+    ...getUserQuery(projectId, branchId, userId),
+    supportedPrismaClients: ["global"],
+  };
+}
+
 export async function getUser(options: { userId: string } & ({ projectId: string, branchId: string } | { tenancyId: string })) {
   let projectId, branchId;
   if (!("tenancyId" in options)) {
@@ -345,8 +355,9 @@ export async function getUser(options: { userId: string } & ({ projectId: string
     branchId = tenancy.branchId;
   }
 
-  const result = await rawQuery(globalPrismaClient, getUserQuery(projectId, branchId, options.userId));
-
+  const environmentConfig = await rawQuery(globalPrismaClient, getRenderedEnvironmentConfigQuery({ projectId, branchId }));
+  const prisma = getPrismaClientForSourceOfTruth(environmentConfig.sourceOfTruth);
+  const result = await rawQuery(prisma, getUserQuery(projectId, branchId, options.userId));
   return result;
 }
 
@@ -922,18 +933,18 @@ export const usersCrudHandlers = createLazyProxy(() => createCrudHandlers(usersC
         include: userFullInclude,
       });
 
-      // if user password changed, reset all refresh tokens
-      if (passwordHash !== undefined) {
-        await tx.projectUserRefreshToken.deleteMany({
-          where: {
-            tenancyId: auth.tenancy.id,
-            projectUserId: params.user_id,
-          },
-        });
-      }
-
       return userPrismaToCrud(db, await getUserLastActiveAtMillis(auth.project.id, auth.branchId, params.user_id) ?? db.createdAt.getTime());
     });
+
+    // if user password changed, reset all refresh tokens
+    if (passwordHash !== undefined) {
+      await globalPrismaClient.projectUserRefreshToken.deleteMany({
+        where: {
+          tenancyId: auth.tenancy.id,
+          projectUserId: params.user_id,
+        },
+      });
+    }
 
 
     runAsynchronouslyAndWaitUntil(sendUserUpdatedWebhook({

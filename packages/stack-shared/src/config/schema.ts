@@ -302,15 +302,15 @@ export type OrganizationIncompleteConfig = ApplyDefaults<typeof organizationConf
 
 // Rendered configs
 export type ProjectRenderedConfig = Omit<ProjectIncompleteConfig,
-  | keyof BranchIncompleteConfig
-  | keyof EnvironmentIncompleteConfig
-  | keyof OrganizationIncompleteConfig
+  | keyof BranchConfigNormalizedOverride
+  | keyof EnvironmentConfigNormalizedOverride
+  | keyof OrganizationConfigNormalizedOverride
 >;
 export type BranchRenderedConfig = Omit<BranchIncompleteConfig,
-  | keyof EnvironmentIncompleteConfig
-  | keyof OrganizationIncompleteConfig
+  | keyof EnvironmentConfigNormalizedOverride
+  | keyof OrganizationConfigNormalizedOverride
 >;
 export type EnvironmentRenderedConfig = Omit<EnvironmentIncompleteConfig,
-  | keyof OrganizationIncompleteConfig
+  | keyof OrganizationConfigNormalizedOverride
 >;
 export type OrganizationRenderedConfig = OrganizationIncompleteConfig;

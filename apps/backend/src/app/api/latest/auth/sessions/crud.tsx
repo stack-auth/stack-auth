@@ -1,4 +1,4 @@
-import { getPrismaClientForSourceOfTruth } from "@/prisma-client";
+import { getPrismaClientForSourceOfTruth, globalPrismaClient } from "@/prisma-client";
 import { createCrudHandlers } from "@/route-handlers/crud-handler";
 import { SmartRequestAuth } from "@/route-handlers/smart-request";
 import { Prisma } from "@prisma/client";
@@ -27,7 +27,7 @@ export const sessionsCrudHandlers = createLazyProxy(() => createCrudHandlers(ses
       }
     }
 
-    const refreshTokenObjs = await prisma.projectUserRefreshToken.findMany({
+    const refreshTokenObjs = await globalPrismaClient.projectUserRefreshToken.findMany({
       where: {
         tenancyId: auth.tenancy.id,
         projectUserId: query.user_id,
@@ -87,7 +87,7 @@ export const sessionsCrudHandlers = createLazyProxy(() => createCrudHandlers(ses
   },
   onDelete: async ({ auth, params }: { auth: SmartRequestAuth, params: { id: string }, query: { user_id?: string } }) => {
     const prisma = getPrismaClientForSourceOfTruth(auth.tenancy.completeConfig.sourceOfTruth);
-    const session = await prisma.projectUserRefreshToken.findFirst({
+    const session = await globalPrismaClient.projectUserRefreshToken.findFirst({
       where: {
         tenancyId: auth.tenancy.id,
         id: params.id,
@@ -103,7 +103,7 @@ export const sessionsCrudHandlers = createLazyProxy(() => createCrudHandlers(ses
       throw new KnownErrors.CannotDeleteCurrentSession();
     }
 
-    await prisma.projectUserRefreshToken.deleteMany({
+    await globalPrismaClient.projectUserRefreshToken.deleteMany({
       where: {
         tenancyId: auth.tenancy.id,
         id: params.id,

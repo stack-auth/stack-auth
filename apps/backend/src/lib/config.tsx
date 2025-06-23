@@ -104,6 +104,7 @@ export function getProjectConfigOverrideQuery(options: ProjectOptions): RawQuery
   // fetch project config from our own DB
   // (currently it's just empty)
   return {
+    supportedPrismaClients: ["global"],
     sql: Prisma.sql`SELECT 1`,
     postProcess: async () => {
       return {
@@ -123,6 +124,7 @@ export function getBranchConfigOverrideQuery(options: BranchOptions): RawQuery<P
     throw new StackAssertionError('Not implemented');
   }
   return {
+    supportedPrismaClients: ["global"],
     sql: Prisma.sql`SELECT 1`,
     postProcess: async () => {
       return {};
@@ -133,6 +135,7 @@ export function getBranchConfigOverrideQuery(options: BranchOptions): RawQuery<P
 export function getEnvironmentConfigOverrideQuery(options: EnvironmentOptions): RawQuery<Promise<EnvironmentConfigOverride>> {
   // fetch environment config from DB (either our own, or the source of truth one)
   return {
+    supportedPrismaClients: ["global"],
     sql: Prisma.sql`
       SELECT "EnvironmentConfigOverride".*
       FROM "EnvironmentConfigOverride"
@@ -158,6 +161,7 @@ export function getOrganizationConfigOverrideQuery(options: OrganizationOptions)
   }
 
   return {
+    supportedPrismaClients: ["global"],
     sql: Prisma.sql`SELECT 1`,
     postProcess: async () => {
       return {};
