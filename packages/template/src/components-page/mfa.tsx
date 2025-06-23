@@ -6,20 +6,20 @@ import {
   InputOTP,
   InputOTPGroup,
   InputOTPSlot,
-  Typography,
   Spinner,
+  Typography,
   cn,
 } from "@stackframe/stack-ui";
-import { useEffect, useRef, useState, useMemo } from "react";
 import { CheckIcon } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useStackApp } from "..";
-import { useTranslation } from "../lib/translations";
-import { MaybeFullPage } from "../components/elements/maybe-full-page";
 import { FormWarningText } from "../components/elements/form-warning";
+import { MaybeFullPage } from "../components/elements/maybe-full-page";
+import { useTranslation } from "../lib/translations";
 
-function MfaForm({onSuccess, onCancel}: {
-  onSuccess?: () => void;
-  onCancel?: () => void;
+function MfaForm({ onSuccess, onCancel }: {
+  onSuccess?: () => void,
+  onCancel?: () => void,
 }) {
   const stackApp = useStackApp();
   const { t } = useTranslation();
@@ -51,7 +51,7 @@ function MfaForm({onSuccess, onCancel}: {
       if (formRef.current) {
         const inputs = formRef.current.querySelectorAll('input');
         for (const input of inputs) {
-          input.blur()
+          input.blur();
         }
       }
 
@@ -179,14 +179,14 @@ function MfaForm({onSuccess, onCancel}: {
 }
 
 export function MFA(props: {
-  fullPage?: boolean;
-  onSuccess?: () => void;
-  onCancel?: () => void;
+  fullPage?: boolean,
+  onSuccess?: () => void,
+  onCancel?: () => void,
 }) {
   const { t } = useTranslation();
 
-  const headerText = t("Multi-Factor Authentication")
-  const instructionText = t("Enter the six-digit code from your authenticator app")
+  const headerText = t("Multi-Factor Authentication");
+  const instructionText = t("Enter the six-digit code from your authenticator app");
 
   if (props.fullPage) {
     return (
