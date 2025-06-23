@@ -54,7 +54,7 @@ function Fallback() {
 function Inner(props: SelectedTeamSwitcherProps) {
   const { t } = useTranslation();
   const appFromHook = useStackApp();
-  const userFromHook = useUser({ or: props.mockUser ? 'return-null' : undefined });
+  const userFromHook = useUser();
 
   // Use mock data if provided, otherwise use real data
   const app = props.mockUser ? {
