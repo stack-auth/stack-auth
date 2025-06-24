@@ -103,11 +103,11 @@ export class StackClientInterface {
   protected async _createNetworkError(cause: Error, session?: InternalSession | null, requestType?: "client" | "server" | "admin") {
     return new Error(deindent`
       Stack Auth is unable to connect to the server. Please check your internet connection and try again.
-      
+
       If the problem persists, please contact support and provide a screenshot of your entire browser console.
 
       ${cause}
-      
+
       ${JSON.stringify(await this.runNetworkDiagnostics(session, requestType), null, 2)}
     `, { cause: cause });
   }
@@ -857,6 +857,36 @@ export class StackClientInterface {
           "Content-Type": "application/json"
         },
         body: JSON.stringify({
+          code,
+        }),
+      },
+      null,
+      [KnownErrors.VerificationCodeError]
+    );
+
+    if (res.status === "error") {
+      return Result.error(res.error);
+    }
+
+    const result = await res.data.json();
+    return Result.ok({
+      accessToken: result.access_token,
+      refreshToken: result.refresh_token,
+      newUser: result.is_new_user,
+    });
+  }
+
+  async signInWithMfa(totp: string, code: string): Promise<Result<{ newUser: boolean, accessToken: string, refreshToken: string }, KnownErrors["VerificationCodeError"]>> {
+    const res = await this.sendClientRequestAndCatchKnownError(
+      "/auth/mfa/sign-in",
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          type: "totp",
+          totp,
           code,
         }),
       },
