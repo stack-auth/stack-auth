@@ -9,6 +9,7 @@
     "getting-started/setup",
     "getting-started/components",
     "getting-started/users",
+    "getting-started/auth-providers",
     "getting-started/production",
     "---Concepts---",
     "concepts/api-keys",

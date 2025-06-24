@@ -43,7 +43,7 @@ import {
 import { TreeContextProvider } from 'fumadocs-ui/contexts/tree';
 import { ArrowLeft, ChevronDown, ChevronRight, Languages } from 'lucide-react';
 import { usePathname } from 'next/navigation';
-import { type HTMLAttributes, type ReactNode, useMemo, useState } from 'react';
+import { type HTMLAttributes, type ReactNode, useEffect, useMemo, useRef, useState } from 'react';
 import { cn } from '../../lib/cn';
 import { getCurrentPlatform } from '../../lib/platform-utils';
 import {
@@ -146,6 +146,75 @@ function CollapsibleSection({
         )}
         {title}
       </button>
+      {isOpen && (
+        <div className="ml-4 space-y-1">
+          {children}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Clickable collapsible section component - for folders with index pages
+function ClickableCollapsibleSection({
+  title,
+  href,
+  children,
+  defaultOpen = false
+}: {
+  title: string,
+  href: string,
+  children: ReactNode,
+  defaultOpen?: boolean,
+}) {
+  const pathname = usePathname();
+  const isActive = pathname === href || pathname.startsWith(href + '/');
+  const [isOpen, setIsOpen] = useState(defaultOpen);
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  // Close when clicking outside
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (containerRef.current && !containerRef.current.contains(event.target as Node)) {
+        setIsOpen(false);
+      }
+    }
+
+    if (isOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+      return () => document.removeEventListener('mousedown', handleClickOutside);
+    }
+  }, [isOpen]);
+
+  return (
+    <div className="space-y-1" ref={containerRef}>
+      <div className="group">
+        <Link
+          href={href}
+          className={`flex items-center justify-between w-full px-2 py-1.5 rounded-md text-xs transition-colors ${
+            isActive
+              ? 'bg-fd-primary/10 text-fd-primary font-medium'
+              : 'text-fd-muted-foreground hover:text-fd-foreground hover:bg-fd-muted/50'
+          }`}
+          onClick={() => setIsOpen(true)}
+        >
+          <span className="flex-1">{title}</span>
+          <button
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              setIsOpen(!isOpen);
+            }}
+            className="opacity-0 group-hover:opacity-100 transition-opacity p-0.5 rounded hover:bg-fd-muted/30"
+          >
+            {isOpen ? (
+              <ChevronDown className="h-3 w-3" />
+            ) : (
+              <ChevronRight className="h-3 w-3" />
+            )}
+          </button>
+        </Link>
+      </div>
       {isOpen && (
         <div className="ml-4 space-y-1">
           {children}
@@ -261,16 +330,27 @@ function PageTreeItem({ item, currentPlatform }: { item: PageTree.Node, currentP
     const isCurrentPath = folderUrl && pathname.startsWith(folderUrl);
     const itemName = typeof item.name === 'string' ? item.name : '';
 
+    // If folder has an index page, make the title clickable
+    if (hasIndexPage) {
+      return (
+        <ClickableCollapsibleSection
+          title={itemName || 'Folder'}
+          href={item.index!.url}
+          defaultOpen={!!isCurrentPath}
+        >
+          {item.children.map((child, index) => (
+            <PageTreeItem key={child.type === 'page' ? child.url : index} item={child} currentPlatform={currentPlatform} />
+          ))}
+        </ClickableCollapsibleSection>
+      );
+    }
+
+    // If no index page, use regular accordion trigger
     return (
       <CollapsibleSection
         title={itemName || 'Folder'}
         defaultOpen={!!isCurrentPath}
       >
-        {hasIndexPage && (
-          <DocsSidebarLink href={item.index!.url} external={item.index!.external}>
-            Overview
-          </DocsSidebarLink>
-        )}
         {item.children.map((child, index) => (
           <PageTreeItem key={child.type === 'page' ? child.url : index} item={child} currentPlatform={currentPlatform} />
         ))}

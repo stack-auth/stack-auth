@@ -219,9 +219,28 @@ function generateMetaFiles() {
             }
             // Regular page
             else {
-              const pagePath = `${page}.mdx`;
-              if (shouldIncludeFileForPlatform(platform, pagePath)) {
-                currentSectionPages.push(page);
+              // Check if this is actually a folder reference vs a page reference
+              // A folder reference should have a corresponding directory in templates
+              const folderPath = path.join(TEMPLATE_DIR, page);
+              const isActualFolder = fs.existsSync(folderPath) && fs.statSync(folderPath).isDirectory();
+              
+              if (isActualFolder) {
+                // This is a folder reference - check if folder has content for this platform
+                const hasContentInFolder = platformConfig.pages.some(configPage => 
+                  configPage.path.startsWith(`${page}/`) && 
+                  configPage.platforms.includes(platform)
+                );
+                
+                if (hasContentInFolder) {
+                  currentSectionPages.push(page);
+                }
+              } else {
+                // This is a regular page reference
+                const pagePath = `${page}.mdx`;
+                const shouldInclude = shouldIncludeFileForPlatform(platform, pagePath);
+                if (shouldInclude) {
+                  currentSectionPages.push(page);
+                }
               }
             }
           }
