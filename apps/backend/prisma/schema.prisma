@@ -21,6 +21,8 @@ model Project {
   isProductionMode Boolean
   userCount        Int     @default(0)
 
+  projectConfigOverride Json?
+
   apiKeySets                 ApiKeySet[]
   projectUsers               ProjectUser[]
   provisionedProject         ProvisionedProject?
@@ -169,7 +171,6 @@ model ProjectUser {
   totpSecret             Bytes?
   isAnonymous            Boolean @default(false)
 
-  project                  Project                   @relation(fields: [mirroredProjectId], references: [id], onDelete: Cascade)
   projectUserOAuthAccounts ProjectUserOAuthAccount[]
   teamMembers              TeamMember[]
   contactChannels          ContactChannel[]
@@ -184,6 +185,8 @@ model ProjectUser {
   SentEmail          SentEmail[]
   projectApiKey      ProjectApiKey[]
   directPermissions  ProjectUserDirectPermission[]
+  Project            Project?                      @relation(fields: [projectId], references: [id])
+  projectId          String?
 
   @@id([tenancyId, projectUserId])
   @@unique([mirroredProjectId, mirroredBranchId, projectUserId])

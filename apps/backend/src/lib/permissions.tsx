@@ -1,4 +1,4 @@
-import { getPrismaClientForSourceOfTruth, globalPrismaClient } from "@/prisma-client";
+import { getPrismaClientForTenancy, globalPrismaClient } from "@/prisma-client";
 import { KnownErrors } from "@stackframe/stack-shared";
 import { override } from "@stackframe/stack-shared/dist/config/format";
 import { OrganizationRenderedConfig } from "@stackframe/stack-shared/dist/config/schema";
@@ -387,14 +387,14 @@ export async function deletePermissionDefinition(
 
   // Remove all direct permissions for this permission ID
   if (options.scope === "team") {
-    await getPrismaClientForSourceOfTruth(options.tenancy.completeConfig.sourceOfTruth).teamMemberDirectPermission.deleteMany({
+    await getPrismaClientForTenancy(options.tenancy.completeConfig.sourceOfTruth).teamMemberDirectPermission.deleteMany({
       where: {
         tenancyId: options.tenancy.id,
         permissionId: options.permissionId,
       },
     });
   } else {
-    await getPrismaClientForSourceOfTruth(options.tenancy.completeConfig.sourceOfTruth).projectUserDirectPermission.deleteMany({
+    await getPrismaClientForTenancy(options.tenancy.completeConfig.sourceOfTruth).projectUserDirectPermission.deleteMany({
       where: {
         tenancyId: options.tenancy.id,
         permissionId: options.permissionId,

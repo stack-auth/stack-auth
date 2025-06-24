@@ -1,4 +1,4 @@
-import { getPrismaClientForSourceOfTruth } from "@/prisma-client";
+import { getPrismaClientForTenancy } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { KnownErrors } from "@stackframe/stack-shared";
 import { adaptSchema, clientOrHigherAuthTypeSchema, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
@@ -37,7 +37,7 @@ export const POST = createSmartRouteHandler({
     }).defined(),
   }),
   async handler({ auth: { tenancy }, body: { polling_code } }) {
-    const prisma = getPrismaClientForSourceOfTruth(tenancy.completeConfig.sourceOfTruth);
+    const prisma = getPrismaClientForTenancy(tenancy);
 
     // Find the CLI auth attempt
     const cliAuth = await prisma.cliAuthAttempt.findFirst({

@@ -1,7 +1,7 @@
 import { getSharedEmailConfig, sendEmail } from "@/lib/emails";
 import { listPermissions } from "@/lib/permissions";
 import { getTenancy } from "@/lib/tenancies";
-import { getPrismaClientForSourceOfTruth, globalPrismaClient } from "@/prisma-client";
+import { getPrismaClientForTenancy, globalPrismaClient } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { KnownErrors } from "@stackframe/stack-shared";
 import { yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
@@ -84,7 +84,7 @@ export const POST = createSmartRouteHandler({
         throw new StackAssertionError("Tenancy not found");
       }
 
-      const prisma = getPrismaClientForSourceOfTruth(tenancy.completeConfig.sourceOfTruth);
+      const prisma = getPrismaClientForTenancy(tenancy);
       const projectUser = await prisma.projectUser.findUnique({
         where: {
           tenancyId_projectUserId: {
@@ -113,7 +113,7 @@ export const POST = createSmartRouteHandler({
       if (!tenancy) {
         throw new StackAssertionError("Tenancy not found");
       }
-      const userIdsWithManageApiKeysPermission = await getPrismaClientForSourceOfTruth(tenancy.completeConfig.sourceOfTruth).$transaction(async (tx) => {
+      const userIdsWithManageApiKeysPermission = await getPrismaClientForTenancy(tenancy).$transaction(async (tx) => {
         if (!updatedApiKey.teamId) {
           throw new StackAssertionError("Team ID not specified in team API key");
         }
@@ -129,7 +129,7 @@ export const POST = createSmartRouteHandler({
         return permissions.map(p => p.user_id);
       });
 
-      const usersWithManageApiKeysPermission = await getPrismaClientForSourceOfTruth(tenancy.completeConfig.sourceOfTruth).projectUser.findMany({
+      const usersWithManageApiKeysPermission = await getPrismaClientForTenancy(tenancy).projectUser.findMany({
         where: {
           tenancyId: updatedApiKey.tenancyId,
           projectUserId: {

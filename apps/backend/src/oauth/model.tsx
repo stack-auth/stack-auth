@@ -3,7 +3,7 @@ import { checkApiKeySet } from "@/lib/internal-api-keys";
 import { validateRedirectUrl } from "@/lib/redirect-urls";
 import { getSoleTenancyFromProjectBranch } from "@/lib/tenancies";
 import { decodeAccessToken, generateAccessToken } from "@/lib/tokens";
-import { getPrismaClientForSourceOfTruth, globalPrismaClient } from "@/prisma-client";
+import { getPrismaClientForTenancy, globalPrismaClient } from "@/prisma-client";
 import { AuthorizationCode, AuthorizationCodeModel, Client, Falsey, RefreshToken, Token, User } from "@node-oauth/oauth2-server";
 import { PrismaClientKnownRequestError } from "@prisma/client/runtime/library";
 import { KnownErrors } from "@stackframe/stack-shared";
@@ -136,7 +136,7 @@ export class OAuthModel implements AuthorizationCodeModel {
   async saveToken(token: Token, client: Client, user: User): Promise<Token | Falsey> {
     if (token.refreshToken) {
       const tenancy = await getSoleTenancyFromProjectBranch(...getProjectBranchFromClientId(client.id));
-      const projectUser = await getPrismaClientForSourceOfTruth(tenancy.completeConfig.sourceOfTruth).projectUser.findUniqueOrThrow({
+      const projectUser = await getPrismaClientForTenancy(tenancy).projectUser.findUniqueOrThrow({
         where: {
           tenancyId_projectUserId: {
             tenancyId: tenancy.id,

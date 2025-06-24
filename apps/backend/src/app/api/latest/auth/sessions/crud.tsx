@@ -1,4 +1,4 @@
-import { getPrismaClientForSourceOfTruth, globalPrismaClient } from "@/prisma-client";
+import { getPrismaClientForTenancy, globalPrismaClient } from "@/prisma-client";
 import { createCrudHandlers } from "@/route-handlers/crud-handler";
 import { SmartRequestAuth } from "@/route-handlers/smart-request";
 import { Prisma } from "@prisma/client";
@@ -17,7 +17,7 @@ export const sessionsCrudHandlers = createLazyProxy(() => createCrudHandlers(ses
     user_id: userIdOrMeSchema.defined(),
   }).defined(),
   onList: async ({ auth, query }) => {
-    const prisma = getPrismaClientForSourceOfTruth(auth.tenancy.completeConfig.sourceOfTruth);
+    const prisma = getPrismaClientForTenancy(auth.tenancy);
     const listImpersonations = auth.type === 'admin';
 
     if (auth.type === 'client') {
@@ -86,7 +86,7 @@ export const sessionsCrudHandlers = createLazyProxy(() => createCrudHandlers(ses
     return result;
   },
   onDelete: async ({ auth, params }: { auth: SmartRequestAuth, params: { id: string }, query: { user_id?: string } }) => {
-    const prisma = getPrismaClientForSourceOfTruth(auth.tenancy.completeConfig.sourceOfTruth);
+    const prisma = getPrismaClientForTenancy(auth.tenancy);
     const session = await globalPrismaClient.projectUserRefreshToken.findFirst({
       where: {
         tenancyId: auth.tenancy.id,

@@ -4,7 +4,7 @@ import { ensureTeamMembershipExists, ensureUserExists } from "@/lib/request-chec
 import { getSoleTenancyFromProjectBranch, getTenancy } from "@/lib/tenancies";
 import { PrismaTransaction } from "@/lib/types";
 import { sendTeamMembershipDeletedWebhook, sendUserCreatedWebhook, sendUserDeletedWebhook, sendUserUpdatedWebhook } from "@/lib/webhooks";
-import { RawQuery, getPrismaClientForSourceOfTruth, globalPrismaClient, rawQuery, retryTransaction } from "@/prisma-client";
+import { RawQuery, getPrismaClientForSourceOfTruth, getPrismaClientForTenancy, globalPrismaClient, rawQuery, retryTransaction } from "@/prisma-client";
 import { createCrudHandlers } from "@/route-handlers/crud-handler";
 import { log } from "@/utils/telemetry";
 import { runAsynchronouslyAndWaitUntil } from "@/utils/vercel";
@@ -165,7 +165,7 @@ export const getUsersLastActiveAtMillis = async (projectId: string, branchId: st
   // Get the tenancy first to determine the source of truth
   const tenancy = await getSoleTenancyFromProjectBranch(projectId, branchId);
 
-  const prisma = getPrismaClientForSourceOfTruth(tenancy.completeConfig.sourceOfTruth);
+  const prisma = getPrismaClientForTenancy(tenancy);
   const events = await prisma.$queryRaw<Array<{ userId: string, lastActiveAt: Date }>>`
     SELECT data->>'userId' as "userId", MAX("eventStartedAt") as "lastActiveAt"
     FROM "Event"
@@ -356,7 +356,7 @@ export async function getUser(options: { userId: string } & ({ projectId: string
   }
 
   const environmentConfig = await rawQuery(globalPrismaClient, getRenderedEnvironmentConfigQuery({ projectId, branchId }));
-  const prisma = getPrismaClientForSourceOfTruth(environmentConfig.sourceOfTruth);
+  const prisma = getPrismaClientForSourceOfTruth(environmentConfig.sourceOfTruth, branchId);
   const result = await rawQuery(prisma, getUserQuery(projectId, branchId, options.userId));
   return result;
 }
@@ -383,7 +383,7 @@ export const usersCrudHandlers = createLazyProxy(() => createCrudHandlers(usersC
   },
   onList: async ({ auth, query }) => {
     const queryWithoutSpecialChars = query.query?.replace(/[^a-zA-Z0-9\-_.]/g, '');
-    const prisma = getPrismaClientForSourceOfTruth(auth.tenancy.completeConfig.sourceOfTruth);
+    const prisma = getPrismaClientForTenancy(auth.tenancy);
 
     const where = {
       tenancyId: auth.tenancy.id,
@@ -460,7 +460,7 @@ export const usersCrudHandlers = createLazyProxy(() => createCrudHandlers(usersC
     });
 
     const passwordHash = await getPasswordHashFromData(data);
-    const prisma = getPrismaClientForSourceOfTruth(auth.tenancy.completeConfig.sourceOfTruth);
+    const prisma = getPrismaClientForTenancy(auth.tenancy);
     const result = await retryTransaction(prisma, async (tx) => {
       await checkAuthData(tx, {
         tenancyId: auth.tenancy.id,
@@ -639,7 +639,7 @@ export const usersCrudHandlers = createLazyProxy(() => createCrudHandlers(usersC
   },
   onUpdate: async ({ auth, data, params }) => {
     const passwordHash = await getPasswordHashFromData(data);
-    const prisma = getPrismaClientForSourceOfTruth(auth.tenancy.completeConfig.sourceOfTruth);
+    const prisma = getPrismaClientForTenancy(auth.tenancy);
     const result = await retryTransaction(prisma, async (tx) => {
       await ensureUserExists(tx, { tenancyId: auth.tenancy.id, userId: params.user_id });
 
@@ -955,7 +955,7 @@ export const usersCrudHandlers = createLazyProxy(() => createCrudHandlers(usersC
     return result;
   },
   onDelete: async ({ auth, params }) => {
-    const { teams } = await retryTransaction(getPrismaClientForSourceOfTruth(auth.tenancy.completeConfig.sourceOfTruth), async (tx) => {
+    const { teams } = await retryTransaction(getPrismaClientForTenancy(auth.tenancy), async (tx) => {
       await ensureUserExists(tx, { tenancyId: auth.tenancy.id, userId: params.user_id });
 
       const teams = await tx.team.findMany({

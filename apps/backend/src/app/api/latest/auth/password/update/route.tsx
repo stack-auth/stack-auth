@@ -1,4 +1,4 @@
-import { getPrismaClientForSourceOfTruth, globalPrismaClient, retryTransaction } from "@/prisma-client";
+import { getPrismaClientForTenancy, globalPrismaClient, retryTransaction } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { KnownErrors } from "@stackframe/stack-shared";
 import { getPasswordError } from "@stackframe/stack-shared/dist/helpers/password";
@@ -40,7 +40,7 @@ export const POST = createSmartRouteHandler({
       throw passwordError;
     }
 
-    const prisma = getPrismaClientForSourceOfTruth(tenancy.completeConfig.sourceOfTruth);
+    const prisma = getPrismaClientForTenancy(tenancy);
     await retryTransaction(prisma, async (tx) => {
       const authMethods = await tx.passwordAuthMethod.findMany({
         where: {

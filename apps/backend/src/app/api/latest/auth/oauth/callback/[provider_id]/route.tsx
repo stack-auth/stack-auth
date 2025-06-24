@@ -4,7 +4,7 @@ import { validateRedirectUrl } from "@/lib/redirect-urls";
 import { Tenancy, getTenancy } from "@/lib/tenancies";
 import { oauthCookieSchema } from "@/lib/tokens";
 import { getProvider, oauthServer } from "@/oauth";
-import { getPrismaClientForSourceOfTruth, globalPrismaClient } from "@/prisma-client";
+import { getPrismaClientForTenancy, globalPrismaClient } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { InvalidClientError, InvalidScopeError, Request as OAuthRequest, Response as OAuthResponse } from "@node-oauth/oauth2-server";
 import { PrismaClient } from "@prisma/client";
@@ -112,7 +112,7 @@ const handler = createSmartRouteHandler({
     if (!tenancy) {
       throw new StackAssertionError("Tenancy in outerInfo not found; has it been deleted?", { tenancyId });
     }
-    const prisma = getPrismaClientForSourceOfTruth(tenancy.completeConfig.sourceOfTruth);
+    const prisma = getPrismaClientForTenancy(tenancy);
 
     try {
       if (outerInfoDB.expiresAt < new Date()) {

@@ -1,5 +1,5 @@
 import { Tenancy } from "@/lib/tenancies";
-import { getPrismaClientForSourceOfTruth } from "@/prisma-client";
+import { getPrismaClientForTenancy } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { KnownErrors } from "@stackframe/stack-shared";
 import { UsersCrud } from "@stackframe/stack-shared/dist/interface/crud/users";
@@ -16,7 +16,7 @@ const DataPointsSchema = yupArray(yupObject({
 
 
 async function loadUsersByCountry(tenancy: Tenancy): Promise<Record<string, number>> {
-  const a = await getPrismaClientForSourceOfTruth(tenancy.completeConfig.sourceOfTruth).$queryRaw<{countryCode: string|null, userCount: bigint}[]>`
+  const a = await getPrismaClientForTenancy(tenancy).$queryRaw<{countryCode: string|null, userCount: bigint}[]>`
     WITH LatestEventWithCountryCode AS (
         SELECT DISTINCT ON ("userId")
           "data"->'userId' AS "userId",
@@ -45,7 +45,7 @@ async function loadUsersByCountry(tenancy: Tenancy): Promise<Record<string, numb
 }
 
 async function loadTotalUsers(tenancy: Tenancy, now: Date): Promise<DataPoints> {
-  return (await getPrismaClientForSourceOfTruth(tenancy.completeConfig.sourceOfTruth).$queryRaw<{date: Date, dailyUsers: bigint, cumUsers: bigint}[]>`
+  return (await getPrismaClientForTenancy(tenancy).$queryRaw<{date: Date, dailyUsers: bigint, cumUsers: bigint}[]>`
     WITH date_series AS (
         SELECT GENERATE_SERIES(
           ${now}::date - INTERVAL '30 days',
@@ -70,7 +70,7 @@ async function loadTotalUsers(tenancy: Tenancy, now: Date): Promise<DataPoints> 
 }
 
 async function loadDailyActiveUsers(tenancy: Tenancy, now: Date) {
-  const res = await getPrismaClientForSourceOfTruth(tenancy.completeConfig.sourceOfTruth).$queryRaw<{day: Date, dau: bigint}[]>`
+  const res = await getPrismaClientForTenancy(tenancy).$queryRaw<{day: Date, dau: bigint}[]>`
     WITH date_series AS (
       SELECT GENERATE_SERIES(
         ${now}::date - INTERVAL '30 days',
@@ -105,7 +105,7 @@ async function loadDailyActiveUsers(tenancy: Tenancy, now: Date) {
 }
 
 async function loadLoginMethods(tenancy: Tenancy): Promise<{method: string, count: number }[]> {
-  return await getPrismaClientForSourceOfTruth(tenancy.completeConfig.sourceOfTruth).$queryRaw<{ method: string, count: number }[]>`
+  return await getPrismaClientForTenancy(tenancy).$queryRaw<{ method: string, count: number }[]>`
     WITH tab AS (
       SELECT
         COALESCE(
@@ -130,7 +130,7 @@ async function loadLoginMethods(tenancy: Tenancy): Promise<{method: string, coun
 
 async function loadRecentlyActiveUsers(tenancy: Tenancy): Promise<UsersCrud["Admin"]["Read"][]> {
   // use the Events table to get the most recent activity
-  const events = await getPrismaClientForSourceOfTruth(tenancy.completeConfig.sourceOfTruth).$queryRaw<{ data: any, eventStartedAt: Date }[]>`
+  const events = await getPrismaClientForTenancy(tenancy).$queryRaw<{ data: any, eventStartedAt: Date }[]>`
     WITH RankedEvents AS (
       SELECT 
         "data", "eventStartedAt",
@@ -208,7 +208,7 @@ export const GET = createSmartRouteHandler({
       recentlyActive,
       loginMethods
     ] = await Promise.all([
-      getPrismaClientForSourceOfTruth(req.auth.tenancy.completeConfig.sourceOfTruth).projectUser.count({
+      getPrismaClientForTenancy(req.auth.tenancy.completeConfig.sourceOfTruth).projectUser.count({
         where: { tenancyId: req.auth.tenancy.id, },
       }),
       loadTotalUsers(req.auth.tenancy, now),

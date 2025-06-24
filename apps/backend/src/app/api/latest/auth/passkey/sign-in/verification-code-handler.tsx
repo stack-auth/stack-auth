@@ -1,5 +1,5 @@
 import { createAuthTokens } from "@/lib/tokens";
-import { getPrismaClientForSourceOfTruth } from "@/prisma-client";
+import { getPrismaClientForTenancy } from "@/prisma-client";
 import { createVerificationCodeHandler } from "@/route-handlers/verification-code-handler";
 import { VerificationCodeType } from "@prisma/client";
 import { verifyAuthenticationResponse } from "@simplewebauthn/server";
@@ -45,7 +45,7 @@ export const passkeySignInVerificationCodeHandler = createVerificationCodeHandle
 
     const credentialId = authentication_response.id;
 
-    const prisma = getPrismaClientForSourceOfTruth(tenancy.completeConfig.sourceOfTruth);
+    const prisma = getPrismaClientForTenancy(tenancy);
     // Get passkey from DB with userHandle
     const passkey = await prisma.passkeyAuthMethod.findFirst({
       where: {

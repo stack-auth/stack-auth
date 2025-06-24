@@ -17,7 +17,20 @@ const customPermissionRegex = /^[a-z0-9_:]+$/;
 /**
  * All fields that can be overridden at this level.
  */
-export const projectConfigSchema = yupObject({});
+export const projectConfigSchema = yupObject({
+  sourceOfTruth: yupUnion(
+    yupObject({
+      type: yupString().oneOf(['neon']).optional(),
+      connectionStrings: yupRecord(
+        yupString().defined(),
+        yupString().defined(),
+      ).defined(),
+    }).defined(),
+    yupObject({
+      type: yupString().oneOf(['hosted']).optional(),
+    }).defined(),
+  ).optional(),
+});
 
 // --- NEW RBAC Schema ---
 const branchRbacDefaultPermissions = yupRecord(
@@ -83,7 +96,7 @@ const branchDomain = yupObject({
   allowLocalhost: yupBoolean().optional(),
 }).optional();
 
-export const branchConfigSchema = projectConfigSchema.concat(yupObject({
+export const branchConfigSchema = projectConfigSchema.omit(['sourceOfTruth']).concat(yupObject({
   rbac: branchRbacSchema,
 
   teams: yupObject({
@@ -106,16 +119,6 @@ export const branchConfigSchema = projectConfigSchema.concat(yupObject({
 
 
 export const environmentConfigSchema = branchConfigSchema.concat(yupObject({
-  sourceOfTruth: yupUnion(
-    yupObject({
-      type: yupString().oneOf(['neon']).optional(),
-      connectionString: schemaFields.urlSchema.optional(),
-    }).defined(),
-    yupObject({
-      type: yupString().oneOf(['hosted']).optional(),
-    }).defined(),
-  ).optional(),
-
   auth: branchConfigSchema.getNested("auth").concat(yupObject({
     oauth: branchConfigSchema.getNested("auth").getNested("oauth").concat(yupObject({
       providers: yupRecord(
@@ -157,22 +160,22 @@ export const environmentConfigSchema = branchConfigSchema.concat(yupObject({
   })),
 }));
 
-export const organizationConfigSchema = environmentConfigSchema.omit(['sourceOfTruth']).concat(yupObject({}));
+export const organizationConfigSchema = environmentConfigSchema.concat(yupObject({}));
 
 
 // Defaults
 // these are objects that are merged together to form the rendered config (see ./README.md)
 // Wherever an object could be used as a value, a function can instead be used to generate the default values on a per-key basis
 // NOTE: These values are the defaults of the schema, NOT the defaults for newly created projects. The values here signify what `null` means for each property. If you want new projects by default to have a certain value set to true, you should update the corresponding function in the backend instead.
-export const projectConfigDefaults = {} satisfies DeepReplaceAllowFunctionsForObjects<ProjectConfigStrippedNormalizedOverride>;
-
-export const branchConfigDefaults = {} satisfies DeepReplaceAllowFunctionsForObjects<BranchConfigStrippedNormalizedOverride>;
-
-export const environmentConfigDefaults = {
+export const projectConfigDefaults = {
   sourceOfTruth: {
     type: 'hosted',
   },
-} satisfies DeepReplaceAllowFunctionsForObjects<EnvironmentConfigStrippedNormalizedOverride>;
+} satisfies DeepReplaceAllowFunctionsForObjects<ProjectConfigStrippedNormalizedOverride>;
+
+export const branchConfigDefaults = {} satisfies DeepReplaceAllowFunctionsForObjects<BranchConfigStrippedNormalizedOverride>;
+
+export const environmentConfigDefaults = {} satisfies DeepReplaceAllowFunctionsForObjects<EnvironmentConfigStrippedNormalizedOverride>;
 
 export const organizationConfigDefaults = {
   rbac: {

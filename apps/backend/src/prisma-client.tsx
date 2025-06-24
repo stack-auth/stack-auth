@@ -8,6 +8,7 @@ import { deepPlainEquals, filterUndefined, typedFromEntries, typedKeys } from "@
 import { ignoreUnhandledRejection } from "@stackframe/stack-shared/dist/utils/promises";
 import { Result } from "@stackframe/stack-shared/dist/utils/results";
 import { isPromise } from "util/types";
+import { Tenancy } from "./lib/tenancies";
 import { traceSpan } from "./utils/telemetry";
 
 export type PrismaClientTransaction = PrismaClient | Parameters<Parameters<PrismaClient['$transaction']>[0]>[0];
@@ -33,13 +34,17 @@ function getNeonPrismaClient(connectionString: string) {
   return neonPrismaClient;
 }
 
-export function getPrismaClientForSourceOfTruth(sourceOfTruth: OrganizationRenderedConfig["sourceOfTruth"]) {
+export function getPrismaClientForTenancy(tenancy: Tenancy) {
+  return getPrismaClientForSourceOfTruth(tenancy.completeConfig.sourceOfTruth, tenancy.branchId);
+}
+
+export function getPrismaClientForSourceOfTruth(sourceOfTruth: OrganizationRenderedConfig["sourceOfTruth"], branchId: string) {
   switch (sourceOfTruth.type) {
     case 'neon': {
-      if (!sourceOfTruth.connectionString) {
-        throw new Error("No connection string provided for Neon source of truth");
+      if (!(branchId in sourceOfTruth.connectionStrings)) {
+        throw new Error(`No connection string provided for Neon source of truth for branch ${branchId}`);
       }
-      return getNeonPrismaClient(sourceOfTruth.connectionString);
+      return getNeonPrismaClient(sourceOfTruth.connectionStrings[branchId]);
     }
     case 'hosted': {
       return globalPrismaClient;

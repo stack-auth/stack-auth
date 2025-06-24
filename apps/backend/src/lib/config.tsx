@@ -4,7 +4,6 @@ import { BranchConfigOverride, BranchConfigOverrideOverride, BranchIncompleteCon
 import { ProjectsCrud } from "@stackframe/stack-shared/dist/interface/crud/projects";
 import { yupMixed, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
 import { isTruthy } from "@stackframe/stack-shared/dist/utils/booleans";
-import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
 import { StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
 import { filterUndefined, pick, typedEntries } from "@stackframe/stack-shared/dist/utils/objects";
 import { Result } from "@stackframe/stack-shared/dist/utils/results";
@@ -105,14 +104,13 @@ export function getProjectConfigOverrideQuery(options: ProjectOptions): RawQuery
   // (currently it's just empty)
   return {
     supportedPrismaClients: ["global"],
-    sql: Prisma.sql`SELECT 1`,
-    postProcess: async () => {
-      return {
-        sourceOfTruth: {
-          type: 'neon',
-          connectionString: getEnvVariable('STACK_SEED_INTERNAL_PROJECT_NEON_CONNECTION_STRING'),
-        },
-      };
+    sql: Prisma.sql`
+      SELECT "Project"."projectConfigOverride"
+      FROM "Project"
+      WHERE "Project"."id" = ${options.projectId}
+    `,
+    postProcess: async (queryResult) => {
+      return queryResult[0].projectConfigOverride ?? {};
     },
   };
 }
@@ -179,9 +177,24 @@ export function getOrganizationConfigOverrideQuery(options: OrganizationOptions)
 export async function overrideProjectConfigOverride(options: {
   projectId: string,
   projectConfigOverrideOverride: ProjectConfigOverrideOverride,
+  tx: PrismaClientTransaction,
 }): Promise<void> {
   // set project config override on our own DB
-  throw new StackAssertionError('Not implemented');
+
+  // TODO put this in a serializable transaction (or a single SQL query) to prevent race conditions
+  const oldConfig = await rawQuery(options.tx, getProjectConfigOverrideQuery(options));
+  const newConfig = override(
+    oldConfig,
+    options.projectConfigOverrideOverride,
+  );
+  await options.tx.project.update({
+    where: {
+      id: options.projectId,
+    },
+    data: {
+      projectConfigOverride: newConfig,
+    },
+  });
 }
 
 export function overrideBranchConfigOverride(options: {
@@ -200,7 +213,7 @@ export async function overrideEnvironmentConfigOverride(options: {
   environmentConfigOverrideOverride: EnvironmentConfigOverrideOverride,
   tx: PrismaClientTransaction,
 }): Promise<void> {
-  // save environment config override on DB (either our own, or the source of truth one)
+  // save environment config override on DB
 
   // TODO put this in a serializable transaction (or a single SQL query) to prevent race conditions
   const oldConfig = await rawQuery(options.tx, getEnvironmentConfigOverrideQuery(options));

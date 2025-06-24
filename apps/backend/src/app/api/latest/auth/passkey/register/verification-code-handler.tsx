@@ -1,4 +1,4 @@
-import { getPrismaClientForSourceOfTruth, retryTransaction } from "@/prisma-client";
+import { getPrismaClientForTenancy, retryTransaction } from "@/prisma-client";
 import { createVerificationCodeHandler } from "@/route-handlers/verification-code-handler";
 import { VerificationCodeType } from "@prisma/client";
 import { verifyRegistrationResponse } from "@simplewebauthn/server";
@@ -95,7 +95,7 @@ export const registerVerificationCodeHandler = createVerificationCodeHandler({
     }
 
     const registrationInfo = verification.registrationInfo;
-    const prisma = getPrismaClientForSourceOfTruth(tenancy.completeConfig.sourceOfTruth);
+    const prisma = getPrismaClientForTenancy(tenancy);
 
     await retryTransaction(prisma, async (tx) => {
       const authMethods = await tx.passkeyAuthMethod.findMany({

@@ -1,6 +1,6 @@
 import { usersCrudHandlers } from "@/app/api/latest/users/crud";
 import { getProvider } from "@/oauth";
-import { getPrismaClientForSourceOfTruth } from "@/prisma-client";
+import { getPrismaClientForTenancy } from "@/prisma-client";
 import { createCrudHandlers } from "@/route-handlers/crud-handler";
 import { KnownErrors } from "@stackframe/stack-shared";
 import { connectedAccountAccessTokenCrud } from "@stackframe/stack-shared/dist/interface/crud/oauth";
@@ -35,7 +35,7 @@ export const connectedAccountAccessTokenCrudHandlers = createLazyProxy(() =>crea
     }
 
     // ====================== retrieve access token if it exists ======================
-    const prisma = getPrismaClientForSourceOfTruth(auth.tenancy.completeConfig.sourceOfTruth);
+    const prisma = getPrismaClientForTenancy(auth.tenancy);
     const accessTokens = await prisma.oAuthAccessToken.findMany({
       where: {
         tenancyId: auth.tenancy.id,

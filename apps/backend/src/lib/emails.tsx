@@ -1,5 +1,5 @@
 import { getProject } from '@/lib/projects';
-import { getPrismaClientForSourceOfTruth, globalPrismaClient } from '@/prisma-client';
+import { getPrismaClientForTenancy, globalPrismaClient } from '@/prisma-client';
 import { traceSpan } from '@/utils/telemetry';
 import { TEditorConfiguration } from '@stackframe/stack-emails/dist/editor/documents/editor/core';
 import { EMAIL_TEMPLATES_METADATA, renderEmailTemplate } from '@stackframe/stack-emails/dist/utils';
@@ -266,7 +266,7 @@ export async function sendEmailWithoutRetries(options: SendEmailOptions): Promis
     throw new StackAssertionError("Tenancy not found");
   }
 
-  await getPrismaClientForSourceOfTruth(tenancy.completeConfig.sourceOfTruth).sentEmail.create({
+  await getPrismaClientForTenancy(tenancy).sentEmail.create({
     data: {
       tenancyId: options.tenancyId,
       to: typeof options.to === 'string' ? [options.to] : options.to,

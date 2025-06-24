@@ -1,13 +1,13 @@
 import { Prisma } from "@prisma/client";
 import { KnownErrors } from "@stackframe/stack-shared";
-import { EnvironmentConfigOverrideOverride, OrganizationRenderedConfig } from "@stackframe/stack-shared/dist/config/schema";
+import { EnvironmentConfigOverrideOverride, OrganizationRenderedConfig, ProjectConfigOverrideOverride } from "@stackframe/stack-shared/dist/config/schema";
 import { AdminUserProjectsCrud, ProjectsCrud } from "@stackframe/stack-shared/dist/interface/crud/projects";
 import { UsersCrud } from "@stackframe/stack-shared/dist/interface/crud/users";
 import { StackAssertionError, captureError } from "@stackframe/stack-shared/dist/utils/errors";
 import { filterUndefined, typedFromEntries } from "@stackframe/stack-shared/dist/utils/objects";
 import { generateUuid } from "@stackframe/stack-shared/dist/utils/uuids";
 import { RawQuery, getPrismaClientForSourceOfTruth, globalPrismaClient, rawQuery, retryTransaction } from "../prisma-client";
-import { getRenderedEnvironmentConfigQuery, overrideEnvironmentConfigOverride } from "./config";
+import { getRenderedEnvironmentConfigQuery, overrideEnvironmentConfigOverride, overrideProjectConfigOverride } from "./config";
 import { DEFAULT_BRANCH_ID } from "./tenancies";
 
 function isStringArray(value: any): value is string[] {
@@ -63,6 +63,7 @@ export async function getProject(projectId: string): Promise<Omit<ProjectsCrud["
 export async function createOrUpdateProject(
   options: {
     ownerIds?: string[],
+    sourceOfTruth?: ProjectConfigOverrideOverride["sourceOfTruth"],
   } & ({
     type: "create",
     projectId?: string,
@@ -124,6 +125,14 @@ export async function createOrUpdateProject(
     const translateDefaultPermissions = (permissions: { id: string }[] | undefined) => {
       return permissions ? typedFromEntries(permissions.map((permission) => [permission.id, true])) : undefined;
     };
+
+    await overrideProjectConfigOverride({
+      tx,
+      projectId: project.id,
+      projectConfigOverrideOverride: {
+        sourceOfTruth: options.sourceOfTruth,
+      },
+    });
 
     const dataOptions = options.data.config || {};
     const configOverrideOverride: EnvironmentConfigOverrideOverride = filterUndefined({
@@ -222,7 +231,7 @@ export async function createOrUpdateProject(
 
   // Update owner metadata
   const internalEnvironmentConfig = await rawQuery(globalPrismaClient, getRenderedEnvironmentConfigQuery({ projectId: "internal", branchId: DEFAULT_BRANCH_ID }));
-  const prisma = getPrismaClientForSourceOfTruth(internalEnvironmentConfig.sourceOfTruth);
+  const prisma = getPrismaClientForSourceOfTruth(internalEnvironmentConfig.sourceOfTruth, DEFAULT_BRANCH_ID);
   await prisma.$transaction(async (tx) => {
     for (const userId of options.ownerIds ?? []) {
       const projectUserTx = await tx.projectUser.findUnique({

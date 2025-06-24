@@ -2,7 +2,7 @@ import { getAuthContactChannel } from "@/lib/contact-channel";
 import { sendEmailFromTemplate } from "@/lib/emails";
 import { getSoleTenancyFromProjectBranch, Tenancy } from "@/lib/tenancies";
 import { createAuthTokens } from "@/lib/tokens";
-import { getPrismaClientForSourceOfTruth } from "@/prisma-client";
+import { getPrismaClientForTenancy } from "@/prisma-client";
 import { createVerificationCodeHandler } from "@/route-handlers/verification-code-handler";
 import { VerificationCodeType } from "@prisma/client";
 import { KnownErrors } from "@stackframe/stack-shared";
@@ -12,7 +12,7 @@ import { usersCrudHandlers } from "../../../users/crud";
 import { createMfaRequiredError } from "../../mfa/sign-in/verification-code-handler";
 
 export async function ensureUserForEmailAllowsOtp(tenancy: Tenancy, email: string): Promise<UsersCrud["Admin"]["Read"] | null> {
-  const prisma = getPrismaClientForSourceOfTruth(tenancy.completeConfig.sourceOfTruth);
+  const prisma = getPrismaClientForTenancy(tenancy);
   const contactChannel = await getAuthContactChannel(
     prisma,
     {
@@ -101,7 +101,7 @@ export const signInVerificationCodeHandler = createVerificationCodeHandler({
     };
   },
   async handler(tenancy, { email }) {
-    const prisma = getPrismaClientForSourceOfTruth(tenancy.completeConfig.sourceOfTruth);
+    const prisma = getPrismaClientForTenancy(tenancy);
     const contactChannel = await getAuthContactChannel(
       prisma,
       {
