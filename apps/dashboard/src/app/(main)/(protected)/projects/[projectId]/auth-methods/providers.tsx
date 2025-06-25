@@ -40,6 +40,7 @@ function toTitle(id: string) {
     apple: "Apple",
     bitbucket: "Bitbucket",
     linkedin: "LinkedIn",
+    twitch: "Twitch",
     x: "X",
   }[id];
 }
