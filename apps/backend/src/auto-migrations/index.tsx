@@ -66,48 +66,45 @@ async function acquireMigrationLock(options: {
   for (let i = 0; i < maxRetries; i++) {
     try {
       await options.prismaClient.$queryRaw`
-    DO $$
-    DECLARE
-      lock_exists BOOLEAN;
-      started_at_value TIMESTAMP(3);
-    BEGIN
-      -- Check if SchemaMigrationLock table exists and has a row
-      SELECT EXISTS (
-        SELECT FROM information_schema.tables 
-        WHERE table_schema = 'public' 
-        AND table_name = 'SchemaMigrationLock'
-      ) INTO lock_exists;
-      
-      IF NOT lock_exists THEN
-        -- Create the lock table and insert a row with current timestamp
-        CREATE TABLE "SchemaMigrationLock" (
-          "id" INTEGER PRIMARY KEY DEFAULT 1,
-          "startedAt" TIMESTAMP(3) NOT NULL DEFAULT clock_timestamp(),
-          CONSTRAINT "single_row_check" CHECK (id = 1)
-        );
-        
-        INSERT INTO "SchemaMigrationLock" ("startedAt") VALUES (clock_timestamp());
-        -- Return null since the row didn't exist before
-        started_at_value := NULL;
-      ELSE
-        -- Return the startedAt value since the row already existed
-        SELECT "startedAt" FROM "SchemaMigrationLock" WHERE id = 1 INTO started_at_value;
-        
-        -- Check if started_at exists and is within 10 seconds
-        IF started_at_value IS NOT NULL AND started_at_value >= clock_timestamp() - INTERVAL '10 seconds' THEN
-          RAISE EXCEPTION 'MIGRATION_IN_PROGRESS';
-        ELSIF started_at_value IS NOT NULL AND started_at_value < clock_timestamp() - INTERVAL '10 seconds' THEN
-          -- Update the startedAt to current timestamp since it's older than 10 seconds and start this migration
-          UPDATE "SchemaMigrationLock" SET "startedAt" = clock_timestamp() WHERE id = 1;
-        END IF;
-      END IF;
-      
-      -- Use a temporary table to return the value
-      CREATE TEMP TABLE IF NOT EXISTS temp_result (started_at TIMESTAMP(3));
-      DELETE FROM temp_result;
-      INSERT INTO temp_result VALUES (started_at_value);
-    END $$;
-    `;
+        DO $$
+        DECLARE
+          lock_exists BOOLEAN;
+          started_at_value TIMESTAMP(3);
+        BEGIN
+          -- Check if SchemaMigrationLock table exists and has a row
+          SELECT EXISTS (
+            SELECT FROM information_schema.tables 
+            WHERE table_schema = 'public' 
+            AND table_name = 'SchemaMigrationLock'
+          ) INTO lock_exists;
+          
+          IF NOT lock_exists THEN
+            -- Create the lock table and insert a row with current timestamp
+            CREATE TABLE "SchemaMigrationLock" (
+              "id" INTEGER PRIMARY KEY DEFAULT 1,
+              "startedAt" TIMESTAMP(3) NOT NULL DEFAULT clock_timestamp(),
+              CONSTRAINT "single_row_check" CHECK (id = 1)
+            );
+            
+            INSERT INTO "SchemaMigrationLock" ("startedAt") VALUES (clock_timestamp());
+            -- Return null since the row didn't exist before
+            started_at_value := NULL;
+          ELSE
+            -- Return the startedAt value since the row already existed
+            SELECT "startedAt" FROM "SchemaMigrationLock" WHERE id = 1 INTO started_at_value;
+            
+            -- Check if started_at exists and is within 10 seconds
+            IF started_at_value IS NOT NULL AND started_at_value >= clock_timestamp() - INTERVAL '10 seconds' THEN
+              RAISE EXCEPTION 'MIGRATION_IN_PROGRESS';
+            ELSIF started_at_value IS NOT NULL AND started_at_value < clock_timestamp() - INTERVAL '10 seconds' THEN
+              -- Update the startedAt to current timestamp since it's older than 10 seconds and start this migration
+              UPDATE "SchemaMigrationLock" SET "startedAt" = clock_timestamp() WHERE id = 1;
+            END IF;
+          END IF;
+        END $$;
+      `;
+
+      return;
     } catch (e) {
       if (getMigrationError(e) === 'MIGRATION_IN_PROGRESS') {
         await new Promise(resolve => setTimeout(resolve, backOffInMs));
@@ -115,10 +112,10 @@ async function acquireMigrationLock(options: {
       } else {
         throw e;
       }
-    } finally {
-      backOffInMs = 100;
     }
   }
+
+  throw new Error('Failed to acquire migration lock');
 }
 
 function getRemoveMigrationLockQuery(options: {
