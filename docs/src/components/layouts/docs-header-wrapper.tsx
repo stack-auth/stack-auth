@@ -79,6 +79,11 @@ function MobileCollapsibleSection({
 }) {
   const [isOpen, setIsOpen] = useState(defaultOpen);
 
+  // Keep accordion open based on defaultOpen changes (for path-based logic)
+  React.useEffect(() => {
+    setIsOpen(defaultOpen);
+  }, [defaultOpen]);
+
   return (
     <div className="space-y-1">
       <button
@@ -115,8 +120,14 @@ function MobileClickableCollapsibleSection({
 }) {
   const pathname = usePathname();
   const isActive = pathname === href || pathname.startsWith(href + '/');
-  const [isOpen, setIsOpen] = useState(defaultOpen);
+  const shouldBeOpen = defaultOpen || isActive;
+  const [isOpen, setIsOpen] = useState(shouldBeOpen);
   const containerRef = React.useRef<HTMLDivElement>(null);
+
+  // Update accordion state when path changes to stay open for current section
+  React.useEffect(() => {
+    setIsOpen(shouldBeOpen);
+  }, [shouldBeOpen]);
 
   // Close when clicking outside
   React.useEffect(() => {

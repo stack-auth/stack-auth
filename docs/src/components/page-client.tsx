@@ -5,7 +5,6 @@ import {
   getBreadcrumbItemsFromPath,
 } from 'fumadocs-core/breadcrumb';
 import { createContext, usePathname } from 'fumadocs-core/framework';
-import Link from 'fumadocs-core/link';
 import type { PageTree, TOCItemType } from 'fumadocs-core/server';
 import * as Primitive from 'fumadocs-core/toc';
 import { useEffectEvent } from 'fumadocs-core/utils/use-effect-event';
@@ -13,6 +12,7 @@ import { useI18n } from 'fumadocs-ui/contexts/i18n';
 import { useNav, usePageStyles } from 'fumadocs-ui/contexts/layout';
 import { useTreeContext, useTreePath } from 'fumadocs-ui/contexts/tree';
 import { ChevronDown, ChevronLeft, ChevronRight } from 'lucide-react';
+import Link from 'next/link';
 import {
   type ComponentProps,
   Fragment,
