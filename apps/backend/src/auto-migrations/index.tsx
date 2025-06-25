@@ -1,8 +1,7 @@
 import { Prisma, PrismaClient } from '@prisma/client';
 import { MIGRATION_FILES } from './migration-files';
 
-const ADVISORY_LOCK_ID = 320347;
-const ALL_DB_ERRORS = ['MIGRATION_NEEDED'] as const;
+const ALL_DB_ERRORS = ['MIGRATION_NEEDED', 'MIGRATION_IN_PROGRESS'] as const;
 type MigrationError = typeof ALL_DB_ERRORS[number];
 
 function getMigrationError(error: unknown): MigrationError {
@@ -59,10 +58,14 @@ async function getAppliedMigrations(options: {
   return (appliedMigrations as { migrationName: string }[]).map((migration) => migration.migrationName);
 }
 
-async function setMigrationLock(options: {
+async function acquireMigrationLock(options: {
   prismaClient: PrismaClient,
 }) {
-  await options.prismaClient.$queryRaw`
+  const maxRetries = 10;
+  let backOffInMs = 100;
+  for (let i = 0; i < maxRetries; i++) {
+    try {
+      await options.prismaClient.$queryRaw`
     DO $$
     DECLARE
       lock_exists BOOLEAN;
@@ -90,9 +93,12 @@ async function setMigrationLock(options: {
         -- Return the startedAt value since the row already existed
         SELECT "startedAt" FROM "SchemaMigrationLock" WHERE id = 1 INTO started_at_value;
         
-        -- Check if started_at is more than 10 seconds in the past
-        IF started_at_value IS NOT NULL AND started_at_value < clock_timestamp() - INTERVAL '10 seconds' THEN
-          RAISE EXCEPTION 'LAST_MIGRATION_TIMED_OUT';
+        -- Check if started_at exists and is within 10 seconds
+        IF started_at_value IS NOT NULL AND started_at_value >= clock_timestamp() - INTERVAL '10 seconds' THEN
+          RAISE EXCEPTION 'MIGRATION_IN_PROGRESS';
+        ELSIF started_at_value IS NOT NULL AND started_at_value < clock_timestamp() - INTERVAL '10 seconds' THEN
+          -- Update the startedAt to current timestamp since it's older than 10 seconds and start this migration
+          UPDATE "SchemaMigrationLock" SET "startedAt" = clock_timestamp() WHERE id = 1;
         END IF;
       END IF;
       
@@ -101,13 +107,24 @@ async function setMigrationLock(options: {
       DELETE FROM temp_result;
       INSERT INTO temp_result VALUES (started_at_value);
     END $$;
-  `;
+    `;
+    } catch (e) {
+      if (getMigrationError(e) === 'MIGRATION_IN_PROGRESS') {
+        await new Promise(resolve => setTimeout(resolve, backOffInMs));
+        backOffInMs *= 2 * (1 + Math.random());
+      } else {
+        throw e;
+      }
+    } finally {
+      backOffInMs = 100;
+    }
+  }
 }
 
-async function removeMigrationLock(options: {
+function getRemoveMigrationLockQuery(options: {
   prismaClient: PrismaClient,
 }) {
-  await options.prismaClient.$executeRaw`
+  return options.prismaClient.$executeRaw`
     DROP TABLE IF EXISTS "SchemaMigrationLock";
   `;
 }
@@ -120,51 +137,57 @@ export async function applyMigrations(options: {
 }): Promise<{
   newlyAppliedMigrationNames: string[],
 }> {
-  await setMigrationLock({
-    prismaClient: options.prismaClient,
-  });
-
   const migrationFiles = options.migrationFiles ?? MIGRATION_FILES;
 
-
-  const appliedMigrationNames = await getAppliedMigrations({
-    prismaClient: options.prismaClient,
-  });
+  await acquireMigrationLock({ prismaClient: options.prismaClient });
+  const appliedMigrationNames = await getAppliedMigrations({ prismaClient: options.prismaClient });
 
   const newMigrationFiles = migrationFiles.filter(x => !appliedMigrationNames.includes(x.migrationName));
+  const transaction = [];
 
   for (const migration of newMigrationFiles) {
-    await options.prismaClient.$executeRaw`
+    transaction.push(options.prismaClient.$executeRaw`
       INSERT INTO "SchemaMigration" ("migrationName")
       VALUES (${migration.migrationName})
       ON CONFLICT ("migrationName") DO UPDATE
       SET "startedAt" = clock_timestamp()
-    `;
+    `);
 
     for (const statement of migration.sql.split('SPLIT_STATEMENT_SENTINEL')) {
       if (statement.includes('SINGLE_STATEMENT_SENTINEL')) {
-        await options.prismaClient.$queryRaw`${Prisma.raw(statement)}`;
+        transaction.push(options.prismaClient.$queryRaw`${Prisma.raw(statement)}`);
       } else {
-        await options.prismaClient.$executeRaw`
+        transaction.push(options.prismaClient.$executeRaw`
             DO $$
             BEGIN
               ${Prisma.raw(statement)}
             END
             $$;
-          `;
+          `);
       }
     }
+
+    transaction.push(options.prismaClient.$executeRaw`
+      UPDATE "SchemaMigration"
+      SET "finishedAt" = clock_timestamp()
+      WHERE "migrationName" = ${migration.migrationName}
+    `);
   }
 
   if (options.artificialDelayInSeconds) {
-    await options.prismaClient.$executeRaw`
+    transaction.push(options.prismaClient.$executeRaw`
       SELECT pg_sleep(${options.artificialDelayInSeconds});
-    `;
+    `);
   }
 
-  await removeMigrationLock({
-    prismaClient: options.prismaClient,
-  });
+  transaction.push(getRemoveMigrationLockQuery({ prismaClient: options.prismaClient }));
+
+  try {
+    await options.prismaClient.$transaction(transaction);
+  } catch (e) {
+    await getRemoveMigrationLockQuery({ prismaClient: options.prismaClient });
+    throw e;
+  }
 
   return { newlyAppliedMigrationNames: newMigrationFiles.map(x => x.migrationName) };
 };
@@ -206,16 +229,15 @@ export async function runQueryAndMigrateIfNeeded<T>(options: {
   try {
     return await options.fn();
   } catch (e) {
-    const migrationError = getMigrationError(e);
-    switch (migrationError) {
-      case 'MIGRATION_NEEDED': {
-        await applyMigrations({
-          prismaClient: options.prismaClient,
-          migrationFiles: options.migrationFiles,
-          artificialDelayInSeconds: options.artificialDelayInSeconds,
-        });
-        return await options.fn();
-      }
+    if (getMigrationError(e) === 'MIGRATION_NEEDED') {
+      await applyMigrations({
+        prismaClient: options.prismaClient,
+        migrationFiles: options.migrationFiles,
+        artificialDelayInSeconds: options.artificialDelayInSeconds,
+      });
+      return await options.fn();
+    } else {
+      throw e;
     }
   }
 }
