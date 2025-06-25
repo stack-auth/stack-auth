@@ -4,12 +4,12 @@ import path from "path";
 
 export const MIGRATION_FILES_DIR = path.join(process.cwd(),  'prisma', 'migrations');
 
-export function getMigrationFiles(migrationDir: string): Array<{ migrationName: string, sql: string }> {
+export function getMigrationFiles(migrationDir: string): { migrationName: string, sql: string }[] {
   const folders = fs.readdirSync(migrationDir).filter(folder =>
     fs.statSync(path.join(migrationDir, folder)).isDirectory()
   );
 
-  const result: Array<{ migrationName: string, sql: string }> = [];
+  const result: { migrationName: string, sql: string }[] = [];
 
   for (const folder of folders) {
     const folderPath = path.join(migrationDir, folder);

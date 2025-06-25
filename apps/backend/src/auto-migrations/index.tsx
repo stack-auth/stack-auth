@@ -129,7 +129,7 @@ function getRemoveMigrationLockQuery(options: {
 
 export async function applyMigrations(options: {
   prismaClient: PrismaClient,
-  migrationFiles?: Array<{ migrationName: string, sql: string }>,
+  migrationFiles?: { migrationName: string, sql: string }[],
   artificialDelayInSeconds?: number,
 }): Promise<{
   newlyAppliedMigrationNames: string[],
@@ -190,7 +190,7 @@ export async function applyMigrations(options: {
 };
 
 export function getMigrationCheckQuery(options?: {
-  migrationFiles?: Array<{ migrationName: string, sql: string }>,
+  migrationFiles?: { migrationName: string, sql: string }[],
 }) {
   const migrationFiles = options?.migrationFiles ?? MIGRATION_FILES;
   const migrationNames = migrationFiles.map(m => `'${m.migrationName}'`).join(',');
@@ -219,7 +219,7 @@ export function getMigrationCheckQuery(options?: {
 
 export async function runQueryAndMigrateIfNeeded<T>(options: {
   prismaClient: PrismaClient,
-  migrationFiles?: Array<{ migrationName: string, sql: string }>,
+  migrationFiles?: { migrationName: string, sql: string }[],
   fn: () => Promise<T>,
   artificialDelayInSeconds?: number,
 }): Promise<T> {
