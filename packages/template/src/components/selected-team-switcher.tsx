@@ -31,6 +31,7 @@ type SelectedTeamSwitcherProps = {
   noUpdateSelectedTeam?: boolean,
   allowNull?: boolean,
   nullTeamsLabel?: string,
+  onChange?: (team: Team | null) => void,
   // Mock data props
   mockUser?: {
     selectedTeam?: MockTeam,
@@ -87,9 +88,6 @@ function Inner(props: SelectedTeamSwitcherProps) {
     <Select
       value={selectedTeam?.id || (props.allowNull ? 'null' : undefined)}
       onValueChange={(value) => {
-        // Skip actual navigation/updates in mock mode
-        if (props.mockUser) return;
-
         runAsynchronouslyWithAlert(async () => {
           let team: MockTeam | null = null;
           if (value !== 'null') {
@@ -100,6 +98,14 @@ function Inner(props: SelectedTeamSwitcherProps) {
           } else {
             team = null;
           }
+
+          // Call onChange callback if provided
+          if (props.onChange) {
+            props.onChange(team as Team | null);
+          }
+
+          // Skip actual navigation/updates in mock mode
+          if (props.mockUser) return;
 
           if (!props.noUpdateSelectedTeam) {
             await user?.setSelectedTeam(team as Team);
