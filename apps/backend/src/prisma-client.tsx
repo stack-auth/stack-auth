@@ -195,7 +195,7 @@ async function rawQueryArray<Q extends RawQuery<any>[]>(tx: PrismaClientTransact
 
     // Prisma does a query for every rawQuery call by default, even if we batch them with transactions
     // So, instead we combine all queries into one, and then return them as a single JSON result
-    const combinedQuery = RawQuery.all([...queries, { sql: getMigrationCheckQuery(), postProcess: (rows) => rows }]);
+    const combinedQuery = RawQuery.all([{ sql: getMigrationCheckQuery(), postProcess: (rows) => rows }, ...queries]);
 
     // Supabase's index advisor only analyzes rows that start with "SELECT" (for some reason)
     // Since ours starts with "WITH", we prepend a SELECT to it
@@ -213,7 +213,7 @@ async function rawQueryArray<Q extends RawQuery<any>[]>(tx: PrismaClientTransact
       ignoreUnhandledRejection(postProcessed);
     }
 
-    return postProcessed.slice(0, -1);
+    return postProcessed.slice(1);
   });
 }
 
