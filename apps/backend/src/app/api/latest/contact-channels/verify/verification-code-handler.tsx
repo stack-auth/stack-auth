@@ -60,7 +60,7 @@ export const contactChannelVerificationCodeHandler = createVerificationCodeHandl
 
     // This happens if the email is sent but then before the user clicks the link, the contact channel is deleted.
     if (!contactChannel) {
-      throw new StatusError(404, "Contact channel not found. Did you maybe deleted your contact channel?");
+      throw new StatusError(404, "Contact channel not found. Did you maybe delete your contact channel?");
     }
 
     await prismaClient.contactChannel.update({
