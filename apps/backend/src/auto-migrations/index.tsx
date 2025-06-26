@@ -175,6 +175,11 @@ export async function applyMigrations(options: {
         }
       }
 
+      transaction.push(options.prismaClient.$executeRaw`
+        UPDATE "SchemaMigration" SET "finishedAt" = clock_timestamp()
+        WHERE "migrationName" = ${migration.migrationName}
+      `);
+
       await options.prismaClient.$transaction(transaction);
     } catch (e) {
       await getRemoveMigrationLockQuery({ prismaClient: options.prismaClient });
