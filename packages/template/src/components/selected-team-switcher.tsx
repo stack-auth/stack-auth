@@ -29,7 +29,8 @@ type SelectedTeamSwitcherProps = {
   urlMap?: (team: Team | null) => string,
   selectedTeam?: Team,
   noUpdateSelectedTeam?: boolean,
-  nullAsPersonalTeam?: boolean,
+  allowNull?: boolean,
+  nullTeamsLabel?: string,
   // Mock data props
   mockUser?: {
     selectedTeam?: MockTeam,
@@ -84,14 +85,14 @@ function Inner(props: SelectedTeamSwitcherProps) {
 
   return (
     <Select
-      value={selectedTeam?.id || (props.nullAsPersonalTeam ? 'personal' : undefined)}
+      value={selectedTeam?.id || (props.allowNull ? 'null' : undefined)}
       onValueChange={(value) => {
         // Skip actual navigation/updates in mock mode
         if (props.mockUser) return;
 
         runAsynchronouslyWithAlert(async () => {
           let team: MockTeam | null = null;
-          if (value !== 'personal') {
+          if (value !== 'null') {
             team = teams?.find(team => team.id === value) || null;
             if (!team) {
               throw new Error('Team not found, this should not happen');
@@ -142,11 +143,11 @@ function Inner(props: SelectedTeamSwitcherProps) {
           </SelectItem>
         </SelectGroup> : undefined}
 
-        {props.nullAsPersonalTeam && <SelectGroup>
-          <SelectItem value="personal">
+        {props.allowNull && <SelectGroup>
+          <SelectItem value="null">
             <div className="flex items-center gap-2">
               <TeamIcon team='personal' />
-              <Typography className="max-w-40 truncate">{t('Personal team')}</Typography>
+              <Typography className="max-w-40 truncate">{props.nullTeamsLabel || t('Personal team')}</Typography>
             </div>
           </SelectItem>
         </SelectGroup>}
@@ -165,7 +166,7 @@ function Inner(props: SelectedTeamSwitcherProps) {
               ))}
           </SelectGroup> : null}
 
-        {!teams?.length && !props.nullAsPersonalTeam ?
+        {!teams?.length && !props.allowNull ?
           <SelectGroup>
             <SelectLabel>{t('No teams yet')}</SelectLabel>
           </SelectGroup> : null}
