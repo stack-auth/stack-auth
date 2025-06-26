@@ -8,30 +8,89 @@ import { ActiveSession } from "../../../lib/stack-app/users";
 import { useTranslation } from "../../../lib/translations";
 import { PageLayout } from "../page-layout";
 
-export function ActiveSessionsPage() {
+export function ActiveSessionsPage(props?: {
+  mockSessions?: Array<{
+    id: string,
+    isCurrentSession: boolean,
+    isImpersonation?: boolean,
+    createdAt: string,
+    lastUsedAt?: string,
+    geoInfo?: {
+      ip?: string,
+      cityName?: string,
+    },
+  }>,
+  mockMode?: boolean,
+}) {
   const { t } = useTranslation();
-  const user = useUser({ or: "throw" });
-  const [isLoading, setIsLoading] = useState(true);
+  const userFromHook = useUser({ or: (props?.mockSessions || props?.mockMode) ? 'return-null' : 'throw' });
+  const [isLoading, setIsLoading] = useState(!props?.mockSessions);
   const [isRevokingAll, setIsRevokingAll] = useState(false);
   const [sessions, setSessions] = useState<ActiveSession[]>([]);
   const [showConfirmRevokeAll, setShowConfirmRevokeAll] = useState(false);
 
-  // Fetch sessions when component mounts
+  // Use mock data if provided
+  const mockSessionsData = props?.mockSessions ? props.mockSessions.map(session => ({
+    id: session.id,
+    isCurrentSession: session.isCurrentSession,
+    isImpersonation: session.isImpersonation || false,
+    createdAt: session.createdAt,
+    lastUsedAt: session.lastUsedAt,
+    geoInfo: session.geoInfo,
+  })) : [
+    {
+      id: 'current-session',
+      isCurrentSession: true,
+      createdAt: new Date().toISOString(),
+      lastUsedAt: new Date().toISOString(),
+      geoInfo: { ip: '192.168.1.1', cityName: 'San Francisco' }
+    },
+    {
+      id: 'mobile-session',
+      isCurrentSession: false,
+      createdAt: new Date(Date.now() - 86400000).toISOString(), // 1 day ago
+      lastUsedAt: new Date(Date.now() - 7200000).toISOString(), // 2 hours ago
+      geoInfo: { ip: '10.0.0.1', cityName: 'New York' }
+    }
+  ];
+
+  // Fetch sessions when component mounts (only if not using mock data)
   useEffect(() => {
+    if (props?.mockSessions) {
+      setSessions(mockSessionsData as any);
+      setIsLoading(false);
+      return;
+    }
+
+    // If in mock mode but no mock sessions provided, use default mock data
+    if (props?.mockMode && !userFromHook) {
+      setSessions(mockSessionsData as any);
+      setIsLoading(false);
+      return;
+    }
+
+    if (!userFromHook) return;
+
     runAsynchronously(async () => {
       setIsLoading(true);
-      const sessionsData = await user.getActiveSessions();
+      const sessionsData = await userFromHook.getActiveSessions();
       const enhancedSessions = sessionsData;
       setSessions(enhancedSessions);
       setIsLoading(false);
     });
-  }, [user]);
+  }, [userFromHook, props?.mockSessions]);
 
   const handleRevokeSession = async (sessionId: string) => {
-    try {
-      await user.revokeSession(sessionId);
+    if (props?.mockSessions) {
+      // Mock revoke - just remove from list
+      setSessions(prev => prev.filter(session => session.id !== sessionId));
+      return;
+    }
 
-      // Remove the session from the list
+    if (!userFromHook) return;
+
+    try {
+      await userFromHook.revokeSession(sessionId);
       setSessions(prev => prev.filter(session => session.id !== sessionId));
     } catch (error) {
       captureError("Failed to revoke session", { sessionId ,error });
@@ -42,11 +101,16 @@ export function ActiveSessionsPage() {
   const handleRevokeAllSessions = async () => {
     setIsRevokingAll(true);
     try {
-      const deletionPromises = sessions
-        .filter(session => !session.isCurrentSession)
-        .map(session => user.revokeSession(session.id));
-      await Promise.all(deletionPromises);
-      setSessions(prevSessions => prevSessions.filter(session => session.isCurrentSession));
+      if (props?.mockSessions) {
+        // Mock revoke all - just keep current session
+        setSessions(prevSessions => prevSessions.filter(session => session.isCurrentSession));
+      } else if (userFromHook) {
+        const deletionPromises = sessions
+          .filter(session => !session.isCurrentSession)
+          .map(session => userFromHook.revokeSession(session.id));
+        await Promise.all(deletionPromises);
+        setSessions(prevSessions => prevSessions.filter(session => session.isCurrentSession));
+      }
     } catch (error) {
       captureError("Failed to revoke all sessions", { error, sessionIds: sessions.map(session => session.id) });
       throw error;
