@@ -1,6 +1,7 @@
 "use client";
 
-import { LargeSearchToggle } from '@/components/layout/search-toggle';
+import { CustomSearchDialog } from '@/components/layout/custom-search-dialog';
+import { LargeCustomSearchToggle } from '@/components/layout/custom-search-toggle';
 import { platformSupportsComponents, platformSupportsSDK } from "@/lib/navigation-utils";
 import { PLATFORMS, type Platform } from "@/lib/platform-utils";
 import { Book, ChevronDown, Code, Layers, Zap } from "lucide-react";
@@ -484,6 +485,7 @@ const DocsIcon3D: React.FC<DocsIcon3DProps> = ({
 
 export default function DocsSelector() {
   const [selectedPlatform, setSelectedPlatform] = useState<Platform>("next");
+  const [searchOpen, setSearchOpen] = useState(false);
 
   const handleSectionSelect = (section: DocsSection) => {
     console.log("Selected section:", section);
@@ -507,9 +509,17 @@ export default function DocsSelector() {
       {/* Search Bar */}
       <div className="mb-8 flex justify-center">
         <div className="w-full max-w-md">
-          <LargeSearchToggle className="w-full" />
+          <LargeCustomSearchToggle
+            onOpen={() => setSearchOpen(true)}
+            className="w-full"
+          />
         </div>
       </div>
+
+      <CustomSearchDialog
+        open={searchOpen}
+        onOpenChange={setSearchOpen}
+      />
 
       <DocsIcon3D
         selectedPlatform={selectedPlatform}

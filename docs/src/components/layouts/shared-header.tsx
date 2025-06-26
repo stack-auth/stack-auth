@@ -1,5 +1,6 @@
 'use client';
-import { LargeSearchToggle } from '@/components/layout/search-toggle';
+import { CustomSearchDialog } from '@/components/layout/custom-search-dialog';
+import { SearchInputToggle } from '@/components/layout/custom-search-toggle';
 import Waves from '@/components/layouts/api/waves';
 import { isInApiSection, isInComponentsSection, isInSdkSection } from '@/components/layouts/shared/section-utils';
 import { type NavLink } from '@/lib/navigation-utils';
@@ -151,6 +152,7 @@ export function SharedHeader({
 }: SharedHeaderProps) {
   const pathname = usePathname();
   const [showMobileNav, setShowMobileNav] = useState(false);
+  const [searchOpen, setSearchOpen] = useState(false);
 
   // Close mobile nav when pathname changes
   useEffect(() => {
@@ -234,12 +236,17 @@ export function SharedHeader({
         <div className="flex items-center gap-4 relative z-10">
           {/* Search Bar - Responsive sizing */}
           {showSearch && (
-            <div className="w-32 sm:w-48 lg:w-64">
-              <LargeSearchToggle
-                hideIfDisabled
-                className="w-full"
+            <>
+              <div className="w-9 sm:w-32 md:w-48 lg:w-64">
+                <SearchInputToggle
+                  onOpen={() => setSearchOpen(true)}
+                />
+              </div>
+              <CustomSearchDialog
+                open={searchOpen}
+                onOpenChange={setSearchOpen}
               />
-            </div>
+            </>
           )}
 
           {/* TOC Toggle Button - Only on docs pages */}

@@ -46,14 +46,15 @@ import { usePathname } from 'next/navigation';
 import { createContext, type HTMLAttributes, type ReactNode, useContext, useMemo, useRef, useState } from 'react';
 import { cn } from '../../lib/cn';
 import { getCurrentPlatform } from '../../lib/platform-utils';
+import { CustomSearchDialog } from '../layout/custom-search-dialog';
+import {
+  SearchInputToggle
+} from '../layout/custom-search-toggle';
 import {
   LanguageToggle,
   LanguageToggleText,
 } from '../layout/language-toggle';
 import { RootToggle } from '../layout/root-toggle';
-import {
-  SearchToggle
-} from '../layout/search-toggle';
 import { ThemeToggle } from '../layout/theme-toggle';
 import { buttonVariants } from '../ui/button';
 import { HideIfEmpty } from '../ui/hide-if-empty';
@@ -470,6 +471,8 @@ export function DocsLayout({
   ...props
 }: DocsLayoutProps): ReactNode {
   const { isTocOpen } = useTOC();
+  const [searchOpen, setSearchOpen] = useState(false);
+
   const tabs = useMemo(
     () => getSidebarTabsFromOptions(sidebar.tabs, props.tree) ?? [],
     [sidebar.tabs, props.tree],
@@ -502,10 +505,14 @@ export function DocsLayout({
                 {nav.title}
               </Link>
               <div className="flex-1">{nav.children}</div>
-              {slots('sm', searchToggle, <SearchToggle hideIfDisabled />)}
+              {slots('sm', searchToggle, <SearchInputToggle onOpen={() => setSearchOpen(true)} />)}
               <NavbarSidebarTrigger className="-me-2 md:hidden" />
             </Navbar>,
           )}
+          <CustomSearchDialog
+            open={searchOpen}
+            onOpenChange={setSearchOpen}
+          />
           <main
             id="nd-docs-layout"
             {...props.containerProps}
@@ -525,6 +532,7 @@ export function DocsLayout({
                 {...omit(sidebar, 'enabled', 'component', 'tabs')}
                 links={links}
                 tree={props.tree}
+                onSearchOpen={() => setSearchOpen(true)}
                 nav={
                   <>
                     <Link
@@ -570,17 +578,19 @@ export function DocsLayout({
 export function DocsLayoutSidebar({
   collapsible = true,
   banner,
+  onSearchOpen,
   ...props
 }: Omit<SidebarOptions, 'tabs'> & {
   links?: LinkItemType[],
   nav?: ReactNode,
   tree?: PageTree.Root,
+  onSearchOpen?: () => void,
 }) {
   const pathname = usePathname();
 
   return (
     <>
-      {collapsible ? <CollapsibleControl /> : null}
+      {collapsible ? <CollapsibleControl onSearchOpen={onSearchOpen} /> : null}
       {/* Sidebar positioned under the header */}
       <div className="hidden md:block fixed left-0 top-14 w-64 border-r border-fd-border bg-fd-background z-30">
         <div className="h-[calc(100vh-3.5rem)] flex flex-col">
