@@ -1,14 +1,18 @@
 import { Prisma, PrismaClient } from '@prisma/client';
 import { MIGRATION_FILES } from './migration-files';
 
-const ALL_DB_ERRORS = ['MIGRATION_NEEDED', 'MIGRATION_IN_PROGRESS'] as const;
+const ALL_DB_ERRORS = ['DIVISION_BY_ZERO', 'MIGRATION_IN_PROGRESS'] as const;
 type MigrationError = typeof ALL_DB_ERRORS[number];
 
 function getMigrationError(error: unknown): MigrationError {
-  if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2010' && error.meta?.code === 'P0001') {
-    const errorName = (error.meta as { message: string }).message.split(' ')[1];
-    if (ALL_DB_ERRORS.includes(errorName as MigrationError)) {
-      return errorName as MigrationError;
+  if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2010') {
+    if (error.meta?.code === 'P0001') {
+      const errorName = (error.meta as { message: string }).message.split(' ')[1];
+      if (ALL_DB_ERRORS.includes(errorName as MigrationError)) {
+        return errorName as MigrationError;
+      }
+    } else if (error.meta?.code === '22012') {
+      return 'DIVISION_BY_ZERO';
     }
   }
   throw error;
@@ -192,28 +196,24 @@ export async function applyMigrations(options: {
 export function getMigrationCheckQuery(options?: {
   migrationFiles?: { migrationName: string, sql: string }[],
 }) {
+  // we use a division by zero error here because we can't use DO $$ in a raw query combined with other queries
   const migrationFiles = options?.migrationFiles ?? MIGRATION_FILES;
   const migrationNames = migrationFiles.map(m => `'${m.migrationName}'`).join(',');
   return Prisma.raw(`
-    DO $$ 
-    BEGIN
-      IF EXISTS (
+    SELECT CASE 
+      WHEN NOT EXISTS (
         SELECT 1 FROM information_schema.tables 
         WHERE table_name = 'SchemaMigration'
-      ) THEN
-        IF EXISTS (
-          SELECT 1 FROM "SchemaMigration" sm
-          RIGHT JOIN (
-            SELECT unnest(ARRAY[${migrationNames}]) as migrationName
-          ) m ON sm."migrationName" = m.migrationName
-          WHERE sm."migrationName" IS NULL OR sm."finishedAt" IS NULL
-        ) THEN
-          RAISE EXCEPTION 'MIGRATION_NEEDED';
-        END IF;
-      ELSE
-        RAISE EXCEPTION 'MIGRATION_NEEDED';
-      END IF;
-    END $$;
+      ) THEN (SELECT 1/0)
+      WHEN EXISTS (
+        SELECT 1 FROM "SchemaMigration" sm
+        RIGHT JOIN (
+          SELECT unnest(ARRAY[${migrationNames}]) as migrationName
+        ) m ON sm."migrationName" = m.migrationName
+        WHERE sm."migrationName" IS NULL OR sm."finishedAt" IS NULL
+      ) THEN (SELECT 1/0)
+      ELSE 1
+    END
   `);
 }
 
@@ -226,7 +226,7 @@ export async function runQueryAndMigrateIfNeeded<T>(options: {
   try {
     return await options.fn();
   } catch (e) {
-    if (getMigrationError(e) === 'MIGRATION_NEEDED') {
+    if (getMigrationError(e) === 'DIVISION_BY_ZERO') {
       await applyMigrations({
         prismaClient: options.prismaClient,
         migrationFiles: options.migrationFiles,
