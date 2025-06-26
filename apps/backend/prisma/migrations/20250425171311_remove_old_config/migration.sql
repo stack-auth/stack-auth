@@ -167,17 +167,14 @@ ALTER TABLE "AuthMethod" DROP COLUMN "authMethodConfigId",
 DROP COLUMN "projectConfigId";
 
 -- AlterTable
-BEGIN;
 ALTER TABLE "ConnectedAccount" ADD COLUMN "configOAuthProviderId" TEXT;
 UPDATE "ConnectedAccount" SET "configOAuthProviderId" = "oauthProviderConfigId";
 ALTER TABLE "ConnectedAccount" ALTER COLUMN "configOAuthProviderId" SET NOT NULL;
 ALTER TABLE "ConnectedAccount" DROP COLUMN "oauthProviderConfigId";
 ALTER TABLE "ConnectedAccount" DROP COLUMN "connectedAccountConfigId";
 ALTER TABLE "ConnectedAccount" DROP COLUMN "projectConfigId";
-COMMIT;
 
 -- AlterTable
-BEGIN;
 ALTER TABLE "EmailTemplate" DROP CONSTRAINT "EmailTemplate_pkey";
 ALTER TABLE "EmailTemplate" ADD COLUMN "projectId" TEXT;
 
@@ -189,12 +186,15 @@ JOIN "Project" P ON P."configId" = PC."id"
 WHERE ET."projectConfigId" = PC."id";
 
 -- Check if we have any null projectId values
+-- SPLIT_STATEMENT_SENTINEL
+-- SINGLE_STATEMENT_SENTINEL
 DO $$
 BEGIN
     IF EXISTS (SELECT 1 FROM "EmailTemplate" WHERE "projectId" IS NULL) THEN
         RAISE EXCEPTION 'Some EmailTemplate records have null projectId values after migration';
     END IF;
 END $$;
+-- SPLIT_STATEMENT_SENTINEL
 
 -- Now make the column NOT NULL
 ALTER TABLE "EmailTemplate" ALTER COLUMN "projectId" SET NOT NULL;
@@ -204,38 +204,30 @@ ALTER TABLE "EmailTemplate" ADD CONSTRAINT "EmailTemplate_pkey" PRIMARY KEY ("pr
 
 -- Drop the old column
 ALTER TABLE "EmailTemplate" DROP COLUMN "projectConfigId";
-COMMIT;
 
 -- AlterTable
-BEGIN;
 ALTER TABLE "OAuthAccessToken" ADD COLUMN "configOAuthProviderId" TEXT;
 UPDATE "OAuthAccessToken" SET "configOAuthProviderId" = "oAuthProviderConfigId";
 ALTER TABLE "OAuthAccessToken" ALTER COLUMN "configOAuthProviderId" SET NOT NULL;
 ALTER TABLE "OAuthAccessToken" DROP COLUMN "oAuthProviderConfigId";
-COMMIT;
 
 -- AlterTable
-BEGIN;
 ALTER TABLE "OAuthAuthMethod" ADD COLUMN "configOAuthProviderId" TEXT;
 UPDATE "OAuthAuthMethod" SET "configOAuthProviderId" = "oauthProviderConfigId";
 ALTER TABLE "OAuthAuthMethod" ALTER COLUMN "configOAuthProviderId" SET NOT NULL;
 ALTER TABLE "OAuthAuthMethod" DROP COLUMN "oauthProviderConfigId";
 ALTER TABLE "OAuthAuthMethod" DROP COLUMN "projectConfigId";
-COMMIT;
 
 -- AlterTable
-BEGIN;
 ALTER TABLE "OAuthToken" ADD COLUMN "configOAuthProviderId" TEXT;
 UPDATE "OAuthToken" SET "configOAuthProviderId" = "oAuthProviderConfigId";
 ALTER TABLE "OAuthToken" ALTER COLUMN "configOAuthProviderId" SET NOT NULL;
 ALTER TABLE "OAuthToken" DROP COLUMN "oAuthProviderConfigId";
-COMMIT;
 
 -- AlterTable
 ALTER TABLE "Project" DROP COLUMN "configId";
 
 -- AlterTable
-BEGIN;
 ALTER TABLE "ProjectUserDirectPermission" ADD COLUMN "permissionId" TEXT;
 
 -- Update permissionId with values from Permission table
@@ -249,10 +241,8 @@ ALTER TABLE "ProjectUserDirectPermission" ALTER COLUMN "permissionId" SET NOT NU
 
 -- Drop the old column
 ALTER TABLE "ProjectUserDirectPermission" DROP COLUMN "permissionDbId";
-COMMIT;
 
 -- AlterTable
-BEGIN;
 ALTER TABLE "ProjectUserOAuthAccount" ADD COLUMN "configOAuthProviderId" TEXT;
 UPDATE "ProjectUserOAuthAccount" SET "configOAuthProviderId" = "oauthProviderConfigId";
 ALTER TABLE "ProjectUserOAuthAccount" ALTER COLUMN "configOAuthProviderId" SET NOT NULL;
@@ -260,13 +250,13 @@ ALTER TABLE "ProjectUserOAuthAccount" DROP CONSTRAINT "ProjectUserOAuthAccount_p
 ALTER TABLE "ProjectUserOAuthAccount" DROP COLUMN "oauthProviderConfigId";
 ALTER TABLE "ProjectUserOAuthAccount" DROP COLUMN "projectConfigId";
 ALTER TABLE "ProjectUserOAuthAccount" ADD CONSTRAINT "ProjectUserOAuthAccount_pkey" PRIMARY KEY ("tenancyId", "configOAuthProviderId", "providerAccountId");
-COMMIT;
 
 -- AlterTable
-BEGIN;
 ALTER TABLE "TeamMemberDirectPermission" ADD COLUMN "permissionId" TEXT;
 
 -- Check for rows where both or neither field is populated
+-- SPLIT_STATEMENT_SENTINEL
+-- SINGLE_STATEMENT_SENTINEL
 DO $$
 BEGIN
     IF EXISTS (
@@ -277,6 +267,7 @@ BEGIN
         RAISE EXCEPTION 'Invalid state: Each TeamMemberDirectPermission must have exactly one of permissionDbId or systemPermission set';
     END IF;
 END $$;
+-- SPLIT_STATEMENT_SENTINEL
 
 -- Update permissionId using systemPermission when available
 UPDATE "TeamMemberDirectPermission"
@@ -295,7 +286,6 @@ ALTER TABLE "TeamMemberDirectPermission" ALTER COLUMN "permissionId" SET NOT NUL
 -- Then drop the old columns
 ALTER TABLE "TeamMemberDirectPermission" DROP COLUMN "permissionDbId";
 ALTER TABLE "TeamMemberDirectPermission" DROP COLUMN "systemPermission";
-COMMIT;
 
 -- DropTable
 DROP TABLE "AuthMethodConfig";

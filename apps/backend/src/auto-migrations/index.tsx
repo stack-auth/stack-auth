@@ -131,6 +131,7 @@ export async function applyMigrations(options: {
   prismaClient: PrismaClient,
   migrationFiles?: { migrationName: string, sql: string }[],
   artificialDelayInSeconds?: number,
+  logging?: boolean,
 }): Promise<{
   newlyAppliedMigrationNames: string[],
 }> {
@@ -140,51 +141,50 @@ export async function applyMigrations(options: {
   const appliedMigrationNames = await getAppliedMigrations({ prismaClient: options.prismaClient });
 
   const newMigrationFiles = migrationFiles.filter(x => !appliedMigrationNames.includes(x.migrationName));
-  const transaction = [];
 
   for (const migration of newMigrationFiles) {
-    transaction.push(options.prismaClient.$executeRaw`
-      INSERT INTO "SchemaMigration" ("migrationName")
-      VALUES (${migration.migrationName})
-      ON CONFLICT ("migrationName") DO UPDATE
-      SET "startedAt" = clock_timestamp()
-    `);
-
-    for (const statement of migration.sql.split('SPLIT_STATEMENT_SENTINEL')) {
-      if (statement.includes('SINGLE_STATEMENT_SENTINEL')) {
-        transaction.push(options.prismaClient.$queryRaw`${Prisma.raw(statement)}`);
-      } else {
-        transaction.push(options.prismaClient.$executeRaw`
-            DO $$
-            BEGIN
-              ${Prisma.raw(statement)}
-            END
-            $$;
-          `);
-      }
+    if (options.logging) {
+      console.log(`Applying migration ${migration.migrationName}`);
     }
 
-    transaction.push(options.prismaClient.$executeRaw`
-      UPDATE "SchemaMigration"
-      SET "finishedAt" = clock_timestamp()
-      WHERE "migrationName" = ${migration.migrationName}
-    `);
+    try {
+      const transaction = [];
+
+      transaction.push(options.prismaClient.$executeRaw`
+        INSERT INTO "SchemaMigration" ("migrationName")
+        VALUES (${migration.migrationName})
+        ON CONFLICT ("migrationName") DO UPDATE
+        SET "startedAt" = clock_timestamp()
+      `);
+
+      for (const statement of migration.sql.split('SPLIT_STATEMENT_SENTINEL')) {
+        if (statement.includes('SINGLE_STATEMENT_SENTINEL')) {
+          transaction.push(options.prismaClient.$queryRaw`${Prisma.raw(statement)}`);
+        } else {
+          transaction.push(options.prismaClient.$executeRaw`
+              DO $$
+              BEGIN
+                ${Prisma.raw(statement)}
+              END
+              $$;
+            `);
+        }
+      }
+
+      await options.prismaClient.$transaction(transaction);
+    } catch (e) {
+      await getRemoveMigrationLockQuery({ prismaClient: options.prismaClient });
+      throw e;
+    }
   }
 
   if (options.artificialDelayInSeconds) {
-    transaction.push(options.prismaClient.$executeRaw`
+    await options.prismaClient.$executeRaw`
       SELECT pg_sleep(${options.artificialDelayInSeconds});
-    `);
+    `;
   }
 
-  transaction.push(getRemoveMigrationLockQuery({ prismaClient: options.prismaClient }));
-
-  try {
-    await options.prismaClient.$transaction(transaction);
-  } catch (e) {
-    await getRemoveMigrationLockQuery({ prismaClient: options.prismaClient });
-    throw e;
-  }
+  await getRemoveMigrationLockQuery({ prismaClient: options.prismaClient });
 
   return { newlyAppliedMigrationNames: newMigrationFiles.map(x => x.migrationName) };
 };

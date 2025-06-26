@@ -35,7 +35,8 @@ const promptDropDb = async () => {
 const migrate = async () => {
   await applyMigrations({
     prismaClient,
-    migrationFiles: getMigrationFiles(MIGRATION_FILES_DIR)
+    migrationFiles: getMigrationFiles(MIGRATION_FILES_DIR),
+    logging: true,
   });
   await seed();
 };
