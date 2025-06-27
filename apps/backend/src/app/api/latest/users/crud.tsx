@@ -687,18 +687,34 @@ export const usersCrudHandlers = createLazyProxy(() => createCrudHandlers(usersC
         });
 
         if (data.selected_team_id !== null) {
-          await tx.teamMember.update({
-            where: {
-              tenancyId_projectUserId_teamId: {
+          try {
+            await tx.teamMember.update({
+              where: {
+                tenancyId_projectUserId_teamId: {
+                  tenancyId: auth.tenancy.id,
+                  projectUserId: params.user_id,
+                  teamId: data.selected_team_id,
+                },
+              },
+              data: {
+                isSelected: BooleanTrue.TRUE,
+              },
+            });
+          } catch (e) {
+            const members = await prismaClient.teamMember.findMany({
+              where: {
                 tenancyId: auth.tenancy.id,
                 projectUserId: params.user_id,
-                teamId: data.selected_team_id,
-              },
-            },
-            data: {
-              isSelected: BooleanTrue.TRUE,
-            },
-          });
+              }
+            });
+            throw new StackAssertionError("Failed to update team member", {
+              error: e,
+              tenancy_id: auth.tenancy.id,
+              user_id: params.user_id,
+              team_id: data.selected_team_id,
+              members,
+            });
+          }
         }
       }
 

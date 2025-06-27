@@ -5,6 +5,7 @@ import { createVerificationCodeHandler } from "@/route-handlers/verification-cod
 import { VerificationCodeType } from "@prisma/client";
 import { UsersCrud } from "@stackframe/stack-shared/dist/interface/crud/users";
 import { emailSchema, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
+import { StatusError } from "@stackframe/stack-shared/dist/utils/errors";
 
 export const contactChannelVerificationCodeHandler = createVerificationCodeHandler({
   metadata: {
@@ -44,15 +45,26 @@ export const contactChannelVerificationCodeHandler = createVerificationCodeHandl
     });
   },
   async handler(tenancy, { email }, data) {
-    await prismaClient.contactChannel.update({
-      where: {
-        tenancyId_projectUserId_type_value: {
-          tenancyId: tenancy.id,
-          projectUserId: data.user_id,
-          type: "EMAIL",
-          value: email,
-        },
+    const uniqueKeys = {
+      tenancyId_projectUserId_type_value: {
+        tenancyId: tenancy.id,
+        projectUserId: data.user_id,
+        type: "EMAIL",
+        value: email,
       },
+    } as const;
+
+    const contactChannel = await prismaClient.contactChannel.findUnique({
+      where: uniqueKeys,
+    });
+
+    // This happens if the email is sent but then before the user clicks the link, the contact channel is deleted.
+    if (!contactChannel) {
+      throw new StatusError(400, "Contact channel not found. Was your contact channel deleted?");
+    }
+
+    await prismaClient.contactChannel.update({
+      where: uniqueKeys,
       data: {
         isVerified: true,
       }
