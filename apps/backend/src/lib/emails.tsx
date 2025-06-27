@@ -368,77 +368,37 @@ export async function getSharedEmailConfig(displayName: string): Promise<EmailCo
   };
 }
 
-// modified from https://github.com/johno/normalize-email/tree/master
 export function normalizeEmail(email: string): string {
   if (typeof email !== 'string') {
     throw new TypeError('normalize-email expects a string');
   }
 
-  const PLUS_ONLY = /\+.*$/;
-  const PLUS_AND_DOT = /\.|\+.*$/g;
-
-  const providers = {
-    'gmail.com': {
-      cut: PLUS_AND_DOT
-    },
-    'googlemail.com': {
-      cut: PLUS_AND_DOT,
-      aliasOf: 'gmail.com'
-    },
-    'hotmail.com': {
-      cut: PLUS_ONLY
-    },
-    'live.com': {
-      cut: PLUS_AND_DOT
-    },
-    'outlook.com': {
-      cut: PLUS_ONLY
-    }
-  };
+  const removeDotsDomains = ['gmail.com', 'googlemail.com', 'live.com'];
 
   const emailLower = email.toLowerCase();
   const emailParts = emailLower.split(/@/);
 
   if (emailParts.length !== 2) {
-    return email;
+    throw new StackAssertionError("Invalid email address", { email });
   }
 
   let [username, domain] = emailParts;
 
-  if (domain in providers) {
-    const provider = providers[domain as keyof typeof providers];
-    if ('cut' in provider) {
-      username = username.replace(provider.cut, '');
-    }
-    if ('aliasOf' in provider) {
-      domain = provider.aliasOf;
-    }
+  if (removeDotsDomains.includes(domain)) {
+    username = username.replace(/\.+/g, '');
   }
 
   return `${username}@${domain}`;
 }
 
 import.meta.vitest?.test('normalizeEmail(...)', async ({ expect }) => {
-  // Gmail tests
   expect(normalizeEmail('Example.Test@gmail.com')).toBe('exampletest@gmail.com');
   expect(normalizeEmail('Example.Test+123@gmail.com')).toBe('exampletest@gmail.com');
   expect(normalizeEmail('example.test@googlemail.com')).toBe('exampletest@gmail.com');
   expect(normalizeEmail('exampletest@gmail.com')).toBe('exampletest@gmail.com');
   expect(normalizeEmail('EXAMPLETEST@gmail.com')).toBe('exampletest@gmail.com');
-
-  // Outlook/Hotmail/Live tests
-  expect(normalizeEmail('test.user@outlook.com')).toBe('test.user@outlook.com');
-  expect(normalizeEmail('test.user+filter@outlook.com')).toBe('test.user@outlook.com');
-  expect(normalizeEmail('test.user@hotmail.com')).toBe('test.user@hotmail.com');
-  expect(normalizeEmail('test.user+filter@hotmail.com')).toBe('test.user@hotmail.com');
-  expect(normalizeEmail('test.user@live.com')).toBe('testuser@live.com');
-  expect(normalizeEmail('test.user+filter@live.com')).toBe('testuser@live.com');
-
-  // Invalid email format
-  expect(normalizeEmail('invalid.email')).toBe('invalid.email');
   expect(normalizeEmail('test@multiple@domains.com')).toBe('test@multiple@domains.com');
-
-  // Other domains (no normalization)
+  expect(normalizeEmail('invalid.email')).toBe('invalid.email');
   expect(normalizeEmail('user@example.com')).toBe('user@example.com');
   expect(normalizeEmail('user.name+tag@yahoo.com')).toBe('user.name+tag@yahoo.com');
 });
