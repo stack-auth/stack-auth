@@ -34,7 +34,7 @@ Stack Auth provides a [pre-configured Docker](https://hub.docker.com/r/stackauth
   docker run -d --name db -e POSTGRES_USER=postgres -e POSTGRES_PASSWORD=password -e POSTGRES_DB=stackframe -p 5432:5432 postgres:latest
   ```
 
-2. Get the [example environment file](https://github.com/stack-auth/stack-auth/tree/main/docker/server/.env.example) and modify it to your needs. See the [full template here](https://github.com/stack-auth/stack-auth/blob/dev/docker/server/.env).
+2. Get the [example environment file](https://github.com/stack-auth/stack-auth/tree/main/docker/server/.env.example) and modify it to your needs (for security, you MUST edit at least the `STACK_SERVER_SECRET` value). See the [full template here](https://github.com/stack-auth/stack-auth/blob/dev/docker/server/.env).
 
 3. Run the Docker container:
   ```sh
