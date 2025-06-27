@@ -1,8 +1,8 @@
 import { createApiKeySet } from "@/lib/internal-api-keys";
 import { createOrUpdateProject } from "@/lib/projects";
-import { prismaClient } from "@/prisma-client";
+import { globalPrismaClient } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
-import { neonAuthorizationHeaderSchema, projectDisplayNameSchema, yupNumber, yupObject, yupString, yupTuple } from "@stackframe/stack-shared/dist/schema-fields";
+import { neonAuthorizationHeaderSchema, projectDisplayNameSchema, yupArray, yupNumber, yupObject, yupString, yupTuple } from "@stackframe/stack-shared/dist/schema-fields";
 import { decodeBasicAuthorizationHeader } from "@stackframe/stack-shared/dist/utils/http";
 
 export const POST = createSmartRouteHandler({
@@ -12,6 +12,10 @@ export const POST = createSmartRouteHandler({
   request: yupObject({
     body: yupObject({
       display_name: projectDisplayNameSchema.defined(),
+      connection_strings: yupArray(yupObject({
+        branch_id: yupString().defined(),
+        connection_string: yupString().defined(),
+      }).defined()).optional(),
     }).defined(),
     headers: yupObject({
       authorization: yupTuple([neonAuthorizationHeaderSchema.defined()]).defined(),
@@ -30,6 +34,10 @@ export const POST = createSmartRouteHandler({
 
     const createdProject = await createOrUpdateProject({
       ownerIds: [],
+      sourceOfTruth: req.body.connection_strings ? {
+        type: 'neon',
+        connectionStrings: Object.fromEntries(req.body.connection_strings.map((c) => [c.branch_id, c.connection_string])),
+      } : { type: 'hosted' },
       type: 'create',
       data: {
         display_name: req.body.display_name,
@@ -51,7 +59,8 @@ export const POST = createSmartRouteHandler({
       }
     });
 
-    await prismaClient.provisionedProject.create({
+
+    await globalPrismaClient.provisionedProject.create({
       data: {
         projectId: createdProject.id,
         clientId: clientId,

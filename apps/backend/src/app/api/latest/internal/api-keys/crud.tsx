@@ -1,4 +1,4 @@
-import { prismaClient } from "@/prisma-client";
+import { globalPrismaClient } from "@/prisma-client";
 import { createPrismaCrudHandlers } from "@/route-handlers/prisma-handler";
 import { KnownErrors } from "@stackframe/stack-shared";
 import { internalApiKeysCrud } from "@stackframe/stack-shared/dist/interface/crud/internal-api-keys";
@@ -36,7 +36,7 @@ export const internalApiKeyCrudHandlers = createLazyProxy(() => createPrismaCrud
   crudToPrisma: async (crud, { auth, type, params }) => {
     let old;
     if (type === 'create') {
-      old = await prismaClient.apiKeySet.findUnique({
+      old = await globalPrismaClient.apiKeySet.findUnique({
         where: {
           projectId_id: {
             projectId: auth.project.id,

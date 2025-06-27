@@ -1,5 +1,5 @@
 import { generateAccessToken } from "@/lib/tokens";
-import { prismaClient } from "@/prisma-client";
+import { getPrismaClientForTenancy, globalPrismaClient } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { KnownErrors } from "@stackframe/stack-shared";
 import { adaptSchema, clientOrHigherAuthTypeSchema, yupNumber, yupObject, yupString, yupTuple } from "@stackframe/stack-shared/dist/schema-fields";
@@ -29,7 +29,8 @@ export const POST = createSmartRouteHandler({
   async handler({ auth: { tenancy }, headers: { "x-stack-refresh-token": refreshTokenHeaders } }, fullReq) {
     const refreshToken = refreshTokenHeaders[0];
 
-    const sessionObj = await prismaClient.projectUserRefreshToken.findFirst({
+    const prisma = getPrismaClientForTenancy(tenancy);
+    const sessionObj = await globalPrismaClient.projectUserRefreshToken.findFirst({
       where: {
         tenancyId: tenancy.id,
         refreshToken,
