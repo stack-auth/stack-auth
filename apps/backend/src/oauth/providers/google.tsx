@@ -22,6 +22,10 @@ export class GoogleProvider extends OAuthBaseProvider {
       openid: true,
       jwksUri: "https://www.googleapis.com/oauth2/v3/certs",
       baseScope: "https://www.googleapis.com/auth/userinfo.email https://www.googleapis.com/auth/userinfo.profile",
+      authorizationExtraParams: {
+        prompt: "consent",
+        include_granted_scopes: "true",
+      },
       ...options,
     }));
   }
