@@ -1,0 +1,10 @@
+{
+  "title": "Authentication",
+  "description": "Authentication flows and patterns for Python applications",
+  "pages": [
+    "api-setup",
+    "user-sessions",
+    "oauth-flows",
+    "server-validation"
+  ]
+} 

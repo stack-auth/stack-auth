@@ -1,0 +1,10 @@
+{
+  "title": "Framework Integration",
+  "description": "Stack Auth integration patterns for Python frameworks",
+  "pages": [
+    "django",
+    "flask", 
+    "fastapi",
+    "standalone-scripts"
+  ]
+} 

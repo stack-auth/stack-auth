@@ -259,3 +259,56 @@ pages:
   - path: others/cli-authentication.mdx
     platforms: ["python"] # Python only
 
+  # Python-specific content from templates-python/
+  # Authentication section
+  - path: authentication/api-setup.mdx
+    platforms: ["python"]
+  
+  - path: authentication/user-sessions.mdx
+    platforms: ["python"]
+  
+  - path: authentication/oauth-flows.mdx
+    platforms: ["python"]
+  
+  - path: authentication/server-validation.mdx
+    platforms: ["python"]
+
+  # User Management section
+  - path: user-management/create-users.mdx
+    platforms: ["python"]
+  
+  - path: user-management/user-operations.mdx
+    platforms: ["python"]
+  
+  - path: user-management/custom-user-data.mdx
+    platforms: ["python"]
+  
+  - path: user-management/user-permissions.mdx
+    platforms: ["python"]
+
+  # Team Management section
+  - path: team-management/team-operations.mdx
+    platforms: ["python"]
+  
+  - path: team-management/team-invitations.mdx
+    platforms: ["python"]
+  
+  - path: team-management/team-permissions.mdx
+    platforms: ["python"]
+  
+  - path: team-management/organization-management.mdx
+    platforms: ["python"]
+
+  # Framework Integration section
+  - path: integration/django.mdx
+    platforms: ["python"]
+  
+  - path: integration/flask.mdx
+    platforms: ["python"]
+  
+  - path: integration/fastapi.mdx
+    platforms: ["python"]
+  
+  - path: integration/standalone-scripts.mdx
+    platforms: ["python"]
+
