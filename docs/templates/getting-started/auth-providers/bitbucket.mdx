@@ -1,0 +1,39 @@
+---
+title: "Bitbucket Authentication"
+---
+
+This guide explains how to set up Bitbucket as an authentication provider with Stack Auth. Bitbucket OAuth allows users to sign in to your application using their Bitbucket account.
+
+
+## Integration Steps
+
+<Steps>
+  <Step>
+  ### Create a Bitbucket OAuth App
+  
+  1. Log in to your [Bitbucket Workspaces account](https://bitbucket.org/account/workspaces/).
+  2. Under **Workspaces**, find your workspace and select **Manage**.
+  3. In the left sidebar, scroll down and select **OAuth consumers**.
+  4. Click **Add consumer**.
+  5. Fill out the form with the following details:
+     - **Name**: Choose a name for your application
+     - **Description**: Add a brief description of your application
+     - **Callback URL**: Enter `https://api.stack-auth.com/api/v1/auth/oauth/callback/bitbucket`
+     - **Permissions**: Under **Account**, select at minimum **Email** and **Read**
+  6. Click **Save**.
+  7. You'll be redirected to the OAuth consumers page. Select your newly created consumer to view its details.
+  8. Note the **Key** (Client ID) and **Secret** values. Save these somewhere secure as you'll need them for the next steps.
+  </Step>
+  <Step>
+  ### Enable Bitbucket OAuth in Stack Auth
+  
+  1. On the Stack Auth dashboard, select **Auth Methods** in the left sidebar.
+  2. Click **Add SSO Providers** and select **Bitbucket** as the provider.
+  3. Set the **Client ID** (the Key from your Bitbucket OAuth consumer) and **Client Secret** you obtained from Bitbucket earlier.
+  </Step>
+</Steps>
+
+### Need More Help?
+
+- Check the [Bitbucket OAuth documentation](https://developer.atlassian.com/cloud/bitbucket/oauth-2/)
+- Join our [Discord](https://discord.stack-auth.com)

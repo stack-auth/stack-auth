@@ -1,0 +1,55 @@
+---
+title: "Passkey Authentication"
+---
+
+This guide explains how to set up Passkey authentication with Stack Auth. Passkeys allow users to sign in to your application securely using biometrics, mobile devices, or security keys.
+
+<Info>
+Passkeys provide a more secure and convenient authentication method compared to traditional passwords by using WebAuthn standard.
+</Info>
+
+## Integration Steps
+
+<Steps>
+  <Step>
+  ### Enable Passkey Authentication in Stack Auth
+  
+  1. Log in to the [Stack Auth dashboard](https://app.stack-auth.com/).
+  2. Select your project from the dashboard.
+  3. In the left sidebar, select **Auth Methods**.
+  4. Find the **Passkey** authentication method and toggle it to enable.
+  5. Save your changes.
+  </Step>
+  <Step>
+  ### Implement Passkey Authentication in Your Application
+  
+  1. Make sure you've installed the Stack Auth SDK in your application:
+     ```bash
+     npm install @stackframe/stack
+     ```
+
+  2. Add Passkey support to your sign-in component by using the built-in Stack Auth components or creating your own implementation with the SDK.
+     
+     Using built-in components:
+     ```jsx
+     import { SignIn } from "@stackframe/stack";
+     
+     export default function SignInPage() {
+       return <SignIn />;
+     }
+     ```
+           
+     The built-in components will automatically show the passkey option when it's enabled in your project.
+  </Step>
+</Steps>
+
+## How Passkey Authentication Works
+
+1. **Registration**: When a user creates a new passkey, their device generates a unique public-private key pair. The private key stays on the user's device, while the public key is sent to Stack Auth's servers.
+
+2. **Authentication**: When a user wants to sign in, Stack Auth sends a challenge to the user's device. The device uses the private key to sign the challenge, and sends the signature back to Stack Auth for verification.
+
+3. **Cross-device authentication**: Users can create passkeys on one device and use them to sign in on another device using QR codes or nearby device detection.
+
+
+For the most up-to-date compatibility information, refer to the [WebAuthn browser compatibility chart](https://caniuse.com/webauthn). 

@@ -1,0 +1,43 @@
+---
+title: "Facebook Authentication"
+---
+
+This guide explains how to set up Facebook as an authentication provider with Stack Auth. Facebook OAuth allows users to sign in to your application using their Facebook account.
+
+
+## Integration Steps
+
+<Steps>
+  <Step>
+    ### Create a Facebook OAuth App
+    
+    1. Navigate to the [Facebook Developers Portal](https://developers.facebook.com/).
+    2. In the top-right, select **My Apps** and then **Create App**.
+    3. You'll be redirected to the Create an app process.
+    4. In the **App details** step, select the app type (typically **Consumer** for authentication), fill out the necessary information, and select **Next**.
+    5. In the **Use Cases** step, select **Authenticate and request data from users with Facebook Login** and then select **Next**.
+    6. In the **Business** step, select the business portfolio to connect to your app and then select **Next**.
+    7. In the **Finalize** step, select **Go to dashboard**. You'll be redirected to the app's Dashboard page.
+    8. In the left sidenav, select **Use cases**.
+    9. Next to **Authenticate and request data from users with Facebook Login**, select **Customize**.
+    10. On the Permissions tab, next to **email**, select **Add** to allow Stack Auth to read your user's primary email address.
+    11. In the left sidenav, under **Facebook Login**, select **Settings**.
+    12. In the **Client OAuth settings** section, in the **Valid OAuth Redirect URIs** field, add `https://api.stack-auth.com/api/v1/auth/oauth/callback/facebook`
+    13. Select **Save changes**.
+    14. In the left sidenav, select **App settings** (hover over the settings icon), and then select **Basic**.
+    15. Note your **App ID** and **App Secret** for the next steps.
+  </Step>
+  
+  <Step>
+    ### Enable Facebook OAuth in Stack Auth
+    
+    1. On the Stack Auth dashboard, select **Auth Methods** in the left sidebar.
+    2. Click **Add SSO Providers** and select **Facebook** as the provider.
+    3. Set the **App ID** and **App Secret** you obtained from the Facebook Developers Portal earlier.
+  </Step>
+</Steps>
+
+### Need More Help?
+
+- Check the [Facebook Login Documentation](https://developers.facebook.com/docs/facebook-login/)
+- Join our [Discord](https://discord.stack-auth.com)

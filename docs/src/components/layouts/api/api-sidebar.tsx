@@ -4,7 +4,7 @@ import { ArrowLeft, ChevronDown, ChevronRight } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import type { ReactNode } from 'react';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { ThemeToggle } from '../../layout/theme-toggle';
 import { ScrollArea, ScrollViewport } from '../../ui/scroll-area';
 
@@ -110,6 +110,11 @@ function CollapsibleSection({
   defaultOpen?: boolean,
 }) {
   const [isOpen, setIsOpen] = useState(defaultOpen);
+
+  // Keep accordion open based on defaultOpen changes (for consistency with other sidebars)
+  useEffect(() => {
+    setIsOpen(defaultOpen);
+  }, [defaultOpen]);
 
   return (
     <div className="space-y-1">

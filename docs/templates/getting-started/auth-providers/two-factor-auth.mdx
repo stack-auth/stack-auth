@@ -1,0 +1,59 @@
+---
+title: "Two-Factor Authentication (2FA)"
+---
+
+This guide explains how Two-Factor Authentication (2FA) works with Stack Auth. 2FA adds an extra layer of security by requiring users to provide a verification code in addition to their password.
+
+<Info>
+Stack Auth implements TOTP (Time-based One-Time Password) for two-factor authentication, which is compatible with standard authenticator apps like Google Authenticator, Microsoft Authenticator, and Authy. 2FA is enabled by default at the platform level and can be configured by individual users.
+</Info>
+
+## Integration Steps
+
+<Steps>
+  <Step>
+  ### No Developer Configuration Required
+  
+  2FA is enabled by default on the Stack Auth platform. Unlike other authentication methods, you don't need to enable it specifically for your project.
+  </Step>
+  <Step>
+  ### Implement User Settings in Your Application
+  
+  To allow your users to set up 2FA for their accounts:
+  
+  1. Make sure you've installed the Stack Auth SDK in your application:
+     ```bash
+     npm install @stackframe/stack
+     ```
+
+  2. Use the Stack Auth components to give users access to their account settings, where they can enable 2FA:
+  
+     ```jsx
+     import { AccountSettings } from "@stackframe/stack";
+     
+     export default function SettingsPage() {
+       return <AccountSettings />;
+     }
+     ```
+
+  3. The built-in Stack Auth components will handle the entire 2FA setup process, including QR code generation, verification, and recovery codes.
+  </Step>
+</Steps>
+
+## How Stack Auth 2FA Works
+
+Stack Auth uses the industry-standard TOTP (Time-based One-Time Password) algorithm for two-factor authentication:
+
+1. **User Setup**: When a user enables 2FA in their account settings, Stack Auth generates a secret key that is shared with the user's authenticator app (usually via a QR code).
+
+2. **Code Generation**: The authenticator app generates a 6-digit code that changes every 30 seconds, based on the shared secret and the current time.
+
+## Recommended Authenticator Apps
+
+The following authenticator apps are compatible with Stack Auth 2FA:
+
+- Google Authenticator (Android, iOS)
+- Microsoft Authenticator (Android, iOS)
+- Authy (Android, iOS, desktop)
+- 1Password (Android, iOS, desktop)
+- LastPass Authenticator (Android, iOS) 

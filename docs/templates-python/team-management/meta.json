@@ -1,0 +1,10 @@
+{
+  "title": "Team Management",
+  "description": "Team and organization operations via the REST API", 
+  "pages": [
+    "team-operations",
+    "team-invitations",
+    "team-permissions",
+    "organization-management"
+  ]
+} 

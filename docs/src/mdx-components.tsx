@@ -8,6 +8,7 @@ import { APIPage } from 'fumadocs-openapi/ui';
 import { EnhancedAPIPage } from './components/api/enhanced-api-page';
 import { WebhooksAPIPage } from './components/api/webhooks-api-page';
 
+import AppleSecretGenerator from './components/apple-secret-generator';
 import { Card, CardGroup, Info } from './components/mdx';
 import ApiSequenceDiagram from './components/mdx/api-sequence-diagram';
 import { AuthCard } from './components/mdx/auth-card';
@@ -76,6 +77,7 @@ export function getMDXComponents(components?: MDXComponents): MDXComponents {
     ClickableTableOfContents,
     CollapsibleMethodSection,
     CollapsibleTypesSection,
-    SDKOverview
+    SDKOverview,
+    AppleSecretGenerator
   } as MDXComponents;
 }

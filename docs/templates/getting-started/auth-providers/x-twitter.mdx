@@ -1,0 +1,43 @@
+---
+title: "X (Twitter) Authentication"
+---
+
+This guide explains how to set up X (formerly Twitter) as an authentication provider with Stack Auth. X OAuth 2.0 allows users to sign in to your application using their X account.
+
+
+## Integration Steps
+
+<Steps>
+  <Step>
+  ### Create an X Developer Account and Project
+  
+  1. Log in to the [X Developer Portal](https://developer.twitter.com/).
+  2. Navigate to the [Developer Portal Dashboard](https://developer.twitter.com/en/portal/dashboard).
+  3. Click on **+ Create Project** to create a new project.
+  4. Enter a name for your project and select **Web App, Automated App or Bot** as the use case, then click **Next**.
+  5. Enter a description for your project and click **Next**.
+  6. Name your app and click **Next**.
+  7. In the **App settings** section, find your API Key and Secret. These will serve as your OAuth 2.0 Client ID and Client Secret.
+  8. In the left sidebar, click on your project, then select the app you just created.
+  9. Click on the **Settings** tab and scroll to the **User authentication settings**.
+  10. Click **Set up** or **Edit** if already configured.
+  11. Enable **OAuth 2.0** and set the following details:
+      - **Type of App**: Web App
+      - **Callback URL / Redirect URL**: `https://api.stack-auth.com/api/latest/auth/oauth/callback/x`
+      - **Website URL**: Your website's URL
+  12. Under **App permissions**, select your scopes.
+  13. Click **Save** to apply your changes.
+  </Step>
+  <Step>
+  ### Enable X OAuth in Stack Auth
+  
+  1. On the Stack Auth dashboard, select **Auth Methods** in the left sidebar.
+  2. Click **Add SSO Providers** and select **X (Twitter)** as the provider.
+  3. Set the **Client ID** (your API Key) and **Client Secret** you obtained from the X Developer Portal earlier.
+  </Step>
+</Steps>
+
+### Need More Help?
+
+- Check the [X OAuth 2.0 documentation](https://developer.twitter.com/en/docs/authentication/oauth-2-0)
+- Join our [Discord](https://discord.stack-auth.com)
