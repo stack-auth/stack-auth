@@ -15,6 +15,7 @@ import { Result } from "../utils/results";
 import { deindent } from '../utils/strings';
 import { ContactChannelsCrud } from './crud/contact-channels';
 import { CurrentUserCrud } from './crud/current-user';
+import { NotificationPreferenceCrud } from './crud/notification-preferences';
 import { ConnectedAccountAccessTokenCrud } from './crud/oauth';
 import { TeamApiKeysCrud, UserApiKeysCrud, teamApiKeysCreateInputSchema, teamApiKeysCreateOutputSchema, userApiKeysCreateInputSchema, userApiKeysCreateOutputSchema } from './crud/project-api-keys';
 import { ProjectPermissionsCrud } from './crud/project-permissions';
@@ -1635,6 +1636,38 @@ export class StackClientInterface {
       return null;
     }
     return await result.data.json();
+  }
+
+  async listNotificationCategories(
+    session: InternalSession,
+  ): Promise<NotificationPreferenceCrud['Client']['Read'][]> {
+    const response = await this.sendClientRequest(
+      `/emails/notification-preference/me`,
+      {},
+      session,
+    );
+    const result = await response.json() as NotificationPreferenceCrud['Client']['List'];
+    return result.items;
+  }
+
+  async setNotificationsEnabled(
+    notificationCategoryId: string,
+    enabled: boolean,
+    session: InternalSession,
+  ): Promise<void> {
+    await this.sendClientRequest(
+      `/emails/notification-preference/me/${notificationCategoryId}`,
+      {
+        method: "PATCH",
+        headers: {
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          enabled,
+        }),
+      },
+      session,
+    );
   }
 }
 

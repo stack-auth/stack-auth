@@ -14,6 +14,7 @@ import { ContactChannel, ContactChannelCreateOptions, ServerContactChannel, Serv
 import { AdminTeamPermission, TeamPermission } from "../permissions";
 import { AdminOwnedProject, AdminProjectUpdateOptions } from "../projects";
 import { EditableTeamMemberProfile, ServerTeam, ServerTeamCreateOptions, Team, TeamCreateOptions } from "../teams";
+import { NotificationCategory } from "../notification-categories";
 
 
 export type Session = {
@@ -177,6 +178,9 @@ export type UserExtra = {
   useContactChannels(): ContactChannel[], // THIS_LINE_PLATFORM react-like
   listContactChannels(): Promise<ContactChannel[]>,
   createContactChannel(data: ContactChannelCreateOptions): Promise<ContactChannel>,
+
+  useNotificationCategories(): NotificationCategory[], // THIS_LINE_PLATFORM react-like
+  listNotificationCategories(): Promise<NotificationCategory[]>,
 
   delete(): Promise<void>,
 

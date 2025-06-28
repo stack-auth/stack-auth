@@ -1,5 +1,6 @@
 import { KnownErrors, StackServerInterface } from "@stackframe/stack-shared";
 import { ContactChannelsCrud } from "@stackframe/stack-shared/dist/interface/crud/contact-channels";
+import { NotificationPreferenceCrud } from "@stackframe/stack-shared/dist/interface/crud/notification-preferences";
 import { TeamApiKeysCrud, UserApiKeysCrud, teamApiKeysCreateOutputSchema, userApiKeysCreateOutputSchema } from "@stackframe/stack-shared/dist/interface/crud/project-api-keys";
 import { ProjectPermissionDefinitionsCrud, ProjectPermissionsCrud } from "@stackframe/stack-shared/dist/interface/crud/project-permissions";
 import { TeamInvitationCrud } from "@stackframe/stack-shared/dist/interface/crud/team-invitation";
@@ -20,6 +21,7 @@ import { ApiKey, ApiKeyCreationOptions, ApiKeyUpdateOptions, apiKeyCreationOptio
 import { GetUserOptions, HandlerUrls, OAuthScopesOnSignIn, TokenStoreInit } from "../../common";
 import { OAuthConnection } from "../../connected-accounts";
 import { ServerContactChannel, ServerContactChannelCreateOptions, ServerContactChannelUpdateOptions, serverContactChannelCreateOptionsToCrud, serverContactChannelUpdateOptionsToCrud } from "../../contact-channels";
+import { NotificationCategory } from "../../notification-categories";
 import { AdminProjectPermissionDefinition, AdminTeamPermission, AdminTeamPermissionDefinition } from "../../permissions";
 import { EditableTeamMemberProfile, ServerListUsersOptions, ServerTeam, ServerTeamCreateOptions, ServerTeamUpdateOptions, ServerTeamUser, Team, TeamInvitation, serverTeamCreateOptionsToCrud, serverTeamUpdateOptionsToCrud } from "../../teams";
 import { ProjectCurrentServerUser, ServerUser, ServerUserCreateOptions, ServerUserUpdateOptions, serverUserCreateOptionsToCrud, serverUserUpdateOptionsToCrud } from "../../users";
@@ -118,6 +120,11 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
       return await this._interface.listServerContactChannels(userId);
     }
   );
+  private readonly _serverNotificationCategoriesCache = createCache<[string], NotificationPreferenceCrud['Server']['Read'][]>(
+    async ([userId]) => {
+      return await this._interface.listServerNotificationCategories(userId);
+    }
+  );
 
   private readonly _serverUserApiKeysCache = createCache<[string], UserApiKeysCrud['Server']['Read'][]>(
     async ([userId]) => {
@@ -197,6 +204,21 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
           app._serverContactChannelsCache.refresh([userId]),
           app._serverUserCache.refresh([userId])
         ]);
+      },
+    };
+  }
+
+  protected _serverNotificationCategoryFromCrud(userId: string, crud: NotificationPreferenceCrud['Server']['Read']): NotificationCategory {
+    const app = this;
+    return {
+      id: crud.notification_category_id,
+      name: crud.notification_category_name,
+      enabled: crud.enabled,
+      canDisable: crud.can_disable,
+
+      async setEnabled(enabled: boolean) {
+        await app._interface.setServerNotificationsEnabled(userId, crud.notification_category_id, enabled);
+        await app._serverNotificationCategoriesCache.refresh([userId]);
       },
     };
   }
@@ -502,6 +524,16 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
           app._serverUserCache.refresh([crud.id])
         ]);
         return app._serverContactChannelFromCrud(crud.id, contactChannel);
+      },
+      // IF_PLATFORM react-like
+      useNotificationCategories() {
+        const results = useAsyncCache(app._serverNotificationCategoriesCache, [crud.id] as const, "user.useNotificationCategories()");
+        return results.map((category) => app._serverNotificationCategoryFromCrud(crud.id, category));
+      },
+      // END_PLATFORM
+      async listNotificationCategories() {
+        const results = Result.orThrow(await app._serverNotificationCategoriesCache.getOrWait([crud.id], "write-only"));
+        return results.map((category) => app._serverNotificationCategoryFromCrud(crud.id, category));
       },
       // IF_PLATFORM react-like
       useApiKeys() {
