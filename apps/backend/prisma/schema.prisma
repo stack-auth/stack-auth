@@ -576,6 +576,7 @@ enum EmailTemplateType {
   PASSWORD_RESET
   MAGIC_LINK
   TEAM_INVITATION
+  SIGN_IN_INVITATION
 }
 
 model EmailTemplate {
