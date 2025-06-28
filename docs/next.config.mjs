@@ -26,6 +26,15 @@ const config = {
   },
   async rewrites() {
     return [
+      // Redirect .mdx requests to the llms.mdx route handler
+      {
+        source: '/docs/:path*.mdx',
+        destination: '/llms.mdx/:path*',
+      },
+      {
+        source: '/api/:path*.mdx',
+        destination: '/llms.mdx/:path*',
+      },
       // Serve OpenAPI files from the openapi directory
       {
         source: '/openapi/:path*',
