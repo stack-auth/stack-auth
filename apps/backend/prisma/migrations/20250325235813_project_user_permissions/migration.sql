@@ -5,13 +5,12 @@
 
 */
 -- AlterEnum
-BEGIN;
 CREATE TYPE "PermissionScope_new" AS ENUM ('PROJECT', 'TEAM');
 ALTER TABLE "Permission" ALTER COLUMN "scope" TYPE "PermissionScope_new" USING ("scope"::text::"PermissionScope_new");
 ALTER TYPE "PermissionScope" RENAME TO "PermissionScope_old";
 ALTER TYPE "PermissionScope_new" RENAME TO "PermissionScope";
 DROP TYPE "PermissionScope_old";
-COMMIT;
+-- SPLIT_STATEMENT_SENTINEL
 
 -- AlterTable
 ALTER TABLE "Permission" ADD COLUMN     "isDefaultProjectPermission" BOOLEAN NOT NULL DEFAULT false;
