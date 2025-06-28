@@ -41,6 +41,9 @@
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "react-remove-scroll": "^2.7.0",
+    "remark": "^15.0.1",
+    "remark-gfm": "^4.0.1",
+    "remark-mdx": "^3.1.0",
     "shiki": "^3.4.2",
     "tailwind-merge": "^3.3.0"
   },
