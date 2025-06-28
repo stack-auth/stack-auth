@@ -7,7 +7,4 @@ export default defineConfig({
     include: ['**/*.test.{js,ts,jsx,tsx}'],
     includeSource: ['**/*.{js,ts,jsx,tsx}'],
   },
-  define: {
-    global: {},
-  },
 })
