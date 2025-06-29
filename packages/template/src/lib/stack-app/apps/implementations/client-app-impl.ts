@@ -57,7 +57,8 @@ const NextNavigation = scrambleDuringCompileTime(NextNavigationUnscrambled);
 // END_PLATFORM
 
 // hack to make sure process is defined in non-node environments
-const process = (globalThis as any).process ?? { env: {} }; // THIS_LINE_PLATFORM js react
+// const process = (globalThis as any).process ?? { env: {} }; // THIS_LINE_PLATFORM js react
+const process = { env: {} }; // THIS_LINE_PLATFORM js react
 
 
 const allClientApps = new Map<string, [checkString: string | undefined, app: StackClientApp<any, any>]>();

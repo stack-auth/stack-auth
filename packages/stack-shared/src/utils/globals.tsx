@@ -1,16 +1,18 @@
-const globalVar: any =
-  typeof globalThis !== 'undefined' ? globalThis :
-    typeof global !== 'undefined' ? global :
-      typeof window !== 'undefined' ? window :
-        typeof self !== 'undefined' ? self :
-          {};
+// const globalVar: any =
+//   typeof globalThis !== 'undefined' ? globalThis :
+//     typeof global !== 'undefined' ? global :
+//       typeof window !== 'undefined' ? window :
+//         typeof self !== 'undefined' ? self :
+//           {};
+
+const globalVar: any = {};
 export {
-  globalVar,
+  globalVar
 };
 
-if (typeof globalThis === 'undefined') {
-  (globalVar as any).globalThis = globalVar;
-}
+// if (typeof globalThis === 'undefined') {
+//   (globalVar as any).globalThis = globalVar;
+// }
 
 const stackGlobalsSymbol = Symbol.for('__stack-globals');
 globalVar[stackGlobalsSymbol] ??= {};
