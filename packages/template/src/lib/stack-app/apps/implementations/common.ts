@@ -11,7 +11,8 @@ import React, { useCallback } from "react"; // THIS_LINE_PLATFORM react-like
 import { HandlerUrls } from "../../common";
 
 // hack to make sure process is defined in non-node environments
-const process = (globalThis as any).process ?? { env: {} }; // THIS_LINE_PLATFORM js react
+// const process = (globalThis as any).process ?? { env: {} }; // THIS_LINE_PLATFORM js react
+const process = { env: {} }; // THIS_LINE_PLATFORM js react
 
 export const clientVersion = "STACK_COMPILE_TIME_CLIENT_PACKAGE_VERSION_SENTINEL";
 if (clientVersion.startsWith("STACK_COMPILE_TIME")) {

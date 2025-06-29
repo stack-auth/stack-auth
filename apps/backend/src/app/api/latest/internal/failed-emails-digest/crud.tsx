@@ -1,4 +1,4 @@
-import { prismaClient } from "@/prisma-client";
+import { globalPrismaClient } from "@/prisma-client";
 
 type FailedEmailsQueryResult = {
   tenancyId: string,
@@ -15,7 +15,7 @@ type FailedEmailsByTenancyData = {
 }
 
 export const getFailedEmailsByTenancy = async (after: Date) => {
-  const result = await prismaClient.$queryRaw<Array<FailedEmailsQueryResult>>`
+  const result = await globalPrismaClient.$queryRaw<Array<FailedEmailsQueryResult>>`
   SELECT
     se."tenancyId",
     t."projectId",

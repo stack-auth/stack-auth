@@ -387,14 +387,14 @@ export async function deletePermissionDefinition(
 
   // Remove all direct permissions for this permission ID
   if (options.scope === "team") {
-    await getPrismaClientForTenancy(options.tenancy.completeConfig.sourceOfTruth).teamMemberDirectPermission.deleteMany({
+    await getPrismaClientForTenancy(options.tenancy).teamMemberDirectPermission.deleteMany({
       where: {
         tenancyId: options.tenancy.id,
         permissionId: options.permissionId,
       },
     });
   } else {
-    await getPrismaClientForTenancy(options.tenancy.completeConfig.sourceOfTruth).projectUserDirectPermission.deleteMany({
+    await getPrismaClientForTenancy(options.tenancy).projectUserDirectPermission.deleteMany({
       where: {
         tenancyId: options.tenancy.id,
         permissionId: options.permissionId,

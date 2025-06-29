@@ -5,9 +5,9 @@ import { nicify } from "@stackframe/stack-shared/dist/utils/strings";
 import "./polyfills";
 
 export function register() {
-  if (getNextRuntime() === "nodejs") {
-    globalThis.process.title = "stack-dashboard (node/nextjs)";
-  }
+  // if (getNextRuntime() === "nodejs") {
+  //   globalThis.process.title = "stack-dashboard (node/nextjs)";
+  // }
 
   if (getNextRuntime() === "nodejs" || getNextRuntime() === "edge") {
     Sentry.init({

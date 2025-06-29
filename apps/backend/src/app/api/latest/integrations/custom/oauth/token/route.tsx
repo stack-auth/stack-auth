@@ -1,4 +1,4 @@
-import { prismaClient } from "@/prisma-client";
+import { globalPrismaClient } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { neonAuthorizationHeaderSchema, yupMixed, yupNumber, yupObject, yupString, yupTuple, yupUnion } from "@stackframe/stack-shared/dist/schema-fields";
 import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
@@ -67,7 +67,7 @@ export const POST = createSmartRouteHandler({
     const userInfoResponseBody = await userInfoResponse.json();
 
     const accountId = userInfoResponseBody.sub;
-    const mapping = await prismaClient.idPAccountToCdfcResultMapping.findUnique({
+    const mapping = await globalPrismaClient.idPAccountToCdfcResultMapping.findUnique({
       where: {
         idpId: "stack-preconfigured-idp:integrations/custom",
         idpAccountId: accountId,

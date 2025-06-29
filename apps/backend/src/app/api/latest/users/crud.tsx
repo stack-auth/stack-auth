@@ -680,7 +680,7 @@ export const usersCrudHandlers = createLazyProxy(() => createCrudHandlers(usersC
               },
             });
           } catch (e) {
-            const members = await prismaClient.teamMember.findMany({
+            const members = await tx.teamMember.findMany({
               where: {
                 tenancyId: auth.tenancy.id,
                 projectUserId: params.user_id,

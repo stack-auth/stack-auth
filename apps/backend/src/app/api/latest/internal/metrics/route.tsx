@@ -208,7 +208,7 @@ export const GET = createSmartRouteHandler({
       recentlyActive,
       loginMethods
     ] = await Promise.all([
-      getPrismaClientForTenancy(req.auth.tenancy.completeConfig.sourceOfTruth).projectUser.count({
+      getPrismaClientForTenancy(req.auth.tenancy).projectUser.count({
         where: { tenancyId: req.auth.tenancy.id, },
       }),
       loadTotalUsers(req.auth.tenancy, now),
