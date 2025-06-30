@@ -147,8 +147,8 @@ export function createVerificationCodeHandler<
 
       const verificationCode = await getPrismaClientForTenancy(auth.tenancy).verificationCode.findUnique({
         where: {
-          projectId_branchId_code: {
-            projectId: auth.project.id,
+          mirroredProjectId_branchId_code: {
+            mirroredProjectId: auth.project.id,
             branchId: auth.branchId,
             code,
           },
@@ -159,7 +159,7 @@ export function createVerificationCodeHandler<
       // Increment the attempt count for all codes that match except for the first 6 characters
       await getPrismaClientForTenancy(auth.tenancy).verificationCode.updateMany({
         where: {
-          projectId: auth.project.id,
+          mirroredProjectId: auth.project.id,
           branchId: auth.branchId,
           code: {
             endsWith: code.slice(6),
@@ -190,8 +190,8 @@ export function createVerificationCodeHandler<
         case 'post': {
           await getPrismaClientForTenancy(auth.tenancy).verificationCode.update({
             where: {
-              projectId_branchId_code: {
-                projectId: auth.project.id,
+              mirroredProjectId_branchId_code: {
+                mirroredProjectId: auth.project.id,
                 branchId: auth.tenancy.branchId,
                 code,
               },
@@ -238,7 +238,7 @@ export function createVerificationCodeHandler<
 
       const verificationCodePrisma = await getPrismaClientForTenancy(tenancy).verificationCode.create({
         data: {
-          projectId: project.id,
+          mirroredProjectId: project.id,
           branchId,
           type: options.type,
           code: generateSecureRandomString(),
@@ -264,7 +264,7 @@ export function createVerificationCodeHandler<
 
       const codes = await getPrismaClientForTenancy(tenancy).verificationCode.findMany({
         where: {
-          projectId: project.id,
+          mirroredProjectId: project.id,
           branchId,
           type: options.type,
           usedAt: null,
@@ -281,8 +281,8 @@ export function createVerificationCodeHandler<
 
       await getPrismaClientForTenancy(tenancy).verificationCode.delete({
         where: {
-          projectId_branchId_id: {
-            projectId: project.id,
+          mirroredProjectId_branchId_id: {
+            mirroredProjectId: project.id,
             branchId,
             id: options.id,
           },
