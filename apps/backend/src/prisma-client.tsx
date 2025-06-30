@@ -1,4 +1,5 @@
 import { PrismaNeon } from "@prisma/adapter-neon";
+import { PrismaPg } from '@prisma/adapter-pg';
 import { Prisma, PrismaClient } from "@prisma/client";
 import { OrganizationRenderedConfig } from "@stackframe/stack-shared/dist/config/schema";
 import { getNodeEnvironment } from '@stackframe/stack-shared/dist/utils/env';
@@ -38,6 +39,12 @@ export function getPrismaClientForTenancy(tenancy: Tenancy) {
   return getPrismaClientForSourceOfTruth(tenancy.completeConfig.sourceOfTruth, tenancy.branchId);
 }
 
+function getPostgresPrismaClient(connectionString: string) {
+  const adapter = new PrismaPg({ connectionString: connectionString });
+  const prisma = new PrismaClient({ adapter });
+  return prisma;
+}
+
 export function getPrismaClientForSourceOfTruth(sourceOfTruth: OrganizationRenderedConfig["sourceOfTruth"], branchId: string) {
   switch (sourceOfTruth.type) {
     case 'neon': {
@@ -45,6 +52,9 @@ export function getPrismaClientForSourceOfTruth(sourceOfTruth: OrganizationRende
         throw new Error(`No connection string provided for Neon source of truth for branch ${branchId}`);
       }
       return getNeonPrismaClient(sourceOfTruth.connectionStrings[branchId]);
+    }
+    case 'postgres': {
+      return getPostgresPrismaClient(sourceOfTruth.connectionString);
     }
     case 'hosted': {
       return globalPrismaClient;

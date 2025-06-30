@@ -20,6 +20,9 @@ const customPermissionRegex = /^[a-z0-9_:]+$/;
 export const projectConfigSchema = yupObject({
   sourceOfTruth: yupUnion(
     yupObject({
+      type: yupString().oneOf(['hosted']).optional(),
+    }).defined(),
+    yupObject({
       type: yupString().oneOf(['neon']).optional(),
       connectionStrings: yupRecord(
         yupString().defined(),
@@ -27,7 +30,8 @@ export const projectConfigSchema = yupObject({
       ).defined(),
     }).defined(),
     yupObject({
-      type: yupString().oneOf(['hosted']).optional(),
+      type: yupString().oneOf(['postgres']).optional(),
+      connectionString: yupString().defined()
     }).defined(),
   ).optional(),
 });

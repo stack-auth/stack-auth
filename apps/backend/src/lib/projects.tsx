@@ -3,6 +3,7 @@ import { KnownErrors } from "@stackframe/stack-shared";
 import { EnvironmentConfigOverrideOverride, OrganizationRenderedConfig, ProjectConfigOverrideOverride } from "@stackframe/stack-shared/dist/config/schema";
 import { AdminUserProjectsCrud, ProjectsCrud } from "@stackframe/stack-shared/dist/interface/crud/projects";
 import { UsersCrud } from "@stackframe/stack-shared/dist/interface/crud/users";
+import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
 import { StackAssertionError, captureError } from "@stackframe/stack-shared/dist/utils/errors";
 import { filterUndefined, typedFromEntries } from "@stackframe/stack-shared/dist/utils/objects";
 import { generateUuid } from "@stackframe/stack-shared/dist/utils/uuids";
@@ -130,7 +131,7 @@ export async function createOrUpdateProject(
       tx,
       projectId: project.id,
       projectConfigOverrideOverride: {
-        sourceOfTruth: options.sourceOfTruth,
+        sourceOfTruth: options.sourceOfTruth || (JSON.parse(getEnvVariable("STACK_OVERRIDE_SOURCE_OF_TRUTH", "null")) ?? undefined),
       },
     });
 
