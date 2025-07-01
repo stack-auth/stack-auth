@@ -1,6 +1,6 @@
 'use client';
 
-import { Code, FileText, Link as LinkIcon, Play, Puzzle, Settings, Shield, UserCheck } from 'lucide-react';
+import { Code, FileText, Link as LinkIcon, Play, Puzzle, Settings, Shield, User, UserCheck } from 'lucide-react';
 import Link from 'next/link';
 import { type ReactNode } from 'react';
 import { cn } from '../../lib/cn';
@@ -17,6 +17,7 @@ const iconMap: Record<string, React.ComponentType<{ className?: string }>> = {
   'user-check': UserCheck,
   'link': LinkIcon,
   'shield-check': Shield,
+  'user': User,
 };
 
 export type CardProps = {

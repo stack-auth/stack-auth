@@ -227,259 +227,74 @@ const DocsIcon3D: React.FC<DocsIcon3DProps> = ({
     }
   };
 
-  // Add custom CSS for the floating animation
-  const floatingDotsStyle = `
-  @keyframes float-up {
-    0% {
-      transform: translateY(0px) scale(1);
-      opacity: 0.8;
-      filter: blur(0px);
-    }
-    50% {
-      opacity: 0.6;
-      filter: blur(0.5px);
-    }
-    100% {
-      transform: translateY(-200px) scale(0.3);
-      opacity: 0;
-      filter: blur(1px);
-    }
-  }
-  .animate-float-up {
-    animation: float-up 3s ease-out infinite;
-  }
-`;
-
   return (
-    <>
-      <style dangerouslySetInnerHTML={{ __html: floatingDotsStyle }} />
-      <div className="flex justify-center items-center p-4">
-        <div
-          className={`
-            grid gap-4 max-w-4xl w-full justify-center
-            ${platformSections.length === 1 ? 'grid-cols-1 max-w-xs' : ''}
-            ${platformSections.length === 2 ? 'grid-cols-1 md:grid-cols-2 max-w-lg' : ''}
-            ${platformSections.length === 3 ? 'grid-cols-1 md:grid-cols-3 max-w-2xl' : ''}
-            ${platformSections.length === 4 ? 'grid-cols-2 md:grid-cols-4' : ''}
-          `}
-        >
-          {platformSections.map((section) => (
+    <div className="flex justify-center items-center p-4">
+      <div
+        className={`
+          grid gap-6 max-w-4xl w-full justify-center
+          ${platformSections.length === 1 ? 'grid-cols-1 max-w-xs' : ''}
+          ${platformSections.length === 2 ? 'grid-cols-1 md:grid-cols-2 max-w-lg' : ''}
+          ${platformSections.length === 3 ? 'grid-cols-1 md:grid-cols-3 max-w-2xl' : ''}
+          ${platformSections.length === 4 ? 'grid-cols-2 md:grid-cols-4' : ''}
+        `}
+      >
+        {platformSections.map((section) => (
+          <div
+            key={section.id}
+            className="cursor-pointer group transform transition-all duration-200 hover:scale-105"
+            onMouseEnter={() => setHoveredSection(section.id)}
+            onMouseLeave={() => setHoveredSection(null)}
+            onClick={() => handleSectionClick(section)}
+          >
             <div
-              key={section.id}
               className={`
-              relative cursor-pointer group
-              transform transition-all duration-500 ease-out
-              hover:scale-105 hover:-translate-y-2 hover:rotate-1
-              active:scale-95 active:rotate-0
-            `}
-              onMouseEnter={() => setHoveredSection(section.id)}
-              onMouseLeave={() => setHoveredSection(null)}
-              onClick={() => handleSectionClick(section)}
-            >
-              <div
-                className={`
-                relative bg-gradient-to-br from-background via-background to-muted/20
-                border-2 border-border rounded-2xl p-4 w-full h-44 
+                bg-card border-[0.5px] border-border rounded-xl p-6 w-full h-40
                 flex flex-col items-center justify-center 
-                shadow-xl hover:shadow-2xl
-                overflow-hidden backdrop-blur-sm
-                transition-all duration-500 ease-out
-                before:absolute before:inset-0 before:bg-gradient-to-br before:opacity-0
-                hover:before:opacity-100 before:transition-opacity before:duration-500
-                ${hoveredSection === section.id ? "border-opacity-100 shadow-2xl" : "border-opacity-50"}
+                shadow-sm hover:shadow-lg
+                transition-all duration-200
               `}
-                style={{
-                  transformStyle: "preserve-3d",
-                  perspective: "1000px",
-                  borderColor: hoveredSection === section.id ? section.color : undefined,
-                  boxShadow:
-                    hoveredSection === section.id
-                      ? `0 25px 50px -12px ${section.color}40, 0 0 0 1px ${section.color}20`
-                      : undefined,
-                }}
-              >
-                {/* Animated background gradient */}
+              style={{
+                borderColor: hoveredSection === section.id ? section.color : undefined,
+              }}
+            >
+              {/* Icon Container */}
+              <div className="mb-4">
                 <div
                   className={`
-                  absolute inset-0 rounded-2xl transition-opacity duration-500
-                  ${hoveredSection === section.id ? "opacity-100" : "opacity-0"}
-                `}
+                    w-12 h-12 rounded-lg flex items-center justify-center 
+                    transition-all duration-200
+                  `}
                   style={{
-                    background: `
-                    radial-gradient(circle at 30% 20%, ${section.color}15 0%, transparent 50%),
-                    linear-gradient(135deg, ${section.color}08, ${section.color}03, transparent)
-                  `,
-                  }}
-                />
-
-                {/* Continuous upward floating dots effect */}
-                <div className="absolute inset-0 overflow-hidden rounded-2xl">
-                  {hoveredSection === section.id && (
-                    <div className="absolute inset-0">
-                      {[...Array(12)].map((_, i) => (
-                        <div
-                          key={`${section.id}-${i}`}
-                          className="absolute w-1.5 h-1.5 rounded-full animate-float-up"
-                          style={{
-                            backgroundColor: section.color,
-                            left: `${10 + Math.random() * 80}%`,
-                            bottom: "-6px",
-                            animationDelay: `${i * 0.3}s`,
-                            animationDuration: "3s",
-                            animationIterationCount: "infinite",
-                            animationTimingFunction: "ease-out",
-                          }}
-                        />
-                      ))}
-                    </div>
-                  )}
-                </div>
-
-                {/* 3D Icon Container */}
-                <div
-                  className={`
-                  relative mb-4 transition-all duration-700 ease-out
-                  ${
-                    hoveredSection === section.id
-                      ? "transform -rotate-y-12 rotate-x-6 translate-z-8"
-                      : "transform rotate-0"
-                  }
-                `}
-                  style={{
-                    transformStyle: "preserve-3d",
+                    backgroundColor: hoveredSection === section.id ? section.color : `${section.color}20`,
+                    color: hoveredSection === section.id ? 'white' : 'hsl(var(--foreground))',
                   }}
                 >
-                  {/* Enhanced shadow layers */}
-                  <div
-                    className={`
-                    absolute inset-0 rounded-xl transition-all duration-500
-                    ${hoveredSection === section.id ? "opacity-50 blur-sm" : "opacity-20"}
-                  `}
-                    style={{
-                      backgroundColor: section.color,
-                      transform: "translateZ(-6px) translateX(3px) translateY(3px)",
-                    }}
-                  />
-
-                  {/* Main icon with enhanced styling */}
-                  <div
-                    className={`
-                      relative z-10 w-16 h-16 rounded-xl flex items-center justify-center 
-                      border-2 transition-all duration-500 ease-out
-                      ${
-                        hoveredSection === section.id
-                          ? "text-white border-transparent scale-110 rotate-3"
-                          : "text-foreground border-border bg-background scale-100"
-                      }
-                    `}
-                    style={{
-                      backgroundColor: hoveredSection === section.id ? section.color : undefined,
-                      boxShadow:
-                        hoveredSection === section.id
-                          ? `0 12px 40px ${section.color}60, inset 0 1px 0 rgba(255,255,255,0.2)`
-                          : `0 6px 25px ${section.color}30`,
-                    }}
-                  >
-                    <div
-                      className={`
-                        transition-all duration-500 ease-out
-                        ${hoveredSection === section.id ? "scale-125 rotate-6" : "scale-100"}
-                      `}
-                    >
-                      {React.cloneElement(section.icon as React.ReactElement, {
-                        size: 24,
-                        strokeWidth: hoveredSection === section.id ? 2.5 : 2,
-                      })}
-                    </div>
-                  </div>
-                </div>
-
-                {/* Enhanced Title */}
-                <h3
-                  className={`
-                    text-lg font-bold mb-2 text-center transition-all duration-500
-                    ${hoveredSection === section.id ? "scale-105 font-extrabold" : "scale-100"}
-                  `}
-                  style={{
-                    color: hoveredSection === section.id ? section.color : undefined,
-                    textShadow: hoveredSection === section.id ? `0 0 20px ${section.color}40` : undefined,
-                  }}
-                >
-                  {section.title}
-                </h3>
-
-                {/* Enhanced Description */}
-                <p
-                  className={`
-                    text-xs text-center leading-relaxed px-2 transition-all duration-500
-                    ${
-                      hoveredSection === section.id
-                        ? "text-muted-foreground opacity-100 scale-105"
-                        : "text-muted-foreground opacity-70"
-                    }
-                  `}
-                >
-                  {section.description}
-                </p>
-
-                {/* Enhanced hover indicator */}
-                <div
-                  className={`
-                    absolute bottom-0 left-0 right-0 h-1.5 rounded-b-2xl
-                    transition-all duration-500 ease-out
-                    ${hoveredSection === section.id ? "scale-x-100" : "scale-x-0"}
-                  `}
-                  style={{
-                    transformOrigin: "left",
-                    backgroundColor: section.color,
-                    boxShadow: hoveredSection === section.id ? `0 0 20px ${section.color}60` : undefined,
-                  }}
-                />
-
-                {/* Enhanced corner accents with glow */}
-                <div
-                  className={`
-                    absolute top-3 right-3 w-2 h-2 rounded-full
-                    transition-all duration-500 ease-out
-                    ${hoveredSection === section.id ? "scale-150 opacity-100" : "scale-75 opacity-30"}
-                  `}
-                  style={{
-                    backgroundColor: section.color,
-                    boxShadow: hoveredSection === section.id ? `0 0 15px ${section.color}80` : undefined,
-                  }}
-                />
-
-                <div
-                  className={`
-                    absolute bottom-3 left-3 w-2 h-2 rounded-full
-                    transition-all duration-500 ease-out
-                    ${hoveredSection === section.id ? "scale-150 opacity-100" : "scale-75 opacity-30"}
-                  `}
-                  style={{
-                    backgroundColor: section.color,
-                    boxShadow: hoveredSection === section.id ? `0 0 15px ${section.color}80` : undefined,
-                  }}
-                />
-
-                {/* New: Diagonal accent line */}
-                <div
-                  className={`
-                    absolute top-0 right-0 w-16 h-16 overflow-hidden rounded-tr-2xl
-                    transition-all duration-500
-                    ${hoveredSection === section.id ? "opacity-100" : "opacity-0"}
-                  `}
-                >
-                  <div
-                    className="absolute top-0 right-0 w-full h-0.5 origin-top-right rotate-45 translate-x-2 translate-y-4"
-                    style={{ backgroundColor: section.color }}
-                  />
+                  {React.cloneElement(section.icon as React.ReactElement, {
+                    size: 20,
+                    strokeWidth: 2,
+                  })}
                 </div>
               </div>
+
+              {/* Title */}
+              <h3
+                className="text-sm font-semibold mb-2 text-center transition-all duration-200"
+                style={{
+                  color: hoveredSection === section.id ? section.color : 'hsl(var(--card-foreground))',
+                }}
+              >
+                {section.title}
+              </h3>
+
+              {/* Description */}
+              <p className="text-xs text-center text-muted-foreground leading-relaxed px-2 opacity-80">
+                {section.description}
+              </p>
             </div>
-          ))}
-        </div>
+          </div>
+        ))}
       </div>
-    </>
+    </div>
   );
 };
 

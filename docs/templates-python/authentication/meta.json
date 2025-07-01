@@ -2,6 +2,7 @@
   "title": "Authentication",
   "description": "Authentication flows and patterns for Python applications",
   "pages": [
+    "index",
     "api-setup",
     "user-sessions",
     "oauth-flows",

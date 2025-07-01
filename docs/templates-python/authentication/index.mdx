@@ -1,56 +1,252 @@
 ---
-title: "Authentication Flows"
-description: "Learn how to implement authentication flows in your Python application using Stack Auth's REST API"
+title: Authentication
 ---
-This section covers the core authentication patterns and flows you'll need to implement secure authentication in your Python application using Stack Auth's REST API.
 
-## Core Authentication
+This guide covers how to implement authentication in your Python application using Stack Auth. We'll walk through all the available authentication methods and show you how to handle user sessions.
 
-<CardGroup cols={2}>
-  <Card 
-    title="API Setup & Configuration"
-    href="./authentication/api-setup"
-    icon="settings"
-  >
-    Set up your Python client and configure API credentials for Stack Auth integration.
-  </Card>
-  
-  <Card 
-    title="User Sessions"
-    href="./user-sessions"
-    icon="user-check"
-  >
-    Handle user session management, validation, and lifecycle in Python applications.
-  </Card>
-  
-  <Card 
-    title="OAuth Flows"
-    href="./oauth-flows"
-    icon="link"
-  >
-    Implement OAuth authentication flows for social login providers via the REST API.
-  </Card>
-  
-  <Card 
-    title="Server Validation"
-    href="./server-validation"
-    icon="shield-check"
-  >
-    Validate user tokens and authenticate requests on your Python backend.
-  </Card>
-</CardGroup>
+## Overview
 
-## Authentication Patterns
+Stack Auth supports multiple authentication methods that you can enable or disable based on your needs:
 
-Each authentication flow addresses specific use cases:
+- **[Email/Password](./password.mdx)** - Traditional email and password authentication
+- **[Magic Links (OTP)](./magic-links.mdx)** - Passwordless authentication via email
+- **[OAuth Providers](./oauth.mdx)** - Sign in with Google, GitHub, Facebook, and more
+- **[Passkeys](./passkeys.mdx)** - Modern biometric authentication
+- **[Anonymous Users](./anonymous.mdx)** - Guest users that can be upgraded later
 
-- **API Setup**: Foundation for all authentication operations
-- **User Sessions**: Managing authenticated user state and session lifecycle  
-- **OAuth Flows**: Social login integration (Google, GitHub, etc.)
-- **Server Validation**: Securing your API endpoints and validating requests
+## Basic Authentication Flow
 
-## Getting Started
+All authentication methods in Stack Auth follow a similar pattern:
 
-Start with [API Setup & Configuration](./api-setup) to establish your Python client, then proceed to the specific authentication flow that matches your application's needs.
+1. **Initiate authentication** - Start the sign-in/sign-up process
+2. **User verification** - User completes authentication (password, email link, OAuth, etc.)
+3. **Receive tokens** - Get access and refresh tokens
+4. **Manage session** - Use tokens to authenticate API requests
 
-For framework-specific integration examples, see the [Framework Integration](../integration) section.
+Here's the basic structure for handling authentication:
+
+```python
+from typing import Optional
+import requests
+
+class AuthManager:
+    def __init__(self, stack_auth_client):
+        self.client = stack_auth_client
+        self.current_user_token: Optional[str] = None
+    
+    def authenticate_request(self, access_token: str) -> dict:
+        """Verify and get user info from access token"""
+        return self.client._make_request(
+            'GET', 
+            '/api/v1/users/me',
+            access_type="client",
+            access_token=access_token
+        )
+    
+    def refresh_token(self, refresh_token: str) -> dict:
+        """Refresh an expired access token"""
+        return self.client._make_request(
+            'POST',
+            '/api/v1/auth/sessions/current/refresh',
+            access_type="client",
+            json={'refresh_token': refresh_token}
+        )
+    
+    def sign_out(self, access_token: str) -> bool:
+        """Sign out the current user"""
+        try:
+            self.client._make_request(
+                'DELETE',
+                '/api/v1/auth/sessions/current',
+                access_type="client",
+                access_token=access_token
+            )
+            return True
+        except Exception:
+            return False
+
+# Initialize auth manager
+auth_manager = AuthManager(stack_auth)
+```
+
+## Token Management
+
+Stack Auth uses two types of tokens:
+
+- **Access Token** - Short-lived token for API requests (typically 1 hour)
+- **Refresh Token** - Long-lived token to get new access tokens (typically 30 days)
+
+### Storing Tokens Securely
+
+For web applications, store tokens securely:
+
+```python
+from flask import session
+import jwt
+from datetime import datetime
+
+def store_tokens_securely(access_token: str, refresh_token: str):
+    """Store tokens in secure HTTP-only cookies or session"""
+    # For session storage
+    session['access_token'] = access_token
+    session['refresh_token'] = refresh_token
+    
+    # For cookie storage (recommended for web apps)
+    # Set secure, HTTP-only cookies
+    response.set_cookie(
+        'access_token', 
+        access_token, 
+        httponly=True, 
+        secure=True,
+        samesite='Strict'
+    )
+
+def get_current_user_from_token(access_token: str) -> Optional[dict]:
+    """Extract user info from access token"""
+    try:
+        # Verify token and get user
+        user_info = auth_manager.authenticate_request(access_token)
+        return user_info
+    except Exception:
+        return None
+```
+
+## Middleware for Authentication
+
+Here's how to create middleware that automatically handles authentication:
+
+```python
+from functools import wraps
+from flask import request, jsonify, g
+
+def require_auth(f):
+    """Decorator that requires authentication"""
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        # Get token from header or cookie
+        access_token = request.headers.get('Authorization')
+        if access_token and access_token.startswith('Bearer '):
+            access_token = access_token[7:]
+        elif 'access_token' in request.cookies:
+            access_token = request.cookies['access_token']
+        else:
+            return jsonify({'error': 'Authentication required'}), 401
+        
+        # Verify token and get user
+        try:
+            user_info = auth_manager.authenticate_request(access_token)
+            g.current_user = user_info
+            g.access_token = access_token
+            return f(*args, **kwargs)
+        except Exception as e:
+            return jsonify({'error': 'Invalid token'}), 401
+    
+    return decorated_function
+
+def optional_auth(f):
+    """Decorator for optional authentication"""
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        access_token = request.headers.get('Authorization')
+        if access_token and access_token.startswith('Bearer '):
+            access_token = access_token[7:]
+            try:
+                user_info = auth_manager.authenticate_request(access_token)
+                g.current_user = user_info
+                g.access_token = access_token
+            except Exception:
+                g.current_user = None
+        else:
+            g.current_user = None
+        
+        return f(*args, **kwargs)
+    
+    return decorated_function
+```
+
+## Usage Examples
+
+### Protected Route
+
+```python
+from flask import Flask, g, jsonify
+
+app = Flask(__name__)
+
+@app.route('/profile')
+@require_auth
+def get_profile():
+    """Get current user's profile - requires authentication"""
+    return jsonify({
+        'user': g.current_user,
+        'message': 'This is your profile'
+    })
+
+@app.route('/public')
+@optional_auth  
+def public_endpoint():
+    """Public endpoint with optional user context"""
+    if g.current_user:
+        return jsonify({
+            'message': f'Hello {g.current_user.get("display_name", "User")}!'
+        })
+    else:
+        return jsonify({'message': 'Hello anonymous user!'})
+```
+
+### Manual Token Refresh
+
+```python
+def refresh_user_session(refresh_token: str) -> Optional[dict]:
+    """Refresh user session and return new tokens"""
+    try:
+        token_response = auth_manager.refresh_token(refresh_token)
+        return {
+            'access_token': token_response['access_token'],
+            'refresh_token': token_response['refresh_token']
+        }
+    except Exception as e:
+        print(f"Token refresh failed: {e}")
+        return None
+```
+
+## Error Handling
+
+Common authentication errors and how to handle them:
+
+```python
+class AuthError(Exception):
+    def __init__(self, message: str, status_code: int = 401):
+        self.message = message
+        self.status_code = status_code
+        super().__init__(self.message)
+
+def handle_auth_errors(func):
+    """Decorator to handle common authentication errors"""
+    @wraps(func)
+    def wrapper(*args, **kwargs):
+        try:
+            return func(*args, **kwargs)
+        except requests.exceptions.HTTPError as e:
+            if e.response.status_code == 401:
+                raise AuthError("Invalid or expired token", 401)
+            elif e.response.status_code == 403:
+                raise AuthError("Insufficient permissions", 403)
+            else:
+                raise AuthError("Authentication error", e.response.status_code)
+        except Exception as e:
+            raise AuthError(f"Unexpected error: {str(e)}", 500)
+    return wrapper
+```
+
+## Next Steps
+
+Choose the authentication method that best fits your application:
+
+1. **[Email/Password Authentication](./password.mdx)** - Most common, familiar to users
+2. **[Magic Link Authentication](./magic-links.mdx)** - Modern passwordless approach  
+3. **[OAuth Authentication](./oauth.mdx)** - Easy sign-in with existing accounts
+4. **[Passkey Authentication](./passkeys.mdx)** - Most secure, future-proof option
+5. **[Anonymous Authentication](./anonymous.mdx)** - Great for guest users
+
+You can also enable multiple methods simultaneously to give users options.

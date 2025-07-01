@@ -1,0 +1,127 @@
+---
+title: Setup
+---
+
+<Info>
+Welcome to the Python setup guide. If you're looking for guides for other frameworks, check out the [Next.js SDK Setup](/next/getting-started/setup), [React SDK Setup](/react/getting-started/setup), or the [JavaScript SDK Setup](/js/getting-started/setup).
+</Info>
+
+Our recommended way to use Stack Auth with Python is with the [REST API](../rest-api/overview.mdx). It provides a fully documented way to interact with Stack Auth from any Python framework, including Flask, FastAPI, Django, and others.
+
+For the purpose of this guide, we will use the `requests` library to make HTTP requests to the Stack Auth API. If you haven't already, you can install it in your environment with `pip install requests`.
+
+<Steps>
+  <Step>
+    ### Create API keys
+  </Step>
+
+  First, create an account on [the Stack Auth dashboard](https://app.stack-auth.com/projects), and copy your project ID, publishable client key, and secret server key into a safe place (eg. environment variables).
+
+  From there, you can access them in your Python code. You can then read them like this:
+
+  ```python
+  import os
+
+  stack_project_id = os.getenv("STACK_PROJECT_ID")
+  stack_publishable_client_key = os.getenv("STACK_PUBLISHABLE_CLIENT_KEY")
+  stack_secret_server_key = os.getenv("STACK_SECRET_SERVER_KEY")
+  ```
+
+  <Step>
+    ### Create a Stack Auth client
+  </Step>
+
+  Next, create a helper class to make requests to the Stack Auth API. This will handle authentication headers and error handling:
+
+  ```python
+  import requests
+  import os
+  from typing import Optional, Dict, Any
+
+  class StackAuthClient:
+      def __init__(self):
+          self.base_url = "https://api.stack-auth.com"
+          self.project_id = os.getenv("STACK_PROJECT_ID")
+          self.publishable_client_key = os.getenv("STACK_PUBLISHABLE_CLIENT_KEY")
+          self.secret_server_key = os.getenv("STACK_SECRET_SERVER_KEY")
+          
+          if not all([self.project_id, self.publishable_client_key]):
+              raise ValueError("Missing required Stack Auth environment variables")
+      
+      def _make_request(
+          self, 
+          method: str, 
+          endpoint: str, 
+          access_type: str = "server",
+          access_token: Optional[str] = None,
+          **kwargs
+      ) -> Dict[str, Any]:
+          """Make a request to the Stack Auth API"""
+          headers = {
+              'x-stack-access-type': access_type,
+              'x-stack-project-id': self.project_id,
+              'x-stack-publishable-client-key': self.publishable_client_key,
+              'Content-Type': 'application/json',
+              **kwargs.pop('headers', {}),
+          }
+          
+          # Add server key for server access
+          if access_type == "server" and self.secret_server_key:
+              headers['x-stack-secret-server-key'] = self.secret_server_key
+          
+          # Add access token for authenticated requests
+          if access_token:
+              headers['x-stack-access-token'] = access_token
+          
+          url = f"{self.base_url}/{endpoint.lstrip('/')}"
+          
+          response = requests.request(method, url, headers=headers, **kwargs)
+          
+          if response.status_code >= 400:
+              raise Exception(f"Stack Auth API request failed with {response.status_code}: {response.text}")
+          
+          return response.json() if response.content else {}
+
+  # Initialize the client
+  stack_auth = StackAuthClient()
+  ```
+
+  <Step>
+    ### Test the connection
+  </Step>
+
+  Test that your API keys work correctly by fetching the current project:
+
+  ```python
+  # Test the connection
+  try:
+      project_info = stack_auth._make_request('GET', '/api/v1/projects/current')
+      print("✅ Successfully connected to Stack Auth!")
+      print(f"Project: {project_info.get('display_name', 'Unknown')}")
+  except Exception as e:
+      print(f"❌ Failed to connect: {e}")
+  ```
+
+  <Step>
+    ### Done!
+  </Step>
+</Steps>
+
+## What's Next?
+
+Now that you have Stack Auth set up in your Python application, you can:
+
+1. **[Implement Authentication](../authentication/index.mdx)** - Learn how to sign up and sign in users
+2. **[Manage Users](../user-management/index.mdx)** - Create, update, and retrieve user information  
+3. **[Handle Teams](../team-management/index.mdx)** - Implement team functionality
+4. **[Framework Integration](../integration/index.mdx)** - See specific examples for Flask, Django, and FastAPI
+
+## Framework-Specific Setup
+
+While the REST API approach works with any Python framework, we also provide specific integration guides:
+
+- **[Flask Integration](../integration/flask.mdx)** - Complete Flask setup with middleware
+- **[Django Integration](../integration/django.mdx)** - Django setup with custom authentication backend
+- **[FastAPI Integration](../integration/fastapi.mdx)** - FastAPI setup with dependency injection
+
+Choose the guide that matches your framework, or continue with the general REST API approach if you're using a different framework. 
