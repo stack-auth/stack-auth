@@ -2,14 +2,34 @@
 
 import { useChat } from '@ai-sdk/react';
 import { Bot, Send, User } from 'lucide-react';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 
 export default function AIChat() {
   const { messages, input, handleInputChange, handleSubmit, isLoading } = useChat();
   const [isOpen, setIsOpen] = useState(false);
+  const [isHydrated, setIsHydrated] = useState(false);
+
+  // Prevent hydration mismatch by only rendering after client hydration
+  useEffect(() => {
+    setIsHydrated(true);
+  }, []);
 
   // Debug logging
   console.log('Messages:', messages);
+
+  // Don't render until hydrated to prevent SSR/client mismatch
+  if (!isHydrated) {
+    return (
+      <div className="w-full max-w-4xl mx-auto">
+        <div className="flex justify-center mb-8">
+          <div className="flex items-center gap-2 px-6 py-3 bg-muted/50 rounded-xl shadow-lg font-semibold animate-pulse">
+            <Bot size={20} />
+            Loading AI Assistant...
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="w-full max-w-4xl mx-auto">
