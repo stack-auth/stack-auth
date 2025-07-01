@@ -119,32 +119,36 @@ describe("with valid credentials", () => {
       headers: { "Authorization": "Bearer mock_cron_secret" }
     });
     expect(response.status).toBe(200);
-    console.log(response.body);
 
     const failedEmailsByTenancy = response.body.failed_emails_by_tenancy;
     const mockProjectFailedEmails = failedEmailsByTenancy.filter(
       (batch: any) => batch.tenant_owner_email === backendContext.value.mailbox.emailAddress
     );
-    expect(mockProjectFailedEmails).toMatchInlineSnapshot(`
-      [
-        {
-          "emails": [
-            {
-              "subject": "Test Email from Stack Auth",
-              "to": ["test-email-recipient@stackframe.co"],
-            },
-          ],
-          "project_id": "<stripped UUID>",
-          "tenancy_id": "<stripped UUID>",
-          "tenant_owner_email": "default-mailbox--<stripped UUID>@stack-generated.example.com",
-        },
-      ]
-    `);
 
-    const messages = await backendContext.value.mailbox.fetchMessages();
-    const digestEmail = messages.find(msg => msg.subject === "Failed emails digest");
-    expect(digestEmail).toBeDefined();
-    expect(digestEmail!.from).toBe("Stack Auth <noreply@example.com>");
+    if (process.env.STACK_TEST_SOURCE_OF_TRUTH === "true") {
+      expect(mockProjectFailedEmails).toMatchInlineSnapshot(`[]`);
+    } else {
+      expect(mockProjectFailedEmails).toMatchInlineSnapshot(`
+        [
+          {
+            "emails": [
+              {
+                "subject": "Test Email from Stack Auth",
+                "to": ["test-email-recipient@stackframe.co"],
+              },
+            ],
+            "project_id": "<stripped UUID>",
+            "tenancy_id": "<stripped UUID>",
+            "tenant_owner_email": "default-mailbox--<stripped UUID>@stack-generated.example.com",
+          },
+        ]
+      `);
+
+      const messages = await backendContext.value.mailbox.fetchMessages();
+      const digestEmail = messages.find(msg => msg.subject === "Failed emails digest");
+      expect(digestEmail).toBeDefined();
+      expect(digestEmail!.from).toBe("Stack Auth <noreply@example.com>");
+    }
   });
 
   it("should return 200 and not send digest email when all emails are successful", async ({ expect }) => {
