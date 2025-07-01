@@ -94,9 +94,9 @@ async function _sendEmailWithoutRetries(options: SendEmailOptions): Promise<Resu
   try {
     let toArray = typeof options.to === 'string' ? [options.to] : options.to;
 
-    // use Emailable to check if the email is valid. skip the ones that are not (it's as if they had bounced)
-    const emailableApiKey = getEnvVariable('STACK_EMAILABLE_API_KEY');
-    if (emailableApiKey) {
+    // If using the shared email config, use Emailable to check if the email is valid. skip the ones that are not (it's as if they had bounced)
+    const emailableApiKey = getEnvVariable('STACK_EMAILABLE_API_KEY', "");
+    if (options.emailConfig.type === 'shared' && emailableApiKey) {
       await traceSpan('verifying email addresses with Emailable', async () => {
         toArray = (await Promise.all(toArray.map(async (to) => {
           const emailableResponse = await fetch(`https://api.emailable.com/v1/verify?email=${encodeURIComponent(options.to as string)}&api_key=${emailableApiKey}`);

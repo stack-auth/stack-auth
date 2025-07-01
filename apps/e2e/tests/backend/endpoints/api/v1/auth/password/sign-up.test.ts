@@ -56,6 +56,35 @@ it("should sign up new users", async ({ expect }) => {
   `);
 });
 
+it("should not sign up new users if verification callback url is not valid", async ({ expect }) => {
+  const mailbox = backendContext.value.mailbox;
+  const email = mailbox.emailAddress;
+  const password = generateSecureRandomString();
+  const response = await niceBackendFetch("/api/v1/auth/password/sign-up", {
+    method: "POST",
+    accessType: "client",
+    body: {
+      email,
+      password,
+      verification_callback_url: "http://invalid-domain.com",
+    },
+  });
+
+  expect(response).toMatchInlineSnapshot(`
+    NiceResponse {
+      "status": 400,
+      "body": {
+        "code": "REDIRECT_URL_NOT_WHITELISTED",
+        "error": "Redirect URL not whitelisted. Did you forget to add this domain to the trusted domains list on the Stack Auth dashboard?",
+      },
+      "headers": Headers {
+        "x-stack-known-error": "REDIRECT_URL_NOT_WHITELISTED",
+        <some fields may have been hidden>,
+      },
+    }
+  `);
+});
+
 it("should not allow signing up with an e-mail that already exists", async ({ expect }) => {
   await Auth.Password.signUpWithEmail();
   const res2 = await niceBackendFetch("/api/v1/auth/password/sign-up", {

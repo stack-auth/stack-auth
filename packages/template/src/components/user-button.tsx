@@ -43,7 +43,7 @@ export function UserButton(props: UserButtonProps) {
 }
 
 function UserButtonInner(props: UserButtonProps) {
-  const userFromHook = useUser({ or: props.mockUser ? 'return-null' : 'redirect' });
+  const userFromHook = useUser();
 
   // Use mock user if provided, otherwise use real user
   const user = props.mockUser ? {
