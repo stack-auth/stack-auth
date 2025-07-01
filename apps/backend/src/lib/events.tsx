@@ -1,5 +1,5 @@
 import withPostHog from "@/analytics";
-import { getPrismaClientForTenancy } from "@/prisma-client";
+import { globalPrismaClient } from "@/prisma-client";
 import { runAsynchronouslyAndWaitUntil } from "@/utils/vercel";
 import { urlSchema, yupMixed, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
 import { getEnvVariable, getNodeEnvironment } from "@stackframe/stack-shared/dist/utils/env";
@@ -10,7 +10,7 @@ import { UnionToIntersection } from "@stackframe/stack-shared/dist/utils/types";
 import { generateUuid } from "@stackframe/stack-shared/dist/utils/uuids";
 import * as yup from "yup";
 import { getEndUserInfo } from "./end-users";
-import { DEFAULT_BRANCH_ID, Tenancy } from "./tenancies";
+import { DEFAULT_BRANCH_ID } from "./tenancies";
 
 type EventType = {
   id: string,
@@ -99,7 +99,6 @@ type DataOf<T extends EventType> =
  * Do not wrap this function in waitUntil or runAsynchronously as it may use dynamic APIs
  */
 export async function logEvent<T extends EventType[]>(
-  tenancy: Tenancy,
   eventTypes: T,
   data: DataOfMany<T>,
   options: {
@@ -156,7 +155,7 @@ export async function logEvent<T extends EventType[]>(
   // rest is no more dynamic APIs so we can run it asynchronously
   runAsynchronouslyAndWaitUntil((async () => {
     // log event in DB
-    await getPrismaClientForTenancy(tenancy).event.create({
+    await globalPrismaClient.event.create({
       data: {
         systemEventTypeIds: [...allEventTypes].map(eventType => eventType.id),
         data: data as any,
