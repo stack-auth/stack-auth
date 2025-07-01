@@ -1,0 +1,455 @@
+---
+title: Example-pages
+---
+
+
+This guide demonstrates how to integrate Stack Auth with Vite. The same principles apply to other JavaScript frameworks as well. You can find the complete example code in our [GitHub repository](https://github.com/stack-auth/stack-auth/tree/main/examples/js-example).
+
+### Initialize the app
+
+```typescript title="stack.ts"
+import { StackClientApp } from "@stackframe/js";
+
+// Add type declaration for Vite's import.meta.env
+declare global {
+  interface ImportMeta {
+    env: {
+      VITE_STACK_API_URL: string;
+      VITE_STACK_PROJECT_ID: string;
+      VITE_STACK_PUBLISHABLE_CLIENT_KEY: string;
+    };
+  }
+}
+
+export const stackClientApp = new StackClientApp({
+  baseUrl: import.meta.env.VITE_STACK_API_URL,
+  projectId: import.meta.env.VITE_STACK_PROJECT_ID,
+  publishableClientKey: import.meta.env.VITE_STACK_PUBLISHABLE_CLIENT_KEY,
+  tokenStore: "cookie",
+  urls: {
+    oauthCallback: window.location.origin + "/oauth",
+  },
+}); 
+```
+
+### Index page with user information
+
+<Tabs defaultValue="html">
+  <TabsList>
+    <TabsTrigger value="html">index.html</TabsTrigger>
+    <TabsTrigger value="script">index-script.ts</TabsTrigger>
+  </TabsList>
+  
+  <TabsContent value="html">
+    ```html
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+      <meta charset="UTF-8">
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <title>Stack Auth JS Examples</title>
+    </head>
+    <body>
+      <h1>Stack Auth JS Examples</h1>
+      
+      <div id="authOptions">
+        <p>Choose an authentication example:</p>
+        <ul>
+          <li><a href="/password-sign-in">Sign in with Password</a></li>
+          <li><a href="/password-sign-up">Create Account with Password</a></li>
+          <li><a href="/otp-sign-in">Sign in with OTP Code</a></li>
+          <li><a href="/oauth">Sign in with Google</a></li>
+        </ul>
+      </div>
+
+      <div id="userInfo" style="display: none;">
+        <h2>User Information</h2>
+        <p>Email: <span id="userEmail"></span></p>
+        <button id="signOut">Sign Out</button>
+      </div>
+
+      <script type="module" src="/index-script.ts"></script>
+    </body>
+    </html>
+    ```
+  </TabsContent>
+  
+  <TabsContent value="script">
+    ```typescript
+    import { stackClientApp } from "./stack";
+
+    const updateUIState = (user: any | null) => {
+      const authOptions = document.getElementById("authOptions");
+      const userInfo = document.getElementById("userInfo");
+      const userEmailSpan = document.getElementById("userEmail");
+
+      if (user) {
+        if (authOptions) authOptions.style.display = "none";
+        if (userInfo) userInfo.style.display = "block";
+        if (userEmailSpan) userEmailSpan.textContent = user.primaryEmail || "";
+      } else {
+        if (authOptions) authOptions.style.display = "block";
+        if (userInfo) userInfo.style.display = "none";
+      }
+    };
+
+    // Check if user is already signed in
+    stackClientApp.getUser().then(updateUIState);
+
+    // Handle Sign Out
+    document.getElementById("signOut")?.addEventListener("click", async () => {
+      const user = await stackClientApp.getUser();
+      if (user) {
+        await user.signOut();
+        updateUIState(null);
+      }
+    }); 
+    ```
+  </TabsContent>
+</Tabs>
+
+
+### Sign in with password
+
+<Tabs defaultValue="html">
+  <TabsList>
+    <TabsTrigger value="html">password-sign-in.html</TabsTrigger>
+    <TabsTrigger value="script">password-sign-in-script.ts</TabsTrigger>
+  </TabsList>
+  
+  <TabsContent value="html">
+    ```html
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+      <meta charset="UTF-8">
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <title>Password Sign In</title>
+    </head>
+    <body>
+      <h1>Password Sign In</h1>
+      <p><a href="/">← Back to home</a></p>
+      
+      <div id="loginForm">
+        <h2>Sign In</h2>
+        <input type="email" id="emailInput" placeholder="Email" />
+        <input type="password" id="passwordInput" placeholder="Password" />
+        <button id="signIn">Sign In</button>
+        <div>
+          <p>Don't have an account? <a href="/password-sign-up">Create account</a></p>
+        </div>
+      </div>
+
+      <script type="module" src="/password-sign-in-script.ts"></script>
+    </body>
+    </html> 
+    ```
+  </TabsContent>
+  
+  <TabsContent value="script">
+    ```typescript
+    import { stackClientApp } from "./stack";
+
+    // Check if user is already signed in
+    stackClientApp.getUser().then((user) => {
+      if (user) {
+        window.location.href = "/";
+      }
+    });
+
+    document.getElementById("showSignUp")?.addEventListener("click", (e) => {
+      e.preventDefault();
+      document.getElementById("loginForm")?.classList.add("hidden");
+      document.getElementById("signUpForm")?.classList.remove("hidden");
+    });
+
+    document.getElementById("showSignIn")?.addEventListener("click", (e) => {
+      e.preventDefault();
+      document.getElementById("loginForm")?.classList.remove("hidden");
+      document.getElementById("signUpForm")?.classList.add("hidden");
+    });
+
+    document.getElementById("signIn")?.addEventListener("click", async () => {
+      const emailInput = document.getElementById("emailInput") as HTMLInputElement;
+      const passwordInput = document.getElementById("passwordInput") as HTMLInputElement;
+
+      const result = await stackClientApp.signInWithCredential({
+        email: emailInput.value,
+        password: passwordInput.value,
+      });
+
+      if (result.status === "error") {
+        alert("Sign in failed. Please check your email and password and try again.");
+      } else {
+        window.location.href = "/";
+      }
+    });
+
+    document.getElementById("signUp")?.addEventListener("click", async () => {
+      const emailInput = document.getElementById("signUpEmail") as HTMLInputElement;
+      const passwordInput = document.getElementById("signUpPassword") as HTMLInputElement;
+
+      const result = await stackClientApp.signUpWithCredential({
+        email: emailInput.value,
+        password: passwordInput.value,
+      });
+
+      if (result.status === "error") {
+        alert("Sign up failed. Please try again.");
+        return;
+      }
+
+      const signInResult = await stackClientApp.signInWithCredential({
+        email: emailInput.value,
+        password: passwordInput.value,
+      });
+
+      if (signInResult.status === "error") {
+        alert("Account created but sign in failed. Please sign in manually.");
+      } else {
+        window.location.href = "/";
+      }
+    });
+    ```
+  </TabsContent>
+</Tabs>
+
+### Sign up with password
+
+<Tabs defaultValue="html">
+  <TabsList>
+    <TabsTrigger value="html">password-sign-up.html</TabsTrigger>
+    <TabsTrigger value="script">password-sign-up-script.ts</TabsTrigger>
+  </TabsList>
+  
+  <TabsContent value="html">
+    ```html
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+      <meta charset="UTF-8">
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <title>Password Sign Up</title>
+    </head>
+    <body>
+      <h1>Password Sign Up</h1>
+      <p><a href="/">← Back to home</a></p>
+      
+      <div id="signUpForm">
+        <h2>Sign Up</h2>
+        <input type="email" id="signUpEmail" placeholder="Email" />
+        <input type="password" id="signUpPassword" placeholder="Password" />
+        <button id="signUp">Sign Up</button>
+        <div>
+          <p>Already have an account? <a href="/password-sign-in">Sign in</a></p>
+        </div>
+      </div>
+
+      <script type="module" src="/password-sign-up-script.ts"></script>
+    </body>
+    </html> 
+    ```
+  </TabsContent>
+  
+  <TabsContent value="script">
+    ```typescript
+    import { stackClientApp } from "./stack";
+
+    // Check if user is already signed in
+    stackClientApp.getUser().then((user) => {
+      if (user) {
+        window.location.href = "/";
+      }
+    });
+
+    document.getElementById("signUp")?.addEventListener("click", async () => {
+      const emailInput = document.getElementById("signUpEmail") as HTMLInputElement;
+      const passwordInput = document.getElementById("signUpPassword") as HTMLInputElement;
+
+      const result = await stackClientApp.signUpWithCredential({
+        email: emailInput.value,
+        password: passwordInput.value,
+      });
+
+      if (result.status === "error") {
+        alert("Sign up failed. Please try again.");
+        return;
+      }
+
+      const signInResult = await stackClientApp.signInWithCredential({
+        email: emailInput.value,
+        password: passwordInput.value,
+      });
+
+      if (signInResult.status === "error") {
+        alert("Account created but sign in failed. Please sign in manually.");
+        window.location.href = "/password-sign-in";
+      } else {
+        window.location.href = "/";
+      }
+    }); 
+    ```
+  </TabsContent>
+</Tabs>
+
+### Sign in with OTP/Magic Link
+
+<Tabs defaultValue="html">
+  <TabsList>
+    <TabsTrigger value="html">otp-sign-in.html</TabsTrigger>
+    <TabsTrigger value="script">otp-sign-in-script.ts</TabsTrigger>
+  </TabsList>
+  
+  <TabsContent value="html">
+    ```html
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+      <meta charset="UTF-8">
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <title>OTP Sign In</title>
+    </head>
+    <body>
+      <h1>OTP Sign In</h1>
+      <p><a href="/">← Back to home</a></p>
+      
+      <div id="otpForm">
+        <h2>Sign In with Email Code</h2>
+        <div id="emailStep">
+          <input type="email" id="emailInput" placeholder="Email" />
+          <button id="sendCode">Send Code</button>
+        </div>
+
+        <div id="codeStep" style="display: none;">
+          <p>Enter the code sent to your email</p>
+          <input type="text" id="codeInput" placeholder="Enter code" />
+          <button id="verifyCode">Verify Code</button>
+        </div>
+      </div>
+
+      <script type="module" src="/otp-sign-in-script.ts"></script>
+    </body>
+    </html> 
+    ```
+  </TabsContent>
+  
+  <TabsContent value="script">
+    ```typescript
+    import { stackClientApp } from "./stack";
+
+    // Check if user is already signed in
+    stackClientApp.getUser().then((user) => {
+      if (user) {
+        window.location.href = "/";
+      }
+    });
+
+    document.getElementById("signUp")?.addEventListener("click", async () => {
+      const emailInput = document.getElementById("signUpEmail") as HTMLInputElement;
+      const passwordInput = document.getElementById("signUpPassword") as HTMLInputElement;
+
+      const result = await stackClientApp.signUpWithCredential({
+        email: emailInput.value,
+        password: passwordInput.value,
+      });
+
+      if (result.status === "error") {
+        alert("Sign up failed. Please try again.");
+        return;
+      }
+
+      const signInResult = await stackClientApp.signInWithCredential({
+        email: emailInput.value,
+        password: passwordInput.value,
+      });
+
+      if (signInResult.status === "error") {
+        alert("Account created but sign in failed. Please sign in manually.");
+        window.location.href = "/password-sign-in";
+      } else {
+        window.location.href = "/";
+      }
+    }); 
+    ```
+  </TabsContent>
+</Tabs>
+
+### OAuth sign in
+
+<Tabs defaultValue="html">
+  <TabsList>
+    <TabsTrigger value="html">oauth.html</TabsTrigger>
+    <TabsTrigger value="script">oauth-script.ts</TabsTrigger>
+  </TabsList>
+  
+  <TabsContent value="html">
+    ```html
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+      <meta charset="UTF-8">
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <title>OAuth Authentication</title>
+      <style>
+        .hidden {
+          display: none;
+        }
+      </style>
+    </head>
+    <body>
+      <h1>OAuth Authentication</h1>
+      <p><a href="/">← Back to home</a></p>
+      
+      <div id="loginButtons">
+        <h2>Sign In with OAuth</h2>
+        <button id="googleSignIn">Sign in with Google</button>
+      </div>
+
+      <script type="module" src="/oauth-script.ts"></script>
+    </body>
+    </html> 
+    ```
+  </TabsContent>
+  
+  <TabsContent value="script">
+    ```typescript
+    import { stackClientApp } from "./stack";
+
+    // Check if user is already signed in
+    stackClientApp.getUser().then((user) => {
+      if (user) {
+        window.location.href = "/";
+      }
+    });
+
+    // Handle Google Sign In
+    document.getElementById("googleSignIn")?.addEventListener("click", async () => {
+      try {
+        await stackClientApp.signInWithOAuth('google');
+      } catch (error) {
+        console.error("Google sign in failed:", error);
+        alert("Failed to initialize Google sign in");
+      }
+    });
+
+    // Handle OAuth redirect
+    window.addEventListener("load", async () => {
+      try {
+        const params = new URLSearchParams(window.location.search);
+        const code = params.get("code");
+        const state = params.get("state");
+        
+        if (code && state) {
+          const user = await stackClientApp.callOAuthCallback();
+          if (user) {
+            window.location.href = "/";
+          }
+        }
+      } catch (error) {
+        console.error("Failed to handle OAuth redirect:", error);
+        alert("Authentication failed. Please try again.");
+      }
+    });
+    ```
+  </TabsContent>
+</Tabs>

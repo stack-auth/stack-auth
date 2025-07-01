@@ -1,0 +1,95 @@
+/* Code block container */
+.code-block-container {
+  position: relative;
+  margin: 1.5rem 0;
+  overflow: hidden;
+}
+
+/* Code block title/filename bar */
+.code-block-title {
+  font-size: 0.875rem;
+  font-weight: 500;
+  padding: 0.5rem 1rem;
+}
+
+/* Code language tag and copy button header */
+.code-block-header {
+  position: absolute;
+  top: 0.5rem;
+  right: 0.5rem;
+  display: flex;
+  align-items: center;
+  z-index: 10;
+  gap: 0.5rem;
+}
+
+/* Code language tag */
+.code-language-tag {
+  font-size: 0.75rem;
+  padding: 0.25rem 0.5rem;
+  border-radius: 0.25rem;
+}
+
+/* Copy button */
+.copy-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 0.25rem;
+  padding: 0.25rem;
+  transition: background-color 0.15s;
+  cursor: pointer;
+}
+
+.copy-button:hover {
+  background-color: rgba(0, 0, 0, 0.1);
+}
+
+/* For dark mode */
+:root.dark .copy-button:hover {
+  background-color: rgba(255, 255, 255, 0.1);
+}
+
+/* Code block formatting */
+pre {
+  margin: 0;
+  padding: 1rem;
+  overflow-x: auto;
+  white-space: pre;
+  word-spacing: normal;
+  word-break: normal;
+  tab-size: 4;
+}
+
+/* Inline code */
+:not(pre) > code {
+  font-size: 0.875rem;
+  border-radius: 0.25rem;
+  padding: 0.125rem 0.25rem;
+}
+
+/* Override fumadocs dotted line styles */
+[data-rehype-pretty-code-figure] pre {
+  border: none !important;
+  border-style: none !important;
+}
+
+[data-rehype-pretty-code-figure] {
+  border: none !important;
+  border-style: none !important;
+}
+
+[data-rehype-pretty-code-title] {
+  border: none !important;
+  border-style: none !important;
+  border-bottom: none !important;
+}
+
+/* Override any fumadocs specific code block containers */
+.fumadocs-code-block,
+[data-theme=""] pre,
+div[data-rehype-pretty-code-fragment],
+pre[data-language] {
+  border: none !important;
+  border-style: none !important;
+} 

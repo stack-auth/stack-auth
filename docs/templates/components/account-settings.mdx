@@ -1,0 +1,77 @@
+---
+title: "<AccountSettings />"
+full: true
+---
+
+## Demo
+
+<AccountSettingsStackAuth /> 
+
+## Props
+
+<PropTable
+  props={[
+    {
+      name: "fullPage",
+      type: "boolean",
+      description: "If true, renders the component in full-page mode.",
+      optional: true,
+      default: "false"
+    },
+    {
+      name: "extraItems",
+      type: "Array",
+      description: "Additional items to be added to the sidebar. Each item should have the following properties:",
+      optional: true,
+      nested: [
+        {
+          name: "title",
+          type: "string",
+          description: "The title of the item."
+        },
+        {
+          name: "content",
+          type: "React.ReactNode",
+          description: "The content to be rendered for the item."
+        },
+        {
+          name: "subpath",
+          type: "string",
+          description: "The subpath for the item's route."
+        },
+        {
+          name: "icon",
+          type: "React.ReactNode",
+          description: "The icon component for the item. Only used if iconName is not provided.",
+          optional: true
+        },
+        {
+          name: "iconName",
+          type: "string",
+          description: "The name of the Lucide icon to be used for the item. Only used if icon is not provided.",
+          optional: true
+        }
+      ]
+    }
+  ]}
+/>
+
+## Example
+
+```tsx
+import { AccountSettings } from '@stackframe/stack';
+
+export default function MyAccountPage() {
+  return (
+    <AccountSettings
+      fullPage={true}
+      extraItems={[{
+        title: 'Custom Section',
+        iconName: "Settings",
+        content: <CustomContent />,
+        subpath: '/custom',
+      }]}
+    />
+  );
+}
+```

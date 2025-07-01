@@ -1,0 +1,90 @@
+---
+title: TeamUser
+full: true
+---
+
+On this page:
+- [TeamUser](#teamuser)
+- [ServerTeamUser](#serverteamuser)
+
+---
+
+# `TeamUser`
+
+The `TeamUser` object is used on the client side to represent a user in the context of a team, providing minimal information about the user, including their ID and team-specific profile.
+
+It is usually obtained by calling 
+`team.useUsers()` or {/* THIS_LINE_PLATFORM react-like */}
+`team.listUsers()` on a [`Team` object](../types/team.mdx#team).
+
+### Table of Contents
+
+<ClickableTableOfContents code={`type TeamUser = {
+  id: string;  //$stack-link-to:#teamuserid
+  teamProfile: TeamProfile;  //$stack-link-to:#teamuserteamprofile
+};`} />
+
+---
+
+<CollapsibleTypesSection type="teamUser" property="id" defaultOpen={false}>
+  <MethodLayout>
+    <MethodContent>
+      The ID of the user.
+    </MethodContent>
+    <MethodAside title="Type Definition">
+
+      ```typescript
+      declare const id: string;
+      ```
+    </MethodAside>
+  </MethodLayout>
+</CollapsibleTypesSection>
+
+<CollapsibleTypesSection type="teamUser" property="teamProfile" defaultOpen={false}>
+  <MethodLayout>
+    <MethodContent>
+      The team profile of the user as a `TeamProfile` object.
+    </MethodContent>
+    <MethodAside title="Type Definition">
+
+      ```typescript
+      declare const teamProfile: TeamProfile;
+      ```
+    </MethodAside>
+  </MethodLayout>
+</CollapsibleTypesSection>
+
+---
+
+# `ServerTeamUser`
+
+The `ServerTeamUser` object is used on the server side to represent a user within a team. Besides the team profile, it also includes all the functionality of a [`ServerUser`](../types/user.mdx#serveruser).
+
+It is usually obtained by calling `serverTeam.listUsers()` on a [`ServerTeam` object](../types/team.mdx#serverteam).
+
+### Table of Contents
+
+<ClickableTableOfContents code={`type ServerTeamUser =
+  // Inherits all functionality from TeamUser
+  & TeamUser //$stack-link-to:#teamuser
+  // Inherits all functionality from ServerUser
+  & ServerUser //$stack-link-to:./user#serveruser
+  & {
+    teamProfile: ServerTeamProfile;  //$stack-link-to:#serverteamuserteamprofile
+  };`} />
+
+---
+
+<CollapsibleTypesSection type="serverTeamUser" property="teamProfile" defaultOpen={false}>
+  <MethodLayout>
+    <MethodContent>
+      The team profile of the user as a `ServerTeamProfile` object.
+    </MethodContent>
+      <MethodAside title="Type Definition">
+
+      ```typescript
+      declare const teamProfile: ServerTeamProfile;
+      ```
+    </MethodAside>
+  </MethodLayout>
+</CollapsibleTypesSection>

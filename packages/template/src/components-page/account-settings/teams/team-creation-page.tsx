@@ -12,7 +12,9 @@ import { useTranslation } from "../../../lib/translations";
 import { PageLayout } from "../page-layout";
 import { Section } from "../section";
 
-export function TeamCreationPage() {
+export function TeamCreationPage(props?: {
+  mockMode?: boolean,
+}) {
   const { t } = useTranslation();
 
   const teamCreationSchema = yupObject({
@@ -24,25 +26,42 @@ export function TeamCreationPage() {
   });
   const app = useStackApp();
   const project = app.useProject();
-  const user = useUser({ or: 'redirect' });
+  const user = useUser({ or: props?.mockMode ? 'return-null' : 'redirect' });
   const navigate = app.useNavigate();
   const [loading, setLoading] = useState(false);
+
+  // In mock mode, show that team creation is disabled
+  if (props?.mockMode) {
+    return (
+      <PageLayout>
+        <MessageCard title={t("Team creation is disabled in demo mode")} />
+      </PageLayout>
+    );
+  }
 
   if (!project.config.clientTeamCreationEnabled) {
     return <MessageCard title={t("Team creation is not enabled")} />;
   }
 
   const onSubmit = async (data: yup.InferType<typeof teamCreationSchema>) => {
+    if (props?.mockMode) {
+      // Mock mode - just show an alert
+      alert("Mock mode: Team creation clicked");
+      return;
+    }
+
     setLoading(true);
 
     let team;
     try {
-      team = await user.createTeam({ displayName: data.displayName });
+      team = await user?.createTeam({ displayName: data.displayName });
     } finally {
       setLoading(false);
     }
 
-    navigate(`#team-${team.id}`);
+    if (team) {
+      navigate(`#team-${team.id}`);
+    }
   };
 
   return (

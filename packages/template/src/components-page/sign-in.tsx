@@ -5,6 +5,17 @@ export function SignIn(props: {
   automaticRedirect?: boolean,
   extraInfo?: React.ReactNode,
   firstTab?: 'magic-link' | 'password',
+  mockProject?: {
+    config: {
+      signUpEnabled: boolean,
+      credentialEnabled: boolean,
+      passkeyEnabled: boolean,
+      magicLinkEnabled: boolean,
+      oauthProviders: {
+        id: string,
+      }[],
+    },
+  },
 }) {
   return (
     <AuthPage
@@ -13,6 +24,7 @@ export function SignIn(props: {
       automaticRedirect={!!props.automaticRedirect}
       extraInfo={props.extraInfo}
       firstTab={props.firstTab}
+      mockProject={props.mockProject}
     />
   );
 }

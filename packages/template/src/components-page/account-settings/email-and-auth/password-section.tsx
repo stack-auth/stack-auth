@@ -13,9 +13,27 @@ import { useTranslation } from "../../../lib/translations";
 import { Section } from "../section";
 
 
-export function PasswordSection() {
+export function PasswordSection(props?: {
+  mockMode?: boolean,
+}) {
   const { t } = useTranslation();
-  const user = useUser({ or: "throw" });
+  const user = useUser({ or: props?.mockMode ? 'return-null' : "throw" });
+
+  // In mock mode, show a placeholder message
+  if (props?.mockMode && !user) {
+    return (
+      <Section
+        title={t("Password")}
+        description={t("Password management is not available in demo mode.")}
+      >
+        <Typography variant='secondary'>{t("Password management is not available in demo mode.")}</Typography>
+      </Section>
+    );
+  }
+
+  if (!user) {
+    return null; // This shouldn't happen in non-mock mode due to throw
+  }
   const contactChannels = user.useContactChannels();
   const [changingPassword, setChangingPassword] = useState(false);
   const [loading, setLoading] = useState(false);
