@@ -1,4 +1,3 @@
-import { getPrismaClientForTenancy, globalPrismaClient } from "@/prisma-client";
 import { KnownErrors } from "@stackframe/stack-shared";
 import { override } from "@stackframe/stack-shared/dist/config/format";
 import { OrganizationRenderedConfig } from "@stackframe/stack-shared/dist/config/schema";
@@ -343,6 +342,7 @@ export async function updatePermissionDefinition(
 }
 
 export async function deletePermissionDefinition(
+  tx: PrismaTransaction,
   options: {
     scope: "team" | "project",
     tenancy: Tenancy,
@@ -358,7 +358,7 @@ export async function deletePermissionDefinition(
   }
 
   // Remove the permission from the config and update other permissions' containedPermissionIds
-  await globalPrismaClient.environmentConfigOverride.update({
+  await tx.environmentConfigOverride.update({
     where: {
       projectId_branchId: {
         projectId: options.tenancy.project.id,
@@ -387,14 +387,14 @@ export async function deletePermissionDefinition(
 
   // Remove all direct permissions for this permission ID
   if (options.scope === "team") {
-    await getPrismaClientForTenancy(options.tenancy).teamMemberDirectPermission.deleteMany({
+    await tx.teamMemberDirectPermission.deleteMany({
       where: {
         tenancyId: options.tenancy.id,
         permissionId: options.permissionId,
       },
     });
   } else {
-    await getPrismaClientForTenancy(options.tenancy).projectUserDirectPermission.deleteMany({
+    await tx.projectUserDirectPermission.deleteMany({
       where: {
         tenancyId: options.tenancy.id,
         permissionId: options.permissionId,

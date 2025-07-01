@@ -30,10 +30,12 @@ export const projectPermissionDefinitionsCrudHandlers = createLazyProxy(() => cr
     });
   },
   async onDelete({ auth, params }) {
-    await deletePermissionDefinition({
-      scope: "project",
-      tenancy: auth.tenancy,
-      permissionId: params.permission_id
+    await retryTransaction(globalPrismaClient, async (tx) => {
+      return await deletePermissionDefinition(tx, {
+        scope: "project",
+        tenancy: auth.tenancy,
+        permissionId: params.permission_id
+      });
     });
   },
   async onList({ auth }) {
