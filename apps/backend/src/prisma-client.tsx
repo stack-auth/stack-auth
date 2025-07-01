@@ -18,6 +18,7 @@ export type PrismaClientTransaction = PrismaClient | Parameters<Parameters<Prism
 const prismaClientsStore = (globalVar.__stack_prisma_clients as undefined) || {
   global: new PrismaClient(),
   neon: new Map<string, PrismaClient>(),
+  postgres: new Map<string, PrismaClient>(),
 };
 if (getNodeEnvironment().includes('development')) {
   globalVar.__stack_prisma_clients = prismaClientsStore;  // store globally so fast refresh doesn't recreate too many Prisma clients
@@ -40,9 +41,13 @@ export function getPrismaClientForTenancy(tenancy: Tenancy) {
 }
 
 function getPostgresPrismaClient(connectionString: string) {
-  const adapter = new PrismaPg({ connectionString: connectionString });
-  const prisma = new PrismaClient({ adapter });
-  return prisma;
+  let postgresPrismaClient = prismaClientsStore.postgres.get(connectionString);
+  if (!postgresPrismaClient) {
+    const adapter = new PrismaPg({ connectionString });
+    postgresPrismaClient = new PrismaClient({ adapter });
+    prismaClientsStore.postgres.set(connectionString, postgresPrismaClient);
+  }
+  return postgresPrismaClient;
 }
 
 export function getPrismaClientForSourceOfTruth(sourceOfTruth: OrganizationRenderedConfig["sourceOfTruth"], branchId: string) {
