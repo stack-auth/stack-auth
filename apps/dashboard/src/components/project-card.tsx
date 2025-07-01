@@ -17,9 +17,6 @@ export function ProjectCard({ project }: { project: AdminProject }) {
         </CardHeader>
         <CardFooter className="flex justify-between mt-2">
           <Typography type='label' variant='secondary'>
-            {project.userCount} users
-          </Typography>
-          <Typography type='label' variant='secondary'>
             {createdAt}
           </Typography>
         </CardFooter>
