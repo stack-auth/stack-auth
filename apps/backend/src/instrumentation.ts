@@ -7,6 +7,7 @@ import { registerOTel } from '@vercel/otel';
 import "./polyfills";
 
 // this is a hack for making prisma instrumentation work
+// somehow prisma instrumentation accesses global and it makes edge instrumentation complain
 globalThis.global = globalThis;
 
 export function register() {
