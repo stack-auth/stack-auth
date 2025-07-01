@@ -85,7 +85,6 @@ async function loadDailyActiveUsers(tenancy: Tenancy, now: Date) {
         COUNT(DISTINCT "data"->'userId') AS "dau"
       FROM "Event"
       WHERE "eventStartedAt" >= ${now}::date - INTERVAL '30 days'
-        AND "eventStartedAt" < ${now}::date
         AND '$user-activity' = ANY("systemEventTypeIds"::text[])
         AND "data"->>'projectId' = ${tenancy.project.id}
         AND COALESCE("data"->>'branchId', 'main') = ${tenancy.branchId}

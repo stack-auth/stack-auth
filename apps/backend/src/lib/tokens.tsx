@@ -97,6 +97,7 @@ export async function generateAccessToken(options: {
   refreshTokenId: string,
 }) {
   await logEvent(
+    options.tenancy,
     [SystemEventTypes.SessionActivity],
     {
       projectId: options.tenancy.project.id,
