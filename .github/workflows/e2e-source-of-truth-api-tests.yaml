@@ -18,6 +18,7 @@ jobs:
       NODE_ENV: test
       STACK_ENABLE_HARDCODED_PASSKEY_CHALLENGE_FOR_TESTING: yes
       STACK_OVERRIDE_SOURCE_OF_TRUTH: '{"type": "postgres", "connectionString": "postgres://postgres:PASSWORD-PLACEHOLDER--uqfEC1hmmv@localhost:5432/stackframe2"}'
+      STACK_TEST_SOURCE_OF_TRUTH: true
 
     strategy:
       matrix:
