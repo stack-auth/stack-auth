@@ -519,9 +519,7 @@ model ApiKeySet {
 //#endregion
 
 model ProjectApiKey {
-  projectId String
-  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  tenancyId String  @db.Uuid
+  tenancyId String @db.Uuid
 
   id           String @default(uuid()) @db.Uuid
   secretApiKey String @unique
@@ -540,6 +538,8 @@ model ProjectApiKey {
 
   projectUser ProjectUser? @relation(fields: [tenancyId, projectUserId], references: [tenancyId, projectUserId], onDelete: Cascade)
   team        Team?        @relation(fields: [tenancyId, teamId], references: [tenancyId, teamId], onDelete: Cascade)
+  Project     Project?     @relation(fields: [projectId], references: [id])
+  projectId   String?
 
   @@id([tenancyId, id])
 }
