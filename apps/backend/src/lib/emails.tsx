@@ -379,7 +379,7 @@ export function normalizeEmail(email: string): string {
   const emailParts = emailLower.split(/@/);
 
   if (emailParts.length !== 2) {
-    throw new StackAssertionError("Invalid email address", { email });
+    return email;
   }
 
   let [username, domain] = emailParts;
