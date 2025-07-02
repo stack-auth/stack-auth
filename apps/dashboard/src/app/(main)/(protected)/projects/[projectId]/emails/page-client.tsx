@@ -335,7 +335,7 @@ function SendEmailDialog(props: {
   const [sharedSmtpDialogOpen, setSharedSmtpDialogOpen] = useState(false);
   const [selectedUser, setSelectedUser] = useState<ServerUser | null>(null);
 
-  const handleSend = async (formData: { subject: string, content: string, notification_category_name: string }) => {
+  const handleSend = async (formData: { subject: string, content: string, notificationCategoryName: string }) => {
     if (!selectedUser) {
       toast({
         title: "No recipients selected",
@@ -344,14 +344,21 @@ function SendEmailDialog(props: {
       });
       return "prevent-close-and-prevent-reset";
     }
-
-    await stackAdminApp.sendEmail({
-      userId: selectedUser.id,
-      subject: formData.subject,
-      content: formData.content,
-      notificationCategoryName: formData.notification_category_name,
-    });
-
+    try {
+      await stackAdminApp.sendEmail({
+        userId: selectedUser.id,
+        subject: formData.subject,
+        content: formData.content,
+        notificationCategoryName: formData.notificationCategoryName,
+      });
+    } catch (error) {
+      toast({
+        title: "Error sending email",
+        description: "The email could not be sent. The user may have unsubscribed from this notification category.",
+        variant: "destructive",
+      });
+      return
+    }
     setSelectedUser(null);
     toast({
       title: "Email sent",
@@ -397,7 +404,7 @@ function SendEmailDialog(props: {
         formSchema={yup.object({
           subject: yup.string().defined(),
           content: yup.string().defined(),
-          notification_category_name: yup.string().oneOf(['Transactional', 'Marketing']).defined(),
+          notificationCategoryName: yup.string().oneOf(['Transactional', 'Marketing']).label("notification category").defined(),
         })}
         render={(form) => (
           <>
@@ -435,8 +442,8 @@ function SendEmailDialog(props: {
             <InputField label="Subject" name="subject" control={form.control} type="text" required />
             {/* TODO: fetch notification categories here instead of hardcoding these two */}
             <SelectField
-              label="Notification category"
-              name="notification_category_name"
+              label="Notification Category"
+              name="notificationCategoryName"
               control={form.control}
               options={[
                 { label: "Transactional", value: 'Transactional' },
