@@ -300,7 +300,7 @@ export function CustomSearchDialog({ open, onOpenChange }: CustomSearchDialogPro
             <button
               onClick={() => setDropdownOpen(!dropdownOpen)}
               className={cn(
-                "text-xs px-3 py-1.5 rounded-md transition-colors flex items-center gap-2",
+                "text-xs px-3 py-1.5 rounded-md flex items-center gap-2",
                 dropdownOpen ? "bg-fd-primary text-fd-primary-foreground" : "bg-fd-muted text-fd-muted-foreground hover:bg-fd-muted/80"
               )}
             >
@@ -326,7 +326,7 @@ export function CustomSearchDialog({ open, onOpenChange }: CustomSearchDialogPro
                       setDropdownOpen(false);
                     }}
                     className={cn(
-                      "w-full text-left px-3 py-2 text-xs hover:bg-fd-muted transition-colors flex items-center gap-2",
+                      "w-full text-left px-3 py-2 text-xs hover:bg-fd-muted flex items-center gap-2",
                       selectedPlatformFilter === platform && "bg-fd-primary/10 text-fd-primary"
                     )}
                   >
@@ -344,7 +344,7 @@ export function CustomSearchDialog({ open, onOpenChange }: CustomSearchDialogPro
           </div>
           <button
             onClick={() => onOpenChange(false)}
-            className="ml-3 p-1 hover:bg-fd-muted rounded-md transition-colors"
+            className="ml-3 p-1 hover:bg-fd-muted rounded-md"
           >
             <X className="w-4 h-4 text-fd-muted-foreground" />
           </button>

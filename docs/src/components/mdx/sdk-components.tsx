@@ -47,7 +47,7 @@ function ClickableCodeblock({
   useEffect(() => {
     const savedLightTheme = localStorage.getItem('stack-docs-light-theme');
     const savedDarkTheme = localStorage.getItem('stack-docs-dark-theme');
-    
+
     if (savedLightTheme) {
       setSelectedLightTheme(savedLightTheme);
     }
@@ -159,12 +159,12 @@ function ClickableCodeblock({
     const updateHighlightedCode = async () => {
       try {
         // Detect if we're in dark mode by checking CSS custom properties or document class
-        const isDarkMode = document.documentElement.classList.contains('dark') || 
+        const isDarkMode = document.documentElement.classList.contains('dark') ||
                           getComputedStyle(document.documentElement).getPropertyValue('--fd-background').includes('0 0% 3.9%');
-        
+
         // Use selected themes instead of hardcoded ones
         const themeToUse = isDarkMode ? selectedDarkTheme : selectedLightTheme;
-        
+
         const html = await codeToHtml(code, {
           lang: language,
           theme: themeToUse,
@@ -233,7 +233,7 @@ function ClickableCodeblock({
             <div className="relative">
               <button
                 onClick={() => setIsThemeSwitcherOpen(!isThemeSwitcherOpen)}
-                className="p-1.5 rounded-md bg-fd-muted/80 hover:bg-fd-muted text-fd-muted-foreground hover:text-fd-foreground transition-colors border border-fd-border/50 group"
+                className="p-1.5 rounded-md bg-fd-muted/80 hover:bg-fd-muted text-fd-muted-foreground hover:text-fd-foreground border border-fd-border/50 group"
                 title="Choose code syntax highlighting theme for better readability and accessibility"
                 aria-label="Code theme selector for accessibility"
               >
@@ -251,7 +251,6 @@ function ClickableCodeblock({
                     <div className="text-xs font-medium text-fd-foreground mb-2 pb-1 border-b border-fd-border/30">
                       Code Theme
                     </div>
-                    
                     {/* Current mode indicator */}
                     <div>
                       <div className="flex items-center gap-1.5 text-xs text-fd-muted-foreground mb-1.5">
@@ -272,8 +271,8 @@ function ClickableCodeblock({
                                 setIsThemeSwitcherOpen(false);
                               }}
                               className={`w-full flex items-center justify-between px-2 py-1 rounded text-xs transition-all duration-150 ${
-                                isSelected 
-                                  ? 'bg-fd-primary text-fd-primary-foreground font-medium' 
+                                isSelected
+                                  ? 'bg-fd-primary text-fd-primary-foreground font-medium'
                                   : 'hover:bg-fd-accent hover:text-fd-accent-foreground text-fd-foreground'
                               }`}
                               style={{ height: '24px' }}
@@ -487,7 +486,7 @@ export function ParamField({
 export function Accordion({ title, children }: { title: React.ReactNode, children: React.ReactNode }) {
   return (
     <details className="group mb-3 border border-fd-border/30 rounded-lg bg-fd-card/20">
-      <summary className="flex items-center justify-between px-3 py-2 cursor-pointer text-fd-foreground hover:bg-fd-accent/30 rounded-lg list-none [&::-webkit-details-marker]:hidden transition-colors">
+      <summary className="flex items-center justify-between px-3 py-2 cursor-pointer text-fd-foreground hover:bg-fd-accent/30 rounded-lg list-none [&::-webkit-details-marker]:hidden">
         <span className="text-sm font-medium">{title}</span>
         <svg
           className="w-4 h-4 transition-transform group-open:rotate-180 text-fd-muted-foreground"
