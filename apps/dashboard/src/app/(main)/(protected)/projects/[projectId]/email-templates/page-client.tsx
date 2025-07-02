@@ -129,7 +129,6 @@ function SubjectPreview(props: { subject: string, type: EmailTemplateType }) {
 }
 
 
-
 function ResetEmailTemplateDialog(props: {
   open?: boolean,
   onClose?: () => void,

@@ -346,10 +346,10 @@ function SendEmailDialog(props: {
     }
 
     await stackAdminApp.sendEmail({
-      user_id: selectedUser.id,
+      userId: selectedUser.id,
       subject: formData.subject,
-      html: formData.content,
-      notification_category_name: formData.notification_category_name,
+      content: formData.content,
+      notificationCategoryName: formData.notification_category_name,
     });
 
     setSelectedUser(null);
