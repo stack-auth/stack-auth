@@ -1,140 +1,332 @@
 'use client';
 
 import { useChat } from '@ai-sdk/react';
-import { Bot, Send, User } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { Maximize2, Minimize2, Send, X } from 'lucide-react';
+import { createContext, useContext, useEffect, useState, type ReactNode } from 'react';
+import { MessageFormatter } from './message-formatter';
 
-export default function AIChat() {
-  const { messages, input, handleInputChange, handleSubmit, isLoading } = useChat();
+// Stack Auth Icon Component (just the icon, not full logo)
+function StackIcon({ size = 20, className }: { size?: number, className?: string }) {
+  return (
+    <svg
+      width={size}
+      height={size * (242/200)} // Maintain aspect ratio
+      viewBox="0 0 200 242"
+      fill="none"
+      xmlns="http://www.w3.org/2000/svg"
+      className={className}
+    >
+      <path d="M103.504 1.81227C101.251 0.68679 98.6002 0.687576 96.3483 1.81439L4.4201 47.8136C1.71103 49.1692 0 51.9387 0 54.968V130.55C0 133.581 1.7123 136.351 4.42292 137.706L96.4204 183.695C98.6725 184.82 101.323 184.82 103.575 183.694L168.422 151.271C173.742 148.611 180 152.479 180 158.426V168.879C180 171.91 178.288 174.68 175.578 176.035L103.577 212.036C101.325 213.162 98.6745 213.162 96.4224 212.036L11.5771 169.623C6.25791 166.964 0 170.832 0 176.779V187.073C0 190.107 1.71689 192.881 4.43309 194.234L96.5051 240.096C98.7529 241.216 101.396 241.215 103.643 240.094L195.571 194.235C198.285 192.881 200 190.109 200 187.076V119.512C200 113.565 193.741 109.697 188.422 112.356L131.578 140.778C126.258 143.438 120 139.57 120 133.623V123.17C120 120.14 121.712 117.37 124.422 116.014L195.578 80.4368C198.288 79.0817 200 76.3116 200 73.2814V54.9713C200 51.9402 198.287 49.1695 195.576 47.8148L103.504 1.81227Z" fill="currentColor"/>
+    </svg>
+  );
+}
+
+// Chat Context
+type ChatContextType = {
+  isOpen: boolean,
+  isExpanded: boolean,
+  toggleChat: () => void,
+  expandChat: () => void,
+  collapseChat: () => void,
+};
+
+type ChatProviderProps = {
+  children: ReactNode,
+};
+
+const ChatContext = createContext<ChatContextType | undefined>(undefined);
+
+export function ChatProvider({ children }: ChatProviderProps) {
   const [isOpen, setIsOpen] = useState(false);
-  const [isHydrated, setIsHydrated] = useState(false);
+  const [isExpanded, setIsExpanded] = useState(false);
 
-  // Prevent hydration mismatch by only rendering after client hydration
+  // Load state from localStorage on mount
   useEffect(() => {
-    setIsHydrated(true);
+    const savedIsOpen = localStorage.getItem('ai-chat-open');
+    const savedIsExpanded = localStorage.getItem('ai-chat-expanded');
+
+    if (savedIsOpen === 'true') {
+      setIsOpen(true);
+    }
+    if (savedIsExpanded === 'true') {
+      setIsExpanded(true);
+    }
   }, []);
 
-  // Debug logging
-  console.log('Messages:', messages);
+  // Save state to localStorage when it changes
+  useEffect(() => {
+    localStorage.setItem('ai-chat-open', isOpen.toString());
+  }, [isOpen]);
 
-  // Don't render until hydrated to prevent SSR/client mismatch
-  if (!isHydrated) {
-    return (
-      <div className="w-full max-w-4xl mx-auto">
-        <div className="flex justify-center mb-8">
-          <div className="flex items-center gap-2 px-6 py-3 bg-muted/50 rounded-xl shadow-lg font-semibold animate-pulse">
-            <Bot size={20} />
-            Loading AI Assistant...
-          </div>
-        </div>
-      </div>
-    );
-  }
+  useEffect(() => {
+    localStorage.setItem('ai-chat-expanded', isExpanded.toString());
+  }, [isExpanded]);
+
+  // Add/remove body classes for content shifting
+  useEffect(() => {
+    if (isOpen) {
+      document.body.classList.add('chat-open');
+    } else {
+      document.body.classList.remove('chat-open');
+      setIsExpanded(false); // Close expansion when chat closes
+    }
+
+    return () => {
+      document.body.classList.remove('chat-open');
+    };
+  }, [isOpen]);
+
+  const toggleChat = () => setIsOpen(!isOpen);
+  const expandChat = () => setIsExpanded(true);
+  const collapseChat = () => setIsExpanded(false);
+
+  const value = {
+    isOpen,
+    isExpanded,
+    toggleChat,
+    expandChat,
+    collapseChat,
+  };
 
   return (
-    <div className="w-full max-w-4xl mx-auto">
-      {/* Toggle Button */}
-      <div className="flex justify-center mb-8">
-        <button
-          onClick={() => setIsOpen(!isOpen)}
-          className="flex items-center gap-2 px-6 py-3 bg-primary text-primary-foreground rounded-xl shadow-lg hover:shadow-xl transition-all duration-300 hover:-translate-y-1 font-semibold"
-        >
-          <Bot size={20} />
-          {isOpen ? 'Hide AI Assistant' : 'Ask AI Assistant'}
-        </button>
+    <ChatContext.Provider value={value}>
+      {children}
+      <AIChatDrawer />
+    </ChatContext.Provider>
+  );
+}
+
+export function useChatContext() {
+  const context = useContext(ChatContext);
+  if (context === undefined) {
+    throw new Error('useChatContext must be used within a ChatProvider');
+  }
+  return context;
+}
+
+function AIChatDrawer() {
+  const { isOpen, isExpanded, toggleChat, expandChat, collapseChat } = useChatContext();
+  const [input, setInput] = useState('');
+  const [docsContent, setDocsContent] = useState('');
+
+  // Fetch documentation content when component mounts
+  useEffect(() => {
+    let isCancelled = false;
+
+    const fetchDocs = async () => {
+      try {
+        const response = await fetch('/llms.txt');
+        if (response.ok && !isCancelled) {
+          const content = await response.text();
+          setDocsContent(content);
+        }
+      } catch (error) {
+        console.error('Failed to fetch documentation:', error);
+      }
+    };
+
+    fetchDocs().catch((error) => {
+      console.error('Failed to fetch documentation:', error);
+    });
+
+    return () => {
+      isCancelled = true;
+    };
+  }, []);
+
+  const {
+    messages,
+    handleSubmit,
+    isLoading,
+    error,
+  } = useChat({
+    api: '/api/chat',
+    initialMessages: [],
+    body: {
+      docsContent,
+    },
+    onError: (error: Error) => {
+      console.error('Chat error:', error);
+    },
+  });
+
+  const handleFormSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!input.trim() || isLoading) return;
+
+    handleSubmit(e, {
+      body: {
+        docsContent,
+      },
+    });
+    setInput('');
+  };
+
+  const handleInputChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    setInput(e.target.value);
+  };
+
+  // Starter prompts for users
+  const starterPrompts = [
+    {
+      title: "Getting Started",
+      description: "Setup and installation",
+      prompt: "How do I get started with Stack Auth?"
+    },
+    {
+      title: "Next.js Integration",
+      description: "Framework setup",
+      prompt: "How do I implement authentication in Next.js?"
+    },
+    {
+      title: "Authentication Methods",
+      description: "Available options",
+      prompt: "What authentication methods does Stack Auth support?"
+    }
+  ];
+
+  const handleStarterPromptClick = (prompt: string) => {
+    setInput(prompt);
+  };
+
+  return (
+    <div
+      className={`fixed top-14 right-0 h-[calc(100vh-3.5rem)] bg-fd-background border-l border-fd-border flex flex-col transition-all duration-300 ease-out z-50 ${
+        isExpanded ? 'w-[70vw] z-[70]' : 'w-96'
+      } ${
+        isOpen ? 'translate-x-0' : 'translate-x-full'
+      }`}
+    >
+      {/* Header */}
+      <div className="flex items-center justify-between p-3 border-b border-fd-border bg-fd-background">
+        <div className="flex items-center gap-2">
+          <StackIcon size={18} className="text-fd-primary" />
+          <div>
+            <h3 className="font-medium text-fd-foreground text-sm">Stack Auth AI</h3>
+            <p className="text-xs text-fd-muted-foreground">Documentation assistant</p>
+          </div>
+        </div>
+        <div className="flex items-center gap-1">
+          {/* Expand/Collapse Button */}
+          <button
+            onClick={isExpanded ? collapseChat : expandChat}
+            className="p-1 text-fd-muted-foreground hover:text-fd-foreground hover:bg-fd-muted rounded transition-colors"
+            title={isExpanded ? 'Collapse chat' : 'Expand chat'}
+          >
+            {isExpanded ? (
+              <Minimize2 className="w-3 h-3" />
+            ) : (
+              <Maximize2 className="w-3 h-3" />
+            )}
+          </button>
+          {/* Close Button */}
+          <button
+            onClick={toggleChat}
+            className="p-1 text-fd-muted-foreground hover:text-fd-foreground hover:bg-fd-muted rounded transition-colors"
+            title="Close chat"
+          >
+            <X className="w-3 h-3" />
+          </button>
+        </div>
       </div>
 
-      {/* Chat Interface */}
-      {isOpen && (
-        <div className="bg-card border border-border rounded-xl shadow-lg p-6 mb-8">
-          <div className="flex items-center gap-2 mb-4 pb-4 border-b border-border">
-            <Bot size={24} className="text-primary" />
-            <h3 className="text-lg font-semibold">Stack Auth AI Assistant</h3>
-            <span className="text-sm text-muted-foreground ml-auto">
-              Ask questions about Stack Auth documentation
-            </span>
+      {/* Messages */}
+      <div className="flex-1 overflow-y-auto p-3 space-y-3">
+        {messages.length === 0 ? (
+          <div className="text-center py-6">
+            <StackIcon size={24} className="text-fd-muted-foreground mx-auto mb-3" />
+            <h3 className="font-medium text-fd-foreground mb-2 text-sm">How can I help?</h3>
+            <p className="text-fd-muted-foreground text-xs mb-4">
+              Ask me about Stack Auth while you browse the docs.
+            </p>
+            <div className="space-y-1.5">
+              {starterPrompts.map((starter, index) => (
+                <button
+                  key={index}
+                  onClick={() => handleStarterPromptClick(starter.prompt)}
+                  className="w-full p-2.5 text-left text-xs bg-fd-muted/30 hover:bg-fd-muted/60 rounded-md border border-fd-border/50 transition-colors"
+                >
+                  <div className="font-medium">{starter.title}</div>
+                  <div className="text-fd-muted-foreground">{starter.description}</div>
+                </button>
+              ))}
+            </div>
           </div>
-
-          {/* Messages Container */}
-          <div className="h-96 overflow-y-auto mb-4 space-y-4 scroll-smooth">
-            {messages.length === 0 && (
-              <div className="text-center text-muted-foreground py-8">
-                <Bot size={48} className="mx-auto mb-4 opacity-50" />
-                <p className="text-lg font-medium mb-2">Welcome to Stack Auth!</p>
-                <p className="text-sm">
-                  Ask me anything about authentication, documentation, or how to get started.
-                </p>
-              </div>
-            )}
-
-            {messages.map(message => (
+        ) : (
+          messages.map((message) => (
+            <div
+              key={message.id}
+              className={`flex ${
+                message.role === 'user' ? 'justify-end' : 'justify-start'
+              }`}
+            >
               <div
-                key={message.id}
-                className={`flex gap-3 ${
-                  message.role === 'user' ? 'justify-end' : 'justify-start'
+                className={`max-w-[85%] p-2 rounded-lg text-xs ${
+                  message.role === 'user'
+                    ? 'bg-fd-primary/10 border border-fd-primary/20 text-fd-foreground'
+                    : 'bg-fd-muted text-fd-foreground border border-fd-border'
                 }`}
               >
-                {message.role === 'assistant' && (
-                  <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0 mt-1">
-                    <Bot size={16} className="text-primary" />
-                  </div>
-                )}
-                
-                <div
-                  className={`max-w-[80%] rounded-xl px-4 py-3 ${
-                    message.role === 'user'
-                      ? 'bg-primary text-primary-foreground ml-auto'
-                      : 'bg-muted'
-                  }`}
-                >
-                  <div className="whitespace-pre-wrap text-sm leading-relaxed">
+                {message.role === 'user' ? (
+                  <div className="whitespace-pre-wrap break-words">
                     {message.content}
                   </div>
-                </div>
-
-                {message.role === 'user' && (
-                  <div className="w-8 h-8 rounded-full bg-muted flex items-center justify-center flex-shrink-0 mt-1">
-                    <User size={16} />
-                  </div>
+                ) : (
+                  <MessageFormatter content={message.content} />
                 )}
               </div>
-            ))}
+            </div>
+          ))
+        )}
 
-            {isLoading && (
-              <div className="flex gap-3 justify-start">
-                <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0 mt-1">
-                  <Bot size={16} className="text-primary" />
+        {isLoading && (
+          <div className="flex justify-start">
+            <div className="bg-fd-muted text-fd-foreground border border-fd-border p-2 rounded-lg text-xs">
+              <div className="flex items-center gap-1">
+                <div className="flex space-x-1">
+                  <div className="w-1 h-1 bg-current rounded-full animate-bounce [animation-delay:-0.3s]"></div>
+                  <div className="w-1 h-1 bg-current rounded-full animate-bounce [animation-delay:-0.15s]"></div>
+                  <div className="w-1 h-1 bg-current rounded-full animate-bounce"></div>
                 </div>
-                <div className="bg-muted rounded-xl px-4 py-3">
-                  <div className="flex items-center gap-1">
-                    <div className="w-2 h-2 bg-muted-foreground/50 rounded-full animate-bounce" />
-                    <div className="w-2 h-2 bg-muted-foreground/50 rounded-full animate-bounce" style={{ animationDelay: '0.1s' }} />
-                    <div className="w-2 h-2 bg-muted-foreground/50 rounded-full animate-bounce" style={{ animationDelay: '0.2s' }} />
-                  </div>
-                </div>
+                <span className="ml-1">Thinking...</span>
               </div>
-            )}
+            </div>
           </div>
+        )}
 
-          {/* Input Form */}
-          <form onSubmit={handleSubmit} className="flex gap-2">
-            <input
-              className="flex-1 px-4 py-3 bg-background border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent placeholder:text-muted-foreground"
-              value={input}
-              placeholder="Ask about Stack Auth documentation..."
-              onChange={handleInputChange}
-              disabled={isLoading}
-            />
-            <button
-              type="submit"
-              disabled={isLoading || !input.trim()}
-              className="px-4 py-3 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center justify-center"
-            >
-              <Send size={16} />
-            </button>
-          </form>
-        </div>
-      )}
+        {error && (
+          <div className="text-red-500 text-xs p-2 bg-red-500/10 rounded border border-red-500/20">
+            Error: {error.message}
+          </div>
+        )}
+      </div>
+
+      {/* Input */}
+      <div className="border-t border-fd-border p-3">
+        <form onSubmit={handleFormSubmit} className="flex gap-2">
+          <textarea
+            value={input}
+            onChange={handleInputChange}
+            placeholder="Ask about Stack Auth..."
+            className="flex-1 resize-none border border-fd-border rounded-md px-2 py-1 text-xs bg-fd-background text-fd-foreground placeholder:text-fd-muted-foreground focus:outline-none focus:ring-1 focus:ring-fd-primary focus:border-fd-primary"
+            rows={1}
+            style={{ minHeight: '32px', maxHeight: '96px' }}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                handleFormSubmit(e as React.FormEvent);
+              }
+            }}
+          />
+          <button
+            type="submit"
+            disabled={!input.trim() || isLoading}
+            className="px-2 py-1 bg-fd-primary text-fd-primary-foreground rounded-md text-xs hover:bg-fd-primary/90 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center"
+          >
+            <Send className="w-3 h-3" />
+          </button>
+        </form>
+      </div>
     </div>
   );
-} 
+}

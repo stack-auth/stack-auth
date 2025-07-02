@@ -1,8 +1,9 @@
 'use client';
 
-import { Github, Menu, X } from 'lucide-react';
+import { Github, Menu, Sparkles, X } from 'lucide-react';
 import Link from 'next/link';
 import { type ReactNode, useEffect, useState } from 'react';
+import { useChatContext } from '../chat/ai-chat';
 import { CustomSearchDialog } from '../layout/custom-search-dialog';
 import { SearchInputToggle } from '../layout/custom-search-toggle';
 import { ThemeToggle } from '../layout/theme-toggle';
@@ -41,11 +42,31 @@ function StackAuthLogo() {
   );
 }
 
+// AI Chat Toggle Button for Home Layout
+function HomeAIChatToggleButton({ compact = false }: { compact?: boolean }) {
+  const { isOpen, toggleChat } = useChatContext();
+
+  return (
+    <button
+      onClick={toggleChat}
+      className={`inline-flex items-center justify-center rounded-lg text-fd-muted-foreground transition-colors hover:bg-fd-muted hover:text-fd-foreground ${
+        compact ? 'h-8 w-8 rounded-full' : 'h-9 w-9'
+      } ${isOpen ? 'bg-fd-foreground text-fd-background hover:bg-fd-foreground/90 hover:text-fd-background' : ''}`}
+      title={isOpen ? 'Close AI chat' : 'Open AI chat'}
+    >
+      <Sparkles className={compact ? 'h-3.5 w-3.5' : 'h-4 w-4'} />
+    </button>
+  );
+}
+
 // Home Navbar Component
 function HomeNavbar() {
   const [searchOpen, setSearchOpen] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [isScrolled, setIsScrolled] = useState(false);
+
+  // Check if chat is open
+  const { isOpen: isChatOpen, isExpanded: isChatExpanded } = useChatContext();
 
   // Scroll detection
   useEffect(() => {
@@ -68,8 +89,8 @@ function HomeNavbar() {
   return (
     <>
       {/* Full Navbar */}
-      <header className={`sticky top-0 z-50 w-full border-b border-fd-border bg-fd-background/95 backdrop-blur supports-[backdrop-filter]:bg-fd-background/60 transition-all duration-300 ${isScrolled ? 'opacity-0 pointer-events-none' : 'opacity-100'}`}>
-        <div className="container flex h-14 max-w-screen-2xl items-center justify-between px-4 md:px-6">
+      <header className={`sticky top-0 z-50 w-full border-b border-fd-border bg-fd-background/95 backdrop-blur supports-[backdrop-filter]:bg-fd-background/60 transition-all duration-300 ${isScrolled ? 'opacity-0 pointer-events-none' : 'opacity-100'} ${(isChatOpen || isChatExpanded) ? 'fixed left-0 right-0 z-[60]' : ''}`}>
+        <div className={`flex h-14 items-center justify-between px-4 md:px-6 ${(isChatOpen || isChatExpanded) ? '' : 'container max-w-screen-2xl'}`}>
           {/* Left - Logo + Social Links */}
           <div className="flex items-center gap-4">
             <StackAuthLogo />
@@ -106,6 +127,9 @@ function HomeNavbar() {
                 className="w-full"
               />
             </div>
+
+            {/* AI Chat Toggle */}
+            <HomeAIChatToggleButton />
 
             {/* Theme Toggle */}
             <ThemeToggle className="p-0" />
@@ -212,6 +236,9 @@ function HomeNavbar() {
 
             {/* Compact Theme Toggle */}
             <ThemeToggle compact />
+
+            {/* Compact AI Chat Toggle */}
+            <HomeAIChatToggleButton compact />
           </div>
         </div>
       </div>
@@ -227,6 +254,34 @@ function HomeNavbar() {
 
 // Main Home Layout Component
 export function HomeLayout({ children }: { children: ReactNode }) {
+  // Add home-page class to body to exclude from chat content shifting
+  useEffect(() => {
+    document.body.classList.add('home-page');
+    return () => {
+      document.body.classList.remove('home-page');
+    };
+  }, []);
+
+  // Add scroll detection for homepage
+  useEffect(() => {
+    const handleScroll = () => {
+      const scrollY = window.scrollY;
+      const isScrolled = scrollY > 50;
+
+      if (isScrolled) {
+        document.body.classList.add('scrolled');
+      } else {
+        document.body.classList.remove('scrolled');
+      }
+    };
+
+    window.addEventListener('scroll', handleScroll, { passive: true });
+    return () => {
+      window.removeEventListener('scroll', handleScroll);
+      document.body.classList.remove('scrolled');
+    };
+  }, []);
+
   return (
     <div className="relative flex min-h-screen flex-col bg-fd-background">
       <HomeNavbar />

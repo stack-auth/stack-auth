@@ -83,6 +83,9 @@ import {
 } from './shared/section-utils';
 import { useTOC } from './toc-context';
 
+// Import chat context
+import { useChatContext } from '../chat/ai-chat';
+
 // Context for persisting accordion state
 type AccordionContextType = {
   accordionState: Record<string, boolean>,
@@ -472,6 +475,7 @@ export function DocsLayout({
 }: DocsLayoutProps): ReactNode {
   const { isTocOpen } = useTOC();
   const [searchOpen, setSearchOpen] = useState(false);
+  const { isOpen: isChatOpen } = useChatContext();
 
   const tabs = useMemo(
     () => getSidebarTabsFromOptions(sidebar.tabs, props.tree) ?? [],
@@ -564,7 +568,7 @@ export function DocsLayout({
             )}
             <div className={cn(
               'flex-1 transition-all duration-300 min-w-0',
-              isTocOpen && 'xl:mr-72'
+              isTocOpen && !isChatOpen && 'xl:mr-72'
             )}>
               <StylesProvider {...pageStyles}>{children}</StylesProvider>
             </div>

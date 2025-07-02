@@ -1,4 +1,3 @@
-import AIChat from '@/components/chat/ai-chat';
 import DocsSelector from '@/components/homepage/iconHover';
 
 export default function HomePage() {
@@ -34,11 +33,6 @@ export default function HomePage() {
           {/* Documentation Type Selection */}
           <div className="mb-6">
             <DocsSelector />
-          </div>
-
-          {/* AI Chat Assistant */}
-          <div className="mb-6">
-            <AIChat />
           </div>
         </div>
       </section>

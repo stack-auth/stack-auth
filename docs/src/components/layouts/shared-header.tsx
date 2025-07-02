@@ -4,11 +4,12 @@ import { SearchInputToggle } from '@/components/layout/custom-search-toggle';
 import Waves from '@/components/layouts/api/waves';
 import { isInApiSection, isInComponentsSection, isInSdkSection } from '@/components/layouts/shared/section-utils';
 import { type NavLink } from '@/lib/navigation-utils';
-import { List, Menu, X } from 'lucide-react';
+import { List, Menu, Sparkles, X } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import type { ReactNode } from 'react';
 import { useEffect, useState } from 'react';
+import { useChatContext } from '../chat/ai-chat';
 import { useTOC } from './toc-context';
 
 type SharedHeaderProps = {
@@ -69,24 +70,49 @@ function isNavLinkActive(pathname: string, navLink: NavLink): boolean {
 }
 
 /**
+ * AI Chat Toggle Button
+ */
+function AIChatToggleButton() {
+  const { isOpen, toggleChat } = useChatContext();
+
+  return (
+    <button
+      onClick={toggleChat}
+      className={`flex items-center justify-center shadow-lg transition-all duration-300 w-8 h-8 rounded-lg text-sm font-medium ${
+        isOpen
+          ? 'bg-fd-foreground text-fd-background'
+          : 'bg-fd-muted text-fd-muted-foreground hover:text-fd-foreground hover:bg-fd-muted/80'
+      }`}
+      title={isOpen ? 'Close AI chat' : 'Open AI chat'}
+    >
+      <Sparkles className="w-4 h-4 flex-shrink-0" />
+    </button>
+  );
+}
+
+/**
  * Inner TOC Toggle Button that uses the context
  */
 function TOCToggleButtonInner() {
   const { isTocOpen, toggleToc } = useTOC();
+  const { isOpen: isChatOpen } = useChatContext();
+
+  // TOC is effectively visible only if it's open AND chat is not open
+  const isTocEffectivelyVisible = isTocOpen && !isChatOpen;
 
   return (
     <button
       onClick={toggleToc}
       className={`flex items-center justify-center gap-2 shadow-lg transition-all duration-300 w-24 h-8 rounded-lg text-sm font-medium ${
-        isTocOpen
+        isTocEffectivelyVisible
           ? 'bg-fd-foreground text-fd-background'
           : 'bg-fd-muted text-fd-muted-foreground hover:text-fd-foreground hover:bg-fd-muted/80'
       }`}
-      title={isTocOpen ? 'Hide table of contents' : 'Show table of contents'}
+      title={isTocEffectivelyVisible ? 'Hide table of contents' : 'Show table of contents'}
     >
       <List className="w-4 h-4 flex-shrink-0" />
       <span className="hidden sm:inline">
-        {isTocOpen ? 'Hide' : 'TOC'}
+        {isTocEffectivelyVisible ? 'Hide' : 'TOC'}
       </span>
     </button>
   );
@@ -252,6 +278,11 @@ export function SharedHeader({
           {/* TOC Toggle Button - Only on docs pages */}
           <div className="hidden md:block">
             <TOCToggleButton />
+          </div>
+
+          {/* AI Chat Toggle Button */}
+          <div className="hidden md:block">
+            <AIChatToggleButton />
           </div>
 
           {/* Mobile Hamburger Menu - Shown on mobile */}

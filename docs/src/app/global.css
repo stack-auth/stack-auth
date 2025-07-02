@@ -5,3 +5,63 @@
 @import '../components/mdx/mdx-info.css';
 @import '../components/mdx/mdx-cards.css';
 @import '../components/mdx/reset-code-styles.css';
+
+/* Chat drawer content shifting for docs pages */
+body.chat-open:not(.home-page) {
+  padding-right: 25rem; /* 384px + 16px for spacing */
+  transition: padding-right 300ms ease-out;
+}
+
+/* Ensure smooth transition when closing for docs pages */
+body:not(.home-page) {
+  transition: padding-right 300ms ease-out;
+}
+
+/* Chat drawer content shifting for homepage - much less padding */
+body.home-page.chat-open main {
+  padding-right: 12rem; /* Much less padding for homepage */
+  transition: padding-right 300ms ease-out;
+}
+
+/* Ensure smooth transition when closing for homepage main content */
+body.home-page main {
+  transition: padding-right 300ms ease-out;
+}
+
+/* Special chat drawer positioning for homepage */
+body.home-page [data-chat-drawer] {
+  /* Start from top when pill is not visible */
+  top: 56px; /* Same as top-14 */
+  height: calc(100vh - 56px);
+  transition: top 300ms ease-out, height 300ms ease-out;
+}
+
+/* When scrolled on homepage, adjust for pill navbar */
+body.home-page.scrolled [data-chat-drawer] {
+  top: 0;
+  height: 100vh;
+}
+
+/* Flat scrollbar design for compact codeblocks */
+.compact-codeblock-scrollbar::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+.compact-codeblock-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.compact-codeblock-scrollbar::-webkit-scrollbar-thumb {
+  background: #404040;
+  border-radius: 0px;
+  border: none;
+}
+
+.compact-codeblock-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: #525252;
+}
+
+.compact-codeblock-scrollbar::-webkit-scrollbar-corner {
+  background: transparent;
+}

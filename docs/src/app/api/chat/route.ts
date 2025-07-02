@@ -1,118 +1,97 @@
 import { createGoogleGenerativeAI } from '@ai-sdk/google';
-import { streamText } from 'ai';
+import { streamText, tool } from 'ai';
+import { z } from 'zod';
 
 // Allow streaming responses up to 30 seconds
 export const maxDuration = 30;
 
-// Configure Google Gemini with custom API key variable
+// Create Google AI instance
 const google = createGoogleGenerativeAI({
   apiKey: process.env.GOOGLE_AI_API_KEY,
 });
 
-export function errorHandler(error: unknown) {
-  if (error == null) {
-    return 'unknown error';
-  }
-
-  if (typeof error === 'string') {
-    return error;
-  }
-
+// Helper function to get error message
+function getErrorMessage(error: unknown): string {
   if (error instanceof Error) {
     return error.message;
   }
-
-  return JSON.stringify(error);
+  return String(error);
 }
 
-async function getStackAuthDocs() {
+export async function POST(request: Request) {
+  const { messages, docsContent } = await request.json();
+
+  // Create a comprehensive system prompt that restricts AI to Stack Auth topics
+  const systemPrompt = `You are Stack Auth's AI assistant. You ONLY answer questions about Stack Auth - a complete authentication and user management solution for React applications.
+
+DOCUMENTATION CONTEXT:
+${docsContent || 'Documentation not available'}
+
+STRICT GUIDELINES:
+1. ONLY answer questions related to Stack Auth, its features, implementation, or usage
+2. If asked about non-Stack Auth topics, politely redirect: "I can only help with Stack Auth questions. Please ask about Stack Auth's features, setup, or implementation."
+3. Provide detailed, technical answers with code examples when relevant
+4. Reference specific Stack Auth features, components, or APIs
+5. When explaining concepts, always relate them to Stack Auth specifically
+6. Include relevant code snippets from the documentation when helpful
+7. If you're unsure about something Stack Auth-related, say so rather than guessing
+
+RESPONSE FORMAT:
+- Use markdown formatting for better readability
+- Include code blocks with proper syntax highlighting
+- Use bullet points for lists
+- Bold important concepts
+- Provide practical examples when possible
+
+Remember: You are Stack Auth's dedicated assistant. Stay focused on Stack Auth topics only.`;
+
   try {
-    // Get the base URL from the request or use localhost for development
-    const baseUrl = process.env.VERCEL_URL 
-      ? `https://${process.env.VERCEL_URL}` 
-      : 'http://localhost:8104';
-    
-    console.log('Fetching docs from:', `${baseUrl}/llms.txt`);
-    
-    const response = await fetch(`${baseUrl}/llms.txt`);
-    console.log('Docs fetch response status:', response.status);
-    
-    if (!response.ok) {
-      console.error('Failed to fetch Stack Auth docs:', response.status, response.statusText);
-      return null;
-    }
-    
-    const docsContent = await response.text();
-    console.log('Docs content length:', docsContent?.length || 0);
-    console.log('Docs content preview:', docsContent?.substring(0, 200) + '...');
-    
-    return docsContent;
-  } catch (error) {
-    console.error('Error fetching Stack Auth docs:', error);
-    return null;
-  }
-}
-
-export async function POST(req: Request) {
-  try {
-    const { messages } = await req.json();
-    
-    console.log('Received messages:', messages);
-    console.log('Google AI API Key configured:', !!process.env.GOOGLE_AI_API_KEY);
-
-    // Fetch Stack Auth documentation
-    const stackAuthDocs = await getStackAuthDocs();
-
-    // Create system message with documentation context
-    const systemMessage = {
-      role: 'system' as const,
-      content: `You are a technical AI assistant specializing in Stack Auth, a complete authentication solution. You are helping developers who want detailed, technical guidance.
-
-IMPORTANT INSTRUCTIONS:
-- You can ONLY answer questions about Stack Auth and authentication topics
-- If someone asks about anything else, politely redirect them to ask about Stack Auth
-- Your audience is DEVELOPERS who need in-depth technical information
-- Provide comprehensive, detailed answers with code examples when available
-- Include specific implementation details, configuration options, and best practices
-- Reference exact function names, parameters, and code snippets from the documentation
-- Don't oversimplify - developers want the full technical depth
-- When explaining concepts, include relevant code examples and implementation details
-- If there are multiple approaches, explain the different options and their trade-offs
-
-${stackAuthDocs ? `
-Here is the complete Stack Auth documentation with detailed examples and technical information:
-
-${stackAuthDocs}
-
-Use this documentation to provide comprehensive, technical answers. Include code examples, configuration details, and implementation specifics. Developers are looking for actionable, detailed guidance, not basic overviews.
-` : 'Stack Auth documentation could not be loaded. Please answer based on general Stack Auth knowledge, but provide detailed technical information for developers.'}
-
-Remember: Your responses should match the technical depth and detail level of the Stack Auth documentation. Provide code examples, configuration snippets, and comprehensive implementation guidance.`
-    };
-
-    // Prepend system message to the conversation
-    const messagesWithContext = [systemMessage, ...messages];
-
     const result = streamText({
       model: google('gemini-1.5-flash'),
-      messages: messagesWithContext,
+      system: systemPrompt,
+      messages,
+      maxTokens: 1000,
+      temperature: 0.3,
+      tools: {
+        searchDocs: tool({
+          description: 'Search through Stack Auth documentation for specific information',
+          parameters: z.object({
+            query: z.string().describe('The search query to find relevant documentation'),
+          }),
+          execute: async ({ query }) => {
+            // Simple search through the docs content
+            if (!docsContent) {
+              return 'Documentation not available';
+            }
+
+            const lines = docsContent.split('\n');
+            const relevantLines = lines.filter((line: string) =>
+              line.toLowerCase().includes(query.toLowerCase())
+            );
+
+            if (relevantLines.length === 0) {
+              return `No specific information found for "${query}" in the documentation.`;
+            }
+
+            return relevantLines.slice(0, 10).join('\n');
+          },
+        }),
+      },
     });
 
     return result.toDataStreamResponse({
-      getErrorMessage: errorHandler,
+      getErrorMessage,
     });
   } catch (error) {
-    console.error('Error in chat API:', error);
+    console.error('Chat API Error:', error);
     return new Response(
-      JSON.stringify({ 
-        error: 'Internal server error', 
-        details: error instanceof Error ? error.message : 'Unknown error' 
+      JSON.stringify({
+        error: 'Failed to process chat request',
+        details: getErrorMessage(error),
       }),
       {
         status: 500,
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: { 'Content-Type': 'application/json' },
       }
     );
   }
