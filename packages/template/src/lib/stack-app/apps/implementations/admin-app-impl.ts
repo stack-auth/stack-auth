@@ -384,4 +384,13 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
       error: email.error,
     }));
   }
+
+  async sendEmail(options: {
+    user_id: string,
+    subject: string,
+    html: string,
+    notification_category_name: string,
+  }): Promise<void> {
+    await this._interface.sendEmail(options);
+  }
 }

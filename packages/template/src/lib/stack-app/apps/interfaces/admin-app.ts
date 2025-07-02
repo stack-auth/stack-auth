@@ -56,6 +56,13 @@ export type StackAdminApp<HasTokenStore extends boolean = boolean, ProjectId ext
     }): Promise<Result<undefined, { errorMessage: string }>>,
 
     listSentEmails(): Promise<AdminSentEmail[]>,
+    
+    sendEmail(options: {
+      user_id: string,
+      subject: string,
+      html: string,
+      notification_category_name: string,
+    }): Promise<void>,
   }
   & StackServerApp<HasTokenStore, ProjectId>
 );

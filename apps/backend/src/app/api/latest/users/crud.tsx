@@ -351,7 +351,8 @@ export async function getUser(options: { userId: string } & ({ projectId: string
       // Coincidentally, it can happen that a user is modified in the database right between these two queries.
       // While unlikely, it makes the tests flakey sometimes, so let's make sure that requesting the raw query again
       // still causes the same mismatch.
-      const newResult = await rawQuery(prismaClient, getUserQuery(projectId, branchId, options.userId));
+      const newResult = await rawQuery(prismaClient, 
+        (projectId, branchId, options.userId));
       if (!deepPlainEquals(newResult, legacyResult)) {
         throw new StackAssertionError("User result mismatch", {
           result,
