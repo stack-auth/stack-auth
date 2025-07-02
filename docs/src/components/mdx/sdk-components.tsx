@@ -101,9 +101,13 @@ function ClickableCodeblock({
   useEffect(() => {
     const updateHighlightedCode = async () => {
       try {
+        // Detect if we're in dark mode by checking CSS custom properties or document class
+        const isDarkMode = document.documentElement.classList.contains('dark') ||
+                          getComputedStyle(document.documentElement).getPropertyValue('--fd-background').includes('0 0% 3.9%');
+
         const html = await codeToHtml(code, {
           lang: language,
-          theme: 'github-dark',
+          theme: isDarkMode ? 'github-dark' : 'github-light-default',
           transformers: [{
             pre(node) {
               // Remove background styles from pre element
@@ -132,15 +136,34 @@ function ClickableCodeblock({
     updateHighlightedCode().catch(error => {
       console.error('Error updating highlighted code:', error);
     });
+
+    // Listen for theme changes on the document element
+    const observer = new MutationObserver((mutations) => {
+      mutations.forEach((mutation) => {
+        if (mutation.type === 'attributes' && mutation.attributeName === 'class') {
+          updateHighlightedCode().catch(error => {
+            console.error('Error updating highlighted code on theme change:', error);
+          });
+        }
+      });
+    });
+
+    observer.observe(document.documentElement, {
+      attributes: true,
+      attributeFilter: ['class']
+    });
+
+    return () => {
+      observer.disconnect();
+    };
   }, [code, language]);
 
   return (
     <div className="space-y-4 mb-6">
       <div className="relative">
         <div
-          className="rounded-lg border bg-[#0a0a0a] p-4 overflow-auto max-h-[500px] text-sm relative clickable-code-container"
+          className="rounded-lg border border-fd-border bg-fd-code p-4 overflow-auto max-h-[500px] text-sm relative clickable-code-container"
           style={{
-            background: '#0a0a0a !important',
             fontFamily: 'ui-monospace, "Cascadia Code", "Source Code Pro", Menlo, Consolas, "DejaVu Sans Mono", monospace',
             lineHeight: '1.5',
           }}
@@ -172,7 +195,7 @@ function ClickableCodeblock({
               return (
                 <div
                   key={index}
-                  className="absolute left-4 right-4 pointer-events-auto hover:bg-blue-500/20 transition-colors rounded cursor-pointer"
+                  className="absolute left-4 right-4 pointer-events-auto hover:bg-fd-primary/20 rounded cursor-pointer"
                   style={{
                     top: `${topPosition}px`,
                     height: `${height}px`,
