@@ -357,7 +357,7 @@ function SendEmailDialog(props: {
         description: "The email could not be sent. The user may have unsubscribed from this notification category.",
         variant: "destructive",
       });
-      return
+      return;
     }
     setSelectedUser(null);
     toast({
