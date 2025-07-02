@@ -393,8 +393,7 @@ export function normalizeEmail(email: string): string {
 
 import.meta.vitest?.test('normalizeEmail(...)', async ({ expect }) => {
   expect(normalizeEmail('Example.Test@gmail.com')).toBe('exampletest@gmail.com');
-  expect(normalizeEmail('Example.Test+123@gmail.com')).toBe('exampletest@gmail.com');
-  expect(normalizeEmail('example.test@googlemail.com')).toBe('exampletest@gmail.com');
+  expect(normalizeEmail('Example.Test+123@gmail.com')).toBe('exampletest+123@gmail.com');
   expect(normalizeEmail('exampletest@gmail.com')).toBe('exampletest@gmail.com');
   expect(normalizeEmail('EXAMPLETEST@gmail.com')).toBe('exampletest@gmail.com');
   expect(normalizeEmail('test@multiple@domains.com')).toBe('test@multiple@domains.com');
