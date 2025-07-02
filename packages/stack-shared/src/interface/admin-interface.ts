@@ -308,14 +308,13 @@ export class StackAdminInterface extends StackServerInterface {
     html: string,
     notification_category_name: string,
   }): Promise<void> {
-    const response = await this.sendAdminRequest("/emails/send-email", {
+    await this.sendAdminRequest("/emails/send-email", {
       method: "POST",
       headers: {
         "content-type": "application/json",
       },
       body: JSON.stringify(options),
     }, null);
-    return await response.json();
   }
 
   async sendSignInInvitationEmail(
