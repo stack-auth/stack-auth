@@ -200,7 +200,31 @@ export function CollapsibleMethodSection({
   const signaturePart = signature ? signature.replace(/[^a-z0-9]/gi, '').toLowerCase() : '';
   const anchorId = `${appType.toLowerCase()}${methodName}${signaturePart}`;
 
-  // Full display name with optional signature (e.g., "StackClientApp.getUser()" or "StackServerApp.listUsers()")
+  // Listen for hash changes and auto-open matching sections
+  useEffect(() => {
+    const handleHashChange = () => {
+      const hash = window.location.hash.replace('#', '');
+      if (hash === anchorId) {
+        setIsOpen(true);
+        // Small delay to ensure the section is opened before scrolling
+        setTimeout(() => {
+          const element = document.getElementById(anchorId);
+          if (element) {
+            element.scrollIntoView({ behavior: 'smooth', block: 'start' });
+          }
+        }, 100);
+      }
+    };
+
+    // Check on mount (after hydration)
+    handleHashChange();
+
+    // Listen for hash changes
+    window.addEventListener('hashchange', handleHashChange);
+    return () => window.removeEventListener('hashchange', handleHashChange);
+  }, [anchorId]);
+
+  // Full display name with optional signature (e.g., "getUser()" or "listUsers()")
   const fullName = signature
     ? `${method}(${signature})`
     : method;
