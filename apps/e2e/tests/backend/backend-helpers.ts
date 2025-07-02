@@ -1056,12 +1056,11 @@ export namespace Project {
   }
 
   export async function createAndGetAdminToken(body?: Partial<AdminUserProjectsCrud["Admin"]["Create"]>, useExistingUser?: boolean) {
-    backendContext.set({
-      projectKeys: InternalProjectKeys,
-    });
+    backendContext.set({ projectKeys: InternalProjectKeys });
     const oldMailbox = backendContext.value.mailbox;
     let userId: string | undefined;
     if (!useExistingUser) {
+      backendContext.set({ userAuth: null });
       await bumpEmailAddress({ unindexed: true });
       const { userId: newUserId } = await Auth.Otp.signIn();
       userId = newUserId;
