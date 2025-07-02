@@ -375,7 +375,7 @@ export function normalizeEmail(email: string): string {
 
   const removeDotsDomains = ['gmail.com', 'googlemail.com', 'live.com'];
 
-  const emailLower = email.toLowerCase();
+  const emailLower = email.trim().toLowerCase();
   const emailParts = emailLower.split(/@/);
 
   if (emailParts.length !== 2) {
