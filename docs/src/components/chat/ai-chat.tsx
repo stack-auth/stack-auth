@@ -106,7 +106,6 @@ export function useChatContext() {
 
 function AIChatDrawer() {
   const { isOpen, isExpanded, toggleChat, expandChat, collapseChat } = useChatContext();
-  const [input, setInput] = useState('');
   const [docsContent, setDocsContent] = useState('');
 
   // Fetch documentation content when component mounts
@@ -136,6 +135,8 @@ function AIChatDrawer() {
 
   const {
     messages,
+    input,
+    handleInputChange,
     handleSubmit,
     isLoading,
     error,
@@ -149,22 +150,6 @@ function AIChatDrawer() {
       console.error('Chat error:', error);
     },
   });
-
-  const handleFormSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!input.trim() || isLoading) return;
-
-    handleSubmit(e, {
-      body: {
-        docsContent,
-      },
-    });
-    setInput('');
-  };
-
-  const handleInputChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
-    setInput(e.target.value);
-  };
 
   // Starter prompts for users
   const starterPrompts = [
@@ -186,7 +171,8 @@ function AIChatDrawer() {
   ];
 
   const handleStarterPromptClick = (prompt: string) => {
-    setInput(prompt);
+    // Use the handleInputChange from useChat to update the input
+    handleInputChange({ target: { value: prompt } } as React.ChangeEvent<HTMLInputElement>);
   };
 
   return (
@@ -303,7 +289,7 @@ function AIChatDrawer() {
 
       {/* Input */}
       <div className="border-t border-fd-border p-3">
-        <form onSubmit={handleFormSubmit} className="flex gap-2">
+        <form onSubmit={handleSubmit} className="flex gap-2">
           <textarea
             value={input}
             onChange={handleInputChange}
@@ -314,7 +300,7 @@ function AIChatDrawer() {
             onKeyDown={(e) => {
               if (e.key === 'Enter' && !e.shiftKey) {
                 e.preventDefault();
-                handleFormSubmit(e as React.FormEvent);
+                handleSubmit(e as React.FormEvent);
               }
             }}
           />
