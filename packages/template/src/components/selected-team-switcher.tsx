@@ -153,7 +153,7 @@ function Inner<AllowNull extends boolean>(props: SelectedTeamSwitcherProps<Allow
           <SelectItem value="null">
             <div className="flex items-center gap-2">
               <TeamIcon team='personal' />
-              <Typography className="max-w-40 truncate">{props.nullTeamsLabel || t('Personal team')}</Typography>
+              <Typography className="max-w-40 truncate">{props.nullTeamsLabel || t('No team')}</Typography>
             </div>
           </SelectItem>
         </SelectGroup>}
