@@ -77,42 +77,46 @@ export default function PageClient() {
             You are using a shared email server. If you want to customize the email templates, you need to configure a custom SMTP server.
           </AlertDescription>
         </Alert>}
-        {emailTemplates.map((template) => (
-          <Card key={template.type} className="p-4 flex justify-between flex-col sm:flex-row gap-4">
-            <div className="flex flex-col gap-2">
-              <div>
-                <Typography className="font-medium">
-                  {EMAIL_TEMPLATES_METADATA[template.type].label}
-                </Typography>
-                <Typography type='label' variant='secondary'>
-                  Subject: <SubjectPreview subject={template.subject} type={template.type} />
-                </Typography>
-              </div>
-              <div className="flex-grow flex justify-start items-end gap-2">
-                <Button variant='secondary' onClick={() => {
-                  if (emailConfig?.type === 'shared') {
-                    setSharedSmtpWarningDialogOpen(template.type);
-                  } else {
-                    router.push(`emails/templates/${template.type}`);
-                  }
-                }}>Edit Template</Button>
-                {!template.isDefault && <ActionCell
-                  items={[{
-                    item: 'Reset to Default',
-                    danger: true,
-                    onClick: () => {
-                      setResetTemplateType(template.type);
-                      setResetTemplateDialogOpen(true);
+        <div className="grid grid-cols-1 lg:grid-cols-2 2xl:grid-cols-3 gap-4">
+          {emailTemplates.map((template) => (
+            <Card key={template.type} className="p-4 flex justify-between flex-col sm:flex-row gap-4">
+              <div className="flex flex-col gap-2">
+                <div>
+                  <Typography className="font-medium">
+                    {EMAIL_TEMPLATES_METADATA[template.type].label}
+                  </Typography>
+                  <Typography type='label' variant='secondary'>
+                    Subject: <SubjectPreview subject={template.subject} type={template.type} />
+                  </Typography>
+                </div>
+                <div className="flex-grow flex justify-start items-end gap-2">
+                  <Button variant='secondary' onClick={() => {
+                    if (emailConfig?.type === 'shared') {
+                      setSharedSmtpWarningDialogOpen(template.type);
+                    } else {
+                      router.push(`emails/templates/${template.type}`);
                     }
-                  }]}
-                />}
+                  }}>
+                    Edit Template
+                  </Button>
+                  {!template.isDefault && <ActionCell
+                    items={[{
+                      item: 'Reset to Default',
+                      danger: true,
+                      onClick: () => {
+                        setResetTemplateType(template.type);
+                        setResetTemplateDialogOpen(true);
+                      }
+                    }]}
+                  />}
+                </div>
               </div>
-            </div>
-            <EmailPreview content={template.content} type={template.type} />
-          </Card>
-        ))}
+              <EmailPreview content={template.content} type={template.type} />
+            </Card>
+          ))}
+        </div>
       </SettingCard>
-      <SettingCard title="Email Log" description="Manage email sending history">
+      <SettingCard title="Email Logs" description="Manage email sending history">
         <EmailSendDataTable />
       </SettingCard>
 
@@ -204,7 +208,7 @@ function EmailPreview(props: { content: any, type: EmailTemplateType }) {
   let reader;
   if (valid && document) {
     reader = (
-      <div className="scale-50 w-[400px] origin-top-left">
+      <div className="w-[400px] origin-top-left" style={{ transform: 'scale(0.5)' }}>
         <Reader document={document} rootBlockId='root' />
       </div>
     );

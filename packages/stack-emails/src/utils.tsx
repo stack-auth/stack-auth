@@ -8,6 +8,7 @@ import { emailVerificationTemplate } from "./templates/email-verification";
 import { magicLinkTemplate } from "./templates/magic-link";
 import { magicLinkTemplateOld } from "./templates/magic-link-old";
 import { passwordResetTemplate } from "./templates/password-reset";
+import { signInInvitationTemplate } from "./templates/sign-in-invitation";
 import { teamInvitationTemplate } from "./templates/team-invitation";
 
 
@@ -81,6 +82,17 @@ export const EMAIL_TEMPLATES_METADATA = {
       { name: 'teamInvitationLink', label: 'Team Invitation Link', defined: true, example: '<team invitation link>' },
     ],
   },
+  'sign_in_invitation': {
+    label: "Sign In Invitation",
+    description: "Will be sent to the user when they are invited to sign in",
+    defaultContent: { 1: signInInvitationTemplate, 2: signInInvitationTemplate },
+    defaultSubject: "You have been invited to sign in to {{ projectDisplayName }}",
+    variables: [
+      ...userVars,
+      ...projectVars,
+      { name: 'signInInvitationLink', label: 'Sign In Invitation Link', defined: true, example: '<sign in invitation link>' },
+    ],
+  }
 } as const satisfies Record<string, EmailTemplateMetadata>;
 
 export function validateEmailTemplateContent(content: any): content is TEditorConfiguration {
