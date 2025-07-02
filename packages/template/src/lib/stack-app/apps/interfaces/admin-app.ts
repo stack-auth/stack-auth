@@ -60,7 +60,7 @@ export type StackAdminApp<HasTokenStore extends boolean = boolean, ProjectId ext
     listSentEmails(): Promise<AdminSentEmail[]>,
 
     sendEmail(options: {
-      userId: string,
+      userIds: string[],
       subject: string,
       content: string,
       notificationCategoryName: string,

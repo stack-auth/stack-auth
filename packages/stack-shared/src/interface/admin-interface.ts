@@ -303,7 +303,7 @@ export class StackAdminInterface extends StackServerInterface {
   }
 
   async sendEmail(options: {
-    user_id: string,
+    user_ids: string[],
     subject: string,
     html: string,
     notification_category_name: string,

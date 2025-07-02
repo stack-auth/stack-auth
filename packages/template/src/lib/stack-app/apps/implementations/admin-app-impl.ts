@@ -386,13 +386,13 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
   }
 
   async sendEmail(options: {
-    userId: string,
+    userIds: string[],
     subject: string,
     content: string,
     notificationCategoryName: string,
   }): Promise<void> {
     await this._interface.sendEmail({
-      user_id: options.userId,
+      user_ids: options.userIds,
       subject: options.subject,
       html: options.content,
       notification_category_name: options.notificationCategoryName,
