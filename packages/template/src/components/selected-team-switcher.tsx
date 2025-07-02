@@ -1,4 +1,5 @@
 'use client';
+import { StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
 import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
 import {
   Button,
@@ -30,8 +31,8 @@ type SelectedTeamSwitcherProps<AllowNull extends boolean = false> = {
   selectedTeam?: Team,
   noUpdateSelectedTeam?: boolean,
   allowNull?: AllowNull,
-  nullTeamsLabel?: string,
-  onChange?: (team: Team | null) => void,
+  nullLabel?: string,
+  onChange?: (team: AllowNull extends true ? Team | null : Team) => void,
   // Mock data props
   mockUser?: {
     selectedTeam?: MockTeam,
@@ -86,11 +87,11 @@ function Inner<AllowNull extends boolean>(props: SelectedTeamSwitcherProps<Allow
 
   return (
     <Select
-      value={selectedTeam?.id || (props.allowNull ? 'null' : undefined)}
+      value={selectedTeam?.id || (props.allowNull ? 'null-sentinel' : undefined)}
       onValueChange={(value) => {
         runAsynchronouslyWithAlert(async () => {
           let team: MockTeam | null = null;
-          if (value !== 'null') {
+          if (value !== 'null-sentinel') {
             team = teams?.find(team => team.id === value) || null;
             if (!team) {
               throw new StackAssertionError('Team not found, this should not happen');
@@ -101,7 +102,7 @@ function Inner<AllowNull extends boolean>(props: SelectedTeamSwitcherProps<Allow
 
           // Call onChange callback if provided
           if (props.onChange) {
-            props.onChange(team as Team | null);
+            props.onChange(team as Team);
           }
 
           // Skip actual navigation/updates in mock mode
@@ -150,10 +151,10 @@ function Inner<AllowNull extends boolean>(props: SelectedTeamSwitcherProps<Allow
         </SelectGroup> : undefined}
 
         {props.allowNull && <SelectGroup>
-          <SelectItem value="null">
+          <SelectItem value="null-sentinel">
             <div className="flex items-center gap-2">
               <TeamIcon team='personal' />
-              <Typography className="max-w-40 truncate">{props.nullTeamsLabel || t('No team')}</Typography>
+              <Typography className="max-w-40 truncate">{props.nullLabel || t('No team')}</Typography>
             </div>
           </SelectItem>
         </SelectGroup>}
