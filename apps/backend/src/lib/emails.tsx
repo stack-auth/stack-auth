@@ -379,7 +379,7 @@ export function normalizeEmail(email: string): string {
   const emailParts = emailLower.split(/@/);
 
   if (emailParts.length !== 2) {
-    return email;
+    throw new StackAssertionError('Invalid email address', { email });
   }
 
   let [username, domain] = emailParts;
@@ -396,8 +396,10 @@ import.meta.vitest?.test('normalizeEmail(...)', async ({ expect }) => {
   expect(normalizeEmail('Example.Test+123@gmail.com')).toBe('exampletest+123@gmail.com');
   expect(normalizeEmail('exampletest@gmail.com')).toBe('exampletest@gmail.com');
   expect(normalizeEmail('EXAMPLETEST@gmail.com')).toBe('exampletest@gmail.com');
-  expect(normalizeEmail('test@multiple@domains.com')).toBe('test@multiple@domains.com');
-  expect(normalizeEmail('invalid.email')).toBe('invalid.email');
+
   expect(normalizeEmail('user@example.com')).toBe('user@example.com');
-  expect(normalizeEmail('user.name+tag@yahoo.com')).toBe('user.name+tag@yahoo.com');
+  expect(normalizeEmail('user.name+tag@example.com')).toBe('user.name+tag@example.com');
+
+  expect(() => normalizeEmail('test@multiple@domains.com')).toThrow();
+  expect(() => normalizeEmail('invalid.email')).toThrow();
 });
