@@ -1,6 +1,7 @@
 "use client";
 
-import { DndContext, DragOverlay, useDraggable, useDroppable } from '@dnd-kit/core';
+import { DndContext, closestCenter, useDraggable, useDroppable } from '@dnd-kit/core';
+import { range } from '@stackframe/stack-shared/dist/utils/arrays';
 import { StackAssertionError, throwErr } from '@stackframe/stack-shared/dist/utils/errors';
 import { Card } from '@stackframe/stack-ui';
 import { useState } from 'react';
@@ -174,58 +175,94 @@ export default function PageClient() {
 }
 
 function SwappableWidgetInstanceGrid(props: { grid: WidgetInstanceGrid, setGrid: (grid: WidgetInstanceGrid) => void }) {
-  const [activeWidgetInstanceId, setActiveWidgetInstanceId] = useState<string | null>(null);
-  const activeWidgetInstance = activeWidgetInstanceId ? widgetInstances.find(({ id }) => id === activeWidgetInstanceId) : null;
+  const [hoverSwap, setHoverSwap] = useState<[string, [number, number]] | null>(null);
+  const [activeWidgetId, setActiveWidgetId] = useState<string | null>(null);
+  const grid = props.grid;
 
   return (
     <DndContext
       onDragStart={(event) => {
-        setActiveWidgetInstanceId(event.active.id as string);
+        setActiveWidgetId(event.active.id as string);
       }}
       onDragEnd={(event) => {
-        setActiveWidgetInstanceId(null);
+        setHoverSwap(null);
+        setActiveWidgetId(null);
 
         const widgetId = event.active.id;
-        const widgetElement = [...props.grid].find(({ instance }) => instance?.id === widgetId);
+        const widgetElement = [...grid].find(({ instance }) => instance?.id === widgetId);
         if (!widgetElement) {
           throw new StackAssertionError(`Widget instance ${widgetId} not found in grid`);
         }
         if (event.over) {
           const overCoordinates = JSON.parse(`${event.over.id}`) as [number, number];
-          const newGrid = props.grid.withSwapped(widgetElement.x, widgetElement.y, overCoordinates[0], overCoordinates[1]);
-        props.setGrid(newGrid);
+          const newGrid = grid.withSwapped(widgetElement.x, widgetElement.y, overCoordinates[0], overCoordinates[1]);
+          props.setGrid(newGrid);
         }
       }}
+      onDragOver={(event) => {
+        if (event.over) {
+          if (!event.active.rect.current.initial) {
+            // not sure when this happens, if ever. let's ignore it in prod, throw in dev
+            if (process.env.NODE_ENV === 'development') {
+              throw new StackAssertionError("Active element has no initial rect. Not sure when this happens, so please report it");
+            }
+          } else {
+            const overCoordinates = JSON.parse(`${event.over.id}`) as [number, number];
+            const overId = props.grid.getElementAt(overCoordinates[0], overCoordinates[1]).instance?.id;
+            if (overId) {
+              setHoverSwap([overId, [event.over.rect.left - event.active.rect.current.initial.left, event.over.rect.top - event.active.rect.current.initial.top]]);
+            } else {
+              setHoverSwap(null);
+            }
+          }
+        } else {
+          setHoverSwap(null);
+        }
+      }}
+      collisionDetection={closestCenter}
     >
       <div style={{
         display: 'grid',
-        gridTemplateColumns: `repeat(${props.grid.width}, 1fr)`,
-        gridTemplateRows: `repeat(${props.grid.height}, 1fr)`,
+        gridTemplateColumns: `repeat(${grid.width}, 1fr)`,
+        gridTemplateRows: `repeat(${grid.height}, 1fr)`,
         gap: '12px',
         userSelect: 'none',
         WebkitUserSelect: 'none',
       }}>
-        {[...props.grid].map(({ instance, x, y, width, height }) => (
-          <Droppable
-            key={instance?.id ?? JSON.stringify({ x, y, width, height })}
-            droppableId={JSON.stringify([x, y])}
-            style={{
-              gridColumn: `${x + 1} / span ${width}`,
-              gridRow: `${y + 1} / span ${height}`,
-            }}>
-            {instance && <Draggable widgetInstance={instance} />}
-          </Droppable>
+        {range(grid.height).map((y) => (
+          <div key={y} style={{ height: '96px', gridColumn: `1 / ${grid.width + 1}`, gridRow: `${y + 1} / ${y + 2}` }} />
         ))}
+        {[...grid].map(({ instance, x, y, width, height }) => {
+          const isHoverSwap = hoverSwap && instance && (hoverSwap[0] === instance.id);
+          console.log(instance?.id, isHoverSwap, hoverSwap);
+          return (
+            <Droppable
+              key={instance?.id ?? JSON.stringify({ x, y, width, height })}
+              droppableId={JSON.stringify([x, y])}
+              style={{
+                gridColumn: `${x + 1} / span ${width}`,
+                gridRow: `${y + 1} / span ${height}`,
+                display: 'flex',
+              }}>
+              {instance && (
+                <Draggable
+                  widgetInstance={instance}
+                  shouldTransition={activeWidgetId !== instance.id && (activeWidgetId !== null)}
+                  style={{
+                    transform: isHoverSwap ? `translate(${-hoverSwap[1][0]}px, ${-hoverSwap[1][1]}px)` : undefined,
+                  }}
+                />
+              )}
+            </Droppable>
+          );
+        })}
       </div>
-      <DragOverlay>
-        {activeWidgetInstance && <Draggable widgetInstance={activeWidgetInstance} />}
-      </DragOverlay>
     </DndContext>
   );
 }
 
 function Droppable(props: { children: React.ReactNode, style: React.CSSProperties, droppableId: string }) {
-  const { isOver, setNodeRef } = useDroppable({
+  const { isOver, setNodeRef, active } = useDroppable({
     id: props.droppableId,
   });
 
@@ -234,7 +271,8 @@ function Droppable(props: { children: React.ReactNode, style: React.CSSPropertie
     <div
       ref={setNodeRef}
       style={{
-        backgroundColor: isOver ? 'green' : 'red',
+        backgroundColor: isOver ? '#88888822' : undefined,
+        borderRadius: '8px',
         ...props.style,
       }}
     >
@@ -243,8 +281,8 @@ function Droppable(props: { children: React.ReactNode, style: React.CSSPropertie
   );
 }
 
-function Draggable(props: { widgetInstance: WidgetInstance<any> }) {
-  const { attributes, listeners, setNodeRef, transform } = useDraggable({
+function Draggable(props: { widgetInstance: WidgetInstance<any>, style: React.CSSProperties, shouldTransition: boolean }) {
+  const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
     id: props.widgetInstance.id,
   });
 
@@ -253,7 +291,11 @@ function Draggable(props: { widgetInstance: WidgetInstance<any> }) {
     <div
       ref={setNodeRef}
       style={{
-        transform: transform ? `translate3d(${transform.x}px, ${transform.y}px, 0)` : undefined,
+        flexGrow: 1,
+        alignSelf: 'stretch',
+        transition: !props.shouldTransition ? undefined : 'transform 0.4s ease',
+        ...props.style,
+        transform: `translate3d(${transform?.x ?? 0}px, ${transform?.y ?? 0}px, 0) ${props.style.transform ?? ''}`,
       }}
       {...listeners}
       {...attributes}
