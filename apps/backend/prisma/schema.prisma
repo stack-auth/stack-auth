@@ -51,14 +51,15 @@ model Tenancy {
   organizationId    String?      @db.Uuid
   hasNoOrganization BooleanTrue?
 
-  teams             Team[]             @relation("TenancyTeams")
-  projectUsers      ProjectUser[]      @relation("TenancyProjectUsers")
-  authMethods       AuthMethod[]       @relation("TenancyAuthMethods")
-  contactChannels   ContactChannel[]   @relation("TenancyContactChannels")
-  connectedAccounts ConnectedAccount[] @relation("TenancyConnectedAccounts")
-  SentEmail         SentEmail[]
-  cliAuthAttempts   CliAuthAttempt[]
-  projectApiKey     ProjectApiKey[]
+  teams                       Team[]                       @relation("TenancyTeams")
+  projectUsers                ProjectUser[]                @relation("TenancyProjectUsers")
+  authMethods                 AuthMethod[]                 @relation("TenancyAuthMethods")
+  contactChannels             ContactChannel[]             @relation("TenancyContactChannels")
+  connectedAccounts           ConnectedAccount[]           @relation("TenancyConnectedAccounts")
+  SentEmail                   SentEmail[]
+  cliAuthAttempts             CliAuthAttempt[]
+  projectApiKey               ProjectApiKey[]
+  userNotificationPreferences UserNotificationPreference[]
 
   @@unique([projectId, branchId, organizationId])
   @@unique([projectId, branchId, hasNoOrganization])
@@ -192,6 +193,7 @@ model ProjectUser {
   contactChannels               ContactChannel[]
   authMethods                   AuthMethod[]
   connectedAccounts             ConnectedAccount[]
+  userNotificationPreferences   UserNotificationPreference[]
 
   // some backlinks for the unique constraints on some auth methods
   passwordAuthMethod PasswordAuthMethod[]
@@ -576,6 +578,7 @@ enum EmailTemplateType {
   PASSWORD_RESET
   MAGIC_LINK
   TEAM_INVITATION
+  SIGN_IN_INVITATION
 }
 
 model EmailTemplate {
@@ -734,4 +737,18 @@ model CliAuthAttempt {
   updatedAt DateTime @updatedAt
 
   @@id([tenancyId, id])
+}
+
+model UserNotificationPreference {
+  id                     String @default(uuid()) @db.Uuid
+  tenancyId              String @db.Uuid
+  projectUserId          String @db.Uuid
+  notificationCategoryId String @db.Uuid
+
+  enabled     Boolean
+  tenancy     Tenancy     @relation(fields: [tenancyId], references: [id], onDelete: Cascade)
+  projectUser ProjectUser @relation(fields: [tenancyId, projectUserId], references: [tenancyId, projectUserId], onDelete: Cascade)
+
+  @@id([tenancyId, id])
+  @@unique([tenancyId, projectUserId, notificationCategoryId])
 }
