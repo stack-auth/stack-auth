@@ -556,6 +556,15 @@ importers:
       react-remove-scroll:
         specifier: ^2.7.0
         version: 2.7.1(@types/react@18.3.12)(react@18.3.1)
+      remark:
+        specifier: ^15.0.1
+        version: 15.0.1
+      remark-gfm:
+        specifier: ^4.0.1
+        version: 4.0.1
+      remark-mdx:
+        specifier: ^3.1.0
+        version: 3.1.0
       shiki:
         specifier: ^3.4.2
         version: 3.6.0
