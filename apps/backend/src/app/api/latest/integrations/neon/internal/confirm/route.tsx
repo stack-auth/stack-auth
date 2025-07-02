@@ -1,4 +1,4 @@
-import { prismaClient } from "@/prisma-client";
+import { globalPrismaClient } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { serverOrHigherAuthTypeSchema, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
 import { generateSecureRandomString } from "@stackframe/stack-shared/dist/utils/crypto";
@@ -30,7 +30,7 @@ export const POST = createSmartRouteHandler({
   }),
   handler: async (req) => {
     // Create an admin API key for the tenancy
-    const set = await prismaClient.apiKeySet.create({
+    const set = await globalPrismaClient.apiKeySet.create({
       data: {
         projectId: req.body.project_id,
         description: `Auto-generated for ${req.body.external_project_name ? `"${req.body.external_project_name}"` : "an external project"}`,
@@ -41,7 +41,7 @@ export const POST = createSmartRouteHandler({
 
     // Create authorization code
     const authorizationCode = generateSecureRandomString();
-    await prismaClient.projectWrapperCodes.create({
+    await globalPrismaClient.projectWrapperCodes.create({
       data: {
         idpId: "stack-preconfigured-idp:integrations/neon",
         interactionUid: req.body.interaction_uid,

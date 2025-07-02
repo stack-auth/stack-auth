@@ -1,6 +1,6 @@
 import { usersCrudHandlers } from "@/app/api/latest/users/crud";
 import { getProvider } from "@/oauth";
-import { prismaClient } from "@/prisma-client";
+import { getPrismaClientForTenancy } from "@/prisma-client";
 import { createCrudHandlers } from "@/route-handlers/crud-handler";
 import { KnownErrors } from "@stackframe/stack-shared";
 import { connectedAccountAccessTokenCrud } from "@stackframe/stack-shared/dist/interface/crud/oauth";
@@ -35,8 +35,8 @@ export const connectedAccountAccessTokenCrudHandlers = createLazyProxy(() =>crea
     }
 
     // ====================== retrieve access token if it exists ======================
-
-    const accessTokens = await prismaClient.oAuthAccessToken.findMany({
+    const prisma = getPrismaClientForTenancy(auth.tenancy);
+    const accessTokens = await prisma.oAuthAccessToken.findMany({
       where: {
         tenancyId: auth.tenancy.id,
         configOAuthProviderId: params.provider_id,
@@ -58,7 +58,7 @@ export const connectedAccountAccessTokenCrudHandlers = createLazyProxy(() =>crea
 
     // ============== no access token found, try to refresh the token ==============
 
-    const refreshTokens = await prismaClient.oAuthToken.findMany({
+    const refreshTokens = await prisma.oAuthToken.findMany({
       where: {
         tenancyId: auth.tenancy.id,
         configOAuthProviderId: params.provider_id,
@@ -85,7 +85,7 @@ export const connectedAccountAccessTokenCrudHandlers = createLazyProxy(() =>crea
       throw new StackAssertionError("No access token returned");
     }
 
-    await prismaClient.oAuthAccessToken.create({
+    await prisma.oAuthAccessToken.create({
       data: {
         tenancyId: auth.tenancy.id,
         configOAuthProviderId: params.provider_id,
@@ -98,12 +98,12 @@ export const connectedAccountAccessTokenCrudHandlers = createLazyProxy(() =>crea
 
     if (tokenSet.refreshToken) {
       // remove the old token, add the new token to the DB
-      await prismaClient.oAuthToken.deleteMany({
+      await prisma.oAuthToken.deleteMany({
         where: {
           refreshToken: filteredRefreshTokens[0].refreshToken,
         },
       });
-      await prismaClient.oAuthToken.create({
+      await prisma.oAuthToken.create({
         data: {
           tenancyId: auth.tenancy.id,
           configOAuthProviderId: params.provider_id,

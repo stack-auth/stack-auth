@@ -1,4 +1,4 @@
-import { prismaClient } from "@/prisma-client";
+import { getPrismaClientForTenancy } from "@/prisma-client";
 import { createCrudHandlers } from "@/route-handlers/crud-handler";
 import { SentEmail } from "@prisma/client";
 import { InternalEmailsCrud, internalEmailsCrud } from "@stackframe/stack-shared/dist/interface/crud/emails";
@@ -31,7 +31,7 @@ export const internalEmailsCrudHandlers = createLazyProxy(() => createCrudHandle
     emailId: yupString().optional(),
   }),
   onList: async ({ auth }) => {
-    const emails = await prismaClient.sentEmail.findMany({
+    const emails = await getPrismaClientForTenancy(auth.tenancy).sentEmail.findMany({
       where: {
         tenancyId: auth.tenancy.id,
       },

@@ -982,7 +982,7 @@ export namespace InternalApiKey {
         ...body,
       },
       headers: {
-        'x-stack-admin-access-token': adminAccessToken ?? (backendContext.value.projectKeys !== "no-project" && backendContext.value.projectKeys.adminAccessToken || throwErr("Missing adminAccessToken")),
+        'x-stack-admin-access-token': adminAccessToken ?? (backendContext.value.projectKeys !== "no-project" && backendContext.value.projectKeys.adminAccessToken || undefined),
       }
     });
     expect(response.status).equals(200);

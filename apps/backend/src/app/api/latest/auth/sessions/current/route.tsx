@@ -1,4 +1,4 @@
-import { prismaClient } from "@/prisma-client";
+import { getPrismaClientForTenancy, globalPrismaClient } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { Prisma } from "@prisma/client";
 import { KnownErrors } from "@stackframe/stack-shared";
@@ -31,7 +31,8 @@ export const DELETE = createSmartRouteHandler({
     }
 
     try {
-      const result = await prismaClient.projectUserRefreshToken.deleteMany({
+      const prisma = getPrismaClientForTenancy(tenancy);
+      const result = await globalPrismaClient.projectUserRefreshToken.deleteMany({
         where: {
           tenancyId: tenancy.id,
           id: refreshTokenId,
