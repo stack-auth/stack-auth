@@ -93,7 +93,7 @@ function Inner<AllowNull extends boolean>(props: SelectedTeamSwitcherProps<Allow
           if (value !== 'null') {
             team = teams?.find(team => team.id === value) || null;
             if (!team) {
-              throw new Error('Team not found, this should not happen');
+              throw new StackAssertionError('Team not found, this should not happen');
             }
           } else {
             team = null;
