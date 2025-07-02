@@ -55,6 +55,8 @@ export type StackAdminApp<HasTokenStore extends boolean = boolean, ProjectId ext
       emailConfig: EmailConfig,
     }): Promise<Result<undefined, { errorMessage: string }>>,
 
+    sendSignInInvitationEmail(email: string, callbackUrl: string): Promise<void>,
+
     listSentEmails(): Promise<AdminSentEmail[]>,
   }
   & StackServerApp<HasTokenStore, ProjectId>

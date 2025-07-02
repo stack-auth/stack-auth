@@ -384,4 +384,8 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
       error: email.error,
     }));
   }
+
+  async sendSignInInvitationEmail(email: string, callbackUrl: string): Promise<void> {
+    await this._interface.sendSignInInvitationEmail(email, callbackUrl);
+  }
 }
