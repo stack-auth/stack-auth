@@ -458,9 +458,9 @@ function SendEmailDialog(props: {
         onSubmit={stage === 'recipients' ? handleNext : handleSend}
         formSchema={stage === "recipients" ?
           yup.object({
-            subject: yup.string().defined().optional(),
-            content: yup.string().defined().optional(),
-            notificationCategoryName: yup.string().oneOf(['Transactional', 'Marketing']).label("notification category").defined().optional(),
+            subject: yup.string().optional(),
+            content: yup.string().optional(),
+            notificationCategoryName: yup.string().optional(),
           }) :
           yup.object({
             subject: yup.string().defined(),
