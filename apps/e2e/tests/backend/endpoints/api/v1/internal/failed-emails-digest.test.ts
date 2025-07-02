@@ -343,8 +343,8 @@ describe("with valid credentials", () => {
     );
     expect(currentResponses.length).toBe(1);
     expect(currentResponses[0].tenant_owner_emails.length).toBe(2);
-    expect(currentResponses[0].tenant_owner_emails[0].includes(firstOwnerMailbox.emailAddress)).toBe(true);
-    expect(currentResponses[0].tenant_owner_emails[1].includes(secondOwnerMailbox.emailAddress)).toBe(true);
+    expect(currentResponses[0].tenant_owner_emails.includes(firstOwnerMailbox.emailAddress)).toBe(true);
+    expect(currentResponses[0].tenant_owner_emails.includes(secondOwnerMailbox.emailAddress)).toBe(true);
 
     const firstMailboxMessages = await firstOwnerMailbox.fetchMessages();
     const secondMailboxMessages = await secondOwnerMailbox.fetchMessages();
