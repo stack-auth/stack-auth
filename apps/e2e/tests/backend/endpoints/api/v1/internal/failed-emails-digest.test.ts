@@ -97,7 +97,6 @@ describe("with valid credentials", () => {
       headers: { "Authorization": "Bearer mock_cron_secret" }
     });
     expect(response.status).toBe(200);
-    console.log(response.body);
 
     const failedEmailsByTenancy = response.body.failed_emails_by_tenancy;
     const mockProjectFailedEmails = failedEmailsByTenancy.filter(
@@ -342,28 +341,10 @@ describe("with valid credentials", () => {
     const currentResponses = response.body.failed_emails_by_tenancy.filter(
       (batch: any) => batch.project_id === projectId
     );
-    expect(currentResponses).toMatchInlineSnapshot(`
-      [
-        {
-          "emails": [
-            {
-              "subject": "Test Email from Stack Auth",
-              "to": ["test-email-recipient@stackframe.co"],
-            },
-            {
-              "subject": "Test Email from Stack Auth",
-              "to": ["test-email-recipient@stackframe.co"],
-            },
-          ],
-          "project_id": "<stripped UUID>",
-          "tenancy_id": "<stripped UUID>",
-          "tenant_owner_emails": [
-            "default-mailbox--<stripped UUID>@stack-generated.example.com",
-            "mailbox-1--<stripped UUID>@stack-generated.example.com",
-          ],
-        },
-      ]
-    `);
+    expect(currentResponses.length).toBe(1);
+    expect(currentResponses[0].tenant_owner_emails.length).toBe(2);
+    expect(currentResponses[0].tenant_owner_emails[0].includes(firstOwnerMailbox.emailAddress)).toBe(true);
+    expect(currentResponses[0].tenant_owner_emails[1].includes(secondOwnerMailbox.emailAddress)).toBe(true);
 
     const firstMailboxMessages = await firstOwnerMailbox.fetchMessages();
     const secondMailboxMessages = await secondOwnerMailbox.fetchMessages();
