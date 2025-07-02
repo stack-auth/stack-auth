@@ -439,7 +439,7 @@ export default function SetupPage(props: { toMetrics: () => void }) {
           <X className="w-4 h-4 ml-1 mt-0.5" />
         </Button>
       </div>
-      <div className="flex gap-4 justify-center items-center border rounded-2xl py-4 px-8">
+      <div className="flex gap-4 justify-center items-center border rounded-2xl py-4 px-8 backdrop-blur-md bg-white/20 dark:bg-black/20">
         <div className="w-[200px] h-[200px] relative hidden md:block">
           {showPulse && (
             <div className="absolute inset-0 pointer-events-none w-[200px] h-[200px] flex items-center justify-center">
