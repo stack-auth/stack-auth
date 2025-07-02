@@ -95,12 +95,14 @@
   box-shadow: 0 0 3px 3px rgba(0, 0, 0, 0.02);
   backdrop-filter: blur(12px);
   background-image: radial-gradient(ellipse at top, #fdfdfd88, transparent), radial-gradient(ellipse at bottom, #ffffff88, transparent);
+  background-color: transparent !important;
 }
 
 .dark .bg-card {
   box-shadow: none;
   backdrop-filter: blur(12px);
   background-image: radial-gradient(ellipse at top, #18182288, transparent), radial-gradient(ellipse at bottom, #19191988, transparent);
+  background-color: transparent !important;
 }
 
 .bg-card > * {
