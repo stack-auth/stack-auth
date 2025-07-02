@@ -501,7 +501,7 @@ function DomainSelector({ control, watch, domains, allowLocalhost }: DomainSelec
                     placeholder='/handler'
                   />
                   <Typography variant="secondary" type="footnote">
-                    only modify this if you changed the default handler path in your app
+                    Only modify this if you changed the default handler path in your app
                   </Typography>
                 </div>
               </AccordionContent>
