@@ -25,11 +25,11 @@ type MockTeam = {
   profileImageUrl?: string | null,
 };
 
-type SelectedTeamSwitcherProps = {
-  urlMap?: (team: Team | null) => string,
+type SelectedTeamSwitcherProps<AllowNull extends boolean = false> = {
+  urlMap?: (team: AllowNull extends true ? Team | null : Team) => string,
   selectedTeam?: Team,
   noUpdateSelectedTeam?: boolean,
-  allowNull?: boolean,
+  allowNull?: AllowNull,
   nullTeamsLabel?: string,
   onChange?: (team: Team | null) => void,
   // Mock data props
@@ -44,7 +44,7 @@ type SelectedTeamSwitcherProps = {
   },
 };
 
-export function SelectedTeamSwitcher(props: SelectedTeamSwitcherProps) {
+export function SelectedTeamSwitcher<AllowNull extends boolean = false>(props: SelectedTeamSwitcherProps<AllowNull>) {
   return <Suspense fallback={<Fallback />}>
     <Inner {...props} />
   </Suspense>;
@@ -54,7 +54,7 @@ function Fallback() {
   return <Skeleton className="h-9 w-full max-w-64 stack-scope" />;
 }
 
-function Inner(props: SelectedTeamSwitcherProps) {
+function Inner<AllowNull extends boolean>(props: SelectedTeamSwitcherProps<AllowNull>) {
   const { t } = useTranslation();
   const appFromHook = useStackApp();
   const userFromHook = useUser();
