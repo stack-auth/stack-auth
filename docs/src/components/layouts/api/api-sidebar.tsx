@@ -242,56 +242,74 @@ export function ApiSidebarContent({ pages = [] }: { pages?: PageData[] }) {
             Overview
           </ApiSidebarLink>
 
-          {Object.entries(organizedPages).map(([sectionKey, section]) => (
-            <div key={sectionKey} className="mb-4">
-              <ApiSeparator>{section.title}</ApiSeparator>
+          {Object.entries(organizedPages)
+            .filter(([sectionKey]) => sectionKey !== 'admin') // Hide admin section from sidebar
+            .sort(([aKey], [bKey]) => {
+              // Define the desired order of sections
+              const sectionOrder = ['client', 'server', 'webhooks'];
+              const aIndex = sectionOrder.indexOf(aKey);
+              const bIndex = sectionOrder.indexOf(bKey);
+              // If both sections are in our defined order, sort by that order
+              if (aIndex !== -1 && bIndex !== -1) {
+                return aIndex - bIndex;
+              }
+              // If only one is in our defined order, prioritize it
+              if (aIndex !== -1) return -1;
+              if (bIndex !== -1) return 1;
+              // If neither is in our defined order, sort alphabetically
+              //eslint-disable-next-line
+              return aKey.localeCompare(bKey);
+            })
+            .map(([sectionKey, section]) => (
+              <div key={sectionKey} className="mb-4">
+                <ApiSeparator>{section.title}</ApiSeparator>
 
-              {/* Section-level pages */}
-              {section.pages.length > 0 && section.pages.map((page: PageData) => (
-                <ApiSidebarLink
-                  key={page.url}
-                  href={page.url}
-                  method={getHttpMethod(page)}
-                >
-                  {page.data.title || formatTitle(page.slugs[page.slugs.length - 1])}
-                </ApiSidebarLink>
-              ))}
+                {/* Section-level pages */}
+                {section.pages.length > 0 && section.pages.map((page: PageData) => (
+                  <ApiSidebarLink
+                    key={page.url}
+                    href={page.url}
+                    method={getHttpMethod(page)}
+                  >
+                    {page.data.title || formatTitle(page.slugs[page.slugs.length - 1])}
+                  </ApiSidebarLink>
+                ))}
 
-              {/* Grouped pages */}
-              {Object.entries(section.groups).map(([groupKey, group]: [string, OrganizedGroup]) => (
-                <CollapsibleSection key={groupKey} title={group.title}>
-                  {group.pages.map((page: PageData) => {
-                    const method = getHttpMethod(page);
-                    const title = page.data.title || formatTitle(page.slugs[page.slugs.length - 1]);
+                {/* Grouped pages */}
+                {Object.entries(section.groups).map(([groupKey, group]: [string, OrganizedGroup]) => (
+                  <CollapsibleSection key={groupKey} title={group.title}>
+                    {group.pages.map((page: PageData) => {
+                      const method = getHttpMethod(page);
+                      const title = page.data.title || formatTitle(page.slugs[page.slugs.length - 1]);
 
-                    // Special handling for webhooks (EVENT badge instead of HTTP method)
-                    if (sectionKey === 'webhooks') {
+                      // Special handling for webhooks (EVENT badge instead of HTTP method)
+                      if (sectionKey === 'webhooks') {
+                        return (
+                          <ApiSidebarLink key={page.url} href={page.url}>
+                            <div className="flex items-center gap-2">
+                              <span className="inline-flex items-center px-1 py-0.5 rounded text-xs font-medium border bg-purple-100 text-purple-800 border-purple-200 dark:bg-purple-900/30 dark:text-purple-300 dark:border-purple-700 leading-none">
+                                EVENT
+                              </span>
+                              <span>{title}</span>
+                            </div>
+                          </ApiSidebarLink>
+                        );
+                      }
+
                       return (
-                        <ApiSidebarLink key={page.url} href={page.url}>
-                          <div className="flex items-center gap-2">
-                            <span className="inline-flex items-center px-1 py-0.5 rounded text-xs font-medium border bg-purple-100 text-purple-800 border-purple-200 dark:bg-purple-900/30 dark:text-purple-300 dark:border-purple-700 leading-none">
-                              EVENT
-                            </span>
-                            <span>{title}</span>
-                          </div>
+                        <ApiSidebarLink
+                          key={page.url}
+                          href={page.url}
+                          method={method}
+                        >
+                          {title}
                         </ApiSidebarLink>
                       );
-                    }
-
-                    return (
-                      <ApiSidebarLink
-                        key={page.url}
-                        href={page.url}
-                        method={method}
-                      >
-                        {title}
-                      </ApiSidebarLink>
-                    );
-                  })}
-                </CollapsibleSection>
-              ))}
-            </div>
-          ))}
+                    })}
+                  </CollapsibleSection>
+                ))}
+              </div>
+            ))}
         </ScrollViewport>
       </ScrollArea>
 
