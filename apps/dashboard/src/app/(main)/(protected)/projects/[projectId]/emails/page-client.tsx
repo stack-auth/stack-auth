@@ -376,7 +376,7 @@ function SendEmailDialog(props: {
     return "prevent-close" as const;
   };
 
-  const handleClose = async () => {
+  const handleClose = () => {
     setOpen(false);
     setStage('recipients');
     setSelectedUsers([]);
@@ -448,7 +448,7 @@ function SendEmailDialog(props: {
         onClose={handleClose}
         title="Send Email"
         cancelButton={stage === "recipients" ?
-          { label: 'Cancel', onClick: handleClose } :
+          { label: 'Cancel', onClick: async () => handleClose() } :
           { label: 'Back', onClick: handleBack }
         }
         okButton={stage === 'recipients' ?

@@ -79,7 +79,7 @@ export const POST = createSmartRouteHandler({
         userSendErrors.set(userId, "User has disabled notifications for this category");
         continue;
       }
-      const primaryEmail = user.contactChannels.find((c) => c.type === 'EMAIL' && c.isPrimary === "TRUE")?.value;
+      const primaryEmail = user.contactChannels.find((c) => c.isPrimary === "TRUE")?.value;
       if (!primaryEmail) {
         userSendErrors.set(userId, "User does not have a primary email");
         continue;
@@ -96,7 +96,7 @@ export const POST = createSmartRouteHandler({
             notification_category_id: notificationCategory.id,
           },
           callbackUrl: undefined
-        })
+        });
         const unsubscribeLink = new URL(getEnvVariable("NEXT_PUBLIC_STACK_API_URL"));
         unsubscribeLink.pathname = "/api/v1/emails/unsubscribe-link";
         unsubscribeLink.searchParams.set("code", code);

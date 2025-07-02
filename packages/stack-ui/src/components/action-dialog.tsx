@@ -111,7 +111,7 @@ export function ActionDialog(props: ActionDialogProps) {
               }}
               {...cancelButton.props}
             >
-            {cancelButton.label ?? "Cancel"}
+              {cancelButton.label ?? "Cancel"}
             </Button>
           )}
           {okButton && (
