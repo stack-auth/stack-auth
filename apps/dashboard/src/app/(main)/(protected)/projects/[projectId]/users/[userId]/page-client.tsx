@@ -95,8 +95,8 @@ function EditableInput({
       placeholder={placeholder}
       tabIndex={readOnly ? -1 : undefined}
       className={cn(
-        "w-full px-1 py-0 h-[unset] border-transparent",
-        readOnly && "focus-visible:ring-0",
+        "w-full px-1 py-0 h-[unset] border-transparent hover:ring-1 hover:ring-ring",
+        readOnly && "focus-visible:ring-0 hover:ring-0",
         shiftTextToLeft && "ml-[-7px]",
         inputClassName,
       )}
