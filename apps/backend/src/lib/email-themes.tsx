@@ -8,15 +8,20 @@ const emailThemes = {
 } as const;
 
 
-export function renderEmailWithTheme(htmlContent: string, theme: keyof typeof emailThemes) {
+export function renderEmailWithTheme(htmlContent: string, theme: keyof typeof emailThemes, unsubscribeLink: string | null) {
   const TemplateComponent = emailThemes[theme];
-  const content = <div dangerouslySetInnerHTML={{ __html: htmlContent }} />
-  const Email = (
+    const Email = (
     <Html>
       <Tailwind>
         <Body>
           <TemplateComponent>
-            {content}
+            <div dangerouslySetInnerHTML={{ __html: htmlContent }} />
+            {unsubscribeLink && (
+              <>
+                <br /><br />
+                <a href={unsubscribeLink}>Click here to unsubscribe</a>
+              </>
+            )}
           </TemplateComponent>
         </Body>
       </Tailwind>
