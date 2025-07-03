@@ -125,7 +125,7 @@ export const contactChannelVerificationCodeHandler = createVerificationCodeHandl
   },
 });
 
-export async function throwEmailVerificationRequiredErrorIfNeeded(options: { tenancy: Tenancy, isNewUser: boolean, userId: string, callbackUrl: string }) {
+export async function throwEmailVerificationRequiredErrorIfNeeded(options: { tenancy: Tenancy, isNewUser: boolean, userId: string, callbackUrl?: string }) {
   if (!options.tenancy.completeConfig.auth.emailVerificationRequired) {
     return;
   }
@@ -142,6 +142,10 @@ export async function throwEmailVerificationRequiredErrorIfNeeded(options: { ten
 
   if (user.primary_email_verified) {
     return;
+  }
+
+  if (!options.callbackUrl) {
+    throw new StatusError(400, "Email verification is required, but no email verification callback URL was provided. If you enabled the email verification required setting, you need to update the Stack Auth client to use this feature.");
   }
 
   // TODO: check if callback url is valid

@@ -486,7 +486,7 @@ model ProjectUserAuthorizationCode {
 
   newUser                      Boolean
   afterCallbackRedirectUrl     String?
-  emailVerificationRedirectUrl String
+  emailVerificationRedirectUrl String?
 
   projectUser ProjectUser @relation(fields: [tenancyId, projectUserId], references: [tenancyId, projectUserId], onDelete: Cascade)
 
