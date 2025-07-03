@@ -591,7 +591,7 @@ function Draggable(props: { widgetInstance: WidgetInstance<any>, style: React.CS
           overlayProps={{
             style: {
               opacity: settingsOpenAnimationDetails?.shouldStart && !settingsOpenAnimationDetails.revert ? 1 : 0,
-              transition: `opacity 0.3s ${settingsOpenAnimationDetails?.revert ? '' : '0.3s'} ease`,
+              transition: `opacity 0.3s ease${settingsOpenAnimationDetails?.revert ? ' 0s' : ' 0.3s'}`,
               animation: 'none',
             },
           }}
