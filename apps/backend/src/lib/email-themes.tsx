@@ -8,7 +8,7 @@ const emailThemes = {
 } as const;
 
 
-export function renderEmailWithTheme(htmlContent: string, theme: keyof typeof emailThemes, unsubscribeLink: string | null) {
+export async function renderEmailWithTheme(htmlContent: string, theme: keyof typeof emailThemes, unsubscribeLink: string | null) {
   const TemplateComponent = emailThemes[theme];
   const Email = (
     <Html>
@@ -28,7 +28,7 @@ export function renderEmailWithTheme(htmlContent: string, theme: keyof typeof em
     </Html>
   );
   return {
-    html: render(Email),
-    text: render(Email, { plainText: true }),
+    html: await render(Email),
+    text: await render(Email, { plainText: true }),
   };
 }
