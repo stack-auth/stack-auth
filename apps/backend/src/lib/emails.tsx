@@ -373,6 +373,8 @@ export function normalizeEmail(email: string): string {
     throw new TypeError('normalize-email expects a string');
   }
 
+  const removeDotsDomains = ['gmail.com', 'googlemail.com', 'live.com'];
+
   const emailLower = email.trim().toLowerCase();
   const emailParts = emailLower.split(/@/);
 
@@ -381,6 +383,10 @@ export function normalizeEmail(email: string): string {
   }
 
   let [username, domain] = emailParts;
+
+  if (removeDotsDomains.includes(domain)) {
+    username = username.replace(/\.+/g, '');
+  }
 
   return `${username}@${domain}`;
 }
