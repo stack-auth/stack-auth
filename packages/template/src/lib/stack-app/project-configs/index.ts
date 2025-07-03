@@ -3,6 +3,7 @@ import { AdminTeamPermission } from "../permissions";
 
 export type ProjectConfig = {
   readonly signUpEnabled: boolean,
+  readonly emailVerificationRequired: boolean,
   readonly credentialEnabled: boolean,
   readonly magicLinkEnabled: boolean,
   readonly passkeyEnabled: boolean,
@@ -19,6 +20,7 @@ export type OAuthProviderConfig = {
 
 export type AdminProjectConfig = {
   readonly signUpEnabled: boolean,
+  readonly emailVerificationRequired: boolean,
   readonly credentialEnabled: boolean,
   readonly magicLinkEnabled: boolean,
   readonly passkeyEnabled: boolean,

@@ -2,6 +2,7 @@ import { WebAuthnError, startAuthentication, startRegistration } from "@simplewe
 import { KnownErrors, StackClientInterface } from "@stackframe/stack-shared";
 import { ContactChannelsCrud } from "@stackframe/stack-shared/dist/interface/crud/contact-channels";
 import { CurrentUserCrud } from "@stackframe/stack-shared/dist/interface/crud/current-user";
+import { NotificationPreferenceCrud } from "@stackframe/stack-shared/dist/interface/crud/notification-preferences";
 import { TeamApiKeysCrud, UserApiKeysCrud, teamApiKeysCreateOutputSchema, userApiKeysCreateOutputSchema } from "@stackframe/stack-shared/dist/interface/crud/project-api-keys";
 import { ProjectPermissionsCrud } from "@stackframe/stack-shared/dist/interface/crud/project-permissions";
 import { ClientProjectsCrud } from "@stackframe/stack-shared/dist/interface/crud/projects";
@@ -11,7 +12,6 @@ import { TeamMemberProfilesCrud } from "@stackframe/stack-shared/dist/interface/
 import { TeamPermissionsCrud } from "@stackframe/stack-shared/dist/interface/crud/team-permissions";
 import { TeamsCrud } from "@stackframe/stack-shared/dist/interface/crud/teams";
 import { UsersCrud } from "@stackframe/stack-shared/dist/interface/crud/users";
-import { NotificationPreferenceCrud } from "@stackframe/stack-shared/dist/interface/crud/notification-preferences";
 import { InternalSession } from "@stackframe/stack-shared/dist/sessions";
 import { scrambleDuringCompileTime } from "@stackframe/stack-shared/dist/utils/compile-time";
 import { isBrowserLike } from "@stackframe/stack-shared/dist/utils/env";
@@ -1289,6 +1289,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
   async redirectToSignUp(options?: RedirectToOptions) { return await this._redirectToHandler("signUp", options); }
   async redirectToSignOut(options?: RedirectToOptions) { return await this._redirectToHandler("signOut", options); }
   async redirectToEmailVerification(options?: RedirectToOptions) { return await this._redirectToHandler("emailVerification", options); }
+  async redirectToEmailVerificationRequired(options?: RedirectToOptions) { return await this._redirectToHandler("emailVerificationRequired", options); }
   async redirectToPasswordReset(options?: RedirectToOptions) { return await this._redirectToHandler("passwordReset", options); }
   async redirectToForgotPassword(options?: RedirectToOptions) { return await this._redirectToHandler("forgotPassword", options); }
   async redirectToHome(options?: RedirectToOptions) { return await this._redirectToHandler("home", options); }
@@ -1484,14 +1485,24 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
     throw new StackAssertionError("we should have redirected in redirectToMfa()");
   }
 
+  protected async _experimentalEmailVerificationRequired(error: KnownErrors['EmailVerificationRequired'], session: InternalSession): Promise<never> {
+    // Redirect to the email verification page
+    await this.redirectToEmailVerificationRequired();
+
+    throw new StackAssertionError("we should have redirected in redirectToEmailVerificationRequired()");
+  }
+
   /**
    * @deprecated
    * TODO remove
    */
-  protected async _catchMfaRequiredError<T, E>(callback: () => Promise<Result<T, E>>): Promise<Result<T | { accessToken: string, refreshToken: string, newUser: boolean }, E>> {
+  protected async _catchMfaAndEmailVerificationRequiredError<T, E>(callback: () => Promise<Result<T, E>>): Promise<Result<T | { accessToken: string, refreshToken: string, newUser: boolean }, E>> {
     try {
       return await callback();
     } catch (e) {
+      if (KnownErrors.EmailVerificationRequired.isInstance(e)) {
+        return Result.ok(await this._experimentalEmailVerificationRequired(e, await this._getSession()));
+      }
       if (KnownErrors.MultiFactorAuthenticationRequired.isInstance(e)) {
         return Result.ok(await this._experimentalMfa(e, await this._getSession()));
       }
@@ -1508,7 +1519,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
     const session = await this._getSession();
     let result;
     try {
-      result = await this._catchMfaRequiredError(async () => {
+      result = await this._catchMfaAndEmailVerificationRequiredError(async () => {
         return await this._interface.signInWithCredential(options.email, options.password, session);
       });
     } catch (e) {
@@ -1580,7 +1591,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
     this._ensurePersistentTokenStore();
     let result;
     try {
-      result = await this._catchMfaRequiredError(async () => {
+      result = await this._catchMfaAndEmailVerificationRequiredError(async () => {
         return await this._interface.signInWithMagicLink(code);
       });
     } catch (e) {
@@ -1712,7 +1723,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
     this._ensurePersistentTokenStore();
     let result;
     try {
-      result = await this._catchMfaRequiredError(async () => {
+      result = await this._catchMfaAndEmailVerificationRequiredError(async () => {
         return await this._interface.signInWithMfa(totp, code);
       });
     } catch (e) {
@@ -1741,7 +1752,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
     const session = await this._getSession();
     let result;
     try {
-      result = await this._catchMfaRequiredError(async () => {
+      result = await this._catchMfaAndEmailVerificationRequiredError(async () => {
         const initiationResult = await this._interface.initiatePasskeyAuthentication({}, session);
         if (initiationResult.status !== "ok") {
           return Result.error(new KnownErrors.PasskeyAuthenticationFailed("Failed to get initiation options for passkey authentication"));
@@ -1784,7 +1795,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
     this._ensurePersistentTokenStore();
     let result;
     try {
-      result = await this._catchMfaRequiredError(async () => {
+      result = await this._catchMfaAndEmailVerificationRequiredError(async () => {
         return await callOAuthCallback(this._interface, this.urls.oauthCallback);
       });
     } catch (e) {

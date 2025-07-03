@@ -175,14 +175,15 @@ model ProjectUser {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  profileImageUrl        String?
-  displayName            String?
-  serverMetadata         Json?
-  clientReadOnlyMetadata Json?
-  clientMetadata         Json?
-  requiresTotpMfa        Boolean @default(false)
-  totpSecret             Bytes?
-  isAnonymous            Boolean @default(false)
+  profileImageUrl           String?
+  displayName               String?
+  serverMetadata            Json?
+  clientReadOnlyMetadata    Json?
+  clientMetadata            Json?
+  requiresTotpMfa           Boolean @default(false)
+  totpSecret                Bytes?
+  isAnonymous               Boolean @default(false)
+  requiresEmailVerification Boolean @default(false)
 
   tenancy                       Tenancy                        @relation("TenancyProjectUsers", fields: [tenancyId], references: [id], onDelete: Cascade)
   project                       Project                        @relation(fields: [mirroredProjectId], references: [id], onDelete: Cascade)

@@ -62,6 +62,7 @@ export type HandlerUrls = {
   signOut: string,
   afterSignOut: string,
   emailVerification: string,
+  emailVerificationRequired: string,
   passwordReset: string,
   forgotPassword: string,
   home: string,

@@ -94,6 +94,7 @@ export const branchConfigSchema = projectConfigSchema.concat(yupObject({
 
   users: yupObject({
     allowClientUserDeletion: yupBoolean().optional(),
+    requiresEmailVerification: yupBoolean().optional(),
   }).optional(),
 
   apiKeys: branchApiKeysSchema,
@@ -185,6 +186,7 @@ export const organizationConfigDefaults = {
 
   users: {
     allowClientUserDeletion: false,
+    requiresEmailVerification: false,
   },
 
   domains: {

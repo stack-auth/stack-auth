@@ -4,14 +4,15 @@ export const emailVerificationTemplate: TEditorConfiguration = {
   "root": {
     "type": "EmailLayout",
     "data": {
-      "backdropColor": "#ffffff",
+      "backdropColor": "#FFFFFF",
       "canvasColor": "#FFFFFF",
       "textColor": "#242424",
-      "fontFamily": null,
+      "fontFamily": "MODERN_SANS",
       "childrenIds": [
         "block_BjpQ7DGTtvaEuYRMd7VE7w",
         "block_xyg4GWmgGbJJEDRQc76bC",
-        "block_76VptLCZ47t3EkAarUufEJ",
+        "block-1727062582681",
+        "block-1727062622114",
         "block_Gtk3kDYwsJqEmQf2XGWPRc",
         "block_LACDCzUS2bsvEbmnq1KHuW"
       ]
@@ -35,34 +36,7 @@ export const emailVerificationTemplate: TEditorConfiguration = {
         }
       },
       "props": {
-        "text": "Hi{{#if userDisplayName}}, {{ userDisplayName }}{{/if}}! Please click on the following button to verify your email.\n"
-      }
-    }
-  },
-  "block_76VptLCZ47t3EkAarUufEJ": {
-    "type": "Button",
-    "data": {
-      "style": {
-        "backgroundColor": null,
-        "fontSize": 14,
-        "fontFamily": null,
-        "fontWeight": "bold",
-        "textAlign": "center",
-        "padding": {
-          "top": 12,
-          "bottom": 12,
-          "right": 24,
-          "left": 24
-        }
-      },
-      "props": {
-        "buttonBackgroundColor": "#f0f0f0",
-        "buttonStyle": "rounded",
-        "buttonTextColor": "#000000",
-        "fullWidth": false,
-        "size": "medium",
-        "text": "Verify my email",
-        "url": "{{ emailVerificationLink }}"
+        "text": "Hi{{#if userDisplayName}}, {{ userDisplayName }}{{/if}}! Welcome to {{ projectDisplayName }}. {{#if otp}}This is your one-time-password for email verification: {{/if}}"
       }
     }
   },
@@ -125,6 +99,88 @@ export const emailVerificationTemplate: TEditorConfiguration = {
       },
       "props": {
         "text": "If you were not expecting this email, you can safely ignore it."
+      }
+    }
+  },
+  "block-1727053976677": {
+    "type": "Text",
+    "data": {
+      "style": {
+        "color": "#000000",
+        "fontSize": 36,
+        "fontFamily": "MONOSPACE",
+        "fontWeight": "bold",
+        "textAlign": "center",
+        "padding": {
+          "top": 16,
+          "bottom": 16,
+          "right": 24,
+          "left": 24
+        }
+      },
+      "props": {
+        "text": "{{ otp }}"
+      }
+    }
+  },
+  "block-1727054013149": {
+    "type": "Text",
+    "data": {
+      "style": {
+        "color": "#000000",
+        "fontSize": 14,
+        "fontWeight": "normal",
+        "textAlign": "center",
+        "padding": {
+          "top": 16,
+          "bottom": 16,
+          "right": 24,
+          "left": 24
+        }
+      },
+      "props": {
+        "text": "Or you can click on [this link]({{ magicLink }}) to login"
+      }
+    }
+  },
+  "block-1727062582681": {
+    "type": "Text",
+    "data": {
+      "style": {
+        "color": "#000000",
+        "fontSize": 35,
+        "fontFamily": "MONOSPACE",
+        "fontWeight": "bold",
+        "textAlign": "center",
+        "padding": {
+          "top": 16,
+          "bottom": 16,
+          "right": 24,
+          "left": 24
+        }
+      },
+      "props": {
+        "text": "{{ otp }}"
+      }
+    }
+  },
+  "block-1727062622114": {
+    "type": "Text",
+    "data": {
+      "style": {
+        "color": "#000000",
+        "fontSize": 14,
+        "fontWeight": "normal",
+        "textAlign": "center",
+        "padding": {
+          "top": 16,
+          "bottom": 16,
+          "right": 24,
+          "left": 24
+        }
+      },
+      "props": {
+        "text": "{{#if otp}}Or you can {{/if}}click on [this link]({{ magicLink }}) to verify your email"
       }
     }
   }

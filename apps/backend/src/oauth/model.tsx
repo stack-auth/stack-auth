@@ -1,3 +1,4 @@
+import { throwEmailVerificationRequiredErrorIfNeeded } from "@/app/api/latest/auth/email-verifiation-required/sign-in/verification-code-handler";
 import { createMfaRequiredError } from "@/app/api/latest/auth/mfa/sign-in/verification-code-handler";
 import { checkApiKeySet } from "@/lib/internal-api-keys";
 import { validateRedirectUrl } from "@/lib/redirect-urls";
@@ -150,6 +151,13 @@ export class OAuthModel implements AuthorizationCodeModel {
           },
         },
       });
+
+      await throwEmailVerificationRequiredErrorIfNeeded({
+        tenancy,
+        isNewUser: false,
+        userId: projectUser.projectUserId,
+      });
+
       if (projectUser.requiresTotpMfa) {
         throw await createMfaRequiredError({
           project: tenancy.project,

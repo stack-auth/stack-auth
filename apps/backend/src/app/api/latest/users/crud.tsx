@@ -74,6 +74,7 @@ export const userPrismaToCrud = (
     otp_auth_enabled: !!otpAuth,
     auth_with_email: !!passwordAuth || !!otpAuth,
     requires_totp_mfa: prisma.requiresTotpMfa,
+    requires_email_verification: prisma.requiresEmailVerification,
     passkey_auth_enabled: !!passkeyAuth,
     oauth_providers: prisma.projectUserOAuthAccounts.map((a) => ({
       id: a.configOAuthProviderId,
@@ -309,6 +310,7 @@ export function getUserQuery(projectId: string, branchId: string, userId: string
         otp_auth_enabled: !!otpAuth,
         auth_with_email: !!passwordAuth || !!otpAuth,
         requires_totp_mfa: row.requiresTotpMfa,
+        requires_email_verification: row.requiresEmailVerification,
         passkey_auth_enabled: !!passkeyAuth,
         oauth_providers: row.ProjectUserOAuthAccounts.map((a: any) => ({
           id: a.configOAuthProviderId,
