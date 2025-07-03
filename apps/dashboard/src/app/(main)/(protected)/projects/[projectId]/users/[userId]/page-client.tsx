@@ -330,6 +330,13 @@ function UserHeader({ user }: UserHeaderProps) {
             }}>
               <span>Impersonate</span>
             </DropdownMenuItem>
+            {user.isMultiFactorRequired && (
+              <DropdownMenuItem onClick={async () => {
+                await user.update({ totpMultiFactorSecret: null });
+              }}>
+                <span>Remove 2FA</span>
+              </DropdownMenuItem>
+            )}
             <DropdownMenuSeparator />
             <DropdownMenuItem onClick={() => setIsDeleteModalOpen(true)}>
               <Typography className="text-destructive">Delete</Typography>
@@ -373,7 +380,7 @@ function UserDetails({ user }: UserDetailsProps) {
         />
       </UserInfo>
       <UserInfo icon={<Shield size={16}/>} name="2-factor auth">
-        <EditableInput value={user.otpAuthEnabled ? 'Enabled' : ''} placeholder='Disabled' readOnly />
+        <EditableInput value={user.isMultiFactorRequired ? 'Enabled' : ''} placeholder='Disabled' readOnly />
       </UserInfo>
       <UserInfo icon={<Calendar size={16}/>} name="Signed up at">
         <EditableInput value={user.signedUpAt.toDateString()} readOnly />

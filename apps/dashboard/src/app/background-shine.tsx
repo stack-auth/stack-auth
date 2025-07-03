@@ -18,6 +18,7 @@ export function BackgroundShine() {
         transition: 'transform 0.05s ease-in-out',
         transform: `translateY(${-scrollY * 0.2}px)`,
       }}
+      inert={true}
     >
       <div style={{
         position: 'absolute',

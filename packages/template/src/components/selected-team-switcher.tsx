@@ -1,4 +1,5 @@
 'use client';
+import { StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
 import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
 import {
   Button,
@@ -25,10 +26,13 @@ type MockTeam = {
   profileImageUrl?: string | null,
 };
 
-type SelectedTeamSwitcherProps = {
-  urlMap?: (team: Team) => string,
+type SelectedTeamSwitcherProps<AllowNull extends boolean = false> = {
+  urlMap?: (team: AllowNull extends true ? Team | null : Team) => string,
   selectedTeam?: Team,
   noUpdateSelectedTeam?: boolean,
+  allowNull?: AllowNull,
+  nullLabel?: string,
+  onChange?: (team: AllowNull extends true ? Team | null : Team) => void,
   // Mock data props
   mockUser?: {
     selectedTeam?: MockTeam,
@@ -41,7 +45,7 @@ type SelectedTeamSwitcherProps = {
   },
 };
 
-export function SelectedTeamSwitcher(props: SelectedTeamSwitcherProps) {
+export function SelectedTeamSwitcher<AllowNull extends boolean = false>(props: SelectedTeamSwitcherProps<AllowNull>) {
   return <Suspense fallback={<Fallback />}>
     <Inner {...props} />
   </Suspense>;
@@ -51,7 +55,7 @@ function Fallback() {
   return <Skeleton className="h-9 w-full max-w-64 stack-scope" />;
 }
 
-function Inner(props: SelectedTeamSwitcherProps) {
+function Inner<AllowNull extends boolean>(props: SelectedTeamSwitcherProps<AllowNull>) {
   const { t } = useTranslation();
   const appFromHook = useStackApp();
   const userFromHook = useUser();
@@ -83,16 +87,26 @@ function Inner(props: SelectedTeamSwitcherProps) {
 
   return (
     <Select
-      value={selectedTeam?.id}
+      value={selectedTeam?.id || (props.allowNull ? 'null-sentinel' : undefined)}
       onValueChange={(value) => {
-        // Skip actual navigation/updates in mock mode
-        if (props.mockUser) return;
-
         runAsynchronouslyWithAlert(async () => {
-          const team = teams?.find(team => team.id === value);
-          if (!team) {
-            throw new Error('Team not found, this should not happen');
+          let team: MockTeam | null = null;
+          if (value !== 'null-sentinel') {
+            team = teams?.find(team => team.id === value) || null;
+            if (!team) {
+              throw new StackAssertionError('Team not found, this should not happen');
+            }
+          } else {
+            team = null;
           }
+
+          // Call onChange callback if provided
+          if (props.onChange) {
+            props.onChange(team as Team);
+          }
+
+          // Skip actual navigation/updates in mock mode
+          if (props.mockUser) return;
 
           if (!props.noUpdateSelectedTeam) {
             await user?.setSelectedTeam(team as Team);
@@ -136,6 +150,15 @@ function Inner(props: SelectedTeamSwitcherProps) {
           </SelectItem>
         </SelectGroup> : undefined}
 
+        {props.allowNull && <SelectGroup>
+          <SelectItem value="null-sentinel">
+            <div className="flex items-center gap-2">
+              <TeamIcon team='personal' />
+              <Typography className="max-w-40 truncate">{props.nullLabel || t('No team')}</Typography>
+            </div>
+          </SelectItem>
+        </SelectGroup>}
+
         {teams?.length ?
           <SelectGroup>
             <SelectLabel>{t('Other teams')}</SelectLabel>
@@ -148,10 +171,12 @@ function Inner(props: SelectedTeamSwitcherProps) {
                   </div>
                 </SelectItem>
               ))}
-          </SelectGroup> :
+          </SelectGroup> : null}
+
+        {!teams?.length && !props.allowNull ?
           <SelectGroup>
             <SelectLabel>{t('No teams yet')}</SelectLabel>
-          </SelectGroup>}
+          </SelectGroup> : null}
 
         {project.config.clientTeamCreationEnabled && <>
           <SelectSeparator/>
