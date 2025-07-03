@@ -1550,12 +1550,22 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
     this._ensurePersistentTokenStore();
     const session = await this._getSession();
     const emailVerificationRedirectUrl = options.verificationCallbackUrl ?? constructRedirectUrl(this.urls.emailVerification, "verificationCallbackUrl");
-    const result = await this._interface.signUpWithCredential(
-      options.email,
-      options.password,
-      emailVerificationRedirectUrl,
-      session
-    );
+    let result;
+    try {
+      result = await this._catchMfaAndEmailVerificationRequiredError(async () => {
+        return await this._interface.signUpWithCredential(
+        options.email,
+        options.password,
+          emailVerificationRedirectUrl,
+          session
+        );
+      });
+    } catch (e) {
+      console.log("?????");
+      // TODO
+      throw e;
+    }
+
     if (result.status === 'ok') {
       await this._signInToAccountWithTokens(result.data);
       if (!options.noRedirect) {
