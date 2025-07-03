@@ -102,47 +102,6 @@ export const emailVerificationTemplate: TEditorConfiguration = {
       }
     }
   },
-  "block-1727053976677": {
-    "type": "Text",
-    "data": {
-      "style": {
-        "color": "#000000",
-        "fontSize": 36,
-        "fontFamily": "MONOSPACE",
-        "fontWeight": "bold",
-        "textAlign": "center",
-        "padding": {
-          "top": 16,
-          "bottom": 16,
-          "right": 24,
-          "left": 24
-        }
-      },
-      "props": {
-        "text": "{{ otp }}"
-      }
-    }
-  },
-  "block-1727054013149": {
-    "type": "Text",
-    "data": {
-      "style": {
-        "color": "#000000",
-        "fontSize": 14,
-        "fontWeight": "normal",
-        "textAlign": "center",
-        "padding": {
-          "top": 16,
-          "bottom": 16,
-          "right": 24,
-          "left": 24
-        }
-      },
-      "props": {
-        "text": "Or you can click on [this link]({{ magicLink }}) to login"
-      }
-    }
-  },
   "block-1727062582681": {
     "type": "Text",
     "data": {
@@ -180,7 +139,7 @@ export const emailVerificationTemplate: TEditorConfiguration = {
         }
       },
       "props": {
-        "text": "{{#if otp}}Or you can {{/if}}click on [this link]({{ magicLink }}) to verify your email"
+        "text": "{{#if otp}}Or you can {{/if}}click on [this link]({{ emailVerificationLink }}) to verify your email"
       }
     }
   }

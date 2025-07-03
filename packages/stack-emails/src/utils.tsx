@@ -45,6 +45,7 @@ export const EMAIL_TEMPLATES_METADATA = {
       ...userVars,
       ...projectVars,
       { name: 'emailVerificationLink', label: 'Email Verification Link', defined: true, example: '<email verification link>' },
+      { name: 'otp', label: 'OTP', defined: false, example: 'X83O4N' },
     ],
   },
   'password_reset': {

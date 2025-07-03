@@ -76,6 +76,8 @@ export const POST = createSmartRouteHandler({
       tenancy: auth.tenancy,
       data: {
         user_id: user.id,
+        is_new_user: false,
+        is_auth: false,
       },
       method: {
         email: contactChannel.value,

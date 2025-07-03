@@ -3,6 +3,7 @@ import { Tenancy, getSoleTenancyFromProjectBranch } from "@/lib/tenancies";
 import { createAuthTokens } from "@/lib/tokens";
 import { prismaClient } from "@/prisma-client";
 import { createVerificationCodeHandler } from "@/route-handlers/verification-code-handler";
+import { runAsynchronouslyAndWaitUntil } from "@/utils/vercel";
 import { VerificationCodeType } from "@prisma/client";
 import { UsersCrud } from "@stackframe/stack-shared/dist/interface/crud/users";
 import { KnownErrors } from "@stackframe/stack-shared/dist/known-errors";
@@ -121,7 +122,7 @@ export const contactChannelVerificationCodeHandler = createVerificationCodeHandl
   },
 });
 
-export async function throwEmailVerificationRequiredErrorIfNeeded(options: { tenancy: Tenancy, isNewUser: boolean, userId: string }) {
+export async function throwEmailVerificationRequiredErrorIfNeeded(options: { tenancy: Tenancy, isNewUser: boolean, userId: string, callbackUrl: string }) {
   if (!options.tenancy.completeConfig.auth.emailVerificationRequired) {
     return;
   }
@@ -140,20 +141,22 @@ export async function throwEmailVerificationRequiredErrorIfNeeded(options: { ten
     return;
   }
 
-  const attemptCode = await contactChannelVerificationCodeHandler.createCode({
-    expiresInMs: 1000 * 60 * 5,
-    project: options.tenancy.project,
-    branchId: options.tenancy.branchId,
-    data: {
-      user_id: options.userId,
-      is_new_user: options.isNewUser,
-      is_auth: true,
-    },
-    method: {
-      email: user.primary_email,
-    },
-    callbackUrl: undefined,
-  });
+  runAsynchronouslyAndWaitUntil((async () => {
+    await contactChannelVerificationCodeHandler.sendCode({
+      tenancy: options.tenancy,
+      data: {
+        user_id: user.id,
+        is_new_user: false,
+        is_auth: true,
+      },
+      method: {
+        email: user.primary_email!,
+      },
+      callbackUrl: options.callbackUrl,
+    }, {
+      user,
+    });
+  })());
 
-  throw new KnownErrors.EmailVerificationRequired(attemptCode.code);
+  throw new KnownErrors.EmailVerificationRequired();
 }

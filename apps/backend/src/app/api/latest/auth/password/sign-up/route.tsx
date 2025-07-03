@@ -68,6 +68,13 @@ export const POST = createSmartRouteHandler({
       allowedErrorTypes: [KnownErrors.UserWithEmailAlreadyExists],
     });
 
+    await throwEmailVerificationRequiredErrorIfNeeded({
+      tenancy,
+      isNewUser: true,
+      userId: createdUser.id,
+      callbackUrl: verificationCallbackUrl,
+    });
+
     runAsynchronouslyAndWaitUntil((async () => {
       await contactChannelVerificationCodeHandler.sendCode({
         tenancy,
@@ -84,12 +91,6 @@ export const POST = createSmartRouteHandler({
         user: createdUser,
       });
     })());
-
-    await throwEmailVerificationRequiredErrorIfNeeded({
-      tenancy,
-      isNewUser: true,
-      userId: createdUser.id,
-    });
 
     if (createdUser.requires_totp_mfa) {
       throw await createMfaRequiredError({

@@ -11,7 +11,7 @@ import {
 } from "@stackframe/stack-ui";
 import { CheckIcon } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useStackApp } from "../..";
+import { useStackApp, useUser } from "../..";
 import { useTranslation } from "../../lib/translations";
 import { FormWarningText } from "./form-warning";
 
@@ -19,6 +19,7 @@ export function OTPCodeForm(props: {
   onSubmit: (options: { code: string, attemptCode: string }) => Promise<Result<void, string>>,
   type: "email-verification-required" | "mfa",
 }) {
+  const user = useUser();
   const stackApp = useStackApp();
   const { t } = useTranslation();
   const [otp, setOtp] = useState<string>("");
@@ -32,14 +33,26 @@ export function OTPCodeForm(props: {
 
   useEffect(() => {
     if (!attemptCode && typeof window !== "undefined") {
-      const code = window.sessionStorage.getItem(`stack_${props.type}_attempt_code`);
-      if (code) {
-        setAttemptCode(code);
-      } else {
-        stackApp.redirectToSignIn().catch((e) => console.error(e));
+      switch (props.type) {
+        case "email-verification-required": {
+          if (user) {
+            stackApp.redirectToAfterSignIn().catch((e) => console.error(e));
+          }
+          break;
+        }
+
+        case "mfa": {
+          const code = window.sessionStorage.getItem(`stack_${props.type}_attempt_code`);
+          if (code) {
+          setAttemptCode(code);
+          } else {
+          stackApp.redirectToSignIn().catch((e) => console.error(e));
+          }
+          break;
+        }
       }
     }
-  }, [ attemptCode ]);
+  }, [attemptCode]);
 
   // Handle OTP verification when code is complete
   useEffect(() => {
