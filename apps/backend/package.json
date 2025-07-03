@@ -52,6 +52,8 @@
     "@prisma/client": "^6.0.1",
     "@prisma/extension-accelerate": "^1.2.1",
     "@prisma/instrumentation": "^5.19.1",
+    "@react-email/components": "^0.0.14",
+    "@react-email/tailwind": "^1.0.5",
     "@sentry/nextjs": "^8.40.0",
     "@simplewebauthn/server": "^11.0.0",
     "@stackframe/stack-emails": "workspace:*",

@@ -1,3 +1,4 @@
+import { renderEmailWithTheme } from "@/lib/email-themes";
 import { getEmailConfig, sendEmail } from "@/lib/emails";
 import { getNotificationCategoryByName, hasNotificationEnabled } from "@/lib/notification-categories";
 import { prismaClient } from "@/prisma-client";
@@ -104,12 +105,14 @@ export const POST = createSmartRouteHandler({
       }
 
       try {
+        const renderedEmail = renderEmailWithTheme(html, auth.tenancy.config.email_theme);
         await sendEmail({
           tenancyId: auth.tenancy.id,
           emailConfig,
           to: primaryEmail,
           subject: body.subject,
-          html,
+          html: renderedEmail.html,
+          text: renderedEmail.text,
         });
       } catch {
         userSendErrors.set(userId, "Failed to send email");
