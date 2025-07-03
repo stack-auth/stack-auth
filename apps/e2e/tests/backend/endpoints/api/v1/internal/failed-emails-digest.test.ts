@@ -1,6 +1,6 @@
 import { describe } from "vitest";
 import { it } from "../../../../../helpers";
-import { Auth, backendContext, InternalProjectKeys, niceBackendFetch, Project } from "../../../../backend-helpers";
+import { Auth, backendContext, bumpEmailAddress, InternalProjectKeys, niceBackendFetch, Project, User } from "../../../../backend-helpers";
 
 describe("unauthorized requests", () => {
   it("should return 401 when invalid authorization is provided", async ({ expect }) => {
@@ -62,35 +62,13 @@ describe("with valid credentials", () => {
       userAuth: null,
     });
     await Auth.Otp.signIn();
-    const adminAccessToken = backendContext.value.userAuth?.accessToken;
-    const { projectId } = await Project.create({
+    await Project.createAndSwitch({
       display_name: "Test Failed Emails Project",
-      config: {
-        email_config: {
-          type: "standard",
-          host: "invalid-smtp-host.example.com",
-          port: 587,
-          username: "invalid_user",
-          password: "invalid_password",
-          sender_name: "Test Project",
-          sender_email: "test@invalid-domain.example.com",
-        },
-      },
-    });
-
-    backendContext.set({
-      projectKeys: {
-        projectId,
-      },
-      userAuth: null,
-    });
+    }, true);
 
     const testEmailResponse = await niceBackendFetch("/api/v1/internal/send-test-email", {
       method: "POST",
       accessType: "admin",
-      headers: {
-        "x-stack-admin-access-token": adminAccessToken,
-      },
       body: {
         "recipient_email": "test-email-recipient@stackframe.co",
         "email_config": {
@@ -119,11 +97,10 @@ describe("with valid credentials", () => {
       headers: { "Authorization": "Bearer mock_cron_secret" }
     });
     expect(response.status).toBe(200);
-    console.log(response.body);
 
     const failedEmailsByTenancy = response.body.failed_emails_by_tenancy;
     const mockProjectFailedEmails = failedEmailsByTenancy.filter(
-      (batch: any) => batch.tenant_owner_email === backendContext.value.mailbox.emailAddress
+      (batch: any) => batch.tenant_owner_emails.includes(backendContext.value.mailbox.emailAddress)
     );
     expect(mockProjectFailedEmails).toMatchInlineSnapshot(`
       [
@@ -136,7 +113,7 @@ describe("with valid credentials", () => {
           ],
           "project_id": "<stripped UUID>",
           "tenancy_id": "<stripped UUID>",
-          "tenant_owner_email": "default-mailbox--<stripped UUID>@stack-generated.example.com",
+          "tenant_owner_emails": ["default-mailbox--<stripped UUID>@stack-generated.example.com"],
         },
       ]
     `);
@@ -149,19 +126,8 @@ describe("with valid credentials", () => {
 
   it("should return 200 and not send digest email when all emails are successful", async ({ expect }) => {
     await Auth.Otp.signIn();
-    const { projectId } = await Project.create({
+    await Project.create({
       display_name: "Test Successful Emails Project",
-      config: {
-        email_config: {
-          type: "standard",
-          host: "localhost",
-          port: 2500,
-          username: "test",
-          password: "test",
-          sender_name: "Test Project",
-          sender_email: "test@example.com",
-        },
-      },
     });
 
     const response = await niceBackendFetch("/api/v1/internal/failed-emails-digest", {
@@ -179,5 +145,212 @@ describe("with valid credentials", () => {
     const messages = await backendContext.value.mailbox.fetchMessages();
     const digestEmail = messages.find(msg => msg.subject === "Failed emails digest");
     expect(digestEmail).toBeUndefined();
+  });
+
+  it("should not send digest email when project owner has no primary email", async ({ expect }) => {
+    backendContext.set({
+      projectKeys: InternalProjectKeys,
+      userAuth: null,
+    });
+    const { userId } = await Auth.Otp.signIn();
+
+    // Remove primary email from the user
+    const updateEmailResponse = await niceBackendFetch(`/api/v1/users/${userId}`, {
+      method: "PATCH",
+      accessType: "admin",
+      body: {
+        "primary_email": null,
+      },
+    });
+    expect(updateEmailResponse.status).toBe(200);
+
+    await Project.createAndSwitch({
+      display_name: "Test Project No Owner Email",
+    });
+
+    // Send a test email that will fail
+    await niceBackendFetch("/api/v1/internal/send-test-email", {
+      method: "POST",
+      accessType: "admin",
+      body: {
+        "recipient_email": "test-email-recipient@stackframe.co",
+        "email_config": {
+          "host": "this-is-not-a-valid-host.example.com",
+          "port": 123,
+          "username": "123",
+          "password": "123",
+          "sender_email": "123@g.co",
+          "sender_name": "123"
+        }
+      },
+    });
+
+    const response = await niceBackendFetch("/api/v1/internal/failed-emails-digest", {
+      method: "POST",
+      headers: { "Authorization": "Bearer mock_cron_secret" }
+    });
+    expect(response.status).toBe(200);
+
+    const messages = await backendContext.value.mailbox.fetchMessages();
+    const digestEmail = messages.find(msg => msg.subject === "Failed emails digest");
+    expect(digestEmail).toBeUndefined();
+  });
+
+  it("should not send digest email when project has no owner (account deleted)", async ({ expect }) => {
+    const { userId } = await Auth.Otp.signIn();
+    await Project.createAndSwitch({
+      display_name: "Test Project Deleted Owner",
+    }, true);
+
+    // Send a test email that will fail
+    await niceBackendFetch("/api/v1/internal/send-test-email", {
+      method: "POST",
+      accessType: "admin",
+      body: {
+        "recipient_email": "test-email-recipient@stackframe.co",
+        "email_config": {
+          "host": "this-is-not-a-valid-host.example.com",
+          "port": 123,
+          "username": "123",
+          "password": "123",
+          "sender_email": "123@g.co",
+          "sender_name": "123"
+        }
+      },
+    });
+
+    // Delete the user account (project owner)
+    backendContext.set({
+      projectKeys: InternalProjectKeys,
+    });
+    const deleteUserResponse = await niceBackendFetch(`/api/v1/users/${userId}`, {
+      method: "DELETE",
+      accessType: "admin",
+    });
+    expect(deleteUserResponse.body).toMatchInlineSnapshot(`{ "success": true }`);
+
+    const response = await niceBackendFetch("/api/v1/internal/failed-emails-digest", {
+      method: "POST",
+      headers: { "Authorization": "Bearer mock_cron_secret" }
+    });
+    expect(response.status).toBe(200);
+
+    // Should not send digest email when project owner is deleted
+    const messages = await backendContext.value.mailbox.fetchMessages();
+    const digestEmail = messages.find(msg => msg.subject === "Failed emails digest");
+    expect(digestEmail).toBeUndefined();
+  });
+
+  it("should not send digest email when project is deleted after email delivery failed", async ({ expect }) => {
+    await Auth.Otp.signIn();
+    await Project.createAndSwitch({
+      display_name: "Test Project To Be Deleted",
+    }, true);
+
+    // Send a test email that will fail
+    await niceBackendFetch("/api/v1/internal/send-test-email", {
+      method: "POST",
+      accessType: "admin",
+      body: {
+        "recipient_email": "test-email-recipient@stackframe.co",
+        "email_config": {
+          "host": "this-is-not-a-valid-host.example.com",
+          "port": 123,
+          "username": "123",
+          "password": "123",
+          "sender_email": "123@g.co",
+          "sender_name": "123"
+        }
+      },
+    });
+
+    // Delete the project
+    const deleteProjectResponse = await niceBackendFetch(`/api/v1/internal/projects/current`, {
+      method: "DELETE",
+      accessType: "admin",
+    });
+    expect(deleteProjectResponse.body).toMatchInlineSnapshot(`{ "success": true }`);
+
+    const response = await niceBackendFetch("/api/v1/internal/failed-emails-digest", {
+      method: "POST",
+      headers: { "Authorization": "Bearer mock_cron_secret" }
+    });
+    expect(response.status).toBe(200);
+
+    // Should not send digest email when project is deleted
+    const messages = await backendContext.value.mailbox.fetchMessages();
+    const digestEmail = messages.find(msg => msg.subject === "Failed emails digest");
+    expect(digestEmail).toBeUndefined();
+  });
+
+  it("should send digest email to each owner when project has multiple owners", async ({ expect }) => {
+    const firstOwnerMailbox = backendContext.value.mailbox;
+    backendContext.set({
+      projectKeys: InternalProjectKeys,
+    });
+    await Auth.Otp.signIn();
+    const { projectId } = await Project.createAndSwitch({
+      display_name: "Test Project Multiple Owners",
+    }, true);
+    const oldProjectKeys = backendContext.value.projectKeys;
+    const oldAuth = backendContext.value.userAuth;
+    const secondOwnerMailbox = await bumpEmailAddress();
+    backendContext.set({
+      projectKeys: InternalProjectKeys,
+    });
+    const { userId } = await Auth.Otp.signIn();
+
+    const updateUserResponse = await niceBackendFetch(`/api/v1/users/${userId}`, {
+      method: "PATCH",
+      accessType: "admin",
+      body: {
+        server_metadata: { managedProjectIds: [projectId] }
+      },
+    });
+    expect(updateUserResponse.status).toBe(200);
+    backendContext.set({ projectKeys: oldProjectKeys, userAuth: oldAuth });
+
+    // Send a test email that will fail
+    const sendTestEmailResponse = await niceBackendFetch("/api/v1/internal/send-test-email", {
+      method: "POST",
+      accessType: "admin",
+      body: {
+        "recipient_email": "test-email-recipient@stackframe.co",
+        "email_config": {
+          "host": "this-is-not-a-valid-host.example.com",
+          "port": 123,
+          "username": "123",
+          "password": "123",
+          "sender_email": "123@g.co",
+          "sender_name": "123"
+        }
+      },
+    });
+    expect(sendTestEmailResponse.body).toMatchInlineSnapshot(`
+      {
+        "error_message": "Failed to connect to the email host. Please make sure the email host configuration is correct.",
+        "success": false,
+      }
+    `);
+
+    const response = await niceBackendFetch("/api/v1/internal/failed-emails-digest", {
+      method: "POST",
+      headers: { "Authorization": "Bearer mock_cron_secret" }
+    });
+    expect(response.status).toBe(200);
+    const currentResponses = response.body.failed_emails_by_tenancy.filter(
+      (batch: any) => batch.project_id === projectId
+    );
+    expect(currentResponses.length).toBe(1);
+    expect(currentResponses[0].tenant_owner_emails.length).toBe(2);
+    expect(currentResponses[0].tenant_owner_emails.includes(firstOwnerMailbox.emailAddress)).toBe(true);
+    expect(currentResponses[0].tenant_owner_emails.includes(secondOwnerMailbox.emailAddress)).toBe(true);
+
+    const firstMailboxMessages = await firstOwnerMailbox.fetchMessages();
+    const secondMailboxMessages = await secondOwnerMailbox.fetchMessages();
+    const firstMailboxDigestEmail = firstMailboxMessages.find(msg => msg.subject === "Failed emails digest");
+    const secondMailboxDigestEmail = secondMailboxMessages.find(msg => msg.subject === "Failed emails digest");
+    expect(firstMailboxDigestEmail).toBeDefined();
+    expect(secondMailboxDigestEmail).toBeDefined();
   });
 });
