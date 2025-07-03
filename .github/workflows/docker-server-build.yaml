@@ -5,6 +5,7 @@ on:
     branches:
       - main
       - dev
+      - fix-docker-push
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
