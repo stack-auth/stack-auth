@@ -1,3 +1,4 @@
+import { renderEmailWithTheme } from "@/lib/email-themes";
 import { getEmailConfig, sendEmail } from "@/lib/emails";
 import { getNotificationCategoryByName, hasNotificationEnabled } from "@/lib/notification-categories";
 import { prismaClient } from "@/prisma-client";
@@ -103,12 +104,14 @@ export const POST = createSmartRouteHandler({
         html += `<br /><br /><a href="${unsubscribeLink.toString()}">Click here to unsubscribe</a>`;
       }
 
+      const renderedEmail = renderEmailWithTheme(html, auth.tenancy.config.email_theme);
       await sendEmail({
         tenancyId: auth.tenancy.id,
         emailConfig,
         to: primaryEmail,
         subject: body.subject,
-        html,
+        html: renderedEmail.html,
+        text: renderedEmail.text,
       });
     }
 

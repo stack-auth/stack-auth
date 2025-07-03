@@ -128,6 +128,7 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
           senderName: data.config.email_config.sender_name ?? throwErr("Email sender name is missing"),
           senderEmail: data.config.email_config.sender_email ?? throwErr("Email sender email is missing"),
         },
+        emailTheme: data.config.email_theme,
         domains: data.config.domains.map((d) => ({
           domain: d.domain,
           handlerPath: d.handler_path,

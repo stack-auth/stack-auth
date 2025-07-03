@@ -156,6 +156,12 @@ importers:
       '@prisma/instrumentation':
         specifier: ^5.19.1
         version: 5.20.0
+      '@react-email/components':
+        specifier: ^0.0.14
+        version: 0.0.14(@types/react@18.3.12)(react@19.0.0)
+      '@react-email/tailwind':
+        specifier: ^1.0.5
+        version: 1.0.5(react@19.0.0)
       '@sentry/nextjs':
         specifier: ^8.40.0
         version: 8.40.0(@opentelemetry/core@1.26.0(@opentelemetry/api@1.9.0))(@opentelemetry/instrumentation@0.53.0(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-trace-base@1.26.0(@opentelemetry/api@1.9.0))(next@15.2.3(@babel/core@7.26.0)(@opentelemetry/api@1.9.0)(react-dom@19.0.0(react@19.0.0))(react@19.0.0))(react@19.0.0)(webpack@5.92.0(@swc/core@1.3.101)(esbuild@0.24.2))
@@ -288,7 +294,7 @@ importers:
         version: 2.0.2(react@19.0.0)
       '@sentry/nextjs':
         specifier: ^8.40.0
-        version: 8.40.0(@opentelemetry/core@1.26.0(@opentelemetry/api@1.9.0))(@opentelemetry/instrumentation@0.54.2(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-trace-base@1.26.0(@opentelemetry/api@1.9.0))(next@15.2.3(@babel/core@7.26.0)(@opentelemetry/api@1.9.0)(react-dom@19.0.0(react@19.0.0))(react@19.0.0))(react@19.0.0)(webpack@5.92.0(@swc/core@1.3.101)(esbuild@0.24.2))
+        version: 8.40.0(@opentelemetry/core@1.26.0(@opentelemetry/api@1.9.0))(@opentelemetry/instrumentation@0.54.2(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-trace-base@1.26.0(@opentelemetry/api@1.9.0))(next@15.2.3(@babel/core@7.26.0)(@opentelemetry/api@1.9.0)(react-dom@19.0.0(react@19.0.0))(react@19.0.0))(react@19.0.0)(webpack@5.92.0)
       '@stackframe/stack':
         specifier: workspace:*
         version: link:../../packages/stack
@@ -6000,6 +6006,12 @@ packages:
     engines: {node: '>=18.0.0'}
     peerDependencies:
       react: 18.2.0
+
+  '@react-email/tailwind@1.0.5':
+    resolution: {integrity: sha512-BH00cZSeFfP9HiDASl+sPHi7Hh77W5nzDgdnxtsVr/m3uQD9g180UwxcE3PhOfx0vRdLzQUU8PtmvvDfbztKQg==}
+    engines: {node: '>=18.0.0'}
+    peerDependencies:
+      react: ^18.0 || ^19.0 || ^19.0.0-rc
 
   '@react-email/text@0.0.7':
     resolution: {integrity: sha512-eHCx0mdllGcgK9X7wiLKjNZCBRfxRVNjD3NNYRmOc3Icbl8M9JHriJIfxBuGCmGg2UAORK5P3KmaLQ8b99/pbA==}
@@ -16931,6 +16943,13 @@ snapshots:
     optionalDependencies:
       '@types/react': 18.3.12
 
+  '@radix-ui/react-compose-refs@1.0.1(@types/react@18.3.12)(react@19.0.0)':
+    dependencies:
+      '@babel/runtime': 7.26.0
+      react: 19.0.0
+    optionalDependencies:
+      '@types/react': 18.3.12
+
   '@radix-ui/react-compose-refs@1.1.0(@types/react@18.3.12)(react@18.2.0)':
     dependencies:
       react: 18.2.0
@@ -17723,6 +17742,14 @@ snapshots:
     optionalDependencies:
       '@types/react': 18.3.12
 
+  '@radix-ui/react-slot@1.0.2(@types/react@18.3.12)(react@19.0.0)':
+    dependencies:
+      '@babel/runtime': 7.26.0
+      '@radix-ui/react-compose-refs': 1.0.1(@types/react@18.3.12)(react@19.0.0)
+      react: 19.0.0
+    optionalDependencies:
+      '@types/react': 18.3.12
+
   '@radix-ui/react-slot@1.1.0(@types/react@18.3.12)(react@18.2.0)':
     dependencies:
       '@radix-ui/react-compose-refs': 1.1.0(@types/react@18.3.12)(react@18.2.0)
@@ -18089,9 +18116,17 @@ snapshots:
     dependencies:
       react: 18.3.1
 
+  '@react-email/body@0.0.7(react@19.0.0)':
+    dependencies:
+      react: 19.0.0
+
   '@react-email/button@0.0.13(react@18.2.0)':
     dependencies:
       react: 18.2.0
+
+  '@react-email/button@0.0.13(react@19.0.0)':
+    dependencies:
+      react: 19.0.0
 
   '@react-email/button@0.0.14(react@18.3.1)':
     dependencies:
@@ -18101,6 +18136,11 @@ snapshots:
     dependencies:
       prismjs: 1.29.0
       react: 18.2.0
+
+  '@react-email/code-block@0.0.2(react@19.0.0)':
+    dependencies:
+      prismjs: 1.29.0
+      react: 19.0.0
 
   '@react-email/code-block@0.0.3(react@18.3.1)':
     dependencies:
@@ -18115,6 +18155,10 @@ snapshots:
     dependencies:
       react: 18.3.1
 
+  '@react-email/code-inline@0.0.1(react@19.0.0)':
+    dependencies:
+      react: 19.0.0
+
   '@react-email/column@0.0.9(react@18.2.0)':
     dependencies:
       react: 18.2.0
@@ -18122,6 +18166,10 @@ snapshots:
   '@react-email/column@0.0.9(react@18.3.1)':
     dependencies:
       react: 18.3.1
+
+  '@react-email/column@0.0.9(react@19.0.0)':
+    dependencies:
+      react: 19.0.0
 
   '@react-email/components@0.0.14(@types/react@18.3.12)(react@18.2.0)':
     dependencies:
@@ -18145,6 +18193,31 @@ snapshots:
       '@react-email/tailwind': 0.0.14(react@18.2.0)
       '@react-email/text': 0.0.7(react@18.2.0)
       react: 18.2.0
+    transitivePeerDependencies:
+      - '@types/react'
+
+  '@react-email/components@0.0.14(@types/react@18.3.12)(react@19.0.0)':
+    dependencies:
+      '@react-email/body': 0.0.7(react@19.0.0)
+      '@react-email/button': 0.0.13(react@19.0.0)
+      '@react-email/code-block': 0.0.2(react@19.0.0)
+      '@react-email/code-inline': 0.0.1(react@19.0.0)
+      '@react-email/column': 0.0.9(react@19.0.0)
+      '@react-email/container': 0.0.11(react@19.0.0)
+      '@react-email/font': 0.0.5(react@19.0.0)
+      '@react-email/head': 0.0.7(react@19.0.0)
+      '@react-email/heading': 0.0.11(@types/react@18.3.12)(react@19.0.0)
+      '@react-email/hr': 0.0.7(react@19.0.0)
+      '@react-email/html': 0.0.7(react@19.0.0)
+      '@react-email/img': 0.0.7(react@19.0.0)
+      '@react-email/link': 0.0.7(react@19.0.0)
+      '@react-email/preview': 0.0.8(react@19.0.0)
+      '@react-email/render': 0.0.12
+      '@react-email/row': 0.0.7(react@19.0.0)
+      '@react-email/section': 0.0.11(react@19.0.0)
+      '@react-email/tailwind': 0.0.14(react@19.0.0)
+      '@react-email/text': 0.0.7(react@19.0.0)
+      react: 19.0.0
     transitivePeerDependencies:
       - '@types/react'
 
@@ -18183,6 +18256,10 @@ snapshots:
     dependencies:
       react: 18.3.1
 
+  '@react-email/container@0.0.11(react@19.0.0)':
+    dependencies:
+      react: 19.0.0
+
   '@react-email/font@0.0.5(react@18.2.0)':
     dependencies:
       react: 18.2.0
@@ -18191,6 +18268,10 @@ snapshots:
     dependencies:
       react: 18.3.1
 
+  '@react-email/font@0.0.5(react@19.0.0)':
+    dependencies:
+      react: 19.0.0
+
   '@react-email/head@0.0.7(react@18.2.0)':
     dependencies:
       react: 18.2.0
@@ -18198,6 +18279,10 @@ snapshots:
   '@react-email/head@0.0.7(react@18.3.1)':
     dependencies:
       react: 18.3.1
+
+  '@react-email/head@0.0.7(react@19.0.0)':
+    dependencies:
+      react: 19.0.0
 
   '@react-email/heading@0.0.11(@types/react@18.3.12)(react@18.2.0)':
     dependencies:
@@ -18213,6 +18298,13 @@ snapshots:
     transitivePeerDependencies:
       - '@types/react'
 
+  '@react-email/heading@0.0.11(@types/react@18.3.12)(react@19.0.0)':
+    dependencies:
+      '@radix-ui/react-slot': 1.0.2(@types/react@18.3.12)(react@19.0.0)
+      react: 19.0.0
+    transitivePeerDependencies:
+      - '@types/react'
+
   '@react-email/hr@0.0.7(react@18.2.0)':
     dependencies:
       react: 18.2.0
@@ -18220,6 +18312,10 @@ snapshots:
   '@react-email/hr@0.0.7(react@18.3.1)':
     dependencies:
       react: 18.3.1
+
+  '@react-email/hr@0.0.7(react@19.0.0)':
+    dependencies:
+      react: 19.0.0
 
   '@react-email/html@0.0.7(react@18.2.0)':
     dependencies:
@@ -18229,6 +18325,10 @@ snapshots:
     dependencies:
       react: 18.3.1
 
+  '@react-email/html@0.0.7(react@19.0.0)':
+    dependencies:
+      react: 19.0.0
+
   '@react-email/img@0.0.7(react@18.2.0)':
     dependencies:
       react: 18.2.0
@@ -18237,6 +18337,10 @@ snapshots:
     dependencies:
       react: 18.3.1
 
+  '@react-email/img@0.0.7(react@19.0.0)':
+    dependencies:
+      react: 19.0.0
+
   '@react-email/link@0.0.7(react@18.2.0)':
     dependencies:
       react: 18.2.0
@@ -18244,6 +18348,10 @@ snapshots:
   '@react-email/link@0.0.7(react@18.3.1)':
     dependencies:
       react: 18.3.1
+
+  '@react-email/link@0.0.7(react@19.0.0)':
+    dependencies:
+      react: 19.0.0
 
   '@react-email/markdown@0.0.8(react-email@2.1.0(@babel/core@7.26.0)(@opentelemetry/api@1.9.0)(@swc/helpers@0.5.15)(eslint@9.27.0(jiti@2.4.2)))(react@18.3.1)':
     dependencies:
@@ -18260,6 +18368,10 @@ snapshots:
     dependencies:
       react: 18.3.1
 
+  '@react-email/preview@0.0.8(react@19.0.0)':
+    dependencies:
+      react: 19.0.0
+
   '@react-email/render@0.0.12':
     dependencies:
       html-to-text: 9.0.5
@@ -18275,6 +18387,10 @@ snapshots:
     dependencies:
       react: 18.3.1
 
+  '@react-email/row@0.0.7(react@19.0.0)':
+    dependencies:
+      react: 19.0.0
+
   '@react-email/section@0.0.11(react@18.2.0)':
     dependencies:
       react: 18.2.0
@@ -18282,6 +18398,10 @@ snapshots:
   '@react-email/section@0.0.11(react@18.3.1)':
     dependencies:
       react: 18.3.1
+
+  '@react-email/section@0.0.11(react@19.0.0)':
+    dependencies:
+      react: 19.0.0
 
   '@react-email/tailwind@0.0.14(react@18.2.0)':
     dependencies:
@@ -18291,6 +18411,14 @@ snapshots:
     dependencies:
       react: 18.3.1
 
+  '@react-email/tailwind@0.0.14(react@19.0.0)':
+    dependencies:
+      react: 19.0.0
+
+  '@react-email/tailwind@1.0.5(react@19.0.0)':
+    dependencies:
+      react: 19.0.0
+
   '@react-email/text@0.0.7(react@18.2.0)':
     dependencies:
       react: 18.2.0
@@ -18298,6 +18426,10 @@ snapshots:
   '@react-email/text@0.0.7(react@18.3.1)':
     dependencies:
       react: 18.3.1
+
+  '@react-email/text@0.0.7(react@19.0.0)':
+    dependencies:
+      react: 19.0.0
 
   '@react-hook/latest@1.0.3(react@19.0.0)':
     dependencies:
@@ -18631,7 +18763,7 @@ snapshots:
       - supports-color
       - webpack
 
-  '@sentry/nextjs@8.40.0(@opentelemetry/core@1.26.0(@opentelemetry/api@1.9.0))(@opentelemetry/instrumentation@0.54.2(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-trace-base@1.26.0(@opentelemetry/api@1.9.0))(next@15.2.3(@babel/core@7.26.0)(@opentelemetry/api@1.9.0)(react-dom@19.0.0(react@19.0.0))(react@19.0.0))(react@19.0.0)(webpack@5.92.0(@swc/core@1.3.101)(esbuild@0.24.2))':
+  '@sentry/nextjs@8.40.0(@opentelemetry/core@1.26.0(@opentelemetry/api@1.9.0))(@opentelemetry/instrumentation@0.54.2(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-trace-base@1.26.0(@opentelemetry/api@1.9.0))(next@15.2.3(@babel/core@7.26.0)(@opentelemetry/api@1.9.0)(react-dom@19.0.0(react@19.0.0))(react@19.0.0))(react@19.0.0)(webpack@5.92.0)':
     dependencies:
       '@opentelemetry/api': 1.9.0
       '@opentelemetry/instrumentation-http': 0.53.0(@opentelemetry/api@1.9.0)
@@ -18644,7 +18776,7 @@ snapshots:
       '@sentry/react': 8.40.0(react@19.0.0)
       '@sentry/types': 8.40.0
       '@sentry/vercel-edge': 8.40.0
-      '@sentry/webpack-plugin': 2.22.6(webpack@5.92.0(@swc/core@1.3.101)(esbuild@0.24.2))
+      '@sentry/webpack-plugin': 2.22.6(webpack@5.92.0)
       chalk: 3.0.0
       next: 15.2.3(@babel/core@7.26.0)(@opentelemetry/api@1.9.0)(react-dom@19.0.0(react@19.0.0))(react@19.0.0)
       resolve: 1.22.8
@@ -18778,6 +18910,16 @@ snapshots:
       unplugin: 1.0.1
       uuid: 9.0.1
       webpack: 5.92.0(@swc/core@1.3.101)(esbuild@0.24.2)
+    transitivePeerDependencies:
+      - encoding
+      - supports-color
+
+  '@sentry/webpack-plugin@2.22.6(webpack@5.92.0)':
+    dependencies:
+      '@sentry/bundler-plugin-core': 2.22.6
+      unplugin: 1.0.1
+      uuid: 9.0.1
+      webpack: 5.92.0
     transitivePeerDependencies:
       - encoding
       - supports-color
@@ -23868,7 +24010,7 @@ snapshots:
 
   jest-worker@27.5.1:
     dependencies:
-      '@types/node': 22.15.18
+      '@types/node': 20.17.6
       merge-stream: 2.0.0
       supports-color: 8.1.1
 
@@ -27607,6 +27749,15 @@ snapshots:
       '@swc/core': 1.3.101(@swc/helpers@0.5.15)
       esbuild: 0.24.2
 
+  terser-webpack-plugin@5.3.10(webpack@5.92.0):
+    dependencies:
+      '@jridgewell/trace-mapping': 0.3.25
+      jest-worker: 27.5.1
+      schema-utils: 3.3.0
+      serialize-javascript: 6.0.2
+      terser: 5.31.1
+      webpack: 5.92.0
+
   terser@5.31.1:
     dependencies:
       '@jridgewell/source-map': 0.3.6
@@ -28530,6 +28681,37 @@ snapshots:
   webpack-sources@3.2.3: {}
 
   webpack-virtual-modules@0.5.0: {}
+
+  webpack@5.92.0:
+    dependencies:
+      '@types/eslint-scope': 3.7.7
+      '@types/estree': 1.0.6
+      '@webassemblyjs/ast': 1.12.1
+      '@webassemblyjs/wasm-edit': 1.12.1
+      '@webassemblyjs/wasm-parser': 1.12.1
+      acorn: 8.14.0
+      acorn-import-attributes: 1.9.5(acorn@8.14.0)
+      browserslist: 4.24.4
+      chrome-trace-event: 1.0.4
+      enhanced-resolve: 5.18.1
+      es-module-lexer: 1.5.3
+      eslint-scope: 5.1.1
+      events: 3.3.0
+      glob-to-regexp: 0.4.1
+      graceful-fs: 4.2.11
+      json-parse-even-better-errors: 2.3.1
+      loader-runner: 4.3.0
+      mime-types: 2.1.35
+      neo-async: 2.6.2
+      schema-utils: 3.3.0
+      tapable: 2.2.1
+      terser-webpack-plugin: 5.3.10(webpack@5.92.0)
+      watchpack: 2.4.1
+      webpack-sources: 3.2.3
+    transitivePeerDependencies:
+      - '@swc/core'
+      - esbuild
+      - uglify-js
 
   webpack@5.92.0(@swc/core@1.3.101(@swc/helpers@0.5.15))(esbuild@0.19.11):
     dependencies:

@@ -1,103 +1,94 @@
 "use client";
 
 import { SettingCard } from "@/components/settings";
-import { Button, Card, Typography } from "@stackframe/stack-ui";
-import { Check, Moon, Sun } from "lucide-react";
+import { ActionDialog, Button, Card, Separator, Typography } from "@stackframe/stack-ui";
 import { ReactNode, useState } from "react";
 import { PageLayout } from "../page-layout";
+import { LightEmailTheme, DarkEmailTheme } from "@stackframe/stack-emails/dist/themes/index";
+import { Check } from "lucide-react";
+import { useAdminApp } from "../use-admin-app";
 
 type ThemeType = 'light' | 'dark';
 
 interface Theme {
   id: ThemeType;
   name: string;
-  description: string;
-  icon: React.ReactNode;
   component: React.ComponentType<{ children: ReactNode }>;
-}
-
-function LightTheme({ children }: { children: ReactNode }) {
-  return (
-    <div
-      className="p-4 rounded-lg space-y-4"
-      style={{
-        backgroundColor: '#ffffff',
-        color: '#1e293b'
-      }}
-    >
-      {children}
-    </div>
-  );
-}
-
-function DarkTheme({ children }: { children: ReactNode }) {
-  return (
-    <div
-      className="p-4 rounded-lg space-y-4"
-      style={{
-        backgroundColor: '#0f172a',
-        color: '#f1f5f9'
-      }}
-    >
-      {children}
-    </div>
-  );
 }
 
 const themes: Theme[] = [
   {
     id: 'light',
     name: 'Light Theme',
-    description: 'Clean and bright appearance',
-    icon: <Sun className="h-5 w-5" />,
-    component: LightTheme
+    component: LightEmailTheme
   },
   {
     id: 'dark',
     name: 'Dark Theme',
-    description: 'Modern dark appearance',
-    icon: <Moon className="h-5 w-5" />,
-    component: DarkTheme
-  }
+    component: DarkEmailTheme
+  },
 ];
 
 export default function PageClient() {
-  const [selectedTheme, setSelectedTheme] = useState<ThemeType>('light');
+  const stackAdminApp = useAdminApp();
+  const project = stackAdminApp.useProject();
+  const activeTheme = project.config.emailTheme;
+  const [dialogOpen, setDialogOpen] = useState(false);
+  const [dialogSelectedTheme, setDialogSelectedTheme] = useState<ThemeType>(activeTheme);
 
   const handleThemeSelect = (themeId: ThemeType) => {
-    setSelectedTheme(themeId);
-    console.log('Selected theme:', themeId);
+    setDialogSelectedTheme(themeId);
   };
 
-  const selectedThemeData = themes.find(t => t.id === selectedTheme);
+  const handleSaveTheme = async () => {
+    await project.update({
+      config: { emailTheme: dialogSelectedTheme }
+    })
+  };
+
+  const handleOpenDialog = () => {
+    setDialogSelectedTheme(activeTheme);
+    setDialogOpen(true);
+  };
+
+  const selectedThemeData = themes.find(t => t.id === activeTheme)!;
+  const CurrentThemeComponent = selectedThemeData.component
 
   return (
     <PageLayout title="Email Themes" description="Customize email themes for your project">
-      <SettingCard title="Theme Selection" description="Choose a theme for your email templates">
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {themes.map((theme) => (
-            <ThemeOption
-              key={theme.id}
-              theme={theme}
-              isSelected={selectedTheme === theme.id}
-              onSelect={handleThemeSelect}
-            />
-          ))}
+      <SettingCard
+        title="Active Theme"
+        description={`Currently using ${selectedThemeData?.name || 'None'}`}
+      >
+        <div className="rounded-md border-primary-500 border w-fit mx-auto">
+          <CurrentThemeComponent>
+            <EmailPreview />
+          </CurrentThemeComponent>
         </div>
-      </SettingCard>
 
-      {selectedThemeData && (
-        <SettingCard
-          title="Preview"
-          description={`Preview of emails with ${selectedThemeData.name} applied`}
+        <ActionDialog
+          trigger={<Button onClick={handleOpenDialog} className="ml-auto w-min">Set Theme</Button>}
+          open={dialogOpen}
+          onOpenChange={setDialogOpen}
+          title="Select Email Theme"
+          cancelButton
+          okButton={{
+            label: "Save Theme",
+            onClick: handleSaveTheme
+          }}
         >
-          <div className="w-full max-w-xl mx-auto border border-primary-500 rounded-lg">
-            <selectedThemeData.component>
-              Your email content here...
-            </selectedThemeData.component>
+          <div className="space-y-4">
+            {themes.map((theme) => (
+              <ThemeOption
+                key={theme.id}
+                theme={theme}
+                isSelected={dialogSelectedTheme === theme.id}
+                onSelect={handleThemeSelect}
+              />
+            ))}
           </div>
-        </SettingCard>
-      )}
+        </ActionDialog>
+      </SettingCard>
     </PageLayout>
   );
 }
@@ -111,34 +102,43 @@ function ThemeOption({
   isSelected: boolean;
   onSelect: (themeId: ThemeType) => void;
 }) {
+  const ThemeComponent = theme.component
+
   return (
     <Card
-      className={`p-4 cursor-pointer transition-all hover:shadow-md ${isSelected ? 'ring-2 ring-blue-500 shadow-lg' : ''}`}
+      className={`cursor-pointer hover:ring-1 transition-all`}
       onClick={() => onSelect(theme.id)}
     >
-      <div className="flex items-center gap-2">
-        {theme.icon}
-        <Typography className="font-medium">{theme.name}</Typography>
-      </div>
-
-      <Typography type="label" variant="secondary" className="mb-3">
-        {theme.description}
-      </Typography>
-
-
-      <div className="mt-3">
-        <Button
-          variant={isSelected ? "default" : "outline"}
-          size="sm"
-          className="w-full"
-          onClick={(e) => {
-            e.stopPropagation();
-            onSelect(theme.id);
-          }}
-        >
-          {isSelected ? 'Selected' : 'Select Theme'}
-        </Button>
+      <div className="p-4 pb-3">
+        <div className="flex items-center justify-between">
+          <Typography className="font-medium text-lg">{theme.name}</Typography>
+          {isSelected && (
+            <div className="bg-blue-500 text-white rounded-full w-6 h-6 p-1 flex items-center justify-center">
+              <Check />
+            </div>
+          )}
+        </div>
+        <Separator className="my-3" />
+        <ThemeComponent>
+          <EmailPreview />
+        </ThemeComponent>
       </div>
     </Card>
   );
+}
+
+function EmailPreview() {
+  return (
+    <div>
+      <h2 className="mb-4 text-2xl font-bold">
+        Header text
+      </h2>
+      <p className="mb-4">
+        Body text content with some additional information.
+      </p>
+      <div className="text-center my-6">
+        <Button>Button</Button>
+      </div>
+    </div>
+  )
 }
