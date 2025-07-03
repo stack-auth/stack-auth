@@ -10,11 +10,11 @@ import { useAdminApp } from "../use-admin-app";
 
 type ThemeType = 'light' | 'dark';
 
-interface Theme {
-  id: ThemeType;
-  name: string;
-  component: React.ComponentType<{ children: ReactNode }>;
-}
+type Theme = {
+  id: ThemeType,
+  name: string,
+  component: React.ComponentType<{ children: ReactNode }>,
+};
 
 const themes: Theme[] = [
   {
@@ -43,7 +43,7 @@ export default function PageClient() {
   const handleSaveTheme = async () => {
     await project.update({
       config: { emailTheme: dialogSelectedTheme }
-    })
+    });
   };
 
   const handleOpenDialog = () => {
@@ -52,13 +52,13 @@ export default function PageClient() {
   };
 
   const selectedThemeData = themes.find(t => t.id === activeTheme)!;
-  const CurrentThemeComponent = selectedThemeData.component
+  const CurrentThemeComponent = selectedThemeData.component;
 
   return (
     <PageLayout title="Email Themes" description="Customize email themes for your project">
       <SettingCard
         title="Active Theme"
-        description={`Currently using ${selectedThemeData?.name || 'None'}`}
+        description={`Currently using ${selectedThemeData.name}`}
       >
         <div className="rounded-md border-primary-500 border w-fit mx-auto">
           <CurrentThemeComponent>
@@ -98,11 +98,11 @@ function ThemeOption({
   isSelected,
   onSelect
 }: {
-  theme: Theme;
-  isSelected: boolean;
-  onSelect: (themeId: ThemeType) => void;
+  theme: Theme,
+  isSelected: boolean,
+  onSelect: (themeId: ThemeType) => void,
 }) {
-  const ThemeComponent = theme.component
+  const ThemeComponent = theme.component;
 
   return (
     <Card
@@ -140,5 +140,5 @@ function EmailPreview() {
         <Button>Button</Button>
       </div>
     </div>
-  )
+  );
 }

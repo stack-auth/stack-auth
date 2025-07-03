@@ -10,7 +10,7 @@ const emailThemes = {
 
 export function renderEmailWithTheme(htmlContent: string, theme: keyof typeof emailThemes, unsubscribeLink: string | null) {
   const TemplateComponent = emailThemes[theme];
-    const Email = (
+  const Email = (
     <Html>
       <Tailwind>
         <Body>
@@ -26,9 +26,9 @@ export function renderEmailWithTheme(htmlContent: string, theme: keyof typeof em
         </Body>
       </Tailwind>
     </Html>
-  )
+  );
   return {
     html: render(Email),
     text: render(Email, { plainText: true }),
-  }
+  };
 }
