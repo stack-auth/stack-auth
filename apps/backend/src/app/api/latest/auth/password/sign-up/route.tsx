@@ -5,9 +5,8 @@ import { runAsynchronouslyAndWaitUntil } from "@/utils/vercel";
 import { KnownErrors } from "@stackframe/stack-shared";
 import { getPasswordError } from "@stackframe/stack-shared/dist/helpers/password";
 import { adaptSchema, clientOrHigherAuthTypeSchema, emailVerificationCallbackUrlSchema, passwordSchema, signInEmailSchema, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
-import { contactChannelVerificationCodeHandler } from "../../../contact-channels/verify/verification-code-handler";
+import { contactChannelVerificationCodeHandler, throwEmailVerificationRequiredErrorIfNeeded } from "../../../contact-channels/verify/verification-code-handler";
 import { usersCrudHandlers } from "../../../users/crud";
-import { throwEmailVerificationRequiredErrorIfNeeded } from "../../email-verifiation-required/sign-in/verification-code-handler";
 import { createMfaRequiredError } from "../../mfa/sign-in/verification-code-handler";
 
 export const POST = createSmartRouteHandler({
@@ -74,6 +73,8 @@ export const POST = createSmartRouteHandler({
         tenancy,
         data: {
           user_id: createdUser.id,
+          is_new_user: true,
+          is_auth: false,
         },
         method: {
           email,

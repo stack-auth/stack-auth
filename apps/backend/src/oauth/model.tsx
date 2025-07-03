@@ -1,5 +1,5 @@
-import { throwEmailVerificationRequiredErrorIfNeeded } from "@/app/api/latest/auth/email-verifiation-required/sign-in/verification-code-handler";
 import { createMfaRequiredError } from "@/app/api/latest/auth/mfa/sign-in/verification-code-handler";
+import { throwEmailVerificationRequiredErrorIfNeeded } from "@/app/api/latest/contact-channels/verify/verification-code-handler";
 import { checkApiKeySet } from "@/lib/internal-api-keys";
 import { validateRedirectUrl } from "@/lib/redirect-urls";
 import { getSoleTenancyFromProjectBranch } from "@/lib/tenancies";

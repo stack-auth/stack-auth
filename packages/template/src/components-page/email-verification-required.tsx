@@ -9,14 +9,14 @@ import { OTPCodeForm } from "../components/elements/otp-code-form";
 import { useTranslation } from "../lib/translations";
 
 
-export function MFA(props: {
+export function EmailVerificationRequired(props: {
   fullPage?: boolean,
 }) {
   const { t } = useTranslation();
   const stackApp = useStackApp();
 
-  const headerText = t("Multi-Factor Authentication");
-  const instructionText = t("Enter the six-digit code from your authenticator app");
+  const headerText = t("Verify your email to continue");
+  const instructionText = t("Enter the six-digit code sent to your email");
 
   return (
     <MaybeFullPage fullPage={!!props.fullPage}>
@@ -33,10 +33,10 @@ export function MFA(props: {
           <Typography className="mb-4 text-center">{instructionText}</Typography>
         )}
         <OTPCodeForm
-          type="mfa"
+          type="email-verification-required"
           onSubmit={async (options) => {
             try {
-              const result = await stackApp.signInWithMfa(options.code, options.attemptCode, { noRedirect: true });
+              const result = await stackApp.signInWithEmailVerification(options.code, options.attemptCode, { noRedirect: true });
               if (result.status === "ok") {
                 return Result.ok(undefined);
               }

@@ -6,7 +6,7 @@ import { KnownErrors } from "@stackframe/stack-shared";
 import { adaptSchema, clientOrHigherAuthTypeSchema, emailSchema, passwordSchema, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
 import { StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
 import { comparePassword } from "@stackframe/stack-shared/dist/utils/hashes";
-import { throwEmailVerificationRequiredErrorIfNeeded } from "../../email-verifiation-required/sign-in/verification-code-handler";
+import { throwEmailVerificationRequiredErrorIfNeeded } from "../../../contact-channels/verify/verification-code-handler";
 import { createMfaRequiredError } from "../../mfa/sign-in/verification-code-handler";
 
 export const POST = createSmartRouteHandler({

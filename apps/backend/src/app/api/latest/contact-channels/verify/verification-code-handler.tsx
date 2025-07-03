@@ -1,11 +1,15 @@
 import { sendEmailFromTemplate } from "@/lib/emails";
-import { getSoleTenancyFromProjectBranch } from "@/lib/tenancies";
+import { Tenancy, getSoleTenancyFromProjectBranch } from "@/lib/tenancies";
+import { createAuthTokens } from "@/lib/tokens";
 import { prismaClient } from "@/prisma-client";
 import { createVerificationCodeHandler } from "@/route-handlers/verification-code-handler";
 import { VerificationCodeType } from "@prisma/client";
 import { UsersCrud } from "@stackframe/stack-shared/dist/interface/crud/users";
-import { emailSchema, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
-import { StatusError } from "@stackframe/stack-shared/dist/utils/errors";
+import { KnownErrors } from "@stackframe/stack-shared/dist/known-errors";
+import { emailSchema, signInResponseSchema, yupBoolean, yupNumber, yupObject, yupString, yupUnion } from "@stackframe/stack-shared/dist/schema-fields";
+import { StatusError, captureError } from "@stackframe/stack-shared/dist/utils/errors";
+import { createMfaRequiredError } from "../../auth/mfa/sign-in/verification-code-handler";
+import { usersCrudHandlers } from "../../users/crud";
 
 export const contactChannelVerificationCodeHandler = createVerificationCodeHandler({
   metadata: {
@@ -23,13 +27,19 @@ export const contactChannelVerificationCodeHandler = createVerificationCodeHandl
   type: VerificationCodeType.CONTACT_CHANNEL_VERIFICATION,
   data: yupObject({
     user_id: yupString().defined(),
+    is_new_user: yupBoolean().defined(),
+    is_auth: yupBoolean().defined(), // If true, the code is used during authentication, so return OTP and access token
   }).defined(),
   method: yupObject({
     email: emailSchema.defined(),
   }),
   response: yupObject({
     statusCode: yupNumber().oneOf([200]).defined(),
-    bodyType: yupString().oneOf(["success"]).defined(),
+    bodyType: yupString().oneOf(["json"]).defined(),
+    body: yupUnion(
+      yupObject({}),
+      signInResponseSchema.defined(),
+    )
   }),
   async send(codeObj, createOptions, sendOptions: { user: UsersCrud["Admin"]["Read"] }) {
     const tenancy = await getSoleTenancyFromProjectBranch(createOptions.project.id, createOptions.branchId);
@@ -41,16 +51,17 @@ export const contactChannelVerificationCodeHandler = createVerificationCodeHandl
       templateType: "email_verification",
       extraVariables: {
         emailVerificationLink: codeObj.link.toString(),
+        otp: createOptions.data.is_auth ? codeObj.code.slice(0, 6).toUpperCase() : null,
       },
     });
   },
-  async handler(tenancy, { email }, data) {
+  async handler(tenancy, method, data) {
     const uniqueKeys = {
       tenancyId_projectUserId_type_value: {
         tenancyId: tenancy.id,
         projectUserId: data.user_id,
         type: "EMAIL",
-        value: email,
+        value: method.email,
       },
     } as const;
 
@@ -70,9 +81,79 @@ export const contactChannelVerificationCodeHandler = createVerificationCodeHandl
       }
     });
 
+    if (!data.is_auth) {
+      return {
+        statusCode: 200,
+        bodyType: "json",
+        body: {},
+      };
+    }
+
+    const user = await usersCrudHandlers.adminRead({
+      tenancy,
+      user_id: data.user_id,
+    });
+
+    if (user.requires_totp_mfa) {
+      throw await createMfaRequiredError({
+        project: tenancy.project,
+        branchId: tenancy.branchId,
+        isNewUser: data.is_new_user,
+        userId: user.id,
+      });
+    }
+
+    const { refreshToken, accessToken } = await createAuthTokens({
+      tenancy,
+      projectUserId: data.user_id,
+    });
+
     return {
       statusCode: 200,
-      bodyType: "success",
+      bodyType: "json",
+      body: {
+        refresh_token: refreshToken,
+        access_token: accessToken,
+        is_new_user: data.is_new_user,
+        user_id: data.user_id,
+      },
     };
   },
 });
+
+export async function throwEmailVerificationRequiredErrorIfNeeded(options: { tenancy: Tenancy, isNewUser: boolean, userId: string }) {
+  if (!options.tenancy.completeConfig.auth.emailVerificationRequired) {
+    return;
+  }
+
+  const user = await usersCrudHandlers.adminRead({
+    tenancy: options.tenancy,
+    user_id: options.userId,
+  });
+
+  if (!user.primary_email) {
+    captureError("user-has-no-primary-email", { userId: options.userId });
+    return;
+  }
+
+  if (user.primary_email_verified) {
+    return;
+  }
+
+  const attemptCode = await contactChannelVerificationCodeHandler.createCode({
+    expiresInMs: 1000 * 60 * 5,
+    project: options.tenancy.project,
+    branchId: options.tenancy.branchId,
+    data: {
+      user_id: options.userId,
+      is_new_user: options.isNewUser,
+      is_auth: true,
+    },
+    method: {
+      email: user.primary_email,
+    },
+    callbackUrl: undefined,
+  });
+
+  throw new KnownErrors.EmailVerificationRequired(attemptCode.code);
+}
