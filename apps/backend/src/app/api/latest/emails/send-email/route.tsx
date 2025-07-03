@@ -87,7 +87,7 @@ export const POST = createSmartRouteHandler({
       }
       userPrimaryEmails.set(userId, primaryEmail);
 
-      let html = body.html;
+      let unsubscribeLink: string | null = null;
       if (notificationCategory.can_disable) {
         const { code } = await unsubscribeLinkVerificationCodeHandler.createCode({
           tenancy: auth.tenancy,
@@ -98,14 +98,14 @@ export const POST = createSmartRouteHandler({
           },
           callbackUrl: undefined
         });
-        const unsubscribeLink = new URL(getEnvVariable("NEXT_PUBLIC_STACK_API_URL"));
-        unsubscribeLink.pathname = "/api/v1/emails/unsubscribe-link";
-        unsubscribeLink.searchParams.set("code", code);
-        html += `<br /><br /><a href="${unsubscribeLink.toString()}">Click here to unsubscribe</a>`;
+        const unsubUrl = new URL(getEnvVariable("NEXT_PUBLIC_STACK_API_URL"));
+        unsubUrl.pathname = "/api/v1/emails/unsubscribe-link";
+        unsubUrl.searchParams.set("code", code);
+        unsubscribeLink = unsubUrl.toString();
       }
 
       try {
-        const renderedEmail = renderEmailWithTheme(html, auth.tenancy.config.email_theme);
+        const renderedEmail = renderEmailWithTheme(body.html, auth.tenancy.config.email_theme, unsubscribeLink);
         await sendEmail({
           tenancyId: auth.tenancy.id,
           emailConfig,
