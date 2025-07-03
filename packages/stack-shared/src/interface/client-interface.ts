@@ -589,7 +589,7 @@ export class StackClientInterface {
     }
   }
 
-  async verifyEmail(code: string): Promise<Result<undefined, KnownErrors["VerificationCodeError"]>> {
+  async verifyEmail(code: string): Promise<Result<{ accessToken: string | null, refreshToken: string | null }, KnownErrors["VerificationCodeError"]>> {
     const res = await this.sendClientRequestAndCatchKnownError(
       "/contact-channels/verify",
       {
@@ -608,7 +608,11 @@ export class StackClientInterface {
     if (res.status === "error") {
       return Result.error(res.error);
     } else {
-      return Result.ok(undefined);
+      const result = await res.data.json();
+      return Result.ok({
+        accessToken: result.access_token ?? null,
+        refreshToken: result.refresh_token ?? null,
+      });
     }
   }
 

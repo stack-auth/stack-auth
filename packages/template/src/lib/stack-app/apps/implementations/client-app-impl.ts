@@ -37,9 +37,9 @@ import { OAuthConnection } from "../../connected-accounts";
 import { ContactChannel, ContactChannelCreateOptions, ContactChannelUpdateOptions, contactChannelCreateOptionsToCrud, contactChannelUpdateOptionsToCrud } from "../../contact-channels";
 import { NotificationCategory } from "../../notification-categories";
 import { TeamPermission } from "../../permissions";
-import { AdminOwnedProject, AdminProjectUpdateOptions, Project, adminProjectCreateOptionsToCrud } from "../../projects";
+import { AdminProjectUpdateOptions, Project, adminProjectCreateOptionsToCrud } from "../../projects";
 import { EditableTeamMemberProfile, Team, TeamCreateOptions, TeamInvitation, TeamUpdateOptions, TeamUser, teamCreateOptionsToCrud, teamUpdateOptionsToCrud } from "../../teams";
-import { ActiveSession, Auth, BaseUser, CurrentUser, InternalUserExtra, ProjectCurrentUser, UserExtra, UserUpdateOptions, userUpdateOptionsToCrud } from "../../users";
+import { ActiveSession, Auth, BaseUser, CurrentUser, InternalUserExtra, ProjectCurrentUser, UserExtra, userUpdateOptionsToCrud } from "../../users";
 import { StackClientApp, StackClientAppConstructorOptions, StackClientAppJson } from "../interfaces/client-app";
 import { _StackAdminAppImplIncomplete } from "./admin-app-impl";
 import { TokenObject, clientVersion, createCache, createCacheBySession, createEmptyTokenStore, getBaseUrl, getDefaultExtraRequestHeaders, getDefaultProjectId, getDefaultPublishableClientKey, getUrls, } from "./common";
@@ -1356,11 +1356,21 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
     }
   }
 
-  async verifyEmail(code: string): Promise<Result<undefined, KnownErrors["VerificationCodeError"]>> {
+  async verifyEmail(code: string, options?: { noRedirect?: boolean }): Promise<Result<undefined, KnownErrors["VerificationCodeError"]>> {
     const result = await this._interface.verifyEmail(code);
-    await this._currentUserCache.refresh([await this._getSession()]);
-    await this._clientContactChannelsCache.refresh([await this._getSession()]);
-    return result;
+    if (result.status === 'ok') {
+      if (result.data.accessToken && result.data.refreshToken) {
+        await this._signInToAccountWithTokens(result.data as any);
+      }
+      await this._currentUserCache.refresh([await this._getSession()]);
+      await this._clientContactChannelsCache.refresh([await this._getSession()]);
+      if (!options?.noRedirect) {
+        await this.redirectToAfterSignIn({ replace: true });
+      }
+      return Result.ok(undefined);
+    } else {
+      return Result.error(result.error);
+    }
   }
 
   async getUser(options: GetUserOptions<HasTokenStore> & { or: 'redirect' }): Promise<ProjectCurrentUser<ProjectId>>;
