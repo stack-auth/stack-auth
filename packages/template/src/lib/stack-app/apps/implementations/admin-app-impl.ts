@@ -97,6 +97,7 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
       isProductionMode: data.is_production_mode,
       config: {
         signUpEnabled: data.config.sign_up_enabled,
+        emailVerificationRequired: data.config.email_verification_required,
         credentialEnabled: data.config.credential_enabled,
         magicLinkEnabled: data.config.magic_link_enabled,
         passkeyEnabled: data.config.passkey_enabled,

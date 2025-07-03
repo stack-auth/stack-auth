@@ -371,6 +371,7 @@ export const renderedOrganizationConfigToProjectCrud = (renderedConfig: Organiza
     credential_enabled: renderedConfig.auth.password.allowSignIn,
     magic_link_enabled: renderedConfig.auth.otp.allowSignIn,
     passkey_enabled: renderedConfig.auth.passkey.allowSignIn,
+    email_verification_required: renderedConfig.auth.emailVerificationRequired,
 
     oauth_providers: oauthProviders,
     enabled_oauth_providers: oauthProviders,
@@ -410,7 +411,5 @@ export const renderedOrganizationConfigToProjectCrud = (renderedConfig: Organiza
 
     allow_user_api_keys: renderedConfig.apiKeys.enabled.user,
     allow_team_api_keys: renderedConfig.apiKeys.enabled.team,
-
-    email_verification_required: renderedConfig.auth.emailVerificationRequired,
   };
 };

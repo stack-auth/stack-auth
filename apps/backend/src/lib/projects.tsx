@@ -131,6 +131,7 @@ export async function createOrUpdateProject(
       'auth.password.allowSignIn': dataOptions.credential_enabled,
       'auth.otp.allowSignIn': dataOptions.magic_link_enabled,
       'auth.passkey.allowSignIn': dataOptions.passkey_enabled,
+      'auth.emailVerificationRequired': dataOptions.email_verification_required,
       'auth.oauth.accountMergeStrategy': dataOptions.oauth_account_merge_strategy,
       'auth.oauth.providers': dataOptions.oauth_providers ? typedFromEntries(dataOptions.oauth_providers
         .map((provider) => {
