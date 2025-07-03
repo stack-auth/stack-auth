@@ -31,7 +31,7 @@ export const POST = createSmartRouteHandler({
           subject: yupString().defined(),
           to: yupArray(yupString().defined()).defined(),
         })).defined(),
-        tenant_owner_email: yupString().defined(),
+        tenant_owner_emails: yupArray(yupString().defined()).defined(),
         project_id: yupString().defined(),
         tenancy_id: yupString().defined(),
       })).optional(),
@@ -50,6 +50,10 @@ export const POST = createSmartRouteHandler({
 
     let anyDigestsFailedToSend = false;
     for (const failedEmailsBatch of failedEmailsByTenancy.values()) {
+      if (!failedEmailsBatch.tenantOwnerEmails.length) {
+        continue;
+      }
+
       const viewInStackAuth = `<a href="${dashboardUrl}/projects/${encodeURIComponent(failedEmailsBatch.projectId)}/emails">View all email logs on the Dashboard</a>`;
       const emailHtml = `
         <p>Thank you for using Stack Auth!</p>
@@ -57,10 +61,10 @@ export const POST = createSmartRouteHandler({
         <p>${viewInStackAuth}</p>
         <p>Last failing emails:</p>
         ${failedEmailsBatch.emails.slice(-10).map((failedEmail) => {
-          const escapedSubject = escapeHtml(failedEmail.subject).replace(/\s+/g, ' ').slice(0, 50);
-          const escapedTo = failedEmail.to.map(to => escapeHtml(to)).join(", ");
-          return `<div><p>Subject: ${escapedSubject}<br />To: ${escapedTo}</p></div>`;
-        }).join("")}
+        const escapedSubject = escapeHtml(failedEmail.subject).replace(/\s+/g, ' ').slice(0, 50);
+        const escapedTo = failedEmail.to.map(to => escapeHtml(to)).join(", ");
+        return `<div><p>Subject: ${escapedSubject}<br />To: ${escapedTo}</p></div>`;
+      }).join("")}
         ${failedEmailsBatch.emails.length > 10 ? `<div>...</div>` : ""}
       `;
       if (query.dry_run !== "true") {
@@ -68,7 +72,7 @@ export const POST = createSmartRouteHandler({
           await sendEmail({
             tenancyId: internalTenancy.id,
             emailConfig,
-            to: failedEmailsBatch.tenantOwnerEmail,
+            to: failedEmailsBatch.tenantOwnerEmails,
             subject: "Failed emails digest",
             html: emailHtml,
           });
@@ -87,7 +91,7 @@ export const POST = createSmartRouteHandler({
         failed_emails_by_tenancy: Array.from(failedEmailsByTenancy.entries()).map(([tenancyId, batch]) => (
           {
             emails: batch.emails,
-            tenant_owner_email: batch.tenantOwnerEmail,
+            tenant_owner_emails: batch.tenantOwnerEmails,
             project_id: batch.projectId,
             tenancy_id: tenancyId,
           }
