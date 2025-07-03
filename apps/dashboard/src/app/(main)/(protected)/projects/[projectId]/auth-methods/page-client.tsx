@@ -332,11 +332,11 @@ export default function PageClient() {
           label="Always require email verification on sign-up"
           checked={project.config.emailVerificationRequired}
           onCheckedChange={async (checked) => {
-            if (checked) {
-              setConfirmSignUpEnabled(true);
-            } else {
-              setConfirmSignUpDisabled(true);
-            }
+            await project.update({
+              config: {
+                emailVerificationRequired: checked,
+              },
+            });
           }}
           hint="Existing users can still sign in when sign-up is disabled. You can always create new accounts manually via the dashboard."
         />

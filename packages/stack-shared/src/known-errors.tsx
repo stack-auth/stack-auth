@@ -1131,7 +1131,7 @@ const EmailVerificationRequired = createKnownErrorConstructor(
       attempt_code: attemptCode,
     },
   ] as const,
-  () => [] as const,
+  (json) => [json.attempt_code] as const,
 );
 
 const InvalidTotpCode = createKnownErrorConstructor(

@@ -58,6 +58,7 @@ const branchApiKeysSchema = yupObject({
 
 const branchAuthSchema = yupObject({
   allowSignUp: yupBoolean().optional(),
+  emailVerificationRequired: yupBoolean().optional(),
   password: yupObject({
     allowSignIn: yupBoolean().optional(),
   }).optional(),
@@ -94,7 +95,6 @@ export const branchConfigSchema = projectConfigSchema.concat(yupObject({
 
   users: yupObject({
     allowClientUserDeletion: yupBoolean().optional(),
-    requiresEmailVerification: yupBoolean().optional(),
   }).optional(),
 
   apiKeys: branchApiKeysSchema,
@@ -186,7 +186,6 @@ export const organizationConfigDefaults = {
 
   users: {
     allowClientUserDeletion: false,
-    requiresEmailVerification: false,
   },
 
   domains: {
@@ -198,6 +197,7 @@ export const organizationConfigDefaults = {
 
   auth: {
     allowSignUp: true,
+    emailVerificationRequired: false,
     password: {
       allowSignIn: false,
     },

@@ -79,6 +79,7 @@ export type AdminProjectConfigUpdateOptions = {
   }[],
   oauthProviders?: AdminOAuthProviderConfig[],
   signUpEnabled?: boolean,
+  emailVerificationRequired?: boolean,
   credentialEnabled?: boolean,
   magicLinkEnabled?: boolean,
   passkeyEnabled?: boolean,
