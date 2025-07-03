@@ -189,7 +189,7 @@ function renderNode(node: MessageNode, index: number): React.ReactNode {
 
     case 'list': {
       return (
-        <ul key={index} className="list-disc list-inside mb-3 space-y-1">
+        <ul key={index} className="mb-3 space-y-1 ml-3">
           {node.children?.map(renderNode)}
         </ul>
       );
@@ -197,7 +197,7 @@ function renderNode(node: MessageNode, index: number): React.ReactNode {
 
     case 'listItem': {
       return (
-        <li key={index} className="text-xs">
+        <li key={index} className="text-xs relative pl-3 before:content-['•'] before:absolute before:left-0 before:text-fd-muted-foreground">
           {node.children?.map(renderNode)}
         </li>
       );

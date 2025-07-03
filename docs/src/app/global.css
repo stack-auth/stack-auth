@@ -6,18 +6,51 @@
 @import '../components/mdx/mdx-cards.css';
 @import '../components/mdx/reset-code-styles.css';
 
-/* Chat drawer content shifting for docs pages */
+/* Standardize top spacing between docs and API pages */
+/* Target the specific fumadocs layout components */
+#nd-page > article > div {
+  padding-top: 0 !important;
+}
+
+/* Target SharedContentLayout container in docs pages */
+#nd-page article > div.container {
+  padding-top: 0 !important;
+}
+
+/* Also target the div with mb-12 class inside DocsPage */
+#nd-page .mb-12 {
+  margin-top: -2rem !important;
+}
+
+/* TOC open state - only when chat is not open */
+body.toc-open:not(.chat-open) #nd-docs-layout > div:last-child {
+  margin-right: 18rem; /* 288px - same as xl:mr-72 */
+  transition: margin-right 300ms ease-out;
+}
+
+/* Chat open state - overrides everything */
 body.chat-open:not(.home-page) {
   padding-right: 25rem; /* 384px + 16px for spacing */
   transition: padding-right 300ms ease-out;
 }
 
-/* Ensure smooth transition when closing for docs pages */
+/* Auth open state - for API pages */
+body.auth-open:not(.home-page) {
+  padding-right: 26rem; /* 384px + 32px for more spacing (auth panel is 384px wide) */
+  transition: padding-right 300ms ease-out;
+}
+
+/* Default transition for docs pages */
 body:not(.home-page) {
   transition: padding-right 300ms ease-out;
 }
 
-/* Chat drawer content shifting for homepage - much less padding */
+/* Ensure content area transitions smoothly */
+#nd-docs-layout > div:last-child {
+  transition: margin-right 300ms ease-out;
+}
+
+/* Chat drawer content shifting for homepage */
 body.home-page.chat-open main {
   padding-right: 12rem; /* Much less padding for homepage */
   transition: padding-right 300ms ease-out;
@@ -64,4 +97,261 @@ body.home-page.scrolled [data-chat-drawer] {
 
 .compact-codeblock-scrollbar::-webkit-scrollbar-corner {
   background: transparent;
+}
+
+/* Subtle pulsing red animation for auth panel errors */
+@keyframes subtle-red-pulse {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.7;
+  }
+}
+
+.auth-error-pulse {
+  animation: subtle-red-pulse 2s ease-in-out infinite;
+}
+
+/* Colorful moving gradient animation for chat button */
+@keyframes gradient-shift {
+  0% {
+    background-position: 0% 50%;
+  }
+  50% {
+    background-position: 100% 50%;
+  }
+  100% {
+    background-position: 0% 50%;
+  }
+}
+
+@keyframes gradient-noise {
+  0% {
+    background-position: 0% 0%, 100% 100%;
+  }
+  25% {
+    background-position: 100% 0%, 0% 100%;
+  }
+  50% {
+    background-position: 100% 100%, 100% 0%;
+  }
+  75% {
+    background-position: 0% 100%, 0% 0%;
+  }
+  100% {
+    background-position: 0% 0%, 100% 100%;
+  }
+}
+
+@keyframes gradient-infection {
+  0% {
+    mask: 
+      radial-gradient(circle at 20% 80%, transparent 0%, transparent 100%),
+      radial-gradient(circle at 80% 30%, transparent 0%, transparent 100%),
+      radial-gradient(circle at 40% 20%, transparent 0%, transparent 100%);
+  }
+  20% {
+    mask: 
+      radial-gradient(circle at 20% 80%, black 0%, black 15%, transparent 25%),
+      radial-gradient(circle at 80% 30%, transparent 0%, transparent 100%),
+      radial-gradient(circle at 40% 20%, transparent 0%, transparent 100%);
+  }
+  40% {
+    mask: 
+      radial-gradient(circle at 20% 80%, black 0%, black 25%, transparent 40%),
+      radial-gradient(circle at 80% 30%, black 0%, black 10%, transparent 20%),
+      radial-gradient(circle at 40% 20%, transparent 0%, transparent 100%);
+  }
+  60% {
+    mask: 
+      radial-gradient(circle at 20% 80%, black 0%, black 35%, transparent 55%),
+      radial-gradient(circle at 80% 30%, black 0%, black 20%, transparent 35%),
+      radial-gradient(circle at 40% 20%, black 0%, black 8%, transparent 18%);
+  }
+  80% {
+    mask: 
+      radial-gradient(circle at 20% 80%, black 0%, black 50%, transparent 70%),
+      radial-gradient(circle at 80% 30%, black 0%, black 35%, transparent 50%),
+      radial-gradient(circle at 40% 20%, black 0%, black 18%, transparent 28%);
+  }
+  100% {
+    mask: 
+      radial-gradient(circle at 20% 80%, black 0%, black 70%, transparent 90%),
+      radial-gradient(circle at 80% 30%, black 0%, black 50%, transparent 70%),
+      radial-gradient(circle at 40% 20%, black 0%, black 30%, transparent 45%);
+  }
+}
+
+@keyframes gradient-infection-2 {
+  0% {
+    mask: 
+      radial-gradient(circle at 70% 20%, transparent 0%, transparent 100%),
+      radial-gradient(circle at 30% 70%, transparent 0%, transparent 100%),
+      radial-gradient(circle at 60% 80%, transparent 0%, transparent 100%);
+  }
+  20% {
+    mask: 
+      radial-gradient(circle at 70% 20%, black 0%, black 15%, transparent 25%),
+      radial-gradient(circle at 30% 70%, transparent 0%, transparent 100%),
+      radial-gradient(circle at 60% 80%, transparent 0%, transparent 100%);
+  }
+  40% {
+    mask: 
+      radial-gradient(circle at 70% 20%, black 0%, black 25%, transparent 40%),
+      radial-gradient(circle at 30% 70%, black 0%, black 10%, transparent 20%),
+      radial-gradient(circle at 60% 80%, transparent 0%, transparent 100%);
+  }
+  60% {
+    mask: 
+      radial-gradient(circle at 70% 20%, black 0%, black 35%, transparent 55%),
+      radial-gradient(circle at 30% 70%, black 0%, black 20%, transparent 35%),
+      radial-gradient(circle at 60% 80%, black 0%, black 8%, transparent 18%);
+  }
+  80% {
+    mask: 
+      radial-gradient(circle at 70% 20%, black 0%, black 50%, transparent 70%),
+      radial-gradient(circle at 30% 70%, black 0%, black 35%, transparent 50%),
+      radial-gradient(circle at 60% 80%, black 0%, black 18%, transparent 28%);
+  }
+  100% {
+    mask: 
+      radial-gradient(circle at 70% 20%, black 0%, black 70%, transparent 90%),
+      radial-gradient(circle at 30% 70%, black 0%, black 50%, transparent 70%),
+      radial-gradient(circle at 60% 80%, black 0%, black 30%, transparent 45%);
+  }
+}
+
+@keyframes gradient-infection-3 {
+  0% {
+    mask: 
+      radial-gradient(circle at 50% 10%, transparent 0%, transparent 100%),
+      radial-gradient(circle at 10% 50%, transparent 0%, transparent 100%),
+      radial-gradient(circle at 90% 60%, transparent 0%, transparent 100%);
+  }
+  20% {
+    mask: 
+      radial-gradient(circle at 50% 10%, black 0%, black 15%, transparent 25%),
+      radial-gradient(circle at 10% 50%, transparent 0%, transparent 100%),
+      radial-gradient(circle at 90% 60%, transparent 0%, transparent 100%);
+  }
+  40% {
+    mask: 
+      radial-gradient(circle at 50% 10%, black 0%, black 25%, transparent 40%),
+      radial-gradient(circle at 10% 50%, black 0%, black 10%, transparent 20%),
+      radial-gradient(circle at 90% 60%, transparent 0%, transparent 100%);
+  }
+  60% {
+    mask: 
+      radial-gradient(circle at 50% 10%, black 0%, black 35%, transparent 55%),
+      radial-gradient(circle at 10% 50%, black 0%, black 20%, transparent 35%),
+      radial-gradient(circle at 90% 60%, black 0%, black 8%, transparent 18%);
+  }
+  80% {
+    mask: 
+      radial-gradient(circle at 50% 10%, black 0%, black 50%, transparent 70%),
+      radial-gradient(circle at 10% 50%, black 0%, black 35%, transparent 50%),
+      radial-gradient(circle at 90% 60%, black 0%, black 18%, transparent 28%);
+  }
+  100% {
+    mask: 
+      radial-gradient(circle at 50% 10%, black 0%, black 70%, transparent 90%),
+      radial-gradient(circle at 10% 50%, black 0%, black 50%, transparent 70%),
+      radial-gradient(circle at 90% 60%, black 0%, black 30%, transparent 45%);
+  }
+}
+
+@keyframes gradient-infection-4 {
+  0% {
+    mask: 
+      radial-gradient(circle at 80% 70%, transparent 0%, transparent 100%),
+      radial-gradient(circle at 20% 30%, transparent 0%, transparent 100%),
+      radial-gradient(circle at 60% 40%, transparent 0%, transparent 100%);
+  }
+  20% {
+    mask: 
+      radial-gradient(circle at 80% 70%, black 0%, black 15%, transparent 25%),
+      radial-gradient(circle at 20% 30%, transparent 0%, transparent 100%),
+      radial-gradient(circle at 60% 40%, transparent 0%, transparent 100%);
+  }
+  40% {
+    mask: 
+      radial-gradient(circle at 80% 70%, black 0%, black 25%, transparent 40%),
+      radial-gradient(circle at 20% 30%, black 0%, black 10%, transparent 20%),
+      radial-gradient(circle at 60% 40%, transparent 0%, transparent 100%);
+  }
+  60% {
+    mask: 
+      radial-gradient(circle at 80% 70%, black 0%, black 35%, transparent 55%),
+      radial-gradient(circle at 20% 30%, black 0%, black 20%, transparent 35%),
+      radial-gradient(circle at 60% 40%, black 0%, black 8%, transparent 18%);
+  }
+  80% {
+    mask: 
+      radial-gradient(circle at 80% 70%, black 0%, black 50%, transparent 70%),
+      radial-gradient(circle at 20% 30%, black 0%, black 35%, transparent 50%),
+      radial-gradient(circle at 60% 40%, black 0%, black 18%, transparent 28%);
+  }
+  100% {
+    mask: 
+      radial-gradient(circle at 80% 70%, black 0%, black 70%, transparent 90%),
+      radial-gradient(circle at 20% 30%, black 0%, black 50%, transparent 70%),
+      radial-gradient(circle at 60% 40%, black 0%, black 30%, transparent 45%);
+  }
+}
+
+.chat-gradient-active {
+  position: relative;
+  background: hsl(var(--fd-muted)) !important;
+}
+
+.chat-gradient-active::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: 
+    linear-gradient(45deg, rgba(139, 92, 246, 0.95), rgba(236, 72, 153, 0.95), rgba(59, 130, 246, 0.95), rgba(6, 182, 212, 0.95)),
+    linear-gradient(-45deg, rgba(236, 72, 153, 0.8), rgba(59, 130, 246, 0.8), rgba(139, 92, 246, 0.8), rgba(6, 182, 212, 0.8)),
+    linear-gradient(90deg, rgba(139, 92, 246, 0.85), rgba(6, 182, 212, 0.85), rgba(236, 72, 153, 0.85));
+  background-size: 400% 400%, 300% 300%, 200% 200%;
+  mask: 
+    radial-gradient(circle at 20% 80%, black 0%, black 70%, transparent 90%),
+    radial-gradient(circle at 80% 30%, black 0%, black 50%, transparent 70%),
+    radial-gradient(circle at 40% 20%, black 0%, black 30%, transparent 45%);
+  mask-composite: add;
+  -webkit-mask-composite: source-over;
+  animation: 
+    gradient-infection 0.1s cubic-bezier(0.25, 0.46, 0.45, 0.94) forwards,
+    gradient-shift 8s ease-in-out infinite 0.15s,
+    gradient-noise 12s linear infinite 0.15s;
+  z-index: 0;
+}
+
+/* Random animation variations */
+.chat-gradient-active.variant-2::before {
+  animation: 
+    gradient-infection-2 0.25s cubic-bezier(0.25, 0.46, 0.45, 0.94) forwards,
+    gradient-shift 8s ease-in-out infinite 0.15s,
+    gradient-noise 12s linear infinite 0.15s;
+}
+
+.chat-gradient-active.variant-3::before {
+  animation: 
+    gradient-infection-3 0.25s cubic-bezier(0.25, 0.46, 0.45, 0.94) forwards,
+    gradient-shift 8s ease-in-out infinite 0.15s,
+    gradient-noise 12s linear infinite 0.15s;
+}
+
+.chat-gradient-active.variant-4::before {
+  animation: 
+    gradient-infection-4 0.25s cubic-bezier(0.25, 0.46, 0.45, 0.94) forwards,
+    gradient-shift 8s ease-in-out infinite 0.15s,
+    gradient-noise 12s linear infinite 0.15s;
+}
+
+/* When not active, mask shrinks back */
+button:not(.chat-gradient-active)::before {
+  mask: radial-gradient(circle at 20% 80%, transparent 0%, transparent 100%);
+  transition: mask 0.3s ease-out;
 }

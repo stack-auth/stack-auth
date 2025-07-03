@@ -46,6 +46,7 @@ import { usePathname } from 'next/navigation';
 import { createContext, type HTMLAttributes, type ReactNode, useContext, useMemo, useRef, useState } from 'react';
 import { cn } from '../../lib/cn';
 import { getCurrentPlatform } from '../../lib/platform-utils';
+import { AIChatDrawer } from '../chat/ai-chat';
 import { CustomSearchDialog } from '../layout/custom-search-dialog';
 import {
   SearchInputToggle
@@ -81,10 +82,8 @@ import {
   isInComponentsSection,
   isInSdkSection
 } from './shared/section-utils';
-import { useTOC } from './toc-context';
 
 // Import chat context
-import { useChatContext } from '../chat/ai-chat';
 
 // Context for persisting accordion state
 type AccordionContextType = {
@@ -473,9 +472,7 @@ export function DocsLayout({
   children,
   ...props
 }: DocsLayoutProps): ReactNode {
-  const { isTocOpen } = useTOC();
   const [searchOpen, setSearchOpen] = useState(false);
-  const { isOpen: isChatOpen } = useChatContext();
 
   const tabs = useMemo(
     () => getSidebarTabsFromOptions(sidebar.tabs, props.tree) ?? [],
@@ -567,12 +564,12 @@ export function DocsLayout({
               />,
             )}
             <div className={cn(
-              'flex-1 transition-all duration-300 min-w-0',
-              isTocOpen && !isChatOpen && 'xl:mr-72'
+              'flex-1 transition-all duration-300 min-w-0'
             )}>
               <StylesProvider {...pageStyles}>{children}</StylesProvider>
             </div>
           </main>
+          <AIChatDrawer />
         </NavProvider>
       </TreeContextProvider>
     </AccordionProvider>

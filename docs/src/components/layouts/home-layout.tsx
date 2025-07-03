@@ -3,10 +3,11 @@
 import { Github, Menu, Sparkles, X } from 'lucide-react';
 import Link from 'next/link';
 import { type ReactNode, useEffect, useState } from 'react';
-import { useChatContext } from '../chat/ai-chat';
+import { AIChatDrawer } from '../chat/ai-chat';
 import { CustomSearchDialog } from '../layout/custom-search-dialog';
 import { SearchInputToggle } from '../layout/custom-search-toggle';
 import { ThemeToggle } from '../layout/theme-toggle';
+import { SidebarProvider, useSidebar } from './sidebar-context';
 
 // Discord Icon Component
 function DiscordIcon({ className }: { className?: string }) {
@@ -43,18 +44,34 @@ function StackAuthLogo() {
 }
 
 // AI Chat Toggle Button for Home Layout
-function HomeAIChatToggleButton({ compact = false }: { compact?: boolean }) {
-  const { isOpen, toggleChat } = useChatContext();
+function HomeAIChatToggleButton() {
+  const { isChatOpen, toggleChat } = useSidebar();
+  const [animationVariant, setAnimationVariant] = useState('');
+
+  // Generate random variant when chat is opened
+  const handleToggle = () => {
+    if (!isChatOpen) {
+      // Generate random variant (2-4, keeping 1 as default)
+      const variants = ['variant-2', 'variant-3', 'variant-4'];
+      const randomVariant = variants[Math.floor(Math.random() * variants.length)];
+      setAnimationVariant(randomVariant);
+    } else {
+      setAnimationVariant('');
+    }
+    toggleChat();
+  };
 
   return (
     <button
-      onClick={toggleChat}
-      className={`inline-flex items-center justify-center rounded-lg text-fd-muted-foreground transition-colors hover:bg-fd-muted hover:text-fd-foreground ${
-        compact ? 'h-8 w-8 rounded-full' : 'h-9 w-9'
-      } ${isOpen ? 'bg-fd-foreground text-fd-background hover:bg-fd-foreground/90 hover:text-fd-background' : ''}`}
-      title={isOpen ? 'Close AI chat' : 'Open AI chat'}
+      onClick={handleToggle}
+      className={`flex items-center justify-center transition-all duration-500 ease-out w-8 h-8 rounded-lg text-sm font-medium relative overflow-hidden ${
+        isChatOpen
+          ? `text-white chat-gradient-active ${animationVariant}`
+          : 'bg-fd-muted text-fd-muted-foreground hover:text-fd-foreground hover:bg-fd-muted/80'
+      }`}
+      title={isChatOpen ? 'Close AI chat' : 'Open AI chat'}
     >
-      <Sparkles className={compact ? 'h-3.5 w-3.5' : 'h-4 w-4'} />
+      <Sparkles className="h-4 w-4 relative z-10" />
     </button>
   );
 }
@@ -64,9 +81,7 @@ function HomeNavbar() {
   const [searchOpen, setSearchOpen] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [isScrolled, setIsScrolled] = useState(false);
-
-  // Check if chat is open
-  const { isOpen: isChatOpen, isExpanded: isChatExpanded } = useChatContext();
+  const { isChatOpen, isChatExpanded } = useSidebar();
 
   // Scroll detection
   useEffect(() => {
@@ -89,7 +104,7 @@ function HomeNavbar() {
   return (
     <>
       {/* Full Navbar */}
-      <header className={`sticky top-0 z-50 w-full border-b border-fd-border bg-fd-background/95 backdrop-blur supports-[backdrop-filter]:bg-fd-background/60 transition-all duration-300 ${isScrolled ? 'opacity-0 pointer-events-none' : 'opacity-100'} ${(isChatOpen || isChatExpanded) ? 'fixed left-0 right-0 z-[60]' : ''}`}>
+      <header className={`sticky top-0 z-50 w-full border-b border-fd-border bg-fd-background/95 backdrop-blur supports-[backdrop-filter]:bg-fd-background/60 transition-all duration-300 ${isScrolled ? 'opacity-0 pointer-events-none' : 'opacity-100'} ${(isChatOpen || isChatExpanded) ? 'fixed left-0 right-0 z-[80]' : ''}`}>
         <div className={`flex h-14 items-center justify-between px-4 md:px-6 ${(isChatOpen || isChatExpanded) ? '' : 'container max-w-screen-2xl'}`}>
           {/* Left - Logo + Social Links */}
           <div className="flex items-center gap-4">
@@ -183,7 +198,7 @@ function HomeNavbar() {
       </header>
 
       {/* Compact Pill Navbar */}
-      <div className={`fixed top-4 left-1/2 -translate-x-1/2 z-50 transition-all duration-300 ${isScrolled ? 'opacity-100 translate-y-0' : 'opacity-0 -translate-y-4 pointer-events-none'}`}>
+      <div className={`fixed top-4 left-1/2 -translate-x-1/2 transition-all duration-300 ${isScrolled ? 'opacity-100 translate-y-0' : 'opacity-0 -translate-y-4 pointer-events-none'} ${isChatExpanded ? 'z-[80]' : 'z-50'}`}>
         <div className="flex items-center gap-2 px-4 py-2 bg-fd-background/95 backdrop-blur border border-fd-border rounded-full shadow-lg supports-[backdrop-filter]:bg-fd-background/80">
           {/* Compact Logo */}
           <Link href="https://stack-auth.com" className="flex items-center gap-2 text-fd-foreground hover:text-fd-foreground/80 transition-colors">
@@ -238,7 +253,7 @@ function HomeNavbar() {
             <ThemeToggle compact />
 
             {/* Compact AI Chat Toggle */}
-            <HomeAIChatToggleButton compact />
+            <HomeAIChatToggleButton />
           </div>
         </div>
       </div>
@@ -283,11 +298,14 @@ export function HomeLayout({ children }: { children: ReactNode }) {
   }, []);
 
   return (
-    <div className="relative flex min-h-screen flex-col bg-fd-background">
-      <HomeNavbar />
-      <main className="flex-1">
-        {children}
-      </main>
-    </div>
+    <SidebarProvider>
+      <div className="relative flex min-h-screen flex-col bg-fd-background">
+        <HomeNavbar />
+        <main className="flex-1">
+          {children}
+        </main>
+        <AIChatDrawer />
+      </div>
+    </SidebarProvider>
   );
 }

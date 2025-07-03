@@ -121,7 +121,7 @@ const PlatformSelector: React.FC<{
       <div className="relative inline-block w-64 mx-auto" ref={dropdownRef}>
         <button
           onClick={() => setIsOpen(!isOpen)}
-          className="w-full flex items-center justify-between px-4 py-3 bg-background border-2 border-border rounded-xl shadow-lg hover:shadow-xl transition-all duration-300 hover:-translate-y-1"
+          className="w-full flex items-center justify-between px-4 py-3 bg-background border-2 border-border rounded-xl shadow-lg hover:shadow-xl hover:-translate-y-1"
           style={{
             borderColor: platformColors[selectedPlatform],
             boxShadow: `0 4px 20px ${platformColors[selectedPlatform]}20`,
@@ -135,7 +135,7 @@ const PlatformSelector: React.FC<{
           </span>
           <ChevronDown
             size={20}
-            className={`transform transition-transform duration-300 ${isOpen ? "rotate-180" : ""}`}
+            className={`transform ${isOpen ? "rotate-180" : ""}`}
             style={{ color: platformColors[selectedPlatform] }}
           />
         </button>
@@ -158,7 +158,7 @@ const PlatformSelector: React.FC<{
                   onMouseEnter={() => setHoveredPlatform(platform)}
                   onMouseLeave={() => setHoveredPlatform(null)}
                   className={`
-                    w-full px-4 py-3 text-left transition-all duration-200
+                    w-full px-4 py-3 text-left
                     border-l-4 border-transparent
                     ${isHighlighted ? "bg-muted/70" : "hover:bg-muted/30"}
                   `}
@@ -169,7 +169,7 @@ const PlatformSelector: React.FC<{
                 >
                   <div className="flex items-center justify-between">
                     <span
-                      className={`font-medium transition-all duration-200 ${
+                      className={`font-medium ${
                         isHighlighted ? "font-semibold" : ""
                       }`}
                       style={{
@@ -180,18 +180,18 @@ const PlatformSelector: React.FC<{
                     </span>
                     {isSelected && (
                       <div
-                        className="w-2 h-2 rounded-full transition-all duration-200"
+                        className="w-2 h-2 rounded-full"
                         style={{ backgroundColor: platformColors[platform] }}
                       />
                     )}
                     {isHovered && !isSelected && (
                       <div
-                        className="w-1.5 h-1.5 rounded-full transition-all duration-200"
+                        className="w-1.5 h-1.5 rounded-full"
                         style={{ backgroundColor: platformColors[platform], opacity: 0.6 }}
                       />
                     )}
                   </div>
-                  <div className={`text-xs mt-1 transition-all duration-200 ${
+                  <div className={`text-xs mt-1 ${
                     isHighlighted ? "text-muted-foreground" : "text-muted-foreground/70"
                   }`}>
                     {platform === "next" && "Full-stack React framework"}
@@ -227,6 +227,15 @@ const DocsIcon3D: React.FC<DocsIcon3DProps> = ({
     }
   };
 
+  // Helper function to convert rgb to rgba
+  const rgbToRgba = (rgb: string, alpha: number) => {
+    const match = rgb.match(/rgb\((\d+),\s*(\d+),\s*(\d+)\)/);
+    if (match) {
+      return `rgba(${match[1]}, ${match[2]}, ${match[3]}, ${alpha})`;
+    }
+    return rgb;
+  };
+
   return (
     <div className="flex justify-center items-center p-4">
       <div
@@ -241,7 +250,7 @@ const DocsIcon3D: React.FC<DocsIcon3DProps> = ({
         {platformSections.map((section) => (
           <div
             key={section.id}
-            className="cursor-pointer group transform transition-all duration-200 hover:scale-105"
+            className="cursor-pointer group transform hover:scale-105"
             onMouseEnter={() => setHoveredSection(section.id)}
             onMouseLeave={() => setHoveredSection(null)}
             onClick={() => handleSectionClick(section)}
@@ -251,36 +260,36 @@ const DocsIcon3D: React.FC<DocsIcon3DProps> = ({
                 bg-card border-[0.5px] border-border rounded-xl p-6 w-full h-40
                 flex flex-col items-center justify-center 
                 shadow-sm hover:shadow-lg
-                transition-all duration-200
               `}
               style={{
-                borderColor: hoveredSection === section.id ? section.color : undefined,
+                borderColor: hoveredSection === section.id ? section.color : rgbToRgba(section.color, 0.4),
               }}
             >
               {/* Icon Container */}
               <div className="mb-4">
                 <div
                   className={`
-                    w-12 h-12 rounded-lg flex items-center justify-center 
-                    transition-all duration-200
+                    w-12 h-12 rounded-lg flex items-center justify-center
                   `}
                   style={{
-                    backgroundColor: hoveredSection === section.id ? section.color : `${section.color}20`,
-                    color: hoveredSection === section.id ? 'white' : 'hsl(var(--foreground))',
+                    backgroundColor: hoveredSection === section.id ? section.color : rgbToRgba(section.color, 0.2),
+                    color: hoveredSection === section.id ? 'white' : section.color,
+                    transform: hoveredSection === section.id ? 'scale(1.1)' : 'scale(1)',
                   }}
                 >
                   {React.cloneElement(section.icon as React.ReactElement, {
                     size: 20,
-                    strokeWidth: 2,
+                    strokeWidth: hoveredSection === section.id ? 2.5 : 2,
                   })}
                 </div>
               </div>
 
               {/* Title */}
               <h3
-                className="text-sm font-semibold mb-2 text-center transition-all duration-200"
+                className="text-sm font-semibold mb-2 text-center"
                 style={{
-                  color: hoveredSection === section.id ? section.color : 'hsl(var(--card-foreground))',
+                  color: section.color,
+                  transform: hoveredSection === section.id ? 'scale(1.05)' : 'scale(1)',
                 }}
               >
                 {section.title}

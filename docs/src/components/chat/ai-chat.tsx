@@ -2,7 +2,8 @@
 
 import { useChat } from '@ai-sdk/react';
 import { Maximize2, Minimize2, Send, X } from 'lucide-react';
-import { createContext, useContext, useEffect, useState, type ReactNode } from 'react';
+import { useEffect, useState } from 'react';
+import { useSidebar } from '../layouts/sidebar-context';
 import { MessageFormatter } from './message-formatter';
 
 // Stack Auth Icon Component (just the icon, not full logo)
@@ -21,92 +22,45 @@ function StackIcon({ size = 20, className }: { size?: number, className?: string
   );
 }
 
-// Chat Context
-type ChatContextType = {
-  isOpen: boolean,
-  isExpanded: boolean,
-  toggleChat: () => void,
-  expandChat: () => void,
-  collapseChat: () => void,
-};
+export function AIChatDrawer() {
+  const { isChatOpen, isChatExpanded, toggleChat, setChatExpanded } = useSidebar();
+  const [docsContent, setDocsContent] = useState('');
+  const [isHomePage, setIsHomePage] = useState(false);
+  const [isScrolled, setIsScrolled] = useState(false);
 
-type ChatProviderProps = {
-  children: ReactNode,
-};
-
-const ChatContext = createContext<ChatContextType | undefined>(undefined);
-
-export function ChatProvider({ children }: ChatProviderProps) {
-  const [isOpen, setIsOpen] = useState(false);
-  const [isExpanded, setIsExpanded] = useState(false);
-
-  // Load state from localStorage on mount
+  // Detect if we're on homepage and scroll state
   useEffect(() => {
-    const savedIsOpen = localStorage.getItem('ai-chat-open');
-    const savedIsExpanded = localStorage.getItem('ai-chat-expanded');
+    const checkHomePage = () => {
+      setIsHomePage(document.body.classList.contains('home-page'));
+    };
 
-    if (savedIsOpen === 'true') {
-      setIsOpen(true);
-    }
-    if (savedIsExpanded === 'true') {
-      setIsExpanded(true);
-    }
-  }, []);
+    const checkScrolled = () => {
+      setIsScrolled(document.body.classList.contains('scrolled'));
+    };
 
-  // Save state to localStorage when it changes
-  useEffect(() => {
-    localStorage.setItem('ai-chat-open', isOpen.toString());
-  }, [isOpen]);
+    // Initial check
+    checkHomePage();
+    checkScrolled();
 
-  useEffect(() => {
-    localStorage.setItem('ai-chat-expanded', isExpanded.toString());
-  }, [isExpanded]);
+    // Set up observers for class changes
+    const observer = new MutationObserver(() => {
+      checkHomePage();
+      checkScrolled();
+    });
 
-  // Add/remove body classes for content shifting
-  useEffect(() => {
-    if (isOpen) {
-      document.body.classList.add('chat-open');
-    } else {
-      document.body.classList.remove('chat-open');
-      setIsExpanded(false); // Close expansion when chat closes
-    }
+    observer.observe(document.body, {
+      attributes: true,
+      attributeFilter: ['class']
+    });
 
     return () => {
-      document.body.classList.remove('chat-open');
+      observer.disconnect();
     };
-  }, [isOpen]);
+  }, []);
 
-  const toggleChat = () => setIsOpen(!isOpen);
-  const expandChat = () => setIsExpanded(true);
-  const collapseChat = () => setIsExpanded(false);
-
-  const value = {
-    isOpen,
-    isExpanded,
-    toggleChat,
-    expandChat,
-    collapseChat,
-  };
-
-  return (
-    <ChatContext.Provider value={value}>
-      {children}
-      <AIChatDrawer />
-    </ChatContext.Provider>
-  );
-}
-
-export function useChatContext() {
-  const context = useContext(ChatContext);
-  if (context === undefined) {
-    throw new Error('useChatContext must be used within a ChatProvider');
-  }
-  return context;
-}
-
-function AIChatDrawer() {
-  const { isOpen, isExpanded, toggleChat, expandChat, collapseChat } = useChatContext();
-  const [docsContent, setDocsContent] = useState('');
+  // Calculate position based on homepage and scroll state
+  const topPosition = isHomePage && isScrolled ? 'top-0' : 'top-14';
+  const height = isHomePage && isScrolled ? 'h-screen' : 'h-[calc(100vh-3.5rem)]';
 
   // Fetch documentation content when component mounts
   useEffect(() => {
@@ -177,10 +131,10 @@ function AIChatDrawer() {
 
   return (
     <div
-      className={`fixed top-14 right-0 h-[calc(100vh-3.5rem)] bg-fd-background border-l border-fd-border flex flex-col transition-all duration-300 ease-out z-50 ${
-        isExpanded ? 'w-[70vw] z-[70]' : 'w-96'
+      className={`fixed ${topPosition} right-0 ${height} bg-fd-background border-l border-fd-border flex flex-col transition-all duration-300 ease-out z-50 ${
+        isChatExpanded ? 'w-[70vw] z-[70]' : 'w-96'
       } ${
-        isOpen ? 'translate-x-0' : 'translate-x-full'
+        isChatOpen ? 'translate-x-0' : 'translate-x-full'
       }`}
     >
       {/* Header */}
@@ -195,11 +149,11 @@ function AIChatDrawer() {
         <div className="flex items-center gap-1">
           {/* Expand/Collapse Button */}
           <button
-            onClick={isExpanded ? collapseChat : expandChat}
+            onClick={() => setChatExpanded(!isChatExpanded)}
             className="p-1 text-fd-muted-foreground hover:text-fd-foreground hover:bg-fd-muted rounded transition-colors"
-            title={isExpanded ? 'Collapse chat' : 'Expand chat'}
+            title={isChatExpanded ? 'Collapse chat' : 'Expand chat'}
           >
-            {isExpanded ? (
+            {isChatExpanded ? (
               <Minimize2 className="w-3 h-3" />
             ) : (
               <Maximize2 className="w-3 h-3" />

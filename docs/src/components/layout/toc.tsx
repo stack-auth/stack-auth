@@ -7,11 +7,10 @@ import {
   type ComponentProps,
   type HTMLAttributes,
   type ReactNode,
-  useRef,
+  useRef
 } from 'react';
 import { cn } from '../../lib/cn';
-import { useChatContext } from '../chat/ai-chat';
-import { useTOC } from '../layouts/toc-context';
+import { useSidebar } from '../layouts/sidebar-context';
 import { TocThumb } from './toc-thumb';
 
 export type TOCProps = {
@@ -30,11 +29,10 @@ export type TOCProps = {
 
 export function Toc(props: HTMLAttributes<HTMLDivElement>) {
   const { toc } = usePageStyles();
-  const { isTocOpen } = useTOC();
-  const { isOpen: isChatOpen } = useChatContext();
+  const { isTocOpen } = useSidebar();
 
-  // Hide TOC if not open or if chat is open
-  if (!isTocOpen || isChatOpen) return null;
+  // Hide TOC if not open
+  if (!isTocOpen) return null;
 
   return (
     <div

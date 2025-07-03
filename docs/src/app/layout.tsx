@@ -1,7 +1,6 @@
 import { StackProvider, StackTheme } from '@stackframe/stack';
 import { RootProvider } from 'fumadocs-ui/provider';
 import { Inter } from 'next/font/google';
-import { ChatProvider } from '../components/chat/ai-chat';
 import { stackServerApp } from '../stack';
 import './global.css';
 
@@ -25,9 +24,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
                 enabled: false, // Completely disable fumadocs search
               }}
             >
-              <ChatProvider>
-                {children}
-              </ChatProvider>
+              {children}
             </RootProvider>
           </StackTheme>
         </StackProvider>

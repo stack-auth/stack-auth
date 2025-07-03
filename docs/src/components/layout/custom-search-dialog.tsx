@@ -52,6 +52,7 @@ function extractBasePathFromUrl(url: string): string {
 
 function groupResultsByPage(results: SearchResult[]): GroupedResult[] {
   const grouped = new Map<string, GroupedResult>();
+  const groupOrder: string[] = []; // Track the order groups are first encountered
 
   for (const result of results) {
     const platform = extractPlatformFromUrl(result.url);
@@ -69,6 +70,9 @@ function groupResultsByPage(results: SearchResult[]): GroupedResult[] {
         title,
         results: []
       });
+
+      // Track the order this group was first encountered (preserves relevance order)
+      groupOrder.push(baseUrl);
     }
 
     const groupedResult = grouped.get(baseUrl);
@@ -77,17 +81,9 @@ function groupResultsByPage(results: SearchResult[]): GroupedResult[] {
     }
   }
 
-  const groupedArray = Array.from(grouped.values()).sort((a, b) => {
-    // Sort by platform first, then by title
-    if (a.platform !== b.platform) {
-      const order = ['next', 'react', 'js', 'python', 'api'];
-      return order.indexOf(a.platform) - order.indexOf(b.platform);
-    }
-    // eslint-disable-next-line no-restricted-syntax
-    return a.title.localeCompare(b.title);
-  });
-
-  return groupedArray;
+  // Return groups in the order they were first encountered (preserves API scoring order)
+  // This maintains the relevance ranking from our search API
+  return groupOrder.map(url => grouped.get(url)!);
 }
 
 function PlatformBadge({ platform }: { platform: string }) {

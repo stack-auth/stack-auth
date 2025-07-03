@@ -1,12 +1,12 @@
 'use client';
 
-import { Search } from 'lucide-react';
+import { Command, Search } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { cn } from '../../lib/cn';
 
 function getSearchKey() {
-  if (typeof window === 'undefined') return '';
-  return navigator.platform.toLowerCase().includes('mac') ? '⌘' : 'Ctrl+';
+  if (typeof window === 'undefined') return 'mac';
+  return navigator.platform.toLowerCase().includes('mac') ? 'mac' : 'ctrl';
 }
 
 // Compact search button - perfect for navbars
@@ -14,7 +14,7 @@ export function CustomSearchToggle({ onOpen, className }: {
   onOpen: () => void,
   className?: string,
 }) {
-  const [searchKey, setSearchKey] = useState('');
+  const [searchKey, setSearchKey] = useState('mac');
 
   useEffect(() => {
     setSearchKey(getSearchKey());
@@ -43,9 +43,16 @@ export function CustomSearchToggle({ onOpen, className }: {
       <Search className="h-4 w-4 transition-colors" />
       <span className="hidden sm:inline">Search...</span>
       {searchKey && (
-        <div className="hidden md:flex items-center">
-          <kbd className="ml-1 inline-flex h-5 min-w-[20px] items-center justify-center rounded border border-fd-border/60 bg-fd-muted/50 px-1 font-mono text-[11px] font-medium text-fd-muted-foreground/80 transition-colors group-hover:border-fd-border group-hover:bg-fd-muted group-hover:text-fd-muted-foreground">
-            {searchKey}K
+        <div className="hidden md:flex items-center gap-1">
+          <kbd className="inline-flex h-5 min-w-[20px] items-center justify-center rounded border border-fd-border/60 bg-fd-muted/50 px-1 font-mono text-[11px] font-medium text-fd-muted-foreground/80 transition-colors group-hover:border-fd-border group-hover:bg-fd-muted group-hover:text-fd-muted-foreground">
+            {searchKey === 'mac' ? (
+              <Command className="h-3 w-3" />
+            ) : (
+              'Ctrl'
+            )}
+          </kbd>
+          <kbd className="inline-flex h-5 w-5 items-center justify-center rounded border border-fd-border/60 bg-fd-muted/50 font-mono text-[11px] font-medium text-fd-muted-foreground/80 transition-colors group-hover:border-fd-border group-hover:bg-fd-muted group-hover:text-fd-muted-foreground">
+            K
           </kbd>
         </div>
       )}
@@ -77,7 +84,7 @@ export function CompactSearchToggle({ onOpen, className }: {
         'inline-flex h-9 w-9 items-center justify-center rounded-lg text-fd-muted-foreground transition-colors hover:bg-fd-muted hover:text-fd-foreground focus:outline-none focus:ring-2 focus:ring-fd-primary/20',
         className
       )}
-      title="Search documentation (⌘K)"
+      title="Search documentation"
     >
       <Search className="h-4 w-4" />
     </button>
@@ -89,7 +96,7 @@ export function SearchInputToggle({ onOpen, className }: {
   onOpen: () => void,
   className?: string,
 }) {
-  const [searchKey, setSearchKey] = useState('');
+  const [searchKey, setSearchKey] = useState('mac');
 
   useEffect(() => {
     setSearchKey(getSearchKey());
@@ -125,9 +132,18 @@ export function SearchInputToggle({ onOpen, className }: {
       </span>
       {/* Keyboard shortcut - only shown on larger containers */}
       {searchKey && (
-        <kbd className="hidden md:inline-flex h-6 min-w-[32px] items-center justify-center rounded-md border border-fd-border/60 bg-fd-muted/50 px-2 font-mono text-xs font-semibold text-fd-muted-foreground/90 transition-colors group-hover:border-fd-border group-hover:bg-fd-muted group-hover:text-fd-muted-foreground ml-auto">
-          {searchKey}K
-        </kbd>
+        <div className="hidden md:flex items-center gap-1 ml-auto">
+          <kbd className="inline-flex h-6 min-w-[24px] items-center justify-center rounded-md border border-fd-border/60 bg-fd-muted/50 px-1.5 font-mono text-xs font-semibold text-fd-muted-foreground/90 transition-colors group-hover:border-fd-border group-hover:bg-fd-muted group-hover:text-fd-muted-foreground">
+            {searchKey === 'mac' ? (
+              <Command className="h-3.5 w-3.5" />
+            ) : (
+              'Ctrl'
+            )}
+          </kbd>
+          <kbd className="inline-flex h-6 w-6 items-center justify-center rounded-md border border-fd-border/60 bg-fd-muted/50 font-mono text-xs font-semibold text-fd-muted-foreground/90 transition-colors group-hover:border-fd-border group-hover:bg-fd-muted group-hover:text-fd-muted-foreground">
+            K
+          </kbd>
+        </div>
       )}
     </button>
   );
@@ -138,7 +154,7 @@ export function LargeCustomSearchToggle({ onOpen, className }: {
   onOpen: () => void,
   className?: string,
 }) {
-  const [searchKey, setSearchKey] = useState('');
+  const [searchKey, setSearchKey] = useState('mac');
 
   useEffect(() => {
     setSearchKey(getSearchKey());
@@ -172,7 +188,14 @@ export function LargeCustomSearchToggle({ onOpen, className }: {
       {searchKey && (
         <div className="flex items-center gap-1">
           <kbd className="inline-flex h-7 min-w-[28px] items-center justify-center rounded-md border border-fd-border/60 bg-fd-muted/50 px-2 font-mono text-xs font-medium text-fd-muted-foreground/80 transition-colors group-hover:border-fd-border group-hover:bg-fd-muted group-hover:text-fd-muted-foreground">
-            {searchKey}K
+            {searchKey === 'mac' ? (
+              <Command className="h-4 w-4" />
+            ) : (
+              'Ctrl'
+            )}
+          </kbd>
+          <kbd className="inline-flex h-7 w-7 items-center justify-center rounded-md border border-fd-border/60 bg-fd-muted/50 font-mono text-xs font-medium text-fd-muted-foreground/80 transition-colors group-hover:border-fd-border group-hover:bg-fd-muted group-hover:text-fd-muted-foreground">
+            K
           </kbd>
         </div>
       )}
