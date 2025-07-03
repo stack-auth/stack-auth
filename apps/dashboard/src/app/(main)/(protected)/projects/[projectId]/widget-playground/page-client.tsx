@@ -665,7 +665,7 @@ function BigIconButton({ icon, children, ...props }: { icon: React.ReactNode} & 
 }
 
 function ResizeHandle(props: { widgetInstance: WidgetInstance<any>, x: number, y: number }) {
-  if (Math.sign(props.x) !== props.x || Math.sign(props.y) !== props.y) {
+  if (![ -1, 0, 1 ].includes(props.x) || ![ -1, 0, 1 ].includes(props.y)) {
     throw new StackAssertionError(`Invalid resize handle coordinates, must be -1, 0, or 1: ${props.x}, ${props.y}`);
   }
 
