@@ -604,6 +604,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
       id: crud.id,
       displayName: crud.display_name,
       config: {
+        emailVerificationRequired: crud.config.email_verification_required,
         signUpEnabled: crud.config.sign_up_enabled,
         credentialEnabled: crud.config.credential_enabled,
         magicLinkEnabled: crud.config.magic_link_enabled,
