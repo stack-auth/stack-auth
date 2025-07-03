@@ -338,7 +338,7 @@ export default function PageClient() {
               },
             });
           }}
-          hint="Existing users can still sign in when sign-up is disabled. You can always create new accounts manually via the dashboard."
+          hint="When the user tries to sign in with an unverified email address, they will be prompted to verify their email address before signing in."
         />
       </SettingCard>
 

@@ -1,3 +1,3 @@
-import { mfaVerificationCodeHandler } from "./verification-code-handler";
+import { emailVerificationRequiredVerificationCodeHandler } from "./verification-code-handler";
 
-export const POST = mfaVerificationCodeHandler.postHandler;
+export const POST = emailVerificationRequiredVerificationCodeHandler.postHandler;
