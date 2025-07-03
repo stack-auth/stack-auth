@@ -10,7 +10,7 @@ type FailedEmailsQueryResult = {
 
 type FailedEmailsByTenancyData = {
   emails: Array<{ subject: string, to: string[] }>,
-  tenantOwnerEmail: string,
+  tenantOwnerEmails: string[],
   projectId: string,
 }
 
@@ -24,10 +24,11 @@ export const getFailedEmailsByTenancy = async (after: Date) => {
     cc."value" as "contactEmail"
   FROM "SentEmail" se
   INNER JOIN "Tenancy" t ON se."tenancyId" = t.id
+  INNER JOIN "Project" p ON t."projectId" = p.id
   LEFT JOIN "ProjectUser" pu ON pu."mirroredProjectId" = 'internal'
     AND pu."mirroredBranchId" = 'main'
     AND pu."serverMetadata"->'managedProjectIds' ? t."projectId"
-  LEFT JOIN "ContactChannel" cc ON pu."projectUserId" = cc."projectUserId" 
+  INNER JOIN "ContactChannel" cc ON pu."projectUserId" = cc."projectUserId" 
     AND cc."isPrimary" = 'TRUE' 
     AND cc."type" = 'EMAIL'
   WHERE se."error" IS NOT NULL
@@ -38,10 +39,11 @@ export const getFailedEmailsByTenancy = async (after: Date) => {
   for (const failedEmail of result) {
     let failedEmails = failedEmailsByTenancy.get(failedEmail.tenancyId) ?? {
       emails: [],
-      tenantOwnerEmail: failedEmail.contactEmail,
+      tenantOwnerEmails: [],
       projectId: failedEmail.projectId
     };
    failedEmails.emails.push({ subject: failedEmail.subject, to: failedEmail.to });
+   failedEmails.tenantOwnerEmails.push(failedEmail.contactEmail);
    failedEmailsByTenancy.set(failedEmail.tenancyId, failedEmails);
   }
   return failedEmailsByTenancy;
