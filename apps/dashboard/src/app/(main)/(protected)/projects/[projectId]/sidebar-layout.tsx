@@ -324,8 +324,8 @@ function SidebarContent({ projectId, onNavigate }: { projectId: string, onNaviga
       <div className="flex flex-grow flex-col gap-1 pt-2 overflow-y-auto">
         {navigationItems.map((item, index) => {
           if (
-            item.type === 'item' && 
-            item.href === '/email-themes' && 
+            item.type === 'item' &&
+            item.href === '/email-themes' &&
             !JSON.parse(getPublicEnvVar("NEXT_PUBLIC_STACK_EMAIL_THEME_PROJECT_ID_FLAG") || "[]").includes(projectId)
           ) {
             return null;
