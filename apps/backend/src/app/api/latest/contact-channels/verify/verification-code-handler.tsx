@@ -144,6 +144,8 @@ export async function throwEmailVerificationRequiredErrorIfNeeded(options: { ten
     return;
   }
 
+  // TODO: check if callback url is valid
+
   const result = await contactChannelVerificationCodeHandler.sendCode({
     tenancy: options.tenancy,
     data: {

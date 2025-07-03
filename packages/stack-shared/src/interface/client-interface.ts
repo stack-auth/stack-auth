@@ -941,6 +941,7 @@ export class StackClientInterface {
       provider: string,
       redirectUrl: string,
       errorRedirectUrl: string,
+      emailVerificationRedirectUrl: string,
       afterCallbackRedirectUrl?: string,
       codeChallenge: string,
       state: string,
@@ -972,6 +973,7 @@ export class StackClientInterface {
     url.searchParams.set("response_type", "code");
     url.searchParams.set("type", options.type);
     url.searchParams.set("error_redirect_url", options.errorRedirectUrl);
+    url.searchParams.set("email_verification_redirect_url", options.emailVerificationRedirectUrl);
 
     if (options.afterCallbackRedirectUrl) {
       url.searchParams.set("after_callback_redirect_url", options.afterCallbackRedirectUrl);

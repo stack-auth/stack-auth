@@ -41,6 +41,7 @@ export const oauthCookieSchema = yupObject({
   providerScope: yupString().optional(),
   errorRedirectUrl: yupString().optional(),
   afterCallbackRedirectUrl: yupString().optional(),
+  emailVerificationRedirectUrl: yupString().optional(),
 });
 
 const getIssuer = (projectId: string) => {

@@ -156,6 +156,7 @@ export class OAuthModel implements AuthorizationCodeModel {
         tenancy,
         isNewUser: false,
         userId: projectUser.projectUserId,
+        callbackUrl: user.emailVerificationRedirectUrl,
       });
 
       if (projectUser.requiresTotpMfa) {
@@ -203,6 +204,8 @@ export class OAuthModel implements AuthorizationCodeModel {
       scope: token.scope,
       client: token.client,
       user: token.user,
+
+      email_verification_redirect_url: user.emailVerificationRedirectUrl,
 
       // TODO remove deprecated camelCase properties
       newUser: user.newUser,
@@ -300,6 +303,7 @@ export class OAuthModel implements AuthorizationCodeModel {
         projectUserId: user.id,
         newUser: user.newUser,
         afterCallbackRedirectUrl: user.afterCallbackRedirectUrl,
+        emailVerificationRedirectUrl: user.emailVerificationRedirectUrl,
         tenancyId: tenancy.id,
       },
     });

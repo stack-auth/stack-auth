@@ -37,9 +37,9 @@ import { OAuthConnection } from "../../connected-accounts";
 import { ContactChannel, ContactChannelCreateOptions, ContactChannelUpdateOptions, contactChannelCreateOptionsToCrud, contactChannelUpdateOptionsToCrud } from "../../contact-channels";
 import { NotificationCategory } from "../../notification-categories";
 import { TeamPermission } from "../../permissions";
-import { AdminProjectUpdateOptions, Project, adminProjectCreateOptionsToCrud } from "../../projects";
+import { AdminOwnedProject, AdminProjectUpdateOptions, Project, adminProjectCreateOptionsToCrud } from "../../projects";
 import { EditableTeamMemberProfile, Team, TeamCreateOptions, TeamInvitation, TeamUpdateOptions, TeamUser, teamCreateOptionsToCrud, teamUpdateOptionsToCrud } from "../../teams";
-import { ActiveSession, Auth, BaseUser, CurrentUser, InternalUserExtra, ProjectCurrentUser, UserExtra, userUpdateOptionsToCrud } from "../../users";
+import { ActiveSession, Auth, BaseUser, CurrentUser, InternalUserExtra, ProjectCurrentUser, UserExtra, UserUpdateOptions, userUpdateOptionsToCrud } from "../../users";
 import { StackClientApp, StackClientAppConstructorOptions, StackClientAppJson } from "../interfaces/client-app";
 import { _StackAdminAppImplIncomplete } from "./admin-app-impl";
 import { TokenObject, clientVersion, createCache, createCacheBySession, createEmptyTokenStore, getBaseUrl, getDefaultExtraRequestHeaders, getDefaultProjectId, getDefaultPublishableClientKey, getUrls, } from "./common";
@@ -244,6 +244,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
             provider: options.providerId,
             redirectUrl: this.urls.oauthCallback,
             errorRedirectUrl: this.urls.error,
+            emailVerificationRedirectUrl: this.urls.emailVerification,
             providerScope: mergeScopeStrings(options.scope || "", (this._oauthScopesOnSignIn[options.providerId] ?? []).join(" ")),
           },
           options.session,
@@ -1476,6 +1477,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
         provider,
         redirectUrl: this.urls.oauthCallback,
         errorRedirectUrl: this.urls.error,
+        emailVerificationRedirectUrl: this.urls.emailVerification,
         providerScope: this._oauthScopesOnSignIn[provider]?.join(" "),
       }
     );
