@@ -9,9 +9,7 @@ import { OTPCodeForm } from "../components/elements/otp-code-form";
 import { useTranslation } from "../lib/translations";
 
 
-export function EmailVerificationRequired(props: {
-  fullPage?: boolean,
-}) {
+export function EmailVerificationRequired(props: { fullPage?: boolean }) {
   const { t } = useTranslation();
   const stackApp = useStackApp();
 
@@ -36,7 +34,7 @@ export function EmailVerificationRequired(props: {
           type="email-verification-required"
           onSubmit={async (options) => {
             try {
-              const result = await stackApp.signInWithEmailVerification(options.code, options.attemptCode, { noRedirect: true });
+              const result = await stackApp.verifyEmail(options.code + options.attemptCode);
               if (result.status === "ok") {
                 return Result.ok(undefined);
               }

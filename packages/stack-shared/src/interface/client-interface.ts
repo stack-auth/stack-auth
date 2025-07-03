@@ -907,34 +907,6 @@ export class StackClientInterface {
     });
   }
 
-  async signInWithEmailVerification(code: string): Promise<Result<{ accessToken: string, refreshToken: string, newUser: boolean }, KnownErrors["VerificationCodeError"] | KnownErrors["InvalidTotpCode"]>> {
-    const res = await this.sendClientRequestAndCatchKnownError(
-      "/auth/email-verification-required/sign-in",
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json"
-        },
-        body: JSON.stringify({
-          code,
-        }),
-      },
-      null,
-      [KnownErrors.VerificationCodeError, KnownErrors.InvalidTotpCode]
-    );
-
-    if (res.status === "error") {
-      return Result.error(res.error);
-    }
-
-    const result = await res.data.json();
-    return Result.ok({
-      accessToken: result.access_token,
-      refreshToken: result.refresh_token,
-      newUser: result.is_new_user,
-    });
-  }
-
   async signInWithPasskey(body: { authentication_response: AuthenticationResponseJSON, code: string }): Promise<Result<{accessToken: string, refreshToken: string }, KnownErrors["PasskeyAuthenticationFailed"]>> {
     const res = await this.sendClientRequestAndCatchKnownError(
       "/auth/passkey/sign-in",
