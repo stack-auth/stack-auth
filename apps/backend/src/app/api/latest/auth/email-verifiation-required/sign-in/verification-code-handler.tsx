@@ -88,22 +88,25 @@ export const emailVerificationRequiredVerificationCodeHandler = createVerificati
 });
 
 export async function throwEmailVerificationRequiredErrorIfNeeded(options: { tenancy: Tenancy, isNewUser: boolean, userId: string }) {
+  console.log("!!!!!");
+  if (!options.tenancy.completeConfig.auth.emailVerificationRequired) {
+    console.log("no email verification required");
+    return;
+  }
+
   const user = await usersCrudHandlers.adminRead({
     tenancy: options.tenancy,
     user_id: options.userId,
   });
-  const primaryEmail = user.primary_email;
 
-  if (!user.requires_email_verification) {
-    return;
-  }
-
-  if (!primaryEmail) {
+  if (!user.primary_email) {
+    console.log("user has no primary email");
     captureError("user-has-no-primary-email", { userId: options.userId });
     return;
   }
 
   if (user.primary_email_verified) {
+    console.log("email verified");
     return;
   }
 
@@ -114,10 +117,11 @@ export async function throwEmailVerificationRequiredErrorIfNeeded(options: { ten
     data: {
       user_id: options.userId,
       is_new_user: options.isNewUser,
-      email: primaryEmail,
+      email: user.primary_email,
     },
     method: {},
     callbackUrl: undefined,
   });
+
   throw new KnownErrors.EmailVerificationRequired(attemptCode.code);
 }

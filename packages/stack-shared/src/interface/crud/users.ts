@@ -54,7 +54,6 @@ export const usersCrudServerReadSchema = fieldSchema.yupObject({
    * @deprecated
    */
   requires_totp_mfa: fieldSchema.yupBoolean().defined().meta({ openapiField: { hidden: true, description: 'Whether the user is required to use TOTP MFA to sign in', exampleValue: false } }),
-  requires_email_verification: fieldSchema.yupBoolean().defined().meta({ openapiField: { hidden: true, description: 'Whether the user is required to verify their email to sign in', exampleValue: false } }),
 }).defined();
 
 export const usersCrudServerCreateSchema = usersCrudServerUpdateSchema.omit(['selected_team_id']).concat(fieldSchema.yupObject({
