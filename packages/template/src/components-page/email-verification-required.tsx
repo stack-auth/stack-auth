@@ -3,7 +3,8 @@
 import { KnownErrors } from "@stackframe/stack-shared";
 import { Result } from "@stackframe/stack-shared/dist/utils/results";
 import { Typography } from "@stackframe/stack-ui";
-import { useStackApp } from "..";
+import { useEffect } from "react";
+import { useStackApp, useUser } from "..";
 import { MaybeFullPage } from "../components/elements/maybe-full-page";
 import { OTPCodeForm } from "../components/elements/otp-code-form";
 import { useTranslation } from "../lib/translations";
@@ -12,9 +13,18 @@ import { useTranslation } from "../lib/translations";
 export function EmailVerificationRequired(props: { fullPage?: boolean }) {
   const { t } = useTranslation();
   const stackApp = useStackApp();
-
+  const user = useUser();
   const headerText = t("Verify your email to continue");
   const instructionText = t("Enter the six-digit code sent to your email");
+
+  useEffect(() => {
+    if (user) {
+      stackApp.redirectToAfterSignIn().catch((e) => console.error(e));
+    }
+    if (typeof window !== "undefined" && !window.sessionStorage.getItem(`stack_email_verification_required_nonce`)) {
+      stackApp.redirectToAfterSignIn().catch((e) => console.error(e));
+    }
+  }, [user]);
 
   return (
     <MaybeFullPage fullPage={!!props.fullPage}>
@@ -34,7 +44,11 @@ export function EmailVerificationRequired(props: { fullPage?: boolean }) {
           type="email-verification-required"
           onSubmit={async (options) => {
             try {
-              const result = await stackApp.verifyEmail(options.code + options.attemptCode);
+              const nonce = window.sessionStorage.getItem(`stack_email_verification_required_nonce`);
+              if (!nonce) {
+                return Result.error(t("Missing verification information"));
+              }
+              const result = await stackApp.verifyEmail(options.code + nonce);
               if (result.status === "ok") {
                 return Result.ok(undefined);
               }

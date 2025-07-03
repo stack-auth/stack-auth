@@ -1487,6 +1487,10 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
   }
 
   protected async _experimentalEmailVerificationRequired(error: KnownErrors['EmailVerificationRequired'], session: InternalSession): Promise<never> {
+    if (typeof window !== 'undefined') {
+      window.sessionStorage.setItem('stack_email_verification_required_nonce', (error.details as any)?.nonce ?? throwErr("nonce missing"));
+    }
+
     // Redirect to the email verification page
     await this.redirectToEmailVerificationRequired();
 

@@ -1124,11 +1124,14 @@ const MultiFactorAuthenticationRequired = createKnownErrorConstructor(
 const EmailVerificationRequired = createKnownErrorConstructor(
   KnownError,
   "EMAIL_VERIFICATION_REQUIRED",
-  () => [
+  (nonce: string) => [
     400,
     `Email verification is required for this user.`,
+    {
+      nonce,
+    },
   ] as const,
-  () => [] as const,
+  (json) => [json.nonce] as const,
 );
 
 const InvalidTotpCode = createKnownErrorConstructor(

@@ -11,15 +11,14 @@ import {
 } from "@stackframe/stack-ui";
 import { CheckIcon } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useStackApp, useUser } from "../..";
+import { useStackApp } from "../..";
 import { useTranslation } from "../../lib/translations";
 import { FormWarningText } from "./form-warning";
 
 export function OTPCodeForm(props: {
-  onSubmit: (options: { code: string, attemptCode: string }) => Promise<Result<void, string>>,
+  onSubmit: (options: { code: string }) => Promise<Result<void, string>>,
   type: "email-verification-required" | "mfa",
 }) {
-  const user = useUser();
   const stackApp = useStackApp();
   const { t } = useTranslation();
   const [otp, setOtp] = useState<string>("");
@@ -28,31 +27,6 @@ export function OTPCodeForm(props: {
   const [submitting, setSubmitting] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
   const [verified, setVerified] = useState<boolean>(false);
-
-  const [attemptCode, setAttemptCode] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (!attemptCode && typeof window !== "undefined") {
-      switch (props.type) {
-        case "email-verification-required": {
-          if (user) {
-            stackApp.redirectToAfterSignIn().catch((e) => console.error(e));
-          }
-          break;
-        }
-
-        case "mfa": {
-          const code = window.sessionStorage.getItem(`stack_${props.type}_attempt_code`);
-          if (code) {
-          setAttemptCode(code);
-          } else {
-          stackApp.redirectToSignIn().catch((e) => console.error(e));
-          }
-          break;
-        }
-      }
-    }
-  }, [attemptCode]);
 
   // Handle OTP verification when code is complete
   useEffect(() => {
@@ -71,42 +45,37 @@ export function OTPCodeForm(props: {
       setSubmitting(true);
       setError(null);
 
-      if (attemptCode) {
-        props.onSubmit({ code: otp, attemptCode })
-          .then(async (result) => {
-            if (result.status === "ok") {
-              setVerified(true);
+      props.onSubmit({ code: otp })
+        .then(async (result) => {
+          if (result.status === "ok") {
+            setVerified(true);
 
-              // Cleanup session storage
-              if (typeof window !== "undefined") {
-                window.sessionStorage.removeItem(`stack_${props.type}_attempt_code`);
-              }
+            // Cleanup session storage
+            if (typeof window !== "undefined") {
+              window.sessionStorage.removeItem(`stack_${props.type}_attempt_code`);
+            }
 
-              await stackApp.redirectToAfterSignIn();
-            } else {
-              setError(result.error);
-            }
-          })
-          .catch((e) => {
-            console.error(e);
-          })
-          .finally(() => {
-            setSubmitting(false);
-            if (!verified) {
-              setOtp("");
-            }
-          });
-      } else {
-        setSubmitting(false);
-        setError(t("Missing verification information"));
-      }
+            await stackApp.redirectToAfterSignIn();
+          } else {
+            setError(result.error);
+          }
+        })
+        .catch((e) => {
+          console.error(e);
+        })
+        .finally(() => {
+          setSubmitting(false);
+          if (!verified) {
+            setOtp("");
+          }
+        });
     }
 
     // Clear error when user is typing
     if (otp.length !== 0 && otp.length !== 6) {
       setError(null);
     }
-  }, [otp, submitting, props.onSubmit, attemptCode, t, verified]);
+  }, [otp, submitting, props.onSubmit, t, verified]);
 
 
   const inputStyleClass = useMemo(() => {

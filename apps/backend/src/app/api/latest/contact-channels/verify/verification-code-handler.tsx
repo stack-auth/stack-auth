@@ -3,7 +3,6 @@ import { Tenancy, getSoleTenancyFromProjectBranch } from "@/lib/tenancies";
 import { createAuthTokens } from "@/lib/tokens";
 import { prismaClient } from "@/prisma-client";
 import { createVerificationCodeHandler } from "@/route-handlers/verification-code-handler";
-import { runAsynchronouslyAndWaitUntil } from "@/utils/vercel";
 import { VerificationCodeType } from "@prisma/client";
 import { UsersCrud } from "@stackframe/stack-shared/dist/interface/crud/users";
 import { KnownErrors } from "@stackframe/stack-shared/dist/known-errors";
@@ -55,6 +54,10 @@ export const contactChannelVerificationCodeHandler = createVerificationCodeHandl
         otp: createOptions.data.is_auth ? codeObj.code.slice(0, 6).toUpperCase() : null,
       },
     });
+
+    return {
+      nonce: codeObj.code.slice(6),
+    };
   },
   async handler(tenancy, method, data) {
     const uniqueKeys = {
@@ -141,22 +144,20 @@ export async function throwEmailVerificationRequiredErrorIfNeeded(options: { ten
     return;
   }
 
-  runAsynchronouslyAndWaitUntil((async () => {
-    await contactChannelVerificationCodeHandler.sendCode({
-      tenancy: options.tenancy,
-      data: {
-        user_id: user.id,
-        is_new_user: false,
-        is_auth: true,
-      },
-      method: {
-        email: user.primary_email!,
-      },
-      callbackUrl: options.callbackUrl,
-    }, {
-      user,
-    });
-  })());
+  const result = await contactChannelVerificationCodeHandler.sendCode({
+    tenancy: options.tenancy,
+    data: {
+      user_id: user.id,
+      is_new_user: false,
+      is_auth: true,
+    },
+    method: {
+      email: user.primary_email!,
+    },
+    callbackUrl: options.callbackUrl,
+  }, {
+    user,
+  });
 
-  throw new KnownErrors.EmailVerificationRequired();
+  throw new KnownErrors.EmailVerificationRequired(result.nonce);
 }
