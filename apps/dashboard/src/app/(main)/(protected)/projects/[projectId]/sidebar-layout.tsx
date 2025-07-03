@@ -32,13 +32,14 @@ import {
   LucideIcon,
   Mail,
   Menu,
+  Palette,
   Settings,
   Settings2,
   ShieldEllipsis,
+  SquarePen,
   User,
   Users,
-  Webhook,
-  SquarePen
+  Webhook
 } from "lucide-react";
 import { useTheme } from "next-themes";
 import { usePathname } from "next/navigation";
@@ -184,6 +185,13 @@ const navigationItems: (Label | Item | Hidden)[] = [
     type: 'item'
   },
   {
+    name: "Themes",
+    href: "/email-themes",
+    regex: /^\/projects\/[^\/]+\/email-themes$/,
+    icon: Palette,
+    type: 'item'
+  },
+  {
     name: "Configuration",
     type: 'label'
   },
@@ -315,6 +323,13 @@ function SidebarContent({ projectId, onNavigate }: { projectId: string, onNaviga
       </div>
       <div className="flex flex-grow flex-col gap-1 pt-2 overflow-y-auto">
         {navigationItems.map((item, index) => {
+          if (
+            item.type === 'item' && 
+            item.href === '/email-themes' && 
+            !JSON.parse(getPublicEnvVar("NEXT_PUBLIC_STACK_EMAIL_THEME_PROJECT_ID_FLAG") || "[]").includes(projectId)
+          ) {
+            return null;
+          }
           if (item.type === 'label') {
             return <Typography key={index} className="pl-2 mt-3" type="label" variant="secondary">
               {item.name}
