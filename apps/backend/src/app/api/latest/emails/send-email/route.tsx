@@ -104,7 +104,7 @@ export const POST = createSmartRouteHandler({
         unsubscribeLink = unsubUrl.toString();
       }
 
-      const renderedEmail = renderEmailWithTheme(body.html, auth.tenancy.config.email_theme, unsubscribeLink);
+      const renderedEmail = await renderEmailWithTheme(body.html, auth.tenancy.config.email_theme, unsubscribeLink);
       await sendEmail({
         tenancyId: auth.tenancy.id,
         emailConfig,
