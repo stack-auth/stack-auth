@@ -85,6 +85,11 @@ export default function PageClient() {
           </AlertDescription>
         </Alert>
       </ActionDialog>
+      <ResetEmailTemplateDialog
+        open={resetTemplateDialogOpen}
+        onClose={() => setResetTemplateDialogOpen(false)}
+        templateType={resetTemplateType}
+      />
     </PageLayout>
   );
 }

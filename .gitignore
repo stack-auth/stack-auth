@@ -26,6 +26,7 @@ ui-debug.log
 .pnpm-debug.log
 .husky
 tmp
+tsx-0
 
 vitest.config.ts.timestamp-*
 tsup.config.bundled_*
