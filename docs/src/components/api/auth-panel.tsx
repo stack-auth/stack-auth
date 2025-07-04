@@ -7,13 +7,19 @@ import { useAPIPageContext } from './api-page-wrapper';
 import { Button } from './button';
 
 export function AuthPanel() {
-  const { isAuthOpen, toggleAuth } = useSidebar();
+  const sidebarContext = useSidebar();
 
   // Always call hooks at the top level
   const apiContext = useAPIPageContext();
 
+  // Use default functions if sidebar context is not available
+  const { isAuthOpen, toggleAuth } = sidebarContext || {
+    isAuthOpen: false,
+    toggleAuth: () => {}
+  };
+
   // Default headers structure
-  const defaultHeaders = {
+  const defaultHeaders: Record<string, string> = {
     'Content-Type': '',
     'X-Stack-Access-Type': '',
     'X-Stack-Project-Id': '',
@@ -28,6 +34,9 @@ export function AuthPanel() {
     lastError: null,
     highlightMissingHeaders: false
   };
+
+  // Ensure sharedHeaders is always a Record<string, string>
+  const headers: Record<string, string> = sharedHeaders;
 
   const [isHomePage, setIsHomePage] = useState(false);
   const [isScrolled, setIsScrolled] = useState(false);
@@ -76,7 +85,7 @@ export function AuthPanel() {
   ];
 
   const missingRequiredHeaders = stackAuthHeaders.filter(
-    header => header.required && !sharedHeaders[header.key].trim()
+    header => header.required && !headers[header.key].trim()
   );
 
   return (
@@ -142,7 +151,7 @@ export function AuthPanel() {
         <div className="flex-1 min-h-0">
           <div className="h-full overflow-y-auto p-3 space-y-3">
             {stackAuthHeaders.map((header) => {
-              const isMissing = highlightMissingHeaders && header.required && !sharedHeaders[header.key].trim();
+              const isMissing = highlightMissingHeaders && header.required && !headers[header.key].trim();
 
               return (
                 <div key={header.key} className={`space-y-1.5 ${
@@ -166,8 +175,8 @@ export function AuthPanel() {
                   <input
                     type="text"
                     placeholder={header.placeholder}
-                    value={sharedHeaders[header.key] || ''}
-                    onChange={(e) => updateSharedHeaders({ ...sharedHeaders, [header.key]: e.target.value })}
+                    value={headers[header.key] || ''}
+                    onChange={(e) => updateSharedHeaders({ ...headers, [header.key]: e.target.value })}
                     className={`w-full px-2 py-1.5 border rounded-md text-xs bg-fd-background text-fd-foreground placeholder:text-fd-muted-foreground focus:outline-none focus:ring-1 focus:border-transparent transition-all duration-200 ${
                       isMissing
                         ? 'border-red-300 focus:ring-red-500 dark:border-red-700'
@@ -187,10 +196,10 @@ export function AuthPanel() {
               missingRequiredHeaders.length === 0 ? 'bg-green-500' : 'bg-red-500 auth-error-pulse'
             }`} />
             <span className="text-fd-muted-foreground">
-              {Object.values(sharedHeaders).filter(v => v.trim()).length} of {stackAuthHeaders.length} configured
+              {Object.values(headers).filter(v => v.trim()).length} of {stackAuthHeaders.length} configured
             </span>
           </div>
-          {missingRequiredHeaders.length === 0 && Object.values(sharedHeaders).some(v => v.trim()) && (
+          {missingRequiredHeaders.length === 0 && Object.values(headers).some(v => v.trim()) && (
             <div className="flex items-center gap-2 text-xs mt-1">
               <div className="w-2 h-2 rounded-full bg-green-500" />
               <span className="text-green-600 dark:text-green-400">
@@ -258,7 +267,7 @@ export function AuthPanel() {
           <div className="h-full overflow-y-auto p-3">
             <div className="space-y-3">
               {stackAuthHeaders.map((header) => {
-                const isMissing = highlightMissingHeaders && header.required && !sharedHeaders[header.key].trim();
+                const isMissing = highlightMissingHeaders && header.required && !headers[header.key].trim();
 
                 return (
                   <div key={header.key} className={`space-y-1.5 ${
@@ -282,8 +291,8 @@ export function AuthPanel() {
                     <input
                       type="text"
                       placeholder={header.placeholder}
-                      value={sharedHeaders[header.key] || ''}
-                      onChange={(e) => updateSharedHeaders({ ...sharedHeaders, [header.key]: e.target.value })}
+                      value={headers[header.key] || ''}
+                      onChange={(e) => updateSharedHeaders({ ...headers, [header.key]: e.target.value })}
                       className={`w-full px-3 py-2 border rounded-md text-sm bg-fd-background text-fd-foreground placeholder:text-fd-muted-foreground focus:outline-none focus:ring-1 focus:border-transparent transition-all duration-200 ${
                         isMissing
                           ? 'border-red-300 focus:ring-red-500 dark:border-red-700'
@@ -305,14 +314,14 @@ export function AuthPanel() {
                 missingRequiredHeaders.length === 0 ? 'bg-green-500' : 'bg-red-500 auth-error-pulse'
               }`} />
               <span className="text-fd-muted-foreground">
-                {Object.values(sharedHeaders).filter(v => v.trim()).length} of {stackAuthHeaders.length} configured
+                {Object.values(headers).filter(v => v.trim()).length} of {stackAuthHeaders.length} configured
               </span>
             </div>
             <Button onClick={toggleAuth} className="text-xs px-3 py-1">
               Done
             </Button>
           </div>
-          {missingRequiredHeaders.length === 0 && Object.values(sharedHeaders).some(v => v.trim()) && (
+          {missingRequiredHeaders.length === 0 && Object.values(headers).some(v => v.trim()) && (
             <div className="flex items-center gap-2 text-xs mt-2">
               <div className="w-2 h-2 rounded-full bg-green-500" />
               <span className="text-green-600 dark:text-green-400">

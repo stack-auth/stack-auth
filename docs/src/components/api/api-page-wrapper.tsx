@@ -46,10 +46,16 @@ type APIPageWrapperProps = {
 }
 
 export function APIPageWrapper({ children }: APIPageWrapperProps) {
-  const { isAuthOpen, toggleAuth } = useSidebar();
+  const sidebarContext = useSidebar();
   const [sharedHeaders, setSharedHeaders] = useState<Record<string, string>>(STACK_AUTH_HEADERS);
   const [lastError, setLastError] = useState<{ status: number, error: APIError } | null>(null);
   const [highlightMissingHeaders, setHighlightMissingHeaders] = useState(false);
+
+  // Use default functions if sidebar context is not available
+  const { isAuthOpen, toggleAuth } = sidebarContext || {
+    isAuthOpen: false,
+    toggleAuth: () => {}
+  };
 
   const updateSharedHeaders = (headers: Record<string, string>) => {
     setSharedHeaders(headers);

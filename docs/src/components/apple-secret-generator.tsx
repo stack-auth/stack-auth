@@ -7,15 +7,15 @@ import { buttonVariants } from './ui/button';
 
 // Simple Button component using existing buttonVariants
 type ButtonProps = React.ButtonHTMLAttributes<HTMLButtonElement> & {
-  variant?: 'primary' | 'outline' | 'ghost' | 'secondary',
+  color?: 'primary' | 'outline' | 'ghost' | 'secondary',
   size?: 'sm' | 'icon' | 'icon-sm',
   children: React.ReactNode,
 };
 
-const Button = ({ variant = 'primary', size, className, children, ...props }: ButtonProps) => {
+const Button = ({ color = 'primary', size, className, children, ...props }: ButtonProps) => {
   return (
     <button
-      className={cn(buttonVariants({ color: variant, size }), className)}
+      className={cn(buttonVariants({ color: color, size }), className)}
       {...props}
     >
       {children}
@@ -267,7 +267,7 @@ const AppleSecretGenerator = () => {
       </div>
 
       <Button
-        variant="primary"
+        color="primary"
         disabled={!(teamID.length === 10 && serviceID && file)}
         onClick={() => {
           (async () => {
