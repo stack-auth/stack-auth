@@ -44,7 +44,7 @@ export const POST = createSmartRouteHandler({
     }
 
     const allFailedEmailsByTenancy = await getFailedEmailsByTenancy(new Date(Date.now() - 1000 * 60 * 60 * 24));
-    const failedEmailsByTenancy = new Map();
+    const failedEmailsByTenancy: typeof allFailedEmailsByTenancy = new Map();
     for (const [tenancyId, tenancy] of allFailedEmailsByTenancy.entries()) {
       if (tenancy.tenantOwnerEmail) {
         failedEmailsByTenancy.set(tenancyId, tenancy);
