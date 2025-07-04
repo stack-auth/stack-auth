@@ -249,9 +249,6 @@ async function seed() {
             })),
           }
         },
-        sourceOfTruth: {
-          type: 'hosted',
-        },
       });
 
       console.log('Created emulator project');
