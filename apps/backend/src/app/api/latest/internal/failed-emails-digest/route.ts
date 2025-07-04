@@ -43,13 +43,7 @@ export const POST = createSmartRouteHandler({
       throw new StatusError(401, "Unauthorized");
     }
 
-    const allFailedEmailsByTenancy = await getFailedEmailsByTenancy(new Date(Date.now() - 1000 * 60 * 60 * 24));
-    const failedEmailsByTenancy: typeof allFailedEmailsByTenancy = new Map();
-    for (const [tenancyId, tenancy] of allFailedEmailsByTenancy.entries()) {
-      if (tenancy.tenantOwnerEmail) {
-        failedEmailsByTenancy.set(tenancyId, tenancy);
-      }
-    }
+    const failedEmailsByTenancy = await getFailedEmailsByTenancy(new Date(Date.now() - 1000 * 60 * 60 * 24));
     const internalTenancy = await getSoleTenancyFromProjectBranch("internal", DEFAULT_BRANCH_ID);
     const emailConfig = await getSharedEmailConfig("Stack Auth");
     const dashboardUrl = getEnvVariable("NEXT_PUBLIC_STACK_DASHBOARD_URL", "https://app.stack-auth.com");

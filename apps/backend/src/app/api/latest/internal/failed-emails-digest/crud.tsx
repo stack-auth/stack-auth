@@ -5,12 +5,12 @@ type FailedEmailsQueryResult = {
   projectId: string,
   to: string[],
   subject: string,
-  contactEmail?: string,
+  contactEmail: string,
 }
 
 type FailedEmailsByTenancyData = {
   emails: Array<{ subject: string, to: string[] }>,
-  tenantOwnerEmail?: string,
+  tenantOwnerEmail: string,
   projectId: string,
 }
 
@@ -37,13 +37,16 @@ export const getFailedEmailsByTenancy = async (after: Date) => {
 
   const failedEmailsByTenancy = new Map<string, FailedEmailsByTenancyData>();
   for (const failedEmail of result) {
-    let failedEmails = failedEmailsByTenancy.get(failedEmail.tenancyId) ?? {
+    const failedEmails = failedEmailsByTenancy.get(failedEmail.tenancyId) ?? {
       emails: [],
       tenantOwnerEmail: failedEmail.contactEmail,
       projectId: failedEmail.projectId
     };
-   failedEmails.emails.push({ subject: failedEmail.subject, to: failedEmail.to });
-   failedEmailsByTenancy.set(failedEmail.tenancyId, failedEmails);
+    if (!failedEmails.tenantOwnerEmail) {
+      continue;
+    }
+    failedEmails.emails.push({ subject: failedEmail.subject, to: failedEmail.to });
+    failedEmailsByTenancy.set(failedEmail.tenancyId, failedEmails);
   }
   return failedEmailsByTenancy;
 };
