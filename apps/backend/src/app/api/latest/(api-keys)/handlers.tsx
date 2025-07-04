@@ -247,6 +247,7 @@ function createApiKeyHandlers<Type extends "user" | "team">(type: Type) {
 
         const apiKey = await getPrismaClientForTenancy(auth.tenancy).projectApiKey.findUnique({
           where: {
+            tenancyId: auth.tenancy.id,
             secretApiKey: body.api_key,
           },
         });
@@ -300,6 +301,7 @@ function createApiKeyHandlers<Type extends "user" | "team">(type: Type) {
 
           const apiKeys = await getPrismaClientForTenancy(auth.tenancy).projectApiKey.findMany({
             where: {
+              tenancyId: auth.tenancy.id,
               projectUserId: userId,
               teamId: teamId,
             },

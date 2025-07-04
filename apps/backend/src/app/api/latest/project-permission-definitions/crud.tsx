@@ -1,5 +1,5 @@
 import { createPermissionDefinition, deletePermissionDefinition, listPermissionDefinitions, updatePermissionDefinition } from "@/lib/permissions";
-import { globalPrismaClient, retryTransaction } from "@/prisma-client";
+import { getPrismaClientForTenancy, globalPrismaClient, retryTransaction } from "@/prisma-client";
 import { createCrudHandlers } from "@/route-handlers/crud-handler";
 import { projectPermissionDefinitionsCrud } from '@stackframe/stack-shared/dist/interface/crud/project-permissions';
 import { permissionDefinitionIdSchema, yupObject } from "@stackframe/stack-shared/dist/schema-fields";
@@ -20,21 +20,25 @@ export const projectPermissionDefinitionsCrudHandlers = createLazyProxy(() => cr
     });
   },
   async onUpdate({ auth, data, params }) {
-    return await retryTransaction(globalPrismaClient, async (tx) => {
-      return await updatePermissionDefinition(tx, {
-        oldId: params.permission_id,
-        scope: "project",
-        tenancy: auth.tenancy,
-        data,
+    return await retryTransaction(globalPrismaClient, async (globalTx) => {
+      return await retryTransaction(getPrismaClientForTenancy(auth.tenancy), async (sourceOfTruthTx) => {
+        return await updatePermissionDefinition(globalTx, sourceOfTruthTx, {
+          oldId: params.permission_id,
+          scope: "project",
+          tenancy: auth.tenancy,
+          data,
+        });
       });
     });
   },
   async onDelete({ auth, params }) {
-    await retryTransaction(globalPrismaClient, async (tx) => {
-      return await deletePermissionDefinition(tx, {
-        scope: "project",
-        tenancy: auth.tenancy,
-        permissionId: params.permission_id
+    return await retryTransaction(globalPrismaClient, async (globalTx) => {
+      return await retryTransaction(getPrismaClientForTenancy(auth.tenancy), async (sourceOfTruthTx) => {
+        return await deletePermissionDefinition(globalTx, sourceOfTruthTx, {
+          scope: "project",
+          tenancy: auth.tenancy,
+          permissionId: params.permission_id
+        });
       });
     });
   },
