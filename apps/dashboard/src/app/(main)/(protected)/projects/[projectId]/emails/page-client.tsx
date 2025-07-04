@@ -339,7 +339,7 @@ function SendEmailDialog(props: {
   const handleSend = async (formData: { subject?: string, content?: string, notificationCategoryName?: string }) => {
     if (!formData.subject || !formData.content || !formData.notificationCategoryName) {
       // Should never happen. These fields are only optional during recipient stage.
-      throwErr("Missing required fields");
+      throwErr("Missing required fields", { formData });
     }
 
     await stackAdminApp.sendEmail({

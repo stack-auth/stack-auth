@@ -103,13 +103,17 @@ export const POST = createSmartRouteHandler({
         html += `<br /><br /><a href="${unsubscribeLink.toString()}">Click here to unsubscribe</a>`;
       }
 
-      await sendEmail({
-        tenancyId: auth.tenancy.id,
-        emailConfig,
-        to: primaryEmail,
-        subject: body.subject,
-        html,
-      });
+      try {
+        await sendEmail({
+          tenancyId: auth.tenancy.id,
+          emailConfig,
+          to: primaryEmail,
+          subject: body.subject,
+          html,
+        });
+      } catch {
+        userSendErrors.set(userId, "Failed to send email");
+      }
     }
 
     const results: UserResult[] = body.user_ids.map((userId) => ({
