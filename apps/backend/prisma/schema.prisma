@@ -27,7 +27,6 @@ model Project {
   projectUsers               ProjectUser[]
   provisionedProject         ProvisionedProject?
   tenancies                  Tenancy[]
-  projectApiKey              ProjectApiKey[]
   environmentConfigOverrides EnvironmentConfigOverride[]
 }
 
@@ -465,9 +464,9 @@ model ProjectUserAuthorizationCode {
 }
 
 model VerificationCode {
-  mirroredProjectId String
-  branchId          String
-  id                String @default(uuid()) @db.Uuid
+  projectId String
+  branchId  String
+  id        String @default(uuid()) @db.Uuid
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -481,8 +480,8 @@ model VerificationCode {
   data         Json
   attemptCount Int                  @default(0)
 
-  @@id([mirroredProjectId, branchId, id])
-  @@unique([mirroredProjectId, branchId, code])
+  @@id([projectId, branchId, id])
+  @@unique([projectId, branchId, code])
   @@index([data(ops: JsonbPathOps)], type: Gin)
 }
 
@@ -538,8 +537,6 @@ model ProjectApiKey {
 
   projectUser ProjectUser? @relation(fields: [tenancyId, projectUserId], references: [tenancyId, projectUserId], onDelete: Cascade)
   team        Team?        @relation(fields: [tenancyId, teamId], references: [tenancyId, teamId], onDelete: Cascade)
-  Project     Project?     @relation(fields: [projectId], references: [id])
-  projectId   String?
 
   @@id([tenancyId, id])
 }
