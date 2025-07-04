@@ -46,7 +46,7 @@ export const neonIntegrationProjectTransferCodeHandler = createVerificationCodeH
     if (!user) throw new KnownErrors.UserAuthenticationRequired;
 
     await globalPrismaClient.$transaction(async (tx) => {
-      const provisionedProject = await tx.neonProvisionedProject.deleteMany({
+      const provisionedProject = await tx.provisionedProject.deleteMany({
         where: {
           projectId: data.project_id,
           clientId: data.neon_client_id,

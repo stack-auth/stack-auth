@@ -63,7 +63,6 @@ export const projectsCrudAdminReadSchema = yupObject({
   display_name: schemaFields.projectDisplayNameSchema.defined(),
   description: schemaFields.projectDescriptionSchema.nonNullable().defined(),
   created_at_millis: schemaFields.projectCreatedAtMillisSchema.defined(),
-  user_count: schemaFields.projectUserCountSchema.defined(),
   is_production_mode: schemaFields.projectIsProductionModeSchema.defined(),
   /** @deprecated */
   config: yupObject({

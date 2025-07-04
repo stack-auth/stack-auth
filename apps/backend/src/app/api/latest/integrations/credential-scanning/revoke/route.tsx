@@ -151,14 +151,17 @@ export const POST = createSmartRouteHandler({
       }
     }
 
-    const project = await globalPrismaClient.project.findUnique({
+    const tenancy = await globalPrismaClient.tenancy.findUnique({
       where: {
-        id: updatedApiKey.projectId,
+        id: updatedApiKey.tenancyId
+      },
+      include: {
+        project: true,
       },
     });
 
-    if (!project) {
-      throw new StackAssertionError("Project not found");
+    if (!tenancy) {
+      throw new StackAssertionError("Tenancy not found");
     }
 
     // Create email content
@@ -167,7 +170,7 @@ export const POST = createSmartRouteHandler({
       <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
         <h2 style="color: #333;">API Key Revoked</h2>
         <p style="color: #555; font-size: 16px; line-height: 1.5;">
-          Your API key "${escapeHtml(updatedApiKey.description)}" for ${escapeHtml(project.displayName)} has been automatically revoked because it was found in a public repository.
+          Your API key "${escapeHtml(updatedApiKey.description)}" for ${escapeHtml(tenancy.project.displayName)} has been automatically revoked because it was found in a public repository.
         </p>
         <p style="color: #555; font-size: 16px; line-height: 1.5;">
           This is an automated security measure to protect your api keys from being leaked. If you believe this was a mistake, please contact support.

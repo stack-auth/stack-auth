@@ -13,7 +13,7 @@ async function validateAndGetTransferInfo(authorizationHeader: string, projectId
   const internalProject = await getProject("internal") ?? throwErr("Internal project not found");
 
 
-  const provisionedProject = await globalPrismaClient.neonProvisionedProject.findUnique({
+  const provisionedProject = await globalPrismaClient.provisionedProject.findUnique({
     where: {
       projectId,
       clientId: clientId,

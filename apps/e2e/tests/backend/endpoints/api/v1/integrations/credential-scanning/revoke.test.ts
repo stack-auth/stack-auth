@@ -4,7 +4,6 @@ import { it } from "../../../../../../helpers";
 import { InternalApiKey, Project, ProjectApiKey, Team, User, niceBackendFetch } from "../../../../../backend-helpers";
 
 it("should send email notification to user when revoking an API key through credential scanning", async ({ expect }: { expect: any }) => {
-
   await Project.createAndSwitch({ config: { magic_link_enabled: true, allow_team_api_keys: true, allow_user_api_keys: true } });
 
   const [user1, user2] = await User.createMultiple(2);
@@ -42,58 +41,74 @@ it("should send email notification to user when revoking an API key through cred
     },
   });
 
-  expect(revokeResponse).toMatchInlineSnapshot(`
-    NiceResponse {
-      "status": 200,
-      "body": { "success": true },
-      "headers": Headers { <some fields may have been hidden> },
-    }
-  `);
+  if (process.env.STACK_TEST_SOURCE_OF_TRUTH === "true") {
+    expect(revokeResponse).toMatchInlineSnapshot(`
+      NiceResponse {
+        "status": 404,
+        "body": {
+          "code": "API_KEY_NOT_FOUND",
+          "error": "API key not found.",
+        },
+        "headers": Headers {
+          "x-stack-known-error": "API_KEY_NOT_FOUND",
+          <some fields may have been hidden>,
+        },
+      }
+    `);
+  } else {
+    expect(revokeResponse).toMatchInlineSnapshot(`
+      NiceResponse {
+        "status": 200,
+        "body": { "success": true },
+        "headers": Headers { <some fields may have been hidden> },
+      }
+    `);
 
-  // Verify the API key is no longer valid
-  const checkResponseAfterRevoke = await ProjectApiKey.User.check(createUserApiKeyResponse.body.value);
-  expect(checkResponseAfterRevoke).toMatchInlineSnapshot(`
-    {
-      "code": "API_KEY_REVOKED",
-      "error": "API key has been revoked.",
-    }
-  `);
+    // Verify the API key is no longer valid
+    const checkResponseAfterRevoke = await ProjectApiKey.User.check(createUserApiKeyResponse.body.value);
+    expect(checkResponseAfterRevoke).toMatchInlineSnapshot(`
+      {
+        "code": "API_KEY_REVOKED",
+        "error": "API key has been revoked.",
+      }
+    `);
 
-  // Verify that an email notification was sent
-  const messages = (await user1.mailbox.fetchMessages({ noBody: true })).filter((m: MailboxMessage) => m.subject.includes("API Key Revoked"));
-  expect(messages).toMatchInlineSnapshot(`
-    [
-      MailboxMessage {
-        "from": "Stack Auth <noreply@example.com>",
-        "subject": "API Key Revoked: Test API Key to Revoke <HTML Test &>",
-        "to": ["<unindexed-mailbox--<stripped UUID>@stack-generated.example.com>"],
-        <some fields may have been hidden>,
-      },
-    ]
-  `);
+    // Verify that an email notification was sent
+    const messages = (await user1.mailbox.fetchMessages({ noBody: true })).filter((m: MailboxMessage) => m.subject.includes("API Key Revoked"));
+    expect(messages).toMatchInlineSnapshot(`
+      [
+        MailboxMessage {
+          "from": "Stack Auth <noreply@example.com>",
+          "subject": "API Key Revoked: Test API Key to Revoke <HTML Test &>",
+          "to": ["<unindexed-mailbox--<stripped UUID>@stack-generated.example.com>"],
+          <some fields may have been hidden>,
+        },
+      ]
+    `);
 
-  // Verify the email content
-  const emailContent = await user1.mailbox.fetchMessages();
-  const revocationEmail = emailContent.find((m: MailboxMessage) => m.subject === "API Key Revoked: Test API Key to Revoke <HTML Test &>");
-  expect(revocationEmail).toBeDefined();
-  expect(revocationEmail?.body?.text).toMatchInlineSnapshot(`
-    deindent\`
-      ---------------
-      API Key Revoked
-      ---------------
-      
-      Your API key "Test API Key to Revoke <HTML Test &>" for New Project has been automatically revoked because it was found in a public repository.
-      
-      This is an automated security measure to protect your api keys from being leaked. If you believe this was a mistake, please contact support.
-      
-      Please create a new API key if needed.
-    \`
-  `);
+    // Verify the email content
+    const emailContent = await user1.mailbox.fetchMessages();
+    const revocationEmail = emailContent.find((m: MailboxMessage) => m.subject === "API Key Revoked: Test API Key to Revoke <HTML Test &>");
+    expect(revocationEmail).toBeDefined();
+    expect(revocationEmail?.body?.text).toMatchInlineSnapshot(`
+      deindent\`
+        ---------------
+        API Key Revoked
+        ---------------
+        
+        Your API key "Test API Key to Revoke <HTML Test &>" for New Project has been automatically revoked because it was found in a public repository.
+        
+        This is an automated security measure to protect your api keys from being leaked. If you believe this was a mistake, please contact support.
+        
+        Please create a new API key if needed.
+      \`
+    `);
 
 
-  // Verify second user did not receive the email
-  const messages2 = (await user2.mailbox.fetchMessages({ noBody: true })).filter((m: MailboxMessage) => m.subject.includes("API Key Revoked"));
-  expect(messages2).toMatchInlineSnapshot(`[]`);
+    // Verify second user did not receive the email
+    const messages2 = (await user2.mailbox.fetchMessages({ noBody: true })).filter((m: MailboxMessage) => m.subject.includes("API Key Revoked"));
+    expect(messages2).toMatchInlineSnapshot(`[]`);
+  }
 });
 
 it("should send email notification to team members when revoking a team API key through credential scanning", async ({ expect }: { expect: any }) => {
@@ -138,7 +153,6 @@ it("should send email notification to team members when revoking a team API key 
     }
   `);
 
-
     // Revoke the API key through credential scanning
     const revokeResponse = await niceBackendFetch("/api/v1/integrations/credential-scanning/revoke", {
       method: "POST",
@@ -148,83 +162,97 @@ it("should send email notification to team members when revoking a team API key 
       },
     });
 
-  expect(revokeResponse).toMatchInlineSnapshot(`
-    NiceResponse {
-      "status": 200,
-      "body": { "success": true },
-      "headers": Headers { <some fields may have been hidden> },
+    if (process.env.STACK_TEST_SOURCE_OF_TRUTH === "true") {
+      expect(revokeResponse).toMatchInlineSnapshot(`
+        NiceResponse {
+          "status": 404,
+          "body": {
+            "code": "API_KEY_NOT_FOUND",
+            "error": "API key not found.",
+          },
+          "headers": Headers {
+            "x-stack-known-error": "API_KEY_NOT_FOUND",
+            <some fields may have been hidden>,
+          },
+        }
+      `);
+    } else {
+      expect(revokeResponse).toMatchInlineSnapshot(`
+        NiceResponse {
+          "status": 200,
+          "body": { "success": true },
+          "headers": Headers { <some fields may have been hidden> },
+        }
+      `);
+
+      // Verify the API key is no longer valid
+      const checkResponseAfterRevoke = await ProjectApiKey.Team.check(createTeamApiKeyResponse.body.value);
+      expect(checkResponseAfterRevoke).toMatchInlineSnapshot(`
+        {
+          "code": "API_KEY_REVOKED",
+          "error": "API key has been revoked.",
+        }
+      `);
+
+      // Verify that email notifications were sent to both team members
+
+      const user1_revocation_email = (await user1.mailbox.fetchMessages()).filter((m: MailboxMessage) => m.subject === "API Key Revoked: Test Team API Key to Revoke");
+      const user2_revocation_email = (await user2.mailbox.fetchMessages()).filter((m: MailboxMessage) => m.subject === "API Key Revoked: Test Team API Key to Revoke");
+      const user3_revocation_email = (await user3.mailbox.fetchMessages()).filter((m: MailboxMessage) => m.subject === "API Key Revoked: Test Team API Key to Revoke");
+
+      expect(user1_revocation_email).toMatchInlineSnapshot(`
+        [
+          MailboxMessage {
+            "attachments": [],
+            "body": {
+              "html": "\\n      <div style=\\"font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;\\">\\n        <h2 style=\\"color: #333;\\">API Key Revoked</h2>\\n        <p style=\\"color: #555; font-size: 16px; line-height: 1.5;\\">\\n          Your API key \\"Test Team API Key to Revoke\\" for New Project has been automatically revoked because it was found in a public repository.\\n        </p>\\n        <p style=\\"color: #555; font-size: 16px; line-height: 1.5;\\">\\n          This is an automated security measure to protect your api keys from being leaked. If you believe this was a mistake, please contact support.\\n        </p>\\n        <p style=\\"color: #555; font-size: 16px; line-height: 1.5;\\">\\n          Please create a new API key if needed.\\n        </p>\\n      </div>\\n    \\n",
+              "text": deindent\`
+                ---------------
+                API Key Revoked
+                ---------------
+                
+                Your API key "Test Team API Key to Revoke" for New Project has been automatically revoked because it was found in a public repository.
+                
+                This is an automated security measure to protect your api keys from being leaked. If you believe this was a mistake, please contact support.
+                
+                Please create a new API key if needed.
+              \`,
+            },
+            "from": "Stack Auth <noreply@example.com>",
+            "subject": "API Key Revoked: Test Team API Key to Revoke",
+            "to": ["<unindexed-mailbox--<stripped UUID>@stack-generated.example.com>"],
+            <some fields may have been hidden>,
+          },
+        ]
+      `);
+      expect(user2_revocation_email).toMatchInlineSnapshot(`
+        [
+          MailboxMessage {
+            "attachments": [],
+            "body": {
+              "html": "\\n      <div style=\\"font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;\\">\\n        <h2 style=\\"color: #333;\\">API Key Revoked</h2>\\n        <p style=\\"color: #555; font-size: 16px; line-height: 1.5;\\">\\n          Your API key \\"Test Team API Key to Revoke\\" for New Project has been automatically revoked because it was found in a public repository.\\n        </p>\\n        <p style=\\"color: #555; font-size: 16px; line-height: 1.5;\\">\\n          This is an automated security measure to protect your api keys from being leaked. If you believe this was a mistake, please contact support.\\n        </p>\\n        <p style=\\"color: #555; font-size: 16px; line-height: 1.5;\\">\\n          Please create a new API key if needed.\\n        </p>\\n      </div>\\n    \\n",
+              "text": deindent\`
+                ---------------
+                API Key Revoked
+                ---------------
+                
+                Your API key "Test Team API Key to Revoke" for New Project has been automatically revoked because it was found in a public repository.
+                
+                This is an automated security measure to protect your api keys from being leaked. If you believe this was a mistake, please contact support.
+                
+                Please create a new API key if needed.
+              \`,
+            },
+            "from": "Stack Auth <noreply@example.com>",
+            "subject": "API Key Revoked: Test Team API Key to Revoke",
+            "to": ["<unindexed-mailbox--<stripped UUID>@stack-generated.example.com>"],
+            <some fields may have been hidden>,
+          },
+        ]
+      `);
+
+      expect(user3_revocation_email).toMatchInlineSnapshot(`[]`);
     }
-  `);
-
-  // Verify the API key is no longer valid
-  const checkResponseAfterRevoke = await ProjectApiKey.Team.check(createTeamApiKeyResponse.body.value);
-  expect(checkResponseAfterRevoke).toMatchInlineSnapshot(`
-    {
-      "code": "API_KEY_REVOKED",
-      "error": "API key has been revoked.",
-    }
-  `);
-
-  // Verify that email notifications were sent to both team members
-
-  const user1_revocation_email = (await user1.mailbox.fetchMessages()).filter((m: MailboxMessage) => m.subject === "API Key Revoked: Test Team API Key to Revoke");
-  const user2_revocation_email = (await user2.mailbox.fetchMessages()).filter((m: MailboxMessage) => m.subject === "API Key Revoked: Test Team API Key to Revoke");
-  const user3_revocation_email = (await user3.mailbox.fetchMessages()).filter((m: MailboxMessage) => m.subject === "API Key Revoked: Test Team API Key to Revoke");
-
-  expect(user1_revocation_email).toMatchInlineSnapshot(`
-    [
-      MailboxMessage {
-        "attachments": [],
-        "body": {
-          "html": "\\n      <div style=\\"font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;\\">\\n        <h2 style=\\"color: #333;\\">API Key Revoked</h2>\\n        <p style=\\"color: #555; font-size: 16px; line-height: 1.5;\\">\\n          Your API key \\"Test Team API Key to Revoke\\" for New Project has been automatically revoked because it was found in a public repository.\\n        </p>\\n        <p style=\\"color: #555; font-size: 16px; line-height: 1.5;\\">\\n          This is an automated security measure to protect your api keys from being leaked. If you believe this was a mistake, please contact support.\\n        </p>\\n        <p style=\\"color: #555; font-size: 16px; line-height: 1.5;\\">\\n          Please create a new API key if needed.\\n        </p>\\n      </div>\\n    \\n",
-          "text": deindent\`
-            ---------------
-            API Key Revoked
-            ---------------
-            
-            Your API key "Test Team API Key to Revoke" for New Project has been automatically revoked because it was found in a public repository.
-            
-            This is an automated security measure to protect your api keys from being leaked. If you believe this was a mistake, please contact support.
-            
-            Please create a new API key if needed.
-          \`,
-        },
-        "from": "Stack Auth <noreply@example.com>",
-        "subject": "API Key Revoked: Test Team API Key to Revoke",
-        "to": ["<unindexed-mailbox--<stripped UUID>@stack-generated.example.com>"],
-        <some fields may have been hidden>,
-      },
-    ]
-  `);
-  expect(user2_revocation_email).toMatchInlineSnapshot(`
-    [
-      MailboxMessage {
-        "attachments": [],
-        "body": {
-          "html": "\\n      <div style=\\"font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;\\">\\n        <h2 style=\\"color: #333;\\">API Key Revoked</h2>\\n        <p style=\\"color: #555; font-size: 16px; line-height: 1.5;\\">\\n          Your API key \\"Test Team API Key to Revoke\\" for New Project has been automatically revoked because it was found in a public repository.\\n        </p>\\n        <p style=\\"color: #555; font-size: 16px; line-height: 1.5;\\">\\n          This is an automated security measure to protect your api keys from being leaked. If you believe this was a mistake, please contact support.\\n        </p>\\n        <p style=\\"color: #555; font-size: 16px; line-height: 1.5;\\">\\n          Please create a new API key if needed.\\n        </p>\\n      </div>\\n    \\n",
-          "text": deindent\`
-            ---------------
-            API Key Revoked
-            ---------------
-            
-            Your API key "Test Team API Key to Revoke" for New Project has been automatically revoked because it was found in a public repository.
-            
-            This is an automated security measure to protect your api keys from being leaked. If you believe this was a mistake, please contact support.
-            
-            Please create a new API key if needed.
-          \`,
-        },
-        "from": "Stack Auth <noreply@example.com>",
-        "subject": "API Key Revoked: Test Team API Key to Revoke",
-        "to": ["<unindexed-mailbox--<stripped UUID>@stack-generated.example.com>"],
-        <some fields may have been hidden>,
-      },
-    ]
-  `);
-
-  expect(user3_revocation_email).toMatchInlineSnapshot(`[]`);
-
-
 }, { timeout: 120_000 });
 
 it("should handle already revoked API keys gracefully", async ({ expect }: { expect: any }) => {
@@ -239,7 +267,6 @@ it("should handle already revoked API keys gracefully", async ({ expect }: { exp
     description: "Test API Key Already Revoked",
     expires_at_millis: null,
   });
-
 
   // Manually revoke the API key first
   const userRevokeResponse = await ProjectApiKey.User.revoke(createUserApiKeyResponse.body.id);
@@ -278,22 +305,38 @@ it("should handle already revoked API keys gracefully", async ({ expect }: { exp
     },
   });
 
-  // Should still return success but not send another email
-  expect(revokeResponse).toMatchInlineSnapshot(`
-    NiceResponse {
-      "status": 200,
-      "body": { "success": true },
-      "headers": Headers { <some fields may have been hidden> },
-    }
-  `);
+  if (process.env.STACK_TEST_SOURCE_OF_TRUTH === "true") {
+    expect(revokeResponse).toMatchInlineSnapshot(`
+      NiceResponse {
+        "status": 404,
+        "body": {
+          "code": "API_KEY_NOT_FOUND",
+          "error": "API key not found.",
+        },
+        "headers": Headers {
+          "x-stack-known-error": "API_KEY_NOT_FOUND",
+          <some fields may have been hidden>,
+        },
+      }
+    `);
+  } else {
+    // Should still return success but not send another email
+    expect(revokeResponse).toMatchInlineSnapshot(`
+      NiceResponse {
+        "status": 200,
+        "body": { "success": true },
+        "headers": Headers { <some fields may have been hidden> },
+      }
+    `);
 
-  // Verify no additional email was sent
-  const messages = await user1.mailbox.fetchMessages({ noBody: true });
-  const revocationEmails = messages.filter((m: MailboxMessage) =>
-    m.subject === "API Key Revoked: Test API Key Already Revoked"
-  );
+    // Verify no additional email was sent
+    const messages = await user1.mailbox.fetchMessages({ noBody: true });
+    const revocationEmails = messages.filter((m: MailboxMessage) =>
+      m.subject === "API Key Revoked: Test API Key Already Revoked"
+    );
 
-  expect(revocationEmails.length).toBe(0);
+    expect(revocationEmails.length).toBe(0);
+  }
 });
 
 it("should error when api key is not found", async ({ expect }: { expect: any }) => {

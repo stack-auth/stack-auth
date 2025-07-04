@@ -1,4 +1,4 @@
-import { prismaClient } from "@/prisma-client";
+import { globalPrismaClient } from "@/prisma-client";
 import { createVerificationCodeHandler } from "@/route-handlers/verification-code-handler";
 import { VerificationCodeType } from "@prisma/client";
 import { KnownErrors } from "@stackframe/stack-shared";
@@ -31,7 +31,7 @@ export const integrationProjectTransferCodeHandler = createVerificationCodeHandl
   async validate(tenancy, method, data) {
     const project = tenancy.project;
     if (project.id !== "internal") throw new StatusError(400, "This endpoint is only available for internal projects.");
-    const provisionedProjects = await prismaClient.provisionedProject.findMany({
+    const provisionedProjects = await globalPrismaClient.provisionedProject.findMany({
       where: {
         projectId: data.project_id,
         clientId: data.client_id,
@@ -44,7 +44,7 @@ export const integrationProjectTransferCodeHandler = createVerificationCodeHandl
     const project = tenancy.project;
     if (!user) throw new KnownErrors.UserAuthenticationRequired;
 
-    await prismaClient.$transaction(async (tx) => {
+    await globalPrismaClient.$transaction(async (tx) => {
       const provisionedProject = await tx.provisionedProject.deleteMany({
         where: {
           projectId: data.project_id,

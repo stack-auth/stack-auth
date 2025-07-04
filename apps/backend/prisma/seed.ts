@@ -233,7 +233,7 @@ async function seed() {
     if (existingProject) {
       console.log('Emulator project already exists, skipping creation');
     } else {
-      const emulatorProject = await createOrUpdateProject({
+      await createOrUpdateProject({
         projectId: emulatorProjectId,
         type: 'create',
         data: {
@@ -248,7 +248,7 @@ async function seed() {
               type: 'shared',
             })),
           }
-        }
+        },
       });
 
       console.log('Created emulator project');

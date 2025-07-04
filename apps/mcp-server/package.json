@@ -7,8 +7,8 @@
     "mcp-server": "./build/index.js"
   },
   "scripts": {
-    "start": "tsx src/index.ts",
-    "dev-mcp-server": "tsx watch --clear-screen=false src/index.ts",
+    "start": "dotenv -c local -- tsx src/index.ts",
+    "dev-mcp-server": "dotenv -c development -- tsx watch --clear-screen=false src/index.ts",
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",
     "clean": "rimraf build && rimraf node_modules && rimraf openapi/*.json",
@@ -20,6 +20,7 @@
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.7.0",
     "@stackframe/js": "workspace:*",
+    "dotenv-cli": "^7.3.0",
     "openapi-types": "^12.1.3"
   },
   "devDependencies": {
