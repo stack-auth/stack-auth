@@ -220,7 +220,7 @@ export const organizationConfigDefaults = {
     server: {
       isShared: true,
     },
-    theme: 'light',
+    theme: 'default-light',
   },
 } satisfies DeepReplaceAllowFunctionsForObjects<OrganizationConfigStrippedNormalizedOverride>;
 

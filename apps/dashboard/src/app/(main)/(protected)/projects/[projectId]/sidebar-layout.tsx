@@ -59,6 +59,7 @@ type Item = {
   icon: LucideIcon,
   regex: RegExp,
   type: 'item',
+  requiresDevFeatureFlag?: boolean,
 };
 
 type Hidden = {
@@ -189,7 +190,8 @@ const navigationItems: (Label | Item | Hidden)[] = [
     href: "/email-themes",
     regex: /^\/projects\/[^\/]+\/email-themes$/,
     icon: Palette,
-    type: 'item'
+    type: 'item',
+    requiresDevFeatureFlag: true,
   },
   {
     name: "Configuration",
@@ -285,7 +287,7 @@ function UserBreadcrumbItem(props: { userId: string }) {
   }
 }
 
-function NavItem({ item, href, onClick }: { item: Item, href: string, onClick?: () => void}) {
+function NavItem({ item, href, onClick }: { item: Item, href: string, onClick?: () => void }) {
   const pathname = usePathname();
   const selected = useMemo(() => {
     let pathnameWithoutTrailingSlash = pathname.endsWith("/") ? pathname.slice(0, -1) : pathname;
@@ -323,25 +325,24 @@ function SidebarContent({ projectId, onNavigate }: { projectId: string, onNaviga
       </div>
       <div className="flex flex-grow flex-col gap-1 pt-2 overflow-y-auto">
         {navigationItems.map((item, index) => {
-          if (
-            item.type === 'item' &&
-            item.href === '/email-themes' &&
-            !JSON.parse(getPublicEnvVar("NEXT_PUBLIC_STACK_EMAIL_THEME_PROJECT_ID_FLAG") || "[]").includes(projectId)
-          ) {
-            return null;
-          }
           if (item.type === 'label') {
             return <Typography key={index} className="pl-2 mt-3" type="label" variant="secondary">
               {item.name}
             </Typography>;
           } else if (item.type === 'item') {
+            if (
+              item.requiresDevFeatureFlag &&
+              !JSON.parse(getPublicEnvVar("NEXT_PUBLIC_STACK_ENABLE_DEVELOPMENT_FEATURES_PROJECT_IDS") || "[]").includes(projectId)
+            ) {
+              return null;
+            }
             return <div key={index} className="flex px-2">
-              <NavItem item={item} onClick={onNavigate} href={`/projects/${projectId}${item.href}`}/>
+              <NavItem item={item} onClick={onNavigate} href={`/projects/${projectId}${item.href}`} />
             </div>;
           }
         })}
 
-        <div className="flex-grow"/>
+        <div className="flex-grow" />
 
         <div className="py-2 px-2 flex">
           <NavItem
@@ -441,7 +442,7 @@ function HeaderBreadcrumb({
                     {name.item}
                   </Link>
                 </BreadcrumbItem>
-                <BreadcrumbSeparator/>
+                <BreadcrumbSeparator />
               </Fragment> :
               <BreadcrumbPage key={index}>
                 <Link href={name.href}>
@@ -496,7 +497,7 @@ export default function SidebarLayout(props: { projectId: string, children?: Rea
             />
             {getPublicEnvVar("NEXT_PUBLIC_STACK_EMULATOR_ENABLED") === "true" ?
               <ThemeToggle /> :
-              <UserButton colorModeToggle={() => setTheme(resolvedTheme === 'light' ? 'dark' : 'light')}/>
+              <UserButton colorModeToggle={() => setTheme(resolvedTheme === 'light' ? 'dark' : 'light')} />
             }
           </div>
         </div>

@@ -336,4 +336,11 @@ export class StackAdminInterface extends StackServerInterface {
       null,
     );
   }
+
+  async renderEmailThemePreview(theme: string): Promise<{ html: string }> {
+    const response = await this.sendAdminRequest(`/emails/render-theme?theme=${theme}`, {
+      method: "GET",
+    }, null);
+    return await response.json();
+  }
 }

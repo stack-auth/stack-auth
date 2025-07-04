@@ -45,6 +45,9 @@ export const POST = createSmartRouteHandler({
     }).defined(),
   }),
   handler: async ({ body, auth }) => {
+    if (!getEnvVariable("FREESTYLE_API_KEY")) {
+      throw new StatusError(500, "FREESTYLE_API_KEY is not set");
+    }
     if (auth.tenancy.config.email_config.type === "shared") {
       throw new StatusError(400, "Cannot send custom emails when using shared email config");
     }
@@ -105,6 +108,10 @@ export const POST = createSmartRouteHandler({
       }
 
       const renderedEmail = await renderEmailWithTheme(body.html, auth.tenancy.config.email_theme, unsubscribeLink);
+      if ("error" in renderedEmail) {
+        userSendErrors.set(userId, "There was an error rendering the email");
+        continue;
+      }
       await sendEmail({
         tenancyId: auth.tenancy.id,
         emailConfig,
