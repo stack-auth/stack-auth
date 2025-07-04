@@ -1,31 +1,28 @@
 "use client";
 
 import { SettingCard } from "@/components/settings";
+import { throwErr } from "@stackframe/stack-shared/dist/utils/errors";
 import { ActionDialog, Button, Card, Separator, Typography } from "@stackframe/stack-ui";
-import { ReactNode, useState } from "react";
-import { PageLayout } from "../page-layout";
-import { LightEmailTheme, DarkEmailTheme } from "@stackframe/stack-emails/dist/themes/index";
 import { Check } from "lucide-react";
+import { useState } from "react";
+import { PageLayout } from "../page-layout";
 import { useAdminApp } from "../use-admin-app";
 
-type ThemeType = 'light' | 'dark';
+type ThemeType = 'default-light' | 'default-dark';
 
 type Theme = {
   id: ThemeType,
   name: string,
-  component: React.ComponentType<{ children: ReactNode }>,
 };
 
 const themes: Theme[] = [
   {
-    id: 'light',
+    id: 'default-light',
     name: 'Light Theme',
-    component: LightEmailTheme
   },
   {
-    id: 'dark',
+    id: 'default-dark',
     name: 'Dark Theme',
-    component: DarkEmailTheme
   },
 ];
 
@@ -51,8 +48,7 @@ export default function PageClient() {
     setDialogOpen(true);
   };
 
-  const selectedThemeData = themes.find(t => t.id === activeTheme)!;
-  const CurrentThemeComponent = selectedThemeData.component;
+  const selectedThemeData = themes.find(t => t.id === activeTheme) ?? throwErr(`Unknown theme ${activeTheme}`, { activeTheme });
 
   return (
     <PageLayout title="Email Themes" description="Customize email themes for your project">
@@ -60,12 +56,7 @@ export default function PageClient() {
         title="Active Theme"
         description={`Currently using ${selectedThemeData.name}`}
       >
-        <div className="rounded-md border-primary-500 border w-fit mx-auto">
-          <CurrentThemeComponent>
-            <EmailPreview />
-          </CurrentThemeComponent>
-        </div>
-
+        <ThemePreview themeId={activeTheme} />
         <ActionDialog
           trigger={<Button onClick={handleOpenDialog} className="ml-auto w-min">Set Theme</Button>}
           open={dialogOpen}
@@ -102,11 +93,9 @@ function ThemeOption({
   isSelected: boolean,
   onSelect: (themeId: ThemeType) => void,
 }) {
-  const ThemeComponent = theme.component;
-
   return (
     <Card
-      className={`cursor-pointer hover:ring-1 transition-all`}
+      className="cursor-pointer hover:ring-1 transition-all"
       onClick={() => onSelect(theme.id)}
     >
       <div className="p-4 pb-3">
@@ -119,26 +108,16 @@ function ThemeOption({
           )}
         </div>
         <Separator className="my-3" />
-        <ThemeComponent>
-          <EmailPreview />
-        </ThemeComponent>
+        <ThemePreview themeId={theme.id} />
       </div>
     </Card>
   );
 }
 
-function EmailPreview() {
+function ThemePreview({ themeId }: { themeId: ThemeType }) {
+  const stackAdminApp = useAdminApp();
+  const previewHtml = stackAdminApp.useEmailThemePreview(themeId);
   return (
-    <div>
-      <h2 className="mb-4 text-2xl font-bold">
-        Header text
-      </h2>
-      <p className="mb-4">
-        Body text content with some additional information.
-      </p>
-      <div className="text-center my-6">
-        <Button>Button</Button>
-      </div>
-    </div>
+    <iframe srcDoc={previewHtml} className="mx-auto pointer-events-none" />
   );
 }
