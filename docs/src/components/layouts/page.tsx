@@ -118,7 +118,10 @@ export function DocsPage({
   } = {},
   ...props
 }: DocsPageProps) {
-  const { setIsFullPage } = useSidebar();
+  const sidebarContext = useSidebar();
+  const { setIsFullPage } = sidebarContext || {
+    setIsFullPage: () => {},
+  };
 
   // Update the full page state in the context
   useEffect(() => {

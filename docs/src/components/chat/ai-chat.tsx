@@ -23,7 +23,14 @@ function StackIcon({ size = 20, className }: { size?: number, className?: string
 }
 
 export function AIChatDrawer() {
-  const { isChatOpen, isChatExpanded, toggleChat, setChatExpanded } = useSidebar();
+  const sidebarContext = useSidebar();
+  const { isChatOpen, isChatExpanded, toggleChat, setChatExpanded } = sidebarContext || {
+    isChatOpen: false,
+    isChatExpanded: false,
+    toggleChat: () => {},
+    setChatExpanded: () => {},
+  };
+
   const [docsContent, setDocsContent] = useState('');
   const [isHomePage, setIsHomePage] = useState(false);
   const [isScrolled, setIsScrolled] = useState(false);

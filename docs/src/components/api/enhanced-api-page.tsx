@@ -110,7 +110,14 @@ const HTTP_METHOD_COLORS = {
 
 
 export function EnhancedAPIPage({ document, operations, description }: EnhancedAPIPageProps) {
-  const { sharedHeaders, reportError } = useAPIPageContext();
+  const apiContext = useAPIPageContext();
+
+  // Use default functions if API context is not available
+  const { sharedHeaders, reportError } = apiContext || {
+    sharedHeaders: {},
+    reportError: () => {}
+  };
+
   const [spec, setSpec] = useState<OpenAPISpec | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);

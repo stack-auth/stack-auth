@@ -45,7 +45,12 @@ function StackAuthLogo() {
 
 // AI Chat Toggle Button for Home Layout
 function HomeAIChatToggleButton() {
-  const { isChatOpen, toggleChat } = useSidebar();
+  const sidebarContext = useSidebar();
+  const { isChatOpen, toggleChat } = sidebarContext || {
+    isChatOpen: false,
+    toggleChat: () => {},
+  };
+
   const [animationVariant, setAnimationVariant] = useState('');
 
   // Generate random variant when chat is opened
@@ -81,7 +86,11 @@ function HomeNavbar() {
   const [searchOpen, setSearchOpen] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [isScrolled, setIsScrolled] = useState(false);
-  const { isChatOpen, isChatExpanded } = useSidebar();
+  const sidebarContext = useSidebar();
+  const { isChatOpen, isChatExpanded } = sidebarContext || {
+    isChatOpen: false,
+    isChatExpanded: false,
+  };
 
   // Scroll detection
   useEffect(() => {

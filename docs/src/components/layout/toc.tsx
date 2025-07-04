@@ -29,7 +29,10 @@ export type TOCProps = {
 
 export function Toc(props: HTMLAttributes<HTMLDivElement>) {
   const { toc } = usePageStyles();
-  const { isTocOpen } = useSidebar();
+  const sidebarContext = useSidebar();
+  const { isTocOpen } = sidebarContext || {
+    isTocOpen: false,
+  };
 
   // Hide TOC if not open
   if (!isTocOpen) return null;
