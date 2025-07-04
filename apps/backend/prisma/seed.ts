@@ -51,9 +51,6 @@ async function seed() {
           magic_link_enabled: otpEnabled,
         },
       },
-      sourceOfTruth: {
-        type: 'hosted',
-      },
     });
 
     console.log('Internal project created');
@@ -75,9 +72,6 @@ async function seed() {
           ...internalTenancy.config.domains.filter((d) => d.domain !== dashboardDomain),
         ]
       },
-    },
-    sourceOfTruth: {
-      type: 'hosted',
     },
   });
 
