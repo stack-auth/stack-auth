@@ -1,6 +1,7 @@
 import { describe } from "vitest";
 import { it } from "../../../../../helpers";
 import { Auth, backendContext, InternalProjectKeys, niceBackendFetch, Project } from "../../../../backend-helpers";
+import { provisionProject } from "../integrations/neon/projects/provision.test";
 
 describe("unauthorized requests", () => {
   it("should return 401 when invalid authorization is provided", async ({ expect }) => {
@@ -149,6 +150,41 @@ describe("with valid credentials", () => {
       expect(digestEmail).toBeDefined();
       expect(digestEmail!.from).toBe("Stack Auth <noreply@example.com>");
     }
+  });
+
+  it("should not return the emails if it is neon provisioned", async ({ expect }) => {
+    const response = await provisionProject();
+    expect(response).toMatchInlineSnapshot(`
+      NiceResponse {
+        "status": 200,
+        "body": {
+          "project_id": "<stripped UUID>",
+          "super_secret_admin_key": <stripped field 'super_secret_admin_key'>,
+        },
+        "headers": Headers { <some fields may have been hidden> },
+      }
+    `);
+
+    // test API keys
+    backendContext.set({
+      projectKeys: {
+        projectId: response.body.project_id,
+        superSecretAdminKey: response.body.super_secret_admin_key,
+      },
+    });
+
+    const emailResponse = await niceBackendFetch("/api/v1/internal/failed-emails-digest", {
+      method: "POST",
+      headers: { "Authorization": "Bearer mock_cron_secret" }
+    });
+    expect(emailResponse.status).toBe(200);
+
+    const failedEmailsByTenancy = emailResponse.body.failed_emails_by_tenancy;
+    const mockProjectFailedEmails = failedEmailsByTenancy.filter(
+      (batch: any) => batch.tenant_owner_email === backendContext.value.mailbox.emailAddress
+    );
+
+    expect(mockProjectFailedEmails).toMatchInlineSnapshot(`[]`);
   });
 
   it("should return 200 and not send digest email when all emails are successful", async ({ expect }) => {

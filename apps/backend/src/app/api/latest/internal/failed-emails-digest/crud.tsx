@@ -3,7 +3,7 @@ import { globalPrismaClient } from "@/prisma-client";
 type FailedEmailsQueryResult = {
   tenancyId: string,
   projectId: string,
-  to: string[],
+  to?: string[],
   subject: string,
   contactEmail: string,
 }

@@ -43,7 +43,13 @@ export const POST = createSmartRouteHandler({
       throw new StatusError(401, "Unauthorized");
     }
 
-    const failedEmailsByTenancy = await getFailedEmailsByTenancy(new Date(Date.now() - 1000 * 60 * 60 * 24));
+    const allFailedEmailsByTenancy = await getFailedEmailsByTenancy(new Date(Date.now() - 1000 * 60 * 60 * 24));
+    const failedEmailsByTenancy = new Map();
+    for (const [tenancyId, tenancy] of allFailedEmailsByTenancy.entries()) {
+      if (tenancy.tenantOwnerEmail) {
+        failedEmailsByTenancy.set(tenancyId, tenancy);
+      }
+    }
     const internalTenancy = await getSoleTenancyFromProjectBranch("internal", DEFAULT_BRANCH_ID);
     const emailConfig = await getSharedEmailConfig("Stack Auth");
     const dashboardUrl = getEnvVariable("NEXT_PUBLIC_STACK_DASHBOARD_URL", "https://app.stack-auth.com");
@@ -78,6 +84,23 @@ export const POST = createSmartRouteHandler({
         }
       }
     }
+
+    console.log({
+      statusCode: anyDigestsFailedToSend ? 500 : 200,
+      bodyType: 'json',
+      body: {
+        success: !anyDigestsFailedToSend,
+        failed_emails_by_tenancy: Array.from(failedEmailsByTenancy.entries()).map(([tenancyId, batch]) => (
+          {
+            emails: batch.emails,
+            tenant_owner_email: batch.tenantOwnerEmail,
+            project_id: batch.projectId,
+            tenancy_id: tenancyId,
+          }
+        ),
+        )
+      },
+    }, '!!!!!!!!!!');
 
     return {
       statusCode: anyDigestsFailedToSend ? 500 : 200,
