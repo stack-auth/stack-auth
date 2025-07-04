@@ -162,10 +162,16 @@ function TOCToggleButton() {
 }
 
 /**
- * Auth Toggle Button - Shows on all pages like AI Chat button
+ * Auth Toggle Button - Only shows on API pages
  */
 function AuthToggleButton() {
+  const pathname = usePathname();
   const sidebarContext = useSidebar();
+
+  // Only show on API pages
+  const isAPIPage = isInApiSection(pathname);
+
+  if (!isAPIPage) return null;
 
   // Return null if context is not available
   if (!sidebarContext) {

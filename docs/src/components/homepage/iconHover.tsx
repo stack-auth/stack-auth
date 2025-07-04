@@ -1,10 +1,8 @@
 "use client";
 
-import { CustomSearchDialog } from '@/components/layout/custom-search-dialog';
-import { LargeCustomSearchToggle } from '@/components/layout/custom-search-toggle';
 import { platformSupportsComponents, platformSupportsSDK } from "@/lib/navigation-utils";
 import { PLATFORMS, type Platform } from "@/lib/platform-utils";
-import { Book, ChevronDown, Code, Layers, Zap } from "lucide-react";
+import { Book, ChevronDown, Code, Command, Layers, Search, Zap } from "lucide-react";
 import React, { useEffect, useRef, useState } from "react";
 
 type DocsSection = {
@@ -309,7 +307,6 @@ const DocsIcon3D: React.FC<DocsIcon3DProps> = ({
 
 export default function DocsSelector() {
   const [selectedPlatform, setSelectedPlatform] = useState<Platform>("next");
-  const [searchOpen, setSearchOpen] = useState(false);
 
   const handleSectionSelect = (section: DocsSection) => {
     console.log("Selected section:", section);
@@ -323,6 +320,17 @@ export default function DocsSelector() {
     setSelectedPlatform(platform);
   };
 
+  // Simple search button that opens the shared search dialog
+  const handleSearchOpen = () => {
+    // Trigger the main search dialog by dispatching the Cmd+K event
+    const event = new KeyboardEvent('keydown', {
+      key: 'k',
+      metaKey: true,
+      bubbles: true
+    });
+    document.dispatchEvent(event);
+  };
+
   return (
     <div className="w-full max-w-4xl mx-auto">
       <PlatformSelector
@@ -330,20 +338,29 @@ export default function DocsSelector() {
         onPlatformChange={handlePlatformChange}
       />
 
-      {/* Search Bar */}
+      {/* Search Bar - uses shared search dialog */}
       <div className="mb-8 flex justify-center">
         <div className="w-full max-w-md">
-          <LargeCustomSearchToggle
-            onOpen={() => setSearchOpen(true)}
-            className="w-full"
-          />
+          <button
+            onClick={handleSearchOpen}
+            className="group flex w-full items-center gap-4 rounded-xl border border-fd-border/60 bg-fd-background/80 px-4 py-4 text-left text-sm text-fd-muted-foreground backdrop-blur-sm hover:border-fd-border hover:bg-fd-background hover:text-fd-foreground hover:shadow-lg focus:outline-none focus:ring-2 focus:ring-fd-primary/20"
+          >
+            <Search className="h-5 w-5 flex-shrink-0" />
+            <div className="flex-1">
+              <div className="font-medium">Search documentation</div>
+              <div className="text-xs text-fd-muted-foreground/70">Find guides, API references, and examples</div>
+            </div>
+            <div className="flex items-center gap-1">
+              <kbd className="inline-flex h-7 min-w-[28px] items-center justify-center rounded-md border border-fd-border/60 bg-fd-muted/50 px-2 font-mono text-xs font-medium text-fd-muted-foreground/80 group-hover:border-fd-border group-hover:bg-fd-muted group-hover:text-fd-muted-foreground">
+                <Command className="h-4 w-4" />
+              </kbd>
+              <kbd className="inline-flex h-7 w-7 items-center justify-center rounded-md border border-fd-border/60 bg-fd-muted/50 font-mono text-xs font-medium text-fd-muted-foreground/80 group-hover:border-fd-border group-hover:bg-fd-muted group-hover:text-fd-muted-foreground">
+                K
+              </kbd>
+            </div>
+          </button>
         </div>
       </div>
-
-      <CustomSearchDialog
-        open={searchOpen}
-        onOpenChange={setSearchOpen}
-      />
 
       <DocsIcon3D
         selectedPlatform={selectedPlatform}
