@@ -1,6 +1,6 @@
 {
   "name": "@stackframe/stack-shared",
-  "version": "2.8.16",
+  "version": "2.8.17",
   "scripts": {
     "build": "rimraf dist && tsup-node",
     "typecheck": "tsc --noEmit",

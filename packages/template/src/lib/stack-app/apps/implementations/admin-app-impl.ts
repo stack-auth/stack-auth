@@ -385,6 +385,20 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
     }));
   }
 
+  async sendEmail(options: {
+    userId: string,
+    subject: string,
+    content: string,
+    notificationCategoryName: string,
+  }): Promise<void> {
+    await this._interface.sendEmail({
+      user_id: options.userId,
+      subject: options.subject,
+      html: options.content,
+      notification_category_name: options.notificationCategoryName,
+    });
+  }
+
   async sendSignInInvitationEmail(email: string, callbackUrl: string): Promise<void> {
     await this._interface.sendSignInInvitationEmail(email, callbackUrl);
   }
