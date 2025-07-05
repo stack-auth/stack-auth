@@ -1,4 +1,4 @@
-import React from "react";
+import React, { MutableRefObject } from "react";
 import { isBrowserLike } from "./env";
 import { neverResolve } from "./promises";
 import { deindent } from "./strings";
@@ -116,6 +116,21 @@ import.meta.vitest?.test("getNodeText", ({ expect }) => {
 export function suspend(): never {
   React.use(neverResolve());
   throw new Error("Somehow a Promise that never resolves was resolved?");
+}
+
+export type InstantStateRef<T> = Readonly<MutableRefObject<T>>;
+
+/**
+ * Like useState, but its value is immediately available.
+ */
+export function useInstantState<T>(initialValue: T): [InstantStateRef<T>, (value: T) => void] {
+  const [, setState] = React.useState(initialValue);
+  const ref = React.useRef(initialValue);
+  const setValue = React.useCallback((value: T) => {
+    setState(value);
+    ref.current = value;
+  }, []);
+  return [ref, setValue];
 }
 
 export class NoSuspenseBoundaryError extends Error {

@@ -61,10 +61,11 @@ OriginalButton.displayName = "Button";
 type ButtonProps = {
   onClick?: (e: React.MouseEvent<HTMLButtonElement>) => void | Promise<void>,
   loading?: boolean,
+  loadingStyle?: "spinner" | "disabled",
 } & OriginalButtonProps
 
 const Button = forwardRefIfNeeded<HTMLButtonElement, ButtonProps>(
-  ({ onClick, loading: loadingProp, children, size, ...props }, ref) => {
+  ({ onClick, loading: loadingProp, loadingStyle = "spinner", children, size, ...props }, ref) => {
     const [handleClick, isLoading] = useAsyncCallback(async (e: React.MouseEvent<HTMLButtonElement>) => {
       await onClick?.(e);
     }, [onClick]);
@@ -80,7 +81,7 @@ const Button = forwardRefIfNeeded<HTMLButtonElement, ButtonProps>(
         size={size}
         className={cn("relative", loading && "[&>:not(.stack-button-do-not-hide-when-siblings-are)]:invisible", props.className)}
       >
-        <Spinner className={cn("absolute inset-0 flex items-center justify-center stack-button-do-not-hide-when-siblings-are", !loading && "invisible")} />
+        {loadingStyle === "spinner" && <Spinner className={cn("absolute inset-0 flex items-center justify-center stack-button-do-not-hide-when-siblings-are", !loading && "invisible")} />}
         {typeof children === "string" ? <span>{children}</span> : children}
       </OriginalButton>
     );
