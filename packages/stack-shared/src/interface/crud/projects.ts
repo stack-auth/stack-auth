@@ -86,6 +86,7 @@ export const projectsCrudAdminReadSchema = yupObject({
     team_member_default_permissions: yupArray(teamPermissionSchema.defined()).defined(),
     user_default_permissions: yupArray(teamPermissionSchema.defined()).defined(),
     oauth_account_merge_strategy: schemaFields.oauthAccountMergeStrategySchema.defined(),
+    email_verification_required: schemaFields.yupBoolean().defined(),
   }).defined().meta({ openapiField: { hidden: true } }),
 }).defined();
 
@@ -102,6 +103,7 @@ export const projectsCrudClientReadSchema = yupObject({
     allow_user_api_keys: schemaFields.yupBoolean().defined(),
     allow_team_api_keys: schemaFields.yupBoolean().defined(),
     enabled_oauth_providers: yupArray(enabledOAuthProviderSchema.defined()).defined().meta({ openapiField: { hidden: true } }),
+    email_verification_required: schemaFields.yupBoolean().defined(),
   }).defined().meta({ openapiField: { hidden: true } }),
 }).defined();
 
@@ -128,6 +130,7 @@ export const projectsCrudAdminUpdateSchema = yupObject({
     team_member_default_permissions: yupArray(teamPermissionSchema.defined()).optional(),
     user_default_permissions: yupArray(teamPermissionSchema.defined()).optional(),
     oauth_account_merge_strategy: schemaFields.oauthAccountMergeStrategySchema.optional(),
+    email_verification_required: schemaFields.yupBoolean().optional(),
   }).optional().default(undefined),
 }).defined();
 

@@ -589,7 +589,7 @@ export class StackClientInterface {
     }
   }
 
-  async verifyEmail(code: string): Promise<Result<undefined, KnownErrors["VerificationCodeError"]>> {
+  async verifyEmail(code: string): Promise<Result<{ accessToken: string | null, refreshToken: string | null }, KnownErrors["VerificationCodeError"]>> {
     const res = await this.sendClientRequestAndCatchKnownError(
       "/contact-channels/verify",
       {
@@ -608,7 +608,11 @@ export class StackClientInterface {
     if (res.status === "error") {
       return Result.error(res.error);
     } else {
-      return Result.ok(undefined);
+      const result = await res.data.json();
+      return Result.ok({
+        accessToken: result.access_token ?? null,
+        refreshToken: result.refresh_token ?? null,
+      });
     }
   }
 
@@ -937,6 +941,7 @@ export class StackClientInterface {
       provider: string,
       redirectUrl: string,
       errorRedirectUrl: string,
+      emailVerificationRedirectUrl: string,
       afterCallbackRedirectUrl?: string,
       codeChallenge: string,
       state: string,
@@ -968,6 +973,7 @@ export class StackClientInterface {
     url.searchParams.set("response_type", "code");
     url.searchParams.set("type", options.type);
     url.searchParams.set("error_redirect_url", options.errorRedirectUrl);
+    url.searchParams.set("email_verification_redirect_url", options.emailVerificationRedirectUrl);
 
     if (options.afterCallbackRedirectUrl) {
       url.searchParams.set("after_callback_redirect_url", options.afterCallbackRedirectUrl);

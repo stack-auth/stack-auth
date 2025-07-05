@@ -9,11 +9,12 @@ import { HandlerUrls, StackClientApp } from "../lib/stack-app";
 import { AccountSettings } from "./account-settings";
 import { CliAuthConfirmation } from "./cli-auth-confirm";
 import { EmailVerification } from "./email-verification";
+import { EmailVerificationRequired } from "./email-verification-required";
 import { ErrorPage } from "./error-page";
 import { ForgotPassword } from "./forgot-password";
 import { MagicLinkCallback } from "./magic-link-callback";
-import { OAuthCallback } from "./oauth-callback";
 import { MFA } from "./mfa";
+import { OAuthCallback } from "./oauth-callback";
 import { PasswordReset } from "./password-reset";
 import { SignOut } from "./sign-out";
 import { TeamInvitation } from "./team-invitation";
@@ -22,6 +23,7 @@ type Components = {
   SignIn: typeof SignIn,
   SignUp: typeof SignUp,
   EmailVerification: typeof EmailVerification,
+  EmailVerificationRequired: typeof EmailVerificationRequired,
   PasswordReset: typeof PasswordReset,
   ForgotPassword: typeof ForgotPassword,
   SignOut: typeof SignOut,
@@ -45,6 +47,7 @@ const availablePaths = {
   signIn: 'sign-in',
   signUp: 'sign-up',
   emailVerification: 'email-verification',
+  emailVerificationRequired: 'email-verification-required',
   passwordReset: 'password-reset',
   forgotPassword: 'forgot-password',
   signOut: 'sign-out',
@@ -105,6 +108,13 @@ function renderComponent(props: {
         searchParams={searchParams}
         fullPage={fullPage}
         {...filterUndefinedINU(componentProps?.EmailVerification)}
+      />;
+    }
+    case availablePaths.emailVerificationRequired: {
+      redirectIfNotHandler?.('emailVerificationRequired');
+      return <EmailVerificationRequired
+        fullPage={fullPage}
+        {...filterUndefinedINU(componentProps?.EmailVerificationRequired)}
       />;
     }
     case availablePaths.passwordReset: {

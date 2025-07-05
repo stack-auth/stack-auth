@@ -84,6 +84,7 @@ export function adminProjectUpdateOptionsToCrud(options: AdminProjectUpdateOptio
       oauth_account_merge_strategy: options.config?.oauthAccountMergeStrategy,
       allow_user_api_keys: options.config?.allowUserApiKeys,
       allow_team_api_keys: options.config?.allowTeamApiKeys,
+      email_verification_required: options.config?.emailVerificationRequired,
     },
   };
 }

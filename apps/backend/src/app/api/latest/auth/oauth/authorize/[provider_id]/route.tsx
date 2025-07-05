@@ -36,6 +36,7 @@ export const GET = createSmartRouteHandler({
       error_redirect_url: urlSchema.optional().meta({ openapiField: { hidden: true } }),
       error_redirect_uri: urlSchema.optional(),
       after_callback_redirect_url: yupString().optional(),
+      email_verification_redirect_url: urlSchema.optional(),
 
       // oauth parameters
       client_id: yupString().defined(),
@@ -119,6 +120,7 @@ export const GET = createSmartRouteHandler({
           providerScope: query.provider_scope,
           errorRedirectUrl: query.error_redirect_uri || query.error_redirect_url,
           afterCallbackRedirectUrl: query.after_callback_redirect_url,
+          emailVerificationRedirectUrl: query.email_verification_redirect_url,
         } satisfies yup.InferType<typeof oauthCookieSchema>,
         expiresAt: new Date(Date.now() + 1000 * 60 * outerOAuthFlowExpirationInMinutes),
       },

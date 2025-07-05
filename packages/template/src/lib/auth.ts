@@ -13,6 +13,7 @@ export async function signInWithOAuth(
     provider: string,
     redirectUrl: string,
     errorRedirectUrl: string,
+    emailVerificationRedirectUrl: string,
     providerScope?: string,
   }
 ) {
@@ -21,6 +22,7 @@ export async function signInWithOAuth(
     provider: options.provider,
     redirectUrl: constructRedirectUrl(options.redirectUrl, "redirectUrl"),
     errorRedirectUrl: constructRedirectUrl(options.errorRedirectUrl, "errorRedirectUrl"),
+    emailVerificationRedirectUrl: constructRedirectUrl(options.emailVerificationRedirectUrl, "emailVerificationRedirectUrl"),
     codeChallenge,
     state,
     type: "authenticate",
@@ -36,6 +38,7 @@ export async function addNewOAuthProviderOrScope(
     provider: string,
     redirectUrl: string,
     errorRedirectUrl: string,
+    emailVerificationRedirectUrl: string,
     providerScope?: string,
   },
   session: InternalSession,
@@ -45,7 +48,7 @@ export async function addNewOAuthProviderOrScope(
     provider: options.provider,
     redirectUrl: constructRedirectUrl(options.redirectUrl, "redirectUrl"),
     errorRedirectUrl: constructRedirectUrl(options.errorRedirectUrl, "errorRedirectUrl"),
-    afterCallbackRedirectUrl: constructRedirectUrl(window.location.href, "afterCallbackRedirectUrl"),
+    emailVerificationRedirectUrl: constructRedirectUrl(options.emailVerificationRedirectUrl, "emailVerificationRedirectUrl"),
     codeChallenge,
     state,
     type: "link",
