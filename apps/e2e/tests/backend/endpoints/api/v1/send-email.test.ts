@@ -300,7 +300,7 @@ it("should return 200 and send email successfully", async ({ expect }) => {
   const messages = await user.mailbox.fetchMessages();
   const sentEmail = messages.find(msg => msg.subject === "Custom Test Email Subject");
   expect(sentEmail).toBeDefined();
-  expect(sentEmail!.body?.html).toMatchInlineSnapshot(`"http://localhost:8102/api/v1/emails/unsubscribe-link?code=%3Cstripped+query+param%3E"`)
+  expect(sentEmail!.body?.html).toMatchInlineSnapshot(`"http://localhost:8102/api/v1/emails/unsubscribe-link?code=%3Cstripped+query+param%3E"`);
 });
 
 it("should handle mixed results for multiple users", async ({ expect }) => {
@@ -365,7 +365,7 @@ it("should handle mixed results for multiple users", async ({ expect }) => {
   const successfulUserMessages = await successfulUser.mailbox.fetchMessages();
   const sentEmail = successfulUserMessages.find(msg => msg.subject === "Bulk Test Email Subject");
   expect(sentEmail).toBeDefined();
-  expect(sentEmail!.body?.html).toMatchInlineSnapshot(`"http://localhost:8102/api/v1/emails/unsubscribe-link?code=%3Cstripped+query+param%3E"`)
+  expect(sentEmail!.body?.html).toMatchInlineSnapshot(`"http://localhost:8102/api/v1/emails/unsubscribe-link?code=%3Cstripped+query+param%3E"`);
 
   // Verify the user with disabled notifications did not receive the email
   const disabledUserMessages = await userWithDisabledNotifications.mailbox.fetchMessages();
