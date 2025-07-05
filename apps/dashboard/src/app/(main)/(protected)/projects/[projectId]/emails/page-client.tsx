@@ -1,8 +1,8 @@
 "use client";
 
+import { TeamMemberSearchTable } from "@/components/data-table/team-member-search-table";
 import { FormDialog } from "@/components/form-dialog";
 import { InputField, SelectField, TextAreaField } from "@/components/form-fields";
-import { TeamMemberSearchTable } from "@/components/data-table/team-member-search-table";
 import { SettingCard, SettingText } from "@/components/settings";
 import { getPublicEnvVar } from "@/lib/env";
 import { AdminEmailConfig, AdminProject, AdminSentEmail, ServerUser, UserAvatar } from "@stackframe/stack";
@@ -333,39 +333,88 @@ function SendEmailDialog(props: {
   const { toast } = useToast();
   const [open, setOpen] = useState(false);
   const [sharedSmtpDialogOpen, setSharedSmtpDialogOpen] = useState(false);
-  const [selectedUser, setSelectedUser] = useState<ServerUser | null>(null);
+  const [selectedUsers, setSelectedUsers] = useState<ServerUser[]>([]);
+  const [stage, setStage] = useState<'recipients' | 'data'>('recipients');
 
-  const handleSend = async (formData: { subject: string, content: string, notificationCategoryName: string }) => {
-    if (!selectedUser) {
+  const handleSend = async (formData: { subject?: string, content?: string, notificationCategoryName?: string }) => {
+    if (!formData.subject || !formData.content || !formData.notificationCategoryName) {
+      // Should never happen. These fields are only optional during recipient stage.
+      throwErr("Missing required fields", { formData });
+    }
+
+    await stackAdminApp.sendEmail({
+      userIds: selectedUsers.map(user => user.id),
+      subject: formData.subject,
+      content: formData.content,
+      notificationCategoryName: formData.notificationCategoryName,
+    });
+
+    setSelectedUsers([]);
+    setStage('recipients');
+    toast({
+      title: "Email sent",
+      description: "Email was successfully sent",
+      variant: 'success',
+    });
+  };
+
+  const handleNext = async () => {
+    if (selectedUsers.length === 0) {
       toast({
         title: "No recipients selected",
         description: "Please select at least one recipient to send the email.",
         variant: "destructive",
       });
-      return "prevent-close-and-prevent-reset";
+      return "prevent-close" as const;
     }
-    try {
-      await stackAdminApp.sendEmail({
-        userId: selectedUser.id,
-        subject: formData.subject,
-        content: formData.content,
-        notificationCategoryName: formData.notificationCategoryName,
-      });
-    } catch (error) {
-      toast({
-        title: "Error sending email",
-        description: "The email could not be sent. The user may have unsubscribed from this notification category.",
-        variant: "destructive",
-      });
-      return;
-    }
-    setSelectedUser(null);
-    toast({
-      title: "Email sent",
-      description: "Email was successfully sent.",
-      variant: 'success',
-    });
+    setStage('data');
+    return "prevent-close" as const;
   };
+
+  const handleBack = async () => {
+    setStage('recipients');
+    return "prevent-close" as const;
+  };
+
+  const handleClose = () => {
+    setOpen(false);
+    setStage('recipients');
+    setSelectedUsers([]);
+  };
+
+  const renderRecipientsBar = () => (
+    <div className="mb-4">
+      <Typography className="font-medium mb-2">Recipients</Typography>
+      <TooltipProvider>
+        <div className="flex flex-wrap gap-2 mb-4">
+          {selectedUsers.map((user) => (
+            <div key={user.id} className="relative group">
+              <Tooltip>
+                <TooltipTrigger>
+                  <UserAvatar user={user} size={32} />
+                </TooltipTrigger>
+                <TooltipContent side="bottom">
+                  <div className="max-w-60 text-center text-wrap whitespace-pre-wrap">
+                    {user.primaryEmail}
+                  </div>
+                </TooltipContent>
+              </Tooltip>
+              {stage === 'recipients' && (
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  className="absolute -top-2 -right-2 h-4 w-4 rounded-full p-0 hover:bg-red-100 opacity-0 group-hover:opacity-100"
+                  onClick={() => setSelectedUsers(users => users.filter(u => u.id !== user.id))}
+                >
+                  <X className="h-3 w-3" />
+                </Button>
+              )}
+            </div>
+          ))}
+        </div>
+      </TooltipProvider>
+    </div>
+  );
 
   return (
     <>
@@ -396,67 +445,70 @@ function SendEmailDialog(props: {
       </ActionDialog>
       <FormDialog
         open={open}
-        onClose={() => setOpen(false)}
+        onClose={handleClose}
         title="Send Email"
-        cancelButton
-        okButton={{ label: "Send" }}
-        onSubmit={handleSend}
-        formSchema={yup.object({
-          subject: yup.string().defined(),
-          content: yup.string().defined(),
-          notificationCategoryName: yup.string().oneOf(['Transactional', 'Marketing']).label("notification category").defined(),
-        })}
+        cancelButton={stage === "recipients" ?
+          { label: 'Cancel', onClick: async () => handleClose() } :
+          { label: 'Back', onClick: handleBack }
+        }
+        okButton={stage === 'recipients' ?
+          { label: 'Next' } :
+          { label: 'Send' }
+        }
+        onSubmit={stage === 'recipients' ? handleNext : handleSend}
+        formSchema={stage === "recipients" ?
+          yup.object({
+            subject: yup.string().optional(),
+            content: yup.string().optional(),
+            notificationCategoryName: yup.string().optional(),
+          }) :
+          yup.object({
+            subject: yup.string().defined(),
+            content: yup.string().defined(),
+            notificationCategoryName: yup.string().oneOf(['Transactional', 'Marketing']).label("notification category").defined(),
+          })
+        }
         render={(form) => (
           <>
-            <div className="mb-4">
-              <Typography className="font-medium mb-2">Recipient</Typography>
-              <TooltipProvider>
-                <div className="flex flex-wrap gap-2 mb-4">
-                  {selectedUser && (
-                    <Tooltip key={selectedUser.id}>
-                      <TooltipTrigger>
-                        <UserAvatar user={selectedUser} size={32} />
-                      </TooltipTrigger>
-                      <TooltipContent side="bottom">
-                        <div className="max-w-60 text-center text-wrap whitespace-pre-wrap">
-                          {selectedUser.primaryEmail}
-                        </div>
-                      </TooltipContent>
-                    </Tooltip>
-                  )}
-                </div>
-              </TooltipProvider>
+            {renderRecipientsBar()}
+            {stage === 'recipients' ? (
               <TeamMemberSearchTable
                 action={(user) => (
                   <Button
                     size="sm"
                     variant="outline"
-                    onClick={() => setSelectedUser(user)}
-                    disabled={selectedUser?.id === user.id}
+                    onClick={() => setSelectedUsers(users =>
+                      users.some(u => u.id === user.id)
+                        ? users.filter(u => u.id !== user.id)
+                        : [...users, user]
+                    )}
                   >
-                    {selectedUser?.id === user.id ? 'Selected' : 'Select'}
+                    {selectedUsers.some(u => u.id === user.id) ? 'Remove' : 'Add'}
                   </Button>
                 )}
               />
-            </div>
-            <InputField label="Subject" name="subject" control={form.control} type="text" required />
-            {/* TODO: fetch notification categories here instead of hardcoding these two */}
-            <SelectField
-              label="Notification Category"
-              name="notificationCategoryName"
-              control={form.control}
-              options={[
-                { label: "Transactional", value: 'Transactional' },
-                { label: "Marketing", value: 'Marketing' },
-              ]}
-            />
-            <TextAreaField
-              label="Email Content"
-              name="content"
-              control={form.control}
-              rows={10}
-              required
-            />
+            ) : (
+              <>
+                <InputField label="Subject" name="subject" control={form.control} type="text" required />
+                {/* TODO: fetch notification categories here instead of hardcoding these two */}
+                <SelectField
+                  label="Notification Category"
+                  name="notificationCategoryName"
+                  control={form.control}
+                  options={[
+                    { label: "Transactional", value: 'Transactional' },
+                    { label: "Marketing", value: 'Marketing' },
+                  ]}
+                />
+                <TextAreaField
+                  label="Email Content"
+                  name="content"
+                  control={form.control}
+                  rows={10}
+                  required
+                />
+              </>
+            )}
           </>
         )}
       />

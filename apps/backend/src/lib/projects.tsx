@@ -174,6 +174,7 @@ export async function createOrUpdateProject(
         senderName: dataOptions.email_config.sender_name,
         senderEmail: dataOptions.email_config.sender_email,
       } satisfies OrganizationRenderedConfig['emails']['server'] : undefined,
+      'emails.theme': dataOptions.email_theme,
       // ======================= rbac =======================
       'rbac.defaultPermissions.teamMember': translateDefaultPermissions(dataOptions.team_member_default_permissions),
       'rbac.defaultPermissions.teamCreator': translateDefaultPermissions(dataOptions.team_creator_default_permissions),

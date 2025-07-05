@@ -303,7 +303,7 @@ export class StackAdminInterface extends StackServerInterface {
   }
 
   async sendEmail(options: {
-    user_id: string,
+    user_ids: string[],
     subject: string,
     html: string,
     notification_category_name: string,
@@ -335,5 +335,12 @@ export class StackAdminInterface extends StackServerInterface {
       },
       null,
     );
+  }
+
+  async renderEmailThemePreview(theme: string): Promise<{ html: string }> {
+    const response = await this.sendAdminRequest(`/emails/render-theme?theme=${theme}`, {
+      method: "GET",
+    }, null);
+    return await response.json();
   }
 }
