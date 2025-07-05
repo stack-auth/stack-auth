@@ -26,6 +26,7 @@ ui-debug.log
 .pnpm-debug.log
 .husky
 tmp
+tsx-0
 
 vitest.config.ts.timestamp-*
 tsup.config.bundled_*
@@ -53,6 +54,9 @@ dist
 
 # Jetbrains
 .idea
+
+# Cursor
+.cursor
 
 # GitHub Actions runner
 /actions-runner

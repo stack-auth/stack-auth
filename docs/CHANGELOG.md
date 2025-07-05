@@ -1,5 +1,12 @@
 # @stackframe/stack-docs
 
+## 2.8.17
+
+### Patch Changes
+
+- Various changes
+  - @stackframe/stack@2.8.17
+
 ## 2.8.16
 
 ### Patch Changes
