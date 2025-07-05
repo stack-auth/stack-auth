@@ -40,8 +40,8 @@ export const GET = createSmartRouteHandler({
   }),
   async handler({ query }) {
     const { theme } = query;
-    if (!getEnvVariable("FREESTYLE_API_KEY")) {
-      throw new StatusError(500, "FREESTYLE_API_KEY is not set");
+    if (!getEnvVariable("STACK_FREESTYLE_API_KEY")) {
+      throw new StatusError(500, "STACK_FREESTYLE_API_KEY is not set");
     }
     const result = await renderEmailWithTheme(previewEmailHtml, theme);
     if ("error" in result) {
