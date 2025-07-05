@@ -73,7 +73,7 @@ const itemVariants = cva(
       active: {
         true: 'bg-fd-primary/10 text-fd-primary font-medium shadow-sm',
         false:
-          'text-fd-muted-foreground transition-colors hover:bg-fd-accent/50 hover:text-fd-accent-foreground/80',
+          'text-fd-muted-foreground hover:bg-fd-accent/50 hover:text-fd-accent-foreground/80',
       },
     },
   },
@@ -345,7 +345,7 @@ export function SidebarFolderTrigger({
       <ChevronDown
         data-icon
         className={cn(
-          'ms-auto transition-transform duration-200 opacity-70 group-hover:opacity-100',
+          'ms-auto',
           !open && '-rotate-90'
         )}
       />
@@ -393,7 +393,7 @@ export function SidebarFolderLink(props: LinkProps) {
       <ChevronDown
         data-icon
         className={cn(
-          'ms-auto transition-transform duration-200 opacity-70 group-hover:opacity-100',
+          'ms-auto',
           !open && '-rotate-90'
         )}
       />
@@ -442,7 +442,7 @@ export function SidebarCollapseTrigger(props: ComponentProps<'button'>) {
       data-collapsed={collapsed}
       {...props}
       className={cn(
-        'transition-all hover:scale-105 active:scale-95 bg-fd-card rounded-full p-1.5 shadow-sm',
+        'hover:scale-105 active:scale-95 bg-fd-card rounded-full p-1.5 shadow-sm',
         props.className
       )}
       onClick={() => {

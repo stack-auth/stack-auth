@@ -1,6 +1,6 @@
 'use client';
 
-import { Code, FileText, Play, Puzzle } from 'lucide-react';
+import { Code, FileText, Link as LinkIcon, Play, Puzzle, Settings, Shield, User, UserCheck } from 'lucide-react';
 import Link from 'next/link';
 import { type ReactNode } from 'react';
 import { cn } from '../../lib/cn';
@@ -11,6 +11,13 @@ const iconMap: Record<string, React.ComponentType<{ className?: string }>> = {
   'fa-solid fa-puzzle': Puzzle,
   'fa-regular fa-file-lines': FileText,
   'fa-solid fa-code': Code,
+
+  // Authentication-related icons
+  'settings': Settings,
+  'user-check': UserCheck,
+  'link': LinkIcon,
+  'shield-check': Shield,
+  'user': User,
 };
 
 export type CardProps = {

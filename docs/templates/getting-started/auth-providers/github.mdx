@@ -1,0 +1,38 @@
+---
+title: "GitHub Authentication"
+---
+
+This guide explains how to set up GitHub as an authentication provider with Stack Auth. GitHub OAuth allows users to sign in to your application using their GitHub account.
+
+<Info>
+For Development purposes, Stack Auth uses shared keys for this provider. Shared keys are automatically created by Stack, but show Stack's logo on the OAuth sign-in page.
+You should replace these before you go into production.
+</Info>
+
+## Integration Steps
+
+<Steps>
+  <Step>
+    ### Create a GitHub OAuth App
+    
+    1. Navigate to your [GitHub Developer Settings](https://github.com/settings/developers).
+    2. Click the **New OAuth App** button.
+    3. Enter a name for your application, homepage URL, and a description.
+    4. For **Authorization callback URL**, add `https://api.stack-auth.com/api/v1/auth/oauth/callback/github`
+    5. Click **Register application**
+    6. Save the **Client ID** and click **Generate a new client secret** to create your **Client Secret**.
+  </Step>
+  
+  <Step>
+    ### Enable GitHub OAuth in Stack Auth
+    
+    1. On the Stack Auth dashboard, select **Auth Methods** in the left sidebar.
+    2. Click **Add SSO Providers** and select **GitHub** as the provider.
+    3. Set the **Client ID** and **Client Secret** you obtained from GitHub earlier.
+  </Step>
+</Steps>
+
+### Need More Help?
+
+- Check the [GitHub OAuth Documentation](https://docs.github.com/en/developers/apps/building-oauth-apps/authorizing-oauth-apps)
+- Join our [Discord](https://discord.stack-auth.com)

@@ -22,6 +22,50 @@ pages:
   - path: getting-started/example-pages.mdx
     platforms: ["js"]  # Only vanilla JS
   
+  # Auth Providers - Available for all platforms since OAuth is universal
+  - path: getting-started/auth-providers/index.mdx
+    platforms: ["next", "react", "js", "python"]
+  
+  - path: getting-started/auth-providers/github.mdx
+    platforms: ["next", "react", "js", "python"]
+  
+  - path: getting-started/auth-providers/google.mdx
+    platforms: ["next", "react", "js", "python"]
+  
+  - path: getting-started/auth-providers/facebook.mdx
+    platforms: ["next", "react", "js", "python"]
+  
+  - path: getting-started/auth-providers/microsoft.mdx
+    platforms: ["next", "react", "js", "python"]
+  
+  - path: getting-started/auth-providers/spotify.mdx
+    platforms: ["next", "react", "js", "python"]
+  
+  - path: getting-started/auth-providers/discord.mdx
+    platforms: ["next", "react", "js", "python"]
+  
+  - path: getting-started/auth-providers/gitlab.mdx
+    platforms: ["next", "react", "js", "python"]
+  
+  - path: getting-started/auth-providers/apple.mdx
+    platforms: ["next", "react", "js", "python"]
+  
+  - path: getting-started/auth-providers/bitbucket.mdx
+    platforms: ["next", "react", "js", "python"]
+  
+  - path: getting-started/auth-providers/linkedin.mdx
+    platforms: ["next", "react", "js", "python"]
+  
+  - path: getting-started/auth-providers/x-twitter.mdx
+    platforms: ["next", "react", "js", "python"]
+  
+  # Advanced auth methods - More frontend-focused
+  - path: getting-started/auth-providers/passkey.mdx
+    platforms: ["next", "react", "js"]  # No Python (frontend feature)
+  
+  - path: getting-started/auth-providers/two-factor-auth.mdx
+    platforms: ["next", "react", "js"]  # No Python (frontend feature)
+  
   - path: getting-started/production.mdx
     platforms: ["next", "react", "js"]  # No Python
 
@@ -214,4 +258,57 @@ pages:
 
   - path: others/cli-authentication.mdx
     platforms: ["python"] # Python only
+
+  # Python-specific content from templates-python/
+  # Authentication section
+  - path: authentication/api-setup.mdx
+    platforms: ["python"]
+  
+  - path: authentication/user-sessions.mdx
+    platforms: ["python"]
+  
+  - path: authentication/oauth-flows.mdx
+    platforms: ["python"]
+  
+  - path: authentication/server-validation.mdx
+    platforms: ["python"]
+
+  # User Management section
+  - path: user-management/create-users.mdx
+    platforms: ["python"]
+  
+  - path: user-management/user-operations.mdx
+    platforms: ["python"]
+  
+  - path: user-management/custom-user-data.mdx
+    platforms: ["python"]
+  
+  - path: user-management/user-permissions.mdx
+    platforms: ["python"]
+
+  # Team Management section
+  - path: team-management/team-operations.mdx
+    platforms: ["python"]
+  
+  - path: team-management/team-invitations.mdx
+    platforms: ["python"]
+  
+  - path: team-management/team-permissions.mdx
+    platforms: ["python"]
+  
+  - path: team-management/organization-management.mdx
+    platforms: ["python"]
+
+  # Framework Integration section
+  - path: integration/django.mdx
+    platforms: ["python"]
+  
+  - path: integration/flask.mdx
+    platforms: ["python"]
+  
+  - path: integration/fastapi.mdx
+    platforms: ["python"]
+  
+  - path: integration/standalone-scripts.mdx
+    platforms: ["python"]
 

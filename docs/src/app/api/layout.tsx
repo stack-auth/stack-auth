@@ -1,5 +1,9 @@
+import { APIPageWrapper } from '@/components/api/api-page-wrapper';
+import { AuthPanel } from '@/components/api/auth-panel';
+import { AIChatDrawer } from '@/components/chat/ai-chat';
 import { ApiSidebar } from '@/components/layouts/api/api-sidebar-server';
 import { DocsHeaderWrapper } from '@/components/layouts/docs-header-wrapper';
+import { SidebarProvider } from '@/components/layouts/sidebar-context';
 import { apiSource } from '../../../lib/source';
 
 // Types for the page object structure
@@ -84,26 +88,36 @@ export default function ApiLayout({ children }: { children: React.ReactNode }) {
   }
 
   return (
-    <div className="flex min-h-screen bg-fd-background">
-      {/* Full-width header with Stack Auth branding */}
-      <DocsHeaderWrapper
-        showSearch={false}
-        className="fixed top-0 left-0 right-0 z-50 h-14 border-b border-fd-border flex items-center justify-between px-4 md:px-6 bg-fd-background"
-        apiPages={apiPages}
-      />
+    <SidebarProvider>
+      <APIPageWrapper>
+        <div className="flex min-h-screen bg-fd-background">
+          {/* Full-width header with Stack Auth branding */}
+          <DocsHeaderWrapper
+            showSearch={false}
+            className="fixed top-0 left-0 right-0 z-50 h-14 border-b border-fd-border flex items-center justify-between px-4 md:px-6 bg-fd-background"
+            apiPages={apiPages}
+          />
 
-      {/* Custom API Sidebar - positioned under header, hidden on mobile */}
-      <div className="hidden md:block w-64 flex-shrink-0 border-r border-fd-border fixed left-0 top-14 h-[calc(100vh-3.5rem)] z-30">
-        <ApiSidebar />
-      </div>
+          {/* Custom API Sidebar - positioned under header, hidden on mobile */}
+          <div className="hidden md:block w-64 flex-shrink-0 border-r border-fd-border fixed left-0 top-14 h-[calc(100vh-3.5rem)] z-30">
+            <ApiSidebar />
+          </div>
 
-      {/* Main content area - full width on mobile, with left margin on desktop, accounting for header */}
-      <div className="flex-1 flex flex-col min-w-0 md:ml-64 pt-14">
-        {/* Page content */}
-        <main className="flex-1 overflow-auto">
-          {children}
-        </main>
-      </div>
-    </div>
+          {/* Main content area - full width on mobile, with left margin on desktop, accounting for header */}
+          <div className="flex-1 flex flex-col min-w-0 md:ml-64 pt-14">
+            {/* Page content */}
+            <main className="flex-1 overflow-auto">
+              {children}
+            </main>
+          </div>
+
+          {/* AI Chat Drawer */}
+          <AIChatDrawer />
+
+          {/* Auth Panel */}
+          <AuthPanel />
+        </div>
+      </APIPageWrapper>
+    </SidebarProvider>
   );
 }

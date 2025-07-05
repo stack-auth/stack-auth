@@ -1,0 +1,72 @@
+---
+title: "Apple Authentication"
+---
+
+This guide explains how to set up Apple as an authentication provider with Stack Auth. Sign in with Apple allows users to sign in to your application using their Apple ID.
+
+<Info>
+You will need to create an Apple Developer account, and generate an Apple Services ID, Apple Private Key, Apple Team ID, and Apple Key ID.
+</Info>
+
+## Integration Steps
+
+<Steps>
+  <Step>
+  ### Create an Apple App ID and Services ID
+  
+  1. Log in to the [Apple Developer Portal](https://developer.apple.com/).
+  2. Navigate to **Certificates, IDs & Profiles**.
+  3. In the sidebar, select **Identifiers** and click the "+" button to register a new identifier.
+  4. Select **App IDs** and click **Continue**.
+  5. Select **App** as the type and click **Continue**.
+  6. Give your app a description and a Bundle ID (e.g., com.yourdomain.app).
+  7. Scroll down and enable **Sign in with Apple**, then click **Continue**, then **Register**.
+  8. In the top-right of the Identifiers page, switch to **Services IDs**.
+  9. Click the "+" button to create a new Service ID and click **Continue**.
+  10. Give it a description and an identifier (note: this cannot be the same as your App ID's bundle ID).
+  11. Click **Continue**, then **Register**.
+  12. From the list, select your new Service ID.
+  13. Enable **Sign in with Apple** by checking the box.
+  14. Click **Configure** next to Sign in with Apple.
+  15. Register your domains (add api.stack-auth.com).
+  16. Add the return URL: `https://api.stack-auth.com/api/v1/auth/oauth/callback/apple`
+  17. Click **Done**, then **Continue**, and then **Save**.
+  </Step>
+  <Step>
+  ### Create a Private Key
+  
+  1. In the sidebar, select **Keys** and click the "+" button.
+  2. Give your key a name and usage description.
+  3. Scroll down to enable **Sign in with Apple** and click **Configure**.
+  4. Select your Primary App ID that you created earlier and click **Save**.
+  5. Click **Continue**, then **Register**.
+  6. On the next page, **download your key file (.p8)**. This is critical as you won't be able to download it again.
+  7. Note your **Key ID** displayed on this page.
+  8. Click **Done**.
+  9. Find your **Account ID** at the very top-right of the Apple Developer Portal page.
+  </Step>
+  <Step>
+  ### Generate Your Client Secret
+  
+  1. Navigate to the [Supabase Apple Secret Generator](https://supabase.com/docs/guides/auth/social-login/auth-apple#generating-a-client_secret) page.
+  2. Fill in the required fields:
+     - **Account ID**: Your Apple Developer account ID found at the top-right of the portal
+     - **Service ID**: The identifier of your Service ID (found in Identifiers > Service IDs)
+     - **Key ID**: The ID of the private key you just created
+     - **Choose File**: Upload the .p8 private key file you downloaded
+  3. Click **Generate Secret Key**.
+  4. Copy the generated secret immediately - you'll need it for the next step.
+  </Step>
+  <Step>
+  ### Enable Apple OAuth in Stack Auth
+  
+  1. On the Stack Auth dashboard, select **Auth Methods** in the left sidebar.
+  2. Click **Add SSO Providers** and select **Apple** as the provider.
+  3. Set the **Client ID** (your Service ID identifier), **Client Secret** (the generated secret from Supabase), and **Team ID** (your Apple Developer Team ID).
+  </Step>
+</Steps>
+
+### Need More Help?
+
+- Check the [Sign in with Apple Documentation](https://developer.apple.com/sign-in-with-apple/get-started/)
+- Join our [Discord](https://discord.stack-auth.com)

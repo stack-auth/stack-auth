@@ -1,0 +1,43 @@
+---
+title: "Microsoft Authentication"
+---
+
+This guide explains how to set up Microsoft as an authentication provider with Stack Auth. Microsoft OAuth allows users to sign in to your application using their Microsoft account.
+
+<Info>
+For Development purposes, Stack Auth uses shared keys for this provider. Shared keys are automatically created by Stack, but show Stack's logo on the OAuth sign-in page.
+You should replace these before you go into production.
+</Info>
+
+## Integration Steps
+
+<Steps>
+  <Step>
+  ### Create a Microsoft OAuth App
+  
+  1. Navigate to the [Microsoft Entra admin center](https://entra.microsoft.com/) (formerly Azure AD).
+  2. In the left sidebar, go to **Applications** > **App registrations**.
+  3. Click **New registration** at the top of the page.
+  4. Enter a name for your application.
+  5. Under **Supported account types**, select the option that best suits your needs (typically **Accounts in any organizational directory and personal Microsoft accounts**).
+  6. In the **Redirect URI** section, select **Web** as the platform and enter `https://api.stack-auth.com/api/v1/auth/oauth/callback/microsoft`
+  7. Click **Register** to create the application.
+  8. You'll be redirected to the app's Overview page. Note the **Application (client) ID** displayed at the top.
+  9. In the left sidebar, click **Certificates & secrets**.
+  10. Under **Client secrets**, click **New client secret**.
+  11. Add a description, select an expiration period, and click **Add**.
+  12. Copy the **Value** of the client secret immediately (you won't be able to see it again).
+  </Step>
+  <Step>
+  ### Enable Microsoft OAuth in Stack Auth
+  
+  1. On the Stack Auth dashboard, select **Auth Methods** in the left sidebar.
+  2. Click **Add SSO Providers** and select **Microsoft** as the provider.
+  3. Set the **Client ID** (Application ID) and **Client Secret** you obtained from the Microsoft Entra admin center.
+  </Step>
+</Steps>
+
+### Need More Help?
+
+- Check the [Microsoft identity platform Documentation](https://docs.microsoft.com/en-us/azure/active-directory/develop/)
+- Join our [Discord](https://discord.stack-auth.com)
