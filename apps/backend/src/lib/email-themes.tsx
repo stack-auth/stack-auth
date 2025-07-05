@@ -8,9 +8,16 @@ export async function renderEmailWithTheme(
   theme: keyof typeof EMAIL_THEMES,
   unsubscribeLink: string | null = null,
 ) {
-  const freestyle = new FreestyleSandboxes({ apiKey: getEnvVariable("FREESTYLE_API_KEY") });
-  const TemplateComponent = EMAIL_THEMES[theme];
+  const apiKey = getEnvVariable("STACK_FREESTYLE_API_KEY");
   const unsubscribeLinkHtml = unsubscribeLink ? `<br /><br /><a href="${unsubscribeLink}">Click here to unsubscribe</a>` : "";
+  if (apiKey === "mock_stack_freestyle_key") {
+    return {
+      html: `<div>Mock api key detected, returning mock data ${unsubscribeLinkHtml}</div>`,
+      text: "Mock api key detected, returning mock data",
+    };
+  }
+  const freestyle = new FreestyleSandboxes({ apiKey });
+  const TemplateComponent = EMAIL_THEMES[theme];
   const script = deindent`
     import React from 'react';
     import { render, Html, Tailwind, Body } from '@react-email/components';
