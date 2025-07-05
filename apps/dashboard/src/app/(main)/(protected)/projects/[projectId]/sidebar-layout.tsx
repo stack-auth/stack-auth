@@ -37,7 +37,8 @@ import {
   ShieldEllipsis,
   User,
   Users,
-  Webhook
+  Webhook,
+  SquarePen
 } from "lucide-react";
 import { useTheme } from "next-themes";
 import { usePathname } from "next/navigation";
@@ -165,6 +166,24 @@ const navigationItems: (Label | Item | Hidden)[] = [
     type: 'item'
   },
   {
+    name: "Emails",
+    type: 'label'
+  },
+  {
+    name: "Emails",
+    href: "/emails",
+    regex: /^\/projects\/[^\/]+\/emails$/,
+    icon: Mail,
+    type: 'item'
+  },
+  {
+    name: "Templates",
+    href: "/email-templates",
+    regex: /^\/projects\/[^\/]+\/email-templates$/,
+    icon: SquarePen,
+    type: 'item'
+  },
+  {
     name: "Configuration",
     type: 'label'
   },
@@ -173,13 +192,6 @@ const navigationItems: (Label | Item | Hidden)[] = [
     href: "/domains",
     regex: /^\/projects\/[^\/]+\/domains$/,
     icon: LinkIcon,
-    type: 'item'
-  },
-  {
-    name: "Emails",
-    href: "/emails",
-    regex: /^\/projects\/[^\/]+\/emails$/,
-    icon: Mail,
     type: 'item'
   },
   {
