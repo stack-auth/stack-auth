@@ -7,7 +7,7 @@ import { EMAIL_TEMPLATES_METADATA, validateEmailTemplateContent } from "@stackfr
 import { EmailTemplateType } from "@stackframe/stack-shared/dist/interface/crud/email-templates";
 import { useToast } from "@stackframe/stack-ui";
 import { usePathname } from "next/navigation";
-import { useAdminApp } from "../../../use-admin-app";
+import { useAdminApp } from "../../use-admin-app";
 
 export default function PageClient(props: { templateType: EmailTemplateType }) {
   const app = useAdminApp();
