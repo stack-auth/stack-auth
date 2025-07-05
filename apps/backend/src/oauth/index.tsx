@@ -17,6 +17,7 @@ import { MicrosoftProvider } from "./providers/microsoft";
 import { MockProvider } from "./providers/mock";
 import { SpotifyProvider } from "./providers/spotify";
 import { XProvider } from "./providers/x";
+import { TwitchProvider } from "./providers/twitch";
 
 const _providers = {
   github: GithubProvider,
@@ -30,6 +31,7 @@ const _providers = {
   bitbucket: BitbucketProvider,
   linkedin: LinkedInProvider,
   x: XProvider,
+  twitch: TwitchProvider,
 } as const;
 
 const mockProvider = MockProvider;
