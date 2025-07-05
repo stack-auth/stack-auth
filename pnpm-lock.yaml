@@ -21994,6 +21994,23 @@ snapshots:
   '@swc/core-win32-x64-msvc@1.3.101':
     optional: true
 
+  '@swc/core@1.3.101':
+    dependencies:
+      '@swc/counter': 0.1.3
+      '@swc/types': 0.1.8
+    optionalDependencies:
+      '@swc/core-darwin-arm64': 1.3.101
+      '@swc/core-darwin-x64': 1.3.101
+      '@swc/core-linux-arm-gnueabihf': 1.3.101
+      '@swc/core-linux-arm64-gnu': 1.3.101
+      '@swc/core-linux-arm64-musl': 1.3.101
+      '@swc/core-linux-x64-gnu': 1.3.101
+      '@swc/core-linux-x64-musl': 1.3.101
+      '@swc/core-win32-arm64-msvc': 1.3.101
+      '@swc/core-win32-ia32-msvc': 1.3.101
+      '@swc/core-win32-x64-msvc': 1.3.101
+    optional: true
+
   '@swc/core@1.3.101(@swc/helpers@0.5.15)':
     dependencies:
       '@swc/counter': 0.1.3
@@ -32010,14 +32027,14 @@ snapshots:
 
   terser-webpack-plugin@5.3.10(@swc/core@1.3.101)(esbuild@0.24.2)(webpack@5.92.0(@swc/core@1.3.101)(esbuild@0.24.2)):
     dependencies:
-      '@jridgewell/trace-mapping': 0.3.25
+      '@jridgewell/trace-mapping': 0.3.29
       jest-worker: 27.5.1
       schema-utils: 3.3.0
       serialize-javascript: 6.0.2
       terser: 5.31.1
       webpack: 5.92.0(@swc/core@1.3.101)(esbuild@0.24.2)
     optionalDependencies:
-      '@swc/core': 1.3.101(@swc/helpers@0.5.15)
+      '@swc/core': 1.3.101
       esbuild: 0.24.2
 
   terser@5.31.1:
@@ -32298,7 +32315,7 @@ snapshots:
       tinyglobby: 0.2.10
       tree-kill: 1.2.2
     optionalDependencies:
-      '@swc/core': 1.3.101(@swc/helpers@0.5.15)
+      '@swc/core': 1.3.101
       postcss: 8.5.3
       typescript: 5.8.3
     transitivePeerDependencies:
@@ -33059,7 +33076,7 @@ snapshots:
       '@webassemblyjs/wasm-parser': 1.12.1
       acorn: 8.14.0
       acorn-import-attributes: 1.9.5(acorn@8.14.0)
-      browserslist: 4.24.4
+      browserslist: 4.25.1
       chrome-trace-event: 1.0.4
       enhanced-resolve: 5.18.1
       es-module-lexer: 1.5.3
