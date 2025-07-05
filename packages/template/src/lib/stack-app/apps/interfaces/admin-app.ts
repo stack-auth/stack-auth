@@ -58,6 +58,13 @@ export type StackAdminApp<HasTokenStore extends boolean = boolean, ProjectId ext
     sendSignInInvitationEmail(email: string, callbackUrl: string): Promise<void>,
 
     listSentEmails(): Promise<AdminSentEmail[]>,
+
+    sendEmail(options: {
+      userId: string,
+      subject: string,
+      content: string,
+      notificationCategoryName: string,
+    }): Promise<void>,
   }
   & StackServerApp<HasTokenStore, ProjectId>
 );
