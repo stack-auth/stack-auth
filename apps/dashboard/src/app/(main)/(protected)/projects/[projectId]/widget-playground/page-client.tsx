@@ -3,9 +3,10 @@
 import { DndContext, pointerWithin, useDraggable, useDroppable } from '@dnd-kit/core';
 import { range } from '@stackframe/stack-shared/dist/utils/arrays';
 import { StackAssertionError, throwErr } from '@stackframe/stack-shared/dist/utils/errors';
-import { deepPlainEquals, isNotNull } from '@stackframe/stack-shared/dist/utils/objects';
+import { deepPlainEquals, filterUndefined, isNotNull } from '@stackframe/stack-shared/dist/utils/objects';
 import { runAsynchronously, runAsynchronouslyWithAlert, wait } from '@stackframe/stack-shared/dist/utils/promises';
 import { InstantStateRef, useInstantState } from '@stackframe/stack-shared/dist/utils/react';
+import { generateUuid } from '@stackframe/stack-shared/dist/utils/uuids';
 import { Button, ButtonProps, Card, Dialog, DialogBody, DialogContent, DialogFooter, DialogHeader, DialogTitle, cn } from '@stackframe/stack-ui';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { FaPen, FaPlus, FaTrash } from 'react-icons/fa';
@@ -245,34 +246,61 @@ class WidgetInstanceGrid {
     });
     return new WidgetInstanceGrid(newNonEmptyElements, this.width);
   }
+
+  public withAdded(widget: Widget<any>, x: number, y: number, width: number, height: number) {
+    const newNonEmptyElements = [...this._nonEmptyElements, {
+      instance: {
+        id: generateUuid(),
+        widget,
+        settings: widget.defaultSettings,
+      },
+      x,
+      y,
+      width,
+      height,
+    }];
+    return new WidgetInstanceGrid(newNonEmptyElements, this.width);
+  }
+
+  public withRemoved(x: number, y: number) {
+    const elementToRemove = this.getElementAt(x, y);
+    const newNonEmptyElements = this._nonEmptyElements.filter((element) => element.x !== elementToRemove.x || element.y !== elementToRemove.y);
+    return new WidgetInstanceGrid(newNonEmptyElements, this.width);
+  }
 }
+
+const widgets = [
+  {
+    mainComponent: () => <Card style={{ inset: '0', position: 'absolute' }}>Widget 1</Card>,
+    settingsComponent: () => <div>Settings 1</div>,
+    defaultSettings: {},
+  },
+  {
+    mainComponent: () => <Card style={{ inset: '0', position: 'absolute' }}>Widget 2</Card>,
+    settingsComponent: () => <div>Settings 2</div>,
+    defaultSettings: {},
+  },
+  {
+    mainComponent: () => <Card style={{ inset: '0', position: 'absolute' }}>Widget 3</Card>,
+    settingsComponent: () => <div>Settings 3</div>,
+    defaultSettings: {},
+  },
+];
 
 const widgetInstances = [
   {
     id: 'abc',
-    widget: {
-      mainComponent: () => <Card>Widget 1</Card>,
-      settingsComponent: () => <div>Settings 1</div>,
-      defaultSettings: {},
-    },
+    widget: widgets[0],
     settings: {},
   },
   {
     id: 'def',
-    widget: {
-      mainComponent: () => <Card>Widget 2</Card>,
-      settingsComponent: () => <div>Settings 2</div>,
-      defaultSettings: {},
-    },
+    widget: widgets[1],
     settings: {},
   },
   {
     id: 'ghi',
-    widget: {
-      mainComponent: () => <Card>Widget 3</Card>,
-      settingsComponent: () => <div>Settings 3</div>,
-      defaultSettings: {},
-    },
+    widget: widgets[2],
     settings: {},
   },
 ];
@@ -314,7 +342,7 @@ export default function PageClient() {
 
 function SwappableWidgetInstanceGrid(props: { gridRef: InstantStateRef<WidgetInstanceGrid>, setGrid: (grid: WidgetInstanceGrid) => void, isEditing: boolean }) {
   const [overElementPosition, setOverElementPosition] = useState<[number, number] | null>(null);
-  const [hoverSwap, setHoverSwap] = useState<[string, [number, number]] | null>(null);
+  const [hoverSwap, setHoverSwap] = useState<[string, [number, number, number, number, number, number]] | null>(null);
   const [activeWidgetId, setActiveWidgetId] = useState<string | null>(null);
   const gridContainerRef = useRef<HTMLDivElement>(null);
 
@@ -362,8 +390,16 @@ function SwappableWidgetInstanceGrid(props: { gridRef: InstantStateRef<WidgetIns
               setOverElementPosition(null);
             }
             const overId = props.gridRef.current.getElementAt(overCoordinates[0], overCoordinates[1]).instance?.id;
-            if (overId) {
-              setHoverSwap([overId, [event.over.rect.left - event.active.rect.current.initial.left, event.over.rect.top - event.active.rect.current.initial.top]]);
+            if (overId && overId !== widgetId) {
+              console.log(event.over.rect, event.active.rect.current.initial);
+              setHoverSwap([overId, [
+                event.over.rect.left - event.active.rect.current.initial.left,
+                event.over.rect.top - event.active.rect.current.initial.top,
+                event.active.rect.current.initial.width,
+                event.active.rect.current.initial.height,
+                event.over.rect.width,
+                event.over.rect.height,
+              ]]);
             } else {
               setHoverSwap(null);
             }
@@ -401,17 +437,22 @@ function SwappableWidgetInstanceGrid(props: { gridRef: InstantStateRef<WidgetIns
               width={width}
               height={height}
               grid={props.gridRef.current}
+              onAddWidget={() => {
+                props.setGrid(props.gridRef.current.withAdded(widgets[Math.floor(Math.random() * widgets.length)], x, y, width, height));
+              }}
             >
               {instance && (
                 <Draggable
                   widgetInstance={instance}
-                  shouldTransition={activeWidgetId !== instance.id && (activeWidgetId !== null)}
+                  activeWidgetId={activeWidgetId}
                   isEditing={props.isEditing}
                   style={{
                     transform: isHoverSwap ? `translate(${-hoverSwap[1][0]}px, ${-hoverSwap[1][1]}px)` : undefined,
+                    width: isHoverSwap ? `${hoverSwap[1][2]}px` : (hoverSwap && activeWidgetId === instance.id ? `${hoverSwap[1][4]}px` : undefined),
+                    height: isHoverSwap ? `${hoverSwap[1][3]}px` : (hoverSwap && activeWidgetId === instance.id ? `${hoverSwap[1][5]}px` : undefined),
                   }}
-                  onDelete={async () => {
-                    throw new StackAssertionError("Widget delete currently not implemented");
+                  onDeleteWidget={async () => {
+                    props.setGrid(props.gridRef.current.withRemoved(x, y));
                   }}
                   settings={instance.settings}
                   onSaveSettings={async (settings) => {
@@ -442,7 +483,7 @@ function SwappableWidgetInstanceGrid(props: { gridRef: InstantStateRef<WidgetIns
   );
 }
 
-function Droppable(props: { isOver: boolean, children: React.ReactNode, style?: React.CSSProperties, x: number, y: number, width: number, height: number, isEmpty: boolean, grid: WidgetInstanceGrid }) {
+function Droppable(props: { isOver: boolean, children: React.ReactNode, style?: React.CSSProperties, x: number, y: number, width: number, height: number, isEmpty: boolean, grid: WidgetInstanceGrid, onAddWidget: () => void }) {
   const { setNodeRef, active } = useDroppable({
     id: JSON.stringify([props.x, props.y]),
   });
@@ -489,7 +530,7 @@ function Droppable(props: { isOver: boolean, children: React.ReactNode, style?: 
           }}
         >
           <BigIconButton icon={<FaPlus size={24} opacity={0.7} />} onClick={() => {
-            throw new StackAssertionError("Add widget currently not implemented");
+            props.onAddWidget();
           }} />
         </div>
       </>)}
@@ -501,15 +542,15 @@ function Droppable(props: { isOver: boolean, children: React.ReactNode, style?: 
 function Draggable(props: {
   widgetInstance: WidgetInstance<any>,
   style: React.CSSProperties,
-  shouldTransition: boolean,
+  activeWidgetId: string | null,
   isEditing: boolean,
-  onDelete: () => Promise<void>,
+  onDeleteWidget: () => Promise<void>,
   settings: any,
   onSaveSettings: (settings: any) => Promise<void>,
   onResize: (edges: { top: number, left: number, bottom: number, right: number }) => { top: number, left: number, bottom: number, right: number },
   calculateUnitSize: () => { width: number, height: number },
 }) {
-  const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
+  const { attributes, listeners, setNodeRef, transform, isDragging, node: draggableContainerRef } = useDraggable({
     id: props.widgetInstance.id,
     disabled: !props.isEditing,
   });
@@ -537,7 +578,6 @@ function Draggable(props: {
     }
   }, [settingsOpenAnimationDetails, props.settings]);
 
-  const draggableContainerRef = useRef<HTMLDivElement>(null);
   const dialogRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -586,7 +626,7 @@ function Draggable(props: {
     return () => {
       cancelled = true;
     };
-  }, [isSettingsOpen, settingsOpenAnimationDetails]);
+  }, [isSettingsOpen, settingsOpenAnimationDetails, draggableContainerRef]);
 
   useEffect(() => {
     let cancelled = false;
@@ -618,30 +658,27 @@ function Draggable(props: {
         }
       `}</style>
       <div
-        ref={draggableContainerRef}
+        ref={setNodeRef}
         className="stack-recursive-backface-hidden"
         style={{
-          position: 'relative',
-          flexGrow: 1,
-          alignSelf: 'stretch',
+          position: 'absolute',
+          width: '100%',
+          height: '100%',
           display: 'flex',
 
           zIndex: isDragging ? 100000 : undefined,
 
-          transition: isDeleting ? `transform 0.3s ease, opacity 0.3s` : `transform 0.6s ease`,
-          transform: [
-            settingsOpenAnimationDetails?.shouldStart && !settingsOpenAnimationDetails.revert ? `
-              translate(${-settingsOpenAnimationDetails.translate[0]}px, ${-settingsOpenAnimationDetails.translate[1]}px)
-              scale(${1/settingsOpenAnimationDetails.scale[0]}, ${1/settingsOpenAnimationDetails.scale[1]})
-              rotateY(180deg)
-            ` : 'rotateY(0deg)',
-            isDeleting ? 'scale(0.8)' : '',
-          ].filter(Boolean).join(' '),
-          opacity: isDeleting ? 0 : 1,
+          transition: [
+            'border-width 0.1s ease',
+            'box-shadow 0.1s ease',
+            props.activeWidgetId !== props.widgetInstance.id && (props.activeWidgetId !== null) ? 'transform 0.2s ease, width 0.2s ease, height 0.2s ease' : undefined,
+            props.activeWidgetId === props.widgetInstance.id ? 'width 0.2s ease, height 0.2s ease' : undefined,
+          ].filter(Boolean).join(', '),
+          ...filterUndefined(props.style),
+          transform: `translate3d(${transform?.x ?? 0}px, ${transform?.y ?? 0}px, 0) ${props.style.transform ?? ''}`,
         }}
       >
         <div
-          ref={setNodeRef}
           className={cn(isDragging && 'bg-white dark:bg-black border-black/20 dark:border-white/20')}
           style={{
             position: 'relative',
@@ -649,16 +686,20 @@ function Draggable(props: {
             alignSelf: 'stretch',
             boxShadow: props.isEditing ? '0 0 32px 0 #8882' : '0 0 0 0 transparent',
             cursor: isDragging ? 'grabbing' : undefined,
-            transition: [
-              'border-width 0.1s ease',
-              'box-shadow 0.1s ease',
-              !props.shouldTransition ? undefined : 'transform 0.4s ease',
-            ].filter(Boolean).join(', '),
             borderRadius: '8px',
             borderWidth: props.isEditing && !isDragging ? '1px' : '0px',
             borderStyle: 'solid',
-            ...props.style,
-            transform: `translate3d(${transform?.x ?? 0}px, ${transform?.y ?? 0}px, 0) ${props.style.transform ?? ''}`,
+
+            transition: isDeleting ? `transform 0.3s ease, opacity 0.3s` : `transform 0.6s ease`,
+            transform: [
+              settingsOpenAnimationDetails?.shouldStart && !settingsOpenAnimationDetails.revert ? `
+                translate(${-settingsOpenAnimationDetails.translate[0]}px, ${-settingsOpenAnimationDetails.translate[1]}px)
+                scale(${1/settingsOpenAnimationDetails.scale[0]}, ${1/settingsOpenAnimationDetails.scale[1]})
+                rotateY(180deg)
+              ` : 'rotateY(0deg)',
+              isDeleting ? 'scale(0.8)' : '',
+            ].filter(Boolean).join(' '),
+            opacity: isDeleting ? 0 : 1,
           }}
         >
           <div
@@ -723,8 +764,8 @@ function Draggable(props: {
                   onClick={async () => {
                     setIsDeleting(true);
                     try {
-                      await wait(1000);
-                      await props.onDelete();
+                      await wait(300);
+                      await props.onDeleteWidget();
                     } catch (e) {
                       // in case something went wrong with the delete, we want to reset the state
                       setIsDeleting(false);
