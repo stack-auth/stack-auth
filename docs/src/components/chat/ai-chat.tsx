@@ -35,34 +35,58 @@ export function AIChatDrawer() {
   const [isHomePage, setIsHomePage] = useState(false);
   const [isScrolled, setIsScrolled] = useState(false);
   const [pageLoadTime] = useState(Date.now());
+  const [sessionId] = useState(() => {
+    // Generate or retrieve session ID
+    const existing = localStorage.getItem('ai-chat-session-id');
+    if (existing) {
+      return existing;
+    }
+    const newId = `session_${Date.now()}_${Math.random().toString(36).substring(2, 15)}`;
+    localStorage.setItem('ai-chat-session-id', newId);
+    return newId;
+  });
   const [sessionData, setSessionData] = useState({
-    messagesCount: 0,
-    starterPromptsUsed: 0,
     timeOnPage: 0,
-    scrollDepth: 0,
+    messageCount: 0,
   });
 
   // Track session data
   useEffect(() => {
     const updateSessionData = () => {
       const timeOnPage = Math.floor((Date.now() - pageLoadTime) / 1000);
-      const scrollDepth = Math.floor((window.scrollY / (document.body.scrollHeight - window.innerHeight)) * 100);
       
       setSessionData(prev => ({
         ...prev,
         timeOnPage,
-        scrollDepth: Math.max(prev.scrollDepth, scrollDepth || 0),
       }));
     };
 
     const interval = setInterval(updateSessionData, 5000); // Update every 5 seconds
-    window.addEventListener('scroll', updateSessionData);
 
     return () => {
       clearInterval(interval);
-      window.removeEventListener('scroll', updateSessionData);
     };
   }, [pageLoadTime]);
+
+  // Reset session ID if user has been inactive for too long
+  useEffect(() => {
+    const checkSessionExpiry = () => {
+      const lastActivity = localStorage.getItem('ai-chat-last-activity');
+      if (lastActivity) {
+        const timeSinceActivity = Date.now() - parseInt(lastActivity);
+        const ONE_HOUR = 60 * 60 * 1000;
+        
+        if (timeSinceActivity > ONE_HOUR) {
+          // Generate new session ID
+          const newId = `session_${Date.now()}_${Math.random().toString(36).substring(2, 15)}`;
+          localStorage.setItem('ai-chat-session-id', newId);
+          setSessionData(prev => ({ ...prev, messageCount: 0 }));
+        }
+      }
+    };
+
+    checkSessionExpiry();
+  }, []);
 
   // Detect if we're on homepage and scroll state
   useEffect(() => {
@@ -144,28 +168,23 @@ export function AIChatDrawer() {
   // Function to send message to Discord webhook
   const sendToDiscord = async (message: string) => {
     try {
-      // Gather additional context
+      // Update message count and last activity
+      const newMessageCount = sessionData.messageCount + 1;
+      localStorage.setItem('ai-chat-last-activity', Date.now().toString());
+      
+      // Gather only essential context
       const context = {
         message: message,
         username: 'Stack Auth Docs User',
         metadata: {
-          url: window.location.href,
+          sessionId: sessionId,
+          messageNumber: newMessageCount,
           pathname: window.location.pathname,
           timestamp: new Date().toISOString(),
           userAgent: navigator.userAgent,
-          viewport: `${window.innerWidth}x${window.innerHeight}`,
-          isHomePage: isHomePage,
-          isScrolled: isScrolled,
-          messageLength: message.length,
           messageType: starterPrompts.some(p => p.prompt === message) ? 'starter-prompt' : 'custom',
-          sessionMessageCount: messages.length + 1,
-          // Enhanced session data
           timeOnPage: sessionData.timeOnPage,
-          scrollDepth: sessionData.scrollDepth,
-          referrer: document.referrer || 'Direct',
-          language: navigator.language,
-          timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
-          chatExpanded: isChatExpanded,
+          isFollowUp: newMessageCount > 1,
         }
       };
 
@@ -186,11 +205,9 @@ export function AIChatDrawer() {
     if (!input.trim()) return;
 
     // Update session data
-    const isStarterPrompt = starterPrompts.some(p => p.prompt === input.trim());
     setSessionData(prev => ({
       ...prev,
-      messagesCount: prev.messagesCount + 1,
-      starterPromptsUsed: prev.starterPromptsUsed + (isStarterPrompt ? 1 : 0),
+      messageCount: prev.messageCount + 1,
     }));
 
     // Send message to Discord webhook

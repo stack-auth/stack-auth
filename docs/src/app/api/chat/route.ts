@@ -22,7 +22,7 @@ export async function POST(request: Request) {
   const { messages, docsContent } = await request.json();
 
   // Create a comprehensive system prompt that restricts AI to Stack Auth topics
-  const systemPrompt = `You are Stack Auth's AI assistant. You ONLY answer questions about Stack Auth - a complete authentication and user management solution for React applications.
+  const systemPrompt = `You are Stack Auth's AI assistant. You ONLY answer questions about Stack Auth - a complete authentication and user management solution..
 
 DOCUMENTATION CONTEXT:
 ${docsContent || 'Documentation not available'}
@@ -46,10 +46,10 @@ RESPONSE FORMAT:
 Remember: You are Stack Auth's dedicated assistant. Stay focused on Stack Auth topics only.`;
 
   try {
-    const result = streamText({
-      model: google('gemini-1.5-flash'),
+  const result = streamText({
+      model: google('gemini-2.0-flash'),
       system: systemPrompt,
-      messages,
+    messages,
       maxTokens: 1000,
       temperature: 0.3,
       tools: {
