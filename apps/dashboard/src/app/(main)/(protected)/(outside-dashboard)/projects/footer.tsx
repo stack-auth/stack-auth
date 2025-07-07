@@ -7,7 +7,7 @@ export default function Footer () {
     <footer>
       <Separator />
 
-      <div className="flex flex-col md:flex-row p-4 gap-4">
+      <div className="flex flex-col md:flex-row p-4 gap-4 backdrop-blur-md bg-white/20 dark:bg-black/20">
         <div className="flex flex-col gap-4 md:flex-1">
           <ul className="flex gap-4 flex-grow">
             {[

@@ -1,6 +1,6 @@
 {
   "name": "@stackframe/stack-dashboard",
-  "version": "2.8.17",
+  "version": "2.8.18",
   "private": true,
   "scripts": {
     "clean": "rimraf .next && rimraf node_modules",
@@ -16,6 +16,8 @@
     "lint": "next lint"
   },
   "dependencies": {
+    "@dnd-kit/core": "^6.3.1",
+    "@dnd-kit/sortable": "^10.0.0",
     "@hookform/resolvers": "^3.3.4",
     "@monaco-editor/react": "^4.6.0",
     "@next/bundle-analyzer": "15.2.3",
