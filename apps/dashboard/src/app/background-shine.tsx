@@ -13,7 +13,7 @@ export function BackgroundShine() {
   }, []);
 
   return (
-    <div className="fixed inset-0 hidden dark:block opacity-75"
+    <div className="fixed inset-0 hidden dark:block opacity-75 -z-10000"
       style={{
         transition: 'transform 0.05s ease-in-out',
         transform: `translateY(${-scrollY * 0.2}px)`,
