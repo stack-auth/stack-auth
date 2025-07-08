@@ -371,29 +371,33 @@ export function Breadcrumb(options: BreadcrumbProps) {
   if (items.length === 0) return null;
 
   return (
-    <div className="flex flex-row items-center gap-1.5 text-[15px] text-fd-muted-foreground">
-      {items.map((item, i) => {
-        const className = cn(
-          'truncate',
-          i === items.length - 1 && 'text-fd-primary font-medium',
-        );
+    <div className="absolute -top-12 left-0 right-0">
+      <div className="container max-w-6xl mx-auto px-4 md:px-6">
+        <div className="flex flex-row items-center gap-1.5 text-[13px] opacity-60" style={{ color: 'rgb(107, 114, 128)' }}>
+          {items.map((item, i) => {
+            const className = cn(
+              'truncate',
+              i === items.length - 1 && 'text-fd-primary font-medium',
+            );
 
-        return (
-          <Fragment key={i}>
-            {i !== 0 && <span className="text-fd-foreground/30">/</span>}
-            {item.url ? (
-              <Link
-                href={item.url}
-                className={cn(className, 'transition-opacity hover:opacity-80')}
-              >
-                {item.name}
-              </Link>
-            ) : (
-              <span className={className}>{item.name}</span>
-            )}
-          </Fragment>
-        );
-      })}
+            return (
+              <Fragment key={i}>
+                {i !== 0 && <span className="text-fd-foreground/30">/</span>}
+                {item.url ? (
+                  <Link
+                    href={item.url}
+                    className={cn(className, 'transition-opacity hover:opacity-80')}
+                  >
+                    {item.name}
+                  </Link>
+                ) : (
+                  <span className={className}>{item.name}</span>
+                )}
+              </Fragment>
+            );
+          })}
+        </div>
+      </div>
     </div>
   );
 }

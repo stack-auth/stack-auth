@@ -153,7 +153,7 @@ export function DocsPage({
       >
         <PageArticle
           {...props.article}
-          className={props.article?.className}
+          className={cn('relative', props.article?.className)}
         >
           {slot(props.breadcrumb, <Breadcrumb {...props.breadcrumb} />)}
           <div className="mb-12">

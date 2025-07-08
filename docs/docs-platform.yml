@@ -23,40 +23,40 @@ pages:
     platforms: ["js"]  # Only vanilla JS
   
   # Auth Providers - Available for all platforms since OAuth is universal
-  - path: getting-started/auth-providers/index.mdx
+  - path: concepts/auth-providers/index.mdx
     platforms: ["next", "react", "js", "python"]
   
-  - path: getting-started/auth-providers/github.mdx
+  - path: concepts/auth-providers/github.mdx
     platforms: ["next", "react", "js", "python"]
   
-  - path: getting-started/auth-providers/google.mdx
+  - path: concepts/auth-providers/google.mdx
     platforms: ["next", "react", "js", "python"]
   
-  - path: getting-started/auth-providers/facebook.mdx
+  - path: concepts/auth-providers/facebook.mdx
     platforms: ["next", "react", "js", "python"]
   
-  - path: getting-started/auth-providers/microsoft.mdx
+  - path: concepts/auth-providers/microsoft.mdx
     platforms: ["next", "react", "js", "python"]
   
-  - path: getting-started/auth-providers/spotify.mdx
+  - path: concepts/auth-providers/spotify.mdx
     platforms: ["next", "react", "js", "python"]
   
-  - path: getting-started/auth-providers/discord.mdx
+  - path: concepts/auth-providers/discord.mdx
     platforms: ["next", "react", "js", "python"]
   
-  - path: getting-started/auth-providers/gitlab.mdx
+  - path: concepts/auth-providers/gitlab.mdx
     platforms: ["next", "react", "js", "python"]
   
-  - path: getting-started/auth-providers/apple.mdx
+  - path: concepts/auth-providers/apple.mdx
     platforms: ["next", "react", "js", "python"]
   
-  - path: getting-started/auth-providers/bitbucket.mdx
+  - path: concepts/auth-providers/bitbucket.mdx
     platforms: ["next", "react", "js", "python"]
   
-  - path: getting-started/auth-providers/linkedin.mdx
+  - path: concepts/auth-providers/linkedin.mdx
     platforms: ["next", "react", "js", "python"]
   
-  - path: getting-started/auth-providers/x-twitter.mdx
+  - path: concepts/auth-providers/x-twitter.mdx
     platforms: ["next", "react", "js", "python"]
   
   # Advanced auth methods - More frontend-focused
