@@ -35,14 +35,18 @@ export function AIChatDrawer() {
   const [isHomePage, setIsHomePage] = useState(false);
   const [isScrolled, setIsScrolled] = useState(false);
   const [pageLoadTime] = useState(Date.now());
-  const [sessionId] = useState(() => {
+  const [sessionId, setSessionId] = useState(() => {
     // Generate or retrieve session ID
-    const existing = localStorage.getItem('ai-chat-session-id');
-    if (existing) {
-      return existing;
+    if (typeof window !== 'undefined') {
+      const existing = localStorage.getItem('ai-chat-session-id');
+      if (existing) {
+        return existing;
+      }
     }
     const newId = `session_${Date.now()}_${Math.random().toString(36).substring(2, 15)}`;
-    localStorage.setItem('ai-chat-session-id', newId);
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('ai-chat-session-id', newId);
+    }
     return newId;
   });
   const [sessionData, setSessionData] = useState({
@@ -54,7 +58,7 @@ export function AIChatDrawer() {
   useEffect(() => {
     const updateSessionData = () => {
       const timeOnPage = Math.floor((Date.now() - pageLoadTime) / 1000);
-      
+
       setSessionData(prev => ({
         ...prev,
         timeOnPage,
@@ -71,15 +75,18 @@ export function AIChatDrawer() {
   // Reset session ID if user has been inactive for too long
   useEffect(() => {
     const checkSessionExpiry = () => {
+      if (typeof window === 'undefined') return;
+
       const lastActivity = localStorage.getItem('ai-chat-last-activity');
       if (lastActivity) {
         const timeSinceActivity = Date.now() - parseInt(lastActivity);
         const ONE_HOUR = 60 * 60 * 1000;
-        
+
         if (timeSinceActivity > ONE_HOUR) {
           // Generate new session ID
           const newId = `session_${Date.now()}_${Math.random().toString(36).substring(2, 15)}`;
           localStorage.setItem('ai-chat-session-id', newId);
+          setSessionId(newId); // Update the component state
           setSessionData(prev => ({ ...prev, messageCount: 0 }));
         }
       }
@@ -118,20 +125,42 @@ export function AIChatDrawer() {
     };
   }, []);
 
-  // Calculate position based on homepage and scroll state
-  const topPosition = isHomePage && isScrolled ? 'top-0' : 'top-14';
-  const height = isHomePage && isScrolled ? 'h-screen' : 'h-[calc(100vh-3.5rem)]';
-
-  // Fetch documentation content when component mounts
+  // Fetch documentation content when component mounts with caching
   useEffect(() => {
     let isCancelled = false;
 
     const fetchDocs = async () => {
       try {
+        // Check cache first (10 minute TTL)
+        if (typeof window !== 'undefined') {
+          const cached = sessionStorage.getItem('ai-chat-docs-cache');
+          if (cached) {
+            const { content, timestamp } = JSON.parse(cached);
+            const CACHE_TTL = 10 * 60 * 1000; // 10 minutes in milliseconds
+
+            if (Date.now() - timestamp < CACHE_TTL) {
+              // Cache is still valid, use cached content
+              if (!isCancelled) {
+                setDocsContent(content);
+              }
+              return;
+            }
+          }
+        }
+
+        // Cache miss or expired, fetch fresh content
         const response = await fetch('/llms.txt');
         if (response.ok && !isCancelled) {
           const content = await response.text();
           setDocsContent(content);
+
+          // Cache the fresh content
+          if (typeof window !== 'undefined') {
+            sessionStorage.setItem('ai-chat-docs-cache', JSON.stringify({
+              content,
+              timestamp: Date.now()
+            }));
+          }
         }
       } catch (error) {
         console.error('Failed to fetch documentation:', error);
@@ -146,6 +175,10 @@ export function AIChatDrawer() {
       isCancelled = true;
     };
   }, []);
+
+  // Calculate position based on homepage and scroll state
+  const topPosition = isHomePage && isScrolled ? 'top-0' : 'top-14';
+  const height = isHomePage && isScrolled ? 'h-screen' : 'h-[calc(100vh-3.5rem)]';
 
   const {
     messages,
@@ -170,8 +203,10 @@ export function AIChatDrawer() {
     try {
       // Update message count and last activity
       const newMessageCount = sessionData.messageCount + 1;
-      localStorage.setItem('ai-chat-last-activity', Date.now().toString());
-      
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('ai-chat-last-activity', Date.now().toString());
+      }
+
       // Gather only essential context
       const context = {
         message: message,
@@ -179,9 +214,9 @@ export function AIChatDrawer() {
         metadata: {
           sessionId: sessionId,
           messageNumber: newMessageCount,
-          pathname: window.location.pathname,
+          pathname: typeof window !== 'undefined' ? window.location.pathname : '',
           timestamp: new Date().toISOString(),
-          userAgent: navigator.userAgent,
+          userAgent: typeof window !== 'undefined' ? navigator.userAgent : '',
           messageType: starterPrompts.some(p => p.prompt === message) ? 'starter-prompt' : 'custom',
           timeOnPage: sessionData.timeOnPage,
           isFollowUp: newMessageCount > 1,
@@ -217,6 +252,23 @@ export function AIChatDrawer() {
 
     // Continue with normal chat submission
     handleSubmit(e);
+  };
+
+  // Non-async wrapper for form onSubmit to avoid promise issues
+  const handleFormSubmit = (e: React.FormEvent) => {
+    handleChatSubmit(e).catch(error => {
+      console.error('Chat submit error:', error);
+    });
+  };
+
+  // Non-async handler for onKeyDown to avoid promise issues
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      handleChatSubmit(e as React.FormEvent).catch(error => {
+        console.error('Chat submit error:', error);
+      });
+    }
   };
 
   // Starter prompts for users
@@ -357,7 +409,7 @@ export function AIChatDrawer() {
 
       {/* Input */}
       <div className="border-t border-fd-border p-3">
-        <form onSubmit={handleChatSubmit} className="flex gap-2">
+        <form onSubmit={handleFormSubmit} className="flex gap-2">
           <textarea
             value={input}
             onChange={handleInputChange}
@@ -365,12 +417,7 @@ export function AIChatDrawer() {
             className="flex-1 resize-none border border-fd-border rounded-md px-2 py-1 text-xs bg-fd-background text-fd-foreground placeholder:text-fd-muted-foreground focus:outline-none focus:ring-1 focus:ring-fd-primary focus:border-fd-primary"
             rows={1}
             style={{ minHeight: '32px', maxHeight: '96px' }}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter' && !e.shiftKey) {
-                e.preventDefault();
-                handleChatSubmit(e as React.FormEvent);
-              }
-            }}
+            onKeyDown={handleKeyDown}
           />
           <button
             type="submit"

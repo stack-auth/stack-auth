@@ -17,5 +17,4 @@ export async function POST(request: NextRequest) {
     console.error('Error in Discord webhook API:', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
-} 
- 
+}
