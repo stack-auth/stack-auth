@@ -1,23 +1,12 @@
-import { renderEmailWithTheme } from "@/lib/email-themes";
+import { EMAIL_THEMES, renderEmailWithTheme } from "@/lib/email-themes";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
-import { EMAIL_THEMES } from "@stackframe/stack-emails/dist/themes/index";
+import { KnownErrors } from "@stackframe/stack-shared/dist/known-errors";
 import { yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
 import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
-import { StatusError } from "@stackframe/stack-shared/dist/utils/errors";
-import { deindent } from "@stackframe/stack-shared/dist/utils/strings";
+import { captureError, StackAssertionError, StatusError } from "@stackframe/stack-shared/dist/utils/errors";
 
-const previewEmailHtml = deindent`
-  <div>
-    <h2 className="mb-4 text-2xl font-bold">
-      Header text
-    </h2>
-    <p className="mb-4">
-      Body text content with some additional information.
-    </p>
-  </div>
-`;
 
-export const GET = createSmartRouteHandler({
+export const POST = createSmartRouteHandler({
   metadata: {
     summary: "Render email theme",
     description: "Renders HTML content using the specified email theme",
@@ -25,10 +14,11 @@ export const GET = createSmartRouteHandler({
   },
   request: yupObject({
     auth: yupObject({
-      type: yupString().oneOf(["client", "server", "admin"]).defined(),
+      type: yupString().oneOf(["admin"]).defined(),
     }).nullable(),
-    query: yupObject({
+    body: yupObject({
       theme: yupString().oneOf(Object.keys(EMAIL_THEMES) as (keyof typeof EMAIL_THEMES)[]).defined(),
+      preview_html: yupString().defined(),
     }),
   }),
   response: yupObject({
@@ -38,14 +28,14 @@ export const GET = createSmartRouteHandler({
       html: yupString().defined(),
     }).defined(),
   }),
-  async handler({ query }) {
-    const { theme } = query;
+  async handler({ body }) {
     if (!getEnvVariable("STACK_FREESTYLE_API_KEY")) {
       throw new StatusError(500, "STACK_FREESTYLE_API_KEY is not set");
     }
-    const result = await renderEmailWithTheme(previewEmailHtml, theme);
+    const result = await renderEmailWithTheme(body.preview_html, body.theme);
     if ("error" in result) {
-      throw new StatusError(500, "Failed to render email theme");
+      captureError('render-email', new StackAssertionError("Error rendering email with theme", { result }));
+      throw new KnownErrors.EmailRenderingError(result.error);
     }
     return {
       statusCode: 200,

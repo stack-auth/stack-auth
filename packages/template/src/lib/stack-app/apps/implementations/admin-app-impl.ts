@@ -46,9 +46,8 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
   private readonly _metricsCache = createCache(async () => {
     return await this._interface.getMetrics();
   });
-  private readonly _emailThemePreviewCache = createCache(async ([theme]: [string]) => {
-    console.log("cache hit", theme);
-    return await this._interface.renderEmailThemePreview(theme);
+  private readonly _emailThemePreviewCache = createCache(async ([theme, content]: [string, string]) => {
+    return await this._interface.renderEmailThemePreview(theme, content);
   });
 
   constructor(options: StackAdminAppConstructorOptions<HasTokenStore, ProjectId>) {
@@ -409,8 +408,8 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
   }
 
   // IF_PLATFORM react-like
-  useEmailThemePreview(theme: string): string {
-    const crud = useAsyncCache(this._emailThemePreviewCache, [theme] as const, "useEmailThemePreview()");
+  useEmailThemePreview(theme: string, content: string): string {
+    const crud = useAsyncCache(this._emailThemePreviewCache, [theme, content] as const, "useEmailThemePreview()");
     return crud.html;
   }
   // END_PLATFORM

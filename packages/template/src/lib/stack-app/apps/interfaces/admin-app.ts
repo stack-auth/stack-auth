@@ -66,7 +66,7 @@ export type StackAdminApp<HasTokenStore extends boolean = boolean, ProjectId ext
       notificationCategoryName: string,
     }): Promise<void>,
 
-    useEmailThemePreview(theme: string): string, // THIS_LINE_PLATFORM react-like
+    useEmailThemePreview(theme: string, content: string): string, // THIS_LINE_PLATFORM react-like
   }
   & StackServerApp<HasTokenStore, ProjectId>
 );
