@@ -1,5 +1,5 @@
 import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
-import { StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
+import { StackAssertionError, StatusError } from "@stackframe/stack-shared/dist/utils/errors";
 import { OAuthUserInfo, validateUserInfo } from "../utils";
 import { OAuthBaseProvider, TokenSet } from "./base";
 
@@ -53,6 +53,9 @@ export class GithubProvider extends OAuthBaseProvider {
       },
     });
     if (!emailsRes.ok) {
+      if (emailsRes.status === 403) {
+        throw new StatusError(StatusError.BadRequest, `GitHub returned a 403 error when fetching user emails. \nDeveloper information: This is likely due to not having the correct permission "Email addresses" in your GitHub app. Please check your GitHub app settings and try again.`);
+      }
       throw new StackAssertionError("Error fetching user emails from GitHub: Status code " + emailsRes.status, {
         emailsRes,
         rawUserInfo,
