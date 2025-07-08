@@ -180,9 +180,9 @@ function ClickableCodeblock({
               if (node.properties.style) {
                 node.properties.style = (node.properties.style as string).replace(/background[^;]*;?/g, '');
               }
-              // Add line-height CSS for consistent rendering
+              // Add line-height CSS for consistent rendering and preserve whitespace
               const existingStyle = (node.properties.style as string) || '';
-              node.properties.style = `${existingStyle}; line-height: 1.5; font-family: ui-monospace, 'Cascadia Code', 'Source Code Pro', Menlo, Consolas, 'DejaVu Sans Mono', monospace;`;
+              node.properties.style = `${existingStyle}; line-height: 1.5; font-family: ui-monospace, 'Cascadia Code', 'Source Code Pro', Menlo, Consolas, 'DejaVu Sans Mono', monospace; white-space: pre;`;
             }
           }]
         });
