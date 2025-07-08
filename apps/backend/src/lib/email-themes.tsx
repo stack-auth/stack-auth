@@ -1,7 +1,7 @@
 import { getEnvVariable, getNodeEnvironment } from '@stackframe/stack-shared/dist/utils/env';
+import { Result } from "@stackframe/stack-shared/dist/utils/results";
 import { deindent } from "@stackframe/stack-shared/dist/utils/strings";
 import { FreestyleSandboxes } from 'freestyle-sandboxes';
-import { Result } from "@stackframe/stack-shared/dist/utils/results";
 
 export async function renderEmailWithTheme(
   htmlContent: string,
@@ -10,7 +10,7 @@ export async function renderEmailWithTheme(
 ) {
   const apiKey = getEnvVariable("STACK_FREESTYLE_API_KEY");
   const unsubscribeLinkHtml = unsubscribeLink ? `<br /><br /><a href="${unsubscribeLink}">Click here to unsubscribe</a>` : "";
-  if (getNodeEnvironment().includes("dev") && apiKey === "mock_stack_freestyle_key") {
+  if (["development", "test"].includes(getNodeEnvironment()) && apiKey === "mock_stack_freestyle_key") {
     return {
       html: `<div>Mock api key detected, returning mock data ${unsubscribeLinkHtml}</div>`,
       text: "Mock api key detected, returning mock data",
