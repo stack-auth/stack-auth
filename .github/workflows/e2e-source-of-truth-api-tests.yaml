@@ -100,12 +100,9 @@ jobs:
       - name: Initialize database
         run: pnpm run prisma -- migrate reset --force
 
-      - name: Initialize source of truth database without seeding
-        run: "STACK_DIRECT_DATABASE_CONNECTION_STRING='postgres://postgres:PASSWORD-PLACEHOLDER--uqfEC1hmmv@localhost:5432/stackframe2' pnpm run prisma -- migrate reset --force --skip-seed"
-
-      - name: Seed source of truth database
-        run: "STACK_DIRECT_DATABASE_CONNECTION_STRING='postgres://postgres:PASSWORD-PLACEHOLDER--uqfEC1hmmv@localhost:5432/stackframe2' pnpm run prisma -- db seed"
-  
+      - name: Initialize source of truth database
+        run: "STACK_DIRECT_DATABASE_CONNECTION_STRING='postgres://postgres:PASSWORD-PLACEHOLDER--uqfEC1hmmv@localhost:5432/stackframe2' pnpm run prisma -- migrate reset --force"
+        
       - name: Start stack-backend in background
         uses: JarvusInnovations/background-action@v1.0.7
         with:
