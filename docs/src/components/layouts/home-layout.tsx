@@ -51,29 +51,10 @@ function HomeAIChatToggleButton() {
     toggleChat: () => {},
   };
 
-  const [animationVariant, setAnimationVariant] = useState('');
-
-  // Generate random variant when chat is opened
-  const handleToggle = () => {
-    if (!isChatOpen) {
-      // Generate random variant (2-4, keeping 1 as default)
-      const variants = ['variant-2', 'variant-3', 'variant-4'];
-      const randomVariant = variants[Math.floor(Math.random() * variants.length)];
-      setAnimationVariant(randomVariant);
-    } else {
-      setAnimationVariant('');
-    }
-    toggleChat();
-  };
-
   return (
     <button
-      onClick={handleToggle}
-      className={`flex items-center justify-center transition-all duration-500 ease-out w-8 h-8 rounded-lg text-sm font-medium relative overflow-hidden ${
-        isChatOpen
-          ? `text-white chat-gradient-active ${animationVariant}`
-          : 'bg-fd-muted text-fd-muted-foreground hover:text-fd-foreground hover:bg-fd-muted/80'
-      }`}
+      onClick={toggleChat}
+      className="flex items-center justify-center transition-all duration-500 ease-out w-8 h-8 rounded-lg text-sm font-medium relative overflow-hidden text-white chat-gradient-active hover:scale-105 hover:brightness-110 hover:shadow-lg"
       title={isChatOpen ? 'Close AI chat' : 'Open AI chat'}
     >
       <Sparkles className="h-4 w-4 relative z-10" />

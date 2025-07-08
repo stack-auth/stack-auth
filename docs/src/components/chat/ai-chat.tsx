@@ -336,6 +336,13 @@ export function AIChatDrawer() {
         </div>
       </div>
 
+      {/* Experimental Banner */}
+      <div className="px-3 py-2 bg-yellow-500/5 border-b border-yellow-500/10">
+        <p className="text-xs text-fd-muted-foreground">
+          <span className="text-yellow-600 dark:text-yellow-400 font-medium">Experimental:</span> AI responses may not always be accurate—please verify important details.
+        </p>
+      </div>
+
       {/* Messages */}
       <div className="flex-1 overflow-y-auto p-3 space-y-3">
         {messages.length === 0 ? (

@@ -74,7 +74,6 @@ function isNavLinkActive(pathname: string, navLink: NavLink): boolean {
  */
 function AIChatToggleButton() {
   const sidebarContext = useSidebar();
-  const [animationVariant, setAnimationVariant] = useState('');
 
   // Return null if context is not available
   if (!sidebarContext) {
@@ -83,28 +82,13 @@ function AIChatToggleButton() {
 
   const { isChatOpen, toggleChat } = sidebarContext;
 
-  // Generate random variant when chat is opened
-  const handleToggle = () => {
-    if (!isChatOpen) {
-      // Generate random variant (2-4, keeping 1 as default)
-      const variants = ['variant-2', 'variant-3', 'variant-4'];
-      const randomVariant = variants[Math.floor(Math.random() * variants.length)];
-      setAnimationVariant(randomVariant);
-    } else {
-      setAnimationVariant('');
-    }
-    toggleChat();
-  };
-
   return (
     <button
       className={cn(
         'flex items-center justify-center rounded-md w-8 h-8 text-xs transition-all duration-500 ease-out relative overflow-hidden',
-        isChatOpen
-          ? `text-white chat-gradient-active ${animationVariant}`
-          : 'text-fd-muted-foreground hover:text-fd-foreground hover:bg-fd-muted/50'
+        'text-white chat-gradient-active hover:scale-105 hover:brightness-110 hover:shadow-lg'
       )}
-      onClick={handleToggle}
+      onClick={toggleChat}
       title="AI Chat"
     >
       <Sparkles className="h-4 w-4 relative z-10" />
