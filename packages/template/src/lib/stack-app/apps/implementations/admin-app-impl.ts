@@ -414,4 +414,12 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
     return crud.html;
   }
   // END_PLATFORM
+
+  async createEmailThemeDevServer(): Promise<{ repoId: string, previewUrl: string }> {
+    return await this._interface.createEmailThemeDevServer();
+  }
+
+  async requestEmailThemeDevServer(repoId: string): Promise<{ previewUrl: string }> {
+    return await this._interface.requestEmailThemeDevServer(repoId);
+  }
 }

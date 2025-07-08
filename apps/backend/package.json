@@ -35,6 +35,8 @@
     "seed": "pnpm run db-seed-script"
   },
   "dependencies": {
+    "@ai-sdk/openai": "^1.3.23",
+    "@assistant-ui/react-ai-sdk": "^0.10.14",
     "@next/bundle-analyzer": "15.2.3",
     "@node-oauth/oauth2-server": "^5.1.0",
     "@opentelemetry/api": "^1.9.0",
@@ -58,6 +60,7 @@
     "@stackframe/stack-shared": "workspace:*",
     "@vercel/functions": "^2.0.0",
     "@vercel/otel": "^1.10.4",
+    "ai": "^4.3.17",
     "bcrypt": "^5.1.1",
     "dotenv-cli": "^7.3.0",
     "freestyle-sandboxes": "^0.0.92",

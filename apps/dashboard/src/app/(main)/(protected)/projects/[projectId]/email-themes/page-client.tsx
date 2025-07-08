@@ -1,7 +1,9 @@
 "use client";
 
+import { useRouter } from "@/components/router";
 import { SettingCard } from "@/components/settings";
 import { throwErr } from "@stackframe/stack-shared/dist/utils/errors";
+import { runAsynchronously } from "@stackframe/stack-shared/dist/utils/promises";
 import { ActionDialog, Button, Card, Separator, Typography } from "@stackframe/stack-ui";
 import { Check } from "lucide-react";
 import { useState } from "react";
@@ -25,6 +27,33 @@ const themes: Theme[] = [
     name: 'Dark Theme',
   },
 ];
+
+function NewThemeButton() {
+  const stackAdminApp = useAdminApp();
+  const router = useRouter();
+  const [loading, setLoading] = useState(false);
+
+  const handleCreateNewTheme = async () => {
+    setLoading(true);
+    try {
+      const devServer = await stackAdminApp.createEmailThemeDevServer();
+      router.push(`email-themes/new/${devServer.repoId}`);
+    } catch (error) {
+      console.error("Failed to create new theme:", error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <Button
+      onClick={() => runAsynchronously(handleCreateNewTheme())}
+      loading={loading}
+    >
+      New Theme
+    </Button>
+  );
+}
 
 export default function PageClient() {
   const stackAdminApp = useAdminApp();
@@ -51,7 +80,11 @@ export default function PageClient() {
   const selectedThemeData = themes.find(t => t.id === activeTheme) ?? throwErr(`Unknown theme ${activeTheme}`, { activeTheme });
 
   return (
-    <PageLayout title="Email Themes" description="Customize email themes for your project">
+    <PageLayout
+      title="Email Themes"
+      description="Customize email themes for your project"
+      actions={<NewThemeButton />}
+    >
       <SettingCard
         title="Active Theme"
         description={`Currently using ${selectedThemeData.name}`}

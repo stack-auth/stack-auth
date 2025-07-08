@@ -343,4 +343,59 @@ export class StackAdminInterface extends StackServerInterface {
     }, null);
     return await response.json();
   }
+
+  async createEmailThemeDevServer(): Promise<{ repoId: string, previewUrl: string }> {
+    const response = await this.sendAdminRequest(
+      `/emails/dev-server`,
+      {
+        method: "POST",
+      },
+      null,
+    );
+    const result = await response.json();
+    return {
+      repoId: result.repo_id,
+      previewUrl: result.preview_url,
+    };
+  }
+
+  async requestEmailThemeDevServer(repoId: string): Promise<{ previewUrl: string }> {
+    const response = await this.sendAdminRequest(
+      `/emails/dev-server?repoId=${repoId}`,
+      { method: "GET" },
+      null,
+    );
+    const result = await response.json();
+    return {
+      previewUrl: result.preview_url,
+    };
+  }
+
+  async getEmailThemeDevServerFile(repoId: string, file: "theme"): Promise<{ content: string }> {
+    const response = await this.sendAdminRequest(
+      `/emails/dev-server/file?file=${file}&repo_id=${repoId}`,
+      { method: "GET" },
+      null,
+    );
+    return await response.json();
+  }
+
+  async updateEmailThemeDevServerFile(repoId: string, file: "theme", content: string): Promise<{ success: boolean }> {
+    const response = await this.sendAdminRequest(
+      `/emails/dev-server/file`,
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          file,
+          repo_id: repoId,
+          content,
+        }),
+      },
+      null,
+    );
+    return await response.json();
+  }
 }

@@ -67,6 +67,9 @@ export type StackAdminApp<HasTokenStore extends boolean = boolean, ProjectId ext
     }): Promise<void>,
 
     useEmailThemePreview(theme: string): string, // THIS_LINE_PLATFORM react-like
+
+    createEmailThemeDevServer(): Promise<{ repoId: string, previewUrl: string }>,
+    requestEmailThemeDevServer(repoId: string): Promise<{ previewUrl: string }>,
   }
   & StackServerApp<HasTokenStore, ProjectId>
 );
