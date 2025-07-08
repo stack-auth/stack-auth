@@ -53,6 +53,7 @@ export class GithubProvider extends OAuthBaseProvider {
       },
     });
     if (!emailsRes.ok) {
+      // Somehow GitHub returns a 403 error instead of a 401 error when fetching user emails if the permission "Email addresses" is not set
       if (emailsRes.status === 403) {
         throw new StatusError(StatusError.BadRequest, `GitHub returned a 403 error when fetching user emails. \nDeveloper information: This is likely due to not having the correct permission "Email addresses" in your GitHub app. Please check your GitHub app settings and try again.`);
       }
@@ -78,5 +79,15 @@ export class GithubProvider extends OAuthBaseProvider {
       email: email,
       emailVerified: verified,
     });
+  }
+
+  async checkAccessTokenValidity(accessToken: string): Promise<boolean> {
+    const res = await fetch("https://api.github.com/user", {
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        "X-GitHub-Api-Version": "2022-11-28",
+      },
+    });
+    return res.ok;
   }
 }
