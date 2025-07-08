@@ -251,7 +251,7 @@ export function CollapsibleMethodSection({
       )}>
       <button
         onClick={() => setIsOpen(!isOpen)}
-        className="w-full flex items-center justify-between px-3 py-0.5 text-left hover:bg-fd-accent/5 rounded-t-lg"
+        className="w-full flex items-center justify-between px-3 py-2 text-left hover:bg-fd-accent/5 rounded-t-lg"
         data-testid="collapsible-method-trigger"
       >
         <div className="flex items-center gap-1.5">
