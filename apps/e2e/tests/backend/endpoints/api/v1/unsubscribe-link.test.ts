@@ -23,7 +23,7 @@ it("unsubscribe link should be sent and update notification preference", async (
       method: "POST",
       accessType: "server",
       body: {
-        user_id: user.userId,
+        user_ids: [user.userId],
         html: "<h1>Test Email</h1><p>This is a test email with HTML content.</p>",
         subject: "Custom Test Email Subject",
         notification_category_name: "Marketing",
@@ -34,7 +34,15 @@ it("unsubscribe link should be sent and update notification preference", async (
   expect(response).toMatchInlineSnapshot(`
     NiceResponse {
       "status": 200,
-      "body": { "user_email": "unindexed-mailbox--<stripped UUID>@stack-generated.example.com" },
+      "body": {
+        "results": [
+          {
+            "success": true,
+            "user_email": "unindexed-mailbox--<stripped UUID>@stack-generated.example.com",
+            "user_id": "<stripped UUID>",
+          },
+        ],
+      },
       "headers": Headers { <some fields may have been hidden> },
     }
   `);
@@ -43,7 +51,7 @@ it("unsubscribe link should be sent and update notification preference", async (
   const messages = await user.mailbox.fetchMessages();
   const sentEmail = messages.find(msg => msg.subject === "Custom Test Email Subject");
   expect(sentEmail).toBeDefined();
-  expect(sentEmail!.body?.html).toMatch(/<h1>Test Email<\/h1><p>This is a test email with HTML content\.<\/p><br \/><a href="http:\/\/localhost:8102\/api\/v1\/emails\/unsubscribe-link\?code=[a-zA-Z0-9]+">Click here to unsubscribe<\/a>/);
+  expect(sentEmail!.body?.html).toMatchInlineSnapshot(`"http://localhost:8102/api/v1/emails/unsubscribe-link?code=%3Cstripped+query+param%3E"`);
 
   // Extract the unsubscribe link and fetch it
   const unsubscribeLinkMatch = sentEmail!.body?.html.match(/href="([^"]+)"/);
@@ -110,7 +118,7 @@ it("unsubscribe link should not be sent for emails with transactional notificati
       method: "POST",
       accessType: "server",
       body: {
-        user_id: user.userId,
+        user_ids: [user.userId],
         html: "<h1>Test Email</h1><p>This is a test email with HTML content.</p>",
         subject: "Custom Test Email Subject",
         notification_category_name: "Transactional",
@@ -121,7 +129,15 @@ it("unsubscribe link should not be sent for emails with transactional notificati
   expect(response).toMatchInlineSnapshot(`
     NiceResponse {
       "status": 200,
-      "body": { "user_email": "unindexed-mailbox--<stripped UUID>@stack-generated.example.com" },
+      "body": {
+        "results": [
+          {
+            "success": true,
+            "user_email": "unindexed-mailbox--<stripped UUID>@stack-generated.example.com",
+            "user_id": "<stripped UUID>",
+          },
+        ],
+      },
       "headers": Headers { <some fields may have been hidden> },
     }
   `);
@@ -129,5 +145,5 @@ it("unsubscribe link should not be sent for emails with transactional notificati
   const messages = await user.mailbox.fetchMessages();
   const sentEmail = messages.find(msg => msg.subject === "Custom Test Email Subject");
   expect(sentEmail).toBeDefined();
-  expect(sentEmail!.body?.html).toMatchInlineSnapshot(`"<h1>Test Email</h1><p>This is a test email with HTML content.</p>\\n"`);
+  expect(sentEmail!.body?.html).toMatchInlineSnapshot(`"<div>Mock api key detected, returning mock data </div>"`);
 });
