@@ -29,6 +29,7 @@ export function log(message: string, attributes: Attributes) {
   const span = trace.getActiveSpan();
   if (span) {
     span.addEvent(message, attributes);
+    // Telemetry is not initialized while seeding, so we don't want to throw an error
   } else if (getEnvVariable('STACK_SEED_MODE', 'false') !== 'true') {
     throw new StackAssertionError('No active span found');
   }
