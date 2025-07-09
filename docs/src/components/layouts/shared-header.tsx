@@ -80,7 +80,7 @@ function AIChatToggleButton() {
     return null;
   }
 
-  const { isChatOpen, toggleChat } = sidebarContext;
+  const { toggleChat } = sidebarContext;
 
   return (
     <button
