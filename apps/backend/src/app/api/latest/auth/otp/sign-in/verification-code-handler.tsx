@@ -8,7 +8,6 @@ import { VerificationCodeType } from "@prisma/client";
 import { KnownErrors } from "@stackframe/stack-shared";
 import { UsersCrud } from "@stackframe/stack-shared/dist/interface/crud/users";
 import { emailSchema, signInResponseSchema, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
-import { StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
 import { usersCrudHandlers } from "../../../users/crud";
 import { createMfaRequiredError } from "../../mfa/sign-in/verification-code-handler";
 
@@ -102,10 +101,6 @@ export const signInVerificationCodeHandler = createVerificationCodeHandler({
     };
   },
   async handler(tenancy, { email }) {
-    if (!contactChannel) {
-      throw new StackAssertionError("User with email not found after signing in with OTP");
-    }
-
     let user = await ensureUserForEmailAllowsOtp(tenancy, email);
     let isNewUser = false;
     if (!user) {
