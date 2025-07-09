@@ -56,7 +56,7 @@ export const connectedAccountAccessTokenCrudHandlers = createLazyProxy(() =>crea
     });
     if (filteredTokens.length !== 0) {
       const token = filteredTokens[0].accessToken;
-      // if the token is valid, return it, otherwise refresh it
+      // some providers (particularly GitHub) invalidate access tokens on the server-side, in which case we want to request a new access token
       if (await providerInstance.checkAccessTokenValidity(token)) {
         return { access_token: token };
       }
