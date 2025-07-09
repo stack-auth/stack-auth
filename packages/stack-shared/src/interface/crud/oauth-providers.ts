@@ -28,7 +28,7 @@ export const oauthProviderCrudServerCreateSchema = yupObject({
   type: oauthProviderTypeSchema.defined(),
   allow_sign_in: oauthProviderAllowSignInSchema.defined(),
   allow_connected_accounts: oauthProviderAllowConnectedAccountsSchema.defined(),
-  account_id: oauthProviderAccountIdSchema.optional(),
+  account_id: oauthProviderAccountIdSchema.defined(),
 }).defined();
 
 export const oauthProviderCrudClientDeleteSchema = yupMixed();
