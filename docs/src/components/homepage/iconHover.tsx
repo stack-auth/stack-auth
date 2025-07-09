@@ -257,7 +257,7 @@ const DocsIcon3D: React.FC<DocsIcon3DProps> = ({
             <div
               className={`
                 bg-card border-[0.5px] border-border rounded-xl p-6 w-full h-40
-                flex flex-col items-center justify-center 
+                flex flex-col items-center justify-center
                 shadow-sm hover:shadow-lg
               `}
               style={{

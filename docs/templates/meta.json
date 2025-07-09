@@ -31,6 +31,8 @@
     "---Other---",
     "others/cli-authentication",
     "others/self-host",
-    "others/supabase"
+    "others/supabase",
+    "sdk",
+    "components"
   ]
 }

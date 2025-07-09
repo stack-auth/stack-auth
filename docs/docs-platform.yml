@@ -12,6 +12,14 @@ pages:
   - path: faq.mdx
     platforms: ["next", "react", "js", "python"]
 
+  # SDK Reference
+  - path: sdk/index.mdx
+    platforms: ["next", "react", "js", "python"]
+
+  # Components  
+  - path: components/index.mdx
+    platforms: ["next", "react"]  # Only React-like platforms
+
   # Getting Started
   - path: getting-started/setup.mdx
     platforms: ["next", "react", "js", "python"]

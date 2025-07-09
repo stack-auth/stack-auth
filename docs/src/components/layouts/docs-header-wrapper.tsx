@@ -5,27 +5,24 @@ import { usePathname } from 'next/navigation';
 import React, { useMemo, useState } from 'react';
 import { getCurrentPlatform } from '../../lib/platform-utils';
 import { ApiSidebarContent } from './api/api-sidebar';
-import { SdkSidebarContent } from './docs';
-import { ComponentsSidebarContent } from './docs-layout-router';
 import { PlatformAwareHeader } from './platform-aware-header';
-import {
-  isInApiSection,
-  isInComponentsSection,
-  isInSdkSection
-} from './shared/section-utils';
+import { isInApiSection } from './shared-header';
+
+// Types for the page data
+type PageData = {
+  url: string,
+  slugs: string[],
+  data: {
+    title?: string,
+    method?: string,
+  },
+};
 
 type DocsHeaderWrapperProps = {
   showSearch?: boolean,
   pageTree?: PageTree.Root,
   className?: string,
-  apiPages?: Array<{
-    url: string,
-    slugs: string[],
-    data: {
-      title?: string,
-      method?: string,
-    },
-  }>,
+  apiPages?: PageData[],
 }
 
 // Custom Link Component for mobile sidebar - matches the styling from docs.tsx
@@ -193,7 +190,7 @@ function MobilePageTreeItem({ item, currentPlatform }: { item: PageTree.Node, cu
     const hasIndexPage = 'index' in item && item.index;
     const folderUrl = hasIndexPage ? item.index!.url : '';
     const isCurrentPath = folderUrl && pathname.startsWith(folderUrl);
-    const itemName = typeof item.name === 'string' ? item.name : '';
+    const itemName = String(item.name);
 
     // If folder has an index page, make the title clickable
     if (hasIndexPage) {
@@ -232,24 +229,25 @@ function MobilePageTreeItem({ item, currentPlatform }: { item: PageTree.Node, cu
 
 // Function to find platform-specific content in the page tree
 function findPlatformContent(tree: PageTree.Root, platform: string): PageTree.Node[] {
-  const platformMappings = {
-    'next': ['next', 'next.js', 'nextjs'],
-    'react': ['react', 'react.js', 'reactjs'],
-    'js': ['js', 'javascript'],
-    'python': ['python', 'py']
+  // Platform folder name mappings
+  const platformMappings: Record<string, string[]> = {
+    'next': ['next.js', 'nextjs'],
+    'react': ['react'],
+    'js': ['javascript'],
+    'python': ['python']
   };
 
   const platformKey = platform.toLowerCase();
-  const possibleNames = platformKey in platformMappings
-    ? platformMappings[platformKey as keyof typeof platformMappings]
-    : [platform.toLowerCase()];
+  const possibleNames = platformKey in platformMappings ? platformMappings[platformKey] : [platformKey];
 
   for (const item of tree.children) {
     if (item.type === 'folder') {
-      const itemName = typeof item.name === 'string' ? item.name.toLowerCase() : '';
+      const itemName = String(item.name).toLowerCase();
 
-      if (possibleNames.some(name => itemName === name || itemName.includes(name))) {
-        return item.children;
+      for (const name of possibleNames) {
+        if (itemName.includes(name)) {
+          return item.children;
+        }
       }
     }
   }
@@ -257,9 +255,8 @@ function findPlatformContent(tree: PageTree.Root, platform: string): PageTree.No
   return [];
 }
 
-// Improved general docs sidebar content that renders the full page tree
-function GeneralDocsSidebarContent({ pageTree }: { pageTree?: PageTree.Root }) {
-  const pathname = usePathname();
+// Improved general docs sidebar content that renders the platform content
+function GeneralDocsSidebarContent({ pageTree, pathname }: { pageTree?: PageTree.Root, pathname: string }) {
   const currentPlatform = getCurrentPlatform(pathname);
 
   if (!currentPlatform || !pageTree) return null;
@@ -276,7 +273,7 @@ function GeneralDocsSidebarContent({ pageTree }: { pageTree?: PageTree.Root }) {
     );
   }
 
-  // For general docs, show root level content
+  // For general docs or when no platform content found, show root level content
   return (
     <>
       {pageTree.children.map((item, index) => (
@@ -299,30 +296,13 @@ export function DocsHeaderWrapper({ showSearch = true, pageTree, className, apiP
 
   // Determine current sidebar content based on route
   const sidebarContent = useMemo(() => {
-    if (isInSdkSection(pathname)) {
-      const currentPlatform = getCurrentPlatform(pathname);
-      if (currentPlatform && ['next', 'react', 'js'].includes(currentPlatform)) {
-        return <SdkSidebarContent />;
-      }
-    }
-
-    if (isInComponentsSection(pathname)) {
-      const currentPlatform = getCurrentPlatform(pathname);
-      if (currentPlatform && ['next', 'react'].includes(currentPlatform)) {
-        return <ComponentsSidebarContent />;
-      }
-    }
-
     if (isInApiSection(pathname)) {
       return <ApiSidebarContent pages={apiPages} />;
     }
 
-    // For general documentation pages
-    if (pathname.startsWith('/docs') &&
-        !isInComponentsSection(pathname) &&
-        !isInSdkSection(pathname) &&
-        !isInApiSection(pathname)) {
-      return <GeneralDocsSidebarContent pageTree={pageTree} />;
+    // For all docs pages, use the page tree
+    if (pathname.startsWith('/docs') && !isInApiSection(pathname)) {
+      return <GeneralDocsSidebarContent pageTree={pageTree} pathname={pathname} />;
     }
 
     return null;

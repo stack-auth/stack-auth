@@ -85,7 +85,7 @@ export function getPagesForPlatform(platform: Platform): string[] {
 
     console.log('✅ Generated platform-navigation.ts from docs-platform.yml');
     console.log(`📄 ${config.pages.length} pages configured for platforms`);
-    
+
     // Show platform distribution
     const platformCounts = {};
     config.pages.forEach(page => {
@@ -93,7 +93,7 @@ export function getPagesForPlatform(platform: Platform): string[] {
         platformCounts[platform] = (platformCounts[platform] || 0) + 1;
       });
     });
-    
+
     console.log('📊 Platform distribution:');
     Object.entries(platformCounts).forEach(([platform, count]) => {
       console.log(`   ${platform}: ${count} pages`);
@@ -106,4 +106,4 @@ export function getPagesForPlatform(platform: Platform): string[] {
 }
 
 // Run the generator
-generatePlatformNavigation(); 
+generatePlatformNavigation();

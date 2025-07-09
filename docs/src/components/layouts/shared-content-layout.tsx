@@ -1,5 +1,6 @@
 import { type HTMLAttributes, type ReactNode } from 'react';
 import { cn } from '../../lib/cn';
+import { useSidebar } from './sidebar-context';
 
 export type SharedContentLayoutProps = {
   children: ReactNode,
@@ -15,6 +16,11 @@ export function SharedContentLayout({
   className,
   ...props
 }: SharedContentLayoutProps) {
+  const sidebarContext = useSidebar();
+  const { isMainSidebarCollapsed } = sidebarContext || {
+    isMainSidebarCollapsed: false,
+  };
+
   return (
     <article
       {...props}
@@ -23,7 +29,11 @@ export function SharedContentLayout({
         className,
       )}
     >
-      <div className="container max-w-6xl mx-auto px-4 md:px-6 py-8 w-full min-w-0">
+      <div className={cn(
+        'container mx-auto px-4 md:px-6 py-8 w-full min-w-0 transition-all duration-300',
+        // When sidebar is collapsed, use maximum available space for content
+        isMainSidebarCollapsed ? 'max-w-full' : 'max-w-6xl'
+      )}>
         {children}
       </div>
     </article>

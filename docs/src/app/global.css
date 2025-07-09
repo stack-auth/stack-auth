@@ -22,6 +22,35 @@
   margin-top: -2rem !important;
 }
 
+/* Main sidebar collapsed state */
+body.main-sidebar-collapsed #nd-docs-layout {
+  margin-left: 4rem !important; /* 64px collapsed width */
+  transition: margin-left 300ms ease-out;
+}
+
+body.main-sidebar-collapsed #api-main-content {
+  margin-left: 4rem !important; /* 64px collapsed width */
+  transition: margin-left 300ms ease-out;
+}
+
+body.main-sidebar-collapsed .api-sidebar {
+  width: 4rem !important; /* 64px collapsed width */
+  transition: width 300ms ease-out;
+}
+
+/* Default transitions for main content */
+#nd-docs-layout {
+  transition: margin-left 300ms ease-out;
+}
+
+#api-main-content {
+  transition: margin-left 300ms ease-out;
+}
+
+.api-sidebar {
+  transition: width 300ms ease-out;
+}
+
 /* TOC open state - only when chat is not open */
 body.toc-open:not(.chat-open):not(.home-page) {
   padding-right: 17rem; /* 264px + 16px for spacing (w-64 + spacing) */

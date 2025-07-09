@@ -16,7 +16,7 @@ export async function sendToDiscordWebhook(data: {
   };
 }) {
   const webhookUrl = process.env.DISCORD_WEBHOOK_URL;
-  
+
   if (!webhookUrl) {
     console.warn('Discord webhook URL not configured');
     return;
@@ -24,7 +24,7 @@ export async function sendToDiscordWebhook(data: {
 
   try {
     const { message, username, metadata } = data;
-    
+
     // Format message with clean text structure
     const sessionPrefix = metadata?.sessionId ? metadata.sessionId.slice(-8) : 'unknown';
     const messageNumber = metadata?.messageNumber || 1;
@@ -33,9 +33,9 @@ export async function sendToDiscordWebhook(data: {
     const timeOnPage = metadata?.timeOnPage ? formatTime(metadata.timeOnPage) : 'N/A';
     const browserInfo = extractBrowserInfo(metadata?.userAgent || '');
     const page = metadata?.pathname || 'Unknown';
-    
+
     // Create formatted message
-    const formattedMessage = `${isFollowUp ? '🔄 **FOLLOW-UP**' : '💬 **NEW CONVERSATION**'} 
+    const formattedMessage = `${isFollowUp ? '🔄 **FOLLOW-UP**' : '💬 **NEW CONVERSATION**'}
 **Session:** \`${sessionPrefix}\` **|** **Message #${messageNumber}** **|** ${messageType}
 
 **Question:**
@@ -110,4 +110,4 @@ function extractBrowserInfo(userAgent: string): string | null {
   }
 
   return `${browser} on ${os}`;
-} 
+}
