@@ -1,5 +1,8 @@
 # Platform-specific content filtering configuration
 # Explicit page-by-page listing approach
+#
+# NOTE: Changes to this file automatically update the smart platform navigation system.
+# The src/lib/platform-navigation.ts file is auto-generated from this data during build.
 
 pages:
   # Root pages

@@ -34,6 +34,7 @@ import { useMemo } from 'react';
 import { getCurrentPlatformUrl, getSmartRedirectUrl } from '../../lib/navigation-utils';
 import { getCurrentPlatform, PLATFORMS } from '../../lib/platform-utils';
 import type { Option } from '../layout/root-toggle';
+import { PlatformRedirect } from '../platform-redirect';
 import { ApiSidebarContent } from './api/api-sidebar';
 import { DocsLayout, type DocsLayoutProps, SdkSidebarContent } from './docs';
 import {
@@ -169,6 +170,25 @@ export function ComponentsSidebarContent() {
 export function DynamicDocsLayout({ children, ...props }: DynamicDocsLayoutProps) {
   const pathname = usePathname();
 
+  // Add platform redirect component for cases where user visits docs without a specific platform
+  const needsPlatformRedirect = useMemo(() => {
+    const currentPlatform = getCurrentPlatform(pathname);
+
+    // Check if we're on /docs or /docs/ without a platform
+    if (pathname === '/docs' || pathname === '/docs/') {
+      return true;
+    }
+
+    // Check if we're on a docs page but no platform detected
+    if (pathname.startsWith('/docs/') && !currentPlatform) {
+      const pathAfterDocs = pathname.replace(/^\/docs\//, '');
+      // Only redirect if this looks like a platform-specific path (not API)
+      return pathAfterDocs && !pathAfterDocs.startsWith('api/');
+    }
+
+    return false;
+  }, [pathname]);
+
   const platformOptions: Option[] = useMemo(() => {
     const currentPlatform = getCurrentPlatform(pathname);
 
@@ -200,6 +220,11 @@ export function DynamicDocsLayout({ children, ...props }: DynamicDocsLayoutProps
       };
     });
   }, [pathname]);
+
+  // Show redirect component if needed
+  if (needsPlatformRedirect) {
+    return <PlatformRedirect pathname={pathname} defaultPath="overview" />;
+  }
 
   // For API docs, use minimal layout without platform tabs
   if (isInApiSection(pathname)) {

@@ -1,9 +1,10 @@
 "use client";
 
-import { platformSupportsComponents, platformSupportsSDK } from "@/lib/navigation-utils";
-import { PLATFORMS, type Platform } from "@/lib/platform-utils";
 import { Book, ChevronDown, Code, Command, Layers, Search, Zap } from "lucide-react";
 import React, { useEffect, useRef, useState } from "react";
+import { usePlatformPreference } from "../../hooks/use-platform-preference";
+import { platformSupportsComponents, platformSupportsSDK } from "../../lib/navigation-utils";
+import { PLATFORMS, type Platform } from "../../lib/platform-utils";
 
 type DocsSection = {
   id: string,
@@ -306,7 +307,15 @@ const DocsIcon3D: React.FC<DocsIcon3DProps> = ({
 };
 
 export default function DocsSelector() {
-  const [selectedPlatform, setSelectedPlatform] = useState<Platform>("next");
+  const { preferredPlatform, setPreferredPlatform, isLoaded } = usePlatformPreference();
+  const [selectedPlatform, setSelectedPlatform] = useState<Platform>(preferredPlatform);
+
+  // Update selected platform when preference loads
+  useEffect(() => {
+    if (isLoaded) {
+      setSelectedPlatform(preferredPlatform);
+    }
+  }, [preferredPlatform, isLoaded]);
 
   const handleSectionSelect = (section: DocsSection) => {
     console.log("Selected section:", section);
@@ -318,6 +327,8 @@ export default function DocsSelector() {
 
   const handlePlatformChange = (platform: Platform) => {
     setSelectedPlatform(platform);
+    // Also update the preference in localStorage
+    setPreferredPlatform(platform);
   };
 
   // Simple search button that opens the shared search dialog
