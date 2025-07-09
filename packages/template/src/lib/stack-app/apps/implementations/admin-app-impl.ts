@@ -422,4 +422,12 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
   async requestEmailThemeDevServer(repoId: string): Promise<{ previewUrl: string }> {
     return await this._interface.requestEmailThemeDevServer(repoId);
   }
+
+  async updateEmailThemeDevServerFile(repoId: string, file: "theme", content: string): Promise<void> {
+    await this._interface.updateEmailThemeDevServerFile(repoId, file, content);
+  }
+
+  async sendDevServerChatMessage(repoId: string, messages: Array<{ role: string, content: string }>, abortSignal?: AbortSignal): Promise<{ text: string }> {
+    return await this._interface.sendDevServerChatMessage(repoId, messages, abortSignal);
+  }
 }

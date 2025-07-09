@@ -4,6 +4,7 @@ import { runAsynchronously } from "@stackframe/stack-shared/dist/utils/promises"
 import { Typography } from "@stackframe/stack-ui";
 import { useEffect, useState } from "react";
 import { useAdminApp } from "../../../use-admin-app";
+import DevServerChat from "@/components/dev-server-chat";
 
 
 export default function PageClient({ repoId }: { repoId: string }) {
@@ -15,7 +16,7 @@ export default function PageClient({ repoId }: { repoId: string }) {
   }, [stackAdminApp, repoId, setDevServerUrl]);
 
   return (
-    <div className="flex h-screen">
+    <div className="flex h-full">
       {/* Live Preview */}
       <div className="flex-1 flex flex-col">
         <div className="border-b p-4">
@@ -36,6 +37,7 @@ export default function PageClient({ repoId }: { repoId: string }) {
           <Typography type="h4">Chat</Typography>
         </div>
         <div className="flex-1">
+          <DevServerChat repoId={repoId} />
         </div>
       </div>
     </div>

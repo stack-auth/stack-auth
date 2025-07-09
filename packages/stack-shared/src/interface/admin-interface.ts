@@ -398,4 +398,20 @@ export class StackAdminInterface extends StackServerInterface {
     );
     return await response.json();
   }
+
+  async sendDevServerChatMessage(repoId: string, messages: Array<{ role: string, content: string }>, abortSignal?: AbortSignal): Promise<{ text: string }> {
+    const response = await this.sendAdminRequest(
+      `/emails/dev-server/chat`,
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({ repo_id: repoId, messages }),
+        signal: abortSignal,
+      },
+      null,
+    );
+    return await response.json();
+  }
 }

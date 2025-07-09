@@ -1,0 +1,201 @@
+---
+description: Contains information specific to backend folder and creating api routes
+globs: 
+alwaysApply: false
+---
+# Stack Auth Backend Rules
+
+## Technology Stack
+- Next.js 15 with App Router for API routes (files in `src/app/api/`)
+- TypeScript with strict type checking and no comments unless requested
+- Prisma ORM with PostgreSQL database and advanced features (tracing, relationJoins)
+- OpenTelemetry tracing with custom `traceSpan` utility
+- Sentry monitoring with custom error capturing
+- PNPM for package management with workspace dependencies
+
+## Smart Route Handler System
+- Use `createSmartRouteHandler()` for ALL API endpoints - never use raw Next.js route handlers
+- Every route handler must define request/response schemas using Yup validation
+- Use overloads for API versioning via `SmartRouteHandlerOverloadGenerator`
+- Include metadata for OpenAPI documentation generation
+- Smart request/response validation with descriptive error messages
+- Authentication handled automatically via `SmartRequestAuth`
+
+### Route Handler Structure
+```typescript
+export const GET = createSmartRouteHandler({
+  metadata: {
+    summary: "Endpoint name",
+    description: "What this endpoint does",
+    tags: ["API Category"],
+    hidden: false, // for internal endpoints
+  },
+  request: yupObject({
+    auth: yupObject({
+      type: yupString().oneOf(["client", "server", "admin"]).defined(),
+      project: adaptSchema.defined(),
+      user: adaptSchema.optional(),
+    }).nullable(), // for public endpoints
+    params: yupObject({ id: yupString().defined() }),
+    query: yupObject({ filter: yupString().optional() }),
+    body: yupObject({ data: yupString().defined() }),
+  }),
+  response: yupObject({
+    statusCode: yupNumber().oneOf([200]).defined(),
+    bodyType: yupString().oneOf(["json"]).defined(),
+    body: yupObject({ result: yupString().defined() }).defined(),
+  }),
+  async handler({ params, query, body, auth }, fullReq) {
+    // Handler implementation
+  },
+});
+```
+
+## Database & Prisma Patterns
+- Use `retryTransaction()` for all database writes to handle deadlocks
+- Use `rawQuery()` and `rawQueryAll()` for complex queries instead of multiple Prisma calls
+- Leverage `RawQuery.all()` to batch multiple queries into a single SQL statement
+- Handle Prisma error codes using `isPrismaError()` and `PRISMA_ERROR_CODES`
+- Use proper transaction isolation with serializable transactions for critical operations
+- Always use `traceSpan()` around database operations for observability
+
+### Transaction Pattern
+```typescript
+await retryTransaction(async (tx) => {
+  // All database operations within transaction
+  const result = await tx.model.create({ data });
+  return result;
+});
+```
+
+### Raw Query Pattern
+```typescript
+const bundledQueries = {
+  user: userId ? getUserQuery(projectId, branchId, userId) : undefined,
+  project: getProjectQuery(projectId),
+};
+const results = await rawQueryAll(prismaClient, bundledQueries);
+```
+
+## Authentication & Authorization
+- Multi-tier access control: `client`, `server`, `admin`
+- JWT-based access tokens with refresh token rotation
+- API key authentication (publishable, secret, super-secret)
+- Project-based multi-tenancy with branch support
+- Use `SmartRequestAuth` for automatic authentication parsing
+- Implement proper permission checking with `ensureUserExists()`, `ensureTeamMembershipExists()`
+
+### Access Type Usage
+- **Client**: User-facing operations, requires publishable client key
+- **Server**: Backend operations, requires secret server key  
+- **Admin**: Administrative operations, requires super secret admin key or admin access token
+
+## Error Handling Patterns
+- Use `KnownErrors` for business logic errors with proper error codes
+- Use `StatusError` for HTTP status-specific errors
+- Use `StackAssertionError` for internal/development errors
+- Never throw raw Error objects - always use typed error classes
+- Use `captureError()` for Sentry integration, not direct Sentry calls
+- Implement `catchError()` wrapper for proper error transformation
+
+### Error Classes Usage
+```typescript
+throw new KnownErrors.UserNotFound(); // Business logic
+throw new StatusError(404, "Resource not found"); // HTTP status
+throw new StackAssertionError("This should never happen", { context }); // Internal
+```
+
+## Environment & Configuration
+- Use `getEnvVariable()` and `getNodeEnvironment()` - never access `process.env` directly
+- Environment configuration system with override hierarchies
+- Support for development, test, and production configurations
+- Configuration validation using Yup schemas
+- Use environment config overrides for project-specific settings
+
+## CRUD Operations
+- Use `createCrudHandlers()` for standard CRUD operations
+- Use `createPrismaCrudHandlers()` for Prisma model-backed CRUD
+- Implement proper validation, authorization, and transformation layers
+- Support for filtering, pagination, and sorting in list operations
+- Use `CrudHandlerInvocationError` for programmatic CRUD invocations
+
+## Middleware & Request Processing
+- CORS handling with specific allowed headers for Stack Auth
+- Request tracing with unique request IDs
+- Automatic API versioning and migration handling via middleware
+- Rate limiting and request timeout warnings
+- Smart routing with path normalization
+
+## Telemetry & Monitoring
+- Use `traceSpan()` for all significant operations
+- Set proper OpenTelemetry attributes for debugging
+- Integrate with Vercel's OTEL for serverless monitoring
+- Sentry configuration with custom error formatting
+- Request/response logging with redacted sensitive data
+
+## Code Quality & Standards
+- TypeScript strict mode with no `any` types
+- Use utility functions from `@stackframe/stack-shared`
+- Proper async/await patterns - avoid Promise.then()
+- Use `runAsynchronously()` for fire-and-forget operations
+- Implement proper cleanup and resource management
+
+## Testing Patterns (E2E Tests)
+- Use `niceBackendFetch()` helper for all API requests in tests
+- Implement proper test isolation with `backendContext.set()`
+- Use snapshot testing with `toMatchInlineSnapshot()` for response validation
+- Create helper functions for common operations (Auth.Otp.signIn, Project.create)
+- Test all access types (client, server, admin) for each endpoint
+- Verify error responses and edge cases
+- Use proper test data cleanup and teardown
+
+### Test Structure
+```typescript
+describe("endpoint functionality", () => {
+  it("should handle successful case", async ({ expect }) => {
+    const response = await niceBackendFetch("/api/v1/endpoint", {
+      accessType: "server",
+      body: { data: "test" },
+    });
+    
+    expect(response).toMatchInlineSnapshot(`
+      NiceResponse {
+        "status": 200,
+        "body": { "result": "success" },
+        "headers": Headers { <some fields may have been hidden> },
+      }
+    `);
+  });
+  
+  it("should handle error case", async ({ expect }) => {
+    const response = await niceBackendFetch("/api/v1/endpoint", {
+      accessType: "client", // insufficient access
+    });
+    
+    expect(response.status).toBe(403);
+    expect(response.headers.get("x-stack-known-error")).toBe("INSUFFICIENT_ACCESS_TYPE");
+  });
+});
+```
+
+## Build & Development
+- Use `pnpm dev` for development with Turbopack
+- Code generation for Prisma client and route information
+- OpenAPI schema generation for documentation
+- Bundle analysis with `@next/bundle-analyzer`
+- Support for Docker builds with standalone output
+
+## Performance Optimization
+- Bundle multiple database queries using `rawQueryAll()`
+- Implement proper caching strategies
+- Use streaming responses for large data sets
+- Optimize bundle size with tree shaking
+- Leverage Vercel's edge runtime when appropriate
+
+## Security Practices
+- Validate all inputs using Yup schemas
+- Implement CORS with specific allowed origins
+- Use secure HTTP headers (CSP, HSTS, etc.)
+- Proper JWT validation and token rotation
+- Rate limiting and DDoS protection
+- Sanitize error messages in production

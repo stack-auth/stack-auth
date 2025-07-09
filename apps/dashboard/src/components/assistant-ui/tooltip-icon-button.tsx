@@ -2,7 +2,13 @@
 
 import { ComponentPropsWithoutRef, forwardRef } from "react";
 
-import { Button, Tooltip, TooltipContent, TooltipTrigger } from "@stackframe/stack-ui";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+  Button,
+} from "@stackframe/stack-ui";
 import { cn } from "@/lib/utils";
 
 export type TooltipIconButtonProps = ComponentPropsWithoutRef<typeof Button> & {
@@ -15,21 +21,23 @@ export const TooltipIconButton = forwardRef<
   TooltipIconButtonProps
 >(({ children, tooltip, side = "bottom", className, ...rest }, ref) => {
   return (
-    <Tooltip>
-      <TooltipTrigger asChild>
-        <Button
-          variant="ghost"
-          size="icon"
-          {...rest}
-          className={cn("aui-button-icon", className)}
-          ref={ref}
-        >
-          {children}
-          <span className="aui-sr-only">{tooltip}</span>
-        </Button>
-      </TooltipTrigger>
-      <TooltipContent side={side}>{tooltip}</TooltipContent>
-    </Tooltip>
+    <TooltipProvider>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Button
+            variant="ghost"
+            size="icon"
+            {...rest}
+            className={cn("size-6 p-1", className)}
+            ref={ref}
+          >
+            {children}
+            <span className="sr-only">{tooltip}</span>
+          </Button>
+        </TooltipTrigger>
+        <TooltipContent side={side}>{tooltip}</TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
   );
 });
 

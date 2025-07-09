@@ -1,0 +1,204 @@
+---
+description: 
+globs: 
+alwaysApply: false
+---
+# Stack Auth Testing Rules
+
+## Workflow
+- All tests use vitess
+- Run an individual test by doing "pnpm test run <test-file-name>" from the project root
+- Always run a single test at a time because the entire test suite takes too long to run
+- Always ensure you run the test you edit or create and ensure it is passing
+
+## Test Structure & Organization
+- Use `it` imported from `../helpers`, NOT directly from vitest
+- Use `describe` blocks to group related test cases
+- Organize tests by functionality: `apps/e2e/tests/backend/endpoints/`, `apps/e2e/tests/js/`, `apps/e2e/tests/general/`
+- Create module-specific helper functions within test files for common setup patterns
+- Always use `async/await` syntax in test functions
+- Use destructured `expect` parameter: `async ({ expect }) => {}`
+
+## Backend API Testing Patterns
+### Core Utilities
+- Use `niceBackendFetch` for all API calls, NOT regular fetch
+- Import from `"../../../backend-helpers"` or appropriate relative path
+- Use `backendContext` for managing test state between tests
+- Access types: `"client"`, `"server"`, `"admin"` - always specify `accessType`
+
+### Common Backend Test Setup
+```typescript
+import { it } from "../../../../helpers";
+import { Auth, Project, Team, User, backendContext, niceBackendFetch } from "../../../backend-helpers";
+
+// Create helper function for common setup
+async function createTestProject() {
+  await Project.createAndSwitch({ 
+    config: { 
+      magic_link_enabled: true,
+      credential_enabled: true 
+    } 
+  });
+}
+
+it("should test something", async ({ expect }) => {
+  await createTestProject();
+  await Auth.Otp.signIn();
+  
+  const response = await niceBackendFetch("/api/v1/endpoint", {
+    method: "POST",
+    accessType: "client",
+    body: { key: "value" },
+  });
+  
+  expect(response).toMatchInlineSnapshot(`...`);
+});
+```
+
+### Response Validation
+- Always use `toMatchInlineSnapshot` for response validation
+- Test both success and error responses
+- Verify HTTP status codes explicitly when needed
+- Check error codes with `x-stack-known-error` header for expected errors
+
+### Access Control Testing
+- Test different access types (`client`, `server`, `admin`) for same endpoint
+- Verify proper permissions and unauthorized access scenarios
+- Use `expectToBeSignedIn()` and `expectToBeSignedOut()` from Auth helpers
+
+## Authentication & User Management
+### Available Auth Helpers
+- `Auth.Otp.signIn()` - OTP email authentication flow
+- `Auth.Password.signUpWithEmail()` - Password signup
+- `Auth.Password.signInWithEmail()` - Password signin
+- `Auth.OAuth.signIn()` - OAuth flow testing
+- `Auth.Anonymous.signUp()` - Anonymous user creation
+- `Auth.expectToBeSignedIn()` - Verify authentication state
+- `Auth.expectToBeSignedOut()` - Verify signed out state
+
+### Email & Mailbox Testing
+- Use `bumpEmailAddress()` to create unique test emails
+- `backendContext.value.mailbox` for accessing current test mailbox
+- `mailbox.fetchMessages()` for email verification flows
+- Use `generatedEmailSuffix` constant for test emails
+
+## Project & Context Management
+### Project Helpers
+- `Project.createAndSwitch()` - Create and switch to new project
+- `Project.createAndGetAdminToken()` - Get admin access token
+- `InternalApiKey.createAndSetProjectKeys()` - Create API keys
+- Always clean up project state between tests
+
+### Backend Context Usage
+```typescript
+// Set project configuration
+backendContext.set({
+  projectKeys: { projectId: "test-project" },
+  userAuth: null,
+});
+
+// Access current context
+const { projectKeys, userAuth, mailbox } = backendContext.value;
+```
+
+## Team & API Key Testing
+### Team Helpers
+- `Team.create()` - Create team
+- `Team.createWithCurrentAsCreator()` - Create team with current user as creator
+- `Team.addMember()` - Add team member
+- `Team.sendInvitation()` - Send team invitation
+- `Team.acceptInvitation()` - Accept team invitation flow
+
+### API Key Helpers
+- `ProjectApiKey.User.create()` - Create user API key
+- `ProjectApiKey.User.check()` - Validate user API key
+- `ProjectApiKey.Team.create()` - Create team API key
+- `InternalApiKey.create()` - Create internal API key
+
+## JavaScript SDK Testing
+### SDK Test Setup
+```typescript
+import { it } from "../helpers";
+import { createApp } from "./js-helpers";
+
+it("should test SDK functionality", async ({ expect }) => {
+  const { clientApp, serverApp, adminApp } = await createApp({
+    config: {
+      allowUserApiKeys: true,
+    },
+  });
+  
+  await clientApp.signUpWithCredential({
+    email: "test@test.com",
+    password: "password",
+    verificationCallbackUrl: "http://localhost:3000",
+  });
+  
+  const user = await clientApp.getUser();
+  expect(user).not.toBeNull();
+});
+```
+
+### SDK Testing Patterns
+- Use `createApp()` from js-helpers for SDK app instances
+- Test client, server, and admin app interactions
+- Verify SDK method responses with inline snapshots
+- Test error scenarios and edge cases
+
+## Common Testing Patterns
+### Error Testing
+- Test both valid and invalid requests
+- Verify proper error codes and messages
+- Use `expect(response.status).toBe(400)` for status verification
+- Check `x-stack-known-error` header for expected error types
+
+### Data Validation
+- Test required field validation
+- Test field type validation
+- Test authentication and authorization scenarios
+- Test rate limiting and edge cases
+
+### Test Isolation
+- Each test should be independent
+- Use unique identifiers (UUIDs) for test data
+- Clean up resources when needed
+- Don't rely on test execution order
+
+## Webhook Testing
+### Webhook Helpers
+- `Webhook.createProjectWithEndpoint()` - Setup webhook project
+- `Webhook.findWebhookAttempt()` - Find specific webhook calls
+- `Webhook.listWebhookAttempts()` - List all webhook attempts
+
+## Best Practices
+- Write descriptive test names that explain the scenario
+- Test both happy path and error scenarios
+- Use timeouts for long-running operations: `}, { timeout: 40_000 }`
+- Don't use `console.log` or other debugging artifacts
+- Prefer helper functions over duplicated setup code
+- Always import required utilities at the top of the file
+- Use `urlString` template literal for URL construction with variables
+
+## Snapshot Testing
+- Use inline snapshots for response validation
+- Strip sensitive data in snapshots (automatically handled)
+- Update snapshots when intentional changes are made
+- Don't commit large or non-meaningful snapshots
+
+## Test Categories
+### Backend Endpoint Tests (`apps/e2e/tests/backend/endpoints/`)
+- Test API endpoints thoroughly
+- Cover all HTTP methods and access types  
+- Test validation, authentication, authorization
+- Organized by API version and endpoint groups
+
+### JavaScript SDK Tests (`apps/e2e/tests/js/`)
+- Test client SDK functionality
+- Test server SDK functionality  
+- Test admin SDK functionality
+- Integration testing between different SDK types
+
+### General Tests (`apps/e2e/tests/general/`)
+- Linting, type checking, build verification
+- System-level integration tests
+- Infrastructure and tooling tests

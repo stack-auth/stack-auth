@@ -70,6 +70,9 @@ export type StackAdminApp<HasTokenStore extends boolean = boolean, ProjectId ext
 
     createEmailThemeDevServer(): Promise<{ repoId: string, previewUrl: string }>,
     requestEmailThemeDevServer(repoId: string): Promise<{ previewUrl: string }>,
+    updateEmailThemeDevServerFile(repoId: string, file: "theme", content: string): Promise<void>,
+
+    sendDevServerChatMessage(repoId: string, messages: Array<{ role: string, content: string }>, abortSignal?: AbortSignal): Promise<{ text: string }>,
   }
   & StackServerApp<HasTokenStore, ProjectId>
 );

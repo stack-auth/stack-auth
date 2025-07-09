@@ -1,0 +1,33 @@
+---
+description: 
+globs: 
+alwaysApply: true
+---
+# Stack Auth General Rules
+
+## Code Style
+- Never write comments unless specifically asked to
+- Use TypeScript with strict type checking across all packages
+- Always run pnpm lint --fix and pnpm typecheck after editing code
+
+## Project Structure
+- Monorepo structure with pnpm workspaces
+- Apps in `apps/` directory (backend, dashboard, examples)
+- Shared packages in `packages/` directory
+
+## Environment Variables
+- Use getEnvVariable() and getPublicEnvVar() utilities consistently
+- Use NEXT_PUBLIC_ prefix for client-side Next.js variables
+
+## Async Patterns
+- Use runAsynchronously() utility for fire-and-forget operations
+- Implement proper loading states in UI components
+- Use async/await over Promise.then() chains
+
+## Build & Development
+- Use Turbo for monorepo builds and caching
+- Support both development and production configurations  
+
+## Database & Migrations
+- Use Prisma for database operations
+- Write proper database migrations with clear naming
