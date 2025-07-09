@@ -1,0 +1,41 @@
+---
+title: "Google Authentication"
+---
+
+This guide explains how to set up Google as an authentication provider with Stack Auth. Google OAuth2 allows users to sign in to your application using their Google account.
+
+<Info>
+For Development purposes, Stack Auth uses shared keys for this provider. Shared keys are automatically created by Stack, but show Stack's logo on the OAuth sign-in page.
+You should replace these before you go into production.
+</Info>
+
+## Integration Steps
+
+<Steps>
+  <Step>
+    ### Create a Google OAuth2 App
+    
+    1. Navigate to the [Google Cloud Console](https://console.cloud.google.com/).
+    2. Create a new project or select an existing one.
+    3. In the sidebar, navigate to **APIs & Services** > **Credentials**.
+    4. Click **Create Credentials** and select **OAuth client ID**.
+    5. Select **Web application** as the application type.
+    6. Enter a name for your OAuth client.
+    7. Under **Authorized redirect URIs**, add `https://api.stack-auth.com/api/v1/auth/oauth/callback/google`
+    8. Click **Create**.
+    9. Save the **Client ID** and **Client Secret** that are displayed.
+  </Step>
+  
+  <Step>
+    ### Enable Google OAuth2 in Stack Auth
+    
+    1. On the Stack Auth dashboard, select **Auth Methods** in the left sidebar.
+    2. Click **Add SSO Providers** and select **Google** as the provider.
+    3. Set the **Client ID** and **Client Secret** you obtained from Google Cloud Console earlier.
+  </Step>
+</Steps>
+
+### Need More Help?
+
+- Check the [Google OAuth2 Documentation](https://developers.google.com/identity/protocols/oauth2)
+- Join our [Discord](https://discord.stack-auth.com)
