@@ -60,6 +60,7 @@
     "@vercel/otel": "^1.10.4",
     "bcrypt": "^5.1.1",
     "dotenv-cli": "^7.3.0",
+    "freestyle-sandboxes": "^0.0.92",
     "jose": "^5.2.2",
     "json-diff": "^1.0.6",
     "next": "15.2.3",

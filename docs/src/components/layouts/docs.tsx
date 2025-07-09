@@ -43,17 +43,19 @@ import {
 import { TreeContextProvider } from 'fumadocs-ui/contexts/tree';
 import { ArrowLeft, ChevronDown, ChevronRight, Languages } from 'lucide-react';
 import { usePathname } from 'next/navigation';
-import { type HTMLAttributes, type ReactNode, useMemo, useState } from 'react';
+import { createContext, type HTMLAttributes, type ReactNode, useContext, useMemo, useRef, useState } from 'react';
 import { cn } from '../../lib/cn';
 import { getCurrentPlatform } from '../../lib/platform-utils';
+import { AIChatDrawer } from '../chat/ai-chat';
+import { CustomSearchDialog } from '../layout/custom-search-dialog';
+import {
+  SearchInputToggle
+} from '../layout/custom-search-toggle';
 import {
   LanguageToggle,
   LanguageToggleText,
 } from '../layout/language-toggle';
 import { RootToggle } from '../layout/root-toggle';
-import {
-  SearchToggle
-} from '../layout/search-toggle';
 import { ThemeToggle } from '../layout/theme-toggle';
 import { buttonVariants } from '../ui/button';
 import { HideIfEmpty } from '../ui/hide-if-empty';
@@ -80,7 +82,46 @@ import {
   isInComponentsSection,
   isInSdkSection
 } from './shared/section-utils';
-import { useTOC } from './toc-context';
+
+// Import chat context
+
+// Context for persisting accordion state
+type AccordionContextType = {
+  accordionState: Record<string, boolean>,
+  setAccordionState: (key: string, isOpen: boolean) => void,
+};
+
+const AccordionContext = createContext<AccordionContextType | null>(null);
+
+function AccordionProvider({ children }: { children: ReactNode }) {
+  const [accordionState, setAccordionStateInternal] = useState<Record<string, boolean>>({});
+
+  const setAccordionState = (key: string, isOpen: boolean) => {
+    setAccordionStateInternal(prev => ({ ...prev, [key]: isOpen }));
+  };
+
+  return (
+    <AccordionContext.Provider value={{ accordionState, setAccordionState }}>
+      {children}
+    </AccordionContext.Provider>
+  );
+}
+
+function useAccordionState(key: string, defaultValue: boolean) {
+  const context = useContext(AccordionContext);
+  if (!context) {
+    throw new Error('useAccordionState must be used within AccordionProvider');
+  }
+
+  const { accordionState, setAccordionState } = context;
+  const isOpen = accordionState[key] ?? defaultValue;
+
+  const setIsOpen = (value: boolean) => {
+    setAccordionState(key, value);
+  };
+
+  return [isOpen, setIsOpen] as const;
+}
 
 // Custom Link Component for docs sidebar - matches API sidebar
 function DocsSidebarLink({
@@ -131,7 +172,9 @@ function CollapsibleSection({
   children: ReactNode,
   defaultOpen?: boolean,
 }) {
-  const [isOpen, setIsOpen] = useState(defaultOpen);
+  // Use context for persistent state
+  const accordionKey = `section-${title.toLowerCase().replace(/\s+/g, '-')}`;
+  const [isOpen, setIsOpen] = useAccordionState(accordionKey, defaultOpen);
 
   return (
     <div className="space-y-1">
@@ -146,6 +189,72 @@ function CollapsibleSection({
         )}
         {title}
       </button>
+      {isOpen && (
+        <div className="ml-4 space-y-1">
+          {children}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Clickable collapsible section component - for folders with index pages
+function ClickableCollapsibleSection({
+  title,
+  href,
+  children,
+  defaultOpen = false
+}: {
+  title: string,
+  href: string,
+  children: ReactNode,
+  defaultOpen?: boolean,
+}) {
+  const pathname = usePathname();
+  const isActive = pathname === href || pathname.startsWith(href + '/');
+
+  // Use context for persistent state
+  const accordionKey = `collapsible-${href}`;
+  const [isOpen, setIsOpen] = useAccordionState(accordionKey, defaultOpen || isActive);
+
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  // Note: Removed outside click detection as it was interfering with navigation
+  // The accordion should stay open when user navigates within the section
+
+  return (
+    <div className="space-y-1" ref={containerRef}>
+      <div className="group">
+        <Link
+          href={href}
+          className={`flex items-center justify-between w-full px-2 py-1.5 rounded-md text-xs transition-colors ${
+            isActive
+              ? 'bg-fd-primary/10 text-fd-primary font-medium'
+              : 'text-fd-muted-foreground hover:text-fd-foreground hover:bg-fd-muted/50'
+          }`}
+          onClick={() => {
+            if (!isOpen) {
+              setIsOpen(true);
+            }
+          }}
+        >
+          <span className="flex-1">{title}</span>
+          <button
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              setIsOpen(!isOpen);
+            }}
+            className="opacity-0 group-hover:opacity-100 transition-opacity p-0.5 rounded hover:bg-fd-muted/30"
+          >
+            {isOpen ? (
+              <ChevronDown className="h-3 w-3" />
+            ) : (
+              <ChevronRight className="h-3 w-3" />
+            )}
+          </button>
+        </Link>
+      </div>
       {isOpen && (
         <div className="ml-4 space-y-1">
           {children}
@@ -261,16 +370,27 @@ function PageTreeItem({ item, currentPlatform }: { item: PageTree.Node, currentP
     const isCurrentPath = folderUrl && pathname.startsWith(folderUrl);
     const itemName = typeof item.name === 'string' ? item.name : '';
 
+    // If folder has an index page, make the title clickable
+    if (hasIndexPage) {
+      return (
+        <ClickableCollapsibleSection
+          title={itemName || 'Folder'}
+          href={item.index!.url}
+          defaultOpen={!!isCurrentPath}
+        >
+          {item.children.map((child, index) => (
+            <PageTreeItem key={child.type === 'page' ? child.url : index} item={child} currentPlatform={currentPlatform} />
+          ))}
+        </ClickableCollapsibleSection>
+      );
+    }
+
+    // If no index page, use regular accordion trigger
     return (
       <CollapsibleSection
         title={itemName || 'Folder'}
         defaultOpen={!!isCurrentPath}
       >
-        {hasIndexPage && (
-          <DocsSidebarLink href={item.index!.url} external={item.index!.external}>
-            Overview
-          </DocsSidebarLink>
-        )}
         {item.children.map((child, index) => (
           <PageTreeItem key={child.type === 'page' ? child.url : index} item={child} currentPlatform={currentPlatform} />
         ))}
@@ -352,7 +472,8 @@ export function DocsLayout({
   children,
   ...props
 }: DocsLayoutProps): ReactNode {
-  const { isTocOpen } = useTOC();
+  const [searchOpen, setSearchOpen] = useState(false);
+
   const tabs = useMemo(
     () => getSidebarTabsFromOptions(sidebar.tabs, props.tree) ?? [],
     [sidebar.tabs, props.tree],
@@ -372,96 +493,105 @@ export function DocsLayout({
   };
 
   return (
-    <TreeContextProvider tree={props.tree}>
-      <NavProvider transparentMode={transparentMode}>
-        {slot(
-          nav,
-          <Navbar className="h-14 md:hidden">
-            <Link
-              href={nav.url ?? '/'}
-              className="inline-flex items-center gap-2.5 font-semibold"
-            >
-              {nav.title}
-            </Link>
-            <div className="flex-1">{nav.children}</div>
-            {slots('sm', searchToggle, <SearchToggle hideIfDisabled />)}
-            <NavbarSidebarTrigger className="-me-2 md:hidden" />
-          </Navbar>,
-        )}
-        <main
-          id="nd-docs-layout"
-          {...props.containerProps}
-          className={cn(
-            'flex flex-1 flex-row md:ml-64 pt-14 min-w-0',
-            variables,
-            props.containerProps?.className,
-          )}
-          style={{
-            ...layoutVariables,
-            ...props.containerProps?.style,
-          }}
-        >
+    <AccordionProvider>
+      <TreeContextProvider tree={props.tree}>
+        <NavProvider transparentMode={transparentMode}>
           {slot(
-            sidebar,
-            <DocsLayoutSidebar
-              {...omit(sidebar, 'enabled', 'component', 'tabs')}
-              links={links}
-              tree={props.tree}
-              nav={
-                <>
-                  <Link
-                    href={nav.url ?? '/'}
-                    className="inline-flex text-[15px] items-center gap-2.5 font-medium"
-                  >
-                    {nav.title}
-                  </Link>
-                  {nav.children}
-                </>
-              }
-              banner={
-                <>
-                  {tabs.length > 0 ? <RootToggle options={tabs} /> : null}
-                  {sidebar.banner}
-                </>
-              }
-              footer={
-                <>
-                  <DocsLayoutSidebarFooter
-                    links={links.filter((item) => item.type === 'icon')}
-                    i18n={i18n}
-                    themeSwitch={themeSwitch}
-                  />
-                  {sidebar.footer}
-                </>
-              }
-            />,
+            nav,
+            <Navbar className="h-14 md:hidden">
+              <Link
+                href={nav.url ?? '/'}
+                className="inline-flex items-center gap-2.5 font-semibold"
+              >
+                {nav.title}
+              </Link>
+              <div className="flex-1">{nav.children}</div>
+              {slots('sm', searchToggle, <SearchInputToggle onOpen={() => setSearchOpen(true)} />)}
+              <NavbarSidebarTrigger className="-me-2 md:hidden" />
+            </Navbar>,
           )}
-          <div className={cn(
-            'flex-1 transition-all duration-300 min-w-0',
-            isTocOpen && 'xl:mr-72'
-          )}>
-            <StylesProvider {...pageStyles}>{children}</StylesProvider>
-          </div>
-        </main>
-      </NavProvider>
-    </TreeContextProvider>
+          <CustomSearchDialog
+            open={searchOpen}
+            onOpenChange={setSearchOpen}
+          />
+          <main
+            id="nd-docs-layout"
+            {...props.containerProps}
+            className={cn(
+              'flex flex-1 flex-row md:ml-64 pt-14 min-w-0',
+              variables,
+              props.containerProps?.className,
+            )}
+            style={{
+              ...layoutVariables,
+              ...props.containerProps?.style,
+            }}
+          >
+            {slot(
+              sidebar,
+              <DocsLayoutSidebar
+                {...omit(sidebar, 'enabled', 'component', 'tabs')}
+                links={links}
+                tree={props.tree}
+                onSearchOpen={() => setSearchOpen(true)}
+                nav={
+                  <>
+                    <Link
+                      href={nav.url ?? '/'}
+                      className="inline-flex text-[15px] items-center gap-2.5 font-medium"
+                    >
+                      {nav.title}
+                    </Link>
+                    {nav.children}
+                  </>
+                }
+                banner={
+                  <>
+                    {tabs.length > 0 ? <RootToggle options={tabs} /> : null}
+                    {sidebar.banner}
+                  </>
+                }
+                footer={
+                  <>
+                    <DocsLayoutSidebarFooter
+                      links={links.filter((item) => item.type === 'icon')}
+                      i18n={i18n}
+                      themeSwitch={themeSwitch}
+                    />
+                    {sidebar.footer}
+                  </>
+                }
+              />,
+            )}
+            <div className={cn(
+              'flex-1 transition-all duration-300 min-w-0'
+            )}>
+              <StylesProvider {...pageStyles}>{children}</StylesProvider>
+            </div>
+          </main>
+          <AIChatDrawer />
+        </NavProvider>
+      </TreeContextProvider>
+    </AccordionProvider>
   );
 }
 
 export function DocsLayoutSidebar({
   collapsible = true,
   banner,
+  onSearchOpen,
   ...props
 }: Omit<SidebarOptions, 'tabs'> & {
   links?: LinkItemType[],
   nav?: ReactNode,
   tree?: PageTree.Root,
+  onSearchOpen?: () => void,
 }) {
   const pathname = usePathname();
 
   return (
     <>
-      {collapsible ? <CollapsibleControl /> : null}
+      {collapsible ? <CollapsibleControl onSearchOpen={onSearchOpen} /> : null}
       {/* Sidebar positioned under the header */}
       <div className="hidden md:block fixed left-0 top-14 w-64 border-r border-fd-border bg-fd-background z-30">
         <div className="h-[calc(100vh-3.5rem)] flex flex-col">

@@ -1,0 +1,45 @@
+---
+title: "Discord Authentication"
+---
+
+This guide explains how to set up Discord as an authentication provider with Stack Auth. Discord OAuth2 allows users to sign in to your application using their Discord account.
+
+## Integration Steps
+
+<Steps>
+  <Step>
+  ### Create a Discord Developer App
+  
+  1. Navigate to the [Discord Developer Portal](https://discord.com/developers/applications).
+  2. Click the **New Application** button in the top-right corner.
+  3. Enter a name for your application and click **Create**. You will be redirected to the General Information page.
+  4. Select **OAuth2** in the left sidebar.
+  5. Under **Redirects** add `https://api.stack-auth.com/api/v1/auth/oauth/callback/discord`
+  6. In the **OAuth2** section, enable the required scopes: 'identify' and 'email'
+  7. Click **Save Changes**
+  8. Save the **Client ID** and **Client Secret**. You may need to select **Reset Secret** to generate a new one.
+  </Step>
+  <Step>
+  ### Enable Discord OAuth2 in Stack Auth
+  
+  1. On the Stack Auth dashboard, select **Auth Methods** in the left sidebar.
+  2. Click **Add SSO Providers** and select **Discord** as the provider.
+  3. Set the **Client ID** and **Client Secret** you obtained from the Discord Developer Portal earlier.
+
+  </Step>
+</Steps>
+
+### User Profile Data
+
+When a user signs in with Discord, Stack Auth will create a user profile with the following data:
+
+- **User ID**: Discord's unique user ID
+- **Username**: The user's Discord username
+- **Avatar**: The user's Discord avatar (if available)
+- **Email**: The user's email if the 'email' scope is requested
+
+
+### Need More Help?
+
+- Check the [Discord OAuth2 Documentation](https://discord.com/developers/docs/topics/oauth2)
+- Visit our [Discord Support Channel](https://discord.stack-auth.com)
