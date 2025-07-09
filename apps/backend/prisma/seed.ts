@@ -114,7 +114,7 @@ async function seed() {
     if (oldAdminUser) {
         console.log(`Admin user already exists, skipping creation`);
     } else {
-      const newUser = await getPrismaClientForTenancy(internalTenancy).projectUser.create({
+      const newUser = await internalPrisma.projectUser.create({
         data: {
           displayName: 'Administrator (created by seed script)',
           projectUserId: defaultUserId,
