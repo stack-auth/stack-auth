@@ -124,6 +124,7 @@ function TOCToggleButtonInner() {
           : 'text-fd-muted-foreground hover:text-fd-foreground hover:bg-fd-muted/50'
       )}
       onClick={toggleToc}
+      title={isTocEffectivelyVisible ? 'Close table of contents' : 'Open table of contents'}
     >
       <TableOfContents className="h-3 w-3" />
       <span className="font-medium">Contents</span>

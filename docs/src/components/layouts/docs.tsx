@@ -36,9 +36,9 @@
 import Link from 'fumadocs-core/link';
 import type { PageTree } from 'fumadocs-core/server';
 import {
-  NavProvider,
-  type PageStyles,
-  StylesProvider,
+    NavProvider,
+    type PageStyles,
+    StylesProvider,
 } from 'fumadocs-ui/contexts/layout';
 import { TreeContextProvider } from 'fumadocs-ui/contexts/tree';
 import { ArrowLeft, ChevronDown, ChevronRight, Languages } from 'lucide-react';
@@ -49,11 +49,11 @@ import { getCurrentPlatform } from '../../lib/platform-utils';
 import { AIChatDrawer } from '../chat/ai-chat';
 import { CustomSearchDialog } from '../layout/custom-search-dialog';
 import {
-  SearchInputToggle
+    SearchInputToggle
 } from '../layout/custom-search-toggle';
 import {
-  LanguageToggle,
-  LanguageToggleText,
+    LanguageToggle,
+    LanguageToggleText,
 } from '../layout/language-toggle';
 import { RootToggle } from '../layout/root-toggle';
 import { ThemeToggle } from '../layout/theme-toggle';
@@ -61,26 +61,26 @@ import { buttonVariants } from '../ui/button';
 import { HideIfEmpty } from '../ui/hide-if-empty';
 import { ScrollArea, ScrollViewport } from '../ui/scroll-area';
 import {
-  CollapsibleControl,
-  Navbar,
-  NavbarSidebarTrigger,
+    CollapsibleControl,
+    Navbar,
+    NavbarSidebarTrigger,
 } from './docs-client';
 import { ComponentsSidebarContent } from './docs-layout-router';
 import {
-  getSidebarTabsFromOptions,
-  layoutVariables,
-  type SidebarOptions
+    getSidebarTabsFromOptions,
+    layoutVariables,
+    type SidebarOptions
 } from './docs/shared';
 import {
-  BaseLinkItem,
-  type IconItemType,
-  type LinkItemType,
+    BaseLinkItem,
+    type IconItemType,
+    type LinkItemType,
 } from './links';
 import { type BaseLayoutProps, getLinks, omit, slot, slots } from './shared';
 import {
-  isInApiSection,
-  isInComponentsSection,
-  isInSdkSection
+    isInApiSection,
+    isInComponentsSection,
+    isInSdkSection
 } from './shared/section-utils';
 
 // Import chat context
