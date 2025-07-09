@@ -31,4 +31,8 @@ export class MockProvider extends OAuthBaseProvider {
       emailVerified: true,
     });
   }
+
+  async checkAccessTokenValidity(accessToken: string): Promise<boolean> {
+    return true;
+  }
 }
