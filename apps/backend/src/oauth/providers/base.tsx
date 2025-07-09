@@ -190,9 +190,7 @@ export abstract class OAuthBaseProvider {
   }
 
   // If the token can be revoked before it expires, override this method to make an API call to the provider to check if the token is valid
-  async checkAccessTokenValidity(accessToken: string): Promise<boolean> {
-    return true;
-  }
+  abstract async checkAccessTokenValidity(accessToken: string): Promise<boolean>;
 
   abstract postProcessUserInfo(tokenSet: TokenSet): Promise<OAuthUserInfo>;
 }

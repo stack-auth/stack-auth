@@ -38,4 +38,13 @@ export class DiscordProvider extends OAuthBaseProvider {
       emailVerified: info.verified,
     });
   }
+
+  async checkAccessTokenValidity(accessToken: string): Promise<boolean> {
+    const res = await fetch("https://discord.com/api/users/@me", {
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+      },
+    });
+    return res.ok;
+  }
 }
