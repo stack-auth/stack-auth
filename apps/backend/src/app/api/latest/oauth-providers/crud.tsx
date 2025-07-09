@@ -15,7 +15,7 @@ export const oauthProviderCrudHandlers = createLazyProxy(() =>createCrudHandlers
     user_id: userIdOrMeSchema.defined(),
   }),
   querySchema: yupObject({
-    user_id: userIdOrMeSchema.defined().meta({ openapiField: { onlyShowInOperations: ['List'] } }),
+    user_id: userIdOrMeSchema.optional().meta({ openapiField: { onlyShowInOperations: ['List'] } }),
   }),
   async onRead({ auth, params }) {
     if (auth.type === 'client') {
@@ -77,7 +77,9 @@ export const oauthProviderCrudHandlers = createLazyProxy(() =>createCrudHandlers
       }
     }
 
-    await ensureUserExists(prismaClient, { tenancyId: auth.tenancy.id, userId: query.user_id });
+    if (query.user_id) {
+      await ensureUserExists(prismaClient, { tenancyId: auth.tenancy.id, userId: query.user_id });
+    }
 
     const oauthAccounts = await prismaClient.projectUserOAuthAccount.findMany({
       where: {
@@ -396,7 +398,7 @@ export const oauthProviderCrudHandlers = createLazyProxy(() =>createCrudHandlers
 
     let providerConfig: (typeof config.auth.oauth.providers)[number] & { id: string } | undefined;
     for (const [providerId, provider] of Object.entries(config.auth.oauth.providers)) {
-      if (provider.type === params.provider_id && provider.type === data.type) {
+      if (providerId === params.provider_id) {
         providerConfig = {
           id: providerId,
           ...provider,
@@ -412,18 +414,18 @@ export const oauthProviderCrudHandlers = createLazyProxy(() =>createCrudHandlers
     }
 
     await retryTransaction(async (tx) => {
-      let connectedAccount: ConnectedAccount | undefined;
-      if (data.allow_connected_accounts) {
-        connectedAccount = await tx.connectedAccount.create({
-          data: {
-            configOAuthProviderId: providerConfig!.id,
-            tenancyId: auth.tenancy.id,
-            projectUserId: params.user_id,
-            providerAccountId: data.account_id,
-          },
-        });
-      }
+      // 1. Create the main OAuth account record first (required by foreign key constraints)
+      const oauthAccount = await tx.projectUserOAuthAccount.create({
+        data: {
+          configOAuthProviderId: providerConfig!.id,
+          providerAccountId: data.account_id,
+          email: data.email,
+          projectUserId: params.user_id,
+          tenancyId: auth.tenancy.id,
+        },
+      });
 
+      // 2. Create AuthMethod and OAuthAuthMethod if needed
       let authMethod: AuthMethod | undefined;
       if (data.allow_sign_in) {
         authMethod = await tx.authMethod.create({
@@ -441,17 +443,18 @@ export const oauthProviderCrudHandlers = createLazyProxy(() =>createCrudHandlers
         });
       }
 
-      await tx.projectUserOAuthAccount.create({
-        data: {
-          configOAuthProviderId: providerConfig!.id,
-          providerAccountId: data.account_id,
-          email: data.email,
-          projectUserId: params.user_id,
-          tenancyId: auth.tenancy.id,
-          ...(connectedAccount ? { connectedAccountId: connectedAccount.id } : {}),
-          ...(authMethod ? { authMethodId: authMethod.id } : {}),
-        },
-      });
+      // 3. Create ConnectedAccount if needed (references the OAuth account created above)
+      let connectedAccount: ConnectedAccount | undefined;
+      if (data.allow_connected_accounts) {
+        connectedAccount = await tx.connectedAccount.create({
+          data: {
+            configOAuthProviderId: providerConfig!.id,
+            tenancyId: auth.tenancy.id,
+            projectUserId: params.user_id,
+            providerAccountId: data.account_id,
+          },
+        });
+      }
     });
 
     return {
