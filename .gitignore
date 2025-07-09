@@ -56,7 +56,7 @@ dist
 .idea
 
 # Cursor
-# .cursor
+.cursor
 
 # GitHub Actions runner
 /actions-runner
