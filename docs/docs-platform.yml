@@ -22,6 +22,50 @@ pages:
   - path: getting-started/example-pages.mdx
     platforms: ["js"]  # Only vanilla JS
   
+  # Auth Providers - Available for all platforms since OAuth is universal
+  - path: concepts/auth-providers/index.mdx
+    platforms: ["next", "react", "js", "python"]
+  
+  - path: concepts/auth-providers/github.mdx
+    platforms: ["next", "react", "js", "python"]
+  
+  - path: concepts/auth-providers/google.mdx
+    platforms: ["next", "react", "js", "python"]
+  
+  - path: concepts/auth-providers/facebook.mdx
+    platforms: ["next", "react", "js", "python"]
+  
+  - path: concepts/auth-providers/microsoft.mdx
+    platforms: ["next", "react", "js", "python"]
+  
+  - path: concepts/auth-providers/spotify.mdx
+    platforms: ["next", "react", "js", "python"]
+  
+  - path: concepts/auth-providers/discord.mdx
+    platforms: ["next", "react", "js", "python"]
+  
+  - path: concepts/auth-providers/gitlab.mdx
+    platforms: ["next", "react", "js", "python"]
+  
+  - path: concepts/auth-providers/apple.mdx
+    platforms: ["next", "react", "js", "python"]
+  
+  - path: concepts/auth-providers/bitbucket.mdx
+    platforms: ["next", "react", "js", "python"]
+  
+  - path: concepts/auth-providers/linkedin.mdx
+    platforms: ["next", "react", "js", "python"]
+  
+  - path: concepts/auth-providers/x-twitter.mdx
+    platforms: ["next", "react", "js", "python"]
+  
+  # Advanced auth methods - More frontend-focused
+  - path: getting-started/auth-providers/passkey.mdx
+    platforms: ["next", "react", "js"]  # No Python (frontend feature)
+  
+  - path: getting-started/auth-providers/two-factor-auth.mdx
+    platforms: ["next", "react", "js"]  # No Python (frontend feature)
+  
   - path: getting-started/production.mdx
     platforms: ["next", "react", "js"]  # No Python
 
@@ -214,4 +258,15 @@ pages:
 
   - path: others/cli-authentication.mdx
     platforms: ["python"] # Python only
+
+  # Python-specific content from templates-python/
+  # Authentication section
+  
+  - path: concepts/user-authentication.mdx
+    platforms: ["python"] # python only
+  
+  - path: concepts/teams-management.mdx
+    platforms: ["python"] # python only
+
+  
 

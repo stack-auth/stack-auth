@@ -110,7 +110,14 @@ const HTTP_METHOD_COLORS = {
 
 
 export function EnhancedAPIPage({ document, operations, description }: EnhancedAPIPageProps) {
-  const { sharedHeaders, reportError, isHeadersPanelOpen } = useAPIPageContext();
+  const apiContext = useAPIPageContext();
+
+  // Use default functions if API context is not available
+  const { sharedHeaders, reportError } = apiContext || {
+    sharedHeaders: {},
+    reportError: () => {}
+  };
+
   const [spec, setSpec] = useState<OpenAPISpec | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -392,7 +399,6 @@ export function EnhancedAPIPage({ document, operations, description }: EnhancedA
               copyToClipboard(text)
                 .catch(error => console.error('Failed to copy to clipboard:', error));
             }}
-            isHeadersPanelOpen={isHeadersPanelOpen}
             description={description || operation.description}
           />
         );
@@ -411,7 +417,6 @@ function ModernAPIPlayground({
   setRequestState,
   onExecute,
   onCopy,
-  isHeadersPanelOpen,
   description,
 }: {
   operation: OpenAPIOperation,
@@ -422,7 +427,6 @@ function ModernAPIPlayground({
   setRequestState: React.Dispatch<React.SetStateAction<RequestState>>,
   onExecute: () => void,
   onCopy: (text: string) => void,
-  isHeadersPanelOpen: boolean,
   description?: string,
 }) {
   const [copied, setCopied] = useState(false);
@@ -587,9 +591,7 @@ function ModernAPIPlayground({
   };
 
   return (
-    <div className={`max-w-6xl mx-auto px-6 py-8 transition-all duration-200 ${
-      isHeadersPanelOpen ? 'pr-8' : ''
-    }`}>
+    <div className="pb-8">
       {/* Header Section */}
       <div className="mb-8 border-b border-fd-border pb-8">
         <div className="flex items-start justify-between gap-8">
@@ -618,7 +620,7 @@ function ModernAPIPlayground({
             {/* Description */}
             {description && (
               <div className="mt-6">
-                <p className="text-fd-muted-foreground text-base leading-relaxed max-w-3xl">
+                <p className="text-fd-muted-foreground text-base leading-relaxed">
                   {description}
                 </p>
               </div>
@@ -630,7 +632,7 @@ function ModernAPIPlayground({
             <Button
               onClick={onExecute}
               disabled={requestState.response.loading}
-              className="px-6 py-3 bg-fd-primary text-fd-primary-foreground font-semibold rounded-lg border-0 shadow-sm hover:shadow-md transition-all duration-200"
+              className="w-[140px] py-3 bg-fd-primary text-fd-primary-foreground font-semibold rounded-lg border-0 shadow-sm hover:shadow-md transition-all duration-200 flex items-center justify-center"
             >
               {requestState.response.loading ? (
                 <>

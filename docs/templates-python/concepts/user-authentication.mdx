@@ -1,0 +1,370 @@
+---
+title: "User Authentication"
+description: "Learn how to implement user authentication in your Python application using Stack Auth's REST API"
+---
+
+After creating a [helper function](../getting-started/setup.mdx) to make requests to the Stack Auth API, you can start using the API to authenticate users.
+
+## User Authentication
+
+Stack Auth supports multiple authentication methods:
+- **Password Authentication** - Email and password
+- **OTP Authentication** - Magic links and one-time passwords via email
+- **OAuth Authentication** - Social logins (GitHub, Google, etc.)
+- **Passkey Authentication** - WebAuthn/FIDO2 passkeys
+- **Multi-Factor Authentication** - TOTP-based MFA
+
+### Sign Up with Email and Password
+
+To create a new user account with email and password:
+
+```python
+def sign_up_with_password(email, password, verification_callback_url):
+    """
+    Sign up a new user with email and password
+    Returns access_token, refresh_token, and user_id
+    """
+    response = stack_auth_request('POST', 'api/v1/auth/password/sign-up', json={
+        'email': email,
+        'password': password,
+        'verification_callback_url': verification_callback_url  # URL where user will verify email
+    })
+    
+    return {
+        'access_token': response['access_token'],
+        'refresh_token': response['refresh_token'], 
+        'user_id': response['user_id']
+    }
+
+# Example usage
+user_data = sign_up_with_password(
+    email="user@example.com",
+    password="secure_password_123",
+    verification_callback_url="https://yourapp.com/verify-email"
+)
+```
+
+### Sign In with Email and Password
+
+To authenticate an existing user:
+
+```python
+def sign_in_with_password(email, password):
+    """
+    Sign in an existing user with email and password
+    Returns access_token, refresh_token, and user_id
+    """
+    response = stack_auth_request('POST', 'api/v1/auth/password/sign-in', json={
+        'email': email,
+        'password': password
+    })
+    
+    return {
+        'access_token': response['access_token'],
+        'refresh_token': response['refresh_token'],
+        'user_id': response['user_id']
+    }
+
+# Example usage
+user_data = sign_in_with_password("user@example.com", "secure_password_123")
+access_token = user_data['access_token']
+refresh_token = user_data['refresh_token']
+```
+
+### Sign In with OTP (Magic Link)
+
+For passwordless authentication using one-time passwords:
+
+```python
+def send_otp_code(email, callback_url):
+    """
+    Send an OTP code to the user's email
+    Returns a nonce that must be stored for verification
+    """
+    response = stack_auth_request('POST', 'api/v1/auth/otp/send-sign-in-code', json={
+        'email': email,
+        'callback_url': callback_url  # URL where user will complete sign-in
+    })
+    
+    return response['nonce']
+
+def verify_otp_code(nonce, six_digit_code):
+    """
+    Verify the OTP code and complete sign-in
+    The code parameter should be the 6-digit code + nonce concatenated
+    Returns access_token, refresh_token, and user_id
+    """
+    # The verification code is the 6-digit code followed by the nonce
+    verification_code = six_digit_code + nonce
+    
+    response = stack_auth_request('POST', 'api/v1/auth/otp/sign-in', json={
+        'code': verification_code
+    })
+    
+    return {
+        'access_token': response['access_token'],
+        'refresh_token': response['refresh_token'],
+        'user_id': response['user_id'],
+        'is_new_user': response['is_new_user']  # True if this was a sign-up
+    }
+
+# Example usage
+nonce = send_otp_code("user@example.com", "https://yourapp.com/verify-otp")
+# Store the nonce temporarily, user receives email with 6-digit code
+# When user enters the code:
+user_data = verify_otp_code(nonce, "123456")
+```
+
+### Get Current User Information
+
+To retrieve information about the currently authenticated user:
+
+```python
+def get_current_user(access_token):
+    """
+    Get the current user's information using their access token
+    """
+    response = stack_auth_request('GET', 'api/v1/users/me', headers={
+        'x-stack-access-token': access_token
+    })
+    
+    return {
+        'id': response['id'],
+        'display_name': response['display_name'],
+        'primary_email': response['primary_email'],
+        'primary_email_verified': response['primary_email_verified'],
+        'profile_image_url': response['profile_image_url'],
+        'signed_up_at_millis': response['signed_up_at_millis'],
+        'last_active_at_millis': response['last_active_at_millis'],
+        'oauth_providers': response['oauth_providers'],
+        'has_password': response['has_password'],
+        'auth_with_email': response['auth_with_email']
+    }
+
+# Example usage
+user_info = get_current_user(access_token)
+print(f"Welcome, {user_info['display_name']}!")
+```
+
+### Refresh Access Token
+
+Access tokens expire after a short time (typically 10 minutes). Use the refresh token to get a new access token:
+
+```python
+def refresh_access_token(refresh_token):
+    """
+    Get a new access token using the refresh token
+    """
+    response = stack_auth_request('POST', 'api/v1/auth/sessions/current/refresh', headers={
+        'x-stack-refresh-token': refresh_token
+    })
+    
+    return response['access_token']
+
+# Example usage
+new_access_token = refresh_access_token(refresh_token)
+```
+
+### Sign Out (Revoke Session)
+
+To sign out a user by revoking their session:
+
+```python
+def get_user_sessions(access_token):
+    """
+    Get all active sessions for the current user
+    """
+    response = stack_auth_request('GET', 'api/v1/auth/sessions', headers={
+        'x-stack-access-token': access_token
+    })
+    
+    return response['items']
+
+def sign_out_session(access_token, session_id):
+    """
+    Sign out by deleting a specific session
+    """
+    stack_auth_request('DELETE', f'api/v1/auth/sessions/{session_id}', headers={
+        'x-stack-access-token': access_token
+    })
+
+def sign_out_current_user(access_token):
+    """
+    Sign out the current user by finding and deleting their current session
+    """
+    sessions = get_user_sessions(access_token)
+    current_session = next((s for s in sessions if s['is_current_session']), None)
+    
+    if current_session:
+        # Note: This will fail with "CannotDeleteCurrentSession" error
+        # Instead, you should invalidate the tokens on your client side
+        pass
+    
+    # In practice, you would typically just discard the tokens client-side
+    print("User signed out (tokens should be discarded client-side)")
+
+# Example usage
+sign_out_current_user(access_token)
+```
+
+## Complete Authentication Flow Example
+
+Here's a complete example that demonstrates a full authentication flow:
+
+```python
+import os
+import requests
+
+# Setup (from setup guide)
+stack_project_id = os.getenv("STACK_PROJECT_ID")
+stack_publishable_client_key = os.getenv("STACK_PUBLISHABLE_CLIENT_KEY")
+stack_secret_server_key = os.getenv("STACK_SECRET_SERVER_KEY")
+
+def stack_auth_request(method, endpoint, **kwargs):
+    res = requests.request(
+        method,
+        f'https://api.stack-auth.com/{endpoint}',
+        headers={
+            'x-stack-access-type': 'server',  # or 'client' if you're only accessing the client API
+            'x-stack-project-id': stack_project_id,
+            'x-stack-publishable-client-key': stack_publishable_client_key,
+            'x-stack-secret-server-key': stack_secret_server_key,  # not necessary if access type is 'client'
+            **kwargs.pop('headers', {}),
+        },
+        **kwargs,
+    )
+    if res.status_code >= 400:
+        raise Exception(f"Stack Auth API request failed with {res.status_code}: {res.text}")
+    return res.json()
+
+class StackAuthClient:
+    def __init__(self):
+        self.access_token = None
+        self.refresh_token = None
+        self.user_id = None
+    
+    def sign_up(self, email, password, verification_callback_url):
+        """Sign up a new user"""
+        response = stack_auth_request('POST', 'api/v1/auth/password/sign-up', json={
+            'email': email,
+            'password': password,
+            'verification_callback_url': verification_callback_url
+        })
+        
+        self.access_token = response['access_token']
+        self.refresh_token = response['refresh_token']
+        self.user_id = response['user_id']
+        
+        return response
+    
+    def sign_in(self, email, password):
+        """Sign in an existing user"""
+        response = stack_auth_request('POST', 'api/v1/auth/password/sign-in', json={
+            'email': email,
+            'password': password
+        })
+        
+        self.access_token = response['access_token']
+        self.refresh_token = response['refresh_token']
+        self.user_id = response['user_id']
+        
+        return response
+    
+    def get_current_user(self):
+        """Get current user information"""
+        if not self.access_token:
+            raise Exception("No access token available")
+        
+        return stack_auth_request('GET', 'api/v1/users/me', headers={
+            'x-stack-access-token': self.access_token
+        })
+    
+    def refresh_token_if_needed(self):
+        """Refresh the access token"""
+        if not self.refresh_token:
+            raise Exception("No refresh token available")
+        
+        response = stack_auth_request('POST', 'api/v1/auth/sessions/current/refresh', headers={
+            'x-stack-refresh-token': self.refresh_token
+        })
+        
+        self.access_token = response['access_token']
+        return response
+    
+    def sign_out(self):
+        """Sign out by clearing tokens"""
+        self.access_token = None
+        self.refresh_token = None
+        self.user_id = None
+
+# Example usage
+auth_client = StackAuthClient()
+
+# Sign up a new user
+try:
+    auth_client.sign_up(
+        email="newuser@example.com",
+        password="secure_password_123", 
+        verification_callback_url="https://yourapp.com/verify"
+    )
+    print("User signed up successfully!")
+except Exception as e:
+    print(f"Sign up failed: {e}")
+
+# Get user information
+try:
+    user_info = auth_client.get_current_user()
+    print(f"Logged in as: {user_info['primary_email']}")
+except Exception as e:
+    print(f"Failed to get user info: {e}")
+
+# Refresh token when needed
+try:
+    auth_client.refresh_token_if_needed()
+    print("Token refreshed successfully!")
+except Exception as e:
+    print(f"Token refresh failed: {e}")
+
+# Sign out
+auth_client.sign_out()
+print("User signed out!")
+```
+
+## Error Handling
+
+Common errors you might encounter:
+
+```python
+def handle_auth_errors(func):
+    """Decorator to handle common authentication errors"""
+    def wrapper(*args, **kwargs):
+        try:
+            return func(*args, **kwargs)
+        except Exception as e:
+            error_message = str(e)
+            
+            if "EmailPasswordMismatch" in error_message:
+                print("Invalid email or password")
+            elif "AccessTokenExpired" in error_message:
+                print("Access token expired, please refresh")
+            elif "UserWithEmailAlreadyExists" in error_message:
+                print("User with this email already exists")
+            elif "PasswordAuthenticationNotEnabled" in error_message:
+                print("Password authentication is not enabled for this project")
+            else:
+                print(f"Authentication error: {error_message}")
+            
+            raise e
+    return wrapper
+
+@handle_auth_errors
+def safe_sign_in(email, password):
+    return sign_in_with_password(email, password)
+```
+
+
+For more advanced authentication features, check out the [REST API documentation](../rest-api/overview.mdx).
+
+
+
+

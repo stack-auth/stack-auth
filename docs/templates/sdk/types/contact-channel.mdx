@@ -21,16 +21,16 @@ or [`user.useContactChannels()`](../types/user.mdx#currentuserusecontactchannels
 ### Table of Contents
 
 <ClickableTableOfContents code={`type ContactChannel = {
-  id: string;  //$stack-link-to:#contactchannelid
-  value: string;  //$stack-link-to:#contactchannelvalue
-  type: 'email';  //$stack-link-to:#contactchanneltype
-  isPrimary: boolean;  //$stack-link-to:#contactchannelisprimary
-  isVerified: boolean;  //$stack-link-to:#contactchannelisverified
-  usedForAuth: boolean;  //$stack-link-to:#contactchannelusedforauth
+    id: string;  //$stack-link-to:#contactchannelid
+    value: string;  //$stack-link-to:#contactchannelvalue
+    type: 'email';  //$stack-link-to:#contactchanneltype
+    isPrimary: boolean;  //$stack-link-to:#contactchannelisprimary
+    isVerified: boolean;  //$stack-link-to:#contactchannelisverified
+    usedForAuth: boolean;  //$stack-link-to:#contactchannelusedforauth
 
-  sendVerificationEmail(): Promise<void>;  //$stack-link-to:#contactchannelsendverificationemail
-  update(options): Promise<void>;  //$stack-link-to:#contactchannelupdateoptions
-  delete(): Promise<void>;  //$stack-link-to:#contactchanneldelete
+    sendVerificationEmail(): Promise<void>;  //$stack-link-to:#contactchannelsendverificationemail
+    update(options): Promise<void>;  //$stack-link-to:#contactchannelupdateoptions
+    delete(): Promise<void>;  //$stack-link-to:#contactchanneldelete
 };`} />
 
 <CollapsibleTypesSection type="contactChannel" property="id" defaultOpen={false}>
@@ -239,11 +239,11 @@ or [`serverUser.useContactChannels()`](../types/user.mdx#serveruserusecontactcha
 ### Table of Contents
 
 <ClickableTableOfContents code={`type ServerContactChannel =
-  // Inherits all properties from ContactChannel
-  & ContactChannel  //$stack-link-to:#contactchannel
-  & {
-    update(options): Promise<void>;  //$stack-link-to:#servercontactchannelupdateoptions
-  };`} />
+    // Inherits all properties from ContactChannel
+    & ContactChannel  //$stack-link-to:#contactchannel
+    & {
+        update(options): Promise<void>;  //$stack-link-to:#servercontactchannelupdateoptions
+    };`} />
 
 ---
 
