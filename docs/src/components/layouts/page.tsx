@@ -24,7 +24,7 @@ import {
 import { BackToTop } from '../ui/back-to-top';
 import { buttonVariants } from '../ui/button';
 import { slot } from './shared';
-import { useTOC } from './toc-context';
+import { useSidebar } from './sidebar-context';
 
 const ClerkTOCItems = lazy(() => import('@/components/layout/toc-clerk'));
 
@@ -118,7 +118,10 @@ export function DocsPage({
   } = {},
   ...props
 }: DocsPageProps) {
-  const { setIsFullPage } = useTOC();
+  const sidebarContext = useSidebar();
+  const { setIsFullPage } = sidebarContext || {
+    setIsFullPage: () => {},
+  };
 
   // Update the full page state in the context
   useEffect(() => {
@@ -150,7 +153,7 @@ export function DocsPage({
       >
         <PageArticle
           {...props.article}
-          className={props.article?.className}
+          className={cn('relative', props.article?.className)}
         >
           {slot(props.breadcrumb, <Breadcrumb {...props.breadcrumb} />)}
           <div className="mb-12">

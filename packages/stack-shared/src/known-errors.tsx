@@ -1367,6 +1367,17 @@ const PermissionIdAlreadyExists = createKnownErrorConstructor(
   (json: any) => [json.permission_id] as const,
 );
 
+const EmailRenderingError = createKnownErrorConstructor(
+  KnownError,
+  "EMAIL_RENDERING_ERROR",
+  (error: string) => [
+    400,
+    `Failed to render email with theme: ${error}`,
+    { error },
+  ] as const,
+  (json: any) => [json.error] as const,
+);
+
 export type KnownErrors = {
   [K in keyof typeof KnownErrors]: InstanceType<typeof KnownErrors[K]>;
 };
@@ -1477,6 +1488,7 @@ export const KnownErrors = {
   ApiKeyExpired,
   ApiKeyRevoked,
   WrongApiKeyType,
+  EmailRenderingError,
 } satisfies Record<string, KnownErrorConstructor<any, any>>;
 
 

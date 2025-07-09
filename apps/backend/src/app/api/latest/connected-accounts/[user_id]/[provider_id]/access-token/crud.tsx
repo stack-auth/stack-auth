@@ -34,6 +34,8 @@ export const connectedAccountAccessTokenCrudHandlers = createLazyProxy(() =>crea
       throw new KnownErrors.OAuthConnectionNotConnectedToUser();
     }
 
+    const providerInstance = await getProvider(provider);
+
     // ====================== retrieve access token if it exists ======================
 
     const accessTokens = await prismaClient.oAuthAccessToken.findMany({
@@ -53,10 +55,14 @@ export const connectedAccountAccessTokenCrudHandlers = createLazyProxy(() =>crea
       return extractScopes(data.scope || "").every((scope) => t.scopes.includes(scope));
     });
     if (filteredTokens.length !== 0) {
-      return { access_token: filteredTokens[0].accessToken };
+      const token = filteredTokens[0].accessToken;
+      // some providers (particularly GitHub) invalidate access tokens on the server-side, in which case we want to request a new access token
+      if (await providerInstance.checkAccessTokenValidity(token)) {
+        return { access_token: token };
+      }
     }
 
-    // ============== no access token found, try to refresh the token ==============
+    // ============== no valid access token found, try to refresh the token ==============
 
     const refreshTokens = await prismaClient.oAuthToken.findMany({
       where: {
@@ -76,7 +82,7 @@ export const connectedAccountAccessTokenCrudHandlers = createLazyProxy(() =>crea
       throw new KnownErrors.OAuthConnectionDoesNotHaveRequiredScope();
     }
 
-    const tokenSet = await (await getProvider(provider)).getAccessToken({
+    const tokenSet = await providerInstance.getAccessToken({
       refreshToken: filteredRefreshTokens[0].refreshToken,
       scope: data.scope,
     });

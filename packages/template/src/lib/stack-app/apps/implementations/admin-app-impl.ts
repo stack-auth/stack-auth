@@ -46,6 +46,9 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
   private readonly _metricsCache = createCache(async () => {
     return await this._interface.getMetrics();
   });
+  private readonly _emailThemePreviewCache = createCache(async ([theme, content]: [string, string]) => {
+    return await this._interface.renderEmailThemePreview(theme, content);
+  });
 
   constructor(options: StackAdminAppConstructorOptions<HasTokenStore, ProjectId>) {
     super({
@@ -128,6 +131,7 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
           senderName: data.config.email_config.sender_name ?? throwErr("Email sender name is missing"),
           senderEmail: data.config.email_config.sender_email ?? throwErr("Email sender email is missing"),
         },
+        emailTheme: data.config.email_theme,
         domains: data.config.domains.map((d) => ({
           domain: d.domain,
           handlerPath: d.handler_path,
@@ -384,4 +388,29 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
       error: email.error,
     }));
   }
+
+  async sendEmail(options: {
+    userIds: string[],
+    subject: string,
+    content: string,
+    notificationCategoryName: string,
+  }): Promise<void> {
+    await this._interface.sendEmail({
+      user_ids: options.userIds,
+      subject: options.subject,
+      html: options.content,
+      notification_category_name: options.notificationCategoryName,
+    });
+  }
+
+  async sendSignInInvitationEmail(email: string, callbackUrl: string): Promise<void> {
+    await this._interface.sendSignInInvitationEmail(email, callbackUrl);
+  }
+
+  // IF_PLATFORM react-like
+  useEmailThemePreview(theme: string, content: string): string {
+    const crud = useAsyncCache(this._emailThemePreviewCache, [theme, content] as const, "useEmailThemePreview()");
+    return crud.html;
+  }
+  // END_PLATFORM
 }

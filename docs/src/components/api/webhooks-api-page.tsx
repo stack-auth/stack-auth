@@ -3,7 +3,6 @@
 import { ArrowRight, Check, Code, Copy, Sparkles, Webhook } from 'lucide-react';
 import { useCallback, useEffect, useState } from 'react';
 import { codeToHtml } from 'shiki';
-import { useAPIPageContext } from './api-page-wrapper';
 import { Button } from './button';
 
 // Types for OpenAPI specification (focused on webhooks)
@@ -82,7 +81,6 @@ type WebhooksAPIPageProps = {
 }
 
 export function WebhooksAPIPage({ document, webhooks, description }: WebhooksAPIPageProps) {
-  const { isHeadersPanelOpen } = useAPIPageContext();
   const [spec, setSpec] = useState<OpenAPISpec | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -172,7 +170,6 @@ export function WebhooksAPIPage({ document, webhooks, description }: WebhooksAPI
               copyToClipboard(text)
                 .catch(error => console.error('Failed to copy to clipboard:', error));
             }}
-            isHeadersPanelOpen={isHeadersPanelOpen}
             description={description || webhook.description}
           />
         );
@@ -188,7 +185,6 @@ function ModernWebhookDisplay({
   method,
   spec,
   onCopy,
-  isHeadersPanelOpen,
   description,
 }: {
   webhook: OpenAPIWebhookOperation,
@@ -196,7 +192,6 @@ function ModernWebhookDisplay({
   method: string,
   spec: OpenAPISpec,
   onCopy: (text: string) => void,
-  isHeadersPanelOpen: boolean,
   description?: string,
 }) {
   const [copied, setCopied] = useState(false);
@@ -419,9 +414,7 @@ def handle_webhook():
   }, [activeCodeTab, getCodeExample]);
 
   return (
-    <div className={`max-w-6xl mx-auto px-6 py-8 transition-all duration-200 ${
-      isHeadersPanelOpen ? 'pr-8' : ''
-    }`}>
+    <div className="max-w-6xl mx-auto px-6 py-8">
       {/* Header Section */}
       <div className="mb-8 border-b border-fd-border pb-8">
         <div className="flex items-start justify-between gap-8">
@@ -450,7 +443,7 @@ def handle_webhook():
             {/* Description */}
             {description && (
               <div className="mt-6">
-                <p className="text-fd-muted-foreground text-base leading-relaxed max-w-3xl">
+                <p className="text-fd-muted-foreground text-base leading-relaxed">
                   {description}
                 </p>
               </div>

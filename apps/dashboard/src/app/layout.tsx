@@ -17,6 +17,7 @@ import { Inter as FontSans } from "next/font/google";
 import React from 'react';
 import { VersionAlerter } from '../components/version-alerter';
 import '../polyfills';
+import { BackgroundShine } from './background-shine';
 import { ClientPolyfill } from './client-polyfill';
 import './globals.css';
 import PageView from './pageview';
@@ -97,6 +98,7 @@ export default function RootLayout({
                 <RouterProvider>
                   <UserIdentity />
                   <VersionAlerter severeOnly={false} />
+                  <BackgroundShine />
                   {children}
                 </RouterProvider>
               </StackTheme>

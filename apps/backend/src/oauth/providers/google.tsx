@@ -22,6 +22,10 @@ export class GoogleProvider extends OAuthBaseProvider {
       openid: true,
       jwksUri: "https://www.googleapis.com/oauth2/v3/certs",
       baseScope: "https://www.googleapis.com/auth/userinfo.email https://www.googleapis.com/auth/userinfo.profile",
+      authorizationExtraParams: {
+        prompt: "consent",
+        include_granted_scopes: "true",
+      },
       ...options,
     }));
   }
@@ -35,5 +39,14 @@ export class GoogleProvider extends OAuthBaseProvider {
       profileImageUrl: rawUserInfo.picture,
       emailVerified: rawUserInfo.email_verified,
     });
+  }
+
+  async checkAccessTokenValidity(accessToken: string): Promise<boolean> {
+    const res = await fetch("https://openidconnect.googleapis.com/v1/userinfo", {
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+      },
+    });
+    return res.ok;
   }
 }

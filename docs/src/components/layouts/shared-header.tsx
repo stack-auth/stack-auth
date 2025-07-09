@@ -1,14 +1,16 @@
 'use client';
-import { LargeSearchToggle } from '@/components/layout/search-toggle';
+import { CustomSearchDialog } from '@/components/layout/custom-search-dialog';
+import { SearchInputToggle } from '@/components/layout/custom-search-toggle';
 import Waves from '@/components/layouts/api/waves';
 import { isInApiSection, isInComponentsSection, isInSdkSection } from '@/components/layouts/shared/section-utils';
 import { type NavLink } from '@/lib/navigation-utils';
-import { List, Menu, X } from 'lucide-react';
+import { Key, Menu, Sparkles, TableOfContents, X } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import type { ReactNode } from 'react';
 import { useEffect, useState } from 'react';
-import { useTOC } from './toc-context';
+import { cn } from '../../lib/cn';
+import { useSidebar } from './sidebar-context';
 
 type SharedHeaderProps = {
   /** Navigation links to display */
@@ -68,39 +70,65 @@ function isNavLinkActive(pathname: string, navLink: NavLink): boolean {
 }
 
 /**
- * Inner TOC Toggle Button that uses the context
+ * AI Chat Toggle Button
  */
-function TOCToggleButtonInner() {
-  const { isTocOpen, toggleToc } = useTOC();
+function AIChatToggleButton() {
+  const sidebarContext = useSidebar();
+
+  // Return null if context is not available
+  if (!sidebarContext) {
+    return null;
+  }
+
+  const { toggleChat } = sidebarContext;
 
   return (
     <button
-      onClick={toggleToc}
-      className={`flex items-center justify-center gap-2 shadow-lg transition-all duration-300 w-24 h-8 rounded-lg text-sm font-medium ${
-        isTocOpen
-          ? 'bg-fd-foreground text-fd-background'
-          : 'bg-fd-muted text-fd-muted-foreground hover:text-fd-foreground hover:bg-fd-muted/80'
-      }`}
-      title={isTocOpen ? 'Hide table of contents' : 'Show table of contents'}
+      className={cn(
+        'flex items-center justify-center rounded-md w-8 h-8 text-xs transition-all duration-500 ease-out relative overflow-hidden',
+        'text-white chat-gradient-active hover:scale-105 hover:brightness-110 hover:shadow-lg'
+      )}
+      onClick={toggleChat}
+      title="AI Chat"
     >
-      <List className="w-4 h-4 flex-shrink-0" />
-      <span className="hidden sm:inline">
-        {isTocOpen ? 'Hide' : 'TOC'}
-      </span>
+      <Sparkles className="h-4 w-4 relative z-10" />
     </button>
   );
 }
 
 /**
- * TOC Toggle Button Wrapper that safely checks full page state
+ * Inner TOC Toggle Button that uses the context
  */
-function TOCToggleButtonWrapper() {
-  const { isFullPage } = useTOC();
+function TOCToggleButtonInner() {
+  const sidebarContext = useSidebar();
+
+  // Return null if context is not available
+  if (!sidebarContext) {
+    return null;
+  }
+
+  const { isTocOpen, toggleToc, isChatOpen, isFullPage } = sidebarContext;
 
   // Hide TOC button on full pages
   if (isFullPage) return null;
 
-  return <TOCToggleButtonInner />;
+  // When chat is open, TOC is effectively not visible
+  const isTocEffectivelyVisible = isTocOpen && !isChatOpen;
+
+  return (
+    <button
+      className={cn(
+        'flex items-center gap-2 rounded-md px-2 py-1 text-xs transition-colors',
+        isTocEffectivelyVisible
+          ? 'bg-fd-primary/10 text-fd-primary hover:bg-fd-primary/20'
+          : 'text-fd-muted-foreground hover:text-fd-foreground hover:bg-fd-muted/50'
+      )}
+      onClick={toggleToc}
+    >
+      <TableOfContents className="h-3 w-3" />
+      <span className="font-medium">Contents</span>
+    </button>
+  );
 }
 
 /**
@@ -114,12 +142,42 @@ function TOCToggleButton() {
 
   if (!isDocsPage) return null;
 
-  try {
-    return <TOCToggleButtonWrapper />;
-  } catch {
-    // TOC context not available
+  return <TOCToggleButtonInner />;
+}
+
+/**
+ * Auth Toggle Button - Only shows on API pages
+ */
+function AuthToggleButton() {
+  const pathname = usePathname();
+  const sidebarContext = useSidebar();
+
+  // Only show on API pages
+  const isAPIPage = isInApiSection(pathname);
+
+  if (!isAPIPage) return null;
+
+  // Return null if context is not available
+  if (!sidebarContext) {
     return null;
   }
+
+  const { isAuthOpen, toggleAuth } = sidebarContext;
+
+  return (
+    <button
+      className={cn(
+        'flex items-center gap-2 rounded-md px-2 py-1 text-xs transition-colors',
+        isAuthOpen
+          ? 'bg-fd-primary/10 text-fd-primary hover:bg-fd-primary/20'
+          : 'text-fd-muted-foreground hover:text-fd-foreground hover:bg-fd-muted/50'
+      )}
+      onClick={toggleAuth}
+    >
+      <Key className="h-3 w-3" />
+      <span className="font-medium">Auth</span>
+    </button>
+  );
 }
 
 /**
@@ -151,6 +209,7 @@ export function SharedHeader({
 }: SharedHeaderProps) {
   const pathname = usePathname();
   const [showMobileNav, setShowMobileNav] = useState(false);
+  const [searchOpen, setSearchOpen] = useState(false);
 
   // Close mobile nav when pathname changes
   useEffect(() => {
@@ -234,17 +293,32 @@ export function SharedHeader({
         <div className="flex items-center gap-4 relative z-10">
           {/* Search Bar - Responsive sizing */}
           {showSearch && (
-            <div className="w-32 sm:w-48 lg:w-64">
-              <LargeSearchToggle
-                hideIfDisabled
-                className="w-full"
+            <>
+              <div className="w-9 sm:w-32 md:w-48 lg:w-64">
+                <SearchInputToggle
+                  onOpen={() => setSearchOpen(true)}
+                />
+              </div>
+              <CustomSearchDialog
+                open={searchOpen}
+                onOpenChange={setSearchOpen}
               />
-            </div>
+            </>
           )}
 
           {/* TOC Toggle Button - Only on docs pages */}
           <div className="hidden md:block">
             <TOCToggleButton />
+          </div>
+
+          {/* Auth Toggle Button - Shows on all pages like AI Chat button */}
+          <div className="hidden md:block">
+            <AuthToggleButton />
+          </div>
+
+          {/* AI Chat Toggle Button */}
+          <div className="hidden md:block">
+            <AIChatToggleButton />
           </div>
 
           {/* Mobile Hamburger Menu - Shown on mobile */}

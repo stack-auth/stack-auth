@@ -55,7 +55,18 @@ export type StackAdminApp<HasTokenStore extends boolean = boolean, ProjectId ext
       emailConfig: EmailConfig,
     }): Promise<Result<undefined, { errorMessage: string }>>,
 
+    sendSignInInvitationEmail(email: string, callbackUrl: string): Promise<void>,
+
     listSentEmails(): Promise<AdminSentEmail[]>,
+
+    sendEmail(options: {
+      userIds: string[],
+      subject: string,
+      content: string,
+      notificationCategoryName: string,
+    }): Promise<void>,
+
+    useEmailThemePreview(theme: string, content: string): string, // THIS_LINE_PLATFORM react-like
   }
   & StackServerApp<HasTokenStore, ProjectId>
 );
