@@ -8,10 +8,10 @@ import {
   ClientInterfaceOptions,
   StackClientInterface
 } from "./client-interface";
+import { ConnectedAccountAccessTokenCrud } from "./crud/connected-accounts";
 import { ContactChannelsCrud } from "./crud/contact-channels";
 import { CurrentUserCrud } from "./crud/current-user";
 import { NotificationPreferenceCrud } from "./crud/notification-preferences";
-import { ConnectedAccountAccessTokenCrud } from "./crud/oauth";
 import { ProjectPermissionsCrud } from "./crud/project-permissions";
 import { SessionsCrud } from "./crud/sessions";
 import { TeamInvitationCrud } from "./crud/team-invitation";
