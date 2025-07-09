@@ -1,12 +1,29 @@
-import { openai } from "@ai-sdk/openai";
-import { yupArray, yupNumber, yupObject } from "@stackframe/stack-shared/dist/schema-fields";
-import { convertToCoreMessages, generateText, tool } from "ai";
-import { yupString } from "@stackframe/stack-shared/dist/schema-fields";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
-import { z } from "zod";
+import { openai } from "@ai-sdk/openai";
+import { yupArray, yupMixed, yupNumber, yupObject, yupString, yupUnion } from "@stackframe/stack-shared/dist/schema-fields";
 import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
 import { StatusError } from "@stackframe/stack-shared/dist/utils/errors";
+import { convertToCoreMessages, generateText, tool } from "ai";
 import { FreestyleSandboxes } from "freestyle-sandboxes";
+import { InferType } from "yup";
+import { z } from "zod";
+
+const textContentSchema = yupObject({
+  type: yupString().oneOf(["text"]).defined(),
+  text: yupString().defined(),
+});
+
+const toolCallContentSchema = yupObject({
+  type: yupString().oneOf(["tool-call"]).defined(),
+  toolName: yupString().defined(),
+  toolCallId: yupString().defined(),
+  args: yupMixed().defined(),
+  argsText: yupString().defined(),
+  result: yupMixed().defined(),
+});
+
+const contentSchema = yupArray(yupUnion(textContentSchema, toolCallContentSchema)).defined();
+
 
 export const POST = createSmartRouteHandler({
   metadata: {
@@ -30,7 +47,7 @@ export const POST = createSmartRouteHandler({
     statusCode: yupNumber().oneOf([200]).defined(),
     bodyType: yupString().oneOf(["json"]).defined(),
     body: yupObject({
-      text: yupString().defined(),
+      content: contentSchema,
     }).defined(),
   }),
   async handler({ body }) {
@@ -38,6 +55,9 @@ export const POST = createSmartRouteHandler({
     if (!apiKey) {
       throw new StatusError(500, "STACK_FREESTYLE_API_KEY is not set");
     }
+    const freestyle = new FreestyleSandboxes({ apiKey });
+    const { fs } = await freestyle.requestDevServer({ repoId: body.repo_id });
+    const currentEmailTheme = await fs.readFile("src/email-theme.tsx");
 
     const result = await generateText({
       model: openai("gpt-4o"),
@@ -45,12 +65,11 @@ export const POST = createSmartRouteHandler({
       messages: convertToCoreMessages(body.messages),
       tools: {
         createEmailTheme: tool({
-          description: CREATE_EMAIL_THEME_TOOL_DESCRIPTION,
+          description: CREATE_EMAIL_THEME_TOOL_DESCRIPTION(currentEmailTheme),
           parameters: z.object({
             content: z.string().describe("The content of the email theme"),
           }),
           execute: async (args) => {
-            const freestyle = new FreestyleSandboxes({ apiKey });
             const { fs } = await freestyle.requestDevServer({ repoId: body.repo_id });
             await fs.writeFile("src/email-theme.tsx", args.content);
             return { success: true };
@@ -58,13 +77,31 @@ export const POST = createSmartRouteHandler({
         }),
       }
     });
+    const contentBlocks: InferType<typeof contentSchema> = [];
+
+    result.steps.forEach((step) => {
+      if (step.text) {
+        contentBlocks.push({
+          type: "text" as const,
+          text: step.text,
+        });
+      }
+      step.toolResults.forEach((toolResult) => {
+        contentBlocks.push({
+          type: "tool-call" as const,
+          toolName: toolResult.toolName,
+          toolCallId: toolResult.toolCallId,
+          args: toolResult.args,
+          argsText: JSON.stringify(toolResult.args),
+          result: toolResult.result,
+        });
+      });
+    });
 
     return {
       statusCode: 200,
       bodyType: "json",
-      body: {
-        text: result.text,
-      },
+      body: { content: contentBlocks },
     };
   },
 });
@@ -72,7 +109,7 @@ export const POST = createSmartRouteHandler({
 
 const DEFAULT_SYSTEM_PROMPT = `You are a helpful assistant that can help with email theme development.`;
 
-const CREATE_EMAIL_THEME_TOOL_DESCRIPTION = `
+const CREATE_EMAIL_THEME_TOOL_DESCRIPTION = (currentEmailTheme: string) => `
 Create a new email theme.
 The email theme is a React component that is used to render the email theme.
 It must use react-email components.
@@ -94,5 +131,10 @@ export default function LightTheme({ children }: { children: React.ReactNode }) 
     </Html>
   )
 }
+\`\`\`
+
+Here is the current email theme:
+\`\`\`tsx
+${currentEmailTheme}
 \`\`\`
 `;

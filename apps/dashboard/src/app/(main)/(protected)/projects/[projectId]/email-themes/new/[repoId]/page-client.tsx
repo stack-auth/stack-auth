@@ -1,7 +1,7 @@
 "use client";
 
 import { runAsynchronously } from "@stackframe/stack-shared/dist/utils/promises";
-import { Typography } from "@stackframe/stack-ui";
+import { Button, Typography } from "@stackframe/stack-ui";
 import { useEffect, useState } from "react";
 import { useAdminApp } from "../../../use-admin-app";
 import DevServerChat from "@/components/dev-server-chat";
@@ -17,10 +17,10 @@ export default function PageClient({ repoId }: { repoId: string }) {
 
   return (
     <div className="flex h-full">
-      {/* Live Preview */}
       <div className="flex-1 flex flex-col">
-        <div className="border-b p-4">
+        <div className="border-b p-3 flex justify-between items-center">
           <Typography type="h4">Preview</Typography>
+          <Button>Save</Button>
         </div>
         <div className="flex-1">
           <iframe
@@ -31,11 +31,7 @@ export default function PageClient({ repoId }: { repoId: string }) {
         </div>
       </div>
 
-      {/* Chatbox */}
       <div className="w-96 border-l flex flex-col">
-        <div className="border-b p-4">
-          <Typography type="h4">Chat</Typography>
-        </div>
         <div className="flex-1">
           <DevServerChat repoId={repoId} />
         </div>

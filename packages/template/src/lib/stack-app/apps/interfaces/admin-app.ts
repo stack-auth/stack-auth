@@ -72,7 +72,11 @@ export type StackAdminApp<HasTokenStore extends boolean = boolean, ProjectId ext
     requestEmailThemeDevServer(repoId: string): Promise<{ previewUrl: string }>,
     updateEmailThemeDevServerFile(repoId: string, file: "theme", content: string): Promise<void>,
 
-    sendDevServerChatMessage(repoId: string, messages: Array<{ role: string, content: string }>, abortSignal?: AbortSignal): Promise<{ text: string }>,
+    sendDevServerChatMessage(
+      repoId: string,
+      messages: Array<{ role: string, content: string }>,
+      abortSignal?: AbortSignal,
+    ): Promise<{ content: Array<{ type: "text", text: string }> }>,
   }
   & StackServerApp<HasTokenStore, ProjectId>
 );

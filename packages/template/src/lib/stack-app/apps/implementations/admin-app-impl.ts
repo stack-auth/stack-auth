@@ -427,7 +427,11 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
     await this._interface.updateEmailThemeDevServerFile(repoId, file, content);
   }
 
-  async sendDevServerChatMessage(repoId: string, messages: Array<{ role: string, content: string }>, abortSignal?: AbortSignal): Promise<{ text: string }> {
+  async sendDevServerChatMessage(
+    repoId: string,
+    messages: Array<{ role: string, content: string }>,
+    abortSignal?: AbortSignal,
+  ): Promise<{ content: Array<{ type: "text", text: string }> }> {
     return await this._interface.sendDevServerChatMessage(repoId, messages, abortSignal);
   }
 }
