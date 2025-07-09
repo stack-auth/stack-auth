@@ -101,16 +101,6 @@ export const signInVerificationCodeHandler = createVerificationCodeHandler({
     };
   },
   async handler(tenancy, { email }) {
-    const prisma = getPrismaClientForTenancy(tenancy);
-    const contactChannel = await getAuthContactChannel(
-      prisma,
-      {
-        tenancyId: tenancy.id,
-        type: "EMAIL",
-        value: email,
-      }
-    );
-
     let user = await ensureUserForEmailAllowsOtp(tenancy, email);
     let isNewUser = false;
     if (!user) {

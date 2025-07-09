@@ -1,4 +1,5 @@
 import { PrismaNeon } from "@prisma/adapter-neon";
+import { PrismaPg } from '@prisma/adapter-pg';
 import { Prisma, PrismaClient } from "@prisma/client";
 import { OrganizationRenderedConfig } from "@stackframe/stack-shared/dist/config/schema";
 import { getNodeEnvironment } from '@stackframe/stack-shared/dist/utils/env';
@@ -17,6 +18,7 @@ export type PrismaClientTransaction = PrismaClient | Parameters<Parameters<Prism
 const prismaClientsStore = (globalVar.__stack_prisma_clients as undefined) || {
   global: new PrismaClient(),
   neon: new Map<string, PrismaClient>(),
+  postgres: new Map<string, PrismaClient>(),
 };
 if (getNodeEnvironment().includes('development')) {
   globalVar.__stack_prisma_clients = prismaClientsStore;  // store globally so fast refresh doesn't recreate too many Prisma clients
@@ -38,6 +40,16 @@ export function getPrismaClientForTenancy(tenancy: Tenancy) {
   return getPrismaClientForSourceOfTruth(tenancy.completeConfig.sourceOfTruth, tenancy.branchId);
 }
 
+function getPostgresPrismaClient(connectionString: string) {
+  let postgresPrismaClient = prismaClientsStore.postgres.get(connectionString);
+  if (!postgresPrismaClient) {
+    const adapter = new PrismaPg({ connectionString });
+    postgresPrismaClient = new PrismaClient({ adapter });
+    prismaClientsStore.postgres.set(connectionString, postgresPrismaClient);
+  }
+  return postgresPrismaClient;
+}
+
 export function getPrismaClientForSourceOfTruth(sourceOfTruth: OrganizationRenderedConfig["sourceOfTruth"], branchId: string) {
   switch (sourceOfTruth.type) {
     case 'neon': {
@@ -45,6 +57,9 @@ export function getPrismaClientForSourceOfTruth(sourceOfTruth: OrganizationRende
         throw new Error(`No connection string provided for Neon source of truth for branch ${branchId}`);
       }
       return getNeonPrismaClient(sourceOfTruth.connectionStrings[branchId]);
+    }
+    case 'postgres': {
+      return getPostgresPrismaClient(sourceOfTruth.connectionString);
     }
     case 'hosted': {
       return globalPrismaClient;

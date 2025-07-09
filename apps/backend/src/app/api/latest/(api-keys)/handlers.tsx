@@ -11,6 +11,7 @@ import { createProjectApiKey } from "@stackframe/stack-shared/dist/utils/api-key
 import { StackAssertionError, StatusError } from "@stackframe/stack-shared/dist/utils/errors";
 import { createLazyProxy } from "@stackframe/stack-shared/dist/utils/proxies";
 import { generateUuid } from "@stackframe/stack-shared/dist/utils/uuids";
+
 import * as yup from "yup";
 
 
@@ -200,7 +201,6 @@ function createApiKeyHandlers<Type extends "user" | "team">(type: Type) {
         const apiKey = await getPrismaClientForTenancy(auth.tenancy).projectApiKey.create({
           data: {
             id: apiKeyId,
-            projectId: auth.project.id,
             description: body.description,
             secretApiKey,
             isPublic,
@@ -247,7 +247,7 @@ function createApiKeyHandlers<Type extends "user" | "team">(type: Type) {
 
         const apiKey = await getPrismaClientForTenancy(auth.tenancy).projectApiKey.findUnique({
           where: {
-            projectId: auth.project.id,
+            tenancyId: auth.tenancy.id,
             secretApiKey: body.api_key,
           },
         });
@@ -301,7 +301,7 @@ function createApiKeyHandlers<Type extends "user" | "team">(type: Type) {
 
           const apiKeys = await getPrismaClientForTenancy(auth.tenancy).projectApiKey.findMany({
             where: {
-              projectId: auth.project.id,
+              tenancyId: auth.tenancy.id,
               projectUserId: userId,
               teamId: teamId,
             },

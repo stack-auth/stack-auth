@@ -27,8 +27,6 @@ model Project {
   projectUsers               ProjectUser[]
   provisionedProject         ProvisionedProject?
   tenancies                  Tenancy[]
-  verificationCodes          VerificationCode[]
-  projectApiKey              ProjectApiKey[]
   environmentConfigOverrides EnvironmentConfigOverride[]
 }
 
@@ -470,8 +468,6 @@ model VerificationCode {
   branchId  String
   id        String @default(uuid()) @db.Uuid
 
-  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
-
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -522,9 +518,7 @@ model ApiKeySet {
 //#endregion
 
 model ProjectApiKey {
-  projectId String
-  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  tenancyId String  @db.Uuid
+  tenancyId String @db.Uuid
 
   id           String @default(uuid()) @db.Uuid
   secretApiKey String @unique

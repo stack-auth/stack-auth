@@ -16,7 +16,6 @@ export type AdminProject = {
   readonly displayName: string,
   readonly description: string | null,
   readonly createdAt: Date,
-  readonly userCount: number,
   readonly isProductionMode: boolean,
   readonly config: AdminProjectConfig,
 

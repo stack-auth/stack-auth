@@ -1,5 +1,6 @@
 "use client";
 
+import { stackAppInternalsSymbol } from "@/app/(main)/integrations/transfer-confirm-page";
 import { UserTable } from "@/components/data-table/user-table";
 import { StyledLink } from "@/components/link";
 import { UserDialog } from "@/components/user-dialog";
@@ -9,13 +10,13 @@ import { useAdminApp } from "../use-admin-app";
 
 export default function PageClient() {
   const stackAdminApp = useAdminApp();
-  const project = stackAdminApp.useProject();
+  const data = (stackAdminApp as any)[stackAppInternalsSymbol].useMetrics();
   const firstUser = stackAdminApp.useUsers({ limit: 1 });
 
   return (
     <PageLayout
       title="Users"
-      description={`Total: ${project.userCount}`}
+      description={`Total: ${data.total_users}`}
       actions={<UserDialog
         type="create"
         trigger={<Button>Create User</Button>}

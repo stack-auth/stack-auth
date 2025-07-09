@@ -1,4 +1,3 @@
-import { getPrismaClientForTenancy, globalPrismaClient } from "@/prisma-client";
 import { KnownErrors } from "@stackframe/stack-shared";
 import { override } from "@stackframe/stack-shared/dist/config/format";
 import { OrganizationRenderedConfig } from "@stackframe/stack-shared/dist/config/schema";
@@ -184,7 +183,7 @@ export async function listPermissionDefinitions(
 }
 
 export async function createPermissionDefinition(
-  tx: PrismaTransaction,
+  globalTx: PrismaTransaction,
   options: {
     scope: "team" | "project",
     tenancy: Tenancy,
@@ -211,7 +210,7 @@ export async function createPermissionDefinition(
     throw new KnownErrors.ContainedPermissionNotFound(containedPermissionIdThatWasNotFound);
   }
 
-  await tx.environmentConfigOverride.update({
+  await globalTx.environmentConfigOverride.update({
     where: {
       projectId_branchId: {
         projectId: options.tenancy.project.id,
@@ -243,7 +242,8 @@ export async function createPermissionDefinition(
 }
 
 export async function updatePermissionDefinition(
-  tx: PrismaTransaction,
+  globalTx: PrismaTransaction,
+  sourceOfTruthTx: PrismaTransaction,
   options: {
     scope: "team" | "project",
     tenancy: Tenancy,
@@ -277,7 +277,7 @@ export async function updatePermissionDefinition(
     throw new KnownErrors.ContainedPermissionNotFound(containedPermissionIdThatWasNotFound);
   }
 
-  await tx.environmentConfigOverride.update({
+  await globalTx.environmentConfigOverride.update({
     where: {
       projectId_branchId: {
         projectId: options.tenancy.project.id,
@@ -315,7 +315,7 @@ export async function updatePermissionDefinition(
   });
 
   // update permissions for all users/teams
-  await tx.teamMemberDirectPermission.updateMany({
+  await sourceOfTruthTx.teamMemberDirectPermission.updateMany({
     where: {
       tenancyId: options.tenancy.id,
       permissionId: options.oldId,
@@ -325,7 +325,7 @@ export async function updatePermissionDefinition(
     },
   });
 
-  await tx.projectUserDirectPermission.updateMany({
+  await sourceOfTruthTx.projectUserDirectPermission.updateMany({
     where: {
       tenancyId: options.tenancy.id,
       permissionId: options.oldId,
@@ -343,6 +343,8 @@ export async function updatePermissionDefinition(
 }
 
 export async function deletePermissionDefinition(
+  globalTx: PrismaTransaction,
+  sourceOfTruthTx: PrismaTransaction,
   options: {
     scope: "team" | "project",
     tenancy: Tenancy,
@@ -358,7 +360,7 @@ export async function deletePermissionDefinition(
   }
 
   // Remove the permission from the config and update other permissions' containedPermissionIds
-  await globalPrismaClient.environmentConfigOverride.update({
+  await globalTx.environmentConfigOverride.update({
     where: {
       projectId_branchId: {
         projectId: options.tenancy.project.id,
@@ -387,14 +389,14 @@ export async function deletePermissionDefinition(
 
   // Remove all direct permissions for this permission ID
   if (options.scope === "team") {
-    await getPrismaClientForTenancy(options.tenancy.completeConfig.sourceOfTruth).teamMemberDirectPermission.deleteMany({
+    await sourceOfTruthTx.teamMemberDirectPermission.deleteMany({
       where: {
         tenancyId: options.tenancy.id,
         permissionId: options.permissionId,
       },
     });
   } else {
-    await getPrismaClientForTenancy(options.tenancy.completeConfig.sourceOfTruth).projectUserDirectPermission.deleteMany({
+    await sourceOfTruthTx.projectUserDirectPermission.deleteMany({
       where: {
         tenancyId: options.tenancy.id,
         permissionId: options.permissionId,

@@ -23,7 +23,7 @@
     "restart-dev-environment": "pnpm pre && concurrently \"pnpm run build:packages && pnpm run codegen\" \"pnpm run restart-deps\" && pnpm run restart-dev-in-background",
     "stop-dev-environment": "pnpm pre && pnpm run kill-dev:named && pnpm run stop-deps",
     "clean": "pnpm pre-no-codegen && turbo run clean && rimraf --glob **/.next && rimraf --glob **/.turbo && rimraf .turbo && rimraf --glob **/node_modules",
-    "codegen": "pnpm pre && turbo run codegen && pnpm run generate-sdks",
+    "codegen": "pnpm pre && turbo run codegen && pnpm run generate-sdks && pnpm run generate-openapi && pnpm run generate-openapi-fumadocs",
     "deps-compose": "docker compose -p stack-dependencies -f docker/dependencies/docker.compose.yaml",
     "stop-deps": "POSTGRES_DELAY_MS=0 pnpm run deps-compose kill && POSTGRES_DELAY_MS=0 pnpm run deps-compose down -v",
     "init-db": "pnpm pre && pnpm run prisma migrate deploy && pnpm run prisma db seed",

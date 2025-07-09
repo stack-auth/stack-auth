@@ -2,10 +2,11 @@
 import { usersCrudHandlers } from '@/app/api/latest/users/crud';
 import { createOrUpdateProject, getProject } from '@/lib/projects';
 import { DEFAULT_BRANCH_ID, getSoleTenancyFromProjectBranch } from '@/lib/tenancies';
+import { getPrismaClientForTenancy } from '@/prisma-client';
 import { PrismaClient } from '@prisma/client';
 import { errorToNiceString, throwErr } from '@stackframe/stack-shared/dist/utils/errors';
 
-const prisma = new PrismaClient();
+const globalPrisma = new PrismaClient();
 
 async function seed() {
   console.log('Seeding database...');
@@ -57,6 +58,7 @@ async function seed() {
   }
 
   const internalTenancy = await getSoleTenancyFromProjectBranch("internal", DEFAULT_BRANCH_ID);
+  const internalPrisma = getPrismaClientForTenancy(internalTenancy);
 
   internalProject = await createOrUpdateProject({
     projectId: 'internal',
@@ -81,7 +83,7 @@ async function seed() {
     superSecretAdminKey: process.env.STACK_SEED_INTERNAL_PROJECT_SUPER_SECRET_ADMIN_KEY || throwErr('STACK_SEED_INTERNAL_PROJECT_SUPER_SECRET_ADMIN_KEY is not set'),
   };
 
-  await prisma.apiKeySet.upsert({
+  await globalPrisma.apiKeySet.upsert({
     where: { projectId_id: { projectId: 'internal', id: apiKeyId } },
     update: {
       ...keySet,
@@ -101,7 +103,7 @@ async function seed() {
   // This user will be able to login to the dashboard with both email/password and magic link.
 
   if ((adminEmail && adminPassword) || adminGithubId) {
-    const oldAdminUser = await prisma.projectUser.findFirst({
+    const oldAdminUser = await internalPrisma.projectUser.findFirst({
       where: {
         mirroredProjectId: 'internal',
         mirroredBranchId: DEFAULT_BRANCH_ID,
@@ -112,7 +114,7 @@ async function seed() {
     if (oldAdminUser) {
         console.log(`Admin user already exists, skipping creation`);
     } else {
-      const newUser = await prisma.projectUser.create({
+      const newUser = await internalPrisma.projectUser.create({
         data: {
           displayName: 'Administrator (created by seed script)',
           projectUserId: defaultUserId,
@@ -140,7 +142,7 @@ async function seed() {
       }
 
       if (adminGithubId) {
-        const githubAccount = await prisma.projectUserOAuthAccount.findFirst({
+        const githubAccount = await getPrismaClientForTenancy(internalTenancy).projectUserOAuthAccount.findFirst({
           where: {
             tenancyId: internalTenancy.id,
             configOAuthProviderId: 'github',
@@ -151,7 +153,7 @@ async function seed() {
         if (githubAccount) {
           console.log(`GitHub account already exists, skipping creation`);
         } else {
-          await prisma.projectUserOAuthAccount.create({
+          await getPrismaClientForTenancy(internalTenancy).projectUserOAuthAccount.create({
             data: {
               tenancyId: internalTenancy.id,
               projectUserId: newUser.projectUserId,
@@ -163,7 +165,7 @@ async function seed() {
             console.log(`Added GitHub account for admin user`);
         }
 
-        await prisma.authMethod.create({
+        await internalPrisma.authMethod.create({
           data: {
             tenancyId: internalTenancy.id,
             projectUserId: newUser.projectUserId,
@@ -187,7 +189,7 @@ async function seed() {
       throw new Error('STACK_EMULATOR_PROJECT_ID is not set');
     }
 
-    const existingUser = await prisma.projectUser.findFirst({
+    const existingUser = await internalPrisma.projectUser.findFirst({
       where: {
         mirroredProjectId: 'internal',
         mirroredBranchId: DEFAULT_BRANCH_ID,
@@ -198,7 +200,7 @@ async function seed() {
     if (existingUser) {
         console.log('Emulator user already exists, skipping creation');
     } else {
-      const newEmulatorUser = await prisma.projectUser.create({
+      const newEmulatorUser = await internalPrisma.projectUser.create({
         data: {
           displayName: 'Local Emulator User',
           projectUserId: emulatorAdminUserId,
@@ -224,7 +226,7 @@ async function seed() {
       console.log('Created emulator user');
     }
 
-    const existingProject = await prisma.project.findUnique({
+    const existingProject = await internalPrisma.project.findUnique({
       where: {
         id: emulatorProjectId,
       },
@@ -233,7 +235,7 @@ async function seed() {
     if (existingProject) {
       console.log('Emulator project already exists, skipping creation');
     } else {
-      const emulatorProject = await createOrUpdateProject({
+      await createOrUpdateProject({
         projectId: emulatorProjectId,
         type: 'create',
         data: {
@@ -248,7 +250,7 @@ async function seed() {
               type: 'shared',
             })),
           }
-        }
+        },
       });
 
       console.log('Created emulator project');
@@ -258,9 +260,11 @@ async function seed() {
   console.log('Seeding complete!');
 }
 
+process.env.STACK_SEED_MODE = 'true';
+
 seed().catch(async (e) => {
   console.error(errorToNiceString(e));
-  await prisma.$disconnect();
+  await globalPrisma.$disconnect();
   process.exit(1);
 // eslint-disable-next-line @typescript-eslint/no-misused-promises
-}).finally(async () => await prisma.$disconnect());
+}).finally(async () => await globalPrisma.$disconnect());
