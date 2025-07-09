@@ -1,0 +1,40 @@
+---
+title: "LinkedIn Authentication"
+---
+
+This guide explains how to set up LinkedIn as an authentication provider with Stack Auth. LinkedIn OAuth2 allows users to sign in to your application using their LinkedIn account.
+
+
+## Integration Steps
+
+<Steps>
+  <Step>
+  ### Create a LinkedIn OAuth App
+  
+  1. Log in to the [LinkedIn Developer Portal](https://www.linkedin.com/developers/apps).
+  2. Click **Create app** to create a new application.
+  3. Enter your **App name** and select a **LinkedIn Page** to associate with your app (or create a new one).
+  4. Upload an **App logo** (required for production apps).
+  5. Enter the **App description** and your **Business email**.
+  6. Check the **Legal agreement** box and click **Create app**.
+  7. On your app's dashboard, click **Auth** tab from the left sidebar.
+  8. Under **OAuth 2.0 settings**, add the following redirect URL: `https://api.stack-auth.com/api/v1/auth/oauth/callback/linkedin`
+  9. Under **Products**, request access to **Sign In with LinkedIn** by clicking **Request access**. Complete any required information.
+  10. Under **OAuth 2.0 scopes**, make sure at least the following scopes are selected:
+      - `r_emailaddress`
+      - `r_liteprofile`
+  11. Once approved, navigate to the **Auth** tab again to find your **Client ID** and **Client Secret**.
+  </Step>
+  <Step>
+  ### Enable LinkedIn OAuth in Stack Auth
+  
+  1. On the Stack Auth dashboard, select **Auth Methods** in the left sidebar.
+  2. Click **Add SSO Providers** and select **LinkedIn** as the provider.
+  3. Set the **Client ID** and **Client Secret** you obtained from the LinkedIn Developer Portal earlier.
+  </Step>
+</Steps>
+
+### Need More Help?
+
+- Check the [LinkedIn OAuth2 Documentation](https://learn.microsoft.com/en-us/linkedin/shared/authentication/authorization-code-flow)
+- Join our [Discord](https://discord.stack-auth.com)

@@ -1,0 +1,124 @@
+---
+title: Setup
+---
+
+<Info>
+Welcome to the Python setup guide. If you're looking for guides for other frameworks, check out the [Next.js SDK Setup](/next/getting-started/setup), [React SDK Setup](/react/getting-started/setup), or the [JavaScript SDK Setup](/js/getting-started/setup).
+</Info>
+
+Our recommended way to use Stack Auth with Python is with the [REST API](../rest-api/overview.mdx). It provides a fully documented way to interact with Stack Auth from any Python framework, including Flask, FastAPI, and Django.
+
+For the purpose of this guide, we will use the `requests` library to make HTTP requests to the Stack Auth API. If you haven't already, you can install it in your environment with `pip install requests`.
+
+<Steps>
+  <Step>
+    ### Create API keys
+
+    First, create an account on [the Stack Auth dashboard](https://app.stack-auth.com/projects), and copy your project ID, publishable client key, and secret server key into a safe place (eg. environment variables).
+
+    From there, you can access them in your Python code. You can then read them like this:
+
+    ```python
+    import os
+
+    stack_project_id = os.getenv("STACK_PROJECT_ID")
+    stack_publishable_client_key = os.getenv("STACK_PUBLISHABLE_CLIENT_KEY")
+    stack_secret_server_key = os.getenv("STACK_SECRET_SERVER_KEY")
+    ```
+  </Step>
+
+  <Step>
+    ### Make a request
+
+    Next, create a helper function to make requests to the Stack Auth API:
+
+    ```python
+    import requests
+
+    def stack_auth_request(method, endpoint, **kwargs):
+      res = requests.request(
+        method,
+        f'https://api.stack-auth.com/{endpoint}',
+        headers={
+          'x-stack-access-type': 'server',  # or 'client' if you're only accessing the client API
+          'x-stack-project-id': stack_project_id,
+          'x-stack-publishable-client-key': stack_publishable_client_key,
+          'x-stack-secret-server-key': stack_secret_server_key,  # not necessary if access type is 'client'
+          **kwargs.pop('headers', {}),
+        },
+        **kwargs,
+      )
+      if res.status_code >= 400:
+        raise Exception(f"Stack Auth API request failed with {res.status_code}: {res.text}")
+      return res.json()
+
+    print(stack_auth_request('GET', '/api/v1/projects/current'))
+    ```
+  </Step>
+
+  <Step>
+    ### Handle user access tokens
+
+    If you're building a backend server, most likely you'll want to use the currently signed in user's access token. Most normally, you would send this with all your requests to the backend in an HTTP header.
+
+    In Stack Auth's JavaScript SDK, you can retrieve the access token [from the `stackClientApp` object](/sdk/types/user#currentusergetauthjson). Then, you can use said access token to make requests to Stack Auth:
+
+    ```python
+    access_token = # access token retrieved from the JavaScript SDK
+
+    print(stack_auth_request('GET', '/api/v1/users/me', headers={
+      'x-stack-access-token': access_token,
+    }))
+    ```
+
+    Here's how to extract and use the access token in your Python backend:
+
+    **Extract access token from request headers:**
+
+    ```python
+    def get_access_token_from_request(request):
+        """Extract access token from x-stack-access-token header"""
+        return request.headers.get('x-stack-access-token')
+    ```
+
+    **Use the access token with Stack Auth:**
+
+    ```python
+    def get_current_user_from_token(access_token):
+        """Get current user information using their access token"""
+        return stack_auth_request('GET', '/api/v1/users/me', headers={
+            'x-stack-access-token': access_token,
+        })
+    ```
+
+    **Example usage in a Flask route:**
+    
+    ```python
+    @app.route('/api/user-profile')
+    def user_profile():
+        access_token = get_access_token_from_request(request)
+        if not access_token:
+            return {'error': 'No access token provided'}, 401
+        
+        try:
+            user_info = get_current_user_from_token(access_token)
+            return {'user': user_info}
+        except Exception as e:
+            return {'error': 'Invalid access token'}, 401
+    ```
+
+  </Step>
+
+  <Step>
+    ### Done!
+  </Step>
+</Steps>
+
+## Next steps
+
+Now that you have Stack Auth set up in your Python application, you can:
+
+1. **[User Authentication](../concepts/user-authentication.mdx)** - Learn how to sign up and sign in users
+2. **[Teams Management](../concepts/teams-management.mdx)** - Implement team functionality
+
+Check out the [REST API documentation](../rest-api/overview.mdx) to learn more about the available endpoints and how to use them in your Python application.

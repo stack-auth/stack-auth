@@ -28,27 +28,27 @@ API keys can be obtained through:
 ### Table of Contents
 
 <ClickableTableOfContents code={`type ApiKey<Type extends "user" | "team" = "user" | "team", IsFirstView extends boolean = false> = {
-  id: string;  //$stack-link-to:#apikeyid
-  description: string;  //$stack-link-to:#apikeydescription
-  expiresAt?: Date;  //$stack-link-to:#apikeyexpiresat
-  manuallyRevokedAt: Date | null;  //$stack-link-to:#apikeymanuallyrevokedat
-  createdAt: Date;  //$stack-link-to:#apikeycreatedat
-  value: IsFirstView extends true ? string : { lastFour: string };  //$stack-link-to:#apikeyvalue
-  
-  // User or Team properties based on Type
-  ...(Type extends "user" ? {
-    type: "user";
-    userId: string;  //$stack-link-to:#apikeyuserid
-  } : {
-    type: "team";
-    teamId: string;  //$stack-link-to:#apikeyteamid
-  })
-  
-  // Methods
-  isValid(): boolean;  //$stack-link-to:#apikeyisvalid
-  whyInvalid(): "manually-revoked" | "expired" | null;  //$stack-link-to:#apikeywhyinvalid
-  revoke(): Promise<void>;  //$stack-link-to:#apikeyrevoke
-  update(options): Promise<void>;  //$stack-link-to:#apikeyupdateoptions
+    id: string;  //$stack-link-to:#apikeyid
+    description: string;  //$stack-link-to:#apikeydescription
+    expiresAt?: Date;  //$stack-link-to:#apikeyexpiresat
+    manuallyRevokedAt: Date | null;  //$stack-link-to:#apikeymanuallyrevokedat
+    createdAt: Date;  //$stack-link-to:#apikeycreatedat
+    value: IsFirstView extends true ? string : { lastFour: string };  //$stack-link-to:#apikeyvalue
+    
+    // User or Team properties based on Type
+    ...(Type extends "user" ? {
+      type: "user";
+      userId: string;  //$stack-link-to:#apikeyuserid
+    } : {
+      type: "team";
+      teamId: string;  //$stack-link-to:#apikeyteamid
+    })
+    
+    // Methods
+    isValid(): boolean;  //$stack-link-to:#apikeyisvalid
+    whyInvalid(): "manually-revoked" | "expired" | null;  //$stack-link-to:#apikeywhyinvalid
+    revoke(): Promise<void>;  //$stack-link-to:#apikeyrevoke
+    update(options): Promise<void>;  //$stack-link-to:#apikeyupdateoptions
 };`} />
 
 ---

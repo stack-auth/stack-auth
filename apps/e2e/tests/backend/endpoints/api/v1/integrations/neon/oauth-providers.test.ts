@@ -106,6 +106,7 @@ it("lists oauth providers", async ({ expect }) => {
           "credential_enabled": true,
           "domains": [],
           "email_config": { "type": "shared" },
+          "email_theme": "default-light",
           "enabled_oauth_providers": [{ "id": "google" }],
           "magic_link_enabled": false,
           "oauth_account_merge_strategy": "link_method",

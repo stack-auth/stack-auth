@@ -4,7 +4,7 @@ import { ArrowLeft, ChevronDown, ChevronRight } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import type { ReactNode } from 'react';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { ThemeToggle } from '../../layout/theme-toggle';
 import { ScrollArea, ScrollViewport } from '../../ui/scroll-area';
 
@@ -76,7 +76,7 @@ function ApiSidebarLink({
   return (
     <Link
       href={href}
-      className={`flex items-center gap-2 px-2 py-1.5 rounded-md text-xs transition-colors ${
+      className={`flex items-center gap-2 px-2 py-1.5 rounded-md text-xs ${
         isActive
           ? 'bg-fd-primary/10 text-fd-primary font-medium'
           : 'text-fd-muted-foreground hover:text-fd-foreground hover:bg-fd-muted/50'
@@ -111,11 +111,16 @@ function CollapsibleSection({
 }) {
   const [isOpen, setIsOpen] = useState(defaultOpen);
 
+  // Keep accordion open based on defaultOpen changes (for consistency with other sidebars)
+  useEffect(() => {
+    setIsOpen(defaultOpen);
+  }, [defaultOpen]);
+
   return (
     <div className="space-y-1">
       <button
         onClick={() => setIsOpen(!isOpen)}
-        className="flex items-center gap-2 w-full text-left px-2 py-1.5 text-sm font-medium text-fd-muted-foreground hover:text-fd-foreground transition-colors"
+        className="flex items-center gap-2 w-full text-left px-2 py-1.5 text-sm font-medium text-fd-muted-foreground hover:text-fd-foreground"
       >
         {isOpen ? (
           <ChevronDown className="h-3 w-3" />
@@ -232,7 +237,7 @@ export function ApiSidebarContent({ pages = [] }: { pages?: PageData[] }) {
         <ScrollViewport className="p-4 space-y-1">
           <Link
             href="/docs"
-            className="flex items-center gap-2 px-2 py-1.5 mb-2 text-sm text-fd-muted-foreground hover:text-fd-foreground transition-colors"
+            className="flex items-center gap-2 px-2 py-1.5 mb-2 text-sm text-fd-muted-foreground hover:text-fd-foreground"
           >
             <ArrowLeft className="h-3 w-3" />
             Back to docs

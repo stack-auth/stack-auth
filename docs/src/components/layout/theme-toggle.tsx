@@ -26,9 +26,11 @@ const full = [
 export function ThemeToggle({
   className,
   mode = 'light-dark',
+  compact = false,
   ...props
 }: HTMLAttributes<HTMLElement> & {
   mode?: 'light-dark' | 'light-dark-system',
+  compact?: boolean,
 }) {
   const { setTheme, theme, resolvedTheme } = useTheme();
   const [mounted, setMounted] = useState(false);
@@ -36,6 +38,28 @@ export function ThemeToggle({
   useLayoutEffect(() => {
     setMounted(true);
   }, []);
+
+  // Compact mode: single icon button without container
+  if (compact) {
+    const value = mounted ? resolvedTheme : null;
+    const Icon = value === 'light' ? Moon : Sun;
+
+    return (
+      <button
+        className={cn(
+          'inline-flex h-8 w-8 items-center justify-center rounded-full text-fd-muted-foreground transition-colors hover:bg-fd-muted hover:text-fd-foreground',
+          className,
+        )}
+        aria-label={`Switch to ${value === 'light' ? 'dark' : 'light'} theme`}
+        onClick={() => setTheme(value === 'light' ? 'dark' : 'light')}
+        data-theme-toggle=""
+        title={`Switch to ${value === 'light' ? 'dark' : 'light'} theme`}
+        {...props}
+      >
+        <Icon className="h-3.5 w-3.5" fill="currentColor" />
+      </button>
+    );
+  }
 
   const container = cn(
     'inline-flex items-center rounded-full border p-1',
