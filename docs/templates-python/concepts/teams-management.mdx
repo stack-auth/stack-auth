@@ -1,0 +1,599 @@
+---
+title: "Teams Management"
+description: "Learn how to implement team functionality in your Python application using Stack Auth's REST API"
+---
+
+After setting up your [Stack Auth helper function](../getting-started/setup.mdx), you can implement comprehensive team functionality in your Python application.
+
+## Team Management
+
+Stack Auth provides full team management capabilities including:
+- **Team Creation & Management** - Create and update teams with metadata
+- **Team Memberships** - Add and remove users from teams  
+- **Team Invitations** - Send email invitations to join teams
+- **Team Permissions** - Control what team members can do
+- **Team Profiles** - Manage user profiles within team context
+
+### Creating a Team
+
+To create a new team:
+
+```python
+def create_team(access_token, display_name, creator_user_id=None):
+    """
+    Create a new team
+    Returns the created team data
+    """
+    body = {
+        'display_name': display_name
+    }
+    
+    # Optionally specify a creator (only on server)
+    if creator_user_id:
+        body['creator_user_id'] = creator_user_id
+    
+    response = stack_auth_request('POST', 'api/v1/teams', 
+        headers={'x-stack-access-token': access_token},
+        json=body
+    )
+    
+    return {
+        'id': response['id'],
+        'display_name': response['display_name'],
+        'profile_image_url': response['profile_image_url'],
+        'client_metadata': response['client_metadata'],
+        'client_read_only_metadata': response['client_read_only_metadata'],
+        'created_at_millis': response.get('created_at_millis')  # Server only
+    }
+
+# Example usage
+team_data = create_team(
+    access_token=access_token,
+    display_name="Engineering Team"
+)
+team_id = team_data['id']
+print(f"Created team: {team_data['display_name']}")
+```
+
+### Listing Teams
+
+Get all teams for the current user:
+
+```python
+def list_user_teams(access_token):
+    """
+    List all teams that the current user is a member of
+    """
+    response = stack_auth_request('GET', 'api/v1/teams?user_id=me',
+        headers={'x-stack-access-token': access_token}
+    )
+    
+    return response['items']
+
+def list_all_teams():
+    """
+    List all teams in the project (server access only)
+    """
+    response = stack_auth_request('GET', 'api/v1/teams')
+    return response['items']
+
+# Example usage
+user_teams = list_user_teams(access_token)
+print(f"User is member of {len(user_teams)} teams")
+
+# Server-side: list all teams
+all_teams = list_all_teams()
+print(f"Total teams in project: {len(all_teams)}")
+```
+
+### Getting Team Information
+
+Retrieve details about a specific team:
+
+```python
+def get_team(access_token, team_id):
+    """
+    Get information about a specific team
+    """
+    response = stack_auth_request('GET', f'api/v1/teams/{team_id}',
+        headers={'x-stack-access-token': access_token}
+    )
+    
+    return {
+        'id': response['id'],
+        'display_name': response['display_name'],
+        'profile_image_url': response['profile_image_url'],
+        'client_metadata': response['client_metadata'],
+        'client_read_only_metadata': response['client_read_only_metadata']
+    }
+
+# Example usage
+team_info = get_team(access_token, team_id)
+print(f"Team: {team_info['display_name']}")
+```
+
+### Updating Team Information
+
+Update team details (requires `$update_team` permission):
+
+```python
+def update_team(access_token, team_id, **updates):
+    """
+    Update team information
+    Requires $update_team permission
+    """
+    # Filter out None values
+    body = {k: v for k, v in updates.items() if v is not None}
+    
+    response = stack_auth_request('PATCH', f'api/v1/teams/{team_id}',
+        headers={'x-stack-access-token': access_token},
+        json=body
+    )
+    
+    return response
+
+# Example usage
+updated_team = update_team(
+    access_token=access_token,
+    team_id=team_id,
+    display_name="Updated Engineering Team",
+    profile_image_url="https://example.com/team-logo.png",
+    client_metadata={
+        "department": "Engineering",
+        "location": "San Francisco"
+    }
+)
+```
+
+## Team Membership Management
+
+### Adding Members to a Team
+
+Add users to a team (server access required):
+
+```python
+def add_team_member(team_id, user_id):
+    """
+    Add a user to a team (server access only)
+    """
+    response = stack_auth_request('POST', f'api/v1/team-memberships/{team_id}/{user_id}',
+        json={}
+    )
+    return response
+
+# Example usage
+add_team_member(team_id, user_id)
+print(f"Added user {user_id} to team {team_id}")
+```
+
+### Removing Members from a Team
+
+Remove users from a team (requires `$remove_members` permission):
+
+```python
+def remove_team_member(access_token, team_id, user_id):
+    """
+    Remove a user from a team
+    Requires $remove_members permission
+    """
+    stack_auth_request('DELETE', f'api/v1/team-memberships/{team_id}/{user_id}',
+        headers={'x-stack-access-token': access_token}
+    )
+
+# Example usage
+remove_team_member(access_token, team_id, user_id)
+print(f"Removed user {user_id} from team {team_id}")
+```
+
+### Getting Team Members
+
+List all members of a team:
+
+```python
+def get_team_members(access_token, team_id):
+    """
+    Get all members of a team with their profiles
+    Requires $read_members permission
+    """
+    response = stack_auth_request('GET', f'api/v1/team-member-profiles?team_id={team_id}',
+        headers={'x-stack-access-token': access_token}
+    )
+    
+    return response['items']
+
+# Example usage
+members = get_team_members(access_token, team_id)
+for member in members:
+    print(f"Member: {member['display_name']} ({member['user_id']})")
+```
+
+## Team Invitations
+
+### Sending Team Invitations
+
+Invite users to join a team via email:
+
+```python
+def send_team_invitation(access_token, team_id, email, callback_url):
+    """
+    Send an invitation to join a team
+    Requires $invite_members permission
+    """
+    response = stack_auth_request('POST', 'api/v1/team-invitations/send-code',
+        headers={'x-stack-access-token': access_token},
+        json={
+            'email': email,
+            'team_id': team_id,
+            'callback_url': callback_url
+        }
+    )
+    
+    return {
+        'success': response['success'],
+        'invitation_id': response['id']
+    }
+
+# Example usage
+invitation_result = send_team_invitation(
+    access_token=access_token,
+    team_id=team_id,
+    email="newmember@example.com",
+    callback_url="https://yourapp.com/join-team"
+)
+print(f"Invitation sent: {invitation_result['invitation_id']}")
+```
+
+### Accepting Team Invitations
+
+Complete the invitation process when a user clicks the invitation link:
+
+```python
+def accept_team_invitation(code):
+    """
+    Accept a team invitation using the code from the invitation email
+    """
+    response = stack_auth_request('POST', 'api/v1/team-invitations/accept',
+        json={'code': code}
+    )
+    
+    return response
+
+# Example usage (when user clicks invitation link)
+accept_team_invitation(invitation_code)
+print("User successfully joined the team!")
+```
+
+### Listing Team Invitations
+
+Get pending invitations for a team:
+
+```python
+def list_team_invitations(access_token, team_id):
+    """
+    List pending invitations for a team
+    Requires $invite_members permission
+    """
+    response = stack_auth_request('GET', f'api/v1/team-invitations?team_id={team_id}',
+        headers={'x-stack-access-token': access_token}
+    )
+    
+    return response['items']
+
+# Example usage
+invitations = list_team_invitations(access_token, team_id)
+for invitation in invitations:
+    print(f"Pending invitation for: {invitation['recipient_email']}")
+```
+
+## Team Permissions Management
+
+### Granting Team Permissions
+
+Give specific permissions to team members:
+
+```python
+def grant_team_permission(team_id, user_id, permission_id):
+    """
+    Grant a permission to a user in a team (server access only)
+    """
+    response = stack_auth_request('POST', f'api/v1/team-permissions/{team_id}/{user_id}/{permission_id}',
+        json={}
+    )
+    return response
+
+# Example usage
+grant_team_permission(team_id, user_id, "$update_team")
+grant_team_permission(team_id, user_id, "$invite_members")
+print(f"Granted permissions to user {user_id}")
+```
+
+### Revoking Team Permissions
+
+Remove permissions from team members:
+
+```python
+def revoke_team_permission(team_id, user_id, permission_id):
+    """
+    Revoke a permission from a user in a team (server access only)
+    """
+    stack_auth_request('DELETE', f'api/v1/team-permissions/{team_id}/{user_id}/{permission_id}')
+
+# Example usage
+revoke_team_permission(team_id, user_id, "$update_team")
+print(f"Revoked permission from user {user_id}")
+```
+
+### Checking Team Permissions
+
+Check if a user has specific permissions in a team:
+
+```python
+def check_team_permission(access_token, team_id, user_id, permission_id):
+    """
+    Check if a user has a specific permission in a team
+    """
+    try:
+        response = stack_auth_request('GET', f'api/v1/team-permissions/{team_id}/{user_id}/{permission_id}',
+            headers={'x-stack-access-token': access_token}
+        )
+        return True
+    except Exception as e:
+        if "TEAM_PERMISSION_NOT_FOUND" in str(e):
+            return False
+        raise e
+
+# Example usage
+can_update = check_team_permission(access_token, team_id, user_id, "$update_team")
+if can_update:
+    print("User can update the team")
+else:
+    print("User cannot update the team")
+```
+
+### Listing User Permissions
+
+Get all permissions a user has in a team:
+
+```python
+def list_user_team_permissions(access_token, team_id, user_id="me"):
+    """
+    List all permissions a user has in a team
+    """
+    response = stack_auth_request('GET', f'api/v1/team-permissions/{team_id}/{user_id}',
+        headers={'x-stack-access-token': access_token}
+    )
+    
+    return response['items']
+
+# Example usage
+permissions = list_user_team_permissions(access_token, team_id)
+permission_ids = [p['id'] for p in permissions]
+print(f"User permissions: {permission_ids}")
+```
+
+## Team Member Profiles
+
+### Managing Team Member Profiles
+
+Users can have different display names and profile information within each team:
+
+```python
+def update_team_member_profile(access_token, team_id, user_id="me", **profile_data):
+    """
+    Update a user's profile within a team context
+    """
+    response = stack_auth_request('PATCH', f'api/v1/team-member-profiles/{team_id}/{user_id}',
+        headers={'x-stack-access-token': access_token},
+        json=profile_data
+    )
+    
+    return response
+
+def get_team_member_profile(access_token, team_id, user_id="me"):
+    """
+    Get a user's profile within a team context
+    """
+    response = stack_auth_request('GET', f'api/v1/team-member-profiles/{team_id}/{user_id}',
+        headers={'x-stack-access-token': access_token}
+    )
+    
+    return response
+
+# Example usage
+# Update current user's profile in the team
+updated_profile = update_team_member_profile(
+    access_token=access_token,
+    team_id=team_id,
+    display_name="John Doe (Engineering Lead)",
+    profile_image_url="https://example.com/john-avatar.png"
+)
+
+# Get the updated profile
+profile = get_team_member_profile(access_token, team_id)
+print(f"Team profile: {profile['display_name']}")
+```
+
+### Deleting Teams
+
+Remove a team entirely (requires `$delete_team` permission):
+
+```python
+def delete_team(access_token, team_id):
+    """
+    Delete a team (requires $delete_team permission)
+    """
+    response = stack_auth_request('DELETE', f'api/v1/teams/{team_id}',
+        headers={'x-stack-access-token': access_token}
+    )
+    return response
+
+# Example usage
+delete_team(access_token, team_id)
+print(f"Team {team_id} deleted successfully")
+```
+
+## Complete Team Management Example
+
+Here's a comprehensive example that demonstrates a full team management workflow:
+
+```python
+import os
+import requests
+
+# Setup (from setup guide)
+stack_project_id = os.getenv("STACK_PROJECT_ID")
+stack_publishable_client_key = os.getenv("STACK_PUBLISHABLE_CLIENT_KEY")
+stack_secret_server_key = os.getenv("STACK_SECRET_SERVER_KEY")
+
+def stack_auth_request(method, endpoint, **kwargs):
+    res = requests.request(
+        method,
+        f'https://api.stack-auth.com/{endpoint}',
+        headers={
+            'x-stack-access-type': 'server',  # or 'client' if you're only accessing the client API
+            'x-stack-project-id': stack_project_id,
+            'x-stack-publishable-client-key': stack_publishable_client_key,
+            'x-stack-secret-server-key': stack_secret_server_key,  # not necessary if access type is 'client'
+            **kwargs.pop('headers', {}),
+        },
+        **kwargs,
+    )
+    if res.status_code >= 400:
+        raise Exception(f"Stack Auth API request failed with {res.status_code}: {res.text}")
+    return res.json()
+
+class TeamManager:
+    def __init__(self, access_token):
+        self.access_token = access_token
+    
+    def create_and_setup_team(self, name, member_emails):
+        """Create a team and invite members"""
+        # Create the team
+        team = create_team(self.access_token, name)
+        team_id = team['id']
+        
+        print(f"Created team: {name} (ID: {team_id})")
+        
+        # Send invitations to members
+        invitation_results = []
+        for email in member_emails:
+            try:
+                result = send_team_invitation(
+                    self.access_token,
+                    team_id,
+                    email,
+                    "https://yourapp.com/join-team"
+                )
+                invitation_results.append((email, result['invitation_id']))
+                print(f"Invited {email}")
+            except Exception as e:
+                print(f"Failed to invite {email}: {e}")
+        
+        return team, invitation_results
+    
+    def manage_team_permissions(self, team_id, admin_user_ids):
+        """Grant admin permissions to specific users"""
+        admin_permissions = ["$update_team", "$invite_members", "$remove_members"]
+        
+        for user_id in admin_user_ids:
+            for permission in admin_permissions:
+                try:
+                    grant_team_permission(team_id, user_id, permission)
+                    print(f"Granted {permission} to {user_id}")
+                except Exception as e:
+                    print(f"Failed to grant {permission} to {user_id}: {e}")
+    
+    def get_team_overview(self, team_id):
+        """Get complete team information"""
+        # Get team details
+        team_info = get_team(self.access_token, team_id)
+        
+        # Get team members
+        try:
+            members = get_team_members(self.access_token, team_id)
+        except Exception:
+            members = []  # User might not have read_members permission
+        
+        # Get pending invitations
+        try:
+            invitations = list_team_invitations(self.access_token, team_id)
+        except Exception:
+            invitations = []  # User might not have invite_members permission
+        
+        return {
+            'team': team_info,
+            'members': members,
+            'pending_invitations': invitations
+        }
+
+# Example usage
+team_manager = TeamManager(access_token)
+
+# Create a new team with initial members
+team, invitations = team_manager.create_and_setup_team(
+    name="Product Team",
+    member_emails=["alice@example.com", "bob@example.com", "charlie@example.com"]
+)
+
+# Make some users team admins (server-side operation)
+admin_users = ["user-id-1", "user-id-2"]
+team_manager.manage_team_permissions(team['id'], admin_users)
+
+# Get team overview
+overview = team_manager.get_team_overview(team['id'])
+print(f"\nTeam Overview:")
+print(f"Name: {overview['team']['display_name']}")
+print(f"Members: {len(overview['members'])}")
+print(f"Pending Invitations: {len(overview['pending_invitations'])}")
+```
+
+## Error Handling
+
+Common team-related errors you might encounter:
+
+```python
+def handle_team_errors(func):
+    """Decorator to handle common team operation errors"""
+    def wrapper(*args, **kwargs):
+        try:
+            return func(*args, **kwargs)
+        except Exception as e:
+            error_message = str(e)
+            
+            if "TEAM_PERMISSION_REQUIRED" in error_message:
+                print("Insufficient permissions for this team operation")
+            elif "TEAM_MEMBERSHIP_NOT_FOUND" in error_message:
+                print("User is not a member of this team")
+            elif "TEAM_NOT_FOUND" in error_message:
+                print("Team not found")
+            elif "TEAM_MEMBERSHIP_ALREADY_EXISTS" in error_message:
+                print("User is already a member of this team")
+            elif "USER_NOT_FOUND" in error_message:
+                print("User not found")
+            else:
+                print(f"Team operation error: {error_message}")
+            
+            raise e
+    return wrapper
+
+@handle_team_errors
+def safe_add_member(team_id, user_id):
+    return add_team_member(team_id, user_id)
+
+@handle_team_errors
+def safe_send_invitation(access_token, team_id, email, callback_url):
+    return send_team_invitation(access_token, team_id, email, callback_url)
+```
+
+## Common Team Permission IDs
+
+Stack Auth includes several built-in team permissions:
+
+- **`$update_team`** - Edit team information and metadata
+- **`$delete_team`** - Delete the entire team
+- **`$invite_members`** - Send invitations to new members
+- **`$remove_members`** - Remove members from the team
+- **`$read_members`** - View team member list
+- **`team_member`** - Basic team membership (automatically granted)
+
+For more advanced team features, check out the [REST API documentation](../rest-api/overview.mdx). 

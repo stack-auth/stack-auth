@@ -46,9 +46,8 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
   private readonly _metricsCache = createCache(async () => {
     return await this._interface.getMetrics();
   });
-  private readonly _emailThemePreviewCache = createCache(async ([theme]: [string]) => {
-    console.log("cache hit", theme);
-    return await this._interface.renderEmailThemePreview(theme);
+  private readonly _emailThemePreviewCache = createCache(async ([theme, content]: [string, string]) => {
+    return await this._interface.renderEmailThemePreview(theme, content);
   });
 
   constructor(options: StackAdminAppConstructorOptions<HasTokenStore, ProjectId>) {
@@ -408,13 +407,6 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
     await this._interface.sendSignInInvitationEmail(email, callbackUrl);
   }
 
-  // IF_PLATFORM react-like
-  useEmailThemePreview(theme: string): string {
-    const crud = useAsyncCache(this._emailThemePreviewCache, [theme] as const, "useEmailThemePreview()");
-    return crud.html;
-  }
-  // END_PLATFORM
-
   async createEmailThemeDevServer(): Promise<{ repoId: string, previewUrl: string }> {
     return await this._interface.createEmailThemeDevServer();
   }
@@ -434,4 +426,10 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
   ): Promise<{ content: Array<{ type: "text", text: string }> }> {
     return await this._interface.sendDevServerChatMessage(repoId, messages, abortSignal);
   }
+  // IF_PLATFORM react-like
+  useEmailThemePreview(theme: string, content: string): string {
+    const crud = useAsyncCache(this._emailThemePreviewCache, [theme, content] as const, "useEmailThemePreview()");
+    return crud.html;
+  }
+  // END_PLATFORM
 }

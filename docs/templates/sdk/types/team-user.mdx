@@ -20,8 +20,8 @@ It is usually obtained by calling
 ### Table of Contents
 
 <ClickableTableOfContents code={`type TeamUser = {
-  id: string;  //$stack-link-to:#teamuserid
-  teamProfile: TeamProfile;  //$stack-link-to:#teamuserteamprofile
+    id: string;  //$stack-link-to:#teamuserid
+    teamProfile: TeamProfile;  //$stack-link-to:#teamuserteamprofile
 };`} />
 
 ---
@@ -65,13 +65,13 @@ It is usually obtained by calling `serverTeam.listUsers()` on a [`ServerTeam` ob
 ### Table of Contents
 
 <ClickableTableOfContents code={`type ServerTeamUser =
-  // Inherits all functionality from TeamUser
-  & TeamUser //$stack-link-to:#teamuser
-  // Inherits all functionality from ServerUser
-  & ServerUser //$stack-link-to:./user#serveruser
-  & {
-    teamProfile: ServerTeamProfile;  //$stack-link-to:#serverteamuserteamprofile
-  };`} />
+    // Inherits all functionality from TeamUser
+    & TeamUser //$stack-link-to:#teamuser
+    // Inherits all functionality from ServerUser
+    & ServerUser //$stack-link-to:./user#serveruser
+    & {
+        teamProfile: ServerTeamProfile;  //$stack-link-to:#serverteamuserteamprofile
+    };`} />
 
 ---
 

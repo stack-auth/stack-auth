@@ -43,7 +43,7 @@ export function MethodSection({
       {title && (
         <button
           onClick={() => setIsOpen(!isOpen)}
-          className="w-full flex items-center justify-between px-3 py-0.5 text-left hover:bg-fd-accent/5 transition-colors rounded-t-lg"
+          className="w-full flex items-center justify-between px-3 py-0.5 text-left hover:bg-fd-accent/5 rounded-t-lg"
         >
           <span className="font-medium text-fd-foreground text-sm leading-none">{title}</span>
           {isOpen ? (
@@ -200,7 +200,31 @@ export function CollapsibleMethodSection({
   const signaturePart = signature ? signature.replace(/[^a-z0-9]/gi, '').toLowerCase() : '';
   const anchorId = `${appType.toLowerCase()}${methodName}${signaturePart}`;
 
-  // Full display name with optional signature (e.g., "StackClientApp.getUser()" or "StackServerApp.listUsers()")
+  // Listen for hash changes and auto-open matching sections
+  useEffect(() => {
+    const handleHashChange = () => {
+      const hash = window.location.hash.replace('#', '');
+      if (hash === anchorId) {
+        setIsOpen(true);
+        // Small delay to ensure the section is opened before scrolling
+        setTimeout(() => {
+          const element = document.getElementById(anchorId);
+          if (element) {
+            element.scrollIntoView({ behavior: 'smooth', block: 'start' });
+          }
+        }, 100);
+      }
+    };
+
+    // Check on mount (after hydration)
+    handleHashChange();
+
+    // Listen for hash changes
+    window.addEventListener('hashchange', handleHashChange);
+    return () => window.removeEventListener('hashchange', handleHashChange);
+  }, [anchorId]);
+
+  // Full display name with optional signature (e.g., "getUser()" or "listUsers()")
   const fullName = signature
     ? `${method}(${signature})`
     : method;
@@ -227,7 +251,8 @@ export function CollapsibleMethodSection({
       )}>
       <button
         onClick={() => setIsOpen(!isOpen)}
-        className="w-full flex items-center justify-between px-3 py-2 text-left hover:bg-fd-accent/5 transition-colors rounded-t-lg"
+        className="w-full flex items-center justify-between px-3 py-2 text-left hover:bg-fd-accent/5 rounded-t-lg"
+        data-testid="collapsible-method-trigger"
       >
         <div className="flex items-center gap-1.5">
           <div id={anchorId} className="text-m font-medium text-fd-foreground font-mono scroll-mt-20 leading-none">
@@ -364,7 +389,8 @@ export function CollapsibleTypesSection({
       )}>
         <button
           onClick={() => setIsOpen(!isOpen)}
-          className="w-full flex items-center justify-between px-3 py-2 text-left hover:bg-fd-accent/5 transition-colors rounded-t-lg"
+          className="w-full flex items-center justify-between px-3 py-2 text-left hover:bg-fd-accent/5 rounded-t-lg"
+          data-testid="collapsible-method-trigger"
         >
           <div className="flex items-center gap-1.5">
             <div id={anchorId} className="text-m font-medium text-fd-foreground font-mono scroll-mt-20 leading-none">

@@ -1,0 +1,38 @@
+---
+title: "GitLab Authentication"
+---
+
+This guide explains how to set up GitLab as an authentication provider with Stack Auth. GitLab OAuth allows users to sign in to your application using their GitLab account.
+
+
+## Integration Steps
+
+<Steps>
+  <Step>
+  ### Create a GitLab OAuth App
+  
+  1. Log in to your GitLab account.
+  2. In the top-right corner, click on your profile picture and select **Preferences**.
+  3. In the left sidebar, select **Applications** > **Add new application**.
+  4. Fill out the form with the following details:
+     - **Name**: Choose a name for your application
+     - **Redirect URI**: Enter `https://api.stack-auth.com/api/v1/auth/oauth/callback/gitlab`
+     - **Scopes**: Select at minimum the `profile` and `email` scopes
+  5. Click **Save application**.
+  6. GitLab will display your **Application ID** and **Secret**. Make note of these values as you'll need them for the next steps.
+  7. If you're using a self-hosted GitLab instance, you'll also need the URL of your GitLab instance.
+  </Step>
+  <Step>
+  ### Enable GitLab OAuth in Stack Auth
+  
+  1. On the Stack Auth dashboard, select **Auth Methods** in the left sidebar.
+  2. Click **Add SSO Providers** and select **GitLab** as the provider.
+  3. Set the **Application ID** and **Secret** you obtained from GitLab earlier.
+  4. If you're using a self-hosted GitLab instance, you'll also need to provide the URL for your instance. For gitlab.com, you can leave this field blank or use the default value.
+  </Step>
+</Steps>
+
+### Need More Help?
+
+- Check the [GitLab OAuth 2.0 documentation](https://docs.gitlab.com/ee/api/oauth2.html)
+- Join our [Discord](https://discord.stack-auth.com)

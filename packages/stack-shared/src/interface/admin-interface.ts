@@ -337,13 +337,6 @@ export class StackAdminInterface extends StackServerInterface {
     );
   }
 
-  async renderEmailThemePreview(theme: string): Promise<{ html: string }> {
-    const response = await this.sendAdminRequest(`/emails/render-theme?theme=${theme}`, {
-      method: "GET",
-    }, null);
-    return await response.json();
-  }
-
   async createEmailThemeDevServer(): Promise<{ repoId: string, previewUrl: string }> {
     const response = await this.sendAdminRequest(
       `/emails/dev-server`,
@@ -416,6 +409,19 @@ export class StackAdminInterface extends StackServerInterface {
       },
       null,
     );
+    return await response.json();
+  }
+  async renderEmailThemePreview(theme: string, content: string): Promise<{ html: string }> {
+    const response = await this.sendAdminRequest(`/emails/render-email`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        theme,
+        preview_html: content,
+      }),
+    }, null);
     return await response.json();
   }
 }

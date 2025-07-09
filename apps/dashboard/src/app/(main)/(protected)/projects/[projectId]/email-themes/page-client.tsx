@@ -4,6 +4,7 @@ import { useRouter } from "@/components/router";
 import { SettingCard } from "@/components/settings";
 import { throwErr } from "@stackframe/stack-shared/dist/utils/errors";
 import { runAsynchronously } from "@stackframe/stack-shared/dist/utils/promises";
+import { deindent } from "@stackframe/stack-shared/dist/utils/strings";
 import { ActionDialog, Button, Card, Separator, Typography } from "@stackframe/stack-ui";
 import { Check } from "lucide-react";
 import { useState } from "react";
@@ -148,8 +149,18 @@ function ThemeOption({
 }
 
 function ThemePreview({ themeId }: { themeId: ThemeType }) {
+  const previewEmailHtml = deindent`
+    <div>
+      <h2 className="mb-4 text-2xl font-bold">
+        Header text
+      </h2>
+      <p className="mb-4">
+        Body text content with some additional information.
+      </p>
+    </div>
+  `;
   const stackAdminApp = useAdminApp();
-  const previewHtml = stackAdminApp.useEmailThemePreview(themeId);
+  const previewHtml = stackAdminApp.useEmailThemePreview(themeId, previewEmailHtml);
   return (
     <iframe srcDoc={previewHtml} className="mx-auto pointer-events-none" />
   );
