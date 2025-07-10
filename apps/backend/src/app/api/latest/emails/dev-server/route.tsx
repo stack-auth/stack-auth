@@ -44,7 +44,7 @@ export const POST = createSmartRouteHandler({
     const { repoId } = await freestyle.createGitRepository({
       public: true,
       source: {
-        url: "https://github.com/BilalG1/email-preview.git",
+        url: "https://github.com/stack-auth/email-preview-server.git",
         type: "git",
       }
     });
