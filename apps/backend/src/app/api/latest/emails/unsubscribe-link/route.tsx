@@ -1,7 +1,7 @@
-import { KnownErrors } from "@stackframe/stack-shared/dist/known-errors";
-import { prismaClient } from "@/prisma-client";
-import { VerificationCodeType } from "@prisma/client";
 import { getSoleTenancyFromProjectBranch } from "@/lib/tenancies";
+import { getPrismaClientForTenancy } from "@/prisma-client";
+import { VerificationCodeType } from "@prisma/client";
+import { KnownErrors } from "@stackframe/stack-shared/dist/known-errors";
 import { NextRequest } from "next/server";
 
 export async function GET(request: NextRequest) {
@@ -9,6 +9,8 @@ export async function GET(request: NextRequest) {
   const code = searchParams.get('code');
   if (!code || code.length !== 45)
     return new Response('Invalid code', { status: 400 });
+
+  const prismaClient = getPrismaClientForTenancy(auth.tenancy);
 
   const codeLower = code.toLowerCase();
   const verificationCode = await prismaClient.verificationCode.findFirst({
