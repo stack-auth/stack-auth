@@ -2,10 +2,6 @@
  * Discord Bot API implementation with session threading support
  */
 
-// In-memory storage for session -> thread mapping
-// In production, this gets reset between requests in serverless environments
-const sessionThreadMap = new Map<string, string>();
-
 interface DiscordMessage {
   id: string;
   channel_id: string;
@@ -51,25 +47,13 @@ export async function sendToDiscordWebhook(data: {
     // Format message with clean text structure
     const sessionPrefix = metadata?.sessionId ? metadata.sessionId.slice(-8) : 'unknown';
     const messageNumber = metadata?.messageNumber || 1;
-    const isFollowUp = metadata?.isFollowUp || false;
     const messageType = metadata?.messageType === 'starter-prompt' ? '🟢' : '🔵';
     const timeOnPage = metadata?.timeOnPage ? formatTime(metadata.timeOnPage) : 'N/A';
     const browserInfo = extractBrowserInfo(metadata?.userAgent || '');
     const page = formatPagePath(metadata?.pathname || '/');
     
-    const sessionId = metadata?.sessionId || 'unknown';
-    
-    // Check if we have an existing thread for this session
-    let existingThreadId = sessionThreadMap.get(sessionId);
-    
-    // If not in memory, try to find it in Discord
-    if (!existingThreadId) {
-      const foundThreadId = await findExistingThread(channelId, sessionPrefix);
-      existingThreadId = foundThreadId || undefined;
-      if (existingThreadId) {
-        sessionThreadMap.set(sessionId, existingThreadId);
-      }
-    }
+    // Check if an existing thread exists for this session
+    const existingThreadId = await findExistingThread(channelId, sessionPrefix);
     
     if (existingThreadId) {
       // Send to existing thread
@@ -82,7 +66,7 @@ export async function sendToDiscordWebhook(data: {
       });
     } else {
       // Create new thread for first message
-      const threadId = await createNewThread(channelId, message, {
+      await createNewThread(channelId, message, {
         sessionPrefix,
         messageNumber,
         messageType,
@@ -90,10 +74,6 @@ export async function sendToDiscordWebhook(data: {
         timeOnPage,
         browserInfo
       });
-      
-      if (threadId) {
-        sessionThreadMap.set(sessionId, threadId);
-      }
     }
   } catch (error) {
     console.error('Error sending message to Discord:', error);
@@ -120,17 +100,8 @@ export async function sendLLMResponseToDiscord(data: {
     const sessionId = metadata?.sessionId || 'unknown';
     const sessionPrefix = sessionId.slice(-8);
     
-    // Check if we have an existing thread for this session
-    let existingThreadId = sessionThreadMap.get(sessionId);
-    
-    // If not in memory, try to find it in Discord
-    if (!existingThreadId) {
-      const foundThreadId = await findExistingThread(channelId, sessionPrefix);
-      existingThreadId = foundThreadId || undefined;
-      if (existingThreadId) {
-        sessionThreadMap.set(sessionId, existingThreadId);
-      }
-    }
+    // Find the existing thread for this session
+    const existingThreadId = await findExistingThread(channelId, sessionPrefix);
     
     if (!existingThreadId) {
       console.warn(`No thread found for session ${sessionId}`);
@@ -194,7 +165,7 @@ async function createNewThread(
     timeOnPage: string;
     browserInfo?: string;
   }
-): Promise<string | null> {
+): Promise<void> {
   const botToken = process.env.DISCORD_BOT_TOKEN;
   
   try {
@@ -216,7 +187,7 @@ async function createNewThread(
 
     if (!messageResponse.ok) {
       console.error('Failed to send initial message:', messageResponse.statusText);
-      return null;
+      return;
     }
 
     const messageData: DiscordMessage = await messageResponse.json();
@@ -238,16 +209,14 @@ async function createNewThread(
 
     if (!threadResponse.ok) {
       console.error('Failed to create thread:', threadResponse.statusText);
-      return null;
+      return;
     }
 
     const threadData: DiscordThread = await threadResponse.json();
     console.log(`Created new thread: ${threadData.name} (${threadData.id})`);
     
-    return threadData.id;
   } catch (error) {
     console.error('Error creating thread:', error);
-    return null;
   }
 }
 
@@ -286,12 +255,7 @@ ${context.messageType} • ${context.page} • Page time: ${context.timeOnPage}$
       // If thread doesn't exist anymore, remove it from our map
       if (response.status === 404) {
         // Find and remove the session from our map
-        for (const [sessionId, tId] of sessionThreadMap.entries()) {
-          if (tId === threadId) {
-            sessionThreadMap.delete(sessionId);
-            break;
-          }
-        }
+        // This part of the logic is no longer needed as we are not using a map
       }
     } else {
       console.log(`Sent follow-up message to thread ${threadId}`);
@@ -339,12 +303,7 @@ ${model}`;
       console.error('Failed to send response to thread:', discordResponse.statusText);
       // If thread doesn't exist anymore, remove it from our map
       if (discordResponse.status === 404) {
-        for (const [sessionId, tId] of sessionThreadMap.entries()) {
-          if (tId === threadId) {
-            sessionThreadMap.delete(sessionId);
-            break;
-          }
-        }
+        // This part of the logic is no longer needed as we are not using a map
       }
     } else {
       console.log(`Sent AI response to thread ${threadId}`);
