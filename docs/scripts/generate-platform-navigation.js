@@ -27,7 +27,7 @@ function generatePlatformNavigation() {
     }
 
     // Validate all platform values
-    const validPlatforms = new Set(['web', 'ios', 'android']); // Add your valid platforms here
+    const validPlatforms = new Set(['next', 'react', 'js', 'python']); // Actual platforms used in docs
     config.pages.forEach((page, idx) => {
       if (!Array.isArray(page.platforms)) {
         throw new Error(`Invalid platforms array at page index ${idx}`);
