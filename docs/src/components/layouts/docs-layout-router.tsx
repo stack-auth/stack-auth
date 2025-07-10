@@ -88,7 +88,7 @@ function findSectionInTree(tree: PageTree.Root, sectionName: string, pathname: s
       return {
         name: sectionFolder.name,
         children: sectionFolder.children,
-        $id: `${tree.$id}/${sectionName}`,
+        $id: tree.$id ? `${tree.$id}/${sectionName}` : sectionName,
       };
     }
   }
