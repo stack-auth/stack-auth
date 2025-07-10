@@ -104,6 +104,7 @@ export function Toc(props: HTMLAttributes<HTMLDivElement>) {
           onClick={toggleToc}
           className="p-1 text-fd-muted-foreground hover:text-fd-foreground hover:bg-fd-muted rounded transition-colors"
           title="Close table of contents"
+          aria-label="Close table of contents"
         >
           <X className="w-3 h-3" />
         </button>
