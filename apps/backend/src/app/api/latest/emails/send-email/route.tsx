@@ -1,4 +1,4 @@
-import { renderEmailWithTheme } from "@/lib/email-themes";
+import { getThemeComponent, renderEmailWithTheme } from "@/lib/email-themes";
 import { getEmailConfig, sendEmail } from "@/lib/emails";
 import { getNotificationCategoryByName, hasNotificationEnabled } from "@/lib/notification-categories";
 import { prismaClient } from "@/prisma-client";
@@ -107,7 +107,12 @@ export const POST = createSmartRouteHandler({
         unsubscribeLink = unsubUrl.toString();
       }
 
-      const renderedEmail = await renderEmailWithTheme(body.html, auth.tenancy.config.email_theme, unsubscribeLink);
+      const themeComponent = await getThemeComponent(auth.tenancy.config.email_theme, auth.tenancy.id);
+      const renderedEmail = await renderEmailWithTheme(
+        body.html,
+        themeComponent,
+        unsubscribeLink || undefined
+      );
       if ("error" in renderedEmail) {
         userSendErrors.set(userId, "There was an error rendering the email");
         continue;

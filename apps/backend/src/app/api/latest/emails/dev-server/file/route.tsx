@@ -6,10 +6,12 @@ import { FreestyleSandboxes } from 'freestyle-sandboxes';
 
 function getFilePath(file: string): string {
   switch (file) {
-    case "theme":
+    case "theme": {
       return "src/email-theme.tsx";
-    default:
+    }
+    default: {
       throw new StatusError(400, `Unsupported file: ${file}`);
+    }
   }
 }
 
@@ -21,7 +23,7 @@ export const GET = createSmartRouteHandler({
   },
   request: yupObject({
     auth: yupObject({
-      type: yupString().oneOf(["client", "server", "admin"]).defined(),
+      type: yupString().oneOf(["admin"]).defined(),
     }).nullable(),
     query: yupObject({
       file: yupString().oneOf(["theme"]).defined(),

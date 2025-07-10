@@ -60,7 +60,8 @@ model Tenancy {
   cliAuthAttempts             CliAuthAttempt[]
   projectApiKey               ProjectApiKey[]
   userNotificationPreferences UserNotificationPreference[]
-
+  emailThemes                 EmailTheme[]
+  threadMessages              ThreadMessage[]
   @@unique([projectId, branchId, organizationId])
   @@unique([projectId, branchId, hasNoOrganization])
 }
@@ -751,4 +752,38 @@ model UserNotificationPreference {
 
   @@id([tenancyId, id])
   @@unique([tenancyId, projectUserId, notificationCategoryId])
+}
+
+model EmailTheme {
+  id String @default(uuid()) @db.Uuid
+  tenancyId String @db.Uuid
+
+  name String
+  component String
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  
+  tenancy Tenancy @relation(fields: [tenancyId], references: [id], onDelete: Cascade)
+
+  @@id([tenancyId, id])
+  @@unique([tenancyId, name])
+}
+
+enum ThreadMessageRole {
+  user
+  assistant
+  tool
+}
+
+model ThreadMessage {
+  id String @default(uuid()) @db.Uuid
+  tenancyId String @db.Uuid
+  threadId String @db.Uuid
+
+  role ThreadMessageRole
+  content Json
+  createdAt DateTime @default(now())
+  tenancy Tenancy @relation(fields: [tenancyId], references: [id], onDelete: Cascade)
+  @@id([tenancyId, id])
 }

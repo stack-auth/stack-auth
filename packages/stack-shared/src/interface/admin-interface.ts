@@ -8,6 +8,11 @@ import { SvixTokenCrud } from "./crud/svix-token";
 import { TeamPermissionDefinitionsCrud } from "./crud/team-permissions";
 import { ServerAuthApplicationOptions, StackServerInterface } from "./server-interface";
 
+export type ChatContent = Array<
+  | { type: "text", text: string }
+  | { type: "tool-call", toolName: string, toolCallId: string, args: any, argsText: string, result: any }
+>;
+
 export type AdminAuthApplicationOptions = ServerAuthApplicationOptions &(
   | {
     superSecretAdminKey: string,
@@ -124,6 +129,12 @@ export class StackAdminInterface extends StackServerInterface {
     const response = await this.sendAdminRequest(`/email-templates`, {}, null);
     const result = await response.json() as EmailTemplateCrud['Admin']['List'];
     return result.items;
+  }
+
+  async listEmailThemes(): Promise<{ name: string }[]> {
+    const response = await this.sendAdminRequest(`/emails/themes`, {}, null);
+    const result = await response.json() as { themes: { name: string }[] };
+    return result.themes;
   }
 
   async updateEmailTemplate(type: EmailTemplateType, data: EmailTemplateCrud['Admin']['Update']): Promise<EmailTemplateCrud['Admin']['Read']> {
@@ -396,7 +407,7 @@ export class StackAdminInterface extends StackServerInterface {
     repoId: string,
     messages: Array<{ role: string, content: string }>,
     abortSignal?: AbortSignal,
-  ): Promise<{ content: Array<{ type: "text", text: string }> }> {
+  ): Promise<{ content: ChatContent }> {
     const response = await this.sendAdminRequest(
       `/emails/dev-server/chat`,
       {
@@ -411,6 +422,16 @@ export class StackAdminInterface extends StackServerInterface {
     );
     return await response.json();
   }
+
+  async listChatMessages(repoId: string): Promise<{ messages: Array<{ role: string, content: ChatContent }> }> {
+    const response = await this.sendAdminRequest(
+      `/emails/dev-server/chat?repo_id=${repoId}`,
+      { method: "GET" },
+      null,
+    );
+    return await response.json();
+  }
+
   async renderEmailThemePreview(theme: string, content: string): Promise<{ html: string }> {
     const response = await this.sendAdminRequest(`/emails/render-email`, {
       method: "POST",
@@ -422,6 +443,24 @@ export class StackAdminInterface extends StackServerInterface {
         preview_html: content,
       }),
     }, null);
+    return await response.json();
+  }
+
+  async createEmailTheme(repoId: string, name: string): Promise<{ id: string }> {
+    const response = await this.sendAdminRequest(
+      `/emails/themes`,
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          repo_id: repoId,
+          name,
+        }),
+      },
+      null,
+    );
     return await response.json();
   }
 }

@@ -31,15 +31,3 @@ export const EMAIL_THEMES = {
   'default-light': LightEmailTheme,
   'default-dark': DarkEmailTheme,
 } as const;
-
-/*
-Preview html is rendered with children:
-<div>
-  <h2 className="mb-4 text-2xl font-bold">
-    Header text
-  </h2>
-  <p className="mb-4">
-    Body text content with some additional information.
-  </p>
-</div>
-*/

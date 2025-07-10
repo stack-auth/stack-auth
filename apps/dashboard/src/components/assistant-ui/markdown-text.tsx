@@ -48,7 +48,7 @@ const CodeHeader: FC<CodeHeaderProps> = ({ language, code }) => {
 const useCopyToClipboard = ({
   copiedDuration = 3000,
 }: {
-  copiedDuration?: number;
+  copiedDuration?: number,
 } = {}) => {
   const [isCopied, setIsCopied] = useState<boolean>(false);
 
@@ -58,6 +58,8 @@ const useCopyToClipboard = ({
     navigator.clipboard.writeText(value).then(() => {
       setIsCopied(true);
       setTimeout(() => setIsCopied(false), copiedDuration);
+    }).catch(() => {
+      setIsCopied(false);
     });
   };
 

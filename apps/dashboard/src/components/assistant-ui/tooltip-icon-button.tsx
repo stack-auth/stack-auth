@@ -12,8 +12,8 @@ import {
 import { cn } from "@/lib/utils";
 
 export type TooltipIconButtonProps = ComponentPropsWithoutRef<typeof Button> & {
-  tooltip: string;
-  side?: "top" | "bottom" | "left" | "right";
+  tooltip: string,
+  side?: "top" | "bottom" | "left" | "right",
 };
 
 export const TooltipIconButton = forwardRef<

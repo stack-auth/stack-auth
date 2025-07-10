@@ -1,3 +1,4 @@
+import { ChatContent } from "@stackframe/stack-shared/dist/interface/admin-interface";
 import { EmailTemplateType } from "@stackframe/stack-shared/dist/interface/crud/email-templates";
 import { InternalSession } from "@stackframe/stack-shared/dist/sessions";
 import { Result } from "@stackframe/stack-shared/dist/utils/results";
@@ -38,6 +39,9 @@ export type StackAdminApp<HasTokenStore extends boolean = boolean, ProjectId ext
     updateEmailTemplate(type: EmailTemplateType, data: AdminEmailTemplateUpdateOptions): Promise<void>,
     resetEmailTemplate(type: EmailTemplateType): Promise<void>,
 
+    useEmailThemes(): { name: string }[], // THIS_LINE_PLATFORM react-like
+    listEmailThemes(): Promise<{ name: string }[]>,
+
     createInternalApiKey(options: InternalApiKeyCreateOptions): Promise<InternalApiKeyFirstView>,
 
     createTeamPermissionDefinition(data: AdminTeamPermissionDefinitionCreateOptions): Promise<AdminTeamPermission>,
@@ -70,12 +74,16 @@ export type StackAdminApp<HasTokenStore extends boolean = boolean, ProjectId ext
     createEmailThemeDevServer(): Promise<{ repoId: string, previewUrl: string }>,
     requestEmailThemeDevServer(repoId: string): Promise<{ previewUrl: string }>,
     updateEmailThemeDevServerFile(repoId: string, file: "theme", content: string): Promise<void>,
+    getEmailThemeDevServerFile(repoId: string, file: "theme"): Promise<{ content: string }>,
 
     sendDevServerChatMessage(
       repoId: string,
       messages: Array<{ role: string, content: string }>,
       abortSignal?: AbortSignal,
-    ): Promise<{ content: Array<{ type: "text", text: string }> }>,
+    ): Promise<{ content: ChatContent }>,
+    listChatMessages(repoId: string): Promise<{ messages: Array<{ role: string, content: ChatContent }> }>,
+
+    createEmailTheme(repoId: string, name: string): Promise<{ id: string }>,
   }
   & StackServerApp<HasTokenStore, ProjectId>
 );

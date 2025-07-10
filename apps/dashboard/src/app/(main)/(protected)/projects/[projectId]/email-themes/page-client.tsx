@@ -11,27 +11,11 @@ import { useState } from "react";
 import { PageLayout } from "../page-layout";
 import { useAdminApp } from "../use-admin-app";
 
-type ThemeType = 'default-light' | 'default-dark';
-
-type Theme = {
-  id: ThemeType,
-  name: string,
-};
-
-const themes: Theme[] = [
-  {
-    id: 'default-light',
-    name: 'Light Theme',
-  },
-  {
-    id: 'default-dark',
-    name: 'Dark Theme',
-  },
-];
 
 function NewThemeButton() {
   const stackAdminApp = useAdminApp();
   const router = useRouter();
+  const themes = stackAdminApp.useEmailThemes();
   const [loading, setLoading] = useState(false);
 
   const handleCreateNewTheme = async () => {
@@ -59,12 +43,13 @@ function NewThemeButton() {
 export default function PageClient() {
   const stackAdminApp = useAdminApp();
   const project = stackAdminApp.useProject();
+  const themes = stackAdminApp.useEmailThemes();
   const activeTheme = project.config.emailTheme;
   const [dialogOpen, setDialogOpen] = useState(false);
-  const [dialogSelectedTheme, setDialogSelectedTheme] = useState<ThemeType>(activeTheme);
+  const [dialogSelectedTheme, setDialogSelectedTheme] = useState<string>(activeTheme);
 
-  const handleThemeSelect = (themeId: ThemeType) => {
-    setDialogSelectedTheme(themeId);
+  const handleThemeSelect = (themeName: string) => {
+    setDialogSelectedTheme(themeName);
   };
 
   const handleSaveTheme = async () => {
@@ -78,7 +63,7 @@ export default function PageClient() {
     setDialogOpen(true);
   };
 
-  const selectedThemeData = themes.find(t => t.id === activeTheme) ?? throwErr(`Unknown theme ${activeTheme}`, { activeTheme });
+  const selectedThemeData = themes.find(t => t.name === activeTheme) ?? throwErr(`Unknown theme ${activeTheme}`, { activeTheme });
 
   return (
     <PageLayout
@@ -90,7 +75,9 @@ export default function PageClient() {
         title="Active Theme"
         description={`Currently using ${selectedThemeData.name}`}
       >
-        <ThemePreview themeId={activeTheme} />
+        <div className="h-72">
+          <ThemePreview themeName={activeTheme} />
+        </div>
         <ActionDialog
           trigger={<Button onClick={handleOpenDialog} className="ml-auto w-min">Set Theme</Button>}
           open={dialogOpen}
@@ -105,9 +92,9 @@ export default function PageClient() {
           <div className="space-y-4">
             {themes.map((theme) => (
               <ThemeOption
-                key={theme.id}
+                key={theme.name}
                 theme={theme}
-                isSelected={dialogSelectedTheme === theme.id}
+                isSelected={dialogSelectedTheme === theme.name}
                 onSelect={handleThemeSelect}
               />
             ))}
@@ -123,32 +110,33 @@ function ThemeOption({
   isSelected,
   onSelect
 }: {
-  theme: Theme,
+  theme: { name: string },
   isSelected: boolean,
-  onSelect: (themeId: ThemeType) => void,
+  onSelect: (themeName: string) => void,
 }) {
   return (
     <Card
       className="cursor-pointer hover:ring-1 transition-all"
-      onClick={() => onSelect(theme.id)}
+      onClick={() => onSelect(theme.name)}
     >
       <div className="p-4 pb-3">
         <div className="flex items-center justify-between">
-          <Typography className="font-medium text-lg">{theme.name}</Typography>
+          <Typography variant="secondary">{theme.name}</Typography>
           {isSelected && (
             <div className="bg-blue-500 text-white rounded-full w-6 h-6 p-1 flex items-center justify-center">
               <Check />
             </div>
           )}
         </div>
-        <Separator className="my-3" />
-        <ThemePreview themeId={theme.id} />
+        <div className="h-60" style={{ zoom: 0.75 }}>
+          <ThemePreview themeName={theme.name} />
+        </div>
       </div>
     </Card>
   );
 }
 
-function ThemePreview({ themeId }: { themeId: ThemeType }) {
+function ThemePreview({ themeName }: { themeName: string }) {
   const previewEmailHtml = deindent`
     <div>
       <h2 className="mb-4 text-2xl font-bold">
@@ -160,8 +148,8 @@ function ThemePreview({ themeId }: { themeId: ThemeType }) {
     </div>
   `;
   const stackAdminApp = useAdminApp();
-  const previewHtml = stackAdminApp.useEmailThemePreview(themeId, previewEmailHtml);
+  const previewHtml = stackAdminApp.useEmailThemePreview(themeName, previewEmailHtml);
   return (
-    <iframe srcDoc={previewHtml} className="mx-auto pointer-events-none" />
+    <iframe srcDoc={previewHtml} className="mx-auto pointer-events-none h-full" />
   );
 }
