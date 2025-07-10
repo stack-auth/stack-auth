@@ -5,7 +5,7 @@ export function middleware(request: NextRequest) {
   const response = NextResponse.next();
   const pathname = request.nextUrl.pathname;
 
-  console.log('🔧 Middleware: Setting pathname header:', pathname);
+  //console.log('🔧 Middleware: Setting pathname header:', pathname);
   response.headers.set('x-pathname', pathname);
 
   return response;
