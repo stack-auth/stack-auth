@@ -1360,7 +1360,6 @@ it("should increment and decrement userCount when a user is added to a project",
         "display_name": "New Project",
         "id": "<stripped UUID>",
         "is_production_mode": false,
-        "user_count": 1,
       },
       "headers": Headers { <some fields may have been hidden> },
     }

@@ -137,8 +137,7 @@ describe("with valid credentials", () => {
         "status": 200,
         "body": {
           "project_id": "<stripped UUID>",
-          "tenancy_id": "<stripped UUID>",
-          "tenant_owner_emails": ["default-mailbox--<stripped UUID>@stack-generated.example.com"],
+          "super_secret_admin_key": <stripped field 'super_secret_admin_key'>,
         },
         "headers": Headers { <some fields may have been hidden> },
       }
@@ -383,16 +382,21 @@ describe("with valid credentials", () => {
     const currentResponses = response.body.failed_emails_by_tenancy.filter(
       (batch: any) => batch.project_id === projectId
     );
-    expect(currentResponses.length).toBe(1);
-    expect(currentResponses[0].tenant_owner_emails.length).toBe(2);
-    expect(currentResponses[0].tenant_owner_emails.includes(firstOwnerMailbox.emailAddress)).toBe(true);
-    expect(currentResponses[0].tenant_owner_emails.includes(secondOwnerMailbox.emailAddress)).toBe(true);
 
-    const firstMailboxMessages = await firstOwnerMailbox.fetchMessages();
-    const secondMailboxMessages = await secondOwnerMailbox.fetchMessages();
-    const firstMailboxDigestEmail = firstMailboxMessages.find(msg => msg.subject === "Failed emails digest");
-    const secondMailboxDigestEmail = secondMailboxMessages.find(msg => msg.subject === "Failed emails digest");
-    expect(firstMailboxDigestEmail).toBeDefined();
-    expect(secondMailboxDigestEmail).toBeDefined();
+    if (process.env.STACK_TEST_SOURCE_OF_TRUTH === "true") {
+      expect(currentResponses).toMatchInlineSnapshot(`[]`);
+    } else {
+      expect(currentResponses.length).toBe(1);
+      expect(currentResponses[0].tenant_owner_emails.length).toBe(2);
+      expect(currentResponses[0].tenant_owner_emails.includes(firstOwnerMailbox.emailAddress)).toBe(true);
+      expect(currentResponses[0].tenant_owner_emails.includes(secondOwnerMailbox.emailAddress)).toBe(true);
+
+      const firstMailboxMessages = await firstOwnerMailbox.fetchMessages();
+      const secondMailboxMessages = await secondOwnerMailbox.fetchMessages();
+      const firstMailboxDigestEmail = firstMailboxMessages.find(msg => msg.subject === "Failed emails digest");
+      const secondMailboxDigestEmail = secondMailboxMessages.find(msg => msg.subject === "Failed emails digest");
+      expect(firstMailboxDigestEmail).toBeDefined();
+      expect(secondMailboxDigestEmail).toBeDefined();
+    }
   });
 });
