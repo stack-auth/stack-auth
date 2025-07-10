@@ -118,7 +118,7 @@ describe("with valid credentials", () => {
             ],
             "project_id": "<stripped UUID>",
             "tenancy_id": "<stripped UUID>",
-            "tenant_owner_email": "default-mailbox--<stripped UUID>@stack-generated.example.com",
+            "tenant_owner_emails": ["default-mailbox--<stripped UUID>@stack-generated.example.com"],
           },
         ]
       `);
@@ -159,7 +159,7 @@ describe("with valid credentials", () => {
 
     const failedEmailsByTenancy = emailResponse.body.failed_emails_by_tenancy;
     const mockProjectFailedEmails = failedEmailsByTenancy.filter(
-      (batch: any) => batch.tenant_owner_email === backendContext.value.mailbox.emailAddress
+      (batch: any) => batch.tenant_owner_emails.includes(backendContext.value.mailbox.emailAddress)
     );
 
     expect(mockProjectFailedEmails).toMatchInlineSnapshot(`[]`);
@@ -179,7 +179,7 @@ describe("with valid credentials", () => {
 
     const failedEmailsByTenancy = response.body.failed_emails_by_tenancy;
     const mockProjectFailedEmails = failedEmailsByTenancy.filter(
-      (batch: any) => batch.tenant_owner_email === backendContext.value.mailbox.emailAddress
+      (batch: any) => batch.tenant_owner_emails.includes(backendContext.value.mailbox.emailAddress)
     );
     expect(mockProjectFailedEmails).toMatchInlineSnapshot(`[]`);
 

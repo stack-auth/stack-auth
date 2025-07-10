@@ -43,9 +43,6 @@ export const getFailedEmailsByTenancy = async (after: Date) => {
       tenantOwnerEmails: [],
       projectId: failedEmail.projectId
     };
-    if (failedEmails.tenantOwnerEmails.length === 0) {
-      continue;
-    }
     failedEmails.emails.push({ subject: failedEmail.subject, to: failedEmail.to });
     failedEmails.tenantOwnerEmails.push(failedEmail.contactEmail);
     failedEmailsByTenancy.set(failedEmail.tenancyId, failedEmails);
