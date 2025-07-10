@@ -1,7 +1,5 @@
-import { randomUUID } from "crypto";
-import { describe } from "vitest";
 import { it } from "../../../../helpers";
-import { niceBackendFetch, Project, User } from "../../../backend-helpers";
+import { niceBackendFetch } from "../../../backend-helpers";
 
 it("should return 404 when theme is not found", async ({ expect }) => {
   const response = await niceBackendFetch("/api/v1/emails/render-email", {
