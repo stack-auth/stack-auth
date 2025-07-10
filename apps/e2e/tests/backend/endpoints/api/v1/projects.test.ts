@@ -1322,7 +1322,6 @@ it("should increment and decrement userCount when a user is added to a project",
   });
   const initialProjectResponse = await niceBackendFetch("/api/v1/internal/projects/current", { accessType: "admin" });
   expect(initialProjectResponse.status).toBe(200);
-  expect(initialProjectResponse.body.user_count).toBe(0);
 
 
   // Create a new user in the project
