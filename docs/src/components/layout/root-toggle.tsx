@@ -47,7 +47,7 @@ function getPlatformColor(title: ReactNode): string {
  * Extract platform from URL path
  */
 function extractPlatformFromUrl(url: string): Platform | null {
-  const match = url.match(/^\/docs\/([a-z]+)/);
+  const match = url.match(/^\/docs\/([a-z]+)(?:\/|$)/);
   if (match) {
     const platform = match[1];
     // Only return valid platforms
