@@ -5,7 +5,7 @@ import { source } from 'lib/source';
 import type { ReactNode } from 'react';
 import './custom-docs-styles.css';
 
-export default async function DocsLayout({ children }: { children: ReactNode }) {
+export default function DocsLayout({ children }: { children: ReactNode }) {
   return (
     <SidebarProvider>
       <div className="relative">
