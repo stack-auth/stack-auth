@@ -2,7 +2,7 @@ import { it } from "../../../../helpers";
 import { Auth, Project, niceBackendFetch } from "../../../backend-helpers";
 
 async function createAndSwitchToOAuthEnabledProject() {
-  await Project.createAndSwitch({
+  return await Project.createAndSwitch({
     config: {
       magic_link_enabled: true,
       oauth_providers: [
@@ -18,14 +18,18 @@ async function createAndSwitchToOAuthEnabledProject() {
 }
 
 it("should create an OAuth provider connection", async ({ expect }: { expect: any }) => {
-  await createAndSwitchToOAuthEnabledProject();
+  const { createProjectResponse } = await createAndSwitchToOAuthEnabledProject();
   await Auth.Otp.signIn();
 
-  const createResponse = await niceBackendFetch("/api/v1/oauth-providers/me/github", {
+  const providerConfig = createProjectResponse.body.config.oauth_providers.find((p: any) => p.id === "github");
+  expect(providerConfig).toBeDefined();
+
+  const createResponse = await niceBackendFetch("/api/v1/oauth-providers", {
     method: "POST",
     accessType: "server",
     body: {
-      type: "github",
+      user_id: "me",
+      provider_config_id: providerConfig.id,
       account_id: "test_github_user_123",
       email: "test@example.com",
       allow_sign_in: true,
@@ -33,7 +37,28 @@ it("should create an OAuth provider connection", async ({ expect }: { expect: an
     },
   });
 
-  expect(createResponse).toMatchInlineSnapshot();
+  expect(createResponse).toMatchInlineSnapshot(`
+    NiceResponse {
+      "status": 400,
+      "body": {
+        "code": "SCHEMA_ERROR",
+        "details": {
+          "message": deindent\`
+            Request validation failed on POST /api/v1/oauth-providers:
+              - body.provider_config_id must be a valid UUID
+          \`,
+        },
+        "error": deindent\`
+          Request validation failed on POST /api/v1/oauth-providers:
+            - body.provider_config_id must be a valid UUID
+        \`,
+      },
+      "headers": Headers {
+        "x-stack-known-error": "SCHEMA_ERROR",
+        <some fields may have been hidden>,
+      },
+    }
+  `);
 });
 
 it("should read an OAuth provider connection", async ({ expect }: { expect: any }) => {

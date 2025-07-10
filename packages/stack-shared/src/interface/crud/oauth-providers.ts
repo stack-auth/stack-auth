@@ -1,7 +1,8 @@
 import { CrudTypeOf, createCrud } from "../../crud";
-import { oauthProviderAccountIdSchema, oauthProviderAllowConnectedAccountsSchema, oauthProviderAllowSignInSchema, oauthProviderEmailSchema, oauthProviderIdSchema, oauthProviderTypeSchema, yupMixed, yupObject } from "../../schema-fields";
+import { oauthProviderAccountIdSchema, oauthProviderAllowConnectedAccountsSchema, oauthProviderAllowSignInSchema, oauthProviderConfigIdSchema, oauthProviderEmailSchema, oauthProviderIdSchema, oauthProviderTypeSchema, userIdOrMeSchema, yupMixed, yupObject } from "../../schema-fields";
 
 export const oauthProviderClientReadSchema = yupObject({
+  user_id: userIdOrMeSchema.defined(),
   id: oauthProviderIdSchema.defined(),
   email: oauthProviderEmailSchema.optional(),
   type: oauthProviderTypeSchema.defined(),
@@ -24,8 +25,9 @@ export const oauthProviderCrudServerUpdateSchema = oauthProviderCrudClientUpdate
 }));
 
 export const oauthProviderCrudServerCreateSchema = yupObject({
+  user_id: userIdOrMeSchema.defined(),
+  provider_config_id: oauthProviderConfigIdSchema.defined(),
   email: oauthProviderEmailSchema.optional(),
-  type: oauthProviderTypeSchema.defined(),
   allow_sign_in: oauthProviderAllowSignInSchema.defined(),
   allow_connected_accounts: oauthProviderAllowConnectedAccountsSchema.defined(),
   account_id: oauthProviderAccountIdSchema.defined(),
