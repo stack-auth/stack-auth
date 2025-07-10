@@ -16,7 +16,7 @@ import { runAsynchronously } from "@stackframe/stack-shared/dist/utils/promises"
 import {
   Button, Card, ResizableHandle,
   ResizablePanel,
-  ResizablePanelGroup, TooltipProvider, Typography
+  ResizablePanelGroup, toast, TooltipProvider, Typography
 } from "@stackframe/stack-ui";
 import debounce from "lodash/debounce";
 import { CheckCircle, XCircle } from "lucide-react";
@@ -120,6 +120,11 @@ function DevServerEditor({ repoId, emailThemeCounter }: { repoId: string, emailT
   useEffect(() => {
     adminApp.getEmailThemeDevServerFile(repoId, "theme").then((file) => {
       setCode(file.content);
+    }).catch(() => {
+      toast({
+        title: "Failed to load theme file",
+        variant: "destructive",
+      });
     });
   }, [adminApp, repoId, emailThemeCounter]);
 
