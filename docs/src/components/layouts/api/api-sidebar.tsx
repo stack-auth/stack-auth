@@ -2,8 +2,7 @@
 
 import { ArrowLeft, ChevronDown, ChevronRight, FileText, Sidebar as SidebarIcon } from 'lucide-react';
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
-import router from 'next/router';
+import { usePathname, useRouter } from 'next/navigation';
 import type { ReactNode } from 'react';
 import { createContext, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
@@ -383,6 +382,7 @@ function CollapsedSectionDot({
   const [dotRect, setDotRect] = useState<DOMRect | null>(null);
   const dotRef = useRef<HTMLDivElement>(null);
   const pathname = usePathname();
+  const router = useRouter();
 
   const isActive = href ? pathname === href : false;
 
@@ -395,7 +395,7 @@ function CollapsedSectionDot({
   const handleNavigation = () => {
     setIsOpen(true);
     if (href) {
-      router.push(href);
+      void router.push(href);
     }
   };
 
