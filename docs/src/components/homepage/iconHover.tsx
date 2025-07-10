@@ -40,7 +40,7 @@ const createPlatformSections = (platform: Platform): DocsSection[] => {
       title: "SDKs",
       description: "Software development kits",
       icon: <Code size={24} />,
-      url: `/docs/${platform}/sdk/overview`,
+      url: `/docs/${platform}/sdk`,
       color: "rgb(16, 185, 129)",
     });
   }
@@ -52,7 +52,7 @@ const createPlatformSections = (platform: Platform): DocsSection[] => {
       title: "Components",
       description: "Reusable UI components",
       icon: <Layers size={24} />,
-      url: `/docs/${platform}/components/overview`,
+      url: `/docs/${platform}/components`,
       color: "rgb(245, 101, 101)",
     });
   }
