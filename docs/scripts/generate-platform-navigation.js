@@ -50,7 +50,7 @@ import { type Platform } from './platform-utils';
 const PLATFORM_PAGES: { path: string, platforms: Platform[] }[] = [
 ${config.pages.map(page => {
   const platformsStr = JSON.stringify(page.platforms);
-  return `  { path: '${page.path}', platforms: ${platformsStr} },`;
+  return `  { path: ${JSON.stringify(page.path)}, platforms: ${platformsStr} },`;
 }).join('\n')}
 ];
 
