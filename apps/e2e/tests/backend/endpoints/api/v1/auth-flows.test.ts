@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { it } from "../../../../helpers";
 import { Auth, ContactChannels, InternalApiKey, Project, backendContext, niceBackendFetch } from "../../../backend-helpers";
 
@@ -93,8 +94,9 @@ it("signs in with password first, then signs in with oauth should give an accoun
       credential_enabled: true,
       oauth_account_merge_strategy: "allow_duplicates",
       oauth_providers: [{
-        id: "spotify",
-        type: "shared",
+        id: randomUUID(),
+        type: "google",
+        is_shared: true,
       }],
     }
   });

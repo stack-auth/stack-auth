@@ -1,4 +1,5 @@
 import { isBase64Url } from "@stackframe/stack-shared/dist/utils/bytes";
+import { randomUUID } from "node:crypto";
 import { it } from "../../../../helpers";
 import { Auth, InternalProjectKeys, Project, backendContext, niceBackendFetch } from "../../../backend-helpers";
 
@@ -360,7 +361,7 @@ it("updates the project email configuration", async ({ expect }) => {
   const { updateProjectResponse: response1 } = await Project.updateCurrent(adminAccessToken, {
     config: {
       email_config: {
-        type: "standard",
+        is_shared: false,
         host: "smtp.example.com",
         port: 587,
         username: "test username",
@@ -418,7 +419,7 @@ it("updates the project email configuration", async ({ expect }) => {
   const { updateProjectResponse: response2 } = await Project.updateCurrent(adminAccessToken, {
     config: {
       email_config: {
-        type: "standard",
+        is_shared: false,
         host: "smtp.example2.com",
         port: 587,
         username: "test username2",
@@ -476,7 +477,7 @@ it("updates the project email configuration", async ({ expect }) => {
   const { updateProjectResponse: response3 } = await Project.updateCurrent(adminAccessToken, {
     config: {
       email_config: {
-        type: "shared",
+        is_shared: true,
       },
     },
   });
@@ -520,7 +521,7 @@ it("updates the project email configuration", async ({ expect }) => {
   const { updateProjectResponse: response4 } = await Project.updateCurrent(adminAccessToken, {
     config: {
       email_config: {
-        type: "shared",
+        is_shared: true,
       },
     },
   });
@@ -564,7 +565,7 @@ it("updates the project email configuration", async ({ expect }) => {
   const { updateProjectResponse: response2p2 } = await Project.updateCurrent(adminAccessToken, {
     config: {
       email_config: {
-        type: "standard",
+        is_shared: false,
         host: "smtp.control-group.com",
         port: 587,
         username: "control group",
@@ -624,7 +625,7 @@ it("does not update project email config to empty host", async ({ expect }) => {
   const { updateProjectResponse: response } = await Project.updateCurrent(adminAccessToken, {
     config: {
       email_config: {
-        type: "standard",
+        is_shared: false,
         host: "",
         port: 587,
         username: "test username",
@@ -664,7 +665,7 @@ it("updates the project email configuration with invalid parameters", async ({ e
   const { updateProjectResponse: response1 } = await Project.updateCurrent(adminAccessToken, {
     config: {
       email_config: {
-        type: "shared",
+        is_shared: true,
         client_id: "client_id",
       } as any,
     },
@@ -695,7 +696,7 @@ it("updates the project email configuration with invalid parameters", async ({ e
   const response2 = await Project.updateCurrent(adminAccessToken, {
     config: {
       email_config: {
-        type: "standard",
+        is_shared: false,
       },
     },
   });
@@ -742,8 +743,9 @@ it("updates the project oauth configuration", async ({ expect }) => {
   const { updateProjectResponse: response1 } = await Project.updateCurrent(adminAccessToken, {
     config: {
       oauth_providers: [{
-        id: "google",
-        type: "shared",
+        id: randomUUID(),
+        type: "google",
+        is_shared: true,
       }]
     },
   });
@@ -792,8 +794,9 @@ it("updates the project oauth configuration", async ({ expect }) => {
   const { updateProjectResponse: response2 } = await Project.updateCurrent(adminAccessToken, {
     config: {
       oauth_providers: [{
-        id: "google",
-        type: "shared",
+        id: randomUUID(),
+        type: "google",
+        is_shared: true,
       }]
     },
   });
@@ -842,8 +845,9 @@ it("updates the project oauth configuration", async ({ expect }) => {
   const { updateProjectResponse: response3 } = await Project.updateCurrent(adminAccessToken, {
     config: {
       oauth_providers: [{
-        id: "google",
-        type: "standard",
+        id: randomUUID(),
+        type: "google",
+        is_shared: false,
         client_id: "client_id",
         client_secret: "client_secret",
       }]
@@ -895,8 +899,9 @@ it("updates the project oauth configuration", async ({ expect }) => {
   const { updateProjectResponse: response4 } = await Project.updateCurrent(adminAccessToken, {
     config: {
       oauth_providers: [{
-        id: "spotify",
-        type: "shared",
+        id: randomUUID(),
+        type: "google",
+        is_shared: true,
       }]
     },
   });
@@ -946,12 +951,14 @@ it("updates the project oauth configuration", async ({ expect }) => {
     config: {
       oauth_providers: [
         {
-          id: "spotify",
-          type: "shared",
+          id: randomUUID(),
+          type: "google",
+          is_shared: true,
         },
         {
-          id: "google",
-          type: "shared",
+          id: randomUUID(),
+          type: "google",
+          is_shared: true,
         }
       ]
     },
@@ -1009,12 +1016,14 @@ it("updates the project oauth configuration", async ({ expect }) => {
     config: {
       oauth_providers: [
         {
-          id: "spotify",
-          type: "shared",
+          id: randomUUID(),
+          type: "google",
+          is_shared: true,
         },
         {
-          id: "google",
-          type: "shared",
+          id: randomUUID(),
+          type: "google",
+          is_shared: true,
         }
       ]
     },
@@ -1076,8 +1085,9 @@ it("fails when trying to update OAuth provider with empty client_secret", async 
     body: {
       config: {
         oauth_providers: [{
-          id: "google",
-          type: "standard",
+          id: randomUUID(),
+          type: "google",
+          is_shared: false,
           client_id: "client_id",
           client_secret: ""
         }]
@@ -1169,12 +1179,14 @@ it("deletes a project with users, teams, and permissions", async ({ expect }) =>
       magic_link_enabled: true,
       oauth_providers: [
         {
-          id: "google",
-          type: "shared",
+          id: randomUUID(),
+          type: "google",
+          is_shared: true,
         },
         {
-          id: "spotify",
-          type: "standard",
+          id: randomUUID(),
+          type: "google",
+          is_shared: false,
           client_id: "client_id",
           client_secret: "client_secret",
         }

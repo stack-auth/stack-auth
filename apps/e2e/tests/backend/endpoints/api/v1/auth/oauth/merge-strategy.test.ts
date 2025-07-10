@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { it } from "../../../../../../helpers";
 import { Auth, ContactChannels, InternalApiKey, Project } from "../../../../../backend-helpers";
 
@@ -7,8 +8,9 @@ it("should allow duplicates, if the merge strategy is set to allow_duplicates", 
       magic_link_enabled: true,
       oauth_account_merge_strategy: "allow_duplicates",
       oauth_providers: [{
-        id: "spotify",
-        type: "shared",
+        id: randomUUID(),
+        type: "google",
+        is_shared: true,
       }],
     }
   });
@@ -34,8 +36,9 @@ it("should not allow duplicates, if the merge strategy set to raise_error", asyn
       magic_link_enabled: true,
       oauth_account_merge_strategy: "raise_error",
       oauth_providers: [{
-        id: "spotify",
-        type: "shared",
+        id: randomUUID(),
+        type: "google",
+        is_shared: true,
       }],
     }
   });
@@ -55,8 +58,9 @@ it("should merge accounts, if the merge strategy set to link_method", async ({ e
       magic_link_enabled: true,
       oauth_account_merge_strategy: "link_method",
       oauth_providers: [{
-        id: "spotify",
-        type: "shared",
+        id: randomUUID(),
+        type: "google",
+        is_shared: true,
       }],
     }
   });

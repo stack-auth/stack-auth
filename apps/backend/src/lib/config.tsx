@@ -350,6 +350,7 @@ export const renderedOrganizationConfigToProjectCrud = (renderedConfig: Organiza
         return undefined;
       }
       return filterUndefined({
+        provider_id: oauthProviderId,
         id: oauthProvider.type,
         type: oauthProvider.isShared ? 'shared' : 'standard',
         client_id: oauthProvider.clientId,
@@ -384,9 +385,9 @@ export const renderedOrganizationConfigToProjectCrud = (renderedConfig: Organiza
       .sort((a, b) => stringCompare(a.domain, b.domain)),
 
     email_config: renderedConfig.emails.server.isShared ? {
-      type: 'shared',
+      is_shared: true,
     } : {
-      type: 'standard',
+      is_shared: false,
       host: renderedConfig.emails.server.host,
       port: renderedConfig.emails.server.port,
       username: renderedConfig.emails.server.username,

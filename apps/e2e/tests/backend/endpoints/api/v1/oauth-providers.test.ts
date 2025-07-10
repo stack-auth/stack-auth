@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { it } from "../../../../helpers";
 import { Auth, Project, niceBackendFetch } from "../../../backend-helpers";
 
@@ -7,8 +8,9 @@ async function createAndSwitchToOAuthEnabledProject() {
       magic_link_enabled: true,
       oauth_providers: [
         {
-          id: "github",
-          type: "standard",
+          id: randomUUID(),
+          type: "github",
+          is_shared: false,
           client_id: "test_client_id",
           client_secret: "test_client_secret",
         }

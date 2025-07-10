@@ -60,7 +60,7 @@ export type EmailConfig = {
   senderEmail: string,
   senderName: string,
   secure: boolean,
-  type: 'shared' | 'standard',
+  isShared: boolean,
 }
 
 type SendEmailOptions = {
@@ -364,7 +364,7 @@ export async function getSharedEmailConfig(displayName: string): Promise<EmailCo
     senderEmail: getEnvVariable('STACK_EMAIL_SENDER'),
     senderName: displayName,
     secure: isSecureEmailPort(getEnvVariable('STACK_EMAIL_PORT')),
-    type: 'shared',
+    isShared: true,
   };
 }
 

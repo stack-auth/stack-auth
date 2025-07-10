@@ -45,7 +45,7 @@ export default function PageClient () {
       credentialEnabled: form.watch("signInMethods").includes("credential"),
       magicLinkEnabled: form.watch("signInMethods").includes("magicLink"),
       passkeyEnabled: form.watch("signInMethods").includes("passkey"),
-      oauthProviders: form.watch('signInMethods').filter((method) => ["google", "github", "microsoft", "spotify"].includes(method)).map(provider => ({ id: provider, type: 'shared' })),
+      oauthProviders: form.watch('signInMethods').filter((method) => ["google", "github", "microsoft", "spotify"].includes(method)).map(type => ({ type, isShared: true })),
     }
   };
 
@@ -62,10 +62,10 @@ export default function PageClient () {
           credentialEnabled: values.signInMethods.includes("credential"),
           magicLinkEnabled: values.signInMethods.includes("magicLink"),
           passkeyEnabled: values.signInMethods.includes("passkey"),
-          oauthProviders: (["google", "facebook", "github", "microsoft"] as const).map(provider => ({
-            id: provider,
-            enabled: values.signInMethods.includes(provider),
-            type: 'shared'
+          oauthProviders: (["google", "facebook", "github", "microsoft"] as const).map(type => ({
+            type,
+            enabled: values.signInMethods.includes(type),
+            isShared: true,
           } as const)).filter(({ enabled }) => enabled),
         }
       });

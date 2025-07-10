@@ -4,6 +4,7 @@ import { createOrUpdateProject, getProject } from '@/lib/projects';
 import { DEFAULT_BRANCH_ID, getSoleTenancyFromProjectBranch } from '@/lib/tenancies';
 import { PrismaClient } from '@prisma/client';
 import { errorToNiceString, throwErr } from '@stackframe/stack-shared/dist/utils/errors';
+import { randomUUID } from 'node:crypto';
 
 const prisma = new PrismaClient();
 
@@ -18,7 +19,7 @@ async function seed() {
 
   // dashboard settings
   const dashboardDomain = process.env.NEXT_PUBLIC_STACK_DASHBOARD_URL;
-  const oauthProviderIds = process.env.STACK_SEED_INTERNAL_PROJECT_OAUTH_PROVIDERS?.split(',') ?? [];
+  const oauthProviderTypes = process.env.STACK_SEED_INTERNAL_PROJECT_OAUTH_PROVIDERS?.split(',') ?? [];
   const otpEnabled = process.env.STACK_SEED_INTERNAL_PROJECT_OTP_ENABLED === 'true';
   const signUpEnabled = process.env.STACK_SEED_INTERNAL_PROJECT_SIGN_UP_ENABLED === 'true';
   const allowLocalhost = process.env.STACK_SEED_INTERNAL_PROJECT_ALLOW_LOCALHOST === 'true';
@@ -42,9 +43,10 @@ async function seed() {
         is_production_mode: false,
         config: {
           allow_localhost: true,
-          oauth_providers: oauthProviderIds.map((id) => ({
-            id: id as any,
-            type: 'shared',
+          oauth_providers: oauthProviderTypes.map((type) => ({
+            id: randomUUID(),
+            type: type as any,
+            is_shared: true,
           })),
           sign_up_enabled: signUpEnabled,
           credential_enabled: true,
@@ -233,7 +235,7 @@ async function seed() {
     if (existingProject) {
       console.log('Emulator project already exists, skipping creation');
     } else {
-      const emulatorProject = await createOrUpdateProject({
+      await createOrUpdateProject({
         projectId: emulatorProjectId,
         type: 'create',
         data: {
@@ -243,9 +245,10 @@ async function seed() {
             create_team_on_sign_up: false,
             client_team_creation_enabled: false,
             passkey_enabled: true,
-            oauth_providers: oauthProviderIds.map((id) => ({
-              id: id as any,
-              type: 'shared',
+            oauth_providers: oauthProviderTypes.map((type) => ({
+              id: randomUUID(),
+              type: type as any,
+              is_shared: true,
             })),
           }
         }

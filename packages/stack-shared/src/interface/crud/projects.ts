@@ -6,16 +6,17 @@ const teamPermissionSchema = yupObject({
   id: yupString().defined(),
 }).defined();
 
-const oauthProviderSchema = yupObject({
-  id: schemaFields.oauthIdSchema.defined(),
-  type: schemaFields.oauthTypeSchema.defined(),
+const oauthProviderReadSchema = yupObject({
+  id: schemaFields.oauthProviderIdSchema.defined(),
+  type: schemaFields.oauthProviderTypeSchema.defined(),
+  is_shared: schemaFields.oauthProviderIsSharedSchema.defined(),
   client_id: schemaFields.yupDefinedAndNonEmptyWhen(
     schemaFields.oauthClientIdSchema,
-    { type: 'standard' },
+    { is_shared: false },
   ),
   client_secret: schemaFields.yupDefinedAndNonEmptyWhen(
     schemaFields.oauthClientSecretSchema,
-    { type: 'standard' },
+    { is_shared: false },
   ),
 
   // extra params
@@ -23,29 +24,33 @@ const oauthProviderSchema = yupObject({
   microsoft_tenant_id: schemaFields.oauthMicrosoftTenantIdSchema.optional(),
 });
 
+const oauthProviderUpdateSchema = oauthProviderReadSchema.omit(['id']);
+
 const enabledOAuthProviderSchema = yupObject({
-  id: schemaFields.oauthIdSchema.defined(),
+  // This is legacy, the values are not provider IDs, but provider types like "google" or "facebook"
+  // We need to keep this for backwards compatibility
+  id: schemaFields.oauthLegacyIdSchema.defined(),
 });
 
 export const emailConfigSchema = yupObject({
-  type: schemaFields.emailTypeSchema.defined(),
+  is_shared: schemaFields.emailIsSharedSchema.defined(),
   host: schemaFields.yupDefinedAndNonEmptyWhen(schemaFields.emailHostSchema, {
-    type: 'standard',
+    is_shared: false,
   }),
   port: schemaFields.yupDefinedWhen(schemaFields.emailPortSchema, {
-    type: 'standard',
+    is_shared: false,
   }),
   username: schemaFields.yupDefinedAndNonEmptyWhen(schemaFields.emailUsernameSchema, {
-    type: 'standard',
+    is_shared: false,
   }),
   password: schemaFields.yupDefinedAndNonEmptyWhen(schemaFields.emailPasswordSchema, {
-    type: 'standard',
+    is_shared: false,
   }),
   sender_name: schemaFields.yupDefinedAndNonEmptyWhen(schemaFields.emailSenderNameSchema, {
-    type: 'standard',
+    is_shared: false,
   }),
   sender_email: schemaFields.yupDefinedAndNonEmptyWhen(schemaFields.emailSenderEmailSchema, {
-    type: 'standard',
+    is_shared: false,
   }),
 });
 
@@ -77,7 +82,7 @@ export const projectsCrudAdminReadSchema = yupObject({
     client_user_deletion_enabled: schemaFields.projectClientUserDeletionEnabledSchema.defined(),
     allow_user_api_keys: schemaFields.yupBoolean().defined(),
     allow_team_api_keys: schemaFields.yupBoolean().defined(),
-    oauth_providers: yupArray(oauthProviderSchema.defined()).defined(),
+    oauth_providers: yupArray(oauthProviderReadSchema.defined()).defined(),
     enabled_oauth_providers: yupArray(enabledOAuthProviderSchema.defined()).defined().meta({ openapiField: { hidden: true } }),
     domains: yupArray(domainSchema.defined()).defined(),
     email_config: emailConfigSchema.defined(),
@@ -124,7 +129,7 @@ export const projectsCrudAdminUpdateSchema = yupObject({
     email_config: emailConfigSchema.optional().default(undefined),
     email_theme: schemaFields.emailThemeSchema.optional(),
     domains: yupArray(domainSchema.defined()).optional().default(undefined),
-    oauth_providers: yupArray(oauthProviderSchema.defined()).optional().default(undefined),
+    oauth_providers: yupArray(oauthProviderUpdateSchema.defined()).optional().default(undefined),
     create_team_on_sign_up: schemaFields.projectCreateTeamOnSignUpSchema.optional(),
     team_creator_default_permissions: yupArray(teamPermissionSchema.defined()).optional(),
     team_member_default_permissions: yupArray(teamPermissionSchema.defined()).optional(),

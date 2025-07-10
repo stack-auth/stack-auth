@@ -4,7 +4,7 @@ import { it } from "../../../../helpers";
 import { niceBackendFetch, Project, User } from "../../../backend-helpers";
 
 const testEmailConfig = {
-  type: "standard",
+  is_shared: false,
   host: "localhost",
   port: 2500,
   username: "test",

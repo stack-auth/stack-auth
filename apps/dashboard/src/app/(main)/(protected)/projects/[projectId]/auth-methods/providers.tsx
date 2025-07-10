@@ -76,11 +76,11 @@ export function ProviderSettingDialog(props: Props & { open: boolean, onClose: (
 
   const onSubmit = async (values: ProviderFormValues) => {
     if (values.shared) {
-      await props.updateProvider({ id: props.id, type: 'shared' });
+      await props.updateProvider({ type: props.id, isShared: true });
     } else {
       await props.updateProvider({
-        id: props.id,
-        type: 'standard',
+        type: props.id,
+        isShared: false,
         clientId: values.clientId || "",
         clientSecret: values.clientSecret || "",
         facebookConfigId: values.facebookConfigId,

@@ -4,6 +4,7 @@ import { prismaClient } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { neonAuthorizationHeaderSchema, projectDisplayNameSchema, yupNumber, yupObject, yupString, yupTuple } from "@stackframe/stack-shared/dist/schema-fields";
 import { decodeBasicAuthorizationHeader } from "@stackframe/stack-shared/dist/utils/http";
+import { randomUUID } from "node:crypto";
 
 export const POST = createSmartRouteHandler({
   metadata: {
@@ -37,12 +38,14 @@ export const POST = createSmartRouteHandler({
         config: {
           oauth_providers: [
             {
-              id: "google",
-              type: "shared",
+              id: randomUUID(),
+              type: "google",
+              is_shared: true,
             },
             {
-              id: "github",
-              type: "shared",
+              id: randomUUID(),
+              type: "github",
+              is_shared: true,
             },
           ],
           allow_localhost: true,

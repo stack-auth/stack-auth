@@ -109,21 +109,23 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
         oauthAccountMergeStrategy: data.config.oauth_account_merge_strategy,
         allowUserApiKeys: data.config.allow_user_api_keys,
         allowTeamApiKeys: data.config.allow_team_api_keys,
-        oauthProviders: data.config.oauth_providers.map((p) => ((p.type === 'shared' ? {
+        oauthProviders: data.config.oauth_providers.map((p) => ((p.is_shared ? {
           id: p.id,
-          type: 'shared',
+          type: p.type,
+          isShared: true,
         } as const : {
           id: p.id,
-          type: 'standard',
+          type: p.type,
+          isShared: false,
           clientId: p.client_id ?? throwErr("Client ID is missing"),
           clientSecret: p.client_secret ?? throwErr("Client secret is missing"),
           facebookConfigId: p.facebook_config_id,
           microsoftTenantId: p.microsoft_tenant_id,
         } as const))),
-        emailConfig: data.config.email_config.type === 'shared' ? {
-          type: 'shared'
+        emailConfig: data.config.email_config.is_shared ? {
+          isShared: true,
         } : {
-          type: 'standard',
+          isShared: false,
           host: data.config.email_config.host ?? throwErr("Email host is missing"),
           port: data.config.email_config.port ?? throwErr("Email port is missing"),
           username: data.config.email_config.username ?? throwErr("Email username is missing"),

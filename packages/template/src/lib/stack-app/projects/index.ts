@@ -48,9 +48,10 @@ export function adminProjectUpdateOptionsToCrud(options: AdminProjectUpdateOptio
         handler_path: d.handlerPath
       })),
       oauth_providers: options.config?.oauthProviders?.map((p) => ({
-        id: p.id as any,
-        type: p.type,
-        ...(p.type === 'standard' && {
+        id: p.id,
+        type: p.type as any,
+        is_shared: p.isShared,
+        ...(!p.isShared && {
           client_id: p.clientId,
           client_secret: p.clientSecret,
           facebook_config_id: p.facebookConfigId,
@@ -58,10 +59,10 @@ export function adminProjectUpdateOptionsToCrud(options: AdminProjectUpdateOptio
         }),
       })),
       email_config: options.config?.emailConfig && (
-        options.config.emailConfig.type === 'shared' ? {
-          type: 'shared',
+        options.config.emailConfig.isShared ? {
+          is_shared: true,
         } : {
-          type: 'standard',
+          is_shared: false,
           host: options.config.emailConfig.host,
           port: options.config.emailConfig.port,
           username: options.config.emailConfig.username,

@@ -6,7 +6,7 @@ it("unsubscribe link should be sent and update notification preference", async (
     display_name: "Test Successful Email Project",
     config: {
       email_config: {
-        type: "standard",
+        is_shared: false,
         host: "localhost",
         port: 2500,
         username: "test",
@@ -101,7 +101,7 @@ it("unsubscribe link should not be sent for emails with transactional notificati
     display_name: "Test Successful Email Project",
     config: {
       email_config: {
-        type: "standard",
+        is_shared: false,
         host: "localhost",
         port: 2500,
         username: "test",

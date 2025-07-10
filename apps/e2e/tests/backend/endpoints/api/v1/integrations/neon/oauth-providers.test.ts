@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { it } from "../../../../../../helpers";
 import { Auth, Project, niceBackendFetch } from "../../../../../backend-helpers";
 
@@ -13,8 +14,9 @@ it("creates a new oauth provider", async ({ expect }) => {
       'x-stack-admin-access-token': adminAccessToken,
     },
     body: {
-      id: "google",
-      type: "shared"
+      id: randomUUID(),
+      type: "google",
+      is_shared: true,
     },
   });
 
@@ -60,8 +62,9 @@ it("lists oauth providers", async ({ expect }) => {
       'x-stack-admin-access-token': adminAccessToken,
     },
     body: {
-      id: "google",
-      type: "shared"
+      id: randomUUID(),
+      type: "google",
+      is_shared: true,
     },
   });
 
@@ -145,8 +148,9 @@ it("creates standard oauth providers", async ({ expect }) => {
       'x-stack-admin-access-token': adminAccessToken,
     },
     body: {
-      id: "google",
-      type: "standard",
+      id: randomUUID(),
+      type: "google",
+      is_shared: false,
       client_id: "client_id",
       client_secret: "client_secret",
     },
@@ -203,8 +207,9 @@ it("updates shared to standard oauth provider", async ({ expect }) => {
       'x-stack-admin-access-token': adminAccessToken,
     },
     body: {
-      id: "google",
-      type: "shared",
+      id: randomUUID(),
+      type: "google",
+      is_shared: true,
     },
   });
 
@@ -226,7 +231,7 @@ it("updates shared to standard oauth provider", async ({ expect }) => {
       'x-stack-admin-access-token': adminAccessToken,
     },
     body: {
-      type: "standard",
+      is_shared: false,
       client_id: "client_id",
       client_secret: "client_secret",
     },

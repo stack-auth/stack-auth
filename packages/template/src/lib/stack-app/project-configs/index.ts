@@ -40,7 +40,7 @@ export type AdminProjectConfig = {
 
 export type AdminEmailConfig = (
   {
-    type: "standard",
+    isShared: false,
     senderName: string,
     senderEmail: string,
     host: string,
@@ -49,7 +49,7 @@ export type AdminEmailConfig = (
     password: string,
   }
   | {
-    type: "shared",
+    isShared: true,
   }
 );
 
@@ -59,17 +59,20 @@ export type AdminDomainConfig = {
 };
 
 export type AdminOAuthProviderConfig = {
-  id: string,
+  readonly id: string,
+  readonly type: string,
 } & (
-  | { type: 'shared' }
   | {
-    type: 'standard',
-    clientId: string,
-    clientSecret: string,
-    facebookConfigId?: string,
-    microsoftTenantId?: string,
+    readonly isShared: true,
   }
-) & OAuthProviderConfig;
+  | {
+    readonly isShared: false,
+    readonly clientId: string,
+    readonly clientSecret: string,
+    readonly facebookConfigId?: string,
+    readonly microsoftTenantId?: string,
+  }
+);
 
 export type AdminProjectConfigUpdateOptions = {
   domains?: {

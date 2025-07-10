@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { it } from "../../../../../helpers";
 import { Auth, InternalProjectClientKeys, Project, backendContext, niceBackendFetch } from "../../../../backend-helpers";
 
@@ -157,8 +158,9 @@ it("creates a new project with different configurations", async ({ expect }) => 
     config: {
       oauth_providers: [
         {
-          id: "google",
-          type: "shared",
+          id: randomUUID(),
+          type: "google",
+          is_shared: true,
         }
       ]
     },
@@ -209,7 +211,7 @@ it("creates a new project with different configurations", async ({ expect }) => 
     display_name: "Test Project",
     config: {
       email_config: {
-        type: "shared",
+        is_shared: true,
       },
     },
   });
@@ -254,7 +256,7 @@ it("creates a new project with different configurations", async ({ expect }) => 
     display_name: "Test Project",
     config: {
       email_config: {
-        type: "standard",
+        is_shared: false,
         host: "smtp.example.com",
         port: 587,
         username: "test username",
