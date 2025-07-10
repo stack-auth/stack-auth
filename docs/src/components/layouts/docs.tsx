@@ -281,7 +281,10 @@ function findPlatformContent(tree: PageTree.Root, platform: string): PageTree.No
     if (item.type === 'folder') {
       const itemName = String(item.name).toLowerCase();
 
-      if (possibleNames.some(name => itemName === name || itemName.includes(name))) {
+      if (possibleNames.some(name => {
+        const normalizedName = name.trim().toLowerCase();
+        return itemName === normalizedName || itemName.includes(normalizedName);
+      })) {
         return item.children;
       }
     }
