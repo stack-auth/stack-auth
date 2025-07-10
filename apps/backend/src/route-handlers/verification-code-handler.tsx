@@ -1,6 +1,6 @@
 import { validateRedirectUrl } from "@/lib/redirect-urls";
 import { getSoleTenancyFromProjectBranch, Tenancy } from "@/lib/tenancies";
-import { getPrismaClientForTenancy } from "@/prisma-client";
+import { globalPrismaClient } from "@/prisma-client";
 import { Prisma, VerificationCodeType } from "@prisma/client";
 import { KnownErrors } from "@stackframe/stack-shared";
 import { ProjectsCrud } from "@stackframe/stack-shared/dist/interface/crud/projects";
@@ -145,7 +145,7 @@ export function createVerificationCodeHandler<
       // To not confuse the developers, we always convert the code to lowercase
       const code = codeRaw.toLowerCase();
 
-      const verificationCode = await getPrismaClientForTenancy(auth.tenancy).verificationCode.findUnique({
+      const verificationCode = await globalPrismaClient.verificationCode.findUnique({
         where: {
           projectId_branchId_code: {
             projectId: auth.project.id,
@@ -157,7 +157,7 @@ export function createVerificationCodeHandler<
       });
 
       // Increment the attempt count for all codes that match except for the first 6 characters
-      await getPrismaClientForTenancy(auth.tenancy).verificationCode.updateMany({
+      await globalPrismaClient.verificationCode.updateMany({
         where: {
           projectId: auth.project.id,
           branchId: auth.branchId,
@@ -188,7 +188,7 @@ export function createVerificationCodeHandler<
 
       switch (handlerType) {
         case 'post': {
-          await getPrismaClientForTenancy(auth.tenancy).verificationCode.update({
+          await globalPrismaClient.verificationCode.update({
             where: {
               projectId_branchId_code: {
                 projectId: auth.project.id,
@@ -236,7 +236,7 @@ export function createVerificationCodeHandler<
         throw new KnownErrors.RedirectUrlNotWhitelisted();
       }
 
-      const verificationCodePrisma = await getPrismaClientForTenancy(tenancy).verificationCode.create({
+      const verificationCodePrisma = await globalPrismaClient.verificationCode.create({
         data: {
           projectId: project.id,
           branchId,
@@ -262,7 +262,7 @@ export function createVerificationCodeHandler<
       const { project, branchId } = parseProjectBranchCombo(listOptions);
       const tenancy = await getSoleTenancyFromProjectBranch(project.id, branchId);
 
-      const codes = await getPrismaClientForTenancy(tenancy).verificationCode.findMany({
+      const codes = await globalPrismaClient.verificationCode.findMany({
         where: {
           projectId: project.id,
           branchId,
@@ -279,7 +279,7 @@ export function createVerificationCodeHandler<
       const { project, branchId } = parseProjectBranchCombo(options);
       const tenancy = await getSoleTenancyFromProjectBranch(project.id, branchId);
 
-      await getPrismaClientForTenancy(tenancy).verificationCode.delete({
+      await globalPrismaClient.verificationCode.delete({
         where: {
           projectId_branchId_id: {
             projectId: project.id,

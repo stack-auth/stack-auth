@@ -1,5 +1,5 @@
 import { getSoleTenancyFromProjectBranch } from "@/lib/tenancies";
-import { getPrismaClientForTenancy } from "@/prisma-client";
+import { getPrismaClientForTenancy, globalPrismaClient } from "@/prisma-client";
 import { VerificationCodeType } from "@prisma/client";
 import { KnownErrors } from "@stackframe/stack-shared/dist/known-errors";
 import { NextRequest } from "next/server";
@@ -10,10 +10,8 @@ export async function GET(request: NextRequest) {
   if (!code || code.length !== 45)
     return new Response('Invalid code', { status: 400 });
 
-  const prismaClient = getPrismaClientForTenancy(auth.tenancy);
-
   const codeLower = code.toLowerCase();
-  const verificationCode = await prismaClient.verificationCode.findFirst({
+  const verificationCode = await globalPrismaClient.verificationCode.findFirst({
     where: {
       code: codeLower,
       type: VerificationCodeType.ONE_TIME_PASSWORD,
@@ -30,7 +28,7 @@ export async function GET(request: NextRequest) {
   }
   const { user_id, notification_category_id } = verificationCode.data as { user_id: string, notification_category_id: string };
 
-  await prismaClient.verificationCode.update({
+  await globalPrismaClient.verificationCode.update({
     where: {
       projectId_branchId_code: {
         projectId: verificationCode.projectId,
@@ -42,7 +40,7 @@ export async function GET(request: NextRequest) {
   });
 
   const tenancy = await getSoleTenancyFromProjectBranch(verificationCode.projectId, verificationCode.branchId);
-  await prismaClient.userNotificationPreference.upsert({
+  await getPrismaClientForTenancy(tenancy).userNotificationPreference.upsert({
     where: {
       tenancyId_projectUserId_notificationCategoryId: {
         tenancyId: tenancy.id,
