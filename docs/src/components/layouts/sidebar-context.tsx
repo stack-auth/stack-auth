@@ -130,10 +130,13 @@ export function SidebarProvider({ children }: { children: ReactNode }) {
   };
 
   // Main sidebar controls
+  const setMainSidebarCollapsed = (collapsed: boolean) => {
+    setIsMainSidebarCollapsed(collapsed);
+    localStorage.setItem('main-sidebar-collapsed', collapsed.toString());
+  };
+
   const toggleMainSidebar = () => {
-    const newCollapsed = !isMainSidebarCollapsed;
-    setIsMainSidebarCollapsed(newCollapsed);
-    localStorage.setItem('main-sidebar-collapsed', newCollapsed.toString());
+    setMainSidebarCollapsed(!isMainSidebarCollapsed);
   };
 
   // Unified controls
@@ -170,10 +173,7 @@ export function SidebarProvider({ children }: { children: ReactNode }) {
       isFullPage,
       setIsFullPage,
       isMainSidebarCollapsed,
-      setMainSidebarCollapsed: (collapsed: boolean) => {
-        setIsMainSidebarCollapsed(collapsed);
-        localStorage.setItem('main-sidebar-collapsed', collapsed.toString());
-      },
+      setMainSidebarCollapsed,
       toggleMainSidebar,
       openSidebar,
       closeSidebar,
