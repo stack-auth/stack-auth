@@ -80,7 +80,7 @@ export function generateNavLinks(platform: Platform): NavLink[] {
   // Add Components link only for platforms that support React components
   if (platformSupportsComponents(platform)) {
     baseLinks.push({
-      href: `/docs/${platform}/components/overview`,
+      href: `/docs/${platform}/components`,
       label: "Components",
       icon: Puzzle
     });
@@ -89,7 +89,7 @@ export function generateNavLinks(platform: Platform): NavLink[] {
   // Add SDK link only for platforms that support SDK
   if (platformSupportsSDK(platform)) {
     baseLinks.push({
-      href: `/docs/${platform}/sdk/overview`,
+      href: `/docs/${platform}/sdk`,
       label: "SDK",
       icon: Hammer
     });
