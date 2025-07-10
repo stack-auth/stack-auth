@@ -26,6 +26,19 @@ function generatePlatformNavigation() {
       throw new Error('Invalid docs-platform.yml format: missing pages array');
     }
 
+    // Validate all platform values
+    const validPlatforms = new Set(['web', 'ios', 'android']); // Add your valid platforms here
+    config.pages.forEach((page, idx) => {
+      if (!Array.isArray(page.platforms)) {
+        throw new Error(`Invalid platforms array at page index ${idx}`);
+      }
+      page.platforms.forEach(platform => {
+        if (!validPlatforms.has(platform)) {
+          throw new Error(`Invalid platform "${platform}" at page index ${idx}`);
+        }
+      });
+    });
+
     // Generate TypeScript content
     const tsContent = `// THIS FILE IS AUTO-GENERATED
 // Do not edit manually - update docs-platform.yml instead
