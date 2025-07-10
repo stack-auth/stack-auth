@@ -1,6 +1,6 @@
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { openai } from "@ai-sdk/openai";
-import { adaptSchema, yupArray, yupDate, yupMixed, yupNumber, yupObject, yupString, yupUnion } from "@stackframe/stack-shared/dist/schema-fields";
+import { adaptSchema, yupArray, yupMixed, yupNumber, yupObject, yupString, yupUnion } from "@stackframe/stack-shared/dist/schema-fields";
 import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
 import { StatusError } from "@stackframe/stack-shared/dist/utils/errors";
 import { convertToCoreMessages, generateText, tool } from "ai";
@@ -23,7 +23,7 @@ const toolCallContentSchema = yupObject({
   result: yupMixed().defined(),
 });
 
-export const contentSchema = yupArray(yupUnion(textContentSchema, toolCallContentSchema)).defined();
+const contentSchema = yupArray(yupUnion(textContentSchema, toolCallContentSchema)).defined();
 
 
 export const POST = createSmartRouteHandler({

@@ -77,7 +77,7 @@ export const POST = createSmartRouteHandler({
   },
   request: yupObject({
     auth: yupObject({
-      type: yupString().oneOf(["client", "server", "admin"]).defined(),
+      type: yupString().oneOf(["admin"]).defined(),
     }).nullable(),
     body: yupObject({
       file: yupString().oneOf(["theme"]).defined(),

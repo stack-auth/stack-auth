@@ -13,7 +13,6 @@ import {
   ChevronRightIcon,
   CopyIcon,
   PencilIcon,
-  RefreshCwIcon,
   SendHorizontalIcon,
 } from "lucide-react";
 import { cn } from "@/lib/utils";

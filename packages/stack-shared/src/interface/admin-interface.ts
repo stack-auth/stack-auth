@@ -365,7 +365,7 @@ export class StackAdminInterface extends StackServerInterface {
 
   async requestEmailThemeDevServer(repoId: string): Promise<{ previewUrl: string }> {
     const response = await this.sendAdminRequest(
-      `/emails/dev-server?repoId=${repoId}`,
+      `/emails/dev-server?repo_id=${repoId}`,
       { method: "GET" },
       null,
     );

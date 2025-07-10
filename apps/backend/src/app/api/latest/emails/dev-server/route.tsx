@@ -74,10 +74,10 @@ export const GET = createSmartRouteHandler({
   },
   request: yupObject({
     auth: yupObject({
-      type: yupString().oneOf(["client", "server", "admin"]).defined(),
+      type: yupString().oneOf(["admin"]).defined(),
     }).nullable(),
     query: yupObject({
-      repoId: yupString().defined(),
+      repo_id: yupString().defined(),
     }),
   }),
   response: yupObject({
@@ -104,7 +104,7 @@ export const GET = createSmartRouteHandler({
     }
 
     const freestyle = new FreestyleSandboxes({ apiKey });
-    const devServer = await freestyle.requestDevServer({ repoId: query.repoId });
+    const devServer = await freestyle.requestDevServer({ repoId: query.repo_id });
     return {
       statusCode: 200,
       bodyType: "json",

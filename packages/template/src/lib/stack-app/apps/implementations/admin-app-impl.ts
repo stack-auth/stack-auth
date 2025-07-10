@@ -453,6 +453,7 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
   }
 
   async createEmailTheme(repoId: string, name: string): Promise<{ id: string }> {
+    this._adminEmailThemesCache.invalidate([]);
     return await this._interface.createEmailTheme(repoId, name);
   }
   // IF_PLATFORM react-like
