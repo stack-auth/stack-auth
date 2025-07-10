@@ -137,8 +137,8 @@ export async function createOrUpdateProject(
           return [
             provider.id,
             {
-              type: provider.id,
-              isShared: provider.type === "shared",
+              type: provider.type,
+              isShared: provider.is_shared,
               clientId: provider.client_id,
               clientSecret: provider.client_secret,
               facebookConfigId: provider.facebook_config_id,
@@ -166,7 +166,7 @@ export async function createOrUpdateProject(
       'apiKeys.enabled.team': dataOptions.allow_team_api_keys,
       // ======================= emails =======================
       'emails.server': dataOptions.email_config ? {
-        isShared: dataOptions.email_config.type === 'shared',
+        isShared: dataOptions.email_config.is_shared,
         host: dataOptions.email_config.host,
         port: dataOptions.email_config.port,
         username: dataOptions.email_config.username,

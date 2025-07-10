@@ -10,7 +10,7 @@ import { strictEmailSchema } from "@stackframe/stack-shared/dist/schema-fields";
 import { throwErr } from "@stackframe/stack-shared/dist/utils/errors";
 import { deepPlainEquals } from "@stackframe/stack-shared/dist/utils/objects";
 import { runAsynchronously } from "@stackframe/stack-shared/dist/utils/promises";
-import { ActionDialog, Alert, Button, DataTable, SimpleTooltip, Typography, useToast, Input, Textarea, TooltipProvider, TooltipTrigger, TooltipContent, Tooltip, AlertDescription, AlertTitle } from "@stackframe/stack-ui";
+import { ActionDialog, Alert, AlertDescription, AlertTitle, Button, DataTable, SimpleTooltip, Tooltip, TooltipContent, TooltipProvider, TooltipTrigger, Typography, useToast } from "@stackframe/stack-ui";
 import { ColumnDef } from "@tanstack/react-table";
 import { AlertCircle, X } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
@@ -30,7 +30,7 @@ export default function PageClient() {
       actions={
         <SendEmailDialog
           trigger={<Button>Send Email</Button>}
-          emailConfigType={emailConfig?.type}
+          emailIsShared={emailConfig?.isShared}
         />
       }
     >
@@ -51,21 +51,21 @@ export default function PageClient() {
           description="Configure the email server and sender address for outgoing emails"
           actions={
             <div className="flex items-center gap-2">
-              {emailConfig?.type === 'standard' && <TestSendingDialog trigger={<Button variant='secondary' className="w-full">Send Test Email</Button>} />}
+              {!emailConfig?.isShared && <TestSendingDialog trigger={<Button variant='secondary' className="w-full">Send Test Email</Button>} />}
               <EditEmailServerDialog trigger={<Button variant='secondary' className="w-full">Configure</Button>} />
             </div>
           }
         >
           <SettingText label="Server">
             <div className="flex items-center gap-2">
-              {emailConfig?.type === 'standard' ?
+              {emailConfig?.isShared ?
                 'Custom SMTP server' :
                 <>Shared <SimpleTooltip tooltip="When you use the shared email server, all the emails are sent from Stack's email address" type='info' /></>
               }
             </div>
           </SettingText>
           <SettingText label="Sender Email">
-            {emailConfig?.type === 'standard' ? emailConfig.senderEmail : 'noreply@stackframe.co'}
+            {emailConfig?.isShared ? 'noreply@stackframe.co' : emailConfig?.senderEmail}
           </SettingText>
         </SettingCard>
       )}
@@ -86,12 +86,12 @@ function definedWhenNotShared<S extends yup.AnyObject>(schema: S, message: strin
 
 const getDefaultValues = (emailConfig: AdminEmailConfig | undefined, project: AdminProject) => {
   if (!emailConfig) {
-    return { type: 'shared', senderName: project.displayName } as const;
-  } else if (emailConfig.type === 'shared') {
-    return { type: 'shared' } as const;
+    return { isShared: true, senderName: project.displayName } as const;
+  } else if (emailConfig.isShared) {
+    return { isShared: true } as const;
   } else {
     return {
-      type: 'standard',
+      isShared: false,
       senderName: emailConfig.senderName,
       host: emailConfig.host,
       port: emailConfig.port,
@@ -103,7 +103,7 @@ const getDefaultValues = (emailConfig: AdminEmailConfig | undefined, project: Ad
 };
 
 const emailServerSchema = yup.object({
-  type: yup.string().oneOf(['shared', 'standard']).defined(),
+  isShared: yup.boolean().defined(),
   host: definedWhenNotShared(yup.string(), "Host is required"),
   port: definedWhenNotShared(yup.number().min(0, "Port must be a number between 0 and 65535").max(65535, "Port must be a number between 0 and 65535"), "Port is required"),
   username: definedWhenNotShared(yup.string(), "Username is required"),
@@ -129,10 +129,10 @@ function EditEmailServerDialog(props: {
     defaultValues={defaultValues}
     okButton={{ label: "Save" }}
     onSubmit={async (values) => {
-      if (values.type === 'shared') {
+      if (values.isShared) {
         await project.update({
           config: {
-            emailConfig: { type: 'shared' }
+            emailConfig: { isShared: true }
           }
         });
       } else {
@@ -164,7 +164,7 @@ function EditEmailServerDialog(props: {
         await project.update({
           config: {
             emailConfig: {
-              type: 'standard',
+              isShared: false,
               ...emailConfig,
             }
           }
@@ -189,14 +189,14 @@ function EditEmailServerDialog(props: {
       <>
         <SelectField
           label="Email server"
-          name="type"
+          name="isShared"
           control={form.control}
           options={[
             { label: "Shared (noreply@stackframe.co)", value: 'shared' },
             { label: "Custom SMTP server (your own email address)", value: 'standard' },
           ]}
         />
-        {form.watch('type') === 'standard' && <>
+        {!form.watch('isShared') && <>
           {([
             { label: "Host", name: "host", type: 'text' },
             { label: "Port", name: "port", type: 'number' },
@@ -238,7 +238,7 @@ function TestSendingDialog(props: {
     okButton={{ label: "Send" }}
     onSubmit={async (values) => {
       const emailConfig = project.config.emailConfig || throwErr("Email config is not set");
-      if (emailConfig.type === 'shared') throwErr("Shared email server cannot be used for testing");
+      if (emailConfig.isShared) throwErr("Shared email server cannot be used for testing");
 
       const result = await stackAdminApp.sendTestEmail({
         recipientEmail: values.email,
@@ -327,7 +327,7 @@ function EmailSendDataTable() {
 
 function SendEmailDialog(props: {
   trigger: React.ReactNode,
-  emailConfigType?: AdminEmailConfig['type'],
+  emailIsShared?: boolean,
 }) {
   const stackAdminApp = useAdminApp();
   const { toast } = useToast();
@@ -420,10 +420,10 @@ function SendEmailDialog(props: {
     <>
       <div
         onClick={() => {
-          if (props.emailConfigType === 'standard') {
-            setOpen(true);
-          } else {
+          if (props.emailIsShared) {
             setSharedSmtpDialogOpen(true);
+          } else {
+            setOpen(true);
           }
         }}
       >

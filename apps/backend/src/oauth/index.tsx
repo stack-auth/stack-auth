@@ -56,22 +56,22 @@ export function getProjectBranchFromClientId(clientId: string): [projectId: stri
 }
 
 export async function getProvider(provider: ProjectsCrud['Admin']['Read']['config']['oauth_providers'][number]): Promise<OAuthBaseProvider> {
-  if (provider.type === 'shared') {
-    const clientId = _getEnvForProvider(provider.id).clientId;
-    const clientSecret = _getEnvForProvider(provider.id).clientSecret;
+  if (provider.is_shared) {
+    const clientId = _getEnvForProvider(provider.type).clientId;
+    const clientSecret = _getEnvForProvider(provider.type).clientSecret;
     if (clientId === "MOCK") {
       if (clientSecret !== "MOCK") {
         throw new StackAssertionError("If OAuth provider client ID is set to MOCK, then client secret must also be set to MOCK");
       }
-      return await mockProvider.create(provider.id);
+      return await mockProvider.create(provider.type);
     } else {
-      return await _providers[provider.id].create({
+      return await _providers[provider.type].create({
         clientId,
         clientSecret,
       });
     }
   } else {
-    return await _providers[provider.id].create({
+    return await _providers[provider.type].create({
       clientId: provider.client_id || throwErr("Client ID is required for standard providers"),
       clientSecret: provider.client_secret || throwErr("Client secret is required for standard providers"),
       facebookConfigId: provider.facebook_config_id,

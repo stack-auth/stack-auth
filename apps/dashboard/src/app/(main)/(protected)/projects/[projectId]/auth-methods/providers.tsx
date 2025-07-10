@@ -2,7 +2,7 @@
 import { FormDialog } from "@/components/form-dialog";
 import { InputField, SwitchField } from "@/components/form-fields";
 import { getPublicEnvVar } from '@/lib/env';
-import { AdminProject } from "@stackframe/stack";
+import { AdminProject, AdminProjectUpdateOptions } from "@stackframe/stack";
 import { yupBoolean, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
 import { sharedProviders } from "@stackframe/stack-shared/dist/utils/oauth";
 import { ActionDialog, Badge, BrandIcons, InlineCode, Label, SimpleTooltip, Typography } from "@stackframe/stack-ui";
@@ -22,13 +22,13 @@ export function ProviderIcon(props: { id: string }) {
 }
 
 type Props = {
-  id: string,
+  type: string,
   provider?: AdminProject['config']['oauthProviders'][number],
-  updateProvider: (provider: AdminProject['config']['oauthProviders'][number]) => Promise<void>,
+  updateProvider: (provider: NonNullable<NonNullable<AdminProjectUpdateOptions['config']>['oauthProviders']>[number]) => Promise<void>,
   deleteProvider: (id: string) => Promise<void>,
 };
 
-function toTitle(id: string) {
+function toTitle(type: string) {
   return {
     github: "GitHub",
     google: "Google",
@@ -41,10 +41,11 @@ function toTitle(id: string) {
     bitbucket: "Bitbucket",
     linkedin: "LinkedIn",
     x: "X",
-  }[id];
+  }[type];
 }
 
 export const providerFormSchema = yupObject({
+  type: yupString().defined(),
   shared: yupBoolean().defined(),
   clientId: yupString()
     .when('shared', {
@@ -65,9 +66,10 @@ export const providerFormSchema = yupObject({
 export type ProviderFormValues = yup.InferType<typeof providerFormSchema>
 
 export function ProviderSettingDialog(props: Props & { open: boolean, onClose: () => void }) {
-  const hasSharedKeys = sharedProviders.includes(props.id as any);
+  const hasSharedKeys = sharedProviders.includes(props.type as any);
   const defaultValues = {
     shared: props.provider ? (props.provider.type === 'shared') : hasSharedKeys,
+    type: props.type,
     clientId: (props.provider as any)?.clientId ?? "",
     clientSecret: (props.provider as any)?.clientSecret ?? "",
     facebookConfigId: (props.provider as any)?.facebookConfigId ?? "",
@@ -76,13 +78,13 @@ export function ProviderSettingDialog(props: Props & { open: boolean, onClose: (
 
   const onSubmit = async (values: ProviderFormValues) => {
     if (values.shared) {
-      await props.updateProvider({ type: props.id, isShared: true });
+      await props.updateProvider({ type: values.type, isShared: true });
     } else {
       await props.updateProvider({
-        type: props.id,
+        type: values.type,
         isShared: false,
-        clientId: values.clientId || "",
-        clientSecret: values.clientSecret || "",
+        clientId: values.clientId ?? "",
+        clientSecret: values.clientSecret ?? "",
         facebookConfigId: values.facebookConfigId,
         microsoftTenantId: values.microsoftTenantId,
       });
@@ -96,7 +98,7 @@ export function ProviderSettingDialog(props: Props & { open: boolean, onClose: (
       onSubmit={onSubmit}
       open={props.open}
       onClose={props.onClose}
-      title={`${toTitle(props.id)} OAuth provider`}
+      title={`${toTitle(props.type)} OAuth provider`}
       cancelButton
       okButton={{ label: 'Save' }}
       render={(form) => (
@@ -120,7 +122,7 @@ export function ProviderSettingDialog(props: Props & { open: boolean, onClose: (
                 Redirect URL for the OAuth provider settings
               </Label>
               <Typography type="footnote">
-                <InlineCode>{`${getPublicEnvVar('NEXT_PUBLIC_STACK_API_URL')}/api/v1/auth/oauth/callback/${props.id}`}</InlineCode>
+                <InlineCode>{`${getPublicEnvVar('NEXT_PUBLIC_STACK_API_URL')}/api/v1/auth/oauth/callback/${props.type}`}</InlineCode>
               </Typography>
             </div>}
 
@@ -142,7 +144,7 @@ export function ProviderSettingDialog(props: Props & { open: boolean, onClose: (
                 required
               />
 
-              {props.id === 'facebook' && (
+              {props.type === 'facebook' && (
                 <InputField
                   control={form.control}
                   name="facebookConfigId"
@@ -151,7 +153,7 @@ export function ProviderSettingDialog(props: Props & { open: boolean, onClose: (
                 />
               )}
 
-              {props.id === 'microsoft' && (
+              {props.type === 'microsoft' && (
                 <InputField
                   control={form.control}
                   name="microsoftTenantId"
@@ -197,19 +199,19 @@ export function TurnOffProviderDialog(props: {
 
 export function ProviderSettingSwitch(props: Props) {
   const enabled = !!props.provider;
-  const isShared = props.provider?.type === 'shared';
+  const isShared = props.provider?.isShared;
   const [TurnOffProviderDialogOpen, setTurnOffProviderDialogOpen] = useState(false);
   const [ProviderSettingDialogOpen, setProviderSettingDialogOpen] = useState(false);
 
   const updateProvider = async (checked: boolean) => {
     if (checked) {
       await props.updateProvider({
-        id: props.id,
-        type: 'shared',
+        type: props.type,
+        isShared: true,
         ...props.provider,
       });
     } else {
-      await props.deleteProvider(props.id);
+      await props.deleteProvider(props.type);
     }
   };
 
@@ -225,8 +227,8 @@ export function ProviderSettingSwitch(props: Props) {
           }
         }}
       >
-        <ProviderIcon id={props.id} />
-        <span className="text-sm">{toTitle(props.id)}</span>
+        <ProviderIcon id={props.type} />
+        <span className="text-sm">{toTitle(props.type)}</span>
         {isShared && enabled &&
           <SimpleTooltip tooltip={"Shared keys are automatically created by Stack, but show Stack's logo on the OAuth sign-in page.\n\nYou should replace these before you go into production."}>
             <Badge variant="secondary">Shared keys</Badge>
@@ -237,7 +239,7 @@ export function ProviderSettingSwitch(props: Props) {
       <TurnOffProviderDialog
         open={TurnOffProviderDialogOpen}
         onClose={() => setTurnOffProviderDialogOpen(false)}
-        providerId={props.id}
+        providerId={props.type}
         onConfirm={async () => {
           await updateProvider(false);
         }}

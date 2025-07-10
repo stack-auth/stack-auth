@@ -59,7 +59,6 @@ export type AdminDomainConfig = {
 };
 
 export type AdminOAuthProviderConfig = {
-  readonly id: string,
   readonly type: string,
 } & (
   | {

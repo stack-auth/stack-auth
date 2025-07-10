@@ -24,7 +24,7 @@ const oauthProviderReadSchema = yupObject({
   microsoft_tenant_id: schemaFields.oauthMicrosoftTenantIdSchema.optional(),
 });
 
-const oauthProviderUpdateSchema = oauthProviderReadSchema.omit(['id']);
+const oauthProviderWriteSchema = oauthProviderReadSchema.omit(['id']);
 
 const enabledOAuthProviderSchema = yupObject({
   // This is legacy, the values are not provider IDs, but provider types like "google" or "facebook"
@@ -54,7 +54,7 @@ export const emailConfigSchema = yupObject({
   }),
 });
 
-export const emailConfigWithoutPasswordSchema = emailConfigSchema.pick(['type', 'host', 'port', 'username', 'sender_name', 'sender_email']);
+export const emailConfigWithoutPasswordSchema = emailConfigSchema.pick(['is_shared', 'host', 'port', 'username', 'sender_name', 'sender_email']);
 
 const domainSchema = yupObject({
   domain: schemaFields.urlSchema.defined()
@@ -129,7 +129,7 @@ export const projectsCrudAdminUpdateSchema = yupObject({
     email_config: emailConfigSchema.optional().default(undefined),
     email_theme: schemaFields.emailThemeSchema.optional(),
     domains: yupArray(domainSchema.defined()).optional().default(undefined),
-    oauth_providers: yupArray(oauthProviderUpdateSchema.defined()).optional().default(undefined),
+    oauth_providers: yupArray(oauthProviderWriteSchema.defined()).optional().default(undefined),
     create_team_on_sign_up: schemaFields.projectCreateTeamOnSignUpSchema.optional(),
     team_creator_default_permissions: yupArray(teamPermissionSchema.defined()).optional(),
     team_member_default_permissions: yupArray(teamPermissionSchema.defined()).optional(),

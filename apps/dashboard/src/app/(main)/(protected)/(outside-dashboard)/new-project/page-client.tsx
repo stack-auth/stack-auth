@@ -132,7 +132,14 @@ export default function PageClient () {
                 <div className="absolute inset-0 bg-transparent z-10"></div>
                 <AuthPage
                   type="sign-in"
-                  mockProject={mockProject}
+                  mockProject={{
+                    config: {
+                      ...mockProject.config,
+                      oauthProviders: mockProject.config.oauthProviders.map(p => ({
+                        id: p.type,
+                      })),
+                    },
+                  }}
                 />
               </div>
             </div>

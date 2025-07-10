@@ -24,7 +24,7 @@ export default function PageClient() {
   return (
     <PageLayout title="Emails" description="Configure email settings for your project">
       <SettingCard title="Email Templates" description="Customize the emails sent">
-        {emailConfig?.type === 'shared' && <Alert variant="default">
+        {emailConfig?.isShared && <Alert variant="default">
           <AlertCircle className="h-4 w-4" />
           <AlertTitle>Warning</AlertTitle>
           <AlertDescription>
@@ -44,7 +44,7 @@ export default function PageClient() {
               </div>
               <div className="flex-grow flex justify-start items-end gap-2">
                 <Button variant='secondary' onClick={() => {
-                  if (emailConfig?.type === 'shared') {
+                  if (emailConfig?.isShared) {
                     setSharedSmtpWarningDialogOpen(template.type);
                   } else {
                     router.push(`email-templates/${template.type}`);

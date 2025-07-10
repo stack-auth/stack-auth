@@ -48,7 +48,6 @@ export function adminProjectUpdateOptionsToCrud(options: AdminProjectUpdateOptio
         handler_path: d.handlerPath
       })),
       oauth_providers: options.config?.oauthProviders?.map((p) => ({
-        id: p.id,
         type: p.type as any,
         is_shared: p.isShared,
         ...(!p.isShared && {

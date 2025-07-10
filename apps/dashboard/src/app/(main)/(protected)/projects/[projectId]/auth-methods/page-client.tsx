@@ -84,7 +84,7 @@ function DisabledProvidersDialog({ open, onOpenChange }: { open?: boolean, onOpe
   const [providerSearch, setProviderSearch] = useState("");
   const filteredProviders = allProviders
     .filter((id) => id.toLowerCase().includes(providerSearch.toLowerCase()))
-    .map((id) => [id, oauthProviders.find((provider) => provider.id === id)] as const)
+    .map((id) => [id, oauthProviders.find((provider) => provider.type === id)] as const)
     .filter(([, provider]) => {
       return !provider;
     });
@@ -103,14 +103,14 @@ function DisabledProvidersDialog({ open, onOpenChange }: { open?: boolean, onOpe
     />
     <div className="flex gap-2 flex-wrap justify-center">
       {filteredProviders
-        .map(([id, provider]) => {
+        .map(([type, provider]) => {
           return <ProviderSettingSwitch
-            key={id}
-            id={id}
+            key={type}
+            type={type}
             provider={provider}
             updateProvider={async (provider) => {
-              const alreadyExist = oauthProviders.some((p) => p.id === id);
-              const newOAuthProviders = oauthProviders.map((p) => p.id === id ? provider : p);
+              const alreadyExist = oauthProviders.some((p) => p.type === type);
+              const newOAuthProviders = oauthProviders.map((p) => p.type === type ? provider : p);
               if (!alreadyExist) {
                 newOAuthProviders.push(provider);
               }
@@ -118,8 +118,8 @@ function DisabledProvidersDialog({ open, onOpenChange }: { open?: boolean, onOpe
                 config: { oauthProviders: newOAuthProviders },
               });
             }}
-            deleteProvider={async (id) => {
-              const newOAuthProviders = oauthProviders.filter((p) => p.id !== id);
+            deleteProvider={async (type) => {
+              const newOAuthProviders = oauthProviders.filter((p) => p.type !== type);
               await project.update({
                 config: { oauthProviders: newOAuthProviders },
               });
@@ -142,8 +142,8 @@ function OAuthActionCell({ config }: { config: AdminOAuthProviderConfig }) {
 
 
   const updateProvider = async (provider: AdminOAuthProviderConfig & OAuthProviderConfig) => {
-    const alreadyExist = oauthProviders.some((p) => p.id === config.id);
-    const newOAuthProviders = oauthProviders.map((p) => p.id === config.id ? provider : p);
+    const alreadyExist = oauthProviders.some((p) => p.type === config.type);
+    const newOAuthProviders = oauthProviders.map((p) => p.type === config.type ? provider : p);
     if (!alreadyExist) {
       newOAuthProviders.push(provider);
     }
@@ -152,7 +152,7 @@ function OAuthActionCell({ config }: { config: AdminOAuthProviderConfig }) {
     });
   };
   const deleteProvider = async (id: string) => {
-    const newOAuthProviders = oauthProviders.filter((p) => p.id !== id);
+    const newOAuthProviders = oauthProviders.filter((p) => p.type !== id);
     await project.update({
       config: { oauthProviders: newOAuthProviders },
     });
@@ -163,13 +163,13 @@ function OAuthActionCell({ config }: { config: AdminOAuthProviderConfig }) {
       <TurnOffProviderDialog
         open={turnOffProviderDialogOpen}
         onClose={() => setTurnOffProviderDialogOpen(false)}
-        providerId={config.id}
+        providerId={config.type}
         onConfirm={async () => {
-          await deleteProvider(config.id);
+          await deleteProvider(config.type);
         }}
       />
       <ProviderSettingDialog
-        id={config.id}
+        type={config.type}
         open={providerSettingDialogOpen}
         onClose={() => setProviderSettingDialogOpen(false)}
         provider={config}
@@ -209,7 +209,7 @@ export default function PageClient() {
   const [disabledProvidersDialogOpen, setDisabledProvidersDialogOpen] = useState(false);
 
   const enabledProviders = allProviders
-    .map((id) => [id, oauthProviders.find((provider) => provider.id === id)] as const)
+    .map((id) => [id, oauthProviders.find((provider) => provider.type === id)] as const)
     .filter(([, provider]) => !!provider);
 
   return (
@@ -270,10 +270,10 @@ export default function PageClient() {
 
           {enabledProviders.map(([, provider]) => provider)
             .filter((provider): provider is AdminOAuthProviderConfig => !!provider).map(provider => {
-              return <div key={provider.id} className="flex h-10 items-center justify-between">
+              return <div key={provider.type} className="flex h-10 items-center justify-between">
                 <div className="flex items-center gap-2">
-                  <ProviderIcon id={provider.id} />
-                  <span className="text-sm font-semibold">{BrandIcons.toTitle(provider.id)}</span>
+                  <ProviderIcon id={provider.type} />
+                  <span className="text-sm font-semibold">{BrandIcons.toTitle(provider.type)}</span>
                   {provider.type === 'shared' && <SimpleTooltip tooltip={SHARED_TOOLTIP}>
                     <Badge variant="secondary">Shared keys</Badge>
                   </SimpleTooltip>}

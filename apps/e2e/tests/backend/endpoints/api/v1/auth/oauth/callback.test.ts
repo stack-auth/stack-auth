@@ -1,4 +1,3 @@
-import { randomUUID } from "node:crypto";
 import { it, localRedirectUrl, updateCookiesFromResponse } from "../../../../../../helpers";
 import { Auth, InternalApiKey, Project, niceBackendFetch } from "../../../../../backend-helpers";
 
@@ -38,7 +37,7 @@ it("should fail when inner callback has invalid provider ID", async ({ expect })
 });
 
 it("should fail when account is new and sign ups are disabled", async ({ expect }) => {
-  await Project.createAndSwitch({ config: { sign_up_enabled: false, oauth_providers: [ { id: randomUUID(), type: "google", is_shared: true } ] } });
+  await Project.createAndSwitch({ config: { sign_up_enabled: false, oauth_providers: [ { type: "google", is_shared: true } ] } });
   await InternalApiKey.createAndSetProjectKeys();
   const getInnerCallbackUrlResponse = await Auth.OAuth.getInnerCallbackUrl();
   const cookie = updateCookiesFromResponse("", getInnerCallbackUrlResponse.authorizeResponse);

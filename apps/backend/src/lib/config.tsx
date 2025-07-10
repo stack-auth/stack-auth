@@ -352,7 +352,8 @@ export const renderedOrganizationConfigToProjectCrud = (renderedConfig: Organiza
       return filterUndefined({
         provider_id: oauthProviderId,
         id: oauthProvider.type,
-        type: oauthProvider.isShared ? 'shared' : 'standard',
+        type: oauthProvider.type,
+        is_shared: oauthProvider.isShared,
         client_id: oauthProvider.clientId,
         client_secret: oauthProvider.clientSecret,
         facebook_config_id: oauthProvider.facebookConfigId,

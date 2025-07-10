@@ -335,7 +335,7 @@ export async function sendEmailFromTemplate(options: {
 export async function getEmailConfig(tenancy: Tenancy): Promise<EmailConfig> {
   const projectEmailConfig = tenancy.config.email_config;
 
-  if (projectEmailConfig.type === 'shared') {
+  if (projectEmailConfig.is_shared) {
     return await getSharedEmailConfig(tenancy.project.display_name);
   } else {
     if (!projectEmailConfig.host || !projectEmailConfig.port || !projectEmailConfig.username || !projectEmailConfig.password || !projectEmailConfig.sender_email || !projectEmailConfig.sender_name) {
@@ -349,7 +349,7 @@ export async function getEmailConfig(tenancy: Tenancy): Promise<EmailConfig> {
       senderEmail: projectEmailConfig.sender_email,
       senderName: projectEmailConfig.sender_name,
       secure: isSecureEmailPort(projectEmailConfig.port),
-      type: 'standard',
+      isShared: false,
     };
   }
 }

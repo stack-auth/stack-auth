@@ -49,7 +49,7 @@ it("should allow adding and updating email templates with custom email config", 
   await Project.createAndSwitch({
     config: {
       email_config: {
-        type: 'standard',
+        is_shared: false,
         host: 'smtp.example.com',
         port: 587,
         username: 'test@example.com',

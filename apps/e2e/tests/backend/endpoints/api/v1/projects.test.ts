@@ -1,5 +1,4 @@
 import { isBase64Url } from "@stackframe/stack-shared/dist/utils/bytes";
-import { randomUUID } from "node:crypto";
 import { it } from "../../../../helpers";
 import { Auth, InternalProjectKeys, Project, backendContext, niceBackendFetch } from "../../../backend-helpers";
 
@@ -743,7 +742,6 @@ it("updates the project oauth configuration", async ({ expect }) => {
   const { updateProjectResponse: response1 } = await Project.updateCurrent(adminAccessToken, {
     config: {
       oauth_providers: [{
-        id: randomUUID(),
         type: "google",
         is_shared: true,
       }]
@@ -794,7 +792,6 @@ it("updates the project oauth configuration", async ({ expect }) => {
   const { updateProjectResponse: response2 } = await Project.updateCurrent(adminAccessToken, {
     config: {
       oauth_providers: [{
-        id: randomUUID(),
         type: "google",
         is_shared: true,
       }]
@@ -845,7 +842,6 @@ it("updates the project oauth configuration", async ({ expect }) => {
   const { updateProjectResponse: response3 } = await Project.updateCurrent(adminAccessToken, {
     config: {
       oauth_providers: [{
-        id: randomUUID(),
         type: "google",
         is_shared: false,
         client_id: "client_id",
@@ -899,7 +895,6 @@ it("updates the project oauth configuration", async ({ expect }) => {
   const { updateProjectResponse: response4 } = await Project.updateCurrent(adminAccessToken, {
     config: {
       oauth_providers: [{
-        id: randomUUID(),
         type: "google",
         is_shared: true,
       }]
@@ -951,12 +946,10 @@ it("updates the project oauth configuration", async ({ expect }) => {
     config: {
       oauth_providers: [
         {
-          id: randomUUID(),
           type: "google",
           is_shared: true,
         },
         {
-          id: randomUUID(),
           type: "google",
           is_shared: true,
         }
@@ -1016,12 +1009,10 @@ it("updates the project oauth configuration", async ({ expect }) => {
     config: {
       oauth_providers: [
         {
-          id: randomUUID(),
           type: "google",
           is_shared: true,
         },
         {
-          id: randomUUID(),
           type: "google",
           is_shared: true,
         }
@@ -1085,7 +1076,6 @@ it("fails when trying to update OAuth provider with empty client_secret", async 
     body: {
       config: {
         oauth_providers: [{
-          id: randomUUID(),
           type: "google",
           is_shared: false,
           client_id: "client_id",
@@ -1179,12 +1169,10 @@ it("deletes a project with users, teams, and permissions", async ({ expect }) =>
       magic_link_enabled: true,
       oauth_providers: [
         {
-          id: randomUUID(),
           type: "google",
           is_shared: true,
         },
         {
-          id: randomUUID(),
           type: "google",
           is_shared: false,
           client_id: "client_id",
