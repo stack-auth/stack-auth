@@ -30,7 +30,7 @@ import type { PageTree } from 'fumadocs-core/server';
 import { usePathname } from 'next/navigation';
 import type { ReactNode } from 'react';
 import { useMemo } from 'react';
-import { getCurrentPlatformUrl } from '../../lib/navigation-utils';
+import { getSmartRedirectUrl } from '../../lib/navigation-utils';
 import { getCurrentPlatform, PLATFORMS } from '../../lib/platform-utils';
 import type { Option } from '../layout/root-toggle';
 import { PlatformRedirect } from '../platform-redirect';
@@ -141,7 +141,7 @@ export function DynamicDocsLayout({ children, ...props }: DynamicDocsLayoutProps
 
   const platformOptions: Option[] = useMemo(() => {
     return PLATFORMS.map(platform => ({
-      url: getCurrentPlatformUrl(pathname, platform),
+      url: getSmartRedirectUrl(pathname, platform),
       title: getPlatformDisplayName(platform),
     }));
   }, [pathname]);
