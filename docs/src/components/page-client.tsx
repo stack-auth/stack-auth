@@ -5,7 +5,6 @@ import {
   getBreadcrumbItemsFromPath,
 } from 'fumadocs-core/breadcrumb';
 import { createContext, usePathname } from 'fumadocs-core/framework';
-import Link from 'fumadocs-core/link';
 import type { PageTree, TOCItemType } from 'fumadocs-core/server';
 import * as Primitive from 'fumadocs-core/toc';
 import { useEffectEvent } from 'fumadocs-core/utils/use-effect-event';
@@ -13,6 +12,7 @@ import { useI18n } from 'fumadocs-ui/contexts/i18n';
 import { useNav, usePageStyles } from 'fumadocs-ui/contexts/layout';
 import { useTreeContext, useTreePath } from 'fumadocs-ui/contexts/tree';
 import { ChevronDown, ChevronLeft, ChevronRight } from 'lucide-react';
+import Link from 'next/link';
 import {
   type ComponentProps,
   Fragment,
@@ -317,14 +317,9 @@ export function Footer({ items }: FooterProps) {
   }, [items, pathname, root]);
 
   return (
-    <div
-      className={cn(
-        '@container grid gap-4 pb-6',
-        previous && next ? 'grid-cols-2' : 'grid-cols-1',
-      )}
-    >
-      {previous ? <FooterItem item={previous} index={0} /> : null}
-      {next ? <FooterItem item={next} index={1} /> : null}
+    <div className="flex items-center justify-center gap-16 pt-20 mt-20 border-t border-fd-border/40">
+      {previous ? <FooterItem item={previous} index={0} /> : <div className="w-[260px]" />}
+      {next ? <FooterItem item={next} index={1} /> : <div className="w-[260px]" />}
     </div>
   );
 }
@@ -332,27 +327,31 @@ export function Footer({ items }: FooterProps) {
 function FooterItem({ item, index }: { item: Item, index: 0 | 1 }) {
   const { text } = useI18n();
   const Icon = index === 0 ? ChevronLeft : ChevronRight;
+  const isNext = index === 1;
 
   return (
     <Link
       href={item.url}
       className={cn(
-        'flex flex-col gap-2 rounded-lg border p-4 text-sm transition-colors hover:bg-fd-accent/80 hover:text-fd-accent-foreground @max-lg:col-span-full',
-        index === 1 && 'text-end',
+        'group flex items-center gap-4 px-6 py-5 rounded-md text-sm transition-all duration-300',
+        'w-[260px] border border-fd-border/50 bg-fd-background/60 backdrop-blur-sm',
+        'hover:border-fd-border hover:bg-fd-background shadow-sm hover:shadow-md',
+        'hover:ring-1 hover:ring-fd-primary/10',
+        isNext && 'flex-row-reverse text-right'
       )}
     >
-      <div
-        className={cn(
-          'inline-flex items-center gap-1.5 font-medium',
-          index === 1 && 'flex-row-reverse',
-        )}
-      >
-        <Icon className="-mx-1 size-4 shrink-0 rtl:rotate-180" />
-        <p>{item.name}</p>
+      <Icon className={cn(
+        'size-5 text-fd-muted-foreground/80 group-hover:text-fd-primary transition-colors duration-300'
+      )} />
+
+      <div className={cn('flex flex-col gap-1.5 min-w-0 flex-1', isNext && 'items-end')}>
+        <span className="text-[11px] text-fd-muted-foreground/60 font-semibold uppercase tracking-[0.1em] group-hover:text-fd-muted-foreground transition-colors duration-300">
+          {index === 0 ? text.previousPage : text.nextPage}
+        </span>
+        <span className="font-medium text-fd-foreground/90 group-hover:text-fd-foreground leading-snug transition-colors duration-300">
+          {item.name}
+        </span>
       </div>
-      <p className="text-fd-muted-foreground truncate">
-        {item.description ?? (index === 0 ? text.previousPage : text.nextPage)}
-      </p>
     </Link>
   );
 }
@@ -372,29 +371,33 @@ export function Breadcrumb(options: BreadcrumbProps) {
   if (items.length === 0) return null;
 
   return (
-    <div className="flex flex-row items-center gap-1.5 text-[15px] text-fd-muted-foreground">
-      {items.map((item, i) => {
-        const className = cn(
-          'truncate',
-          i === items.length - 1 && 'text-fd-primary font-medium',
-        );
+    <div className="absolute -top-12 left-0 right-0">
+      <div className="container max-w-6xl mx-auto px-4 md:px-6">
+        <div className="flex flex-row items-center gap-1.5 text-[13px] opacity-60" style={{ color: 'rgb(107, 114, 128)' }}>
+          {items.map((item, i) => {
+            const className = cn(
+              'truncate',
+              i === items.length - 1 && 'text-fd-primary font-medium',
+            );
 
-        return (
-          <Fragment key={i}>
-            {i !== 0 && <span className="text-fd-foreground/30">/</span>}
-            {item.url ? (
-              <Link
-                href={item.url}
-                className={cn(className, 'transition-opacity hover:opacity-80')}
-              >
-                {item.name}
-              </Link>
-            ) : (
-              <span className={className}>{item.name}</span>
-            )}
-          </Fragment>
-        );
-      })}
+            return (
+              <Fragment key={i}>
+                {i !== 0 && <span className="text-fd-foreground/30">/</span>}
+                {item.url ? (
+                  <Link
+                    href={item.url}
+                    className={cn(className, 'transition-opacity hover:opacity-80')}
+                  >
+                    {item.name}
+                  </Link>
+                ) : (
+                  <span className={className}>{item.name}</span>
+                )}
+              </Fragment>
+            );
+          })}
+        </div>
+      </div>
     </div>
   );
 }

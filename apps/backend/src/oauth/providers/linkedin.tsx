@@ -40,4 +40,11 @@ export class LinkedInProvider extends OAuthBaseProvider {
       emailVerified: userInfo.email_verified,
     });
   }
+
+  async checkAccessTokenValidity(accessToken: string): Promise<boolean> {
+    const res = await fetch("https://api.linkedin.com/v2/userinfo", {
+      headers: { Authorization: `Bearer ${accessToken}` },
+    });
+    return res.ok;
+  }
 }

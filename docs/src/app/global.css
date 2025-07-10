@@ -5,3 +5,168 @@
 @import '../components/mdx/mdx-info.css';
 @import '../components/mdx/mdx-cards.css';
 @import '../components/mdx/reset-code-styles.css';
+
+/* Standardize top spacing between docs and API pages */
+/* Target the specific fumadocs layout components */
+#nd-page > article > div {
+  padding-top: 0 !important;
+}
+
+/* Target SharedContentLayout container in docs pages */
+#nd-page article > div.container {
+  padding-top: 0 !important;
+}
+
+/* Also target the div with mb-12 class inside DocsPage */
+#nd-page .mb-12 {
+  margin-top: -2rem !important;
+}
+
+/* TOC open state - only when chat is not open */
+body.toc-open:not(.chat-open) #nd-docs-layout > div:last-child {
+  margin-right: 18rem; /* 288px - same as xl:mr-72 */
+  transition: margin-right 300ms ease-out;
+}
+
+/* Chat open state - overrides everything */
+body.chat-open:not(.home-page) {
+  padding-right: 25rem; /* 384px + 16px for spacing */
+  transition: padding-right 300ms ease-out;
+}
+
+/* Auth open state - for API pages */
+body.auth-open:not(.home-page) {
+  padding-right: 26rem; /* 384px + 32px for more spacing (auth panel is 384px wide) */
+  transition: padding-right 300ms ease-out;
+}
+
+/* Default transition for docs pages */
+body:not(.home-page) {
+  transition: padding-right 300ms ease-out;
+}
+
+/* Ensure content area transitions smoothly */
+#nd-docs-layout > div:last-child {
+  transition: margin-right 300ms ease-out;
+}
+
+/* Chat drawer content shifting for homepage */
+body.home-page.chat-open main {
+  padding-right: 12rem; /* Much less padding for homepage */
+  transition: padding-right 300ms ease-out;
+}
+
+/* Ensure smooth transition when closing for homepage main content */
+body.home-page main {
+  transition: padding-right 300ms ease-out;
+}
+
+/* Special chat drawer positioning for homepage */
+body.home-page [data-chat-drawer] {
+  /* Start from top when pill is not visible */
+  top: 56px; /* Same as top-14 */
+  height: calc(100vh - 56px);
+  transition: top 300ms ease-out, height 300ms ease-out;
+}
+
+/* When scrolled on homepage, adjust for pill navbar */
+body.home-page.scrolled [data-chat-drawer] {
+  top: 0;
+  height: 100vh;
+}
+
+/* Flat scrollbar design for compact codeblocks */
+.compact-codeblock-scrollbar::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+.compact-codeblock-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.compact-codeblock-scrollbar::-webkit-scrollbar-thumb {
+  background: #404040;
+  border-radius: 0px;
+  border: none;
+}
+
+.compact-codeblock-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: #525252;
+}
+
+.compact-codeblock-scrollbar::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+/* Subtle pulsing red animation for auth panel errors */
+@keyframes subtle-red-pulse {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.7;
+  }
+}
+
+.auth-error-pulse {
+  animation: subtle-red-pulse 2s ease-in-out infinite;
+}
+
+/* Colorful moving gradient animation for chat button */
+@keyframes gradient-shift {
+  0% {
+    background-position: 0% 50%;
+  }
+  50% {
+    background-position: 100% 50%;
+  }
+  100% {
+    background-position: 0% 50%;
+  }
+}
+
+@keyframes gradient-noise {
+  0% {
+    background-position: 0% 0%, 100% 100%;
+  }
+  25% {
+    background-position: 100% 0%, 0% 100%;
+  }
+  50% {
+    background-position: 100% 100%, 100% 0%;
+  }
+  75% {
+    background-position: 0% 100%, 0% 0%;
+  }
+  100% {
+    background-position: 0% 0%, 100% 100%;
+  }
+}
+
+.chat-gradient-active {
+  position: relative;
+  background: hsl(var(--fd-muted)) !important;
+}
+
+.chat-gradient-active::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: 
+    linear-gradient(45deg, rgba(139, 92, 246, 0.95), rgba(236, 72, 153, 0.95), rgba(59, 130, 246, 0.95), rgba(6, 182, 212, 0.95)),
+    linear-gradient(-45deg, rgba(236, 72, 153, 0.8), rgba(59, 130, 246, 0.8), rgba(139, 92, 246, 0.8), rgba(6, 182, 212, 0.8)),
+    linear-gradient(90deg, rgba(139, 92, 246, 0.85), rgba(6, 182, 212, 0.85), rgba(236, 72, 153, 0.85));
+  background-size: 400% 400%, 300% 300%, 200% 200%;
+  animation: 
+    gradient-shift 8s ease-in-out infinite,
+    gradient-noise 12s linear infinite;
+  z-index: 0;
+}
+
+/* When not active, mask shrinks back */
+button:not(.chat-gradient-active)::before {
+  mask: radial-gradient(circle at 20% 80%, transparent 0%, transparent 100%);
+  transition: mask 0.3s ease-out;
+}

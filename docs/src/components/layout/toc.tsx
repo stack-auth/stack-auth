@@ -7,10 +7,10 @@ import {
   type ComponentProps,
   type HTMLAttributes,
   type ReactNode,
-  useRef,
+  useRef
 } from 'react';
 import { cn } from '../../lib/cn';
-import { useTOC } from '../layouts/toc-context';
+import { useSidebar } from '../layouts/sidebar-context';
 import { TocThumb } from './toc-thumb';
 
 export type TOCProps = {
@@ -29,8 +29,12 @@ export type TOCProps = {
 
 export function Toc(props: HTMLAttributes<HTMLDivElement>) {
   const { toc } = usePageStyles();
-  const { isTocOpen } = useTOC();
+  const sidebarContext = useSidebar();
+  const { isTocOpen } = sidebarContext || {
+    isTocOpen: false,
+  };
 
+  // Hide TOC if not open
   if (!isTocOpen) return null;
 
   return (

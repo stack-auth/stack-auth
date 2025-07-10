@@ -1,6 +1,6 @@
 "use client";
 
-import { useUser, SelectedTeamSwitcher } from "@stackframe/stack";
+import { SelectedTeamSwitcher, useUser } from "@stackframe/stack";
 
 export default function TeamPage({ params }: { params: { teamId: string } }) {
   const user = useUser({ or: 'redirect' });

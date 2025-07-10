@@ -44,8 +44,9 @@ model Tenancy {
   // If organizationId is NULL, hasNoOrganization must be TRUE. If organizationId is not NULL, hasNoOrganization must be NULL.
   organizationId               String?                        @db.Uuid
   hasNoOrganization            BooleanTrue?
-  ProjectUserAuthorizationCode ProjectUserAuthorizationCode[]
-  ProjectUserRefreshToken      ProjectUserRefreshToken[]
+  projectUserAuthorizationCode ProjectUserAuthorizationCode[]
+  projectUserRefreshToken      ProjectUserRefreshToken[]
+  UserNotificationPreference   UserNotificationPreference[]
 
   @@unique([projectId, branchId, organizationId])
   @@unique([projectId, branchId, hasNoOrganization])
@@ -176,15 +177,16 @@ model ProjectUser {
   connectedAccounts        ConnectedAccount[]
 
   // some backlinks for the unique constraints on some auth methods
-  passwordAuthMethod PasswordAuthMethod[]
-  passkeyAuthMethod  PasskeyAuthMethod[]
-  otpAuthMethod      OtpAuthMethod[]
-  oauthAuthMethod    OAuthAuthMethod[]
-  SentEmail          SentEmail[]
-  projectApiKey      ProjectApiKey[]
-  directPermissions  ProjectUserDirectPermission[]
-  Project            Project?                      @relation(fields: [projectId], references: [id])
-  projectId          String?
+  passwordAuthMethod         PasswordAuthMethod[]
+  passkeyAuthMethod          PasskeyAuthMethod[]
+  otpAuthMethod              OtpAuthMethod[]
+  oauthAuthMethod            OAuthAuthMethod[]
+  SentEmail                  SentEmail[]
+  projectApiKey              ProjectApiKey[]
+  directPermissions          ProjectUserDirectPermission[]
+  Project                    Project?                      @relation(fields: [projectId], references: [id])
+  projectId                  String?
+  UserNotificationPreference UserNotificationPreference[]
 
   @@id([tenancyId, projectUserId])
   @@unique([mirroredProjectId, mirroredBranchId, projectUserId])
@@ -546,6 +548,7 @@ enum EmailTemplateType {
   PASSWORD_RESET
   MAGIC_LINK
   TEAM_INVITATION
+  SIGN_IN_INVITATION
 }
 
 model EmailTemplate {
@@ -700,4 +703,18 @@ model CliAuthAttempt {
   updatedAt DateTime @updatedAt
 
   @@id([tenancyId, id])
+}
+
+model UserNotificationPreference {
+  id                     String @default(uuid()) @db.Uuid
+  tenancyId              String @db.Uuid
+  projectUserId          String @db.Uuid
+  notificationCategoryId String @db.Uuid
+
+  enabled     Boolean
+  tenancy     Tenancy     @relation(fields: [tenancyId], references: [id], onDelete: Cascade)
+  projectUser ProjectUser @relation(fields: [tenancyId, projectUserId], references: [tenancyId, projectUserId], onDelete: Cascade)
+
+  @@id([tenancyId, id])
+  @@unique([tenancyId, projectUserId, notificationCategoryId])
 }

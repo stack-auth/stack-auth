@@ -50,4 +50,13 @@ export class XProvider extends OAuthBaseProvider {
       emailVerified: false,
     });
   }
+
+  async checkAccessTokenValidity(accessToken: string): Promise<boolean> {
+    const res = await fetch("https://api.x.com/2/users/me", {
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+      },
+    });
+    return res.ok;
+  }
 }

@@ -1,4 +1,5 @@
 import { getRenderedEnvironmentConfigQuery } from "@/lib/config";
+import { normalizeEmail } from "@/lib/emails";
 import { grantDefaultProjectPermissions } from "@/lib/permissions";
 import { ensureTeamMembershipExists, ensureUserExists } from "@/lib/request-checks";
 import { getSoleTenancyFromProjectBranch, getTenancy } from "@/lib/tenancies";
@@ -453,9 +454,11 @@ export const usersCrudHandlers = createLazyProxy(() => createCrudHandlers(usersC
     };
   },
   onCreate: async ({ auth, data }) => {
+    const primaryEmail = data.primary_email ? normalizeEmail(data.primary_email) : data.primary_email;
+
     log("create_user_endpoint_primaryAuthEnabled", {
       value: data.primary_email_auth_enabled,
-      email: data.primary_email ?? undefined,
+      email: primaryEmail ?? undefined,
       projectId: auth.project.id,
     });
 
@@ -464,7 +467,7 @@ export const usersCrudHandlers = createLazyProxy(() => createCrudHandlers(usersC
     const result = await retryTransaction(prisma, async (tx) => {
       await checkAuthData(tx, {
         tenancyId: auth.tenancy.id,
-        primaryEmail: data.primary_email,
+        primaryEmail: primaryEmail,
         primaryEmailVerified: !!data.primary_email_verified,
         primaryEmailAuthEnabled: !!data.primary_email_auth_enabled,
       });
@@ -529,13 +532,13 @@ export const usersCrudHandlers = createLazyProxy(() => createCrudHandlers(usersC
 
       }
 
-      if (data.primary_email) {
+      if (primaryEmail) {
         await tx.contactChannel.create({
           data: {
             projectUserId: newUser.projectUserId,
             tenancyId: auth.tenancy.id,
             type: 'EMAIL' as const,
-            value: data.primary_email,
+            value: primaryEmail,
             isVerified: data.primary_email_verified ?? false,
             isPrimary: "TRUE",
             usedForAuth: data.primary_email_auth_enabled ? BooleanTrue.TRUE : null,
@@ -607,8 +610,8 @@ export const usersCrudHandlers = createLazyProxy(() => createCrudHandlers(usersC
         data: {
           display_name: data.display_name ?
             `${data.display_name}'s Team` :
-            data.primary_email ?
-              `${data.primary_email}'s Team` :
+            primaryEmail ?
+              `${primaryEmail}'s Team` :
               "Personal Team",
           creator_user_id: 'me',
         },
@@ -638,6 +641,7 @@ export const usersCrudHandlers = createLazyProxy(() => createCrudHandlers(usersC
     return result;
   },
   onUpdate: async ({ auth, data, params }) => {
+    const primaryEmail = data.primary_email ? normalizeEmail(data.primary_email) : data.primary_email;
     const passwordHash = await getPasswordHashFromData(data);
     const prisma = getPrismaClientForTenancy(auth.tenancy);
     const result = await retryTransaction(prisma, async (tx) => {
@@ -722,7 +726,7 @@ export const usersCrudHandlers = createLazyProxy(() => createCrudHandlers(usersC
       await checkAuthData(tx, {
         tenancyId: auth.tenancy.id,
         oldPrimaryEmail: primaryEmailContactChannel?.value,
-        primaryEmail: data.primary_email || primaryEmailContactChannel?.value,
+        primaryEmail: primaryEmail || primaryEmailContactChannel?.value,
         primaryEmailVerified,
         primaryEmailAuthEnabled,
       });
@@ -732,8 +736,8 @@ export const usersCrudHandlers = createLazyProxy(() => createCrudHandlers(usersC
       // - update the primary email contact channel if it exists
       // if the primary email is null
       // - delete the primary email contact channel if it exists (note that this will also delete the related auth methods)
-      if (data.primary_email !== undefined) {
-        if (data.primary_email === null) {
+      if (primaryEmail !== undefined) {
+        if (primaryEmail === null) {
           await tx.contactChannel.delete({
             where: {
               tenancyId_projectUserId_type_isPrimary: {
@@ -758,13 +762,13 @@ export const usersCrudHandlers = createLazyProxy(() => createCrudHandlers(usersC
               projectUserId: params.user_id,
               tenancyId: auth.tenancy.id,
               type: 'EMAIL' as const,
-              value: data.primary_email,
+              value: primaryEmail,
               isVerified: false,
               isPrimary: "TRUE",
               usedForAuth: primaryEmailAuthEnabled ? BooleanTrue.TRUE : null,
             },
             update: {
-              value: data.primary_email,
+              value: primaryEmail,
               usedForAuth: primaryEmailAuthEnabled ? BooleanTrue.TRUE : null,
             }
           });
@@ -791,7 +795,7 @@ export const usersCrudHandlers = createLazyProxy(() => createCrudHandlers(usersC
 
       // if primary_email_auth_enabled is being updated without changing the email
       // - update the primary email contact channel's usedForAuth field
-      if (data.primary_email_auth_enabled !== undefined && data.primary_email === undefined) {
+      if (data.primary_email_auth_enabled !== undefined && primaryEmail === undefined) {
         await tx.contactChannel.update({
           where: {
             tenancyId_projectUserId_type_isPrimary: {

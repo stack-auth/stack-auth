@@ -337,7 +337,7 @@ export async function sendEmailFromTemplate(options: {
   });
 }
 
-async function getEmailConfig(tenancy: Tenancy): Promise<EmailConfig> {
+export async function getEmailConfig(tenancy: Tenancy): Promise<EmailConfig> {
   const projectEmailConfig = tenancy.config.email_config;
 
   if (projectEmailConfig.type === 'shared') {
@@ -372,3 +372,34 @@ export async function getSharedEmailConfig(displayName: string): Promise<EmailCo
     type: 'shared',
   };
 }
+
+export function normalizeEmail(email: string): string {
+  if (typeof email !== 'string') {
+    throw new TypeError('normalize-email expects a string');
+  }
+
+
+  const emailLower = email.trim().toLowerCase();
+  const emailParts = emailLower.split(/@/);
+
+  if (emailParts.length !== 2) {
+    throw new StackAssertionError('Invalid email address', { email });
+  }
+
+  let [username, domain] = emailParts;
+
+  return `${username}@${domain}`;
+}
+
+import.meta.vitest?.test('normalizeEmail(...)', async ({ expect }) => {
+  expect(normalizeEmail('Example.Test@gmail.com')).toBe('example.test@gmail.com');
+  expect(normalizeEmail('Example.Test+123@gmail.com')).toBe('example.test+123@gmail.com');
+  expect(normalizeEmail('exampletest@gmail.com')).toBe('exampletest@gmail.com');
+  expect(normalizeEmail('EXAMPLETEST@gmail.com')).toBe('exampletest@gmail.com');
+
+  expect(normalizeEmail('user@example.com')).toBe('user@example.com');
+  expect(normalizeEmail('user.name+tag@example.com')).toBe('user.name+tag@example.com');
+
+  expect(() => normalizeEmail('test@multiple@domains.com')).toThrow();
+  expect(() => normalizeEmail('invalid.email')).toThrow();
+});

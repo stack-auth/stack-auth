@@ -301,4 +301,53 @@ export class StackAdminInterface extends StackServerInterface {
     }, null);
     return await response.json();
   }
+
+  async sendEmail(options: {
+    user_ids: string[],
+    subject: string,
+    html: string,
+    notification_category_name: string,
+  }): Promise<void> {
+    await this.sendAdminRequest("/emails/send-email", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+      },
+      body: JSON.stringify(options),
+    }, null);
+  }
+
+  async sendSignInInvitationEmail(
+    email: string,
+    callbackUrl: string,
+  ): Promise<void> {
+    await this.sendAdminRequest(
+      "/internal/send-sign-in-invitation",
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          email,
+          callback_url: callbackUrl,
+        }),
+      },
+      null,
+    );
+  }
+
+  async renderEmailThemePreview(theme: string, content: string): Promise<{ html: string }> {
+    const response = await this.sendAdminRequest(`/emails/render-email`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        theme,
+        preview_html: content,
+      }),
+    }, null);
+    return await response.json();
+  }
 }

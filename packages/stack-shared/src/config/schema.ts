@@ -151,6 +151,7 @@ export const environmentConfigSchema = branchConfigSchema.concat(yupObject({
       senderName: schemaFields.emailSenderNameSchema.optional().nonEmpty(),
       senderEmail: schemaFields.emailSenderEmailSchema.optional().nonEmpty(),
     }),
+    theme: schemaFields.emailThemeSchema.optional(),
   }).optional()),
 
   domains: branchConfigSchema.getNested("domains").concat(yupObject({
@@ -239,6 +240,7 @@ export const organizationConfigDefaults = {
     server: {
       isShared: true,
     },
+    theme: 'default-light',
   },
 } satisfies DeepReplaceAllowFunctionsForObjects<OrganizationConfigStrippedNormalizedOverride>;
 

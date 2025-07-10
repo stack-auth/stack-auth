@@ -49,4 +49,11 @@ export class MicrosoftProvider extends OAuthBaseProvider {
       emailVerified: false,
     });
   }
+
+  async checkAccessTokenValidity(accessToken: string): Promise<boolean> {
+    const res = await fetch("https://graph.microsoft.com/v1.0/me", {
+      headers: { Authorization: `Bearer ${accessToken}` },
+    });
+    return res.ok;
+  }
 }

@@ -43,4 +43,13 @@ export class BitbucketProvider extends OAuthBaseProvider {
       emailVerified: emailData?.values[0].is_confirmed,
     });
   }
+
+  async checkAccessTokenValidity(accessToken: string): Promise<boolean> {
+    const res = await fetch("https://api.bitbucket.org/2.0/user", {
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+      },
+    });
+    return res.ok;
+  }
 }

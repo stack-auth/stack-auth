@@ -13,7 +13,7 @@ concurrency:
 jobs:
   build-server:
     name: Docker Build and Push Server
-    runs-on: ubuntu-latest
+    runs-on: ubicloud-standard-8
     steps:
       - name: Checkout
         uses: actions/checkout@v4

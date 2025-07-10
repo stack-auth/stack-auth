@@ -11,6 +11,7 @@ import { TeamMemberProfilesCrud } from "@stackframe/stack-shared/dist/interface/
 import { TeamPermissionsCrud } from "@stackframe/stack-shared/dist/interface/crud/team-permissions";
 import { TeamsCrud } from "@stackframe/stack-shared/dist/interface/crud/teams";
 import { UsersCrud } from "@stackframe/stack-shared/dist/interface/crud/users";
+import { NotificationPreferenceCrud } from "@stackframe/stack-shared/dist/interface/crud/notification-preferences";
 import { InternalSession } from "@stackframe/stack-shared/dist/sessions";
 import { scrambleDuringCompileTime } from "@stackframe/stack-shared/dist/utils/compile-time";
 import { isBrowserLike } from "@stackframe/stack-shared/dist/utils/env";
@@ -34,6 +35,7 @@ import { ApiKey, ApiKeyCreationOptions, ApiKeyUpdateOptions, apiKeyCreationOptio
 import { GetUserOptions, HandlerUrls, OAuthScopesOnSignIn, RedirectMethod, RedirectToOptions, RequestLike, TokenStoreInit, stackAppInternalsSymbol } from "../../common";
 import { OAuthConnection } from "../../connected-accounts";
 import { ContactChannel, ContactChannelCreateOptions, ContactChannelUpdateOptions, contactChannelCreateOptionsToCrud, contactChannelUpdateOptionsToCrud } from "../../contact-channels";
+import { NotificationCategory } from "../../notification-categories";
 import { TeamPermission } from "../../permissions";
 import { AdminOwnedProject, AdminProjectUpdateOptions, Project, adminProjectCreateOptionsToCrud } from "../../projects";
 import { EditableTeamMemberProfile, Team, TeamCreateOptions, TeamInvitation, TeamUpdateOptions, TeamUser, teamCreateOptionsToCrud, teamUpdateOptionsToCrud } from "../../teams";
@@ -188,6 +190,13 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
     async (session, [teamId]) => {
       const results = await this._interface.listProjectApiKeys({ team_id: teamId }, session, "client");
       return results as TeamApiKeysCrud['Client']['Read'][];
+    }
+  );
+
+  private readonly _notificationCategoriesCache = createCacheBySession<[], NotificationPreferenceCrud['Client']['Read'][]>(
+    async (session) => {
+      const results = await this._interface.listNotificationCategories(session);
+      return results as NotificationPreferenceCrud['Client']['Read'][];
     }
   );
 
@@ -785,6 +794,20 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
       },
     };
   }
+  protected _clientNotificationCategoryFromCrud(crud: NotificationPreferenceCrud['Client']['Read'], session: InternalSession): NotificationCategory {
+    const app = this;
+    return {
+      id: crud.notification_category_id,
+      name: crud.notification_category_name,
+      enabled: crud.enabled,
+      canDisable: crud.can_disable,
+
+      async setEnabled(enabled: boolean) {
+        await app._interface.setNotificationsEnabled(crud.notification_category_id, enabled, session);
+        await app._notificationCategoriesCache.refresh([session]);
+      },
+    };
+  }
   protected _createAuth(session: InternalSession): Auth {
     const app = this;
     return {
@@ -1077,7 +1100,16 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
         await app._clientContactChannelsCache.refresh([session]);
         return app._clientContactChannelFromCrud(crud, session);
       },
-
+      // IF_PLATFORM react-like
+      useNotificationCategories() {
+        const results = useAsyncCache(app._notificationCategoriesCache, [session] as const, "user.useNotificationCategories()");
+        return results.map((crud) => app._clientNotificationCategoryFromCrud(crud, session));
+      },
+      // END_PLATFORM
+      async listNotificationCategories() {
+        const results = Result.orThrow(await app._notificationCategoriesCache.getOrWait([session], "write-only"));
+        return results.map((crud) => app._clientNotificationCategoryFromCrud(crud, session));
+      },
       // IF_PLATFORM react-like
       useApiKeys() {
         const result = useAsyncCache(app._userApiKeysCache, [session] as const, "user.useApiKeys()");
@@ -1099,6 +1131,8 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
         await app._userApiKeysCache.refresh([session]);
         return app._clientApiKeyFromCrud(session, result);
       },
+
+
     };
   }
 

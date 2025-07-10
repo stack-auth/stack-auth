@@ -52,6 +52,7 @@ it("should be able to provision a new project if client details are correct", as
           "credential_enabled": true,
           "domains": [],
           "email_config": { "type": "shared" },
+          "email_theme": "default-light",
           "enabled_oauth_providers": [
             { "id": "github" },
             { "id": "google" },
