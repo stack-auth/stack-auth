@@ -42,4 +42,13 @@ export class GitlabProvider extends OAuthBaseProvider {
       emailVerified: !!confirmed_at,
     });
   }
+
+  async checkAccessTokenValidity(accessToken: string): Promise<boolean> {
+    const res = await fetch("https://gitlab.com/api/v4/user", {
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+      },
+    });
+    return res.ok;
+  }
 }
