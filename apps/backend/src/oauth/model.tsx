@@ -1,7 +1,7 @@
 import { createMfaRequiredError } from "@/app/api/latest/auth/mfa/sign-in/verification-code-handler";
 import { checkApiKeySet } from "@/lib/internal-api-keys";
 import { validateRedirectUrl } from "@/lib/redirect-urls";
-import { getSoleTenancyFromProjectBranch } from "@/lib/tenancies";
+import { getSoleTenancyFromProjectBranch, getTenancy } from "@/lib/tenancies";
 import { decodeAccessToken, generateAccessToken } from "@/lib/tokens";
 import { getPrismaClientForTenancy, globalPrismaClient } from "@/prisma-client";
 import { AuthorizationCode, AuthorizationCodeModel, Client, Falsey, RefreshToken, Token, User } from "@node-oauth/oauth2-server";
@@ -219,16 +219,15 @@ export class OAuthModel implements AuthorizationCodeModel {
       where: {
         refreshToken,
       },
-      include: {
-        tenancy: {
-          include: {
-            project: true,
-          },
-        },
-      },
     });
 
     if (!token) {
+      return false;
+    }
+
+    const tenancy = await getTenancy(token.tenancyId);
+
+    if (!tenancy) {
       return false;
     }
 
@@ -240,7 +239,7 @@ export class OAuthModel implements AuthorizationCodeModel {
         refreshTokenId: token.id,
       },
       client: {
-        id: token.tenancy.project.id,
+        id: tenancy.project.id,
         grants: ["authorization_code", "refresh_token"],
       },
       scope: enabledScopes,
@@ -303,15 +302,15 @@ export class OAuthModel implements AuthorizationCodeModel {
       where: {
         authorizationCode,
       },
-      include: {
-        tenancy: {
-          include: {
-            project: true,
-          },
-        },
-      },
     });
+
     if (!code) {
+      return false;
+    }
+
+    const tenancy = await getTenancy(code.tenancyId);
+
+    if (!tenancy) {
       return false;
     }
     return {
@@ -322,7 +321,7 @@ export class OAuthModel implements AuthorizationCodeModel {
       codeChallenge: code.codeChallenge,
       codeChallengeMethod: code.codeChallengeMethod,
       client: {
-        id: code.tenancy.project.id,
+        id: tenancy.project.id,
         grants: ["authorization_code", "refresh_token"],
       },
       user: {
