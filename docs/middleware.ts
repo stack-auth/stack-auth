@@ -21,6 +21,6 @@ export const config = {
      * - favicon.ico (favicon file)
      * - .well-known (well-known files)
      */
-    '/((?!api|_next/static|_next/image|favicon.ico|\\.well-known).*)',
+    '/((?!api|_next/static|_next/image|favicon.ico|.well-known).*)',
   ],
 };
