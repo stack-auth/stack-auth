@@ -76,7 +76,19 @@ export async function sendToDiscordWebhook(data: {
       });
     }
   } catch (error) {
-    console.error('Error sending message to Discord:', error);
+    if (error instanceof TypeError) {
+      // Network errors, CORS issues, or malformed URLs
+      console.error('Network error sending message to Discord:', error.message);
+    } else if (error instanceof SyntaxError) {
+      // JSON parsing errors
+      console.error('JSON parsing error in Discord webhook:', error.message);
+    } else if (error instanceof Error) {
+      // General errors with message
+      console.error('Error sending message to Discord:', error.message);
+    } else {
+      // Unknown error types
+      console.error('Unknown error sending message to Discord:', error);
+    }
   }
 }
 
@@ -112,7 +124,19 @@ export async function sendLLMResponseToDiscord(data: {
       model: metadata?.model
     });
   } catch (error) {
-    console.error('Error sending LLM response to Discord:', error);
+    if (error instanceof TypeError) {
+      // Network errors, CORS issues, or malformed URLs
+      console.error('Network error sending LLM response to Discord:', error.message);
+    } else if (error instanceof SyntaxError) {
+      // JSON parsing errors
+      console.error('JSON parsing error in Discord LLM response:', error.message);
+    } else if (error instanceof Error) {
+      // General errors with message
+      console.error('Error sending LLM response to Discord:', error.message);
+    } else {
+      // Unknown error types
+      console.error('Unknown error sending LLM response to Discord:', error);
+    }
   }
 }
 
@@ -133,7 +157,8 @@ async function findExistingThread(channelId: string, sessionPrefix: string): Pro
     });
 
     if (!response.ok) {
-      console.error('Failed to fetch recent messages:', response.statusText);
+      const errorText = await response.text();
+      console.error(`Failed to fetch recent messages (${response.status}):`, errorText);
       return null;
     }
 
@@ -149,7 +174,19 @@ async function findExistingThread(channelId: string, sessionPrefix: string): Pro
     
     return null;
   } catch (error) {
-    console.error('Error finding existing thread:', error);
+    if (error instanceof TypeError) {
+      // Network errors, invalid URL, or connection issues
+      console.error('Network error finding existing thread:', error.message);
+    } else if (error instanceof SyntaxError) {
+      // JSON parsing errors from Discord API response
+      console.error('JSON parsing error in Discord API response:', error.message);
+    } else if (error instanceof Error) {
+      // General errors with message
+      console.error('Error finding existing thread:', error.message);
+    } else {
+      // Unknown error types
+      console.error('Unknown error finding existing thread:', error);
+    }
     return null;
   }
 }
@@ -186,7 +223,8 @@ async function createNewThread(
     });
 
     if (!messageResponse.ok) {
-      console.error('Failed to send initial message:', messageResponse.statusText);
+      const errorText = await messageResponse.text();
+      console.error(`Failed to send initial message (${messageResponse.status}):`, errorText);
       return;
     }
 
@@ -208,7 +246,8 @@ async function createNewThread(
     });
 
     if (!threadResponse.ok) {
-      console.error('Failed to create thread:', threadResponse.statusText);
+      const errorText = await threadResponse.text();
+      console.error(`Failed to create thread (${threadResponse.status}):`, errorText);
       return;
     }
 
@@ -216,7 +255,19 @@ async function createNewThread(
     console.log(`Created new thread: ${threadData.name} (${threadData.id})`);
     
   } catch (error) {
-    console.error('Error creating thread:', error);
+    if (error instanceof TypeError) {
+      // Network errors, invalid URL, or connection issues
+      console.error('Network error creating new thread:', error.message);
+    } else if (error instanceof SyntaxError) {
+      // JSON parsing errors from Discord API response
+      console.error('JSON parsing error creating thread:', error.message);
+    } else if (error instanceof Error) {
+      // General errors with message
+      console.error('Error creating thread:', error.message);
+    } else {
+      // Unknown error types
+      console.error('Unknown error creating thread:', error);
+    }
   }
 }
 
@@ -251,17 +302,29 @@ ${context.messageType} • ${context.page} • Page time: ${context.timeOnPage}$
     });
 
     if (!response.ok) {
-      console.error('Failed to send message to thread:', response.statusText);
-      // If thread doesn't exist anymore, remove it from our map
+      const errorText = await response.text();
+      console.error(`Failed to send message to thread (${response.status}):`, errorText);
+      // If thread doesn't exist anymore, log it but continue
       if (response.status === 404) {
-        // Find and remove the session from our map
-        // This part of the logic is no longer needed as we are not using a map
+        console.warn(`Thread ${threadId} no longer exists`);
       }
     } else {
       console.log(`Sent follow-up message to thread ${threadId}`);
     }
   } catch (error) {
-    console.error('Error sending message to thread:', error);
+    if (error instanceof TypeError) {
+      // Network errors, invalid URL, or connection issues
+      console.error('Network error sending message to thread:', error.message);
+    } else if (error instanceof SyntaxError) {
+      // JSON parsing errors
+      console.error('JSON parsing error sending to thread:', error.message);
+    } else if (error instanceof Error) {
+      // General errors with message
+      console.error('Error sending message to thread:', error.message);
+    } else {
+      // Unknown error types
+      console.error('Unknown error sending message to thread:', error);
+    }
   }
 }
 
@@ -300,16 +363,29 @@ ${model}`;
     });
 
     if (!discordResponse.ok) {
-      console.error('Failed to send response to thread:', discordResponse.statusText);
-      // If thread doesn't exist anymore, remove it from our map
+      const errorText = await discordResponse.text();
+      console.error(`Failed to send response to thread (${discordResponse.status}):`, errorText);
+      // If thread doesn't exist anymore, log it but continue
       if (discordResponse.status === 404) {
-        // This part of the logic is no longer needed as we are not using a map
+        console.warn(`Thread ${threadId} no longer exists for AI response`);
       }
     } else {
       console.log(`Sent AI response to thread ${threadId}`);
     }
   } catch (error) {
-    console.error('Error sending response to thread:', error);
+    if (error instanceof TypeError) {
+      // Network errors, invalid URL, or connection issues
+      console.error('Network error sending response to thread:', error.message);
+    } else if (error instanceof SyntaxError) {
+      // JSON parsing errors
+      console.error('JSON parsing error sending response to thread:', error.message);
+    } else if (error instanceof Error) {
+      // General errors with message
+      console.error('Error sending response to thread:', error.message);
+    } else {
+      // Unknown error types
+      console.error('Unknown error sending response to thread:', error);
+    }
   }
 }
 
