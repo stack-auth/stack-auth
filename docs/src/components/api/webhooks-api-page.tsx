@@ -290,9 +290,9 @@ function ModernWebhookDisplay({
   const getPayloadExample = useCallback(() => {
     if (webhook.requestBody?.content['application/json']?.schema) {
       const jsonContent = webhook.requestBody.content['application/json'];
-      console.log('Webhook schema:', JSON.stringify(jsonContent.schema, null, 2));
+      // console.log('Webhook schema:', JSON.stringify(jsonContent.schema, null, 2));
       const examplePayload = generateExampleFromSchema(jsonContent.schema, spec);
-      console.log('Generated payload:', JSON.stringify(examplePayload, null, 2));
+      // console.log('Generated payload:', JSON.stringify(examplePayload, null, 2));
       return JSON.stringify(examplePayload, null, 2);
     }
 

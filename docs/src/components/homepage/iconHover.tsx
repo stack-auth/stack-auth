@@ -318,7 +318,7 @@ export default function DocsSelector() {
   }, [preferredPlatform, isLoaded]);
 
   const handleSectionSelect = (section: DocsSection) => {
-    console.log("Selected section:", section);
+    //console.log("Selected section:", section);
     // Navigate to the selected section
     if (section.url) {
       window.location.href = section.url;

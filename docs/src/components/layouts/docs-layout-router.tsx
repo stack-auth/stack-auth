@@ -104,7 +104,7 @@ export function DynamicDocsLayout({ children, ...props }: DynamicDocsLayoutProps
     if (isInSdkSection(pathname)) {
       const sdkTree = findSectionInTree(props.tree, 'SDK Reference', pathname);
       if (sdkTree) {
-        console.log('🎯 Using SDK tree for:', pathname);
+        //console.log('🎯 Using SDK tree for:', pathname);
         return sdkTree;
       }
     }
@@ -112,13 +112,13 @@ export function DynamicDocsLayout({ children, ...props }: DynamicDocsLayoutProps
     if (isInComponentsSection(pathname)) {
       const componentsTree = findSectionInTree(props.tree, 'Components', pathname);
       if (componentsTree) {
-        console.log('🎯 Using Components tree for:', pathname);
+        //console.log('🎯 Using Components tree for:', pathname);
         return componentsTree;
       }
     }
 
     // For normal docs view, filter out SDK and Components sections
-    console.log('📄 Using filtered page tree for:', pathname);
+    //console.log('📄 Using filtered page tree for:', pathname);
     return {
       ...props.tree,
       children: props.tree.children.map(platformNode => {
