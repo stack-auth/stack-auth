@@ -42,11 +42,8 @@ model Tenancy {
   branchId String
 
   // If organizationId is NULL, hasNoOrganization must be TRUE. If organizationId is not NULL, hasNoOrganization must be NULL.
-  organizationId               String?                        @db.Uuid
-  hasNoOrganization            BooleanTrue?
-  projectUserAuthorizationCode ProjectUserAuthorizationCode[]
-  projectUserRefreshToken      ProjectUserRefreshToken[]
-  UserNotificationPreference   UserNotificationPreference[]
+  organizationId    String?      @db.Uuid
+  hasNoOrganization BooleanTrue?
 
   @@unique([projectId, branchId, organizationId])
   @@unique([projectId, branchId, hasNoOrganization])
@@ -186,7 +183,7 @@ model ProjectUser {
   directPermissions          ProjectUserDirectPermission[]
   Project                    Project?                      @relation(fields: [projectId], references: [id])
   projectId                  String?
-  UserNotificationPreference UserNotificationPreference[]
+  userNotificationPreference UserNotificationPreference[]
 
   @@id([tenancyId, projectUserId])
   @@unique([mirroredProjectId, mirroredBranchId, projectUserId])
@@ -438,8 +435,6 @@ model ProjectUserRefreshToken {
   expiresAt       DateTime?
   isImpersonation Boolean   @default(false)
 
-  tenancy Tenancy @relation(fields: [tenancyId], references: [id])
-
   @@id([tenancyId, id])
 }
 
@@ -459,8 +454,6 @@ model ProjectUserAuthorizationCode {
 
   newUser                  Boolean
   afterCallbackRedirectUrl String?
-
-  tenancy Tenancy @relation(fields: [tenancyId], references: [id])
 
   @@id([tenancyId, authorizationCode])
 }
@@ -712,7 +705,6 @@ model UserNotificationPreference {
   notificationCategoryId String @db.Uuid
 
   enabled     Boolean
-  tenancy     Tenancy     @relation(fields: [tenancyId], references: [id], onDelete: Cascade)
   projectUser ProjectUser @relation(fields: [tenancyId, projectUserId], references: [tenancyId, projectUserId], onDelete: Cascade)
 
   @@id([tenancyId, id])
