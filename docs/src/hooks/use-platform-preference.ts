@@ -4,25 +4,31 @@ import { DEFAULT_PLATFORM, type Platform, PLATFORMS } from '../lib/platform-util
 const PLATFORM_PREFERENCE_KEY = 'stack-auth-preferred-platform';
 
 /**
+ * Type guard to check if a value is a valid Platform
+ */
+function isValidPlatform(value: unknown): value is Platform {
+  return typeof value === 'string' && PLATFORMS.includes(value as Platform);
+}
+
+/**
  * Hook to manage platform preference persistence in localStorage
  * @returns {Object} { preferredPlatform, setPreferredPlatform, isLoaded }
  */
 export function usePlatformPreference() {
-  const [preferredPlatform, setPreferredPlatformState] = useState<Platform | null>(null);
+  const [preferredPlatform, setPreferredPlatformState] = useState<Platform>(DEFAULT_PLATFORM);
   const [isLoaded, setIsLoaded] = useState(false);
 
   // Load preference from localStorage on mount
   useEffect(() => {
     try {
       const stored = localStorage.getItem(PLATFORM_PREFERENCE_KEY);
-      if (stored && PLATFORMS.includes(stored as Platform)) {
-        setPreferredPlatformState(stored as Platform);
-      } else {
-        setPreferredPlatformState(DEFAULT_PLATFORM);
+      if (stored && isValidPlatform(stored)) {
+        setPreferredPlatformState(stored);
       }
+      // If no valid stored preference, keep the DEFAULT_PLATFORM that was set in useState
     } catch (error) {
       console.warn('Failed to load platform preference from localStorage:', error);
-      setPreferredPlatformState(DEFAULT_PLATFORM);
+      // Keep the DEFAULT_PLATFORM that was set in useState
     } finally {
       setIsLoaded(true);
     }
@@ -30,6 +36,11 @@ export function usePlatformPreference() {
 
   // Function to update preference in both state and localStorage
   const setPreferredPlatform = (platform: Platform) => {
+    if (!isValidPlatform(platform)) {
+      console.warn('Invalid platform provided:', platform);
+      return;
+    }
+
     setPreferredPlatformState(platform);
     try {
       localStorage.setItem(PLATFORM_PREFERENCE_KEY, platform);
@@ -39,7 +50,7 @@ export function usePlatformPreference() {
   };
 
   return {
-    preferredPlatform: preferredPlatform || DEFAULT_PLATFORM,
+    preferredPlatform,
     setPreferredPlatform,
     isLoaded
   };
@@ -56,8 +67,8 @@ export function getStoredPlatformPreference(): Platform {
 
   try {
     const stored = localStorage.getItem(PLATFORM_PREFERENCE_KEY);
-    if (stored && PLATFORMS.includes(stored as Platform)) {
-      return stored as Platform;
+    if (stored && isValidPlatform(stored)) {
+      return stored;
     }
   } catch (error) {
     console.warn('Failed to get stored platform preference:', error);
