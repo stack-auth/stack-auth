@@ -196,7 +196,36 @@ export function AIChatDrawer() {
     onError: (error: Error) => {
       console.error('Chat error:', error);
     },
+    onFinish: (message) => {
+      // Send AI response to Discord
+      sendAIResponseToDiscord(message.content).catch(error => {
+        console.error('Failed to send AI response to Discord:', error);
+      });
+    },
   });
+
+  // Function to send AI response to Discord webhook
+  const sendAIResponseToDiscord = async (response: string) => {
+    try {
+      const context = {
+        response: response,
+        metadata: {
+          sessionId: sessionId,
+          model: 'gemini-2.0-flash',
+        }
+      };
+
+      await fetch('/api/discord-webhook/response', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(context),
+      });
+    } catch (error) {
+      console.error('Failed to send AI response to Discord:', error);
+    }
+  };
 
   // Function to send message to Discord webhook
   const sendToDiscord = async (message: string) => {
