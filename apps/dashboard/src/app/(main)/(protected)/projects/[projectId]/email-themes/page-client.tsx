@@ -5,40 +5,11 @@ import { SettingCard } from "@/components/settings";
 import { throwErr } from "@stackframe/stack-shared/dist/utils/errors";
 import { runAsynchronously } from "@stackframe/stack-shared/dist/utils/promises";
 import { deindent } from "@stackframe/stack-shared/dist/utils/strings";
-import { ActionDialog, Button, Card, Separator, Typography } from "@stackframe/stack-ui";
+import { ActionDialog, Button, Card, Typography } from "@stackframe/stack-ui";
 import { Check } from "lucide-react";
 import { useState } from "react";
 import { PageLayout } from "../page-layout";
 import { useAdminApp } from "../use-admin-app";
-
-
-function NewThemeButton() {
-  const stackAdminApp = useAdminApp();
-  const router = useRouter();
-  const themes = stackAdminApp.useEmailThemes();
-  const [loading, setLoading] = useState(false);
-
-  const handleCreateNewTheme = async () => {
-    setLoading(true);
-    try {
-      const devServer = await stackAdminApp.createEmailThemeDevServer();
-      router.push(`email-themes/new/${devServer.repoId}`);
-    } catch (error) {
-      console.error("Failed to create new theme:", error);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  return (
-    <Button
-      onClick={() => runAsynchronously(handleCreateNewTheme())}
-      loading={loading}
-    >
-      New Theme
-    </Button>
-  );
-}
 
 export default function PageClient() {
   const stackAdminApp = useAdminApp();
@@ -151,5 +122,32 @@ function ThemePreview({ themeName }: { themeName: string }) {
   const previewHtml = stackAdminApp.useEmailThemePreview(themeName, previewEmailHtml);
   return (
     <iframe srcDoc={previewHtml} className="mx-auto pointer-events-none h-full" />
+  );
+}
+
+function NewThemeButton() {
+  const stackAdminApp = useAdminApp();
+  const router = useRouter();
+  const [loading, setLoading] = useState(false);
+
+  const handleCreateNewTheme = async () => {
+    setLoading(true);
+    try {
+      const devServer = await stackAdminApp.createEmailThemeDevServer();
+      router.push(`email-themes/new/${devServer.repoId}`);
+    } catch (error) {
+      console.error("Failed to create new theme:", error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <Button
+      onClick={() => runAsynchronously(handleCreateNewTheme())}
+      loading={loading}
+    >
+      New Theme
+    </Button>
   );
 }

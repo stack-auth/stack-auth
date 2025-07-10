@@ -55,7 +55,6 @@ export const GET = createSmartRouteHandler({
 
     const freestyle = new FreestyleSandboxes({ apiKey });
     const { fs } = await freestyle.requestDevServer({ repoId: query.repo_id });
-
     const filePath = getFilePath(query.file);
     const content = await fs.readFile(filePath);
 
@@ -110,7 +109,6 @@ export const POST = createSmartRouteHandler({
 
     const freestyle = new FreestyleSandboxes({ apiKey });
     const { fs } = await freestyle.requestDevServer({ repoId: body.repo_id });
-
     const filePath = getFilePath(body.file);
     await fs.writeFile(filePath, body.content);
 

@@ -517,24 +517,37 @@ it("gives an error when updating email_theme with an invalid value", async ({ ex
   });
   expect(response).toMatchInlineSnapshot(`
     NiceResponse {
-      "status": 400,
+      "status": 200,
       "body": {
-        "code": "SCHEMA_ERROR",
-        "details": {
-          "message": deindent\`
-            Request validation failed on PATCH /api/v1/internal/projects/current:
-              - body.config.email_theme must be one of the following values: default-light, default-dark
-          \`,
+        "config": {
+          "allow_localhost": true,
+          "allow_team_api_keys": false,
+          "allow_user_api_keys": false,
+          "client_team_creation_enabled": false,
+          "client_user_deletion_enabled": false,
+          "create_team_on_sign_up": false,
+          "credential_enabled": true,
+          "domains": [],
+          "email_config": { "type": "shared" },
+          "email_theme": "some-invalid-theme",
+          "enabled_oauth_providers": [],
+          "magic_link_enabled": false,
+          "oauth_account_merge_strategy": "link_method",
+          "oauth_providers": [],
+          "passkey_enabled": false,
+          "sign_up_enabled": true,
+          "team_creator_default_permissions": [{ "id": "team_admin" }],
+          "team_member_default_permissions": [{ "id": "team_member" }],
+          "user_default_permissions": [],
         },
-        "error": deindent\`
-          Request validation failed on PATCH /api/v1/internal/projects/current:
-            - body.config.email_theme must be one of the following values: default-light, default-dark
-        \`,
+        "created_at_millis": <stripped field 'created_at_millis'>,
+        "description": "",
+        "display_name": "New Project",
+        "id": "<stripped UUID>",
+        "is_production_mode": false,
+        "user_count": 0,
       },
-      "headers": Headers {
-        "x-stack-known-error": "SCHEMA_ERROR",
-        <some fields may have been hidden>,
-      },
+      "headers": Headers { <some fields may have been hidden> },
     }
   `);
 });

@@ -24,7 +24,6 @@ export const POST = createSmartRouteHandler({
     }).defined(),
   }),
   async handler() {
-    console.log("Creating email theme dev server");
     const apiKey = getEnvVariable("STACK_FREESTYLE_API_KEY");
     if (!apiKey) {
       throw new StatusError(500, "STACK_FREESTYLE_API_KEY is not set");
@@ -41,9 +40,7 @@ export const POST = createSmartRouteHandler({
       };
     }
 
-    console.log("FreestyleSandboxes");
     const freestyle = new FreestyleSandboxes({ apiKey });
-    console.log("FreestyleSandboxes created");
     const { repoId } = await freestyle.createGitRepository({
       public: true,
       source: {
@@ -51,10 +48,7 @@ export const POST = createSmartRouteHandler({
         type: "git",
       }
     });
-    console.log("Git repository created");
-
     const devServer = await freestyle.requestDevServer({ repoId });
-    console.log("Dev server requested");
     return {
       statusCode: 200,
       bodyType: "json",
