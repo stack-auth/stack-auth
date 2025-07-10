@@ -83,31 +83,29 @@ function formatTime(seconds: number): string {
 function extractBrowserInfo(userAgent: string): string | null {
   if (!userAgent) return null;
 
-  // Extract browser
-  let browser = 'Unknown';
-  if (userAgent.includes('Chrome/')) {
-    browser = 'Chrome';
-  } else if (userAgent.includes('Firefox/')) {
-    browser = 'Firefox';
-  } else if (userAgent.includes('Safari/') && !userAgent.includes('Chrome/')) {
-    browser = 'Safari';
-  } else if (userAgent.includes('Edge/')) {
-    browser = 'Edge';
-  }
+  // Browser detection patterns (order matters - Chrome must come before Safari)
+  const browserPatterns = [
+    { pattern: 'Edge/', name: 'Edge' },
+    { pattern: 'Chrome/', name: 'Chrome' },
+    { pattern: 'Firefox/', name: 'Firefox' },
+    { pattern: 'Safari/', name: 'Safari' },
+  ];
 
-  // Extract OS
-  let os = 'Unknown';
-  if (userAgent.includes('Windows NT')) {
-    os = 'Windows';
-  } else if (userAgent.includes('Mac OS X')) {
-    os = 'macOS';
-  } else if (userAgent.includes('Linux')) {
-    os = 'Linux';
-  } else if (userAgent.includes('iPhone') || userAgent.includes('iPad')) {
-    os = 'iOS';
-  } else if (userAgent.includes('Android')) {
-    os = 'Android';
-  }
+  // OS detection patterns
+  const osPatterns = [
+    { pattern: 'Windows NT', name: 'Windows' },
+    { pattern: 'Mac OS X', name: 'macOS' },
+    { pattern: 'iPhone', name: 'iOS' },
+    { pattern: 'iPad', name: 'iOS' },
+    { pattern: 'Android', name: 'Android' },
+    { pattern: 'Linux', name: 'Linux' },
+  ];
+
+  // Find browser
+  const browser = browserPatterns.find(({ pattern }) => userAgent.includes(pattern))?.name || 'Unknown';
+
+  // Find OS
+  const os = osPatterns.find(({ pattern }) => userAgent.includes(pattern))?.name || 'Unknown';
 
   return `${browser} on ${os}`;
 }
