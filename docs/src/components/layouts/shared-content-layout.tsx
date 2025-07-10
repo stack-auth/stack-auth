@@ -16,10 +16,7 @@ export function SharedContentLayout({
   className,
   ...props
 }: SharedContentLayoutProps) {
-  const sidebarContext = useSidebar();
-  const { isMainSidebarCollapsed } = sidebarContext || {
-    isMainSidebarCollapsed: false,
-  };
+  const { isMainSidebarCollapsed = false } = useSidebar() ?? {};
 
   return (
     <article
