@@ -47,12 +47,12 @@ function generatePlatformNavigation() {
 import { type Platform } from './platform-utils';
 
 // Platform pages data auto-generated from docs-platform.yml
-const PLATFORM_PAGES: Record<string, Platform[]> = {
+const PLATFORM_PAGES: { path: string, platforms: Platform[] }[] = [
 ${config.pages.map(page => {
   const platformsStr = JSON.stringify(page.platforms);
-  return `  '${page.path}': ${platformsStr},`;
+  return `  { path: '${page.path}', platforms: ${platformsStr} },`;
 }).join('\n')}
-};
+];
 
 /**
  * Check if a specific page exists for a given platform
@@ -62,8 +62,8 @@ export function pageExistsForPlatform(path: string, platform: Platform): boolean
   const normalizedPath = path.replace(/^\\//, '');
   const pathWithExt = normalizedPath.endsWith('.mdx') ? normalizedPath : \`\${normalizedPath}.mdx\`;
 
-  const platforms = PLATFORM_PAGES[pathWithExt];
-  return platforms ? platforms.includes(platform) : false;
+  const page = PLATFORM_PAGES.find(p => p.path === pathWithExt);
+  return page?.platforms.includes(platform) ?? false;
 }
 
 /**
@@ -87,9 +87,9 @@ export function getSmartPlatformRedirect(currentPath: string, targetPlatform: Pl
  * Get all pages available for a specific platform
  */
 export function getPagesForPlatform(platform: Platform): string[] {
-  return Object.entries(PLATFORM_PAGES)
-    .filter(([, platforms]) => platforms.includes(platform))
-    .map(([path]) => path.replace(/\\.mdx$/, ''));
+  return PLATFORM_PAGES
+    .filter(page => page.platforms.includes(platform))
+    .map(page => page.path.replace(/\\.mdx$/, ''));
 }
 `;
 
