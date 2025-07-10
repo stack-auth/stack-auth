@@ -44,4 +44,13 @@ export class AppleProvider extends OAuthBaseProvider {
       emailVerified: !!payload.email_verified,
     });
   }
+
+  async checkAccessTokenValidity(accessToken: string): Promise<boolean> {
+    const res = await fetch("https://appleid.apple.com/auth/userinfo", {
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+      },
+    });
+    return res.ok;
+  }
 }
