@@ -7,8 +7,6 @@ import { useEffect } from 'react';
 export function CSPostHogProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (typeof window !== 'undefined') {
-      console.log('Initializing PostHog...');
-
       const postHogKey = "phc_vIUFi0HzHo7oV26OsaZbUASqxvs8qOmap1UBYAutU4k";
       if (postHogKey.length > 5) {
         posthog.init(postHogKey, {
@@ -18,8 +16,6 @@ export function CSPostHogProvider({ children }: { children: React.ReactNode }) {
           capture_pageleave: true,
           person_profiles: 'identified_only'
         });
-
-        console.log('PostHog initialized successfully');
       }
     }
   }, []);
