@@ -1,19 +1,20 @@
 import { it } from "../../../../helpers";
 import { niceBackendFetch } from "../../../backend-helpers";
+import { generateUuid } from "@stackframe/stack-shared/dist/utils/uuids";
 
-it("should return 404 when theme is not found", async ({ expect }) => {
+it("should return 400 when theme is not found", async ({ expect }) => {
   const response = await niceBackendFetch("/api/v1/emails/render-email", {
     method: "POST",
     accessType: "admin",
     body: {
-      theme: "test",
+      theme_id: generateUuid(),
       preview_html: "<p>Test email</p>",
     },
   });
   expect(response).toMatchInlineSnapshot(`
     NiceResponse {
       "status": 400,
-      "body": "No theme found with given name",
+      "body": "No theme found with given id",
       "headers": Headers { <some fields may have been hidden> },
     }
   `);
@@ -24,14 +25,31 @@ it("should render mock email when valid theme is provided", async ({ expect }) =
     method: "POST",
     accessType: "admin",
     body: {
-      theme: "default-dark",
+      theme_id: "1df07ae6-abf3-4a40-83a5-a1a2cbe336ac", // default-light
       preview_html: "<p>Test email</p>",
     },
   });
   expect(response).toMatchInlineSnapshot(`
     NiceResponse {
       "status": 200,
-      "body": { "html": "<!DOCTYPE html PUBLIC \\"-//W3C//DTD XHTML 1.0 Transitional//EN\\" \\"http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd\\"><html dir=\\"ltr\\" lang=\\"en\\"><head></head><body><!--$--><div style=\\"background-color:rgb(15,23,42);color:rgb(241,245,249);padding:1rem;border-radius:0.5rem;max-width:600px;margin-left:auto;margin-right:auto;line-height:1.625\\"><div><p>Test email</p></div></div><!--3--><!--/$--></body></html>" },
+      "body": {
+        "html": deindent\`
+          <div>Mock api key detected, themeComponent: import { Html, Tailwind, Body } from '@react-email/components';
+          function EmailTheme({ children }: { children: React.ReactNode }) {
+            return (
+              <Html>
+                <Tailwind>
+                  <Body>
+                    <div className="bg-white text-slate-800 p-4 rounded-lg max-w-[600px] mx-auto leading-relaxed">
+                      {children}
+                    </div>
+                  </Body>
+                </Tailwind>
+              </Html>
+            );
+          }, htmlContent: <p>Test email</p>, </div>
+        \`,
+      },
       "headers": Headers { <some fields may have been hidden> },
     }
   `);

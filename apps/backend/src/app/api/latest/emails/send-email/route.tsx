@@ -112,7 +112,7 @@ export const POST = createSmartRouteHandler({
         unsubscribeLink = unsubUrl.toString();
       }
 
-      
+
       const renderedEmail = await renderEmailWithTheme(
         body.html,
         activeTheme.tsxSource,

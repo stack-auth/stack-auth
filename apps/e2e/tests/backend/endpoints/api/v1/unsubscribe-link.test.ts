@@ -145,5 +145,22 @@ it("unsubscribe link should not be sent for emails with transactional notificati
   const messages = await user.mailbox.fetchMessages();
   const sentEmail = messages.find(msg => msg.subject === "Custom Test Email Subject");
   expect(sentEmail).toBeDefined();
-  expect(sentEmail!.body?.html).toMatchInlineSnapshot(`"<!DOCTYPE html PUBLIC \\"-//W3C//DTD XHTML 1.0 Transitional//EN\\" \\"http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd\\"><html dir=\\"ltr\\" lang=\\"en\\"><head></head><body><!--$--><div style=\\"background-color:rgb(255,255,255);color:rgb(30,41,59);padding:1rem;border-radius:0.5rem;max-width:600px;margin-left:auto;margin-right:auto;line-height:1.625\\"><div><h1>Test Email</h1><p>This is a test email with HTML content.</p></div></div><!--3--><!--/$--></body></html>"`);
+  expect(sentEmail!.body?.html).toMatchInlineSnapshot(`
+    deindent\`
+      <div>Mock api key detected, themeComponent: import { Html, Tailwind, Body } from '@react-email/components';
+      function EmailTheme({ children }: { children: React.ReactNode }) {
+        return (
+          <Html>
+            <Tailwind>
+              <Body>
+                <div className="bg-white text-slate-800 p-4 rounded-lg max-w-[600px] mx-auto leading-relaxed">
+                  {children}
+                </div>
+              </Body>
+            </Tailwind>
+          </Html>
+        );
+      }, htmlContent: <h1>Test Email</h1><p>This is a test email with HTML content.</p>, </div>
+    \`
+  `);
 });
