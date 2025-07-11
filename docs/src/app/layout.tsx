@@ -3,7 +3,6 @@ import { RootProvider } from 'fumadocs-ui/provider';
 import { Inter } from 'next/font/google';
 import PostHogPageView from '../components/pageview';
 import { CSPostHogProvider } from '../components/posthog-provider';
-import PostHogTest from '../components/posthog-test';
 import { stackServerApp } from '../stack';
 import './global.css';
 
@@ -30,7 +29,6 @@ export default function Layout({ children }: { children: React.ReactNode }) {
               </RootProvider>
             </StackTheme>
           </StackProvider>
-          <PostHogTest />
         </CSPostHogProvider>
       </body>
     </html>
