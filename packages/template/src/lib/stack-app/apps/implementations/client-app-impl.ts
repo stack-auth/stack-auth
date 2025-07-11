@@ -2,6 +2,7 @@ import { WebAuthnError, startAuthentication, startRegistration } from "@simplewe
 import { KnownErrors, StackClientInterface } from "@stackframe/stack-shared";
 import { ContactChannelsCrud } from "@stackframe/stack-shared/dist/interface/crud/contact-channels";
 import { CurrentUserCrud } from "@stackframe/stack-shared/dist/interface/crud/current-user";
+import { NotificationPreferenceCrud } from "@stackframe/stack-shared/dist/interface/crud/notification-preferences";
 import { TeamApiKeysCrud, UserApiKeysCrud, teamApiKeysCreateOutputSchema, userApiKeysCreateOutputSchema } from "@stackframe/stack-shared/dist/interface/crud/project-api-keys";
 import { ProjectPermissionsCrud } from "@stackframe/stack-shared/dist/interface/crud/project-permissions";
 import { ClientProjectsCrud } from "@stackframe/stack-shared/dist/interface/crud/projects";
@@ -11,7 +12,6 @@ import { TeamMemberProfilesCrud } from "@stackframe/stack-shared/dist/interface/
 import { TeamPermissionsCrud } from "@stackframe/stack-shared/dist/interface/crud/team-permissions";
 import { TeamsCrud } from "@stackframe/stack-shared/dist/interface/crud/teams";
 import { UsersCrud } from "@stackframe/stack-shared/dist/interface/crud/users";
-import { NotificationPreferenceCrud } from "@stackframe/stack-shared/dist/interface/crud/notification-preferences";
 import { InternalSession } from "@stackframe/stack-shared/dist/sessions";
 import { scrambleDuringCompileTime } from "@stackframe/stack-shared/dist/utils/compile-time";
 import { isBrowserLike } from "@stackframe/stack-shared/dist/utils/env";
@@ -244,6 +244,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
             provider: options.providerId,
             redirectUrl: this.urls.oauthCallback,
             errorRedirectUrl: this.urls.error,
+            emailVerificationRedirectUrl: this.urls.emailVerification,
             providerScope: mergeScopeStrings(options.scope || "", (this._oauthScopesOnSignIn[options.providerId] ?? []).join(" ")),
           },
           options.session,
@@ -604,6 +605,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
       id: crud.id,
       displayName: crud.display_name,
       config: {
+        emailVerificationRequired: crud.config.email_verification_required,
         signUpEnabled: crud.config.sign_up_enabled,
         credentialEnabled: crud.config.credential_enabled,
         magicLinkEnabled: crud.config.magic_link_enabled,
@@ -1289,6 +1291,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
   async redirectToSignUp(options?: RedirectToOptions) { return await this._redirectToHandler("signUp", options); }
   async redirectToSignOut(options?: RedirectToOptions) { return await this._redirectToHandler("signOut", options); }
   async redirectToEmailVerification(options?: RedirectToOptions) { return await this._redirectToHandler("emailVerification", options); }
+  async redirectToEmailVerificationRequired(options?: RedirectToOptions) { return await this._redirectToHandler("emailVerificationRequired", options); }
   async redirectToPasswordReset(options?: RedirectToOptions) { return await this._redirectToHandler("passwordReset", options); }
   async redirectToForgotPassword(options?: RedirectToOptions) { return await this._redirectToHandler("forgotPassword", options); }
   async redirectToHome(options?: RedirectToOptions) { return await this._redirectToHandler("home", options); }
@@ -1354,11 +1357,21 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
     }
   }
 
-  async verifyEmail(code: string): Promise<Result<undefined, KnownErrors["VerificationCodeError"]>> {
+  async verifyEmail(code: string, options?: { noRedirect?: boolean }): Promise<Result<undefined, KnownErrors["VerificationCodeError"]>> {
     const result = await this._interface.verifyEmail(code);
-    await this._currentUserCache.refresh([await this._getSession()]);
-    await this._clientContactChannelsCache.refresh([await this._getSession()]);
-    return result;
+    if (result.status === 'ok') {
+      if (result.data.accessToken && result.data.refreshToken) {
+        await this._signInToAccountWithTokens(result.data as any);
+      }
+      await this._currentUserCache.refresh([await this._getSession()]);
+      await this._clientContactChannelsCache.refresh([await this._getSession()]);
+      if (!options?.noRedirect) {
+        await this.redirectToAfterSignIn({ replace: true });
+      }
+      return Result.ok(undefined);
+    } else {
+      return Result.error(result.error);
+    }
   }
 
   async getUser(options: GetUserOptions<HasTokenStore> & { or: 'redirect' }): Promise<ProjectCurrentUser<ProjectId>>;
@@ -1464,6 +1477,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
         provider,
         redirectUrl: this.urls.oauthCallback,
         errorRedirectUrl: this.urls.error,
+        emailVerificationRedirectUrl: this.urls.emailVerification,
         providerScope: this._oauthScopesOnSignIn[provider]?.join(" "),
       }
     );
@@ -1484,14 +1498,28 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
     throw new StackAssertionError("we should have redirected in redirectToMfa()");
   }
 
+  protected async _experimentalEmailVerificationRequired(error: KnownErrors['EmailVerificationRequired'], session: InternalSession): Promise<never> {
+    if (typeof window !== 'undefined') {
+      window.sessionStorage.setItem('stack_email_verification_required_nonce', (error.details as any)?.nonce ?? throwErr("nonce missing"));
+    }
+
+    // Redirect to the email verification page
+    await this.redirectToEmailVerificationRequired();
+
+    throw new StackAssertionError("we should have redirected in redirectToEmailVerificationRequired()");
+  }
+
   /**
    * @deprecated
    * TODO remove
    */
-  protected async _catchMfaRequiredError<T, E>(callback: () => Promise<Result<T, E>>): Promise<Result<T | { accessToken: string, refreshToken: string, newUser: boolean }, E>> {
+  protected async _catchMfaAndEmailVerificationRequiredError<T, E>(callback: () => Promise<Result<T, E>>): Promise<Result<T | { accessToken: string, refreshToken: string, newUser: boolean }, E>> {
     try {
       return await callback();
     } catch (e) {
+      if (KnownErrors.EmailVerificationRequired.isInstance(e)) {
+        return Result.ok(await this._experimentalEmailVerificationRequired(e, await this._getSession()));
+      }
       if (KnownErrors.MultiFactorAuthenticationRequired.isInstance(e)) {
         return Result.ok(await this._experimentalMfa(e, await this._getSession()));
       }
@@ -1508,7 +1536,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
     const session = await this._getSession();
     let result;
     try {
-      result = await this._catchMfaRequiredError(async () => {
+      result = await this._catchMfaAndEmailVerificationRequiredError(async () => {
         return await this._interface.signInWithCredential(options.email, options.password, session);
       });
     } catch (e) {
@@ -1538,12 +1566,22 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
     this._ensurePersistentTokenStore();
     const session = await this._getSession();
     const emailVerificationRedirectUrl = options.verificationCallbackUrl ?? constructRedirectUrl(this.urls.emailVerification, "verificationCallbackUrl");
-    const result = await this._interface.signUpWithCredential(
-      options.email,
-      options.password,
-      emailVerificationRedirectUrl,
-      session
-    );
+    let result;
+    try {
+      result = await this._catchMfaAndEmailVerificationRequiredError(async () => {
+        return await this._interface.signUpWithCredential(
+        options.email,
+        options.password,
+          emailVerificationRedirectUrl,
+          session
+        );
+      });
+    } catch (e) {
+      console.log("?????");
+      // TODO
+      throw e;
+    }
+
     if (result.status === 'ok') {
       await this._signInToAccountWithTokens(result.data);
       if (!options.noRedirect) {
@@ -1580,7 +1618,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
     this._ensurePersistentTokenStore();
     let result;
     try {
-      result = await this._catchMfaRequiredError(async () => {
+      result = await this._catchMfaAndEmailVerificationRequiredError(async () => {
         return await this._interface.signInWithMagicLink(code);
       });
     } catch (e) {
@@ -1712,7 +1750,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
     this._ensurePersistentTokenStore();
     let result;
     try {
-      result = await this._catchMfaRequiredError(async () => {
+      result = await this._catchMfaAndEmailVerificationRequiredError(async () => {
         return await this._interface.signInWithMfa(totp, code);
       });
     } catch (e) {
@@ -1741,7 +1779,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
     const session = await this._getSession();
     let result;
     try {
-      result = await this._catchMfaRequiredError(async () => {
+      result = await this._catchMfaAndEmailVerificationRequiredError(async () => {
         const initiationResult = await this._interface.initiatePasskeyAuthentication({}, session);
         if (initiationResult.status !== "ok") {
           return Result.error(new KnownErrors.PasskeyAuthenticationFailed("Failed to get initiation options for passkey authentication"));
@@ -1784,7 +1822,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
     this._ensurePersistentTokenStore();
     let result;
     try {
-      result = await this._catchMfaRequiredError(async () => {
+      result = await this._catchMfaAndEmailVerificationRequiredError(async () => {
         return await callOAuthCallback(this._interface, this.urls.oauthCallback);
       });
     } catch (e) {

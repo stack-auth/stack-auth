@@ -326,6 +326,22 @@ export default function PageClient() {
           </div>
         </SettingCard>
       </div>
+
+      <SettingCard title="Email verification">
+        <SettingSwitch
+          label="Always require email verification on sign-up"
+          checked={project.config.emailVerificationRequired}
+          onCheckedChange={async (checked) => {
+            await project.update({
+              config: {
+                emailVerificationRequired: checked,
+              },
+            });
+          }}
+          hint="When the user tries to sign in with an unverified email address, they will be prompted to verify their email address before signing in."
+        />
+      </SettingCard>
+
       <SettingCard title="Sign-up">
         <SettingSwitch
           label="Allow new user sign-ups"
@@ -339,8 +355,11 @@ export default function PageClient() {
           }}
           hint="Existing users can still sign in when sign-up is disabled. You can always create new accounts manually via the dashboard."
         />
+      </SettingCard>
+
+      <SettingCard title="Email merging">
         <SettingSelect
-          label="Sign-up mode when logging in with same email on multiple providers"
+          label="When logging in with the same email on multiple providers"
           value={project.config.oauthAccountMergeStrategy}
           onValueChange={async (value) => {
             await project.update({

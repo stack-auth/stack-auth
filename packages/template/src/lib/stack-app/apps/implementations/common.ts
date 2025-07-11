@@ -51,6 +51,7 @@ export function getUrls(partial: Partial<HandlerUrls>): HandlerUrls {
     signOut: `${handler}/sign-out`,
     afterSignOut: home,
     emailVerification: `${handler}/email-verification`,
+    emailVerificationRequired: `${handler}/email-verification-required`,
     passwordReset: `${handler}/password-reset`,
     forgotPassword: `${handler}/forgot-password`,
     oauthCallback: `${handler}/oauth-callback`,

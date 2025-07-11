@@ -1121,6 +1121,19 @@ const MultiFactorAuthenticationRequired = createKnownErrorConstructor(
   (json) => [json.attempt_code] as const,
 );
 
+const EmailVerificationRequired = createKnownErrorConstructor(
+  KnownError,
+  "EMAIL_VERIFICATION_REQUIRED",
+  (nonce: string) => [
+    400,
+    `Email verification is required for this user.`,
+    {
+      nonce,
+    },
+  ] as const,
+  (json) => [json.nonce] as const,
+);
+
 const InvalidTotpCode = createKnownErrorConstructor(
   KnownError,
   "INVALID_TOTP_CODE",
@@ -1472,6 +1485,7 @@ export const KnownErrors = {
   OuterOAuthTimeout,
   OAuthProviderNotFoundOrNotEnabled,
   MultiFactorAuthenticationRequired,
+  EmailVerificationRequired,
   InvalidTotpCode,
   UserAuthenticationRequired,
   TeamMembershipAlreadyExists,

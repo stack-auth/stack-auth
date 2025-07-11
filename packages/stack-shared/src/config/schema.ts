@@ -58,6 +58,7 @@ const branchApiKeysSchema = yupObject({
 
 const branchAuthSchema = yupObject({
   allowSignUp: yupBoolean().optional(),
+  emailVerificationRequired: yupBoolean().optional(),
   password: yupObject({
     allowSignIn: yupBoolean().optional(),
   }).optional(),
@@ -197,6 +198,7 @@ export const organizationConfigDefaults = {
 
   auth: {
     allowSignUp: true,
+    emailVerificationRequired: false,
     password: {
       allowSignIn: false,
     },
