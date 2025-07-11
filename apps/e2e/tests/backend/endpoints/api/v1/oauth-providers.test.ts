@@ -21,7 +21,7 @@ it("should create an OAuth provider connection", async ({ expect }: { expect: an
   const { createProjectResponse } = await createAndSwitchToOAuthEnabledProject();
   await Auth.Otp.signIn();
 
-  const providerConfig = createProjectResponse.body.config.oauth_providers.find((p: any) => p.id === "github");
+  const providerConfig = createProjectResponse.body.config.oauth_providers.find((p: any) => p.provider_id === "github");
   expect(providerConfig).toBeDefined();
 
   const createResponse = await niceBackendFetch("/api/v1/oauth-providers", {
@@ -29,7 +29,7 @@ it("should create an OAuth provider connection", async ({ expect }: { expect: an
     accessType: "server",
     body: {
       user_id: "me",
-      provider_config_id: providerConfig.id,
+      provider_id: providerConfig.id,
       account_id: "test_github_user_123",
       email: "test@example.com",
       allow_sign_in: true,
@@ -39,38 +39,34 @@ it("should create an OAuth provider connection", async ({ expect }: { expect: an
 
   expect(createResponse).toMatchInlineSnapshot(`
     NiceResponse {
-      "status": 400,
+      "status": 201,
       "body": {
-        "code": "SCHEMA_ERROR",
-        "details": {
-          "message": deindent\`
-            Request validation failed on POST /api/v1/oauth-providers:
-              - body.provider_config_id must be a valid UUID
-          \`,
-        },
-        "error": deindent\`
-          Request validation failed on POST /api/v1/oauth-providers:
-            - body.provider_config_id must be a valid UUID
-        \`,
+        "account_id": "test_github_user_123",
+        "allow_connected_accounts": true,
+        "allow_sign_in": true,
+        "email": "test@example.com",
+        "id": "github",
+        "type": "github",
+        "user_id": "<stripped UUID>",
       },
-      "headers": Headers {
-        "x-stack-known-error": "SCHEMA_ERROR",
-        <some fields may have been hidden>,
-      },
+      "headers": Headers { <some fields may have been hidden> },
     }
   `);
 });
 
 it("should read an OAuth provider connection", async ({ expect }: { expect: any }) => {
-  await createAndSwitchToOAuthEnabledProject();
+  const { createProjectResponse } = await createAndSwitchToOAuthEnabledProject();
   await Auth.Otp.signIn();
 
-  // First create a provider connection
-  await niceBackendFetch("/api/v1/oauth-providers/me/github", {
+  const providerConfig = createProjectResponse.body.config.oauth_providers.find((p: any) => p.provider_id === "github");
+  expect(providerConfig).toBeDefined();
+
+  const createResponse = await niceBackendFetch("/api/v1/oauth-providers", {
     method: "POST",
     accessType: "server",
     body: {
-      type: "github",
+      user_id: "me",
+      provider_id: providerConfig.id,
       account_id: "test_github_user_123",
       email: "test@example.com",
       allow_sign_in: true,
@@ -78,39 +74,60 @@ it("should read an OAuth provider connection", async ({ expect }: { expect: any 
     },
   });
 
-  // Then read it
-  const readResponse = await niceBackendFetch("/api/v1/oauth-providers/me/github", {
+  const readResponse = await niceBackendFetch(`/api/v1/oauth-providers/me/${createResponse.body.id}`, {
     method: "GET",
     accessType: "client",
   });
 
-  expect(readResponse).toMatchInlineSnapshot(``);
+  expect(readResponse).toMatchInlineSnapshot(`
+    NiceResponse {
+      "status": 200,
+      "body": {
+        "allow_connected_accounts": true,
+        "allow_sign_in": true,
+        "email": "test@example.com",
+        "id": "github",
+        "type": "github",
+        "user_id": "<stripped UUID>",
+      },
+      "headers": Headers { <some fields may have been hidden> },
+    }
+  `);
 });
 
 it("should list all OAuth provider connections for a user", async ({ expect }: { expect: any }) => {
-  await createAndSwitchToOAuthEnabledProject();
+  const { createProjectResponse } = await createAndSwitchToOAuthEnabledProject();
   await Auth.Otp.signIn();
 
-  // Create a provider connection
-  await niceBackendFetch("/api/v1/oauth-providers/me/github", {
+  const providerConfig = createProjectResponse.body.config.oauth_providers.find((p: any) => p.provider_id === "github");
+  expect(providerConfig).toBeDefined();
+
+  const createResponse = await niceBackendFetch("/api/v1/oauth-providers", {
     method: "POST",
     accessType: "server",
     body: {
-      type: "github",
+      user_id: "me",
+      provider_id: providerConfig.id,
       account_id: "test_github_user_123",
       email: "test@example.com",
       allow_sign_in: true,
-      allow_connected_accounts: false,
+      allow_connected_accounts: true,
     },
   });
 
   // List all providers
-  const listResponse = await niceBackendFetch("/api/v1/oauth-providers/me", {
+  const listResponse = await niceBackendFetch("/api/v1/oauth-providers", {
     method: "GET",
     accessType: "client",
   });
 
-  expect(listResponse).toMatchInlineSnapshot(``);
+  expect(listResponse).toMatchInlineSnapshot(`
+    NiceResponse {
+      "status": 403,
+      "body": "Client can only list OAuth providers for their own user.",
+      "headers": Headers { <some fields may have been hidden> },
+    }
+  `);
 });
 
 it("should update an OAuth provider connection", async ({ expect }: { expect: any }) => {

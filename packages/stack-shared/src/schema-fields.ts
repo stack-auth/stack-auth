@@ -476,13 +476,12 @@ export const contactChannelIsVerifiedSchema = yupBoolean().meta({ openapiField: 
 export const contactChannelIsPrimarySchema = yupBoolean().meta({ openapiField: { description: 'Whether the contact channel is the primary contact channel. If this is set to `true`, it will be used for authentication and notifications by default.', exampleValue: true } });
 
 // OAuth providers
-export const oauthProviderIdSchema = yupString().uuid().meta({ openapiField: { description: _idDescription('OAuth provider'), exampleValue: 'b3d396b8-c574-4c80-97b3-50031675ceb2' } });
+export const oauthProviderIdSchema = yupString().meta({ openapiField: { description: _idDescription('OAuth provider'), exampleValue: 'b3d396b8-c574-4c80-97b3-50031675ceb2' } });
 export const oauthProviderEmailSchema = emailSchema.meta({ openapiField: { description: 'Email of the OAuth provider. This is used to display and identify the OAuth provider in the UI.', exampleValue: 'test@gmail.com' } });
 export const oauthProviderTypeSchema = yupString().oneOf(allProviders).meta({ openapiField: { description: `OAuth provider type, one of ${allProviders.map(x => `\`${x}\``).join(', ')}`, exampleValue: 'google' } });
 export const oauthProviderAllowSignInSchema = yupBoolean().meta({ openapiField: { description: 'Whether the user can use this OAuth provider to sign in. Only one OAuth provider per type can have this set to `true`.', exampleValue: true } });
 export const oauthProviderAllowConnectedAccountsSchema = yupBoolean().meta({ openapiField: { description: 'Whether the user can use this OAuth provider as connected account. Multiple OAuth providers per type can have this set to `true`.', exampleValue: true } });
 export const oauthProviderAccountIdSchema = yupString().meta({ openapiField: { description: 'Account ID of the OAuth provider. This uniquely identifies the account on the provider side.', exampleValue: 'google-account-id-12345' } });
-export const oauthProviderConfigIdSchema = yupString().uuid().meta({ openapiField: { description: 'The ID of the OAuth provider config. Note that this is not the same as the OAuth provider ID.', exampleValue: 'b3d396b8-c574-4c80-97b3-50031675ceb2' } });
 
 // Headers
 export const basicAuthorizationHeaderSchema = yupString().test('is-basic-authorization-header', 'Authorization header must be in the format "Basic <base64>"', (value) => {

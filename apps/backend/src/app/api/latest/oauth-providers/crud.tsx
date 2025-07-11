@@ -401,7 +401,7 @@ export const oauthProviderCrudHandlers = createLazyProxy(() =>createCrudHandlers
 
     let providerConfig: (typeof config.auth.oauth.providers)[number] & { id: string } | undefined;
     for (const [providerConfigId, provider] of Object.entries(config.auth.oauth.providers)) {
-      if (providerConfigId === data.provider_config_id) {
+      if (providerConfigId === data.provider_id) {
         providerConfig = {
           id: providerConfigId,
           ...provider,
@@ -413,7 +413,7 @@ export const oauthProviderCrudHandlers = createLazyProxy(() =>createCrudHandlers
     await ensureUserExists(prismaClient, { tenancyId: auth.tenancy.id, userId: data.user_id });
 
     if (!providerConfig) {
-      throw new StatusError(StatusError.BadRequest, `Provider with config ID ${data.provider_config_id} is not configured. Please check your Stack Auth dashboard OAuth configuration.`);
+      throw new StatusError(StatusError.BadRequest, `Provider with config ID ${data.provider_id} is not configured. Please check your Stack Auth dashboard OAuth configuration.`);
     }
 
     await retryTransaction(async (tx) => {

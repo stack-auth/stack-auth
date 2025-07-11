@@ -1,5 +1,5 @@
 import { CrudTypeOf, createCrud } from "../../crud";
-import { oauthProviderAccountIdSchema, oauthProviderAllowConnectedAccountsSchema, oauthProviderAllowSignInSchema, oauthProviderConfigIdSchema, oauthProviderEmailSchema, oauthProviderIdSchema, oauthProviderTypeSchema, userIdOrMeSchema, yupMixed, yupObject } from "../../schema-fields";
+import { oauthProviderAccountIdSchema, oauthProviderAllowConnectedAccountsSchema, oauthProviderAllowSignInSchema, oauthProviderEmailSchema, oauthProviderIdSchema, oauthProviderTypeSchema, userIdOrMeSchema, yupMixed, yupObject } from "../../schema-fields";
 
 export const oauthProviderClientReadSchema = yupObject({
   user_id: userIdOrMeSchema.defined(),
@@ -26,7 +26,7 @@ export const oauthProviderCrudServerUpdateSchema = oauthProviderCrudClientUpdate
 
 export const oauthProviderCrudServerCreateSchema = yupObject({
   user_id: userIdOrMeSchema.defined(),
-  provider_config_id: oauthProviderConfigIdSchema.defined(),
+  provider_id: oauthProviderIdSchema.defined(),
   email: oauthProviderEmailSchema.optional(),
   allow_sign_in: oauthProviderAllowSignInSchema.defined(),
   allow_connected_accounts: oauthProviderAllowConnectedAccountsSchema.defined(),
