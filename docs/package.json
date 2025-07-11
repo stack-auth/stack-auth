@@ -43,6 +43,7 @@
     "minimatch": "^10.0.1",
     "next": "15.3.2",
     "next-themes": "^0.4.6",
+    "posthog-js": "^1.235.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "react-remove-scroll": "^2.7.0",
