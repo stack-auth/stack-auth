@@ -807,6 +807,27 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
     return this._serverUserFromCrud(crud);
   }
 
+  async createOAuthProvider(options: {
+    userId: string,
+    providerId: string,
+    accountId: string,
+    email: string,
+    allowSignIn: boolean,
+    allowConnectedAccounts: boolean,
+  }): Promise<{ id: string, type: string, userId: string, accountId: string, email: string, allowSignIn: boolean, allowConnectedAccounts: boolean }> {
+    const crud = await this._interface.createOAuthProvider({
+      user_id: options.userId,
+      provider_id: options.providerId,
+      account_id: options.accountId,
+      email: options.email,
+      allow_sign_in: options.allowSignIn,
+      allow_connected_accounts: options.allowConnectedAccounts,
+    }, null, "server");
+
+    await this._serverOAuthProvidersCache.refresh([options.userId]);
+    return this._serverOAuthProviderFromCrud(crud);
+  }
+
   async getUser(options: GetUserOptions<HasTokenStore> & { or: 'redirect' }): Promise<ProjectCurrentServerUser<ProjectId>>;
   async getUser(options: GetUserOptions<HasTokenStore> & { or: 'throw' }): Promise<ProjectCurrentServerUser<ProjectId>>;
   async getUser(options: GetUserOptions<HasTokenStore> & { or: 'anonymous' }): Promise<ProjectCurrentServerUser<ProjectId>>;

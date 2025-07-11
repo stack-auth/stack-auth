@@ -19,6 +19,15 @@ export type StackServerApp<HasTokenStore extends boolean = boolean, ProjectId ex
 
     createUser(options: ServerUserCreateOptions): Promise<ServerUser>,
 
+    createOAuthProvider(options: {
+      userId: string,
+      providerId: string,
+      accountId: string,
+      email: string,
+      allowSignIn: boolean,
+      allowConnectedAccounts: boolean,
+    }): Promise<{ id: string, type: string, userId: string, accountId: string, email: string, allowSignIn: boolean, allowConnectedAccounts: boolean }>,
+
     // IF_PLATFORM react-like
     useUser(options: GetUserOptions<HasTokenStore> & { or: 'redirect' }): ProjectCurrentServerUser<ProjectId>,
     useUser(options: GetUserOptions<HasTokenStore> & { or: 'throw' }): ProjectCurrentServerUser<ProjectId>,

@@ -6,7 +6,7 @@ import { SettingCard } from "@/components/settings";
 import { DeleteUserDialog, ImpersonateUserDialog } from "@/components/user-dialogs";
 import { useThemeWatcher } from '@/lib/theme';
 import MonacoEditor from '@monaco-editor/react';
-import { ServerContactChannel, ServerUser } from "@stackframe/stack";
+import { ServerContactChannel, ServerOAuthProvider, ServerUser } from "@stackframe/stack";
 import { useAsyncCallback } from "@stackframe/stack-shared/dist/hooks/use-async-callback";
 import { fromNow } from "@stackframe/stack-shared/dist/utils/dates";
 import { throwErr } from '@stackframe/stack-shared/dist/utils/errors';
@@ -828,6 +828,213 @@ function ContactChannelsSection({ user }: ContactChannelsSectionProps) {
   );
 }
 
+type OAuthProvidersSectionProps = {
+  user: ServerUser,
+};
+
+type AddOAuthProviderDialogProps = {
+  user: ServerUser,
+  open: boolean,
+  onOpenChange: (open: boolean) => void,
+};
+
+function AddOAuthProviderDialog({ user, open, onOpenChange }: AddOAuthProviderDialogProps) {
+  const stackAdminApp = useAdminApp();
+  const project = stackAdminApp.useProject();
+
+  // Get available OAuth providers from project config
+  const availableProviders = project.config.oauthProviders;
+
+  const formSchema = yup.object({
+    providerId: yup.string()
+      .defined("Provider is required")
+      .label("OAuth Provider")
+      .meta({
+        stackFormFieldRender: (props: { control: any, name: string, label: string, disabled: boolean }) => (
+          <SelectField
+            control={props.control}
+            name={props.name}
+            label={props.label}
+            disabled={props.disabled}
+            options={availableProviders.map(provider => ({
+              value: provider.id,
+              label: provider.id.charAt(0).toUpperCase() + provider.id.slice(1)
+            }))}
+            placeholder="Select OAuth provider"
+          />
+        ),
+      }),
+    email: yup.string()
+      .email("Please enter a valid e-mail address")
+      .optional()
+      .label("Email")
+      .meta({
+        stackFormFieldPlaceholder: "Enter email address (optional)",
+      }),
+    accountId: yup.string()
+      .defined("Account ID is required")
+      .label("Account ID")
+      .meta({
+        stackFormFieldPlaceholder: "Enter OAuth account ID",
+        description: "The unique account identifier from the OAuth provider"
+      }),
+    allowSignIn: yup.boolean()
+      .default(true)
+      .label("Allow sign-in")
+      .meta({
+        description: "Allow this OAuth provider to be used for authentication"
+      }),
+    allowConnectedAccounts: yup.boolean()
+      .default(true)
+      .label("Allow connected accounts")
+      .meta({
+        description: "Allow this OAuth provider to be used for connected account features"
+      }),
+  });
+
+  return (
+    <SmartFormDialog
+      title="Add OAuth Provider"
+      description="Connect a new OAuth provider to this user account."
+      open={open}
+      onOpenChange={onOpenChange}
+      formSchema={formSchema}
+      onSubmit={async (values) => {
+        if (!values.accountId.trim()) return;
+
+        // Use the server app's createOAuthProvider method
+        await stackAdminApp.createOAuthProvider({
+          userId: user.id,
+          providerId: values.providerId,
+          accountId: values.accountId.trim(),
+          email: values.email?.trim() || "",
+          allowSignIn: values.allowSignIn,
+          allowConnectedAccounts: values.allowConnectedAccounts,
+        });
+      }}
+    />
+  );
+}
+
+function OAuthProvidersSection({ user }: OAuthProvidersSectionProps) {
+  const oauthProviders = user.useOAuthProviders();
+  const [isAddProviderDialogOpen, setIsAddProviderDialogOpen] = useState(false);
+
+  const toggleAllowSignIn = async (provider: ServerOAuthProvider) => {
+    await provider.update({ allowSignIn: !provider.allowSignIn });
+  };
+
+  const toggleAllowConnectedAccounts = async (provider: ServerOAuthProvider) => {
+    await provider.update({ allowConnectedAccounts: !provider.allowConnectedAccounts });
+  };
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="text-lg font-semibold">OAuth Providers</h2>
+        </div>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => setIsAddProviderDialogOpen(true)}
+        >
+          Add Provider
+        </Button>
+      </div>
+
+      <AddOAuthProviderDialog
+        user={user}
+        open={isAddProviderDialogOpen}
+        onOpenChange={setIsAddProviderDialogOpen}
+      />
+
+      {oauthProviders.length === 0 ? (
+        <div className="flex flex-col items-center gap-2 p-4 border rounded-md bg-muted/10">
+          <p className='text-sm text-gray-500 text-center'>
+            No OAuth providers connected
+          </p>
+        </div>
+      ) : (
+        <div className='border rounded-md'>
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Provider</TableHead>
+                <TableHead>Email</TableHead>
+                <TableHead>Account ID</TableHead>
+                <TableHead className="text-center">Allow Sign-in</TableHead>
+                <TableHead className="text-center">Allow Connected Accounts</TableHead>
+                <TableHead className="w-[80px]"></TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {oauthProviders.map((provider) => (
+                <TableRow key={provider.id + '-' + provider.accountId}>
+                  <TableCell>
+                    <div className='flex items-center gap-2'>
+                      <div className="capitalize font-medium">
+                        {provider.type}
+                      </div>
+                    </div>
+                  </TableCell>
+                  <TableCell>
+                    <div className='flex flex-col md:flex-row gap-2 md:gap-4'>
+                      {provider.email}
+                    </div>
+                  </TableCell>
+                  <TableCell>
+                    <div className="font-mono text-xs">
+                      {provider.accountId}
+                    </div>
+                  </TableCell>
+                  <TableCell className="text-center">
+                    {provider.allowSignIn ?
+                      <Check className="mx-auto h-4 w-4 text-green-500" /> :
+                      <X className="mx-auto h-4 w-4 text-muted-foreground" />
+                    }
+                  </TableCell>
+                  <TableCell className="text-center">
+                    {provider.allowConnectedAccounts ?
+                      <Check className="mx-auto h-4 w-4 text-green-500" /> :
+                      <X className="mx-auto h-4 w-4 text-muted-foreground" />
+                    }
+                  </TableCell>
+                  <TableCell align="right">
+                    <ActionCell
+                      items={[
+                        {
+                          item: provider.allowSignIn ? "Disable sign-in" : "Enable sign-in",
+                          onClick: async () => {
+                            await toggleAllowSignIn(provider);
+                          },
+                        },
+                        {
+                          item: provider.allowConnectedAccounts ? "Disable connected accounts" : "Enable connected accounts",
+                          onClick: async () => {
+                            await toggleAllowConnectedAccounts(provider);
+                          },
+                        },
+                        {
+                          item: "Delete",
+                          danger: true,
+                          onClick: async () => {
+                            await provider.delete();
+                          },
+                        }
+                      ]}
+                    />
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </div>
+      )}
+    </div>
+  );
+}
+
 type MetadataSectionProps = {
   user: ServerUser,
 };
@@ -877,6 +1084,8 @@ function UserPage({ user }: { user: ServerUser }) {
         <UserDetails user={user} />
         <Separator />
         <ContactChannelsSection user={user} />
+        <Separator />
+        <OAuthProvidersSection user={user} />
         <MetadataSection user={user} />
       </div>
     </PageLayout>
