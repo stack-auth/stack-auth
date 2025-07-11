@@ -1,7 +1,6 @@
 import { ensureUserExists } from "@/lib/request-checks";
 import { prismaClient, retryTransaction } from "@/prisma-client";
 import { createCrudHandlers } from "@/route-handlers/crud-handler";
-import { AuthMethod } from "@prisma/client";
 import { KnownErrors } from "@stackframe/stack-shared";
 import { oauthProviderCrud } from "@stackframe/stack-shared/dist/interface/crud/oauth-providers";
 import { userIdOrMeSchema, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
@@ -396,10 +395,9 @@ export const oauthProviderCrudHandlers = createLazyProxy(() =>createCrudHandlers
         },
       });
 
-      // 2. Create AuthMethod and OAuthAuthMethod if needed
-      let authMethod: AuthMethod | undefined;
+      // 2. Create AuthMethod if needed
       if (data.allow_sign_in) {
-        authMethod = await tx.authMethod.create({
+        await tx.authMethod.create({
           data: {
             oauthAuthMethod: {
               create: {
