@@ -880,13 +880,13 @@ function AddOAuthProviderDialog({ user, open, onOpenChange }: AddOAuthProviderDi
       }),
     allowSignIn: yup.boolean()
       .default(true)
-      .label("Allow sign-in")
+      .label("Used for sign-in")
       .meta({
         description: "Allow this OAuth provider to be used for authentication"
       }),
     allowConnectedAccounts: yup.boolean()
       .default(true)
-      .label("Allow connected accounts")
+      .label("Used for connected accounts")
       .meta({
         description: "Allow this OAuth provider to be used for connected account features"
       }),
@@ -963,8 +963,8 @@ function OAuthProvidersSection({ user }: OAuthProvidersSectionProps) {
                 <TableHead>Provider</TableHead>
                 <TableHead>Email</TableHead>
                 <TableHead>Account ID</TableHead>
-                <TableHead className="text-center">Allow Sign-in</TableHead>
-                <TableHead className="text-center">Allow Connected Accounts</TableHead>
+                <TableHead className="text-center">Used for sign-in</TableHead>
+                <TableHead className="text-center">Used for connected accounts</TableHead>
                 <TableHead className="w-[80px]"></TableHead>
               </TableRow>
             </TableHeader>
