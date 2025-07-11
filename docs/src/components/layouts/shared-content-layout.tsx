@@ -1,3 +1,5 @@
+'use client';
+
 import { type HTMLAttributes, type ReactNode } from 'react';
 import { cn } from '../../lib/cn';
 import { useSidebar } from './sidebar-context';

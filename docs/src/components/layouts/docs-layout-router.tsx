@@ -48,12 +48,18 @@ type DynamicDocsLayoutProps = {
 
 // Helper function to check if we're in SDK section
 function isInSdkSection(pathname: string): boolean {
-  return pathname.includes('/sdk');
+  // Match the actual SDK section: /docs/platform/sdk or /docs/platform/sdk/...
+  // This excludes docs pages that might mention SDK in other contexts
+  const match = pathname.match(/^\/docs\/[^\/]+\/sdk($|\/)/);
+  return Boolean(match);
 }
 
 // Helper function to check if we're in Components section
 function isInComponentsSection(pathname: string): boolean {
-  return pathname.includes('/components');
+  // Match the actual Components section: /docs/platform/components or /docs/platform/components/...
+  // This excludes docs pages like /docs/platform/getting-started/components
+  const match = pathname.match(/^\/docs\/[^\/]+\/components($|\/)/);
+  return Boolean(match);
 }
 
 // Helper function to find and extract a specific section from the page tree
@@ -140,10 +146,32 @@ export function DynamicDocsLayout({ children, ...props }: DynamicDocsLayoutProps
   }, [pathname, props.tree]);
 
   const platformOptions: Option[] = useMemo(() => {
-    return PLATFORMS.map(platform => ({
-      url: getSmartRedirectUrl(pathname, platform),
-      title: getPlatformDisplayName(platform),
-    }));
+    // Extract current platform from pathname
+    const currentPlatform = getCurrentPlatform(pathname);
+
+    return PLATFORMS.map(platform => {
+      let url: string;
+
+      if (isInSdkSection(pathname)) {
+        // For SDK section: /docs/platform/sdk
+        url = `/docs/${platform}/sdk`;
+      } else if (isInComponentsSection(pathname)) {
+        // For Components section: /docs/platform/components
+        url = `/docs/${platform}/components`;
+      } else {
+        // For normal docs: use smart redirect
+        url = getSmartRedirectUrl(pathname, platform);
+      }
+
+      return {
+        url,
+        title: getPlatformDisplayName(platform),
+        // Add urls set for more precise matching if this is the current platform
+        ...(platform === currentPlatform && {
+          urls: new Set([pathname])
+        })
+      };
+    });
   }, [pathname]);
 
   // Auto-redirect to current platform if needed
