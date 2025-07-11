@@ -350,6 +350,7 @@ export const renderedOrganizationConfigToProjectCrud = (renderedConfig: Organiza
         return undefined;
       }
       return filterUndefined({
+        provider_id: oauthProviderId,
         id: oauthProvider.type,
         type: oauthProvider.isShared ? 'shared' : 'standard',
         client_id: oauthProvider.clientId,

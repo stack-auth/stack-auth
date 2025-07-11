@@ -61,6 +61,7 @@ export const oauthProviderCrudHandlers = createLazyProxy(() =>createCrudHandlers
     }
 
     return {
+      user_id: params.user_id,
       id: providerConfig.id,
       email: oauthAccount.email || undefined,
       type: providerConfig.type as any, // Type assertion to match schema
@@ -114,6 +115,7 @@ export const oauthProviderCrudHandlers = createLazyProxy(() =>createCrudHandlers
         }
 
         return {
+          user_id: oauthAccount.projectUserId,
           id: providerConfig.id,
           email: oauthAccount.email || undefined,
           type: providerConfig.type as any, // Type assertion to match schema
@@ -316,6 +318,7 @@ export const oauthProviderCrudHandlers = createLazyProxy(() =>createCrudHandlers
       }
 
       return {
+        user_id: params.user_id,
         id: providerConfig.id,
         email: updatedOAuthAccount.email || undefined,
         type: providerConfig.type as any,
