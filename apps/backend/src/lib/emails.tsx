@@ -108,7 +108,7 @@ async function _sendEmailWithoutRetries(options: SendEmailOptions): Promise<Resu
             });
           }
           const json = await emailableResponse.json();
-          if (json.state !== 'deliverable') {
+          if (json.state === 'undeliverable') {
             console.log('email not deliverable', to, json);
             return null;
           }
