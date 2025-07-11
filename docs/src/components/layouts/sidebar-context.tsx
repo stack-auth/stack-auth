@@ -31,6 +31,11 @@ type SidebarContextType = {
   isFullPage: boolean,
   setIsFullPage: (fullPage: boolean) => void,
 
+  // Main sidebar collapse state (for docs and API sidebars)
+  isMainSidebarCollapsed: boolean,
+  setMainSidebarCollapsed: (collapsed: boolean) => void,
+  toggleMainSidebar: () => void,
+
   // Unified controls
   openSidebar: (type: SidebarType) => void,
   closeSidebar: () => void,
@@ -47,11 +52,13 @@ export function SidebarProvider({ children }: { children: ReactNode }) {
   const [activeSidebar, setActiveSidebar] = useState<SidebarType>(null);
   const [isChatExpanded, setIsChatExpanded] = useState(false);
   const [isFullPage, setIsFullPage] = useState(false);
+  const [isMainSidebarCollapsed, setIsMainSidebarCollapsed] = useState(false);
 
   // Load state from localStorage on mount
   useEffect(() => {
     const savedChat = localStorage.getItem('ai-chat-open');
     const savedExpanded = localStorage.getItem('ai-chat-expanded');
+    const savedMainSidebarCollapsed = localStorage.getItem('main-sidebar-collapsed');
 
     if (savedChat === 'true') {
       setActiveSidebar('chat');
@@ -59,12 +66,15 @@ export function SidebarProvider({ children }: { children: ReactNode }) {
     if (savedExpanded === 'true') {
       setIsChatExpanded(true);
     }
+    if (savedMainSidebarCollapsed === 'true') {
+      setIsMainSidebarCollapsed(true);
+    }
   }, []);
 
   // Manage body classes based on sidebar state
   useEffect(() => {
     // Remove all classes first
-    document.body.classList.remove('chat-open', 'toc-open', 'auth-open');
+    document.body.classList.remove('chat-open', 'toc-open', 'auth-open', 'main-sidebar-collapsed');
 
     // Add appropriate class based on active sidebar
     if (activeSidebar === 'chat') {
@@ -75,10 +85,15 @@ export function SidebarProvider({ children }: { children: ReactNode }) {
       document.body.classList.add('auth-open');
     }
 
+    // Add main sidebar collapsed class
+    if (isMainSidebarCollapsed) {
+      document.body.classList.add('main-sidebar-collapsed');
+    }
+
     return () => {
-      document.body.classList.remove('chat-open', 'toc-open', 'auth-open');
+      document.body.classList.remove('chat-open', 'toc-open', 'auth-open', 'main-sidebar-collapsed');
     };
-  }, [activeSidebar]);
+  }, [activeSidebar, isMainSidebarCollapsed]);
 
   // Derived state
   const isTocOpen = activeSidebar === 'toc';
@@ -114,6 +129,16 @@ export function SidebarProvider({ children }: { children: ReactNode }) {
     localStorage.setItem('ai-chat-expanded', expanded.toString());
   };
 
+  // Main sidebar controls
+  const setMainSidebarCollapsed = (collapsed: boolean) => {
+    setIsMainSidebarCollapsed(collapsed);
+    localStorage.setItem('main-sidebar-collapsed', collapsed.toString());
+  };
+
+  const toggleMainSidebar = () => {
+    setMainSidebarCollapsed(!isMainSidebarCollapsed);
+  };
+
   // Unified controls
   const openSidebar = (type: SidebarType) => {
     setActiveSidebar(type);
@@ -147,6 +172,9 @@ export function SidebarProvider({ children }: { children: ReactNode }) {
       toggleAuth,
       isFullPage,
       setIsFullPage,
+      isMainSidebarCollapsed,
+      setMainSidebarCollapsed,
+      toggleMainSidebar,
       openSidebar,
       closeSidebar,
     }}>
