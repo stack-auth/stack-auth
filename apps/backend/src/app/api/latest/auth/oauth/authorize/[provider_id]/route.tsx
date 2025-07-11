@@ -85,7 +85,7 @@ export const GET = createSmartRouteHandler({
         throw new StatusError(StatusError.Forbidden, "The access token is not valid for this branch");
       }
 
-      if (query.provider_scope && provider.type === "shared") {
+      if (query.provider_scope && provider.is_shared) {
         throw new KnownErrors.OAuthExtraScopeNotAvailableWithSharedOAuthKeys();
       }
       projectUserId = userId;

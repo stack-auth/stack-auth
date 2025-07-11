@@ -48,7 +48,7 @@ export const POST = createSmartRouteHandler({
     if (!getEnvVariable("STACK_FREESTYLE_API_KEY")) {
       throw new StatusError(500, "STACK_FREESTYLE_API_KEY is not set");
     }
-    if (auth.tenancy.config.email_config.type === "shared") {
+    if (auth.tenancy.config.email_config.is_shared) {
       throw new StatusError(400, "Cannot send custom emails when using shared email config");
     }
     const emailConfig = await getEmailConfig(auth.tenancy);

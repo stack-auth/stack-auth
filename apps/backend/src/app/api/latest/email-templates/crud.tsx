@@ -48,7 +48,7 @@ export const emailTemplateCrudHandlers = createLazyProxy(() => createCrudHandler
     }
   },
   async onUpdate({ auth, data, params }) {
-    if (auth.tenancy.config.email_config.type === 'shared') {
+    if (auth.tenancy.config.email_config.is_shared) {
       throw new StatusError(StatusError.BadRequest, 'Cannot update email templates in shared email config. Set up a custom email config to update email templates.');
     }
 

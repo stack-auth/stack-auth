@@ -25,7 +25,7 @@ export const connectedAccountAccessTokenCrudHandlers = createLazyProxy(() =>crea
       throw new KnownErrors.OAuthProviderNotFoundOrNotEnabled();
     }
 
-    if (provider.type === 'shared') {
+    if (provider.is_shared) {
       throw new KnownErrors.OAuthAccessTokenNotAvailableWithSharedOAuthKeys();
     }
 
