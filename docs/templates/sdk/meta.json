@@ -1,0 +1,24 @@
+{
+  "title": "SDK Reference",
+  "description": "SDK reference documentation",
+  "root": true,
+  "pages": [
+    "index",
+    "---Objects---",
+    "objects/stack-app",
+    "objects/stack-app-test",
+    "---Types---",
+    "types/user",
+    "types/team",
+    "types/team-user",
+    "types/team-permission",
+    "types/team-profile",
+    "types/contact-channel",
+    "types/api-key",
+    "types/project",
+    "types/connected-account",
+    "---Hooks---",
+    "hooks/use-stack-app",
+    "hooks/use-user"
+  ]
+} 
