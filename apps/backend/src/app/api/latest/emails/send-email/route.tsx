@@ -1,4 +1,4 @@
-import { getThemeComponent, renderEmailWithTheme } from "@/lib/email-themes";
+import { renderEmailWithTheme } from "@/lib/email-themes";
 import { getEmailConfig, sendEmail } from "@/lib/emails";
 import { getNotificationCategoryByName, hasNotificationEnabled } from "@/lib/notification-categories";
 import { prismaClient } from "@/prisma-client";
@@ -107,7 +107,7 @@ export const POST = createSmartRouteHandler({
         unsubscribeLink = unsubUrl.toString();
       }
 
-      const themeComponent = await getThemeComponent(auth.tenancy.config.email_theme, auth.tenancy.id);
+      const themeComponent = auth.tenancy.completeConfig.emails.themeList[auth.tenancy.config.email_theme].tsxSource;
       const renderedEmail = await renderEmailWithTheme(
         body.html,
         themeComponent,

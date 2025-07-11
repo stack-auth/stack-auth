@@ -1,11 +1,11 @@
+import { overrideEnvironmentConfigOverride } from "@/lib/config";
+import { renderEmailWithTheme } from "@/lib/email-themes";
+import { prismaClient } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { openai } from "@ai-sdk/openai";
 import { adaptSchema, yupArray, yupMixed, yupNumber, yupObject, yupString, yupUnion } from "@stackframe/stack-shared/dist/schema-fields";
-import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
 import { StatusError } from "@stackframe/stack-shared/dist/utils/errors";
 import { convertToCoreMessages, generateText, tool } from "ai";
-import { FreestyleSandboxes } from "freestyle-sandboxes";
-import { prismaClient } from "@/prisma-client";
 import { InferType } from "yup";
 import { z } from "zod";
 
@@ -38,11 +38,12 @@ export const POST = createSmartRouteHandler({
       tenancy: adaptSchema,
     }),
     body: yupObject({
-      repo_id: yupString().defined(),
+      theme_id: yupString().defined(),
+      current_email_theme: yupString().defined(),
       messages: yupArray(yupObject({
         role: yupString().oneOf(["user", "assistant"]).defined(),
         content: yupString().defined(),
-      })).defined(),
+      })).defined().min(1),
     }),
   }),
   response: yupObject({
@@ -53,32 +54,42 @@ export const POST = createSmartRouteHandler({
     }).defined(),
   }),
   async handler({ body, auth: { tenancy } }) {
-    const apiKey = getEnvVariable("STACK_FREESTYLE_API_KEY");
-    if (!apiKey) {
-      throw new StatusError(500, "STACK_FREESTYLE_API_KEY is not set");
+    const themeList = tenancy.completeConfig.emails.themeList;
+    if (!Object.keys(themeList).includes(body.theme_id)) {
+      throw new StatusError(400, "No theme found with given id");
     }
-    const userContent = body.messages.at(-1);
-    if (!userContent) {
-      throw new StatusError(400, "No user content");
-    }
-
-    const freestyle = new FreestyleSandboxes({ apiKey });
-    const { fs } = await freestyle.requestDevServer({ repoId: body.repo_id });
-    const currentEmailTheme = await fs.readFile("src/email-theme.tsx");
+    const theme = themeList[body.theme_id];
     const result = await generateText({
       model: openai("gpt-4o"),
       system: DEFAULT_SYSTEM_PROMPT,
       messages: convertToCoreMessages(body.messages),
       tools: {
         createEmailTheme: tool({
-          description: CREATE_EMAIL_THEME_TOOL_DESCRIPTION(currentEmailTheme),
+          description: CREATE_EMAIL_THEME_TOOL_DESCRIPTION(body.current_email_theme),
           parameters: z.object({
             content: z.string().describe("The content of the email theme"),
           }),
           execute: async (args) => {
-            const { fs } = await freestyle.requestDevServer({ repoId: body.repo_id });
-            await fs.writeFile("src/email-theme.tsx", args.content);
-            return { success: true };
+            const result = await renderEmailWithTheme("<div>test</div>", args.content);
+            if ("error" in result) {
+              return { sucess: false, error: result.error };
+            }
+            await overrideEnvironmentConfigOverride({
+              tx: prismaClient,
+              projectId: tenancy.project.id,
+              branchId: tenancy.branchId,
+              environmentConfigOverrideOverride: {
+                emails: {
+                  themeList: {
+                    [body.theme_id]: {
+                      tsxSource: args.content,
+                      displayName: theme.displayName,
+                    },
+                  },
+                },
+              },
+            });
+            return { success: true, html: result.html };
           },
         }),
       }
@@ -104,10 +115,11 @@ export const POST = createSmartRouteHandler({
       });
     });
 
+    const userContent = [{ "type": "text", "text": body.messages.at(-1)?.content }];
     await prismaClient.threadMessage.createMany({
       data: [
-        { tenancyId: tenancy.id, threadId: body.repo_id, role: "user", content: [{ "type": "text", "text": userContent.content }] },
-        { tenancyId: tenancy.id, threadId: body.repo_id, role: "assistant", content: contentBlocks },
+        { tenancyId: tenancy.id, threadId: body.theme_id, role: "user", content: userContent },
+        { tenancyId: tenancy.id, threadId: body.theme_id, role: "assistant", content: contentBlocks },
       ]
     });
 
@@ -131,7 +143,7 @@ export const GET = createSmartRouteHandler({
       tenancy: adaptSchema.defined(),
     }).defined(),
     query: yupObject({
-      repo_id: yupString().defined(),
+      theme_id: yupString().defined(),
     }),
   }),
   response: yupObject({
@@ -146,7 +158,7 @@ export const GET = createSmartRouteHandler({
   }),
   async handler({ query, auth: { tenancy } }) {
     const dbMessages = await prismaClient.threadMessage.findMany({
-      where: { tenancyId: tenancy.id, threadId: query.repo_id },
+      where: { tenancyId: tenancy.id, threadId: query.theme_id },
       orderBy: { createdAt: "asc" },
     });
     const messages = dbMessages.map((message) => ({

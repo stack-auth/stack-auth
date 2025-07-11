@@ -1,8 +1,7 @@
-import { getThemeComponent, renderEmailWithTheme } from "@/lib/email-themes";
+import { renderEmailWithTheme } from "@/lib/email-themes";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { KnownErrors } from "@stackframe/stack-shared/dist/known-errors";
 import { adaptSchema, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
-import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
 import { captureError, StackAssertionError, StatusError } from "@stackframe/stack-shared/dist/utils/errors";
 
 
@@ -18,7 +17,7 @@ export const POST = createSmartRouteHandler({
       tenancy: adaptSchema.defined(),
     }).defined(),
     body: yupObject({
-      theme: yupString().defined(),
+      theme_id: yupString().defined(),
       preview_html: yupString().defined(),
     }),
   }),
@@ -30,14 +29,14 @@ export const POST = createSmartRouteHandler({
     }).defined(),
   }),
   async handler({ body, auth: { tenancy } }) {
-    if (!getEnvVariable("STACK_FREESTYLE_API_KEY")) {
-      throw new StatusError(500, "STACK_FREESTYLE_API_KEY is not set");
+    const themeList = tenancy.completeConfig.emails.themeList;
+    if (!Object.keys(themeList).includes(body.theme_id)) {
+      throw new StatusError(400, "No theme found with given id");
     }
-
-    const themeComponent = await getThemeComponent(body.theme, tenancy.id);
+    const theme = themeList[body.theme_id];
     const result = await renderEmailWithTheme(
       body.preview_html,
-      themeComponent
+      theme.tsxSource
     );
     if ("error" in result) {
       captureError('render-email', new StackAssertionError("Error rendering email with theme", { result }));

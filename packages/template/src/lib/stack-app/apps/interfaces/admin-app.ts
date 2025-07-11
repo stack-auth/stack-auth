@@ -39,8 +39,8 @@ export type StackAdminApp<HasTokenStore extends boolean = boolean, ProjectId ext
     updateEmailTemplate(type: EmailTemplateType, data: AdminEmailTemplateUpdateOptions): Promise<void>,
     resetEmailTemplate(type: EmailTemplateType): Promise<void>,
 
-    useEmailThemes(): { name: string }[], // THIS_LINE_PLATFORM react-like
-    listEmailThemes(): Promise<{ name: string }[]>,
+    useEmailThemes(): { id: string, displayName: string }[], // THIS_LINE_PLATFORM react-like
+    listEmailThemes(): Promise<{ id: string, displayName: string }[]>,
 
     createInternalApiKey(options: InternalApiKeyCreateOptions): Promise<InternalApiKeyFirstView>,
 
@@ -70,20 +70,19 @@ export type StackAdminApp<HasTokenStore extends boolean = boolean, ProjectId ext
       notificationCategoryName: string,
     }): Promise<void>,
 
-    useEmailThemePreview(theme: string, content: string): string, // THIS_LINE_PLATFORM react-like
-    createEmailThemeDevServer(): Promise<{ repoId: string, previewUrl: string }>,
-    requestEmailThemeDevServer(repoId: string): Promise<{ previewUrl: string }>,
-    updateEmailThemeDevServerFile(repoId: string, file: "theme", content: string): Promise<void>,
-    getEmailThemeDevServerFile(repoId: string, file: "theme"): Promise<{ content: string }>,
+    getEmailThemePreview(themeId: string, content: string): Promise<string>,
+    useEmailThemePreview(themeId: string, content: string): string, // THIS_LINE_PLATFORM react-like
+    useEmailTheme(id: string): { displayName: string, tsxSource: string }, // THIS_LINE_PLATFORM react-like
+    createEmailTheme(displayName: string): Promise<{ id: string }>,
+    updateEmailTheme(id: string, tsxSource: string, previewHtml: string): Promise<{ rendered_html: string }>,
 
-    sendDevServerChatMessage(
-      repoId: string,
+    sendEmailThemeChatMessage(
+      themeId: string,
+      currentEmailTheme: string,
       messages: Array<{ role: string, content: string }>,
       abortSignal?: AbortSignal,
     ): Promise<{ content: ChatContent }>,
-    listChatMessages(repoId: string): Promise<{ messages: Array<{ role: string, content: ChatContent }> }>,
-
-    createEmailTheme(repoId: string, name: string): Promise<{ id: string }>,
+    listEmailThemeChatMessages(themeId: string): Promise<{ messages: Array<{ role: string, content: ChatContent }> }>,
   }
   & StackServerApp<HasTokenStore, ProjectId>
 );

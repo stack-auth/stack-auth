@@ -1,8 +1,6 @@
 "use client";
 
 import { Thread } from "@/components/assistant-ui/thread";
-import { FormDialog } from "@/components/form-dialog";
-import { InputField } from "@/components/form-fields";
 import {
   AssistantRuntimeProvider,
   makeAssistantToolUI,
@@ -14,45 +12,57 @@ import {
 import Editor, { Monaco } from '@monaco-editor/react';
 import { runAsynchronously } from "@stackframe/stack-shared/dist/utils/promises";
 import {
-  Button, Card, ResizableHandle,
+  Card, ResizableHandle,
   ResizablePanel,
-  ResizablePanelGroup, toast, TooltipProvider, Typography
+  ResizablePanelGroup, Spinner, TooltipProvider, Typography,
+  toast
 } from "@stackframe/stack-ui";
 import debounce from "lodash/debounce";
 import { CheckCircle, XCircle } from "lucide-react";
 import { useTheme } from 'next-themes';
-import { useEffect, useMemo, useState } from "react";
-import * as yup from "yup";
-import { useAdminApp } from "../../../use-admin-app";
+import { useMemo, useState } from "react";
+import { useAdminApp } from "../../use-admin-app";
+import ThemePreview, { previewEmailHtml } from "@/components/theme-preview";
+import { KnownErrors } from "@stackframe/stack-shared/dist/known-errors";
+import { ChatContent } from "@stackframe/stack-shared/dist/interface/admin-interface";
 
 
-export default function PageClient({ repoId }: { repoId: string }) {
+export default function PageClient({ themeId }: { themeId: string }) {
   const stackAdminApp = useAdminApp();
-  const [devServerUrl, setDevServerUrl] = useState<string>();
-  const [emailThemeCounter, setEmailThemeCounter] = useState(0);
-
-  useEffect(() => {
-    runAsynchronously(stackAdminApp.requestEmailThemeDevServer(repoId).then(res => setDevServerUrl(res.previewUrl)));
-  }, [stackAdminApp, repoId, setDevServerUrl]);
+  const theme = stackAdminApp.useEmailTheme(themeId);
+  const [renderedHtml, setRenderedHtml] = useState<string>();
+  const [currentCode, setCurrentCode] = useState(theme.tsxSource);
 
   return (
     <ResizablePanelGroup direction="horizontal" className="flex h-full">
       <ResizablePanel className="flex-1 flex flex-col" defaultSize={75}>
         <ResizablePanelGroup direction="vertical" className="flex h-full">
           <ResizablePanel className="flex flex-col flex-1 flex-shrink h-full" minSize={10}>
-            <DevServerPreview devServerUrl={devServerUrl} repoId={repoId} />
+            <div className="p-3 flex justify-between items-center">
+              <Typography type="h4">Preview</Typography>
+            </div>
+            <div className="flex-1 p-6">
+              <ThemePreview themeId={themeId} renderedHtmlOverride={renderedHtml} />
+            </div>
           </ResizablePanel>
           <ResizableHandle />
           <ResizablePanel className="flex-1 flex flex-col" minSize={10}>
-            <DevServerEditor repoId={repoId} emailThemeCounter={emailThemeCounter} />
+            <DevServerEditor
+              themeId={themeId}
+              code={currentCode}
+              setCode={setCurrentCode}
+              setRenderedHtml={setRenderedHtml}
+            />
           </ResizablePanel>
         </ResizablePanelGroup>
       </ResizablePanel>
       <ResizableHandle />
       <ResizablePanel className="w-96 flex flex-col">
         <DevServerChat
-          repoId={repoId}
-          onEmailThemeUpdated={() => setEmailThemeCounter(emailThemeCounter + 1)}
+          themeId={themeId}
+          currentEmailTheme={currentCode}
+          setCode={setCurrentCode}
+          setRenderedHtml={setRenderedHtml}
         />
       </ResizablePanel>
     </ResizablePanelGroup>
@@ -60,80 +70,44 @@ export default function PageClient({ repoId }: { repoId: string }) {
 }
 
 
-function SaveThemeDialog({ repoId, trigger }: { repoId: string, trigger: React.ReactNode }) {
-  const adminApp = useAdminApp();
-  const themeNameSchema = yup.object({
-    name: yup.string().defined()
-  });
-
-  const handleCreateTheme = async (values: { name: string }) => {
-    await adminApp.createEmailTheme(repoId, values.name);
-  };
-
-  return (
-    <FormDialog
-      trigger={trigger}
-      title="Create Theme"
-      formSchema={themeNameSchema}
-      okButton={{ label: "Create" }}
-      onSubmit={handleCreateTheme}
-      render={(form) => (
-        <InputField
-          control={form.control}
-          name="name"
-          label="Theme Name"
-          placeholder="Enter theme name"
-          required
-        />
-      )}
-    />
-  );
-}
-
-function DevServerPreview({ devServerUrl, repoId }: { devServerUrl?: string, repoId: string }) {
-  return (
-    <>
-      <div className="p-3 flex justify-between items-center">
-        <Typography type="h4">Preview</Typography>
-        <SaveThemeDialog
-          repoId={repoId}
-          trigger={<Button>Create Theme</Button>}
-        />
-      </div>
-      <div className="flex-1">
-        <iframe
-          src={devServerUrl}
-          className="w-full h-full"
-          title="Email Theme Preview"
-        />
-      </div>
-    </>
-  );
-}
-
-
-function DevServerEditor({ repoId, emailThemeCounter }: { repoId: string, emailThemeCounter: number }) {
+function DevServerEditor({
+  code,
+  themeId,
+  setCode,
+  setRenderedHtml
+}: {
+  code: string,
+  themeId: string,
+  setCode: (code: string) => void,
+  setRenderedHtml: (renderedHtml: string) => void,
+}) {
   const { theme } = useTheme();
+  const [loading, setLoading] = useState(false);
   const adminApp = useAdminApp();
-  const [code, setCode] = useState("");
-
-  useEffect(() => {
-    adminApp.getEmailThemeDevServerFile(repoId, "theme").then((file) => {
-      setCode(file.content);
-    }).catch(() => {
-      toast({
-        title: "Failed to load theme file",
-        variant: "destructive",
-      });
-    });
-  }, [adminApp, repoId, emailThemeCounter]);
 
   const debouncedUpdateCode = useMemo(
     () => debounce(
-      (value: string) => adminApp.updateEmailThemeDevServerFile(repoId, "theme", value),
-      250,
+      async (value: string) => {
+        setLoading(true);
+        try {
+          const { rendered_html } = await adminApp.updateEmailTheme(themeId, value, previewEmailHtml);
+          setRenderedHtml(rendered_html);
+        } catch (error) {
+          if (KnownErrors.EmailRenderingError.isInstance(error)) {
+            toast({
+              title: "Failed to render email",
+              description: error.message,
+              variant: "destructive",
+            });
+            return;
+          }
+        } finally {
+          setLoading(false);
+        }
+      },
+      500,
     ),
-    [adminApp, repoId],
+    [adminApp, themeId, setRenderedHtml],
   );
 
   const handleChange = (value?: string) => {
@@ -166,6 +140,7 @@ function DevServerEditor({ repoId, emailThemeCounter }: { repoId: string, emailT
     <>
       <div className="p-3 flex justify-between items-center">
         <Typography type="h4">Code</Typography>
+        {loading && <Spinner />}
       </div>
       <Editor
         height="100%"
@@ -190,8 +165,24 @@ function DevServerEditor({ repoId, emailThemeCounter }: { repoId: string, emailT
 }
 
 
-function DevServerChat({ repoId, onEmailThemeUpdated }: { repoId: string, onEmailThemeUpdated: () => void }) {
+function DevServerChat({
+  themeId,
+  currentEmailTheme,
+  setCode,
+  setRenderedHtml
+}: {
+  themeId: string,
+  currentEmailTheme: string,
+  setCode: (code: string) => void,
+  setRenderedHtml: (renderedHtml: string) => void,
+}) {
   const adminApp = useAdminApp();
+
+  const isToolCall = (
+    content: { type: string }
+  ): content is Extract<ChatContent[number], { type: "tool-call" }> => {
+    return content.type === "tool-call";
+  };
 
   const chatAdapter: ChatModelAdapter = {
     async run({ messages, abortSignal }) {
@@ -206,9 +197,16 @@ function DevServerChat({ repoId, onEmailThemeUpdated }: { repoId: string, onEmai
           }).join(''),
         }));
 
-        const response = await adminApp.sendDevServerChatMessage(repoId, formattedMessages, abortSignal);
-        if (response.content.some((block) => block.type === "tool-call")) {
-          onEmailThemeUpdated();
+        const response = await adminApp.sendEmailThemeChatMessage(themeId, currentEmailTheme, formattedMessages, abortSignal);
+        if (response.content.some(isToolCall)) {
+          setCode(response.content.find(isToolCall)?.args.content);
+          adminApp.getEmailThemePreview(themeId, previewEmailHtml)
+            .then(setRenderedHtml)
+            .catch(() => toast({
+              title: "Failed to render email",
+              description: "There was an error rendering email preview",
+              variant: "destructive",
+            }));
         }
         return {
           content: response.content,
@@ -236,7 +234,7 @@ function DevServerChat({ repoId, onEmailThemeUpdated }: { repoId: string, onEmai
 
   const historyAdapter: ThreadHistoryAdapter = {
     async load() {
-      const { messages } = await adminApp.listChatMessages(repoId);
+      const { messages } = await adminApp.listEmailThemeChatMessages(themeId);
       return {
         messages: messages.map((message, index) => ({
           message: {
@@ -256,7 +254,7 @@ function DevServerChat({ repoId, onEmailThemeUpdated }: { repoId: string, onEmai
         })),
       };
     },
-    async append() {},
+    async append() { },
   };
 
   const runtime = useLocalRuntime(

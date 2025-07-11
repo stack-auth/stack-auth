@@ -131,9 +131,9 @@ export class StackAdminInterface extends StackServerInterface {
     return result.items;
   }
 
-  async listEmailThemes(): Promise<{ name: string }[]> {
+  async listEmailThemes(): Promise<{ id: string, display_name: string }[]> {
     const response = await this.sendAdminRequest(`/emails/themes`, {}, null);
-    const result = await response.json() as { themes: { name: string }[] };
+    const result = await response.json() as { themes: { id: string, display_name: string }[] };
     return result.themes;
   }
 
@@ -348,74 +348,21 @@ export class StackAdminInterface extends StackServerInterface {
     );
   }
 
-  async createEmailThemeDevServer(): Promise<{ repoId: string, previewUrl: string }> {
-    const response = await this.sendAdminRequest(
-      `/emails/dev-server`,
-      {
-        method: "POST",
-      },
-      null,
-    );
-    const result = await response.json();
-    return {
-      repoId: result.repo_id,
-      previewUrl: result.preview_url,
-    };
-  }
 
-  async requestEmailThemeDevServer(repoId: string): Promise<{ previewUrl: string }> {
-    const response = await this.sendAdminRequest(
-      `/emails/dev-server?repo_id=${repoId}`,
-      { method: "GET" },
-      null,
-    );
-    const result = await response.json();
-    return {
-      previewUrl: result.preview_url,
-    };
-  }
-
-  async getEmailThemeDevServerFile(repoId: string, file: "theme"): Promise<{ content: string }> {
-    const response = await this.sendAdminRequest(
-      `/emails/dev-server/file?file=${file}&repo_id=${repoId}`,
-      { method: "GET" },
-      null,
-    );
-    return await response.json();
-  }
-
-  async updateEmailThemeDevServerFile(repoId: string, file: "theme", content: string): Promise<{ success: boolean }> {
-    const response = await this.sendAdminRequest(
-      `/emails/dev-server/file`,
-      {
-        method: "POST",
-        headers: {
-          "content-type": "application/json",
-        },
-        body: JSON.stringify({
-          file,
-          repo_id: repoId,
-          content,
-        }),
-      },
-      null,
-    );
-    return await response.json();
-  }
-
-  async sendDevServerChatMessage(
-    repoId: string,
+  async sendEmailThemeChatMessage(
+    themeId: string,
+    currentEmailTheme: string,
     messages: Array<{ role: string, content: string }>,
     abortSignal?: AbortSignal,
   ): Promise<{ content: ChatContent }> {
     const response = await this.sendAdminRequest(
-      `/emails/dev-server/chat`,
+      `/emails/themes/chat`,
       {
         method: "POST",
         headers: {
           "content-type": "application/json",
         },
-        body: JSON.stringify({ repo_id: repoId, messages }),
+        body: JSON.stringify({ theme_id: themeId, messages, current_email_theme: currentEmailTheme }),
         signal: abortSignal,
       },
       null,
@@ -423,30 +370,30 @@ export class StackAdminInterface extends StackServerInterface {
     return await response.json();
   }
 
-  async listChatMessages(repoId: string): Promise<{ messages: Array<{ role: string, content: ChatContent }> }> {
+  async listEmailThemeChatMessages(themeId: string): Promise<{ messages: Array<{ role: string, content: ChatContent }> }> {
     const response = await this.sendAdminRequest(
-      `/emails/dev-server/chat?repo_id=${repoId}`,
+      `/emails/themes/chat?theme_id=${themeId}`,
       { method: "GET" },
       null,
     );
     return await response.json();
   }
 
-  async renderEmailThemePreview(theme: string, content: string): Promise<{ html: string }> {
+  async renderEmailThemePreview(themeId: string, content: string): Promise<{ html: string }> {
     const response = await this.sendAdminRequest(`/emails/render-email`, {
       method: "POST",
       headers: {
         "content-type": "application/json",
       },
       body: JSON.stringify({
-        theme,
+        theme_id: themeId,
         preview_html: content,
       }),
     }, null);
     return await response.json();
   }
 
-  async createEmailTheme(repoId: string, name: string): Promise<{ id: string }> {
+  async createEmailTheme(displayName: string): Promise<{ id: string }> {
     const response = await this.sendAdminRequest(
       `/emails/themes`,
       {
@@ -455,8 +402,34 @@ export class StackAdminInterface extends StackServerInterface {
           "content-type": "application/json",
         },
         body: JSON.stringify({
-          repo_id: repoId,
-          name,
+          display_name: displayName,
+        }),
+      },
+      null,
+    );
+    return await response.json();
+  }
+
+  async getEmailTheme(id: string): Promise<{ display_name: string, tsx_source: string }> {
+    const response = await this.sendAdminRequest(
+      `/emails/themes/${id}`,
+      { method: "GET" },
+      null,
+    );
+    return await response.json();
+  }
+
+  async updateEmailTheme(id: string, tsxSource: string, previewHtml: string): Promise<{ display_name: string, rendered_html: string }> {
+    const response = await this.sendAdminRequest(
+      `/emails/themes/${id}`,
+      {
+        method: "PATCH",
+        headers: {
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          tsx_source: tsxSource,
+          preview_html: previewHtml,
         }),
       },
       null,

@@ -3,13 +3,16 @@
 import { useRouter } from "@/components/router";
 import { SettingCard } from "@/components/settings";
 import { throwErr } from "@stackframe/stack-shared/dist/utils/errors";
-import { runAsynchronously } from "@stackframe/stack-shared/dist/utils/promises";
-import { deindent } from "@stackframe/stack-shared/dist/utils/strings";
-import { ActionDialog, Button, Card, Typography } from "@stackframe/stack-ui";
+import ThemePreview from "@/components/theme-preview";
+import { ActionDialog, Button, Card, toast, Typography } from "@stackframe/stack-ui";
+import { FormDialog } from "@/components/form-dialog";
 import { Check } from "lucide-react";
 import { useState } from "react";
 import { PageLayout } from "../page-layout";
 import { useAdminApp } from "../use-admin-app";
+import { InputField } from "@/components/form-fields";
+import * as yup from "yup";
+import { KnownErrors } from "@stackframe/stack-shared/dist/known-errors";
 
 export default function PageClient() {
   const stackAdminApp = useAdminApp();
@@ -34,7 +37,7 @@ export default function PageClient() {
     setDialogOpen(true);
   };
 
-  const selectedThemeData = themes.find(t => t.name === activeTheme) ?? throwErr(`Unknown theme ${activeTheme}`, { activeTheme });
+  const selectedThemeData = themes.find(t => t.displayName === activeTheme) ?? throwErr(`Unknown theme ${activeTheme}`, { activeTheme });
 
   return (
     <PageLayout
@@ -44,10 +47,10 @@ export default function PageClient() {
     >
       <SettingCard
         title="Active Theme"
-        description={`Currently using ${selectedThemeData.name}`}
+        description={`Currently using ${selectedThemeData.displayName}`}
       >
         <div className="h-72">
-          <ThemePreview themeName={activeTheme} />
+          <ThemePreview themeId={selectedThemeData.id} />
         </div>
         <ActionDialog
           trigger={<Button onClick={handleOpenDialog} className="ml-auto w-min">Set Theme</Button>}
@@ -63,9 +66,9 @@ export default function PageClient() {
           <div className="space-y-4">
             {themes.map((theme) => (
               <ThemeOption
-                key={theme.name}
+                key={theme.id}
                 theme={theme}
-                isSelected={dialogSelectedTheme === theme.name}
+                isSelected={dialogSelectedTheme === theme.displayName}
                 onSelect={handleThemeSelect}
               />
             ))}
@@ -81,18 +84,18 @@ function ThemeOption({
   isSelected,
   onSelect
 }: {
-  theme: { name: string },
+  theme: { id: string, displayName: string },
   isSelected: boolean,
   onSelect: (themeName: string) => void,
 }) {
   return (
     <Card
       className="cursor-pointer hover:ring-1 transition-all"
-      onClick={() => onSelect(theme.name)}
+      onClick={() => onSelect(theme.displayName)}
     >
       <div className="p-4 pb-3">
         <div className="flex items-center justify-between">
-          <Typography variant="secondary">{theme.name}</Typography>
+          <Typography variant="secondary">{theme.displayName}</Typography>
           {isSelected && (
             <div className="bg-blue-500 text-white rounded-full w-6 h-6 p-1 flex items-center justify-center">
               <Check />
@@ -100,54 +103,50 @@ function ThemeOption({
           )}
         </div>
         <div className="h-60" style={{ zoom: 0.75 }}>
-          <ThemePreview themeName={theme.name} />
+          <ThemePreview themeId={theme.id} disableFrame />
         </div>
       </div>
     </Card>
   );
 }
 
-function ThemePreview({ themeName }: { themeName: string }) {
-  const previewEmailHtml = deindent`
-    <div>
-      <h2 className="mb-4 text-2xl font-bold">
-        Header text
-      </h2>
-      <p className="mb-4">
-        Body text content with some additional information.
-      </p>
-    </div>
-  `;
-  const stackAdminApp = useAdminApp();
-  const previewHtml = stackAdminApp.useEmailThemePreview(themeName, previewEmailHtml);
-  return (
-    <iframe srcDoc={previewHtml} className="mx-auto pointer-events-none h-full" />
-  );
-}
-
 function NewThemeButton() {
   const stackAdminApp = useAdminApp();
   const router = useRouter();
-  const [loading, setLoading] = useState(false);
 
-  const handleCreateNewTheme = async () => {
-    setLoading(true);
+  const handleCreateNewTheme = async (values: { name: string }) => {
     try {
-      const devServer = await stackAdminApp.createEmailThemeDevServer();
-      router.push(`email-themes/new/${devServer.repoId}`);
+      const { id } = await stackAdminApp.createEmailTheme(values.name);
+      router.push(`email-themes/${id}`);
     } catch (error) {
-      console.error("Failed to create new theme:", error);
-    } finally {
-      setLoading(false);
+      if (KnownErrors.ThemeWithNameAlreadyExists.isInstance(error)) {
+        toast({
+          title: "Theme with this name already exists",
+          description: "Please choose a different name",
+          variant: "destructive",
+        });
+        return 'prevent-close';
+      }
     }
   };
 
   return (
-    <Button
-      onClick={() => runAsynchronously(handleCreateNewTheme())}
-      loading={loading}
-    >
-      New Theme
-    </Button>
+    <FormDialog
+      title="New Theme"
+      trigger={<Button>New Theme</Button>}
+      onSubmit={handleCreateNewTheme}
+      formSchema={yup.object({
+        name: yup.string().defined(),
+      })}
+      render={(form) => (
+        <InputField
+          control={form.control}
+          name="name"
+          label="Theme Name"
+          placeholder="Enter theme name"
+          required
+        />
+      )}
+    />
   );
 }

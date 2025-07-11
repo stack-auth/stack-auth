@@ -1,11 +1,10 @@
-import { DEFAULT_EMAIL_THEMES, renderEmailWithTheme } from "@/lib/email-themes";
+import { overrideEnvironmentConfigOverride } from "@/lib/config";
+import { DEFAULT_EMAIL_THEMES } from "@/lib/email-themes";
 import { prismaClient } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
-import { KnownErrors } from "@stackframe/stack-shared/dist/known-errors";
 import { adaptSchema, yupArray, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
-import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
-import { captureError, StackAssertionError, StatusError } from "@stackframe/stack-shared/dist/utils/errors";
-import { FreestyleSandboxes } from "freestyle-sandboxes";
+import { generateUuid } from "@stackframe/stack-shared/dist/utils/uuids";
+import { KnownErrors } from "@stackframe/stack-shared/dist/known-errors";
 
 
 export const POST = createSmartRouteHandler({
@@ -20,8 +19,7 @@ export const POST = createSmartRouteHandler({
       tenancy: adaptSchema.defined(),
     }).defined(),
     body: yupObject({
-      name: yupString().defined(),
-      repo_id: yupString().defined(),
+      display_name: yupString().defined(),
     }),
   }),
   response: yupObject({
@@ -32,24 +30,24 @@ export const POST = createSmartRouteHandler({
     }).defined(),
   }),
   async handler({ body, auth: { tenancy } }) {
-    const apiKey = getEnvVariable("STACK_FREESTYLE_API_KEY");
-    if (!apiKey) {
-      throw new StatusError(500, "STACK_FREESTYLE_API_KEY is not set");
+    const themeList = tenancy.completeConfig.emails.themeList;
+    if (Object.values(themeList).some((theme) => theme.displayName === body.display_name)) {
+      throw new KnownErrors.ThemeWithNameAlreadyExists(body.display_name);
     }
-    const freestyle = new FreestyleSandboxes({ apiKey });
-    const { fs } = await freestyle.requestDevServer({ repoId: body.repo_id });
-    const emailThemeComponent = await fs.readFile("src/email-theme.tsx");
-    const result = await renderEmailWithTheme("<div>test</div>", emailThemeComponent);
-
-    if ("error" in result) {
-      captureError('render-email', new StackAssertionError("Error rendering email with theme", { result }));
-      throw new KnownErrors.EmailRenderingError(result.error);
-    }
-    const { id } = await prismaClient.emailTheme.create({
-      data: {
-        tenancyId: tenancy.id,
-        name: body.name,
-        component: emailThemeComponent,
+    const id = generateUuid();
+    await overrideEnvironmentConfigOverride({
+      tx: prismaClient,
+      projectId: tenancy.project.id,
+      branchId: tenancy.branchId,
+      environmentConfigOverrideOverride: {
+        emails: {
+          themeList: {
+            [id]: {
+              displayName: body.display_name,
+              tsxSource: DEFAULT_EMAIL_THEMES["default-light"]
+            },
+          },
+        },
       },
     });
     return {
@@ -76,26 +74,22 @@ export const GET = createSmartRouteHandler({
     statusCode: yupNumber().oneOf([200]).defined(),
     bodyType: yupString().oneOf(["json"]).defined(),
     body: yupObject({
-      themes: yupArray(yupObject({ name: yupString().defined() })).defined(),
+      themes: yupArray(yupObject({
+        id: yupString().uuid().defined(),
+        display_name: yupString().defined(),
+      })).defined(),
     }).defined(),
   }),
   async handler({ auth: { tenancy } }) {
-    const themes = await prismaClient.emailTheme.findMany({
-      where: {
-        tenancyId: tenancy.id,
-      },
-      select: {
-        name: true,
-      },
-    });
+    const themes = Object.entries(tenancy.completeConfig.emails.themeList).map(([id, theme]) => ({
+      id,
+      display_name: theme.displayName,
+    }));
     return {
       statusCode: 200,
       bodyType: "json",
       body: {
-        themes: [
-          ...themes,
-          ...Object.keys(DEFAULT_EMAIL_THEMES).map((theme) => ({ name: theme })),
-        ]
+        themes,
       },
     };
   },
