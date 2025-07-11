@@ -67,6 +67,7 @@ export const oauthProviderCrudHandlers = createLazyProxy(() =>createCrudHandlers
       allow_sign_in: !!oauthAccount.oauthAuthMethod,
       allow_connected_accounts: !!oauthAccount.connectedAccount,
       account_id: oauthAccount.providerAccountId,
+      user_id: params.user_id,
     };
   },
   async onList({ auth, query }) {
@@ -322,6 +323,7 @@ export const oauthProviderCrudHandlers = createLazyProxy(() =>createCrudHandlers
         allow_sign_in: !!updatedOAuthAccount.oauthAuthMethod,
         allow_connected_accounts: !!updatedOAuthAccount.connectedAccount,
         account_id: updatedOAuthAccount.providerAccountId,
+        user_id: params.user_id,
       };
     });
 

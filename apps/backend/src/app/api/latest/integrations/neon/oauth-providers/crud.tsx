@@ -8,8 +8,8 @@ import { StatusError, throwErr } from "@stackframe/stack-shared/dist/utils/error
 import { createLazyProxy } from "@stackframe/stack-shared/dist/utils/proxies";
 
 const oauthProviderReadSchema = yupObject({
-  id: schemaFields.oauthIdSchema.defined(),
-  type: schemaFields.oauthTypeSchema.defined(),
+  id: schemaFields.oauthLegacyIdSchema.defined(),
+  type: schemaFields.oauthLegacyTypeSchema.defined(),
   client_id: schemaFields.yupDefinedAndNonEmptyWhen(schemaFields.oauthClientIdSchema, {
     when: 'type',
     is: 'standard',
@@ -25,7 +25,8 @@ const oauthProviderReadSchema = yupObject({
 });
 
 const oauthProviderUpdateSchema = yupObject({
-  type: schemaFields.oauthTypeSchema.optional(),
+  id: schemaFields.oauthLegacyIdSchema.defined(),
+  type: schemaFields.oauthLegacyTypeSchema.optional(),
   client_id: schemaFields.yupDefinedAndNonEmptyWhen(schemaFields.oauthClientIdSchema, {
     when: 'type',
     is: 'standard',
@@ -41,11 +42,11 @@ const oauthProviderUpdateSchema = yupObject({
 });
 
 const oauthProviderCreateSchema = oauthProviderUpdateSchema.defined().concat(yupObject({
-  id: schemaFields.oauthIdSchema.defined(),
+  id: schemaFields.oauthLegacyIdSchema.defined(),
 }));
 
 const oauthProviderDeleteSchema = yupObject({
-  id: schemaFields.oauthIdSchema.defined(),
+  id: schemaFields.oauthLegacyIdSchema.defined(),
 });
 
 const oauthProvidersCrud = createCrud({
@@ -71,14 +72,14 @@ const oauthProvidersCrud = createCrud({
 
 export const oauthProvidersCrudHandlers = createLazyProxy(() => createCrudHandlers(oauthProvidersCrud, {
   paramsSchema: yupObject({
-    oauth_provider_id: schemaFields.oauthIdSchema.defined(),
+    oauth_provider_id: schemaFields.oauthLegacyIdSchema.defined(),
   }),
   onCreate: async ({ auth, data }) => {
     if (auth.tenancy.config.oauth_providers.find(provider => provider.id === data.id)) {
       throw new StatusError(StatusError.BadRequest, 'OAuth provider already exists');
     }
 
-    const updated = await createOrUpdateProject({
+    await createOrUpdateProject({
       type: 'update',
       projectId: auth.project.id,
       branchId: auth.branchId,
@@ -87,8 +88,8 @@ export const oauthProvidersCrudHandlers = createLazyProxy(() => createCrudHandle
           oauth_providers: [
             ...auth.tenancy.config.oauth_providers,
             {
-              id: data.id,
-              type: data.type ?? 'shared',
+              type: data.id,
+              is_shared: data.type === 'shared',
               client_id: data.client_id,
               client_secret: data.client_secret,
             }
@@ -98,34 +99,50 @@ export const oauthProvidersCrudHandlers = createLazyProxy(() => createCrudHandle
     });
     const updatedTenancy = await getTenancy(auth.tenancy.id) ?? throwErr('Tenancy not found after update?'); // since we updated the config, we need to re-fetch the tenancy
 
-    return updatedTenancy.config.oauth_providers.find(provider => provider.id === data.id) ?? throwErr('Provider not found');
+    const provider = updatedTenancy.config.oauth_providers.find(provider => provider.id === data.id) ?? throwErr('Provider not found');
+    return {
+      ...provider,
+      type: provider.is_shared ? 'shared' : 'standard',
+      id: provider.type,
+    };
   },
   onUpdate: async ({ auth, data, params }) => {
     if (!auth.tenancy.config.oauth_providers.find(provider => provider.id === params.oauth_provider_id)) {
       throw new StatusError(StatusError.NotFound, 'OAuth provider not found');
     }
 
-    const updated = await createOrUpdateProject({
+    await createOrUpdateProject({
       type: 'update',
       projectId: auth.project.id,
       branchId: auth.branchId,
       data: {
         config: {
           oauth_providers: auth.tenancy.config.oauth_providers
-            .map(provider => provider.id === params.oauth_provider_id ? {
-              ...provider,
-              ...data,
-            } : provider),
+            .map(provider => provider.id === params.oauth_provider_id ?
+              {
+                ...provider,
+                ...data,
+                type: data.id,
+              } : provider),
         }
       }
     });
     const updatedTenancy = await getTenancy(auth.tenancy.id) ?? throwErr('Tenancy not found after update?'); // since we updated the config, we need to re-fetch the tenancy
 
-    return updatedTenancy.config.oauth_providers.find(provider => provider.id === params.oauth_provider_id) ?? throwErr('Provider not found');
+    const provider = updatedTenancy.config.oauth_providers.find(provider => provider.id === params.oauth_provider_id) ?? throwErr('Provider not found');
+    return {
+      ...provider,
+      type: provider.is_shared ? 'shared' : 'standard',
+      id: provider.type,
+    };
   },
   onList: async ({ auth }) => {
     return {
-      items: auth.tenancy.config.oauth_providers,
+      items: auth.tenancy.config.oauth_providers.map(provider => ({
+        ...provider,
+        type: provider.is_shared ? 'shared' : 'standard',
+        id: provider.type,
+      })),
       is_paginated: false,
     };
   },
@@ -134,7 +151,7 @@ export const oauthProvidersCrudHandlers = createLazyProxy(() => createCrudHandle
       throw new StatusError(StatusError.NotFound, 'OAuth provider not found');
     }
 
-    const updated = await createOrUpdateProject({
+    await createOrUpdateProject({
       type: 'update',
       projectId: auth.project.id,
       branchId: auth.branchId,

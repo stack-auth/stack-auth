@@ -40,7 +40,7 @@ export const POST = createSmartRouteHandler({
     const resultOuter = await timeout(sendEmailWithoutRetries({
       tenancyId: auth.tenancy.id,
       emailConfig: {
-        type: 'standard',
+        isShared: false,
         host: body.email_config.host,
         port: body.email_config.port,
         username: body.email_config.username,

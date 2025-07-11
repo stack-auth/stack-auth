@@ -14,7 +14,7 @@ function prismaModelToCrud(prismaModel: SentEmail): InternalEmailsCrud["Admin"][
     sent_at_millis: prismaModel.createdAt.getTime(),
     to: prismaModel.to,
     sender_config: {
-      type: senderConfig.type,
+      is_shared: senderConfig.isShared,
       host: senderConfig.host,
       port: senderConfig.port,
       username: senderConfig.username,

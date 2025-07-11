@@ -9,7 +9,7 @@ const teamPermissionSchema = yupObject({
 const oauthProviderReadSchema = yupObject({
   id: schemaFields.oauthProviderIdSchema.defined(),
   type: schemaFields.oauthProviderTypeSchema.defined(),
-  is_shared: schemaFields.oauthProviderIsSharedSchema.defined(),
+  is_shared: schemaFields.oauthIsSharedSchema.defined(),
   client_id: schemaFields.yupDefinedAndNonEmptyWhen(
     schemaFields.oauthClientIdSchema,
     { is_shared: false },
