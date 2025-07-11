@@ -252,40 +252,8 @@ export const oauthProviderCrudHandlers = createLazyProxy(() =>createCrudHandlers
         updateData.providerAccountId = data.account_id;
       }
 
-      // If account_id is being updated, we need to update related records too
-      if (data.account_id !== undefined && data.account_id !== existingOAuthAccount.providerAccountId) {
-        // Update OAuth auth method if it exists
-        if (existingOAuthAccount.oauthAuthMethod) {
-          await tx.oAuthAuthMethod.update({
-            where: {
-              tenancyId_authMethodId: {
-                tenancyId: auth.tenancy.id,
-                authMethodId: existingOAuthAccount.oauthAuthMethod.authMethodId,
-              },
-            },
-            data: {
-              providerAccountId: data.account_id,
-            },
-          });
-        }
-
-        // Update connected account if it exists
-        if (existingOAuthAccount.connectedAccount) {
-          await tx.connectedAccount.update({
-            where: {
-              tenancyId_id: {
-                tenancyId: auth.tenancy.id,
-                id: existingOAuthAccount.connectedAccount.id,
-              },
-            },
-            data: {
-              providerAccountId: data.account_id,
-            },
-          });
-        }
-      }
-
       // Update the main OAuth account record if there are any changes
+      // This will automatically update related records via ON UPDATE CASCADE
       let updatedOAuthAccount = existingOAuthAccount;
       if (Object.keys(updateData).length > 0) {
         updatedOAuthAccount = await tx.projectUserOAuthAccount.update({

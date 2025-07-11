@@ -627,7 +627,21 @@ it("should handle account_id updates correctly", async ({ expect }: { expect: an
     },
   });
 
-  expect(updateResponse).toMatchInlineSnapshot(``);
+  expect(updateResponse).toMatchInlineSnapshot(`
+    NiceResponse {
+      "status": 200,
+      "body": {
+        "account_id": "updated_github_user_456",
+        "allow_connected_accounts": true,
+        "allow_sign_in": true,
+        "email": "test@example.com",
+        "id": "github",
+        "type": "github",
+        "user_id": "<stripped UUID>",
+      },
+      "headers": Headers { <some fields may have been hidden> },
+    }
+  `);
 
   // Verify the account_id was updated by reading it back
   const readResponse = await niceBackendFetch(`/api/v1/oauth-providers/me/${createResponse.body.id}`, {
@@ -635,7 +649,21 @@ it("should handle account_id updates correctly", async ({ expect }: { expect: an
     accessType: "server",
   });
 
-  expect(readResponse).toMatchInlineSnapshot(``);
+  expect(readResponse).toMatchInlineSnapshot(`
+    NiceResponse {
+      "status": 200,
+      "body": {
+        "account_id": "updated_github_user_456",
+        "allow_connected_accounts": true,
+        "allow_sign_in": true,
+        "email": "test@example.com",
+        "id": "github",
+        "type": "github",
+        "user_id": "<stripped UUID>",
+      },
+      "headers": Headers { <some fields may have been hidden> },
+    }
+  `);
 });
 
 it("should return empty list when user has no OAuth providers", async ({ expect }: { expect: any }) => {
@@ -648,7 +676,16 @@ it("should return empty list when user has no OAuth providers", async ({ expect 
     accessType: "client",
   });
 
-  expect(listResponse).toMatchInlineSnapshot(``);
+  expect(listResponse).toMatchInlineSnapshot(`
+    NiceResponse {
+      "status": 200,
+      "body": {
+        "is_paginated": false,
+        "items": [],
+      },
+      "headers": Headers { <some fields may have been hidden> },
+    }
+  `);
 });
 
 it("should handle provider not configured error", async ({ expect }: { expect: any }) => {
@@ -675,7 +712,13 @@ it("should handle provider not configured error", async ({ expect }: { expect: a
     },
   });
 
-  expect(createResponse).toMatchInlineSnapshot(``);
+  expect(createResponse).toMatchInlineSnapshot(`
+    NiceResponse {
+      "status": 400,
+      "body": "Provider with config ID github is not configured. Please check your Stack Auth dashboard OAuth configuration.",
+      "headers": Headers { <some fields may have been hidden> },
+    }
+  `);
 });
 
 it("should toggle sign-in and connected accounts capabilities", async ({ expect }: { expect: any }) => {
@@ -708,7 +751,20 @@ it("should toggle sign-in and connected accounts capabilities", async ({ expect 
     },
   });
 
-  expect(toggleOffResponse).toMatchInlineSnapshot(``);
+  expect(toggleOffResponse).toMatchInlineSnapshot(`
+    NiceResponse {
+      "status": 200,
+      "body": {
+        "allow_connected_accounts": false,
+        "allow_sign_in": false,
+        "email": "test@example.com",
+        "id": "github",
+        "type": "github",
+        "user_id": "<stripped UUID>",
+      },
+      "headers": Headers { <some fields may have been hidden> },
+    }
+  `);
 
   // Toggle on sign-in, keep connected accounts off
   const toggleSignInResponse = await niceBackendFetch(`/api/v1/oauth-providers/me/${createResponse.body.id}`, {
@@ -720,7 +776,20 @@ it("should toggle sign-in and connected accounts capabilities", async ({ expect 
     },
   });
 
-  expect(toggleSignInResponse).toMatchInlineSnapshot(``);
+  expect(toggleSignInResponse).toMatchInlineSnapshot(`
+    NiceResponse {
+      "status": 200,
+      "body": {
+        "allow_connected_accounts": false,
+        "allow_sign_in": true,
+        "email": "test@example.com",
+        "id": "github",
+        "type": "github",
+        "user_id": "<stripped UUID>",
+      },
+      "headers": Headers { <some fields may have been hidden> },
+    }
+  `);
 
   // Toggle on connected accounts, keep sign-in on
   const toggleConnectedAccountsResponse = await niceBackendFetch(`/api/v1/oauth-providers/me/${createResponse.body.id}`, {
@@ -732,5 +801,18 @@ it("should toggle sign-in and connected accounts capabilities", async ({ expect 
     },
   });
 
-  expect(toggleConnectedAccountsResponse).toMatchInlineSnapshot(``);
+  expect(toggleConnectedAccountsResponse).toMatchInlineSnapshot(`
+    NiceResponse {
+      "status": 200,
+      "body": {
+        "allow_connected_accounts": true,
+        "allow_sign_in": true,
+        "email": "test@example.com",
+        "id": "github",
+        "type": "github",
+        "user_id": "<stripped UUID>",
+      },
+      "headers": Headers { <some fields may have been hidden> },
+    }
+  `);
 });
