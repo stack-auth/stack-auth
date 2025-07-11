@@ -462,8 +462,8 @@ export const oauthProviderCrudHandlers = createLazyProxy(() =>createCrudHandlers
     return {
       user_id: data.user_id,
       email: data.email,
-      id: providerConfig!.id,
-      type: providerConfig!.type,
+      id: providerConfig.id,
+      type: providerConfig.type as any,
       allow_sign_in: data.allow_sign_in,
       allow_connected_accounts: data.allow_connected_accounts,
       account_id: data.account_id,
