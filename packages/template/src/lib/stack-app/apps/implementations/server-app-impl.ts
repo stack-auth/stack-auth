@@ -154,6 +154,20 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
     return result;
   });
 
+  private readonly _serverOAuthProvidersCache = createCache<[string], {
+    id: string,
+    type: string,
+    user_id: string,
+    account_id: string,
+    email: string,
+    allow_sign_in: boolean,
+    allow_connected_accounts: boolean,
+  }[]>(
+    async ([userId]) => {
+      return await this._interface.listServerOAuthProviders({ user_id: userId });
+    }
+  );
+
   private async _updateServerUser(userId: string, update: ServerUserUpdateOptions): Promise<UsersCrud['Server']['Read']> {
     const result = await this._interface.updateServerUser(userId, serverUserUpdateOptionsToCrud(update));
     await this._refreshUsers();
@@ -219,6 +233,42 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
       async setEnabled(enabled: boolean) {
         await app._interface.setServerNotificationsEnabled(userId, crud.notification_category_id, enabled);
         await app._serverNotificationCategoriesCache.refresh([userId]);
+      },
+    };
+  }
+
+  protected _serverOAuthProviderFromCrud(crud: {
+    id: string,
+    type: string,
+    user_id: string,
+    account_id: string,
+    email: string,
+    allow_sign_in: boolean,
+    allow_connected_accounts: boolean,
+  }) {
+    const app = this;
+    return {
+      id: crud.id,
+      type: crud.type,
+      userId: crud.user_id,
+      accountId: crud.account_id,
+      email: crud.email,
+      allowSignIn: crud.allow_sign_in,
+      allowConnectedAccounts: crud.allow_connected_accounts,
+
+      async update(data: { accountId?: string, email?: string, allowSignIn?: boolean, allowConnectedAccounts?: boolean }) {
+        await app._interface.updateServerOAuthProvider(crud.user_id, crud.id, {
+          account_id: data.accountId,
+          email: data.email,
+          allow_sign_in: data.allowSignIn,
+          allow_connected_accounts: data.allowConnectedAccounts,
+        });
+        await app._serverOAuthProvidersCache.refresh([crud.user_id]);
+      },
+
+      async delete() {
+        await app._interface.deleteServerOAuthProvider(crud.user_id, crud.id);
+        await app._serverOAuthProvidersCache.refresh([crud.user_id]);
       },
     };
   }
@@ -553,6 +603,30 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
         );
         await app._serverUserApiKeysCache.refresh([crud.id]);
         return app._serverApiKeyFromCrud(result);
+      },
+
+      // IF_PLATFORM react-like
+      useOAuthProviders() {
+        const results = useAsyncCache(app._serverOAuthProvidersCache, [crud.id] as const, "user.useOAuthProviders()");
+        return useMemo(() => results.map((oauthCrud) => app._serverOAuthProviderFromCrud(oauthCrud)), [results]);
+      },
+      // END_PLATFORM
+
+      async listOAuthProviders() {
+        const results = Result.orThrow(await app._serverOAuthProvidersCache.getOrWait([crud.id], "write-only"));
+        return results.map((oauthCrud) => app._serverOAuthProviderFromCrud(oauthCrud));
+      },
+
+      // IF_PLATFORM react-like
+      useOAuthProvider(id: string) {
+        const providers = this.useOAuthProviders();
+        return useMemo(() => providers.find((p) => p.id === id) ?? null, [providers, id]);
+      },
+      // END_PLATFORM
+
+      async getOAuthProvider(id: string) {
+        const providers = await this.listOAuthProviders();
+        return providers.find((p) => p.id === id) ?? null;
       },
     };
   }
@@ -954,6 +1028,7 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
       this._serverUserCache.refreshWhere(() => true),
       this._serverUsersCache.refreshWhere(() => true),
       this._serverContactChannelsCache.refreshWhere(() => true),
+      this._serverOAuthProvidersCache.refreshWhere(() => true),
     ]);
   }
 }

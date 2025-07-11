@@ -690,4 +690,130 @@ export class StackServerInterface extends StackClientInterface {
       return res.error;
     }
   }
+
+  // OAuth Providers CRUD operations
+  async createServerOAuthProvider(
+    data: {
+      user_id: string,
+      provider_id: string,
+      account_id: string,
+      email: string,
+      allow_sign_in: boolean,
+      allow_connected_accounts: boolean,
+    },
+  ): Promise<{
+    id: string,
+    type: string,
+    user_id: string,
+    account_id: string,
+    email: string,
+    allow_sign_in: boolean,
+    allow_connected_accounts: boolean,
+  }> {
+    const response = await this.sendServerRequest(
+      "/oauth-providers",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+        },
+        body: JSON.stringify(data),
+      },
+      null,
+    );
+    return await response.json();
+  }
+
+  async getServerOAuthProvider(
+    userId: string,
+    providerId: string,
+  ): Promise<{
+    id: string,
+    type: string,
+    user_id: string,
+    account_id: string,
+    email: string,
+    allow_sign_in: boolean,
+    allow_connected_accounts: boolean,
+  }> {
+    const response = await this.sendServerRequest(
+      urlString`/oauth-providers/${userId}/${providerId}`,
+      {
+        method: "GET",
+      },
+      null,
+    );
+    return await response.json();
+  }
+
+  async listServerOAuthProviders(
+    options: {
+      user_id?: string,
+    } = {},
+  ): Promise<{
+    id: string,
+    type: string,
+    user_id: string,
+    account_id: string,
+    email: string,
+    allow_sign_in: boolean,
+    allow_connected_accounts: boolean,
+  }[]> {
+    const queryParams = new URLSearchParams(filterUndefined(options));
+    const response = await this.sendServerRequest(
+      `/oauth-providers${queryParams.toString() ? `?${queryParams.toString()}` : ''}`,
+      {
+        method: "GET",
+      },
+      null,
+    );
+    const result = await response.json();
+    return result.items;
+  }
+
+  async updateServerOAuthProvider(
+    userId: string,
+    providerId: string,
+    data: {
+      account_id?: string,
+      email?: string,
+      allow_sign_in?: boolean,
+      allow_connected_accounts?: boolean,
+    },
+  ): Promise<{
+    id: string,
+    type: string,
+    user_id: string,
+    account_id: string,
+    email: string,
+    allow_sign_in: boolean,
+    allow_connected_accounts: boolean,
+  }> {
+    const response = await this.sendServerRequest(
+      urlString`/oauth-providers/${userId}/${providerId}`,
+      {
+        method: "PATCH",
+        headers: {
+          "content-type": "application/json",
+        },
+        body: JSON.stringify(data),
+      },
+      null,
+    );
+    return await response.json();
+  }
+
+  async deleteServerOAuthProvider(
+    userId: string,
+    providerId: string,
+  ): Promise<{ success: boolean }> {
+    const response = await this.sendServerRequest(
+      urlString`/oauth-providers/${userId}/${providerId}`,
+      {
+        method: "DELETE",
+      },
+      null,
+    );
+    return await response.json();
+  }
 }
