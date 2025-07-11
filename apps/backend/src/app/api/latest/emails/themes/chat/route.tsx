@@ -72,7 +72,7 @@ export const POST = createSmartRouteHandler({
           execute: async (args) => {
             const result = await renderEmailWithTheme("<div>test</div>", args.content);
             if ("error" in result) {
-              return { sucess: false, error: result.error };
+              return { success: false, error: result.error };
             }
             await overrideEnvironmentConfigOverride({
               tx: prismaClient,
