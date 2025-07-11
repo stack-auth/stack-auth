@@ -90,6 +90,7 @@ export const PATCH = createSmartRouteHandler({
       environmentConfigOverrideOverride: {
         emails: {
           themeList: {
+            ...themeList,
             [id]: {
               tsxSource: body.tsx_source,
               displayName: theme.displayName,

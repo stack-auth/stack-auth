@@ -42,6 +42,7 @@ export const POST = createSmartRouteHandler({
       environmentConfigOverrideOverride: {
         emails: {
           themeList: {
+            ...themeList,
             [id]: {
               displayName: body.display_name,
               tsxSource: DEFAULT_EMAIL_THEMES["default-light"]
