@@ -245,14 +245,16 @@ function CollapsibleSection({
   title,
   children,
   defaultOpen = false,
-  isCollapsed = false
+  isCollapsed = false,
+  sectionKey = ''
 }: {
   title: string,
   children: ReactNode,
   defaultOpen?: boolean,
   isCollapsed?: boolean,
+  sectionKey?: string,
 }) {
-  const accordionKey = `section-${title.toLowerCase().replace(/\s+/g, '-')}`;
+  const accordionKey = `section-${sectionKey}-${title.toLowerCase().replace(/\s+/g, '-')}`;
   const [isOpen, setIsOpen] = useAccordionState(accordionKey, defaultOpen);
 
   if (isCollapsed) {
@@ -713,7 +715,8 @@ function convertToHierarchicalStructure(organizedPages: Record<string, Organized
       if (aIndex !== -1) return -1;
       if (bIndex !== -1) return 1;
       // Simple comparison instead of localeCompare
-      return aKey < bKey ? -1 : aKey > bKey ? 1 : 0;
+      // eslint-disable-next-line no-restricted-syntax
+      return aKey.localeCompare(bKey);
     })
     .forEach(([, section]) => {
       // Add section separator
@@ -791,6 +794,36 @@ export function ApiSidebarContent({ pages = [] }: { pages?: PageData[] }) {
       }
     });
 
+    // Sort pages and groups alphabetically within each section
+    Object.values(organized).forEach(section => {
+      // Sort pages within section alphabetically by title
+      section.pages.sort((a, b) => {
+        const titleA = a.data.title || formatTitle(a.slugs[a.slugs.length - 1]);
+        const titleB = b.data.title || formatTitle(b.slugs[b.slugs.length - 1]);
+        // eslint-disable-next-line no-restricted-syntax
+        return titleA.localeCompare(titleB);
+      });
+
+      // Sort groups within section alphabetically by title, and pages within each group
+      Object.values(section.groups).forEach(group => {
+        group.pages.sort((a, b) => {
+          const titleA = a.data.title || formatTitle(a.slugs[a.slugs.length - 1]);
+          const titleB = b.data.title || formatTitle(b.slugs[b.slugs.length - 1]);
+          // eslint-disable-next-line no-restricted-syntax
+          return titleA.localeCompare(titleB);
+        });
+      });
+
+      // Sort the groups themselves alphabetically by title
+      const sortedGroups = Object.entries(section.groups).sort(([, groupA], [, groupB]) => {
+        // eslint-disable-next-line no-restricted-syntax
+        return groupA.title.localeCompare(groupB.title);
+      });
+
+      // Replace the groups object with sorted entries
+      section.groups = Object.fromEntries(sortedGroups);
+    });
+
     return organized;
   }, [pages]);
 
@@ -860,7 +893,7 @@ export function ApiSidebarContent({ pages = [] }: { pages?: PageData[] }) {
                     ))}
 
                     {Object.entries(section.groups).map(([groupKey, group]: [string, OrganizedGroup]) => (
-                      <CollapsibleSection key={groupKey} title={group.title} isCollapsed={isMainSidebarCollapsed}>
+                      <CollapsibleSection key={groupKey} title={group.title} isCollapsed={isMainSidebarCollapsed} sectionKey={sectionKey}>
                         {group.pages.map((page: PageData) => {
                           const method = getHttpMethod(page);
                           const title = page.data.title || formatTitle(page.slugs[page.slugs.length - 1]);
