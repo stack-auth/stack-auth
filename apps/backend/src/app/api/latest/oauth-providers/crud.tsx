@@ -394,13 +394,12 @@ export const oauthProviderCrudHandlers = createLazyProxy(() =>createCrudHandlers
     });
   },
   async onCreate({ auth, data }) {
-    const config = auth.tenancy.completeConfig;
+    const config = auth.tenancy.config;
 
-    let providerConfig: (typeof config.auth.oauth.providers)[number] & { id: string } | undefined;
-    for (const [providerConfigId, provider] of Object.entries(config.auth.oauth.providers)) {
+    let providerConfig: (typeof config.oauth_providers)[number] | undefined;
+    for (const [providerConfigId, provider] of Object.entries(config.oauth_providers)) {
       if (providerConfigId === data.provider_config_id) {
         providerConfig = {
-          id: providerConfigId,
           ...provider,
         };
         break;
@@ -459,8 +458,8 @@ export const oauthProviderCrudHandlers = createLazyProxy(() =>createCrudHandlers
     return {
       user_id: data.user_id,
       email: data.email,
-      id: providerConfig!.id,
-      type: providerConfig!.type,
+      id: providerConfig.id,
+      type: providerConfig.type,
       allow_sign_in: data.allow_sign_in,
       allow_connected_accounts: data.allow_connected_accounts,
       account_id: data.account_id,

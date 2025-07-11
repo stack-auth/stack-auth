@@ -1,7 +1,7 @@
 "use client";
 
 import { SettingCard, SettingSelect, SettingSwitch } from "@/components/settings";
-import { AdminOAuthProviderConfig, AuthPage, OAuthProviderConfig } from "@stackframe/stack";
+import { AdminOAuthProviderConfig, AuthPage } from "@stackframe/stack";
 import { allProviders } from "@stackframe/stack-shared/dist/utils/oauth";
 import { ActionDialog, Badge, BrandIcons, BrowserFrame, Button, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, Input, SelectItem, SimpleTooltip, Typography } from "@stackframe/stack-ui";
 import { AsteriskSquare, CirclePlus, Key, Link2, MoreHorizontal } from "lucide-react";
@@ -141,7 +141,7 @@ function OAuthActionCell({ config }: { config: AdminOAuthProviderConfig }) {
   const [providerSettingDialogOpen, setProviderSettingDialogOpen] = useState(false);
 
 
-  const updateProvider = async (provider: AdminOAuthProviderConfig & OAuthProviderConfig) => {
+  const updateProvider = async (provider: AdminOAuthProviderConfig) => {
     const alreadyExist = oauthProviders.some((p) => p.type === config.type);
     const newOAuthProviders = oauthProviders.map((p) => p.type === config.type ? provider : p);
     if (!alreadyExist) {
@@ -315,7 +315,8 @@ export default function PageClient() {
                           ...project.config,
                           oauthProviders: enabledProviders
                             .map(([, provider]) => provider)
-                            .filter((provider): provider is AdminOAuthProviderConfig => !!provider),
+                            .filter((provider): provider is AdminOAuthProviderConfig => !!provider)
+                            .map(provider => ({ id: provider.type })),
                         },
                       }}
                     />

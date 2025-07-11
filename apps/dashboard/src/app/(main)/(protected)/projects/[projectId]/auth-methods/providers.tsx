@@ -2,7 +2,7 @@
 import { FormDialog } from "@/components/form-dialog";
 import { InputField, SwitchField } from "@/components/form-fields";
 import { getPublicEnvVar } from '@/lib/env';
-import { AdminProject, AdminProjectUpdateOptions } from "@stackframe/stack";
+import { AdminOAuthProviderConfig, AdminProjectUpdateOptions } from "@stackframe/stack";
 import { yupBoolean, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
 import { sharedProviders } from "@stackframe/stack-shared/dist/utils/oauth";
 import { ActionDialog, Badge, BrandIcons, InlineCode, Label, SimpleTooltip, Typography } from "@stackframe/stack-ui";
@@ -23,7 +23,7 @@ export function ProviderIcon(props: { id: string }) {
 
 type Props = {
   type: string,
-  provider?: AdminProject['config']['oauthProviders'][number],
+  provider?: AdminOAuthProviderConfig,
   updateProvider: (provider: NonNullable<NonNullable<AdminProjectUpdateOptions['config']>['oauthProviders']>[number]) => Promise<void>,
   deleteProvider: (id: string) => Promise<void>,
 };
@@ -68,7 +68,7 @@ export type ProviderFormValues = yup.InferType<typeof providerFormSchema>
 export function ProviderSettingDialog(props: Props & { open: boolean, onClose: () => void }) {
   const hasSharedKeys = sharedProviders.includes(props.type as any);
   const defaultValues = {
-    shared: props.provider ? (props.provider.type === 'shared') : hasSharedKeys,
+    shared: props.provider ? (props.provider.isShared) : hasSharedKeys,
     type: props.type,
     clientId: (props.provider as any)?.clientId ?? "",
     clientSecret: (props.provider as any)?.clientSecret ?? "",

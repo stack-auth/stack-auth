@@ -135,7 +135,7 @@ export async function createOrUpdateProject(
       'auth.oauth.providers': dataOptions.oauth_providers ? typedFromEntries(dataOptions.oauth_providers
         .map((provider) => {
           return [
-            provider.id,
+            provider.type,
             {
               type: provider.type,
               isShared: provider.is_shared,

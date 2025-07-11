@@ -83,7 +83,7 @@ async function _sendEmailWithoutRetries(options: SendEmailOptions): Promise<Resu
     await wait(5000);
     if (!finished) {
       captureError("email-send-timeout", new StackAssertionError("Email send took longer than 5s; maybe the email service is too slow?", {
-        config: options.emailConfig.type === 'shared' ? "shared" : pick(options.emailConfig, ['host', 'port', 'username', 'senderEmail', 'senderName']),
+        config: options.emailConfig.isShared ? "shared" : pick(options.emailConfig, ['host', 'port', 'username', 'senderEmail', 'senderName']),
         to: options.to,
         subject: options.subject,
         html: options.html,
@@ -96,7 +96,7 @@ async function _sendEmailWithoutRetries(options: SendEmailOptions): Promise<Resu
 
     // If using the shared email config, use Emailable to check if the email is valid. skip the ones that are not (it's as if they had bounced)
     const emailableApiKey = getEnvVariable('STACK_EMAILABLE_API_KEY', "");
-    if (options.emailConfig.type === 'shared' && emailableApiKey) {
+    if (options.emailConfig.isShared && emailableApiKey) {
       await traceSpan('verifying email addresses with Emailable', async () => {
         toArray = (await Promise.all(toArray.map(async (to) => {
           const emailableResponse = await fetch(`https://api.emailable.com/v1/verify?email=${encodeURIComponent(options.to as string)}&api_key=${emailableApiKey}`);
