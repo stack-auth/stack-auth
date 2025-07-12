@@ -164,7 +164,7 @@ export function AccountSettings(props: {
                 <Typography className="max-w-[320px] md:w-[90%] truncate">{team.displayName}</Typography>
               </div>,
               type: 'item',
-              id: `${entityName.toLowerCase()}-${team.id}`,
+              id: `team-${team.id}`,
               content: <Suspense fallback={<TeamPageSkeleton/>}>
                 <TeamPage team={team}/>
               </Suspense>,
