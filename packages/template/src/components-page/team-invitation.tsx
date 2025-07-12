@@ -90,7 +90,7 @@ export function TeamInvitation(props: {
 
   const expiredJsx = (
     <MessageCard title={t('Expired {entity} Invitation Link', {entity: entityName})} fullPage={fullPage}>
-      <Typography>{t('Your team invitation link has expired. Please request a new {entity} invitation link ', {entity: entityName.toLowerCase()})}</Typography>
+      <Typography>{t('Your {entity} invitation link has expired. Please request a new {entity} invitation link ', {entity: entityName.toLowerCase()})}</Typography>
     </MessageCard>
   );
 
