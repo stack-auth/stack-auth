@@ -1,4 +1,4 @@
-import { retryTransaction } from "@/prisma-client";
+import { getPrismaClientForTenancy, globalPrismaClient, retryTransaction } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { KnownErrors } from "@stackframe/stack-shared";
 import { getPasswordError } from "@stackframe/stack-shared/dist/helpers/password";
@@ -40,7 +40,8 @@ export const POST = createSmartRouteHandler({
       throw passwordError;
     }
 
-    await retryTransaction(async (tx) => {
+    const prisma = getPrismaClientForTenancy(tenancy);
+    await retryTransaction(prisma, async (tx) => {
       const authMethods = await tx.passwordAuthMethod.findMany({
         where: {
           tenancyId: tenancy.id,
@@ -74,19 +75,19 @@ export const POST = createSmartRouteHandler({
           passwordHash: await hashPassword(new_password),
         },
       });
+    });
 
-      // reset all other refresh tokens
-      await tx.projectUserRefreshToken.deleteMany({
-        where: {
-          tenancyId: tenancy.id,
-          projectUserId: user.id,
-          ...refreshToken ? {
-            NOT: {
-              refreshToken: refreshToken[0],
-            },
-          } : {},
-        },
-      });
+    // reset all other refresh tokens
+    await globalPrismaClient.projectUserRefreshToken.deleteMany({
+      where: {
+        tenancyId: tenancy.id,
+        projectUserId: user.id,
+        ...refreshToken ? {
+          NOT: {
+            refreshToken: refreshToken[0],
+          },
+        } : {},
+      },
     });
 
     return {

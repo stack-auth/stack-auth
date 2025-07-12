@@ -1,5 +1,5 @@
 import { it } from "../../../../../../../helpers";
-import { backendContext, niceBackendFetch } from "../../../../../../backend-helpers";
+import { Auth, InternalApiKey, backendContext, niceBackendFetch } from "../../../../../../backend-helpers";
 
 export async function provisionProject() {
   return await niceBackendFetch("/api/v1/integrations/neon/projects/provision", {
@@ -80,9 +80,45 @@ it("should be able to provision a new project if neon client details are correct
         "display_name": "Test project",
         "id": "<stripped UUID>",
         "is_production_mode": false,
-        "user_count": 0,
       },
       "headers": Headers { <some fields may have been hidden> },
+    }
+  `);
+
+  // create publishable client key and secret server key
+  const apiKeyCreationResponse = await InternalApiKey.createAndSetProjectKeys();
+  expect(apiKeyCreationResponse.createApiKeyResponse).toMatchInlineSnapshot(`
+    NiceResponse {
+      "status": 200,
+      "body": {
+        "created_at_millis": <stripped field 'created_at_millis'>,
+        "description": "test api key",
+        "expires_at_millis": <stripped field 'expires_at_millis'>,
+        "id": "<stripped UUID>",
+        "publishable_client_key": <stripped field 'publishable_client_key'>,
+        "secret_server_key": <stripped field 'secret_server_key'>,
+        "super_secret_admin_key": <stripped field 'super_secret_admin_key'>,
+      },
+      "headers": Headers { <some fields may have been hidden> },
+    }
+  `);
+
+  // ensure we can create a user in the new project (make sure it's writable)
+  const signInResponse = await Auth.Password.signUpWithEmail({ password: "test1234" });
+  expect(signInResponse).toMatchInlineSnapshot(`
+    {
+      "email": "default-mailbox--<stripped UUID>@stack-generated.example.com",
+      "password": "test1234",
+      "signUpResponse": NiceResponse {
+        "status": 200,
+        "body": {
+          "access_token": <stripped field 'access_token'>,
+          "refresh_token": <stripped field 'refresh_token'>,
+          "user_id": "<stripped UUID>",
+        },
+        "headers": Headers { <some fields may have been hidden> },
+      },
+      "userId": "<stripped UUID>",
     }
   `);
 });

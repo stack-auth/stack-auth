@@ -58,6 +58,7 @@
     "bcryptjs": "^3.0.2",
     "crc": "^4.3.2",
     "elliptic": "^6.5.7",
+    "esbuild-wasm": "^0.20.2",
     "ip-regex": "^5.0.0",
     "jose": "^5.2.2",
     "oauth4webapi": "^2.10.3",

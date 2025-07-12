@@ -1,6 +1,6 @@
 import { listNotificationCategories } from "@/lib/notification-categories";
 import { ensureUserExists } from "@/lib/request-checks";
-import { prismaClient } from "@/prisma-client";
+import { getPrismaClientForTenancy } from "@/prisma-client";
 import { createCrudHandlers } from "@/route-handlers/crud-handler";
 import { KnownErrors } from "@stackframe/stack-shared";
 import { notificationPreferenceCrud, NotificationPreferenceCrud } from "@stackframe/stack-shared/dist/interface/crud/notification-preferences";
@@ -29,6 +29,7 @@ export const notificationPreferencesCrudHandlers = createLazyProxy(() => createC
         throw new StatusError(StatusError.Forbidden, "You can only manage your own notification preferences");
       }
     }
+    const prismaClient = getPrismaClientForTenancy(auth.tenancy);
     await ensureUserExists(prismaClient, { tenancyId: auth.tenancy.id, userId });
 
     const notificationPreference = await prismaClient.userNotificationPreference.upsert({
@@ -71,6 +72,7 @@ export const notificationPreferencesCrudHandlers = createLazyProxy(() => createC
         throw new StatusError(StatusError.Forbidden, "You can only view your own notification preferences");
       }
     }
+    const prismaClient = getPrismaClientForTenancy(auth.tenancy);
     await ensureUserExists(prismaClient, { tenancyId: auth.tenancy.id, userId });
 
     const notificationPreferences = await prismaClient.userNotificationPreference.findMany({
