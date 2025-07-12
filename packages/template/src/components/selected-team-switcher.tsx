@@ -196,7 +196,7 @@ function Inner<AllowNull extends boolean>(props: SelectedTeamSwitcherProps<Allow
               className="w-full"
               variant='ghost'
             >
-              <PlusCircle className="mr-2 h-4 w-4"/> {t('Create {entity}', {entity: entityName})}
+              <PlusCircle className="mr-2 h-4 w-4"/> {t('Create {entity}', {entity: entityName.toLowerCase()})}
             </Button>
           </div>
         </>}
