@@ -1,4 +1,5 @@
 import { BookOpen, FlaskConical, Hammer, Puzzle, type LucideIcon } from 'lucide-react';
+import { getSmartPlatformRedirect } from './platform-navigation';
 import type { Platform } from './platform-utils';
 
 export type NavLink = {
@@ -23,48 +24,10 @@ export function platformSupportsSDK(platform: Platform): boolean {
 
 /**
  * Determines the appropriate redirect URL when switching platforms.
- * If switching to a platform that doesn't support the current section,
- * redirects to the overview page instead.
+ * Uses docs-platform.yml to find the best alternative page or falls back to overview.
  */
 export function getSmartRedirectUrl(currentPath: string, newPlatform: Platform): string {
-  // Check for components section specifically: /docs/{platform}/components/...
-  const componentsMatch = currentPath.match(/^\/docs\/[a-z]+\/components(?:\/.*)?$/);
-  if (componentsMatch) {
-    if (platformSupportsComponents(newPlatform)) {
-      const componentPath = currentPath.replace(/^\/docs\/[a-z]+\/components/, '');
-      return `/docs/${newPlatform}/components${componentPath}`;
-    } else {
-      // Redirect to overview if platform doesn't support components
-      return `/docs/${newPlatform}/overview`;
-    }
-  }
-
-  // Check for SDK section specifically: /docs/{platform}/sdk/...
-  const sdkMatch = currentPath.match(/^\/docs\/[a-z]+\/sdk(?:\/.*)?$/);
-  if (sdkMatch) {
-    if (platformSupportsSDK(newPlatform)) {
-      const sdkPath = currentPath.replace(/^\/docs\/[a-z]+\/sdk/, '');
-      return `/docs/${newPlatform}/sdk${sdkPath}`;
-    } else {
-      // Redirect to overview if platform doesn't support SDK
-      return `/docs/${newPlatform}/overview`;
-    }
-  }
-
-  // For API section or other sections, maintain the same structure
-  if (currentPath.startsWith('/api')) {
-    return currentPath; // API is platform-agnostic
-  }
-
-  // For general docs within a platform: /docs/{platform}/*
-  const generalMatch = currentPath.match(/^\/docs\/[a-z]+(\/.*)$/);
-  if (generalMatch) {
-    const pathAfterPlatform = generalMatch[1];
-    return `/docs/${newPlatform}${pathAfterPlatform}`;
-  }
-
-  // Default: redirect to platform overview
-  return `/docs/${newPlatform}/overview`;
+  return getSmartPlatformRedirect(currentPath, newPlatform);
 }
 
 /**
@@ -117,7 +80,7 @@ export function generateNavLinks(platform: Platform): NavLink[] {
   // Add Components link only for platforms that support React components
   if (platformSupportsComponents(platform)) {
     baseLinks.push({
-      href: `/docs/${platform}/components/overview`,
+      href: `/docs/${platform}/components`,
       label: "Components",
       icon: Puzzle
     });
@@ -126,7 +89,7 @@ export function generateNavLinks(platform: Platform): NavLink[] {
   // Add SDK link only for platforms that support SDK
   if (platformSupportsSDK(platform)) {
     baseLinks.push({
-      href: `/docs/${platform}/sdk/overview`,
+      href: `/docs/${platform}/sdk`,
       label: "SDK",
       icon: Hammer
     });

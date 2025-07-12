@@ -2,19 +2,79 @@
 
 import { DndContext, pointerWithin, useDraggable, useDroppable } from '@dnd-kit/core';
 import { range } from '@stackframe/stack-shared/dist/utils/arrays';
-import { StackAssertionError, throwErr } from '@stackframe/stack-shared/dist/utils/errors';
+import { StackAssertionError, errorToNiceString, throwErr } from '@stackframe/stack-shared/dist/utils/errors';
+import { bundleJavaScript } from '@stackframe/stack-shared/dist/utils/esbuild';
 import { deepPlainEquals, filterUndefined, isNotNull } from '@stackframe/stack-shared/dist/utils/objects';
 import { runAsynchronously, runAsynchronouslyWithAlert, wait } from '@stackframe/stack-shared/dist/utils/promises';
 import { InstantStateRef, useInstantState } from '@stackframe/stack-shared/dist/utils/react';
+import { Result } from '@stackframe/stack-shared/dist/utils/results';
+import { deindent } from '@stackframe/stack-shared/dist/utils/strings';
 import { generateUuid } from '@stackframe/stack-shared/dist/utils/uuids';
-import { Button, ButtonProps, Card, Dialog, DialogBody, DialogContent, DialogFooter, DialogHeader, DialogTitle, cn } from '@stackframe/stack-ui';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { Button, ButtonProps, Card, Dialog, DialogBody, DialogContent, DialogFooter, DialogHeader, DialogTitle, Input, SimpleTooltip, cn } from '@stackframe/stack-ui';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { FaPen, FaPlus, FaTrash } from 'react-icons/fa';
+import * as jsxRuntime from 'react/jsx-runtime';
 import { PageLayout } from "../page-layout";
+import { useAdminApp } from '../use-admin-app';
+
+type SerializedWidget = {
+  version: 1,
+  sourceJs: string,
+  compilationResult: Result<string, string>,
+};
+
+const widgetGlobals = {
+  React,
+  jsxRuntime,
+  Card,
+  Button,
+  Input,
+};
+
+async function compileWidgetSource(source: string): Promise<Result<string, string>> {
+  return await bundleJavaScript({
+    "/source.tsx": source,
+    "/entry.js": `
+      import * as widget from "./source.tsx";
+      __STACK_WIDGET_RESOLVE(widget);
+    `,
+  }, {
+    externalPackages: {
+      'react': 'module.exports = React;',
+      'react/jsx-runtime': 'module.exports = jsxRuntime;',
+    },
+  });
+}
+
+async function deserializeWidget(serializedWidget: SerializedWidget): Promise<Widget<any>> {
+  const errorWidget = (errorMessage: string): Widget<any> => ({
+    MainComponent: () => <Card style={{ inset: '0', position: 'absolute', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
+      <div style={{ fontSize: '16px', fontWeight: 'bold', color: 'red', fontFamily: 'monospace', whiteSpace: 'pre-wrap' }}>
+        {errorMessage}
+      </div>
+    </Card>,
+    defaultSettings: {},
+  });
+
+  if (serializedWidget.compilationResult.status === "ok") {
+    const globalsEntries = Object.entries(widgetGlobals);
+    const globalsKeys = globalsEntries.map(([key]) => key);
+    const globalsValues = globalsEntries.map(([_, value]) => value);
+    const compiledJs = serializedWidget.compilationResult.data;
+    try {
+      return await new Promise(resolve => new Function(...globalsKeys, "__STACK_WIDGET_RESOLVE", compiledJs)(...globalsValues, resolve));
+    } catch (e) {
+      return errorWidget(`Widget failed to run: ${errorToNiceString(e)}`);
+    }
+  } else {
+    const errorMessage = serializedWidget.compilationResult.error;
+    return errorWidget(`Widget failed to compile: ${errorMessage}`);
+  }
+}
 
 type Widget<Settings> = {
-  mainComponent: React.ComponentType<{ settings: Settings }>,
-  settingsComponent: React.ComponentType<{ settings: Settings, onUpdateSettings: (settings: Settings) => void }>,
+  MainComponent: React.ComponentType<{ settings: Settings }>,
+  SettingsComponent?: React.ComponentType<{ settings: Settings, onSettingsChange: (settings: Settings) => void }>,
   defaultSettings: Settings,
 };
 
@@ -267,43 +327,64 @@ class WidgetInstanceGrid {
     const newNonEmptyElements = this._nonEmptyElements.filter((element) => element.x !== elementToRemove.x || element.y !== elementToRemove.y);
     return new WidgetInstanceGrid(newNonEmptyElements, this.width);
   }
+
+  public withUpdatedSettings(x: number, y: number, settings: any) {
+    const elementToUpdate = this.getElementAt(x, y);
+    const newNonEmptyElements = this._nonEmptyElements.map((element) => element.x === elementToUpdate.x && element.y === elementToUpdate.y ? { ...element, instance: element.instance ? { ...element.instance, settings } : null } : element);
+    return new WidgetInstanceGrid(newNonEmptyElements, this.width);
+  }
 }
 
-const widgets = [
+const widgets: Widget<any>[] = [
   {
-    mainComponent: () => <Card style={{ inset: '0', position: 'absolute' }}>Widget 1</Card>,
-    settingsComponent: () => <div>Settings 1</div>,
-    defaultSettings: {},
-  },
-  {
-    mainComponent: () => <Card style={{ inset: '0', position: 'absolute' }}>Widget 2</Card>,
-    settingsComponent: () => <div>Settings 2</div>,
-    defaultSettings: {},
-  },
-  {
-    mainComponent: () => <Card style={{ inset: '0', position: 'absolute' }}>Widget 3</Card>,
-    settingsComponent: () => <div>Settings 3</div>,
+    MainComponent: () => {
+      const [source, setSource] = useState(deindent`
+        export function MainComponent(props) {
+          return <Card>Hello, {props.settings.name}!</Card>;
+        }
+
+        // export function SettingsComponent(props) {
+        //   return <div>Name: <Input value={props.settings.name} onChange={(e) => props.onSettingsChange({ ...props.settings, name: e.target.value })} /></div>;
+        // }
+
+        export const defaultSettings = {name: "world"};
+      `);
+      const stackAdminApp = useAdminApp();
+      const [compilationResult, setCompilationResult] = useState<Result<string, string> | null>(null);
+
+      return (
+        <Card style={{ inset: '0', position: 'absolute' }}>
+          <textarea value={source} onChange={(e) => setSource(e.target.value)} style={{ width: '100%', height: '35%', fontFamily: "monospace" }} />
+          <Button onClick={async () => {
+            const result = await compileWidgetSource(source);
+            setCompilationResult(result);
+          }}>Compile</Button>
+          {compilationResult?.status === "ok" && (
+            <>
+              <textarea style={{ fontFamily: "monospace", width: '100%', height: '35%' }} value={compilationResult.data} readOnly />
+              <Button onClick={async () => {
+                widgets.push(await deserializeWidget({
+                  version: 1,
+                  sourceJs: compilationResult.data,
+                  compilationResult: Result.ok(compilationResult.data),
+                }));
+                alert("Widget saved");
+              }}>Save as widget</Button>
+            </>
+          )}
+          {compilationResult?.status === "error" && (
+            <div style={{ color: "red" }}>
+              {compilationResult.error}
+            </div>
+          )}
+        </Card>
+      );
+    },
     defaultSettings: {},
   },
 ];
 
-const widgetInstances = [
-  {
-    id: 'abc',
-    widget: widgets[0],
-    settings: {},
-  },
-  {
-    id: 'def',
-    widget: widgets[1],
-    settings: {},
-  },
-  {
-    id: 'ghi',
-    widget: widgets[2],
-    settings: {},
-  },
-];
+const widgetInstances: WidgetInstance<any>[] = [];
 
 const gridGapPixels = 32;
 
@@ -456,7 +537,7 @@ function SwappableWidgetInstanceGrid(props: { gridRef: InstantStateRef<WidgetIns
                   }}
                   settings={instance.settings}
                   onSaveSettings={async (settings) => {
-                    throw new StackAssertionError("Widget save settings currently not implemented");
+                    props.setGrid(props.gridRef.current.withUpdatedSettings(x, y, settings));
                   }}
                   onResize={(edges) => {
                     const clamped = props.gridRef.current.clampResize(x, y, edges);
@@ -706,9 +787,10 @@ function Draggable(props: {
             style={{
             }}
           >
-            <props.widgetInstance.widget.mainComponent settings={props.widgetInstance.settings} />
+            <props.widgetInstance.widget.MainComponent settings={props.widgetInstance.settings} />
           </div>
           <div
+            inert
             style={{
               position: 'absolute',
               inset: 0,
@@ -719,6 +801,7 @@ function Draggable(props: {
             }}
           />
           <div
+            inert
             style={{
               position: 'absolute',
               inset: 0,
@@ -755,9 +838,11 @@ function Draggable(props: {
                     inset: 0,
                   }}
                 />
-                <BigIconButton icon={<FaPen size={24} />} onClick={async () => {
-                  setIsSettingsOpen(true);
-                }} />
+                <SimpleTooltip tooltip={!props.widgetInstance.widget.SettingsComponent ? "This widget doesn't have any settings." : undefined}>
+                  <BigIconButton disabled={!props.widgetInstance.widget.SettingsComponent} icon={<FaPen size={24} />} onClick={async () => {
+                    setIsSettingsOpen(true);
+                  }} />
+                </SimpleTooltip>
                 <BigIconButton
                   icon={<FaTrash size={24} />}
                   loadingStyle="disabled"
@@ -788,68 +873,70 @@ function Draggable(props: {
           )}
         </div>
       </div>
-      <Dialog open={isSettingsOpen || settingsClosingAnimationCounter > 0} onOpenChange={setIsSettingsOpen}>
-        <DialogContent
-          ref={dialogRef}
-          overlayProps={{
-            style: {
-              opacity: settingsOpenAnimationDetails?.shouldStart && !settingsOpenAnimationDetails.revert ? 1 : 0,
-              transition: `opacity 0.3s ease${settingsOpenAnimationDetails?.revert ? ' 0s' : ' 0.3s'}`,
+      {props.widgetInstance.widget.SettingsComponent && (
+        <Dialog open={isSettingsOpen || settingsClosingAnimationCounter > 0} onOpenChange={setIsSettingsOpen}>
+          <DialogContent
+            ref={dialogRef}
+            overlayProps={{
+              style: {
+                opacity: settingsOpenAnimationDetails?.shouldStart && !settingsOpenAnimationDetails.revert ? 1 : 0,
+                transition: `opacity 0.4s ease`,
+                animation: 'none',
+              },
+            }}
+            style={{
+              transform: [
+                'translate(-50%, -50%)',
+                !settingsOpenAnimationDetails ? `` : (
+                  settingsOpenAnimationDetails.shouldStart && !settingsOpenAnimationDetails.revert ? `rotateY(0deg)` : `
+                    translate(${settingsOpenAnimationDetails.translate[0]}px, ${settingsOpenAnimationDetails.translate[1]}px)
+                    scale(${settingsOpenAnimationDetails.scale[0]}, ${settingsOpenAnimationDetails.scale[1]})
+                    rotateY(180deg)
+                  `
+                ),
+              ].filter(Boolean).join(' '),
+              transition: settingsOpenAnimationDetails?.shouldStart ? 'transform 0.6s ease' : 'none',
+              visibility: settingsOpenAnimationDetails ? 'visible' : 'hidden',
               animation: 'none',
-            },
-          }}
-          style={{
-            transform: [
-              'translate(-50%, -50%)',
-              !settingsOpenAnimationDetails ? `` : (
-                settingsOpenAnimationDetails.shouldStart && !settingsOpenAnimationDetails.revert ? `rotateY(0deg)` : `
-                  translate(${settingsOpenAnimationDetails.translate[0]}px, ${settingsOpenAnimationDetails.translate[1]}px)
-                  scale(${settingsOpenAnimationDetails.scale[0]}, ${settingsOpenAnimationDetails.scale[1]})
-                  rotateY(180deg)
-                `
-              ),
-            ].filter(Boolean).join(' '),
-            transition: settingsOpenAnimationDetails?.shouldStart ? 'transform 0.6s ease' : 'none',
-            visibility: settingsOpenAnimationDetails ? 'visible' : 'hidden',
-            animation: 'none',
-          }}
-          inert={!isSettingsOpen}
-          onInteractOutside={(e) => e.preventDefault()}
-          className="[&>button]:hidden stack-recursive-backface-hidden"
-        >
-          <DialogHeader>
-            <DialogTitle className="flex items-center">
-              Edit Widget
-            </DialogTitle>
-          </DialogHeader>
+            }}
+            inert={!isSettingsOpen}
+            onInteractOutside={(e) => e.preventDefault()}
+            className="[&>button]:hidden stack-recursive-backface-hidden"
+          >
+            <DialogHeader>
+              <DialogTitle className="flex items-center">
+                Edit Widget
+              </DialogTitle>
+            </DialogHeader>
 
-          <DialogBody className="pb-2">
-            <props.widgetInstance.widget.settingsComponent settings={unsavedSettings} onUpdateSettings={setUnsavedSettings} />
-          </DialogBody>
+            <DialogBody className="pb-2">
+              <props.widgetInstance.widget.SettingsComponent settings={unsavedSettings} onSettingsChange={setUnsavedSettings} />
+            </DialogBody>
 
 
-          <DialogFooter className="gap-2">
-            <Button
-              variant="secondary"
-              color="neutral"
-              onClick={async () => {
-                setIsSettingsOpen(false);
-              }}
-            >
-              Cancel
-            </Button>
-            <Button
-              variant="default"
-              onClick={async () => {
-                await props.onSaveSettings(unsavedSettings);
-                setIsSettingsOpen(false);
-              }}
-            >
-              Save
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+            <DialogFooter className="gap-2">
+              <Button
+                variant="secondary"
+                color="neutral"
+                onClick={async () => {
+                  setIsSettingsOpen(false);
+                }}
+              >
+                Cancel
+              </Button>
+              <Button
+                variant="default"
+                onClick={async () => {
+                  await props.onSaveSettings(unsavedSettings);
+                  setIsSettingsOpen(false);
+                }}
+              >
+                Save
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      )}
     </>
   );
 }

@@ -22,10 +22,39 @@
   margin-top: -2rem !important;
 }
 
+/* Main sidebar collapsed state */
+body.main-sidebar-collapsed #nd-docs-layout {
+  margin-left: 4rem !important; /* 64px collapsed width */
+  transition: margin-left 300ms ease-out;
+}
+
+body.main-sidebar-collapsed #api-main-content {
+  margin-left: 4rem !important; /* 64px collapsed width */
+  transition: margin-left 300ms ease-out;
+}
+
+body.main-sidebar-collapsed .api-sidebar {
+  width: 4rem !important; /* 64px collapsed width */
+  transition: width 300ms ease-out;
+}
+
+/* Default transitions for main content */
+#nd-docs-layout {
+  transition: margin-left 300ms ease-out;
+}
+
+#api-main-content {
+  transition: margin-left 300ms ease-out;
+}
+
+.api-sidebar {
+  transition: width 300ms ease-out;
+}
+
 /* TOC open state - only when chat is not open */
-body.toc-open:not(.chat-open) #nd-docs-layout > div:last-child {
-  margin-right: 18rem; /* 288px - same as xl:mr-72 */
-  transition: margin-right 300ms ease-out;
+body.toc-open:not(.chat-open):not(.home-page) {
+  padding-right: 17rem; /* 264px + 16px for spacing (w-64 + spacing) */
+  transition: padding-right 300ms ease-out;
 }
 
 /* Chat open state - overrides everything */
@@ -43,11 +72,6 @@ body.auth-open:not(.home-page) {
 /* Default transition for docs pages */
 body:not(.home-page) {
   transition: padding-right 300ms ease-out;
-}
-
-/* Ensure content area transitions smoothly */
-#nd-docs-layout > div:last-child {
-  transition: margin-right 300ms ease-out;
 }
 
 /* Chat drawer content shifting for homepage */

@@ -6,14 +6,15 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "build": "next build",
-    "dev": "next dev --port 8104 --hostname 0.0.0.0",
+    "build": "npm run generate-platform-nav && next build",
+    "dev": "npm run generate-platform-nav && next dev --port 8104 --hostname 0.0.0.0",
     "start": "next start --port 8104",
     "lint": "next lint",
     "lint:fix": "next lint --fix",
     "postinstall": "fumadocs-mdx",
     "generate-docs": "node scripts/generate-docs.js",
     "generate-openapi-docs": "node scripts/generate-functional-api-docs.mjs",
+    "generate-platform-nav": "node scripts/generate-platform-navigation.js",
     "setup-openapi": "node scripts/setup-openapi.mjs",
     "clear-docs": "node scripts/clear-docs.js"
   },

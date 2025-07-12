@@ -1,7 +1,7 @@
 import { grantProjectPermission, listPermissions, revokeProjectPermission } from "@/lib/permissions";
 import { ensureProjectPermissionExists, ensureUserExists } from "@/lib/request-checks";
 import { sendProjectPermissionCreatedWebhook, sendProjectPermissionDeletedWebhook } from "@/lib/webhooks";
-import { retryTransaction } from "@/prisma-client";
+import { getPrismaClientForTenancy, retryTransaction } from "@/prisma-client";
 import { createCrudHandlers } from "@/route-handlers/crud-handler";
 import { runAsynchronouslyAndWaitUntil } from "@/utils/vercel";
 import { KnownErrors } from "@stackframe/stack-shared";
@@ -21,7 +21,7 @@ export const projectPermissionsCrudHandlers = createLazyProxy(() => createCrudHa
     permission_id: permissionDefinitionIdSchema.defined(),
   }),
   async onCreate({ auth, params }) {
-    const result = await retryTransaction(async (tx) => {
+    const result = await retryTransaction(getPrismaClientForTenancy(auth.tenancy), async (tx) => {
       await ensureUserExists(tx, { tenancyId: auth.tenancy.id, userId: params.user_id });
 
       return await grantProjectPermission(tx, {
@@ -42,7 +42,7 @@ export const projectPermissionsCrudHandlers = createLazyProxy(() => createCrudHa
     return result;
   },
   async onDelete({ auth, params }) {
-    const result = await retryTransaction(async (tx) => {
+    const result = await retryTransaction(getPrismaClientForTenancy(auth.tenancy), async (tx) => {
       await ensureProjectPermissionExists(tx, {
         tenancy: auth.tenancy,
         userId: params.user_id,
@@ -77,7 +77,7 @@ export const projectPermissionsCrudHandlers = createLazyProxy(() => createCrudHa
       }
     }
 
-    return await retryTransaction(async (tx) => {
+    return await retryTransaction(getPrismaClientForTenancy(auth.tenancy), async (tx) => {
       return {
         items: await listPermissions(tx, {
           scope: 'project',

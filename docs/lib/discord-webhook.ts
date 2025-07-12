@@ -16,7 +16,7 @@ export async function sendToDiscordWebhook(data: {
   };
 }) {
   const webhookUrl = process.env.DISCORD_WEBHOOK_URL;
-  
+
   if (!webhookUrl) {
     console.warn('Discord webhook URL not configured');
     return;
@@ -24,7 +24,7 @@ export async function sendToDiscordWebhook(data: {
 
   try {
     const { message, username, metadata } = data;
-    
+
     // Format message with clean text structure
     const sessionPrefix = metadata?.sessionId ? metadata.sessionId.slice(-8) : 'unknown';
     const messageNumber = metadata?.messageNumber || 1;
@@ -33,9 +33,9 @@ export async function sendToDiscordWebhook(data: {
     const timeOnPage = metadata?.timeOnPage ? formatTime(metadata.timeOnPage) : 'N/A';
     const browserInfo = extractBrowserInfo(metadata?.userAgent || '');
     const page = metadata?.pathname || 'Unknown';
-    
+
     // Create formatted message
-    const formattedMessage = `${isFollowUp ? '🔄 **FOLLOW-UP**' : '💬 **NEW CONVERSATION**'} 
+    const formattedMessage = `${isFollowUp ? '🔄 **FOLLOW-UP**' : '💬 **NEW CONVERSATION**'}
 **Session:** \`${sessionPrefix}\` **|** **Message #${messageNumber}** **|** ${messageType}
 
 **Question:**
@@ -83,31 +83,29 @@ function formatTime(seconds: number): string {
 function extractBrowserInfo(userAgent: string): string | null {
   if (!userAgent) return null;
 
-  // Extract browser
-  let browser = 'Unknown';
-  if (userAgent.includes('Chrome/')) {
-    browser = 'Chrome';
-  } else if (userAgent.includes('Firefox/')) {
-    browser = 'Firefox';
-  } else if (userAgent.includes('Safari/') && !userAgent.includes('Chrome/')) {
-    browser = 'Safari';
-  } else if (userAgent.includes('Edge/')) {
-    browser = 'Edge';
-  }
+  // Browser detection patterns (order matters - Chrome must come before Safari)
+  const browserPatterns = [
+    { pattern: 'Edge/', name: 'Edge' },
+    { pattern: 'Chrome/', name: 'Chrome' },
+    { pattern: 'Firefox/', name: 'Firefox' },
+    { pattern: 'Safari/', name: 'Safari' },
+  ];
 
-  // Extract OS
-  let os = 'Unknown';
-  if (userAgent.includes('Windows NT')) {
-    os = 'Windows';
-  } else if (userAgent.includes('Mac OS X')) {
-    os = 'macOS';
-  } else if (userAgent.includes('Linux')) {
-    os = 'Linux';
-  } else if (userAgent.includes('iPhone') || userAgent.includes('iPad')) {
-    os = 'iOS';
-  } else if (userAgent.includes('Android')) {
-    os = 'Android';
-  }
+  // OS detection patterns
+  const osPatterns = [
+    { pattern: 'Windows NT', name: 'Windows' },
+    { pattern: 'Mac OS X', name: 'macOS' },
+    { pattern: 'iPhone', name: 'iOS' },
+    { pattern: 'iPad', name: 'iOS' },
+    { pattern: 'Android', name: 'Android' },
+    { pattern: 'Linux', name: 'Linux' },
+  ];
+
+  // Find browser
+  const browser = browserPatterns.find(({ pattern }) => userAgent.includes(pattern))?.name || 'Unknown';
+
+  // Find OS
+  const os = osPatterns.find(({ pattern }) => userAgent.includes(pattern))?.name || 'Unknown';
 
   return `${browser} on ${os}`;
-} 
+}

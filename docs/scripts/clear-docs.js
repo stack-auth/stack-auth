@@ -19,11 +19,11 @@ function clearDirectory(dirPath) {
   }
 
   const items = fs.readdirSync(dirPath);
-  
+
   for (const item of items) {
     const itemPath = path.join(dirPath, item);
     const stat = fs.statSync(itemPath);
-    
+
     if (stat.isDirectory()) {
       // Recursively remove directory and all its contents
       fs.rmSync(itemPath, { recursive: true, force: true });
@@ -39,11 +39,11 @@ function clearDirectory(dirPath) {
 function main() {
   const docsPath = path.join(__dirname, '..', 'content', 'docs');
   const apiDocsPath = path.join(__dirname, '..', 'content', 'api');
-  
+
   console.log('🧹 Clearing all files and directories in content/docs, and content/api');
   console.log(`Target directory: ${docsPath}`);
   console.log(`Target directory: ${apiDocsPath}`);
-  
+
   try {
     clearDirectory(docsPath);
     clearDirectory(apiDocsPath);
@@ -55,4 +55,4 @@ function main() {
 }
 
 // Run the script
-main(); 
+main();

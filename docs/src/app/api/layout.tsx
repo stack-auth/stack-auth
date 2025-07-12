@@ -99,12 +99,12 @@ export default function ApiLayout({ children }: { children: React.ReactNode }) {
           />
 
           {/* Custom API Sidebar - positioned under header, hidden on mobile */}
-          <div className="hidden md:block w-64 flex-shrink-0 border-r border-fd-border fixed left-0 top-14 h-[calc(100vh-3.5rem)] z-30">
+          <div className="api-sidebar hidden md:block w-64 flex-shrink-0 border-r border-fd-border fixed left-0 top-14 h-[calc(100vh-3.5rem)] z-30">
             <ApiSidebar />
           </div>
 
-          {/* Main content area - full width on mobile, with left margin on desktop, accounting for header */}
-          <div className="flex-1 flex flex-col min-w-0 md:ml-64 pt-14">
+          {/* Main content area - responsive margin based on sidebar state */}
+          <div className="flex-1 flex flex-col min-w-0 md:ml-64 pt-14" id="api-main-content">
             {/* Page content */}
             <main className="flex-1 overflow-auto">
               {children}

@@ -1,9 +1,9 @@
 'use client';
 
 import Link from 'fumadocs-core/link';
-import { Box, Code, Zap } from 'lucide-react';
 import type { ReactNode } from 'react';
 import { cn } from '../../lib/cn';
+import { Box, Code, Zap } from '../icons';
 
 type SDKItem = {
   name: string,
