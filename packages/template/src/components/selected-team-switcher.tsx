@@ -19,17 +19,20 @@ import { Suspense, useEffect, useMemo } from "react";
 import { Team, useStackApp, useUser } from "..";
 import { useTranslation } from "../lib/translations";
 import { TeamIcon } from "./team-icon";
+import { pluralize } from 'pluralize';
 
 type MockTeam = {
   id: string,
   displayName: string,
   profileImageUrl?: string | null,
+  entityName?: string,
 };
 
 type SelectedTeamSwitcherProps<AllowNull extends boolean = false> = {
   urlMap?: (team: AllowNull extends true ? Team | null : Team) => string,
   selectedTeam?: Team,
   noUpdateSelectedTeam?: boolean,
+  entityName?: string,
   allowNull?: AllowNull,
   nullLabel?: string,
   onChange?: (team: AllowNull extends true ? Team | null : Team) => void,
@@ -78,6 +81,8 @@ function Inner<AllowNull extends boolean>(props: SelectedTeamSwitcherProps<Allow
   const selectedTeam = user?.selectedTeam || props.selectedTeam;
   const rawTeams = user?.useTeams();
   const teams = useMemo(() => rawTeams?.sort((a, b) => b.id === selectedTeam?.id ? 1 : -1), [rawTeams, selectedTeam]);
+  const entityName = props.entityName ?? "Team";
+  const pluralEntity = pluralize(entityName)
 
   useEffect(() => {
     if (!props.noUpdateSelectedTeam && props.selectedTeam && !props.mockUser) {
@@ -94,7 +99,7 @@ function Inner<AllowNull extends boolean>(props: SelectedTeamSwitcherProps<Allow
           if (value !== 'null-sentinel') {
             team = teams?.find(team => team.id === value) || null;
             if (!team) {
-              throw new StackAssertionError('Team not found, this should not happen');
+              throw new StackAssertionError('{entity} not found, this should not happen', {entity: entityName});
             }
           } else {
             team = null;
@@ -118,14 +123,14 @@ function Inner<AllowNull extends boolean>(props: SelectedTeamSwitcherProps<Allow
       }}
     >
       <SelectTrigger className="stack-scope max-w-64">
-        <SelectValue placeholder="Select team"/>
+        <SelectValue placeholder={`Select ${entityName.toLowerCase()}`}/>
       </SelectTrigger>
       <SelectContent className="stack-scope">
         {user?.selectedTeam ? <SelectGroup>
           <SelectLabel>
             <div className="flex items-center justify-between">
               <span>
-                {t('Current team')}
+                {t('Current {entity}', {entity: entityName.toLowerCase()})}
               </span>
               <Button
                 variant='ghost'
@@ -154,14 +159,14 @@ function Inner<AllowNull extends boolean>(props: SelectedTeamSwitcherProps<Allow
           <SelectItem value="null-sentinel">
             <div className="flex items-center gap-2">
               <TeamIcon team='personal' />
-              <Typography className="max-w-40 truncate">{props.nullLabel || t('No team')}</Typography>
+              <Typography className="max-w-40 truncate">{props.nullLabel || t('No {entity}', {entity: entityName.toLowerCase()})}</Typography>
             </div>
           </SelectItem>
         </SelectGroup>}
 
         {teams?.length ?
           <SelectGroup>
-            <SelectLabel>{t('Other teams')}</SelectLabel>
+            <SelectLabel>{t('Other {pluralEntity}', {pluralEntity: pluralEntity})}</SelectLabel>
             {teams.filter(team => team.id !== user?.selectedTeam?.id)
               .map(team => (
                 <SelectItem value={team.id} key={team.id}>
@@ -175,7 +180,7 @@ function Inner<AllowNull extends boolean>(props: SelectedTeamSwitcherProps<Allow
 
         {!teams?.length && !props.allowNull ?
           <SelectGroup>
-            <SelectLabel>{t('No teams yet')}</SelectLabel>
+            <SelectLabel>{t('No {pluralEntity} yet', {pluralEntity: pluralEntity})}</SelectLabel>
           </SelectGroup> : null}
 
         {project.config.clientTeamCreationEnabled && <>
@@ -191,7 +196,7 @@ function Inner<AllowNull extends boolean>(props: SelectedTeamSwitcherProps<Allow
               className="w-full"
               variant='ghost'
             >
-              <PlusCircle className="mr-2 h-4 w-4"/> {t('Create a team')}
+              <PlusCircle className="mr-2 h-4 w-4"/> {t('Create {entity}', {entity: entityName})}
             </Button>
           </div>
         </>}

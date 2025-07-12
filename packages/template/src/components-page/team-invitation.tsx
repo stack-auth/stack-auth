@@ -17,12 +17,17 @@ const cachedGetInvitationDetails = cacheFunction(async (stackApp: StackClientApp
   return await stackApp.getTeamInvitationDetails(code);
 });
 
-function TeamInvitationInner(props: { fullPage?: boolean, searchParams: Record<string, string> }) {
+function TeamInvitationInner(props: { 
+  fullPage?: boolean, 
+  searchParams: Record<string, string>,
+  entityName?: string,
+}) {
   const { t } = useTranslation();
   const stackApp = useStackApp();
   const [success, setSuccess] = React.useState(false);
   const [errorMessage, setErrorMessage] = React.useState<string | null>(null);
   const details = React.use(cachedGetInvitationDetails(stackApp, props.searchParams.code || ''));
+  const entityName = props.entityName ?? "Team"
 
   if (errorMessage || details.status === 'error') {
     return (
@@ -33,7 +38,7 @@ function TeamInvitationInner(props: { fullPage?: boolean, searchParams: Record<s
   if (success) {
     return (
       <MessageCard
-        title={t('Team invitation')}
+        title={t('{entity} invitation', {entity: entityName})}
         fullPage={props.fullPage}
         primaryButtonText="Go home"
         primaryAction={() => stackApp.redirectToHome()}
@@ -46,7 +51,7 @@ function TeamInvitationInner(props: { fullPage?: boolean, searchParams: Record<s
 
   return (
     <MessageCard
-      title={t('Team invitation')}
+      title={t('{entity} invitation', {entity: entityName})}
       fullPage={props.fullPage}
       primaryButtonText={t('Join')}
       primaryAction={() => runAsynchronouslyWithAlert(async () => {
@@ -65,26 +70,33 @@ function TeamInvitationInner(props: { fullPage?: boolean, searchParams: Record<s
   );
 }
 
-export function TeamInvitation({ fullPage=false, searchParams }: { fullPage?: boolean, searchParams: Record<string, string> }) {
+export function TeamInvitation(props: { 
+  fullPage?: boolean, 
+  searchParams: Record<string, string> 
+  entityName: string,
+}) {
   const { t } = useTranslation();
   const user = useUser();
   const stackApp = useStackApp();
+  const fullPage = props.fullPage ?? false;
+  const searchParams = props.searchParams;
+  const entityName = props.entityName ?? "Team";
 
   const invalidJsx = (
-    <MessageCard title={t('Invalid Team Invitation Link')} fullPage={fullPage}>
-      <Typography>{t('Please double check if you have the correct team invitation link.')}</Typography>
+    <MessageCard title={t('Invalid {entity} Invitation Link', {entity: entityName})} fullPage={fullPage}>
+      <Typography>{t('Please double check if you have the correct {entity} invitation link.', {entity: entityName.toLowerCase()})}</Typography>
     </MessageCard>
   );
 
   const expiredJsx = (
-    <MessageCard title={t('Expired Team Invitation Link')} fullPage={fullPage}>
-      <Typography>{t('Your team invitation link has expired. Please request a new team invitation link ')}</Typography>
+    <MessageCard title={t('Expired {entity} Invitation Link', {entity: entityName})} fullPage={fullPage}>
+      <Typography>{t('Your team invitation link has expired. Please request a new {entity} invitation link ', {entity: entityName.toLowerCase()})}</Typography>
     </MessageCard>
   );
 
   const usedJsx = (
-    <MessageCard title={t('Used Team Invitation Link')} fullPage={fullPage}>
-      <Typography>{t('This team invitation link has already been used.')}</Typography>
+    <MessageCard title={t('Used {entity} Invitation Link', {entity: entityName.toLowerCase()})} fullPage={fullPage}>
+      <Typography>{t('This {entity} invitation link has already been used.', {entity: entityName.toLowerCase()})}</Typography>
     </MessageCard>
   );
 
@@ -96,14 +108,14 @@ export function TeamInvitation({ fullPage=false, searchParams }: { fullPage?: bo
   if (!user) {
     return (
       <MessageCard
-        title={t('Team invitation')}
+        title={t('{entity} invitation', {entity: entityName})}
         fullPage={fullPage}
         primaryButtonText={t('Sign in')}
         primaryAction={() => stackApp.redirectToSignIn()}
         secondaryButtonText={t('Cancel')}
         secondaryAction={() => stackApp.redirectToHome()}
       >
-        <Typography>{t('Sign in or create an account to join the team.')}</Typography>
+        <Typography>{t('Sign in or create an account to join the {entity}.', {entity: entityName.toLowerCase()})}</Typography>
       </MessageCard>
     );
   }
@@ -123,5 +135,5 @@ export function TeamInvitation({ fullPage=false, searchParams }: { fullPage?: bo
     }
   }
 
-  return <TeamInvitationInner fullPage={fullPage} searchParams={searchParams} />;
+  return <TeamInvitationInner fullPage={fullPage} searchParams={searchParams} entityName={entityName}/>;
 };
