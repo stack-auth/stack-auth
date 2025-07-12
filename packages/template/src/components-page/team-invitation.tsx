@@ -73,7 +73,7 @@ function TeamInvitationInner(props: {
 export function TeamInvitation(props: { 
   fullPage?: boolean, 
   searchParams: Record<string, string> 
-  entityName: string,
+  entityName?: string,
 }) {
   const { t } = useTranslation();
   const user = useUser();
