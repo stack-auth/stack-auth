@@ -1,6 +1,6 @@
 import { overrideEnvironmentConfigOverride } from "@/lib/config";
 import { renderEmailWithTheme } from "@/lib/email-themes";
-import { prismaClient } from "@/prisma-client";
+import { globalPrismaClient } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { openai } from "@ai-sdk/openai";
 import { adaptSchema, yupArray, yupMixed, yupNumber, yupObject, yupString, yupUnion } from "@stackframe/stack-shared/dist/schema-fields";
@@ -75,7 +75,7 @@ export const POST = createSmartRouteHandler({
               return { success: false, error: result.error };
             }
             await overrideEnvironmentConfigOverride({
-              tx: prismaClient,
+              tx: globalPrismaClient,
               projectId: tenancy.project.id,
               branchId: tenancy.branchId,
               environmentConfigOverrideOverride: {
@@ -116,7 +116,7 @@ export const POST = createSmartRouteHandler({
     });
 
     const userContent = [{ "type": "text", "text": body.messages.at(-1)?.content }];
-    await prismaClient.threadMessage.createMany({
+    await globalPrismaClient.threadMessage.createMany({
       data: [
         { tenancyId: tenancy.id, threadId: body.theme_id, role: "user", content: userContent },
         { tenancyId: tenancy.id, threadId: body.theme_id, role: "assistant", content: contentBlocks },
@@ -157,7 +157,7 @@ export const GET = createSmartRouteHandler({
     }),
   }),
   async handler({ query, auth: { tenancy } }) {
-    const dbMessages = await prismaClient.threadMessage.findMany({
+    const dbMessages = await globalPrismaClient.threadMessage.findMany({
       where: { tenancyId: tenancy.id, threadId: query.theme_id },
       orderBy: { createdAt: "asc" },
     });

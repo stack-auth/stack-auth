@@ -1,5 +1,5 @@
 import { overrideEnvironmentConfigOverride } from "@/lib/config";
-import { prismaClient } from "@/prisma-client";
+import { globalPrismaClient } from "@/prisma-client";
 import { renderEmailWithTheme } from "@/lib/email-themes";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { adaptSchema, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
@@ -84,7 +84,7 @@ export const PATCH = createSmartRouteHandler({
       throw new KnownErrors.EmailRenderingError(result.error);
     }
     await overrideEnvironmentConfigOverride({
-      tx: prismaClient,
+      tx: globalPrismaClient,
       projectId: tenancy.project.id,
       branchId: tenancy.branchId,
       environmentConfigOverrideOverride: {

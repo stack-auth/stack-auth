@@ -1,6 +1,6 @@
 import { overrideEnvironmentConfigOverride } from "@/lib/config";
 import { DEFAULT_EMAIL_THEMES } from "@/lib/email-themes";
-import { prismaClient } from "@/prisma-client";
+import { globalPrismaClient } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { adaptSchema, yupArray, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
 import { generateUuid } from "@stackframe/stack-shared/dist/utils/uuids";
@@ -36,7 +36,7 @@ export const POST = createSmartRouteHandler({
     }
     const id = generateUuid();
     await overrideEnvironmentConfigOverride({
-      tx: prismaClient,
+      tx: globalPrismaClient,
       projectId: tenancy.project.id,
       branchId: tenancy.branchId,
       environmentConfigOverrideOverride: {
