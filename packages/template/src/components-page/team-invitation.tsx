@@ -95,7 +95,7 @@ export function TeamInvitation(props: {
   );
 
   const usedJsx = (
-    <MessageCard title={t('Used {entity} Invitation Link', {entity: entityName.toLowerCase()})} fullPage={fullPage}>
+    <MessageCard title={t('Used {entity} Invitation Link', {entity: entityName})} fullPage={fullPage}>
       <Typography>{t('This {entity} invitation link has already been used.', {entity: entityName.toLowerCase()})}</Typography>
     </MessageCard>
   );
