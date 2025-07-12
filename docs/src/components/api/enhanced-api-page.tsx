@@ -137,11 +137,11 @@ export function EnhancedAPIPage({ document, operations, description }: EnhancedA
 
   // Helper function to generate example data from OpenAPI schema
   const generateExampleFromSchema = useCallback((schema: OpenAPISchema, spec?: OpenAPISpec): unknown => {
-    console.log('Processing schema:', JSON.stringify(schema, null, 2));
+    //console.log('Processing schema:', JSON.stringify(schema, null, 2));
 
     // Handle $ref references first
     if (schema.$ref) {
-      console.log('Found $ref:', schema.$ref);
+      //console.log('Found $ref:', schema.$ref);
       const refPath = schema.$ref.replace('#/', '').split('/');
       let refSchema: OpenAPISchema | undefined = spec as unknown as OpenAPISchema;
       for (const part of refPath) {
@@ -152,7 +152,7 @@ export function EnhancedAPIPage({ document, operations, description }: EnhancedA
 
     // Handle allOf (merge all schemas)
     if (schema.allOf?.length) {
-      console.log('Found allOf with', schema.allOf.length, 'schemas');
+      //console.log('Found allOf with', schema.allOf.length, 'schemas');
       const merged: Record<string, unknown> = {};
       for (const subSchema of schema.allOf) {
         const subExample = generateExampleFromSchema(subSchema, spec);
@@ -166,17 +166,17 @@ export function EnhancedAPIPage({ document, operations, description }: EnhancedA
     // Handle oneOf/anyOf (use first schema)
     if (schema.oneOf?.length || schema.anyOf?.length) {
       const schemas = schema.oneOf || schema.anyOf;
-      console.log('Found oneOf/anyOf with', schemas?.length, 'schemas');
+      //console.log('Found oneOf/anyOf with', schemas?.length, 'schemas');
       return generateExampleFromSchema(schemas![0], spec);
     }
 
     // Handle object type - prioritize this over top-level examples
     if (schema.type === 'object' && schema.properties) {
-      console.log('Processing object with properties:', Object.keys(schema.properties));
+      //console.log('Processing object with properties:', Object.keys(schema.properties));
       const example: Record<string, unknown> = {};
 
       Object.entries(schema.properties).forEach(([key, prop]: [string, OpenAPISchema]) => {
-        console.log(`Processing property ${key}:`, prop);
+        //console.log(`Processing property ${key}:`, prop);
 
         if (prop.example !== undefined) {
           example[key] = prop.example;
@@ -186,13 +186,13 @@ export function EnhancedAPIPage({ document, operations, description }: EnhancedA
         }
       });
 
-      console.log('Generated object example:', example);
+      //console.log('Generated object example:', example);
       return example;
     }
 
     // Handle direct examples only for non-object types
     if (schema.example !== undefined) {
-      console.log('Found direct example:', schema.example);
+      //console.log('Found direct example:', schema.example);
       return schema.example;
     }
 
@@ -217,9 +217,9 @@ export function EnhancedAPIPage({ document, operations, description }: EnhancedA
 
       if (operation.requestBody?.content['application/json']?.schema) {
         const { schema: jsonSchema } = operation.requestBody.content['application/json'];
-        console.log('OpenAPI Schema for', firstOperation.path, ':', jsonSchema);
+        //console.log('OpenAPI Schema for', firstOperation.path, ':', jsonSchema);
         const exampleBody = generateExampleFromSchema(jsonSchema, spec);
-        console.log('Generated example body:', exampleBody);
+        //console.log('Generated example body:', exampleBody);
         setRequestState(prev => ({
           ...prev,
           body: JSON.stringify(exampleBody, null, 2)
