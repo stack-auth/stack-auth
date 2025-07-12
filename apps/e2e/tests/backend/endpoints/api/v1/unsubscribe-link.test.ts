@@ -145,5 +145,22 @@ it("unsubscribe link should not be sent for emails with transactional notificati
   const messages = await user.mailbox.fetchMessages();
   const sentEmail = messages.find(msg => msg.subject === "Custom Test Email Subject");
   expect(sentEmail).toBeDefined();
-  expect(sentEmail!.body?.html).toMatchInlineSnapshot(`"<div>Mock api key detected, returning mock data </div>"`);
+  expect(sentEmail!.body?.html).toMatchInlineSnapshot(`
+    deindent\`
+      <div>Mock api key detected, themeComponent: import { Html, Tailwind, Body } from '@react-email/components';
+      function EmailTheme({ children }: { children: React.ReactNode }) {
+        return (
+          <Html>
+            <Tailwind>
+              <Body>
+                <div className="bg-white text-slate-800 p-4 rounded-lg max-w-[600px] mx-auto leading-relaxed">
+                  {children}
+                </div>
+              </Body>
+            </Tailwind>
+          </Html>
+        );
+      }, htmlContent: <h1>Test Email</h1><p>This is a test email with HTML content.</p>, </div>
+    \`
+  `);
 });

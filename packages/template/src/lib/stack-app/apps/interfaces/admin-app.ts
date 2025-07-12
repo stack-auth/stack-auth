@@ -1,3 +1,4 @@
+import { ChatContent } from "@stackframe/stack-shared/dist/interface/admin-interface";
 import { EmailTemplateType } from "@stackframe/stack-shared/dist/interface/crud/email-templates";
 import { InternalSession } from "@stackframe/stack-shared/dist/sessions";
 import { Result } from "@stackframe/stack-shared/dist/utils/results";
@@ -38,6 +39,9 @@ export type StackAdminApp<HasTokenStore extends boolean = boolean, ProjectId ext
     updateEmailTemplate(type: EmailTemplateType, data: AdminEmailTemplateUpdateOptions): Promise<void>,
     resetEmailTemplate(type: EmailTemplateType): Promise<void>,
 
+    useEmailThemes(): { id: string, displayName: string }[], // THIS_LINE_PLATFORM react-like
+    listEmailThemes(): Promise<{ id: string, displayName: string }[]>,
+
     createInternalApiKey(options: InternalApiKeyCreateOptions): Promise<InternalApiKeyFirstView>,
 
     createTeamPermissionDefinition(data: AdminTeamPermissionDefinitionCreateOptions): Promise<AdminTeamPermission>,
@@ -66,7 +70,19 @@ export type StackAdminApp<HasTokenStore extends boolean = boolean, ProjectId ext
       notificationCategoryName: string,
     }): Promise<void>,
 
-    useEmailThemePreview(theme: string, content: string): string, // THIS_LINE_PLATFORM react-like
+    getEmailThemePreview(themeId: string, content: string): Promise<string>,
+    useEmailThemePreview(themeId: string, content: string): string, // THIS_LINE_PLATFORM react-like
+    useEmailTheme(id: string): { displayName: string, tsxSource: string }, // THIS_LINE_PLATFORM react-like
+    createEmailTheme(displayName: string): Promise<{ id: string }>,
+    updateEmailTheme(id: string, tsxSource: string, previewHtml: string): Promise<{ rendered_html: string }>,
+
+    sendEmailThemeChatMessage(
+      themeId: string,
+      currentEmailTheme: string,
+      messages: Array<{ role: string, content: string }>,
+      abortSignal?: AbortSignal,
+    ): Promise<{ content: ChatContent }>,
+    listEmailThemeChatMessages(themeId: string): Promise<{ messages: Array<{ role: string, content: ChatContent }> }>,
   }
   & StackServerApp<HasTokenStore, ProjectId>
 );

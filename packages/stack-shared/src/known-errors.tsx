@@ -1378,6 +1378,17 @@ const EmailRenderingError = createKnownErrorConstructor(
   (json: any) => [json.error] as const,
 );
 
+const ThemeWithNameAlreadyExists = createKnownErrorConstructor(
+  KnownError,
+  "THEME_WITH_NAME_ALREADY_EXISTS",
+  (name: string) => [
+    400,
+    `A theme with the name "${name}" already exists.`,
+    { name },
+  ] as const,
+  (json: any) => [json.name] as const,
+);
+
 export type KnownErrors = {
   [K in keyof typeof KnownErrors]: InstanceType<typeof KnownErrors[K]>;
 };
@@ -1489,6 +1500,7 @@ export const KnownErrors = {
   ApiKeyRevoked,
   WrongApiKeyType,
   EmailRenderingError,
+  ThemeWithNameAlreadyExists,
 } satisfies Record<string, KnownErrorConstructor<any, any>>;
 
 

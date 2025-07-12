@@ -1,29 +1,33 @@
+import { TracedFreestyleSandboxes } from '@/lib/freestyle';
 import { getEnvVariable, getNodeEnvironment } from '@stackframe/stack-shared/dist/utils/env';
 import { Result } from "@stackframe/stack-shared/dist/utils/results";
 import { deindent } from "@stackframe/stack-shared/dist/utils/strings";
-import { FreestyleSandboxes } from 'freestyle-sandboxes';
+
 
 export async function renderEmailWithTheme(
   htmlContent: string,
-  theme: keyof typeof EMAIL_THEMES,
-  unsubscribeLink: string | null = null,
+  themeComponent: string,
+  unsubscribeLink?: string,
 ) {
   const apiKey = getEnvVariable("STACK_FREESTYLE_API_KEY");
   const unsubscribeLinkHtml = unsubscribeLink ? `<br /><br /><a href="${unsubscribeLink}">Click here to unsubscribe</a>` : "";
   if (["development", "test"].includes(getNodeEnvironment()) && apiKey === "mock_stack_freestyle_key") {
     return {
-      html: `<div>Mock api key detected, returning mock data ${unsubscribeLinkHtml}</div>`,
+      html: `<div>Mock api key detected, themeComponent: ${themeComponent}, htmlContent: ${htmlContent}, ${unsubscribeLinkHtml}</div>`,
       text: "Mock api key detected, returning mock data",
     };
   }
-  const freestyle = new FreestyleSandboxes({ apiKey });
-  const TemplateComponent = EMAIL_THEMES[theme];
+
+  const freestyle = new TracedFreestyleSandboxes({ apiKey });
   const script = deindent`
     import React from 'react';
-    import { render, Html, Tailwind, Body } from '@react-email/components';
-    ${TemplateComponent}
+    import { render } from '@react-email/components';
+    ${themeComponent}
     export default async () => {
-      const Email = <EmailTheme>${htmlContent + unsubscribeLinkHtml}</EmailTheme>
+      const Email = <EmailTheme>
+        <div dangerouslySetInnerHTML={{ __html: ${JSON.stringify(htmlContent)}}} />
+        ${unsubscribeLinkHtml}
+      </EmailTheme>;
       return {
         html: await render(Email),
         text: await render(Email, { plainText: true }),
@@ -41,7 +45,8 @@ export async function renderEmailWithTheme(
 }
 
 
-const LightEmailTheme = `function EmailTheme({ children }: { children: React.ReactNode }) {
+const LightEmailTheme = `import { Html, Tailwind, Body } from '@react-email/components';
+function EmailTheme({ children }: { children: React.ReactNode }) {
   return (
     <Html>
       <Tailwind>
@@ -56,7 +61,8 @@ const LightEmailTheme = `function EmailTheme({ children }: { children: React.Rea
 }`;
 
 
-const DarkEmailTheme = `function EmailTheme({ children }: { children: React.ReactNode }) {
+const DarkEmailTheme = `import { Html, Tailwind, Body } from '@react-email/components';
+function EmailTheme({ children }: { children: React.ReactNode }) {
   return (
     <Html>
       <Tailwind>
@@ -71,7 +77,7 @@ const DarkEmailTheme = `function EmailTheme({ children }: { children: React.Reac
 }`;
 
 
-export const EMAIL_THEMES = {
+export const DEFAULT_EMAIL_THEMES = {
   'default-light': LightEmailTheme,
   'default-dark': DarkEmailTheme,
 } as const;

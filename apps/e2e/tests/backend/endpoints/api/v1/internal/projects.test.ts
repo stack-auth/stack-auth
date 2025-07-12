@@ -509,23 +509,8 @@ it("gives an error when updating email_theme with an invalid value", async ({ ex
   expect(response).toMatchInlineSnapshot(`
     NiceResponse {
       "status": 400,
-      "body": {
-        "code": "SCHEMA_ERROR",
-        "details": {
-          "message": deindent\`
-            Request validation failed on PATCH /api/v1/internal/projects/current:
-              - body.config.email_theme must be one of the following values: default-light, default-dark
-          \`,
-        },
-        "error": deindent\`
-          Request validation failed on PATCH /api/v1/internal/projects/current:
-            - body.config.email_theme must be one of the following values: default-light, default-dark
-        \`,
-      },
-      "headers": Headers {
-        "x-stack-known-error": "SCHEMA_ERROR",
-        <some fields may have been hidden>,
-      },
+      "body": "Invalid email theme",
+      "headers": Headers { <some fields may have been hidden> },
     }
   `);
 });
