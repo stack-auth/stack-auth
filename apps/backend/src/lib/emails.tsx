@@ -5,7 +5,7 @@ import { TEditorConfiguration } from '@stackframe/stack-emails/dist/editor/docum
 import { EMAIL_TEMPLATES_METADATA, renderEmailTemplate } from '@stackframe/stack-emails/dist/utils';
 import { UsersCrud } from '@stackframe/stack-shared/dist/interface/crud/users';
 import { getEnvVariable } from '@stackframe/stack-shared/dist/utils/env';
-import { StackAssertionError, captureError } from '@stackframe/stack-shared/dist/utils/errors';
+import { StackAssertionError, StatusError, captureError } from '@stackframe/stack-shared/dist/utils/errors';
 import { filterUndefined, omit, pick } from '@stackframe/stack-shared/dist/utils/objects';
 import { runAsynchronously, wait } from '@stackframe/stack-shared/dist/utils/promises';
 import { Result } from '@stackframe/stack-shared/dist/utils/results';
@@ -285,7 +285,17 @@ export async function sendEmail(options: SendEmailOptions) {
     throw new StackAssertionError("No recipient email address provided to sendEmail", omit(options, ['emailConfig']));
   }
 
-  return Result.orThrow(await Result.retry(async (attempt) => {
+  const errorMessage = "Failed to send email. If you are the admin of this project, please check the email configuration and try again.";
+
+  const handleError = (error: any) => {
+    console.warn("Failed to send email", error);
+    if (options.emailConfig.type === 'shared') {
+      captureError("failed-to-send-email-to-shared-email-config", error);
+    }
+    throw new StatusError(400, errorMessage);
+  };
+
+  const result = await Result.retry(async (attempt) => {
     const result = await sendEmailWithoutRetries(options);
 
     if (result.status === 'error') {
@@ -302,12 +312,15 @@ export async function sendEmail(options: SendEmailOptions) {
         return Result.error(result.error);
       }
 
-      // TODO if using custom email config, we should notify the developer instead of throwing an error
-      throw new StackAssertionError('Failed to send email: ' + result.error.rawError?.message, extraData);
+      handleError(extraData);
     }
 
     return result;
-  }, 3, { exponentialDelayBase: 2000 }));
+  }, 3, { exponentialDelayBase: 2000 });
+
+  if (result.status === 'error') {
+    handleError(result.error);
+  }
 }
 
 export async function sendEmailFromTemplate(options: {
