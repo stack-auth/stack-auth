@@ -86,7 +86,7 @@ export async function bundleJavaScript(sourceFiles: Record<string, string> & { '
     return Result.error(result.errors.map(e => e.text).join('\n'));
   }
 
-  if (result.outputFiles && result.outputFiles.length > 0) {
+  if (result.outputFiles.length > 0) {
     return Result.ok(result.outputFiles[0].text);
   }
   return throwErr("No output generated??");
