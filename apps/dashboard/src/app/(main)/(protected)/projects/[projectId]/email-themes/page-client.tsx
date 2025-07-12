@@ -63,7 +63,7 @@ export default function PageClient() {
             onClick: handleSaveTheme
           }}
         >
-          <div className="space-y-4">
+          <div className="grid grid-cols-2 gap-6">
             {themes.map((theme) => (
               <ThemeOption
                 key={theme.id}
@@ -88,26 +88,18 @@ function ThemeOption({
   isSelected: boolean,
   onSelect: (themeName: string) => void,
 }) {
+
   return (
-    <Card
-      className="cursor-pointer hover:ring-1 transition-all"
-      onClick={() => onSelect(theme.displayName)}
-    >
-      <div className="p-4 pb-3">
-        <div className="flex items-center justify-between">
-          <Typography variant="secondary">{theme.displayName}</Typography>
-          {isSelected && (
-            <div className="bg-blue-500 text-white rounded-full w-6 h-6 p-1 flex items-center justify-center">
-              <Check />
-            </div>
-          )}
-        </div>
-        <div className="h-60" style={{ zoom: 0.75 }}>
-          <ThemePreview themeId={theme.id} disableFrame />
-        </div>
+    <div className="flex flex-col items-center gap-2 group cursor-pointer" onClick={() => onSelect(theme.displayName)}>
+      <div className="w-full h-60 shadow-md rounded-md overflow-clip group-hover:shadow-lg transition-all" style={{ zoom: 0.75 }}>
+        <ThemePreview themeId={theme.id} disableFrame />
       </div>
-    </Card>
-  );
+      <div className="flex items-center gap-2">
+        {isSelected && <Check />}
+        <Typography variant="secondary" >{theme.displayName}</Typography>
+      </div>
+    </div>
+  )
 }
 
 function NewThemeButton() {

@@ -471,6 +471,12 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
   // END_PLATFORM
   async updateEmailTheme(id: string, tsxSource: string, previewHtml: string): Promise<{ rendered_html: string }> {
     const result = await this._interface.updateEmailTheme(id, tsxSource, previewHtml);
+    return { rendered_html: result.rendered_html };
+  }
+
+  async deleteEmailTheme(id: string): Promise<{ success: boolean }> {
+    const result = await this._interface.deleteEmailTheme(id);
+    this._adminEmailThemesCache.invalidate([]);
     return result;
   }
 }

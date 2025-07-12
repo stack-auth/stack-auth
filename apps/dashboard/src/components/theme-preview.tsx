@@ -1,6 +1,7 @@
 import { useAdminApp } from "@/app/(main)/(protected)/projects/[projectId]/use-admin-app";
 import { deindent } from "@stackframe/stack-shared/dist/utils/strings";
-import { BrowserFrame } from "@stackframe/stack-ui";
+import { BrowserFrame, Spinner } from "@stackframe/stack-ui";
+import { useEffect, useState } from "react";
 
 export const previewEmailHtml = deindent`
   <div>
@@ -23,15 +24,21 @@ export default function ThemePreview({
   disableFrame?: boolean,
 }) {
   const stackAdminApp = useAdminApp();
-  const previewHtml = stackAdminApp.useEmailThemePreview(themeId, previewEmailHtml);
+  const [previewHtml, setPreviewHtml] = useState<string>();
+
+  useEffect(() => {
+    stackAdminApp.getEmailThemePreview(themeId, previewEmailHtml).then(setPreviewHtml);
+  }, [themeId]);
 
   return (
-    <div className="w-fit mx-auto h-full flex flex-col">
-      {disableFrame ? (
-        <iframe srcDoc={renderedHtmlOverride ?? previewHtml} className="mx-auto pointer-events-none h-full" />
+    <div className="w-fit mx-auto h-full flex flex-col justify-center">
+      {!previewHtml ? (
+        <Spinner />
+      ) : disableFrame ? (
+        <iframe srcDoc={renderedHtmlOverride ?? previewHtml} className="pointer-events-none h-full" />
       ) : (
         <BrowserFrame transparentBackground className="flex flex-col grow">
-          <iframe srcDoc={renderedHtmlOverride ?? previewHtml} className="mx-auto pointer-events-none h-full" />
+          <iframe srcDoc={renderedHtmlOverride ?? previewHtml} className="pointer-events-none h-full" />
         </BrowserFrame>
       )}
     </div>
