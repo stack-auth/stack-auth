@@ -1,4 +1,4 @@
-import { prismaClient } from "@/prisma-client";
+import { globalPrismaClient } from "@/prisma-client";
 
 type FailedEmailsQueryResult = {
   tenancyId: string,
@@ -15,7 +15,8 @@ type FailedEmailsByTenancyData = {
 }
 
 export const getFailedEmailsByTenancy = async (after: Date) => {
-  const result = await prismaClient.$queryRaw<Array<FailedEmailsQueryResult>>`
+  // Only email digest for hosted DB is supported for now.
+  const result = await globalPrismaClient.$queryRaw<Array<FailedEmailsQueryResult>>`
   SELECT
     se."tenancyId",
     t."projectId",
@@ -37,14 +38,14 @@ export const getFailedEmailsByTenancy = async (after: Date) => {
 
   const failedEmailsByTenancy = new Map<string, FailedEmailsByTenancyData>();
   for (const failedEmail of result) {
-    let failedEmails = failedEmailsByTenancy.get(failedEmail.tenancyId) ?? {
+    const failedEmails = failedEmailsByTenancy.get(failedEmail.tenancyId) ?? {
       emails: [],
       tenantOwnerEmails: [],
       projectId: failedEmail.projectId
     };
-   failedEmails.emails.push({ subject: failedEmail.subject, to: failedEmail.to });
-   failedEmails.tenantOwnerEmails.push(failedEmail.contactEmail);
-   failedEmailsByTenancy.set(failedEmail.tenancyId, failedEmails);
+    failedEmails.emails.push({ subject: failedEmail.subject, to: failedEmail.to });
+    failedEmails.tenantOwnerEmails.push(failedEmail.contactEmail);
+    failedEmailsByTenancy.set(failedEmail.tenancyId, failedEmails);
   }
   return failedEmailsByTenancy;
 };

@@ -1,5 +1,5 @@
 import { getEmailTemplate } from "@/lib/emails";
-import { prismaClient } from "@/prisma-client";
+import { globalPrismaClient } from "@/prisma-client";
 import { createCrudHandlers } from "@/route-handlers/crud-handler";
 import { Prisma } from "@prisma/client";
 import { EMAIL_TEMPLATES_METADATA, validateEmailTemplateContent } from "@stackframe/stack-emails/dist/utils";
@@ -27,7 +27,7 @@ export const emailTemplateCrudHandlers = createLazyProxy(() => createCrudHandler
   }),
   async onRead({ params, auth }) {
     const dbType = typedToUppercase(params.type);
-    const emailTemplate = await prismaClient.emailTemplate.findUnique({
+    const emailTemplate = await globalPrismaClient.emailTemplate.findUnique({
       where: {
         projectId_type: {
           projectId: auth.tenancy.project.id,
@@ -56,7 +56,7 @@ export const emailTemplateCrudHandlers = createLazyProxy(() => createCrudHandler
       throw new StatusError(StatusError.BadRequest, 'Invalid email template content');
     }
     const dbType = typedToUppercase(params.type);
-    const oldTemplate = await prismaClient.emailTemplate.findUnique({
+    const oldTemplate = await globalPrismaClient.emailTemplate.findUnique({
       where: {
         projectId_type: {
           projectId: auth.tenancy.project.id,
@@ -68,7 +68,7 @@ export const emailTemplateCrudHandlers = createLazyProxy(() => createCrudHandler
     const content = data.content || oldTemplate?.content || EMAIL_TEMPLATES_METADATA[params.type].defaultContent[CURRENT_VERSION];
     const subject = data.subject || oldTemplate?.subject || EMAIL_TEMPLATES_METADATA[params.type].defaultSubject;
 
-    const db = await prismaClient.emailTemplate.upsert({
+    const db = await globalPrismaClient.emailTemplate.upsert({
       where: {
         projectId_type: {
           projectId: auth.tenancy.project.id,
@@ -95,7 +95,7 @@ export const emailTemplateCrudHandlers = createLazyProxy(() => createCrudHandler
     if (!emailTemplate) {
       throw new StatusError(StatusError.NotFound, 'Email template not found');
     }
-    await prismaClient.emailTemplate.delete({
+    await globalPrismaClient.emailTemplate.delete({
       where: {
         projectId_type: {
           projectId: auth.tenancy.project.id,
@@ -105,7 +105,7 @@ export const emailTemplateCrudHandlers = createLazyProxy(() => createCrudHandler
     });
   },
   async onList({ auth }) {
-    const templates = await prismaClient.emailTemplate.findMany({
+    const templates = await globalPrismaClient.emailTemplate.findMany({
       where: {
         projectId: auth.tenancy.project.id,
       },

@@ -4,9 +4,10 @@ import { validateRedirectUrl } from "@/lib/redirect-urls";
 import { Tenancy, getTenancy } from "@/lib/tenancies";
 import { oauthCookieSchema } from "@/lib/tokens";
 import { getProvider, oauthServer } from "@/oauth";
-import { prismaClient } from "@/prisma-client";
+import { getPrismaClientForTenancy, globalPrismaClient } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { InvalidClientError, InvalidScopeError, Request as OAuthRequest, Response as OAuthResponse } from "@node-oauth/oauth2-server";
+import { PrismaClient } from "@prisma/client";
 import { KnownError, KnownErrors } from "@stackframe/stack-shared";
 import { yupMixed, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
 import { StackAssertionError, StatusError, captureError } from "@stackframe/stack-shared/dist/utils/errors";
@@ -18,14 +19,14 @@ import { oauthResponseToSmartResponse } from "../../oauth-helpers";
 /**
  * Create a project user OAuth account with the provided data
  */
-async function createProjectUserOAuthAccount(params: {
+async function createProjectUserOAuthAccount(prisma: PrismaClient, params: {
   tenancyId: string,
   providerId: string,
   providerAccountId: string,
   email?: string | null,
   projectUserId: string,
 }) {
-  return await prismaClient.projectUserOAuthAccount.create({
+  return await prisma.projectUserOAuthAccount.create({
     data: {
       configOAuthProviderId: params.providerId,
       providerAccountId: params.providerAccountId,
@@ -80,7 +81,7 @@ const handler = createSmartRouteHandler({
       throw new StatusError(StatusError.BadRequest, "Inner OAuth cookie not found. This is likely because you refreshed the page during the OAuth sign in process. Please try signing in again");
     }
 
-    const outerInfoDB = await prismaClient.oAuthOuterInfo.findUnique({
+    const outerInfoDB = await globalPrismaClient.oAuthOuterInfo.findUnique({
       where: {
         innerState: innerState,
       },
@@ -111,6 +112,7 @@ const handler = createSmartRouteHandler({
     if (!tenancy) {
       throw new StackAssertionError("Tenancy in outerInfo not found; has it been deleted?", { tenancyId });
     }
+    const prisma = getPrismaClientForTenancy(tenancy);
 
     try {
       if (outerInfoDB.expiresAt < new Date()) {
@@ -147,7 +149,7 @@ const handler = createSmartRouteHandler({
           throw new StackAssertionError("projectUserId not found in cookie when authorizing signed in user");
         }
 
-        const user = await prismaClient.projectUser.findUnique({
+        const user = await prisma.projectUser.findUnique({
           where: {
             tenancyId_projectUserId: {
               tenancyId,
@@ -187,7 +189,7 @@ const handler = createSmartRouteHandler({
 
       const storeTokens = async () => {
         if (tokenSet.refreshToken) {
-          await prismaClient.oAuthToken.create({
+          await prisma.oAuthToken.create({
             data: {
               tenancyId: outerInfo.tenancyId,
               configOAuthProviderId: provider.id,
@@ -198,7 +200,7 @@ const handler = createSmartRouteHandler({
           });
         }
 
-        await prismaClient.oAuthAccessToken.create({
+        await prisma.oAuthAccessToken.create({
           data: {
             tenancyId: outerInfo.tenancyId,
             configOAuthProviderId: provider.id,
@@ -218,7 +220,7 @@ const handler = createSmartRouteHandler({
           {
             authenticateHandler: {
               handle: async () => {
-                const oldAccount = await prismaClient.projectUserOAuthAccount.findUnique({
+                const oldAccount = await prisma.projectUserOAuthAccount.findUnique({
                   where: {
                     tenancyId_configOAuthProviderId_providerAccountId: {
                       tenancyId: outerInfo.tenancyId,
@@ -242,7 +244,7 @@ const handler = createSmartRouteHandler({
                     await storeTokens();
                   } else {
                     // ========================== connect account with user ==========================
-                    await createProjectUserOAuthAccount({
+                    await createProjectUserOAuthAccount(prisma, {
                       tenancyId: outerInfo.tenancyId,
                       providerId: provider.id,
                       providerAccountId: userInfo.accountId,
@@ -282,7 +284,7 @@ const handler = createSmartRouteHandler({
                     primaryEmailAuthEnabled = true;
 
                     const oldContactChannel = await getAuthContactChannel(
-                      prismaClient,
+                      prisma,
                       {
                         tenancyId: outerInfo.tenancyId,
                         type: 'EMAIL',
@@ -308,7 +310,7 @@ const handler = createSmartRouteHandler({
                           const existingUser = oldContactChannel.projectUser;
 
                           // First create the OAuth account
-                          await createProjectUserOAuthAccount({
+                          await createProjectUserOAuthAccount(prisma, {
                             tenancyId: outerInfo.tenancyId,
                             providerId: provider.id,
                             providerAccountId: userInfo.accountId,
@@ -316,7 +318,7 @@ const handler = createSmartRouteHandler({
                             projectUserId: existingUser.projectUserId,
                           });
 
-                          await prismaClient.authMethod.create({
+                          await prisma.authMethod.create({
                             data: {
                               tenancyId: outerInfo.tenancyId,
                               projectUserId: existingUser.projectUserId,

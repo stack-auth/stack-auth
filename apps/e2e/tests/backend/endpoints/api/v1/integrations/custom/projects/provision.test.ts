@@ -80,7 +80,6 @@ it("should be able to provision a new project if client details are correct", as
         "display_name": "Test project",
         "id": "<stripped UUID>",
         "is_production_mode": false,
-        "user_count": 0,
       },
       "headers": Headers { <some fields may have been hidden> },
     }

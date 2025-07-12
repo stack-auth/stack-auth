@@ -1,11 +1,12 @@
 import "../polyfills";
 
-import { getUser, getUserQuery } from "@/app/api/latest/users/crud";
+import { getUser, getUserIfOnGlobalPrismaClientQuery } from "@/app/api/latest/users/crud";
+import { getRenderedEnvironmentConfigQuery } from "@/lib/config";
 import { checkApiKeySet, checkApiKeySetQuery } from "@/lib/internal-api-keys";
 import { getProjectQuery, listManagedProjectIds } from "@/lib/projects";
 import { DEFAULT_BRANCH_ID, Tenancy, getSoleTenancyFromProjectBranch } from "@/lib/tenancies";
 import { decodeAccessToken } from "@/lib/tokens";
-import { prismaClient, rawQueryAll } from "@/prisma-client";
+import { globalPrismaClient, rawQueryAll } from "@/prisma-client";
 import { traceSpan, withTraceSpan } from "@/utils/telemetry";
 import { KnownErrors } from "@stackframe/stack-shared";
 import { ProjectsCrud } from "@stackframe/stack-shared/dist/interface/crud/projects";
@@ -228,17 +229,33 @@ const parseAuth = withTraceSpan('smart request parseAuth', async (req: NextReque
   // Prisma does a query for every function call by default, even if we batch them with transactions
   // Because smart route handlers are always called, we instead send over a single raw query that fetches all the
   // data at the same time, saving us a lot of requests
+  //
+  // The user usually requires knowledge of the source-of-truth database, which would mean it would require us two
+  // roundtrips (one to the global database to fetch the project/tenancy, and one to the source-of-truth database to
+  // fetch the user). However, more often than not, the user is on the global database, so we optimistically fetch
+  // the user from the global database and only fall back to the source-of-truth database if we later determine that
+  // the user is not on the global database.
   const bundledQueries = {
-    user: userId ? getUserQuery(projectId, branchId, userId) : undefined,
+    userIfOnGlobalPrismaClient: userId ? getUserIfOnGlobalPrismaClientQuery(projectId, branchId, userId) : undefined,
     isClientKeyValid: publishableClientKey && requestType === "client" ? checkApiKeySetQuery(projectId, { publishableClientKey }) : undefined,
     isServerKeyValid: secretServerKey && requestType === "server" ? checkApiKeySetQuery(projectId, { secretServerKey }) : undefined,
     isAdminKeyValid: superSecretAdminKey && requestType === "admin" ? checkApiKeySetQuery(projectId, { superSecretAdminKey }) : undefined,
     project: getProjectQuery(projectId),
+    environmentRenderedConfig: getRenderedEnvironmentConfigQuery({ projectId, branchId }),
   };
-  const queriesResults = await rawQueryAll(prismaClient, bundledQueries);
+  const queriesResults = await rawQueryAll(globalPrismaClient, bundledQueries);
   const project = await queriesResults.project;
+  const environmentConfig = await queriesResults.environmentRenderedConfig;
 
-  // TODO HACK tenancy is not needed for /users/me, so let's not fetch it as a hack to make the endpoint faster. Once we refactor this stuff, we can fetch the tenancy in the rawQuery and won't need this anymore
+  // As explained above, as a performance optimization we already fetch the user from the global database optimistically
+  // If it turned out that the source-of-truth is not the global database, we'll fetch the user from the source-of-truth
+  // database instead.
+  const user = environmentConfig.sourceOfTruth.type === "hosted"
+    ? queriesResults.userIfOnGlobalPrismaClient
+    : (userId ? await getUser({ userId, projectId, branchId }) : undefined);
+
+  // TODO HACK tenancy is not needed for /users/me, so let's not fetch it as a hack to make the endpoint faster. Once we
+  // refactor this stuff, we can fetch the tenancy alongside the user and won't need this anymore
   const tenancy = req.method === "GET" && req.url.endsWith("/users/me") ? "tenancy not available in /users/me as a performance hack" as never : await getSoleTenancyFromProjectBranch(projectId, branchId, true);
 
   if (developmentKeyOverride) {
@@ -291,7 +308,7 @@ const parseAuth = withTraceSpan('smart request parseAuth', async (req: NextReque
     branchId,
     refreshTokenId: refreshTokenId ?? undefined,
     tenancy,
-    user: queriesResults.user ?? undefined,
+    user: user ?? undefined,
     type: requestType,
   };
 });

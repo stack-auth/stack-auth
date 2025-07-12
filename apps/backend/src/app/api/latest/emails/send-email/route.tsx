@@ -1,7 +1,7 @@
 import { renderEmailWithTheme } from "@/lib/email-themes";
 import { getEmailConfig, sendEmail } from "@/lib/emails";
 import { getNotificationCategoryByName, hasNotificationEnabled } from "@/lib/notification-categories";
-import { prismaClient } from "@/prisma-client";
+import { getPrismaClientForTenancy } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { adaptSchema, serverOrHigherAuthTypeSchema, yupArray, yupBoolean, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
 import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
@@ -62,7 +62,7 @@ export const POST = createSmartRouteHandler({
       throw new StatusError(400, "No active theme found");
     }
 
-    const users = await prismaClient.projectUser.findMany({
+    const users = await getPrismaClientForTenancy(auth.tenancy).projectUser.findMany({
       where: {
         tenancyId: auth.tenancy.id,
         projectUserId: {
@@ -83,7 +83,7 @@ export const POST = createSmartRouteHandler({
         userSendErrors.set(userId, "User not found");
         continue;
       }
-      const isNotificationEnabled = await hasNotificationEnabled(auth.tenancy.id, user.projectUserId, notificationCategory.id);
+      const isNotificationEnabled = await hasNotificationEnabled(auth.tenancy, user.projectUserId, notificationCategory.id);
       if (!isNotificationEnabled) {
         userSendErrors.set(userId, "User has disabled notifications for this category");
         continue;

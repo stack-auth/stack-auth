@@ -2,7 +2,7 @@ import { checkApiKeySet } from "@/lib/internal-api-keys";
 import { getSoleTenancyFromProjectBranch } from "@/lib/tenancies";
 import { decodeAccessToken, oauthCookieSchema } from "@/lib/tokens";
 import { getProjectBranchFromClientId, getProvider } from "@/oauth";
-import { prismaClient } from "@/prisma-client";
+import { globalPrismaClient } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { KnownErrors } from "@stackframe/stack-shared/dist/known-errors";
 import { urlSchema, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
@@ -100,7 +100,7 @@ export const GET = createSmartRouteHandler({
       extraScope: query.provider_scope,
     });
 
-    await prismaClient.oAuthOuterInfo.create({
+    await globalPrismaClient.oAuthOuterInfo.create({
       data: {
         innerState,
         info: {

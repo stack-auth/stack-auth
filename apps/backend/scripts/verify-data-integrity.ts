@@ -1,6 +1,6 @@
 import { PrismaClient } from "@prisma/client";
 import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
-import { StackAssertionError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
+import { StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
 import { deepPlainEquals, filterUndefined, omit } from "@stackframe/stack-shared/dist/utils/objects";
 import { wait } from "@stackframe/stack-shared/dist/utils/promises";
 import { deindent } from "@stackframe/stack-shared/dist/utils/strings";
@@ -161,10 +161,6 @@ async function main() {
           },
         }),
       ]);
-      if (Math.min(currentProject.user_count, maxUsersPerProject) !== users.items.length) throwErr("User count mismatch.", {
-        projectUserCount: currentProject.user_count,
-        usersUserCount: users.items.length,
-      });
 
       if (!skipUsers) {
         for (let j = 0; j < users.items.length; j++) {

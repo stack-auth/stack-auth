@@ -1,5 +1,5 @@
 import { Tenancy } from "@/lib/tenancies";
-import { prismaClient } from "@/prisma-client";
+import { getPrismaClientForTenancy } from "@/prisma-client";
 import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
 import { StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
 import { signInVerificationCodeHandler } from "../app/api/latest/auth/otp/sign-in/verification-code-handler";
@@ -26,14 +26,14 @@ export const getNotificationCategoryByName = (name: string) => {
   return listNotificationCategories().find((category) => category.name === name);
 };
 
-export const hasNotificationEnabled = async (tenancyId: string, userId: string, notificationCategoryId: string) => {
+export const hasNotificationEnabled = async (tenancy: Tenancy, userId: string, notificationCategoryId: string) => {
   const notificationCategory = listNotificationCategories().find((category) => category.id === notificationCategoryId);
   if (!notificationCategory) {
     throw new StackAssertionError('Invalid notification category id', { notificationCategoryId });
   }
-  const userNotificationPreference = await prismaClient.userNotificationPreference.findFirst({
+  const userNotificationPreference = await getPrismaClientForTenancy(tenancy).userNotificationPreference.findFirst({
     where: {
-      tenancyId,
+      tenancyId: tenancy.id,
       projectUserId: userId,
       notificationCategoryId,
     },
