@@ -1,4 +1,4 @@
-import { prismaClient } from '@/prisma-client';
+import { globalPrismaClient } from '@/prisma-client';
 import { traceSpan } from '@/utils/telemetry';
 import { Prisma } from '@prisma/client';
 import { KnownErrors } from '@stackframe/stack-shared';
@@ -131,7 +131,7 @@ export async function createAuthTokens(options: {
   const refreshToken = generateSecureRandomString();
 
   try {
-    const refreshTokenObj = await prismaClient.projectUserRefreshToken.create({
+    const refreshTokenObj = await globalPrismaClient.projectUserRefreshToken.create({
       data: {
         tenancyId: options.tenancy.id,
         projectUserId: options.projectUserId,
@@ -153,7 +153,7 @@ export async function createAuthTokens(options: {
   } catch (error) {
     if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2003') {
       throwErr(new Error(
-        `prisma.projectUserRefreshToken.create() failed for tenancyId ${options.tenancy.id} and projectUserId ${options.projectUserId}: ${error.message}`,
+        `Auth token creation failed for tenancyId ${options.tenancy.id} and projectUserId ${options.projectUserId}: ${error.message}`,
         { cause: error }
       ));
     }

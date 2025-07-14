@@ -1,6 +1,6 @@
 import { createOrUpdateProject } from "@/lib/projects";
 import { getTenancy } from "@/lib/tenancies";
-import { retryTransaction } from "@/prisma-client";
+import { getPrismaClientForTenancy, globalPrismaClient } from "@/prisma-client";
 import { createCrudHandlers } from "@/route-handlers/crud-handler";
 import { projectsCrud } from "@stackframe/stack-shared/dist/interface/crud/projects";
 import { yupObject } from "@stackframe/stack-shared/dist/schema-fields";
@@ -29,45 +29,43 @@ export const projectsCrudHandlers = createLazyProxy(() => createCrudHandlers(pro
     };
   },
   onDelete: async ({ auth }) => {
-    await retryTransaction(async (tx) => {
-      await tx.project.delete({
-        where: {
-          id: auth.project.id
-        }
-      });
+    await globalPrismaClient.project.delete({
+      where: {
+        id: auth.project.id
+      }
+    });
 
-      // delete managed ids from users
-      const users = await tx.projectUser.findMany({
-        where: {
-          mirroredProjectId: 'internal',
-          serverMetadata: {
-            path: ['managedProjectIds'],
-            array_contains: auth.project.id
-          }
+    // delete managed ids from users
+    const users = await getPrismaClientForTenancy(auth.tenancy).projectUser.findMany({
+      where: {
+        mirroredProjectId: 'internal',
+        serverMetadata: {
+          path: ['managedProjectIds'],
+          array_contains: auth.project.id
         }
-      });
+      }
+    });
 
-      for (const user of users) {
-        const updatedManagedProjectIds = (user.serverMetadata as any).managedProjectIds.filter(
+    for (const user of users) {
+      const updatedManagedProjectIds = (user.serverMetadata as any).managedProjectIds.filter(
           (id: any) => id !== auth.project.id
         ) as string[];
 
-        await tx.projectUser.update({
-          where: {
-            mirroredProjectId_mirroredBranchId_projectUserId: {
-              mirroredProjectId: 'internal',
-              mirroredBranchId: user.mirroredBranchId,
-              projectUserId: user.projectUserId
-            }
-          },
-          data: {
-            serverMetadata: {
-              ...user.serverMetadata as any,
-              managedProjectIds: updatedManagedProjectIds,
-            }
+      await getPrismaClientForTenancy(auth.tenancy).projectUser.update({
+        where: {
+          mirroredProjectId_mirroredBranchId_projectUserId: {
+            mirroredProjectId: 'internal',
+            mirroredBranchId: user.mirroredBranchId,
+            projectUserId: user.projectUserId
           }
-        });
-      }
-    });
+        },
+        data: {
+          serverMetadata: {
+            ...user.serverMetadata as any,
+            managedProjectIds: updatedManagedProjectIds,
+          }
+        }
+      });
+    }
   }
 }));

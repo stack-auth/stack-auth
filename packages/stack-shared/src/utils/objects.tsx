@@ -141,7 +141,8 @@ import.meta.vitest?.test("deepPlainClone", ({ expect }) => {
   expect(() => deepPlainClone(Symbol())).toThrow();
 });
 
-export type DeepMerge<T, U> = Omit<T, keyof U> & Omit<U, keyof T> & DeepMergeInner<Pick<T, keyof U & keyof T>, Pick<U, keyof U & keyof T>>;
+export type DeepMerge<T, U> = U extends any ? DeepMergeNonDistributive<T, U> : never;  // distributive conditional type https://www.typescriptlang.org/docs/handbook/2/conditional-types.html#distributive-conditional-types
+type DeepMergeNonDistributive<T, U> = Omit<T, keyof U> & Omit<U, keyof T> & DeepMergeInner<Pick<T, keyof U & keyof T>, Pick<U, keyof U & keyof T>>;
 type DeepMergeInner<T, U> = {
   [K in keyof U]-?:
     undefined extends U[K]

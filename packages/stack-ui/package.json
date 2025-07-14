@@ -1,6 +1,6 @@
 {
   "name": "@stackframe/stack-ui",
-  "version": "2.8.19",
+  "version": "2.8.20",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "sideEffects": false,

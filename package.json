@@ -18,11 +18,12 @@
     "build:packages": "pnpm pre && turbo run build --filter=./packages/*",
     "build:packages-only": "turbo run build --filter=./packages/*",
     "claude-code": "pnpm pre && npx -y @anthropic-ai/claude-code@latest",
+    "codebuff": "pnpm pre && npx codebuff",
     "restart-dev-in-background": "pnpm pre && pnpm run kill-dev:named && (pnpm run dev:named > dev-server.log.untracked.txt 2>&1 &) && echo 'Starting dev server in background... (Logs are in dev-server.log.untracked.txt)' && npx wait-on http://localhost:8102 -t 120000 && echo 'Dev server running.'",
     "restart-dev-environment": "pnpm pre && concurrently \"pnpm run build:packages && pnpm run codegen\" \"pnpm run restart-deps\" && pnpm run restart-dev-in-background",
     "stop-dev-environment": "pnpm pre && pnpm run kill-dev:named && pnpm run stop-deps",
     "clean": "pnpm pre-no-codegen && turbo run clean && rimraf --glob **/.next && rimraf --glob **/.turbo && rimraf .turbo && rimraf --glob **/node_modules",
-    "codegen": "pnpm pre && turbo run codegen && pnpm run generate-sdks",
+    "codegen": "pnpm pre && turbo run codegen && pnpm run generate-sdks && pnpm run generate-openapi && pnpm run generate-openapi-fumadocs",
     "deps-compose": "docker compose -p stack-dependencies -f docker/dependencies/docker.compose.yaml",
     "stop-deps": "POSTGRES_DELAY_MS=0 pnpm run deps-compose kill && POSTGRES_DELAY_MS=0 pnpm run deps-compose down -v",
     "init-db": "pnpm pre && pnpm run prisma migrate deploy && pnpm run prisma db seed",
@@ -71,7 +72,9 @@
     "@typescript-eslint/parser": "^6.21.0",
     "@vitejs/plugin-react": "^4.3.3",
     "chokidar-cli": "^3.0.0",
+    "codebuff": "^1.0.261",
     "concurrently": "^8.2.2",
+    "esbuild": "^0.24.0",
     "eslint": "8.30.0",
     "eslint-config-next": "^14.2.17",
     "eslint-plugin-import": "^2.31.0",
@@ -84,10 +87,9 @@
     "tsup": "^8.3.5",
     "turbo": "^2.2.3",
     "typescript": "5.3.3",
-    "vitest": "^1.6.0",
     "vite-tsconfig-paths": "^4.3.2",
-    "wait-on": "^8.0.1",
-    "esbuild": "^0.24.0"
+    "vitest": "^1.6.0",
+    "wait-on": "^8.0.1"
   },
   "pnpm": {
     "overrides": {

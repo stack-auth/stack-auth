@@ -1,6 +1,7 @@
 import { describe } from "vitest";
 import { it } from "../../../../../helpers";
-import { Auth, backendContext, bumpEmailAddress, InternalProjectKeys, niceBackendFetch, Project, User } from "../../../../backend-helpers";
+import { Auth, backendContext, bumpEmailAddress, InternalProjectKeys, niceBackendFetch, Project } from "../../../../backend-helpers";
+import { provisionProject } from "../integrations/neon/projects/provision.test";
 
 describe("unauthorized requests", () => {
   it("should return 401 when invalid authorization is provided", async ({ expect }) => {
@@ -102,26 +103,66 @@ describe("with valid credentials", () => {
     const mockProjectFailedEmails = failedEmailsByTenancy.filter(
       (batch: any) => batch.tenant_owner_emails.includes(backendContext.value.mailbox.emailAddress)
     );
-    expect(mockProjectFailedEmails).toMatchInlineSnapshot(`
-      [
-        {
-          "emails": [
-            {
-              "subject": "Test Email from Stack Auth",
-              "to": ["test-email-recipient@stackframe.co"],
-            },
-          ],
+
+    if (process.env.STACK_TEST_SOURCE_OF_TRUTH === "true") {
+      expect(mockProjectFailedEmails).toMatchInlineSnapshot(`[]`);
+    } else {
+      expect(mockProjectFailedEmails).toMatchInlineSnapshot(`
+        [
+          {
+            "emails": [
+              {
+                "subject": "Test Email from Stack Auth",
+                "to": ["test-email-recipient@stackframe.co"],
+              },
+            ],
+            "project_id": "<stripped UUID>",
+            "tenancy_id": "<stripped UUID>",
+            "tenant_owner_emails": ["default-mailbox--<stripped UUID>@stack-generated.example.com"],
+          },
+        ]
+      `);
+
+      const messages = await backendContext.value.mailbox.fetchMessages();
+      const digestEmail = messages.find(msg => msg.subject === "Failed emails digest");
+      expect(digestEmail).toBeDefined();
+      expect(digestEmail!.from).toBe("Stack Auth <noreply@example.com>");
+    }
+  });
+
+  it("should not return the emails if it is neon provisioned", async ({ expect }) => {
+    const response = await provisionProject();
+    expect(response).toMatchInlineSnapshot(`
+      NiceResponse {
+        "status": 200,
+        "body": {
           "project_id": "<stripped UUID>",
-          "tenancy_id": "<stripped UUID>",
-          "tenant_owner_emails": ["default-mailbox--<stripped UUID>@stack-generated.example.com"],
+          "super_secret_admin_key": <stripped field 'super_secret_admin_key'>,
         },
-      ]
+        "headers": Headers { <some fields may have been hidden> },
+      }
     `);
 
-    const messages = await backendContext.value.mailbox.fetchMessages();
-    const digestEmail = messages.find(msg => msg.subject === "Failed emails digest");
-    expect(digestEmail).toBeDefined();
-    expect(digestEmail!.from).toBe("Stack Auth <noreply@example.com>");
+    // test API keys
+    backendContext.set({
+      projectKeys: {
+        projectId: response.body.project_id,
+        superSecretAdminKey: response.body.super_secret_admin_key,
+      },
+    });
+
+    const emailResponse = await niceBackendFetch("/api/v1/internal/failed-emails-digest", {
+      method: "POST",
+      headers: { "Authorization": "Bearer mock_cron_secret" }
+    });
+    expect(emailResponse.status).toBe(200);
+
+    const failedEmailsByTenancy = emailResponse.body.failed_emails_by_tenancy;
+    const mockProjectFailedEmails = failedEmailsByTenancy.filter(
+      (batch: any) => batch.tenant_owner_emails.includes(backendContext.value.mailbox.emailAddress)
+    );
+
+    expect(mockProjectFailedEmails).toMatchInlineSnapshot(`[]`);
   });
 
   it("should return 200 and not send digest email when all emails are successful", async ({ expect }) => {
@@ -138,7 +179,7 @@ describe("with valid credentials", () => {
 
     const failedEmailsByTenancy = response.body.failed_emails_by_tenancy;
     const mockProjectFailedEmails = failedEmailsByTenancy.filter(
-      (batch: any) => batch.tenant_owner_email === backendContext.value.mailbox.emailAddress
+      (batch: any) => batch.tenant_owner_emails.includes(backendContext.value.mailbox.emailAddress)
     );
     expect(mockProjectFailedEmails).toMatchInlineSnapshot(`[]`);
 
@@ -341,16 +382,21 @@ describe("with valid credentials", () => {
     const currentResponses = response.body.failed_emails_by_tenancy.filter(
       (batch: any) => batch.project_id === projectId
     );
-    expect(currentResponses.length).toBe(1);
-    expect(currentResponses[0].tenant_owner_emails.length).toBe(2);
-    expect(currentResponses[0].tenant_owner_emails.includes(firstOwnerMailbox.emailAddress)).toBe(true);
-    expect(currentResponses[0].tenant_owner_emails.includes(secondOwnerMailbox.emailAddress)).toBe(true);
 
-    const firstMailboxMessages = await firstOwnerMailbox.fetchMessages();
-    const secondMailboxMessages = await secondOwnerMailbox.fetchMessages();
-    const firstMailboxDigestEmail = firstMailboxMessages.find(msg => msg.subject === "Failed emails digest");
-    const secondMailboxDigestEmail = secondMailboxMessages.find(msg => msg.subject === "Failed emails digest");
-    expect(firstMailboxDigestEmail).toBeDefined();
-    expect(secondMailboxDigestEmail).toBeDefined();
+    if (process.env.STACK_TEST_SOURCE_OF_TRUTH === "true") {
+      expect(currentResponses).toMatchInlineSnapshot(`[]`);
+    } else {
+      expect(currentResponses.length).toBe(1);
+      expect(currentResponses[0].tenant_owner_emails.length).toBe(2);
+      expect(currentResponses[0].tenant_owner_emails.includes(firstOwnerMailbox.emailAddress)).toBe(true);
+      expect(currentResponses[0].tenant_owner_emails.includes(secondOwnerMailbox.emailAddress)).toBe(true);
+
+      const firstMailboxMessages = await firstOwnerMailbox.fetchMessages();
+      const secondMailboxMessages = await secondOwnerMailbox.fetchMessages();
+      const firstMailboxDigestEmail = firstMailboxMessages.find(msg => msg.subject === "Failed emails digest");
+      const secondMailboxDigestEmail = secondMailboxMessages.find(msg => msg.subject === "Failed emails digest");
+      expect(firstMailboxDigestEmail).toBeDefined();
+      expect(secondMailboxDigestEmail).toBeDefined();
+    }
   });
 });

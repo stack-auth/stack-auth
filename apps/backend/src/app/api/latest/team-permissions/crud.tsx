@@ -1,7 +1,7 @@
 import { grantTeamPermission, listPermissions, revokeTeamPermission } from "@/lib/permissions";
 import { ensureTeamMembershipExists, ensureUserTeamPermissionExists } from "@/lib/request-checks";
 import { sendTeamPermissionCreatedWebhook, sendTeamPermissionDeletedWebhook } from "@/lib/webhooks";
-import { retryTransaction } from "@/prisma-client";
+import { getPrismaClientForTenancy, retryTransaction } from "@/prisma-client";
 import { createCrudHandlers } from "@/route-handlers/crud-handler";
 import { runAsynchronouslyAndWaitUntil } from "@/utils/vercel";
 import { KnownErrors } from "@stackframe/stack-shared";
@@ -23,7 +23,7 @@ export const teamPermissionsCrudHandlers = createLazyProxy(() => createCrudHandl
     permission_id: permissionDefinitionIdSchema.defined(),
   }),
   async onCreate({ auth, params }) {
-    const result = await retryTransaction(async (tx) => {
+    const result = await retryTransaction(getPrismaClientForTenancy(auth.tenancy), async (tx) => {
       await ensureTeamMembershipExists(tx, { tenancyId: auth.tenancy.id, teamId: params.team_id, userId: params.user_id });
 
       return await grantTeamPermission(tx, {
@@ -46,7 +46,7 @@ export const teamPermissionsCrudHandlers = createLazyProxy(() => createCrudHandl
     return result;
   },
   async onDelete({ auth, params }) {
-    const result = await retryTransaction(async (tx) => {
+    const result = await retryTransaction(getPrismaClientForTenancy(auth.tenancy), async (tx) => {
       await ensureUserTeamPermissionExists(tx, {
         tenancy: auth.tenancy,
         teamId: params.team_id,
@@ -84,7 +84,7 @@ export const teamPermissionsCrudHandlers = createLazyProxy(() => createCrudHandl
       }
     }
 
-    return await retryTransaction(async (tx) => {
+    return await retryTransaction(getPrismaClientForTenancy(auth.tenancy), async (tx) => {
       return {
         items: await listPermissions(tx, {
           scope: 'team',

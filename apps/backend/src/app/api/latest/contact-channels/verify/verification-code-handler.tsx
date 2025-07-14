@@ -1,6 +1,6 @@
 import { sendEmailFromTemplate } from "@/lib/emails";
 import { getSoleTenancyFromProjectBranch } from "@/lib/tenancies";
-import { prismaClient } from "@/prisma-client";
+import { getPrismaClientForTenancy } from "@/prisma-client";
 import { createVerificationCodeHandler } from "@/route-handlers/verification-code-handler";
 import { VerificationCodeType } from "@prisma/client";
 import { UsersCrud } from "@stackframe/stack-shared/dist/interface/crud/users";
@@ -54,7 +54,7 @@ export const contactChannelVerificationCodeHandler = createVerificationCodeHandl
       },
     } as const;
 
-    const contactChannel = await prismaClient.contactChannel.findUnique({
+    const contactChannel = await getPrismaClientForTenancy(tenancy).contactChannel.findUnique({
       where: uniqueKeys,
     });
 
@@ -63,7 +63,7 @@ export const contactChannelVerificationCodeHandler = createVerificationCodeHandl
       throw new StatusError(400, "Contact channel not found. Was your contact channel deleted?");
     }
 
-    await prismaClient.contactChannel.update({
+    await getPrismaClientForTenancy(tenancy).contactChannel.update({
       where: uniqueKeys,
       data: {
         isVerified: true,

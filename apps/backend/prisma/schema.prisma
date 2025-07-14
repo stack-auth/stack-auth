@@ -1,6 +1,6 @@
 generator client {
   provider        = "prisma-client-js"
-  previewFeatures = ["tracing", "relationJoins"]
+  previewFeatures = ["driverAdapters", "relationJoins"]
 }
 
 datasource db {
@@ -21,19 +21,13 @@ model Project {
   isProductionMode Boolean
   userCount        Int     @default(0)
 
+  projectConfigOverride Json?
+
   apiKeySets                 ApiKeySet[]
   projectUsers               ProjectUser[]
   provisionedProject         ProvisionedProject?
   tenancies                  Tenancy[]
-  verificationCodes          VerificationCode[]
-  projectApiKey              ProjectApiKey[]
   environmentConfigOverrides EnvironmentConfigOverride[]
-}
-
-enum OAuthAccountMergeStrategy {
-  LINK_METHOD
-  RAISE_ERROR
-  ALLOW_DUPLICATES
 }
 
 model Tenancy {
@@ -50,16 +44,6 @@ model Tenancy {
   // If organizationId is NULL, hasNoOrganization must be TRUE. If organizationId is not NULL, hasNoOrganization must be NULL.
   organizationId    String?      @db.Uuid
   hasNoOrganization BooleanTrue?
-
-  teams                       Team[]                       @relation("TenancyTeams")
-  projectUsers                ProjectUser[]                @relation("TenancyProjectUsers")
-  authMethods                 AuthMethod[]                 @relation("TenancyAuthMethods")
-  contactChannels             ContactChannel[]             @relation("TenancyContactChannels")
-  connectedAccounts           ConnectedAccount[]           @relation("TenancyConnectedAccounts")
-  SentEmail                   SentEmail[]
-  cliAuthAttempts             CliAuthAttempt[]
-  projectApiKey               ProjectApiKey[]
-  userNotificationPreferences UserNotificationPreference[]
 
   @@unique([projectId, branchId, organizationId])
   @@unique([projectId, branchId, hasNoOrganization])
@@ -97,7 +81,6 @@ model Team {
   clientReadOnlyMetadata Json?
   serverMetadata         Json?
 
-  tenancy       Tenancy         @relation("TenancyTeams", fields: [tenancyId], references: [id], onDelete: Cascade)
   teamMembers   TeamMember[]
   projectApiKey ProjectApiKey[]
 
@@ -184,25 +167,23 @@ model ProjectUser {
   totpSecret             Bytes?
   isAnonymous            Boolean @default(false)
 
-  tenancy                       Tenancy                        @relation("TenancyProjectUsers", fields: [tenancyId], references: [id], onDelete: Cascade)
-  project                       Project                        @relation(fields: [mirroredProjectId], references: [id], onDelete: Cascade)
-  projectUserRefreshTokens      ProjectUserRefreshToken[]
-  projectUserAuthorizationCodes ProjectUserAuthorizationCode[]
-  projectUserOAuthAccounts      ProjectUserOAuthAccount[]
-  teamMembers                   TeamMember[]
-  contactChannels               ContactChannel[]
-  authMethods                   AuthMethod[]
-  connectedAccounts             ConnectedAccount[]
-  userNotificationPreferences   UserNotificationPreference[]
+  projectUserOAuthAccounts ProjectUserOAuthAccount[]
+  teamMembers              TeamMember[]
+  contactChannels          ContactChannel[]
+  authMethods              AuthMethod[]
+  connectedAccounts        ConnectedAccount[]
 
   // some backlinks for the unique constraints on some auth methods
-  passwordAuthMethod PasswordAuthMethod[]
-  passkeyAuthMethod  PasskeyAuthMethod[]
-  otpAuthMethod      OtpAuthMethod[]
-  oauthAuthMethod    OAuthAuthMethod[]
-  SentEmail          SentEmail[]
-  projectApiKey      ProjectApiKey[]
-  directPermissions  ProjectUserDirectPermission[]
+  passwordAuthMethod         PasswordAuthMethod[]
+  passkeyAuthMethod          PasskeyAuthMethod[]
+  otpAuthMethod              OtpAuthMethod[]
+  oauthAuthMethod            OAuthAuthMethod[]
+  SentEmail                  SentEmail[]
+  projectApiKey              ProjectApiKey[]
+  directPermissions          ProjectUserDirectPermission[]
+  Project                    Project?                      @relation(fields: [projectId], references: [id])
+  projectId                  String?
+  userNotificationPreference UserNotificationPreference[]
 
   @@id([tenancyId, projectUserId])
   @@unique([mirroredProjectId, mirroredBranchId, projectUserId])
@@ -260,7 +241,6 @@ model ContactChannel {
   isVerified  Boolean
   value       String
 
-  tenancy     Tenancy     @relation("TenancyContactChannels", fields: [tenancyId], references: [id], onDelete: Cascade)
   projectUser ProjectUser @relation(fields: [tenancyId, projectUserId], references: [tenancyId, projectUserId], onDelete: Cascade)
 
   @@id([tenancyId, projectUserId, id])
@@ -283,19 +263,10 @@ model ConnectedAccount {
   updatedAt DateTime @updatedAt
 
   oauthAccount ProjectUserOAuthAccount @relation(fields: [tenancyId, configOAuthProviderId, providerAccountId], references: [tenancyId, configOAuthProviderId, providerAccountId])
-  tenancy      Tenancy                 @relation("TenancyConnectedAccounts", fields: [tenancyId], references: [id], onDelete: Cascade)
   projectUser  ProjectUser             @relation(fields: [tenancyId, projectUserId], references: [tenancyId, projectUserId], onDelete: Cascade)
 
   @@id([tenancyId, id])
   @@unique([tenancyId, configOAuthProviderId, providerAccountId])
-}
-
-// Both the connected account and auth methods can use this configuration.
-enum ProxiedOAuthProviderType {
-  GITHUB
-  GOOGLE
-  MICROSOFT
-  SPOTIFY
 }
 
 model AuthMethod {
@@ -312,7 +283,6 @@ model AuthMethod {
   passkeyAuthMethod  PasskeyAuthMethod?
   oauthAuthMethod    OAuthAuthMethod?
 
-  tenancy     Tenancy     @relation("TenancyAuthMethods", fields: [tenancyId], references: [id], onDelete: Cascade)
   projectUser ProjectUser @relation(fields: [tenancyId, projectUserId], references: [tenancyId, projectUserId], onDelete: Cascade)
 
   @@id([tenancyId, id])
@@ -465,8 +435,6 @@ model ProjectUserRefreshToken {
   expiresAt       DateTime?
   isImpersonation Boolean   @default(false)
 
-  projectUser ProjectUser @relation(fields: [tenancyId, projectUserId], references: [tenancyId, projectUserId], onDelete: Cascade)
-
   @@id([tenancyId, id])
 }
 
@@ -487,8 +455,6 @@ model ProjectUserAuthorizationCode {
   newUser                  Boolean
   afterCallbackRedirectUrl String?
 
-  projectUser ProjectUser @relation(fields: [tenancyId, projectUserId], references: [tenancyId, projectUserId], onDelete: Cascade)
-
   @@id([tenancyId, authorizationCode])
 }
 
@@ -496,8 +462,6 @@ model VerificationCode {
   projectId String
   branchId  String
   id        String @default(uuid()) @db.Uuid
-
-  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -546,10 +510,10 @@ model ApiKeySet {
   @@id([projectId, id])
 }
 
+//#endregion
+
 model ProjectApiKey {
-  projectId String
-  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  tenancyId String  @db.Uuid
+  tenancyId String @db.Uuid
 
   id           String @default(uuid()) @db.Uuid
   secretApiKey String @unique
@@ -566,7 +530,6 @@ model ProjectApiKey {
   teamId        String? @db.Uuid
   projectUserId String? @db.Uuid
 
-  tenancy     Tenancy      @relation(fields: [tenancyId], references: [id], onDelete: Cascade)
   projectUser ProjectUser? @relation(fields: [tenancyId, projectUserId], references: [tenancyId, projectUserId], onDelete: Cascade)
   team        Team?        @relation(fields: [tenancyId, teamId], references: [tenancyId, teamId], onDelete: Cascade)
 
@@ -593,8 +556,6 @@ model EmailTemplate {
 
   @@id([projectId, type])
 }
-
-//#endregion
 
 //#region IdP
 model IdPAccountToCdfcResultMapping {
@@ -715,16 +676,14 @@ model SentEmail {
   html         String?
   text         String?
 
-  error   Json?
-  tenancy Tenancy      @relation(fields: [tenancyId], references: [id], onDelete: Cascade)
-  user    ProjectUser? @relation(fields: [tenancyId, userId], references: [tenancyId, projectUserId], onDelete: Cascade)
+  error Json?
+  user  ProjectUser? @relation(fields: [tenancyId, userId], references: [tenancyId, projectUserId], onDelete: Cascade)
 
   @@id([tenancyId, id])
 }
 
 model CliAuthAttempt {
-  tenancyId String  @db.Uuid
-  tenancy   Tenancy @relation(fields: [tenancyId], references: [id], onDelete: Cascade)
+  tenancyId String @db.Uuid
 
   id           String    @default(uuid()) @db.Uuid
   pollingCode  String    @unique
@@ -746,7 +705,6 @@ model UserNotificationPreference {
   notificationCategoryId String @db.Uuid
 
   enabled     Boolean
-  tenancy     Tenancy     @relation(fields: [tenancyId], references: [id], onDelete: Cascade)
   projectUser ProjectUser @relation(fields: [tenancyId, projectUserId], references: [tenancyId, projectUserId], onDelete: Cascade)
 
   @@id([tenancyId, id])
