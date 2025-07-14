@@ -1,5 +1,6 @@
 import { ensureUserExists } from "@/lib/request-checks";
-import { prismaClient, retryTransaction } from "@/prisma-client";
+import { Tenancy } from "@/lib/tenancies";
+import { getPrismaClientForTenancy, retryTransaction } from "@/prisma-client";
 import { createCrudHandlers } from "@/route-handlers/crud-handler";
 import { KnownErrors } from "@stackframe/stack-shared";
 import { oauthProviderCrud } from "@stackframe/stack-shared/dist/interface/crud/oauth-providers";
@@ -9,15 +10,16 @@ import { createLazyProxy } from "@stackframe/stack-shared/dist/utils/proxies";
 
 // Helper function to check if a provider type is already used for signing in
 async function checkProviderTypeAlreadyUsedForSignIn(
-  tenancyId: string,
+  tenancy: Tenancy,
   userId: string,
   providerType: string,
   config: any,
   excludeConfigProviderId?: string
 ): Promise<boolean> {
+  const prismaClient = getPrismaClientForTenancy(tenancy);
   const oauthAccounts = await prismaClient.projectUserOAuthAccount.findMany({
     where: {
-      tenancyId,
+      tenancyId: tenancy.id,
       projectUserId: userId,
       oauthAuthMethod: {
         isNot: null,
@@ -45,16 +47,17 @@ async function checkProviderTypeAlreadyUsedForSignIn(
 
 // Helper function to check if a provider type + account ID combination is already used for connected accounts
 async function checkProviderAccountIdAlreadyUsedForConnectedAccounts(
-  tenancyId: string,
+  tenancy: Tenancy,
   userId: string,
   providerType: string,
   accountId: string,
   config: any,
   excludeConfigProviderId?: string
 ): Promise<boolean> {
+  const prismaClient = getPrismaClientForTenancy(tenancy);
   const oauthAccounts = await prismaClient.projectUserOAuthAccount.findMany({
     where: {
-      tenancyId,
+      tenancyId: tenancy.id,
       projectUserId: userId,
       connectedAccount: {
         isNot: null,
@@ -97,6 +100,7 @@ export const oauthProviderCrudHandlers = createLazyProxy(() => createCrudHandler
       }
     }
 
+    const prismaClient = getPrismaClientForTenancy(auth.tenancy);
     await ensureUserExists(prismaClient, { tenancyId: auth.tenancy.id, userId: params.user_id });
 
     const oauthAccount = await prismaClient.projectUserOAuthAccount.findFirst({
@@ -149,6 +153,8 @@ export const oauthProviderCrudHandlers = createLazyProxy(() => createCrudHandler
         throw new StatusError(StatusError.Forbidden, 'Client can only list OAuth providers for their own user.');
       }
     }
+
+    const prismaClient = getPrismaClientForTenancy(auth.tenancy);
 
     if (query.user_id) {
       await ensureUserExists(prismaClient, { tenancyId: auth.tenancy.id, userId: query.user_id });
@@ -211,9 +217,10 @@ export const oauthProviderCrudHandlers = createLazyProxy(() => createCrudHandler
       }
     }
 
+    const prismaClient = getPrismaClientForTenancy(auth.tenancy);
     await ensureUserExists(prismaClient, { tenancyId: auth.tenancy.id, userId: params.user_id });
 
-    const result = await retryTransaction(async (tx) => {
+    const result = await retryTransaction(prismaClient, async (tx) => {
       // Find the existing OAuth account
       const existingOAuthAccount = await tx.projectUserOAuthAccount.findFirst({
         where: {
@@ -252,7 +259,7 @@ export const oauthProviderCrudHandlers = createLazyProxy(() => createCrudHandler
       if (data.allow_sign_in !== undefined) {
         if (data.allow_sign_in) {
           // Check if this provider type is already used for signing in by another provider
-          if (providerConfig.type && await checkProviderTypeAlreadyUsedForSignIn(auth.tenancy.id, params.user_id, providerConfig.type, config, params.provider_id)) {
+          if (providerConfig.type && await checkProviderTypeAlreadyUsedForSignIn(auth.tenancy, params.user_id, providerConfig.type, config, params.provider_id)) {
             throw new StatusError(StatusError.BadRequest, `A provider of type "${providerConfig.type}" is already enabled for signing in for this user.`);
           }
 
@@ -293,7 +300,7 @@ export const oauthProviderCrudHandlers = createLazyProxy(() => createCrudHandler
       if (data.allow_connected_accounts !== undefined) {
         if (data.allow_connected_accounts) {
           // Check if this provider type + account ID combination is already used for connected accounts
-          if (providerConfig.type && await checkProviderAccountIdAlreadyUsedForConnectedAccounts(auth.tenancy.id, params.user_id, providerConfig.type, data.account_id || existingOAuthAccount.providerAccountId, config, params.provider_id)) {
+          if (providerConfig.type && await checkProviderAccountIdAlreadyUsedForConnectedAccounts(auth.tenancy, params.user_id, providerConfig.type, data.account_id || existingOAuthAccount.providerAccountId, config, params.provider_id)) {
             throw new StatusError(StatusError.BadRequest, `A provider of type "${providerConfig.type}" with account ID "${data.account_id || existingOAuthAccount.providerAccountId}" is already connected for this user.`);
           }
 
@@ -388,9 +395,10 @@ export const oauthProviderCrudHandlers = createLazyProxy(() => createCrudHandler
       }
     }
 
+    const prismaClient = getPrismaClientForTenancy(auth.tenancy);
     await ensureUserExists(prismaClient, { tenancyId: auth.tenancy.id, userId: params.user_id });
 
-    await retryTransaction(async (tx) => {
+    await retryTransaction(prismaClient, async (tx) => {
       // Find the existing OAuth account with all related records
       const existingOAuthAccount = await tx.projectUserOAuthAccount.findFirst({
         where: {
@@ -460,6 +468,7 @@ export const oauthProviderCrudHandlers = createLazyProxy(() => createCrudHandler
       }
     }
 
+    const prismaClient = getPrismaClientForTenancy(auth.tenancy);
     await ensureUserExists(prismaClient, { tenancyId: auth.tenancy.id, userId: data.user_id });
 
     if (!providerConfig) {
@@ -467,16 +476,16 @@ export const oauthProviderCrudHandlers = createLazyProxy(() => createCrudHandler
     }
 
     // Check if this provider type is already used for signing in
-    if (data.allow_sign_in && providerConfig.type && await checkProviderTypeAlreadyUsedForSignIn(auth.tenancy.id, data.user_id, providerConfig.type, config, data.provider_id)) {
+    if (data.allow_sign_in && providerConfig.type && await checkProviderTypeAlreadyUsedForSignIn(auth.tenancy, data.user_id, providerConfig.type, config, data.provider_id)) {
       throw new StatusError(StatusError.BadRequest, `A provider of type "${providerConfig.type}" is already enabled for signing in for this user.`);
     }
 
     // Check if this provider type + account ID combination is already used for connected accounts
-    if (data.allow_connected_accounts && providerConfig.type && await checkProviderAccountIdAlreadyUsedForConnectedAccounts(auth.tenancy.id, data.user_id, providerConfig.type, data.account_id, config, data.provider_id)) {
+    if (data.allow_connected_accounts && providerConfig.type && await checkProviderAccountIdAlreadyUsedForConnectedAccounts(auth.tenancy, data.user_id, providerConfig.type, data.account_id, config, data.provider_id)) {
       throw new StatusError(StatusError.BadRequest, `A provider of type "${providerConfig.type}" with account ID "${data.account_id}" is already connected for this user.`);
     }
 
-    await retryTransaction(async (tx) => {
+    await retryTransaction(prismaClient, async (tx) => {
       // 1. Create the main OAuth account record first (required by foreign key constraints)
       await tx.projectUserOAuthAccount.create({
         data: {
