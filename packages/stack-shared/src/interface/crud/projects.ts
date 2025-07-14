@@ -143,7 +143,7 @@ export const clientProjectsCrud = createCrud({
   docs: {
     clientRead: {
       summary: 'Get the current project',
-      description: 'Get the current project information including display name, OAuth providers and authentication methods. Useful for display the available login options to the user.',
+      description: 'Get the current project information including display name, OAuth providers and authentication methods. Useful for displaying the available login options to the user.',
       tags: ['Projects'],
     },
   },
