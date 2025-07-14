@@ -9184,15 +9184,9 @@ packages:
   classcat@5.0.5:
     resolution: {integrity: sha512-JhZUT7JFcQy/EzW605k/ktHtncoo9vnyW/2GspNYwFlN1C/WmjuV/xtS04e9SOkL2sTdw0VAZ2UGCcQ9lR6p6w==}
 
-<<<<<<< HEAD
   classnames@2.5.1:
     resolution: {integrity: sha512-saHYOzhIQs6wy2sVxTM6bUDsQO4F50V9RQ22qBpEdCW+I+/Wmke2HOl6lS6dTpdxVhb88/I6+Hs+438c3lfUow==}
 
-  clean-git-ref@2.0.1:
-    resolution: {integrity: sha512-bLSptAy2P0s6hU4PzuIMKmMJJSE6gLXGH1cntDu7bWJUksvuM+7ReOK61mozULErYvP6a15rnYl0zFDef+pyPw==}
-
-=======
->>>>>>> origin/dev
   cli-boxes@3.0.0:
     resolution: {integrity: sha512-/lzGpEWL/8PfI0BmBOPRwp0c/wFNX1RdUML3jK/RcSBA9T8mZDdQpqYBKtCFTOfQbwPqWEOpjqW+Fnayc0969g==}
     engines: {node: '>=10'}
@@ -25058,15 +25052,6 @@ snapshots:
 
   chrome-trace-event@1.0.4: {}
 
-<<<<<<< HEAD
-  chromium-bidi@4.1.1(devtools-protocol@0.0.1425554):
-    dependencies:
-      devtools-protocol: 0.0.1425554
-      mitt: 3.0.1
-      zod: 3.25.76
-
-=======
->>>>>>> origin/dev
   chromium-edge-launcher@0.2.0:
     dependencies:
       '@types/node': 22.15.18
@@ -25094,13 +25079,8 @@ snapshots:
 
   classcat@5.0.5: {}
 
-<<<<<<< HEAD
   classnames@2.5.1: {}
 
-  clean-git-ref@2.0.1: {}
-
-=======
->>>>>>> origin/dev
   cli-boxes@3.0.0: {}
 
   cli-cursor@2.1.0:
