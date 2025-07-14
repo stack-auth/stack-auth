@@ -123,7 +123,7 @@ export class StackClientInterface {
     // try to diagnose the error for the user
     if (retriedResult.status === "error") {
       if (globalVar.navigator && !globalVar.navigator.onLine) {
-        throw new Error("Failed to send Stack network request. It seems like you are offline, please check your internet connection and try again. This is not an error with Stack Auth. (window.navigator.onLine is falsy)", { cause: retriedResult.error });
+        throw new Error("You are offline. Please check your internet connection and try again. (window.navigator.onLine is falsy)", { cause: retriedResult.error });
       }
       throw await this._createNetworkError(retriedResult.error, session, requestType);
     }
