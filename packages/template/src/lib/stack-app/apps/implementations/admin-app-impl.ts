@@ -446,8 +446,9 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
   }
 
   async createEmailTheme(displayName: string): Promise<{ id: string }> {
-    this._adminEmailThemesCache.invalidate([]);
-    return await this._interface.createEmailTheme(displayName);
+    const result = await this._interface.createEmailTheme(displayName);
+    await this._adminEmailThemesCache.refresh([]);
+    return result;
   }
 
   async getEmailThemePreview(themeId: string, content: string): Promise<string> {
@@ -470,6 +471,12 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
   // END_PLATFORM
   async updateEmailTheme(id: string, tsxSource: string, previewHtml: string): Promise<{ rendered_html: string }> {
     const result = await this._interface.updateEmailTheme(id, tsxSource, previewHtml);
+    return { rendered_html: result.rendered_html };
+  }
+
+  async deleteEmailTheme(id: string): Promise<{ success: boolean }> {
+    const result = await this._interface.deleteEmailTheme(id);
+    this._adminEmailThemesCache.invalidate([]);
     return result;
   }
 }

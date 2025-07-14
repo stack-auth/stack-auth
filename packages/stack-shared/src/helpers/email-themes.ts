@@ -19,8 +19,8 @@ function EmailTheme({ children }: { children: React.ReactNode }) {
   return (
     <Html>
       <Tailwind>
-        <Body>
-          <div className="bg-slate-900 text-slate-100 p-4 rounded-lg max-w-[600px] mx-auto leading-relaxed">
+        <Body className="bg-slate-900">
+          <div className="text-slate-100 p-4 rounded-lg max-w-[600px] mx-auto leading-relaxed">
             {children}
           </div>
         </Body>
