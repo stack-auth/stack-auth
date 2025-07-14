@@ -66,7 +66,6 @@ export const projectsCrudAdminReadSchema = yupObject({
   display_name: schemaFields.projectDisplayNameSchema.defined(),
   description: schemaFields.projectDescriptionSchema.nonNullable().defined(),
   created_at_millis: schemaFields.projectCreatedAtMillisSchema.defined(),
-  user_count: schemaFields.projectUserCountSchema.defined(),
   is_production_mode: schemaFields.projectIsProductionModeSchema.defined(),
   /** @deprecated */
   config: yupObject({
@@ -147,7 +146,7 @@ export const clientProjectsCrud = createCrud({
   docs: {
     clientRead: {
       summary: 'Get the current project',
-      description: 'Get the current project information including display name, OAuth providers and authentication methods. Useful for display the available login options to the user.',
+      description: 'Get the current project information including display name, OAuth providers and authentication methods. Useful for displaying the available login options to the user.',
       tags: ['Projects'],
     },
   },

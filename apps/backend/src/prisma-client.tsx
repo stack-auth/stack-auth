@@ -1,26 +1,76 @@
+import { PrismaNeon } from "@prisma/adapter-neon";
+import { PrismaPg } from '@prisma/adapter-pg';
 import { Prisma, PrismaClient } from "@prisma/client";
-import { withAccelerate } from "@prisma/extension-accelerate";
-import { getEnvVariable, getNodeEnvironment } from '@stackframe/stack-shared/dist/utils/env';
+import { OrganizationRenderedConfig } from "@stackframe/stack-shared/dist/config/schema";
+import { getNodeEnvironment } from '@stackframe/stack-shared/dist/utils/env';
+import { StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
+import { globalVar } from "@stackframe/stack-shared/dist/utils/globals";
 import { deepPlainEquals, filterUndefined, typedFromEntries, typedKeys } from "@stackframe/stack-shared/dist/utils/objects";
 import { ignoreUnhandledRejection } from "@stackframe/stack-shared/dist/utils/promises";
 import { Result } from "@stackframe/stack-shared/dist/utils/results";
 import { isPromise } from "util/types";
+import { Tenancy } from "./lib/tenancies";
 import { traceSpan } from "./utils/telemetry";
 
-export type PrismaClientTransaction = PrismaClient | Parameters<Parameters<typeof prismaClient.$transaction>[0]>[0];
-
-// In dev mode, fast refresh causes us to recreate many Prisma clients, eventually overloading the database.
-// Therefore, only create one Prisma client in dev mode.
-const globalForPrisma = global as unknown as { prisma: PrismaClient };
-
-const useAccelerate = getEnvVariable('STACK_ACCELERATE_ENABLED', 'false') === 'true';
+export type PrismaClientTransaction = PrismaClient | Parameters<Parameters<PrismaClient['$transaction']>[0]>[0];
 
 // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
-export const prismaClient = globalForPrisma.prisma || (useAccelerate ? new PrismaClient().$extends(withAccelerate()) : new PrismaClient());
-
-if (getNodeEnvironment() !== 'production') {
-  globalForPrisma.prisma = prismaClient;
+const prismaClientsStore = (globalVar.__stack_prisma_clients as undefined) || {
+  global: new PrismaClient(),
+  neon: new Map<string, PrismaClient>(),
+  postgres: new Map<string, PrismaClient>(),
+};
+if (getNodeEnvironment().includes('development')) {
+  globalVar.__stack_prisma_clients = prismaClientsStore;  // store globally so fast refresh doesn't recreate too many Prisma clients
 }
+
+export const globalPrismaClient = prismaClientsStore.global;
+
+function getNeonPrismaClient(connectionString: string) {
+  let neonPrismaClient = prismaClientsStore.neon.get(connectionString);
+  if (!neonPrismaClient) {
+    const adapter = new PrismaNeon({ connectionString });
+    neonPrismaClient = new PrismaClient({ adapter });
+    prismaClientsStore.neon.set(connectionString, neonPrismaClient);
+  }
+  return neonPrismaClient;
+}
+
+export function getPrismaClientForTenancy(tenancy: Tenancy) {
+  return getPrismaClientForSourceOfTruth(tenancy.completeConfig.sourceOfTruth, tenancy.branchId);
+}
+
+function getPostgresPrismaClient(connectionString: string) {
+  let postgresPrismaClient = prismaClientsStore.postgres.get(connectionString);
+  if (!postgresPrismaClient) {
+    const adapter = new PrismaPg({ connectionString });
+    postgresPrismaClient = new PrismaClient({ adapter });
+    prismaClientsStore.postgres.set(connectionString, postgresPrismaClient);
+  }
+  return postgresPrismaClient;
+}
+
+export function getPrismaClientForSourceOfTruth(sourceOfTruth: OrganizationRenderedConfig["sourceOfTruth"], branchId: string) {
+  switch (sourceOfTruth.type) {
+    case 'neon': {
+      if (!(branchId in sourceOfTruth.connectionStrings)) {
+        throw new Error(`No connection string provided for Neon source of truth for branch ${branchId}`);
+      }
+      return getNeonPrismaClient(sourceOfTruth.connectionStrings[branchId]);
+    }
+    case 'postgres': {
+      return getPostgresPrismaClient(sourceOfTruth.connectionString);
+    }
+    case 'hosted': {
+      return globalPrismaClient;
+    }
+    default: {
+      // @ts-expect-error sourceOfTruth should be never, otherwise we're missing a switch-case
+      throw new StackAssertionError(`Unknown source of truth type: ${sourceOfTruth.type}`);
+    }
+  }
+}
+
 
 class TransactionErrorThatShouldBeRetried extends Error {
   constructor(cause: unknown) {
@@ -36,7 +86,7 @@ class TransactionErrorThatShouldNotBeRetried extends Error {
   }
 }
 
-export async function retryTransaction<T>(fn: (tx: PrismaClientTransaction) => Promise<T>): Promise<T> {
+export async function retryTransaction<T>(client: PrismaClient, fn: (tx: PrismaClientTransaction) => Promise<T>): Promise<T> {
   // disable serializable transactions for now, later we may re-add them
   const enableSerializable = false as boolean;
 
@@ -45,7 +95,7 @@ export async function retryTransaction<T>(fn: (tx: PrismaClientTransaction) => P
       return await traceSpan(`transaction attempt #${attemptIndex}`, async (attemptSpan) => {
         const attemptRes = await (async () => {
           try {
-            return Result.ok(await prismaClient.$transaction(async (tx, ...args) => {
+            return Result.ok(await client.$transaction(async (tx, ...args) => {
               let res;
               try {
                 res = await fn(tx, ...args);
@@ -106,7 +156,10 @@ export async function retryTransaction<T>(fn: (tx: PrismaClientTransaction) => P
   });
 }
 
+const allSupportedPrismaClients = ["global", "source-of-truth"] as const;
+
 export type RawQuery<T> = {
+  supportedPrismaClients: readonly (typeof allSupportedPrismaClients)[number][],
   sql: Prisma.Sql,
   postProcess: (rows: any[]) => T,  // Tip: If your postProcess is async, just set T = Promise<any> (compared to doing Promise.all in rawQuery, this ensures that there are no accidental timing attacks)
 };
@@ -114,6 +167,7 @@ export type RawQuery<T> = {
 export const RawQuery = {
   then: <T, R>(query: RawQuery<T>, fn: (result: T) => R): RawQuery<R> => {
     return {
+      supportedPrismaClients: query.supportedPrismaClients,
       sql: query.sql,
       postProcess: (rows) => {
         const result = query.postProcess(rows);
@@ -122,7 +176,15 @@ export const RawQuery = {
     };
   },
   all: <T extends readonly any[]>(queries: { [K in keyof T]: RawQuery<T[K]> }): RawQuery<T> => {
+    const supportedPrismaClients = queries.reduce((acc, q) => {
+      return acc.filter(c => q.supportedPrismaClients.includes(c));
+    }, allSupportedPrismaClients as RawQuery<any>["supportedPrismaClients"]);
+    if (supportedPrismaClients.length === 0) {
+      throw new StackAssertionError("The queries must have at least one overlapping supported Prisma client");
+    }
+
     return {
+      supportedPrismaClients,
       sql: Prisma.sql`
         WITH ${Prisma.join(queries.map((q, index) => {
           return Prisma.sql`${Prisma.raw("q" + index)} AS (
@@ -159,6 +221,15 @@ export const RawQuery = {
       },
     };
   },
+  resolve: <T,>(obj: T): RawQuery<T> => {
+    return {
+      supportedPrismaClients: allSupportedPrismaClients,
+      sql: Prisma.sql`SELECT 1`,
+      postProcess: (rows) => {
+        return obj;
+      },
+    };
+  },
 };
 
 export async function rawQuery<Q extends RawQuery<any>>(tx: PrismaClientTransaction, query: Q): Promise<Awaited<ReturnType<Q["postProcess"]>>> {
@@ -188,6 +259,8 @@ async function rawQueryArray<Q extends RawQuery<any>[]>(tx: PrismaClientTransact
     // Prisma does a query for every rawQuery call by default, even if we batch them with transactions
     // So, instead we combine all queries into one, and then return them as a single JSON result
     const combinedQuery = RawQuery.all(queries);
+
+    // TODO: check that combinedQuery supports the prisma client that created tx
 
     // Supabase's index advisor only analyzes rows that start with "SELECT" (for some reason)
     // Since ours starts with "WITH", we prepend a SELECT to it

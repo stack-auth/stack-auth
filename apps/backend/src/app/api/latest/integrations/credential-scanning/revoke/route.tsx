@@ -1,7 +1,7 @@
 import { getSharedEmailConfig, sendEmail } from "@/lib/emails";
 import { listPermissions } from "@/lib/permissions";
 import { getTenancy } from "@/lib/tenancies";
-import { prismaClient } from "@/prisma-client";
+import { getPrismaClientForTenancy, globalPrismaClient } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { KnownErrors } from "@stackframe/stack-shared";
 import { yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
@@ -25,10 +25,9 @@ export const POST = createSmartRouteHandler({
     bodyType: yupString().oneOf(["success"]).defined(),
   }),
   async handler({ body }) {
-
-
     // Get the API key and revoke it. We use a transaction to ensure we do not send emails multiple times.
-    const updatedApiKey = await prismaClient.$transaction(async (tx) => {
+    // We don't support revoking API keys in tenancies with non-global source of truth atm.
+    const updatedApiKey = await globalPrismaClient.$transaction(async (tx) => {
       // Find the API key in the database
       const apiKey = await tx.projectApiKey.findUnique({
         where: {
@@ -78,11 +77,15 @@ export const POST = createSmartRouteHandler({
     // Get affected users and their emails
     const affectedEmails = new Set<string>();
 
-
     if (updatedApiKey.projectUserId) {
       // For user API keys, notify the user
+      const tenancy = await getTenancy(updatedApiKey.tenancyId);
+      if (!tenancy) {
+        throw new StackAssertionError("Tenancy not found");
+      }
 
-      const projectUser = await prismaClient.projectUser.findUnique({
+      const prisma = getPrismaClientForTenancy(tenancy);
+      const projectUser = await prisma.projectUser.findUnique({
         where: {
           tenancyId_projectUserId: {
             tenancyId: updatedApiKey.tenancyId,
@@ -106,14 +109,11 @@ export const POST = createSmartRouteHandler({
       }
     } else if (updatedApiKey.teamId) {
       // For team API keys, notify users with manage_api_keys permission
-
-      const userIdsWithManageApiKeysPermission = await prismaClient.$transaction(async (tx) => {
-        const tenancy = await getTenancy(updatedApiKey.tenancyId);
-
-        if (!tenancy) {
-          throw new StackAssertionError("Tenancy not found");
-        }
-
+      const tenancy = await getTenancy(updatedApiKey.tenancyId);
+      if (!tenancy) {
+        throw new StackAssertionError("Tenancy not found");
+      }
+      const userIdsWithManageApiKeysPermission = await getPrismaClientForTenancy(tenancy).$transaction(async (tx) => {
         if (!updatedApiKey.teamId) {
           throw new StackAssertionError("Team ID not specified in team API key");
         }
@@ -129,8 +129,7 @@ export const POST = createSmartRouteHandler({
         return permissions.map(p => p.user_id);
       });
 
-
-      const usersWithManageApiKeysPermission = await prismaClient.projectUser.findMany({
+      const usersWithManageApiKeysPermission = await getPrismaClientForTenancy(tenancy).projectUser.findMany({
         where: {
           tenancyId: updatedApiKey.tenancyId,
           projectUserId: {
@@ -152,14 +151,17 @@ export const POST = createSmartRouteHandler({
       }
     }
 
-    const project = await prismaClient.project.findUnique({
+    const tenancy = await globalPrismaClient.tenancy.findUnique({
       where: {
-        id: updatedApiKey.projectId,
+        id: updatedApiKey.tenancyId
+      },
+      include: {
+        project: true,
       },
     });
 
-    if (!project) {
-      throw new StackAssertionError("Project not found");
+    if (!tenancy) {
+      throw new StackAssertionError("Tenancy not found");
     }
 
     // Create email content
@@ -168,7 +170,7 @@ export const POST = createSmartRouteHandler({
       <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
         <h2 style="color: #333;">API Key Revoked</h2>
         <p style="color: #555; font-size: 16px; line-height: 1.5;">
-          Your API key "${escapeHtml(updatedApiKey.description)}" for ${escapeHtml(project.displayName)} has been automatically revoked because it was found in a public repository.
+          Your API key "${escapeHtml(updatedApiKey.description)}" for ${escapeHtml(tenancy.project.displayName)} has been automatically revoked because it was found in a public repository.
         </p>
         <p style="color: #555; font-size: 16px; line-height: 1.5;">
           This is an automated security measure to protect your api keys from being leaked. If you believe this was a mistake, please contact support.
@@ -179,9 +181,7 @@ export const POST = createSmartRouteHandler({
       </div>
     `;
 
-
     const emailConfig = await getSharedEmailConfig("Stack Auth");
-
 
     // Send email notifications
     for (const email of affectedEmails) {
