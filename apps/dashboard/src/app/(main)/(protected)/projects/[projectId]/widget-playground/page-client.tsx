@@ -2,30 +2,134 @@
 
 import { DndContext, pointerWithin, useDraggable, useDroppable } from '@dnd-kit/core';
 import { range } from '@stackframe/stack-shared/dist/utils/arrays';
-import { StackAssertionError, throwErr } from '@stackframe/stack-shared/dist/utils/errors';
+import { StackAssertionError, errorToNiceString, throwErr } from '@stackframe/stack-shared/dist/utils/errors';
+import { bundleJavaScript } from '@stackframe/stack-shared/dist/utils/esbuild';
+import { Json, isJsonSerializable } from '@stackframe/stack-shared/dist/utils/json';
 import { deepPlainEquals, filterUndefined, isNotNull } from '@stackframe/stack-shared/dist/utils/objects';
 import { runAsynchronously, runAsynchronouslyWithAlert, wait } from '@stackframe/stack-shared/dist/utils/promises';
-import { InstantStateRef, useInstantState } from '@stackframe/stack-shared/dist/utils/react';
+import { ReadonlyRef, mapRef, useInstantState } from '@stackframe/stack-shared/dist/utils/react';
+import { Result } from '@stackframe/stack-shared/dist/utils/results';
+import { deindent } from '@stackframe/stack-shared/dist/utils/strings';
 import { generateUuid } from '@stackframe/stack-shared/dist/utils/uuids';
-import { Button, ButtonProps, Card, Dialog, DialogBody, DialogContent, DialogFooter, DialogHeader, DialogTitle, cn } from '@stackframe/stack-ui';
-import { useCallback, useEffect, useRef, useState } from 'react';
-import { FaPen, FaPlus, FaTrash } from 'react-icons/fa';
+import { Button, ButtonProps, Card, Dialog, DialogBody, DialogContent, DialogFooter, DialogHeader, DialogTitle, Input, SimpleTooltip, cn } from '@stackframe/stack-ui';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { FaBorderNone, FaPen, FaPlus, FaTrash } from 'react-icons/fa';
+import * as jsxRuntime from 'react/jsx-runtime';
 import { PageLayout } from "../page-layout";
+import { useAdminApp } from '../use-admin-app';
 
-type Widget<Settings> = {
-  mainComponent: React.ComponentType<{ settings: Settings }>,
-  settingsComponent: React.ComponentType<{ settings: Settings, onUpdateSettings: (settings: Settings) => void }>,
+type SerializedWidget = {
+  version: 1,
+  sourceJs: string,
+  compilationResult: Result<string, string>,
+  id: string,
+};
+
+const widgetGlobals = {
+  React,
+  jsxRuntime,
+  Card,
+  Button,
+  Input,
+};
+
+async function compileWidgetSource(source: string): Promise<Result<string, string>> {
+  return await bundleJavaScript({
+    "/source.tsx": source,
+    "/entry.js": `
+      import * as widget from "./source.tsx";
+      __STACK_WIDGET_RESOLVE(widget);
+    `,
+  }, {
+    externalPackages: {
+      'react': 'module.exports = React;',
+      'react/jsx-runtime': 'module.exports = jsxRuntime;',
+    },
+  });
+}
+
+function createErrorWidget(id: string, errorMessage: string): Widget<any, any> {
+  return {
+    id,
+    MainComponent: () => <Card style={{ inset: '0', position: 'absolute', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
+      <div style={{ fontSize: '16px', fontWeight: 'bold', color: 'red', fontFamily: 'monospace', whiteSpace: 'pre-wrap' }}>
+        {errorMessage}
+      </div>
+    </Card>,
+    defaultSettings: null as any,
+    defaultState: null as any,
+  };
+}
+
+async function deserializeWidget(serializedWidget: SerializedWidget): Promise<Widget<any, any>> {
+  const errorWidget = (errorMessage: string): Widget<any, any> => createErrorWidget(serializedWidget.id, errorMessage);
+
+  if (serializedWidget.compilationResult.status === "ok") {
+    const globalsEntries = Object.entries(widgetGlobals);
+    const globalsKeys = globalsEntries.map(([key]) => key);
+    const globalsValues = globalsEntries.map(([_, value]) => value);
+    const compiledJs = serializedWidget.compilationResult.data;
+    let widget: Widget<any, any>;
+    try {
+      widget = await new Promise(resolve => new Function(...globalsKeys, "__STACK_WIDGET_RESOLVE", compiledJs)(...globalsValues, resolve));
+    } catch (e) {
+      return errorWidget(`Widget failed to run: ${errorToNiceString(e)}`);
+    }
+    const keys = Object.keys(widget);
+    const notAllowedKeys = keys.filter(key => !allowedWidgetExports.includes(key as keyof Widget<any, any>));
+    if (notAllowedKeys.length > 0) {
+      return errorWidget(`Widget exports invalid attributes: ${notAllowedKeys.join(", ")}. Only these exports are allowed: ${allowedWidgetExports.join(", ")}`);
+    }
+    widget.id = serializedWidget.id;
+    return widget;
+  } else {
+    const errorMessage = serializedWidget.compilationResult.error;
+    return errorWidget(`Widget failed to compile: ${errorMessage}`);
+  }
+}
+
+type Widget<Settings, State> = {
+  id: string,
+  MainComponent: React.ComponentType<{ settings: Settings, state: State, stateRef: ReadonlyRef<State>, setState: (updater: (state: State) => State) => void, widthInGridUnits: number, heightInGridUnits: number }>,
+  SettingsComponent?: React.ComponentType<{ settings: Settings, setSettings: (updater: (settings: Settings) => Settings) => void }>,
   defaultSettings: Settings,
+  defaultState: State,
+  calculateMinSize?: (options: { settings: Settings, state: State }) => { widthInGridUnits: number, heightInGridUnits: number },
+  hasSubGrid?: boolean,
 };
 
-type WidgetInstance<Settings> = {
+const allowedWidgetExports: (keyof Widget<any, any>)[] = [
+  "MainComponent",
+  "SettingsComponent",
+  "defaultSettings",
+  "calculateMinSize",
+  "hasSubGrid",
+] as const;
+
+type WidgetInstance<Settings = any, State = any> = {
   readonly id: string,
-  readonly widget: Widget<Settings>,
-  readonly settings: Settings,
+  readonly widget: Widget<Settings, State>,
+  /**
+   * `undefined` means that the settings have never been set and the default settings should be used; if the default
+   * settings change later, so should the settings.
+   */
+  readonly settingsOrUndefined: Settings | undefined,
+  /**
+   * See settingsOrUndefined for more information on the meaning of `undefined`.
+   */
+  readonly stateOrUndefined: State | undefined,
 };
+
+export function getSettings<Settings, State>(widgetInstance: WidgetInstance<Settings, State>): Settings {
+  return widgetInstance.settingsOrUndefined === undefined ? widgetInstance.widget.defaultSettings : widgetInstance.settingsOrUndefined;
+}
+
+export function getState<Settings, State>(widgetInstance: WidgetInstance<Settings, State>): State {
+  return widgetInstance.stateOrUndefined === undefined ? widgetInstance.widget.defaultState : widgetInstance.stateOrUndefined;
+}
 
 type GridElement = {
-  readonly instance: WidgetInstance<any> | null,
+  readonly instance: WidgetInstance | null,
   readonly x: number,
   readonly y: number,
   readonly width: number,
@@ -42,10 +146,12 @@ class WidgetInstanceGrid {
   private constructor(
     private readonly _nonEmptyElements: GridElement[],
     public readonly width: number,
+    private readonly _fixedHeight: number | "auto",
   ) {}
 
-  public static fromWidgetInstances(widgetInstances: WidgetInstance<any>[]) {
-    const width = 24;
+  public static fromWidgetInstances(widgetInstances: WidgetInstance<any>[], options: { width?: number, height?: number | "auto" } = {}) {
+    const width = options.width ?? 24;
+    const height = options.height ?? "auto";
 
     const nonEmptyElements = widgetInstances.map((instance, index) => ({
       instance,
@@ -55,14 +161,121 @@ class WidgetInstanceGrid {
       height: WidgetInstanceGrid.DEFAULT_ELEMENT_HEIGHT,
     }));
 
+    // Do some sanity checks to prevent bugs early
+    for (const element of nonEmptyElements) {
+      if (element.width < WidgetInstanceGrid.MIN_ELEMENT_WIDTH) {
+        throw new StackAssertionError(`Width must be at least ${WidgetInstanceGrid.MIN_ELEMENT_WIDTH}`, { width: element.width });
+      }
+      if (element.height < WidgetInstanceGrid.MIN_ELEMENT_HEIGHT) {
+        throw new StackAssertionError(`Height must be at least ${WidgetInstanceGrid.MIN_ELEMENT_HEIGHT}`, { height: element.height });
+      }
+      if (element.x + element.width > width) {
+        throw new StackAssertionError(`Element ${element.instance.id} is out of bounds: ${element.x + element.width} > ${width}`, { width });
+      }
+      if (height !== "auto" && element.y + element.height > height) {
+        throw new StackAssertionError(`Element ${element.instance.id} is out of bounds: ${element.y + element.height} > ${height}`, { height });
+      }
+
+      const instance = element.instance;
+      const settings = getSettings(instance);
+      const state = getState(instance);
+      if (!isJsonSerializable(settings)) {
+        throw new StackAssertionError(`Settings must be JSON serializable`, { element, settings });
+      }
+      if (!isJsonSerializable(state)) {
+        throw new StackAssertionError(`State must be JSON serializable`, { element, state });
+      }
+    }
+
     return new WidgetInstanceGrid(
       nonEmptyElements,
       width,
+      height,
     );
   }
 
+  public serialize(): Json {
+    const res = {
+      className: "WidgetInstanceGrid",
+      version: 1,
+      width: this.width,
+      fixedHeight: this._fixedHeight,
+      nonEmptyElements: this._nonEmptyElements.map((element) => ({
+        instance: element.instance ? {
+          id: element.instance.id,
+          widgetId: element.instance.widget.id,
+          ...(element.instance.settingsOrUndefined === undefined ? {} : { settingsOrUndefined: element.instance.settingsOrUndefined }),
+          ...(element.instance.stateOrUndefined === undefined ? {} : { stateOrUndefined: element.instance.stateOrUndefined }),
+        } : null,
+        x: element.x,
+        y: element.y,
+        width: element.width,
+        height: element.height,
+      })),
+    };
+
+    // as a sanity check, let's serialize as JSON just to make sure it's JSON-serializable
+    const afterJsonSerialization = JSON.parse(JSON.stringify(res));
+    if (!deepPlainEquals(afterJsonSerialization, res)) {
+      throw new StackAssertionError(`WidgetInstanceGrid serialization is not JSON-serializable!`, {
+        beforeJsonSerialization: res,
+        afterJsonSerialization,
+      });
+    }
+
+    // as a sanity check, let's deserialize and make sure the result is the same
+    const deserialized = WidgetInstanceGrid.fromSerialized(res);
+    if (!deepPlainEquals(this, deserialized)) {
+      console.log(this, deserialized);
+      throw new StackAssertionError(`WidgetInstanceGrid deserialization is not the same as the original!`, {
+        original: this,
+        deserialized,
+        serialized: res,
+      });
+    }
+
+    return res;
+  }
+
+  public static fromSerialized(serialized: Json): WidgetInstanceGrid {
+    if (typeof serialized !== "object" || serialized === null) {
+      throw new StackAssertionError(`WidgetInstanceGrid serialization is not an object or is null!`, { serialized });
+    }
+    if (!("className" in serialized) || typeof serialized.className !== "string" || serialized.className !== "WidgetInstanceGrid") {
+      throw new StackAssertionError(`WidgetInstanceGrid serialization is not a WidgetInstanceGrid!`, { serialized });
+    }
+
+    const serializedAny = serialized as any;
+    switch (serializedAny.version) {
+      case 1: {
+        const nonEmptyElements = serializedAny.nonEmptyElements.map((element: any) => ({
+          instance: element.instance ? {
+            id: element.instance.id,
+            widget: widgets.find((widget) => widget.id === element.instance.widgetId) ?? createErrorWidget(element.instance.id, `Widget ${element.instance.widgetId} not found. Was it deleted?`),
+            settingsOrUndefined: element.instance.settingsOrUndefined,
+            stateOrUndefined: element.instance.stateOrUndefined,
+          } : null,
+          x: element.x,
+          y: element.y,
+          width: element.width,
+          height: element.height,
+        }));
+        return new WidgetInstanceGrid(nonEmptyElements, serializedAny.width, serializedAny.fixedHeight);
+      }
+      default: {
+        throw new StackAssertionError(`Unknown WidgetInstanceGrid version ${serializedAny.version}!`, {
+          serialized,
+        });
+      }
+    }
+  }
+
   public get height(): number {
-    return Math.max(0, ...[...this._nonEmptyElements].map(({ y, height }) => y + height)) + WidgetInstanceGrid.DEFAULT_ELEMENT_HEIGHT;
+    if (this._fixedHeight === "auto") {
+      return Math.max(0, ...[...this._nonEmptyElements].map(({ y, height }) => y + height)) + WidgetInstanceGrid.DEFAULT_ELEMENT_HEIGHT;
+    } else {
+      return this._fixedHeight;
+    }
   }
 
   private static _withEmptyElements(array: (WidgetInstance<any> | null)[][], nonEmptyElements: GridElement[]) {
@@ -125,11 +338,63 @@ class WidgetInstanceGrid {
     return [...this].find((element) => x >= element.x && x < element.x + element.width && y >= element.y && y < element.y + element.height) ?? throwErr(`No element found at ${x}, ${y}`);
   }
 
+  public getElementByInstanceId(id: string): GridElement | null {
+    return [...this].find((element) => element.instance?.id === id) ?? null;
+  }
+
+  public getMinResizableSize(): { width: number, height: number } {
+    return {
+      width: Math.max(1, ...[...this._nonEmptyElements].map(({ x, width }) => x + width)),
+      height: Math.max(1, ...[...this._nonEmptyElements].map(({ y, height }) => y + height)),
+    };
+  }
+
+  public resize(width: number, height: number | "auto") {
+    if (this.width === width && this._fixedHeight === height) {
+      return this;
+    }
+    const minSize = this.getMinResizableSize();
+    if (width < minSize.width) {
+      throw new StackAssertionError(`Width must be at least ${minSize.width}`, { width });
+    }
+    if (height !== "auto" && height < minSize.height) {
+      throw new StackAssertionError(`Height must be at least ${minSize.height}`, { height });
+    }
+    return new WidgetInstanceGrid(this._nonEmptyElements, width, height);
+  }
+
+  private elementMinSize(element: GridElement) {
+    const res = { width: WidgetInstanceGrid.MIN_ELEMENT_WIDTH, height: WidgetInstanceGrid.MIN_ELEMENT_HEIGHT };
+    if (element.instance?.widget.calculateMinSize) {
+      const minSize = element.instance.widget.calculateMinSize({ settings: element.instance.settingsOrUndefined, state: element.instance.stateOrUndefined });
+      if (minSize.widthInGridUnits > element.width || minSize.heightInGridUnits > element.height) {
+        throw new StackAssertionError(`Widget ${element.instance.widget.id} has a size of ${element.width}x${element.height}, but calculateMinSize returned a smaller value (${minSize.widthInGridUnits}x${minSize.heightInGridUnits}).`);
+      }
+      res.width = Math.max(res.width, minSize.widthInGridUnits);
+      res.height = Math.max(res.height, minSize.heightInGridUnits);
+    }
+    return res;
+  }
+
+  /**
+   * Returns true iff the element can be fit at the given position and size, even if there are other elements in the
+   * way.
+   */
+  private _canFitSize(element: GridElement, x: number, y: number, width: number, height: number) {
+    if (x < 0 || x + width > this.width || y < 0 || y + height > this.height) {
+      return false;
+    }
+    const minSize = this.elementMinSize(element);
+    if (width < minSize.width || height < minSize.height) {
+      return false;
+    }
+    return true;
+  }
+
   public canSwap(x1: number, y1: number, x2: number, y2: number) {
     const elementsToSwap = [this.getElementAt(x1, y1), this.getElementAt(x2, y2)];
-    const isBigEnough = (element: GridElement) => element.width >= WidgetInstanceGrid.MIN_ELEMENT_WIDTH && element.height >= WidgetInstanceGrid.MIN_ELEMENT_HEIGHT;
-    return (elementsToSwap[0].instance !== null ? isBigEnough(elementsToSwap[1]) : true)
-      && (elementsToSwap[1].instance !== null ? isBigEnough(elementsToSwap[0]) : true);
+    return (elementsToSwap[0].instance !== null ? this._canFitSize(elementsToSwap[0], elementsToSwap[1].x, elementsToSwap[1].y, elementsToSwap[1].width, elementsToSwap[1].height) : true)
+      && (elementsToSwap[1].instance !== null ? this._canFitSize(elementsToSwap[1], elementsToSwap[0].x, elementsToSwap[0].y, elementsToSwap[0].width, elementsToSwap[0].height) : true);
   }
 
   public withSwapped(x1: number, y1: number, x2: number, y2: number) {
@@ -147,7 +412,7 @@ class WidgetInstanceGrid {
       }
       return element;
     });
-    return new WidgetInstanceGrid(newElements.filter((element) => element.instance !== null), this.width);
+    return new WidgetInstanceGrid(newElements.filter((element) => element.instance !== null), this.width, this._fixedHeight);
   }
 
   private readonly _clampResizeCache = new Map<string, { top: number, left: number, bottom: number, right: number }>();
@@ -173,10 +438,12 @@ class WidgetInstanceGrid {
       const newWidth = elementToResize.width - edgesDelta.left + edgesDelta.right;
       const newHeight = elementToResize.height - edgesDelta.top + edgesDelta.bottom;
 
+      const minSize = this.elementMinSize(elementToResize);
+
       let isAllowed = false;
       if (
-        newWidth >= WidgetInstanceGrid.MIN_ELEMENT_WIDTH
-        && newHeight >= WidgetInstanceGrid.MIN_ELEMENT_HEIGHT
+        newWidth >= minSize.width
+        && newHeight >= minSize.height
         && newX >= 0
         && newY >= 0
         && newX + newWidth <= this.width
@@ -244,66 +511,148 @@ class WidgetInstanceGrid {
       }
       return element;
     });
-    return new WidgetInstanceGrid(newNonEmptyElements, this.width);
+    return new WidgetInstanceGrid(newNonEmptyElements, this.width, this._fixedHeight);
   }
 
-  public withAdded(widget: Widget<any>, x: number, y: number, width: number, height: number) {
+  public withAdded(widget: Widget<any, any>, x: number, y: number, width: number, height: number) {
     const newNonEmptyElements = [...this._nonEmptyElements, {
       instance: {
         id: generateUuid(),
         widget,
-        settings: widget.defaultSettings,
+        settingsOrUndefined: undefined,
+        stateOrUndefined: undefined,
       },
       x,
       y,
       width,
       height,
     }];
-    return new WidgetInstanceGrid(newNonEmptyElements, this.width);
+    return new WidgetInstanceGrid(newNonEmptyElements, this.width, this._fixedHeight);
+  }
+
+  private _withUpdatedInstance(x: number, y: number, updater: (element: GridElement) => WidgetInstance<any, any> | null) {
+    const elementToUpdate = this.getElementAt(x, y);
+    const newNonEmptyElements = this._nonEmptyElements
+      .map((element) => element.x === elementToUpdate.x && element.y === elementToUpdate.y ? { ...element, instance: updater(element) } : element)
+      .filter((element) => element.instance !== null);
+    return new WidgetInstanceGrid(newNonEmptyElements, this.width, this._fixedHeight);
   }
 
   public withRemoved(x: number, y: number) {
-    const elementToRemove = this.getElementAt(x, y);
-    const newNonEmptyElements = this._nonEmptyElements.filter((element) => element.x !== elementToRemove.x || element.y !== elementToRemove.y);
-    return new WidgetInstanceGrid(newNonEmptyElements, this.width);
+    return this._withUpdatedInstance(x, y, (element) => null);
+  }
+
+  public withUpdatedSettings(x: number, y: number, updater: (settings: any) => any) {
+    return this._withUpdatedInstance(x, y, (element) => element.instance ? { ...element.instance, settingsOrUndefined: updater(getSettings(element.instance)) } : throwErr(`No widget instance at ${x}, ${y}`));
+  }
+
+  public withUpdatedState(x: number, y: number, updater: (state: any) => any) {
+    return this._withUpdatedInstance(x, y, (element) => element.instance ? { ...element.instance, stateOrUndefined: updater(getState(element.instance)) } : throwErr(`No widget instance at ${x}, ${y}`));
   }
 }
 
-const widgets = [
+const widgets: Widget<any, any>[] = [
   {
-    mainComponent: () => <Card style={{ inset: '0', position: 'absolute' }}>Widget 1</Card>,
-    settingsComponent: () => <div>Settings 1</div>,
+    id: "$sub-grid",
+    MainComponent: ({ widthInGridUnits, heightInGridUnits, state, stateRef, setState }) => {
+      const widgetGridRef = mapRef(stateRef, (state) => WidgetInstanceGrid.fromSerialized(state.serializedGrid));
+      const [color] = useState("#" + Math.floor(Math.random() * 16777215).toString(16) + "22");
+
+      const setWidgetGrid = useCallback((newGrid: WidgetInstanceGrid) => {
+        setState(state => ({
+          ...state,
+          serializedGrid: newGrid.serialize(),
+        }));
+      }, [setState]);
+
+      useEffect(() => {
+        const newWidgetGrid = widgetGridRef.current.resize(widthInGridUnits - 1, heightInGridUnits - 1);
+        if (newWidgetGrid !== widgetGridRef.current) {
+          setWidgetGrid(newWidgetGrid);
+        }
+      }, [widthInGridUnits, heightInGridUnits, setWidgetGrid, widgetGridRef]);
+
+      return (
+        <div style={{ backgroundColor: color, padding: '16px' }}>
+          <SwappableWidgetInstanceGrid
+            gridRef={widgetGridRef}
+            setGrid={setWidgetGrid}
+          />
+        </div>
+      );
+    },
     defaultSettings: {},
+    defaultState: {
+      serializedGrid: WidgetInstanceGrid.fromWidgetInstances(
+        [],
+        {
+          width: 1,
+          height: 1,
+        },
+      ).serialize(),
+    },
+    hasSubGrid: true,
+    calculateMinSize(options) {
+      const grid = WidgetInstanceGrid.fromSerialized(options.state.serializedGrid);
+      const minSize = grid.getMinResizableSize();
+      return {
+        widthInGridUnits: minSize.width + 1,
+        heightInGridUnits: minSize.height + 1,
+      };
+    },
   },
   {
-    mainComponent: () => <Card style={{ inset: '0', position: 'absolute' }}>Widget 2</Card>,
-    settingsComponent: () => <div>Settings 2</div>,
+    id: "$compile-widget",
+    MainComponent: () => {
+      const [source, setSource] = useState(deindent`
+        export function MainComponent(props) {
+          return <Card>Hello, {props.settings.name}!</Card>;
+        }
+
+        // export function SettingsComponent(props) {
+        //   return <div>Name: <Input value={props.settings.name} onChange={(e) => props.setSettings((settings) => ({ ...settings, name: e.target.value }))} /></div>;
+        // }
+
+        export const defaultSettings = {name: "world"};
+      `);
+      const stackAdminApp = useAdminApp();
+      const [compilationResult, setCompilationResult] = useState<Result<string, string> | null>(null);
+
+      return (
+        <Card style={{ inset: '0', position: 'absolute' }}>
+          <textarea value={source} onChange={(e) => setSource(e.target.value)} style={{ width: '100%', height: '35%', fontFamily: "monospace" }} />
+          <Button onClick={async () => {
+            const result = await compileWidgetSource(source);
+            setCompilationResult(result);
+          }}>Compile</Button>
+          {compilationResult?.status === "ok" && (
+            <>
+              <textarea style={{ fontFamily: "monospace", width: '100%', height: '35%' }} value={compilationResult.data} readOnly />
+              <Button onClick={async () => {
+                widgets.push(await deserializeWidget({
+                  id: generateUuid(),
+                  version: 1,
+                  sourceJs: compilationResult.data,
+                  compilationResult: Result.ok(compilationResult.data),
+                }));
+                alert("Widget saved");
+              }}>Save as widget</Button>
+            </>
+          )}
+          {compilationResult?.status === "error" && (
+            <div style={{ color: "red" }}>
+              {compilationResult.error}
+            </div>
+          )}
+        </Card>
+      );
+    },
     defaultSettings: {},
-  },
-  {
-    mainComponent: () => <Card style={{ inset: '0', position: 'absolute' }}>Widget 3</Card>,
-    settingsComponent: () => <div>Settings 3</div>,
-    defaultSettings: {},
+    defaultState: {},
   },
 ];
 
-const widgetInstances = [
-  {
-    id: 'abc',
-    widget: widgets[0],
-    settings: {},
-  },
-  {
-    id: 'def',
-    widget: widgets[1],
-    settings: {},
-  },
-  {
-    id: 'ghi',
-    widget: widgets[2],
-    settings: {},
-  },
-];
+const widgetInstances: WidgetInstance<any>[] = [];
 
 const gridGapPixels = 32;
 
@@ -335,16 +684,25 @@ export default function PageClient() {
       title="Widget Playground"
       fillWidth
     >
-      <SwappableWidgetInstanceGrid gridRef={widgetGridRef} setGrid={setWidgetGrid} isEditing={isAltDown} />
+      <SwappableWidgetInstanceGridContext.Provider value={{ isEditing: isAltDown }}>
+        <SwappableWidgetInstanceGrid gridRef={widgetGridRef} setGrid={setWidgetGrid} />
+      </SwappableWidgetInstanceGridContext.Provider>
     </PageLayout>
   );
 }
 
-function SwappableWidgetInstanceGrid(props: { gridRef: InstantStateRef<WidgetInstanceGrid>, setGrid: (grid: WidgetInstanceGrid) => void, isEditing: boolean }) {
+const SwappableWidgetInstanceGridContext = React.createContext<{
+  isEditing: boolean,
+}>({
+  isEditing: false,
+});
+
+function SwappableWidgetInstanceGrid(props: { gridRef: ReadonlyRef<WidgetInstanceGrid>, setGrid: (grid: WidgetInstanceGrid) => void }) {
   const [overElementPosition, setOverElementPosition] = useState<[number, number] | null>(null);
   const [hoverSwap, setHoverSwap] = useState<[string, [number, number, number, number, number, number]] | null>(null);
   const [activeWidgetId, setActiveWidgetId] = useState<string | null>(null);
   const gridContainerRef = useRef<HTMLDivElement>(null);
+  const context = React.use(SwappableWidgetInstanceGridContext);
 
   return (
     <DndContext
@@ -391,7 +749,6 @@ function SwappableWidgetInstanceGrid(props: { gridRef: InstantStateRef<WidgetIns
             }
             const overId = props.gridRef.current.getElementAt(overCoordinates[0], overCoordinates[1]).instance?.id;
             if (overId && overId !== widgetId) {
-              console.log(event.over.rect, event.active.rect.current.initial);
               setHoverSwap([overId, [
                 event.over.rect.left - event.active.rect.current.initial.left,
                 event.over.rect.top - event.active.rect.current.initial.top,
@@ -429,7 +786,7 @@ function SwappableWidgetInstanceGrid(props: { gridRef: InstantStateRef<WidgetIns
           const isHoverSwap = !!hoverSwap && !!instance && (hoverSwap[0] === instance.id);
           return (
             <Droppable
-              key={instance?.id ?? JSON.stringify({ x, y, width, height })}
+              key={instance?.id ?? JSON.stringify({ x, y })}
               isEmpty={!instance}
               isOver={overElementPosition?.[0] === x && overElementPosition[1] === y}
               x={x}
@@ -445,7 +802,7 @@ function SwappableWidgetInstanceGrid(props: { gridRef: InstantStateRef<WidgetIns
                 <Draggable
                   widgetInstance={instance}
                   activeWidgetId={activeWidgetId}
-                  isEditing={props.isEditing}
+                  isEditing={context.isEditing}
                   style={{
                     transform: isHoverSwap ? `translate(${-hoverSwap[1][0]}px, ${-hoverSwap[1][1]}px)` : undefined,
                     width: isHoverSwap ? `${hoverSwap[1][2]}px` : (hoverSwap && activeWidgetId === instance.id ? `${hoverSwap[1][4]}px` : undefined),
@@ -454,15 +811,28 @@ function SwappableWidgetInstanceGrid(props: { gridRef: InstantStateRef<WidgetIns
                   onDeleteWidget={async () => {
                     props.setGrid(props.gridRef.current.withRemoved(x, y));
                   }}
-                  settings={instance.settings}
-                  onSaveSettings={async (settings) => {
-                    throw new StackAssertionError("Widget save settings currently not implemented");
+                  settings={getSettings(instance)}
+                  setSettings={async (updater) => {
+                    props.setGrid(props.gridRef.current.withUpdatedSettings(x, y, updater));
+                  }}
+                  state={getState(instance)}
+                  stateRef={mapRef(props.gridRef, (grid) => {
+                    const newElement = grid.getElementByInstanceId(instance.id);
+                    return getState(newElement?.instance ?? /* HACK instance has been deleted; let's return the old state */ instance);
+                  })}
+                  setState={(updater) => {
+                    console.log("setState", { x, y, updater }, new Error());
+                    props.setGrid(props.gridRef.current.withUpdatedState(x, y, updater));
                   }}
                   onResize={(edges) => {
                     const clamped = props.gridRef.current.clampResize(x, y, edges);
                     props.setGrid(props.gridRef.current.withResized(x, y, clamped));
                     return clamped;
                   }}
+                  x={x}
+                  y={y}
+                  width={width}
+                  height={height}
                   calculateUnitSize={() => {
                     const gridContainerRect = gridContainerRef.current?.getBoundingClientRect() ?? throwErr(`Grid container not found`);
                     const gridContainerWidth = gridContainerRect.width;
@@ -542,22 +912,27 @@ function Droppable(props: { isOver: boolean, children: React.ReactNode, style?: 
 function Draggable(props: {
   widgetInstance: WidgetInstance<any>,
   style: React.CSSProperties,
+  x: number,
+  y: number,
+  width: number,
+  height: number,
   activeWidgetId: string | null,
   isEditing: boolean,
   onDeleteWidget: () => Promise<void>,
   settings: any,
-  onSaveSettings: (settings: any) => Promise<void>,
+  setSettings: (settings: any) => Promise<void>,
+  state: any,
+  stateRef: ReadonlyRef<any>,
+  setState: (updater: (state: any) => any) => void,
   onResize: (edges: { top: number, left: number, bottom: number, right: number }) => { top: number, left: number, bottom: number, right: number },
   calculateUnitSize: () => { width: number, height: number },
 }) {
-  const { attributes, listeners, setNodeRef, transform, isDragging, node: draggableContainerRef } = useDraggable({
-    id: props.widgetInstance.id,
-    disabled: !props.isEditing,
-  });
   const [isSettingsOpen, setIsSettingsOpenRaw] = useState(false);
   const [unsavedSettings, setUnsavedSettings] = useState(props.settings);
   const [settingsClosingAnimationCounter, setSettingsClosingAnimationCounter] = useState(0);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [isEditingSubGrid, setIsEditingSubGrid] = useState(false);
+  const isEditing = props.isEditing && !isEditingSubGrid;
   const [settingsOpenAnimationDetails, setSettingsOpenAnimationDetails] = useState<{
     translate: readonly [number, number],
     scale: readonly [number, number],
@@ -578,7 +953,17 @@ function Draggable(props: {
     }
   }, [settingsOpenAnimationDetails, props.settings]);
 
+  const { attributes, listeners, setNodeRef, transform, isDragging, node: draggableContainerRef } = useDraggable({
+    id: props.widgetInstance.id,
+    disabled: !isEditing,
+  });
   const dialogRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!props.isEditing) {
+      setIsEditingSubGrid(false);
+    }
+  }, [props.isEditing]);
 
   useEffect(() => {
     let cancelled = false;
@@ -645,6 +1030,7 @@ function Draggable(props: {
 
   const isSafari = /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
 
+
   return (
     <>
       <style>{`
@@ -681,13 +1067,14 @@ function Draggable(props: {
         <div
           className={cn(isDragging && 'bg-white dark:bg-black border-black/20 dark:border-white/20')}
           style={{
-            position: 'relative',
+            position: 'absolute',
+            inset: 0,
             flexGrow: 1,
             alignSelf: 'stretch',
-            boxShadow: props.isEditing ? '0 0 32px 0 #8882' : '0 0 0 0 transparent',
+            boxShadow: isEditing ? '0 0 32px 0 #8882' : '0 0 0 0 transparent',
             cursor: isDragging ? 'grabbing' : undefined,
             borderRadius: '8px',
-            borderWidth: props.isEditing && !isDragging ? '1px' : '0px',
+            borderWidth: isEditing && !isDragging ? '1px' : '0px',
             borderStyle: 'solid',
 
             transition: isDeleting ? `transform 0.3s ease, opacity 0.3s` : `transform 0.6s ease`,
@@ -706,32 +1093,44 @@ function Draggable(props: {
             style={{
             }}
           >
-            <props.widgetInstance.widget.mainComponent settings={props.widgetInstance.settings} />
+            <SwappableWidgetInstanceGridContext.Provider value={{ isEditing: isEditingSubGrid }}>
+              <props.widgetInstance.widget.MainComponent
+                settings={props.widgetInstance.settingsOrUndefined}
+                state={props.state}
+                stateRef={props.stateRef}
+                setState={props.setState}
+                widthInGridUnits={props.width}
+                heightInGridUnits={props.height}
+              />
+            </SwappableWidgetInstanceGridContext.Provider>
           </div>
           <div
+            inert
             style={{
               position: 'absolute',
               inset: 0,
-              opacity: props.isEditing ? 1 : 0,
+              opacity: isEditing ? 1 : 0,
               transition: 'opacity 0.2s ease',
               // note: Safari has a weird display glitch with transparent background images when animating opacity in a parent element, so we just don't render it while deleting
               backgroundImage: !isDeleting ? 'radial-gradient(circle at top, #ffffff08, #ffffff02), radial-gradient(circle at top right,  #ffffff04, transparent, transparent)' : undefined,
             }}
           />
           <div
+            inert
+            className={cn(isEditing && !isDragging && "bg-white/20 dark:bg-black/20")}
             style={{
               position: 'absolute',
               inset: 0,
-              backdropFilter: props.isEditing && !isDragging ? 'blur(1px)' : 'none',
+              backdropFilter: isEditing && !isDragging ? 'blur(4px)' : 'none',
             }}
           />
           {!isDragging && (
             <div
               style={{
-                opacity: props.isEditing ? 1 : 0,
+                opacity: isEditing ? 1 : 0,
                 transition: 'opacity 0.2s ease',
               }}
-              inert={!props.isEditing}
+              inert={!isEditing}
             >
               <div
                 className=""
@@ -750,14 +1149,23 @@ function Draggable(props: {
                   {...listeners}
                   {...attributes}
                   style={{
-                    cursor: props.isEditing ? 'move' : undefined,
+                    cursor: isEditing ? 'move' : undefined,
                     position: 'absolute',
                     inset: 0,
                   }}
                 />
-                <BigIconButton icon={<FaPen size={24} />} onClick={async () => {
-                  setIsSettingsOpen(true);
-                }} />
+                {props.widgetInstance.widget.hasSubGrid && <BigIconButton
+                  icon={<FaBorderNone size={24} />}
+                  loadingStyle="disabled"
+                  onClick={async () => {
+                    setIsEditingSubGrid(true);
+                  }}
+                />}
+                <SimpleTooltip tooltip={!props.widgetInstance.widget.SettingsComponent ? "This widget doesn't have any settings." : undefined}>
+                  <BigIconButton disabled={!props.widgetInstance.widget.SettingsComponent} icon={<FaPen size={24} />} onClick={async () => {
+                    setIsSettingsOpen(true);
+                  }} />
+                </SimpleTooltip>
                 <BigIconButton
                   icon={<FaTrash size={24} />}
                   loadingStyle="disabled"
@@ -788,68 +1196,70 @@ function Draggable(props: {
           )}
         </div>
       </div>
-      <Dialog open={isSettingsOpen || settingsClosingAnimationCounter > 0} onOpenChange={setIsSettingsOpen}>
-        <DialogContent
-          ref={dialogRef}
-          overlayProps={{
-            style: {
-              opacity: settingsOpenAnimationDetails?.shouldStart && !settingsOpenAnimationDetails.revert ? 1 : 0,
-              transition: `opacity 0.3s ease${settingsOpenAnimationDetails?.revert ? ' 0s' : ' 0.3s'}`,
+      {props.widgetInstance.widget.SettingsComponent && (
+        <Dialog open={isSettingsOpen || settingsClosingAnimationCounter > 0} onOpenChange={setIsSettingsOpen}>
+          <DialogContent
+            ref={dialogRef}
+            overlayProps={{
+              style: {
+                opacity: settingsOpenAnimationDetails?.shouldStart && !settingsOpenAnimationDetails.revert ? 1 : 0,
+                transition: `opacity 0.4s ease`,
+                animation: 'none',
+              },
+            }}
+            style={{
+              transform: [
+                'translate(-50%, -50%)',
+                !settingsOpenAnimationDetails ? `` : (
+                  settingsOpenAnimationDetails.shouldStart && !settingsOpenAnimationDetails.revert ? `rotateY(0deg)` : `
+                    translate(${settingsOpenAnimationDetails.translate[0]}px, ${settingsOpenAnimationDetails.translate[1]}px)
+                    scale(${settingsOpenAnimationDetails.scale[0]}, ${settingsOpenAnimationDetails.scale[1]})
+                    rotateY(180deg)
+                  `
+                ),
+              ].filter(Boolean).join(' '),
+              transition: settingsOpenAnimationDetails?.shouldStart ? 'transform 0.6s ease' : 'none',
+              visibility: settingsOpenAnimationDetails ? 'visible' : 'hidden',
               animation: 'none',
-            },
-          }}
-          style={{
-            transform: [
-              'translate(-50%, -50%)',
-              !settingsOpenAnimationDetails ? `` : (
-                settingsOpenAnimationDetails.shouldStart && !settingsOpenAnimationDetails.revert ? `rotateY(0deg)` : `
-                  translate(${settingsOpenAnimationDetails.translate[0]}px, ${settingsOpenAnimationDetails.translate[1]}px)
-                  scale(${settingsOpenAnimationDetails.scale[0]}, ${settingsOpenAnimationDetails.scale[1]})
-                  rotateY(180deg)
-                `
-              ),
-            ].filter(Boolean).join(' '),
-            transition: settingsOpenAnimationDetails?.shouldStart ? 'transform 0.6s ease' : 'none',
-            visibility: settingsOpenAnimationDetails ? 'visible' : 'hidden',
-            animation: 'none',
-          }}
-          inert={!isSettingsOpen}
-          onInteractOutside={(e) => e.preventDefault()}
-          className="[&>button]:hidden stack-recursive-backface-hidden"
-        >
-          <DialogHeader>
-            <DialogTitle className="flex items-center">
-              Edit Widget
-            </DialogTitle>
-          </DialogHeader>
+            }}
+            inert={!isSettingsOpen}
+            onInteractOutside={(e) => e.preventDefault()}
+            className="[&>button]:hidden stack-recursive-backface-hidden"
+          >
+            <DialogHeader>
+              <DialogTitle className="flex items-center">
+                Edit Widget
+              </DialogTitle>
+            </DialogHeader>
 
-          <DialogBody className="pb-2">
-            <props.widgetInstance.widget.settingsComponent settings={unsavedSettings} onUpdateSettings={setUnsavedSettings} />
-          </DialogBody>
+            <DialogBody className="pb-2">
+              <props.widgetInstance.widget.SettingsComponent settings={unsavedSettings} setSettings={setUnsavedSettings} />
+            </DialogBody>
 
 
-          <DialogFooter className="gap-2">
-            <Button
-              variant="secondary"
-              color="neutral"
-              onClick={async () => {
-                setIsSettingsOpen(false);
-              }}
-            >
-              Cancel
-            </Button>
-            <Button
-              variant="default"
-              onClick={async () => {
-                await props.onSaveSettings(unsavedSettings);
-                setIsSettingsOpen(false);
-              }}
-            >
-              Save
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+            <DialogFooter className="gap-2">
+              <Button
+                variant="secondary"
+                color="neutral"
+                onClick={async () => {
+                  setIsSettingsOpen(false);
+                }}
+              >
+                Cancel
+              </Button>
+              <Button
+                variant="default"
+                onClick={async () => {
+                  await props.setSettings(unsavedSettings);
+                  setIsSettingsOpen(false);
+                }}
+              >
+                Save
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      )}
     </>
   );
 }

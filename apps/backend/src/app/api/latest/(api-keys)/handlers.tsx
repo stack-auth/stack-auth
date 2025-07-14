@@ -1,5 +1,5 @@
 import { listPermissions } from "@/lib/permissions";
-import { prismaClient } from "@/prisma-client";
+import { getPrismaClientForTenancy } from "@/prisma-client";
 import { createCrudHandlers } from "@/route-handlers/crud-handler";
 import { SmartRequestAuth } from "@/route-handlers/smart-request";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
@@ -11,6 +11,7 @@ import { createProjectApiKey } from "@stackframe/stack-shared/dist/utils/api-key
 import { StackAssertionError, StatusError } from "@stackframe/stack-shared/dist/utils/errors";
 import { createLazyProxy } from "@stackframe/stack-shared/dist/utils/proxies";
 import { generateUuid } from "@stackframe/stack-shared/dist/utils/uuids";
+
 import * as yup from "yup";
 
 
@@ -56,7 +57,7 @@ async function ensureUserCanManageApiKeys(
     // Check team API key permissions
     if (options.teamId !== undefined) {
       const userId = auth.user.id;
-      const hasManageApiKeysPermission = await prismaClient.$transaction(async (tx) => {
+      const hasManageApiKeysPermission = await getPrismaClientForTenancy(auth.tenancy).$transaction(async (tx) => {
         const permissions = await listPermissions(tx, {
           scope: 'team',
           tenancy: auth.tenancy,
@@ -197,10 +198,9 @@ function createApiKeyHandlers<Type extends "user" | "team">(type: Type) {
           type,
         });
 
-        const apiKey = await prismaClient.projectApiKey.create({
+        const apiKey = await getPrismaClientForTenancy(auth.tenancy).projectApiKey.create({
           data: {
             id: apiKeyId,
-            projectId: auth.project.id,
             description: body.description,
             secretApiKey,
             isPublic,
@@ -245,9 +245,9 @@ function createApiKeyHandlers<Type extends "user" | "team">(type: Type) {
       handler: async ({ auth, body }) => {
         await throwIfFeatureDisabled(auth.tenancy.config, type);
 
-        const apiKey = await prismaClient.projectApiKey.findUnique({
+        const apiKey = await getPrismaClientForTenancy(auth.tenancy).projectApiKey.findUnique({
           where: {
-            projectId: auth.project.id,
+            tenancyId: auth.tenancy.id,
             secretApiKey: body.api_key,
           },
         });
@@ -299,9 +299,9 @@ function createApiKeyHandlers<Type extends "user" | "team">(type: Type) {
             teamId,
           });
 
-          const apiKeys = await prismaClient.projectApiKey.findMany({
+          const apiKeys = await getPrismaClientForTenancy(auth.tenancy).projectApiKey.findMany({
             where: {
-              projectId: auth.project.id,
+              tenancyId: auth.tenancy.id,
               projectUserId: userId,
               teamId: teamId,
             },
@@ -319,7 +319,7 @@ function createApiKeyHandlers<Type extends "user" | "team">(type: Type) {
         onRead: async ({ auth, query, params }) => {
           await throwIfFeatureDisabled(auth.tenancy.config, type);
 
-          const apiKey = await prismaClient.projectApiKey.findUnique({
+          const apiKey = await getPrismaClientForTenancy(auth.tenancy).projectApiKey.findUnique({
             where: {
               tenancyId_id: {
                 tenancyId: auth.tenancy.id,
@@ -342,7 +342,7 @@ function createApiKeyHandlers<Type extends "user" | "team">(type: Type) {
         onUpdate: async ({ auth, data, params, query }) => {
           await throwIfFeatureDisabled(auth.tenancy.config, type);
 
-          const existingApiKey = await prismaClient.projectApiKey.findUnique({
+          const existingApiKey = await getPrismaClientForTenancy(auth.tenancy).projectApiKey.findUnique({
             where: {
               tenancyId_id: {
                 tenancyId: auth.tenancy.id,
@@ -361,7 +361,7 @@ function createApiKeyHandlers<Type extends "user" | "team">(type: Type) {
           });
 
           // Update the API key
-          const updatedApiKey = await prismaClient.projectApiKey.update({
+          const updatedApiKey = await getPrismaClientForTenancy(auth.tenancy).projectApiKey.update({
             where: {
               tenancyId_id: {
                 tenancyId: auth.tenancy.id,

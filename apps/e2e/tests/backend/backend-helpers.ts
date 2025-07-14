@@ -982,7 +982,7 @@ export namespace InternalApiKey {
         ...body,
       },
       headers: {
-        'x-stack-admin-access-token': adminAccessToken ?? (backendContext.value.projectKeys !== "no-project" && backendContext.value.projectKeys.adminAccessToken || throwErr("Missing adminAccessToken")),
+        'x-stack-admin-access-token': adminAccessToken ?? (backendContext.value.projectKeys !== "no-project" && backendContext.value.projectKeys.adminAccessToken || undefined),
       }
     });
     expect(response.status).equals(200);
@@ -1248,21 +1248,22 @@ export namespace User {
         verification_callback_url: "http://localhost:12345/some-callback-url",
       },
     });
-      expect(createUserResponse).toMatchObject({
-        status: 200,
-        body: {
-          access_token: expect.any(String),
-          refresh_token: expect.any(String),
-          user_id: expect.any(String),
-        },
-        headers: expect.anything(),
-      });
-      return {
-        userId: createUserResponse.body.user_id,
-        mailbox,
-        accessToken: createUserResponse.body.access_token,
-        refreshToken: createUserResponse.body.refresh_token,
-      };
+    expect(createUserResponse).toMatchObject({
+      status: 200,
+      body: {
+        access_token: expect.any(String),
+        refresh_token: expect.any(String),
+        user_id: expect.any(String),
+      },
+      headers: expect.anything(),
+    });
+    return {
+      userId: createUserResponse.body.user_id,
+      mailbox,
+      accessToken: createUserResponse.body.access_token,
+      refreshToken: createUserResponse.body.refresh_token,
+      password,
+    };
   }
 
   export async function createMultiple(count: number) {

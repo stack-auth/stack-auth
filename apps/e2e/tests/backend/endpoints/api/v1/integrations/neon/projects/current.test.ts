@@ -41,7 +41,6 @@ it("get project details", async ({ expect }) => {
         "display_name": "New Project",
         "id": "<stripped UUID>",
         "is_production_mode": false,
-        "user_count": 0,
       },
       "headers": Headers { <some fields may have been hidden> },
     }
@@ -94,7 +93,6 @@ it("creates and updates the basic project information of a project", async ({ ex
         "display_name": "Updated Project",
         "id": "<stripped UUID>",
         "is_production_mode": true,
-        "user_count": 0,
       },
       "headers": Headers { <some fields may have been hidden> },
     }
@@ -163,7 +161,6 @@ it("creates and updates the email config of a project", async ({ expect }) => {
         "display_name": "New Project",
         "id": "<stripped UUID>",
         "is_production_mode": false,
-        "user_count": 0,
       },
       "headers": Headers { <some fields may have been hidden> },
     }

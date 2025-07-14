@@ -1,9 +1,8 @@
 import * as yup from "yup";
 import * as schemaFields from "../schema-fields";
-import { yupBoolean, yupObject, yupRecord, yupString } from "../schema-fields";
+import { yupBoolean, yupObject, yupRecord, yupString, yupUnion } from "../schema-fields";
 import { allProviders } from "../utils/oauth";
 import { DeepMerge, DeepPartial, get, has, isObjectLike, mapValues, set } from "../utils/objects";
-import { PrettifyType } from "../utils/types";
 import { Config, NormalizesTo } from "./format";
 
 // NOTE: The validation schemas in here are all schematic validators, not sanity-check validators.
@@ -18,7 +17,24 @@ const customPermissionRegex = /^[a-z0-9_:]+$/;
 /**
  * All fields that can be overridden at this level.
  */
-export const projectConfigSchema = yupObject({});
+export const projectConfigSchema = yupObject({
+  sourceOfTruth: yupUnion(
+    yupObject({
+      type: yupString().oneOf(['hosted']).optional(),
+    }).defined(),
+    yupObject({
+      type: yupString().oneOf(['neon']).optional(),
+      connectionStrings: yupRecord(
+        yupString().defined(),
+        yupString().defined(),
+      ).defined(),
+    }).defined(),
+    yupObject({
+      type: yupString().oneOf(['postgres']).optional(),
+      connectionString: yupString().defined()
+    }).defined(),
+  ).optional(),
+});
 
 // --- NEW RBAC Schema ---
 const branchRbacDefaultPermissions = yupRecord(
@@ -84,7 +100,7 @@ const branchDomain = yupObject({
   allowLocalhost: yupBoolean().optional(),
 }).optional();
 
-export const branchConfigSchema = projectConfigSchema.concat(yupObject({
+export const branchConfigSchema = projectConfigSchema.omit(['sourceOfTruth']).concat(yupObject({
   rbac: branchRbacSchema,
 
   teams: yupObject({
@@ -156,7 +172,11 @@ export const organizationConfigSchema = environmentConfigSchema.concat(yupObject
 // these are objects that are merged together to form the rendered config (see ./README.md)
 // Wherever an object could be used as a value, a function can instead be used to generate the default values on a per-key basis
 // NOTE: These values are the defaults of the schema, NOT the defaults for newly created projects. The values here signify what `null` means for each property. If you want new projects by default to have a certain value set to true, you should update the corresponding function in the backend instead.
-export const projectConfigDefaults = {} satisfies DeepReplaceAllowFunctionsForObjects<ProjectConfigStrippedNormalizedOverride>;
+export const projectConfigDefaults = {
+  sourceOfTruth: {
+    type: 'hosted',
+  },
+} satisfies DeepReplaceAllowFunctionsForObjects<ProjectConfigStrippedNormalizedOverride>;
 
 export const branchConfigDefaults = {} satisfies DeepReplaceAllowFunctionsForObjects<BranchConfigStrippedNormalizedOverride>;
 
@@ -256,7 +276,7 @@ export type BranchConfigNormalizedOverride = yup.InferType<typeof branchConfigSc
 export type EnvironmentConfigNormalizedOverride = yup.InferType<typeof environmentConfigSchema>;
 export type OrganizationConfigNormalizedOverride = yup.InferType<typeof organizationConfigSchema>;
 
-// Normalized overrides, without the properties that may be overridden still
+// Normalized overrides, but only the fields that will NOT be overridden by a future level anymore
 export type ProjectConfigStrippedNormalizedOverride = Omit<ProjectConfigNormalizedOverride,
   | keyof BranchConfigNormalizedOverride
   | keyof EnvironmentConfigNormalizedOverride
@@ -284,13 +304,22 @@ export type EnvironmentConfigOverrideOverride = Config & DeepPartial<Environment
 export type OrganizationConfigOverrideOverride = Config & DeepPartial<OrganizationConfigOverride>;
 
 // Incomplete configs
-export type ProjectIncompleteConfig = ProjectConfigNormalizedOverride;
-export type BranchIncompleteConfig = ProjectIncompleteConfig & BranchConfigNormalizedOverride;
-export type EnvironmentIncompleteConfig = BranchIncompleteConfig & EnvironmentConfigNormalizedOverride;
-export type OrganizationIncompleteConfig = EnvironmentIncompleteConfig & OrganizationConfigNormalizedOverride;
+export type ProjectIncompleteConfig = ApplyDefaults<typeof projectConfigDefaults, ProjectConfigNormalizedOverride>;
+export type BranchIncompleteConfig = ApplyDefaults<typeof branchConfigDefaults, ProjectIncompleteConfig & BranchConfigNormalizedOverride>;
+export type EnvironmentIncompleteConfig = ApplyDefaults<typeof environmentConfigDefaults, BranchIncompleteConfig & EnvironmentConfigNormalizedOverride>;
+export type OrganizationIncompleteConfig = ApplyDefaults<typeof organizationConfigDefaults, EnvironmentIncompleteConfig & OrganizationConfigNormalizedOverride>;
 
 // Rendered configs
-export type ProjectRenderedConfig = PrettifyType<ApplyDefaults<typeof projectConfigDefaults, ProjectConfigStrippedNormalizedOverride>>;
-export type BranchRenderedConfig = PrettifyType<ProjectRenderedConfig & ApplyDefaults<typeof branchConfigDefaults, BranchConfigStrippedNormalizedOverride>>;
-export type EnvironmentRenderedConfig = PrettifyType<BranchRenderedConfig & ApplyDefaults<typeof environmentConfigDefaults, EnvironmentConfigStrippedNormalizedOverride>>;
-export type OrganizationRenderedConfig = PrettifyType<EnvironmentRenderedConfig & ApplyDefaults<typeof organizationConfigDefaults, OrganizationConfigStrippedNormalizedOverride>>;
+export type ProjectRenderedConfig = Omit<ProjectIncompleteConfig,
+  | keyof BranchConfigNormalizedOverride
+  | keyof EnvironmentConfigNormalizedOverride
+  | keyof OrganizationConfigNormalizedOverride
+>;
+export type BranchRenderedConfig = Omit<BranchIncompleteConfig,
+  | keyof EnvironmentConfigNormalizedOverride
+  | keyof OrganizationConfigNormalizedOverride
+>;
+export type EnvironmentRenderedConfig = Omit<EnvironmentIncompleteConfig,
+  | keyof OrganizationConfigNormalizedOverride
+>;
+export type OrganizationRenderedConfig = OrganizationIncompleteConfig;

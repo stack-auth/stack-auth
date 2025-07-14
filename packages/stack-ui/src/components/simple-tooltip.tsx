@@ -34,11 +34,11 @@ export function SimpleTooltip(props: {
             </div>
           )}
         </TooltipTrigger>
-        <TooltipContent>
+        {props.tooltip && <TooltipContent>
           <div className="max-w-60 text-center text-wrap whitespace-pre-wrap">
             {props.tooltip}
           </div>
-        </TooltipContent>
+        </TooltipContent>}
       </Tooltip>
     </TooltipProvider>
   );
