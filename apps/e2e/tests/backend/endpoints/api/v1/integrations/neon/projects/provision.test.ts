@@ -6,10 +6,6 @@ export async function provisionProject() {
     method: "POST",
     body: {
       display_name: "Test project",
-      connection_strings: [{
-        branch_id: "main",
-        connection_string: "postgresql://neondb_owner:npg_8TcaNSAGn9uM@ep-weathered-credit-a801dzwo-pooler.eastus2.azure.neon.tech/neondb?sslmode=require&channel_binding=require&schema=abcde",
-      }],
     },
     headers: {
       "Authorization": "Basic bmVvbi1sb2NhbDpuZW9uLWxvY2FsLXNlY3JldA==",
