@@ -393,6 +393,7 @@ model OAuthAuthMethod {
 
   @@id([tenancyId, authMethodId])
   @@unique([tenancyId, configOAuthProviderId, providerAccountId])
+  @@unique([tenancyId, projectUserId, configOAuthProviderId])
 }
 
 enum StandardOAuthProviderType {

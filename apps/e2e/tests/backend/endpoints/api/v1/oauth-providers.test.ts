@@ -816,3 +816,229 @@ it("should toggle sign-in and connected accounts capabilities", async ({ expect 
     }
   `);
 });
+
+it("should prevent multiple providers of the same type from being enabled for signing in", async ({ expect }: { expect: any }) => {
+  // Test with multiple GitHub accounts (same provider type, different account IDs)
+  const { createProjectResponse } = await createAndSwitchToOAuthEnabledProject();
+  await Auth.Otp.signIn();
+
+  const providerConfig = createProjectResponse.body.config.oauth_providers.find((p: any) => p.provider_id === "github");
+  expect(providerConfig).toBeDefined();
+
+  // Create first GitHub account connection with sign-in enabled
+  const createResponse1 = await niceBackendFetch("/api/v1/oauth-providers", {
+    method: "POST",
+    accessType: "server",
+    body: {
+      user_id: "me",
+      provider_id: providerConfig.id,
+      account_id: "github_user_123",
+      email: "user123@example.com",
+      allow_sign_in: true,
+      allow_connected_accounts: true,
+    },
+  });
+
+  expect(createResponse1.status).toBe(201);
+
+  // Try to create second GitHub account connection with sign-in enabled - should fail
+  const createResponse2 = await niceBackendFetch("/api/v1/oauth-providers", {
+    method: "POST",
+    accessType: "server",
+    body: {
+      user_id: "me",
+      provider_id: providerConfig.id,
+      account_id: "github_user_456",
+      email: "user456@example.com",
+      allow_sign_in: true,
+      allow_connected_accounts: true,
+    },
+  });
+
+  expect(createResponse2).toMatchInlineSnapshot(`
+    NiceResponse {
+      "status": 400,
+      "body": "A provider of type \\"github\\" is already enabled for signing in for this user.",
+      "headers": Headers { <some fields may have been hidden> },
+    }
+  `);
+
+  // Create second GitHub account connection with sign-in disabled - should succeed
+  const createResponse3 = await niceBackendFetch("/api/v1/oauth-providers", {
+    method: "POST",
+    accessType: "server",
+    body: {
+      user_id: "me",
+      provider_id: providerConfig.id,
+      account_id: "github_user_456",
+      email: "user456@example.com",
+      allow_sign_in: false,
+      allow_connected_accounts: true,
+    },
+  });
+
+  expect(createResponse3.status).toBe(201);
+  expect(createResponse3.body.allow_sign_in).toBe(false);
+
+  // Try to enable sign-in on the second account via update - should fail
+  const updateResponse = await niceBackendFetch(`/api/v1/oauth-providers/me/${createResponse3.body.id}`, {
+    method: "PATCH",
+    accessType: "server",
+    body: {
+      allow_sign_in: true,
+    },
+  });
+
+  expect(updateResponse).toMatchInlineSnapshot(`
+    NiceResponse {
+      "status": 400,
+      "body": "A provider of type \\"github\\" is already enabled for signing in for this user.",
+      "headers": Headers { <some fields may have been hidden> },
+    }
+  `);
+
+  // Disable sign-in on the first account
+  const disableResponse = await niceBackendFetch(`/api/v1/oauth-providers/me/${createResponse1.body.id}`, {
+    method: "PATCH",
+    accessType: "server",
+    body: {
+      allow_sign_in: false,
+    },
+  });
+
+  expect(disableResponse.status).toBe(200);
+  expect(disableResponse.body.allow_sign_in).toBe(false);
+
+  // Now enabling sign-in on the second account should succeed
+  const enableResponse = await niceBackendFetch(`/api/v1/oauth-providers/me/${createResponse3.body.id}`, {
+    method: "PATCH",
+    accessType: "server",
+    body: {
+      allow_sign_in: true,
+    },
+  });
+
+  expect(enableResponse.status).toBe(200);
+  expect(enableResponse.body.allow_sign_in).toBe(true);
+});
+
+it("should prevent duplicate account IDs for connected accounts of the same provider type", async ({ expect }: { expect: any }) => {
+  const { createProjectResponse } = await createAndSwitchToOAuthEnabledProject();
+  await Auth.Otp.signIn();
+
+  const providerConfig = createProjectResponse.body.config.oauth_providers.find((p: any) => p.provider_id === "github");
+  expect(providerConfig).toBeDefined();
+
+  // Create first GitHub account connection with connected accounts enabled
+  const createResponse1 = await niceBackendFetch("/api/v1/oauth-providers", {
+    method: "POST",
+    accessType: "server",
+    body: {
+      user_id: "me",
+      provider_id: providerConfig.id,
+      account_id: "github_user_123",
+      email: "user123@example.com",
+      allow_sign_in: false,
+      allow_connected_accounts: true,
+    },
+  });
+
+  expect(createResponse1.status).toBe(201);
+
+  // Try to create second GitHub account connection with same account ID and connected accounts enabled - should fail
+  const createResponse2 = await niceBackendFetch("/api/v1/oauth-providers", {
+    method: "POST",
+    accessType: "server",
+    body: {
+      user_id: "me",
+      provider_id: providerConfig.id,
+      account_id: "github_user_123", // Same account ID
+      email: "user123@example.com",
+      allow_sign_in: false,
+      allow_connected_accounts: true,
+    },
+  });
+
+  expect(createResponse2).toMatchInlineSnapshot(`
+    NiceResponse {
+      "status": 400,
+      "body": "A provider of type \\"github\\" with account ID \\"github_user_123\\" is already connected for this user.",
+      "headers": Headers { <some fields may have been hidden> },
+    }
+  `);
+
+  // Create second GitHub account connection with different account ID - should succeed
+  const createResponse3 = await niceBackendFetch("/api/v1/oauth-providers", {
+    method: "POST",
+    accessType: "server",
+    body: {
+      user_id: "me",
+      provider_id: providerConfig.id,
+      account_id: "github_user_456", // Different account ID
+      email: "user456@example.com",
+      allow_sign_in: false,
+      allow_connected_accounts: true,
+    },
+  });
+
+  expect(createResponse3.status).toBe(201);
+  expect(createResponse3.body.allow_connected_accounts).toBe(true);
+
+  // Create third GitHub account connection with connected accounts disabled - should succeed even with duplicate account ID
+  const createResponse4 = await niceBackendFetch("/api/v1/oauth-providers", {
+    method: "POST",
+    accessType: "server",
+    body: {
+      user_id: "me",
+      provider_id: providerConfig.id,
+      account_id: "github_user_123", // Same account ID as first, but connected accounts disabled
+      email: "user123alt@example.com",
+      allow_sign_in: false,
+      allow_connected_accounts: false,
+    },
+  });
+
+  expect(createResponse4.status).toBe(201);
+  expect(createResponse4.body.allow_connected_accounts).toBe(false);
+
+  // Try to enable connected accounts on the third account (with duplicate account ID) - should fail
+  const updateResponse = await niceBackendFetch(`/api/v1/oauth-providers/me/${createResponse4.body.id}`, {
+    method: "PATCH",
+    accessType: "server",
+    body: {
+      allow_connected_accounts: true,
+    },
+  });
+
+  expect(updateResponse).toMatchInlineSnapshot(`
+    NiceResponse {
+      "status": 400,
+      "body": "A provider of type \\"github\\" with account ID \\"github_user_123\\" is already connected for this user.",
+      "headers": Headers { <some fields may have been hidden> },
+    }
+  `);
+
+  // Disable connected accounts on the first account
+  const disableResponse = await niceBackendFetch(`/api/v1/oauth-providers/me/${createResponse1.body.id}`, {
+    method: "PATCH",
+    accessType: "server",
+    body: {
+      allow_connected_accounts: false,
+    },
+  });
+
+  expect(disableResponse.status).toBe(200);
+  expect(disableResponse.body.allow_connected_accounts).toBe(false);
+
+  // Now enabling connected accounts on the third account should succeed
+  const enableResponse = await niceBackendFetch(`/api/v1/oauth-providers/me/${createResponse4.body.id}`, {
+    method: "PATCH",
+    accessType: "server",
+    body: {
+      allow_connected_accounts: true,
+    },
+  });
+
+  expect(enableResponse.status).toBe(200);
+  expect(enableResponse.body.allow_connected_accounts).toBe(true);
+});

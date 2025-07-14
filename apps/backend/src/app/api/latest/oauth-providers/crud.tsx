@@ -7,8 +7,81 @@ import { userIdOrMeSchema, yupObject, yupString } from "@stackframe/stack-shared
 import { StatusError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
 import { createLazyProxy } from "@stackframe/stack-shared/dist/utils/proxies";
 
+// Helper function to check if a provider type is already used for signing in
+async function checkProviderTypeAlreadyUsedForSignIn(
+  tenancyId: string,
+  userId: string,
+  providerType: string,
+  config: any,
+  excludeConfigProviderId?: string
+): Promise<boolean> {
+  const oauthAccounts = await prismaClient.projectUserOAuthAccount.findMany({
+    where: {
+      tenancyId,
+      projectUserId: userId,
+      oauthAuthMethod: {
+        isNot: null,
+      },
+    },
+    include: {
+      oauthAuthMethod: true,
+    },
+  });
 
-export const oauthProviderCrudHandlers = createLazyProxy(() =>createCrudHandlers(oauthProviderCrud, {
+  for (const account of oauthAccounts) {
+    // Skip the current provider if we're excluding it (for updates)
+    if (excludeConfigProviderId && account.configOAuthProviderId === excludeConfigProviderId) {
+      continue;
+    }
+
+    const providerConfig = config.auth?.oauth?.providers?.[account.configOAuthProviderId];
+    if (providerConfig && providerConfig.type === providerType) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+// Helper function to check if a provider type + account ID combination is already used for connected accounts
+async function checkProviderAccountIdAlreadyUsedForConnectedAccounts(
+  tenancyId: string,
+  userId: string,
+  providerType: string,
+  accountId: string,
+  config: any,
+  excludeConfigProviderId?: string
+): Promise<boolean> {
+  const oauthAccounts = await prismaClient.projectUserOAuthAccount.findMany({
+    where: {
+      tenancyId,
+      projectUserId: userId,
+      connectedAccount: {
+        isNot: null,
+      },
+    },
+    include: {
+      connectedAccount: true,
+    },
+  });
+
+  for (const account of oauthAccounts) {
+    // Skip the current provider if we're excluding it (for updates)
+    if (excludeConfigProviderId && account.configOAuthProviderId === excludeConfigProviderId) {
+      continue;
+    }
+
+    const providerConfig = config.auth?.oauth?.providers?.[account.configOAuthProviderId];
+    if (providerConfig && providerConfig.type === providerType && account.providerAccountId === accountId) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+
+export const oauthProviderCrudHandlers = createLazyProxy(() => createCrudHandlers(oauthProviderCrud, {
   paramsSchema: yupObject({
     provider_id: yupString().defined(),
     user_id: userIdOrMeSchema.defined(),
@@ -178,6 +251,11 @@ export const oauthProviderCrudHandlers = createLazyProxy(() =>createCrudHandlers
       // Handle allow_sign_in changes
       if (data.allow_sign_in !== undefined) {
         if (data.allow_sign_in) {
+          // Check if this provider type is already used for signing in by another provider
+          if (providerConfig.type && await checkProviderTypeAlreadyUsedForSignIn(auth.tenancy.id, params.user_id, providerConfig.type, config, params.provider_id)) {
+            throw new StatusError(StatusError.BadRequest, `A provider of type "${providerConfig.type}" is already enabled for signing in for this user.`);
+          }
+
           // Create auth method if it doesn't exist
           if (!existingOAuthAccount.oauthAuthMethod) {
             const authMethod = await tx.authMethod.create({
@@ -214,6 +292,11 @@ export const oauthProviderCrudHandlers = createLazyProxy(() =>createCrudHandlers
       // Handle allow_connected_accounts changes
       if (data.allow_connected_accounts !== undefined) {
         if (data.allow_connected_accounts) {
+          // Check if this provider type + account ID combination is already used for connected accounts
+          if (providerConfig.type && await checkProviderAccountIdAlreadyUsedForConnectedAccounts(auth.tenancy.id, params.user_id, providerConfig.type, data.account_id || existingOAuthAccount.providerAccountId, config, params.provider_id)) {
+            throw new StatusError(StatusError.BadRequest, `A provider of type "${providerConfig.type}" with account ID "${data.account_id || existingOAuthAccount.providerAccountId}" is already connected for this user.`);
+          }
+
           // Create connected account if it doesn't exist
           if (!existingOAuthAccount.connectedAccount) {
             const connectedAccount = await tx.connectedAccount.create({
@@ -381,6 +464,16 @@ export const oauthProviderCrudHandlers = createLazyProxy(() =>createCrudHandlers
 
     if (!providerConfig) {
       throw new StatusError(StatusError.BadRequest, `Provider with config ID ${data.provider_id} is not configured. Please check your Stack Auth dashboard OAuth configuration.`);
+    }
+
+    // Check if this provider type is already used for signing in
+    if (data.allow_sign_in && providerConfig.type && await checkProviderTypeAlreadyUsedForSignIn(auth.tenancy.id, data.user_id, providerConfig.type, config, data.provider_id)) {
+      throw new StatusError(StatusError.BadRequest, `A provider of type "${providerConfig.type}" is already enabled for signing in for this user.`);
+    }
+
+    // Check if this provider type + account ID combination is already used for connected accounts
+    if (data.allow_connected_accounts && providerConfig.type && await checkProviderAccountIdAlreadyUsedForConnectedAccounts(auth.tenancy.id, data.user_id, providerConfig.type, data.account_id, config, data.provider_id)) {
+      throw new StatusError(StatusError.BadRequest, `A provider of type "${providerConfig.type}" with account ID "${data.account_id}" is already connected for this user.`);
     }
 
     await retryTransaction(async (tx) => {
