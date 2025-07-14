@@ -102,7 +102,8 @@ export const connectedAccountAccessTokenCrudHandlers = createLazyProxy(() =>crea
           scope: data.scope,
         });
       } catch (error) {
-        captureError(error, {
+        captureError('oauth-access-token-refresh-error', {
+          error,
           tenancyId: auth.tenancy.id,
           providerId: params.provider_id,
           userId: params.user_id,
