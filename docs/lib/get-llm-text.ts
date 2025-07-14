@@ -57,8 +57,13 @@ function extractOpenAPIContent(page: InferPageType<typeof source> | InferPageTyp
           }
         }
       } catch (e) {
-        // If parsing fails, include the whole spec summary
-        result += formatOpenAPISpec(spec);
+        if (e instanceof SyntaxError) {
+          // If parsing fails due to invalid JSON, include the whole spec summary
+          result += formatOpenAPISpec(spec);
+        } else {
+          console.error('Unexpected error parsing operations:', e);
+          result += formatOpenAPISpec(spec);
+        }
       }
     } else {
       // Include the whole spec
@@ -67,7 +72,13 @@ function extractOpenAPIContent(page: InferPageType<typeof source> | InferPageTyp
     
     return result;
   } catch (error) {
-    console.error('Error reading OpenAPI spec:', documentPath, error);
+    if (error instanceof SyntaxError) {
+      console.error('JSON parsing error in OpenAPI spec:', documentPath, error);
+    } else if (error instanceof Error && 'code' in error && error.code === 'ENOENT') {
+      console.error('OpenAPI spec file not found:', documentPath, error);
+    } else {
+      console.error('Unexpected error reading OpenAPI spec:', documentPath, error);
+    }
     return null;
   }
 }
@@ -124,10 +135,12 @@ function formatOpenAPISpec(spec: any): string {
   
   if (spec.paths) {
     result += '**Available Endpoints:**\n\n';
-    for (const [path, pathItem] of Object.entries(spec.paths)) {
-      for (const [method, operation] of Object.entries(pathItem as any)) {
+    const pathsMap = new Map<string, any>(Object.entries(spec.paths as Record<string, any>));
+    for (const [path, pathItem] of pathsMap) {
+      const methodsMap = new Map<string, any>(Object.entries(pathItem as Record<string, any>));
+      for (const [method, operation] of methodsMap) {
         if (operation && typeof operation === 'object' && 'summary' in operation) {
-          result += `- ${method.toUpperCase()} ${path}: ${(operation as any).summary}\n`;
+          result += `- ${method.toUpperCase()} ${path}: ${operation.summary}\n`;
         }
       }
     }

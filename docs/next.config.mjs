@@ -7,7 +7,7 @@ const config = {
   reactStrictMode: true,
   eslint: {
     // Temporarily disable ESLint during builds for Vercel deployment
-    ignoreDuringBuilds: true,
+    ignoreDuringBuilds: false,
   },
   // Include OpenAPI files in output tracing for Vercel deployments
   outputFileTracingIncludes: {
