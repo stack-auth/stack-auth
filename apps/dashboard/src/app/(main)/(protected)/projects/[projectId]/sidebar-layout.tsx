@@ -194,6 +194,26 @@ const navigationItems: (Label | Item | Hidden)[] = [
     requiresDevFeatureFlag: true,
   },
   {
+    name: (pathname: string) => {
+      const match = pathname.match(/^\/projects\/[^\/]+\/email-themes\/([^\/]+)$/);
+      let item;
+      let href;
+      if (match) {
+        item = <ThemeBreadcrumbItem key='theme-display-name' themeId={match[1]} />;
+        href = `/email-themes/${match[1]}`;
+      } else {
+        item = "Theme";
+        href = "";
+      }
+      return [
+        { item: "Themes", href: "/email-themes" },
+        { item, href },
+      ];
+    },
+    regex: /^\/projects\/[^\/]+\/email-themes\/[^\/]+$/,
+    type: 'hidden',
+  },
+  {
     name: "Configuration",
     type: 'label'
   },
@@ -284,6 +304,17 @@ function UserBreadcrumbItem(props: { userId: string }) {
     return null;
   } else {
     return user.displayName ?? user.primaryEmail ?? user.id;
+  }
+}
+
+function ThemeBreadcrumbItem(props: { themeId: string }) {
+  const stackAdminApp = useAdminApp();
+  const theme = stackAdminApp.useEmailTheme(props.themeId);
+
+  if (!theme) {
+    return null;
+  } else {
+    return theme.displayName;
   }
 }
 

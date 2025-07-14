@@ -200,3 +200,16 @@ export function renderEmailTemplate(
 
   return { html, text, subject: mergedSubject };
 }
+
+export function renderRawComponent(
+  content: TEditorConfiguration,
+  variables: Record<string, string | null>,
+) {
+  const mergedTemplate = objectStringMap(content, (str) => {
+    return renderString(str, variables);
+  });
+  const component = <Reader document={mergedTemplate} rootBlockId='root' />;
+  return {
+    html: render(component),
+  };
+}
