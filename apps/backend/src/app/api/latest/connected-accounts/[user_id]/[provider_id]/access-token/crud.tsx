@@ -81,7 +81,8 @@ export const connectedAccountAccessTokenCrudHandlers = createLazyProxy(() =>crea
         configOAuthProviderId: params.provider_id,
         projectUserOAuthAccount: {
           projectUserId: params.user_id,
-        }
+        },
+        isValid: true,
       },
     });
 
@@ -108,6 +109,13 @@ export const connectedAccountAccessTokenCrudHandlers = createLazyProxy(() =>crea
           refreshToken: token.refreshToken,
           scope: data.scope,
         });
+
+        // mark the token as invalid
+        await prisma.oAuthToken.update({
+          where: { id: token.id },
+          data: { isValid: false },
+        });
+
         continue;
       }
 
