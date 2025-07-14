@@ -4,6 +4,8 @@ import { FeedbackDialog } from "@/components/feedback-dialog";
 import { Link } from "@/components/link";
 import { Logo } from "@/components/logo";
 import { ProjectSwitcher } from "@/components/project-switcher";
+//import { StackCompanion } from "@/components/stack-companion";
+import { StackCompanion } from "@/components/stack-companion";
 import ThemeToggle from "@/components/theme-toggle";
 import { getPublicEnvVar } from '@/lib/env';
 import { cn } from "@/lib/utils";
@@ -465,7 +467,7 @@ export default function SidebarLayout(props: { projectId: string, children?: Rea
       <div className="flex-col border-r min-w-[240px] h-screen sticky top-0 hidden md:flex backdrop-blur-md bg-white/20 dark:bg-black/20 z-[10]">
         <SidebarContent projectId={props.projectId} />
       </div>
-      <div className="flex flex-col flex-grow w-0">
+      <div className="flex flex-col flex-grow w-0 pr-12">
         <div className="h-14 border-b flex items-center justify-between sticky top-0 backdrop-blur-md bg-white/20 dark:bg-black/20 z-10 px-4 md:px-6">
           <div className="hidden md:flex">
             <HeaderBreadcrumb projectId={props.projectId} />
@@ -501,10 +503,13 @@ export default function SidebarLayout(props: { projectId: string, children?: Rea
             }
           </div>
         </div>
-        <div className="flex-grow relative">
+        <div className="flex-grow overflow-auto">
           {props.children}
         </div>
       </div>
+
+      {/* Stack Companion */}
+      <StackCompanion />
     </div>
   );
 }

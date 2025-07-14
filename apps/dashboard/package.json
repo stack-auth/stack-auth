@@ -34,6 +34,7 @@
     "clsx": "^2.0.0",
     "dotenv-cli": "^7.3.0",
     "geist": "^1",
+    "jsonwebtoken": "^9.0.2",
     "lodash": "^4.17.21",
     "lucide-react": "^0.508.0",
     "next": "15.2.3",
@@ -54,6 +55,7 @@
   },
   "devDependencies": {
     "@types/canvas-confetti": "^1.6.4",
+    "@types/jsonwebtoken": "^9.0.10",
     "@types/lodash": "^4.17.5",
     "@types/node": "20.17.6",
     "@types/react": "19.0.12",
