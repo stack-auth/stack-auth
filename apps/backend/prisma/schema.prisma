@@ -393,6 +393,7 @@ model OAuthToken {
 
   refreshToken String
   scopes       String[]
+  isValid      Boolean  @default(true)
 }
 
 model OAuthAccessToken {
@@ -410,6 +411,7 @@ model OAuthAccessToken {
   accessToken String
   scopes      String[]
   expiresAt   DateTime
+  isValid     Boolean  @default(true)
 }
 
 model OAuthOuterInfo {
