@@ -1,4 +1,4 @@
-import React, { MutableRefObject } from "react";
+import React from "react";
 import { isBrowserLike } from "./env";
 import { neverResolve } from "./promises";
 import { deindent } from "./strings";
@@ -118,12 +118,27 @@ export function suspend(): never {
   throw new Error("Somehow a Promise that never resolves was resolved?");
 }
 
-export type InstantStateRef<T> = Readonly<MutableRefObject<T>>;
+export function mapRef<T, R>(ref: ReadonlyRef<T>, mapper: (value: T) => R): ReadonlyRef<R> {
+  let last: [T, R] | null = null;
+  return {
+    get current() {
+      const input = ref.current;
+      if (last === null || input !== last[0]) {
+        last = [input, mapper(input)];
+      }
+      return last[1];
+    },
+  };
+}
+
+export type ReadonlyRef<T> = {
+  readonly current: T,
+};
 
 /**
  * Like useState, but its value is immediately available.
  */
-export function useInstantState<T>(initialValue: T): [InstantStateRef<T>, (value: T) => void] {
+export function useInstantState<T>(initialValue: T): [ReadonlyRef<T>, (value: T) => void] {
   const [, setState] = React.useState(initialValue);
   const ref = React.useRef(initialValue);
   const setValue = React.useCallback((value: T) => {
