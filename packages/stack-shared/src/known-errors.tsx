@@ -1378,6 +1378,7 @@ const EmailRenderingError = createKnownErrorConstructor(
   (json: any) => [json.error] as const,
 );
 
+
 export type KnownErrors = {
   [K in keyof typeof KnownErrors]: InstanceType<typeof KnownErrors[K]>;
 };
@@ -1489,6 +1490,7 @@ export const KnownErrors = {
   ApiKeyRevoked,
   WrongApiKeyType,
   EmailRenderingError,
+
 } satisfies Record<string, KnownErrorConstructor<any, any>>;
 
 

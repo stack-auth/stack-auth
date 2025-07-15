@@ -1,4 +1,3 @@
-
 export * from "./components/action-dialog";
 export * as BrandIcons from "./components/brand-icons";
 export * from "./components/browser-frame";
@@ -50,5 +49,6 @@ export * from "./components/ui/toggle-group";
 export * from "./components/ui/tooltip";
 export * from "./components/ui/typography";
 export * from "./components/ui/use-toast";
+export * from "./components/ui/resizable";
 export { cn } from "./lib/utils";
 

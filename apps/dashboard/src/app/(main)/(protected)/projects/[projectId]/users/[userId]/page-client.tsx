@@ -10,6 +10,7 @@ import { ServerContactChannel, ServerUser } from "@stackframe/stack";
 import { useAsyncCallback } from "@stackframe/stack-shared/dist/hooks/use-async-callback";
 import { fromNow } from "@stackframe/stack-shared/dist/utils/dates";
 import { throwErr } from '@stackframe/stack-shared/dist/utils/errors';
+import { isJsonSerializable } from "@stackframe/stack-shared/dist/utils/json";
 import { deindent } from "@stackframe/stack-shared/dist/utils/strings";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger, ActionCell, Avatar, AvatarFallback, AvatarImage, Button, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger, Input, Separator, SimpleTooltip, Table, TableBody, TableCell, TableHead, TableHeader, TableRow, Typography, cn } from "@stackframe/stack-ui";
 import { AtSign, Calendar, Check, Hash, Mail, MoreHorizontal, Shield, SquareAsterisk, X } from "lucide-react";
@@ -187,12 +188,7 @@ function MetadataEditor({ title, initialValue, onUpdate, hint }: MetadataEditorP
 
   const [value, setValue] = useState(formatJson(initialValue));
   const isJson = useMemo(() => {
-    try {
-      JSON.parse(value);
-      return true;
-    } catch (e) {
-      return false;
-    }
+    return isJsonSerializable(value);
   }, [value]);
 
   // Ensure proper mounting lifecycle

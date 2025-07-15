@@ -78,7 +78,7 @@ it("creates a new project", async ({ expect }) => {
           "credential_enabled": true,
           "domains": [],
           "email_config": { "type": "shared" },
-          "email_theme": "default-light",
+          "email_theme": "<stripped UUID>",
           "enabled_oauth_providers": [],
           "magic_link_enabled": false,
           "oauth_account_merge_strategy": "link_method",
@@ -128,7 +128,7 @@ it("creates a new project with different configurations", async ({ expect }) => 
           "credential_enabled": false,
           "domains": [],
           "email_config": { "type": "shared" },
-          "email_theme": "default-light",
+          "email_theme": "<stripped UUID>",
           "enabled_oauth_providers": [],
           "magic_link_enabled": true,
           "oauth_account_merge_strategy": "link_method",
@@ -175,7 +175,7 @@ it("creates a new project with different configurations", async ({ expect }) => 
           "credential_enabled": true,
           "domains": [],
           "email_config": { "type": "shared" },
-          "email_theme": "default-light",
+          "email_theme": "<stripped UUID>",
           "enabled_oauth_providers": [{ "id": "google" }],
           "magic_link_enabled": false,
           "oauth_account_merge_strategy": "link_method",
@@ -224,7 +224,7 @@ it("creates a new project with different configurations", async ({ expect }) => 
           "credential_enabled": true,
           "domains": [],
           "email_config": { "type": "shared" },
-          "email_theme": "default-light",
+          "email_theme": "<stripped UUID>",
           "enabled_oauth_providers": [],
           "magic_link_enabled": false,
           "oauth_account_merge_strategy": "link_method",
@@ -282,7 +282,7 @@ it("creates a new project with different configurations", async ({ expect }) => 
             "type": "standard",
             "username": "test username",
           },
-          "email_theme": "default-light",
+          "email_theme": "<stripped UUID>",
           "enabled_oauth_providers": [],
           "magic_link_enabled": false,
           "oauth_account_merge_strategy": "link_method",
@@ -342,7 +342,7 @@ it("creates a new project with different configurations", async ({ expect }) => 
             },
           ],
           "email_config": { "type": "shared" },
-          "email_theme": "default-light",
+          "email_theme": "<stripped UUID>",
           "enabled_oauth_providers": [],
           "magic_link_enabled": false,
           "oauth_account_merge_strategy": "link_method",
@@ -385,7 +385,7 @@ it("lists the current projects after creating a new project", async ({ expect })
               "credential_enabled": true,
               "domains": [],
               "email_config": { "type": "shared" },
-              "email_theme": "default-light",
+              "email_theme": "<stripped UUID>",
               "enabled_oauth_providers": [],
               "magic_link_enabled": false,
               "oauth_account_merge_strategy": "link_method",
@@ -416,7 +416,7 @@ it("verifies email_theme update persists", async ({ expect }) => {
     accessType: "admin",
     body: {
       config: {
-        email_theme: "default-dark"
+        email_theme: "a0172b5d-cff0-463b-83bb-85124697373a" // default-dark
       }
     }
   });
@@ -434,7 +434,7 @@ it("verifies email_theme update persists", async ({ expect }) => {
           "credential_enabled": true,
           "domains": [],
           "email_config": { "type": "shared" },
-          "email_theme": "default-dark",
+          "email_theme": "<stripped UUID>",
           "enabled_oauth_providers": [],
           "magic_link_enabled": false,
           "oauth_account_merge_strategy": "link_method",
@@ -472,7 +472,7 @@ it("verifies email_theme update persists", async ({ expect }) => {
           "credential_enabled": true,
           "domains": [],
           "email_config": { "type": "shared" },
-          "email_theme": "default-dark",
+          "email_theme": "<stripped UUID>",
           "enabled_oauth_providers": [],
           "magic_link_enabled": false,
           "oauth_account_merge_strategy": "link_method",
@@ -492,6 +492,7 @@ it("verifies email_theme update persists", async ({ expect }) => {
       "headers": Headers { <some fields may have been hidden> },
     }
   `);
+  expect(response.body.config.email_theme).toBe("a0172b5d-cff0-463b-83bb-85124697373a"); // default-dark
 });
 
 it("gives an error when updating email_theme with an invalid value", async ({ expect }) => {
@@ -509,23 +510,8 @@ it("gives an error when updating email_theme with an invalid value", async ({ ex
   expect(response).toMatchInlineSnapshot(`
     NiceResponse {
       "status": 400,
-      "body": {
-        "code": "SCHEMA_ERROR",
-        "details": {
-          "message": deindent\`
-            Request validation failed on PATCH /api/v1/internal/projects/current:
-              - body.config.email_theme must be one of the following values: default-light, default-dark
-          \`,
-        },
-        "error": deindent\`
-          Request validation failed on PATCH /api/v1/internal/projects/current:
-            - body.config.email_theme must be one of the following values: default-light, default-dark
-        \`,
-      },
-      "headers": Headers {
-        "x-stack-known-error": "SCHEMA_ERROR",
-        <some fields may have been hidden>,
-      },
+      "body": "Invalid email theme",
+      "headers": Headers { <some fields may have been hidden> },
     }
   `);
 });
