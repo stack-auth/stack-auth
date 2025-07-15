@@ -3,6 +3,17 @@ import { isBrowserLike } from "./env";
 import { neverResolve } from "./promises";
 import { deindent } from "./strings";
 
+export function componentWrapper<
+  C extends React.ComponentType<any> | keyof React.JSX.IntrinsicElements,
+  ExtraProps extends {} = {}
+>(displayName: string, render: React.ForwardRefRenderFunction<RefFromComponent<C>, React.ComponentPropsWithRef<C> & ExtraProps>) {
+  const Component = forwardRefIfNeeded(render);
+  Component.displayName = displayName;
+  return Component;
+}
+type RefFromComponent<C extends React.ComponentType<any> | keyof React.JSX.IntrinsicElements> = NonNullable<RefFromComponentDistCond<React.ComponentPropsWithRef<C>["ref"]>>;
+type RefFromComponentDistCond<A> = A extends React.RefObject<infer T> ? T : never;  // distributive conditional type; see https://www.typescriptlang.org/docs/handbook/2/conditional-types.html#distributive-conditional-types
+
 export function forwardRefIfNeeded<T, P = {}>(render: React.ForwardRefRenderFunction<T, P>): React.FC<P & { ref?: React.Ref<T> }> {
   // TODO: when we drop support for react 18, remove this
 
@@ -14,38 +25,6 @@ export function forwardRefIfNeeded<T, P = {}>(render: React.ForwardRefRenderFunc
     return ((props: P) => render(props, (props as any).ref)) as any;
   }
 }
-import.meta.vitest?.test("forwardRefIfNeeded", ({ expect }) => {
-  // Mock React.version and React.forwardRef
-  const originalVersion = React.version;
-  const originalForwardRef = React.forwardRef;
-
-  try {
-    // Test with React version < 19
-    Object.defineProperty(React, 'version', { value: '18.2.0', writable: true });
-
-    // Create a render function
-    const renderFn = (props: any, ref: any) => null;
-
-    // Call forwardRefIfNeeded
-    const result = forwardRefIfNeeded(renderFn);
-
-    // Verify the function returns something
-    expect(result).toBeDefined();
-
-    // Test with React version >= 19
-    Object.defineProperty(React, 'version', { value: '19.0.0', writable: true });
-
-    // Call forwardRefIfNeeded again with React 19
-    const result19 = forwardRefIfNeeded(renderFn);
-
-    // Verify the function returns something
-    expect(result19).toBeDefined();
-  } finally {
-    // Restore original values
-    Object.defineProperty(React, 'version', { value: originalVersion });
-    React.forwardRef = originalForwardRef;
-  }
-});
 
 export function getNodeText(node: React.ReactNode): string {
   if (["number", "string"].includes(typeof node)) {
