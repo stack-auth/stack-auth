@@ -216,8 +216,8 @@ model ProjectUserOAuthAccount {
 
   // if allowSignIn is true, oauthAuthMethod must be set
   oauthAuthMethod        OAuthAuthMethod?
-  allowConnectedAccounts Boolean          @default(false)
-  allowSignIn            Boolean          @default(false)
+  allowConnectedAccounts Boolean          @default(true)
+  allowSignIn            Boolean          @default(true)
 
   @@id([tenancyId, id])
   @@unique([tenancyId, configOAuthProviderId, projectUserId, providerAccountId])
