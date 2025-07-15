@@ -183,3 +183,28 @@ body:has(.show-site-loading-indicator) .site-loading-indicator {
     transform: translateX(0%);
   }
 }
+
+
+/* Pacifica styles */
+[data-pacifica-surface] {
+  backdrop-filter: contrast(40%) blur(24px);
+  background-color: hsl(var(--background), 0.2);
+  color: hsl(var(--card-foreground));
+}
+
+.dark [data-pacifica-surface] {
+  background-image: radial-gradient(circle at top, #ffffff0d, #ffffff04), radial-gradient(circle at top right,  #ffffff04, transparent, transparent);
+}
+
+[data-pacifica-border] { 
+  border: 2px solid rgba(127, 127, 127, 0.2); 
+  box-shadow: 0 0 3px 3px rgba(0, 0, 0, 0.02);
+}
+
+:where([data-pacifica-children-flex-grow] > *) {
+  flex-grow: 1;
+}
+
+:where([data-pacifica-children-min-width-0] > *) {
+  min-width: 0;
+}
