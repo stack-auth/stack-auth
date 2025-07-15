@@ -1,18 +1,17 @@
 "use client";
 
+import { FormDialog } from "@/components/form-dialog";
+import { InputField } from "@/components/form-fields";
 import { useRouter } from "@/components/router";
 import { SettingCard } from "@/components/settings";
-import { throwErr } from "@stackframe/stack-shared/dist/utils/errors";
 import ThemePreview from "@/components/theme-preview";
-import { ActionDialog, Button, Card, toast, Typography } from "@stackframe/stack-ui";
-import { FormDialog } from "@/components/form-dialog";
+import { throwErr } from "@stackframe/stack-shared/dist/utils/errors";
+import { ActionDialog, Button, Card, Typography } from "@stackframe/stack-ui";
 import { Check } from "lucide-react";
 import { useState } from "react";
+import * as yup from "yup";
 import { PageLayout } from "../page-layout";
 import { useAdminApp } from "../use-admin-app";
-import { InputField } from "@/components/form-fields";
-import * as yup from "yup";
-import { KnownErrors } from "@stackframe/stack-shared/dist/known-errors";
 
 export default function PageClient() {
   const stackAdminApp = useAdminApp();
@@ -20,24 +19,24 @@ export default function PageClient() {
   const themes = stackAdminApp.useEmailThemes();
   const activeTheme = project.config.emailTheme;
   const [dialogOpen, setDialogOpen] = useState(false);
-  const [dialogSelectedTheme, setDialogSelectedTheme] = useState<string>(activeTheme);
+  const [dialogSelectedThemeId, setDialogSelectedThemeId] = useState<string>(activeTheme);
 
-  const handleThemeSelect = (themeName: string) => {
-    setDialogSelectedTheme(themeName);
+  const handleThemeSelect = (themeId: string) => {
+    setDialogSelectedThemeId(themeId);
   };
 
   const handleSaveTheme = async () => {
     await project.update({
-      config: { emailTheme: dialogSelectedTheme }
+      config: { emailTheme: dialogSelectedThemeId }
     });
   };
 
   const handleOpenDialog = () => {
-    setDialogSelectedTheme(activeTheme);
+    setDialogSelectedThemeId(activeTheme);
     setDialogOpen(true);
   };
 
-  const selectedThemeData = themes.find(t => t.displayName === activeTheme) ?? throwErr(`Unknown theme ${activeTheme}`, { activeTheme });
+  const selectedThemeData = themes.find(t => t.id === activeTheme) ?? throwErr(`Unknown theme ${activeTheme}`, { activeTheme });
 
   return (
     <PageLayout
@@ -68,7 +67,7 @@ export default function PageClient() {
               <ThemeOption
                 key={theme.id}
                 theme={theme}
-                isSelected={dialogSelectedTheme === theme.displayName}
+                isSelected={dialogSelectedThemeId === theme.id}
                 onSelect={handleThemeSelect}
               />
             ))}
@@ -86,12 +85,12 @@ function ThemeOption({
 }: {
   theme: { id: string, displayName: string },
   isSelected: boolean,
-  onSelect: (themeName: string) => void,
+  onSelect: (themeId: string) => void,
 }) {
   return (
     <Card
       className="cursor-pointer hover:ring-1 transition-all"
-      onClick={() => onSelect(theme.displayName)}
+      onClick={() => onSelect(theme.id)}
     >
       <div className="p-4 pb-3">
         <div className="flex items-center justify-between">
@@ -115,19 +114,8 @@ function NewThemeButton() {
   const router = useRouter();
 
   const handleCreateNewTheme = async (values: { name: string }) => {
-    try {
-      const { id } = await stackAdminApp.createEmailTheme(values.name);
-      router.push(`email-themes/${id}`);
-    } catch (error) {
-      if (KnownErrors.ThemeWithNameAlreadyExists.isInstance(error)) {
-        toast({
-          title: "Theme with this name already exists",
-          description: "Please choose a different name",
-          variant: "destructive",
-        });
-        return 'prevent-close';
-      }
-    }
+    const { id } = await stackAdminApp.createEmailTheme(values.name);
+    router.push(`email-themes/${id}`);
   };
 
   return (

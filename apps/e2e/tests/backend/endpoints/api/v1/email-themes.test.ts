@@ -29,7 +29,7 @@ function InvalidComponent() {
 describe("get email theme", () => {
   it("should return 401 when invalid access type is provided", async ({ expect }) => {
     const response = await niceBackendFetch(
-      `/api/latest/emails/themes/${validThemeId}`,
+      `/api/latest/internal/email-themes/${validThemeId}`,
       {
         method: "GET",
         accessType: "client",
@@ -59,7 +59,7 @@ describe("get email theme", () => {
       display_name: "Test Email Theme Project",
     });
     const response = await niceBackendFetch(
-      `/api/latest/emails/themes/${invalidThemeId}`,
+      `/api/latest/internal/email-themes/${invalidThemeId}`,
       {
         method: "GET",
         accessType: "admin",
@@ -79,7 +79,7 @@ describe("get email theme", () => {
       display_name: "Test Email Theme Project",
     });
     const response = await niceBackendFetch(
-      `/api/latest/emails/themes/${validThemeId}`,
+      `/api/latest/internal/email-themes/${validThemeId}`,
       {
         method: "GET",
         accessType: "admin",
@@ -116,7 +116,7 @@ describe("get email theme", () => {
 describe("update email theme", () => {
   it("should return 401 when invalid access type is provided", async ({ expect }) => {
     const response = await niceBackendFetch(
-      `/api/latest/emails/themes/${validThemeId}`,
+      `/api/latest/internal/email-themes/${validThemeId}`,
       {
         method: "PATCH",
         accessType: "client",
@@ -150,7 +150,7 @@ describe("update email theme", () => {
       display_name: "Test Email Theme Project",
     });
     const response = await niceBackendFetch(
-      `/api/latest/emails/themes/${invalidThemeId}`,
+      `/api/latest/internal/email-themes/${invalidThemeId}`,
       {
         method: "PATCH",
         accessType: "admin",
@@ -174,7 +174,7 @@ describe("update email theme", () => {
       display_name: "Test Email Theme Project",
     });
     const response = await niceBackendFetch(
-      `/api/latest/emails/themes/${validThemeId}`,
+      `/api/latest/internal/email-themes/${validThemeId}`,
       {
         method: "PATCH",
         accessType: "admin",
@@ -206,7 +206,7 @@ describe("update email theme", () => {
       display_name: "Test Email Theme Project",
     });
     const response = await niceBackendFetch(
-      `/api/latest/emails/themes/${validThemeId}`,
+      `/api/latest/internal/email-themes/${validThemeId}`,
       {
         method: "PATCH",
         accessType: "admin",
@@ -249,7 +249,7 @@ describe("update email theme", () => {
     });
 
     const updateResponse = await niceBackendFetch(
-      `/api/latest/emails/themes/${validThemeId}`,
+      `/api/latest/internal/email-themes/${validThemeId}`,
       {
         method: "PATCH",
         accessType: "admin",
@@ -262,7 +262,7 @@ describe("update email theme", () => {
     expect(updateResponse.status).toBe(200);
 
     const getResponse = await niceBackendFetch(
-      `/api/latest/emails/themes/${validThemeId}`,
+      `/api/latest/internal/email-themes/${validThemeId}`,
       {
         method: "GET",
         accessType: "admin",
@@ -297,14 +297,14 @@ describe("update email theme", () => {
 });
 
 describe("create email theme", () => {
-  it("should get all themes, then fail to create theme with existing name", async ({ expect }) => {
+  it("should get all themes, then successfully create theme with existing name", async ({ expect }) => {
     await Project.createAndSwitch({
       display_name: "Test Email Theme Project",
     });
 
     // First get all themes to verify default themes exist
     const getResponse = await niceBackendFetch(
-      `/api/latest/emails/themes`,
+      `/api/latest/internal/email-themes`,
       {
         method: "GET",
         accessType: "admin",
@@ -329,9 +329,9 @@ describe("create email theme", () => {
       }
     `);
 
-    // Try to create a theme with the same name as existing theme
+    // Create a theme with the same name as existing theme - this should now work
     const createResponse = await niceBackendFetch(
-      `/api/latest/emails/themes`,
+      `/api/latest/internal/email-themes`,
       {
         method: "POST",
         accessType: "admin",
@@ -342,16 +342,9 @@ describe("create email theme", () => {
     );
     expect(createResponse).toMatchInlineSnapshot(`
       NiceResponse {
-        "status": 400,
-        "body": {
-          "code": "THEME_WITH_NAME_ALREADY_EXISTS",
-          "details": { "name": "default-light" },
-          "error": "A theme with the name \\"default-light\\" already exists.",
-        },
-        "headers": Headers {
-          "x-stack-known-error": "THEME_WITH_NAME_ALREADY_EXISTS",
-          <some fields may have been hidden>,
-        },
+        "status": 200,
+        "body": { "id": "<stripped UUID>" },
+        "headers": Headers { <some fields may have been hidden> },
       }
     `);
   });
@@ -365,7 +358,7 @@ describe("create, patch, and get email theme", () => {
 
     // Create a new theme
     const createResponse = await niceBackendFetch(
-      `/api/latest/emails/themes`,
+      `/api/latest/internal/email-themes`,
       {
         method: "POST",
         accessType: "admin",
@@ -380,7 +373,7 @@ describe("create, patch, and get email theme", () => {
 
     // Patch the theme
     const patchResponse = await niceBackendFetch(
-      `/api/latest/emails/themes/${themeId}`,
+      `/api/latest/internal/email-themes/${themeId}`,
       {
         method: "PATCH",
         accessType: "admin",
@@ -418,7 +411,7 @@ describe("create, patch, and get email theme", () => {
 
     // Get the theme to verify it was updated
     const getResponse = await niceBackendFetch(
-      `/api/latest/emails/themes/${themeId}`,
+      `/api/latest/internal/email-themes/${themeId}`,
       {
         method: "GET",
         accessType: "admin",

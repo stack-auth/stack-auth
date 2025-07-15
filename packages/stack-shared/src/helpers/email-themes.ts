@@ -29,9 +29,10 @@ function EmailTheme({ children }: { children: React.ReactNode }) {
   );
 }`;
 
+export const DEFAULT_EMAIL_THEME_ID = "1df07ae6-abf3-4a40-83a5-a1a2cbe336ac";
 
 export const DEFAULT_EMAIL_THEMES = {
-  "1df07ae6-abf3-4a40-83a5-a1a2cbe336ac": {
+  [DEFAULT_EMAIL_THEME_ID]: {
     displayName: 'default-light',
     tsxSource: LightEmailTheme,
   },
