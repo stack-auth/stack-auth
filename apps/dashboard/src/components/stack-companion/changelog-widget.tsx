@@ -87,47 +87,12 @@ export function ChangelogWidget({ isActive }: ChangelogWidgetProps) {
           })) || [];
           setChangelogs(transformedData);
         } else {
-          // Fallback to mock data if API fails
-          setChangelogs([
-            {
-              id: '1',
-              title: 'New Dashboard Features',
-              content: '<p>Added new user management tools and improved analytics dashboard.</p><p>This includes better user filtering, bulk actions, and real-time updates.</p>',
-              date: new Date().toLocaleDateString(),
-              isNew: true,
-              expanded: false,
-            },
-            {
-              id: '2',
-              title: 'Bug Fixes & Improvements',
-              content: '<p>Fixed authentication issues and improved performance.</p><ul><li>Resolved login timeout issues</li><li>Improved page load times by 40%</li><li>Fixed email verification bugs</li></ul>',
-              date: new Date(Date.now() - 86400000).toLocaleDateString(),
-              isNew: false,
-              expanded: false,
-            },
-          ]);
+          console.error('Failed to fetch changelogs:', response.status, response.statusText);
+          setChangelogs([]);
         }
       } catch (error) {
         console.error('Failed to fetch changelogs:', error);
-        // Fallback to mock data
-        setChangelogs([
-          {
-            id: '1',
-            title: 'New Dashboard Features',
-            content: '<p>Added new user management tools and improved analytics dashboard.</p><p>This includes better user filtering, bulk actions, and real-time updates.</p>',
-            date: new Date().toLocaleDateString(),
-            isNew: true,
-            expanded: false,
-          },
-          {
-            id: '2',
-            title: 'Bug Fixes & Improvements',
-            content: '<p>Fixed authentication issues and improved performance.</p><ul><li>Resolved login timeout issues</li><li>Improved page load times by 40%</li><li>Fixed email verification bugs</li></ul>',
-            date: new Date(Date.now() - 86400000).toLocaleDateString(),
-            isNew: false,
-            expanded: false,
-          },
-        ]);
+        setChangelogs([]);
       } finally {
         setLoading(false);
       }
@@ -296,8 +261,12 @@ export function ChangelogWidget({ isActive }: ChangelogWidgetProps) {
             })
           ) : (
             <div className="bg-muted/30 rounded-lg p-4 text-center">
-              <p className="text-xs text-muted-foreground">
-                No recent updates available
+              <Calendar className="h-8 w-8 mx-auto mb-2 text-muted-foreground" />
+              <p className="text-xs text-muted-foreground font-medium">
+                No changelog updates available
+              </p>
+              <p className="text-xs text-muted-foreground/80 mt-1">
+                Check back later for new updates
               </p>
             </div>
           )}
