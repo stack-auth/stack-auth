@@ -1,8 +1,7 @@
 import { useAdminApp } from "@/app/(main)/(protected)/projects/[projectId]/use-admin-app";
-import { runAsynchronously } from "@stackframe/stack-shared/dist/utils/promises";
 import { deindent } from "@stackframe/stack-shared/dist/utils/strings";
 import { BrowserFrame, Spinner } from "@stackframe/stack-ui";
-import { useEffect, useState } from "react";
+import { Suspense } from "react";
 
 export const previewEmailHtml = deindent`
   <div>
@@ -15,7 +14,7 @@ export const previewEmailHtml = deindent`
   </div>
 `;
 
-export default function ThemePreview({
+function ThemePreviewContent({
   themeId,
   renderedHtmlOverride,
   disableFrame,
@@ -25,25 +24,39 @@ export default function ThemePreview({
   disableFrame?: boolean,
 }) {
   const stackAdminApp = useAdminApp();
-  const [previewHtml, setPreviewHtml] = useState<string>();
-
-  useEffect(() => {
-    runAsynchronously(
-      stackAdminApp.getEmailThemePreview(themeId, previewEmailHtml).then(setPreviewHtml)
-    );
-  }, [stackAdminApp, themeId]);
+  const previewHtml = stackAdminApp.useEmailThemePreview(themeId, previewEmailHtml);
 
   return (
-    <div className="w-fit mx-auto h-full flex flex-col justify-center">
-      {!previewHtml ? (
-        <Spinner />
-      ) : disableFrame ? (
+    <>
+      {disableFrame ? (
         <iframe srcDoc={renderedHtmlOverride ?? previewHtml} className="pointer-events-none h-full" />
       ) : (
         <BrowserFrame transparentBackground className="flex flex-col grow">
           <iframe srcDoc={renderedHtmlOverride ?? previewHtml} className="pointer-events-none h-full" />
         </BrowserFrame>
       )}
+    </>
+  );
+}
+
+export default function ThemePreview({
+  themeId,
+  renderedHtmlOverride,
+  disableFrame,
+}: {
+  themeId: string,
+  renderedHtmlOverride?: string,
+  disableFrame?: boolean,
+}) {
+  return (
+    <div className="w-fit mx-auto h-full flex flex-col justify-center">
+      <Suspense fallback={<Spinner />}>
+        <ThemePreviewContent
+          themeId={themeId}
+          renderedHtmlOverride={renderedHtmlOverride}
+          disableFrame={disableFrame}
+        />
+      </Suspense>
     </div>
   );
 }
