@@ -40,6 +40,9 @@ async function checkInputValidity(options: {
         providerAccountId: options.accountId,
       },
     },
+    include: {
+      oauthAccount: true,
+    },
   });
 
   for (const oauthAuthMethod of oauthAuthMethods) {
@@ -289,6 +292,18 @@ export const oauthProviderCrudHandlers = createLazyProxy(() => createCrudHandler
       // Handle allow_connected_accounts changes
       if (data.allow_connected_accounts !== undefined) {
         if (data.allow_connected_accounts) {
+          // Check if this account ID is already used for connected accounts by another provider
+          await checkInputValidity({
+            tenancy: auth.tenancy,
+            oldAccountId: existingOAuthAccount.providerAccountId,
+            accountId: data.account_id || existingOAuthAccount.providerAccountId,
+            providerType: providerConfig.type || throwErr('Provider type is required'),
+            config,
+            providerConfigId: params.provider_id,
+            userId: params.user_id,
+            type: 'update',
+          });
+
           // Create connected account if it doesn't exist
           if (!existingOAuthAccount.connectedAccount) {
             const connectedAccount = await tx.connectedAccount.create({
@@ -323,6 +338,25 @@ export const oauthProviderCrudHandlers = createLazyProxy(() => createCrudHandler
         updateData.email = data.email;
       }
       if (data.account_id !== undefined) {
+        // Check if changing account_id would create conflicts when sign-in or connected accounts are enabled
+        const currentlyHasSignIn = !!existingOAuthAccount.oauthAuthMethod;
+        const currentlyHasConnectedAccounts = !!existingOAuthAccount.connectedAccount;
+        const willHaveSignIn = data.allow_sign_in !== undefined ? data.allow_sign_in : currentlyHasSignIn;
+        const willHaveConnectedAccounts = data.allow_connected_accounts !== undefined ? data.allow_connected_accounts : currentlyHasConnectedAccounts;
+
+        if (willHaveSignIn || willHaveConnectedAccounts) {
+          await checkInputValidity({
+            tenancy: auth.tenancy,
+            oldAccountId: existingOAuthAccount.providerAccountId,
+            accountId: data.account_id,
+            providerType: providerConfig.type || throwErr('Provider type is required'),
+            config,
+            providerConfigId: params.provider_id,
+            userId: params.user_id,
+            type: 'update',
+          });
+        }
+
         updateData.providerAccountId = data.account_id;
       }
 

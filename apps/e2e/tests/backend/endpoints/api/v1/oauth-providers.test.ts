@@ -922,7 +922,7 @@ it("should prevent multiple providers of the same type from being enabled for si
   expect(enableResponse.body.allow_sign_in).toBe(true);
 });
 
-it("should prevent duplicate account IDs for connected accounts of the same provider type", async ({ expect }: { expect: any }) => {
+it("should prevent duplicate account IDs for sign-in", async ({ expect }: { expect: any }) => {
   const { createProjectResponse } = await createAndSwitchToOAuthEnabledProject();
   await Auth.Otp.signIn();
 
@@ -962,8 +962,18 @@ it("should prevent duplicate account IDs for connected accounts of the same prov
   expect(createResponse2).toMatchInlineSnapshot(`
     NiceResponse {
       "status": 400,
-      "body": "A provider of type \\"github\\" with account ID \\"github_user_123\\" is already connected for this user.",
-      "headers": Headers { <some fields may have been hidden> },
+      "body": {
+        "code": "OAUTH_PROVIDER_ACCOUNT_ID_ALREADY_USED_FOR_CONNECTED_ACCOUNTS",
+        "details": {
+          "account_id": "github_user_123",
+          "provider_type": "github",
+        },
+        "error": "A provider of type \\"github\\" with account ID \\"github_user_123\\" is already connected for this user.",
+      },
+      "headers": Headers {
+        "x-stack-known-error": "OAUTH_PROVIDER_ACCOUNT_ID_ALREADY_USED_FOR_CONNECTED_ACCOUNTS",
+        <some fields may have been hidden>,
+      },
     }
   `);
 
@@ -976,7 +986,7 @@ it("should prevent duplicate account IDs for connected accounts of the same prov
       provider_id: providerConfig.id,
       account_id: "github_user_456", // Different account ID
       email: "user456@example.com",
-      allow_sign_in: false,
+      allow_sign_in: true,
       allow_connected_accounts: true,
     },
   });
@@ -984,25 +994,230 @@ it("should prevent duplicate account IDs for connected accounts of the same prov
   expect(createResponse3.status).toBe(201);
   expect(createResponse3.body.allow_connected_accounts).toBe(true);
 
-  // Create third GitHub account connection with connected accounts disabled - should succeed even with duplicate account ID
-  const createResponse4 = await niceBackendFetch("/api/v1/oauth-providers", {
+
+  backendContext.set({ mailbox: createMailbox() });
+  const user2 = await Auth.Otp.signIn();
+
+  // Try to create a connected account with same account ID for the same user but different details - should fail
+  const createResponse5 = await niceBackendFetch("/api/v1/oauth-providers", {
     method: "POST",
     accessType: "server",
     body: {
       user_id: "me",
       provider_id: providerConfig.id,
-      account_id: "github_user_123", // Same account ID as first, but connected accounts disabled
-      email: "user123alt@example.com",
+      account_id: "github_user_456",
+      email: "user456@example.com",
+      allow_sign_in: true,
+      allow_connected_accounts: false,
+    },
+  });
+
+  expect(createResponse5.status).toBe(400);
+  expect(createResponse5.body.code).toBe("OAUTH_PROVIDER_ACCOUNT_ID_ALREADY_USED_FOR_CONNECTED_ACCOUNTS");
+});
+
+// New comprehensive error handling tests
+it("should throw OAuthProviderTypeAlreadyUsedForSignIn error on create", async ({ expect }: { expect: any }) => {
+  const { createProjectResponse } = await createAndSwitchToOAuthEnabledProject();
+  await Auth.Otp.signIn();
+
+  const providerConfig = createProjectResponse.body.config.oauth_providers.find((p: any) => p.provider_id === "github");
+  expect(providerConfig).toBeDefined();
+
+  // Create first OAuth provider with sign-in enabled
+  const firstProviderResponse = await niceBackendFetch("/api/v1/oauth-providers", {
+    method: "POST",
+    accessType: "server",
+    body: {
+      user_id: "me",
+      provider_id: providerConfig.id,
+      account_id: "github_account_1",
+      email: "test1@example.com",
+      allow_sign_in: true,
+      allow_connected_accounts: false,
+    },
+  });
+
+  expect(firstProviderResponse.status).toBe(201);
+  expect(firstProviderResponse.body.allow_sign_in).toBe(true);
+
+  // Try to create second OAuth provider of same type with sign-in enabled - should fail with specific error
+  const secondProviderResponse = await niceBackendFetch("/api/v1/oauth-providers", {
+    method: "POST",
+    accessType: "server",
+    body: {
+      user_id: "me",
+      provider_id: providerConfig.id,
+      account_id: "github_account_2",
+      email: "test2@example.com",
+      allow_sign_in: true,
+      allow_connected_accounts: false,
+    },
+  });
+
+  expect(secondProviderResponse).toMatchInlineSnapshot(`
+    NiceResponse {
+      "status": 400,
+      "body": {
+        "code": "OAUTH_PROVIDER_TYPE_ALREADY_USED_FOR_SIGN_IN",
+        "details": { "provider_type": "github" },
+        "error": "A provider of type \\"github\\" is already used for signing in for a different account.",
+      },
+      "headers": Headers {
+        "x-stack-known-error": "OAUTH_PROVIDER_TYPE_ALREADY_USED_FOR_SIGN_IN",
+        <some fields may have been hidden>,
+      },
+    }
+  `);
+});
+
+it("should throw OAuthProviderTypeAlreadyUsedForSignIn error on update", async ({ expect }: { expect: any }) => {
+  const { createProjectResponse } = await createAndSwitchToOAuthEnabledProject();
+  await Auth.Otp.signIn();
+
+  const providerConfig = createProjectResponse.body.config.oauth_providers.find((p: any) => p.provider_id === "github");
+  expect(providerConfig).toBeDefined();
+
+  // Create first OAuth provider with sign-in enabled
+  const firstProviderResponse = await niceBackendFetch("/api/v1/oauth-providers", {
+    method: "POST",
+    accessType: "server",
+    body: {
+      user_id: "me",
+      provider_id: providerConfig.id,
+      account_id: "github_account_1",
+      email: "test1@example.com",
+      allow_sign_in: true,
+      allow_connected_accounts: false,
+    },
+  });
+
+  expect(firstProviderResponse.status).toBe(201);
+
+  // Create second OAuth provider with sign-in disabled
+  const secondProviderResponse = await niceBackendFetch("/api/v1/oauth-providers", {
+    method: "POST",
+    accessType: "server",
+    body: {
+      user_id: "me",
+      provider_id: providerConfig.id,
+      account_id: "github_account_2",
+      email: "test2@example.com",
       allow_sign_in: false,
       allow_connected_accounts: false,
     },
   });
 
-  expect(createResponse4.status).toBe(201);
-  expect(createResponse4.body.allow_connected_accounts).toBe(false);
+  expect(secondProviderResponse.status).toBe(201);
+  expect(secondProviderResponse.body.allow_sign_in).toBe(false);
 
-  // Try to enable connected accounts on the third account (with duplicate account ID) - should fail
-  const updateResponse = await niceBackendFetch(`/api/v1/oauth-providers/me/${createResponse4.body.id}`, {
+  // Try to enable sign-in on second provider - should fail with specific error
+  const updateResponse = await niceBackendFetch(`/api/v1/oauth-providers/me/${secondProviderResponse.body.id}`, {
+    method: "PATCH",
+    accessType: "server",
+    body: {
+      allow_sign_in: true,
+    },
+  });
+
+  expect(updateResponse).toMatchInlineSnapshot(`
+    NiceResponse {
+      "status": 400,
+      "body": "A provider of type \\"github\\" is already enabled for signing in for this user.",
+      "headers": Headers { <some fields may have been hidden> },
+    }
+  `);
+});
+
+it("should throw OAuthProviderAccountIdAlreadyUsedForConnectedAccounts error on create", async ({ expect }: { expect: any }) => {
+  const { createProjectResponse } = await createAndSwitchToOAuthEnabledProject();
+  await Auth.Otp.signIn();
+
+  const providerConfig = createProjectResponse.body.config.oauth_providers.find((p: any) => p.provider_id === "github");
+  expect(providerConfig).toBeDefined();
+
+  // Create first OAuth provider with connected accounts enabled
+  const firstProviderResponse = await niceBackendFetch("/api/v1/oauth-providers", {
+    method: "POST",
+    accessType: "server",
+    body: {
+      user_id: "me",
+      provider_id: providerConfig.id,
+      account_id: "github_account_123",
+      email: "test1@example.com",
+      allow_sign_in: false,
+      allow_connected_accounts: true,
+    },
+  });
+
+  expect(firstProviderResponse.status).toBe(201);
+  expect(firstProviderResponse.body.allow_connected_accounts).toBe(true);
+
+  // Try to create second OAuth provider with same account ID and connected accounts enabled - should fail
+  const secondProviderResponse = await niceBackendFetch("/api/v1/oauth-providers", {
+    method: "POST",
+    accessType: "server",
+    body: {
+      user_id: "me",
+      provider_id: providerConfig.id,
+      account_id: "github_account_123", // Same account ID
+      email: "test2@example.com",
+      allow_sign_in: false,
+      allow_connected_accounts: true,
+    },
+  });
+
+  expect(secondProviderResponse).toMatchInlineSnapshot(`
+    NiceResponse {
+      "status": 400,
+      "body": "A provider of type \\"github\\" with account ID \\"github_account_123\\" is already connected for this user.",
+      "headers": Headers { <some fields may have been hidden> },
+    }
+  `);
+});
+
+it("should throw OAuthProviderAccountIdAlreadyUsedForConnectedAccounts error on update", async ({ expect }: { expect: any }) => {
+  const { createProjectResponse } = await createAndSwitchToOAuthEnabledProject();
+  await Auth.Otp.signIn();
+
+  const providerConfig = createProjectResponse.body.config.oauth_providers.find((p: any) => p.provider_id === "github");
+  expect(providerConfig).toBeDefined();
+
+  // Create first OAuth provider with connected accounts enabled
+  const firstProviderResponse = await niceBackendFetch("/api/v1/oauth-providers", {
+    method: "POST",
+    accessType: "server",
+    body: {
+      user_id: "me",
+      provider_id: providerConfig.id,
+      account_id: "github_account_123",
+      email: "test1@example.com",
+      allow_sign_in: false,
+      allow_connected_accounts: true,
+    },
+  });
+
+  expect(firstProviderResponse.status).toBe(201);
+
+  // Create second OAuth provider with same account ID but connected accounts disabled
+  const secondProviderResponse = await niceBackendFetch("/api/v1/oauth-providers", {
+    method: "POST",
+    accessType: "server",
+    body: {
+      user_id: "me",
+      provider_id: providerConfig.id,
+      account_id: "github_account_123", // Same account ID
+      email: "test2@example.com",
+      allow_sign_in: false,
+      allow_connected_accounts: false,
+    },
+  });
+
+  expect(secondProviderResponse.status).toBe(201);
+  expect(secondProviderResponse.body.allow_connected_accounts).toBe(false);
+
+  // Try to enable connected accounts on second provider - should fail with specific error
+  const updateResponse = await niceBackendFetch(`/api/v1/oauth-providers/me/${secondProviderResponse.body.id}`, {
     method: "PATCH",
     accessType: "server",
     body: {
@@ -1013,32 +1228,207 @@ it("should prevent duplicate account IDs for connected accounts of the same prov
   expect(updateResponse).toMatchInlineSnapshot(`
     NiceResponse {
       "status": 400,
-      "body": "A provider of type \\"github\\" with account ID \\"github_user_123\\" is already connected for this user.",
+      "body": "A provider of type \\"github\\" with account ID \\"github_account_123\\" is already connected for this user.",
       "headers": Headers { <some fields may have been hidden> },
     }
   `);
+});
 
-  // Disable connected accounts on the first account
-  const disableResponse = await niceBackendFetch(`/api/v1/oauth-providers/me/${createResponse1.body.id}`, {
-    method: "PATCH",
+it("should allow updating account_id when no conflicts exist", async ({ expect }: { expect: any }) => {
+  const { createProjectResponse } = await createAndSwitchToOAuthEnabledProject();
+  await Auth.Otp.signIn();
+
+  const providerConfig = createProjectResponse.body.config.oauth_providers.find((p: any) => p.provider_id === "github");
+  expect(providerConfig).toBeDefined();
+
+  // Create first OAuth provider
+  const firstProviderResponse = await niceBackendFetch("/api/v1/oauth-providers", {
+    method: "POST",
     accessType: "server",
     body: {
-      allow_connected_accounts: false,
-    },
-  });
-
-  expect(disableResponse.status).toBe(200);
-  expect(disableResponse.body.allow_connected_accounts).toBe(false);
-
-  // Now enabling connected accounts on the third account should succeed
-  const enableResponse = await niceBackendFetch(`/api/v1/oauth-providers/me/${createResponse4.body.id}`, {
-    method: "PATCH",
-    accessType: "server",
-    body: {
+      user_id: "me",
+      provider_id: providerConfig.id,
+      account_id: "github_account_1",
+      email: "test1@example.com",
+      allow_sign_in: true,
       allow_connected_accounts: true,
     },
   });
 
-  expect(enableResponse.status).toBe(200);
-  expect(enableResponse.body.allow_connected_accounts).toBe(true);
+  expect(firstProviderResponse.status).toBe(201);
+
+  // Create second OAuth provider with different account ID
+  const secondProviderResponse = await niceBackendFetch("/api/v1/oauth-providers", {
+    method: "POST",
+    accessType: "server",
+    body: {
+      user_id: "me",
+      provider_id: providerConfig.id,
+      account_id: "github_account_2",
+      email: "test2@example.com",
+      allow_sign_in: false,
+      allow_connected_accounts: false,
+    },
+  });
+
+  expect(secondProviderResponse.status).toBe(201);
+
+  // Update account_id on second provider to a new unique value - should succeed
+  const updateResponse = await niceBackendFetch(`/api/v1/oauth-providers/me/${secondProviderResponse.body.id}`, {
+    method: "PATCH",
+    accessType: "server",
+    body: {
+      account_id: "github_account_3", // New unique account ID
+    },
+  });
+
+  expect(updateResponse.status).toBe(200);
+  expect(updateResponse.body.account_id).toBe("github_account_3");
+});
+
+it("should prevent updating account_id to one that conflicts with connected accounts", async ({ expect }: { expect: any }) => {
+  const { createProjectResponse } = await createAndSwitchToOAuthEnabledProject();
+  await Auth.Otp.signIn();
+
+  const providerConfig = createProjectResponse.body.config.oauth_providers.find((p: any) => p.provider_id === "github");
+  expect(providerConfig).toBeDefined();
+
+  // Create first OAuth provider with connected accounts enabled
+  const firstProviderResponse = await niceBackendFetch("/api/v1/oauth-providers", {
+    method: "POST",
+    accessType: "server",
+    body: {
+      user_id: "me",
+      provider_id: providerConfig.id,
+      account_id: "github_account_1",
+      email: "test1@example.com",
+      allow_sign_in: false,
+      allow_connected_accounts: true,
+    },
+  });
+
+  expect(firstProviderResponse.status).toBe(201);
+
+  // Create second OAuth provider with different account ID but connected accounts enabled
+  const secondProviderResponse = await niceBackendFetch("/api/v1/oauth-providers", {
+    method: "POST",
+    accessType: "server",
+    body: {
+      user_id: "me",
+      provider_id: providerConfig.id,
+      account_id: "github_account_2",
+      email: "test2@example.com",
+      allow_sign_in: false,
+      allow_connected_accounts: true,
+    },
+  });
+
+  expect(secondProviderResponse.status).toBe(201);
+
+  // Try to update account_id on second provider to conflict with first - should fail
+  const updateResponse = await niceBackendFetch(`/api/v1/oauth-providers/me/${secondProviderResponse.body.id}`, {
+    method: "PATCH",
+    accessType: "server",
+    body: {
+      account_id: "github_account_1", // Conflicts with first provider's account ID
+    },
+  });
+
+  expect(updateResponse).toMatchInlineSnapshot(`
+    NiceResponse {
+      "status": 400,
+      "body": {
+        "code": "OAUTH_PROVIDER_ACCOUNT_ID_ALREADY_USED_FOR_CONNECTED_ACCOUNTS",
+        "details": { "account_id": "github_account_1", "provider_type": "github" },
+        "error": "A provider of type \\"github\\" with account ID \\"github_account_1\\" is already connected for this user.",
+      },
+      "headers": Headers {
+        "x-stack-known-error": "OAUTH_PROVIDER_ACCOUNT_ID_ALREADY_USED_FOR_CONNECTED_ACCOUNTS",
+        <some fields may have been hidden>,
+      },
+    }
+  `);
+});
+
+it("should handle mixed error scenarios correctly", async ({ expect }: { expect: any }) => {
+  const { createProjectResponse } = await createAndSwitchToOAuthEnabledProject();
+  await Auth.Otp.signIn();
+
+  const providerConfig = createProjectResponse.body.config.oauth_providers.find((p: any) => p.provider_id === "github");
+  expect(providerConfig).toBeDefined();
+
+  // Create first OAuth provider with both sign-in and connected accounts enabled
+  const firstProviderResponse = await niceBackendFetch("/api/v1/oauth-providers", {
+    method: "POST",
+    accessType: "server",
+    body: {
+      user_id: "me",
+      provider_id: providerConfig.id,
+      account_id: "github_account_1",
+      email: "test1@example.com",
+      allow_sign_in: true,
+      allow_connected_accounts: true,
+    },
+  });
+
+  expect(firstProviderResponse.status).toBe(201);
+
+  // Try to create second OAuth provider with same account ID and both capabilities - should fail with connected accounts error
+  const secondProviderResponse = await niceBackendFetch("/api/v1/oauth-providers", {
+    method: "POST",
+    accessType: "server",
+    body: {
+      user_id: "me",
+      provider_id: providerConfig.id,
+      account_id: "github_account_1", // Same account ID
+      email: "test2@example.com",
+      allow_sign_in: true,
+      allow_connected_accounts: true,
+    },
+  });
+
+  // Should fail with the connected accounts error (validation checks connected accounts first)
+  expect(secondProviderResponse).toMatchInlineSnapshot(`
+    NiceResponse {
+      "status": 400,
+      "body": {
+        "code": "OAUTH_PROVIDER_TYPE_ALREADY_USED_FOR_SIGN_IN",
+        "details": { "provider_type": "github" },
+        "error": "A provider of type \\"github\\" is already used for signing in for a different account.",
+      },
+      "headers": Headers {
+        "x-stack-known-error": "OAUTH_PROVIDER_TYPE_ALREADY_USED_FOR_SIGN_IN",
+        <some fields may have been hidden>,
+      },
+    }
+  `);
+
+  // Try to create third OAuth provider with different account ID but sign-in enabled - should fail with sign-in error
+  const thirdProviderResponse = await niceBackendFetch("/api/v1/oauth-providers", {
+    method: "POST",
+    accessType: "server",
+    body: {
+      user_id: "me",
+      provider_id: providerConfig.id,
+      account_id: "github_account_2", // Different account ID
+      email: "test3@example.com",
+      allow_sign_in: true,
+      allow_connected_accounts: false,
+    },
+  });
+
+  expect(thirdProviderResponse).toMatchInlineSnapshot(`
+    NiceResponse {
+      "status": 400,
+      "body": {
+        "code": "OAUTH_PROVIDER_TYPE_ALREADY_USED_FOR_SIGN_IN",
+        "details": { "provider_type": "github" },
+        "error": "A provider of type \\"github\\" is already used for signing in for a different account.",
+      },
+      "headers": Headers {
+        "x-stack-known-error": "OAUTH_PROVIDER_TYPE_ALREADY_USED_FOR_SIGN_IN",
+        <some fields may have been hidden>,
+      },
+    }
+  `);
 });
