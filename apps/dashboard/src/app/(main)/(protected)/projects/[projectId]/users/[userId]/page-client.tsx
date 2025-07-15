@@ -917,41 +917,20 @@ function OAuthProviderDialog(props: OAuthProviderDialogProps) {
   };
 
   const handleSubmit = async (values: yup.InferType<typeof formSchema>) => {
+    let result;
+
     if (isEditMode && provider) {
       // Update existing provider
-      const result = await provider.update({
+      result = await provider.update({
         email: values.email?.trim() || provider.email,
         allowSignIn: values.allowSignIn,
         allowConnectedAccounts: values.allowConnectedAccounts,
       });
-
-      if (result.status === "error") {
-        if (KnownErrors.OAuthProviderTypeAlreadyUsedForSignIn.isInstance(result.error)) {
-          toast({
-            title: "OAuth Provider Conflict",
-            description: `A ${provider.type} provider is already used for signing in for a different account.`,
-            variant: "destructive",
-          });
-        } else if (KnownErrors.OAuthProviderAccountIdAlreadyUsedForConnectedAccounts.isInstance(result.error)) {
-          toast({
-            title: "Account Already Connected",
-            description: `A ${provider.type} provider with account ID "${provider.accountId}" is already connected for this user.`,
-            variant: "destructive",
-          });
-        } else {
-          toast({
-            title: "Error",
-            description: "An unexpected error occurred while updating the OAuth provider.",
-            variant: "destructive",
-          });
-        }
-        return 'prevent-close';
-      }
     } else {
       // Create new provider
       if (!values.accountId.trim()) return;
 
-      const result = await stackAdminApp.createOAuthProvider({
+      result = await stackAdminApp.createOAuthProvider({
         userId: props.user.id,
         providerId: values.providerId,
         accountId: values.accountId.trim(),
@@ -959,29 +938,35 @@ function OAuthProviderDialog(props: OAuthProviderDialogProps) {
         allowSignIn: values.allowSignIn,
         allowConnectedAccounts: values.allowConnectedAccounts,
       });
+    }
 
-      if (result.status === "error") {
-        if (KnownErrors.OAuthProviderTypeAlreadyUsedForSignIn.isInstance(result.error)) {
-          toast({
-            title: "OAuth Provider Conflict",
-            description: `A ${values.providerId} provider is already used for signing in for a different account.`,
-            variant: "destructive",
-          });
-        } else if (KnownErrors.OAuthProviderAccountIdAlreadyUsedForConnectedAccounts.isInstance(result.error)) {
-          toast({
-            title: "Account Already Connected",
-            description: `A ${values.providerId} provider with account ID "${values.accountId}" is already connected for this user.`,
-            variant: "destructive",
-          });
-        } else {
-          toast({
-            title: "Error",
-            description: "An unexpected error occurred while adding the OAuth provider.",
-            variant: "destructive",
-          });
-        }
-        return 'prevent-close';
+    // Handle errors for both create and update operations
+    if (result.status === "error") {
+      const providerType = isEditMode && provider ? provider.type : values.providerId;
+      const accountId = isEditMode && provider ? provider.accountId : values.accountId;
+      const operation = isEditMode ? "updating" : "adding";
+
+      if (KnownErrors.OAuthProviderTypeAlreadyUsedForSignIn.isInstance(result.error)) {
+        toast({
+          title: "OAuth Provider Conflict",
+          description: `A ${providerType} provider is already used for signing in.`,
+          variant: "destructive",
+        });
+      } else if (KnownErrors.OAuthProviderAccountIdAlreadyUsedForConnectedAccounts.isInstance(result.error)) {
+        toast({
+          title: "Account Already Connected",
+          description: `A ${providerType} provider with account ID "${accountId}" already exists (possibly for a different user)`,
+          variant: "destructive",
+        });
+      } else {
+        console.error(result.error);
+        toast({
+          title: "Error",
+          description: `An unexpected error occurred while ${operation} the OAuth provider.`,
+          variant: "destructive",
+        });
       }
+      return 'prevent-close';
     }
   };
 
