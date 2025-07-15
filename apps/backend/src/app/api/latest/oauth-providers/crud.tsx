@@ -18,53 +18,62 @@ async function checkInputValidity(options: {
   providerConfigId: string,
   userId: string,
   type: 'update' | 'create',
+  checkSignInConflicts?: boolean,
+  checkConnectedAccountConflicts?: boolean,
 }): Promise<void> {
   const prismaClient = getPrismaClientForTenancy(options.tenancy);
-  const oauthAuthMethods = await prismaClient.oAuthAuthMethod.findMany({
-    where: {
-      tenancyId: options.tenancy.id,
-      oauthAccount: {
-        configOAuthProviderId: options.providerConfigId,
+
+  // Check for sign-in conflicts if requested
+  if (options.checkSignInConflicts) {
+    const oauthAuthMethods = await prismaClient.oAuthAuthMethod.findMany({
+      where: {
+        tenancyId: options.tenancy.id,
+        oauthAccount: {
+          configOAuthProviderId: options.providerConfigId,
+        },
       },
-    },
-    include: {
-      oauthAccount: true,
-    },
-  });
-
-  const connectedAccounts = await prismaClient.connectedAccount.findMany({
-    where: {
-      tenancyId: options.tenancy.id,
-      projectUserId: options.userId,
-      oauthAccount: {
-        providerAccountId: options.accountId,
+      include: {
+        oauthAccount: true,
       },
-    },
-    include: {
-      oauthAccount: true,
-    },
-  });
+    });
 
-  for (const oauthAuthMethod of oauthAuthMethods) {
-    // Skip the current provider if we're excluding it (for updates)
-    if (options.type === 'update' && oauthAuthMethod.configOAuthProviderId === options.providerConfigId) {
-      continue;
-    }
+    for (const oauthAuthMethod of oauthAuthMethods) {
+      // Skip the current provider if we're excluding it (for updates)
+      if (options.type === 'update' && oauthAuthMethod.configOAuthProviderId === options.providerConfigId) {
+        continue;
+      }
 
-    const providerConfig = options.config.auth?.oauth?.providers?.[oauthAuthMethod.configOAuthProviderId];
-    if (providerConfig && providerConfig.type === options.providerType && options.userId === oauthAuthMethod.projectUserId) {
-      throw new KnownErrors.OAuthProviderTypeAlreadyUsedForSignIn(options.providerType);
+      const providerConfig = options.config.auth?.oauth?.providers?.[oauthAuthMethod.configOAuthProviderId];
+      if (providerConfig && providerConfig.type === options.providerType && options.userId === oauthAuthMethod.projectUserId) {
+        throw new KnownErrors.OAuthProviderTypeAlreadyUsedForSignIn(options.providerType);
+      }
     }
   }
 
-  for (const connectedAccount of connectedAccounts) {
-    if (options.type === 'update' && connectedAccount.configOAuthProviderId === options.providerConfigId) {
-      continue;
-    }
+  // Check for connected account conflicts if requested
+  if (options.checkConnectedAccountConflicts) {
+    const connectedAccounts = await prismaClient.connectedAccount.findMany({
+      where: {
+        tenancyId: options.tenancy.id,
+        projectUserId: options.userId,
+        oauthAccount: {
+          providerAccountId: options.accountId,
+        },
+      },
+      include: {
+        oauthAccount: true,
+      },
+    });
 
-    const providerConfig = options.config.auth?.oauth?.providers?.[connectedAccount.configOAuthProviderId];
-    if (providerConfig && providerConfig.type === options.providerType) {
-      throw new KnownErrors.OAuthProviderAccountIdAlreadyUsedForConnectedAccounts(options.providerType, options.accountId);
+    for (const connectedAccount of connectedAccounts) {
+      if (options.type === 'update' && connectedAccount.configOAuthProviderId === options.providerConfigId) {
+        continue;
+      }
+
+      const providerConfig = options.config.auth?.oauth?.providers?.[connectedAccount.configOAuthProviderId];
+      if (providerConfig && providerConfig.type === options.providerType) {
+        throw new KnownErrors.OAuthProviderAccountIdAlreadyUsedForConnectedAccounts(options.providerType, options.accountId);
+      }
     }
   }
 }
@@ -254,6 +263,7 @@ export const oauthProviderCrudHandlers = createLazyProxy(() => createCrudHandler
             providerConfigId: params.provider_id,
             userId: params.user_id,
             type: 'update',
+            checkSignInConflicts: true,
           });
 
           // Create auth method if it doesn't exist
@@ -302,6 +312,7 @@ export const oauthProviderCrudHandlers = createLazyProxy(() => createCrudHandler
             providerConfigId: params.provider_id,
             userId: params.user_id,
             type: 'update',
+            checkConnectedAccountConflicts: true,
           });
 
           // Create connected account if it doesn't exist
@@ -354,6 +365,8 @@ export const oauthProviderCrudHandlers = createLazyProxy(() => createCrudHandler
             providerConfigId: params.provider_id,
             userId: params.user_id,
             type: 'update',
+            checkSignInConflicts: willHaveSignIn,
+            checkConnectedAccountConflicts: willHaveConnectedAccounts,
           });
         }
 
@@ -494,17 +507,21 @@ export const oauthProviderCrudHandlers = createLazyProxy(() => createCrudHandler
       throw new StatusError(StatusError.BadRequest, `Provider with config ID ${data.provider_id} is not configured. Please check your Stack Auth dashboard OAuth configuration.`);
     }
 
-    // Check if this provider type is already used for signing in
-    await checkInputValidity({
-      tenancy: auth.tenancy,
-      oldAccountId: data.account_id,
-      accountId: data.account_id,
-      providerType: providerConfig.type || throwErr('Provider type is required'),
-      config,
-      providerConfigId: data.provider_id,
-      userId: data.user_id,
-      type: 'create',
-    });
+    // Check for conflicts only for the capabilities that will be enabled
+    if (data.allow_sign_in || data.allow_connected_accounts) {
+      await checkInputValidity({
+        tenancy: auth.tenancy,
+        oldAccountId: data.account_id,
+        accountId: data.account_id,
+        providerType: providerConfig.type || throwErr('Provider type is required'),
+        config,
+        providerConfigId: data.provider_id,
+        userId: data.user_id,
+        type: 'create',
+        checkSignInConflicts: data.allow_sign_in,
+        checkConnectedAccountConflicts: data.allow_connected_accounts,
+      });
+    }
 
     await retryTransaction(prismaClient, async (tx) => {
       // 1. Create the main OAuth account record first (required by foreign key constraints)
