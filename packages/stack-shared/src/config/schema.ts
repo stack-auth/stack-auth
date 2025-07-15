@@ -4,7 +4,7 @@ import { yupBoolean, yupObject, yupRecord, yupString, yupUnion } from "../schema
 import { allProviders } from "../utils/oauth";
 import { DeepMerge, DeepPartial, get, has, isObjectLike, mapValues, set } from "../utils/objects";
 import { Config, NormalizesTo } from "./format";
-import { DEFAULT_EMAIL_THEMES } from "../helpers/email-themes";
+import { DEFAULT_EMAIL_THEME_ID, DEFAULT_EMAIL_THEMES } from "../helpers/email-themes";
 
 // NOTE: The validation schemas in here are all schematic validators, not sanity-check validators.
 // For more info, see ./README.md
@@ -244,7 +244,7 @@ export const organizationConfigDefaults = {
     server: {
       isShared: true,
     },
-    theme: 'default-light',
+    theme: DEFAULT_EMAIL_THEME_ID,
     themeList: DEFAULT_EMAIL_THEMES,
   },
 } satisfies DeepReplaceAllowFunctionsForObjects<OrganizationConfigStrippedNormalizedOverride>;

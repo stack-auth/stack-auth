@@ -132,7 +132,7 @@ export class StackAdminInterface extends StackServerInterface {
   }
 
   async listEmailThemes(): Promise<{ id: string, display_name: string }[]> {
-    const response = await this.sendAdminRequest(`/emails/themes`, {}, null);
+    const response = await this.sendAdminRequest(`/internal/email-themes`, {}, null);
     const result = await response.json() as { themes: { id: string, display_name: string }[] };
     return result.themes;
   }
@@ -356,7 +356,7 @@ export class StackAdminInterface extends StackServerInterface {
     abortSignal?: AbortSignal,
   ): Promise<{ content: ChatContent }> {
     const response = await this.sendAdminRequest(
-      `/emails/themes/chat`,
+      `/internal/email-themes/chat`,
       {
         method: "POST",
         headers: {
@@ -386,7 +386,7 @@ export class StackAdminInterface extends StackServerInterface {
 
   async listEmailThemeChatMessages(themeId: string): Promise<{ messages: Array<any> }> {
     const response = await this.sendAdminRequest(
-      `/emails/themes/chat?theme_id=${themeId}`,
+      `/internal/email-themes/chat?theme_id=${themeId}`,
       { method: "GET" },
       null,
     );
@@ -409,7 +409,7 @@ export class StackAdminInterface extends StackServerInterface {
 
   async createEmailTheme(displayName: string): Promise<{ id: string }> {
     const response = await this.sendAdminRequest(
-      `/emails/themes`,
+      `/internal/email-themes`,
       {
         method: "POST",
         headers: {
@@ -426,7 +426,7 @@ export class StackAdminInterface extends StackServerInterface {
 
   async getEmailTheme(id: string): Promise<{ display_name: string, tsx_source: string }> {
     const response = await this.sendAdminRequest(
-      `/emails/themes/${id}`,
+      `/internal/email-themes/${id}`,
       { method: "GET" },
       null,
     );
@@ -435,7 +435,7 @@ export class StackAdminInterface extends StackServerInterface {
 
   async updateEmailTheme(id: string, tsxSource: string, previewHtml: string): Promise<{ display_name: string, rendered_html: string }> {
     const response = await this.sendAdminRequest(
-      `/emails/themes/${id}`,
+      `/internal/email-themes/${id}`,
       {
         method: "PATCH",
         headers: {
@@ -445,17 +445,6 @@ export class StackAdminInterface extends StackServerInterface {
           tsx_source: tsxSource,
           preview_html: previewHtml,
         }),
-      },
-      null,
-    );
-    return await response.json();
-  }
-
-  async deleteEmailTheme(id: string): Promise<{ success: boolean }> {
-    const response = await this.sendAdminRequest(
-      `/emails/themes/${id}`,
-      {
-        method: "DELETE",
       },
       null,
     );

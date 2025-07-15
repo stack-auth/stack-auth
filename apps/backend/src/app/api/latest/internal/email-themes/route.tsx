@@ -4,14 +4,11 @@ import { globalPrismaClient } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { adaptSchema, yupArray, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
 import { generateUuid } from "@stackframe/stack-shared/dist/utils/uuids";
-import { KnownErrors } from "@stackframe/stack-shared/dist/known-errors";
 
 
 export const POST = createSmartRouteHandler({
   metadata: {
-    summary: "Create email theme",
-    description: "Creates a new email theme",
-    tags: ["Emails"],
+    hidden: true,
   },
   request: yupObject({
     auth: yupObject({
@@ -31,9 +28,6 @@ export const POST = createSmartRouteHandler({
   }),
   async handler({ body, auth: { tenancy } }) {
     const themeList = tenancy.completeConfig.emails.themeList;
-    if (Object.values(themeList).some((theme) => theme.displayName === body.display_name)) {
-      throw new KnownErrors.ThemeWithNameAlreadyExists(body.display_name);
-    }
     const id = generateUuid();
     await overrideEnvironmentConfigOverride({
       tx: globalPrismaClient,
@@ -61,9 +55,7 @@ export const POST = createSmartRouteHandler({
 
 export const GET = createSmartRouteHandler({
   metadata: {
-    summary: "Get email themes",
-    description: "Gets a list of email themes for a project",
-    tags: ["Emails"],
+    hidden: true,
   },
   request: yupObject({
     auth: yupObject({

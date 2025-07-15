@@ -28,9 +28,7 @@ const contentSchema = yupArray(yupUnion(textContentSchema, toolCallContentSchema
 
 export const POST = createSmartRouteHandler({
   metadata: {
-    summary: "Chat with the dev server",
-    description: "Chat with the dev server to get help with email theme development",
-    tags: ["Emails"],
+    hidden: true,
   },
   request: yupObject({
     auth: yupObject({
@@ -81,6 +79,7 @@ export const POST = createSmartRouteHandler({
               environmentConfigOverrideOverride: {
                 emails: {
                   themeList: {
+                    ...themeList,
                     [body.theme_id]: {
                       tsxSource: args.content,
                       displayName: theme.displayName,
@@ -162,9 +161,7 @@ export const PATCH = createSmartRouteHandler({
 
 export const GET = createSmartRouteHandler({
   metadata: {
-    summary: "Get the thread messages",
-    description: "Get the thread messages",
-    tags: ["Emails"],
+    hidden: true,
   },
   request: yupObject({
     auth: yupObject({

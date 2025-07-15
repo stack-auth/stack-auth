@@ -57,10 +57,10 @@ export const POST = createSmartRouteHandler({
       throw new StatusError(404, "Notification category not found");
     }
     const themeList = auth.tenancy.completeConfig.emails.themeList;
-    const activeTheme = Object.values(themeList).find((theme) => theme.displayName === auth.tenancy.config.email_theme);
-    if (!activeTheme) {
+    if (!Object.keys(themeList).includes(auth.tenancy.completeConfig.emails.theme)) {
       throw new StatusError(400, "No active theme found");
     }
+    const activeTheme = themeList[auth.tenancy.completeConfig.emails.theme];
 
     const users = await getPrismaClientForTenancy(auth.tenancy).projectUser.findMany({
       where: {
