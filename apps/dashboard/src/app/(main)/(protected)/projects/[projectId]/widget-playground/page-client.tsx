@@ -1,6 +1,8 @@
 "use client";
 
+import { PacificaCard } from '@/components/pacifica/card';
 import { DndContext, pointerWithin, useDraggable, useDroppable } from '@dnd-kit/core';
+import useResizeObserver from '@react-hook/resize-observer';
 import { range } from '@stackframe/stack-shared/dist/utils/arrays';
 import { StackAssertionError, errorToNiceString, throwErr } from '@stackframe/stack-shared/dist/utils/errors';
 import { bundleJavaScript } from '@stackframe/stack-shared/dist/utils/esbuild';
@@ -16,7 +18,6 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { FaBorderNone, FaPen, FaPlus, FaTrash } from 'react-icons/fa';
 import * as jsxRuntime from 'react/jsx-runtime';
 import { PageLayout } from "../page-layout";
-import { useAdminApp } from '../use-admin-app';
 
 type SerializedWidget = {
   version: 1,
@@ -51,11 +52,15 @@ async function compileWidgetSource(source: string): Promise<Result<string, strin
 function createErrorWidget(id: string, errorMessage: string): Widget<any, any> {
   return {
     id,
-    MainComponent: () => <Card style={{ inset: '0', position: 'absolute', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
-      <div style={{ fontSize: '16px', fontWeight: 'bold', color: 'red', fontFamily: 'monospace', whiteSpace: 'pre-wrap' }}>
-        {errorMessage}
-      </div>
-    </Card>,
+    MainComponent: () => (
+      <PacificaCard
+        style={{ inset: '0', position: 'absolute', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}
+      >
+        <div style={{ fontSize: '16px', fontWeight: 'bold', color: 'red', fontFamily: 'monospace', whiteSpace: 'pre-wrap' }}>
+          {errorMessage}
+        </div>
+      </PacificaCard>
+    ),
     defaultSettings: null as any,
     defaultState: null as any,
   };
@@ -90,7 +95,7 @@ async function deserializeWidget(serializedWidget: SerializedWidget): Promise<Wi
 
 type Widget<Settings, State> = {
   id: string,
-  MainComponent: React.ComponentType<{ settings: Settings, state: State, stateRef: ReadonlyRef<State>, setState: (updater: (state: State) => State) => void, widthInGridUnits: number, heightInGridUnits: number }>,
+  MainComponent: React.ComponentType<{ settings: Settings, state: State, stateRef: ReadonlyRef<State>, setState: (updater: (state: State) => State) => void, widthInGridUnits: number, heightInGridUnits: number, isMobileMode: boolean }>,
   SettingsComponent?: React.ComponentType<{ settings: Settings, setSettings: (updater: (settings: Settings) => Settings) => void }>,
   defaultSettings: Settings,
   defaultState: State,
@@ -153,13 +158,15 @@ class WidgetInstanceGrid {
     const width = options.width ?? 24;
     const height = options.height ?? "auto";
 
-    const nonEmptyElements = widgetInstances.map((instance, index) => ({
-      instance,
-      x: (index * WidgetInstanceGrid.DEFAULT_ELEMENT_WIDTH) % width,
-      y: Math.floor(index / Math.floor(width / WidgetInstanceGrid.DEFAULT_ELEMENT_WIDTH)) * WidgetInstanceGrid.DEFAULT_ELEMENT_HEIGHT,
-      width: WidgetInstanceGrid.DEFAULT_ELEMENT_WIDTH,
-      height: WidgetInstanceGrid.DEFAULT_ELEMENT_HEIGHT,
-    }));
+    const nonEmptyElements = widgetInstances
+      .map((instance, index) => ({
+        instance,
+        x: (index * WidgetInstanceGrid.DEFAULT_ELEMENT_WIDTH) % width,
+        y: Math.floor(index / Math.floor(width / WidgetInstanceGrid.DEFAULT_ELEMENT_WIDTH)) * WidgetInstanceGrid.DEFAULT_ELEMENT_HEIGHT,
+        width: WidgetInstanceGrid.DEFAULT_ELEMENT_WIDTH,
+        height: WidgetInstanceGrid.DEFAULT_ELEMENT_HEIGHT,
+      }))
+      .sort((a, b) => Math.sign(a.x - b.x) + 0.1 * Math.sign(a.y - b.y));
 
     // Do some sanity checks to prevent bugs early
     for (const element of nonEmptyElements) {
@@ -470,17 +477,14 @@ class WidgetInstanceGrid {
           edgesDelta.bottom !== 0 ? this.clampResize(x, y, { ...edgesDelta, bottom: decr(edgesDelta.bottom) }) : null,
           edgesDelta.right !== 0 ? this.clampResize(x, y, { ...edgesDelta, right: decr(edgesDelta.right) }) : null,
         ].filter(isNotNull);
-        let maxScore = -1;
-        let bestCandidate: { top: number, left: number, bottom: number, right: number } | null = null;
+        let maxScore = 0;
+        let bestCandidate: { top: number, left: number, bottom: number, right: number } = { top: 0, left: 0, bottom: 0, right: 0 };
         for (const candidate of candidates) {
           const score = Math.abs(candidate.top) + Math.abs(candidate.left) + Math.abs(candidate.bottom) + Math.abs(candidate.right);
           if (score > maxScore) {
             maxScore = score;
             bestCandidate = candidate;
           }
-        }
-        if (!bestCandidate) {
-          throw new StackAssertionError(`No candidate found for ${cacheKey}`);
         }
         this._clampResizeCache.set(cacheKey, bestCandidate);
       }
@@ -554,7 +558,7 @@ class WidgetInstanceGrid {
 const widgets: Widget<any, any>[] = [
   {
     id: "$sub-grid",
-    MainComponent: ({ widthInGridUnits, heightInGridUnits, state, stateRef, setState }) => {
+    MainComponent: ({ widthInGridUnits, heightInGridUnits, state, stateRef, setState, isMobileMode }) => {
       const widgetGridRef = mapRef(stateRef, (state) => WidgetInstanceGrid.fromSerialized(state.serializedGrid));
       const [color] = useState("#" + Math.floor(Math.random() * 16777215).toString(16) + "22");
 
@@ -575,6 +579,7 @@ const widgets: Widget<any, any>[] = [
       return (
         <div style={{ backgroundColor: color, padding: '16px' }}>
           <SwappableWidgetInstanceGrid
+            isMobileMode={isMobileMode}
             gridRef={widgetGridRef}
             setGrid={setWidgetGrid}
           />
@@ -615,11 +620,13 @@ const widgets: Widget<any, any>[] = [
 
         export const defaultSettings = {name: "world"};
       `);
-      const stackAdminApp = useAdminApp();
       const [compilationResult, setCompilationResult] = useState<Result<string, string> | null>(null);
 
       return (
-        <Card style={{ inset: '0', position: 'absolute' }}>
+        <PacificaCard
+          title="Widget builder"
+          subtitle="This is a subtitle"
+        >
           <textarea value={source} onChange={(e) => setSource(e.target.value)} style={{ width: '100%', height: '35%', fontFamily: "monospace" }} />
           <Button onClick={async () => {
             const result = await compileWidgetSource(source);
@@ -644,7 +651,7 @@ const widgets: Widget<any, any>[] = [
               {compilationResult.error}
             </div>
           )}
-        </Card>
+        </PacificaCard>
       );
     },
     defaultSettings: {},
@@ -652,12 +659,18 @@ const widgets: Widget<any, any>[] = [
   },
 ];
 
-const widgetInstances: WidgetInstance<any>[] = [];
 
 const gridGapPixels = 32;
+const mobileModeWidgetHeight = 384;
+const mobileModeCutoffWidth = 768;
 
 export default function PageClient() {
-  const [widgetGridRef, setWidgetGrid] = useInstantState(WidgetInstanceGrid.fromWidgetInstances(widgetInstances));
+  const [widgetGridRef, setWidgetGrid] = useInstantState(WidgetInstanceGrid.fromWidgetInstances(widgets.map((w, i) => ({
+    id: "initial" + i,
+    settingsOrUndefined: undefined,
+    stateOrUndefined: undefined,
+    widget: w,
+  }))));
   const [isAltDown, setIsAltDown] = useState(false);
 
   useEffect(() => {
@@ -685,7 +698,7 @@ export default function PageClient() {
       fillWidth
     >
       <SwappableWidgetInstanceGridContext.Provider value={{ isEditing: isAltDown }}>
-        <SwappableWidgetInstanceGrid gridRef={widgetGridRef} setGrid={setWidgetGrid} />
+        <SwappableWidgetInstanceGrid gridRef={widgetGridRef} setGrid={setWidgetGrid} isMobileMode="auto" />
       </SwappableWidgetInstanceGridContext.Provider>
     </PageLayout>
   );
@@ -697,12 +710,24 @@ const SwappableWidgetInstanceGridContext = React.createContext<{
   isEditing: false,
 });
 
-function SwappableWidgetInstanceGrid(props: { gridRef: ReadonlyRef<WidgetInstanceGrid>, setGrid: (grid: WidgetInstanceGrid) => void }) {
+function SwappableWidgetInstanceGrid(props: { gridRef: ReadonlyRef<WidgetInstanceGrid>, setGrid: (grid: WidgetInstanceGrid) => void, isMobileMode: boolean | "auto" }) {
   const [overElementPosition, setOverElementPosition] = useState<[number, number] | null>(null);
   const [hoverSwap, setHoverSwap] = useState<[string, [number, number, number, number, number, number]] | null>(null);
   const [activeWidgetId, setActiveWidgetId] = useState<string | null>(null);
   const gridContainerRef = useRef<HTMLDivElement>(null);
   const context = React.use(SwappableWidgetInstanceGridContext);
+  const [isMobileModeIfAuto, setMobileModeIfAuto] = useState<boolean>(false);
+
+  useResizeObserver(gridContainerRef, (entry, observer) => {
+    const shouldBeMobileMode = entry.contentRect.width < mobileModeCutoffWidth;
+    if (isMobileModeIfAuto !== shouldBeMobileMode) {
+      setMobileModeIfAuto(shouldBeMobileMode);
+    }
+  });
+
+  const isMobileMode = props.isMobileMode === "auto" ? isMobileModeIfAuto : props.isMobileMode;
+
+  let hasAlreadyRenderedEmpty = false;
 
   return (
     <DndContext
@@ -771,21 +796,35 @@ function SwappableWidgetInstanceGrid(props: { gridRef: ReadonlyRef<WidgetInstanc
       <div
         ref={gridContainerRef}
         style={{
-          display: 'grid',
-          gridTemplateColumns: `repeat(${props.gridRef.current.width}, 1fr)`,
-          gridTemplateRows: `repeat(${props.gridRef.current.height}, 1fr)`,
+          ...isMobileMode ? {
+            display: 'flex',
+            flexDirection: 'column',
+          } : {
+            display: 'grid',
+            gridTemplateColumns: `repeat(${props.gridRef.current.width}, 1fr)`,
+            gridTemplateRows: `repeat(${props.gridRef.current.height}, 1fr)`,
+          },
           gap: gridGapPixels,
+
           userSelect: 'none',
           WebkitUserSelect: 'none',
+          overflow: 'none',
         }}
       >
-        {range(props.gridRef.current.height).map((y) => (
+        {!isMobileMode && range(props.gridRef.current.height).map((y) => (
           <div key={y} style={{ height: '16px', gridColumn: `1 / ${props.gridRef.current.width + 1}`, gridRow: `${y + 1} / ${y + 2}` }} />
         ))}
         {[...props.gridRef.current].map(({ instance, x, y, width, height }) => {
           const isHoverSwap = !!hoverSwap && !!instance && (hoverSwap[0] === instance.id);
+
+          if (isMobileMode && !instance) {
+            if (hasAlreadyRenderedEmpty) return null;
+            hasAlreadyRenderedEmpty = true;
+          }
+
           return (
             <Droppable
+              isMobileMode={isMobileMode}
               key={instance?.id ?? JSON.stringify({ x, y })}
               isEmpty={!instance}
               isOver={overElementPosition?.[0] === x && overElementPosition[1] === y}
@@ -808,6 +847,7 @@ function SwappableWidgetInstanceGrid(props: { gridRef: ReadonlyRef<WidgetInstanc
                     width: isHoverSwap ? `${hoverSwap[1][2]}px` : (hoverSwap && activeWidgetId === instance.id ? `${hoverSwap[1][4]}px` : undefined),
                     height: isHoverSwap ? `${hoverSwap[1][3]}px` : (hoverSwap && activeWidgetId === instance.id ? `${hoverSwap[1][5]}px` : undefined),
                   }}
+                  isMobileMode={isMobileMode}
                   onDeleteWidget={async () => {
                     props.setGrid(props.gridRef.current.withRemoved(x, y));
                   }}
@@ -853,7 +893,7 @@ function SwappableWidgetInstanceGrid(props: { gridRef: ReadonlyRef<WidgetInstanc
   );
 }
 
-function Droppable(props: { isOver: boolean, children: React.ReactNode, style?: React.CSSProperties, x: number, y: number, width: number, height: number, isEmpty: boolean, grid: WidgetInstanceGrid, onAddWidget: () => void }) {
+function Droppable(props: { isMobileMode: boolean, isOver: boolean, children: React.ReactNode, style?: React.CSSProperties, x: number, y: number, width: number, height: number, isEmpty: boolean, grid: WidgetInstanceGrid, onAddWidget: () => void }) {
   const { setNodeRef, active } = useDroppable({
     id: JSON.stringify([props.x, props.y]),
   });
@@ -870,18 +910,19 @@ function Droppable(props: { isOver: boolean, children: React.ReactNode, style?: 
         borderRadius: '8px',
         gridColumn: `${props.x + 1} / span ${props.width}`,
         gridRow: `${props.y + 1} / span ${props.height}`,
+        minHeight: props.isMobileMode ? mobileModeWidgetHeight : undefined,
         ...props.style,
       }}
     >
       <style>{`
-      @keyframes stack-animation-fade-in {
-        0% {
-          opacity: 0;
+        @keyframes stack-animation-fade-in {
+          0% {
+            opacity: 0;
+          }
+          100% {
+            opacity: 1;
+          }
         }
-        100% {
-          opacity: 1;
-        }
-      }
     `}</style>
       {shouldRenderAddWidget && (<>
         <div
@@ -918,6 +959,7 @@ function Draggable(props: {
   height: number,
   activeWidgetId: string | null,
   isEditing: boolean,
+  isMobileMode: boolean,
   onDeleteWidget: () => Promise<void>,
   settings: any,
   setSettings: (settings: any) => Promise<void>,
@@ -1047,9 +1089,8 @@ function Draggable(props: {
         ref={setNodeRef}
         className="stack-recursive-backface-hidden"
         style={{
-          position: 'absolute',
-          width: '100%',
-          height: '100%',
+          minWidth: '100%',
+          minHeight: '100%',
           display: 'flex',
 
           zIndex: isDragging ? 100000 : undefined,
@@ -1067,8 +1108,14 @@ function Draggable(props: {
         <div
           className={cn(isDragging && 'bg-white dark:bg-black border-black/20 dark:border-white/20')}
           style={{
-            position: 'absolute',
-            inset: 0,
+            ...props.isMobileMode ? {
+              position: 'relative',
+              width: '100%',
+              height: '100%',
+            } : {
+              position: 'absolute',
+              inset: 0,
+            },
             flexGrow: 1,
             alignSelf: 'stretch',
             boxShadow: isEditing ? '0 0 32px 0 #8882' : '0 0 0 0 transparent',
@@ -1087,15 +1134,24 @@ function Draggable(props: {
               isDeleting ? 'scale(0.8)' : '',
             ].filter(Boolean).join(' '),
             opacity: isDeleting ? 0 : 1,
+
+            display: "flex",
+            flexDirection: "row",
           }}
         >
           <div
+            data-pacifica-children-flex-grow
+            data-pacifica-children-min-width-0
             style={{
+              flexGrow: 1,
+              display: "flex",
+              flexDirection: "row",
             }}
           >
             <SwappableWidgetInstanceGridContext.Provider value={{ isEditing: isEditingSubGrid }}>
               <props.widgetInstance.widget.MainComponent
                 settings={props.widgetInstance.settingsOrUndefined}
+                isMobileMode={props.isMobileMode}
                 state={props.state}
                 stateRef={props.stateRef}
                 setState={props.setState}
@@ -1113,15 +1169,17 @@ function Draggable(props: {
               transition: 'opacity 0.2s ease',
               // note: Safari has a weird display glitch with transparent background images when animating opacity in a parent element, so we just don't render it while deleting
               backgroundImage: !isDeleting ? 'radial-gradient(circle at top, #ffffff08, #ffffff02), radial-gradient(circle at top right,  #ffffff04, transparent, transparent)' : undefined,
+              borderRadius: 'inherit',
             }}
           />
           <div
             inert
-            className={cn(isEditing && !isDragging && "bg-white/20 dark:bg-black/20")}
+            className={cn(isEditing && !isDragging && "bg-white/50 dark:bg-black/50")}
             style={{
               position: 'absolute',
               inset: 0,
-              backdropFilter: isEditing && !isDragging ? 'blur(4px)' : 'none',
+              backdropFilter: isEditing && !isDragging ? 'drop-shadow(0 0 2px) blur(4px)' : 'none',
+              borderRadius: 'inherit',
             }}
           />
           {!isDragging && (
@@ -1182,7 +1240,7 @@ function Draggable(props: {
                   }}
                 />
               </div>
-              {[-1, 0, 1].flatMap(x => [-1, 0, 1].map(y => (x !== 0 || y !== 0) && (
+              {!props.isMobileMode && [-1, 0, 1].flatMap(x => [-1, 0, 1].map(y => (x !== 0 || y !== 0) && (
                 <ResizeHandle
                   key={`${x},${y}`}
                   widgetInstance={props.widgetInstance}
