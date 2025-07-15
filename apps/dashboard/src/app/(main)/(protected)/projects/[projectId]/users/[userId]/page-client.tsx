@@ -7,12 +7,13 @@ import { DeleteUserDialog, ImpersonateUserDialog } from "@/components/user-dialo
 import { useThemeWatcher } from '@/lib/theme';
 import MonacoEditor from '@monaco-editor/react';
 import { ServerContactChannel, ServerOAuthProvider, ServerUser } from "@stackframe/stack";
+import { KnownErrors } from "@stackframe/stack-shared";
 import { useAsyncCallback } from "@stackframe/stack-shared/dist/hooks/use-async-callback";
 import { fromNow } from "@stackframe/stack-shared/dist/utils/dates";
 import { throwErr } from '@stackframe/stack-shared/dist/utils/errors';
 import { isJsonSerializable } from "@stackframe/stack-shared/dist/utils/json";
 import { deindent } from "@stackframe/stack-shared/dist/utils/strings";
-import { Accordion, AccordionContent, AccordionItem, AccordionTrigger, ActionCell, Avatar, AvatarFallback, AvatarImage, Button, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger, Input, Separator, SimpleTooltip, Table, TableBody, TableCell, TableHead, TableHeader, TableRow, Typography, cn } from "@stackframe/stack-ui";
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger, ActionCell, Avatar, AvatarFallback, AvatarImage, Button, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger, Input, Separator, SimpleTooltip, Table, TableBody, TableCell, TableHead, TableHeader, TableRow, Typography, cn, useToast } from "@stackframe/stack-ui";
 import { AtSign, Calendar, Check, Hash, Mail, MoreHorizontal, Shield, SquareAsterisk, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import * as yup from "yup";
@@ -837,6 +838,7 @@ type AddOAuthProviderDialogProps = {
 function AddOAuthProviderDialog({ user, open, onOpenChange }: AddOAuthProviderDialogProps) {
   const stackAdminApp = useAdminApp();
   const project = stackAdminApp.useProject();
+  const { toast } = useToast();
 
   // Get available OAuth providers from project config
   const availableProviders = project.config.oauthProviders;
@@ -899,7 +901,7 @@ function AddOAuthProviderDialog({ user, open, onOpenChange }: AddOAuthProviderDi
         if (!values.accountId.trim()) return;
 
         // Use the server app's createOAuthProvider method
-        await stackAdminApp.createOAuthProvider({
+        const result = await stackAdminApp.createOAuthProvider({
           userId: user.id,
           providerId: values.providerId,
           accountId: values.accountId.trim(),
@@ -907,6 +909,29 @@ function AddOAuthProviderDialog({ user, open, onOpenChange }: AddOAuthProviderDi
           allowSignIn: values.allowSignIn,
           allowConnectedAccounts: values.allowConnectedAccounts,
         });
+
+        if (result.status === "error") {
+          if (KnownErrors.OAuthProviderTypeAlreadyUsedForSignIn.isInstance(result.error)) {
+            toast({
+              title: "OAuth Provider Conflict",
+              description: `A ${values.providerId} provider is already used for signing in for a different account.`,
+              variant: "destructive",
+            });
+          } else if (KnownErrors.OAuthProviderAccountIdAlreadyUsedForConnectedAccounts.isInstance(result.error)) {
+            toast({
+              title: "Account Already Connected",
+              description: `A ${values.providerId} provider with account ID "${values.accountId}" is already connected for this user.`,
+              variant: "destructive",
+            });
+          } else {
+            toast({
+              title: "Error",
+              description: "An unexpected error occurred while adding the OAuth provider.",
+              variant: "destructive",
+            });
+          }
+          return 'prevent-close';
+        }
       }}
     />
   );
