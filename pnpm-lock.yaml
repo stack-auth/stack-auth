@@ -19096,14 +19096,14 @@ snapshots:
     dependencies:
       '@jest/fake-timers': 29.7.0
       '@jest/types': 29.6.3
-      '@types/node': 20.17.6
+      '@types/node': 22.15.18
       jest-mock: 29.7.0
 
   '@jest/fake-timers@29.7.0':
     dependencies:
       '@jest/types': 29.6.3
       '@sinonjs/fake-timers': 10.3.0
-      '@types/node': 20.17.6
+      '@types/node': 22.15.18
       jest-message-util: 29.7.0
       jest-mock: 29.7.0
       jest-util: 29.7.0
@@ -19145,7 +19145,7 @@ snapshots:
       '@jest/schemas': 29.6.3
       '@types/istanbul-lib-coverage': 2.0.6
       '@types/istanbul-reports': 3.0.4
-      '@types/node': 20.17.6
+      '@types/node': 22.15.18
       '@types/yargs': 17.0.33
       chalk: 4.1.2
 
@@ -22926,23 +22926,6 @@ snapshots:
   '@swc/core-win32-x64-msvc@1.3.101':
     optional: true
 
-  '@swc/core@1.3.101':
-    dependencies:
-      '@swc/counter': 0.1.3
-      '@swc/types': 0.1.8
-    optionalDependencies:
-      '@swc/core-darwin-arm64': 1.3.101
-      '@swc/core-darwin-x64': 1.3.101
-      '@swc/core-linux-arm-gnueabihf': 1.3.101
-      '@swc/core-linux-arm64-gnu': 1.3.101
-      '@swc/core-linux-arm64-musl': 1.3.101
-      '@swc/core-linux-x64-gnu': 1.3.101
-      '@swc/core-linux-x64-musl': 1.3.101
-      '@swc/core-win32-arm64-msvc': 1.3.101
-      '@swc/core-win32-ia32-msvc': 1.3.101
-      '@swc/core-win32-x64-msvc': 1.3.101
-    optional: true
-
   '@swc/core@1.3.101(@swc/helpers@0.5.15)':
     dependencies:
       '@swc/counter': 0.1.3
@@ -23390,7 +23373,7 @@ snapshots:
 
   '@types/graceful-fs@4.1.9':
     dependencies:
-      '@types/node': 20.17.6
+      '@types/node': 22.15.18
 
   '@types/hast@2.3.10':
     dependencies:
@@ -24087,10 +24070,6 @@ snapshots:
   acorn-import-attributes@1.9.5(acorn@8.14.0):
     dependencies:
       acorn: 8.14.0
-
-  acorn-import-attributes@1.9.5(acorn@8.15.0):
-    dependencies:
-      acorn: 8.15.0
 
   acorn-jsx@5.3.2(acorn@8.14.0):
     dependencies:
@@ -25067,7 +25046,7 @@ snapshots:
 
   chrome-launcher@0.15.2:
     dependencies:
-      '@types/node': 20.17.6
+      '@types/node': 22.15.18
       escape-string-regexp: 4.0.0
       is-wsl: 2.2.0
       lighthouse-logger: 1.4.2
@@ -25078,7 +25057,7 @@ snapshots:
 
   chromium-edge-launcher@0.2.0:
     dependencies:
-      '@types/node': 20.17.6
+      '@types/node': 22.15.18
       escape-string-regexp: 4.0.0
       is-wsl: 2.2.0
       lighthouse-logger: 1.4.2
@@ -25363,7 +25342,7 @@ snapshots:
   cosmiconfig@6.0.0:
     dependencies:
       '@types/parse-json': 4.0.2
-      import-fresh: 3.3.0
+      import-fresh: 3.3.1
       parse-json: 5.2.0
       path-type: 4.0.0
       yaml: 1.10.2
@@ -28623,7 +28602,7 @@ snapshots:
       '@jest/environment': 29.7.0
       '@jest/fake-timers': 29.7.0
       '@jest/types': 29.6.3
-      '@types/node': 20.17.6
+      '@types/node': 22.15.18
       jest-mock: 29.7.0
       jest-util: 29.7.0
 
@@ -28635,7 +28614,7 @@ snapshots:
     dependencies:
       '@jest/types': 29.6.3
       '@types/graceful-fs': 4.1.9
-      '@types/node': 20.17.6
+      '@types/node': 22.15.18
       anymatch: 3.1.3
       fb-watchman: 2.0.2
       graceful-fs: 4.2.11
@@ -28662,7 +28641,7 @@ snapshots:
   jest-mock@29.7.0:
     dependencies:
       '@jest/types': 29.6.3
-      '@types/node': 20.17.6
+      '@types/node': 22.15.18
       jest-util: 29.7.0
 
   jest-regex-util@29.6.3: {}
@@ -28670,7 +28649,7 @@ snapshots:
   jest-util@29.7.0:
     dependencies:
       '@jest/types': 29.6.3
-      '@types/node': 20.17.6
+      '@types/node': 22.15.18
       chalk: 4.1.2
       ci-info: 3.9.0
       graceful-fs: 4.2.11
@@ -28693,7 +28672,7 @@ snapshots:
 
   jest-worker@29.7.0:
     dependencies:
-      '@types/node': 20.17.6
+      '@types/node': 22.15.18
       jest-util: 29.7.0
       merge-stream: 2.0.0
       supports-color: 8.1.1
@@ -33158,14 +33137,14 @@ snapshots:
 
   terser-webpack-plugin@5.3.10(@swc/core@1.3.101)(esbuild@0.24.2)(webpack@5.92.0(@swc/core@1.3.101)(esbuild@0.24.2)):
     dependencies:
-      '@jridgewell/trace-mapping': 0.3.29
+      '@jridgewell/trace-mapping': 0.3.25
       jest-worker: 27.5.1
       schema-utils: 3.3.0
       serialize-javascript: 6.0.2
       terser: 5.31.1
       webpack: 5.92.0(@swc/core@1.3.101)(esbuild@0.24.2)
     optionalDependencies:
-      '@swc/core': 1.3.101
+      '@swc/core': 1.3.101(@swc/helpers@0.5.15)
       esbuild: 0.24.2
 
   terser@5.31.1:
@@ -33448,7 +33427,7 @@ snapshots:
       tinyglobby: 0.2.10
       tree-kill: 1.2.2
     optionalDependencies:
-      '@swc/core': 1.3.101
+      '@swc/core': 1.3.101(@swc/helpers@0.5.15)
       postcss: 8.5.3
       typescript: 5.8.3
     transitivePeerDependencies:
@@ -34237,13 +34216,13 @@ snapshots:
   webpack@5.92.0(@swc/core@1.3.101)(esbuild@0.24.2):
     dependencies:
       '@types/eslint-scope': 3.7.7
-      '@types/estree': 1.0.8
+      '@types/estree': 1.0.6
       '@webassemblyjs/ast': 1.12.1
       '@webassemblyjs/wasm-edit': 1.12.1
       '@webassemblyjs/wasm-parser': 1.12.1
-      acorn: 8.15.0
-      acorn-import-attributes: 1.9.5(acorn@8.15.0)
-      browserslist: 4.25.1
+      acorn: 8.14.0
+      acorn-import-attributes: 1.9.5(acorn@8.14.0)
+      browserslist: 4.24.4
       chrome-trace-event: 1.0.4
       enhanced-resolve: 5.18.1
       es-module-lexer: 1.5.3

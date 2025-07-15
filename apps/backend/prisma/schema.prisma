@@ -720,4 +720,3 @@ model ThreadMessage {
   createdAt DateTime @default(now())
   @@id([tenancyId, id])
 }
-
