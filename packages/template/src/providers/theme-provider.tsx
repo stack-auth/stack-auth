@@ -66,12 +66,13 @@ function convertColorsToCSS(theme: Theme) {
   }
 
   return deindent`
-  .stack-scope {
-  ${colorsToCSSVars(colors.light)}
-  }
-  html:has(head > [data-stack-theme="dark"]) .stack-scope {
-  ${colorsToCSSVars(colors.dark)}
-  }`;
+    .stack-scope {
+      ${colorsToCSSVars(colors.light)}
+    }
+    html:has(head > [data-stack-theme="dark"]) .stack-scope { 
+      ${colorsToCSSVars(colors.dark)}
+    }
+  `;
 }
 
 
