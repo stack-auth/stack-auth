@@ -372,7 +372,7 @@ export class StackAdminInterface extends StackServerInterface {
 
   async saveEmailThemeChatMessage(themeId: string, message: any): Promise<void> {
     await this.sendAdminRequest(
-      `/emails/themes/chat`,
+      `/internal/email-themes/chat`,
       {
         method: "PATCH",
         headers: {

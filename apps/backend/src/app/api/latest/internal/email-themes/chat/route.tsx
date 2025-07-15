@@ -5,7 +5,7 @@ import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { openai } from "@ai-sdk/openai";
 import { adaptSchema, yupArray, yupMixed, yupNumber, yupObject, yupString, yupUnion } from "@stackframe/stack-shared/dist/schema-fields";
 import { StatusError } from "@stackframe/stack-shared/dist/utils/errors";
-import { convertToCoreMessages, generateText, tool } from "ai";
+import { generateText, tool } from "ai";
 import { InferType } from "yup";
 import { z } from "zod";
 
