@@ -310,12 +310,7 @@ function UserBreadcrumbItem(props: { userId: string }) {
 function ThemeBreadcrumbItem(props: { themeId: string }) {
   const stackAdminApp = useAdminApp();
   const theme = stackAdminApp.useEmailTheme(props.themeId);
-
-  if (!theme) {
-    return null;
-  } else {
-    return theme.displayName;
-  }
+  return theme.displayName;
 }
 
 function NavItem({ item, href, onClick }: { item: Item, href: string, onClick?: () => void }) {
