@@ -235,7 +235,7 @@ export function StackCompanion({ className, onExpandedChange }: StackCompanionPr
               </div>
 
               {/* Content Body */}
-              <div className="flex-1 overflow-y-auto p-3" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
+              <div className="flex-1 overflow-y-auto p-3" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' } as React.CSSProperties}>
                 <style jsx>{`
                   div::-webkit-scrollbar {
                     display: none;

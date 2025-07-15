@@ -361,12 +361,12 @@ export function FeatureRequestBoard({ isActive }: FeatureRequestBoardProps) {
             style={{
               scrollbarWidth: 'none',
               msOverflowStyle: 'none',
-            }}
+            } as React.CSSProperties}
             onMouseEnter={(e) => {
-              e.currentTarget.style.scrollbarWidth = 'thin';
+              (e.currentTarget.style as any).scrollbarWidth = 'thin';
             }}
             onMouseLeave={(e) => {
-              e.currentTarget.style.scrollbarWidth = 'none';
+              (e.currentTarget.style as any).scrollbarWidth = 'none';
             }}
           >
             <style jsx>{`
