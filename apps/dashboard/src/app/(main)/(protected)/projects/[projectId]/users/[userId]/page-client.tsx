@@ -853,6 +853,7 @@ function OAuthProviderDialog(props: OAuthProviderDialogProps) {
   const formSchema = yup.object({
     providerId: yup.string()
       .defined("Provider is required")
+      .nonEmpty("Provider is required")
       .label("OAuth Provider")
       .meta({
         stackFormFieldRender: (innerProps: { control: any, name: string, label: string, disabled: boolean }) => (
