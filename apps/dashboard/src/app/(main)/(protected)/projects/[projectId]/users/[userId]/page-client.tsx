@@ -829,34 +829,41 @@ type OAuthProvidersSectionProps = {
   user: ServerUser,
 };
 
-type AddOAuthProviderDialogProps = {
+type OAuthProviderDialogProps = {
   user: ServerUser,
   open: boolean,
   onOpenChange: (open: boolean) => void,
-};
+} & ({
+  mode: 'create',
+} | {
+  mode: 'edit',
+  provider: ServerOAuthProvider,
+});
 
-function AddOAuthProviderDialog({ user, open, onOpenChange }: AddOAuthProviderDialogProps) {
+function OAuthProviderDialog(props: OAuthProviderDialogProps) {
   const stackAdminApp = useAdminApp();
   const project = stackAdminApp.useProject();
   const { toast } = useToast();
 
   // Get available OAuth providers from project config
   const availableProviders = project.config.oauthProviders;
+  const isEditMode = props.mode === 'edit';
+  const provider = isEditMode ? props.provider : null;
 
   const formSchema = yup.object({
     providerId: yup.string()
       .defined("Provider is required")
       .label("OAuth Provider")
       .meta({
-        stackFormFieldRender: (props: { control: any, name: string, label: string, disabled: boolean }) => (
+        stackFormFieldRender: (innerProps: { control: any, name: string, label: string, disabled: boolean }) => (
           <SelectField
-            control={props.control}
-            name={props.name}
-            label={props.label}
-            disabled={props.disabled}
-            options={availableProviders.map(provider => ({
-              value: provider.id,
-              label: provider.id.charAt(0).toUpperCase() + provider.id.slice(1)
+            control={innerProps.control}
+            name={innerProps.name}
+            label={innerProps.label}
+            disabled={innerProps.disabled || isEditMode} // Disable provider selection in edit mode
+            options={availableProviders.map((p: any) => ({
+              value: p.id,
+              label: p.id.charAt(0).toUpperCase() + p.id.slice(1)
             }))}
             placeholder="Select OAuth provider"
           />
@@ -874,7 +881,10 @@ function AddOAuthProviderDialog({ user, open, onOpenChange }: AddOAuthProviderDi
       .label("Account ID")
       .meta({
         stackFormFieldPlaceholder: "Enter OAuth account ID",
-        description: "The unique account identifier from the OAuth provider"
+        description: "The unique account identifier from the OAuth provider",
+        stackFormFieldExtraProps: {
+          disabled: isEditMode, // Disable account ID editing in edit mode
+        },
       }),
     allowSignIn: yup.boolean()
       .default(true)
@@ -890,49 +900,101 @@ function AddOAuthProviderDialog({ user, open, onOpenChange }: AddOAuthProviderDi
       }),
   });
 
+  // Set default values based on mode
+  const defaultValues = isEditMode && provider ? {
+    providerId: provider.type,
+    email: provider.email,
+    accountId: provider.accountId,
+    allowSignIn: provider.allowSignIn,
+    allowConnectedAccounts: provider.allowConnectedAccounts,
+  } : {
+    providerId: "",
+    email: "",
+    accountId: "",
+    allowSignIn: true,
+    allowConnectedAccounts: true,
+  };
+
+  const handleSubmit = async (values: yup.InferType<typeof formSchema>) => {
+    if (isEditMode && provider) {
+      // Update existing provider
+      const result = await provider.update({
+        email: values.email?.trim() || provider.email,
+        allowSignIn: values.allowSignIn,
+        allowConnectedAccounts: values.allowConnectedAccounts,
+      });
+
+      if (result.status === "error") {
+        if (KnownErrors.OAuthProviderTypeAlreadyUsedForSignIn.isInstance(result.error)) {
+          toast({
+            title: "OAuth Provider Conflict",
+            description: `A ${provider.type} provider is already used for signing in for a different account.`,
+            variant: "destructive",
+          });
+        } else if (KnownErrors.OAuthProviderAccountIdAlreadyUsedForConnectedAccounts.isInstance(result.error)) {
+          toast({
+            title: "Account Already Connected",
+            description: `A ${provider.type} provider with account ID "${provider.accountId}" is already connected for this user.`,
+            variant: "destructive",
+          });
+        } else {
+          toast({
+            title: "Error",
+            description: "An unexpected error occurred while updating the OAuth provider.",
+            variant: "destructive",
+          });
+        }
+        return 'prevent-close';
+      }
+    } else {
+      // Create new provider
+      if (!values.accountId.trim()) return;
+
+      const result = await stackAdminApp.createOAuthProvider({
+        userId: props.user.id,
+        providerId: values.providerId,
+        accountId: values.accountId.trim(),
+        email: values.email?.trim() || "",
+        allowSignIn: values.allowSignIn,
+        allowConnectedAccounts: values.allowConnectedAccounts,
+      });
+
+      if (result.status === "error") {
+        if (KnownErrors.OAuthProviderTypeAlreadyUsedForSignIn.isInstance(result.error)) {
+          toast({
+            title: "OAuth Provider Conflict",
+            description: `A ${values.providerId} provider is already used for signing in for a different account.`,
+            variant: "destructive",
+          });
+        } else if (KnownErrors.OAuthProviderAccountIdAlreadyUsedForConnectedAccounts.isInstance(result.error)) {
+          toast({
+            title: "Account Already Connected",
+            description: `A ${values.providerId} provider with account ID "${values.accountId}" is already connected for this user.`,
+            variant: "destructive",
+          });
+        } else {
+          toast({
+            title: "Error",
+            description: "An unexpected error occurred while adding the OAuth provider.",
+            variant: "destructive",
+          });
+        }
+        return 'prevent-close';
+      }
+    }
+  };
+
+  // Update the form schema defaults based on mode
+  const schemaWithDefaults = formSchema.default(defaultValues);
+
   return (
     <SmartFormDialog
-      title="Add OAuth Provider"
-      description="Connect a new OAuth provider to this user account."
-      open={open}
-      onOpenChange={onOpenChange}
-      formSchema={formSchema}
-      onSubmit={async (values) => {
-        if (!values.accountId.trim()) return;
-
-        // Use the server app's createOAuthProvider method
-        const result = await stackAdminApp.createOAuthProvider({
-          userId: user.id,
-          providerId: values.providerId,
-          accountId: values.accountId.trim(),
-          email: values.email?.trim() || "",
-          allowSignIn: values.allowSignIn,
-          allowConnectedAccounts: values.allowConnectedAccounts,
-        });
-
-        if (result.status === "error") {
-          if (KnownErrors.OAuthProviderTypeAlreadyUsedForSignIn.isInstance(result.error)) {
-            toast({
-              title: "OAuth Provider Conflict",
-              description: `A ${values.providerId} provider is already used for signing in for a different account.`,
-              variant: "destructive",
-            });
-          } else if (KnownErrors.OAuthProviderAccountIdAlreadyUsedForConnectedAccounts.isInstance(result.error)) {
-            toast({
-              title: "Account Already Connected",
-              description: `A ${values.providerId} provider with account ID "${values.accountId}" is already connected for this user.`,
-              variant: "destructive",
-            });
-          } else {
-            toast({
-              title: "Error",
-              description: "An unexpected error occurred while adding the OAuth provider.",
-              variant: "destructive",
-            });
-          }
-          return 'prevent-close';
-        }
-      }}
+      title={isEditMode ? "Edit OAuth Provider" : "Add OAuth Provider"}
+      description={isEditMode ? "Update the OAuth provider settings." : "Connect a new OAuth provider to this user account."}
+      open={props.open}
+      onOpenChange={props.onOpenChange}
+      formSchema={schemaWithDefaults}
+      onSubmit={handleSubmit}
     />
   );
 }
@@ -940,13 +1002,29 @@ function AddOAuthProviderDialog({ user, open, onOpenChange }: AddOAuthProviderDi
 function OAuthProvidersSection({ user }: OAuthProvidersSectionProps) {
   const oauthProviders = user.useOAuthProviders();
   const [isAddProviderDialogOpen, setIsAddProviderDialogOpen] = useState(false);
+  const [editingProvider, setEditingProvider] = useState<ServerOAuthProvider | null>(null);
+  const { toast } = useToast();
 
   const toggleAllowSignIn = async (provider: ServerOAuthProvider) => {
-    await provider.update({ allowSignIn: !provider.allowSignIn });
+    const result = await provider.update({ allowSignIn: !provider.allowSignIn });
+    if (result.status === "error") {
+      toast({
+        title: "Error",
+        description: "Failed to update sign-in setting.",
+        variant: "destructive",
+      });
+    }
   };
 
   const toggleAllowConnectedAccounts = async (provider: ServerOAuthProvider) => {
-    await provider.update({ allowConnectedAccounts: !provider.allowConnectedAccounts });
+    const result = await provider.update({ allowConnectedAccounts: !provider.allowConnectedAccounts });
+    if (result.status === "error") {
+      toast({
+        title: "Error",
+        description: "Failed to update connected accounts setting.",
+        variant: "destructive",
+      });
+    }
   };
 
   return (
@@ -964,11 +1042,22 @@ function OAuthProvidersSection({ user }: OAuthProvidersSectionProps) {
         </Button>
       </div>
 
-      <AddOAuthProviderDialog
+      <OAuthProviderDialog
         user={user}
         open={isAddProviderDialogOpen}
         onOpenChange={setIsAddProviderDialogOpen}
+        mode="create"
       />
+
+      {editingProvider && (
+        <OAuthProviderDialog
+          user={user}
+          open={!!editingProvider}
+          onOpenChange={() => setEditingProvider(null)}
+          mode="edit"
+          provider={editingProvider}
+        />
+      )}
 
       {oauthProviders.length === 0 ? (
         <div className="flex flex-col items-center gap-2 p-4 border rounded-md bg-muted/10">
@@ -990,7 +1079,7 @@ function OAuthProvidersSection({ user }: OAuthProvidersSectionProps) {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {oauthProviders.map((provider) => (
+              {oauthProviders.map((provider: ServerOAuthProvider) => (
                 <TableRow key={provider.id + '-' + provider.accountId}>
                   <TableCell>
                     <div className='flex items-center gap-2'>
@@ -1024,6 +1113,10 @@ function OAuthProvidersSection({ user }: OAuthProvidersSectionProps) {
                   <TableCell align="right">
                     <ActionCell
                       items={[
+                        {
+                          item: "Edit",
+                          onClick: () => setEditingProvider(provider),
+                        },
                         {
                           item: provider.allowSignIn ? "Disable sign-in" : "Enable sign-in",
                           onClick: async () => {
