@@ -1111,23 +1111,21 @@ const OAuthProviderNotFoundOrNotEnabled = createKnownErrorConstructor(
 const OAuthProviderTypeAlreadyUsedForSignIn = createKnownErrorConstructor(
   KnownError,
   "OAUTH_PROVIDER_TYPE_ALREADY_USED_FOR_SIGN_IN",
-  (providerType: string) => [
+  () => [
     400,
-    `A provider of type "${providerType}" is already used for signing in for a different account.`,
-    { provider_type: providerType },
+    `A provider with the same type is already used for signing in.`,
   ] as const,
-  (json: any) => [json.provider_type] as const,
+  () => [] as const,
 );
 
 const OAuthProviderAccountIdAlreadyUsedForConnectedAccounts = createKnownErrorConstructor(
   KnownError,
   "OAUTH_PROVIDER_ACCOUNT_ID_ALREADY_USED_FOR_CONNECTED_ACCOUNTS",
-  (providerType: string, accountId: string) => [
+  () => [
     400,
-    `A provider of type "${providerType}" with account ID "${accountId}" is already connected for this user.`,
-    { provider_type: providerType, account_id: accountId },
+    `A provider with the same account ID is already connected for this user.`,
   ] as const,
-  (json: any) => [json.provider_type, json.account_id] as const,
+  () => [] as const,
 );
 
 const MultiFactorAuthenticationRequired = createKnownErrorConstructor(

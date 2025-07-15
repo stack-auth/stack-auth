@@ -912,8 +912,15 @@ it("should prevent multiple providers of the same type from being enabled for si
   expect(updateResponse).toMatchInlineSnapshot(`
     NiceResponse {
       "status": 400,
-      "body": "A provider of type \\"github\\" is already enabled for signing in for this user.",
-      "headers": Headers { <some fields may have been hidden> },
+      "body": {
+        "code": "OAUTH_PROVIDER_TYPE_ALREADY_USED_FOR_SIGN_IN",
+        "details": { "provider_type": "github" },
+        "error": "A provider of type \\"github\\" is already used for signing in for a different account.",
+      },
+      "headers": Headers {
+        "x-stack-known-error": "OAUTH_PROVIDER_TYPE_ALREADY_USED_FOR_SIGN_IN",
+        <some fields may have been hidden>,
+      },
     }
   `);
 
