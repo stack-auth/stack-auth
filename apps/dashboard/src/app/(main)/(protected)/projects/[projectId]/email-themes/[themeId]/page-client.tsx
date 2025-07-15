@@ -7,7 +7,7 @@ import {
   useLocalRuntime,
   type ThreadHistoryAdapter,
   type ChatModelAdapter,
-  type ThreadMessage,
+  type ExportedMessageRepository,
 } from "@assistant-ui/react";
 import Editor, { Monaco } from '@monaco-editor/react';
 import { runAsynchronously } from "@stackframe/stack-shared/dist/utils/promises";
@@ -187,15 +187,24 @@ function DevServerChat({
   const chatAdapter: ChatModelAdapter = {
     async run({ messages, abortSignal }) {
       try {
-        const formattedMessages = messages.map((msg) => ({
-          role: msg.role,
-          content: msg.content.map((part) => {
-            if (part.type === 'text') {
-              return part.text;
-            }
-            return '';
-          }).join(''),
-        }));
+        const formattedMessages = [];
+        for (const msg of messages) {
+          formattedMessages.push({
+            role: msg.role,
+            content: [...msg.content]
+          });
+          msg.content.filter(isToolCall).forEach(toolCall => {
+            formattedMessages.push({
+              role: "tool",
+              content: [{
+                type: "tool-result",
+                toolCallId: toolCall.toolCallId,
+                toolName: toolCall.toolName,
+                result: toolCall.result,
+              }],
+            });
+          });
+        }
 
         const response = await adminApp.sendEmailThemeChatMessage(themeId, currentEmailTheme, formattedMessages, abortSignal);
         if (response.content.some(isToolCall)) {
@@ -235,26 +244,11 @@ function DevServerChat({
   const historyAdapter: ThreadHistoryAdapter = {
     async load() {
       const { messages } = await adminApp.listEmailThemeChatMessages(themeId);
-      return {
-        messages: messages.map((message, index) => ({
-          message: {
-            role: message.role as "user" | "assistant",
-            content: message.content,
-            id: index.toString(),
-            status: {
-              type: "complete",
-              reason: "stop",
-            },
-            createdAt: new Date(),
-            metadata: {
-              custom: {},
-            } as ThreadMessage["metadata"],
-          } as ThreadMessage,
-          parentId: index > 0 ? (index - 1).toString() : null,
-        })),
-      };
+      return { messages } as ExportedMessageRepository;
     },
-    async append() { },
+    async append(message) {
+      await adminApp.saveEmailThemeChatMessage(themeId, message);
+    },
   };
 
   const runtime = useLocalRuntime(

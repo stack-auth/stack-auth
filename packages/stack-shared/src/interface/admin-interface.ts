@@ -352,7 +352,7 @@ export class StackAdminInterface extends StackServerInterface {
   async sendEmailThemeChatMessage(
     themeId: string,
     currentEmailTheme: string,
-    messages: Array<{ role: string, content: string }>,
+    messages: Array<{ role: string, content: any }>,
     abortSignal?: AbortSignal,
   ): Promise<{ content: ChatContent }> {
     const response = await this.sendAdminRequest(
@@ -370,7 +370,21 @@ export class StackAdminInterface extends StackServerInterface {
     return await response.json();
   }
 
-  async listEmailThemeChatMessages(themeId: string): Promise<{ messages: Array<{ role: string, content: ChatContent }> }> {
+  async saveEmailThemeChatMessage(themeId: string, message: any): Promise<void> {
+    await this.sendAdminRequest(
+      `/emails/themes/chat`,
+      {
+        method: "PATCH",
+        headers: {
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({ theme_id: themeId, message }),
+      },
+      null,
+    );
+  }
+
+  async listEmailThemeChatMessages(themeId: string): Promise<{ messages: Array<any> }> {
     const response = await this.sendAdminRequest(
       `/emails/themes/chat?theme_id=${themeId}`,
       { method: "GET" },

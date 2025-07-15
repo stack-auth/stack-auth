@@ -41,8 +41,8 @@ export const POST = createSmartRouteHandler({
       theme_id: yupString().defined(),
       current_email_theme: yupString().defined(),
       messages: yupArray(yupObject({
-        role: yupString().oneOf(["user", "assistant"]).defined(),
-        content: yupString().defined(),
+        role: yupString().oneOf(["user", "assistant", "tool"]).defined(),
+        content: yupMixed().defined(),
       })).defined().min(1),
     }),
   }),
@@ -62,7 +62,7 @@ export const POST = createSmartRouteHandler({
     const result = await generateText({
       model: openai("gpt-4o"),
       system: DEFAULT_SYSTEM_PROMPT,
-      messages: convertToCoreMessages(body.messages),
+      messages: body.messages as any,
       tools: {
         createEmailTheme: tool({
           description: CREATE_EMAIL_THEME_TOOL_DESCRIPTION(body.current_email_theme),
@@ -115,18 +115,47 @@ export const POST = createSmartRouteHandler({
       });
     });
 
-    const userContent = [{ "type": "text", "text": body.messages.at(-1)?.content }];
-    await globalPrismaClient.threadMessage.createMany({
-      data: [
-        { tenancyId: tenancy.id, threadId: body.theme_id, role: "user", content: userContent },
-        { tenancyId: tenancy.id, threadId: body.theme_id, role: "assistant", content: contentBlocks },
-      ]
-    });
-
     return {
       statusCode: 200,
       bodyType: "json",
       body: { content: contentBlocks },
+    };
+  },
+});
+
+export const PATCH = createSmartRouteHandler({
+  metadata: {
+    summary: "Save a chat message",
+    description: "Save a chat message",
+    tags: ["Emails"],
+  },
+  request: yupObject({
+    auth: yupObject({
+      type: yupString().oneOf(["admin"]).defined(),
+      tenancy: adaptSchema.defined(),
+    }).defined(),
+    body: yupObject({
+      theme_id: yupString().defined(),
+      message: yupMixed().defined(),
+    }),
+  }),
+  response: yupObject({
+    statusCode: yupNumber().oneOf([200]).defined(),
+    bodyType: yupString().oneOf(["json"]).defined(),
+    body: yupObject({}).defined(),
+  }),
+  async handler({ body, auth: { tenancy } }) {
+    await globalPrismaClient.threadMessage.create({
+      data: {
+        tenancyId: tenancy.id,
+        threadId: body.theme_id,
+        content: body.message
+      },
+    });
+    return {
+      statusCode: 200,
+      bodyType: "json",
+      body: {},
     };
   },
 });
@@ -150,10 +179,7 @@ export const GET = createSmartRouteHandler({
     statusCode: yupNumber().oneOf([200]).defined(),
     bodyType: yupString().oneOf(["json"]).defined(),
     body: yupObject({
-      messages: yupArray(yupObject({
-        role: yupString().oneOf(["user", "assistant", "tool"]).defined(),
-        content: contentSchema,
-      })),
+      messages: yupArray(yupMixed().defined()),
     }),
   }),
   async handler({ query, auth: { tenancy } }) {
@@ -161,10 +187,7 @@ export const GET = createSmartRouteHandler({
       where: { tenancyId: tenancy.id, threadId: query.theme_id },
       orderBy: { createdAt: "asc" },
     });
-    const messages = dbMessages.map((message) => ({
-      role: message.role,
-      content: message.content as InferType<typeof contentSchema>,
-    }));
+    const messages = dbMessages.map((message) => message.content) as object[];
 
     return {
       statusCode: 200,

@@ -81,10 +81,11 @@ export type StackAdminApp<HasTokenStore extends boolean = boolean, ProjectId ext
     sendEmailThemeChatMessage(
       themeId: string,
       currentEmailTheme: string,
-      messages: Array<{ role: string, content: string }>,
+      messages: Array<{ role: string, content: any }>,
       abortSignal?: AbortSignal,
     ): Promise<{ content: ChatContent }>,
-    listEmailThemeChatMessages(themeId: string): Promise<{ messages: Array<{ role: string, content: ChatContent }> }>,
+    saveEmailThemeChatMessage(themeId: string, message: any): Promise<void>,
+    listEmailThemeChatMessages(themeId: string): Promise<{ messages: Array<any> }>,
   }
   & StackServerApp<HasTokenStore, ProjectId>
 );

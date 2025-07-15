@@ -435,13 +435,17 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
   async sendEmailThemeChatMessage(
     themeId: string,
     currentEmailTheme: string,
-    messages: Array<{ role: string, content: string }>,
+    messages: Array<{ role: string, content: any }>,
     abortSignal?: AbortSignal,
   ): Promise<{ content: ChatContent }> {
     return await this._interface.sendEmailThemeChatMessage(themeId, currentEmailTheme, messages, abortSignal);
   }
 
-  async listEmailThemeChatMessages(themeId: string): Promise<{ messages: Array<{ role: string, content: ChatContent }> }> {
+  async saveEmailThemeChatMessage(themeId: string, message: any): Promise<void> {
+    await this._interface.saveEmailThemeChatMessage(themeId, message);
+  }
+
+  async listEmailThemeChatMessages(themeId: string): Promise<{ messages: Array<any> }> {
     return await this._interface.listEmailThemeChatMessages(themeId);
   }
 

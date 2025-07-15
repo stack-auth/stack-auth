@@ -1,12 +1,13 @@
 "use client";
 
+import { Link } from "@/components/link";
 import { useRouter } from "@/components/router";
 import { SettingCard } from "@/components/settings";
 import { throwErr } from "@stackframe/stack-shared/dist/utils/errors";
 import ThemePreview from "@/components/theme-preview";
 import { ActionDialog, Button, Card, toast, Typography } from "@stackframe/stack-ui";
 import { FormDialog } from "@/components/form-dialog";
-import { Check } from "lucide-react";
+import { Check, Pencil } from "lucide-react";
 import { useState } from "react";
 import { PageLayout } from "../page-layout";
 import { useAdminApp } from "../use-admin-app";
@@ -88,9 +89,11 @@ function ThemeOption({
   isSelected: boolean,
   onSelect: (themeName: string) => void,
 }) {
+  const stackAdminApp = useAdminApp();
+  const project = stackAdminApp.useProject();
 
   return (
-    <div className="flex flex-col items-center gap-2 group cursor-pointer" onClick={() => onSelect(theme.displayName)}>
+    <div className="relative flex flex-col items-center gap-2 group cursor-pointer" onClick={() => onSelect(theme.displayName)}>
       <div className="w-full h-60 shadow-md rounded-md overflow-clip group-hover:shadow-lg transition-all" style={{ zoom: 0.75 }}>
         <ThemePreview themeId={theme.id} disableFrame />
       </div>
@@ -98,8 +101,17 @@ function ThemeOption({
         {isSelected && <Check />}
         <Typography variant="secondary" >{theme.displayName}</Typography>
       </div>
+      <Link href={`/projects/${project.id}/email-themes/${theme.id}`}>
+        <Button
+          variant="ghost"
+          size="icon"
+          className="absolute top-2 right-2 bg-secondary opacity-0 group-hover:opacity-100 transition-opacity"
+        >
+          <Pencil className="w-4 h-4" />
+        </Button>
+      </Link>
     </div>
-  )
+  );
 }
 
 function NewThemeButton() {
