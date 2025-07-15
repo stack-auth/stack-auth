@@ -39,7 +39,7 @@ async function checkProviderTypeAlreadyUsedForSignIn(options: {
 
     const providerConfig = options.config.auth?.oauth?.providers?.[account.configOAuthProviderId];
     if (providerConfig && providerConfig.type === options.providerType && options.oldAccountId !== options.accountId) {
-      throw new StatusError(StatusError.BadRequest, `A provider of type "${options.providerType}" is already enabled for signing in for this user.`);
+      throw new KnownErrors.OAuthProviderTypeAlreadyUsedForSignIn(options.providerType);
     }
   }
 }
@@ -76,7 +76,7 @@ async function checkProviderAccountIdAlreadyUsedForConnectedAccounts(options: {
 
     const providerConfig = options.config.auth?.oauth?.providers?.[account.configOAuthProviderId];
     if (providerConfig && providerConfig.type === options.providerType) {
-      throw new StatusError(StatusError.BadRequest, `A provider of type "${options.providerType}" with account ID "${options.accountId}" is already connected for this user.`);
+      throw new KnownErrors.OAuthProviderAccountIdAlreadyUsedForConnectedAccounts(options.providerType, options.accountId);
     }
   }
 }

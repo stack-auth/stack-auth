@@ -1,3 +1,5 @@
+import { KnownErrors } from "@stackframe/stack-shared";
+import { Result } from "@stackframe/stack-shared/dist/utils/results";
 import { AsyncStoreProperty, GetUserOptions } from "../../common";
 import { ServerListUsersOptions, ServerTeam, ServerTeamCreateOptions } from "../../teams";
 import { ProjectCurrentServerUser, ServerUser, ServerUserCreateOptions } from "../../users";
@@ -26,7 +28,10 @@ export type StackServerApp<HasTokenStore extends boolean = boolean, ProjectId ex
       email: string,
       allowSignIn: boolean,
       allowConnectedAccounts: boolean,
-    }): Promise<{ id: string, type: string, userId: string, accountId: string, email: string, allowSignIn: boolean, allowConnectedAccounts: boolean }>,
+    }): Promise<Result<{ id: string, type: string, userId: string, accountId: string, email: string, allowSignIn: boolean, allowConnectedAccounts: boolean }, 
+      | InstanceType<typeof KnownErrors.OAuthProviderTypeAlreadyUsedForSignIn>
+      | InstanceType<typeof KnownErrors.OAuthProviderAccountIdAlreadyUsedForConnectedAccounts>
+    >>,
 
     // IF_PLATFORM react-like
     useUser(options: GetUserOptions<HasTokenStore> & { or: 'redirect' }): ProjectCurrentServerUser<ProjectId>,

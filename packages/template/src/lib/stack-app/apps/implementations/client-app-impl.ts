@@ -841,12 +841,26 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
       allowSignIn: crud.allow_sign_in,
       allowConnectedAccounts: crud.allow_connected_accounts,
 
-      async update(data: { allowSignIn?: boolean, allowConnectedAccounts?: boolean }) {
-        await app._interface.updateCurrentUserOAuthProvider(crud.id, {
-          allow_sign_in: data.allowSignIn,
-          allow_connected_accounts: data.allowConnectedAccounts,
-        }, session);
-        await app._currentUserOAuthProvidersCache.refresh([session]);
+      async update(data: { allowSignIn?: boolean, allowConnectedAccounts?: boolean }): Promise<Result<void,
+        | InstanceType<typeof KnownErrors.OAuthProviderTypeAlreadyUsedForSignIn>
+        | InstanceType<typeof KnownErrors.OAuthProviderAccountIdAlreadyUsedForConnectedAccounts>
+      >> {
+        try {
+          await app._interface.updateCurrentUserOAuthProvider(crud.id, {
+            allow_sign_in: data.allowSignIn,
+            allow_connected_accounts: data.allowConnectedAccounts,
+          }, session);
+          await app._currentUserOAuthProvidersCache.refresh([session]);
+          return Result.ok(undefined);
+        } catch (error) {
+          if (KnownErrors.OAuthProviderTypeAlreadyUsedForSignIn.isInstance(error)) {
+            return Result.error(error);
+          }
+          if (KnownErrors.OAuthProviderAccountIdAlreadyUsedForConnectedAccounts.isInstance(error)) {
+            return Result.error(error);
+          }
+          throw error;
+        }
       },
 
       async delete() {

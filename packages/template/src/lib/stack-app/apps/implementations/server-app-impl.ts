@@ -256,14 +256,28 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
       allowSignIn: crud.allow_sign_in,
       allowConnectedAccounts: crud.allow_connected_accounts,
 
-      async update(data: { accountId?: string, email?: string, allowSignIn?: boolean, allowConnectedAccounts?: boolean }) {
-        await app._interface.updateServerOAuthProvider(crud.user_id, crud.id, {
-          account_id: data.accountId,
-          email: data.email,
-          allow_sign_in: data.allowSignIn,
-          allow_connected_accounts: data.allowConnectedAccounts,
-        });
-        await app._serverOAuthProvidersCache.refresh([crud.user_id]);
+      async update(data: { accountId?: string, email?: string, allowSignIn?: boolean, allowConnectedAccounts?: boolean }): Promise<Result<void, 
+        | InstanceType<typeof KnownErrors.OAuthProviderTypeAlreadyUsedForSignIn>
+        | InstanceType<typeof KnownErrors.OAuthProviderAccountIdAlreadyUsedForConnectedAccounts>
+      >> {
+        try {
+          await app._interface.updateServerOAuthProvider(crud.user_id, crud.id, {
+            account_id: data.accountId,
+            email: data.email,
+            allow_sign_in: data.allowSignIn,
+            allow_connected_accounts: data.allowConnectedAccounts,
+          });
+          await app._serverOAuthProvidersCache.refresh([crud.user_id]);
+          return Result.ok(undefined);
+        } catch (error) {
+          if (KnownErrors.OAuthProviderTypeAlreadyUsedForSignIn.isInstance(error)) {
+            return Result.error(error);
+          }
+          if (KnownErrors.OAuthProviderAccountIdAlreadyUsedForConnectedAccounts.isInstance(error)) {
+            return Result.error(error);
+          }
+          throw error;
+        }
       },
 
       async delete() {
@@ -814,18 +828,31 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
     email: string,
     allowSignIn: boolean,
     allowConnectedAccounts: boolean,
-  }): Promise<{ id: string, type: string, userId: string, accountId: string, email: string, allowSignIn: boolean, allowConnectedAccounts: boolean }> {
-    const crud = await this._interface.createOAuthProvider({
-      user_id: options.userId,
-      provider_id: options.providerId,
-      account_id: options.accountId,
-      email: options.email,
-      allow_sign_in: options.allowSignIn,
-      allow_connected_accounts: options.allowConnectedAccounts,
-    }, null, "server");
+  }): Promise<Result<{ id: string, type: string, userId: string, accountId: string, email: string, allowSignIn: boolean, allowConnectedAccounts: boolean },
+    | InstanceType<typeof KnownErrors.OAuthProviderTypeAlreadyUsedForSignIn>
+    | InstanceType<typeof KnownErrors.OAuthProviderAccountIdAlreadyUsedForConnectedAccounts>
+  >> {
+    try {
+      const crud = await this._interface.createOAuthProvider({
+        user_id: options.userId,
+        provider_id: options.providerId,
+        account_id: options.accountId,
+        email: options.email,
+        allow_sign_in: options.allowSignIn,
+        allow_connected_accounts: options.allowConnectedAccounts,
+      }, null, "server");
 
-    await this._serverOAuthProvidersCache.refresh([options.userId]);
-    return this._serverOAuthProviderFromCrud(crud);
+      await this._serverOAuthProvidersCache.refresh([options.userId]);
+      return Result.ok(this._serverOAuthProviderFromCrud(crud));
+    } catch (error) {
+      if (KnownErrors.OAuthProviderTypeAlreadyUsedForSignIn.isInstance(error)) {
+        return Result.error(error);
+      }
+      if (KnownErrors.OAuthProviderAccountIdAlreadyUsedForConnectedAccounts.isInstance(error)) {
+        return Result.error(error);
+      }
+      throw error;
+    }
   }
 
   async getUser(options: GetUserOptions<HasTokenStore> & { or: 'redirect' }): Promise<ProjectCurrentServerUser<ProjectId>>;
