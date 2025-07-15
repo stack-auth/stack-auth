@@ -256,7 +256,7 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
       allowSignIn: crud.allow_sign_in,
       allowConnectedAccounts: crud.allow_connected_accounts,
 
-      async update(data: { accountId?: string, email?: string, allowSignIn?: boolean, allowConnectedAccounts?: boolean }): Promise<Result<void, 
+      async update(data: { accountId?: string, email?: string, allowSignIn?: boolean, allowConnectedAccounts?: boolean }): Promise<Result<void,
         | InstanceType<typeof KnownErrors.OAuthProviderTypeAlreadyUsedForSignIn>
         | InstanceType<typeof KnownErrors.OAuthProviderAccountIdAlreadyUsedForConnectedAccounts>
       >> {

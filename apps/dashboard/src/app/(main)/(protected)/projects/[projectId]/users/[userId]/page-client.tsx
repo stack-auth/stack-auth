@@ -1005,26 +1005,50 @@ function OAuthProvidersSection({ user }: OAuthProvidersSectionProps) {
   const [editingProvider, setEditingProvider] = useState<ServerOAuthProvider | null>(null);
   const { toast } = useToast();
 
-  const toggleAllowSignIn = async (provider: ServerOAuthProvider) => {
-    const result = await provider.update({ allowSignIn: !provider.allowSignIn });
+  const handleProviderUpdate = async (provider: ServerOAuthProvider, updates: { allowSignIn?: boolean, allowConnectedAccounts?: boolean }) => {
+    const result = await provider.update(updates);
     if (result.status === "error") {
+      if (KnownErrors.OAuthProviderTypeAlreadyUsedForSignIn.isInstance(result.error)) {
+        toast({
+          title: "OAuth Provider Conflict",
+          description: `A ${provider.type} provider is already used for signing in for a different account.`,
+          variant: "destructive",
+        });
+      } else if (KnownErrors.OAuthProviderAccountIdAlreadyUsedForConnectedAccounts.isInstance(result.error)) {
+        toast({
+          title: "Account Already Connected",
+          description: `A ${provider.type} provider with account ID "${provider.accountId}" is already connected for this user.`,
+          variant: "destructive",
+        });
+      } else {
+        const settingType = updates.allowSignIn !== undefined ? "sign-in" : "connected accounts";
+        toast({
+          title: "Error",
+          description: `Failed to update ${settingType} setting.`,
+          variant: "destructive",
+        });
+      }
+    } else {
+      let successMessage = "";
+      if (updates.allowSignIn !== undefined) {
+        successMessage = `Sign-in ${provider.allowSignIn ? 'disabled' : 'enabled'} for ${provider.type} provider.`;
+      } else if (updates.allowConnectedAccounts !== undefined) {
+        successMessage = `Connected accounts ${provider.allowConnectedAccounts ? 'disabled' : 'enabled'} for ${provider.type} provider.`;
+      }
       toast({
-        title: "Error",
-        description: "Failed to update sign-in setting.",
-        variant: "destructive",
+        title: "Success",
+        description: successMessage,
+        variant: "success",
       });
     }
   };
 
+  const toggleAllowSignIn = async (provider: ServerOAuthProvider) => {
+    await handleProviderUpdate(provider, { allowSignIn: !provider.allowSignIn });
+  };
+
   const toggleAllowConnectedAccounts = async (provider: ServerOAuthProvider) => {
-    const result = await provider.update({ allowConnectedAccounts: !provider.allowConnectedAccounts });
-    if (result.status === "error") {
-      toast({
-        title: "Error",
-        description: "Failed to update connected accounts setting.",
-        variant: "destructive",
-      });
-    }
+    await handleProviderUpdate(provider, { allowConnectedAccounts: !provider.allowConnectedAccounts });
   };
 
   return (
