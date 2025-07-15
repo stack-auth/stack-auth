@@ -4,7 +4,7 @@ import { cn } from '@/lib/utils';
 import { useUser } from '@stackframe/stack';
 import { Button } from '@stackframe/stack-ui';
 import { ChevronUp, Loader2, Send, Zap } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 
 type FeatureRequestBoardProps = {
   isActive: boolean,
@@ -30,13 +30,13 @@ export function FeatureRequestBoard({ isActive }: FeatureRequestBoardProps) {
   const [upvotingIds, setUpvotingIds] = useState<Set<string>>(new Set());
 
   // Check if current user has upvoted specific posts
-  const checkUserUpvotes = async (posts: any[]) => {
+  const checkUserUpvotes = useCallback(async (posts: any[]) => {
     if (!user.primaryEmail || posts.length === 0) return;
 
     try {
       // Get all post IDs and make a single batch request
       const postIds = posts.map(post => post.id).join(',');
-      const response = await fetch(`/api/feature-request?batchCheckUpvotes=${postIds}&email=${encodeURIComponent(user.primaryEmail)}`);
+      const response = await fetch(`/api/feature-request?batchCheckUpvotes=${postIds}&email=${encodeURIComponent(user.primaryEmail || '')}`);
 
       if (response.ok) {
         const data = await response.json();
@@ -54,10 +54,10 @@ export function FeatureRequestBoard({ isActive }: FeatureRequestBoardProps) {
     } catch (error) {
       console.error('Error checking upvote status:', error);
     }
-  };
+  }, [user.primaryEmail]);
 
   // Fetch existing feature requests
-  const fetchFeatureRequests = async () => {
+  const fetchFeatureRequests = useCallback(async () => {
     setIsLoadingRequests(true);
     try {
       const response = await fetch('/api/feature-request');
@@ -76,7 +76,7 @@ export function FeatureRequestBoard({ isActive }: FeatureRequestBoardProps) {
     } finally {
       setIsLoadingRequests(false);
     }
-  };
+  }, [checkUserUpvotes]);
 
   // Load feature requests when component becomes active
   useEffect(() => {
@@ -87,7 +87,7 @@ export function FeatureRequestBoard({ isActive }: FeatureRequestBoardProps) {
         console.error('Failed to load feature requests:', error);
       });
     }
-  }, [isActive]);
+  }, [isActive, fetchFeatureRequests]);
 
   // Handle refresh button click
   const handleRefreshRequests = () => {
@@ -167,7 +167,7 @@ export function FeatureRequestBoard({ isActive }: FeatureRequestBoardProps) {
       }
     } catch (error) {
       console.error('Error upvoting feature request:', error);
-      // Revert optimistic updates on error
+      // Revert optimistic updates on failure
       setUserUpvotes(prev => {
         const newSet = new Set(prev);
         if (wasUpvoted) {
@@ -452,17 +452,6 @@ export function FeatureRequestBoard({ isActive }: FeatureRequestBoardProps) {
             <p className="text-xs text-muted-foreground mt-1">Be the first to submit one!</p>
           </div>
         )}
-
-        <div className="mt-4 text-center">
-          <a
-            href="/sso/featurebase"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="text-sm text-purple-600 hover:text-purple-800 dark:text-purple-400 dark:hover:text-purple-200 underline"
-          >
-            View Full Featurebase Board
-          </a>
-        </div>
       </div>
     </div>
   );

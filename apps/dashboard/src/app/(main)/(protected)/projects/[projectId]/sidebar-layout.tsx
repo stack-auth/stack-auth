@@ -460,14 +460,22 @@ function HeaderBreadcrumb({
 
 export default function SidebarLayout(props: { projectId: string, children?: React.ReactNode }) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [companionExpanded, setCompanionExpanded] = useState(false);
   const { resolvedTheme, setTheme } = useTheme();
 
   return (
     <div className="w-full flex">
+      {/* Left Sidebar */}
       <div className="flex-col border-r min-w-[240px] h-screen sticky top-0 hidden md:flex backdrop-blur-md bg-white/20 dark:bg-black/20 z-[10]">
         <SidebarContent projectId={props.projectId} />
       </div>
-      <div className="flex flex-col flex-grow w-0 pr-12">
+
+      {/* Main Content Area */}
+      <div className={cn(
+        "flex flex-col flex-grow w-0 transition-all duration-300 ease-in-out",
+        companionExpanded ? "pr-80" : "pr-12"
+      )}>
+        {/* Header */}
         <div className="h-14 border-b flex items-center justify-between sticky top-0 backdrop-blur-md bg-white/20 dark:bg-black/20 z-10 px-4 md:px-6">
           <div className="hidden md:flex">
             <HeaderBreadcrumb projectId={props.projectId} />
@@ -503,13 +511,17 @@ export default function SidebarLayout(props: { projectId: string, children?: Rea
             }
           </div>
         </div>
-        <div className="flex-grow overflow-auto">
+
+        {/* Content Body - Normal scrolling */}
+        <div className="flex-grow">
           {props.children}
         </div>
       </div>
 
-      {/* Stack Companion */}
-      <StackCompanion />
+      {/* Stack Companion - Fixed positioned */}
+      <div className="fixed right-0 top-0 h-screen z-20">
+        <StackCompanion onExpandedChange={setCompanionExpanded} />
+      </div>
     </div>
   );
 }

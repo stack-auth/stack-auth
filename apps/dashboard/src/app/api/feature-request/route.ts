@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-const FEATUREBASE_API_KEY = 'fb-a1e4acfa-7db3-428b-ab7f-1793b655e909';
+const FEATUREBASE_API_KEY = process.env.FEATUREBASE_API_KEY || '';
 
 export async function GET(request: NextRequest) {
   try {
@@ -27,6 +27,7 @@ export async function GET(request: NextRequest) {
 
           if (response.ok) {
             const data = await response.json();
+            // Check if the current user has upvoted this specific post
             const hasUpvoted = data.results?.some((upvoter: any) => upvoter.email === userEmail) || false;
             upvoteResults[postId] = hasUpvoted;
           } else {
@@ -58,7 +59,7 @@ export async function GET(request: NextRequest) {
 
       if (response.ok) {
         const data = await response.json();
-        // Only return whether THIS user has upvoted, don't expose other users' data
+        // Check if the current user has upvoted this specific post
         const hasUpvoted = data.results?.some((upvoter: any) => upvoter.email === userEmail) || false;
         return NextResponse.json({ hasUpvoted });
       } else {
