@@ -1,14 +1,14 @@
 import { Typography } from "@stackframe/stack-ui";
 
-type VibePreviewPanelProps = {
+type PreviewPanelProps = {
   children: React.ReactNode,
   title?: string,
 }
 
-export default function VibePreviewPanel({
+export default function PreviewPanel({
   children,
   title = "Preview"
-}: VibePreviewPanelProps) {
+}: PreviewPanelProps) {
   return (
     <>
       <div className="p-3 flex justify-between items-center">

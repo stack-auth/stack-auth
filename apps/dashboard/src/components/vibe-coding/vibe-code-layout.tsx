@@ -10,7 +10,7 @@ type VibeCodeEditorLayoutProps = {
   chatComponent: React.ReactNode,
 }
 
-export default function VibeCodeEditorLayout({
+export default function VibeCodeLayout({
   previewComponent,
   editorComponent,
   chatComponent

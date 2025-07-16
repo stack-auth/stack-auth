@@ -1,27 +1,53 @@
 import Editor, { Monaco } from '@monaco-editor/react';
-import { Spinner, Typography } from "@stackframe/stack-ui";
+import { runAsynchronously } from '@stackframe/stack-shared/dist/utils/promises';
+import { Spinner, Typography, toast } from "@stackframe/stack-ui";
+import { debounce } from 'lodash';
 import { useTheme } from 'next-themes';
+import { useMemo, useState } from 'react';
 
-type VibeCodeEditorProps = {
+type CodeEditorProps = {
   code: string,
   onCodeChange: (code: string) => void,
-  isLoading?: boolean,
+  onDebouncedCodeChange: (code: string) => Promise<void>,
   title?: string,
 }
 
-export default function VibeCodeEditor({
+export default function CodeEditor({
   code,
   onCodeChange,
-  isLoading = false,
+  onDebouncedCodeChange,
   title = "Code"
-}: VibeCodeEditorProps) {
+}: CodeEditorProps) {
   const { theme } = useTheme();
+  const [isLoading, setIsLoading] = useState(false);
+
+  const debouncedUpdate = useMemo(
+    () => debounce(
+      async (value: string) => {
+        setIsLoading(true);
+        try {
+          await onDebouncedCodeChange(value);
+        } catch (error) {
+          toast({
+            title: "Failed to render email",
+            description: "There was an error rendering email preview",
+            variant: "destructive",
+          });
+        } finally {
+          setIsLoading(false);
+        }
+      },
+      500,
+    ),
+    [onDebouncedCodeChange],
+  );
 
   const handleChange = (value?: string) => {
     if (!value) {
       return;
     }
     onCodeChange(value);
+    runAsynchronously(debouncedUpdate(value));
   };
 
   const handleBeforeMount = (monaco: Monaco) => {

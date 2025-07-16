@@ -8,17 +8,17 @@ import {
 } from "@assistant-ui/react";
 import { TooltipProvider } from "@stackframe/stack-ui";
 
-type VibeAssistantChatProps = {
+type AssistantChatProps = {
   chatAdapter: ChatModelAdapter,
   historyAdapter: ThreadHistoryAdapter,
   toolComponents?: AssistantToolUI[],
 }
 
-export default function VibeAssistantChat({
+export default function AssistantChat({
   chatAdapter,
   historyAdapter,
   toolComponents = []
-}: VibeAssistantChatProps) {
+}: AssistantChatProps) {
   const runtime = useLocalRuntime(
     chatAdapter,
     { adapters: { history: historyAdapter } }

@@ -6,17 +6,17 @@ import {
 import { StackAdminApp } from "@stackframe/stack";
 import { ChatContent } from "@stackframe/stack-shared/dist/interface/admin-interface";
 
-const isToolCall = (
-  content: { type: string }
-): content is Extract<ChatContent[number], { type: "tool-call" }> => {
+export type ToolCallContent = Extract<ChatContent[number], { type: "tool-call" }>;
+
+const isToolCall = (content: { type: string }): content is ToolCallContent => {
   return content.type === "tool-call";
 };
 
 export function createChatAdapter(
   adminApp: StackAdminApp,
-  themeId: string,
-  currentEmailTheme: string,
-  onToolCall: (toolCallContent: string) => void
+  threadId: string,
+  contextType: "email-theme" | "email-template",
+  onToolCall: (toolCall: ToolCallContent) => void
 ): ChatModelAdapter {
   return {
     async run({ messages, abortSignal }) {
@@ -40,11 +40,11 @@ export function createChatAdapter(
           });
         }
 
-        const response = await adminApp.sendEmailThemeChatMessage(themeId, currentEmailTheme, formattedMessages, abortSignal);
+        const response = await adminApp.sendChatMessage(threadId, contextType, formattedMessages, abortSignal);
         if (response.content.some(isToolCall)) {
-          const toolCallContent = response.content.find(isToolCall)?.args.content;
-          if (toolCallContent) {
-            onToolCall(toolCallContent);
+          const toolCall = response.content.find(isToolCall);
+          if (toolCall) {
+            onToolCall(toolCall);
           }
         }
         return {
@@ -66,11 +66,11 @@ export function createHistoryAdapter(
 ): ThreadHistoryAdapter {
   return {
     async load() {
-      const { messages } = await adminApp.listEmailThemeChatMessages(threadId);
+      const { messages } = await adminApp.listChatMessages(threadId);
       return { messages } as ExportedMessageRepository;
     },
     async append(message) {
-      await adminApp.saveEmailThemeChatMessage(threadId, message);
+      await adminApp.saveChatMessage(threadId, message);
     },
   };
 }
