@@ -1,4 +1,4 @@
-import { ChatContent } from "@stackframe/stack-shared/dist/interface/admin-interface";
+import { ChatContent, ChatMessage } from "@stackframe/stack-shared/dist/interface/admin-interface";
 import { EmailTemplateType } from "@stackframe/stack-shared/dist/interface/crud/email-templates";
 import { InternalSession } from "@stackframe/stack-shared/dist/sessions";
 import { Result } from "@stackframe/stack-shared/dist/utils/results";
@@ -80,8 +80,8 @@ export type StackAdminApp<HasTokenStore extends boolean = boolean, ProjectId ext
       messages: Array<{ role: string, content: any }>,
       abortSignal?: AbortSignal,
     ): Promise<{ content: ChatContent }>,
-    saveChatMessage(threadId: string, message: any): Promise<void>,
-    listChatMessages(threadId: string): Promise<{ messages: Array<any> }>,
+    saveChatMessage(threadId: string, message: ChatMessage): Promise<void>,
+    listChatMessages(threadId: string): Promise<{ messages: Array<ChatMessage> }>,
     updateNewEmailTemplate(id: string, tsxSource: string): Promise<{ renderedHtml: string }>,
   }
   & StackServerApp<HasTokenStore, ProjectId>
