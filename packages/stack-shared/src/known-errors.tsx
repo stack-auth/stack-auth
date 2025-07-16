@@ -1109,22 +1109,12 @@ const OAuthProviderNotFoundOrNotEnabled = createKnownErrorConstructor(
   () => [] as const,
 );
 
-const OAuthProviderTypeAlreadyUsedForSignIn = createKnownErrorConstructor(
+const OAuthProviderAccountIdAlreadyUsedForSignIn = createKnownErrorConstructor(
   KnownError,
-  "OAUTH_PROVIDER_TYPE_ALREADY_USED_FOR_SIGN_IN",
+  "OAUTH_PROVIDER_ACCOUNT_ID_ALREADY_USED_FOR_SIGN_IN",
   () => [
     400,
-    `A provider with the same type is already used for signing in.`,
-  ] as const,
-  () => [] as const,
-);
-
-const OAuthProviderAccountIdAlreadyUsedForConnectedAccounts = createKnownErrorConstructor(
-  KnownError,
-  "OAUTH_PROVIDER_ACCOUNT_ID_ALREADY_USED_FOR_CONNECTED_ACCOUNTS",
-  () => [
-    400,
-    `A provider with the same account ID is already connected for this user.`,
+    `A provider with the same account ID is already used for signing in.`,
   ] as const,
   () => [] as const,
 );
@@ -1495,8 +1485,7 @@ export const KnownErrors = {
   UserAlreadyConnectedToAnotherOAuthConnection,
   OuterOAuthTimeout,
   OAuthProviderNotFoundOrNotEnabled,
-  OAuthProviderTypeAlreadyUsedForSignIn,
-  OAuthProviderAccountIdAlreadyUsedForConnectedAccounts,
+  OAuthProviderAccountIdAlreadyUsedForSignIn,
   MultiFactorAuthenticationRequired,
   InvalidTotpCode,
   UserAuthenticationRequired,

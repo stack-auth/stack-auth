@@ -28,9 +28,8 @@ export type StackServerApp<HasTokenStore extends boolean = boolean, ProjectId ex
       email: string,
       allowSignIn: boolean,
       allowConnectedAccounts: boolean,
-    }): Promise<Result<{ id: string, type: string, userId: string, accountId: string, email: string, allowSignIn: boolean, allowConnectedAccounts: boolean }, 
-      | InstanceType<typeof KnownErrors.OAuthProviderTypeAlreadyUsedForSignIn>
-      | InstanceType<typeof KnownErrors.OAuthProviderAccountIdAlreadyUsedForConnectedAccounts>
+    }): Promise<Result<{ id: string, type: string, userId: string, accountId: string, email: string, allowSignIn: boolean, allowConnectedAccounts: boolean },
+      InstanceType<typeof KnownErrors.OAuthProviderAccountIdAlreadyUsedForSignIn>
     >>,
 
     // IF_PLATFORM react-like

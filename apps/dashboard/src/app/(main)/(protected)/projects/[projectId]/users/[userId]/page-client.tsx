@@ -946,13 +946,7 @@ function OAuthProviderDialog(props: OAuthProviderDialogProps) {
       const accountId = isEditMode && provider ? provider.accountId : values.accountId;
       const operation = isEditMode ? "updating" : "adding";
 
-      if (KnownErrors.OAuthProviderTypeAlreadyUsedForSignIn.isInstance(result.error)) {
-        toast({
-          title: "OAuth Provider Conflict",
-          description: `A ${providerType} provider is already used for signing in.`,
-          variant: "destructive",
-        });
-      } else if (KnownErrors.OAuthProviderAccountIdAlreadyUsedForConnectedAccounts.isInstance(result.error)) {
+      if (KnownErrors.OAuthProviderAccountIdAlreadyUsedForSignIn.isInstance(result.error)) {
         toast({
           title: "Account Already Connected",
           description: `A ${providerType} provider with account ID "${accountId}" already exists (possibly for a different user)`,
@@ -994,13 +988,7 @@ function OAuthProvidersSection({ user }: OAuthProvidersSectionProps) {
   const handleProviderUpdate = async (provider: ServerOAuthProvider, updates: { allowSignIn?: boolean, allowConnectedAccounts?: boolean }) => {
     const result = await provider.update(updates);
     if (result.status === "error") {
-      if (KnownErrors.OAuthProviderTypeAlreadyUsedForSignIn.isInstance(result.error)) {
-        toast({
-          title: "OAuth Provider Conflict",
-          description: `A ${provider.type} provider is already used for signing in for a different account.`,
-          variant: "destructive",
-        });
-      } else if (KnownErrors.OAuthProviderAccountIdAlreadyUsedForConnectedAccounts.isInstance(result.error)) {
+      if (KnownErrors.OAuthProviderAccountIdAlreadyUsedForSignIn.isInstance(result.error)) {
         toast({
           title: "Account Already Connected",
           description: `A ${provider.type} provider with account ID "${provider.accountId}" is already connected for this user.`,

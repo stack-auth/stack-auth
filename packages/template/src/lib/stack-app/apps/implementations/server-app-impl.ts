@@ -257,8 +257,7 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
       allowConnectedAccounts: crud.allow_connected_accounts,
 
       async update(data: { accountId?: string, email?: string, allowSignIn?: boolean, allowConnectedAccounts?: boolean }): Promise<Result<void,
-        | InstanceType<typeof KnownErrors.OAuthProviderTypeAlreadyUsedForSignIn>
-        | InstanceType<typeof KnownErrors.OAuthProviderAccountIdAlreadyUsedForConnectedAccounts>
+        InstanceType<typeof KnownErrors.OAuthProviderAccountIdAlreadyUsedForSignIn>
       >> {
         try {
           await app._interface.updateServerOAuthProvider(crud.user_id, crud.id, {
@@ -270,10 +269,7 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
           await app._serverOAuthProvidersCache.refresh([crud.user_id]);
           return Result.ok(undefined);
         } catch (error) {
-          if (KnownErrors.OAuthProviderTypeAlreadyUsedForSignIn.isInstance(error)) {
-            return Result.error(error);
-          }
-          if (KnownErrors.OAuthProviderAccountIdAlreadyUsedForConnectedAccounts.isInstance(error)) {
+          if (KnownErrors.OAuthProviderAccountIdAlreadyUsedForSignIn.isInstance(error)) {
             return Result.error(error);
           }
           throw error;
@@ -829,8 +825,7 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
     allowSignIn: boolean,
     allowConnectedAccounts: boolean,
   }): Promise<Result<{ id: string, type: string, userId: string, accountId: string, email: string, allowSignIn: boolean, allowConnectedAccounts: boolean },
-    | InstanceType<typeof KnownErrors.OAuthProviderTypeAlreadyUsedForSignIn>
-    | InstanceType<typeof KnownErrors.OAuthProviderAccountIdAlreadyUsedForConnectedAccounts>
+    | InstanceType<typeof KnownErrors.OAuthProviderAccountIdAlreadyUsedForSignIn>
   >> {
     try {
       const crud = await this._interface.createOAuthProvider({
@@ -845,10 +840,7 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
       await this._serverOAuthProvidersCache.refresh([options.userId]);
       return Result.ok(this._serverOAuthProviderFromCrud(crud));
     } catch (error) {
-      if (KnownErrors.OAuthProviderTypeAlreadyUsedForSignIn.isInstance(error)) {
-        return Result.error(error);
-      }
-      if (KnownErrors.OAuthProviderAccountIdAlreadyUsedForConnectedAccounts.isInstance(error)) {
+      if (KnownErrors.OAuthProviderAccountIdAlreadyUsedForSignIn.isInstance(error)) {
         return Result.error(error);
       }
       throw error;

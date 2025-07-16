@@ -26,8 +26,7 @@ export type OAuthProvider = {
   readonly allowSignIn: boolean,
   readonly allowConnectedAccounts: boolean,
   update(data: { allowSignIn?: boolean, allowConnectedAccounts?: boolean }): Promise<Result<void,
-    | InstanceType<typeof KnownErrors.OAuthProviderTypeAlreadyUsedForSignIn>
-    | InstanceType<typeof KnownErrors.OAuthProviderAccountIdAlreadyUsedForConnectedAccounts>
+    InstanceType<typeof KnownErrors.OAuthProviderAccountIdAlreadyUsedForSignIn>
   >>,
   delete(): Promise<void>,
 };
@@ -41,8 +40,7 @@ export type ServerOAuthProvider = {
   readonly allowSignIn: boolean,
   readonly allowConnectedAccounts: boolean,
   update(data: { accountId?: string, email?: string, allowSignIn?: boolean, allowConnectedAccounts?: boolean }): Promise<Result<void,
-    | InstanceType<typeof KnownErrors.OAuthProviderTypeAlreadyUsedForSignIn>
-    | InstanceType<typeof KnownErrors.OAuthProviderAccountIdAlreadyUsedForConnectedAccounts>
+    InstanceType<typeof KnownErrors.OAuthProviderAccountIdAlreadyUsedForSignIn>
   >>,
   delete(): Promise<void>,
 };

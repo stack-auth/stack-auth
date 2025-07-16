@@ -840,15 +840,8 @@ it("should prevent multiple providers of the same type from being enabled for si
   expect(createResponse2).toMatchInlineSnapshot(`
     NiceResponse {
       "status": 400,
-      "body": {
-        "code": "OAUTH_PROVIDER_TYPE_ALREADY_USED_FOR_SIGN_IN",
-        "details": { "provider_type": "github" },
-        "error": "A provider of type \\"github\\" is already used for signing in for a different account.",
-      },
-      "headers": Headers {
-        "x-stack-known-error": "OAUTH_PROVIDER_TYPE_ALREADY_USED_FOR_SIGN_IN",
-        <some fields may have been hidden>,
-      },
+      "body": "The same provider type with sign-in enabled already exists for this user.",
+      "headers": Headers { <some fields may have been hidden> },
     }
   `);
 
@@ -858,7 +851,7 @@ it("should prevent multiple providers of the same type from being enabled for si
     accessType: "server",
     body: {
       user_id: "me",
-      provider_id: providerConfig.id,
+      provider_config_id: providerConfig.id,
       account_id: "github_user_789",
       email: "user456@example.com",
       allow_sign_in: false,
@@ -874,7 +867,7 @@ it("should prevent multiple providers of the same type from being enabled for si
         "allow_connected_accounts": true,
         "allow_sign_in": false,
         "email": "user456@example.com",
-        "id": "github",
+        "id": "<stripped UUID>",
         "type": "github",
         "user_id": "<stripped UUID>",
       },
@@ -894,15 +887,8 @@ it("should prevent multiple providers of the same type from being enabled for si
   expect(updateResponse).toMatchInlineSnapshot(`
     NiceResponse {
       "status": 400,
-      "body": {
-        "code": "OAUTH_PROVIDER_TYPE_ALREADY_USED_FOR_SIGN_IN",
-        "details": { "provider_type": "github" },
-        "error": "A provider of type \\"github\\" is already used for signing in for a different account.",
-      },
-      "headers": Headers {
-        "x-stack-known-error": "OAUTH_PROVIDER_TYPE_ALREADY_USED_FOR_SIGN_IN",
-        <some fields may have been hidden>,
-      },
+      "body": "The same provider type with sign-in enabled already exists for this user.",
+      "headers": Headers { <some fields may have been hidden> },
     }
   `);
 
@@ -915,6 +901,7 @@ it("should prevent multiple providers of the same type from being enabled for si
     },
   });
 
+  console.log(disableResponse);
   expect(disableResponse.status).toBe(200);
   expect(disableResponse.body.allow_sign_in).toBe(false);
 

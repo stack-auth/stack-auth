@@ -46,7 +46,7 @@ async function checkInputValidity(options: {
     providerConfigId = options.providerConfigId;
   }
 
-  const providersWithTheSameAccountId = (await prismaClient.projectUserOAuthAccount.findMany({
+  const providersWithTheSameAccountIdAndAllowSignIn = (await prismaClient.projectUserOAuthAccount.findMany({
     where: {
       tenancyId: options.tenancy.id,
       providerAccountId: options.accountId,
@@ -61,12 +61,25 @@ async function checkInputValidity(options: {
     },
   })).filter(p => p.id !== (options.type === 'update' ? options.providerId : undefined));
 
-  if (options.allowSignIn && providersWithTheSameAccountId.length > 0) {
-    throw new KnownErrors.OAuthProviderTypeAlreadyUsedForSignIn();
+  const providersWithTheSameTypeAndUserAndAccountId = (await prismaClient.projectUserOAuthAccount.findMany({
+    where: {
+      tenancyId: options.tenancy.id,
+      configOAuthProviderId: providerConfigId,
+      projectUserId: options.userId,
+      providerAccountId: options.accountId,
+    },
+  })).filter(p => p.id !== (options.type === 'update' ? options.providerId : undefined));
+
+  if (options.allowSignIn && providersWithTheSameTypeAndSameUser.length > 0) {
+    throw new StatusError(StatusError.BadRequest, `The same provider type with sign-in enabled already exists for this user.`);
   }
 
-  if (options.allowConnectedAccounts && providersWithTheSameTypeAndSameUser.length > 0) {
-    throw new KnownErrors.OAuthProviderAccountIdAlreadyUsedForConnectedAccounts();
+  if (providersWithTheSameTypeAndUserAndAccountId.length > 0) {
+    throw new StatusError(StatusError.BadRequest, `The same provider type with the same account ID already exists for this user.`);
+  }
+
+  if (options.allowSignIn && providersWithTheSameAccountIdAndAllowSignIn.length > 0) {
+    throw new KnownErrors.OAuthProviderAccountIdAlreadyUsedForSignIn();
   }
 }
 
