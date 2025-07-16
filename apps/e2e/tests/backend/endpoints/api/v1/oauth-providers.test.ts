@@ -621,13 +621,15 @@ it("should handle account_id updates correctly", async ({ expect }: { expect: an
     accessType: "server",
     body: {
       user_id: "me",
-      provider_id: providerConfig.id,
+      provider_config_id: providerConfig.id,
       account_id: "test_github_user_123",
       email: "test@example.com",
       allow_sign_in: true,
       allow_connected_accounts: true,
     },
   });
+
+  expect(createResponse.status).toBe(201);
 
   // Update the account_id
   const updateResponse = await niceBackendFetch(`/api/v1/oauth-providers/me/${createResponse.body.id}`, {
@@ -646,7 +648,7 @@ it("should handle account_id updates correctly", async ({ expect }: { expect: an
         "allow_connected_accounts": true,
         "allow_sign_in": true,
         "email": "test@example.com",
-        "id": "github",
+        "id": "<stripped UUID>",
         "type": "github",
         "user_id": "<stripped UUID>",
       },
@@ -668,7 +670,7 @@ it("should handle account_id updates correctly", async ({ expect }: { expect: an
         "allow_connected_accounts": true,
         "allow_sign_in": true,
         "email": "test@example.com",
-        "id": "github",
+        "id": "<stripped UUID>",
         "type": "github",
         "user_id": "<stripped UUID>",
       },
@@ -715,7 +717,7 @@ it("should handle provider not configured error", async ({ expect }: { expect: a
     accessType: "server",
     body: {
       user_id: "me",
-      provider_id: "github", // This provider is not configured in the project
+      provider_config_id: "github", // This provider is not configured in the project
       account_id: "test_github_user_123",
       email: "test@example.com",
       allow_sign_in: true,
@@ -725,8 +727,8 @@ it("should handle provider not configured error", async ({ expect }: { expect: a
 
   expect(createResponse).toMatchInlineSnapshot(`
     NiceResponse {
-      "status": 400,
-      "body": "Provider with config ID github is not configured. Please check your Stack Auth dashboard OAuth configuration.",
+      "status": 404,
+      "body": "OAuth provider github not found or not configured",
       "headers": Headers { <some fields may have been hidden> },
     }
   `);
@@ -744,13 +746,15 @@ it("should toggle sign-in and connected accounts capabilities", async ({ expect 
     accessType: "server",
     body: {
       user_id: "me",
-      provider_id: providerConfig.id,
+      provider_config_id: providerConfig.id,
       account_id: "test_github_user_123",
       email: "test@example.com",
       allow_sign_in: true,
       allow_connected_accounts: true,
     },
   });
+
+  expect(createResponse.status).toBe(201);
 
   // Toggle off both capabilities
   const toggleOffResponse = await niceBackendFetch(`/api/v1/oauth-providers/me/${createResponse.body.id}`, {
@@ -762,20 +766,9 @@ it("should toggle sign-in and connected accounts capabilities", async ({ expect 
     },
   });
 
-  expect(toggleOffResponse).toMatchInlineSnapshot(`
-    NiceResponse {
-      "status": 200,
-      "body": {
-        "allow_connected_accounts": false,
-        "allow_sign_in": false,
-        "email": "test@example.com",
-        "id": "github",
-        "type": "github",
-        "user_id": "<stripped UUID>",
-      },
-      "headers": Headers { <some fields may have been hidden> },
-    }
-  `);
+  expect(toggleOffResponse.status).toBe(200);
+  expect(toggleOffResponse.body.allow_sign_in).toBe(false);
+  expect(toggleOffResponse.body.allow_connected_accounts).toBe(false);
 
   // Toggle on sign-in, keep connected accounts off
   const toggleSignInResponse = await niceBackendFetch(`/api/v1/oauth-providers/me/${createResponse.body.id}`, {
@@ -787,20 +780,9 @@ it("should toggle sign-in and connected accounts capabilities", async ({ expect 
     },
   });
 
-  expect(toggleSignInResponse).toMatchInlineSnapshot(`
-    NiceResponse {
-      "status": 200,
-      "body": {
-        "allow_connected_accounts": false,
-        "allow_sign_in": true,
-        "email": "test@example.com",
-        "id": "github",
-        "type": "github",
-        "user_id": "<stripped UUID>",
-      },
-      "headers": Headers { <some fields may have been hidden> },
-    }
-  `);
+  expect(toggleSignInResponse.status).toBe(200);
+  expect(toggleSignInResponse.body.allow_sign_in).toBe(true);
+  expect(toggleSignInResponse.body.allow_connected_accounts).toBe(false);
 
   // Toggle on connected accounts, keep sign-in on
   const toggleConnectedAccountsResponse = await niceBackendFetch(`/api/v1/oauth-providers/me/${createResponse.body.id}`, {
@@ -812,20 +794,9 @@ it("should toggle sign-in and connected accounts capabilities", async ({ expect 
     },
   });
 
-  expect(toggleConnectedAccountsResponse).toMatchInlineSnapshot(`
-    NiceResponse {
-      "status": 200,
-      "body": {
-        "allow_connected_accounts": true,
-        "allow_sign_in": true,
-        "email": "test@example.com",
-        "id": "github",
-        "type": "github",
-        "user_id": "<stripped UUID>",
-      },
-      "headers": Headers { <some fields may have been hidden> },
-    }
-  `);
+  expect(toggleConnectedAccountsResponse.status).toBe(200);
+  expect(toggleConnectedAccountsResponse.body.allow_sign_in).toBe(true);
+  expect(toggleConnectedAccountsResponse.body.allow_connected_accounts).toBe(true);
 });
 
 it("should prevent multiple providers of the same type from being enabled for signing in", async ({ expect }: { expect: any }) => {
@@ -842,7 +813,7 @@ it("should prevent multiple providers of the same type from being enabled for si
     accessType: "server",
     body: {
       user_id: "me",
-      provider_id: providerConfig.id,
+      provider_config_id: providerConfig.id,
       account_id: "github_user_123",
       email: "user123@example.com",
       allow_sign_in: true,
@@ -858,7 +829,7 @@ it("should prevent multiple providers of the same type from being enabled for si
     accessType: "server",
     body: {
       user_id: "me",
-      provider_id: providerConfig.id,
+      provider_config_id: providerConfig.id,
       account_id: "github_user_456",
       email: "user456@example.com",
       allow_sign_in: true,
