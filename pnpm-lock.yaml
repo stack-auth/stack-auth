@@ -213,6 +213,9 @@ importers:
       openid-client:
         specifier: 5.6.4
         version: 5.6.4(patch_hash=2gg7ly76yaettle5dlvkpcfpny)
+      pg:
+        specifier: ^8.16.3
+        version: 8.16.3
       posthog-node:
         specifier: ^4.1.0
         version: 4.1.0

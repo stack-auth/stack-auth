@@ -69,6 +69,7 @@
     "next": "15.2.3",
     "nodemailer": "^6.9.10",
     "oidc-provider": "^8.5.1",
+    "pg": "^8.16.3",
     "openid-client": "5.6.4",
     "posthog-node": "^4.1.0",
     "react": "19.0.0",
