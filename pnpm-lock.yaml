@@ -565,6 +565,9 @@ importers:
       '@stackframe/stack':
         specifier: workspace:^
         version: link:../packages/stack
+      '@stackframe/stack-shared':
+        specifier: workspace:^
+        version: link:../packages/stack-shared
       '@xyflow/react':
         specifier: ^12.6.4
         version: 12.7.0(@types/react@18.3.12)(immer@9.0.21)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)

@@ -207,7 +207,7 @@ async function createNewThread(
   
   try {
     // Clean, readable format
-    const initialMessage = `💬 **${message}**
+    const initialMessage = `💬 ${message}
 
 \`${context.sessionPrefix}\` ${context.messageType} • ${context.page} • Page time: ${context.timeOnPage}${context.browserInfo ? ` • ${context.browserInfo}` : ''}`;
 
