@@ -33,7 +33,11 @@ export class MockProvider extends OAuthBaseProvider {
   }
 
   async checkAccessTokenValidity(accessToken: string): Promise<boolean> {
-    const response = await this.oauthClient.userinfo(accessToken);
-    return response.error === undefined;
+    try {
+      const response = await this.oauthClient.userinfo(accessToken);
+      return !!response.sub;
+    } catch (error) {
+      return false;
+    }
   }
 }
