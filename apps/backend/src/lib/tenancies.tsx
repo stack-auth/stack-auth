@@ -1,4 +1,4 @@
-import { prismaClient, rawQuery } from "@/prisma-client";
+import { globalPrismaClient, rawQuery } from "@/prisma-client";
 import { Prisma } from "@prisma/client";
 import { ProjectsCrud } from "@stackframe/stack-shared/dist/interface/crud/projects";
 import { StackAssertionError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
@@ -26,7 +26,7 @@ export async function tenancyPrismaToCrud(prisma: Prisma.TenancyGetPayload<{}>) 
 
   const projectCrud = await getProject(prisma.projectId) ?? throwErr("Project in tenancy not found");
 
-  const completeConfig = await rawQuery(prismaClient, getRenderedOrganizationConfigQuery({
+  const completeConfig = await rawQuery(globalPrismaClient, getRenderedOrganizationConfigQuery({
     projectId: projectCrud.id,
     branchId: prisma.branchId,
     organizationId: prisma.organizationId,
@@ -72,7 +72,7 @@ export async function getTenancy(tenancyId: string) {
   if (tenancyId === "internal") {
     throw new StackAssertionError("Tried to get tenancy with ID `internal`. This is a mistake because `internal` is only a valid identifier for projects.");
   }
-  const prisma = await prismaClient.tenancy.findUnique({
+  const prisma = await globalPrismaClient.tenancy.findUnique({
     where: { id: tenancyId },
   });
   if (!prisma) return null;
@@ -83,7 +83,7 @@ export async function getTenancy(tenancyId: string) {
  * @deprecated Not actually deprecated but if you're using this you're probably doing something wrong — ask Konsti for help
  */
 export async function getTenancyFromProject(projectId: string, branchId: string, organizationId: string | null) {
-  const prisma = await prismaClient.tenancy.findUnique({
+  const prisma = await globalPrismaClient.tenancy.findUnique({
     where: {
       ...(organizationId === null ? {
         projectId_branchId_hasNoOrganization: {

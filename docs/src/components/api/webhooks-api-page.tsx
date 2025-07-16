@@ -290,9 +290,9 @@ function ModernWebhookDisplay({
   const getPayloadExample = useCallback(() => {
     if (webhook.requestBody?.content['application/json']?.schema) {
       const jsonContent = webhook.requestBody.content['application/json'];
-      console.log('Webhook schema:', JSON.stringify(jsonContent.schema, null, 2));
+      // console.log('Webhook schema:', JSON.stringify(jsonContent.schema, null, 2));
       const examplePayload = generateExampleFromSchema(jsonContent.schema, spec);
-      console.log('Generated payload:', JSON.stringify(examplePayload, null, 2));
+      // console.log('Generated payload:', JSON.stringify(examplePayload, null, 2));
       return JSON.stringify(examplePayload, null, 2);
     }
 
@@ -309,13 +309,13 @@ function ModernWebhookDisplay({
     return `// Express.js webhook handler example
 app.post('/webhook', (req, res) => {
   const { type, data } = req.body;
-  
+
   if (type === '${name}') {
     console.log('Received ${webhook.summary || name}:', data);
-    
+
     // Process the webhook event
     // Add your business logic here
-    
+
     res.status(200).json({ success: true });
   } else {
     res.status(400).json({ error: 'Unknown event type' });
@@ -332,13 +332,13 @@ def handle_webhook():
     data = request.get_json()
     event_type = data.get('type')
     event_data = data.get('data')
-    
+
     if event_type == '${name}':
         print(f'Received ${webhook.summary || name}: {event_data}')
-        
+
         # Process the webhook event
         # Add your business logic here
-        
+
         return jsonify({'success': True}), 200
     else:
         return jsonify({'error': 'Unknown event type'}), 400`;

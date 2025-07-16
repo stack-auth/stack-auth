@@ -414,14 +414,35 @@ function formatTime(seconds: number): string {
   return `${Math.floor(seconds / 3600)}h`;
 }
 
+/**
+ * Extract browser and OS info from user agent
+ */
 function extractBrowserInfo(userAgent: string): string | undefined {
   if (!userAgent) return undefined;
-  
-  // Simple browser detection - return just the name
-  if (/Chrome\/[\d.]+/.test(userAgent)) return 'Chrome';
-  if (/Firefox\/[\d.]+/.test(userAgent)) return 'Firefox';
-  if (/Safari\/[\d.]+/.test(userAgent) && !userAgent.includes('Chrome')) return 'Safari';
-  if (/Edg\/[\d.]+/.test(userAgent)) return 'Edge';
-  
-  return undefined;
-} 
+
+  // Browser detection patterns (order matters - Chrome must come before Safari)
+  const browserPatterns = [
+    { pattern: 'Edge/', name: 'Edge' },
+    { pattern: 'Chrome/', name: 'Chrome' },
+    { pattern: 'Firefox/', name: 'Firefox' },
+    { pattern: 'Safari/', name: 'Safari' },
+  ];
+
+  // OS detection patterns
+  const osPatterns = [
+    { pattern: 'Windows NT', name: 'Windows' },
+    { pattern: 'Mac OS X', name: 'macOS' },
+    { pattern: 'iPhone', name: 'iOS' },
+    { pattern: 'iPad', name: 'iOS' },
+    { pattern: 'Android', name: 'Android' },
+    { pattern: 'Linux', name: 'Linux' },
+  ];
+
+  // Find browser
+  const browser = browserPatterns.find(({ pattern }) => userAgent.includes(pattern))?.name || 'Unknown';
+
+  // Find OS
+  const os = osPatterns.find(({ pattern }) => userAgent.includes(pattern))?.name || 'Unknown';
+
+  return `${browser} on ${os}`;
+}

@@ -1,0 +1,150 @@
+name: Runs E2E API Tests with external source of truth
+
+on:
+  push:
+    branches:
+      - main
+      - dev
+  pull_request:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' && github.ref != 'refs/heads/dev' }}
+
+jobs:
+  build:
+    runs-on: ubicloud-standard-8
+    env:
+      NODE_ENV: test
+      STACK_ENABLE_HARDCODED_PASSKEY_CHALLENGE_FOR_TESTING: yes
+      STACK_OVERRIDE_SOURCE_OF_TRUTH: '{"type": "postgres", "connectionString": "postgres://postgres:PASSWORD-PLACEHOLDER--uqfEC1hmmv@localhost:5432/stackframe2"}'
+      STACK_TEST_SOURCE_OF_TRUTH: true
+
+    strategy:
+      matrix:
+        node-version: [22.x]
+
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Setup Node.js ${{ matrix.node-version }}
+        uses: actions/setup-node@v3
+        with:
+          node-version: ${{ matrix.node-version }}
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v3
+        with:
+            version: 9.1.2
+
+      # Even just starting the Docker Compose as a daemon is slow because we have to download and build the images
+      # so, we run it in the background
+      - name: Start Docker Compose in background
+        uses: JarvusInnovations/background-action@v1.0.7
+        with:
+          run: docker compose -f docker/dependencies/docker.compose.yaml up -d &
+          # we don't need to wait on anything, just need to start the daemon
+          wait-on: /dev/null
+          tail: true
+          wait-for: 3s
+          log-output-if: true
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Create .env.test.local file for apps/backend
+        run: cp apps/backend/.env.development apps/backend/.env.test.local
+
+      - name: Create .env.test.local file for apps/dashboard
+        run: cp apps/dashboard/.env.development apps/dashboard/.env.test.local
+      
+      - name: Create .env.test.local file for apps/e2e
+        run: cp apps/e2e/.env.development apps/e2e/.env.test.local
+
+      - name: Create .env.test.local file for docs
+        run: cp docs/.env.development docs/.env.test.local
+
+      - name: Create .env.test.local file for examples/cjs-test
+        run: cp examples/cjs-test/.env.development examples/cjs-test/.env.test.local
+      
+      - name: Create .env.test.local file for examples/demo
+        run: cp examples/demo/.env.development examples/demo/.env.test.local
+
+      - name: Create .env.test.local file for examples/docs-examples
+        run: cp examples/docs-examples/.env.development examples/docs-examples/.env.test.local
+
+      - name: Create .env.test.local file for examples/e-commerce
+        run: cp examples/e-commerce/.env.development examples/e-commerce/.env.test.local
+
+      - name: Create .env.test.local file for examples/middleware
+        run: cp examples/middleware/.env.development examples/middleware/.env.test.local
+
+      - name: Create .env.test.local file for examples/partial-prerendering
+        run: cp examples/partial-prerendering/.env.development examples/partial-prerendering/.env.test.local
+
+      - name: Create .env.test.local file for examples/supabase
+        run: cp examples/supabase/.env.development examples/supabase/.env.test.local
+
+      - name: Build
+        run: pnpm build
+
+      - name: Wait on Postgres
+        run: pnpm run wait-until-postgres-is-ready:pg_isready
+
+      - name: Wait on Inbucket
+        run: npx wait-on tcp:localhost:2500
+
+      - name: Wait on Svix
+        run: npx wait-on tcp:localhost:8113
+
+      - name: Initialize source of truth database
+        run: "STACK_DIRECT_DATABASE_CONNECTION_STRING='postgres://postgres:PASSWORD-PLACEHOLDER--uqfEC1hmmv@localhost:5432/stackframe2' pnpm run prisma -- migrate reset --force --skip-seed"
+
+      - name: Initialize database
+        run: pnpm run prisma -- migrate reset --force
+      - name: Start stack-backend in background
+        uses: JarvusInnovations/background-action@v1.0.7
+        with:
+          run: pnpm run start:backend --log-order=stream &
+          wait-on: |
+            http://localhost:8102
+          tail: true
+          wait-for: 30s
+          log-output-if: true
+      - name: Start stack-dashboard in background
+        uses: JarvusInnovations/background-action@v1.0.7
+        with:
+          run: pnpm run start:dashboard --log-order=stream &
+          wait-on: |
+            http://localhost:8102
+          tail: true
+          wait-for: 30s
+          log-output-if: true
+      - name: Start mock-oauth-server in background
+        uses: JarvusInnovations/background-action@v1.0.7
+        with:
+          run: pnpm run start:mock-oauth-server --log-order=stream &
+          wait-on: |
+            http://localhost:8102
+          tail: true
+          wait-for: 30s
+          log-output-if: true
+
+      - name: Wait 10 seconds
+        run: sleep 10
+
+      - name: Run tests
+        run: pnpm test
+
+      - name: Run tests again, to make sure they are stable (attempt 1)
+        run: pnpm test
+
+      - name: Run tests again, to make sure they are stable (attempt 2)
+        run: pnpm test
+
+      - name: Verify data integrity
+        run: pnpm run verify-data-integrity
+
+      - name: Print Docker Compose logs
+        if: always()
+        run: docker compose -f docker/dependencies/docker.compose.yaml logs

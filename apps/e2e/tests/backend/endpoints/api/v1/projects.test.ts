@@ -83,7 +83,7 @@ it("creates and updates the basic project information of a project", async ({ ex
           "credential_enabled": true,
           "domains": [],
           "email_config": { "type": "shared" },
-          "email_theme": "default-light",
+          "email_theme": "<stripped UUID>",
           "enabled_oauth_providers": [],
           "magic_link_enabled": false,
           "oauth_account_merge_strategy": "link_method",
@@ -99,7 +99,6 @@ it("creates and updates the basic project information of a project", async ({ ex
         "display_name": "Updated Project",
         "id": "<stripped UUID>",
         "is_production_mode": true,
-        "user_count": 0,
       },
       "headers": Headers { <some fields may have been hidden> },
     }
@@ -131,7 +130,7 @@ it("updates the basic project configuration", async ({ expect }) => {
           "credential_enabled": false,
           "domains": [],
           "email_config": { "type": "shared" },
-          "email_theme": "default-light",
+          "email_theme": "<stripped UUID>",
           "enabled_oauth_providers": [],
           "magic_link_enabled": true,
           "oauth_account_merge_strategy": "link_method",
@@ -147,7 +146,6 @@ it("updates the basic project configuration", async ({ expect }) => {
         "display_name": "New Project",
         "id": "<stripped UUID>",
         "is_production_mode": false,
-        "user_count": 0,
       },
       "headers": Headers { <some fields may have been hidden> },
     }
@@ -184,7 +182,7 @@ it("updates the project domains configuration", async ({ expect }) => {
             },
           ],
           "email_config": { "type": "shared" },
-          "email_theme": "default-light",
+          "email_theme": "<stripped UUID>",
           "enabled_oauth_providers": [],
           "magic_link_enabled": false,
           "oauth_account_merge_strategy": "link_method",
@@ -200,7 +198,6 @@ it("updates the project domains configuration", async ({ expect }) => {
         "display_name": "New Project",
         "id": "<stripped UUID>",
         "is_production_mode": false,
-        "user_count": 0,
       },
       "headers": Headers { <some fields may have been hidden> },
     }
@@ -243,7 +240,7 @@ it("updates the project domains configuration", async ({ expect }) => {
             },
           ],
           "email_config": { "type": "shared" },
-          "email_theme": "default-light",
+          "email_theme": "<stripped UUID>",
           "enabled_oauth_providers": [],
           "magic_link_enabled": false,
           "oauth_account_merge_strategy": "link_method",
@@ -259,7 +256,6 @@ it("updates the project domains configuration", async ({ expect }) => {
         "display_name": "New Project",
         "id": "<stripped UUID>",
         "is_production_mode": false,
-        "user_count": 0,
       },
       "headers": Headers { <some fields may have been hidden> },
     }
@@ -296,7 +292,7 @@ it("should allow insecure HTTP connections if insecureHttp is true", async ({ ex
             },
           ],
           "email_config": { "type": "shared" },
-          "email_theme": "default-light",
+          "email_theme": "<stripped UUID>",
           "enabled_oauth_providers": [],
           "magic_link_enabled": false,
           "oauth_account_merge_strategy": "link_method",
@@ -312,7 +308,6 @@ it("should allow insecure HTTP connections if insecureHttp is true", async ({ ex
         "display_name": "New Project",
         "id": "<stripped UUID>",
         "is_production_mode": false,
-        "user_count": 0,
       },
       "headers": Headers { <some fields may have been hidden> },
     }
@@ -392,7 +387,7 @@ it("updates the project email configuration", async ({ expect }) => {
             "type": "standard",
             "username": "test username",
           },
-          "email_theme": "default-light",
+          "email_theme": "<stripped UUID>",
           "enabled_oauth_providers": [],
           "magic_link_enabled": false,
           "oauth_account_merge_strategy": "link_method",
@@ -408,7 +403,6 @@ it("updates the project email configuration", async ({ expect }) => {
         "display_name": "New Project",
         "id": "<stripped UUID>",
         "is_production_mode": false,
-        "user_count": 0,
       },
       "headers": Headers { <some fields may have been hidden> },
     }
@@ -450,7 +444,7 @@ it("updates the project email configuration", async ({ expect }) => {
             "type": "standard",
             "username": "test username2",
           },
-          "email_theme": "default-light",
+          "email_theme": "<stripped UUID>",
           "enabled_oauth_providers": [],
           "magic_link_enabled": false,
           "oauth_account_merge_strategy": "link_method",
@@ -466,7 +460,6 @@ it("updates the project email configuration", async ({ expect }) => {
         "display_name": "New Project",
         "id": "<stripped UUID>",
         "is_production_mode": false,
-        "user_count": 0,
       },
       "headers": Headers { <some fields may have been hidden> },
     }
@@ -494,7 +487,7 @@ it("updates the project email configuration", async ({ expect }) => {
           "credential_enabled": true,
           "domains": [],
           "email_config": { "type": "shared" },
-          "email_theme": "default-light",
+          "email_theme": "<stripped UUID>",
           "enabled_oauth_providers": [],
           "magic_link_enabled": false,
           "oauth_account_merge_strategy": "link_method",
@@ -510,7 +503,6 @@ it("updates the project email configuration", async ({ expect }) => {
         "display_name": "New Project",
         "id": "<stripped UUID>",
         "is_production_mode": false,
-        "user_count": 0,
       },
       "headers": Headers { <some fields may have been hidden> },
     }
@@ -538,7 +530,7 @@ it("updates the project email configuration", async ({ expect }) => {
           "credential_enabled": true,
           "domains": [],
           "email_config": { "type": "shared" },
-          "email_theme": "default-light",
+          "email_theme": "<stripped UUID>",
           "enabled_oauth_providers": [],
           "magic_link_enabled": false,
           "oauth_account_merge_strategy": "link_method",
@@ -554,7 +546,6 @@ it("updates the project email configuration", async ({ expect }) => {
         "display_name": "New Project",
         "id": "<stripped UUID>",
         "is_production_mode": false,
-        "user_count": 0,
       },
       "headers": Headers { <some fields may have been hidden> },
     }
@@ -596,7 +587,7 @@ it("updates the project email configuration", async ({ expect }) => {
             "type": "standard",
             "username": "control group",
           },
-          "email_theme": "default-light",
+          "email_theme": "<stripped UUID>",
           "enabled_oauth_providers": [],
           "magic_link_enabled": false,
           "oauth_account_merge_strategy": "link_method",
@@ -612,7 +603,6 @@ it("updates the project email configuration", async ({ expect }) => {
         "display_name": "New Project",
         "id": "<stripped UUID>",
         "is_production_mode": false,
-        "user_count": 0,
       },
       "headers": Headers { <some fields may have been hidden> },
     }
@@ -761,7 +751,7 @@ it("updates the project oauth configuration", async ({ expect }) => {
           "credential_enabled": true,
           "domains": [],
           "email_config": { "type": "shared" },
-          "email_theme": "default-light",
+          "email_theme": "<stripped UUID>",
           "enabled_oauth_providers": [{ "id": "google" }],
           "magic_link_enabled": false,
           "oauth_account_merge_strategy": "link_method",
@@ -782,7 +772,6 @@ it("updates the project oauth configuration", async ({ expect }) => {
         "display_name": "New Project",
         "id": "<stripped UUID>",
         "is_production_mode": false,
-        "user_count": 0,
       },
       "headers": Headers { <some fields may have been hidden> },
     }
@@ -811,7 +800,7 @@ it("updates the project oauth configuration", async ({ expect }) => {
           "credential_enabled": true,
           "domains": [],
           "email_config": { "type": "shared" },
-          "email_theme": "default-light",
+          "email_theme": "<stripped UUID>",
           "enabled_oauth_providers": [{ "id": "google" }],
           "magic_link_enabled": false,
           "oauth_account_merge_strategy": "link_method",
@@ -832,7 +821,6 @@ it("updates the project oauth configuration", async ({ expect }) => {
         "display_name": "New Project",
         "id": "<stripped UUID>",
         "is_production_mode": false,
-        "user_count": 0,
       },
       "headers": Headers { <some fields may have been hidden> },
     }
@@ -863,7 +851,7 @@ it("updates the project oauth configuration", async ({ expect }) => {
           "credential_enabled": true,
           "domains": [],
           "email_config": { "type": "shared" },
-          "email_theme": "default-light",
+          "email_theme": "<stripped UUID>",
           "enabled_oauth_providers": [{ "id": "google" }],
           "magic_link_enabled": false,
           "oauth_account_merge_strategy": "link_method",
@@ -886,7 +874,6 @@ it("updates the project oauth configuration", async ({ expect }) => {
         "display_name": "New Project",
         "id": "<stripped UUID>",
         "is_production_mode": false,
-        "user_count": 0,
       },
       "headers": Headers { <some fields may have been hidden> },
     }
@@ -914,7 +901,7 @@ it("updates the project oauth configuration", async ({ expect }) => {
           "credential_enabled": true,
           "domains": [],
           "email_config": { "type": "shared" },
-          "email_theme": "default-light",
+          "email_theme": "<stripped UUID>",
           "enabled_oauth_providers": [{ "id": "spotify" }],
           "magic_link_enabled": false,
           "oauth_account_merge_strategy": "link_method",
@@ -935,7 +922,6 @@ it("updates the project oauth configuration", async ({ expect }) => {
         "display_name": "New Project",
         "id": "<stripped UUID>",
         "is_production_mode": false,
-        "user_count": 0,
       },
       "headers": Headers { <some fields may have been hidden> },
     }
@@ -970,7 +956,7 @@ it("updates the project oauth configuration", async ({ expect }) => {
           "credential_enabled": true,
           "domains": [],
           "email_config": { "type": "shared" },
-          "email_theme": "default-light",
+          "email_theme": "<stripped UUID>",
           "enabled_oauth_providers": [
             { "id": "google" },
             { "id": "spotify" },
@@ -998,7 +984,6 @@ it("updates the project oauth configuration", async ({ expect }) => {
         "display_name": "New Project",
         "id": "<stripped UUID>",
         "is_production_mode": false,
-        "user_count": 0,
       },
       "headers": Headers { <some fields may have been hidden> },
     }
@@ -1033,7 +1018,7 @@ it("updates the project oauth configuration", async ({ expect }) => {
           "credential_enabled": true,
           "domains": [],
           "email_config": { "type": "shared" },
-          "email_theme": "default-light",
+          "email_theme": "<stripped UUID>",
           "enabled_oauth_providers": [
             { "id": "google" },
             { "id": "spotify" },
@@ -1061,7 +1046,6 @@ it("updates the project oauth configuration", async ({ expect }) => {
         "display_name": "New Project",
         "id": "<stripped UUID>",
         "is_production_mode": false,
-        "user_count": 0,
       },
       "headers": Headers { <some fields may have been hidden> },
     }
@@ -1330,7 +1314,6 @@ it("has a correctly formatted JWKS endpoint", async ({ expect }) => {
   });
 });
 
-
 it("should increment and decrement userCount when a user is added to a project", async ({ expect }) => {
   const { adminAccessToken } = await Project.createAndSwitch({
     config: {
@@ -1339,7 +1322,6 @@ it("should increment and decrement userCount when a user is added to a project",
   });
   const initialProjectResponse = await niceBackendFetch("/api/v1/internal/projects/current", { accessType: "admin" });
   expect(initialProjectResponse.status).toBe(200);
-  expect(initialProjectResponse.body.user_count).toBe(0);
 
 
   // Create a new user in the project
@@ -1362,7 +1344,7 @@ it("should increment and decrement userCount when a user is added to a project",
           "credential_enabled": true,
           "domains": [],
           "email_config": { "type": "shared" },
-          "email_theme": "default-light",
+          "email_theme": "<stripped UUID>",
           "enabled_oauth_providers": [],
           "magic_link_enabled": true,
           "oauth_account_merge_strategy": "link_method",
@@ -1378,12 +1360,10 @@ it("should increment and decrement userCount when a user is added to a project",
         "display_name": "New Project",
         "id": "<stripped UUID>",
         "is_production_mode": false,
-        "user_count": 1,
       },
       "headers": Headers { <some fields may have been hidden> },
     }
   `);
-  expect(updatedProjectResponse.body.user_count).toBe(1);
 
   // Delete the user
   const deleteRes = await niceBackendFetch("/api/v1/users/me", {
@@ -1395,5 +1375,4 @@ it("should increment and decrement userCount when a user is added to a project",
   // Check that the userCount has been decremented
   const finalProjectResponse = await niceBackendFetch("/api/v1/internal/projects/current", { accessType: "admin" });
   expect(finalProjectResponse.status).toBe(200);
-  expect(finalProjectResponse.body.user_count).toBe(0);
 });

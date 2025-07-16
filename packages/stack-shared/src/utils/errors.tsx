@@ -75,6 +75,10 @@ export class StackAssertionError extends Error {
       },
       enumerable: false,
     });
+
+    if (process.env.NEXT_PUBLIC_STACK_DEBUGGER_ON_ASSERTION_ERROR === "true") {
+      debugger;
+    }
   }
 }
 StackAssertionError.prototype.name = "StackAssertionError";

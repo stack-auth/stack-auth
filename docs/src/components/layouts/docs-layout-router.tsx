@@ -16,190 +16,168 @@
  * RESPONSIBILITIES:
  * - Route detection (SDK, Components, API, etc.)
  * - Platform tab configuration
- * - Custom sidebar content selection
  * - Passing appropriate props to base DocsLayout
+ * - Filter page tree for SDK/Components sections
  *
- * CUSTOM SIDEBAR COMPONENTS:
- * - ComponentsSidebarContent: Full components navigation
- * - SdkSidebarContent: Imported from docs.tsx
- * - ApiSidebarContent: Imported from api/api-sidebar.tsx
+ * SECTION HANDLING:
+ * SDK and Components sections are included in the main page tree but are
+ * filtered to show only the relevant section when browsing those areas.
  */
 
 'use client';
 import { baseOptions } from '@/app/layout.config';
-import Link from 'next/link';
+import type { PageTree } from 'fumadocs-core/server';
 import { usePathname } from 'next/navigation';
 import type { ReactNode } from 'react';
 import { useMemo } from 'react';
-import { getCurrentPlatformUrl, getSmartRedirectUrl } from '../../lib/navigation-utils';
+import { getSmartRedirectUrl } from '../../lib/navigation-utils';
 import { getCurrentPlatform, PLATFORMS } from '../../lib/platform-utils';
 import type { Option } from '../layout/root-toggle';
+import { PlatformRedirect } from '../platform-redirect';
 import { ApiSidebarContent } from './api/api-sidebar';
-import { DocsLayout, type DocsLayoutProps, SdkSidebarContent } from './docs';
+import { DocsLayout, type DocsLayoutProps } from './docs';
 import {
   getPlatformDisplayName,
   isInApiSection,
-  isInComponentsSection,
-  isInCustomizationSection,
-  isInSdkSection
+  isInCustomizationSection
 } from './shared/section-utils';
 
 type DynamicDocsLayoutProps = {
   children: ReactNode,
 } & Omit<DocsLayoutProps, 'links'>
 
-// Custom Link Component for docs sidebar - matches the one in docs.tsx
-function DocsSidebarLink({
-  href,
-  children,
-  external = false
-}: {
-  href: string,
-  children: ReactNode,
-  external?: boolean,
-}) {
-  const pathname = usePathname();
-  const isActive = pathname === href;
-
-  return (
-    <Link
-      href={href}
-      className={`flex items-center gap-2 px-2 py-1.5 rounded-md text-xs transition-colors ${
-        isActive
-          ? 'bg-fd-primary/10 text-fd-primary font-medium'
-          : 'text-fd-muted-foreground hover:text-fd-foreground hover:bg-fd-muted/50'
-      }`}
-      {...(external && { target: '_blank', rel: 'noopener noreferrer' })}
-    >
-      <span className="flex-1">{children}</span>
-    </Link>
-  );
+// Helper function to check if we're in SDK section
+function isInSdkSection(pathname: string): boolean {
+  // Match the actual SDK section: /docs/platform/sdk or /docs/platform/sdk/...
+  // This excludes docs pages that might mention SDK in other contexts
+  const match = pathname.match(/^\/docs\/[^\/]+\/sdk($|\/)/);
+  return Boolean(match);
 }
 
-// Custom separator component - matches the one in docs.tsx
-function DocsSeparator({ children }: { children: ReactNode }) {
-  return (
-    <div className="mt-6 mb-3 first:mt-2">
-      <span className="text-xs font-bold text-fd-foreground uppercase tracking-wider">
-        {children}
-      </span>
-    </div>
-  );
+// Helper function to check if we're in Components section
+function isInComponentsSection(pathname: string): boolean {
+  // Match the actual Components section: /docs/platform/components or /docs/platform/components/...
+  // This excludes docs pages like /docs/platform/getting-started/components
+  const match = pathname.match(/^\/docs\/[^\/]+\/components($|\/)/);
+  return Boolean(match);
 }
 
-// Custom sidebar content for components section
-export function ComponentsSidebarContent() {
-  const pathname = usePathname();
+// Helper function to find and extract a specific section from the page tree
+function findSectionInTree(tree: PageTree.Root, sectionName: string, pathname: string): PageTree.Root | null {
+  // Look for the section in the current platform's content
   const currentPlatform = getCurrentPlatform(pathname);
-
   if (!currentPlatform) return null;
 
-  const baseUrl = `/docs/${currentPlatform}/components`;
+  // Platform name mappings
+  const platformMappings: Record<string, string> = {
+    'next': 'Next.js',
+    'react': 'React',
+    'js': 'JavaScript',
+    'python': 'Python'
+  };
 
-  return (
-    <>
-      <DocsSidebarLink href={`${baseUrl}/overview`}>
-        Overview
-      </DocsSidebarLink>
+  const platformDisplayName = platformMappings[currentPlatform];
+  if (!platformDisplayName) return null;
 
-      <DocsSeparator>
-        Authentication
-      </DocsSeparator>
-      <DocsSidebarLink href={`${baseUrl}/sign-in`}>
-        Sign In
-      </DocsSidebarLink>
-      <DocsSidebarLink href={`${baseUrl}/sign-up`}>
-        Sign Up
-      </DocsSidebarLink>
-      <DocsSidebarLink href={`${baseUrl}/credential-sign-in`}>
-        Credential Sign In
-      </DocsSidebarLink>
-      <DocsSidebarLink href={`${baseUrl}/credential-sign-up`}>
-        Credential Sign Up
-      </DocsSidebarLink>
-      <DocsSidebarLink href={`${baseUrl}/magic-link-sign-in`}>
-        Magic Link Sign In
-      </DocsSidebarLink>
-      <DocsSidebarLink href={`${baseUrl}/forgot-password`}>
-        Forgot Password
-      </DocsSidebarLink>
-      <DocsSidebarLink href={`${baseUrl}/password-reset`}>
-        Password Reset
-      </DocsSidebarLink>
-
-      <DocsSeparator>
-        OAuth
-      </DocsSeparator>
-      <DocsSidebarLink href={`${baseUrl}/oauth-button`}>
-        OAuth Button
-      </DocsSidebarLink>
-      <DocsSidebarLink href={`${baseUrl}/oauth-button-group`}>
-        OAuth Button Group
-      </DocsSidebarLink>
-
-      <DocsSeparator>
-        User Interface
-      </DocsSeparator>
-      <DocsSidebarLink href={`${baseUrl}/user-button`}>
-        User Button
-      </DocsSidebarLink>
-      <DocsSidebarLink href={`${baseUrl}/account-settings`}>
-        Account Settings
-      </DocsSidebarLink>
-      <DocsSidebarLink href={`${baseUrl}/selected-team-switcher`}>
-        Selected Team Switcher
-      </DocsSidebarLink>
-
-      <DocsSeparator>
-        Layout & Providers
-      </DocsSeparator>
-      <DocsSidebarLink href={`${baseUrl}/stack-provider`}>
-        Stack Provider
-      </DocsSidebarLink>
-      <DocsSidebarLink href={`${baseUrl}/stack-handler`}>
-        Stack Handler
-      </DocsSidebarLink>
-      <DocsSidebarLink href={`${baseUrl}/stack-theme`}>
-        Stack Theme
-      </DocsSidebarLink>
-    </>
+  // Find the platform folder
+  const platformFolder = tree.children.find(node =>
+    node.type === 'folder' && node.name === platformDisplayName
   );
+
+  if (platformFolder && platformFolder.type === 'folder') {
+    // Look for the section within the platform folder
+    const sectionFolder = platformFolder.children.find(node =>
+      node.type === 'folder' && node.name === sectionName
+    );
+
+    if (sectionFolder && sectionFolder.type === 'folder') {
+      return {
+        name: sectionFolder.name,
+        children: sectionFolder.children,
+        $id: tree.$id ? `${tree.$id}/${sectionName}` : sectionName,
+      };
+    }
+  }
+
+  return null;
 }
 
 export function DynamicDocsLayout({ children, ...props }: DynamicDocsLayoutProps) {
   const pathname = usePathname();
 
+  // Determine which tree to use based on the current section
+  const pageTree = useMemo(() => {
+    if (isInSdkSection(pathname)) {
+      const sdkTree = findSectionInTree(props.tree, 'SDK Reference', pathname);
+      if (sdkTree) {
+        //console.log('🎯 Using SDK tree for:', pathname);
+        return sdkTree;
+      }
+    }
+
+    if (isInComponentsSection(pathname)) {
+      const componentsTree = findSectionInTree(props.tree, 'Components', pathname);
+      if (componentsTree) {
+        //console.log('🎯 Using Components tree for:', pathname);
+        return componentsTree;
+      }
+    }
+
+    // For normal docs view, filter out SDK and Components sections
+    //console.log('📄 Using filtered page tree for:', pathname);
+    return {
+      ...props.tree,
+      children: props.tree.children.map(platformNode => {
+        if (platformNode.type === 'folder') {
+          return {
+            ...platformNode,
+            children: platformNode.children.filter(node => {
+              // Hide SDK Reference and Components sections from normal docs
+              if (node.type === 'folder' && (node.name === 'SDK Reference' || node.name === 'Components')) {
+                return false;
+              }
+              return true;
+            })
+          };
+        }
+        return platformNode;
+      })
+    };
+  }, [pathname, props.tree]);
+
   const platformOptions: Option[] = useMemo(() => {
+    // Extract current platform from pathname
     const currentPlatform = getCurrentPlatform(pathname);
 
     return PLATFORMS.map(platform => {
-      const url = getSmartRedirectUrl(pathname, platform);
-      const currentUrl = getCurrentPlatformUrl(pathname, platform);
-      const isCurrentPlatform = currentPlatform === platform;
+      let url: string;
 
-      // Check for specific sections using proper regex
-      const componentsMatch = pathname.match(/^\/docs\/[^/]+\/components(\/.*)$/);
-      const sdkMatch = pathname.match(/^\/docs\/[^/]+\/sdk(\/.*)$/);
+      if (isInSdkSection(pathname)) {
+        // For SDK section: /docs/platform/sdk
+        url = `/docs/${platform}/sdk`;
+      } else if (isInComponentsSection(pathname)) {
+        // For Components section: /docs/platform/components
+        url = `/docs/${platform}/components`;
+      } else {
+        // For normal docs: use smart redirect
+        url = getSmartRedirectUrl(pathname, platform);
+      }
 
       return {
         url,
         title: getPlatformDisplayName(platform),
-        description: `Stack Auth ${getPlatformDisplayName(platform)}`,
-        // Add URLs set to help with matching the current platform
-        urls: new Set([
-          url,
-          currentUrl,
-          `/docs/${platform}`,
-          `/docs/${platform}/overview`,
-          // Add specific section URLs for better matching
-          ...(sdkMatch ? [`/docs/${platform}/sdk`] : []),
-          ...(componentsMatch ? [`/docs/${platform}/components`] : []),
-          // Add exact current path for the current platform
-          ...(isCurrentPlatform ? [pathname] : []),
-        ])
+        // Add urls set for more precise matching if this is the current platform
+        ...(platform === currentPlatform && {
+          urls: new Set([pathname])
+        })
       };
     });
   }, [pathname]);
+
+  // Auto-redirect to current platform if needed
+  if (pathname === '/docs' || pathname === '/docs/') {
+    return <PlatformRedirect pathname={pathname} defaultPath="overview" />;
+  }
 
   // For API docs, use minimal layout without platform tabs
   if (isInApiSection(pathname)) {
@@ -207,6 +185,7 @@ export function DynamicDocsLayout({ children, ...props }: DynamicDocsLayoutProps
       <DocsLayout
         {...baseOptions}
         {...props}
+        tree={pageTree}
         nav={{
           enabled: false, // Disable Fumadocs navbar - using SharedHeader instead
         }}
@@ -238,6 +217,7 @@ export function DynamicDocsLayout({ children, ...props }: DynamicDocsLayoutProps
       <DocsLayout
         {...baseOptions}
         {...props}
+        tree={pageTree}
         nav={{
           enabled: false, // Disable Fumadocs navbar - using SharedHeader instead
         }}
@@ -252,117 +232,13 @@ export function DynamicDocsLayout({ children, ...props }: DynamicDocsLayoutProps
     );
   }
 
-  // For SDK section, show SDK-specific sidebar
-  if (isInSdkSection(pathname)) {
-    // Only show SDK section for platforms that support it
-    const currentPlatform = getCurrentPlatform(pathname);
-    if (!currentPlatform || !['next', 'react', 'js'].includes(currentPlatform)) {
-      // Redirect to overview if platform doesn't support SDK
-      return (
-        <DocsLayout
-          {...baseOptions}
-          {...props}
-          nav={{
-            enabled: false, // Disable Fumadocs navbar - using SharedHeader instead
-          }}
-          links={[]}
-          sidebar={{
-            ...props.sidebar,
-            tabs: platformOptions,
-          }}
-        >
-          {children}
-        </DocsLayout>
-      );
-    }
-
-    return (
-      <DocsLayout
-        {...baseOptions}
-        {...props}
-        nav={{
-          enabled: false, // Disable Fumadocs navbar - using SharedHeader instead
-        }}
-        links={[
-          {
-            type: 'custom',
-            children: <SdkSidebarContent />
-          }
-        ]}
-        sidebar={{
-          ...props.sidebar,
-          tabs: platformOptions,
-          // Hide the page tree when showing custom SDK content
-          components: {
-            Item: () => null,
-            Folder: () => null,
-            Separator: () => null,
-          },
-        }}
-      >
-        {children}
-      </DocsLayout>
-    );
-  }
-
-  // For Components section, show Components-specific sidebar
-  if (isInComponentsSection(pathname)) {
-    // Only show Components section for platforms that support React components
-    const currentPlatform = getCurrentPlatform(pathname);
-    if (!currentPlatform || !['next', 'react'].includes(currentPlatform)) {
-      // Redirect to overview if platform doesn't support components
-      return (
-        <DocsLayout
-          {...baseOptions}
-          {...props}
-          nav={{
-            enabled: false, // Disable Fumadocs navbar - using SharedHeader instead
-          }}
-          links={[]}
-          sidebar={{
-            ...props.sidebar,
-            tabs: platformOptions,
-          }}
-        >
-          {children}
-        </DocsLayout>
-      );
-    }
-
-    return (
-      <DocsLayout
-        {...baseOptions}
-        {...props}
-        nav={{
-          enabled: false, // Disable Fumadocs navbar - using SharedHeader instead
-        }}
-        links={[
-          {
-            type: 'custom',
-            children: <ComponentsSidebarContent />
-          }
-        ]}
-        sidebar={{
-          ...props.sidebar,
-          tabs: platformOptions,
-          // Hide the page tree when showing custom components content
-          components: {
-            Item: () => null,
-            Folder: () => null,
-            Separator: () => null,
-          },
-        }}
-      >
-        {children}
-      </DocsLayout>
-    );
-  }
-
-  // Default: show normal platform docs with page tree navigation
+  // For all other sections, use the standard layout with platform tabs
+  // The pageTree will be filtered for SDK/Components sections automatically
   return (
     <DocsLayout
       {...baseOptions}
       {...props}
+      tree={pageTree}
       nav={{
         enabled: false, // Disable Fumadocs navbar - using SharedHeader instead
       }}

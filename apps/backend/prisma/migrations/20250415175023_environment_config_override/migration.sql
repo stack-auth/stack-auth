@@ -171,7 +171,7 @@ WITH
         p."queryableId",
         p.description
     FROM "Permission" p
-    WHERE p.scope = 'TEAM'::public."PermissionScope"
+    WHERE p.scope = 'TEAM'::"PermissionScope"
     ),
 
     -- Now identify ALL permission relationships recursively
@@ -186,12 +186,12 @@ WITH
         CASE 
         WHEN pe."parentTeamSystemPermission" IS NOT NULL THEN
             CASE 
-            WHEN pe."parentTeamSystemPermission" = 'REMOVE_MEMBERS'::public."TeamSystemPermission" THEN '$remove_members'
-            WHEN pe."parentTeamSystemPermission" = 'READ_MEMBERS'::public."TeamSystemPermission" THEN '$read_members'
-            WHEN pe."parentTeamSystemPermission" = 'INVITE_MEMBERS'::public."TeamSystemPermission" THEN '$invite_members'
-            WHEN pe."parentTeamSystemPermission" = 'UPDATE_TEAM'::public."TeamSystemPermission" THEN '$update_team'
-            WHEN pe."parentTeamSystemPermission" = 'DELETE_TEAM'::public."TeamSystemPermission" THEN '$delete_team'
-            WHEN pe."parentTeamSystemPermission" = 'MANAGE_API_KEYS'::public."TeamSystemPermission" THEN '$manage_api_keys'
+            WHEN pe."parentTeamSystemPermission" = 'REMOVE_MEMBERS'::"TeamSystemPermission" THEN '$remove_members'
+            WHEN pe."parentTeamSystemPermission" = 'READ_MEMBERS'::"TeamSystemPermission" THEN '$read_members'
+            WHEN pe."parentTeamSystemPermission" = 'INVITE_MEMBERS'::"TeamSystemPermission" THEN '$invite_members'
+            WHEN pe."parentTeamSystemPermission" = 'UPDATE_TEAM'::"TeamSystemPermission" THEN '$update_team'
+            WHEN pe."parentTeamSystemPermission" = 'DELETE_TEAM'::"TeamSystemPermission" THEN '$delete_team'
+            WHEN pe."parentTeamSystemPermission" = 'MANAGE_API_KEYS'::"TeamSystemPermission" THEN '$manage_api_keys'
             END
         -- For direct regular permission
         ELSE child_p."queryableId"
@@ -245,7 +245,7 @@ WITH
         p."queryableId",
         p.description
     FROM "Permission" p
-    WHERE p.scope = 'PROJECT'::public."PermissionScope"
+    WHERE p.scope = 'PROJECT'::"PermissionScope"
     ),
 
     -- Project permission hierarchy
@@ -341,12 +341,12 @@ WITH
         pc.id AS "projectConfigId",
         jsonb_object_agg(
         CASE 
-            WHEN perm = 'REMOVE_MEMBERS'::public."TeamSystemPermission" THEN '$remove_members'
-            WHEN perm = 'READ_MEMBERS'::public."TeamSystemPermission" THEN '$read_members'
-            WHEN perm = 'INVITE_MEMBERS'::public."TeamSystemPermission" THEN '$invite_members'
-            WHEN perm = 'UPDATE_TEAM'::public."TeamSystemPermission" THEN '$update_team'
-            WHEN perm = 'DELETE_TEAM'::public."TeamSystemPermission" THEN '$delete_team'
-            WHEN perm = 'MANAGE_API_KEYS'::public."TeamSystemPermission" THEN '$manage_api_keys'
+            WHEN perm = 'REMOVE_MEMBERS'::"TeamSystemPermission" THEN '$remove_members'
+            WHEN perm = 'READ_MEMBERS'::"TeamSystemPermission" THEN '$read_members'
+            WHEN perm = 'INVITE_MEMBERS'::"TeamSystemPermission" THEN '$invite_members'
+            WHEN perm = 'UPDATE_TEAM'::"TeamSystemPermission" THEN '$update_team'
+            WHEN perm = 'DELETE_TEAM'::"TeamSystemPermission" THEN '$delete_team'
+            WHEN perm = 'MANAGE_API_KEYS'::"TeamSystemPermission" THEN '$manage_api_keys'
             ELSE perm::text
         END,
         'true'::jsonb
@@ -364,12 +364,12 @@ WITH
         pc.id AS "projectConfigId",
         jsonb_object_agg(
         CASE 
-            WHEN perm = 'REMOVE_MEMBERS'::public."TeamSystemPermission" THEN '$remove_members'
-            WHEN perm = 'READ_MEMBERS'::public."TeamSystemPermission" THEN '$read_members'
-            WHEN perm = 'INVITE_MEMBERS'::public."TeamSystemPermission" THEN '$invite_members'
-            WHEN perm = 'UPDATE_TEAM'::public."TeamSystemPermission" THEN '$update_team'
-            WHEN perm = 'DELETE_TEAM'::public."TeamSystemPermission" THEN '$delete_team'
-            WHEN perm = 'MANAGE_API_KEYS'::public."TeamSystemPermission" THEN '$manage_api_keys'
+            WHEN perm = 'REMOVE_MEMBERS'::"TeamSystemPermission" THEN '$remove_members'
+            WHEN perm = 'READ_MEMBERS'::"TeamSystemPermission" THEN '$read_members'
+            WHEN perm = 'INVITE_MEMBERS'::"TeamSystemPermission" THEN '$invite_members'
+            WHEN perm = 'UPDATE_TEAM'::"TeamSystemPermission" THEN '$update_team'
+            WHEN perm = 'DELETE_TEAM'::"TeamSystemPermission" THEN '$delete_team'
+            WHEN perm = 'MANAGE_API_KEYS'::"TeamSystemPermission" THEN '$manage_api_keys'
             ELSE perm::text
         END,
         'true'::jsonb

@@ -1,63 +1,56 @@
 "use client";
 
+import { FormDialog } from "@/components/form-dialog";
+import { InputField } from "@/components/form-fields";
+import { useRouter } from "@/components/router";
 import { SettingCard } from "@/components/settings";
+import ThemePreview from "@/components/theme-preview";
 import { throwErr } from "@stackframe/stack-shared/dist/utils/errors";
-import { deindent } from "@stackframe/stack-shared/dist/utils/strings";
-import { ActionDialog, Button, Card, Separator, Typography } from "@stackframe/stack-ui";
+import { ActionDialog, Button, Card, Typography } from "@stackframe/stack-ui";
 import { Check } from "lucide-react";
 import { useState } from "react";
+import * as yup from "yup";
 import { PageLayout } from "../page-layout";
 import { useAdminApp } from "../use-admin-app";
-
-type ThemeType = 'default-light' | 'default-dark';
-
-type Theme = {
-  id: ThemeType,
-  name: string,
-};
-
-const themes: Theme[] = [
-  {
-    id: 'default-light',
-    name: 'Light Theme',
-  },
-  {
-    id: 'default-dark',
-    name: 'Dark Theme',
-  },
-];
 
 export default function PageClient() {
   const stackAdminApp = useAdminApp();
   const project = stackAdminApp.useProject();
+  const themes = stackAdminApp.useEmailThemes();
   const activeTheme = project.config.emailTheme;
   const [dialogOpen, setDialogOpen] = useState(false);
-  const [dialogSelectedTheme, setDialogSelectedTheme] = useState<ThemeType>(activeTheme);
+  const [dialogSelectedThemeId, setDialogSelectedThemeId] = useState<string>(activeTheme);
 
-  const handleThemeSelect = (themeId: ThemeType) => {
-    setDialogSelectedTheme(themeId);
+  const handleThemeSelect = (themeId: string) => {
+    setDialogSelectedThemeId(themeId);
   };
 
   const handleSaveTheme = async () => {
     await project.update({
-      config: { emailTheme: dialogSelectedTheme }
+      config: { emailTheme: dialogSelectedThemeId }
     });
   };
 
   const handleOpenDialog = () => {
-    setDialogSelectedTheme(activeTheme);
+    setDialogSelectedThemeId(activeTheme);
     setDialogOpen(true);
   };
 
   const selectedThemeData = themes.find(t => t.id === activeTheme) ?? throwErr(`Unknown theme ${activeTheme}`, { activeTheme });
 
   return (
-    <PageLayout title="Email Themes" description="Customize email themes for your project">
+    <PageLayout
+      title="Email Themes"
+      description="Customize email themes for your project"
+      actions={<NewThemeButton />}
+    >
       <SettingCard
         title="Active Theme"
-        description={`Currently using ${selectedThemeData.name}`}
+        description={`Currently using ${selectedThemeData.displayName}`}
       >
-        <ThemePreview themeId={activeTheme} />
+        <div className="h-72">
+          <ThemePreview themeId={selectedThemeData.id} />
+        </div>
         <ActionDialog
           trigger={<Button onClick={handleOpenDialog} className="ml-auto w-min">Set Theme</Button>}
           open={dialogOpen}
@@ -74,7 +67,7 @@ export default function PageClient() {
               <ThemeOption
                 key={theme.id}
                 theme={theme}
-                isSelected={dialogSelectedTheme === theme.id}
+                isSelected={dialogSelectedThemeId === theme.id}
                 onSelect={handleThemeSelect}
               />
             ))}
@@ -90,9 +83,9 @@ function ThemeOption({
   isSelected,
   onSelect
 }: {
-  theme: Theme,
+  theme: { id: string, displayName: string },
   isSelected: boolean,
-  onSelect: (themeId: ThemeType) => void,
+  onSelect: (themeId: string) => void,
 }) {
   return (
     <Card
@@ -101,34 +94,47 @@ function ThemeOption({
     >
       <div className="p-4 pb-3">
         <div className="flex items-center justify-between">
-          <Typography className="font-medium text-lg">{theme.name}</Typography>
+          <Typography variant="secondary">{theme.displayName}</Typography>
           {isSelected && (
             <div className="bg-blue-500 text-white rounded-full w-6 h-6 p-1 flex items-center justify-center">
               <Check />
             </div>
           )}
         </div>
-        <Separator className="my-3" />
-        <ThemePreview themeId={theme.id} />
+        <div className="h-60" style={{ zoom: 0.75 }}>
+          <ThemePreview themeId={theme.id} disableFrame />
+        </div>
       </div>
     </Card>
   );
 }
 
-function ThemePreview({ themeId }: { themeId: ThemeType }) {
-  const previewEmailHtml = deindent`
-    <div>
-      <h2 className="mb-4 text-2xl font-bold">
-        Header text
-      </h2>
-      <p className="mb-4">
-        Body text content with some additional information.
-      </p>
-    </div>
-  `;
+function NewThemeButton() {
   const stackAdminApp = useAdminApp();
-  const previewHtml = stackAdminApp.useEmailThemePreview(themeId, previewEmailHtml);
+  const router = useRouter();
+
+  const handleCreateNewTheme = async (values: { name: string }) => {
+    const { id } = await stackAdminApp.createEmailTheme(values.name);
+    router.push(`email-themes/${id}`);
+  };
+
   return (
-    <iframe srcDoc={previewHtml} className="mx-auto pointer-events-none" />
+    <FormDialog
+      title="New Theme"
+      trigger={<Button>New Theme</Button>}
+      onSubmit={handleCreateNewTheme}
+      formSchema={yup.object({
+        name: yup.string().defined(),
+      })}
+      render={(form) => (
+        <InputField
+          control={form.control}
+          name="name"
+          label="Theme Name"
+          placeholder="Enter theme name"
+          required
+        />
+      )}
+    />
   );
 }

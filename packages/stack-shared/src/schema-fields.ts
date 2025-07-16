@@ -333,7 +333,6 @@ export const projectBranchIdSchema = yupString().nonEmpty().max(255).meta({ open
 export const projectDisplayNameSchema = yupString().meta({ openapiField: { description: _displayNameDescription('project'), exampleValue: 'MyMusic' } });
 export const projectDescriptionSchema = yupString().nullable().meta({ openapiField: { description: 'A human readable description of the project', exampleValue: 'A music streaming service' } });
 export const projectCreatedAtMillisSchema = yupNumber().meta({ openapiField: { description: _createdAtMillisDescription('project'), exampleValue: 1630000000000 } });
-export const projectUserCountSchema = yupNumber().meta({ openapiField: { description: 'The number of users in this project', exampleValue: 10 } });
 export const projectIsProductionModeSchema = yupBoolean().meta({ openapiField: { description: 'Whether the project is in production mode', exampleValue: true } });
 // Project config
 export const projectConfigIdSchema = yupString().meta({ openapiField: { description: _idDescription('project config'), exampleValue: 'd09201f0-54f5-40bd-89ff-6d1815ddad24' } });
@@ -365,7 +364,14 @@ export const emailPasswordSchema = passwordSchema.meta({ openapiField: { descrip
 // Project domain config
 export const handlerPathSchema = yupString().test('is-handler-path', 'Handler path must start with /', (value) => value?.startsWith('/')).meta({ openapiField: { description: 'Handler path. If you did not setup a custom handler path, it should be "/handler" by default. It needs to start with /', exampleValue: '/handler' } });
 // Project email theme config
-export const emailThemeSchema = yupString().oneOf(['default-light', 'default-dark']).meta({ openapiField: { description: 'Email theme for the project. Determines the visual style of emails sent by the project.', exampleValue: 'default-light' } });
+export const emailThemeSchema = yupString().meta({ openapiField: { description: 'Email theme id for the project. Determines the visual style of emails sent by the project.' } });
+export const emailThemeListSchema = yupRecord(
+  yupString().uuid(),
+  yupObject({
+    displayName: yupString().meta({ openapiField: { description: 'Email theme name', exampleValue: 'default-light' } }).defined(),
+    tsxSource: yupString().meta({ openapiField: { description: 'Email theme source code tsx component' } }).defined(),
+  })
+).meta({ openapiField: { description: 'Record of email theme IDs to their display name and source code' } });
 
 // Users
 export class ReplaceFieldWithOwnUserId extends Error {

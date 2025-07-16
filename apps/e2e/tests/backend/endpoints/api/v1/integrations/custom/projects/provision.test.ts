@@ -52,7 +52,7 @@ it("should be able to provision a new project if client details are correct", as
           "credential_enabled": true,
           "domains": [],
           "email_config": { "type": "shared" },
-          "email_theme": "default-light",
+          "email_theme": "<stripped UUID>",
           "enabled_oauth_providers": [
             { "id": "github" },
             { "id": "google" },
@@ -80,7 +80,6 @@ it("should be able to provision a new project if client details are correct", as
         "display_name": "Test project",
         "id": "<stripped UUID>",
         "is_production_mode": false,
-        "user_count": 0,
       },
       "headers": Headers { <some fields may have been hidden> },
     }

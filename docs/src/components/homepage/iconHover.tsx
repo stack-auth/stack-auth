@@ -1,9 +1,10 @@
 "use client";
 
-import { platformSupportsComponents, platformSupportsSDK } from "@/lib/navigation-utils";
-import { PLATFORMS, type Platform } from "@/lib/platform-utils";
 import { Book, ChevronDown, Code, Command, Layers, Search, Zap } from "lucide-react";
 import React, { useEffect, useRef, useState } from "react";
+import { usePlatformPreference } from "../../hooks/use-platform-preference";
+import { platformSupportsComponents, platformSupportsSDK } from "../../lib/navigation-utils";
+import { PLATFORMS, type Platform } from "../../lib/platform-utils";
 
 type DocsSection = {
   id: string,
@@ -39,7 +40,7 @@ const createPlatformSections = (platform: Platform): DocsSection[] => {
       title: "SDKs",
       description: "Software development kits",
       icon: <Code size={24} />,
-      url: `/docs/${platform}/sdk/overview`,
+      url: `/docs/${platform}/sdk`,
       color: "rgb(16, 185, 129)",
     });
   }
@@ -51,7 +52,7 @@ const createPlatformSections = (platform: Platform): DocsSection[] => {
       title: "Components",
       description: "Reusable UI components",
       icon: <Layers size={24} />,
-      url: `/docs/${platform}/components/overview`,
+      url: `/docs/${platform}/components`,
       color: "rgb(245, 101, 101)",
     });
   }
@@ -256,7 +257,7 @@ const DocsIcon3D: React.FC<DocsIcon3DProps> = ({
             <div
               className={`
                 bg-card border-[0.5px] border-border rounded-xl p-6 w-full h-40
-                flex flex-col items-center justify-center 
+                flex flex-col items-center justify-center
                 shadow-sm hover:shadow-lg
               `}
               style={{
@@ -306,10 +307,18 @@ const DocsIcon3D: React.FC<DocsIcon3DProps> = ({
 };
 
 export default function DocsSelector() {
-  const [selectedPlatform, setSelectedPlatform] = useState<Platform>("next");
+  const { preferredPlatform, setPreferredPlatform, isLoaded } = usePlatformPreference();
+  const [selectedPlatform, setSelectedPlatform] = useState<Platform>(preferredPlatform);
+
+  // Update selected platform when preference loads
+  useEffect(() => {
+    if (isLoaded) {
+      setSelectedPlatform(preferredPlatform);
+    }
+  }, [preferredPlatform, isLoaded]);
 
   const handleSectionSelect = (section: DocsSection) => {
-    console.log("Selected section:", section);
+    //console.log("Selected section:", section);
     // Navigate to the selected section
     if (section.url) {
       window.location.href = section.url;
@@ -318,6 +327,8 @@ export default function DocsSelector() {
 
   const handlePlatformChange = (platform: Platform) => {
     setSelectedPlatform(platform);
+    // Also update the preference in localStorage
+    setPreferredPlatform(platform);
   };
 
   // Simple search button that opens the shared search dialog

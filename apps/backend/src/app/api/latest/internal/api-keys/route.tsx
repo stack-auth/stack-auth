@@ -1,4 +1,4 @@
-import { prismaClient } from "@/prisma-client";
+import { globalPrismaClient } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { internalApiKeysCreateInputSchema, internalApiKeysCreateOutputSchema } from "@stackframe/stack-shared/dist/interface/crud/internal-api-keys";
 import { adaptSchema, adminAuthTypeSchema, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
@@ -26,7 +26,7 @@ export const POST = createSmartRouteHandler({
     body: internalApiKeysCreateOutputSchema.defined(),
   }),
   handler: async ({ auth, body }) => {
-    const set = await prismaClient.apiKeySet.create({
+    const set = await globalPrismaClient.apiKeySet.create({
       data: {
         id: generateUuid(),
         projectId: auth.project.id,
