@@ -695,7 +695,7 @@ export class StackServerInterface extends StackClientInterface {
   async createServerOAuthProvider(
     data: {
       user_id: string,
-      provider_id: string,
+      provider_config_id: string,
       account_id: string,
       email: string,
       allow_sign_in: boolean,

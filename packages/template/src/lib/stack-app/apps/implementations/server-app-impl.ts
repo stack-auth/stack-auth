@@ -819,7 +819,7 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
 
   async createOAuthProvider(options: {
     userId: string,
-    providerId: string,
+    providerConfigId: string,
     accountId: string,
     email: string,
     allowSignIn: boolean,
@@ -828,14 +828,14 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
     | InstanceType<typeof KnownErrors.OAuthProviderAccountIdAlreadyUsedForSignIn>
   >> {
     try {
-      const crud = await this._interface.createOAuthProvider({
+      const crud = await this._interface.createServerOAuthProvider({
         user_id: options.userId,
-        provider_id: options.providerId,
+        provider_config_id: options.providerConfigId,
         account_id: options.accountId,
         email: options.email,
         allow_sign_in: options.allowSignIn,
         allow_connected_accounts: options.allowConnectedAccounts,
-      }, null, "server");
+      });
 
       await this._serverOAuthProvidersCache.refresh([options.userId]);
       return Result.ok(this._serverOAuthProviderFromCrud(crud));

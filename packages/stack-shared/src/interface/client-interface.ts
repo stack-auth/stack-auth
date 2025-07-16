@@ -1674,7 +1674,7 @@ export class StackClientInterface {
   async createOAuthProvider(
     data: {
       user_id: string,
-      provider_id: string,
+      provider_config_id: string,
       account_id: string,
       email: string,
       allow_sign_in: boolean,
@@ -1844,27 +1844,6 @@ export class StackClientInterface {
     allow_connected_accounts: boolean,
   }[]> {
     return await this.listOAuthProviders({ user_id: "me" }, session, "client");
-  }
-
-  async updateCurrentUserOAuthProvider(
-    providerId: string,
-    data: {
-      account_id?: string,
-      email?: string,
-      allow_sign_in?: boolean,
-      allow_connected_accounts?: boolean,
-    },
-    session: InternalSession,
-  ): Promise<{
-    id: string,
-    type: string,
-    user_id: string,
-    account_id?: string,
-    email: string,
-    allow_sign_in: boolean,
-    allow_connected_accounts: boolean,
-  }> {
-    return await this.updateOAuthProvider("me", providerId, data, session, "client");
   }
 
   async deleteCurrentUserOAuthProvider(

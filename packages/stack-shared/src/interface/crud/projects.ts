@@ -7,7 +7,7 @@ const teamPermissionSchema = yupObject({
 }).defined();
 
 const oauthProviderReadSchema = yupObject({
-  provider_id: schemaFields.yupString().defined(),
+  provider_config_id: schemaFields.yupString().defined(),
   id: schemaFields.oauthIdSchema.defined(),
   type: schemaFields.oauthTypeSchema.defined(),
   client_id: schemaFields.yupDefinedAndNonEmptyWhen(
@@ -24,7 +24,7 @@ const oauthProviderReadSchema = yupObject({
   microsoft_tenant_id: schemaFields.oauthMicrosoftTenantIdSchema.optional(),
 });
 
-const oauthProviderWriteSchema = oauthProviderReadSchema.omit(['provider_id']);
+const oauthProviderWriteSchema = oauthProviderReadSchema.omit(['provider_config_id']);
 
 const enabledOAuthProviderSchema = yupObject({
   id: schemaFields.oauthIdSchema.defined(),
