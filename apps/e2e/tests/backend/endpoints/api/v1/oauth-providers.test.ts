@@ -203,13 +203,15 @@ it("should update an OAuth provider connection on the server", async ({ expect }
     accessType: "server",
     body: {
       user_id: "me",
-      provider_id: providerConfig.id,
+      provider_config_id: providerConfig.id,
       account_id: "test_github_user_123",
       email: "test@example.com",
       allow_sign_in: true,
       allow_connected_accounts: true,
     },
   });
+
+  expect(createResponse.status).toBe(201);
 
   // Update the provider connection
   const updateResponse = await niceBackendFetch(`/api/v1/oauth-providers/me/${createResponse.body.id}`, {
@@ -222,21 +224,19 @@ it("should update an OAuth provider connection on the server", async ({ expect }
     },
   });
 
-  expect(updateResponse).toMatchInlineSnapshot(`
-    NiceResponse {
-      "status": 200,
-      "body": {
-        "account_id": "test_github_user_123",
-        "allow_connected_accounts": true,
-        "allow_sign_in": true,
-        "email": "updated@example.com",
-        "id": "github",
-        "type": "github",
-        "user_id": "<stripped UUID>",
-      },
-      "headers": Headers { <some fields may have been hidden> },
-    }
-  `);
+  expect(updateResponse.body.allow_connected_accounts).toBe(true);
+  expect(updateResponse.body.allow_sign_in).toBe(true);
+  expect(updateResponse.body.email).toBe("updated@example.com");
+
+  // Read again to double check
+  const readResponse = await niceBackendFetch(`/api/v1/oauth-providers/me/${createResponse.body.id}`, {
+    method: "GET",
+    accessType: "server",
+  });
+
+  expect(readResponse.body.allow_connected_accounts).toBe(true);
+  expect(readResponse.body.allow_sign_in).toBe(true);
+  expect(readResponse.body.email).toBe("updated@example.com");
 });
 
 it("should delete an OAuth provider connection", async ({ expect }: { expect: any }) => {
@@ -251,13 +251,15 @@ it("should delete an OAuth provider connection", async ({ expect }: { expect: an
     accessType: "server",
     body: {
       user_id: "me",
-      provider_id: providerConfig.id,
+      provider_config_id: providerConfig.id,
       account_id: "test_github_user_123",
       email: "test@example.com",
       allow_sign_in: true,
       allow_connected_accounts: true,
     },
   });
+
+  expect(createResponse.status).toBe(201);
 
   // Delete the provider connection
   const deleteResponse = await niceBackendFetch(`/api/v1/oauth-providers/me/${createResponse.body.id}`, {
@@ -292,7 +294,7 @@ it("should return 404 when reading non-existent OAuth provider", async ({ expect
   await createAndSwitchToOAuthEnabledProject();
   await Auth.Otp.signIn();
 
-  const readResponse = await niceBackendFetch("/api/v1/oauth-providers/me/github", {
+  const readResponse = await niceBackendFetch("/api/v1/oauth-providers/me/e889e6de-8da5-47fd-87fd-a8db34b14ec4", {
     method: "GET",
     accessType: "client",
   });
@@ -310,7 +312,7 @@ it("should return 404 when updating non-existent OAuth provider", async ({ expec
   await createAndSwitchToOAuthEnabledProject();
   await Auth.Otp.signIn();
 
-  const updateResponse = await niceBackendFetch("/api/v1/oauth-providers/me/github", {
+  const updateResponse = await niceBackendFetch("/api/v1/oauth-providers/me/e889e6de-8da5-47fd-87fd-a8db34b14ec4", {
     method: "PATCH",
     accessType: "client",
     body: {
@@ -321,7 +323,7 @@ it("should return 404 when updating non-existent OAuth provider", async ({ expec
   expect(updateResponse).toMatchInlineSnapshot(`
     NiceResponse {
       "status": 404,
-      "body": "OAuth provider not found for this user",
+      "body": "OAuth provider <stripped UUID> not found",
       "headers": Headers { <some fields may have been hidden> },
     }
   `);
@@ -331,7 +333,7 @@ it("should return 404 when deleting non-existent OAuth provider", async ({ expec
   await createAndSwitchToOAuthEnabledProject();
   await Auth.Otp.signIn();
 
-  const deleteResponse = await niceBackendFetch("/api/v1/oauth-providers/me/github", {
+  const deleteResponse = await niceBackendFetch("/api/v1/oauth-providers/me/e889e6de-8da5-47fd-87fd-a8db34b14ec4", {
     method: "DELETE",
     accessType: "client",
   });
@@ -373,13 +375,15 @@ it("should forbid client access to other users' OAuth providers", async ({ expec
     accessType: "server",
     body: {
       user_id: "me",
-      provider_id: providerConfig.id,
+      provider_config_id: providerConfig.id,
       account_id: "test_github_user_2",
       email: "test2@example.com",
       allow_sign_in: true,
       allow_connected_accounts: true,
     },
   });
+
+  expect(createResponse2.status).toBe(201);
 
   // Try to read user2's OAuth provider as user2
   const readResponseSelf = await niceBackendFetch(`/api/v1/oauth-providers/${user2.userId}/${createResponse2.body.id}`, {
@@ -394,7 +398,7 @@ it("should forbid client access to other users' OAuth providers", async ({ expec
         "allow_connected_accounts": true,
         "allow_sign_in": true,
         "email": "test2@example.com",
-        "id": "github",
+        "id": "<stripped UUID>",
         "type": "github",
         "user_id": "<stripped UUID>",
       },
@@ -469,18 +473,20 @@ it("should allow server access to any user's OAuth providers", async ({ expect }
   const providerConfig = createProjectResponse.body.config.oauth_providers.find((p: any) => p.provider_id === "github");
   expect(providerConfig).toBeDefined();
 
-  await niceBackendFetch("/api/v1/oauth-providers", {
+  const createResponse1 = await niceBackendFetch("/api/v1/oauth-providers", {
     method: "POST",
     accessType: "server",
     body: {
       user_id: "me",
-      provider_id: providerConfig.id,
+      provider_config_id: providerConfig.id,
       account_id: "test_github_user_1",
       email: "test1@example.com",
       allow_sign_in: true,
       allow_connected_accounts: true,
     },
   });
+
+  expect(createResponse1.status).toBe(201);
 
   backendContext.set({ mailbox: createMailbox() });
   const user2 = await Auth.Otp.signIn();
@@ -490,13 +496,15 @@ it("should allow server access to any user's OAuth providers", async ({ expect }
     accessType: "server",
     body: {
       user_id: "me",
-      provider_id: providerConfig.id,
+      provider_config_id: providerConfig.id,
       account_id: "test_github_user_2",
       email: "test2@example.com",
       allow_sign_in: true,
       allow_connected_accounts: true,
     },
   });
+
+  expect(createResponse2.status).toBe(201);
 
   // Server should be able to read user1's OAuth provider from user2's context
   const readResponse = await niceBackendFetch(`/api/v1/oauth-providers`, {
@@ -515,7 +523,7 @@ it("should allow server access to any user's OAuth providers", async ({ expect }
             "allow_connected_accounts": true,
             "allow_sign_in": true,
             "email": "test1@example.com",
-            "id": "github",
+            "id": "<stripped UUID>",
             "type": "github",
             "user_id": "<stripped UUID>",
           },
@@ -524,7 +532,7 @@ it("should allow server access to any user's OAuth providers", async ({ expect }
             "allow_connected_accounts": true,
             "allow_sign_in": true,
             "email": "test2@example.com",
-            "id": "github",
+            "id": "<stripped UUID>",
             "type": "github",
             "user_id": "<stripped UUID>",
           },
@@ -551,7 +559,7 @@ it("should allow server access to any user's OAuth providers", async ({ expect }
             "allow_connected_accounts": true,
             "allow_sign_in": true,
             "email": "test1@example.com",
-            "id": "github",
+            "id": "<stripped UUID>",
             "type": "github",
             "user_id": "<stripped UUID>",
           },
@@ -562,7 +570,7 @@ it("should allow server access to any user's OAuth providers", async ({ expect }
   `);
 
   // Server should be able to update user1's OAuth provider from user2's context
-  const updateResponse = await niceBackendFetch(`/api/v1/oauth-providers/${user1.userId}/${createResponse2.body.id}`, {
+  const updateResponse = await niceBackendFetch(`/api/v1/oauth-providers/${user1.userId}/${createResponse1.body.id}`, {
     method: "PATCH",
     accessType: "server",
     body: {
@@ -578,7 +586,7 @@ it("should allow server access to any user's OAuth providers", async ({ expect }
         "allow_connected_accounts": true,
         "allow_sign_in": false,
         "email": "test1@example.com",
-        "id": "github",
+        "id": "<stripped UUID>",
         "type": "github",
         "user_id": "<stripped UUID>",
       },
