@@ -1,3 +1,4 @@
+import { ChatContent } from "@stackframe/stack-shared/dist/interface/admin-interface";
 import { EmailTemplateType } from "@stackframe/stack-shared/dist/interface/crud/email-templates";
 import { InternalSession } from "@stackframe/stack-shared/dist/sessions";
 import { Result } from "@stackframe/stack-shared/dist/utils/results";
@@ -32,6 +33,8 @@ export type StackAdminApp<HasTokenStore extends boolean = boolean, ProjectId ext
   & AsyncStoreProperty<"internalApiKeys", [], InternalApiKey[], true>
   & AsyncStoreProperty<"teamPermissionDefinitions", [], AdminTeamPermissionDefinition[], true>
   & AsyncStoreProperty<"projectPermissionDefinitions", [], AdminProjectPermissionDefinition[], true>
+  & AsyncStoreProperty<"emailThemes", [], { id: string, displayName: string }[], true>
+  & AsyncStoreProperty<"emailThemePreview", [themeId: string, content: string], string, false>
   & {
     useEmailTemplates(): AdminEmailTemplate[], // THIS_LINE_PLATFORM react-like
     listEmailTemplates(): Promise<AdminEmailTemplate[]>,
@@ -66,7 +69,17 @@ export type StackAdminApp<HasTokenStore extends boolean = boolean, ProjectId ext
       notificationCategoryName: string,
     }): Promise<void>,
 
-    useEmailThemePreview(theme: string, content: string): string, // THIS_LINE_PLATFORM react-like
+    useEmailTheme(id: string): { displayName: string, tsxSource: string }, // THIS_LINE_PLATFORM react-like
+    createEmailTheme(displayName: string): Promise<{ id: string }>,
+    updateEmailTheme(id: string, tsxSource: string, previewHtml: string): Promise<{ rendered_html: string }>,
+
+    sendEmailThemeChatMessage(
+      themeId: string,
+      currentEmailTheme: string,
+      messages: Array<{ role: string, content: string }>,
+      abortSignal?: AbortSignal,
+    ): Promise<{ content: ChatContent }>,
+    listEmailThemeChatMessages(themeId: string): Promise<{ messages: Array<{ role: string, content: ChatContent }> }>,
   }
   & StackServerApp<HasTokenStore, ProjectId>
 );

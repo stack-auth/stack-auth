@@ -4,6 +4,7 @@ import { yupBoolean, yupObject, yupRecord, yupString, yupUnion } from "../schema
 import { allProviders } from "../utils/oauth";
 import { DeepMerge, DeepPartial, get, has, isObjectLike, mapValues, set } from "../utils/objects";
 import { Config, NormalizesTo } from "./format";
+import { DEFAULT_EMAIL_THEME_ID, DEFAULT_EMAIL_THEMES } from "../helpers/email-themes";
 
 // NOTE: The validation schemas in here are all schematic validators, not sanity-check validators.
 // For more info, see ./README.md
@@ -118,7 +119,11 @@ export const branchConfigSchema = projectConfigSchema.omit(['sourceOfTruth']).co
 
   auth: branchAuthSchema,
 
-  emails: yupObject({}),
+  emails: yupObject({
+    theme: schemaFields.emailThemeSchema.optional(),
+    themeList: schemaFields.emailThemeListSchema.optional(),
+  }),
+
 }));
 
 
@@ -151,7 +156,6 @@ export const environmentConfigSchema = branchConfigSchema.concat(yupObject({
       senderName: schemaFields.emailSenderNameSchema.optional().nonEmpty(),
       senderEmail: schemaFields.emailSenderEmailSchema.optional().nonEmpty(),
     }),
-    theme: schemaFields.emailThemeSchema.optional(),
   }).optional()),
 
   domains: branchConfigSchema.getNested("domains").concat(yupObject({
@@ -240,7 +244,8 @@ export const organizationConfigDefaults = {
     server: {
       isShared: true,
     },
-    theme: 'default-light',
+    theme: DEFAULT_EMAIL_THEME_ID,
+    themeList: DEFAULT_EMAIL_THEMES,
   },
 } satisfies DeepReplaceAllowFunctionsForObjects<OrganizationConfigStrippedNormalizedOverride>;
 
