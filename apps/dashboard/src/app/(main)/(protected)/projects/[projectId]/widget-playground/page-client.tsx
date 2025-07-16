@@ -941,6 +941,8 @@ function SwappableWidgetInstanceGrid(props: { gridRef: ReadonlyRef<WidgetInstanc
           <div key={y} style={{
             gridColumn: `1 / -1`,
             gridRow: `${2 * y + 1} / ${2 * y + 2}`,
+            display: 'flex',
+            flexDirection: 'column',
           }}>
             {[...(varHeights.get(y) ?? []), null].map((instance, i) => {
               if (instance !== null && !props.allowVariableHeight) {

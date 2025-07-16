@@ -29,6 +29,7 @@
     "@radix-ui/react-slot": "^1.2.3",
     "@radix-ui/react-tabs": "^1.1.12",
     "@stackframe/stack": "workspace:^",
+    "@stackframe/stack-shared": "workspace:^",
     "@xyflow/react": "^12.6.4",
     "ai": "^4.3.16",
     "class-variance-authority": "^0.7.1",
