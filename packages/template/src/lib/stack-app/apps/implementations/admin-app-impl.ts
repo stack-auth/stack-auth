@@ -1,6 +1,6 @@
 import { StackAdminInterface } from "@stackframe/stack-shared";
 import { getProductionModeErrors } from "@stackframe/stack-shared/dist/helpers/production-mode";
-import { InternalApiKeyCreateCrudResponse } from "@stackframe/stack-shared/dist/interface/admin-interface";
+import { ChatMessage, InternalApiKeyCreateCrudResponse } from "@stackframe/stack-shared/dist/interface/admin-interface";
 import { EmailTemplateCrud, EmailTemplateType } from "@stackframe/stack-shared/dist/interface/crud/email-templates";
 import { InternalApiKeysCrud } from "@stackframe/stack-shared/dist/interface/crud/internal-api-keys";
 import { ProjectsCrud } from "@stackframe/stack-shared/dist/interface/crud/projects";
@@ -465,11 +465,11 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
     return await this._interface.sendChatMessage(threadId, contextType, messages, abortSignal);
   }
 
-  async saveChatMessage(threadId: string, message: any): Promise<void> {
+  async saveChatMessage(threadId: string, message: ChatMessage): Promise<void> {
     await this._interface.saveChatMessage(threadId, message);
   }
 
-  async listChatMessages(threadId: string): Promise<{ messages: Array<any> }> {
+  async listChatMessages(threadId: string): Promise<{ messages: Array<ChatMessage> }> {
     return await this._interface.listChatMessages(threadId);
   }
 

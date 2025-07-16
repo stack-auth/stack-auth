@@ -8,6 +8,8 @@ import { SvixTokenCrud } from "./crud/svix-token";
 import { TeamPermissionDefinitionsCrud } from "./crud/team-permissions";
 import { ServerAuthApplicationOptions, StackServerInterface } from "./server-interface";
 
+export type ChatMessage = unknown & { readonly __brand: 'ChatMessage' };
+
 export type ChatContent = Array<
   | { type: "text", text: string }
   | { type: "tool-call", toolName: string, toolCallId: string, args: any, argsText: string, result: any }
@@ -376,7 +378,7 @@ export class StackAdminInterface extends StackServerInterface {
     return await response.json();
   }
 
-  async saveChatMessage(threadId: string, message: any): Promise<void> {
+  async saveChatMessage(threadId: string, message: ChatMessage): Promise<void> {
     await this.sendAdminRequest(
       `/internal/ai-chat/${threadId}`,
       {
@@ -390,7 +392,7 @@ export class StackAdminInterface extends StackServerInterface {
     );
   }
 
-  async listChatMessages(threadId: string): Promise<{ messages: Array<any> }> {
+  async listChatMessages(threadId: string): Promise<{ messages: Array<ChatMessage> }> {
     const response = await this.sendAdminRequest(
       `/internal/ai-chat/${threadId}`,
       { method: "GET" },

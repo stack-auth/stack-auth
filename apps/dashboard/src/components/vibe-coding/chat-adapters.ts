@@ -4,7 +4,7 @@ import {
   type ThreadHistoryAdapter,
 } from "@assistant-ui/react";
 import { StackAdminApp } from "@stackframe/stack";
-import { ChatContent } from "@stackframe/stack-shared/dist/interface/admin-interface";
+import { ChatContent, ChatMessage } from "@stackframe/stack-shared/dist/interface/admin-interface";
 
 export type ToolCallContent = Extract<ChatContent[number], { type: "tool-call" }>;
 
@@ -67,10 +67,10 @@ export function createHistoryAdapter(
   return {
     async load() {
       const { messages } = await adminApp.listChatMessages(threadId);
-      return { messages } as ExportedMessageRepository;
+      return { messages } as unknown as ExportedMessageRepository;
     },
     async append(message) {
-      await adminApp.saveChatMessage(threadId, message);
+      await adminApp.saveChatMessage(threadId, message as unknown as ChatMessage);
     },
   };
 }
