@@ -187,15 +187,14 @@ const handler = createSmartRouteHandler({
         }
       });
 
-      const storeTokens = async () => {
+      const storeTokens = async (oauthAccountId: string) => {
         if (tokenSet.refreshToken) {
           await prisma.oAuthToken.create({
             data: {
               tenancyId: outerInfo.tenancyId,
-              configOAuthProviderId: provider.id,
               refreshToken: tokenSet.refreshToken,
-              providerAccountId: userInfo.accountId,
               scopes: extractScopes(providerObj.scope + " " + providerScope),
+              oauthAccountId,
             }
           });
         }
@@ -203,11 +202,10 @@ const handler = createSmartRouteHandler({
         await prisma.oAuthAccessToken.create({
           data: {
             tenancyId: outerInfo.tenancyId,
-            configOAuthProviderId: provider.id,
             accessToken: tokenSet.accessToken,
-            providerAccountId: userInfo.accountId,
             scopes: extractScopes(providerObj.scope + " " + providerScope),
             expiresAt: tokenSet.accessTokenExpiredAt,
+            oauthAccountId,
           }
         });
       };
@@ -220,15 +218,20 @@ const handler = createSmartRouteHandler({
           {
             authenticateHandler: {
               handle: async () => {
-                const oldAccount = await prisma.projectUserOAuthAccount.findUnique({
+                const oldAccounts = await prisma.projectUserOAuthAccount.findMany({
                   where: {
-                    tenancyId_configOAuthProviderId_providerAccountId: {
-                      tenancyId: outerInfo.tenancyId,
-                      configOAuthProviderId: provider.id,
-                      providerAccountId: userInfo.accountId,
-                    },
+                    tenancyId: outerInfo.tenancyId,
+                    configOAuthProviderId: provider.id,
+                    providerAccountId: userInfo.accountId,
+                    allowSignIn: true,
                   },
                 });
+
+                if (oldAccounts.length > 1) {
+                  throw new StackAssertionError("Multiple accounts found for the same provider and account ID");
+                }
+
+                const oldAccount = oldAccounts[0] as (typeof oldAccounts)[number] | undefined;
 
                 // ========================== link account with user ==========================
                 if (type === "link") {
@@ -241,19 +244,20 @@ const handler = createSmartRouteHandler({
                     if (oldAccount.projectUserId !== projectUserId) {
                       throw new KnownErrors.OAuthConnectionAlreadyConnectedToAnotherUser();
                     }
-                    await storeTokens();
+                    await storeTokens(oldAccount.id);
                   } else {
                     // ========================== connect account with user ==========================
-                    await createProjectUserOAuthAccount(prisma, {
+                    const newOAuthAccount = await createProjectUserOAuthAccount(prisma, {
                       tenancyId: outerInfo.tenancyId,
                       providerId: provider.id,
                       providerAccountId: userInfo.accountId,
                       email: userInfo.email,
                       projectUserId,
                     });
+
+                    await storeTokens(newOAuthAccount.id);
                   }
 
-                  await storeTokens();
                   return {
                     id: projectUserId,
                     newUser: false,
@@ -264,7 +268,7 @@ const handler = createSmartRouteHandler({
                   // ========================== sign in user ==========================
 
                   if (oldAccount) {
-                    await storeTokens();
+                    await storeTokens(oldAccount.id);
 
                     return {
                       id: oldAccount.projectUserId,
@@ -311,7 +315,7 @@ const handler = createSmartRouteHandler({
                           const existingUser = oldContactChannel.projectUser;
 
                           // First create the OAuth account
-                          await createProjectUserOAuthAccount(prisma, {
+                          const newOAuthAccount = await createProjectUserOAuthAccount(prisma, {
                             tenancyId: outerInfo.tenancyId,
                             providerId: provider.id,
                             providerAccountId: userInfo.accountId,
@@ -333,7 +337,7 @@ const handler = createSmartRouteHandler({
                             }
                           });
 
-                          await storeTokens();
+                          await storeTokens(newOAuthAccount.id);
                           return {
                             id: existingUser.projectUserId,
                             newUser: false,
@@ -367,7 +371,23 @@ const handler = createSmartRouteHandler({
                     },
                   });
 
-                  await storeTokens();
+                  const oauthAccount = await prisma.projectUserOAuthAccount.findUnique({
+                    where: {
+                      tenancyId_configOAuthProviderId_projectUserId_providerAccountId: {
+                        tenancyId: outerInfo.tenancyId,
+                        configOAuthProviderId: provider.id,
+                        providerAccountId: userInfo.accountId,
+                        projectUserId: newAccount.id,
+                      },
+                    },
+                  });
+
+                  if (!oauthAccount) {
+                    throw new StackAssertionError("OAuth account not found");
+                  }
+
+                  await storeTokens(oauthAccount.id);
+
                   return {
                     id: newAccount.id,
                     newUser: true,

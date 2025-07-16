@@ -13,10 +13,10 @@ import { AuthenticationResponseJSON, PublicKeyCredentialCreationOptionsJSON, Pub
 import { wait } from '../utils/promises';
 import { Result } from "../utils/results";
 import { deindent } from '../utils/strings';
+import { ConnectedAccountAccessTokenCrud } from './crud/connected-accounts';
 import { ContactChannelsCrud } from './crud/contact-channels';
 import { CurrentUserCrud } from './crud/current-user';
 import { NotificationPreferenceCrud } from './crud/notification-preferences';
-import { ConnectedAccountAccessTokenCrud } from './crud/oauth';
 import { TeamApiKeysCrud, UserApiKeysCrud, teamApiKeysCreateInputSchema, teamApiKeysCreateOutputSchema, userApiKeysCreateInputSchema, userApiKeysCreateOutputSchema } from './crud/project-api-keys';
 import { ProjectPermissionsCrud } from './crud/project-permissions';
 import { AdminUserProjectsCrud, ClientProjectsCrud } from './crud/projects';
@@ -1668,6 +1668,189 @@ export class StackClientInterface {
       },
       session,
     );
+  }
+
+  // OAuth Providers CRUD operations
+  async createOAuthProvider(
+    data: {
+      user_id: string,
+      provider_config_id: string,
+      account_id: string,
+      email: string,
+      allow_sign_in: boolean,
+      allow_connected_accounts: boolean,
+    },
+    session: InternalSession | null,
+    requestType: "client" | "server" | "admin" = "server",
+  ): Promise<{
+    id: string,
+    type: string,
+    user_id: string,
+    account_id: string,
+    email: string,
+    allow_sign_in: boolean,
+    allow_connected_accounts: boolean,
+  }> {
+    const sendRequest = requestType === "client" ? this.sendClientRequest : (this as any).sendServerRequest;
+    const response = await sendRequest.call(this,
+      "/oauth-providers",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+        },
+        body: JSON.stringify(data),
+      },
+      session,
+      requestType,
+    );
+    return response.json();
+  }
+
+  async getOAuthProvider(
+    userId: string,
+    providerId: string,
+    session: InternalSession | null,
+    requestType: "client" | "server" | "admin" = "client",
+  ): Promise<{
+    id: string,
+    type: string,
+    user_id: string,
+    account_id?: string,
+    email: string,
+    allow_sign_in: boolean,
+    allow_connected_accounts: boolean,
+  }> {
+    const sendRequest = requestType === "client" ? this.sendClientRequest : (this as any).sendServerRequest;
+    const response = await sendRequest.call(this,
+      `/oauth-providers/${userId}/${providerId}`,
+      {
+        method: "GET",
+      },
+      session,
+      requestType,
+    );
+    return response.json();
+  }
+
+  async listOAuthProviders(
+    options: {
+      user_id?: string,
+    } = {},
+    session: InternalSession | null,
+    requestType: "client" | "server" | "admin" = "client",
+  ): Promise<{
+    id: string,
+    type: string,
+    user_id: string,
+    account_id?: string,
+    email: string,
+    allow_sign_in: boolean,
+    allow_connected_accounts: boolean,
+  }[]> {
+    const sendRequest = requestType === "client" ? this.sendClientRequest : (this as any).sendServerRequest;
+    const queryParams = new URLSearchParams(filterUndefined(options));
+    const response = await sendRequest.call(this,
+      `/oauth-providers${queryParams.toString() ? `?${queryParams.toString()}` : ''}`,
+      {
+        method: "GET",
+      },
+      session,
+      requestType,
+    );
+    const result = await response.json();
+    return result.items;
+  }
+
+  async updateOAuthProvider(
+    userId: string,
+    providerId: string,
+    data: {
+      account_id?: string,
+      email?: string,
+      allow_sign_in?: boolean,
+      allow_connected_accounts?: boolean,
+    },
+    session: InternalSession | null,
+    requestType: "client" | "server" | "admin" = "client",
+  ): Promise<{
+    id: string,
+    type: string,
+    user_id: string,
+    account_id?: string,
+    email: string,
+    allow_sign_in: boolean,
+    allow_connected_accounts: boolean,
+  }> {
+    const sendRequest = requestType === "client" ? this.sendClientRequest : (this as any).sendServerRequest;
+    const response = await sendRequest.call(this,
+      `/oauth-providers/${userId}/${providerId}`,
+      {
+        method: "PATCH",
+        headers: {
+          "content-type": "application/json",
+        },
+        body: JSON.stringify(data),
+      },
+      session,
+      requestType,
+    );
+    return response.json();
+  }
+
+  async deleteOAuthProvider(
+    userId: string,
+    providerId: string,
+    session: InternalSession | null,
+    requestType: "client" | "server" | "admin" = "client",
+  ): Promise<{ success: boolean }> {
+    const sendRequest = requestType === "client" ? this.sendClientRequest : (this as any).sendServerRequest;
+    const response = await sendRequest.call(this,
+      `/oauth-providers/${userId}/${providerId}`,
+      {
+        method: "DELETE",
+      },
+      session,
+      requestType,
+    );
+    return response.json();
+  }
+
+  // Convenience methods for current user OAuth providers
+  async getCurrentUserOAuthProvider(
+    providerId: string,
+    session: InternalSession,
+  ): Promise<{
+    id: string,
+    type: string,
+    user_id: string,
+    account_id?: string,
+    email: string,
+    allow_sign_in: boolean,
+    allow_connected_accounts: boolean,
+  }> {
+    return await this.getOAuthProvider("me", providerId, session, "client");
+  }
+
+  async listCurrentUserOAuthProviders(
+    session: InternalSession,
+  ): Promise<{
+    id: string,
+    type: string,
+    user_id: string,
+    account_id?: string,
+    email: string,
+    allow_sign_in: boolean,
+    allow_connected_accounts: boolean,
+  }[]> {
+    return await this.listOAuthProviders({ user_id: "me" }, session, "client");
+  }
+
+  async deleteCurrentUserOAuthProvider(
+    providerId: string,
+    session: InternalSession,
+  ): Promise<{ success: boolean }> {
+    return await this.deleteOAuthProvider("me", providerId, session, "client");
   }
 }
 
