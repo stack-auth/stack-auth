@@ -41,14 +41,17 @@ export const connectedAccountAccessTokenCrudHandlers = createLazyProxy(() =>crea
     const accessTokens = await prisma.oAuthAccessToken.findMany({
       where: {
         tenancyId: auth.tenancy.id,
-        configOAuthProviderId: params.provider_id,
         projectUserOAuthAccount: {
           projectUserId: params.user_id,
+          configOAuthProviderId: params.provider_id,
         },
         expiresAt: {
           // is at least 5 minutes in the future
           gt: new Date(Date.now() + 5 * 60 * 1000),
         },
+      },
+      include: {
+        projectUserOAuthAccount: true,
       },
     });
     const filteredTokens = accessTokens.filter((t) => {
@@ -67,10 +70,13 @@ export const connectedAccountAccessTokenCrudHandlers = createLazyProxy(() =>crea
     const refreshTokens = await prisma.oAuthToken.findMany({
       where: {
         tenancyId: auth.tenancy.id,
-        configOAuthProviderId: params.provider_id,
         projectUserOAuthAccount: {
           projectUserId: params.user_id,
+          configOAuthProviderId: params.provider_id,
         }
+      },
+      include: {
+        projectUserOAuthAccount: true,
       },
     });
 
@@ -94,11 +100,10 @@ export const connectedAccountAccessTokenCrudHandlers = createLazyProxy(() =>crea
     await prisma.oAuthAccessToken.create({
       data: {
         tenancyId: auth.tenancy.id,
-        configOAuthProviderId: params.provider_id,
         accessToken: tokenSet.accessToken,
-        providerAccountId: filteredRefreshTokens[0].providerAccountId,
         scopes: filteredRefreshTokens[0].scopes,
-        expiresAt: tokenSet.accessTokenExpiredAt
+        expiresAt: tokenSet.accessTokenExpiredAt,
+        oauthAccountId: filteredRefreshTokens[0].oauthAccountId,
       }
     });
 
@@ -112,9 +117,8 @@ export const connectedAccountAccessTokenCrudHandlers = createLazyProxy(() =>crea
       await prisma.oAuthToken.create({
         data: {
           tenancyId: auth.tenancy.id,
-          configOAuthProviderId: params.provider_id,
           refreshToken: tokenSet.refreshToken,
-          providerAccountId: filteredRefreshTokens[0].providerAccountId,
+          oauthAccountId: filteredRefreshTokens[0].oauthAccountId,
           scopes: filteredRefreshTokens[0].scopes,
         }
       });

@@ -196,9 +196,9 @@ model ProjectUser {
 // This should be renamed to "OAuthAccount" as it is not always bound to a user
 // When ever a user goes through the OAuth flow and gets an account ID from the OAuth provider, we store that here.
 model ProjectUserOAuthAccount {
-  id                    String @default(uuid()) @db.Uuid
-  tenancyId             String @db.Uuid
-  projectUserId         String @db.Uuid
+  id                    String  @default(uuid()) @db.Uuid
+  tenancyId             String  @db.Uuid
+  projectUserId         String? @db.Uuid
   configOAuthProviderId String
   providerAccountId     String
 

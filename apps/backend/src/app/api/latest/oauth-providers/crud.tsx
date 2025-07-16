@@ -165,7 +165,7 @@ export const oauthProviderCrudHandlers = createLazyProxy(() => createCrudHandler
           const providerConfig = getProviderConfig(auth.tenancy, oauthAccount.configOAuthProviderId);
 
           return {
-            user_id: oauthAccount.projectUserId,
+            user_id: oauthAccount.projectUserId || throwErr("OAuth account has no project user ID"),
             id: providerConfig.id,
             email: oauthAccount.email || undefined,
             type: providerConfig.type as any, // Type assertion to match schema

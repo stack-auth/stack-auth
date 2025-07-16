@@ -522,7 +522,6 @@ export const usersCrudHandlers = createLazyProxy(() => createCrudHandlers(usersC
               } : {},
               oauthAuthMethod: {
                 create: {
-                  projectUserId: newUser.projectUserId,
                   authMethodId: authMethod.id,
                 }
               },
