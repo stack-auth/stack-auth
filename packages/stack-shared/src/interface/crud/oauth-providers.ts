@@ -8,7 +8,8 @@ import {
   oauthProviderTypeSchema,
   userIdOrMeSchema,
   yupMixed,
-  yupObject
+  yupObject,
+  yupString
 } from "../../schema-fields";
 
 export const oauthProviderClientReadSchema = yupObject({
@@ -36,7 +37,7 @@ export const oauthProviderCrudServerUpdateSchema = oauthProviderCrudClientUpdate
 
 export const oauthProviderCrudServerCreateSchema = yupObject({
   user_id: userIdOrMeSchema.defined(),
-  provider_id: oauthProviderIdSchema.defined(),
+  provider_config_id: yupString().defined(),
   email: oauthProviderEmailSchema.optional(),
   allow_sign_in: oauthProviderAllowSignInSchema.defined(),
   allow_connected_accounts: oauthProviderAllowConnectedAccountsSchema.defined(),

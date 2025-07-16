@@ -29,7 +29,7 @@ it("should create an OAuth provider connection", async ({ expect }: { expect: an
     accessType: "server",
     body: {
       user_id: "me",
-      provider_id: providerConfig.id,
+      provider_config_id: providerConfig.id,
       account_id: "test_github_user_123",
       email: "test@example.com",
       allow_sign_in: true,
@@ -45,7 +45,7 @@ it("should create an OAuth provider connection", async ({ expect }: { expect: an
         "allow_connected_accounts": true,
         "allow_sign_in": true,
         "email": "test@example.com",
-        "id": "github",
+        "id": "<stripped UUID>",
         "type": "github",
         "user_id": "<stripped UUID>",
       },
@@ -66,13 +66,15 @@ it("should read an OAuth provider connection", async ({ expect }: { expect: any 
     accessType: "server",
     body: {
       user_id: "me",
-      provider_id: providerConfig.id,
+      provider_config_id: providerConfig.id,
       account_id: "test_github_user_123",
       email: "test@example.com",
       allow_sign_in: true,
       allow_connected_accounts: true,
     },
   });
+
+  expect(createResponse.status).toBe(201);
 
   const readResponse = await niceBackendFetch(`/api/v1/oauth-providers/me/${createResponse.body.id}`, {
     method: "GET",
@@ -86,7 +88,7 @@ it("should read an OAuth provider connection", async ({ expect }: { expect: any 
         "allow_connected_accounts": true,
         "allow_sign_in": true,
         "email": "test@example.com",
-        "id": "github",
+        "id": "<stripped UUID>",
         "type": "github",
         "user_id": "<stripped UUID>",
       },
@@ -107,13 +109,15 @@ it("should list all OAuth provider connections for a user", async ({ expect }: {
     accessType: "server",
     body: {
       user_id: "me",
-      provider_id: providerConfig.id,
+      provider_config_id: providerConfig.id,
       account_id: "test_github_user_123",
       email: "test@example.com",
       allow_sign_in: true,
       allow_connected_accounts: true,
     },
   });
+
+  expect(createResponse.status).toBe(201);
 
   // List all providers
   const listResponse = await niceBackendFetch("/api/v1/oauth-providers?user_id=me", {

@@ -93,7 +93,7 @@ function getProviderConfig(tenancy: Tenancy, providerConfigId: string) {
 
 export const oauthProviderCrudHandlers = createLazyProxy(() => createCrudHandlers(oauthProviderCrud, {
   paramsSchema: yupObject({
-    provider_id: yupString().defined(),
+    provider_id: yupString().uuid().defined(),
     user_id: userIdOrMeSchema.defined(),
   }),
   querySchema: yupObject({
@@ -127,7 +127,7 @@ export const oauthProviderCrudHandlers = createLazyProxy(() => createCrudHandler
 
     return {
       user_id: params.user_id,
-      id: providerConfig.id,
+      id: oauthAccount.id,
       email: oauthAccount.email || undefined,
       type: providerConfig.type as any, // Type assertion to match schema
       allow_sign_in: oauthAccount.allowSignIn,
@@ -166,7 +166,7 @@ export const oauthProviderCrudHandlers = createLazyProxy(() => createCrudHandler
 
           return {
             user_id: oauthAccount.projectUserId || throwErr("OAuth account has no project user ID"),
-            id: providerConfig.id,
+            id: oauthAccount.id,
             email: oauthAccount.email || undefined,
             type: providerConfig.type as any, // Type assertion to match schema
             allow_sign_in: oauthAccount.allowSignIn,
@@ -293,7 +293,7 @@ export const oauthProviderCrudHandlers = createLazyProxy(() => createCrudHandler
 
       return {
         user_id: params.user_id,
-        id: providerConfig.id,
+        id: existingOAuthAccount.id,
         email: data.email || existingOAuthAccount.email || undefined,
         type: providerConfig.type as any,
         allow_sign_in: data.allow_sign_in || existingOAuthAccount.allowSignIn,
@@ -317,28 +317,26 @@ export const oauthProviderCrudHandlers = createLazyProxy(() => createCrudHandler
 
     await retryTransaction(prismaClient, async (tx) => {
       // Find the existing OAuth account with all related records
-      const existingOAuthAccount = await tx.projectUserOAuthAccount.findUnique({
+      const existingOAuthAccounts = await tx.projectUserOAuthAccount.findMany({
         where: {
-          tenancyId_id: {
-            tenancyId: auth.tenancy.id,
-            id: params.provider_id,
-          },
+          tenancyId: auth.tenancy.id,
+          id: params.provider_id,
         },
         include: {
           oauthAuthMethod: true,
         },
       });
 
-      if (!existingOAuthAccount) {
+      if (existingOAuthAccounts.length === 0) {
         throw new StatusError(StatusError.NotFound, 'OAuth provider not found for this user');
       }
 
-      if (existingOAuthAccount.oauthAuthMethod) {
+      if (existingOAuthAccounts[0].oauthAuthMethod) {
         await tx.authMethod.delete({
           where: {
             tenancyId_id: {
               tenancyId: auth.tenancy.id,
-              id: existingOAuthAccount.oauthAuthMethod.authMethodId,
+              id: existingOAuthAccounts[0].oauthAuthMethod.authMethodId,
             },
           },
         });
@@ -356,26 +354,26 @@ export const oauthProviderCrudHandlers = createLazyProxy(() => createCrudHandler
   },
   async onCreate({ auth, data }) {
     const prismaClient = getPrismaClientForTenancy(auth.tenancy);
-    const providerConfig = getProviderConfig(auth.tenancy, data.provider_id);
+    const providerConfig = getProviderConfig(auth.tenancy, data.provider_config_id);
 
     await ensureUserExists(prismaClient, { tenancyId: auth.tenancy.id, userId: data.user_id });
 
     await checkInputValidity({
       tenancy: auth.tenancy,
       type: 'create',
-      providerConfigId: data.provider_id,
+      providerConfigId: data.provider_config_id,
       accountId: data.account_id,
       userId: data.user_id,
       allowSignIn: data.allow_sign_in,
       allowConnectedAccounts: data.allow_connected_accounts,
     });
 
-    await retryTransaction(prismaClient, async (tx) => {
-      await tx.projectUserOAuthAccount.create({
+    const created = await retryTransaction(prismaClient, async (tx) => {
+      const created = await tx.projectUserOAuthAccount.create({
         data: {
           tenancyId: auth.tenancy.id,
           projectUserId: data.user_id,
-          configOAuthProviderId: data.provider_id,
+          configOAuthProviderId: data.provider_config_id,
           providerAccountId: data.account_id,
           email: data.email,
           allowSignIn: data.allow_sign_in,
@@ -390,7 +388,7 @@ export const oauthProviderCrudHandlers = createLazyProxy(() => createCrudHandler
             projectUserId: data.user_id,
             oauthAuthMethod: {
               create: {
-                configOAuthProviderId: data.provider_id,
+                configOAuthProviderId: data.provider_config_id,
                 projectUserId: data.user_id,
                 providerAccountId: data.account_id,
               },
@@ -398,12 +396,14 @@ export const oauthProviderCrudHandlers = createLazyProxy(() => createCrudHandler
           },
         });
       }
+
+      return created;
     });
 
     return {
       user_id: data.user_id,
       email: data.email,
-      id: data.provider_id,
+      id: created.id,
       type: providerConfig.type as any,
       allow_sign_in: data.allow_sign_in,
       allow_connected_accounts: data.allow_connected_accounts,

@@ -77,3 +77,5 @@ ALTER TABLE "OAuthToken" ADD CONSTRAINT "OAuthToken_tenancyId_oauthAccountId_fke
 
 -- AddForeignKey
 ALTER TABLE "OAuthAccessToken" ADD CONSTRAINT "OAuthAccessToken_tenancyId_oauthAccountId_fkey" FOREIGN KEY ("tenancyId", "oauthAccountId") REFERENCES "ProjectUserOAuthAccount"("tenancyId", "id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+ALTER TABLE "ProjectUserOAuthAccount" ALTER COLUMN "projectUserId" DROP NOT NULL;
