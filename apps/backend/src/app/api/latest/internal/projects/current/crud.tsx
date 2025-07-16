@@ -4,12 +4,18 @@ import { getPrismaClientForTenancy, globalPrismaClient } from "@/prisma-client";
 import { createCrudHandlers } from "@/route-handlers/crud-handler";
 import { projectsCrud } from "@stackframe/stack-shared/dist/interface/crud/projects";
 import { yupObject } from "@stackframe/stack-shared/dist/schema-fields";
-import { throwErr } from "@stackframe/stack-shared/dist/utils/errors";
+import { StatusError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
 import { createLazyProxy } from "@stackframe/stack-shared/dist/utils/proxies";
 
 export const projectsCrudHandlers = createLazyProxy(() => createCrudHandlers(projectsCrud, {
   paramsSchema: yupObject({}),
   onUpdate: async ({ auth, data }) => {
+    if (
+      data.config?.email_theme &&
+      !Object.keys(auth.tenancy.completeConfig.emails.themeList).includes(data.config.email_theme)
+    ) {
+      throw new StatusError(400, "Invalid email theme");
+    }
     const project = await createOrUpdateProject({
       type: "update",
       projectId: auth.project.id,

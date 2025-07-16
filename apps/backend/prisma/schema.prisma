@@ -710,3 +710,20 @@ model UserNotificationPreference {
   @@id([tenancyId, id])
   @@unique([tenancyId, projectUserId, notificationCategoryId])
 }
+
+enum ThreadMessageRole {
+  user
+  assistant
+  tool
+}
+
+model ThreadMessage {
+  id String @default(uuid()) @db.Uuid
+  tenancyId String @db.Uuid
+  threadId String @db.Uuid
+
+  role ThreadMessageRole
+  content Json
+  createdAt DateTime @default(now())
+  @@id([tenancyId, id])
+}

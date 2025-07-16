@@ -18,6 +18,7 @@ import { StackAdminApp, StackAdminAppConstructorOptions } from "../interfaces/ad
 import { clientVersion, createCache, getBaseUrl, getDefaultProjectId, getDefaultPublishableClientKey, getDefaultSecretServerKey, getDefaultSuperSecretAdminKey } from "./common";
 import { _StackServerAppImplIncomplete } from "./server-app-impl";
 
+import { ChatContent } from "@stackframe/stack-shared/dist/interface/admin-interface";
 import { useAsyncCache } from "./common"; // THIS_LINE_PLATFORM react-like
 
 export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, ProjectId extends string> extends _StackServerAppImplIncomplete<HasTokenStore, ProjectId> implements StackAdminApp<HasTokenStore, ProjectId>
@@ -33,6 +34,12 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
   });
   private readonly _adminEmailTemplatesCache = createCache(async () => {
     return await this._interface.listEmailTemplates();
+  });
+  private readonly _adminEmailThemeCache = createCache(async ([id]: [string]) => {
+    return await this._interface.getEmailTheme(id);
+  });
+  private readonly _adminEmailThemesCache = createCache(async () => {
+    return await this._interface.listEmailThemes();
   });
   private readonly _adminTeamPermissionDefinitionsCache = createCache(async () => {
     return await this._interface.listTeamPermissionDefinitions();
@@ -258,6 +265,25 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
     return crud.map((j) => this._adminEmailTemplateFromCrud(j));
   }
 
+  // IF_PLATFORM react-like
+  useEmailThemes(): { id: string, displayName: string }[] {
+    const crud = useAsyncCache(this._adminEmailThemesCache, [], "useEmailThemes()");
+    return useMemo(() => {
+      return crud.map((theme) => ({
+        id: theme.id,
+        displayName: theme.display_name,
+      }));
+    }, [crud]);
+  }
+  // END_PLATFORM
+  async listEmailThemes(): Promise<{ id: string, displayName: string }[]> {
+    const crud = Result.orThrow(await this._adminEmailThemesCache.getOrWait([], "write-only"));
+    return crud.map((theme) => ({
+      id: theme.id,
+      displayName: theme.display_name,
+    }));
+  }
+
   async updateEmailTemplate(type: EmailTemplateType, data: AdminEmailTemplateUpdateOptions): Promise<void> {
     await this._interface.updateEmailTemplate(type, adminEmailTemplateUpdateOptionsToCrud(data));
     await this._adminEmailTemplatesCache.refresh([]);
@@ -406,10 +432,44 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
     await this._interface.sendSignInInvitationEmail(email, callbackUrl);
   }
 
+  async sendEmailThemeChatMessage(
+    themeId: string,
+    currentEmailTheme: string,
+    messages: Array<{ role: string, content: string }>,
+    abortSignal?: AbortSignal,
+  ): Promise<{ content: ChatContent }> {
+    return await this._interface.sendEmailThemeChatMessage(themeId, currentEmailTheme, messages, abortSignal);
+  }
+
+  async listEmailThemeChatMessages(themeId: string): Promise<{ messages: Array<{ role: string, content: ChatContent }> }> {
+    return await this._interface.listEmailThemeChatMessages(themeId);
+  }
+
+  async createEmailTheme(displayName: string): Promise<{ id: string }> {
+    this._adminEmailThemesCache.invalidate([]);
+    return await this._interface.createEmailTheme(displayName);
+  }
+
+  async getEmailThemePreview(themeId: string, content: string): Promise<string> {
+    return (await this._interface.renderEmailThemePreview(themeId, content)).html;
+  }
   // IF_PLATFORM react-like
-  useEmailThemePreview(theme: string, content: string): string {
-    const crud = useAsyncCache(this._emailThemePreviewCache, [theme, content] as const, "useEmailThemePreview()");
+  useEmailThemePreview(themeId: string, content: string): string {
+    const crud = useAsyncCache(this._emailThemePreviewCache, [themeId, content] as const, "useEmailThemePreview()");
     return crud.html;
   }
   // END_PLATFORM
+  // IF_PLATFORM react-like
+  useEmailTheme(id: string): { displayName: string, tsxSource: string } {
+    const crud = useAsyncCache(this._adminEmailThemeCache, [id] as const, "useEmailTheme()");
+    return {
+      displayName: crud.display_name,
+      tsxSource: crud.tsx_source,
+    };
+  }
+  // END_PLATFORM
+  async updateEmailTheme(id: string, tsxSource: string, previewHtml: string): Promise<{ rendered_html: string }> {
+    const result = await this._interface.updateEmailTheme(id, tsxSource, previewHtml);
+    return result;
+  }
 }

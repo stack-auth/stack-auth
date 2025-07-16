@@ -1,8 +1,7 @@
-import { EMAIL_THEMES, renderEmailWithTheme } from "@/lib/email-themes";
+import { renderEmailWithTheme } from "@/lib/email-themes";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { KnownErrors } from "@stackframe/stack-shared/dist/known-errors";
-import { yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
-import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
+import { adaptSchema, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
 import { captureError, StackAssertionError, StatusError } from "@stackframe/stack-shared/dist/utils/errors";
 
 
@@ -15,9 +14,10 @@ export const POST = createSmartRouteHandler({
   request: yupObject({
     auth: yupObject({
       type: yupString().oneOf(["admin"]).defined(),
-    }).nullable(),
+      tenancy: adaptSchema.defined(),
+    }).defined(),
     body: yupObject({
-      theme: yupString().oneOf(Object.keys(EMAIL_THEMES) as (keyof typeof EMAIL_THEMES)[]).defined(),
+      theme_id: yupString().defined(),
       preview_html: yupString().defined(),
     }),
   }),
@@ -28,11 +28,16 @@ export const POST = createSmartRouteHandler({
       html: yupString().defined(),
     }).defined(),
   }),
-  async handler({ body }) {
-    if (!getEnvVariable("STACK_FREESTYLE_API_KEY")) {
-      throw new StatusError(500, "STACK_FREESTYLE_API_KEY is not set");
+  async handler({ body, auth: { tenancy } }) {
+    const themeList = tenancy.completeConfig.emails.themeList;
+    if (!Object.keys(themeList).includes(body.theme_id)) {
+      throw new StatusError(400, "No theme found with given id");
     }
-    const result = await renderEmailWithTheme(body.preview_html, body.theme);
+    const theme = themeList[body.theme_id];
+    const result = await renderEmailWithTheme(
+      body.preview_html,
+      theme.tsxSource
+    );
     if ("error" in result) {
       captureError('render-email', new StackAssertionError("Error rendering email with theme", { result }));
       throw new KnownErrors.EmailRenderingError(result.error);

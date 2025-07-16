@@ -53,7 +53,7 @@ it("should be able to provision a new project if neon client details are correct
           "credential_enabled": true,
           "domains": [],
           "email_config": { "type": "shared" },
-          "email_theme": "default-light",
+          "email_theme": "<stripped UUID>",
           "enabled_oauth_providers": [
             { "id": "github" },
             { "id": "google" },
