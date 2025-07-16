@@ -72,12 +72,18 @@ export const GET = createSmartRouteHandler({
     const themeList = tenancy.completeConfig.emails.themeList;
     const currentActiveTheme = tenancy.completeConfig.emails.theme;
     if (!(currentActiveTheme in themeList)) {
+      let newActiveTheme: string;
+      if (DEFAULT_EMAIL_THEME_ID in themeList) {
+        newActiveTheme = DEFAULT_EMAIL_THEME_ID;
+      } else {
+        newActiveTheme = Object.keys(themeList)[0];
+      }
       await overrideEnvironmentConfigOverride({
         tx: globalPrismaClient,
         projectId: tenancy.project.id,
         branchId: tenancy.branchId,
         environmentConfigOverrideOverride: {
-          "emails.theme": DEFAULT_EMAIL_THEME_ID,
+          "emails.theme": newActiveTheme,
         },
       });
     }
