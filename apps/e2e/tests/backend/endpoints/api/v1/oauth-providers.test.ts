@@ -901,7 +901,6 @@ it("should prevent multiple providers of the same type from being enabled for si
     },
   });
 
-  console.log(disableResponse);
   expect(disableResponse.status).toBe(200);
   expect(disableResponse.body.allow_sign_in).toBe(false);
 

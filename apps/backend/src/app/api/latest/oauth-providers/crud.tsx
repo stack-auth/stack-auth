@@ -50,27 +50,29 @@ async function checkInputValidity(options: {
     where: {
       tenancyId: options.tenancy.id,
       providerAccountId: options.accountId,
+      allowSignIn: true,
     },
   })).filter(p => p.id !== (options.type === 'update' ? options.providerId : undefined));
 
-  const providersWithTheSameTypeAndSameUser = (await prismaClient.projectUserOAuthAccount.findMany({
+  const providersWithTheSameTypeAndSameUserAndAllowSignIn = (await prismaClient.projectUserOAuthAccount.findMany({
     where: {
       tenancyId: options.tenancy.id,
       configOAuthProviderId: providerConfigId,
       projectUserId: options.userId,
+      allowSignIn: true,
     },
   })).filter(p => p.id !== (options.type === 'update' ? options.providerId : undefined));
 
-  const providersWithTheSameTypeAndUserAndAccountId = (await prismaClient.projectUserOAuthAccount.findMany({
+  const providersWithTheSameTypeAndUserAndAccountId = options.accountId ? (await prismaClient.projectUserOAuthAccount.findMany({
     where: {
       tenancyId: options.tenancy.id,
       configOAuthProviderId: providerConfigId,
       projectUserId: options.userId,
       providerAccountId: options.accountId,
     },
-  })).filter(p => p.id !== (options.type === 'update' ? options.providerId : undefined));
+  })).filter(p => p.id !== (options.type === 'update' ? options.providerId : undefined)) : [];
 
-  if (options.allowSignIn && providersWithTheSameTypeAndSameUser.length > 0) {
+  if (options.allowSignIn && providersWithTheSameTypeAndSameUserAndAllowSignIn.length > 0) {
     throw new StatusError(StatusError.BadRequest, `The same provider type with sign-in enabled already exists for this user.`);
   }
 
