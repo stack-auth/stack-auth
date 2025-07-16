@@ -71,7 +71,7 @@ export const GET = createSmartRouteHandler({
   async handler({ auth: { tenancy } }) {
     const themeList = tenancy.completeConfig.emails.themeList;
     const currentActiveTheme = tenancy.completeConfig.emails.theme;
-    if (!Object.keys(themeList).includes(currentActiveTheme)) {
+    if (!(currentActiveTheme in themeList)) {
       await overrideEnvironmentConfigOverride({
         tx: globalPrismaClient,
         projectId: tenancy.project.id,
