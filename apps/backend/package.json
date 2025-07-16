@@ -1,6 +1,6 @@
 {
   "name": "@stackframe/stack-backend",
-  "version": "2.8.20",
+  "version": "2.8.21",
   "private": true,
   "scripts": {
     "clean": "rimraf src/generated && rimraf .next && rimraf node_modules",
@@ -35,6 +35,7 @@
     "seed": "pnpm run db-seed-script"
   },
   "dependencies": {
+    "@ai-sdk/openai": "^1.3.23",
     "@next/bundle-analyzer": "15.2.3",
     "@node-oauth/oauth2-server": "^5.1.0",
     "@opentelemetry/api": "^1.9.0",
@@ -59,6 +60,7 @@
     "@stackframe/stack-shared": "workspace:*",
     "@vercel/functions": "^2.0.0",
     "@vercel/otel": "^1.10.4",
+    "ai": "^4.3.17",
     "bcrypt": "^5.1.1",
     "dotenv-cli": "^7.3.0",
     "freestyle-sandboxes": "^0.0.92",
@@ -75,7 +77,8 @@
     "sharp": "^0.32.6",
     "svix": "^1.25.0",
     "yaml": "^2.4.5",
-    "yup": "^1.4.0"
+    "yup": "^1.4.0",
+    "zod": "^3.23.8"
   },
   "devDependencies": {
     "@simplewebauthn/types": "^11.0.0",
