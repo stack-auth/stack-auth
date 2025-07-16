@@ -136,7 +136,7 @@ export const connectedAccountAccessTokenCrudHandlers = createLazyProxy(() =>crea
       });
 
       if (tokenSet.refreshToken) {
-      // remove the old token, add the new token to the DB
+        // remove the old token, add the new token to the DB
         await prisma.oAuthToken.deleteMany({
           where: {
             refreshToken: token.refreshToken,
