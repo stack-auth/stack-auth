@@ -2,7 +2,6 @@ import { WebAuthnError, startAuthentication, startRegistration } from "@simplewe
 import { KnownErrors, StackClientInterface } from "@stackframe/stack-shared";
 import { ContactChannelsCrud } from "@stackframe/stack-shared/dist/interface/crud/contact-channels";
 import { CurrentUserCrud } from "@stackframe/stack-shared/dist/interface/crud/current-user";
-import { NotificationPreferenceCrud } from "@stackframe/stack-shared/dist/interface/crud/notification-preferences";
 import { TeamApiKeysCrud, UserApiKeysCrud, teamApiKeysCreateOutputSchema, userApiKeysCreateOutputSchema } from "@stackframe/stack-shared/dist/interface/crud/project-api-keys";
 import { ProjectPermissionsCrud } from "@stackframe/stack-shared/dist/interface/crud/project-permissions";
 import { ClientProjectsCrud } from "@stackframe/stack-shared/dist/interface/crud/projects";
@@ -12,6 +11,7 @@ import { TeamMemberProfilesCrud } from "@stackframe/stack-shared/dist/interface/
 import { TeamPermissionsCrud } from "@stackframe/stack-shared/dist/interface/crud/team-permissions";
 import { TeamsCrud } from "@stackframe/stack-shared/dist/interface/crud/teams";
 import { UsersCrud } from "@stackframe/stack-shared/dist/interface/crud/users";
+import { NotificationPreferenceCrud } from "@stackframe/stack-shared/dist/interface/crud/notification-preferences";
 import { InternalSession } from "@stackframe/stack-shared/dist/sessions";
 import { scrambleDuringCompileTime } from "@stackframe/stack-shared/dist/utils/compile-time";
 import { isBrowserLike } from "@stackframe/stack-shared/dist/utils/env";
@@ -39,7 +39,7 @@ import { NotificationCategory } from "../../notification-categories";
 import { TeamPermission } from "../../permissions";
 import { AdminOwnedProject, AdminProjectUpdateOptions, Project, adminProjectCreateOptionsToCrud } from "../../projects";
 import { EditableTeamMemberProfile, Team, TeamCreateOptions, TeamInvitation, TeamUpdateOptions, TeamUser, teamCreateOptionsToCrud, teamUpdateOptionsToCrud } from "../../teams";
-import { ActiveSession, Auth, BaseUser, CurrentUser, InternalUserExtra, OAuthProvider, ProjectCurrentUser, UserExtra, UserUpdateOptions, userUpdateOptionsToCrud } from "../../users";
+import { ActiveSession, Auth, BaseUser, CurrentUser, InternalUserExtra, ProjectCurrentUser, UserExtra, UserUpdateOptions, userUpdateOptionsToCrud } from "../../users";
 import { StackClientApp, StackClientAppConstructorOptions, StackClientAppJson } from "../interfaces/client-app";
 import { _StackAdminAppImplIncomplete } from "./admin-app-impl";
 import { TokenObject, clientVersion, createCache, createCacheBySession, createEmptyTokenStore, getBaseUrl, getDefaultExtraRequestHeaders, getDefaultProjectId, getDefaultPublishableClientKey, getUrls, } from "./common";
@@ -197,20 +197,6 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
     async (session) => {
       const results = await this._interface.listNotificationCategories(session);
       return results as NotificationPreferenceCrud['Client']['Read'][];
-    }
-  );
-
-  private readonly _currentUserOAuthProvidersCache = createCacheBySession<[], {
-    id: string,
-    type: string,
-    user_id: string,
-    account_id?: string,
-    email: string,
-    allow_sign_in: boolean,
-    allow_connected_accounts: boolean,
-  }[]>(
-    async (session) => {
-      return await this._interface.listCurrentUserOAuthProviders(session);
     }
   );
 
@@ -822,49 +808,6 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
       },
     };
   }
-  protected _clientOAuthProviderFromCrud(crud: {
-    id: string,
-    type: string,
-    user_id: string,
-    account_id?: string,
-    email: string,
-    allow_sign_in: boolean,
-    allow_connected_accounts: boolean,
-  }, session: InternalSession): OAuthProvider {
-    const app = this;
-    return {
-      id: crud.id,
-      type: crud.type,
-      userId: crud.user_id,
-      accountId: crud.account_id,
-      email: crud.email,
-      allowSignIn: crud.allow_sign_in,
-      allowConnectedAccounts: crud.allow_connected_accounts,
-
-      async update(data: { allowSignIn?: boolean, allowConnectedAccounts?: boolean }): Promise<Result<void,
-        InstanceType<typeof KnownErrors.OAuthProviderAccountIdAlreadyUsedForSignIn>
-      >> {
-        try {
-          await app._interface.updateCurrentUserOAuthProvider(crud.id, {
-            allow_sign_in: data.allowSignIn,
-            allow_connected_accounts: data.allowConnectedAccounts,
-          }, session);
-          await app._currentUserOAuthProvidersCache.refresh([session]);
-          return Result.ok(undefined);
-        } catch (error) {
-          if (KnownErrors.OAuthProviderAccountIdAlreadyUsedForSignIn.isInstance(error)) {
-            return Result.error(error);
-          }
-          throw error;
-        }
-      },
-
-      async delete() {
-        await app._interface.deleteCurrentUserOAuthProvider(crud.id, session);
-        await app._currentUserOAuthProvidersCache.refresh([session]);
-      },
-    };
-  }
   protected _createAuth(session: InternalSession): Auth {
     const app = this;
     return {
@@ -1189,29 +1132,6 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
         return app._clientApiKeyFromCrud(session, result);
       },
 
-      // IF_PLATFORM react-like
-      useOAuthProviders() {
-        const results = useAsyncCache(app._currentUserOAuthProvidersCache, [session] as const, "user.useOAuthProviders()");
-        return results.map((crud) => app._clientOAuthProviderFromCrud(crud, session));
-      },
-      // END_PLATFORM
-
-      async listOAuthProviders() {
-        const results = Result.orThrow(await app._currentUserOAuthProvidersCache.getOrWait([session], "write-only"));
-        return results.map((crud) => app._clientOAuthProviderFromCrud(crud, session));
-      },
-
-      // IF_PLATFORM react-like
-      useOAuthProvider(id: string) {
-        const providers = this.useOAuthProviders();
-        return useMemo(() => providers.find((p) => p.id === id) ?? null, [providers, id]);
-      },
-      // END_PLATFORM
-
-      async getOAuthProvider(id: string) {
-        const providers = await this.listOAuthProviders();
-        return providers.find((p) => p.id === id) ?? null;
-      },
 
     };
   }

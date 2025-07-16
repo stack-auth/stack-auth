@@ -48,13 +48,14 @@ export type {
 } from "./email";
 
 export type {
+  AdminTeamPermission,
+  AdminTeamPermissionDefinition,
+  AdminTeamPermissionDefinitionCreateOptions,
+  AdminTeamPermissionDefinitionUpdateOptions,
   AdminProjectPermission,
   AdminProjectPermissionDefinition,
   AdminProjectPermissionDefinitionCreateOptions,
-  AdminProjectPermissionDefinitionUpdateOptions, AdminTeamPermission,
-  AdminTeamPermissionDefinition,
-  AdminTeamPermissionDefinitionCreateOptions,
-  AdminTeamPermissionDefinitionUpdateOptions
+  AdminProjectPermissionDefinitionUpdateOptions,
 } from "./permissions";
 
 export type {
@@ -96,8 +97,6 @@ export type {
   CurrentInternalUser,
   CurrentServerUser,
   CurrentUser,
-  OAuthProvider,
-  ServerOAuthProvider,
   ServerUser,
   Session,
   User
