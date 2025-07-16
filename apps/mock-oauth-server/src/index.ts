@@ -231,23 +231,56 @@ app.post('/revoke-refresh-token', async (req: express.Request, res: express.Resp
       return;
     }
 
-    // Add token to revoked list
-    revokedTokens.add(token);
-
-    // Try to find and revoke the token using oidc-provider's built-in functionality
+    // Find the access token first
     try {
-      const refreshToken = await oidc.RefreshToken.find(token);
-      if (refreshToken) {
-        await refreshToken.destroy();
+      const accessToken = await oidc.AccessToken.find(token);
+      if (!accessToken) {
+        res.status(400).json({
+          error: 'invalid_token',
+          error_description: 'Access token not found'
+        });
+        return;
       }
-    } catch (err) {
-      // Token might not exist or already be expired, but we still add it to our blacklist
-    }
 
-    res.json({
-      success: true,
-      message: 'Refresh token has been revoked'
-    });
+      // Get the grant associated with this access token
+      const grantId = accessToken.grantId;
+      if (grantId) {
+        try {
+          const grant = await oidc.Grant.find(grantId);
+          if (grant) {
+            // Add access token to revoked list
+            revokedTokens.add(token);
+
+            // Destroy the grant which should invalidate all associated tokens including refresh tokens
+            await grant.destroy();
+
+            res.json({
+              success: true,
+              message: 'Grant and associated refresh tokens have been revoked'
+            });
+            return;
+          }
+        } catch (grantErr) {
+          // Fall through to alternative approach if grant destruction fails
+        }
+      }
+
+      // Fallback: Add access token to revoked list
+      revokedTokens.add(token);
+
+      res.json({
+        success: true,
+        message: 'Access token marked as revoked (refresh token association not found)'
+      });
+    } catch (err) {
+      // Alternative approach - just mark the access token as revoked
+      revokedTokens.add(token);
+
+      res.json({
+        success: true,
+        message: 'Token marked as revoked'
+      });
+    }
   } catch (err) {
     res.status(500).json({
       error: 'server_error',
