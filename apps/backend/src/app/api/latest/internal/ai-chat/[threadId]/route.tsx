@@ -2,7 +2,6 @@ import { getChatAdapter } from "@/lib/ai-chat/adapter-registry";
 import { globalPrismaClient } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { openai } from "@ai-sdk/openai";
-import { StatusError } from "@stackframe/stack-shared/dist/utils/errors";
 import { adaptSchema, yupArray, yupMixed, yupNumber, yupObject, yupString, yupUnion } from "@stackframe/stack-shared/dist/schema-fields";
 import { generateText, ToolResult } from "ai";
 import { InferType } from "yup";
@@ -52,10 +51,6 @@ export const POST = createSmartRouteHandler({
   }),
   async handler({ body, params, auth: { tenancy } }) {
     const adapter = getChatAdapter(body.context_type, tenancy, params.threadId);
-    if (!adapter) {
-      throw new StatusError(400, `No adapter found for context type: ${body.context_type}`);
-    }
-
     const result = await generateText({
       model: openai("gpt-4o"),
       system: adapter.systemPrompt,

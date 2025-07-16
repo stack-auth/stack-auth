@@ -20,10 +20,7 @@ const CHAT_ADAPTERS: Record<ContextType, (context: ChatAdapterContext) => ChatAd
   "email-template": emailTemplateAdapter,
 };
 
-export function getChatAdapter(contextType: string, tenancy: Tenancy, threadId: string): ChatAdapter | null {
-  if (!Object.keys(CHAT_ADAPTERS).includes(contextType)) {
-    return null;
-  }
-  const adapter = CHAT_ADAPTERS[contextType as ContextType];
+export function getChatAdapter(contextType: ContextType, tenancy: Tenancy, threadId: string): ChatAdapter {
+  const adapter = CHAT_ADAPTERS[contextType];
   return adapter({ tenancy, threadId });
 }
