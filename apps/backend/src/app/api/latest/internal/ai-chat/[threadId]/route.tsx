@@ -1,8 +1,9 @@
 import { getChatAdapter } from "@/lib/ai-chat/adapter-registry";
 import { globalPrismaClient } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
-import { openai } from "@ai-sdk/openai";
+import { createOpenAI } from "@ai-sdk/openai";
 import { adaptSchema, yupArray, yupMixed, yupNumber, yupObject, yupString, yupUnion } from "@stackframe/stack-shared/dist/schema-fields";
+import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
 import { generateText, ToolResult } from "ai";
 import { InferType } from "yup";
 
@@ -21,6 +22,7 @@ const toolCallContentSchema = yupObject({
 });
 
 const contentSchema = yupArray(yupUnion(textContentSchema, toolCallContentSchema)).defined();
+const openai = createOpenAI({ apiKey: getEnvVariable("STACK_OPENAI_API_KEY") });
 
 export const POST = createSmartRouteHandler({
   metadata: {
