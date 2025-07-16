@@ -238,7 +238,7 @@ export const oauthProviderCrudHandlers = createLazyProxy(() => createCrudHandler
                 projectUserId: params.user_id,
                 oauthAuthMethod: {
                   create: {
-                    configOAuthProviderId: params.provider_id,
+                    configOAuthProviderId: existingOAuthAccount.configOAuthProviderId,
                     projectUserId: params.user_id,
                     providerAccountId: existingOAuthAccount.providerAccountId,
                   },
@@ -266,7 +266,7 @@ export const oauthProviderCrudHandlers = createLazyProxy(() => createCrudHandler
           where: {
             tenancyId_id: {
               tenancyId: auth.tenancy.id,
-              id: existingOAuthAccount.id,
+              id: params.provider_id,
             },
           },
           data: {
@@ -292,12 +292,12 @@ export const oauthProviderCrudHandlers = createLazyProxy(() => createCrudHandler
 
       return {
         user_id: params.user_id,
-        id: existingOAuthAccount.id,
-        email: data.email || existingOAuthAccount.email || undefined,
+        id: params.provider_id,
+        email: data.email ?? existingOAuthAccount.email ?? undefined,
         type: providerConfig.type as any,
-        allow_sign_in: data.allow_sign_in || existingOAuthAccount.allowSignIn,
-        allow_connected_accounts: data.allow_connected_accounts || existingOAuthAccount.allowConnectedAccounts,
-        account_id: data.account_id || existingOAuthAccount.providerAccountId,
+        allow_sign_in: data.allow_sign_in ?? existingOAuthAccount.allowSignIn,
+        allow_connected_accounts: data.allow_connected_accounts ?? existingOAuthAccount.allowConnectedAccounts,
+        account_id: data.account_id ?? existingOAuthAccount.providerAccountId,
       };
     });
 
