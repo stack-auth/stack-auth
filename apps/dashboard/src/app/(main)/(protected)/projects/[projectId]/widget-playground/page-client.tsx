@@ -1,7 +1,7 @@
 "use client";
 
 import { PacificaCard } from '@/components/pacifica/card';
-import { DndContext, pointerWithin, useDraggable, useDroppable } from '@dnd-kit/core';
+import { DndContext, closestCenter, pointerWithin, useDraggable, useDroppable } from '@dnd-kit/core';
 import useResizeObserver from '@react-hook/resize-observer';
 import { range } from '@stackframe/stack-shared/dist/utils/arrays';
 import { StackAssertionError, errorToNiceString, throwErr } from '@stackframe/stack-shared/dist/utils/errors';
@@ -101,6 +101,7 @@ type Widget<Settings, State> = {
   defaultState: State,
   calculateMinSize?: (options: { settings: Settings, state: State }) => { widthInGridUnits: number, heightInGridUnits: number },
   hasSubGrid?: boolean,
+  isHeightVariable?: boolean,
 };
 
 const allowedWidgetExports: (keyof Widget<any, any>)[] = [
@@ -150,11 +151,58 @@ class WidgetInstanceGrid {
 
   private constructor(
     private readonly _nonEmptyElements: GridElement[],
+    private readonly _varHeights: ReadonlyMap<number, WidgetInstance[]>,
     public readonly width: number,
     private readonly _fixedHeight: number | "auto",
-  ) {}
+  ) {
+    // Do some sanity checks to prevent bugs early
+    const allInstanceIds = new Set<string>();
+    const checkInstance = (instance: WidgetInstance) => {
+      if (allInstanceIds.has(instance.id)) {
+        throw new StackAssertionError(`Widget instance ${instance.id} is duplicated!`, { instance });
+      }
+      allInstanceIds.add(instance.id);
+      const settings = getSettings(instance);
+      const state = getState(instance);
+      if (!isJsonSerializable(settings)) {
+        throw new StackAssertionError(`Settings must be JSON serializable`, { instance, settings });
+      }
+      if (!isJsonSerializable(state)) {
+        throw new StackAssertionError(`State must be JSON serializable`, { instance, state });
+      }
+    };
+    for (const element of this._nonEmptyElements) {
+      if (element.instance === null) {
+        throw new StackAssertionError(`Non-empty element instance is null!`, { element });
+      }
+      if (element.width < WidgetInstanceGrid.MIN_ELEMENT_WIDTH) {
+        throw new StackAssertionError(`Width must be at least ${WidgetInstanceGrid.MIN_ELEMENT_WIDTH}`, { width: element.width, element });
+      }
+      if (element.height < WidgetInstanceGrid.MIN_ELEMENT_HEIGHT) {
+        throw new StackAssertionError(`Height must be at least ${WidgetInstanceGrid.MIN_ELEMENT_HEIGHT}`, { height: element.height, element });
+      }
+      if (element.x + element.width > width) {
+        throw new StackAssertionError(`Element ${element.instance.id} is out of bounds: ${element.x + element.width} > ${width}`, { width, element });
+      }
+      if (this._fixedHeight !== "auto" && element.y + element.height > this._fixedHeight) {
+        throw new StackAssertionError(`Element ${element.instance.id} is out of bounds: ${element.y + element.height} > ${this._fixedHeight}`, { height: this._fixedHeight, element });
+      }
+      if (element.instance.widget.isHeightVariable) {
+        throw new StackAssertionError(`Element ${element.instance.id} is passed in as a grid element, but has a variable height!`, { element });
+      }
+      checkInstance(element.instance);
+    }
+    for (const [y, instances] of this._varHeights) {
+      if (instances.length === 0) {
+        throw new StackAssertionError(`No variable height widgets found at y = ${y}!`, { varHeights: this._varHeights });
+      }
+      for (const instance of instances) {
+        checkInstance(instance);
+      }
+    }
+  }
 
-  public static fromWidgetInstances(widgetInstances: WidgetInstance<any>[], options: { width?: number, height?: number | "auto" } = {}) {
+  public static fromWidgetInstances(widgetInstances: WidgetInstance[], options: { width?: number, height?: number | "auto" } = {}) {
     const width = options.width ?? 24;
     const height = options.height ?? "auto";
 
@@ -166,58 +214,43 @@ class WidgetInstanceGrid {
         width: WidgetInstanceGrid.DEFAULT_ELEMENT_WIDTH,
         height: WidgetInstanceGrid.DEFAULT_ELEMENT_HEIGHT,
       }))
+      .filter((element) => !element.instance.widget.isHeightVariable)
       .sort((a, b) => Math.sign(a.x - b.x) + 0.1 * Math.sign(a.y - b.y));
 
-    // Do some sanity checks to prevent bugs early
-    for (const element of nonEmptyElements) {
-      if (element.width < WidgetInstanceGrid.MIN_ELEMENT_WIDTH) {
-        throw new StackAssertionError(`Width must be at least ${WidgetInstanceGrid.MIN_ELEMENT_WIDTH}`, { width: element.width });
-      }
-      if (element.height < WidgetInstanceGrid.MIN_ELEMENT_HEIGHT) {
-        throw new StackAssertionError(`Height must be at least ${WidgetInstanceGrid.MIN_ELEMENT_HEIGHT}`, { height: element.height });
-      }
-      if (element.x + element.width > width) {
-        throw new StackAssertionError(`Element ${element.instance.id} is out of bounds: ${element.x + element.width} > ${width}`, { width });
-      }
-      if (height !== "auto" && element.y + element.height > height) {
-        throw new StackAssertionError(`Element ${element.instance.id} is out of bounds: ${element.y + element.height} > ${height}`, { height });
-      }
-
-      const instance = element.instance;
-      const settings = getSettings(instance);
-      const state = getState(instance);
-      if (!isJsonSerializable(settings)) {
-        throw new StackAssertionError(`Settings must be JSON serializable`, { element, settings });
-      }
-      if (!isJsonSerializable(state)) {
-        throw new StackAssertionError(`State must be JSON serializable`, { element, state });
-      }
-    }
+    const allVarHeightsWidgets = widgetInstances.filter((instance) => instance.widget.isHeightVariable);
+    const varHeights = new Map(allVarHeightsWidgets.length === 0 ? [] : [[0, allVarHeightsWidgets]]);
 
     return new WidgetInstanceGrid(
       nonEmptyElements,
+      varHeights,
       width,
       height,
     );
   }
 
   public serialize(): Json {
+    const serializeInstance = (instance: WidgetInstance) => ({
+      id: instance.id,
+      widgetId: instance.widget.id,
+      ...(instance.settingsOrUndefined === undefined ? {} : { settingsOrUndefined: instance.settingsOrUndefined }),
+      ...(instance.stateOrUndefined === undefined ? {} : { stateOrUndefined: instance.stateOrUndefined }),
+    });
+
     const res = {
       className: "WidgetInstanceGrid",
       version: 1,
       width: this.width,
       fixedHeight: this._fixedHeight,
       nonEmptyElements: this._nonEmptyElements.map((element) => ({
-        instance: element.instance ? {
-          id: element.instance.id,
-          widgetId: element.instance.widget.id,
-          ...(element.instance.settingsOrUndefined === undefined ? {} : { settingsOrUndefined: element.instance.settingsOrUndefined }),
-          ...(element.instance.stateOrUndefined === undefined ? {} : { stateOrUndefined: element.instance.stateOrUndefined }),
-        } : null,
+        instance: element.instance ? serializeInstance(element.instance) : null,
         x: element.x,
         y: element.y,
         width: element.width,
         height: element.height,
+      })),
+      varHeights: [...this._varHeights.entries()].map(([y, instances]) => ({
+        y,
+        instances: instances.map(serializeInstance),
       })),
     };
 
@@ -227,17 +260,6 @@ class WidgetInstanceGrid {
       throw new StackAssertionError(`WidgetInstanceGrid serialization is not JSON-serializable!`, {
         beforeJsonSerialization: res,
         afterJsonSerialization,
-      });
-    }
-
-    // as a sanity check, let's deserialize and make sure the result is the same
-    const deserialized = WidgetInstanceGrid.fromSerialized(res);
-    if (!deepPlainEquals(this, deserialized)) {
-      console.log(this, deserialized);
-      throw new StackAssertionError(`WidgetInstanceGrid deserialization is not the same as the original!`, {
-        original: this,
-        deserialized,
-        serialized: res,
       });
     }
 
@@ -252,22 +274,25 @@ class WidgetInstanceGrid {
       throw new StackAssertionError(`WidgetInstanceGrid serialization is not a WidgetInstanceGrid!`, { serialized });
     }
 
+    const deserializeInstance = (instance: any): WidgetInstance => ({
+      id: instance.id,
+      widget: widgets.find((widget) => widget.id === instance.widgetId) ?? createErrorWidget(instance.id, `Widget ${instance.widgetId} not found. Was it deleted?`),
+      settingsOrUndefined: instance.settingsOrUndefined,
+      stateOrUndefined: instance.stateOrUndefined,
+    });
+
     const serializedAny = serialized as any;
     switch (serializedAny.version) {
       case 1: {
-        const nonEmptyElements = serializedAny.nonEmptyElements.map((element: any) => ({
-          instance: element.instance ? {
-            id: element.instance.id,
-            widget: widgets.find((widget) => widget.id === element.instance.widgetId) ?? createErrorWidget(element.instance.id, `Widget ${element.instance.widgetId} not found. Was it deleted?`),
-            settingsOrUndefined: element.instance.settingsOrUndefined,
-            stateOrUndefined: element.instance.stateOrUndefined,
-          } : null,
+        const nonEmptyElements: GridElement[] = serializedAny.nonEmptyElements.map((element: any) => ({
+          instance: element.instance ? deserializeInstance(element.instance) : null,
           x: element.x,
           y: element.y,
           width: element.width,
           height: element.height,
         }));
-        return new WidgetInstanceGrid(nonEmptyElements, serializedAny.width, serializedAny.fixedHeight);
+        const varHeights: Map<number, WidgetInstance[]> = new Map(serializedAny.varHeights.map((entry: any) => [entry.y, entry.instances.map(deserializeInstance)]));
+        return new WidgetInstanceGrid(nonEmptyElements, varHeights, serializedAny.width, serializedAny.fixedHeight);
       }
       default: {
         throw new StackAssertionError(`Unknown WidgetInstanceGrid version ${serializedAny.version}!`, {
@@ -285,7 +310,7 @@ class WidgetInstanceGrid {
     }
   }
 
-  private static _withEmptyElements(array: (WidgetInstance<any> | null)[][], nonEmptyElements: GridElement[]) {
+  private static _withEmptyElements(array: (WidgetInstance<any> | null)[][], varHeights: ReadonlyMap<number, WidgetInstance[]>, nonEmptyElements: GridElement[]) {
     let result: GridElement[] = [...nonEmptyElements];
     const newArray: (WidgetInstance<any> | null | "empty")[][] = array.map((row, y) => [...row]);
     for (let x1 = 0; x1 < array.length; x1++) {
@@ -300,6 +325,9 @@ class WidgetInstanceGrid {
           }
           let y2 = y1 + 1;
           outer: while (y2 < array[x1].length && y2 - y1 < WidgetInstanceGrid.DEFAULT_ELEMENT_HEIGHT) {
+            if (varHeights.has(y2)) {
+              break outer;
+            }
             for (let xx = x1; xx < x2; xx++) {
               if (newArray[xx][y2] !== null) {
                 break outer;
@@ -319,11 +347,23 @@ class WidgetInstanceGrid {
     return result;
   }
 
-  public [Symbol.iterator]() {
-    return WidgetInstanceGrid._withEmptyElements(this.as2dArray(), this._nonEmptyElements)[Symbol.iterator]();
+  private _elementsCache: GridElement[] | null = null;
+  public elements() {
+    if (this._elementsCache === null) {
+      this._elementsCache = WidgetInstanceGrid._withEmptyElements(this.as2dArray(), this._varHeights, this._nonEmptyElements);
+    }
+    return this._elementsCache;
   }
 
+  public varHeights() {
+    return this._varHeights;
+  }
+
+  private _as2dArrayCache: (WidgetInstance<any> | null)[][] | null = null;
   public as2dArray(): (WidgetInstance<any> | null)[][] {
+    if (this._as2dArrayCache !== null) {
+      return this._as2dArrayCache;
+    }
     const array = new Array(this.width).fill(null).map(() => new Array(this.height).fill(null));
     [...this._nonEmptyElements].forEach(({ x, y, width, height, instance }) => {
       if (x + width > this.width) {
@@ -335,18 +375,18 @@ class WidgetInstanceGrid {
         }
       }
     });
-    return array;
+    return this._as2dArrayCache = array;
   }
 
   public getElementAt(x: number, y: number): GridElement {
     if (x < 0 || x >= this.width || y < 0 || y >= this.height) {
       throw new StackAssertionError(`Invalid coordinates for getElementAt: ${x}, ${y}`);
     }
-    return [...this].find((element) => x >= element.x && x < element.x + element.width && y >= element.y && y < element.y + element.height) ?? throwErr(`No element found at ${x}, ${y}`);
+    return [...this.elements()].find((element) => x >= element.x && x < element.x + element.width && y >= element.y && y < element.y + element.height) ?? throwErr(`No element found at ${x}, ${y}`);
   }
 
   public getElementByInstanceId(id: string): GridElement | null {
-    return [...this].find((element) => element.instance?.id === id) ?? null;
+    return [...this.elements()].find((element) => element.instance?.id === id) ?? null;
   }
 
   public getMinResizableSize(): { width: number, height: number } {
@@ -367,7 +407,7 @@ class WidgetInstanceGrid {
     if (height !== "auto" && height < minSize.height) {
       throw new StackAssertionError(`Height must be at least ${minSize.height}`, { height });
     }
-    return new WidgetInstanceGrid(this._nonEmptyElements, width, height);
+    return new WidgetInstanceGrid(this._nonEmptyElements, this._varHeights, width, height);
   }
 
   private elementMinSize(element: GridElement) {
@@ -404,13 +444,13 @@ class WidgetInstanceGrid {
       && (elementsToSwap[1].instance !== null ? this._canFitSize(elementsToSwap[1], elementsToSwap[0].x, elementsToSwap[0].y, elementsToSwap[0].width, elementsToSwap[0].height) : true);
   }
 
-  public withSwapped(x1: number, y1: number, x2: number, y2: number) {
+  public withSwappedElements(x1: number, y1: number, x2: number, y2: number) {
     if (!this.canSwap(x1, y1, x2, y2)) {
       throw new StackAssertionError(`Cannot swap elements at ${x1}, ${y1} and ${x2}, ${y2}`);
     }
 
     const elementsToSwap = [this.getElementAt(x1, y1), this.getElementAt(x2, y2)];
-    const newElements = [...this].map((element) => {
+    const newElements = [...this.elements()].map((element) => {
       if (element.x === elementsToSwap[0].x && element.y === elementsToSwap[0].y) {
         return { ...element, instance: elementsToSwap[1].instance };
       }
@@ -419,7 +459,7 @@ class WidgetInstanceGrid {
       }
       return element;
     });
-    return new WidgetInstanceGrid(newElements.filter((element) => element.instance !== null), this.width, this._fixedHeight);
+    return new WidgetInstanceGrid(newElements.filter((element) => element.instance !== null), this._varHeights, this.width, this._fixedHeight);
   }
 
   private readonly _clampResizeCache = new Map<string, { top: number, left: number, bottom: number, right: number }>();
@@ -434,7 +474,7 @@ class WidgetInstanceGrid {
    * { top: 0, left: 1, bottom: 0, right: 1 } or { top: 1, left: 0, bottom: 1, right: 0 }.
    *
    */
-  public clampResize(x: number, y: number, edgesDelta: { top: number, left: number, bottom: number, right: number }): { top: number, left: number, bottom: number, right: number } {
+  public clampElementResize(x: number, y: number, edgesDelta: { top: number, left: number, bottom: number, right: number }): { top: number, left: number, bottom: number, right: number } {
     const elementToResize = this.getElementAt(x, y);
     const cacheKey = `${elementToResize.x},${elementToResize.y},${JSON.stringify(edgesDelta)}`;
     if (!this._clampResizeCache.has(cacheKey)) {
@@ -472,10 +512,10 @@ class WidgetInstanceGrid {
       } else {
         const decr = (i: number) => i > 0 ? i - 1 : i < 0 ? i + 1 : i;
         const candidates = [
-          edgesDelta.top !== 0 ? this.clampResize(x, y, { ...edgesDelta, top: decr(edgesDelta.top) }) : null,
-          edgesDelta.left !== 0 ? this.clampResize(x, y, { ...edgesDelta, left: decr(edgesDelta.left) }) : null,
-          edgesDelta.bottom !== 0 ? this.clampResize(x, y, { ...edgesDelta, bottom: decr(edgesDelta.bottom) }) : null,
-          edgesDelta.right !== 0 ? this.clampResize(x, y, { ...edgesDelta, right: decr(edgesDelta.right) }) : null,
+          edgesDelta.top !== 0 ? this.clampElementResize(x, y, { ...edgesDelta, top: decr(edgesDelta.top) }) : null,
+          edgesDelta.left !== 0 ? this.clampElementResize(x, y, { ...edgesDelta, left: decr(edgesDelta.left) }) : null,
+          edgesDelta.bottom !== 0 ? this.clampElementResize(x, y, { ...edgesDelta, bottom: decr(edgesDelta.bottom) }) : null,
+          edgesDelta.right !== 0 ? this.clampElementResize(x, y, { ...edgesDelta, right: decr(edgesDelta.right) }) : null,
         ].filter(isNotNull);
         let maxScore = 0;
         let bestCandidate: { top: number, left: number, bottom: number, right: number } = { top: 0, left: 0, bottom: 0, right: 0 };
@@ -492,8 +532,8 @@ class WidgetInstanceGrid {
     return this._clampResizeCache.get(cacheKey)!;
   }
 
-  public withResized(x: number, y: number, edgesDelta: { top: number, left: number, bottom: number, right: number }) {
-    const clamped = this.clampResize(x, y, edgesDelta);
+  public withResizedElement(x: number, y: number, edgesDelta: { top: number, left: number, bottom: number, right: number }) {
+    const clamped = this.clampElementResize(x, y, edgesDelta);
     if (!deepPlainEquals(clamped, edgesDelta)) {
       throw new StackAssertionError(`Resize is not allowed: ${JSON.stringify(edgesDelta)} requested, but only ${JSON.stringify(clamped)} allowed`);
     }
@@ -515,10 +555,10 @@ class WidgetInstanceGrid {
       }
       return element;
     });
-    return new WidgetInstanceGrid(newNonEmptyElements, this.width, this._fixedHeight);
+    return new WidgetInstanceGrid(newNonEmptyElements, this._varHeights, this.width, this._fixedHeight);
   }
 
-  public withAdded(widget: Widget<any, any>, x: number, y: number, width: number, height: number) {
+  public withAddedElement(widget: Widget<any, any>, x: number, y: number, width: number, height: number) {
     const newNonEmptyElements = [...this._nonEmptyElements, {
       instance: {
         id: generateUuid(),
@@ -531,27 +571,118 @@ class WidgetInstanceGrid {
       width,
       height,
     }];
-    return new WidgetInstanceGrid(newNonEmptyElements, this.width, this._fixedHeight);
+    return new WidgetInstanceGrid(newNonEmptyElements, this._varHeights, this.width, this._fixedHeight);
   }
 
-  private _withUpdatedInstance(x: number, y: number, updater: (element: GridElement) => WidgetInstance<any, any> | null) {
+  private _withUpdatedElementInstance(x: number, y: number, updater: (element: GridElement) => WidgetInstance<any, any> | null) {
     const elementToUpdate = this.getElementAt(x, y);
     const newNonEmptyElements = this._nonEmptyElements
       .map((element) => element.x === elementToUpdate.x && element.y === elementToUpdate.y ? { ...element, instance: updater(element) } : element)
       .filter((element) => element.instance !== null);
-    return new WidgetInstanceGrid(newNonEmptyElements, this.width, this._fixedHeight);
+    return new WidgetInstanceGrid(newNonEmptyElements, this._varHeights, this.width, this._fixedHeight);
   }
 
-  public withRemoved(x: number, y: number) {
-    return this._withUpdatedInstance(x, y, (element) => null);
+  public withRemovedElement(x: number, y: number) {
+    return this._withUpdatedElementInstance(x, y, (element) => null);
   }
 
-  public withUpdatedSettings(x: number, y: number, updater: (settings: any) => any) {
-    return this._withUpdatedInstance(x, y, (element) => element.instance ? { ...element.instance, settingsOrUndefined: updater(getSettings(element.instance)) } : throwErr(`No widget instance at ${x}, ${y}`));
+  public withUpdatedElementSettings(x: number, y: number, updater: (settings: any) => any) {
+    return this._withUpdatedElementInstance(x, y, (element) => element.instance ? { ...element.instance, settingsOrUndefined: updater(getSettings(element.instance)) } : throwErr(`No widget instance at ${x}, ${y}`));
   }
 
-  public withUpdatedState(x: number, y: number, updater: (state: any) => any) {
-    return this._withUpdatedInstance(x, y, (element) => element.instance ? { ...element.instance, stateOrUndefined: updater(getState(element.instance)) } : throwErr(`No widget instance at ${x}, ${y}`));
+  public withUpdatedElementState(x: number, y: number, updater: (state: any) => any) {
+    return this._withUpdatedElementInstance(x, y, (element) => element.instance ? { ...element.instance, stateOrUndefined: updater(getState(element.instance)) } : throwErr(`No widget instance at ${x}, ${y}`));
+  }
+
+  public getVarHeightInstanceById(id: string): WidgetInstance | undefined {
+    return [...this.varHeights()].flatMap(([_, instances]) => instances).find((instance) => instance.id === id);
+  }
+
+  private _withUpdatedVarHeightInstance(oldId: string, updater: (instance: WidgetInstance) => WidgetInstance) {
+    const newVarHeights = new Map(
+      [...this.varHeights()]
+        .map(([y, inst]) => [y, inst.map((i) => i.id === oldId ? updater(i) : i)] as const)
+    );
+    return new WidgetInstanceGrid(this._nonEmptyElements, newVarHeights, this.width, this._fixedHeight);
+  }
+
+  public withUpdatedVarHeightSettings(instanceId: string, newSettingsOrUndefined: any) {
+    return this._withUpdatedVarHeightInstance(instanceId, (instance) => ({ ...instance, settingsOrUndefined: newSettingsOrUndefined }));
+  }
+
+  public withUpdatedVarHeightState(instanceId: string, newStateOrUndefined: any) {
+    return this._withUpdatedVarHeightInstance(instanceId, (instance) => ({ ...instance, stateOrUndefined: newStateOrUndefined }));
+  }
+
+  public withRemovedVarHeight(instanceId: string) {
+    const newVarHeights = new Map(
+      [...this.varHeights()]
+        .map(([y, inst]) => [y, inst.filter((i) => i.id !== instanceId)] as const)
+        .filter(([_, inst]) => inst.length > 0)
+    );
+    return new WidgetInstanceGrid(this._nonEmptyElements, newVarHeights, this.width, this._fixedHeight);
+  }
+
+  private _canAddVarHeightCache = new Map<number, boolean>();
+  public canAddVarHeight(y: number) {
+    if (this._canAddVarHeightCache.has(y)) {
+      return this._canAddVarHeightCache.get(y)!;
+    }
+
+    let result = true;
+
+    // ensure that there is no other element that intersects with the new var height slot
+    for (const element of this.elements()) {
+      if (element.y < y && element.y + element.height > y) {
+        result = false;
+        break;
+      }
+    }
+
+    this._canAddVarHeightCache.set(y, result);
+    return result;
+  }
+
+  public withAddedVarHeightWidget(y: number, widget: Widget<any, any>) {
+    return this.withAddedVarHeightAtEndOf(y, {
+      id: generateUuid(),
+      widget,
+      settingsOrUndefined: undefined,
+      stateOrUndefined: undefined,
+    });
+  }
+
+  public withAddedVarHeightAtEndOf(y: number, instance: WidgetInstance) {
+    if (!this.canAddVarHeight(y)) {
+      throw new StackAssertionError(`Cannot add var height instance at ${y}`, { y, instance });
+    }
+    const newVarHeights = new Map(this._varHeights);
+    newVarHeights.set(y, [...(newVarHeights.get(y) ?? []), instance]);
+    return new WidgetInstanceGrid(this._nonEmptyElements, newVarHeights, this.width, this._fixedHeight);
+  }
+
+  public withAddedVarHeightAtInstance(instance: WidgetInstance, toInstanceId: string, beforeOrAfter: "before" | "after") {
+    const newVarHeights = new Map(
+      [...this.varHeights()]
+        .map(([y, inst]) => [
+          y,
+          inst.flatMap((i) => i.id === toInstanceId ? (beforeOrAfter === "before" ? [instance, i] : [i, instance]) : [i])
+        ] as const)
+    );
+    return new WidgetInstanceGrid(this._nonEmptyElements, newVarHeights, this.width, this._fixedHeight);
+  }
+
+  public withMovedVarHeightToInstance(oldId: string, toInstanceId: string, beforeOrAfter: "before" | "after") {
+    if (toInstanceId === oldId) {
+      return this;
+    }
+    const instance = this.getVarHeightInstanceById(oldId) ?? throwErr(`Widget instance ${oldId} not found in var heights`, { oldId });
+    return this.withRemovedVarHeight(oldId).withAddedVarHeightAtInstance(instance, toInstanceId, beforeOrAfter);
+  }
+
+  public withMovedVarHeightToEndOf(oldId: string, toY: number) {
+    const instance = this.getVarHeightInstanceById(oldId) ?? throwErr(`Widget instance ${oldId} not found in var heights`, { oldId });
+    return this.withRemovedVarHeight(oldId).withAddedVarHeightAtEndOf(toY, instance);
   }
 }
 
@@ -582,6 +713,7 @@ const widgets: Widget<any, any>[] = [
             isMobileMode={isMobileMode}
             gridRef={widgetGridRef}
             setGrid={setWidgetGrid}
+            allowVariableHeight={false}
           />
         </div>
       );
@@ -657,10 +789,27 @@ const widgets: Widget<any, any>[] = [
     defaultSettings: {},
     defaultState: {},
   },
+  {
+    id: "$variable-height-widget",
+    MainComponent: () => {
+      return (
+        <PacificaCard
+          title="Variable height widget"
+          subtitle="This widget has a variable height. It does not follow the regular grid pattern, and always takes up the grid's full width."
+        >
+          <textarea value="resize me" readOnly />
+        </PacificaCard>
+      );
+    },
+    defaultSettings: {},
+    defaultState: {},
+    isHeightVariable: true,
+  },
 ];
 
 
 const gridGapPixels = 32;
+const gridUnitHeight = 48;
 const mobileModeWidgetHeight = 384;
 const mobileModeCutoffWidth = 768;
 
@@ -698,7 +847,7 @@ export default function PageClient() {
       fillWidth
     >
       <SwappableWidgetInstanceGridContext.Provider value={{ isEditing: isAltDown }}>
-        <SwappableWidgetInstanceGrid gridRef={widgetGridRef} setGrid={setWidgetGrid} isMobileMode="auto" />
+        <SwappableWidgetInstanceGrid gridRef={widgetGridRef} setGrid={setWidgetGrid} isMobileMode="auto" allowVariableHeight={true} />
       </SwappableWidgetInstanceGridContext.Provider>
     </PageLayout>
   );
@@ -710,10 +859,12 @@ const SwappableWidgetInstanceGridContext = React.createContext<{
   isEditing: false,
 });
 
-function SwappableWidgetInstanceGrid(props: { gridRef: ReadonlyRef<WidgetInstanceGrid>, setGrid: (grid: WidgetInstanceGrid) => void, isMobileMode: boolean | "auto" }) {
+function SwappableWidgetInstanceGrid(props: { gridRef: ReadonlyRef<WidgetInstanceGrid>, setGrid: (grid: WidgetInstanceGrid) => void, isMobileMode: boolean | "auto", allowVariableHeight: boolean }) {
+  const [draggingType, setDraggingType] = useState<"element" | "var-height" | null>(null);
   const [overElementPosition, setOverElementPosition] = useState<[number, number] | null>(null);
-  const [hoverSwap, setHoverSwap] = useState<[string, [number, number, number, number, number, number]] | null>(null);
-  const [activeWidgetId, setActiveWidgetId] = useState<string | null>(null);
+  const [overVarHeightSlot, setOverVarHeightSlot] = useState<["before", string] | ["end-of", number] | null>(null);
+  const [hoverElementSwap, setHoverElementSwap] = useState<[string, [number, number, number, number, number, number]] | null>(null);
+  const [activeWidgetId, setActiveInstanceId] = useState<string | null>(null);
   const gridContainerRef = useRef<HTMLDivElement>(null);
   const context = React.use(SwappableWidgetInstanceGridContext);
   const [isMobileModeIfAuto, setMobileModeIfAuto] = useState<boolean>(false);
@@ -729,93 +880,197 @@ function SwappableWidgetInstanceGrid(props: { gridRef: ReadonlyRef<WidgetInstanc
 
   let hasAlreadyRenderedEmpty = false;
 
-  return (
-    <DndContext
-      onDragStart={(event) => {
-        setActiveWidgetId(event.active.id as string);
-      }}
-      onDragEnd={(event) => {
-        setHoverSwap(null);
-        setActiveWidgetId(null);
-        setOverElementPosition(null);
+  const varHeights = props.gridRef.current.varHeights();
 
-        const widgetId = event.active.id;
-        const widgetElement = [...props.gridRef.current].find(({ instance }) => instance?.id === widgetId);
-        if (!widgetElement) {
-          throw new StackAssertionError(`Widget instance ${widgetId} not found in grid`);
-        }
-        if (event.over) {
-          const overCoordinates = JSON.parse(`${event.over.id}`) as [number, number];
-          const swapArgs = [widgetElement.x, widgetElement.y, overCoordinates[0], overCoordinates[1]] as const;
-          if (props.gridRef.current.canSwap(...swapArgs)) {
-            const newGrid = props.gridRef.current.withSwapped(...swapArgs);
-            props.setGrid(newGrid);
-          }
-        }
+  return (
+    <div
+      ref={gridContainerRef}
+      style={{
+        ...isMobileMode ? {
+          display: 'flex',
+          flexDirection: 'column',
+        } : {
+          display: 'grid',
+          gridTemplateColumns: `repeat(${props.gridRef.current.width}, auto)`,
+          gridTemplateRows: `repeat(${2 * props.gridRef.current.height + 1}, auto)`,
+        },
+
+        userSelect: 'none',
+        WebkitUserSelect: 'none',
+        overflow: 'none',
+
+        // Create a new stacking context
+        isolation: 'isolate',
       }}
-      onDragOver={(event) => {
-        const widgetId = event.active.id;
-        const widgetElement = [...props.gridRef.current].find(({ instance }) => instance?.id === widgetId);
-        if (!widgetElement) {
-          throw new StackAssertionError(`Widget instance ${widgetId} not found in grid`);
-        }
-        if (event.over) {
-          if (!event.active.rect.current.initial) {
-            // not sure when this happens, if ever. let's ignore it in prod, throw in dev
-            if (process.env.NODE_ENV === 'development') {
-              throw new StackAssertionError("Active element has no initial rect. Not sure when this happens, so please report it");
+    >
+      {!isMobileMode && range(props.gridRef.current.height).map((y) => (
+        <div key={y} style={{ height: gridUnitHeight, gridColumn: `1 / ${props.gridRef.current.width + 1}`, gridRow: `${2 * y + 2} / ${2 * y + 3}` }} />
+      ))}
+      <DndContext
+        onDragStart={(event) => {
+          setActiveInstanceId(event.active.id as string);
+          setDraggingType("var-height");
+        }}
+        onDragEnd={(event) => {
+          setActiveInstanceId(null);
+          setOverVarHeightSlot(null);
+          setDraggingType(null);
+
+          const activeInstanceId = event.active.id;
+          if (event.over) {
+            const overLocation = JSON.parse(`${event.over.id}`) as ["before", string] | ["end-of", number];
+            if (overLocation[0] === "before") {
+              props.setGrid(props.gridRef.current.withMovedVarHeightToInstance(activeInstanceId as string, overLocation[1], overLocation[0]));
+            } else {
+              props.setGrid(props.gridRef.current.withMovedVarHeightToEndOf(activeInstanceId as string, overLocation[1]));
+            }
+          }
+        }}
+        onDragOver={(event) => {
+          const over = event.over;
+          if (!over) {
+            setOverVarHeightSlot(null);
+          } else {
+            const overLocation = JSON.parse(`${over.id}`) as ["before", string] | ["end-of", number];
+            setOverVarHeightSlot(overLocation);
+          }
+        }}
+        collisionDetection={closestCenter}
+      >
+        {range(props.gridRef.current.height + 1).map((y) => (
+          <div key={y} style={{
+            gridColumn: `1 / -1`,
+            gridRow: `${2 * y + 1} / ${2 * y + 2}`,
+          }}>
+            {[...(varHeights.get(y) ?? []), null].map((instance, i) => {
+              if (instance !== null && !props.allowVariableHeight) {
+                throw new StackAssertionError("Variable height widgets are not allowed in this component", { instance });
+              }
+              const location = instance ? ["before", instance.id] as const: ["end-of", y] as const;
+              const isOverVarHeightSlot = deepPlainEquals(overVarHeightSlot, location);
+
+              return (
+                <React.Fragment key={i}>
+                  {props.gridRef.current.canAddVarHeight(y) && (
+                    <VarHeightSlot isOver={isOverVarHeightSlot} location={location} />
+                  )}
+                  {instance !== null && (
+                    <div
+                      style={{
+                        margin: gridGapPixels / 2,
+                      }}
+                    >
+                      <Draggable
+                        type="var-height"
+                        widgetInstance={instance}
+                        activeWidgetId={activeWidgetId}
+                        isEditing={context.isEditing}
+                        isMobileMode={isMobileMode}
+                        onDeleteWidget={async () => {
+                          props.setGrid(props.gridRef.current.withRemovedVarHeight(instance.id));
+                        }}
+                        settings={getSettings(instance)}
+                        setSettings={async (updater) => {
+                          props.setGrid(props.gridRef.current.withUpdatedVarHeightSettings(instance.id, updater));
+                        }}
+                        state={getState(instance)}
+                        stateRef={mapRef(props.gridRef, (grid) => {
+                          const newInstance = grid.getVarHeightInstanceById(instance.id);
+                          return getState(newInstance ?? /* HACK instance has been deleted; let's return the old state */ instance);
+                        })}
+                        setState={(updater) => {
+                          props.setGrid(props.gridRef.current.withUpdatedVarHeightState(instance.id, updater));
+                        }}
+                        onResize={(edges) => {
+                          throw new StackAssertionError("Cannot resize a var-height widget!");
+                        }}
+                        x={0}
+                        y={y}
+                        width={props.gridRef.current.width}
+                        height={1}
+                        calculateUnitSize={() => {
+                          const gridContainerRect = gridContainerRef.current?.getBoundingClientRect() ?? throwErr(`Grid container not found`);
+                          const gridContainerWidth = gridContainerRect.width;
+                          const gridContainerWidthWithoutGaps = gridContainerWidth - (props.gridRef.current.width - 1) * gridGapPixels;
+                          const unitWidth = Math.round(gridContainerWidthWithoutGaps / props.gridRef.current.width) + gridGapPixels;
+                          return { width: unitWidth, height: gridUnitHeight };
+                        }}
+                      />
+                    </div>
+                  )}
+                </React.Fragment>
+              );
+            })}
+          </div>
+        ))}
+      </DndContext>
+      <DndContext
+        onDragStart={(event) => {
+          setActiveInstanceId(event.active.id as string);
+          setDraggingType("element");
+        }}
+        onDragEnd={(event) => {
+          setHoverElementSwap(null);
+          setActiveInstanceId(null);
+          setOverElementPosition(null);
+          setDraggingType(null);
+
+          const widgetId = event.active.id;
+          const widgetElement = [...props.gridRef.current.elements()].find(({ instance }) => instance?.id === widgetId);
+          if (!widgetElement) {
+            throw new StackAssertionError(`Widget instance ${widgetId} not found in grid`);
+          }
+          if (event.over) {
+            const overCoordinates = JSON.parse(`${event.over.id}`) as [number, number];
+            const swapArgs = [widgetElement.x, widgetElement.y, overCoordinates[0], overCoordinates[1]] as const;
+            if (props.gridRef.current.canSwap(...swapArgs)) {
+              const newGrid = props.gridRef.current.withSwappedElements(...swapArgs);
+              props.setGrid(newGrid);
+            }
+          }
+        }}
+        onDragOver={(event) => {
+          const widgetId = event.active.id;
+          const widgetElement = [...props.gridRef.current.elements()].find(({ instance }) => instance?.id === widgetId);
+          if (!widgetElement) {
+            throw new StackAssertionError(`Widget instance ${widgetId} not found in grid`);
+          }
+          if (event.over) {
+            if (!event.active.rect.current.initial) {
+              // not sure when this happens, if ever. let's ignore it in prod, throw in dev
+              if (process.env.NODE_ENV === 'development') {
+                throw new StackAssertionError("Active element has no initial rect. Not sure when this happens, so please report it");
+              }
+            } else {
+              const overCoordinates = JSON.parse(`${event.over.id}`) as [number, number];
+              if (props.gridRef.current.canSwap(widgetElement.x, widgetElement.y, overCoordinates[0], overCoordinates[1])) {
+                  setOverElementPosition([overCoordinates[0], overCoordinates[1]]);
+              } else {
+                  setOverElementPosition(null);
+              }
+              const overId = props.gridRef.current.getElementAt(overCoordinates[0], overCoordinates[1]).instance?.id;
+              if (overId && overId !== widgetId) {
+                  setHoverElementSwap([overId, [
+                    event.over.rect.left - event.active.rect.current.initial.left,
+                    event.over.rect.top - event.active.rect.current.initial.top,
+                    event.active.rect.current.initial.width,
+                    event.active.rect.current.initial.height,
+                    event.over.rect.width,
+                    event.over.rect.height,
+                  ]]);
+              } else {
+                  setHoverElementSwap(null);
+              }
             }
           } else {
-            const overCoordinates = JSON.parse(`${event.over.id}`) as [number, number];
-            if (props.gridRef.current.canSwap(widgetElement.x, widgetElement.y, overCoordinates[0], overCoordinates[1])) {
-              setOverElementPosition([overCoordinates[0], overCoordinates[1]]);
-            } else {
               setOverElementPosition(null);
-            }
-            const overId = props.gridRef.current.getElementAt(overCoordinates[0], overCoordinates[1]).instance?.id;
-            if (overId && overId !== widgetId) {
-              setHoverSwap([overId, [
-                event.over.rect.left - event.active.rect.current.initial.left,
-                event.over.rect.top - event.active.rect.current.initial.top,
-                event.active.rect.current.initial.width,
-                event.active.rect.current.initial.height,
-                event.over.rect.width,
-                event.over.rect.height,
-              ]]);
-            } else {
-              setHoverSwap(null);
-            }
+              setHoverElementSwap(null);
           }
-        } else {
-          setOverElementPosition(null);
-          setHoverSwap(null);
-        }
-      }}
-      collisionDetection={pointerWithin}
-    >
-      <div
-        ref={gridContainerRef}
-        style={{
-          ...isMobileMode ? {
-            display: 'flex',
-            flexDirection: 'column',
-          } : {
-            display: 'grid',
-            gridTemplateColumns: `repeat(${props.gridRef.current.width}, 1fr)`,
-            gridTemplateRows: `repeat(${props.gridRef.current.height}, 1fr)`,
-          },
-          gap: gridGapPixels,
-
-          userSelect: 'none',
-          WebkitUserSelect: 'none',
-          overflow: 'none',
         }}
+        collisionDetection={pointerWithin}
       >
-        {!isMobileMode && range(props.gridRef.current.height).map((y) => (
-          <div key={y} style={{ height: '16px', gridColumn: `1 / ${props.gridRef.current.width + 1}`, gridRow: `${y + 1} / ${y + 2}` }} />
-        ))}
-        {[...props.gridRef.current].map(({ instance, x, y, width, height }) => {
-          const isHoverSwap = !!hoverSwap && !!instance && (hoverSwap[0] === instance.id);
+        {props.gridRef.current.elements().map(({ instance, x, y, width, height }) => {
+          const isHoverSwap = !!hoverElementSwap && !!instance && (hoverElementSwap[0] === instance.id);
 
           if (isMobileMode && !instance) {
             if (hasAlreadyRenderedEmpty) return null;
@@ -823,7 +1078,7 @@ function SwappableWidgetInstanceGrid(props: { gridRef: ReadonlyRef<WidgetInstanc
           }
 
           return (
-            <Droppable
+            <ElementSlot
               isMobileMode={isMobileMode}
               key={instance?.id ?? JSON.stringify({ x, y })}
               isEmpty={!instance}
@@ -834,26 +1089,33 @@ function SwappableWidgetInstanceGrid(props: { gridRef: ReadonlyRef<WidgetInstanc
               height={height}
               grid={props.gridRef.current}
               onAddWidget={() => {
-                props.setGrid(props.gridRef.current.withAdded(widgets[Math.floor(Math.random() * widgets.length)], x, y, width, height));
+                const availableWidgets = props.allowVariableHeight ? widgets : widgets.filter((widget) => !widget.isHeightVariable);
+                const widget = availableWidgets[Math.floor(Math.random() * availableWidgets.length)];
+                if (widget.isHeightVariable) {
+                  props.setGrid(props.gridRef.current.withAddedVarHeightWidget(0, widget));
+                } else {
+                  props.setGrid(props.gridRef.current.withAddedElement(widget, x, y, width, height));
+                }
               }}
             >
               {instance && (
                 <Draggable
+                  type="element"
                   widgetInstance={instance}
                   activeWidgetId={activeWidgetId}
                   isEditing={context.isEditing}
                   style={{
-                    transform: isHoverSwap ? `translate(${-hoverSwap[1][0]}px, ${-hoverSwap[1][1]}px)` : undefined,
-                    width: isHoverSwap ? `${hoverSwap[1][2]}px` : (hoverSwap && activeWidgetId === instance.id ? `${hoverSwap[1][4]}px` : undefined),
-                    height: isHoverSwap ? `${hoverSwap[1][3]}px` : (hoverSwap && activeWidgetId === instance.id ? `${hoverSwap[1][5]}px` : undefined),
+                    transform: isHoverSwap ? `translate(${-hoverElementSwap[1][0]}px, ${-hoverElementSwap[1][1]}px)` : undefined,
+                    width: isHoverSwap ? `${hoverElementSwap[1][2]}px` : (hoverElementSwap && activeWidgetId === instance.id ? `${hoverElementSwap[1][4]}px` : undefined),
+                    height: isHoverSwap ? `${hoverElementSwap[1][3]}px` : (hoverElementSwap && activeWidgetId === instance.id ? `${hoverElementSwap[1][5]}px` : undefined),
                   }}
                   isMobileMode={isMobileMode}
                   onDeleteWidget={async () => {
-                    props.setGrid(props.gridRef.current.withRemoved(x, y));
+                    props.setGrid(props.gridRef.current.withRemovedElement(x, y));
                   }}
                   settings={getSettings(instance)}
                   setSettings={async (updater) => {
-                    props.setGrid(props.gridRef.current.withUpdatedSettings(x, y, updater));
+                    props.setGrid(props.gridRef.current.withUpdatedElementSettings(x, y, updater));
                   }}
                   state={getState(instance)}
                   stateRef={mapRef(props.gridRef, (grid) => {
@@ -861,12 +1123,11 @@ function SwappableWidgetInstanceGrid(props: { gridRef: ReadonlyRef<WidgetInstanc
                     return getState(newElement?.instance ?? /* HACK instance has been deleted; let's return the old state */ instance);
                   })}
                   setState={(updater) => {
-                    console.log("setState", { x, y, updater }, new Error());
-                    props.setGrid(props.gridRef.current.withUpdatedState(x, y, updater));
+                    props.setGrid(props.gridRef.current.withUpdatedElementState(x, y, updater));
                   }}
                   onResize={(edges) => {
-                    const clamped = props.gridRef.current.clampResize(x, y, edges);
-                    props.setGrid(props.gridRef.current.withResized(x, y, clamped));
+                    const clamped = props.gridRef.current.clampElementResize(x, y, edges);
+                    props.setGrid(props.gridRef.current.withResizedElement(x, y, clamped));
                     return clamped;
                   }}
                   x={x}
@@ -876,24 +1137,41 @@ function SwappableWidgetInstanceGrid(props: { gridRef: ReadonlyRef<WidgetInstanc
                   calculateUnitSize={() => {
                     const gridContainerRect = gridContainerRef.current?.getBoundingClientRect() ?? throwErr(`Grid container not found`);
                     const gridContainerWidth = gridContainerRect.width;
-                    const gridContainerHeight = gridContainerRect.height;
                     const gridContainerWidthWithoutGaps = gridContainerWidth - (props.gridRef.current.width - 1) * gridGapPixels;
-                    const gridContainerHeightWithoutGaps = gridContainerHeight - (props.gridRef.current.height - 1) * gridGapPixels;
                     const unitWidth = Math.round(gridContainerWidthWithoutGaps / props.gridRef.current.width) + gridGapPixels;
-                    const unitHeight = Math.round(gridContainerHeightWithoutGaps / props.gridRef.current.height) + gridGapPixels;
-                    return { width: unitWidth, height: unitHeight };
+                    return { width: unitWidth, height: gridUnitHeight };
                   }}
                 />
               )}
-            </Droppable>
+            </ElementSlot>
           );
         })}
-      </div>
-    </DndContext>
+      </DndContext>
+    </div>
   );
 }
 
-function Droppable(props: { isMobileMode: boolean, isOver: boolean, children: React.ReactNode, style?: React.CSSProperties, x: number, y: number, width: number, height: number, isEmpty: boolean, grid: WidgetInstanceGrid, onAddWidget: () => void }) {
+function VarHeightSlot(props: { isOver: boolean, location: readonly ["before", instanceId: string] | readonly ["end-of", y: number] }) {
+  const { setNodeRef, active } = useDroppable({
+    id: JSON.stringify(props.location),
+  });
+
+  return (
+    <div
+      inert
+      ref={setNodeRef}
+      style={{
+        position: 'absolute',
+        width: '100%',
+        height: 4,
+        transform: 'translateY(-50%)',
+        backgroundColor: props.isOver ? '#0000ff88' : 'transparent',
+      }}
+    />
+  );
+}
+
+function ElementSlot(props: { isMobileMode: boolean, isOver: boolean, children: React.ReactNode, style?: React.CSSProperties, x: number, y: number, width: number, height: number, isEmpty: boolean, grid: WidgetInstanceGrid, onAddWidget: () => void }) {
   const { setNodeRef, active } = useDroppable({
     id: JSON.stringify([props.x, props.y]),
   });
@@ -909,7 +1187,8 @@ function Droppable(props: { isMobileMode: boolean, isOver: boolean, children: Re
         backgroundColor: props.isOver ? '#88888822' : undefined,
         borderRadius: '8px',
         gridColumn: `${props.x + 1} / span ${props.width}`,
-        gridRow: `${props.y + 1} / span ${props.height}`,
+        gridRow: `${2 * props.y + 2} / span ${2 * props.height - 1}`,
+        margin: gridGapPixels / 2,
         minHeight: props.isMobileMode ? mobileModeWidgetHeight : undefined,
         ...props.style,
       }}
@@ -951,8 +1230,9 @@ function Droppable(props: { isMobileMode: boolean, isOver: boolean, children: Re
 }
 
 function Draggable(props: {
+  type: 'element' | 'var-height',
   widgetInstance: WidgetInstance<any>,
-  style: React.CSSProperties,
+  style?: React.CSSProperties,
   x: number,
   y: number,
   width: number,
@@ -1006,6 +1286,8 @@ function Draggable(props: {
       setIsEditingSubGrid(false);
     }
   }, [props.isEditing]);
+
+  const isFixedWidth = !props.isMobileMode && props.type === "element";
 
   useEffect(() => {
     let cancelled = false;
@@ -1076,7 +1358,7 @@ function Draggable(props: {
   return (
     <>
       <style>{`
-        /* note: Chrome and Safari have inconsistent behavior where backface-visibility and/or transform-style is not inherited by children, so we ensure it works with the style tag above + transformStyle */
+        /* note: Chrome and Safari have different behaviors when it comes to whether backface-visibility and/or transform-style is inherited by children, so we ensure it works with the style tag above + transformStyle */
         .stack-recursive-backface-hidden {
           backface-visibility: hidden;
           ${isSafari ? '' : 'transform-style: preserve-3d;'}
@@ -1089,11 +1371,12 @@ function Draggable(props: {
         ref={setNodeRef}
         className="stack-recursive-backface-hidden"
         style={{
+          position: 'relative',
           minWidth: '100%',
           minHeight: '100%',
           display: 'flex',
 
-          zIndex: isDragging ? 100000 : undefined,
+          zIndex: isDragging ? 100000 : 1,
 
           transition: [
             'border-width 0.1s ease',
@@ -1101,20 +1384,20 @@ function Draggable(props: {
             props.activeWidgetId !== props.widgetInstance.id && (props.activeWidgetId !== null) ? 'transform 0.2s ease, width 0.2s ease, height 0.2s ease' : undefined,
             props.activeWidgetId === props.widgetInstance.id ? 'width 0.2s ease, height 0.2s ease' : undefined,
           ].filter(Boolean).join(', '),
-          ...filterUndefined(props.style),
-          transform: `translate3d(${transform?.x ?? 0}px, ${transform?.y ?? 0}px, 0) ${props.style.transform ?? ''}`,
+          ...filterUndefined(props.style ?? {}),
+          transform: `translate3d(${transform?.x ?? 0}px, ${transform?.y ?? 0}px, 0) ${props.style?.transform ?? ''}`,
         }}
       >
         <div
           className={cn(isDragging && 'bg-white dark:bg-black border-black/20 dark:border-white/20')}
           style={{
-            ...props.isMobileMode ? {
+            ...isFixedWidth ? {
+              position: 'absolute',
+              inset: 0,
+            } : {
               position: 'relative',
               width: '100%',
               height: '100%',
-            } : {
-              position: 'absolute',
-              inset: 0,
             },
             flexGrow: 1,
             alignSelf: 'stretch',
@@ -1240,7 +1523,7 @@ function Draggable(props: {
                   }}
                 />
               </div>
-              {!props.isMobileMode && [-1, 0, 1].flatMap(x => [-1, 0, 1].map(y => (x !== 0 || y !== 0) && (
+              {isFixedWidth && [-1, 0, 1].flatMap(x => [-1, 0, 1].map(y => (x !== 0 || y !== 0) && (
                 <ResizeHandle
                   key={`${x},${y}`}
                   widgetInstance={props.widgetInstance}
@@ -1385,7 +1668,7 @@ function ResizeHandle({ widgetInstance, x, y, ...props }: {
       className="border-black dark:border-white"
       style={{
         position: 'absolute',
-        zIndex: 100000,
+        zIndex: 100,
 
         left: x === -1 ? '-3px' : x === 0 ? '50%' : undefined,
         top: y === -1 ? '-3px' : y === 0 ? '50%' : undefined,
