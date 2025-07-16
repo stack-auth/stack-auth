@@ -21,7 +21,7 @@ it("should create an OAuth provider connection", async ({ expect }: { expect: an
   const { createProjectResponse } = await createAndSwitchToOAuthEnabledProject();
   await Auth.Otp.signIn();
 
-  const providerConfig = createProjectResponse.body.config.oauth_providers.find((p: any) => p.provider_id === "github");
+  const providerConfig = createProjectResponse.body.config.oauth_providers.find((p: any) => p.provider_config_id === "github");
   expect(providerConfig).toBeDefined();
 
   const createResponse = await niceBackendFetch("/api/v1/oauth-providers", {
@@ -58,7 +58,7 @@ it("should read an OAuth provider connection", async ({ expect }: { expect: any 
   const { createProjectResponse } = await createAndSwitchToOAuthEnabledProject();
   await Auth.Otp.signIn();
 
-  const providerConfig = createProjectResponse.body.config.oauth_providers.find((p: any) => p.provider_id === "github");
+  const providerConfig = createProjectResponse.body.config.oauth_providers.find((p: any) => p.provider_config_id === "github");
   expect(providerConfig).toBeDefined();
 
   const createResponse = await niceBackendFetch("/api/v1/oauth-providers", {
@@ -101,7 +101,7 @@ it("should list all OAuth provider connections for a user", async ({ expect }: {
   const { createProjectResponse } = await createAndSwitchToOAuthEnabledProject();
   await Auth.Otp.signIn();
 
-  const providerConfig = createProjectResponse.body.config.oauth_providers.find((p: any) => p.provider_id === "github");
+  const providerConfig = createProjectResponse.body.config.oauth_providers.find((p: any) => p.provider_config_id === "github");
   expect(providerConfig).toBeDefined();
 
   const createResponse = await niceBackendFetch("/api/v1/oauth-providers", {
@@ -150,7 +150,7 @@ it("should update an OAuth provider connection on the client", async ({ expect }
   const { createProjectResponse } = await createAndSwitchToOAuthEnabledProject();
   await Auth.Otp.signIn();
 
-  const providerConfig = createProjectResponse.body.config.oauth_providers.find((p: any) => p.provider_id === "github");
+  const providerConfig = createProjectResponse.body.config.oauth_providers.find((p: any) => p.provider_config_id === "github");
   expect(providerConfig).toBeDefined();
 
   const createResponse = await niceBackendFetch("/api/v1/oauth-providers", {
@@ -195,7 +195,7 @@ it("should update an OAuth provider connection on the server", async ({ expect }
   const { createProjectResponse } = await createAndSwitchToOAuthEnabledProject();
   await Auth.Otp.signIn();
 
-  const providerConfig = createProjectResponse.body.config.oauth_providers.find((p: any) => p.provider_id === "github");
+  const providerConfig = createProjectResponse.body.config.oauth_providers.find((p: any) => p.provider_config_id === "github");
   expect(providerConfig).toBeDefined();
 
   const createResponse = await niceBackendFetch("/api/v1/oauth-providers", {
@@ -243,7 +243,7 @@ it("should delete an OAuth provider connection", async ({ expect }: { expect: an
   const { createProjectResponse } = await createAndSwitchToOAuthEnabledProject();
   await Auth.Otp.signIn();
 
-  const providerConfig = createProjectResponse.body.config.oauth_providers.find((p: any) => p.provider_id === "github");
+  const providerConfig = createProjectResponse.body.config.oauth_providers.find((p: any) => p.provider_config_id === "github");
   expect(providerConfig).toBeDefined();
 
   const createResponse = await niceBackendFetch("/api/v1/oauth-providers", {
@@ -351,7 +351,7 @@ it("should forbid client access to other users' OAuth providers", async ({ expec
   const { createProjectResponse } = await createAndSwitchToOAuthEnabledProject();
   const user1 = await Auth.Otp.signIn();
 
-  const providerConfig = createProjectResponse.body.config.oauth_providers.find((p: any) => p.provider_id === "github");
+  const providerConfig = createProjectResponse.body.config.oauth_providers.find((p: any) => p.provider_config_id === "github");
   expect(providerConfig).toBeDefined();
 
   await niceBackendFetch("/api/v1/oauth-providers", {
@@ -359,7 +359,7 @@ it("should forbid client access to other users' OAuth providers", async ({ expec
     accessType: "server",
     body: {
       user_id: "me",
-      provider_id: providerConfig.id,
+      provider_config_id: providerConfig.id,
       account_id: "test_github_user_1",
       email: "test1@example.com",
       allow_sign_in: true,
@@ -470,7 +470,7 @@ it("should allow server access to any user's OAuth providers", async ({ expect }
   const { createProjectResponse } = await createAndSwitchToOAuthEnabledProject();
   const user1 = await Auth.Otp.signIn();
 
-  const providerConfig = createProjectResponse.body.config.oauth_providers.find((p: any) => p.provider_id === "github");
+  const providerConfig = createProjectResponse.body.config.oauth_providers.find((p: any) => p.provider_config_id === "github");
   expect(providerConfig).toBeDefined();
 
   const createResponse1 = await niceBackendFetch("/api/v1/oauth-providers", {
@@ -613,7 +613,7 @@ it("should handle account_id updates correctly", async ({ expect }: { expect: an
   const { createProjectResponse } = await createAndSwitchToOAuthEnabledProject();
   await Auth.Otp.signIn();
 
-  const providerConfig = createProjectResponse.body.config.oauth_providers.find((p: any) => p.provider_id === "github");
+  const providerConfig = createProjectResponse.body.config.oauth_providers.find((p: any) => p.provider_config_id === "github");
   expect(providerConfig).toBeDefined();
 
   const createResponse = await niceBackendFetch("/api/v1/oauth-providers", {
@@ -738,7 +738,7 @@ it("should toggle sign-in and connected accounts capabilities", async ({ expect 
   const { createProjectResponse } = await createAndSwitchToOAuthEnabledProject();
   await Auth.Otp.signIn();
 
-  const providerConfig = createProjectResponse.body.config.oauth_providers.find((p: any) => p.provider_id === "github");
+  const providerConfig = createProjectResponse.body.config.oauth_providers.find((p: any) => p.provider_config_id === "github");
   expect(providerConfig).toBeDefined();
 
   const createResponse = await niceBackendFetch("/api/v1/oauth-providers", {
@@ -804,7 +804,7 @@ it("should prevent multiple providers of the same type from being enabled for si
   const { createProjectResponse } = await createAndSwitchToOAuthEnabledProject();
   await Auth.Otp.signIn();
 
-  const providerConfig = createProjectResponse.body.config.oauth_providers.find((p: any) => p.provider_id === "github");
+  const providerConfig = createProjectResponse.body.config.oauth_providers.find((p: any) => p.provider_config_id === "github");
   expect(providerConfig).toBeDefined();
 
   // Create first GitHub account connection with sign-in enabled
