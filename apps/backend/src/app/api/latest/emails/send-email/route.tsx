@@ -56,6 +56,11 @@ export const POST = createSmartRouteHandler({
     if (!notificationCategory) {
       throw new StatusError(404, "Notification category not found");
     }
+    const themeList = auth.tenancy.completeConfig.emails.themeList;
+    if (!Object.keys(themeList).includes(auth.tenancy.completeConfig.emails.theme)) {
+      throw new StatusError(400, "No active theme found");
+    }
+    const activeTheme = themeList[auth.tenancy.completeConfig.emails.theme];
 
     const users = await getPrismaClientForTenancy(auth.tenancy).projectUser.findMany({
       where: {
@@ -107,7 +112,12 @@ export const POST = createSmartRouteHandler({
         unsubscribeLink = unsubUrl.toString();
       }
 
-      const renderedEmail = await renderEmailWithTheme(body.html, auth.tenancy.config.email_theme, unsubscribeLink);
+
+      const renderedEmail = await renderEmailWithTheme(
+        body.html,
+        activeTheme.tsxSource,
+        unsubscribeLink || undefined
+      );
       if ("error" in renderedEmail) {
         userSendErrors.set(userId, "There was an error rendering the email");
         continue;
