@@ -187,7 +187,6 @@ export const oauthProviderCrudHandlers = createLazyProxy(() => createCrudHandler
 
     const prismaClient = getPrismaClientForTenancy(auth.tenancy);
     await ensureUserExists(prismaClient, { tenancyId: auth.tenancy.id, userId: params.user_id });
-    const providerConfig = getProviderConfig(auth.tenancy, params.provider_id);
 
     await checkInputValidity({
       tenancy: auth.tenancy,
@@ -221,11 +220,9 @@ export const oauthProviderCrudHandlers = createLazyProxy(() => createCrudHandler
       if (data.allow_sign_in !== undefined) {
         await tx.projectUserOAuthAccount.update({
           where: {
-            tenancyId_configOAuthProviderId_projectUserId_providerAccountId: {
+            tenancyId_id: {
               tenancyId: auth.tenancy.id,
-              configOAuthProviderId: params.provider_id,
-              projectUserId: params.user_id,
-              providerAccountId: existingOAuthAccount.providerAccountId,
+              id: params.provider_id,
             },
           },
           data: {
@@ -290,6 +287,8 @@ export const oauthProviderCrudHandlers = createLazyProxy(() => createCrudHandler
           providerAccountId: data.account_id,
         },
       });
+
+      const providerConfig = getProviderConfig(auth.tenancy, existingOAuthAccount.configOAuthProviderId);
 
       return {
         user_id: params.user_id,

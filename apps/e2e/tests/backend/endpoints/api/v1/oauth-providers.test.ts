@@ -135,7 +135,7 @@ it("should list all OAuth provider connections for a user", async ({ expect }: {
             "allow_connected_accounts": true,
             "allow_sign_in": true,
             "email": "test@example.com",
-            "id": "github",
+            "id": "<stripped UUID>",
             "type": "github",
             "user_id": "<stripped UUID>",
           },
@@ -158,13 +158,15 @@ it("should update an OAuth provider connection on the client", async ({ expect }
     accessType: "server",
     body: {
       user_id: "me",
-      provider_id: providerConfig.id,
+      provider_config_id: providerConfig.id,
       account_id: "test_github_user_123",
       email: "test@example.com",
       allow_sign_in: true,
       allow_connected_accounts: true,
     },
   });
+
+  expect(createResponse.status).toBe(201);
 
   // Update the provider connection
   const updateResponse = await niceBackendFetch(`/api/v1/oauth-providers/me/${createResponse.body.id}`, {
@@ -176,20 +178,17 @@ it("should update an OAuth provider connection on the client", async ({ expect }
     },
   });
 
-  expect(updateResponse).toMatchInlineSnapshot(`
-    NiceResponse {
-      "status": 200,
-      "body": {
-        "allow_connected_accounts": false,
-        "allow_sign_in": true,
-        "email": "test@example.com",
-        "id": "github",
-        "type": "github",
-        "user_id": "<stripped UUID>",
-      },
-      "headers": Headers { <some fields may have been hidden> },
-    }
-  `);
+  expect(updateResponse.body.allow_connected_accounts).toBe(false);
+  expect(updateResponse.body.allow_sign_in).toBe(true);
+
+  // Read again to double check
+  const readResponse = await niceBackendFetch(`/api/v1/oauth-providers/me/${createResponse.body.id}`, {
+    method: "GET",
+    accessType: "client",
+  });
+
+  expect(readResponse.body.allow_connected_accounts).toBe(false);
+  expect(readResponse.body.allow_sign_in).toBe(true);
 });
 
 it("should update an OAuth provider connection on the server", async ({ expect }: { expect: any }) => {
