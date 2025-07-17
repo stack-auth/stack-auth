@@ -140,7 +140,7 @@ it("should prompt the user to re-authorize the connected account when the refres
   });
   expect(response3.status).toBe(200);
 
-  // revoke the access token
+  // revoke the refresh token
   const response4 = await niceFetch("http://localhost:8114/revoke-refresh-token", {
     method: "POST",
     headers: {
