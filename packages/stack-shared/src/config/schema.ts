@@ -1,10 +1,10 @@
 import * as yup from "yup";
+import { DEFAULT_EMAIL_TEMPLATES, DEFAULT_EMAIL_THEME_ID, DEFAULT_EMAIL_THEMES } from "../helpers/emails";
 import * as schemaFields from "../schema-fields";
 import { yupBoolean, yupObject, yupRecord, yupString, yupUnion } from "../schema-fields";
 import { allProviders } from "../utils/oauth";
 import { DeepMerge, DeepPartial, get, has, isObjectLike, mapValues, set } from "../utils/objects";
 import { Config, NormalizesTo } from "./format";
-import { DEFAULT_EMAIL_THEME_ID, DEFAULT_EMAIL_THEMES, DEFAULT_EMAIL_TEMPLATES } from "../helpers/emails";
 
 // NOTE: The validation schemas in here are all schematic validators, not sanity-check validators.
 // For more info, see ./README.md

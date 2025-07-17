@@ -26,7 +26,7 @@ import { TooltipIconButton } from "@/components/assistant-ui/tooltip-icon-button
 export const Thread: FC = () => {
   return (
     <ThreadPrimitive.Root
-      className="bg-background box-border flex h-0 flex-grow flex-col overflow-hidden"
+      className="bg-transparent box-border flex h-0 flex-grow flex-col overflow-hidden"
       style={{
         ["--thread-max-width" as string]: "42rem",
       }}
