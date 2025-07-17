@@ -131,6 +131,12 @@ export class StackAdminInterface extends StackServerInterface {
     return result.items;
   }
 
+  async listInternalEmailTemplatesNew(): Promise<{ id: string, subject: string, display_name: string, tsx_source: string }[]> {
+    const response = await this.sendAdminRequest(`/internal/email-templates`, {}, null);
+    const result = await response.json() as { templates: { id: string, subject: string, display_name: string, tsx_source: string }[] };
+    return result.templates;
+  }
+
   async listEmailThemes(): Promise<{ id: string, display_name: string }[]> {
     const response = await this.sendAdminRequest(`/internal/email-themes`, {}, null);
     const result = await response.json() as { themes: { id: string, display_name: string }[] };

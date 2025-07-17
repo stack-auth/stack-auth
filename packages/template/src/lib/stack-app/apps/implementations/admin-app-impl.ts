@@ -41,6 +41,9 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
   private readonly _adminEmailThemesCache = createCache(async () => {
     return await this._interface.listEmailThemes();
   });
+  private readonly _adminNewEmailTemplatesCache = createCache(async () => {
+    return await this._interface.listInternalEmailTemplatesNew();
+  });
   private readonly _adminTeamPermissionDefinitionsCache = createCache(async () => {
     return await this._interface.listTeamPermissionDefinitions();
   });
@@ -275,12 +278,33 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
       }));
     }, [crud]);
   }
+  useNewEmailTemplates(): { id: string, subject: string, displayName: string, tsxSource: string }[] {
+    const crud = useAsyncCache(this._adminNewEmailTemplatesCache, [], "useNewEmailTemplates()");
+    return useMemo(() => {
+      return crud.map((template) => ({
+        id: template.id,
+        subject: template.subject,
+        displayName: template.display_name,
+        tsxSource: template.tsx_source,
+      }));
+    }, [crud]);
+  }
   // END_PLATFORM
   async listEmailThemes(): Promise<{ id: string, displayName: string }[]> {
     const crud = Result.orThrow(await this._adminEmailThemesCache.getOrWait([], "write-only"));
     return crud.map((theme) => ({
       id: theme.id,
       displayName: theme.display_name,
+    }));
+  }
+
+  async listNewEmailTemplates(): Promise<{ id: string, subject: string, displayName: string, tsxSource: string }[]> {
+    const crud = Result.orThrow(await this._adminNewEmailTemplatesCache.getOrWait([], "write-only"));
+    return crud.map((template) => ({
+      id: template.id,
+      subject: template.subject,
+      displayName: template.display_name,
+      tsxSource: template.tsx_source,
     }));
   }
 
