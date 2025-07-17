@@ -108,5 +108,14 @@ it("should use the connected account access token to access the userinfo endpoin
       Authorization: `Bearer ${response6.body.access_token}`,
     },
   });
-  expect(response7).toMatchInlineSnapshot();
+  expect(response7).toMatchInlineSnapshot(`
+    NiceResponse {
+      "status": 200,
+      "body": { "sub": "default-mailbox--<stripped UUID>@stack-generated.example.com" },
+      "headers": Headers {
+        "x-powered-by": "Express",
+        <some fields may have been hidden>,
+      },
+    }
+  `);
 });

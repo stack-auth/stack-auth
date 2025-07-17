@@ -23,7 +23,10 @@ const clients = providerIds.map((id) => ({
       `http://localhost:${port}/api/v1/auth/oauth/callback/${id}`
     )),
     ...(process.env.STACK_MOCK_OAUTH_REDIRECT_URIS ? [process.env.STACK_MOCK_OAUTH_REDIRECT_URIS.replace("{id}", id)] : [])
-  ]
+  ],
+  grant_types: ['authorization_code', 'refresh_token'],
+  scopes: ['openid', 'offline_access'],
+  response_types: ['code'],
 }));
 
 const configuration = {
@@ -34,7 +37,7 @@ const configuration = {
     async claims() {
       return { sub, email: sub };
     },
-  }),
+  })
 };
 
 const oidc = new Provider(`http://localhost:${port}`, configuration);
