@@ -506,4 +506,12 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
     await this._adminNewEmailTemplatesCache.refresh([]);
     return { renderedHtml: result.rendered_html };
   }
+
+  async getProjectIdsForTemplatesMigration(): Promise<string[]> {
+    return await this._interface.getProjectIdsForTemplatesMigration();
+  }
+
+  async convertEmailTemplates(projectId: string): Promise<{ templates_converted: number, total_templates: number }> {
+    return await this._interface.convertEmailTemplates(projectId);
+  }
 }
