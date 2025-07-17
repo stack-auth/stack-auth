@@ -118,7 +118,7 @@ export const POST = createSmartRouteHandler({
         activeTheme.tsxSource,
         unsubscribeLink || undefined
       );
-      if ("error" in renderedEmail) {
+      if (renderedEmail.status === "error") {
         userSendErrors.set(userId, "There was an error rendering the email");
         continue;
       }
@@ -129,8 +129,8 @@ export const POST = createSmartRouteHandler({
           emailConfig,
           to: primaryEmail,
           subject: body.subject,
-          html: renderedEmail.html,
-          text: renderedEmail.text,
+          html: renderedEmail.data.html,
+          text: renderedEmail.data.text,
         });
       } catch {
         userSendErrors.set(userId, "Failed to send email");

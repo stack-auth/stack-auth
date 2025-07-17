@@ -1,5 +1,7 @@
 import { TracedFreestyleSandboxes } from '@/lib/freestyle';
+import { Tenancy } from '@/lib/tenancies';
 import { getEnvVariable, getNodeEnvironment } from '@stackframe/stack-shared/dist/utils/env';
+import { StackAssertionError } from '@stackframe/stack-shared/dist/utils/errors';
 import { Result } from "@stackframe/stack-shared/dist/utils/results";
 import { deindent } from "@stackframe/stack-shared/dist/utils/strings";
 
@@ -12,10 +14,10 @@ export async function renderEmailWithTheme(
   const apiKey = getEnvVariable("STACK_FREESTYLE_API_KEY");
   const unsubscribeLinkHtml = unsubscribeLink ? `<br /><br /><a href="${unsubscribeLink}">Click here to unsubscribe</a>` : "";
   if (["development", "test"].includes(getNodeEnvironment()) && apiKey === "mock_stack_freestyle_key") {
-    return {
+    return Result.ok({
       html: `<div>Mock api key detected, themeComponent: ${themeComponent}, htmlContent: ${htmlContent}, ${unsubscribeLinkHtml}</div>`,
       text: "Mock api key detected, returning mock data",
-    };
+    });
   }
 
   const freestyle = new TracedFreestyleSandboxes({ apiKey });
@@ -41,40 +43,19 @@ export async function renderEmailWithTheme(
   if ("error" in output) {
     return Result.error(output.error as string);
   }
-  return output.result as { html: string, text: string };
+  return Result.ok(output.result as { html: string, text: string });
 }
 
-export async function renderEmailWithTemplate(
-  templateComponent: string,
-  themeComponent: string,
-  variables: Record<string, string>,
-) {
-  const apiKey = getEnvVariable("STACK_FREESTYLE_API_KEY");
-  const freestyle = new TracedFreestyleSandboxes({ apiKey });
-  const variablesAsProps = Object.entries(variables).map(([key, value]) => `${key}={${JSON.stringify(value)}}`).join(" ");
-  const script = deindent`
-    import React from 'react';
-    import { render } from '@react-email/components';
-    ${themeComponent}
-    ${templateComponent}
-    export default async () => {
-      const Email = <EmailTheme>
-        <EmailTemplate ${variablesAsProps} />
-      </EmailTheme>;
-      return {
-        html: await render(Email),
-        text: await render(Email, { plainText: true }),
-      };
-    }
-  `;
-  const nodeModules = {
-    "@react-email/components": "0.1.1",
-  };
-  const output = await freestyle.executeScript(script, { nodeModules });
-  if ("error" in output) {
-    return Result.error(output.error as string);
+export function getActiveEmailTheme(tenancy: Tenancy) {
+  const themeList = tenancy.completeConfig.emails.themeList;
+  const currentActiveTheme = tenancy.completeConfig.emails.theme;
+  if (!(currentActiveTheme in themeList)) {
+    throw new StackAssertionError("No active email theme found", {
+      themeList,
+      currentActiveTheme,
+    });
   }
-  return output.result as { html: string, text: string };
+  return themeList[currentActiveTheme];
 }
 
 
