@@ -10,7 +10,6 @@ import {
   createChatAdapter,
   createHistoryAdapter,
 } from "@/components/vibe-coding";
-import { toast } from "@stackframe/stack-ui";
 import { useCallback, useState } from "react";
 import { PageLayout } from "../../page-layout";
 import { useAdminApp } from "../../use-admin-app";
