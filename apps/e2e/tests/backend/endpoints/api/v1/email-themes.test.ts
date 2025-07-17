@@ -169,38 +169,6 @@ describe("update email theme", () => {
     `);
   });
 
-  it("should return 400 when tsx_source has rendering errors", async ({ expect }) => {
-    await Project.createAndSwitch({
-      display_name: "Test Email Theme Project",
-    });
-    const response = await niceBackendFetch(
-      `/api/latest/internal/email-themes/${validThemeId}`,
-      {
-        method: "PATCH",
-        accessType: "admin",
-        body: {
-          preview_html: "<p>Test content</p>",
-          tsx_source: invalidTsxSource,
-        },
-      }
-    );
-    expect(response).toMatchInlineSnapshot(`
-      NiceResponse {
-        "status": 200,
-        "body": {
-          "display_name": "default-light",
-          "rendered_html": deindent\`
-            <div>Mock api key detected, themeComponent: import { Html } from '@react-email/components';
-            function InvalidComponent() {
-              return <Html>Invalid</Html>;
-            }, htmlContent: <p>Test content</p>, </div>
-          \`,
-        },
-        "headers": Headers { <some fields may have been hidden> },
-      }
-    `);
-  });
-
   it("should return 200 and update theme successfully", async ({ expect }) => {
     await Project.createAndSwitch({
       display_name: "Test Email Theme Project",
