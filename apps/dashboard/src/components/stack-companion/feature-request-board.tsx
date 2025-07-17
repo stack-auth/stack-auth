@@ -1,5 +1,6 @@
 'use client';
 
+import { getPublicEnvVar } from '@/lib/env';
 import { cn } from '@/lib/utils';
 import { useUser } from '@stackframe/stack';
 import { Button } from '@stackframe/stack-ui';
@@ -29,45 +30,33 @@ export function FeatureRequestBoard({ isActive }: FeatureRequestBoardProps) {
   // Upvote state
   const [upvotingIds, setUpvotingIds] = useState<Set<string>>(new Set());
 
-  // Check if current user has upvoted specific posts
-  const checkUserUpvotes = useCallback(async (posts: any[]) => {
-    if (!user.primaryEmail || posts.length === 0) return;
-
-    try {
-      // Get all post IDs and make a single batch request
-      const postIds = posts.map(post => post.id).join(',');
-      const response = await fetch(`/api/feature-request?batchCheckUpvotes=${postIds}&email=${encodeURIComponent(user.primaryEmail || '')}`);
-
-      if (response.ok) {
-        const data = await response.json();
-        const upvotedPosts = new Set<string>();
-
-        // Add posts that the user has upvoted to the set
-        Object.entries(data.upvoteResults).forEach(([postId, hasUpvoted]) => {
-          if (hasUpvoted) {
-            upvotedPosts.add(postId);
-          }
-        });
-
-        setUserUpvotes(upvotedPosts);
-      }
-    } catch (error) {
-      console.error('Error checking upvote status:', error);
-    }
-  }, [user.primaryEmail]);
-
-  // Fetch existing feature requests
+  // Fetch existing feature requests from secure backend
   const fetchFeatureRequests = useCallback(async () => {
     setIsLoadingRequests(true);
     try {
-      const response = await fetch('/api/feature-request');
+      const authJson = await user.getAuthJson();
+      const response = await fetch(`${getPublicEnvVar('NEXT_PUBLIC_STACK_API_URL')}/api/v1/internal/feature-requests`, {
+        headers: {
+          'X-Stack-Project-Id': 'internal',
+          'X-Stack-Access-Type': 'client',
+          'X-Stack-Access-Token': authJson.accessToken || '',
+          'X-Stack-Publishable-Client-Key': getPublicEnvVar('NEXT_PUBLIC_STACK_PUBLISHABLE_CLIENT_KEY') || '',
+        },
+      });
+
       if (response.ok) {
         const data = await response.json();
         const posts = data.posts || [];
         setExistingRequests(posts);
 
-        // Check which posts the current user has upvoted
-        await checkUserUpvotes(posts);
+        // Update upvote status from backend response
+        const upvotedPosts = new Set<string>();
+        posts.forEach((post: any) => {
+          if (post.userHasUpvoted) {
+            upvotedPosts.add(post.id);
+          }
+        });
+        setUserUpvotes(upvotedPosts);
       } else {
         console.error('Failed to fetch feature requests');
       }
@@ -76,7 +65,7 @@ export function FeatureRequestBoard({ isActive }: FeatureRequestBoardProps) {
     } finally {
       setIsLoadingRequests(false);
     }
-  }, [checkUserUpvotes]);
+  }, [user]);
 
   // Load feature requests when component becomes active
   useEffect(() => {
@@ -128,17 +117,17 @@ export function FeatureRequestBoard({ isActive }: FeatureRequestBoardProps) {
     ));
 
     try {
-      const response = await fetch('/api/feature-request', {
+      const authJson = await user.getAuthJson();
+      const response = await fetch(`${getPublicEnvVar('NEXT_PUBLIC_STACK_API_URL')}/api/v1/internal/feature-requests/${postId}/upvote`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          'X-Stack-Project-Id': 'internal',
+          'X-Stack-Access-Type': 'client',
+          'X-Stack-Access-Token': authJson.accessToken || '',
+          'X-Stack-Publishable-Client-Key': getPublicEnvVar('NEXT_PUBLIC_STACK_PUBLISHABLE_CLIENT_KEY') || '',
         },
-        body: JSON.stringify({
-          action: 'upvote',
-          id: postId,
-          email: user.primaryEmail,
-          name: user.displayName || user.primaryEmail?.split('@')[0] || 'User'
-        }),
+        body: JSON.stringify({}),
       });
 
       if (response.ok) {
@@ -194,7 +183,7 @@ export function FeatureRequestBoard({ isActive }: FeatureRequestBoardProps) {
     }
   };
 
-  // Submit feature request to Featurebase API
+  // Submit feature request via secure backend
   const submitFeatureRequest = async () => {
     if (!featureTitle.trim()) return;
 
@@ -206,29 +195,26 @@ export function FeatureRequestBoard({ isActive }: FeatureRequestBoardProps) {
         title: featureTitle,
         content: featureContent,
         category: 'feature-requests',
-        email: user.primaryEmail,
-        authorName: user.displayName || user.primaryEmail?.split('@')[0] || 'User',
         tags: ['feature_request', 'dashboard'],
         commentsAllowed: true,
-        customInputValues: {
-          // Using the actual field IDs from Featurebase
-          "6872f858cc9682d29cf2e4c0": 'dashboard_companion', // source field
-          "6872f88041fa77a4dd9dab29": user.id, // userId field
-          "6872f890143fc108288d8f5a": 'stack-auth' // projectId field
-        }
       };
 
-      const response = await fetch('/api/feature-request', {
+      const authJson = await user.getAuthJson();
+      const response = await fetch(`${getPublicEnvVar('NEXT_PUBLIC_STACK_API_URL')}/api/v1/internal/feature-requests`, {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json'
+          'Content-Type': 'application/json',
+          'X-Stack-Project-Id': 'internal',
+          'X-Stack-Access-Type': 'client',
+          'X-Stack-Access-Token': authJson.accessToken || '',
+          'X-Stack-Publishable-Client-Key': getPublicEnvVar('NEXT_PUBLIC_STACK_PUBLISHABLE_CLIENT_KEY') || '',
         },
         body: JSON.stringify(requestBody)
       });
 
       const responseData = await response.json();
 
-      if (response.ok) {
+      if (response.ok && responseData.success) {
         setSubmitStatus('success');
         setFeatureTitle('');
         setFeatureContent('');
@@ -245,7 +231,7 @@ export function FeatureRequestBoard({ isActive }: FeatureRequestBoardProps) {
           setSubmitStatus('idle');
         }, 3000);
       } else {
-        console.error('Featurebase API error:', responseData);
+        console.error('Backend API error:', responseData);
         throw new Error(`Failed to submit feature request: ${responseData.error || response.statusText}`);
       }
     } catch (error) {
