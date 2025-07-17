@@ -198,7 +198,6 @@ it("should sign in with otp code", async ({ expect }) => {
 
   const email = (await backendContext.value.mailbox.fetchMessages()).findLast((message) => message.subject.includes("Sign in to")) ?? throwErr("Sign-in code message not found");
   const match = email.body?.text.match(/"otp":"([A-Z0-9]{6})"/);
-  console.log(email.body?.text);
 
   const signInResponse = await niceBackendFetch("/api/v1/auth/otp/sign-in", {
     method: "POST",
