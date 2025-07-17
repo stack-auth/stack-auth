@@ -15,7 +15,7 @@ const previewEmailHtml = deindent`
     Body text content with some additional information.
   </p>
 </div>
-`
+`;
 
 export const emailThemeAdapter = (context: ChatAdapterContext) => ({
   systemPrompt: `You are a helpful assistant that can help with email theme development.`,
