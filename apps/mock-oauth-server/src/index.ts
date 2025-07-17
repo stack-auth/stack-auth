@@ -26,7 +26,6 @@ const clients = providerIds.map((id) => ({
   ],
   grant_types: ['authorization_code', 'refresh_token'],
   scopes: ['openid', 'offline_access'],
-  response_types: ['code'],
 }));
 
 const configuration = {

@@ -12,7 +12,7 @@ import { createLazyProxy } from "@stackframe/stack-shared/dist/utils/proxies";
 import { extractScopes } from "@stackframe/stack-shared/dist/utils/strings";
 
 
-export const connectedAccountAccessTokenCrudHandlers = createLazyProxy(() =>createCrudHandlers(connectedAccountAccessTokenCrud, {
+export const connectedAccountAccessTokenCrudHandlers = createLazyProxy(() => createCrudHandlers(connectedAccountAccessTokenCrud, {
   paramsSchema: yupObject({
     provider_id: yupString().defined(),
     user_id: userIdOrMeSchema.defined(),
@@ -121,40 +121,40 @@ export const connectedAccountAccessTokenCrudHandlers = createLazyProxy(() =>crea
         continue;
       }
 
-      if (!tokenSet.accessToken) {
-        throw new StackAssertionError("No access token returned");
-      }
-
-      await prisma.oAuthAccessToken.create({
-        data: {
-          tenancyId: auth.tenancy.id,
-          configOAuthProviderId: params.provider_id,
-          accessToken: tokenSet.accessToken,
-          providerAccountId: token.providerAccountId,
-          scopes: token.scopes,
-          expiresAt: tokenSet.accessTokenExpiredAt
-        }
-      });
-
-      if (tokenSet.refreshToken) {
-        // remove the old token, add the new token to the DB
-        await prisma.oAuthToken.deleteMany({
-          where: {
-            refreshToken: token.refreshToken,
-          },
-        });
-        await prisma.oAuthToken.create({
+      if (tokenSet.accessToken) {
+        await prisma.oAuthAccessToken.create({
           data: {
             tenancyId: auth.tenancy.id,
             configOAuthProviderId: params.provider_id,
-            refreshToken: tokenSet.refreshToken,
+            accessToken: tokenSet.accessToken,
             providerAccountId: token.providerAccountId,
             scopes: token.scopes,
+            expiresAt: tokenSet.accessTokenExpiredAt
           }
         });
-      }
 
-      return { access_token: tokenSet.accessToken };
+        if (tokenSet.refreshToken) {
+        // remove the old token, add the new token to the DB
+          await prisma.oAuthToken.deleteMany({
+            where: {
+              refreshToken: token.refreshToken,
+            },
+          });
+          await prisma.oAuthToken.create({
+            data: {
+              tenancyId: auth.tenancy.id,
+              configOAuthProviderId: params.provider_id,
+              refreshToken: tokenSet.refreshToken,
+              providerAccountId: token.providerAccountId,
+              scopes: token.scopes,
+            }
+          });
+        }
+
+        return { access_token: tokenSet.accessToken };
+      } else {
+        throw new StackAssertionError("No access token returned");
+      }
     }
 
     throw new KnownErrors.OAuthConnectionDoesNotHaveRequiredScope();

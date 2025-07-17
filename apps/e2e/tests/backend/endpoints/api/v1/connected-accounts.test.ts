@@ -38,7 +38,7 @@ it("should use the connected account access token to access the userinfo endpoin
   `);
 });
 
-it("should use the connected account access token to access the userinfo endpoint of the oauth provider", async ({ expect }) => {
+it("should refresh the connected account access token when it is revoked from the oauth provider", async ({ expect }) => {
   await Auth.OAuth.signIn();
 
   const response2 = await niceBackendFetch("/api/v1/connected-accounts/me/spotify/access-token", {
@@ -99,7 +99,6 @@ it("should use the connected account access token to access the userinfo endpoin
       scope: "openid",
     },
   });
-  console.log(response6);
   expect(response6.status).toBe(201);
 
   // use the new access token to fetch the userinfo endpoint
@@ -114,6 +113,74 @@ it("should use the connected account access token to access the userinfo endpoin
       "body": { "sub": "default-mailbox--<stripped UUID>@stack-generated.example.com" },
       "headers": Headers {
         "x-powered-by": "Express",
+        <some fields may have been hidden>,
+      },
+    }
+  `);
+});
+
+it("should prompt the user to re-authorize the connected account when the refresh token is revoked from the oauth provider", async ({ expect }) => {
+  await Auth.OAuth.signIn();
+
+  const response2 = await niceBackendFetch("/api/v1/connected-accounts/me/spotify/access-token", {
+    accessType: "client",
+    method: "POST",
+    body: {
+      scope: "openid",
+    },
+  });
+  expect(response2.status).toBe(201);
+
+  const accessToken = response2.body.access_token;
+
+  const response3 = await niceFetch('http://localhost:8114/me', {
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+    },
+  });
+  expect(response3.status).toBe(200);
+
+  // revoke the access token
+  const response4 = await niceFetch("http://localhost:8114/revoke-refresh-token", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      token: accessToken,
+    }),
+  });
+  expect(response4).toMatchInlineSnapshot(`
+    NiceResponse {
+      "status": 200,
+      "body": {
+        "message": "Grant and associated refresh tokens have been revoked",
+        "success": true,
+      },
+      "headers": Headers {
+        "x-powered-by": "Express",
+        <some fields may have been hidden>,
+      },
+    }
+  `);
+
+  // try to get the access token again
+  const response5 = await niceBackendFetch("/api/v1/connected-accounts/me/spotify/access-token", {
+    accessType: "client",
+    method: "POST",
+    body: {
+      scope: "openid",
+    },
+  });
+  expect(response5).toMatchInlineSnapshot(`
+    NiceResponse {
+      "status": 400,
+      "body": {
+        "code": "OAUTH_CONNECTION_DOES_NOT_HAVE_REQUIRED_SCOPE",
+        "error": "The OAuth connection does not have the required scope.",
+      },
+      "headers": Headers {
+        "x-stack-known-error": "OAUTH_CONNECTION_DOES_NOT_HAVE_REQUIRED_SCOPE",
         <some fields may have been hidden>,
       },
     }
