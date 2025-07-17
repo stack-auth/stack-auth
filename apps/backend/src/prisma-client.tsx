@@ -43,8 +43,8 @@ export function getPrismaClientForTenancy(tenancy: Tenancy) {
 function getPostgresPrismaClient(connectionString: string) {
   let postgresPrismaClient = prismaClientsStore.postgres.get(connectionString);
   if (!postgresPrismaClient) {
-    const url = new URL(connectionString);
-    const adapter = new PrismaPg({ connectionString }, { schema: url.searchParams.get('schema') });
+    const schema = (new URL(connectionString)).searchParams.get('schema');
+    const adapter = new PrismaPg({ connectionString }, schema ? { schema } : undefined);
     postgresPrismaClient = new PrismaClient({ adapter });
     prismaClientsStore.postgres.set(connectionString, postgresPrismaClient);
   }
