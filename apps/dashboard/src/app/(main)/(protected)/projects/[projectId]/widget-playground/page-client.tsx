@@ -9,11 +9,12 @@ import { bundleJavaScript } from '@stackframe/stack-shared/dist/utils/esbuild';
 import { Json, isJsonSerializable } from '@stackframe/stack-shared/dist/utils/json';
 import { deepPlainEquals, filterUndefined, isNotNull } from '@stackframe/stack-shared/dist/utils/objects';
 import { runAsynchronously, runAsynchronouslyWithAlert, wait } from '@stackframe/stack-shared/dist/utils/promises';
-import { ReadonlyRef, mapRef, useInstantState } from '@stackframe/stack-shared/dist/utils/react';
-import { Result } from '@stackframe/stack-shared/dist/utils/results';
+import { RefState, mapRefState, useRefState } from '@stackframe/stack-shared/dist/utils/react';
+import { AsyncResult, Result } from '@stackframe/stack-shared/dist/utils/results';
 import { deindent } from '@stackframe/stack-shared/dist/utils/strings';
 import { generateUuid } from '@stackframe/stack-shared/dist/utils/uuids';
-import { Button, ButtonProps, Card, Dialog, DialogBody, DialogContent, DialogFooter, DialogHeader, DialogTitle, Input, SimpleTooltip, cn } from '@stackframe/stack-ui';
+import { Button, ButtonProps, Dialog, DialogBody, DialogContent, DialogFooter, DialogHeader, DialogTitle, Input, SimpleTooltip, cn } from '@stackframe/stack-ui';
+import { ErrorBoundary } from 'next/dist/client/components/error-boundary';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { FaBorderNone, FaPen, FaPlus, FaTrash } from 'react-icons/fa';
 import * as jsxRuntime from 'react/jsx-runtime';
@@ -29,7 +30,8 @@ type SerializedWidget = {
 const widgetGlobals = {
   React,
   jsxRuntime,
-  Card,
+  Card: PacificaCard,
+
   Button,
   Input,
 };
@@ -47,6 +49,52 @@ async function compileWidgetSource(source: string): Promise<Result<string, strin
       'react/jsx-runtime': 'module.exports = jsxRuntime;',
     },
   });
+}
+
+async function compileWidget(source: string): Promise<SerializedWidget> {
+  const compilationResult = await compileWidgetSource(source);
+  return {
+    id: generateUuid(),
+    version: 1,
+    sourceJs: source,
+    compilationResult: compilationResult,
+  };
+}
+
+let compileAndDeserializeTask: Promise<unknown> | null = null;
+function useCompileAndDeserializeWidget(source: string) {
+  const [compilationResult, setCompilationResult] = useState<AsyncResult<Widget<any, any>, never> & { status: "ok" | "pending" }>(AsyncResult.pending());
+  useEffect(() => {
+    let isCancelled = false;
+    runAsynchronously(async () => {
+      setCompilationResult(AsyncResult.pending());
+      while (compileAndDeserializeTask) {
+        if (isCancelled) return;
+        await compileAndDeserializeTask;
+      }
+      compileAndDeserializeTask = (async () => {
+        const serializedWidget = await compileWidget(source);
+        // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
+        if (isCancelled) return;
+        if (serializedWidget.compilationResult.status === "error") {
+          // if there's a compile error, we want to debounce a little so we don't flash errors while the user is typing
+          await wait(500);
+        }
+        // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
+        if (isCancelled) return;
+        const widget = await deserializeWidget(serializedWidget);
+        // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
+        if (isCancelled) return;
+        setCompilationResult(AsyncResult.ok(widget));
+      })();
+      await compileAndDeserializeTask;
+      compileAndDeserializeTask = null;
+    });
+    return () => {
+      isCancelled = true;
+    };
+  }, [source]);
+  return compilationResult;
 }
 
 function createErrorWidget(id: string, errorMessage: string): Widget<any, any> {
@@ -80,11 +128,19 @@ async function deserializeWidget(serializedWidget: SerializedWidget): Promise<Wi
     } catch (e) {
       return errorWidget(`Widget failed to run: ${errorToNiceString(e)}`);
     }
-    const keys = Object.keys(widget);
-    const notAllowedKeys = keys.filter(key => !allowedWidgetExports.includes(key as keyof Widget<any, any>));
-    if (notAllowedKeys.length > 0) {
-      return errorWidget(`Widget exports invalid attributes: ${notAllowedKeys.join(", ")}. Only these exports are allowed: ${allowedWidgetExports.join(", ")}`);
+
+    const allowedKeys = Object.entries(widgetExports).filter(([_, v]) => v !== "never").map(([k]) => k);
+    const requiredKeys = Object.entries(widgetExports).filter(([_, v]) => v === "required").map(([k]) => k);
+    const exports = Object.keys(widget) as (keyof Widget<any, any>)[];
+    const notAllowedExports = exports.filter(key => !allowedKeys.includes(key as keyof Widget<any, any>));
+    if (notAllowedExports.length > 0) {
+      return errorWidget(`Widget has invalid exports: ${notAllowedExports.join(", ")}. Only these exports are allowed: ${Object.entries(widgetExports).filter(([_, v]) => v === "required").map(([k]) => k).join(", ")}`);
     }
+    const missingExports = requiredKeys.filter(key => !exports.includes(key as keyof Widget<any, any>));
+    if (missingExports.length > 0) {
+      return errorWidget(`Widget is missing required exports: ${missingExports.join(", ")}`);
+    }
+
     widget.id = serializedWidget.id;
     return widget;
   } else {
@@ -95,7 +151,7 @@ async function deserializeWidget(serializedWidget: SerializedWidget): Promise<Wi
 
 type Widget<Settings, State> = {
   id: string,
-  MainComponent: React.ComponentType<{ settings: Settings, state: State, stateRef: ReadonlyRef<State>, setState: (updater: (state: State) => State) => void, widthInGridUnits: number, heightInGridUnits: number, isMobileMode: boolean }>,
+  MainComponent: React.ComponentType<{ settings: Settings, state: State, stateRef: RefState<State>, setState: (updater: (state: State) => State) => void, widthInGridUnits: number, heightInGridUnits: number, isSingleColumnMode: boolean }>,
   SettingsComponent?: React.ComponentType<{ settings: Settings, setSettings: (updater: (settings: Settings) => Settings) => void }>,
   defaultSettings: Settings,
   defaultState: State,
@@ -104,13 +160,16 @@ type Widget<Settings, State> = {
   isHeightVariable?: boolean,
 };
 
-const allowedWidgetExports: (keyof Widget<any, any>)[] = [
-  "MainComponent",
-  "SettingsComponent",
-  "defaultSettings",
-  "calculateMinSize",
-  "hasSubGrid",
-] as const;
+const widgetExports: Record<keyof Widget<any, any>, "required" | "optional" | "never" > = {
+  "id": "never",
+  "MainComponent": "required",
+  "SettingsComponent": "optional",
+  "defaultSettings": "required",
+  "defaultState": "required",
+  "calculateMinSize": "optional",
+  "hasSubGrid": "optional",
+  "isHeightVariable": "optional",
+};
 
 type WidgetInstance<Settings = any, State = any> = {
   readonly id: string,
@@ -125,6 +184,40 @@ type WidgetInstance<Settings = any, State = any> = {
    */
   readonly stateOrUndefined: State | undefined,
 };
+
+export function createWidgetInstance<Settings, State>(widget: Widget<Settings, State>): WidgetInstance<Settings, State> {
+  return {
+    id: generateUuid(),
+    widget,
+    settingsOrUndefined: undefined,
+    stateOrUndefined: undefined,
+  };
+}
+
+export function serializeWidgetInstance(widgetInstance: WidgetInstance<any, any>): Json {
+  return {
+    id: widgetInstance.id,
+    widgetId: widgetInstance.widget.id,
+    ...(widgetInstance.settingsOrUndefined === undefined ? {} : { settingsOrUndefined: widgetInstance.settingsOrUndefined }),
+    ...(widgetInstance.stateOrUndefined === undefined ? {} : { stateOrUndefined: widgetInstance.stateOrUndefined }),
+  };
+}
+
+export function deserializeWidgetInstance(widgets: Widget<any, any>[], serialized: Json): WidgetInstance<any, any> {
+  const serializedAny: any = serialized;
+  if (typeof serializedAny !== "object" || serializedAny === null) {
+    throw new StackAssertionError(`Serialized widget instance is not an object!`, { serialized });
+  }
+  if (typeof serializedAny.id !== "string") {
+    throw new StackAssertionError(`Serialized widget instance id is not a string!`, { serialized });
+  }
+  return {
+    id: serializedAny.id,
+    widget: widgets.find((widget) => widget.id === serializedAny.widgetId) ?? createErrorWidget(serializedAny.id, `Widget ${serializedAny.widgetId} not found. Was it deleted?`),
+    settingsOrUndefined: serializedAny.settingsOrUndefined,
+    stateOrUndefined: serializedAny.stateOrUndefined,
+  };
+}
 
 export function getSettings<Settings, State>(widgetInstance: WidgetInstance<Settings, State>): Settings {
   return widgetInstance.settingsOrUndefined === undefined ? widgetInstance.widget.defaultSettings : widgetInstance.settingsOrUndefined;
@@ -202,11 +295,19 @@ class WidgetInstanceGrid {
     }
   }
 
+  public static fromSingleWidgetInstance(widgetInstance: WidgetInstance<any, any>) {
+    return WidgetInstanceGrid.fromWidgetInstances([widgetInstance], {
+      width: WidgetInstanceGrid.DEFAULT_ELEMENT_WIDTH,
+      height: WidgetInstanceGrid.DEFAULT_ELEMENT_HEIGHT,
+    });
+  }
+
   public static fromWidgetInstances(widgetInstances: WidgetInstance[], options: { width?: number, height?: number | "auto" } = {}) {
     const width = options.width ?? 24;
     const height = options.height ?? "auto";
 
     const nonEmptyElements = widgetInstances
+      .filter((instance) => !instance.widget.isHeightVariable)
       .map((instance, index) => ({
         instance,
         x: (index * WidgetInstanceGrid.DEFAULT_ELEMENT_WIDTH) % width,
@@ -214,7 +315,6 @@ class WidgetInstanceGrid {
         width: WidgetInstanceGrid.DEFAULT_ELEMENT_WIDTH,
         height: WidgetInstanceGrid.DEFAULT_ELEMENT_HEIGHT,
       }))
-      .filter((element) => !element.instance.widget.isHeightVariable)
       .sort((a, b) => Math.sign(a.x - b.x) + 0.1 * Math.sign(a.y - b.y));
 
     const allVarHeightsWidgets = widgetInstances.filter((instance) => instance.widget.isHeightVariable);
@@ -229,20 +329,13 @@ class WidgetInstanceGrid {
   }
 
   public serialize(): Json {
-    const serializeInstance = (instance: WidgetInstance) => ({
-      id: instance.id,
-      widgetId: instance.widget.id,
-      ...(instance.settingsOrUndefined === undefined ? {} : { settingsOrUndefined: instance.settingsOrUndefined }),
-      ...(instance.stateOrUndefined === undefined ? {} : { stateOrUndefined: instance.stateOrUndefined }),
-    });
-
     const res = {
       className: "WidgetInstanceGrid",
       version: 1,
       width: this.width,
       fixedHeight: this._fixedHeight,
       nonEmptyElements: this._nonEmptyElements.map((element) => ({
-        instance: element.instance ? serializeInstance(element.instance) : null,
+        instance: element.instance ? serializeWidgetInstance(element.instance) : null,
         x: element.x,
         y: element.y,
         width: element.width,
@@ -250,7 +343,7 @@ class WidgetInstanceGrid {
       })),
       varHeights: [...this._varHeights.entries()].map(([y, instances]) => ({
         y,
-        instances: instances.map(serializeInstance),
+        instances: instances.map(serializeWidgetInstance),
       })),
     };
 
@@ -274,24 +367,17 @@ class WidgetInstanceGrid {
       throw new StackAssertionError(`WidgetInstanceGrid serialization is not a WidgetInstanceGrid!`, { serialized });
     }
 
-    const deserializeInstance = (instance: any): WidgetInstance => ({
-      id: instance.id,
-      widget: widgets.find((widget) => widget.id === instance.widgetId) ?? createErrorWidget(instance.id, `Widget ${instance.widgetId} not found. Was it deleted?`),
-      settingsOrUndefined: instance.settingsOrUndefined,
-      stateOrUndefined: instance.stateOrUndefined,
-    });
-
     const serializedAny = serialized as any;
     switch (serializedAny.version) {
       case 1: {
         const nonEmptyElements: GridElement[] = serializedAny.nonEmptyElements.map((element: any) => ({
-          instance: element.instance ? deserializeInstance(element.instance) : null,
+          instance: element.instance ? deserializeWidgetInstance(widgets, element.instance) : null,
           x: element.x,
           y: element.y,
           width: element.width,
           height: element.height,
         }));
-        const varHeights: Map<number, WidgetInstance[]> = new Map(serializedAny.varHeights.map((entry: any) => [entry.y, entry.instances.map(deserializeInstance)]));
+        const varHeights: Map<number, WidgetInstance[]> = new Map(serializedAny.varHeights.map((entry: any) => [entry.y, entry.instances.map((serialized: any) => deserializeWidgetInstance(widgets, serialized))]));
         return new WidgetInstanceGrid(nonEmptyElements, varHeights, serializedAny.width, serializedAny.fixedHeight);
       }
       default: {
@@ -387,6 +473,14 @@ class WidgetInstanceGrid {
 
   public getElementByInstanceId(id: string): GridElement | null {
     return [...this.elements()].find((element) => element.instance?.id === id) ?? null;
+  }
+
+  public getInstanceById(id: string): WidgetInstance<any, any> | null {
+    const element = this.getElementByInstanceId(id);
+    if (element?.instance) return element.instance;
+    const varHeight = this.getVarHeightInstanceById(id);
+    if (varHeight) return varHeight;
+    return null;
   }
 
   public getMinResizableSize(): { width: number, height: number } {
@@ -560,12 +654,7 @@ class WidgetInstanceGrid {
 
   public withAddedElement(widget: Widget<any, any>, x: number, y: number, width: number, height: number) {
     const newNonEmptyElements = [...this._nonEmptyElements, {
-      instance: {
-        id: generateUuid(),
-        widget,
-        settingsOrUndefined: undefined,
-        stateOrUndefined: undefined,
-      },
+      instance: createWidgetInstance(widget),
       x,
       y,
       width,
@@ -586,12 +675,18 @@ class WidgetInstanceGrid {
     return this._withUpdatedElementInstance(x, y, (element) => null);
   }
 
-  public withUpdatedElementSettings(x: number, y: number, updater: (settings: any) => any) {
-    return this._withUpdatedElementInstance(x, y, (element) => element.instance ? { ...element.instance, settingsOrUndefined: updater(getSettings(element.instance)) } : throwErr(`No widget instance at ${x}, ${y}`));
+  public withUpdatedElementSettings(x: number, y: number, newSettings: any) {
+    if (!isJsonSerializable(newSettings)) {
+      throw new StackAssertionError(`New settings are not JSON serializable: ${JSON.stringify(newSettings)}`, { newSettings });
+    }
+    return this._withUpdatedElementInstance(x, y, (element) => element.instance ? { ...element.instance, settingsOrUndefined: newSettings } : throwErr(`No widget instance at ${x}, ${y}`));
   }
 
-  public withUpdatedElementState(x: number, y: number, updater: (state: any) => any) {
-    return this._withUpdatedElementInstance(x, y, (element) => element.instance ? { ...element.instance, stateOrUndefined: updater(getState(element.instance)) } : throwErr(`No widget instance at ${x}, ${y}`));
+  public withUpdatedElementState(x: number, y: number, newState: any) {
+    if (!isJsonSerializable(newState)) {
+      throw new StackAssertionError(`New state are not JSON serializable: ${JSON.stringify(newState)}`, { newState });
+    }
+    return this._withUpdatedElementInstance(x, y, (element) => element.instance ? { ...element.instance, stateOrUndefined: newState } : throwErr(`No widget instance at ${x}, ${y}`));
   }
 
   public getVarHeightInstanceById(id: string): WidgetInstance | undefined {
@@ -644,12 +739,7 @@ class WidgetInstanceGrid {
   }
 
   public withAddedVarHeightWidget(y: number, widget: Widget<any, any>) {
-    return this.withAddedVarHeightAtEndOf(y, {
-      id: generateUuid(),
-      widget,
-      settingsOrUndefined: undefined,
-      stateOrUndefined: undefined,
-    });
+    return this.withAddedVarHeightAtEndOf(y, createWidgetInstance(widget));
   }
 
   public withAddedVarHeightAtEndOf(y: number, instance: WidgetInstance) {
@@ -689,31 +779,31 @@ class WidgetInstanceGrid {
 const widgets: Widget<any, any>[] = [
   {
     id: "$sub-grid",
-    MainComponent: ({ widthInGridUnits, heightInGridUnits, state, stateRef, setState, isMobileMode }) => {
-      const widgetGridRef = mapRef(stateRef, (state) => WidgetInstanceGrid.fromSerialized(state.serializedGrid));
-      const [color] = useState("#" + Math.floor(Math.random() * 16777215).toString(16) + "22");
-
-      const setWidgetGrid = useCallback((newGrid: WidgetInstanceGrid) => {
-        setState(state => ({
+    MainComponent: ({ widthInGridUnits, heightInGridUnits, stateRef, isSingleColumnMode }) => {
+      const widgetGridRef = mapRefState(
+        stateRef,
+        (state) => WidgetInstanceGrid.fromSerialized(state.serializedGrid),
+        (state, grid) => ({
           ...state,
-          serializedGrid: newGrid.serialize(),
-        }));
-      }, [setState]);
+          serializedGrid: grid.serialize(),
+        }),
+      );
+      const [color] = useState("#" + Math.floor(Math.random() * 16777215).toString(16) + "22");
 
       useEffect(() => {
         const newWidgetGrid = widgetGridRef.current.resize(widthInGridUnits - 1, heightInGridUnits - 1);
         if (newWidgetGrid !== widgetGridRef.current) {
-          setWidgetGrid(newWidgetGrid);
+          widgetGridRef.set(newWidgetGrid);
         }
-      }, [widthInGridUnits, heightInGridUnits, setWidgetGrid, widgetGridRef]);
+      }, [widthInGridUnits, heightInGridUnits, widgetGridRef]);
 
       return (
         <div style={{ backgroundColor: color, padding: '16px' }}>
           <SwappableWidgetInstanceGrid
-            isMobileMode={isMobileMode}
+            isSingleColumnMode={isSingleColumnMode ? "auto" : false}
             gridRef={widgetGridRef}
-            setGrid={setWidgetGrid}
             allowVariableHeight={false}
+            isStatic={true}
           />
         </div>
       );
@@ -756,7 +846,7 @@ const widgets: Widget<any, any>[] = [
 
       return (
         <PacificaCard
-          title="Widget builder"
+          title="Widget compiler"
           subtitle="This is a subtitle"
         >
           <textarea value={source} onChange={(e) => setSource(e.target.value)} style={{ width: '100%', height: '35%', fontFamily: "monospace" }} />
@@ -805,6 +895,54 @@ const widgets: Widget<any, any>[] = [
     defaultState: {},
     isHeightVariable: true,
   },
+  {
+    id: "$widget-builder",
+    MainComponent: () => {
+      const [source, setSource] = useState(deindent`
+        export function MainComponent(props) {
+          return <Card>
+            Hello, {props.settings.name}!
+            You are <input value={props.state.value} onChange={(e) => props.setState((state) => ({ ...state, value: e.target.value }))} /> years old.
+          </Card>;
+        }
+
+        export function SettingsComponent(props) {
+          return <div>Name: <Input value={props.settings.name} onChange={(e) => props.setSettings((settings) => ({ ...settings, name: e.target.value }))} /></div>;
+        }
+
+        export const defaultSettings = {name: "world"};
+        export const defaultState = {value: 1};
+      `);
+      const widgetResult = useCompileAndDeserializeWidget(source);
+      const widget = widgetResult.status === "ok" ? widgetResult.data : null;
+      const [lastWidget, setLastWidget] = useState(widget);
+      const widgetInstanceRef = useRefState<WidgetInstance<any, any> | null>(null);
+      useEffect(() => {
+        if (lastWidget !== widget) {
+          if (widget) {
+            widgetInstanceRef.set(createWidgetInstance(widget));
+          }
+          setLastWidget(widget);
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+      }, [widget]);
+
+      return (
+        <PacificaCard
+          title="Widget builder"
+        >
+          <textarea value={source} onChange={(e) => setSource(e.target.value)} style={{ width: '100%', height: '35%', fontFamily: "monospace" }} />
+          {widgetInstanceRef.current && (
+            // once widgetInstanceRef.current is non-null once, it is always non-null, so we can cast it below
+            <SingleWidget widgetInstanceRef={widgetInstanceRef as any} />
+          )}
+        </PacificaCard>
+      );
+    },
+    defaultSettings: {},
+    defaultState: {},
+    hasSubGrid: true,
+  },
 ];
 
 
@@ -814,12 +952,7 @@ const mobileModeWidgetHeight = 384;
 const mobileModeCutoffWidth = 768;
 
 export default function PageClient() {
-  const [widgetGridRef, setWidgetGrid] = useInstantState(WidgetInstanceGrid.fromWidgetInstances(widgets.map((w, i) => ({
-    id: "initial" + i,
-    settingsOrUndefined: undefined,
-    stateOrUndefined: undefined,
-    widget: w,
-  }))));
+  const widgetGridRef = useRefState(WidgetInstanceGrid.fromWidgetInstances(widgets.map((w, i) => createWidgetInstance(w))));
   const [isAltDown, setIsAltDown] = useState(false);
 
   useEffect(() => {
@@ -847,9 +980,30 @@ export default function PageClient() {
       fillWidth
     >
       <SwappableWidgetInstanceGridContext.Provider value={{ isEditing: isAltDown }}>
-        <SwappableWidgetInstanceGrid gridRef={widgetGridRef} setGrid={setWidgetGrid} isMobileMode="auto" allowVariableHeight={true} />
+        <SwappableWidgetInstanceGrid gridRef={widgetGridRef} isSingleColumnMode="auto" allowVariableHeight={true} isStatic={false} />
       </SwappableWidgetInstanceGridContext.Provider>
     </PageLayout>
+  );
+}
+
+function SingleWidget(props: {
+  widgetInstanceRef: RefState<WidgetInstance<any, any>>,
+}) {
+  const widgetGridRef = mapRefState(
+    props.widgetInstanceRef,
+    (widgetInstance) => {
+      return WidgetInstanceGrid.fromSingleWidgetInstance(widgetInstance);
+    },
+    (widgetInstance, grid) => grid.getInstanceById(widgetInstance.id) ?? throwErr(`Widget instance ${widgetInstance.id} not found in grid`, { widgetInstance }),
+  );
+
+  return (
+    <SwappableWidgetInstanceGrid
+      gridRef={widgetGridRef}
+      isSingleColumnMode={true}
+      allowVariableHeight={true}
+      isStatic={false}
+    />
   );
 }
 
@@ -859,7 +1013,7 @@ const SwappableWidgetInstanceGridContext = React.createContext<{
   isEditing: false,
 });
 
-function SwappableWidgetInstanceGrid(props: { gridRef: ReadonlyRef<WidgetInstanceGrid>, setGrid: (grid: WidgetInstanceGrid) => void, isMobileMode: boolean | "auto", allowVariableHeight: boolean }) {
+function SwappableWidgetInstanceGrid(props: { gridRef: RefState<WidgetInstanceGrid>, isSingleColumnMode: boolean | "auto", allowVariableHeight: boolean, isStatic: boolean }) {
   const [draggingType, setDraggingType] = useState<"element" | "var-height" | null>(null);
   const [overElementPosition, setOverElementPosition] = useState<[number, number] | null>(null);
   const [overVarHeightSlot, setOverVarHeightSlot] = useState<["before", string] | ["end-of", number] | null>(null);
@@ -867,16 +1021,16 @@ function SwappableWidgetInstanceGrid(props: { gridRef: ReadonlyRef<WidgetInstanc
   const [activeWidgetId, setActiveInstanceId] = useState<string | null>(null);
   const gridContainerRef = useRef<HTMLDivElement>(null);
   const context = React.use(SwappableWidgetInstanceGridContext);
-  const [isMobileModeIfAuto, setMobileModeIfAuto] = useState<boolean>(false);
+  const [isSingleColumnModeIfAuto, setMobileModeIfAuto] = useState<boolean>(false);
 
   useResizeObserver(gridContainerRef, (entry, observer) => {
     const shouldBeMobileMode = entry.contentRect.width < mobileModeCutoffWidth;
-    if (isMobileModeIfAuto !== shouldBeMobileMode) {
+    if (isSingleColumnModeIfAuto !== shouldBeMobileMode) {
       setMobileModeIfAuto(shouldBeMobileMode);
     }
   });
 
-  const isMobileMode = props.isMobileMode === "auto" ? isMobileModeIfAuto : props.isMobileMode;
+  const isSingleColumnMode = props.isSingleColumnMode === "auto" ? isSingleColumnModeIfAuto : props.isSingleColumnMode;
 
   let hasAlreadyRenderedEmpty = false;
 
@@ -886,7 +1040,7 @@ function SwappableWidgetInstanceGrid(props: { gridRef: ReadonlyRef<WidgetInstanc
     <div
       ref={gridContainerRef}
       style={{
-        ...isMobileMode ? {
+        ...isSingleColumnMode ? {
           display: 'flex',
           flexDirection: 'column',
         } : {
@@ -903,7 +1057,7 @@ function SwappableWidgetInstanceGrid(props: { gridRef: ReadonlyRef<WidgetInstanc
         isolation: 'isolate',
       }}
     >
-      {!isMobileMode && range(props.gridRef.current.height).map((y) => (
+      {!isSingleColumnMode && range(props.gridRef.current.height).map((y) => (
         <div key={y} style={{ height: gridUnitHeight, gridColumn: `1 / ${props.gridRef.current.width + 1}`, gridRow: `${2 * y + 2} / ${2 * y + 3}` }} />
       ))}
       <DndContext
@@ -920,9 +1074,9 @@ function SwappableWidgetInstanceGrid(props: { gridRef: ReadonlyRef<WidgetInstanc
           if (event.over) {
             const overLocation = JSON.parse(`${event.over.id}`) as ["before", string] | ["end-of", number];
             if (overLocation[0] === "before") {
-              props.setGrid(props.gridRef.current.withMovedVarHeightToInstance(activeInstanceId as string, overLocation[1], overLocation[0]));
+              props.gridRef.set(props.gridRef.current.withMovedVarHeightToInstance(activeInstanceId as string, overLocation[1], overLocation[0]));
             } else {
-              props.setGrid(props.gridRef.current.withMovedVarHeightToEndOf(activeInstanceId as string, overLocation[1]));
+              props.gridRef.set(props.gridRef.current.withMovedVarHeightToEndOf(activeInstanceId as string, overLocation[1]));
             }
           }
         }}
@@ -941,6 +1095,8 @@ function SwappableWidgetInstanceGrid(props: { gridRef: ReadonlyRef<WidgetInstanc
           <div key={y} style={{
             gridColumn: `1 / -1`,
             gridRow: `${2 * y + 1} / ${2 * y + 2}`,
+            display: 'flex',
+            flexDirection: 'column',
           }}>
             {[...(varHeights.get(y) ?? []), null].map((instance, i) => {
               if (instance !== null && !props.allowVariableHeight) {
@@ -952,7 +1108,9 @@ function SwappableWidgetInstanceGrid(props: { gridRef: ReadonlyRef<WidgetInstanc
               return (
                 <React.Fragment key={i}>
                   {props.gridRef.current.canAddVarHeight(y) && (
-                    <VarHeightSlot isOver={isOverVarHeightSlot} location={location} />
+                    <div>
+                      <VarHeightSlot isOver={isOverVarHeightSlot} location={location} />
+                    </div>
                   )}
                   {instance !== null && (
                     <div
@@ -961,26 +1119,29 @@ function SwappableWidgetInstanceGrid(props: { gridRef: ReadonlyRef<WidgetInstanc
                       }}
                     >
                       <Draggable
+                        isStatic={props.isStatic}
                         type="var-height"
                         widgetInstance={instance}
                         activeWidgetId={activeWidgetId}
                         isEditing={context.isEditing}
-                        isMobileMode={isMobileMode}
+                        isSingleColumnMode={isSingleColumnMode}
                         onDeleteWidget={async () => {
-                          props.setGrid(props.gridRef.current.withRemovedVarHeight(instance.id));
+                          props.gridRef.set(props.gridRef.current.withRemovedVarHeight(instance.id));
                         }}
                         settings={getSettings(instance)}
                         setSettings={async (updater) => {
-                          props.setGrid(props.gridRef.current.withUpdatedVarHeightSettings(instance.id, updater));
+                          props.gridRef.set(props.gridRef.current.withUpdatedVarHeightSettings(instance.id, updater));
                         }}
-                        state={getState(instance)}
-                        stateRef={mapRef(props.gridRef, (grid) => {
-                          const newInstance = grid.getVarHeightInstanceById(instance.id);
-                          return getState(newInstance ?? /* HACK instance has been deleted; let's return the old state */ instance);
-                        })}
-                        setState={(updater) => {
-                          props.setGrid(props.gridRef.current.withUpdatedVarHeightState(instance.id, updater));
-                        }}
+                        stateRef={mapRefState(
+                          props.gridRef,
+                          (grid) => {
+                            const newInstance = grid.getVarHeightInstanceById(instance.id);
+                            return getState(newInstance ?? /* HACK instance has been deleted; let's return the old state */ instance);
+                          },
+                          (grid, state) => {
+                            return props.gridRef.current.withUpdatedVarHeightState(instance.id, state);
+                          },
+                        )}
                         onResize={(edges) => {
                           throw new StackAssertionError("Cannot resize a var-height widget!");
                         }}
@@ -1025,7 +1186,7 @@ function SwappableWidgetInstanceGrid(props: { gridRef: ReadonlyRef<WidgetInstanc
             const swapArgs = [widgetElement.x, widgetElement.y, overCoordinates[0], overCoordinates[1]] as const;
             if (props.gridRef.current.canSwap(...swapArgs)) {
               const newGrid = props.gridRef.current.withSwappedElements(...swapArgs);
-              props.setGrid(newGrid);
+              props.gridRef.set(newGrid);
             }
           }
         }}
@@ -1072,14 +1233,14 @@ function SwappableWidgetInstanceGrid(props: { gridRef: ReadonlyRef<WidgetInstanc
         {props.gridRef.current.elements().map(({ instance, x, y, width, height }) => {
           const isHoverSwap = !!hoverElementSwap && !!instance && (hoverElementSwap[0] === instance.id);
 
-          if (isMobileMode && !instance) {
+          if (isSingleColumnMode && !instance) {
             if (hasAlreadyRenderedEmpty) return null;
             hasAlreadyRenderedEmpty = true;
           }
 
           return (
             <ElementSlot
-              isMobileMode={isMobileMode}
+              isSingleColumnMode={isSingleColumnMode}
               key={instance?.id ?? JSON.stringify({ x, y })}
               isEmpty={!instance}
               isOver={overElementPosition?.[0] === x && overElementPosition[1] === y}
@@ -1092,14 +1253,15 @@ function SwappableWidgetInstanceGrid(props: { gridRef: ReadonlyRef<WidgetInstanc
                 const availableWidgets = props.allowVariableHeight ? widgets : widgets.filter((widget) => !widget.isHeightVariable);
                 const widget = availableWidgets[Math.floor(Math.random() * availableWidgets.length)];
                 if (widget.isHeightVariable) {
-                  props.setGrid(props.gridRef.current.withAddedVarHeightWidget(0, widget));
+                  props.gridRef.set(props.gridRef.current.withAddedVarHeightWidget(0, widget));
                 } else {
-                  props.setGrid(props.gridRef.current.withAddedElement(widget, x, y, width, height));
+                  props.gridRef.set(props.gridRef.current.withAddedElement(widget, x, y, width, height));
                 }
               }}
             >
               {instance && (
                 <Draggable
+                  isStatic={props.isStatic}
                   type="element"
                   widgetInstance={instance}
                   activeWidgetId={activeWidgetId}
@@ -1109,25 +1271,25 @@ function SwappableWidgetInstanceGrid(props: { gridRef: ReadonlyRef<WidgetInstanc
                     width: isHoverSwap ? `${hoverElementSwap[1][2]}px` : (hoverElementSwap && activeWidgetId === instance.id ? `${hoverElementSwap[1][4]}px` : undefined),
                     height: isHoverSwap ? `${hoverElementSwap[1][3]}px` : (hoverElementSwap && activeWidgetId === instance.id ? `${hoverElementSwap[1][5]}px` : undefined),
                   }}
-                  isMobileMode={isMobileMode}
+                  isSingleColumnMode={isSingleColumnMode}
                   onDeleteWidget={async () => {
-                    props.setGrid(props.gridRef.current.withRemovedElement(x, y));
+                    props.gridRef.set(props.gridRef.current.withRemovedElement(x, y));
                   }}
                   settings={getSettings(instance)}
                   setSettings={async (updater) => {
-                    props.setGrid(props.gridRef.current.withUpdatedElementSettings(x, y, updater));
+                    props.gridRef.set(props.gridRef.current.withUpdatedElementSettings(x, y, updater));
                   }}
-                  state={getState(instance)}
-                  stateRef={mapRef(props.gridRef, (grid) => {
-                    const newElement = grid.getElementByInstanceId(instance.id);
-                    return getState(newElement?.instance ?? /* HACK instance has been deleted; let's return the old state */ instance);
-                  })}
-                  setState={(updater) => {
-                    props.setGrid(props.gridRef.current.withUpdatedElementState(x, y, updater));
-                  }}
+                  stateRef={mapRefState(
+                    props.gridRef,
+                    (grid) => {
+                      const newElement = grid.getElementByInstanceId(instance.id);
+                      return getState(newElement?.instance ?? /* HACK instance has been deleted; let's return the old state */ instance);
+                    },
+                    (grid, state) => grid.withUpdatedElementState(x, y, state),
+                  )}
                   onResize={(edges) => {
                     const clamped = props.gridRef.current.clampElementResize(x, y, edges);
-                    props.setGrid(props.gridRef.current.withResizedElement(x, y, clamped));
+                    props.gridRef.set(props.gridRef.current.withResizedElement(x, y, clamped));
                     return clamped;
                   }}
                   x={x}
@@ -1171,7 +1333,7 @@ function VarHeightSlot(props: { isOver: boolean, location: readonly ["before", i
   );
 }
 
-function ElementSlot(props: { isMobileMode: boolean, isOver: boolean, children: React.ReactNode, style?: React.CSSProperties, x: number, y: number, width: number, height: number, isEmpty: boolean, grid: WidgetInstanceGrid, onAddWidget: () => void }) {
+function ElementSlot(props: { isSingleColumnMode: boolean, isOver: boolean, children: React.ReactNode, style?: React.CSSProperties, x: number, y: number, width: number, height: number, isEmpty: boolean, grid: WidgetInstanceGrid, onAddWidget: () => void }) {
   const { setNodeRef, active } = useDroppable({
     id: JSON.stringify([props.x, props.y]),
   });
@@ -1189,7 +1351,7 @@ function ElementSlot(props: { isMobileMode: boolean, isOver: boolean, children: 
         gridColumn: `${props.x + 1} / span ${props.width}`,
         gridRow: `${2 * props.y + 2} / span ${2 * props.height - 1}`,
         margin: gridGapPixels / 2,
-        minHeight: props.isMobileMode ? mobileModeWidgetHeight : undefined,
+        minHeight: props.isSingleColumnMode ? mobileModeWidgetHeight : undefined,
         ...props.style,
       }}
     >
@@ -1239,15 +1401,14 @@ function Draggable(props: {
   height: number,
   activeWidgetId: string | null,
   isEditing: boolean,
-  isMobileMode: boolean,
+  isSingleColumnMode: boolean,
   onDeleteWidget: () => Promise<void>,
   settings: any,
   setSettings: (settings: any) => Promise<void>,
-  state: any,
-  stateRef: ReadonlyRef<any>,
-  setState: (updater: (state: any) => any) => void,
+  stateRef: RefState<any>,
   onResize: (edges: { top: number, left: number, bottom: number, right: number }) => { top: number, left: number, bottom: number, right: number },
   calculateUnitSize: () => { width: number, height: number },
+  isStatic: boolean,
 }) {
   const [isSettingsOpen, setIsSettingsOpenRaw] = useState(false);
   const [unsavedSettings, setUnsavedSettings] = useState(props.settings);
@@ -1277,7 +1438,7 @@ function Draggable(props: {
 
   const { attributes, listeners, setNodeRef, transform, isDragging, node: draggableContainerRef } = useDraggable({
     id: props.widgetInstance.id,
-    disabled: !isEditing,
+    disabled: !isEditing || props.isStatic,
   });
   const dialogRef = useRef<HTMLDivElement>(null);
 
@@ -1287,7 +1448,7 @@ function Draggable(props: {
     }
   }, [props.isEditing]);
 
-  const isFixedWidth = !props.isMobileMode && props.type === "element";
+  const isFixedHeight = !props.isSingleColumnMode && props.type === "element";
 
   useEffect(() => {
     let cancelled = false;
@@ -1391,7 +1552,7 @@ function Draggable(props: {
         <div
           className={cn(isDragging && 'bg-white dark:bg-black border-black/20 dark:border-white/20')}
           style={{
-            ...isFixedWidth ? {
+            ...isFixedHeight ? {
               position: 'absolute',
               inset: 0,
             } : {
@@ -1399,6 +1560,7 @@ function Draggable(props: {
               width: '100%',
               height: '100%',
             },
+            overflow: 'hidden',
             flexGrow: 1,
             alignSelf: 'stretch',
             boxShadow: isEditing ? '0 0 32px 0 #8882' : '0 0 0 0 transparent',
@@ -1432,15 +1594,27 @@ function Draggable(props: {
             }}
           >
             <SwappableWidgetInstanceGridContext.Provider value={{ isEditing: isEditingSubGrid }}>
-              <props.widgetInstance.widget.MainComponent
-                settings={props.widgetInstance.settingsOrUndefined}
-                isMobileMode={props.isMobileMode}
-                state={props.state}
-                stateRef={props.stateRef}
-                setState={props.setState}
-                widthInGridUnits={props.width}
-                heightInGridUnits={props.height}
-              />
+              <ErrorBoundary errorComponent={(props) => (
+                <div className="text-red-500 text-sm p-2 bg-red-500/10 font-mono whitespace-pre-wrap">
+                  A runtime error occured while rendering this widget.<br />
+                  <br />
+                  {props.reset && <button className="text-blue-500 hover:underline" onClick={() => {
+                    props.reset!();
+                  }}>Reload widget</button>}<br />
+                  <br />
+                  {errorToNiceString(props.error)}
+                </div>
+              )}>
+                <props.widgetInstance.widget.MainComponent
+                  settings={getSettings(props.widgetInstance)}
+                  isSingleColumnMode={props.isSingleColumnMode}
+                  state={props.stateRef.current}
+                  stateRef={props.stateRef}
+                  setState={(updater) => props.stateRef.set(updater(props.stateRef.current))}
+                  widthInGridUnits={props.width}
+                  heightInGridUnits={props.height}
+                />
+              </ErrorBoundary>
             </SwappableWidgetInstanceGridContext.Provider>
           </div>
           <div
@@ -1523,7 +1697,7 @@ function Draggable(props: {
                   }}
                 />
               </div>
-              {isFixedWidth && [-1, 0, 1].flatMap(x => [-1, 0, 1].map(y => (x !== 0 || y !== 0) && (
+              {!props.isStatic && isFixedHeight && [-1, 0, 1].flatMap(x => [-1, 0, 1].map(y => (x !== 0 || y !== 0) && (
                 <ResizeHandle
                   key={`${x},${y}`}
                   widgetInstance={props.widgetInstance}
@@ -1625,7 +1799,7 @@ function ResizeHandle({ widgetInstance, x, y, ...props }: {
   onResize: (edges: { top: number, left: number, bottom: number, right: number }) => { top: number, left: number, bottom: number, right: number },
   calculateUnitSize: () => { width: number, height: number },
 }) {
-  const [dragBaseCoordinates, setDragBaseCoordinates] = useInstantState<[number, number] | null>(null);
+  const dragBaseCoordinates = useRefState<[number, number] | null>(null);
   if (![ -1, 0, 1 ].includes(x) || ![ -1, 0, 1 ].includes(y)) {
     throw new StackAssertionError(`Invalid resize handle coordinates, must be -1, 0, or 1: ${x}, ${y}`);
   }
@@ -1645,7 +1819,7 @@ function ResizeHandle({ widgetInstance, x, y, ...props }: {
           bottom: y === 1 ? unitDelta[1] : 0,
           right: x === 1 ? unitDelta[0] : 0,
         });
-        setDragBaseCoordinates([
+        dragBaseCoordinates.set([
           dragBaseCoordinates.current[0] + (resizeResult.left + resizeResult.right) * unitWidth,
           dragBaseCoordinates.current[1] + (resizeResult.top + resizeResult.bottom) * unitHeight,
         ]);
@@ -1655,7 +1829,7 @@ function ResizeHandle({ widgetInstance, x, y, ...props }: {
     return () => {
       window.removeEventListener('mousemove', onMouseMove);
     };
-  }, [x, y, props.onResize, props.calculateUnitSize, dragBaseCoordinates, setDragBaseCoordinates]);
+  }, [x, y, props.onResize, props.calculateUnitSize, dragBaseCoordinates]);
 
   const onResizeRef = useRef(props.onResize);
   onResizeRef.current = props.onResize;
@@ -1694,9 +1868,9 @@ function ResizeHandle({ widgetInstance, x, y, ...props }: {
         cursor: isCorner ? (x === y ? 'nwse-resize' : 'nesw-resize') : (x === 0 ? 'ns-resize' : 'ew-resize'),
       }}
       onMouseDown={(event) => {
-        setDragBaseCoordinates([event.clientX, event.clientY]);
+        dragBaseCoordinates.set([event.clientX, event.clientY]);
         window.addEventListener('mouseup', () => {
-          setDragBaseCoordinates(null);
+          dragBaseCoordinates.set(null);
         }, { once: true });
         event.preventDefault();
         event.stopPropagation();

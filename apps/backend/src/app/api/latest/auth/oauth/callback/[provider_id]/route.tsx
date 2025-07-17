@@ -298,11 +298,12 @@ const handler = createSmartRouteHandler({
                       switch (oauthAccountMergeStrategy) {
                         case 'link_method': {
                           if (!oldContactChannel.isVerified) {
-                            throw new KnownErrors.ContactChannelAlreadyUsedForAuthBySomeoneElse("email", userInfo.email);
+                            throw new KnownErrors.ContactChannelAlreadyUsedForAuthBySomeoneElse("email", userInfo.email, true);
                           }
 
                           if (!userInfo.emailVerified) {
-                            const err = new StackAssertionError("OAuth account merge strategy is set to link_method, but the email is not verified");
+                            // TODO handle this case
+                            const err = new StackAssertionError("OAuth account merge strategy is set to link_method, but the NEW email is not verified. This is an edge case that we don't handle right now", { oldContactChannel, userInfo });
                             captureError("oauth-link-method-email-not-verified", err);
                             throw new KnownErrors.ContactChannelAlreadyUsedForAuthBySomeoneElse("email", userInfo.email);
                           }
