@@ -4,7 +4,6 @@ import { FeedbackDialog } from "@/components/feedback-dialog";
 import { Link } from "@/components/link";
 import { Logo } from "@/components/logo";
 import { ProjectSwitcher } from "@/components/project-switcher";
-//import { StackCompanion } from "@/components/stack-companion";
 import { StackCompanion } from "@/components/stack-companion";
 import ThemeToggle from "@/components/theme-toggle";
 import { getPublicEnvVar } from '@/lib/env';
@@ -472,7 +471,7 @@ export default function SidebarLayout(props: { projectId: string, children?: Rea
 
       {/* Main Content Area */}
       <div className={cn(
-        "flex flex-col flex-grow w-0 transition-all duration-300 ease-in-out",
+        "flex flex-col flex-grow w-0 transition-[padding] duration-300 ease-in-out",
         companionExpanded ? "pr-80" : "pr-12"
       )}>
         {/* Header */}
@@ -501,7 +500,7 @@ export default function SidebarLayout(props: { projectId: string, children?: Rea
             </div>
           </div>
 
-          <div className="flex gap-4">
+          <div className="flex gap-4 relative">
             <FeedbackDialog
               trigger={<Button variant="outline" size='sm'>Feedback</Button>}
             />
