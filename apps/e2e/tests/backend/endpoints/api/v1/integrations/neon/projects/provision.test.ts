@@ -25,7 +25,6 @@ it("should be able to provision a new project if neon client details are correct
       "headers": Headers { <some fields may have been hidden> },
     }
   `);
-  console.log(response.body);
 
 
   // test API keys
