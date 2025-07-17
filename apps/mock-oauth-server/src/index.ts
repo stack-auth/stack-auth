@@ -25,7 +25,6 @@ const clients = providerIds.map((id) => ({
     ...(process.env.STACK_MOCK_OAUTH_REDIRECT_URIS ? [process.env.STACK_MOCK_OAUTH_REDIRECT_URIS.replace("{id}", id)] : [])
   ],
   grant_types: ['authorization_code', 'refresh_token'],
-  scopes: ['openid', 'offline_access'],
 }));
 
 const configuration = {
