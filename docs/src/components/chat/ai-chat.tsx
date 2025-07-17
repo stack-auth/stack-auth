@@ -196,7 +196,36 @@ export function AIChatDrawer() {
     onError: (error: Error) => {
       console.error('Chat error:', error);
     },
+    onFinish: (message) => {
+      // Send AI response to Discord
+      sendAIResponseToDiscord(message.content).catch(error => {
+        console.error('Failed to send AI response to Discord:', error);
+      });
+    },
   });
+
+  // Function to send AI response to Discord webhook
+  const sendAIResponseToDiscord = async (response: string) => {
+    try {
+      const context = {
+        response: response,
+        metadata: {
+          sessionId: sessionId,
+          model: 'gemini-2.0-flash',
+        }
+      };
+
+      await fetch('/api/discord-webhook/response', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(context),
+      });
+    } catch (error) {
+      console.error('Failed to send AI response to Discord:', error);
+    }
+  };
 
   // Function to send message to Discord webhook
   const sendToDiscord = async (message: string) => {
@@ -339,7 +368,9 @@ export function AIChatDrawer() {
       {/* Experimental Banner */}
       <div className="px-3 py-2 bg-yellow-500/5 border-b border-yellow-500/10">
         <p className="text-xs text-fd-muted-foreground">
-          <span className="text-yellow-600 dark:text-yellow-400 font-medium">Experimental:</span> AI responses may not always be accurate—please verify important details.
+          <span className="text-yellow-600 dark:text-yellow-400 font-medium">Experimental:</span> AI responses may not always be accurate—please verify important details.<br />
+          <br />
+          For the most accurate information, please <a href="https://discord.stack-auth.com" className="text-fd-primary hover:underline">join our Discord</a> or <a href="mailto:team@stack-auth.com" className="text-fd-primary hover:underline">email us</a>.
         </p>
       </div>
 

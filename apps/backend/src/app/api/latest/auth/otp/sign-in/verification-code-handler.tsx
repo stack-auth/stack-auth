@@ -47,7 +47,7 @@ export async function ensureUserForEmailAllowsOtp(tenancy: Tenancy, email: strin
         user_id: contactChannel.projectUser.projectUserId,
       });
     } else {
-      throw new KnownErrors.UserWithEmailAlreadyExists(contactChannel.value);
+      throw new KnownErrors.UserWithEmailAlreadyExists(contactChannel.value, true);
     }
   } else {
     if (!tenancy.config.sign_up_enabled) {

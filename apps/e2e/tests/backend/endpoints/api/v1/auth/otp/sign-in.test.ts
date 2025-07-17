@@ -108,8 +108,11 @@ it("should not allow signing in if email is not verified", async ({ expect }) =>
       "status": 409,
       "body": {
         "code": "USER_EMAIL_ALREADY_EXISTS",
-        "details": { "email": "default-mailbox--<stripped UUID>@stack-generated.example.com" },
-        "error": "A user with email \\"default-mailbox--<stripped UUID>@stack-generated.example.com\\" already exists.",
+        "details": {
+          "email": "default-mailbox--<stripped UUID>@stack-generated.example.com",
+          "would_work_if_email_was_verified": true,
+        },
+        "error": "A user with email \\"default-mailbox--<stripped UUID>@stack-generated.example.com\\" already exists but the email is not verified. Please login to your existing account with the method you used to sign up, and then verify your email to sign in with this login method.",
       },
       "headers": Headers {
         "x-stack-known-error": "USER_EMAIL_ALREADY_EXISTS",

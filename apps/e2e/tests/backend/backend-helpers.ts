@@ -689,7 +689,7 @@ export namespace Auth {
       };
     }
 
-    export async function getAuthorizationCode(options: { innerCallbackUrl?: URL, authorizeResponse?: NiceResponse, forceBranchId?: string } = {}) {
+    export async function getMaybeFailingAuthorizationCode(options: { innerCallbackUrl?: URL, authorizeResponse?: NiceResponse, forceBranchId?: string } = {}) {
       let authorizeResponse, innerCallbackUrl;
       if (options.innerCallbackUrl && options.authorizeResponse) {
         innerCallbackUrl = options.innerCallbackUrl;
@@ -706,6 +706,15 @@ export namespace Auth {
           cookie,
         },
       });
+      return {
+        authorizeResponse,
+        innerCallbackUrl,
+        response,
+      };
+    }
+
+    export async function getAuthorizationCode(options: { innerCallbackUrl?: URL, authorizeResponse?: NiceResponse, forceBranchId?: string } = {}) {
+      const { response } = await Auth.OAuth.getMaybeFailingAuthorizationCode(options);
       expect(response).toMatchObject({
         status: 303,
         headers: expect.any(Headers),

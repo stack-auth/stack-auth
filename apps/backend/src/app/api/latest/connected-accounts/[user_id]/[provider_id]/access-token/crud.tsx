@@ -1,11 +1,12 @@
 import { usersCrudHandlers } from "@/app/api/latest/users/crud";
 import { getProvider } from "@/oauth";
+import { TokenSet } from "@/oauth/providers/base";
 import { getPrismaClientForTenancy } from "@/prisma-client";
 import { createCrudHandlers } from "@/route-handlers/crud-handler";
 import { KnownErrors } from "@stackframe/stack-shared";
 import { connectedAccountAccessTokenCrud } from "@stackframe/stack-shared/dist/interface/crud/oauth";
 import { userIdOrMeSchema, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
-import { StackAssertionError, StatusError } from "@stackframe/stack-shared/dist/utils/errors";
+import { StackAssertionError, StatusError, captureError } from "@stackframe/stack-shared/dist/utils/errors";
 import { createLazyProxy } from "@stackframe/stack-shared/dist/utils/proxies";
 import { extractScopes } from "@stackframe/stack-shared/dist/utils/strings";
 
@@ -49,16 +50,26 @@ export const connectedAccountAccessTokenCrudHandlers = createLazyProxy(() =>crea
           // is at least 5 minutes in the future
           gt: new Date(Date.now() + 5 * 60 * 1000),
         },
+        isValid: true,
       },
     });
     const filteredTokens = accessTokens.filter((t) => {
       return extractScopes(data.scope || "").every((scope) => t.scopes.includes(scope));
     });
-    if (filteredTokens.length !== 0) {
-      const token = filteredTokens[0].accessToken;
+    for (const token of filteredTokens) {
       // some providers (particularly GitHub) invalidate access tokens on the server-side, in which case we want to request a new access token
-      if (await providerInstance.checkAccessTokenValidity(token)) {
-        return { access_token: token };
+      if (await providerInstance.checkAccessTokenValidity(token.accessToken)) {
+        return { access_token: token.accessToken };
+      } else {
+        // mark the token as invalid
+        await prisma.oAuthAccessToken.update({
+          where: {
+            id: token.id,
+          },
+          data: {
+            isValid: false,
+          },
+        });
       }
     }
 
@@ -70,7 +81,8 @@ export const connectedAccountAccessTokenCrudHandlers = createLazyProxy(() =>crea
         configOAuthProviderId: params.provider_id,
         projectUserOAuthAccount: {
           projectUserId: params.user_id,
-        }
+        },
+        isValid: true,
       },
     });
 
@@ -82,45 +94,69 @@ export const connectedAccountAccessTokenCrudHandlers = createLazyProxy(() =>crea
       throw new KnownErrors.OAuthConnectionDoesNotHaveRequiredScope();
     }
 
-    const tokenSet = await providerInstance.getAccessToken({
-      refreshToken: filteredRefreshTokens[0].refreshToken,
-      scope: data.scope,
-    });
+    for (const token of filteredRefreshTokens) {
+      let tokenSet: TokenSet;
+      try {
+        tokenSet = await providerInstance.getAccessToken({
+          refreshToken: token.refreshToken,
+          scope: data.scope,
+        });
+      } catch (error) {
+        captureError('oauth-access-token-refresh-error', {
+          error,
+          tenancyId: auth.tenancy.id,
+          providerId: params.provider_id,
+          userId: params.user_id,
+          refreshToken: token.refreshToken,
+          scope: data.scope,
+        });
 
-    if (!tokenSet.accessToken) {
-      throw new StackAssertionError("No access token returned");
-    }
+        // mark the token as invalid
+        await prisma.oAuthToken.update({
+          where: { id: token.id },
+          data: { isValid: false },
+        });
 
-    await prisma.oAuthAccessToken.create({
-      data: {
-        tenancyId: auth.tenancy.id,
-        configOAuthProviderId: params.provider_id,
-        accessToken: tokenSet.accessToken,
-        providerAccountId: filteredRefreshTokens[0].providerAccountId,
-        scopes: filteredRefreshTokens[0].scopes,
-        expiresAt: tokenSet.accessTokenExpiredAt
+        continue;
       }
-    });
 
-    if (tokenSet.refreshToken) {
-      // remove the old token, add the new token to the DB
-      await prisma.oAuthToken.deleteMany({
-        where: {
-          refreshToken: filteredRefreshTokens[0].refreshToken,
-        },
-      });
-      await prisma.oAuthToken.create({
+      if (!tokenSet.accessToken) {
+        throw new StackAssertionError("No access token returned");
+      }
+
+      await prisma.oAuthAccessToken.create({
         data: {
           tenancyId: auth.tenancy.id,
           configOAuthProviderId: params.provider_id,
-          refreshToken: tokenSet.refreshToken,
-          providerAccountId: filteredRefreshTokens[0].providerAccountId,
-          scopes: filteredRefreshTokens[0].scopes,
+          accessToken: tokenSet.accessToken,
+          providerAccountId: token.providerAccountId,
+          scopes: token.scopes,
+          expiresAt: tokenSet.accessTokenExpiredAt
         }
       });
+
+      if (tokenSet.refreshToken) {
+        // remove the old token, add the new token to the DB
+        await prisma.oAuthToken.deleteMany({
+          where: {
+            refreshToken: token.refreshToken,
+          },
+        });
+        await prisma.oAuthToken.create({
+          data: {
+            tenancyId: auth.tenancy.id,
+            configOAuthProviderId: params.provider_id,
+            refreshToken: tokenSet.refreshToken,
+            providerAccountId: token.providerAccountId,
+            scopes: token.scopes,
+          }
+        });
+      }
+
+      return { access_token: tokenSet.accessToken };
     }
 
-    return { access_token: tokenSet.accessToken };
+    throw new KnownErrors.OAuthConnectionDoesNotHaveRequiredScope();
   },
 }));
 
