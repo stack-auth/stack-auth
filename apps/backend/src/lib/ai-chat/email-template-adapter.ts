@@ -16,7 +16,7 @@ export const emailTemplateAdapter = (context: ChatAdapterContext) => ({
     createEmailTemplate: tool({
       description: CREATE_EMAIL_TEMPLATE_TOOL_DESCRIPTION(context),
       parameters: z.object({
-        content: z.string().describe("The content of the email template"),
+        content: z.string().describe("A react component that renders the email template"),
       }),
       execute: async (args) => {
         const theme = context.tenancy.completeConfig.emails.themeList[context.tenancy.completeConfig.emails.theme];
