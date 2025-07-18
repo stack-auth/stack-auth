@@ -38,7 +38,6 @@ const migrate = async () => {
     migrationFiles: getMigrationFiles(MIGRATION_FILES_DIR),
     logging: true,
   });
-  await seed();
 };
 
 const showHelp = () => {
@@ -78,6 +77,7 @@ const main = async () => {
       execSync('pnpm prisma migrate dev --skip-seed', { stdio: 'inherit' });
       await dropPublicSchema();
       await migrate();
+      await seed();
       break;
     }
     case 'seed': {
