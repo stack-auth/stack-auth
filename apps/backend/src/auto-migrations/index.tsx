@@ -1,6 +1,7 @@
 import { Prisma, PrismaClient } from '@prisma/client';
 import { MIGRATION_FILES } from './../generated/migration-files';
 
+const ADVISORY_LOCK_ID = 59129034;
 
 function getMigrationError(error: unknown): string {
   if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2010') {
@@ -80,9 +81,26 @@ export async function applyMigrations(options: {
 
     const transaction = [];
 
+    await options.prismaClient.$executeRaw`
+      SELECT pg_advisory_lock(${ADVISORY_LOCK_ID});
+    `;
+
+    await options.prismaClient.$executeRaw`
+      DO $$
+      BEGIN
+        IF EXISTS (
+          SELECT 1 FROM "SchemaMigration" 
+          WHERE "migrationName" = '${Prisma.raw(migration.migrationName)}'
+        ) THEN
+          RAISE EXCEPTION 'MIGRATION_ALREADY_APPLIED';
+        END IF;
+      END
+      $$;
+    `;
+
     for (const statement of migration.sql.split('SPLIT_STATEMENT_SENTINEL')) {
       if (statement.includes('SINGLE_STATEMENT_SENTINEL')) {
-          transaction.push(options.prismaClient.$queryRaw`${Prisma.raw(statement)}`);
+        transaction.push(options.prismaClient.$queryRaw`${Prisma.raw(statement)}`);
       } else {
         transaction.push(options.prismaClient.$executeRaw`
           DO $$
@@ -94,18 +112,30 @@ export async function applyMigrations(options: {
       }
     }
 
+    if (options.artificialDelayInSeconds) {
+      await options.prismaClient.$executeRaw`
+        SELECT pg_sleep(${options.artificialDelayInSeconds});
+      `;
+    }
+
     transaction.push(options.prismaClient.$executeRaw`
       INSERT INTO "SchemaMigration" ("migrationName", "finishedAt")
       VALUES (${migration.migrationName}, clock_timestamp())
     `);
 
-    await options.prismaClient.$transaction(transaction);
-  }
-
-  if (options.artificialDelayInSeconds) {
     await options.prismaClient.$executeRaw`
-      SELECT pg_sleep(${options.artificialDelayInSeconds});
+      SELECT pg_advisory_unlock(${ADVISORY_LOCK_ID});
     `;
+
+    try {
+      await options.prismaClient.$transaction(transaction);
+    } catch (e) {
+      const error = getMigrationError(e);
+      if (error === 'MIGRATION_ALREADY_APPLIED') {
+        continue;
+      }
+      throw e;
+    }
   }
 
   return { newlyAppliedMigrationNames: newMigrationFiles.map(x => x.migrationName) };
