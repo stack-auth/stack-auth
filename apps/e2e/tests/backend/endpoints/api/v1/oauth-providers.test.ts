@@ -7,7 +7,7 @@ async function createAndSwitchToOAuthEnabledProject() {
       magic_link_enabled: true,
       oauth_providers: [
         {
-          id: "github",
+          id: "spotify",
           type: "standard",
           client_id: "test_client_id",
           client_secret: "test_client_secret",
@@ -21,7 +21,7 @@ it("should create an OAuth provider connection", async ({ expect }: { expect: an
   const { createProjectResponse } = await createAndSwitchToOAuthEnabledProject();
   await Auth.Otp.signIn();
 
-  const providerConfig = createProjectResponse.body.config.oauth_providers.find((p: any) => p.provider_config_id === "github");
+  const providerConfig = createProjectResponse.body.config.oauth_providers.find((p: any) => p.provider_config_id === "spotify");
   expect(providerConfig).toBeDefined();
 
   const createResponse = await niceBackendFetch("/api/v1/oauth-providers", {
@@ -30,7 +30,7 @@ it("should create an OAuth provider connection", async ({ expect }: { expect: an
     body: {
       user_id: "me",
       provider_config_id: providerConfig.id,
-      account_id: "test_github_user_123",
+      account_id: "test_spotify_user_123",
       email: "test@example.com",
       allow_sign_in: true,
       allow_connected_accounts: true,
@@ -41,12 +41,12 @@ it("should create an OAuth provider connection", async ({ expect }: { expect: an
     NiceResponse {
       "status": 201,
       "body": {
-        "account_id": "test_github_user_123",
+        "account_id": "test_spotify_user_123",
         "allow_connected_accounts": true,
         "allow_sign_in": true,
         "email": "test@example.com",
         "id": "<stripped UUID>",
-        "type": "github",
+        "type": "spotify",
         "user_id": "<stripped UUID>",
       },
       "headers": Headers { <some fields may have been hidden> },
@@ -58,7 +58,7 @@ it("should read an OAuth provider connection", async ({ expect }: { expect: any 
   const { createProjectResponse } = await createAndSwitchToOAuthEnabledProject();
   await Auth.Otp.signIn();
 
-  const providerConfig = createProjectResponse.body.config.oauth_providers.find((p: any) => p.provider_config_id === "github");
+  const providerConfig = createProjectResponse.body.config.oauth_providers.find((p: any) => p.provider_config_id === "spotify");
   expect(providerConfig).toBeDefined();
 
   const createResponse = await niceBackendFetch("/api/v1/oauth-providers", {
@@ -67,7 +67,7 @@ it("should read an OAuth provider connection", async ({ expect }: { expect: any 
     body: {
       user_id: "me",
       provider_config_id: providerConfig.id,
-      account_id: "test_github_user_123",
+      account_id: "test_spotify_user_123",
       email: "test@example.com",
       allow_sign_in: true,
       allow_connected_accounts: true,
@@ -89,7 +89,7 @@ it("should read an OAuth provider connection", async ({ expect }: { expect: any 
         "allow_sign_in": true,
         "email": "test@example.com",
         "id": "<stripped UUID>",
-        "type": "github",
+        "type": "spotify",
         "user_id": "<stripped UUID>",
       },
       "headers": Headers { <some fields may have been hidden> },
@@ -101,7 +101,7 @@ it("should list all OAuth provider connections for a user", async ({ expect }: {
   const { createProjectResponse } = await createAndSwitchToOAuthEnabledProject();
   await Auth.Otp.signIn();
 
-  const providerConfig = createProjectResponse.body.config.oauth_providers.find((p: any) => p.provider_config_id === "github");
+  const providerConfig = createProjectResponse.body.config.oauth_providers.find((p: any) => p.provider_config_id === "spotify");
   expect(providerConfig).toBeDefined();
 
   const createResponse = await niceBackendFetch("/api/v1/oauth-providers", {
@@ -110,7 +110,7 @@ it("should list all OAuth provider connections for a user", async ({ expect }: {
     body: {
       user_id: "me",
       provider_config_id: providerConfig.id,
-      account_id: "test_github_user_123",
+      account_id: "test_spotify_user_123",
       email: "test@example.com",
       allow_sign_in: true,
       allow_connected_accounts: true,
@@ -136,7 +136,7 @@ it("should list all OAuth provider connections for a user", async ({ expect }: {
             "allow_sign_in": true,
             "email": "test@example.com",
             "id": "<stripped UUID>",
-            "type": "github",
+            "type": "spotify",
             "user_id": "<stripped UUID>",
           },
         ],
@@ -150,7 +150,7 @@ it("should update an OAuth provider connection on the client", async ({ expect }
   const { createProjectResponse } = await createAndSwitchToOAuthEnabledProject();
   await Auth.Otp.signIn();
 
-  const providerConfig = createProjectResponse.body.config.oauth_providers.find((p: any) => p.provider_config_id === "github");
+  const providerConfig = createProjectResponse.body.config.oauth_providers.find((p: any) => p.provider_config_id === "spotify");
   expect(providerConfig).toBeDefined();
 
   const createResponse = await niceBackendFetch("/api/v1/oauth-providers", {
@@ -159,7 +159,7 @@ it("should update an OAuth provider connection on the client", async ({ expect }
     body: {
       user_id: "me",
       provider_config_id: providerConfig.id,
-      account_id: "test_github_user_123",
+      account_id: "test_spotify_user_123",
       email: "test@example.com",
       allow_sign_in: true,
       allow_connected_accounts: true,
@@ -195,7 +195,7 @@ it("should update an OAuth provider connection on the server", async ({ expect }
   const { createProjectResponse } = await createAndSwitchToOAuthEnabledProject();
   await Auth.Otp.signIn();
 
-  const providerConfig = createProjectResponse.body.config.oauth_providers.find((p: any) => p.provider_config_id === "github");
+  const providerConfig = createProjectResponse.body.config.oauth_providers.find((p: any) => p.provider_config_id === "spotify");
   expect(providerConfig).toBeDefined();
 
   const createResponse = await niceBackendFetch("/api/v1/oauth-providers", {
@@ -204,7 +204,7 @@ it("should update an OAuth provider connection on the server", async ({ expect }
     body: {
       user_id: "me",
       provider_config_id: providerConfig.id,
-      account_id: "test_github_user_123",
+      account_id: "test_spotify_user_123",
       email: "test@example.com",
       allow_sign_in: true,
       allow_connected_accounts: true,
@@ -243,7 +243,7 @@ it("should delete an OAuth provider connection", async ({ expect }: { expect: an
   const { createProjectResponse } = await createAndSwitchToOAuthEnabledProject();
   await Auth.Otp.signIn();
 
-  const providerConfig = createProjectResponse.body.config.oauth_providers.find((p: any) => p.provider_config_id === "github");
+  const providerConfig = createProjectResponse.body.config.oauth_providers.find((p: any) => p.provider_config_id === "spotify");
   expect(providerConfig).toBeDefined();
 
   const createResponse = await niceBackendFetch("/api/v1/oauth-providers", {
@@ -252,7 +252,7 @@ it("should delete an OAuth provider connection", async ({ expect }: { expect: an
     body: {
       user_id: "me",
       provider_config_id: providerConfig.id,
-      account_id: "test_github_user_123",
+      account_id: "test_spotify_user_123",
       email: "test@example.com",
       allow_sign_in: true,
       allow_connected_accounts: true,
@@ -351,7 +351,7 @@ it("should forbid client access to other users' OAuth providers", async ({ expec
   const { createProjectResponse } = await createAndSwitchToOAuthEnabledProject();
   const user1 = await Auth.Otp.signIn();
 
-  const providerConfig = createProjectResponse.body.config.oauth_providers.find((p: any) => p.provider_config_id === "github");
+  const providerConfig = createProjectResponse.body.config.oauth_providers.find((p: any) => p.provider_config_id === "spotify");
   expect(providerConfig).toBeDefined();
 
   await niceBackendFetch("/api/v1/oauth-providers", {
@@ -360,7 +360,7 @@ it("should forbid client access to other users' OAuth providers", async ({ expec
     body: {
       user_id: "me",
       provider_config_id: providerConfig.id,
-      account_id: "test_github_user_1",
+      account_id: "test_spotify_user_1",
       email: "test1@example.com",
       allow_sign_in: true,
       allow_connected_accounts: true,
@@ -376,7 +376,7 @@ it("should forbid client access to other users' OAuth providers", async ({ expec
     body: {
       user_id: "me",
       provider_config_id: providerConfig.id,
-      account_id: "test_github_user_2",
+      account_id: "test_spotify_user_2",
       email: "test2@example.com",
       allow_sign_in: true,
       allow_connected_accounts: true,
@@ -399,7 +399,7 @@ it("should forbid client access to other users' OAuth providers", async ({ expec
         "allow_sign_in": true,
         "email": "test2@example.com",
         "id": "<stripped UUID>",
-        "type": "github",
+        "type": "spotify",
         "user_id": "<stripped UUID>",
       },
       "headers": Headers { <some fields may have been hidden> },
@@ -470,7 +470,7 @@ it("should allow server access to any user's OAuth providers", async ({ expect }
   const { createProjectResponse } = await createAndSwitchToOAuthEnabledProject();
   const user1 = await Auth.Otp.signIn();
 
-  const providerConfig = createProjectResponse.body.config.oauth_providers.find((p: any) => p.provider_config_id === "github");
+  const providerConfig = createProjectResponse.body.config.oauth_providers.find((p: any) => p.provider_config_id === "spotify");
   expect(providerConfig).toBeDefined();
 
   const createResponse1 = await niceBackendFetch("/api/v1/oauth-providers", {
@@ -479,7 +479,7 @@ it("should allow server access to any user's OAuth providers", async ({ expect }
     body: {
       user_id: "me",
       provider_config_id: providerConfig.id,
-      account_id: "test_github_user_1",
+      account_id: "test_spotify_user_1",
       email: "test1@example.com",
       allow_sign_in: true,
       allow_connected_accounts: true,
@@ -497,7 +497,7 @@ it("should allow server access to any user's OAuth providers", async ({ expect }
     body: {
       user_id: "me",
       provider_config_id: providerConfig.id,
-      account_id: "test_github_user_2",
+      account_id: "test_spotify_user_2",
       email: "test2@example.com",
       allow_sign_in: true,
       allow_connected_accounts: true,
@@ -519,21 +519,21 @@ it("should allow server access to any user's OAuth providers", async ({ expect }
         "is_paginated": false,
         "items": [
           {
-            "account_id": "test_github_user_1",
+            "account_id": "test_spotify_user_1",
             "allow_connected_accounts": true,
             "allow_sign_in": true,
             "email": "test1@example.com",
             "id": "<stripped UUID>",
-            "type": "github",
+            "type": "spotify",
             "user_id": "<stripped UUID>",
           },
           {
-            "account_id": "test_github_user_2",
+            "account_id": "test_spotify_user_2",
             "allow_connected_accounts": true,
             "allow_sign_in": true,
             "email": "test2@example.com",
             "id": "<stripped UUID>",
-            "type": "github",
+            "type": "spotify",
             "user_id": "<stripped UUID>",
           },
         ],
@@ -555,12 +555,12 @@ it("should allow server access to any user's OAuth providers", async ({ expect }
         "is_paginated": false,
         "items": [
           {
-            "account_id": "test_github_user_1",
+            "account_id": "test_spotify_user_1",
             "allow_connected_accounts": true,
             "allow_sign_in": true,
             "email": "test1@example.com",
             "id": "<stripped UUID>",
-            "type": "github",
+            "type": "spotify",
             "user_id": "<stripped UUID>",
           },
         ],
@@ -582,12 +582,12 @@ it("should allow server access to any user's OAuth providers", async ({ expect }
     NiceResponse {
       "status": 200,
       "body": {
-        "account_id": "test_github_user_1",
+        "account_id": "test_spotify_user_1",
         "allow_connected_accounts": true,
         "allow_sign_in": false,
         "email": "test1@example.com",
         "id": "<stripped UUID>",
-        "type": "github",
+        "type": "spotify",
         "user_id": "<stripped UUID>",
       },
       "headers": Headers { <some fields may have been hidden> },
@@ -613,7 +613,7 @@ it("should handle account_id updates correctly", async ({ expect }: { expect: an
   const { createProjectResponse } = await createAndSwitchToOAuthEnabledProject();
   await Auth.Otp.signIn();
 
-  const providerConfig = createProjectResponse.body.config.oauth_providers.find((p: any) => p.provider_config_id === "github");
+  const providerConfig = createProjectResponse.body.config.oauth_providers.find((p: any) => p.provider_config_id === "spotify");
   expect(providerConfig).toBeDefined();
 
   const createResponse = await niceBackendFetch("/api/v1/oauth-providers", {
@@ -622,7 +622,7 @@ it("should handle account_id updates correctly", async ({ expect }: { expect: an
     body: {
       user_id: "me",
       provider_config_id: providerConfig.id,
-      account_id: "test_github_user_123",
+      account_id: "test_spotify_user_123",
       email: "test@example.com",
       allow_sign_in: true,
       allow_connected_accounts: true,
@@ -636,7 +636,7 @@ it("should handle account_id updates correctly", async ({ expect }: { expect: an
     method: "PATCH",
     accessType: "server",
     body: {
-      account_id: "updated_github_user_456",
+      account_id: "updated_spotify_user_456",
     },
   });
 
@@ -644,12 +644,12 @@ it("should handle account_id updates correctly", async ({ expect }: { expect: an
     NiceResponse {
       "status": 200,
       "body": {
-        "account_id": "updated_github_user_456",
+        "account_id": "updated_spotify_user_456",
         "allow_connected_accounts": true,
         "allow_sign_in": true,
         "email": "test@example.com",
         "id": "<stripped UUID>",
-        "type": "github",
+        "type": "spotify",
         "user_id": "<stripped UUID>",
       },
       "headers": Headers { <some fields may have been hidden> },
@@ -666,12 +666,12 @@ it("should handle account_id updates correctly", async ({ expect }: { expect: an
     NiceResponse {
       "status": 200,
       "body": {
-        "account_id": "updated_github_user_456",
+        "account_id": "updated_spotify_user_456",
         "allow_connected_accounts": true,
         "allow_sign_in": true,
         "email": "test@example.com",
         "id": "<stripped UUID>",
-        "type": "github",
+        "type": "spotify",
         "user_id": "<stripped UUID>",
       },
       "headers": Headers { <some fields may have been hidden> },
@@ -717,8 +717,8 @@ it("should handle provider not configured error", async ({ expect }: { expect: a
     accessType: "server",
     body: {
       user_id: "me",
-      provider_config_id: "github", // This provider is not configured in the project
-      account_id: "test_github_user_123",
+      provider_config_id: "spotify", // This provider is not configured in the project
+      account_id: "test_spotify_user_123",
       email: "test@example.com",
       allow_sign_in: true,
       allow_connected_accounts: true,
@@ -728,7 +728,7 @@ it("should handle provider not configured error", async ({ expect }: { expect: a
   expect(createResponse).toMatchInlineSnapshot(`
     NiceResponse {
       "status": 404,
-      "body": "OAuth provider github not found or not configured",
+      "body": "OAuth provider spotify not found or not configured",
       "headers": Headers { <some fields may have been hidden> },
     }
   `);
@@ -738,7 +738,7 @@ it("should toggle sign-in and connected accounts capabilities", async ({ expect 
   const { createProjectResponse } = await createAndSwitchToOAuthEnabledProject();
   await Auth.Otp.signIn();
 
-  const providerConfig = createProjectResponse.body.config.oauth_providers.find((p: any) => p.provider_config_id === "github");
+  const providerConfig = createProjectResponse.body.config.oauth_providers.find((p: any) => p.provider_config_id === "spotify");
   expect(providerConfig).toBeDefined();
 
   const createResponse = await niceBackendFetch("/api/v1/oauth-providers", {
@@ -747,7 +747,7 @@ it("should toggle sign-in and connected accounts capabilities", async ({ expect 
     body: {
       user_id: "me",
       provider_config_id: providerConfig.id,
-      account_id: "test_github_user_123",
+      account_id: "test_spotify_user_123",
       email: "test@example.com",
       allow_sign_in: true,
       allow_connected_accounts: true,
@@ -800,21 +800,21 @@ it("should toggle sign-in and connected accounts capabilities", async ({ expect 
 });
 
 it("should prevent multiple providers of the same type from being enabled for signing in", async ({ expect }: { expect: any }) => {
-  // Test with multiple GitHub accounts (same provider type, different account IDs)
+  // Test with multiple spotify accounts (same provider type, different account IDs)
   const { createProjectResponse } = await createAndSwitchToOAuthEnabledProject();
   await Auth.Otp.signIn();
 
-  const providerConfig = createProjectResponse.body.config.oauth_providers.find((p: any) => p.provider_config_id === "github");
+  const providerConfig = createProjectResponse.body.config.oauth_providers.find((p: any) => p.provider_config_id === "spotify");
   expect(providerConfig).toBeDefined();
 
-  // Create first GitHub account connection with sign-in enabled
+  // Create first spotify account connection with sign-in enabled
   const createResponse1 = await niceBackendFetch("/api/v1/oauth-providers", {
     method: "POST",
     accessType: "server",
     body: {
       user_id: "me",
       provider_config_id: providerConfig.id,
-      account_id: "github_user_123",
+      account_id: "spotify_user_123",
       email: "user123@example.com",
       allow_sign_in: true,
       allow_connected_accounts: true,
@@ -823,14 +823,14 @@ it("should prevent multiple providers of the same type from being enabled for si
 
   expect(createResponse1.status).toBe(201);
 
-  // Try to create second GitHub account connection with sign-in enabled - should fail
+  // Try to create second spotify account connection with sign-in enabled - should fail
   const createResponse2 = await niceBackendFetch("/api/v1/oauth-providers", {
     method: "POST",
     accessType: "server",
     body: {
       user_id: "me",
       provider_config_id: providerConfig.id,
-      account_id: "github_user_456",
+      account_id: "spotify_user_456",
       email: "user456@example.com",
       allow_sign_in: true,
       allow_connected_accounts: true,
@@ -845,14 +845,14 @@ it("should prevent multiple providers of the same type from being enabled for si
     }
   `);
 
-  // Create second GitHub account connection with sign-in disabled - should succeed
+  // Create second spotify account connection with sign-in disabled - should succeed
   const createResponse3 = await niceBackendFetch("/api/v1/oauth-providers", {
     method: "POST",
     accessType: "server",
     body: {
       user_id: "me",
       provider_config_id: providerConfig.id,
-      account_id: "github_user_789",
+      account_id: "spotify_user_789",
       email: "user456@example.com",
       allow_sign_in: false,
       allow_connected_accounts: true,
@@ -863,12 +863,12 @@ it("should prevent multiple providers of the same type from being enabled for si
     NiceResponse {
       "status": 201,
       "body": {
-        "account_id": "github_user_789",
+        "account_id": "spotify_user_789",
         "allow_connected_accounts": true,
         "allow_sign_in": false,
         "email": "user456@example.com",
         "id": "<stripped UUID>",
-        "type": "github",
+        "type": "spotify",
         "user_id": "<stripped UUID>",
       },
       "headers": Headers { <some fields may have been hidden> },
