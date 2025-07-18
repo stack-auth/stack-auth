@@ -14,9 +14,6 @@ jobs:
   build-server:
     name: Docker Build and Push Server
     runs-on: ubicloud-standard-8
-    env:
-      PRISMA_ENGINES_CHECKSUM_IGNORE_MISSING: 1
-
     steps:
       - name: Checkout
         uses: actions/checkout@v4

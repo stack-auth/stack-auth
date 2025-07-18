@@ -15,7 +15,6 @@ jobs:
   build:
     runs-on: ubicloud-standard-8
     env:
-      PRISMA_ENGINES_CHECKSUM_IGNORE_MISSING: 1
       NODE_ENV: test
       STACK_ENABLE_HARDCODED_PASSKEY_CHALLENGE_FOR_TESTING: yes
       STACK_OVERRIDE_SOURCE_OF_TRUTH: '{"type": "postgres", "connectionString": "postgres://postgres:PASSWORD-PLACEHOLDER--uqfEC1hmmv@localhost:5432/source-of-truth-db?schema=sot-schema"}'
