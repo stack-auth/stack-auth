@@ -119,7 +119,7 @@ services:
       - svix-redis-data:/data
 
   svix-server:
-    image: svix/svix-server:v1.68
+    image: svix/svix-server
     environment:
       WAIT_FOR: 'true'
       SVIX_REDIS_DSN: redis://:PASSWORD-PLACEHOLDER--oVn8GSD6b9@svix-redis:6379

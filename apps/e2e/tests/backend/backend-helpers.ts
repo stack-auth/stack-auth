@@ -1322,7 +1322,7 @@ export namespace Webhook {
 
   export async function findWebhookAttempt(projectId: string, endpointId: string, svixToken: string, fn: (msg: any) => boolean) {
     // retry many times because Svix sucks and is slow
-    for (let i = 0; i < 20; i++) {
+    for (let i = 0; i < 40; i++) {
       const attempts = await Webhook.listWebhookAttempts(projectId, endpointId, svixToken);
       const filtered = attempts.filter(fn);
       if (filtered.length === 0) {
