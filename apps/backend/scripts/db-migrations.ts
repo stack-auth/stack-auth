@@ -49,7 +49,7 @@ Usage: pnpm db-migrations <command>
 Commands:
   reset                    Drop all data and recreate the database, then apply migrations and seed
   generate-migration-file  Generate a new migration file using Prisma, then reset and migrate
-  seed                     Run database seeding only
+  seed                     [Advanced] Run database seeding only
   init                     Apply migrations and seed the database
   help                     Show this help message
 
