@@ -84,15 +84,7 @@ export const PATCH = createSmartRouteHandler({
       projectId: tenancy.project.id,
       branchId: tenancy.branchId,
       environmentConfigOverrideOverride: {
-        emails: {
-          themeList: {
-            ...themeList,
-            [id]: {
-              tsxSource: body.tsx_source,
-              displayName: theme.displayName,
-            },
-          },
-        },
+        [`emails.themeList.${id}.tsxSource`]: body.tsx_source,
       },
     });
     return {

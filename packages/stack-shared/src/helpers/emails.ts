@@ -46,9 +46,9 @@ export const DEFAULT_EMAIL_TEMPLATES = {
   "e7d009ce-8d47-4528-b245-5bf119f2ffa3": {
     displayName: "Email Verification",
     description: "Will be sent to the user when they sign-up with email/password",
-    variables: [],
+    variables: ["projectDisplayName"],
     subject: "Welcome to {{ projectDisplayName }}",
-    tsxSource: "export default function EmailVerificationTemplate({ projectDisplayName }) {\n  return <div>Email Verification</div>; \n}",
+    tsxSource: "export function EmailTemplate({ projectDisplayName }) {\n  return <div>Email Verification for { projectDisplayName }</div>; \n}",
   },
   // "a70fb3a4-56c1-4e42-af25-49d25603abd0": {
 
