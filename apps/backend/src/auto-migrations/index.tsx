@@ -1,5 +1,5 @@
 import { Prisma, PrismaClient } from '@prisma/client';
-import { MIGRATION_FILES } from './migration-files';
+import { MIGRATION_FILES } from './../generated/migration-files';
 
 
 function getMigrationError(error: unknown): string {
@@ -12,7 +12,7 @@ function getMigrationError(error: unknown): string {
   throw error;
 }
 
-function isMigrationNeeded(error: unknown): boolean {
+function isMigrationNeededError(error: unknown): boolean {
   if (error instanceof Prisma.PrismaClientKnownRequestError) {
     if (error.message.includes('42P01') && error.message.includes('relation "SchemaMigration" does not exist')) {
       return true;
@@ -235,7 +235,7 @@ export async function runQueryAndMigrateIfNeeded<T>(options: {
     }
     return result;
   } catch (e) {
-    if (isMigrationNeeded(e)) {
+    if (isMigrationNeededError(e)) {
       await applyMigrations({
         prismaClient: options.prismaClient,
         migrationFiles: options.migrationFiles,
