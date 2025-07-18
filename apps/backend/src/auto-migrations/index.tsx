@@ -128,6 +128,9 @@ export async function applyMigrations(options: {
     } catch (e) {
       const error = getMigrationError(e);
       if (error === 'MIGRATION_ALREADY_APPLIED') {
+        if (options.logging) {
+          console.log(`Migration ${migration.migrationName} already applied, skipping`);
+        }
         continue;
       }
       throw e;
