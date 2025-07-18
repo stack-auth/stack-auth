@@ -71,6 +71,7 @@ const main = async () => {
       await promptDropDb();
       await dropPublicSchema();
       await migrate();
+      await seed();
       break;
     }
     case 'generate-migration-file': {
