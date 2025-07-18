@@ -824,8 +824,8 @@ const widgets: Widget<any, any>[] = [
       const grid = WidgetInstanceGrid.fromSerialized(options.state.serializedGrid);
       const minSize = grid.getMinResizableSize();
       return {
-        widthInGridUnits: minSize.width + 1,
-        heightInGridUnits: minSize.height + 1,
+        widthInGridUnits: Math.max(minSize.width, WidgetInstanceGrid.MIN_ELEMENT_WIDTH) + 1,
+        heightInGridUnits: Math.max(minSize.height, WidgetInstanceGrid.MIN_ELEMENT_HEIGHT) + 1,
       };
     },
   },
@@ -1016,6 +1016,7 @@ const SwappableWidgetInstanceGridContext = React.createContext<{
 
 function SwappableWidgetInstanceGrid(props: { gridRef: RefState<WidgetInstanceGrid>, isSingleColumnMode: boolean | "auto", allowVariableHeight: boolean, isStatic: boolean }) {
   const [draggingType, setDraggingType] = useState<"element" | "var-height" | null>(null);
+  const [activeElementInitialRect, setActiveElementInitialRect] = useState<DOMRect | null>(null);  // onDragOver's event.active.rect.current.initial is the initial rect when the *swap* starts, not the drag, so we want to store the initial rect of the drag somewhere
   const [overElementPosition, setOverElementPosition] = useState<[number, number] | null>(null);
   const [overVarHeightSlot, setOverVarHeightSlot] = useState<["before", string] | ["end-of", number] | null>(null);
   const [hoverElementSwap, setHoverElementSwap] = useState<[string, [number, number, number, number, number, number]] | null>(null);
@@ -1046,7 +1047,7 @@ function SwappableWidgetInstanceGrid(props: { gridRef: RefState<WidgetInstanceGr
           flexDirection: 'column',
         } : {
           display: 'grid',
-          gridTemplateColumns: `repeat(${props.gridRef.current.width}, auto)`,
+          gridTemplateColumns: `repeat(${props.gridRef.current.width}, 1fr)`,
           gridTemplateRows: `repeat(${2 * props.gridRef.current.height + 1}, auto)`,
         },
 
@@ -1065,6 +1066,16 @@ function SwappableWidgetInstanceGrid(props: { gridRef: RefState<WidgetInstanceGr
         onDragStart={(event) => {
           setActiveInstanceId(event.active.id as string);
           setDraggingType("var-height");
+        }}
+        onDragAbort={() => {
+          setActiveInstanceId(null);
+          setOverVarHeightSlot(null);
+          setDraggingType(null);
+        }}
+        onDragCancel={() => {
+          setActiveInstanceId(null);
+          setOverVarHeightSlot(null);
+          setDraggingType(null);
         }}
         onDragEnd={(event) => {
           setActiveInstanceId(null);
@@ -1109,7 +1120,7 @@ function SwappableWidgetInstanceGrid(props: { gridRef: RefState<WidgetInstanceGr
               return (
                 <React.Fragment key={i}>
                   {props.gridRef.current.canAddVarHeight(y) && (
-                    <div>
+                    <div className="relative">
                       <VarHeightSlot isOver={isOverVarHeightSlot} location={location} />
                     </div>
                   )}
@@ -1170,12 +1181,28 @@ function SwappableWidgetInstanceGrid(props: { gridRef: RefState<WidgetInstanceGr
         onDragStart={(event) => {
           setActiveInstanceId(event.active.id as string);
           setDraggingType("element");
+          setActiveElementInitialRect(event.activatorEvent.target.getBoundingClientRect());
+        }}
+        onDragAbort={() => {
+          setHoverElementSwap(null);
+          setActiveInstanceId(null);
+          setOverElementPosition(null);
+          setDraggingType(null);
+          setActiveElementInitialRect(null);
+        }}
+        onDragCancel={() => {
+          setHoverElementSwap(null);
+          setActiveInstanceId(null);
+          setOverElementPosition(null);
+          setDraggingType(null);
+          setActiveElementInitialRect(null);
         }}
         onDragEnd={(event) => {
           setHoverElementSwap(null);
           setActiveInstanceId(null);
           setOverElementPosition(null);
           setDraggingType(null);
+          setActiveElementInitialRect(null);
 
           const widgetId = event.active.id;
           const widgetElement = [...props.gridRef.current.elements()].find(({ instance }) => instance?.id === widgetId);
@@ -1188,6 +1215,8 @@ function SwappableWidgetInstanceGrid(props: { gridRef: RefState<WidgetInstanceGr
             if (props.gridRef.current.canSwap(...swapArgs)) {
               const newGrid = props.gridRef.current.withSwappedElements(...swapArgs);
               props.gridRef.set(newGrid);
+            } else {
+              alert("Cannot swap elements; make sure the new locations are big enough for the widgets");
             }
           }
         }}
@@ -1212,22 +1241,14 @@ function SwappableWidgetInstanceGrid(props: { gridRef: RefState<WidgetInstanceGr
               }
               const overId = props.gridRef.current.getElementAt(overCoordinates[0], overCoordinates[1]).instance?.id;
               if (overId && overId !== widgetId) {
-                  setHoverElementSwap([overId, [
-                    event.over.rect.left - event.active.rect.current.initial.left,
-                    event.over.rect.top - event.active.rect.current.initial.top,
-                    event.active.rect.current.initial.width,
-                    event.active.rect.current.initial.height,
-                    event.over.rect.width,
-                    event.over.rect.height,
-                  ]]);
-                  console.log("newHoverElementSwap", [
-                    event.over.rect.left - event.active.rect.current.initial.left,
-                    event.over.rect.top - event.active.rect.current.initial.top,
-                    event.active.rect.current.initial.width,
-                    event.active.rect.current.initial.height,
-                    event.over.rect.width,
-                    event.over.rect.height,
-                  ]);
+                setHoverElementSwap([overId, [
+                  event.over.rect.left - activeElementInitialRect.left,
+                  event.over.rect.top - activeElementInitialRect.top,
+                  activeElementInitialRect.width,
+                  activeElementInitialRect.height,
+                  event.over.rect.width,
+                  event.over.rect.height,
+                ]]);
               } else {
                   setHoverElementSwap(null);
               }
@@ -1278,8 +1299,8 @@ function SwappableWidgetInstanceGrid(props: { gridRef: RefState<WidgetInstanceGr
                   isEditing={context.isEditing}
                   style={{
                     transform: isHoverSwap ? `translate(${-hoverElementSwap[1][0]}px, ${-hoverElementSwap[1][1]}px)` : undefined,
-                    width: isHoverSwap ? `${hoverElementSwap[1][2]}px` : (hoverElementSwap && activeWidgetId === instance.id ? `${hoverElementSwap[1][4]}px` : undefined),
-                    height: isHoverSwap ? `${hoverElementSwap[1][3]}px` : (hoverElementSwap && activeWidgetId === instance.id ? `${hoverElementSwap[1][5]}px` : undefined),
+                    minWidth: isHoverSwap ? `${hoverElementSwap[1][2]}px` : (hoverElementSwap && activeWidgetId === instance.id ? `${hoverElementSwap[1][4]}px` : undefined),
+                    minHeight: isHoverSwap ? `${hoverElementSwap[1][3]}px` : (hoverElementSwap && activeWidgetId === instance.id ? `${hoverElementSwap[1][5]}px` : undefined),
                   }}
                   isSingleColumnMode={isSingleColumnMode}
                   onDeleteWidget={async () => {
@@ -1356,6 +1377,7 @@ function ElementSlot(props: { isSingleColumnMode: boolean, isOver: boolean, chil
       style={{
         position: 'relative',
         display: 'flex',
+        minWidth: 0,  // even if the widget is larger, we don't want to take up more width than the grid unit
         backgroundColor: props.isOver ? '#88888822' : undefined,
         borderRadius: '8px',
         gridColumn: `${props.x + 1} / span ${props.width}`,
@@ -1552,8 +1574,8 @@ function Draggable(props: {
           transition: [
             'border-width 0.1s ease',
             'box-shadow 0.1s ease',
-            props.activeWidgetId !== props.widgetInstance.id && (props.activeWidgetId !== null) ? 'transform 0.2s ease, width 0.2s ease, height 0.2s ease' : undefined,
-            props.activeWidgetId === props.widgetInstance.id ? 'width 0.2s ease, height 0.2s ease' : undefined,
+            props.activeWidgetId !== props.widgetInstance.id && (props.activeWidgetId !== null) ? 'transform 0.2s ease, min-width 0.2s ease, min-height 0.2s ease' : undefined,
+            props.activeWidgetId === props.widgetInstance.id ? 'min-width 0.2s ease, min-height 0.2s ease' : undefined,
           ].filter(Boolean).join(', '),
           ...filterUndefined(props.style ?? {}),
           transform: `translate3d(${transform?.x ?? 0}px, ${transform?.y ?? 0}px, 0) ${props.style?.transform ?? ''}`,
