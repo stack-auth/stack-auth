@@ -633,7 +633,7 @@ export const usersCrudHandlers = createLazyProxy(() => createCrudHandlers(usersC
       });
     }
 
-    await (sendUserCreatedWebhook({
+    runAsynchronouslyAndWaitUntil(sendUserCreatedWebhook({
       projectId: auth.project.id,
       data: result,
     }));
@@ -967,7 +967,7 @@ export const usersCrudHandlers = createLazyProxy(() => createCrudHandlers(usersC
     }
 
 
-    await (sendUserUpdatedWebhook({
+    runAsynchronouslyAndWaitUntil(sendUserUpdatedWebhook({
       projectId: auth.project.id,
       data: result,
     }));
@@ -1005,7 +1005,7 @@ export const usersCrudHandlers = createLazyProxy(() => createCrudHandlers(usersC
       return { teams };
     });
 
-    await (Promise.all(teams.map(t => sendTeamMembershipDeletedWebhook({
+    runAsynchronouslyAndWaitUntil(Promise.all(teams.map(t => sendTeamMembershipDeletedWebhook({
       projectId: auth.project.id,
       data: {
         team_id: t.teamId,
@@ -1013,7 +1013,7 @@ export const usersCrudHandlers = createLazyProxy(() => createCrudHandlers(usersC
       },
     }))));
 
-    await (sendUserDeletedWebhook({
+    runAsynchronouslyAndWaitUntil(sendUserDeletedWebhook({
       projectId: auth.project.id,
       data: {
         id: params.user_id,
