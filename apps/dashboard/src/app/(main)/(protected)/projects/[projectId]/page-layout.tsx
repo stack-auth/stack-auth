@@ -1,7 +1,7 @@
 import { Typography } from "@stackframe/stack-ui";
 
 export function PageLayout(props: {
-  children: React.ReactNode,
+  children?: React.ReactNode,
   title?: string,
   description?: string,
   actions?: React.ReactNode,

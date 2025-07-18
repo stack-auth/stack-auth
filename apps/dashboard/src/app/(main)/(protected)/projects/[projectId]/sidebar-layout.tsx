@@ -194,6 +194,26 @@ const navigationItems: (Label | Item | Hidden)[] = [
     requiresDevFeatureFlag: true,
   },
   {
+    name: (pathname: string) => {
+      const match = pathname.match(/^\/projects\/[^\/]+\/email-themes\/([^\/]+)$/);
+      let item;
+      let href;
+      if (match) {
+        item = <ThemeBreadcrumbItem key='theme-display-name' themeId={match[1]} />;
+        href = `/email-themes/${match[1]}`;
+      } else {
+        item = "Theme";
+        href = "";
+      }
+      return [
+        { item: "Themes", href: "/email-themes" },
+        { item, href },
+      ];
+    },
+    regex: /^\/projects\/[^\/]+\/email-themes\/[^\/]+$/,
+    type: 'hidden',
+  },
+  {
     name: "Configuration",
     type: 'label'
   },
@@ -250,6 +270,26 @@ const navigationItems: (Label | Item | Hidden)[] = [
     type: 'hidden',
   },
   {
+    name: (pathname: string) => {
+      const match = pathname.match(/^\/projects\/[^\/]+\/email-templates-new\/([^\/]+)$/);
+      let item;
+      let href;
+      if (match) {
+        item = <TemplateBreadcrumbItem key='template-display-name' templateId={match[1]} />;
+        href = `/email-templates-new/${match[1]}`;
+      } else {
+        item = "Templates";
+        href = "";
+      }
+      return [
+        { item: "Templates", href: "/email-templates-new" },
+        { item, href },
+      ];
+    },
+    regex: /^\/projects\/[^\/]+\/email-templates-new\/[^\/]+$/,
+    type: 'hidden',
+  },
+  {
     name: "Stack Auth Keys",
     href: "/api-keys",
     regex: /^\/projects\/[^\/]+\/api-keys$/,
@@ -285,6 +325,22 @@ function UserBreadcrumbItem(props: { userId: string }) {
   } else {
     return user.displayName ?? user.primaryEmail ?? user.id;
   }
+}
+
+function ThemeBreadcrumbItem(props: { themeId: string }) {
+  const stackAdminApp = useAdminApp();
+  const theme = stackAdminApp.useEmailTheme(props.themeId);
+  return theme.displayName;
+}
+
+function TemplateBreadcrumbItem(props: { templateId: string }) {
+  const stackAdminApp = useAdminApp();
+  const templates = stackAdminApp.useNewEmailTemplates();
+  const template = templates.find((template) => template.id === props.templateId);
+  if (!template) {
+    return null;
+  }
+  return template.displayName;
 }
 
 function NavItem({ item, href, onClick }: { item: Item, href: string, onClick?: () => void }) {
