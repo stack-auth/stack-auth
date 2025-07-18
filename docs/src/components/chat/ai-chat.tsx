@@ -211,7 +211,7 @@ export function AIChatDrawer() {
         response: response,
         metadata: {
           sessionId: sessionId,
-          model: 'gemini-2.0-flash',
+          model: 'gemini-2.5-pro',
         }
       };
 
