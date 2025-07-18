@@ -97,7 +97,7 @@ export const teamsCrudHandlers = createLazyProxy(() => createCrudHandlers(teamsC
 
     const result = teamPrismaToCrud(db);
 
-    runAsynchronouslyAndWaitUntil(sendTeamCreatedWebhook({
+    await (sendTeamCreatedWebhook({
       projectId: auth.project.id,
       data: result,
     }));
@@ -166,7 +166,7 @@ export const teamsCrudHandlers = createLazyProxy(() => createCrudHandlers(teamsC
 
     const result = teamPrismaToCrud(db);
 
-    runAsynchronouslyAndWaitUntil(sendTeamUpdatedWebhook({
+    await (sendTeamUpdatedWebhook({
       projectId: auth.project.id,
       data: result,
     }));
@@ -197,7 +197,7 @@ export const teamsCrudHandlers = createLazyProxy(() => createCrudHandlers(teamsC
       });
     });
 
-    runAsynchronouslyAndWaitUntil(sendTeamDeletedWebhook({
+    await (sendTeamDeletedWebhook({
       projectId: auth.project.id,
       data: {
         id: params.team_id,

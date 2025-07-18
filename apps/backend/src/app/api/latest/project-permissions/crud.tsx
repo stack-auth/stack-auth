@@ -31,7 +31,7 @@ export const projectPermissionsCrudHandlers = createLazyProxy(() => createCrudHa
       });
     });
 
-    runAsynchronouslyAndWaitUntil(sendProjectPermissionCreatedWebhook({
+    await (sendProjectPermissionCreatedWebhook({
       projectId: auth.project.id,
       data: {
         id: params.permission_id,
@@ -58,7 +58,7 @@ export const projectPermissionsCrudHandlers = createLazyProxy(() => createCrudHa
       });
     });
 
-    runAsynchronouslyAndWaitUntil(sendProjectPermissionDeletedWebhook({
+    await (sendProjectPermissionDeletedWebhook({
       projectId: auth.project.id,
       data: {
         id: params.permission_id,

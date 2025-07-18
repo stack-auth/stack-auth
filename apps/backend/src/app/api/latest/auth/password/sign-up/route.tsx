@@ -68,7 +68,7 @@ export const POST = createSmartRouteHandler({
       allowedErrorTypes: [KnownErrors.UserWithEmailAlreadyExists],
     });
 
-    runAsynchronouslyAndWaitUntil((async () => {
+    await ((async () => {
       await contactChannelVerificationCodeHandler.sendCode({
         tenancy,
         data: {

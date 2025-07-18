@@ -89,7 +89,7 @@ export const teamMembershipsCrudHandlers = createLazyProxy(() => createCrudHandl
       user_id: params.user_id,
     };
 
-    runAsynchronouslyAndWaitUntil((async () => {
+    await ((async () => {
       await sendTeamMembershipCreatedWebhook({
         projectId: auth.project.id,
         data,
@@ -147,7 +147,7 @@ export const teamMembershipsCrudHandlers = createLazyProxy(() => createCrudHandl
       });
     });
 
-    runAsynchronouslyAndWaitUntil(sendTeamMembershipDeletedWebhook({
+    await (sendTeamMembershipDeletedWebhook({
       projectId: auth.project.id,
       data: {
         team_id: params.team_id,

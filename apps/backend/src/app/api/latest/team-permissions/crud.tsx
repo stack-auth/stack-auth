@@ -34,7 +34,7 @@ export const teamPermissionsCrudHandlers = createLazyProxy(() => createCrudHandl
       });
     });
 
-    runAsynchronouslyAndWaitUntil(sendTeamPermissionCreatedWebhook({
+    await (sendTeamPermissionCreatedWebhook({
       projectId: auth.project.id,
       data: {
         id: params.permission_id,
@@ -64,7 +64,7 @@ export const teamPermissionsCrudHandlers = createLazyProxy(() => createCrudHandl
       });
     });
 
-    runAsynchronouslyAndWaitUntil(sendTeamPermissionDeletedWebhook({
+    await (sendTeamPermissionDeletedWebhook({
       projectId: auth.project.id,
       data: {
         id: params.permission_id,
