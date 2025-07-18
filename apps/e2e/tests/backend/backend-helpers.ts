@@ -1321,6 +1321,7 @@ export namespace Webhook {
   }
 
   export async function findWebhookAttempt(projectId: string, endpointId: string, svixToken: string, fn: (msg: any) => boolean) {
+    await wait(5000);
     // retry many times because Svix sucks and is slow
     for (let i = 0; i < 20; i++) {
       const attempts = await Webhook.listWebhookAttempts(projectId, endpointId, svixToken);
@@ -1338,6 +1339,7 @@ export namespace Webhook {
   }
 
   export async function listWebhookAttempts(projectId: string, endpointId: string, svixToken: string) {
+    await wait(5000);
     const response = await niceFetch(STACK_SVIX_SERVER_URL + `/api/v1/app/${projectId}/attempt/endpoint/${endpointId}`, {
       method: "GET",
       headers: {

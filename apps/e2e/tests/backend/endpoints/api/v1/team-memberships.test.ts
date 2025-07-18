@@ -1,4 +1,3 @@
-import { wait } from "@stackframe/stack-shared/dist/utils/promises";
 import { STACK_SVIX_SERVER_URL, it, niceFetch } from "../../../../helpers";
 import { Auth, InternalApiKey, InternalProjectKeys, Project, Team, Webhook, backendContext, bumpEmailAddress, niceBackendFetch } from "../../../backend-helpers";
 
@@ -732,10 +731,6 @@ it("should trigger multiple permission webhooks when a custom permission is incl
     }
   `);
 
-  // Wait for webhooks to be triggered
-  await wait(5000);
-
-  // Get webhook events
   const attemptResponse = await Webhook.listWebhookAttempts(projectId, endpointId, svixToken);
 
   // Check for team_permission.created events
