@@ -1,9 +1,21 @@
 import { overrideEnvironmentConfigOverride } from "@/lib/config";
 import { renderEmailWithTheme } from "@/lib/email-themes";
 import { globalPrismaClient } from "@/prisma-client";
+import { deindent } from "@stackframe/stack-shared/dist/utils/strings";
 import { tool } from "ai";
 import { z } from "zod";
 import { ChatAdapterContext } from "./adapter-registry";
+
+const previewEmailHtml = deindent`
+<div>
+  <h2 className="mb-4 text-2xl font-bold">
+    Header text
+  </h2>
+  <p className="mb-4">
+    Body text content with some additional information.
+  </p>
+</div>
+`;
 
 export const emailThemeAdapter = (context: ChatAdapterContext) => ({
   systemPrompt: `You are a helpful assistant that can help with email theme development.`,
@@ -15,7 +27,7 @@ export const emailThemeAdapter = (context: ChatAdapterContext) => ({
         content: z.string().describe("The content of the email theme"),
       }),
       execute: async (args) => {
-        const result = await renderEmailWithTheme("<div>test</div>", args.content);
+        const result = await renderEmailWithTheme(previewEmailHtml, args.content);
         if ("error" in result) {
           return { success: false, error: result.error };
         }

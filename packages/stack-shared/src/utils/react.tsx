@@ -1,4 +1,4 @@
-import React from "react";
+import React, { SetStateAction } from "react";
 import { isBrowserLike } from "./env";
 import { neverResolve } from "./promises";
 import { deindent } from "./strings";
@@ -114,17 +114,56 @@ export type ReadonlyRef<T> = {
   readonly current: T,
 };
 
+export type RefState<T> = ReadonlyRef<T> & {
+  set: (updater: SetStateAction<T>) => void,
+};
+
 /**
- * Like useState, but its value is immediately available.
+ * Like useState, but its value is immediately available on refState.current after being set.
+ *
+ * Like useRef, but setting the value will cause a rerender.
+ *
+ * Note that useRefState returns a new object every time a rerender happens due to a value change, which is intentional
+ * as it allows you to specify it in a dependency array like this:
+ *
+ * ```tsx
+ * useEffect(() => {
+ *   // do something with refState.current
+ * }, [refState]);  // instead of refState.current
+ * ```
+ *
+ * If you don't want this, you can wrap the result in a useMemo call.
  */
-export function useInstantState<T>(initialValue: T): [ReadonlyRef<T>, (value: T) => void] {
+export function useRefState<T>(initialValue: T): RefState<T> {
   const [, setState] = React.useState(initialValue);
   const ref = React.useRef(initialValue);
-  const setValue = React.useCallback((value: T) => {
+  const setValue = React.useCallback((updater: SetStateAction<T>) => {
+    const value: T = typeof updater === "function" ? (updater as any)(ref.current) : updater;
     setState(value);
     ref.current = value;
   }, []);
-  return [ref, setValue];
+  const res = React.useMemo(() => ({
+    current: ref.current,
+    set: setValue,
+  }), [ref.current, setValue]);
+  return res;
+}
+
+export function mapRefState<T, R>(refState: RefState<T>, mapper: (value: T) => R, reverseMapper: (oldT: T, newR: R) => T): RefState<R> {
+  let last: [T, R] | null = null;
+  return {
+    get current() {
+      const input = refState.current;
+      if (last === null || input !== last[0]) {
+        last = [input, mapper(input)];
+      }
+      return last[1];
+    },
+    set(updater: SetStateAction<R>) {
+      const value: R = typeof updater === "function" ? (updater as any)(this.current) : updater;
+      refState.set(reverseMapper(refState.current, value));
+    },
+  };
 }
 
 export class NoSuspenseBoundaryError extends Error {
