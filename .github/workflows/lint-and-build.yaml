@@ -15,6 +15,9 @@ jobs:
   lint_and_build:
     runs-on: ubuntu-latest
 
+    env:
+      PRISMA_ENGINES_CHECKSUM_IGNORE_MISSING: 1
+
     strategy:
       matrix:
         node-version: [latest]

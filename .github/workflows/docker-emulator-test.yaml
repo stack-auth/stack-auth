@@ -14,6 +14,9 @@ concurrency:
 jobs:
   docker:
     runs-on: ubuntu-latest
+    env:
+      PRISMA_ENGINES_CHECKSUM_IGNORE_MISSING: 1
+
     steps:
       - uses: actions/checkout@v3
       
