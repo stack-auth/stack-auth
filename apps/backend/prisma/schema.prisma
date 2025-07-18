@@ -19,7 +19,6 @@ model Project {
   displayName      String
   description      String  @default("")
   isProductionMode Boolean
-  userCount        Int     @default(0)
 
   projectConfigOverride Json?
 
@@ -714,11 +713,12 @@ model UserNotificationPreference {
 }
 
 model ThreadMessage {
-  id String @default(uuid()) @db.Uuid
+  id        String @default(uuid()) @db.Uuid
   tenancyId String @db.Uuid
-  threadId String @db.Uuid
+  threadId  String @db.Uuid
 
-  content Json
+  content   Json
   createdAt DateTime @default(now())
+
   @@id([tenancyId, id])
 }
