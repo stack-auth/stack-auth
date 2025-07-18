@@ -5,6 +5,7 @@
 .contentlayer
 .content-collections
 .source
+src/lib/platform-navigation.ts
 
 # test & build
 /coverage

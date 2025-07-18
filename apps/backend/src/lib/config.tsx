@@ -1,5 +1,5 @@
 import { Prisma } from "@prisma/client";
-import { NormalizationError, getInvalidConfigReason, normalize, override } from "@stackframe/stack-shared/dist/config/format";
+import { Config, NormalizationError, NormalizedConfig, getInvalidConfigReason, normalize, override } from "@stackframe/stack-shared/dist/config/format";
 import { BranchConfigOverride, BranchConfigOverrideOverride, BranchIncompleteConfig, BranchRenderedConfig, EnvironmentConfigOverride, EnvironmentConfigOverrideOverride, EnvironmentIncompleteConfig, EnvironmentRenderedConfig, OrganizationConfigOverride, OrganizationConfigOverrideOverride, OrganizationIncompleteConfig, OrganizationRenderedConfig, ProjectConfigOverride, ProjectConfigOverrideOverride, ProjectIncompleteConfig, ProjectRenderedConfig, applyDefaults, branchConfigDefaults, branchConfigSchema, environmentConfigDefaults, environmentConfigSchema, organizationConfigDefaults, organizationConfigSchema, projectConfigDefaults, projectConfigSchema } from "@stackframe/stack-shared/dist/config/schema";
 import { ProjectsCrud } from "@stackframe/stack-shared/dist/interface/crud/projects";
 import { yupMixed, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
@@ -9,7 +9,7 @@ import { filterUndefined, pick, typedEntries } from "@stackframe/stack-shared/di
 import { Result } from "@stackframe/stack-shared/dist/utils/results";
 import { stringCompare } from "@stackframe/stack-shared/dist/utils/strings";
 import * as yup from "yup";
-import { PrismaClientTransaction, RawQuery, prismaClient, rawQuery } from "../prisma-client";
+import { PrismaClientTransaction, RawQuery, globalPrismaClient, rawQuery } from "../prisma-client";
 import { DEFAULT_BRANCH_ID } from "./tenancies";
 
 type ProjectOptions = { projectId: string };
@@ -69,7 +69,7 @@ export async function validateProjectConfigOverride(options: { projectConfigOver
  * Validates a branch config override ([sanity-check valid](./README.md)), based on the given project's rendered project config.
  */
 export async function validateBranchConfigOverride(options: { branchConfigOverride: BranchConfigOverride } & ProjectOptions): Promise<Result<null, string>> {
-  return await schematicallyValidateAndReturn(branchConfigSchema, await rawQuery(prismaClient, getIncompleteProjectConfigQuery(options)), options.branchConfigOverride);
+  return await schematicallyValidateAndReturn(branchConfigSchema, await rawQuery(globalPrismaClient, getIncompleteProjectConfigQuery(options)), options.branchConfigOverride);
   // TODO add some more checks that depend on the base config; eg. an override config shouldn't set email server connection if isShared==true
   // (these are schematically valid, but make no sense, so we should be nice and reject them)
 }
@@ -78,7 +78,7 @@ export async function validateBranchConfigOverride(options: { branchConfigOverri
  * Validates an environment config override ([sanity-check valid](./README.md)), based on the given branch's rendered branch config.
  */
 export async function validateEnvironmentConfigOverride(options: { environmentConfigOverride: EnvironmentConfigOverride } & BranchOptions): Promise<Result<null, string>> {
-  return await schematicallyValidateAndReturn(environmentConfigSchema, await rawQuery(prismaClient, getIncompleteBranchConfigQuery(options)), options.environmentConfigOverride);
+  return await schematicallyValidateAndReturn(environmentConfigSchema, await rawQuery(globalPrismaClient, getIncompleteBranchConfigQuery(options)), options.environmentConfigOverride);
   // TODO add some more checks that depend on the base config; eg. an override config shouldn't set email server connection if isShared==true
   // (these are schematically valid, but make no sense, so we should be nice and reject them)
 }
@@ -87,7 +87,7 @@ export async function validateEnvironmentConfigOverride(options: { environmentCo
  * Validates an organization config override ([sanity-check valid](./README.md)), based on the given environment's rendered environment config.
  */
 export async function validateOrganizationConfigOverride(options: { organizationConfigOverride: OrganizationConfigOverride } & EnvironmentOptions): Promise<Result<null, string>> {
-  return await schematicallyValidateAndReturn(organizationConfigSchema, await rawQuery(prismaClient, getIncompleteEnvironmentConfigQuery(options)), options.organizationConfigOverride);
+  return await schematicallyValidateAndReturn(organizationConfigSchema, await rawQuery(globalPrismaClient, getIncompleteEnvironmentConfigQuery(options)), options.organizationConfigOverride);
   // TODO add some more checks that depend on the base config; eg. an override config shouldn't set email server connection if isShared==true
   // (these are schematically valid, but make no sense, so we should be nice and reject them)
 }
@@ -103,9 +103,14 @@ export function getProjectConfigOverrideQuery(options: ProjectOptions): RawQuery
   // fetch project config from our own DB
   // (currently it's just empty)
   return {
-    sql: Prisma.sql`SELECT 1`,
-    postProcess: async () => {
-      return {};
+    supportedPrismaClients: ["global"],
+    sql: Prisma.sql`
+      SELECT "Project"."projectConfigOverride"
+      FROM "Project"
+      WHERE "Project"."id" = ${options.projectId}
+    `,
+    postProcess: async (queryResult) => {
+      return queryResult[0].projectConfigOverride ?? {};
     },
   };
 }
@@ -117,6 +122,7 @@ export function getBranchConfigOverrideQuery(options: BranchOptions): RawQuery<P
     throw new StackAssertionError('Not implemented');
   }
   return {
+    supportedPrismaClients: ["global"],
     sql: Prisma.sql`SELECT 1`,
     postProcess: async () => {
       return {};
@@ -127,6 +133,7 @@ export function getBranchConfigOverrideQuery(options: BranchOptions): RawQuery<P
 export function getEnvironmentConfigOverrideQuery(options: EnvironmentOptions): RawQuery<Promise<EnvironmentConfigOverride>> {
   // fetch environment config from DB (either our own, or the source of truth one)
   return {
+    supportedPrismaClients: ["global"],
     sql: Prisma.sql`
       SELECT "EnvironmentConfigOverride".*
       FROM "EnvironmentConfigOverride"
@@ -152,6 +159,7 @@ export function getOrganizationConfigOverrideQuery(options: OrganizationOptions)
   }
 
   return {
+    supportedPrismaClients: ["global"],
     sql: Prisma.sql`SELECT 1`,
     postProcess: async () => {
       return {};
@@ -169,9 +177,24 @@ export function getOrganizationConfigOverrideQuery(options: OrganizationOptions)
 export async function overrideProjectConfigOverride(options: {
   projectId: string,
   projectConfigOverrideOverride: ProjectConfigOverrideOverride,
+  tx: PrismaClientTransaction,
 }): Promise<void> {
   // set project config override on our own DB
-  throw new StackAssertionError('Not implemented');
+
+  // TODO put this in a serializable transaction (or a single SQL query) to prevent race conditions
+  const oldConfig = await rawQuery(options.tx, getProjectConfigOverrideQuery(options));
+  const newConfig = override(
+    oldConfig,
+    options.projectConfigOverrideOverride,
+  );
+  await options.tx.project.update({
+    where: {
+      id: options.projectId,
+    },
+    data: {
+      projectConfigOverride: newConfig,
+    },
+  });
 }
 
 export function overrideBranchConfigOverride(options: {
@@ -190,7 +213,7 @@ export async function overrideEnvironmentConfigOverride(options: {
   environmentConfigOverrideOverride: EnvironmentConfigOverrideOverride,
   tx: PrismaClientTransaction,
 }): Promise<void> {
-  // save environment config override on DB (either our own, or the source of truth one)
+  // save environment config override on DB
 
   // TODO put this in a serializable transaction (or a single SQL query) to prevent race conditions
   const oldConfig = await rawQuery(options.tx, getEnvironmentConfigOverrideQuery(options));
@@ -232,39 +255,43 @@ export function overrideOrganizationConfigOverride(options: {
 // ---------------------------------------------------------------------------------------------------------------------
 
 function getIncompleteProjectConfigQuery(options: ProjectOptions): RawQuery<Promise<ProjectIncompleteConfig>> {
-  return RawQuery.then(
-    getProjectConfigOverrideQuery(options),
-    async (overrideConfig) => normalize(override({}, await overrideConfig)) as any,
-  );
+  return makeIncompleteConfigQuery({
+    override: getProjectConfigOverrideQuery(options),
+    defaults: projectConfigDefaults,
+  });
 }
 
 function getIncompleteBranchConfigQuery(options: BranchOptions): RawQuery<Promise<BranchIncompleteConfig>> {
-  return RawQuery.then(
-    RawQuery.all([
-      getIncompleteProjectConfigQuery(options),
-      getBranchConfigOverrideQuery(options),
-    ] as const),
-    async ([projectConfig, branchConfigOverride]) => normalize(override(await projectConfig, await branchConfigOverride)) as any,
-  );
+  return makeIncompleteConfigQuery({
+    previous: getIncompleteProjectConfigQuery(options),
+    override: getBranchConfigOverrideQuery(options),
+    defaults: branchConfigDefaults,
+  });
 }
 
 function getIncompleteEnvironmentConfigQuery(options: EnvironmentOptions): RawQuery<Promise<EnvironmentIncompleteConfig>> {
-  return RawQuery.then(
-    RawQuery.all([
-      getIncompleteBranchConfigQuery(options),
-      getEnvironmentConfigOverrideQuery(options),
-    ] as const),
-    async ([branchConfig, environmentConfigOverride]) => normalize(override(await branchConfig, await environmentConfigOverride)) as any,
-  );
+  return makeIncompleteConfigQuery({
+    previous: getIncompleteBranchConfigQuery(options),
+    override: getEnvironmentConfigOverrideQuery(options),
+    defaults: environmentConfigDefaults,
+  });
 }
 
 function getIncompleteOrganizationConfigQuery(options: OrganizationOptions): RawQuery<Promise<OrganizationIncompleteConfig>> {
+  return makeIncompleteConfigQuery({
+    previous: getIncompleteEnvironmentConfigQuery(options),
+    override: getOrganizationConfigOverrideQuery(options),
+    defaults: organizationConfigDefaults,
+  });
+}
+
+function makeIncompleteConfigQuery<T, O>(options: { previous?: RawQuery<Promise<NormalizedConfig>>, override: RawQuery<Promise<Config>>, defaults: any }): RawQuery<Promise<any>> {
   return RawQuery.then(
     RawQuery.all([
-      getIncompleteEnvironmentConfigQuery(options),
-      getOrganizationConfigOverrideQuery(options),
+      options.previous ?? RawQuery.resolve(Promise.resolve({})),
+      options.override,
     ] as const),
-    async ([environmentConfig, organizationConfigOverride]) => normalize(override(await environmentConfig, await organizationConfigOverride)) as any,
+    async ([prev, over]) => applyDefaults(options.defaults, normalize(override(await prev, await over))),
   );
 }
 

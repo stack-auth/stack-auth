@@ -1,13 +1,14 @@
 import { Prisma } from "@prisma/client";
 import { KnownErrors } from "@stackframe/stack-shared";
-import { EnvironmentConfigOverrideOverride, OrganizationRenderedConfig } from "@stackframe/stack-shared/dist/config/schema";
+import { EnvironmentConfigOverrideOverride, OrganizationRenderedConfig, ProjectConfigOverrideOverride } from "@stackframe/stack-shared/dist/config/schema";
 import { AdminUserProjectsCrud, ProjectsCrud } from "@stackframe/stack-shared/dist/interface/crud/projects";
 import { UsersCrud } from "@stackframe/stack-shared/dist/interface/crud/users";
+import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
 import { StackAssertionError, captureError } from "@stackframe/stack-shared/dist/utils/errors";
 import { filterUndefined, typedFromEntries } from "@stackframe/stack-shared/dist/utils/objects";
 import { generateUuid } from "@stackframe/stack-shared/dist/utils/uuids";
-import { RawQuery, prismaClient, rawQuery, retryTransaction } from "../prisma-client";
-import { overrideEnvironmentConfigOverride } from "./config";
+import { RawQuery, getPrismaClientForSourceOfTruth, globalPrismaClient, rawQuery, retryTransaction } from "../prisma-client";
+import { getRenderedEnvironmentConfigQuery, overrideEnvironmentConfigOverride, overrideProjectConfigOverride } from "./config";
 import { DEFAULT_BRANCH_ID } from "./tenancies";
 
 function isStringArray(value: any): value is string[] {
@@ -29,6 +30,7 @@ export function listManagedProjectIds(projectUser: UsersCrud["Admin"]["Read"]) {
 
 export function getProjectQuery(projectId: string): RawQuery<Promise<Omit<ProjectsCrud["Admin"]["Read"], "config"> | null>> {
   return {
+    supportedPrismaClients: ["global"],
     sql: Prisma.sql`
           SELECT "Project".*
           FROM "Project"
@@ -47,7 +49,6 @@ export function getProjectQuery(projectId: string): RawQuery<Promise<Omit<Projec
         display_name: row.displayName,
         description: row.description,
         created_at_millis: new Date(row.createdAt + "Z").getTime(),
-        user_count: row.userCount,
         is_production_mode: row.isProductionMode,
       };
     },
@@ -55,13 +56,14 @@ export function getProjectQuery(projectId: string): RawQuery<Promise<Omit<Projec
 }
 
 export async function getProject(projectId: string): Promise<Omit<ProjectsCrud["Admin"]["Read"], "config"> | null> {
-  const result = await rawQuery(prismaClient, getProjectQuery(projectId));
+  const result = await rawQuery(globalPrismaClient, getProjectQuery(projectId));
   return result;
 }
 
 export async function createOrUpdateProject(
   options: {
     ownerIds?: string[],
+    sourceOfTruth?: ProjectConfigOverrideOverride["sourceOfTruth"],
   } & ({
     type: "create",
     projectId?: string,
@@ -74,7 +76,7 @@ export async function createOrUpdateProject(
     data: ProjectsCrud["Admin"]["Update"],
   })
 ) {
-  const projectId = await retryTransaction(async (tx) => {
+  const [projectId, branchId] = await retryTransaction(globalPrismaClient, async (tx) => {
     let project: Prisma.ProjectGetPayload<{}>;
     let branchId: string;
     if (options.type === "create") {
@@ -123,6 +125,14 @@ export async function createOrUpdateProject(
     const translateDefaultPermissions = (permissions: { id: string }[] | undefined) => {
       return permissions ? typedFromEntries(permissions.map((permission) => [permission.id, true])) : undefined;
     };
+
+    await overrideProjectConfigOverride({
+      tx,
+      projectId: project.id,
+      projectConfigOverrideOverride: {
+        sourceOfTruth: options.sourceOfTruth || (JSON.parse(getEnvVariable("STACK_OVERRIDE_SOURCE_OF_TRUTH", "null")) ?? undefined),
+      },
+    });
 
     const dataOptions = options.data.config || {};
     const configOverrideOverride: EnvironmentConfigOverrideOverride = filterUndefined({
@@ -216,7 +226,14 @@ export async function createOrUpdateProject(
       environmentConfigOverrideOverride: configOverrideOverride,
     });
 
-    // Update owner metadata
+    return [project.id, branchId];
+  });
+
+
+  // Update owner metadata
+  const internalEnvironmentConfig = await rawQuery(globalPrismaClient, getRenderedEnvironmentConfigQuery({ projectId: "internal", branchId: DEFAULT_BRANCH_ID }));
+  const prisma = getPrismaClientForSourceOfTruth(internalEnvironmentConfig.sourceOfTruth, DEFAULT_BRANCH_ID);
+  await prisma.$transaction(async (tx) => {
     for (const userId of options.ownerIds ?? []) {
       const projectUserTx = await tx.projectUser.findUnique({
         where: {
@@ -247,14 +264,12 @@ export async function createOrUpdateProject(
             ...serverMetadataTx ?? {},
             managedProjectIds: [
               ...serverMetadataTx?.managedProjectIds ?? [],
-              project.id,
+              projectId,
             ],
           },
         },
       });
     }
-
-    return project.id;
   });
 
   const result = await getProject(projectId);

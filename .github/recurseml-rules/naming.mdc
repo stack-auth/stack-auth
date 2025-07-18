@@ -1,0 +1,21 @@
+---
+description: Naming Conventions
+globs: "**/*.{js,ts}"
+alwaysApply: true
+---
+
+Code changes MUST follow the naming guidelines below.
+DON'T report any other naming issues.
+
+- Use `snake_case` for anything that goes over HTTP in REST APIs, `camelCase` for JavaScript elsewhere
+- `captureError`'s first argument should be a machine-readable ID without whitespaces (e.g., `'user-sign-up-email'` not `'Email failed to send'`)
+- When doing OAuth flows, specify the type (inner/outer/external) in variable names, comments, and error messages
+- Use descriptive names that clearly indicate purpose and context
+- Avoid abbreviations unless they are widely understood
+
+# Solution
+
+Fix naming inconsistencies by:
+- Converting API parameters to snake_case
+- Making captureError IDs machine-readable with hyphens
+- Adding OAuth type prefixes to variable names

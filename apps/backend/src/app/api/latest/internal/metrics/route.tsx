@@ -1,5 +1,5 @@
 import { Tenancy } from "@/lib/tenancies";
-import { prismaClient } from "@/prisma-client";
+import { getPrismaClientForTenancy, getPrismaSchemaForTenancy, globalPrismaClient, sqlQuoteIdent } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { KnownErrors } from "@stackframe/stack-shared";
 import { UsersCrud } from "@stackframe/stack-shared/dist/interface/crud/users";
@@ -16,20 +16,20 @@ const DataPointsSchema = yupArray(yupObject({
 
 
 async function loadUsersByCountry(tenancy: Tenancy): Promise<Record<string, number>> {
-  const a = await prismaClient.$queryRaw<{countryCode: string|null, userCount: bigint}[]>`
+  const a = await globalPrismaClient.$queryRaw<{countryCode: string|null, userCount: bigint}[]>`
     WITH LatestEventWithCountryCode AS (
-        SELECT DISTINCT ON ("userId")
-          "data"->'userId' AS "userId",
-          "countryCode",
-          "eventStartedAt" AS latest_timestamp
-        FROM "Event"
-        LEFT JOIN "EventIpInfo" eip
-          ON "Event"."endUserIpInfoGuessId" = eip.id
-        WHERE '$user-activity' = ANY("systemEventTypeIds"::text[])
-          AND "data"->>'projectId' = ${tenancy.project.id}
-          AND COALESCE("data"->>'branchId', 'main') = ${tenancy.branchId}
-          AND "countryCode" IS NOT NULL
-        ORDER BY "userId", "eventStartedAt" DESC
+      SELECT DISTINCT ON ("userId")
+        "data"->'userId' AS "userId",
+        "countryCode",
+        "eventStartedAt" AS latest_timestamp
+      FROM "Event"
+      LEFT JOIN "EventIpInfo" eip
+        ON "Event"."endUserIpInfoGuessId" = eip.id
+      WHERE '$user-activity' = ANY("systemEventTypeIds"::text[])
+        AND "data"->>'projectId' = ${tenancy.project.id}
+        AND COALESCE("data"->>'branchId', 'main') = ${tenancy.branchId}
+        AND "countryCode" IS NOT NULL
+      ORDER BY "userId", "eventStartedAt" DESC
     )
     SELECT "countryCode", COUNT("userId") AS "userCount"
     FROM LatestEventWithCountryCode
@@ -45,7 +45,9 @@ async function loadUsersByCountry(tenancy: Tenancy): Promise<Record<string, numb
 }
 
 async function loadTotalUsers(tenancy: Tenancy, now: Date): Promise<DataPoints> {
-  return (await prismaClient.$queryRaw<{date: Date, dailyUsers: bigint, cumUsers: bigint}[]>`
+  const schema = getPrismaSchemaForTenancy(tenancy);
+  const prisma = getPrismaClientForTenancy(tenancy);
+  return (await prisma.$queryRaw<{date: Date, dailyUsers: bigint, cumUsers: bigint}[]>`
     WITH date_series AS (
         SELECT GENERATE_SERIES(
           ${now}::date - INTERVAL '30 days',
@@ -59,7 +61,7 @@ async function loadTotalUsers(tenancy: Tenancy, now: Date): Promise<DataPoints> 
       COALESCE(COUNT(pu."projectUserId"), 0) AS "dailyUsers",
       SUM(COALESCE(COUNT(pu."projectUserId"), 0)) OVER (ORDER BY ds.registration_day) AS "cumUsers"
     FROM date_series ds
-    LEFT JOIN "ProjectUser" pu
+    LEFT JOIN ${sqlQuoteIdent(schema)}."ProjectUser" pu
     ON DATE(pu."createdAt") = ds.registration_day AND pu."tenancyId" = ${tenancy.id}::UUID
     GROUP BY ds.registration_day
     ORDER BY ds.registration_day
@@ -70,7 +72,7 @@ async function loadTotalUsers(tenancy: Tenancy, now: Date): Promise<DataPoints> 
 }
 
 async function loadDailyActiveUsers(tenancy: Tenancy, now: Date) {
-  const res = await prismaClient.$queryRaw<{day: Date, dau: bigint}[]>`
+  const res = await globalPrismaClient.$queryRaw<{day: Date, dau: bigint}[]>`
     WITH date_series AS (
       SELECT GENERATE_SERIES(
         ${now}::date - INTERVAL '30 days',
@@ -84,8 +86,7 @@ async function loadDailyActiveUsers(tenancy: Tenancy, now: Date) {
         DATE_TRUNC('day', "eventStartedAt") AS "day",
         COUNT(DISTINCT "data"->'userId') AS "dau"
       FROM "Event"
-      WHERE "eventStartedAt" >= ${now} - INTERVAL '30 days'
-        AND "eventStartedAt" < ${now}
+      WHERE "eventStartedAt" >= ${now}::date - INTERVAL '30 days'
         AND '$user-activity' = ANY("systemEventTypeIds"::text[])
         AND "data"->>'projectId' = ${tenancy.project.id}
         AND COALESCE("data"->>'branchId', 'main') = ${tenancy.branchId}
@@ -104,8 +105,10 @@ async function loadDailyActiveUsers(tenancy: Tenancy, now: Date) {
   }));
 }
 
-async function loadLoginMethods(tenancyId: string): Promise<{method: string, count: number }[]> {
-  return await prismaClient.$queryRaw<{ method: string, count: number }[]>`
+async function loadLoginMethods(tenancy: Tenancy): Promise<{method: string, count: number }[]> {
+  const schema = getPrismaSchemaForTenancy(tenancy);
+  const prisma = getPrismaClientForTenancy(tenancy);
+  return await prisma.$queryRaw<{ method: string, count: number }[]>`
     WITH tab AS (
       SELECT
         COALESCE(
@@ -117,12 +120,12 @@ async function loadLoginMethods(tenancyId: string): Promise<{method: string, cou
         ) AS "method",
         method.id AS id
       FROM
-        "AuthMethod" method
-      LEFT JOIN "OAuthAuthMethod" oaam ON method.id = oaam."authMethodId"
-      LEFT JOIN "PasswordAuthMethod" pam ON method.id = pam."authMethodId"
-      LEFT JOIN "PasskeyAuthMethod" pkm ON method.id = pkm."authMethodId"
-      LEFT JOIN "OtpAuthMethod" oam ON method.id = oam."authMethodId"
-      WHERE method."tenancyId" = ${tenancyId}::UUID)
+        ${sqlQuoteIdent(schema)}."AuthMethod" method
+      LEFT JOIN ${sqlQuoteIdent(schema)}."OAuthAuthMethod" oaam ON method.id = oaam."authMethodId"
+      LEFT JOIN ${sqlQuoteIdent(schema)}."PasswordAuthMethod" pam ON method.id = pam."authMethodId"
+      LEFT JOIN ${sqlQuoteIdent(schema)}."PasskeyAuthMethod" pkm ON method.id = pkm."authMethodId"
+      LEFT JOIN ${sqlQuoteIdent(schema)}."OtpAuthMethod" oam ON method.id = oam."authMethodId"
+      WHERE method."tenancyId" = ${tenancy.id}::UUID)
     SELECT LOWER("method") AS method, COUNT(id)::int AS "count" FROM tab
     GROUP BY "method"
   `;
@@ -130,7 +133,7 @@ async function loadLoginMethods(tenancyId: string): Promise<{method: string, cou
 
 async function loadRecentlyActiveUsers(tenancy: Tenancy): Promise<UsersCrud["Admin"]["Read"][]> {
   // use the Events table to get the most recent activity
-  const events = await prismaClient.$queryRaw<{ data: any, eventStartedAt: Date }[]>`
+  const events = await globalPrismaClient.$queryRaw<{ data: any, eventStartedAt: Date }[]>`
     WITH RankedEvents AS (
       SELECT 
         "data", "eventStartedAt",
@@ -208,7 +211,7 @@ export const GET = createSmartRouteHandler({
       recentlyActive,
       loginMethods
     ] = await Promise.all([
-      prismaClient.projectUser.count({
+      getPrismaClientForTenancy(req.auth.tenancy).projectUser.count({
         where: { tenancyId: req.auth.tenancy.id, },
       }),
       loadTotalUsers(req.auth.tenancy, now),
@@ -226,7 +229,7 @@ export const GET = createSmartRouteHandler({
         ],
       })).items,
       loadRecentlyActiveUsers(req.auth.tenancy),
-      loadLoginMethods(req.auth.tenancy.id),
+      loadLoginMethods(req.auth.tenancy),
     ] as const);
 
     return {

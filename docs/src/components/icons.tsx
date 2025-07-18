@@ -330,3 +330,18 @@ export const Trash2 = createLucideIcon('trash-2', [
 export const ChevronUp = createLucideIcon('chevron-up', [
   ['path', { d: 'm18 15-6-6-6 6', key: '153udz' }],
 ]);
+
+export const Box = createLucideIcon('box', [
+  ['path', { d: 'M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z', key: 'hh9hay' }],
+  ['path', { d: 'm3.3 7 8.7 5 8.7-5', key: 'g66t2b' }],
+  ['path', { d: 'M12 22V12', key: 'd0xqq' }],
+]);
+
+export const Code = createLucideIcon('code', [
+  ['path', { d: 'm16 18 6-6-6-6', key: '4m8svg' }],
+  ['path', { d: 'm8 6-6 6 6 6', key: '1ksn4a' }],
+]);
+
+export const Zap = createLucideIcon('zap', [
+  ['path', { d: 'M4 14a1 1 0 0 1-.78-1.63l9.9-10.2a.5.5 0 0 1 .86.46l-1.92 6.02A1 1 0 0 0 13 10h7a1 1 0 0 1 .78 1.63l-9.9 10.2a.5.5 0 0 1-.86-.46l1.92-6.02A1 1 0 0 0 11 14z', key: 'za6gxh' }],
+]);

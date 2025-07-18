@@ -8,6 +8,11 @@ import { SvixTokenCrud } from "./crud/svix-token";
 import { TeamPermissionDefinitionsCrud } from "./crud/team-permissions";
 import { ServerAuthApplicationOptions, StackServerInterface } from "./server-interface";
 
+export type ChatContent = Array<
+  | { type: "text", text: string }
+  | { type: "tool-call", toolName: string, toolCallId: string, args: any, argsText: string, result: any }
+>;
+
 export type AdminAuthApplicationOptions = ServerAuthApplicationOptions &(
   | {
     superSecretAdminKey: string,
@@ -124,6 +129,18 @@ export class StackAdminInterface extends StackServerInterface {
     const response = await this.sendAdminRequest(`/email-templates`, {}, null);
     const result = await response.json() as EmailTemplateCrud['Admin']['List'];
     return result.items;
+  }
+
+  async listInternalEmailTemplatesNew(): Promise<{ id: string, subject: string, display_name: string, tsx_source: string }[]> {
+    const response = await this.sendAdminRequest(`/internal/email-templates`, {}, null);
+    const result = await response.json() as { templates: { id: string, subject: string, display_name: string, tsx_source: string }[] };
+    return result.templates;
+  }
+
+  async listEmailThemes(): Promise<{ id: string, display_name: string }[]> {
+    const response = await this.sendAdminRequest(`/internal/email-themes`, {}, null);
+    const result = await response.json() as { themes: { id: string, display_name: string }[] };
+    return result.themes;
   }
 
   async updateEmailTemplate(type: EmailTemplateType, data: EmailTemplateCrud['Admin']['Update']): Promise<EmailTemplateCrud['Admin']['Read']> {
@@ -337,17 +354,122 @@ export class StackAdminInterface extends StackServerInterface {
     );
   }
 
-  async renderEmailThemePreview(theme: string, content: string): Promise<{ html: string }> {
+
+  async sendChatMessage(
+    threadId: string,
+    contextType: "email-theme" | "email-template",
+    messages: Array<{ role: string, content: any }>,
+    abortSignal?: AbortSignal,
+  ): Promise<{ content: ChatContent }> {
+    const response = await this.sendAdminRequest(
+      `/internal/ai-chat/${threadId}`,
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({ context_type: contextType, messages }),
+        signal: abortSignal,
+      },
+      null,
+    );
+    return await response.json();
+  }
+
+  async saveChatMessage(threadId: string, message: any): Promise<void> {
+    await this.sendAdminRequest(
+      `/internal/ai-chat/${threadId}`,
+      {
+        method: "PATCH",
+        headers: {
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({ message }),
+      },
+      null,
+    );
+  }
+
+  async listChatMessages(threadId: string): Promise<{ messages: Array<any> }> {
+    const response = await this.sendAdminRequest(
+      `/internal/ai-chat/${threadId}`,
+      { method: "GET" },
+      null,
+    );
+    return await response.json();
+  }
+
+  async renderEmailPreview(themeId: string, content?: string, templateId?: string): Promise<{ html: string }> {
     const response = await this.sendAdminRequest(`/emails/render-email`, {
       method: "POST",
       headers: {
         "content-type": "application/json",
       },
       body: JSON.stringify({
-        theme,
+        theme_id: themeId,
         preview_html: content,
+        template_id: templateId,
       }),
     }, null);
+    return await response.json();
+  }
+
+  async createEmailTheme(displayName: string): Promise<{ id: string }> {
+    const response = await this.sendAdminRequest(
+      `/internal/email-themes`,
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          display_name: displayName,
+        }),
+      },
+      null,
+    );
+    return await response.json();
+  }
+
+  async getEmailTheme(id: string): Promise<{ display_name: string, tsx_source: string }> {
+    const response = await this.sendAdminRequest(
+      `/internal/email-themes/${id}`,
+      { method: "GET" },
+      null,
+    );
+    return await response.json();
+  }
+
+  async updateEmailTheme(id: string, tsxSource: string, previewHtml: string): Promise<{ display_name: string, rendered_html: string }> {
+    const response = await this.sendAdminRequest(
+      `/internal/email-themes/${id}`,
+      {
+        method: "PATCH",
+        headers: {
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          tsx_source: tsxSource,
+          preview_html: previewHtml,
+        }),
+      },
+      null,
+    );
+    return await response.json();
+  }
+
+  async updateNewEmailTemplate(id: string, tsxSource: string): Promise<{ rendered_html: string }> {
+    const response = await this.sendAdminRequest(
+      `/internal/email-templates/${id}`,
+      {
+        method: "PATCH",
+        headers: {
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({ tsx_source: tsxSource }),
+      },
+      null,
+    );
     return await response.json();
   }
 }

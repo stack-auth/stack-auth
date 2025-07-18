@@ -1,5 +1,5 @@
 import { getAuthContactChannel } from "@/lib/contact-channel";
-import { prismaClient } from "@/prisma-client";
+import { getPrismaClientForTenancy } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { KnownErrors } from "@stackframe/stack-shared";
 import { adaptSchema, clientOrHigherAuthTypeSchema, emailSchema, urlSchema, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
@@ -35,9 +35,11 @@ export const POST = createSmartRouteHandler({
       throw new KnownErrors.PasswordAuthenticationNotEnabled();
     }
 
+    const prisma = getPrismaClientForTenancy(tenancy);
+
     // TODO filter in the query
     const contactChannel = await getAuthContactChannel(
-      prismaClient,
+      prisma,
       {
         tenancyId: tenancy.id,
         type: "EMAIL",

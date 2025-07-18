@@ -1,4 +1,5 @@
 import { Attributes, AttributeValue, Span, trace } from "@opentelemetry/api";
+import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
 import { StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
 const tracer = trace.getTracer('stack-backend');
 
@@ -28,7 +29,8 @@ export function log(message: string, attributes: Attributes) {
   const span = trace.getActiveSpan();
   if (span) {
     span.addEvent(message, attributes);
-  } else {
+    // Telemetry is not initialized while seeding, so we don't want to throw an error
+  } else if (getEnvVariable('STACK_SEED_MODE', 'false') !== 'true') {
     throw new StackAssertionError('No active span found');
   }
 }
