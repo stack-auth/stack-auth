@@ -130,8 +130,7 @@ export function StackCompanion({ className, onExpandedChange }: StackCompanionPr
                       onClick={() => setActiveItem(item.id)}
                       className={cn(
                         "flex items-center justify-center w-10 h-10 rounded-lg group transition-none",
-                        // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
-                        activeItem === item.id ? "bg-primary text-primary-foreground shadow-md" : "text-muted-foreground hover:text-foreground hover:bg-muted"
+                        "text-muted-foreground hover:text-foreground hover:bg-muted"
                       )}
                     >
                       <Icon className="h-5 w-5" />
@@ -184,7 +183,6 @@ export function StackCompanion({ className, onExpandedChange }: StackCompanionPr
                       onClick={() => setActiveItem(item.id)}
                       className={cn(
                         "flex items-center justify-center w-10 h-10 rounded-lg transition-none",
-                        // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
                         isActive ? "bg-primary text-primary-foreground shadow-md" : "text-muted-foreground hover:text-foreground hover:bg-muted"
                       )}
                     >
