@@ -1016,7 +1016,7 @@ const SwappableWidgetInstanceGridContext = React.createContext<{
 
 function SwappableWidgetInstanceGrid(props: { gridRef: RefState<WidgetInstanceGrid>, isSingleColumnMode: boolean | "auto", allowVariableHeight: boolean, isStatic: boolean }) {
   const [draggingType, setDraggingType] = useState<"element" | "var-height" | null>(null);
-  const [activeElementInitialRect, setActiveElementInitialRect] = useState<DOMRect | null>(null);  // onDragOver's event.active.rect.current.initial is the intial rect when the *swap* starts, not the drag, so we want to store the initial rect of the drag somewhere
+  const [activeElementInitialRect, setActiveElementInitialRect] = useState<DOMRect | null>(null);  // onDragOver's event.active.rect.current.initial is the initial rect when the *swap* starts, not the drag, so we want to store the initial rect of the drag somewhere
   const [overElementPosition, setOverElementPosition] = useState<[number, number] | null>(null);
   const [overVarHeightSlot, setOverVarHeightSlot] = useState<["before", string] | ["end-of", number] | null>(null);
   const [hoverElementSwap, setHoverElementSwap] = useState<[string, [number, number, number, number, number, number]] | null>(null);
@@ -1181,7 +1181,7 @@ function SwappableWidgetInstanceGrid(props: { gridRef: RefState<WidgetInstanceGr
         onDragStart={(event) => {
           setActiveInstanceId(event.active.id as string);
           setDraggingType("element");
-          setActiveElementInitialRect(event.activatorEvent.target.getBoundingClientRect());
+          setActiveElementInitialRect((event.activatorEvent.target as any).getBoundingClientRect());
         }}
         onDragAbort={() => {
           setHoverElementSwap(null);
@@ -1242,10 +1242,10 @@ function SwappableWidgetInstanceGrid(props: { gridRef: RefState<WidgetInstanceGr
               const overId = props.gridRef.current.getElementAt(overCoordinates[0], overCoordinates[1]).instance?.id;
               if (overId && overId !== widgetId) {
                 setHoverElementSwap([overId, [
-                  event.over.rect.left - activeElementInitialRect.left,
-                  event.over.rect.top - activeElementInitialRect.top,
-                  activeElementInitialRect.width,
-                  activeElementInitialRect.height,
+                  event.over.rect.left - activeElementInitialRect!.left,
+                  event.over.rect.top - activeElementInitialRect!.top,
+                  activeElementInitialRect!.width,
+                  activeElementInitialRect!.height,
                   event.over.rect.width,
                   event.over.rect.height,
                 ]]);
