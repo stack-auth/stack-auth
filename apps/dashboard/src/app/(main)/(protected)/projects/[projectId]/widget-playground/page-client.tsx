@@ -44,6 +44,7 @@ async function compileWidgetSource(source: string): Promise<Result<string, strin
       __STACK_WIDGET_RESOLVE(widget);
     `,
   }, {
+    format: 'iife',
     externalPackages: {
       'react': 'module.exports = React;',
       'react/jsx-runtime': 'module.exports = jsxRuntime;',
@@ -803,7 +804,7 @@ const widgets: Widget<any, any>[] = [
             isSingleColumnMode={isSingleColumnMode ? "auto" : false}
             gridRef={widgetGridRef}
             allowVariableHeight={false}
-            isStatic={true}
+            isStatic={false}
           />
         </div>
       );
@@ -994,7 +995,7 @@ function SingleWidget(props: {
     (widgetInstance) => {
       return WidgetInstanceGrid.fromSingleWidgetInstance(widgetInstance);
     },
-    (widgetInstance, grid) => grid.getInstanceById(widgetInstance.id) ?? throwErr(`Widget instance ${widgetInstance.id} not found in grid`, { widgetInstance }),
+    (widgetInstance, grid) => grid.getInstanceById(widgetInstance.id) ?? /* widget deleted, let's reset to last known state */ widgetInstance,
   );
 
   return (
@@ -1002,7 +1003,7 @@ function SingleWidget(props: {
       gridRef={widgetGridRef}
       isSingleColumnMode={true}
       allowVariableHeight={true}
-      isStatic={false}
+      isStatic={true}
     />
   );
 }
@@ -1219,6 +1220,14 @@ function SwappableWidgetInstanceGrid(props: { gridRef: RefState<WidgetInstanceGr
                     event.over.rect.width,
                     event.over.rect.height,
                   ]]);
+                  console.log("newHoverElementSwap", [
+                    event.over.rect.left - event.active.rect.current.initial.left,
+                    event.over.rect.top - event.active.rect.current.initial.top,
+                    event.active.rect.current.initial.width,
+                    event.active.rect.current.initial.height,
+                    event.over.rect.width,
+                    event.over.rect.height,
+                  ]);
               } else {
                   setHoverElementSwap(null);
               }
@@ -1232,6 +1241,7 @@ function SwappableWidgetInstanceGrid(props: { gridRef: RefState<WidgetInstanceGr
       >
         {props.gridRef.current.elements().map(({ instance, x, y, width, height }) => {
           const isHoverSwap = !!hoverElementSwap && !!instance && (hoverElementSwap[0] === instance.id);
+
 
           if (isSingleColumnMode && !instance) {
             if (hasAlreadyRenderedEmpty) return null;
