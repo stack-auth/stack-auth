@@ -100,6 +100,8 @@ async function ensureProviderExists(tenancy: Tenancy, userId: string, providerId
   if (!provider) {
     throw new StatusError(StatusError.NotFound, `OAuth provider ${providerId} for user ${userId} not found`);
   }
+
+  return provider;
 }
 
 function getProviderConfig(tenancy: Tenancy, providerConfigId: string) {
@@ -141,20 +143,7 @@ export const oauthProviderCrudHandlers = createLazyProxy(() => createCrudHandler
 
     const prismaClient = getPrismaClientForTenancy(auth.tenancy);
     await ensureUserExists(prismaClient, { tenancyId: auth.tenancy.id, userId: params.user_id });
-    await ensureProviderExists(auth.tenancy, params.user_id, params.provider_id);
-
-    const oauthAccount = await prismaClient.projectUserOAuthAccount.findUnique({
-      where: {
-        tenancyId_id: {
-          tenancyId: auth.tenancy.id,
-          id: params.provider_id,
-        },
-      },
-    });
-
-    if (!oauthAccount) {
-      throw new StatusError(StatusError.NotFound, 'OAuth provider not found for this user');
-    }
+    const oauthAccount = await ensureProviderExists(auth.tenancy, params.user_id, params.provider_id);
 
     const providerConfig = getProviderConfig(auth.tenancy, oauthAccount.configOAuthProviderId);
 
@@ -220,7 +209,7 @@ export const oauthProviderCrudHandlers = createLazyProxy(() => createCrudHandler
 
     const prismaClient = getPrismaClientForTenancy(auth.tenancy);
     await ensureUserExists(prismaClient, { tenancyId: auth.tenancy.id, userId: params.user_id });
-    await ensureProviderExists(auth.tenancy, params.user_id, params.provider_id);
+    const existingOAuthAccount = await ensureProviderExists(auth.tenancy, params.user_id, params.provider_id);
 
     await checkInputValidity({
       tenancy: auth.tenancy,
@@ -233,23 +222,6 @@ export const oauthProviderCrudHandlers = createLazyProxy(() => createCrudHandler
     });
 
     const result = await retryTransaction(prismaClient, async (tx) => {
-      // Find the existing OAuth account
-      const existingOAuthAccount = await tx.projectUserOAuthAccount.findUnique({
-        where: {
-          tenancyId_id: {
-            tenancyId: auth.tenancy.id,
-            id: params.provider_id,
-          },
-        },
-        include: {
-          oauthAuthMethod: true,
-        },
-      });
-
-      if (!existingOAuthAccount) {
-        throw new StatusError(StatusError.NotFound, 'OAuth provider not found for this user');
-      }
-
       // Handle allow_sign_in changes
       if (data.allow_sign_in !== undefined) {
         await tx.projectUserOAuthAccount.update({
@@ -347,30 +319,15 @@ export const oauthProviderCrudHandlers = createLazyProxy(() => createCrudHandler
 
     const prismaClient = getPrismaClientForTenancy(auth.tenancy);
     await ensureUserExists(prismaClient, { tenancyId: auth.tenancy.id, userId: params.user_id });
-    await ensureProviderExists(auth.tenancy, params.user_id, params.provider_id);
+    const existingOAuthAccount = await ensureProviderExists(auth.tenancy, params.user_id, params.provider_id);
 
     await retryTransaction(prismaClient, async (tx) => {
-      // Find the existing OAuth account with all related records
-      const existingOAuthAccounts = await tx.projectUserOAuthAccount.findMany({
-        where: {
-          tenancyId: auth.tenancy.id,
-          id: params.provider_id,
-        },
-        include: {
-          oauthAuthMethod: true,
-        },
-      });
-
-      if (existingOAuthAccounts.length === 0) {
-        throw new StatusError(StatusError.NotFound, 'OAuth provider not found for this user');
-      }
-
-      if (existingOAuthAccounts[0].oauthAuthMethod) {
+      if (existingOAuthAccount.oauthAuthMethod) {
         await tx.authMethod.delete({
           where: {
             tenancyId_id: {
               tenancyId: auth.tenancy.id,
-              id: existingOAuthAccounts[0].oauthAuthMethod.authMethodId,
+              id: existingOAuthAccount.oauthAuthMethod.authMethodId,
             },
           },
         });
