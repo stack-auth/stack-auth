@@ -1,42 +1,15 @@
 import { PrismaClient } from "@prisma/client";
-import postgres from 'postgres';
 import { ExpectStatic } from "vitest";
 import { applyMigrations, getMigrationCheckQuery, runQueryAndMigrateIfNeeded } from "./index";
-
-const TEST_DB_PREFIX = 'stack_auth_test_db';
-
-const getTestDbURL = (testDbName: string) => {
-  // @ts-ignore - ImportMeta.env is provided by Vite
-  const base = import.meta.env.STACK_DIRECT_DATABASE_CONNECTION_STRING.replace(/\/[^/]*$/, '');
-  return {
-    full: `${base}/${testDbName}`,
-    base,
-  };
-};
-
-const applySql = async (options: { sql: string | string[], fullDbURL: string }) => {
-  const sql = postgres(options.fullDbURL);
-
-  try {
-    for (const query of Array.isArray(options.sql) ? options.sql : [options.sql]) {
-      await sql.unsafe(query);
-    }
-
-  } finally {
-    await sql.end();
-  }
-};
+import { createMockDb } from "./mock-db";
 
 const setupTestDatabase = async () => {
-  const randomSuffix = Math.random().toString(16).substring(2, 12);
-  const testDbName = `${TEST_DB_PREFIX}_${randomSuffix}`;
-  const dbURL = getTestDbURL(testDbName);
-  await applySql({ sql: `CREATE DATABASE ${testDbName}`, fullDbURL: dbURL.base });
+  const { db, server, port } = await createMockDb();
 
   const prismaClient = new PrismaClient({
     datasources: {
       db: {
-        url: dbURL.full,
+        url: `postgresql://test:test@localhost:${port}/test`,
       },
     },
   });
@@ -45,38 +18,25 @@ const setupTestDatabase = async () => {
 
   return {
     prismaClient,
-    testDbName,
-    dbURL,
+    mockDb: { db, server, port },
   };
 };
 
-const teardownTestDatabase = async (prismaClient: PrismaClient, testDbName: string) => {
+const teardownTestDatabase = async (prismaClient: PrismaClient, mockDb: { db: any, server: any, port: number }) => {
   await prismaClient.$disconnect();
-  const dbURL = getTestDbURL(testDbName);
-  await applySql({
-    sql: [
-      `
-        SELECT pg_terminate_backend(pg_stat_activity.pid)
-        FROM pg_stat_activity
-        WHERE pg_stat_activity.datname = '${testDbName}'
-        AND pid <> pg_backend_pid();
-      `,
-      `DROP DATABASE IF EXISTS ${testDbName}`
-    ],
-    fullDbURL: dbURL.base
-  });
+  mockDb.server.close();
 
-  // Wait a bit to ensure connections are terminated
-  await new Promise(resolve => setTimeout(resolve, 500));
+  // Wait a bit to ensure server is closed
+  await new Promise(resolve => setTimeout(resolve, 100));
 };
 
-function runTest(fn: (options: { expect: ExpectStatic, prismaClient: PrismaClient, dbURL: { full: string, base: string } }) => Promise<void>) {
+function runTest(fn: (options: { expect: ExpectStatic, prismaClient: PrismaClient }) => Promise<void>) {
   return async ({ expect }: { expect: ExpectStatic }) => {
-    const { prismaClient, testDbName, dbURL } = await setupTestDatabase();
+    const { prismaClient, mockDb } = await setupTestDatabase();
     try {
-      await fn({ prismaClient, expect, dbURL });
+      await fn({ prismaClient, expect });
     } finally {
-      await teardownTestDatabase(prismaClient, testDbName);
+      await teardownTestDatabase(prismaClient, mockDb);
     }
   };
 }
@@ -212,8 +172,12 @@ import.meta.vitest?.test("applies migrations concurrently", runTest(async ({ exp
 }));
 
 
-import.meta.vitest?.test("applies migration with a DB previously migrated with prisma", runTest(async ({ expect, prismaClient, dbURL }) => {
-  await applySql({ sql: examplePrismaBasedInitQueries, fullDbURL: dbURL.full });
+import.meta.vitest?.test("applies migration with a DB previously migrated with prisma", runTest(async ({ expect, prismaClient }) => {
+  // Apply the initial schema directly via Prisma raw queries
+  for (const query of examplePrismaBasedInitQueries) {
+    await prismaClient.$executeRawUnsafe(query);
+  }
+
   const result = await applyMigrations({ prismaClient, migrationFiles: examplePrismaBasedMigrationFiles });
   expect(result.newlyAppliedMigrationNames).toEqual(['20250314215050_age']);
 
@@ -222,7 +186,7 @@ import.meta.vitest?.test("applies migration with a DB previously migrated with p
   expect(result2.newlyAppliedMigrationNames).toEqual([]);
 }));
 
-import.meta.vitest?.test("applies migration while running a query", runTest(async ({ expect, prismaClient, dbURL }) => {
+import.meta.vitest?.test("applies migration while running a query", runTest(async ({ expect, prismaClient }) => {
   await runQueryAndMigrateIfNeeded({
     prismaClient,
     fn: async () => await prismaClient.$transaction([
@@ -238,7 +202,7 @@ import.meta.vitest?.test("applies migration while running a query", runTest(asyn
   expect(result[0].name).toBe('test_value');
 }));
 
-import.meta.vitest?.test("applies migration while running concurrent queries", runTest(async ({ expect, prismaClient, dbURL }) => {
+import.meta.vitest?.test("applies migration while running concurrent queries", runTest(async ({ expect, prismaClient }) => {
   const runMigrationAndInsert = (testValue: string) => runQueryAndMigrateIfNeeded({
     prismaClient,
     fn: async () => await prismaClient.$transaction([
@@ -261,7 +225,7 @@ import.meta.vitest?.test("applies migration while running concurrent queries", r
   expect(result1.some(r => r.name === 'test_value2')).toBe(true);
 }));
 
-import.meta.vitest?.test("applies migration while running an interactive transaction", runTest(async ({ expect, prismaClient, dbURL }) => {
+import.meta.vitest?.test("applies migration while running an interactive transaction", runTest(async ({ expect, prismaClient }) => {
   return await prismaClient.$transaction(async (tx, ...args) => {
     await runQueryAndMigrateIfNeeded({
       prismaClient,
@@ -281,7 +245,7 @@ import.meta.vitest?.test("applies migration while running an interactive transac
   });
 }));
 
-import.meta.vitest?.test("applies migration while running concurrent interactive transactions", runTest(async ({ expect, prismaClient, dbURL }) => {
+import.meta.vitest?.test("applies migration while running concurrent interactive transactions", runTest(async ({ expect, prismaClient }) => {
   const runTransactionWithMigration = async (testValue: string) => {
     return await prismaClient.$transaction(async (tx) => {
       await runQueryAndMigrateIfNeeded({
