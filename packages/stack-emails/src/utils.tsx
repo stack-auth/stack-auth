@@ -134,7 +134,7 @@ export function objectStringMap<T extends NestedObject>(obj: T, func: (s: string
   return mapStrings(obj) as T;
 }
 
-function renderString(str: string, variables: Record<string, string | null>) {
+export function renderString(str: string, variables: Record<string, string | null>) {
   try {
     return Handlebars.compile(str, { noEscape: true })(variables);
   } catch (e) {
