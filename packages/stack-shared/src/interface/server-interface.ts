@@ -724,27 +724,6 @@ export class StackServerInterface extends StackClientInterface {
     return await response.json();
   }
 
-  async getServerOAuthProvider(
-    userId: string,
-    providerId: string,
-  ): Promise<{
-    id: string,
-    type: string,
-    user_id: string,
-    account_id: string,
-    email: string,
-    allow_sign_in: boolean,
-    allow_connected_accounts: boolean,
-  }> {
-    const response = await this.sendServerRequest(
-      urlString`/oauth-providers/${userId}/${providerId}`,
-      {
-        method: "GET",
-      },
-      null,
-    );
-    return await response.json();
-  }
 
   async listServerOAuthProviders(
     options: {
