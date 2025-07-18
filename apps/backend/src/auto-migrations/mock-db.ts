@@ -31,6 +31,7 @@ export const createMockDb = async (port?: number) => {
   const server = net.createServer((async (socket: any) => {
     let activeDb: PGlite;
 
+    console.info(`Client connected: ${socket.remoteAddress}:${socket.remotePort}`);
     await fromNodeSocket(socket, {
       serverVersion: '16.3',
 
@@ -40,6 +41,7 @@ export const createMockDb = async (port?: number) => {
       },
 
       async onStartup({ clientParams }) {
+        console.info(`Connecting client to ${clientParams?.database}`);
         // If the DB is the Prisma shadow DB, create a temp in-memory instance
         if (clientParams?.database === 'prisma-shadow') {
           activeDb = new PGlite();
@@ -61,13 +63,19 @@ export const createMockDb = async (port?: number) => {
         return await activeDb.execProtocolRaw(data);
       },
     });
+
+    socket.on('end', () => {
+      console.info('Client disconnected');
+    });
   }) as any);
 
   if (!port) {
     port = await getUnusedRandomPort();
   }
 
-  server.listen(port);
+  server.listen(port, () => {
+    console.info(`Mock DB server listening on port ${port}`);
+  });
 
   return {
     db,
