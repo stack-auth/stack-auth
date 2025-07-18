@@ -226,7 +226,7 @@ import.meta.vitest?.test("applies migration while running a query", runTest(asyn
   await runQueryAndMigrateIfNeeded({
     prismaClient,
     fn: async () => await prismaClient.$transaction([
-      prismaClient.$queryRaw(getMigrationCheckQuery({ migrationFiles: exampleMigrationFiles1 })),
+      prismaClient.$queryRaw(getMigrationCheckQuery()),
       prismaClient.$executeRaw`INSERT INTO test (name) VALUES ('test_value')`,
     ]),
     migrationFiles: exampleMigrationFiles1,
@@ -242,7 +242,7 @@ import.meta.vitest?.test("applies migration while running concurrent queries", r
   const runMigrationAndInsert = (testValue: string) => runQueryAndMigrateIfNeeded({
     prismaClient,
     fn: async () => await prismaClient.$transaction([
-      prismaClient.$queryRaw(getMigrationCheckQuery({ migrationFiles: exampleMigrationFiles1 })),
+      prismaClient.$queryRaw(getMigrationCheckQuery()),
       prismaClient.$executeRaw`INSERT INTO test (name) VALUES (${testValue})`,
     ]),
     migrationFiles: exampleMigrationFiles1,
@@ -266,7 +266,7 @@ import.meta.vitest?.test("applies migration while running an interactive transac
     await runQueryAndMigrateIfNeeded({
       prismaClient,
       fn: async () => {
-        await prismaClient.$queryRaw(getMigrationCheckQuery({ migrationFiles: exampleMigrationFiles1 }));
+        await prismaClient.$queryRaw(getMigrationCheckQuery());
       },
       migrationFiles: exampleMigrationFiles1,
     });
@@ -287,7 +287,7 @@ import.meta.vitest?.test("applies migration while running concurrent interactive
       await runQueryAndMigrateIfNeeded({
         prismaClient,
         fn: async () => {
-          await prismaClient.$queryRaw(getMigrationCheckQuery({ migrationFiles: exampleMigrationFiles1 }));
+          await prismaClient.$queryRaw(getMigrationCheckQuery());
         },
         migrationFiles: exampleMigrationFiles1,
         artificialDelayInSeconds: 1,
