@@ -76,7 +76,7 @@ export const PATCH = createSmartRouteHandler({
     }
     const theme = themeList[id];
     const result = await renderEmailWithTheme(body.preview_html, body.tsx_source);
-    if ("error" in result) {
+    if (result.status === "error") {
       throw new KnownErrors.EmailRenderingError(result.error);
     }
     await overrideEnvironmentConfigOverride({
@@ -92,7 +92,7 @@ export const PATCH = createSmartRouteHandler({
       bodyType: "json",
       body: {
         display_name: theme.displayName,
-        rendered_html: result.html,
+        rendered_html: result.data.html,
       },
     };
   },

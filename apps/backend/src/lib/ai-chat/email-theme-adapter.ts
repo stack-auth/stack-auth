@@ -16,7 +16,7 @@ export const emailThemeAdapter = (context: ChatAdapterContext) => ({
       }),
       execute: async (args) => {
         const result = await renderEmailWithTheme("<div>test</div>", args.content);
-        if ("error" in result) {
+        if (result.status === "error") {
           return { success: false, error: result.error };
         }
         await overrideEnvironmentConfigOverride({
@@ -27,7 +27,7 @@ export const emailThemeAdapter = (context: ChatAdapterContext) => ({
             [`emails.themeList.${context.threadId}.tsxSource`]: args.content,
           },
         });
-        return { success: true, html: result.html };
+        return { success: true, html: result.data.html };
       },
     }),
   },

@@ -1,4 +1,5 @@
-import { renderEmailWithTemplate, renderEmailWithTheme } from "@/lib/email-themes";
+import { renderEmailWithTheme } from "@/lib/email-themes";
+import { renderEmailWithTemplate } from "@/lib/email-templates";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { KnownErrors } from "@stackframe/stack-shared/dist/known-errors";
 import { adaptSchema, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
@@ -50,7 +51,7 @@ export const POST = createSmartRouteHandler({
     else {
       result = await renderEmailWithTheme(body.preview_html!, theme.tsxSource);
     }
-    if ("error" in result) {
+    if (result.status === "error") {
       captureError('render-email', new StackAssertionError("Error rendering email with theme", { result }));
       throw new KnownErrors.EmailRenderingError(result.error);
     }
@@ -58,7 +59,7 @@ export const POST = createSmartRouteHandler({
       statusCode: 200,
       bodyType: "json",
       body: {
-        html: result.html,
+        html: result.data.html,
       },
     };
   },

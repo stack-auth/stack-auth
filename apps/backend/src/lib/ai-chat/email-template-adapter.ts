@@ -1,5 +1,5 @@
 import { overrideEnvironmentConfigOverride } from "@/lib/config";
-import { renderEmailWithTemplate } from "@/lib/email-themes";
+import { renderEmailWithTemplate } from "@/lib/email-templates";
 import { globalPrismaClient } from "@/prisma-client";
 import { tool } from "ai";
 import { z } from "zod";
@@ -21,7 +21,7 @@ export const emailTemplateAdapter = (context: ChatAdapterContext) => ({
       execute: async (args) => {
         const theme = context.tenancy.completeConfig.emails.themeList[context.tenancy.completeConfig.emails.theme];
         const result = await renderEmailWithTemplate(theme.tsxSource, args.content, { projectDisplayName: context.tenancy.project.display_name });
-        if ("error" in result) {
+        if (result.status === "error") {
           return { success: false, error: result.error };
         }
         await overrideEnvironmentConfigOverride({
@@ -32,7 +32,7 @@ export const emailTemplateAdapter = (context: ChatAdapterContext) => ({
             [`emails.templateList.${context.threadId}.tsxSource`]: args.content,
           },
         });
-        return { success: true, html: result.html };
+        return { success: true, html: result.data.html };
       },
     }),
   },
