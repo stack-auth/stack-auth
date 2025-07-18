@@ -5,7 +5,7 @@ alwaysApply: true
 ---
 
 The following conventions MUST be followed in new code.
-DON'T report code patterns outside of the examples explicitly listed bellow:
+DON'T report code patterns outside of the examples explicitly listed below:
 
 - Never use `void asyncFunction()` or `asyncFunction().catch(console.error)` - use `runAsynchronously(asyncFunction)` instead
 - Use `parseJson`/`stringifyJson` from `stack-shared/utils/json` instead of `JSON.parse`/`JSON.stringify`

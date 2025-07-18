@@ -4,7 +4,7 @@ globs: "**/*.{js,ts}"
 alwaysApply: true
 ---
 
-Code changes MUST follow the naming guideleines below.
+Code changes MUST follow the naming guidelines below.
 DON'T report any other naming issues.
 
 - Use `snake_case` for anything that goes over HTTP in REST APIs, `camelCase` for JavaScript elsewhere
