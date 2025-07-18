@@ -131,9 +131,8 @@ export const connectedAccountAccessTokenCrudHandlers = createLazyProxy(() => cre
         await prisma.oAuthAccessToken.create({
           data: {
             tenancyId: auth.tenancy.id,
-            configOAuthProviderId: params.provider_id,
             accessToken: tokenSet.accessToken,
-            providerAccountId: token.providerAccountId,
+            oauthAccountId: token.id,
             scopes: token.scopes,
             expiresAt: tokenSet.accessTokenExpiredAt
           }
@@ -149,9 +148,8 @@ export const connectedAccountAccessTokenCrudHandlers = createLazyProxy(() => cre
           await prisma.oAuthToken.create({
             data: {
               tenancyId: auth.tenancy.id,
-              configOAuthProviderId: params.provider_id,
               refreshToken: tokenSet.refreshToken,
-              providerAccountId: token.providerAccountId,
+              oauthAccountId: token.id,
               scopes: token.scopes,
             }
           });
