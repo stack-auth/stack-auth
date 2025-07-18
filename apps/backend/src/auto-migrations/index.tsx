@@ -125,7 +125,7 @@ async function acquireMigrationLock(options: {
     }
   }
 
-  throw new Error('Failed to acquire migration lock');
+  throw new StackAssertionError('Failed to acquire migration lock');
 }
 
 function getRemoveMigrationLockQuery(options: {
