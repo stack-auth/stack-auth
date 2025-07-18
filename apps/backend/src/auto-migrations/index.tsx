@@ -74,6 +74,7 @@ export async function applyMigrations(options: {
   const appliedMigrationNames = await getAppliedMigrations({ prismaClient: options.prismaClient });
   const newMigrationFiles = migrationFiles.filter(x => !appliedMigrationNames.includes(x.migrationName));
 
+  const newlyAppliedMigrationNames = [];
   for (const migration of newMigrationFiles) {
     if (options.logging) {
       console.log(`Applying migration ${migration.migrationName}`);
@@ -81,11 +82,11 @@ export async function applyMigrations(options: {
 
     const transaction = [];
 
-    await options.prismaClient.$executeRaw`
-      SELECT pg_advisory_lock(${ADVISORY_LOCK_ID});
-    `;
+    transaction.push(options.prismaClient.$executeRaw`
+      SELECT pg_advisory_xact_lock(${ADVISORY_LOCK_ID});
+    `);
 
-    await options.prismaClient.$executeRaw`
+    transaction.push(options.prismaClient.$executeRaw`
       DO $$
       BEGIN
         IF EXISTS (
@@ -96,7 +97,7 @@ export async function applyMigrations(options: {
         END IF;
       END
       $$;
-    `;
+    `);
 
     for (const statement of migration.sql.split('SPLIT_STATEMENT_SENTINEL')) {
       if (statement.includes('SINGLE_STATEMENT_SENTINEL')) {
@@ -113,20 +114,15 @@ export async function applyMigrations(options: {
     }
 
     if (options.artificialDelayInSeconds) {
-      await options.prismaClient.$executeRaw`
+      transaction.push(options.prismaClient.$executeRaw`
         SELECT pg_sleep(${options.artificialDelayInSeconds});
-      `;
+      `);
     }
 
     transaction.push(options.prismaClient.$executeRaw`
       INSERT INTO "SchemaMigration" ("migrationName", "finishedAt")
       VALUES (${migration.migrationName}, clock_timestamp())
     `);
-
-    await options.prismaClient.$executeRaw`
-      SELECT pg_advisory_unlock(${ADVISORY_LOCK_ID});
-    `;
-
     try {
       await options.prismaClient.$transaction(transaction);
     } catch (e) {
@@ -136,9 +132,11 @@ export async function applyMigrations(options: {
       }
       throw e;
     }
+
+    newlyAppliedMigrationNames.push(migration.migrationName);
   }
 
-  return { newlyAppliedMigrationNames: newMigrationFiles.map(x => x.migrationName) };
+  return { newlyAppliedMigrationNames };
 };
 
 export function getMigrationCheckQuery() {
