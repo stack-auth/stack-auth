@@ -1,5 +1,5 @@
 import { Tenancy } from "@/lib/tenancies";
-import { getPrismaClientForTenancy, globalPrismaClient } from "@/prisma-client";
+import { getPrismaClientForTenancy, getPrismaSchemaForTenancy, globalPrismaClient, sqlQuoteIdent } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { KnownErrors } from "@stackframe/stack-shared";
 import { UsersCrud } from "@stackframe/stack-shared/dist/interface/crud/users";
@@ -45,7 +45,9 @@ async function loadUsersByCountry(tenancy: Tenancy): Promise<Record<string, numb
 }
 
 async function loadTotalUsers(tenancy: Tenancy, now: Date): Promise<DataPoints> {
-  return (await getPrismaClientForTenancy(tenancy).$queryRaw<{date: Date, dailyUsers: bigint, cumUsers: bigint}[]>`
+  const schema = getPrismaSchemaForTenancy(tenancy);
+  const prisma = getPrismaClientForTenancy(tenancy);
+  return (await prisma.$queryRaw<{date: Date, dailyUsers: bigint, cumUsers: bigint}[]>`
     WITH date_series AS (
         SELECT GENERATE_SERIES(
           ${now}::date - INTERVAL '30 days',
@@ -59,7 +61,7 @@ async function loadTotalUsers(tenancy: Tenancy, now: Date): Promise<DataPoints> 
       COALESCE(COUNT(pu."projectUserId"), 0) AS "dailyUsers",
       SUM(COALESCE(COUNT(pu."projectUserId"), 0)) OVER (ORDER BY ds.registration_day) AS "cumUsers"
     FROM date_series ds
-    LEFT JOIN "ProjectUser" pu
+    LEFT JOIN ${sqlQuoteIdent(schema)}."ProjectUser" pu
     ON DATE(pu."createdAt") = ds.registration_day AND pu."tenancyId" = ${tenancy.id}::UUID
     GROUP BY ds.registration_day
     ORDER BY ds.registration_day
@@ -104,7 +106,9 @@ async function loadDailyActiveUsers(tenancy: Tenancy, now: Date) {
 }
 
 async function loadLoginMethods(tenancy: Tenancy): Promise<{method: string, count: number }[]> {
-  return await getPrismaClientForTenancy(tenancy).$queryRaw<{ method: string, count: number }[]>`
+  const schema = getPrismaSchemaForTenancy(tenancy);
+  const prisma = getPrismaClientForTenancy(tenancy);
+  return await prisma.$queryRaw<{ method: string, count: number }[]>`
     WITH tab AS (
       SELECT
         COALESCE(
@@ -116,11 +120,11 @@ async function loadLoginMethods(tenancy: Tenancy): Promise<{method: string, coun
         ) AS "method",
         method.id AS id
       FROM
-        "AuthMethod" method
-      LEFT JOIN "OAuthAuthMethod" oaam ON method.id = oaam."authMethodId"
-      LEFT JOIN "PasswordAuthMethod" pam ON method.id = pam."authMethodId"
-      LEFT JOIN "PasskeyAuthMethod" pkm ON method.id = pkm."authMethodId"
-      LEFT JOIN "OtpAuthMethod" oam ON method.id = oam."authMethodId"
+        ${sqlQuoteIdent(schema)}."AuthMethod" method
+      LEFT JOIN ${sqlQuoteIdent(schema)}."OAuthAuthMethod" oaam ON method.id = oaam."authMethodId"
+      LEFT JOIN ${sqlQuoteIdent(schema)}."PasswordAuthMethod" pam ON method.id = pam."authMethodId"
+      LEFT JOIN ${sqlQuoteIdent(schema)}."PasskeyAuthMethod" pkm ON method.id = pkm."authMethodId"
+      LEFT JOIN ${sqlQuoteIdent(schema)}."OtpAuthMethod" oam ON method.id = oam."authMethodId"
       WHERE method."tenancyId" = ${tenancy.id}::UUID)
     SELECT LOWER("method") AS method, COUNT(id)::int AS "count" FROM tab
     GROUP BY "method"

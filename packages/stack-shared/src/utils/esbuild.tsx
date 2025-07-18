@@ -14,6 +14,7 @@ export async function initializeEsbuild() {
 }
 
 export async function bundleJavaScript(sourceFiles: Record<string, string> & { '/entry.js': string }, options: {
+  format?: 'iife' | 'esm' | 'cjs',
   externalPackages?: Record<string, string>,
 } = {}): Promise<Result<string, string>> {
   await initializeEsbuild();
@@ -35,7 +36,7 @@ export async function bundleJavaScript(sourceFiles: Record<string, string> & { '
       entryPoints: ['/entry.js'],
       bundle: true,
       write: false,
-      format: 'iife',
+      format: options.format ?? 'iife',
       platform: 'browser',
       target: 'es2015',
       jsx: 'automatic',

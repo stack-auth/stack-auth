@@ -1,17 +1,18 @@
 "use client";
 
-import { FormDialog } from "@/components/form-dialog";
-import { InputField } from "@/components/form-fields";
-import { useRouter } from "@/components/router";
+import { Link } from "@/components/link";
 import { SettingCard } from "@/components/settings";
+import { InputField } from "@/components/form-fields";
 import ThemePreview from "@/components/theme-preview";
-import { throwErr } from "@stackframe/stack-shared/dist/utils/errors";
-import { ActionDialog, Button, Card, Typography } from "@stackframe/stack-ui";
-import { Check } from "lucide-react";
+import { ActionDialog, Button, Typography } from "@stackframe/stack-ui";
+import { FormDialog } from "@/components/form-dialog";
+import { Check, Pencil } from "lucide-react";
 import { useState } from "react";
 import * as yup from "yup";
 import { PageLayout } from "../page-layout";
 import { useAdminApp } from "../use-admin-app";
+import { useRouter } from "@/components/router";
+import { throwErr } from "@stackframe/stack-shared/dist/utils/errors";
 
 export default function PageClient() {
   const stackAdminApp = useAdminApp();
@@ -62,7 +63,7 @@ export default function PageClient() {
             onClick: handleSaveTheme
           }}
         >
-          <div className="space-y-4">
+          <div className="grid grid-cols-2 gap-6">
             {themes.map((theme) => (
               <ThemeOption
                 key={theme.id}
@@ -87,25 +88,28 @@ function ThemeOption({
   isSelected: boolean,
   onSelect: (themeId: string) => void,
 }) {
+  const stackAdminApp = useAdminApp();
+  const project = stackAdminApp.useProject();
+
   return (
-    <Card
-      className="cursor-pointer hover:ring-1 transition-all"
-      onClick={() => onSelect(theme.id)}
-    >
-      <div className="p-4 pb-3">
-        <div className="flex items-center justify-between">
-          <Typography variant="secondary">{theme.displayName}</Typography>
-          {isSelected && (
-            <div className="bg-blue-500 text-white rounded-full w-6 h-6 p-1 flex items-center justify-center">
-              <Check />
-            </div>
-          )}
-        </div>
-        <div className="h-60" style={{ zoom: 0.75 }}>
-          <ThemePreview themeId={theme.id} disableFrame />
-        </div>
+    <div className="relative flex flex-col items-center gap-2 group cursor-pointer" onClick={() => onSelect(theme.id)}>
+      <div className="w-full h-60 shadow-md rounded-md overflow-clip group-hover:shadow-lg transition-all" style={{ zoom: 0.75 }}>
+        <ThemePreview themeId={theme.id} disableFrame />
       </div>
-    </Card>
+      <div className="flex items-center gap-2">
+        {isSelected && <Check />}
+        <Typography variant="secondary" >{theme.displayName}</Typography>
+      </div>
+      <Link href={`/projects/${project.id}/email-themes/${theme.id}`}>
+        <Button
+          variant="ghost"
+          size="icon"
+          className="absolute top-2 right-2 bg-secondary opacity-0 group-hover:opacity-100 transition-opacity"
+        >
+          <Pencil className="w-4 h-4" />
+        </Button>
+      </Link>
+    </div>
   );
 }
 

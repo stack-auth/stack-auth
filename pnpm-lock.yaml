@@ -167,10 +167,10 @@ importers:
         version: 6.11.1(@opentelemetry/api@1.9.0)
       '@sentry/nextjs':
         specifier: ^8.40.0
-        version: 8.40.0(@opentelemetry/core@1.26.0(@opentelemetry/api@1.9.0))(@opentelemetry/instrumentation@0.53.0(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-trace-base@1.26.0(@opentelemetry/api@1.9.0))(next@15.4.1(@babel/core@7.26.0)(@opentelemetry/api@1.9.0)(react-dom@19.0.0(react@19.0.0))(react@19.0.0))(react@19.0.0)(webpack@5.92.0(@swc/core@1.3.101)(esbuild@0.24.2))
+        version: 8.40.0(@opentelemetry/core@1.26.0(@opentelemetry/api@1.9.0))(@opentelemetry/instrumentation@0.53.0(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-trace-base@1.26.0(@opentelemetry/api@1.9.0))(encoding@0.1.13)(next@15.4.1(@babel/core@7.26.0)(@opentelemetry/api@1.9.0)(react-dom@19.0.0(react@19.0.0))(react@19.0.0))(react@19.0.0)(webpack@5.92.0(@swc/core@1.3.101)(esbuild@0.24.2))
       '@simplewebauthn/server':
         specifier: ^11.0.0
-        version: 11.0.0
+        version: 11.0.0(encoding@0.1.13)
       '@stackframe/stack-emails':
         specifier: workspace:*
         version: link:../../packages/stack-emails
@@ -188,13 +188,13 @@ importers:
         version: 4.3.17(react@19.0.0)(zod@3.25.76)
       bcrypt:
         specifier: ^5.1.1
-        version: 5.1.1
+        version: 5.1.1(encoding@0.1.13)
       dotenv-cli:
         specifier: ^7.3.0
         version: 7.4.1
       freestyle-sandboxes:
         specifier: ^0.0.92
-        version: 0.0.92(expo-constants@17.1.7(expo@53.0.17(@babel/core@7.26.0)(@expo/metro-runtime@4.0.1(react-native@0.80.1(@babel/core@7.26.0)(@types/react@18.3.12)(react@19.0.0)))(react-native@0.80.1(@babel/core@7.26.0)(@types/react@18.3.12)(react@19.0.0))(react@19.0.0))(react-native@0.80.1(@babel/core@7.26.0)(@types/react@18.3.12)(react@19.0.0)))(expo-linking@7.0.5(expo@53.0.17(@babel/core@7.26.0)(@expo/metro-runtime@4.0.1(react-native@0.80.1(@babel/core@7.26.0)(@types/react@18.3.12)(react@19.0.0)))(react-native@0.80.1(@babel/core@7.26.0)(@types/react@18.3.12)(react@19.0.0))(react@19.0.0))(react-native@0.80.1(@babel/core@7.26.0)(@types/react@18.3.12)(react@19.0.0))(react@19.0.0))(expo@53.0.17(@babel/core@7.26.0)(@expo/metro-runtime@4.0.1(react-native@0.80.1(@babel/core@7.26.0)(@types/react@18.3.12)(react@19.0.0)))(react-native@0.80.1(@babel/core@7.26.0)(@types/react@18.3.12)(react@19.0.0))(react@19.0.0))(react-dom@19.0.0(react@19.0.0))(react-native-safe-area-context@5.5.1(react-native@0.80.1(@babel/core@7.26.0)(@types/react@18.3.12)(react@19.0.0))(react@19.0.0))(react-native-screens@4.11.1(react-native@0.80.1(@babel/core@7.26.0)(@types/react@18.3.12)(react@19.0.0))(react@19.0.0))(react-native@0.80.1(@babel/core@7.26.0)(@types/react@18.3.12)(react@19.0.0))(ws@8.18.2)
+        version: 0.0.92(encoding@0.1.13)(expo-constants@17.1.7(expo@53.0.17(@babel/core@7.26.0)(@expo/metro-runtime@4.0.1(react-native@0.80.1(@babel/core@7.26.0)(@types/react@18.3.12)(react@19.0.0)))(react-native@0.80.1(@babel/core@7.26.0)(@types/react@18.3.12)(react@19.0.0))(react@19.0.0))(react-native@0.80.1(@babel/core@7.26.0)(@types/react@18.3.12)(react@19.0.0)))(expo-linking@7.0.5(expo@53.0.17(@babel/core@7.26.0)(@expo/metro-runtime@4.0.1(react-native@0.80.1(@babel/core@7.26.0)(@types/react@18.3.12)(react@19.0.0)))(react-native@0.80.1(@babel/core@7.26.0)(@types/react@18.3.12)(react@19.0.0))(react@19.0.0))(react-native@0.80.1(@babel/core@7.26.0)(@types/react@18.3.12)(react@19.0.0))(react@19.0.0))(expo@53.0.17(@babel/core@7.26.0)(@expo/metro-runtime@4.0.1(react-native@0.80.1(@babel/core@7.26.0)(@types/react@18.3.12)(react@19.0.0)))(react-native@0.80.1(@babel/core@7.26.0)(@types/react@18.3.12)(react@19.0.0))(react@19.0.0))(react-dom@19.0.0(react@19.0.0))(react-native-safe-area-context@5.5.1(react-native@0.80.1(@babel/core@7.26.0)(@types/react@18.3.12)(react@19.0.0))(react@19.0.0))(react-native-screens@4.11.1(react-native@0.80.1(@babel/core@7.26.0)(@types/react@18.3.12)(react@19.0.0))(react@19.0.0))(react-native@0.80.1(@babel/core@7.26.0)(@types/react@18.3.12)(react@19.0.0))(ws@8.18.2)
       jose:
         specifier: ^5.2.2
         version: 5.4.0
@@ -233,7 +233,7 @@ importers:
         version: 0.32.6
       svix:
         specifier: ^1.25.0
-        version: 1.25.0
+        version: 1.25.0(encoding@0.1.13)
       yaml:
         specifier: ^2.4.5
         version: 2.4.5
@@ -330,7 +330,7 @@ importers:
         version: 2.0.2(react@19.0.0)
       '@sentry/nextjs':
         specifier: ^8.40.0
-        version: 8.40.0(@opentelemetry/core@1.26.0(@opentelemetry/api@1.9.0))(@opentelemetry/instrumentation@0.54.2(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-trace-base@1.26.0(@opentelemetry/api@1.9.0))(next@15.4.1(@babel/core@7.26.0)(@opentelemetry/api@1.9.0)(react-dom@19.0.0(react@19.0.0))(react@19.0.0))(react@19.0.0)(webpack@5.92.0(@swc/core@1.3.101)(esbuild@0.24.2))
+        version: 8.40.0(@opentelemetry/core@1.26.0(@opentelemetry/api@1.9.0))(@opentelemetry/instrumentation@0.54.2(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-trace-base@1.26.0(@opentelemetry/api@1.9.0))(encoding@0.1.13)(next@15.4.1(@babel/core@7.26.9)(@opentelemetry/api@1.9.0)(react-dom@19.0.0(react@19.0.0))(react@19.0.0))(react@19.0.0)(webpack@5.92.0(@swc/core@1.3.101)(esbuild@0.24.2))
       '@stackframe/stack':
         specifier: workspace:*
         version: link:../../packages/stack
@@ -348,10 +348,10 @@ importers:
         version: 8.20.5(react-dom@19.0.0(react@19.0.0))(react@19.0.0)
       '@vercel/analytics':
         specifier: ^1.2.2
-        version: 1.3.1(next@15.4.1(@babel/core@7.26.0)(@opentelemetry/api@1.9.0)(react-dom@19.0.0(react@19.0.0))(react@19.0.0))(react@19.0.0)
+        version: 1.3.1(next@15.4.1(@babel/core@7.26.9)(@opentelemetry/api@1.9.0)(react-dom@19.0.0(react@19.0.0))(react@19.0.0))(react@19.0.0)
       '@vercel/speed-insights':
         specifier: ^1.0.12
-        version: 1.0.12(next@15.4.1(@babel/core@7.26.0)(@opentelemetry/api@1.9.0)(react-dom@19.0.0(react@19.0.0))(react@19.0.0))(react@19.0.0)
+        version: 1.0.12(next@15.4.1(@babel/core@7.26.9)(@opentelemetry/api@1.9.0)(react-dom@19.0.0(react@19.0.0))(react@19.0.0))(react@19.0.0)
       canvas-confetti:
         specifier: ^1.9.2
         version: 1.9.3
@@ -363,7 +363,7 @@ importers:
         version: 7.4.1
       geist:
         specifier: ^1
-        version: 1.3.0(next@15.4.1(@babel/core@7.26.0)(@opentelemetry/api@1.9.0)(react-dom@19.0.0(react@19.0.0))(react@19.0.0))
+        version: 1.3.0(next@15.4.1(@babel/core@7.26.9)(@opentelemetry/api@1.9.0)(react-dom@19.0.0(react@19.0.0))(react@19.0.0))
       lodash:
         specifier: ^4.17.21
         version: 4.17.21
@@ -372,10 +372,10 @@ importers:
         version: 0.508.0(react@19.0.0)
       next:
         specifier: 15.4.1
-        version: 15.4.1(@babel/core@7.26.0)(@opentelemetry/api@1.9.0)(react-dom@19.0.0(react@19.0.0))(react@19.0.0)
+        version: 15.4.1(@babel/core@7.26.9)(@opentelemetry/api@1.9.0)(react-dom@19.0.0(react@19.0.0))(react@19.0.0)
       next-themes:
         specifier: ^0.2.1
-        version: 0.2.1(next@15.4.1(@babel/core@7.26.0)(@opentelemetry/api@1.9.0)(react-dom@19.0.0(react@19.0.0))(react@19.0.0))(react-dom@19.0.0(react@19.0.0))(react@19.0.0)
+        version: 0.2.1(next@15.4.1(@babel/core@7.26.9)(@opentelemetry/api@1.9.0)(react-dom@19.0.0(react@19.0.0))(react@19.0.0))(react-dom@19.0.0(react@19.0.0))(react@19.0.0)
       posthog-js:
         specifier: ^1.235.0
         version: 1.235.4
@@ -405,10 +405,10 @@ importers:
         version: 4.0.1
       svix:
         specifier: ^1.32.0
-        version: 1.32.0
+        version: 1.32.0(encoding@0.1.13)
       svix-react:
         specifier: ^1.13.0
-        version: 1.13.0(@babel/core@7.26.0)(prop-types@15.8.1)(react-dom@19.0.0(react@19.0.0))(react@19.0.0)(svix@1.32.0)
+        version: 1.13.0(@babel/core@7.26.9)(prop-types@15.8.1)(react-dom@19.0.0(react@19.0.0))(react@19.0.0)(svix@1.32.0(encoding@0.1.13))
       tailwind-merge:
         specifier: ^2.3.0
         version: 2.3.0
@@ -1525,7 +1525,7 @@ importers:
     devDependencies:
       '@sentry/nextjs':
         specifier: ^8.40.0
-        version: 8.40.0(@opentelemetry/core@1.26.0(@opentelemetry/api@1.9.0))(@opentelemetry/instrumentation@0.54.2(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-trace-base@1.26.0(@opentelemetry/api@1.9.0))(next@15.4.1(@babel/core@7.26.0)(@opentelemetry/api@1.9.0)(react-dom@18.2.0(react@18.2.0))(react@18.2.0))(react@18.2.0)(webpack@5.92.0(@swc/core@1.3.101)(esbuild@0.24.2))
+        version: 8.40.0(@opentelemetry/core@1.26.0(@opentelemetry/api@1.9.0))(@opentelemetry/instrumentation@0.54.2(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-trace-base@1.26.0(@opentelemetry/api@1.9.0))(encoding@0.1.13)(next@15.4.1(@babel/core@7.26.0)(@opentelemetry/api@1.9.0)(react-dom@18.2.0(react@18.2.0))(react@18.2.0))(react@18.2.0)(webpack@5.92.0(@swc/core@1.3.101)(esbuild@0.24.2))
       '@simplewebauthn/types':
         specifier: ^11.0.0
         version: 11.0.0
@@ -9916,6 +9916,9 @@ packages:
   encoding-sniffer@0.2.0:
     resolution: {integrity: sha512-ju7Wq1kg04I3HtiYIOrUrdfdDvkyO9s5XM8QAj/bN61Yo/Vb4vgJxy5vi4Yxk01gWHbrofpPtpxM8bKger9jhg==}
 
+  encoding@0.1.13:
+    resolution: {integrity: sha512-ETBauow1T35Y/WZMkio9jiM0Z5xjHHmJ4XmjZOq1l/dXz3lr2sRn87nJy20RupqSh1F2m3HHPSp8ShIPQJrJ3A==}
+
   end-of-stream@1.4.4:
     resolution: {integrity: sha512-+uw1inIHVPQoaVuHzRyXd21icM+cnt4CzD5rW+NC1wjOUSTOs+Te7FOv7AhN7vS9x/oIyhLP5PR1H+phQAHu5Q==}
 
@@ -16474,13 +16477,13 @@ snapshots:
       lru-cache: 5.1.1
       semver: 6.3.1
 
-  '@babel/helper-create-class-features-plugin@7.25.0(@babel/core@7.26.0)':
+  '@babel/helper-create-class-features-plugin@7.25.0(@babel/core@7.26.9)':
     dependencies:
-      '@babel/core': 7.26.0
+      '@babel/core': 7.26.9
       '@babel/helper-annotate-as-pure': 7.24.7
       '@babel/helper-member-expression-to-functions': 7.24.8
       '@babel/helper-optimise-call-expression': 7.24.7
-      '@babel/helper-replace-supers': 7.25.0(@babel/core@7.26.0)
+      '@babel/helper-replace-supers': 7.25.0(@babel/core@7.26.9)
       '@babel/helper-skip-transparent-expression-wrappers': 7.24.7
       '@babel/traverse': 7.26.9
       semver: 6.3.1
@@ -16605,9 +16608,9 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
-  '@babel/helper-replace-supers@7.25.0(@babel/core@7.26.0)':
+  '@babel/helper-replace-supers@7.25.0(@babel/core@7.26.9)':
     dependencies:
-      '@babel/core': 7.26.0
+      '@babel/core': 7.26.9
       '@babel/helper-member-expression-to-functions': 7.24.8
       '@babel/helper-optimise-call-expression': 7.24.7
       '@babel/traverse': 7.26.9
@@ -16708,13 +16711,13 @@ snapshots:
       '@babel/core': 7.26.0
       '@babel/helper-plugin-utils': 7.27.1
 
-  '@babel/plugin-proposal-private-property-in-object@7.21.11(@babel/core@7.26.0)':
+  '@babel/plugin-proposal-private-property-in-object@7.21.11(@babel/core@7.26.9)':
     dependencies:
-      '@babel/core': 7.26.0
+      '@babel/core': 7.26.9
       '@babel/helper-annotate-as-pure': 7.24.7
-      '@babel/helper-create-class-features-plugin': 7.25.0(@babel/core@7.26.0)
+      '@babel/helper-create-class-features-plugin': 7.25.0(@babel/core@7.26.9)
       '@babel/helper-plugin-utils': 7.24.8
-      '@babel/plugin-syntax-private-property-in-object': 7.14.5(@babel/core@7.26.0)
+      '@babel/plugin-syntax-private-property-in-object': 7.14.5(@babel/core@7.26.9)
     transitivePeerDependencies:
       - supports-color
 
@@ -16811,6 +16814,11 @@ snapshots:
   '@babel/plugin-syntax-private-property-in-object@7.14.5(@babel/core@7.26.0)':
     dependencies:
       '@babel/core': 7.26.0
+      '@babel/helper-plugin-utils': 7.27.1
+
+  '@babel/plugin-syntax-private-property-in-object@7.14.5(@babel/core@7.26.9)':
+    dependencies:
+      '@babel/core': 7.26.9
       '@babel/helper-plugin-utils': 7.27.1
 
   '@babel/plugin-syntax-top-level-await@7.14.5(@babel/core@7.26.0)':
@@ -18978,12 +18986,12 @@ snapshots:
       globby: 11.1.0
       read-yaml-file: 1.1.0
 
-  '@mapbox/node-pre-gyp@1.0.11':
+  '@mapbox/node-pre-gyp@1.0.11(encoding@0.1.13)':
     dependencies:
       detect-libc: 2.0.3
       https-proxy-agent: 5.0.1
       make-dir: 3.1.0
-      node-fetch: 2.7.0
+      node-fetch: 2.7.0(encoding@0.1.13)
       nopt: 5.0.0
       npmlog: 5.0.1
       rimraf: 3.0.2
@@ -22252,11 +22260,11 @@ snapshots:
       '@sentry/core': 8.40.0
       '@sentry/types': 8.40.0
 
-  '@sentry/bundler-plugin-core@2.22.6':
+  '@sentry/bundler-plugin-core@2.22.6(encoding@0.1.13)':
     dependencies:
       '@babel/core': 7.26.0
       '@sentry/babel-plugin-component-annotate': 2.22.6
-      '@sentry/cli': 2.38.2
+      '@sentry/cli': 2.38.2(encoding@0.1.13)
       dotenv: 16.4.5
       find-up: 5.0.0
       glob: 9.3.5
@@ -22287,10 +22295,10 @@ snapshots:
   '@sentry/cli-win32-x64@2.38.2':
     optional: true
 
-  '@sentry/cli@2.38.2':
+  '@sentry/cli@2.38.2(encoding@0.1.13)':
     dependencies:
       https-proxy-agent: 5.0.1
-      node-fetch: 2.7.0
+      node-fetch: 2.7.0(encoding@0.1.13)
       progress: 2.0.3
       proxy-from-env: 1.1.0
       which: 2.0.2
@@ -22310,7 +22318,7 @@ snapshots:
     dependencies:
       '@sentry/types': 8.40.0
 
-  '@sentry/nextjs@8.40.0(@opentelemetry/core@1.26.0(@opentelemetry/api@1.9.0))(@opentelemetry/instrumentation@0.53.0(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-trace-base@1.26.0(@opentelemetry/api@1.9.0))(next@15.4.1(@babel/core@7.26.0)(@opentelemetry/api@1.9.0)(react-dom@19.0.0(react@19.0.0))(react@19.0.0))(react@19.0.0)(webpack@5.92.0(@swc/core@1.3.101)(esbuild@0.24.2))':
+  '@sentry/nextjs@8.40.0(@opentelemetry/core@1.26.0(@opentelemetry/api@1.9.0))(@opentelemetry/instrumentation@0.53.0(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-trace-base@1.26.0(@opentelemetry/api@1.9.0))(encoding@0.1.13)(next@15.4.1(@babel/core@7.26.0)(@opentelemetry/api@1.9.0)(react-dom@19.0.0(react@19.0.0))(react@19.0.0))(react@19.0.0)(webpack@5.92.0(@swc/core@1.3.101)(esbuild@0.24.2))':
     dependencies:
       '@opentelemetry/api': 1.9.0
       '@opentelemetry/instrumentation-http': 0.53.0(@opentelemetry/api@1.9.0)
@@ -22323,7 +22331,7 @@ snapshots:
       '@sentry/react': 8.40.0(react@19.0.0)
       '@sentry/types': 8.40.0
       '@sentry/vercel-edge': 8.40.0
-      '@sentry/webpack-plugin': 2.22.6(webpack@5.92.0(@swc/core@1.3.101)(esbuild@0.24.2))
+      '@sentry/webpack-plugin': 2.22.6(encoding@0.1.13)(webpack@5.92.0(@swc/core@1.3.101)(esbuild@0.24.2))
       chalk: 3.0.0
       next: 15.4.1(@babel/core@7.26.0)(@opentelemetry/api@1.9.0)(react-dom@19.0.0(react@19.0.0))(react@19.0.0)
       resolve: 1.22.8
@@ -22338,7 +22346,7 @@ snapshots:
       - supports-color
       - webpack
 
-  '@sentry/nextjs@8.40.0(@opentelemetry/core@1.26.0(@opentelemetry/api@1.9.0))(@opentelemetry/instrumentation@0.54.2(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-trace-base@1.26.0(@opentelemetry/api@1.9.0))(next@15.4.1(@babel/core@7.26.0)(@opentelemetry/api@1.9.0)(react-dom@18.2.0(react@18.2.0))(react@18.2.0))(react@18.2.0)(webpack@5.92.0(@swc/core@1.3.101)(esbuild@0.24.2))':
+  '@sentry/nextjs@8.40.0(@opentelemetry/core@1.26.0(@opentelemetry/api@1.9.0))(@opentelemetry/instrumentation@0.54.2(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-trace-base@1.26.0(@opentelemetry/api@1.9.0))(encoding@0.1.13)(next@15.4.1(@babel/core@7.26.0)(@opentelemetry/api@1.9.0)(react-dom@18.2.0(react@18.2.0))(react@18.2.0))(react@18.2.0)(webpack@5.92.0(@swc/core@1.3.101)(esbuild@0.24.2))':
     dependencies:
       '@opentelemetry/api': 1.9.0
       '@opentelemetry/instrumentation-http': 0.53.0(@opentelemetry/api@1.9.0)
@@ -22351,7 +22359,7 @@ snapshots:
       '@sentry/react': 8.40.0(react@18.2.0)
       '@sentry/types': 8.40.0
       '@sentry/vercel-edge': 8.40.0
-      '@sentry/webpack-plugin': 2.22.6(webpack@5.92.0(@swc/core@1.3.101)(esbuild@0.24.2))
+      '@sentry/webpack-plugin': 2.22.6(encoding@0.1.13)(webpack@5.92.0(@swc/core@1.3.101)(esbuild@0.24.2))
       chalk: 3.0.0
       next: 15.4.1(@babel/core@7.26.0)(@opentelemetry/api@1.9.0)(react-dom@18.2.0(react@18.2.0))(react@18.2.0)
       resolve: 1.22.8
@@ -22366,7 +22374,7 @@ snapshots:
       - supports-color
       - webpack
 
-  '@sentry/nextjs@8.40.0(@opentelemetry/core@1.26.0(@opentelemetry/api@1.9.0))(@opentelemetry/instrumentation@0.54.2(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-trace-base@1.26.0(@opentelemetry/api@1.9.0))(next@15.4.1(@babel/core@7.26.0)(@opentelemetry/api@1.9.0)(react-dom@19.0.0(react@19.0.0))(react@19.0.0))(react@19.0.0)(webpack@5.92.0(@swc/core@1.3.101)(esbuild@0.24.2))':
+  '@sentry/nextjs@8.40.0(@opentelemetry/core@1.26.0(@opentelemetry/api@1.9.0))(@opentelemetry/instrumentation@0.54.2(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-trace-base@1.26.0(@opentelemetry/api@1.9.0))(encoding@0.1.13)(next@15.4.1(@babel/core@7.26.9)(@opentelemetry/api@1.9.0)(react-dom@19.0.0(react@19.0.0))(react@19.0.0))(react@19.0.0)(webpack@5.92.0(@swc/core@1.3.101)(esbuild@0.24.2))':
     dependencies:
       '@opentelemetry/api': 1.9.0
       '@opentelemetry/instrumentation-http': 0.53.0(@opentelemetry/api@1.9.0)
@@ -22379,9 +22387,9 @@ snapshots:
       '@sentry/react': 8.40.0(react@19.0.0)
       '@sentry/types': 8.40.0
       '@sentry/vercel-edge': 8.40.0
-      '@sentry/webpack-plugin': 2.22.6(webpack@5.92.0(@swc/core@1.3.101)(esbuild@0.24.2))
+      '@sentry/webpack-plugin': 2.22.6(encoding@0.1.13)(webpack@5.92.0(@swc/core@1.3.101)(esbuild@0.24.2))
       chalk: 3.0.0
-      next: 15.4.1(@babel/core@7.26.0)(@opentelemetry/api@1.9.0)(react-dom@19.0.0(react@19.0.0))(react@19.0.0)
+      next: 15.4.1(@babel/core@7.26.9)(@opentelemetry/api@1.9.0)(react-dom@19.0.0(react@19.0.0))(react@19.0.0)
       resolve: 1.22.8
       rollup: 3.29.5
       stacktrace-parser: 0.1.10
@@ -22479,9 +22487,9 @@ snapshots:
       '@sentry/core': 8.40.0
       '@sentry/types': 8.40.0
 
-  '@sentry/webpack-plugin@2.22.6(webpack@5.92.0(@swc/core@1.3.101)(esbuild@0.24.2))':
+  '@sentry/webpack-plugin@2.22.6(encoding@0.1.13)(webpack@5.92.0(@swc/core@1.3.101)(esbuild@0.24.2))':
     dependencies:
-      '@sentry/bundler-plugin-core': 2.22.6
+      '@sentry/bundler-plugin-core': 2.22.6(encoding@0.1.13)
       unplugin: 1.0.1
       uuid: 9.0.1
       webpack: 5.92.0(@swc/core@1.3.101)(esbuild@0.24.2)
@@ -22548,7 +22556,7 @@ snapshots:
     dependencies:
       '@simplewebauthn/types': 11.0.0
 
-  '@simplewebauthn/server@11.0.0':
+  '@simplewebauthn/server@11.0.0(encoding@0.1.13)':
     dependencies:
       '@hexagon/base64': 1.1.28
       '@levischuck/tiny-cbor': 0.2.2
@@ -22558,7 +22566,7 @@ snapshots:
       '@peculiar/asn1-schema': 2.3.13
       '@peculiar/asn1-x509': 2.3.13
       '@simplewebauthn/types': 11.0.0
-      cross-fetch: 4.0.0
+      cross-fetch: 4.0.0(encoding@0.1.13)
     transitivePeerDependencies:
       - encoding
 
@@ -23071,11 +23079,11 @@ snapshots:
   '@types/eslint-scope@3.7.7':
     dependencies:
       '@types/eslint': 8.56.10
-      '@types/estree': 1.0.6
+      '@types/estree': 1.0.8
 
   '@types/eslint@8.56.10':
     dependencies:
-      '@types/estree': 1.0.6
+      '@types/estree': 1.0.8
       '@types/json-schema': 7.0.15
 
   '@types/estree-jsx@1.0.5':
@@ -23596,11 +23604,11 @@ snapshots:
       '@urql/core': 5.2.0
       wonka: 6.3.5
 
-  '@vercel/analytics@1.3.1(next@15.4.1(@babel/core@7.26.0)(@opentelemetry/api@1.9.0)(react-dom@19.0.0(react@19.0.0))(react@19.0.0))(react@19.0.0)':
+  '@vercel/analytics@1.3.1(next@15.4.1(@babel/core@7.26.9)(@opentelemetry/api@1.9.0)(react-dom@19.0.0(react@19.0.0))(react@19.0.0))(react@19.0.0)':
     dependencies:
       server-only: 0.0.1
     optionalDependencies:
-      next: 15.4.1(@babel/core@7.26.0)(@opentelemetry/api@1.9.0)(react-dom@19.0.0(react@19.0.0))(react@19.0.0)
+      next: 15.4.1(@babel/core@7.26.9)(@opentelemetry/api@1.9.0)(react-dom@19.0.0(react@19.0.0))(react@19.0.0)
       react: 19.0.0
 
   '@vercel/functions@2.0.0': {}
@@ -23615,9 +23623,9 @@ snapshots:
       '@opentelemetry/sdk-metrics': 1.26.0(@opentelemetry/api@1.9.0)
       '@opentelemetry/sdk-trace-base': 1.26.0(@opentelemetry/api@1.9.0)
 
-  '@vercel/speed-insights@1.0.12(next@15.4.1(@babel/core@7.26.0)(@opentelemetry/api@1.9.0)(react-dom@19.0.0(react@19.0.0))(react@19.0.0))(react@19.0.0)':
+  '@vercel/speed-insights@1.0.12(next@15.4.1(@babel/core@7.26.9)(@opentelemetry/api@1.9.0)(react-dom@19.0.0(react@19.0.0))(react@19.0.0))(react@19.0.0)':
     optionalDependencies:
-      next: 15.4.1(@babel/core@7.26.0)(@opentelemetry/api@1.9.0)(react-dom@19.0.0(react@19.0.0))(react@19.0.0)
+      next: 15.4.1(@babel/core@7.26.9)(@opentelemetry/api@1.9.0)(react-dom@19.0.0(react@19.0.0))(react@19.0.0)
       react: 19.0.0
 
   '@vitejs/plugin-react@4.3.3(vite@6.1.0(@types/node@20.17.6)(jiti@2.4.2)(lightningcss@1.30.1)(terser@5.31.1)(tsx@4.19.3)(yaml@2.6.0))':
@@ -24320,9 +24328,9 @@ snapshots:
     dependencies:
       safe-buffer: 5.1.2
 
-  bcrypt@5.1.1:
+  bcrypt@5.1.1(encoding@0.1.13):
     dependencies:
-      '@mapbox/node-pre-gyp': 1.0.11
+      '@mapbox/node-pre-gyp': 1.0.11(encoding@0.1.13)
       node-addon-api: 5.1.0
     transitivePeerDependencies:
       - encoding
@@ -25075,7 +25083,7 @@ snapshots:
   cosmiconfig@6.0.0:
     dependencies:
       '@types/parse-json': 4.0.2
-      import-fresh: 3.3.0
+      import-fresh: 3.3.1
       parse-json: 5.2.0
       path-type: 4.0.0
       yaml: 1.10.2
@@ -25092,9 +25100,9 @@ snapshots:
     optionalDependencies:
       buffer: 6.0.3
 
-  cross-fetch@4.0.0:
+  cross-fetch@4.0.0(encoding@0.1.13):
     dependencies:
-      node-fetch: 2.7.0
+      node-fetch: 2.7.0(encoding@0.1.13)
     transitivePeerDependencies:
       - encoding
 
@@ -25629,6 +25637,11 @@ snapshots:
     dependencies:
       iconv-lite: 0.6.3
       whatwg-encoding: 3.1.1
+
+  encoding@0.1.13:
+    dependencies:
+      iconv-lite: 0.6.3
+    optional: true
 
   end-of-stream@1.4.4:
     dependencies:
@@ -27106,15 +27119,15 @@ snapshots:
 
   freeport-async@2.0.0: {}
 
-  ? freestyle-sandboxes@0.0.66(expo-constants@17.1.7(expo@53.0.17(@babel/core@7.26.0)(@expo/metro-runtime@4.0.1(react-native@0.80.1(@babel/core@7.26.0)(@types/react@18.3.12)(react@19.0.0)))(react-native@0.80.1(@babel/core@7.26.0)(@types/react@18.3.12)(react@19.0.0))(react@19.0.0))(react-native@0.80.1(@babel/core@7.26.0)(@types/react@18.3.12)(react@19.0.0)))(expo-linking@7.0.5(expo@53.0.17(@babel/core@7.26.0)(@expo/metro-runtime@4.0.1(react-native@0.80.1(@babel/core@7.26.0)(@types/react@18.3.12)(react@19.0.0)))(react-native@0.80.1(@babel/core@7.26.0)(@types/react@18.3.12)(react@19.0.0))(react@19.0.0))(react-native@0.80.1(@babel/core@7.26.0)(@types/react@18.3.12)(react@19.0.0))(react@19.0.0))(expo@53.0.17(@babel/core@7.26.0)(@expo/metro-runtime@4.0.1(react-native@0.80.1(@babel/core@7.26.0)(@types/react@18.3.12)(react@19.0.0)))(react-native@0.80.1(@babel/core@7.26.0)(@types/react@18.3.12)(react@19.0.0))(react@19.0.0))(react-dom@19.0.0(react@19.0.0))(react-native-safe-area-context@5.5.1(react-native@0.80.1(@babel/core@7.26.0)(@types/react@18.3.12)(react@19.0.0))(react@19.0.0))(react-native-screens@4.11.1(react-native@0.80.1(@babel/core@7.26.0)(@types/react@18.3.12)(react@19.0.0))(react@19.0.0))(react-native@0.80.1(@babel/core@7.26.0)(@types/react@18.3.12)(react@19.0.0))(ws@8.18.2)
+  ? freestyle-sandboxes@0.0.66(encoding@0.1.13)(expo-constants@17.1.7(expo@53.0.17(@babel/core@7.26.0)(@expo/metro-runtime@4.0.1(react-native@0.80.1(@babel/core@7.26.0)(@types/react@18.3.12)(react@19.0.0)))(react-native@0.80.1(@babel/core@7.26.0)(@types/react@18.3.12)(react@19.0.0))(react@19.0.0))(react-native@0.80.1(@babel/core@7.26.0)(@types/react@18.3.12)(react@19.0.0)))(expo-linking@7.0.5(expo@53.0.17(@babel/core@7.26.0)(@expo/metro-runtime@4.0.1(react-native@0.80.1(@babel/core@7.26.0)(@types/react@18.3.12)(react@19.0.0)))(react-native@0.80.1(@babel/core@7.26.0)(@types/react@18.3.12)(react@19.0.0))(react@19.0.0))(react-native@0.80.1(@babel/core@7.26.0)(@types/react@18.3.12)(react@19.0.0))(react@19.0.0))(expo@53.0.17(@babel/core@7.26.0)(@expo/metro-runtime@4.0.1(react-native@0.80.1(@babel/core@7.26.0)(@types/react@18.3.12)(react@19.0.0)))(react-native@0.80.1(@babel/core@7.26.0)(@types/react@18.3.12)(react@19.0.0))(react@19.0.0))(react-dom@19.0.0(react@19.0.0))(react-native-safe-area-context@5.5.1(react-native@0.80.1(@babel/core@7.26.0)(@types/react@18.3.12)(react@19.0.0))(react@19.0.0))(react-native-screens@4.11.1(react-native@0.80.1(@babel/core@7.26.0)(@types/react@18.3.12)(react@19.0.0))(react@19.0.0))(react-native@0.80.1(@babel/core@7.26.0)(@types/react@18.3.12)(react@19.0.0))(ws@8.18.2)
   : dependencies:
       '@hey-api/client-fetch': 0.5.7
       '@tanstack/react-query': 5.81.5(react@18.3.1)
       expo-router: 4.0.21(expo-constants@17.1.7(expo@53.0.17(@babel/core@7.26.0)(@expo/metro-runtime@4.0.1(react-native@0.80.1(@babel/core@7.26.0)(@types/react@18.3.12)(react@19.0.0)))(react-native@0.80.1(@babel/core@7.26.0)(@types/react@18.3.12)(react@19.0.0))(react@19.0.0))(react-native@0.80.1(@babel/core@7.26.0)(@types/react@18.3.12)(react@19.0.0)))(expo-linking@7.0.5(expo@53.0.17(@babel/core@7.26.0)(@expo/metro-runtime@4.0.1(react-native@0.80.1(@babel/core@7.26.0)(@types/react@18.3.12)(react@19.0.0)))(react-native@0.80.1(@babel/core@7.26.0)(@types/react@18.3.12)(react@19.0.0))(react@19.0.0))(react-native@0.80.1(@babel/core@7.26.0)(@types/react@18.3.12)(react@19.0.0))(react@19.0.0))(expo@53.0.17(@babel/core@7.26.0)(@expo/metro-runtime@4.0.1(react-native@0.80.1(@babel/core@7.26.0)(@types/react@18.3.12)(react@19.0.0)))(react-native@0.80.1(@babel/core@7.26.0)(@types/react@18.3.12)(react@19.0.0))(react@19.0.0))(react-dom@19.0.0(react@19.0.0))(react-native-safe-area-context@5.5.1(react-native@0.80.1(@babel/core@7.26.0)(@types/react@18.3.12)(react@19.0.0))(react@19.0.0))(react-native-screens@4.11.1(react-native@0.80.1(@babel/core@7.26.0)(@types/react@18.3.12)(react@19.0.0))(react@19.0.0))(react-native@0.80.1(@babel/core@7.26.0)(@types/react@18.3.12)(react@19.0.0))(react@18.3.1)
       glob: 11.0.1
       hono: 4.8.3
-      openai: 4.104.0(ws@8.18.2)(zod@3.25.76)
-      openapi: 1.0.1
+      openai: 4.104.0(encoding@0.1.13)(ws@8.18.2)(zod@3.25.76)
+      openapi: 1.0.1(encoding@0.1.13)
       react: 18.3.1
       zod: 3.25.76
     transitivePeerDependencies:
@@ -27133,17 +27146,17 @@ snapshots:
       - supports-color
       - ws
 
-  ? freestyle-sandboxes@0.0.92(expo-constants@17.1.7(expo@53.0.17(@babel/core@7.26.0)(@expo/metro-runtime@4.0.1(react-native@0.80.1(@babel/core@7.26.0)(@types/react@18.3.12)(react@19.0.0)))(react-native@0.80.1(@babel/core@7.26.0)(@types/react@18.3.12)(react@19.0.0))(react@19.0.0))(react-native@0.80.1(@babel/core@7.26.0)(@types/react@18.3.12)(react@19.0.0)))(expo-linking@7.0.5(expo@53.0.17(@babel/core@7.26.0)(@expo/metro-runtime@4.0.1(react-native@0.80.1(@babel/core@7.26.0)(@types/react@18.3.12)(react@19.0.0)))(react-native@0.80.1(@babel/core@7.26.0)(@types/react@18.3.12)(react@19.0.0))(react@19.0.0))(react-native@0.80.1(@babel/core@7.26.0)(@types/react@18.3.12)(react@19.0.0))(react@19.0.0))(expo@53.0.17(@babel/core@7.26.0)(@expo/metro-runtime@4.0.1(react-native@0.80.1(@babel/core@7.26.0)(@types/react@18.3.12)(react@19.0.0)))(react-native@0.80.1(@babel/core@7.26.0)(@types/react@18.3.12)(react@19.0.0))(react@19.0.0))(react-dom@19.0.0(react@19.0.0))(react-native-safe-area-context@5.5.1(react-native@0.80.1(@babel/core@7.26.0)(@types/react@18.3.12)(react@19.0.0))(react@19.0.0))(react-native-screens@4.11.1(react-native@0.80.1(@babel/core@7.26.0)(@types/react@18.3.12)(react@19.0.0))(react@19.0.0))(react-native@0.80.1(@babel/core@7.26.0)(@types/react@18.3.12)(react@19.0.0))(ws@8.18.2)
+  ? freestyle-sandboxes@0.0.92(encoding@0.1.13)(expo-constants@17.1.7(expo@53.0.17(@babel/core@7.26.0)(@expo/metro-runtime@4.0.1(react-native@0.80.1(@babel/core@7.26.0)(@types/react@18.3.12)(react@19.0.0)))(react-native@0.80.1(@babel/core@7.26.0)(@types/react@18.3.12)(react@19.0.0))(react@19.0.0))(react-native@0.80.1(@babel/core@7.26.0)(@types/react@18.3.12)(react@19.0.0)))(expo-linking@7.0.5(expo@53.0.17(@babel/core@7.26.0)(@expo/metro-runtime@4.0.1(react-native@0.80.1(@babel/core@7.26.0)(@types/react@18.3.12)(react@19.0.0)))(react-native@0.80.1(@babel/core@7.26.0)(@types/react@18.3.12)(react@19.0.0))(react@19.0.0))(react-native@0.80.1(@babel/core@7.26.0)(@types/react@18.3.12)(react@19.0.0))(react@19.0.0))(expo@53.0.17(@babel/core@7.26.0)(@expo/metro-runtime@4.0.1(react-native@0.80.1(@babel/core@7.26.0)(@types/react@18.3.12)(react@19.0.0)))(react-native@0.80.1(@babel/core@7.26.0)(@types/react@18.3.12)(react@19.0.0))(react@19.0.0))(react-dom@19.0.0(react@19.0.0))(react-native-safe-area-context@5.5.1(react-native@0.80.1(@babel/core@7.26.0)(@types/react@18.3.12)(react@19.0.0))(react@19.0.0))(react-native-screens@4.11.1(react-native@0.80.1(@babel/core@7.26.0)(@types/react@18.3.12)(react@19.0.0))(react@19.0.0))(react-native@0.80.1(@babel/core@7.26.0)(@types/react@18.3.12)(react@19.0.0))(ws@8.18.2)
   : dependencies:
       '@hey-api/client-fetch': 0.5.7
       '@tanstack/react-query': 5.81.5(react@18.3.1)
       '@types/react': 18.3.12
       expo-router: 4.0.21(expo-constants@17.1.7(expo@53.0.17(@babel/core@7.26.0)(@expo/metro-runtime@4.0.1(react-native@0.80.1(@babel/core@7.26.0)(@types/react@18.3.12)(react@19.0.0)))(react-native@0.80.1(@babel/core@7.26.0)(@types/react@18.3.12)(react@19.0.0))(react@19.0.0))(react-native@0.80.1(@babel/core@7.26.0)(@types/react@18.3.12)(react@19.0.0)))(expo-linking@7.0.5(expo@53.0.17(@babel/core@7.26.0)(@expo/metro-runtime@4.0.1(react-native@0.80.1(@babel/core@7.26.0)(@types/react@18.3.12)(react@19.0.0)))(react-native@0.80.1(@babel/core@7.26.0)(@types/react@18.3.12)(react@19.0.0))(react@19.0.0))(react-native@0.80.1(@babel/core@7.26.0)(@types/react@18.3.12)(react@19.0.0))(react@19.0.0))(expo@53.0.17(@babel/core@7.26.0)(@expo/metro-runtime@4.0.1(react-native@0.80.1(@babel/core@7.26.0)(@types/react@18.3.12)(react@19.0.0)))(react-native@0.80.1(@babel/core@7.26.0)(@types/react@18.3.12)(react@19.0.0))(react@19.0.0))(react-dom@19.0.0(react@19.0.0))(react-native-safe-area-context@5.5.1(react-native@0.80.1(@babel/core@7.26.0)(@types/react@18.3.12)(react@19.0.0))(react@19.0.0))(react-native-screens@4.11.1(react-native@0.80.1(@babel/core@7.26.0)(@types/react@18.3.12)(react@19.0.0))(react@19.0.0))(react-native@0.80.1(@babel/core@7.26.0)(@types/react@18.3.12)(react@19.0.0))(react@18.3.1)
-      freestyle-sandboxes: 0.0.66(expo-constants@17.1.7(expo@53.0.17(@babel/core@7.26.0)(@expo/metro-runtime@4.0.1(react-native@0.80.1(@babel/core@7.26.0)(@types/react@18.3.12)(react@19.0.0)))(react-native@0.80.1(@babel/core@7.26.0)(@types/react@18.3.12)(react@19.0.0))(react@19.0.0))(react-native@0.80.1(@babel/core@7.26.0)(@types/react@18.3.12)(react@19.0.0)))(expo-linking@7.0.5(expo@53.0.17(@babel/core@7.26.0)(@expo/metro-runtime@4.0.1(react-native@0.80.1(@babel/core@7.26.0)(@types/react@18.3.12)(react@19.0.0)))(react-native@0.80.1(@babel/core@7.26.0)(@types/react@18.3.12)(react@19.0.0))(react@19.0.0))(react-native@0.80.1(@babel/core@7.26.0)(@types/react@18.3.12)(react@19.0.0))(react@19.0.0))(expo@53.0.17(@babel/core@7.26.0)(@expo/metro-runtime@4.0.1(react-native@0.80.1(@babel/core@7.26.0)(@types/react@18.3.12)(react@19.0.0)))(react-native@0.80.1(@babel/core@7.26.0)(@types/react@18.3.12)(react@19.0.0))(react@19.0.0))(react-dom@19.0.0(react@19.0.0))(react-native-safe-area-context@5.5.1(react-native@0.80.1(@babel/core@7.26.0)(@types/react@18.3.12)(react@19.0.0))(react@19.0.0))(react-native-screens@4.11.1(react-native@0.80.1(@babel/core@7.26.0)(@types/react@18.3.12)(react@19.0.0))(react@19.0.0))(react-native@0.80.1(@babel/core@7.26.0)(@types/react@18.3.12)(react@19.0.0))(ws@8.18.2)
+      freestyle-sandboxes: 0.0.66(encoding@0.1.13)(expo-constants@17.1.7(expo@53.0.17(@babel/core@7.26.0)(@expo/metro-runtime@4.0.1(react-native@0.80.1(@babel/core@7.26.0)(@types/react@18.3.12)(react@19.0.0)))(react-native@0.80.1(@babel/core@7.26.0)(@types/react@18.3.12)(react@19.0.0))(react@19.0.0))(react-native@0.80.1(@babel/core@7.26.0)(@types/react@18.3.12)(react@19.0.0)))(expo-linking@7.0.5(expo@53.0.17(@babel/core@7.26.0)(@expo/metro-runtime@4.0.1(react-native@0.80.1(@babel/core@7.26.0)(@types/react@18.3.12)(react@19.0.0)))(react-native@0.80.1(@babel/core@7.26.0)(@types/react@18.3.12)(react@19.0.0))(react@19.0.0))(react-native@0.80.1(@babel/core@7.26.0)(@types/react@18.3.12)(react@19.0.0))(react@19.0.0))(expo@53.0.17(@babel/core@7.26.0)(@expo/metro-runtime@4.0.1(react-native@0.80.1(@babel/core@7.26.0)(@types/react@18.3.12)(react@19.0.0)))(react-native@0.80.1(@babel/core@7.26.0)(@types/react@18.3.12)(react@19.0.0))(react@19.0.0))(react-dom@19.0.0(react@19.0.0))(react-native-safe-area-context@5.5.1(react-native@0.80.1(@babel/core@7.26.0)(@types/react@18.3.12)(react@19.0.0))(react@19.0.0))(react-native-screens@4.11.1(react-native@0.80.1(@babel/core@7.26.0)(@types/react@18.3.12)(react@19.0.0))(react@19.0.0))(react-native@0.80.1(@babel/core@7.26.0)(@types/react@18.3.12)(react@19.0.0))(ws@8.18.2)
       glob: 11.0.1
       hono: 4.8.3
-      openai: 4.104.0(ws@8.18.2)(zod@3.25.76)
-      openapi: 1.0.1
+      openai: 4.104.0(encoding@0.1.13)(ws@8.18.2)(zod@3.25.76)
+      openapi: 1.0.1(encoding@0.1.13)
       react: 18.3.1
       zod: 3.25.76
     transitivePeerDependencies:
@@ -27426,9 +27439,9 @@ snapshots:
       strip-ansi: 6.0.1
       wide-align: 1.1.5
 
-  geist@1.3.0(next@15.4.1(@babel/core@7.26.0)(@opentelemetry/api@1.9.0)(react-dom@19.0.0(react@19.0.0))(react@19.0.0)):
+  geist@1.3.0(next@15.4.1(@babel/core@7.26.9)(@opentelemetry/api@1.9.0)(react-dom@19.0.0(react@19.0.0))(react@19.0.0)):
     dependencies:
-      next: 15.4.1(@babel/core@7.26.0)(@opentelemetry/api@1.9.0)(react-dom@19.0.0(react@19.0.0))(react@19.0.0)
+      next: 15.4.1(@babel/core@7.26.9)(@opentelemetry/api@1.9.0)(react-dom@19.0.0(react@19.0.0))(react@19.0.0)
 
   gensync@1.0.0-beta.2: {}
 
@@ -27960,9 +27973,9 @@ snapshots:
 
   ieee754@1.2.1: {}
 
-  iframe-resizer-react@1.1.1(@babel/core@7.26.0)(prop-types@15.8.1)(react-dom@19.0.0(react@19.0.0))(react@19.0.0):
+  iframe-resizer-react@1.1.1(@babel/core@7.26.9)(prop-types@15.8.1)(react-dom@19.0.0(react@19.0.0))(react@19.0.0):
     dependencies:
-      '@babel/plugin-proposal-private-property-in-object': 7.21.11(@babel/core@7.26.0)
+      '@babel/plugin-proposal-private-property-in-object': 7.21.11(@babel/core@7.26.9)
       iframe-resizer: 4.4.5
       prop-types: 15.8.1
       react: 19.0.0
@@ -29754,9 +29767,9 @@ snapshots:
       react: 18.3.1
       react-dom: 18.3.1(react@18.3.1)
 
-  next-themes@0.2.1(next@15.4.1(@babel/core@7.26.0)(@opentelemetry/api@1.9.0)(react-dom@19.0.0(react@19.0.0))(react@19.0.0))(react-dom@19.0.0(react@19.0.0))(react@19.0.0):
+  next-themes@0.2.1(next@15.4.1(@babel/core@7.26.9)(@opentelemetry/api@1.9.0)(react-dom@19.0.0(react@19.0.0))(react@19.0.0))(react-dom@19.0.0(react@19.0.0))(react@19.0.0):
     dependencies:
-      next: 15.4.1(@babel/core@7.26.0)(@opentelemetry/api@1.9.0)(react-dom@19.0.0(react@19.0.0))(react@19.0.0)
+      next: 15.4.1(@babel/core@7.26.9)(@opentelemetry/api@1.9.0)(react-dom@19.0.0(react@19.0.0))(react@19.0.0)
       react: 19.0.0
       react-dom: 19.0.0(react@19.0.0)
 
@@ -30049,6 +30062,30 @@ snapshots:
       - '@babel/core'
       - babel-plugin-macros
 
+  next@15.4.1(@babel/core@7.26.9)(@opentelemetry/api@1.9.0)(react-dom@19.0.0(react@19.0.0))(react@19.0.0):
+    dependencies:
+      '@next/env': 15.4.1
+      '@swc/helpers': 0.5.15
+      caniuse-lite: 1.0.30001726
+      postcss: 8.4.31
+      react: 19.0.0
+      react-dom: 19.0.0(react@19.0.0)
+      styled-jsx: 5.1.6(@babel/core@7.26.9)(react@19.0.0)
+    optionalDependencies:
+      '@next/swc-darwin-arm64': 15.4.1
+      '@next/swc-darwin-x64': 15.4.1
+      '@next/swc-linux-arm64-gnu': 15.4.1
+      '@next/swc-linux-arm64-musl': 15.4.1
+      '@next/swc-linux-x64-gnu': 15.4.1
+      '@next/swc-linux-x64-musl': 15.4.1
+      '@next/swc-win32-arm64-msvc': 15.4.1
+      '@next/swc-win32-x64-msvc': 15.4.1
+      '@opentelemetry/api': 1.9.0
+      sharp: 0.34.3
+    transitivePeerDependencies:
+      - '@babel/core'
+      - babel-plugin-macros
+
   no-case@3.0.4:
     dependencies:
       lower-case: 2.0.2
@@ -30064,9 +30101,11 @@ snapshots:
 
   node-domexception@1.0.0: {}
 
-  node-fetch@2.7.0:
+  node-fetch@2.7.0(encoding@0.1.13):
     dependencies:
       whatwg-url: 5.0.0
+    optionalDependencies:
+      encoding: 0.1.13
 
   node-forge@1.3.1: {}
 
@@ -30270,7 +30309,7 @@ snapshots:
       is-docker: 2.2.1
       is-wsl: 2.2.0
 
-  openai@4.104.0(ws@8.18.2)(zod@3.25.76):
+  openai@4.104.0(encoding@0.1.13)(ws@8.18.2)(zod@3.25.76):
     dependencies:
       '@types/node': 18.19.115
       '@types/node-fetch': 2.6.12
@@ -30278,7 +30317,7 @@ snapshots:
       agentkeepalive: 4.6.0
       form-data-encoder: 1.7.2
       formdata-node: 4.4.1
-      node-fetch: 2.7.0
+      node-fetch: 2.7.0(encoding@0.1.13)
     optionalDependencies:
       ws: 8.18.2
       zod: 3.25.76
@@ -30293,7 +30332,7 @@ snapshots:
 
   openapi-types@12.1.3: {}
 
-  openapi@1.0.1:
+  openapi@1.0.1(encoding@0.1.13):
     dependencies:
       '@types/jest': 26.0.24
       change-case: 4.1.2
@@ -30301,7 +30340,7 @@ snapshots:
       cosmiconfig: 6.0.0
       is-url: 1.2.4
       js-yaml: 3.14.1
-      node-fetch: 2.7.0
+      node-fetch: 2.7.0(encoding@0.1.13)
       object-hash: 2.2.0
       url-parse: 1.5.10
     transitivePeerDependencies:
@@ -32562,6 +32601,13 @@ snapshots:
     optionalDependencies:
       '@babel/core': 7.26.0
 
+  styled-jsx@5.1.6(@babel/core@7.26.9)(react@19.0.0):
+    dependencies:
+      client-only: 0.0.1
+      react: 19.0.0
+    optionalDependencies:
+      '@babel/core': 7.26.9
+
   stylis@4.2.0: {}
 
   stylis@4.3.6: {}
@@ -32597,40 +32643,40 @@ snapshots:
 
   supports-preserve-symlinks-flag@1.0.0: {}
 
-  svix-fetch@3.0.0:
+  svix-fetch@3.0.0(encoding@0.1.13):
     dependencies:
-      node-fetch: 2.7.0
+      node-fetch: 2.7.0(encoding@0.1.13)
       whatwg-fetch: 3.6.20
     transitivePeerDependencies:
       - encoding
 
-  svix-react@1.13.0(@babel/core@7.26.0)(prop-types@15.8.1)(react-dom@19.0.0(react@19.0.0))(react@19.0.0)(svix@1.32.0):
+  svix-react@1.13.0(@babel/core@7.26.9)(prop-types@15.8.1)(react-dom@19.0.0(react@19.0.0))(react@19.0.0)(svix@1.32.0(encoding@0.1.13)):
     dependencies:
-      iframe-resizer-react: 1.1.1(@babel/core@7.26.0)(prop-types@15.8.1)(react-dom@19.0.0(react@19.0.0))(react@19.0.0)
+      iframe-resizer-react: 1.1.1(@babel/core@7.26.9)(prop-types@15.8.1)(react-dom@19.0.0(react@19.0.0))(react@19.0.0)
       react: 19.0.0
       react-dom: 19.0.0(react@19.0.0)
-      svix: 1.32.0
+      svix: 1.32.0(encoding@0.1.13)
     transitivePeerDependencies:
       - '@babel/core'
       - prop-types
       - supports-color
 
-  svix@1.25.0:
+  svix@1.25.0(encoding@0.1.13):
     dependencies:
       '@stablelib/base64': 1.0.1
       es6-promise: 4.2.8
       fast-sha256: 1.3.0
-      svix-fetch: 3.0.0
+      svix-fetch: 3.0.0(encoding@0.1.13)
       url-parse: 1.5.10
     transitivePeerDependencies:
       - encoding
 
-  svix@1.32.0:
+  svix@1.32.0(encoding@0.1.13):
     dependencies:
       '@stablelib/base64': 1.0.1
       es6-promise: 4.2.8
       fast-sha256: 1.3.0
-      svix-fetch: 3.0.0
+      svix-fetch: 3.0.0(encoding@0.1.13)
       url-parse: 1.5.10
     transitivePeerDependencies:
       - encoding
@@ -32843,7 +32889,7 @@ snapshots:
   terser@5.31.1:
     dependencies:
       '@jridgewell/source-map': 0.3.6
-      acorn: 8.14.0
+      acorn: 8.15.0
       commander: 2.20.3
       source-map-support: 0.5.21
 
