@@ -372,16 +372,6 @@ export const emailThemeListSchema = yupRecord(
     tsxSource: yupString().meta({ openapiField: { description: 'Email theme source code tsx component' } }).defined(),
   })
 ).meta({ openapiField: { description: 'Record of email theme IDs to their display name and source code' } });
-export const emailTemplateListSchema = yupRecord(
-  yupString().uuid(),
-  yupObject({
-    displayName: yupString().meta({ openapiField: { description: 'Email template name', exampleValue: 'Email Verification' } }).defined(),
-    description: yupString().meta({ openapiField: { description: 'Email template description', exampleValue: 'Will be sent to the user when they sign-up with email/password' } }).defined(),
-    variables: yupArray(yupString().defined()).meta({ openapiField: { description: 'Email template variables' } }).defined(),
-    subject: yupString().meta({ openapiField: { description: 'Email template subject', exampleValue: 'Verify your email' } }).defined(),
-    tsxSource: yupString().meta({ openapiField: { description: 'Email template source code tsx component' } }).defined(),
-  })
-).meta({ openapiField: { description: 'Record of email template IDs to their display name and source code' } });
 
 // Users
 export class ReplaceFieldWithOwnUserId extends Error {

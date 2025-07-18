@@ -1,4 +1,4 @@
-import { getPrismaClientForTenancy, getPrismaSchemaForTenancy, globalPrismaClient, sqlQuoteIdent } from "@/prisma-client";
+import { getPrismaClientForTenancy, globalPrismaClient } from "@/prisma-client";
 import { createCrudHandlers } from "@/route-handlers/crud-handler";
 import { SmartRequestAuth } from "@/route-handlers/smart-request";
 import { Prisma } from "@prisma/client";
@@ -18,7 +18,6 @@ export const sessionsCrudHandlers = createLazyProxy(() => createCrudHandlers(ses
   }).defined(),
   onList: async ({ auth, query }) => {
     const prisma = getPrismaClientForTenancy(auth.tenancy);
-    const schema = getPrismaSchemaForTenancy(auth.tenancy);
     const listImpersonations = auth.type === 'admin';
 
     if (auth.type === 'client') {
@@ -39,12 +38,13 @@ export const sessionsCrudHandlers = createLazyProxy(() => createCrudHandlers(ses
       },
     });
 
+
     // Get the latest event for each session
     const events = await prisma.$queryRaw<Array<{ sessionId: string, lastActiveAt: Date, geo: GeoInfo | null, isEndUserIpInfoGuessTrusted: boolean }>>`
       WITH latest_events AS (
         SELECT data->>'sessionId' as "sessionId", 
                MAX("eventStartedAt") as "lastActiveAt"
-        FROM ${sqlQuoteIdent(schema)}."Event"
+        FROM "Event" 
         WHERE ${refreshTokenObjs.length > 0
           ? Prisma.sql`data->>'sessionId' = ANY(${Prisma.sql`ARRAY[${Prisma.join(refreshTokenObjs.map(s => s.id))}]`})`
           : Prisma.sql`FALSE`}
@@ -55,9 +55,9 @@ export const sessionsCrudHandlers = createLazyProxy(() => createCrudHandlers(ses
              le."lastActiveAt", 
              row_to_json(geo.*) as "geo",
              e.data->>'isEndUserIpInfoGuessTrusted' as "isEndUserIpInfoGuessTrusted"
-      FROM ${sqlQuoteIdent(schema)}."Event" e
+      FROM "Event" e
       JOIN latest_events le ON e.data->>'sessionId' = le."sessionId" AND e."eventStartedAt" = le."lastActiveAt"
-      LEFT JOIN ${sqlQuoteIdent(schema)}."EventIpInfo" geo ON geo.id = e."endUserIpInfoGuessId"
+      LEFT JOIN "EventIpInfo" geo ON geo.id = e."endUserIpInfoGuessId"
       WHERE e."systemEventTypeIds" @> '{"$session-activity"}'
     `;
 

@@ -131,12 +131,6 @@ export class StackAdminInterface extends StackServerInterface {
     return result.items;
   }
 
-  async listInternalEmailTemplatesNew(): Promise<{ id: string, subject: string, display_name: string, tsx_source: string }[]> {
-    const response = await this.sendAdminRequest(`/internal/email-templates`, {}, null);
-    const result = await response.json() as { templates: { id: string, subject: string, display_name: string, tsx_source: string }[] };
-    return result.templates;
-  }
-
   async listEmailThemes(): Promise<{ id: string, display_name: string }[]> {
     const response = await this.sendAdminRequest(`/internal/email-themes`, {}, null);
     const result = await response.json() as { themes: { id: string, display_name: string }[] };
@@ -355,20 +349,20 @@ export class StackAdminInterface extends StackServerInterface {
   }
 
 
-  async sendChatMessage(
-    threadId: string,
-    contextType: "email-theme" | "email-template",
-    messages: Array<{ role: string, content: any }>,
+  async sendEmailThemeChatMessage(
+    themeId: string,
+    currentEmailTheme: string,
+    messages: Array<{ role: string, content: string }>,
     abortSignal?: AbortSignal,
   ): Promise<{ content: ChatContent }> {
     const response = await this.sendAdminRequest(
-      `/internal/ai-chat/${threadId}`,
+      `/internal/email-themes/chat`,
       {
         method: "POST",
         headers: {
           "content-type": "application/json",
         },
-        body: JSON.stringify({ context_type: contextType, messages }),
+        body: JSON.stringify({ theme_id: themeId, messages, current_email_theme: currentEmailTheme }),
         signal: abortSignal,
       },
       null,
@@ -376,30 +370,16 @@ export class StackAdminInterface extends StackServerInterface {
     return await response.json();
   }
 
-  async saveChatMessage(threadId: string, message: any): Promise<void> {
-    await this.sendAdminRequest(
-      `/internal/ai-chat/${threadId}`,
-      {
-        method: "PATCH",
-        headers: {
-          "content-type": "application/json",
-        },
-        body: JSON.stringify({ message }),
-      },
-      null,
-    );
-  }
-
-  async listChatMessages(threadId: string): Promise<{ messages: Array<any> }> {
+  async listEmailThemeChatMessages(themeId: string): Promise<{ messages: Array<{ role: string, content: ChatContent }> }> {
     const response = await this.sendAdminRequest(
-      `/internal/ai-chat/${threadId}`,
+      `/internal/email-themes/chat?theme_id=${themeId}`,
       { method: "GET" },
       null,
     );
     return await response.json();
   }
 
-  async renderEmailPreview(themeId: string, content?: string, templateId?: string): Promise<{ html: string }> {
+  async renderEmailThemePreview(themeId: string, content: string): Promise<{ html: string }> {
     const response = await this.sendAdminRequest(`/emails/render-email`, {
       method: "POST",
       headers: {
@@ -408,7 +388,6 @@ export class StackAdminInterface extends StackServerInterface {
       body: JSON.stringify({
         theme_id: themeId,
         preview_html: content,
-        template_id: templateId,
       }),
     }, null);
     return await response.json();
@@ -452,21 +431,6 @@ export class StackAdminInterface extends StackServerInterface {
           tsx_source: tsxSource,
           preview_html: previewHtml,
         }),
-      },
-      null,
-    );
-    return await response.json();
-  }
-
-  async updateNewEmailTemplate(id: string, tsxSource: string): Promise<{ rendered_html: string }> {
-    const response = await this.sendAdminRequest(
-      `/internal/email-templates/${id}`,
-      {
-        method: "PATCH",
-        headers: {
-          "content-type": "application/json",
-        },
-        body: JSON.stringify({ tsx_source: tsxSource }),
       },
       null,
     );

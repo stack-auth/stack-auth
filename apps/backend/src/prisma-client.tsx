@@ -18,10 +18,7 @@ export type PrismaClientTransaction = PrismaClient | Parameters<Parameters<Prism
 const prismaClientsStore = (globalVar.__stack_prisma_clients as undefined) || {
   global: new PrismaClient(),
   neon: new Map<string, PrismaClient>(),
-  postgres: new Map<string, {
-    client: PrismaClient,
-    schema: string | null,
-  }>(),
+  postgres: new Map<string, PrismaClient>(),
 };
 if (getNodeEnvironment().includes('development')) {
   globalVar.__stack_prisma_clients = prismaClientsStore;  // store globally so fast refresh doesn't recreate too many Prisma clients
@@ -43,19 +40,11 @@ export function getPrismaClientForTenancy(tenancy: Tenancy) {
   return getPrismaClientForSourceOfTruth(tenancy.completeConfig.sourceOfTruth, tenancy.branchId);
 }
 
-export function getPrismaSchemaForTenancy(tenancy: Tenancy) {
-  return getPrismaSchemaForSourceOfTruth(tenancy.completeConfig.sourceOfTruth, tenancy.branchId);
-}
-
 function getPostgresPrismaClient(connectionString: string) {
   let postgresPrismaClient = prismaClientsStore.postgres.get(connectionString);
   if (!postgresPrismaClient) {
-    const schema = (new URL(connectionString)).searchParams.get('schema');
-    const adapter = new PrismaPg({ connectionString }, schema ? { schema } : undefined);
-    postgresPrismaClient = {
-      client: new PrismaClient({ adapter }),
-      schema: schema ?? null,
-    };
+    const adapter = new PrismaPg({ connectionString });
+    postgresPrismaClient = new PrismaClient({ adapter });
     prismaClientsStore.postgres.set(connectionString, postgresPrismaClient);
   }
   return postgresPrismaClient;
@@ -70,7 +59,7 @@ export function getPrismaClientForSourceOfTruth(sourceOfTruth: OrganizationRende
       return getNeonPrismaClient(sourceOfTruth.connectionStrings[branchId]);
     }
     case 'postgres': {
-      return getPostgresPrismaClient(sourceOfTruth.connectionString).client;
+      return getPostgresPrismaClient(sourceOfTruth.connectionString);
     }
     case 'hosted': {
       return globalPrismaClient;
@@ -78,17 +67,6 @@ export function getPrismaClientForSourceOfTruth(sourceOfTruth: OrganizationRende
     default: {
       // @ts-expect-error sourceOfTruth should be never, otherwise we're missing a switch-case
       throw new StackAssertionError(`Unknown source of truth type: ${sourceOfTruth.type}`);
-    }
-  }
-}
-
-export function getPrismaSchemaForSourceOfTruth(sourceOfTruth: OrganizationRenderedConfig["sourceOfTruth"], branchId: string) {
-  switch (sourceOfTruth.type) {
-    case 'postgres': {
-      return getPostgresPrismaClient(sourceOfTruth.connectionString).schema ?? 'public';
-    }
-    default: {
-      return 'public';
     }
   }
 }
@@ -317,13 +295,4 @@ export function isPrismaUniqueConstraintViolation(error: unknown, modelName: str
   if (!isPrismaError(error, "UNIQUE_CONSTRAINT_VIOLATION")) return false;
   if (!error.meta?.target) return false;
   return error.meta.modelName === modelName && deepPlainEquals(error.meta.target, target);
-}
-
-export function sqlQuoteIdent(id: string) {
-  // accept letters, numbers, underscore, $, and dash (adjust as needed)
-  if (!/^[A-Za-z_][A-Za-z0-9_\-$]*$/.test(id)) {
-    throw new Error(`Invalid identifier: ${id}`);
-  }
-  // escape embedded double quotes just in case
-  return Prisma.raw(`"${id.replace(/"/g, '""')}"`);
 }

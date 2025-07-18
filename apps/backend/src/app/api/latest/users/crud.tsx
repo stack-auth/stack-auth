@@ -5,7 +5,7 @@ import { ensureTeamMembershipExists, ensureUserExists } from "@/lib/request-chec
 import { getSoleTenancyFromProjectBranch, getTenancy } from "@/lib/tenancies";
 import { PrismaTransaction } from "@/lib/types";
 import { sendTeamMembershipDeletedWebhook, sendUserCreatedWebhook, sendUserDeletedWebhook, sendUserUpdatedWebhook } from "@/lib/webhooks";
-import { RawQuery, getPrismaClientForSourceOfTruth, getPrismaClientForTenancy, getPrismaSchemaForSourceOfTruth, getPrismaSchemaForTenancy, globalPrismaClient, rawQuery, retryTransaction, sqlQuoteIdent } from "@/prisma-client";
+import { RawQuery, getPrismaClientForSourceOfTruth, getPrismaClientForTenancy, globalPrismaClient, rawQuery, retryTransaction } from "@/prisma-client";
 import { createCrudHandlers } from "@/route-handlers/crud-handler";
 import { log } from "@/utils/telemetry";
 import { runAsynchronouslyAndWaitUntil } from "@/utils/vercel";
@@ -167,10 +167,9 @@ export const getUsersLastActiveAtMillis = async (projectId: string, branchId: st
   const tenancy = await getSoleTenancyFromProjectBranch(projectId, branchId);
 
   const prisma = getPrismaClientForTenancy(tenancy);
-  const schema = getPrismaSchemaForTenancy(tenancy);
   const events = await prisma.$queryRaw<Array<{ userId: string, lastActiveAt: Date }>>`
     SELECT data->>'userId' as "userId", MAX("eventStartedAt") as "lastActiveAt"
-    FROM ${sqlQuoteIdent(schema)}."Event"
+    FROM "Event"
     WHERE data->>'userId' = ANY(${Prisma.sql`ARRAY[${Prisma.join(userIds)}]`}) AND data->>'projectId' = ${projectId} AND COALESCE("data"->>'branchId', 'main') = ${branchId} AND "systemEventTypeIds" @> '{"$user-activity"}'
     GROUP BY data->>'userId'
   `;
@@ -183,7 +182,7 @@ export const getUsersLastActiveAtMillis = async (projectId: string, branchId: st
   });
 };
 
-export function getUserQuery(projectId: string, branchId: string, userId: string, schema: string): RawQuery<UsersCrud["Admin"]["Read"] | null> {
+export function getUserQuery(projectId: string, branchId: string, userId: string): RawQuery<UsersCrud["Admin"]["Read"] | null> {
   return {
     supportedPrismaClients: ["source-of-truth"],
     sql: Prisma.sql`
@@ -194,7 +193,7 @@ export function getUserQuery(projectId: string, branchId: string, userId: string
             jsonb_build_object(
               'lastActiveAt', (
                 SELECT MAX("eventStartedAt") as "lastActiveAt"
-                FROM ${sqlQuoteIdent(schema)}."Event"
+                FROM "Event"
                 WHERE data->>'projectId' = ("ProjectUser"."mirroredProjectId") AND COALESCE("data"->>'branchId', 'main') = ("ProjectUser"."mirroredBranchId") AND "data"->>'userId' = ("ProjectUser"."projectUserId")::text AND "systemEventTypeIds" @> '{"$user-activity"}'
               ),
               'ContactChannels', (
@@ -202,14 +201,14 @@ export function getUserQuery(projectId: string, branchId: string, userId: string
                   to_jsonb("ContactChannel") ||
                   jsonb_build_object()
                 ), '{}')
-                FROM ${sqlQuoteIdent(schema)}."ContactChannel"
+                FROM "ContactChannel"
                 WHERE "ContactChannel"."tenancyId" = "ProjectUser"."tenancyId" AND "ContactChannel"."projectUserId" = "ProjectUser"."projectUserId" AND "ContactChannel"."isPrimary" = 'TRUE'
               ),
               'ProjectUserOAuthAccounts', (
                 SELECT COALESCE(ARRAY_AGG(
                   to_jsonb("ProjectUserOAuthAccount")
                 ), '{}')
-                FROM ${sqlQuoteIdent(schema)}."ProjectUserOAuthAccount"
+                FROM "ProjectUserOAuthAccount"
                 WHERE "ProjectUserOAuthAccount"."tenancyId" = "ProjectUser"."tenancyId" AND "ProjectUserOAuthAccount"."projectUserId" = "ProjectUser"."projectUserId"
               ),
               'AuthMethods', (
@@ -221,7 +220,7 @@ export function getUserQuery(projectId: string, branchId: string, userId: string
                         to_jsonb("PasswordAuthMethod") ||
                         jsonb_build_object()
                       )
-                      FROM ${sqlQuoteIdent(schema)}."PasswordAuthMethod"
+                      FROM "PasswordAuthMethod"
                       WHERE "PasswordAuthMethod"."tenancyId" = "ProjectUser"."tenancyId" AND "PasswordAuthMethod"."projectUserId" = "ProjectUser"."projectUserId" AND "PasswordAuthMethod"."authMethodId" = "AuthMethod"."id"
                     ),
                     'OtpAuthMethod', (
@@ -229,7 +228,7 @@ export function getUserQuery(projectId: string, branchId: string, userId: string
                         to_jsonb("OtpAuthMethod") ||
                         jsonb_build_object()
                       )
-                      FROM ${sqlQuoteIdent(schema)}."OtpAuthMethod"
+                      FROM "OtpAuthMethod"
                       WHERE "OtpAuthMethod"."tenancyId" = "ProjectUser"."tenancyId" AND "OtpAuthMethod"."projectUserId" = "ProjectUser"."projectUserId" AND "OtpAuthMethod"."authMethodId" = "AuthMethod"."id"
                     ),
                     'PasskeyAuthMethod', (
@@ -237,7 +236,7 @@ export function getUserQuery(projectId: string, branchId: string, userId: string
                         to_jsonb("PasskeyAuthMethod") ||
                         jsonb_build_object()
                       )
-                      FROM ${sqlQuoteIdent(schema)}."PasskeyAuthMethod"
+                      FROM "PasskeyAuthMethod"
                       WHERE "PasskeyAuthMethod"."tenancyId" = "ProjectUser"."tenancyId" AND "PasskeyAuthMethod"."projectUserId" = "ProjectUser"."projectUserId" AND "PasskeyAuthMethod"."authMethodId" = "AuthMethod"."id"
                     ),
                     'OAuthAuthMethod', (
@@ -245,12 +244,12 @@ export function getUserQuery(projectId: string, branchId: string, userId: string
                         to_jsonb("OAuthAuthMethod") ||
                         jsonb_build_object()
                       )
-                      FROM ${sqlQuoteIdent(schema)}."OAuthAuthMethod"
+                      FROM "OAuthAuthMethod"
                       WHERE "OAuthAuthMethod"."tenancyId" = "ProjectUser"."tenancyId" AND "OAuthAuthMethod"."projectUserId" = "ProjectUser"."projectUserId" AND "OAuthAuthMethod"."authMethodId" = "AuthMethod"."id"
                     )
                   )
                 ), '{}')
-                FROM ${sqlQuoteIdent(schema)}."AuthMethod"
+                FROM "AuthMethod"
                 WHERE "AuthMethod"."tenancyId" = "ProjectUser"."tenancyId" AND "AuthMethod"."projectUserId" = "ProjectUser"."projectUserId"
               ),
               'SelectedTeamMember', (
@@ -262,17 +261,17 @@ export function getUserQuery(projectId: string, branchId: string, userId: string
                         to_jsonb("Team") ||
                         jsonb_build_object()
                       )
-                      FROM ${sqlQuoteIdent(schema)}."Team"
+                      FROM "Team"
                       WHERE "Team"."tenancyId" = "ProjectUser"."tenancyId" AND "Team"."teamId" = "TeamMember"."teamId"
                     )
                   )
                 )
-                FROM ${sqlQuoteIdent(schema)}."TeamMember"
+                FROM "TeamMember"
                 WHERE "TeamMember"."tenancyId" = "ProjectUser"."tenancyId" AND "TeamMember"."projectUserId" = "ProjectUser"."projectUserId" AND "TeamMember"."isSelected" = 'TRUE'
               )
             )
           )
-          FROM ${sqlQuoteIdent(schema)}."ProjectUser"
+          FROM "ProjectUser"
           WHERE "ProjectUser"."mirroredProjectId" = ${projectId} AND "ProjectUser"."mirroredBranchId" = ${branchId} AND "ProjectUser"."projectUserId" = ${userId}::UUID
         )
       ) AS "row_data_json"
@@ -341,7 +340,7 @@ export function getUserQuery(projectId: string, branchId: string, userId: string
  */
 export function getUserIfOnGlobalPrismaClientQuery(projectId: string, branchId: string, userId: string): RawQuery<UsersCrud["Admin"]["Read"] | null> {
   return {
-    ...getUserQuery(projectId, branchId, userId, "public"),
+    ...getUserQuery(projectId, branchId, userId),
     supportedPrismaClients: ["global"],
   };
 }
@@ -359,7 +358,7 @@ export async function getUser(options: { userId: string } & ({ projectId: string
 
   const environmentConfig = await rawQuery(globalPrismaClient, getRenderedEnvironmentConfigQuery({ projectId, branchId }));
   const prisma = getPrismaClientForSourceOfTruth(environmentConfig.sourceOfTruth, branchId);
-  const result = await rawQuery(prisma, getUserQuery(projectId, branchId, options.userId, getPrismaSchemaForSourceOfTruth(environmentConfig.sourceOfTruth, branchId)));
+  const result = await rawQuery(prisma, getUserQuery(projectId, branchId, options.userId));
   return result;
 }
 
