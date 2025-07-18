@@ -85,6 +85,23 @@ async function checkInputValidity(options: {
   }
 }
 
+async function ensureProviderExists(tenancy: Tenancy, userId: string, providerId: string) {
+  const prismaClient = getPrismaClientForTenancy(tenancy);
+  const provider = await prismaClient.projectUserOAuthAccount.findUnique({
+    where: {
+      tenancyId_id: {
+        tenancyId: tenancy.id,
+        id: providerId,
+      },
+      projectUserId: userId,
+    },
+  });
+
+  if (!provider) {
+    throw new StatusError(StatusError.NotFound, `OAuth provider ${providerId} for user ${userId} not found`);
+  }
+}
+
 function getProviderConfig(tenancy: Tenancy, providerConfigId: string) {
   const config = tenancy.completeConfig;
   let providerConfig: (typeof config.auth.oauth.providers)[number] & { id: string } | undefined;
@@ -124,6 +141,7 @@ export const oauthProviderCrudHandlers = createLazyProxy(() => createCrudHandler
 
     const prismaClient = getPrismaClientForTenancy(auth.tenancy);
     await ensureUserExists(prismaClient, { tenancyId: auth.tenancy.id, userId: params.user_id });
+    await ensureProviderExists(auth.tenancy, params.user_id, params.provider_id);
 
     const oauthAccount = await prismaClient.projectUserOAuthAccount.findUnique({
       where: {
@@ -202,6 +220,7 @@ export const oauthProviderCrudHandlers = createLazyProxy(() => createCrudHandler
 
     const prismaClient = getPrismaClientForTenancy(auth.tenancy);
     await ensureUserExists(prismaClient, { tenancyId: auth.tenancy.id, userId: params.user_id });
+    await ensureProviderExists(auth.tenancy, params.user_id, params.provider_id);
 
     await checkInputValidity({
       tenancy: auth.tenancy,
@@ -328,6 +347,7 @@ export const oauthProviderCrudHandlers = createLazyProxy(() => createCrudHandler
 
     const prismaClient = getPrismaClientForTenancy(auth.tenancy);
     await ensureUserExists(prismaClient, { tenancyId: auth.tenancy.id, userId: params.user_id });
+    await ensureProviderExists(auth.tenancy, params.user_id, params.provider_id);
 
     await retryTransaction(prismaClient, async (tx) => {
       // Find the existing OAuth account with all related records

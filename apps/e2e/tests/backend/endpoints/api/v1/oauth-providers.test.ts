@@ -916,3 +916,103 @@ it("should prevent multiple providers of the same type from being enabled for si
   expect(enableResponse.status).toBe(200);
   expect(enableResponse.body.allow_sign_in).toBe(true);
 });
+
+it("should not allow get, update, delete oauth providers with wrong user id and provider id pair", async ({ expect }) => {
+  const { createProjectResponse } = await createAndSwitchToOAuthEnabledProject();
+
+  // Create user1 and their OAuth provider
+  const user1 = await Auth.Otp.signIn();
+  const providerConfig = createProjectResponse.body.config.oauth_providers.find((p: any) => p.provider_config_id === "spotify");
+  expect(providerConfig).toBeDefined();
+
+  const createResponse1 = await niceBackendFetch("/api/v1/oauth-providers", {
+    method: "POST",
+    accessType: "server",
+    body: {
+      user_id: "me",
+      provider_config_id: providerConfig.id,
+      account_id: "test_spotify_user_1",
+      email: "test1@example.com",
+      allow_sign_in: true,
+      allow_connected_accounts: true,
+    },
+  });
+
+  expect(createResponse1.status).toBe(201);
+  const provider1Id = createResponse1.body.id;
+
+  backendContext.set({ mailbox: createMailbox() });
+  const user2 = await Auth.Otp.signIn();
+
+  const createResponse2 = await niceBackendFetch("/api/v1/oauth-providers", {
+    method: "POST",
+    accessType: "server",
+    body: {
+      user_id: "me",
+      provider_config_id: providerConfig.id,
+      account_id: "test_spotify_user_2",
+      email: "test2@example.com",
+      allow_sign_in: true,
+      allow_connected_accounts: true,
+    },
+  });
+
+  expect(createResponse2.status).toBe(201);
+  const provider2Id = createResponse2.body.id;
+
+  // Test 1: should be able to access provider1 with user1 id (should succeed)
+  const user1ReadProvider1 = await niceBackendFetch(`/api/v1/oauth-providers/${user1.userId}/${provider1Id}`, {
+    method: "GET",
+    accessType: "server",
+  });
+  expect(user1ReadProvider1.status).toBe(200);
+
+  // Test 2: should be able to access provider2 with user2 id (should succeed)
+  const user2ReadProvider2 = await niceBackendFetch(`/api/v1/oauth-providers/${user2.userId}/${provider2Id}`, {
+    method: "GET",
+    accessType: "server",
+  });
+  expect(user2ReadProvider2.status).toBe(200);
+
+  // Test 3: should NOT be able to access provider2 with user1 id (should fail)
+  const user1ReadProvider2 = await niceBackendFetch(`/api/v1/oauth-providers/${user1.userId}/${provider2Id}`, {
+    method: "GET",
+    accessType: "server",
+  });
+  expect(user1ReadProvider2).toMatchInlineSnapshot(`
+    NiceResponse {
+      "status": 404,
+      "body": "OAuth provider <stripped UUID> for user <stripped UUID> not found",
+      "headers": Headers { <some fields may have been hidden> },
+    }
+  `);
+
+  // Try to UPDATE user2's provider as user1 - should fail
+  const user1UpdateProvider2 = await niceBackendFetch(`/api/v1/oauth-providers/${user1.userId}/${provider2Id}`, {
+    method: "PATCH",
+    accessType: "server",
+    body: {
+      allow_sign_in: false,
+    },
+  });
+  expect(user1UpdateProvider2).toMatchInlineSnapshot(`
+    NiceResponse {
+      "status": 404,
+      "body": "OAuth provider <stripped UUID> for user <stripped UUID> not found",
+      "headers": Headers { <some fields may have been hidden> },
+    }
+  `);
+
+  // Try to DELETE user2's provider as user1 - should fail
+  const user1DeleteProvider2 = await niceBackendFetch(`/api/v1/oauth-providers/${user1.userId}/${provider2Id}`, {
+    method: "DELETE",
+    accessType: "server",
+  });
+  expect(user1DeleteProvider2).toMatchInlineSnapshot(`
+    NiceResponse {
+      "status": 404,
+      "body": "OAuth provider <stripped UUID> for user <stripped UUID> not found",
+      "headers": Headers { <some fields may have been hidden> },
+    }
+  `);
+});
