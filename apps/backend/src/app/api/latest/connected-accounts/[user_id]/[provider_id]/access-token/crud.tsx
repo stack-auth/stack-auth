@@ -132,7 +132,7 @@ export const connectedAccountAccessTokenCrudHandlers = createLazyProxy(() => cre
           data: {
             tenancyId: auth.tenancy.id,
             accessToken: tokenSet.accessToken,
-            oauthAccountId: token.id,
+            oauthAccountId: token.projectUserOAuthAccount.id,
             scopes: token.scopes,
             expiresAt: tokenSet.accessTokenExpiredAt
           }
@@ -149,7 +149,7 @@ export const connectedAccountAccessTokenCrudHandlers = createLazyProxy(() => cre
             data: {
               tenancyId: auth.tenancy.id,
               refreshToken: tokenSet.refreshToken,
-              oauthAccountId: token.id,
+              oauthAccountId: token.projectUserOAuthAccount.id,
               scopes: token.scopes,
             }
           });
