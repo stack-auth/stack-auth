@@ -284,7 +284,7 @@ it("should delete an OAuth provider connection", async ({ expect }: { expect: an
   expect(readAfterDeleteResponse).toMatchInlineSnapshot(`
     NiceResponse {
       "status": 404,
-      "body": "OAuth provider not found for this user",
+      "body": "OAuth provider <stripped UUID> for user <stripped UUID> not found",
       "headers": Headers { <some fields may have been hidden> },
     }
   `);
@@ -302,7 +302,7 @@ it("should return 404 when reading non-existent OAuth provider", async ({ expect
   expect(readResponse).toMatchInlineSnapshot(`
     NiceResponse {
       "status": 404,
-      "body": "OAuth provider not found for this user",
+      "body": "OAuth provider <stripped UUID> for user <stripped UUID> not found",
       "headers": Headers { <some fields may have been hidden> },
     }
   `);
@@ -323,7 +323,7 @@ it("should return 404 when updating non-existent OAuth provider", async ({ expec
   expect(updateResponse).toMatchInlineSnapshot(`
     NiceResponse {
       "status": 404,
-      "body": "OAuth provider <stripped UUID> not found",
+      "body": "OAuth provider <stripped UUID> for user <stripped UUID> not found",
       "headers": Headers { <some fields may have been hidden> },
     }
   `);
@@ -341,7 +341,7 @@ it("should return 404 when deleting non-existent OAuth provider", async ({ expec
   expect(deleteResponse).toMatchInlineSnapshot(`
     NiceResponse {
       "status": 404,
-      "body": "OAuth provider not found for this user",
+      "body": "OAuth provider <stripped UUID> for user <stripped UUID> not found",
       "headers": Headers { <some fields may have been hidden> },
     }
   `);
@@ -602,8 +602,8 @@ it("should allow server access to any user's OAuth providers", async ({ expect }
 
   expect(deleteResponse).toMatchInlineSnapshot(`
     NiceResponse {
-      "status": 200,
-      "body": { "success": true },
+      "status": 404,
+      "body": "OAuth provider <stripped UUID> for user <stripped UUID> not found",
       "headers": Headers { <some fields may have been hidden> },
     }
   `);
