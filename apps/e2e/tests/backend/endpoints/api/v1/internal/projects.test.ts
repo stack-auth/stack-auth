@@ -182,6 +182,7 @@ it("creates a new project with different configurations", async ({ expect }) => 
           "oauth_providers": [
             {
               "id": "google",
+              "provider_config_id": "google",
               "type": "shared",
             },
           ],

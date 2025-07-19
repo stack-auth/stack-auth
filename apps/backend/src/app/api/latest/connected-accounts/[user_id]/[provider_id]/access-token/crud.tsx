@@ -4,7 +4,7 @@ import { TokenSet } from "@/oauth/providers/base";
 import { getPrismaClientForTenancy } from "@/prisma-client";
 import { createCrudHandlers } from "@/route-handlers/crud-handler";
 import { KnownErrors } from "@stackframe/stack-shared";
-import { connectedAccountAccessTokenCrud } from "@stackframe/stack-shared/dist/interface/crud/oauth";
+import { connectedAccountAccessTokenCrud } from "@stackframe/stack-shared/dist/interface/crud/connected-accounts";
 import { userIdOrMeSchema, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
 import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
 import { StackAssertionError, StatusError, captureError } from "@stackframe/stack-shared/dist/utils/errors";
@@ -43,15 +43,18 @@ export const connectedAccountAccessTokenCrudHandlers = createLazyProxy(() => cre
     const accessTokens = await prisma.oAuthAccessToken.findMany({
       where: {
         tenancyId: auth.tenancy.id,
-        configOAuthProviderId: params.provider_id,
         projectUserOAuthAccount: {
           projectUserId: params.user_id,
+          configOAuthProviderId: params.provider_id,
         },
         expiresAt: {
           // is at least 5 minutes in the future
           gt: new Date(Date.now() + 5 * 60 * 1000),
         },
         isValid: true,
+      },
+      include: {
+        projectUserOAuthAccount: true,
       },
     });
     const filteredTokens = accessTokens.filter((t) => {
@@ -79,11 +82,14 @@ export const connectedAccountAccessTokenCrudHandlers = createLazyProxy(() => cre
     const refreshTokens = await prisma.oAuthToken.findMany({
       where: {
         tenancyId: auth.tenancy.id,
-        configOAuthProviderId: params.provider_id,
         projectUserOAuthAccount: {
           projectUserId: params.user_id,
+          configOAuthProviderId: params.provider_id,
         },
         isValid: true,
+      },
+      include: {
+        projectUserOAuthAccount: true,
       },
     });
 
@@ -125,9 +131,8 @@ export const connectedAccountAccessTokenCrudHandlers = createLazyProxy(() => cre
         await prisma.oAuthAccessToken.create({
           data: {
             tenancyId: auth.tenancy.id,
-            configOAuthProviderId: params.provider_id,
             accessToken: tokenSet.accessToken,
-            providerAccountId: token.providerAccountId,
+            oauthAccountId: token.projectUserOAuthAccount.id,
             scopes: token.scopes,
             expiresAt: tokenSet.accessTokenExpiredAt
           }
@@ -143,9 +148,8 @@ export const connectedAccountAccessTokenCrudHandlers = createLazyProxy(() => cre
           await prisma.oAuthToken.create({
             data: {
               tenancyId: auth.tenancy.id,
-              configOAuthProviderId: params.provider_id,
               refreshToken: tokenSet.refreshToken,
-              providerAccountId: token.providerAccountId,
+              oauthAccountId: token.projectUserOAuthAccount.id,
               scopes: token.scopes,
             }
           });

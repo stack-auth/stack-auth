@@ -1181,7 +1181,7 @@ function SwappableWidgetInstanceGrid(props: { gridRef: RefState<WidgetInstanceGr
         onDragStart={(event) => {
           setActiveInstanceId(event.active.id as string);
           setDraggingType("element");
-          setActiveElementInitialRect(event.activatorEvent.target.getBoundingClientRect());
+          setActiveElementInitialRect((event.activatorEvent.target as any).getBoundingClientRect());
         }}
         onDragAbort={() => {
           setHoverElementSwap(null);
@@ -1242,10 +1242,10 @@ function SwappableWidgetInstanceGrid(props: { gridRef: RefState<WidgetInstanceGr
               const overId = props.gridRef.current.getElementAt(overCoordinates[0], overCoordinates[1]).instance?.id;
               if (overId && overId !== widgetId) {
                 setHoverElementSwap([overId, [
-                  event.over.rect.left - activeElementInitialRect.left,
-                  event.over.rect.top - activeElementInitialRect.top,
-                  activeElementInitialRect.width,
-                  activeElementInitialRect.height,
+                  event.over.rect.left - activeElementInitialRect!.left,
+                  event.over.rect.top - activeElementInitialRect!.top,
+                  activeElementInitialRect!.width,
+                  activeElementInitialRect!.height,
                   event.over.rect.width,
                   event.over.rect.height,
                 ]]);
