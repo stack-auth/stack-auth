@@ -235,35 +235,6 @@ export const oauthProviderCrudHandlers = createLazyProxy(() => createCrudHandler
             allowSignIn: data.allow_sign_in,
           },
         });
-
-        if (data.allow_sign_in) {
-          if (!existingOAuthAccount.oauthAuthMethod) {
-            await tx.authMethod.create({
-              data: {
-                tenancyId: auth.tenancy.id,
-                projectUserId: params.user_id,
-                oauthAuthMethod: {
-                  create: {
-                    configOAuthProviderId: existingOAuthAccount.configOAuthProviderId,
-                    projectUserId: params.user_id,
-                    providerAccountId: existingOAuthAccount.providerAccountId,
-                  },
-                },
-              },
-            });
-          }
-        } else {
-          if (existingOAuthAccount.oauthAuthMethod) {
-            await tx.authMethod.delete({
-              where: {
-                tenancyId_id: {
-                  tenancyId: auth.tenancy.id,
-                  id: existingOAuthAccount.oauthAuthMethod.authMethodId,
-                },
-              },
-            });
-          }
-        }
       }
 
       // Handle allow_connected_accounts changes
@@ -319,20 +290,9 @@ export const oauthProviderCrudHandlers = createLazyProxy(() => createCrudHandler
 
     const prismaClient = getPrismaClientForTenancy(auth.tenancy);
     await ensureUserExists(prismaClient, { tenancyId: auth.tenancy.id, userId: params.user_id });
-    const existingOAuthAccount = await ensureProviderExists(auth.tenancy, params.user_id, params.provider_id);
+    await ensureProviderExists(auth.tenancy, params.user_id, params.provider_id);
 
     await retryTransaction(prismaClient, async (tx) => {
-      if (existingOAuthAccount.oauthAuthMethod) {
-        await tx.authMethod.delete({
-          where: {
-            tenancyId_id: {
-              tenancyId: auth.tenancy.id,
-              id: existingOAuthAccount.oauthAuthMethod.authMethodId,
-            },
-          },
-        });
-      }
-
       await tx.projectUserOAuthAccount.delete({
         where: {
           tenancyId_id: {
