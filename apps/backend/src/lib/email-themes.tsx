@@ -44,6 +44,39 @@ export async function renderEmailWithTheme(
   return output.result as { html: string, text: string };
 }
 
+export async function renderEmailWithTemplate(
+  templateComponent: string,
+  themeComponent: string,
+  variables: Record<string, string>,
+) {
+  const apiKey = getEnvVariable("STACK_FREESTYLE_API_KEY");
+  const freestyle = new TracedFreestyleSandboxes({ apiKey });
+  const variablesAsProps = Object.entries(variables).map(([key, value]) => `${key}={${JSON.stringify(value)}}`).join(" ");
+  const script = deindent`
+    import React from 'react';
+    import { render } from '@react-email/components';
+    ${themeComponent}
+    ${templateComponent}
+    export default async () => {
+      const Email = <EmailTheme>
+        <EmailTemplate ${variablesAsProps} />
+      </EmailTheme>;
+      return {
+        html: await render(Email),
+        text: await render(Email, { plainText: true }),
+      };
+    }
+  `;
+  const nodeModules = {
+    "@react-email/components": "0.1.1",
+  };
+  const output = await freestyle.executeScript(script, { nodeModules });
+  if ("error" in output) {
+    return Result.error(output.error as string);
+  }
+  return output.result as { html: string, text: string };
+}
+
 
 const LightEmailTheme = `import { Html, Tailwind, Body } from '@react-email/components';
 function EmailTheme({ children }: { children: React.ReactNode }) {

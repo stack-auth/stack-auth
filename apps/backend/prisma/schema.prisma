@@ -19,7 +19,6 @@ model Project {
   displayName      String
   description      String  @default("")
   isProductionMode Boolean
-  userCount        Int     @default(0)
 
   projectConfigOverride Json?
 
@@ -171,7 +170,6 @@ model ProjectUser {
   teamMembers              TeamMember[]
   contactChannels          ContactChannel[]
   authMethods              AuthMethod[]
-  connectedAccounts        ConnectedAccount[]
 
   // some backlinks for the unique constraints on some auth methods
   passwordAuthMethod         PasswordAuthMethod[]
@@ -197,8 +195,9 @@ model ProjectUser {
 // This should be renamed to "OAuthAccount" as it is not always bound to a user
 // When ever a user goes through the OAuth flow and gets an account ID from the OAuth provider, we store that here.
 model ProjectUserOAuthAccount {
-  tenancyId             String @db.Uuid
-  projectUserId         String @db.Uuid
+  id                    String  @default(uuid()) @db.Uuid
+  tenancyId             String  @db.Uuid
+  projectUserId         String? @db.Uuid
   configOAuthProviderId String
   providerAccountId     String
 
@@ -214,11 +213,13 @@ model ProjectUserOAuthAccount {
   oauthTokens      OAuthToken[]
   oauthAccessToken OAuthAccessToken[]
 
-  // At lease one of the authMethod or connectedAccount should be set.
-  connectedAccount ConnectedAccount?
-  oauthAuthMethod  OAuthAuthMethod?
+  // if allowSignIn is true, oauthAuthMethod must be set
+  oauthAuthMethod        OAuthAuthMethod?
+  allowConnectedAccounts Boolean          @default(true)
+  allowSignIn            Boolean          @default(true)
 
-  @@id([tenancyId, configOAuthProviderId, providerAccountId])
+  @@id([tenancyId, id])
+  @@unique([tenancyId, configOAuthProviderId, projectUserId, providerAccountId])
   @@index([tenancyId, projectUserId])
 }
 
@@ -250,23 +251,6 @@ model ContactChannel {
   @@unique([tenancyId, projectUserId, type, value])
   // only one contact channel per project with the same value and type can be used for auth
   @@unique([tenancyId, type, value, usedForAuth])
-}
-
-model ConnectedAccount {
-  tenancyId             String @db.Uuid
-  id                    String @default(uuid()) @db.Uuid
-  projectUserId         String @db.Uuid
-  configOAuthProviderId String
-  providerAccountId     String
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  oauthAccount ProjectUserOAuthAccount @relation(fields: [tenancyId, configOAuthProviderId, providerAccountId], references: [tenancyId, configOAuthProviderId, providerAccountId])
-  projectUser  ProjectUser             @relation(fields: [tenancyId, projectUserId], references: [tenancyId, projectUserId], onDelete: Cascade)
-
-  @@id([tenancyId, id])
-  @@unique([tenancyId, configOAuthProviderId, providerAccountId])
 }
 
 model AuthMethod {
@@ -358,11 +342,13 @@ model OAuthAuthMethod {
   updatedAt DateTime @updatedAt
 
   authMethod   AuthMethod              @relation(fields: [tenancyId, authMethodId], references: [tenancyId, id], onDelete: Cascade)
-  oauthAccount ProjectUserOAuthAccount @relation(fields: [tenancyId, configOAuthProviderId, providerAccountId], references: [tenancyId, configOAuthProviderId, providerAccountId])
+  oauthAccount ProjectUserOAuthAccount @relation(fields: [tenancyId, configOAuthProviderId, projectUserId, providerAccountId], references: [tenancyId, configOAuthProviderId, projectUserId, providerAccountId])
   projectUser  ProjectUser             @relation(fields: [tenancyId, projectUserId], references: [tenancyId, projectUserId], onDelete: Cascade)
 
   @@id([tenancyId, authMethodId])
   @@unique([tenancyId, configOAuthProviderId, providerAccountId])
+  @@unique([tenancyId, projectUserId, configOAuthProviderId])
+  @@unique([tenancyId, configOAuthProviderId, projectUserId, providerAccountId])
 }
 
 enum StandardOAuthProviderType {
@@ -382,14 +368,13 @@ enum StandardOAuthProviderType {
 model OAuthToken {
   id String @id @default(uuid()) @db.Uuid
 
-  tenancyId             String @db.Uuid
-  configOAuthProviderId String
-  providerAccountId     String
+  tenancyId      String @db.Uuid
+  oauthAccountId String @db.Uuid
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  projectUserOAuthAccount ProjectUserOAuthAccount @relation(fields: [tenancyId, configOAuthProviderId, providerAccountId], references: [tenancyId, configOAuthProviderId, providerAccountId], onDelete: Cascade)
+  projectUserOAuthAccount ProjectUserOAuthAccount @relation(fields: [tenancyId, oauthAccountId], references: [tenancyId, id], onDelete: Cascade)
 
   refreshToken String
   scopes       String[]
@@ -399,14 +384,13 @@ model OAuthToken {
 model OAuthAccessToken {
   id String @id @default(uuid()) @db.Uuid
 
-  tenancyId             String @db.Uuid
-  configOAuthProviderId String
-  providerAccountId     String
+  tenancyId      String @db.Uuid
+  oauthAccountId String @db.Uuid
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  projectUserOAuthAccount ProjectUserOAuthAccount @relation(fields: [tenancyId, configOAuthProviderId, providerAccountId], references: [tenancyId, configOAuthProviderId, providerAccountId], onDelete: Cascade)
+  projectUserOAuthAccount ProjectUserOAuthAccount @relation(fields: [tenancyId, oauthAccountId], references: [tenancyId, id], onDelete: Cascade)
 
   accessToken String
   scopes      String[]
@@ -713,19 +697,13 @@ model UserNotificationPreference {
   @@unique([tenancyId, projectUserId, notificationCategoryId])
 }
 
-enum ThreadMessageRole {
-  user
-  assistant
-  tool
-}
-
 model ThreadMessage {
-  id String @default(uuid()) @db.Uuid
+  id        String @default(uuid()) @db.Uuid
   tenancyId String @db.Uuid
-  threadId String @db.Uuid
+  threadId  String @db.Uuid
 
-  role ThreadMessageRole
-  content Json
+  content   Json
   createdAt DateTime @default(now())
+
   @@id([tenancyId, id])
 }
