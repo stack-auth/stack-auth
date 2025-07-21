@@ -211,6 +211,30 @@ import.meta.vitest?.test("applies migrations concurrently", runTest(async ({ exp
   expect(result[0].name).toBe('test_value');
 }));
 
+import.meta.vitest?.test("applies migrations concurrently with 20 concurrent migrations", runTest(async ({ expect, prismaClient }) => {
+  const promises = Array.from({ length: 20 }, () =>
+    applyMigrations({ prismaClient, migrationFiles: exampleMigrationFiles1, artificialDelayInSeconds: 1 })
+  );
+
+  const results = await Promise.all(promises);
+
+  // Count how many migrations were applied by each promise
+  const appliedCounts = results.map(result => result.newlyAppliedMigrationNames.length);
+
+  // Only one of the promises should have applied all migrations, the rest should have applied none
+  const successfulApplies = appliedCounts.filter(count => count === 2);
+  const emptyApplies = appliedCounts.filter(count => count === 0);
+
+  expect(successfulApplies.length).toBe(1);
+  expect(emptyApplies.length).toBe(19);
+
+  await prismaClient.$executeRaw`INSERT INTO test (name) VALUES ('test_value')`;
+  const result = await prismaClient.$queryRaw`SELECT name FROM test` as { name: string }[];
+  expect(Array.isArray(result)).toBe(true);
+  expect(result.length).toBe(1);
+  expect(result[0].name).toBe('test_value');
+}));
+
 
 import.meta.vitest?.test("applies migration with a DB previously migrated with prisma", runTest(async ({ expect, prismaClient, dbURL }) => {
   await applySql({ sql: examplePrismaBasedInitQueries, fullDbURL: dbURL.full });

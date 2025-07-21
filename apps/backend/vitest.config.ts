@@ -8,7 +8,6 @@ export default mergeConfig(
   defineConfig({
     test: {
       testTimeout: 20000,
-      environment: 'jsdom',
       env: {
         ...loadEnv('', process.cwd(), ''),
         ...loadEnv('development', process.cwd(), ''),
