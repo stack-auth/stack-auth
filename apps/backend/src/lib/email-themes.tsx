@@ -69,6 +69,7 @@ export async function renderEmailWithTemplate(
   `;
   const nodeModules = {
     "@react-email/components": "0.1.1",
+    "arktype": "2.1.20",
   };
   const output = await freestyle.executeScript(script, { nodeModules });
   if ("error" in output) {
