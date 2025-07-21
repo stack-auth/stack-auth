@@ -194,8 +194,8 @@ import.meta.vitest?.test("first apply half of the migrations, then apply the oth
 
 import.meta.vitest?.test("applies migrations concurrently", runTest(async ({ expect, prismaClient }) => {
   const [result1, result2] = await Promise.all([
-    applyMigrations({ prismaClient, migrationFiles: exampleMigrationFiles1, artificialDelayPerMigration: 1 }),
-    applyMigrations({ prismaClient, migrationFiles: exampleMigrationFiles1, artificialDelayPerMigration: 1 }),
+    applyMigrations({ prismaClient, migrationFiles: exampleMigrationFiles1, artificialDelayInSeconds: 1 }),
+    applyMigrations({ prismaClient, migrationFiles: exampleMigrationFiles1, artificialDelayInSeconds: 1 }),
   ]);
 
   const l1 = result1.newlyAppliedMigrationNames.length;

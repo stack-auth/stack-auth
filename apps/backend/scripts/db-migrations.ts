@@ -1,14 +1,14 @@
 import { applyMigrations } from "@/auto-migrations";
 import { MIGRATION_FILES_DIR, getMigrationFiles } from "@/auto-migrations/utils";
-import { prismaClient } from "@/prisma-client";
+import { globalPrismaClient } from "@/prisma-client";
 import { execSync } from "child_process";
 import * as readline from 'readline';
 
 const dropPublicSchema = async () => {
-  await prismaClient.$executeRaw`DROP SCHEMA public CASCADE`;
-  await prismaClient.$executeRaw`CREATE SCHEMA public`;
-  await prismaClient.$executeRaw`GRANT ALL ON SCHEMA public TO postgres`;
-  await prismaClient.$executeRaw`GRANT ALL ON SCHEMA public TO public`;
+  await globalPrismaClient.$executeRaw`DROP SCHEMA public CASCADE`;
+  await globalPrismaClient.$executeRaw`CREATE SCHEMA public`;
+  await globalPrismaClient.$executeRaw`GRANT ALL ON SCHEMA public TO postgres`;
+  await globalPrismaClient.$executeRaw`GRANT ALL ON SCHEMA public TO public`;
 };
 
 const seed = async () => {
@@ -34,7 +34,7 @@ const promptDropDb = async () => {
 
 const migrate = async () => {
   await applyMigrations({
-    prismaClient,
+    prismaClient: globalPrismaClient,
     migrationFiles: getMigrationFiles(MIGRATION_FILES_DIR),
     logging: true,
   });

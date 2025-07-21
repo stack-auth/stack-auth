@@ -142,11 +142,11 @@ export async function applyMigrations(options: {
   return { newlyAppliedMigrationNames };
 };
 
-export async function runMigrationNeeded<T>(options: {
+export async function runMigrationNeeded(options: {
   prismaClient: PrismaClient,
   migrationFiles?: { migrationName: string, sql: string }[],
   artificialDelayInSeconds?: number,
-}): Promise<T> {
+}): Promise<void> {
   const migrationFiles = options.migrationFiles ?? MIGRATION_FILES;
 
   try {
@@ -159,7 +159,6 @@ export async function runMigrationNeeded<T>(options: {
         throw new Error('MIGRATION_NEEDED');
       }
     }
-    return result;
   } catch (e) {
     if (isMigrationNeededError(e)) {
       await applyMigrations({

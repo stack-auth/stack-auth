@@ -65,7 +65,7 @@ export const contactChannelVerificationCodeHandler = createVerificationCodeHandl
       throw new StatusError(400, "Contact channel not found. Was your contact channel deleted?");
     }
 
-    await getPrismaClientForTenancy(tenancy).contactChannel.update({
+    await prisma.contactChannel.update({
       where: uniqueKeys,
       data: {
         isVerified: true,

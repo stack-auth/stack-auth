@@ -200,7 +200,7 @@ function createApiKeyHandlers<Type extends "user" | "team">(type: Type) {
           type,
         });
 
-        const schema = await getPrismaSchemaForTenancy(auth.tenancy);
+        const prisma = await getPrismaClientForTenancy(auth.tenancy);
 
         const apiKey = await prisma.projectApiKey.create({
           data: {
