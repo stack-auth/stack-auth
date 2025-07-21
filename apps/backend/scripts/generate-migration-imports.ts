@@ -9,5 +9,5 @@ fs.mkdirSync(path.join(process.cwd(), 'src', 'generated'), { recursive: true });
 
 writeFileSyncIfChanged(
   path.join(process.cwd(), 'src', 'generated', 'migration-files.tsx'),
-  `export const MIGRATION_FILES = ${JSON.stringify(migrationFiles, null, 2)};`
+  `export const MIGRATION_FILES = ${JSON.stringify(migrationFiles, null, 2)};\n`
 );
