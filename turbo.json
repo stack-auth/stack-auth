@@ -114,6 +114,9 @@
     },
     "db:init": {
       "cache": false
+    },
+    "db:migrate": {
+      "cache": false
     }
   }
 }

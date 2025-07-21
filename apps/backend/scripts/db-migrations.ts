@@ -50,14 +50,8 @@ Commands:
   generate-migration-file  Generate a new migration file using Prisma, then reset and migrate
   seed                     [Advanced] Run database seeding only
   init                     Apply migrations and seed the database
+  migrate                  Apply migrations
   help                     Show this help message
-
-Examples:
-  pnpm db-migrations reset
-  pnpm db-migrations generate-migration-file
-  pnpm db-migrations seed
-  pnpm db-migrations init
-  pnpm db-migrations help
 `);
 };
 
@@ -89,6 +83,10 @@ const main = async () => {
       await seed();
       break;
     }
+    case 'migrate': {
+      await migrate();
+      break;
+    }
     case 'help': {
       showHelp();
       break;
@@ -102,4 +100,7 @@ const main = async () => {
 };
 
 // eslint-disable-next-line no-restricted-syntax
-main().catch(console.error);
+main().catch((error) => {
+  console.error(error);
+  process.exit(1);
+});

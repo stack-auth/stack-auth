@@ -38,6 +38,7 @@
     "db:reset": "pnpm pre && pnpm run --filter=@stackframe/stack-backend db:reset",
     "db:seed": "pnpm pre && pnpm run --filter=@stackframe/stack-backend db:seed",
     "db:init": "pnpm pre && pnpm run --filter=@stackframe/stack-backend db:init",
+    "db:migrate": "pnpm pre && pnpm run --filter=@stackframe/stack-backend db:migrate",
     "fern": "pnpm pre && pnpm run --filter=@stackframe/docs fern",
     "dev:full": "pnpm pre && concurrently -k \"pnpm run generate-sdks:watch\" \"pnpm run generate-docs:watch\" \"turbo run dev --concurrency 99999\"",
     "dev": "pnpm pre && concurrently -k \"pnpm run generate-sdks:watch\" \"pnpm run generate-docs:watch\" \"pnpm run generate-openapi-docs:watch\" \"turbo run dev --concurrency 99999 --filter=./apps/* --filter=@stackframe/stack-docs --filter=./packages/* --filter=./examples/demo \"",

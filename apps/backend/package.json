@@ -27,6 +27,7 @@
     "db:reset": "pnpm run with-env tsx scripts/db-migrations.ts reset",
     "db:seed": "pnpm run with-env tsx scripts/db-migrations.ts seed",
     "db:init": "pnpm run with-env tsx scripts/db-migrations.ts init",
+    "db:migrate": "pnpm run with-env tsx scripts/db-migrations.ts migrate",
     "generate-migration-imports": "pnpm run with-env tsx scripts/generate-migration-imports.ts",
     "generate-migration-imports:watch": "chokidar 'prisma/migrations/**/*.sql' -c 'pnpm run generate-migration-imports'",
     "lint": "next lint",
