@@ -266,7 +266,9 @@ export async function sendEmailWithoutRetries(options: SendEmailOptions): Promis
     throw new StackAssertionError("Tenancy not found");
   }
 
-  await getPrismaClientForTenancy(tenancy).sentEmail.create({
+  const prisma = await getPrismaClientForTenancy(tenancy);
+
+  await prisma.sentEmail.create({
     data: {
       tenancyId: options.tenancyId,
       to: typeof options.to === 'string' ? [options.to] : options.to,

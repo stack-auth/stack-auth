@@ -39,8 +39,8 @@ function getNeonPrismaClient(connectionString: string) {
   return neonPrismaClient;
 }
 
-export function getPrismaClientForTenancy(tenancy: Tenancy) {
-  return getPrismaClientForSourceOfTruth(tenancy.completeConfig.sourceOfTruth, tenancy.branchId);
+export async function getPrismaClientForTenancy(tenancy: Tenancy) {
+  return await getPrismaClientForSourceOfTruth(tenancy.completeConfig.sourceOfTruth, tenancy.branchId);
 }
 
 export function getPrismaSchemaForTenancy(tenancy: Tenancy) {
@@ -61,7 +61,7 @@ function getPostgresPrismaClient(connectionString: string) {
   return postgresPrismaClient;
 }
 
-export function getPrismaClientForSourceOfTruth(sourceOfTruth: OrganizationRenderedConfig["sourceOfTruth"], branchId: string) {
+export async function getPrismaClientForSourceOfTruth(sourceOfTruth: OrganizationRenderedConfig["sourceOfTruth"], branchId: string) {
   switch (sourceOfTruth.type) {
     case 'neon': {
       if (!(branchId in sourceOfTruth.connectionStrings)) {

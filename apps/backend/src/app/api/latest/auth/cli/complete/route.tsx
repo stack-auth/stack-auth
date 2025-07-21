@@ -24,7 +24,7 @@ export const POST = createSmartRouteHandler({
     bodyType: yupString().oneOf(["success"]).defined(),
   }),
   async handler({ auth: { tenancy }, body: { login_code, refresh_token } }) {
-    const prisma = getPrismaClientForTenancy(tenancy);
+    const prisma = await getPrismaClientForTenancy(tenancy);
 
     // Find the CLI auth attempt
     const cliAuth = await prisma.cliAuthAttempt.findUnique({

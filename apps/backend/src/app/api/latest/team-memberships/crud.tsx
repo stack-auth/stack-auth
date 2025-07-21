@@ -46,7 +46,8 @@ export const teamMembershipsCrudHandlers = createLazyProxy(() => createCrudHandl
     user_id: userIdOrMeSchema.defined(),
   }),
   onCreate: async ({ auth, params }) => {
-    const result = await retryTransaction(getPrismaClientForTenancy(auth.tenancy), async (tx) => {
+    const prisma = await getPrismaClientForTenancy(auth.tenancy);
+    const result = await retryTransaction(prisma, async (tx) => {
       await ensureUserExists(tx, {
         tenancyId: auth.tenancy.id,
         userId: params.user_id,
@@ -112,7 +113,8 @@ export const teamMembershipsCrudHandlers = createLazyProxy(() => createCrudHandl
     return data;
   },
   onDelete: async ({ auth, params }) => {
-    await retryTransaction(getPrismaClientForTenancy(auth.tenancy), async (tx) => {
+    const prisma = await getPrismaClientForTenancy(auth.tenancy);
+    await retryTransaction(prisma, async (tx) => {
       // Users are always allowed to remove themselves from a team
       // Only users with the $remove_members permission can remove other users
       if (auth.type === 'client') {

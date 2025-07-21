@@ -54,7 +54,9 @@ export const contactChannelVerificationCodeHandler = createVerificationCodeHandl
       },
     } as const;
 
-    const contactChannel = await getPrismaClientForTenancy(tenancy).contactChannel.findUnique({
+    const prisma = await getPrismaClientForTenancy(tenancy);
+
+    const contactChannel = await prisma.contactChannel.findUnique({
       where: uniqueKeys,
     });
 
