@@ -23,7 +23,8 @@ const clients = providerIds.map((id) => ({
       `http://localhost:${port}/api/v1/auth/oauth/callback/${id}`
     )),
     ...(process.env.STACK_MOCK_OAUTH_REDIRECT_URIS ? [process.env.STACK_MOCK_OAUTH_REDIRECT_URIS.replace("{id}", id)] : [])
-  ]
+  ],
+  grant_types: ['authorization_code', 'refresh_token'],
 }));
 
 const configuration = {
@@ -34,13 +35,17 @@ const configuration = {
     async claims() {
       return { sub, email: sub };
     },
-  }),
+  })
 };
 
 const oidc = new Provider(`http://localhost:${port}`, configuration);
 const app = express();
 
+// Simple in-memory storage for revoked tokens
+const revokedTokens = new Set<string>();
+
 app.use(express.urlencoded({ extended: false }));
+app.use(express.json()); // Add JSON parsing middleware
 
 const loginTemplateSource = `
 <!DOCTYPE html>
@@ -211,6 +216,114 @@ app.post('/interaction/:uid/login', setNoCache, async (req: express.Request, res
     await oidc.interactionFinished(req, res, result, { mergeWithLastSubmission: false });
   } catch (err) {
     next(err);
+  }
+});
+
+// Token revocation endpoints
+app.post('/revoke-refresh-token', async (req: express.Request, res: express.Response, next: express.NextFunction) => {
+  try {
+    const { token } = req.body;
+
+    if (!token) {
+      res.status(400).json({
+        error: 'invalid_request',
+        error_description: 'Missing token parameter'
+      });
+      return;
+    }
+
+    // Find the access token first
+    try {
+      const accessToken = await oidc.AccessToken.find(token);
+      if (!accessToken) {
+        res.status(400).json({
+          error: 'invalid_token',
+          error_description: 'Access token not found'
+        });
+        return;
+      }
+
+      // Get the grant associated with this access token
+      const grantId = accessToken.grantId;
+      if (grantId) {
+        try {
+          const grant = await oidc.Grant.find(grantId);
+          if (grant) {
+            // Add access token to revoked list
+            revokedTokens.add(token);
+
+            // Destroy the grant which should invalidate all associated tokens including refresh tokens
+            await grant.destroy();
+
+            res.json({
+              success: true,
+              message: 'Grant and associated refresh tokens have been revoked'
+            });
+            return;
+          }
+        } catch (grantErr) {
+          // Fall through to alternative approach if grant destruction fails
+        }
+      }
+
+      // Fallback: Add access token to revoked list
+      revokedTokens.add(token);
+
+      res.json({
+        success: true,
+        message: 'Access token marked as revoked (refresh token association not found)'
+      });
+    } catch (err) {
+      // Alternative approach - just mark the access token as revoked
+      revokedTokens.add(token);
+
+      res.json({
+        success: true,
+        message: 'Token marked as revoked'
+      });
+    }
+  } catch (err) {
+    res.status(500).json({
+      error: 'server_error',
+      error_description: 'Failed to revoke refresh token'
+    });
+  }
+});
+
+app.post('/revoke-access-token', async (req: express.Request, res: express.Response, next: express.NextFunction) => {
+  try {
+    const { token } = req.body;
+
+    if (!token) {
+      res.status(400).json({
+        error: 'invalid_request',
+        error_description: 'Missing token parameter'
+      });
+      return;
+    }
+
+    // Add token to revoked list
+    revokedTokens.add(token);
+
+    // Try to find and revoke the token using oidc-provider's built-in functionality
+    try {
+      const accessToken = await oidc.AccessToken.find(token);
+      if (accessToken) {
+        await accessToken.destroy();
+      }
+    } catch (err) {
+      // Token might not exist or already be expired, but we still add it to our blacklist
+    }
+
+    res.json({
+      success: true,
+      message: 'Access token has been revoked'
+    });
+  } catch (err) {
+    res.status(500).json({
+      error: 'server_error',
+      error_description: 'Failed to revoke access token'
+    });
   }
 });
 

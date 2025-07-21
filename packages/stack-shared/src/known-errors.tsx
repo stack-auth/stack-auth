@@ -78,7 +78,7 @@ export abstract class KnownError extends StatusError {
       if (json.code === KnownErrorType.prototype.errorCode) {
         const constructorArgs = KnownErrorType.constructorArgsFromJson(json);
         return new KnownErrorType(
-          // @ts-expect-error
+          // @ts-ignore-next-line
           ...constructorArgs,
         );
       }
@@ -592,14 +592,15 @@ const ProviderRejected = createKnownErrorConstructor(
 const UserWithEmailAlreadyExists = createKnownErrorConstructor(
   KnownError,
   "USER_EMAIL_ALREADY_EXISTS",
-  (email: string) => [
+  (email: string, wouldWorkIfEmailWasVerified: boolean = false) => [
     409,
-    `A user with email ${JSON.stringify(email)} already exists.`,
+    `A user with email ${JSON.stringify(email)} already exists${wouldWorkIfEmailWasVerified ? " but the email is not verified. Please login to your existing account with the method you used to sign up, and then verify your email to sign in with this login method." : "."}`,
     {
       email,
+      would_work_if_email_was_verified: wouldWorkIfEmailWasVerified,
     },
   ] as const,
-  (json: any) => [json.email] as const,
+  (json: any) => [json.email, json.would_work_if_email_was_verified ?? false] as const,
 );
 
 const EmailNotVerified = createKnownErrorConstructor(
@@ -1108,6 +1109,16 @@ const OAuthProviderNotFoundOrNotEnabled = createKnownErrorConstructor(
   () => [] as const,
 );
 
+const OAuthProviderAccountIdAlreadyUsedForSignIn = createKnownErrorConstructor(
+  KnownError,
+  "OAUTH_PROVIDER_ACCOUNT_ID_ALREADY_USED_FOR_SIGN_IN",
+  () => [
+    400,
+    `A provider with the same account ID is already used for signing in.`,
+  ] as const,
+  () => [] as const,
+);
+
 const MultiFactorAuthenticationRequired = createKnownErrorConstructor(
   KnownError,
   "MULTI_FACTOR_AUTHENTICATION_REQUIRED",
@@ -1244,14 +1255,16 @@ const OAuthProviderAccessDenied = createKnownErrorConstructor(
 const ContactChannelAlreadyUsedForAuthBySomeoneElse = createKnownErrorConstructor(
   KnownError,
   "CONTACT_CHANNEL_ALREADY_USED_FOR_AUTH_BY_SOMEONE_ELSE",
-  (type: "email", contactChannelValue?: string) => [
+  (type: "email", contactChannelValue?: string, wouldWorkIfEmailWasVerified: boolean = false) => [
     409,
-    contactChannelValue ?
-    `The ${type} (${contactChannelValue}) is already used for authentication by another account.` :
-    `This ${type} is already used for authentication by another account.`,
-    { type, contact_channel_value: contactChannelValue ?? null },
+    `This ${type} ${contactChannelValue ? `"(${contactChannelValue})"` : ""} is already used for authentication by another account${wouldWorkIfEmailWasVerified ? " but the email is not verified. Please login to your existing account with the method you used to sign up, and then verify your email to sign in with this login method." : "."}`,
+    {
+      type,
+      contact_channel_value: contactChannelValue ?? null,
+      would_work_if_email_was_verified: wouldWorkIfEmailWasVerified,
+    },
   ] as const,
-  (json) => [json.type, json.contact_channel_value] as const,
+  (json) => [json.type, json.contact_channel_value, json.would_work_if_email_was_verified ?? false] as const,
 );
 
 const InvalidPollingCodeError = createKnownErrorConstructor(
@@ -1378,6 +1391,7 @@ const EmailRenderingError = createKnownErrorConstructor(
   (json: any) => [json.error] as const,
 );
 
+
 export type KnownErrors = {
   [K in keyof typeof KnownErrors]: InstanceType<typeof KnownErrors[K]>;
 };
@@ -1471,6 +1485,7 @@ export const KnownErrors = {
   UserAlreadyConnectedToAnotherOAuthConnection,
   OuterOAuthTimeout,
   OAuthProviderNotFoundOrNotEnabled,
+  OAuthProviderAccountIdAlreadyUsedForSignIn,
   MultiFactorAuthenticationRequired,
   InvalidTotpCode,
   UserAuthenticationRequired,
@@ -1489,6 +1504,7 @@ export const KnownErrors = {
   ApiKeyRevoked,
   WrongApiKeyType,
   EmailRenderingError,
+
 } satisfies Record<string, KnownErrorConstructor<any, any>>;
 
 
