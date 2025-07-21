@@ -22,7 +22,7 @@ const toolCallContentSchema = yupObject({
 });
 
 const contentSchema = yupArray(yupUnion(textContentSchema, toolCallContentSchema)).defined();
-const openai = createOpenAI({ apiKey: getEnvVariable("STACK_OPENAI_API_KEY", "") });
+const openai = createOpenAI({ apiKey: getEnvVariable("STACK_OPENAI_API_KEY", "MISSING_OPENAI_API_KEY") });
 
 export const POST = createSmartRouteHandler({
   metadata: {
