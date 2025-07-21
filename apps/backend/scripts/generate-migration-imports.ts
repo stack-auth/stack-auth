@@ -5,7 +5,7 @@ import { MIGRATION_FILES_DIR, getMigrationFiles } from '../src/auto-migrations/u
 
 const migrationFiles = getMigrationFiles(MIGRATION_FILES_DIR);
 
-fs.mkdirSync("src/generated", { recursive: true });
+fs.mkdirSync(path.join(process.cwd(), 'src', 'generated'), { recursive: true });
 
 writeFileSyncIfChanged(
   path.join(process.cwd(), 'src', 'generated', 'migration-files.tsx'),
