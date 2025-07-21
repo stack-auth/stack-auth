@@ -142,23 +142,18 @@ export async function applyMigrations(options: {
   return { newlyAppliedMigrationNames };
 };
 
-export function getMigrationCheckQuery() {
-  return Prisma.raw(`
-    SELECT * FROM "SchemaMigration"
-    ORDER BY "finishedAt" ASC
-  `);
-}
-
-export async function runQueryAndMigrateIfNeeded<T>(options: {
+export async function runMigrationNeeded<T>(options: {
   prismaClient: PrismaClient,
   migrationFiles?: { migrationName: string, sql: string }[],
-  fn: () => Promise<T>,
   artificialDelayInSeconds?: number,
 }): Promise<T> {
   const migrationFiles = options.migrationFiles ?? MIGRATION_FILES;
 
   try {
-    const result = await options.fn();
+    const result = await options.prismaClient.$queryRaw(Prisma.sql`
+      SELECT * FROM "SchemaMigration"
+      ORDER BY "finishedAt" ASC
+    `);
     for (const migration of migrationFiles) {
       if (!(result as any).includes(migration.migrationName)) {
         throw new Error('MIGRATION_NEEDED');
@@ -172,7 +167,6 @@ export async function runQueryAndMigrateIfNeeded<T>(options: {
         migrationFiles: options.migrationFiles,
         artificialDelayInSeconds: options.artificialDelayInSeconds,
       });
-      return await options.fn();
     } else {
       throw e;
     }

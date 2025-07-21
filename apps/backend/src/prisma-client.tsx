@@ -9,7 +9,6 @@ import { deepPlainEquals, filterUndefined, typedFromEntries, typedKeys } from "@
 import { ignoreUnhandledRejection } from "@stackframe/stack-shared/dist/utils/promises";
 import { Result } from "@stackframe/stack-shared/dist/utils/results";
 import { isPromise } from "util/types";
-import { getMigrationCheckQuery, runQueryAndMigrateIfNeeded } from "./auto-migrations";
 import { Tenancy } from "./lib/tenancies";
 import { traceSpan } from "./utils/telemetry";
 
@@ -121,13 +120,6 @@ export async function retryTransaction<T>(client: PrismaClient, fn: (tx: PrismaC
             return Result.ok(await client.$transaction(async (tx, ...args) => {
               let res;
               try {
-                await runQueryAndMigrateIfNeeded({
-                  prismaClient,
-                  fn: async () => {
-                    await tx.$queryRaw(getMigrationCheckQuery());
-                  },
-                });
-
                 res = await fn(tx, ...args);
               } catch (e) {
                 // we don't want to retry errors that happened in the function, because otherwise we may be retrying due
@@ -288,7 +280,7 @@ async function rawQueryArray<Q extends RawQuery<any>[]>(tx: PrismaClientTransact
 
     // Prisma does a query for every rawQuery call by default, even if we batch them with transactions
     // So, instead we combine all queries into one, and then return them as a single JSON result
-    const combinedQuery = RawQuery.all([{ sql: getMigrationCheckQuery(), postProcess: (rows) => rows }, ...queries]);
+    const combinedQuery = RawQuery.all([...queries]);
 
     // TODO: check that combinedQuery supports the prisma client that created tx
 
@@ -296,10 +288,7 @@ async function rawQueryArray<Q extends RawQuery<any>[]>(tx: PrismaClientTransact
     // Since ours starts with "WITH", we prepend a SELECT to it
     const sqlQuery = Prisma.sql`SELECT * FROM (${combinedQuery.sql}) AS _`;
 
-    const rawResult = await runQueryAndMigrateIfNeeded({
-      prismaClient,
-      fn: async () => await tx.$queryRaw(sqlQuery),
-    });
+    const rawResult = await tx.$queryRaw(sqlQuery);
 
     const postProcessed = combinedQuery.postProcess(rawResult as any);
     // If the postProcess is async, postProcessed is a Promise. If that Promise is rejected, it will cause an unhandled promise rejection.
@@ -308,7 +297,7 @@ async function rawQueryArray<Q extends RawQuery<any>[]>(tx: PrismaClientTransact
       ignoreUnhandledRejection(postProcessed);
     }
 
-    return postProcessed.slice(1);
+    return postProcessed;
   });
 }
 
