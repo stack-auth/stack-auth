@@ -97,9 +97,6 @@ jobs:
       - name: Wait on Svix
         run: npx wait-on tcp:localhost:8113
 
-      - name: Initialize source of truth database
-        run: "STACK_DIRECT_DATABASE_CONNECTION_STRING='postgres://postgres:PASSWORD-PLACEHOLDER--uqfEC1hmmv@localhost:5432/source-of-truth-db?schema=sot-schema' pnpm run prisma -- migrate reset --force --skip-seed"
-
       - name: Initialize database
         run: pnpm run prisma -- migrate reset --force
       - name: Start stack-backend in background
