@@ -98,7 +98,7 @@ jobs:
         run: npx wait-on tcp:localhost:8113
 
       - name: Initialize database
-        run: pnpm run prisma -- migrate reset --force
+        run: pnpm run db:init
       - name: Start stack-backend in background
         uses: JarvusInnovations/background-action@v1.0.7
         with:
