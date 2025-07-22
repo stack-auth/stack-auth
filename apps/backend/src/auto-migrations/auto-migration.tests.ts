@@ -155,7 +155,7 @@ import.meta.vitest?.test("connects to DB", runTest(async ({ expect, prismaClient
 }));
 
 import.meta.vitest?.test("applies migrations", runTest(async ({ expect, prismaClient }) => {
-  const { newlyAppliedMigrationNames } = await applyMigrations({ prismaClient, migrationFiles: exampleMigrationFiles1 });
+  const { newlyAppliedMigrationNames } = await applyMigrations({ prismaClient, migrationFiles: exampleMigrationFiles1, schema: 'public' });
 
   expect(newlyAppliedMigrationNames).toEqual(['001-create-table', '002-update-table']);
 
@@ -173,10 +173,10 @@ import.meta.vitest?.test("applies migrations", runTest(async ({ expect, prismaCl
 }));
 
 import.meta.vitest?.test("first apply half of the migrations, then apply the other half", runTest(async ({ expect, prismaClient }) => {
-  const { newlyAppliedMigrationNames } = await applyMigrations({ prismaClient, migrationFiles: exampleMigrationFiles1.slice(0, 1) });
+  const { newlyAppliedMigrationNames } = await applyMigrations({ prismaClient, migrationFiles: exampleMigrationFiles1.slice(0, 1), schema: 'public' });
   expect(newlyAppliedMigrationNames).toEqual(['001-create-table']);
 
-  const { newlyAppliedMigrationNames: newlyAppliedMigrationNames2 } = await applyMigrations({ prismaClient, migrationFiles: exampleMigrationFiles1 });
+  const { newlyAppliedMigrationNames: newlyAppliedMigrationNames2 } = await applyMigrations({ prismaClient, migrationFiles: exampleMigrationFiles1, schema: 'public' });
   expect(newlyAppliedMigrationNames2).toEqual(['002-update-table']);
 
   await prismaClient.$executeRaw`INSERT INTO test (name) VALUES ('test_value')`;
@@ -194,8 +194,8 @@ import.meta.vitest?.test("first apply half of the migrations, then apply the oth
 
 import.meta.vitest?.test("applies migrations concurrently", runTest(async ({ expect, prismaClient }) => {
   const [result1, result2] = await Promise.all([
-    applyMigrations({ prismaClient, migrationFiles: exampleMigrationFiles1, artificialDelayInSeconds: 1 }),
-    applyMigrations({ prismaClient, migrationFiles: exampleMigrationFiles1, artificialDelayInSeconds: 1 }),
+    applyMigrations({ prismaClient, migrationFiles: exampleMigrationFiles1, artificialDelayInSeconds: 1, schema: 'public' }),
+    applyMigrations({ prismaClient, migrationFiles: exampleMigrationFiles1, artificialDelayInSeconds: 1, schema: 'public' }),
   ]);
 
   const l1 = result1.newlyAppliedMigrationNames.length;
@@ -213,7 +213,7 @@ import.meta.vitest?.test("applies migrations concurrently", runTest(async ({ exp
 
 import.meta.vitest?.test("applies migrations concurrently with 20 concurrent migrations", runTest(async ({ expect, prismaClient }) => {
   const promises = Array.from({ length: 20 }, () =>
-    applyMigrations({ prismaClient, migrationFiles: exampleMigrationFiles1, artificialDelayInSeconds: 1 })
+    applyMigrations({ prismaClient, migrationFiles: exampleMigrationFiles1, artificialDelayInSeconds: 1, schema: 'public' })
   );
 
   const results = await Promise.all(promises);
@@ -238,11 +238,11 @@ import.meta.vitest?.test("applies migrations concurrently with 20 concurrent mig
 
 import.meta.vitest?.test("applies migration with a DB previously migrated with prisma", runTest(async ({ expect, prismaClient, dbURL }) => {
   await applySql({ sql: examplePrismaBasedInitQueries, fullDbURL: dbURL.full });
-  const result = await applyMigrations({ prismaClient, migrationFiles: examplePrismaBasedMigrationFiles });
+  const result = await applyMigrations({ prismaClient, migrationFiles: examplePrismaBasedMigrationFiles, schema: 'public' });
   expect(result.newlyAppliedMigrationNames).toEqual(['20250314215050_age']);
 
   // apply migrations again
-  const result2 = await applyMigrations({ prismaClient, migrationFiles: examplePrismaBasedMigrationFiles });
+  const result2 = await applyMigrations({ prismaClient, migrationFiles: examplePrismaBasedMigrationFiles, schema: 'public' });
   expect(result2.newlyAppliedMigrationNames).toEqual([]);
 }));
 
@@ -251,6 +251,7 @@ import.meta.vitest?.test("applies migration while running a query", runTest(asyn
     prismaClient,
     migrationFiles: exampleMigrationFiles1,
     artificialDelayInSeconds: 1,
+    schema: 'public',
   });
 
   await prismaClient.$executeRaw`INSERT INTO test (name) VALUES ('test_value')`;
@@ -266,6 +267,7 @@ import.meta.vitest?.test("applies migration while running concurrent queries", r
     await runMigrationNeeded({
       prismaClient,
       migrationFiles: exampleMigrationFiles1,
+      schema: 'public',
     });
     await prismaClient.$executeRaw`INSERT INTO test (name) VALUES (${testValue})`;
   };
@@ -287,6 +289,7 @@ import.meta.vitest?.test("applies migration while running an interactive transac
     await runMigrationNeeded({
       prismaClient,
       migrationFiles: exampleMigrationFiles1,
+      schema: 'public',
     });
 
     await tx.$executeRaw`INSERT INTO test (name) VALUES ('test_value')`;
@@ -304,6 +307,7 @@ import.meta.vitest?.test("applies migration while running concurrent interactive
     return await prismaClient.$transaction(async (tx) => {
       await runMigrationNeeded({
         prismaClient,
+        schema: 'public',
         migrationFiles: exampleMigrationFiles1,
         artificialDelayInSeconds: 1,
       });
@@ -328,14 +332,14 @@ import.meta.vitest?.test("applies migration while running concurrent interactive
 }));
 
 import.meta.vitest?.test("does not apply migrations if they are already applied", runTest(async ({ expect, prismaClient, dbURL }) => {
-  await applyMigrations({ prismaClient, migrationFiles: exampleMigrationFiles1 });
-  const result = await applyMigrations({ prismaClient, migrationFiles: exampleMigrationFiles1 });
+  await applyMigrations({ prismaClient, migrationFiles: exampleMigrationFiles1, schema: 'public' });
+  const result = await applyMigrations({ prismaClient, migrationFiles: exampleMigrationFiles1, schema: 'public' });
   expect(result.newlyAppliedMigrationNames).toEqual([]);
 }));
 
 import.meta.vitest?.test("does not apply a migration again if all migrations are already applied, and some future migrations are also applied (rollback scenario)", runTest(async ({ expect, prismaClient, dbURL }) => {
   // First, apply all migrations
-  const initialResult = await applyMigrations({ prismaClient, migrationFiles: exampleMigrationFiles1 });
+  const initialResult = await applyMigrations({ prismaClient, migrationFiles: exampleMigrationFiles1, schema: 'public' });
   expect(initialResult.newlyAppliedMigrationNames).toEqual(['001-create-table', '002-update-table']);
 
   // Verify the table structure is complete
@@ -347,7 +351,7 @@ import.meta.vitest?.test("does not apply a migration again if all migrations are
 
   // Now try to apply only a subset of the migrations (simulating a rollback scenario)
   // This should not re-apply any migrations since they're already applied
-  const subsetResult = await applyMigrations({ prismaClient, migrationFiles: exampleMigrationFiles1.slice(0, 1) });
+  const subsetResult = await applyMigrations({ prismaClient, migrationFiles: exampleMigrationFiles1.slice(0, 1), schema: 'public' });
   expect(subsetResult.newlyAppliedMigrationNames).toEqual([]);
 
   // Verify the data is still intact and no migrations were re-run
@@ -372,7 +376,7 @@ import.meta.vitest?.test("a migration that fails for whatever reasons rolls back
     `
   }, exampleMigration3];
 
-  await expect(applyMigrations({ prismaClient, migrationFiles: failingMigrationFiles })).rejects.toThrow();
+  await expect(applyMigrations({ prismaClient, migrationFiles: failingMigrationFiles, schema: 'public' })).rejects.toThrow();
 
   // Verify that the first part of the migration was applied but rolled back
   await expect(prismaClient.$queryRaw`SELECT * FROM test`).resolves.toBeDefined();
@@ -383,7 +387,7 @@ import.meta.vitest?.test("a migration that fails for whatever reasons rolls back
   // Verify that the failing table was not created due to rollback
   await expect(prismaClient.$queryRaw`SELECT * FROM should_not_exist`).rejects.toThrow();
 
-  const result = await applyMigrations({ prismaClient, migrationFiles: [...exampleMigrationFiles1, exampleMigration3] });
+  const result = await applyMigrations({ prismaClient, migrationFiles: [...exampleMigrationFiles1, exampleMigration3], schema: 'public' });
   expect(result.newlyAppliedMigrationNames).toEqual(['002-update-table', '003-create-table']);
 
   await expect(prismaClient.$queryRaw`SELECT * FROM should_exist_after_the_third_migration`).resolves.toBeDefined();

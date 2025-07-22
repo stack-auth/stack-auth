@@ -1,3 +1,4 @@
+import { sqlQuoteIdent } from '@/prisma-client';
 import { Prisma, PrismaClient } from '@prisma/client';
 import { MIGRATION_FILES } from './../generated/migration-files';
 
@@ -23,9 +24,7 @@ function getMigrationError(error: unknown): string {
 function isMigrationNeededError(error: unknown): boolean {
   if (error instanceof Prisma.PrismaClientKnownRequestError) {
     // 42P01: relation does not exist error
-    if (error.message.includes('relation "SchemaMigration" does not exist') ||
-      error.message.includes('No such table: SchemaMigration')
-    ) {
+    if (error.message.includes('relation "SchemaMigration" does not exist') || error.message.includes('No such table: sot-schema.SchemaMigration')) {
       return true;
     }
   }
@@ -37,9 +36,13 @@ function isMigrationNeededError(error: unknown): boolean {
 
 async function getAppliedMigrations(options: {
   prismaClient: PrismaClient,
+  schema: string,
 }) {
-  const [_1, _2, appliedMigrations] = await options.prismaClient.$transaction([
+  const [_1, _2, _3, appliedMigrations] = await options.prismaClient.$transaction([
     options.prismaClient.$executeRaw`SELECT pg_advisory_xact_lock(${MIGRATION_LOCK_ID})`,
+    options.prismaClient.$executeRaw(Prisma.sql`
+      SET search_path TO ${sqlQuoteIdent(options.schema)};
+    `),
     options.prismaClient.$executeRaw`
       DO $$
       BEGIN
@@ -51,9 +54,8 @@ async function getAppliedMigrations(options: {
         );
         
         IF EXISTS (
-          SELECT FROM information_schema.tables 
-          WHERE table_schema = 'public' 
-          AND table_name = '_prisma_migrations'
+          SELECT 1 FROM information_schema.tables 
+          WHERE table_name = '_prisma_migrations'
         ) THEN
           INSERT INTO "SchemaMigration" ("migrationName", "finishedAt")
           SELECT 
@@ -78,11 +80,12 @@ export async function applyMigrations(options: {
   migrationFiles?: { migrationName: string, sql: string }[],
   artificialDelayInSeconds?: number,
   logging?: boolean,
+  schema: string,
 }): Promise<{
   newlyAppliedMigrationNames: string[],
 }> {
   const migrationFiles = options.migrationFiles ?? MIGRATION_FILES;
-  const appliedMigrationNames = await getAppliedMigrations({ prismaClient: options.prismaClient });
+  const appliedMigrationNames = await getAppliedMigrations({ prismaClient: options.prismaClient, schema: options.schema });
   const newMigrationFiles = migrationFiles.filter(x => !appliedMigrationNames.includes(x.migrationName));
 
   const newlyAppliedMigrationNames = [];
@@ -97,11 +100,15 @@ export async function applyMigrations(options: {
       SELECT pg_advisory_xact_lock(${MIGRATION_LOCK_ID});
     `);
 
+    transaction.push(options.prismaClient.$executeRaw(Prisma.sql`
+      SET search_path TO ${sqlQuoteIdent(options.schema)};
+    `));
+
     transaction.push(options.prismaClient.$executeRaw`
       DO $$
       BEGIN
         IF EXISTS (
-          SELECT 1 FROM "SchemaMigration" 
+          SELECT 1 FROM "SchemaMigration"
           WHERE "migrationName" = '${Prisma.raw(migration.migrationName)}'
         ) THEN
           RAISE EXCEPTION 'MIGRATION_ALREADY_APPLIED';
@@ -155,6 +162,7 @@ export async function applyMigrations(options: {
 
 export async function runMigrationNeeded(options: {
   prismaClient: PrismaClient,
+  schema: string,
   migrationFiles?: { migrationName: string, sql: string }[],
   artificialDelayInSeconds?: number,
 }): Promise<void> {
@@ -162,7 +170,7 @@ export async function runMigrationNeeded(options: {
 
   try {
     const result = await options.prismaClient.$queryRaw(Prisma.sql`
-      SELECT * FROM "SchemaMigration"
+      SELECT * FROM ${sqlQuoteIdent(options.schema)}."SchemaMigration"
       ORDER BY "finishedAt" ASC
     `);
     for (const migration of migrationFiles) {
@@ -176,6 +184,7 @@ export async function runMigrationNeeded(options: {
         prismaClient: options.prismaClient,
         migrationFiles: options.migrationFiles,
         artificialDelayInSeconds: options.artificialDelayInSeconds,
+        schema: options.schema,
       });
     } else {
       throw e;

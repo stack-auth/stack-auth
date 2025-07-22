@@ -30,7 +30,7 @@ if (getNodeEnvironment().includes('development')) {
 
 export const globalPrismaClient = prismaClientsStore.global;
 const dbString = getEnvVariable("STACK_DIRECT_DATABASE_CONNECTION_STRING", "");
-export const globalPrismaSchema = dbString === "" ? "public" : new URL(dbString).searchParams.get("schema") ?? "public";
+export const globalPrismaSchema = dbString === "" ? "public" : getSchemaFromConnectionString(dbString);
 
 function getNeonPrismaClient(connectionString: string) {
   let neonPrismaClient = prismaClientsStore.neon.get(connectionString);
@@ -41,6 +41,10 @@ function getNeonPrismaClient(connectionString: string) {
   }
 
   return neonPrismaClient;
+}
+
+function getSchemaFromConnectionString(connectionString: string) {
+  return (new URL(connectionString)).searchParams.get('schema') ?? "public";
 }
 
 export async function getPrismaClientForTenancy(tenancy: Tenancy) {
@@ -54,11 +58,11 @@ export function getPrismaSchemaForTenancy(tenancy: Tenancy) {
 function getPostgresPrismaClient(connectionString: string) {
   let postgresPrismaClient = prismaClientsStore.postgres.get(connectionString);
   if (!postgresPrismaClient) {
-    const schema = (new URL(connectionString)).searchParams.get('schema');
+    const schema = getSchemaFromConnectionString(connectionString);
     const adapter = new PrismaPg({ connectionString }, schema ? { schema } : undefined);
     postgresPrismaClient = {
       client: new PrismaClient({ adapter }),
-      schema: schema ?? null,
+      schema,
     };
     prismaClientsStore.postgres.set(connectionString, postgresPrismaClient);
   }
@@ -71,21 +75,18 @@ export async function getPrismaClientForSourceOfTruth(sourceOfTruth: Organizatio
       if (!(branchId in sourceOfTruth.connectionStrings)) {
         throw new Error(`No connection string provided for Neon source of truth for branch ${branchId}`);
       }
-      const neonPrismaClient = getNeonPrismaClient(sourceOfTruth.connectionStrings[branchId]);
-      await runMigrationNeeded({ prismaClient: neonPrismaClient });
+      const connectionString = sourceOfTruth.connectionStrings[branchId];
+      const neonPrismaClient = getNeonPrismaClient(connectionString);
+      await runMigrationNeeded({ prismaClient: neonPrismaClient, schema: getSchemaFromConnectionString(connectionString) });
       return neonPrismaClient;
     }
     case 'postgres': {
       const postgresPrismaClient = getPostgresPrismaClient(sourceOfTruth.connectionString);
-      await runMigrationNeeded({ prismaClient: postgresPrismaClient.client });
+      await runMigrationNeeded({ prismaClient: postgresPrismaClient.client, schema: getSchemaFromConnectionString(sourceOfTruth.connectionString) });
       return postgresPrismaClient.client;
     }
     case 'hosted': {
       return globalPrismaClient;
-    }
-    default: {
-      // @ts-expect-error sourceOfTruth should be never, otherwise we're missing a switch-case
-      throw new StackAssertionError(`Unknown source of truth type: ${sourceOfTruth.type}`);
     }
   }
 }
@@ -93,10 +94,13 @@ export async function getPrismaClientForSourceOfTruth(sourceOfTruth: Organizatio
 export function getPrismaSchemaForSourceOfTruth(sourceOfTruth: OrganizationRenderedConfig["sourceOfTruth"], branchId: string) {
   switch (sourceOfTruth.type) {
     case 'postgres': {
-      return getPostgresPrismaClient(sourceOfTruth.connectionString).schema ?? 'public';
+      return getSchemaFromConnectionString(sourceOfTruth.connectionString);
     }
-    default: {
-      return 'public';
+    case 'neon': {
+      return getSchemaFromConnectionString(sourceOfTruth.connectionStrings[branchId]);
+    }
+    case 'hosted': {
+      return globalPrismaSchema;
     }
   }
 }
