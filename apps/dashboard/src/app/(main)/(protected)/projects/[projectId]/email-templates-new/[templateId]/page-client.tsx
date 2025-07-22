@@ -29,7 +29,9 @@ export default function PageClient(props: { templateId: string }) {
 
 
   useEffect(() => {
-    setNeedConfirm(template?.tsxSource !== currentCode);
+    if (!template || template.tsxSource === currentCode) return;
+    setNeedConfirm(true);
+    return () => setNeedConfirm(false);
   }, [setNeedConfirm, template, currentCode]);
 
   const handleThemeUpdate = (toolCall: ToolCallContent) => {
