@@ -8,12 +8,14 @@ import { useTheme } from 'next-themes';
 type CodeEditorProps = {
   code: string,
   onCodeChange: (code: string) => void,
+  action?: React.ReactNode,
   title?: string,
 }
 
 export default function CodeEditor({
   code,
   onCodeChange,
+  action,
   title = "Code"
 }: CodeEditorProps) {
   const { theme } = useTheme();
@@ -111,6 +113,7 @@ export default function CodeEditor({
     <>
       <div className="p-3 flex justify-between items-center">
         <Typography type="h4">{title}</Typography>
+        {action}
       </div>
       <Editor
         height="100%"
