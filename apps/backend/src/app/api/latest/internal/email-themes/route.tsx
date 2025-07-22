@@ -2,7 +2,7 @@ import { overrideEnvironmentConfigOverride } from "@/lib/config";
 import { DEFAULT_EMAIL_THEMES } from "@/lib/email-themes";
 import { globalPrismaClient } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
-import { DEFAULT_EMAIL_THEME_ID } from "@stackframe/stack-shared/dist/helpers/email-themes";
+import { DEFAULT_EMAIL_THEME_ID } from "@stackframe/stack-shared/dist/helpers/emails";
 import { adaptSchema, yupArray, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
 import { generateUuid } from "@stackframe/stack-shared/dist/utils/uuids";
 
