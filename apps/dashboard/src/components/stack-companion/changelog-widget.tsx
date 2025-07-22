@@ -225,13 +225,14 @@ export function ChangelogWidget({ isActive }: ChangelogWidgetProps) {
                         {changelog.expanded && (
                           <div>
                             <div
-                              className="prose prose-sm max-w-none text-xs mb-3"
-                              dangerouslySetInnerHTML={{ __html: changelog.content }}
+                              className="prose prose-sm max-w-none text-xs mb-3 whitespace-pre-wrap"
                               style={{
                                 fontSize: '12px',
                                 lineHeight: '1.4',
                               }}
-                            />
+                            >
+                              {changelog.content.replace(/<[^>]*>/g, '')}
+                            </div>
                             <Button
                               variant="ghost"
                               size="sm"
@@ -247,13 +248,14 @@ export function ChangelogWidget({ isActive }: ChangelogWidgetProps) {
                     ) : (
                       /* Always visible content for short text */
                       <div
-                        className="prose prose-sm max-w-none text-xs"
-                        dangerouslySetInnerHTML={{ __html: changelog.content }}
+                        className="prose prose-sm max-w-none text-xs whitespace-pre-wrap"
                         style={{
                           fontSize: '12px',
                           lineHeight: '1.4',
                         }}
-                      />
+                      >
+                        {changelog.content.replace(/<[^>]*>/g, '')}
+                      </div>
                     )}
                   </div>
                 </div>

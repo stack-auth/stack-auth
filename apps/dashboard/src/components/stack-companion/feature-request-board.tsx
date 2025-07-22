@@ -11,8 +11,44 @@ type FeatureRequestBoardProps = {
   isActive: boolean,
 };
 
+type FeatureRequestPostStatus = {
+  name: string,
+  color: string,
+};
+
+type FeatureRequest = {
+  id: string,
+  title: string,
+  content: string | null,
+  upvotes: number,
+  date: string,
+  postStatus: FeatureRequestPostStatus | null,
+  userHasUpvoted: boolean,
+};
+
+type FeatureRequestsResponse = {
+  posts: FeatureRequest[],
+};
+
+type CreateFeatureRequestBody = {
+  title: string,
+  content: string,
+  category: string,
+  tags: string[],
+  commentsAllowed: boolean,
+};
+
+type CreateFeatureRequestResponse = {
+  success: boolean,
+  id?: string,
+  error?: string,
+};
+
 export function FeatureRequestBoard({ isActive }: FeatureRequestBoardProps) {
   const user = useUser({ or: 'redirect', projectIdMustMatch: "internal" });
+
+  // Base URL for API requests
+  const baseUrl = getPublicEnvVar('NEXT_PUBLIC_STACK_API_URL') || '';
 
   // Feature request form state
   const [featureTitle, setFeatureTitle] = useState('');
@@ -21,7 +57,7 @@ export function FeatureRequestBoard({ isActive }: FeatureRequestBoardProps) {
   const [submitStatus, setSubmitStatus] = useState<'idle' | 'success' | 'error'>('idle');
 
   // Existing feature requests state
-  const [existingRequests, setExistingRequests] = useState<any[]>([]);
+  const [existingRequests, setExistingRequests] = useState<FeatureRequest[]>([]);
   const [isLoadingRequests, setIsLoadingRequests] = useState(false);
 
   // Track which posts the current user has upvoted
@@ -35,7 +71,7 @@ export function FeatureRequestBoard({ isActive }: FeatureRequestBoardProps) {
     setIsLoadingRequests(true);
     try {
       const authJson = await user.getAuthJson();
-      const response = await fetch(`${getPublicEnvVar('NEXT_PUBLIC_STACK_API_URL')}/api/v1/internal/feature-requests`, {
+      const response = await fetch(`${baseUrl}/api/v1/internal/feature-requests`, {
         headers: {
           'X-Stack-Project-Id': 'internal',
           'X-Stack-Access-Type': 'client',
@@ -45,13 +81,12 @@ export function FeatureRequestBoard({ isActive }: FeatureRequestBoardProps) {
       });
 
       if (response.ok) {
-        const data = await response.json();
-        const posts = data.posts || [];
-        setExistingRequests(posts);
+        const data: FeatureRequestsResponse = await response.json();
+        setExistingRequests(data.posts);
 
         // Update upvote status from backend response
         const upvotedPosts = new Set<string>();
-        posts.forEach((post: any) => {
+        data.posts.forEach((post) => {
           if (post.userHasUpvoted) {
             upvotedPosts.add(post.id);
           }
@@ -65,7 +100,7 @@ export function FeatureRequestBoard({ isActive }: FeatureRequestBoardProps) {
     } finally {
       setIsLoadingRequests(false);
     }
-  }, [user]);
+  }, [user, baseUrl]);
 
   // Load feature requests when component becomes active
   useEffect(() => {
@@ -118,7 +153,7 @@ export function FeatureRequestBoard({ isActive }: FeatureRequestBoardProps) {
 
     try {
       const authJson = await user.getAuthJson();
-      const response = await fetch(`${getPublicEnvVar('NEXT_PUBLIC_STACK_API_URL')}/api/v1/internal/feature-requests/${postId}/upvote`, {
+      const response = await fetch(`${baseUrl}/api/v1/internal/feature-requests/${postId}/upvote`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -191,7 +226,7 @@ export function FeatureRequestBoard({ isActive }: FeatureRequestBoardProps) {
     setSubmitStatus('idle');
 
     try {
-      const requestBody = {
+      const requestBody: CreateFeatureRequestBody = {
         title: featureTitle,
         content: featureContent,
         category: 'feature-requests',
@@ -200,7 +235,7 @@ export function FeatureRequestBoard({ isActive }: FeatureRequestBoardProps) {
       };
 
       const authJson = await user.getAuthJson();
-      const response = await fetch(`${getPublicEnvVar('NEXT_PUBLIC_STACK_API_URL')}/api/v1/internal/feature-requests`, {
+      const response = await fetch(`${baseUrl}/api/v1/internal/feature-requests`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -212,7 +247,7 @@ export function FeatureRequestBoard({ isActive }: FeatureRequestBoardProps) {
         body: JSON.stringify(requestBody)
       });
 
-      const responseData = await response.json();
+      const responseData: CreateFeatureRequestResponse = await response.json();
 
       if (response.ok && responseData.success) {
         setSubmitStatus('success');
