@@ -6,7 +6,6 @@ import { applyMigrations, runMigrationNeeded } from "./index";
 const TEST_DB_PREFIX = 'stack_auth_test_db';
 
 const getTestDbURL = (testDbName: string) => {
-  console.log(import.meta.env.STACK_DIRECT_DATABASE_CONNECTION_STRING, '!!!!!!!!!!!!!!!!!!!!!!');
   // @ts-ignore - ImportMeta.env is provided by Vite
   const base = import.meta.env.STACK_DIRECT_DATABASE_CONNECTION_STRING.replace(/\/[^/]*$/, '');
   return {
