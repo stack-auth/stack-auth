@@ -1321,44 +1321,51 @@ export namespace Webhook {
   }
 
   export async function findWebhookAttempt(projectId: string, endpointId: string, svixToken: string, fn: (msg: any) => boolean) {
-    // retry many times because Svix sucks and is slow
-    for (let i = 0; i < 20; i++) {
-      const attempts = await Webhook.listWebhookAttempts(projectId, endpointId, svixToken);
-      const filtered = attempts.filter(fn);
-      if (filtered.length === 0) {
-        await wait(500);
-        continue;
-      } else if (filtered.length === 1) {
-        return filtered[0];
-      } else {
-        throw new Error(`Found ${filtered.length} webhook attempts for project ${projectId}, endpoint ${endpointId}`);
-      }
+    const attempts = await Webhook.listWebhookAttempts(projectId, endpointId, svixToken);
+    const filtered = attempts.filter(fn);
+
+    if (filtered.length === 0) {
+      throw new Error(`Webhook attempt not found for project ${projectId}, endpoint ${endpointId}`);
     }
-    throw new Error(`Webhook attempt not found for project ${projectId}, endpoint ${endpointId}`);
+
+    if (filtered.length > 1) {
+      throw new Error(`Found multiple (${filtered.length}) webhook attempts for project ${projectId}, endpoint ${endpointId}`);
+    }
+
+    return filtered[0];
   }
 
   export async function listWebhookAttempts(projectId: string, endpointId: string, svixToken: string) {
-    const response = await niceFetch(STACK_SVIX_SERVER_URL + `/api/v1/app/${projectId}/attempt/endpoint/${endpointId}`, {
-      method: "GET",
-      headers: {
-        "Authorization": `Bearer ${svixToken}`,
-        "Content-Type": "application/json",
-      },
-    });
-
-    const messages = await Promise.all(response.body.data.map(async (attempt: any) => {
-      const messageResponse = await niceFetch(STACK_SVIX_SERVER_URL + `/api/v1/app/${projectId}/msg/${attempt.msgId}?with_content=true`, {
+    // retry many times because Svix sucks and is slow
+    for (let i = 0; i < 20; i++) {
+      const response = await niceFetch(STACK_SVIX_SERVER_URL + `/api/v1/app/${projectId}/attempt/endpoint/${endpointId}`, {
+        method: "GET",
         headers: {
           "Authorization": `Bearer ${svixToken}`,
           "Content-Type": "application/json",
         },
-        method: "GET",
       });
-      return messageResponse.body;
-    }));
 
-    return messages.sort((a, b) => {
-      return new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime();
-    });
+      const messages = await Promise.all(response.body.data.map(async (attempt: any) => {
+        const messageResponse = await niceFetch(STACK_SVIX_SERVER_URL + `/api/v1/app/${projectId}/msg/${attempt.msgId}?with_content=true`, {
+          headers: {
+            "Authorization": `Bearer ${svixToken}`,
+            "Content-Type": "application/json",
+          },
+          method: "GET",
+        });
+        return messageResponse.body;
+      }));
+
+      if (messages.length === 0) {
+        await wait(500);
+        continue;
+      }
+
+      return messages.sort((a, b) => {
+        return new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime();
+      });
+    }
+    throw new Error(`No webhook attempts found for project ${projectId}, endpoint ${endpointId}`);
   }
 }
