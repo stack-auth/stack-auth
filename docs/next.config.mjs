@@ -1,16 +1,6 @@
-import { readFileSync } from 'fs';
 import { createMDX } from 'fumadocs-mdx/next';
-import { dirname, join } from 'path';
-import { fileURLToPath } from 'url';
 
 const withMDX = createMDX();
-
-// Read redirects from JSON file
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = dirname(__filename);
-const fernRedirects = JSON.parse(
-  readFileSync(join(__dirname, 'redirects.json'), 'utf8')
-);
 
 /** @type {import('next').NextConfig} */
 const config = {
@@ -32,9 +22,7 @@ const config = {
         destination: '/docs/api/overview',
         permanent: false,
       },
-      
-      // Fern docs redirects from JSON file
-      ...fernRedirects,
+      // Other redirects are now handled by the catch-all route [[...slug]]/page.tsx
     ];
   },
   async rewrites() {
