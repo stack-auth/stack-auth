@@ -94,7 +94,7 @@ export async function renderEmailWithTemplate(
     externalPackages: { '@stackframe/emails': stackframeEmailsPackage },
     format: 'esm',
     sourcemap: false,
-  })
+  });
   if (result.status === "error") {
     return Result.error(result.error);
   }
@@ -158,11 +158,11 @@ export function findComponentValue(element, targetStackComponent) {
   }
 
   return value;
-}`
+}`;
 
 const stackframeEmailsPackage = deindent`
   export const Subject = (props) => null;
   Subject.__stackComponent = "Subject";
   export const NotificationCategory = (props) => null;
   NotificationCategory.__stackComponent = "NotificationCategory";
-`;  
+`;

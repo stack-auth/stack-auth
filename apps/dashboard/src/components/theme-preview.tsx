@@ -127,7 +127,7 @@ export default function ThemePreview({
   return (
     <div className="w-fit mx-auto h-full flex flex-col justify-center">
       <Suspense fallback={<Spinner />}>
-        <EmailPreviewErrorBoundary key={debouncedTemplateTsxSource ?? "" + debouncedThemeTsxSource ?? ""}>
+        <EmailPreviewErrorBoundary key={`${debouncedTemplateTsxSource ?? ""}${debouncedThemeTsxSource ?? ""}`}>
           <ThemePreviewContent
             themeId={themeId}
             themeTsxSource={debouncedThemeTsxSource}
