@@ -326,3 +326,9 @@ import.meta.vitest?.test("applies migration while running concurrent interactive
   expect(result.some(r => r.name === 'concurrent_tx_1')).toBe(true);
   expect(result.some(r => r.name === 'concurrent_tx_2')).toBe(true);
 }));
+
+import.meta.vitest?.test("does not apply migrations if they are already applied", runTest(async ({ expect, prismaClient, dbURL }) => {
+  await applyMigrations({ prismaClient, migrationFiles: exampleMigrationFiles1 });
+  const result = await applyMigrations({ prismaClient, migrationFiles: exampleMigrationFiles1 });
+  expect(result.newlyAppliedMigrationNames).toEqual([]);
+}));
