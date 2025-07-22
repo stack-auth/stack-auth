@@ -10,12 +10,10 @@ import {
   createChatAdapter,
   createHistoryAdapter,
 } from "@/components/vibe-coding";
-import { useCallback, useState } from "react";
+import { useState } from "react";
 import { PageLayout } from "../../page-layout";
 import { useAdminApp } from "../../use-admin-app";
 import { ToolCallContent } from "@/components/vibe-coding/chat-adapters";
-import { deindent } from "@stackframe/stack-shared/dist/utils/strings";
-import { bundleJavaScript } from "@stackframe/stack-shared/dist/utils/esbuild";
 
 
 export default function PageClient(props: { templateId: string }) {

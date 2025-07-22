@@ -110,7 +110,6 @@ type ThemePreviewProps =
         templateTsxSource: string,
       }
   ) & {
-    renderedHtmlOverride?: string,
     disableFrame?: boolean,
   };
 

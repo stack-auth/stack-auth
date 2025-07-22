@@ -7,7 +7,7 @@ const validThemeId = "1df07ae6-abf3-4a40-83a5-a1a2cbe336ac"; // default-light th
 const invalidThemeId = randomUUID();
 
 const validTsxSource = `import { Html, Tailwind, Body } from '@react-email/components';
-function EmailTheme({ children }: { children: React.ReactNode }) {
+export function EmailTheme({ children }: { children: React.ReactNode }) {
   return (
     <Html>
       <Tailwind>
@@ -92,7 +92,7 @@ describe("get email theme", () => {
           "display_name": "default-light",
           "tsx_source": deindent\`
             import { Html, Tailwind, Body } from '@react-email/components';
-            function EmailTheme({ children }: { children: React.ReactNode }) {
+            export function EmailTheme({ children }: { children: React.ReactNode }) {
               return (
                 <Html>
                   <Tailwind>
@@ -191,7 +191,7 @@ describe("update email theme", () => {
           "display_name": "default-light",
           "rendered_html": deindent\`
             <div>Mock api key detected, themeComponent: import { Html, Tailwind, Body } from '@react-email/components';
-            function EmailTheme({ children }: { children: React.ReactNode }) {
+            export function EmailTheme({ children }: { children: React.ReactNode }) {
               return (
                 <Html>
                   <Tailwind>
@@ -243,7 +243,7 @@ describe("update email theme", () => {
           "display_name": "default-light",
           "tsx_source": deindent\`
             import { Html, Tailwind, Body } from '@react-email/components';
-            function EmailTheme({ children }: { children: React.ReactNode }) {
+            export function EmailTheme({ children }: { children: React.ReactNode }) {
               return (
                 <Html>
                   <Tailwind>
@@ -358,7 +358,7 @@ describe("create, patch, and get email theme", () => {
           "display_name": "Custom Theme",
           "rendered_html": deindent\`
             <div>Mock api key detected, themeComponent: import { Html, Tailwind, Body } from '@react-email/components';
-            function EmailTheme({ children }: { children: React.ReactNode }) {
+            export function EmailTheme({ children }: { children: React.ReactNode }) {
               return (
                 <Html>
                   <Tailwind>
@@ -392,7 +392,7 @@ describe("create, patch, and get email theme", () => {
           "display_name": "Custom Theme",
           "tsx_source": deindent\`
             import { Html, Tailwind, Body } from '@react-email/components';
-            function EmailTheme({ children }: { children: React.ReactNode }) {
+            export function EmailTheme({ children }: { children: React.ReactNode }) {
               return (
                 <Html>
                   <Tailwind>

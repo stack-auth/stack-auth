@@ -148,7 +148,7 @@ it("unsubscribe link should not be sent for emails with transactional notificati
   expect(sentEmail!.body?.html).toMatchInlineSnapshot(`
     deindent\`
       <div>Mock api key detected, themeComponent: import { Html, Tailwind, Body } from '@react-email/components';
-      function EmailTheme({ children }: { children: React.ReactNode }) {
+      export function EmailTheme({ children }: { children: React.ReactNode }) {
         return (
           <Html>
             <Tailwind>
