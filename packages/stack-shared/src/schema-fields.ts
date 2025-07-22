@@ -333,7 +333,6 @@ export const projectBranchIdSchema = yupString().nonEmpty().max(255).meta({ open
 export const projectDisplayNameSchema = yupString().meta({ openapiField: { description: _displayNameDescription('project'), exampleValue: 'MyMusic' } });
 export const projectDescriptionSchema = yupString().nullable().meta({ openapiField: { description: 'A human readable description of the project', exampleValue: 'A music streaming service' } });
 export const projectCreatedAtMillisSchema = yupNumber().meta({ openapiField: { description: _createdAtMillisDescription('project'), exampleValue: 1630000000000 } });
-export const projectUserCountSchema = yupNumber().meta({ openapiField: { description: 'The number of users in this project', exampleValue: 10 } });
 export const projectIsProductionModeSchema = yupBoolean().meta({ openapiField: { description: 'Whether the project is in production mode', exampleValue: true } });
 // Project config
 export const projectConfigIdSchema = yupString().meta({ openapiField: { description: _idDescription('project config'), exampleValue: 'd09201f0-54f5-40bd-89ff-6d1815ddad24' } });
@@ -365,7 +364,24 @@ export const emailPasswordSchema = passwordSchema.meta({ openapiField: { descrip
 // Project domain config
 export const handlerPathSchema = yupString().test('is-handler-path', 'Handler path must start with /', (value) => value?.startsWith('/')).meta({ openapiField: { description: 'Handler path. If you did not setup a custom handler path, it should be "/handler" by default. It needs to start with /', exampleValue: '/handler' } });
 // Project email theme config
-export const emailThemeSchema = yupString().oneOf(['default-light', 'default-dark']).meta({ openapiField: { description: 'Email theme for the project. Determines the visual style of emails sent by the project.', exampleValue: 'default-light' } });
+export const emailThemeSchema = yupString().meta({ openapiField: { description: 'Email theme id for the project. Determines the visual style of emails sent by the project.' } });
+export const emailThemeListSchema = yupRecord(
+  yupString().uuid(),
+  yupObject({
+    displayName: yupString().meta({ openapiField: { description: 'Email theme name', exampleValue: 'default-light' } }).defined(),
+    tsxSource: yupString().meta({ openapiField: { description: 'Email theme source code tsx component' } }).defined(),
+  })
+).meta({ openapiField: { description: 'Record of email theme IDs to their display name and source code' } });
+export const emailTemplateListSchema = yupRecord(
+  yupString().uuid(),
+  yupObject({
+    displayName: yupString().meta({ openapiField: { description: 'Email template name', exampleValue: 'Email Verification' } }).defined(),
+    description: yupString().meta({ openapiField: { description: 'Email template description', exampleValue: 'Will be sent to the user when they sign-up with email/password' } }).defined(),
+    variables: yupArray(yupString().defined()).meta({ openapiField: { description: 'Email template variables' } }).defined(),
+    subject: yupString().meta({ openapiField: { description: 'Email template subject', exampleValue: 'Verify your email' } }).defined(),
+    tsxSource: yupString().meta({ openapiField: { description: 'Email template source code tsx component' } }).defined(),
+  })
+).meta({ openapiField: { description: 'Record of email template IDs to their display name and source code' } });
 
 // Users
 export class ReplaceFieldWithOwnUserId extends Error {
@@ -474,6 +490,14 @@ export const contactChannelValueSchema = yupString().when('type', {
 export const contactChannelUsedForAuthSchema = yupBoolean().meta({ openapiField: { description: 'Whether the contact channel is used for authentication. If this is set to `true`, the user will be able to sign in with the contact channel with password or OTP.', exampleValue: true } });
 export const contactChannelIsVerifiedSchema = yupBoolean().meta({ openapiField: { description: 'Whether the contact channel has been verified. If this is set to `true`, the contact channel has been verified to belong to the user.', exampleValue: true } });
 export const contactChannelIsPrimarySchema = yupBoolean().meta({ openapiField: { description: 'Whether the contact channel is the primary contact channel. If this is set to `true`, it will be used for authentication and notifications by default.', exampleValue: true } });
+
+// OAuth providers
+export const oauthProviderIdSchema = yupString().uuid().meta({ openapiField: { description: _idDescription('OAuth provider'), exampleValue: 'b3d396b8-c574-4c80-97b3-50031675ceb2' } });
+export const oauthProviderEmailSchema = emailSchema.meta({ openapiField: { description: 'Email of the OAuth provider. This is used to display and identify the OAuth provider in the UI.', exampleValue: 'test@gmail.com' } });
+export const oauthProviderTypeSchema = yupString().oneOf(allProviders).meta({ openapiField: { description: `OAuth provider type, one of ${allProviders.map(x => `\`${x}\``).join(', ')}`, exampleValue: 'google' } });
+export const oauthProviderAllowSignInSchema = yupBoolean().meta({ openapiField: { description: 'Whether the user can use this OAuth provider to sign in. Only one OAuth provider per type can have this set to `true`.', exampleValue: true } });
+export const oauthProviderAllowConnectedAccountsSchema = yupBoolean().meta({ openapiField: { description: 'Whether the user can use this OAuth provider as connected account. Multiple OAuth providers per type can have this set to `true`.', exampleValue: true } });
+export const oauthProviderAccountIdSchema = yupString().meta({ openapiField: { description: 'Account ID of the OAuth provider. This uniquely identifies the account on the provider side.', exampleValue: 'google-account-id-12345' } });
 
 // Headers
 export const basicAuthorizationHeaderSchema = yupString().test('is-basic-authorization-header', 'Authorization header must be in the format "Basic <base64>"', (value) => {

@@ -3,8 +3,10 @@ import { usePathname } from 'fumadocs-core/framework';
 import Link from 'fumadocs-core/link';
 import { ChevronDown } from 'lucide-react';
 import { type ComponentProps, type ReactNode, useEffect, useMemo, useRef, useState } from 'react';
+import { usePlatformPreference } from '../../hooks/use-platform-preference';
 import { cn } from '../../lib/cn';
 import { isActive } from '../../lib/is-active';
+import { type Platform } from '../../lib/platform-utils';
 
 export type Option = {
   /**
@@ -41,6 +43,22 @@ function getPlatformColor(title: ReactNode): string {
   return platformColors[titleStr] || 'rgb(100, 116, 139)'; // fallback color
 }
 
+/**
+ * Extract platform from URL path
+ */
+function extractPlatformFromUrl(url: string): Platform | null {
+  const match = url.match(/^\/docs\/([a-z]+)(?:\/|$)/);
+  if (match) {
+    const platform = match[1];
+    // Only return valid platforms
+    const validPlatforms = ['next', 'react', 'js', 'python'];
+    if (validPlatforms.includes(platform)) {
+      return platform as Platform;
+    }
+  }
+  return null;
+}
+
 export function RootToggle({
   options,
   ...props
@@ -51,6 +69,7 @@ export function RootToggle({
   const [hoveredOption, setHoveredOption] = useState<Option | null>(null);
   const pathname = usePathname();
   const dropdownRef = useRef<HTMLDivElement>(null);
+  const { setPreferredPlatform } = usePlatformPreference();
 
   const selected = useMemo(() => {
     return options.findLast((item) =>
@@ -163,6 +182,12 @@ export function RootToggle({
                   onClick={() => {
                     setOpen(false);
                     setHoveredOption(null);
+
+                    // Store the platform preference when user clicks on a platform
+                    const platform = extractPlatformFromUrl(item.url);
+                    if (platform) {
+                      setPreferredPlatform(platform);
+                    }
                   }}
                   onMouseEnter={() => setHoveredOption(item)}
                   onMouseLeave={() => setHoveredOption(null)}

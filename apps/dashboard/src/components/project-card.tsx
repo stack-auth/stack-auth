@@ -15,10 +15,7 @@ export function ProjectCard({ project }: { project: AdminProject }) {
           <CardTitle className="normal-case truncate">{project.displayName}</CardTitle>
           <CardDescription>{project.description}</CardDescription>
         </CardHeader>
-        <CardFooter className="flex justify-between mt-2">
-          <Typography type='label' variant='secondary'>
-            {project.userCount} users
-          </Typography>
+        <CardFooter className="flex justify-end mt-2">
           <Typography type='label' variant='secondary'>
             {createdAt}
           </Typography>

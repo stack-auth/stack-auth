@@ -4,9 +4,10 @@ import { validateRedirectUrl } from "@/lib/redirect-urls";
 import { Tenancy, getTenancy } from "@/lib/tenancies";
 import { oauthCookieSchema } from "@/lib/tokens";
 import { getProvider, oauthServer } from "@/oauth";
-import { prismaClient } from "@/prisma-client";
+import { getPrismaClientForTenancy, globalPrismaClient } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { InvalidClientError, InvalidScopeError, Request as OAuthRequest, Response as OAuthResponse } from "@node-oauth/oauth2-server";
+import { PrismaClient } from "@prisma/client";
 import { KnownError, KnownErrors } from "@stackframe/stack-shared";
 import { yupMixed, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
 import { StackAssertionError, StatusError, captureError } from "@stackframe/stack-shared/dist/utils/errors";
@@ -18,14 +19,14 @@ import { oauthResponseToSmartResponse } from "../../oauth-helpers";
 /**
  * Create a project user OAuth account with the provided data
  */
-async function createProjectUserOAuthAccount(params: {
+async function createProjectUserOAuthAccount(prisma: PrismaClient, params: {
   tenancyId: string,
   providerId: string,
   providerAccountId: string,
   email?: string | null,
   projectUserId: string,
 }) {
-  return await prismaClient.projectUserOAuthAccount.create({
+  return await prisma.projectUserOAuthAccount.create({
     data: {
       configOAuthProviderId: params.providerId,
       providerAccountId: params.providerAccountId,
@@ -80,7 +81,7 @@ const handler = createSmartRouteHandler({
       throw new StatusError(StatusError.BadRequest, "Inner OAuth cookie not found. This is likely because you refreshed the page during the OAuth sign in process. Please try signing in again");
     }
 
-    const outerInfoDB = await prismaClient.oAuthOuterInfo.findUnique({
+    const outerInfoDB = await globalPrismaClient.oAuthOuterInfo.findUnique({
       where: {
         innerState: innerState,
       },
@@ -111,6 +112,7 @@ const handler = createSmartRouteHandler({
     if (!tenancy) {
       throw new StackAssertionError("Tenancy in outerInfo not found; has it been deleted?", { tenancyId });
     }
+    const prisma = getPrismaClientForTenancy(tenancy);
 
     try {
       if (outerInfoDB.expiresAt < new Date()) {
@@ -147,7 +149,7 @@ const handler = createSmartRouteHandler({
           throw new StackAssertionError("projectUserId not found in cookie when authorizing signed in user");
         }
 
-        const user = await prismaClient.projectUser.findUnique({
+        const user = await prisma.projectUser.findUnique({
           where: {
             tenancyId_projectUserId: {
               tenancyId,
@@ -185,27 +187,25 @@ const handler = createSmartRouteHandler({
         }
       });
 
-      const storeTokens = async () => {
+      const storeTokens = async (oauthAccountId: string) => {
         if (tokenSet.refreshToken) {
-          await prismaClient.oAuthToken.create({
+          await prisma.oAuthToken.create({
             data: {
               tenancyId: outerInfo.tenancyId,
-              configOAuthProviderId: provider.id,
               refreshToken: tokenSet.refreshToken,
-              providerAccountId: userInfo.accountId,
               scopes: extractScopes(providerObj.scope + " " + providerScope),
+              oauthAccountId,
             }
           });
         }
 
-        await prismaClient.oAuthAccessToken.create({
+        await prisma.oAuthAccessToken.create({
           data: {
             tenancyId: outerInfo.tenancyId,
-            configOAuthProviderId: provider.id,
             accessToken: tokenSet.accessToken,
-            providerAccountId: userInfo.accountId,
             scopes: extractScopes(providerObj.scope + " " + providerScope),
             expiresAt: tokenSet.accessTokenExpiredAt,
+            oauthAccountId,
           }
         });
       };
@@ -218,15 +218,20 @@ const handler = createSmartRouteHandler({
           {
             authenticateHandler: {
               handle: async () => {
-                const oldAccount = await prismaClient.projectUserOAuthAccount.findUnique({
+                const oldAccounts = await prisma.projectUserOAuthAccount.findMany({
                   where: {
-                    tenancyId_configOAuthProviderId_providerAccountId: {
-                      tenancyId: outerInfo.tenancyId,
-                      configOAuthProviderId: provider.id,
-                      providerAccountId: userInfo.accountId,
-                    },
+                    tenancyId: outerInfo.tenancyId,
+                    configOAuthProviderId: provider.id,
+                    providerAccountId: userInfo.accountId,
+                    allowSignIn: true,
                   },
                 });
+
+                if (oldAccounts.length > 1) {
+                  throw new StackAssertionError("Multiple accounts found for the same provider and account ID");
+                }
+
+                const oldAccount = oldAccounts[0] as (typeof oldAccounts)[number] | undefined;
 
                 // ========================== link account with user ==========================
                 if (type === "link") {
@@ -239,19 +244,20 @@ const handler = createSmartRouteHandler({
                     if (oldAccount.projectUserId !== projectUserId) {
                       throw new KnownErrors.OAuthConnectionAlreadyConnectedToAnotherUser();
                     }
-                    await storeTokens();
+                    await storeTokens(oldAccount.id);
                   } else {
                     // ========================== connect account with user ==========================
-                    await createProjectUserOAuthAccount({
+                    const newOAuthAccount = await createProjectUserOAuthAccount(prisma, {
                       tenancyId: outerInfo.tenancyId,
                       providerId: provider.id,
                       providerAccountId: userInfo.accountId,
                       email: userInfo.email,
                       projectUserId,
                     });
+
+                    await storeTokens(newOAuthAccount.id);
                   }
 
-                  await storeTokens();
                   return {
                     id: projectUserId,
                     newUser: false,
@@ -262,7 +268,7 @@ const handler = createSmartRouteHandler({
                   // ========================== sign in user ==========================
 
                   if (oldAccount) {
-                    await storeTokens();
+                    await storeTokens(oldAccount.id);
 
                     return {
                       id: oldAccount.projectUserId,
@@ -282,7 +288,7 @@ const handler = createSmartRouteHandler({
                     primaryEmailAuthEnabled = true;
 
                     const oldContactChannel = await getAuthContactChannel(
-                      prismaClient,
+                      prisma,
                       {
                         tenancyId: outerInfo.tenancyId,
                         type: 'EMAIL',
@@ -296,11 +302,12 @@ const handler = createSmartRouteHandler({
                       switch (oauthAccountMergeStrategy) {
                         case 'link_method': {
                           if (!oldContactChannel.isVerified) {
-                            throw new KnownErrors.ContactChannelAlreadyUsedForAuthBySomeoneElse("email", userInfo.email);
+                            throw new KnownErrors.ContactChannelAlreadyUsedForAuthBySomeoneElse("email", userInfo.email, true);
                           }
 
                           if (!userInfo.emailVerified) {
-                            const err = new StackAssertionError("OAuth account merge strategy is set to link_method, but the email is not verified");
+                            // TODO handle this case
+                            const err = new StackAssertionError("OAuth account merge strategy is set to link_method, but the NEW email is not verified. This is an edge case that we don't handle right now", { oldContactChannel, userInfo });
                             captureError("oauth-link-method-email-not-verified", err);
                             throw new KnownErrors.ContactChannelAlreadyUsedForAuthBySomeoneElse("email", userInfo.email);
                           }
@@ -308,7 +315,7 @@ const handler = createSmartRouteHandler({
                           const existingUser = oldContactChannel.projectUser;
 
                           // First create the OAuth account
-                          await createProjectUserOAuthAccount({
+                          const newOAuthAccount = await createProjectUserOAuthAccount(prisma, {
                             tenancyId: outerInfo.tenancyId,
                             providerId: provider.id,
                             providerAccountId: userInfo.accountId,
@@ -316,7 +323,7 @@ const handler = createSmartRouteHandler({
                             projectUserId: existingUser.projectUserId,
                           });
 
-                          await prismaClient.authMethod.create({
+                          await prisma.authMethod.create({
                             data: {
                               tenancyId: outerInfo.tenancyId,
                               projectUserId: existingUser.projectUserId,
@@ -330,7 +337,7 @@ const handler = createSmartRouteHandler({
                             }
                           });
 
-                          await storeTokens();
+                          await storeTokens(newOAuthAccount.id);
                           return {
                             id: existingUser.projectUserId,
                             newUser: false,
@@ -364,7 +371,23 @@ const handler = createSmartRouteHandler({
                     },
                   });
 
-                  await storeTokens();
+                  const oauthAccount = await prisma.projectUserOAuthAccount.findUnique({
+                    where: {
+                      tenancyId_configOAuthProviderId_projectUserId_providerAccountId: {
+                        tenancyId: outerInfo.tenancyId,
+                        configOAuthProviderId: provider.id,
+                        providerAccountId: userInfo.accountId,
+                        projectUserId: newAccount.id,
+                      },
+                    },
+                  });
+
+                  if (!oauthAccount) {
+                    throw new StackAssertionError("OAuth account not found");
+                  }
+
+                  await storeTokens(oauthAccount.id);
+
                   return {
                     id: newAccount.id,
                     newUser: true,

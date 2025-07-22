@@ -6,7 +6,8 @@ const teamPermissionSchema = yupObject({
   id: yupString().defined(),
 }).defined();
 
-const oauthProviderSchema = yupObject({
+const oauthProviderReadSchema = yupObject({
+  provider_config_id: schemaFields.yupString().defined(),
   id: schemaFields.oauthIdSchema.defined(),
   type: schemaFields.oauthTypeSchema.defined(),
   client_id: schemaFields.yupDefinedAndNonEmptyWhen(
@@ -22,6 +23,8 @@ const oauthProviderSchema = yupObject({
   facebook_config_id: schemaFields.oauthFacebookConfigIdSchema.optional(),
   microsoft_tenant_id: schemaFields.oauthMicrosoftTenantIdSchema.optional(),
 });
+
+const oauthProviderWriteSchema = oauthProviderReadSchema.omit(['provider_config_id']);
 
 const enabledOAuthProviderSchema = yupObject({
   id: schemaFields.oauthIdSchema.defined(),
@@ -63,7 +66,6 @@ export const projectsCrudAdminReadSchema = yupObject({
   display_name: schemaFields.projectDisplayNameSchema.defined(),
   description: schemaFields.projectDescriptionSchema.nonNullable().defined(),
   created_at_millis: schemaFields.projectCreatedAtMillisSchema.defined(),
-  user_count: schemaFields.projectUserCountSchema.defined(),
   is_production_mode: schemaFields.projectIsProductionModeSchema.defined(),
   /** @deprecated */
   config: yupObject({
@@ -77,7 +79,7 @@ export const projectsCrudAdminReadSchema = yupObject({
     client_user_deletion_enabled: schemaFields.projectClientUserDeletionEnabledSchema.defined(),
     allow_user_api_keys: schemaFields.yupBoolean().defined(),
     allow_team_api_keys: schemaFields.yupBoolean().defined(),
-    oauth_providers: yupArray(oauthProviderSchema.defined()).defined(),
+    oauth_providers: yupArray(oauthProviderReadSchema.defined()).defined(),
     enabled_oauth_providers: yupArray(enabledOAuthProviderSchema.defined()).defined().meta({ openapiField: { hidden: true } }),
     domains: yupArray(domainSchema.defined()).defined(),
     email_config: emailConfigSchema.defined(),
@@ -124,7 +126,7 @@ export const projectsCrudAdminUpdateSchema = yupObject({
     email_config: emailConfigSchema.optional().default(undefined),
     email_theme: schemaFields.emailThemeSchema.optional(),
     domains: yupArray(domainSchema.defined()).optional().default(undefined),
-    oauth_providers: yupArray(oauthProviderSchema.defined()).optional().default(undefined),
+    oauth_providers: yupArray(oauthProviderWriteSchema.defined()).optional().default(undefined),
     create_team_on_sign_up: schemaFields.projectCreateTeamOnSignUpSchema.optional(),
     team_creator_default_permissions: yupArray(teamPermissionSchema.defined()).optional(),
     team_member_default_permissions: yupArray(teamPermissionSchema.defined()).optional(),
@@ -144,7 +146,7 @@ export const clientProjectsCrud = createCrud({
   docs: {
     clientRead: {
       summary: 'Get the current project',
-      description: 'Get the current project information including display name, OAuth providers and authentication methods. Useful for display the available login options to the user.',
+      description: 'Get the current project information including display name, OAuth providers and authentication methods. Useful for displaying the available login options to the user.',
       tags: ['Projects'],
     },
   },

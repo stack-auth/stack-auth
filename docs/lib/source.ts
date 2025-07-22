@@ -4,27 +4,29 @@ import { attachFile } from 'fumadocs-openapi/server';
 import { icons } from 'lucide-react';
 import { createElement } from 'react';
 
-// Main docs source for /docs routes
+// Helper function to create icon resolver
+function createIconResolver() {
+  return function icon(iconName?: string) {
+    if (!iconName) {
+      return;
+    }
+
+    if (iconName in icons) {
+      return createElement(icons[iconName as keyof typeof icons]);
+    }
+
+    return;
+  };
+}
+
+// Main docs source for /docs routes - includes all root sections
 export const source = loader({
-  // it assigns a URL to your pages
   baseUrl: '/docs',
   source: docs.toFumadocsSource(),
   pageTree: {
     attachFile,
   },
-  icon(icon) {
-    if (!icon) {
-      // You may set a default icon here if needed
-      return;
-    }
-
-    if (icon in icons) {
-      return createElement(icons[icon as keyof typeof icons]);
-    }
-
-    // Fallback to undefined if icon is not found
-    return;
-  },
+  icon: createIconResolver(),
 });
 
 // API source for /api routes
@@ -34,15 +36,5 @@ export const apiSource = loader({
   pageTree: {
     attachFile,
   },
-  icon(icon) {
-    if (!icon) {
-      return;
-    }
-
-    if (icon in icons) {
-      return createElement(icons[icon as keyof typeof icons]);
-    }
-
-    return;
-  },
+  icon: createIconResolver(),
 });

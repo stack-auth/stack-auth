@@ -6,10 +6,11 @@ import remarkGfm from 'remark-gfm';
 import { CompactCodeblock } from './compact-codeblock';
 
 type MessageNode = {
-  type: 'text' | 'code' | 'heading' | 'list' | 'listItem' | 'paragraph' | 'strong' | 'emphasis' | 'break',
+  type: 'text' | 'code' | 'heading' | 'list' | 'listItem' | 'paragraph' | 'strong' | 'emphasis' | 'break' | 'link',
   content?: string,
   language?: string,
   level?: number,
+  url?: string,
   children?: MessageNode[],
 };
 
@@ -134,6 +135,19 @@ async function parseMarkdown(text: string): Promise<MessageNode[]> {
         break;
       }
 
+      case 'link': {
+        const linkChildren: MessageNode[] = [];
+        (node as { children?: unknown[] }).children?.forEach((child: unknown) => {
+          linkChildren.push(...processNode(child));
+        });
+        nodes.push({
+          type: 'link',
+          url: (node as { url?: string }).url,
+          children: linkChildren
+        });
+        break;
+      }
+
       default: {
         // For any unhandled node types, try to extract text content
         if ((node as { value?: string }).value) {
@@ -221,6 +235,43 @@ function renderNode(node: MessageNode, index: number): React.ReactNode {
 
     case 'break': {
       return <br key={index} />;
+    }
+
+    case 'link': {
+      return (
+        <a
+          key={index}
+          href={node.url}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="inline-flex items-center gap-1 px-1.5 py-0.5 bg-blue-100 hover:bg-blue-200 text-blue-700 dark:bg-blue-900/40 dark:hover:bg-blue-900/60 dark:text-blue-300 rounded text-xs font-medium transition-all duration-150 hover:scale-[1.02]"
+        >
+          {node.children?.map(renderNode)}
+          <svg
+            width="9"
+            height="9"
+            viewBox="0 0 12 12"
+            fill="none"
+            xmlns="http://www.w3.org/2000/svg"
+            className="opacity-70"
+          >
+            <path
+              d="M3.5 3.5H2C1.44772 3.5 1 3.94772 1 4.5V10C1 10.5523 1.44772 11 2 11H7.5C8.05228 11 8.5 10.5523 8.5 10V8.5"
+              stroke="currentColor"
+              strokeWidth="1.2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+            <path
+              d="M5 7L11 1M11 1H7.5M11 1V4.5"
+              stroke="currentColor"
+              strokeWidth="1.2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+          </svg>
+        </a>
+      );
     }
 
     default: {

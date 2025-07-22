@@ -1,0 +1,25 @@
+---
+description: Code Patterns and Best Practices
+globs: "**/*.{js,ts}"
+alwaysApply: true
+---
+
+The following conventions MUST be followed in new code.
+DON'T report code patterns outside of the examples explicitly listed below:
+
+- Never use `void asyncFunction()` or `asyncFunction().catch(console.error)` - use `runAsynchronously(asyncFunction)` instead
+- Use `parseJson`/`stringifyJson` from `stack-shared/utils/json` instead of `JSON.parse`/`JSON.stringify`
+- Instead of Vercel `waitUntil`, use `runAsynchronously(promise, { promiseCallback: waitUntil })`
+- Don't concatenate URLs as strings - avoid patterns like `/users/${userId}`
+- Replace non-null assertions with `?? throwErr("message", { extraData })` pattern
+- Properly handle async operations with try/catch blocks
+- Use helper functions for validation and environment variables
+
+# Solution
+
+Fix code pattern violations by:
+- Wrapping async calls with runAsynchronously
+- Importing parseJson/stringifyJson from stack-shared/utils/json
+- Using runAsynchronously with promiseCallback for waitUntil
+- Using proper URL construction utilities
+- Replacing ! assertions with ?? throwErr pattern

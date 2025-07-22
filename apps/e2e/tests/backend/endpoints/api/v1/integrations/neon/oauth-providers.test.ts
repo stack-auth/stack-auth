@@ -106,13 +106,14 @@ it("lists oauth providers", async ({ expect }) => {
           "credential_enabled": true,
           "domains": [],
           "email_config": { "type": "shared" },
-          "email_theme": "default-light",
+          "email_theme": "<stripped UUID>",
           "enabled_oauth_providers": [{ "id": "google" }],
           "magic_link_enabled": false,
           "oauth_account_merge_strategy": "link_method",
           "oauth_providers": [
             {
               "id": "google",
+              "provider_config_id": "google",
               "type": "shared",
             },
           ],
@@ -127,7 +128,6 @@ it("lists oauth providers", async ({ expect }) => {
         "display_name": "New Project",
         "id": "<stripped UUID>",
         "is_production_mode": false,
-        "user_count": 0,
       },
       "headers": Headers { <some fields may have been hidden> },
     }

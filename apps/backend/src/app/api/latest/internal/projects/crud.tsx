@@ -1,6 +1,6 @@
 import { createOrUpdateProject, getProjectQuery, listManagedProjectIds } from "@/lib/projects";
 import { DEFAULT_BRANCH_ID, getSoleTenancyFromProjectBranch } from "@/lib/tenancies";
-import { prismaClient, rawQueryAll } from "@/prisma-client";
+import { globalPrismaClient, rawQueryAll } from "@/prisma-client";
 import { createCrudHandlers } from "@/route-handlers/crud-handler";
 import { KnownErrors } from "@stackframe/stack-shared";
 import { adminUserProjectsCrud } from "@stackframe/stack-shared/dist/interface/crud/projects";
@@ -42,7 +42,7 @@ export const adminUserProjectsCrudHandlers = createLazyProxy(() => createCrudHan
   },
   onList: async ({ auth }) => {
     const projectIds = listManagedProjectIds(auth.user ?? throwErr('auth.user is required'));
-    const projectsRecord = await rawQueryAll(prismaClient, typedFromEntries(projectIds.map((id, index) => [index, getProjectQuery(id)])));
+    const projectsRecord = await rawQueryAll(globalPrismaClient, typedFromEntries(projectIds.map((id, index) => [index, getProjectQuery(id)])));
     const projects = (await Promise.all(typedEntries(projectsRecord).map(async ([_, project]) => await project))).filter(isNotNull);
 
     if (projects.length !== projectIds.length) {

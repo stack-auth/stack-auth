@@ -689,7 +689,7 @@ export namespace Auth {
       };
     }
 
-    export async function getAuthorizationCode(options: { innerCallbackUrl?: URL, authorizeResponse?: NiceResponse, forceBranchId?: string } = {}) {
+    export async function getMaybeFailingAuthorizationCode(options: { innerCallbackUrl?: URL, authorizeResponse?: NiceResponse, forceBranchId?: string } = {}) {
       let authorizeResponse, innerCallbackUrl;
       if (options.innerCallbackUrl && options.authorizeResponse) {
         innerCallbackUrl = options.innerCallbackUrl;
@@ -706,6 +706,15 @@ export namespace Auth {
           cookie,
         },
       });
+      return {
+        authorizeResponse,
+        innerCallbackUrl,
+        response,
+      };
+    }
+
+    export async function getAuthorizationCode(options: { innerCallbackUrl?: URL, authorizeResponse?: NiceResponse, forceBranchId?: string } = {}) {
+      const { response } = await Auth.OAuth.getMaybeFailingAuthorizationCode(options);
       expect(response).toMatchObject({
         status: 303,
         headers: expect.any(Headers),
@@ -982,7 +991,7 @@ export namespace InternalApiKey {
         ...body,
       },
       headers: {
-        'x-stack-admin-access-token': adminAccessToken ?? (backendContext.value.projectKeys !== "no-project" && backendContext.value.projectKeys.adminAccessToken || throwErr("Missing adminAccessToken")),
+        'x-stack-admin-access-token': adminAccessToken ?? (backendContext.value.projectKeys !== "no-project" && backendContext.value.projectKeys.adminAccessToken || undefined),
       }
     });
     expect(response.status).equals(200);
@@ -1248,21 +1257,22 @@ export namespace User {
         verification_callback_url: "http://localhost:12345/some-callback-url",
       },
     });
-      expect(createUserResponse).toMatchObject({
-        status: 200,
-        body: {
-          access_token: expect.any(String),
-          refresh_token: expect.any(String),
-          user_id: expect.any(String),
-        },
-        headers: expect.anything(),
-      });
-      return {
-        userId: createUserResponse.body.user_id,
-        mailbox,
-        accessToken: createUserResponse.body.access_token,
-        refreshToken: createUserResponse.body.refresh_token,
-      };
+    expect(createUserResponse).toMatchObject({
+      status: 200,
+      body: {
+        access_token: expect.any(String),
+        refresh_token: expect.any(String),
+        user_id: expect.any(String),
+      },
+      headers: expect.anything(),
+    });
+    return {
+      userId: createUserResponse.body.user_id,
+      mailbox,
+      accessToken: createUserResponse.body.access_token,
+      refreshToken: createUserResponse.body.refresh_token,
+      password,
+    };
   }
 
   export async function createMultiple(count: number) {
@@ -1295,7 +1305,7 @@ export namespace Webhook {
     const createEndpointResponse = await niceFetch(STACK_SVIX_SERVER_URL + `/api/v1/app/${projectId}/endpoint`, {
       method: "POST",
       body: JSON.stringify({
-        url: "https://example.com"
+        url: "http://localhost:12345/webhook"
       }),
       headers: {
         "Authorization": `Bearer ${svixToken}`,
@@ -1313,7 +1323,7 @@ export namespace Webhook {
   export async function findWebhookAttempt(projectId: string, endpointId: string, svixToken: string, fn: (msg: any) => boolean) {
     // retry many times because Svix sucks and is slow
     for (let i = 0; i < 20; i++) {
-      const attempts = await Webhook.listWebhookAttempts(projectId, endpointId, svixToken);
+      const attempts = await Webhook.listWebhookAttempts(projectId, endpointId, svixToken, 1);
       const filtered = attempts.filter(fn);
       if (filtered.length === 0) {
         await wait(500);
@@ -1327,28 +1337,37 @@ export namespace Webhook {
     throw new Error(`Webhook attempt not found for project ${projectId}, endpoint ${endpointId}`);
   }
 
-  export async function listWebhookAttempts(projectId: string, endpointId: string, svixToken: string) {
-    const response = await niceFetch(STACK_SVIX_SERVER_URL + `/api/v1/app/${projectId}/attempt/endpoint/${endpointId}`, {
-      method: "GET",
-      headers: {
-        "Authorization": `Bearer ${svixToken}`,
-        "Content-Type": "application/json",
-      },
-    });
-
-    const messages = await Promise.all(response.body.data.map(async (attempt: any) => {
-      const messageResponse = await niceFetch(STACK_SVIX_SERVER_URL + `/api/v1/app/${projectId}/msg/${attempt.msgId}?with_content=true`, {
+  export async function listWebhookAttempts(projectId: string, endpointId: string, svixToken: string, retryCount: number = 20) {
+    // retry many times because Svix sucks and is slow
+    for (let i = 0; i < retryCount; i++) {
+      const response = await niceFetch(STACK_SVIX_SERVER_URL + `/api/v1/app/${projectId}/attempt/endpoint/${endpointId}`, {
+        method: "GET",
         headers: {
           "Authorization": `Bearer ${svixToken}`,
           "Content-Type": "application/json",
         },
-        method: "GET",
       });
-      return messageResponse.body;
-    }));
 
-    return messages.sort((a, b) => {
-      return new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime();
-    });
+      const messages = await Promise.all(response.body.data.map(async (attempt: any) => {
+        const messageResponse = await niceFetch(STACK_SVIX_SERVER_URL + `/api/v1/app/${projectId}/msg/${attempt.msgId}?with_content=true`, {
+          headers: {
+            "Authorization": `Bearer ${svixToken}`,
+            "Content-Type": "application/json",
+          },
+          method: "GET",
+        });
+        return messageResponse.body;
+      }));
+
+      if (messages.length === 0) {
+        await wait(500);
+        continue;
+      }
+
+      return messages.sort((a, b) => {
+        return new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime();
+      });
+    }
+    return [];
   }
 }

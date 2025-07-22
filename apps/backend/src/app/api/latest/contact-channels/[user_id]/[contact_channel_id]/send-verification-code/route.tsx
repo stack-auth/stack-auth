@@ -1,5 +1,5 @@
 import { usersCrudHandlers } from "@/app/api/latest/users/crud";
-import { prismaClient } from "@/prisma-client";
+import { getPrismaClientForTenancy } from "@/prisma-client";
 import { CrudHandlerInvocationError } from "@/route-handlers/crud-handler";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { KnownErrors } from "@stackframe/stack-shared";
@@ -53,7 +53,7 @@ export const POST = createSmartRouteHandler({
       }
     }
 
-    const contactChannel = await prismaClient.contactChannel.findUnique({
+    const contactChannel = await getPrismaClientForTenancy(auth.tenancy).contactChannel.findUnique({
       where: {
         tenancyId_projectUserId_id: {
           tenancyId: auth.tenancy.id,

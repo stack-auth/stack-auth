@@ -22,25 +22,25 @@ You can get `Team` objects with the
 ### Table of Contents
 
 <ClickableTableOfContents code={`type Team = {
-    id: string;  //$stack-link-to:#teamid
-    displayName: string;  //$stack-link-to:#teamdisplayname
-    profileImageUrl: string | null;  //$stack-link-to:#teamprofileimageurl
-    clientMetadata: Json;  //$stack-link-to:#teamclientmetadata
-    clientReadOnlyMetadata: Json;  //$stack-link-to:#teamclientreadonlymetadata
+  id: string;  //$stack-link-to:#teamid
+  displayName: string;  //$stack-link-to:#teamdisplayname
+  profileImageUrl: string | null;  //$stack-link-to:#teamprofileimageurl
+  clientMetadata: Json;  //$stack-link-to:#teamclientmetadata
+  clientReadOnlyMetadata: Json;  //$stack-link-to:#teamclientreadonlymetadata
 
-    update(data): Promise<void>;  //$stack-link-to:#teamupdatedata
-    inviteUser(options): Promise<void>;  //$stack-link-to:#teaminviteuseroptions
-    listUsers(): Promise<TeamUser[]>;  //$stack-link-to:#teamlistusers
-    // NEXT_LINE_PLATFORM react-like
-    ⤷ useUsers(): TeamUser[];  //$stack-link-to:#teamuseusers
-    listInvitations(): Promise<{ ... }[]>;  //$stack-link-to:#teamlistinvitations
-    // NEXT_LINE_PLATFORM react-like
-    ⤷ useInvitations(): { ... }[];  //$stack-link-to:#teamuseinvitations
-    
-    createApiKey(options): Promise<TeamApiKeyFirstView>;  //$stack-link-to:#teamcreateapikeyoptions
-    listApiKeys(): Promise<TeamApiKey[]>;  //$stack-link-to:#teamlistapikeys
-    // NEXT_LINE_PLATFORM react-like
-    ⤷ useApiKeys(): TeamApiKey[];  //$stack-link-to:#teamuseapikeys
+  update(data): Promise<void>;  //$stack-link-to:#teamupdatedata
+  inviteUser(options): Promise<void>;  //$stack-link-to:#teaminviteuseroptions
+  listUsers(): Promise<TeamUser[]>;  //$stack-link-to:#teamlistusers
+  // NEXT_LINE_PLATFORM react-like
+   ⤷ useUsers(): TeamUser[];  //$stack-link-to:#teamuseusers
+  listInvitations(): Promise<{ ... }[]>;  //$stack-link-to:#teamlistinvitations
+  // NEXT_LINE_PLATFORM react-like
+   ⤷ useInvitations(): { ... }[];  //$stack-link-to:#teamuseinvitations
+  
+  createApiKey(options): Promise<TeamApiKeyFirstView>;  //$stack-link-to:#teamcreateapikeyoptions
+  listApiKeys(): Promise<TeamApiKey[]>;  //$stack-link-to:#teamlistapikeys
+  // NEXT_LINE_PLATFORM react-like
+   ⤷ useApiKeys(): TeamApiKey[];  //$stack-link-to:#teamuseapikeys
 };`} />
 
 <CollapsibleTypesSection type="team" property="id" defaultOpen={false}>
@@ -489,19 +489,19 @@ Calling `serverUser.getTeam(...)` and `serverUser.listTeams()` will return `Serv
 ### Table of Contents
 
 <ClickableTableOfContents code={`type ServerTeam =
-    // Inherits all functionality from Team
-    & Team //$stack-link-to:#team
-    & {
-        createdAt: Date;  //$stack-link-to:#serverteamcreatedat
-        serverMetadata: Json;  //$stack-link-to:#serverteamservermetadata
+  // Inherits all functionality from Team
+  & Team //$stack-link-to:#team
+  & {
+    createdAt: Date;  //$stack-link-to:#serverteamcreatedat
+    serverMetadata: Json;  //$stack-link-to:#serverteamservermetadata
 
-        listUsers(): Promise<ServerTeamUser[]>;  //$stack-link-to:#serverteamlistusers
-        // NEXT_LINE_PLATFORM react-like
-        ⤷ useUsers(): ServerTeamUser[];  //$stack-link-to:#serverteamuseusers
-        addUser(userId): Promise<void>;  //$stack-link-to:#serverteamadduseruserid
-        removeUser(userId): Promise<void>;  //$stack-link-to:#serverteamremoveuseruserid
-        delete(): Promise<void>;  //$stack-link-to:#serverteamdelete
-    };`} />
+    listUsers(): Promise<ServerTeamUser[]>;  //$stack-link-to:#serverteamlistusers
+    // NEXT_LINE_PLATFORM react-like
+     ⤷ useUsers(): ServerTeamUser[];  //$stack-link-to:#serverteamuseusers
+    addUser(userId): Promise<void>;  //$stack-link-to:#serverteamadduseruserid
+    removeUser(userId): Promise<void>;  //$stack-link-to:#serverteamremoveuseruserid
+    delete(): Promise<void>;  //$stack-link-to:#serverteamdelete
+  };`} />
 
 <CollapsibleTypesSection type="serverTeam" property="createdAt" defaultOpen={false}>
   <MethodLayout>
