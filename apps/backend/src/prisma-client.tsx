@@ -2,13 +2,14 @@ import { PrismaNeon } from "@prisma/adapter-neon";
 import { PrismaPg } from '@prisma/adapter-pg';
 import { Prisma, PrismaClient } from "@prisma/client";
 import { OrganizationRenderedConfig } from "@stackframe/stack-shared/dist/config/schema";
-import { getNodeEnvironment } from '@stackframe/stack-shared/dist/utils/env';
+import { getEnvVariable, getNodeEnvironment } from '@stackframe/stack-shared/dist/utils/env';
 import { StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
 import { globalVar } from "@stackframe/stack-shared/dist/utils/globals";
 import { deepPlainEquals, filterUndefined, typedFromEntries, typedKeys } from "@stackframe/stack-shared/dist/utils/objects";
 import { ignoreUnhandledRejection } from "@stackframe/stack-shared/dist/utils/promises";
 import { Result } from "@stackframe/stack-shared/dist/utils/results";
 import { isPromise } from "util/types";
+import { runMigrationNeeded } from "./auto-migrations";
 import { Tenancy } from "./lib/tenancies";
 import { traceSpan } from "./utils/telemetry";
 
@@ -28,6 +29,8 @@ if (getNodeEnvironment().includes('development')) {
 }
 
 export const globalPrismaClient = prismaClientsStore.global;
+const dbUrl = new URL(getEnvVariable("STACK_DIRECT_DATABASE_CONNECTION_STRING", ""));
+export const globalPrismaSchema = dbUrl.searchParams.get("schema") ?? "public";
 
 function getNeonPrismaClient(connectionString: string) {
   let neonPrismaClient = prismaClientsStore.neon.get(connectionString);
@@ -36,6 +39,7 @@ function getNeonPrismaClient(connectionString: string) {
     neonPrismaClient = new PrismaClient({ adapter });
     prismaClientsStore.neon.set(connectionString, neonPrismaClient);
   }
+
   return neonPrismaClient;
 }
 
@@ -67,10 +71,14 @@ export async function getPrismaClientForSourceOfTruth(sourceOfTruth: Organizatio
       if (!(branchId in sourceOfTruth.connectionStrings)) {
         throw new Error(`No connection string provided for Neon source of truth for branch ${branchId}`);
       }
-      return getNeonPrismaClient(sourceOfTruth.connectionStrings[branchId]);
+      const neonPrismaClient = getNeonPrismaClient(sourceOfTruth.connectionStrings[branchId]);
+      await runMigrationNeeded({ prismaClient: neonPrismaClient });
+      return neonPrismaClient;
     }
     case 'postgres': {
-      return getPostgresPrismaClient(sourceOfTruth.connectionString).client;
+      const postgresPrismaClient = getPostgresPrismaClient(sourceOfTruth.connectionString);
+      await runMigrationNeeded({ prismaClient: postgresPrismaClient.client });
+      return postgresPrismaClient.client;
     }
     case 'hosted': {
       return globalPrismaClient;
