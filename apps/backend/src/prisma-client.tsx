@@ -29,7 +29,7 @@ if (getNodeEnvironment().includes('development')) {
 }
 
 export const globalPrismaClient = prismaClientsStore.global;
-const dbUrl = new URL(getEnvVariable("STACK_DIRECT_DATABASE_CONNECTION_STRING", ""));
+const dbUrl = new URL(getEnvVariable("STACK_DIRECT_DATABASE_CONNECTION_STRING"));
 export const globalPrismaSchema = dbUrl.searchParams.get("schema") ?? "public";
 
 function getNeonPrismaClient(connectionString: string) {
