@@ -42,8 +42,8 @@ export const POST = createSmartRouteHandler({
     }
     const themeList = tenancy.completeConfig.emails.themeList;
     const templateList = tenancy.completeConfig.emails.templateList;
-    const themeSource = body.theme_id ? themeList[body.theme_id]?.tsxSource : body.theme_tsx_source;
-    const templateSource = body.template_id ? templateList[body.template_id]?.tsxSource : body.template_tsx_source;
+    const themeSource = body.theme_id ? themeList[body.theme_id].tsxSource : body.theme_tsx_source;
+    const templateSource = body.template_id ? templateList[body.template_id].tsxSource : body.template_tsx_source;
     if (!themeSource) {
       throw new StatusError(400, "No theme found with given id");
     }
