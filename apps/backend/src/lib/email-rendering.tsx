@@ -82,6 +82,7 @@ export async function renderEmailWithTemplate(
   if ("error" in output) {
     return Result.error(output.error as string);
   }
+  console.log("RESULT1", output.result);
   return Result.ok(output.result as { html: string, text: string, schema: any, subject: string, notificationCategory: string });
 }
 

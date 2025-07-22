@@ -41,7 +41,7 @@ import { Subject, NotificationCategory } from "@stackframe/emails";
 import { type } from "arktype";
 
 export const schema = type({
-  projectDisplayName: string(),
+  projectDisplayName: "string",
 });
 
 export function EmailTemplate({ projectDisplayName }: typeof schema.infer) {

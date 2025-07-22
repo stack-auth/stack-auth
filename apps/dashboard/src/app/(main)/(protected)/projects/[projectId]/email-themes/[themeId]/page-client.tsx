@@ -22,7 +22,7 @@ export default function PageClient({ themeId }: { themeId: string }) {
   const [currentCode, setCurrentCode] = useState(theme.tsxSource);
 
   useEffect(() => {
-    if (!theme || theme.tsxSource === currentCode) return;
+    if (theme.tsxSource === currentCode) return;
     setNeedConfirm(true);
     return () => setNeedConfirm(false);
   }, [setNeedConfirm, theme, currentCode]);
