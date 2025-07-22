@@ -19,10 +19,32 @@ declare module "yup" {
 
   // eslint-disable-next-line @typescript-eslint/consistent-type-definitions
   interface Schema<TType, TContext, TDefault, TFlags> {
+    hasNested<K extends keyof NonNullable<TType>>(path: K): boolean,
     getNested<K extends keyof NonNullable<TType>>(path: K): yup.Schema<NonNullable<TType>[K], TContext, TDefault, TFlags>,
 
     // the default types for concat kinda suck, so let's fix that
     concat<U extends yup.AnySchema>(schema: U): yup.Schema<Omit<NonNullable<TType>, keyof yup.InferType<U>> & yup.InferType<U> | (TType & (null | undefined)), TContext, Omit<NonNullable<TDefault>, keyof U['__default']> & U['__default'] | (TDefault & (null | undefined)), TFlags>,
+  }
+
+  // eslint-disable-next-line @typescript-eslint/consistent-type-definitions
+  export interface CustomSchemaMetadata {
+    stackSchemaInfo?:
+    | {
+      type: "object" | "array" | "string" | "number" | "boolean" | "date" | "mixed" | "never",
+    }
+    | {
+      type: "tuple",
+      items: yup.AnySchema[],
+    }
+    | {
+      type: "union",
+      items: yup.AnySchema[],
+    }
+    | {
+      type: "record",
+      keySchema: yup.StringSchema<any>,
+      valueSchema: yup.AnySchema,
+    },
   }
 }
 
@@ -37,9 +59,30 @@ yup.addMethod(yup.string, "nonEmpty", function (message?: string) {
   );
 });
 
+yup.addMethod(yup.Schema, "hasNested", function (path: any) {
+  if (!path.match(/^[a-zA-Z_$:\-][a-zA-Z0-9_$:\-]*$/)) throw new StackAssertionError(`yupSchema.getNested can currently only be used with alphanumeric keys, underscores, dollar signs, colons, and hyphens. Fix this in the future. Provided key: ${path}`);
+  try {
+    yup.reach(this, path);
+    return true as any;
+  } catch (e) {
+    if (e instanceof Error && e.message.includes("The schema does not contain the path")) {
+      return false as any;
+    }
+    throw e;
+  }
+});
+
 yup.addMethod(yup.Schema, "getNested", function (path: any) {
-  if (!path.match(/^[a-zA-Z_][a-zA-Z0-9_]*$/)) throw new StackAssertionError(`yupSchema.getNested can currently only be used with alphanumeric keys. Fix this in the future. Provided key: ${path}`);
+  if (!path.match(/^[a-zA-Z_$:\-][a-zA-Z0-9_$:\-]*$/)) throw new StackAssertionError(`yupSchema.getNested can currently only be used with alphanumeric keys, underscores, dollar signs, colons, and hyphens. Fix this in the future. Provided key: ${path}`);
   return yup.reach(this, path) as any;
+});
+
+import.meta.vitest?.test("getNested & hasNested", ({ expect }) => {
+  expect(yupObject({ a: yupString() }).hasNested("a")).toBe(true);
+  expect(yupObject({}).hasNested("a" as never)).toBe(false);
+  expect(yupObject({ a: yupString() }).getNested("a")).toBeDefined();
+  expect(() => yupObject({}).getNested("a" as never)).toThrow();
+  expect(() => yupObject({ a: yupObject({ b: yupString() }) }).getNested("a.b" as never)).toThrow();
 });
 
 export async function yupValidate<S extends yup.ISchema<any>>(
@@ -111,34 +154,38 @@ export type StackAdaptSentinel = typeof StackAdaptSentinel;
 // Built-in replacements
 export function yupString<A extends string, B extends yup.Maybe<yup.AnyObject> = yup.AnyObject>(...args: Parameters<typeof yup.string<A, B>>) {
   // eslint-disable-next-line no-restricted-syntax
-  return yup.string(...args);
+  return yup.string(...args).meta({ stackSchemaInfo: { type: "string" } });
 }
 export function yupNumber<A extends number, B extends yup.Maybe<yup.AnyObject> = yup.AnyObject>(...args: Parameters<typeof yup.number<A, B>>) {
   // eslint-disable-next-line no-restricted-syntax
-  return yup.number(...args);
+  return yup.number(...args).meta({ stackSchemaInfo: { type: "number" } });
 }
 export function yupBoolean<A extends boolean, B extends yup.Maybe<yup.AnyObject> = yup.AnyObject>(...args: Parameters<typeof yup.boolean<A, B>>) {
   // eslint-disable-next-line no-restricted-syntax
-  return yup.boolean(...args);
+  return yup.boolean(...args).meta({ stackSchemaInfo: { type: "boolean" } });
 }
 /**
  * @deprecated, use number of milliseconds since epoch instead
  */
 export function yupDate<A extends Date, B extends yup.Maybe<yup.AnyObject> = yup.AnyObject>(...args: Parameters<typeof yup.date<A, B>>) {
   // eslint-disable-next-line no-restricted-syntax
-  return yup.date(...args);
+  return yup.date(...args).meta({ stackSchemaInfo: { type: "date" } });
 }
-export function yupMixed<A extends {}>(...args: Parameters<typeof yup.mixed<A>>) {
+function _yupMixedInternal<A extends {}>(...args: Parameters<typeof yup.mixed<A>>) {
   // eslint-disable-next-line no-restricted-syntax
   return yup.mixed(...args);
 }
+export function yupMixed<A extends {}>(...args: Parameters<typeof yup.mixed<A>>) {
+  return _yupMixedInternal(...args).meta({ stackSchemaInfo: { type: "mixed" } });
+}
 export function yupArray<A extends yup.Maybe<yup.AnyObject> = yup.AnyObject, B = any>(...args: Parameters<typeof yup.array<A, B>>) {
   // eslint-disable-next-line no-restricted-syntax
-  return yup.array(...args);
+  return yup.array(...args).meta({ stackSchemaInfo: { type: "array" } });
 }
-export function yupTuple<T extends [unknown, ...unknown[]]>(...args: Parameters<typeof yup.tuple<T>>) {
+export function yupTuple<T extends [unknown, ...unknown[]]>(schemas: yup.AnySchema[]) {
+  if (schemas.length === 0) throw new Error('yupTuple must have at least one schema');
   // eslint-disable-next-line no-restricted-syntax
-  return yup.tuple<T>(...args);
+  return yup.tuple<T>(schemas as any).meta({ stackSchemaInfo: { type: "tuple", items: schemas } });
 }
 export function yupObjectWithAutoDefault<A extends yup.Maybe<yup.AnyObject>, B extends yup.ObjectShape>(...args: Parameters<typeof yup.object<A, B>>) {
   // eslint-disable-next-line no-restricted-syntax
@@ -162,7 +209,7 @@ export function yupObjectWithAutoDefault<A extends yup.Maybe<yup.AnyObject>, B e
       }
       return true;
     },
-  );
+  ).meta({ stackSchemaInfo: { type: "object" } });
   return object;
 }
 export function yupObject<A extends yup.Maybe<yup.AnyObject>, B extends yup.ObjectShape>(...args: Parameters<typeof yup.object<A, B>>) {
@@ -172,13 +219,13 @@ export function yupObject<A extends yup.Maybe<yup.AnyObject>, B extends yup.Obje
 }
 
 export function yupNever(): yup.MixedSchema<never> {
-  return yupMixed().test('never', 'This value should never be reached', () => false) as any;
+  return _yupMixedInternal().meta({ stackSchemaInfo: { type: "never" } }).test('never', 'This value should never be reached', () => false) as any;
 }
 
-export function yupUnion<T extends yup.ISchema<any>[]>(...args: T): yup.MixedSchema<yup.InferType<T[number]>> {
+export function yupUnion<T extends yup.AnySchema[]>(...args: T): yup.MixedSchema<yup.InferType<T[number]>> {
   if (args.length === 0) throw new Error('yupUnion must have at least one schema');
 
-  return yupMixed().test('is-one-of', 'Invalid value', async (value, context) => {
+  return _yupMixedInternal().meta({ stackSchemaInfo: { type: "union", items: args } }).test('is-one-of', 'Invalid value', async (value, context) => {
     if (value == null) return true;
     const errors = [];
     for (const schema of args) {
@@ -200,7 +247,7 @@ export function yupRecord<K extends yup.StringSchema, T extends yup.AnySchema>(
   keySchema: K,
   valueSchema: T,
 ): yup.MixedSchema<Record<string, yup.InferType<T>>> {
-  return yupObject().unknown(true).test(
+  return yupObject().meta({ stackSchemaInfo: { type: "record", keySchema, valueSchema } }).unknown(true).test(
     'record',
     '${path} must be a record of valid values',
     async function (value: unknown, context: yup.TestContext) {

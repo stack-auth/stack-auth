@@ -1,12 +1,26 @@
+import { Join } from "./strings";
+
 export type IsAny<T> = 0 extends (1 & T) ? true : false;
 export type IsNever<T> = [T] extends [never] ? true : false;
-export type IsNullish<T> = T extends null | undefined ? true : false;
+export type IsNullish<T> = [T] extends [null | undefined] ? true : false;
+export type IsUnion<T, U = T> =
+  IsNever<T> extends true ? false
+  : IsAny<T> extends true ? false
+    : T extends U // distributive conditional https://www.typescriptlang.org/docs/handbook/2/conditional-types.html#distributive-conditional-types
+        ? /* if the *whole* original type (`U`) still fits inside the current variant, then `T` wasn’t a union */ ([U] extends [T] ? false : true)
+        : never;
 
 export type NullishCoalesce<T, U> = T extends null | undefined ? U : T;
 
-// distributive conditional type magic. See: https://stackoverflow.com/a/50375286
+export type LastUnionElement<U> = UnionToIntersection<U extends any ? (x: U) => 0 : never> extends (x: infer L) => 0 ? L & U : never;
+
+// why this works: https://stackoverflow.com/a/50375286
 export type UnionToIntersection<U> =
   (U extends any ? (x: U) => void : never) extends ((x: infer I) => void) ? I : never
+
+type _UnionToTupleInner<U, R extends any[], Last> = UnionToTuple<Exclude<U, Last>, [...R, Last]>
+export type UnionToTuple<U, R extends any[] = []> = [U] extends [never] ? R : _UnionToTupleInner<U, R, LastUnionElement<U>>;
+
 
 export type IntersectAll<T extends any[]> = UnionToIntersection<T[number]>;
 
@@ -50,3 +64,73 @@ export type IfAndOnlyIf<Value, Extends, Then, Otherwise> =
  * Can be used to prettify a type in the IDE; for example, some complicated intersected types can be flattened into a single type.
  */
 export type PrettifyType<T> = T extends object ? { [K in keyof T]: T[K] } & {} : T;
+
+type _ToStringAndJoin<T extends any[], Separator extends string> =
+  T extends [infer U extends string, ...infer Rest extends any[]]
+    ? `${TypeToString<U>}${Rest extends [any, ...any[]] ? `${Separator}${_ToStringAndJoin<Rest, Separator>}` : ""}`
+    : "<error-joining-tuple-elements>";
+type _TypeToStringInner<T> =
+  IsAny<T> extends true ? "any"
+  : IsNever<T> extends true ? "never"
+  : IsUnion<T> extends true ? _ToStringAndJoin<UnionToTuple<T>, " | ">
+  : [T] extends [number] ? (number extends T ? "number" : `${T}`)
+  : [T] extends [boolean] ? `${T}`
+  : [T] extends [undefined] ? "undefined"
+  : [T] extends [null] ? "null"
+  : [T] extends [string] ? `'${T}'`
+  : [T] extends [[]] ? "[]"
+  : [T] extends [[any, ...any[]]] ? `[${_ToStringAndJoin<T, ", ">}]`
+  : [T] extends [(infer E)[]] ? `${TypeToString<E>}[]`
+  : [T] extends [Function] ? "function"
+  : [T] extends [symbol] ? `symbol(${T['description']})`
+  : [T] extends [object] ? `{ ${Join<UnionToTuple<{ [K in keyof T]: `${TypeToString<K>}: ${TypeToString<T[K]>}` }[keyof T]>, ", ">} }`
+  : "<unknown-type>"
+export type TypeToString<T> = _TypeToStringInner<T> extends `${infer S}` ? S : never;
+
+/**
+ * Can be used to create assertions on types. For example, if passed any T other than `true`, the following will
+ * show a type error:
+ *
+ * ```ts
+ * typeAssert<T>()();  // the second pair of braces is important!
+ * ```
+ */
+export function typeAssert<T>(): (
+  IsAny<T> extends true ? TypeAssertionError<`Type assertion failed. Expected true, but got any.`>
+    : IsNever<T> extends true ? TypeAssertionError<`Type assertion failed. Expected true, but got never.`>
+    : T extends true ? (() => undefined)
+    : TypeAssertionError<`Type assertion failed. Expected true, but got: ${TypeToString<T>}`>
+) {
+  return (() => undefined) as any;
+}
+type TypeAssertionError<T> =
+  & [T]
+  & /* this promise makes sure that if we accidentally forget the second pair of braces, eslint will complain (if we have no-floating-promises enabled) */ Promise<any>;
+
+
+typeAssertExtends<ReturnType<typeof typeAssert<true>>, () => undefined>()();
+typeAssertExtends<ReturnType<typeof typeAssert<false>>, TypeAssertionError<`Type assertion failed. Expected true, but got: false`>>()();
+typeAssertExtends<ReturnType<typeof typeAssert<never>>, TypeAssertionError<`Type assertion failed. Expected true, but got never.`>>()();
+typeAssertExtends<ReturnType<typeof typeAssert<any>>, TypeAssertionError<`Type assertion failed. Expected true, but got any.`>>()();
+
+/**
+ * Functionally equivalent to `typeAssert<T extends S ? true : false>()()`, but with better error messages.
+ */
+export function typeAssertExtends<T, S>(): (
+  [T] extends [S] ? (() => undefined) : TypeAssertionError<`Type assertion failed. Expected ${TypeToString<T>} to extend ${TypeToString<S>}`>
+) {
+  return (() => undefined) as any;
+}
+
+typeAssertExtends<ReturnType<typeof typeAssertExtends<never, true>>, () => undefined>()();
+typeAssertExtends<ReturnType<typeof typeAssertExtends<any, true>>, () => undefined>()();
+typeAssertExtends<ReturnType<typeof typeAssertExtends<false, false>>, () => undefined>()();
+typeAssertExtends<ReturnType<typeof typeAssertExtends<"abc", string>>, () => undefined>()();
+typeAssertExtends<ReturnType<typeof typeAssertExtends<{a: 1, b: 123}, {a: number}>>, () => undefined>()();
+typeAssertExtends<ReturnType<typeof typeAssertExtends<never, never>>, () => undefined>()();
+typeAssertExtends<ReturnType<typeof typeAssertExtends<true, any>>, () => undefined>()();
+
+typeAssertExtends<ReturnType<typeof typeAssertExtends<{a: number}, {a: 1}>>, ["Type assertion failed. Expected { 'a': number } to extend { 'a': 1 }"]>()();
+typeAssertExtends<ReturnType<typeof typeAssertExtends<any, never>>, ["Type assertion failed. Expected any to extend never"]>()();
+typeAssertExtends<ReturnType<typeof typeAssertExtends<false, true>>, ["Type assertion failed. Expected false to extend true"]>()();
+typeAssertExtends<ReturnType<typeof typeAssertExtends<false, never>>, ["Type assertion failed. Expected false to extend never"]>()();

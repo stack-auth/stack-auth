@@ -1,17 +1,25 @@
 import * as yup from "yup";
 import { DEFAULT_EMAIL_TEMPLATES, DEFAULT_EMAIL_THEMES, DEFAULT_EMAIL_THEME_ID } from "../helpers/emails";
 import * as schemaFields from "../schema-fields";
-import { userSpecifiedIdSchema, yupBoolean, yupNumber, yupObject, yupRecord, yupString, yupUnion } from "../schema-fields";
+import { userSpecifiedIdSchema, yupArray, yupBoolean, yupDate, yupMixed, yupNever, yupNumber, yupObject, yupRecord, yupString, yupTuple, yupUnion } from "../schema-fields";
 import { SUPPORTED_CURRENCIES } from "../utils/currencies";
+import { StackAssertionError } from "../utils/errors";
 import { allProviders } from "../utils/oauth";
 import { DeepMerge, DeepPartial, DeepRequiredOrUndefined, get, has, isObjectLike, mapValues, set, typedFromEntries } from "../utils/objects";
+import { Result } from "../utils/results";
 import { IntersectAll } from "../utils/types";
-import { NormalizesTo } from "./format";
+import { NormalizesTo, getInvalidConfigReason } from "./format";
 
 export const configLevels = ['project', 'branch', 'environment', 'organization'] as const;
 export type ConfigLevel = typeof configLevels[number];
 const permissionRegex = /^\$?[a-z0-9_:]+$/;
 const customPermissionRegex = /^[a-z0-9_:]+$/;
+declare module "yup" {
+  // eslint-disable-next-line @typescript-eslint/consistent-type-definitions
+  export interface CustomSchemaMetadata {
+    stackConfigCanNoLongerBeOverridden?: true,
+  }
+}
 
 /**
  * All fields that can be overridden at this level.
@@ -157,7 +165,11 @@ const branchDomain = yupObject({
   allowLocalhost: yupBoolean().defined(),
 }).defined();
 
-export const branchConfigSchema = projectConfigSchema.omit(['sourceOfTruth']).concat(yupObject({
+export const branchConfigSchema = projectConfigSchema.concat(yupObject({
+  sourceOfTruth: projectConfigSchema.getNested("sourceOfTruth").meta({
+    stackConfigCanNoLongerBeOverridden: true,
+  }),
+
   rbac: branchRbacSchema,
 
   teams: yupObject({
@@ -412,12 +424,177 @@ import.meta.vitest?.test("applyDefaults", ({ expect }) => {
   expect(applyDefaults({ a: { b: { c: 1 } } }, { "a.b": { d: 2 } })).toEqual({ a: { b: { c: 1 } }, "a.b": { c: 1, d: 2 } });
 });
 
+/**
+ * Does not require a base config, and hence solely relies on the override itself to validate the config. If it returns
+ * no error, you know that the
+ *
+ * It's crucial that our DB never contains any configs that are not valid according to this function, as this would mean
+ * that the config object does not satisfy the ValidatedToHaveNoConfigOverrideErrors type (which is used as an assumption
+ * in a whole bunch of places in the code).
+ */
+export async function getConfigOverrideErrors<T extends yup.AnySchema>(schema: T, configOverride: unknown, options: { allowPropertiesThatCanNoLongerBeOverridden?: boolean } = {}): Promise<Result<null, string>> {
+  // currently, we go over the schema and ensure that the general requirements for each property are satisfied
+  // importantly, we cannot check any cross-property constraints, as those may change depending on the base config
+  // also, since overrides can be empty, we cannot have any required properties (TODO: can we have required properties in nested objects? would that even make sense? think about it)
+  if (typeof configOverride !== "object" || configOverride === null) {
+    return Result.error("Config override must be a non-null object.");
+  }
+  if (Object.getPrototypeOf(configOverride) !== Object.getPrototypeOf({})) {
+    return Result.error("Config override must be plain old JavaScript object.");
+  }
+  // Check config format
+  const reason = getInvalidConfigReason(configOverride, { configName: 'override' });
+  if (reason) return Result.error("Invalid config format: " + reason);
+
+  const getSubSchema = (schema: yup.AnySchema, key: string): yup.AnySchema | undefined => {
+    const keyParts = key.split(".");
+    if (!schema.hasNested(keyParts[0])) {
+      return undefined;
+    }
+    const nestedSchema = schema.getNested(keyParts[0]);
+    if (nestedSchema.meta()?.stackConfigCanNoLongerBeOverridden && !options.allowPropertiesThatCanNoLongerBeOverridden) {
+      return undefined;
+    }
+    if (keyParts.length === 1) {
+      return nestedSchema;
+    } else {
+      return getSubSchema(nestedSchema, keyParts.slice(1).join("."));
+    }
+  };
+
+  const getRestrictedSchemaBase = (path: string, schema: yup.AnySchema): yup.AnySchema => {
+    const schemaInfo = schema.meta()?.stackSchemaInfo;
+    switch (schemaInfo?.type) {
+      case "string": {
+        const stringSchema = schema as yup.StringSchema<any>;
+        return yupString();
+      }
+      case "number": {
+        return yupNumber();
+      }
+      case "boolean": {
+        return yupBoolean();
+      }
+      case "date": {
+        return yupDate();
+      }
+      case "mixed": {
+        return yupMixed();
+      }
+      case "array": {
+        const arraySchema = schema as yup.ArraySchema<any, any, any, any>;
+        const innerType = arraySchema.innerType;
+        return yupArray(innerType ? getRestrictedSchema(path + ".[]", innerType as any) : undefined);
+      }
+      case "tuple": {
+        return yupTuple(schemaInfo.items.map((s, index) => getRestrictedSchema(path + `[${index}]`, s)));
+      }
+      case "union": {
+        return yupUnion(...schemaInfo.items.map((s, index) => getRestrictedSchema(path + `|${index}|`, s)));
+      }
+      case "record": {
+        return yupRecord(getRestrictedSchema(path + ".key", schemaInfo.keySchema) as any, getRestrictedSchema(path + ".value", schemaInfo.valueSchema));
+      }
+      case "object": {
+        const objectSchema = schema as yup.ObjectSchema<any>;
+        return yupObject(
+          Object.fromEntries(
+            Object.entries(objectSchema.fields)
+              .map(([key, value]) => [key, getRestrictedSchema(path + "." + key, value as any)])
+          )
+        );
+      }
+      case "never": {
+        return yupNever();
+      }
+      default: {
+        throw new StackAssertionError(`Unknown schema info at path ${path}: ${JSON.stringify(schemaInfo)}`, { schemaInfo, schema });
+      }
+    }
+  };
+  const getRestrictedSchema = (path: string, schema: yup.AnySchema): yup.AnySchema => {
+    let restricted = getRestrictedSchemaBase(path, schema);
+    restricted = restricted.nullable();
+    const description = schema.describe();
+    if (description.oneOf.length > 0) {
+      restricted = restricted.oneOf(description.oneOf);
+    }
+    if (description.notOneOf.length > 0) {
+      restricted = restricted.notOneOf(description.notOneOf);
+    }
+    return restricted;
+  };
+
+  for (const [key, value] of Object.entries(configOverride)) {
+    if (value === undefined) continue;
+    const subSchema = getSubSchema(schema, key);
+    if (!subSchema) {
+      return Result.error(`The key ${JSON.stringify(key)} is not valid for the schema.`);
+    }
+    let restrictedSchema = getRestrictedSchema(key, subSchema);
+    try {
+      await restrictedSchema.validate(value, {
+        strict: true,
+        ...{
+          // Although `path` is not part of the yup types, it is actually recognized and does the correct thing
+          path: key
+        },
+        context: {
+          noUnknownPathPrefixes: [''],
+        },
+      });
+    } catch (error) {
+      if (error instanceof yup.ValidationError) {
+        return Result.error(error.message);
+      }
+      throw error;
+    }
+  }
+  return Result.ok(null);
+}
+export type ValidatedToHaveNoConfigOverrideErrors<T extends yup.AnySchema> = {};
+export async function assertNoConfigOverrideErrors<T extends yup.AnySchema>(schema: T, config: unknown, options: { allowPropertiesThatCanNoLongerBeOverridden?: boolean } = {}): Promise<void> {
+  const res = await getConfigOverrideErrors(schema, config, options);
+  if (res.status === "error") throw new StackAssertionError(`Config override is invalid — at a place where it should have already been validated! ${res.error}`, { config, schema });
+}
+
+/**
+ * Checks whether there are any warnings in the incomplete config. A warning doesn't stop the config from being valid,
+ * but may require action regardless.
+ *
+ * The DB can contain configs that are not valid according to this function, as long as they are valid according to
+ * the getConfigOverrideErrors function. (This is necessary, because a changing base config may make an override invalid
+ * that was previously valid.)
+ */
+export async function getIncompleteConfigWarnings<T extends yup.AnySchema>(schema: T, incompleteConfig: unknown): Promise<Result<null, string>> {
+  await assertNoConfigOverrideErrors(schema, incompleteConfig, { allowPropertiesThatCanNoLongerBeOverridden: true });
+  // TODO maybe we should check here whether the config is normalized? just to be safe
+  // although the schema below should already deal with it in most cases
+
+  try {
+    await schema.validate(incompleteConfig, {
+      strict: true,
+      context: {
+        noUnknownPathPrefixes: [''],
+      },
+    });
+    return Result.ok(null);
+  } catch (error) {
+    if (error instanceof yup.ValidationError) {
+      return Result.error(error.message);
+    }
+    throw error;
+  }
+}
+export type ValidatedToHaveNoIncompleteConfigWarnings<T extends yup.AnySchema> = yup.InferType<T>;
+
+
 // Normalized overrides
 // ex.: { a?: { b?: number, c?: string }, d?: number }
-export type ProjectConfigNormalizedOverride = DeepPartial<yup.InferType<typeof projectConfigSchema>>;
-export type BranchConfigNormalizedOverride = DeepPartial<yup.InferType<typeof branchConfigSchema>>;
-export type EnvironmentConfigNormalizedOverride = DeepPartial<yup.InferType<typeof environmentConfigSchema>>;
-export type OrganizationConfigNormalizedOverride = DeepPartial<yup.InferType<typeof organizationConfigSchema>>;
+export type ProjectConfigNormalizedOverride = DeepPartial<ValidatedToHaveNoConfigOverrideErrors<typeof projectConfigSchema>>;
+export type BranchConfigNormalizedOverride = DeepPartial<ValidatedToHaveNoConfigOverrideErrors<typeof branchConfigSchema>>;
+export type EnvironmentConfigNormalizedOverride = DeepPartial<ValidatedToHaveNoConfigOverrideErrors<typeof environmentConfigSchema>>;
+export type OrganizationConfigNormalizedOverride = DeepPartial<ValidatedToHaveNoConfigOverrideErrors<typeof organizationConfigSchema>>;
 
 // Overrides
 // ex.: { a?: null | { b?: null | number, c: string }, d?: null | number, "a.b"?: number, "a.c"?: string }

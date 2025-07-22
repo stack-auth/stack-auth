@@ -29,6 +29,7 @@
     "EAUTH",
     "EDNS",
     "EENVELOPE",
+    "Elems",
     "Emailable",
     "EMESSAGE",
     "Falsey",
