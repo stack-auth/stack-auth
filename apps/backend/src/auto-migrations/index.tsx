@@ -5,6 +5,7 @@ const ADVISORY_LOCK_ID = 59129034;
 class MigrationNeededError extends Error {
   constructor() {
     super('MIGRATION_NEEDED');
+    this.name = 'MigrationNeededError';
   }
 }
 
