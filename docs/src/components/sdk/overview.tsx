@@ -1,8 +1,10 @@
 'use client';
 
 import Link from 'fumadocs-core/link';
+import { usePathname } from 'next/navigation';
 import type { ReactNode } from 'react';
 import { cn } from '../../lib/cn';
+import { getCurrentPlatform } from '../../lib/platform-utils';
 import { Box, Code, Zap } from '../icons';
 
 type SDKItem = {
@@ -55,6 +57,20 @@ function getColorForType(type: string): string {
 }
 
 export function SDKOverview({ sections }: SDKOverviewProps) {
+  const pathname = usePathname();
+  const currentPlatform = getCurrentPlatform(pathname);
+
+  // Function to build proper absolute URLs for SDK links
+  const buildSDKUrl = (href: string): string => {
+    if (!currentPlatform) return href;
+
+    // If href already starts with /, it's already absolute
+    if (href.startsWith('/')) return href;
+
+    // Build the absolute URL with platform and SDK prefix
+    return `/docs/${currentPlatform}/sdk/${href}`;
+  };
+
   return (
     <div className="grid gap-8 mt-6">
       {sections.map((section, sectionIndex) => (
@@ -67,7 +83,7 @@ export function SDKOverview({ sections }: SDKOverviewProps) {
             {section.items.map((item, itemIndex) => (
               <Link
                 key={itemIndex}
-                href={item.href}
+                href={buildSDKUrl(item.href)}
                 className={cn(
                   'group relative flex items-center gap-3 p-4 rounded-lg border transition-all duration-200',
                   'hover:shadow-md hover:shadow-fd-primary/5 hover:border-fd-primary/20',
