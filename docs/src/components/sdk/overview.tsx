@@ -4,7 +4,7 @@ import Link from 'fumadocs-core/link';
 import { usePathname } from 'next/navigation';
 import type { ReactNode } from 'react';
 import { cn } from '../../lib/cn';
-import { getCurrentPlatform } from '../../lib/platform-utils';
+import { DEFAULT_PLATFORM, getCurrentPlatform, getPlatformUrl } from '../../lib/platform-utils';
 import { Box, Code, Zap } from '../icons';
 
 type SDKItem = {
@@ -62,13 +62,14 @@ export function SDKOverview({ sections }: SDKOverviewProps) {
 
   // Function to build proper absolute URLs for SDK links
   const buildSDKUrl = (href: string): string => {
-    if (!currentPlatform) return href;
-
     // If href already starts with /, it's already absolute
     if (href.startsWith('/')) return href;
 
-    // Build the absolute URL with platform and SDK prefix
-    return `/docs/${currentPlatform}/sdk/${href}`;
+    // Use the current platform or fallback to default platform
+    const platform = currentPlatform || DEFAULT_PLATFORM;
+
+    // Build the absolute URL using getPlatformUrl utility
+    return getPlatformUrl(platform, `sdk/${href}`);
   };
 
   return (
