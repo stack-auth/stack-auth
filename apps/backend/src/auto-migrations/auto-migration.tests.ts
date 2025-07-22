@@ -332,3 +332,28 @@ import.meta.vitest?.test("does not apply migrations if they are already applied"
   const result = await applyMigrations({ prismaClient, migrationFiles: exampleMigrationFiles1 });
   expect(result.newlyAppliedMigrationNames).toEqual([]);
 }));
+
+import.meta.vitest?.test("does not apply a migration again if all migrations are already applied, and some future migrations are also applied (rollback scenario)", runTest(async ({ expect, prismaClient, dbURL }) => {
+  // First, apply all migrations
+  const initialResult = await applyMigrations({ prismaClient, migrationFiles: exampleMigrationFiles1 });
+  expect(initialResult.newlyAppliedMigrationNames).toEqual(['001-create-table', '002-update-table']);
+
+  // Verify the table structure is complete
+  await prismaClient.$executeRaw`INSERT INTO test (name, age) VALUES ('test_value', 25)`;
+  const fullResult = await prismaClient.$queryRaw`SELECT name, age FROM test` as { name: string, age: number }[];
+  expect(fullResult.length).toBe(1);
+  expect(fullResult[0].name).toBe('test_value');
+  expect(fullResult[0].age).toBe(25);
+
+  // Now try to apply only a subset of the migrations (simulating a rollback scenario)
+  // This should not re-apply any migrations since they're already applied
+  const subsetResult = await applyMigrations({ prismaClient, migrationFiles: exampleMigrationFiles1.slice(0, 1) });
+  expect(subsetResult.newlyAppliedMigrationNames).toEqual([]);
+
+  // Verify the data is still intact and no migrations were re-run
+  const finalResult = await prismaClient.$queryRaw`SELECT name, age FROM test` as { name: string, age: number }[];
+  expect(finalResult.length).toBe(1);
+  expect(finalResult[0].name).toBe('test_value');
+  expect(finalResult[0].age).toBe(25);
+}));
+
