@@ -23,14 +23,6 @@ export type _NormalizesTo<N> = N extends object ? (
 ) : N;
 export type NormalizesTo<N extends NormalizedConfig> = _NormalizesTo<N>;
 
-
-type T = {
-  a: 1,
-  b?: 2,
-};
-
-type X = T & Record<PropertyKey, undefined>;
-
 /**
  * Note that a config can both be valid and not normalizable.
  */
