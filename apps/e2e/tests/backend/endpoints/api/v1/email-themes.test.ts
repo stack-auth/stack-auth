@@ -288,7 +288,7 @@ describe("create email theme", () => {
               "id": "<stripped UUID>",
             },
             {
-              "display_name": "default-dark",
+              "display_name": "Default Dark",
               "id": "<stripped UUID>",
             },
           ],
