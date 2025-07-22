@@ -1321,23 +1321,25 @@ export namespace Webhook {
   }
 
   export async function findWebhookAttempt(projectId: string, endpointId: string, svixToken: string, fn: (msg: any) => boolean) {
-    const attempts = await Webhook.listWebhookAttempts(projectId, endpointId, svixToken);
-    const filtered = attempts.filter(fn);
-
-    if (filtered.length === 0) {
-      throw new Error(`Webhook attempt not found for project ${projectId}, endpoint ${endpointId}`);
-    }
-
-    if (filtered.length > 1) {
-      throw new Error(`Found multiple (${filtered.length}) webhook attempts for project ${projectId}, endpoint ${endpointId}`);
-    }
-
-    return filtered[0];
-  }
-
-  export async function listWebhookAttempts(projectId: string, endpointId: string, svixToken: string) {
     // retry many times because Svix sucks and is slow
     for (let i = 0; i < 20; i++) {
+      const attempts = await Webhook.listWebhookAttempts(projectId, endpointId, svixToken, 1);
+      const filtered = attempts.filter(fn);
+      if (filtered.length === 0) {
+        await wait(500);
+        continue;
+      } else if (filtered.length === 1) {
+        return filtered[0];
+      } else {
+        throw new Error(`Found ${filtered.length} webhook attempts for project ${projectId}, endpoint ${endpointId}`);
+      }
+    }
+    throw new Error(`Webhook attempt not found for project ${projectId}, endpoint ${endpointId}`);
+  }
+
+  export async function listWebhookAttempts(projectId: string, endpointId: string, svixToken: string, retryCount: number = 20) {
+    // retry many times because Svix sucks and is slow
+    for (let i = 0; i < retryCount; i++) {
       const response = await niceFetch(STACK_SVIX_SERVER_URL + `/api/v1/app/${projectId}/attempt/endpoint/${endpointId}`, {
         method: "GET",
         headers: {
