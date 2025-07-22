@@ -1,7 +1,7 @@
 import { Prisma, PrismaClient } from '@prisma/client';
 import { MIGRATION_FILES } from './../generated/migration-files';
 
-const ADVISORY_LOCK_ID = 59129034;
+const MIGRATION_LOCK_ID = 59129034;
 class MigrationNeededError extends Error {
   constructor() {
     super('MIGRATION_NEEDED');
@@ -38,7 +38,8 @@ function isMigrationNeededError(error: unknown): boolean {
 async function getAppliedMigrations(options: {
   prismaClient: PrismaClient,
 }) {
-  const [_1, appliedMigrations] = await options.prismaClient.$transaction([
+  const [_1, _2, appliedMigrations] = await options.prismaClient.$transaction([
+    options.prismaClient.$executeRaw`SELECT pg_advisory_xact_lock(${MIGRATION_LOCK_ID})`,
     options.prismaClient.$executeRaw`
       DO $$
       BEGIN
@@ -93,7 +94,7 @@ export async function applyMigrations(options: {
     const transaction = [];
 
     transaction.push(options.prismaClient.$executeRaw`
-      SELECT pg_advisory_xact_lock(${ADVISORY_LOCK_ID});
+      SELECT pg_advisory_xact_lock(${MIGRATION_LOCK_ID});
     `);
 
     transaction.push(options.prismaClient.$executeRaw`
