@@ -37,6 +37,7 @@ const migrate = async () => {
     prismaClient: globalPrismaClient,
     migrationFiles: getMigrationFiles(MIGRATION_FILES_DIR),
     logging: true,
+    schema: globalPrismaSchema,
   });
 };
 
