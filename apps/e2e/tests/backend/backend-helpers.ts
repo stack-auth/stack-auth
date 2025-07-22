@@ -1368,6 +1368,6 @@ export namespace Webhook {
         return new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime();
       });
     }
-    throw new Error(`No webhook attempts found for project ${projectId}, endpoint ${endpointId}`);
+    return [];
   }
 }
