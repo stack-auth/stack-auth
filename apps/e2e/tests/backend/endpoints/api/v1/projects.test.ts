@@ -758,6 +758,7 @@ it("updates the project oauth configuration", async ({ expect }) => {
           "oauth_providers": [
             {
               "id": "google",
+              "provider_config_id": "google",
               "type": "shared",
             },
           ],
@@ -807,6 +808,7 @@ it("updates the project oauth configuration", async ({ expect }) => {
           "oauth_providers": [
             {
               "id": "google",
+              "provider_config_id": "google",
               "type": "shared",
             },
           ],
@@ -860,6 +862,7 @@ it("updates the project oauth configuration", async ({ expect }) => {
               "client_id": "client_id",
               "client_secret": "client_secret",
               "id": "google",
+              "provider_config_id": "google",
               "type": "standard",
             },
           ],
@@ -908,6 +911,7 @@ it("updates the project oauth configuration", async ({ expect }) => {
           "oauth_providers": [
             {
               "id": "spotify",
+              "provider_config_id": "spotify",
               "type": "shared",
             },
           ],
@@ -966,10 +970,12 @@ it("updates the project oauth configuration", async ({ expect }) => {
           "oauth_providers": [
             {
               "id": "google",
+              "provider_config_id": "google",
               "type": "shared",
             },
             {
               "id": "spotify",
+              "provider_config_id": "spotify",
               "type": "shared",
             },
           ],
@@ -1028,10 +1034,12 @@ it("updates the project oauth configuration", async ({ expect }) => {
           "oauth_providers": [
             {
               "id": "google",
+              "provider_config_id": "google",
               "type": "shared",
             },
             {
               "id": "spotify",
+              "provider_config_id": "spotify",
               "type": "shared",
             },
           ],

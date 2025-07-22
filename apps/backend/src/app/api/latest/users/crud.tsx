@@ -18,7 +18,7 @@ import { validateBase64Image } from "@stackframe/stack-shared/dist/utils/base64"
 import { decodeBase64 } from "@stackframe/stack-shared/dist/utils/bytes";
 import { StackAssertionError, StatusError, captureError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
 import { hashPassword, isPasswordHashValid } from "@stackframe/stack-shared/dist/utils/hashes";
-import { get, has } from "@stackframe/stack-shared/dist/utils/objects";
+import { has } from "@stackframe/stack-shared/dist/utils/objects";
 import { createLazyProxy } from "@stackframe/stack-shared/dist/utils/proxies";
 import { isUuid } from "@stackframe/stack-shared/dist/utils/uuids";
 import { teamPrismaToCrud, teamsCrudHandlers } from "../teams/crud";
@@ -498,7 +498,6 @@ export const usersCrudHandlers = createLazyProxy(() => createCrudHandlers(usersC
             throw new StatusError(StatusError.BadRequest, `OAuth provider ${provider.id} not found`);
 
           }
-          const oauthProvider = get(config.auth.oauth.providers, provider.id);
 
           const authMethod = await tx.authMethod.create({
             data: {
@@ -514,19 +513,13 @@ export const usersCrudHandlers = createLazyProxy(() => createCrudHandlers(usersC
               configOAuthProviderId: provider.id,
               providerAccountId: provider.account_id,
               email: provider.email,
-              ...oauthProvider.allowConnectedAccounts ? {
-                connectedAccount: {
-                  create: {
-                    projectUserId: newUser.projectUserId,
-                  }
-                }
-              } : {},
               oauthAuthMethod: {
                 create: {
-                  projectUserId: newUser.projectUserId,
                   authMethodId: authMethod.id,
                 }
               },
+              allowConnectedAccounts: true,
+              allowSignIn: true,
             }
           });
         }
