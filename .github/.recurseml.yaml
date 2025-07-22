@@ -1,1 +1,2 @@
 report_status_checks: false
+rules: .github/recurseml-rules/

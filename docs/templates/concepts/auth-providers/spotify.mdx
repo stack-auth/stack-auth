@@ -1,0 +1,41 @@
+---
+title: "Spotify Authentication"
+---
+
+This guide explains how to set up Spotify as an authentication provider with Stack Auth. Spotify OAuth allows users to sign in to your application using their Spotify account.
+
+<Info>
+For Development purposes, Stack Auth uses shared keys for this provider. Shared keys are automatically created by Stack, but show Stack's logo on the OAuth sign-in page.
+You should replace these before you go into production.
+</Info>
+
+## Integration Steps
+
+<Steps>
+  <Step>
+  ### Create a Spotify OAuth App
+  
+  1. Navigate to the [Spotify Developer Dashboard](https://developer.spotify.com/dashboard/).
+  2. Log in with your Spotify account.
+  3. Click **Create app** to create a new application.
+  4. Enter an **App name** and **App description**.
+  5. Under **Redirect URI**, add `https://api.stack-auth.com/api/v1/auth/oauth/callback/spotify`
+  6. Check the agreement checkbox and click **Create**.
+  7. You'll be redirected to your app's dashboard. Note your **Client ID** displayed on this page.
+  8. Click **Settings** to view more details about your app.
+  9. In the settings page, you can view your **Client Secret** by clicking **Show client secret**.
+  10. If needed, you can adjust the app settings, including adding additional redirect URIs.
+  </Step>
+  <Step>
+  ### Enable Spotify OAuth in Stack Auth
+  
+  1. On the Stack Auth dashboard, select **Auth Methods** in the left sidebar.
+  2. Click **Add SSO Providers** and select **Spotify** as the provider.
+  3. Set the **Client ID** and **Client Secret** you obtained from the Spotify Developer Dashboard earlier.
+  </Step>
+</Steps>
+
+### Need More Help?
+
+- Check the [Spotify Web API Authorization Documentation](https://developer.spotify.com/documentation/general/guides/authorization/)
+- Join our [Discord](https://discord.stack-auth.com)

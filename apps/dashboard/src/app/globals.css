@@ -95,12 +95,14 @@
   box-shadow: 0 0 3px 3px rgba(0, 0, 0, 0.02);
   backdrop-filter: blur(12px);
   background-image: radial-gradient(ellipse at top, #fdfdfd88, transparent), radial-gradient(ellipse at bottom, #ffffff88, transparent);
+  background-color: transparent !important;
 }
 
 .dark .bg-card {
   box-shadow: none;
   backdrop-filter: blur(12px);
   background-image: radial-gradient(ellipse at top, #18182288, transparent), radial-gradient(ellipse at bottom, #19191988, transparent);
+  background-color: transparent !important;
 }
 
 .bg-card > * {
@@ -180,4 +182,29 @@ body:has(.show-site-loading-indicator) .site-loading-indicator {
     left: 100%;
     transform: translateX(0%);
   }
+}
+
+
+/* Pacifica styles */
+[data-pacifica-surface] {
+  backdrop-filter: contrast(40%) blur(24px);
+  background-color: hsl(var(--background), 0.2);
+  color: hsl(var(--card-foreground));
+}
+
+.dark [data-pacifica-surface] {
+  background-image: radial-gradient(circle at top, #ffffff0d, #ffffff04), radial-gradient(circle at top right,  #ffffff04, transparent, transparent);
+}
+
+[data-pacifica-border] { 
+  border: 2px solid rgba(127, 127, 127, 0.2); 
+  box-shadow: 0 0 3px 3px rgba(0, 0, 0, 0.02);
+}
+
+:where([data-pacifica-children-flex-grow] > *) {
+  flex-grow: 1;
+}
+
+:where([data-pacifica-children-min-width-0] > *) {
+  min-width: 0;
 }

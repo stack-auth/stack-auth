@@ -1,5 +1,6 @@
+import { normalizeEmail } from "@/lib/emails";
 import { ensureContactChannelDoesNotExists, ensureContactChannelExists } from "@/lib/request-checks";
-import { prismaClient, retryTransaction } from "@/prisma-client";
+import { getPrismaClientForTenancy, retryTransaction } from "@/prisma-client";
 import { createCrudHandlers } from "@/route-handlers/crud-handler";
 import { Prisma } from "@prisma/client";
 import { KnownErrors } from "@stackframe/stack-shared";
@@ -38,7 +39,7 @@ export const contactChannelsCrudHandlers = createLazyProxy(() => createCrudHandl
       }
     }
 
-    const contactChannel = await prismaClient.contactChannel.findUnique({
+    const contactChannel = await getPrismaClientForTenancy(auth.tenancy).contactChannel.findUnique({
       where: {
         tenancyId_projectUserId_id: {
           tenancyId: auth.tenancy.id,
@@ -55,6 +56,14 @@ export const contactChannelsCrudHandlers = createLazyProxy(() => createCrudHandl
     return contactChannelToCrud(contactChannel);
   },
   onCreate: async ({ auth, data }) => {
+    let value = data.value;
+    switch (data.type) {
+      case 'email': {
+        value = normalizeEmail(value);
+        break;
+      }
+    }
+
     if (auth.type === 'client') {
       const currentUserId = auth.user?.id || throwErr(new KnownErrors.CannotGetOwnUserWithoutUser());
       if (currentUserId !== data.user_id) {
@@ -62,12 +71,12 @@ export const contactChannelsCrudHandlers = createLazyProxy(() => createCrudHandl
       }
     }
 
-    const contactChannel = await retryTransaction(async (tx) => {
+    const contactChannel = await retryTransaction(getPrismaClientForTenancy(auth.tenancy), async (tx) => {
       await ensureContactChannelDoesNotExists(tx, {
         tenancyId: auth.tenancy.id,
         userId: data.user_id,
         type: data.type,
-        value: data.value,
+        value: value,
       });
 
       // if usedForAuth is set to true, make sure no other account uses this channel for auth
@@ -77,13 +86,13 @@ export const contactChannelsCrudHandlers = createLazyProxy(() => createCrudHandl
             tenancyId_type_value_usedForAuth: {
               tenancyId: auth.tenancy.id,
               type: crudContactChannelTypeToPrisma(data.type),
-              value: data.value,
+              value: value,
               usedForAuth: 'TRUE',
             },
           },
         });
         if (existingWithSameChannel) {
-          throw new KnownErrors.ContactChannelAlreadyUsedForAuthBySomeoneElse(data.type, data.value);
+          throw new KnownErrors.ContactChannelAlreadyUsedForAuthBySomeoneElse(data.type, value);
         }
       }
 
@@ -92,7 +101,7 @@ export const contactChannelsCrudHandlers = createLazyProxy(() => createCrudHandl
           tenancyId: auth.tenancy.id,
           projectUserId: data.user_id,
           type: typedToUppercase(data.type),
-          value: data.value,
+          value: value,
           isVerified: data.is_verified ?? false,
           usedForAuth: data.used_for_auth ? 'TRUE' : null,
         },
@@ -145,7 +154,19 @@ export const contactChannelsCrudHandlers = createLazyProxy(() => createCrudHandl
       }
     }
 
-    const updatedContactChannel = await retryTransaction(async (tx) => {
+
+    let value = data.value;
+    switch (data.type) {
+      case 'email': {
+        value = value ? normalizeEmail(value) : undefined;
+        break;
+      }
+      case undefined: {
+        break;
+      }
+    }
+
+    const updatedContactChannel = await retryTransaction(getPrismaClientForTenancy(auth.tenancy), async (tx) => {
       const existingContactChannel = await ensureContactChannelExists(tx, {
         tenancyId: auth.tenancy.id,
         userId: params.user_id,
@@ -159,7 +180,7 @@ export const contactChannelsCrudHandlers = createLazyProxy(() => createCrudHandl
             tenancyId_type_value_usedForAuth: {
               tenancyId: auth.tenancy.id,
               type: data.type !== undefined ? crudContactChannelTypeToPrisma(data.type) : existingContactChannel.type,
-              value: data.value !== undefined ? data.value : existingContactChannel.value,
+              value: value !== undefined ? value : existingContactChannel.value,
               usedForAuth: 'TRUE',
             },
           },
@@ -191,8 +212,8 @@ export const contactChannelsCrudHandlers = createLazyProxy(() => createCrudHandl
           },
         },
         data: {
-          value: data.value,
-          isVerified: data.is_verified ?? (data.value ? false : undefined), // if value is updated and is_verified is not provided, set to false
+          value: value,
+          isVerified: data.is_verified ?? (value ? false : undefined), // if value is updated and is_verified is not provided, set to false
           usedForAuth: data.used_for_auth !== undefined ? (data.used_for_auth ? 'TRUE' : null) : undefined,
           isPrimary: data.is_primary !== undefined ? (data.is_primary ? 'TRUE' : null) : undefined,
         },
@@ -209,7 +230,7 @@ export const contactChannelsCrudHandlers = createLazyProxy(() => createCrudHandl
       }
     }
 
-    await retryTransaction(async (tx) => {
+    await retryTransaction(getPrismaClientForTenancy(auth.tenancy), async (tx) => {
       await ensureContactChannelExists(tx, {
         tenancyId: auth.tenancy.id,
         userId: params.user_id,
@@ -235,7 +256,7 @@ export const contactChannelsCrudHandlers = createLazyProxy(() => createCrudHandl
       }
     }
 
-    const contactChannels = await prismaClient.contactChannel.findMany({
+    const contactChannels = await getPrismaClientForTenancy(auth.tenancy).contactChannel.findMany({
       where: {
         tenancyId: auth.tenancy.id,
         projectUserId: query.user_id,

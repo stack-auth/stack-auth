@@ -5,7 +5,7 @@ const globalVar: any =
         typeof self !== 'undefined' ? self :
           {};
 export {
-  globalVar,
+  globalVar
 };
 
 if (typeof globalThis === 'undefined') {

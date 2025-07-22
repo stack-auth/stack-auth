@@ -122,6 +122,7 @@ export abstract class OAuthBaseProvider {
       state: options.state,
       response_type: "code",
       access_type: "offline",
+      prompt: "consent",
       ...this.authorizationExtraParams,
     });
   }
@@ -188,6 +189,9 @@ export abstract class OAuthBaseProvider {
     const tokenSet = await this.oauthClient.refresh(options.refreshToken, { exchangeBody: { scope: options.scope } });
     return processTokenSet(this.constructor.name, tokenSet, this.defaultAccessTokenExpiresInMillis);
   }
+
+  // If the token can be revoked before it expires, override this method to make an API call to the provider to check if the token is valid
+  abstract checkAccessTokenValidity(accessToken: string): Promise<boolean>;
 
   abstract postProcessUserInfo(tokenSet: TokenSet): Promise<OAuthUserInfo>;
 }

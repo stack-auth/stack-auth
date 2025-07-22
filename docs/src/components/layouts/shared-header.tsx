@@ -1,14 +1,15 @@
 'use client';
-import { LargeSearchToggle } from '@/components/layout/search-toggle';
+import { CustomSearchDialog } from '@/components/layout/custom-search-dialog';
+import { SearchInputToggle } from '@/components/layout/custom-search-toggle';
 import Waves from '@/components/layouts/api/waves';
-import { isInApiSection, isInComponentsSection, isInSdkSection } from '@/components/layouts/shared/section-utils';
 import { type NavLink } from '@/lib/navigation-utils';
-import { List, Menu, X } from 'lucide-react';
+import { Key, Menu, Sparkles, TableOfContents, X } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import type { ReactNode } from 'react';
 import { useEffect, useState } from 'react';
-import { useTOC } from './toc-context';
+import { cn } from '../../lib/cn';
+import { useSidebar } from './sidebar-context';
 
 type SharedHeaderProps = {
   /** Navigation links to display */
@@ -25,24 +26,25 @@ type SharedHeaderProps = {
   sidebarContent?: ReactNode,
 }
 
-// Stack Auth Logo Component
-function StackAuthLogo() {
-  return (
-    <Link href="/" className="flex items-center gap-2.5 text-fd-foreground hover:text-fd-foreground/80 transition-colors">
-      <svg
-        width="30"
-        height="24"
-        viewBox="0 0 200 242"
-        fill="none"
-        xmlns="http://www.w3.org/2000/svg"
-        aria-label="Stack Logo"
-        className="flex-shrink-0"
-      >
-        <path d="M103.504 1.81227C101.251 0.68679 98.6002 0.687576 96.3483 1.81439L4.4201 47.8136C1.71103 49.1692 0 51.9387 0 54.968V130.55C0 133.581 1.7123 136.351 4.42292 137.706L96.4204 183.695C98.6725 184.82 101.323 184.82 103.575 183.694L168.422 151.271C173.742 148.611 180 152.479 180 158.426V168.879C180 171.91 178.288 174.68 175.578 176.035L103.577 212.036C101.325 213.162 98.6745 213.162 96.4224 212.036L11.5771 169.623C6.25791 166.964 0 170.832 0 176.779V187.073C0 190.107 1.71689 192.881 4.43309 194.234L96.5051 240.096C98.7529 241.216 101.396 241.215 103.643 240.094L195.571 194.235C198.285 192.881 200 190.109 200 187.076V119.512C200 113.565 193.741 109.697 188.422 112.356L131.578 140.778C126.258 143.438 120 139.57 120 133.623V123.17C120 120.14 121.712 117.37 124.422 116.014L195.578 80.4368C198.288 79.0817 200 76.3116 200 73.2814V54.9713C200 51.9402 198.287 49.1695 195.576 47.8148L103.504 1.81227Z" fill="currentColor"/>
-      </svg>
-      <span className="font-medium text-[15px]">Stack Auth</span>
-    </Link>
-  );
+/**
+ * Helper functions to detect which section we're in
+ */
+export function isInSdkSection(pathname: string): boolean {
+  // Match the actual SDK section: /docs/platform/sdk or /docs/platform/sdk/...
+  // This excludes docs pages that might mention SDK in other contexts
+  const match = pathname.match(/^\/docs\/[^\/]+\/sdk($|\/)/);
+  return Boolean(match);
+}
+
+export function isInComponentsSection(pathname: string): boolean {
+  // Match the actual Components section: /docs/platform/components or /docs/platform/components/...
+  // This excludes docs pages like /docs/platform/getting-started/components
+  const match = pathname.match(/^\/docs\/[^\/]+\/components($|\/)/);
+  return Boolean(match);
+}
+
+export function isInApiSection(pathname: string): boolean {
+  return pathname.startsWith('/api');
 }
 
 /**
@@ -68,39 +70,66 @@ function isNavLinkActive(pathname: string, navLink: NavLink): boolean {
 }
 
 /**
- * Inner TOC Toggle Button that uses the context
+ * AI Chat Toggle Button
  */
-function TOCToggleButtonInner() {
-  const { isTocOpen, toggleToc } = useTOC();
+function AIChatToggleButton() {
+  const sidebarContext = useSidebar();
+
+  // Return null if context is not available
+  if (!sidebarContext) {
+    return null;
+  }
+
+  const { toggleChat } = sidebarContext;
 
   return (
     <button
-      onClick={toggleToc}
-      className={`flex items-center justify-center gap-2 shadow-lg transition-all duration-300 w-24 h-8 rounded-lg text-sm font-medium ${
-        isTocOpen
-          ? 'bg-fd-foreground text-fd-background'
-          : 'bg-fd-muted text-fd-muted-foreground hover:text-fd-foreground hover:bg-fd-muted/80'
-      }`}
-      title={isTocOpen ? 'Hide table of contents' : 'Show table of contents'}
+      className={cn(
+        'flex items-center justify-center rounded-md w-8 h-8 text-xs transition-all duration-500 ease-out relative overflow-hidden',
+        'text-white chat-gradient-active hover:scale-105 hover:brightness-110 hover:shadow-lg'
+      )}
+      onClick={toggleChat}
+      title="AI Chat"
     >
-      <List className="w-4 h-4 flex-shrink-0" />
-      <span className="hidden sm:inline">
-        {isTocOpen ? 'Hide' : 'TOC'}
-      </span>
+      <Sparkles className="h-4 w-4 relative z-10" />
     </button>
   );
 }
 
 /**
- * TOC Toggle Button Wrapper that safely checks full page state
+ * Inner TOC Toggle Button that uses the context
  */
-function TOCToggleButtonWrapper() {
-  const { isFullPage } = useTOC();
+function TOCToggleButtonInner() {
+  const sidebarContext = useSidebar();
+
+  // Return null if context is not available
+  if (!sidebarContext) {
+    return null;
+  }
+
+  const { isTocOpen, toggleToc, isChatOpen, isFullPage } = sidebarContext;
 
   // Hide TOC button on full pages
   if (isFullPage) return null;
 
-  return <TOCToggleButtonInner />;
+  // When chat is open, TOC is effectively not visible
+  const isTocEffectivelyVisible = isTocOpen && !isChatOpen;
+
+  return (
+    <button
+      className={cn(
+        'flex items-center gap-2 rounded-md px-2 py-1 text-xs transition-colors',
+        isTocEffectivelyVisible
+          ? 'bg-fd-primary/10 text-fd-primary hover:bg-fd-primary/20'
+          : 'text-fd-muted-foreground hover:text-fd-foreground hover:bg-fd-muted/50'
+      )}
+      onClick={toggleToc}
+      title={isTocEffectivelyVisible ? 'Close table of contents' : 'Open table of contents'}
+    >
+      <TableOfContents className="h-3 w-3" />
+      <span className="font-medium">Contents</span>
+    </button>
+  );
 }
 
 /**
@@ -114,12 +143,62 @@ function TOCToggleButton() {
 
   if (!isDocsPage) return null;
 
-  try {
-    return <TOCToggleButtonWrapper />;
-  } catch {
-    // TOC context not available
+  return <TOCToggleButtonInner />;
+}
+
+/**
+ * Auth Toggle Button - Only shows on API pages
+ */
+function AuthToggleButton() {
+  const pathname = usePathname();
+  const sidebarContext = useSidebar();
+
+  // Only show on API pages
+  const isAPIPage = isInApiSection(pathname);
+
+  if (!isAPIPage) return null;
+
+  // Return null if context is not available
+  if (!sidebarContext) {
     return null;
   }
+
+  const { isAuthOpen, toggleAuth } = sidebarContext;
+
+  return (
+    <button
+      className={cn(
+        'flex items-center gap-2 rounded-md px-2 py-1 text-xs transition-colors',
+        isAuthOpen
+          ? 'bg-fd-primary/10 text-fd-primary hover:bg-fd-primary/20'
+          : 'text-fd-muted-foreground hover:text-fd-foreground hover:bg-fd-muted/50'
+      )}
+      onClick={toggleAuth}
+    >
+      <Key className="h-3 w-3" />
+      <span className="font-medium">Auth</span>
+    </button>
+  );
+}
+
+// Stack Auth Logo Component
+function StackAuthLogo() {
+  return (
+    <Link href="/" className="flex items-center gap-2.5 text-fd-foreground hover:text-fd-foreground/80 transition-colors">
+      <svg
+        width="30"
+        height="24"
+        viewBox="0 0 200 242"
+        fill="none"
+        xmlns="http://www.w3.org/2000/svg"
+        aria-label="Stack Logo"
+        className="flex-shrink-0"
+      >
+        <path d="M103.504 1.81227C101.251 0.68679 98.6002 0.687576 96.3483 1.81439L4.4201 47.8136C1.71103 49.1692 0 51.9387 0 54.968V130.55C0 133.581 1.7123 136.351 4.42292 137.706L96.4204 183.695C98.6725 184.82 101.323 184.82 103.575 183.694L168.422 151.271C173.742 148.611 180 152.479 180 158.426V168.879C180 171.91 178.288 174.68 175.578 176.035L103.577 212.036C101.325 213.162 98.6745 213.162 96.4224 212.036L11.5771 169.623C6.25791 166.964 0 170.832 0 176.779V187.073C0 190.107 1.71689 192.881 4.43309 194.234L96.5051 240.096C98.7529 241.216 101.396 241.215 103.643 240.094L195.571 194.235C198.285 192.881 200 190.109 200 187.076V119.512C200 113.565 193.741 109.697 188.422 112.356L131.578 140.778C126.258 143.438 120 139.57 120 133.623V123.17C120 120.14 121.712 117.37 124.422 116.014L195.578 80.4368C198.288 79.0817 200 76.3116 200 73.2814V54.9713C200 51.9402 198.287 49.1695 195.576 47.8148L103.504 1.81227Z" fill="currentColor"/>
+      </svg>
+      <span className="font-medium text-[15px]">Stack Auth</span>
+    </Link>
+  );
 }
 
 /**
@@ -151,6 +230,7 @@ export function SharedHeader({
 }: SharedHeaderProps) {
   const pathname = usePathname();
   const [showMobileNav, setShowMobileNav] = useState(false);
+  const [searchOpen, setSearchOpen] = useState(false);
 
   // Close mobile nav when pathname changes
   useEffect(() => {
@@ -234,17 +314,32 @@ export function SharedHeader({
         <div className="flex items-center gap-4 relative z-10">
           {/* Search Bar - Responsive sizing */}
           {showSearch && (
-            <div className="w-32 sm:w-48 lg:w-64">
-              <LargeSearchToggle
-                hideIfDisabled
-                className="w-full"
+            <>
+              <div className="w-9 sm:w-32 md:w-48 lg:w-64">
+                <SearchInputToggle
+                  onOpen={() => setSearchOpen(true)}
+                />
+              </div>
+              <CustomSearchDialog
+                open={searchOpen}
+                onOpenChange={setSearchOpen}
               />
-            </div>
+            </>
           )}
 
           {/* TOC Toggle Button - Only on docs pages */}
           <div className="hidden md:block">
             <TOCToggleButton />
+          </div>
+
+          {/* Auth Toggle Button - Shows on all pages like AI Chat button */}
+          <div className="hidden md:block">
+            <AuthToggleButton />
+          </div>
+
+          {/* AI Chat Toggle Button */}
+          <div className="hidden md:block">
+            <AIChatToggleButton />
           </div>
 
           {/* Mobile Hamburger Menu - Shown on mobile */}

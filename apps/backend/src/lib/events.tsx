@@ -1,5 +1,5 @@
 import withPostHog from "@/analytics";
-import { prismaClient } from "@/prisma-client";
+import { globalPrismaClient } from "@/prisma-client";
 import { runAsynchronouslyAndWaitUntil } from "@/utils/vercel";
 import { urlSchema, yupMixed, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
 import { getEnvVariable, getNodeEnvironment } from "@stackframe/stack-shared/dist/utils/env";
@@ -155,7 +155,7 @@ export async function logEvent<T extends EventType[]>(
   // rest is no more dynamic APIs so we can run it asynchronously
   runAsynchronouslyAndWaitUntil((async () => {
     // log event in DB
-    await prismaClient.event.create({
+    await globalPrismaClient.event.create({
       data: {
         systemEventTypeIds: [...allEventTypes].map(eventType => eventType.id),
         data: data as any,

@@ -45,7 +45,7 @@ import { useSidebar } from 'fumadocs-ui/contexts/sidebar';
 import { Menu, Sidebar as SidebarIcon } from 'lucide-react';
 import { type ComponentProps } from 'react';
 import { cn } from '../../lib/cn';
-import { SearchToggle } from '../layout/search-toggle';
+import { CompactSearchToggle } from '../layout/custom-search-toggle';
 import { SidebarCollapseTrigger } from '../layout/sidebar';
 import { buttonVariants } from '../ui/button';
 
@@ -92,7 +92,7 @@ export function NavbarSidebarTrigger({
   );
 }
 
-export function CollapsibleControl() {
+export function CollapsibleControl({ onSearchOpen }: { onSearchOpen?: () => void }) {
   const { collapsed } = useSidebar();
   if (!collapsed) return;
 
@@ -114,7 +114,12 @@ export function CollapsibleControl() {
       >
         <SidebarIcon />
       </SidebarCollapseTrigger>
-      <SearchToggle size="icon-sm" className="rounded-lg" hideIfDisabled />
+      {onSearchOpen && (
+        <CompactSearchToggle
+          onOpen={onSearchOpen}
+          className="rounded-lg w-9 h-9"
+        />
+      )}
     </div>
   );
 }

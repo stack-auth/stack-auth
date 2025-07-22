@@ -50,7 +50,7 @@ export function UserButtonDemo() {
 
 export function MyComponent() {
   return (
-    <UserButton 
+    <UserButton
       ${propsCode}
     />
   );

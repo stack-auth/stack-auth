@@ -13,9 +13,10 @@ import { AuthenticationResponseJSON, PublicKeyCredentialCreationOptionsJSON, Pub
 import { wait } from '../utils/promises';
 import { Result } from "../utils/results";
 import { deindent } from '../utils/strings';
+import { ConnectedAccountAccessTokenCrud } from './crud/connected-accounts';
 import { ContactChannelsCrud } from './crud/contact-channels';
 import { CurrentUserCrud } from './crud/current-user';
-import { ConnectedAccountAccessTokenCrud } from './crud/oauth';
+import { NotificationPreferenceCrud } from './crud/notification-preferences';
 import { TeamApiKeysCrud, UserApiKeysCrud, teamApiKeysCreateInputSchema, teamApiKeysCreateOutputSchema, userApiKeysCreateInputSchema, userApiKeysCreateOutputSchema } from './crud/project-api-keys';
 import { ProjectPermissionsCrud } from './crud/project-permissions';
 import { AdminUserProjectsCrud, ClientProjectsCrud } from './crud/projects';
@@ -122,7 +123,7 @@ export class StackClientInterface {
     // try to diagnose the error for the user
     if (retriedResult.status === "error") {
       if (globalVar.navigator && !globalVar.navigator.onLine) {
-        throw new Error("Failed to send Stack network request. It seems like you are offline, please check your internet connection and try again. This is not an error with Stack Auth. (window.navigator.onLine is falsy)", { cause: retriedResult.error });
+        throw new Error("You are offline. Please check your internet connection and try again. (window.navigator.onLine is falsy)", { cause: retriedResult.error });
       }
       throw await this._createNetworkError(retriedResult.error, session, requestType);
     }
@@ -1635,6 +1636,111 @@ export class StackClientInterface {
       return null;
     }
     return await result.data.json();
+  }
+
+  async listNotificationCategories(
+    session: InternalSession,
+  ): Promise<NotificationPreferenceCrud['Client']['Read'][]> {
+    const response = await this.sendClientRequest(
+      `/emails/notification-preference/me`,
+      {},
+      session,
+    );
+    const result = await response.json() as NotificationPreferenceCrud['Client']['List'];
+    return result.items;
+  }
+
+  async setNotificationsEnabled(
+    notificationCategoryId: string,
+    enabled: boolean,
+    session: InternalSession,
+  ): Promise<void> {
+    await this.sendClientRequest(
+      `/emails/notification-preference/me/${notificationCategoryId}`,
+      {
+        method: "PATCH",
+        headers: {
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          enabled,
+        }),
+      },
+      session,
+    );
+  }
+
+  async getOAuthProvider(
+    userId: string,
+    providerId: string,
+    session: InternalSession | null,
+    requestType: "client" | "server" | "admin" = "client",
+  ): Promise<{
+    id: string,
+    type: string,
+    user_id: string,
+    account_id?: string,
+    email: string,
+    allow_sign_in: boolean,
+    allow_connected_accounts: boolean,
+  }> {
+    const sendRequest = requestType === "client" ? this.sendClientRequest : (this as any).sendServerRequest;
+    const response = await sendRequest.call(this,
+      `/oauth-providers/${userId}/${providerId}`,
+      {
+        method: "GET",
+      },
+      session,
+      requestType,
+    );
+    return response.json();
+  }
+
+  async listOAuthProviders(
+    options: {
+      user_id?: string,
+    } = {},
+    session: InternalSession | null,
+    requestType: "client" | "server" | "admin" = "client",
+  ): Promise<{
+    id: string,
+    type: string,
+    user_id: string,
+    account_id?: string,
+    email: string,
+    allow_sign_in: boolean,
+    allow_connected_accounts: boolean,
+  }[]> {
+    const sendRequest = requestType === "client" ? this.sendClientRequest : (this as any).sendServerRequest;
+    const queryParams = new URLSearchParams(filterUndefined(options));
+    const response = await sendRequest.call(this,
+      `/oauth-providers${queryParams.toString() ? `?${queryParams.toString()}` : ''}`,
+      {
+        method: "GET",
+      },
+      session,
+      requestType,
+    );
+    const result = await response.json();
+    return result.items;
+  }
+
+  async deleteOAuthProvider(
+    userId: string,
+    providerId: string,
+    session: InternalSession | null,
+    requestType: "client" | "server" | "admin" = "client",
+  ): Promise<{ success: boolean }> {
+    const sendRequest = requestType === "client" ? this.sendClientRequest : (this as any).sendServerRequest;
+    const response = await sendRequest.call(this,
+      `/oauth-providers/${userId}/${providerId}`,
+      {
+        method: "DELETE",
+      },
+      session,
+      requestType,
+    );
+    return response.json();
   }
 }
 

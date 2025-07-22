@@ -1,0 +1,27 @@
+{
+  "title": "Components",
+  "description": "Pre-built React components",
+  "root": true,
+  "pages": [
+    "index",
+    "---Authentication---",
+    "sign-in",
+    "sign-up",
+    "credential-sign-in",
+    "credential-sign-up",
+    "magic-link-sign-in",
+    "forgot-password",
+    "password-reset",
+    "---OAuth---",
+    "oauth-button",
+    "oauth-button-group",
+    "---User Interface---",
+    "user-button",
+    "account-settings",
+    "selected-team-switcher",
+    "---Layout & Providers---",
+    "stack-provider",
+    "stack-handler",
+    "stack-theme"
+  ]
+} 

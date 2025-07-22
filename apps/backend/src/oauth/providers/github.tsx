@@ -1,5 +1,5 @@
 import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
-import { StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
+import { StackAssertionError, StatusError } from "@stackframe/stack-shared/dist/utils/errors";
 import { OAuthUserInfo, validateUserInfo } from "../utils";
 import { OAuthBaseProvider, TokenSet } from "./base";
 
@@ -23,8 +23,8 @@ export class GithubProvider extends OAuthBaseProvider {
       baseScope: "user:email",
       // GitHub token does not expire except for lack of use in a year
       // We set a default of 1 year
-      // https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/token-expiration-and-revocation#token-expired-due-to-lack-of-use=
-      defaultAccessTokenExpiresInMillis: 1000 * 60 * 60 * 24 * 365,
+      // https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/token-expiration-and-revocation#user-token-expired-due-to-github-app-configuration
+      defaultAccessTokenExpiresInMillis: 1000 * 60 * 60 * 8, // 8 hours
       ...options,
     }));
   }
@@ -53,6 +53,11 @@ export class GithubProvider extends OAuthBaseProvider {
       },
     });
     if (!emailsRes.ok) {
+      // GitHub returns a 403 error when fetching user emails if the permission "Email addresses" is not set
+      // https://docs.github.com/en/apps/creating-github-apps/registering-a-github-app/choosing-permissions-for-a-github-app#choosing-permissions-for-rest-api-access
+      if (emailsRes.status === 403) {
+        throw new StatusError(StatusError.BadRequest, `GitHub returned a 403 error when fetching user emails. \nDeveloper information: This is likely due to not having the correct permission "Email addresses" in your GitHub app. Please check your GitHub app settings and try again.`);
+      }
       throw new StackAssertionError("Error fetching user emails from GitHub: Status code " + emailsRes.status, {
         emailsRes,
         rawUserInfo,
@@ -75,5 +80,15 @@ export class GithubProvider extends OAuthBaseProvider {
       email: email,
       emailVerified: verified,
     });
+  }
+
+  async checkAccessTokenValidity(accessToken: string): Promise<boolean> {
+    const res = await fetch("https://api.github.com/user", {
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        "X-GitHub-Api-Version": "2022-11-28",
+      },
+    });
+    return res.ok;
   }
 }

@@ -17,6 +17,7 @@ import { Inter as FontSans } from "next/font/google";
 import React from 'react';
 import { VersionAlerter } from '../components/version-alerter';
 import '../polyfills';
+import { BackgroundShine } from './background-shine';
 import { ClientPolyfill } from './client-polyfill';
 import './globals.css';
 import PageView from './pageview';
@@ -64,7 +65,7 @@ export default function RootLayout({
   }
 
   return (
-    <html suppressHydrationWarning lang="en" className={`${GeistSans.variable} ${GeistMono.variable}`}>
+    <html suppressHydrationWarning lang="en" className={`${GeistSans.variable} ${GeistMono.variable}`} style={{ contain: 'paint' }}>
       <head>
         <link rel="preconnect" href="https://fonts.gstatic.com" />
         <StyleLink href="https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded&display=block" />
@@ -97,6 +98,7 @@ export default function RootLayout({
                 <RouterProvider>
                   <UserIdentity />
                   <VersionAlerter severeOnly={false} />
+                  <BackgroundShine />
                   {children}
                 </RouterProvider>
               </StackTheme>

@@ -16,6 +16,17 @@ export default async function Page() {
 
   return (
     <>
+      {/* Dotted background */}
+      <div
+        inert
+        style={{
+          position: 'absolute',
+          inset: 0,
+          background: 'radial-gradient(circle, rgba(127, 127, 127, 0.15) 1px, transparent 1px)',
+          backgroundSize: '10px 10px',
+        }}
+      />
+
       <PageClient />
       <Footer />
     </>

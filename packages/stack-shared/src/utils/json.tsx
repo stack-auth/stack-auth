@@ -16,12 +16,12 @@ export type ReadonlyJson =
   | readonly ReadonlyJson[]
   | { readonly [key: string]: ReadonlyJson };
 
-export function isJson(value: unknown): value is Json {
+export function isJsonSerializable(value: unknown): value is Json {
   switch (typeof value) {
     case "object": {
       if (value === null) return true;
-      if (Array.isArray(value)) return value.every(isJson);
-      return Object.keys(value).every(k => typeof k === "string") && Object.values(value).every(isJson);
+      if (Array.isArray(value)) return value.every(isJsonSerializable);
+      return Object.keys(value).every(k => typeof k === "string") && Object.values(value).every(isJsonSerializable);
     }
     case "string":
     case "number":
@@ -33,40 +33,40 @@ export function isJson(value: unknown): value is Json {
     }
   }
 }
-import.meta.vitest?.test("isJson", ({ expect }) => {
+import.meta.vitest?.test("isJsonSerializable", ({ expect }) => {
   // Test primitive values
-  expect(isJson(null)).toBe(true);
-  expect(isJson(true)).toBe(true);
-  expect(isJson(false)).toBe(true);
-  expect(isJson(123)).toBe(true);
-  expect(isJson("string")).toBe(true);
+  expect(isJsonSerializable(null)).toBe(true);
+  expect(isJsonSerializable(true)).toBe(true);
+  expect(isJsonSerializable(false)).toBe(true);
+  expect(isJsonSerializable(123)).toBe(true);
+  expect(isJsonSerializable("string")).toBe(true);
 
   // Test arrays
-  expect(isJson([])).toBe(true);
-  expect(isJson([1, 2, 3])).toBe(true);
-  expect(isJson(["a", "b", "c"])).toBe(true);
-  expect(isJson([1, "a", true, null])).toBe(true);
-  expect(isJson([1, [2, 3], { a: "b" }])).toBe(true);
+  expect(isJsonSerializable([])).toBe(true);
+  expect(isJsonSerializable([1, 2, 3])).toBe(true);
+  expect(isJsonSerializable(["a", "b", "c"])).toBe(true);
+  expect(isJsonSerializable([1, "a", true, null])).toBe(true);
+  expect(isJsonSerializable([1, [2, 3], { a: "b" }])).toBe(true);
 
   // Test objects
-  expect(isJson({})).toBe(true);
-  expect(isJson({ a: 1, b: 2 })).toBe(true);
-  expect(isJson({ a: "string", b: true, c: null })).toBe(true);
-  expect(isJson({ a: [1, 2, 3], b: { c: "d" } })).toBe(true);
+  expect(isJsonSerializable({})).toBe(true);
+  expect(isJsonSerializable({ a: 1, b: 2 })).toBe(true);
+  expect(isJsonSerializable({ a: "string", b: true, c: null })).toBe(true);
+  expect(isJsonSerializable({ a: [1, 2, 3], b: { c: "d" } })).toBe(true);
 
   // Test invalid JSON values
-  expect(isJson(undefined)).toBe(false);
-  expect(isJson(() => {})).toBe(false);
-  expect(isJson(Symbol())).toBe(false);
-  expect(isJson(BigInt(123))).toBe(false);
+  expect(isJsonSerializable(undefined)).toBe(false);
+  expect(isJsonSerializable(() => {})).toBe(false);
+  expect(isJsonSerializable(Symbol())).toBe(false);
+  expect(isJsonSerializable(BigInt(123))).toBe(false);
 
   // Test arrays with invalid JSON values
-  expect(isJson([1, undefined, 3])).toBe(false);
-  expect(isJson([1, () => {}, 3])).toBe(false);
+  expect(isJsonSerializable([1, undefined, 3])).toBe(false);
+  expect(isJsonSerializable([1, () => {}, 3])).toBe(false);
 
   // Test objects with invalid JSON values
-  expect(isJson({ a: 1, b: undefined })).toBe(false);
-  expect(isJson({ a: 1, b: () => {} })).toBe(false);
+  expect(isJsonSerializable({ a: 1, b: undefined })).toBe(false);
+  expect(isJsonSerializable({ a: 1, b: () => {} })).toBe(false);
 });
 
 export function parseJson(json: string): Result<Json> {

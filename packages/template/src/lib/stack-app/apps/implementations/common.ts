@@ -148,6 +148,11 @@ export function useAsyncCache<D extends any[], T>(cache: AsyncCache<D, Result<T>
 
   const id = React.useId();
 
+  // whenever the dependencies change, we need to refresh the promise cache
+  React.useEffect(() => {
+    cachePromiseByHookId.delete(id);
+  }, [...dependencies, id]);
+
   const subscribe = useCallback((cb: () => void) => {
     const { unsubscribe } = cache.onStateChange(dependencies, () => {
       cachePromiseByHookId.delete(id);

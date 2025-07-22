@@ -78,6 +78,7 @@ it("creates a new project", async ({ expect }) => {
           "credential_enabled": true,
           "domains": [],
           "email_config": { "type": "shared" },
+          "email_theme": "<stripped UUID>",
           "enabled_oauth_providers": [],
           "magic_link_enabled": false,
           "oauth_account_merge_strategy": "link_method",
@@ -93,7 +94,6 @@ it("creates a new project", async ({ expect }) => {
         "display_name": "Test Project",
         "id": "<stripped UUID>",
         "is_production_mode": false,
-        "user_count": 0,
       },
       "headers": Headers { <some fields may have been hidden> },
     }
@@ -128,6 +128,7 @@ it("creates a new project with different configurations", async ({ expect }) => 
           "credential_enabled": false,
           "domains": [],
           "email_config": { "type": "shared" },
+          "email_theme": "<stripped UUID>",
           "enabled_oauth_providers": [],
           "magic_link_enabled": true,
           "oauth_account_merge_strategy": "link_method",
@@ -143,7 +144,6 @@ it("creates a new project with different configurations", async ({ expect }) => 
         "display_name": "Test Project",
         "id": "<stripped UUID>",
         "is_production_mode": true,
-        "user_count": 0,
       },
       "headers": Headers { <some fields may have been hidden> },
     }
@@ -175,12 +175,14 @@ it("creates a new project with different configurations", async ({ expect }) => 
           "credential_enabled": true,
           "domains": [],
           "email_config": { "type": "shared" },
+          "email_theme": "<stripped UUID>",
           "enabled_oauth_providers": [{ "id": "google" }],
           "magic_link_enabled": false,
           "oauth_account_merge_strategy": "link_method",
           "oauth_providers": [
             {
               "id": "google",
+              "provider_config_id": "google",
               "type": "shared",
             },
           ],
@@ -195,7 +197,6 @@ it("creates a new project with different configurations", async ({ expect }) => 
         "display_name": "Test Project",
         "id": "<stripped UUID>",
         "is_production_mode": false,
-        "user_count": 0,
       },
       "headers": Headers { <some fields may have been hidden> },
     }
@@ -224,6 +225,7 @@ it("creates a new project with different configurations", async ({ expect }) => 
           "credential_enabled": true,
           "domains": [],
           "email_config": { "type": "shared" },
+          "email_theme": "<stripped UUID>",
           "enabled_oauth_providers": [],
           "magic_link_enabled": false,
           "oauth_account_merge_strategy": "link_method",
@@ -239,7 +241,6 @@ it("creates a new project with different configurations", async ({ expect }) => 
         "display_name": "Test Project",
         "id": "<stripped UUID>",
         "is_production_mode": false,
-        "user_count": 0,
       },
       "headers": Headers { <some fields may have been hidden> },
     }
@@ -282,6 +283,7 @@ it("creates a new project with different configurations", async ({ expect }) => 
             "type": "standard",
             "username": "test username",
           },
+          "email_theme": "<stripped UUID>",
           "enabled_oauth_providers": [],
           "magic_link_enabled": false,
           "oauth_account_merge_strategy": "link_method",
@@ -297,7 +299,6 @@ it("creates a new project with different configurations", async ({ expect }) => 
         "display_name": "Test Project",
         "id": "<stripped UUID>",
         "is_production_mode": false,
-        "user_count": 0,
       },
       "headers": Headers { <some fields may have been hidden> },
     }
@@ -342,6 +343,7 @@ it("creates a new project with different configurations", async ({ expect }) => 
             },
           ],
           "email_config": { "type": "shared" },
+          "email_theme": "<stripped UUID>",
           "enabled_oauth_providers": [],
           "magic_link_enabled": false,
           "oauth_account_merge_strategy": "link_method",
@@ -357,7 +359,6 @@ it("creates a new project with different configurations", async ({ expect }) => 
         "display_name": "Test Project",
         "id": "<stripped UUID>",
         "is_production_mode": false,
-        "user_count": 0,
       },
       "headers": Headers { <some fields may have been hidden> },
     }
@@ -385,6 +386,7 @@ it("lists the current projects after creating a new project", async ({ expect })
               "credential_enabled": true,
               "domains": [],
               "email_config": { "type": "shared" },
+              "email_theme": "<stripped UUID>",
               "enabled_oauth_providers": [],
               "magic_link_enabled": false,
               "oauth_account_merge_strategy": "link_method",
@@ -400,10 +402,116 @@ it("lists the current projects after creating a new project", async ({ expect })
             "display_name": "New Project",
             "id": "<stripped UUID>",
             "is_production_mode": false,
-            "user_count": 0,
           },
         ],
       },
+      "headers": Headers { <some fields may have been hidden> },
+    }
+  `);
+});
+
+it("verifies email_theme update persists", async ({ expect }) => {
+  await Project.createAndSwitch();
+  const patchResponse = await niceBackendFetch("/api/v1/internal/projects/current", {
+    method: "PATCH",
+    accessType: "admin",
+    body: {
+      config: {
+        email_theme: "a0172b5d-cff0-463b-83bb-85124697373a" // default-dark
+      }
+    }
+  });
+  expect(patchResponse).toMatchInlineSnapshot(`
+    NiceResponse {
+      "status": 200,
+      "body": {
+        "config": {
+          "allow_localhost": true,
+          "allow_team_api_keys": false,
+          "allow_user_api_keys": false,
+          "client_team_creation_enabled": false,
+          "client_user_deletion_enabled": false,
+          "create_team_on_sign_up": false,
+          "credential_enabled": true,
+          "domains": [],
+          "email_config": { "type": "shared" },
+          "email_theme": "<stripped UUID>",
+          "enabled_oauth_providers": [],
+          "magic_link_enabled": false,
+          "oauth_account_merge_strategy": "link_method",
+          "oauth_providers": [],
+          "passkey_enabled": false,
+          "sign_up_enabled": true,
+          "team_creator_default_permissions": [{ "id": "team_admin" }],
+          "team_member_default_permissions": [{ "id": "team_member" }],
+          "user_default_permissions": [],
+        },
+        "created_at_millis": <stripped field 'created_at_millis'>,
+        "description": "",
+        "display_name": "New Project",
+        "id": "<stripped UUID>",
+        "is_production_mode": false,
+      },
+      "headers": Headers { <some fields may have been hidden> },
+    }
+  `);
+
+  const response = await niceBackendFetch("/api/v1/internal/projects/current", {
+    accessType: "admin"
+  });
+  expect(response).toMatchInlineSnapshot(`
+    NiceResponse {
+      "status": 200,
+      "body": {
+        "config": {
+          "allow_localhost": true,
+          "allow_team_api_keys": false,
+          "allow_user_api_keys": false,
+          "client_team_creation_enabled": false,
+          "client_user_deletion_enabled": false,
+          "create_team_on_sign_up": false,
+          "credential_enabled": true,
+          "domains": [],
+          "email_config": { "type": "shared" },
+          "email_theme": "<stripped UUID>",
+          "enabled_oauth_providers": [],
+          "magic_link_enabled": false,
+          "oauth_account_merge_strategy": "link_method",
+          "oauth_providers": [],
+          "passkey_enabled": false,
+          "sign_up_enabled": true,
+          "team_creator_default_permissions": [{ "id": "team_admin" }],
+          "team_member_default_permissions": [{ "id": "team_member" }],
+          "user_default_permissions": [],
+        },
+        "created_at_millis": <stripped field 'created_at_millis'>,
+        "description": "",
+        "display_name": "New Project",
+        "id": "<stripped UUID>",
+        "is_production_mode": false,
+      },
+      "headers": Headers { <some fields may have been hidden> },
+    }
+  `);
+  expect(response.body.config.email_theme).toBe("a0172b5d-cff0-463b-83bb-85124697373a"); // default-dark
+});
+
+it("gives an error when updating email_theme with an invalid value", async ({ expect }) => {
+  await Project.createAndSwitch();
+
+  const response = await niceBackendFetch("/api/v1/internal/projects/current", {
+    method: "PATCH",
+    accessType: "admin",
+    body: {
+      config: {
+        email_theme: "some-invalid-theme",
+      }
+    }
+  });
+  expect(response).toMatchInlineSnapshot(`
+    NiceResponse {
+      "status": 400,
+      "body": "Invalid email theme",
       "headers": Headers { <some fields may have been hidden> },
     }
   `);

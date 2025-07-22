@@ -1,5 +1,6 @@
 'use client';
 
+import { Palette } from 'lucide-react';
 import React, { useEffect, useRef, useState } from 'react';
 import { codeToHtml } from "shiki";
 import './clickable-code-styles.css';
@@ -22,7 +23,63 @@ function ClickableCodeblock({
 }) {
   const [highlightedCode, setHighlightedCode] = useState<string>("");
   const [linePositions, setLinePositions] = useState<Array<{ top: number, height: number }>>([]);
+  const [selectedLightTheme, setSelectedLightTheme] = useState<string>('github-light-default');
+  const [selectedDarkTheme, setSelectedDarkTheme] = useState<string>('github-dark');
+  const [isThemeSwitcherOpen, setIsThemeSwitcherOpen] = useState(false);
   const codeRef = useRef<HTMLDivElement>(null);
+
+  // Available themes
+  const lightThemes = [
+    { value: 'github-light-default', label: 'GitHub Light' },
+    { value: 'light-plus', label: 'VS Code Light' },
+    { value: 'min-light', label: 'Minimal Light' },
+    { value: 'slack-ochin', label: 'Slack Light' },
+  ];
+
+  const darkThemes = [
+    { value: 'github-dark', label: 'GitHub Dark' },
+    { value: 'github-dark-dimmed', label: 'GitHub Dimmed' },
+    { value: 'dark-plus', label: 'VS Code Dark' },
+    { value: 'dracula', label: 'Dracula' },
+  ];
+
+  // Load saved theme preferences on mount
+  useEffect(() => {
+    const savedLightTheme = localStorage.getItem('stack-docs-light-theme');
+    const savedDarkTheme = localStorage.getItem('stack-docs-dark-theme');
+
+    if (savedLightTheme) {
+      setSelectedLightTheme(savedLightTheme);
+    }
+    if (savedDarkTheme) {
+      setSelectedDarkTheme(savedDarkTheme);
+    }
+  }, []);
+
+  // Close theme switcher when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (isThemeSwitcherOpen && !(event.target as Element).closest('.theme-switcher-container')) {
+        setIsThemeSwitcherOpen(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [isThemeSwitcherOpen]);
+
+  // Save theme preferences when they change
+  const handleThemeChange = (isDark: boolean, theme: string) => {
+    if (isDark) {
+      setSelectedDarkTheme(theme);
+      localStorage.setItem('stack-docs-dark-theme', theme);
+    } else {
+      setSelectedLightTheme(theme);
+      localStorage.setItem('stack-docs-light-theme', theme);
+    }
+  };
 
   // Measure actual line positions after code is rendered
   useEffect(() => {
@@ -101,9 +158,16 @@ function ClickableCodeblock({
   useEffect(() => {
     const updateHighlightedCode = async () => {
       try {
+        // Detect if we're in dark mode by checking CSS custom properties or document class
+        const isDarkMode = document.documentElement.classList.contains('dark') ||
+                          getComputedStyle(document.documentElement).getPropertyValue('--fd-background').includes('0 0% 3.9%');
+
+        // Use selected themes instead of hardcoded ones
+        const themeToUse = isDarkMode ? selectedDarkTheme : selectedLightTheme;
+
         const html = await codeToHtml(code, {
           lang: language,
-          theme: 'github-dark',
+          theme: themeToUse,
           transformers: [{
             pre(node) {
               // Remove background styles from pre element
@@ -116,9 +180,9 @@ function ClickableCodeblock({
               if (node.properties.style) {
                 node.properties.style = (node.properties.style as string).replace(/background[^;]*;?/g, '');
               }
-              // Add line-height CSS for consistent rendering
+              // Add line-height CSS for consistent rendering and preserve whitespace
               const existingStyle = (node.properties.style as string) || '';
-              node.properties.style = `${existingStyle}; line-height: 1.5; font-family: ui-monospace, 'Cascadia Code', 'Source Code Pro', Menlo, Consolas, 'DejaVu Sans Mono', monospace;`;
+              node.properties.style = `${existingStyle}; line-height: 1.5; font-family: ui-monospace, 'Cascadia Code', 'Source Code Pro', Menlo, Consolas, 'DejaVu Sans Mono', monospace; white-space: pre;`;
             }
           }]
         });
@@ -132,19 +196,101 @@ function ClickableCodeblock({
     updateHighlightedCode().catch(error => {
       console.error('Error updating highlighted code:', error);
     });
-  }, [code, language]);
+
+    // Listen for theme changes on the document element
+    const observer = new MutationObserver((mutations) => {
+      mutations.forEach((mutation) => {
+        if (mutation.type === 'attributes' && mutation.attributeName === 'class') {
+          updateHighlightedCode().catch(error => {
+            console.error('Error updating highlighted code on theme change:', error);
+          });
+        }
+      });
+    });
+
+    observer.observe(document.documentElement, {
+      attributes: true,
+      attributeFilter: ['class']
+    });
+
+    return () => {
+      observer.disconnect();
+    };
+  }, [code, language, selectedLightTheme, selectedDarkTheme]);
 
   return (
     <div className="space-y-4 mb-6">
       <div className="relative">
         <div
-          className="rounded-lg border bg-[#0a0a0a] p-4 overflow-auto max-h-[500px] text-sm relative clickable-code-container"
+          className="rounded-lg border border-fd-border bg-fd-code p-4 overflow-auto max-h-[500px] text-sm relative clickable-code-container"
           style={{
-            background: '#0a0a0a !important',
             fontFamily: 'ui-monospace, "Cascadia Code", "Source Code Pro", Menlo, Consolas, "DejaVu Sans Mono", monospace',
             lineHeight: '1.5',
           }}
         >
+          {/* Theme Switcher */}
+          <div className="absolute top-2 right-2 z-10 theme-switcher-container">
+            <div className="relative">
+              <button
+                onClick={() => setIsThemeSwitcherOpen(!isThemeSwitcherOpen)}
+                className="p-1.5 rounded-md bg-fd-muted/80 hover:bg-fd-muted text-fd-muted-foreground hover:text-fd-foreground border border-fd-border/50 group"
+                title="Choose code syntax highlighting theme for better readability and accessibility"
+                aria-label="Code theme selector for accessibility"
+              >
+                <Palette className="w-4 h-4" />
+                {/* Hover tooltip */}
+                <div className="absolute bottom-full right-0 mb-2 px-2 py-1 bg-fd-popover text-fd-popover-foreground text-xs rounded border border-fd-border opacity-0 group-hover:opacity-100 pointer-events-none whitespace-nowrap z-30">
+                  Choose syntax theme for accessibility
+                </div>
+              </button>
+
+              {isThemeSwitcherOpen && (
+                <div className="absolute top-full right-0 mt-1 bg-fd-background border border-fd-border rounded-md shadow-md min-w-40 z-20">
+                  <div className="p-2">
+                    {/* Title */}
+                    <div className="text-xs font-medium text-fd-foreground mb-2 pb-1 border-b border-fd-border/30">
+                      Code Theme
+                    </div>
+                    {/* Current mode indicator */}
+                    <div>
+                      <div className="flex items-center gap-1.5 text-xs text-fd-muted-foreground mb-1.5">
+                        <div className={`w-1.5 h-1.5 rounded-full ${document.documentElement.classList.contains('dark') ? 'bg-slate-600' : 'bg-yellow-400'}`}></div>
+                        <span>
+                          {document.documentElement.classList.contains('dark') ? 'Dark Mode' : 'Light Mode'}
+                        </span>
+                      </div>
+                      <div className="space-y-0.5">
+                        {(document.documentElement.classList.contains('dark') ? darkThemes : lightThemes).map((theme) => {
+                          const isDark = document.documentElement.classList.contains('dark');
+                          const isSelected = isDark ? selectedDarkTheme === theme.value : selectedLightTheme === theme.value;
+                          return (
+                            <button
+                              key={theme.value}
+                              onClick={() => {
+                                handleThemeChange(isDark, theme.value);
+                                setIsThemeSwitcherOpen(false);
+                              }}
+                              className={`w-full flex items-center justify-between px-2 py-1 rounded text-xs transition-all duration-150 ${
+                                isSelected
+                                  ? 'bg-fd-primary text-fd-primary-foreground font-medium'
+                                  : 'hover:bg-fd-accent hover:text-fd-accent-foreground text-fd-foreground'
+                              }`}
+                              style={{ height: '24px' }}
+                            >
+                              <span className="flex items-center">{theme.label}</span>
+                              {isSelected && (
+                                <span className="flex items-center">✓</span>
+                              )}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
           <div
             ref={codeRef}
             className="[&_*]:!bg-transparent [&_pre]:!bg-transparent [&_code]:!bg-transparent [&_pre]:!leading-6 [&_code]:!leading-6"
@@ -172,7 +318,7 @@ function ClickableCodeblock({
               return (
                 <div
                   key={index}
-                  className="absolute left-4 right-4 pointer-events-auto hover:bg-blue-500/20 transition-colors rounded cursor-pointer"
+                  className="absolute left-4 right-4 pointer-events-auto hover:bg-fd-primary/20 rounded cursor-pointer"
                   style={{
                     top: `${topPosition}px`,
                     height: `${height}px`,
@@ -340,7 +486,7 @@ export function ParamField({
 export function Accordion({ title, children }: { title: React.ReactNode, children: React.ReactNode }) {
   return (
     <details className="group mb-3 border border-fd-border/30 rounded-lg bg-fd-card/20">
-      <summary className="flex items-center justify-between px-3 py-2 cursor-pointer text-fd-foreground hover:bg-fd-accent/30 rounded-lg list-none [&::-webkit-details-marker]:hidden transition-colors">
+      <summary className="flex items-center justify-between px-3 py-2 cursor-pointer text-fd-foreground hover:bg-fd-accent/30 rounded-lg list-none [&::-webkit-details-marker]:hidden">
         <span className="text-sm font-medium">{title}</span>
         <svg
           className="w-4 h-4 transition-transform group-open:rotate-180 text-fd-muted-foreground"

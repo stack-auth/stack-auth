@@ -8,9 +8,10 @@ import {
   ClientInterfaceOptions,
   StackClientInterface
 } from "./client-interface";
+import { ConnectedAccountAccessTokenCrud } from "./crud/connected-accounts";
 import { ContactChannelsCrud } from "./crud/contact-channels";
 import { CurrentUserCrud } from "./crud/current-user";
-import { ConnectedAccountAccessTokenCrud } from "./crud/oauth";
+import { NotificationPreferenceCrud } from "./crud/notification-preferences";
 import { ProjectPermissionsCrud } from "./crud/project-permissions";
 import { SessionsCrud } from "./crud/sessions";
 import { TeamInvitationCrud } from "./crud/team-invitation";
@@ -569,6 +570,40 @@ export class StackServerInterface extends StackClientInterface {
     return json.items;
   }
 
+  async listServerNotificationCategories(
+    userId: string,
+  ): Promise<NotificationPreferenceCrud['Server']['Read'][]> {
+    const response = await this.sendServerRequest(
+      urlString`/emails/notification-preference/${userId}`,
+      {
+        method: "GET",
+      },
+      null,
+    );
+    const json = await response.json() as NotificationPreferenceCrud['Server']['List'];
+    return json.items;
+  }
+
+  async setServerNotificationsEnabled(
+    userId: string,
+    notificationCategoryId: string,
+    enabled: boolean,
+  ): Promise<void> {
+    await this.sendServerRequest(
+      urlString`/emails/notification-preference/${userId}/${notificationCategoryId}`,
+      {
+        method: "PATCH",
+        headers: {
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          enabled,
+        }),
+      },
+      null,
+    );
+  }
+
   async sendServerContactChannelVerificationEmail(
     userId: string,
     contactChannelId: string,
@@ -654,5 +689,110 @@ export class StackServerInterface extends StackClientInterface {
     if (res.status === "error") {
       return res.error;
     }
+  }
+
+  // OAuth Providers CRUD operations
+  async createServerOAuthProvider(
+    data: {
+      user_id: string,
+      provider_config_id: string,
+      account_id: string,
+      email: string,
+      allow_sign_in: boolean,
+      allow_connected_accounts: boolean,
+    },
+  ): Promise<{
+    id: string,
+    type: string,
+    user_id: string,
+    account_id: string,
+    email: string,
+    allow_sign_in: boolean,
+    allow_connected_accounts: boolean,
+  }> {
+    const response = await this.sendServerRequest(
+      "/oauth-providers",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+        },
+        body: JSON.stringify(data),
+      },
+      null,
+    );
+    return await response.json();
+  }
+
+
+  async listServerOAuthProviders(
+    options: {
+      user_id?: string,
+    } = {},
+  ): Promise<{
+    id: string,
+    type: string,
+    user_id: string,
+    account_id: string,
+    email: string,
+    allow_sign_in: boolean,
+    allow_connected_accounts: boolean,
+  }[]> {
+    const queryParams = new URLSearchParams(filterUndefined(options));
+    const response = await this.sendServerRequest(
+      `/oauth-providers${queryParams.toString() ? `?${queryParams.toString()}` : ''}`,
+      {
+        method: "GET",
+      },
+      null,
+    );
+    const result = await response.json();
+    return result.items;
+  }
+
+  async updateServerOAuthProvider(
+    userId: string,
+    providerId: string,
+    data: {
+      account_id?: string,
+      email?: string,
+      allow_sign_in?: boolean,
+      allow_connected_accounts?: boolean,
+    },
+  ): Promise<{
+    id: string,
+    type: string,
+    user_id: string,
+    account_id: string,
+    email: string,
+    allow_sign_in: boolean,
+    allow_connected_accounts: boolean,
+  }> {
+    const response = await this.sendServerRequest(
+      urlString`/oauth-providers/${userId}/${providerId}`,
+      {
+        method: "PATCH",
+        headers: {
+          "content-type": "application/json",
+        },
+        body: JSON.stringify(data),
+      },
+      null,
+    );
+    return await response.json();
+  }
+
+  async deleteServerOAuthProvider(
+    userId: string,
+    providerId: string,
+  ): Promise<{ success: boolean }> {
+    const response = await this.sendServerRequest(
+      urlString`/oauth-providers/${userId}/${providerId}`,
+      {
+        method: "DELETE",
+      },
+      null,
+    );
+    return await response.json();
   }
 }

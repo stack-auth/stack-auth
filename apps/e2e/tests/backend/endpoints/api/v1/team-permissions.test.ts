@@ -241,6 +241,7 @@ it("can customize default team permissions", async ({ expect }) => {
           "credential_enabled": true,
           "domains": [],
           "email_config": { "type": "shared" },
+          "email_theme": "<stripped UUID>",
           "enabled_oauth_providers": [],
           "magic_link_enabled": false,
           "oauth_account_merge_strategy": "link_method",
@@ -256,7 +257,6 @@ it("can customize default team permissions", async ({ expect }) => {
         "display_name": "New Project",
         "id": "<stripped UUID>",
         "is_production_mode": false,
-        "user_count": 0,
       },
       "headers": Headers { <some fields may have been hidden> },
     }

@@ -2,30 +2,27 @@
 import type { PageTree } from 'fumadocs-core/server';
 import { ChevronDown, ChevronRight } from 'lucide-react';
 import { usePathname } from 'next/navigation';
-import { useMemo, useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { getCurrentPlatform } from '../../lib/platform-utils';
 import { ApiSidebarContent } from './api/api-sidebar';
-import { SdkSidebarContent } from './docs';
-import { ComponentsSidebarContent } from './docs-layout-router';
 import { PlatformAwareHeader } from './platform-aware-header';
-import {
-  isInApiSection,
-  isInComponentsSection,
-  isInSdkSection
-} from './shared/section-utils';
+import { isInApiSection } from './shared-header';
+
+// Types for the page data
+type PageData = {
+  url: string,
+  slugs: string[],
+  data: {
+    title?: string,
+    method?: string,
+  },
+};
 
 type DocsHeaderWrapperProps = {
   showSearch?: boolean,
   pageTree?: PageTree.Root,
   className?: string,
-  apiPages?: Array<{
-    url: string,
-    slugs: string[],
-    data: {
-      title?: string,
-      method?: string,
-    },
-  }>,
+  apiPages?: PageData[],
 }
 
 // Custom Link Component for mobile sidebar - matches the styling from docs.tsx
@@ -79,6 +76,11 @@ function MobileCollapsibleSection({
 }) {
   const [isOpen, setIsOpen] = useState(defaultOpen);
 
+  // Keep accordion open based on defaultOpen changes (for path-based logic)
+  React.useEffect(() => {
+    setIsOpen(defaultOpen);
+  }, [defaultOpen]);
+
   return (
     <div className="space-y-1">
       <button
@@ -101,6 +103,81 @@ function MobileCollapsibleSection({
   );
 }
 
+// Clickable collapsible section component for mobile - for folders with index pages
+function MobileClickableCollapsibleSection({
+  title,
+  href,
+  children,
+  defaultOpen = false
+}: {
+  title: string,
+  href: string,
+  children: React.ReactNode,
+  defaultOpen?: boolean,
+}) {
+  const pathname = usePathname();
+  const isActive = pathname === href || pathname.startsWith(href + '/');
+  const shouldBeOpen = defaultOpen || isActive;
+  const [isOpen, setIsOpen] = useState(shouldBeOpen);
+  const containerRef = React.useRef<HTMLDivElement>(null);
+
+  // Update accordion state when path changes to stay open for current section
+  React.useEffect(() => {
+    setIsOpen(shouldBeOpen);
+  }, [shouldBeOpen]);
+
+  // Close when clicking outside
+  React.useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (containerRef.current && !containerRef.current.contains(event.target as Node)) {
+        setIsOpen(false);
+      }
+    }
+
+    if (isOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+      return () => document.removeEventListener('mousedown', handleClickOutside);
+    }
+  }, [isOpen]);
+
+  return (
+    <div className="space-y-1" ref={containerRef}>
+      <div className="group">
+        <a
+          href={href}
+          className={`flex items-center justify-between w-full px-2 py-1.5 rounded-md text-xs transition-colors ${
+            isActive
+              ? 'bg-fd-primary/10 text-fd-primary font-medium'
+              : 'text-fd-muted-foreground hover:text-fd-foreground hover:bg-fd-muted/50'
+          }`}
+          onClick={() => setIsOpen(true)}
+        >
+          <span className="flex-1">{title}</span>
+          <button
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              setIsOpen(!isOpen);
+            }}
+            className="opacity-0 group-hover:opacity-100 transition-opacity p-0.5 rounded hover:bg-fd-muted/30"
+          >
+            {isOpen ? (
+              <ChevronDown className="h-3 w-3" />
+            ) : (
+              <ChevronRight className="h-3 w-3" />
+            )}
+          </button>
+        </a>
+      </div>
+      {isOpen && (
+        <div className="ml-4 space-y-1">
+          {children}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // Recursive component to render page tree items for mobile
 function MobilePageTreeItem({ item, currentPlatform }: { item: PageTree.Node, currentPlatform?: string }) {
   const pathname = usePathname();
@@ -113,18 +190,29 @@ function MobilePageTreeItem({ item, currentPlatform }: { item: PageTree.Node, cu
     const hasIndexPage = 'index' in item && item.index;
     const folderUrl = hasIndexPage ? item.index!.url : '';
     const isCurrentPath = folderUrl && pathname.startsWith(folderUrl);
-    const itemName = typeof item.name === 'string' ? item.name : '';
+    const itemName = String(item.name);
 
+    // If folder has an index page, make the title clickable
+    if (hasIndexPage) {
+      return (
+        <MobileClickableCollapsibleSection
+          title={itemName || 'Folder'}
+          href={item.index!.url}
+          defaultOpen={!!isCurrentPath}
+        >
+          {item.children.map((child, index) => (
+            <MobilePageTreeItem key={child.type === 'page' ? child.url : index} item={child} currentPlatform={currentPlatform} />
+          ))}
+        </MobileClickableCollapsibleSection>
+      );
+    }
+
+    // If no index page, use regular accordion trigger
     return (
       <MobileCollapsibleSection
         title={itemName || 'Folder'}
         defaultOpen={!!isCurrentPath}
       >
-        {hasIndexPage && (
-          <MobileSidebarLink href={item.index!.url} external={item.index!.external}>
-            Overview
-          </MobileSidebarLink>
-        )}
         {item.children.map((child, index) => (
           <MobilePageTreeItem key={child.type === 'page' ? child.url : index} item={child} currentPlatform={currentPlatform} />
         ))}
@@ -141,24 +229,25 @@ function MobilePageTreeItem({ item, currentPlatform }: { item: PageTree.Node, cu
 
 // Function to find platform-specific content in the page tree
 function findPlatformContent(tree: PageTree.Root, platform: string): PageTree.Node[] {
-  const platformMappings = {
-    'next': ['next', 'next.js', 'nextjs'],
-    'react': ['react', 'react.js', 'reactjs'],
-    'js': ['js', 'javascript'],
-    'python': ['python', 'py']
+  // Platform folder name mappings
+  const platformMappings: Record<string, string[]> = {
+    'next': ['next.js', 'nextjs'],
+    'react': ['react'],
+    'js': ['javascript'],
+    'python': ['python']
   };
 
   const platformKey = platform.toLowerCase();
-  const possibleNames = platformKey in platformMappings
-    ? platformMappings[platformKey as keyof typeof platformMappings]
-    : [platform.toLowerCase()];
+  const possibleNames = platformKey in platformMappings ? platformMappings[platformKey] : [platformKey];
 
   for (const item of tree.children) {
     if (item.type === 'folder') {
-      const itemName = typeof item.name === 'string' ? item.name.toLowerCase() : '';
+      const itemName = String(item.name).toLowerCase();
 
-      if (possibleNames.some(name => itemName === name || itemName.includes(name))) {
-        return item.children;
+      for (const name of possibleNames) {
+        if (itemName.includes(name)) {
+          return item.children;
+        }
       }
     }
   }
@@ -166,9 +255,8 @@ function findPlatformContent(tree: PageTree.Root, platform: string): PageTree.No
   return [];
 }
 
-// Improved general docs sidebar content that renders the full page tree
-function GeneralDocsSidebarContent({ pageTree }: { pageTree?: PageTree.Root }) {
-  const pathname = usePathname();
+// Improved general docs sidebar content that renders the platform content
+function GeneralDocsSidebarContent({ pageTree, pathname }: { pageTree?: PageTree.Root, pathname: string }) {
   const currentPlatform = getCurrentPlatform(pathname);
 
   if (!currentPlatform || !pageTree) return null;
@@ -185,7 +273,7 @@ function GeneralDocsSidebarContent({ pageTree }: { pageTree?: PageTree.Root }) {
     );
   }
 
-  // For general docs, show root level content
+  // For general docs or when no platform content found, show root level content
   return (
     <>
       {pageTree.children.map((item, index) => (
@@ -208,30 +296,13 @@ export function DocsHeaderWrapper({ showSearch = true, pageTree, className, apiP
 
   // Determine current sidebar content based on route
   const sidebarContent = useMemo(() => {
-    if (isInSdkSection(pathname)) {
-      const currentPlatform = getCurrentPlatform(pathname);
-      if (currentPlatform && ['next', 'react', 'js'].includes(currentPlatform)) {
-        return <SdkSidebarContent />;
-      }
-    }
-
-    if (isInComponentsSection(pathname)) {
-      const currentPlatform = getCurrentPlatform(pathname);
-      if (currentPlatform && ['next', 'react'].includes(currentPlatform)) {
-        return <ComponentsSidebarContent />;
-      }
-    }
-
     if (isInApiSection(pathname)) {
       return <ApiSidebarContent pages={apiPages} />;
     }
 
-    // For general documentation pages
-    if (pathname.startsWith('/docs') &&
-        !isInComponentsSection(pathname) &&
-        !isInSdkSection(pathname) &&
-        !isInApiSection(pathname)) {
-      return <GeneralDocsSidebarContent pageTree={pageTree} />;
+    // For all docs pages, use the page tree
+    if (pathname.startsWith('/docs') && !isInApiSection(pathname)) {
+      return <GeneralDocsSidebarContent pageTree={pageTree} pathname={pathname} />;
     }
 
     return null;

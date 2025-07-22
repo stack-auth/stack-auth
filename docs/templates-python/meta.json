@@ -1,0 +1,17 @@
+{
+  "title": "Python Documentation",
+  "description": "Stack Auth for Python applications using the REST API",
+  "pages": [
+    "overview",
+    "faq",
+    "---Getting Started---",
+    "getting-started/setup",
+    "---Concepts---",
+    "concepts/user-authentication",
+    "concepts/teams-management",
+    "---Integration---",
+    "---Other---",
+    "others/self-host",
+    "others/cli-authentication"
+  ]
+} 

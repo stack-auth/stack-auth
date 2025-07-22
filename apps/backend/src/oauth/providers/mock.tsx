@@ -13,7 +13,7 @@ export class MockProvider extends OAuthBaseProvider {
     return new MockProvider(...await OAuthBaseProvider.createConstructorArgs({
       discoverFromUrl: getEnvVariable("STACK_OAUTH_MOCK_URL"),
       redirectUri: `${getEnvVariable("NEXT_PUBLIC_STACK_API_URL")}/api/v1/auth/oauth/callback/${providerId}`,
-      baseScope: "openid",
+      baseScope: "openid offline_access",
       openid: true,
       clientId: providerId,
       clientSecret: "MOCK-SERVER-SECRET",
@@ -30,5 +30,14 @@ export class MockProvider extends OAuthBaseProvider {
       profileImageUrl: rawUserInfo.picture,
       emailVerified: true,
     });
+  }
+
+  async checkAccessTokenValidity(accessToken: string): Promise<boolean> {
+    try {
+      const response = await this.oauthClient.userinfo(accessToken);
+      return !!response.sub;
+    } catch (error) {
+      return false;
+    }
   }
 }

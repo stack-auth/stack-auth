@@ -1,7 +1,7 @@
 import { teamMembershipsCrudHandlers } from "@/app/api/latest/team-memberships/crud";
 import { sendEmailFromTemplate } from "@/lib/emails";
 import { getSoleTenancyFromProjectBranch } from "@/lib/tenancies";
-import { prismaClient } from "@/prisma-client";
+import { getPrismaClientForTenancy } from "@/prisma-client";
 import { createVerificationCodeHandler } from "@/route-handlers/verification-code-handler";
 import { VerificationCodeType } from "@prisma/client";
 import { KnownErrors } from "@stackframe/stack-shared";
@@ -69,7 +69,7 @@ export const teamInvitationCodeHandler = createVerificationCodeHandler({
   async handler(tenancy, {}, data, body, user) {
     if (!user) throw new KnownErrors.UserAuthenticationRequired;
 
-    const oldMembership = await prismaClient.teamMember.findUnique({
+    const oldMembership = await getPrismaClientForTenancy(tenancy).teamMember.findUnique({
       where: {
         tenancyId_projectUserId_teamId: {
           tenancyId: tenancy.id,

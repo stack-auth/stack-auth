@@ -1,17 +1,17 @@
 import { getProject } from '@/lib/projects';
-import { prismaClient } from '@/prisma-client';
+import { getPrismaClientForTenancy, globalPrismaClient } from '@/prisma-client';
 import { traceSpan } from '@/utils/telemetry';
 import { TEditorConfiguration } from '@stackframe/stack-emails/dist/editor/documents/editor/core';
 import { EMAIL_TEMPLATES_METADATA, renderEmailTemplate } from '@stackframe/stack-emails/dist/utils';
 import { UsersCrud } from '@stackframe/stack-shared/dist/interface/crud/users';
 import { getEnvVariable } from '@stackframe/stack-shared/dist/utils/env';
-import { StackAssertionError, captureError } from '@stackframe/stack-shared/dist/utils/errors';
+import { StackAssertionError, StatusError, captureError } from '@stackframe/stack-shared/dist/utils/errors';
 import { filterUndefined, omit, pick } from '@stackframe/stack-shared/dist/utils/objects';
 import { runAsynchronously, wait } from '@stackframe/stack-shared/dist/utils/promises';
 import { Result } from '@stackframe/stack-shared/dist/utils/results';
 import { typedToUppercase } from '@stackframe/stack-shared/dist/utils/strings';
 import nodemailer from 'nodemailer';
-import { Tenancy } from './tenancies';
+import { Tenancy, getTenancy } from './tenancies';
 
 export async function getEmailTemplate(projectId: string, type: keyof typeof EMAIL_TEMPLATES_METADATA) {
   const project = await getProject(projectId);
@@ -19,7 +19,7 @@ export async function getEmailTemplate(projectId: string, type: keyof typeof EMA
     throw new Error("Project not found");
   }
 
-  const template = await prismaClient.emailTemplate.findUnique({
+  const template = await globalPrismaClient.emailTemplate.findUnique({
     where: {
       projectId_type: {
         projectId,
@@ -94,9 +94,9 @@ async function _sendEmailWithoutRetries(options: SendEmailOptions): Promise<Resu
   try {
     let toArray = typeof options.to === 'string' ? [options.to] : options.to;
 
-    // use Emailable to check if the email is valid. skip the ones that are not (it's as if they had bounced)
-    const emailableApiKey = getEnvVariable('STACK_EMAILABLE_API_KEY');
-    if (emailableApiKey) {
+    // If using the shared email config, use Emailable to check if the email is valid. skip the ones that are not (it's as if they had bounced)
+    const emailableApiKey = getEnvVariable('STACK_EMAILABLE_API_KEY', "");
+    if (options.emailConfig.type === 'shared' && emailableApiKey) {
       await traceSpan('verifying email addresses with Emailable', async () => {
         toArray = (await Promise.all(toArray.map(async (to) => {
           const emailableResponse = await fetch(`https://api.emailable.com/v1/verify?email=${encodeURIComponent(options.to as string)}&api_key=${emailableApiKey}`);
@@ -108,7 +108,7 @@ async function _sendEmailWithoutRetries(options: SendEmailOptions): Promise<Resu
             });
           }
           const json = await emailableResponse.json();
-          if (json.state !== 'deliverable') {
+          if (json.state === 'undeliverable') {
             console.log('email not deliverable', to, json);
             return null;
           }
@@ -261,7 +261,12 @@ export async function sendEmailWithoutRetries(options: SendEmailOptions): Promis
   message?: string,
 }>> {
   const res = await _sendEmailWithoutRetries(options);
-  await prismaClient.sentEmail.create({
+  const tenancy = await getTenancy(options.tenancyId);
+  if (!tenancy) {
+    throw new StackAssertionError("Tenancy not found");
+  }
+
+  await getPrismaClientForTenancy(tenancy).sentEmail.create({
     data: {
       tenancyId: options.tenancyId,
       to: typeof options.to === 'string' ? [options.to] : options.to,
@@ -280,7 +285,17 @@ export async function sendEmail(options: SendEmailOptions) {
     throw new StackAssertionError("No recipient email address provided to sendEmail", omit(options, ['emailConfig']));
   }
 
-  return Result.orThrow(await Result.retry(async (attempt) => {
+  const errorMessage = "Failed to send email. If you are the admin of this project, please check the email configuration and try again.";
+
+  const handleError = (error: any) => {
+    console.warn("Failed to send email", error);
+    if (options.emailConfig.type === 'shared') {
+      captureError("failed-to-send-email-to-shared-email-config", error);
+    }
+    throw new StatusError(400, errorMessage);
+  };
+
+  const result = await Result.retry(async (attempt) => {
     const result = await sendEmailWithoutRetries(options);
 
     if (result.status === 'error') {
@@ -297,12 +312,15 @@ export async function sendEmail(options: SendEmailOptions) {
         return Result.error(result.error);
       }
 
-      // TODO if using custom email config, we should notify the developer instead of throwing an error
-      throw new StackAssertionError('Failed to send email: ' + result.error.rawError?.message, extraData);
+      handleError(extraData);
     }
 
     return result;
-  }, 3, { exponentialDelayBase: 2000 }));
+  }, 3, { exponentialDelayBase: 2000 });
+
+  if (result.status === 'error') {
+    handleError(result.error);
+  }
 }
 
 export async function sendEmailFromTemplate(options: {
@@ -332,7 +350,7 @@ export async function sendEmailFromTemplate(options: {
   });
 }
 
-async function getEmailConfig(tenancy: Tenancy): Promise<EmailConfig> {
+export async function getEmailConfig(tenancy: Tenancy): Promise<EmailConfig> {
   const projectEmailConfig = tenancy.config.email_config;
 
   if (projectEmailConfig.type === 'shared') {
@@ -367,3 +385,34 @@ export async function getSharedEmailConfig(displayName: string): Promise<EmailCo
     type: 'shared',
   };
 }
+
+export function normalizeEmail(email: string): string {
+  if (typeof email !== 'string') {
+    throw new TypeError('normalize-email expects a string');
+  }
+
+
+  const emailLower = email.trim().toLowerCase();
+  const emailParts = emailLower.split(/@/);
+
+  if (emailParts.length !== 2) {
+    throw new StackAssertionError('Invalid email address', { email });
+  }
+
+  let [username, domain] = emailParts;
+
+  return `${username}@${domain}`;
+}
+
+import.meta.vitest?.test('normalizeEmail(...)', async ({ expect }) => {
+  expect(normalizeEmail('Example.Test@gmail.com')).toBe('example.test@gmail.com');
+  expect(normalizeEmail('Example.Test+123@gmail.com')).toBe('example.test+123@gmail.com');
+  expect(normalizeEmail('exampletest@gmail.com')).toBe('exampletest@gmail.com');
+  expect(normalizeEmail('EXAMPLETEST@gmail.com')).toBe('exampletest@gmail.com');
+
+  expect(normalizeEmail('user@example.com')).toBe('user@example.com');
+  expect(normalizeEmail('user.name+tag@example.com')).toBe('user.name+tag@example.com');
+
+  expect(() => normalizeEmail('test@multiple@domains.com')).toThrow();
+  expect(() => normalizeEmail('invalid.email')).toThrow();
+});

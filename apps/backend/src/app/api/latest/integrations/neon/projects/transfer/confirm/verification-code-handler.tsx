@@ -1,9 +1,9 @@
-import { prismaClient } from "@/prisma-client";
+import { getPrismaClientForTenancy, globalPrismaClient } from "@/prisma-client";
 import { createVerificationCodeHandler } from "@/route-handlers/verification-code-handler";
 import { VerificationCodeType } from "@prisma/client";
 import { KnownErrors } from "@stackframe/stack-shared";
 import { yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
-import { StatusError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
+import { StackAssertionError, StatusError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
 
 export const neonIntegrationProjectTransferCodeHandler = createVerificationCodeHandler({
   metadata: {
@@ -31,7 +31,7 @@ export const neonIntegrationProjectTransferCodeHandler = createVerificationCodeH
   async validate(tenancy, method, data) {
     const project = tenancy.project;
     if (project.id !== "internal") throw new StatusError(400, "This endpoint is only available for internal projects.");
-    const provisionedProjects = await prismaClient.provisionedProject.findMany({
+    const provisionedProjects = await globalPrismaClient.provisionedProject.findMany({
       where: {
         projectId: data.project_id,
         clientId: data.neon_client_id,
@@ -42,45 +42,44 @@ export const neonIntegrationProjectTransferCodeHandler = createVerificationCodeH
 
   async handler(tenancy, method, data, body, user) {
     const project = tenancy.project;
+    if (project.id !== "internal") throw new StackAssertionError("This endpoint is only available for internal projects, why is it being called for a non-internal project?");
     if (!user) throw new KnownErrors.UserAuthenticationRequired;
 
-    await prismaClient.$transaction(async (tx) => {
-      const provisionedProject = await tx.provisionedProject.deleteMany({
-        where: {
-          projectId: data.project_id,
-          clientId: data.neon_client_id,
-        },
-      });
+    const provisionedProject = await globalPrismaClient.provisionedProject.deleteMany({
+      where: {
+        projectId: data.project_id,
+        clientId: data.neon_client_id,
+      },
+    });
 
-      if (provisionedProject.count === 0) throw new StatusError(400, "The project to transfer was not provisioned by Neon or has already been transferred.");
+    if (provisionedProject.count === 0) throw new StatusError(400, "The project to transfer was not provisioned by Neon or has already been transferred.");
 
-      const recentDbUser = await tx.projectUser.findUnique({
-        where: {
-          tenancyId_projectUserId: {
-            tenancyId: tenancy.id,
-            projectUserId: user.id,
-          },
+    const recentDbUser = await getPrismaClientForTenancy(tenancy).projectUser.findUnique({
+      where: {
+        tenancyId_projectUserId: {
+          tenancyId: tenancy.id,
+          projectUserId: user.id,
         },
-      }) ?? throwErr("Authenticated user not found in transaction. Something went wrong. Did the user delete their account at the wrong time? (Very unlikely.)");
-      const rduServerMetadata: any = recentDbUser.serverMetadata;
+      },
+    }) ?? throwErr("Authenticated user not found in transaction. Something went wrong. Did the user delete their account at the wrong time? (Very unlikely.)");
+    const rduServerMetadata: any = recentDbUser.serverMetadata;
 
-      await tx.projectUser.update({
-        where: {
-          tenancyId_projectUserId: {
-            tenancyId: tenancy.id,
-            projectUserId: user.id,
-          },
+    await getPrismaClientForTenancy(tenancy).projectUser.update({
+      where: {
+        tenancyId_projectUserId: {
+          tenancyId: tenancy.id,
+          projectUserId: user.id,
         },
-        data: {
-          serverMetadata: {
-            ...typeof rduServerMetadata === "object" ? rduServerMetadata : {},
-            managedProjectIds: [
-              ...(Array.isArray(rduServerMetadata?.managedProjectIds) ? rduServerMetadata.managedProjectIds : []),
-              data.project_id,
-            ],
-          },
+      },
+      data: {
+        serverMetadata: {
+          ...typeof rduServerMetadata === "object" ? rduServerMetadata : {},
+          managedProjectIds: [
+            ...(Array.isArray(rduServerMetadata?.managedProjectIds) ? rduServerMetadata.managedProjectIds : []),
+            data.project_id,
+          ],
         },
-      });
+      },
     });
 
     return {

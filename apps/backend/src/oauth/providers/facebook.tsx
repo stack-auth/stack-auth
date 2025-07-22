@@ -56,4 +56,13 @@ export class FacebookProvider extends OAuthBaseProvider {
       emailVerified: false,
     });
   }
+
+  async checkAccessTokenValidity(accessToken: string): Promise<boolean> {
+    const res = await fetch("https://graph.facebook.com/v3.2/me", {
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+      },
+    });
+    return res.ok;
+  }
 }

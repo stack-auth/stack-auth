@@ -16,7 +16,6 @@ export type AdminProject = {
   readonly displayName: string,
   readonly description: string | null,
   readonly createdAt: Date,
-  readonly userCount: number,
   readonly isProductionMode: boolean,
   readonly config: AdminProjectConfig,
 
@@ -70,6 +69,7 @@ export function adminProjectUpdateOptionsToCrud(options: AdminProjectUpdateOptio
           sender_email: options.config.emailConfig.senderEmail,
         }
       ),
+      email_theme: options.config?.emailTheme,
       sign_up_enabled: options.config?.signUpEnabled,
       credential_enabled: options.config?.credentialEnabled,
       magic_link_enabled: options.config?.magicLinkEnabled,
