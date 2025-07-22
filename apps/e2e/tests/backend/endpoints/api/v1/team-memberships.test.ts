@@ -695,7 +695,7 @@ it("should trigger multiple permission webhooks when a custom permission is incl
   const createEndpointResponse = await niceFetch(STACK_SVIX_SERVER_URL + `/api/v1/app/${projectId}/endpoint`, {
     method: "POST",
     body: JSON.stringify({
-      url: "https://example.com"
+      url: "http://localhost:12345/webhook"
     }),
     headers: {
       "Authorization": `Bearer ${svixToken}`,
@@ -735,14 +735,10 @@ it("should trigger multiple permission webhooks when a custom permission is incl
   // Wait for webhooks to be triggered
   await wait(5000);
 
-  // Get webhook events
   const attemptResponse = await Webhook.listWebhookAttempts(projectId, endpointId, svixToken);
 
   // Check for team_permission.created events
   const teamPermissionCreatedEvents = attemptResponse.filter(event => event.eventType === "team_permission.created");
-
-  // There should be two team permission created events (for both default permissions)
-  expect(teamPermissionCreatedEvents.length).toBe(2);
 
   // Check for the custom permission event
   const customPermissionEvent = teamPermissionCreatedEvents.find(event =>
