@@ -1,56 +1,22 @@
 import Editor, { Monaco } from '@monaco-editor/react';
 import { runAsynchronously } from '@stackframe/stack-shared/dist/utils/promises';
 import { deindent } from '@stackframe/stack-shared/dist/utils/strings';
-import { Spinner, Typography, toast } from "@stackframe/stack-ui";
-import { debounce } from 'lodash';
+import { Typography } from "@stackframe/stack-ui";
 import { useTheme } from 'next-themes';
-import { useMemo, useState } from 'react';
 
 
 type CodeEditorProps = {
   code: string,
   onCodeChange: (code: string) => void,
-  onDebouncedCodeChange: (code: string) => Promise<void>,
   title?: string,
 }
 
 export default function CodeEditor({
   code,
   onCodeChange,
-  onDebouncedCodeChange,
   title = "Code"
 }: CodeEditorProps) {
   const { theme } = useTheme();
-  const [isLoading, setIsLoading] = useState(false);
-
-  const debouncedUpdate = useMemo(
-    () => debounce(
-      async (value: string) => {
-        setIsLoading(true);
-        try {
-          await onDebouncedCodeChange(value);
-        } catch (error) {
-          toast({
-            title: "Failed to render email",
-            description: "There was an error rendering email preview",
-            variant: "destructive",
-          });
-        } finally {
-          setIsLoading(false);
-        }
-      },
-      500,
-    ),
-    [onDebouncedCodeChange],
-  );
-
-  const handleChange = (value?: string) => {
-    if (!value) {
-      return;
-    }
-    onCodeChange(value);
-    runAsynchronously(debouncedUpdate(value));
-  };
 
   const handleBeforeMount = (monaco: Monaco) => {
     monaco.editor.defineTheme('stack-dark', {
@@ -110,7 +76,7 @@ export default function CodeEditor({
     );
     monaco.languages.typescript.typescriptDefaults.addExtraLib(
       deindent`
-        declare module "stackframe/emails" {
+        declare module "@stackframe/emails" {
           const Subject: React.FC<{value: string}>;
           const NotificationCategory: React.FC<{value: "Transactional" | "Marketing"}>;
         }
@@ -145,7 +111,6 @@ export default function CodeEditor({
     <>
       <div className="p-3 flex justify-between items-center">
         <Typography type="h4">{title}</Typography>
-        {isLoading && <Spinner />}
       </div>
       <Editor
         height="100%"
@@ -153,7 +118,7 @@ export default function CodeEditor({
         defaultLanguage="typescript"
         defaultPath="file:///main.tsx"
         value={code}
-        onChange={handleChange}
+        onChange={value => onCodeChange(value ?? "")}
         beforeMount={handleBeforeMount}
         options={{
           quickSuggestions: { strings: "on" },

@@ -55,7 +55,7 @@ export const PATCH = createSmartRouteHandler({
       statusCode: 200,
       bodyType: "json",
       body: {
-        rendered_html: result.html,
+        rendered_html: result.data.html,
       },
     };
   },

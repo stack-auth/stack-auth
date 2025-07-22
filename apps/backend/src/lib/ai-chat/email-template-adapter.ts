@@ -32,7 +32,7 @@ export const emailTemplateAdapter = (context: ChatAdapterContext) => ({
             [`emails.templateList.${context.threadId}.tsxSource`]: args.content,
           },
         });
-        return { success: true, html: result.html };
+        return { success: true, html: result.data.html };
       },
     }),
   },

@@ -399,16 +399,17 @@ export class StackAdminInterface extends StackServerInterface {
     return await response.json();
   }
 
-  async renderEmailPreview(themeId: string, content?: string, templateId?: string): Promise<{ html: string }> {
+  async renderEmailPreview(options: { themeId?: string, themeTsxSource?: string, templateId?: string, templateTsxSource?: string }): Promise<{ html: string }> {
     const response = await this.sendAdminRequest(`/emails/render-email`, {
       method: "POST",
       headers: {
         "content-type": "application/json",
       },
       body: JSON.stringify({
-        theme_id: themeId,
-        preview_html: content,
-        template_id: templateId,
+        theme_id: options.themeId,
+        theme_tsx_source: options.themeTsxSource,
+        template_id: options.templateId,
+        template_tsx_source: options.templateTsxSource,
       }),
     }, null);
     return await response.json();

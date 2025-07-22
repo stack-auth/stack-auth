@@ -14,25 +14,20 @@ import { useCallback, useState } from "react";
 import { PageLayout } from "../../page-layout";
 import { useAdminApp } from "../../use-admin-app";
 import { ToolCallContent } from "@/components/vibe-coding/chat-adapters";
+import { deindent } from "@stackframe/stack-shared/dist/utils/strings";
+import { bundleJavaScript } from "@stackframe/stack-shared/dist/utils/esbuild";
+
 
 export default function PageClient(props: { templateId: string }) {
   const stackAdminApp = useAdminApp();
   const project = stackAdminApp.useProject();
   const templates = stackAdminApp.useNewEmailTemplates();
   const template = templates.find((t) => t.id === props.templateId);
-  const [renderedHtml, setRenderedHtml] = useState<string>();
   const [currentCode, setCurrentCode] = useState(template?.tsxSource ?? "");
 
-  const handleDebouncedCodeChange = useCallback(async (value: string) => {
-    const { renderedHtml } = await stackAdminApp.updateNewEmailTemplate(props.templateId, value);
-    setRenderedHtml(renderedHtml);
-  }, [stackAdminApp, props.templateId]);
 
   const handleThemeUpdate = (toolCall: ToolCallContent) => {
     setCurrentCode(toolCall.args.content);
-    if (toolCall.result.html) {
-      setRenderedHtml(toolCall.result.html);
-    }
   };
 
 
@@ -48,8 +43,7 @@ export default function PageClient(props: { templateId: string }) {
         <PreviewPanel>
           <ThemePreview
             themeId={project.config.emailTheme}
-            templateId={template.id}
-            renderedHtmlOverride={renderedHtml}
+            templateTsxSource={currentCode}
           />
         </PreviewPanel>
       }
@@ -57,7 +51,6 @@ export default function PageClient(props: { templateId: string }) {
         <CodeEditor
           code={currentCode}
           onCodeChange={setCurrentCode}
-          onDebouncedCodeChange={handleDebouncedCodeChange}
         />
       }
       chatComponent={

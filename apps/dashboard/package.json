@@ -56,6 +56,7 @@
     "svix-react": "^1.13.0",
     "tailwind-merge": "^2.3.0",
     "tailwindcss-animate": "^1.0.7",
+    "use-debounce": "^10.0.5",
     "yup": "^1.4.0"
   },
   "devDependencies": {
