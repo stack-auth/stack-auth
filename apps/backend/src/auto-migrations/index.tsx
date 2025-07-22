@@ -4,6 +4,7 @@ import { MIGRATION_FILES } from './../generated/migration-files';
 const ADVISORY_LOCK_ID = 59129034;
 
 function getMigrationError(error: unknown): string {
+  // P2010: Raw query failed error
   if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2010') {
     if (error.meta?.code === 'P0001') {
       const errorName = (error.meta as { message: string }).message.split(' ')[1];
@@ -15,6 +16,7 @@ function getMigrationError(error: unknown): string {
 
 function isMigrationNeededError(error: unknown): boolean {
   if (error instanceof Prisma.PrismaClientKnownRequestError) {
+    // 42P01: relation does not exist error
     if (error.message.includes('42P01') && error.message.includes('relation "SchemaMigration" does not exist')) {
       return true;
     }
