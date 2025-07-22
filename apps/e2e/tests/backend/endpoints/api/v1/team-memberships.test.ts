@@ -735,11 +735,21 @@ it("should trigger multiple permission webhooks when a custom permission is incl
   // Wait for webhooks to be triggered
   await wait(5000);
 
-  // Get webhook events
-  const attemptResponse = await Webhook.listWebhookAttempts(projectId, endpointId, svixToken);
+  let teamPermissionCreatedEvents: any[] = [];
 
-  // Check for team_permission.created events
-  const teamPermissionCreatedEvents = attemptResponse.filter(event => event.eventType === "team_permission.created");
+  for (let i = 0; i < 20; i++) {
+  // Get webhook events
+    const attemptResponse = await Webhook.listWebhookAttempts(projectId, endpointId, svixToken, 1);
+
+    // Check for team_permission.created events
+    teamPermissionCreatedEvents = attemptResponse.filter(event => event.eventType === "team_permission.created");
+
+    if (teamPermissionCreatedEvents.length === 2) {
+      break;
+    }
+
+    await wait(500);
+  }
 
   // There should be two team permission created events (for both default permissions)
   expect(teamPermissionCreatedEvents.length).toBe(2);
