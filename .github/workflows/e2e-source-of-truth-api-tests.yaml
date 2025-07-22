@@ -98,13 +98,14 @@ jobs:
       - name: Wait on Svix
         run: npx wait-on tcp:localhost:8113
 
-      - name: Initialize database
-        run: pnpm run db:init
-
       - name: Create source-of-truth database and schema
         run: |
           psql postgres://postgres:PASSWORD-PLACEHOLDER--uqfEC1hmmv@localhost:5432/postgres -c "CREATE DATABASE \"source-of-truth-db\";"
           psql postgres://postgres:PASSWORD-PLACEHOLDER--uqfEC1hmmv@localhost:5432/source-of-truth-db -c "CREATE SCHEMA \"sot-schema\";"
+
+      - name: Initialize database
+        run: pnpm run db:init
+
       - name: Start stack-backend in background
         uses: JarvusInnovations/background-action@v1.0.7
         with:

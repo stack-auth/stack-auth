@@ -357,3 +357,34 @@ import.meta.vitest?.test("does not apply a migration again if all migrations are
   expect(finalResult[0].age).toBe(25);
 }));
 
+import.meta.vitest?.test("a migration that fails for whatever reasons rolls back all statements successfully, and then reapplying a fixed version of the migration is also successful", runTest(async ({ expect, prismaClient, dbURL }) => {
+  const exampleMigration3 = {
+    migrationName: '003-create-table',
+    sql: `
+      CREATE TABLE should_exist_after_the_third_migration (id INTEGER);
+    `,
+  };
+  const failingMigrationFiles = [...exampleMigrationFiles1.slice(0, -1), {
+    migrationName: exampleMigrationFiles1[exampleMigrationFiles1.length - 1].migrationName,
+    sql: `
+      CREATE TABLE should_not_exist (id INTEGER);
+      SELECT 1/0;
+    `
+  }, exampleMigration3];
+
+  await expect(applyMigrations({ prismaClient, migrationFiles: failingMigrationFiles })).rejects.toThrow();
+
+  // Verify that the first part of the migration was applied but rolled back
+  await expect(prismaClient.$queryRaw`SELECT * FROM test`).resolves.toBeDefined();
+
+  // Verify that the table from the third migration was also not created due to rollback
+  await expect(prismaClient.$queryRaw`SELECT * FROM should_exist_after_the_third_migration`).rejects.toThrow();
+
+  // Verify that the failing table was not created due to rollback
+  await expect(prismaClient.$queryRaw`SELECT * FROM should_not_exist`).rejects.toThrow();
+
+  const result = await applyMigrations({ prismaClient, migrationFiles: [...exampleMigrationFiles1, exampleMigration3] });
+  expect(result.newlyAppliedMigrationNames).toEqual(['002-update-table', '003-create-table']);
+
+  await expect(prismaClient.$queryRaw`SELECT * FROM should_exist_after_the_third_migration`).resolves.toBeDefined();
+}));
