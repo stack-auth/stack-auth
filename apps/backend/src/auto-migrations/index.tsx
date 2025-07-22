@@ -2,6 +2,11 @@ import { Prisma, PrismaClient } from '@prisma/client';
 import { MIGRATION_FILES } from './../generated/migration-files';
 
 const ADVISORY_LOCK_ID = 59129034;
+class MigrationNeededError extends Error {
+  constructor() {
+    super('MIGRATION_NEEDED');
+  }
+}
 
 function getMigrationError(error: unknown): string {
   // P2010: Raw query failed error
@@ -24,7 +29,7 @@ function isMigrationNeededError(error: unknown): boolean {
       return true;
     }
   }
-  if (error instanceof Error && error.message === 'MIGRATION_NEEDED') {
+  if (error instanceof MigrationNeededError) {
     return true;
   }
   return false;
@@ -161,7 +166,7 @@ export async function runMigrationNeeded(options: {
     `);
     for (const migration of migrationFiles) {
       if (!(result as any).includes(migration.migrationName)) {
-        throw new Error('MIGRATION_NEEDED');
+        throw new MigrationNeededError();
       }
     }
   } catch (e) {
