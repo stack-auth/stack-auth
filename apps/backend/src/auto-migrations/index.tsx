@@ -17,7 +17,10 @@ function getMigrationError(error: unknown): string {
 function isMigrationNeededError(error: unknown): boolean {
   if (error instanceof Prisma.PrismaClientKnownRequestError) {
     // 42P01: relation does not exist error
-    if (error.message.includes('42P01') && error.message.includes('relation "SchemaMigration" does not exist')) {
+    if (error.message.includes('42P01') && (
+      error.message.includes('relation "SchemaMigration" does not exist') ||
+      error.message.includes('No such table: SchemaMigration')
+    )) {
       return true;
     }
   }
