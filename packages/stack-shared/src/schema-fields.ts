@@ -1,6 +1,8 @@
 import * as yup from "yup";
 import { KnownErrors } from ".";
 import { isBase64 } from "./utils/bytes";
+import { Currency, MoneyAmount } from "./utils/currencies";
+import { DayInterval, Interval } from "./utils/dates";
 import { StackAssertionError, throwErr } from "./utils/errors";
 import { decodeBasicAuthorizationHeader } from "./utils/http";
 import { allProviders } from "./utils/oauth";
@@ -20,7 +22,7 @@ declare module "yup" {
     getNested<K extends keyof NonNullable<TType>>(path: K): yup.Schema<NonNullable<TType>[K], TContext, TDefault, TFlags>,
 
     // the default types for concat kinda suck, so let's fix that
-    concat<U extends yup.AnySchema>(schema: U): yup.Schema<Omit<NonNullable<TType>, keyof yup.InferType<U>> & yup.InferType<U> | (TType & (null | undefined)), TContext, TDefault, TFlags>,
+    concat<U extends yup.AnySchema>(schema: U): yup.Schema<Omit<NonNullable<TType>, keyof yup.InferType<U>> & yup.InferType<U> | (TType & (null | undefined)), TContext, Omit<NonNullable<TDefault>, keyof U['__default']> & U['__default'] | (TDefault & (null | undefined)), TFlags>,
   }
 }
 
@@ -138,7 +140,7 @@ export function yupTuple<T extends [unknown, ...unknown[]]>(...args: Parameters<
   // eslint-disable-next-line no-restricted-syntax
   return yup.tuple<T>(...args);
 }
-export function yupObject<A extends yup.Maybe<yup.AnyObject>, B extends yup.ObjectShape>(...args: Parameters<typeof yup.object<A, B>>) {
+export function yupObjectWithAutoDefault<A extends yup.Maybe<yup.AnyObject>, B extends yup.ObjectShape>(...args: Parameters<typeof yup.object<A, B>>) {
   // eslint-disable-next-line no-restricted-syntax
   const object = yup.object(...args).test(
     'no-unknown-object-properties',
@@ -161,8 +163,11 @@ export function yupObject<A extends yup.Maybe<yup.AnyObject>, B extends yup.Obje
       return true;
     },
   );
-
+  return object;
+}
+export function yupObject<A extends yup.Maybe<yup.AnyObject>, B extends yup.ObjectShape>(...args: Parameters<typeof yup.object<A, B>>) {
   // we don't want to update the type of `object` to have a default flag
+  const object = yupObjectWithAutoDefault(...args);
   return object.default(undefined) as any as typeof object;
 }
 
@@ -173,14 +178,8 @@ export function yupNever(): yup.MixedSchema<never> {
 export function yupUnion<T extends yup.ISchema<any>[]>(...args: T): yup.MixedSchema<yup.InferType<T[number]>> {
   if (args.length === 0) throw new Error('yupUnion must have at least one schema');
 
-  const [first] = args;
-  const firstDesc = first.describe();
-  for (const schema of args) {
-    const desc = schema.describe();
-    if (desc.type !== firstDesc.type) throw new StackAssertionError(`yupUnion must have schemas of the same type (got: ${firstDesc.type} and ${desc.type})`, { first, schema, firstDesc, desc });
-  }
-
   return yupMixed().test('is-one-of', 'Invalid value', async (value, context) => {
+    if (value == null) return true;
     const errors = [];
     for (const schema of args) {
       try {
@@ -281,6 +280,26 @@ export const base64Schema = yupString().test("is-base64", (params) => `${params.
   return isBase64(value);
 });
 export const passwordSchema = yupString().max(70);
+export const intervalSchema = yupTuple<Interval>([yupNumber().min(0).integer().defined(), yupString().oneOf(['millisecond', 'second', 'minute', 'hour', 'day', 'week', 'month', 'year']).defined()]);
+export const dayIntervalSchema = yupTuple<DayInterval>([yupNumber().min(0).integer().defined(), yupString().oneOf(['day', 'week', 'month', 'year']).defined()]);
+export const intervalOrNeverSchema = yupUnion(intervalSchema.defined(), yupString().oneOf(['never']).defined());
+export const dayIntervalOrNeverSchema = yupUnion(dayIntervalSchema.defined(), yupString().oneOf(['never']).defined());
+/**
+ * This schema is useful for fields where the user can specify the ID, such as price IDs. It is particularly common
+ * for IDs in the config schema.
+ */
+export const userSpecifiedIdSchema = (idName: `${string}Id`) => yupString().matches(/^[a-zA-Z_][a-zA-Z0-9_-]*$/);
+export const moneyAmountSchema = (currency: Currency) => yupString<MoneyAmount>().test('money-amount', 'Invalid money amount', (value, context) => {
+  if (value == null) return true;
+  const regex = /^([0-9]+)(\.([0-9]+))?$/;
+  const match = value.match(regex);
+  if (!match) return context.createError({ message: 'Money amount must be in the format of <number> or <number>.<number>' });
+  const whole = match[1];
+  const decimals = match[3];
+  if (decimals && decimals.length > currency.decimals) return context.createError({ message: `Too many decimals; ${currency.code} only has ${currency.decimals} decimals` });
+  if (whole !== '0' && whole.startsWith('0')) return context.createError({ message: 'Money amount must not have leading zeros' });
+  return true;
+});
 
 /**
  * A stricter email schema that does some additional checks for UX input. (Some emails are allowed by the spec, for
@@ -382,6 +401,9 @@ export const emailTemplateListSchema = yupRecord(
     tsxSource: yupString().meta({ openapiField: { description: 'Email template source code tsx component' } }).defined(),
   })
 ).meta({ openapiField: { description: 'Record of email template IDs to their display name and source code' } });
+
+// Payments
+export const customerTypeSchema = yupString().oneOf(['user', 'team', 'organization']);
 
 // Users
 export class ReplaceFieldWithOwnUserId extends Error {

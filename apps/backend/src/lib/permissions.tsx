@@ -172,7 +172,7 @@ export async function listPermissionDefinitions(
     ...permissions.map(([id, p]) => ({
       id,
       description: getDescription(id, p.description),
-      contained_permission_ids: typedEntries(p.containedPermissionIds || {}).map(([id]) => id).sort(stringCompare),
+      contained_permission_ids: typedEntries(p.containedPermissionIds).map(([id]) => id).sort(stringCompare),
     })),
     ...(options.scope === "team" ? typedEntries(teamSystemPermissionMap).map(([id, description]) => ({
       id,
@@ -294,7 +294,7 @@ export async function updatePermissionDefinition(
                 .filter(([id]) => id !== options.oldId)
                 .map(([id, p]) => [id, {
                   ...p,
-                  containedPermissionIds: typedFromEntries(typedEntries(p.containedPermissionIds || {}).map(([id]) => {
+                  containedPermissionIds: typedFromEntries(typedEntries(p.containedPermissionIds).map(([id]) => {
                     if (id === options.oldId) {
                       return [newId, true];
                     } else {
@@ -377,7 +377,7 @@ export async function deletePermissionDefinition(
               .map(([id, p]) => [id, {
                 ...p,
                 containedPermissionIds: typedFromEntries(
-                  typedEntries(p.containedPermissionIds || {})
+                  typedEntries(p.containedPermissionIds)
                     .filter(([containedId]) => containedId !== options.permissionId)
                 )
               }])

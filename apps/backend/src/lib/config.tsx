@@ -1,11 +1,11 @@
 import { Prisma } from "@prisma/client";
-import { Config, NormalizationError, NormalizedConfig, getInvalidConfigReason, normalize, override } from "@stackframe/stack-shared/dist/config/format";
+import { Config, NormalizationError, getInvalidConfigReason, normalize, override } from "@stackframe/stack-shared/dist/config/format";
 import { BranchConfigOverride, BranchConfigOverrideOverride, BranchIncompleteConfig, BranchRenderedConfig, EnvironmentConfigOverride, EnvironmentConfigOverrideOverride, EnvironmentIncompleteConfig, EnvironmentRenderedConfig, OrganizationConfigOverride, OrganizationConfigOverrideOverride, OrganizationIncompleteConfig, OrganizationRenderedConfig, ProjectConfigOverride, ProjectConfigOverrideOverride, ProjectIncompleteConfig, ProjectRenderedConfig, applyDefaults, branchConfigDefaults, branchConfigSchema, environmentConfigDefaults, environmentConfigSchema, organizationConfigDefaults, organizationConfigSchema, projectConfigDefaults, projectConfigSchema } from "@stackframe/stack-shared/dist/config/schema";
 import { ProjectsCrud } from "@stackframe/stack-shared/dist/interface/crud/projects";
 import { yupMixed, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
 import { isTruthy } from "@stackframe/stack-shared/dist/utils/booleans";
 import { StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
-import { filterUndefined, pick, typedEntries } from "@stackframe/stack-shared/dist/utils/objects";
+import { filterUndefined, typedEntries } from "@stackframe/stack-shared/dist/utils/objects";
 import { Result } from "@stackframe/stack-shared/dist/utils/results";
 import { stringCompare } from "@stackframe/stack-shared/dist/utils/strings";
 import * as yup from "yup";
@@ -28,28 +28,28 @@ type OrganizationOptions = EnvironmentOptions & { organizationId: string | null 
 export function getRenderedProjectConfigQuery(options: ProjectOptions): RawQuery<Promise<ProjectRenderedConfig>> {
   return RawQuery.then(
     getIncompleteProjectConfigQuery(options),
-    async (incompleteConfig) => applyDefaults(projectConfigDefaults, await incompleteConfig),
+    async (incompleteConfig) => normalize(await incompleteConfig) as ProjectRenderedConfig,
   );
 }
 
 export function getRenderedBranchConfigQuery(options: BranchOptions): RawQuery<Promise<BranchRenderedConfig>> {
   return RawQuery.then(
     getIncompleteBranchConfigQuery(options),
-    async (incompleteConfig) => applyDefaults(branchConfigDefaults, await incompleteConfig),
+    async (incompleteConfig) => normalize(await incompleteConfig) as BranchRenderedConfig,
   );
 }
 
 export function getRenderedEnvironmentConfigQuery(options: EnvironmentOptions): RawQuery<Promise<EnvironmentRenderedConfig>> {
   return RawQuery.then(
     getIncompleteEnvironmentConfigQuery(options),
-    async (incompleteConfig) => applyDefaults(environmentConfigDefaults, await incompleteConfig),
+    async (incompleteConfig) => normalize(await incompleteConfig) as EnvironmentRenderedConfig,
   );
 }
 
 export function getRenderedOrganizationConfigQuery(options: OrganizationOptions): RawQuery<Promise<OrganizationRenderedConfig>> {
   return RawQuery.then(
     getIncompleteOrganizationConfigQuery(options),
-    async (incompleteConfig) => applyDefaults(organizationConfigDefaults, await incompleteConfig),
+    async (incompleteConfig) => normalize(await incompleteConfig) as OrganizationRenderedConfig,
   );
 }
 
@@ -62,14 +62,14 @@ export function getRenderedOrganizationConfigQuery(options: OrganizationOptions)
  * Validates a project config override ([sanity-check valid](./README.md)).
  */
 export async function validateProjectConfigOverride(options: { projectConfigOverride: ProjectConfigOverride }): Promise<Result<null, string>> {
-  return await schematicallyValidateAndReturn(projectConfigSchema, {}, options.projectConfigOverride);
+  return await validateConfigOverrideSchema(projectConfigSchema, {}, options.projectConfigOverride);
 }
 
 /**
  * Validates a branch config override ([sanity-check valid](./README.md)), based on the given project's rendered project config.
  */
 export async function validateBranchConfigOverride(options: { branchConfigOverride: BranchConfigOverride } & ProjectOptions): Promise<Result<null, string>> {
-  return await schematicallyValidateAndReturn(branchConfigSchema, await rawQuery(globalPrismaClient, getIncompleteProjectConfigQuery(options)), options.branchConfigOverride);
+  return await validateConfigOverrideSchema(branchConfigSchema, await rawQuery(globalPrismaClient, getIncompleteProjectConfigQuery(options)), options.branchConfigOverride);
   // TODO add some more checks that depend on the base config; eg. an override config shouldn't set email server connection if isShared==true
   // (these are schematically valid, but make no sense, so we should be nice and reject them)
 }
@@ -78,7 +78,7 @@ export async function validateBranchConfigOverride(options: { branchConfigOverri
  * Validates an environment config override ([sanity-check valid](./README.md)), based on the given branch's rendered branch config.
  */
 export async function validateEnvironmentConfigOverride(options: { environmentConfigOverride: EnvironmentConfigOverride } & BranchOptions): Promise<Result<null, string>> {
-  return await schematicallyValidateAndReturn(environmentConfigSchema, await rawQuery(globalPrismaClient, getIncompleteBranchConfigQuery(options)), options.environmentConfigOverride);
+  return await validateConfigOverrideSchema(environmentConfigSchema, await rawQuery(globalPrismaClient, getIncompleteBranchConfigQuery(options)), options.environmentConfigOverride);
   // TODO add some more checks that depend on the base config; eg. an override config shouldn't set email server connection if isShared==true
   // (these are schematically valid, but make no sense, so we should be nice and reject them)
 }
@@ -87,7 +87,7 @@ export async function validateEnvironmentConfigOverride(options: { environmentCo
  * Validates an organization config override ([sanity-check valid](./README.md)), based on the given environment's rendered environment config.
  */
 export async function validateOrganizationConfigOverride(options: { organizationConfigOverride: OrganizationConfigOverride } & EnvironmentOptions): Promise<Result<null, string>> {
-  return await schematicallyValidateAndReturn(organizationConfigSchema, await rawQuery(globalPrismaClient, getIncompleteEnvironmentConfigQuery(options)), options.organizationConfigOverride);
+  return await validateConfigOverrideSchema(organizationConfigSchema, await rawQuery(globalPrismaClient, getIncompleteEnvironmentConfigQuery(options)), options.organizationConfigOverride);
   // TODO add some more checks that depend on the base config; eg. an override config shouldn't set email server connection if isShared==true
   // (these are schematically valid, but make no sense, so we should be nice and reject them)
 }
@@ -285,42 +285,35 @@ function getIncompleteOrganizationConfigQuery(options: OrganizationOptions): Raw
   });
 }
 
-function makeIncompleteConfigQuery<T, O>(options: { previous?: RawQuery<Promise<NormalizedConfig>>, override: RawQuery<Promise<Config>>, defaults: any }): RawQuery<Promise<any>> {
+function makeIncompleteConfigQuery<T, O>(options: { previous?: RawQuery<Promise<Config>>, override: RawQuery<Promise<Config>>, defaults: any }): RawQuery<Promise<any>> {
   return RawQuery.then(
     RawQuery.all([
       options.previous ?? RawQuery.resolve(Promise.resolve({})),
       options.override,
     ] as const),
-    async ([prev, over]) => applyDefaults(options.defaults, normalize(override(await prev, await over))),
+    async ([prev, over]) => applyDefaults(options.defaults, override(await prev, await over)),
   );
 }
 
 /**
- * For the difference between schematically valid and sanity-check valid, see `README.md`.
+ * Validates the config override against three different schemas: the base one, the default one, and an empty base.
+ *
+ *
  */
-async function schematicallyValidateAndReturn(schema: yup.ObjectSchema<any>, base: any, configOverride: any): Promise<Result<null, string>> {
-  // First, we check whether the override is valid on its own, in the hypothetical case where all parent configs are empty.
-  const basicRes = await schematicallyValidateAndReturnImpl(schema, {}, configOverride);
-  if (basicRes.status === "error") return basicRes;
-
-  // As a sanity check, we also validate that the override is valid if we merge it with the base config. Because of
-  // how we design schemas, this should always be the case (as changing a base config should not make the yup schema
-  // invalid).
-  const mergedRes = await schematicallyValidateAndReturnImpl(schema, base, configOverride);
-  if (mergedRes.status === "error") {
-    throw new StackAssertionError('Invalid override is not compatible with the base config: ' + mergedRes.error, { mergedRes });
-  }
+async function validateConfigOverrideSchema(schema: yup.ObjectSchema<any>, base: any, configOverride: any): Promise<Result<null, string>> {
+  const mergedResBase = await _validateConfigOverrideSchemaImpl(schema, base, configOverride);
+  if (mergedResBase.status === "error") return mergedResBase;
 
   return Result.ok(null);
 }
 
-async function schematicallyValidateAndReturnImpl(schema: yup.ObjectSchema<any>, base: any, configOverride: any): Promise<Result<null, string>> {
+async function _validateConfigOverrideSchemaImpl(schema: yup.ObjectSchema<any>, base: any, configOverride: any): Promise<Result<null, string>> {
   const reason = getInvalidConfigReason(configOverride, { configName: 'override' });
   if (reason) return Result.error(reason);
-  const value = override(pick(base, Object.keys(schema.fields)), configOverride);
+  const value = override(base, configOverride);
   let normalizedValue;
   try {
-    normalizedValue = normalize(value);
+    normalizedValue = normalize(value, { onDotIntoNonObject: "throw" });
   } catch (error) {
     if (error instanceof NormalizationError) {
       return Result.error(error.message);
@@ -348,18 +341,21 @@ import.meta.vitest?.test('schematicallyValidateAndReturn(...)', async ({ expect 
     a: yupString().optional(),
   });
 
-  expect(await schematicallyValidateAndReturn(schema1, {}, {})).toEqual(Result.ok(null));
-  expect(await schematicallyValidateAndReturn(schema1, { a: 'b' }, {})).toEqual(Result.ok(null));
-  expect(await schematicallyValidateAndReturn(schema1, {}, { a: 'b' })).toEqual(Result.ok(null));
-  expect(await schematicallyValidateAndReturn(schema1, { a: 'b' }, { a: 'c' })).toEqual(Result.ok(null));
-  expect(await schematicallyValidateAndReturn(schema1, {}, { a: null })).toEqual(Result.ok(null));
-  expect(await schematicallyValidateAndReturn(schema1, { a: 'b' }, { a: null })).toEqual(Result.ok(null));
-  expect(await schematicallyValidateAndReturn(yupObject({ a: yupMixed() }), {}, { "a.b": "c" })).toEqual(Result.ok(null));
+  expect(await validateConfigOverrideSchema(schema1, {}, {})).toEqual(Result.ok(null));
+  expect(await validateConfigOverrideSchema(schema1, { a: 'b' }, {})).toEqual(Result.ok(null));
+  expect(await validateConfigOverrideSchema(schema1, {}, { a: 'b' })).toEqual(Result.ok(null));
+  expect(await validateConfigOverrideSchema(schema1, { a: 'b' }, { a: 'c' })).toEqual(Result.ok(null));
+  expect(await validateConfigOverrideSchema(schema1, {}, { a: null })).toEqual(Result.ok(null));
+  expect(await validateConfigOverrideSchema(schema1, { a: 'b' }, { a: null })).toEqual(Result.ok(null));
 
-  expect(await schematicallyValidateAndReturn(yupObject({}), { a: 'b' }, { "a.b": "c" })).toEqual(Result.error(`Object contains unknown properties: a`));
-  expect(await schematicallyValidateAndReturn(schema1, {}, { a: 123 })).toEqual(Result.error('a must be a `string` type, but the final value was: `123`.'));
+  expect(await validateConfigOverrideSchema(yupObject({ a: yupMixed() }), {}, { "a.b": "c" })).toEqual(Result.error(`Tried to use dot notation to access "a.b", but "a" doesn't exist on the object (or is null).`));
+  expect(await validateConfigOverrideSchema(yupObject({ a: yupMixed() }), { a: 'str' }, { "a.b": "c" })).toEqual(Result.error(`Tried to use dot notation to access "a.b", but "a" is not an object.`));
+  expect(await validateConfigOverrideSchema(schema1, {}, { a: 123 })).toEqual(Result.error('a must be a `string` type, but the final value was: `123`.'));
 
-  await expect(schematicallyValidateAndReturn(yupObject({ a: yupMixed() }), { a: 'b' }, { "a.b": "c" })).rejects.toThrow(`Invalid override is not compatible with the base config: Tried to use dot notation to access "a.b", but "a" is not an object. Maybe this config is not normalizable?`);
+  expect(await validateConfigOverrideSchema(projectConfigSchema, {}, {})).toEqual(Result.ok(null));
+  expect(await validateConfigOverrideSchema(branchConfigSchema, {}, {})).toEqual(Result.ok(null));
+  expect(await validateConfigOverrideSchema(environmentConfigSchema, {}, {})).toEqual(Result.ok(null));
+  expect(await validateConfigOverrideSchema(organizationConfigSchema, {}, {})).toEqual(Result.ok(null));
 });
 
 // ---------------------------------------------------------------------------------------------------------------------
