@@ -348,6 +348,12 @@ export type ServerBaseUser = {
   usePermission(permissionId: string): TeamPermission | null,
   // END_PLATFORM
 
+  useOAuthProviders(): ServerOAuthProvider[], // THIS_LINE_PLATFORM react-like
+  listOAuthProviders(): Promise<ServerOAuthProvider[]>,
+
+  useOAuthProvider(id: string): ServerOAuthProvider | null, // THIS_LINE_PLATFORM react-like
+  getOAuthProvider(id: string): Promise<ServerOAuthProvider | null>,
+
   /**
    * Creates a new session object with a refresh token for this user. Can be used to impersonate them.
    */

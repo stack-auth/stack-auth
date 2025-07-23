@@ -51,7 +51,6 @@ export type StackServerApp<HasTokenStore extends boolean = boolean, ProjectId ex
 
     createOAuthProvider(options: {
       userId: string,
-      providerId: string,
       accountId: string,
       providerConfigId: string,
       email: string,
