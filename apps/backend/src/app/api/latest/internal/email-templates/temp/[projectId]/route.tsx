@@ -114,16 +114,24 @@ export const GET = createSmartRouteHandler({
       type: yupString().oneOf(["admin"]).defined(),
       tenancy: adaptSchema.defined(),
     }).defined(),
+    query: yupObject({
+      cursor: yupString().optional(),
+    }).defined(),
   }),
   response: yupObject({
     statusCode: yupNumber().oneOf([200]).defined(),
     bodyType: yupString().oneOf(["json"]).defined(),
-    body: yupArray(yupString().defined()).defined(),
+    body: yupObject({
+      project_ids: yupArray(yupString().defined()).defined(),
+      next_cursor: yupString().nullable().defined(),
+    }).defined(),
   }).defined(),
-  async handler({ auth: { tenancy } }) {
+  async handler({ auth: { tenancy }, query: { cursor } }) {
     if (tenancy.project.id !== "internal") {
       throw new StatusError(StatusError.Forbidden, "This endpoint is not available");
     }
+
+    const limit = 1000;
     const projects = await globalPrismaClient.project.findMany({
       where: {
         id: {
@@ -136,11 +144,26 @@ export const GET = createSmartRouteHandler({
       orderBy: {
         id: "asc",
       },
+      take: limit + 1, // Take one extra to check if there are more results
+      ...(cursor && {
+        cursor: {
+          id: cursor,
+        },
+        skip: 1, // Skip the cursor item itself
+      }),
     });
+
+    const hasMore = projects.length > limit;
+    const projectsToReturn = hasMore ? projects.slice(0, limit) : projects;
+    const nextCursor = hasMore ? projectsToReturn[projectsToReturn.length - 1].id : null;
+
     return {
       statusCode: 200,
       bodyType: "json",
-      body: projects.map((project) => project.id),
+      body: {
+        project_ids: projectsToReturn.map((project) => project.id),
+        next_cursor: nextCursor,
+      },
     };
   },
 });

@@ -471,4 +471,27 @@ export class StackAdminInterface extends StackServerInterface {
     );
     return await response.json();
   }
+
+  async getAllProjectsIdsForMigration(cursor?: string): Promise<{ project_ids: string[], next_cursor: string | null }> {
+    const queryParams = cursor ? `?cursor=${encodeURIComponent(cursor)}` : '';
+    const response = await this.sendAdminRequest(
+      `/internal/email-templates/temp/all${queryParams}`,
+      {
+        method: "GET",
+      },
+      null,
+    );
+    return await response.json();
+  }
+
+  async convertEmailTemplates(projectId: string): Promise<{ templates_converted: number, total_templates: number }> {
+    const response = await this.sendAdminRequest(
+      `/internal/email-templates/temp/${projectId}`,
+      {
+        method: "POST",
+      },
+      null,
+    );
+    return await response.json();
+  }
 }
