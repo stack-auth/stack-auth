@@ -30,7 +30,6 @@ It must use react-email components.
 It must export two things:
 - schema: An arktype schema for the email template props
 - EmailTemplate: A function that renders the email template.
-It should use the following props: {${currentEmailTemplate.variables.join(", ")}}
 It must not import from any package besides "@react-email/components", "@stackframe/emails", and "arktype".
 It uses tailwind classes for all styling.
 
