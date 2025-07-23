@@ -43,4 +43,14 @@ export class TwitchProvider extends OAuthBaseProvider {
       emailVerified: true,
     });
   }
+
+  async checkAccessTokenValidity(accessToken: string): Promise<boolean> {
+    const info = await fetch("https://api.twitch.tv/helix/users", {
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        "Client-Id": this.oauthClient.client_id as string,
+      },
+    }).then((res) => res.json());
+    return info.data?.[0] !== undefined;
+  }
 }
