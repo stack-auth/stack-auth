@@ -30,8 +30,8 @@ import type { PageTree } from 'fumadocs-core/server';
 import { usePathname } from 'next/navigation';
 import type { ReactNode } from 'react';
 import { useMemo } from 'react';
-import { getSmartRedirectUrl } from '../../lib/navigation-utils';
-import { getCurrentPlatform, PLATFORMS } from '../../lib/platform-utils';
+import { getSmartRedirectUrl, platformSupportsComponents, platformSupportsSDK } from '../../lib/navigation-utils';
+import { getCurrentPlatform, PLATFORMS, type Platform } from '../../lib/platform-utils';
 import type { Option } from '../layout/root-toggle';
 import { PlatformRedirect } from '../platform-redirect';
 import { ApiSidebarContent } from './api/api-sidebar';
@@ -153,14 +153,22 @@ export function DynamicDocsLayout({ children, ...props }: DynamicDocsLayoutProps
       let url: string;
 
       if (isInSdkSection(pathname)) {
-        // For SDK section: /docs/platform/sdk
-        url = `/docs/${platform}/sdk`;
+        // For SDK section: check if platform supports SDK, otherwise use smart redirect
+        if (platformSupportsSDK(platform as Platform)) {
+          url = `/docs/${platform}/sdk`;
+        } else {
+          url = getSmartRedirectUrl(pathname, platform as Platform);
+        }
       } else if (isInComponentsSection(pathname)) {
-        // For Components section: /docs/platform/components
-        url = `/docs/${platform}/components`;
+        // For Components section: check if platform supports components, otherwise use smart redirect
+        if (platformSupportsComponents(platform as Platform)) {
+          url = `/docs/${platform}/components`;
+        } else {
+          url = getSmartRedirectUrl(pathname, platform as Platform);
+        }
       } else {
         // For normal docs: use smart redirect
-        url = getSmartRedirectUrl(pathname, platform);
+        url = getSmartRedirectUrl(pathname, platform as Platform);
       }
 
       return {

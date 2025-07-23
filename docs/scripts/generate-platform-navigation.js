@@ -62,7 +62,17 @@ export function pageExistsForPlatform(path: string, platform: Platform): boolean
   const normalizedPath = path.replace(/^\\//, '');
   const pathWithExt = normalizedPath.endsWith('.mdx') ? normalizedPath : \`\${normalizedPath}.mdx\`;
 
-  const page = PLATFORM_PAGES.find(p => p.path === pathWithExt);
+  // First try to find exact match
+  let page = PLATFORM_PAGES.find(p => p.path === pathWithExt);
+  
+  // If not found and path doesn't end with index, try appending /index.mdx
+  if (!page && !pathWithExt.includes('/index.mdx')) {
+    const indexPath = normalizedPath.endsWith('.mdx') 
+      ? normalizedPath.replace('.mdx', '/index.mdx')
+      : \`\${normalizedPath}/index.mdx\`;
+    page = PLATFORM_PAGES.find(p => p.path === indexPath);
+  }
+  
   return page?.platforms.includes(platform) ?? false;
 }
 
