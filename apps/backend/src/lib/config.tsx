@@ -2,7 +2,7 @@ import { Prisma } from "@prisma/client";
 import { Config, NormalizationError, getInvalidConfigReason, normalize, override } from "@stackframe/stack-shared/dist/config/format";
 import { BranchConfigOverride, BranchConfigOverrideOverride, BranchIncompleteConfig, BranchRenderedConfig, EnvironmentConfigOverride, EnvironmentConfigOverrideOverride, EnvironmentIncompleteConfig, EnvironmentRenderedConfig, OrganizationConfigOverride, OrganizationConfigOverrideOverride, OrganizationIncompleteConfig, OrganizationRenderedConfig, ProjectConfigOverride, ProjectConfigOverrideOverride, ProjectIncompleteConfig, ProjectRenderedConfig, applyDefaults, assertNoConfigOverrideErrors, branchConfigDefaults, branchConfigSchema, environmentConfigDefaults, environmentConfigSchema, getConfigOverrideErrors, getIncompleteConfigWarnings, organizationConfigDefaults, organizationConfigSchema, projectConfigDefaults, projectConfigSchema } from "@stackframe/stack-shared/dist/config/schema";
 import { ProjectsCrud } from "@stackframe/stack-shared/dist/interface/crud/projects";
-import { yupMixed, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
+import { yupBoolean, yupMixed, yupObject, yupRecord, yupString, yupUnion } from "@stackframe/stack-shared/dist/schema-fields";
 import { isTruthy } from "@stackframe/stack-shared/dist/utils/booleans";
 import { StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
 import { filterUndefined, typedEntries } from "@stackframe/stack-shared/dist/utils/objects";
@@ -266,6 +266,7 @@ function getIncompleteProjectConfigQuery(options: ProjectOptions): RawQuery<Prom
     override: getProjectConfigOverrideQuery(options),
     defaults: projectConfigDefaults,
     schema: projectConfigSchema,
+    extraInfo: options,
   });
 }
 
@@ -275,6 +276,7 @@ function getIncompleteBranchConfigQuery(options: BranchOptions): RawQuery<Promis
     override: getBranchConfigOverrideQuery(options),
     defaults: branchConfigDefaults,
     schema: branchConfigSchema,
+    extraInfo: options,
   });
 }
 
@@ -284,6 +286,7 @@ function getIncompleteEnvironmentConfigQuery(options: EnvironmentOptions): RawQu
     override: getEnvironmentConfigOverrideQuery(options),
     defaults: environmentConfigDefaults,
     schema: environmentConfigSchema,
+    extraInfo: options,
   });
 }
 
@@ -293,10 +296,11 @@ function getIncompleteOrganizationConfigQuery(options: OrganizationOptions): Raw
     override: getOrganizationConfigOverrideQuery(options),
     defaults: organizationConfigDefaults,
     schema: organizationConfigSchema,
+    extraInfo: options,
   });
 }
 
-function makeIncompleteConfigQuery<T, O>(options: { previous?: RawQuery<Promise<Config>>, override: RawQuery<Promise<Config>>, defaults: any, schema: yup.AnySchema }): RawQuery<Promise<any>> {
+function makeIncompleteConfigQuery<T, O>(options: { previous?: RawQuery<Promise<Config>>, override: RawQuery<Promise<Config>>, defaults: any, schema: yup.AnySchema, extraInfo: any }): RawQuery<Promise<any>> {
   return RawQuery.then(
     RawQuery.all([
       options.previous ?? RawQuery.resolve(Promise.resolve({})),
@@ -305,7 +309,7 @@ function makeIncompleteConfigQuery<T, O>(options: { previous?: RawQuery<Promise<
     async ([prevPromise, overPromise]) => {
       const prev = await prevPromise;
       const over = await overPromise;
-      await assertNoConfigOverrideErrors(options.schema, over);
+      await assertNoConfigOverrideErrors(options.schema, over, { extraInfo: options.extraInfo });
       return applyDefaults(options.defaults, override(prev, over));
     },
   );
@@ -316,14 +320,14 @@ function makeIncompleteConfigQuery<T, O>(options: { previous?: RawQuery<Promise<
  *
  *
  */
-async function validateConfigOverrideSchema(schema: yup.ObjectSchema<any>, base: any, configOverride: any): Promise<Result<null, string>> {
+async function validateConfigOverrideSchema(schema: yup.AnySchema, base: any, configOverride: any): Promise<Result<null, string>> {
   const mergedResBase = await _validateConfigOverrideSchemaImpl(schema, base, configOverride);
   if (mergedResBase.status === "error") return mergedResBase;
 
   return Result.ok(null);
 }
 
-async function _validateConfigOverrideSchemaImpl(schema: yup.ObjectSchema<any>, base: any, configOverride: any): Promise<Result<null, string>> {
+async function _validateConfigOverrideSchemaImpl(schema: yup.AnySchema, base: any, configOverride: any): Promise<Result<null, string>> {
   // Check config format
   const reason = getInvalidConfigReason(configOverride, { configName: 'override' });
   if (reason) return Result.error("[FORMAT ERROR]" + reason);
@@ -352,10 +356,18 @@ async function _validateConfigOverrideSchemaImpl(schema: yup.ObjectSchema<any>, 
   return Result.ok(null);
 }
 
-import.meta.vitest?.test('schematicallyValidateAndReturn(...)', async ({ expect }) => {
+import.meta.vitest?.test('_validateConfigOverrideSchemaImpl(...)', async ({ expect }) => {
   const schema1 = yupObject({
     a: yupString().optional(),
   });
+  const recordSchema = yupObject({ a: yupRecord(yupString().defined(), yupString().defined()) }).defined();
+  const unionSchema = yupObject({
+    a: yupUnion(
+      yupString().defined().oneOf(['never']),
+      yupObject({ time: yupString().defined().oneOf(['now']) }).defined(),
+      yupObject({ time: yupString().defined().oneOf(['tomorrow']), morning: yupBoolean().defined() }).defined()
+    ).defined()
+  }).defined();
 
   // Base success cases
   expect(await validateConfigOverrideSchema(schema1, {}, {})).toEqual(Result.ok(null));
@@ -367,6 +379,11 @@ import.meta.vitest?.test('schematicallyValidateAndReturn(...)', async ({ expect 
   expect(await validateConfigOverrideSchema(yupObject({ a: yupString().defined() }), {}, { a: 'b' })).toEqual(Result.ok(null));
   expect(await validateConfigOverrideSchema(yupObject({ a: yupString().defined().oneOf(['b']) }), {}, { a: 'b' })).toEqual(Result.ok(null));
   expect(await validateConfigOverrideSchema(yupObject({ a: yupObject({ c: yupString().defined() }).defined() }), { a: {} }, { "a.c": 'd' })).toEqual(Result.ok(null));
+  expect(await validateConfigOverrideSchema(recordSchema, { a: {} }, { "a.c": 'd' })).toEqual(Result.ok(null));
+  expect(await validateConfigOverrideSchema(unionSchema, {}, { "a": 'never' })).toEqual(Result.ok(null));
+  expect(await validateConfigOverrideSchema(unionSchema, { a: {} }, { "a": 'never' })).toEqual(Result.ok(null));
+  expect(await validateConfigOverrideSchema(unionSchema, { a: {} }, { "a.time": 'now' })).toEqual(Result.ok(null));
+  expect(await validateConfigOverrideSchema(unionSchema, { a: { "time": "tomorrow" } }, { "a.morning": true })).toEqual(Result.ok(null));
 
   // Error cases
   expect(await validateConfigOverrideSchema(yupObject({ a: yupObject({ b: yupObject({ c: yupString().defined() }).defined() }).defined() }), { a: { b: {} } }, { "a.b": { c: 123 } })).toEqual(Result.error("[ERROR] a.b.c must be a `string` type, but the final value was: `123`."));
@@ -375,6 +392,21 @@ import.meta.vitest?.test('schematicallyValidateAndReturn(...)', async ({ expect 
   expect(await validateConfigOverrideSchema(yupObject({ a: yupMixed() }), {}, { "a.b": "c" })).toEqual(Result.error(`[ERROR] The key \"a.b\" is not valid for the schema.`));
   expect(await validateConfigOverrideSchema(yupObject({ a: yupMixed() }), { a: 'str' }, { "a.b": "c" })).toEqual(Result.error(`[ERROR] The key \"a.b\" is not valid for the schema.`));
   expect(await validateConfigOverrideSchema(schema1, {}, { a: 123 })).toEqual(Result.error('[ERROR] a must be a `string` type, but the final value was: `123`.'));
+  expect(await validateConfigOverrideSchema(unionSchema, { a: { "time": "now" } }, { "a.morning": true })).toMatchInlineSnapshot(`
+    {
+      "error": "[WARNING] a is not matched by any of the provided schemas:
+      Schema 0:
+        a must be a \`string\` type, but the final value was: \`{
+          "time": "\\"now\\"",
+          "morning": "true"
+        }\`.
+      Schema 1:
+        a contains unknown properties: morning
+      Schema 2:
+        a.time must be one of the following values: tomorrow",
+      "status": "error",
+    }
+  `);
 
   // Actual configs — base cases
   const projectSchemaBase = applyDefaults(projectConfigDefaults, {});
@@ -399,12 +431,12 @@ import.meta.vitest?.test('schematicallyValidateAndReturn(...)', async ({ expect 
     },
   })).toEqual(Result.error(deindent`
     [WARNING] sourceOfTruth is not matched by any of the provided schemas:
-    	Schema 0: 
-    		sourceOfTruth.type must be one of the following values: hosted
-    	Schema 1: 
-    		sourceOfTruth.connectionStrings must be defined
-    	Schema 2: 
-    		sourceOfTruth.connectionString must be defined
+      Schema 0:
+        sourceOfTruth.type must be one of the following values: hosted
+      Schema 1:
+        sourceOfTruth.connectionStrings must be defined
+      Schema 2:
+        sourceOfTruth.connectionString must be defined
   `));
 });
 

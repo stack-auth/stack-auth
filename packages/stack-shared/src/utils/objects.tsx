@@ -1,6 +1,7 @@
 import { StackAssertionError } from "./errors";
 import { identity } from "./functions";
 import { stringCompare } from "./strings";
+import { typeAssertIs } from "./types";
 
 export function isNotNull<T>(value: T): value is NonNullable<T> {
   return value !== null && value !== undefined;
@@ -396,6 +397,7 @@ import.meta.vitest?.test("filterUndefinedOrNull", ({ expect }) => {
 });
 
 export type DeepFilterUndefined<T> = T extends object ? FilterUndefined<{ [K in keyof T]: DeepFilterUndefined<T[K]> }> : T;
+typeAssertIs<DeepFilterUndefined<{ a: { b: { c?: undefined, d?: 123 } } }>, { a: { b: { d?: 123 } } }>()();
 
 export function deepFilterUndefined<T extends object>(obj: T): DeepFilterUndefined<T> {
   return Object.fromEntries(Object.entries(obj).filter(([, v]) => v !== undefined).map(([k, v]) => [k, isObjectLike(v) ? deepFilterUndefined(v) : v])) as any;

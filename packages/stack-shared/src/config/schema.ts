@@ -1,3 +1,5 @@
+// TODO: rename this file to spaghetti.ts because that's the kind of code here
+
 import * as yup from "yup";
 import { DEFAULT_EMAIL_TEMPLATES, DEFAULT_EMAIL_THEMES, DEFAULT_EMAIL_THEME_ID } from "../helpers/emails";
 import * as schemaFields from "../schema-fields";
@@ -5,9 +7,9 @@ import { userSpecifiedIdSchema, yupArray, yupBoolean, yupDate, yupMixed, yupNeve
 import { SUPPORTED_CURRENCIES } from "../utils/currencies";
 import { StackAssertionError } from "../utils/errors";
 import { allProviders } from "../utils/oauth";
-import { DeepMerge, DeepPartial, DeepRequiredOrUndefined, get, has, isObjectLike, mapValues, set, typedFromEntries } from "../utils/objects";
+import { DeepFilterUndefined, DeepMerge, DeepRequiredOrUndefined, get, has, isObjectLike, mapValues, set, typedFromEntries } from "../utils/objects";
 import { Result } from "../utils/results";
-import { IntersectAll } from "../utils/types";
+import { CollapseObjectUnion, Expand, IntersectAll, IsUnion, typeAssert, typeAssertExtends, typeAssertIs } from "../utils/types";
 import { NormalizesTo, getInvalidConfigReason } from "./format";
 
 export const configLevels = ['project', 'branch', 'environment', 'organization'] as const;
@@ -19,6 +21,13 @@ declare module "yup" {
   export interface CustomSchemaMetadata {
     stackConfigCanNoLongerBeOverridden?: true,
   }
+}
+
+function canNoLongerBeOverridden<T extends yup.AnyObjectSchema, K extends string[]>(schema: T, keys: K): yup.Schema<Omit<yup.InferType<T>, K[number]>, T['__context'], Omit<T['__default'], K[number]>, T['__flags']> {
+  const notOmitted = schema.concat(yupObject(
+    Object.fromEntries(keys.map(key => [key, schema.getNested(key).meta({ stackConfigCanNoLongerBeOverridden: true })]))
+  ));
+  return notOmitted as any;
 }
 
 /**
@@ -165,11 +174,7 @@ const branchDomain = yupObject({
   allowLocalhost: yupBoolean().defined(),
 }).defined();
 
-export const branchConfigSchema = projectConfigSchema.concat(yupObject({
-  sourceOfTruth: projectConfigSchema.getNested("sourceOfTruth").meta({
-    stackConfigCanNoLongerBeOverridden: true,
-  }),
-
+export const branchConfigSchema = canNoLongerBeOverridden(projectConfigSchema, ["sourceOfTruth"]).concat(yupObject({
   rbac: branchRbacSchema,
 
   teams: yupObject({
@@ -250,6 +255,8 @@ export const organizationConfigSchema = environmentConfigSchema.concat(yupObject
 export const projectConfigDefaults = {
   sourceOfTruth: {
     type: 'hosted',
+    connectionStrings: undefined,
+    connectionString: undefined,
   },
 } satisfies DefaultsType<ProjectConfigNormalizedOverride, []>;
 
@@ -377,16 +384,17 @@ export const environmentConfigDefaults = {
 
 export const organizationConfigDefaults = {} satisfies DefaultsType<OrganizationConfigNormalizedOverride, [typeof environmentConfigDefaults, typeof branchConfigDefaults, typeof projectConfigDefaults]>;
 
-
-type DefaultsType<T, U extends any[]> = DeepReplaceAllowFunctionsForObjects<DeepOmitDefaults<DeepRequiredOrUndefined<T>, IntersectAll<{ [K in keyof U]: DeepReplaceFunctionsWithObjects<U[K]> }>>>;
-type DeepOmitDefaults<T, U> = T extends object ? (
+type _DeepOmitDefaultsImpl<T, U> = T extends object ? (
   (
     & /* keys that are both in T and U, *and* the key's value in U is not a subtype of the key's value in T */ { [K in { [Ki in keyof T & keyof U]: U[Ki] extends T[Ki] ? never : Ki }[keyof T & keyof U]]: DeepOmitDefaults<T[K], U[K] & object> }
     & /* keys that are in T but not in U */ { [K in Exclude<keyof T, keyof U>]: T[K] }
   )
 ) : T;
+type DeepOmitDefaults<T, U> = _DeepOmitDefaultsImpl<DeepFilterUndefined<T>, U>;
+type DefaultsType<T, U extends any[]> = DeepReplaceAllowFunctionsForObjects<DeepOmitDefaults<DeepRequiredOrUndefined<T>, IntersectAll<{ [K in keyof U]: DeepReplaceFunctionsWithObjects<U[K]> }>>>;
+typeAssertIs<DefaultsType<{ a: { b: Record<string, 123>, c: 456 } }, [{ a: { c: 456 } }]>, { a: { b: Record<string, 123> | ((key: string) => 123) } }>()();
 
-export type DeepReplaceAllowFunctionsForObjects<T> = T extends object ? { [K in keyof T]: DeepReplaceAllowFunctionsForObjects<T[K]> } | (string extends keyof T ? (arg: keyof T) => DeepReplaceAllowFunctionsForObjects<T[keyof T]> : never) : T;
+export type DeepReplaceAllowFunctionsForObjects<T> = T extends object ? { [K in keyof T]: DeepReplaceAllowFunctionsForObjects<T[K]> } | (string extends keyof T ? (arg: Exclude<keyof T, number>) => DeepReplaceAllowFunctionsForObjects<T[keyof T]> : never) : T;
 export type DeepReplaceFunctionsWithObjects<T> = T extends (arg: infer K extends string) => infer R ? DeepReplaceFunctionsWithObjects<Record<K, R>> : (T extends object ? { [K in keyof T]: DeepReplaceFunctionsWithObjects<T[K]> } : T);
 export type ApplyDefaults<D extends object | ((key: string) => unknown), C extends object> = DeepMerge<DeepReplaceFunctionsWithObjects<D>, C>;
 export function applyDefaults<D extends object | ((key: string) => unknown), C extends object>(defaults: D, config: C): ApplyDefaults<D, C> {
@@ -487,10 +495,27 @@ export async function getConfigOverrideErrors<T extends yup.AnySchema>(schema: T
         return yupArray(innerType ? getRestrictedSchema(path + ".[]", innerType as any) : undefined);
       }
       case "tuple": {
-        return yupTuple(schemaInfo.items.map((s, index) => getRestrictedSchema(path + `[${index}]`, s)));
+        return yupTuple(schemaInfo.items.map((s, index) => getRestrictedSchema(path + `[${index}]`, s)) as any);
       }
       case "union": {
-        return yupUnion(...schemaInfo.items.map((s, index) => getRestrictedSchema(path + `|${index}|`, s)));
+        const schemas = schemaInfo.items;
+        const nonObjectSchemas = [...schemas.entries()].filter(([index, s]) => s.meta()?.stackSchemaInfo?.type !== "object");
+        const objectSchemas = schemas.filter((s): s is yup.ObjectSchema<any> => s.meta()?.stackSchemaInfo?.type === "object");
+
+        // merge all object schemas into a single schema
+        const allObjectSchemaKeys = [...new Set(objectSchemas.flatMap(s => Object.keys(s.fields)))];
+        const mergedObjectSchema = yupObject(
+          Object.fromEntries(
+            allObjectSchemaKeys.map(key => [key, yupUnion(
+              ...objectSchemas.flatMap((s, index) => s.hasNested(key) ? [s.getNested(key)] : [])
+            )])
+          )
+        );
+
+        return yupUnion(
+          ...nonObjectSchemas.map(([index, s]) => getRestrictedSchema(path + `|variant-${index}|`, s)),
+          ...objectSchemas.length > 0 ? [getRestrictedSchema(path + (nonObjectSchemas.length > 0 ? `|variant|` : ""), mergedObjectSchema)] : [],
+        );
       }
       case "record": {
         return yupRecord(getRestrictedSchema(path + ".key", schemaInfo.keySchema) as any, getRestrictedSchema(path + ".value", schemaInfo.valueSchema));
@@ -552,11 +577,18 @@ export async function getConfigOverrideErrors<T extends yup.AnySchema>(schema: T
   }
   return Result.ok(null);
 }
-export type ValidatedToHaveNoConfigOverrideErrors<T extends yup.AnySchema> = {};
-export async function assertNoConfigOverrideErrors<T extends yup.AnySchema>(schema: T, config: unknown, options: { allowPropertiesThatCanNoLongerBeOverridden?: boolean } = {}): Promise<void> {
+export async function assertNoConfigOverrideErrors<T extends yup.AnySchema>(schema: T, config: unknown, options: { allowPropertiesThatCanNoLongerBeOverridden?: boolean, extraInfo?: any } = {}): Promise<void> {
   const res = await getConfigOverrideErrors(schema, config, options);
-  if (res.status === "error") throw new StackAssertionError(`Config override is invalid — at a place where it should have already been validated! ${res.error}`, { config, schema });
+  if (res.status === "error") throw new StackAssertionError(`Config override is invalid — at a place where it should have already been validated! ${res.error}`, { options, config, schema });
 }
+type _ValidatedToHaveNoConfigOverrideErrorsImpl<T> =
+  IsUnion<T & object> extends true ? _ValidatedToHaveNoConfigOverrideErrorsImpl<CollapseObjectUnion<T & object> | Exclude<T, object>>
+  : T extends object ? (T extends any[] ? T : { [K in keyof T]+?: _ValidatedToHaveNoConfigOverrideErrorsImpl<T[K]> })
+  : T;
+export type ValidatedToHaveNoConfigOverrideErrors<T extends yup.AnySchema> = _ValidatedToHaveNoConfigOverrideErrorsImpl<yup.InferType<T>>;
+typeAssertIs<_ValidatedToHaveNoConfigOverrideErrorsImpl<{ a: string } | { b: number } | boolean>, { a?: string, b?: number } | boolean>()();
+typeAssertExtends<_ValidatedToHaveNoConfigOverrideErrorsImpl<"abc" | 123 | null>, "abc" | 123 | null>()();
+typeAssertExtends<_ValidatedToHaveNoConfigOverrideErrorsImpl<{ a: { b: { c: string } | { d: number } } }>, { a?: { b?: { c?: string, d?: number } } }>()();
 
 /**
  * Checks whether there are any warnings in the incomplete config. A warning doesn't stop the config from being valid,
@@ -588,13 +620,12 @@ export async function getIncompleteConfigWarnings<T extends yup.AnySchema>(schem
 }
 export type ValidatedToHaveNoIncompleteConfigWarnings<T extends yup.AnySchema> = yup.InferType<T>;
 
-
 // Normalized overrides
 // ex.: { a?: { b?: number, c?: string }, d?: number }
-export type ProjectConfigNormalizedOverride = DeepPartial<ValidatedToHaveNoConfigOverrideErrors<typeof projectConfigSchema>>;
-export type BranchConfigNormalizedOverride = DeepPartial<ValidatedToHaveNoConfigOverrideErrors<typeof branchConfigSchema>>;
-export type EnvironmentConfigNormalizedOverride = DeepPartial<ValidatedToHaveNoConfigOverrideErrors<typeof environmentConfigSchema>>;
-export type OrganizationConfigNormalizedOverride = DeepPartial<ValidatedToHaveNoConfigOverrideErrors<typeof organizationConfigSchema>>;
+export type ProjectConfigNormalizedOverride = Expand<ValidatedToHaveNoConfigOverrideErrors<typeof projectConfigSchema>>;
+export type BranchConfigNormalizedOverride = Expand<ValidatedToHaveNoConfigOverrideErrors<typeof branchConfigSchema>>;
+export type EnvironmentConfigNormalizedOverride = Expand<ValidatedToHaveNoConfigOverrideErrors<typeof environmentConfigSchema>>;
+export type OrganizationConfigNormalizedOverride = Expand<ValidatedToHaveNoConfigOverrideErrors<typeof organizationConfigSchema>>;
 
 // Overrides
 // ex.: { a?: null | { b?: null | number, c: string }, d?: null | number, "a.b"?: number, "a.c"?: string }
@@ -613,10 +644,10 @@ export type OrganizationConfigOverrideOverride = OrganizationConfigOverride;
 // Incomplete configs
 // note that we infer these types from the override types, not from the schema types directly, as there is no guarantee
 // that all configs in the DB satisfy the schema (the only guarantee we make is that this once *used* to be true)
-export type ProjectIncompleteConfig = ApplyDefaults<typeof projectConfigDefaults, ProjectConfigNormalizedOverride>;
-export type BranchIncompleteConfig = ApplyDefaults<typeof branchConfigDefaults, ProjectIncompleteConfig & BranchConfigNormalizedOverride>;
-export type EnvironmentIncompleteConfig = ApplyDefaults<typeof environmentConfigDefaults, BranchIncompleteConfig & EnvironmentConfigNormalizedOverride>;
-export type OrganizationIncompleteConfig = ApplyDefaults<typeof organizationConfigDefaults, EnvironmentIncompleteConfig & OrganizationConfigNormalizedOverride>;
+export type ProjectIncompleteConfig = Expand<ApplyDefaults<typeof projectConfigDefaults, ProjectConfigNormalizedOverride>>;
+export type BranchIncompleteConfig = Expand<ApplyDefaults<typeof branchConfigDefaults, ProjectIncompleteConfig & BranchConfigNormalizedOverride>>;
+export type EnvironmentIncompleteConfig = Expand<ApplyDefaults<typeof environmentConfigDefaults, BranchIncompleteConfig & EnvironmentConfigNormalizedOverride>>;
+export type OrganizationIncompleteConfig = Expand<ApplyDefaults<typeof organizationConfigDefaults, EnvironmentIncompleteConfig & OrganizationConfigNormalizedOverride>>;
 
 // Rendered configs
 export type ProjectRenderedConfig = Omit<ProjectIncompleteConfig,
@@ -639,3 +670,10 @@ const __assertEmptyObjectIsValidProjectOverride: ProjectConfigOverride = {};
 const __assertEmptyObjectIsValidBranchOverride: BranchConfigOverride = {};
 const __assertEmptyObjectIsValidEnvironmentOverride: EnvironmentConfigOverride = {};
 const __assertEmptyObjectIsValidOrganizationOverride: OrganizationConfigOverride = {};
+typeAssertExtends<ProjectRenderedConfig, { "sourceOfTruth": any }>()();
+typeAssertExtends<BranchRenderedConfig, { "sourceOfTruth": any }>()();
+typeAssertExtends<EnvironmentRenderedConfig, { "sourceOfTruth": any }>()();
+typeAssertExtends<OrganizationRenderedConfig, { "sourceOfTruth": any }>()();
+typeAssert<BranchRenderedConfig extends { "domains": any } ? false : true>()();
+typeAssert<EnvironmentRenderedConfig extends { "domains": any } ? false : true>()();
+typeAssertExtends<OrganizationRenderedConfig, { "domains": any }>()();

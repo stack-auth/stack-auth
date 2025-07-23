@@ -7,6 +7,7 @@ import { StackAssertionError, throwErr } from "./utils/errors";
 import { decodeBasicAuthorizationHeader } from "./utils/http";
 import { allProviders } from "./utils/oauth";
 import { deepPlainClone, omit } from "./utils/objects";
+import { deindent } from "./utils/strings";
 import { isValidUrl } from "./utils/urls";
 import { isUuid } from "./utils/uuids";
 
@@ -60,29 +61,58 @@ yup.addMethod(yup.string, "nonEmpty", function (message?: string) {
 });
 
 yup.addMethod(yup.Schema, "hasNested", function (path: any) {
-  if (!path.match(/^[a-zA-Z_$:\-][a-zA-Z0-9_$:\-]*$/)) throw new StackAssertionError(`yupSchema.getNested can currently only be used with alphanumeric keys, underscores, dollar signs, colons, and hyphens. Fix this in the future. Provided key: ${path}`);
-  try {
-    yup.reach(this, path);
-    return true as any;
-  } catch (e) {
-    if (e instanceof Error && e.message.includes("The schema does not contain the path")) {
-      return false as any;
+  if (!path.match(/^[a-zA-Z_$:\-][a-zA-Z0-9_$:\-]*$/)) throw new StackAssertionError(`yupSchema.hasNested can currently only be used with alphanumeric keys, underscores, dollar signs, colons, and hyphens. Fix this in the future. Provided key: ${path}`);
+  const schemaInfo = this.meta()?.stackSchemaInfo as any;
+  if (schemaInfo?.type === "record") {
+    return schemaInfo.keySchema.isValidSync(path);
+  } else if (schemaInfo?.type === "union") {
+    return schemaInfo.items.some((s: any) => s.hasNested(path));
+  } else {
+    try {
+      yup.reach(this, path);
+      return true as any;
+    } catch (e) {
+      if (e instanceof Error && e.message.includes("The schema does not contain the path")) {
+        return false as any;
+      }
+      throw e;
     }
-    throw e;
   }
 });
 
 yup.addMethod(yup.Schema, "getNested", function (path: any) {
   if (!path.match(/^[a-zA-Z_$:\-][a-zA-Z0-9_$:\-]*$/)) throw new StackAssertionError(`yupSchema.getNested can currently only be used with alphanumeric keys, underscores, dollar signs, colons, and hyphens. Fix this in the future. Provided key: ${path}`);
-  return yup.reach(this, path) as any;
+
+  if (!this.hasNested(path as never)) throw new StackAssertionError(`Tried to call yupSchema.getNested, but key is not present in the schema. Provided key: ${path}`, { path, schema: this });
+
+  const schemaInfo = this.meta()?.stackSchemaInfo;
+  if (schemaInfo?.type === "record") {
+    return schemaInfo.valueSchema;
+  } else if (schemaInfo?.type === "union") {
+    const schemasWithNested = schemaInfo.items.filter((s: any) => s.hasNested(path));
+    return yupUnion(...schemasWithNested.map(s => s.getNested(path)));
+  } else {
+    return yup.reach(this, path) as any;
+  }
 });
 
-import.meta.vitest?.test("getNested & hasNested", ({ expect }) => {
+import.meta.vitest?.test("hasNested", ({ expect }) => {
   expect(yupObject({ a: yupString() }).hasNested("a")).toBe(true);
   expect(yupObject({}).hasNested("a" as never)).toBe(false);
-  expect(yupObject({ a: yupString() }).getNested("a")).toBeDefined();
+  expect(yupRecord(yupString(), yupString()).hasNested("a")).toBe(true);
+  expect(yupRecord(yupString().oneOf(["a"]), yupString()).hasNested("b")).toBe(false);
+  expect(yupUnion(yupString(), yupNumber()).hasNested("a" as any)).toBe(false);
+  expect(yupUnion(yupString(), yupObject({ b: yupNumber() })).hasNested("a" as never)).toBe(false);
+  expect(yupUnion(yupString(), yupObject({ a: yupNumber() })).hasNested("a" as never)).toBe(true);
+});
+import.meta.vitest?.test("getNested", ({ expect }) => {
+  expect(yupObject({ a: yupNumber() }).getNested("a").describe().type).toEqual("number");
   expect(() => yupObject({}).getNested("a" as never)).toThrow();
   expect(() => yupObject({ a: yupObject({ b: yupString() }) }).getNested("a.b" as never)).toThrow();
+  expect(yupRecord(yupString().oneOf(["a"]), yupNumber()).getNested("a").describe().type).toEqual("number");
+  expect(() => yupRecord(yupString().oneOf(["a"]), yupString()).getNested("b" as never)).toThrow();
+  expect(yupUnion(yupString(), yupObject({ a: yupNumber() })).getNested("a" as never).describe().type).toEqual("mixed");
+  expect(yupUnion(yupObject({ a: yupString() }), yupObject({ a: yupNumber() })).getNested("a").describe().type).toEqual("mixed");
 });
 
 export async function yupValidate<S extends yup.ISchema<any>>(
@@ -182,7 +212,7 @@ export function yupArray<A extends yup.Maybe<yup.AnyObject> = yup.AnyObject, B =
   // eslint-disable-next-line no-restricted-syntax
   return yup.array(...args).meta({ stackSchemaInfo: { type: "array" } });
 }
-export function yupTuple<T extends [unknown, ...unknown[]]>(schemas: yup.AnySchema[]) {
+export function yupTuple<T extends [unknown, ...unknown[]]>(schemas: { [K in keyof T]: yup.Schema<T[K]> }) {
   if (schemas.length === 0) throw new Error('yupTuple must have at least one schema');
   // eslint-disable-next-line no-restricted-syntax
   return yup.tuple<T>(schemas as any).meta({ stackSchemaInfo: { type: "tuple", items: schemas } });
@@ -237,7 +267,12 @@ export function yupUnion<T extends yup.AnySchema[]>(...args: T): yup.MixedSchema
       }
     }
     return context.createError({
-      message: `${context.path} is not matched by any of the provided schemas:\n${errors.map((e: any, i) => '\tSchema ' + i + ": \n\t\t" + e.errors.join('\n\t\t')).join('\n')}`,
+      message: deindent`
+        ${context.path} is not matched by any of the provided schemas:
+          ${errors.map((e: any, i) => deindent`
+            Schema ${i}:
+              ${e.errors.join('\n')}
+          `).join('\n')}`,
       path: context.path,
     });
   });

@@ -1,3 +1,4 @@
+import { DeepPartial } from "./objects";
 import { Join } from "./strings";
 
 export type IsAny<T> = 0 extends (1 & T) ? true : false;
@@ -14,6 +15,17 @@ export type NullishCoalesce<T, U> = T extends null | undefined ? U : T;
 
 export type LastUnionElement<U> = UnionToIntersection<U extends any ? (x: U) => 0 : never> extends (x: infer L) => 0 ? L & U : never;
 
+/**
+ * Makes a type prettier by recursively expanding all object types. For example, `Omit<{ a: 1 }, "a">` becomes just `{}`.
+ */
+export type Expand<T> = T extends object ? { [K in keyof T]: Expand<T[K]> } : T;
+
+
+/**
+ * Removes all optional undefined/never keys from an object.
+ */
+export type DeepRemoveOptionalUndefined<T> = T extends object ? { [K in keyof T]: DeepRemoveOptionalUndefined<T[K]> } : T;
+
 // why this works: https://stackoverflow.com/a/50375286
 export type UnionToIntersection<U> =
   (U extends any ? (x: U) => void : never) extends ((x: infer I) => void) ? I : never
@@ -21,6 +33,11 @@ export type UnionToIntersection<U> =
 type _UnionToTupleInner<U, R extends any[], Last> = UnionToTuple<Exclude<U, Last>, [...R, Last]>
 export type UnionToTuple<U, R extends any[] = []> = [U] extends [never] ? R : _UnionToTupleInner<U, R, LastUnionElement<U>>;
 
+export type CollapseObjectUnion<T extends object> = {
+  [K in AllUnionKeys<T>]?: T extends Record<K, infer V> ? V : never;
+};
+typeAssertIs<CollapseObjectUnion<{ a: string } | { b: number }>, { a?: string, b?: number }>()();
+typeAssertIs<CollapseObjectUnion<{ a: string } | { a: number }>, { a?: string | number }>()();
 
 export type IntersectAll<T extends any[]> = UnionToIntersection<T[number]>;
 
@@ -30,6 +47,12 @@ export type OptionalKeys<T> = {
 export type RequiredKeys<T> = {
   [K in keyof T]: {} extends Pick<T, K> ? never : K;
 }[keyof T];
+
+/**
+ * Returns ALL keys of all union elements.
+ */
+export type AllUnionKeys<T extends object> = T extends T ? keyof T : never;
+typeAssertIs<AllUnionKeys<{ a: string } | { b: number }>, "a" | "b">()();
 
 export type SubtractType<T, U> = T extends object ? { [K in keyof T]: K extends keyof U ? SubtractType<T[K], U[K]> : T[K] } : (T extends U ? never : T); // note: this only works due to the distributive property of conditional types https://www.typescriptlang.org/docs/handbook/2/conditional-types.html#distributive-conditional-types
 
@@ -66,7 +89,7 @@ export type IfAndOnlyIf<Value, Extends, Then, Otherwise> =
 export type PrettifyType<T> = T extends object ? { [K in keyof T]: T[K] } & {} : T;
 
 type _ToStringAndJoin<T extends any[], Separator extends string> =
-  T extends [infer U extends string, ...infer Rest extends any[]]
+  T extends [infer U, ...infer Rest extends any[]]
     ? `${TypeToString<U>}${Rest extends [any, ...any[]] ? `${Separator}${_ToStringAndJoin<Rest, Separator>}` : ""}`
     : "<error-joining-tuple-elements>";
 type _TypeToStringInner<T> =
@@ -77,7 +100,7 @@ type _TypeToStringInner<T> =
   : [T] extends [boolean] ? `${T}`
   : [T] extends [undefined] ? "undefined"
   : [T] extends [null] ? "null"
-  : [T] extends [string] ? `'${T}'`
+  : [T] extends [string] ? (string extends T ? "string" : `'${T}'`)
   : [T] extends [[]] ? "[]"
   : [T] extends [[any, ...any[]]] ? `[${_ToStringAndJoin<T, ", ">}]`
   : [T] extends [(infer E)[]] ? `${TypeToString<E>}[]`
@@ -134,3 +157,26 @@ typeAssertExtends<ReturnType<typeof typeAssertExtends<{a: number}, {a: 1}>>, ["T
 typeAssertExtends<ReturnType<typeof typeAssertExtends<any, never>>, ["Type assertion failed. Expected any to extend never"]>()();
 typeAssertExtends<ReturnType<typeof typeAssertExtends<false, true>>, ["Type assertion failed. Expected false to extend true"]>()();
 typeAssertExtends<ReturnType<typeof typeAssertExtends<false, never>>, ["Type assertion failed. Expected false to extend never"]>()();
+
+
+export function typeAssertIs<T, U>(): (
+  IsAny<T> extends true ? (IsAny<U> extends true ? (() => undefined) : TypeAssertionError<`Type assertion failed. Expected ${TypeToString<T>} to be ${TypeToString<U>}`>)
+    : IsAny<U> extends true ? TypeAssertionError<`Type assertion failed. Expected ${TypeToString<T>} to be ${TypeToString<U>}`>
+    : [T] extends [U] ? ([U] extends [T] ? (() => undefined) : TypeAssertionError<`Type assertion failed. Expected ${TypeToString<T>} to be ${TypeToString<U>}`>)
+    : TypeAssertionError<`Type assertion failed. Expected ${TypeToString<T>} to be ${TypeToString<U>}`>
+) {
+  return (() => undefined) as any;
+}
+
+typeAssertExtends<ReturnType<typeof typeAssertIs<"123", "123">>, () => undefined>()();
+typeAssertExtends<ReturnType<typeof typeAssertIs<{a: 1}, {a: 1}>>, () => undefined>()();
+typeAssertExtends<ReturnType<typeof typeAssertIs<DeepPartial<{a: 1}>, {a?: 1}>>, () => undefined>()();
+typeAssertExtends<ReturnType<typeof typeAssertIs<any, any>>, () => undefined>()();
+typeAssertExtends<ReturnType<typeof typeAssertIs<never, never>>, () => undefined>()();
+typeAssertExtends<ReturnType<typeof typeAssertIs<1, any>>, ["Type assertion failed. Expected 1 to be any"]>()();
+typeAssertExtends<ReturnType<typeof typeAssertIs<any, 1>>, ["Type assertion failed. Expected any to be 1"]>()();
+typeAssertExtends<ReturnType<typeof typeAssertIs<false, true>>, ["Type assertion failed. Expected false to be true"]>()();
+typeAssertExtends<ReturnType<typeof typeAssertIs<{a: number}, {a: 1}>>, ["Type assertion failed. Expected { 'a': number } to be { 'a': 1 }"]>()();
+typeAssertExtends<ReturnType<typeof typeAssertIs<any, never>>, ["Type assertion failed. Expected any to be never"]>()();
+typeAssertExtends<ReturnType<typeof typeAssertIs<false, true>>, ["Type assertion failed. Expected false to be true"]>()();
+typeAssertExtends<ReturnType<typeof typeAssertIs<false, never>>, ["Type assertion failed. Expected false to be never"]>()();
