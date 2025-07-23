@@ -278,12 +278,11 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
       }));
     }, [crud]);
   }
-  useNewEmailTemplates(): { id: string, subject: string, displayName: string, tsxSource: string }[] {
+  useNewEmailTemplates(): { id: string, displayName: string, tsxSource: string }[] {
     const crud = useAsyncCache(this._adminNewEmailTemplatesCache, [], "useNewEmailTemplates()");
     return useMemo(() => {
       return crud.map((template) => ({
         id: template.id,
-        subject: template.subject,
         displayName: template.display_name,
         tsxSource: template.tsx_source,
       }));
@@ -298,11 +297,10 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
     }));
   }
 
-  async listNewEmailTemplates(): Promise<{ id: string, subject: string, displayName: string, tsxSource: string }[]> {
+  async listNewEmailTemplates(): Promise<{ id: string, displayName: string, tsxSource: string }[]> {
     const crud = Result.orThrow(await this._adminNewEmailTemplatesCache.getOrWait([], "write-only"));
     return crud.map((template) => ({
       id: template.id,
-      subject: template.subject,
       displayName: template.display_name,
       tsxSource: template.tsx_source,
     }));

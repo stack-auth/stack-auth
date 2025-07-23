@@ -18,7 +18,6 @@ export const GET = createSmartRouteHandler({
     body: yupObject({
       templates: yupArray(yupObject({
         id: yupString().uuid().defined(),
-        subject: yupString().defined(),
         display_name: yupString().defined(),
         tsx_source: yupString().defined(),
       })).defined(),
@@ -27,7 +26,6 @@ export const GET = createSmartRouteHandler({
   async handler({ auth: { tenancy } }) {
     const templates = Object.entries(tenancy.completeConfig.emails.templateList).map(([id, template]) => ({
       id,
-      subject: template.subject,
       display_name: template.displayName,
       tsx_source: template.tsxSource,
     }));

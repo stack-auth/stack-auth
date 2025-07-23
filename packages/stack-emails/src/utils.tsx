@@ -91,6 +91,7 @@ export const EMAIL_TEMPLATES_METADATA = {
       ...userVars,
       ...projectVars,
       { name: 'signInInvitationLink', label: 'Sign In Invitation Link', defined: true, example: '<sign in invitation link>' },
+      { name: 'teamDisplayName', label: 'Team Display Name', defined: true, example: 'My Team' },
     ],
   }
 } as const satisfies Record<string, EmailTemplateMetadata>;
