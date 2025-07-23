@@ -1228,9 +1228,8 @@ function UserPage({ user }: { user: ServerUser }) {
         <UserDetails user={user} />
         <Separator />
         <ContactChannelsSection user={user} />
-        <MetadataSection user={user} />
-        <Separator />
         <OAuthProvidersSection user={user} />
+        <div />
         <MetadataSection user={user} />
       </div>
     </PageLayout>
