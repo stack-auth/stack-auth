@@ -2,7 +2,7 @@
 
 import { Github, Menu, Sparkles, X } from 'lucide-react';
 import Link from 'next/link';
-import { type ReactNode, useEffect, useState } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { AIChatDrawer } from '../chat/ai-chat';
 import { CustomSearchDialog } from '../layout/custom-search-dialog';
 import { SearchInputToggle } from '../layout/custom-search-toggle';
@@ -112,7 +112,7 @@ function HomeNavbar() {
                 <Github className="h-4 w-4" />
               </Link>
               <Link
-                href="https://discord.gg/stack-auth"
+                href="https://discord.stack-auth.com"
                 target="_blank"
                 rel="noopener noreferrer"
                 className="inline-flex h-9 w-9 items-center justify-center rounded-lg text-fd-muted-foreground transition-colors hover:bg-fd-muted hover:text-fd-foreground"
@@ -173,7 +173,7 @@ function HomeNavbar() {
                 <span>GitHub</span>
               </Link>
               <Link
-                href="https://discord.gg/stack-auth"
+                href="https://discord.stack-auth.com"
                 target="_blank"
                 rel="noopener noreferrer"
                 onClick={() => setMobileMenuOpen(false)}
@@ -219,7 +219,7 @@ function HomeNavbar() {
               <Github className="h-3.5 w-3.5" />
             </Link>
             <Link
-              href="https://discord.gg/stack-auth"
+              href="https://discord.stack-auth.com"
               target="_blank"
               rel="noopener noreferrer"
               className="inline-flex h-8 w-8 items-center justify-center rounded-full text-fd-muted-foreground transition-colors hover:bg-fd-muted hover:text-fd-foreground"

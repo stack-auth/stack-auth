@@ -8,7 +8,7 @@ it("should be able to create a webhook", async ({ expect }) => {
   const response = await niceBackendFetch("/api/v1/integrations/neon/webhooks", {
     method: "POST",
     body: {
-      url: "https://example.com/neon",
+      url: "http://localhost:12345/webhook",
       description: "Test webhook",
     },
     headers: {

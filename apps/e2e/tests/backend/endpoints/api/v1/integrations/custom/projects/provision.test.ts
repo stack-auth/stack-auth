@@ -62,10 +62,12 @@ it("should be able to provision a new project if client details are correct", as
           "oauth_providers": [
             {
               "id": "github",
+              "provider_config_id": "github",
               "type": "shared",
             },
             {
               "id": "google",
+              "provider_config_id": "google",
               "type": "shared",
             },
           ],

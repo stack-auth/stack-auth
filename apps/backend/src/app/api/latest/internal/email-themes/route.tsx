@@ -27,21 +27,15 @@ export const POST = createSmartRouteHandler({
     }).defined(),
   }),
   async handler({ body, auth: { tenancy } }) {
-    const themeList = tenancy.completeConfig.emails.themeList;
     const id = generateUuid();
     await overrideEnvironmentConfigOverride({
       tx: globalPrismaClient,
       projectId: tenancy.project.id,
       branchId: tenancy.branchId,
       environmentConfigOverrideOverride: {
-        emails: {
-          themeList: {
-            ...themeList,
-            [id]: {
-              displayName: body.display_name,
-              tsxSource: DEFAULT_EMAIL_THEMES["default-light"]
-            },
-          },
+        [`emails.themeList.${id}`]: {
+          displayName: body.display_name,
+          tsxSource: DEFAULT_EMAIL_THEMES["default-light"],
         },
       },
     });

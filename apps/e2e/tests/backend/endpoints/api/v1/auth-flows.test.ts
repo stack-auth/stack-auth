@@ -1,7 +1,7 @@
 import { it } from "../../../../helpers";
 import { Auth, ContactChannels, InternalApiKey, Project, backendContext, niceBackendFetch } from "../../../backend-helpers";
 
-it("should not be able to sign in again after signing in with OTP and disabling auth", async ({ expect }) => {
+it("should not be able to sign in again after signing in with OTP and marking the email as not verified", async ({ expect }) => {
   await Auth.Otp.signIn();
   const cc = await ContactChannels.getTheOnlyContactChannel();
   // disable used for auth on the contact channel
@@ -28,8 +28,11 @@ it("should not be able to sign in again after signing in with OTP and disabling 
       "status": 409,
       "body": {
         "code": "USER_EMAIL_ALREADY_EXISTS",
-        "details": { "email": "default-mailbox--<stripped UUID>@stack-generated.example.com" },
-        "error": "A user with email \\"default-mailbox--<stripped UUID>@stack-generated.example.com\\" already exists.",
+        "details": {
+          "email": "default-mailbox--<stripped UUID>@stack-generated.example.com",
+          "would_work_if_email_was_verified": true,
+        },
+        "error": "A user with email \\"default-mailbox--<stripped UUID>@stack-generated.example.com\\" already exists but the email is not verified. Please login to your existing account with the method you used to sign up, and then verify your email to sign in with this login method.",
       },
       "headers": Headers {
         "x-stack-known-error": "USER_EMAIL_ALREADY_EXISTS",
@@ -37,6 +40,24 @@ it("should not be able to sign in again after signing in with OTP and disabling 
       },
     }
   `);
+});
+
+it("signing in with OTP after disabling auth should create a new account", async ({ expect }) => {
+  const { userId: userId1 } = await Auth.Otp.signIn();
+  const cc = await ContactChannels.getTheOnlyContactChannel();
+  // disable used for auth on the contact channel
+  const response1 = await niceBackendFetch(`/api/v1/contact-channels/me/${cc.id}`, {
+    method: "PATCH",
+    accessType: "server",
+    body: {
+      used_for_auth: false,
+      is_verified: false,
+    },
+  });
+  expect(response1.status).toBe(200);
+
+  const { userId: userId2 } = await Auth.Otp.signIn();
+  expect(userId2).not.toBe(userId1);
 });
 
 it("should not be able to sign in with OTP anymore after signing in with password first", async ({ expect }) => {
@@ -62,8 +83,11 @@ it("should not be able to sign in with OTP anymore after signing in with passwor
       "status": 409,
       "body": {
         "code": "USER_EMAIL_ALREADY_EXISTS",
-        "details": { "email": "default-mailbox--<stripped UUID>@stack-generated.example.com" },
-        "error": "A user with email \\"default-mailbox--<stripped UUID>@stack-generated.example.com\\" already exists.",
+        "details": {
+          "email": "default-mailbox--<stripped UUID>@stack-generated.example.com",
+          "would_work_if_email_was_verified": true,
+        },
+        "error": "A user with email \\"default-mailbox--<stripped UUID>@stack-generated.example.com\\" already exists but the email is not verified. Please login to your existing account with the method you used to sign up, and then verify your email to sign in with this login method.",
       },
       "headers": Headers {
         "x-stack-known-error": "USER_EMAIL_ALREADY_EXISTS",
