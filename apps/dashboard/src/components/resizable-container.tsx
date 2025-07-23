@@ -1,4 +1,4 @@
-import { ReactNode, useCallback, useEffect, useRef, useState } from "react";
+import { ReactNode, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 
 type HandleType = 'top' | 'right' | 'bottom' | 'left';
 
@@ -37,19 +37,48 @@ const makeIframeDocumentBubbleEvents = (iframe: HTMLIFrameElement) => {
   };
 };
 
+const calculateInitialDimensions = (containerElement: HTMLElement | null) => {
+  const defaultWidth = 600;
+  const defaultHeight = 400;
+  const minWidth = 200;
+  const minHeight = 150;
+  const padding = 80; // 40px padding on each side
+
+  if (!containerElement) {
+    return { width: defaultWidth, height: defaultHeight };
+  }
+
+  const containerRect = containerElement.getBoundingClientRect();
+  const maxWidth = containerRect.width - padding;
+  const maxHeight = containerRect.height - padding;
+
+  return {
+    width: Math.min(defaultWidth, Math.max(minWidth, maxWidth)),
+    height: Math.min(defaultHeight, Math.max(minHeight, maxHeight))
+  };
+};
+
 type ResizableContainerProps = {
   children: ReactNode,
   className?: string,
 }
 
 export default function ResizableContainer({ children, className }: ResizableContainerProps) {
-  const [dimensions, setDimensions] = useState({ width: 600, height: 400 });
+  const [dimensions, setDimensions] = useState<{ width: number, height: number } | null>(null);
   const [isDragging, setIsDragging] = useState(false);
   const [activeHandle, setActiveHandle] = useState<HandleType | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const parentContainerRef = useRef<HTMLDivElement>(null);
   const dragStartRef = useRef<{ x: number, y: number, width: number, height: number } | null>(null);
   const iframeEventCleanupRef = useRef<(() => void) | null>(null);
+
+  // Set initial dimensions based on parent container size
+  useLayoutEffect(() => {
+    if (parentContainerRef.current) {
+      const initialDimensions = calculateInitialDimensions(parentContainerRef.current);
+      setDimensions(initialDimensions);
+    }
+  }, []);
 
   // Auto-constrain dimensions when container shrinks
   useEffect(() => {
@@ -62,10 +91,13 @@ export default function ResizableContainer({ children, className }: ResizableCon
       const maxWidth = containerWidth - 80; // 40px padding on each side
       const maxHeight = containerHeight - 80; // 40px padding on top/bottom
 
-      setDimensions(current => ({
-        width: Math.min(current.width, Math.max(200, maxWidth)),
-        height: Math.min(current.height, Math.max(150, maxHeight))
-      }));
+      setDimensions(current => {
+        if (!current) return current;
+        return {
+          width: Math.min(current.width, Math.max(200, maxWidth)),
+          height: Math.min(current.height, Math.max(150, maxHeight))
+        };
+      });
     });
 
     resizeObserver.observe(parentContainerRef.current);
@@ -76,6 +108,7 @@ export default function ResizableContainer({ children, className }: ResizableCon
   }, []);
 
   const handleMouseDown = useCallback((handle: HandleType, e: React.MouseEvent) => {
+    if (!dimensions) return;
     e.preventDefault();
     setIsDragging(true);
     setActiveHandle(handle);
@@ -88,7 +121,7 @@ export default function ResizableContainer({ children, className }: ResizableCon
   }, [dimensions]);
 
   const handleMouseMove = useCallback((e: MouseEvent) => {
-    if (!isDragging || !activeHandle || !dragStartRef.current) return;
+    if (!isDragging || !activeHandle || !dragStartRef.current || !dimensions) return;
 
     const deltaX = e.clientX - dragStartRef.current.x;
     const deltaY = e.clientY - dragStartRef.current.y;
@@ -160,6 +193,11 @@ export default function ResizableContainer({ children, className }: ResizableCon
       }
     };
   }, [isDragging, handleMouseMove, handleMouseUp, activeHandle]);
+
+  // Don't render until we have calculated dimensions
+  if (!dimensions) {
+    return <div ref={parentContainerRef} className="relative flex items-center justify-center h-full w-full" />;
+  }
 
   return (
     <div ref={parentContainerRef} className="relative flex items-center justify-center h-full w-full">
