@@ -251,42 +251,22 @@ const navigationItems: (Label | Item | Hidden)[] = [
   },
   {
     name: (pathname: string) => {
-      const match = pathname.match(/^\/projects\/[^\/]+\/emails\/templates\/([^\/]+)$/);
-      let item;
-      let href;
-      if (match && match[1] in EMAIL_TEMPLATES_METADATA) {
-        item = EMAIL_TEMPLATES_METADATA[match[1] as keyof typeof EMAIL_TEMPLATES_METADATA].label;
-        href = `/emails/templates/${match[1]}`;
-      } else {
-        item = "Templates";
-        href = "";
-      }
-      return [
-        { item: "Emails", href: "/emails" },
-        { item, href },
-      ];
-    },
-    regex: /^\/projects\/[^\/]+\/emails\/templates\/[^\/]+$/,
-    type: 'hidden',
-  },
-  {
-    name: (pathname: string) => {
-      const match = pathname.match(/^\/projects\/[^\/]+\/email-templates-new\/([^\/]+)$/);
+      const match = pathname.match(/^\/projects\/[^\/]+\/email-templates\/([^\/]+)$/);
       let item;
       let href;
       if (match) {
         item = <TemplateBreadcrumbItem key='template-display-name' templateId={match[1]} />;
-        href = `/email-templates-new/${match[1]}`;
+        href = `/email-templates/${match[1]}`;
       } else {
         item = "Templates";
         href = "";
       }
       return [
-        { item: "Templates", href: "/email-templates-new" },
+        { item: "Templates", href: "/email-templates" },
         { item, href },
       ];
     },
-    regex: /^\/projects\/[^\/]+\/email-templates-new\/[^\/]+$/,
+    regex: /^\/projects\/[^\/]+\/email-templates\/[^\/]+$/,
     type: 'hidden',
   },
   {

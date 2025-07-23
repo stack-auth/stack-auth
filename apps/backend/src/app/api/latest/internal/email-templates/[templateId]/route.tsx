@@ -3,7 +3,7 @@ import { globalPrismaClient } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { adaptSchema, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
 import { StatusError } from "@stackframe/stack-shared/dist/utils/errors";
-import { renderEmailWithTemplate } from "@/lib/email-rendering";
+import { getActiveEmailTheme, renderEmailWithTemplate } from "@/lib/email-rendering";
 import { KnownErrors } from "@stackframe/stack-shared/dist/known-errors";
 
 
@@ -31,11 +31,14 @@ export const PATCH = createSmartRouteHandler({
     }).defined(),
   }),
   async handler({ auth: { tenancy }, params: { templateId }, body }) {
+    if (tenancy.completeConfig.emails.server.isShared) {
+      throw new KnownErrors.RequiresCustomEmailServer();
+    }
     const templateList = tenancy.completeConfig.emails.templateList;
     if (!Object.keys(templateList).includes(templateId)) {
       throw new StatusError(StatusError.NotFound, "No template found with given id");
     }
-    const theme = tenancy.completeConfig.emails.themeList[tenancy.completeConfig.emails.theme];
+    const theme = getActiveEmailTheme(tenancy);
     const result = await renderEmailWithTemplate(body.tsx_source, theme.tsxSource, { projectDisplayName: tenancy.project.display_name });
     if (result.status === "error") {
       throw new KnownErrors.EmailRenderingError(result.error);

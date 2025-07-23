@@ -42,7 +42,7 @@ export default function PageClient(props: { templateId: string }) {
       await stackAdminApp.updateNewEmailTemplate(props.templateId, currentCode);
       toast({ title: "Template saved", variant: "success" });
     } catch (error) {
-      if (error instanceof KnownErrors.EmailRenderingError) {
+      if (error instanceof KnownErrors.EmailRenderingError || error instanceof KnownErrors.RequiresCustomEmailServer) {
         toast({ title: "Failed to save template", variant: "destructive", description: error.message });
         return;
       }

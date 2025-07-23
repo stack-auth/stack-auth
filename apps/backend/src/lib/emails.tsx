@@ -2,7 +2,7 @@ import { getProject } from '@/lib/projects';
 import { getPrismaClientForTenancy, globalPrismaClient } from '@/prisma-client';
 import { traceSpan } from '@/utils/telemetry';
 import { TEditorConfiguration } from '@stackframe/stack-emails/dist/editor/documents/editor/core';
-import { EMAIL_TEMPLATES_METADATA, renderEmailTemplate } from '@stackframe/stack-emails/dist/utils';
+import { EMAIL_TEMPLATES_METADATA } from '@stackframe/stack-emails/dist/utils';
 import { UsersCrud } from '@stackframe/stack-shared/dist/interface/crud/users';
 import { getEnvVariable } from '@stackframe/stack-shared/dist/utils/env';
 import { StackAssertionError, StatusError, captureError } from '@stackframe/stack-shared/dist/utils/errors';
@@ -12,6 +12,26 @@ import { Result } from '@stackframe/stack-shared/dist/utils/results';
 import { typedToUppercase } from '@stackframe/stack-shared/dist/utils/strings';
 import nodemailer from 'nodemailer';
 import { Tenancy, getTenancy } from './tenancies';
+import { getActiveEmailTheme, renderEmailWithTemplate } from './email-rendering';
+import { DEFAULT_TEMPLATE_IDS } from '@stackframe/stack-shared/dist/helpers/emails';
+
+
+export function getNewEmailTemplate(tenancy: Tenancy, type: keyof typeof EMAIL_TEMPLATES_METADATA) {
+  const templateList = tenancy.completeConfig.emails.templateList;
+  if (type === "email_verification") {
+    return templateList[DEFAULT_TEMPLATE_IDS.email_verification];
+  }
+  if (type === "password_reset") {
+    return templateList[DEFAULT_TEMPLATE_IDS.password_reset];
+  }
+  if (type === "magic_link") {
+    return templateList[DEFAULT_TEMPLATE_IDS.magic_link];
+  }
+  if (type === "team_invitation") {
+    return templateList[DEFAULT_TEMPLATE_IDS.team_invitation];
+  }
+  return templateList[DEFAULT_TEMPLATE_IDS.sign_in_invitation];
+}
 
 export async function getEmailTemplate(projectId: string, type: keyof typeof EMAIL_TEMPLATES_METADATA) {
   const project = await getProject(projectId);
@@ -331,22 +351,30 @@ export async function sendEmailFromTemplate(options: {
   extraVariables: Record<string, string | null>,
   version?: 1 | 2,
 }) {
-  const template = await getEmailTemplateWithDefault(options.tenancy.project.id, options.templateType, options.version);
-
+  const template = getNewEmailTemplate(options.tenancy, options.templateType);
   const variables = filterUndefined({
     projectDisplayName: options.tenancy.project.display_name,
     userDisplayName: options.user?.display_name || undefined,
     ...filterUndefined(options.extraVariables),
   });
-  const { subject, html, text } = renderEmailTemplate(template.subject, template.content, variables);
+  const theme = getActiveEmailTheme(options.tenancy);
+  const result = await renderEmailWithTemplate(template.tsxSource, theme.tsxSource, variables);
+
+  if (result.status === 'error') {
+    throw new StackAssertionError("Failed to render email template", {
+      template: template,
+      theme: theme.tsxSource,
+      variables,
+    });
+  }
 
   await sendEmail({
     tenancyId: options.tenancy.id,
     emailConfig: await getEmailConfig(options.tenancy),
     to: options.email,
-    subject,
-    html,
-    text,
+    subject: result.data.subject ?? "",
+    html: result.data.html,
+    text: result.data.text,
   });
 }
 
