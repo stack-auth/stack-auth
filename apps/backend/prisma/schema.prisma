@@ -363,6 +363,7 @@ enum StandardOAuthProviderType {
   LINKEDIN
   APPLE
   X
+  TWITCH
 }
 
 model OAuthToken {
