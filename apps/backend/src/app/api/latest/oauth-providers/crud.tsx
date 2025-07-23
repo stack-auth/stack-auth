@@ -154,6 +154,7 @@ export const oauthProviderCrudHandlers = createLazyProxy(() => createCrudHandler
       user_id: params.user_id,
       id: oauthAccount.id,
       email: oauthAccount.email || undefined,
+      provider_config_id: oauthAccount.configOAuthProviderId,
       type: providerConfig.type as any, // Type assertion to match schema
       allow_sign_in: oauthAccount.allowSignIn,
       allow_connected_accounts: oauthAccount.allowConnectedAccounts,
@@ -193,6 +194,7 @@ export const oauthProviderCrudHandlers = createLazyProxy(() => createCrudHandler
             user_id: oauthAccount.projectUserId || throwErr("OAuth account has no project user ID"),
             id: oauthAccount.id,
             email: oauthAccount.email || undefined,
+            provider_config_id: oauthAccount.configOAuthProviderId,
             type: providerConfig.type as any, // Type assertion to match schema
             allow_sign_in: oauthAccount.allowSignIn,
             allow_connected_accounts: oauthAccount.allowConnectedAccounts,
@@ -303,6 +305,7 @@ export const oauthProviderCrudHandlers = createLazyProxy(() => createCrudHandler
         user_id: params.user_id,
         id: params.provider_id,
         email: data.email ?? existingOAuthAccount.email ?? undefined,
+        provider_config_id: existingOAuthAccount.configOAuthProviderId,
         type: providerConfig.type as any,
         allow_sign_in: data.allow_sign_in ?? existingOAuthAccount.allowSignIn,
         allow_connected_accounts: data.allow_connected_accounts ?? existingOAuthAccount.allowConnectedAccounts,
@@ -398,6 +401,7 @@ export const oauthProviderCrudHandlers = createLazyProxy(() => createCrudHandler
       user_id: data.user_id,
       email: data.email,
       id: created.id,
+      provider_config_id: data.provider_config_id,
       type: providerConfig.type as any,
       allow_sign_in: data.allow_sign_in,
       allow_connected_accounts: data.allow_connected_accounts,

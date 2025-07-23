@@ -1,6 +1,7 @@
 import { KnownErrors, StackServerInterface } from "@stackframe/stack-shared";
 import { ContactChannelsCrud } from "@stackframe/stack-shared/dist/interface/crud/contact-channels";
 import { NotificationPreferenceCrud } from "@stackframe/stack-shared/dist/interface/crud/notification-preferences";
+import { OAuthProviderCrud } from "@stackframe/stack-shared/dist/interface/crud/oauth-providers";
 import { TeamApiKeysCrud, UserApiKeysCrud, teamApiKeysCreateOutputSchema, userApiKeysCreateOutputSchema } from "@stackframe/stack-shared/dist/interface/crud/project-api-keys";
 import { ProjectPermissionDefinitionsCrud, ProjectPermissionsCrud } from "@stackframe/stack-shared/dist/interface/crud/project-permissions";
 import { TeamInvitationCrud } from "@stackframe/stack-shared/dist/interface/crud/team-invitation";
@@ -30,7 +31,6 @@ import { _StackClientAppImplIncomplete } from "./client-app-impl";
 import { clientVersion, createCache, createCacheBySession, getBaseUrl, getDefaultProjectId, getDefaultPublishableClientKey, getDefaultSecretServerKey } from "./common";
 
 // NEXT_LINE_PLATFORM react-like
-import { OAuthProviderCrud } from "@stackframe/stack-shared/dist/interface/crud/oauth-providers";
 import { useAsyncCache } from "./common";
 
 export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, ProjectId extends string> extends _StackClientAppImplIncomplete<HasTokenStore, ProjectId>

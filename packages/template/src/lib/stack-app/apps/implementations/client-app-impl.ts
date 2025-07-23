@@ -3,6 +3,7 @@ import { KnownErrors, StackClientInterface } from "@stackframe/stack-shared";
 import { ContactChannelsCrud } from "@stackframe/stack-shared/dist/interface/crud/contact-channels";
 import { CurrentUserCrud } from "@stackframe/stack-shared/dist/interface/crud/current-user";
 import { NotificationPreferenceCrud } from "@stackframe/stack-shared/dist/interface/crud/notification-preferences";
+import { OAuthProviderCrud } from "@stackframe/stack-shared/dist/interface/crud/oauth-providers";
 import { TeamApiKeysCrud, UserApiKeysCrud, teamApiKeysCreateOutputSchema, userApiKeysCreateOutputSchema } from "@stackframe/stack-shared/dist/interface/crud/project-api-keys";
 import { ProjectPermissionsCrud } from "@stackframe/stack-shared/dist/interface/crud/project-permissions";
 import { ClientProjectsCrud } from "@stackframe/stack-shared/dist/interface/crud/projects";
@@ -52,7 +53,6 @@ let isReactServer = false;
 // IF_PLATFORM next
 import * as sc from "@stackframe/stack-sc";
 import { cookies } from '@stackframe/stack-sc';
-import { OAuthProviderCrud } from "@stackframe/stack-shared/dist/interface/crud/oauth-providers";
 isReactServer = sc.isReactServer;
 
 // NextNavigation.useRouter does not exist in react-server environments and some bundlers try to be helpful and throw a warning. Ignore the warning.
@@ -201,7 +201,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
     }
   );
 
-  private readonly _currentUserOAuthProvidersCache = createCacheBySession<[],OAuthProviderCrud['Client']['Read'][]>(
+  private readonly _currentUserOAuthProvidersCache = createCacheBySession<[], OAuthProviderCrud['Client']['Read'][]>(
     async (session) => {
       return await this._interface.listOAuthProviders({ user_id: 'me' }, session);
     }
