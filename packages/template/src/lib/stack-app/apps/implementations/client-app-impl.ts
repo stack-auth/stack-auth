@@ -2,6 +2,7 @@ import { WebAuthnError, startAuthentication, startRegistration } from "@simplewe
 import { KnownErrors, StackClientInterface } from "@stackframe/stack-shared";
 import { ContactChannelsCrud } from "@stackframe/stack-shared/dist/interface/crud/contact-channels";
 import { CurrentUserCrud } from "@stackframe/stack-shared/dist/interface/crud/current-user";
+import { NotificationPreferenceCrud } from "@stackframe/stack-shared/dist/interface/crud/notification-preferences";
 import { TeamApiKeysCrud, UserApiKeysCrud, teamApiKeysCreateOutputSchema, userApiKeysCreateOutputSchema } from "@stackframe/stack-shared/dist/interface/crud/project-api-keys";
 import { ProjectPermissionsCrud } from "@stackframe/stack-shared/dist/interface/crud/project-permissions";
 import { ClientProjectsCrud } from "@stackframe/stack-shared/dist/interface/crud/projects";
@@ -11,7 +12,6 @@ import { TeamMemberProfilesCrud } from "@stackframe/stack-shared/dist/interface/
 import { TeamPermissionsCrud } from "@stackframe/stack-shared/dist/interface/crud/team-permissions";
 import { TeamsCrud } from "@stackframe/stack-shared/dist/interface/crud/teams";
 import { UsersCrud } from "@stackframe/stack-shared/dist/interface/crud/users";
-import { NotificationPreferenceCrud } from "@stackframe/stack-shared/dist/interface/crud/notification-preferences";
 import { InternalSession } from "@stackframe/stack-shared/dist/sessions";
 import { scrambleDuringCompileTime } from "@stackframe/stack-shared/dist/utils/compile-time";
 import { isBrowserLike } from "@stackframe/stack-shared/dist/utils/env";
@@ -39,7 +39,7 @@ import { NotificationCategory } from "../../notification-categories";
 import { TeamPermission } from "../../permissions";
 import { AdminOwnedProject, AdminProjectUpdateOptions, Project, adminProjectCreateOptionsToCrud } from "../../projects";
 import { EditableTeamMemberProfile, Team, TeamCreateOptions, TeamInvitation, TeamUpdateOptions, TeamUser, teamCreateOptionsToCrud, teamUpdateOptionsToCrud } from "../../teams";
-import { ActiveSession, Auth, BaseUser, CurrentUser, InternalUserExtra, ProjectCurrentUser, UserExtra, UserUpdateOptions, userUpdateOptionsToCrud } from "../../users";
+import { ActiveSession, Auth, BaseUser, CurrentUser, InternalUserExtra, OAuthProvider, ProjectCurrentUser, UserExtra, UserUpdateOptions, userUpdateOptionsToCrud } from "../../users";
 import { StackClientApp, StackClientAppConstructorOptions, StackClientAppJson } from "../interfaces/client-app";
 import { _StackAdminAppImplIncomplete } from "./admin-app-impl";
 import { TokenObject, clientVersion, createCache, createCacheBySession, createEmptyTokenStore, getBaseUrl, getDefaultExtraRequestHeaders, getDefaultProjectId, getDefaultPublishableClientKey, getUrls, } from "./common";
@@ -52,6 +52,7 @@ let isReactServer = false;
 // IF_PLATFORM next
 import * as sc from "@stackframe/stack-sc";
 import { cookies } from '@stackframe/stack-sc';
+import { OAuthProviderCrud } from "@stackframe/stack-shared/dist/interface/crud/oauth-providers";
 isReactServer = sc.isReactServer;
 
 // NextNavigation.useRouter does not exist in react-server environments and some bundlers try to be helpful and throw a warning. Ignore the warning.
@@ -197,6 +198,12 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
     async (session) => {
       const results = await this._interface.listNotificationCategories(session);
       return results as NotificationPreferenceCrud['Client']['Read'][];
+    }
+  );
+
+  private readonly _currentUserOAuthProvidersCache = createCacheBySession<[],OAuthProviderCrud['Client']['Read'][]>(
+    async (session) => {
+      return await this._interface.listOAuthProviders({ user_id: 'me' }, session);
     }
   );
 
@@ -808,6 +815,43 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
       },
     };
   }
+  protected _clientOAuthProviderFromCrud(crud: OAuthProviderCrud['Client']['Read'], session: InternalSession): OAuthProvider {
+    const app = this;
+    return {
+      id: crud.id,
+      type: crud.type,
+      userId: crud.user_id,
+      email: crud.email,
+      allowSignIn: crud.allow_sign_in,
+      allowConnectedAccounts: crud.allow_connected_accounts,
+
+      async update(data: { allowSignIn?: boolean, allowConnectedAccounts?: boolean }): Promise<Result<void,
+        InstanceType<typeof KnownErrors.OAuthProviderAccountIdAlreadyUsedForSignIn>
+      >> {
+        try {
+          await app._interface.updateOAuthProvider(
+            crud.id,
+            crud.provider_config_id,
+            {
+              allow_sign_in: data.allowSignIn,
+              allow_connected_accounts: data.allowConnectedAccounts,
+            }, session);
+          await app._currentUserOAuthProvidersCache.refresh([session]);
+          return Result.ok(undefined);
+        } catch (error) {
+          if (KnownErrors.OAuthProviderAccountIdAlreadyUsedForSignIn.isInstance(error)) {
+            return Result.error(error);
+          }
+          throw error;
+        }
+      },
+
+      async delete() {
+        await app._interface.deleteOAuthProvider(crud.user_id, crud.id, session);
+        await app._currentUserOAuthProvidersCache.refresh([session]);
+      },
+    };
+  }
   protected _createAuth(session: InternalSession): Auth {
     const app = this;
     return {
@@ -1132,7 +1176,29 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
         return app._clientApiKeyFromCrud(session, result);
       },
 
+      // IF_PLATFORM react-like
+      useOAuthProviders() {
+        const results = useAsyncCache(app._currentUserOAuthProvidersCache, [session] as const, "user.useOAuthProviders()");
+        return results.map((crud) => app._clientOAuthProviderFromCrud(crud, session));
+      },
+      // END_PLATFORM
 
+      async listOAuthProviders() {
+        const results = Result.orThrow(await app._currentUserOAuthProvidersCache.getOrWait([session], "write-only"));
+        return results.map((crud) => app._clientOAuthProviderFromCrud(crud, session));
+      },
+
+      // IF_PLATFORM react-like
+      useOAuthProvider(id: string) {
+        const providers = this.useOAuthProviders();
+        return useMemo(() => providers.find((p) => p.id === id) ?? null, [providers, id]);
+      },
+      // END_PLATFORM
+
+      async getOAuthProvider(id: string) {
+        const providers = await this.listOAuthProviders();
+        return providers.find((p) => p.id === id) ?? null;
+      },
     };
   }
 

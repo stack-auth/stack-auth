@@ -11,10 +11,38 @@ import { ApiKeyCreationOptions, UserApiKey, UserApiKeyFirstView } from "../api-k
 import { AsyncStoreProperty } from "../common";
 import { OAuthConnection } from "../connected-accounts";
 import { ContactChannel, ContactChannelCreateOptions, ServerContactChannel, ServerContactChannelCreateOptions } from "../contact-channels";
+import { NotificationCategory } from "../notification-categories";
 import { AdminTeamPermission, TeamPermission } from "../permissions";
 import { AdminOwnedProject, AdminProjectUpdateOptions } from "../projects";
 import { EditableTeamMemberProfile, ServerTeam, ServerTeamCreateOptions, Team, TeamCreateOptions } from "../teams";
-import { NotificationCategory } from "../notification-categories";
+
+export type OAuthProvider = {
+  readonly id: string,
+  readonly type: string,
+  readonly userId: string,
+  readonly accountId?: string,
+  readonly email?: string,
+  readonly allowSignIn: boolean,
+  readonly allowConnectedAccounts: boolean,
+  update(data: { allowSignIn?: boolean, allowConnectedAccounts?: boolean }): Promise<Result<void,
+    InstanceType<typeof KnownErrors.OAuthProviderAccountIdAlreadyUsedForSignIn>
+  >>,
+  delete(): Promise<void>,
+};
+
+export type ServerOAuthProvider = {
+  readonly id: string,
+  readonly type: string,
+  readonly userId: string,
+  readonly accountId: string,
+  readonly email?: string,
+  readonly allowSignIn: boolean,
+  readonly allowConnectedAccounts: boolean,
+  update(data: { accountId?: string, email?: string, allowSignIn?: boolean, allowConnectedAccounts?: boolean }): Promise<Result<void,
+    InstanceType<typeof KnownErrors.OAuthProviderAccountIdAlreadyUsedForSignIn>
+  >>,
+  delete(): Promise<void>,
+};
 
 
 export type Session = {
@@ -220,6 +248,12 @@ export type UserExtra = {
   useTeamProfile(team: Team): EditableTeamMemberProfile, // THIS_LINE_PLATFORM react-like
 
   createApiKey(options: ApiKeyCreationOptions<"user">): Promise<UserApiKeyFirstView>,
+
+  useOAuthProviders(): OAuthProvider[], // THIS_LINE_PLATFORM react-like
+  listOAuthProviders(): Promise<OAuthProvider[]>,
+
+  useOAuthProvider(id: string): OAuthProvider | null, // THIS_LINE_PLATFORM react-like
+  getOAuthProvider(id: string): Promise<OAuthProvider | null>,
 }
 & AsyncStoreProperty<"apiKeys", [], UserApiKey[], true>
 & AsyncStoreProperty<"team", [id: string], Team | null, false>
