@@ -191,7 +191,6 @@ const navigationItems: (Label | Item | Hidden)[] = [
     regex: /^\/projects\/[^\/]+\/email-themes$/,
     icon: Palette,
     type: 'item',
-    requiresDevFeatureFlag: true,
   },
   {
     name: (pathname: string) => {
