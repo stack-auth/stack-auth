@@ -26,7 +26,13 @@ ALTER TABLE "OAuthToken" DROP CONSTRAINT "OAuthToken_tenancyId_configOAuthProvid
 ALTER TABLE "ProjectUserOAuthAccount" DROP CONSTRAINT "ProjectUserOAuthAccount_pkey",
 ADD COLUMN     "allowConnectedAccounts" BOOLEAN NOT NULL DEFAULT true,
 ADD COLUMN     "allowSignIn" BOOLEAN NOT NULL DEFAULT true,
-ADD COLUMN     "id" UUID NOT NULL,
+ADD COLUMN     "id" UUID;
+
+-- Generate UUIDs for existing rows
+UPDATE "ProjectUserOAuthAccount" SET "id" = gen_random_uuid() WHERE "id" IS NULL;
+
+-- Make id column NOT NULL and set as primary key
+ALTER TABLE "ProjectUserOAuthAccount" ALTER COLUMN "id" SET NOT NULL,
 ADD CONSTRAINT "ProjectUserOAuthAccount_pkey" PRIMARY KEY ("tenancyId", "id");
 
 
