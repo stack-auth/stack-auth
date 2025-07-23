@@ -21,7 +21,7 @@ import { useAdminApp } from "../../use-admin-app";
 export default function PageClient(props: { templateId: string }) {
   const stackAdminApp = useAdminApp();
   const project = stackAdminApp.useProject();
-  const templates = stackAdminApp.useNewEmailTemplates();
+  const templates = stackAdminApp.useEmailTemplates();
   const { setNeedConfirm } = useRouterConfirm();
   const template = templates.find((t) => t.id === props.templateId);
   const [currentCode, setCurrentCode] = useState(template?.tsxSource ?? "");
@@ -39,7 +39,7 @@ export default function PageClient(props: { templateId: string }) {
 
   const handleSaveTemplate = async () => {
     try {
-      await stackAdminApp.updateNewEmailTemplate(props.templateId, currentCode);
+      await stackAdminApp.updateEmailTemplate(props.templateId, currentCode);
       toast({ title: "Template saved", variant: "success" });
     } catch (error) {
       if (error instanceof KnownErrors.EmailRenderingError || error instanceof KnownErrors.RequiresCustomEmailServer) {
