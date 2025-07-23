@@ -149,26 +149,39 @@ export function DynamicDocsLayout({ children, ...props }: DynamicDocsLayoutProps
     // Extract current platform from pathname
     const currentPlatform = getCurrentPlatform(pathname);
 
+    // Helper function to safely cast platform to Platform type
+    const isPlatform = (platform: string): platform is Platform => {
+      return ['next', 'react', 'js', 'python'].includes(platform);
+    };
+
     return PLATFORMS.map(platform => {
+      // Safe type guard - if this fails, something is seriously wrong with PLATFORMS constant
+      if (!isPlatform(platform)) {
+        console.error(`Invalid platform in PLATFORMS array: ${platform}`);
+        // Fallback to a safe default to prevent runtime errors
+        platform = 'next';
+      }
+
+      const platformType = platform as Platform;
       let url: string;
 
       if (isInSdkSection(pathname)) {
         // For SDK section: check if platform supports SDK, otherwise use smart redirect
-        if (platformSupportsSDK(platform as Platform)) {
+        if (platformSupportsSDK(platformType)) {
           url = `/docs/${platform}/sdk`;
         } else {
-          url = getSmartRedirectUrl(pathname, platform as Platform);
+          url = getSmartRedirectUrl(pathname, platformType);
         }
       } else if (isInComponentsSection(pathname)) {
         // For Components section: check if platform supports components, otherwise use smart redirect
-        if (platformSupportsComponents(platform as Platform)) {
+        if (platformSupportsComponents(platformType)) {
           url = `/docs/${platform}/components`;
         } else {
-          url = getSmartRedirectUrl(pathname, platform as Platform);
+          url = getSmartRedirectUrl(pathname, platformType);
         }
       } else {
         // For normal docs: use smart redirect
-        url = getSmartRedirectUrl(pathname, platform as Platform);
+        url = getSmartRedirectUrl(pathname, platformType);
       }
 
       return {
