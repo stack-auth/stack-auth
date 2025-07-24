@@ -37,7 +37,7 @@ export const mfaVerificationCodeHandler = createVerificationCodeHandler({
     body: signInResponseSchema.defined(),
   }),
   async validate(tenancy, method, data, body) {
-    const prisma = getPrismaClientForTenancy(tenancy);
+    const prisma = await getPrismaClientForTenancy(tenancy);
     const user = await prisma.projectUser.findUniqueOrThrow({
       where: {
         tenancyId_projectUserId: {

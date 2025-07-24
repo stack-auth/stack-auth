@@ -2,13 +2,14 @@ import { PrismaNeon } from "@prisma/adapter-neon";
 import { PrismaPg } from '@prisma/adapter-pg';
 import { Prisma, PrismaClient } from "@prisma/client";
 import { OrganizationRenderedConfig } from "@stackframe/stack-shared/dist/config/schema";
-import { getNodeEnvironment } from '@stackframe/stack-shared/dist/utils/env';
+import { getEnvVariable, getNodeEnvironment } from '@stackframe/stack-shared/dist/utils/env';
 import { StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
 import { globalVar } from "@stackframe/stack-shared/dist/utils/globals";
 import { deepPlainEquals, filterUndefined, typedFromEntries, typedKeys } from "@stackframe/stack-shared/dist/utils/objects";
 import { ignoreUnhandledRejection } from "@stackframe/stack-shared/dist/utils/promises";
 import { Result } from "@stackframe/stack-shared/dist/utils/results";
 import { isPromise } from "util/types";
+import { runMigrationNeeded } from "./auto-migrations";
 import { Tenancy } from "./lib/tenancies";
 import { traceSpan } from "./utils/telemetry";
 
@@ -28,6 +29,8 @@ if (getNodeEnvironment().includes('development')) {
 }
 
 export const globalPrismaClient = prismaClientsStore.global;
+const dbString = getEnvVariable("STACK_DIRECT_DATABASE_CONNECTION_STRING", "");
+export const globalPrismaSchema = dbString === "" ? "public" : getSchemaFromConnectionString(dbString);
 
 function getNeonPrismaClient(connectionString: string) {
   let neonPrismaClient = prismaClientsStore.neon.get(connectionString);
@@ -36,11 +39,16 @@ function getNeonPrismaClient(connectionString: string) {
     neonPrismaClient = new PrismaClient({ adapter });
     prismaClientsStore.neon.set(connectionString, neonPrismaClient);
   }
+
   return neonPrismaClient;
 }
 
-export function getPrismaClientForTenancy(tenancy: Tenancy) {
-  return getPrismaClientForSourceOfTruth(tenancy.completeConfig.sourceOfTruth, tenancy.branchId);
+function getSchemaFromConnectionString(connectionString: string) {
+  return (new URL(connectionString)).searchParams.get('schema') ?? "public";
+}
+
+export async function getPrismaClientForTenancy(tenancy: Tenancy) {
+  return await getPrismaClientForSourceOfTruth(tenancy.completeConfig.sourceOfTruth, tenancy.branchId);
 }
 
 export function getPrismaSchemaForTenancy(tenancy: Tenancy) {
@@ -50,34 +58,35 @@ export function getPrismaSchemaForTenancy(tenancy: Tenancy) {
 function getPostgresPrismaClient(connectionString: string) {
   let postgresPrismaClient = prismaClientsStore.postgres.get(connectionString);
   if (!postgresPrismaClient) {
-    const schema = (new URL(connectionString)).searchParams.get('schema');
+    const schema = getSchemaFromConnectionString(connectionString);
     const adapter = new PrismaPg({ connectionString }, schema ? { schema } : undefined);
     postgresPrismaClient = {
       client: new PrismaClient({ adapter }),
-      schema: schema ?? null,
+      schema,
     };
     prismaClientsStore.postgres.set(connectionString, postgresPrismaClient);
   }
   return postgresPrismaClient;
 }
 
-export function getPrismaClientForSourceOfTruth(sourceOfTruth: OrganizationRenderedConfig["sourceOfTruth"], branchId: string) {
+export async function getPrismaClientForSourceOfTruth(sourceOfTruth: OrganizationRenderedConfig["sourceOfTruth"], branchId: string) {
   switch (sourceOfTruth.type) {
     case 'neon': {
       if (!(branchId in sourceOfTruth.connectionStrings)) {
         throw new Error(`No connection string provided for Neon source of truth for branch ${branchId}`);
       }
-      return getNeonPrismaClient(sourceOfTruth.connectionStrings[branchId]);
+      const connectionString = sourceOfTruth.connectionStrings[branchId];
+      const neonPrismaClient = getNeonPrismaClient(connectionString);
+      await runMigrationNeeded({ prismaClient: neonPrismaClient, schema: getSchemaFromConnectionString(connectionString) });
+      return neonPrismaClient;
     }
     case 'postgres': {
-      return getPostgresPrismaClient(sourceOfTruth.connectionString).client;
+      const postgresPrismaClient = getPostgresPrismaClient(sourceOfTruth.connectionString);
+      await runMigrationNeeded({ prismaClient: postgresPrismaClient.client, schema: getSchemaFromConnectionString(sourceOfTruth.connectionString) });
+      return postgresPrismaClient.client;
     }
     case 'hosted': {
       return globalPrismaClient;
-    }
-    default: {
-      // @ts-expect-error sourceOfTruth should be never, otherwise we're missing a switch-case
-      throw new StackAssertionError(`Unknown source of truth type: ${sourceOfTruth.type}`);
     }
   }
 }
@@ -85,10 +94,13 @@ export function getPrismaClientForSourceOfTruth(sourceOfTruth: OrganizationRende
 export function getPrismaSchemaForSourceOfTruth(sourceOfTruth: OrganizationRenderedConfig["sourceOfTruth"], branchId: string) {
   switch (sourceOfTruth.type) {
     case 'postgres': {
-      return getPostgresPrismaClient(sourceOfTruth.connectionString).schema ?? 'public';
+      return getSchemaFromConnectionString(sourceOfTruth.connectionString);
     }
-    default: {
-      return 'public';
+    case 'neon': {
+      return getSchemaFromConnectionString(sourceOfTruth.connectionStrings[branchId]);
+    }
+    case 'hosted': {
+      return globalPrismaSchema;
     }
   }
 }
@@ -280,13 +292,14 @@ async function rawQueryArray<Q extends RawQuery<any>[]>(tx: PrismaClientTransact
 
     // Prisma does a query for every rawQuery call by default, even if we batch them with transactions
     // So, instead we combine all queries into one, and then return them as a single JSON result
-    const combinedQuery = RawQuery.all(queries);
+    const combinedQuery = RawQuery.all([...queries]);
 
     // TODO: check that combinedQuery supports the prisma client that created tx
 
     // Supabase's index advisor only analyzes rows that start with "SELECT" (for some reason)
     // Since ours starts with "WITH", we prepend a SELECT to it
     const sqlQuery = Prisma.sql`SELECT * FROM (${combinedQuery.sql}) AS _`;
+
     const rawResult = await tx.$queryRaw(sqlQuery);
 
     const postProcessed = combinedQuery.postProcess(rawResult as any);

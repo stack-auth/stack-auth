@@ -37,10 +37,9 @@ DELETE FROM "ProxiedOAuthProviderConfig"
 WHERE "type" = 'FACEBOOK';
 
 -- AlterEnum
-BEGIN;
+-- SPLIT_STATEMENT_SENTINEL
 CREATE TYPE "ProxiedOAuthProviderType_new" AS ENUM ('GITHUB', 'GOOGLE', 'MICROSOFT', 'SPOTIFY');
 ALTER TABLE "ProxiedOAuthProviderConfig" ALTER COLUMN "type" TYPE "ProxiedOAuthProviderType_new" USING ("type"::text::"ProxiedOAuthProviderType_new");
 ALTER TYPE "ProxiedOAuthProviderType" RENAME TO "ProxiedOAuthProviderType_old";
 ALTER TYPE "ProxiedOAuthProviderType_new" RENAME TO "ProxiedOAuthProviderType";
 DROP TYPE "ProxiedOAuthProviderType_old";
-COMMIT;

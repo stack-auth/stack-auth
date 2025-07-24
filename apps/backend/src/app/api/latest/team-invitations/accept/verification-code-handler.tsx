@@ -69,7 +69,9 @@ export const teamInvitationCodeHandler = createVerificationCodeHandler({
   async handler(tenancy, {}, data, body, user) {
     if (!user) throw new KnownErrors.UserAuthenticationRequired;
 
-    const oldMembership = await getPrismaClientForTenancy(tenancy).teamMember.findUnique({
+    const prisma = await getPrismaClientForTenancy(tenancy);
+
+    const oldMembership = await prisma.teamMember.findUnique({
       where: {
         tenancyId_projectUserId_teamId: {
           tenancyId: tenancy.id,
