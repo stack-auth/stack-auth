@@ -61,7 +61,7 @@ function joinUrlPath(...segments: string[]): string {
   return segments
     .filter(segment => segment && segment.length > 0)
     .join('/')
-    .replace(/\\/+/g, '/'); // Remove duplicate slashes
+    .replace(/\/+/g, '/'); // Remove duplicate slashes
 }
 
 /**
@@ -79,7 +79,7 @@ export function pageExistsForPlatform(path: string, platform: Platform): boolean
   if (!page && !pathWithExt.includes('/index.mdx')) {
     const indexPath = normalizedPath.endsWith('.mdx')
       ? normalizedPath.replace('.mdx', '/index.mdx')
-      : joinUrlPath(normalizedPath, 'index.mdx');
+      : \`\${normalizedPath}/index.mdx\`;
     page = PLATFORM_PAGES.find(p => p.path === indexPath);
   }
 
@@ -96,12 +96,11 @@ export function getSmartPlatformRedirect(currentPath: string, targetPlatform: Pl
 
   // If the exact same page exists for target platform, use it
   if (pageExistsForPlatform(pathWithoutPlatform, targetPlatform)) {
-    const cleanPath = pathWithoutPlatform.replace(/\\.mdx$/, '');
-    return joinUrlPath('/docs', targetPlatform, cleanPath);
+    return \`/docs/\${targetPlatform}/\${pathWithoutPlatform.replace(/\\.mdx$/, '')}\`;
   }
 
   // Otherwise, redirect to overview
-  return joinUrlPath('/docs', targetPlatform, 'overview');
+  return \`/docs/\${targetPlatform}/overview\`;
 }
 
 /**
