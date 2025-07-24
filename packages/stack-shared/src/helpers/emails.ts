@@ -13,6 +13,19 @@ export const previewTemplateSource = `
   }
 `;
 
+export const emptyEmailTheme = `import { Html, Tailwind, Body } from '@react-email/components';
+export function EmailTheme({ children }: { children: React.ReactNode }) {
+  return (
+    <Html>
+      <Tailwind>
+        <Body>
+          {children}
+        </Body>
+      </Tailwind>
+    </Html>
+  );
+}`;
+
 export const LightEmailTheme = `import { Html, Tailwind, Body } from '@react-email/components';
 
 export function EmailTheme({ children }: { children: React.ReactNode }) {
@@ -42,62 +55,6 @@ export function EmailTheme({ children }: { children: React.ReactNode }) {
   );
 }`;
 
-const DefaultCardTheme = `import { Html, Head, Tailwind, Body, Container, Section, Img } from '@react-email/components';
-
-export function EmailTheme({ children }: { children: React.ReactNode }) {
-  return (
-    <Html>
-      <Head />
-      <Tailwind>
-        <Body className="mx-auto my-auto bg-white px-2 font-sans">
-          <Container className="mx-auto my-[40px] max-w-[465px] rounded border border-[#eaeaea] border-solid p-[20px]">
-            <Section className="mt-[32px]">
-              <Img
-                height={60}
-                className="mx-auto"
-                src="https://github.com/stack-auth/stack-auth/blob/main/.github/assets/logo.png?raw=true"
-              />
-            </Section>
-            {children}
-          </Container>
-        </Body>
-      </Tailwind>
-    </Html>
-  );
-}`;
-
-const DefaultCardTwoTheme = `import { Html, Head, Tailwind, Body, Container, Text, Img } from '@react-email/components';
-
-export function EmailTheme({ children }: { children: React.ReactNode }) {
-  return (
-    <Html>
-      <Head />
-      <Tailwind
-        config={{
-          theme: {
-            extend: { colors: { offwhite: '#fafbfb' } },
-          },
-        } as any}
-      >
-        <Body className="bg-offwhite font-sans text-base">
-          <Img
-            height={60}
-            className="mx-auto mb-4"
-            src="https://github.com/stack-auth/stack-auth/blob/main/.github/assets/logo.png?raw=true"
-          />
-          <Container className="bg-white p-[45px]">
-            {children}
-          </Container>
-          <Container className="mt-20">
-            <Text className="text-center text-gray-400">
-              Company Name, 123 Main St, San Francisco, CA
-            </Text>
-          </Container>
-        </Body>
-      </Tailwind>
-    </Html>
-  );
-}`;
 
 export const DEFAULT_EMAIL_THEME_ID = "1df07ae6-abf3-4a40-83a5-a1a2cbe336ac";
 
@@ -109,14 +66,6 @@ export const DEFAULT_EMAIL_THEMES = {
   "a0172b5d-cff0-463b-83bb-85124697373a": {
     displayName: 'Default Dark',
     tsxSource: DarkEmailTheme,
-  },
-  "a0172b5d-cff0-463b-83bb-85124697373b": {
-    displayName: 'Default Card',
-    tsxSource: DefaultCardTheme,
-  },
-  "a0172b5d-cff0-463b-83bb-85124697373c": {
-    displayName: 'Default Card 2',
-    tsxSource: DefaultCardTwoTheme,
   },
 };
 
