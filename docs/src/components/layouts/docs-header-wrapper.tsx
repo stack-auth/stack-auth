@@ -159,7 +159,7 @@ function MobileClickableCollapsibleSection({
               e.stopPropagation();
               setIsOpen(!isOpen);
             }}
-            className="opacity-0 group-hover:opacity-100 transition-opacity p-0.5 rounded hover:bg-fd-muted/30"
+            className="transition-opacity p-0.5 rounded hover:bg-fd-muted/30"
           >
             {isOpen ? (
               <ChevronDown className="h-3 w-3" />
