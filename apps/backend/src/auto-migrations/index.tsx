@@ -2,6 +2,7 @@ import { sqlQuoteIdent } from '@/prisma-client';
 import { Prisma, PrismaClient } from '@prisma/client';
 import { MIGRATION_FILES } from './../generated/migration-files';
 
+// The bigint key for the pg advisory lock
 const MIGRATION_LOCK_ID = 59129034;
 class MigrationNeededError extends Error {
   constructor() {
