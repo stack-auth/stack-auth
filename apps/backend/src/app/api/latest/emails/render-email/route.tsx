@@ -50,10 +50,10 @@ export const POST = createSmartRouteHandler({
     if (!templateSource) {
       throw new StatusError(400, "No template found with given id");
     }
-    const variables = { 
-      projectDisplayName: tenancy.project.display_name, 
+    const variables = {
+      projectDisplayName: tenancy.project.display_name,
       teamDisplayName: "My Team",
-      userDisplayName: "John Doe", 
+      userDisplayName: "John Doe",
       emailVerificationLink: "<email verification link>",
       otp: "3SLSWZ",
       magicLink: "<magic link>",

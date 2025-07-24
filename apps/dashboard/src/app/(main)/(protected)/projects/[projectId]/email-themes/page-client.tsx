@@ -48,7 +48,7 @@ export default function PageClient() {
     >
       <SettingCard
         title="Active Theme"
-        description={`Currently using ${selectedThemeData.displayName}`}  
+        description={`Currently using ${selectedThemeData.displayName}`}
       >
         <div className="h-72">
           <EmailPreview themeId={selectedThemeData.id} templateTsxSource={previewTemplateSource} />
