@@ -40,6 +40,32 @@ export function EmailTheme({ children }: { children: React.ReactNode }) {
   );
 }`;
 
+const NetlifyEmailTheme = `import { Html, Head, Tailwind, Body, Container, Img, Text } from '@react-email/components';
+export function EmailTheme({ children }: { children: React.ReactNode }) {
+  return (
+    <Html>
+      <Head />
+      <Tailwind>
+        <Body className="bg-offwhite font-sans text-base">
+          <Img
+            src="https://react-email-demo-jkedocxxs-resend.vercel.app/static/netlify-logo.png"
+            width="184"
+            height="75"
+            alt="Netlify"
+            className="mx-auto my-20"
+          />
+          <Container className="bg-white p-[45px]">
+            {children}
+            <Text className="mb-[45px] text-center text-gray-400">
+              Netlify, 44 Montgomery Street, Suite 300 San Francisco, CA
+            </Text>
+          </Container>
+        </Body>
+      </Tailwind>
+    </Html>
+  );
+}`;
+
 export const DEFAULT_EMAIL_THEME_ID = "1df07ae6-abf3-4a40-83a5-a1a2cbe336ac";
 
 export const DEFAULT_EMAIL_THEMES = {
@@ -50,6 +76,10 @@ export const DEFAULT_EMAIL_THEMES = {
   "a0172b5d-cff0-463b-83bb-85124697373a": {
     displayName: 'Default Dark',
     tsxSource: DarkEmailTheme,
+  },
+  "a0172b5d-cff0-463b-83bb-85124697373b": {
+    displayName: 'Netlify',
+    tsxSource: NetlifyEmailTheme,
   },
 };
 
