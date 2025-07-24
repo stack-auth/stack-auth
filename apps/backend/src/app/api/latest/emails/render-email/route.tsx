@@ -1,4 +1,4 @@
-import { renderEmailWithTemplate } from "@/lib/email-themes";
+import { renderEmailWithTemplate } from "@/lib/email-rendering";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { KnownErrors } from "@stackframe/stack-shared/dist/known-errors";
 import { adaptSchema, yupMixed, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";

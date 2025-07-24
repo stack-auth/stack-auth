@@ -72,7 +72,7 @@ export type StackAdminApp<HasTokenStore extends boolean = boolean, ProjectId ext
 
     useEmailTheme(id: string): { displayName: string, tsxSource: string }, // THIS_LINE_PLATFORM react-like
     createEmailTheme(displayName: string): Promise<{ id: string }>,
-    updateEmailTheme(id: string, tsxSource: string, previewHtml: string): Promise<{ rendered_html: string }>,
+    updateEmailTheme(id: string, tsxSource: string): Promise<void>,
 
     sendChatMessage(
       threadId: string,

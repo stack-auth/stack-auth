@@ -121,7 +121,6 @@ describe("update email theme", () => {
         method: "PATCH",
         accessType: "client",
         body: {
-          preview_html: "<p>Test content</p>",
           tsx_source: validTsxSource,
         },
       }
@@ -155,7 +154,6 @@ describe("update email theme", () => {
         method: "PATCH",
         accessType: "admin",
         body: {
-          preview_html: "<p>Test content</p>",
           tsx_source: validTsxSource,
         },
       }
@@ -179,7 +177,6 @@ describe("update email theme", () => {
         method: "PATCH",
         accessType: "admin",
         body: {
-          preview_html: "<h1>Updated Theme</h1><p>This is updated content.</p>",
           tsx_source: validTsxSource,
         },
       }
@@ -187,25 +184,7 @@ describe("update email theme", () => {
     expect(response).toMatchInlineSnapshot(`
       NiceResponse {
         "status": 200,
-        "body": {
-          "display_name": "Default Light",
-          "rendered_html": deindent\`
-            <div>Mock api key detected, themeComponent: import { Html, Tailwind, Body } from '@react-email/components';
-            export function EmailTheme({ children }: { children: React.ReactNode }) {
-              return (
-                <Html>
-                  <Tailwind>
-                    <Body>
-                      <div className="bg-white text-slate-800 p-4 rounded-lg max-w-[600px] mx-auto leading-relaxed">
-                        {children}
-                      </div>
-                    </Body>
-                  </Tailwind>
-                </Html>
-              );
-            }, htmlContent: <h1>Updated Theme</h1><p>This is updated content.</p>, </div>
-          \`,
-        },
+        "body": { "display_name": "Default Light" },
         "headers": Headers { <some fields may have been hidden> },
       }
     `);
@@ -222,7 +201,6 @@ describe("update email theme", () => {
         method: "PATCH",
         accessType: "admin",
         body: {
-          preview_html: "<p>Updated content</p>",
           tsx_source: validTsxSource,
         },
       }
@@ -346,7 +324,6 @@ describe("create, patch, and get email theme", () => {
         method: "PATCH",
         accessType: "admin",
         body: {
-          preview_html: "<h1>Custom Theme</h1><p>This is a custom theme.</p>",
           tsx_source: validTsxSource,
         },
       }
@@ -354,25 +331,7 @@ describe("create, patch, and get email theme", () => {
     expect(patchResponse).toMatchInlineSnapshot(`
       NiceResponse {
         "status": 200,
-        "body": {
-          "display_name": "Custom Theme",
-          "rendered_html": deindent\`
-            <div>Mock api key detected, themeComponent: import { Html, Tailwind, Body } from '@react-email/components';
-            export function EmailTheme({ children }: { children: React.ReactNode }) {
-              return (
-                <Html>
-                  <Tailwind>
-                    <Body>
-                      <div className="bg-white text-slate-800 p-4 rounded-lg max-w-[600px] mx-auto leading-relaxed">
-                        {children}
-                      </div>
-                    </Body>
-                  </Tailwind>
-                </Html>
-              );
-            }, htmlContent: <h1>Custom Theme</h1><p>This is a custom theme.</p>, </div>
-          \`,
-        },
+        "body": { "display_name": "Custom Theme" },
         "headers": Headers { <some fields may have been hidden> },
       }
     `);

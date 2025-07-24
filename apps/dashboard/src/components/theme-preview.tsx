@@ -1,25 +1,9 @@
 import { useAdminApp } from "@/app/(main)/(protected)/projects/[projectId]/use-admin-app";
 import { KnownErrors } from "@stackframe/stack-shared";
-import { deindent } from "@stackframe/stack-shared/dist/utils/strings";
 import { BrowserFrame, Spinner, Typography } from "@stackframe/stack-ui";
 import { Component, ReactNode, Suspense } from "react";
 import { useDebounce } from 'use-debounce';
 
-
-export const previewTemplateSource = deindent`
-  export function EmailTemplate() {
-    return (
-      <div>
-      <h2 className="mb-4 text-2xl font-bold">
-        Header text
-      </h2>
-      <p className="mb-4">
-        Body text content with some additional information.
-        </p>
-      </div>
-    );
-  }
-`;
 
 class EmailPreviewErrorBoundary extends Component<
   { children: ReactNode },

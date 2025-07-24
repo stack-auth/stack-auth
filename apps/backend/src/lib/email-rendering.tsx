@@ -4,52 +4,26 @@ import { Result } from "@stackframe/stack-shared/dist/utils/results";
 import { deindent } from "@stackframe/stack-shared/dist/utils/strings";
 import { bundleJavaScript } from '@stackframe/stack-shared/dist/utils/esbuild';
 
-
-export async function renderEmailWithTheme(
-  htmlContent: string,
-  themeComponent: string,
+export function createTemplateComponentFromHtml(
+  html: string,
   unsubscribeLink?: string,
 ) {
-  const apiKey = getEnvVariable("STACK_FREESTYLE_API_KEY");
   const unsubscribeLinkHtml = unsubscribeLink ? `<br /><br /><a href="${unsubscribeLink}">Click here to unsubscribe</a>` : "";
-  if (["development", "test"].includes(getNodeEnvironment()) && apiKey === "mock_stack_freestyle_key") {
-    return {
-      html: `<div>Mock api key detected, themeComponent: ${themeComponent}, htmlContent: ${htmlContent}, ${unsubscribeLinkHtml}</div>`,
-      text: "Mock api key detected, returning mock data",
-    };
-  }
-
-  const freestyle = new TracedFreestyleSandboxes({ apiKey });
-  const script = deindent`
-    import React from 'react';
-    import { render } from '@react-email/components';
-    ${themeComponent}
-    export default async () => {
-      const Email = <EmailTheme>
-        <div dangerouslySetInnerHTML={{ __html: ${JSON.stringify(htmlContent)}}} />
+  return deindent`
+    export function EmailTemplate() {
+      return <>
+        <div dangerouslySetInnerHTML={{ __html: ${JSON.stringify(html)}}} />
         ${unsubscribeLinkHtml}
-      </EmailTheme>;
-      return {
-        html: await render(Email),
-        text: await render(Email, { plainText: true }),
-      };
-    }
+      </>
+    };
   `;
-  const nodeModules = {
-    "@react-email/components": "0.1.1",
-  };
-  const output = await freestyle.executeScript(script, { nodeModules });
-  if ("error" in output) {
-    return Result.error(output.error as string);
-  }
-  return output.result as { html: string, text: string };
 }
 
 export async function renderEmailWithTemplate(
   templateComponent: string,
   themeComponent: string,
-  variables: Record<string, string>,
-) {
+  variables: Record<string, string> = {},
+): Promise<Result<{ html: string, text: string, schema: any, subject?: string, notificationCategory?: string }, string>> {
   const apiKey = getEnvVariable("STACK_FREESTYLE_API_KEY");
   if (["development", "test"].includes(getNodeEnvironment()) && apiKey === "mock_stack_freestyle_key") {
     return Result.ok({

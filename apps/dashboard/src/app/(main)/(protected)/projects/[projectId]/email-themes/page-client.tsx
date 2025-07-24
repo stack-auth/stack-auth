@@ -3,7 +3,8 @@
 import { Link } from "@/components/link";
 import { SettingCard } from "@/components/settings";
 import { InputField } from "@/components/form-fields";
-import ThemePreview, { previewTemplateSource } from "@/components/theme-preview";
+import ThemePreview from "@/components/theme-preview";
+import { previewTemplateSource } from "@stackframe/stack-shared/dist/helpers/emails";
 import { ActionDialog, Button, Typography } from "@stackframe/stack-ui";
 import { FormDialog } from "@/components/form-dialog";
 import { Check, Pencil } from "lucide-react";

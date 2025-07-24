@@ -441,8 +441,8 @@ export class StackAdminInterface extends StackServerInterface {
     return await response.json();
   }
 
-  async updateEmailTheme(id: string, tsxSource: string, previewHtml: string): Promise<{ display_name: string, rendered_html: string }> {
-    const response = await this.sendAdminRequest(
+  async updateEmailTheme(id: string, tsxSource: string): Promise<void> {
+    await this.sendAdminRequest(
       `/internal/email-themes/${id}`,
       {
         method: "PATCH",
@@ -451,12 +451,10 @@ export class StackAdminInterface extends StackServerInterface {
         },
         body: JSON.stringify({
           tsx_source: tsxSource,
-          preview_html: previewHtml,
         }),
       },
       null,
     );
-    return await response.json();
   }
 
   async updateNewEmailTemplate(id: string, tsxSource: string): Promise<{ rendered_html: string }> {
