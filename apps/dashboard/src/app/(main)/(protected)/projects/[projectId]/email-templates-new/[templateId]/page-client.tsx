@@ -60,10 +60,12 @@ export default function PageClient(props: { templateId: string }) {
   return (
     <VibeCodeLayout
       previewComponent={
-        <EmailPreview
-          themeId={project.config.emailTheme}
-          templateTsxSource={currentCode}
-        />
+        <div className="p-4 w-full h-full">
+          <EmailPreview
+            themeId={project.config.emailTheme}
+            templateTsxSource={currentCode}
+          />
+        </div>
       }
       editorComponent={
         <CodeEditor
