@@ -20,6 +20,7 @@ export const GET = createSmartRouteHandler({
         id: yupString().uuid().defined(),
         display_name: yupString().defined(),
         tsx_source: yupString().defined(),
+        theme_id: yupString().uuid().optional(),
       })).defined(),
     }).defined(),
   }),
@@ -28,6 +29,7 @@ export const GET = createSmartRouteHandler({
       id,
       display_name: template.displayName,
       tsx_source: template.tsxSource,
+      theme_id: template.themeId,
     }));
     return {
       statusCode: 200,

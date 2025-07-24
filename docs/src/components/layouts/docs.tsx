@@ -37,13 +37,13 @@ import Link from 'fumadocs-core/link';
 import type { PageTree } from 'fumadocs-core/server';
 import {
   NavProvider,
-  type PageStyles,
   StylesProvider,
+  type PageStyles,
 } from 'fumadocs-ui/contexts/layout';
 import { TreeContextProvider } from 'fumadocs-ui/contexts/tree';
 import { ArrowLeft, ChevronDown, ChevronRight, Languages, Sidebar as SidebarIcon } from 'lucide-react';
 import { usePathname, useRouter } from 'next/navigation';
-import { createContext, type HTMLAttributes, type ReactNode, useContext, useEffect, useMemo, useRef, useState } from 'react';
+import { createContext, useContext, useEffect, useMemo, useRef, useState, type HTMLAttributes, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { usePlatformPreference } from '../../hooks/use-platform-preference';
 import { cn } from '../../lib/cn';
@@ -79,7 +79,7 @@ import {
   type IconItemType,
   type LinkItemType,
 } from './links';
-import { type BaseLayoutProps, getLinks, omit, slot, slots } from './shared';
+import { getLinks, omit, slot, slots, type BaseLayoutProps } from './shared';
 import { isInApiSection } from './shared-header';
 import { useSidebar as useCustomSidebar } from './sidebar-context';
 
@@ -245,7 +245,7 @@ function ClickableCollapsibleSection({
               e.stopPropagation();
               setIsOpen(!isOpen);
             }}
-            className="opacity-0 group-hover:opacity-100 transition-opacity p-0.5 rounded hover:bg-fd-muted/30"
+            className="transition-opacity p-0.5 rounded hover:bg-fd-muted/30"
           >
             {isOpen ? (
               <ChevronDown className="h-3 w-3" />

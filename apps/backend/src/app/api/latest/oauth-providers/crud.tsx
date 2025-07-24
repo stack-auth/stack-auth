@@ -26,7 +26,7 @@ async function checkInputValidity(options: {
   allowSignIn: boolean,
   allowConnectedAccounts: boolean,
 })): Promise<void> {
-  const prismaClient = getPrismaClientForTenancy(options.tenancy);
+  const prismaClient = await getPrismaClientForTenancy(options.tenancy);
 
   let providerConfigId: string;
   if (options.type === 'update') {
@@ -86,7 +86,7 @@ async function checkInputValidity(options: {
 }
 
 async function ensureProviderExists(tenancy: Tenancy, userId: string, providerId: string) {
-  const prismaClient = getPrismaClientForTenancy(tenancy);
+  const prismaClient = await getPrismaClientForTenancy(tenancy);
   const provider = await prismaClient.projectUserOAuthAccount.findUnique({
     where: {
       tenancyId_id: {
@@ -144,7 +144,7 @@ export const oauthProviderCrudHandlers = createLazyProxy(() => createCrudHandler
       }
     }
 
-    const prismaClient = getPrismaClientForTenancy(auth.tenancy);
+    const prismaClient = await getPrismaClientForTenancy(auth.tenancy);
     await ensureUserExists(prismaClient, { tenancyId: auth.tenancy.id, userId: params.user_id });
     const oauthAccount = await ensureProviderExists(auth.tenancy, params.user_id, params.provider_id);
 
@@ -168,7 +168,7 @@ export const oauthProviderCrudHandlers = createLazyProxy(() => createCrudHandler
       }
     }
 
-    const prismaClient = getPrismaClientForTenancy(auth.tenancy);
+    const prismaClient = await getPrismaClientForTenancy(auth.tenancy);
 
     if (query.user_id) {
       await ensureUserExists(prismaClient, { tenancyId: auth.tenancy.id, userId: query.user_id });
@@ -210,7 +210,7 @@ export const oauthProviderCrudHandlers = createLazyProxy(() => createCrudHandler
       }
     }
 
-    const prismaClient = getPrismaClientForTenancy(auth.tenancy);
+    const prismaClient = await getPrismaClientForTenancy(auth.tenancy);
     await ensureUserExists(prismaClient, { tenancyId: auth.tenancy.id, userId: params.user_id });
     const existingOAuthAccount = await ensureProviderExists(auth.tenancy, params.user_id, params.provider_id);
 
@@ -320,7 +320,7 @@ export const oauthProviderCrudHandlers = createLazyProxy(() => createCrudHandler
       }
     }
 
-    const prismaClient = getPrismaClientForTenancy(auth.tenancy);
+    const prismaClient = await getPrismaClientForTenancy(auth.tenancy);
     await ensureUserExists(prismaClient, { tenancyId: auth.tenancy.id, userId: params.user_id });
     const existingOAuthAccount = await ensureProviderExists(auth.tenancy, params.user_id, params.provider_id);
 
@@ -347,7 +347,7 @@ export const oauthProviderCrudHandlers = createLazyProxy(() => createCrudHandler
     });
   },
   async onCreate({ auth, data }) {
-    const prismaClient = getPrismaClientForTenancy(auth.tenancy);
+    const prismaClient = await getPrismaClientForTenancy(auth.tenancy);
     const providerConfig = getProviderConfig(auth.tenancy, data.provider_config_id);
 
     await ensureUserExists(prismaClient, { tenancyId: auth.tenancy.id, userId: data.user_id });

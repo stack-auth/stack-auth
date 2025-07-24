@@ -131,9 +131,9 @@ export class StackAdminInterface extends StackServerInterface {
     return result.items;
   }
 
-  async listInternalEmailTemplatesNew(): Promise<{ id: string, display_name: string, tsx_source: string }[]> {
+  async listInternalEmailTemplatesNew(): Promise<{ id: string, display_name: string, theme_id?: string, tsx_source: string }[]> {
     const response = await this.sendAdminRequest(`/internal/email-templates`, {}, null);
-    const result = await response.json() as { templates: { id: string, display_name: string, tsx_source: string }[] };
+    const result = await response.json() as { templates: { id: string, display_name: string, theme_id?: string, tsx_source: string }[] };
     return result.templates;
   }
 
@@ -457,7 +457,7 @@ export class StackAdminInterface extends StackServerInterface {
     );
   }
 
-  async updateNewEmailTemplate(id: string, tsxSource: string): Promise<{ rendered_html: string }> {
+  async updateNewEmailTemplate(id: string, tsxSource: string, themeId?: string): Promise<{ rendered_html: string }> {
     const response = await this.sendAdminRequest(
       `/internal/email-templates/${id}`,
       {
@@ -465,7 +465,7 @@ export class StackAdminInterface extends StackServerInterface {
         headers: {
           "content-type": "application/json",
         },
-        body: JSON.stringify({ tsx_source: tsxSource }),
+        body: JSON.stringify({ tsx_source: tsxSource, theme_id: themeId }),
       },
       null,
     );

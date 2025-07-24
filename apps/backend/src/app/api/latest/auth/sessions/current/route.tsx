@@ -31,7 +31,7 @@ export const DELETE = createSmartRouteHandler({
     }
 
     try {
-      const prisma = getPrismaClientForTenancy(tenancy);
+      const prisma = await getPrismaClientForTenancy(tenancy);
       const result = await globalPrismaClient.projectUserRefreshToken.deleteMany({
         where: {
           tenancyId: tenancy.id,

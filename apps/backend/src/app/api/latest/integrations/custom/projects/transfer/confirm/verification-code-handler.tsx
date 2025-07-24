@@ -53,7 +53,9 @@ export const integrationProjectTransferCodeHandler = createVerificationCodeHandl
 
     if (provisionedProject.count === 0) throw new StatusError(400, "The project to transfer was not provisioned or has already been transferred.");
 
-    const recentDbUser = await getPrismaClientForTenancy(tenancy).projectUser.findUnique({
+    const prisma = await getPrismaClientForTenancy(tenancy);
+
+    const recentDbUser = await prisma.projectUser.findUnique({
       where: {
         tenancyId_projectUserId: {
           tenancyId: tenancy.id,
@@ -63,7 +65,7 @@ export const integrationProjectTransferCodeHandler = createVerificationCodeHandl
     }) ?? throwErr("Authenticated user not found in transaction. Something went wrong. Did the user delete their account at the wrong time? (Very unlikely.)");
     const rduServerMetadata: any = recentDbUser.serverMetadata;
 
-    await getPrismaClientForTenancy(tenancy).projectUser.update({
+    await prisma.projectUser.update({
       where: {
         tenancyId_projectUserId: {
           tenancyId: tenancy.id,
