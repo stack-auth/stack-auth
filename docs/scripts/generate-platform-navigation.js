@@ -96,11 +96,12 @@ export function getSmartPlatformRedirect(currentPath: string, targetPlatform: Pl
 
   // If the exact same page exists for target platform, use it
   if (pageExistsForPlatform(pathWithoutPlatform, targetPlatform)) {
-    return \`/docs/\${targetPlatform}/\${pathWithoutPlatform.replace(/\\.mdx$/, '')}\`;
+    const cleanPath = pathWithoutPlatform.replace(/\\.mdx$/, '');
+    return joinUrlPath('/docs', targetPlatform, cleanPath);
   }
 
   // Otherwise, redirect to overview
-  return \`/docs/\${targetPlatform}/overview\`;
+  return joinUrlPath('/docs', targetPlatform, 'overview');
 }
 
 /**
