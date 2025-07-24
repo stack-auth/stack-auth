@@ -89,8 +89,8 @@ export default function ResizableContainer({ children, className }: ResizableCon
       if (entries.length === 0) return;
       const entry = entries[0];
       const { width: containerWidth, height: containerHeight } = entry.contentRect;
-      const maxWidth = containerWidth - CONTAINER_PADDING; // 40px padding on each side
-      const maxHeight = containerHeight - CONTAINER_PADDING; // 40px padding on top/bottom
+      const maxWidth = containerWidth - CONTAINER_PADDING;
+      const maxHeight = containerHeight - CONTAINER_PADDING;
 
       setDimensions(current => {
         if (!current) return current;
