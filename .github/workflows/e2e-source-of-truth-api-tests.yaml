@@ -19,6 +19,7 @@ jobs:
       STACK_ENABLE_HARDCODED_PASSKEY_CHALLENGE_FOR_TESTING: yes
       STACK_OVERRIDE_SOURCE_OF_TRUTH: '{"type": "postgres", "connectionString": "postgres://postgres:PASSWORD-PLACEHOLDER--uqfEC1hmmv@localhost:5432/source-of-truth-db?schema=sot-schema"}'
       STACK_TEST_SOURCE_OF_TRUTH: true
+      STACK_DIRECT_DATABASE_CONNECTION_STRING: "postgres://postgres:PASSWORD-PLACEHOLDER--uqfEC1hmmv@localhost:5432/stackframe"
 
     strategy:
       matrix:
@@ -97,11 +98,14 @@ jobs:
       - name: Wait on Svix
         run: npx wait-on tcp:localhost:8113
 
-      - name: Initialize source of truth database
-        run: "STACK_DIRECT_DATABASE_CONNECTION_STRING='postgres://postgres:PASSWORD-PLACEHOLDER--uqfEC1hmmv@localhost:5432/source-of-truth-db?schema=sot-schema' pnpm run prisma -- migrate reset --force --skip-seed"
+      - name: Create source-of-truth database and schema
+        run: |
+          psql postgres://postgres:PASSWORD-PLACEHOLDER--uqfEC1hmmv@localhost:5432/postgres -c "CREATE DATABASE \"source-of-truth-db\";"
+          psql postgres://postgres:PASSWORD-PLACEHOLDER--uqfEC1hmmv@localhost:5432/source-of-truth-db -c "CREATE SCHEMA \"sot-schema\";"
 
       - name: Initialize database
-        run: pnpm run prisma -- migrate reset --force
+        run: pnpm run db:init
+
       - name: Start stack-backend in background
         uses: JarvusInnovations/background-action@v1.0.7
         with:

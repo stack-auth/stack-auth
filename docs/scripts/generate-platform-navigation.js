@@ -55,6 +55,16 @@ ${config.pages.map(page => {
 ];
 
 /**
+ * Safely join URL path segments
+ */
+function joinUrlPath(...segments: string[]): string {
+  return segments
+    .filter(segment => segment && segment.length > 0)
+    .join('/')
+    .replace(/\\/+/g, '/'); // Remove duplicate slashes
+}
+
+/**
  * Check if a specific page exists for a given platform
  */
 export function pageExistsForPlatform(path: string, platform: Platform): boolean {
@@ -62,7 +72,17 @@ export function pageExistsForPlatform(path: string, platform: Platform): boolean
   const normalizedPath = path.replace(/^\\//, '');
   const pathWithExt = normalizedPath.endsWith('.mdx') ? normalizedPath : \`\${normalizedPath}.mdx\`;
 
-  const page = PLATFORM_PAGES.find(p => p.path === pathWithExt);
+  // First try to find exact match
+  let page = PLATFORM_PAGES.find(p => p.path === pathWithExt);
+
+  // If not found and path doesn't end with index, try appending /index.mdx
+  if (!page && !pathWithExt.includes('/index.mdx')) {
+    const indexPath = normalizedPath.endsWith('.mdx')
+      ? normalizedPath.replace('.mdx', '/index.mdx')
+      : \`\${normalizedPath}/index.mdx\`;
+    page = PLATFORM_PAGES.find(p => p.path === indexPath);
+  }
+
   return page?.platforms.includes(platform) ?? false;
 }
 
@@ -76,11 +96,12 @@ export function getSmartPlatformRedirect(currentPath: string, targetPlatform: Pl
 
   // If the exact same page exists for target platform, use it
   if (pageExistsForPlatform(pathWithoutPlatform, targetPlatform)) {
-    return \`/docs/\${targetPlatform}/\${pathWithoutPlatform.replace(/\\.mdx$/, '')}\`;
+    const cleanPath = pathWithoutPlatform.replace(/\\.mdx$/, '');
+    return joinUrlPath('/docs', targetPlatform, cleanPath);
   }
 
   // Otherwise, redirect to overview
-  return \`/docs/\${targetPlatform}/overview\`;
+  return joinUrlPath('/docs', targetPlatform, 'overview');
 }
 
 /**

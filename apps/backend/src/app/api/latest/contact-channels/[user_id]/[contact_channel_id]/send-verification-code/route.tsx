@@ -53,7 +53,9 @@ export const POST = createSmartRouteHandler({
       }
     }
 
-    const contactChannel = await getPrismaClientForTenancy(auth.tenancy).contactChannel.findUnique({
+    const prisma = await getPrismaClientForTenancy(auth.tenancy);
+
+    const contactChannel = await prisma.contactChannel.findUnique({
       where: {
         tenancyId_projectUserId_id: {
           tenancyId: auth.tenancy.id,

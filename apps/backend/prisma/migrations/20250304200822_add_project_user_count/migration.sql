@@ -8,6 +8,8 @@ UPDATE "Project" SET "userCount" = (
 );
 
 -- Create function to update userCount
+-- SPLIT_STATEMENT_SENTINEL
+-- SINGLE_STATEMENT_SENTINEL
 CREATE OR REPLACE FUNCTION update_project_user_count()
 RETURNS TRIGGER AS $$
 BEGIN
@@ -30,6 +32,7 @@ BEGIN
     RETURN NULL;
 END;
 $$ LANGUAGE plpgsql;
+-- SPLIT_STATEMENT_SENTINEL
 
 -- Create triggers
 DROP TRIGGER IF EXISTS project_user_insert_trigger ON "ProjectUser";
