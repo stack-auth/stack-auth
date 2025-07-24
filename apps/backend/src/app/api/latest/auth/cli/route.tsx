@@ -33,7 +33,7 @@ export const POST = createSmartRouteHandler({
     const expiresAt = new Date(Date.now() + expires_in_millis);
 
     // Create a new CLI auth attempt
-    const prisma = getPrismaClientForTenancy(tenancy);
+    const prisma = await getPrismaClientForTenancy(tenancy);
     const cliAuth = await prisma.cliAuthAttempt.create({
       data: {
         tenancyId: tenancy.id,

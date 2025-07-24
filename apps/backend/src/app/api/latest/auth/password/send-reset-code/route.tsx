@@ -35,7 +35,7 @@ export const POST = createSmartRouteHandler({
       throw new KnownErrors.PasswordAuthenticationNotEnabled();
     }
 
-    const prisma = getPrismaClientForTenancy(tenancy);
+    const prisma = await getPrismaClientForTenancy(tenancy);
 
     // TODO filter in the query
     const contactChannel = await getAuthContactChannel(

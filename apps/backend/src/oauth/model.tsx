@@ -136,7 +136,8 @@ export class OAuthModel implements AuthorizationCodeModel {
   async saveToken(token: Token, client: Client, user: User): Promise<Token | Falsey> {
     if (token.refreshToken) {
       const tenancy = await getSoleTenancyFromProjectBranch(...getProjectBranchFromClientId(client.id));
-      const projectUser = await getPrismaClientForTenancy(tenancy).projectUser.findUniqueOrThrow({
+      const prisma = await getPrismaClientForTenancy(tenancy);
+      const projectUser = await prisma.projectUser.findUniqueOrThrow({
         where: {
           tenancyId_projectUserId: {
             tenancyId: tenancy.id,
