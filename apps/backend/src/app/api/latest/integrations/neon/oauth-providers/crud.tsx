@@ -160,7 +160,7 @@ export const oauthProvidersCrudHandlers = createLazyProxy(() => createCrudHandle
       data: {
         config: {
           oauth_providers: Object.values(auth.tenancy.config.auth.oauth.providers)
-            .filter(provider =>provider.type !== params.oauth_provider_id)
+            .filter(provider => provider.type !== params.oauth_provider_id)
             .map(oauthProviderConfigToLegacyConfig),
         }
       }
