@@ -61,7 +61,7 @@ function joinUrlPath(...segments: string[]): string {
   return segments
     .filter(segment => segment && segment.length > 0)
     .join('/')
-    .replace(/\/+/g, '/'); // Remove duplicate slashes
+    .replace(/\\/+/g, '/'); // Remove duplicate slashes
 }
 
 /**
