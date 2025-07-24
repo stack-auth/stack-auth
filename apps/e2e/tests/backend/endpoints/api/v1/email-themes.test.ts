@@ -92,14 +92,13 @@ describe("get email theme", () => {
           "display_name": "Default Light",
           "tsx_source": deindent\`
             import { Html, Tailwind, Body } from '@react-email/components';
+            
             export function EmailTheme({ children }: { children: React.ReactNode }) {
               return (
                 <Html>
                   <Tailwind>
-                    <Body>
-                      <div className="bg-white text-slate-800 p-4 rounded-lg max-w-[600px] mx-auto leading-relaxed">
-                        {children}
-                      </div>
+                    <Body className="bg-white text-black p-2">
+                      {children}
                     </Body>
                   </Tailwind>
                 </Html>
@@ -267,6 +266,14 @@ describe("create email theme", () => {
             },
             {
               "display_name": "Default Dark",
+              "id": "<stripped UUID>",
+            },
+            {
+              "display_name": "Default Card",
+              "id": "<stripped UUID>",
+            },
+            {
+              "display_name": "Default Card 2",
               "id": "<stripped UUID>",
             },
           ],
