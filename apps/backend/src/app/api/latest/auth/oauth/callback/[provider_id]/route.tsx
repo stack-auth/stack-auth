@@ -112,7 +112,7 @@ const handler = createSmartRouteHandler({
     if (!tenancy) {
       throw new StackAssertionError("Tenancy in outerInfo not found; has it been deleted?", { tenancyId });
     }
-    const prisma = getPrismaClientForTenancy(tenancy);
+    const prisma = await getPrismaClientForTenancy(tenancy);
 
     try {
       if (outerInfoDB.expiresAt < new Date()) {

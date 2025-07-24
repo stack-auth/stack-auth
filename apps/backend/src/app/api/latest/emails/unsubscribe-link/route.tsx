@@ -40,7 +40,10 @@ export async function GET(request: NextRequest) {
   });
 
   const tenancy = await getSoleTenancyFromProjectBranch(verificationCode.projectId, verificationCode.branchId);
-  await getPrismaClientForTenancy(tenancy).userNotificationPreference.upsert({
+
+  const prisma = await getPrismaClientForTenancy(tenancy);
+
+  await prisma.userNotificationPreference.upsert({
     where: {
       tenancyId_projectUserId_notificationCategoryId: {
         tenancyId: tenancy.id,

@@ -58,7 +58,7 @@ async function seed() {
   }
 
   const internalTenancy = await getSoleTenancyFromProjectBranch("internal", DEFAULT_BRANCH_ID);
-  const internalPrisma = getPrismaClientForTenancy(internalTenancy);
+  const internalPrisma = await getPrismaClientForTenancy(internalTenancy);
 
   internalProject = await createOrUpdateProject({
     projectId: 'internal',
@@ -142,7 +142,7 @@ async function seed() {
       }
 
       if (adminGithubId) {
-        const githubAccount = await getPrismaClientForTenancy(internalTenancy).projectUserOAuthAccount.findFirst({
+        const githubAccount = await internalPrisma.projectUserOAuthAccount.findFirst({
           where: {
             tenancyId: internalTenancy.id,
             configOAuthProviderId: 'github',
@@ -153,7 +153,7 @@ async function seed() {
         if (githubAccount) {
           console.log(`GitHub account already exists, skipping creation`);
         } else {
-          await getPrismaClientForTenancy(internalTenancy).projectUserOAuthAccount.create({
+          await internalPrisma.projectUserOAuthAccount.create({
             data: {
               tenancyId: internalTenancy.id,
               projectUserId: newUser.projectUserId,

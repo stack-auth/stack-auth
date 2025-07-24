@@ -68,7 +68,9 @@ export const teamsCrudHandlers = createLazyProxy(() => createCrudHandlers(teamsC
       addUserId = auth.user.id;
     }
 
-    const db = await retryTransaction(getPrismaClientForTenancy(auth.tenancy), async (tx) => {
+    const prisma = await getPrismaClientForTenancy(auth.tenancy);
+
+    const db = await retryTransaction(prisma, async (tx) => {
       const db = await tx.team.create({
         data: {
           displayName: data.display_name,
@@ -105,15 +107,17 @@ export const teamsCrudHandlers = createLazyProxy(() => createCrudHandlers(teamsC
     return result;
   },
   onRead: async ({ params, auth }) => {
+    const prisma = await getPrismaClientForTenancy(auth.tenancy);
+
     if (auth.type === 'client') {
-      await ensureTeamMembershipExists(getPrismaClientForTenancy(auth.tenancy), {
+      await ensureTeamMembershipExists(prisma, {
         tenancyId: auth.tenancy.id,
         teamId: params.team_id,
         userId: auth.user?.id ?? throwErr(new KnownErrors.UserAuthenticationRequired),
       });
     }
 
-    const db = await getPrismaClientForTenancy(auth.tenancy).team.findUnique({
+    const db = await prisma.team.findUnique({
       where: {
         tenancyId_teamId: {
           tenancyId: auth.tenancy.id,
@@ -129,7 +133,8 @@ export const teamsCrudHandlers = createLazyProxy(() => createCrudHandlers(teamsC
     return teamPrismaToCrud(db);
   },
   onUpdate: async ({ params, auth, data }) => {
-    const db = await retryTransaction(getPrismaClientForTenancy(auth.tenancy), async (tx) => {
+    const prisma = await getPrismaClientForTenancy(auth.tenancy);
+    const db = await retryTransaction(prisma, async (tx) => {
       if (auth.type === 'client' && data.profile_image_url && !validateBase64Image(data.profile_image_url)) {
         throw new StatusError(400, "Invalid profile image URL");
       }
@@ -174,7 +179,8 @@ export const teamsCrudHandlers = createLazyProxy(() => createCrudHandlers(teamsC
     return result;
   },
   onDelete: async ({ params, auth }) => {
-    await retryTransaction(getPrismaClientForTenancy(auth.tenancy), async (tx) => {
+    const prisma = await getPrismaClientForTenancy(auth.tenancy);
+    await retryTransaction(prisma, async (tx) => {
       if (auth.type === 'client') {
         await ensureUserTeamPermissionExists(tx, {
           tenancy: auth.tenancy,
@@ -213,7 +219,8 @@ export const teamsCrudHandlers = createLazyProxy(() => createCrudHandlers(teamsC
       }
     }
 
-    const db = await getPrismaClientForTenancy(auth.tenancy).team.findMany({
+    const prisma = await getPrismaClientForTenancy(auth.tenancy);
+    const db = await prisma.team.findMany({
       where: {
         tenancyId: auth.tenancy.id,
         ...query.user_id ? {

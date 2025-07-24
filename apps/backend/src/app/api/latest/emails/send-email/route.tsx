@@ -62,7 +62,9 @@ export const POST = createSmartRouteHandler({
     }
     const activeTheme = themeList[auth.tenancy.completeConfig.emails.theme];
 
-    const users = await getPrismaClientForTenancy(auth.tenancy).projectUser.findMany({
+    const prisma = await getPrismaClientForTenancy(auth.tenancy);
+
+    const users = await prisma.projectUser.findMany({
       where: {
         tenancyId: auth.tenancy.id,
         projectUserId: {
