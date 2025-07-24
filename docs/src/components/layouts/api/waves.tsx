@@ -299,9 +299,6 @@ const Waves: React.FC<WavesProps> = ({
     }
 
     function movePoints(time: number) {
-      // Skip all motion if user prefers reduced motion
-      if (prefersReducedMotion) return;
-
       const lines = linesRef.current;
       const mouse = mouseRef.current;
       const noise = noiseRef.current;
@@ -354,9 +351,8 @@ const Waves: React.FC<WavesProps> = ({
     }
 
     function moved(point: Point, withCursor = true): { x: number, y: number } {
-      // If reduced motion is preferred, only use the base position
-      const x = point.x + (prefersReducedMotion ? 0 : point.wave.x) + (withCursor && !prefersReducedMotion ? point.cursor.x : 0);
-      const y = point.y + (prefersReducedMotion ? 0 : point.wave.y) + (withCursor && !prefersReducedMotion ? point.cursor.y : 0);
+      const x = point.x + point.wave.x + (withCursor ? point.cursor.x : 0);
+      const y = point.y + point.wave.y + (withCursor ? point.cursor.y : 0);
       return { x: Math.round(x * 10) / 10, y: Math.round(y * 10) / 10 };
     }
 
@@ -386,27 +382,22 @@ const Waves: React.FC<WavesProps> = ({
 
     function tick(t: number) {
       if (!container) return;
+      const mouse = mouseRef.current;
+      mouse.sx += (mouse.x - mouse.sx) * 0.1;
+      mouse.sy += (mouse.y - mouse.sy) * 0.1;
+      const dx = mouse.x - mouse.lx,
+        dy = mouse.y - mouse.ly;
+      const d = Math.hypot(dx, dy);
+      mouse.v = d;
+      mouse.vs += (d - mouse.vs) * 0.1;
+      mouse.vs = Math.min(100, mouse.vs);
+      mouse.lx = mouse.x;
+      mouse.ly = mouse.y;
+      mouse.a = Math.atan2(dy, dx);
+      container.style.setProperty("--x", `${mouse.sx}px`);
+      container.style.setProperty("--y", `${mouse.sy}px`);
 
-      // Only update mouse tracking and motion if reduced motion is not preferred
-      if (!prefersReducedMotion) {
-        const mouse = mouseRef.current;
-        mouse.sx += (mouse.x - mouse.sx) * 0.1;
-        mouse.sy += (mouse.y - mouse.sy) * 0.1;
-        const dx = mouse.x - mouse.lx,
-          dy = mouse.y - mouse.ly;
-        const d = Math.hypot(dx, dy);
-        mouse.v = d;
-        mouse.vs += (d - mouse.vs) * 0.1;
-        mouse.vs = Math.min(100, mouse.vs);
-        mouse.lx = mouse.x;
-        mouse.ly = mouse.y;
-        mouse.a = Math.atan2(dy, dx);
-        container.style.setProperty("--x", `${mouse.sx}px`);
-        container.style.setProperty("--y", `${mouse.sy}px`);
-
-        movePoints(t);
-      }
-
+      movePoints(t);
       drawLines();
       frameIdRef.current = requestAnimationFrame(tick);
     }
@@ -416,17 +407,11 @@ const Waves: React.FC<WavesProps> = ({
       setLines();
     }
     function onMouseMove(e: MouseEvent) {
-      // Don't track mouse if reduced motion is preferred
-      if (!prefersReducedMotion) {
-        updateMouse(e.clientX, e.clientY);
-      }
+      updateMouse(e.clientX, e.clientY);
     }
     function onTouchMove(e: TouchEvent) {
-      // Don't track touch if reduced motion is preferred
-      if (!prefersReducedMotion) {
-        const touch = e.touches[0];
-        updateMouse(touch.clientX, touch.clientY);
-      }
+      const touch = e.touches[0];
+      updateMouse(touch.clientX, touch.clientY);
     }
     function updateMouse(x: number, y: number) {
       const mouse = mouseRef.current;
@@ -457,7 +442,12 @@ const Waves: React.FC<WavesProps> = ({
         cancelAnimationFrame(frameIdRef.current);
       }
     };
-  }, [prefersReducedMotion]);
+  }, []);
+
+  // If user prefers reduced motion, don't render the waves at all
+  if (prefersReducedMotion) {
+    return null;
+  }
 
   return (
     <div
