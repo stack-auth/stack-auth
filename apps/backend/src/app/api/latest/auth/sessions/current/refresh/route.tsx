@@ -29,7 +29,7 @@ export const POST = createSmartRouteHandler({
   async handler({ auth: { tenancy }, headers: { "x-stack-refresh-token": refreshTokenHeaders } }, fullReq) {
     const refreshToken = refreshTokenHeaders[0];
 
-    const prisma = getPrismaClientForTenancy(tenancy);
+    const prisma = await getPrismaClientForTenancy(tenancy);
     const sessionObj = await globalPrismaClient.projectUserRefreshToken.findFirst({
       where: {
         tenancyId: tenancy.id,

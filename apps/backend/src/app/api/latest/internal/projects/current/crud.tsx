@@ -41,8 +41,10 @@ export const projectsCrudHandlers = createLazyProxy(() => createCrudHandlers(pro
       }
     });
 
+    const prisma = await getPrismaClientForTenancy(auth.tenancy);
+
     // delete managed ids from users
-    const users = await getPrismaClientForTenancy(auth.tenancy).projectUser.findMany({
+    const users = await prisma.projectUser.findMany({
       where: {
         mirroredProjectId: 'internal',
         serverMetadata: {
@@ -57,7 +59,7 @@ export const projectsCrudHandlers = createLazyProxy(() => createCrudHandlers(pro
           (id: any) => id !== auth.project.id
         ) as string[];
 
-      await getPrismaClientForTenancy(auth.tenancy).projectUser.update({
+      await prisma.projectUser.update({
         where: {
           mirroredProjectId_mirroredBranchId_projectUserId: {
             mirroredProjectId: 'internal',
