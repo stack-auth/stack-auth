@@ -512,11 +512,16 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
     };
   }
 
-  async convertEmailTemplates(projectId: string): Promise<{ templatesConverted: number, totalTemplates: number }> {
+  async convertEmailTemplates(projectId: string): Promise<{ templatesConverted: number, totalTemplates: number, rendered: Array<{ legacyTemplateContent: any, templateType: string, renderedHtml: string | null }> }> {
     const result = await this._interface.convertEmailTemplates(projectId);
     return {
       templatesConverted: result.templates_converted,
       totalTemplates: result.total_templates,
+      rendered: result.rendered.map(item => ({
+        legacyTemplateContent: item.legacy_template_content,
+        templateType: item.template_type,
+        renderedHtml: item.rendered_html,
+      })),
     };
   }
 }

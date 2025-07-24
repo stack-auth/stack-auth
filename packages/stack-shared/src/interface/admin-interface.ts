@@ -484,7 +484,7 @@ export class StackAdminInterface extends StackServerInterface {
     return await response.json();
   }
 
-  async convertEmailTemplates(projectId: string): Promise<{ templates_converted: number, total_templates: number }> {
+  async convertEmailTemplates(projectId: string): Promise<{ templates_converted: number, total_templates: number, rendered: Array<{ legacy_template_content: any, template_type: string, rendered_html: string | null }> }> {
     const response = await this.sendAdminRequest(
       `/internal/email-templates/temp/${projectId}`,
       {

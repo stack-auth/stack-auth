@@ -1,5 +1,7 @@
 "use client";
 
+import { Reader } from "@stackframe/stack-emails/dist/editor/email-builder/index";
+import { renderString, objectStringMap } from "@stackframe/stack-emails/dist/utils";
 import { Button, Card, CardContent, CardDescription, CardHeader, CardTitle, Progress } from "@stackframe/stack-ui";
 import { CheckCircle, Circle, Loader2 } from "lucide-react";
 import { useState } from "react";
@@ -7,31 +9,34 @@ import { useAdminApp } from "../../use-admin-app";
 
 type MigrationStep = "idle" | "fetching-projects" | "projects-fetched" | "converting" | "completed";
 
+type RenderedTemplate = {
+  legacyTemplateContent: any,
+  templateType: string,
+  renderedHtml: string | null,
+};
+
 export function PageClient() {
   const adminApp = useAdminApp();
   const [step, setStep] = useState<MigrationStep>("idle");
   const [projectIds, setProjectIds] = useState<string[]>([]);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [isLoading, setIsLoading] = useState(false);
-  const [results, setResults] = useState<Array<{ projectId: string, success: boolean, templatesConverted?: number, totalTemplates?: number, error?: string }>>([]);
+  const [results, setResults] = useState<Array<{
+    projectId: string,
+    success: boolean,
+    templatesConverted?: number,
+    totalTemplates?: number,
+    rendered?: RenderedTemplate[],
+    error?: string,
+  }>>([]);
 
   const fetchAllProjectIds = async () => {
     setIsLoading(true);
     setStep("fetching-projects");
 
     try {
-      let allProjectIds: string[] = [];
-      let cursor: string | null = null;
-
-      do {
-        const response = await adminApp.getAllProjectsIdsForMigration(cursor || undefined);
-        allProjectIds = [...allProjectIds, ...response.projectIds];
-        cursor = response.nextCursor;
-
-        // Update state to show progress
-        setProjectIds([...allProjectIds]);
-      } while (cursor !== null);
-
+      const response = await adminApp.getAllProjectsIdsForMigration();
+      setProjectIds(response.projectIds);
       setStep("projects-fetched");
     } catch (error) {
       console.error("Error fetching project IDs:", error);
@@ -57,7 +62,8 @@ export function PageClient() {
             projectId,
             success: true,
             templatesConverted: result.templatesConverted,
-            totalTemplates: result.totalTemplates
+            totalTemplates: result.totalTemplates,
+            rendered: result.rendered,
           }]);
         } catch (error) {
           setResults(prev => [...prev, {
@@ -75,6 +81,13 @@ export function PageClient() {
       setIsLoading(false);
     }
   };
+
+  const allRenderedTemplates = results.flatMap(result =>
+    result.rendered?.map(template => ({
+      ...template,
+      projectId: result.projectId,
+    })) || []
+  );
 
   const progressPercentage = projectIds.length > 0 ? (currentIndex / projectIds.length) * 100 : 0;
 
@@ -132,8 +145,7 @@ export function PageClient() {
           >
             {step === "fetching-projects" ? (
               <>
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                Fetching Project IDs... ({projectIds.length} found)
+                Fetching Project IDs...
               </>
             ) : (
               "Get Project IDs"
@@ -173,7 +185,6 @@ export function PageClient() {
           >
             {step === "converting" ? (
               <>
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                 Converting... ({currentIndex}/{projectIds.length})
               </>
             ) : step === "completed" ? (
@@ -236,6 +247,45 @@ export function PageClient() {
           </CardContent>
         </Card>
       )}
+
+      {/* Template Previews */}
+      <div className="space-y-6">
+        {allRenderedTemplates.map((template, index) => (
+          <div key={index} className="border rounded-lg p-4">
+            <div className="mb-4">
+              <h4 className="text-sm font-medium">
+                {template.templateType} - Project: {template.projectId}
+              </h4>
+            </div>
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 min-h-[200px]">
+              {/* Legacy Template Content */}
+              {template.legacyTemplateContent && (
+                <div className="p-2">
+                  <Reader document={objectStringMap(template.legacyTemplateContent, (str) => renderString(str, {
+                    projectDisplayName: "projectDisplayName",
+                    userDisplayName: "userDisplayName",
+                    teamDisplayName: "teamDisplayName",
+                    otp: "otp",
+                  }))} rootBlockId="root" />
+                </div>
+              )}
+
+              {/* Rendered HTML */}
+              {template.renderedHtml ? (
+                <iframe
+                  srcDoc={template.renderedHtml}
+                  className="w-full h-full border-0"
+                  title={`Rendered ${template.templateType}`}
+                />
+              ) : (
+                <div className="p-4 text-sm text-muted-foreground">
+                  Failed to render template
+                </div>
+              )}
+            </div>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
