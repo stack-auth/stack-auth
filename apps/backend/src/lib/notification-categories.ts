@@ -31,7 +31,10 @@ export const hasNotificationEnabled = async (tenancy: Tenancy, userId: string, n
   if (!notificationCategory) {
     throw new StackAssertionError('Invalid notification category id', { notificationCategoryId });
   }
-  const userNotificationPreference = await getPrismaClientForTenancy(tenancy).userNotificationPreference.findFirst({
+
+  const prisma = await getPrismaClientForTenancy(tenancy);
+
+  const userNotificationPreference = await prisma.userNotificationPreference.findFirst({
     where: {
       tenancyId: tenancy.id,
       projectUserId: userId,

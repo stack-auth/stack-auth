@@ -46,7 +46,7 @@ async function loadUsersByCountry(tenancy: Tenancy): Promise<Record<string, numb
 
 async function loadTotalUsers(tenancy: Tenancy, now: Date): Promise<DataPoints> {
   const schema = getPrismaSchemaForTenancy(tenancy);
-  const prisma = getPrismaClientForTenancy(tenancy);
+  const prisma = await getPrismaClientForTenancy(tenancy);
   return (await prisma.$queryRaw<{date: Date, dailyUsers: bigint, cumUsers: bigint}[]>`
     WITH date_series AS (
         SELECT GENERATE_SERIES(
@@ -107,7 +107,7 @@ async function loadDailyActiveUsers(tenancy: Tenancy, now: Date) {
 
 async function loadLoginMethods(tenancy: Tenancy): Promise<{method: string, count: number }[]> {
   const schema = getPrismaSchemaForTenancy(tenancy);
-  const prisma = getPrismaClientForTenancy(tenancy);
+  const prisma = await getPrismaClientForTenancy(tenancy);
   return await prisma.$queryRaw<{ method: string, count: number }[]>`
     WITH tab AS (
       SELECT
@@ -202,6 +202,8 @@ export const GET = createSmartRouteHandler({
   handler: async (req) => {
     const now = new Date();
 
+    const prisma = await getPrismaClientForTenancy(req.auth.tenancy);
+
     const [
       totalUsers,
       dailyUsers,
@@ -211,7 +213,7 @@ export const GET = createSmartRouteHandler({
       recentlyActive,
       loginMethods
     ] = await Promise.all([
-      getPrismaClientForTenancy(req.auth.tenancy).projectUser.count({
+      prisma.projectUser.count({
         where: { tenancyId: req.auth.tenancy.id, },
       }),
       loadTotalUsers(req.auth.tenancy, now),
