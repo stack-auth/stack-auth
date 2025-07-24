@@ -44,7 +44,7 @@ async function createProjectUserOAuthAccount(prisma: PrismaClient, params: {
 }
 
 const redirectOrThrowError = (error: KnownError, tenancy: Tenancy, errorRedirectUrl?: string) => {
-  if (!errorRedirectUrl || !validateRedirectUrl(errorRedirectUrl, Object.values(tenancy.config.domains), tenancy.config.domains.allowLocalhost)) {
+  if (!errorRedirectUrl || !validateRedirectUrl(errorRedirectUrl, tenancy)) {
     throw error;
   }
 

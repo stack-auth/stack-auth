@@ -13,7 +13,7 @@ export const environmentConfigCrudHandlers = createLazyProxy(() => createCrudHan
       project_id: auth.project.id,
       branch_id: auth.tenancy.branchId,
       organization_id: auth.tenancy.organization?.id,
-      config: auth.tenancy.completeConfig,
+      config: auth.tenancy.config,
     };
   },
   onUpdate: async ({ auth, data }) => {
@@ -33,7 +33,7 @@ export const environmentConfigCrudHandlers = createLazyProxy(() => createCrudHan
       project_id: auth.project.id,
       branch_id: auth.tenancy.branchId,
       organization_id: auth.tenancy.organization?.id,
-      config: auth.tenancy.completeConfig,
+      config: auth.tenancy.config,
     };
   },
 }));

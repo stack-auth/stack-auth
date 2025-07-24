@@ -1,13 +1,21 @@
 import { StackAssertionError, captureError } from "@stackframe/stack-shared/dist/utils/errors";
 import { createUrlIfValid, isLocalhost } from "@stackframe/stack-shared/dist/utils/urls";
+import { Tenancy } from "./tenancies";
 
-export function validateRedirectUrl(urlOrString: string | URL, domains: { baseUrl: string }[], allowLocalhost: boolean): boolean {
+export function validateRedirectUrl(
+  urlOrString: string | URL,
+  tenancy: Tenancy,
+): boolean {
   const url = createUrlIfValid(urlOrString);
   if (!url) return false;
-  if (allowLocalhost && isLocalhost(url)) {
+  if (tenancy.config.domains.allowLocalhost && isLocalhost(url)) {
     return true;
   }
-  return domains.some((domain) => {
+  return Object.values(tenancy.config.domains.trustedDomains).some((domain) => {
+    if (!domain.baseUrl) {
+      return false;
+    }
+
     const testUrl = url;
     const baseUrl = createUrlIfValid(domain.baseUrl);
     if (!baseUrl) {

@@ -25,7 +25,7 @@ export const GET = createSmartRouteHandler({
     }).defined(),
   }),
   async handler({ auth: { tenancy } }) {
-    const templates = Object.entries(tenancy.completeConfig.emails.templateList).map(([id, template]) => ({
+    const templates = Object.entries(tenancy.config.emails.templateList).map(([id, template]) => ({
       id,
       subject: template.subject,
       display_name: template.displayName,

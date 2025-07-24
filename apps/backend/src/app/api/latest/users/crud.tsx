@@ -474,7 +474,7 @@ export const usersCrudHandlers = createLazyProxy(() => createCrudHandlers(usersC
         primaryEmailAuthEnabled: !!data.primary_email_auth_enabled,
       });
 
-      const config = auth.tenancy.completeConfig;
+      const config = auth.tenancy.config;
 
       const newUser = await tx.projectUser.create({
         data: {
@@ -642,7 +642,7 @@ export const usersCrudHandlers = createLazyProxy(() => createCrudHandlers(usersC
     const result = await retryTransaction(prisma, async (tx) => {
       await ensureUserExists(tx, { tenancyId: auth.tenancy.id, userId: params.user_id });
 
-      const config = auth.tenancy.completeConfig;
+      const config = auth.tenancy.config;
 
       if (data.selected_team_id !== undefined) {
         if (data.selected_team_id !== null) {

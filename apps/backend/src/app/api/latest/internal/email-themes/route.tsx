@@ -1,8 +1,7 @@
 import { overrideEnvironmentConfigOverride } from "@/lib/config";
-import { LightEmailTheme } from "@stackframe/stack-shared/dist/helpers/emails";
 import { globalPrismaClient } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
-import { DEFAULT_EMAIL_THEME_ID } from "@stackframe/stack-shared/dist/helpers/emails";
+import { DEFAULT_EMAIL_THEME_ID, LightEmailTheme } from "@stackframe/stack-shared/dist/helpers/emails";
 import { adaptSchema, yupArray, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
 import { generateUuid } from "@stackframe/stack-shared/dist/utils/uuids";
 
@@ -69,8 +68,8 @@ export const GET = createSmartRouteHandler({
     }).defined(),
   }),
   async handler({ auth: { tenancy } }) {
-    const themeList = tenancy.completeConfig.emails.themeList;
-    const currentActiveTheme = tenancy.completeConfig.emails.theme;
+    const themeList = tenancy.config.emails.themeList;
+    const currentActiveTheme = tenancy.config.emails.theme;
     if (!(currentActiveTheme in themeList)) {
       let newActiveTheme: string;
       if (DEFAULT_EMAIL_THEME_ID in themeList) {
