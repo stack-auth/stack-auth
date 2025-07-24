@@ -32,7 +32,7 @@ export const POST = createSmartRouteHandler({
     }).defined(),
   }),
   async handler({ auth: { tenancy }, body: { email, callback_url: callbackUrl }, clientVersion }, fullReq) {
-    if (!tenancy.config.magic_link_enabled) {
+    if (!tenancy.config.auth.otp.allowSignIn) {
       throw new StatusError(StatusError.Forbidden, "Magic link is not enabled for this project");
     }
 

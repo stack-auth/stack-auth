@@ -124,10 +124,7 @@ const handler = createSmartRouteHandler({
         throw new KnownErrors.OAuthProviderNotFoundOrNotEnabled();
       }
 
-      const provider = {
-        id: providerRaw[0],
-        ...providerRaw[1],
-      };
+      const provider = { id: providerRaw[0], ...providerRaw[1] };
 
       const providerObj = await getProvider(provider as any);
       let callbackResult: Awaited<ReturnType<typeof providerObj.getCallback>>;
