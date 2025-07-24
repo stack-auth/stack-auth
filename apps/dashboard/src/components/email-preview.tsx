@@ -1,9 +1,9 @@
 import { useAdminApp } from "@/app/(main)/(protected)/projects/[projectId]/use-admin-app";
 import { KnownErrors } from "@stackframe/stack-shared";
-import { BrowserFrame, Spinner, Typography } from "@stackframe/stack-ui";
+import { Spinner, Typography } from "@stackframe/stack-ui";
 import { Component, ReactNode, Suspense } from "react";
 import { useDebounce } from 'use-debounce';
-
+import ResizableContainer from './resizable-container';
 
 class EmailPreviewErrorBoundary extends Component<
   { children: ReactNode },
@@ -24,12 +24,12 @@ class EmailPreviewErrorBoundary extends Component<
   render() {
     if (this.state.hasError) {
       return (
-        <div className="flex flex-col items-center p-4">
+        <div className="flex flex-col items-center p-4 h-full justify-center">
           <Typography type="h3" className="mb-2" variant="destructive">
             Email Rendering Error
           </Typography>
           <Typography variant="secondary">
-            Unable to render email preview. Please check your theme / template source code.
+            Please check your theme / template source code.
           </Typography>
         </div>
       );
@@ -38,20 +38,19 @@ class EmailPreviewErrorBoundary extends Component<
   }
 }
 
-function ThemePreviewContent({
+function EmailPreviewContent({
   themeId,
   themeTsxSource,
   templateId,
   templateTsxSource,
-  disableFrame,
 }: {
   themeId?: string,
   themeTsxSource?: string,
   templateId?: string,
   templateTsxSource?: string,
-  disableFrame?: boolean,
 }) {
   const stackAdminApp = useAdminApp();
+
   const previewHtml = stackAdminApp.useEmailPreview({
     themeId,
     themeTsxSource,
@@ -59,67 +58,65 @@ function ThemePreviewContent({
     templateTsxSource
   });
 
-  const Content = (
+  return (
     <iframe
       srcDoc={previewHtml}
-      className={`${disableFrame ? "pointer-events-none" : ""} h-full`}
+      className="w-full h-full border-0"
+      title="Email Preview"
     />
-  );
-
-  if (disableFrame) {
-    return Content;
-  }
-  return (
-    <BrowserFrame transparentBackground className="flex flex-col grow">
-      {Content}
-    </BrowserFrame>
   );
 }
 
-type ThemePreviewProps =
+type EmailPreviewProps =
   | ({
-      themeId: string,
-      themeTsxSource?: undefined,
-    } | {
-      themeId?: undefined,
-      themeTsxSource: string,
-    })
+    themeId: string,
+    themeTsxSource?: undefined,
+  } | {
+    themeId?: undefined,
+    themeTsxSource: string,
+  })
   & (
     | {
-        templateId: string,
-        templateTsxSource?: undefined,
-      }
+      templateId: string,
+      templateTsxSource?: undefined,
+    }
     | {
-        templateId?: undefined,
-        templateTsxSource: string,
-      }
+      templateId?: undefined,
+      templateTsxSource: string,
+    }
   ) & {
-    disableFrame?: boolean,
+    disableResizing?: boolean,
   };
 
-export default function ThemePreview({
+export default function EmailPreview({
   themeId,
   themeTsxSource,
   templateId,
   templateTsxSource,
-  disableFrame,
-}: ThemePreviewProps) {
+  disableResizing,
+}: EmailPreviewProps) {
   const [debouncedTemplateTsxSource] = useDebounce(templateTsxSource, 500);
   const [debouncedThemeTsxSource] = useDebounce(themeTsxSource, 500);
+  const Container = disableResizing ? "div" : ResizableContainer;
 
   return (
-    <div className="w-fit mx-auto h-full flex flex-col justify-center">
-      <Suspense fallback={<Spinner />}>
-        <EmailPreviewErrorBoundary key={`${debouncedTemplateTsxSource ?? ""}${debouncedThemeTsxSource ?? ""}`}>
-          <ThemePreviewContent
-            themeId={themeId}
-            themeTsxSource={debouncedThemeTsxSource}
-            templateId={templateId}
-            templateTsxSource={debouncedTemplateTsxSource}
-            disableFrame={disableFrame}
-          />
-        </EmailPreviewErrorBoundary>
-      </Suspense>
+    <div className={`w-full h-full flex flex-col justify-center ${disableResizing ? "pointer-events-none" : ""}`}>
+      <Container>
+        <Suspense fallback={
+          <div className="flex items-center justify-center h-full">
+            <Spinner />
+          </div>
+        }>
+          <EmailPreviewErrorBoundary key={`${debouncedTemplateTsxSource ?? ""}${debouncedThemeTsxSource ?? ""}`}>
+            <EmailPreviewContent
+              themeId={themeId}
+              themeTsxSource={debouncedThemeTsxSource}
+              templateId={templateId}
+              templateTsxSource={debouncedTemplateTsxSource}
+            />
+          </EmailPreviewErrorBoundary>
+        </Suspense>
+      </Container>
     </div>
   );
 }
