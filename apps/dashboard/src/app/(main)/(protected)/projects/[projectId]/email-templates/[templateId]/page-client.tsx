@@ -11,28 +11,28 @@ import {
   VibeCodeLayout
 } from "@/components/vibe-coding";
 import { ToolCallContent } from "@/components/vibe-coding/chat-adapters";
+import { emptyEmailTheme } from "@stackframe/stack-shared/dist/helpers/emails";
 import { KnownErrors } from "@stackframe/stack-shared/dist/known-errors";
-import { Button, toast } from "@stackframe/stack-ui";
+import { Button, Select, SelectContent, SelectItem, SelectTrigger, SelectValue, toast } from "@stackframe/stack-ui";
 import { useEffect, useState } from "react";
 import { PageLayout } from "../../page-layout";
 import { useAdminApp } from "../../use-admin-app";
-import { emptyEmailTheme } from "@stackframe/stack-shared/dist/helpers/emails";
-
 
 export default function PageClient(props: { templateId: string }) {
   const stackAdminApp = useAdminApp();
-  const project = stackAdminApp.useProject();
   const templates = stackAdminApp.useNewEmailTemplates();
   const { setNeedConfirm } = useRouterConfirm();
   const template = templates.find((t) => t.id === props.templateId);
   const [currentCode, setCurrentCode] = useState(template?.tsxSource ?? "");
+  const [selectedThemeId, setSelectedThemeId] = useState<string | undefined>(template?.themeId);
 
 
   useEffect(() => {
-    if (!template || template.tsxSource === currentCode) return;
+    if (!template) return;
+    if (template.tsxSource === currentCode && template.themeId === selectedThemeId) return;
     setNeedConfirm(true);
     return () => setNeedConfirm(false);
-  }, [setNeedConfirm, template, currentCode]);
+  }, [setNeedConfirm, template, currentCode, selectedThemeId]);
 
   const handleThemeUpdate = (toolCall: ToolCallContent) => {
     setCurrentCode(toolCall.args.content);
@@ -40,7 +40,7 @@ export default function PageClient(props: { templateId: string }) {
 
   const handleSaveTemplate = async () => {
     try {
-      await stackAdminApp.updateNewEmailTemplate(props.templateId, currentCode);
+      await stackAdminApp.updateNewEmailTemplate(props.templateId, currentCode, selectedThemeId);
       toast({ title: "Template saved", variant: "success" });
     } catch (error) {
       if (error instanceof KnownErrors.EmailRenderingError || error instanceof KnownErrors.RequiresCustomEmailServer) {
@@ -62,10 +62,10 @@ export default function PageClient(props: { templateId: string }) {
     <VibeCodeLayout
       previewComponent={
         <div className="p-4 w-full h-full">
-          {template.themeId ? (
-            <EmailPreview themeId={template.themeId} templateTsxSource={currentCode} />
+          {selectedThemeId ? (
+            <EmailPreview themeId={selectedThemeId} templateTsxSource={currentCode} key={selectedThemeId} />
           ) : (
-            <EmailPreview themeTsxSource={emptyEmailTheme} templateTsxSource={currentCode} />
+            <EmailPreview themeTsxSource={emptyEmailTheme} templateTsxSource={currentCode} key={selectedThemeId} />
           )}
         </div>
       }
@@ -74,12 +74,19 @@ export default function PageClient(props: { templateId: string }) {
           code={currentCode}
           onCodeChange={setCurrentCode}
           action={
-            <Button
-              disabled={currentCode === template.tsxSource}
-              onClick={handleSaveTemplate}
-            >
-              Save
-            </Button>
+            <div className="flex gap-2">
+              <ThemeSelector
+                selectedThemeId={selectedThemeId}
+                onThemeChange={setSelectedThemeId}
+                className="w-48"
+              />
+              <Button
+                disabled={currentCode === template.tsxSource && selectedThemeId === template.themeId}
+                onClick={handleSaveTemplate}
+              >
+                Save
+              </Button>
+            </div>
           }
         />
       }
@@ -91,5 +98,34 @@ export default function PageClient(props: { templateId: string }) {
         />
       }
     />
+  );
+}
+
+type ThemeSelectorProps = {
+  selectedThemeId: string | undefined,
+  onThemeChange: (themeId?: string) => void,
+  className?: string,
+}
+
+function ThemeSelector({ selectedThemeId, onThemeChange, className }: ThemeSelectorProps) {
+  const stackAdminApp = useAdminApp();
+  const themes = stackAdminApp.useEmailThemes();
+  return (
+    <Select
+      value={selectedThemeId}
+      onValueChange={(value) => onThemeChange(value === "none" ? undefined : value)}
+    >
+      <SelectTrigger className={className}>
+        <SelectValue placeholder="No theme" />
+      </SelectTrigger>
+      <SelectContent>
+        <SelectItem value={"none"}>No theme</SelectItem>
+        {themes.map((theme) => (
+          <SelectItem key={theme.id} value={theme.id}>
+            {theme.displayName}
+          </SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
   );
 }

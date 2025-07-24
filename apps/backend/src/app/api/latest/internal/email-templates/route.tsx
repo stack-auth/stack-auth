@@ -29,7 +29,7 @@ export const GET = createSmartRouteHandler({
       id,
       display_name: template.displayName,
       tsx_source: template.tsxSource,
-      theme_id: template.themeId,
+      theme_id: template.themeId === "none" ? undefined : template.themeId,
     }));
     return {
       statusCode: 200,

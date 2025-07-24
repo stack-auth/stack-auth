@@ -500,8 +500,8 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
   async updateEmailTheme(id: string, tsxSource: string): Promise<void> {
     await this._interface.updateEmailTheme(id, tsxSource);
   }
-  async updateNewEmailTemplate(id: string, tsxSource: string): Promise<{ renderedHtml: string }> {
-    const result = await this._interface.updateNewEmailTemplate(id, tsxSource);
+  async updateNewEmailTemplate(id: string, tsxSource: string, themeId?: string): Promise<{ renderedHtml: string }> {
+    const result = await this._interface.updateNewEmailTemplate(id, tsxSource, themeId);
     await this._adminNewEmailTemplatesCache.refresh([]);
     return { renderedHtml: result.rendered_html };
   }

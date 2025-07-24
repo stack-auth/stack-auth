@@ -377,7 +377,7 @@ export const emailTemplateListSchema = yupRecord(
   yupObject({
     displayName: yupString().meta({ openapiField: { description: 'Email template name', exampleValue: 'Email Verification' } }).defined(),
     tsxSource: yupString().meta({ openapiField: { description: 'Email template source code tsx component' } }).defined(),
-    themeId: yupString().uuid().meta({ openapiField: { description: 'Email theme id for the template' } })
+    themeId: yupUnion(yupString().uuid(), yupString().oneOf(['none'])).meta({ openapiField: { description: 'Email theme id for the template' } }).defined()
   })
 ).meta({ openapiField: { description: 'Record of email template IDs to their display name and source code' } });
 
