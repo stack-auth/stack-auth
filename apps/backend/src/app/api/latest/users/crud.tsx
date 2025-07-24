@@ -600,7 +600,7 @@ export const usersCrudHandlers = createLazyProxy(() => createCrudHandlers(usersC
     });
 
     // TODO why is this outside the transaction? is there a reason?
-    if (auth.tenancy.config.create_team_on_sign_up) {
+    if (auth.tenancy.config.teams.createPersonalTeamOnSignUp) {
       const team = await teamsCrudHandlers.adminCreate({
         data: {
           display_name: data.display_name ?
