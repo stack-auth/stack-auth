@@ -368,7 +368,7 @@ export const emailThemeSchema = yupString().meta({ openapiField: { description: 
 export const emailThemeListSchema = yupRecord(
   yupString().uuid(),
   yupObject({
-    displayName: yupString().meta({ openapiField: { description: 'Email theme name', exampleValue: 'default-light' } }).defined(),
+    displayName: yupString().meta({ openapiField: { description: 'Email theme name', exampleValue: 'Default Light' } }).defined(),
     tsxSource: yupString().meta({ openapiField: { description: 'Email theme source code tsx component' } }).defined(),
   })
 ).meta({ openapiField: { description: 'Record of email theme IDs to their display name and source code' } });
@@ -377,6 +377,7 @@ export const emailTemplateListSchema = yupRecord(
   yupObject({
     displayName: yupString().meta({ openapiField: { description: 'Email template name', exampleValue: 'Email Verification' } }).defined(),
     tsxSource: yupString().meta({ openapiField: { description: 'Email template source code tsx component' } }).defined(),
+    themeId: yupString().uuid().meta({ openapiField: { description: 'Email theme id for the template' } })
   })
 ).meta({ openapiField: { description: 'Record of email template IDs to their display name and source code' } });
 

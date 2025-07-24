@@ -37,20 +37,21 @@ const makeIframeDocumentBubbleEvents = (iframe: HTMLIFrameElement) => {
   };
 };
 
+const CONTAINER_PADDING = 0;
+
 const calculateInitialDimensions = (containerElement: HTMLElement | null) => {
   const defaultWidth = 600;
   const defaultHeight = 400;
   const minWidth = 200;
   const minHeight = 150;
-  const padding = 80; // 40px padding on each side
 
   if (!containerElement) {
     return { width: defaultWidth, height: defaultHeight };
   }
 
   const containerRect = containerElement.getBoundingClientRect();
-  const maxWidth = containerRect.width - padding;
-  const maxHeight = containerRect.height - padding;
+  const maxWidth = containerRect.width - CONTAINER_PADDING;
+  const maxHeight = containerRect.height - CONTAINER_PADDING;
 
   return {
     width: Math.min(defaultWidth, Math.max(minWidth, maxWidth)),
@@ -88,8 +89,8 @@ export default function ResizableContainer({ children, className }: ResizableCon
       if (entries.length === 0) return;
       const entry = entries[0];
       const { width: containerWidth, height: containerHeight } = entry.contentRect;
-      const maxWidth = containerWidth - 80; // 40px padding on each side
-      const maxHeight = containerHeight - 80; // 40px padding on top/bottom
+      const maxWidth = containerWidth - CONTAINER_PADDING;
+      const maxHeight = containerHeight - CONTAINER_PADDING;
 
       setDimensions(current => {
         if (!current) return current;
@@ -150,8 +151,8 @@ export default function ResizableContainer({ children, className }: ResizableCon
 
     if (parentContainerRef.current) {
       const containerRect = parentContainerRef.current.getBoundingClientRect();
-      newWidth = Math.min(newWidth, containerRect.width - 80);
-      newHeight = Math.min(newHeight, containerRect.height - 80);
+      newWidth = Math.min(newWidth, containerRect.width - CONTAINER_PADDING);
+      newHeight = Math.min(newHeight, containerRect.height - CONTAINER_PADDING);
     }
 
     setDimensions({ width: newWidth, height: newHeight });
@@ -202,7 +203,7 @@ export default function ResizableContainer({ children, className }: ResizableCon
   return (
     <div ref={parentContainerRef} className="relative flex items-center justify-center h-full w-full">
       {isDragging && (
-        <div className="absolute top-4 left-4 bg-gray-200 text-black px-3 py-1 rounded text-sm font-mono z-20 shadow-sm">
+        <div className="absolute top-0 left-0 bg-gray-200 text-black px-3 py-1 rounded text-sm font-mono z-20 shadow-sm">
           {Math.round(dimensions.width)} × {Math.round(dimensions.height)}
         </div>
       )}

@@ -13,7 +13,7 @@ import * as yup from "yup";
 export function ProviderIcon(props: { id: string }) {
   return (
     <div
-      className="flex items-center justify-center w-12 h-12 rounded-md border border-gray-800"
+      className="flex items-center justify-center w-12 h-12 rounded-md border"
       style={{ backgroundColor: props.id in BrandIcons.BRAND_COLORS ? BrandIcons.BRAND_COLORS[props.id] : undefined }}
     >
       <BrandIcons.Mapping iconSize={24} provider={props.id} />
@@ -40,6 +40,7 @@ function toTitle(id: string) {
     apple: "Apple",
     bitbucket: "Bitbucket",
     linkedin: "LinkedIn",
+    twitch: "Twitch",
     x: "X",
   }[id];
 }
@@ -216,7 +217,7 @@ export function ProviderSettingSwitch(props: Props) {
   return (
     <>
       <div
-        className={clsx("flex flex-col items-center justify-center gap-2 py-2 border border-1 rounded-lg p-2 w-[120px] h-[120px] cursor-pointer transition-all", enabled ? "border-white" : "border-gray-800 hover:border-gray-400")}
+        className={clsx("flex flex-col items-center justify-center gap-2 py-2 border border-1 rounded-lg p-2 w-[120px] h-[120px] transition-all hover:border-gray-500 cursor-pointer")}
         onClick={() => {
           if (enabled) {
             setTurnOffProviderDialogOpen(true);

@@ -50,7 +50,17 @@ export const POST = createSmartRouteHandler({
     if (!templateSource) {
       throw new StatusError(400, "No template found with given id");
     }
-    const variables = { projectDisplayName: tenancy.project.display_name };
+    const variables = {
+      projectDisplayName: tenancy.project.display_name,
+      teamDisplayName: "My Team",
+      userDisplayName: "John Doe",
+      emailVerificationLink: "<email verification link>",
+      otp: "3SLSWZ",
+      magicLink: "<magic link>",
+      passwordResetLink: "<password reset link>",
+      teamInvitationLink: "<team invitation link>",
+      signInInvitationLink: "<sign in invitation link>",
+    };
     const result = await renderEmailWithTemplate(templateSource, themeSource, variables);
     if ("error" in result) {
       captureError('render-email', new StackAssertionError("Error rendering email with theme", { result }));

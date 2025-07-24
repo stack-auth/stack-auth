@@ -16,6 +16,7 @@ import { Button, toast } from "@stackframe/stack-ui";
 import { useEffect, useState } from "react";
 import { PageLayout } from "../../page-layout";
 import { useAdminApp } from "../../use-admin-app";
+import { emptyEmailTheme } from "@stackframe/stack-shared/dist/helpers/emails";
 
 
 export default function PageClient(props: { templateId: string }) {
@@ -60,10 +61,13 @@ export default function PageClient(props: { templateId: string }) {
   return (
     <VibeCodeLayout
       previewComponent={
-        <EmailPreview
-          themeId={project.config.emailTheme}
-          templateTsxSource={currentCode}
-        />
+        <div className="p-4 w-full h-full">
+          {template.themeId ? (
+            <EmailPreview themeId={template.themeId} templateTsxSource={currentCode} />
+          ) : (
+            <EmailPreview themeTsxSource={emptyEmailTheme} templateTsxSource={currentCode} />
+          )}
+        </div>
       }
       editorComponent={
         <CodeEditor
