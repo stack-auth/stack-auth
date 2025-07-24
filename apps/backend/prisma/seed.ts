@@ -73,6 +73,7 @@ async function seed() {
           ...(dashboardDomain && new URL(dashboardDomain).hostname !== 'localhost' ? [{ domain: dashboardDomain, handler_path: '/handler' }] : []),
           ...Object.values(internalTenancy.config.domains.trustedDomains)
             .filter((d) => d.baseUrl !== dashboardDomain && d.baseUrl)
+            .map((d) => ({ domain: d.baseUrl, handler_path: d.handlerPath })),
             .map((d) => ({ domain: d.baseUrl || throwErr('Domain base URL is required'), handler_path: d.handlerPath })),
         ]
       },
