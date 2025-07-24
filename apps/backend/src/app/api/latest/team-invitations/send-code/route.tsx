@@ -32,7 +32,8 @@ export const POST = createSmartRouteHandler({
     }).defined(),
   }),
   async handler({ auth, body }) {
-    await retryTransaction(getPrismaClientForTenancy(auth.tenancy), async (tx) => {
+    const prisma = await getPrismaClientForTenancy(auth.tenancy);
+    await retryTransaction(prisma, async (tx) => {
       if (auth.type === "client") {
         if (!auth.user) throw new KnownErrors.UserAuthenticationRequired();
 

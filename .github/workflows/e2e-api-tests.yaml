@@ -17,6 +17,7 @@ jobs:
     env:
       NODE_ENV: test
       STACK_ENABLE_HARDCODED_PASSKEY_CHALLENGE_FOR_TESTING: yes
+      STACK_DIRECT_DATABASE_CONNECTION_STRING: "postgres://postgres:PASSWORD-PLACEHOLDER--uqfEC1hmmv@localhost:5432/stackframe"
 
     strategy:
       matrix:
@@ -96,7 +97,7 @@ jobs:
         run: npx wait-on tcp:localhost:8113
 
       - name: Initialize database
-        run: pnpm run prisma -- migrate reset --force
+        run: pnpm run db:init
   
       - name: Start stack-backend in background
         uses: JarvusInnovations/background-action@v1.0.7
