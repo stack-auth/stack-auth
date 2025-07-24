@@ -33,7 +33,7 @@ export const POST = createSmartRouteHandler({
   }),
   async handler({ auth: { tenancy }, body: { email, callback_url: callbackUrl }, clientVersion }, fullReq) {
     if (!tenancy.config.auth.otp.allowSignIn) {
-      throw new StatusError(StatusError.Forbidden, "Magic link is not enabled for this project");
+      throw new StatusError(StatusError.Forbidden, "OTP sign-in is not enabled for this project");
     }
 
     const user = await ensureUserForEmailAllowsOtp(tenancy, email);
