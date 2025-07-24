@@ -1042,7 +1042,7 @@ export const currentUserCrudHandlers = createLazyProxy(() => createCrudHandlers(
     });
   },
   async onDelete({ auth }) {
-    if (auth.type === 'client' && !auth.tenancy.config.client_user_deletion_enabled) {
+    if (auth.type === 'client' && !auth.tenancy.config.users.allowClientUserDeletion) {
       throw new StatusError(StatusError.BadRequest, "Client user deletion is not enabled for this project");
     }
 
