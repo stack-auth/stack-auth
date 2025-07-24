@@ -41,6 +41,8 @@ async function ensureUserCanManageApiKeys(
     throw new StatusError(StatusError.BadRequest, "Cannot provide both userId and teamId");
   }
 
+  const prisma = await getPrismaClientForTenancy(auth.tenancy);
+
   if (auth.type === "client") {
     if (!auth.user) {
       throw new KnownErrors.UserAuthenticationRequired();
@@ -57,7 +59,7 @@ async function ensureUserCanManageApiKeys(
     // Check team API key permissions
     if (options.teamId !== undefined) {
       const userId = auth.user.id;
-      const hasManageApiKeysPermission = await getPrismaClientForTenancy(auth.tenancy).$transaction(async (tx) => {
+      const hasManageApiKeysPermission = await prisma.$transaction(async (tx) => {
         const permissions = await listPermissions(tx, {
           scope: 'team',
           tenancy: auth.tenancy,
@@ -198,7 +200,9 @@ function createApiKeyHandlers<Type extends "user" | "team">(type: Type) {
           type,
         });
 
-        const apiKey = await getPrismaClientForTenancy(auth.tenancy).projectApiKey.create({
+        const prisma = await getPrismaClientForTenancy(auth.tenancy);
+
+        const apiKey = await prisma.projectApiKey.create({
           data: {
             id: apiKeyId,
             description: body.description,
@@ -244,8 +248,9 @@ function createApiKeyHandlers<Type extends "user" | "team">(type: Type) {
       }),
       handler: async ({ auth, body }) => {
         await throwIfFeatureDisabled(auth.tenancy.config, type);
+        const prisma = await getPrismaClientForTenancy(auth.tenancy);
 
-        const apiKey = await getPrismaClientForTenancy(auth.tenancy).projectApiKey.findUnique({
+        const apiKey = await prisma.projectApiKey.findUnique({
           where: {
             tenancyId: auth.tenancy.id,
             secretApiKey: body.api_key,
@@ -299,7 +304,8 @@ function createApiKeyHandlers<Type extends "user" | "team">(type: Type) {
             teamId,
           });
 
-          const apiKeys = await getPrismaClientForTenancy(auth.tenancy).projectApiKey.findMany({
+          const prisma = await getPrismaClientForTenancy(auth.tenancy);
+          const apiKeys = await prisma.projectApiKey.findMany({
             where: {
               tenancyId: auth.tenancy.id,
               projectUserId: userId,
@@ -319,7 +325,9 @@ function createApiKeyHandlers<Type extends "user" | "team">(type: Type) {
         onRead: async ({ auth, query, params }) => {
           await throwIfFeatureDisabled(auth.tenancy.config, type);
 
-          const apiKey = await getPrismaClientForTenancy(auth.tenancy).projectApiKey.findUnique({
+          const prisma = await getPrismaClientForTenancy(auth.tenancy);
+
+          const apiKey = await prisma.projectApiKey.findUnique({
             where: {
               tenancyId_id: {
                 tenancyId: auth.tenancy.id,
@@ -342,7 +350,9 @@ function createApiKeyHandlers<Type extends "user" | "team">(type: Type) {
         onUpdate: async ({ auth, data, params, query }) => {
           await throwIfFeatureDisabled(auth.tenancy.config, type);
 
-          const existingApiKey = await getPrismaClientForTenancy(auth.tenancy).projectApiKey.findUnique({
+          const prisma = await getPrismaClientForTenancy(auth.tenancy);
+
+          const existingApiKey = await prisma.projectApiKey.findUnique({
             where: {
               tenancyId_id: {
                 tenancyId: auth.tenancy.id,
@@ -361,7 +371,7 @@ function createApiKeyHandlers<Type extends "user" | "team">(type: Type) {
           });
 
           // Update the API key
-          const updatedApiKey = await getPrismaClientForTenancy(auth.tenancy).projectApiKey.update({
+          const updatedApiKey = await prisma.projectApiKey.update({
             where: {
               tenancyId_id: {
                 tenancyId: auth.tenancy.id,

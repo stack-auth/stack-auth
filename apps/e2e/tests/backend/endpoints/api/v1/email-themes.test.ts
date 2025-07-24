@@ -3,7 +3,7 @@ import { describe } from "vitest";
 import { it } from "../../../../helpers";
 import { niceBackendFetch, Project } from "../../../backend-helpers";
 
-const validThemeId = "1df07ae6-abf3-4a40-83a5-a1a2cbe336ac"; // default-light theme
+const validThemeId = "1df07ae6-abf3-4a40-83a5-a1a2cbe336ac"; // Default Light theme
 const invalidThemeId = randomUUID();
 
 const validTsxSource = `import { Html, Tailwind, Body } from '@react-email/components';
@@ -89,7 +89,7 @@ describe("get email theme", () => {
       NiceResponse {
         "status": 200,
         "body": {
-          "display_name": "default-light",
+          "display_name": "Default Light",
           "tsx_source": deindent\`
             import { Html, Tailwind, Body } from '@react-email/components';
             export function EmailTheme({ children }: { children: React.ReactNode }) {
@@ -184,7 +184,7 @@ describe("update email theme", () => {
     expect(response).toMatchInlineSnapshot(`
       NiceResponse {
         "status": 200,
-        "body": { "display_name": "default-light" },
+        "body": { "display_name": "Default Light" },
         "headers": Headers { <some fields may have been hidden> },
       }
     `);
@@ -218,7 +218,7 @@ describe("update email theme", () => {
       NiceResponse {
         "status": 200,
         "body": {
-          "display_name": "default-light",
+          "display_name": "Default Light",
           "tsx_source": deindent\`
             import { Html, Tailwind, Body } from '@react-email/components';
             export function EmailTheme({ children }: { children: React.ReactNode }) {
@@ -262,11 +262,11 @@ describe("create email theme", () => {
         "body": {
           "themes": [
             {
-              "display_name": "default-light",
+              "display_name": "Default Light",
               "id": "<stripped UUID>",
             },
             {
-              "display_name": "default-dark",
+              "display_name": "Default Dark",
               "id": "<stripped UUID>",
             },
           ],
@@ -282,7 +282,7 @@ describe("create email theme", () => {
         method: "POST",
         accessType: "admin",
         body: {
-          display_name: "default-light",
+          display_name: "Default Light",
         },
       }
     );

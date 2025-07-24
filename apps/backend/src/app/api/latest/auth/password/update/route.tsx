@@ -40,7 +40,7 @@ export const POST = createSmartRouteHandler({
       throw passwordError;
     }
 
-    const prisma = getPrismaClientForTenancy(tenancy);
+    const prisma = await getPrismaClientForTenancy(tenancy);
     await retryTransaction(prisma, async (tx) => {
       const authMethods = await tx.passwordAuthMethod.findMany({
         where: {

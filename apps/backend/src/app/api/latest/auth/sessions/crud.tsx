@@ -17,7 +17,7 @@ export const sessionsCrudHandlers = createLazyProxy(() => createCrudHandlers(ses
     user_id: userIdOrMeSchema.defined(),
   }).defined(),
   onList: async ({ auth, query }) => {
-    const prisma = getPrismaClientForTenancy(auth.tenancy);
+    const prisma = await getPrismaClientForTenancy(auth.tenancy);
     const schema = getPrismaSchemaForTenancy(auth.tenancy);
     const listImpersonations = auth.type === 'admin';
 
@@ -86,7 +86,7 @@ export const sessionsCrudHandlers = createLazyProxy(() => createCrudHandlers(ses
     return result;
   },
   onDelete: async ({ auth, params }: { auth: SmartRequestAuth, params: { id: string }, query: { user_id?: string } }) => {
-    const prisma = getPrismaClientForTenancy(auth.tenancy);
+    const prisma = await getPrismaClientForTenancy(auth.tenancy);
     const session = await globalPrismaClient.projectUserRefreshToken.findFirst({
       where: {
         tenancyId: auth.tenancy.id,
