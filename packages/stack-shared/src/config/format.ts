@@ -18,7 +18,7 @@ export type NormalizedConfig = {
 export type _NormalizesTo<N> = N extends object ? (
   & Config
   & { [K in OptionalKeys<N>]?: _NormalizesTo<N[K]> | null }
-  & { [K in RequiredKeys<N>]: _NormalizesTo<N[K]> }
+  & { [K in RequiredKeys<N>]: undefined extends N[K] ? _NormalizesTo<N[K]> | null : _NormalizesTo<N[K]> }
   & { [K in `${string}.${string}`]: ConfigValue }
 ) : N;
 export type NormalizesTo<N extends NormalizedConfig> = _NormalizesTo<N>;
@@ -156,6 +156,21 @@ export class NormalizationError extends Error {
   }
 }
 NormalizationError.prototype.name = "NormalizationError";
+
+export function isNormalized(c: Config): c is NormalizedConfig {
+  assertValidConfig(c);
+  for (const [key, value] of Object.entries(c)) {
+    if (value === undefined) continue;
+    if (key.includes('.')) return false;
+    if (value === null) return false;
+  }
+  return true;
+}
+
+export function assertNormalized(c: Config): asserts c is NormalizedConfig {
+  assertValidConfig(c);
+  if (!isNormalized(c)) throw new StackAssertionError(`Config is not normalized: ${JSON.stringify(c)}`);
+}
 
 export function normalize(c: Config, options: NormalizeOptions = {}): NormalizedConfig {
   assertValidConfig(c);

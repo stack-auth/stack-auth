@@ -10,7 +10,7 @@ import { allProviders } from "../utils/oauth";
 import { DeepFilterUndefined, DeepMerge, DeepRequiredOrUndefined, filterUndefined, get, has, isObjectLike, mapValues, set, typedFromEntries } from "../utils/objects";
 import { Result } from "../utils/results";
 import { CollapseObjectUnion, Expand, IntersectAll, IsUnion, typeAssert, typeAssertExtends, typeAssertIs } from "../utils/types";
-import { NormalizesTo, getInvalidConfigReason } from "./format";
+import { Config, NormalizesTo, assertNormalized, getInvalidConfigReason } from "./format";
 
 export const configLevels = ['project', 'branch', 'environment', 'organization'] as const;
 export type ConfigLevel = typeof configLevels[number];
@@ -252,19 +252,19 @@ export const organizationConfigSchema = environmentConfigSchema.concat(yupObject
 // Wherever an object could be used as a value, a function can instead be used to generate the default values on a per-key basis
 // To make sure you don't accidentally forget setting a default value, you must explicitly set fields with no default value to `undefined`.
 // NOTE: These values are the defaults of the schema, NOT the defaults for newly created projects. The values here signify what `null` means for each property. If you want new projects by default to have a certain value set to true, you should update the corresponding function in the backend instead.
-export const projectConfigDefaults = {
+const projectConfigDefaults = {
   sourceOfTruth: {
     type: 'hosted',
     connectionStrings: undefined,
     connectionString: undefined,
   },
-} satisfies DefaultsType<ProjectRenderedConfigBeforeSanitization, []>;
+} satisfies DefaultsType<ProjectRenderedConfigBeforeDefaults, []>;
 
-export const branchConfigDefaults = {} as const satisfies DefaultsType<BranchRenderedConfigBeforeSanitization, [typeof projectConfigDefaults]>;
+const branchConfigDefaults = {} as const satisfies DefaultsType<BranchRenderedConfigBeforeDefaults, [typeof projectConfigDefaults]>;
 
-export const environmentConfigDefaults = {} as const satisfies DefaultsType<EnvironmentRenderedConfigBeforeSanitization, [typeof branchConfigDefaults, typeof projectConfigDefaults]>;
+const environmentConfigDefaults = {} as const satisfies DefaultsType<EnvironmentRenderedConfigBeforeDefaults, [typeof branchConfigDefaults, typeof projectConfigDefaults]>;
 
-export const organizationConfigDefaults = {
+const organizationConfigDefaults = {
   rbac: {
     permissions: (key: string) => ({
       containedPermissionIds: {},
@@ -345,8 +345,8 @@ export const organizationConfigDefaults = {
     }),
     templates: (key: string) => ({
       displayName: "Unnamed Template",
-      themeId: null,
       tsxSource: "Error: Template config is missing TypeScript source code.",
+      themeId: undefined,
     }),
   },
 
@@ -372,7 +372,7 @@ export const organizationConfigDefaults = {
     }),
     items: {},
   },
-} satisfies DefaultsType<OrganizationRenderedConfigBeforeSanitization, [typeof environmentConfigDefaults, typeof branchConfigDefaults, typeof projectConfigDefaults]>;
+} satisfies DefaultsType<OrganizationRenderedConfigBeforeDefaults, [typeof environmentConfigDefaults, typeof branchConfigDefaults, typeof projectConfigDefaults]>;
 
 type _DeepOmitDefaultsImpl<T, U> = T extends object ? (
   (
@@ -386,7 +386,7 @@ typeAssertIs<DefaultsType<{ a: { b: Record<string, 123>, c: 456 } }, [{ a: { c: 
 
 export type DeepReplaceAllowFunctionsForObjects<T> = T extends object ? { [K in keyof T]: DeepReplaceAllowFunctionsForObjects<T[K]> } | (string extends keyof T ? (arg: Exclude<keyof T, number>) => DeepReplaceAllowFunctionsForObjects<T[keyof T]> : never) : T;
 export type DeepReplaceFunctionsWithObjects<T> = T extends (arg: infer K extends string) => infer R ? DeepReplaceFunctionsWithObjects<Record<K, R>> : (T extends object ? { [K in keyof T]: DeepReplaceFunctionsWithObjects<T[K]> } : T);
-export type ApplyDefaults<D extends object | ((key: string) => unknown), C extends object> = Expand<DeepMerge<DeepReplaceFunctionsWithObjects<D>, C>>;
+export type ApplyDefaults<D extends object | ((key: string) => unknown), C extends object> = {} extends D ? C : DeepMerge<DeepReplaceFunctionsWithObjects<D>, C>;  // the {} extends D makes TypeScript not recurse if the defaults are empty, hence allowing us more recursion until "type instantiation too deep" kicks in... it's a total hack, but it works, so hey?
 export function applyDefaults<D extends object | ((key: string) => unknown), C extends object>(defaults: D, config: C): ApplyDefaults<D, C> {
   const res: any = typeof defaults === 'function' ? {} : mapValues(defaults, v => typeof v === 'function' ? {} : (typeof v === 'object' && v ? applyDefaults(v as any, {}) : v));
   outer: for (const [key, mergeValue] of Object.entries(config)) {
@@ -422,10 +422,53 @@ import.meta.vitest?.test("applyDefaults", ({ expect }) => {
   expect(applyDefaults({ a: { b: { c: 1 } } }, { "a.b": { d: 2 } })).toEqual({ a: { b: { c: 1 } }, "a.b": { c: 1, d: 2 } });
 });
 
-export async function applyProjectDefaultsAndSanitize<T extends ProjectRenderedConfigBeforeSanitization>(config: T) {
-  const withDefaults = applyDefaults(projectConfigDefaults, config);
+export function applyProjectDefaults<T extends ProjectRenderedConfigBeforeDefaults>(config: T) {
+  return applyDefaults(projectConfigDefaults, config);
+}
 
-  const oldSourceOfTruth = withDefaults.sourceOfTruth;
+export function applyBranchDefaults<T extends BranchRenderedConfigBeforeDefaults>(config: T) {
+  return applyDefaults(
+    branchConfigDefaults,
+    applyDefaults(
+      projectConfigDefaults,
+      config
+    )
+  );
+}
+
+export function applyEnvironmentDefaults<T extends EnvironmentRenderedConfigBeforeDefaults>(config: T): ApplyDefaults<typeof environmentConfigDefaults, ApplyDefaults<typeof branchConfigDefaults, ApplyDefaults<typeof projectConfigDefaults, T>>> {
+  return applyDefaults(
+    environmentConfigDefaults,
+    applyDefaults(
+      branchConfigDefaults,
+      applyDefaults(
+        projectConfigDefaults,
+        config
+      ) as any
+    ) as any
+  ) as any;
+}
+
+export function applyOrganizationDefaults(config: OrganizationRenderedConfigBeforeDefaults): ApplyDefaults<typeof organizationConfigDefaults, ApplyDefaults<typeof environmentConfigDefaults, ApplyDefaults<typeof branchConfigDefaults, ApplyDefaults<typeof projectConfigDefaults, OrganizationRenderedConfigBeforeDefaults>>>> {
+  return applyDefaults(
+    organizationConfigDefaults,
+    applyDefaults(
+      environmentConfigDefaults,
+      applyDefaults(
+        branchConfigDefaults,
+        applyDefaults(
+          projectConfigDefaults,
+          config
+        ) as any
+      ) as any
+    ) as any
+  ) as any;
+}
+
+
+export async function sanitizeProjectConfig<T extends ProjectRenderedConfigBeforeSanitization>(config: T) {
+  assertNormalized(config);
+  const oldSourceOfTruth = config.sourceOfTruth;
   const sourceOfTruth =
     oldSourceOfTruth.type === 'neon' && typeof oldSourceOfTruth.connectionStrings === 'object' ? {
       type: 'neon',
@@ -440,88 +483,43 @@ export async function applyProjectDefaultsAndSanitize<T extends ProjectRenderedC
         } as const;
 
   return {
-    ...withDefaults,
+    ...config,
     sourceOfTruth,
   };
 }
 
-export async function applyBranchDefaultsAndSanitize<T extends BranchRenderedConfigBeforeSanitization>(config: T) {
-  const withPrevious = await applyProjectDefaultsAndSanitize(config);
-  const withDefaults = applyDefaults(branchConfigDefaults, withPrevious);
-
+export async function sanitizeBranchConfig<T extends BranchRenderedConfigBeforeSanitization>(config: T) {
+  assertNormalized(config);
+  const prepared = await sanitizeProjectConfig(config);
   return {
-    ...withDefaults,
+    ...prepared,
   };
 }
 
-export async function applyEnvironmentDefaultsAndSanitize<T extends EnvironmentRenderedConfigBeforeSanitization>(config: T) {
-  // -------------------------------------------------------------------------------------------------------------------
-  // IMPORTANT NOTE: when updating this function, make sure to also update the __typeHack__ versions of it below
-  // -------------------------------------------------------------------------------------------------------------------
-
-  const withPrevious = await applyBranchDefaultsAndSanitize(config);
-  const withDefaults = applyDefaults(environmentConfigDefaults, withPrevious);
-
+export async function sanitizeEnvironmentConfig<T extends EnvironmentRenderedConfigBeforeSanitization>(config: T) {
+  assertNormalized(config);
+  const prepared = await sanitizeBranchConfig(config);
   return {
-    ...withDefaults,
-  };
-}
-// TODO HACK: Because Expand<> can't expand generics, the type of the return values of some of these functions become
-// too deep and makes the type checker complain about "type instantiation too deep".
-//
-// So, here are two 1:1 copies of the function above, but with specific instantiations of the generic type parameter,
-// allowing Expand<> to expand the return type, which makes the type checker happy.
-//
-// It's dumb. We should definitely find a better way to do this. This is really hacky.
-export async function __typeHack__applyEnvironmentDefaultsAndSanitize_EnvironmentRenderedConfigBeforeSanitization(config: EnvironmentRenderedConfigBeforeSanitization) {
-  // -------------------------------------------------------------------------------------------------------------------
-  // IMPORTANT NOTE: this is a copy of the generic function above, edit that first
-  // -------------------------------------------------------------------------------------------------------------------
-
-  const withPrevious = await applyBranchDefaultsAndSanitize(config);
-  const withDefaults = applyDefaults(environmentConfigDefaults, withPrevious);
-
-  return {
-    ...withDefaults,
-  };
-}
-// TODO HACK: Because Expand<> can't expand generics, the type of the return values of some of these functions become
-// too deep and makes the type checker complain about "type instantiation too deep".
-//
-// So, here is a 1:1 copy of the function above, but without the generic type parameter, allowing Expand<> to expand
-// the return type, which makes the type checker happy.
-//
-// It's dumb. We should definitely find a better way to do this. This is really hacky.
-export async function __typeHack__applyEnvironmentDefaultsAndSanitize_OrganizationRenderedConfigBeforeSanitization(config: OrganizationRenderedConfigBeforeSanitization) {
-  // -------------------------------------------------------------------------------------------------------------------
-  // IMPORTANT NOTE: this is a copy of the generic function above, edit that first
-  // -------------------------------------------------------------------------------------------------------------------
-
-  const withPrevious = await applyBranchDefaultsAndSanitize(config);
-  const withDefaults = applyDefaults(environmentConfigDefaults, withPrevious);
-
-  return {
-    ...withDefaults,
+    ...prepared,
   };
 }
 
-export async function applyOrganizationDefaultsAndSanitize<T extends OrganizationRenderedConfigBeforeSanitization>(config: T) {
-  const withPrevious = await __typeHack__applyEnvironmentDefaultsAndSanitize_OrganizationRenderedConfigBeforeSanitization(config);
-  const withDefaults = applyDefaults(organizationConfigDefaults, withPrevious);
-
+export async function sanitizeOrganizationConfig(config: OrganizationRenderedConfigBeforeSanitization) {
+  assertNormalized(config);
+  const prepared = await sanitizeEnvironmentConfig(config);
   return {
-    ...withDefaults,
+    ...prepared,
     emails: {
-      ...withDefaults.emails,
-      selectedThemeId: has(withDefaults.emails.themes, withDefaults.emails.selectedThemeId) ? withDefaults.emails.selectedThemeId : DEFAULT_EMAIL_THEME_ID,
+      ...prepared.emails,
+      selectedThemeId: has(prepared.emails.themes, prepared.emails.selectedThemeId) ? prepared.emails.selectedThemeId : DEFAULT_EMAIL_THEME_ID,
       themes: {
         ...DEFAULT_EMAIL_THEMES,
-        ...withDefaults.emails.themes,
-      } as typeof withDefaults.emails.themes,
+        ...prepared.emails.themes,
+      } as typeof prepared.emails.themes,
       templates: {
         ...DEFAULT_EMAIL_TEMPLATES,
-        ...withDefaults.emails.templates,
-      } as typeof withDefaults.emails.templates,
+        ...prepared.emails.templates,
+      } as typeof prepared.emails.templates,
     },
   };
 }
@@ -700,13 +698,15 @@ typeAssertExtends<_ValidatedToHaveNoConfigOverrideErrorsImpl<{ a: { b: { c: stri
  * the getConfigOverrideErrors function. (This is necessary, because a changing base config may make an override invalid
  * that was previously valid.)
  */
-export async function getIncompleteConfigWarnings<T extends yup.AnySchema>(schema: T, incompleteConfig: unknown): Promise<Result<null, string>> {
-  await assertNoConfigOverrideErrors(schema, incompleteConfig, { allowPropertiesThatCanNoLongerBeOverridden: true });
-  // TODO maybe we should check here whether the config is normalized? just to be safe
-  // although the schema below should already deal with it in most cases
+export async function getRenderedConfigWarnings<T extends yup.AnySchema>(schema: T, renderedConfig: Config): Promise<Result<null, string>> {
+  // every rendered config should also be a config override without errors (regardless of whether it has warnings or not)
+  await assertNoConfigOverrideErrors(schema, renderedConfig, { allowPropertiesThatCanNoLongerBeOverridden: true });
+
+  // ensure the rendered config is normalized
+  assertNormalized(renderedConfig);
 
   try {
-    await schema.validate(incompleteConfig, {
+    await schema.validate(renderedConfig, {
       strict: true,
       context: {
         noUnknownPathPrefixes: [''],
@@ -724,10 +724,10 @@ export type ValidatedToHaveNoIncompleteConfigWarnings<T extends yup.AnySchema> =
 
 // Normalized overrides
 // ex.: { a?: { b?: number, c?: string }, d?: number }
-export type ProjectConfigNormalizedOverride = Expand<ValidatedToHaveNoConfigOverrideErrors<typeof projectConfigSchema>>;
-export type BranchConfigNormalizedOverride = Expand<ValidatedToHaveNoConfigOverrideErrors<typeof branchConfigSchema>>;
-export type EnvironmentConfigNormalizedOverride = Expand<ValidatedToHaveNoConfigOverrideErrors<typeof environmentConfigSchema>>;
-export type OrganizationConfigNormalizedOverride = Expand<ValidatedToHaveNoConfigOverrideErrors<typeof organizationConfigSchema>>;
+type ProjectConfigNormalizedOverride = Expand<ValidatedToHaveNoConfigOverrideErrors<typeof projectConfigSchema>>;
+type BranchConfigNormalizedOverride = Expand<ValidatedToHaveNoConfigOverrideErrors<typeof branchConfigSchema>>;
+type EnvironmentConfigNormalizedOverride = Expand<ValidatedToHaveNoConfigOverrideErrors<typeof environmentConfigSchema>>;
+type OrganizationConfigNormalizedOverride = Expand<ValidatedToHaveNoConfigOverrideErrors<typeof organizationConfigSchema>>;
 
 // Overrides
 // ex.: { a?: null | { b?: null | number, c: string }, d?: null | number, "a.b"?: number, "a.c"?: string }
@@ -751,27 +751,32 @@ export type BranchIncompleteConfig = Expand<ProjectIncompleteConfig & BranchConf
 export type EnvironmentIncompleteConfig = Expand<BranchIncompleteConfig & EnvironmentConfigNormalizedOverride>;
 export type OrganizationIncompleteConfig = Expand<EnvironmentIncompleteConfig & OrganizationConfigNormalizedOverride>;
 
-// Rendered configs before sanitization
-export type ProjectRenderedConfigBeforeSanitization = Omit<ProjectIncompleteConfig,
+// Rendered configs before defaults, normalization, and sanitization
+type ProjectRenderedConfigBeforeDefaults = Omit<ProjectIncompleteConfig,
   | keyof BranchConfigNormalizedOverride
   | keyof EnvironmentConfigNormalizedOverride
   | keyof OrganizationConfigNormalizedOverride
 >;
-export type BranchRenderedConfigBeforeSanitization = Omit<BranchIncompleteConfig,
+type BranchRenderedConfigBeforeDefaults = Omit<BranchIncompleteConfig,
   | keyof EnvironmentConfigNormalizedOverride
   | keyof OrganizationConfigNormalizedOverride
 >;
-export type EnvironmentRenderedConfigBeforeSanitization = Omit<EnvironmentIncompleteConfig,
+type EnvironmentRenderedConfigBeforeDefaults = Omit<EnvironmentIncompleteConfig,
   | keyof OrganizationConfigNormalizedOverride
 >;
-export type OrganizationRenderedConfigBeforeSanitization = OrganizationIncompleteConfig;
+type OrganizationRenderedConfigBeforeDefaults = OrganizationIncompleteConfig;
 
-// Rendered configs
+// Rendered configs before sanitization
+type ProjectRenderedConfigBeforeSanitization = Expand<Awaited<ReturnType<typeof applyProjectDefaults<ProjectRenderedConfigBeforeDefaults>>>>;
+type BranchRenderedConfigBeforeSanitization = Expand<Awaited<ReturnType<typeof applyBranchDefaults<BranchRenderedConfigBeforeDefaults>>>>;
+type EnvironmentRenderedConfigBeforeSanitization = Expand<Awaited<ReturnType<typeof applyEnvironmentDefaults<EnvironmentRenderedConfigBeforeDefaults>>>>;
+type OrganizationRenderedConfigBeforeSanitization = Expand<Awaited<ReturnType<typeof applyOrganizationDefaults>>>;
 
-export type ProjectRenderedConfig = Expand<Awaited<ReturnType<typeof applyProjectDefaultsAndSanitize<ProjectRenderedConfigBeforeSanitization>>>>;
-export type BranchRenderedConfig = Expand<Awaited<ReturnType<typeof applyBranchDefaultsAndSanitize<BranchRenderedConfigBeforeSanitization>>>>;
-export type EnvironmentRenderedConfig = Expand<Awaited<ReturnType<typeof __typeHack__applyEnvironmentDefaultsAndSanitize_EnvironmentRenderedConfigBeforeSanitization>>>;
-export type OrganizationRenderedConfig = Expand<Awaited<ReturnType<typeof applyOrganizationDefaultsAndSanitize<OrganizationRenderedConfigBeforeSanitization>>>>;
+// Rendered configs after defaults, normalization, and sanitization
+export type ProjectRenderedConfig = Expand<Awaited<ReturnType<typeof sanitizeProjectConfig<ProjectRenderedConfigBeforeSanitization>>>>;
+export type BranchRenderedConfig = Expand<Awaited<ReturnType<typeof sanitizeBranchConfig<BranchRenderedConfigBeforeSanitization>>>>;
+export type EnvironmentRenderedConfig = Expand<Awaited<ReturnType<typeof sanitizeEnvironmentConfig<EnvironmentRenderedConfigBeforeSanitization>>>>;
+export type OrganizationRenderedConfig = Expand<Awaited<ReturnType<typeof sanitizeOrganizationConfig>>>;
 
 
 // Type assertions (just to make sure the types are correct)
