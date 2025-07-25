@@ -3,11 +3,11 @@
 import * as yup from "yup";
 import { DEFAULT_EMAIL_TEMPLATES, DEFAULT_EMAIL_THEMES, DEFAULT_EMAIL_THEME_ID } from "../helpers/emails";
 import * as schemaFields from "../schema-fields";
-import { userSpecifiedIdSchema, yupArray, yupBoolean, yupDate, yupMixed, yupNever, yupNumber, yupObject, yupRecord, yupString, yupTuple, yupUnion } from "../schema-fields";
+import { userSpecifiedIdSchema, yupBoolean, yupDate, yupMixed, yupNever, yupNumber, yupObject, yupRecord, yupString, yupTuple, yupUnion } from "../schema-fields";
 import { SUPPORTED_CURRENCIES } from "../utils/currencies";
 import { StackAssertionError } from "../utils/errors";
 import { allProviders } from "../utils/oauth";
-import { DeepFilterUndefined, DeepMerge, DeepRequiredOrUndefined, get, has, isObjectLike, mapValues, set, typedFromEntries } from "../utils/objects";
+import { DeepFilterUndefined, DeepMerge, DeepRequiredOrUndefined, filterUndefined, get, has, isObjectLike, mapValues, set, typedFromEntries } from "../utils/objects";
 import { Result } from "../utils/results";
 import { CollapseObjectUnion, Expand, IntersectAll, IsUnion, typeAssert, typeAssertExtends, typeAssertIs } from "../utils/types";
 import { NormalizesTo, getInvalidConfigReason } from "./format";
@@ -258,9 +258,14 @@ export const projectConfigDefaults = {
     connectionStrings: undefined,
     connectionString: undefined,
   },
-} satisfies DefaultsType<ProjectConfigNormalizedOverride, []>;
+} satisfies DefaultsType<ProjectRenderedConfigBeforeSanitization, []>;
 
-export const branchConfigDefaults = {
+export const branchConfigDefaults = {} as const satisfies DefaultsType<BranchRenderedConfigBeforeSanitization, [typeof projectConfigDefaults]>;
+
+export const environmentConfigDefaults = {} as const satisfies DefaultsType<EnvironmentRenderedConfigBeforeSanitization, [typeof branchConfigDefaults, typeof projectConfigDefaults]>;
+
+export const organizationConfigDefaults = {
+
   rbac: {
     permissions: (key: string) => ({
       containedPermissionIds: {},
@@ -292,6 +297,10 @@ export const branchConfigDefaults = {
 
   domains: {
     allowLocalhost: false,
+    trustedDomains: (key: string) => ({
+      baseUrl: undefined,
+      handlerPath: '/handler',
+    }),
   },
 
   auth: {
@@ -312,14 +321,34 @@ export const branchConfigDefaults = {
         isShared: true,
         allowSignIn: false,
         allowConnectedAccounts: false,
+        clientId: undefined,
+        clientSecret: undefined,
+        facebookConfigId: undefined,
+        microsoftTenantId: undefined,
       }),
     },
   },
 
   emails: {
+    server: {
+      isShared: true,
+      host: undefined,
+      port: undefined,
+      username: undefined,
+      password: undefined,
+      senderName: undefined,
+      senderEmail: undefined,
+    },
     theme: DEFAULT_EMAIL_THEME_ID,
-    themeList: DEFAULT_EMAIL_THEMES,
-    templateList: DEFAULT_EMAIL_TEMPLATES,
+    themeList: (key: string) => ({
+      displayName: "Unnamed Theme",
+      tsxSource: "Error: Theme config is missing TypeScript source code.",
+    }),
+    templateList: (key: string) => ({
+      displayName: "Unnamed Template",
+      subject: "<No subject>",
+      tsxSource: "Error: Template config is missing TypeScript source code.",
+    }),
   },
 
   payments: {
@@ -344,45 +373,7 @@ export const branchConfigDefaults = {
     }),
     items: {},
   },
-} as const satisfies DefaultsType<BranchConfigNormalizedOverride, [typeof projectConfigDefaults]>;
-
-export const environmentConfigDefaults = {
-  domains: {
-    trustedDomains: (key: string) => ({
-      baseUrl: undefined,
-      handlerPath: '/handler',
-    }),
-  },
-
-  emails: {
-    server: {
-      isShared: true,
-      host: undefined,
-      port: undefined,
-      username: undefined,
-      password: undefined,
-      senderName: undefined,
-      senderEmail: undefined,
-    },
-  },
-
-  auth: {
-    oauth: {
-      providers: (key: string) => ({
-        type: undefined,
-        isShared: true,
-        allowSignIn: false,
-        allowConnectedAccounts: false,
-        clientId: undefined,
-        clientSecret: undefined,
-        facebookConfigId: undefined,
-        microsoftTenantId: undefined,
-      }),
-    },
-  },
-} as const satisfies DefaultsType<EnvironmentConfigNormalizedOverride, [typeof branchConfigDefaults, typeof projectConfigDefaults]>;
-
-export const organizationConfigDefaults = {} satisfies DefaultsType<OrganizationConfigNormalizedOverride, [typeof environmentConfigDefaults, typeof branchConfigDefaults, typeof projectConfigDefaults]>;
+} satisfies DefaultsType<OrganizationRenderedConfigBeforeSanitization, [typeof environmentConfigDefaults, typeof branchConfigDefaults, typeof projectConfigDefaults]>;
 
 type _DeepOmitDefaultsImpl<T, U> = T extends object ? (
   (
@@ -396,7 +387,7 @@ typeAssertIs<DefaultsType<{ a: { b: Record<string, 123>, c: 456 } }, [{ a: { c: 
 
 export type DeepReplaceAllowFunctionsForObjects<T> = T extends object ? { [K in keyof T]: DeepReplaceAllowFunctionsForObjects<T[K]> } | (string extends keyof T ? (arg: Exclude<keyof T, number>) => DeepReplaceAllowFunctionsForObjects<T[keyof T]> : never) : T;
 export type DeepReplaceFunctionsWithObjects<T> = T extends (arg: infer K extends string) => infer R ? DeepReplaceFunctionsWithObjects<Record<K, R>> : (T extends object ? { [K in keyof T]: DeepReplaceFunctionsWithObjects<T[K]> } : T);
-export type ApplyDefaults<D extends object | ((key: string) => unknown), C extends object> = DeepMerge<DeepReplaceFunctionsWithObjects<D>, C>;
+export type ApplyDefaults<D extends object | ((key: string) => unknown), C extends object> = Expand<DeepMerge<DeepReplaceFunctionsWithObjects<D>, C>>;
 export function applyDefaults<D extends object | ((key: string) => unknown), C extends object>(defaults: D, config: C): ApplyDefaults<D, C> {
   const res: any = typeof defaults === 'function' ? {} : mapValues(defaults, v => typeof v === 'function' ? {} : (typeof v === 'object' ? applyDefaults(v as any, {}) : v));
   outer: for (const [key, mergeValue] of Object.entries(config)) {
@@ -431,6 +422,110 @@ import.meta.vitest?.test("applyDefaults", ({ expect }) => {
   expect(applyDefaults({ a: { b: 1 } }, { "a.c": 2 })).toEqual({ a: { b: 1 }, "a.c": 2 });
   expect(applyDefaults({ a: { b: { c: 1 } } }, { "a.b": { d: 2 } })).toEqual({ a: { b: { c: 1 } }, "a.b": { c: 1, d: 2 } });
 });
+
+export async function applyProjectDefaultsAndSanitize<T extends ProjectRenderedConfigBeforeSanitization>(config: T) {
+  const withDefaults = applyDefaults(projectConfigDefaults, config);
+
+  const oldSourceOfTruth = withDefaults.sourceOfTruth;
+  const sourceOfTruth =
+    oldSourceOfTruth.type === 'neon' && typeof oldSourceOfTruth.connectionStrings === 'object' ? {
+      type: 'neon',
+      connectionStrings: { ...filterUndefined(oldSourceOfTruth.connectionStrings) as Record<string, string> }
+    } as const
+      : oldSourceOfTruth.type === 'postgres' && typeof oldSourceOfTruth.connectionString === 'string' ? {
+        type: 'postgres',
+        connectionString: oldSourceOfTruth.connectionString,
+      } as const
+        : {
+          type: 'hosted',
+        } as const;
+
+  return {
+    ...withDefaults,
+    sourceOfTruth,
+  };
+}
+
+export async function applyBranchDefaultsAndSanitize<T extends BranchRenderedConfigBeforeSanitization>(config: T) {
+  const withPrevious = await applyProjectDefaultsAndSanitize(config);
+  const withDefaults = applyDefaults(branchConfigDefaults, withPrevious);
+
+  return {
+    ...withDefaults,
+  };
+}
+
+export async function applyEnvironmentDefaultsAndSanitize<T extends EnvironmentRenderedConfigBeforeSanitization>(config: T) {
+  // -------------------------------------------------------------------------------------------------------------------
+  // IMPORTANT NOTE: when updating this function, make sure to also update the __typeHack__ versions of it below
+  // -------------------------------------------------------------------------------------------------------------------
+
+  const withPrevious = await applyBranchDefaultsAndSanitize(config);
+  const withDefaults = applyDefaults(environmentConfigDefaults, withPrevious);
+
+  return {
+    ...withDefaults,
+  };
+}
+// TODO HACK: Because Expand<> can't expand generics, the type of the return values of some of these functions become
+// too deep and makes the type checker complain about "type instantiation too deep".
+//
+// So, here are two 1:1 copies of the function above, but with specific instantiations of the generic type parameter,
+// allowing Expand<> to expand the return type, which makes the type checker happy.
+//
+// It's dumb. We should definitely find a better way to do this. This is really hacky.
+export async function __typeHack__applyEnvironmentDefaultsAndSanitize_EnvironmentRenderedConfigBeforeSanitization(config: EnvironmentRenderedConfigBeforeSanitization) {
+  // -------------------------------------------------------------------------------------------------------------------
+  // IMPORTANT NOTE: this is a copy of the generic function above, edit that first
+  // -------------------------------------------------------------------------------------------------------------------
+
+  const withPrevious = await applyBranchDefaultsAndSanitize(config);
+  const withDefaults = applyDefaults(environmentConfigDefaults, withPrevious);
+
+  return {
+    ...withDefaults,
+  };
+}
+// TODO HACK: Because Expand<> can't expand generics, the type of the return values of some of these functions become
+// too deep and makes the type checker complain about "type instantiation too deep".
+//
+// So, here is a 1:1 copy of the function above, but without the generic type parameter, allowing Expand<> to expand
+// the return type, which makes the type checker happy.
+//
+// It's dumb. We should definitely find a better way to do this. This is really hacky.
+export async function __typeHack__applyEnvironmentDefaultsAndSanitize_OrganizationRenderedConfigBeforeSanitization(config: OrganizationRenderedConfigBeforeSanitization) {
+  // -------------------------------------------------------------------------------------------------------------------
+  // IMPORTANT NOTE: this is a copy of the generic function above, edit that first
+  // -------------------------------------------------------------------------------------------------------------------
+
+  const withPrevious = await applyBranchDefaultsAndSanitize(config);
+  const withDefaults = applyDefaults(environmentConfigDefaults, withPrevious);
+
+  return {
+    ...withDefaults,
+  };
+}
+
+export async function applyOrganizationDefaultsAndSanitize<T extends OrganizationRenderedConfigBeforeSanitization>(config: T) {
+  const withPrevious = await __typeHack__applyEnvironmentDefaultsAndSanitize_OrganizationRenderedConfigBeforeSanitization(config);
+  const withDefaults = applyDefaults(organizationConfigDefaults, withPrevious);
+
+  return {
+    ...withDefaults,
+    emails: {
+      ...withDefaults.emails,
+      theme: has(withDefaults.emails.themeList, withDefaults.emails.theme) ? withDefaults.emails.theme : DEFAULT_EMAIL_THEME_ID,
+      themeList: {
+        ...DEFAULT_EMAIL_THEMES,
+        ...withDefaults.emails.themeList,
+      } as typeof withDefaults.emails.themeList,
+      templateList: {
+        ...DEFAULT_EMAIL_TEMPLATES,
+        ...withDefaults.emails.templateList,
+      } as typeof withDefaults.emails.templateList,
+    },
+  };
+}
 
 /**
  * Does not require a base config, and hence solely relies on the override itself to validate the config. If it returns
@@ -475,7 +570,12 @@ export async function getConfigOverrideErrors<T extends yup.AnySchema>(schema: T
     switch (schemaInfo?.type) {
       case "string": {
         const stringSchema = schema as yup.StringSchema<any>;
-        return yupString();
+        const description = stringSchema.describe();
+        let res = yupString();
+        if (description.tests.some(t => t.name === "uuid")) {
+          res = res.uuid();
+        }
+        return res;
       }
       case "number": {
         return yupNumber();
@@ -490,9 +590,12 @@ export async function getConfigOverrideErrors<T extends yup.AnySchema>(schema: T
         return yupMixed();
       }
       case "array": {
-        const arraySchema = schema as yup.ArraySchema<any, any, any, any>;
-        const innerType = arraySchema.innerType;
-        return yupArray(innerType ? getRestrictedSchema(path + ".[]", innerType as any) : undefined);
+        throw new StackAssertionError(`Arrays are not supported in config JSON files (besides tuples). Use a record instead.`, { schemaInfo, schema });
+
+        // This is how the implementation would look like, but we don't support arrays in config JSON files (besides tuples)
+        // const arraySchema = schema as yup.ArraySchema<any, any, any, any>;
+        // const innerType = arraySchema.innerType;
+        // return yupArray(innerType ? getRestrictedSchema(path + ".[]", innerType as any) : undefined);
       }
       case "tuple": {
         return yupTuple(schemaInfo.items.map((s, index) => getRestrictedSchema(path + `[${index}]`, s)) as any);
@@ -644,25 +747,32 @@ export type OrganizationConfigOverrideOverride = OrganizationConfigOverride;
 // Incomplete configs
 // note that we infer these types from the override types, not from the schema types directly, as there is no guarantee
 // that all configs in the DB satisfy the schema (the only guarantee we make is that this once *used* to be true)
-export type ProjectIncompleteConfig = Expand<ApplyDefaults<typeof projectConfigDefaults, ProjectConfigNormalizedOverride>>;
-export type BranchIncompleteConfig = Expand<ApplyDefaults<typeof branchConfigDefaults, ProjectIncompleteConfig & BranchConfigNormalizedOverride>>;
-export type EnvironmentIncompleteConfig = Expand<ApplyDefaults<typeof environmentConfigDefaults, BranchIncompleteConfig & EnvironmentConfigNormalizedOverride>>;
-export type OrganizationIncompleteConfig = Expand<ApplyDefaults<typeof organizationConfigDefaults, EnvironmentIncompleteConfig & OrganizationConfigNormalizedOverride>>;
+export type ProjectIncompleteConfig = Expand<ProjectConfigNormalizedOverride>;
+export type BranchIncompleteConfig = Expand<ProjectIncompleteConfig & BranchConfigNormalizedOverride>;
+export type EnvironmentIncompleteConfig = Expand<BranchIncompleteConfig & EnvironmentConfigNormalizedOverride>;
+export type OrganizationIncompleteConfig = Expand<EnvironmentIncompleteConfig & OrganizationConfigNormalizedOverride>;
 
-// Rendered configs
-export type ProjectRenderedConfig = Omit<ProjectIncompleteConfig,
+// Rendered configs before sanitization
+export type ProjectRenderedConfigBeforeSanitization = Omit<ProjectIncompleteConfig,
   | keyof BranchConfigNormalizedOverride
   | keyof EnvironmentConfigNormalizedOverride
   | keyof OrganizationConfigNormalizedOverride
 >;
-export type BranchRenderedConfig = Omit<BranchIncompleteConfig,
+export type BranchRenderedConfigBeforeSanitization = Omit<BranchIncompleteConfig,
   | keyof EnvironmentConfigNormalizedOverride
   | keyof OrganizationConfigNormalizedOverride
 >;
-export type EnvironmentRenderedConfig = Omit<EnvironmentIncompleteConfig,
+export type EnvironmentRenderedConfigBeforeSanitization = Omit<EnvironmentIncompleteConfig,
   | keyof OrganizationConfigNormalizedOverride
 >;
-export type OrganizationRenderedConfig = OrganizationIncompleteConfig;
+export type OrganizationRenderedConfigBeforeSanitization = OrganizationIncompleteConfig;
+
+// Rendered configs
+
+export type ProjectRenderedConfig = Expand<Awaited<ReturnType<typeof applyProjectDefaultsAndSanitize<ProjectRenderedConfigBeforeSanitization>>>>;
+export type BranchRenderedConfig = Expand<Awaited<ReturnType<typeof applyBranchDefaultsAndSanitize<BranchRenderedConfigBeforeSanitization>>>>;
+export type EnvironmentRenderedConfig = Expand<Awaited<ReturnType<typeof __typeHack__applyEnvironmentDefaultsAndSanitize_EnvironmentRenderedConfigBeforeSanitization>>>;
+export type OrganizationRenderedConfig = Expand<Awaited<ReturnType<typeof applyOrganizationDefaultsAndSanitize<OrganizationRenderedConfigBeforeSanitization>>>>;
 
 
 // Type assertions (just to make sure the types are correct)

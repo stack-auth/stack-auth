@@ -100,6 +100,7 @@
     "webauthn",
     "Whitespaces",
     "wolfgunblood",
+    "xact",
     "zustand"
   ],
   "editor.codeActionsOnSave": {

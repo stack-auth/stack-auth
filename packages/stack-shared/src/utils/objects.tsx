@@ -260,7 +260,7 @@ import.meta.vitest?.test("deepMerge", ({ expect }) => {
 
 export type DeepOmit<T, U> = T extends object ? { [K in keyof T]: K extends keyof U ? (T[K] extends U[K] ? undefined : T[K]) : T[K] } : (T extends U ? undefined : T);
 
-export function typedEntries<T extends {}>(obj: T): [keyof T, T[keyof T]][] {
+export function typedEntries<T extends {}>(obj: T): [Exclude<keyof T, number>, T[keyof T]][] {
   return Object.entries(obj) as any;
 }
 import.meta.vitest?.test("typedEntries", ({ expect }) => {
@@ -301,7 +301,7 @@ import.meta.vitest?.test("typedFromEntries", ({ expect }) => {
   expect((obj.b as () => string)()).toBe("test");
 });
 
-export function typedKeys<T extends {}>(obj: T): (keyof T)[] {
+export function typedKeys<T extends {}>(obj: T): (Exclude<keyof T, number>)[] {
   return Object.keys(obj) as any;
 }
 import.meta.vitest?.test("typedKeys", ({ expect }) => {

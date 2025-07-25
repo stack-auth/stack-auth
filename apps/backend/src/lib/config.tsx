@@ -1,6 +1,6 @@
 import { Prisma } from "@prisma/client";
 import { Config, NormalizationError, getInvalidConfigReason, normalize, override } from "@stackframe/stack-shared/dist/config/format";
-import { BranchConfigOverride, BranchConfigOverrideOverride, BranchIncompleteConfig, BranchRenderedConfig, EnvironmentConfigOverride, EnvironmentConfigOverrideOverride, EnvironmentIncompleteConfig, EnvironmentRenderedConfig, OrganizationConfigOverride, OrganizationConfigOverrideOverride, OrganizationIncompleteConfig, OrganizationRenderedConfig, ProjectConfigOverride, ProjectConfigOverrideOverride, ProjectIncompleteConfig, ProjectRenderedConfig, applyDefaults, assertNoConfigOverrideErrors, branchConfigDefaults, branchConfigSchema, environmentConfigDefaults, environmentConfigSchema, getConfigOverrideErrors, getIncompleteConfigWarnings, organizationConfigDefaults, organizationConfigSchema, projectConfigDefaults, projectConfigSchema } from "@stackframe/stack-shared/dist/config/schema";
+import { BranchConfigOverride, BranchConfigOverrideOverride, BranchIncompleteConfig, BranchRenderedConfig, EnvironmentConfigOverride, EnvironmentConfigOverrideOverride, EnvironmentIncompleteConfig, EnvironmentRenderedConfig, OrganizationConfigOverride, OrganizationConfigOverrideOverride, OrganizationIncompleteConfig, OrganizationRenderedConfig, ProjectConfigOverride, ProjectConfigOverrideOverride, ProjectIncompleteConfig, ProjectRenderedConfig, applyBranchDefaultsAndSanitize, applyEnvironmentDefaultsAndSanitize, applyOrganizationDefaultsAndSanitize, applyProjectDefaultsAndSanitize, assertNoConfigOverrideErrors, branchConfigDefaults, branchConfigSchema, environmentConfigDefaults, environmentConfigSchema, getConfigOverrideErrors, getIncompleteConfigWarnings, organizationConfigDefaults, organizationConfigSchema, projectConfigDefaults, projectConfigSchema } from "@stackframe/stack-shared/dist/config/schema";
 import { ProjectsCrud } from "@stackframe/stack-shared/dist/interface/crud/projects";
 import { yupBoolean, yupMixed, yupObject, yupRecord, yupString, yupUnion } from "@stackframe/stack-shared/dist/schema-fields";
 import { isTruthy } from "@stackframe/stack-shared/dist/utils/booleans";
@@ -28,28 +28,28 @@ type OrganizationOptions = EnvironmentOptions & { organizationId: string | null 
 export function getRenderedProjectConfigQuery(options: ProjectOptions): RawQuery<Promise<ProjectRenderedConfig>> {
   return RawQuery.then(
     getIncompleteProjectConfigQuery(options),
-    async (incompleteConfig) => normalize(await incompleteConfig) as ProjectRenderedConfig,
+    async (incompleteConfig) => await applyProjectDefaultsAndSanitize(await incompleteConfig),
   );
 }
 
 export function getRenderedBranchConfigQuery(options: BranchOptions): RawQuery<Promise<BranchRenderedConfig>> {
   return RawQuery.then(
     getIncompleteBranchConfigQuery(options),
-    async (incompleteConfig) => normalize(await incompleteConfig) as BranchRenderedConfig,
+    async (incompleteConfig) => await applyBranchDefaultsAndSanitize(await incompleteConfig),
   );
 }
 
 export function getRenderedEnvironmentConfigQuery(options: EnvironmentOptions): RawQuery<Promise<EnvironmentRenderedConfig>> {
   return RawQuery.then(
     getIncompleteEnvironmentConfigQuery(options),
-    async (incompleteConfig) => normalize(await incompleteConfig) as EnvironmentRenderedConfig,
+    async (incompleteConfig) => await applyEnvironmentDefaultsAndSanitize(await incompleteConfig),
   );
 }
 
 export function getRenderedOrganizationConfigQuery(options: OrganizationOptions): RawQuery<Promise<OrganizationRenderedConfig>> {
   return RawQuery.then(
     getIncompleteOrganizationConfigQuery(options),
-    async (incompleteConfig) => normalize(await incompleteConfig) as OrganizationRenderedConfig,
+    async (incompleteConfig) => await applyOrganizationDefaultsAndSanitize(await incompleteConfig),
   );
 }
 
@@ -190,7 +190,7 @@ export async function overrideProjectConfigOverride(options: {
     oldConfig,
     options.projectConfigOverrideOverride,
   );
-  assertNoConfigOverrideErrors(projectConfigSchema, newConfig);
+  await assertNoConfigOverrideErrors(projectConfigSchema, newConfig);
   await options.tx.project.update({
     where: {
       id: options.projectId,
@@ -226,7 +226,7 @@ export async function overrideEnvironmentConfigOverride(options: {
     oldConfig,
     options.environmentConfigOverrideOverride,
   );
-  assertNoConfigOverrideErrors(environmentConfigSchema, newConfig);
+  await assertNoConfigOverrideErrors(environmentConfigSchema, newConfig);
   await options.tx.environmentConfigOverride.upsert({
     where: {
       projectId_branchId: {
@@ -262,45 +262,57 @@ export function overrideOrganizationConfigOverride(options: {
 // ---------------------------------------------------------------------------------------------------------------------
 
 function getIncompleteProjectConfigQuery(options: ProjectOptions): RawQuery<Promise<ProjectIncompleteConfig>> {
-  return makeIncompleteConfigQuery({
-    override: getProjectConfigOverrideQuery(options),
-    defaults: projectConfigDefaults,
-    schema: projectConfigSchema,
-    extraInfo: options,
-  });
+  return RawQuery.then(
+    makeUnsanitizedIncompleteConfigQuery({
+      override: getProjectConfigOverrideQuery(options),
+      defaults: projectConfigDefaults,
+      schema: projectConfigSchema,
+      extraInfo: options,
+    }),
+    async (config) => await applyProjectDefaultsAndSanitize(await config),
+  );
 }
 
 function getIncompleteBranchConfigQuery(options: BranchOptions): RawQuery<Promise<BranchIncompleteConfig>> {
-  return makeIncompleteConfigQuery({
-    previous: getIncompleteProjectConfigQuery(options),
-    override: getBranchConfigOverrideQuery(options),
-    defaults: branchConfigDefaults,
-    schema: branchConfigSchema,
-    extraInfo: options,
-  });
+  return RawQuery.then(
+    makeUnsanitizedIncompleteConfigQuery({
+      previous: getIncompleteProjectConfigQuery(options),
+      override: getBranchConfigOverrideQuery(options),
+      defaults: branchConfigDefaults,
+      schema: branchConfigSchema,
+      extraInfo: options,
+    }),
+    async (config) => await applyBranchDefaultsAndSanitize(await config),
+  );
 }
 
 function getIncompleteEnvironmentConfigQuery(options: EnvironmentOptions): RawQuery<Promise<EnvironmentIncompleteConfig>> {
-  return makeIncompleteConfigQuery({
-    previous: getIncompleteBranchConfigQuery(options),
-    override: getEnvironmentConfigOverrideQuery(options),
-    defaults: environmentConfigDefaults,
-    schema: environmentConfigSchema,
-    extraInfo: options,
-  });
+  return RawQuery.then(
+    makeUnsanitizedIncompleteConfigQuery({
+      previous: getIncompleteBranchConfigQuery(options),
+      override: getEnvironmentConfigOverrideQuery(options),
+      defaults: environmentConfigDefaults,
+      schema: environmentConfigSchema,
+      extraInfo: options,
+    }),
+    async (config) => await applyEnvironmentDefaultsAndSanitize(await config),
+  );
 }
 
 function getIncompleteOrganizationConfigQuery(options: OrganizationOptions): RawQuery<Promise<OrganizationIncompleteConfig>> {
-  return makeIncompleteConfigQuery({
-    previous: getIncompleteEnvironmentConfigQuery(options),
-    override: getOrganizationConfigOverrideQuery(options),
-    defaults: organizationConfigDefaults,
-    schema: organizationConfigSchema,
-    extraInfo: options,
-  });
+  return RawQuery.then(
+    makeUnsanitizedIncompleteConfigQuery({
+      previous: getIncompleteEnvironmentConfigQuery(options),
+      override: getOrganizationConfigOverrideQuery(options),
+      defaults: organizationConfigDefaults,
+      schema: organizationConfigSchema,
+      extraInfo: options,
+    }),
+    async (config) => await applyOrganizationDefaultsAndSanitize(await config),
+  );
 }
 
-function makeIncompleteConfigQuery<T, O>(options: { previous?: RawQuery<Promise<Config>>, override: RawQuery<Promise<Config>>, defaults: any, schema: yup.AnySchema, extraInfo: any }): RawQuery<Promise<any>> {
+function makeUnsanitizedIncompleteConfigQuery<T, O>(options: { previous?: RawQuery<Promise<Config>>, override: RawQuery<Promise<Config>>, defaults: any, schema: yup.AnySchema, extraInfo: any }): RawQuery<Promise<any>> {
   return RawQuery.then(
     RawQuery.all([
       options.previous ?? RawQuery.resolve(Promise.resolve({})),
@@ -310,7 +322,7 @@ function makeIncompleteConfigQuery<T, O>(options: { previous?: RawQuery<Promise<
       const prev = await prevPromise;
       const over = await overPromise;
       await assertNoConfigOverrideErrors(options.schema, over, { extraInfo: options.extraInfo });
-      return applyDefaults(options.defaults, override(prev, over));
+      return override(prev, over);
     },
   );
 }
@@ -409,13 +421,13 @@ import.meta.vitest?.test('_validateConfigOverrideSchemaImpl(...)', async ({ expe
   `);
 
   // Actual configs — base cases
-  const projectSchemaBase = applyDefaults(projectConfigDefaults, {});
+  const projectSchemaBase = await applyProjectDefaultsAndSanitize({});
   expect(await validateConfigOverrideSchema(projectConfigSchema, projectSchemaBase, {})).toEqual(Result.ok(null));
-  const branchSchemaBase = applyDefaults(branchConfigDefaults, projectSchemaBase);
+  const branchSchemaBase = await applyBranchDefaultsAndSanitize(projectSchemaBase);
   expect(await validateConfigOverrideSchema(branchConfigSchema, branchSchemaBase, {})).toEqual(Result.ok(null));
-  const environmentSchemaBase = applyDefaults(environmentConfigDefaults, branchSchemaBase);
+  const environmentSchemaBase = await applyEnvironmentDefaultsAndSanitize(branchSchemaBase);
   expect(await validateConfigOverrideSchema(environmentConfigSchema, environmentSchemaBase, {})).toEqual(Result.ok(null));
-  const organizationSchemaBase = applyDefaults(organizationConfigDefaults, environmentSchemaBase);
+  const organizationSchemaBase = await applyOrganizationDefaultsAndSanitize(environmentSchemaBase);
   expect(await validateConfigOverrideSchema(organizationConfigSchema, organizationSchemaBase, {})).toEqual(Result.ok(null));
 
   // Actual configs — advanced cases
