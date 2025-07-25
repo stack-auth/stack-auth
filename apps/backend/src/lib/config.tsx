@@ -221,7 +221,6 @@ export async function overrideEnvironmentConfigOverride(options: {
     oldConfig,
     options.environmentConfigOverrideOverride,
   );
-  console.log({ newConfig });
   await options.tx.environmentConfigOverride.upsert({
     where: {
       projectId_branchId: {
