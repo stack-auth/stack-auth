@@ -82,7 +82,7 @@ export const POST = createSmartRouteHandler({
     if (tenancy.project.id !== "internal") {
       throw new StatusError(StatusError.Forbidden, "This endpoint is not available");
     }
-    
+
     const project = await globalPrismaClient.project.findFirst({
       where: { id: projectId },
     });
@@ -141,7 +141,6 @@ export const POST = createSmartRouteHandler({
       });
     }
 
-    
 
     await overrideEnvironmentConfigOverride({
       tx: globalPrismaClient,
