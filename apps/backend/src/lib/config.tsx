@@ -422,7 +422,7 @@ export const renderedOrganizationConfigToProjectCrud = (renderedConfig: Organiza
       sender_name: renderedConfig.emails.server.senderName,
       sender_email: renderedConfig.emails.server.senderEmail,
     },
-    email_theme: renderedConfig.emails.theme,
+    email_theme: renderedConfig.emails.selectedThemeId,
 
     team_creator_default_permissions: typedEntries(renderedConfig.rbac.defaultPermissions.teamCreator)
       .filter(([_, perm]) => perm)
