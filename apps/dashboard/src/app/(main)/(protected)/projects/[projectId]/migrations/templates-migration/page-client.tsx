@@ -262,10 +262,15 @@ export function PageClient() {
               {template.legacyTemplateContent && (
                 <div className="p-2">
                   <Reader document={objectStringMap(template.legacyTemplateContent, (str) => renderString(str, {
-                    projectDisplayName: "projectDisplayName",
-                    userDisplayName: "userDisplayName",
-                    teamDisplayName: "teamDisplayName",
-                    otp: "otp",
+                    projectDisplayName: "My Project",
+                    teamDisplayName: "My Team",
+                    userDisplayName: "John Doe",
+                    emailVerificationLink: "<email verification link>",
+                    otp: "3SLSWZ",
+                    magicLink: "<magic link>",
+                    passwordResetLink: "<password reset link>",
+                    teamInvitationLink: "<team invitation link>",
+                    signInInvitationLink: "<sign in invitation link>",
                   }))} rootBlockId="root" />
                 </div>
               )}

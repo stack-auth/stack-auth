@@ -82,6 +82,22 @@ export const POST = createSmartRouteHandler({
     if (tenancy.project.id !== "internal") {
       throw new StatusError(StatusError.Forbidden, "This endpoint is not available");
     }
+    
+    const project = await globalPrismaClient.project.findFirst({
+      where: { id: projectId },
+    });
+    if (!project) {
+      return {
+        statusCode: 200,
+        bodyType: "json",
+        body: {
+          templates_converted: 0,
+          total_templates: 0,
+          rendered: [],
+        },
+      };
+    }
+
     const dbTemplates = await globalPrismaClient.emailTemplate.findMany({
       where: {
         projectId,
@@ -107,10 +123,15 @@ export const POST = createSmartRouteHandler({
         emailTemplates[configTemplateId].tsxSource,
         emptyThemeComponent,
         {
-          projectDisplayName: "projectDisplayName",
-          userDisplayName: "userDisplayName",
-          teamDisplayName: "teamDisplayName",
-          otp: "otp",
+          projectDisplayName: "My Project",
+          teamDisplayName: "My Team",
+          userDisplayName: "John Doe",
+          emailVerificationLink: "<email verification link>",
+          otp: "3SLSWZ",
+          magicLink: "<magic link>",
+          passwordResetLink: "<password reset link>",
+          teamInvitationLink: "<team invitation link>",
+          signInInvitationLink: "<sign in invitation link>",
         }
       );
       rendered.push({
@@ -119,6 +140,8 @@ export const POST = createSmartRouteHandler({
         rendered_html: renderedTemplate.status === "ok" ? renderedTemplate.data.html : null,
       });
     }
+
+    
 
     await overrideEnvironmentConfigOverride({
       tx: globalPrismaClient,
