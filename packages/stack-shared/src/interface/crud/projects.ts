@@ -2,18 +2,6 @@ import { CrudTypeOf, createCrud } from "../../crud";
 import * as schemaFields from "../../schema-fields";
 import { yupArray, yupObject } from "../../schema-fields";
 
-const enabledOAuthProviderSchema = yupObject({
-  id: schemaFields.oauthIdSchema.defined(),
-});
-
-export const projectsCrudAdminReadSchema = yupObject({
-  id: schemaFields.projectIdSchema.defined(),
-  display_name: schemaFields.projectDisplayNameSchema.defined(),
-  description: schemaFields.projectDescriptionSchema.nonNullable().defined(),
-  created_at_millis: schemaFields.projectCreatedAtMillisSchema.defined(),
-  is_production_mode: schemaFields.projectIsProductionModeSchema.defined(),
-}).defined();
-
 export const projectsCrudClientReadSchema = yupObject({
   id: schemaFields.projectIdSchema.defined(),
   display_name: schemaFields.projectDisplayNameSchema.defined(),
@@ -26,8 +14,18 @@ export const projectsCrudClientReadSchema = yupObject({
     client_user_deletion_enabled: schemaFields.projectClientUserDeletionEnabledSchema.defined(),
     allow_user_api_keys: schemaFields.yupBoolean().defined(),
     allow_team_api_keys: schemaFields.yupBoolean().defined(),
-    enabled_oauth_providers: yupArray(enabledOAuthProviderSchema.defined()).defined().meta({ openapiField: { hidden: true } }),
+    enabled_oauth_providers: yupArray(yupObject({
+      id: schemaFields.oauthIdSchema.defined(),
+    }).defined()).defined().meta({ openapiField: { hidden: true } }),
   }).defined().meta({ openapiField: { hidden: true } }),
+}).defined();
+
+export const projectsCrudAdminReadSchema = yupObject({
+  id: schemaFields.projectIdSchema.defined(),
+  display_name: schemaFields.projectDisplayNameSchema.defined(),
+  description: schemaFields.projectDescriptionSchema.nonNullable().defined(),
+  created_at_millis: schemaFields.projectCreatedAtMillisSchema.defined(),
+  is_production_mode: schemaFields.projectIsProductionModeSchema.defined(),
 }).defined();
 
 
