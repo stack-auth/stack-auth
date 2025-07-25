@@ -1,19 +1,19 @@
 "use client";
 
-import { Link } from "@/components/link";
-import { SettingCard } from "@/components/settings";
-import { InputField } from "@/components/form-fields";
-import ThemePreview from "@/components/theme-preview";
-import { previewTemplateSource } from "@stackframe/stack-shared/dist/helpers/emails";
-import { ActionDialog, Button, Typography } from "@stackframe/stack-ui";
+import EmailPreview from "@/components/email-preview";
 import { FormDialog } from "@/components/form-dialog";
+import { InputField } from "@/components/form-fields";
+import { Link } from "@/components/link";
+import { useRouter } from "@/components/router";
+import { SettingCard } from "@/components/settings";
+import { previewTemplateSource } from "@stackframe/stack-shared/dist/helpers/emails";
+import { throwErr } from "@stackframe/stack-shared/dist/utils/errors";
+import { ActionDialog, Button, Typography } from "@stackframe/stack-ui";
 import { Check, Pencil } from "lucide-react";
 import { useState } from "react";
 import * as yup from "yup";
 import { PageLayout } from "../page-layout";
 import { useAdminApp } from "../use-admin-app";
-import { useRouter } from "@/components/router";
-import { throwErr } from "@stackframe/stack-shared/dist/utils/errors";
 
 export default function PageClient() {
   const stackAdminApp = useAdminApp();
@@ -51,7 +51,7 @@ export default function PageClient() {
         description={`Currently using ${selectedThemeData.displayName}`}
       >
         <div className="h-72">
-          <ThemePreview themeId={selectedThemeData.id} templateTsxSource={previewTemplateSource} />
+          <EmailPreview themeId={selectedThemeData.id} templateTsxSource={previewTemplateSource} />
         </div>
         <ActionDialog
           trigger={<Button onClick={handleOpenDialog} className="ml-auto w-min">Set Theme</Button>}
@@ -95,7 +95,7 @@ function ThemeOption({
   return (
     <div className="relative flex flex-col items-center gap-2 group cursor-pointer" onClick={() => onSelect(theme.id)}>
       <div className="w-full h-60 shadow-md rounded-md overflow-clip group-hover:shadow-lg transition-all" style={{ zoom: 0.75 }}>
-        <ThemePreview themeId={theme.id} templateTsxSource={previewTemplateSource} disableFrame />
+        <EmailPreview themeId={theme.id} templateTsxSource={previewTemplateSource} disableResizing />
       </div>
       <div className="flex items-center gap-2">
         {isSelected && <Check />}

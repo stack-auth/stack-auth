@@ -193,10 +193,10 @@ export const branchConfigSchema = canNoLongerBeOverridden(projectConfigSchema, [
   auth: branchAuthSchema,
 
   emails: yupObject({
-    theme: schemaFields.emailThemeSchema.defined(),
-    themeList: schemaFields.emailThemeListSchema.defined(),
-    templateList: schemaFields.emailTemplateListSchema.defined(),
-  }).defined(),
+    selectedThemeId: schemaFields.emailThemeSchema.defined(),
+    themes: schemaFields.emailThemeListSchema.defined(),
+    templates: schemaFields.emailTemplateListSchema.defined(),
+  }),
 
   payments: branchPaymentsSchema,
 }));
@@ -265,7 +265,6 @@ export const branchConfigDefaults = {} as const satisfies DefaultsType<BranchRen
 export const environmentConfigDefaults = {} as const satisfies DefaultsType<EnvironmentRenderedConfigBeforeSanitization, [typeof branchConfigDefaults, typeof projectConfigDefaults]>;
 
 export const organizationConfigDefaults = {
-
   rbac: {
     permissions: (key: string) => ({
       containedPermissionIds: {},
@@ -339,14 +338,14 @@ export const organizationConfigDefaults = {
       senderName: undefined,
       senderEmail: undefined,
     },
-    theme: DEFAULT_EMAIL_THEME_ID,
-    themeList: (key: string) => ({
+    selectedThemeId: DEFAULT_EMAIL_THEME_ID,
+    themes: (key: string) => ({
       displayName: "Unnamed Theme",
       tsxSource: "Error: Theme config is missing TypeScript source code.",
     }),
-    templateList: (key: string) => ({
+    templates: (key: string) => ({
       displayName: "Unnamed Template",
-      subject: "<No subject>",
+      themeId: null,
       tsxSource: "Error: Template config is missing TypeScript source code.",
     }),
   },
@@ -514,15 +513,15 @@ export async function applyOrganizationDefaultsAndSanitize<T extends Organizatio
     ...withDefaults,
     emails: {
       ...withDefaults.emails,
-      theme: has(withDefaults.emails.themeList, withDefaults.emails.theme) ? withDefaults.emails.theme : DEFAULT_EMAIL_THEME_ID,
-      themeList: {
+      selectedThemeId: has(withDefaults.emails.themes, withDefaults.emails.selectedThemeId) ? withDefaults.emails.selectedThemeId : DEFAULT_EMAIL_THEME_ID,
+      themes: {
         ...DEFAULT_EMAIL_THEMES,
-        ...withDefaults.emails.themeList,
-      } as typeof withDefaults.emails.themeList,
-      templateList: {
+        ...withDefaults.emails.themes,
+      } as typeof withDefaults.emails.themes,
+      templates: {
         ...DEFAULT_EMAIL_TEMPLATES,
-        ...withDefaults.emails.templateList,
-      } as typeof withDefaults.emails.templateList,
+        ...withDefaults.emails.templates,
+      } as typeof withDefaults.emails.templates,
     },
   };
 }

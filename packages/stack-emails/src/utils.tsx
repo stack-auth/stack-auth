@@ -91,6 +91,7 @@ export const EMAIL_TEMPLATES_METADATA = {
       ...userVars,
       ...projectVars,
       { name: 'signInInvitationLink', label: 'Sign In Invitation Link', defined: true, example: '<sign in invitation link>' },
+      { name: 'teamDisplayName', label: 'Team Display Name', defined: true, example: 'My Team' },
     ],
   }
 } as const satisfies Record<string, EmailTemplateMetadata>;
@@ -134,7 +135,7 @@ export function objectStringMap<T extends NestedObject>(obj: T, func: (s: string
   return mapStrings(obj) as T;
 }
 
-function renderString(str: string, variables: Record<string, string | null>) {
+export function renderString(str: string, variables: Record<string, string | null>) {
   try {
     return Handlebars.compile(str, { noEscape: true })(variables);
   } catch (e) {

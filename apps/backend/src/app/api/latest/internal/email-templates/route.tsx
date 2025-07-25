@@ -1,5 +1,6 @@
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
-import { adaptSchema, yupArray, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
+import { adaptSchema, templateThemeIdSchema, yupArray, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
+import { filterUndefined, typedEntries } from "@stackframe/stack-shared/dist/utils/objects";
 
 
 export const GET = createSmartRouteHandler({
@@ -18,18 +19,18 @@ export const GET = createSmartRouteHandler({
     body: yupObject({
       templates: yupArray(yupObject({
         id: yupString().uuid().defined(),
-        subject: yupString().defined(),
         display_name: yupString().defined(),
         tsx_source: yupString().defined(),
+        theme_id: templateThemeIdSchema,
       })).defined(),
     }).defined(),
   }),
   async handler({ auth: { tenancy } }) {
-    const templates = Object.entries(tenancy.completeConfig.emails.templateList).map(([id, template]) => ({
+    const templates = typedEntries(tenancy.completeConfig.emails.templates).map(([id, template]) => filterUndefined({
       id,
-      subject: template.subject,
       display_name: template.displayName,
       tsx_source: template.tsxSource,
+      theme_id: template.themeId,
     }));
     return {
       statusCode: 200,

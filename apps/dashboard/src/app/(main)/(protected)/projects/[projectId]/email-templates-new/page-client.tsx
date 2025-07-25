@@ -25,17 +25,12 @@ export default function PageClient() {
         </AlertDescription>
       </Alert>}
       {emailTemplates.map((template) => (
-        <Card key={template.id} className="p-4 flex justify-between flex-col sm:flex-row gap-4">
-          <div className="flex flex-col gap-2">
-            <div>
-              <Typography className="font-medium">
-                {template.displayName}
-              </Typography>
-              <Typography type='label' variant='secondary'>
-                Subject: {template.subject}
-              </Typography>
-            </div>
-            <div className="flex-grow flex justify-start items-end gap-2">
+        <Card key={template.id} className="p-4">
+          <div className="flex justify-between gap-2 items-center">
+            <Typography className="font-medium">
+              {template.displayName}
+            </Typography>
+            <div className="flex justify-start items-end gap-2">
               <Button
                 variant='secondary'
                 onClick={() => {
