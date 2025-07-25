@@ -388,7 +388,7 @@ export type DeepReplaceAllowFunctionsForObjects<T> = T extends object ? { [K in 
 export type DeepReplaceFunctionsWithObjects<T> = T extends (arg: infer K extends string) => infer R ? DeepReplaceFunctionsWithObjects<Record<K, R>> : (T extends object ? { [K in keyof T]: DeepReplaceFunctionsWithObjects<T[K]> } : T);
 export type ApplyDefaults<D extends object | ((key: string) => unknown), C extends object> = Expand<DeepMerge<DeepReplaceFunctionsWithObjects<D>, C>>;
 export function applyDefaults<D extends object | ((key: string) => unknown), C extends object>(defaults: D, config: C): ApplyDefaults<D, C> {
-  const res: any = typeof defaults === 'function' ? {} : mapValues(defaults, v => typeof v === 'function' ? {} : (typeof v === 'object' ? applyDefaults(v as any, {}) : v));
+  const res: any = typeof defaults === 'function' ? {} : mapValues(defaults, v => typeof v === 'function' ? {} : (typeof v === 'object' && v ? applyDefaults(v as any, {}) : v));
   outer: for (const [key, mergeValue] of Object.entries(config)) {
     if (mergeValue === undefined) continue;
     const keyParts = key.split(".");
