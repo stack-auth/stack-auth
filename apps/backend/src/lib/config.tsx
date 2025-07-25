@@ -1,13 +1,10 @@
 import { Prisma } from "@prisma/client";
 import { Config, NormalizationError, NormalizedConfig, getInvalidConfigReason, normalize, override } from "@stackframe/stack-shared/dist/config/format";
 import { BranchConfigOverride, BranchConfigOverrideOverride, BranchIncompleteConfig, BranchRenderedConfig, EnvironmentConfigOverride, EnvironmentConfigOverrideOverride, EnvironmentIncompleteConfig, EnvironmentRenderedConfig, OrganizationConfigOverride, OrganizationConfigOverrideOverride, OrganizationIncompleteConfig, OrganizationRenderedConfig, ProjectConfigOverride, ProjectConfigOverrideOverride, ProjectIncompleteConfig, ProjectRenderedConfig, applyDefaults, branchConfigDefaults, branchConfigSchema, environmentConfigDefaults, environmentConfigSchema, organizationConfigDefaults, organizationConfigSchema, projectConfigDefaults, projectConfigSchema } from "@stackframe/stack-shared/dist/config/schema";
-import { ProjectsCrud } from "@stackframe/stack-shared/dist/interface/crud/projects";
 import { yupMixed, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
-import { isTruthy } from "@stackframe/stack-shared/dist/utils/booleans";
 import { StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
-import { filterUndefined, pick, typedEntries } from "@stackframe/stack-shared/dist/utils/objects";
+import { pick } from "@stackframe/stack-shared/dist/utils/objects";
 import { Result } from "@stackframe/stack-shared/dist/utils/results";
-import { stringCompare } from "@stackframe/stack-shared/dist/utils/strings";
 import * as yup from "yup";
 import { PrismaClientTransaction, RawQuery, globalPrismaClient, rawQuery } from "../prisma-client";
 import { DEFAULT_BRANCH_ID } from "./tenancies";
@@ -361,83 +358,3 @@ import.meta.vitest?.test('schematicallyValidateAndReturn(...)', async ({ expect 
 
   await expect(schematicallyValidateAndReturn(yupObject({ a: yupMixed() }), { a: 'b' }, { "a.b": "c" })).rejects.toThrow(`Invalid override is not compatible with the base config: Tried to use dot notation to access "a.b", but "a" is not an object. Maybe this config is not normalizable?`);
 });
-
-// ---------------------------------------------------------------------------------------------------------------------
-// Conversions
-// ---------------------------------------------------------------------------------------------------------------------
-
-// C -> A
-export const renderedOrganizationConfigToProjectCrud = (renderedConfig: OrganizationRenderedConfig): ProjectsCrud["Admin"]["Read"]['config'] => {
-  const oauthProviders = typedEntries(renderedConfig.auth.oauth.providers)
-    .map(([oauthProviderId, oauthProvider]) => {
-      if (!oauthProvider.type) {
-        return undefined;
-      }
-      if (!oauthProvider.allowSignIn) {
-        return undefined;
-      }
-      return filterUndefined({
-        provider_config_id: oauthProviderId,
-        id: oauthProvider.type,
-        type: oauthProvider.isShared ? 'shared' : 'standard',
-        client_id: oauthProvider.clientId,
-        client_secret: oauthProvider.clientSecret,
-        facebook_config_id: oauthProvider.facebookConfigId,
-        microsoft_tenant_id: oauthProvider.microsoftTenantId,
-      } as const) satisfies ProjectsCrud["Admin"]["Read"]['config']['oauth_providers'][number];
-    })
-    .filter(isTruthy)
-    .sort((a, b) => stringCompare(a.id, b.id));
-
-  return {
-    allow_localhost: renderedConfig.domains.allowLocalhost,
-    client_team_creation_enabled: renderedConfig.teams.allowClientTeamCreation,
-    client_user_deletion_enabled: renderedConfig.users.allowClientUserDeletion,
-    sign_up_enabled: renderedConfig.auth.allowSignUp,
-    oauth_account_merge_strategy: renderedConfig.auth.oauth.accountMergeStrategy,
-    create_team_on_sign_up: renderedConfig.teams.createPersonalTeamOnSignUp,
-    credential_enabled: renderedConfig.auth.password.allowSignIn,
-    magic_link_enabled: renderedConfig.auth.otp.allowSignIn,
-    passkey_enabled: renderedConfig.auth.passkey.allowSignIn,
-
-    oauth_providers: oauthProviders,
-    enabled_oauth_providers: oauthProviders,
-
-    domains: typedEntries(renderedConfig.domains.trustedDomains)
-      .map(([_, domainConfig]) => domainConfig.baseUrl === undefined ? undefined : ({
-        domain: domainConfig.baseUrl,
-        handler_path: domainConfig.handlerPath,
-      }))
-      .filter(isTruthy)
-      .sort((a, b) => stringCompare(a.domain, b.domain)),
-
-    email_config: renderedConfig.emails.server.isShared ? {
-      type: 'shared',
-    } : {
-      type: 'standard',
-      host: renderedConfig.emails.server.host,
-      port: renderedConfig.emails.server.port,
-      username: renderedConfig.emails.server.username,
-      password: renderedConfig.emails.server.password,
-      sender_name: renderedConfig.emails.server.senderName,
-      sender_email: renderedConfig.emails.server.senderEmail,
-    },
-    email_theme: renderedConfig.emails.theme,
-
-    team_creator_default_permissions: typedEntries(renderedConfig.rbac.defaultPermissions.teamCreator)
-      .filter(([_, perm]) => perm)
-      .map(([id, perm]) => ({ id }))
-      .sort((a, b) => stringCompare(a.id, b.id)),
-    team_member_default_permissions: typedEntries(renderedConfig.rbac.defaultPermissions.teamMember)
-      .filter(([_, perm]) => perm)
-      .map(([id, perm]) => ({ id }))
-      .sort((a, b) => stringCompare(a.id, b.id)),
-    user_default_permissions: typedEntries(renderedConfig.rbac.defaultPermissions.signUp)
-      .filter(([_, perm]) => perm)
-      .map(([id, perm]) => ({ id }))
-      .sort((a, b) => stringCompare(a.id, b.id)),
-
-    allow_user_api_keys: renderedConfig.apiKeys.enabled.user,
-    allow_team_api_keys: renderedConfig.apiKeys.enabled.team,
-  };
-};
