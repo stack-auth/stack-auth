@@ -421,5 +421,6 @@ export function getTransformedTemplateMetadata(metadata: EmailTemplateMetadata) 
   return {
     displayName: metadata.label,
     tsxSource: generateTsxSourceFromConfiguration(configuration, variableNames, metadata.defaultSubject),
+    themeId: false, // we want migrated templates to use no theme
   };
 }

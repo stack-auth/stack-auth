@@ -1,14 +1,29 @@
 import { overrideEnvironmentConfigOverride } from "@/lib/config";
+import { renderEmailWithTemplate } from "@/lib/email-rendering";
 import { DEFAULT_BRANCH_ID } from "@/lib/tenancies";
 import { globalPrismaClient } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { EmailTemplate, EmailTemplateType } from "@prisma/client";
 import { EMAIL_TEMPLATES_METADATA, EmailTemplateMetadata } from "@stackframe/stack-emails/dist/utils";
 import { DEFAULT_EMAIL_TEMPLATES } from "@stackframe/stack-shared/dist/helpers/emails";
-import { adaptSchema, yupArray, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
+import { adaptSchema, yupArray, yupMixed, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
 import { StatusError } from "@stackframe/stack-shared/dist/utils/errors";
-import { typedToLowercase } from "@stackframe/stack-shared/dist/utils/strings";
+import { deindent, typedToLowercase } from "@stackframe/stack-shared/dist/utils/strings";
 import { getTransformedTemplateMetadata } from "../convert";
+
+const emptyThemeComponent = deindent`
+  import { Html, Head, Body } from "@react-email/components";
+  export function EmailTheme({ children }: { children: React.ReactNode }) {
+    return (
+      <Html>
+        <Head></Head>
+        <Body>
+          {children}
+        </Body>
+      </Html>
+    );
+  }
+`;
 
 const prismaEmailTemplateToConfigTemplateId = (prismaTemplate: EmailTemplate) => {
   const templateType = prismaTemplate.type;
@@ -56,6 +71,11 @@ export const POST = createSmartRouteHandler({
     body: yupObject({
       templates_converted: yupNumber().defined(),
       total_templates: yupNumber().defined(),
+      rendered: yupArray(yupObject({
+        legacy_template_content: yupMixed(),
+        template_type: yupString().defined(),
+        rendered_html: yupString().nullable().defined(),
+      }).defined()).defined(),
     }).defined(),
   }),
   async handler({ auth: { tenancy }, params: { projectId } }) {
@@ -69,6 +89,7 @@ export const POST = createSmartRouteHandler({
     });
 
     const emailTemplates: Record<string, ReturnType<typeof getTransformedTemplateMetadata>> = {};
+    const rendered = [];
     for (const template of dbTemplates) {
       const configTemplateId = prismaEmailTemplateToConfigTemplateId(template);
       if (!configTemplateId) {
@@ -82,6 +103,21 @@ export const POST = createSmartRouteHandler({
         },
       };
       emailTemplates[configTemplateId] = getTransformedTemplateMetadata(templateMetadata as unknown as EmailTemplateMetadata);
+      const renderedTemplate = await renderEmailWithTemplate(
+        emailTemplates[configTemplateId].tsxSource,
+        emptyThemeComponent,
+        {
+          projectDisplayName: "projectDisplayName",
+          userDisplayName: "userDisplayName",
+          teamDisplayName: "teamDisplayName",
+          otp: "otp",
+        }
+      );
+      rendered.push({
+        legacy_template_content: template.content,
+        template_type: template.type,
+        rendered_html: renderedTemplate.status === "ok" ? renderedTemplate.data.html : null,
+      });
     }
 
     await overrideEnvironmentConfigOverride({
@@ -99,6 +135,7 @@ export const POST = createSmartRouteHandler({
       body: {
         templates_converted: Object.keys(emailTemplates).length,
         total_templates: dbTemplates.length,
+        rendered,
       },
     };
   },
@@ -118,29 +155,33 @@ export const GET = createSmartRouteHandler({
   response: yupObject({
     statusCode: yupNumber().oneOf([200]).defined(),
     bodyType: yupString().oneOf(["json"]).defined(),
-    body: yupArray(yupString().defined()).defined(),
+    body: yupObject({
+      project_ids: yupArray(yupString().defined()).defined(),
+    }).defined(),
   }).defined(),
   async handler({ auth: { tenancy } }) {
     if (tenancy.project.id !== "internal") {
       throw new StatusError(StatusError.Forbidden, "This endpoint is not available");
     }
-    const projects = await globalPrismaClient.project.findMany({
+
+    const dbTemplates = await globalPrismaClient.emailTemplate.findMany({
       where: {
-        id: {
+        projectId: {
           not: "internal",
         },
       },
       select: {
-        id: true,
-      },
-      orderBy: {
-        id: "asc",
+        projectId: true,
       },
     });
+    const projectIds = [...new Set(dbTemplates.map((template) => template.projectId))];
+
     return {
       statusCode: 200,
       bodyType: "json",
-      body: projects.map((project) => project.id),
+      body: {
+        project_ids: projectIds,
+      },
     };
   },
 });
