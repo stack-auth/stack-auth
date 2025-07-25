@@ -4,10 +4,13 @@ import { NextRequest } from 'next/server';
 
 export function GET(request: NextRequest) {
   const pathname = new URL(request.url).pathname;
-  const targetPath = '/docs' + pathname;
 
-  // Extract slug by removing '/docs' prefix and splitting by '/'
-  const slug = pathname.substring(1).split('/').filter(Boolean);
+  // Ensure we have the correct target path without double prefixes
+  const targetPath = pathname.startsWith('/docs') ? pathname : '/docs' + pathname;
+
+  // Extract slug by removing any '/docs' prefix and splitting by '/'
+  const cleanPath = pathname.startsWith('/docs') ? pathname.substring(5) : pathname;
+  const slug = cleanPath.substring(1).split('/').filter(Boolean);
 
   // Check if the target page exists
   const page = source.getPage(slug);
