@@ -1,5 +1,5 @@
 import { renderedOrganizationConfigToProjectCrud } from "@/lib/config";
-import { createOrUpdateProject } from "@/lib/projects";
+import { createOrUpdateProjectWithLegacyConfig } from "@/lib/projects";
 import { getTenancy } from "@/lib/tenancies";
 import { getPrismaClientForTenancy, globalPrismaClient } from "@/prisma-client";
 import { createCrudHandlers } from "@/route-handlers/crud-handler";
@@ -17,7 +17,7 @@ export const projectsCrudHandlers = createLazyProxy(() => createCrudHandlers(pro
     ) {
       throw new StatusError(400, "Invalid email theme");
     }
-    const project = await createOrUpdateProject({
+    const project = await createOrUpdateProjectWithLegacyConfig({
       type: "update",
       projectId: auth.project.id,
       branchId: auth.branchId,

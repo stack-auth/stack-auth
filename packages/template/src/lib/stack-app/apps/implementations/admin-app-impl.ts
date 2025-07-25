@@ -5,7 +5,7 @@ import { EmailTemplateCrud, EmailTemplateType } from "@stackframe/stack-shared/d
 import { InternalApiKeysCrud } from "@stackframe/stack-shared/dist/interface/crud/internal-api-keys";
 import { ProjectsCrud } from "@stackframe/stack-shared/dist/interface/crud/projects";
 import { StackAssertionError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
-import { pick } from "@stackframe/stack-shared/dist/utils/objects";
+import { filterUndefined, pick } from "@stackframe/stack-shared/dist/utils/objects";
 import { Result } from "@stackframe/stack-shared/dist/utils/results";
 import { useMemo } from "react"; // THIS_LINE_PLATFORM react-like
 import { AdminSentEmail } from "../..";
@@ -152,7 +152,12 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
       },
 
       async update(update: AdminProjectUpdateOptions) {
-        await app._interface.updateProject(adminProjectUpdateOptionsToCrud(update));
+        const updateOptions = adminProjectUpdateOptionsToCrud(update);
+        await app._interface.updateProject(filterUndefined({
+          ...updateOptions,
+          config: undefined,
+        }));
+        await app._interface.updateConfigOverrides({ config: updateOptions.config });
         await onRefresh();
       },
       async delete() {
