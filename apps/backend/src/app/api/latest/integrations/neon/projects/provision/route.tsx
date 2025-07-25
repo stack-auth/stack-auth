@@ -1,5 +1,5 @@
 import { createApiKeySet } from "@/lib/internal-api-keys";
-import { createOrUpdateProjectWithLegacyConfig } from "@/lib/projects";
+import { createOrUpdateProject } from "@/lib/projects";
 import { globalPrismaClient } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { neonAuthorizationHeaderSchema, projectDisplayNameSchema, yupArray, yupNumber, yupObject, yupString, yupTuple } from "@stackframe/stack-shared/dist/schema-fields";
@@ -32,7 +32,7 @@ export const POST = createSmartRouteHandler({
   handler: async (req) => {
     const [clientId] = decodeBasicAuthorizationHeader(req.headers.authorization[0])!;
 
-    const createdProject = await createOrUpdateProjectWithLegacyConfig({
+    const createdProject = await createOrUpdateProject({
       ownerIds: [],
       sourceOfTruth: req.body.connection_strings ? {
         type: 'neon',
@@ -42,21 +42,21 @@ export const POST = createSmartRouteHandler({
       data: {
         display_name: req.body.display_name,
         description: "Created with Neon",
-        config: {
-          oauth_providers: [
-            {
-              id: "google",
-              type: "shared",
-            },
-            {
-              id: "github",
-              type: "shared",
-            },
-          ],
-          allow_localhost: true,
-          credential_enabled: true
+      },
+      environmentConfigOverrideOverride: {
+        'auth.passkey.allowSignIn': true,
+        'teams.createPersonalTeamOnSignUp': false,
+        'auth.oauth.providers': {
+          google: {
+            type: 'google',
+            isShared: true,
+          },
+          github: {
+            type: 'github',
+            isShared: true,
+          },
         },
-      }
+      },
     });
 
 
