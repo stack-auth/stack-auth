@@ -34,7 +34,7 @@ export type StackAdminApp<HasTokenStore extends boolean = boolean, ProjectId ext
   & AsyncStoreProperty<"teamPermissionDefinitions", [], AdminTeamPermissionDefinition[], true>
   & AsyncStoreProperty<"projectPermissionDefinitions", [], AdminProjectPermissionDefinition[], true>
   & AsyncStoreProperty<"emailThemes", [], { id: string, displayName: string }[], true>
-  & AsyncStoreProperty<"emailPreview", [themeId: string, content?: string, templateId?: string], string, false>
+  & AsyncStoreProperty<"emailPreview", [{ themeId?: string, themeTsxSource?: string, templateId?: string, templateTsxSource?: string }], string, false>
   & AsyncStoreProperty<"newEmailTemplates", [], { id: string, subject: string, displayName: string, tsxSource: string }[], true>
   & {
     useEmailTemplates(): AdminEmailTemplate[], // THIS_LINE_PLATFORM react-like
@@ -72,7 +72,7 @@ export type StackAdminApp<HasTokenStore extends boolean = boolean, ProjectId ext
 
     useEmailTheme(id: string): { displayName: string, tsxSource: string }, // THIS_LINE_PLATFORM react-like
     createEmailTheme(displayName: string): Promise<{ id: string }>,
-    updateEmailTheme(id: string, tsxSource: string, previewHtml: string): Promise<{ rendered_html: string }>,
+    updateEmailTheme(id: string, tsxSource: string): Promise<void>,
 
     sendChatMessage(
       threadId: string,

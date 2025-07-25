@@ -1,7 +1,6 @@
 import { Thread } from "@/components/assistant-ui/thread";
 import {
   AssistantRuntimeProvider,
-  AssistantToolUI,
   useLocalRuntime,
   type ChatModelAdapter,
   type ThreadHistoryAdapter,
@@ -11,13 +10,13 @@ import { TooltipProvider } from "@stackframe/stack-ui";
 type AssistantChatProps = {
   chatAdapter: ChatModelAdapter,
   historyAdapter: ThreadHistoryAdapter,
-  toolComponents?: AssistantToolUI[],
+  toolComponents: React.ReactNode,
 }
 
 export default function AssistantChat({
   chatAdapter,
   historyAdapter,
-  toolComponents = []
+  toolComponents
 }: AssistantChatProps) {
   const runtime = useLocalRuntime(
     chatAdapter,
@@ -26,9 +25,7 @@ export default function AssistantChat({
 
   return (
     <AssistantRuntimeProvider runtime={runtime}>
-      {toolComponents.map((ToolComponent, index) => (
-        <ToolComponent key={index} />
-      ))}
+      {toolComponents}
       <TooltipProvider>
         <Thread />
       </TooltipProvider>

@@ -1,4 +1,4 @@
-import { renderEmailWithTheme } from "@/lib/email-themes";
+import { createTemplateComponentFromHtml, renderEmailWithTemplate } from "@/lib/email-rendering";
 import { getEmailConfig, sendEmail } from "@/lib/emails";
 import { getNotificationCategoryByName, hasNotificationEnabled } from "@/lib/notification-categories";
 import { getPrismaClientForTenancy } from "@/prisma-client";
@@ -115,12 +115,9 @@ export const POST = createSmartRouteHandler({
       }
 
 
-      const renderedEmail = await renderEmailWithTheme(
-        body.html,
-        activeTheme.tsxSource,
-        unsubscribeLink || undefined
-      );
-      if ("error" in renderedEmail) {
+      const template = createTemplateComponentFromHtml(body.html, unsubscribeLink || undefined);
+      const renderedEmail = await renderEmailWithTemplate(template, activeTheme.tsxSource);
+      if (renderedEmail.status === "error") {
         userSendErrors.set(userId, "There was an error rendering the email");
         continue;
       }
@@ -131,8 +128,8 @@ export const POST = createSmartRouteHandler({
           emailConfig,
           to: primaryEmail,
           subject: body.subject,
-          html: renderedEmail.html,
-          text: renderedEmail.text,
+          html: renderedEmail.data.html,
+          text: renderedEmail.data.text,
         });
       } catch {
         userSendErrors.set(userId, "Failed to send email");
