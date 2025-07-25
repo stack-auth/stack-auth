@@ -497,7 +497,7 @@ it("verifies email_theme update persists", async ({ expect }) => {
   expect(response.body.config.email_theme).toBe("a0172b5d-cff0-463b-83bb-85124697373a"); // default-dark
 });
 
-it.only("gives an error when updating email_theme with an invalid value", async ({ expect }) => {
+it("gives an error when updating email_theme with an invalid value", async ({ expect }) => {
   await Project.createAndSwitch();
 
   const response = await niceBackendFetch("/api/v1/internal/projects/current", {
