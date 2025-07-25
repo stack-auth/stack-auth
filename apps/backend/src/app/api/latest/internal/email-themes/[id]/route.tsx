@@ -1,6 +1,7 @@
 import { overrideEnvironmentConfigOverride } from "@/lib/config";
 import { globalPrismaClient } from "@/prisma-client";
-import { renderEmailWithTheme } from "@/lib/email-themes";
+import { renderEmailWithTemplate } from "@/lib/email-rendering";
+import { previewTemplateSource } from "@stackframe/stack-shared/dist/helpers/emails";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { KnownErrors } from "@stackframe/stack-shared/dist/known-errors";
 import { adaptSchema, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
@@ -57,7 +58,6 @@ export const PATCH = createSmartRouteHandler({
       id: yupString().defined(),
     }).defined(),
     body: yupObject({
-      preview_html: yupString().defined(),
       tsx_source: yupString().defined(),
     }).defined(),
   }),
@@ -66,7 +66,6 @@ export const PATCH = createSmartRouteHandler({
     bodyType: yupString().oneOf(["json"]).defined(),
     body: yupObject({
       display_name: yupString().defined(),
-      rendered_html: yupString().defined(),
     }).defined(),
   }),
   async handler({ auth: { tenancy }, params: { id }, body }) {
@@ -75,8 +74,8 @@ export const PATCH = createSmartRouteHandler({
       throw new StatusError(404, "No theme found with given id");
     }
     const theme = themeList[id];
-    const result = await renderEmailWithTheme(body.preview_html, body.tsx_source);
-    if ("error" in result) {
+    const result = await renderEmailWithTemplate(previewTemplateSource, body.tsx_source);
+    if (result.status === "error") {
       throw new KnownErrors.EmailRenderingError(result.error);
     }
     await overrideEnvironmentConfigOverride({
@@ -92,7 +91,6 @@ export const PATCH = createSmartRouteHandler({
       bodyType: "json",
       body: {
         display_name: theme.displayName,
-        rendered_html: result.html,
       },
     };
   },

@@ -224,7 +224,7 @@ importers:
         version: 8.16.3
       postgres:
         specifier: ^3.4.5
-        version: 3.4.5
+        version: 3.4.7
       posthog-node:
         specifier: ^4.1.0
         version: 4.1.0
@@ -390,7 +390,7 @@ importers:
         version: 0.2.1(next@15.4.1(@babel/core@7.26.0)(@opentelemetry/api@1.9.0)(react-dom@19.0.0(react@19.0.0))(react@19.0.0))(react-dom@19.0.0(react@19.0.0))(react@19.0.0)
       posthog-js:
         specifier: ^1.235.0
-        version: 1.255.1
+        version: 1.235.4
       react:
         specifier: 19.0.0
         version: 19.0.0
@@ -427,6 +427,9 @@ importers:
       tailwindcss-animate:
         specifier: ^1.0.7
         version: 1.0.7(tailwindcss@3.4.4)
+      use-debounce:
+        specifier: ^10.0.5
+        version: 10.0.5(react@19.0.0)
       yup:
         specifier: ^1.4.0
         version: 1.4.0
@@ -624,7 +627,7 @@ importers:
         version: 0.4.6(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
       posthog-js:
         specifier: ^1.235.0
-        version: 1.255.1
+        version: 1.235.4
       react:
         specifier: ^18.3.1
         version: 18.3.1
@@ -13621,12 +13624,12 @@ packages:
     resolution: {integrity: sha512-9ZhXKM/rw350N1ovuWHbGxnGh/SNJ4cnxHiM0rxE4VN41wsg8P8zWn9hv/buK00RP4WvlOyr/RBDiptyxVbkZQ==}
     engines: {node: '>=0.10.0'}
 
-  postgres@3.4.5:
-    resolution: {integrity: sha512-cDWgoah1Gez9rN3H4165peY9qfpEo+SA61oQv65O3cRUE1pOEoJWwddwcqKE8XZYjbblOJlYDlLV4h67HrEVDg==}
+  postgres@3.4.7:
+    resolution: {integrity: sha512-Jtc2612XINuBjIl/QTWsV5UvE8UHuNblcO3vVADSrKsrc6RqGX6lOW1cEo3CM2v0XG4Nat8nI+YM7/f26VxXLw==}
     engines: {node: '>=12'}
 
-  posthog-js@1.255.1:
-    resolution: {integrity: sha512-KMh0o9MhORhEZVjXpktXB5rJ8PfDk+poqBoTSoLzWgNjhJf6D8jcyB9jUMA6vVPfn4YeepVX5NuclDRqOwr5Mw==}
+  posthog-js@1.235.4:
+    resolution: {integrity: sha512-CcAQpw7oaIoOwyaeqNZoKjciIMygrjgn6+cBSWFQcbo7aEmiO2666BZHZH/GBFmz0g2/w5abSpO7UntAj/69dw==}
     peerDependencies:
       '@rrweb/types': 2.0.0-alpha.17
       rrweb-snapshot: 2.0.0-alpha.17
@@ -15660,6 +15663,12 @@ packages:
     peerDependenciesMeta:
       '@types/react':
         optional: true
+
+  use-debounce@10.0.5:
+    resolution: {integrity: sha512-Q76E3lnIV+4YT9AHcrHEHYmAd9LKwUAbPXDm7FlqVGDHiSOhX3RDjT8dm0AxbJup6WgOb1YEcKyCr11kBJR5KQ==}
+    engines: {node: '>= 16.0.0'}
+    peerDependencies:
+      react: '*'
 
   use-intl@3.19.1:
     resolution: {integrity: sha512-FUblDZJ/iuXusroBxvzVwXmgjHIef2YHJ0ASRmkMV8whlcRr6QJozBZUR/xB4I0+MMbWDD4GPugUK+MxE2coJA==}
@@ -28608,7 +28617,7 @@ snapshots:
 
   jest-worker@27.5.1:
     dependencies:
-      '@types/node': 20.17.6
+      '@types/node': 22.15.34
       merge-stream: 2.0.0
       supports-color: 8.1.1
 
@@ -30998,9 +31007,9 @@ snapshots:
     dependencies:
       xtend: 4.0.2
 
-  postgres@3.4.5: {}
+  postgres@3.4.7: {}
 
-  posthog-js@1.255.1:
+  posthog-js@1.235.4:
     dependencies:
       core-js: 3.41.0
       fflate: 0.4.8
@@ -33780,6 +33789,10 @@ snapshots:
       react: 19.0.0
     optionalDependencies:
       '@types/react': 18.3.12
+
+  use-debounce@10.0.5(react@19.0.0):
+    dependencies:
+      react: 19.0.0
 
   use-intl@3.19.1(react@18.3.1):
     dependencies:
