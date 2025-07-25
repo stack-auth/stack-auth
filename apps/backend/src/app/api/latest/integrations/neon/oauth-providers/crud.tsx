@@ -1,4 +1,4 @@
-import { createOrUpdateProject } from "@/lib/projects";
+import { createOrUpdateProjectWithLegacyConfig } from "@/lib/projects";
 import { Tenancy, getTenancy } from "@/lib/tenancies";
 import { createCrudHandlers } from "@/route-handlers/crud-handler";
 import { createCrud } from "@stackframe/stack-shared/dist/crud";
@@ -97,7 +97,7 @@ export const oauthProvidersCrudHandlers = createLazyProxy(() => createCrudHandle
       throw new StatusError(StatusError.BadRequest, 'OAuth provider already exists');
     }
 
-    await createOrUpdateProject({
+    await createOrUpdateProjectWithLegacyConfig({
       type: 'update',
       projectId: auth.project.id,
       branchId: auth.branchId,
@@ -124,7 +124,7 @@ export const oauthProvidersCrudHandlers = createLazyProxy(() => createCrudHandle
       throw new StatusError(StatusError.NotFound, 'OAuth provider not found');
     }
 
-    await createOrUpdateProject({
+    await createOrUpdateProjectWithLegacyConfig({
       type: 'update',
       projectId: auth.project.id,
       branchId: auth.branchId,
@@ -153,7 +153,7 @@ export const oauthProvidersCrudHandlers = createLazyProxy(() => createCrudHandle
       throw new StatusError(StatusError.NotFound, 'OAuth provider not found');
     }
 
-    await createOrUpdateProject({
+    await createOrUpdateProjectWithLegacyConfig({
       type: 'update',
       projectId: auth.project.id,
       branchId: auth.branchId,
