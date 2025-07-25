@@ -8,12 +8,12 @@ import { runAsynchronously, wait } from '@stackframe/stack-shared/dist/utils/pro
 import { Result } from '@stackframe/stack-shared/dist/utils/results';
 import nodemailer from 'nodemailer';
 import { Tenancy, getTenancy } from './tenancies';
-import { getActiveEmailTheme, renderEmailWithTemplate } from './email-rendering';
+import { getEmailThemeForTemplate, renderEmailWithTemplate } from './email-rendering';
 import { DEFAULT_TEMPLATE_IDS } from '@stackframe/stack-shared/dist/helpers/emails';
 
 
 export function getDefaultEmailTemplate(tenancy: Tenancy, type: keyof typeof DEFAULT_TEMPLATE_IDS) {
-  const templateList = tenancy.completeConfig.emails.templateList;
+  const templateList = tenancy.completeConfig.emails.templates;
   if (type === "email_verification") {
     return templateList[DEFAULT_TEMPLATE_IDS.email_verification];
   }
@@ -248,7 +248,9 @@ export async function sendEmailWithoutRetries(options: SendEmailOptions): Promis
     throw new StackAssertionError("Tenancy not found");
   }
 
-  await getPrismaClientForTenancy(tenancy).sentEmail.create({
+  const prisma = await getPrismaClientForTenancy(tenancy);
+
+  await prisma.sentEmail.create({
     data: {
       tenancyId: options.tenancyId,
       to: typeof options.to === 'string' ? [options.to] : options.to,
@@ -314,18 +316,18 @@ export async function sendEmailFromTemplate(options: {
   version?: 1 | 2,
 }) {
   const template = getDefaultEmailTemplate(options.tenancy, options.templateType);
+  const themeSource = getEmailThemeForTemplate(options.tenancy, template.themeId);
   const variables = filterUndefined({
     projectDisplayName: options.tenancy.project.display_name,
     userDisplayName: options.user?.display_name || undefined,
     ...filterUndefined(options.extraVariables),
   });
-  const theme = getActiveEmailTheme(options.tenancy);
-  const result = await renderEmailWithTemplate(template.tsxSource, theme.tsxSource, variables);
 
+  const result = await renderEmailWithTemplate(template.tsxSource, themeSource, variables);
   if (result.status === 'error') {
     throw new StackAssertionError("Failed to render email template", {
       template: template,
-      theme: theme.tsxSource,
+      theme: themeSource,
       variables,
     });
   }

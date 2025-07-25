@@ -1,7 +1,7 @@
 import { useAdminApp } from "@/app/(main)/(protected)/projects/[projectId]/use-admin-app";
 import { KnownErrors } from "@stackframe/stack-shared";
 import { Spinner, Typography } from "@stackframe/stack-ui";
-import { Component, ReactNode, Suspense } from "react";
+import { Component, Fragment, ReactNode, Suspense } from "react";
 import { useDebounce } from 'use-debounce';
 import ResizableContainer from './resizable-container';
 
@@ -44,7 +44,7 @@ function EmailPreviewContent({
   templateId,
   templateTsxSource,
 }: {
-  themeId?: string,
+  themeId?: string | null | false,
   themeTsxSource?: string,
   templateId?: string,
   templateTsxSource?: string,
@@ -69,7 +69,7 @@ function EmailPreviewContent({
 
 type EmailPreviewProps =
   | ({
-    themeId: string,
+    themeId: string | null | false,
     themeTsxSource?: undefined,
   } | {
     themeId?: undefined,
@@ -97,7 +97,7 @@ export default function EmailPreview({
 }: EmailPreviewProps) {
   const [debouncedTemplateTsxSource] = useDebounce(templateTsxSource, 500);
   const [debouncedThemeTsxSource] = useDebounce(themeTsxSource, 500);
-  const Container = disableResizing ? "div" : ResizableContainer;
+  const Container = disableResizing ? Fragment : ResizableContainer;
 
   return (
     <div className={`w-full h-full flex flex-col justify-center ${disableResizing ? "pointer-events-none" : ""}`}>

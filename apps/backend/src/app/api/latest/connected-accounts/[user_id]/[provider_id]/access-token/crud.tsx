@@ -39,7 +39,7 @@ export const connectedAccountAccessTokenCrudHandlers = createLazyProxy(() => cre
     const providerInstance = await getProvider(provider);
 
     // ====================== retrieve access token if it exists ======================
-    const prisma = getPrismaClientForTenancy(auth.tenancy);
+    const prisma = await getPrismaClientForTenancy(auth.tenancy);
     const accessTokens = await prisma.oAuthAccessToken.findMany({
       where: {
         tenancyId: auth.tenancy.id,

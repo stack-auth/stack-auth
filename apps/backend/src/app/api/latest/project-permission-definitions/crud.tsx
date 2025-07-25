@@ -21,9 +21,10 @@ export const projectPermissionDefinitionsCrudHandlers = createLazyProxy(() => cr
     );
   },
   async onUpdate({ auth, data, params }) {
+    const prisma = await getPrismaClientForTenancy(auth.tenancy);
     return await updatePermissionDefinition(
       globalPrismaClient,
-      getPrismaClientForTenancy(auth.tenancy),
+      prisma,
       {
         oldId: params.permission_id,
         scope: "project",
@@ -33,9 +34,10 @@ export const projectPermissionDefinitionsCrudHandlers = createLazyProxy(() => cr
     );
   },
   async onDelete({ auth, params }) {
+    const prisma = await getPrismaClientForTenancy(auth.tenancy);
     return await deletePermissionDefinition(
       globalPrismaClient,
-      getPrismaClientForTenancy(auth.tenancy),
+      prisma,
       {
         scope: "project",
         tenancy: auth.tenancy,
