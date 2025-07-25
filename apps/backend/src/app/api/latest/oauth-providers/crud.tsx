@@ -108,7 +108,7 @@ async function ensureProviderExists(tenancy: Tenancy, userId: string, providerId
 }
 
 function getProviderConfig(tenancy: Tenancy, providerConfigId: string) {
-  const config = tenancy.completeConfig;
+  const config = tenancy.config;
   let providerConfig: (typeof config.auth.oauth.providers)[number] & { id: string } | undefined;
   for (const [providerId, provider] of Object.entries(config.auth.oauth.providers)) {
     if (providerId === providerConfigId) {

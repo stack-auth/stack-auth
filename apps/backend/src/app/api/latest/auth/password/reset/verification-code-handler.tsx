@@ -48,7 +48,7 @@ export const resetPasswordVerificationCodeHandler = createVerificationCodeHandle
     });
   },
   async handler(tenancy, { email }, data, { password }) {
-    if (!tenancy.config.credential_enabled) {
+    if (!tenancy.config.auth.password.allowSignIn) {
       throw new KnownErrors.PasswordAuthenticationNotEnabled();
     }
 

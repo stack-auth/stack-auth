@@ -1,8 +1,9 @@
+import { Tenancy } from "@/lib/tenancies";
 import { createCrudHandlers } from "@/route-handlers/crud-handler";
 import { CrudTypeOf, createCrud } from "@stackframe/stack-shared/dist/crud";
 import * as schemaFields from "@stackframe/stack-shared/dist/schema-fields";
 import { yupMixed, yupObject } from "@stackframe/stack-shared/dist/schema-fields";
-import { StatusError } from "@stackframe/stack-shared/dist/utils/errors";
+import { StatusError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
 import { createLazyProxy } from "@stackframe/stack-shared/dist/utils/proxies";
 import { projectsCrudHandlers } from "../../../internal/projects/current/crud";
 
@@ -44,17 +45,20 @@ export const domainCrud = createCrud({
 });
 export type DomainCrud = CrudTypeOf<typeof domainCrud>;
 
+function domainConfigToLegacyConfig(domain: Tenancy['config']['domains']['trustedDomains'][string]) {
+  return { domain: domain.baseUrl || throwErr('Domain base URL is required'), handler_path: domain.handlerPath };
+}
 
 export const domainCrudHandlers = createLazyProxy(() => createCrudHandlers(domainCrud, {
   paramsSchema: yupObject({
     domain: domainSchema.optional(),
   }),
   onCreate: async ({ auth, data, params }) => {
-    const oldDomains = auth.tenancy.config.domains;
+    const oldDomains = auth.tenancy.config.domains.trustedDomains;
     await projectsCrudHandlers.adminUpdate({
       data: {
         config: {
-          domains: [...oldDomains, { domain: data.domain, handler_path: "/handler" }],
+          domains: [...Object.values(oldDomains).map(domainConfigToLegacyConfig), { domain: data.domain, handler_path: "/handler" }],
         },
       },
       tenancy: auth.tenancy,
@@ -64,10 +68,10 @@ export const domainCrudHandlers = createLazyProxy(() => createCrudHandlers(domai
     return { domain: data.domain };
   },
   onDelete: async ({ auth, params }) => {
-    const oldDomains = auth.tenancy.config.domains;
+    const oldDomains = auth.tenancy.config.domains.trustedDomains;
     await projectsCrudHandlers.adminUpdate({
       data: {
-        config: { domains: oldDomains.filter((domain) => domain.domain !== params.domain) },
+        config: { domains: Object.values(oldDomains).filter((domain) => domain.baseUrl !== params.domain).map(domainConfigToLegacyConfig) },
       },
       tenancy: auth.tenancy,
       allowedErrorTypes: [StatusError],
@@ -75,7 +79,7 @@ export const domainCrudHandlers = createLazyProxy(() => createCrudHandlers(domai
   },
   onList: async ({ auth }) => {
     return {
-      items: auth.tenancy.config.domains.map((domain) => ({ domain: domain.domain })),
+      items: Object.values(auth.tenancy.config.domains.trustedDomains).map(domainConfigToLegacyConfig),
       is_paginated: false,
     };
   },

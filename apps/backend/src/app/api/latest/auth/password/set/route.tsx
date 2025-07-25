@@ -28,7 +28,7 @@ export const POST = createSmartRouteHandler({
     bodyType: yupString().oneOf(["success"]).defined(),
   }),
   async handler({ auth: { tenancy, user }, body: { password } }) {
-    if (!tenancy.config.credential_enabled) {
+    if (!tenancy.config.auth.password.allowSignIn) {
       throw new KnownErrors.PasswordAuthenticationNotEnabled();
     }
 

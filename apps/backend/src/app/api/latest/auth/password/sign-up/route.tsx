@@ -36,15 +36,11 @@ export const POST = createSmartRouteHandler({
     }).defined(),
   }),
   async handler({ auth: { tenancy }, body: { email, password, verification_callback_url: verificationCallbackUrl } }, fullReq) {
-    if (!tenancy.config.credential_enabled) {
+    if (!tenancy.config.auth.password.allowSignIn) {
       throw new KnownErrors.PasswordAuthenticationNotEnabled();
     }
 
-    if (!validateRedirectUrl(
-      verificationCallbackUrl,
-      tenancy.config.domains,
-      tenancy.config.allow_localhost,
-    )) {
+    if (!validateRedirectUrl(verificationCallbackUrl, tenancy)) {
       throw new KnownErrors.RedirectUrlNotWhitelisted();
     }
 
@@ -53,7 +49,7 @@ export const POST = createSmartRouteHandler({
       throw passwordError;
     }
 
-    if (!tenancy.config.sign_up_enabled) {
+    if (!tenancy.config.auth.allowSignUp) {
       throw new KnownErrors.SignUpNotEnabled();
     }
 

@@ -474,7 +474,7 @@ export const usersCrudHandlers = createLazyProxy(() => createCrudHandlers(usersC
         primaryEmailAuthEnabled: !!data.primary_email_auth_enabled,
       });
 
-      const config = auth.tenancy.completeConfig;
+      const config = auth.tenancy.config;
 
       const newUser = await tx.projectUser.create({
         data: {
@@ -600,7 +600,7 @@ export const usersCrudHandlers = createLazyProxy(() => createCrudHandlers(usersC
     });
 
     // TODO why is this outside the transaction? is there a reason?
-    if (auth.tenancy.config.create_team_on_sign_up) {
+    if (auth.tenancy.config.teams.createPersonalTeamOnSignUp) {
       const team = await teamsCrudHandlers.adminCreate({
         data: {
           display_name: data.display_name ?
@@ -642,7 +642,7 @@ export const usersCrudHandlers = createLazyProxy(() => createCrudHandlers(usersC
     const result = await retryTransaction(prisma, async (tx) => {
       await ensureUserExists(tx, { tenancyId: auth.tenancy.id, userId: params.user_id });
 
-      const config = auth.tenancy.completeConfig;
+      const config = auth.tenancy.config;
 
       if (data.selected_team_id !== undefined) {
         if (data.selected_team_id !== null) {
@@ -1042,7 +1042,7 @@ export const currentUserCrudHandlers = createLazyProxy(() => createCrudHandlers(
     });
   },
   async onDelete({ auth }) {
-    if (auth.type === 'client' && !auth.tenancy.config.client_user_deletion_enabled) {
+    if (auth.type === 'client' && !auth.tenancy.config.users.allowClientUserDeletion) {
       throw new StatusError(StatusError.BadRequest, "Client user deletion is not enabled for this project");
     }
 

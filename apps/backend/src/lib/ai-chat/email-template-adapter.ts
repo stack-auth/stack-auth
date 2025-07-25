@@ -21,7 +21,7 @@ export const emailTemplateAdapter = (context: ChatAdapterContext) => ({
 
 
 const CREATE_EMAIL_TEMPLATE_TOOL_DESCRIPTION = (context: ChatAdapterContext) => {
-  const currentEmailTemplate = context.tenancy.completeConfig.emails.templateList[context.threadId];
+  const currentEmailTemplate = context.tenancy.config.emails.templateList[context.threadId];
 
   return `
 Create a new email template.

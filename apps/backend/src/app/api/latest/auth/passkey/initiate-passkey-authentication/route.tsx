@@ -30,7 +30,7 @@ export const POST = createSmartRouteHandler({
   }),
   async handler({ auth: { tenancy } }) {
 
-    if (!tenancy.config.passkey_enabled) {
+    if (!tenancy.config.auth.passkey.allowSignIn) {
       throw new KnownErrors.PasskeyAuthenticationNotEnabled();
     }
 

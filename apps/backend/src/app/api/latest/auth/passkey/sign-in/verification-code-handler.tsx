@@ -38,7 +38,7 @@ export const passkeySignInVerificationCodeHandler = createVerificationCodeHandle
   },
   async handler(tenancy, _, { challenge }, { authentication_response }) {
 
-    if (!tenancy.config.passkey_enabled) {
+    if (!tenancy.config.auth.passkey.allowSignIn) {
       throw new KnownErrors.PasskeyAuthenticationNotEnabled();
     }
 
@@ -67,7 +67,7 @@ export const passkeySignInVerificationCodeHandler = createVerificationCodeHandle
     let expectedOrigin = "";
     const clientDataJSON = decodeClientDataJSON(authentication_response.response.clientDataJSON);
     const { origin } = clientDataJSON;
-    const localhostAllowed = tenancy.config.allow_localhost;
+    const localhostAllowed = tenancy.config.domains.allowLocalhost;
     const parsedOrigin = new URL(origin);
     const isLocalhost = parsedOrigin.hostname === "localhost";
 
@@ -81,7 +81,10 @@ export const passkeySignInVerificationCodeHandler = createVerificationCodeHandle
     }
 
     if (!isLocalhost) {
-      if (!tenancy.config.domains.map(e => e.domain).includes(parsedOrigin.origin)) {
+      if (!Object.values(tenancy.config.domains.trustedDomains)
+        .filter(e => e.baseUrl)
+        .map(e => e.baseUrl)
+        .includes(parsedOrigin.origin)) {
         throw new KnownErrors.PasskeyAuthenticationFailed("Passkey authentication failed because the origin is not allowed");
       } else {
         expectedRPID = parsedOrigin.hostname;

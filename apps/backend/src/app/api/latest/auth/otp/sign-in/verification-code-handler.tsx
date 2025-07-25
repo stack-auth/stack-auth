@@ -50,7 +50,7 @@ export async function ensureUserForEmailAllowsOtp(tenancy: Tenancy, email: strin
       throw new KnownErrors.UserWithEmailAlreadyExists(contactChannel.value, true);
     }
   } else {
-    if (!tenancy.config.sign_up_enabled) {
+    if (!tenancy.config.auth.allowSignUp) {
       throw new KnownErrors.SignUpNotEnabled();
     }
     return null;

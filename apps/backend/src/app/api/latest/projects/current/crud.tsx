@@ -1,3 +1,4 @@
+import { renderedOrganizationConfigToProjectCrud } from "@/lib/config";
 import { createCrudHandlers } from "@/route-handlers/crud-handler";
 import { clientProjectsCrud } from "@stackframe/stack-shared/dist/interface/crud/projects";
 import { yupObject } from "@stackframe/stack-shared/dist/schema-fields";
@@ -8,7 +9,7 @@ export const clientProjectsCrudHandlers = createLazyProxy(() => createCrudHandle
   onRead: async ({ auth }) => {
     return {
       ...auth.project,
-      config: auth.tenancy.config,
+      config: renderedOrganizationConfigToProjectCrud(auth.tenancy.config),
     };
   },
 }));

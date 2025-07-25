@@ -2,7 +2,7 @@ import { globalPrismaClient, rawQuery } from "@/prisma-client";
 import { Prisma } from "@prisma/client";
 import { ProjectsCrud } from "@stackframe/stack-shared/dist/interface/crud/projects";
 import { StackAssertionError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
-import { getRenderedOrganizationConfigQuery, renderedOrganizationConfigToProjectCrud } from "./config";
+import { getRenderedOrganizationConfigQuery } from "./config";
 import { getProject } from "./projects";
 
 /**
@@ -26,18 +26,15 @@ export async function tenancyPrismaToCrud(prisma: Prisma.TenancyGetPayload<{}>) 
 
   const projectCrud = await getProject(prisma.projectId) ?? throwErr("Project in tenancy not found");
 
-  const completeConfig = await rawQuery(globalPrismaClient, getRenderedOrganizationConfigQuery({
+  const config = await rawQuery(globalPrismaClient, getRenderedOrganizationConfigQuery({
     projectId: projectCrud.id,
     branchId: prisma.branchId,
     organizationId: prisma.organizationId,
   }));
-  const oldProjectConfig = renderedOrganizationConfigToProjectCrud(completeConfig);
 
   return {
     id: prisma.id,
-    /** @deprecated */
-    config: oldProjectConfig,
-    completeConfig,
+    config,
     branchId: prisma.branchId,
     organization: prisma.organizationId === null ? null : {
       // TODO actual organization type

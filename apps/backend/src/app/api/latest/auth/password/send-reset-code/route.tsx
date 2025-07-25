@@ -31,7 +31,7 @@ export const POST = createSmartRouteHandler({
     }).defined(),
   }),
   async handler({ auth: { tenancy }, body: { email, callback_url: callbackUrl } }, fullReq) {
-    if (!tenancy.config.credential_enabled) {
+    if (!tenancy.config.auth.password.allowSignIn) {
       throw new KnownErrors.PasswordAuthenticationNotEnabled();
     }
 

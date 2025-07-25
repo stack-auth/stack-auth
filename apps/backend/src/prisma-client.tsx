@@ -48,11 +48,11 @@ function getSchemaFromConnectionString(connectionString: string) {
 }
 
 export async function getPrismaClientForTenancy(tenancy: Tenancy) {
-  return await getPrismaClientForSourceOfTruth(tenancy.completeConfig.sourceOfTruth, tenancy.branchId);
+  return await getPrismaClientForSourceOfTruth(tenancy.config.sourceOfTruth, tenancy.branchId);
 }
 
 export function getPrismaSchemaForTenancy(tenancy: Tenancy) {
-  return getPrismaSchemaForSourceOfTruth(tenancy.completeConfig.sourceOfTruth, tenancy.branchId);
+  return getPrismaSchemaForSourceOfTruth(tenancy.config.sourceOfTruth, tenancy.branchId);
 }
 
 function getPostgresPrismaClient(connectionString: string) {
