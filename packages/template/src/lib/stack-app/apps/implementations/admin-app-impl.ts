@@ -263,8 +263,8 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
       }));
     }, [crud]);
   }
-useEmailTemplates(): { id: string, displayName: string, themeId?: string, tsxSource: string }[] {
-    const crud = useAsyncCache(this._adminNewEmailTemplatesCache, [], "useNewEmailTemplates()");
+  useEmailTemplates(): { id: string, displayName: string, themeId?: string, tsxSource: string }[] {
+    const crud = useAsyncCache(this._adminEmailTemplatesCache, [], "useEmailTemplates()");
     return useMemo(() => {
       return crud.map((template) => ({
         id: template.id,
@@ -284,7 +284,7 @@ useEmailTemplates(): { id: string, displayName: string, themeId?: string, tsxSou
   }
 
   async listEmailTemplates(): Promise<{ id: string, displayName: string, themeId?: string, tsxSource: string }[]> {
-    const crud = Result.orThrow(await this._adminNewEmailTemplatesCache.getOrWait([], "write-only"));
+    const crud = Result.orThrow(await this._adminEmailTemplatesCache.getOrWait([], "write-only"));
     return crud.map((template) => ({
       id: template.id,
       displayName: template.display_name,
@@ -477,7 +477,7 @@ useEmailTemplates(): { id: string, displayName: string, themeId?: string, tsxSou
     await this._interface.updateEmailTheme(id, tsxSource);
   }
   async updateEmailTemplate(id: string, tsxSource: string, themeId: string | null | false): Promise<{ renderedHtml: string }> {
-    const result = await this._interface.updateEmailTemplate(id, tsxSource);
+    const result = await this._interface.updateEmailTemplate(id, tsxSource, themeId);
     await this._adminEmailTemplatesCache.refresh([]);
     return { renderedHtml: result.rendered_html };
   }
