@@ -5,7 +5,8 @@ import * as schemaFields from "@stackframe/stack-shared/dist/schema-fields";
 import { yupMixed, yupObject } from "@stackframe/stack-shared/dist/schema-fields";
 import { StatusError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
 import { createLazyProxy } from "@stackframe/stack-shared/dist/utils/proxies";
-import { projectsCrudHandlers } from "../../../internal/projects/current/crud";
+import { randomUUID } from "crypto";
+import { configOverridesCrudHandlers } from "../../../internal/config-overrides/crud";
 
 const domainSchema = schemaFields.urlSchema.defined()
   .matches(/^https?:\/\//, 'URL must start with http:// or https://')
@@ -55,11 +56,14 @@ export const domainCrudHandlers = createLazyProxy(() => createCrudHandlers(domai
   }),
   onCreate: async ({ auth, data, params }) => {
     const oldDomains = auth.tenancy.config.domains.trustedDomains;
-    await projectsCrudHandlers.adminUpdate({
+    await configOverridesCrudHandlers.adminUpdate({
       data: {
-        config: {
-          domains: [...Object.values(oldDomains).map(domainConfigToLegacyConfig), { domain: data.domain, handler_path: "/handler" }],
-        },
+        config: JSON.stringify({
+          'domains.trustedDomains': {
+            ...oldDomains,
+            [randomUUID()]: { baseUrl: data.domain, handlerPath: "/handler" },
+          },
+        })
       },
       tenancy: auth.tenancy,
       allowedErrorTypes: [StatusError],
@@ -69,9 +73,11 @@ export const domainCrudHandlers = createLazyProxy(() => createCrudHandlers(domai
   },
   onDelete: async ({ auth, params }) => {
     const oldDomains = auth.tenancy.config.domains.trustedDomains;
-    await projectsCrudHandlers.adminUpdate({
+    await configOverridesCrudHandlers.adminUpdate({
       data: {
-        config: { domains: Object.values(oldDomains).filter((domain) => domain.baseUrl !== params.domain).map(domainConfigToLegacyConfig) },
+        config: JSON.stringify({
+          'domains.trustedDomains': Object.fromEntries(Object.entries(oldDomains).filter(([_, domain]) => domain.baseUrl !== params.domain)),
+        })
       },
       tenancy: auth.tenancy,
       allowedErrorTypes: [StatusError],
