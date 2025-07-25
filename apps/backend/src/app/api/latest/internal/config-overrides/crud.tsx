@@ -1,5 +1,5 @@
 import { getRenderedEnvironmentConfigQuery, overrideEnvironmentConfigOverride } from "@/lib/config";
-import { getPrismaClientForTenancy, rawQuery } from "@/prisma-client";
+import { globalPrismaClient, rawQuery } from "@/prisma-client";
 import { createCrudHandlers } from "@/route-handlers/crud-handler";
 import { configOverridesCrud } from "@stackframe/stack-shared/dist/interface/crud/config-overrides";
 import { yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
@@ -24,8 +24,6 @@ export const configOverridesCrudHandlers = createLazyProxy(() => createCrudHandl
       throw new StatusError(StatusError.BadRequest, 'Organizational config overrides are not yet supported');
     }
 
-    const prisma = await getPrismaClientForTenancy(auth.tenancy);
-
     if (data.config) {
       let parsedConfig;
       try {
@@ -37,15 +35,15 @@ export const configOverridesCrudHandlers = createLazyProxy(() => createCrudHandl
         throw e;
       }
       await overrideEnvironmentConfigOverride({
-        projectId: auth.project.id,
+        projectId: auth.tenancy.project.id,
         branchId: auth.tenancy.branchId,
         environmentConfigOverrideOverride: parsedConfig,
-        tx: prisma,
+        tx: globalPrismaClient,
       });
     }
 
-    const updatedConfig = await rawQuery(prisma, getRenderedEnvironmentConfigQuery({
-      projectId: auth.project.id,
+    const updatedConfig = await rawQuery(globalPrismaClient, getRenderedEnvironmentConfigQuery({
+      projectId: auth.tenancy.project.id,
       branchId: auth.tenancy.branchId,
     }));
 

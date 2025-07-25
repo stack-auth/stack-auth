@@ -540,7 +540,13 @@ export class StackAdminInterface extends StackServerInterface {
 
     const response = await this.sendAdminRequest(
       `/internal/config-overrides`,
-      { method: "PATCH", body: JSON.stringify({ config: JSON.stringify(configOverrideOverride) }) },
+      {
+        method: "PATCH",
+        headers: {
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({ config: JSON.stringify(configOverrideOverride) }),
+      },
       null,
     );
     return await response.json();
