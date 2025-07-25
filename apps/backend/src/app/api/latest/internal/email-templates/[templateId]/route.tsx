@@ -32,11 +32,11 @@ export const PATCH = createSmartRouteHandler({
     }).defined(),
   }),
   async handler({ auth: { tenancy }, params: { templateId }, body }) {
-    const templateList = tenancy.completeConfig.emails.templateList;
+    const templateList = tenancy.completeConfig.emails.templates;
     if (!Object.keys(templateList).includes(templateId)) {
       throw new StatusError(StatusError.NotFound, "No template found with given id");
     }
-    const theme = tenancy.completeConfig.emails.themeList[tenancy.completeConfig.emails.theme];
+    const theme = tenancy.completeConfig.emails.themes[tenancy.completeConfig.emails.selectedThemeId];
     const result = await renderEmailWithTemplate(body.tsx_source, theme.tsxSource, { projectDisplayName: tenancy.project.display_name });
     if (result.status === "error") {
       throw new KnownErrors.EmailRenderingError(result.error);
@@ -56,8 +56,8 @@ export const PATCH = createSmartRouteHandler({
       projectId: tenancy.project.id,
       branchId: tenancy.branchId,
       environmentConfigOverrideOverride: {
-        [`emails.templateList.${templateId}.tsxSource`]: body.tsx_source,
-        [`emails.templateList.${templateId}.themeId`]: body.theme_id,
+        [`emails.templates.${templateId}.tsxSource`]: body.tsx_source,
+        [`emails.templates.${templateId}.themeId`]: body.theme_id,
       },
     });
 

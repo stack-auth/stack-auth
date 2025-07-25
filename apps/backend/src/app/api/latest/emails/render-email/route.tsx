@@ -40,8 +40,8 @@ export const POST = createSmartRouteHandler({
     if ((!body.template_id && !body.template_tsx_source) || (body.template_id && body.template_tsx_source)) {
       throw new StatusError(400, "Exactly one of template_id or template_tsx_source must be provided");
     }
-    const themeList = new Map(Object.entries(tenancy.completeConfig.emails.themeList));
-    const templateList = new Map(Object.entries(tenancy.completeConfig.emails.templateList));
+    const themeList = new Map(Object.entries(tenancy.completeConfig.emails.themes));
+    const templateList = new Map(Object.entries(tenancy.completeConfig.emails.templates));
     const themeSource = body.theme_id ? themeList.get(body.theme_id)?.tsxSource : body.theme_tsx_source;
     const templateSource = body.template_id ? templateList.get(body.template_id)?.tsxSource : body.template_tsx_source;
     if (!themeSource) {

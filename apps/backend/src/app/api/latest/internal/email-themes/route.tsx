@@ -34,7 +34,7 @@ export const POST = createSmartRouteHandler({
       projectId: tenancy.project.id,
       branchId: tenancy.branchId,
       environmentConfigOverrideOverride: {
-        [`emails.themeList.${id}`]: {
+        [`emails.themes.${id}`]: {
           displayName: body.display_name,
           tsxSource: LightEmailTheme,
         },
@@ -69,8 +69,8 @@ export const GET = createSmartRouteHandler({
     }).defined(),
   }),
   async handler({ auth: { tenancy } }) {
-    const themeList = tenancy.completeConfig.emails.themeList;
-    const currentActiveTheme = tenancy.completeConfig.emails.theme;
+    const themeList = tenancy.completeConfig.emails.themes;
+    const currentActiveTheme = tenancy.completeConfig.emails.selectedThemeId;
     if (!(currentActiveTheme in themeList)) {
       let newActiveTheme: string;
       if (DEFAULT_EMAIL_THEME_ID in themeList) {
@@ -83,7 +83,7 @@ export const GET = createSmartRouteHandler({
         projectId: tenancy.project.id,
         branchId: tenancy.branchId,
         environmentConfigOverrideOverride: {
-          "emails.theme": newActiveTheme,
+          "emails.selectedThemeId": newActiveTheme,
         },
       });
     }
