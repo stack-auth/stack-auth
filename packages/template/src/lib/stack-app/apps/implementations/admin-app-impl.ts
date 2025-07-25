@@ -505,4 +505,25 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
     await this._adminNewEmailTemplatesCache.refresh([]);
     return { renderedHtml: result.rendered_html };
   }
+
+  async getAllProjectsIdsForMigration(cursor?: string): Promise<{ projectIds: string[], nextCursor: string | null }> {
+    const result = await this._interface.getAllProjectsIdsForMigration(cursor);
+    return {
+      projectIds: result.project_ids,
+      nextCursor: result.next_cursor,
+    };
+  }
+
+  async convertEmailTemplates(projectId: string): Promise<{ templatesConverted: number, totalTemplates: number, rendered: Array<{ legacyTemplateContent: any, templateType: string, renderedHtml: string | null }> }> {
+    const result = await this._interface.convertEmailTemplates(projectId);
+    return {
+      templatesConverted: result.templates_converted,
+      totalTemplates: result.total_templates,
+      rendered: result.rendered.map(item => ({
+        legacyTemplateContent: item.legacy_template_content,
+        templateType: item.template_type,
+        renderedHtml: item.rendered_html,
+      })),
+    };
+  }
 }

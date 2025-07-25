@@ -1,5 +1,5 @@
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
-import { adaptSchema, yupArray, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
+import { adaptSchema, yupArray, yupNumber, yupObject, yupString, templateThemeIdSchema } from "@stackframe/stack-shared/dist/schema-fields";
 
 
 export const GET = createSmartRouteHandler({
@@ -20,7 +20,7 @@ export const GET = createSmartRouteHandler({
         id: yupString().uuid().defined(),
         display_name: yupString().defined(),
         tsx_source: yupString().defined(),
-        theme_id: yupString().uuid().optional(),
+        theme_id: templateThemeIdSchema,
       })).defined(),
     }).defined(),
   }),

@@ -372,12 +372,17 @@ export const emailThemeListSchema = yupRecord(
     tsxSource: yupString().meta({ openapiField: { description: 'Email theme source code tsx component' } }).defined(),
   })
 ).meta({ openapiField: { description: 'Record of email theme IDs to their display name and source code' } });
+export const templateThemeIdSchema = yupMixed<string | false>().test((v: any) => v === undefined || v === false || v === null || (typeof v === 'string' && isUuid(v))).meta({ openapiField: { description: 'Email theme id for the template' } });
 export const emailTemplateListSchema = yupRecord(
   yupString().uuid(),
   yupObject({
     displayName: yupString().meta({ openapiField: { description: 'Email template name', exampleValue: 'Email Verification' } }).defined(),
     tsxSource: yupString().meta({ openapiField: { description: 'Email template source code tsx component' } }).defined(),
-    themeId: yupString().uuid().meta({ openapiField: { description: 'Email theme id for the template' } })
+    // themeId can be one of three values:
+    // 1. A valid theme id
+    // 2. false, which means the template uses no theme
+    // 3. undefined, which means the template uses the project's active theme
+    themeId: templateThemeIdSchema
   })
 ).meta({ openapiField: { description: 'Record of email template IDs to their display name and source code' } });
 

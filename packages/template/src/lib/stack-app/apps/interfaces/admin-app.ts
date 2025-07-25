@@ -83,6 +83,9 @@ export type StackAdminApp<HasTokenStore extends boolean = boolean, ProjectId ext
     saveChatMessage(threadId: string, message: any): Promise<void>,
     listChatMessages(threadId: string): Promise<{ messages: Array<any> }>,
     updateNewEmailTemplate(id: string, tsxSource: string): Promise<{ renderedHtml: string }>,
+
+    getAllProjectsIdsForMigration(cursor?: string): Promise<{ projectIds: string[], nextCursor: string | null }>,
+    convertEmailTemplates(projectId: string): Promise<{ templatesConverted: number, totalTemplates: number, rendered: Array<{ legacyTemplateContent: any, templateType: string, renderedHtml: string | null }> }>,
   }
   & StackServerApp<HasTokenStore, ProjectId>
 );
