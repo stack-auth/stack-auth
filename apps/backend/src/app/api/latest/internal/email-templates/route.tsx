@@ -1,5 +1,5 @@
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
-import { adaptSchema, yupArray, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
+import { adaptSchema, yupArray, yupNumber, yupObject, yupString, templateThemeIdSchema } from "@stackframe/stack-shared/dist/schema-fields";
 
 
 export const GET = createSmartRouteHandler({
@@ -20,17 +20,19 @@ export const GET = createSmartRouteHandler({
         id: yupString().uuid().defined(),
         display_name: yupString().defined(),
         tsx_source: yupString().defined(),
-        theme_id: yupString().uuid().optional(),
+        theme_id: templateThemeIdSchema,
       })).defined(),
     }).defined(),
   }),
   async handler({ auth: { tenancy } }) {
+    console.log({ t1: Object.entries(tenancy.completeConfig.emails.templateList).map(([id, template]) => ({ id, themeId: template.themeId })) });
     const templates = Object.entries(tenancy.completeConfig.emails.templateList).map(([id, template]) => ({
       id,
       display_name: template.displayName,
       tsx_source: template.tsxSource,
-      theme_id: template.themeId === "none" ? undefined : template.themeId,
+      theme_id: template.themeId,
     }));
+    console.log({ templates: templates.map((t) => t.theme_id) });
     return {
       statusCode: 200,
       bodyType: "json",

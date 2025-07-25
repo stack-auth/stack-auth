@@ -12,8 +12,8 @@ import { Result } from '@stackframe/stack-shared/dist/utils/results';
 import { typedToUppercase } from '@stackframe/stack-shared/dist/utils/strings';
 import nodemailer from 'nodemailer';
 import { Tenancy, getTenancy } from './tenancies';
-import { renderEmailWithTemplate } from './email-rendering';
-import { DEFAULT_TEMPLATE_IDS, emptyEmailTheme } from '@stackframe/stack-shared/dist/helpers/emails';
+import { getEmailThemeForTemplate, renderEmailWithTemplate } from './email-rendering';
+import { DEFAULT_TEMPLATE_IDS } from '@stackframe/stack-shared/dist/helpers/emails';
 
 
 export function getNewEmailTemplate(tenancy: Tenancy, type: keyof typeof EMAIL_TEMPLATES_METADATA) {
@@ -354,18 +354,14 @@ export async function sendEmailFromTemplate(options: {
   version?: 1 | 2,
 }) {
   const template = getNewEmailTemplate(options.tenancy, options.templateType);
+  const themeSource = getEmailThemeForTemplate(options.tenancy, template.themeId);
   const variables = filterUndefined({
     projectDisplayName: options.tenancy.project.display_name,
     userDisplayName: options.user?.display_name || undefined,
     ...filterUndefined(options.extraVariables),
   });
-  const themeList = new Map(Object.entries(options.tenancy.completeConfig.emails.themeList));
-  let themeSource = emptyEmailTheme;
-  if (template.themeId && themeList.has(template.themeId)) {
-    themeSource = themeList.get(template.themeId)!.tsxSource;
-  }
-  const result = await renderEmailWithTemplate(template.tsxSource, themeSource, variables);
 
+  const result = await renderEmailWithTemplate(template.tsxSource, themeSource, variables);
   if (result.status === 'error') {
     throw new StackAssertionError("Failed to render email template", {
       template: template,
