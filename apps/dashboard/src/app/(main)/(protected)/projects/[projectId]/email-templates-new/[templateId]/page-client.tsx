@@ -1,22 +1,22 @@
 "use client";
 
+import EmailPreview from "@/components/email-preview";
 import { useRouterConfirm } from "@/components/router";
-import ThemePreview from "@/components/theme-preview";
 import {
   AssistantChat,
   CodeEditor,
   createChatAdapter,
   createHistoryAdapter,
   EmailTemplateUI,
-  PreviewPanel,
-  VibeCodeLayout,
+  VibeCodeLayout
 } from "@/components/vibe-coding";
 import { ToolCallContent } from "@/components/vibe-coding/chat-adapters";
 import { KnownErrors } from "@stackframe/stack-shared/dist/known-errors";
 import { Button, toast } from "@stackframe/stack-ui";
-import React, { useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { PageLayout } from "../../page-layout";
 import { useAdminApp } from "../../use-admin-app";
+import { emptyEmailTheme } from "@stackframe/stack-shared/dist/helpers/emails";
 
 
 export default function PageClient(props: { templateId: string }) {
@@ -61,12 +61,13 @@ export default function PageClient(props: { templateId: string }) {
   return (
     <VibeCodeLayout
       previewComponent={
-        <PreviewPanel>
-          <ThemePreview
-            themeId={project.config.emailTheme}
-            templateTsxSource={currentCode}
-          />
-        </PreviewPanel>
+        <div className="p-4 w-full h-full">
+          {template.themeId ? (
+            <EmailPreview themeId={template.themeId} templateTsxSource={currentCode} />
+          ) : (
+            <EmailPreview themeTsxSource={emptyEmailTheme} templateTsxSource={currentCode} />
+          )}
+        </div>
       }
       editorComponent={
         <CodeEditor

@@ -21,6 +21,7 @@ export const PATCH = createSmartRouteHandler({
     }).defined(),
     body: yupObject({
       tsx_source: yupString().defined(),
+      theme_id: yupString().uuid().optional(),
     }).defined(),
   }),
   response: yupObject({
@@ -56,6 +57,7 @@ export const PATCH = createSmartRouteHandler({
       branchId: tenancy.branchId,
       environmentConfigOverrideOverride: {
         [`emails.templateList.${templateId}.tsxSource`]: body.tsx_source,
+        [`emails.templateList.${templateId}.themeId`]: body.theme_id,
       },
     });
 
