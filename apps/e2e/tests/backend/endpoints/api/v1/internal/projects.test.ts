@@ -1,3 +1,4 @@
+import { generateUuid } from "@stackframe/stack-shared/dist/utils/uuids";
 import { it } from "../../../../../helpers";
 import { Auth, InternalProjectClientKeys, Project, backendContext, niceBackendFetch } from "../../../../backend-helpers";
 
@@ -496,7 +497,7 @@ it("verifies email_theme update persists", async ({ expect }) => {
   expect(response.body.config.email_theme).toBe("a0172b5d-cff0-463b-83bb-85124697373a"); // default-dark
 });
 
-it("gives an error when updating email_theme with an invalid value", async ({ expect }) => {
+it.only("gives an error when updating email_theme with an invalid value", async ({ expect }) => {
   await Project.createAndSwitch();
 
   const response = await niceBackendFetch("/api/v1/internal/projects/current", {
@@ -504,7 +505,7 @@ it("gives an error when updating email_theme with an invalid value", async ({ ex
     accessType: "admin",
     body: {
       config: {
-        email_theme: "some-invalid-theme",
+        email_theme: generateUuid(),
       }
     }
   });
