@@ -5,8 +5,14 @@ import { NextRequest } from 'next/server';
 export function GET(request: NextRequest) {
   const pathname = new URL(request.url).pathname;
 
-  // Ensure we have the correct target path without double prefixes
-  const targetPath = pathname.startsWith('/docs') ? pathname : '/docs' + pathname;
+  // Ensure we have the correct target path without double prefixes using proper URL construction
+  let targetPath: string;
+  if (pathname.startsWith('/docs')) {
+    targetPath = pathname;
+  } else {
+    // Remove leading slash and use as relative path to properly construct /docs prefix
+    targetPath = new URL(pathname.substring(1), 'file:///docs/').pathname;
+  }
 
   // Extract slug by removing any '/docs' prefix and splitting by '/'
   const cleanPath = pathname.startsWith('/docs') ? pathname.substring(5) : pathname;
