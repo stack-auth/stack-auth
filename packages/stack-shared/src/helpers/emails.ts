@@ -1,5 +1,20 @@
-const LightEmailTheme = `import { Html, Tailwind, Body } from '@react-email/components';
-function EmailTheme({ children }: { children: React.ReactNode }) {
+export const previewTemplateSource = `
+  export function EmailTemplate() {
+    return (
+      <div>
+      <h2 className="mb-4 text-2xl font-bold">
+        Header text
+      </h2>
+      <p className="mb-4">
+        Body text content with some additional information.
+        </p>
+      </div>
+    );
+  }
+`;
+
+export const LightEmailTheme = `import { Html, Tailwind, Body } from '@react-email/components';
+export function EmailTheme({ children }: { children: React.ReactNode }) {
   return (
     <Html>
       <Tailwind>
@@ -15,7 +30,7 @@ function EmailTheme({ children }: { children: React.ReactNode }) {
 
 
 const DarkEmailTheme = `import { Html, Tailwind, Body } from '@react-email/components';
-function EmailTheme({ children }: { children: React.ReactNode }) {
+export function EmailTheme({ children }: { children: React.ReactNode }) {
   return (
     <Html>
       <Tailwind>

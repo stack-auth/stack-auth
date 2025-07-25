@@ -1,19 +1,9 @@
 import { useAdminApp } from "@/app/(main)/(protected)/projects/[projectId]/use-admin-app";
 import { KnownErrors } from "@stackframe/stack-shared";
-import { deindent } from "@stackframe/stack-shared/dist/utils/strings";
 import { BrowserFrame, Spinner, Typography } from "@stackframe/stack-ui";
 import { Component, ReactNode, Suspense } from "react";
+import { useDebounce } from 'use-debounce';
 
-export const previewEmailHtml = deindent`
-  <div>
-    <h2 className="mb-4 text-2xl font-bold">
-      Header text
-    </h2>
-    <p className="mb-4">
-      Body text content with some additional information.
-    </p>
-  </div>
-`;
 
 class EmailPreviewErrorBoundary extends Component<
   { children: ReactNode },
@@ -50,20 +40,30 @@ class EmailPreviewErrorBoundary extends Component<
 
 function ThemePreviewContent({
   themeId,
-  renderedHtmlOverride,
-  disableFrame,
+  themeTsxSource,
   templateId,
+  templateTsxSource,
+  disableFrame,
 }: {
-  themeId: string,
-  renderedHtmlOverride?: string,
-  disableFrame?: boolean,
+  themeId?: string,
+  themeTsxSource?: string,
   templateId?: string,
+  templateTsxSource?: string,
+  disableFrame?: boolean,
 }) {
   const stackAdminApp = useAdminApp();
-  const previewHtml = stackAdminApp.useEmailPreview(themeId, templateId ? undefined : previewEmailHtml, templateId);
+  const previewHtml = stackAdminApp.useEmailPreview({
+    themeId,
+    themeTsxSource,
+    templateId,
+    templateTsxSource
+  });
 
   const Content = (
-    <iframe srcDoc={renderedHtmlOverride ?? previewHtml} className={`${disableFrame ? "pointer-events-none" : ""} h-full`} />
+    <iframe
+      srcDoc={previewHtml}
+      className={`${disableFrame ? "pointer-events-none" : ""} h-full`}
+    />
   );
 
   if (disableFrame) {
@@ -76,26 +76,47 @@ function ThemePreviewContent({
   );
 }
 
+type ThemePreviewProps =
+  | ({
+      themeId: string,
+      themeTsxSource?: undefined,
+    } | {
+      themeId?: undefined,
+      themeTsxSource: string,
+    })
+  & (
+    | {
+        templateId: string,
+        templateTsxSource?: undefined,
+      }
+    | {
+        templateId?: undefined,
+        templateTsxSource: string,
+      }
+  ) & {
+    disableFrame?: boolean,
+  };
+
 export default function ThemePreview({
   themeId,
-  renderedHtmlOverride,
-  disableFrame,
+  themeTsxSource,
   templateId,
-}: {
-  themeId: string,
-  renderedHtmlOverride?: string,
-  disableFrame?: boolean,
-  templateId?: string,
-}) {
+  templateTsxSource,
+  disableFrame,
+}: ThemePreviewProps) {
+  const [debouncedTemplateTsxSource] = useDebounce(templateTsxSource, 500);
+  const [debouncedThemeTsxSource] = useDebounce(themeTsxSource, 500);
+
   return (
     <div className="w-fit mx-auto h-full flex flex-col justify-center">
       <Suspense fallback={<Spinner />}>
-        <EmailPreviewErrorBoundary>
+        <EmailPreviewErrorBoundary key={`${debouncedTemplateTsxSource ?? ""}${debouncedThemeTsxSource ?? ""}`}>
           <ThemePreviewContent
             themeId={themeId}
-            renderedHtmlOverride={renderedHtmlOverride}
-            disableFrame={disableFrame}
+            themeTsxSource={debouncedThemeTsxSource}
             templateId={templateId}
+            templateTsxSource={debouncedTemplateTsxSource}
+            disableFrame={disableFrame}
           />
         </EmailPreviewErrorBoundary>
       </Suspense>

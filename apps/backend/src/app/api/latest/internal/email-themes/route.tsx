@@ -1,5 +1,5 @@
 import { overrideEnvironmentConfigOverride } from "@/lib/config";
-import { DEFAULT_EMAIL_THEMES } from "@/lib/email-themes";
+import { LightEmailTheme } from "@stackframe/stack-shared/dist/helpers/emails";
 import { globalPrismaClient } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { DEFAULT_EMAIL_THEME_ID } from "@stackframe/stack-shared/dist/helpers/emails";
@@ -36,7 +36,7 @@ export const POST = createSmartRouteHandler({
       environmentConfigOverrideOverride: {
         [`emails.themeList.${id}`]: {
           displayName: body.display_name,
-          tsxSource: DEFAULT_EMAIL_THEMES["default-light"],
+          tsxSource: LightEmailTheme,
         },
       },
     });

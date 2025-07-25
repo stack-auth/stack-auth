@@ -4,7 +4,7 @@ import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { createOpenAI } from "@ai-sdk/openai";
 import { adaptSchema, yupArray, yupMixed, yupNumber, yupObject, yupString, yupUnion } from "@stackframe/stack-shared/dist/schema-fields";
 import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
-import { ToolResult, generateText } from "ai";
+import { generateText } from "ai";
 import { InferType } from "yup";
 
 const textContentSchema = yupObject({
@@ -68,14 +68,14 @@ export const POST = createSmartRouteHandler({
           text: step.text,
         });
       }
-      step.toolResults.forEach((toolResult: ToolResult<string, any, any>) => {
+      step.toolCalls.forEach(toolCall => {
         contentBlocks.push({
           type: "tool-call",
-          toolName: toolResult.toolName,
-          toolCallId: toolResult.toolCallId,
-          args: toolResult.args,
-          argsText: JSON.stringify(toolResult.args),
-          result: toolResult.result,
+          toolName: toolCall.toolName,
+          toolCallId: toolCall.toolCallId,
+          args: toolCall.args,
+          argsText: JSON.stringify(toolCall.args),
+          result: "success",
         });
       });
     });

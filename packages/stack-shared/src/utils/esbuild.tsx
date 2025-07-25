@@ -1,13 +1,24 @@
-import * as esbuild from 'esbuild-wasm';
+import * as esbuild from 'esbuild-wasm/lib/browser.js';
 import { join } from 'path';
 import { StackAssertionError, throwErr } from "./errors";
 import { Result } from "./results";
+import { isBrowserLike } from './env';
 
 let esbuildInitializePromise: Promise<void> | null = null;
+// esbuild requires self property to be set, and it is not set by default in nodejs
+(globalThis.self as any) ??= globalThis as any;
+
 export async function initializeEsbuild() {
   if (!esbuildInitializePromise) {
-    esbuildInitializePromise = esbuild.initialize({
+    esbuildInitializePromise = esbuild.initialize(isBrowserLike() ? {
       wasmURL: `https://unpkg.com/esbuild-wasm@${esbuild.version}/esbuild.wasm`,
+    } : {
+      wasmModule: (
+        await fetch(`https://unpkg.com/esbuild-wasm@${esbuild.version}/esbuild.wasm`)
+          .then(wasm => wasm.arrayBuffer())
+          .then(wasm => new WebAssembly.Module(wasm))
+      ),
+      worker: false,
     });
   }
   await esbuildInitializePromise;
@@ -16,11 +27,14 @@ export async function initializeEsbuild() {
 export async function bundleJavaScript(sourceFiles: Record<string, string> & { '/entry.js': string }, options: {
   format?: 'iife' | 'esm' | 'cjs',
   externalPackages?: Record<string, string>,
+  keepAsImports?: string[],
+  sourcemap?: false | 'inline',
 } = {}): Promise<Result<string, string>> {
   await initializeEsbuild();
 
   const sourceFilesMap = new Map(Object.entries(sourceFiles));
   const externalPackagesMap = new Map(Object.entries(options.externalPackages ?? {}));
+  const keepAsImports = options.keepAsImports ?? [];
 
   const extToLoader: Map<string, esbuild.Loader> = new Map([
     ['tsx', 'tsx'],
@@ -40,12 +54,17 @@ export async function bundleJavaScript(sourceFiles: Record<string, string> & { '
       platform: 'browser',
       target: 'es2015',
       jsx: 'automatic',
-      sourcemap: 'inline',
+      sourcemap: options.sourcemap ?? 'inline',
+      external: keepAsImports,
       plugins: [
         {
           name: 'replace-packages-with-globals',
           setup(build) {
             build.onResolve({ filter: /.*/ }, args => {
+              // Skip packages that should remain external (not be shimmed)
+              if (keepAsImports.includes(args.path)) {
+                return undefined;
+              }
               if (externalPackagesMap.has(args.path)) {
                 return { path: args.path, namespace: 'package-shim' };
               }
