@@ -1,5 +1,4 @@
 import { createOrUpdateProject, getProjectQuery, listManagedProjectIds } from "@/lib/projects";
-import { DEFAULT_BRANCH_ID, getSoleTenancyFromProjectBranch } from "@/lib/tenancies";
 import { globalPrismaClient, rawQueryAll } from "@/prisma-client";
 import { createCrudHandlers } from "@/route-handlers/crud-handler";
 import { KnownErrors } from "@stackframe/stack-shared";
@@ -35,11 +34,7 @@ export const adminUserProjectsCrudHandlers = createLazyProxy(() => createCrudHan
       data,
       environmentConfigOverrideOverride: {},
     });
-    const tenancy = await getSoleTenancyFromProjectBranch(project.id, DEFAULT_BRANCH_ID);
-    return {
-      ...project,
-      config: tenancy.config,
-    };
+    return project;
   },
   onList: async ({ auth }) => {
     const projectIds = listManagedProjectIds(auth.user ?? throwErr('auth.user is required'));
@@ -50,15 +45,8 @@ export const adminUserProjectsCrudHandlers = createLazyProxy(() => createCrudHan
       throw new StackAssertionError('Failed to fetch all projects of a user');
     }
 
-    const projectsWithConfig = await Promise.all(projects.map(async (project) => {
-      return {
-        ...project,
-        config: (await getSoleTenancyFromProjectBranch(project.id, DEFAULT_BRANCH_ID)).config,
-      };
-    }));
-
     return {
-      items: projectsWithConfig,
+      items: projects,
       is_paginated: false,
     } as const;
   }
