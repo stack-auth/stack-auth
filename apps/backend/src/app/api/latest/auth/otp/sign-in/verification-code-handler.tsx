@@ -12,7 +12,7 @@ import { usersCrudHandlers } from "../../../users/crud";
 import { createMfaRequiredError } from "../../mfa/sign-in/verification-code-handler";
 
 export async function ensureUserForEmailAllowsOtp(tenancy: Tenancy, email: string): Promise<UsersCrud["Admin"]["Read"] | null> {
-  const prisma = getPrismaClientForTenancy(tenancy);
+  const prisma = await getPrismaClientForTenancy(tenancy);
   const contactChannel = await getAuthContactChannel(
     prisma,
     {

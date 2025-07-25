@@ -32,8 +32,8 @@ export type StackAdminApp<HasTokenStore extends boolean = boolean, ProjectId ext
   & AsyncStoreProperty<"teamPermissionDefinitions", [], AdminTeamPermissionDefinition[], true>
   & AsyncStoreProperty<"projectPermissionDefinitions", [], AdminProjectPermissionDefinition[], true>
   & AsyncStoreProperty<"emailThemes", [], { id: string, displayName: string }[], true>
-  & AsyncStoreProperty<"emailPreview", [{ themeId?: string, themeTsxSource?: string, templateId?: string, templateTsxSource?: string }], string, false>
-  & AsyncStoreProperty<"emailTemplates", [], { id: string, displayName: string, tsxSource: string }[], true>
+  & AsyncStoreProperty<"emailPreview", [{ themeId?: string | null | false, themeTsxSource?: string, templateId?: string, templateTsxSource?: string }], string, false>
+  & AsyncStoreProperty<"emailTemplates", [], { id: string, displayName: string, themeId?: string, tsxSource: string }[], true>
   & {
     useEmailTemplates(): { id: string, displayName: string, tsxSource: string }[], // THIS_LINE_PLATFORM react-like
     listEmailTemplates(): Promise<{ id: string, displayName: string, tsxSource: string }[]>,
@@ -78,7 +78,7 @@ export type StackAdminApp<HasTokenStore extends boolean = boolean, ProjectId ext
     ): Promise<{ content: ChatContent }>,
     saveChatMessage(threadId: string, message: any): Promise<void>,
     listChatMessages(threadId: string): Promise<{ messages: Array<any> }>,
-    updateEmailTemplate(id: string, tsxSource: string): Promise<{ renderedHtml: string }>,
+    updateEmailTemplate(id: string, tsxSource: string, themeId: string | null | false): Promise<{ renderedHtml: string }>,
   }
   & StackServerApp<HasTokenStore, ProjectId>
 );

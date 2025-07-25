@@ -84,7 +84,7 @@ export const POST = createSmartRouteHandler({
         throw new StackAssertionError("Tenancy not found");
       }
 
-      const prisma = getPrismaClientForTenancy(tenancy);
+      const prisma = await getPrismaClientForTenancy(tenancy);
       const projectUser = await prisma.projectUser.findUnique({
         where: {
           tenancyId_projectUserId: {
@@ -113,7 +113,10 @@ export const POST = createSmartRouteHandler({
       if (!tenancy) {
         throw new StackAssertionError("Tenancy not found");
       }
-      const userIdsWithManageApiKeysPermission = await getPrismaClientForTenancy(tenancy).$transaction(async (tx) => {
+
+      const prisma = await getPrismaClientForTenancy(tenancy);
+
+      const userIdsWithManageApiKeysPermission = await prisma.$transaction(async (tx) => {
         if (!updatedApiKey.teamId) {
           throw new StackAssertionError("Team ID not specified in team API key");
         }
@@ -129,7 +132,7 @@ export const POST = createSmartRouteHandler({
         return permissions.map(p => p.user_id);
       });
 
-      const usersWithManageApiKeysPermission = await getPrismaClientForTenancy(tenancy).projectUser.findMany({
+      const usersWithManageApiKeysPermission = await prisma.projectUser.findMany({
         where: {
           tenancyId: updatedApiKey.tenancyId,
           projectUserId: {

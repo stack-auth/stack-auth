@@ -23,7 +23,8 @@ export const teamPermissionsCrudHandlers = createLazyProxy(() => createCrudHandl
     permission_id: permissionDefinitionIdSchema.defined(),
   }),
   async onCreate({ auth, params }) {
-    const result = await retryTransaction(getPrismaClientForTenancy(auth.tenancy), async (tx) => {
+    const prisma = await getPrismaClientForTenancy(auth.tenancy);
+    const result = await retryTransaction(prisma, async (tx) => {
       await ensureTeamMembershipExists(tx, { tenancyId: auth.tenancy.id, teamId: params.team_id, userId: params.user_id });
 
       return await grantTeamPermission(tx, {
@@ -46,7 +47,8 @@ export const teamPermissionsCrudHandlers = createLazyProxy(() => createCrudHandl
     return result;
   },
   async onDelete({ auth, params }) {
-    const result = await retryTransaction(getPrismaClientForTenancy(auth.tenancy), async (tx) => {
+    const prisma = await getPrismaClientForTenancy(auth.tenancy);
+    const result = await retryTransaction(prisma, async (tx) => {
       await ensureUserTeamPermissionExists(tx, {
         tenancy: auth.tenancy,
         teamId: params.team_id,
@@ -84,7 +86,8 @@ export const teamPermissionsCrudHandlers = createLazyProxy(() => createCrudHandl
       }
     }
 
-    return await retryTransaction(getPrismaClientForTenancy(auth.tenancy), async (tx) => {
+    const prisma = await getPrismaClientForTenancy(auth.tenancy);
+    return await retryTransaction(prisma, async (tx) => {
       return {
         items: await listPermissions(tx, {
           scope: 'team',

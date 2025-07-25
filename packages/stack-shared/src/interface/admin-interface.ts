@@ -124,9 +124,9 @@ export class StackAdminInterface extends StackServerInterface {
     return await response.json();
   }
 
-  async listInternalEmailTemplates(): Promise<{ id: string, display_name: string, tsx_source: string }[]> {
+  async listInternalEmailTemplates(): Promise<{ id: string, display_name: string, theme_id?: string, tsx_source: string }[]> {
     const response = await this.sendAdminRequest(`/internal/email-templates`, {}, null);
-    const result = await response.json() as { templates: { id: string, display_name: string, tsx_source: string }[] };
+    const result = await response.json() as { templates: { id: string, display_name: string, theme_id?: string, tsx_source: string }[] };
     return result.templates;
   }
 
@@ -370,7 +370,7 @@ export class StackAdminInterface extends StackServerInterface {
     return await response.json();
   }
 
-  async renderEmailPreview(options: { themeId?: string, themeTsxSource?: string, templateId?: string, templateTsxSource?: string }): Promise<{ html: string }> {
+  async renderEmailPreview(options: { themeId?: string | null | false, themeTsxSource?: string, templateId?: string, templateTsxSource?: string }): Promise<{ html: string }> {
     const response = await this.sendAdminRequest(`/emails/render-email`, {
       method: "POST",
       headers: {
@@ -428,7 +428,7 @@ export class StackAdminInterface extends StackServerInterface {
     );
   }
 
-  async updateEmailTemplate(id: string, tsxSource: string): Promise<{ rendered_html: string }> {
+  async updateEmailTemplate(id: string, tsxSource: string, themeId: string | null | false): Promise<{ rendered_html: string }> {
     const response = await this.sendAdminRequest(
       `/internal/email-templates/${id}`,
       {
@@ -436,7 +436,7 @@ export class StackAdminInterface extends StackServerInterface {
         headers: {
           "content-type": "application/json",
         },
-        body: JSON.stringify({ tsx_source: tsxSource }),
+        body: JSON.stringify({ tsx_source: tsxSource, theme_id: themeId }),
       },
       null,
     );

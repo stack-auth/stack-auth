@@ -53,7 +53,7 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
   private readonly _metricsCache = createCache(async () => {
     return await this._interface.getMetrics();
   });
-  private readonly _emailPreviewCache = createCache(async ([themeId, themeTsxSource, templateId, templateTsxSource]: [string | undefined, string | undefined, string | undefined, string | undefined]) => {
+  private readonly _emailPreviewCache = createCache(async ([themeId, themeTsxSource, templateId, templateTsxSource]: [string | null | false | undefined, string | undefined, string | undefined, string | undefined]) => {
     return await this._interface.renderEmailPreview({ themeId, themeTsxSource, templateId, templateTsxSource });
   });
 
@@ -263,12 +263,13 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
       }));
     }, [crud]);
   }
-  useEmailTemplates(): { id: string, displayName: string, tsxSource: string }[] {
-    const crud = useAsyncCache(this._adminEmailTemplatesCache, [], "useEmailTemplates()");
+useEmailTemplates(): { id: string, displayName: string, themeId?: string, tsxSource: string }[] {
+    const crud = useAsyncCache(this._adminNewEmailTemplatesCache, [], "useNewEmailTemplates()");
     return useMemo(() => {
       return crud.map((template) => ({
         id: template.id,
         displayName: template.display_name,
+        themeId: template.theme_id,
         tsxSource: template.tsx_source,
       }));
     }, [crud]);
@@ -282,11 +283,12 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
     }));
   }
 
-  async listEmailTemplates(): Promise<{ id: string, displayName: string, tsxSource: string }[]> {
-    const crud = Result.orThrow(await this._adminEmailTemplatesCache.getOrWait([], "write-only"));
+  async listEmailTemplates(): Promise<{ id: string, displayName: string, themeId?: string, tsxSource: string }[]> {
+    const crud = Result.orThrow(await this._adminNewEmailTemplatesCache.getOrWait([], "write-only"));
     return crud.map((template) => ({
       id: template.id,
       displayName: template.display_name,
+      themeId: template.theme_id,
       tsxSource: template.tsx_source,
     }));
   }
@@ -453,11 +455,11 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
     return result;
   }
 
-  async getEmailPreview(options: { themeId?: string, themeTsxSource?: string, templateId?: string, templateTsxSource?: string }): Promise<string> {
+  async getEmailPreview(options: { themeId?: string | null | false, themeTsxSource?: string, templateId?: string, templateTsxSource?: string }): Promise<string> {
     return (await this._interface.renderEmailPreview(options)).html;
   }
   // IF_PLATFORM react-like
-  useEmailPreview(options: { themeId?: string, themeTsxSource?: string, templateId?: string, templateTsxSource?: string }): string {
+  useEmailPreview(options: { themeId?: string | null | false, themeTsxSource?: string, templateId?: string, templateTsxSource?: string }): string {
     const crud = useAsyncCache(this._emailPreviewCache, [options.themeId, options.themeTsxSource, options.templateId, options.templateTsxSource] as const, "useEmailPreview()");
     return crud.html;
   }
@@ -474,7 +476,7 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
   async updateEmailTheme(id: string, tsxSource: string): Promise<void> {
     await this._interface.updateEmailTheme(id, tsxSource);
   }
-  async updateEmailTemplate(id: string, tsxSource: string): Promise<{ renderedHtml: string }> {
+  async updateEmailTemplate(id: string, tsxSource: string, themeId: string | null | false): Promise<{ renderedHtml: string }> {
     const result = await this._interface.updateEmailTemplate(id, tsxSource);
     await this._adminEmailTemplatesCache.refresh([]);
     return { renderedHtml: result.rendered_html };

@@ -5,6 +5,7 @@ import { Result } from "@stackframe/stack-shared/dist/utils/results";
 import { deindent } from "@stackframe/stack-shared/dist/utils/strings";
 import { bundleJavaScript } from '@stackframe/stack-shared/dist/utils/esbuild';
 import { StackAssertionError } from '@stackframe/stack-shared/dist/utils/errors';
+import { emptyEmailTheme } from '@stackframe/stack-shared/dist/helpers/emails';
 
 export function getActiveEmailTheme(tenancy: Tenancy) {
   const themeList = tenancy.completeConfig.emails.themeList;
@@ -16,6 +17,17 @@ export function getActiveEmailTheme(tenancy: Tenancy) {
     });
   }
   return themeList[currentActiveTheme];
+}
+
+export function getEmailThemeForTemplate(tenancy: Tenancy, templateThemeId: string | null | false | undefined) {
+  const themeList = tenancy.completeConfig.emails.themeList;
+  if (templateThemeId && templateThemeId in themeList) {
+    return themeList[templateThemeId].tsxSource;
+  }
+  if (templateThemeId === false) {
+    return emptyEmailTheme;
+  }
+  return getActiveEmailTheme(tenancy).tsxSource;
 }
 
 export function createTemplateComponentFromHtml(
