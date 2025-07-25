@@ -8,8 +8,8 @@ import { StackAssertionError } from '@stackframe/stack-shared/dist/utils/errors'
 import { emptyEmailTheme } from '@stackframe/stack-shared/dist/helpers/emails';
 
 export function getActiveEmailTheme(tenancy: Tenancy) {
-  const themeList = tenancy.completeConfig.emails.themeList;
-  const currentActiveTheme = tenancy.completeConfig.emails.theme;
+  const themeList = tenancy.completeConfig.emails.themes;
+  const currentActiveTheme = tenancy.completeConfig.emails.selectedThemeId;
   if (!(currentActiveTheme in themeList)) {
     throw new StackAssertionError("No active email theme found", {
       themeList,
@@ -20,7 +20,7 @@ export function getActiveEmailTheme(tenancy: Tenancy) {
 }
 
 export function getEmailThemeForTemplate(tenancy: Tenancy, templateThemeId: string | null | false | undefined) {
-  const themeList = tenancy.completeConfig.emails.themeList;
+  const themeList = tenancy.completeConfig.emails.themes;
   if (templateThemeId && templateThemeId in themeList) {
     return themeList[templateThemeId].tsxSource;
   }
