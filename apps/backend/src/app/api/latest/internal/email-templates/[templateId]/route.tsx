@@ -35,7 +35,7 @@ export const PATCH = createSmartRouteHandler({
     if (tenancy.completeConfig.emails.server.isShared) {
       throw new KnownErrors.RequiresCustomEmailServer();
     }
-    const templateList = tenancy.completeConfig.emails.templateList;
+    const templateList = tenancy.completeConfig.emails.templates;
     if (!Object.keys(templateList).includes(templateId)) {
       throw new StatusError(StatusError.NotFound, "No template found with given id");
     }
@@ -59,7 +59,7 @@ export const PATCH = createSmartRouteHandler({
       projectId: tenancy.project.id,
       branchId: tenancy.branchId,
       environmentConfigOverrideOverride: {
-        [`emails.templateList.${templateId}`]: {
+        [`emails.templates.${templateId}`]: {
           displayName: templateList[templateId].displayName,
           tsxSource: body.tsx_source,
           themeId: body.theme_id,

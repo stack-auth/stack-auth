@@ -125,7 +125,7 @@ export const POST = createSmartRouteHandler({
       projectId,
       branchId: DEFAULT_BRANCH_ID,
       environmentConfigOverrideOverride: {
-        "emails.templateList": emailTemplates,
+        "emails.templates": emailTemplates,
       },
     });
 

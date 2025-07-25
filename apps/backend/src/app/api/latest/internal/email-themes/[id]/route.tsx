@@ -29,7 +29,7 @@ export const GET = createSmartRouteHandler({
     }).defined(),
   }),
   async handler({ auth: { tenancy }, params: { id } }) {
-    const themeList = tenancy.completeConfig.emails.themeList;
+    const themeList = tenancy.completeConfig.emails.themes;
     if (!Object.keys(themeList).includes(id)) {
       throw new StatusError(404, "No theme found with given id");
     }
@@ -69,7 +69,7 @@ export const PATCH = createSmartRouteHandler({
     }).defined(),
   }),
   async handler({ auth: { tenancy }, params: { id }, body }) {
-    const themeList = tenancy.completeConfig.emails.themeList;
+    const themeList = tenancy.completeConfig.emails.themes;
     if (!Object.keys(themeList).includes(id)) {
       throw new StatusError(404, "No theme found with given id");
     }
@@ -83,7 +83,7 @@ export const PATCH = createSmartRouteHandler({
       projectId: tenancy.project.id,
       branchId: tenancy.branchId,
       environmentConfigOverrideOverride: {
-        [`emails.themeList.${id}.tsxSource`]: body.tsx_source,
+        [`emails.themes.${id}.tsxSource`]: body.tsx_source,
       },
     });
     return {

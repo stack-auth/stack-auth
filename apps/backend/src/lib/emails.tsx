@@ -17,7 +17,7 @@ import { DEFAULT_TEMPLATE_IDS } from '@stackframe/stack-shared/dist/helpers/emai
 
 
 export function getNewEmailTemplate(tenancy: Tenancy, type: keyof typeof EMAIL_TEMPLATES_METADATA) {
-  const templateList = tenancy.completeConfig.emails.templateList;
+  const templateList = tenancy.completeConfig.emails.templates;
   if (type === "email_verification") {
     return templateList[DEFAULT_TEMPLATE_IDS.email_verification];
   }
