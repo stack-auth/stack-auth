@@ -1305,7 +1305,7 @@ export namespace Webhook {
     const createEndpointResponse = await niceFetch(STACK_SVIX_SERVER_URL + `/api/v1/app/${projectId}/endpoint`, {
       method: "POST",
       body: JSON.stringify({
-        url: "https://example.com"
+        url: "http://localhost:12345/webhook"
       }),
       headers: {
         "Authorization": `Bearer ${svixToken}`,
@@ -1320,9 +1320,9 @@ export namespace Webhook {
     };
   }
 
-  export async function findWebhookAttempt(projectId: string, endpointId: string, svixToken: string, fn: (msg: any) => boolean) {
+  export async function findWebhookAttempt(projectId: string, endpointId: string, svixToken: string, fn: (msg: any) => boolean, retryCount: number = 5) {
     // retry many times because Svix sucks and is slow
-    for (let i = 0; i < 20; i++) {
+    for (let i = 0; i < retryCount; i++) {
       const attempts = await Webhook.listWebhookAttempts(projectId, endpointId, svixToken);
       const filtered = attempts.filter(fn);
       if (filtered.length === 0) {
@@ -1337,28 +1337,37 @@ export namespace Webhook {
     throw new Error(`Webhook attempt not found for project ${projectId}, endpoint ${endpointId}`);
   }
 
-  export async function listWebhookAttempts(projectId: string, endpointId: string, svixToken: string) {
-    const response = await niceFetch(STACK_SVIX_SERVER_URL + `/api/v1/app/${projectId}/attempt/endpoint/${endpointId}`, {
-      method: "GET",
-      headers: {
-        "Authorization": `Bearer ${svixToken}`,
-        "Content-Type": "application/json",
-      },
-    });
-
-    const messages = await Promise.all(response.body.data.map(async (attempt: any) => {
-      const messageResponse = await niceFetch(STACK_SVIX_SERVER_URL + `/api/v1/app/${projectId}/msg/${attempt.msgId}?with_content=true`, {
+  export async function listWebhookAttempts(projectId: string, endpointId: string, svixToken: string, retryCount: number = 5) {
+    // retry many times because Svix sucks and is slow
+    for (let i = 0; i < retryCount; i++) {
+      const response = await niceFetch(STACK_SVIX_SERVER_URL + `/api/v1/app/${projectId}/attempt/endpoint/${endpointId}`, {
+        method: "GET",
         headers: {
           "Authorization": `Bearer ${svixToken}`,
           "Content-Type": "application/json",
         },
-        method: "GET",
       });
-      return messageResponse.body;
-    }));
 
-    return messages.sort((a, b) => {
-      return new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime();
-    });
+      const messages = await Promise.all(response.body.data.map(async (attempt: any) => {
+        const messageResponse = await niceFetch(STACK_SVIX_SERVER_URL + `/api/v1/app/${projectId}/msg/${attempt.msgId}?with_content=true`, {
+          headers: {
+            "Authorization": `Bearer ${svixToken}`,
+            "Content-Type": "application/json",
+          },
+          method: "GET",
+        });
+        return messageResponse.body;
+      }));
+
+      if (messages.length === 0) {
+        await wait(500);
+        continue;
+      }
+
+      return messages.sort((a, b) => {
+        return new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime();
+      });
+    }
+    return [];
   }
 }

@@ -16,7 +16,8 @@ export const teamInvitationsCrudHandlers = createLazyProxy(() => createCrudHandl
     id: yupString().uuid().defined(),
   }),
   onList: async ({ auth, query }) => {
-    return await retryTransaction(getPrismaClientForTenancy(auth.tenancy), async (tx) => {
+    const prisma = await getPrismaClientForTenancy(auth.tenancy);
+    return await retryTransaction(prisma, async (tx) => {
       if (auth.type === 'client') {
         // Client can only:
         // - list invitations in their own team if they have the $read_members AND $invite_members permissions
@@ -58,7 +59,8 @@ export const teamInvitationsCrudHandlers = createLazyProxy(() => createCrudHandl
     });
   },
   onDelete: async ({ auth, query, params }) => {
-    await retryTransaction(getPrismaClientForTenancy(auth.tenancy), async (tx) => {
+    const prisma = await getPrismaClientForTenancy(auth.tenancy);
+    await retryTransaction(prisma, async (tx) => {
       if (auth.type === 'client') {
         // Client can only:
         // - delete invitations in their own team if they have the $remove_members permissions

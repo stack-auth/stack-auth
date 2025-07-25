@@ -95,7 +95,7 @@ export const registerVerificationCodeHandler = createVerificationCodeHandler({
     }
 
     const registrationInfo = verification.registrationInfo;
-    const prisma = getPrismaClientForTenancy(tenancy);
+    const prisma = await getPrismaClientForTenancy(tenancy);
 
     await retryTransaction(prisma, async (tx) => {
       const authMethods = await tx.passkeyAuthMethod.findMany({

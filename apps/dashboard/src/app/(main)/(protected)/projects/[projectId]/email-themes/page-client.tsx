@@ -4,6 +4,7 @@ import { Link } from "@/components/link";
 import { SettingCard } from "@/components/settings";
 import { InputField } from "@/components/form-fields";
 import ThemePreview from "@/components/theme-preview";
+import { previewTemplateSource } from "@stackframe/stack-shared/dist/helpers/emails";
 import { ActionDialog, Button, Typography } from "@stackframe/stack-ui";
 import { FormDialog } from "@/components/form-dialog";
 import { Check, Pencil } from "lucide-react";
@@ -50,7 +51,7 @@ export default function PageClient() {
         description={`Currently using ${selectedThemeData.displayName}`}
       >
         <div className="h-72">
-          <ThemePreview themeId={selectedThemeData.id} />
+          <ThemePreview themeId={selectedThemeData.id} templateTsxSource={previewTemplateSource} />
         </div>
         <ActionDialog
           trigger={<Button onClick={handleOpenDialog} className="ml-auto w-min">Set Theme</Button>}
@@ -94,7 +95,7 @@ function ThemeOption({
   return (
     <div className="relative flex flex-col items-center gap-2 group cursor-pointer" onClick={() => onSelect(theme.id)}>
       <div className="w-full h-60 shadow-md rounded-md overflow-clip group-hover:shadow-lg transition-all" style={{ zoom: 0.75 }}>
-        <ThemePreview themeId={theme.id} disableFrame />
+        <ThemePreview themeId={theme.id} templateTsxSource={previewTemplateSource} disableFrame />
       </div>
       <div className="flex items-center gap-2">
         {isSelected && <Check />}

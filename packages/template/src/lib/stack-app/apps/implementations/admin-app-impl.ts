@@ -56,8 +56,8 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
   private readonly _metricsCache = createCache(async () => {
     return await this._interface.getMetrics();
   });
-  private readonly _emailPreviewCache = createCache(async ([theme, content, templateId]: [string, string | undefined, string | undefined]) => {
-    return await this._interface.renderEmailPreview(theme, content, templateId);
+  private readonly _emailPreviewCache = createCache(async ([themeId, themeTsxSource, templateId, templateTsxSource]: [string | undefined, string | undefined, string | undefined, string | undefined]) => {
+    return await this._interface.renderEmailPreview({ themeId, themeTsxSource, templateId, templateTsxSource });
   });
 
   constructor(options: StackAdminAppConstructorOptions<HasTokenStore, ProjectId>) {
@@ -479,12 +479,12 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
     return result;
   }
 
-  async getEmailPreview(themeId: string, content?: string, templateId?: string): Promise<string> {
-    return (await this._interface.renderEmailPreview(themeId, content, templateId)).html;
+  async getEmailPreview(options: { themeId?: string, themeTsxSource?: string, templateId?: string, templateTsxSource?: string }): Promise<string> {
+    return (await this._interface.renderEmailPreview(options)).html;
   }
   // IF_PLATFORM react-like
-  useEmailPreview(themeId: string, content?: string, templateId?: string): string {
-    const crud = useAsyncCache(this._emailPreviewCache, [themeId, content, templateId] as const, "useEmailPreview()");
+  useEmailPreview(options: { themeId?: string, themeTsxSource?: string, templateId?: string, templateTsxSource?: string }): string {
+    const crud = useAsyncCache(this._emailPreviewCache, [options.themeId, options.themeTsxSource, options.templateId, options.templateTsxSource] as const, "useEmailPreview()");
     return crud.html;
   }
   // END_PLATFORM
@@ -497,9 +497,8 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
     };
   }
   // END_PLATFORM
-  async updateEmailTheme(id: string, tsxSource: string, previewHtml: string): Promise<{ rendered_html: string }> {
-    const result = await this._interface.updateEmailTheme(id, tsxSource, previewHtml);
-    return { rendered_html: result.rendered_html };
+  async updateEmailTheme(id: string, tsxSource: string): Promise<void> {
+    await this._interface.updateEmailTheme(id, tsxSource);
   }
   async updateNewEmailTemplate(id: string, tsxSource: string): Promise<{ renderedHtml: string }> {
     const result = await this._interface.updateNewEmailTemplate(id, tsxSource);

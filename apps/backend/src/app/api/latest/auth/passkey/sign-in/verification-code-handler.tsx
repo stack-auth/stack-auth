@@ -45,7 +45,7 @@ export const passkeySignInVerificationCodeHandler = createVerificationCodeHandle
 
     const credentialId = authentication_response.id;
 
-    const prisma = getPrismaClientForTenancy(tenancy);
+    const prisma = await getPrismaClientForTenancy(tenancy);
     // Get passkey from DB with userHandle
     const passkey = await prisma.passkeyAuthMethod.findFirst({
       where: {

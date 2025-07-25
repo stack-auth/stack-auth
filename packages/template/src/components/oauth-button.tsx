@@ -147,6 +147,15 @@ export function OAuthButton({
       };
       break;
     }
+    case 'twitch': {
+      style = {
+        backgroundColor: "#6441a5",
+        textColor: "#fff",
+        name: "Twitch",
+        icon: <BrandIcons.Twitch iconSize={iconSize} />,
+      };
+      break;
+    }
     default: {
       style = {
         name: provider,
