@@ -507,15 +507,16 @@ export async function sanitizeEnvironmentConfig<T extends EnvironmentRenderedCon
 export async function sanitizeOrganizationConfig(config: OrganizationRenderedConfigBeforeSanitization) {
   assertNormalized(config);
   const prepared = await sanitizeEnvironmentConfig(config);
+  const themes: typeof prepared.emails.themes = {
+    ...DEFAULT_EMAIL_THEMES,
+    ...prepared.emails.themes,
+  };
   return {
     ...prepared,
     emails: {
       ...prepared.emails,
-      selectedThemeId: has(prepared.emails.themes, prepared.emails.selectedThemeId) ? prepared.emails.selectedThemeId : DEFAULT_EMAIL_THEME_ID,
-      themes: {
-        ...DEFAULT_EMAIL_THEMES,
-        ...prepared.emails.themes,
-      } as typeof prepared.emails.themes,
+      selectedThemeId: has(themes, prepared.emails.selectedThemeId) ? prepared.emails.selectedThemeId : DEFAULT_EMAIL_THEME_ID,
+      themes,
       templates: {
         ...DEFAULT_EMAIL_TEMPLATES,
         ...prepared.emails.templates,
