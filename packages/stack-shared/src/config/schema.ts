@@ -120,9 +120,9 @@ export const branchConfigSchema = projectConfigSchema.omit(['sourceOfTruth']).co
   auth: branchAuthSchema,
 
   emails: yupObject({
-    theme: schemaFields.emailThemeSchema.optional(),
-    themeList: schemaFields.emailThemeListSchema.optional(),
-    templateList: schemaFields.emailTemplateListSchema.optional(),
+    selectedThemeId: schemaFields.emailThemeSchema.optional(),
+    themes: schemaFields.emailThemeListSchema.optional(),
+    templates: schemaFields.emailTemplateListSchema.optional(),
   }),
 
 }));
@@ -245,9 +245,9 @@ export const organizationConfigDefaults = {
     server: {
       isShared: true,
     },
-    theme: DEFAULT_EMAIL_THEME_ID,
-    themeList: DEFAULT_EMAIL_THEMES,
-    templateList: DEFAULT_EMAIL_TEMPLATES,
+    selectedThemeId: DEFAULT_EMAIL_THEME_ID,
+    themes: DEFAULT_EMAIL_THEMES,
+    templates: DEFAULT_EMAIL_TEMPLATES,
   },
 } satisfies DeepReplaceAllowFunctionsForObjects<OrganizationConfigStrippedNormalizedOverride>;
 

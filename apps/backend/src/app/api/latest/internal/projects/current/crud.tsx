@@ -12,7 +12,7 @@ export const projectsCrudHandlers = createLazyProxy(() => createCrudHandlers(pro
   onUpdate: async ({ auth, data }) => {
     if (
       data.config?.email_theme &&
-      !Object.keys(auth.tenancy.completeConfig.emails.themeList).includes(data.config.email_theme)
+      !Object.keys(auth.tenancy.completeConfig.emails.themes).includes(data.config.email_theme)
     ) {
       throw new StatusError(400, "Invalid email theme");
     }

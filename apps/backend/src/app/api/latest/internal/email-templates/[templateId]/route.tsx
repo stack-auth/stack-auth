@@ -21,6 +21,7 @@ export const PATCH = createSmartRouteHandler({
     }).defined(),
     body: yupObject({
       tsx_source: yupString().defined(),
+      theme_id: yupString().uuid().optional(),
     }).defined(),
   }),
   response: yupObject({
@@ -31,12 +32,15 @@ export const PATCH = createSmartRouteHandler({
     }).defined(),
   }),
   async handler({ auth: { tenancy }, params: { templateId }, body }) {
-    const templateList = tenancy.completeConfig.emails.templateList;
+    const templateList = tenancy.completeConfig.emails.templates;
     if (!Object.keys(templateList).includes(templateId)) {
       throw new StatusError(StatusError.NotFound, "No template found with given id");
     }
-    const theme = tenancy.completeConfig.emails.themeList[tenancy.completeConfig.emails.theme];
-    const result = await renderEmailWithTemplate(body.tsx_source, theme.tsxSource, { projectDisplayName: tenancy.project.display_name });
+    const theme = tenancy.completeConfig.emails.themes[tenancy.completeConfig.emails.selectedThemeId];
+    const result = await renderEmailWithTemplate(body.tsx_source, theme.tsxSource, {
+      variables: { projectDisplayName: tenancy.project.display_name },
+      previewMode: true,
+    });
     if (result.status === "error") {
       throw new KnownErrors.EmailRenderingError(result.error);
     }
@@ -46,16 +50,14 @@ export const PATCH = createSmartRouteHandler({
     if (result.data.notificationCategory === undefined) {
       throw new KnownErrors.EmailRenderingError("NotificationCategory is required, import it from @stackframe/emails");
     }
-    if (result.data.schema === undefined) {
-      throw new KnownErrors.EmailRenderingError("schema is required and must be exported");
-    }
 
     await overrideEnvironmentConfigOverride({
       tx: globalPrismaClient,
       projectId: tenancy.project.id,
       branchId: tenancy.branchId,
       environmentConfigOverrideOverride: {
-        [`emails.templateList.${templateId}.tsxSource`]: body.tsx_source,
+        [`emails.templates.${templateId}.tsxSource`]: body.tsx_source,
+        [`emails.templates.${templateId}.themeId`]: body.theme_id,
       },
     });
 
