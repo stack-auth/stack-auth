@@ -67,20 +67,29 @@ export const POST = createSmartRouteHandler({
   async handler({ body, auth: { tenancy } }) {
     const id = generateUuid();
     const defaultTemplateSource = deindent`
+      import { type } from "arktype"
       import { Container } from "@react-email/components";
-      import { Subject, NotificationCategory, type } from "@stackframe/emails";
-      export const schema = type({
-        user: "StackUser"
+      import { Subject, NotificationCategory, Props } from "@stackframe/emails";
+
+      export const variablesSchema = type({
+        count: "number"
       });
-      export function EmailTemplate({ user }: typeof schema.infer) {
+
+      export function EmailTemplate({ user, variables }: Props<typeof variablesSchema.infer>) {
         return (
           <Container>
             <Subject value={\`Hello \${user.displayName}!\`} />
             <NotificationCategory value="Transactional" />
             <div className="font-bold">Hi {user.displayName}!</div>
+            <br />
+            count is {variables.count}
           </Container>
         );
       }
+
+      EmailTemplate.PreviewVariables = {
+        count: 10
+      } satisfies typeof variablesSchema.infer
     `;
 
     await overrideEnvironmentConfigOverride({
