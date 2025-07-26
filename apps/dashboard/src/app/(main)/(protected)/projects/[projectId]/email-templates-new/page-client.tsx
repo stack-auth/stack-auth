@@ -40,10 +40,11 @@ export default function PageClient() {
             <div className="flex justify-start items-end gap-2">
               <Button
                 variant='secondary'
-                onClick={(e) => {
+                onClick={() => {
                   if (emailConfig?.type === 'shared') {
                     setSharedSmtpWarningDialogOpen(template.id);
-                    e.preventDefault();
+                  } else {
+                    router.push(`email-templates-new/${template.id}`);
                   }
                 }}
               >
