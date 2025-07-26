@@ -10,7 +10,7 @@ type LinkProps = {
   children: React.ReactNode,
   className?: string,
   target?: string,
-  onClick?: (e: React.MouseEvent<HTMLAnchorElement>) => void,
+  onClick?: () => void,
   style?: React.CSSProperties,
   prefetch?: boolean,
 };
@@ -28,10 +28,10 @@ export function Link(props: LinkProps) {
     onClick={(e: React.MouseEvent<HTMLAnchorElement>) => {
       if (needConfirm) {
         e.preventDefault();
-        props.onClick?.(e);
+        props.onClick?.();
         router.push(props.href);
       }
-      props.onClick?.(e);
+      props.onClick?.();
     }}
   >
     {props.children}

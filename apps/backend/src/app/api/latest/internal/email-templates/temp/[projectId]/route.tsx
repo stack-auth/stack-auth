@@ -123,15 +123,9 @@ export const POST = createSmartRouteHandler({
         emailTemplates[configTemplateId].tsxSource,
         emptyThemeComponent,
         {
-          projectDisplayName: "My Project",
-          teamDisplayName: "My Team",
-          userDisplayName: "John Doe",
-          emailVerificationLink: "<email verification link>",
-          otp: "3SLSWZ",
-          magicLink: "<magic link>",
-          passwordResetLink: "<password reset link>",
-          teamInvitationLink: "<team invitation link>",
-          signInInvitationLink: "<sign in invitation link>",
+          project: { displayName: project.displayName },
+          user: { displayName: "John Doe" },
+          previewMode: true,
         }
       );
       rendered.push({
