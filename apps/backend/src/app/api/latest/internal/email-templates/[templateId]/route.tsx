@@ -1,10 +1,10 @@
 import { overrideEnvironmentConfigOverride } from "@/lib/config";
+import { renderEmailWithTemplate } from "@/lib/email-rendering";
 import { globalPrismaClient } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
+import { KnownErrors } from "@stackframe/stack-shared/dist/known-errors";
 import { adaptSchema, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
 import { StatusError } from "@stackframe/stack-shared/dist/utils/errors";
-import { renderEmailWithTemplate } from "@/lib/email-rendering";
-import { KnownErrors } from "@stackframe/stack-shared/dist/known-errors";
 
 
 export const PATCH = createSmartRouteHandler({
@@ -57,7 +57,7 @@ export const PATCH = createSmartRouteHandler({
       branchId: tenancy.branchId,
       environmentConfigOverrideOverride: {
         [`emails.templates.${templateId}.tsxSource`]: body.tsx_source,
-        [`emails.templates.${templateId}.themeId`]: body.theme_id,
+        ...(body.theme_id ? { [`emails.templates.${templateId}.themeId`]: body.theme_id } : {}),
       },
     });
 

@@ -1,4 +1,6 @@
 # Some notes on configs
+
+The language in this file is very technical, if you're struggling, put it into ChatGPT and see if it can help you (with the usual hallucination disclaimer).
  
 ## Generic format vs. Stack Auth
 
@@ -15,11 +17,11 @@ All the logic required for generic usage of the config format are in `format/`. 
 **Stack Auth**: There are four levels, project, branch, environment, organization.
 - Base config: The defaults that come with Stack Auth
 - `$Level` config override: Overrides that are applied to the base config (in the following order: project -> branch -> environment -> organization)
-- `$Level` incomplete config: The base config after some overrides have been applied, deeply merged into `configDefaults`
-- `$Level` rendered config: An incomplete config with those fields removed that can be overridden by a future override
+- `$Level` incomplete config: The base config after some overrides have been applied
+- `$Level` rendered config: An incomplete config with those fields removed that can be overridden by a future override, deeply merged into the defaults and sanitized (using `apply{$Level}DefaultsAndSanitize`), and then normalized
 - Complete config: The organization rendered config.
-
-**Validation**: A config override can be both "schematically valid" and "sanity-check valid" (I would call it "semantically valid" but that word is so easily confused with "schematically"). The `validateXYZ` functions in `config.ts` check for the latter, while the yup schemas in `schema.ts` check for the former. The main difference is that whether an override is schematically valid depends only on the override itself; while its sanity-check validity depends on the base config that it overrides.
+- `$Level` config override override: An override that overrides the `$Level` config override. This is most often used eg. in the REST API to let users make changes to the branch-level config, without overwriting the entire branch-level config override. *<sup>Note that, since config overrides (unlike configs) distinguish between `null` and a property missing (`undefined`), it is currently not possible to say "this property in the config override should be unset" (setting a property to `null` in the override override will simply also set it to `null` in the override). In the future, we'll have to think about how we handle this, probably with a sentinel value.</sup>*
+- `$Level` config: Could refer to any of the above, depending on the context; if it's not clear, specify it.
 
 <details>
 <summary>Examples</summary>

@@ -1,5 +1,6 @@
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
-import { adaptSchema, yupArray, yupNumber, yupObject, yupString, templateThemeIdSchema } from "@stackframe/stack-shared/dist/schema-fields";
+import { adaptSchema, templateThemeIdSchema, yupArray, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
+import { filterUndefined, typedEntries } from "@stackframe/stack-shared/dist/utils/objects";
 
 
 export const GET = createSmartRouteHandler({
@@ -25,7 +26,7 @@ export const GET = createSmartRouteHandler({
     }).defined(),
   }),
   async handler({ auth: { tenancy } }) {
-    const templates = Object.entries(tenancy.completeConfig.emails.templates).map(([id, template]) => ({
+    const templates = typedEntries(tenancy.completeConfig.emails.templates).map(([id, template]) => filterUndefined({
       id,
       display_name: template.displayName,
       tsx_source: template.tsxSource,

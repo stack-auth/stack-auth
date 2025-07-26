@@ -24,10 +24,12 @@
     "deindent",
     "Deindentable",
     "deindented",
+    "doesntexist",
     "DUMBASS",
     "EAUTH",
     "EDNS",
     "EENVELOPE",
+    "Elems",
     "Emailable",
     "EMESSAGE",
     "Falsey",
@@ -77,6 +79,7 @@
     "RPID",
     "simplewebauthn",
     "spoofable",
+    "stackable",
     "stackauth",
     "stackframe",
     "sucky",
@@ -97,6 +100,7 @@
     "webauthn",
     "Whitespaces",
     "wolfgunblood",
+    "xact",
     "zustand"
   ],
   "editor.codeActionsOnSave": {
