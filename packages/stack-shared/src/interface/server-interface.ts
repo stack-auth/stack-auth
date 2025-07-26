@@ -12,6 +12,7 @@ import { ConnectedAccountAccessTokenCrud } from "./crud/connected-accounts";
 import { ContactChannelsCrud } from "./crud/contact-channels";
 import { CurrentUserCrud } from "./crud/current-user";
 import { NotificationPreferenceCrud } from "./crud/notification-preferences";
+import { OAuthProviderCrud } from "./crud/oauth-providers";
 import { ProjectPermissionsCrud } from "./crud/project-permissions";
 import { SessionsCrud } from "./crud/sessions";
 import { TeamInvitationCrud } from "./crud/team-invitation";
@@ -693,23 +694,8 @@ export class StackServerInterface extends StackClientInterface {
 
   // OAuth Providers CRUD operations
   async createServerOAuthProvider(
-    data: {
-      user_id: string,
-      provider_config_id: string,
-      account_id: string,
-      email: string,
-      allow_sign_in: boolean,
-      allow_connected_accounts: boolean,
-    },
-  ): Promise<{
-    id: string,
-    type: string,
-    user_id: string,
-    account_id: string,
-    email: string,
-    allow_sign_in: boolean,
-    allow_connected_accounts: boolean,
-  }> {
+    data: OAuthProviderCrud['Server']['Create'],
+  ): Promise<OAuthProviderCrud['Server']['Read']> {
     const response = await this.sendServerRequest(
       "/oauth-providers",
       {
@@ -729,15 +715,7 @@ export class StackServerInterface extends StackClientInterface {
     options: {
       user_id?: string,
     } = {},
-  ): Promise<{
-    id: string,
-    type: string,
-    user_id: string,
-    account_id: string,
-    email: string,
-    allow_sign_in: boolean,
-    allow_connected_accounts: boolean,
-  }[]> {
+  ): Promise<OAuthProviderCrud['Server']['Read'][]> {
     const queryParams = new URLSearchParams(filterUndefined(options));
     const response = await this.sendServerRequest(
       `/oauth-providers${queryParams.toString() ? `?${queryParams.toString()}` : ''}`,
@@ -753,21 +731,8 @@ export class StackServerInterface extends StackClientInterface {
   async updateServerOAuthProvider(
     userId: string,
     providerId: string,
-    data: {
-      account_id?: string,
-      email?: string,
-      allow_sign_in?: boolean,
-      allow_connected_accounts?: boolean,
-    },
-  ): Promise<{
-    id: string,
-    type: string,
-    user_id: string,
-    account_id: string,
-    email: string,
-    allow_sign_in: boolean,
-    allow_connected_accounts: boolean,
-  }> {
+    data: OAuthProviderCrud['Server']['Update'],
+  ): Promise<OAuthProviderCrud['Server']['Read']> {
     const response = await this.sendServerRequest(
       urlString`/oauth-providers/${userId}/${providerId}`,
       {
@@ -785,7 +750,7 @@ export class StackServerInterface extends StackClientInterface {
   async deleteServerOAuthProvider(
     userId: string,
     providerId: string,
-  ): Promise<{ success: boolean }> {
+  ): Promise<void> {
     const response = await this.sendServerRequest(
       urlString`/oauth-providers/${userId}/${providerId}`,
       {
