@@ -100,11 +100,11 @@ const branchAuthSchema = yupObject({
     allowSignIn: yupBoolean(),
   }),
   oauth: yupObject({
-    accountMergeStrategy: yupString().oneOf(['link_method', 'raise_error', 'allow_duplicates']),
+    accountMergeStrategy: yupString().oneOf(['link_method', 'raise_error', 'allow_duplicates']).optional(),
     providers: yupRecord(
       yupString().matches(permissionRegex),
       yupObject({
-        type: yupString().oneOf(allProviders),
+        type: yupString().oneOf(allProviders).optional(),
         allowSignIn: yupBoolean(),
         allowConnectedAccounts: yupBoolean(),
       }),
@@ -150,7 +150,7 @@ const branchPaymentsSchema = yupObject({
         yupObject({
           quantity: yupNumber(),
           repeat: schemaFields.dayIntervalOrNeverSchema.optional(),
-          expires: yupString().oneOf(['never', 'when-purchase-expires', 'when-repeated']),
+          expires: yupString().oneOf(['never', 'when-purchase-expires', 'when-repeated']).optional(),
         }),
       ),
     }),
@@ -162,7 +162,7 @@ const branchPaymentsSchema = yupObject({
       default: yupObject({
         quantity: yupNumber(),
         repeat: schemaFields.dayIntervalOrNeverSchema.optional(),
-        expires: yupString().oneOf(['never', 'when-repeated']),
+        expires: yupString().oneOf(['never', 'when-repeated']).optional(),
       }).default({
         quantity: 0,
       }),
@@ -208,7 +208,7 @@ export const environmentConfigSchema = branchConfigSchema.concat(yupObject({
       providers: yupRecord(
         yupString().matches(permissionRegex),
         yupObject({
-          type: yupString().oneOf(allProviders),
+          type: yupString().oneOf(allProviders).optional(),
           isShared: yupBoolean(),
           clientId: schemaFields.oauthClientIdSchema.optional(),
           clientSecret: schemaFields.oauthClientSecretSchema.optional(),
@@ -729,6 +729,9 @@ export async function getIncompleteConfigWarnings<T extends yup.AnySchema>(schem
   }
 }
 export type ValidatedToHaveNoIncompleteConfigWarnings<T extends yup.AnySchema> = yup.InferType<T>;
+
+type T = (yup.InferType<typeof branchConfigSchema>)["auth"];
+
 
 // Normalized overrides
 // ex.: { a?: { b?: number, c?: string }, d?: number }
