@@ -4,7 +4,7 @@ import { createCrudHandlers } from "@/route-handlers/crud-handler";
 import { KnownErrors } from "@stackframe/stack-shared";
 import { adminUserProjectsCrud } from "@stackframe/stack-shared/dist/interface/crud/projects";
 import { projectIdSchema, yupObject } from "@stackframe/stack-shared/dist/schema-fields";
-import { StackAssertionError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
+import { StackAssertionError, StatusError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
 import { isNotNull, typedEntries, typedFromEntries } from "@stackframe/stack-shared/dist/utils/objects";
 import { createLazyProxy } from "@stackframe/stack-shared/dist/utils/proxies";
 
@@ -28,11 +28,20 @@ export const adminUserProjectsCrudHandlers = createLazyProxy(() => createCrudHan
     const ownerPack = ownerPacks.find(p => p.has(user.id));
     const userIds = ownerPack ? [...ownerPack] : [user.id];
 
+    let config;
+    if (data.config) {
+      try {
+        config = JSON.parse(data.config);
+      } catch (e) {
+        throw new StatusError(StatusError.BadRequest, 'Invalid config');
+      }
+    }
+
     const project = await createOrUpdateProject({
       ownerIds: userIds,
       type: 'create',
       data,
-      environmentConfigOverrideOverride: {},
+      environmentConfigOverrideOverride: config,
     });
     return project;
   },

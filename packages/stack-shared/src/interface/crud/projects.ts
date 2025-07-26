@@ -37,6 +37,7 @@ export const projectsCrudAdminUpdateSchema = yupObject({
 
 export const projectsCrudAdminCreateSchema = projectsCrudAdminUpdateSchema.concat(yupObject({
   display_name: schemaFields.projectDisplayNameSchema.defined(),
+  config: schemaFields.yupString().optional(),
 }).defined());
 
 export const projectsCrudAdminDeleteSchema = schemaFields.yupMixed();
