@@ -6,23 +6,24 @@ import { deindent } from "@stackframe/stack-shared/dist/utils/strings";
 import { bundleJavaScript } from '@stackframe/stack-shared/dist/utils/esbuild';
 import { StackAssertionError } from '@stackframe/stack-shared/dist/utils/errors';
 import { emptyEmailTheme } from '@stackframe/stack-shared/dist/helpers/emails';
+import { get, has } from '@stackframe/stack-shared/dist/utils/objects';
 
 export function getActiveEmailTheme(tenancy: Tenancy) {
   const themeList = tenancy.completeConfig.emails.themes;
   const currentActiveTheme = tenancy.completeConfig.emails.selectedThemeId;
-  if (!(currentActiveTheme in themeList)) {
+  if (!(has(themeList, currentActiveTheme))) {
     throw new StackAssertionError("No active email theme found", {
       themeList,
       currentActiveTheme,
     });
   }
-  return themeList[currentActiveTheme];
+  return get(themeList, currentActiveTheme);
 }
 
 export function getEmailThemeForTemplate(tenancy: Tenancy, templateThemeId: string | null | false | undefined) {
   const themeList = tenancy.completeConfig.emails.themes;
-  if (templateThemeId && templateThemeId in themeList) {
-    return themeList[templateThemeId].tsxSource;
+  if (templateThemeId && has(themeList, templateThemeId)) {
+    return get(themeList, templateThemeId).tsxSource;
   }
   if (templateThemeId === false) {
     return emptyEmailTheme;

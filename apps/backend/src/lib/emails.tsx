@@ -17,21 +17,15 @@ import { DEFAULT_TEMPLATE_IDS } from '@stackframe/stack-shared/dist/helpers/emai
 
 
 export function getNewEmailTemplate(tenancy: Tenancy, type: keyof typeof EMAIL_TEMPLATES_METADATA) {
-  const templateList = tenancy.completeConfig.emails.templates;
-  if (type === "email_verification") {
-    return templateList[DEFAULT_TEMPLATE_IDS.email_verification];
-  }
-  if (type === "password_reset") {
-    return templateList[DEFAULT_TEMPLATE_IDS.password_reset];
-  }
-  if (type === "magic_link") {
-    return templateList[DEFAULT_TEMPLATE_IDS.magic_link];
-  }
-  if (type === "team_invitation") {
-    return templateList[DEFAULT_TEMPLATE_IDS.team_invitation];
-  }
-  if (type === "sign_in_invitation") {
-    return templateList[DEFAULT_TEMPLATE_IDS.sign_in_invitation];
+  const templateList = new Map(Object.entries(tenancy.completeConfig.emails.templates));
+  const defaultTemplateIdsMap = new Map(Object.entries(DEFAULT_TEMPLATE_IDS));
+  const defaultTemplateId = defaultTemplateIdsMap.get(type);
+  if (defaultTemplateId) {
+    const template = templateList.get(defaultTemplateId);
+    if (!template) {
+      throw new StackAssertionError(`Default email template not found: ${type}`);
+    }
+    return template;
   }
   throw new StackAssertionError(`Unknown email template type: ${type}`);
 }

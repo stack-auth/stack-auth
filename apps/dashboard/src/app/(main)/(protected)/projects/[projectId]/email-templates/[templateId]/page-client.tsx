@@ -103,15 +103,10 @@ type ThemeSelectorProps = {
 }
 
 function themeIdToSelectString(themeId: string | undefined | false): string {
-  if (themeId === false) return "false-sentinel";
-  if (themeId === undefined) return "undefined-sentinel";
-  return themeId;
+  return JSON.stringify(themeId ?? null);
 }
-
 function selectStringToThemeId(value: string): string | undefined | false {
-  if (value === "false-sentinel") return false;
-  if (value === "undefined-sentinel") return undefined;
-  return value;
+  return JSON.parse(value) ?? undefined;
 }
 
 function ThemeSelector({ selectedThemeId, onThemeChange, className }: ThemeSelectorProps) {
