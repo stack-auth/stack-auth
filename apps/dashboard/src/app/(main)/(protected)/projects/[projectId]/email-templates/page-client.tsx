@@ -11,7 +11,7 @@ export default function PageClient() {
   const stackAdminApp = useAdminApp();
   const project = stackAdminApp.useProject();
   const emailConfig = project.config.emailConfig;
-  const emailTemplates = stackAdminApp.useNewEmailTemplates();
+  const emailTemplates = stackAdminApp.useEmailTemplates();
   const router = useRouter();
   const [sharedSmtpWarningDialogOpen, setSharedSmtpWarningDialogOpen] = useState<string | null>(null);
 

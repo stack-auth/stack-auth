@@ -8,7 +8,6 @@ import ThemeToggle from "@/components/theme-toggle";
 import { getPublicEnvVar } from '@/lib/env';
 import { cn } from "@/lib/utils";
 import { AdminProject, UserButton, useUser } from "@stackframe/stack";
-import { EMAIL_TEMPLATES_METADATA } from "@stackframe/stack-emails/dist/utils";
 import {
   Breadcrumb,
   BreadcrumbItem,
@@ -314,7 +313,7 @@ function ThemeBreadcrumbItem(props: { themeId: string }) {
 
 function TemplateBreadcrumbItem(props: { templateId: string }) {
   const stackAdminApp = useAdminApp();
-  const templates = stackAdminApp.useNewEmailTemplates();
+  const templates = stackAdminApp.useEmailTemplates();
   const template = templates.find((template) => template.id === props.templateId);
   if (!template) {
     return null;

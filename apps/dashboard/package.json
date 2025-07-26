@@ -29,7 +29,6 @@
     "@react-hook/resize-observer": "^2.0.2",
     "@sentry/nextjs": "^8.40.0",
     "@stackframe/stack": "workspace:*",
-    "@stackframe/stack-emails": "workspace:*",
     "@stackframe/stack-shared": "workspace:*",
     "@stackframe/stack-ui": "workspace:*",
     "@tanstack/react-table": "^8.20.5",
