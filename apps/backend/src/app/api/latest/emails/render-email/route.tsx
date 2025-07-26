@@ -1,7 +1,7 @@
 import { renderEmailWithTemplate } from "@/lib/email-rendering";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { KnownErrors } from "@stackframe/stack-shared/dist/known-errors";
-import { adaptSchema, yupMixed, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
+import { adaptSchema, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
 import { captureError, StackAssertionError, StatusError } from "@stackframe/stack-shared/dist/utils/errors";
 
 
@@ -28,7 +28,6 @@ export const POST = createSmartRouteHandler({
     bodyType: yupString().oneOf(["json"]).defined(),
     body: yupObject({
       html: yupString().defined(),
-      schema: yupMixed(),
       subject: yupString(),
       notification_category: yupString(),
     }).defined(),
@@ -50,18 +49,14 @@ export const POST = createSmartRouteHandler({
     if (!templateSource) {
       throw new StatusError(400, "No template found with given id");
     }
-    const variables = {
-      projectDisplayName: tenancy.project.display_name,
-      teamDisplayName: "My Team",
-      userDisplayName: "John Doe",
-      emailVerificationLink: "<email verification link>",
-      otp: "3SLSWZ",
-      magicLink: "<magic link>",
-      passwordResetLink: "<password reset link>",
-      teamInvitationLink: "<team invitation link>",
-      signInInvitationLink: "<sign in invitation link>",
-    };
-    const result = await renderEmailWithTemplate(templateSource, themeSource, variables);
+    const result = await renderEmailWithTemplate(
+      templateSource,
+      themeSource,
+      {
+        project: { displayName: tenancy.project.display_name },
+        previewMode: true,
+      },
+    );
     if ("error" in result) {
       captureError('render-email', new StackAssertionError("Error rendering email with theme", { result }));
       throw new KnownErrors.EmailRenderingError(result.error);
@@ -71,7 +66,6 @@ export const POST = createSmartRouteHandler({
       bodyType: "json",
       body: {
         html: result.data.html,
-        schema: result.data.schema,
         subject: result.data.subject,
         notification_category: result.data.notificationCategory,
       },

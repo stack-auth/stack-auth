@@ -472,6 +472,23 @@ export class StackAdminInterface extends StackServerInterface {
     return await response.json();
   }
 
+  async createNewEmailTemplate(displayName: string): Promise<{ id: string }> {
+    const response = await this.sendAdminRequest(
+      `/internal/email-templates`,
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          display_name: displayName,
+        }),
+      },
+      null,
+    );
+    return await response.json();
+  }
+
   async getAllProjectsIdsForMigration(cursor?: string): Promise<{ project_ids: string[], next_cursor: string | null }> {
     const queryParams = cursor ? `?cursor=${encodeURIComponent(cursor)}` : '';
     const response = await this.sendAdminRequest(

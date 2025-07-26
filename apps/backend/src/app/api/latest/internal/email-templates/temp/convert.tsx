@@ -258,7 +258,7 @@ ${indent}</${level}>`;
         return `${indent}<div
 ${indent}  style={{
 ${indent}    backgroundColor: '${style?.backgroundColor || 'transparent'}',
-${indent}    textAlign: '${style?.textAlign || 'center'}',
+${indent}    textAlign: '${style?.textAlign || 'left'}',
 ${indent}    padding: '${getPadding(style?.padding)}',
 ${indent}  }}
 ${indent}>
@@ -376,10 +376,10 @@ ${indent}</div>`;
 
         return `${indent}<Container
 ${indent}  style={{
-${indent}    backgroundColor: '${style?.backgroundColor || 'transparent'}',
+${indent}    backgroundColor: '${childrenIds.length > 0 ? style?.backgroundColor ?? 'transparent' : 'transparent'}',
 ${indent}    ${style?.borderColor ? `border: '1px solid ${style.borderColor}',` : ''}
 ${indent}    ${style?.borderRadius ? `borderRadius: ${style.borderRadius},` : ''}
-${indent}    padding: '${getPadding(style?.padding)}',
+${indent}    padding: '0',
 ${indent}  }}
 ${indent}>
 ${children}
