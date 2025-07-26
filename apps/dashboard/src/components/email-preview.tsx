@@ -44,7 +44,7 @@ function EmailPreviewContent({
   templateId,
   templateTsxSource,
 }: {
-  themeId?: string,
+  themeId?: string | null | false,
   themeTsxSource?: string,
   templateId?: string,
   templateTsxSource?: string,
@@ -69,7 +69,7 @@ function EmailPreviewContent({
 
 type EmailPreviewProps =
   | ({
-    themeId: string,
+    themeId: string | null | false,
     themeTsxSource?: undefined,
   } | {
     themeId?: undefined,

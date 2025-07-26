@@ -1,8 +1,34 @@
+import { Tenancy } from './tenancies';
 import { TracedFreestyleSandboxes } from '@/lib/freestyle';
 import { getEnvVariable, getNodeEnvironment } from '@stackframe/stack-shared/dist/utils/env';
 import { Result } from "@stackframe/stack-shared/dist/utils/results";
 import { deindent } from "@stackframe/stack-shared/dist/utils/strings";
 import { bundleJavaScript } from '@stackframe/stack-shared/dist/utils/esbuild';
+import { StackAssertionError } from '@stackframe/stack-shared/dist/utils/errors';
+import { emptyEmailTheme } from '@stackframe/stack-shared/dist/helpers/emails';
+
+export function getActiveEmailTheme(tenancy: Tenancy) {
+  const themeList = tenancy.completeConfig.emails.themes;
+  const currentActiveTheme = tenancy.completeConfig.emails.selectedThemeId;
+  if (!(currentActiveTheme in themeList)) {
+    throw new StackAssertionError("No active email theme found", {
+      themeList,
+      currentActiveTheme,
+    });
+  }
+  return themeList[currentActiveTheme];
+}
+
+export function getEmailThemeForTemplate(tenancy: Tenancy, templateThemeId: string | null | false | undefined) {
+  const themeList = tenancy.completeConfig.emails.themes;
+  if (templateThemeId && templateThemeId in themeList) {
+    return themeList[templateThemeId].tsxSource;
+  }
+  if (templateThemeId === false) {
+    return emptyEmailTheme;
+  }
+  return getActiveEmailTheme(tenancy).tsxSource;
+}
 
 export function createTemplateComponentFromHtml(
   html: string,
@@ -30,7 +56,7 @@ export async function renderEmailWithTemplate(
       html: `<div>Mock api key detected, \n\ntemplateComponent: ${templateComponent}\n\nthemeComponent: ${themeComponent}\n\n variables: ${JSON.stringify(variables)}</div>`,
       text: `<div>Mock api key detected, \n\ntemplateComponent: ${templateComponent}\n\nthemeComponent: ${themeComponent}\n\n variables: ${JSON.stringify(variables)}</div>`,
       schema: {},
-      subject: "mock subject",
+      subject: `Mock subject, ${templateComponent.match(/<Subject\s+[^>]*\/>/g)?.[0]}`,
       notificationCategory: "mock notification category",
     });
   }

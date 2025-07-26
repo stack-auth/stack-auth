@@ -2,7 +2,7 @@
 
 import EmailPreview from "@/components/email-preview";
 import { useRouterConfirm } from "@/components/router";
-import { AssistantChat, CodeEditor, EmailThemeUI, PreviewPanel, VibeCodeLayout } from "@/components/vibe-coding";
+import { AssistantChat, CodeEditor, EmailThemeUI, VibeCodeLayout } from "@/components/vibe-coding";
 import {
   createChatAdapter,
   createHistoryAdapter,
@@ -47,9 +47,10 @@ export default function PageClient({ themeId }: { themeId: string }) {
   return (
     <VibeCodeLayout
       previewComponent={
-        <PreviewPanel>
-          <EmailPreview themeTsxSource={currentCode} templateTsxSource={previewTemplateSource} />
-        </PreviewPanel>
+        <EmailPreview
+          themeTsxSource={currentCode}
+          templateTsxSource={previewTemplateSource}
+        />
       }
       editorComponent={
         <CodeEditor

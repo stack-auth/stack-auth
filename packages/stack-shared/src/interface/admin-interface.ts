@@ -399,7 +399,7 @@ export class StackAdminInterface extends StackServerInterface {
     return await response.json();
   }
 
-  async renderEmailPreview(options: { themeId?: string, themeTsxSource?: string, templateId?: string, templateTsxSource?: string }): Promise<{ html: string }> {
+  async renderEmailPreview(options: { themeId?: string | null | false, themeTsxSource?: string, templateId?: string, templateTsxSource?: string }): Promise<{ html: string }> {
     const response = await this.sendAdminRequest(`/emails/render-email`, {
       method: "POST",
       headers: {
@@ -457,7 +457,7 @@ export class StackAdminInterface extends StackServerInterface {
     );
   }
 
-  async updateNewEmailTemplate(id: string, tsxSource: string, themeId?: string): Promise<{ rendered_html: string }> {
+  async updateNewEmailTemplate(id: string, tsxSource: string, themeId: string | null | false): Promise<{ rendered_html: string }> {
     const response = await this.sendAdminRequest(
       `/internal/email-templates/${id}`,
       {

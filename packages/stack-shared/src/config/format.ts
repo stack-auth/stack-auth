@@ -9,7 +9,7 @@ export type Config = {
   [keyOrDotNotation: string]: ConfigValue | undefined,  // must support undefined for optional values
 };
 
-export type NormalizedConfigValue = string | number | boolean | NormalizedConfig | NormalizedConfigValue[];
+export type NormalizedConfigValue = string | number | boolean | null | NormalizedConfig | NormalizedConfigValue[];
 export type NormalizedConfig = {
   [key: string]: NormalizedConfigValue | undefined,  // must support undefined for optional values
 };
