@@ -1,10 +1,11 @@
 /* eslint-disable no-restricted-syntax */
 import { usersCrudHandlers } from '@/app/api/latest/users/crud';
-import { createOrUpdateProjectWithLegacyConfig, getProject } from '@/lib/projects';
+import { createOrUpdateProject, getProject } from '@/lib/projects';
 import { DEFAULT_BRANCH_ID, getSoleTenancyFromProjectBranch } from '@/lib/tenancies';
 import { getPrismaClientForTenancy } from '@/prisma-client';
 import { PrismaClient } from '@prisma/client';
 import { errorToNiceString, throwErr } from '@stackframe/stack-shared/dist/utils/errors';
+import { randomUUID } from 'crypto';
 
 const globalPrisma = new PrismaClient();
 
@@ -34,24 +35,15 @@ async function seed() {
   let internalProject = await getProject('internal');
 
   if (!internalProject) {
-    internalProject = await createOrUpdateProjectWithLegacyConfig({
+    internalProject = await createOrUpdateProject({
       type: 'create',
       projectId: 'internal',
       data: {
         display_name: 'Stack Dashboard',
         description: 'Stack\'s admin dashboard',
         is_production_mode: false,
-        config: {
-          allow_localhost: true,
-          oauth_providers: oauthProviderIds.map((id) => ({
-            id: id as any,
-            type: 'shared',
-          })),
-          sign_up_enabled: signUpEnabled,
-          credential_enabled: true,
-          magic_link_enabled: otpEnabled,
-        },
       },
+      environmentConfigOverrideOverride: {},
     });
 
     console.log('Internal project created');
@@ -60,22 +52,25 @@ async function seed() {
   const internalTenancy = await getSoleTenancyFromProjectBranch("internal", DEFAULT_BRANCH_ID);
   const internalPrisma = await getPrismaClientForTenancy(internalTenancy);
 
-  internalProject = await createOrUpdateProjectWithLegacyConfig({
+  internalProject = await createOrUpdateProject({
     projectId: 'internal',
     branchId: DEFAULT_BRANCH_ID,
     type: 'update',
-    data: {
-      config: {
-        sign_up_enabled: signUpEnabled,
-        magic_link_enabled: otpEnabled,
-        allow_localhost: allowLocalhost,
-        domains: [
-          ...(dashboardDomain && new URL(dashboardDomain).hostname !== 'localhost' ? [{ domain: dashboardDomain, handler_path: '/handler' }] : []),
-          ...Object.values(internalTenancy.config.domains.trustedDomains)
-            .filter((d) => d.baseUrl !== dashboardDomain && d.baseUrl)
-            .map((d) => ({ domain: d.baseUrl || throwErr('Domain base URL is required'), handler_path: d.handlerPath })),
-        ]
-      },
+    data: {},
+    environmentConfigOverrideOverride: {
+      'auth.password.allowSignIn': true,
+      'auth.otp.allowSignIn': otpEnabled,
+      'auth.oauth.providers': Object.fromEntries(oauthProviderIds.map((type) => [type, {
+        type,
+        isShared: true,
+      }])),
+      'domains.allowLocalhost': allowLocalhost,
+      'domains.trustedDomains': Object.fromEntries([
+        ...(dashboardDomain && new URL(dashboardDomain).hostname !== 'localhost' ? [[randomUUID(), { baseUrl: dashboardDomain, handlerPath: '/handler' }]] : []),
+        ...Object.values(internalTenancy.config.domains.trustedDomains)
+          .filter((d) => d.baseUrl !== dashboardDomain && d.baseUrl)
+          .map((d) => [randomUUID(), { baseUrl: d.baseUrl || throwErr('Domain base URL is required'), handlerPath: d.handlerPath }]),
+      ])
     },
   });
 
@@ -237,21 +232,20 @@ async function seed() {
     if (existingProject) {
       console.log('Emulator project already exists, skipping creation');
     } else {
-      await createOrUpdateProjectWithLegacyConfig({
+      await createOrUpdateProject({
         projectId: emulatorProjectId,
         type: 'create',
         data: {
           display_name: 'Emulator Project',
-          config: {
-            allow_localhost: true,
-            create_team_on_sign_up: false,
-            client_team_creation_enabled: false,
-            passkey_enabled: true,
-            oauth_providers: oauthProviderIds.map((id) => ({
-              id: id as any,
-              type: 'shared',
-            })),
-          }
+        },
+        environmentConfigOverrideOverride: {
+          'auth.passkey.allowSignIn': true,
+          'teams.createPersonalTeamOnSignUp': false,
+          'teams.allowClientTeamCreation': false,
+          'auth.oauth.providers': Object.fromEntries(oauthProviderIds.map((type) => [type, {
+            type,
+            isShared: true,
+          }])),
         },
       });
 

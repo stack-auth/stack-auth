@@ -59,6 +59,9 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
   private readonly _emailPreviewCache = createCache(async ([themeId, themeTsxSource, templateId, templateTsxSource]: [string | undefined, string | undefined, string | undefined, string | undefined]) => {
     return await this._interface.renderEmailPreview({ themeId, themeTsxSource, templateId, templateTsxSource });
   });
+  private readonly _configOverridesCache = createCache(async () => {
+    return await this._interface.getConfigOverrides();
+  });
 
   constructor(options: StackAdminAppConstructorOptions<HasTokenStore, ProjectId>) {
     super({
@@ -107,67 +110,31 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
       description: data.description,
       createdAt: new Date(data.created_at_millis),
       isProductionMode: data.is_production_mode,
-      config: {
-        signUpEnabled: data.config.sign_up_enabled,
-        credentialEnabled: data.config.credential_enabled,
-        magicLinkEnabled: data.config.magic_link_enabled,
-        passkeyEnabled: data.config.passkey_enabled,
-        clientTeamCreationEnabled: data.config.client_team_creation_enabled,
-        clientUserDeletionEnabled: data.config.client_user_deletion_enabled,
-        allowLocalhost: data.config.allow_localhost,
-        oauthAccountMergeStrategy: data.config.oauth_account_merge_strategy,
-        allowUserApiKeys: data.config.allow_user_api_keys,
-        allowTeamApiKeys: data.config.allow_team_api_keys,
-        oauthProviders: data.config.oauth_providers.map((p) => ((p.type === 'shared' ? {
-          id: p.id,
-          type: 'shared',
-        } as const : {
-          id: p.id,
-          type: 'standard',
-          clientId: p.client_id ?? throwErr("Client ID is missing"),
-          clientSecret: p.client_secret ?? throwErr("Client secret is missing"),
-          facebookConfigId: p.facebook_config_id,
-          microsoftTenantId: p.microsoft_tenant_id,
-        } as const))),
-        emailConfig: data.config.email_config.type === 'shared' ? {
-          type: 'shared'
-        } : {
-          type: 'standard',
-          host: data.config.email_config.host ?? throwErr("Email host is missing"),
-          port: data.config.email_config.port ?? throwErr("Email port is missing"),
-          username: data.config.email_config.username ?? throwErr("Email username is missing"),
-          password: data.config.email_config.password ?? throwErr("Email password is missing"),
-          senderName: data.config.email_config.sender_name ?? throwErr("Email sender name is missing"),
-          senderEmail: data.config.email_config.sender_email ?? throwErr("Email sender email is missing"),
-        },
-        emailTheme: data.config.email_theme,
-        domains: data.config.domains.map((d) => ({
-          domain: d.domain,
-          handlerPath: d.handler_path,
-        })),
-        createTeamOnSignUp: data.config.create_team_on_sign_up,
-        teamCreatorDefaultPermissions: data.config.team_creator_default_permissions,
-        teamMemberDefaultPermissions: data.config.team_member_default_permissions,
-        userDefaultPermissions: data.config.user_default_permissions,
-      },
 
+      async getConfig() {
+        return await app._interface.getConfigOverrides();
+      },
+      useConfig() {
+        return useAsyncCache(app._configOverridesCache, [], "useConfig()");
+      },
       async update(update: AdminProjectUpdateOptions) {
         const updateOptions = adminProjectUpdateOptionsToCrud(update);
         await app._interface.updateProject(filterUndefined({
           ...updateOptions,
           config: undefined,
         }));
-        await app._interface.updateConfigOverrides({ config: updateOptions.config });
         await onRefresh();
       },
       async delete() {
         await app._interface.deleteProject();
       },
       async getProductionModeErrors() {
-        return getProductionModeErrors(data);
+        const config = await this.getConfig();
+        return getProductionModeErrors(data, config);
       },
       useProductionModeErrors() {
-        return getProductionModeErrors(data);
+        const config = useAsyncCache(app._configOverridesCache, [], "useConfig()");
+        return getProductionModeErrors(data, config);
       },
     };
   }

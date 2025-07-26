@@ -1,14 +1,13 @@
 import { Prisma } from "@prisma/client";
 import { KnownErrors } from "@stackframe/stack-shared";
-import { EnvironmentConfigOverrideOverride, OrganizationRenderedConfig, ProjectConfigOverrideOverride } from "@stackframe/stack-shared/dist/config/schema";
+import { EnvironmentConfigOverrideOverride, ProjectConfigOverrideOverride } from "@stackframe/stack-shared/dist/config/schema";
 import { AdminUserProjectsCrud, ProjectsCrud } from "@stackframe/stack-shared/dist/interface/crud/projects";
 import { UsersCrud } from "@stackframe/stack-shared/dist/interface/crud/users";
-import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
 import { StackAssertionError, captureError } from "@stackframe/stack-shared/dist/utils/errors";
 import { filterUndefined, typedFromEntries } from "@stackframe/stack-shared/dist/utils/objects";
 import { generateUuid } from "@stackframe/stack-shared/dist/utils/uuids";
 import { RawQuery, getPrismaClientForSourceOfTruth, globalPrismaClient, rawQuery, retryTransaction } from "../prisma-client";
-import { getRenderedEnvironmentConfigQuery, overrideEnvironmentConfigOverride, overrideProjectConfigOverride } from "./config";
+import { getRenderedEnvironmentConfigQuery, overrideEnvironmentConfigOverride } from "./config";
 import { DEFAULT_BRANCH_ID } from "./tenancies";
 
 function isStringArray(value: any): value is string[] {
@@ -60,10 +59,11 @@ export async function getProject(projectId: string): Promise<Omit<ProjectsCrud["
   return result;
 }
 
-export async function createOrUpdateProjectWithLegacyConfig(
+export async function createOrUpdateProject(
   options: {
     ownerIds?: string[],
     sourceOfTruth?: ProjectConfigOverrideOverride["sourceOfTruth"],
+    environmentConfigOverrideOverride: EnvironmentConfigOverrideOverride,
   } & ({
     type: "create",
     projectId?: string,
@@ -122,108 +122,11 @@ export async function createOrUpdateProjectWithLegacyConfig(
       branchId = options.branchId;
     }
 
-    const translateDefaultPermissions = (permissions: { id: string }[] | undefined) => {
-      return permissions ? typedFromEntries(permissions.map((permission) => [permission.id, true])) : undefined;
-    };
-
-    await overrideProjectConfigOverride({
-      tx,
-      projectId: project.id,
-      projectConfigOverrideOverride: {
-        sourceOfTruth: options.sourceOfTruth || (JSON.parse(getEnvVariable("STACK_OVERRIDE_SOURCE_OF_TRUTH", "null")) ?? undefined),
-      },
-    });
-
-    const dataOptions = options.data.config || {};
-    const configOverrideOverride: EnvironmentConfigOverrideOverride = filterUndefined({
-      // ======================= auth =======================
-      'auth.allowSignUp': dataOptions.sign_up_enabled,
-      'auth.password.allowSignIn': dataOptions.credential_enabled,
-      'auth.otp.allowSignIn': dataOptions.magic_link_enabled,
-      'auth.passkey.allowSignIn': dataOptions.passkey_enabled,
-      'auth.oauth.accountMergeStrategy': dataOptions.oauth_account_merge_strategy,
-      'auth.oauth.providers': dataOptions.oauth_providers ? typedFromEntries(dataOptions.oauth_providers
-        .map((provider) => {
-          return [
-            provider.id,
-            {
-              type: provider.id,
-              isShared: provider.type === "shared",
-              clientId: provider.client_id,
-              clientSecret: provider.client_secret,
-              facebookConfigId: provider.facebook_config_id,
-              microsoftTenantId: provider.microsoft_tenant_id,
-              allowSignIn: true,
-              allowConnectedAccounts: true,
-            } satisfies OrganizationRenderedConfig['auth']['oauth']['providers'][string]
-          ];
-        })) : undefined,
-      // ======================= users =======================
-      'users.allowClientUserDeletion': dataOptions.client_user_deletion_enabled,
-      // ======================= teams =======================
-      'teams.allowClientTeamCreation': dataOptions.client_team_creation_enabled,
-      'teams.createPersonalTeamOnSignUp': dataOptions.create_team_on_sign_up,
-      // ======================= domains =======================
-      'domains.allowLocalhost': dataOptions.allow_localhost ?? true,
-      'domains.trustedDomains': dataOptions.domains ? dataOptions.domains.map((domain) => {
-        return {
-          baseUrl: domain.domain,
-          handlerPath: domain.handler_path,
-        } satisfies OrganizationRenderedConfig['domains']['trustedDomains'][string];
-      }) : undefined,
-      // ======================= api keys =======================
-      'apiKeys.enabled.user': dataOptions.allow_user_api_keys,
-      'apiKeys.enabled.team': dataOptions.allow_team_api_keys,
-      // ======================= emails =======================
-      'emails.server': dataOptions.email_config ? {
-        isShared: dataOptions.email_config.type === 'shared',
-        host: dataOptions.email_config.host,
-        port: dataOptions.email_config.port,
-        username: dataOptions.email_config.username,
-        password: dataOptions.email_config.password,
-        senderName: dataOptions.email_config.sender_name,
-        senderEmail: dataOptions.email_config.sender_email,
-      } satisfies OrganizationRenderedConfig['emails']['server'] : undefined,
-      'emails.theme': dataOptions.email_theme,
-      // ======================= rbac =======================
-      'rbac.defaultPermissions.teamMember': translateDefaultPermissions(dataOptions.team_member_default_permissions),
-      'rbac.defaultPermissions.teamCreator': translateDefaultPermissions(dataOptions.team_creator_default_permissions),
-      'rbac.defaultPermissions.signUp': translateDefaultPermissions(dataOptions.user_default_permissions),
-    });
-
-    if (options.type === "create") {
-      configOverrideOverride['rbac.permissions.team_member'] ??= {
-        description: "Default permission for team members",
-        scope: "team",
-        containedPermissionIds: {
-          '$read_members': true,
-          '$invite_members': true,
-        },
-      } satisfies OrganizationRenderedConfig['rbac']['permissions'][string];
-      configOverrideOverride['rbac.permissions.team_admin'] ??= {
-        description: "Default permission for team admins",
-        scope: "team",
-        containedPermissionIds: {
-          '$update_team': true,
-          '$delete_team': true,
-          '$read_members': true,
-          '$remove_members': true,
-          '$invite_members': true,
-          '$manage_api_keys': true,
-        },
-      } satisfies OrganizationRenderedConfig['rbac']['permissions'][string];
-
-      configOverrideOverride['rbac.defaultPermissions.teamCreator'] ??= { 'team_admin': true };
-      configOverrideOverride['rbac.defaultPermissions.teamMember'] ??= { 'team_member': true };
-
-      configOverrideOverride['auth.password.allowSignIn'] ??= true;
-    }
-
     await overrideEnvironmentConfigOverride({
       tx,
       projectId: project.id,
       branchId: branchId,
-      environmentConfigOverrideOverride: configOverrideOverride,
+      environmentConfigOverrideOverride: options.environmentConfigOverrideOverride,
     });
 
     return [project.id, branchId];
@@ -279,4 +182,58 @@ export async function createOrUpdateProjectWithLegacyConfig(
   }
 
   return result;
+}
+
+export function legacyConfigToNewConfig(legacyConfig: any) {
+  return filterUndefined({
+    // ======================= auth =======================
+    'auth.allowSignUp': legacyConfig.sign_up_enabled,
+    'auth.password.allowSignIn': legacyConfig.credential_enabled,
+    'auth.otp.allowSignIn': legacyConfig.magic_link_enabled,
+    'auth.passkey.allowSignIn': legacyConfig.passkey_enabled,
+    'auth.oauth.accountMergeStrategy': legacyConfig.oauth_account_merge_strategy,
+    'auth.oauth.providers': legacyConfig.oauth_providers ? typedFromEntries(legacyConfig.oauth_providers
+      .map((provider: any) => {
+        return [
+          provider.id,
+          {
+            type: provider.id,
+            isShared: provider.type === "shared",
+            clientId: provider.client_id,
+            clientSecret: provider.client_secret,
+            facebookConfigId: provider.facebook_config_id,
+            microsoftTenantId: provider.microsoft_tenant_id,
+            allowSignIn: true,
+            allowConnectedAccounts: true,
+          }
+        ];
+      })) : undefined,
+    // ======================= users =======================
+    'users.allowClientUserDeletion': legacyConfig.client_user_deletion_enabled,
+    // ======================= teams =======================
+    'teams.allowClientTeamCreation': legacyConfig.client_team_creation_enabled,
+    'teams.createPersonalTeamOnSignUp': legacyConfig.create_team_on_sign_up,
+    // ======================= domains =======================
+    'domains.allowLocalhost': legacyConfig.allow_localhost ?? true,
+    'domains.trustedDomains': legacyConfig.domains ? legacyConfig.domains.map((domain: any) => {
+      return {
+        baseUrl: domain.domain,
+        handlerPath: domain.handler_path,
+      };
+    }) : undefined,
+    // ======================= api keys =======================
+    'apiKeys.enabled.user': legacyConfig.allow_user_api_keys,
+    'apiKeys.enabled.team': legacyConfig.allow_team_api_keys,
+    // ======================= emails =======================
+    'emails.server': legacyConfig.email_config ? {
+      isShared: legacyConfig.email_config.type === 'shared',
+      host: legacyConfig.email_config.host,
+      port: legacyConfig.email_config.port,
+      username: legacyConfig.email_config.username,
+      password: legacyConfig.email_config.password,
+      senderName: legacyConfig.email_config.sender_name,
+      senderEmail: legacyConfig.email_config.sender_email,
+    } : undefined,
+    'emails.theme': legacyConfig.email_theme,
+  }) as EnvironmentConfigOverrideOverride;
 }

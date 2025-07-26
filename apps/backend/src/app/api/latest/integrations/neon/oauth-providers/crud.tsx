@@ -1,4 +1,4 @@
-import { createOrUpdateProjectWithLegacyConfig } from "@/lib/projects";
+import { createOrUpdateProject } from "@/lib/projects";
 import { Tenancy, getTenancy } from "@/lib/tenancies";
 import { createCrudHandlers } from "@/route-handlers/crud-handler";
 import { createCrud } from "@stackframe/stack-shared/dist/crud";
@@ -97,23 +97,21 @@ export const oauthProvidersCrudHandlers = createLazyProxy(() => createCrudHandle
       throw new StatusError(StatusError.BadRequest, 'OAuth provider already exists');
     }
 
-    await createOrUpdateProjectWithLegacyConfig({
+    await createOrUpdateProject({
       type: 'update',
       projectId: auth.project.id,
       branchId: auth.branchId,
-      data: {
-        config: {
-          oauth_providers: [
-            ...Object.values(auth.tenancy.config.auth.oauth.providers).map(oauthProviderConfigToLegacyConfig),
-            {
-              id: data.id,
-              type: data.type ?? 'shared',
-              client_id: data.client_id,
-              client_secret: data.client_secret,
-            }
-          ]
-        }
-      }
+      data: {},
+      environmentConfigOverrideOverride: {
+        [`auth.oauth.providers.${data.id}`]: {
+          type: data.id,
+          isShared: data.type === 'shared',
+          clientId: data.client_id,
+          clientSecret: data.client_secret,
+          facebookConfigId: data.facebook_config_id,
+          microsoftTenantId: data.microsoft_tenant_id,
+        },
+      },
     });
     const updatedTenancy = await getTenancy(auth.tenancy.id) ?? throwErr('Tenancy not found after update?'); // since we updated the config, we need to re-fetch the tenancy
 
@@ -124,19 +122,21 @@ export const oauthProvidersCrudHandlers = createLazyProxy(() => createCrudHandle
       throw new StatusError(StatusError.NotFound, 'OAuth provider not found');
     }
 
-    await createOrUpdateProjectWithLegacyConfig({
+    await createOrUpdateProject({
       type: 'update',
       projectId: auth.project.id,
       branchId: auth.branchId,
-      data: {
-        config: {
-          oauth_providers: Object.values(auth.tenancy.config.auth.oauth.providers)
-            .map(provider => provider.type === params.oauth_provider_id ? {
-              ...oauthProviderConfigToLegacyConfig(provider),
-              ...data,
-            } : oauthProviderConfigToLegacyConfig(provider)),
-        }
-      }
+      data: {},
+      environmentConfigOverrideOverride: {
+        [`auth.oauth.providers.${params.oauth_provider_id}`]: {
+          type: data.type,
+          isShared: data.type === 'shared',
+          clientId: data.client_id,
+          clientSecret: data.client_secret,
+          facebookConfigId: data.facebook_config_id,
+          microsoftTenantId: data.microsoft_tenant_id,
+        },
+      },
     });
     const updatedTenancy = await getTenancy(auth.tenancy.id) ?? throwErr('Tenancy not found after update?'); // since we updated the config, we need to re-fetch the tenancy
 
@@ -153,17 +153,14 @@ export const oauthProvidersCrudHandlers = createLazyProxy(() => createCrudHandle
       throw new StatusError(StatusError.NotFound, 'OAuth provider not found');
     }
 
-    await createOrUpdateProjectWithLegacyConfig({
+    await createOrUpdateProject({
       type: 'update',
       projectId: auth.project.id,
       branchId: auth.branchId,
-      data: {
-        config: {
-          oauth_providers: Object.values(auth.tenancy.config.auth.oauth.providers)
-            .filter(provider => provider.type !== params.oauth_provider_id)
-            .map(oauthProviderConfigToLegacyConfig),
-        }
-      }
+      data: {},
+      environmentConfigOverrideOverride: {
+        [`auth.oauth.providers.${params.oauth_provider_id}`]: null,
+      },
     });
   },
 }));

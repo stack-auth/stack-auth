@@ -1,12 +1,10 @@
-import { renderedOrganizationConfigToProjectCrud } from "@/lib/config";
-import { createOrUpdateProjectWithLegacyConfig, getProjectQuery, listManagedProjectIds } from "@/lib/projects";
-import { DEFAULT_BRANCH_ID, getSoleTenancyFromProjectBranch } from "@/lib/tenancies";
+import { createOrUpdateProject, getProjectQuery, listManagedProjectIds } from "@/lib/projects";
 import { globalPrismaClient, rawQueryAll } from "@/prisma-client";
 import { createCrudHandlers } from "@/route-handlers/crud-handler";
 import { KnownErrors } from "@stackframe/stack-shared";
 import { adminUserProjectsCrud } from "@stackframe/stack-shared/dist/interface/crud/projects";
 import { projectIdSchema, yupObject } from "@stackframe/stack-shared/dist/schema-fields";
-import { StackAssertionError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
+import { StackAssertionError, StatusError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
 import { isNotNull, typedEntries, typedFromEntries } from "@stackframe/stack-shared/dist/utils/objects";
 import { createLazyProxy } from "@stackframe/stack-shared/dist/utils/proxies";
 
@@ -30,16 +28,22 @@ export const adminUserProjectsCrudHandlers = createLazyProxy(() => createCrudHan
     const ownerPack = ownerPacks.find(p => p.has(user.id));
     const userIds = ownerPack ? [...ownerPack] : [user.id];
 
-    const project = await createOrUpdateProjectWithLegacyConfig({
+    let config;
+    if (data.config) {
+      try {
+        config = JSON.parse(data.config);
+      } catch (e) {
+        throw new StatusError(StatusError.BadRequest, 'Invalid config');
+      }
+    }
+
+    const project = await createOrUpdateProject({
       ownerIds: userIds,
       type: 'create',
       data,
+      environmentConfigOverrideOverride: config,
     });
-    const tenancy = await getSoleTenancyFromProjectBranch(project.id, DEFAULT_BRANCH_ID);
-    return {
-      ...project,
-      config: renderedOrganizationConfigToProjectCrud(tenancy.config),
-    };
+    return project;
   },
   onList: async ({ auth }) => {
     const projectIds = listManagedProjectIds(auth.user ?? throwErr('auth.user is required'));
@@ -50,15 +54,8 @@ export const adminUserProjectsCrudHandlers = createLazyProxy(() => createCrudHan
       throw new StackAssertionError('Failed to fetch all projects of a user');
     }
 
-    const projectsWithConfig = await Promise.all(projects.map(async (project) => {
-      return {
-        ...project,
-        config: renderedOrganizationConfigToProjectCrud((await getSoleTenancyFromProjectBranch(project.id, DEFAULT_BRANCH_ID)).config),
-      };
-    }));
-
     return {
-      items: projectsWithConfig,
+      items: projects,
       is_paginated: false,
     } as const;
   }

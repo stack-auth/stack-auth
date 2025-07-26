@@ -1,5 +1,5 @@
 import { createApiKeySet } from "@/lib/internal-api-keys";
-import { createOrUpdateProjectWithLegacyConfig } from "@/lib/projects";
+import { createOrUpdateProject } from "@/lib/projects";
 import { globalPrismaClient } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { neonAuthorizationHeaderSchema, projectDisplayNameSchema, yupNumber, yupObject, yupString, yupTuple } from "@stackframe/stack-shared/dist/schema-fields";
@@ -28,25 +28,25 @@ export const POST = createSmartRouteHandler({
   handler: async (req) => {
     const [clientId] = decodeBasicAuthorizationHeader(req.headers.authorization[0])!;
 
-    const createdProject = await createOrUpdateProjectWithLegacyConfig({
+    const createdProject = await createOrUpdateProject({
       ownerIds: [],
       type: 'create',
       data: {
         display_name: req.body.display_name,
         description: "Project created by an external integration",
-        config: {
-          oauth_providers: [
-            {
-              id: "google",
-              type: "shared",
-            },
-            {
-              id: "github",
-              type: "shared",
-            },
-          ],
-          allow_localhost: true,
-          credential_enabled: true
+      },
+      environmentConfigOverrideOverride: {
+        'auth.oauth.providers': {
+          google: {
+            type: 'google',
+            isShared: true,
+          },
+          github: {
+            type: 'github',
+            isShared: true,
+          },
+          'auth.password.allowSignIn': true,
+          'domains.allowLocalhost': true,
         },
       }
     });
