@@ -2,13 +2,6 @@
 import * as fs from 'fs';
 import * as readline from 'readline';
 
-interface ChangelogEntry {
-  version: string;
-  package: string;
-  changes: string[];
-  type: 'major' | 'minor' | 'patch';
-}
-
 class InteractiveChangelogManager {
   private masterChangelogPath = 'CHANGELOG.md';
   private rl: readline.Interface;
@@ -100,22 +93,22 @@ class InteractiveChangelogManager {
       .filter(change => change.length > 0);
   }
 
-  private async collectAllChanges(version: string, type: 'major' | 'minor' | 'patch'): Promise<{ [packageName: string]: string[] }> {
-    const allChanges: { [packageName: string]: string[] } = {};
+  private async collectAllChanges(version: string, type: 'major' | 'minor' | 'patch'): Promise<Map<string, string[]>> {
+    const allChanges = new Map<string, string[]>();
     
     console.log('\nEnter changes for each package (comma-separated, or press Enter to skip):');
     
     for (const packageName of this.packages) {
       const changes = await this.promptForPackageChanges(packageName);
       if (changes.length > 0) {
-        allChanges[packageName] = changes;
+        allChanges.set(packageName, changes);
       }
     }
     
     return allChanges;
   }
 
-  private async confirmChanges(version: string, type: string, allChanges: { [packageName: string]: string[] }): Promise<boolean> {
+  private async confirmChanges(version: string, type: string, allChanges: Map<string, string[]>): Promise<boolean> {
     console.log('\n' + '='.repeat(60));
     console.log('PREVIEW OF CHANGES');
     console.log('='.repeat(60));
@@ -123,14 +116,14 @@ class InteractiveChangelogManager {
     console.log(`Type: ${type.charAt(0).toUpperCase() + type.slice(1)} Changes`);
     console.log('');
     
-    const hasChanges = Object.keys(allChanges).length > 0;
+    const hasChanges = allChanges.size > 0;
     
     if (!hasChanges) {
       console.log('No changes were entered for any package.');
       return false;
     }
     
-    for (const [packageName, changes] of Object.entries(allChanges)) {
+    for (const [packageName, changes] of allChanges.entries()) {
       console.log(`${packageName}:`);
       for (const change of changes) {
         console.log(`  - ${change}`);
@@ -151,7 +144,7 @@ class InteractiveChangelogManager {
     }
   }
 
-  private addToChangelog(version: string, type: 'major' | 'minor' | 'patch', allChanges: { [packageName: string]: string[] }): void {
+  private addToChangelog(version: string, type: 'major' | 'minor' | 'patch', allChanges: Map<string, string[]>): void {
     const content = fs.readFileSync(this.masterChangelogPath, 'utf-8');
     const lines = content.split('\n');
     
@@ -175,10 +168,10 @@ class InteractiveChangelogManager {
     ];
     
     // Add packages in order of importance
-    const packageOrder = this.getPackageOrder(Object.keys(allChanges));
+    const packageOrder = this.getPackageOrder(Array.from(allChanges.keys()));
     
     for (const packageName of packageOrder) {
-      const changes = allChanges[packageName];
+      const changes = allChanges.get(packageName);
       if (changes && changes.length > 0) {
         newSection.push(`#### ${packageName}`, '');
         newSection.push(...changes.map(change => `- ${change}`));
