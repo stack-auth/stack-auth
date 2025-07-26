@@ -1,4 +1,5 @@
 export const previewTemplateSource = `
+  export const variablesSchema = v => v;
   export function EmailTemplate() {
     return (
       <div>
