@@ -281,7 +281,7 @@ export function yupUnion<T extends yup.AnySchema[]>(...args: T): yup.MixedSchema
 export function yupRecord<K extends yup.StringSchema, T extends yup.AnySchema>(
   keySchema: K,
   valueSchema: T,
-): yup.MixedSchema<Record<string, yup.InferType<T>>> {
+): yup.MixedSchema<Record<yup.InferType<K> & string, yup.InferType<T>>> {
   return yupObject().meta({ stackSchemaInfo: { type: "record", keySchema, valueSchema } }).unknown(true).test(
     'record',
     '${path} must be a record of valid values',

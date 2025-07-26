@@ -10,7 +10,7 @@ import { allProviders } from "../utils/oauth";
 import { DeepFilterUndefined, DeepMerge, DeepRequiredOrUndefined, filterUndefined, get, has, isObjectLike, mapValues, set, typedFromEntries } from "../utils/objects";
 import { Result } from "../utils/results";
 import { CollapseObjectUnion, Expand, IntersectAll, IsUnion, typeAssert, typeAssertExtends, typeAssertIs } from "../utils/types";
-import { Config, NormalizesTo, assertNormalized, getInvalidConfigReason } from "./format";
+import { Config, NormalizationError, NormalizesTo, assertNormalized, getInvalidConfigReason, normalize } from "./format";
 
 export const configLevels = ['project', 'branch', 'environment', 'organization'] as const;
 export type ConfigLevel = typeof configLevels[number];
@@ -37,154 +37,154 @@ export const projectConfigSchema = yupObject({
   sourceOfTruth: yupUnion(
     yupObject({
       type: yupString().oneOf(['hosted']).defined(),
-    }).defined(),
+    }),
     yupObject({
       type: yupString().oneOf(['neon']).defined(),
       connectionStrings: yupRecord(
         yupString().defined(),
         yupString().defined(),
       ).defined(),
-    }).defined(),
+    }),
     yupObject({
       type: yupString().oneOf(['postgres']).defined(),
       connectionString: yupString().defined()
-    }).defined(),
-  ).defined(),
-}).defined();
+    }),
+  ),
+});
 
 // --- NEW RBAC Schema ---
 const branchRbacDefaultPermissions = yupRecord(
-  yupString().matches(permissionRegex).defined(),
+  yupString().matches(permissionRegex),
   yupBoolean().isTrue().optional(),
-).defined();
+);
 
 const branchRbacSchema = yupObject({
   permissions: yupRecord(
-    yupString().matches(customPermissionRegex).defined(),
+    yupString().matches(customPermissionRegex),
     yupObject({
       description: yupString().optional(),
       scope: yupString().oneOf(['team', 'project']).optional(),
       containedPermissionIds: yupRecord(
-        yupString().matches(permissionRegex).defined(),
+        yupString().matches(permissionRegex),
         yupBoolean().isTrue().optional()
       ).optional(),
     }).optional(),
-  ).defined(),
+  ),
   defaultPermissions: yupObject({
     teamCreator: branchRbacDefaultPermissions,
     teamMember: branchRbacDefaultPermissions,
     signUp: branchRbacDefaultPermissions,
-  }).defined(),
-}).defined();
+  }),
+});
 // --- END NEW RBAC Schema ---
 
 // --- NEW API Keys Schema ---
 const branchApiKeysSchema = yupObject({
   enabled: yupObject({
-    team: yupBoolean().defined(),
-    user: yupBoolean().defined(),
-  }).defined(),
-}).defined();
+    team: yupBoolean(),
+    user: yupBoolean(),
+  }),
+});
 // --- END NEW API Keys Schema ---
 
 
 const branchAuthSchema = yupObject({
-  allowSignUp: yupBoolean().defined(),
+  allowSignUp: yupBoolean(),
   password: yupObject({
-    allowSignIn: yupBoolean().defined(),
-  }).defined(),
+    allowSignIn: yupBoolean(),
+  }),
   otp: yupObject({
-    allowSignIn: yupBoolean().defined(),
-  }).defined(),
+    allowSignIn: yupBoolean(),
+  }),
   passkey: yupObject({
-    allowSignIn: yupBoolean().defined(),
-  }).defined(),
+    allowSignIn: yupBoolean(),
+  }),
   oauth: yupObject({
-    accountMergeStrategy: yupString().oneOf(['link_method', 'raise_error', 'allow_duplicates']).defined(),
+    accountMergeStrategy: yupString().oneOf(['link_method', 'raise_error', 'allow_duplicates']),
     providers: yupRecord(
-      yupString().matches(permissionRegex).defined(),
+      yupString().matches(permissionRegex),
       yupObject({
-        type: yupString().oneOf(allProviders).defined(),
-        allowSignIn: yupBoolean().defined(),
-        allowConnectedAccounts: yupBoolean().defined(),
-      }).defined(),
-    ).defined(),
-  }).defined(),
-}).defined();
+        type: yupString().oneOf(allProviders),
+        allowSignIn: yupBoolean(),
+        allowConnectedAccounts: yupBoolean(),
+      }),
+    ),
+  }),
+});
 
 const branchPaymentsSchema = yupObject({
   autoPay: yupObject({
-    interval: schemaFields.dayIntervalSchema.defined(),
+    interval: schemaFields.dayIntervalSchema,
   }).optional(),
   exclusivityGroups: yupRecord(
-    userSpecifiedIdSchema("exclusivityGroupId").defined(),
+    userSpecifiedIdSchema("exclusivityGroupId"),
     yupRecord(
-      userSpecifiedIdSchema("offerId").defined(),
-      yupBoolean().isTrue().defined(),
-    ).defined(),
-  ).defined(),
+      userSpecifiedIdSchema("offerId"),
+      yupBoolean().isTrue(),
+    ),
+  ),
   offers: yupRecord(
-    userSpecifiedIdSchema("offerId").defined(),
+    userSpecifiedIdSchema("offerId"),
     yupObject({
-      customerType: schemaFields.customerTypeSchema.defined(),
+      customerType: schemaFields.customerTypeSchema,
       freeTrial: schemaFields.dayIntervalSchema.optional(),
-      serverOnly: yupBoolean().defined(),
-      stackable: yupBoolean().defined(),
+      serverOnly: yupBoolean(),
+      stackable: yupBoolean(),
       prices: yupRecord(
-        userSpecifiedIdSchema("priceId").defined(),
+        userSpecifiedIdSchema("priceId"),
         yupObject({
           ...typedFromEntries(SUPPORTED_CURRENCIES.map(currency => [currency.code, schemaFields.moneyAmountSchema(currency).optional()])),
           interval: schemaFields.dayIntervalSchema.optional(),
-          serverOnly: yupBoolean().defined(),
+          serverOnly: yupBoolean(),
           freeTrial: schemaFields.dayIntervalSchema.optional(),
-        }).defined().test("at-least-one-currency", (value, context) => {
+        }).test("at-least-one-currency", (value, context) => {
           const currencies = Object.keys(value).filter(key => key.toUpperCase() === key);
           if (currencies.length === 0) {
             return context.createError({ message: "At least one currency is required" });
           }
           return true;
-        }).defined(),
-      ).defined(),
+        }),
+      ),
       items: yupRecord(
-        userSpecifiedIdSchema("itemId").defined(),
+        userSpecifiedIdSchema("itemId"),
         yupObject({
-          quantity: yupNumber().defined(),
+          quantity: yupNumber(),
           repeat: schemaFields.dayIntervalOrNeverSchema.optional(),
-          expires: yupString().oneOf(['never', 'when-purchase-expires', 'when-repeated']).defined(),
-        }).defined(),
-      ).defined(),
-    }).defined(),
-  ).defined(),
+          expires: yupString().oneOf(['never', 'when-purchase-expires', 'when-repeated']),
+        }),
+      ),
+    }),
+  ),
   items: yupRecord(
-    userSpecifiedIdSchema("itemId").defined(),
+    userSpecifiedIdSchema("itemId"),
     yupObject({
-      customerType: schemaFields.customerTypeSchema.defined(),
+      customerType: schemaFields.customerTypeSchema,
       default: yupObject({
-        quantity: yupNumber().defined(),
+        quantity: yupNumber(),
         repeat: schemaFields.dayIntervalOrNeverSchema.optional(),
-        expires: yupString().oneOf(['never', 'when-repeated']).defined(),
-      }).defined().default({
+        expires: yupString().oneOf(['never', 'when-repeated']),
+      }).default({
         quantity: 0,
       }),
-    }).defined(),
-  ).defined(),
-}).defined();
+    }),
+  ),
+});
 
 const branchDomain = yupObject({
-  allowLocalhost: yupBoolean().defined(),
-}).defined();
+  allowLocalhost: yupBoolean(),
+});
 
 export const branchConfigSchema = canNoLongerBeOverridden(projectConfigSchema, ["sourceOfTruth"]).concat(yupObject({
   rbac: branchRbacSchema,
 
   teams: yupObject({
-    createPersonalTeamOnSignUp: yupBoolean().defined(),
-    allowClientTeamCreation: yupBoolean().defined(),
-  }).defined(),
+    createPersonalTeamOnSignUp: yupBoolean(),
+    allowClientTeamCreation: yupBoolean(),
+  }),
 
   users: yupObject({
-    allowClientUserDeletion: yupBoolean().defined(),
-  }).defined(),
+    allowClientUserDeletion: yupBoolean(),
+  }),
 
   apiKeys: branchApiKeysSchema,
 
@@ -193,9 +193,9 @@ export const branchConfigSchema = canNoLongerBeOverridden(projectConfigSchema, [
   auth: branchAuthSchema,
 
   emails: yupObject({
-    selectedThemeId: schemaFields.emailThemeSchema.defined(),
-    themes: schemaFields.emailThemeListSchema.defined(),
-    templates: schemaFields.emailTemplateListSchema.defined(),
+    selectedThemeId: schemaFields.emailThemeSchema,
+    themes: schemaFields.emailThemeListSchema,
+    templates: schemaFields.emailTemplateListSchema,
   }),
 
   payments: branchPaymentsSchema,
@@ -206,10 +206,10 @@ export const environmentConfigSchema = branchConfigSchema.concat(yupObject({
   auth: branchConfigSchema.getNested("auth").concat(yupObject({
     oauth: branchConfigSchema.getNested("auth").getNested("oauth").concat(yupObject({
       providers: yupRecord(
-        yupString().matches(permissionRegex).defined(),
+        yupString().matches(permissionRegex),
         yupObject({
-          type: yupString().oneOf(allProviders).defined(),
-          isShared: yupBoolean().defined(),
+          type: yupString().oneOf(allProviders),
+          isShared: yupBoolean(),
           clientId: schemaFields.oauthClientIdSchema.optional(),
           clientSecret: schemaFields.oauthClientSecretSchema.optional(),
           facebookConfigId: schemaFields.oauthFacebookConfigIdSchema.optional(),
@@ -217,31 +217,31 @@ export const environmentConfigSchema = branchConfigSchema.concat(yupObject({
           allowSignIn: yupBoolean().optional(),
           allowConnectedAccounts: yupBoolean().optional(),
         }),
-      ).defined(),
-    }).defined()),
+      ),
+    })),
   })),
 
   emails: branchConfigSchema.getNested("emails").concat(yupObject({
     server: yupObject({
-      isShared: yupBoolean().defined(),
+      isShared: yupBoolean(),
       host: schemaFields.emailHostSchema.optional().nonEmpty(),
       port: schemaFields.emailPortSchema.optional(),
       username: schemaFields.emailUsernameSchema.optional().nonEmpty(),
       password: schemaFields.emailPasswordSchema.optional().nonEmpty(),
       senderName: schemaFields.emailSenderNameSchema.optional().nonEmpty(),
       senderEmail: schemaFields.emailSenderEmailSchema.optional().nonEmpty(),
-    }).defined(),
-  }).defined()),
+    }),
+  })),
 
   domains: branchConfigSchema.getNested("domains").concat(yupObject({
     trustedDomains: yupRecord(
-      yupString().uuid().defined(),
+      yupString().uuid(),
       yupObject({
-        baseUrl: schemaFields.urlSchema.defined(),
-        handlerPath: schemaFields.handlerPathSchema.defined(),
+        baseUrl: schemaFields.urlSchema,
+        handlerPath: schemaFields.handlerPathSchema,
       }),
-    ).defined(),
-  }).defined()),
+    ),
+  })),
 }));
 
 export const organizationConfigSchema = environmentConfigSchema.concat(yupObject({}));
@@ -258,7 +258,7 @@ const projectConfigDefaults = {
     connectionStrings: undefined,
     connectionString: undefined,
   },
-} satisfies DefaultsType<ProjectRenderedConfigBeforeDefaults, []>;
+} as const satisfies DefaultsType<ProjectRenderedConfigBeforeDefaults, []>;
 
 const branchConfigDefaults = {} as const satisfies DefaultsType<BranchRenderedConfigBeforeDefaults, [typeof projectConfigDefaults]>;
 
@@ -372,7 +372,7 @@ const organizationConfigDefaults = {
     }),
     items: {},
   },
-} satisfies DefaultsType<OrganizationRenderedConfigBeforeDefaults, [typeof environmentConfigDefaults, typeof branchConfigDefaults, typeof projectConfigDefaults]>;
+} as const satisfies DefaultsType<OrganizationRenderedConfigBeforeDefaults, [typeof environmentConfigDefaults, typeof branchConfigDefaults, typeof projectConfigDefaults]>;
 
 type _DeepOmitDefaultsImpl<T, U> = T extends object ? (
   (
@@ -698,15 +698,23 @@ typeAssertExtends<_ValidatedToHaveNoConfigOverrideErrorsImpl<{ a: { b: { c: stri
  * the getConfigOverrideErrors function. (This is necessary, because a changing base config may make an override invalid
  * that was previously valid.)
  */
-export async function getRenderedConfigWarnings<T extends yup.AnySchema>(schema: T, renderedConfig: Config): Promise<Result<null, string>> {
+export async function getIncompleteConfigWarnings<T extends yup.AnySchema>(schema: T, incompleteConfig: Config): Promise<Result<null, string>> {
   // every rendered config should also be a config override without errors (regardless of whether it has warnings or not)
-  await assertNoConfigOverrideErrors(schema, renderedConfig, { allowPropertiesThatCanNoLongerBeOverridden: true });
+  await assertNoConfigOverrideErrors(schema, incompleteConfig, { allowPropertiesThatCanNoLongerBeOverridden: true });
 
-  // ensure the rendered config is normalized
-  assertNormalized(renderedConfig);
-
+  let normalized: Config;
   try {
-    await schema.validate(renderedConfig, {
+    normalized = normalize(incompleteConfig, { onDotIntoNull: "empty-object" });
+  } catch (error) {
+    if (error instanceof NormalizationError) {
+      return Result.error(`Config is not normalizable. ` + error.message);
+    }
+    throw error;
+  }
+
+  // test the schema against the normalized config
+  try {
+    await schema.validate(normalized, {
       strict: true,
       context: {
         noUnknownPathPrefixes: [''],

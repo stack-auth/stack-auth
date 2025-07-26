@@ -148,6 +148,15 @@ type NormalizeOptions = {
    * - "ignore": Ignore the dot notation field.
    */
   onDotIntoNonObject?: "throw" | "ignore",
+  /**
+   * What to do if a dot notation is used on a value that is not an object.
+   *
+   * - "like-non-object"  (default): Treat it like a non-object. See `onDotIntoNonObject`.
+   * - "throw": Throw an error.
+   * - "ignore": Ignore the dot notation field.
+   * - "empty-object": Set the value to an empty object.
+   */
+  onDotIntoNull?: "like-non-object" | "throw" | "ignore" | "empty-object",
 }
 
 export class NormalizationError extends Error {
@@ -175,6 +184,7 @@ export function assertNormalized(c: Config): asserts c is NormalizedConfig {
 export function normalize(c: Config, options: NormalizeOptions = {}): NormalizedConfig {
   assertValidConfig(c);
   const onDotIntoNonObject = options.onDotIntoNonObject ?? "throw";
+  const onDotIntoNull = options.onDotIntoNull ?? "like-non-object";
 
   const countDots = (s: string) => s.match(/\./g)?.length ?? 0;
   const result: NormalizedConfig = {};
@@ -189,12 +199,15 @@ export function normalize(c: Config, options: NormalizeOptions = {}): Normalized
     let current: NormalizedConfig = result;
     for (const keySegment of keySegmentsWithoutLast) {
       if (!hasAndNotUndefined(current, keySegment)) {
-        switch (onDotIntoNonObject) {
+        switch (onDotIntoNull === "like-non-object" ? onDotIntoNonObject : onDotIntoNull) {
           case "throw": {
             throw new NormalizationError(`Tried to use dot notation to access ${JSON.stringify(key)}, but ${JSON.stringify(keySegment)} doesn't exist on the object (or is null).`);
           }
           case "ignore": {
             continue outer;
+          }
+          case "empty-object": {
+            set(current, keySegment, {});
           }
         }
       }

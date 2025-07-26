@@ -1,6 +1,6 @@
 import { Prisma } from "@prisma/client";
-import { Config, NormalizationError, getInvalidConfigReason, normalize, override } from "@stackframe/stack-shared/dist/config/format";
-import { BranchConfigOverride, BranchConfigOverrideOverride, BranchIncompleteConfig, BranchRenderedConfig, EnvironmentConfigOverride, EnvironmentConfigOverrideOverride, EnvironmentIncompleteConfig, EnvironmentRenderedConfig, OrganizationConfigOverride, OrganizationConfigOverrideOverride, OrganizationIncompleteConfig, OrganizationRenderedConfig, ProjectConfigOverride, ProjectConfigOverrideOverride, ProjectIncompleteConfig, ProjectRenderedConfig, applyBranchDefaults, applyEnvironmentDefaults, applyOrganizationDefaults, applyProjectDefaults, assertNoConfigOverrideErrors, branchConfigSchema, environmentConfigSchema, getConfigOverrideErrors, getRenderedConfigWarnings, organizationConfigSchema, projectConfigSchema, sanitizeBranchConfig, sanitizeEnvironmentConfig, sanitizeOrganizationConfig, sanitizeProjectConfig } from "@stackframe/stack-shared/dist/config/schema";
+import { Config, getInvalidConfigReason, normalize, override } from "@stackframe/stack-shared/dist/config/format";
+import { BranchConfigOverride, BranchConfigOverrideOverride, BranchIncompleteConfig, BranchRenderedConfig, EnvironmentConfigOverride, EnvironmentConfigOverrideOverride, EnvironmentIncompleteConfig, EnvironmentRenderedConfig, OrganizationConfigOverride, OrganizationConfigOverrideOverride, OrganizationIncompleteConfig, OrganizationRenderedConfig, ProjectConfigOverride, ProjectConfigOverrideOverride, ProjectIncompleteConfig, ProjectRenderedConfig, applyBranchDefaults, applyEnvironmentDefaults, applyOrganizationDefaults, applyProjectDefaults, assertNoConfigOverrideErrors, branchConfigSchema, environmentConfigSchema, getConfigOverrideErrors, getIncompleteConfigWarnings, organizationConfigSchema, projectConfigSchema, sanitizeBranchConfig, sanitizeEnvironmentConfig, sanitizeOrganizationConfig, sanitizeProjectConfig } from "@stackframe/stack-shared/dist/config/schema";
 import { ProjectsCrud } from "@stackframe/stack-shared/dist/interface/crud/projects";
 import { yupBoolean, yupMixed, yupObject, yupRecord, yupString, yupUnion } from "@stackframe/stack-shared/dist/schema-fields";
 import { isTruthy } from "@stackframe/stack-shared/dist/utils/booleans";
@@ -66,8 +66,6 @@ export async function validateProjectConfigOverride(options: { projectConfigOver
     projectConfigSchema,
     {},
     options.projectConfigOverride,
-    applyProjectDefaults,
-    sanitizeProjectConfig,
   );
 }
 
@@ -79,8 +77,6 @@ export async function validateBranchConfigOverride(options: { branchConfigOverri
     branchConfigSchema,
     await rawQuery(globalPrismaClient, getIncompleteProjectConfigQuery(options)),
     options.branchConfigOverride,
-    applyBranchDefaults,
-    sanitizeBranchConfig,
   );
   // TODO add some more checks that depend on the base config; eg. an override config shouldn't set email server connection if isShared==true
   // (these are schematically valid, but make no sense, so we should be nice and reject them)
@@ -94,8 +90,6 @@ export async function validateEnvironmentConfigOverride(options: { environmentCo
     environmentConfigSchema,
     await rawQuery(globalPrismaClient, getIncompleteBranchConfigQuery(options)),
     options.environmentConfigOverride,
-    applyEnvironmentDefaults,
-    sanitizeEnvironmentConfig,
   );
   // TODO add some more checks that depend on the base config; eg. an override config shouldn't set email server connection if isShared==true
   // (these are schematically valid, but make no sense, so we should be nice and reject them)
@@ -109,8 +103,6 @@ export async function validateOrganizationConfigOverride(options: { organization
     organizationConfigSchema,
     await rawQuery(globalPrismaClient, getIncompleteEnvironmentConfigQuery(options)),
     options.organizationConfigOverride,
-    applyOrganizationDefaults,
-    sanitizeOrganizationConfig,
   );
   // TODO add some more checks that depend on the base config; eg. an override config shouldn't set email server connection if isShared==true
   // (these are schematically valid, but make no sense, so we should be nice and reject them)
@@ -356,10 +348,8 @@ async function validateConfigOverrideSchema(
   schema: yup.AnySchema,
   base: any,
   configOverride: any,
-  defaultApplier: typeof applyProjectDefaults | typeof applyBranchDefaults | typeof applyEnvironmentDefaults | typeof applyOrganizationDefaults,
-  sanitizer: typeof sanitizeProjectConfig | typeof sanitizeBranchConfig | typeof sanitizeEnvironmentConfig | typeof sanitizeOrganizationConfig,
 ): Promise<Result<null, string>> {
-  const mergedResBase = await _validateConfigOverrideSchemaImpl(schema, base, configOverride, defaultApplier, sanitizer);
+  const mergedResBase = await _validateConfigOverrideSchemaImpl(schema, base, configOverride);
   if (mergedResBase.status === "error") return mergedResBase;
 
   return Result.ok(null);
@@ -369,8 +359,6 @@ async function _validateConfigOverrideSchemaImpl(
   schema: yup.AnySchema,
   base: any,
   configOverride: any,
-  defaultApplier: typeof applyProjectDefaults | typeof applyBranchDefaults | typeof applyEnvironmentDefaults | typeof applyOrganizationDefaults,
-  sanitizer: typeof sanitizeProjectConfig | typeof sanitizeBranchConfig | typeof sanitizeEnvironmentConfig | typeof sanitizeOrganizationConfig,
 ): Promise<Result<null, string>> {
   // Check config format
   const reason = getInvalidConfigReason(configOverride, { configName: 'override' });
@@ -385,25 +373,8 @@ async function _validateConfigOverrideSchemaImpl(
   // Override
   const overridden = override(base, configOverride);
 
-  // Apply defaults
-  const withDefaults = defaultApplier(overridden);
-
-  // Make sure that normalization succeeds
-  let normalizedValue;
-  try {
-    normalizedValue = normalize(withDefaults, { onDotIntoNonObject: "throw" });
-  } catch (error) {
-    if (error instanceof NormalizationError) {
-      return Result.error("[NORMALIZATION ERROR] " + error.message);
-    }
-    throw error;
-  }
-
-  // Sanitize
-  const sanitizedValue = await sanitizer(normalizedValue as any);
-
   // Get warnings
-  const warnings = await getRenderedConfigWarnings(schema, sanitizedValue);
+  const warnings = await getIncompleteConfigWarnings(schema, overridden);
   if (warnings.status === "error") {
     return Result.error("[WARNING] " + warnings.error);
   }
@@ -427,29 +398,29 @@ import.meta.vitest?.test('_validateConfigOverrideSchemaImpl(...)', async ({ expe
   const sr = ((c: any) => c) as any;
 
   // Base success cases
-  expect(await validateConfigOverrideSchema(schema1, {}, {}, da, sr)).toEqual(Result.ok(null));
-  expect(await validateConfigOverrideSchema(schema1, { a: 'b' }, {}, da, sr)).toEqual(Result.ok(null));
-  expect(await validateConfigOverrideSchema(schema1, {}, { a: 'b' }, da, sr)).toEqual(Result.ok(null));
-  expect(await validateConfigOverrideSchema(schema1, { a: 'b' }, { a: 'c' }, da, sr)).toEqual(Result.ok(null));
-  expect(await validateConfigOverrideSchema(schema1, {}, { a: null }, da, sr)).toEqual(Result.ok(null));
-  expect(await validateConfigOverrideSchema(schema1, { a: 'b' }, { a: null }, da, sr)).toEqual(Result.ok(null));
-  expect(await validateConfigOverrideSchema(yupObject({ a: yupString().defined() }), {}, { a: 'b' }, da, sr)).toEqual(Result.ok(null));
-  expect(await validateConfigOverrideSchema(yupObject({ a: yupString().defined().oneOf(['b']) }), {}, { a: 'b' }, da, sr)).toEqual(Result.ok(null));
-  expect(await validateConfigOverrideSchema(yupObject({ a: yupObject({ c: yupString().defined() }).defined() }), { a: {} }, { "a.c": 'd' }, da, sr)).toEqual(Result.ok(null));
-  expect(await validateConfigOverrideSchema(recordSchema, { a: {} }, { "a.c": 'd' }, da, sr)).toEqual(Result.ok(null));
-  expect(await validateConfigOverrideSchema(unionSchema, {}, { "a": 'never' }, da, sr)).toEqual(Result.ok(null));
-  expect(await validateConfigOverrideSchema(unionSchema, { a: {} }, { "a": 'never' }, da, sr)).toEqual(Result.ok(null));
-  expect(await validateConfigOverrideSchema(unionSchema, { a: {} }, { "a.time": 'now' }, da, sr)).toEqual(Result.ok(null));
-  expect(await validateConfigOverrideSchema(unionSchema, { a: { "time": "tomorrow" } }, { "a.morning": true }, da, sr)).toEqual(Result.ok(null));
+  expect(await validateConfigOverrideSchema(schema1, {}, {})).toEqual(Result.ok(null));
+  expect(await validateConfigOverrideSchema(schema1, { a: 'b' }, {})).toEqual(Result.ok(null));
+  expect(await validateConfigOverrideSchema(schema1, {}, { a: 'b' })).toEqual(Result.ok(null));
+  expect(await validateConfigOverrideSchema(schema1, { a: 'b' }, { a: 'c' })).toEqual(Result.ok(null));
+  expect(await validateConfigOverrideSchema(schema1, {}, { a: null })).toEqual(Result.ok(null));
+  expect(await validateConfigOverrideSchema(schema1, { a: 'b' }, { a: null })).toEqual(Result.ok(null));
+  expect(await validateConfigOverrideSchema(yupObject({ a: yupString().defined() }), {}, { a: 'b' })).toEqual(Result.ok(null));
+  expect(await validateConfigOverrideSchema(yupObject({ a: yupString().defined().oneOf(['b']) }), {}, { a: 'b' })).toEqual(Result.ok(null));
+  expect(await validateConfigOverrideSchema(yupObject({ a: yupObject({ c: yupString().defined() }).defined() }), { a: {} }, { "a.c": 'd' })).toEqual(Result.ok(null));
+  expect(await validateConfigOverrideSchema(recordSchema, { a: {} }, { "a.c": 'd' })).toEqual(Result.ok(null));
+  expect(await validateConfigOverrideSchema(unionSchema, {}, { "a": 'never' })).toEqual(Result.ok(null));
+  expect(await validateConfigOverrideSchema(unionSchema, { a: {} }, { "a": 'never' })).toEqual(Result.ok(null));
+  expect(await validateConfigOverrideSchema(unionSchema, { a: {} }, { "a.time": 'now' })).toEqual(Result.ok(null));
+  expect(await validateConfigOverrideSchema(unionSchema, { a: { "time": "tomorrow" } }, { "a.morning": true })).toEqual(Result.ok(null));
 
   // Error cases
-  expect(await validateConfigOverrideSchema(yupObject({ a: yupObject({ b: yupObject({ c: yupString().defined() }).defined() }).defined() }), { a: { b: {} } }, { "a.b": { c: 123 } }, da, sr)).toEqual(Result.error("[ERROR] a.b.c must be a `string` type, but the final value was: `123`."));
-  expect(await validateConfigOverrideSchema(yupObject({ a: yupString().defined().oneOf(['b']) }), {}, { a: 'c' }, da, sr)).toEqual(Result.error("[ERROR] a must be one of the following values: b"));
-  expect(await validateConfigOverrideSchema(yupObject({ a: yupString().defined() }), {}, {}, da, sr)).toEqual(Result.error("[WARNING] a must be defined"));
-  expect(await validateConfigOverrideSchema(yupObject({ a: yupMixed() }), {}, { "a.b": "c" }, da, sr)).toEqual(Result.error(`[ERROR] The key \"a.b\" is not valid for the schema.`));
-  expect(await validateConfigOverrideSchema(yupObject({ a: yupMixed() }), { a: 'str' }, { "a.b": "c" }, da, sr)).toEqual(Result.error(`[ERROR] The key \"a.b\" is not valid for the schema.`));
-  expect(await validateConfigOverrideSchema(schema1, {}, { a: 123 }, da, sr)).toEqual(Result.error('[ERROR] a must be a `string` type, but the final value was: `123`.'));
-  expect(await validateConfigOverrideSchema(unionSchema, { a: { "time": "now" } }, { "a.morning": true }, da, sr)).toMatchInlineSnapshot(`
+  expect(await validateConfigOverrideSchema(yupObject({ a: yupObject({ b: yupObject({ c: yupString().defined() }).defined() }).defined() }), { a: { b: {} } }, { "a.b": { c: 123 } })).toEqual(Result.error("[ERROR] a.b.c must be a `string` type, but the final value was: `123`."));
+  expect(await validateConfigOverrideSchema(yupObject({ a: yupString().defined().oneOf(['b']) }), {}, { a: 'c' })).toEqual(Result.error("[ERROR] a must be one of the following values: b"));
+  expect(await validateConfigOverrideSchema(yupObject({ a: yupString().defined() }), {}, {})).toEqual(Result.error("[WARNING] a must be defined"));
+  expect(await validateConfigOverrideSchema(yupObject({ a: yupMixed() }), {}, { "a.b": "c" })).toEqual(Result.error(`[ERROR] The key \"a.b\" is not valid for the schema.`));
+  expect(await validateConfigOverrideSchema(yupObject({ a: yupMixed() }), { a: 'str' }, { "a.b": "c" })).toEqual(Result.error(`[ERROR] The key \"a.b\" is not valid for the schema.`));
+  expect(await validateConfigOverrideSchema(schema1, {}, { a: 123 })).toEqual(Result.error('[ERROR] a must be a `string` type, but the final value was: `123`.'));
+  expect(await validateConfigOverrideSchema(unionSchema, { a: { "time": "now" } }, { "a.morning": true })).toMatchInlineSnapshot(`
     {
       "error": "[WARNING] a is not matched by any of the provided schemas:
       Schema 0:
@@ -467,13 +438,13 @@ import.meta.vitest?.test('_validateConfigOverrideSchemaImpl(...)', async ({ expe
 
   // Actual configs — base cases
   const projectSchemaBase = {};
-  expect(await validateConfigOverrideSchema(projectConfigSchema, projectSchemaBase, {}, applyProjectDefaults, sanitizeProjectConfig)).toEqual(Result.ok(null));
+  expect(await validateConfigOverrideSchema(projectConfigSchema, projectSchemaBase, {})).toEqual(Result.ok(null));
   const branchSchemaBase = projectSchemaBase;
-  expect(await validateConfigOverrideSchema(branchConfigSchema, branchSchemaBase, {}, applyBranchDefaults, sanitizeBranchConfig)).toEqual(Result.ok(null));
+  expect(await validateConfigOverrideSchema(branchConfigSchema, branchSchemaBase, {})).toEqual(Result.ok(null));
   const environmentSchemaBase = branchSchemaBase;
-  expect(await validateConfigOverrideSchema(environmentConfigSchema, environmentSchemaBase, {}, applyEnvironmentDefaults, sanitizeEnvironmentConfig)).toEqual(Result.ok(null));
+  expect(await validateConfigOverrideSchema(environmentConfigSchema, environmentSchemaBase, {})).toEqual(Result.ok(null));
   const organizationSchemaBase = environmentSchemaBase;
-  expect(await validateConfigOverrideSchema(organizationConfigSchema, organizationSchemaBase, {}, applyOrganizationDefaults, sanitizeOrganizationConfig)).toEqual(Result.ok(null));
+  expect(await validateConfigOverrideSchema(organizationConfigSchema, organizationSchemaBase, {})).toEqual(Result.ok(null));
 
   // Actual configs — advanced cases
   expect(await validateConfigOverrideSchema(projectConfigSchema, projectSchemaBase, {
@@ -481,12 +452,12 @@ import.meta.vitest?.test('_validateConfigOverrideSchemaImpl(...)', async ({ expe
       type: 'postgres',
       connectionString: 'postgres://user:pass@host:port/db',
     },
-  }, da, sr)).toEqual(Result.ok(null));
+  })).toEqual(Result.ok(null));
   expect(await validateConfigOverrideSchema(projectConfigSchema, projectSchemaBase, {
     sourceOfTruth: {
       type: 'postgres',
     },
-  }, da, sr)).toEqual(Result.error(deindent`
+  })).toEqual(Result.error(deindent`
     [WARNING] sourceOfTruth is not matched by any of the provided schemas:
       Schema 0:
         sourceOfTruth.type must be one of the following values: hosted
