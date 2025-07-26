@@ -30,7 +30,10 @@ export function getNewEmailTemplate(tenancy: Tenancy, type: keyof typeof EMAIL_T
   if (type === "team_invitation") {
     return templateList[DEFAULT_TEMPLATE_IDS.team_invitation];
   }
-  return templateList[DEFAULT_TEMPLATE_IDS.sign_in_invitation];
+  if (type === "sign_in_invitation") {
+    return templateList[DEFAULT_TEMPLATE_IDS.sign_in_invitation];
+  }
+  throw new StackAssertionError(`Unknown email template type: ${type}`);
 }
 
 export async function getEmailTemplate(projectId: string, type: keyof typeof EMAIL_TEMPLATES_METADATA) {
