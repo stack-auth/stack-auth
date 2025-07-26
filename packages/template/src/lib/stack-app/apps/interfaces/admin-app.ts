@@ -35,7 +35,7 @@ export type StackAdminApp<HasTokenStore extends boolean = boolean, ProjectId ext
   & AsyncStoreProperty<"projectPermissionDefinitions", [], AdminProjectPermissionDefinition[], true>
   & AsyncStoreProperty<"emailThemes", [], { id: string, displayName: string }[], true>
   & AsyncStoreProperty<"emailPreview", [{ themeId?: string, themeTsxSource?: string, templateId?: string, templateTsxSource?: string }], string, false>
-  & AsyncStoreProperty<"newEmailTemplates", [], { id: string, subject: string, displayName: string, tsxSource: string }[], true>
+  & AsyncStoreProperty<"newEmailTemplates", [], { id: string, displayName: string, themeId?: string, tsxSource: string }[], true>
   & {
     useEmailTemplates(): AdminEmailTemplate[], // THIS_LINE_PLATFORM react-like
     listEmailTemplates(): Promise<AdminEmailTemplate[]>,
@@ -83,6 +83,10 @@ export type StackAdminApp<HasTokenStore extends boolean = boolean, ProjectId ext
     saveChatMessage(threadId: string, message: any): Promise<void>,
     listChatMessages(threadId: string): Promise<{ messages: Array<any> }>,
     updateNewEmailTemplate(id: string, tsxSource: string): Promise<{ renderedHtml: string }>,
+    createNewEmailTemplate(displayName: string): Promise<{ id: string }>,
+
+    getAllProjectsIdsForMigration(cursor?: string): Promise<{ projectIds: string[], nextCursor: string | null }>,
+    convertEmailTemplates(projectId: string): Promise<{ templatesConverted: number, totalTemplates: number, rendered: Array<{ legacyTemplateContent: any, templateType: string, renderedHtml: string | null }> }>,
   }
   & StackServerApp<HasTokenStore, ProjectId>
 );

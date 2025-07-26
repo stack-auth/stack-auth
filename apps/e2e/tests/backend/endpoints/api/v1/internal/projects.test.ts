@@ -1,3 +1,4 @@
+import { generateUuid } from "@stackframe/stack-shared/dist/utils/uuids";
 import { it } from "../../../../../helpers";
 import { Auth, InternalProjectClientKeys, Project, backendContext, niceBackendFetch } from "../../../../backend-helpers";
 
@@ -504,7 +505,7 @@ it("gives an error when updating email_theme with an invalid value", async ({ ex
     accessType: "admin",
     body: {
       config: {
-        email_theme: "some-invalid-theme",
+        email_theme: generateUuid(),
       }
     }
   });

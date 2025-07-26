@@ -278,13 +278,13 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
       }));
     }, [crud]);
   }
-  useNewEmailTemplates(): { id: string, subject: string, displayName: string, tsxSource: string }[] {
+  useNewEmailTemplates(): { id: string, displayName: string, themeId?: string, tsxSource: string }[] {
     const crud = useAsyncCache(this._adminNewEmailTemplatesCache, [], "useNewEmailTemplates()");
     return useMemo(() => {
       return crud.map((template) => ({
         id: template.id,
-        subject: template.subject,
         displayName: template.display_name,
+        themeId: template.theme_id,
         tsxSource: template.tsx_source,
       }));
     }, [crud]);
@@ -298,12 +298,12 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
     }));
   }
 
-  async listNewEmailTemplates(): Promise<{ id: string, subject: string, displayName: string, tsxSource: string }[]> {
+  async listNewEmailTemplates(): Promise<{ id: string, displayName: string, themeId?: string, tsxSource: string }[]> {
     const crud = Result.orThrow(await this._adminNewEmailTemplatesCache.getOrWait([], "write-only"));
     return crud.map((template) => ({
       id: template.id,
-      subject: template.subject,
       displayName: template.display_name,
+      themeId: template.theme_id,
       tsxSource: template.tsx_source,
     }));
   }
@@ -456,6 +456,12 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
     await this._interface.sendSignInInvitationEmail(email, callbackUrl);
   }
 
+  async createNewEmailTemplate(displayName: string): Promise<{ id: string }> {
+    const result = await this._interface.createNewEmailTemplate(displayName);
+    await this._adminNewEmailTemplatesCache.refresh([]);
+    return result;
+  }
+
   async sendChatMessage(
     threadId: string,
     contextType: "email-theme" | "email-template",
@@ -504,5 +510,26 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
     const result = await this._interface.updateNewEmailTemplate(id, tsxSource);
     await this._adminNewEmailTemplatesCache.refresh([]);
     return { renderedHtml: result.rendered_html };
+  }
+
+  async getAllProjectsIdsForMigration(cursor?: string): Promise<{ projectIds: string[], nextCursor: string | null }> {
+    const result = await this._interface.getAllProjectsIdsForMigration(cursor);
+    return {
+      projectIds: result.project_ids,
+      nextCursor: result.next_cursor,
+    };
+  }
+
+  async convertEmailTemplates(projectId: string): Promise<{ templatesConverted: number, totalTemplates: number, rendered: Array<{ legacyTemplateContent: any, templateType: string, renderedHtml: string | null }> }> {
+    const result = await this._interface.convertEmailTemplates(projectId);
+    return {
+      templatesConverted: result.templates_converted,
+      totalTemplates: result.total_templates,
+      rendered: result.rendered.map(item => ({
+        legacyTemplateContent: item.legacy_template_content,
+        templateType: item.template_type,
+        renderedHtml: item.rendered_html,
+      })),
+    };
   }
 }

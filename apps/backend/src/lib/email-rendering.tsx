@@ -3,6 +3,7 @@ import { getEnvVariable, getNodeEnvironment } from '@stackframe/stack-shared/dis
 import { Result } from "@stackframe/stack-shared/dist/utils/results";
 import { deindent } from "@stackframe/stack-shared/dist/utils/strings";
 import { bundleJavaScript } from '@stackframe/stack-shared/dist/utils/esbuild';
+import { StackAssertionError } from '@stackframe/stack-shared/dist/utils/errors';
 
 export function createTemplateComponentFromHtml(
   html: string,
@@ -22,14 +23,29 @@ export function createTemplateComponentFromHtml(
 export async function renderEmailWithTemplate(
   templateComponent: string,
   themeComponent: string,
-  variables: Record<string, string> = {},
-): Promise<Result<{ html: string, text: string, schema: any, subject?: string, notificationCategory?: string }, string>> {
+  options: {
+    user?: { displayName: string | null },
+    project?: { displayName: string },
+    variables?: Record<string, any>,
+    previewMode?: boolean,
+  },
+): Promise<Result<{ html: string, text: string, subject?: string, notificationCategory?: string }, string>> {
   const apiKey = getEnvVariable("STACK_FREESTYLE_API_KEY");
+  const variables = options.variables ?? {};
+  const previewMode = options.previewMode ?? false;
+  const user = (previewMode && !options.user) ? { displayName: "John Doe" } : options.user;
+  const project = (previewMode && !options.project) ? { displayName: "My Project" } : options.project;
+  if (!user) {
+    throw new StackAssertionError("User is required when not in preview mode", { user, project, variables });
+  }
+  if (!project) {
+    throw new StackAssertionError("Project is required when not in preview mode", { user, project, variables });
+  }
+
   if (["development", "test"].includes(getNodeEnvironment()) && apiKey === "mock_stack_freestyle_key") {
     return Result.ok({
       html: `<div>Mock api key detected, \n\ntemplateComponent: ${templateComponent}\n\nthemeComponent: ${themeComponent}\n\n variables: ${JSON.stringify(variables)}</div>`,
       text: `<div>Mock api key detected, \n\ntemplateComponent: ${templateComponent}\n\nthemeComponent: ${themeComponent}\n\n variables: ${JSON.stringify(variables)}</div>`,
-      schema: {},
       subject: "mock subject",
       notificationCategory: "mock notification category",
     });
@@ -40,20 +56,28 @@ export async function renderEmailWithTemplate(
     "/theme.tsx": themeComponent,
     "/template.tsx": templateComponent,
     "/render.tsx": deindent`
+      import { configure } from "arktype/config"
+      configure({ onUndeclaredKey: "delete" })
       import React from 'react';
-      import * as TemplateModule from "./template.tsx";
-      const { schema, EmailTemplate } = TemplateModule;
-      import { findComponentValue } from "./utils.tsx";
-      import { EmailTheme } from "./theme.tsx";
       import { render } from '@react-email/components';
-
+      import { type } from "arktype";
+      import { findComponentValue } from "./utils.tsx";
+      import * as TemplateModule from "./template.tsx";
+      const { variablesSchema, EmailTemplate } = TemplateModule;
+      import { EmailTheme } from "./theme.tsx";
       export const renderAll = async () => {
-        const EmailTemplateWithProps  = <EmailTemplate ${variablesAsProps} />;
+        const variables = variablesSchema({
+          ${previewMode ? "...(EmailTemplate.PreviewVariables || {})," : ""}
+          ...(${JSON.stringify(variables)}),
+        })
+        if (variables instanceof type.errors) {
+          throw new Error(variables.summary)
+        }
+        const EmailTemplateWithProps  = <EmailTemplate variables={variables} user={${JSON.stringify(user)}} project={${JSON.stringify(project)}} />;
         const Email = <EmailTheme>{EmailTemplateWithProps}</EmailTheme>;
         return {
           html: await render(Email),
           text: await render(Email, { plainText: true }),
-          schema: schema ? schema.toJsonSchema() : undefined,
           subject: findComponentValue(EmailTemplateWithProps, "Subject"),
           notificationCategory: findComponentValue(EmailTemplateWithProps, "NotificationCategory"),
         };
@@ -82,7 +106,7 @@ export async function renderEmailWithTemplate(
   if ("error" in output) {
     return Result.error(output.error as string);
   }
-  return Result.ok(output.result as { html: string, text: string, schema: any, subject: string, notificationCategory: string });
+  return Result.ok(output.result as { html: string, text: string, subject: string, notificationCategory: string });
 }
 
 

@@ -1,17 +1,17 @@
 "use client";
 
+import EmailPreview from "@/components/email-preview";
 import { useRouterConfirm } from "@/components/router";
-import ThemePreview from "@/components/theme-preview";
-import { previewTemplateSource } from "@stackframe/stack-shared/dist/helpers/emails";
 import { AssistantChat, CodeEditor, EmailThemeUI, PreviewPanel, VibeCodeLayout } from "@/components/vibe-coding";
 import {
   createChatAdapter,
   createHistoryAdapter,
   ToolCallContent
 } from "@/components/vibe-coding/chat-adapters";
+import { previewTemplateSource } from "@stackframe/stack-shared/dist/helpers/emails";
 import { KnownErrors } from "@stackframe/stack-shared/dist/known-errors";
 import { Button, toast } from "@stackframe/stack-ui";
-import React, { useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { useAdminApp } from "../../use-admin-app";
 
 
@@ -48,7 +48,7 @@ export default function PageClient({ themeId }: { themeId: string }) {
     <VibeCodeLayout
       previewComponent={
         <PreviewPanel>
-          <ThemePreview themeTsxSource={currentCode} templateTsxSource={previewTemplateSource} />
+          <EmailPreview themeTsxSource={currentCode} templateTsxSource={previewTemplateSource} />
         </PreviewPanel>
       }
       editorComponent={
