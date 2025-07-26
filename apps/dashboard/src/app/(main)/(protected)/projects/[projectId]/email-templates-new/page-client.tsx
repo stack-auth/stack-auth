@@ -9,7 +9,6 @@ import { useState } from "react";
 import * as yup from "yup";
 import { PageLayout } from "../page-layout";
 import { useAdminApp } from "../use-admin-app";
-import Link from "next/link";
 
 export default function PageClient() {
   const stackAdminApp = useAdminApp();
@@ -39,8 +38,8 @@ export default function PageClient() {
               {template.displayName}
             </Typography>
             <div className="flex justify-start items-end gap-2">
-              <Link
-                href={`email-templates-new/${template.id}`}
+              <Button
+                variant='secondary'
                 onClick={(e) => {
                   if (emailConfig?.type === 'shared') {
                     setSharedSmtpWarningDialogOpen(template.id);
@@ -48,10 +47,8 @@ export default function PageClient() {
                   }
                 }}
               >
-                <Button variant='secondary'>
-                  Edit
-                </Button>
-              </Link>
+                Edit Template
+              </Button>
             </div>
           </div>
         </Card>
