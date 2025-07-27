@@ -358,7 +358,15 @@ export async function sendEmailFromTemplate(options: {
     ...filterUndefined(options.extraVariables),
   });
 
-  const result = await renderEmailWithTemplate(template.tsxSource, themeSource, variables);
+  const result = await renderEmailWithTemplate(
+    template.tsxSource,
+    themeSource,
+    {
+      user: { displayName: options.user?.display_name ?? null },
+      project: { displayName: options.tenancy.project.display_name },
+      variables: filterUndefined(options.extraVariables),
+    }
+  );
   if (result.status === 'error') {
     throw new StackAssertionError("Failed to render email template", {
       template: template,
