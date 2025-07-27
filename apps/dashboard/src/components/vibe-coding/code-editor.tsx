@@ -81,6 +81,15 @@ export default function CodeEditor({
         declare module "@stackframe/emails" {
           const Subject: React.FC<{value: string}>;
           const NotificationCategory: React.FC<{value: "Transactional" | "Marketing"}>;
+          type Props<T> = {
+            variables: T;
+            project: {
+              displayName: string;
+            };
+            user: {
+              displayName: string | null;
+            };
+          };
         }
       `,
     );

@@ -40,7 +40,10 @@ export const PATCH = createSmartRouteHandler({
       throw new StatusError(StatusError.NotFound, "No template found with given id");
     }
     const theme = getActiveEmailTheme(tenancy);
-    const result = await renderEmailWithTemplate(body.tsx_source, theme.tsxSource, { projectDisplayName: tenancy.project.display_name });
+    const result = await renderEmailWithTemplate(body.tsx_source, theme.tsxSource, {
+      variables: { projectDisplayName: tenancy.project.display_name },
+      previewMode: true,
+    });
     if (result.status === "error") {
       throw new KnownErrors.EmailRenderingError(result.error);
     }
@@ -49,9 +52,6 @@ export const PATCH = createSmartRouteHandler({
     }
     if (result.data.notificationCategory === undefined) {
       throw new KnownErrors.EmailRenderingError("NotificationCategory is required, import it from @stackframe/emails");
-    }
-    if (result.data.schema === undefined) {
-      throw new KnownErrors.EmailRenderingError("schema is required and must be exported");
     }
 
     await overrideEnvironmentConfigOverride({
