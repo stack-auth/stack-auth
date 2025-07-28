@@ -162,24 +162,22 @@ async function seed() {
             }
           });
 
-            console.log(`Added GitHub account for admin user`);
-        }
-
-        await internalPrisma.authMethod.create({
-          data: {
-            tenancyId: internalTenancy.id,
-            projectUserId: newUser.projectUserId,
-            oauthAuthMethod: {
-              create: {
-                projectUserId: newUser.projectUserId,
-                configOAuthProviderId: 'github',
-                providerAccountId: adminGithubId,
+          await internalPrisma.authMethod.create({
+            data: {
+              tenancyId: internalTenancy.id,
+              projectUserId: newUser.projectUserId,
+              oauthAuthMethod: {
+                create: {
+                  projectUserId: newUser.projectUserId,
+                  configOAuthProviderId: 'github',
+                  providerAccountId: adminGithubId,
+                }
               }
             }
-          }
-        });
+          });
 
           console.log(`Added admin user with GitHub ID ${adminGithubId}`);
+        }
       }
     }
   }

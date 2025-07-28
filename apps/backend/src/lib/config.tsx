@@ -1,6 +1,6 @@
 import { Prisma } from "@prisma/client";
 import { Config, getInvalidConfigReason, normalize, override } from "@stackframe/stack-shared/dist/config/format";
-import { BranchConfigOverride, BranchConfigOverrideOverride, BranchIncompleteConfig, BranchRenderedConfig, EnvironmentConfigOverride, EnvironmentConfigOverrideOverride, EnvironmentIncompleteConfig, EnvironmentRenderedConfig, OrganizationConfigOverride, OrganizationConfigOverrideOverride, OrganizationIncompleteConfig, OrganizationRenderedConfig, ProjectConfigOverride, ProjectConfigOverrideOverride, ProjectIncompleteConfig, ProjectRenderedConfig, applyBranchDefaults, applyEnvironmentDefaults, applyOrganizationDefaults, applyProjectDefaults, assertNoConfigOverrideErrors, branchConfigSchema, environmentConfigSchema, getConfigOverrideErrors, getIncompleteConfigWarnings, organizationConfigSchema, projectConfigSchema, sanitizeBranchConfig, sanitizeEnvironmentConfig, sanitizeOrganizationConfig, sanitizeProjectConfig } from "@stackframe/stack-shared/dist/config/schema";
+import { BranchConfigOverride, BranchConfigOverrideOverride, BranchIncompleteConfig, BranchRenderedConfig, EnvironmentConfigOverride, EnvironmentConfigOverrideOverride, EnvironmentIncompleteConfig, EnvironmentRenderedConfig, OrganizationConfigOverride, OrganizationConfigOverrideOverride, OrganizationIncompleteConfig, OrganizationRenderedConfig, ProjectConfigOverride, ProjectConfigOverrideOverride, ProjectIncompleteConfig, ProjectRenderedConfig, applyBranchDefaults, applyEnvironmentDefaults, applyOrganizationDefaults, applyProjectDefaults, assertNoConfigOverrideErrors, branchConfigSchema, environmentConfigSchema, getConfigOverrideErrors, getIncompleteConfigWarnings, migrateConfigOverride, organizationConfigSchema, projectConfigSchema, sanitizeBranchConfig, sanitizeEnvironmentConfig, sanitizeOrganizationConfig, sanitizeProjectConfig } from "@stackframe/stack-shared/dist/config/schema";
 import { ProjectsCrud } from "@stackframe/stack-shared/dist/interface/crud/projects";
 import { yupBoolean, yupMixed, yupObject, yupRecord, yupString, yupUnion } from "@stackframe/stack-shared/dist/schema-fields";
 import { isTruthy } from "@stackframe/stack-shared/dist/utils/booleans";
@@ -126,7 +126,7 @@ export function getProjectConfigOverrideQuery(options: ProjectOptions): RawQuery
       WHERE "Project"."id" = ${options.projectId}
     `,
     postProcess: async (queryResult) => {
-      return queryResult[0].projectConfigOverride ?? {};
+      return migrateConfigOverride("project", queryResult[0].projectConfigOverride ?? {});
     },
   };
 }
@@ -141,7 +141,7 @@ export function getBranchConfigOverrideQuery(options: BranchOptions): RawQuery<P
     supportedPrismaClients: ["global"],
     sql: Prisma.sql`SELECT 1`,
     postProcess: async () => {
-      return {};
+      return migrateConfigOverride("branch", {});
     },
   };
 }
@@ -160,10 +160,7 @@ export function getEnvironmentConfigOverrideQuery(options: EnvironmentOptions): 
       if (queryResult.length > 1) {
         throw new StackAssertionError(`Expected 0 or 1 environment config overrides for project ${options.projectId} and branch ${options.branchId}, got ${queryResult.length}`, { queryResult });
       }
-      if (queryResult.length === 0) {
-        return {};
-      }
-      return queryResult[0].config;
+      return migrateConfigOverride("environment", queryResult[0]?.config ?? {});
     },
   };
 }
@@ -178,7 +175,7 @@ export function getOrganizationConfigOverrideQuery(options: OrganizationOptions)
     supportedPrismaClients: ["global"],
     sql: Prisma.sql`SELECT 1`,
     postProcess: async () => {
-      return {};
+      return migrateConfigOverride("organization", {});
     },
   };
 }
@@ -243,7 +240,6 @@ export async function overrideEnvironmentConfigOverride(options: {
     options.environmentConfigOverrideOverride,
   );
   await assertNoConfigOverrideErrors(environmentConfigSchema, newConfig);
-  console.log({ newConfig, oldConfig, environmentConfigOverrideOverride: options.environmentConfigOverrideOverride });
   await options.tx.environmentConfigOverride.upsert({
     where: {
       projectId_branchId: {

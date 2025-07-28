@@ -4,10 +4,11 @@ import * as yup from "yup";
 import { DEFAULT_EMAIL_TEMPLATES, DEFAULT_EMAIL_THEMES, DEFAULT_EMAIL_THEME_ID } from "../helpers/emails";
 import * as schemaFields from "../schema-fields";
 import { userSpecifiedIdSchema, yupBoolean, yupDate, yupMixed, yupNever, yupNumber, yupObject, yupRecord, yupString, yupTuple, yupUnion } from "../schema-fields";
+import { isShallowEqual } from "../utils/arrays";
 import { SUPPORTED_CURRENCIES } from "../utils/currencies";
 import { StackAssertionError } from "../utils/errors";
 import { allProviders } from "../utils/oauth";
-import { DeepFilterUndefined, DeepMerge, DeepRequiredOrUndefined, filterUndefined, get, has, isObjectLike, mapValues, set, typedFromEntries } from "../utils/objects";
+import { DeepFilterUndefined, DeepMerge, DeepRequiredOrUndefined, deleteKey, filterUndefined, get, has, isObjectLike, mapValues, set, typedFromEntries } from "../utils/objects";
 import { Result } from "../utils/results";
 import { CollapseObjectUnion, Expand, IntersectAll, IsUnion, typeAssert, typeAssertExtends, typeAssertIs } from "../utils/types";
 import { Config, NormalizationError, NormalizesTo, assertNormalized, getInvalidConfigReason, normalize } from "./format";
@@ -235,7 +236,7 @@ export const environmentConfigSchema = branchConfigSchema.concat(yupObject({
 
   domains: branchConfigSchema.getNested("domains").concat(yupObject({
     trustedDomains: yupRecord(
-      yupString().uuid(),
+      yupString(),
       yupObject({
         baseUrl: schemaFields.urlSchema,
         handlerPath: schemaFields.handlerPathSchema,
@@ -245,6 +246,101 @@ export const environmentConfigSchema = branchConfigSchema.concat(yupObject({
 }));
 
 export const organizationConfigSchema = environmentConfigSchema.concat(yupObject({}));
+
+
+// Migration functions
+//
+// These are used to migrate old config overrides to the new format on the database.
+//
+// THEY SHOULD NOT BE USED FOR ANY OTHER PURPOSE. They should not be used for default values. They should not be used
+// for sanitization. Instead, use the applicable functions for that.
+//
+// We run these migrations over the database when we do a big migration. USE THESE SPARINGLY. USE OTHER METHODS WHENEVER
+// POSSIBLE.
+//
+// The result of this function should be reproducible, and should not contain ANY randomness/non-determinism.
+export function migrateConfigOverride(type: "project" | "branch" | "environment" | "organization", oldUnmigratedConfigOverride: any): any {
+  const isBranchOrHigher = ["branch", "environment", "organization"].includes(type);
+  const isEnvironmentOrHigher = ["environment", "organization"].includes(type);
+
+  let res = oldUnmigratedConfigOverride;
+
+  // BEGIN 2025-07-28: emails.theme is now emails.selectedThemeId
+  if (isBranchOrHigher) {
+    res = renameProperty(res, "emails.theme", "emails.selectedThemeId");
+  }
+  // END
+
+  // BEGIN 2025-07-28: domains.trustedDomains can no longer be an array
+  if (isEnvironmentOrHigher) {
+    res = mapProperty(res, "domains.trustedDomains", (value) => {
+      if (Array.isArray(value)) {
+        return typedFromEntries(value.map((v, i) => [`${i}`, v]));
+      }
+      return value;
+    });
+  }
+  // END
+
+
+  // return the result
+  return res;
+};
+
+function mapProperty(obj: any, path: string, mapper: (value: any) => any): any {
+  const keyParts = path.split(".");
+
+  for (let i = 0; i < keyParts.length; i++) {
+    const pathPrefix = keyParts.slice(0, i).join(".");
+    const pathSuffix = keyParts.slice(i).join(".");
+    if (has(obj, pathPrefix) && isObjectLike(get(obj, pathPrefix))) {
+      set(obj, pathPrefix, mapProperty(get(obj, pathPrefix), pathSuffix, mapper));
+    }
+  }
+  if (has(obj, path)) {
+    set(obj, path, mapper(get(obj, path)));
+  }
+
+  return obj;
+}
+import.meta.vitest?.test("mapProperty - basic property mapping", ({ expect }) => {
+  expect(mapProperty({ a: { b: { c: 1 } } }, "a.b.c", (value) => value + 1)).toEqual({ a: { b: { c: 2 } } });
+  expect(mapProperty({ a: { b: { c: 1 } } }, "a.b.d", (value) => value + 1)).toEqual({ a: { b: { c: 1 } } });
+  expect(mapProperty({ x: 5 }, "x", (value) => value * 2)).toEqual({ x: 10 });
+  expect(mapProperty({ a: { b: { c: 1 } } }, "b.c", (value) => value * 10)).toEqual({ a: { b: { c: 1 } } });
+  expect(mapProperty({ a: 1 }, "b.c", (value) => value)).toEqual({ a: 1 });
+});
+
+function renameProperty(obj: any, oldPath: string, newPath: string): any {
+  const oldKeyParts = oldPath.split(".");
+  const newKeyParts = newPath.split(".");
+  if (!isShallowEqual(oldKeyParts.slice(0, -1), newKeyParts.slice(0, -1))) throw new StackAssertionError(`oldPath and newPath must have the same prefix. Provided: ${oldPath} and ${newPath}`);
+
+  for (let i = 0; i < oldKeyParts.length; i++) {
+    const pathPrefix = oldKeyParts.slice(0, i).join(".");
+    const oldPathSuffix = oldKeyParts.slice(i).join(".");
+    const newPathSuffix = newKeyParts.slice(i).join(".");
+    if (has(obj, pathPrefix) && isObjectLike(get(obj, pathPrefix))) {
+      set(obj, pathPrefix, renameProperty(get(obj, pathPrefix), oldPathSuffix, newPathSuffix));
+    }
+  }
+  if (has(obj, oldPath)) {
+    set(obj, newPath, get(obj, oldPath));
+    deleteKey(obj, oldPath);
+  }
+
+  return obj;
+}
+import.meta.vitest?.test("renameProperty", ({ expect }) => {
+  // Basic
+  expect(renameProperty({ a: 1 }, "a", "b")).toEqual({ b: 1 });
+  expect(renameProperty({ b: { c: 1 } }, "b.c", "b.d")).toEqual({ b: { d: 1 } });
+  expect(renameProperty({ a: { b: { c: 1 } } }, "a.b.c", "a.b.d")).toEqual({ a: { b: { d: 1 } } });
+  expect(renameProperty({ a: { b: { c: 1 } } }, "a.b.c.d", "a.b.c.e")).toEqual({ a: { b: { c: 1 } } });
+
+  // Errors
+  expect(() => renameProperty({ a: 1 }, "a", "b.c")).toThrow();
+});
 
 
 // Defaults
