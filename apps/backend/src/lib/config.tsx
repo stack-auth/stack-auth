@@ -243,6 +243,7 @@ export async function overrideEnvironmentConfigOverride(options: {
     options.environmentConfigOverrideOverride,
   );
   await assertNoConfigOverrideErrors(environmentConfigSchema, newConfig);
+  console.log({ newConfig, oldConfig, environmentConfigOverrideOverride: options.environmentConfigOverrideOverride });
   await options.tx.environmentConfigOverride.upsert({
     where: {
       projectId_branchId: {

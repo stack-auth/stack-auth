@@ -388,17 +388,26 @@ export type DeepReplaceAllowFunctionsForObjects<T> = T extends object ? { [K in 
 export type DeepReplaceFunctionsWithObjects<T> = T extends (arg: infer K extends string) => infer R ? DeepReplaceFunctionsWithObjects<Record<K, R>> : (T extends object ? { [K in keyof T]: DeepReplaceFunctionsWithObjects<T[K]> } : T);
 export type ApplyDefaults<D extends object | ((key: string) => unknown), C extends object> = {} extends D ? C : DeepMerge<DeepReplaceFunctionsWithObjects<D>, C>;  // the {} extends D makes TypeScript not recurse if the defaults are empty, hence allowing us more recursion until "type instantiation too deep" kicks in... it's a total hack, but it works, so hey?
 export function applyDefaults<D extends object | ((key: string) => unknown), C extends object>(defaults: D, config: C): ApplyDefaults<D, C> {
-  const res: any = typeof defaults === 'function' ? {} : mapValues(defaults, v => typeof v === 'function' ? {} : (typeof v === 'object' && v ? applyDefaults(v as any, {}) : v));
+  const replaceFunctionsWithEmptyObjects = (obj: any): any => typeof obj === 'function' ? {} : mapValues(obj, v => typeof v === 'function' ? {} : (typeof v === 'object' && v ? replaceFunctionsWithEmptyObjects(v as any) : v));
+  const res: any = replaceFunctionsWithEmptyObjects(defaults);
+
   outer: for (const [key, mergeValue] of Object.entries(config)) {
     if (mergeValue === undefined) continue;
     const keyParts = key.split(".");
     let baseValue: any = defaults;
-    for (const part of keyParts) {
-      baseValue = typeof baseValue === 'function' ? baseValue(part) : (has(baseValue, part) ? get(baseValue, part) : undefined);
+    let currentRes: any = res;
+    for (const [index, part] of keyParts.entries()) {
+      if (typeof baseValue === 'function') {
+        baseValue = baseValue(part);
+        if (currentRes) set(currentRes, part, replaceFunctionsWithEmptyObjects(baseValue));
+      } else {
+        baseValue = has(baseValue, part) ? get(baseValue, part) : undefined;
+      }
       if (baseValue === undefined || !isObjectLike(baseValue) || !isObjectLike(mergeValue)) {
         set(res, key, mergeValue);
         continue outer;
       }
+      if (currentRes) currentRes = has(currentRes, part) ? get(currentRes, part) : undefined;
     }
     set(res, key, applyDefaults(baseValue, mergeValue));
   }
@@ -407,19 +416,26 @@ export function applyDefaults<D extends object | ((key: string) => unknown), C e
 import.meta.vitest?.test("applyDefaults", ({ expect }) => {
   // Basic
   expect(applyDefaults({ a: 1 }, { a: 2 })).toEqual({ a: 2 });
+  expect(applyDefaults({}, { a: 1 })).toEqual({ a: 1 });
   expect(applyDefaults({ a: { b: 1 } }, { a: { b: 2 } })).toEqual({ a: { b: 2 } });
   expect(applyDefaults({ a: { b: 1 } }, { a: { c: 2 } })).toEqual({ a: { b: 1, c: 2 } });
   expect(applyDefaults({ a: { b: { c: 1, d: 2 } } }, { a: { b: { d: 3, e: 4 } } })).toEqual({ a: { b: { c: 1, d: 3, e: 4 } } });
 
   // Functions
   expect(applyDefaults((key: string) => ({ b: key }), { a: {} })).toEqual({ a: { b: "a" } });
+  expect(applyDefaults((key1: string) => (key2: string) => ({ a: key1, b: key2 }), { c: { d: {} } })).toEqual({ c: { d: { a: "c", b: "d" } } });
   expect(applyDefaults({ a: (key: string) => ({ b: key }) }, { a: { c: { d: 1 } } })).toEqual({ a: { c: { b: "c", d: 1 } } });
   expect(applyDefaults({ a: (key: string) => ({ b: key }) }, {})).toEqual({ a: {} });
   expect(applyDefaults({ a: { b: (key: string) => ({ b: key }) } }, {})).toEqual({ a: { b: {} } });
 
   // Dot notation
   expect(applyDefaults({ a: { b: 1 } }, { "a.c": 2 })).toEqual({ a: { b: 1 }, "a.c": 2 });
+  expect(applyDefaults({ a: 1 }, { "a.b": 2 })).toEqual({ a: 1, "a.b": 2 });
+  expect(applyDefaults({ a: null }, { "a.b": 2 })).toEqual({ a: null, "a.b": 2 });
   expect(applyDefaults({ a: { b: { c: 1 } } }, { "a.b": { d: 2 } })).toEqual({ a: { b: { c: 1 } }, "a.b": { c: 1, d: 2 } });
+  expect(applyDefaults({ a: { b: { c: { d: 1 } } } }, { "a.b.c": {} })).toEqual({ a: { b: { c: { d: 1 } } }, "a.b.c": { d: 1 } });
+  expect(applyDefaults({ a: () => ({ c: 1 }) }, { "a.b": { d: 2 } })).toEqual({ a: { b: { c: 1 } }, "a.b": { c: 1, d: 2 } });
+  expect(applyDefaults({ a: () => () => ({ d: 1 }) }, { "a.b.c": {} })).toEqual({ a: { b: { c: { d: 1 } } }, "a.b.c": { d: 1 } });
 });
 
 export function applyProjectDefaults<T extends ProjectRenderedConfigBeforeDefaults>(config: T) {
