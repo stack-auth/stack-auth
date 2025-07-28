@@ -3,11 +3,14 @@ import { Auth, Project, backendContext, niceBackendFetch } from "../../../../../
 
 it("should send a sign-in code per e-mail", async ({ expect }) => {
   await Auth.Otp.sendSignInCode();
-  expect(await backendContext.value.mailbox.fetchMessages({ noBody: true })).toMatchInlineSnapshot(`
+  const messages = await backendContext.value.mailbox.fetchMessages({ noBody: true });
+  expect(messages.length).toBe(1);
+  expect(messages[0].subject).toMatchInlineSnapshot(`"Mock subject, <Subject value={\\"Sign in to \\" + project.displayName + \\": Your code is \\" + variables.otp} />"`);
+  expect(messages).toMatchInlineSnapshot(`
     [
       MailboxMessage {
         "from": "Stack Dashboard <noreply@example.com>",
-        "subject": "Mock subject, <Subject value=\\"{\\"Sign in to \\" + project.displayName + \\": Your code is \\" + variables.otp} />\"",
+        "subject": "Mock subject, <Subject value={\\"Sign in to \\" + project.displayName + \\": Your code is \\" + variables.otp} />",
         "to": ["<default-mailbox--<stripped UUID>@stack-generated.example.com>"],
         <some fields may have been hidden>,
       },
