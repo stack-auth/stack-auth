@@ -72,7 +72,7 @@ export async function renderEmailWithTemplate(
     return Result.ok({
       html: `<div>Mock api key detected, \n\ntemplateComponent: ${templateComponent}\n\nthemeComponent: ${themeComponent}\n\n variables: ${JSON.stringify(variables)}</div>`,
       text: `<div>Mock api key detected, \n\ntemplateComponent: ${templateComponent}\n\nthemeComponent: ${themeComponent}\n\n variables: ${JSON.stringify(variables)}</div>`,
-      subject: `Mock subject, <Subject value={${templateComponent.match(/<Subject\s+value=\{([^}]+)\}/)?.[1] || `"${templateComponent.match(/<Subject\s+value="([^"]+)"/)?.[1]}"`}} />`,
+      subject: `Mock subject, ${templateComponent.match(/<Subject\s+[^>]*\/>/g)?.[0]}`,
       notificationCategory: "mock notification category",
     });
   }
