@@ -72,11 +72,10 @@ export async function renderEmailWithTemplate(
     return Result.ok({
       html: `<div>Mock api key detected, \n\ntemplateComponent: ${templateComponent}\n\nthemeComponent: ${themeComponent}\n\n variables: ${JSON.stringify(variables)}</div>`,
       text: `<div>Mock api key detected, \n\ntemplateComponent: ${templateComponent}\n\nthemeComponent: ${themeComponent}\n\n variables: ${JSON.stringify(variables)}</div>`,
-      subject: `Mock subject, ${templateComponent.match(/<Subject\s+[^>]*\/>/g)?.[0]}`,
+      subject: `Mock subject, <Subject value={${templateComponent.match(/<Subject\s+value=\{([^}]+)\}/)?.[1] || `"${templateComponent.match(/<Subject\s+value="([^"]+)"/)?.[1]}"`}} />`,
       notificationCategory: "mock notification category",
     });
   }
-  const variablesAsProps = Object.entries(variables).map(([key, value]) => `${key}={${JSON.stringify(value)}}`).join(" ");
   const result = await bundleJavaScript({
     "/utils.tsx": findComponentValueUtil,
     "/theme.tsx": themeComponent,
