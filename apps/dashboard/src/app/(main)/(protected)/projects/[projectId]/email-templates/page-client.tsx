@@ -84,7 +84,7 @@ function NewTemplateButton() {
   const router = useRouter();
 
   const handleCreateNewTemplate = async (values: { name: string }) => {
-    const { id } = await stackAdminApp.createNewEmailTemplate(values.name);
+    const { id } = await stackAdminApp.createEmailTemplate(values.name);
     router.push(`email-templates/${id}`);
   };
 
