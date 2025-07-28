@@ -25,7 +25,7 @@ async function getResetCode() {
   expect(messagesNoBody.at(-1)).toMatchInlineSnapshot(`
     MailboxMessage {
       "from": "Stack Dashboard <noreply@example.com>",
-      "subject": "Mock subject, <Subject value={\\"Reset your password at \\" + project.displayName} />",
+      "subject": "Mock subject, <Subject value=\\"{\\"Reset your password at \\" + project.displayName} />\"",
       "to": ["<default-mailbox--<stripped UUID>@stack-generated.example.com>"],
       <some fields may have been hidden>,
     }
