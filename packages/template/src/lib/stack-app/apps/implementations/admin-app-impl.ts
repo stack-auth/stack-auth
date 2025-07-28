@@ -18,7 +18,9 @@ import { StackAdminApp, StackAdminAppConstructorOptions } from "../interfaces/ad
 import { clientVersion, createCache, getBaseUrl, getDefaultProjectId, getDefaultPublishableClientKey, getDefaultSecretServerKey, getDefaultSuperSecretAdminKey } from "./common";
 import { _StackServerAppImplIncomplete } from "./server-app-impl";
 
+import { OrganizationRenderedConfig } from "@stackframe/stack-shared/dist/config/schema";
 import { ChatContent } from "@stackframe/stack-shared/dist/interface/admin-interface";
+import { ConfigOverridesCrud } from "@stackframe/stack-shared/dist/interface/crud/config-overrides";
 import { useAsyncCache } from "./common"; // THIS_LINE_PLATFORM react-like
 
 export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, ProjectId extends string> extends _StackServerAppImplIncomplete<HasTokenStore, ProjectId> implements StackAdminApp<HasTokenStore, ProjectId>
@@ -59,6 +61,9 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
   private readonly _emailPreviewCache = createCache(async ([themeId, themeTsxSource, templateId, templateTsxSource]: [string | undefined, string | undefined, string | undefined, string | undefined]) => {
     return await this._interface.renderEmailPreview({ themeId, themeTsxSource, templateId, templateTsxSource });
   });
+  private readonly _configOverridesCache = createCache(async () => {
+    return await this._interface.getConfigOverrides();
+  });
 
   constructor(options: StackAdminAppConstructorOptions<HasTokenStore, ProjectId>) {
     super({
@@ -83,6 +88,10 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
       oauthScopesOnSignIn: options.oauthScopesOnSignIn,
       redirectMethod: options.redirectMethod,
     });
+  }
+
+  _adminConfigFromCrud(data: ConfigOverridesCrud['Admin']['Read']): OrganizationRenderedConfig {
+    return JSON.parse(data.config);
   }
 
   _adminOwnedProjectFromCrud(data: ProjectsCrud['Admin']['Read'], onRefresh: () => Promise<void>): AdminOwnedProject {
@@ -150,7 +159,13 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
         teamMemberDefaultPermissions: data.config.team_member_default_permissions,
         userDefaultPermissions: data.config.user_default_permissions,
       },
-
+      async getConfig() {
+        return app._adminConfigFromCrud(await app._interface.getConfigOverrides());
+      },
+      useConfig() {
+        const crud = useAsyncCache(app._configOverridesCache, [], "useConfig()");
+        return useMemo(() => app._adminConfigFromCrud(crud), [crud]);
+      },
       async update(update: AdminProjectUpdateOptions) {
         const updateOptions = adminProjectUpdateOptionsToCrud(update);
         await app._interface.updateProject(filterUndefined({
