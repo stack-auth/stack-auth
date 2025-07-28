@@ -1,10 +1,14 @@
 import { TEditorConfiguration } from "@stackframe/stack-emails/dist/editor/documents/editor/core";
 import { EmailTemplateMetadata } from "@stackframe/stack-emails/dist/utils";
 
+
+function transformVariableName(variable: string): string {
+  return variable === "userDisplayName" ? "user.displayName" : variable === "projectDisplayName" ? "project.displayName" : `variables.${variable}`;
+}
+
 // Helper function to convert handlebars syntax to JSX syntax
 function convertHandlebarsToJSX(text: string): string {
   if (!text) return '""';
-
   const ifBlockRegex = /\{\{#if\s+(\w+)\}\}([\s\S]*?)\{\{\/if\}\}/g;
 
   // Helper to convert plain text + variable placeholders to string concatenation pieces
@@ -12,7 +16,13 @@ function convertHandlebarsToJSX(text: string): string {
     const parts = snippet.split(/(\{\{\s*\w+\s*\}\})/g).filter(Boolean);
     const mapped = parts.map((part) => {
       const varMatch = part.match(/\{\{\s*(\w+)\s*\}\}/);
-      if (varMatch) return varMatch[1]; // just the variable name
+      if (varMatch?.[1] === "userDisplayName") {
+        return "user.displayName";
+      }
+      if (varMatch?.[1] === "projectDisplayName") {
+        return "project.displayName";
+      }
+      if (varMatch) return `variables.${varMatch[1]}`; // just the variable name
       // JSON.stringify to safely quote the static text
       return JSON.stringify(part);
     });
@@ -21,11 +31,11 @@ function convertHandlebarsToJSX(text: string): string {
 
   let transformed = text.replace(ifBlockRegex, (_match, variable: string, content: string) => {
     const concatContent = handlebarsToConcat(content);
-    return `\${${variable} ? (${concatContent}) : ''}`;
+    return `\${${transformVariableName(variable)} ? (${concatContent}) : ''}`;
   });
 
   // Replace remaining simple variables {{ var }}
-  transformed = transformed.replace(/\{\{\s*(\w+)\s*\}\}/g, (_m, v: string) => `\${${v}}`);
+  transformed = transformed.replace(/\{\{\s*(\w+)\s*\}\}/g, (_m, v: string) => `\${${transformVariableName(v)}}`);
 
   // Escape backticks in original literal fragments to preserve outer template literal integrity
   transformed = transformed.replace(/`/g, '\\`');
@@ -40,7 +50,7 @@ function convertHandlebarsToJSX(text: string): string {
   return `\`${transformed.replace(/\n/g, '\\n')}\``;
 }
 
-export function generateTsxSourceFromConfiguration(configuration: TEditorConfiguration, variables: string[], subject: string): string {
+export function generateTsxSourceFromConfiguration(configuration: TEditorConfiguration, variables: EmailTemplateMetadata["variables"], subject: string): string {
   const rootBlock = configuration.root;
   // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
   if (!rootBlock) {
@@ -392,18 +402,17 @@ ${indent}</Container>`;
     }
   };
 
-  const propsInterface = variables.map(varName => `${varName}`).join(', ');
   const componentBody = renderBlock('root', 1);
 
   return `import { type } from "arktype"
 import { Button, Container, Img } from "@react-email/components";
-import { Subject, NotificationCategory } from "@stackframe/emails";
+import { Subject, NotificationCategory, Props } from "@stackframe/emails";
 
-export const schema = type({
-  ${variables.map(v => `${v}: "string"`).join(",\n  ")}
+export const variablesSchema = type({
+  ${variables.map(v => `${v.name}: "string"`).join(",\n  ")}
 })
 
-export function EmailTemplate({ ${propsInterface} }: typeof schema.infer) {
+export function EmailTemplate({ user, project, variables }: Props<typeof variablesSchema.infer>) {
   return (
     <>
       <Subject value={${convertHandlebarsToJSX(subject)}} />
@@ -411,16 +420,20 @@ export function EmailTemplate({ ${propsInterface} }: typeof schema.infer) {
       ${componentBody.split("\n").join("\n      ")}
     </>
   );
-}`;
+}
+
+EmailTemplate.PreviewVariables = {
+  ${variables.map(v => `${v.name}: "${v.example}"`).join(",\n  ")}
+} satisfies typeof variablesSchema.infer
+`;
+
 }
 
 export function getTransformedTemplateMetadata(metadata: EmailTemplateMetadata) {
-  const variableNames = metadata.variables.map(v => v.name);
   const configuration = metadata.defaultContent[2];
-
   return {
     displayName: metadata.label,
-    tsxSource: generateTsxSourceFromConfiguration(configuration, variableNames, metadata.defaultSubject),
+    tsxSource: generateTsxSourceFromConfiguration(configuration, metadata.variables, metadata.defaultSubject),
     themeId: false, // we want migrated templates to use no theme
   };
 }
