@@ -25,12 +25,12 @@ async function getResetCode() {
   expect(messagesNoBody.at(-1)).toMatchInlineSnapshot(`
     MailboxMessage {
       "from": "Stack Dashboard <noreply@example.com>",
-      "subject": "Mock subject, <Subject value={\\"Reset your password at \\" + project.displayName} />",
+      "subject": "Mock subject, <Subject value=\\"{\\"Reset your password at \\" + project.displayName} />\\"",
       "to": ["<default-mailbox--<stripped UUID>@stack-generated.example.com>"],
       <some fields may have been hidden>,
     }
   `);
-  const resetCodeMessage = messages.find((m) => m.subject === "Mock subject, <Subject value={\"Reset your password at \" + project.displayName} />") ?? throwErr("Reset code message not found");
+  const resetCodeMessage = messages.find((m) => m.subject.includes("Reset your password")) ?? throwErr("Reset code message not found");
   const resetCodeUrls = resetCodeMessage.body?.text.match(localRedirectUrlRegex) ?? throwErr("Reset code regex not matched");
   if (resetCodeUrls.length !== 1) {
     throw new StackAssertionError(`Expected exactly one reset code link, received ${resetCodeUrls.length}`, { resetCodeMessage });

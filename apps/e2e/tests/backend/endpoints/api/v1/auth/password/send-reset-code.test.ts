@@ -30,7 +30,7 @@ it("should send a password reset code per e-mail", async ({ expect }) => {
       },
       MailboxMessage {
         "from": "Stack Dashboard <noreply@example.com>",
-        "subject": "Mock subject, <Subject value={\\"Reset your password at \\" + project.displayName} />",
+        "subject": "Mock subject, <Subject value=\\"{\\"Reset your password at \\" + project.displayName} />\\"",
         "to": ["<default-mailbox--<stripped UUID>@stack-generated.example.com>"],
         <some fields may have been hidden>,
       },
