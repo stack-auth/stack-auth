@@ -12,21 +12,18 @@ import { getEmailThemeForTemplate, renderEmailWithTemplate } from './email-rende
 import { DEFAULT_TEMPLATE_IDS } from '@stackframe/stack-shared/dist/helpers/emails';
 
 
-export function getDefaultEmailTemplate(tenancy: Tenancy, type: keyof typeof DEFAULT_TEMPLATE_IDS) {
-  const templateList = tenancy.completeConfig.emails.templates;
-  if (type === "email_verification") {
-    return templateList[DEFAULT_TEMPLATE_IDS.email_verification];
+function getDefaultEmailTemplate(tenancy: Tenancy, type: keyof typeof DEFAULT_TEMPLATE_IDS) {
+  const templateList = new Map(Object.entries(tenancy.completeConfig.emails.templates));
+  const defaultTemplateIdsMap = new Map(Object.entries(DEFAULT_TEMPLATE_IDS));
+  const defaultTemplateId = defaultTemplateIdsMap.get(type);
+  if (defaultTemplateId) {
+    const template = templateList.get(defaultTemplateId);
+    if (!template) {
+      throw new StackAssertionError(`Default email template not found: ${type}`);
+    }
+    return template;
   }
-  if (type === "password_reset") {
-    return templateList[DEFAULT_TEMPLATE_IDS.password_reset];
-  }
-  if (type === "magic_link") {
-    return templateList[DEFAULT_TEMPLATE_IDS.magic_link];
-  }
-  if (type === "team_invitation") {
-    return templateList[DEFAULT_TEMPLATE_IDS.team_invitation];
-  }
-  return templateList[DEFAULT_TEMPLATE_IDS.sign_in_invitation];
+  throw new StackAssertionError(`Unknown email template type: ${type}`);
 }
 
 export function isSecureEmailPort(port: number | string) {
@@ -323,7 +320,15 @@ export async function sendEmailFromTemplate(options: {
     ...filterUndefined(options.extraVariables),
   });
 
-  const result = await renderEmailWithTemplate(template.tsxSource, themeSource, variables);
+  const result = await renderEmailWithTemplate(
+    template.tsxSource,
+    themeSource,
+    {
+      user: { displayName: options.user?.display_name ?? null },
+      project: { displayName: options.tenancy.project.display_name },
+      variables: filterUndefined(options.extraVariables),
+    }
+  );
   if (result.status === 'error') {
     throw new StackAssertionError("Failed to render email template", {
       template: template,

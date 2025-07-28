@@ -33,7 +33,7 @@ export default function PageClient(props: { templateId: string }) {
     return () => setNeedConfirm(false);
   }, [setNeedConfirm, template, currentCode, selectedThemeId]);
 
-  const handleThemeUpdate = (toolCall: ToolCallContent) => {
+  const handleCodeUpdate = (toolCall: ToolCallContent) => {
     setCurrentCode(toolCall.args.content);
   };
 
@@ -87,7 +87,7 @@ export default function PageClient(props: { templateId: string }) {
       }
       chatComponent={
         <AssistantChat
-          chatAdapter={createChatAdapter(stackAdminApp, template.id, "email-template", handleThemeUpdate)}
+          chatAdapter={createChatAdapter(stackAdminApp, template.id, "email-template", handleCodeUpdate)}
           historyAdapter={createHistoryAdapter(stackAdminApp, template.id)}
           toolComponents={<EmailTemplateUI setCurrentCode={setCurrentCode} />}
         />
@@ -103,15 +103,10 @@ type ThemeSelectorProps = {
 }
 
 function themeIdToSelectString(themeId: string | undefined | false): string {
-  if (themeId === false) return "false-sentinel";
-  if (themeId === undefined) return "undefined-sentinel";
-  return themeId;
+  return JSON.stringify(themeId ?? null);
 }
-
 function selectStringToThemeId(value: string): string | undefined | false {
-  if (value === "false-sentinel") return false;
-  if (value === "undefined-sentinel") return undefined;
-  return value;
+  return JSON.parse(value) ?? undefined;
 }
 
 function ThemeSelector({ selectedThemeId, onThemeChange, className }: ThemeSelectorProps) {
@@ -126,10 +121,10 @@ function ThemeSelector({ selectedThemeId, onThemeChange, className }: ThemeSelec
         <SelectValue placeholder="No theme" />
       </SelectTrigger>
       <SelectContent>
-        <SelectItem value={"false-sentinel"}>No theme</SelectItem>
-        <SelectItem value={"undefined-sentinel"}>Project theme</SelectItem>
+        <SelectItem value={"false"}>No theme</SelectItem>
+        <SelectItem value={"null"}>Project theme</SelectItem>
         {themes.map((theme) => (
-          <SelectItem key={theme.id} value={theme.id}>
+          <SelectItem key={theme.id} value={JSON.stringify(theme.id)}>
             {theme.displayName}
           </SelectItem>
         ))}

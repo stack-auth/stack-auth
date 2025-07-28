@@ -432,6 +432,12 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
     await this._interface.sendSignInInvitationEmail(email, callbackUrl);
   }
 
+  async createEmailTemplate(displayName: string): Promise<{ id: string }> {
+    const result = await this._interface.createEmailTemplate(displayName);
+    await this._adminEmailTemplatesCache.refresh([]);
+    return result;
+  }
+
   async sendChatMessage(
     threadId: string,
     contextType: "email-theme" | "email-template",

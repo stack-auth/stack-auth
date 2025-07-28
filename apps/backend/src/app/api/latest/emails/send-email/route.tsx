@@ -116,7 +116,14 @@ export const POST = createSmartRouteHandler({
 
 
       const template = createTemplateComponentFromHtml(body.html, unsubscribeLink || undefined);
-      const renderedEmail = await renderEmailWithTemplate(template, activeTheme.tsxSource);
+      const renderedEmail = await renderEmailWithTemplate(
+        template,
+        activeTheme.tsxSource,
+        {
+          user: { displayName: user.displayName },
+          project: { displayName: auth.tenancy.project.display_name },
+        },
+      );
       if (renderedEmail.status === "error") {
         userSendErrors.set(userId, "There was an error rendering the email");
         continue;
