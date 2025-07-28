@@ -28,28 +28,28 @@ type OrganizationOptions = EnvironmentOptions & { organizationId: string | null 
 export function getRenderedProjectConfigQuery(options: ProjectOptions): RawQuery<Promise<ProjectRenderedConfig>> {
   return RawQuery.then(
     getIncompleteProjectConfigQuery(options),
-    async (incompleteConfig) => sanitizeProjectConfig(normalize(await applyProjectDefaults(await incompleteConfig), { onDotIntoNonObject: "ignore" }) as any),
+    async (incompleteConfig) => await sanitizeProjectConfig(normalize(applyProjectDefaults(await incompleteConfig), { onDotIntoNonObject: "ignore" }) as any),
   );
 }
 
 export function getRenderedBranchConfigQuery(options: BranchOptions): RawQuery<Promise<BranchRenderedConfig>> {
   return RawQuery.then(
     getIncompleteBranchConfigQuery(options),
-    async (incompleteConfig) => sanitizeBranchConfig(normalize(await applyBranchDefaults(await incompleteConfig), { onDotIntoNonObject: "ignore" }) as any),
+    async (incompleteConfig) => await sanitizeBranchConfig(normalize(applyBranchDefaults(await incompleteConfig), { onDotIntoNonObject: "ignore" }) as any),
   );
 }
 
 export function getRenderedEnvironmentConfigQuery(options: EnvironmentOptions): RawQuery<Promise<EnvironmentRenderedConfig>> {
   return RawQuery.then(
     getIncompleteEnvironmentConfigQuery(options),
-    async (incompleteConfig) => sanitizeEnvironmentConfig(normalize(await applyEnvironmentDefaults(await incompleteConfig), { onDotIntoNonObject: "ignore" }) as any),
+    async (incompleteConfig) => await sanitizeEnvironmentConfig(normalize(applyEnvironmentDefaults(await incompleteConfig), { onDotIntoNonObject: "ignore" }) as any),
   );
 }
 
 export function getRenderedOrganizationConfigQuery(options: OrganizationOptions): RawQuery<Promise<OrganizationRenderedConfig>> {
   return RawQuery.then(
     getIncompleteOrganizationConfigQuery(options),
-    async (incompleteConfig) => sanitizeOrganizationConfig(normalize(await applyOrganizationDefaults(await incompleteConfig), { onDotIntoNonObject: "ignore" }) as any),
+    async (incompleteConfig) => await sanitizeOrganizationConfig(normalize(applyOrganizationDefaults(await incompleteConfig), { onDotIntoNonObject: "ignore" }) as any),
   );
 }
 
