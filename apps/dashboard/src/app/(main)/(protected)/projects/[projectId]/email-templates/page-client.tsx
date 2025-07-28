@@ -1,9 +1,12 @@
 "use client";
 
+import { FormDialog } from "@/components/form-dialog";
+import { InputField } from "@/components/form-fields";
 import { useRouter } from "@/components/router";
 import { ActionDialog, Alert, AlertDescription, AlertTitle, Button, Card, Typography } from "@stackframe/stack-ui";
 import { AlertCircle } from "lucide-react";
 import { useState } from "react";
+import * as yup from "yup";
 import { PageLayout } from "../page-layout";
 import { useAdminApp } from "../use-admin-app";
 
@@ -16,7 +19,11 @@ export default function PageClient() {
   const [sharedSmtpWarningDialogOpen, setSharedSmtpWarningDialogOpen] = useState<string | null>(null);
 
   return (
-    <PageLayout title="Email Templates" description="Customize the emails sent to your users">
+    <PageLayout
+      title="Email Templates"
+      description="Customize the emails sent to your users"
+      actions={<NewTemplateButton />}
+    >
       {emailConfig?.type === 'shared' && <Alert variant="default">
         <AlertCircle className="h-4 w-4" />
         <AlertTitle>Warning</AlertTitle>
@@ -54,7 +61,7 @@ export default function PageClient() {
         title="Shared Email Server"
         okButton={{
           label: "Edit Templates Anyway", onClick: async () => {
-            router.push(`email-templates/${sharedSmtpWarningDialogOpen}`);
+            router.push(`email-templates-new/${sharedSmtpWarningDialogOpen}`);
           }
         }}
         cancelButton={{ label: "Cancel" }}
@@ -69,5 +76,35 @@ export default function PageClient() {
         </Alert>
       </ActionDialog>
     </PageLayout>
+  );
+}
+
+function NewTemplateButton() {
+  const stackAdminApp = useAdminApp();
+  const router = useRouter();
+
+  const handleCreateNewTemplate = async (values: { name: string }) => {
+    const { id } = await stackAdminApp.createEmailTemplate(values.name);
+    router.push(`email-templates/${id}`);
+  };
+
+  return (
+    <FormDialog
+      title="New Template"
+      trigger={<Button>New Template</Button>}
+      onSubmit={handleCreateNewTemplate}
+      formSchema={yup.object({
+        name: yup.string().defined(),
+      })}
+      render={(form) => (
+        <InputField
+          control={form.control}
+          name="name"
+          label="Template Name"
+          placeholder="Enter template name"
+          required
+        />
+      )}
+    />
   );
 }

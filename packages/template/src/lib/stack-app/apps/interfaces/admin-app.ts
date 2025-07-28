@@ -79,6 +79,7 @@ export type StackAdminApp<HasTokenStore extends boolean = boolean, ProjectId ext
     saveChatMessage(threadId: string, message: any): Promise<void>,
     listChatMessages(threadId: string): Promise<{ messages: Array<any> }>,
     updateEmailTemplate(id: string, tsxSource: string, themeId: string | null | false): Promise<{ renderedHtml: string }>,
+    createEmailTemplate(displayName: string): Promise<{ id: string }>,
   }
   & StackServerApp<HasTokenStore, ProjectId>
 );
