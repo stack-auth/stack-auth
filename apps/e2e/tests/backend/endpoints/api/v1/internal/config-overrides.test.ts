@@ -398,10 +398,149 @@ it("misconfigures oauth config", async ({ expect }) => {
   expect(invalidJsonResponse.status).toBe(400);
 });
 
-it.todo("adds, updates, and removes domains");
+it("adds, updates, and removes domains", async ({ expect }) => {
+  const { adminAccessToken } = await Project.createAndSwitch({
+    config: {
+      magic_link_enabled: true,
+    }
+  });
 
-it.todo("misconfigures domains");
+  // Get initial config to verify no trusted domains exist
+  const initialResponse = await niceBackendFetch("/api/v1/internal/config-overrides", {
+    method: "GET",
+    accessType: "admin",
+    headers: {
+      'x-stack-admin-access-token': adminAccessToken,
+    },
+  });
 
-it.todo("adds, updates, and removes email config");
+  expect(initialResponse.status).toBe(200);
+  const initialConfig = JSON.parse(initialResponse.body.config);
+  expect(initialConfig.domains.trustedDomains).toEqual({});
 
-it.todo("misconfigures email config");
+  // Add a first trusted domain
+  const addFirstDomainResponse = await niceBackendFetch("/api/v1/internal/config-overrides", {
+    method: "PATCH",
+    accessType: "admin",
+    headers: {
+      'x-stack-admin-access-token': adminAccessToken,
+    },
+    body: {
+      config: JSON.stringify({
+        'domains.trustedDomains.domain-1': {
+          baseUrl: 'https://example.com',
+          handlerPath: '/auth/handler',
+        },
+      }),
+    },
+  });
+
+  expect(addFirstDomainResponse.status).toBe(200);
+  const configWithFirstDomain = JSON.parse(addFirstDomainResponse.body.config);
+  expect(configWithFirstDomain.domains.trustedDomains['domain-1']).toEqual({
+    baseUrl: 'https://example.com',
+    handlerPath: '/auth/handler',
+  });
+
+  // Add a second trusted domain
+  const addSecondDomainResponse = await niceBackendFetch("/api/v1/internal/config-overrides", {
+    method: "PATCH",
+    accessType: "admin",
+    headers: {
+      'x-stack-admin-access-token': adminAccessToken,
+    },
+    body: {
+      config: JSON.stringify({
+        'domains.trustedDomains.domain-2': {
+          baseUrl: 'https://app.example.com',
+          handlerPath: '/handler',
+        },
+      }),
+    },
+  });
+
+  expect(addSecondDomainResponse.status).toBe(200);
+  const configWithBothDomains = JSON.parse(addSecondDomainResponse.body.config);
+  expect(configWithBothDomains.domains.trustedDomains['domain-1']).toBeDefined();
+  expect(configWithBothDomains.domains.trustedDomains['domain-2']).toEqual({
+    baseUrl: 'https://app.example.com',
+    handlerPath: '/handler',
+  });
+
+  // Update the first domain
+  const updateFirstDomainResponse = await niceBackendFetch("/api/v1/internal/config-overrides", {
+    method: "PATCH",
+    accessType: "admin",
+    headers: {
+      'x-stack-admin-access-token': adminAccessToken,
+    },
+    body: {
+      config: JSON.stringify({
+        'domains.trustedDomains.domain-1': {
+          baseUrl: 'https://updated.example.com',
+          handlerPath: '/new-handler',
+        },
+      }),
+    },
+  });
+
+  expect(updateFirstDomainResponse.status).toBe(200);
+  const configWithUpdatedDomain = JSON.parse(updateFirstDomainResponse.body.config);
+  expect(configWithUpdatedDomain.domains.trustedDomains['domain-1']).toEqual({
+    baseUrl: 'https://updated.example.com',
+    handlerPath: '/new-handler',
+  });
+  // Second domain should still be there
+  expect(configWithUpdatedDomain.domains.trustedDomains['domain-2']).toBeDefined();
+
+  // Remove the second domain
+  const removeSecondDomainResponse = await niceBackendFetch("/api/v1/internal/config-overrides", {
+    method: "PATCH",
+    accessType: "admin",
+    headers: {
+      'x-stack-admin-access-token': adminAccessToken,
+    },
+    body: {
+      config: JSON.stringify({
+        'domains.trustedDomains.domain-2': null,
+      }),
+    },
+  });
+
+  expect(removeSecondDomainResponse.status).toBe(200);
+  const configWithoutSecondDomain = JSON.parse(removeSecondDomainResponse.body.config);
+  expect(configWithoutSecondDomain.domains.trustedDomains['domain-2']).toBeUndefined();
+  // First domain should still be there
+  expect(configWithoutSecondDomain.domains.trustedDomains['domain-1']).toBeDefined();
+
+  // Remove the first domain
+  const removeFirstDomainResponse = await niceBackendFetch("/api/v1/internal/config-overrides", {
+    method: "PATCH",
+    accessType: "admin",
+    headers: {
+      'x-stack-admin-access-token': adminAccessToken,
+    },
+    body: {
+      config: JSON.stringify({
+        'domains.trustedDomains.domain-1': null,
+      }),
+    },
+  });
+
+  expect(removeFirstDomainResponse.status).toBe(200);
+  const finalConfig = JSON.parse(removeFirstDomainResponse.body.config);
+  expect(finalConfig.domains.trustedDomains).toEqual({});
+
+  // Verify the changes are persisted by making another GET request
+  const verifyResponse = await niceBackendFetch("/api/v1/internal/config-overrides", {
+    method: "GET",
+    accessType: "admin",
+    headers: {
+      'x-stack-admin-access-token': adminAccessToken,
+    },
+  });
+
+  expect(verifyResponse.status).toBe(200);
+  const persistedConfig = JSON.parse(verifyResponse.body.config);
+  expect(persistedConfig.domains.trustedDomains).toEqual({});
+});
