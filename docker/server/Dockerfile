@@ -26,7 +26,7 @@ COPY . .
 RUN tsx ./scripts/generate-sdks.ts
 
 # https://turbo.build/repo/docs/guides/tools/docker
-RUN turbo prune --scope=@stackframe/stack-backend --scope=@stackframe/stack-dashboard --scope=@stackframe/mcp-server --docker
+RUN turbo prune --scope=@stackframe/stack-backend --scope=@stackframe/stack-dashboard --docker
 
 
 # Build stage

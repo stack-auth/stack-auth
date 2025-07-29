@@ -10,7 +10,11 @@
     "POSTHOG_*",
     "NODE_ENV",
     "QUETZAL_*",
-    "OTEL_*"
+    "OTEL_*",
+    "GOOGLE_AI_API_KEY",
+    "DISCORD_WEBHOOK_URL",
+    "DISCORD_CHANNEL_ID",
+    "DISCORD_BOT_TOKEN"
   ],
   "tasks": {
     "build": {
@@ -59,11 +63,6 @@
       ],
       "outputLogs": "new-only"
     },
-    "@stackframe/mcp-server#build": {
-      "dependsOn": [
-        "@stackframe/stack-backend#build"
-      ]
-    },
     "@stackframe/stack-backend#build": {
       "dependsOn": [
         "codegen"
@@ -96,9 +95,6 @@
     },
     "typecheck": {
       "dependsOn": []
-    },
-    "generate-openapi": {
-      "cache": false
     },
     "generate-keys": {
       "cache": false

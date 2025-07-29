@@ -75,10 +75,14 @@ async function main() {
   const skipUsers = flags.includes("--skip-users");
   const shouldSaveOutput = flags.includes("--save-output");
   const shouldVerifyOutput = flags.includes("--verify-output");
+  const shouldSkipNeon = flags.includes("--skip-neon");
 
 
   if (shouldSaveOutput) {
     console.log(`Will save output to ${OUTPUT_FILE_PATH}`);
+  }
+  if (shouldSkipNeon) {
+    console.log(`Will skip Neon projects.`);
   }
 
   if (shouldVerifyOutput) {
@@ -111,6 +115,7 @@ async function main() {
     select: {
       id: true,
       displayName: true,
+      description: true,
     },
     orderBy: {
       id: "asc",
@@ -127,6 +132,10 @@ async function main() {
   for (let i = startAt; i < endAt; i++) {
     const projectId = projects[i].id;
     await recurse(`[project ${(i + 1) - startAt}/${endAt - startAt}] ${projectId} ${projects[i].displayName}`, async (recurse) => {
+      if (shouldSkipNeon && projects[i].description.includes("Neon")) {
+        return;
+      }
+
       const [currentProject, users, projectPermissionDefinitions, teamPermissionDefinitions] = await Promise.all([
         expectStatusCode(200, `/api/v1/internal/projects/current`, {
           method: "GET",
