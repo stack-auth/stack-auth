@@ -163,7 +163,7 @@ it("should render email when valid theme and template TSX sources are provided",
            variables: {}</div>
         \`,
         "notification_category": "mock notification category",
-        "subject": "mock subject",
+        "subject": "Mock subject, undefined",
       },
       "headers": Headers { <some fields may have been hidden> },
     }
