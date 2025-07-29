@@ -134,6 +134,24 @@ services:
     - svix-redis
     - svix-db
 
+  # ================= Adobe S3 Mock =================
+  
+  s3mock:
+    image: adobe/s3mock:latest
+    ports:
+      - 8120:9090
+    environment:
+      - initialBuckets=stack-storage
+      - root=s3mockroot
+      - debug=false
+    volumes:
+      - s3mock-data:/tmp/s3mock
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:9090/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
 # ================= volumes =================
 
 volumes:
@@ -141,7 +159,8 @@ volumes:
   inbucket-data:
   svix-redis-data:
   svix-postgres-data:
-
+  s3mock-data:
+  
 # ================= configs =================
 
 configs:
