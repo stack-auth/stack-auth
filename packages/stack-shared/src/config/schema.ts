@@ -3,9 +3,8 @@
 import * as yup from "yup";
 import { DEFAULT_EMAIL_TEMPLATES, DEFAULT_EMAIL_THEMES, DEFAULT_EMAIL_THEME_ID } from "../helpers/emails";
 import * as schemaFields from "../schema-fields";
-import { userSpecifiedIdSchema, yupBoolean, yupDate, yupMixed, yupNever, yupNumber, yupObject, yupRecord, yupString, yupTuple, yupUnion } from "../schema-fields";
+import { yupBoolean, yupDate, yupMixed, yupNever, yupNumber, yupObject, yupRecord, yupString, yupTuple, yupUnion } from "../schema-fields";
 import { isShallowEqual } from "../utils/arrays";
-import { SUPPORTED_CURRENCIES } from "../utils/currencies";
 import { StackAssertionError } from "../utils/errors";
 import { allProviders } from "../utils/oauth";
 import { DeepFilterUndefined, DeepMerge, DeepRequiredOrUndefined, deleteKey, filterUndefined, get, has, isObjectLike, mapValues, set, typedFromEntries } from "../utils/objects";
@@ -113,64 +112,6 @@ const branchAuthSchema = yupObject({
   }),
 });
 
-const branchPaymentsSchema = yupObject({
-  autoPay: yupObject({
-    interval: schemaFields.dayIntervalSchema,
-  }).optional(),
-  exclusivityGroups: yupRecord(
-    userSpecifiedIdSchema("exclusivityGroupId"),
-    yupRecord(
-      userSpecifiedIdSchema("offerId"),
-      yupBoolean().isTrue(),
-    ),
-  ),
-  offers: yupRecord(
-    userSpecifiedIdSchema("offerId"),
-    yupObject({
-      customerType: schemaFields.customerTypeSchema,
-      freeTrial: schemaFields.dayIntervalSchema.optional(),
-      serverOnly: yupBoolean(),
-      stackable: yupBoolean(),
-      prices: yupRecord(
-        userSpecifiedIdSchema("priceId"),
-        yupObject({
-          ...typedFromEntries(SUPPORTED_CURRENCIES.map(currency => [currency.code, schemaFields.moneyAmountSchema(currency).optional()])),
-          interval: schemaFields.dayIntervalSchema.optional(),
-          serverOnly: yupBoolean(),
-          freeTrial: schemaFields.dayIntervalSchema.optional(),
-        }).test("at-least-one-currency", (value, context) => {
-          const currencies = Object.keys(value).filter(key => key.toUpperCase() === key);
-          if (currencies.length === 0) {
-            return context.createError({ message: "At least one currency is required" });
-          }
-          return true;
-        }),
-      ),
-      items: yupRecord(
-        userSpecifiedIdSchema("itemId"),
-        yupObject({
-          quantity: yupNumber(),
-          repeat: schemaFields.dayIntervalOrNeverSchema.optional(),
-          expires: yupString().oneOf(['never', 'when-purchase-expires', 'when-repeated']).optional(),
-        }),
-      ),
-    }),
-  ),
-  items: yupRecord(
-    userSpecifiedIdSchema("itemId"),
-    yupObject({
-      customerType: schemaFields.customerTypeSchema,
-      default: yupObject({
-        quantity: yupNumber(),
-        repeat: schemaFields.dayIntervalOrNeverSchema.optional(),
-        expires: yupString().oneOf(['never', 'when-repeated']).optional(),
-      }).default({
-        quantity: 0,
-      }),
-    }),
-  ),
-});
-
 const branchDomain = yupObject({
   allowLocalhost: yupBoolean(),
 });
@@ -198,8 +139,6 @@ export const branchConfigSchema = canNoLongerBeOverridden(projectConfigSchema, [
     themes: schemaFields.emailThemeListSchema,
     templates: schemaFields.emailTemplateListSchema,
   }),
-
-  payments: branchPaymentsSchema,
 }));
 
 
@@ -466,29 +405,6 @@ const organizationConfigDefaults = {
       tsxSource: "Error: Template config is missing TypeScript source code.",
       themeId: undefined,
     }),
-  },
-
-  payments: {
-    autoPay: undefined,
-    exclusivityGroups: {},
-    offers: (key: string) => ({
-      customerType: undefined,
-      freeTrial: undefined,
-      serverOnly: false,
-      stackable: undefined,
-      prices: (key: string) => ({
-        ...typedFromEntries(SUPPORTED_CURRENCIES.map(currency => [currency.code, undefined])),
-        interval: undefined,
-        serverOnly: false,
-        freeTrial: undefined,
-      }),
-      items: (key: string) => ({
-        quantity: undefined,
-        repeat: undefined,
-        expires: "when-repeated",
-      }),
-    }),
-    items: {},
   },
 } as const satisfies DefaultsType<OrganizationRenderedConfigBeforeDefaults, [typeof environmentConfigDefaults, typeof branchConfigDefaults, typeof projectConfigDefaults]>;
 
