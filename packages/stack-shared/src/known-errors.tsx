@@ -1391,6 +1391,16 @@ const EmailRenderingError = createKnownErrorConstructor(
   (json: any) => [json.error] as const,
 );
 
+const RequiresCustomEmailServer = createKnownErrorConstructor(
+  KnownError,
+  "REQUIRES_CUSTOM_EMAIL_SERVER",
+  () => [
+    400,
+    `This action requires a custom SMTP server. Please edit your email server configuration and try again.`,
+  ] as const,
+  () => [] as const,
+);
+
 
 export type KnownErrors = {
   [K in keyof typeof KnownErrors]: InstanceType<typeof KnownErrors[K]>;
@@ -1504,7 +1514,7 @@ export const KnownErrors = {
   ApiKeyRevoked,
   WrongApiKeyType,
   EmailRenderingError,
-
+  RequiresCustomEmailServer
 } satisfies Record<string, KnownErrorConstructor<any, any>>;
 
 

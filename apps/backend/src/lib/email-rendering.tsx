@@ -1,9 +1,35 @@
+import { Tenancy } from './tenancies';
 import { TracedFreestyleSandboxes } from '@/lib/freestyle';
 import { getEnvVariable, getNodeEnvironment } from '@stackframe/stack-shared/dist/utils/env';
 import { Result } from "@stackframe/stack-shared/dist/utils/results";
 import { deindent } from "@stackframe/stack-shared/dist/utils/strings";
 import { bundleJavaScript } from '@stackframe/stack-shared/dist/utils/esbuild';
 import { StackAssertionError } from '@stackframe/stack-shared/dist/utils/errors';
+import { emptyEmailTheme } from '@stackframe/stack-shared/dist/helpers/emails';
+import { get, has } from '@stackframe/stack-shared/dist/utils/objects';
+
+export function getActiveEmailTheme(tenancy: Tenancy) {
+  const themeList = tenancy.completeConfig.emails.themes;
+  const currentActiveTheme = tenancy.completeConfig.emails.selectedThemeId;
+  if (!(has(themeList, currentActiveTheme))) {
+    throw new StackAssertionError("No active email theme found", {
+      themeList,
+      currentActiveTheme,
+    });
+  }
+  return get(themeList, currentActiveTheme);
+}
+
+export function getEmailThemeForTemplate(tenancy: Tenancy, templateThemeId: string | null | false | undefined) {
+  const themeList = tenancy.completeConfig.emails.themes;
+  if (templateThemeId && has(themeList, templateThemeId)) {
+    return get(themeList, templateThemeId).tsxSource;
+  }
+  if (templateThemeId === false) {
+    return emptyEmailTheme;
+  }
+  return getActiveEmailTheme(tenancy).tsxSource;
+}
 
 export function createTemplateComponentFromHtml(
   html: string,
@@ -43,14 +69,14 @@ export async function renderEmailWithTemplate(
   }
 
   if (["development", "test"].includes(getNodeEnvironment()) && apiKey === "mock_stack_freestyle_key") {
+    console.log("templateComponent", JSON.stringify(templateComponent.match(/<Subject\s+[^>]*\/>/g)?.[0]));
     return Result.ok({
       html: `<div>Mock api key detected, \n\ntemplateComponent: ${templateComponent}\n\nthemeComponent: ${themeComponent}\n\n variables: ${JSON.stringify(variables)}</div>`,
       text: `<div>Mock api key detected, \n\ntemplateComponent: ${templateComponent}\n\nthemeComponent: ${themeComponent}\n\n variables: ${JSON.stringify(variables)}</div>`,
-      subject: "mock subject",
+      subject: `Mock subject, ${templateComponent.match(/<Subject\s+[^>]*\/>/g)?.[0]}`,
       notificationCategory: "mock notification category",
     });
   }
-  const variablesAsProps = Object.entries(variables).map(([key, value]) => `${key}={${JSON.stringify(value)}}`).join(" ");
   const result = await bundleJavaScript({
     "/utils.tsx": findComponentValueUtil,
     "/theme.tsx": themeComponent,

@@ -3,11 +3,12 @@ import { Auth, Project, backendContext, niceBackendFetch } from "../../../../../
 
 it("should send a sign-in code per e-mail", async ({ expect }) => {
   await Auth.Otp.sendSignInCode();
-  expect(await backendContext.value.mailbox.fetchMessages({ noBody: true })).toMatchInlineSnapshot(`
+  const messages = await backendContext.value.mailbox.fetchMessages({ noBody: true });
+  expect(messages).toMatchInlineSnapshot(`
     [
       MailboxMessage {
         "from": "Stack Dashboard <noreply@example.com>",
-        "subject": "Sign in to Stack Dashboard: Your code is <stripped code>",
+        "subject": "Mock subject, <Subject value=\\"{\\"Sign in to \\" + project.displayName + \\": Your code is \\" + variables.otp} />\\"",
         "to": ["<default-mailbox--<stripped UUID>@stack-generated.example.com>"],
         <some fields may have been hidden>,
       },
@@ -99,9 +100,9 @@ it("should send otp code to user", async ({ expect }) => {
   });
 
   const email = (await backendContext.value.mailbox.fetchMessages()).findLast((email) => email.subject.includes("Sign in"));
-  const match = email?.body?.text.match(/^[A-Z0-9]{6}$/sm);
-  expect(match).toHaveLength(1);
-  const code = match?.[0];
+  const match = email?.body?.text.match(/"otp":"([A-Z0-9]{6})"/);
+  expect(match).toHaveLength(2);
+  const code = match?.[1];
   expect(code).toHaveLength(6);
 });
 
