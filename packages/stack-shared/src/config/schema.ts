@@ -356,7 +356,7 @@ const organizationConfigDefaults = {
     trustedDomains: (key: string) => ({
       baseUrl: undefined,
       handlerPath: '/handler',
-    }),
+    }) as const,
   },
 
   auth: {
@@ -426,9 +426,9 @@ type DeepReplaceAllowFunctionsForObjects<T> = T extends object
     )
   :
     T;
-type ReplaceFunctionsWithObjects<T> = T & (T extends (arg: infer K extends string) => infer R ? Record<K, R | undefined> & object : unknown);
+type ReplaceFunctionsWithObjects<T> = T & (T extends (arg: infer K extends string) => infer R ? Record<K, R> & object : unknown);
 type DeepReplaceFunctionsWithObjects<T> = T extends object ? { [K in keyof ReplaceFunctionsWithObjects<T>]: DeepReplaceFunctionsWithObjects<ReplaceFunctionsWithObjects<T>[K]> } : T;
-typeAssertIs<DeepReplaceFunctionsWithObjects<{ a: { b: 123 } & ((key: string) => number) }>, { a: { b: 123, [key: string]: number | undefined } }>()();
+typeAssertIs<DeepReplaceFunctionsWithObjects<{ a: { b: 123 } & ((key: string) => number) }>, { a: { b: 123, [key: string]: number } }>()();
 
 function deepReplaceFunctionsWithObjects(obj: any): any {
   return mapValues({ ...obj }, v => (isObjectLike(v) ? deepReplaceFunctionsWithObjects(v as any) : v));
