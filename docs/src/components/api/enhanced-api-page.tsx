@@ -2,11 +2,12 @@
 
 import { ArrowRight, Check, Code, Copy, Play, Send, Settings, Zap } from 'lucide-react';
 import { useCallback, useEffect, useState } from 'react';
+import { resolveSchema } from '../../lib/openapi-utils';
 import { useAPIPageContext } from './api-page-wrapper';
 import { Button } from './button';
 
 // Types for OpenAPI specification
-type OpenAPISchema = {
+export type OpenAPISchema = {
   type?: 'string' | 'number' | 'integer' | 'boolean' | 'array' | 'object' | 'null',
   properties?: Record<string, OpenAPISchema>,
   items?: OpenAPISchema,
@@ -27,7 +28,7 @@ type OpenAPISchema = {
   additionalProperties?: boolean | OpenAPISchema,
 }
 
-type OpenAPISpec = {
+export type OpenAPISpec = {
   openapi: string,
   info: {
     title: string,
@@ -722,7 +723,6 @@ function ModernAPIPlayground({
           response={requestState.response}
           operation={operation}
           spec={spec}
-          generateExample={generateExample}
         />
 
         {/* Code Examples */}
@@ -860,20 +860,7 @@ function ResponseSchemaSection({
 }: {
   operation: OpenAPIOperation,
   spec: OpenAPISpec,
-  generateExample: (schema: OpenAPISchema, spec?: OpenAPISpec) => unknown,
 }) {
-  // Handle $ref references
-  const resolveSchema = (schema: OpenAPISchema): OpenAPISchema => {
-    if (schema.$ref) {
-      const refPath = schema.$ref.replace('#/', '').split('/');
-      let refSchema: OpenAPISchema | undefined = spec as unknown as OpenAPISchema;
-      for (const part of refPath) {
-        refSchema = (refSchema as Record<string, unknown>)[part] as OpenAPISchema;
-      }
-      return refSchema!;
-    }
-    return schema;
-  };
 
   // Get response schema
   const getResponseSchema = () => {
@@ -900,7 +887,7 @@ function ResponseSchemaSection({
     depth: number = 0,
     parentPath: string = ''
   ): React.ReactNode => {
-    const resolvedFieldSchema = resolveSchema(fieldSchema);
+    const resolvedFieldSchema = resolveSchema(fieldSchema, spec);
     const fullPath = parentPath ? `${parentPath}.${fieldName}` : fieldName;
     const indentClass = depth > 0 ? `ml-${depth * 4}` : '';
 
@@ -1038,7 +1025,7 @@ function ResponseSchemaSection({
     );
   }
 
-  const resolvedSchema = resolveSchema(responseSchema);
+  const resolvedSchema = resolveSchema(responseSchema, spec);
 
   // Check if schema is empty (like {}) or has no meaningful content
   const isEmpty = !resolvedSchema.type && !resolvedSchema.properties && Object.keys(resolvedSchema).length === 0;
@@ -1114,20 +1101,7 @@ function RequestBodyFieldsSection({
 
   const schema = requestBody.content['application/json'].schema;
 
-  // Handle $ref references
-  const resolveSchema = (schema: OpenAPISchema): OpenAPISchema => {
-    if (schema.$ref) {
-      const refPath = schema.$ref.replace('#/', '').split('/');
-      let refSchema: OpenAPISchema | undefined = spec as unknown as OpenAPISchema;
-      for (const part of refPath) {
-        refSchema = (refSchema as Record<string, unknown>)[part] as OpenAPISchema;
-      }
-      return refSchema!;
-    }
-    return schema;
-  };
-
-  const resolvedSchema = resolveSchema(schema);
+  const resolvedSchema = resolveSchema(schema, spec);
 
   // Only handle object schemas with properties
   if (resolvedSchema.type !== 'object' || !resolvedSchema.properties) {
@@ -1142,7 +1116,7 @@ function RequestBodyFieldsSection({
       </div>
       <div className="space-y-4">
         {Object.entries(resolvedSchema.properties).map(([fieldName, fieldSchema]: [string, OpenAPISchema]) => {
-          const resolvedFieldSchema = resolveSchema(fieldSchema);
+          const resolvedFieldSchema = resolveSchema(fieldSchema, spec);
           const isRequired = resolvedSchema.required?.includes(fieldName);
 
           return (
@@ -1175,7 +1149,14 @@ function RequestBodyFieldsSection({
                 type={resolvedFieldSchema.type === 'number' || resolvedFieldSchema.type === 'integer' ? 'number' : 'text'}
                 placeholder={resolvedFieldSchema.example ? String(resolvedFieldSchema.example) : `Enter ${fieldName}`}
                 value={String(values[fieldName] || '')}
-                onChange={(e) => onChange({ ...values, [fieldName]: e.target.value })}
+                onChange={(e) => {
+                  let value: string | number = e.target.value;
+                  // Convert to number for number/integer types
+                  if (resolvedFieldSchema.type === 'number' || resolvedFieldSchema.type === 'integer') {
+                    value = e.target.value === '' ? '' : Number(e.target.value);
+                  }
+                  onChange({ ...values, [fieldName]: value });
+                }}
                 className="w-full px-3 py-2 border border-fd-border rounded-md bg-fd-background text-fd-foreground text-sm focus:outline-none focus:ring-2 focus:ring-fd-primary focus:border-fd-primary"
               />
             </div>
@@ -1191,20 +1172,19 @@ function ResponsePanel({
   response,
   operation,
   spec,
-  generateExample
 }: {
   response: RequestState['response'],
   operation: OpenAPIOperation,
   spec: OpenAPISpec,
-  generateExample: (schema: OpenAPISchema, spec?: OpenAPISpec) => unknown,
 }) {
   const [activeTab, setActiveTab] = useState<'expected' | 'live'>('expected');
 
-
   // Auto-switch to live tab when request starts
-  if (response.loading && activeTab === 'expected') {
-    setActiveTab('live');
-  }
+  useEffect(() => {
+    if (response.loading && activeTab === 'expected') {
+      setActiveTab('live');
+    }
+  }, [response.loading, activeTab]);
 
   return (
     <div className="bg-fd-card border border-fd-border rounded-lg">
@@ -1261,7 +1241,6 @@ function ResponsePanel({
             <ResponseSchemaSection
               operation={operation}
               spec={spec}
-              generateExample={generateExample}
             />
           </div>
         )}
