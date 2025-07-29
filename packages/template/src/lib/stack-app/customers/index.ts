@@ -50,6 +50,6 @@ export type Customer =
   & {
     readonly id: string,
 
-    createCheckoutUrl(offerIdOrInline: string | InlineOffer): Promise<void>,
+    createCheckoutUrl(offerIdOrInline: string | InlineOffer): Promise<string>,
   }
   & AsyncStoreProperty<"item", [itemId: string], Item, false>
