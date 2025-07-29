@@ -569,6 +569,9 @@ export function deleteKey<T extends object, K extends keyof T>(obj: T, key: K) {
   }
 }
 
-export function isObjectLike(value: unknown): value is object {
+/**
+ * Returns truee iff the value is an object or a function, but not null.
+ */
+export function isObjectLike(value: unknown): value is object | Function {
   return (typeof value === 'object' || typeof value === 'function') && value !== null;
 }
