@@ -114,7 +114,7 @@ export function getProjectConfigOverrideQuery(options: ProjectOptions): RawQuery
         throw new StackAssertionError(`Expected 0 or 1 project config overrides for project ${options.projectId}, got ${queryResult.length}`, { queryResult });
       }
       if (queryResult.length === 0) {
-        throw new StackAssertionError(`Expected 1 project config override for project ${options.projectId}, got 0`, { queryResult, options });
+        throw new StackAssertionError(`Expected a project row for project ${options.projectId}, got 0`, { queryResult, options });
       }
       return queryResult[0].projectConfigOverride ?? {};
     },

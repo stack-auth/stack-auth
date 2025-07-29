@@ -59,9 +59,9 @@ async function _sendEmailWithoutRetries(options: SendEmailOptions): Promise<Resu
 }>> {
   let finished = false;
   runAsynchronously(async () => {
-    await wait(5000);
+    await wait(10000);
     if (!finished) {
-      captureError("email-send-timeout", new StackAssertionError("Email send took longer than 5s; maybe the email service is too slow?", {
+      captureError("email-send-timeout", new StackAssertionError("Email send took longer than 10s; maybe the email service is too slow?", {
         config: options.emailConfig.type === 'shared' ? "shared" : pick(options.emailConfig, ['host', 'port', 'username', 'senderEmail', 'senderName']),
         to: options.to,
         subject: options.subject,
@@ -78,7 +78,20 @@ async function _sendEmailWithoutRetries(options: SendEmailOptions): Promise<Resu
     if (options.emailConfig.type === 'shared' && emailableApiKey) {
       await traceSpan('verifying email addresses with Emailable', async () => {
         toArray = (await Promise.all(toArray.map(async (to) => {
-          const emailableResponse = await fetch(`https://api.emailable.com/v1/verify?email=${encodeURIComponent(options.to as string)}&api_key=${emailableApiKey}`);
+          const emailableResponseResult = await Result.retry(async (attempt) => {
+            const res = await fetch(`https://api.emailable.com/v1/verify?email=${encodeURIComponent(options.to as string)}&api_key=${emailableApiKey}`);
+            if (res.status === 249) {
+              const text = await res.text();
+              console.log('Emailable is taking longer than expected, retrying...', text, { to: options.to });
+              return Result.error(new Error("Emailable API returned a 249 error for " + options.to + ". This means it takes some more time to verify the email address. Response body: " + text));
+            }
+            return Result.ok(res);
+          }, 4, { exponentialDelayBase: 4000 });
+          if (emailableResponseResult.status === 'error') {
+            captureError("emailable-api-timeout", emailableResponseResult.error);
+            return to;
+          }
+          const emailableResponse = emailableResponseResult.data;
           if (!emailableResponse.ok) {
             throw new StackAssertionError("Failed to verify email address with Emailable", {
               to: options.to,
@@ -87,7 +100,8 @@ async function _sendEmailWithoutRetries(options: SendEmailOptions): Promise<Resu
             });
           }
           const json = await emailableResponse.json();
-          if (json.state === 'undeliverable') {
+          console.log('emailableResponse', json);
+          if (json.state === 'undeliverable' || json.disposable) {
             console.log('email not deliverable', to, json);
             return null;
           }
