@@ -147,7 +147,7 @@ const branchPaymentsSchema = yupObject({
           return true;
         }),
       ),
-      items: yupRecord(
+      includedItems: yupRecord(
         userSpecifiedIdSchema("itemId"),
         yupObject({
           quantity: yupNumber(),
@@ -238,7 +238,7 @@ export const environmentConfigSchema = branchConfigSchema.concat(yupObject({
 
   domains: branchConfigSchema.getNested("domains").concat(yupObject({
     trustedDomains: yupRecord(
-      yupString(),
+      userSpecifiedIdSchema("trustedDomainId"),
       yupObject({
         baseUrl: schemaFields.urlSchema,
         handlerPath: schemaFields.handlerPathSchema,
@@ -485,7 +485,7 @@ const organizationConfigDefaults = {
         serverOnly: false,
         freeTrial: undefined,
       }),
-      items: (key: string) => ({
+      includedItems: (key: string) => ({
         quantity: undefined,
         repeat: "never",
         expires: "when-repeated",

@@ -1,12 +1,12 @@
 import * as yup from "yup";
 import { KnownErrors } from ".";
 import { isBase64 } from "./utils/bytes";
-import { Currency, MoneyAmount } from "./utils/currencies";
+import { Currency, MoneyAmount, SUPPORTED_CURRENCIES } from "./utils/currencies";
 import { DayInterval, Interval } from "./utils/dates";
 import { StackAssertionError, throwErr } from "./utils/errors";
 import { decodeBasicAuthorizationHeader } from "./utils/http";
 import { allProviders } from "./utils/oauth";
-import { deepPlainClone, omit } from "./utils/objects";
+import { deepPlainClone, omit, typedFromEntries } from "./utils/objects";
 import { deindent } from "./utils/strings";
 import { isValidUrl } from "./utils/urls";
 import { isUuid } from "./utils/uuids";
@@ -489,6 +489,34 @@ export const emailTemplateListSchema = yupRecord(
 
 // Payments
 export const customerTypeSchema = yupString().oneOf(['user', 'team']);
+export const inlineOfferSchema = yupObject({
+  displayName: yupString().defined(),
+  customerType: customerTypeSchema.defined(),
+  freeTrial: dayIntervalSchema.optional(),
+  serverOnly: yupBoolean().oneOf([true]).default(true),
+  prices: yupRecord(
+    userSpecifiedIdSchema("priceId"),
+    yupObject({
+      ...typedFromEntries(SUPPORTED_CURRENCIES.map(currency => [currency.code, moneyAmountSchema(currency).optional()])),
+      interval: dayIntervalSchema.optional(),
+      freeTrial: dayIntervalSchema.optional(),
+    }).test("at-least-one-currency", (value, context) => {
+      const currencies = Object.keys(value).filter(key => key.toUpperCase() === key);
+      if (currencies.length === 0) {
+        return context.createError({ message: "At least one currency is required" });
+      }
+      return true;
+    }),
+  ),
+  includedItems: yupRecord(
+    userSpecifiedIdSchema("itemId"),
+    yupObject({
+      quantity: yupNumber(),
+      repeat: dayIntervalOrNeverSchema.optional(),
+      expires: yupString().oneOf(['never', 'when-purchase-expires', 'when-repeated']).optional(),
+    }),
+  ),
+});
 
 // Users
 export class ReplaceFieldWithOwnUserId extends Error {

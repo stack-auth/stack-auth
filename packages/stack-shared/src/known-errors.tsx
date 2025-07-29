@@ -1473,17 +1473,17 @@ const OfferDoesNotExist = createKnownErrorConstructor(
 const OfferCustomerTypeDoesNotMatch = createKnownErrorConstructor(
   KnownError,
   "OFFER_CUSTOMER_TYPE_DOES_NOT_MATCH",
-  (offerId: string, customerId: string, offerCustomerType: "user" | "team" | undefined, actualCustomerType: "user" | "team") => [
+  (offerId: string | undefined, customerId: string, offerCustomerType: "user" | "team" | undefined, actualCustomerType: "user" | "team") => [
     400,
-    `The ${actualCustomerType} with ID ${JSON.stringify(customerId)} is not a valid customer for the offer with ID ${JSON.stringify(offerId)}. ${offerCustomerType ? `The offer is configured to only be available for ${offerCustomerType} customers, but the customer is a ${actualCustomerType}.` : `The offer is missing a customer type field. Please make sure it is set up correctly in your project configuration.`}`,
+    `The ${actualCustomerType} with ID ${JSON.stringify(customerId)} is not a valid customer for the inline offer that has been passed in. ${offerCustomerType ? `The offer is configured to only be available for ${offerCustomerType} customers, but the customer is a ${actualCustomerType}.` : `The offer is missing a customer type field. Please make sure it is set up correctly in your project configuration.`}`,
     {
-      offer_id: offerId,
+      offer_id: offerId ?? null,
       customer_id: customerId,
       offer_customer_type: offerCustomerType ?? null,
       actual_customer_type: actualCustomerType,
     },
   ] as const,
-  (json) => [json.offer_id, json.customer_id, json.offer_customer_type ?? undefined, json.actual_customer_type] as const,
+  (json) => [json.offer_id ?? undefined, json.customer_id, json.offer_customer_type ?? undefined, json.actual_customer_type] as const,
 );
 
 

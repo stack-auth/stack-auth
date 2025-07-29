@@ -1,9 +1,7 @@
-import { ensureOfferCustomerTypeMatches } from "@/lib/payments";
+import { ensureOfferCustomerTypeMatches, ensureOfferIdOrInlineOffer } from "@/lib/payments";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
-import { KnownErrors } from "@stackframe/stack-shared";
-import { adaptSchema, clientOrHigherAuthTypeSchema, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
+import { adaptSchema, clientOrHigherAuthTypeSchema, inlineOfferSchema, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
 import { StackAssertionError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
-import { getOrUndefined } from "@stackframe/stack-shared/dist/utils/objects";
 
 export const POST = createSmartRouteHandler({
   metadata: {
@@ -15,9 +13,10 @@ export const POST = createSmartRouteHandler({
       project: adaptSchema.defined(),
       tenancy: adaptSchema.defined(),
     }).defined(),
-    params: yupObject({
+    body: yupObject({
       customer_id: yupString().defined(),
-      offer_id: yupString().defined(),
+      offer_id: yupString().optional(),
+      offer_inline: inlineOfferSchema.optional(),
     }),
   }),
   response: yupObject({
@@ -28,14 +27,10 @@ export const POST = createSmartRouteHandler({
     }).defined(),
   }),
   handler: async (req) => {
-    const { project, tenancy } = req.auth;
+    const { tenancy } = req.auth;
 
-    const offerConfig = getOrUndefined(tenancy.completeConfig.payments.offers, req.params.offer_id);
-    if (!offerConfig || (offerConfig.serverOnly && req.auth.type === "client")) {
-      throw new KnownErrors.OfferDoesNotExist(req.params.offer_id, req.auth.type);
-    }
-
-    await ensureOfferCustomerTypeMatches(req.params.offer_id, offerConfig.customerType, req.params.customer_id, tenancy);
+    let offerConfig = await ensureOfferIdOrInlineOffer(tenancy, req.auth.type, req.body.offer_id, req.body.offer_inline);
+    await ensureOfferCustomerTypeMatches(req.body.offer_id, offerConfig.customerType, req.body.customer_id, tenancy);
 
     // TODO implement
     const url = throwErr(new StackAssertionError("unimplemented"));
