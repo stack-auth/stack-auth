@@ -39,6 +39,7 @@ export const POST = createSmartRouteHandler({
       templateType: "sign_in_invitation",
       extraVariables: {
         signInInvitationLink: body.callback_url,
+        teamDisplayName: auth.tenancy.project.display_name,
       },
     });
 

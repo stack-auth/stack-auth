@@ -160,11 +160,10 @@ it("should render email when valid theme and template TSX sources are provided",
                   export default EmailTheme;
                 
           
-           variables: {"projectDisplayName":"Stack Dashboard","teamDisplayName":"My Team","userDisplayName":"John Doe","emailVerificationLink":"<email verification link>","otp":"3SLSWZ","magicLink":"<magic link>","passwordResetLink":"<password reset link>","teamInvitationLink":"<team invitation link>","signInInvitationLink":"<sign in invitation link>"}</div>
+           variables: {}</div>
         \`,
         "notification_category": "mock notification category",
-        "schema": {},
-        "subject": "mock subject",
+        "subject": "Mock subject, undefined",
       },
       "headers": Headers { <some fields may have been hidden> },
     }

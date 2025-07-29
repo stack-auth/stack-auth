@@ -1,9 +1,9 @@
 import { overrideEnvironmentConfigOverride } from "@/lib/config";
-import { renderEmailWithTemplate } from "@/lib/email-rendering";
+import { getActiveEmailTheme, renderEmailWithTemplate } from "@/lib/email-rendering";
 import { globalPrismaClient } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { KnownErrors } from "@stackframe/stack-shared/dist/known-errors";
-import { adaptSchema, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
+import { adaptSchema, templateThemeIdSchema, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
 import { StatusError } from "@stackframe/stack-shared/dist/utils/errors";
 
 
@@ -21,7 +21,7 @@ export const PATCH = createSmartRouteHandler({
     }).defined(),
     body: yupObject({
       tsx_source: yupString().defined(),
-      theme_id: yupString().uuid().optional(),
+      theme_id: templateThemeIdSchema.nullable(),
     }).defined(),
   }),
   response: yupObject({
@@ -32,12 +32,18 @@ export const PATCH = createSmartRouteHandler({
     }).defined(),
   }),
   async handler({ auth: { tenancy }, params: { templateId }, body }) {
+    if (tenancy.completeConfig.emails.server.isShared) {
+      throw new KnownErrors.RequiresCustomEmailServer();
+    }
     const templateList = tenancy.completeConfig.emails.templates;
     if (!Object.keys(templateList).includes(templateId)) {
       throw new StatusError(StatusError.NotFound, "No template found with given id");
     }
-    const theme = tenancy.completeConfig.emails.themes[tenancy.completeConfig.emails.selectedThemeId];
-    const result = await renderEmailWithTemplate(body.tsx_source, theme.tsxSource, { projectDisplayName: tenancy.project.display_name });
+    const theme = getActiveEmailTheme(tenancy);
+    const result = await renderEmailWithTemplate(body.tsx_source, theme.tsxSource, {
+      variables: { projectDisplayName: tenancy.project.display_name },
+      previewMode: true,
+    });
     if (result.status === "error") {
       throw new KnownErrors.EmailRenderingError(result.error);
     }
@@ -46,9 +52,6 @@ export const PATCH = createSmartRouteHandler({
     }
     if (result.data.notificationCategory === undefined) {
       throw new KnownErrors.EmailRenderingError("NotificationCategory is required, import it from @stackframe/emails");
-    }
-    if (result.data.schema === undefined) {
-      throw new KnownErrors.EmailRenderingError("schema is required and must be exported");
     }
 
     await overrideEnvironmentConfigOverride({

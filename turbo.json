@@ -59,11 +59,6 @@
       ],
       "outputLogs": "new-only"
     },
-    "@stackframe/mcp-server#build": {
-      "dependsOn": [
-        "@stackframe/stack-backend#build"
-      ]
-    },
     "@stackframe/stack-backend#build": {
       "dependsOn": [
         "codegen"
@@ -96,9 +91,6 @@
     },
     "typecheck": {
       "dependsOn": []
-    },
-    "generate-openapi": {
-      "cache": false
     },
     "generate-keys": {
       "cache": false

@@ -82,7 +82,7 @@ services:
   # ================= Inbucket =================
 
   inbucket:
-    image: inbucket/inbucket:latest
+    image: inbucket/inbucket:3.1.0
     ports:
       - 2500:2500
       - 8105:9000
