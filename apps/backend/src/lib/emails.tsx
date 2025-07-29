@@ -1,22 +1,18 @@
-import { getProject } from '@/lib/projects';
-import { getPrismaClientForTenancy, globalPrismaClient } from '@/prisma-client';
+import { getPrismaClientForTenancy } from '@/prisma-client';
 import { traceSpan } from '@/utils/telemetry';
-import { TEditorConfiguration } from '@stackframe/stack-emails/dist/editor/documents/editor/core';
-import { EMAIL_TEMPLATES_METADATA } from '@stackframe/stack-emails/dist/utils';
 import { UsersCrud } from '@stackframe/stack-shared/dist/interface/crud/users';
 import { getEnvVariable } from '@stackframe/stack-shared/dist/utils/env';
 import { StackAssertionError, StatusError, captureError } from '@stackframe/stack-shared/dist/utils/errors';
 import { filterUndefined, omit, pick } from '@stackframe/stack-shared/dist/utils/objects';
 import { runAsynchronously, wait } from '@stackframe/stack-shared/dist/utils/promises';
 import { Result } from '@stackframe/stack-shared/dist/utils/results';
-import { typedToUppercase } from '@stackframe/stack-shared/dist/utils/strings';
 import nodemailer from 'nodemailer';
 import { Tenancy, getTenancy } from './tenancies';
 import { getEmailThemeForTemplate, renderEmailWithTemplate } from './email-rendering';
 import { DEFAULT_TEMPLATE_IDS } from '@stackframe/stack-shared/dist/helpers/emails';
 
 
-export function getNewEmailTemplate(tenancy: Tenancy, type: keyof typeof EMAIL_TEMPLATES_METADATA) {
+function getDefaultEmailTemplate(tenancy: Tenancy, type: keyof typeof DEFAULT_TEMPLATE_IDS) {
   const templateList = new Map(Object.entries(tenancy.completeConfig.emails.templates));
   const defaultTemplateIdsMap = new Map(Object.entries(DEFAULT_TEMPLATE_IDS));
   const defaultTemplateId = defaultTemplateIdsMap.get(type);
@@ -28,40 +24,6 @@ export function getNewEmailTemplate(tenancy: Tenancy, type: keyof typeof EMAIL_T
     return template;
   }
   throw new StackAssertionError(`Unknown email template type: ${type}`);
-}
-
-export async function getEmailTemplate(projectId: string, type: keyof typeof EMAIL_TEMPLATES_METADATA) {
-  const project = await getProject(projectId);
-  if (!project) {
-    throw new Error("Project not found");
-  }
-
-  const template = await globalPrismaClient.emailTemplate.findUnique({
-    where: {
-      projectId_type: {
-        projectId,
-        type: typedToUppercase(type),
-      },
-    },
-  });
-
-  return template ? {
-    ...template,
-    content: template.content as TEditorConfiguration,
-  } : null;
-}
-
-export async function getEmailTemplateWithDefault(projectId: string, type: keyof typeof EMAIL_TEMPLATES_METADATA, version: 1 | 2 = 2) {
-  const template = await getEmailTemplate(projectId, type);
-  if (template) {
-    return template;
-  }
-  return {
-    type,
-    content: EMAIL_TEMPLATES_METADATA[type].defaultContent[version],
-    subject: EMAIL_TEMPLATES_METADATA[type].defaultSubject,
-    default: true,
-  };
 }
 
 export function isSecureEmailPort(port: number | string) {
@@ -346,11 +308,11 @@ export async function sendEmailFromTemplate(options: {
   tenancy: Tenancy,
   user: UsersCrud["Admin"]["Read"] | null,
   email: string,
-  templateType: keyof typeof EMAIL_TEMPLATES_METADATA,
+  templateType: keyof typeof DEFAULT_TEMPLATE_IDS,
   extraVariables: Record<string, string | null>,
   version?: 1 | 2,
 }) {
-  const template = getNewEmailTemplate(options.tenancy, options.templateType);
+  const template = getDefaultEmailTemplate(options.tenancy, options.templateType);
   const themeSource = getEmailThemeForTemplate(options.tenancy, template.themeId);
   const variables = filterUndefined({
     projectDisplayName: options.tenancy.project.display_name,

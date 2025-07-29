@@ -69,6 +69,7 @@ export async function renderEmailWithTemplate(
   }
 
   if (["development", "test"].includes(getNodeEnvironment()) && apiKey === "mock_stack_freestyle_key") {
+    console.log("templateComponent", JSON.stringify(templateComponent.match(/<Subject\s+[^>]*\/>/g)?.[0]));
     return Result.ok({
       html: `<div>Mock api key detected, \n\ntemplateComponent: ${templateComponent}\n\nthemeComponent: ${themeComponent}\n\n variables: ${JSON.stringify(variables)}</div>`,
       text: `<div>Mock api key detected, \n\ntemplateComponent: ${templateComponent}\n\nthemeComponent: ${themeComponent}\n\n variables: ${JSON.stringify(variables)}</div>`,
@@ -76,7 +77,6 @@ export async function renderEmailWithTemplate(
       notificationCategory: "mock notification category",
     });
   }
-  const variablesAsProps = Object.entries(variables).map(([key, value]) => `${key}={${JSON.stringify(value)}}`).join(" ");
   const result = await bundleJavaScript({
     "/utils.tsx": findComponentValueUtil,
     "/theme.tsx": themeComponent,
