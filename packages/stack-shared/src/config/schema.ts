@@ -396,11 +396,11 @@ const organizationConfigDefaults = {
       senderEmail: undefined,
     },
     selectedThemeId: DEFAULT_EMAIL_THEME_ID,
-    themes: (key: string) => ({
+    themes: (key: string) => (has(DEFAULT_EMAIL_THEMES, key as any) ? get(DEFAULT_EMAIL_THEMES, key) : {
       displayName: "Unnamed Theme",
       tsxSource: "Error: Theme config is missing TypeScript source code.",
     }),
-    templates: (key: string) => ({
+    templates: (key: string) => (has(DEFAULT_EMAIL_TEMPLATES, key as any) ? get(DEFAULT_EMAIL_TEMPLATES, key) : {
       displayName: "Unnamed Template",
       tsxSource: "Error: Template config is missing TypeScript source code.",
       themeId: undefined,
@@ -437,13 +437,13 @@ export function applyDefaults<D extends object | ((key: string) => unknown), C e
       } else {
         baseValue = has(baseValue, part) ? get(baseValue, part) : undefined;
       }
-      if (baseValue === undefined || !isObjectLike(baseValue) || !isObjectLike(mergeValue)) {
+      if (currentRes) currentRes = has(currentRes, part) ? get(currentRes, part) : undefined;
+      if (baseValue === undefined || !isObjectLike(baseValue)) {
         set(res, key, mergeValue);
         continue outer;
       }
-      if (currentRes) currentRes = has(currentRes, part) ? get(currentRes, part) : undefined;
     }
-    set(res, key, applyDefaults(baseValue, mergeValue));
+    set(res, key, isObjectLike(mergeValue) ? applyDefaults(baseValue, mergeValue) : mergeValue);
   }
   return res as any;
 }
@@ -470,6 +470,7 @@ import.meta.vitest?.test("applyDefaults", ({ expect }) => {
   expect(applyDefaults({ a: { b: { c: { d: 1 } } } }, { "a.b.c": {} })).toEqual({ a: { b: { c: { d: 1 } } }, "a.b.c": { d: 1 } });
   expect(applyDefaults({ a: () => ({ c: 1 }) }, { "a.b": { d: 2 } })).toEqual({ a: { b: { c: 1 } }, "a.b": { c: 1, d: 2 } });
   expect(applyDefaults({ a: () => () => ({ d: 1 }) }, { "a.b.c": {} })).toEqual({ a: { b: { c: { d: 1 } } }, "a.b.c": { d: 1 } });
+  expect(applyDefaults({ a: { b: () => ({ c: 1, d: 2 }) } }, { "a.b.x-y.c": 3 })).toEqual({ a: { b: { "x-y": { c: 1, d: 2 } } }, "a.b.x-y.c": 3 });
 });
 
 export function applyProjectDefaults<T extends ProjectRenderedConfigBeforeDefaults>(config: T) {
@@ -561,16 +562,17 @@ export async function sanitizeOrganizationConfig(config: OrganizationRenderedCon
     ...DEFAULT_EMAIL_THEMES,
     ...prepared.emails.themes,
   };
+  const templates: typeof prepared.emails.templates = {
+    ...DEFAULT_EMAIL_TEMPLATES,
+    ...prepared.emails.templates,
+  };
   return {
     ...prepared,
     emails: {
       ...prepared.emails,
       selectedThemeId: has(themes, prepared.emails.selectedThemeId) ? prepared.emails.selectedThemeId : DEFAULT_EMAIL_THEME_ID,
       themes,
-      templates: {
-        ...DEFAULT_EMAIL_TEMPLATES,
-        ...prepared.emails.templates,
-      } as typeof prepared.emails.templates,
+      templates,
     },
   };
 }
