@@ -1,31 +1,46 @@
-export const previewTemplateSource = `
+import { deindent } from "../utils/strings";
+
+export const previewTemplateSource = deindent`
+  import { Heading, Section, Button, Link, Column } from "@react-email/components";
   export const variablesSchema = v => v;
   export function EmailTemplate() {
-    return (
-      <div>
-      <h2 className="mb-4 text-2xl font-bold">
+    return <>
+      <Heading as="h2" className="mb-4 text-2xl font-bold">
         Header text
-      </h2>
-      <p className="mb-4">
+      </Heading>
+      <Section className="mb-4">
         Body text content with some additional information.
-        </p>
-      </div>
-    );
+      </Section>
+      <Row className="mb-4">
+        <Column>
+          <Button href="https://example.com">
+            A button
+          </Button>
+        </Column>
+        <Column>
+          <Link href="https://example.com">
+            A link
+          </Link>
+        </Column>
+      </Row>
+    </>;
   }
 `;
 
-export const emptyEmailTheme = `import { Html, Tailwind, Body } from '@react-email/components';
-export function EmailTheme({ children }: { children: React.ReactNode }) {
-  return (
-    <Html>
-      <Tailwind>
-        <Body>
-          {children}
-        </Body>
-      </Tailwind>
-    </Html>
-  );
-}`;
+export const emptyEmailTheme = deindent`
+  import { Html, Tailwind, Body } from '@react-email/components';
+  export function EmailTheme({ children }: { children: React.ReactNode }) {
+    return (
+      <Html>
+        <Tailwind>
+          <Body>
+            {children}
+          </Body>
+        </Tailwind>
+      </Html>
+    );
+  }
+`;
 
 export const LightEmailTheme = `import { Html, Head, Tailwind, Body, Container } from '@react-email/components';
 
