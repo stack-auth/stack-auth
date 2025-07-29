@@ -221,7 +221,7 @@ export function migrateConfigOverride(type: "project" | "branch" | "environment"
   }
   // END
 
-  // BEGIN 2025-07-28: themeList and templateList have been renamed (this was before the release, so they're safe to remove)
+  // BEGIN 2025-07-28: themeList and templateList have been renamed (this was before the email release, so they're safe to remove)
   if (isBranchOrHigher) {
     res = removeProperty(res, "emails.themeList");
     res = removeProperty(res, "emails.templateList");
@@ -780,8 +780,6 @@ export async function getIncompleteConfigWarnings<T extends yup.AnySchema>(schem
   }
 }
 export type ValidatedToHaveNoIncompleteConfigWarnings<T extends yup.AnySchema> = yup.InferType<T>;
-
-type T = (yup.InferType<typeof branchConfigSchema>)["auth"];
 
 
 // Normalized overrides

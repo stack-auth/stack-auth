@@ -149,7 +149,7 @@ type NormalizeOptions = {
    */
   onDotIntoNonObject?: "throw" | "ignore",
   /**
-   * What to do if a dot notation is used on a value that is not an object.
+   * What to do if a dot notation is used on a value that is null.
    *
    * - "like-non-object"  (default): Treat it like a non-object. See `onDotIntoNonObject`.
    * - "throw": Throw an error.
@@ -208,6 +208,7 @@ export function normalize(c: Config, options: NormalizeOptions = {}): Normalized
           }
           case "empty-object": {
             set(current, keySegment, {});
+            break;
           }
         }
       }

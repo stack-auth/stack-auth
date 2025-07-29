@@ -397,9 +397,6 @@ import.meta.vitest?.test('_validateConfigOverrideSchemaImpl(...)', async ({ expe
     ).defined()
   }).defined();
 
-  const da = ((c: any) => c) as any;
-  const sr = ((c: any) => c) as any;
-
   // Base success cases
   expect(await validateConfigOverrideSchema(schema1, {}, {})).toEqual(Result.ok(null));
   expect(await validateConfigOverrideSchema(schema1, { a: 'b' }, {})).toEqual(Result.ok(null));

@@ -8,8 +8,6 @@ export type Join<T extends string[], Separator extends string> =
       ? `${U}${Rest extends [any, ...any[]] ? `${Separator}${Join<Rest, Separator>}` : ""}`
       : "<error-joining-strings>";
 
-type T = Join<["a", "b", "c"], ", ">;
-
 export function typedJoin<T extends string[], Separator extends string>(strings: T, separator: Separator): Join<T, Separator> {
   return strings.join(separator) as Join<T, Separator>;
 }
