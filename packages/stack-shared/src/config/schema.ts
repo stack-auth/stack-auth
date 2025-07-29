@@ -282,10 +282,26 @@ export function migrateConfigOverride(type: "project" | "branch" | "environment"
   }
   // END
 
+  // BEGIN 2025-07-28: themeList and templateList have been renamed (this was before the release, so they're safe to remove)
+  if (isBranchOrHigher) {
+    res = removeProperty(res, "emails.themeList");
+    res = removeProperty(res, "emails.templateList");
+  }
+  // END
+
+  // BEGIN 2025-07-28: sourceOfTruth was mistakenly written to the environment config in some cases, so let's remove it
+  if (type === "environment") {
+    res = removeProperty(res, "sourceOfTruth");
+  }
+  // END
 
   // return the result
   return res;
 };
+
+function removeProperty(obj: any, path: string): any {
+  return mapProperty(obj, path, () => undefined);
+}
 
 function mapProperty(obj: any, path: string, mapper: (value: any) => any): any {
   const keyParts = path.split(".");
@@ -294,11 +310,17 @@ function mapProperty(obj: any, path: string, mapper: (value: any) => any): any {
     const pathPrefix = keyParts.slice(0, i).join(".");
     const pathSuffix = keyParts.slice(i).join(".");
     if (has(obj, pathPrefix) && isObjectLike(get(obj, pathPrefix))) {
-      set(obj, pathPrefix, mapProperty(get(obj, pathPrefix), pathSuffix, mapper));
+      const newValue = mapProperty(get(obj, pathPrefix), pathSuffix, mapper);
+      set(obj, pathPrefix, newValue);
     }
   }
   if (has(obj, path)) {
-    set(obj, path, mapper(get(obj, path)));
+    const newValue = mapper(get(obj, path));
+    if (newValue !== undefined) {
+      set(obj, path, newValue);
+    } else {
+      deleteKey(obj, path);
+    }
   }
 
   return obj;

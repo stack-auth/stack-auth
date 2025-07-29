@@ -259,7 +259,7 @@ const parseAuth = withTraceSpan('smart request parseAuth', async (req: NextReque
   const tenancy = req.method === "GET" && req.url.endsWith("/users/me") ? "tenancy not available in /users/me as a performance hack" as never : await getSoleTenancyFromProjectBranch(projectId, branchId, true);
 
   if (developmentKeyOverride) {
-    if (!["development", "test"].includes(getNodeEnvironment()) && getEnvVariable("STACK_ALLOW_DEVELOPMENT_KEY_OVERRIDE_DESPITE_PRODUCTION", "") === "this-is-dangerous") {  // it's not actually that dangerous, but it changes the security model
+    if (!["development", "test"].includes(getNodeEnvironment()) && getEnvVariable("STACK_ALLOW_DEVELOPMENT_KEY_OVERRIDE_DESPITE_PRODUCTION", "") !== "this-is-dangerous") {  // it's not actually that dangerous, but it changes the security model
       throw new StatusError(401, "Development key override is only allowed in development or test environments");
     }
     const result = await checkApiKeySet("internal", { superSecretAdminKey: developmentKeyOverride });
