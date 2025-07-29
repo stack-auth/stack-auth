@@ -245,6 +245,7 @@ const parseAuth = withTraceSpan('smart request parseAuth', async (req: NextReque
   };
   const queriesResults = await rawQueryAll(globalPrismaClient, bundledQueries);
   const project = await queriesResults.project;
+  if (project === null) throw new KnownErrors.CurrentProjectNotFound(projectId);  // this does allow one to probe whether a project exists or not, but that's fine
   const environmentConfig = await queriesResults.environmentRenderedConfig;
 
   // As explained above, as a performance optimization we already fetch the user from the global database optimistically
@@ -267,10 +268,6 @@ const parseAuth = withTraceSpan('smart request parseAuth', async (req: NextReque
   } else if (adminAccessToken) {
     // TODO put the assertion below into the bundled queries above (not so important because this path is quite rare)
     await extractUserFromAdminAccessToken({ token: adminAccessToken, projectId });  // assert that the admin token is valid
-    if (!project) {
-      // this happens if the project is still in the user's managedProjectIds, but has since been deleted
-      throw new KnownErrors.InvalidProjectForAdminAccessToken();
-    }
   } else {
     switch (requestType) {
       case "client": {
@@ -292,12 +289,6 @@ const parseAuth = withTraceSpan('smart request parseAuth', async (req: NextReque
         throw new StackAssertionError(`Unexpected request type: ${requestType}. This should never happen because we should've filtered this earlier`);
       }
     }
-  }
-
-  if (!project) {
-    // This happens when the JWT tokens are still valid, but the project has been deleted
-    // note that we do the check only here as we don't want to leak whether a project exists or not unless its keys have been shown to be valid
-    throw new KnownErrors.ProjectNotFound(projectId);
   }
   if (!tenancy) {
     throw new KnownErrors.BranchDoesNotExist(branchId);
