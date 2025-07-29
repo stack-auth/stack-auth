@@ -432,7 +432,6 @@ function ModernAPIPlayground({
   onExecute,
   onCopy,
   description,
-  generateExample,
 }: {
   operation: OpenAPIOperation,
   path: string,
@@ -1150,10 +1149,17 @@ function RequestBodyFieldsSection({
                 placeholder={resolvedFieldSchema.example ? String(resolvedFieldSchema.example) : `Enter ${fieldName}`}
                 value={String(values[fieldName] || '')}
                 onChange={(e) => {
-                  let value: string | number = e.target.value;
-                  // Convert to number for number/integer types
+                  const inputValue = e.target.value;
+                  let value: string | number = inputValue;
+
+                  // Convert to number for number/integer types, but keep as string if invalid
                   if (resolvedFieldSchema.type === 'number' || resolvedFieldSchema.type === 'integer') {
-                    value = e.target.value === '' ? '' : Number(e.target.value);
+                    if (inputValue === '') {
+                      value = '';
+                    } else {
+                      const numValue = Number(inputValue);
+                      value = !isNaN(numValue) ? numValue : inputValue;
+                    }
                   }
                   onChange({ ...values, [fieldName]: value });
                 }}
