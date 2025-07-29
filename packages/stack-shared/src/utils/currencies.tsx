@@ -51,7 +51,7 @@ export type MoneyAmount = `${number}` | `${number}.${number}`;
 export function moneyAmountToStripeUnits(amount: MoneyAmount, currency: Currency): number {
   const validated = moneyAmountSchema(currency).defined().validateSync(amount);
   if (currency.stripeDecimals !== currency.decimals) {
-    throw new StackAssertionError("unimplemented");
+    throw new StackAssertionError("unimplemented: TODO support different decimal configurations");
   }
 
   return Number.parseInt(validated.replace('.', ''), 10);

@@ -8,7 +8,7 @@ import { isShallowEqual } from "../utils/arrays";
 import { SUPPORTED_CURRENCIES } from "../utils/currencies";
 import { StackAssertionError } from "../utils/errors";
 import { allProviders } from "../utils/oauth";
-import { DeepFilterUndefined, DeepMerge, DeepRequiredOrUndefined, deleteKey, filterUndefined, get, has, isObjectLike, mapValues, set, typedFromEntries } from "../utils/objects";
+import { DeepFilterUndefined, DeepMerge, DeepRequiredOrUndefined, deleteKey, filterUndefined, get, has, isObjectLike, mapValues, set, typedAssign, typedFromEntries } from "../utils/objects";
 import { Result } from "../utils/results";
 import { CollapseObjectUnion, Expand, IntersectAll, IsUnion, typeAssert, typeAssertExtends, typeAssertIs } from "../utils/types";
 import { Config, NormalizationError, NormalizesTo, assertNormalized, getInvalidConfigReason, normalize } from "./format";
@@ -282,7 +282,7 @@ export function migrateConfigOverride(type: "project" | "branch" | "environment"
   }
   // END
 
-  // BEGIN 2025-07-28: themeList and templateList have been renamed (this was before the release, so they're safe to remove)
+  // BEGIN 2025-07-28: themeList and templateList have been renamed (this was before the email release, so they're safe to remove)
   if (isBranchOrHigher) {
     res = removeProperty(res, "emails.themeList");
     res = removeProperty(res, "emails.templateList");
@@ -457,15 +457,15 @@ const organizationConfigDefaults = {
       senderEmail: undefined,
     },
     selectedThemeId: DEFAULT_EMAIL_THEME_ID,
-    themes: (key: string) => ({
+    themes: typedAssign((key: string) => ({
       displayName: "Unnamed Theme",
       tsxSource: "Error: Theme config is missing TypeScript source code.",
-    }),
-    templates: (key: string) => ({
+    }), DEFAULT_EMAIL_THEMES),
+    templates: typedAssign((key: string) => ({
       displayName: "Unnamed Template",
       tsxSource: "Error: Template config is missing TypeScript source code.",
       themeId: undefined,
-    }),
+    }), DEFAULT_EMAIL_TEMPLATES),
   },
 
   payments: {
@@ -502,12 +502,24 @@ type DeepOmitDefaults<T, U> = _DeepOmitDefaultsImpl<DeepFilterUndefined<T>, U>;
 type DefaultsType<T, U extends any[]> = DeepReplaceAllowFunctionsForObjects<DeepOmitDefaults<DeepRequiredOrUndefined<T>, IntersectAll<{ [K in keyof U]: DeepReplaceFunctionsWithObjects<U[K]> }>>>;
 typeAssertIs<DefaultsType<{ a: { b: Record<string, 123>, c: 456 } }, [{ a: { c: 456 } }]>, { a: { b: Record<string, 123> | ((key: string) => 123) } }>()();
 
-export type DeepReplaceAllowFunctionsForObjects<T> = T extends object ? { [K in keyof T]: DeepReplaceAllowFunctionsForObjects<T[K]> } | (string extends keyof T ? (arg: Exclude<keyof T, number>) => DeepReplaceAllowFunctionsForObjects<T[keyof T]> : never) : T;
-export type DeepReplaceFunctionsWithObjects<T> = T extends (arg: infer K extends string) => infer R ? DeepReplaceFunctionsWithObjects<Record<K, R>> : (T extends object ? { [K in keyof T]: DeepReplaceFunctionsWithObjects<T[K]> } : T);
-export type ApplyDefaults<D extends object | ((key: string) => unknown), C extends object> = {} extends D ? C : DeepMerge<DeepReplaceFunctionsWithObjects<D>, C>;  // the {} extends D makes TypeScript not recurse if the defaults are empty, hence allowing us more recursion until "type instantiation too deep" kicks in... it's a total hack, but it works, so hey?
-export function applyDefaults<D extends object | ((key: string) => unknown), C extends object>(defaults: D, config: C): ApplyDefaults<D, C> {
-  const replaceFunctionsWithEmptyObjects = (obj: any): any => typeof obj === 'function' ? {} : mapValues(obj, v => typeof v === 'function' ? {} : (typeof v === 'object' && v ? replaceFunctionsWithEmptyObjects(v as any) : v));
-  const res: any = replaceFunctionsWithEmptyObjects(defaults);
+type DeepReplaceAllowFunctionsForObjects<T> = T extends object ? { [K in keyof T]: DeepReplaceAllowFunctionsForObjects<T[K]> } | (string extends keyof T ? (arg: Exclude<keyof T, number>) => DeepReplaceAllowFunctionsForObjects<T[keyof T]> : never) : T;
+type ReplaceFunctionsWithObjects<T> = T & (T extends (arg: infer K extends string) => infer R ? Record<K, R> & object : unknown);
+type DeepReplaceFunctionsWithObjects<T> = T extends object ? { [K in keyof ReplaceFunctionsWithObjects<T>]: DeepReplaceFunctionsWithObjects<ReplaceFunctionsWithObjects<T>[K]> } : T;
+typeAssertIs<DeepReplaceFunctionsWithObjects<{ a: { b: 123 } & ((key: string) => number) }>, { a: { b: 123, [key: string]: number } }>()();
+
+function deepReplaceFunctionsWithObjects(obj: any): any {
+  return mapValues({ ...obj }, v => (isObjectLike(v) ? deepReplaceFunctionsWithObjects(v as any) : v));
+}
+import.meta.vitest?.test("deepReplaceFunctionsWithObjects", ({ expect }) => {
+  expect(deepReplaceFunctionsWithObjects(() => {})).toEqual({});
+  expect(deepReplaceFunctionsWithObjects({ a: 3 })).toEqual({ a: 3 });
+  expect(deepReplaceFunctionsWithObjects({ a: () => ({ b: 1 }) })).toEqual({ a: {} });
+  expect(deepReplaceFunctionsWithObjects({ a: typedAssign(() => ({}), { b: { c: 1 } }) })).toEqual({ a: { b: { c: 1 } } });
+});
+
+type ApplyDefaults<D extends object | ((key: string) => unknown), C extends object> = {} extends D ? C : DeepMerge<DeepReplaceFunctionsWithObjects<D>, C>;  // the {} extends D makes TypeScript not recurse if the defaults are empty, hence allowing us more recursion until "type instantiation too deep" kicks in... it's a total hack, but it works, so hey?
+function applyDefaults<D extends object | ((key: string) => unknown), C extends object>(defaults: D, config: C): ApplyDefaults<D, C> {
+  const res: any = deepReplaceFunctionsWithObjects(defaults);
 
   outer: for (const [key, mergeValue] of Object.entries(config)) {
     if (mergeValue === undefined) continue;
@@ -515,19 +527,15 @@ export function applyDefaults<D extends object | ((key: string) => unknown), C e
     let baseValue: any = defaults;
     let currentRes: any = res;
     for (const [index, part] of keyParts.entries()) {
-      if (typeof baseValue === 'function') {
-        baseValue = baseValue(part);
-        if (currentRes) set(currentRes, part, replaceFunctionsWithEmptyObjects(baseValue));
-      } else {
-        baseValue = has(baseValue, part) ? get(baseValue, part) : undefined;
-      }
-      if (baseValue === undefined || !isObjectLike(baseValue) || !isObjectLike(mergeValue)) {
+      baseValue = has(baseValue, part) ? get(baseValue, part) : (typeof baseValue === 'function' ? (baseValue as any)(part) : undefined);
+      if (baseValue === undefined || !isObjectLike(baseValue)) {
         set(res, key, mergeValue);
         continue outer;
       }
-      if (currentRes) currentRes = has(currentRes, part) ? get(currentRes, part) : undefined;
+      if (!has(currentRes, part)) set(currentRes, part, deepReplaceFunctionsWithObjects(baseValue) as never);
+      currentRes = get(currentRes, part);
     }
-    set(res, key, applyDefaults(baseValue, mergeValue));
+    set(res, key, isObjectLike(mergeValue) ? applyDefaults(baseValue, mergeValue) : mergeValue);
   }
   return res as any;
 }
@@ -545,6 +553,8 @@ import.meta.vitest?.test("applyDefaults", ({ expect }) => {
   expect(applyDefaults({ a: (key: string) => ({ b: key }) }, { a: { c: { d: 1 } } })).toEqual({ a: { c: { b: "c", d: 1 } } });
   expect(applyDefaults({ a: (key: string) => ({ b: key }) }, {})).toEqual({ a: {} });
   expect(applyDefaults({ a: { b: (key: string) => ({ b: key }) } }, {})).toEqual({ a: { b: {} } });
+  expect(applyDefaults(typedAssign(() => ({ b: 1 }), { a: { b: 1, c: 2 } }), { a: {} })).toEqual({ a: { b: 1, c: 2 } });
+  expect(applyDefaults(typedAssign(() => ({ b: 1 }), { a: { b: 1, c: 2 } }), { d: {} })).toEqual({ a: { b: 1, c: 2 }, d: { b: 1 } });
 
   // Dot notation
   expect(applyDefaults({ a: { b: 1 } }, { "a.c": 2 })).toEqual({ a: { b: 1 }, "a.c": 2 });
@@ -554,6 +564,7 @@ import.meta.vitest?.test("applyDefaults", ({ expect }) => {
   expect(applyDefaults({ a: { b: { c: { d: 1 } } } }, { "a.b.c": {} })).toEqual({ a: { b: { c: { d: 1 } } }, "a.b.c": { d: 1 } });
   expect(applyDefaults({ a: () => ({ c: 1 }) }, { "a.b": { d: 2 } })).toEqual({ a: { b: { c: 1 } }, "a.b": { c: 1, d: 2 } });
   expect(applyDefaults({ a: () => () => ({ d: 1 }) }, { "a.b.c": {} })).toEqual({ a: { b: { c: { d: 1 } } }, "a.b.c": { d: 1 } });
+  expect(applyDefaults({ a: { b: () => ({ c: 1, d: 2 }) } }, { "a.b.x-y.c": 3 })).toEqual({ a: { b: { "x-y": { c: 1, d: 2 } } }, "a.b.x-y.c": 3 });
 });
 
 export function applyProjectDefaults<T extends ProjectRenderedConfigBeforeDefaults>(config: T) {
@@ -645,16 +656,17 @@ export async function sanitizeOrganizationConfig(config: OrganizationRenderedCon
     ...DEFAULT_EMAIL_THEMES,
     ...prepared.emails.themes,
   };
+  const templates: typeof prepared.emails.templates = {
+    ...DEFAULT_EMAIL_TEMPLATES,
+    ...prepared.emails.templates,
+  };
   return {
     ...prepared,
     emails: {
       ...prepared.emails,
       selectedThemeId: has(themes, prepared.emails.selectedThemeId) ? prepared.emails.selectedThemeId : DEFAULT_EMAIL_THEME_ID,
       themes,
-      templates: {
-        ...DEFAULT_EMAIL_TEMPLATES,
-        ...prepared.emails.templates,
-      } as typeof prepared.emails.templates,
+      templates,
     },
   };
 }
@@ -864,8 +876,6 @@ export async function getIncompleteConfigWarnings<T extends yup.AnySchema>(schem
   }
 }
 export type ValidatedToHaveNoIncompleteConfigWarnings<T extends yup.AnySchema> = yup.InferType<T>;
-
-type T = (yup.InferType<typeof branchConfigSchema>)["auth"];
 
 
 // Normalized overrides
