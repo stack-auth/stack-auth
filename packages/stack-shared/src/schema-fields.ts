@@ -488,7 +488,7 @@ export const emailTemplateListSchema = yupRecord(
 ).meta({ openapiField: { description: 'Record of email template IDs to their display name and source code' } });
 
 // Payments
-export const customerTypeSchema = yupString().oneOf(['user', 'team', 'organization']);
+export const customerTypeSchema = yupString().oneOf(['user', 'team']);
 
 // Users
 export class ReplaceFieldWithOwnUserId extends Error {
