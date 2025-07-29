@@ -2,6 +2,16 @@ import { findLastIndex, unique } from "./arrays";
 import { StackAssertionError } from "./errors";
 import { filterUndefined } from "./objects";
 
+export type Join<T extends string[], Separator extends string> =
+  T extends [] ? ""
+    : T extends [infer U extends string, ...infer Rest extends string[]]
+      ? `${U}${Rest extends [any, ...any[]] ? `${Separator}${Join<Rest, Separator>}` : ""}`
+      : "<error-joining-strings>";
+
+export function typedJoin<T extends string[], Separator extends string>(strings: T, separator: Separator): Join<T, Separator> {
+  return strings.join(separator) as Join<T, Separator>;
+}
+
 export function typedToLowercase<S extends string>(s: S): Lowercase<S> {
   if (typeof s !== "string") throw new StackAssertionError("Expected a string for typedToLowercase", { s });
   return s.toLowerCase() as Lowercase<S>;

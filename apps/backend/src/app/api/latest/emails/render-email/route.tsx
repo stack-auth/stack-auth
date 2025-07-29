@@ -2,7 +2,7 @@ import { getEmailThemeForTemplate, renderEmailWithTemplate } from "@/lib/email-r
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { KnownErrors } from "@stackframe/stack-shared/dist/known-errors";
 import { adaptSchema, templateThemeIdSchema, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
-import { StatusError } from "@stackframe/stack-shared/dist/utils/errors";
+import { StackAssertionError, StatusError, captureError } from "@stackframe/stack-shared/dist/utils/errors";
 
 export const POST = createSmartRouteHandler({
   metadata: {

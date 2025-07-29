@@ -1,12 +1,12 @@
-import { Tenancy } from './tenancies';
 import { TracedFreestyleSandboxes } from '@/lib/freestyle';
+import { emptyEmailTheme } from '@stackframe/stack-shared/dist/helpers/emails';
 import { getEnvVariable, getNodeEnvironment } from '@stackframe/stack-shared/dist/utils/env';
+import { StackAssertionError } from '@stackframe/stack-shared/dist/utils/errors';
+import { bundleJavaScript } from '@stackframe/stack-shared/dist/utils/esbuild';
+import { get, has } from '@stackframe/stack-shared/dist/utils/objects';
 import { Result } from "@stackframe/stack-shared/dist/utils/results";
 import { deindent } from "@stackframe/stack-shared/dist/utils/strings";
-import { bundleJavaScript } from '@stackframe/stack-shared/dist/utils/esbuild';
-import { StackAssertionError } from '@stackframe/stack-shared/dist/utils/errors';
-import { emptyEmailTheme } from '@stackframe/stack-shared/dist/helpers/emails';
-import { get, has } from '@stackframe/stack-shared/dist/utils/objects';
+import { Tenancy } from './tenancies';
 
 export function getActiveEmailTheme(tenancy: Tenancy) {
   const themeList = tenancy.completeConfig.emails.themes;
@@ -69,7 +69,6 @@ export async function renderEmailWithTemplate(
   }
 
   if (["development", "test"].includes(getNodeEnvironment()) && apiKey === "mock_stack_freestyle_key") {
-    console.log("templateComponent", JSON.stringify(templateComponent.match(/<Subject\s+[^>]*\/>/g)?.[0]));
     return Result.ok({
       html: `<div>Mock api key detected, \n\ntemplateComponent: ${templateComponent}\n\nthemeComponent: ${themeComponent}\n\n variables: ${JSON.stringify(variables)}</div>`,
       text: `<div>Mock api key detected, \n\ntemplateComponent: ${templateComponent}\n\nthemeComponent: ${themeComponent}\n\n variables: ${JSON.stringify(variables)}</div>`,
