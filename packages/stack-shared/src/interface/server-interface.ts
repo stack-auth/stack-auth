@@ -795,4 +795,46 @@ export class StackServerInterface extends StackClientInterface {
     );
     return await response.json();
   }
+
+  async sendEmail(options: {
+    userIds: string[],
+    themeId?: string | null | false,
+    html?: string,
+    subject?: string,
+    notificationCategoryName?: string,
+    templateId?: string,
+    variables?: Record<string, any>,
+  }): Promise<Result<{ userId: string, success: boolean, userEmail?: string, error?: string }[], KnownErrors["RequiresCustomEmailServer"] | KnownErrors["SchemaError"]>> {
+    const res = await this.sendServerRequestAndCatchKnownError(
+      "/emails/send-email",
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          user_ids: options.userIds,
+          theme_id: options.themeId,
+          html: options.html,
+          subject: options.subject,
+          notification_category_name: options.notificationCategoryName,
+          template_id: options.templateId,
+          variables: options.variables,
+        }),
+      },
+      null,
+      [KnownErrors.RequiresCustomEmailServer, KnownErrors.SchemaError]
+    );
+    if (res.status === "error") {
+      return Result.error(res.error);
+    }
+    const data = await res.data.json();
+    const results = data.results.map((result: any) => ({
+      userId: result.user_id,
+      userEmail: result.user_email,
+      success: result.success,
+      error: result.error,
+    }));
+    return Result.ok(results);
+  }
 }

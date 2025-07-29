@@ -28,6 +28,7 @@ import { ProjectCurrentServerUser, ServerUser, ServerUserCreateOptions, ServerUs
 import { StackServerAppConstructorOptions } from "../interfaces/server-app";
 import { _StackClientAppImplIncomplete } from "./client-app-impl";
 import { clientVersion, createCache, createCacheBySession, getBaseUrl, getDefaultProjectId, getDefaultPublishableClientKey, getDefaultSecretServerKey } from "./common";
+import { SendEmailOptions, SendEmailResult } from "../../email";
 
 // NEXT_LINE_PLATFORM react-like
 import { useAsyncCache } from "./common";
@@ -940,6 +941,10 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
     }
   }
   // END_PLATFORM
+
+  async sendEmail(options: SendEmailOptions): Promise<Result<SendEmailResult[], KnownErrors["RequiresCustomEmailServer"] | KnownErrors["SchemaError"]>> {
+    return await this._interface.sendEmail(options);
+  }
 
   protected override async _refreshSession(session: InternalSession) {
     await Promise.all([

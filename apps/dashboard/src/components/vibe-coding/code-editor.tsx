@@ -90,6 +90,10 @@ export default function CodeEditor({
               displayName: string | null;
             };
           };
+          type ThemeProps = {
+            children: React.ReactNode;
+            unsubscribeLink?: string;
+          };
         }
       `,
     );

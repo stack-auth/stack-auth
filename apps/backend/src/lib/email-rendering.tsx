@@ -31,16 +31,12 @@ export function getEmailThemeForTemplate(tenancy: Tenancy, templateThemeId: stri
   return getActiveEmailTheme(tenancy).tsxSource;
 }
 
-export function createTemplateComponentFromHtml(
-  html: string,
-  unsubscribeLink?: string,
-) {
-  const unsubscribeLinkHtml = unsubscribeLink ? `<br /><br /><a href="${unsubscribeLink}">Click here to unsubscribe</a>` : "";
+export function createTemplateComponentFromHtml(html: string) {
   return deindent`
+    export const variablesSchema = v => v;
     export function EmailTemplate() {
       return <>
         <div dangerouslySetInnerHTML={{ __html: ${JSON.stringify(html)}}} />
-        ${unsubscribeLinkHtml}
       </>
     };
   `;
@@ -53,6 +49,7 @@ export async function renderEmailWithTemplate(
     user?: { displayName: string | null },
     project?: { displayName: string },
     variables?: Record<string, any>,
+    unsubscribeLink?: string,
     previewMode?: boolean,
   },
 ): Promise<Result<{ html: string, text: string, subject?: string, notificationCategory?: string }, string>> {
@@ -98,8 +95,11 @@ export async function renderEmailWithTemplate(
         if (variables instanceof type.errors) {
           throw new Error(variables.summary)
         }
+        const unsubscribeLink = ${previewMode ? "EmailTheme.PreviewProps?.unsubscribeLink" : JSON.stringify(options.unsubscribeLink)};
         const EmailTemplateWithProps  = <EmailTemplate variables={variables} user={${JSON.stringify(user)}} project={${JSON.stringify(project)}} />;
-        const Email = <EmailTheme>{EmailTemplateWithProps}</EmailTheme>;
+        const Email = <EmailTheme unsubscribeLink={unsubscribeLink}>
+          {${previewMode ? "EmailTheme.PreviewProps?.children ?? " : ""} EmailTemplateWithProps}
+        </EmailTheme>;
         return {
           html: await render(Email),
           text: await render(Email, { plainText: true }),
@@ -121,7 +121,6 @@ export async function renderEmailWithTemplate(
   if (result.status === "error") {
     return Result.error(result.error);
   }
-
   const freestyle = new TracedFreestyleSandboxes({ apiKey });
   const nodeModules = {
     "@react-email/components": "0.1.1",

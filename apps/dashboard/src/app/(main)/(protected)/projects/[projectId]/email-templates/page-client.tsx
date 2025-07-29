@@ -61,7 +61,7 @@ export default function PageClient() {
         title="Shared Email Server"
         okButton={{
           label: "Edit Templates Anyway", onClick: async () => {
-            router.push(`email-templates-new/${sharedSmtpWarningDialogOpen}`);
+            router.push(`email-templates/${sharedSmtpWarningDialogOpen}`);
           }
         }}
         cancelButton={{ label: "Cancel" }}
