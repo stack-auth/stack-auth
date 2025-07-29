@@ -663,6 +663,19 @@ const ProjectNotFound = createKnownErrorConstructor(
   (json: any) => [json.project_id] as const,
 );
 
+const CurrentProjectNotFound = createKnownErrorConstructor(
+  KnownError,
+  "CURRENT_PROJECT_NOT_FOUND",
+  (projectId: string) => [
+    400,
+    `The current project with ID ${projectId} was not found. Please check the value of the x-stack-project-id header.`,
+    {
+      project_id: projectId,
+    },
+  ] as const,
+  (json: any) => [json.project_id] as const,
+);
+
 const BranchDoesNotExist = createKnownErrorConstructor(
   KnownError,
   "BRANCH_DOES_NOT_EXIST",
@@ -1456,6 +1469,7 @@ export const KnownErrors = {
   ApiKeyNotFound,
   PublicApiKeyCannotBeRevoked,
   ProjectNotFound,
+  CurrentProjectNotFound,
   BranchDoesNotExist,
   SignUpNotEnabled,
   PasswordAuthenticationNotEnabled,

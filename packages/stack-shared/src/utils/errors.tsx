@@ -112,6 +112,15 @@ registerErrorSink((location, error, ...extraArgs) => {
   globalVar.stackCapturedErrors.push({ location, error, extraArgs });
 });
 
+/**
+ * Captures an error and sends it to the error sinks (most notably, Sentry). Errors caught with captureError are
+ * supposed to be seen by an engineer, so they should be actionable and important.
+ *
+ * The location string is a machine-readable ID, and should hence not contain spaces or anything like that. Good
+ * examples are: "api-route-handler", "renderPart()", etc.
+ *
+ * Errors that bubble up to the top of runAsynchronously or a route handler are already captured with captureError.
+ */
 export function captureError(location: string, error: unknown): void {
   for (const sink of errorSinks) {
     sink(

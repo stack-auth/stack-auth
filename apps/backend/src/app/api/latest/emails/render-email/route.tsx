@@ -57,7 +57,6 @@ export const POST = createSmartRouteHandler({
       },
     );
     if ("error" in result) {
-      captureError('render-email', new StackAssertionError("Error rendering email with theme", { result }));
       throw new KnownErrors.EmailRenderingError(result.error);
     }
     return {
