@@ -354,7 +354,7 @@ export async function sendEmailFromTemplate(options: {
   const themeSource = getEmailThemeForTemplate(options.tenancy, template.themeId);
   const variables = filterUndefined({
     projectDisplayName: options.tenancy.project.display_name,
-    userDisplayName: options.user?.display_name || undefined,
+    userDisplayName: options.user?.display_name ?? "",
     ...filterUndefined(options.extraVariables),
   });
 
@@ -364,7 +364,7 @@ export async function sendEmailFromTemplate(options: {
     {
       user: { displayName: options.user?.display_name ?? null },
       project: { displayName: options.tenancy.project.display_name },
-      variables: filterUndefined(options.extraVariables),
+      variables,
     }
   );
   if (result.status === 'error') {
@@ -372,6 +372,7 @@ export async function sendEmailFromTemplate(options: {
       template: template,
       theme: themeSource,
       variables,
+      result
     });
   }
 
