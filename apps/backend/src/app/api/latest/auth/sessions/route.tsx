@@ -1,5 +1,4 @@
 import { createAuthTokens } from "@/lib/tokens";
-import { CrudHandlerInvocationError } from "@/route-handlers/crud-handler";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { KnownErrors } from "@stackframe/stack-shared";
 import { adaptSchema, serverOrHigherAuthTypeSchema, userIdOrMeSchema, yupBoolean, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
@@ -37,9 +36,12 @@ export const POST = createSmartRouteHandler({
       user = await usersCrudHandlers.adminRead({
         user_id: userId,
         tenancy: tenancy,
+        allowedErrorTypes: [
+          KnownErrors.UserNotFound,
+        ],
       });
     } catch (e) {
-      if (e instanceof CrudHandlerInvocationError && KnownErrors.UserNotFound.isInstance(e.cause)) {
+      if (KnownErrors.UserNotFound.isInstance(e)) {
         throw new KnownErrors.UserIdDoesNotExist(userId);
       }
       throw e;
