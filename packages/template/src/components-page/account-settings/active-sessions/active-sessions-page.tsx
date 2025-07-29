@@ -93,7 +93,7 @@ export function ActiveSessionsPage(props?: {
       await userFromHook.revokeSession(sessionId);
       setSessions(prev => prev.filter(session => session.id !== sessionId));
     } catch (error) {
-      captureError("Failed to revoke session", { sessionId ,error });
+      captureError("session-revoke", { sessionId ,error });
       throw error;
     }
   };
@@ -112,7 +112,7 @@ export function ActiveSessionsPage(props?: {
         setSessions(prevSessions => prevSessions.filter(session => session.isCurrentSession));
       }
     } catch (error) {
-      captureError("Failed to revoke all sessions", { error, sessionIds: sessions.map(session => session.id) });
+      captureError("all-sessions-revoke", { error, sessionIds: sessions.map(session => session.id) });
       throw error;
     } finally {
       setIsRevokingAll(false);

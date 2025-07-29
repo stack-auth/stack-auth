@@ -2,6 +2,7 @@
 
 import { StackAssertionError, throwErr } from "../utils/errors";
 import { deleteKey, filterUndefined, get, hasAndNotUndefined, set } from "../utils/objects";
+import { OptionalKeys, RequiredKeys } from "../utils/types";
 
 
 export type ConfigValue = string | number | boolean | null | ConfigValue[] | Config;
@@ -16,7 +17,8 @@ export type NormalizedConfig = {
 
 export type _NormalizesTo<N> = N extends object ? (
   & Config
-  & { [K in keyof N]?: _NormalizesTo<N[K]> | null }
+  & { [K in OptionalKeys<N>]?: _NormalizesTo<N[K]> | null }
+  & { [K in RequiredKeys<N>]: undefined extends N[K] ? _NormalizesTo<N[K]> | null : _NormalizesTo<N[K]> }
   & { [K in `${string}.${string}`]: ConfigValue }
 ) : N;
 export type NormalizesTo<N extends NormalizedConfig> = _NormalizesTo<N>;
@@ -140,13 +142,21 @@ import.meta.vitest?.test("override(...)", ({ expect }) => {
 
 type NormalizeOptions = {
   /**
-   * What to do if a dot notation is used on null.
+   * What to do if a dot notation is used on a value that is not an object.
    *
-   * - "empty" (default): Replace the null with an empty object.
-   * - "throw": Throw an error.
+   * - "throw" (default): Throw an error.
    * - "ignore": Ignore the dot notation field.
    */
-  onDotIntoNull?: "empty" | "throw" | "ignore",
+  onDotIntoNonObject?: "throw" | "ignore",
+  /**
+   * What to do if a dot notation is used on a value that is null.
+   *
+   * - "like-non-object"  (default): Treat it like a non-object. See `onDotIntoNonObject`.
+   * - "throw": Throw an error.
+   * - "ignore": Ignore the dot notation field.
+   * - "empty-object": Set the value to an empty object.
+   */
+  onDotIntoNull?: "like-non-object" | "throw" | "ignore" | "empty-object",
 }
 
 export class NormalizationError extends Error {
@@ -156,9 +166,25 @@ export class NormalizationError extends Error {
 }
 NormalizationError.prototype.name = "NormalizationError";
 
+export function isNormalized(c: Config): c is NormalizedConfig {
+  assertValidConfig(c);
+  for (const [key, value] of Object.entries(c)) {
+    if (value === undefined) continue;
+    if (key.includes('.')) return false;
+    if (value === null) return false;
+  }
+  return true;
+}
+
+export function assertNormalized(c: Config): asserts c is NormalizedConfig {
+  assertValidConfig(c);
+  if (!isNormalized(c)) throw new StackAssertionError(`Config is not normalized: ${JSON.stringify(c)}`);
+}
+
 export function normalize(c: Config, options: NormalizeOptions = {}): NormalizedConfig {
   assertValidConfig(c);
-  const onDotIntoNull = options.onDotIntoNull ?? "empty";
+  const onDotIntoNonObject = options.onDotIntoNonObject ?? "throw";
+  const onDotIntoNull = options.onDotIntoNull ?? "like-non-object";
 
   const countDots = (s: string) => s.match(/\./g)?.length ?? 0;
   const result: NormalizedConfig = {};
@@ -173,44 +199,51 @@ export function normalize(c: Config, options: NormalizeOptions = {}): Normalized
     let current: NormalizedConfig = result;
     for (const keySegment of keySegmentsWithoutLast) {
       if (!hasAndNotUndefined(current, keySegment)) {
-        switch (onDotIntoNull) {
-          case "empty": {
+        switch (onDotIntoNull === "like-non-object" ? onDotIntoNonObject : onDotIntoNull) {
+          case "throw": {
+            throw new NormalizationError(`Tried to use dot notation to access ${JSON.stringify(key)}, but ${JSON.stringify(keySegment)} doesn't exist on the object (or is null).`);
+          }
+          case "ignore": {
+            continue outer;
+          }
+          case "empty-object": {
             set(current, keySegment, {});
             break;
           }
+        }
+      }
+      const value = get(current, keySegment);
+      if (typeof value !== 'object') {
+        switch (onDotIntoNonObject) {
           case "throw": {
-            throw new NormalizationError(`Tried to use dot notation to access ${JSON.stringify(key)}, but ${JSON.stringify(keySegment)} doesn't exist on the object (or is null). Maybe this config is not normalizable?`);
+            throw new NormalizationError(`Tried to use dot notation to access ${JSON.stringify(key)}, but ${JSON.stringify(keySegment)} is not an object.`);
           }
           case "ignore": {
             continue outer;
           }
         }
       }
-      const value = get(current, keySegment);
-      if (typeof value !== 'object') {
-        throw new NormalizationError(`Tried to use dot notation to access ${JSON.stringify(key)}, but ${JSON.stringify(keySegment)} is not an object. Maybe this config is not normalizable?`);
-      }
       current = value as NormalizedConfig;
     }
-    setNormalizedValue(current, last, value);
+    setNormalizedValue(current, last, value, options);
   }
   return result;
 }
 
-function normalizeValue(value: ConfigValue): NormalizedConfigValue {
+function normalizeValue(value: ConfigValue, options: NormalizeOptions): NormalizedConfigValue {
   if (value === null) throw new NormalizationError("Tried to normalize a null value");
-  if (Array.isArray(value)) return value.map(normalizeValue);
-  if (typeof value === 'object') return normalize(value);
+  if (Array.isArray(value)) return value.map(v => normalizeValue(v, options));
+  if (typeof value === 'object') return normalize(value, options);
   return value;
 }
 
-function setNormalizedValue(result: NormalizedConfig, key: string, value: ConfigValue) {
+function setNormalizedValue(result: NormalizedConfig, key: string, value: ConfigValue, options: NormalizeOptions) {
   if (value === null) {
     if (hasAndNotUndefined(result, key)) {
       deleteKey(result, key);
     }
   } else {
-    set(result, key, normalizeValue(value));
+    set(result, key, normalizeValue(value, options));
   }
 }
 
@@ -230,7 +263,7 @@ import.meta.vitest?.test("normalize(...)", ({ expect }) => {
     k: { l: {} },
     "k.l.m": 13,
     n: undefined,
-  })).toEqual({
+  }, { onDotIntoNonObject: "ignore" })).toEqual({
     a: 9,
     b: 2,
     c: {
@@ -242,23 +275,24 @@ import.meta.vitest?.test("normalize(...)", ({ expect }) => {
   });
 
   // dotting into null
-  expect(normalize({
-    "b.c": 2,
-  })).toEqual({ b: { c: 2 } });
   expect(() => normalize({
     "b.c": 2,
-  }, { onDotIntoNull: "throw" })).toThrow(`Tried to use dot notation to access "b.c", but "b" doesn't exist on the object (or is null). Maybe this config is not normalizable?`);
+  }, { onDotIntoNonObject: "throw" })).toThrow(`Tried to use dot notation to access "b.c", but "b" doesn't exist on the object (or is null)`);
   expect(() => normalize({
     b: null,
     "b.c": 2,
-  }, { onDotIntoNull: "throw" })).toThrow(`Tried to use dot notation to access "b.c", but "b" doesn't exist on the object (or is null). Maybe this config is not normalizable?`);
+  }, { onDotIntoNonObject: "throw" })).toThrow(`Tried to use dot notation to access "b.c", but "b" doesn't exist on the object (or is null)`);
   expect(normalize({
     "b.c": 2,
-  }, { onDotIntoNull: "ignore" })).toEqual({});
+  }, { onDotIntoNonObject: "ignore" })).toEqual({});
 
   // dotting into non-object
   expect(() => normalize({
     b: 1,
     "b.c": 2,
-  })).toThrow(`Tried to use dot notation to access "b.c", but "b" is not an object. Maybe this config is not normalizable?`);
+  }, { onDotIntoNonObject: "throw" })).toThrow(`Tried to use dot notation to access "b.c", but "b" is not an object`);
+  expect(normalize({
+    b: 1,
+    "b.c": 2,
+  }, { onDotIntoNonObject: "ignore" })).toEqual({ b: 1 });
 });

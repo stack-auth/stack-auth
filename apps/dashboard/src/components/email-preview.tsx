@@ -7,29 +7,29 @@ import ResizableContainer from './resizable-container';
 
 class EmailPreviewErrorBoundary extends Component<
   { children: ReactNode },
-  { hasError: boolean }
+  { error: KnownErrors["EmailRenderingError"] | null }
 > {
   constructor(props: { children: ReactNode }) {
     super(props);
-    this.state = { hasError: false };
+    this.state = { error: null };
   }
 
   static getDerivedStateFromError(error: Error) {
     if (error instanceof KnownErrors.EmailRenderingError) {
-      return { hasError: true };
+      return { error: error as KnownErrors["EmailRenderingError"] };
     }
     throw error;
   }
 
   render() {
-    if (this.state.hasError) {
+    if (this.state.error) {
       return (
         <div className="flex flex-col items-center p-4 h-full justify-center">
           <Typography type="h3" className="mb-2" variant="destructive">
             Email Rendering Error
           </Typography>
-          <Typography variant="secondary">
-            Please check your theme / template source code.
+          <Typography variant="secondary" className="whitespace-pre-wrap">
+            {this.state.error.message}
           </Typography>
         </div>
       );
@@ -44,7 +44,7 @@ function EmailPreviewContent({
   templateId,
   templateTsxSource,
 }: {
-  themeId?: string,
+  themeId?: string | null | false,
   themeTsxSource?: string,
   templateId?: string,
   templateTsxSource?: string,
@@ -69,7 +69,7 @@ function EmailPreviewContent({
 
 type EmailPreviewProps =
   | ({
-    themeId: string,
+    themeId: string | null | false,
     themeTsxSource?: undefined,
   } | {
     themeId?: undefined,

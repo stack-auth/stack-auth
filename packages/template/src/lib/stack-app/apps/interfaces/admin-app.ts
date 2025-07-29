@@ -1,10 +1,8 @@
 import { ChatContent } from "@stackframe/stack-shared/dist/interface/admin-interface";
-import { EmailTemplateType } from "@stackframe/stack-shared/dist/interface/crud/email-templates";
 import { InternalSession } from "@stackframe/stack-shared/dist/sessions";
 import { Result } from "@stackframe/stack-shared/dist/utils/results";
 import { AsyncStoreProperty, EmailConfig } from "../../common";
 import { AdminSentEmail } from "../../email";
-import { AdminEmailTemplate, AdminEmailTemplateUpdateOptions } from "../../email-templates";
 import { InternalApiKey, InternalApiKeyCreateOptions, InternalApiKeyFirstView } from "../../internal-api-keys";
 import { AdminProjectPermission, AdminProjectPermissionDefinition, AdminProjectPermissionDefinitionCreateOptions, AdminProjectPermissionDefinitionUpdateOptions, AdminTeamPermission, AdminTeamPermissionDefinition, AdminTeamPermissionDefinitionCreateOptions, AdminTeamPermissionDefinitionUpdateOptions } from "../../permissions";
 import { AdminProject } from "../../projects";
@@ -34,13 +32,11 @@ export type StackAdminApp<HasTokenStore extends boolean = boolean, ProjectId ext
   & AsyncStoreProperty<"teamPermissionDefinitions", [], AdminTeamPermissionDefinition[], true>
   & AsyncStoreProperty<"projectPermissionDefinitions", [], AdminProjectPermissionDefinition[], true>
   & AsyncStoreProperty<"emailThemes", [], { id: string, displayName: string }[], true>
-  & AsyncStoreProperty<"emailPreview", [{ themeId?: string, themeTsxSource?: string, templateId?: string, templateTsxSource?: string }], string, false>
-  & AsyncStoreProperty<"newEmailTemplates", [], { id: string, displayName: string, themeId?: string, tsxSource: string }[], true>
+  & AsyncStoreProperty<"emailPreview", [{ themeId?: string | null | false, themeTsxSource?: string, templateId?: string, templateTsxSource?: string }], string, false>
+  & AsyncStoreProperty<"emailTemplates", [], { id: string, displayName: string, themeId?: string, tsxSource: string }[], true>
   & {
-    useEmailTemplates(): AdminEmailTemplate[], // THIS_LINE_PLATFORM react-like
-    listEmailTemplates(): Promise<AdminEmailTemplate[]>,
-    updateEmailTemplate(type: EmailTemplateType, data: AdminEmailTemplateUpdateOptions): Promise<void>,
-    resetEmailTemplate(type: EmailTemplateType): Promise<void>,
+    useEmailTemplates(): { id: string, displayName: string, tsxSource: string }[], // THIS_LINE_PLATFORM react-like
+    listEmailTemplates(): Promise<{ id: string, displayName: string, tsxSource: string }[]>,
 
     createInternalApiKey(options: InternalApiKeyCreateOptions): Promise<InternalApiKeyFirstView>,
 
@@ -82,11 +78,8 @@ export type StackAdminApp<HasTokenStore extends boolean = boolean, ProjectId ext
     ): Promise<{ content: ChatContent }>,
     saveChatMessage(threadId: string, message: any): Promise<void>,
     listChatMessages(threadId: string): Promise<{ messages: Array<any> }>,
-    updateNewEmailTemplate(id: string, tsxSource: string): Promise<{ renderedHtml: string }>,
-    createNewEmailTemplate(displayName: string): Promise<{ id: string }>,
-
-    getAllProjectsIdsForMigration(cursor?: string): Promise<{ projectIds: string[], nextCursor: string | null }>,
-    convertEmailTemplates(projectId: string): Promise<{ templatesConverted: number, totalTemplates: number, rendered: Array<{ legacyTemplateContent: any, templateType: string, renderedHtml: string | null }> }>,
+    updateEmailTemplate(id: string, tsxSource: string, themeId: string | null | false): Promise<{ renderedHtml: string }>,
+    createEmailTemplate(displayName: string): Promise<{ id: string }>,
   }
   & StackServerApp<HasTokenStore, ProjectId>
 );

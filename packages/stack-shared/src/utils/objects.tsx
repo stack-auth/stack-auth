@@ -1,6 +1,7 @@
 import { StackAssertionError } from "./errors";
 import { identity } from "./functions";
 import { stringCompare } from "./strings";
+import { typeAssertIs } from "./types";
 
 export function isNotNull<T>(value: T): value is NonNullable<T> {
   return value !== null && value !== undefined;
@@ -15,8 +16,10 @@ import.meta.vitest?.test("isNotNull", ({ expect }) => {
   expect(isNotNull([])).toBe(true);
 });
 
-export type DeepPartial<T> = T extends object ? (T extends (infer E)[] ? T : { [P in keyof T]?: DeepPartial<T[P]> }) : T;
-export type DeepRequired<T> = T extends object ? (T extends (infer E)[] ? T : { [P in keyof T]-?: DeepRequired<T[P]> }) : T;
+export type DeepPartial<T> = T extends object ? (T extends any[] ? { [P in keyof T]: DeepPartial<T[P]> } : { [P in keyof T]?: DeepPartial<T[P]> }) : T;
+export type DeepRequired<T> = T extends object ? { [P in keyof T]-?: DeepRequired<T[P]> } : T;
+export type DeepRequiredOrUndefined<T> = T extends object ? { [P in keyof { [K in keyof T]-?: K}]: DeepRequiredOrUndefined<T[P]> } : T;
+
 
 /**
  * Assumes both objects are primitives, arrays, or non-function plain objects, and compares them deeply.
@@ -144,7 +147,7 @@ import.meta.vitest?.test("deepPlainClone", ({ expect }) => {
 export type DeepMerge<T, U> = U extends any ? DeepMergeNonDistributive<T, U> : never;  // distributive conditional type https://www.typescriptlang.org/docs/handbook/2/conditional-types.html#distributive-conditional-types
 type DeepMergeNonDistributive<T, U> = Omit<T, keyof U> & Omit<U, keyof T> & DeepMergeInner<Pick<T, keyof U & keyof T>, Pick<U, keyof U & keyof T>>;
 type DeepMergeInner<T, U> = {
-  [K in keyof U]-?:
+  [K in { [Ki in keyof U]-?: Ki }[keyof U]]:  // we use this weird construct instead of just `keyof U` because TypeScript automatically removes the `undefined` key when using `-?` as a modifier; this is a workaround to make TypeScript not recognize the -? and for us to get the `undefined` key back
     undefined extends U[K]
       ? K extends keyof T
           ? T[K] extends object
@@ -255,7 +258,9 @@ import.meta.vitest?.test("deepMerge", ({ expect }) => {
   expect(() => deepMerge({ a: 1 }, { b: Symbol() })).toThrow();
 });
 
-export function typedEntries<T extends {}>(obj: T): [keyof T, T[keyof T]][] {
+export type DeepOmit<T, U> = T extends object ? { [K in keyof T]: K extends keyof U ? (T[K] extends U[K] ? undefined : T[K]) : T[K] } : (T extends U ? undefined : T);
+
+export function typedEntries<T extends {}>(obj: T): [Exclude<keyof T, number>, T[keyof T]][] {
   return Object.entries(obj) as any;
 }
 import.meta.vitest?.test("typedEntries", ({ expect }) => {
@@ -296,7 +301,7 @@ import.meta.vitest?.test("typedFromEntries", ({ expect }) => {
   expect((obj.b as () => string)()).toBe("test");
 });
 
-export function typedKeys<T extends {}>(obj: T): (keyof T)[] {
+export function typedKeys<T extends {}>(obj: T): (Exclude<keyof T, number>)[] {
   return Object.keys(obj) as any;
 }
 import.meta.vitest?.test("typedKeys", ({ expect }) => {
@@ -392,6 +397,7 @@ import.meta.vitest?.test("filterUndefinedOrNull", ({ expect }) => {
 });
 
 export type DeepFilterUndefined<T> = T extends object ? FilterUndefined<{ [K in keyof T]: DeepFilterUndefined<T[K]> }> : T;
+typeAssertIs<DeepFilterUndefined<{ a: { b: { c?: undefined, d?: 123 } } }>, { a: { b: { d?: 123 } } }>()();
 
 export function deepFilterUndefined<T extends object>(obj: T): DeepFilterUndefined<T> {
   return Object.fromEntries(Object.entries(obj).filter(([, v]) => v !== undefined).map(([k, v]) => [k, isObjectLike(v) ? deepFilterUndefined(v) : v])) as any;
@@ -563,6 +569,9 @@ export function deleteKey<T extends object, K extends keyof T>(obj: T, key: K) {
   }
 }
 
-export function isObjectLike(value: unknown): value is object {
+/**
+ * Returns true iff the value is an object or a function, but not null.
+ */
+export function isObjectLike(value: unknown): value is object | Function {
   return (typeof value === 'object' || typeof value === 'function') && value !== null;
 }

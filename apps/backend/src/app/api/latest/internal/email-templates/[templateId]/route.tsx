@@ -1,10 +1,10 @@
 import { overrideEnvironmentConfigOverride } from "@/lib/config";
+import { getActiveEmailTheme, renderEmailWithTemplate } from "@/lib/email-rendering";
 import { globalPrismaClient } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
-import { adaptSchema, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
-import { StatusError } from "@stackframe/stack-shared/dist/utils/errors";
-import { renderEmailWithTemplate } from "@/lib/email-rendering";
 import { KnownErrors } from "@stackframe/stack-shared/dist/known-errors";
+import { adaptSchema, templateThemeIdSchema, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
+import { StatusError } from "@stackframe/stack-shared/dist/utils/errors";
 
 
 export const PATCH = createSmartRouteHandler({
@@ -21,7 +21,7 @@ export const PATCH = createSmartRouteHandler({
     }).defined(),
     body: yupObject({
       tsx_source: yupString().defined(),
-      theme_id: yupString().uuid().optional(),
+      theme_id: templateThemeIdSchema.nullable(),
     }).defined(),
   }),
   response: yupObject({
@@ -32,11 +32,14 @@ export const PATCH = createSmartRouteHandler({
     }).defined(),
   }),
   async handler({ auth: { tenancy }, params: { templateId }, body }) {
+    if (tenancy.completeConfig.emails.server.isShared) {
+      throw new KnownErrors.RequiresCustomEmailServer();
+    }
     const templateList = tenancy.completeConfig.emails.templates;
     if (!Object.keys(templateList).includes(templateId)) {
       throw new StatusError(StatusError.NotFound, "No template found with given id");
     }
-    const theme = tenancy.completeConfig.emails.themes[tenancy.completeConfig.emails.selectedThemeId];
+    const theme = getActiveEmailTheme(tenancy);
     const result = await renderEmailWithTemplate(body.tsx_source, theme.tsxSource, {
       variables: { projectDisplayName: tenancy.project.display_name },
       previewMode: true,
@@ -57,7 +60,7 @@ export const PATCH = createSmartRouteHandler({
       branchId: tenancy.branchId,
       environmentConfigOverrideOverride: {
         [`emails.templates.${templateId}.tsxSource`]: body.tsx_source,
-        [`emails.templates.${templateId}.themeId`]: body.theme_id,
+        ...(body.theme_id ? { [`emails.templates.${templateId}.themeId`]: body.theme_id } : {}),
       },
     });
 
