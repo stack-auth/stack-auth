@@ -1,3 +1,4 @@
+import { pick } from "@stackframe/stack-shared/dist/utils/objects";
 import { it } from "../../../../../helpers";
 import { Project, niceBackendFetch } from "../../../../backend-helpers";
 
@@ -283,7 +284,119 @@ it("adds, updates, and removes oauth config", async ({ expect }) => {
   expect(persistedConfig.auth.oauth.providers).toEqual({});
 });
 
-it.todo("misconfigures oauth config");
+it("doesn't allow duplicated oauth ids", async ({ expect }) => {
+  const { adminAccessToken } = await Project.createAndSwitch({
+    config: {
+      magic_link_enabled: true,
+    }
+  });
+
+  // However, trying to create multiple providers with same OAuth ID in single request should fail
+  // or at minimum, only the last one should be applied
+  const multipleWithSameIdResponse = await niceBackendFetch("/api/v1/internal/config-overrides", {
+    method: "PATCH",
+    accessType: "admin",
+    headers: {
+      'x-stack-admin-access-token': adminAccessToken,
+    },
+    body: {
+      config: `
+      {
+        "auth.oauth.providers.duplicate": {
+            "type":"google",
+            "isShared":false,
+            "clientId":"google-client-id",
+            "clientSecret":"google-client-secret",
+            "allowSignIn":true,
+            "allowConnectedAccounts":true
+        },
+        "auth.oauth.providers.duplicate": {
+            "type":"google",
+            "isShared":false,
+            "clientId":"google-client-id",
+            "clientSecret":"google-client-secret",
+            "allowSignIn":true,
+            "allowConnectedAccounts":true
+        },
+      }`,
+    },
+  });
+
+  expect(multipleWithSameIdResponse).toMatchInlineSnapshot(`
+    NiceResponse {
+      "status": 400,
+      "body": "Invalid config JSON",
+      "headers": Headers { <some fields may have been hidden> },
+    }
+  `);
+});
+
+it("misconfigures oauth config", async ({ expect }) => {
+  const { adminAccessToken } = await Project.createAndSwitch({
+    config: {
+      magic_link_enabled: true,
+    }
+  });
+
+  // Test invalid OAuth provider type
+  const invalidTypeResponse = await niceBackendFetch("/api/v1/internal/config-overrides", {
+    method: "PATCH",
+    accessType: "admin",
+    headers: {
+      'x-stack-admin-access-token': adminAccessToken,
+    },
+    body: {
+      config: JSON.stringify({
+        'auth.oauth.providers.invalid': {
+          type: 'invalid-provider',
+          isShared: false,
+          clientId: 'test-client-id',
+          clientSecret: 'test-client-secret',
+          allowSignIn: true,
+          allowConnectedAccounts: true,
+        },
+      }),
+    },
+  });
+
+  expect(invalidTypeResponse.status).toBe(400);
+
+  // Test missing required fields for non-shared provider
+  const missingFieldsResponse = await niceBackendFetch("/api/v1/internal/config-overrides", {
+    method: "PATCH",
+    accessType: "admin",
+    headers: {
+      'x-stack-admin-access-token': adminAccessToken,
+    },
+    body: {
+      config: JSON.stringify({
+        'auth.oauth.providers.google': {
+          type: 'google',
+          isShared: false,
+          allowSignIn: true,
+          allowConnectedAccounts: true,
+          // Missing clientId and clientSecret
+        },
+      }),
+    },
+  });
+
+  expect(missingFieldsResponse.status).toBe(400);
+
+  // Test invalid JSON
+  const invalidJsonResponse = await niceBackendFetch("/api/v1/internal/config-overrides", {
+    method: "PATCH",
+    accessType: "admin",
+    headers: {
+      'x-stack-admin-access-token': adminAccessToken,
+    },
+    body: {
+      config: "invalid json",
+    },
+  });
+
+  expect(invalidJsonResponse.status).toBe(400);
+});
 
 it.todo("adds, updates, and removes domains");
 
