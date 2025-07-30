@@ -134,6 +134,22 @@ services:
     - svix-redis
     - svix-db
 
+  # ================= Freestyle mock =================
+
+  freestyle-mock:
+    build:
+      context: ./freestyle-mock
+      dockerfile: Dockerfile
+    image: freestyle-mock
+    container_name: freestyle-mock
+    ports:
+      - "8119:8080"       # POST http://localhost:8119/execute/v1/script
+    environment:
+      DENO_DIR: /deno-cache
+    volumes:
+      - deno-cache:/deno-cache
+
+
 # ================= volumes =================
 
 volumes:
@@ -141,6 +157,7 @@ volumes:
   inbucket-data:
   svix-redis-data:
   svix-postgres-data:
+  deno-cache:
 
 # ================= configs =================
 
