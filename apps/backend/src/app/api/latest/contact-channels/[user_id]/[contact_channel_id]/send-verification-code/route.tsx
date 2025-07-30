@@ -1,6 +1,5 @@
 import { usersCrudHandlers } from "@/app/api/latest/users/crud";
 import { getPrismaClientForTenancy } from "@/prisma-client";
-import { CrudHandlerInvocationError } from "@/route-handlers/crud-handler";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { KnownErrors } from "@stackframe/stack-shared";
 import { adaptSchema, clientOrHigherAuthTypeSchema, contactChannelIdSchema, emailVerificationCallbackUrlSchema, userIdOrMeSchema, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
@@ -43,10 +42,13 @@ export const POST = createSmartRouteHandler({
       try {
         user = await usersCrudHandlers.adminRead({
           tenancy: auth.tenancy,
-          user_id: params.user_id
+          user_id: params.user_id,
+          allowedErrorTypes: [
+            KnownErrors.UserNotFound,
+          ],
         });
       } catch (e) {
-        if (e instanceof CrudHandlerInvocationError && KnownErrors.UserNotFound.isInstance(e.cause)) {
+        if (KnownErrors.UserNotFound.isInstance(e)) {
           throw new KnownErrors.UserIdDoesNotExist(params.user_id);
         }
         throw e;
