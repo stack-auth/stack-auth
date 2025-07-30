@@ -43,11 +43,11 @@ async function uploadBase64Image({
   }
 
   let buffer: Buffer;
-  let metadata: ImageMetadata;
+  let format: string;
   try {
     const result = await parseBase64Image(input, { maxBytes });
     buffer = result.buffer;
-    metadata = result.metadata;
+    format = result.metadata.format;
   } catch (error) {
     if (error instanceof ImageProcessingError) {
       throw new StatusError(StatusError.BadRequest, error.message);
@@ -55,7 +55,7 @@ async function uploadBase64Image({
     throw error;
   }
 
-  const key = `${folderName}/${crypto.randomUUID()}.${metadata.format}`;
+  const key = `${folderName}/${crypto.randomUUID()}.${format}`;
 
   const command = new PutObjectCommand({
     Bucket: S3_BUCKET,
