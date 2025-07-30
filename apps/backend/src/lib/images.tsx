@@ -1,5 +1,3 @@
-import sharp from 'sharp';
-
 class ImageProcessingError extends Error {
   constructor(message: string) {
     super(message);
@@ -38,9 +36,12 @@ export async function parseBase64Image(input: string, options: {
     throw new Error(`Image size (${imageBuffer.length} bytes) exceeds maximum allowed size (${options.maxBytes} bytes)`);
   }
 
+  // Dynamically import sharp
+  const sharp = (await import('sharp')).default;
+
   // Use Sharp to load image and get metadata
-  let sharpImage: sharp.Sharp;
-  let metadata: sharp.Metadata;
+  let sharpImage: any;
+  let metadata: any;
 
   try {
     sharpImage = sharp(imageBuffer);
