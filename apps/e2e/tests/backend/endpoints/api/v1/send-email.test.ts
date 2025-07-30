@@ -509,12 +509,12 @@ describe("template-based emails", () => {
           "details": {
             "message": deindent\`
               Request validation failed on POST /api/v1/emails/send-email:
-                - The theme to use for the email. If not specified, the default theme will be used. is invalid
+                - body.theme_id is invalid
             \`,
           },
           "error": deindent\`
             Request validation failed on POST /api/v1/emails/send-email:
-              - The theme to use for the email. If not specified, the default theme will be used. is invalid
+              - body.theme_id is invalid
           \`,
         },
         "headers": Headers {
