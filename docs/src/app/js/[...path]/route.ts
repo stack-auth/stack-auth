@@ -1,5 +1,5 @@
 import { source } from 'lib/source';
-import { redirect } from 'next/navigation';
+import { notFound, redirect } from 'next/navigation';
 import { NextRequest } from 'next/server';
 
 export function GET(request: NextRequest) {
@@ -25,7 +25,7 @@ export function GET(request: NextRequest) {
     // Page exists, redirect to the full path
     return redirect(targetPath);
   } else {
-    // Page doesn't exist, redirect to overview
-    return redirect('/docs/js/overview');
+    // Page doesn't exist, return 404
+    return notFound();
   }
 }

@@ -1,5 +1,5 @@
 import { apiSource } from 'lib/source';
-import { redirect } from 'next/navigation';
+import { notFound, redirect } from 'next/navigation';
 import { NextRequest } from 'next/server';
 
 export function GET(request: NextRequest) {
@@ -26,6 +26,6 @@ export function GET(request: NextRequest) {
     return redirect(targetPath);
   } else {
     // Page doesn't exist, redirect to overview
-    return redirect('/api/overview');
+    return notFound();
   }
 }
