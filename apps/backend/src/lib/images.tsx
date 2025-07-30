@@ -28,12 +28,12 @@ export async function parseBase64Image(input: string, options: {
   try {
     imageBuffer = Buffer.from(base64Data, 'base64');
   } catch (error) {
-    throw new Error('Invalid base64 image data');
+    throw new ImageProcessingError('Invalid base64 image data');
   }
 
   // Check file size
   if (options.maxBytes && imageBuffer.length > options.maxBytes) {
-    throw new Error(`Image size (${imageBuffer.length} bytes) exceeds maximum allowed size (${options.maxBytes} bytes)`);
+    throw new ImageProcessingError(`Image size (${imageBuffer.length} bytes) exceeds maximum allowed size (${options.maxBytes} bytes)`);
   }
 
   // Dynamically import sharp

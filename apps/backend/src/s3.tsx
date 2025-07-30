@@ -29,7 +29,7 @@ export function getS3PublicUrl(key: string): string {
   return `${S3_ENDPOINT}/${S3_BUCKET}/${key}`;
 }
 
-export async function uploadBase64Image({
+async function uploadBase64Image({
   input,
   maxBytes = 1024 * 300,
   folderName,
@@ -42,7 +42,14 @@ export async function uploadBase64Image({
     throw new StackAssertionError("S3 is not configured");
   }
 
-  const { buffer, metadata } = await parseBase64Image(input, { maxBytes });
+  try {
+    const { buffer, metadata } = await parseBase64Image(input, { maxBytes });
+  } catch (error) {
+    if (error instanceof ImageProcessingError) {
+      throw new StatusError(StatusError.BadRequest, error.message);
+    }
+    throw error;
+  }
 
   const key = `${folderName}/${crypto.randomUUID()}.${metadata.format}`;
 
