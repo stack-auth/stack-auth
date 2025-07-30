@@ -65,14 +65,6 @@ export async function renderEmailWithTemplate(
     throw new StackAssertionError("Project is required when not in preview mode", { user, project, variables });
   }
 
-  if (["development", "test"].includes(getNodeEnvironment()) && apiKey === "mock_stack_freestyle_key") {
-    return Result.ok({
-      html: `<div>Mock api key detected, \n\ntemplateComponent: ${templateComponent}\n\nthemeComponent: ${themeComponent}\n\n variables: ${JSON.stringify(variables)}</div>`,
-      text: `<div>Mock api key detected, \n\ntemplateComponent: ${templateComponent}\n\nthemeComponent: ${themeComponent}\n\n variables: ${JSON.stringify(variables)}</div>`,
-      subject: `Mock subject, ${templateComponent.match(/<Subject\s+[^>]*\/>/g)?.[0]}`,
-      notificationCategory: "mock notification category",
-    });
-  }
   const result = await bundleJavaScript({
     "/utils.tsx": findComponentValueUtil,
     "/theme.tsx": themeComponent,
@@ -123,6 +115,7 @@ export async function renderEmailWithTemplate(
   }
   const freestyle = new TracedFreestyleSandboxes({ apiKey });
   const nodeModules = {
+    "react": "19.1.1",
     "@react-email/components": "0.1.1",
     "arktype": "2.1.20",
   };

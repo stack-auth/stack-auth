@@ -15,7 +15,17 @@ it("should not allow updating email templates when using shared email config", a
       'x-stack-admin-access-token': adminAccessToken,
     },
     body: {
-      tsx_source: "mock_tsx_source",
+      tsx_source: `
+        import { Subject, NotificationCategory } from '@stackframe/emails';
+        export const variablesSchema = (v) => v;
+        export function EmailTemplate() {
+          return <>
+            <Subject value="Test Subject" />
+            <NotificationCategory value="Transactional" />
+            <div>Mock email template</div>
+          </>;
+        }
+      `,
     },
   });
 
@@ -56,39 +66,24 @@ it("should allow adding and updating email templates with custom email config", 
     method: "PATCH",
     accessType: "admin",
     body: {
-      tsx_source: "mock_tsx_source",
+      tsx_source: `
+        import { Subject, NotificationCategory } from '@stackframe/emails';
+        export const variablesSchema = (v) => v;
+        export function EmailTemplate() {
+          return <>
+            <Subject value="Test Subject" />
+            <NotificationCategory value="Transactional" />
+            <div>Mock email template</div>
+          </>;
+        }
+      `,
     },
   });
 
   expect(updateResponse).toMatchInlineSnapshot(`
     NiceResponse {
       "status": 200,
-      "body": {
-        "rendered_html": deindent\`
-          <div>Mock api key detected, 
-          
-          templateComponent: mock_tsx_source
-          
-          themeComponent: import { Html, Head, Tailwind, Body, Container } from '@react-email/components';
-          
-          export function EmailTheme({ children }: { children: React.ReactNode }) {
-            return (
-              <Html>
-                <Head />
-                <Tailwind>
-                  <Body className="bg-[#fafbfb] font-sans text-base">
-                    <Container className="bg-white p-[45px] rounded-lg">
-                      {children}
-                    </Container>
-                  </Body>
-                </Tailwind>
-              </Html>
-            );
-          }
-          
-           variables: {"projectDisplayName":"New Project"}</div>
-        \`,
-      },
+      "body": { "rendered_html": "<!DOCTYPE html PUBLIC \\"-//W3C//DTD XHTML 1.0 Transitional//EN\\" \\"http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd\\"><html dir=\\"ltr\\" lang=\\"en\\"><head><meta content=\\"text/html; charset=UTF-8\\" http-equiv=\\"Content-Type\\"/><meta name=\\"x-apple-disable-message-reformatting\\"/></head><body style=\\"background-color:rgb(250,251,251);font-family:ui-sans-serif, system-ui, sans-serif, &quot;Apple Color Emoji&quot;, &quot;Segoe UI Emoji&quot;, &quot;Segoe UI Symbol&quot;, &quot;Noto Color Emoji&quot;;font-size:1rem;line-height:1.5rem\\"><!--$--><table align=\\"center\\" width=\\"100%\\" border=\\"0\\" cellPadding=\\"0\\" cellSpacing=\\"0\\" role=\\"presentation\\" style=\\"background-color:rgb(255,255,255);padding:45px;border-radius:0.5rem;max-width:37.5em\\"><tbody><tr style=\\"width:100%\\"><td><div>Mock email template</div></td></tr></tbody></table><div style=\\"padding:1rem\\"><a href=\\"https://example.com\\" style=\\"color:#067df7;text-decoration-line:none\\" target=\\"_blank\\">Click here<!-- --> </a>to unsubscribe from these emails</div><!--7--><!--/$--></body></html>" },
       "headers": Headers { <some fields may have been hidden> },
     }
   `);
