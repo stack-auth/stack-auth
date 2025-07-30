@@ -7,7 +7,7 @@ import { PrismaTransaction } from "@/lib/types";
 import { sendTeamMembershipDeletedWebhook, sendUserCreatedWebhook, sendUserDeletedWebhook, sendUserUpdatedWebhook } from "@/lib/webhooks";
 import { RawQuery, getPrismaClientForSourceOfTruth, getPrismaClientForTenancy, getPrismaSchemaForSourceOfTruth, getPrismaSchemaForTenancy, globalPrismaClient, rawQuery, retryTransaction, sqlQuoteIdent } from "@/prisma-client";
 import { createCrudHandlers } from "@/route-handlers/crud-handler";
-import { checkImageString, getS3PublicUrl, uploadBase64Image } from "@/s3";
+import { getS3PublicUrl, uploadAndGetImageUpdateInfo } from "@/s3";
 import { log } from "@/utils/telemetry";
 import { runAsynchronouslyAndWaitUntil } from "@/utils/vercel";
 import { BooleanTrue, Prisma } from "@prisma/client";
@@ -324,7 +324,7 @@ export function getUserQuery(projectId: string, branchId: string, userId: string
         selected_team: row.SelectedTeamMember ? {
           id: row.SelectedTeamMember.Team.teamId,
           display_name: row.SelectedTeamMember.Team.displayName,
-          profile_image_url: row.SelectedTeamMember.Team.profileImageUrl,
+          profile_image_url: row.SelectedTeamMember.Team.profileImageKey ? getS3PublicUrl(row.SelectedTeamMember.Team.profileImageKey) : row.SelectedTeamMember.Team.profileImageUrl,
           created_at_millis: new Date(row.SelectedTeamMember.Team.createdAt + "Z").getTime(),
           client_metadata: row.SelectedTeamMember.Team.clientMetadata,
           client_read_only_metadata: row.SelectedTeamMember.Team.clientReadOnlyMetadata,
@@ -345,37 +345,6 @@ export function getUserIfOnGlobalPrismaClientQuery(projectId: string, branchId: 
     ...getUserQuery(projectId, branchId, userId, "public"),
     supportedPrismaClients: ["global"],
   };
-}
-
-async function getProfileImageUrl(input: string | null | undefined) {
-  let profileImageKey: string | null | undefined = undefined;
-  let profileImageUrl: string | null | undefined = undefined;
-  if (input) {
-    const checkResult = checkImageString(input);
-    if (checkResult.isBase64Image) {
-      const { key } = await uploadBase64Image({ input, folderName: "profile-images" });
-      profileImageKey = key;
-    } else if (checkResult.isUrl) {
-      profileImageUrl = input;
-    } else {
-      throw new StatusError(StatusError.BadRequest, "Invalid profile image URL");
-    }
-
-    return {
-      profileImageKey,
-      profileImageUrl,
-    };
-  } else if (input === null) {
-    return {
-      profileImageKey: null,
-      profileImageUrl: null,
-    };
-  } else {
-    return {
-      profileImageKey: undefined,
-      profileImageUrl: undefined,
-    };
-  }
 }
 
 export async function getUser(options: { userId: string } & ({ projectId: string, branchId: string } | { tenancyId: string })) {
@@ -520,7 +489,7 @@ export const usersCrudHandlers = createLazyProxy(() => createCrudHandlers(usersC
           serverMetadata: data.server_metadata === null ? Prisma.JsonNull : data.server_metadata,
           totpSecret: data.totp_secret_base64 == null ? data.totp_secret_base64 : Buffer.from(decodeBase64(data.totp_secret_base64)),
           isAnonymous: data.is_anonymous ?? false,
-          ...await getProfileImageUrl(data.profile_image_url)
+          ...await uploadAndGetImageUpdateInfo(data.profile_image_url, "user-profile-images")
         },
         include: userFullInclude,
       });
@@ -976,7 +945,7 @@ export const usersCrudHandlers = createLazyProxy(() => createCrudHandlers(usersC
           requiresTotpMfa: data.totp_secret_base64 === undefined ? undefined : (data.totp_secret_base64 !== null),
           totpSecret: data.totp_secret_base64 == null ? data.totp_secret_base64 : Buffer.from(decodeBase64(data.totp_secret_base64)),
           isAnonymous: data.is_anonymous ?? undefined,
-          ...await getProfileImageUrl(data.profile_image_url)
+          ...await uploadAndGetImageUpdateInfo(data.profile_image_url, "user-profile-images")
         },
         include: userFullInclude,
       });

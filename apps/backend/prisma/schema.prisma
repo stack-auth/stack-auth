@@ -105,8 +105,13 @@ model TeamMember {
   teamId        String @db.Uuid
 
   // This will override the displayName of the user in this team.
-  displayName     String?
+  displayName String?
+
   // This will override the profileImageUrl of the user in this team.
+  // if profileImageKey is set, we fetch the image from S3
+  // otherwise if the profileImageUrl is set, we send the user to the URL.
+  // if neither is set, we return null.
+  profileImageKey String?
   profileImageUrl String?
 
   createdAt DateTime @default(now())
