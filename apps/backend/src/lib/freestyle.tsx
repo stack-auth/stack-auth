@@ -17,7 +17,12 @@ export class TracedFreestyleSandboxes {
         'freestyle.nodeModules.count': options?.nodeModules ? Object.keys(options.nodeModules).length.toString() : '0',
       }
     }, async () => {
-      return await this.freestyle.executeScript(script, options);
+      try {
+        return await this.freestyle.executeScript(script, options);
+      } catch (error) {
+        captureError("freestyle.executeScript", error);
+        throw new StackAssertionError("Error executing script with Freestyle! " + errorToNiceString(error), { cause: error });
+      }
     });
   }
 }

@@ -340,7 +340,7 @@ export function runAsynchronously(
   promiseOrFunc?.catch(error => {
     options.onError?.(error);
     const newError = new StackAssertionError(
-      "Uncaught error in asynchronous function: " + error.toString(),
+      "Uncaught error in asynchronous function: " + errorToNiceString(error),
       { cause: error },
     );
     concatStacktraces(newError, duringError);
