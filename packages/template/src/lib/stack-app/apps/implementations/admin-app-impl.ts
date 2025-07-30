@@ -162,10 +162,12 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
       async getConfig() {
         return app._adminConfigFromCrud(await app._interface.getConfigOverrides());
       },
+      // IF_PLATFORM react-like
       useConfig() {
         const crud = useAsyncCache(app._configOverridesCache, [], "useConfig()");
         return useMemo(() => app._adminConfigFromCrud(crud), [crud]);
       },
+      // END_PLATFORM
       async update(update: AdminProjectUpdateOptions) {
         const updateOptions = adminProjectUpdateOptionsToCrud(update);
         await app._interface.updateProject(filterUndefined({
