@@ -1,7 +1,7 @@
 import { PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
 import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
 import { StackAssertionError, StatusError } from "@stackframe/stack-shared/dist/utils/errors";
-import { parseBase64Image } from "./lib/images";
+import { ImageProcessingError, parseBase64Image } from "./lib/images";
 
 const S3_REGION = getEnvVariable("STACK_S3_REGION", "");
 const S3_ENDPOINT = getEnvVariable("STACK_S3_ENDPOINT", "");
