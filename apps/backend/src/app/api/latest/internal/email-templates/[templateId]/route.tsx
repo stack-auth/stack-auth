@@ -1,6 +1,5 @@
 import { overrideEnvironmentConfigOverride } from "@/lib/config";
 import { getActiveEmailTheme, renderEmailWithTemplate } from "@/lib/email-rendering";
-import { globalPrismaClient } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { KnownErrors } from "@stackframe/stack-shared/dist/known-errors";
 import { adaptSchema, templateThemeIdSchema, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
@@ -55,7 +54,6 @@ export const PATCH = createSmartRouteHandler({
     }
 
     await overrideEnvironmentConfigOverride({
-      tx: globalPrismaClient,
       projectId: tenancy.project.id,
       branchId: tenancy.branchId,
       environmentConfigOverrideOverride: {
