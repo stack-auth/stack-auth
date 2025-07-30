@@ -28,6 +28,8 @@ function removeStacktraceNameLine(stack: string): string {
 /**
  * Concatenates the (original) stacktraces of the given errors onto the first.
  *
+ * Note: Very often, the concatStacktracesIfRejected function in promises.tsx is an easier way to use this function.
+ *
  * Useful when you invoke an async function to receive a promise without awaiting it immediately. Browsers are smart
  * enough to keep track of the call stack in async function calls when you invoke `.then` within the same async tick,
  * but if you don't, the stacktrace will be lost.
@@ -36,7 +38,7 @@ function removeStacktraceNameLine(stack: string): string {
  *
  * ```tsx
  * async function log() {
- *   await wait(0);  // simulate an put the task on the event loop
+ *   await wait(0);  // put the task on the event loop
  *   console.log(new Error().stack);
  * }
  *

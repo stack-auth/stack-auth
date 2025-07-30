@@ -1,4 +1,5 @@
 import { traceSpan } from '@/utils/telemetry';
+import { StackAssertionError, captureError, errorToNiceString } from '@stackframe/stack-shared/dist/utils/errors';
 import { FreestyleSandboxes } from 'freestyle-sandboxes';
 
 export class TracedFreestyleSandboxes {
