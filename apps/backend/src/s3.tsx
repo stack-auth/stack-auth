@@ -1,5 +1,6 @@
-import { S3Client } from "@aws-sdk/client-s3";
+import { PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
 import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
+import { parseBase64Image } from "./lib/images";
 
 export const s3 = new S3Client({
   region: getEnvVariable("STACK_S3_REGION"),
@@ -11,9 +12,43 @@ export const s3 = new S3Client({
   },
 });
 
-export const S3_BUCKET = getEnvVariable("STACK_S3_BUCKET", "stack-storage");
+export const S3_BUCKET = getEnvVariable("STACK_S3_BUCKET");
 export const S3_ENDPOINT = getEnvVariable("STACK_S3_ENDPOINT");
 
 export function getS3PublicUrl(key: string): string {
   return `${S3_ENDPOINT}/${S3_BUCKET}/${key}`;
+}
+
+export async function uploadBase64Image({
+  input,
+  maxBytes = 1024 * 100,
+  folderName,
+}: {
+  input: string,
+  maxBytes?: number,
+  folderName: string,
+}) {
+  const { buffer, metadata } = await parseBase64Image(input, { maxBytes });
+
+  const key = `${folderName}/${crypto.randomUUID()}.${metadata.format}`;
+
+  const command = new PutObjectCommand({
+    Bucket: S3_BUCKET,
+    Key: key,
+    Body: buffer,
+  });
+
+  await s3.send(command);
+
+  return {
+    key,
+    url: getS3PublicUrl(key),
+  };
+}
+
+export function checkImageString(input: string) {
+  return {
+    isBase64Image: /^data:image\/[a-z]+;base64,/.test(input),
+    isUrl: /^https?:\/\//.test(input),
+  };
 }

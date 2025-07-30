@@ -7,6 +7,7 @@ import { PrismaTransaction } from "@/lib/types";
 import { sendTeamMembershipDeletedWebhook, sendUserCreatedWebhook, sendUserDeletedWebhook, sendUserUpdatedWebhook } from "@/lib/webhooks";
 import { RawQuery, getPrismaClientForSourceOfTruth, getPrismaClientForTenancy, getPrismaSchemaForSourceOfTruth, getPrismaSchemaForTenancy, globalPrismaClient, rawQuery, retryTransaction, sqlQuoteIdent } from "@/prisma-client";
 import { createCrudHandlers } from "@/route-handlers/crud-handler";
+import { checkImageString, getS3PublicUrl, uploadBase64Image } from "@/s3";
 import { log } from "@/utils/telemetry";
 import { runAsynchronouslyAndWaitUntil } from "@/utils/vercel";
 import { BooleanTrue, Prisma } from "@prisma/client";
@@ -65,7 +66,7 @@ export const userPrismaToCrud = (
     primary_email: primaryEmailContactChannel?.value || null,
     primary_email_verified: !!primaryEmailContactChannel?.isVerified,
     primary_email_auth_enabled: !!primaryEmailContactChannel?.usedForAuth,
-    profile_image_url: prisma.profileImageUrl,
+    profile_image_url: prisma.profileImageKey ? getS3PublicUrl(prisma.profileImageKey) : prisma.profileImageUrl,
     signed_up_at_millis: prisma.createdAt.getTime(),
     client_metadata: prisma.clientMetadata,
     client_read_only_metadata: prisma.clientReadOnlyMetadata,
@@ -304,7 +305,7 @@ export function getUserQuery(projectId: string, branchId: string, userId: string
         primary_email: primaryEmailContactChannel?.value || null,
         primary_email_verified: primaryEmailContactChannel?.isVerified || false,
         primary_email_auth_enabled: primaryEmailContactChannel?.usedForAuth === 'TRUE' ? true : false,
-        profile_image_url: row.profileImageUrl,
+        profile_image_url: row.profileImageKey ? getS3PublicUrl(row.profileImageKey) : row.profileImageUrl,
         signed_up_at_millis: new Date(row.createdAt + "Z").getTime(),
         client_metadata: row.clientMetadata,
         client_read_only_metadata: row.clientReadOnlyMetadata,
@@ -344,6 +345,37 @@ export function getUserIfOnGlobalPrismaClientQuery(projectId: string, branchId: 
     ...getUserQuery(projectId, branchId, userId, "public"),
     supportedPrismaClients: ["global"],
   };
+}
+
+async function getProfileImageUrl(input: string | null | undefined) {
+  let profileImageKey: string | null | undefined = undefined;
+  let profileImageUrl: string | null | undefined = undefined;
+  if (input) {
+    const checkResult = checkImageString(input);
+    if (checkResult.isBase64Image) {
+      const { key } = await uploadBase64Image({ input, folderName: "profile-images" });
+      profileImageKey = key;
+    } else if (checkResult.isUrl) {
+      profileImageUrl = input;
+    } else {
+      throw new StatusError(StatusError.BadRequest, "Invalid profile image URL");
+    }
+
+    return {
+      profileImageKey,
+      profileImageUrl,
+    };
+  } else if (input === null) {
+    return {
+      profileImageKey: null,
+      profileImageUrl: null,
+    };
+  } else {
+    return {
+      profileImageKey: undefined,
+      profileImageUrl: undefined,
+    };
+  }
 }
 
 export async function getUser(options: { userId: string } & ({ projectId: string, branchId: string } | { tenancyId: string })) {
@@ -476,6 +508,7 @@ export const usersCrudHandlers = createLazyProxy(() => createCrudHandlers(usersC
 
       const config = auth.tenancy.completeConfig;
 
+
       const newUser = await tx.projectUser.create({
         data: {
           tenancyId: auth.tenancy.id,
@@ -485,9 +518,9 @@ export const usersCrudHandlers = createLazyProxy(() => createCrudHandlers(usersC
           clientMetadata: data.client_metadata === null ? Prisma.JsonNull : data.client_metadata,
           clientReadOnlyMetadata: data.client_read_only_metadata === null ? Prisma.JsonNull : data.client_read_only_metadata,
           serverMetadata: data.server_metadata === null ? Prisma.JsonNull : data.server_metadata,
-          profileImageUrl: data.profile_image_url,
           totpSecret: data.totp_secret_base64 == null ? data.totp_secret_base64 : Buffer.from(decodeBase64(data.totp_secret_base64)),
           isAnonymous: data.is_anonymous ?? false,
+          ...await getProfileImageUrl(data.profile_image_url)
         },
         include: userFullInclude,
       });
@@ -940,10 +973,10 @@ export const usersCrudHandlers = createLazyProxy(() => createCrudHandlers(usersC
           clientMetadata: data.client_metadata === null ? Prisma.JsonNull : data.client_metadata,
           clientReadOnlyMetadata: data.client_read_only_metadata === null ? Prisma.JsonNull : data.client_read_only_metadata,
           serverMetadata: data.server_metadata === null ? Prisma.JsonNull : data.server_metadata,
-          profileImageUrl: data.profile_image_url,
           requiresTotpMfa: data.totp_secret_base64 === undefined ? undefined : (data.totp_secret_base64 !== null),
           totpSecret: data.totp_secret_base64 == null ? data.totp_secret_base64 : Buffer.from(decodeBase64(data.totp_secret_base64)),
           isAnonymous: data.is_anonymous ?? undefined,
+          ...await getProfileImageUrl(data.profile_image_url)
         },
         include: userFullInclude,
       });
