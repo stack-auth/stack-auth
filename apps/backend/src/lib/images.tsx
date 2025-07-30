@@ -17,7 +17,7 @@ export async function parseBase64Image(input: string, options: {
   allowTypes: ['image/jpeg', 'image/png', 'image/webp'],
 }) {
   // Remove data URL prefix if present (e.g., "data:image/jpeg;base64,")
-  const base64Data = input.replace(/^data:image\/[a-z]+;base64,/, '');
+  const base64Data = input.replace(/^data:image\/[a-zA-Z0-9]+;base64,/, '');
 
   // check the size before and after the base64 conversion
   if (base64Data.length > options.maxBytes!) {

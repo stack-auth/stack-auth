@@ -3,13 +3,13 @@ import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
 import { StackAssertionError, StatusError } from "@stackframe/stack-shared/dist/utils/errors";
 import { parseBase64Image } from "./lib/images";
 
-const S3_REGION = getEnvVariable("STACK_S3_REGION", "us-east-1");
+const S3_REGION = getEnvVariable("STACK_S3_REGION", "");
 const S3_ENDPOINT = getEnvVariable("STACK_S3_ENDPOINT", "");
 const S3_BUCKET = getEnvVariable("STACK_S3_BUCKET", "");
 const S3_ACCESS_KEY_ID = getEnvVariable("STACK_S3_ACCESS_KEY_ID", "");
 const S3_SECRET_ACCESS_KEY = getEnvVariable("STACK_S3_SECRET_ACCESS_KEY", "");
 
-const HAS_S3 = !!S3_BUCKET && !!S3_ACCESS_KEY_ID && !!S3_SECRET_ACCESS_KEY;
+const HAS_S3 = !!S3_REGION && !!S3_ENDPOINT && !!S3_BUCKET && !!S3_ACCESS_KEY_ID && !!S3_SECRET_ACCESS_KEY;
 
 if (!HAS_S3) {
   console.warn("S3 bucket is not configured. File upload features will not be available.");
@@ -69,7 +69,7 @@ async function uploadBase64Image({
 
 export function checkImageString(input: string) {
   return {
-    isBase64Image: /^data:image\/[a-z]+;base64,/.test(input),
+    isBase64Image: /^data:image\/[a-zA-Z0-9]+;base64,/.test(input),
     isUrl: /^https?:\/\//.test(input),
   };
 }
