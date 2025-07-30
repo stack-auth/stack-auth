@@ -151,6 +151,21 @@ services:
       interval: 30s
       timeout: 10s
       retries: 3
+  # ================= Freestyle mock =================
+
+  freestyle-mock:
+    build:
+      context: ./freestyle-mock
+      dockerfile: Dockerfile
+    image: freestyle-mock
+    container_name: freestyle-mock
+    ports:
+      - "8119:8080"       # POST http://localhost:8119/execute/v1/script
+    environment:
+      DENO_DIR: /deno-cache
+    volumes:
+      - deno-cache:/deno-cache
+
 
 # ================= volumes =================
 
@@ -160,7 +175,8 @@ volumes:
   svix-redis-data:
   svix-postgres-data:
   s3mock-data:
-  
+  deno-cache:
+
 # ================= configs =================
 
 configs:

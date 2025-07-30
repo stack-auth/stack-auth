@@ -18,7 +18,17 @@ export type LastUnionElement<U> = UnionToIntersection<U extends any ? (x: U) => 
 /**
  * Makes a type prettier by recursively expanding all object types. For example, `Omit<{ a: 1 }, "a">` becomes just `{}`.
  */
-export type Expand<T> = T extends object ? { [K in keyof T]: Expand<T[K]> } : T;
+export type Expand<T> = T extends (...args: infer A) => infer R
+  ? (
+    ((...args: A) => R) extends T
+      ? (...args: Expand<A>) => Expand<R>
+      : ((...args: Expand<A>) => Expand<R>) & { [K in keyof T]: Expand<T[K]> }
+  )
+  : (
+    T extends object
+      ? { [K in keyof T]: Expand<T[K]> }
+      : T
+  );
 
 
 /**
