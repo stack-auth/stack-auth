@@ -21,7 +21,7 @@ export function getS3PublicUrl(key: string): string {
 
 export async function uploadBase64Image({
   input,
-  maxBytes = 1024 * 100,
+  maxBytes = 1024 * 300,
   folderName,
 }: {
   input: string,

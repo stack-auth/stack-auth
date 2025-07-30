@@ -13,7 +13,7 @@ export async function parseBase64Image(input: string, options: {
   maxHeight?: number,
   allowTypes?: string[],
 } = {
-  maxBytes: 10 * 1024,
+  maxBytes: 1024 * 300,
   maxWidth: 4096,
   maxHeight: 4096,
   allowTypes: ['image/jpeg', 'image/png', 'image/webp'],
