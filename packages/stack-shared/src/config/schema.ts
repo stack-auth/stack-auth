@@ -352,7 +352,7 @@ const organizationConfigDefaults = {
   },
 
   domains: {
-    allowLocalhost: true,
+    allowLocalhost: false,
     trustedDomains: (key: string) => ({
       baseUrl: undefined,
       handlerPath: '/handler',
