@@ -42,8 +42,12 @@ async function uploadBase64Image({
     throw new StackAssertionError("S3 is not configured");
   }
 
+  let buffer: Buffer;
+  let metadata: ImageMetadata;
   try {
-    const { buffer, metadata } = await parseBase64Image(input, { maxBytes });
+    const result = await parseBase64Image(input, { maxBytes });
+    buffer = result.buffer;
+    metadata = result.metadata;
   } catch (error) {
     if (error instanceof ImageProcessingError) {
       throw new StatusError(StatusError.BadRequest, error.message);
