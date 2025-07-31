@@ -331,7 +331,7 @@ it("doesn't allow duplicated oauth ids", async ({ expect }) => {
   `);
 });
 
-it("misconfigures oauth config", async ({ expect }) => {
+it("returns an error when the oauth config is misconfigured", async ({ expect }) => {
   const { adminAccessToken } = await Project.createAndSwitch({
     config: {
       magic_link_enabled: true,
