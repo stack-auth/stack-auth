@@ -29,7 +29,7 @@ export const GET = createSmartRouteHandler({
     }).defined(),
   }),
   async handler({ auth: { tenancy }, params: { id } }) {
-    const themeList = tenancy.config.emails.themeList;
+    const themeList = tenancy.config.emails.themes;
     if (!Object.keys(themeList).includes(id)) {
       throw new StatusError(404, "No theme found with given id");
     }
@@ -69,21 +69,24 @@ export const PATCH = createSmartRouteHandler({
     }).defined(),
   }),
   async handler({ auth: { tenancy }, params: { id }, body }) {
-    const themeList = tenancy.config.emails.themeList;
+    const themeList = tenancy.config.emails.themes;
     if (!Object.keys(themeList).includes(id)) {
       throw new StatusError(404, "No theme found with given id");
     }
     const theme = themeList[id];
-    const result = await renderEmailWithTemplate(previewTemplateSource, body.tsx_source);
+    const result = await renderEmailWithTemplate(
+      previewTemplateSource,
+      body.tsx_source,
+      { previewMode: true },
+    );
     if (result.status === "error") {
       throw new KnownErrors.EmailRenderingError(result.error);
     }
     await overrideEnvironmentConfigOverride({
-      tx: globalPrismaClient,
       projectId: tenancy.project.id,
       branchId: tenancy.branchId,
       environmentConfigOverrideOverride: {
-        [`emails.themeList.${id}.tsxSource`]: body.tsx_source,
+        [`emails.themes.${id}.tsxSource`]: body.tsx_source,
       },
     });
     return {

@@ -663,6 +663,19 @@ const ProjectNotFound = createKnownErrorConstructor(
   (json: any) => [json.project_id] as const,
 );
 
+const CurrentProjectNotFound = createKnownErrorConstructor(
+  KnownError,
+  "CURRENT_PROJECT_NOT_FOUND",
+  (projectId: string) => [
+    400,
+    `The current project with ID ${projectId} was not found. Please check the value of the x-stack-project-id header.`,
+    {
+      project_id: projectId,
+    },
+  ] as const,
+  (json: any) => [json.project_id] as const,
+);
+
 const BranchDoesNotExist = createKnownErrorConstructor(
   KnownError,
   "BRANCH_DOES_NOT_EXIST",
@@ -1391,6 +1404,16 @@ const EmailRenderingError = createKnownErrorConstructor(
   (json: any) => [json.error] as const,
 );
 
+const RequiresCustomEmailServer = createKnownErrorConstructor(
+  KnownError,
+  "REQUIRES_CUSTOM_EMAIL_SERVER",
+  () => [
+    400,
+    `This action requires a custom SMTP server. Please edit your email server configuration and try again.`,
+  ] as const,
+  () => [] as const,
+);
+
 
 export type KnownErrors = {
   [K in keyof typeof KnownErrors]: InstanceType<typeof KnownErrors[K]>;
@@ -1446,6 +1469,7 @@ export const KnownErrors = {
   ApiKeyNotFound,
   PublicApiKeyCannotBeRevoked,
   ProjectNotFound,
+  CurrentProjectNotFound,
   BranchDoesNotExist,
   SignUpNotEnabled,
   PasswordAuthenticationNotEnabled,
@@ -1504,7 +1528,7 @@ export const KnownErrors = {
   ApiKeyRevoked,
   WrongApiKeyType,
   EmailRenderingError,
-
+  RequiresCustomEmailServer
 } satisfies Record<string, KnownErrorConstructor<any, any>>;
 
 

@@ -91,15 +91,17 @@ describe("get email theme", () => {
         "body": {
           "display_name": "Default Light",
           "tsx_source": deindent\`
-            import { Html, Tailwind, Body } from '@react-email/components';
+            import { Html, Head, Tailwind, Body, Container } from '@react-email/components';
+            
             export function EmailTheme({ children }: { children: React.ReactNode }) {
               return (
                 <Html>
+                  <Head />
                   <Tailwind>
-                    <Body>
-                      <div className="bg-white text-slate-800 p-4 rounded-lg max-w-[600px] mx-auto leading-relaxed">
+                    <Body className="bg-[#fafbfb] font-sans text-base">
+                      <Container className="bg-white p-[45px] rounded-lg">
                         {children}
-                      </div>
+                      </Container>
                     </Body>
                   </Tailwind>
                 </Html>

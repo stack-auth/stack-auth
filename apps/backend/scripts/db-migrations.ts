@@ -1,14 +1,15 @@
 import { applyMigrations } from "@/auto-migrations";
 import { MIGRATION_FILES_DIR, getMigrationFiles } from "@/auto-migrations/utils";
-import { globalPrismaClient, globalPrismaSchema } from "@/prisma-client";
+import { globalPrismaClient, globalPrismaSchema, sqlQuoteIdent } from "@/prisma-client";
+import { Prisma } from "@prisma/client";
 import { execSync } from "child_process";
 import * as readline from 'readline';
 
 const dropSchema = async () => {
-  await globalPrismaClient.$executeRaw`DROP SCHEMA ${globalPrismaSchema} CASCADE`;
-  await globalPrismaClient.$executeRaw`CREATE SCHEMA ${globalPrismaSchema}`;
-  await globalPrismaClient.$executeRaw`GRANT ALL ON SCHEMA ${globalPrismaSchema} TO postgres`;
-  await globalPrismaClient.$executeRaw`GRANT ALL ON SCHEMA ${globalPrismaSchema} TO public`;
+  await globalPrismaClient.$executeRaw(Prisma.sql`DROP SCHEMA ${sqlQuoteIdent(globalPrismaSchema)} CASCADE`);
+  await globalPrismaClient.$executeRaw(Prisma.sql`CREATE SCHEMA ${sqlQuoteIdent(globalPrismaSchema)}`);
+  await globalPrismaClient.$executeRaw(Prisma.sql`GRANT ALL ON SCHEMA ${sqlQuoteIdent(globalPrismaSchema)} TO postgres`);
+  await globalPrismaClient.$executeRaw(Prisma.sql`GRANT ALL ON SCHEMA ${sqlQuoteIdent(globalPrismaSchema)} TO public`);
 };
 
 const seed = async () => {
@@ -69,6 +70,8 @@ const main = async () => {
       break;
     }
     case 'generate-migration-file': {
+      await promptDropDb();
+      execSync('pnpm prisma migrate reset --force --skip-seed', { stdio: 'inherit' });
       execSync('pnpm prisma migrate dev --skip-seed', { stdio: 'inherit' });
       await dropSchema();
       await migrate();

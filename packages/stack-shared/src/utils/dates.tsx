@@ -1,3 +1,5 @@
+import { intervalSchema } from "../schema-fields";
+import { StackAssertionError } from "./errors";
 import { remainder } from "./math";
 
 export function isWeekend(date: Date): boolean {
@@ -138,3 +140,60 @@ import.meta.vitest?.test("getInputDatetimeLocalString", ({ expect }) => {
   // Restore real timers
   import.meta.vitest?.vi.useRealTimers();
 });
+
+
+export type Interval = [number, 'millisecond' | 'second' | 'minute' | 'hour' | 'day' | 'week' | 'month' | 'year'];
+export type DayInterval = [number, 'day' | 'week' | 'month' | 'year'];
+
+function applyInterval(date: Date, times: number, interval: Interval): Date {
+  if (!intervalSchema.isValidSync(interval)) {
+    throw new StackAssertionError(`Invalid interval`, { interval });
+  }
+  const [amount, unit] = interval;
+  switch (unit) {
+    case 'millisecond': {
+      date.setMilliseconds(date.getMilliseconds() + amount * times);
+      break;
+    }
+    case 'second': {
+      date.setSeconds(date.getSeconds() + amount * times);
+      break;
+    }
+    case 'minute': {
+      date.setMinutes(date.getMinutes() + amount * times);
+      break;
+    }
+    case 'hour': {
+      date.setHours(date.getHours() + amount * times);
+      break;
+    }
+    case 'day': {
+      date.setDate(date.getDate() + amount * times);
+      break;
+    }
+    case 'week': {
+      date.setDate(date.getDate() + amount * times * 7);
+      break;
+    }
+    case 'month': {
+      date.setMonth(date.getMonth() + amount * times);
+      break;
+    }
+    case 'year': {
+      date.setFullYear(date.getFullYear() + amount * times);
+      break;
+    }
+    default: {
+      throw new StackAssertionError(`Invalid interval despite schema validation`, { interval });
+    }
+  }
+  return date;
+}
+
+export function subtractInterval(date: Date, interval: Interval): Date {
+  return applyInterval(date, -1, interval);
+}
+
+export function addInterval(date: Date, interval: Interval): Date {
+  return applyInterval(date, 1, interval);
+}
