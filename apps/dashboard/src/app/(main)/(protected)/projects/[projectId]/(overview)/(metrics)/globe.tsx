@@ -250,7 +250,6 @@ export function GlobeSection({ countryData, totalUsers, children }: {countryData
         className='absolute top-0 right-0 bottom-0 backdrop-blur-md'
         style={{
           left: ((globeContainerSize?.width ?? 0) - (sectionContainerSize?.width ?? 0)) / 2 + (globeWindowSize?.width ?? 0),
-          zIndex: -1,
         }}
 
         onMouseMove={() => {
