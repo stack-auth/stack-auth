@@ -88,7 +88,7 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
   }
 
   _adminConfigFromCrud(data: ConfigCrud['Admin']['Read']): OrganizationRenderedConfig {
-    return JSON.parse(data.configString);
+    return JSON.parse(data.config_string);
   }
 
   _adminOwnedProjectFromCrud(data: ProjectsCrud['Admin']['Read'], onRefresh: () => Promise<void>): AdminOwnedProject {
