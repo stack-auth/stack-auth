@@ -1,6 +1,6 @@
 {
   "name": "@stackframe/stack-dashboard",
-  "version": "2.8.26",
+  "version": "2.8.27",
   "private": true,
   "scripts": {
     "clean": "rimraf .next && rimraf node_modules",
@@ -38,6 +38,7 @@
     "clsx": "^2.0.0",
     "dotenv-cli": "^7.3.0",
     "geist": "^1",
+    "jose": "^5.2.2",
     "lodash": "^4.17.21",
     "lucide-react": "^0.508.0",
     "next": "15.4.1",
