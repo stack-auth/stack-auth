@@ -1,4 +1,5 @@
 import { listPermissions } from "@/lib/permissions";
+import { Tenancy } from "@/lib/tenancies";
 import { getPrismaClientForTenancy } from "@/prisma-client";
 import { createCrudHandlers } from "@/route-handlers/crud-handler";
 import { SmartRequestAuth } from "@/route-handlers/smart-request";
@@ -15,16 +16,13 @@ import { generateUuid } from "@stackframe/stack-shared/dist/utils/uuids";
 import * as yup from "yup";
 
 
-async function throwIfFeatureDisabled(project: {
-  allow_team_api_keys: boolean,
-  allow_user_api_keys: boolean,
-}, type: "team" | "user") {
+async function throwIfFeatureDisabled(tenancy: Tenancy, type: "team" | "user") {
   if (type === "team") {
-    if (!project.allow_team_api_keys) {
+    if (!tenancy.config.apiKeys.enabled.team) {
       throw new StatusError(StatusError.BadRequest, "Team API keys are not enabled for this project.");
     }
   } else {
-    if (!project.allow_user_api_keys) {
+    if (!tenancy.config.apiKeys.enabled.user) {
       throw new StatusError(StatusError.BadRequest, "User API keys are not enabled for this project.");
     }
   }
@@ -175,7 +173,7 @@ function createApiKeyHandlers<Type extends "user" | "team">(type: Type) {
         body: type === 'user' ? userApiKeysCreateOutputSchema.defined() : teamApiKeysCreateOutputSchema.defined(),
       }),
       handler: async ({ url, auth, body }) => {
-        await throwIfFeatureDisabled(auth.tenancy.config, type);
+        await throwIfFeatureDisabled(auth.tenancy, type);
         const { userId, teamId } = await parseTypeAndParams({ type, params: body });
         await ensureUserCanManageApiKeys(auth, {
           userId,
@@ -247,7 +245,7 @@ function createApiKeyHandlers<Type extends "user" | "team">(type: Type) {
         body: (type === 'user' ? userApiKeysCrud : teamApiKeysCrud).server.readSchema.defined(),
       }),
       handler: async ({ auth, body }) => {
-        await throwIfFeatureDisabled(auth.tenancy.config, type);
+        await throwIfFeatureDisabled(auth.tenancy, type);
         const prisma = await getPrismaClientForTenancy(auth.tenancy);
 
         const apiKey = await prisma.projectApiKey.findUnique({
@@ -297,7 +295,7 @@ function createApiKeyHandlers<Type extends "user" | "team">(type: Type) {
         }),
 
         onList: async ({ auth, query }) => {
-          await throwIfFeatureDisabled(auth.tenancy.config, type);
+          await throwIfFeatureDisabled(auth.tenancy, type);
           const { userId, teamId } = await parseTypeAndParams({ type, params: query });
           await ensureUserCanManageApiKeys(auth, {
             userId,
@@ -323,7 +321,7 @@ function createApiKeyHandlers<Type extends "user" | "team">(type: Type) {
         },
 
         onRead: async ({ auth, query, params }) => {
-          await throwIfFeatureDisabled(auth.tenancy.config, type);
+          await throwIfFeatureDisabled(auth.tenancy, type);
 
           const prisma = await getPrismaClientForTenancy(auth.tenancy);
 
@@ -348,7 +346,7 @@ function createApiKeyHandlers<Type extends "user" | "team">(type: Type) {
         },
 
         onUpdate: async ({ auth, data, params, query }) => {
-          await throwIfFeatureDisabled(auth.tenancy.config, type);
+          await throwIfFeatureDisabled(auth.tenancy, type);
 
           const prisma = await getPrismaClientForTenancy(auth.tenancy);
 

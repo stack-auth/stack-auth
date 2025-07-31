@@ -1,5 +1,4 @@
 import { overrideEnvironmentConfigOverride } from "@/lib/config";
-import { globalPrismaClient } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { adaptSchema, templateThemeIdSchema, yupArray, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
 import { filterUndefined, typedEntries } from "@stackframe/stack-shared/dist/utils/objects";
@@ -29,7 +28,7 @@ export const GET = createSmartRouteHandler({
     }).defined(),
   }),
   async handler({ auth: { tenancy } }) {
-    const templates = typedEntries(tenancy.completeConfig.emails.templates).map(([id, template]) => filterUndefined({
+    const templates = typedEntries(tenancy.config.emails.templates).map(([id, template]) => filterUndefined({
       id,
       display_name: template.displayName,
       tsx_source: template.tsxSource,
@@ -94,7 +93,6 @@ export const POST = createSmartRouteHandler({
     `;
 
     await overrideEnvironmentConfigOverride({
-      tx: globalPrismaClient,
       projectId: tenancy.project.id,
       branchId: tenancy.branchId,
       environmentConfigOverrideOverride: {

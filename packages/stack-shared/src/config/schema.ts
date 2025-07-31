@@ -324,14 +324,14 @@ const environmentConfigDefaults = {} as const satisfies DefaultsType<Environment
 const organizationConfigDefaults = {
   rbac: {
     permissions: (key: string) => ({
-      containedPermissionIds: {},
+      containedPermissionIds: (key: string) => undefined,
       description: undefined,
       scope: undefined,
     }),
     defaultPermissions: {
-      teamCreator: {},
-      teamMember: {},
-      signUp: {},
+      teamCreator: (key: string) => undefined,
+      teamMember: (key: string) => undefined,
+      signUp: (key: string) => undefined,
     },
   },
 
@@ -356,7 +356,7 @@ const organizationConfigDefaults = {
     trustedDomains: (key: string) => ({
       baseUrl: undefined,
       handlerPath: '/handler',
-    }),
+    }) as const,
   },
 
   auth: {
@@ -416,9 +416,16 @@ type _DeepOmitDefaultsImpl<T, U> = T extends object ? (
 ) : T;
 type DeepOmitDefaults<T, U> = _DeepOmitDefaultsImpl<DeepFilterUndefined<T>, U>;
 type DefaultsType<T, U extends any[]> = DeepReplaceAllowFunctionsForObjects<DeepOmitDefaults<DeepRequiredOrUndefined<T>, IntersectAll<{ [K in keyof U]: DeepReplaceFunctionsWithObjects<U[K]> }>>>;
-typeAssertIs<DefaultsType<{ a: { b: Record<string, 123>, c: 456 } }, [{ a: { c: 456 } }]>, { a: { b: Record<string, 123> | ((key: string) => 123) } }>()();
+typeAssertIs<DefaultsType<{ a: { b: Record<string, 123>, c: 456 } }, [{ a: { c: 456 } }]>, { a: { b: ((key: string) => 123) | Record<string, 123 | undefined> & ((key: string) => 123) } }>()();
 
-type DeepReplaceAllowFunctionsForObjects<T> = T extends object ? { [K in keyof T]: DeepReplaceAllowFunctionsForObjects<T[K]> } | (string extends keyof T ? (arg: Exclude<keyof T, number>) => DeepReplaceAllowFunctionsForObjects<T[keyof T]> : never) : T;
+type DeepReplaceAllowFunctionsForObjects<T> = T extends object
+  ? (
+      string extends keyof T
+        ? ((arg: Exclude<keyof T, number>) => DeepReplaceAllowFunctionsForObjects<T[keyof T]>) & ({ [K in keyof T]?: DeepReplaceAllowFunctionsForObjects<T[K]> } | {})
+        : { [K in keyof T]: DeepReplaceAllowFunctionsForObjects<T[K]> }
+    )
+  :
+    T;
 type ReplaceFunctionsWithObjects<T> = T & (T extends (arg: infer K extends string) => infer R ? Record<K, R> & object : unknown);
 type DeepReplaceFunctionsWithObjects<T> = T extends object ? { [K in keyof ReplaceFunctionsWithObjects<T>]: DeepReplaceFunctionsWithObjects<ReplaceFunctionsWithObjects<T>[K]> } : T;
 typeAssertIs<DeepReplaceFunctionsWithObjects<{ a: { b: 123 } & ((key: string) => number) }>, { a: { b: 123, [key: string]: number } }>()();
