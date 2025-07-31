@@ -48,7 +48,7 @@ export const POST = createSmartRouteHandler({
     if (!getEnvVariable("STACK_FREESTYLE_API_KEY")) {
       throw new StatusError(500, "STACK_FREESTYLE_API_KEY is not set");
     }
-    if (auth.tenancy.config.email_config.type === "shared") {
+    if (auth.tenancy.config.emails.server.isShared) {
       throw new StatusError(400, "Cannot send custom emails when using shared email config");
     }
     const emailConfig = await getEmailConfig(auth.tenancy);
@@ -56,11 +56,11 @@ export const POST = createSmartRouteHandler({
     if (!notificationCategory) {
       throw new StatusError(404, "Notification category not found");
     }
-    const themeList = auth.tenancy.completeConfig.emails.themes;
-    if (!Object.keys(themeList).includes(auth.tenancy.completeConfig.emails.selectedThemeId)) {
+    const themeList = auth.tenancy.config.emails.themes;
+    if (!Object.keys(themeList).includes(auth.tenancy.config.emails.selectedThemeId)) {
       throw new StatusError(400, "No active theme found");
     }
-    const activeTheme = themeList[auth.tenancy.completeConfig.emails.selectedThemeId];
+    const activeTheme = themeList[auth.tenancy.config.emails.selectedThemeId];
 
     const prisma = await getPrismaClientForTenancy(auth.tenancy);
 

@@ -1,8 +1,10 @@
 import { getEmailThemeForTemplate, renderEmailWithTemplate } from "@/lib/email-rendering";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { KnownErrors } from "@stackframe/stack-shared/dist/known-errors";
-import { adaptSchema, templateThemeIdSchema, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
-import { StackAssertionError, StatusError, captureError } from "@stackframe/stack-shared/dist/utils/errors";
+import { adaptSchema, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
+import { StatusError } from "@stackframe/stack-shared/dist/utils/errors";
+
+import { templateThemeIdSchema } from "@stackframe/stack-shared/dist/schema-fields";
 
 export const POST = createSmartRouteHandler({
   metadata: {
@@ -38,10 +40,11 @@ export const POST = createSmartRouteHandler({
     if ((!body.template_id && !body.template_tsx_source) || (body.template_id && body.template_tsx_source)) {
       throw new StatusError(400, "Exactly one of template_id or template_tsx_source must be provided");
     }
-    if (body.theme_id && !(body.theme_id in tenancy.completeConfig.emails.themes)) {
+
+    if (body.theme_id && !(body.theme_id in tenancy.config.emails.themes)) {
       throw new StatusError(400, "No theme found with given id");
     }
-    const templateList = new Map(Object.entries(tenancy.completeConfig.emails.templates));
+    const templateList = new Map(Object.entries(tenancy.config.emails.templates));
     const themeSource = body.theme_id === undefined ? body.theme_tsx_source! : getEmailThemeForTemplate(tenancy, body.theme_id);
     const templateSource = body.template_id ? templateList.get(body.template_id)?.tsxSource : body.template_tsx_source;
 
