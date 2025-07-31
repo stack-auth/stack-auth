@@ -33,7 +33,7 @@ export const POST = createSmartRouteHandler({
     const set = await globalPrismaClient.apiKeySet.create({
       data: {
         projectId: req.body.project_id,
-        description: `Auto-generated for ${req.body.external_project_name ? `"${req.body.external_project_name}"` : "an external project"}`,
+        description: `Auto-generated for ${req.body.external_project_name ? `"${req.body.external_project_name}"` : "an external project"} (DO NOT DELETE)`,
         expiresAt: new Date(Date.now() + 1000 * 60 * 60 * 24 * 365 * 100),
         superSecretAdminKey: `sak_${generateSecureRandomString()}`,
       },

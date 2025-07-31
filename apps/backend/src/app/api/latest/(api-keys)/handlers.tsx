@@ -1,6 +1,6 @@
 import { listPermissions } from "@/lib/permissions";
 import { Tenancy } from "@/lib/tenancies";
-import { getPrismaClientForTenancy } from "@/prisma-client";
+import { getPrismaClientForTenancy, retryTransaction } from "@/prisma-client";
 import { createCrudHandlers } from "@/route-handlers/crud-handler";
 import { SmartRequestAuth } from "@/route-handlers/smart-request";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
@@ -57,7 +57,7 @@ async function ensureUserCanManageApiKeys(
     // Check team API key permissions
     if (options.teamId !== undefined) {
       const userId = auth.user.id;
-      const hasManageApiKeysPermission = await prisma.$transaction(async (tx) => {
+      const hasManageApiKeysPermission = await retryTransaction(prisma, async (tx) => {
         const permissions = await listPermissions(tx, {
           scope: 'team',
           tenancy: auth.tenancy,

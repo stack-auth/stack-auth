@@ -1,7 +1,7 @@
 import { getSharedEmailConfig, sendEmail } from "@/lib/emails";
 import { listPermissions } from "@/lib/permissions";
 import { getTenancy } from "@/lib/tenancies";
-import { getPrismaClientForTenancy, globalPrismaClient } from "@/prisma-client";
+import { getPrismaClientForTenancy, globalPrismaClient, retryTransaction } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { KnownErrors } from "@stackframe/stack-shared";
 import { yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
@@ -27,7 +27,7 @@ export const POST = createSmartRouteHandler({
   async handler({ body }) {
     // Get the API key and revoke it. We use a transaction to ensure we do not send emails multiple times.
     // We don't support revoking API keys in tenancies with non-global source of truth atm.
-    const updatedApiKey = await globalPrismaClient.$transaction(async (tx) => {
+    const updatedApiKey = await retryTransaction(globalPrismaClient, async (tx) => {
       // Find the API key in the database
       const apiKey = await tx.projectApiKey.findUnique({
         where: {
@@ -116,7 +116,7 @@ export const POST = createSmartRouteHandler({
 
       const prisma = await getPrismaClientForTenancy(tenancy);
 
-      const userIdsWithManageApiKeysPermission = await prisma.$transaction(async (tx) => {
+      const userIdsWithManageApiKeysPermission = await retryTransaction(prisma, async (tx) => {
         if (!updatedApiKey.teamId) {
           throw new StackAssertionError("Team ID not specified in team API key");
         }
