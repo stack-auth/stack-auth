@@ -510,7 +510,7 @@ export class StackAdminInterface extends StackServerInterface {
     });
 
     const response = await this.sendAdminRequest(
-      `/internal/config-overrides`,
+      `/internal/configs/overrides`,
       {
         method: "PATCH",
         headers: {
