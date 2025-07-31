@@ -32,7 +32,13 @@ export const adminUserProjectsCrudHandlers = createLazyProxy(() => createCrudHan
     const project = await createOrUpdateProject({
       ownerIds: userIds,
       type: 'create',
-      data,
+      data: {
+        ...data,
+        config: {
+          allow_localhost: true,
+          ...data.config,
+        },
+      },
     });
     const tenancy = await getSoleTenancyFromProjectBranch(project.id, DEFAULT_BRANCH_ID);
     return {
