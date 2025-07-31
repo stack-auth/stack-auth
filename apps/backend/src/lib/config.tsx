@@ -199,18 +199,17 @@ export function getOrganizationConfigOverrideQuery(options: OrganizationOptions)
 export async function overrideProjectConfigOverride(options: {
   projectId: string,
   projectConfigOverrideOverride: ProjectConfigOverrideOverride,
-  tx: PrismaClientTransaction,
 }): Promise<void> {
   // set project config override on our own DB
 
   // TODO put this in a serializable transaction (or a single SQL query) to prevent race conditions
-  const oldConfig = await rawQuery(options.tx, getProjectConfigOverrideQuery(options));
+  const oldConfig = await rawQuery(globalPrismaClient, getProjectConfigOverrideQuery(options));
   const newConfig = override(
     oldConfig,
     options.projectConfigOverrideOverride,
   );
   await assertNoConfigOverrideErrors(projectConfigSchema, newConfig);
-  await options.tx.project.update({
+  await globalPrismaClient.project.update({
     where: {
       id: options.projectId,
     },
@@ -224,7 +223,6 @@ export function overrideBranchConfigOverride(options: {
   projectId: string,
   branchId: string,
   branchConfigOverrideOverride: BranchConfigOverrideOverride,
-  tx: PrismaClientTransaction,
 }): Promise<void> {
   // update config.json if on local emulator
   // throw error otherwise
@@ -235,18 +233,17 @@ export async function overrideEnvironmentConfigOverride(options: {
   projectId: string,
   branchId: string,
   environmentConfigOverrideOverride: EnvironmentConfigOverrideOverride,
-  tx: PrismaClientTransaction,
 }): Promise<void> {
   // save environment config override on DB
 
   // TODO put this in a serializable transaction (or a single SQL query) to prevent race conditions
-  const oldConfig = await rawQuery(options.tx, getEnvironmentConfigOverrideQuery(options));
+  const oldConfig = await rawQuery(globalPrismaClient, getEnvironmentConfigOverrideQuery(options));
   const newConfig = override(
     oldConfig,
     options.environmentConfigOverrideOverride,
   );
   await assertNoConfigOverrideErrors(environmentConfigSchema, newConfig);
-  await options.tx.environmentConfigOverride.upsert({
+  await globalPrismaClient.environmentConfigOverride.upsert({
     where: {
       projectId_branchId: {
         projectId: options.projectId,
@@ -269,7 +266,6 @@ export function overrideOrganizationConfigOverride(options: {
   branchId: string,
   organizationId: string | null,
   organizationConfigOverrideOverride: OrganizationConfigOverrideOverride,
-  tx: PrismaClientTransaction,
 }): Promise<void> {
   // save organization config override on DB (either our own, or the source of truth one)
   throw new StackAssertionError('Not implemented');
