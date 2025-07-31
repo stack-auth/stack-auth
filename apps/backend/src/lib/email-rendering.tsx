@@ -9,8 +9,8 @@ import { deindent } from "@stackframe/stack-shared/dist/utils/strings";
 import { Tenancy } from './tenancies';
 
 export function getActiveEmailTheme(tenancy: Tenancy) {
-  const themeList = tenancy.completeConfig.emails.themes;
-  const currentActiveTheme = tenancy.completeConfig.emails.selectedThemeId;
+  const themeList = tenancy.config.emails.themes;
+  const currentActiveTheme = tenancy.config.emails.selectedThemeId;
   if (!(has(themeList, currentActiveTheme))) {
     throw new StackAssertionError("No active email theme found", {
       themeList,
@@ -21,7 +21,7 @@ export function getActiveEmailTheme(tenancy: Tenancy) {
 }
 
 export function getEmailThemeForTemplate(tenancy: Tenancy, templateThemeId: string | null | false | undefined) {
-  const themeList = tenancy.completeConfig.emails.themes;
+  const themeList = tenancy.config.emails.themes;
   if (templateThemeId && has(themeList, templateThemeId)) {
     return get(themeList, templateThemeId).tsxSource;
   }

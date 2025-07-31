@@ -1,5 +1,6 @@
 import { getPrismaClientForTenancy } from '@/prisma-client';
 import { traceSpan } from '@/utils/telemetry';
+import { DEFAULT_TEMPLATE_IDS } from '@stackframe/stack-shared/dist/helpers/emails';
 import { UsersCrud } from '@stackframe/stack-shared/dist/interface/crud/users';
 import { getEnvVariable } from '@stackframe/stack-shared/dist/utils/env';
 import { StackAssertionError, StatusError, captureError } from '@stackframe/stack-shared/dist/utils/errors';
@@ -7,13 +8,12 @@ import { filterUndefined, omit, pick } from '@stackframe/stack-shared/dist/utils
 import { runAsynchronously, wait } from '@stackframe/stack-shared/dist/utils/promises';
 import { Result } from '@stackframe/stack-shared/dist/utils/results';
 import nodemailer from 'nodemailer';
-import { Tenancy, getTenancy } from './tenancies';
 import { getEmailThemeForTemplate, renderEmailWithTemplate } from './email-rendering';
-import { DEFAULT_TEMPLATE_IDS } from '@stackframe/stack-shared/dist/helpers/emails';
+import { Tenancy, getTenancy } from './tenancies';
 
 
 function getDefaultEmailTemplate(tenancy: Tenancy, type: keyof typeof DEFAULT_TEMPLATE_IDS) {
-  const templateList = new Map(Object.entries(tenancy.completeConfig.emails.templates));
+  const templateList = new Map(Object.entries(tenancy.config.emails.templates));
   const defaultTemplateIdsMap = new Map(Object.entries(DEFAULT_TEMPLATE_IDS));
   const defaultTemplateId = defaultTemplateIdsMap.get(type);
   if (defaultTemplateId) {
