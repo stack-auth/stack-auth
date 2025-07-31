@@ -10,16 +10,18 @@ let esbuildInitializePromise: Promise<void> | null = null;
 
 export async function initializeEsbuild() {
   if (!esbuildInitializePromise) {
-    esbuildInitializePromise = esbuild.initialize(isBrowserLike() ? {
-      wasmURL: `https://unpkg.com/esbuild-wasm@${esbuild.version}/esbuild.wasm`,
-    } : {
-      wasmModule: (
-        await fetch(`https://unpkg.com/esbuild-wasm@${esbuild.version}/esbuild.wasm`)
-          .then(wasm => wasm.arrayBuffer())
-          .then(wasm => new WebAssembly.Module(wasm))
-      ),
-      worker: false,
-    });
+    esbuildInitializePromise = (async () => {
+      await esbuild.initialize(isBrowserLike() ? {
+        wasmURL: `https://unpkg.com/esbuild-wasm@${esbuild.version}/esbuild.wasm`,
+      } : {
+        wasmModule: (
+          await fetch(`https://unpkg.com/esbuild-wasm@${esbuild.version}/esbuild.wasm`)
+            .then(wasm => wasm.arrayBuffer())
+            .then(wasm => new WebAssembly.Module(wasm))
+        ),
+        worker: false,
+      });
+    })();
   }
   await esbuildInitializePromise;
 }
