@@ -24,9 +24,11 @@ export type AdminProject = {
   delete(this: AdminProject): Promise<void>,
 
   getConfig(this: AdminProject): Promise<OrganizationRenderedConfig>,
+  // NEXT_LINE_PLATFORM react-like
   useConfig(this: AdminProject): OrganizationRenderedConfig,
 
   getProductionModeErrors(this: AdminProject): Promise<ProductionModeError[]>,
+  // NEXT_LINE_PLATFORM react-like
   useProductionModeErrors(this: AdminProject): ProductionModeError[],
 } & Project;
 
