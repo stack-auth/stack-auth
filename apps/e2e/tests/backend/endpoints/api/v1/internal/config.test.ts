@@ -380,6 +380,36 @@ it("returns an error when the oauth config is misconfigured", async ({ expect })
   `);
 });
 
+it("returns an error when config override contains non-existent fields", async ({ expect }) => {
+  const { adminAccessToken } = await Project.createAndSwitch({
+    config: {
+      magic_link_enabled: true,
+    }
+  });
+
+  // Test non-existent top-level field
+  const invalidTopLevelResponse = await niceBackendFetch("/api/v1/internal/configs/overrides", {
+    method: "PATCH",
+    accessType: "admin",
+    headers: {
+      'x-stack-admin-access-token': adminAccessToken,
+    },
+    body: {
+      config_override_string: JSON.stringify({
+        'nonExistentField': 'some-value',
+      }),
+    },
+  });
+
+  expect(invalidTopLevelResponse).toMatchInlineSnapshot(`
+    NiceResponse {
+      "status": 400,
+      "body": "[ERROR] The key \\"nonExistentField\\" is not valid for the schema.",
+      "headers": Headers { <some fields may have been hidden> },
+    }
+  `);
+});
+
 it("adds, updates, and removes domains", async ({ expect }) => {
   const { adminAccessToken } = await Project.createAndSwitch({
     config: {
