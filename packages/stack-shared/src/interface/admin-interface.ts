@@ -1,6 +1,6 @@
 import { InternalSession } from "../sessions";
 import { filterUndefined, typedFromEntries } from "../utils/objects";
-import { ConfigOverridesCrud } from "./crud/config-overrides";
+import { ConfigCrud, ConfigOverrideCrud } from "./crud/config";
 import { InternalEmailsCrud } from "./crud/emails";
 import { InternalApiKeysCrud } from "./crud/internal-api-keys";
 import { ProjectPermissionDefinitionsCrud } from "./crud/project-permissions";
@@ -445,17 +445,17 @@ export class StackAdminInterface extends StackServerInterface {
     return await response.json();
   }
 
-  async getConfigOverrides(): Promise<ConfigOverridesCrud["Admin"]["Read"]> {
+  async getConfig(): Promise<ConfigCrud["Admin"]["Read"]> {
     const response = await this.sendAdminRequest(
-      `/internal/config-overrides`,
+      `/internal/config`,
       { method: "GET" },
       null,
     );
     return await response.json();
   }
 
-  async updateConfigOverrides(data: { config: any }): Promise<ConfigOverridesCrud["Admin"]["Read"]> {
-    const legacyConfig = data.config;
+  async updateConfig(data: { configOverride: any }): Promise<ConfigOverrideCrud["Admin"]["Read"]> {
+    const legacyConfig = data.configOverride;
 
     const configOverrideOverride = filterUndefined({
       // ======================= auth =======================

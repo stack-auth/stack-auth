@@ -5,7 +5,7 @@ import { EmailTemplateCrud } from "@stackframe/stack-shared/dist/interface/crud/
 import { InternalApiKeysCrud } from "@stackframe/stack-shared/dist/interface/crud/internal-api-keys";
 import { ProjectsCrud } from "@stackframe/stack-shared/dist/interface/crud/projects";
 import { StackAssertionError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
-import { filterUndefined, pick } from "@stackframe/stack-shared/dist/utils/objects";
+import { pick } from "@stackframe/stack-shared/dist/utils/objects";
 import { Result } from "@stackframe/stack-shared/dist/utils/results";
 import { useMemo } from "react"; // THIS_LINE_PLATFORM react-like
 import { AdminSentEmail } from "../..";
@@ -18,9 +18,9 @@ import { StackAdminApp, StackAdminAppConstructorOptions } from "../interfaces/ad
 import { clientVersion, createCache, getBaseUrl, getDefaultProjectId, getDefaultPublishableClientKey, getDefaultSecretServerKey, getDefaultSuperSecretAdminKey } from "./common";
 import { _StackServerAppImplIncomplete } from "./server-app-impl";
 
-import { OrganizationRenderedConfig } from "@stackframe/stack-shared/dist/config/schema";
+import { EnvironmentConfigOverrideOverride, OrganizationRenderedConfig } from "@stackframe/stack-shared/dist/config/schema";
 import { ChatContent } from "@stackframe/stack-shared/dist/interface/admin-interface";
-import { ConfigOverridesCrud } from "@stackframe/stack-shared/dist/interface/crud/config-overrides";
+import { ConfigCrud } from "@stackframe/stack-shared/dist/interface/crud/config";
 import { useAsyncCache } from "./common"; // THIS_LINE_PLATFORM react-like
 
 export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, ProjectId extends string> extends _StackServerAppImplIncomplete<HasTokenStore, ProjectId> implements StackAdminApp<HasTokenStore, ProjectId>
@@ -59,7 +59,7 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
     return await this._interface.renderEmailPreview({ themeId, themeTsxSource, templateId, templateTsxSource });
   });
   private readonly _configOverridesCache = createCache(async () => {
-    return await this._interface.getConfigOverrides();
+    return await this._interface.getConfig();
   });
 
   constructor(options: StackAdminAppConstructorOptions<HasTokenStore, ProjectId>) {
@@ -87,8 +87,8 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
     });
   }
 
-  _adminConfigFromCrud(data: ConfigOverridesCrud['Admin']['Read']): OrganizationRenderedConfig {
-    return JSON.parse(data.config);
+  _adminConfigFromCrud(data: ConfigCrud['Admin']['Read']): OrganizationRenderedConfig {
+    return JSON.parse(data.configString);
   }
 
   _adminOwnedProjectFromCrud(data: ProjectsCrud['Admin']['Read'], onRefresh: () => Promise<void>): AdminOwnedProject {
@@ -157,21 +157,20 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
         userDefaultPermissions: data.config.user_default_permissions,
       },
       async getConfig() {
-        return app._adminConfigFromCrud(await app._interface.getConfigOverrides());
+        return app._adminConfigFromCrud(await app._interface.getConfig());
       },
       // IF_PLATFORM react-like
       useConfig() {
-        const crud = useAsyncCache(app._configOverridesCache, [], "useConfig()");
-        return useMemo(() => app._adminConfigFromCrud(crud), [crud]);
+        const config = useAsyncCache(app._configOverridesCache, [], "useConfig()");
+        return useMemo(() => app._adminConfigFromCrud(config), [config]);
       },
       // END_PLATFORM
+      async updateConfig(configOverride: EnvironmentConfigOverrideOverride) {
+        await app._interface.updateConfig({ configOverride });
+      },
       async update(update: AdminProjectUpdateOptions) {
         const updateOptions = adminProjectUpdateOptionsToCrud(update);
-        await app._interface.updateProject(filterUndefined({
-          ...updateOptions,
-          config: undefined,
-        }));
-        await app._interface.updateConfigOverrides({ config: updateOptions.config });
+        await app._interface.updateProject(updateOptions);
         await onRefresh();
       },
       async delete() {

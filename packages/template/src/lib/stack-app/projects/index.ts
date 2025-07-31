@@ -1,7 +1,7 @@
 import { ProductionModeError } from "@stackframe/stack-shared/dist/helpers/production-mode";
 import { AdminUserProjectsCrud, ProjectsCrud } from "@stackframe/stack-shared/dist/interface/crud/projects";
 
-import { OrganizationRenderedConfig } from "@stackframe/stack-shared/dist/config/schema";
+import { EnvironmentConfigOverrideOverride, OrganizationRenderedConfig } from "@stackframe/stack-shared/dist/config/schema";
 import { StackAdminApp } from "../apps/interfaces/admin-app";
 import { AdminProjectConfig, AdminProjectConfigUpdateOptions, ProjectConfig } from "../project-configs";
 
@@ -26,6 +26,7 @@ export type AdminProject = {
   getConfig(this: AdminProject): Promise<OrganizationRenderedConfig>,
   // NEXT_LINE_PLATFORM react-like
   useConfig(this: AdminProject): OrganizationRenderedConfig,
+  updateConfig(this: AdminProject, config: EnvironmentConfigOverrideOverride): Promise<void>,
 
   getProductionModeErrors(this: AdminProject): Promise<ProductionModeError[]>,
   // NEXT_LINE_PLATFORM react-like
