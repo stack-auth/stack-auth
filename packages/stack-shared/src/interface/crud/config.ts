@@ -5,7 +5,7 @@ import { yupObject } from "../../schema-fields";
 export const configOverrideCrudAdminReadSchema = yupObject({}).defined();
 
 export const configOverrideCrudAdminUpdateSchema = yupObject({
-  configOverrideString: schemaFields.yupString().optional(),
+  config_override_string: schemaFields.yupString().optional(),
 }).defined();
 
 export const configOverrideCrud = createCrud({
@@ -22,7 +22,7 @@ export const configOverrideCrud = createCrud({
 export type ConfigOverrideCrud = CrudTypeOf<typeof configOverrideCrud>;
 
 export const configCrudAdminReadSchema = yupObject({
-  configString: schemaFields.yupString().defined(),
+  config_string: schemaFields.yupString().defined(),
 }).defined();
 
 export const configCrud = createCrud({

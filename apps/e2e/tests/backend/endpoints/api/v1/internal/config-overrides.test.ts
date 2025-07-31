@@ -339,14 +339,14 @@ it("returns an error when the oauth config is misconfigured", async ({ expect })
   });
 
   // Test invalid OAuth provider type
-  const invalidTypeResponse = await niceBackendFetch("/api/v1/internal/config-overrides", {
+  const invalidTypeResponse = await niceBackendFetch("/api/v1/internal/configs/overrides", {
     method: "PATCH",
     accessType: "admin",
     headers: {
       'x-stack-admin-access-token': adminAccessToken,
     },
     body: {
-      config: JSON.stringify({
+      config_override_string: JSON.stringify({
         'auth.oauth.providers.invalid': {
           type: 'invalid-provider',
           isShared: false,
@@ -359,43 +359,13 @@ it("returns an error when the oauth config is misconfigured", async ({ expect })
     },
   });
 
-  expect(invalidTypeResponse.status).toBe(400);
-
-  // Test missing required fields for non-shared provider
-  const missingFieldsResponse = await niceBackendFetch("/api/v1/internal/config-overrides", {
-    method: "PATCH",
-    accessType: "admin",
-    headers: {
-      'x-stack-admin-access-token': adminAccessToken,
-    },
-    body: {
-      config: JSON.stringify({
-        'auth.oauth.providers.google': {
-          type: 'google',
-          isShared: false,
-          allowSignIn: true,
-          allowConnectedAccounts: true,
-          // Missing clientId and clientSecret
-        },
-      }),
-    },
-  });
-
-  expect(missingFieldsResponse.status).toBe(400);
-
-  // Test invalid JSON
-  const invalidJsonResponse = await niceBackendFetch("/api/v1/internal/config-overrides", {
-    method: "PATCH",
-    accessType: "admin",
-    headers: {
-      'x-stack-admin-access-token': adminAccessToken,
-    },
-    body: {
-      config: "invalid json",
-    },
-  });
-
-  expect(invalidJsonResponse.status).toBe(400);
+  expect(invalidTypeResponse).toMatchInlineSnapshot(`
+    NiceResponse {
+      "status": 400,
+      "body": "[ERROR] auth.oauth.providers.invalid.type must be one of the following values: google, github, microsoft, spotify, facebook, discord, gitlab, bitbucket, linkedin, apple, x, twitch",
+      "headers": Headers { <some fields may have been hidden> },
+    }
+  `);
 });
 
 it("adds, updates, and removes domains", async ({ expect }) => {

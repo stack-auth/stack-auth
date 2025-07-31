@@ -7,7 +7,7 @@ export const configCrudHandlers = createLazyProxy(() => createCrudHandlers(confi
   paramsSchema: yupObject({}),
   onRead: async ({ auth }) => {
     return {
-      configString: JSON.stringify(auth.tenancy.config),
+      config_string: JSON.stringify(auth.tenancy.config),
     };
   },
 }));
