@@ -129,6 +129,7 @@ export async function retryTransaction<T>(client: PrismaClient, fn: (tx: PrismaC
       return await traceSpan(`transaction attempt #${attemptIndex}`, async (attemptSpan) => {
         const attemptRes = await (async () => {
           try {
+            // eslint-disable-next-line no-restricted-syntax
             return Result.ok(await client.$transaction(async (tx, ...args) => {
               let res;
               try {

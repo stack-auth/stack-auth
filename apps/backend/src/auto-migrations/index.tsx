@@ -39,6 +39,7 @@ async function getAppliedMigrations(options: {
   prismaClient: PrismaClient,
   schema: string,
 }) {
+  // eslint-disable-next-line no-restricted-syntax
   const [_1, _2, _3, appliedMigrations] = await options.prismaClient.$transaction([
     options.prismaClient.$executeRaw`SELECT pg_advisory_xact_lock(${MIGRATION_LOCK_ID})`,
     options.prismaClient.$executeRaw(Prisma.sql`
@@ -143,6 +144,7 @@ export async function applyMigrations(options: {
       VALUES (${migration.migrationName}, clock_timestamp())
     `);
     try {
+      // eslint-disable-next-line no-restricted-syntax
       await options.prismaClient.$transaction(transaction);
     } catch (e) {
       const error = getMigrationError(e);
