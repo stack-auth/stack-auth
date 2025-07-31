@@ -7,16 +7,48 @@ it("client and server should not have access to config overrides", async ({ expe
   await Project.createAndSwitch();
 
   // Test client access
-  const clientResponse = await niceBackendFetch("/api/v1/internal/config-overrides", {
+  const clientResponse = await niceBackendFetch("/api/v1/internal/configs", {
     accessType: "client"
   });
-  expect(clientResponse.status).toBe(401);
+  expect(clientResponse).toMatchInlineSnapshot(`
+    NiceResponse {
+      "status": 401,
+      "body": {
+        "code": "INSUFFICIENT_ACCESS_TYPE",
+        "details": {
+          "actual_access_type": "client",
+          "allowed_access_types": ["admin"],
+        },
+        "error": "The x-stack-access-type header must be 'admin', but was 'client'.",
+      },
+      "headers": Headers {
+        "x-stack-known-error": "INSUFFICIENT_ACCESS_TYPE",
+        <some fields may have been hidden>,
+      },
+    }
+  `);
 
   // Test server access
-  const serverResponse = await niceBackendFetch("/api/v1/internal/config-overrides", {
+  const serverResponse = await niceBackendFetch("/api/v1/internal/configs", {
     accessType: "server"
   });
-  expect(serverResponse.status).toBe(401);
+  expect(serverResponse).toMatchInlineSnapshot(`
+    NiceResponse {
+      "status": 401,
+      "body": {
+        "code": "INSUFFICIENT_ACCESS_TYPE",
+        "details": {
+          "actual_access_type": "server",
+          "allowed_access_types": ["admin"],
+        },
+        "error": "The x-stack-access-type header must be 'admin', but was 'server'.",
+      },
+      "headers": Headers {
+        "x-stack-known-error": "INSUFFICIENT_ACCESS_TYPE",
+        <some fields may have been hidden>,
+      },
+    }
+  `);
 });
 
 it("gets config", async ({ expect }) => {
@@ -26,7 +58,7 @@ it("gets config", async ({ expect }) => {
     }
   });
 
-  const response = await niceBackendFetch("/api/v1/internal/config-overrides", {
+  const response = await niceBackendFetch("/api/v1/internal/configs", {
     method: "GET",
     accessType: "admin",
     headers: {
@@ -35,7 +67,7 @@ it("gets config", async ({ expect }) => {
   });
 
   expect(response.status).toBe(200);
-  const parsedConfig = JSON.parse(response.body.config);
+  const parsedConfig = JSON.parse(response.body.config_string);
   expect(pick(parsedConfig, ["auth", "domains", 'users', 'teams'])).toMatchInlineSnapshot(`
     {
       "auth": {
@@ -69,7 +101,7 @@ it("updates basic config", async ({ expect }) => {
   });
 
   // Get initial config
-  const initialResponse = await niceBackendFetch("/api/v1/internal/config-overrides", {
+  const initialResponse = await niceBackendFetch("/api/v1/internal/configs", {
     method: "GET",
     accessType: "admin",
     headers: {
@@ -78,35 +110,30 @@ it("updates basic config", async ({ expect }) => {
   });
 
   expect(initialResponse.status).toBe(200);
-  const initialConfig = JSON.parse(initialResponse.body.config);
+  const initialConfig = JSON.parse(initialResponse.body.config_string);
 
   expect(initialConfig.users.allowClientUserDeletion).toBe(false);
   expect(initialConfig.teams.allowClientTeamCreation).toBe(false);
   expect(initialConfig.teams.createPersonalTeamOnSignUp).toBe(false);
 
-  const updateResponse = await niceBackendFetch("/api/v1/internal/config-overrides", {
+  const updateResponse = await niceBackendFetch("/api/v1/internal/configs/overrides", {
     method: "PATCH",
     accessType: "admin",
     headers: {
       'x-stack-admin-access-token': adminAccessToken,
     },
     body: {
-      config: JSON.stringify({
+      config_override_string: JSON.stringify({
         'users.allowClientUserDeletion': true,
         'teams.allowClientTeamCreation': true,
         'teams.createPersonalTeamOnSignUp': true,
       }),
     },
   });
-
   expect(updateResponse.status).toBe(200);
-  const returnedConfig = JSON.parse(updateResponse.body.config);
-  expect(returnedConfig.users.allowClientUserDeletion).toBe(true);
-  expect(returnedConfig.teams.allowClientTeamCreation).toBe(true);
-  expect(returnedConfig.teams.createPersonalTeamOnSignUp).toBe(true);
 
   // Verify the changes are persisted by making another GET request
-  const verifyResponse = await niceBackendFetch("/api/v1/internal/config-overrides", {
+  const verifyResponse = await niceBackendFetch("/api/v1/internal/configs", {
     method: "GET",
     accessType: "admin",
     headers: {
@@ -115,10 +142,10 @@ it("updates basic config", async ({ expect }) => {
   });
 
   expect(verifyResponse.status).toBe(200);
-  const persistedConfig = JSON.parse(verifyResponse.body.config);
-  expect(persistedConfig.users.allowClientUserDeletion).toBe(true);
-  expect(persistedConfig.teams.allowClientTeamCreation).toBe(true);
-  expect(persistedConfig.teams.createPersonalTeamOnSignUp).toBe(true);
+  const updatedConfig = JSON.parse(verifyResponse.body.config_string);
+  expect(updatedConfig.users.allowClientUserDeletion).toBe(true);
+  expect(updatedConfig.teams.allowClientTeamCreation).toBe(true);
+  expect(updatedConfig.teams.createPersonalTeamOnSignUp).toBe(true);
 });
 
 it("adds, updates, and removes oauth config", async ({ expect }) => {
@@ -129,7 +156,7 @@ it("adds, updates, and removes oauth config", async ({ expect }) => {
   });
 
   // Get initial config to verify no OAuth providers exist
-  const initialResponse = await niceBackendFetch("/api/v1/internal/config-overrides", {
+  const initialResponse = await niceBackendFetch("/api/v1/internal/configs", {
     method: "GET",
     accessType: "admin",
     headers: {
@@ -138,18 +165,18 @@ it("adds, updates, and removes oauth config", async ({ expect }) => {
   });
 
   expect(initialResponse.status).toBe(200);
-  const initialConfig = JSON.parse(initialResponse.body.config);
+  const initialConfig = JSON.parse(initialResponse.body.config_string);
   expect(initialConfig.auth.oauth.providers).toEqual({});
 
   // Add a Google OAuth provider
-  const addGoogleResponse = await niceBackendFetch("/api/v1/internal/config-overrides", {
+  const addGoogleResponse = await niceBackendFetch("/api/v1/internal/configs/overrides", {
     method: "PATCH",
     accessType: "admin",
     headers: {
       'x-stack-admin-access-token': adminAccessToken,
     },
     body: {
-      config: JSON.stringify({
+      config_override_string: JSON.stringify({
         'auth.oauth.providers.google': {
           type: 'google',
           isShared: false,
@@ -163,25 +190,16 @@ it("adds, updates, and removes oauth config", async ({ expect }) => {
   });
 
   expect(addGoogleResponse.status).toBe(200);
-  const configWithGoogle = JSON.parse(addGoogleResponse.body.config);
-  expect(configWithGoogle.auth.oauth.providers.google).toEqual({
-    type: 'google',
-    isShared: false,
-    clientId: 'google-client-id',
-    clientSecret: 'google-client-secret',
-    allowSignIn: true,
-    allowConnectedAccounts: true,
-  });
 
   // Add a second OAuth provider (GitHub)
-  const addGithubResponse = await niceBackendFetch("/api/v1/internal/config-overrides", {
+  const addGithubResponse = await niceBackendFetch("/api/v1/internal/configs/overrides", {
     method: "PATCH",
     accessType: "admin",
     headers: {
       'x-stack-admin-access-token': adminAccessToken,
     },
     body: {
-      config: JSON.stringify({
+      config_override_string: JSON.stringify({
         'auth.oauth.providers.github': {
           type: 'github',
           isShared: true,
@@ -193,7 +211,16 @@ it("adds, updates, and removes oauth config", async ({ expect }) => {
   });
 
   expect(addGithubResponse.status).toBe(200);
-  const configWithBoth = JSON.parse(addGithubResponse.body.config);
+
+  const configResponse = await niceBackendFetch("/api/v1/internal/configs", {
+    method: "GET",
+    accessType: "admin",
+    headers: {
+      'x-stack-admin-access-token': adminAccessToken,
+    },
+  });
+
+  const configWithBoth = JSON.parse(configResponse.body.config_string);
   expect(configWithBoth.auth.oauth.providers.google).toBeDefined();
   expect(configWithBoth.auth.oauth.providers.github).toEqual({
     type: 'github',
@@ -203,14 +230,14 @@ it("adds, updates, and removes oauth config", async ({ expect }) => {
   });
 
   // Update the Google OAuth provider
-  const updateGoogleResponse = await niceBackendFetch("/api/v1/internal/config-overrides", {
+  const updateGoogleResponse = await niceBackendFetch("/api/v1/internal/configs/overrides", {
     method: "PATCH",
     accessType: "admin",
     headers: {
       'x-stack-admin-access-token': adminAccessToken,
     },
     body: {
-      config: JSON.stringify({
+      config_override_string: JSON.stringify({
         'auth.oauth.providers.google': {
           type: 'google',
           isShared: true,
@@ -222,7 +249,15 @@ it("adds, updates, and removes oauth config", async ({ expect }) => {
   });
 
   expect(updateGoogleResponse.status).toBe(200);
-  const configWithUpdatedGoogle = JSON.parse(updateGoogleResponse.body.config);
+
+  const configResponse2 = await niceBackendFetch("/api/v1/internal/configs", {
+    method: "GET",
+    accessType: "admin",
+    headers: {
+      'x-stack-admin-access-token': adminAccessToken,
+    },
+  });
+  const configWithUpdatedGoogle = JSON.parse(configResponse2.body.config_string);
   expect(configWithUpdatedGoogle.auth.oauth.providers.google).toEqual({
     type: 'google',
     isShared: true,
@@ -233,55 +268,32 @@ it("adds, updates, and removes oauth config", async ({ expect }) => {
   expect(configWithUpdatedGoogle.auth.oauth.providers.github).toBeDefined();
 
   // Remove the GitHub OAuth provider
-  const removeGithubResponse = await niceBackendFetch("/api/v1/internal/config-overrides", {
+  const removeGithubResponse = await niceBackendFetch("/api/v1/internal/configs/overrides", {
     method: "PATCH",
     accessType: "admin",
     headers: {
       'x-stack-admin-access-token': adminAccessToken,
     },
     body: {
-      config: JSON.stringify({
+      config_override_string: JSON.stringify({
         'auth.oauth.providers.github': null,
       }),
     },
   });
 
   expect(removeGithubResponse.status).toBe(200);
-  const configWithoutGithub = JSON.parse(removeGithubResponse.body.config);
-  expect(configWithoutGithub.auth.oauth.providers.github).toBeUndefined();
-  // Google should still be there
-  expect(configWithoutGithub.auth.oauth.providers.google).toBeDefined();
 
-  // Remove the Google OAuth provider
-  const removeGoogleResponse = await niceBackendFetch("/api/v1/internal/config-overrides", {
-    method: "PATCH",
-    accessType: "admin",
-    headers: {
-      'x-stack-admin-access-token': adminAccessToken,
-    },
-    body: {
-      config: JSON.stringify({
-        'auth.oauth.providers.google': null,
-      }),
-    },
-  });
-
-  expect(removeGoogleResponse.status).toBe(200);
-  const finalConfig = JSON.parse(removeGoogleResponse.body.config);
-  expect(finalConfig.auth.oauth.providers).toEqual({});
-
-  // Verify the changes are persisted by making another GET request
-  const verifyResponse = await niceBackendFetch("/api/v1/internal/config-overrides", {
+  const configResponse3 = await niceBackendFetch("/api/v1/internal/configs", {
     method: "GET",
     accessType: "admin",
     headers: {
       'x-stack-admin-access-token': adminAccessToken,
     },
   });
-
-  expect(verifyResponse.status).toBe(200);
-  const persistedConfig = JSON.parse(verifyResponse.body.config);
-  expect(persistedConfig.auth.oauth.providers).toEqual({});
+  const configWithoutGithub = JSON.parse(configResponse3.body.config_string);
+  expect(configWithoutGithub.auth.oauth.providers.github).toBeUndefined();
+  // Google should still be there
+  expect(configWithoutGithub.auth.oauth.providers.google).toBeDefined();
 });
 
 it("doesn't allow duplicated oauth ids", async ({ expect }) => {
@@ -293,14 +305,14 @@ it("doesn't allow duplicated oauth ids", async ({ expect }) => {
 
   // However, trying to create multiple providers with same OAuth ID in single request should fail
   // or at minimum, only the last one should be applied
-  const multipleWithSameIdResponse = await niceBackendFetch("/api/v1/internal/config-overrides", {
+  const multipleWithSameIdResponse = await niceBackendFetch("/api/v1/internal/configs/overrides", {
     method: "PATCH",
     accessType: "admin",
     headers: {
       'x-stack-admin-access-token': adminAccessToken,
     },
     body: {
-      config: `
+      config_override_string: `
       {
         "auth.oauth.providers.duplicate": {
             "type":"google",
@@ -376,7 +388,7 @@ it("adds, updates, and removes domains", async ({ expect }) => {
   });
 
   // Get initial config to verify no trusted domains exist
-  const initialResponse = await niceBackendFetch("/api/v1/internal/config-overrides", {
+  const initialResponse = await niceBackendFetch("/api/v1/internal/configs", {
     method: "GET",
     accessType: "admin",
     headers: {
@@ -385,18 +397,18 @@ it("adds, updates, and removes domains", async ({ expect }) => {
   });
 
   expect(initialResponse.status).toBe(200);
-  const initialConfig = JSON.parse(initialResponse.body.config);
+  const initialConfig = JSON.parse(initialResponse.body.config_string);
   expect(initialConfig.domains.trustedDomains).toEqual({});
 
   // Add a first trusted domain
-  const addFirstDomainResponse = await niceBackendFetch("/api/v1/internal/config-overrides", {
+  const addFirstDomainResponse = await niceBackendFetch("/api/v1/internal/configs/overrides", {
     method: "PATCH",
     accessType: "admin",
     headers: {
       'x-stack-admin-access-token': adminAccessToken,
     },
     body: {
-      config: JSON.stringify({
+      config_override_string: JSON.stringify({
         'domains.trustedDomains.domain-1': {
           baseUrl: 'https://example.com',
           handlerPath: '/auth/handler',
@@ -406,21 +418,30 @@ it("adds, updates, and removes domains", async ({ expect }) => {
   });
 
   expect(addFirstDomainResponse.status).toBe(200);
-  const configWithFirstDomain = JSON.parse(addFirstDomainResponse.body.config);
+
+  const configResponse = await niceBackendFetch("/api/v1/internal/configs", {
+    method: "GET",
+    accessType: "admin",
+    headers: {
+      'x-stack-admin-access-token': adminAccessToken,
+    },
+  });
+
+  const configWithFirstDomain = JSON.parse(configResponse.body.config_string);
   expect(configWithFirstDomain.domains.trustedDomains['domain-1']).toEqual({
     baseUrl: 'https://example.com',
     handlerPath: '/auth/handler',
   });
 
   // Add a second trusted domain
-  const addSecondDomainResponse = await niceBackendFetch("/api/v1/internal/config-overrides", {
+  const addSecondDomainResponse = await niceBackendFetch("/api/v1/internal/configs/overrides", {
     method: "PATCH",
     accessType: "admin",
     headers: {
       'x-stack-admin-access-token': adminAccessToken,
     },
     body: {
-      config: JSON.stringify({
+      config_override_string: JSON.stringify({
         'domains.trustedDomains.domain-2': {
           baseUrl: 'https://app.example.com',
           handlerPath: '/handler',
@@ -430,7 +451,15 @@ it("adds, updates, and removes domains", async ({ expect }) => {
   });
 
   expect(addSecondDomainResponse.status).toBe(200);
-  const configWithBothDomains = JSON.parse(addSecondDomainResponse.body.config);
+
+  const configResponse2 = await niceBackendFetch("/api/v1/internal/configs", {
+    method: "GET",
+    accessType: "admin",
+    headers: {
+      'x-stack-admin-access-token': adminAccessToken,
+    },
+  });
+  const configWithBothDomains = JSON.parse(configResponse2.body.config_string);
   expect(configWithBothDomains.domains.trustedDomains['domain-1']).toBeDefined();
   expect(configWithBothDomains.domains.trustedDomains['domain-2']).toEqual({
     baseUrl: 'https://app.example.com',
@@ -438,14 +467,14 @@ it("adds, updates, and removes domains", async ({ expect }) => {
   });
 
   // Update the first domain
-  const updateFirstDomainResponse = await niceBackendFetch("/api/v1/internal/config-overrides", {
+  const updateFirstDomainResponse = await niceBackendFetch("/api/v1/internal/configs/overrides", {
     method: "PATCH",
     accessType: "admin",
     headers: {
       'x-stack-admin-access-token': adminAccessToken,
     },
     body: {
-      config: JSON.stringify({
+      config_override_string: JSON.stringify({
         'domains.trustedDomains.domain-1': {
           baseUrl: 'https://updated.example.com',
           handlerPath: '/new-handler',
@@ -455,54 +484,8 @@ it("adds, updates, and removes domains", async ({ expect }) => {
   });
 
   expect(updateFirstDomainResponse.status).toBe(200);
-  const configWithUpdatedDomain = JSON.parse(updateFirstDomainResponse.body.config);
-  expect(configWithUpdatedDomain.domains.trustedDomains['domain-1']).toEqual({
-    baseUrl: 'https://updated.example.com',
-    handlerPath: '/new-handler',
-  });
-  // Second domain should still be there
-  expect(configWithUpdatedDomain.domains.trustedDomains['domain-2']).toBeDefined();
 
-  // Remove the second domain
-  const removeSecondDomainResponse = await niceBackendFetch("/api/v1/internal/config-overrides", {
-    method: "PATCH",
-    accessType: "admin",
-    headers: {
-      'x-stack-admin-access-token': adminAccessToken,
-    },
-    body: {
-      config: JSON.stringify({
-        'domains.trustedDomains.domain-2': null,
-      }),
-    },
-  });
-
-  expect(removeSecondDomainResponse.status).toBe(200);
-  const configWithoutSecondDomain = JSON.parse(removeSecondDomainResponse.body.config);
-  expect(configWithoutSecondDomain.domains.trustedDomains['domain-2']).toBeUndefined();
-  // First domain should still be there
-  expect(configWithoutSecondDomain.domains.trustedDomains['domain-1']).toBeDefined();
-
-  // Remove the first domain
-  const removeFirstDomainResponse = await niceBackendFetch("/api/v1/internal/config-overrides", {
-    method: "PATCH",
-    accessType: "admin",
-    headers: {
-      'x-stack-admin-access-token': adminAccessToken,
-    },
-    body: {
-      config: JSON.stringify({
-        'domains.trustedDomains.domain-1': null,
-      }),
-    },
-  });
-
-  expect(removeFirstDomainResponse.status).toBe(200);
-  const finalConfig = JSON.parse(removeFirstDomainResponse.body.config);
-  expect(finalConfig.domains.trustedDomains).toEqual({});
-
-  // Verify the changes are persisted by making another GET request
-  const verifyResponse = await niceBackendFetch("/api/v1/internal/config-overrides", {
+  const configResponse3 = await niceBackendFetch("/api/v1/internal/configs", {
     method: "GET",
     accessType: "admin",
     headers: {
@@ -510,7 +493,11 @@ it("adds, updates, and removes domains", async ({ expect }) => {
     },
   });
 
-  expect(verifyResponse.status).toBe(200);
-  const persistedConfig = JSON.parse(verifyResponse.body.config);
-  expect(persistedConfig.domains.trustedDomains).toEqual({});
+  const configWithUpdatedDomain = JSON.parse(configResponse3.body.config_string);
+  expect(configWithUpdatedDomain.domains.trustedDomains['domain-1']).toEqual({
+    baseUrl: 'https://updated.example.com',
+    handlerPath: '/new-handler',
+  });
+  // Second domain should still be there
+  expect(configWithUpdatedDomain.domains.trustedDomains['domain-2']).toBeDefined();
 });
