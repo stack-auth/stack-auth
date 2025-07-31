@@ -9,7 +9,6 @@ import { createLazyProxy } from "@stackframe/stack-shared/dist/utils/proxies";
 export const configOverridesCrudHandlers = createLazyProxy(() => createCrudHandlers(configOverrideCrud, {
   paramsSchema: yupObject({}),
   onUpdate: async ({ auth, data }) => {
-    console.log("data", data, '!!!!!!!!!!!!!');
     if (data.config_override_string) {
       let parsedConfig;
       try {
