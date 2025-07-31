@@ -213,7 +213,6 @@ export async function createPermissionDefinition(
   await overrideEnvironmentConfigOverride({
     branchId: options.tenancy.branchId,
     projectId: options.tenancy.project.id,
-    tx: globalTx,
     environmentConfigOverrideOverride: {
       "rbac.permissions": {
         ...oldConfig.rbac.permissions,
@@ -272,7 +271,6 @@ export async function updatePermissionDefinition(
   await overrideEnvironmentConfigOverride({
     branchId: options.tenancy.branchId,
     projectId: options.tenancy.project.id,
-    tx: globalTx,
     environmentConfigOverrideOverride: {
       "rbac.permissions": {
         ...typedFromEntries(
@@ -347,7 +345,6 @@ export async function deletePermissionDefinition(
   await overrideEnvironmentConfigOverride({
     branchId: options.tenancy.branchId,
     projectId: options.tenancy.project.id,
-    tx: globalTx,
     environmentConfigOverrideOverride: {
       "rbac.permissions": typedFromEntries(
         typedEntries(oldConfig.rbac.permissions)

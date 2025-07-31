@@ -1,4 +1,5 @@
 import { traceSpan } from '@/utils/telemetry';
+import { StackAssertionError, captureError, errorToNiceString } from '@stackframe/stack-shared/dist/utils/errors';
 import { FreestyleSandboxes } from 'freestyle-sandboxes';
 
 export class TracedFreestyleSandboxes {
@@ -17,7 +18,12 @@ export class TracedFreestyleSandboxes {
         'freestyle.nodeModules.count': options?.nodeModules ? Object.keys(options.nodeModules).length.toString() : '0',
       }
     }, async () => {
-      return await this.freestyle.executeScript(script, options);
+      try {
+        return await this.freestyle.executeScript(script, options);
+      } catch (error) {
+        captureError("freestyle.executeScript", error);
+        throw new StackAssertionError("Error executing script with Freestyle! " + errorToNiceString(error), { cause: error });
+      }
     });
   }
 }

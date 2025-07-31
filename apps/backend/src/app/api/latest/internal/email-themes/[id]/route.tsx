@@ -83,7 +83,6 @@ export const PATCH = createSmartRouteHandler({
       throw new KnownErrors.EmailRenderingError(result.error);
     }
     await overrideEnvironmentConfigOverride({
-      tx: globalPrismaClient,
       projectId: tenancy.project.id,
       branchId: tenancy.branchId,
       environmentConfigOverrideOverride: {
