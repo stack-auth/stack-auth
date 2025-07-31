@@ -2,14 +2,12 @@ import { getRenderedEnvironmentConfigQuery, overrideEnvironmentConfigOverride } 
 import { globalPrismaClient, rawQuery } from "@/prisma-client";
 import { createCrudHandlers } from "@/route-handlers/crud-handler";
 import { configOverrideCrud } from "@stackframe/stack-shared/dist/interface/crud/config";
-import { yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
+import { yupObject } from "@stackframe/stack-shared/dist/schema-fields";
 import { StatusError } from "@stackframe/stack-shared/dist/utils/errors";
 import { createLazyProxy } from "@stackframe/stack-shared/dist/utils/proxies";
 
 export const configOverridesCrudHandlers = createLazyProxy(() => createCrudHandlers(configOverrideCrud, {
-  paramsSchema: yupObject({
-    emailId: yupString().optional(),
-  }),
+  paramsSchema: yupObject({}),
   onUpdate: async ({ auth, data }) => {
     if (data.configOverrideString) {
       let parsedConfig;
