@@ -39,7 +39,9 @@ export const contactChannelsCrudHandlers = createLazyProxy(() => createCrudHandl
       }
     }
 
-    const contactChannel = await getPrismaClientForTenancy(auth.tenancy).contactChannel.findUnique({
+    const prisma = await getPrismaClientForTenancy(auth.tenancy);
+
+    const contactChannel = await prisma.contactChannel.findUnique({
       where: {
         tenancyId_projectUserId_id: {
           tenancyId: auth.tenancy.id,
@@ -71,7 +73,9 @@ export const contactChannelsCrudHandlers = createLazyProxy(() => createCrudHandl
       }
     }
 
-    const contactChannel = await retryTransaction(getPrismaClientForTenancy(auth.tenancy), async (tx) => {
+    const prisma = await getPrismaClientForTenancy(auth.tenancy);
+
+    const contactChannel = await retryTransaction(prisma, async (tx) => {
       await ensureContactChannelDoesNotExists(tx, {
         tenancyId: auth.tenancy.id,
         userId: data.user_id,
@@ -166,7 +170,9 @@ export const contactChannelsCrudHandlers = createLazyProxy(() => createCrudHandl
       }
     }
 
-    const updatedContactChannel = await retryTransaction(getPrismaClientForTenancy(auth.tenancy), async (tx) => {
+    const prisma = await getPrismaClientForTenancy(auth.tenancy);
+
+    const updatedContactChannel = await retryTransaction(prisma, async (tx) => {
       const existingContactChannel = await ensureContactChannelExists(tx, {
         tenancyId: auth.tenancy.id,
         userId: params.user_id,
@@ -230,7 +236,9 @@ export const contactChannelsCrudHandlers = createLazyProxy(() => createCrudHandl
       }
     }
 
-    await retryTransaction(getPrismaClientForTenancy(auth.tenancy), async (tx) => {
+    const prisma = await getPrismaClientForTenancy(auth.tenancy);
+
+    await retryTransaction(prisma, async (tx) => {
       await ensureContactChannelExists(tx, {
         tenancyId: auth.tenancy.id,
         userId: params.user_id,
@@ -256,7 +264,9 @@ export const contactChannelsCrudHandlers = createLazyProxy(() => createCrudHandl
       }
     }
 
-    const contactChannels = await getPrismaClientForTenancy(auth.tenancy).contactChannel.findMany({
+    const prisma = await getPrismaClientForTenancy(auth.tenancy);
+
+    const contactChannels = await prisma.contactChannel.findMany({
       where: {
         tenancyId: auth.tenancy.id,
         projectUserId: query.user_id,

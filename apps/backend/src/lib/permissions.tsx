@@ -1,11 +1,11 @@
 import { KnownErrors } from "@stackframe/stack-shared";
-import { override } from "@stackframe/stack-shared/dist/config/format";
 import { OrganizationRenderedConfig } from "@stackframe/stack-shared/dist/config/schema";
 import { ProjectPermissionsCrud } from "@stackframe/stack-shared/dist/interface/crud/project-permissions";
 import { TeamPermissionDefinitionsCrud, TeamPermissionsCrud } from "@stackframe/stack-shared/dist/interface/crud/team-permissions";
 import { groupBy } from "@stackframe/stack-shared/dist/utils/arrays";
 import { getOrUndefined, has, typedEntries, typedFromEntries } from "@stackframe/stack-shared/dist/utils/objects";
 import { stringCompare } from "@stackframe/stack-shared/dist/utils/strings";
+import { overrideEnvironmentConfigOverride } from "./config";
 import { Tenancy } from "./tenancies";
 import { PrismaTransaction } from "./types";
 
@@ -103,7 +103,7 @@ export async function grantTeamPermission(
   }
 ) {
   // sanity check: make sure that the permission exists
-  const permissionDefinition = getOrUndefined(options.tenancy.completeConfig.rbac.permissions, options.permissionId);
+  const permissionDefinition = getOrUndefined(options.tenancy.config.rbac.permissions, options.permissionId);
   if (permissionDefinition === undefined) {
     if (!has(teamSystemPermissionMap, options.permissionId)) {
       throw new KnownErrors.PermissionNotFound(options.permissionId);
@@ -164,7 +164,7 @@ export async function listPermissionDefinitions(
     tenancy: Tenancy,
   }
 ): Promise<(TeamPermissionDefinitionsCrud["Admin"]["Read"])[]> {
-  const renderedConfig = options.tenancy.completeConfig;
+  const renderedConfig = options.tenancy.config;
 
   const permissions = typedEntries(renderedConfig.rbac.permissions).filter(([_, p]) => p.scope === options.scope);
 
@@ -172,7 +172,7 @@ export async function listPermissionDefinitions(
     ...permissions.map(([id, p]) => ({
       id,
       description: getDescription(id, p.description),
-      contained_permission_ids: typedEntries(p.containedPermissionIds || {}).map(([id]) => id).sort(stringCompare),
+      contained_permission_ids: typedEntries(p.containedPermissionIds).map(([id]) => id).sort(stringCompare),
     })),
     ...(options.scope === "team" ? typedEntries(teamSystemPermissionMap).map(([id, description]) => ({
       id,
@@ -194,7 +194,7 @@ export async function createPermissionDefinition(
     },
   }
 ) {
-  const oldConfig = options.tenancy.completeConfig;
+  const oldConfig = options.tenancy.config;
 
   const existingPermission = oldConfig.rbac.permissions[options.data.id] as OrganizationRenderedConfig['rbac']['permissions'][string] | undefined;
   const allIds = Object.keys(oldConfig.rbac.permissions)
@@ -210,27 +210,18 @@ export async function createPermissionDefinition(
     throw new KnownErrors.ContainedPermissionNotFound(containedPermissionIdThatWasNotFound);
   }
 
-  await globalTx.environmentConfigOverride.update({
-    where: {
-      projectId_branchId: {
-        projectId: options.tenancy.project.id,
-        branchId: options.tenancy.branchId,
-      }
-    },
-    data: {
-      config: override(
-        oldConfig,
-        {
-          "rbac.permissions": {
-            ...oldConfig.rbac.permissions,
-            [options.data.id]: {
-              description: getDescription(options.data.id, options.data.description),
-              scope: options.scope,
-              containedPermissionIds: typedFromEntries((options.data.contained_permission_ids ?? []).map(id => [id, true]))
-            },
-          },
+  await overrideEnvironmentConfigOverride({
+    branchId: options.tenancy.branchId,
+    projectId: options.tenancy.project.id,
+    environmentConfigOverrideOverride: {
+      "rbac.permissions": {
+        ...oldConfig.rbac.permissions,
+        [options.data.id]: {
+          description: getDescription(options.data.id, options.data.description),
+          scope: options.scope,
+          containedPermissionIds: typedFromEntries((options.data.contained_permission_ids ?? []).map(id => [id, true]))
         },
-      )
+      },
     }
   });
 
@@ -256,7 +247,7 @@ export async function updatePermissionDefinition(
   }
 ) {
   const newId = options.data.id ?? options.oldId;
-  const oldConfig = options.tenancy.completeConfig;
+  const oldConfig = options.tenancy.config;
 
   const existingPermission = oldConfig.rbac.permissions[options.oldId] as OrganizationRenderedConfig['rbac']['permissions'][string] | undefined;
 
@@ -277,40 +268,31 @@ export async function updatePermissionDefinition(
     throw new KnownErrors.ContainedPermissionNotFound(containedPermissionIdThatWasNotFound);
   }
 
-  await globalTx.environmentConfigOverride.update({
-    where: {
-      projectId_branchId: {
-        projectId: options.tenancy.project.id,
-        branchId: options.tenancy.branchId,
+  await overrideEnvironmentConfigOverride({
+    branchId: options.tenancy.branchId,
+    projectId: options.tenancy.project.id,
+    environmentConfigOverrideOverride: {
+      "rbac.permissions": {
+        ...typedFromEntries(
+          typedEntries(oldConfig.rbac.permissions)
+            .filter(([id]) => id !== options.oldId)
+            .map(([id, p]) => [id, {
+              ...p,
+              containedPermissionIds: typedFromEntries(typedEntries(p.containedPermissionIds).map(([id]) => {
+                if (id === options.oldId) {
+                  return [newId, true];
+                } else {
+                  return [id, true];
+                }
+              }))
+            }])
+        ),
+        [newId]: {
+          description: getDescription(newId, options.data.description),
+          scope: options.scope,
+          containedPermissionIds: typedFromEntries((options.data.contained_permission_ids ?? []).map(id => [id, true]))
+        }
       }
-    },
-    data: {
-      config: override(
-        oldConfig,
-        {
-          "rbac.permissions": {
-            ...typedFromEntries(
-              typedEntries(oldConfig.rbac.permissions)
-                .filter(([id]) => id !== options.oldId)
-                .map(([id, p]) => [id, {
-                  ...p,
-                  containedPermissionIds: typedFromEntries(typedEntries(p.containedPermissionIds || {}).map(([id]) => {
-                    if (id === options.oldId) {
-                      return [newId, true];
-                    } else {
-                      return [id, true];
-                    }
-                  }))
-                }])
-            ),
-            [newId]: {
-              description: getDescription(newId, options.data.description),
-              scope: options.scope,
-              containedPermissionIds: typedFromEntries((options.data.contained_permission_ids ?? []).map(id => [id, true]))
-            }
-          }
-        },
-      )
     }
   });
 
@@ -351,7 +333,7 @@ export async function deletePermissionDefinition(
     permissionId: string,
   }
 ) {
-  const oldConfig = options.tenancy.completeConfig;
+  const oldConfig = options.tenancy.config;
 
   const existingPermission = oldConfig.rbac.permissions[options.permissionId] as OrganizationRenderedConfig['rbac']['permissions'][string] | undefined;
 
@@ -360,29 +342,20 @@ export async function deletePermissionDefinition(
   }
 
   // Remove the permission from the config and update other permissions' containedPermissionIds
-  await globalTx.environmentConfigOverride.update({
-    where: {
-      projectId_branchId: {
-        projectId: options.tenancy.project.id,
-        branchId: options.tenancy.branchId,
-      }
-    },
-    data: {
-      config: override(
-        oldConfig,
-        {
-          "rbac.permissions": typedFromEntries(
-            typedEntries(oldConfig.rbac.permissions)
-              .filter(([id]) => id !== options.permissionId)
-              .map(([id, p]) => [id, {
-                ...p,
-                containedPermissionIds: typedFromEntries(
-                  typedEntries(p.containedPermissionIds || {})
-                    .filter(([containedId]) => containedId !== options.permissionId)
-                )
-              }])
-          )
-        }
+  await overrideEnvironmentConfigOverride({
+    branchId: options.tenancy.branchId,
+    projectId: options.tenancy.project.id,
+    environmentConfigOverrideOverride: {
+      "rbac.permissions": typedFromEntries(
+        typedEntries(oldConfig.rbac.permissions)
+          .filter(([id]) => id !== options.permissionId)
+          .map(([id, p]) => [id, {
+            ...p,
+            containedPermissionIds: typedFromEntries(
+              typedEntries(p.containedPermissionIds)
+                .filter(([containedId]) => containedId !== options.permissionId)
+            )
+          }])
       )
     }
   });
@@ -414,7 +387,7 @@ export async function grantProjectPermission(
   }
 ) {
   // sanity check: make sure that the permission exists
-  const permissionDefinition = getOrUndefined(options.tenancy.completeConfig.rbac.permissions, options.permissionId);
+  const permissionDefinition = getOrUndefined(options.tenancy.config.rbac.permissions, options.permissionId);
   if (permissionDefinition === undefined) {
     throw new KnownErrors.PermissionNotFound(options.permissionId);
   } else if (permissionDefinition.scope !== "project") {
@@ -473,7 +446,7 @@ export async function grantDefaultProjectPermissions(
     userId: string,
   }
 ) {
-  const config = options.tenancy.completeConfig;
+  const config = options.tenancy.config;
 
   for (const permissionId of Object.keys(config.rbac.defaultPermissions.signUp)) {
     await grantProjectPermission(tx, {
@@ -501,7 +474,7 @@ export async function grantDefaultTeamPermissions(
     type: "creator" | "member",
   }
 ) {
-  const config = options.tenancy.completeConfig;
+  const config = options.tenancy.config;
 
   const defaultPermissions = config.rbac.defaultPermissions[options.type === "creator" ? "teamCreator" : "teamMember"];
 

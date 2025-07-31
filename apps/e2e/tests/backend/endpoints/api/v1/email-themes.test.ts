@@ -3,11 +3,11 @@ import { describe } from "vitest";
 import { it } from "../../../../helpers";
 import { niceBackendFetch, Project } from "../../../backend-helpers";
 
-const validThemeId = "1df07ae6-abf3-4a40-83a5-a1a2cbe336ac"; // default-light theme
+const validThemeId = "1df07ae6-abf3-4a40-83a5-a1a2cbe336ac"; // Default Light theme
 const invalidThemeId = randomUUID();
 
 const validTsxSource = `import { Html, Tailwind, Body } from '@react-email/components';
-function EmailTheme({ children }: { children: React.ReactNode }) {
+export function EmailTheme({ children }: { children: React.ReactNode }) {
   return (
     <Html>
       <Tailwind>
@@ -89,17 +89,19 @@ describe("get email theme", () => {
       NiceResponse {
         "status": 200,
         "body": {
-          "display_name": "default-light",
+          "display_name": "Default Light",
           "tsx_source": deindent\`
-            import { Html, Tailwind, Body } from '@react-email/components';
-            function EmailTheme({ children }: { children: React.ReactNode }) {
+            import { Html, Head, Tailwind, Body, Container } from '@react-email/components';
+            
+            export function EmailTheme({ children }: { children: React.ReactNode }) {
               return (
                 <Html>
+                  <Head />
                   <Tailwind>
-                    <Body>
-                      <div className="bg-white text-slate-800 p-4 rounded-lg max-w-[600px] mx-auto leading-relaxed">
+                    <Body className="bg-[#fafbfb] font-sans text-base">
+                      <Container className="bg-white p-[45px] rounded-lg">
                         {children}
-                      </div>
+                      </Container>
                     </Body>
                   </Tailwind>
                 </Html>
@@ -121,7 +123,6 @@ describe("update email theme", () => {
         method: "PATCH",
         accessType: "client",
         body: {
-          preview_html: "<p>Test content</p>",
           tsx_source: validTsxSource,
         },
       }
@@ -155,7 +156,6 @@ describe("update email theme", () => {
         method: "PATCH",
         accessType: "admin",
         body: {
-          preview_html: "<p>Test content</p>",
           tsx_source: validTsxSource,
         },
       }
@@ -179,7 +179,6 @@ describe("update email theme", () => {
         method: "PATCH",
         accessType: "admin",
         body: {
-          preview_html: "<h1>Updated Theme</h1><p>This is updated content.</p>",
           tsx_source: validTsxSource,
         },
       }
@@ -187,25 +186,7 @@ describe("update email theme", () => {
     expect(response).toMatchInlineSnapshot(`
       NiceResponse {
         "status": 200,
-        "body": {
-          "display_name": "default-light",
-          "rendered_html": deindent\`
-            <div>Mock api key detected, themeComponent: import { Html, Tailwind, Body } from '@react-email/components';
-            function EmailTheme({ children }: { children: React.ReactNode }) {
-              return (
-                <Html>
-                  <Tailwind>
-                    <Body>
-                      <div className="bg-white text-slate-800 p-4 rounded-lg max-w-[600px] mx-auto leading-relaxed">
-                        {children}
-                      </div>
-                    </Body>
-                  </Tailwind>
-                </Html>
-              );
-            }, htmlContent: <h1>Updated Theme</h1><p>This is updated content.</p>, </div>
-          \`,
-        },
+        "body": { "display_name": "Default Light" },
         "headers": Headers { <some fields may have been hidden> },
       }
     `);
@@ -222,7 +203,6 @@ describe("update email theme", () => {
         method: "PATCH",
         accessType: "admin",
         body: {
-          preview_html: "<p>Updated content</p>",
           tsx_source: validTsxSource,
         },
       }
@@ -240,10 +220,10 @@ describe("update email theme", () => {
       NiceResponse {
         "status": 200,
         "body": {
-          "display_name": "default-light",
+          "display_name": "Default Light",
           "tsx_source": deindent\`
             import { Html, Tailwind, Body } from '@react-email/components';
-            function EmailTheme({ children }: { children: React.ReactNode }) {
+            export function EmailTheme({ children }: { children: React.ReactNode }) {
               return (
                 <Html>
                   <Tailwind>
@@ -284,11 +264,11 @@ describe("create email theme", () => {
         "body": {
           "themes": [
             {
-              "display_name": "default-light",
+              "display_name": "Default Light",
               "id": "<stripped UUID>",
             },
             {
-              "display_name": "default-dark",
+              "display_name": "Default Dark",
               "id": "<stripped UUID>",
             },
           ],
@@ -304,7 +284,7 @@ describe("create email theme", () => {
         method: "POST",
         accessType: "admin",
         body: {
-          display_name: "default-light",
+          display_name: "Default Light",
         },
       }
     );
@@ -346,7 +326,6 @@ describe("create, patch, and get email theme", () => {
         method: "PATCH",
         accessType: "admin",
         body: {
-          preview_html: "<h1>Custom Theme</h1><p>This is a custom theme.</p>",
           tsx_source: validTsxSource,
         },
       }
@@ -354,25 +333,7 @@ describe("create, patch, and get email theme", () => {
     expect(patchResponse).toMatchInlineSnapshot(`
       NiceResponse {
         "status": 200,
-        "body": {
-          "display_name": "Custom Theme",
-          "rendered_html": deindent\`
-            <div>Mock api key detected, themeComponent: import { Html, Tailwind, Body } from '@react-email/components';
-            function EmailTheme({ children }: { children: React.ReactNode }) {
-              return (
-                <Html>
-                  <Tailwind>
-                    <Body>
-                      <div className="bg-white text-slate-800 p-4 rounded-lg max-w-[600px] mx-auto leading-relaxed">
-                        {children}
-                      </div>
-                    </Body>
-                  </Tailwind>
-                </Html>
-              );
-            }, htmlContent: <h1>Custom Theme</h1><p>This is a custom theme.</p>, </div>
-          \`,
-        },
+        "body": { "display_name": "Custom Theme" },
         "headers": Headers { <some fields may have been hidden> },
       }
     `);
@@ -392,7 +353,7 @@ describe("create, patch, and get email theme", () => {
           "display_name": "Custom Theme",
           "tsx_source": deindent\`
             import { Html, Tailwind, Body } from '@react-email/components';
-            function EmailTheme({ children }: { children: React.ReactNode }) {
+            export function EmailTheme({ children }: { children: React.ReactNode }) {
               return (
                 <Html>
                   <Tailwind>

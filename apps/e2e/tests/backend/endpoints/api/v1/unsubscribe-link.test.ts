@@ -147,20 +147,33 @@ it("unsubscribe link should not be sent for emails with transactional notificati
   expect(sentEmail).toBeDefined();
   expect(sentEmail!.body?.html).toMatchInlineSnapshot(`
     deindent\`
-      <div>Mock api key detected, themeComponent: import { Html, Tailwind, Body } from '@react-email/components';
-      function EmailTheme({ children }: { children: React.ReactNode }) {
+      <div>Mock api key detected, 
+      
+      templateComponent: export function EmailTemplate() {
+        return <>
+          <div dangerouslySetInnerHTML={{ __html: "<h1>Test Email</h1><p>This is a test email with HTML content.</p>"}} />
+          
+        </>
+      };
+      
+      themeComponent: import { Html, Head, Tailwind, Body, Container } from '@react-email/components';
+      
+      export function EmailTheme({ children }: { children: React.ReactNode }) {
         return (
           <Html>
+            <Head />
             <Tailwind>
-              <Body>
-                <div className="bg-white text-slate-800 p-4 rounded-lg max-w-[600px] mx-auto leading-relaxed">
+              <Body className="bg-[#fafbfb] font-sans text-base">
+                <Container className="bg-white p-[45px] rounded-lg">
                   {children}
-                </div>
+                </Container>
               </Body>
             </Tailwind>
           </Html>
         );
-      }, htmlContent: <h1>Test Email</h1><p>This is a test email with HTML content.</p>, </div>
+      }
+      
+       variables: {}</div>
     \`
   `);
 });

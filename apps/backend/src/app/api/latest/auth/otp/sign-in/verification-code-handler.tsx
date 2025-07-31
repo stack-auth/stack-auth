@@ -12,7 +12,7 @@ import { usersCrudHandlers } from "../../../users/crud";
 import { createMfaRequiredError } from "../../mfa/sign-in/verification-code-handler";
 
 export async function ensureUserForEmailAllowsOtp(tenancy: Tenancy, email: string): Promise<UsersCrud["Admin"]["Read"] | null> {
-  const prisma = getPrismaClientForTenancy(tenancy);
+  const prisma = await getPrismaClientForTenancy(tenancy);
   const contactChannel = await getAuthContactChannel(
     prisma,
     {
@@ -50,7 +50,7 @@ export async function ensureUserForEmailAllowsOtp(tenancy: Tenancy, email: strin
       throw new KnownErrors.UserWithEmailAlreadyExists(contactChannel.value, true);
     }
   } else {
-    if (!tenancy.config.sign_up_enabled) {
+    if (!tenancy.config.auth.allowSignUp) {
       throw new KnownErrors.SignUpNotEnabled();
     }
     return null;

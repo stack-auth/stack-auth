@@ -1,6 +1,6 @@
 import { isBase64Url } from "@stackframe/stack-shared/dist/utils/bytes";
 import { it } from "../../../../helpers";
-import { Auth, InternalProjectKeys, Project, backendContext, niceBackendFetch } from "../../../backend-helpers";
+import { Auth, InternalApiKey, InternalProjectKeys, Project, backendContext, niceBackendFetch } from "../../../backend-helpers";
 
 
 // TODO some of the tests here test /api/v1/projects/current, the others test /api/v1/internal/projects/current. We should split them into different test files
@@ -1231,6 +1231,109 @@ it("deletes a project with users, teams, and permissions", async ({ expect }) =>
       "headers": Headers { <some fields may have been hidden> },
     }
   `);
+
+  // make sure that the project no longer exists
+  const getProjectResponse = await niceBackendFetch(`/api/v1/projects/current`, {
+    accessType: "admin",
+    method: "GET",
+  });
+  expect(getProjectResponse).toMatchInlineSnapshot(`
+    NiceResponse {
+      "status": 400,
+      "body": {
+        "code": "CURRENT_PROJECT_NOT_FOUND",
+        "details": { "project_id": "<stripped UUID>" },
+        "error": "The current project with ID <stripped UUID> was not found. Please check the value of the x-stack-project-id header.",
+      },
+      "headers": Headers {
+        "x-stack-known-error": "CURRENT_PROJECT_NOT_FOUND",
+        <some fields may have been hidden>,
+      },
+    }
+  `);
+});
+
+it("does not allow accessing a current project that doesn't exist", async ({ expect }) => {
+  backendContext.set({
+    projectKeys: {
+      projectId: "does-not-exist",
+    },
+  });
+  const response = await niceBackendFetch(`/api/v1/projects/current`, {
+    accessType: "admin",
+    method: "GET",
+  });
+  expect(response).toMatchInlineSnapshot(`
+    NiceResponse {
+      "status": 400,
+      "body": {
+        "code": "CURRENT_PROJECT_NOT_FOUND",
+        "details": { "project_id": "does-not-exist" },
+        "error": "The current project with ID does-not-exist was not found. Please check the value of the x-stack-project-id header.",
+      },
+      "headers": Headers {
+        "x-stack-known-error": "CURRENT_PROJECT_NOT_FOUND",
+        <some fields may have been hidden>,
+      },
+    }
+  `);
+});
+
+it("does not allow accessing a project with the wrong API keys", async ({ expect }) => {
+  await Project.createAndSwitch();
+  await InternalApiKey.createAndSetProjectKeys();
+  backendContext.set({
+    projectKeys: {
+      projectId: (backendContext.value.projectKeys as any).projectId,
+      publishableClientKey: "fake publishable client key",
+      secretServerKey: "fake secret server key",
+      superSecretAdminKey: "fake admin key",
+    }
+  });
+  const response = await niceBackendFetch(`/api/v1/projects/current`, {
+    accessType: "admin",
+    method: "GET",
+  });
+  expect(response).toMatchInlineSnapshot(`
+    NiceResponse {
+      "status": 401,
+      "body": {
+        "code": "INVALID_SUPER_SECRET_ADMIN_KEY",
+        "details": { "project_id": "<stripped UUID>" },
+        "error": "The super secret admin key is not valid for the project \\"<stripped UUID>\\". Does the project and/or the key exist?",
+      },
+      "headers": Headers {
+        "x-stack-known-error": "INVALID_SUPER_SECRET_ADMIN_KEY",
+        <some fields may have been hidden>,
+      },
+    }
+  `);
+});
+
+it("does not allow accessing a project without a project ID header", async ({ expect }) => {
+  backendContext.set({ projectKeys: "no-project" });
+  const response = await niceBackendFetch(`/api/v1/projects/current`, {
+    accessType: "admin",
+    method: "GET",
+  });
+  expect(response).toMatchInlineSnapshot(`
+    NiceResponse {
+      "status": 400,
+      "body": {
+        "code": "ACCESS_TYPE_WITHOUT_PROJECT_ID",
+        "details": { "request_type": "admin" },
+        "error": deindent\`
+          The x-stack-access-type header was 'admin', but the x-stack-project-id header was not provided.
+          
+          For more information, see the docs on REST API authentication: https://docs.stack-auth.com/rest-api/overview#authentication
+        \`,
+      },
+      "headers": Headers {
+        "x-stack-known-error": "ACCESS_TYPE_WITHOUT_PROJECT_ID",
+        <some fields may have been hidden>,
+      },
+    }
+  `);
 });
 
 it("makes sure user have the correct managed project ID after project creation", async ({ expect }) => {
@@ -1247,17 +1350,23 @@ it("makes sure user have the correct managed project ID after project creation",
   expect(projectIds[0]).toBe(projectId);
 });
 
-it("makes sure user don't have managed project ID after project deletion", async ({ expect }) => {
+it("removes a deleted project from a user's managed project IDs", async ({ expect }) => {
   backendContext.set({ projectKeys: InternalProjectKeys });
-  const { creatorUserId, adminAccessToken } = await Project.createAndGetAdminToken();
+  const { creatorUserId, adminAccessToken, projectId } = await Project.createAndGetAdminToken();
+
+  backendContext.set({ projectKeys: InternalProjectKeys });
+  const userResponse1 = await niceBackendFetch(`/api/v1/users/${creatorUserId}`, {
+    accessType: "server",
+    method: "GET",
+  });
+  const projectIds1 = userResponse1.body.server_metadata.managedProjectIds;
+  expect(projectIds1.length).toBe(1);
 
   // Delete the project
+  backendContext.set({ projectKeys: { projectId, adminAccessToken } });
   const deleteResponse = await niceBackendFetch(`/api/v1/internal/projects/current`, {
     accessType: "admin",
     method: "DELETE",
-    headers: {
-      'x-stack-admin-access-token': adminAccessToken,
-    }
   });
 
   expect(deleteResponse).toMatchInlineSnapshot(`
@@ -1270,12 +1379,12 @@ it("makes sure user don't have managed project ID after project deletion", async
 
   backendContext.set({ projectKeys: InternalProjectKeys });
 
-  const userResponse = await niceBackendFetch(`/api/v1/users/${creatorUserId}`, {
+  const userResponse2 = await niceBackendFetch(`/api/v1/users/${creatorUserId}`, {
     accessType: "server",
     method: "GET",
   });
-  const projectIds = userResponse.body.server_metadata.managedProjectIds;
-  expect(projectIds.length).toBe(0);
+  const projectIds2 = userResponse2.body.server_metadata.managedProjectIds;
+  expect(projectIds2.length).toBe(0);
 });
 
 it("makes sure other users are not affected by project deletion", async ({ expect }) => {

@@ -58,7 +58,7 @@ async function seed() {
   }
 
   const internalTenancy = await getSoleTenancyFromProjectBranch("internal", DEFAULT_BRANCH_ID);
-  const internalPrisma = getPrismaClientForTenancy(internalTenancy);
+  const internalPrisma = await getPrismaClientForTenancy(internalTenancy);
 
   internalProject = await createOrUpdateProject({
     projectId: 'internal',
@@ -71,7 +71,9 @@ async function seed() {
         allow_localhost: allowLocalhost,
         domains: [
           ...(dashboardDomain && new URL(dashboardDomain).hostname !== 'localhost' ? [{ domain: dashboardDomain, handler_path: '/handler' }] : []),
-          ...internalTenancy.config.domains.filter((d) => d.domain !== dashboardDomain),
+          ...Object.values(internalTenancy.config.domains.trustedDomains)
+            .filter((d) => d.baseUrl !== dashboardDomain && d.baseUrl)
+            .map((d) => ({ domain: d.baseUrl || throwErr('Domain base URL is required'), handler_path: d.handlerPath })),
         ]
       },
     },
@@ -142,7 +144,7 @@ async function seed() {
       }
 
       if (adminGithubId) {
-        const githubAccount = await getPrismaClientForTenancy(internalTenancy).projectUserOAuthAccount.findFirst({
+        const githubAccount = await internalPrisma.projectUserOAuthAccount.findFirst({
           where: {
             tenancyId: internalTenancy.id,
             configOAuthProviderId: 'github',
@@ -153,7 +155,7 @@ async function seed() {
         if (githubAccount) {
           console.log(`GitHub account already exists, skipping creation`);
         } else {
-          await getPrismaClientForTenancy(internalTenancy).projectUserOAuthAccount.create({
+          await internalPrisma.projectUserOAuthAccount.create({
             data: {
               tenancyId: internalTenancy.id,
               projectUserId: newUser.projectUserId,
@@ -162,24 +164,22 @@ async function seed() {
             }
           });
 
-            console.log(`Added GitHub account for admin user`);
-        }
-
-        await internalPrisma.authMethod.create({
-          data: {
-            tenancyId: internalTenancy.id,
-            projectUserId: newUser.projectUserId,
-            oauthAuthMethod: {
-              create: {
-                projectUserId: newUser.projectUserId,
-                configOAuthProviderId: 'github',
-                providerAccountId: adminGithubId,
+          await internalPrisma.authMethod.create({
+            data: {
+              tenancyId: internalTenancy.id,
+              projectUserId: newUser.projectUserId,
+              oauthAuthMethod: {
+                create: {
+                  projectUserId: newUser.projectUserId,
+                  configOAuthProviderId: 'github',
+                  providerAccountId: adminGithubId,
+                }
               }
             }
-          }
-        });
+          });
 
           console.log(`Added admin user with GitHub ID ${adminGithubId}`);
+        }
       }
     }
   }

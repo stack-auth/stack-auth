@@ -166,7 +166,7 @@ export const getUsersLastActiveAtMillis = async (projectId: string, branchId: st
   // Get the tenancy first to determine the source of truth
   const tenancy = await getSoleTenancyFromProjectBranch(projectId, branchId);
 
-  const prisma = getPrismaClientForTenancy(tenancy);
+  const prisma = await getPrismaClientForTenancy(tenancy);
   const schema = getPrismaSchemaForTenancy(tenancy);
   const events = await prisma.$queryRaw<Array<{ userId: string, lastActiveAt: Date }>>`
     SELECT data->>'userId' as "userId", MAX("eventStartedAt") as "lastActiveAt"
@@ -358,8 +358,9 @@ export async function getUser(options: { userId: string } & ({ projectId: string
   }
 
   const environmentConfig = await rawQuery(globalPrismaClient, getRenderedEnvironmentConfigQuery({ projectId, branchId }));
-  const prisma = getPrismaClientForSourceOfTruth(environmentConfig.sourceOfTruth, branchId);
-  const result = await rawQuery(prisma, getUserQuery(projectId, branchId, options.userId, getPrismaSchemaForSourceOfTruth(environmentConfig.sourceOfTruth, branchId)));
+  const prisma = await getPrismaClientForSourceOfTruth(environmentConfig.sourceOfTruth, branchId);
+  const schema = getPrismaSchemaForSourceOfTruth(environmentConfig.sourceOfTruth, branchId);
+  const result = await rawQuery(prisma, getUserQuery(projectId, branchId, options.userId, schema));
   return result;
 }
 
@@ -385,7 +386,7 @@ export const usersCrudHandlers = createLazyProxy(() => createCrudHandlers(usersC
   },
   onList: async ({ auth, query }) => {
     const queryWithoutSpecialChars = query.query?.replace(/[^a-zA-Z0-9\-_.]/g, '');
-    const prisma = getPrismaClientForTenancy(auth.tenancy);
+    const prisma = await getPrismaClientForTenancy(auth.tenancy);
 
     const where = {
       tenancyId: auth.tenancy.id,
@@ -464,7 +465,7 @@ export const usersCrudHandlers = createLazyProxy(() => createCrudHandlers(usersC
     });
 
     const passwordHash = await getPasswordHashFromData(data);
-    const prisma = getPrismaClientForTenancy(auth.tenancy);
+    const prisma = await getPrismaClientForTenancy(auth.tenancy);
     const result = await retryTransaction(prisma, async (tx) => {
       await checkAuthData(tx, {
         tenancyId: auth.tenancy.id,
@@ -473,7 +474,7 @@ export const usersCrudHandlers = createLazyProxy(() => createCrudHandlers(usersC
         primaryEmailAuthEnabled: !!data.primary_email_auth_enabled,
       });
 
-      const config = auth.tenancy.completeConfig;
+      const config = auth.tenancy.config;
 
       const newUser = await tx.projectUser.create({
         data: {
@@ -599,7 +600,7 @@ export const usersCrudHandlers = createLazyProxy(() => createCrudHandlers(usersC
     });
 
     // TODO why is this outside the transaction? is there a reason?
-    if (auth.tenancy.config.create_team_on_sign_up) {
+    if (auth.tenancy.config.teams.createPersonalTeamOnSignUp) {
       const team = await teamsCrudHandlers.adminCreate({
         data: {
           display_name: data.display_name ?
@@ -637,11 +638,11 @@ export const usersCrudHandlers = createLazyProxy(() => createCrudHandlers(usersC
   onUpdate: async ({ auth, data, params }) => {
     const primaryEmail = data.primary_email ? normalizeEmail(data.primary_email) : data.primary_email;
     const passwordHash = await getPasswordHashFromData(data);
-    const prisma = getPrismaClientForTenancy(auth.tenancy);
+    const prisma = await getPrismaClientForTenancy(auth.tenancy);
     const result = await retryTransaction(prisma, async (tx) => {
       await ensureUserExists(tx, { tenancyId: auth.tenancy.id, userId: params.user_id });
 
-      const config = auth.tenancy.completeConfig;
+      const config = auth.tenancy.config;
 
       if (data.selected_team_id !== undefined) {
         if (data.selected_team_id !== null) {
@@ -969,7 +970,8 @@ export const usersCrudHandlers = createLazyProxy(() => createCrudHandlers(usersC
     return result;
   },
   onDelete: async ({ auth, params }) => {
-    const { teams } = await retryTransaction(getPrismaClientForTenancy(auth.tenancy), async (tx) => {
+    const prisma = await getPrismaClientForTenancy(auth.tenancy);
+    const { teams } = await retryTransaction(prisma, async (tx) => {
       await ensureUserExists(tx, { tenancyId: auth.tenancy.id, userId: params.user_id });
 
       const teams = await tx.team.findMany({
@@ -1040,7 +1042,7 @@ export const currentUserCrudHandlers = createLazyProxy(() => createCrudHandlers(
     });
   },
   async onDelete({ auth }) {
-    if (auth.type === 'client' && !auth.tenancy.config.client_user_deletion_enabled) {
+    if (auth.type === 'client' && !auth.tenancy.config.users.allowClientUserDeletion) {
       throw new StatusError(StatusError.BadRequest, "Client user deletion is not enabled for this project");
     }
 

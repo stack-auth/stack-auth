@@ -1,5 +1,5 @@
 import { KnownError } from "..";
-import { StackAssertionError, captureError, concatStacktraces } from "./errors";
+import { StackAssertionError, captureError, concatStacktraces, errorToNiceString } from "./errors";
 import { DependenciesMap } from "./maps";
 import { Result } from "./results";
 import { generateUuid } from "./uuids";
@@ -243,6 +243,20 @@ import.meta.vitest?.test("ignoreUnhandledRejection", async ({ expect }) => {
   await expect(rejectPromise).rejects.toBe(error);
 });
 
+/**
+ * See concatStacktraces for more information.
+ */
+export function concatStacktracesIfRejected<T>(promise: Promise<T>): void {
+  const currentError = new Error();
+  promise.catch(error => {
+    if (error instanceof Error) {
+      concatStacktraces(error, currentError);
+    } else {
+      // we can only concatenate errors, so we'll just ignore the non-error
+    }
+  });
+}
+
 export async function wait(ms: number) {
   if (!Number.isFinite(ms) || ms < 0) {
     throw new StackAssertionError(`wait() requires a non-negative integer number of milliseconds to wait. (found: ${ms}ms)`);
@@ -336,18 +350,19 @@ export function runAsynchronously(
   if (typeof promiseOrFunc === "function") {
     promiseOrFunc = promiseOrFunc();
   }
-  const duringError = new Error();
-  promiseOrFunc?.catch(error => {
-    options.onError?.(error);
-    const newError = new StackAssertionError(
-      "Uncaught error in asynchronous function: " + error.toString(),
-      { cause: error },
-    );
-    concatStacktraces(newError, duringError);
-    if (!options.noErrorLogging) {
-      captureError("runAsynchronously", newError);
-    }
-  });
+  if (promiseOrFunc) {
+    concatStacktracesIfRejected(promiseOrFunc);
+    promiseOrFunc.catch(error => {
+      options.onError?.(error);
+      const newError = new StackAssertionError(
+        "Uncaught error in asynchronous function: " + errorToNiceString(error),
+        { cause: error },
+      );
+      if (!options.noErrorLogging) {
+        captureError("runAsynchronously", newError);
+      }
+    });
+  }
 }
 import.meta.vitest?.test("runAsynchronously", ({ expect }) => {
   // Simple test to verify the function exists and can be called

@@ -31,7 +31,9 @@ export const internalEmailsCrudHandlers = createLazyProxy(() => createCrudHandle
     emailId: yupString().optional(),
   }),
   onList: async ({ auth }) => {
-    const emails = await getPrismaClientForTenancy(auth.tenancy).sentEmail.findMany({
+    const prisma = await getPrismaClientForTenancy(auth.tenancy);
+
+    const emails = await prisma.sentEmail.findMany({
       where: {
         tenancyId: auth.tenancy.id,
       },

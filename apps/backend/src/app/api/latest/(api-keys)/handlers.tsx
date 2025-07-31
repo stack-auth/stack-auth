@@ -1,4 +1,5 @@
 import { listPermissions } from "@/lib/permissions";
+import { Tenancy } from "@/lib/tenancies";
 import { getPrismaClientForTenancy } from "@/prisma-client";
 import { createCrudHandlers } from "@/route-handlers/crud-handler";
 import { SmartRequestAuth } from "@/route-handlers/smart-request";
@@ -15,16 +16,13 @@ import { generateUuid } from "@stackframe/stack-shared/dist/utils/uuids";
 import * as yup from "yup";
 
 
-async function throwIfFeatureDisabled(project: {
-  allow_team_api_keys: boolean,
-  allow_user_api_keys: boolean,
-}, type: "team" | "user") {
+async function throwIfFeatureDisabled(tenancy: Tenancy, type: "team" | "user") {
   if (type === "team") {
-    if (!project.allow_team_api_keys) {
+    if (!tenancy.config.apiKeys.enabled.team) {
       throw new StatusError(StatusError.BadRequest, "Team API keys are not enabled for this project.");
     }
   } else {
-    if (!project.allow_user_api_keys) {
+    if (!tenancy.config.apiKeys.enabled.user) {
       throw new StatusError(StatusError.BadRequest, "User API keys are not enabled for this project.");
     }
   }
@@ -40,6 +38,8 @@ async function ensureUserCanManageApiKeys(
   if (options.userId !== undefined && options.teamId !== undefined) {
     throw new StatusError(StatusError.BadRequest, "Cannot provide both userId and teamId");
   }
+
+  const prisma = await getPrismaClientForTenancy(auth.tenancy);
 
   if (auth.type === "client") {
     if (!auth.user) {
@@ -57,7 +57,7 @@ async function ensureUserCanManageApiKeys(
     // Check team API key permissions
     if (options.teamId !== undefined) {
       const userId = auth.user.id;
-      const hasManageApiKeysPermission = await getPrismaClientForTenancy(auth.tenancy).$transaction(async (tx) => {
+      const hasManageApiKeysPermission = await prisma.$transaction(async (tx) => {
         const permissions = await listPermissions(tx, {
           scope: 'team',
           tenancy: auth.tenancy,
@@ -173,7 +173,7 @@ function createApiKeyHandlers<Type extends "user" | "team">(type: Type) {
         body: type === 'user' ? userApiKeysCreateOutputSchema.defined() : teamApiKeysCreateOutputSchema.defined(),
       }),
       handler: async ({ url, auth, body }) => {
-        await throwIfFeatureDisabled(auth.tenancy.config, type);
+        await throwIfFeatureDisabled(auth.tenancy, type);
         const { userId, teamId } = await parseTypeAndParams({ type, params: body });
         await ensureUserCanManageApiKeys(auth, {
           userId,
@@ -198,7 +198,9 @@ function createApiKeyHandlers<Type extends "user" | "team">(type: Type) {
           type,
         });
 
-        const apiKey = await getPrismaClientForTenancy(auth.tenancy).projectApiKey.create({
+        const prisma = await getPrismaClientForTenancy(auth.tenancy);
+
+        const apiKey = await prisma.projectApiKey.create({
           data: {
             id: apiKeyId,
             description: body.description,
@@ -243,9 +245,10 @@ function createApiKeyHandlers<Type extends "user" | "team">(type: Type) {
         body: (type === 'user' ? userApiKeysCrud : teamApiKeysCrud).server.readSchema.defined(),
       }),
       handler: async ({ auth, body }) => {
-        await throwIfFeatureDisabled(auth.tenancy.config, type);
+        await throwIfFeatureDisabled(auth.tenancy, type);
+        const prisma = await getPrismaClientForTenancy(auth.tenancy);
 
-        const apiKey = await getPrismaClientForTenancy(auth.tenancy).projectApiKey.findUnique({
+        const apiKey = await prisma.projectApiKey.findUnique({
           where: {
             tenancyId: auth.tenancy.id,
             secretApiKey: body.api_key,
@@ -292,14 +295,15 @@ function createApiKeyHandlers<Type extends "user" | "team">(type: Type) {
         }),
 
         onList: async ({ auth, query }) => {
-          await throwIfFeatureDisabled(auth.tenancy.config, type);
+          await throwIfFeatureDisabled(auth.tenancy, type);
           const { userId, teamId } = await parseTypeAndParams({ type, params: query });
           await ensureUserCanManageApiKeys(auth, {
             userId,
             teamId,
           });
 
-          const apiKeys = await getPrismaClientForTenancy(auth.tenancy).projectApiKey.findMany({
+          const prisma = await getPrismaClientForTenancy(auth.tenancy);
+          const apiKeys = await prisma.projectApiKey.findMany({
             where: {
               tenancyId: auth.tenancy.id,
               projectUserId: userId,
@@ -317,9 +321,11 @@ function createApiKeyHandlers<Type extends "user" | "team">(type: Type) {
         },
 
         onRead: async ({ auth, query, params }) => {
-          await throwIfFeatureDisabled(auth.tenancy.config, type);
+          await throwIfFeatureDisabled(auth.tenancy, type);
 
-          const apiKey = await getPrismaClientForTenancy(auth.tenancy).projectApiKey.findUnique({
+          const prisma = await getPrismaClientForTenancy(auth.tenancy);
+
+          const apiKey = await prisma.projectApiKey.findUnique({
             where: {
               tenancyId_id: {
                 tenancyId: auth.tenancy.id,
@@ -340,9 +346,11 @@ function createApiKeyHandlers<Type extends "user" | "team">(type: Type) {
         },
 
         onUpdate: async ({ auth, data, params, query }) => {
-          await throwIfFeatureDisabled(auth.tenancy.config, type);
+          await throwIfFeatureDisabled(auth.tenancy, type);
 
-          const existingApiKey = await getPrismaClientForTenancy(auth.tenancy).projectApiKey.findUnique({
+          const prisma = await getPrismaClientForTenancy(auth.tenancy);
+
+          const existingApiKey = await prisma.projectApiKey.findUnique({
             where: {
               tenancyId_id: {
                 tenancyId: auth.tenancy.id,
@@ -361,7 +369,7 @@ function createApiKeyHandlers<Type extends "user" | "team">(type: Type) {
           });
 
           // Update the API key
-          const updatedApiKey = await getPrismaClientForTenancy(auth.tenancy).projectApiKey.update({
+          const updatedApiKey = await prisma.projectApiKey.update({
             where: {
               tenancyId_id: {
                 tenancyId: auth.tenancy.id,

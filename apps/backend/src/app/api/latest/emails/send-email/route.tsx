@@ -1,4 +1,4 @@
-import { renderEmailWithTheme } from "@/lib/email-themes";
+import { createTemplateComponentFromHtml, renderEmailWithTemplate } from "@/lib/email-rendering";
 import { getEmailConfig, sendEmail } from "@/lib/emails";
 import { getNotificationCategoryByName, hasNotificationEnabled } from "@/lib/notification-categories";
 import { getPrismaClientForTenancy } from "@/prisma-client";
@@ -48,7 +48,7 @@ export const POST = createSmartRouteHandler({
     if (!getEnvVariable("STACK_FREESTYLE_API_KEY")) {
       throw new StatusError(500, "STACK_FREESTYLE_API_KEY is not set");
     }
-    if (auth.tenancy.config.email_config.type === "shared") {
+    if (auth.tenancy.config.emails.server.isShared) {
       throw new StatusError(400, "Cannot send custom emails when using shared email config");
     }
     const emailConfig = await getEmailConfig(auth.tenancy);
@@ -56,13 +56,15 @@ export const POST = createSmartRouteHandler({
     if (!notificationCategory) {
       throw new StatusError(404, "Notification category not found");
     }
-    const themeList = auth.tenancy.completeConfig.emails.themeList;
-    if (!Object.keys(themeList).includes(auth.tenancy.completeConfig.emails.theme)) {
+    const themeList = auth.tenancy.config.emails.themes;
+    if (!Object.keys(themeList).includes(auth.tenancy.config.emails.selectedThemeId)) {
       throw new StatusError(400, "No active theme found");
     }
-    const activeTheme = themeList[auth.tenancy.completeConfig.emails.theme];
+    const activeTheme = themeList[auth.tenancy.config.emails.selectedThemeId];
 
-    const users = await getPrismaClientForTenancy(auth.tenancy).projectUser.findMany({
+    const prisma = await getPrismaClientForTenancy(auth.tenancy);
+
+    const users = await prisma.projectUser.findMany({
       where: {
         tenancyId: auth.tenancy.id,
         projectUserId: {
@@ -113,12 +115,16 @@ export const POST = createSmartRouteHandler({
       }
 
 
-      const renderedEmail = await renderEmailWithTheme(
-        body.html,
+      const template = createTemplateComponentFromHtml(body.html, unsubscribeLink || undefined);
+      const renderedEmail = await renderEmailWithTemplate(
+        template,
         activeTheme.tsxSource,
-        unsubscribeLink || undefined
+        {
+          user: { displayName: user.displayName },
+          project: { displayName: auth.tenancy.project.display_name },
+        },
       );
-      if ("error" in renderedEmail) {
+      if (renderedEmail.status === "error") {
         userSendErrors.set(userId, "There was an error rendering the email");
         continue;
       }
@@ -129,8 +135,8 @@ export const POST = createSmartRouteHandler({
           emailConfig,
           to: primaryEmail,
           subject: body.subject,
-          html: renderedEmail.html,
-          text: renderedEmail.text,
+          html: renderedEmail.data.html,
+          text: renderedEmail.data.text,
         });
       } catch {
         userSendErrors.set(userId, "Failed to send email");

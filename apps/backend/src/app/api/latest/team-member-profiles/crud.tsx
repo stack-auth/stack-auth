@@ -31,7 +31,8 @@ export const teamMemberProfilesCrudHandlers = createLazyProxy(() => createCrudHa
     user_id: userIdOrMeSchema.defined(),
   }),
   onList: async ({ auth, query }) => {
-    return await retryTransaction(getPrismaClientForTenancy(auth.tenancy), async (tx) => {
+    const prisma = await getPrismaClientForTenancy(auth.tenancy);
+    return await retryTransaction(prisma, async (tx) => {
       if (auth.type === 'client') {
         // Client can only:
         // - list users in their own team if they have the $read_members permission
@@ -85,7 +86,8 @@ export const teamMemberProfilesCrudHandlers = createLazyProxy(() => createCrudHa
     });
   },
   onRead: async ({ auth, params }) => {
-    return await retryTransaction(getPrismaClientForTenancy(auth.tenancy), async (tx) => {
+    const prisma = await getPrismaClientForTenancy(auth.tenancy);
+    return await retryTransaction(prisma, async (tx) => {
       if (auth.type === 'client') {
         const currentUserId = auth.user?.id ?? throwErr(new KnownErrors.CannotGetOwnUserWithoutUser());
         if (params.user_id !== currentUserId) {
@@ -122,7 +124,8 @@ export const teamMemberProfilesCrudHandlers = createLazyProxy(() => createCrudHa
     });
   },
   onUpdate: async ({ auth, data, params }) => {
-    return await retryTransaction(getPrismaClientForTenancy(auth.tenancy), async (tx) => {
+    const prisma = await getPrismaClientForTenancy(auth.tenancy);
+    return await retryTransaction(prisma, async (tx) => {
       if (auth.type === 'client') {
         const currentUserId = auth.user?.id ?? throwErr(new KnownErrors.CannotGetOwnUserWithoutUser());
         if (params.user_id !== currentUserId) {

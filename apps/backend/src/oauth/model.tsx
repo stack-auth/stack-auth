@@ -52,11 +52,11 @@ export class OAuthModel implements AuthorizationCodeModel {
 
     let redirectUris: string[] = [];
     try {
-      redirectUris = tenancy.config.domains.map(
-        ({ domain, handler_path }) => new URL(handler_path, domain).toString()
+      redirectUris = Object.entries(tenancy.config.domains.trustedDomains).map(
+        ([_, domain]) => new URL(domain.handlerPath, domain.baseUrl).toString()
       );
     } catch (e) {
-      captureError("get redirect uris", {
+      captureError("get-oauth-redirect-urls", {
         error: e,
         projectId: tenancy.project.id,
         domains: tenancy.config.domains,
@@ -64,7 +64,7 @@ export class OAuthModel implements AuthorizationCodeModel {
       throw e;
     }
 
-    if (redirectUris.length === 0 && tenancy.config.allow_localhost) {
+    if (redirectUris.length === 0 && tenancy.config.domains.allowLocalhost) {
       redirectUris.push("http://localhost");
     }
 
@@ -136,7 +136,8 @@ export class OAuthModel implements AuthorizationCodeModel {
   async saveToken(token: Token, client: Client, user: User): Promise<Token | Falsey> {
     if (token.refreshToken) {
       const tenancy = await getSoleTenancyFromProjectBranch(...getProjectBranchFromClientId(client.id));
-      const projectUser = await getPrismaClientForTenancy(tenancy).projectUser.findUniqueOrThrow({
+      const prisma = await getPrismaClientForTenancy(tenancy);
+      const projectUser = await prisma.projectUser.findUniqueOrThrow({
         where: {
           tenancyId_projectUserId: {
             tenancyId: tenancy.id,
@@ -266,7 +267,7 @@ export class OAuthModel implements AuthorizationCodeModel {
     assertScopeIsValid(code.scope);
     const tenancy = await getSoleTenancyFromProjectBranch(...getProjectBranchFromClientId(client.id));
 
-    if (!validateRedirectUrl(code.redirectUri, tenancy.config.domains, tenancy.config.allow_localhost)) {
+    if (!validateRedirectUrl(code.redirectUri, tenancy)) {
       throw new KnownErrors.RedirectUrlNotWhitelisted();
     }
 
@@ -352,10 +353,6 @@ export class OAuthModel implements AuthorizationCodeModel {
   async validateRedirectUri(redirect_uri: string, client: Client): Promise<boolean> {
     const tenancy = await getSoleTenancyFromProjectBranch(...getProjectBranchFromClientId(client.id));
 
-    return validateRedirectUrl(
-      redirect_uri,
-      tenancy.config.domains,
-      tenancy.config.allow_localhost,
-    );
+    return validateRedirectUrl(redirect_uri, tenancy);
   }
 }
