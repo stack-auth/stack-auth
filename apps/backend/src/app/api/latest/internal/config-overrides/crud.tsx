@@ -38,7 +38,6 @@ export const configOverridesCrudHandlers = createLazyProxy(() => createCrudHandl
         projectId: auth.tenancy.project.id,
         branchId: auth.tenancy.branchId,
         environmentConfigOverrideOverride: parsedConfig,
-        tx: globalPrismaClient,
       });
     }
 
