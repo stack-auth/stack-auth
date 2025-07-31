@@ -71,7 +71,7 @@ const oauthProvidersCrud = createCrud({
 
 function oauthProviderConfigToLegacyConfig(provider: Tenancy['config']['auth']['oauth']['providers'][string]) {
   return {
-    id: provider.type!,
+    id: provider.type || throwErr('Provider type is required'),
     type: provider.isShared ? 'shared' : 'standard',
     client_id: provider.clientId,
     client_secret: provider.clientSecret,
