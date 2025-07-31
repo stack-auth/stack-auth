@@ -1,5 +1,4 @@
 import { InternalSession } from "../sessions";
-import { EmailTemplateCrud, EmailTemplateType } from "./crud/email-templates";
 import { InternalEmailsCrud } from "./crud/emails";
 import { InternalApiKeysCrud } from "./crud/internal-api-keys";
 import { ProjectPermissionDefinitionsCrud } from "./crud/project-permissions";
@@ -125,15 +124,9 @@ export class StackAdminInterface extends StackServerInterface {
     return await response.json();
   }
 
-  async listEmailTemplates(): Promise<EmailTemplateCrud['Admin']['Read'][]> {
-    const response = await this.sendAdminRequest(`/email-templates`, {}, null);
-    const result = await response.json() as EmailTemplateCrud['Admin']['List'];
-    return result.items;
-  }
-
-  async listInternalEmailTemplatesNew(): Promise<{ id: string, subject: string, display_name: string, tsx_source: string }[]> {
+  async listInternalEmailTemplates(): Promise<{ id: string, display_name: string, theme_id?: string, tsx_source: string }[]> {
     const response = await this.sendAdminRequest(`/internal/email-templates`, {}, null);
-    const result = await response.json() as { templates: { id: string, subject: string, display_name: string, tsx_source: string }[] };
+    const result = await response.json() as { templates: { id: string, display_name: string, theme_id?: string, tsx_source: string }[] };
     return result.templates;
   }
 
@@ -143,28 +136,6 @@ export class StackAdminInterface extends StackServerInterface {
     return result.themes;
   }
 
-  async updateEmailTemplate(type: EmailTemplateType, data: EmailTemplateCrud['Admin']['Update']): Promise<EmailTemplateCrud['Admin']['Read']> {
-    const result = await this.sendAdminRequest(
-      `/email-templates/${type}`,
-      {
-        method: "PATCH",
-        headers: {
-          "content-type": "application/json",
-        },
-        body: JSON.stringify(data),
-      },
-      null,
-    );
-    return await result.json();
-  }
-
-  async resetEmailTemplate(type: EmailTemplateType): Promise<void> {
-    await this.sendAdminRequest(
-      `/email-templates/${type}`,
-      { method: "DELETE" },
-      null
-    );
-  }
 
   // Team permission definitions methods
   async listTeamPermissionDefinitions(): Promise<TeamPermissionDefinitionsCrud['Admin']['Read'][]> {
@@ -399,7 +370,7 @@ export class StackAdminInterface extends StackServerInterface {
     return await response.json();
   }
 
-  async renderEmailPreview(options: { themeId?: string, themeTsxSource?: string, templateId?: string, templateTsxSource?: string }): Promise<{ html: string }> {
+  async renderEmailPreview(options: { themeId?: string | null | false, themeTsxSource?: string, templateId?: string, templateTsxSource?: string }): Promise<{ html: string }> {
     const response = await this.sendAdminRequest(`/emails/render-email`, {
       method: "POST",
       headers: {
@@ -457,7 +428,7 @@ export class StackAdminInterface extends StackServerInterface {
     );
   }
 
-  async updateNewEmailTemplate(id: string, tsxSource: string): Promise<{ rendered_html: string }> {
+  async updateEmailTemplate(id: string, tsxSource: string, themeId: string | null | false): Promise<{ rendered_html: string }> {
     const response = await this.sendAdminRequest(
       `/internal/email-templates/${id}`,
       {
@@ -465,10 +436,28 @@ export class StackAdminInterface extends StackServerInterface {
         headers: {
           "content-type": "application/json",
         },
-        body: JSON.stringify({ tsx_source: tsxSource }),
+        body: JSON.stringify({ tsx_source: tsxSource, theme_id: themeId }),
       },
       null,
     );
     return await response.json();
   }
+
+  async createEmailTemplate(displayName: string): Promise<{ id: string }> {
+    const response = await this.sendAdminRequest(
+      `/internal/email-templates`,
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          display_name: displayName,
+        }),
+      },
+      null,
+    );
+    return await response.json();
+  }
+
 }

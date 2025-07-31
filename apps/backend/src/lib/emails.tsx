@@ -1,50 +1,29 @@
-import { getProject } from '@/lib/projects';
-import { getPrismaClientForTenancy, globalPrismaClient } from '@/prisma-client';
+import { getPrismaClientForTenancy } from '@/prisma-client';
 import { traceSpan } from '@/utils/telemetry';
-import { TEditorConfiguration } from '@stackframe/stack-emails/dist/editor/documents/editor/core';
-import { EMAIL_TEMPLATES_METADATA, renderEmailTemplate } from '@stackframe/stack-emails/dist/utils';
 import { UsersCrud } from '@stackframe/stack-shared/dist/interface/crud/users';
 import { getEnvVariable } from '@stackframe/stack-shared/dist/utils/env';
 import { StackAssertionError, StatusError, captureError } from '@stackframe/stack-shared/dist/utils/errors';
 import { filterUndefined, omit, pick } from '@stackframe/stack-shared/dist/utils/objects';
 import { runAsynchronously, wait } from '@stackframe/stack-shared/dist/utils/promises';
 import { Result } from '@stackframe/stack-shared/dist/utils/results';
-import { typedToUppercase } from '@stackframe/stack-shared/dist/utils/strings';
 import nodemailer from 'nodemailer';
 import { Tenancy, getTenancy } from './tenancies';
+import { getEmailThemeForTemplate, renderEmailWithTemplate } from './email-rendering';
+import { DEFAULT_TEMPLATE_IDS } from '@stackframe/stack-shared/dist/helpers/emails';
 
-export async function getEmailTemplate(projectId: string, type: keyof typeof EMAIL_TEMPLATES_METADATA) {
-  const project = await getProject(projectId);
-  if (!project) {
-    throw new Error("Project not found");
-  }
 
-  const template = await globalPrismaClient.emailTemplate.findUnique({
-    where: {
-      projectId_type: {
-        projectId,
-        type: typedToUppercase(type),
-      },
-    },
-  });
-
-  return template ? {
-    ...template,
-    content: template.content as TEditorConfiguration,
-  } : null;
-}
-
-export async function getEmailTemplateWithDefault(projectId: string, type: keyof typeof EMAIL_TEMPLATES_METADATA, version: 1 | 2 = 2) {
-  const template = await getEmailTemplate(projectId, type);
-  if (template) {
+function getDefaultEmailTemplate(tenancy: Tenancy, type: keyof typeof DEFAULT_TEMPLATE_IDS) {
+  const templateList = new Map(Object.entries(tenancy.completeConfig.emails.templates));
+  const defaultTemplateIdsMap = new Map(Object.entries(DEFAULT_TEMPLATE_IDS));
+  const defaultTemplateId = defaultTemplateIdsMap.get(type);
+  if (defaultTemplateId) {
+    const template = templateList.get(defaultTemplateId);
+    if (!template) {
+      throw new StackAssertionError(`Default email template not found: ${type}`);
+    }
     return template;
   }
-  return {
-    type,
-    content: EMAIL_TEMPLATES_METADATA[type].defaultContent[version],
-    subject: EMAIL_TEMPLATES_METADATA[type].defaultSubject,
-    default: true,
-  };
+  throw new StackAssertionError(`Unknown email template type: ${type}`);
 }
 
 export function isSecureEmailPort(port: number | string) {
@@ -80,9 +59,9 @@ async function _sendEmailWithoutRetries(options: SendEmailOptions): Promise<Resu
 }>> {
   let finished = false;
   runAsynchronously(async () => {
-    await wait(5000);
+    await wait(10000);
     if (!finished) {
-      captureError("email-send-timeout", new StackAssertionError("Email send took longer than 5s; maybe the email service is too slow?", {
+      captureError("email-send-timeout", new StackAssertionError("Email send took longer than 10s; maybe the email service is too slow?", {
         config: options.emailConfig.type === 'shared' ? "shared" : pick(options.emailConfig, ['host', 'port', 'username', 'senderEmail', 'senderName']),
         to: options.to,
         subject: options.subject,
@@ -99,7 +78,20 @@ async function _sendEmailWithoutRetries(options: SendEmailOptions): Promise<Resu
     if (options.emailConfig.type === 'shared' && emailableApiKey) {
       await traceSpan('verifying email addresses with Emailable', async () => {
         toArray = (await Promise.all(toArray.map(async (to) => {
-          const emailableResponse = await fetch(`https://api.emailable.com/v1/verify?email=${encodeURIComponent(options.to as string)}&api_key=${emailableApiKey}`);
+          const emailableResponseResult = await Result.retry(async (attempt) => {
+            const res = await fetch(`https://api.emailable.com/v1/verify?email=${encodeURIComponent(options.to as string)}&api_key=${emailableApiKey}`);
+            if (res.status === 249) {
+              const text = await res.text();
+              console.log('Emailable is taking longer than expected, retrying...', text, { to: options.to });
+              return Result.error(new Error("Emailable API returned a 249 error for " + options.to + ". This means it takes some more time to verify the email address. Response body: " + text));
+            }
+            return Result.ok(res);
+          }, 4, { exponentialDelayBase: 4000 });
+          if (emailableResponseResult.status === 'error') {
+            captureError("emailable-api-timeout", emailableResponseResult.error);
+            return to;
+          }
+          const emailableResponse = emailableResponseResult.data;
           if (!emailableResponse.ok) {
             throw new StackAssertionError("Failed to verify email address with Emailable", {
               to: options.to,
@@ -108,7 +100,8 @@ async function _sendEmailWithoutRetries(options: SendEmailOptions): Promise<Resu
             });
           }
           const json = await emailableResponse.json();
-          if (json.state === 'undeliverable') {
+          console.log('emailableResponse', json);
+          if (json.state === 'undeliverable' || json.disposable) {
             console.log('email not deliverable', to, json);
             return null;
           }
@@ -329,26 +322,43 @@ export async function sendEmailFromTemplate(options: {
   tenancy: Tenancy,
   user: UsersCrud["Admin"]["Read"] | null,
   email: string,
-  templateType: keyof typeof EMAIL_TEMPLATES_METADATA,
+  templateType: keyof typeof DEFAULT_TEMPLATE_IDS,
   extraVariables: Record<string, string | null>,
   version?: 1 | 2,
 }) {
-  const template = await getEmailTemplateWithDefault(options.tenancy.project.id, options.templateType, options.version);
-
+  const template = getDefaultEmailTemplate(options.tenancy, options.templateType);
+  const themeSource = getEmailThemeForTemplate(options.tenancy, template.themeId);
   const variables = filterUndefined({
     projectDisplayName: options.tenancy.project.display_name,
-    userDisplayName: options.user?.display_name || undefined,
+    userDisplayName: options.user?.display_name ?? "",
     ...filterUndefined(options.extraVariables),
   });
-  const { subject, html, text } = renderEmailTemplate(template.subject, template.content, variables);
+
+  const result = await renderEmailWithTemplate(
+    template.tsxSource,
+    themeSource,
+    {
+      user: { displayName: options.user?.display_name ?? null },
+      project: { displayName: options.tenancy.project.display_name },
+      variables,
+    }
+  );
+  if (result.status === 'error') {
+    throw new StackAssertionError("Failed to render email template", {
+      template: template,
+      theme: themeSource,
+      variables,
+      result
+    });
+  }
 
   await sendEmail({
     tenancyId: options.tenancy.id,
     emailConfig: await getEmailConfig(options.tenancy),
     to: options.email,
-    subject,
-    html,
-    text,
+    subject: result.data.subject ?? "",
+    html: result.data.html,
+    text: result.data.text,
   });
 }
 

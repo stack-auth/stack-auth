@@ -165,12 +165,15 @@ export async function createOrUpdateProject(
       'teams.createPersonalTeamOnSignUp': dataOptions.create_team_on_sign_up,
       // ======================= domains =======================
       'domains.allowLocalhost': dataOptions.allow_localhost ?? true,
-      'domains.trustedDomains': dataOptions.domains ? dataOptions.domains.map((domain) => {
-        return {
-          baseUrl: domain.domain,
-          handlerPath: domain.handler_path,
-        } satisfies OrganizationRenderedConfig['domains']['trustedDomains'][string];
-      }) : undefined,
+      'domains.trustedDomains': dataOptions.domains ? typedFromEntries(dataOptions.domains.map((domain) => {
+        return [
+          generateUuid(),
+          {
+            baseUrl: domain.domain,
+            handlerPath: domain.handler_path,
+          } satisfies OrganizationRenderedConfig['domains']['trustedDomains'][string],
+        ];
+      })) : undefined,
       // ======================= api keys =======================
       'apiKeys.enabled.user': dataOptions.allow_user_api_keys,
       'apiKeys.enabled.team': dataOptions.allow_team_api_keys,
@@ -184,7 +187,7 @@ export async function createOrUpdateProject(
         senderName: dataOptions.email_config.sender_name,
         senderEmail: dataOptions.email_config.sender_email,
       } satisfies OrganizationRenderedConfig['emails']['server'] : undefined,
-      'emails.theme': dataOptions.email_theme,
+      'emails.selectedThemeId': dataOptions.email_theme,
       // ======================= rbac =======================
       'rbac.defaultPermissions.teamMember': translateDefaultPermissions(dataOptions.team_member_default_permissions),
       'rbac.defaultPermissions.teamCreator': translateDefaultPermissions(dataOptions.team_creator_default_permissions),

@@ -1,8 +1,9 @@
 import { overrideEnvironmentConfigOverride } from "@/lib/config";
 import { globalPrismaClient } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
-import { DEFAULT_EMAIL_THEME_ID, LightEmailTheme } from "@stackframe/stack-shared/dist/helpers/emails";
+import { LightEmailTheme } from "@stackframe/stack-shared/dist/helpers/emails";
 import { adaptSchema, yupArray, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
+import { filterUndefined, typedEntries } from "@stackframe/stack-shared/dist/utils/objects";
 import { generateUuid } from "@stackframe/stack-shared/dist/utils/uuids";
 
 
@@ -33,7 +34,7 @@ export const POST = createSmartRouteHandler({
       projectId: tenancy.project.id,
       branchId: tenancy.branchId,
       environmentConfigOverrideOverride: {
-        [`emails.themeList.${id}`]: {
+        [`emails.themes.${id}`]: {
           displayName: body.display_name,
           tsxSource: LightEmailTheme,
         },
@@ -68,26 +69,10 @@ export const GET = createSmartRouteHandler({
     }).defined(),
   }),
   async handler({ auth: { tenancy } }) {
-    const themeList = tenancy.config.emails.themeList;
-    const currentActiveTheme = tenancy.config.emails.theme;
-    if (!(currentActiveTheme in themeList)) {
-      let newActiveTheme: string;
-      if (DEFAULT_EMAIL_THEME_ID in themeList) {
-        newActiveTheme = DEFAULT_EMAIL_THEME_ID;
-      } else {
-        newActiveTheme = Object.keys(themeList)[0];
-      }
-      await overrideEnvironmentConfigOverride({
-        tx: globalPrismaClient,
-        projectId: tenancy.project.id,
-        branchId: tenancy.branchId,
-        environmentConfigOverrideOverride: {
-          "emails.theme": newActiveTheme,
-        },
-      });
-    }
+    const themeList = tenancy.config.emails.themes;
+    const currentActiveTheme = tenancy.config.emails.selectedThemeId;
 
-    const themes = Object.entries(themeList).map(([id, theme]) => ({
+    const themes = typedEntries(themeList).map(([id, theme]) => filterUndefined({
       id,
       display_name: theme.displayName,
     }));

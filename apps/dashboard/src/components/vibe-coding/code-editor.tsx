@@ -3,7 +3,7 @@ import { runAsynchronously } from '@stackframe/stack-shared/dist/utils/promises'
 import { deindent } from '@stackframe/stack-shared/dist/utils/strings';
 import { Typography } from "@stackframe/stack-ui";
 import { useTheme } from 'next-themes';
-
+import { dtsBundles } from './dts';
 
 type CodeEditorProps = {
   code: string,
@@ -81,18 +81,21 @@ export default function CodeEditor({
         declare module "@stackframe/emails" {
           const Subject: React.FC<{value: string}>;
           const NotificationCategory: React.FC<{value: "Transactional" | "Marketing"}>;
+          type Props<T> = {
+            variables: T;
+            project: {
+              displayName: string;
+            };
+            user: {
+              displayName: string | null;
+            };
+          };
         }
       `,
     );
-    // There is some issue with arktype type definitions and monaco editor that isn't letting them work properly.
-    // TODO: add actual type definitions for arktype.
-    monaco.languages.typescript.typescriptDefaults.addExtraLib(
-      deindent`
-        declare module "arktype" {
-          const type: any;
-        }
-      `,
-    );
+    monaco.languages.typescript.typescriptDefaults.addExtraLib(dtsBundles.arkType);
+    monaco.languages.typescript.typescriptDefaults.addExtraLib(dtsBundles.arkUtil);
+    monaco.languages.typescript.typescriptDefaults.addExtraLib(dtsBundles.arkSchema);
 
     const reactEmailPackages = [
       'components', 'body', 'button', 'code-block', 'code-inline', 'column',

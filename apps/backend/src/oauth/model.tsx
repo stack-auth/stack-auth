@@ -56,7 +56,7 @@ export class OAuthModel implements AuthorizationCodeModel {
         ([_, domain]) => new URL(domain.handlerPath, domain.baseUrl).toString()
       );
     } catch (e) {
-      captureError("get redirect uris", {
+      captureError("get-oauth-redirect-urls", {
         error: e,
         projectId: tenancy.project.id,
         domains: tenancy.config.domains,
