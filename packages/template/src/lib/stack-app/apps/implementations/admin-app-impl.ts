@@ -183,9 +183,11 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
       async getProductionModeErrors() {
         return getProductionModeErrors(data);
       },
+      // IF_PLATFORM react-like
       useProductionModeErrors() {
         return getProductionModeErrors(data);
       },
+      // END_PLATFORM
     };
   }
 
