@@ -1,5 +1,4 @@
 import { InternalSession } from "../sessions";
-import { filterUndefined, typedFromEntries } from "../utils/objects";
 import { ConfigCrud, ConfigOverrideCrud } from "./crud/config";
 import { InternalEmailsCrud } from "./crud/emails";
 import { InternalApiKeysCrud } from "./crud/internal-api-keys";
@@ -447,7 +446,7 @@ export class StackAdminInterface extends StackServerInterface {
 
   async getConfig(): Promise<ConfigCrud["Admin"]["Read"]> {
     const response = await this.sendAdminRequest(
-      `/internal/config`,
+      `/internal/configs`,
       { method: "GET" },
       null,
     );
@@ -455,60 +454,6 @@ export class StackAdminInterface extends StackServerInterface {
   }
 
   async updateConfig(data: { configOverride: any }): Promise<ConfigOverrideCrud["Admin"]["Read"]> {
-    const legacyConfig = data.configOverride;
-
-    const configOverrideOverride = filterUndefined({
-      // ======================= auth =======================
-      'auth.allowSignUp': legacyConfig.sign_up_enabled,
-      'auth.password.allowSignIn': legacyConfig.credential_enabled,
-      'auth.otp.allowSignIn': legacyConfig.magic_link_enabled,
-      'auth.passkey.allowSignIn': legacyConfig.passkey_enabled,
-      'auth.oauth.accountMergeStrategy': legacyConfig.oauth_account_merge_strategy,
-      'auth.oauth.providers': legacyConfig.oauth_providers ? typedFromEntries(legacyConfig.oauth_providers
-        .map((provider: any) => {
-          return [
-            provider.id,
-            {
-              type: provider.id,
-              isShared: provider.type === "shared",
-              clientId: provider.client_id,
-              clientSecret: provider.client_secret,
-              facebookConfigId: provider.facebook_config_id,
-              microsoftTenantId: provider.microsoft_tenant_id,
-              allowSignIn: true,
-              allowConnectedAccounts: true,
-            }
-          ];
-        })) : undefined,
-      // ======================= users =======================
-      'users.allowClientUserDeletion': legacyConfig.client_user_deletion_enabled,
-      // ======================= teams =======================
-      'teams.allowClientTeamCreation': legacyConfig.client_team_creation_enabled,
-      'teams.createPersonalTeamOnSignUp': legacyConfig.create_team_on_sign_up,
-      // ======================= domains =======================
-      'domains.allowLocalhost': legacyConfig.allow_localhost ?? true,
-      'domains.trustedDomains': legacyConfig.domains ? legacyConfig.domains.map((domain: any) => {
-        return {
-          baseUrl: domain.domain,
-          handlerPath: domain.handler_path,
-        };
-      }) : undefined,
-      // ======================= api keys =======================
-      'apiKeys.enabled.user': legacyConfig.allow_user_api_keys,
-      'apiKeys.enabled.team': legacyConfig.allow_team_api_keys,
-      // ======================= emails =======================
-      'emails.server': legacyConfig.email_config ? {
-        isShared: legacyConfig.email_config.type === 'shared',
-        host: legacyConfig.email_config.host,
-        port: legacyConfig.email_config.port,
-        username: legacyConfig.email_config.username,
-        password: legacyConfig.email_config.password,
-        senderName: legacyConfig.email_config.sender_name,
-        senderEmail: legacyConfig.email_config.sender_email,
-      } : undefined,
-      'emails.theme': legacyConfig.email_theme,
-    });
-
     const response = await this.sendAdminRequest(
       `/internal/configs/overrides`,
       {
@@ -516,7 +461,7 @@ export class StackAdminInterface extends StackServerInterface {
         headers: {
           "content-type": "application/json",
         },
-        body: JSON.stringify({ config: JSON.stringify(configOverrideOverride) }),
+        body: JSON.stringify({ config_override_string: JSON.stringify(data.configOverride) }),
       },
       null,
     );
