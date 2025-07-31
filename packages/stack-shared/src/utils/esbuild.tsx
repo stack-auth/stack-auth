@@ -1,8 +1,9 @@
 import * as esbuild from 'esbuild-wasm/lib/browser.js';
 import { join } from 'path';
+import { isBrowserLike } from './env';
 import { StackAssertionError, throwErr } from "./errors";
 import { Result } from "./results";
-import { isBrowserLike } from './env';
+import { traceSpan, withTraceSpan } from './telemetry';
 
 let esbuildInitializePromise: Promise<void> | null = null;
 // esbuild requires self property to be set, and it is not set by default in nodejs
@@ -10,7 +11,7 @@ let esbuildInitializePromise: Promise<void> | null = null;
 
 export async function initializeEsbuild() {
   if (!esbuildInitializePromise) {
-    esbuildInitializePromise = (async () => {
+    esbuildInitializePromise = withTraceSpan('initializeEsbuild', async () => {
       await esbuild.initialize(isBrowserLike() ? {
         wasmURL: `https://unpkg.com/esbuild-wasm@${esbuild.version}/esbuild.wasm`,
       } : {
@@ -48,7 +49,7 @@ export async function bundleJavaScript(sourceFiles: Record<string, string> & { '
   ]);
   let result;
   try {
-    result = await esbuild.build({
+    result = await traceSpan('bundleJavaScript', async () => await esbuild.build({
       entryPoints: ['/entry.js'],
       bundle: true,
       write: false,
@@ -105,7 +106,7 @@ export async function bundleJavaScript(sourceFiles: Record<string, string> & { '
           },
         },
       ],
-    });
+    }));
   } catch (e) {
     if (e instanceof Error && e.message.startsWith("Build failed with ")) {
       return Result.error(e.message);
