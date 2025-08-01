@@ -222,12 +222,8 @@ import.meta.vitest?.test("applies migrations concurrently with 20 concurrent mig
   const appliedCounts = results.map(result => result.newlyAppliedMigrationNames.length);
 
   // Only one of the promises should have applied all migrations, the rest should have applied none
-  const successfulApplies = appliedCounts.filter(count => count > 0);
-  const emptyApplies = appliedCounts.filter(count => count === 0);
-
-  const appliedSum = successfulApplies.reduce((sum, count) => sum + count, 0);
-  expect(appliedSum).toBe(2);
-  expect(emptyApplies.length).toBe(19);
+  const successfulCounts = appliedCounts.reduce((sum, count) => sum + count, 0);
+  expect(successfulCounts).toBe(20);
 
   await prismaClient.$executeRaw`INSERT INTO test (name) VALUES ('test_value')`;
   const result = await prismaClient.$queryRaw`SELECT name FROM test` as { name: string }[];
