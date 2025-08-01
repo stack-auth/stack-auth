@@ -9,7 +9,7 @@ import { filterUndefined, typedEntries } from "@stackframe/stack-shared/dist/uti
 import { Result } from "@stackframe/stack-shared/dist/utils/results";
 import { deindent, stringCompare } from "@stackframe/stack-shared/dist/utils/strings";
 import * as yup from "yup";
-import { PrismaClientTransaction, RawQuery, globalPrismaClient, rawQuery } from "../prisma-client";
+import { RawQuery, globalPrismaClient, rawQuery } from "../prisma-client";
 import { DEFAULT_BRANCH_ID } from "./tenancies";
 
 type ProjectOptions = { projectId: string };

@@ -139,10 +139,6 @@ export const branchConfigSchema = canNoLongerBeOverridden(projectConfigSchema, [
     themes: schemaFields.emailThemeListSchema,
     templates: schemaFields.emailTemplateListSchema,
   }),
-
-  info: yupObject({
-    logoUrl: yupString().optional(),
-  }),
 }));
 
 
@@ -410,8 +406,6 @@ const organizationConfigDefaults = {
       themeId: undefined,
     }), DEFAULT_EMAIL_TEMPLATES),
   },
-
-  info: {},
 } as const satisfies DefaultsType<OrganizationRenderedConfigBeforeDefaults, [typeof environmentConfigDefaults, typeof branchConfigDefaults, typeof projectConfigDefaults]>;
 
 type _DeepOmitDefaultsImpl<T, U> = T extends object ? (

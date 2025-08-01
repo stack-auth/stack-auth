@@ -1,3 +1,4 @@
+import { uploadAndGetUrl } from "@/s3";
 import { Prisma } from "@prisma/client";
 import { KnownErrors } from "@stackframe/stack-shared";
 import { EnvironmentConfigOverrideOverride, OrganizationRenderedConfig, ProjectConfigOverrideOverride } from "@stackframe/stack-shared/dist/config/schema";
@@ -76,6 +77,16 @@ export async function createOrUpdateProjectWithLegacyConfig(
     data: ProjectsCrud["Admin"]["Update"],
   })
 ) {
+  let logoUrl: string | null | undefined;
+  if (options.data.logo_url) {
+    logoUrl = await uploadAndGetUrl(options.data.logo_url, "project-logos");
+  }
+
+  let fullLogoUrl: string | null | undefined;
+  if (options.data.full_logo_url) {
+    fullLogoUrl = await uploadAndGetUrl(options.data.full_logo_url, "project-logos");
+  }
+
   const [projectId, branchId] = await retryTransaction(globalPrismaClient, async (tx) => {
     let project: Prisma.ProjectGetPayload<{}>;
     let branchId: string;
@@ -87,6 +98,8 @@ export async function createOrUpdateProjectWithLegacyConfig(
           displayName: options.data.display_name,
           description: options.data.description ?? "",
           isProductionMode: options.data.is_production_mode ?? false,
+          logoUrl,
+          fullLogoUrl,
         },
       });
 
@@ -117,6 +130,8 @@ export async function createOrUpdateProjectWithLegacyConfig(
           displayName: options.data.display_name,
           description: options.data.description === null ? "" : options.data.description,
           isProductionMode: options.data.is_production_mode,
+          logoUrl,
+          fullLogoUrl,
         },
       });
       branchId = options.branchId;

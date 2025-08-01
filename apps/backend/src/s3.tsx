@@ -80,7 +80,7 @@ export function checkImageString(input: string) {
 
 export async function uploadAndGetUrl(
   input: string | null | undefined,
-  folderName: 'user-profile-images' | 'team-profile-images' | 'team-member-profile-images'
+  folderName: 'user-profile-images' | 'team-profile-images' | 'team-member-profile-images' | 'project-logos'
 ) {
   if (input) {
     const checkResult = checkImageString(input);
