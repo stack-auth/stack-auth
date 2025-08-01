@@ -9,7 +9,7 @@ export class TracedFreestyleSandboxes {
   constructor(options: { apiKey: string }) {
     let baseUrl = undefined;
     if (["development", "test"].includes(getNodeEnvironment()) && options.apiKey === "mock_stack_freestyle_key") {
-      baseUrl = "http://localhost:8119";
+      baseUrl = "http://localhost:8122";
     }
     this.freestyle = new FreestyleSandboxes({
       apiKey: options.apiKey,
