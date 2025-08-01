@@ -49,6 +49,8 @@ export function getProjectQuery(projectId: string): RawQuery<Promise<Omit<Projec
         id: row.id,
         display_name: row.displayName,
         description: row.description,
+        logo_url: row.logoUrl,
+        full_logo_url: row.fullLogoUrl,
         created_at_millis: new Date(row.createdAt + "Z").getTime(),
         is_production_mode: row.isProductionMode,
       };
