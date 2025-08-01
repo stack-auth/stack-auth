@@ -2,6 +2,7 @@ import { ensureTeamExists, ensureTeamMembershipExists, ensureUserExists, ensureU
 import { sendTeamCreatedWebhook, sendTeamDeletedWebhook, sendTeamUpdatedWebhook } from "@/lib/webhooks";
 import { getPrismaClientForTenancy, retryTransaction } from "@/prisma-client";
 import { createCrudHandlers } from "@/route-handlers/crud-handler";
+import { uploadAndGetUrl } from "@/s3";
 import { runAsynchronouslyAndWaitUntil } from "@/utils/vercel";
 import { Prisma } from "@prisma/client";
 import { KnownErrors } from "@stackframe/stack-shared";
