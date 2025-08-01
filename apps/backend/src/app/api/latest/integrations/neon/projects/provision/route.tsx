@@ -1,5 +1,5 @@
 import { createApiKeySet } from "@/lib/internal-api-keys";
-import { createOrUpdateProject } from "@/lib/projects";
+import { createOrUpdateProjectWithLegacyConfig } from "@/lib/projects";
 import { globalPrismaClient } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { neonAuthorizationHeaderSchema, projectDisplayNameSchema, yupArray, yupNumber, yupObject, yupString, yupTuple } from "@stackframe/stack-shared/dist/schema-fields";
@@ -32,7 +32,7 @@ export const POST = createSmartRouteHandler({
   handler: async (req) => {
     const [clientId] = decodeBasicAuthorizationHeader(req.headers.authorization[0])!;
 
-    const createdProject = await createOrUpdateProject({
+    const createdProject = await createOrUpdateProjectWithLegacyConfig({
       ownerIds: [],
       sourceOfTruth: req.body.connection_strings ? {
         type: 'neon',
@@ -69,7 +69,7 @@ export const POST = createSmartRouteHandler({
 
     const set = await createApiKeySet({
       projectId: createdProject.id,
-      description: `Auto-generated for Neon (${req.body.display_name})`,
+      description: `Auto-generated for Neon Auth (DO NOT DELETE)`,
       expires_at_millis: new Date(Date.now() + 1000 * 60 * 60 * 24 * 365 * 100).getTime(),
       has_publishable_client_key: false,
       has_secret_server_key: false,

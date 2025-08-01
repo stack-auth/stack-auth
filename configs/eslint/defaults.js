@@ -103,6 +103,10 @@ module.exports = {
           "Identifier[name='localeCompare']",
         message: "Use stringCompare() from utils/strings.tsx instead of String.prototype.localeCompare.",
       },
+      {
+        selector: "CallExpression > MemberExpression[property.name='$transaction']",
+        message: "Calling .$transaction is disallowed. Use retryTransaction() instead.",
+      },
     ],
     "@typescript-eslint/no-misused-promises": [
       "error",

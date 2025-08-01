@@ -139,7 +139,7 @@ services:
   s3mock:
     image: adobe/s3mock:latest
     ports:
-      - 8120:9090
+      - 8121:9090
     environment:
       - initialBuckets=stack-storage
       - root=s3mockroot

@@ -7,7 +7,6 @@ import { getProjectQuery, listManagedProjectIds } from "@/lib/projects";
 import { DEFAULT_BRANCH_ID, Tenancy, getSoleTenancyFromProjectBranch } from "@/lib/tenancies";
 import { decodeAccessToken } from "@/lib/tokens";
 import { globalPrismaClient, rawQueryAll } from "@/prisma-client";
-import { traceSpan, withTraceSpan } from "@/utils/telemetry";
 import { KnownErrors } from "@stackframe/stack-shared";
 import { ProjectsCrud } from "@stackframe/stack-shared/dist/interface/crud/projects";
 import { UsersCrud } from "@stackframe/stack-shared/dist/interface/crud/users";
@@ -16,6 +15,7 @@ import { groupBy, typedIncludes } from "@stackframe/stack-shared/dist/utils/arra
 import { getEnvVariable, getNodeEnvironment } from "@stackframe/stack-shared/dist/utils/env";
 import { StackAssertionError, StatusError, captureError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
 import { deindent } from "@stackframe/stack-shared/dist/utils/strings";
+import { traceSpan, withTraceSpan } from "@stackframe/stack-shared/dist/utils/telemetry";
 import { NextRequest } from "next/server";
 import * as yup from "yup";
 
