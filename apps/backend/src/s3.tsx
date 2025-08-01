@@ -5,6 +5,7 @@ import { ImageProcessingError, parseBase64Image } from "./lib/images";
 
 const S3_REGION = getEnvVariable("STACK_S3_REGION", "");
 const S3_ENDPOINT = getEnvVariable("STACK_S3_ENDPOINT", "");
+const S3_PUBLIC_ENDPOINT = getEnvVariable("STACK_S3_PUBLIC_ENDPOINT", "");
 const S3_BUCKET = getEnvVariable("STACK_S3_BUCKET", "");
 const S3_ACCESS_KEY_ID = getEnvVariable("STACK_S3_ACCESS_KEY_ID", "");
 const S3_SECRET_ACCESS_KEY = getEnvVariable("STACK_S3_SECRET_ACCESS_KEY", "");
@@ -26,7 +27,11 @@ const s3Client = HAS_S3 ? new S3Client({
 }) : undefined;
 
 export function getS3PublicUrl(key: string): string {
-  return `${S3_ENDPOINT}/${S3_BUCKET}/${key}`;
+  if (S3_PUBLIC_ENDPOINT) {
+    return `${S3_PUBLIC_ENDPOINT}/${key}`;
+  } else {
+    return `${S3_ENDPOINT}/${S3_BUCKET}/${key}`;
+  }
 }
 
 async function uploadBase64Image({
