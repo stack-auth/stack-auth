@@ -170,6 +170,7 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
       // END_PLATFORM
       async updateConfig(configOverride: EnvironmentConfigOverrideOverride) {
         await app._interface.updateConfig({ configOverride });
+        await app._configOverridesCache.refresh([]);
       },
       async update(update: AdminProjectUpdateOptions) {
         const updateOptions = adminProjectUpdateOptionsToCrud(update);
@@ -515,15 +516,15 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
   }
 
   async setupPayments(): Promise<{ url: string }> {
-    return this._interface.setupPayments();
+    return await this._interface.setupPayments();
   }
 
   async createPaymentsAccountSession(): Promise<{ client_secret: string }> {
-    return this._interface.createPaymentsAccountSession();
+    return await this._interface.createPaymentsAccountSession();
   }
 
   async createPurchaseUrl(options: { customerId: string, offerId: string }): Promise<string> {
-    return this._interface.createPurchaseUrl({
+    return await this._interface.createPurchaseUrl({
       customer_id: options.customerId,
       offer_id: options.offerId,
     });

@@ -1,6 +1,5 @@
 import { overrideEnvironmentConfigOverride } from "@/lib/config";
 import { stackStripe } from "@/lib/stripe";
-import { globalPrismaClient } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { adaptSchema, adminAuthTypeSchema, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
 import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
@@ -24,7 +23,7 @@ export const POST = createSmartRouteHandler({
     }).defined(),
   }),
   handler: async ({ auth }) => {
-    let stripeAccountId = auth.tenancy.completeConfig.payments.stripeAccountId;
+    let stripeAccountId = auth.tenancy.config.payments.stripeAccountId;
     const returnToUrl = new URL(`/projects/${auth.project.id}/payments`, getEnvVariable("NEXT_PUBLIC_STACK_DASHBOARD_URL")).toString();
 
     if (!stripeAccountId) {
@@ -44,7 +43,6 @@ export const POST = createSmartRouteHandler({
       stripeAccountId = account.id;
       // TODO: listen for webhook to ensure account setup is complete and set payments.setupComplete to true
       await overrideEnvironmentConfigOverride({
-        tx: globalPrismaClient,
         projectId: auth.project.id,
         branchId: auth.tenancy.branchId,
         environmentConfigOverrideOverride: {

@@ -4,7 +4,6 @@ import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { adaptSchema, clientOrHigherAuthTypeSchema, inlineOfferSchema, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
 import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
 import { throwErr } from "@stackframe/stack-shared/dist/utils/errors";
-import Stripe from "stripe";
 import { purchaseUrlVerificationCodeHandler } from "../verification-code-handler";
 import { getPrismaClientForTenancy } from "@/prisma-client";
 import { CustomerType } from "@prisma/client";
@@ -64,23 +63,6 @@ export const POST = createSmartRouteHandler({
         },
       });
     }
-    // const price = await stripe.prices.create({
-    //   currency: "usd",
-    //   unit_amount: 1,
-    //   product_data: {
-    //     name: offerConfig.displayName,
-    //   },
-    //   recurring: { interval: 'month' },
-    // });
-    // const subscription = await stripe.subscriptions.create({
-    //   customer: dbCustomer.stripeCustomerId,
-    //   items: [{
-    //     price: price.id,
-    //   }],
-    //   payment_behavior: 'default_incomplete',
-    //   payment_settings: { save_default_payment_method: 'on_subscription' },
-    //   expand: ['latest_invoice.confirmation_secret', 'pending_setup_intent'],
-    // });
 
     const { code } = await purchaseUrlVerificationCodeHandler.createCode({
       tenancy,
@@ -90,7 +72,7 @@ export const POST = createSmartRouteHandler({
         customerId: req.body.customer_id,
         offer: offerConfig,
         stripeCustomerId: dbCustomer.stripeCustomerId,
-        stripeAccountId: tenancy.completeConfig.payments.stripeAccountId ?? throwErr(500, "Stripe account not configured"),
+        stripeAccountId: tenancy.config.payments.stripeAccountId ?? throwErr(500, "Stripe account not configured"),
       },
       method: {},
       callbackUrl: undefined,

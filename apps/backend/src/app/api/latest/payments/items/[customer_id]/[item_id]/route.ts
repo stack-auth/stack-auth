@@ -31,7 +31,7 @@ export const GET = createSmartRouteHandler({
   }),
   handler: async (req) => {
     const { project, tenancy } = req.auth;
-    const paymentsConfig = tenancy.completeConfig.payments;
+    const paymentsConfig = tenancy.config.payments;
 
     const itemConfig = getOrUndefined(paymentsConfig.items, req.params.item_id);
     if (!itemConfig) {

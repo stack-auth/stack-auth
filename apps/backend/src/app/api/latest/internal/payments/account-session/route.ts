@@ -22,12 +22,12 @@ export const POST = createSmartRouteHandler({
     }).defined(),
   }),
   handler: async ({ auth }) => {
-    if (!auth.tenancy.completeConfig.payments.stripeAccountId) {
+    if (!auth.tenancy.config.payments.stripeAccountId) {
       throw new StatusError(400, "Stripe account ID is not set");
     }
 
     const accountSession = await stackStripe.accountSessions.create({
-      account: auth.tenancy.completeConfig.payments.stripeAccountId,
+      account: auth.tenancy.config.payments.stripeAccountId,
       components: {
         payments: {
           enabled: true,

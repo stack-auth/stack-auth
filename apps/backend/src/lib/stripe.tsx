@@ -10,7 +10,7 @@ export const getStripeForAccount = (options: { tenancy?: Tenancy, accountId?: st
   if (!options.tenancy && !options.accountId) {
     throwErr(400, "Either tenancy or stripeAccountId must be provided");
   }
-  const accountId = options.accountId ?? options.tenancy?.completeConfig.payments.stripeAccountId;
+  const accountId = options.accountId ?? options.tenancy?.config.payments.stripeAccountId;
   if (!accountId) {
     throwErr(400, "Stripe account not configured");
   }
