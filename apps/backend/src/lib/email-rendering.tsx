@@ -1,4 +1,4 @@
-import { TracedFreestyleSandboxes } from '@/lib/freestyle';
+import { Freestyle } from '@/lib/freestyle';
 import { emptyEmailTheme } from '@stackframe/stack-shared/dist/helpers/emails';
 import { getEnvVariable, getNodeEnvironment } from '@stackframe/stack-shared/dist/utils/env';
 import { StackAssertionError } from '@stackframe/stack-shared/dist/utils/errors';
@@ -122,7 +122,7 @@ export async function renderEmailWithTemplate(
     return Result.error(result.error);
   }
 
-  const freestyle = new TracedFreestyleSandboxes({ apiKey });
+  const freestyle = new Freestyle({ apiKey });
   const nodeModules = {
     "@react-email/components": "0.1.1",
     "arktype": "2.1.20",
