@@ -14,15 +14,16 @@ export function initializeEsbuild(): Promise<void> {
   if (!esbuildInitializePromise) {
     // assign immediately so no one else will race in
     esbuildInitializePromise = (async () => {
-      if (isBrowserLike()) {
-        await esbuild.initialize({
-          wasmURL: esbuildWasmUrl,
-        });
-      } else {
-        const wasmBuffer = await fetch(esbuildWasmUrl).then(r => r.arrayBuffer());
-        const wasmModule = new WebAssembly.Module(wasmBuffer);
-        await esbuild.initialize({ wasmModule, worker: false });
-      }
+      await esbuild.initialize(isBrowserLike() ? {
+        wasmURL: `https://unpkg.com/esbuild-wasm@${esbuild.version}/esbuild.wasm`,
+      } : {
+        wasmModule: (
+          await fetch(`https://unpkg.com/esbuild-wasm@${esbuild.version}/esbuild.wasm`)
+            .then(wasm => wasm.arrayBuffer())
+            .then(wasm => new WebAssembly.Module(wasm))
+        ),
+        worker: false,
+      });
     })();
   }
 
