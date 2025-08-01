@@ -60,7 +60,7 @@ export async function getProject(projectId: string): Promise<Omit<ProjectsCrud["
   return result;
 }
 
-export async function createOrUpdateProject(
+export async function createOrUpdateProjectWithLegacyConfig(
   options: {
     ownerIds?: string[],
     sourceOfTruth?: ProjectConfigOverrideOverride["sourceOfTruth"],
@@ -234,7 +234,7 @@ export async function createOrUpdateProject(
   // Update owner metadata
   const internalEnvironmentConfig = await rawQuery(globalPrismaClient, getRenderedEnvironmentConfigQuery({ projectId: "internal", branchId: DEFAULT_BRANCH_ID }));
   const prisma = await getPrismaClientForSourceOfTruth(internalEnvironmentConfig.sourceOfTruth, DEFAULT_BRANCH_ID);
-  await prisma.$transaction(async (tx) => {
+  await retryTransaction(prisma, async (tx) => {
     for (const userId of options.ownerIds ?? []) {
       const projectUserTx = await tx.projectUser.findUnique({
         where: {

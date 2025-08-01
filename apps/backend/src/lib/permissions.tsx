@@ -103,7 +103,7 @@ export async function grantTeamPermission(
   }
 ) {
   // sanity check: make sure that the permission exists
-  const permissionDefinition = getOrUndefined(options.tenancy.completeConfig.rbac.permissions, options.permissionId);
+  const permissionDefinition = getOrUndefined(options.tenancy.config.rbac.permissions, options.permissionId);
   if (permissionDefinition === undefined) {
     if (!has(teamSystemPermissionMap, options.permissionId)) {
       throw new KnownErrors.PermissionNotFound(options.permissionId);
@@ -164,7 +164,7 @@ export async function listPermissionDefinitions(
     tenancy: Tenancy,
   }
 ): Promise<(TeamPermissionDefinitionsCrud["Admin"]["Read"])[]> {
-  const renderedConfig = options.tenancy.completeConfig;
+  const renderedConfig = options.tenancy.config;
 
   const permissions = typedEntries(renderedConfig.rbac.permissions).filter(([_, p]) => p.scope === options.scope);
 
@@ -194,7 +194,7 @@ export async function createPermissionDefinition(
     },
   }
 ) {
-  const oldConfig = options.tenancy.completeConfig;
+  const oldConfig = options.tenancy.config;
 
   const existingPermission = oldConfig.rbac.permissions[options.data.id] as OrganizationRenderedConfig['rbac']['permissions'][string] | undefined;
   const allIds = Object.keys(oldConfig.rbac.permissions)
@@ -247,7 +247,7 @@ export async function updatePermissionDefinition(
   }
 ) {
   const newId = options.data.id ?? options.oldId;
-  const oldConfig = options.tenancy.completeConfig;
+  const oldConfig = options.tenancy.config;
 
   const existingPermission = oldConfig.rbac.permissions[options.oldId] as OrganizationRenderedConfig['rbac']['permissions'][string] | undefined;
 
@@ -333,7 +333,7 @@ export async function deletePermissionDefinition(
     permissionId: string,
   }
 ) {
-  const oldConfig = options.tenancy.completeConfig;
+  const oldConfig = options.tenancy.config;
 
   const existingPermission = oldConfig.rbac.permissions[options.permissionId] as OrganizationRenderedConfig['rbac']['permissions'][string] | undefined;
 
@@ -387,7 +387,7 @@ export async function grantProjectPermission(
   }
 ) {
   // sanity check: make sure that the permission exists
-  const permissionDefinition = getOrUndefined(options.tenancy.completeConfig.rbac.permissions, options.permissionId);
+  const permissionDefinition = getOrUndefined(options.tenancy.config.rbac.permissions, options.permissionId);
   if (permissionDefinition === undefined) {
     throw new KnownErrors.PermissionNotFound(options.permissionId);
   } else if (permissionDefinition.scope !== "project") {
@@ -446,7 +446,7 @@ export async function grantDefaultProjectPermissions(
     userId: string,
   }
 ) {
-  const config = options.tenancy.completeConfig;
+  const config = options.tenancy.config;
 
   for (const permissionId of Object.keys(config.rbac.defaultPermissions.signUp)) {
     await grantProjectPermission(tx, {
@@ -474,7 +474,7 @@ export async function grantDefaultTeamPermissions(
     type: "creator" | "member",
   }
 ) {
-  const config = options.tenancy.completeConfig;
+  const config = options.tenancy.config;
 
   const defaultPermissions = config.rbac.defaultPermissions[options.type === "creator" ? "teamCreator" : "teamMember"];
 

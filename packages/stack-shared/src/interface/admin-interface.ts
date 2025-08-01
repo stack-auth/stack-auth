@@ -1,4 +1,5 @@
 import { InternalSession } from "../sessions";
+import { ConfigCrud, ConfigOverrideCrud } from "./crud/config";
 import { InternalEmailsCrud } from "./crud/emails";
 import { InternalApiKeysCrud } from "./crud/internal-api-keys";
 import { ProjectPermissionDefinitionsCrud } from "./crud/project-permissions";
@@ -428,6 +429,29 @@ export class StackAdminInterface extends StackServerInterface {
     return await response.json();
   }
 
+  async getConfig(): Promise<ConfigCrud["Admin"]["Read"]> {
+    const response = await this.sendAdminRequest(
+      `/internal/config`,
+      { method: "GET" },
+      null,
+    );
+    return await response.json();
+  }
+
+  async updateConfig(data: { configOverride: any }): Promise<ConfigOverrideCrud["Admin"]["Read"]> {
+    const response = await this.sendAdminRequest(
+      `/internal/config/override`,
+      {
+        method: "PATCH",
+        headers: {
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({ config_override_string: JSON.stringify(data.configOverride) }),
+      },
+      null,
+    );
+    return await response.json();
+  }
   async createEmailTemplate(displayName: string): Promise<{ id: string }> {
     const response = await this.sendAdminRequest(
       `/internal/email-templates`,
@@ -444,5 +468,4 @@ export class StackAdminInterface extends StackServerInterface {
     );
     return await response.json();
   }
-
 }

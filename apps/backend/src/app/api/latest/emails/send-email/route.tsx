@@ -3,7 +3,7 @@ import { getEmailConfig, sendEmail } from "@/lib/emails";
 import { getNotificationCategoryByName, hasNotificationEnabled } from "@/lib/notification-categories";
 import { getPrismaClientForTenancy } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
-import { adaptSchema, serverOrHigherAuthTypeSchema, templateThemeIdSchema, yupArray, yupBoolean, yupMixed, yupNumber, yupObject, yupRecord, yupString, yupUnion } from "@stackframe/stack-shared/dist/schema-fields";
+import { adaptSchema, serverOrHigherAuthTypeSchema, templateThemeIdSchema, yupArray, yupMixed, yupNumber, yupObject, yupRecord, yupString } from "@stackframe/stack-shared/dist/schema-fields";
 import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
 import { StatusError } from "@stackframe/stack-shared/dist/utils/errors";
 import { throwErr } from "@stackframe/stack-shared/dist/utils/errors";
@@ -13,8 +13,6 @@ import { KnownErrors } from "@stackframe/stack-shared";
 type UserResult = {
   user_id: string,
   user_email?: string,
-  success: boolean,
-  error?: string,
 };
 
 export const POST = createSmartRouteHandler({
@@ -47,8 +45,6 @@ export const POST = createSmartRouteHandler({
       results: yupArray(yupObject({
         user_id: yupString().defined(),
         user_email: yupString().optional(),
-        success: yupBoolean().defined(),
-        error: yupString().optional(),
       })).defined(),
     }).defined(),
   }),
@@ -56,16 +52,19 @@ export const POST = createSmartRouteHandler({
     if (!getEnvVariable("STACK_FREESTYLE_API_KEY")) {
       throw new StatusError(500, "STACK_FREESTYLE_API_KEY is not set");
     }
-    if (auth.tenancy.config.email_config.type === "shared") {
+    if (auth.tenancy.config.emails.server.isShared) {
       throw new KnownErrors.RequiresCustomEmailServer();
     }
     if (!body.html && !body.template_id) {
       throw new KnownErrors.SchemaError("Either html or template_id must be provided");
     }
+    if (body.html && (body.template_id || body.variables)) {
+      throw new KnownErrors.SchemaError("If html is provided, cannot provide template_id or variables");
+    }
     const emailConfig = await getEmailConfig(auth.tenancy);
     const defaultNotificationCategory = getNotificationCategoryByName(body.notification_category_name ?? "Transactional") ?? throwErr(400, "Notification category not found with given name");
     const themeSource = getEmailThemeForTemplate(auth.tenancy, body.theme_id);
-    const templates = new Map(Object.entries(auth.tenancy.completeConfig.emails.templates));
+    const templates = new Map(Object.entries(auth.tenancy.config.emails.templates));
     const templateSource = body.template_id
       ? (templates.get(body.template_id)?.tsxSource ?? throwErr(400, "Template not found with given id"))
       : createTemplateComponentFromHtml(body.html!);
@@ -82,6 +81,10 @@ export const POST = createSmartRouteHandler({
         contactChannels: true,
       },
     });
+    const missingUserIds = body.user_ids.filter(userId => !users.some(user => user.projectUserId === userId));
+    if (missingUserIds.length > 0) {
+      throw new KnownErrors.UserIdDoesNotExist(missingUserIds[0]);
+    }
     const userMap = new Map(users.map(user => [user.projectUserId, user]));
     const userSendErrors: Map<string, string> = new Map();
     const userPrimaryEmails: Map<string, string> = new Map();
@@ -177,8 +180,6 @@ export const POST = createSmartRouteHandler({
     const results: UserResult[] = body.user_ids.map((userId) => ({
       user_id: userId,
       user_email: userPrimaryEmails.get(userId),
-      success: !userSendErrors.has(userId),
-      error: userSendErrors.get(userId),
     }));
 
     return {

@@ -44,7 +44,7 @@ async function createProjectUserOAuthAccount(prisma: PrismaClient, params: {
 }
 
 const redirectOrThrowError = (error: KnownError, tenancy: Tenancy, errorRedirectUrl?: string) => {
-  if (!errorRedirectUrl || !validateRedirectUrl(errorRedirectUrl, tenancy.config.domains, tenancy.config.allow_localhost)) {
+  if (!errorRedirectUrl || !validateRedirectUrl(errorRedirectUrl, tenancy)) {
     throw error;
   }
 
@@ -119,12 +119,14 @@ const handler = createSmartRouteHandler({
         throw new KnownErrors.OuterOAuthTimeout();
       }
 
-      const provider = tenancy.config.oauth_providers.find((p) => p.id === params.provider_id);
-      if (!provider) {
+      const providerRaw = Object.entries(tenancy.config.auth.oauth.providers).find(([providerId, _]) => providerId === params.provider_id);
+      if (!providerRaw) {
         throw new KnownErrors.OAuthProviderNotFoundOrNotEnabled();
       }
 
-      const providerObj = await getProvider(provider);
+      const provider = { id: providerRaw[0], ...providerRaw[1] };
+
+      const providerObj = await getProvider(provider as any);
       let callbackResult: Awaited<ReturnType<typeof providerObj.getCallback>>;
       try {
         callbackResult = await providerObj.getCallback({
@@ -279,7 +281,7 @@ const handler = createSmartRouteHandler({
 
                   // ========================== sign up user ==========================
 
-                  if (!tenancy.config.sign_up_enabled) {
+                  if (!tenancy.config.auth.allowSignUp) {
                     throw new KnownErrors.SignUpNotEnabled();
                   }
 
@@ -298,7 +300,7 @@ const handler = createSmartRouteHandler({
 
                     // Check if we should link this OAuth account to an existing user based on email
                     if (oldContactChannel && oldContactChannel.usedForAuth) {
-                      const oauthAccountMergeStrategy = tenancy.config.oauth_account_merge_strategy;
+                      const oauthAccountMergeStrategy = tenancy.config.auth.oauth.accountMergeStrategy;
                       switch (oauthAccountMergeStrategy) {
                         case 'link_method': {
                           if (!oldContactChannel.isVerified) {

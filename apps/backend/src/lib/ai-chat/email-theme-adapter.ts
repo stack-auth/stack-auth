@@ -18,7 +18,7 @@ export const emailThemeAdapter = (context: ChatAdapterContext) => ({
 });
 
 const CREATE_EMAIL_THEME_TOOL_DESCRIPTION = (context: ChatAdapterContext) => {
-  const currentEmailTheme = context.tenancy.completeConfig.emails.themes[context.threadId].tsxSource || "";
+  const currentEmailTheme = context.tenancy.config.emails.themes[context.threadId].tsxSource || "";
 
   return `
 Create a new email theme.

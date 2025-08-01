@@ -1,8 +1,9 @@
 import * as esbuild from 'esbuild-wasm/lib/browser.js';
 import { join } from 'path';
+import { isBrowserLike } from './env';
 import { StackAssertionError, throwErr } from "./errors";
 import { Result } from "./results";
-import { isBrowserLike } from './env';
+import { traceSpan, withTraceSpan } from './telemetry';
 
 const esbuildWasmUrl = `https://unpkg.com/esbuild-wasm@${esbuild.version}/esbuild.wasm`;
 
@@ -12,13 +13,12 @@ let esbuildInitializePromise: Promise<void> | null = null;
 
 export function initializeEsbuild(): Promise<void> {
   if (!esbuildInitializePromise) {
-    // assign immediately so no one else will race in
-    esbuildInitializePromise = (async () => {
+    esbuildInitializePromise = withTraceSpan('initializeEsbuild', async () => {
       await esbuild.initialize(isBrowserLike() ? {
-        wasmURL: `https://unpkg.com/esbuild-wasm@${esbuild.version}/esbuild.wasm`,
+        wasmURL: esbuildWasmUrl,
       } : {
         wasmModule: (
-          await fetch(`https://unpkg.com/esbuild-wasm@${esbuild.version}/esbuild.wasm`)
+          await fetch(esbuildWasmUrl)
             .then(wasm => wasm.arrayBuffer())
             .then(wasm => new WebAssembly.Module(wasm))
         ),
@@ -52,7 +52,7 @@ export async function bundleJavaScript(sourceFiles: Record<string, string> & { '
   ]);
   let result;
   try {
-    result = await esbuild.build({
+    result = await traceSpan('bundleJavaScript', async () => await esbuild.build({
       entryPoints: ['/entry.js'],
       bundle: true,
       write: false,
@@ -109,7 +109,7 @@ export async function bundleJavaScript(sourceFiles: Record<string, string> & { '
           },
         },
       ],
-    });
+    }));
   } catch (e) {
     if (e instanceof Error && e.message.startsWith("Build failed with ")) {
       return Result.error(e.message);

@@ -55,7 +55,7 @@ it("should refuse to sign up a new user if magic links are disabled on the proje
   expect(response).toMatchInlineSnapshot(`
     NiceResponse {
       "status": 403,
-      "body": "Magic link is not enabled for this project",
+      "body": "OTP sign-in is not enabled for this project",
       "headers": Headers { <some fields may have been hidden> },
     }
   `);

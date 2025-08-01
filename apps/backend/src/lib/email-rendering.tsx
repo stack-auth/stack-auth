@@ -1,4 +1,4 @@
-import { TracedFreestyleSandboxes } from '@/lib/freestyle';
+import { Freestyle } from '@/lib/freestyle';
 import { emptyEmailTheme } from '@stackframe/stack-shared/dist/helpers/emails';
 import { getEnvVariable, getNodeEnvironment } from '@stackframe/stack-shared/dist/utils/env';
 import { StackAssertionError } from '@stackframe/stack-shared/dist/utils/errors';
@@ -9,8 +9,8 @@ import { deindent } from "@stackframe/stack-shared/dist/utils/strings";
 import { Tenancy } from './tenancies';
 
 export function getActiveEmailTheme(tenancy: Tenancy) {
-  const themeList = tenancy.completeConfig.emails.themes;
-  const currentActiveTheme = tenancy.completeConfig.emails.selectedThemeId;
+  const themeList = tenancy.config.emails.themes;
+  const currentActiveTheme = tenancy.config.emails.selectedThemeId;
   if (!(has(themeList, currentActiveTheme))) {
     throw new StackAssertionError("No active email theme found", {
       themeList,
@@ -21,7 +21,7 @@ export function getActiveEmailTheme(tenancy: Tenancy) {
 }
 
 export function getEmailThemeForTemplate(tenancy: Tenancy, templateThemeId: string | null | false | undefined) {
-  const themeList = tenancy.completeConfig.emails.themes;
+  const themeList = tenancy.config.emails.themes;
   if (templateThemeId && has(themeList, templateThemeId)) {
     return get(themeList, templateThemeId).tsxSource;
   }
@@ -113,7 +113,8 @@ export async function renderEmailWithTemplate(
   if (result.status === "error") {
     return Result.error(result.error);
   }
-  const freestyle = new TracedFreestyleSandboxes({ apiKey });
+
+  const freestyle = new Freestyle({ apiKey });
   const nodeModules = {
     "react": "19.1.1",
     "@react-email/components": "0.1.1",

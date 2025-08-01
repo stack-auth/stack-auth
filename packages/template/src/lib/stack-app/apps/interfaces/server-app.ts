@@ -5,7 +5,7 @@ import { ProjectCurrentServerUser, ServerUser, ServerUserCreateOptions } from ".
 import { _StackServerAppImpl } from "../implementations";
 import { StackClientApp, StackClientAppConstructorOptions } from "./client-app";
 import { KnownErrors } from "@stackframe/stack-shared";
-import { SendEmailOptions, SendEmailResult } from "../../email";
+import { SendEmailOptions } from "../../email";
 
 
 export type StackServerAppConstructorOptions<HasTokenStore extends boolean, ProjectId extends string> = StackClientAppConstructorOptions<HasTokenStore, ProjectId> & {
@@ -49,7 +49,7 @@ export type StackServerApp<HasTokenStore extends boolean = boolean, ProjectId ex
 
     useUsers(options?: ServerListUsersOptions): ServerUser[] & { nextCursor: string | null }, // THIS_LINE_PLATFORM react-like
     listUsers(options?: ServerListUsersOptions): Promise<ServerUser[] & { nextCursor: string | null }>,
-    sendEmail(options: SendEmailOptions): Promise<Result<SendEmailResult[], KnownErrors["RequiresCustomEmailServer"] | KnownErrors["SchemaError"]>>,
+    sendEmail(options: SendEmailOptions): Promise<Result<void, KnownErrors["RequiresCustomEmailServer"] | KnownErrors["SchemaError"] | KnownErrors["UserIdDoesNotExist"]>>,
   }
   & AsyncStoreProperty<"user", [id: string], ServerUser | null, false>
   & Omit<AsyncStoreProperty<"users", [], ServerUser[], true>, "listUsers" | "useUsers">

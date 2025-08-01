@@ -3,7 +3,7 @@ import { getNodeEnvironment } from '@stackframe/stack-shared/dist/utils/env';
 import { StackAssertionError, captureError, errorToNiceString } from '@stackframe/stack-shared/dist/utils/errors';
 import { FreestyleSandboxes } from 'freestyle-sandboxes';
 
-export class TracedFreestyleSandboxes {
+export class Freestyle {
   private freestyle: FreestyleSandboxes;
 
   constructor(options: { apiKey: string }) {

@@ -7,6 +7,7 @@ import { PrismaTransaction } from "@/lib/types";
 import { sendTeamMembershipDeletedWebhook, sendUserCreatedWebhook, sendUserDeletedWebhook, sendUserUpdatedWebhook } from "@/lib/webhooks";
 import { RawQuery, getPrismaClientForSourceOfTruth, getPrismaClientForTenancy, getPrismaSchemaForSourceOfTruth, getPrismaSchemaForTenancy, globalPrismaClient, rawQuery, retryTransaction, sqlQuoteIdent } from "@/prisma-client";
 import { createCrudHandlers } from "@/route-handlers/crud-handler";
+import { uploadAndGetUrl } from "@/s3";
 import { log } from "@/utils/telemetry";
 import { runAsynchronouslyAndWaitUntil } from "@/utils/vercel";
 import { BooleanTrue, Prisma } from "@prisma/client";
@@ -474,7 +475,8 @@ export const usersCrudHandlers = createLazyProxy(() => createCrudHandlers(usersC
         primaryEmailAuthEnabled: !!data.primary_email_auth_enabled,
       });
 
-      const config = auth.tenancy.completeConfig;
+      const config = auth.tenancy.config;
+
 
       const newUser = await tx.projectUser.create({
         data: {
@@ -485,9 +487,9 @@ export const usersCrudHandlers = createLazyProxy(() => createCrudHandlers(usersC
           clientMetadata: data.client_metadata === null ? Prisma.JsonNull : data.client_metadata,
           clientReadOnlyMetadata: data.client_read_only_metadata === null ? Prisma.JsonNull : data.client_read_only_metadata,
           serverMetadata: data.server_metadata === null ? Prisma.JsonNull : data.server_metadata,
-          profileImageUrl: data.profile_image_url,
           totpSecret: data.totp_secret_base64 == null ? data.totp_secret_base64 : Buffer.from(decodeBase64(data.totp_secret_base64)),
           isAnonymous: data.is_anonymous ?? false,
+          profileImageUrl: await uploadAndGetUrl(data.profile_image_url, "user-profile-images")
         },
         include: userFullInclude,
       });
@@ -600,7 +602,7 @@ export const usersCrudHandlers = createLazyProxy(() => createCrudHandlers(usersC
     });
 
     // TODO why is this outside the transaction? is there a reason?
-    if (auth.tenancy.config.create_team_on_sign_up) {
+    if (auth.tenancy.config.teams.createPersonalTeamOnSignUp) {
       const team = await teamsCrudHandlers.adminCreate({
         data: {
           display_name: data.display_name ?
@@ -642,7 +644,7 @@ export const usersCrudHandlers = createLazyProxy(() => createCrudHandlers(usersC
     const result = await retryTransaction(prisma, async (tx) => {
       await ensureUserExists(tx, { tenancyId: auth.tenancy.id, userId: params.user_id });
 
-      const config = auth.tenancy.completeConfig;
+      const config = auth.tenancy.config;
 
       if (data.selected_team_id !== undefined) {
         if (data.selected_team_id !== null) {
@@ -940,10 +942,10 @@ export const usersCrudHandlers = createLazyProxy(() => createCrudHandlers(usersC
           clientMetadata: data.client_metadata === null ? Prisma.JsonNull : data.client_metadata,
           clientReadOnlyMetadata: data.client_read_only_metadata === null ? Prisma.JsonNull : data.client_read_only_metadata,
           serverMetadata: data.server_metadata === null ? Prisma.JsonNull : data.server_metadata,
-          profileImageUrl: data.profile_image_url,
           requiresTotpMfa: data.totp_secret_base64 === undefined ? undefined : (data.totp_secret_base64 !== null),
           totpSecret: data.totp_secret_base64 == null ? data.totp_secret_base64 : Buffer.from(decodeBase64(data.totp_secret_base64)),
           isAnonymous: data.is_anonymous ?? undefined,
+          profileImageUrl: await uploadAndGetUrl(data.profile_image_url, "user-profile-images")
         },
         include: userFullInclude,
       });
@@ -1042,7 +1044,7 @@ export const currentUserCrudHandlers = createLazyProxy(() => createCrudHandlers(
     });
   },
   async onDelete({ auth }) {
-    if (auth.type === 'client' && !auth.tenancy.config.client_user_deletion_enabled) {
+    if (auth.type === 'client' && !auth.tenancy.config.users.allowClientUserDeletion) {
       throw new StatusError(StatusError.BadRequest, "Client user deletion is not enabled for this project");
     }
 

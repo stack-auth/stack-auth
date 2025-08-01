@@ -804,7 +804,7 @@ export class StackServerInterface extends StackClientInterface {
     notificationCategoryName?: string,
     templateId?: string,
     variables?: Record<string, any>,
-  }): Promise<Result<{ userId: string, success: boolean, userEmail?: string, error?: string }[], KnownErrors["RequiresCustomEmailServer"] | KnownErrors["SchemaError"]>> {
+  }): Promise<Result<void, KnownErrors["RequiresCustomEmailServer"] | KnownErrors["SchemaError"] | KnownErrors["UserIdDoesNotExist"]>> {
     const res = await this.sendServerRequestAndCatchKnownError(
       "/emails/send-email",
       {
@@ -823,18 +823,11 @@ export class StackServerInterface extends StackClientInterface {
         }),
       },
       null,
-      [KnownErrors.RequiresCustomEmailServer, KnownErrors.SchemaError]
+      [KnownErrors.RequiresCustomEmailServer, KnownErrors.SchemaError, KnownErrors.UserIdDoesNotExist]
     );
     if (res.status === "error") {
       return Result.error(res.error);
     }
-    const data = await res.data.json();
-    const results = data.results.map((result: any) => ({
-      userId: result.user_id,
-      userEmail: result.user_email,
-      success: result.success,
-      error: result.error,
-    }));
-    return Result.ok(results);
+    return Result.ok(undefined);
   }
 }

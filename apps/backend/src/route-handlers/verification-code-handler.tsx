@@ -228,11 +228,7 @@ export function createVerificationCodeHandler<
       });
       const tenancy = await getSoleTenancyFromProjectBranch(project.id, branchId);
 
-      if (callbackUrl !== undefined && !validateRedirectUrl(
-        callbackUrl,
-        tenancy.config.domains,
-        tenancy.config.allow_localhost,
-      )) {
+      if (callbackUrl !== undefined && !validateRedirectUrl(callbackUrl, tenancy)) {
         throw new KnownErrors.RedirectUrlNotWhitelisted();
       }
 
