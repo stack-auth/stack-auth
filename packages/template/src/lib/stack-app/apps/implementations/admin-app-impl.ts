@@ -155,6 +155,9 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
         teamCreatorDefaultPermissions: data.config.team_creator_default_permissions,
         teamMemberDefaultPermissions: data.config.team_member_default_permissions,
         userDefaultPermissions: data.config.user_default_permissions,
+        payments: {
+          stripeAccountId: data.config.payments.stripeAccountId,
+        },
       },
       async getConfig() {
         return app._adminConfigFromCrud(await app._interface.getConfig());
@@ -167,6 +170,7 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
       // END_PLATFORM
       async updateConfig(configOverride: EnvironmentConfigOverrideOverride) {
         await app._interface.updateConfig({ configOverride });
+        await app._configOverridesCache.refresh([]);
       },
       async update(update: AdminProjectUpdateOptions) {
         const updateOptions = adminProjectUpdateOptionsToCrud(update);
@@ -509,6 +513,21 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
     const result = await this._interface.updateEmailTemplate(id, tsxSource, themeId);
     await this._adminEmailTemplatesCache.refresh([]);
     return { renderedHtml: result.rendered_html };
+  }
+
+  async setupPayments(): Promise<{ url: string }> {
+    return await this._interface.setupPayments();
+  }
+
+  async createPaymentsAccountSession(): Promise<{ client_secret: string }> {
+    return await this._interface.createPaymentsAccountSession();
+  }
+
+  async createPurchaseUrl(options: { customerId: string, offerId: string }): Promise<string> {
+    return await this._interface.createPurchaseUrl({
+      customer_id: options.customerId,
+      offer_id: options.offerId,
+    });
   }
 
 }
