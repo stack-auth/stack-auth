@@ -7,19 +7,16 @@ export type AdminSentEmail = {
   error?: unknown,
 }
 
-export type SendEmailOptions = {
-  userIds: string[],
-  themeId?: string | null | false,
-  html?: string,
-  subject?: string,
-  notificationCategoryName?: string,
-  templateId?: string,
-  variables?: Record<string, any>,
-}
-
-export type SendEmailResult = {
-  userId: string,
-  success: boolean,
-  userEmail?: string,
-  error?: string,
-}
+export type SendEmailOptions =
+  & {
+    userIds: string[],
+    themeId?: string | null | false,
+    subject?: string,
+    notificationCategoryName?: string,
+  }
+  & ({
+    html: string,
+  } | {
+    templateId: string,
+    variables?: Record<string, any>,
+  })
