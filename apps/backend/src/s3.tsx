@@ -97,7 +97,6 @@ export async function uploadAndGetUrl(
     } else {
       throw new StatusError(StatusError.BadRequest, "Invalid profile image URL");
     }
-
   } else if (input === null) {
     return null;
   } else {

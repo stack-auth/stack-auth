@@ -71,7 +71,7 @@ export default function PageClient() {
           onValueChange={async (logoUrl) => {
             await project.update({ logoUrl });
           }}
-          placeholder="Upload a logo for your project. Recommended size: 200x200px"
+          description="Upload a logo for your project. Recommended size: 200x200px"
           type="logo"
         />
 
@@ -81,7 +81,7 @@ export default function PageClient() {
           onValueChange={async (fullLogoUrl) => {
             await project.update({ fullLogoUrl });
           }}
-          placeholder="Upload a full logo with text. Recommended size: 400x100px"
+          description="Upload a full logo with text. Recommended size: 400x100px"
           type="full-logo"
         />
 

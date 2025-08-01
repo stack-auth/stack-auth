@@ -2,7 +2,7 @@
 
 import { fileToBase64 } from '@stackframe/stack-shared/dist/utils/base64';
 import { runAsynchronouslyWithAlert } from '@stackframe/stack-shared/dist/utils/promises';
-import { Button, Typography } from '@stackframe/stack-ui';
+import { Button, cn, Typography } from '@stackframe/stack-ui';
 import imageCompression from 'browser-image-compression';
 import { Upload, X } from 'lucide-react';
 import { useState } from 'react';
@@ -21,7 +21,7 @@ export function LogoUpload(props: {
   label: string,
   value?: string | null,
   onValueChange: (value: string | null) => void | Promise<void>,
-  placeholder?: string,
+  description?: string,
   acceptedTypes?: string[],
   type: 'logo' | 'full-logo',
 }) {
@@ -112,26 +112,15 @@ export function LogoUpload(props: {
             </Button>
           </div>
         ) : (
-          <div className="flex items-center gap-3">
-            <div className={placeholderContainerClasses}>
+          <div className="flex-col items-center gap-4">
+            <div className={cn(placeholderContainerClasses, "cursor-pointer")} onClick={upload} disabled={uploading}>
               <Upload className="h-6 w-6 text-muted-foreground" />
             </div>
-            <div className="flex flex-col gap-2">
-              <Button
-                variant="outline"
-                onClick={upload}
-                disabled={uploading}
-                loading={uploading}
-              >
-                <Upload className="h-4 w-4 mr-2" />
-                {uploading ? 'Uploading...' : 'Upload Logo'}
-              </Button>
-              {props.placeholder && (
-                <Typography variant="secondary" type="footnote">
-                  {props.placeholder}
-                </Typography>
-              )}
-            </div>
+            {props.description && (
+              <Typography variant="secondary" type="footnote" className="mt-2">
+                {props.description}
+              </Typography>
+            )}
           </div>
         )}
       </div>

@@ -44,8 +44,8 @@ export type AdminProjectUpdateOptions = {
   displayName?: string,
   description?: string,
   isProductionMode?: boolean,
-  logoUrl?: string,
-  fullLogoUrl?: string,
+  logoUrl?: string | null,
+  fullLogoUrl?: string | null,
   config?: AdminProjectConfigUpdateOptions,
 };
 export function adminProjectUpdateOptionsToCrud(options: AdminProjectUpdateOptions): ProjectsCrud["Admin"]["Update"] {

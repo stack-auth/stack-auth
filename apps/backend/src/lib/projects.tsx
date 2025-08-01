@@ -80,12 +80,12 @@ export async function createOrUpdateProjectWithLegacyConfig(
   })
 ) {
   let logoUrl: string | null | undefined;
-  if (options.data.logo_url) {
+  if (options.data.logo_url !== undefined) {
     logoUrl = await uploadAndGetUrl(options.data.logo_url, "project-logos");
   }
 
   let fullLogoUrl: string | null | undefined;
-  if (options.data.full_logo_url) {
+  if (options.data.full_logo_url !== undefined) {
     fullLogoUrl = await uploadAndGetUrl(options.data.full_logo_url, "project-logos");
   }
 
