@@ -31,10 +31,10 @@ export const PATCH = createSmartRouteHandler({
     }).defined(),
   }),
   async handler({ auth: { tenancy }, params: { templateId }, body }) {
-    if (tenancy.completeConfig.emails.server.isShared) {
+    if (tenancy.config.emails.server.isShared) {
       throw new KnownErrors.RequiresCustomEmailServer();
     }
-    const templateList = tenancy.completeConfig.emails.templates;
+    const templateList = tenancy.config.emails.templates;
     if (!Object.keys(templateList).includes(templateId)) {
       throw new StatusError(StatusError.NotFound, "No template found with given id");
     }

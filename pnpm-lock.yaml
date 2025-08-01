@@ -1416,6 +1416,9 @@ importers:
 
   packages/stack-shared:
     dependencies:
+      '@opentelemetry/api':
+        specifier: ^1.9.0
+        version: 1.9.0
       '@simplewebauthn/browser':
         specifier: ^11.0.0
         version: 11.0.0
