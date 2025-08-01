@@ -545,5 +545,6 @@ export const renderedOrganizationConfigToProjectCrud = (renderedConfig: Organiza
 
     allow_user_api_keys: renderedConfig.apiKeys.enabled.user,
     allow_team_api_keys: renderedConfig.apiKeys.enabled.team,
+    payments: renderedConfig.payments,
   };
 };

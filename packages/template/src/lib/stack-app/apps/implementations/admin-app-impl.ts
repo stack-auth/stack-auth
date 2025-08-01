@@ -146,6 +146,9 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
         teamCreatorDefaultPermissions: data.config.team_creator_default_permissions,
         teamMemberDefaultPermissions: data.config.team_member_default_permissions,
         userDefaultPermissions: data.config.user_default_permissions,
+        payments: {
+          stripeAccountId: data.config.payments.stripeAccountId,
+        },
       },
 
       async update(update: AdminProjectUpdateOptions) {
@@ -486,6 +489,21 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
     const result = await this._interface.updateEmailTemplate(id, tsxSource, themeId);
     await this._adminEmailTemplatesCache.refresh([]);
     return { renderedHtml: result.rendered_html };
+  }
+
+  async setupPayments(): Promise<{ url: string }> {
+    return this._interface.setupPayments();
+  }
+
+  async createPaymentsAccountSession(): Promise<{ client_secret: string }> {
+    return this._interface.createPaymentsAccountSession();
+  }
+
+  async createPurchaseUrl(options: { customerId: string, offerId: string }): Promise<string> {
+    return this._interface.createPurchaseUrl({
+      customer_id: options.customerId,
+      offer_id: options.offerId,
+    });
   }
 
 }

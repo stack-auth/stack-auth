@@ -237,6 +237,9 @@ importers:
       sharp:
         specifier: ^0.32.6
         version: 0.32.6
+      stripe:
+        specifier: ^18.3.0
+        version: 18.3.0(@types/node@20.17.6)
       svix:
         specifier: ^1.25.0
         version: 1.25.0(encoding@0.1.13)
@@ -349,6 +352,18 @@ importers:
       '@stackframe/stack-ui':
         specifier: workspace:*
         version: link:../../packages/stack-ui
+      '@stripe/connect-js':
+        specifier: ^3.3.27
+        version: 3.3.27
+      '@stripe/react-connect-js':
+        specifier: ^3.3.24
+        version: 3.3.24(@stripe/connect-js@3.3.27)(react-dom@19.0.0(react@19.0.0))(react@19.0.0)
+      '@stripe/react-stripe-js':
+        specifier: ^3.8.1
+        version: 3.8.1(@stripe/stripe-js@7.7.0)(react-dom@19.0.0(react@19.0.0))(react@19.0.0)
+      '@stripe/stripe-js':
+        specifier: ^7.7.0
+        version: 7.7.0
       '@tanstack/react-table':
         specifier: ^8.20.5
         version: 8.20.5(react-dom@19.0.0(react@19.0.0))(react@19.0.0)
@@ -6582,6 +6597,27 @@ packages:
 
   '@standard-schema/spec@1.0.0':
     resolution: {integrity: sha512-m2bOd0f2RT9k8QJx1JN85cZYyH1RqFBdlwtkSlf4tBDYLCiiZnv1fIIwacK6cqwXavOydf0NPToMQgpKq+dVlA==}
+
+  '@stripe/connect-js@3.3.27':
+    resolution: {integrity: sha512-QyPE6CRvS8LO7G3qFpM6qHq5So9UZCjn6PlYU1rKDtybv05B+g14+KLxnAZgi0ngaoNMVweP3slHSzA/eh78ow==}
+
+  '@stripe/react-connect-js@3.3.24':
+    resolution: {integrity: sha512-xPtHin5cD2yqfOXWFCywzqKk68Y58hpKTiqknzLnP4mMKCjH+v3j7azd/0Vxeb5NFYV9sz1o4FUkrdxgs5K9Bg==}
+    peerDependencies:
+      '@stripe/connect-js': '>=3.3.24'
+      react: '>=16.8.0'
+      react-dom: '>=16.8.0'
+
+  '@stripe/react-stripe-js@3.8.1':
+    resolution: {integrity: sha512-BExESIwXDwZgUqFmWj046BGpsqK4vNaBCdcmRvagQzOovjO2aBAt8rofW47K1TJRnt3iTH5dciBdHJ7ZA958ng==}
+    peerDependencies:
+      '@stripe/stripe-js': '>=1.44.1 <8.0.0'
+      react: '>=16.8.0 <20.0.0'
+      react-dom: '>=16.8.0 <20.0.0'
+
+  '@stripe/stripe-js@7.7.0':
+    resolution: {integrity: sha512-SXuhqhuR5FXaYgKTXzZJeqtVA6JKb9IZWaGeEUxHHiOcFy2p51wccO72bYpXwoK4D5pzQOIYLTuAc7etxyMmwg==}
+    engines: {node: '>=12.16'}
 
   '@supabase/auth-js@2.69.1':
     resolution: {integrity: sha512-FILtt5WjCNzmReeRLq5wRs3iShwmnWgBvxHfqapC/VoljJl+W8hDAyFmf1NVw3zH+ZjZ05AKxiKxVeb0HNWRMQ==}
@@ -13755,6 +13791,15 @@ packages:
   strip-literal@2.1.0:
     resolution: {integrity: sha512-Op+UycaUt/8FbN/Z2TWPBLge3jWrP3xj10f3fnYxf052bKuS3EKs1ZQcVGjnEMdsNVAM+plXRdmjrZ/KgG3Skw==}
 
+  stripe@18.3.0:
+    resolution: {integrity: sha512-FkxrTUUcWB4CVN2yzgsfF/YHD6WgYHduaa7VmokCy5TLCgl5UNJkwortxcedrxSavQ8Qfa4Ir4JxcbIYiBsyLg==}
+    engines: {node: '>=12.*'}
+    peerDependencies:
+      '@types/node': '>=12.x.x'
+    peerDependenciesMeta:
+      '@types/node':
+        optional: true
+
   strnum@1.1.2:
     resolution: {integrity: sha512-vrN+B7DBIoTTZjnPNewwhx6cBA/H+IS7rfW68n7XxC1y7uoiGQBxaKzqucGUgavX15dJgiGztLJ8vxuEzwqBdA==}
 
@@ -20831,6 +20876,23 @@ snapshots:
   '@stablelib/base64@1.0.1': {}
 
   '@standard-schema/spec@1.0.0': {}
+
+  '@stripe/connect-js@3.3.27': {}
+
+  '@stripe/react-connect-js@3.3.24(@stripe/connect-js@3.3.27)(react-dom@19.0.0(react@19.0.0))(react@19.0.0)':
+    dependencies:
+      '@stripe/connect-js': 3.3.27
+      react: 19.0.0
+      react-dom: 19.0.0(react@19.0.0)
+
+  '@stripe/react-stripe-js@3.8.1(@stripe/stripe-js@7.7.0)(react-dom@19.0.0(react@19.0.0))(react@19.0.0)':
+    dependencies:
+      '@stripe/stripe-js': 7.7.0
+      prop-types: 15.8.1
+      react: 19.0.0
+      react-dom: 19.0.0(react@19.0.0)
+
+  '@stripe/stripe-js@7.7.0': {}
 
   '@supabase/auth-js@2.69.1':
     dependencies:
@@ -30318,6 +30380,12 @@ snapshots:
   strip-literal@2.1.0:
     dependencies:
       js-tokens: 9.0.0
+
+  stripe@18.3.0(@types/node@20.17.6):
+    dependencies:
+      qs: 6.14.0
+    optionalDependencies:
+      '@types/node': 20.17.6
 
   strnum@1.1.2: {}
 

@@ -476,6 +476,7 @@ enum VerificationCodeType {
   PASSKEY_REGISTRATION_CHALLENGE
   PASSKEY_AUTHENTICATION_CHALLENGE
   INTEGRATION_PROJECT_TRANSFER
+  PURCHASE_URL
 }
 
 //#region API keys
@@ -707,4 +708,37 @@ model ThreadMessage {
   createdAt DateTime @default(now())
 
   @@id([tenancyId, id])
+}
+
+enum CustomerType {
+  USER
+  TEAM
+}
+
+model Customer {
+  id               String       @default(uuid()) @db.Uuid
+  tenancyId        String       @db.Uuid
+  customerType     CustomerType
+  stripeCustomerId String
+
+  @@id([tenancyId, id])
+  @@unique([tenancyId, stripeCustomerId])
+}
+
+model Subscription {
+  id         String @default(uuid()) @db.Uuid
+  tenancyId  String @db.Uuid
+  customerId String @db.Uuid
+
+  stripeSubscriptionId String
+  status               String
+  currentPeriodEnd     DateTime
+  currentPeriodStart   DateTime
+  cancelAtPeriodEnd    Boolean
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@id([tenancyId, id])
+  @@unique([tenancyId, stripeSubscriptionId])
 }
