@@ -1,6 +1,7 @@
 "use client";
 import { InputField } from "@/components/form-fields";
 import { StyledLink } from "@/components/link";
+import { LogoUpload } from "@/components/logo-upload";
 import { FormSettingCard, SettingCard, SettingSwitch, SettingText } from "@/components/settings";
 import { getPublicEnvVar } from '@/lib/env';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger, ActionDialog, Alert, Button, Typography } from "@stackframe/stack-ui";
@@ -62,6 +63,32 @@ export default function PageClient() {
           </>
         )}
       />
+
+      <SettingCard title="Project Logo">
+        <LogoUpload
+          label="Logo"
+          value={project.logoUrl}
+          onValueChange={async (logoUrl) => {
+            await project.update({ logoUrl });
+          }}
+          placeholder="Upload a logo for your project. Recommended size: 200x200px"
+          type="logo"
+        />
+
+        <LogoUpload
+          label="Full Logo"
+          value={project.fullLogoUrl}
+          onValueChange={async (fullLogoUrl) => {
+            await project.update({ fullLogoUrl });
+          }}
+          placeholder="Upload a full logo with text. Recommended size: 400x100px"
+          type="full-logo"
+        />
+
+        <Typography variant="secondary" type="footnote">
+          Logo images will be displayed in your application (e.g. login page) and emails. The logo should be a square image, while the full logo can include text and be wider.
+        </Typography>
+      </SettingCard>
 
       <SettingCard
         title="API Key Settings"
