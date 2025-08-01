@@ -143,7 +143,7 @@ services:
     image: freestyle-mock
     container_name: freestyle-mock
     ports:
-      - "8122:8080"       # POST http://localhost:8122/execute/v1/script
+      - "8122:8080"       # POST http://localhost:8119/execute/v1/script
     environment:
       DENO_DIR: /deno-cache
     volumes:
