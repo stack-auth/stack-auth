@@ -70,6 +70,8 @@ const main = async () => {
       break;
     }
     case 'generate-migration-file': {
+      await promptDropDb();
+      execSync('pnpm prisma migrate reset --force --skip-seed', { stdio: 'inherit' });
       execSync('pnpm prisma migrate dev --skip-seed', { stdio: 'inherit' });
       await dropSchema();
       await migrate();

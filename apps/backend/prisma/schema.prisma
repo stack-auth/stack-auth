@@ -75,10 +75,10 @@ model Team {
   updatedAt DateTime @updatedAt
 
   displayName            String
-  profileImageUrl        String?
   clientMetadata         Json?
   clientReadOnlyMetadata Json?
   serverMetadata         Json?
+  profileImageUrl        String?
 
   teamMembers   TeamMember[]
   projectApiKey ProjectApiKey[]
@@ -101,7 +101,6 @@ model TeamMember {
 
   // This will override the displayName of the user in this team.
   displayName     String?
-  // This will override the profileImageUrl of the user in this team.
   profileImageUrl String?
 
   createdAt DateTime @default(now())
@@ -157,11 +156,11 @@ model ProjectUser {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  profileImageUrl        String?
   displayName            String?
   serverMetadata         Json?
   clientReadOnlyMetadata Json?
   clientMetadata         Json?
+  profileImageUrl        String?
   requiresTotpMfa        Boolean @default(false)
   totpSecret             Bytes?
   isAnonymous            Boolean @default(false)
