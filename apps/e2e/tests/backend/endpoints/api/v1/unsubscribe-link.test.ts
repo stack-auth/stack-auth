@@ -37,7 +37,6 @@ it("unsubscribe link should be sent and update notification preference", async (
       "body": {
         "results": [
           {
-            "success": true,
             "user_email": "unindexed-mailbox--<stripped UUID>@stack-generated.example.com",
             "user_id": "<stripped UUID>",
           },
@@ -132,7 +131,6 @@ it("unsubscribe link should not be sent for emails with transactional notificati
       "body": {
         "results": [
           {
-            "success": true,
             "user_email": "unindexed-mailbox--<stripped UUID>@stack-generated.example.com",
             "user_id": "<stripped UUID>",
           },

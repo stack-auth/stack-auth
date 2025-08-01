@@ -56,14 +56,14 @@ describe("invalid requests", () => {
         email_config: testEmailConfig,
       },
     });
-    const userId = randomUUID();
+    const user = await User.create();
     const response = await niceBackendFetch(
       "/api/v1/emails/send-email",
       {
         method: "POST",
         accessType: "server",
         body: {
-          user_ids: [userId],
+          user_ids: [user.userId],
           html: "<p>Test email</p>",
           subject: "Test Subject",
           notification_category_name: "Marketing",
@@ -76,8 +76,7 @@ describe("invalid requests", () => {
         "body": {
           "results": [
             {
-              "error": "User not found",
-              "success": false,
+              "user_email": "unindexed-mailbox--<stripped UUID>@stack-generated.example.com",
               "user_id": "<stripped UUID>",
             },
           ],
@@ -209,8 +208,6 @@ it("should return 200 with disabled notifications error in results when user has
       "body": {
         "results": [
           {
-            "error": "User has disabled notifications for this category",
-            "success": false,
             "user_email": "unindexed-mailbox--<stripped UUID>@stack-generated.example.com",
             "user_id": "<stripped UUID>",
           },
@@ -251,15 +248,7 @@ it("should return 200 with no primary email error in results when user does not 
   expect(response).toMatchInlineSnapshot(`
     NiceResponse {
       "status": 200,
-      "body": {
-        "results": [
-          {
-            "error": "User does not have a primary email",
-            "success": false,
-            "user_id": "<stripped UUID>",
-          },
-        ],
-      },
+      "body": { "results": [{ "user_id": "<stripped UUID>" }] },
       "headers": Headers { <some fields may have been hidden> },
     }
   `);
@@ -288,20 +277,19 @@ it("should return 200 and send email successfully", async ({ expect }) => {
   );
 
   expect(response).toMatchInlineSnapshot(`
-      NiceResponse {
-        "status": 200,
-        "body": {
-          "results": [
-            {
-              "success": true,
-              "user_email": "unindexed-mailbox--<stripped UUID>@stack-generated.example.com",
-              "user_id": "<stripped UUID>",
-            },
-          ],
-        },
-        "headers": Headers { <some fields may have been hidden> },
-      }
-    `);
+    NiceResponse {
+      "status": 200,
+      "body": {
+        "results": [
+          {
+            "user_email": "unindexed-mailbox--<stripped UUID>@stack-generated.example.com",
+            "user_id": "<stripped UUID>",
+          },
+        ],
+      },
+      "headers": Headers { <some fields may have been hidden> },
+    }
+  `);
 
   // Verify the email was actually sent by checking the mailbox
   const messages = await user.mailbox.fetchMessages();
@@ -310,7 +298,7 @@ it("should return 200 and send email successfully", async ({ expect }) => {
   expect(sentEmail!.body?.html).toMatchInlineSnapshot(`"http://localhost:8102/api/v1/emails/unsubscribe-link?code=%3Cstripped+query+param%3E"`);
 });
 
-it("should handle mixed results for multiple users", async ({ expect }) => {
+it("should handle user that does not exist", async ({ expect }) => {
   await Project.createAndSwitch({
     display_name: "Test Mixed Results Project",
     config: {
@@ -344,41 +332,18 @@ it("should handle mixed results for multiple users", async ({ expect }) => {
 
   expect(response).toMatchInlineSnapshot(`
     NiceResponse {
-      "status": 200,
+      "status": 400,
       "body": {
-        "results": [
-          {
-            "error": "User has disabled notifications for this category",
-            "success": false,
-            "user_email": "unindexed-mailbox--<stripped UUID>@stack-generated.example.com",
-            "user_id": "<stripped UUID>",
-          },
-          {
-            "error": "User not found",
-            "success": false,
-            "user_id": "<stripped UUID>",
-          },
-          {
-            "success": true,
-            "user_email": "unindexed-mailbox--<stripped UUID>@stack-generated.example.com",
-            "user_id": "<stripped UUID>",
-          },
-        ],
+        "code": "USER_ID_DOES_NOT_EXIST",
+        "details": { "user_id": "<stripped UUID>" },
+        "error": "The given user with the ID <stripped UUID> does not exist.",
       },
-      "headers": Headers { <some fields may have been hidden> },
+      "headers": Headers {
+        "x-stack-known-error": "USER_ID_DOES_NOT_EXIST",
+        <some fields may have been hidden>,
+      },
     }
   `);
-
-  // Verify only the successful user received the email
-  const successfulUserMessages = await successfulUser.mailbox.fetchMessages();
-  const sentEmail = successfulUserMessages.find(msg => msg.subject === "Bulk Test Email Subject");
-  expect(sentEmail).toBeDefined();
-  expect(sentEmail!.body?.html).toMatchInlineSnapshot(`"http://localhost:8102/api/v1/emails/unsubscribe-link?code=%3Cstripped+query+param%3E"`);
-
-  // Verify the user with disabled notifications did not receive the email
-  const disabledUserMessages = await userWithDisabledNotifications.mailbox.fetchMessages();
-  const disabledUserEmail = disabledUserMessages.find(msg => msg.subject === "Bulk Test Email Subject");
-  expect(disabledUserEmail).toBeUndefined();
 });
 
 describe("validation errors", () => {
@@ -554,7 +519,6 @@ describe("notification categories", () => {
         "body": {
           "results": [
             {
-              "success": true,
               "user_email": "unindexed-mailbox--<stripped UUID>@stack-generated.example.com",
               "user_id": "<stripped UUID>",
             },
@@ -596,7 +560,6 @@ describe("notification categories", () => {
         "body": {
           "results": [
             {
-              "success": true,
               "user_email": "unindexed-mailbox--<stripped UUID>@stack-generated.example.com",
               "user_id": "<stripped UUID>",
             },
