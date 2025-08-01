@@ -1,5 +1,5 @@
 import { renderedOrganizationConfigToProjectCrud } from "@/lib/config";
-import { createOrUpdateProject, getProjectQuery, listManagedProjectIds } from "@/lib/projects";
+import { createOrUpdateProjectWithLegacyConfig, getProjectQuery, listManagedProjectIds } from "@/lib/projects";
 import { DEFAULT_BRANCH_ID, getSoleTenancyFromProjectBranch } from "@/lib/tenancies";
 import { globalPrismaClient, rawQueryAll } from "@/prisma-client";
 import { createCrudHandlers } from "@/route-handlers/crud-handler";
@@ -30,7 +30,7 @@ export const adminUserProjectsCrudHandlers = createLazyProxy(() => createCrudHan
     const ownerPack = ownerPacks.find(p => p.has(user.id));
     const userIds = ownerPack ? [...ownerPack] : [user.id];
 
-    const project = await createOrUpdateProject({
+    const project = await createOrUpdateProjectWithLegacyConfig({
       ownerIds: userIds,
       type: 'create',
       data: {

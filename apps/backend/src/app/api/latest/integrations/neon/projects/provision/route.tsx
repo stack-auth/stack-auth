@@ -1,5 +1,5 @@
 import { createApiKeySet } from "@/lib/internal-api-keys";
-import { createOrUpdateProject } from "@/lib/projects";
+import { createOrUpdateProjectWithLegacyConfig } from "@/lib/projects";
 import { globalPrismaClient } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { neonAuthorizationHeaderSchema, projectDisplayNameSchema, yupArray, yupNumber, yupObject, yupString, yupTuple } from "@stackframe/stack-shared/dist/schema-fields";
@@ -32,7 +32,7 @@ export const POST = createSmartRouteHandler({
   handler: async (req) => {
     const [clientId] = decodeBasicAuthorizationHeader(req.headers.authorization[0])!;
 
-    const createdProject = await createOrUpdateProject({
+    const createdProject = await createOrUpdateProjectWithLegacyConfig({
       ownerIds: [],
       sourceOfTruth: req.body.connection_strings ? {
         type: 'neon',

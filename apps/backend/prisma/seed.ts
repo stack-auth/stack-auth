@@ -1,6 +1,6 @@
 /* eslint-disable no-restricted-syntax */
 import { usersCrudHandlers } from '@/app/api/latest/users/crud';
-import { createOrUpdateProject, getProject } from '@/lib/projects';
+import { createOrUpdateProjectWithLegacyConfig, getProject } from '@/lib/projects';
 import { DEFAULT_BRANCH_ID, getSoleTenancyFromProjectBranch } from '@/lib/tenancies';
 import { getPrismaClientForTenancy } from '@/prisma-client';
 import { PrismaClient } from '@prisma/client';
@@ -34,7 +34,7 @@ async function seed() {
   let internalProject = await getProject('internal');
 
   if (!internalProject) {
-    internalProject = await createOrUpdateProject({
+    internalProject = await createOrUpdateProjectWithLegacyConfig({
       type: 'create',
       projectId: 'internal',
       data: {
@@ -60,7 +60,7 @@ async function seed() {
   const internalTenancy = await getSoleTenancyFromProjectBranch("internal", DEFAULT_BRANCH_ID);
   const internalPrisma = await getPrismaClientForTenancy(internalTenancy);
 
-  internalProject = await createOrUpdateProject({
+  internalProject = await createOrUpdateProjectWithLegacyConfig({
     projectId: 'internal',
     branchId: DEFAULT_BRANCH_ID,
     type: 'update',
@@ -235,7 +235,7 @@ async function seed() {
     if (existingProject) {
       console.log('Emulator project already exists, skipping creation');
     } else {
-      await createOrUpdateProject({
+      await createOrUpdateProjectWithLegacyConfig({
         projectId: emulatorProjectId,
         type: 'create',
         data: {
