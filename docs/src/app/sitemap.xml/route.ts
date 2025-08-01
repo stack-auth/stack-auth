@@ -15,7 +15,6 @@ ${allPages
     const url = new URL(page.url, rootUrl);
     return `  <url>
     <loc>${url.toString()}</loc>
-    <lastmod>${new Date().toISOString()}</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
   </url>`;
