@@ -54,7 +54,7 @@ export const POST = createSmartRouteHandler({
     if (!getEnvVariable("STACK_FREESTYLE_API_KEY")) {
       throw new StatusError(500, "STACK_FREESTYLE_API_KEY is not set");
     }
-    if (auth.tenancy.config.email_config.type === "shared") {
+    if (auth.tenancy.config.emails.server.isShared) {
       throw new KnownErrors.RequiresCustomEmailServer();
     }
     if (!body.html && !body.template_id) {
@@ -63,7 +63,7 @@ export const POST = createSmartRouteHandler({
     const emailConfig = await getEmailConfig(auth.tenancy);
     const defaultNotificationCategory = getNotificationCategoryByName(body.notification_category_name ?? "Transactional") ?? throwErr(400, "Notification category not found with given name");
     const themeSource = getEmailThemeForTemplate(auth.tenancy, body.theme_id);
-    const templates = new Map(Object.entries(auth.tenancy.completeConfig.emails.templates));
+    const templates = new Map(Object.entries(auth.tenancy.config.emails.templates));
     const templateSource = body.template_id
       ? (templates.get(body.template_id)?.tsxSource ?? throwErr(400, "Template not found with given id"))
       : createTemplateComponentFromHtml(body.html!);

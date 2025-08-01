@@ -24,6 +24,7 @@ On a high level, Stack Auth is composed of the following services:
 - **Postgres database**: Used to store all user data. We use [Prisma](https://prisma.io) as the ORM and manage the database schema migrations.
 - **Svix**: Used to send webhooks. Svix is open-source and can be self-hosted, but also offers a cloud hosted solution. More on Svix [here](https://svix.com)
 - **Email server**: We use [Inbucket](https://inbucket.org) as a local email server for development and a separate SMTP server for production. Any email service supporting SMTP will work.
+- **S3 storage**: We use [S3Mock](https://github.com/adobe/S3Mock) as a local S3 storage for development and a separate S3 storage for production. Any S3 storage will work.
 
 ## Run with Docker
 

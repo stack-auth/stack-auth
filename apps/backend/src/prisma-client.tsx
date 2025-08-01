@@ -8,10 +8,10 @@ import { globalVar } from "@stackframe/stack-shared/dist/utils/globals";
 import { deepPlainEquals, filterUndefined, typedFromEntries, typedKeys } from "@stackframe/stack-shared/dist/utils/objects";
 import { concatStacktracesIfRejected, ignoreUnhandledRejection } from "@stackframe/stack-shared/dist/utils/promises";
 import { Result } from "@stackframe/stack-shared/dist/utils/results";
+import { traceSpan } from "@stackframe/stack-shared/dist/utils/telemetry";
 import { isPromise } from "util/types";
 import { runMigrationNeeded } from "./auto-migrations";
 import { Tenancy } from "./lib/tenancies";
-import { traceSpan } from "./utils/telemetry";
 
 export type PrismaClientTransaction = PrismaClient | Parameters<Parameters<PrismaClient['$transaction']>[0]>[0];
 
@@ -48,11 +48,11 @@ function getSchemaFromConnectionString(connectionString: string) {
 }
 
 export async function getPrismaClientForTenancy(tenancy: Tenancy) {
-  return await getPrismaClientForSourceOfTruth(tenancy.completeConfig.sourceOfTruth, tenancy.branchId);
+  return await getPrismaClientForSourceOfTruth(tenancy.config.sourceOfTruth, tenancy.branchId);
 }
 
 export function getPrismaSchemaForTenancy(tenancy: Tenancy) {
-  return getPrismaSchemaForSourceOfTruth(tenancy.completeConfig.sourceOfTruth, tenancy.branchId);
+  return getPrismaSchemaForSourceOfTruth(tenancy.config.sourceOfTruth, tenancy.branchId);
 }
 
 function getPostgresPrismaClient(connectionString: string) {
@@ -129,6 +129,7 @@ export async function retryTransaction<T>(client: PrismaClient, fn: (tx: PrismaC
       return await traceSpan(`transaction attempt #${attemptIndex}`, async (attemptSpan) => {
         const attemptRes = await (async () => {
           try {
+            // eslint-disable-next-line no-restricted-syntax
             return Result.ok(await client.$transaction(async (tx, ...args) => {
               let res;
               try {

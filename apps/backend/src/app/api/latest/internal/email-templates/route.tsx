@@ -28,7 +28,7 @@ export const GET = createSmartRouteHandler({
     }).defined(),
   }),
   async handler({ auth: { tenancy } }) {
-    const templates = typedEntries(tenancy.completeConfig.emails.templates).map(([id, template]) => filterUndefined({
+    const templates = typedEntries(tenancy.config.emails.templates).map(([id, template]) => filterUndefined({
       id,
       display_name: template.displayName,
       tsx_source: template.tsxSource,

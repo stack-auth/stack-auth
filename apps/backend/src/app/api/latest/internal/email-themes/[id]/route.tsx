@@ -1,8 +1,8 @@
 import { overrideEnvironmentConfigOverride } from "@/lib/config";
-import { globalPrismaClient } from "@/prisma-client";
 import { renderEmailWithTemplate } from "@/lib/email-rendering";
-import { previewTemplateSource } from "@stackframe/stack-shared/dist/helpers/emails";
+import { globalPrismaClient } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
+import { previewTemplateSource } from "@stackframe/stack-shared/dist/helpers/emails";
 import { KnownErrors } from "@stackframe/stack-shared/dist/known-errors";
 import { adaptSchema, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
 import { StatusError } from "@stackframe/stack-shared/dist/utils/errors";
@@ -29,7 +29,7 @@ export const GET = createSmartRouteHandler({
     }).defined(),
   }),
   async handler({ auth: { tenancy }, params: { id } }) {
-    const themeList = tenancy.completeConfig.emails.themes;
+    const themeList = tenancy.config.emails.themes;
     if (!Object.keys(themeList).includes(id)) {
       throw new StatusError(404, "No theme found with given id");
     }
@@ -69,7 +69,7 @@ export const PATCH = createSmartRouteHandler({
     }).defined(),
   }),
   async handler({ auth: { tenancy }, params: { id }, body }) {
-    const themeList = tenancy.completeConfig.emails.themes;
+    const themeList = tenancy.config.emails.themes;
     if (!Object.keys(themeList).includes(id)) {
       throw new StatusError(404, "No theme found with given id");
     }
