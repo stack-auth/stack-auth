@@ -1,3 +1,4 @@
+import { renderedOrganizationConfigToProjectCrud } from "@/lib/config";
 import { createOrUpdateProject, getProjectQuery, listManagedProjectIds } from "@/lib/projects";
 import { DEFAULT_BRANCH_ID, getSoleTenancyFromProjectBranch } from "@/lib/tenancies";
 import { globalPrismaClient, rawQueryAll } from "@/prisma-client";
@@ -43,7 +44,7 @@ export const adminUserProjectsCrudHandlers = createLazyProxy(() => createCrudHan
     const tenancy = await getSoleTenancyFromProjectBranch(project.id, DEFAULT_BRANCH_ID);
     return {
       ...project,
-      config: tenancy.config,
+      config: renderedOrganizationConfigToProjectCrud(tenancy.config),
     };
   },
   onList: async ({ auth }) => {
@@ -58,7 +59,7 @@ export const adminUserProjectsCrudHandlers = createLazyProxy(() => createCrudHan
     const projectsWithConfig = await Promise.all(projects.map(async (project) => {
       return {
         ...project,
-        config: (await getSoleTenancyFromProjectBranch(project.id, DEFAULT_BRANCH_ID)).config,
+        config: renderedOrganizationConfigToProjectCrud((await getSoleTenancyFromProjectBranch(project.id, DEFAULT_BRANCH_ID)).config),
       };
     }));
 

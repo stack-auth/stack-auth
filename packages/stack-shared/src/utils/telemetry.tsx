@@ -1,8 +1,8 @@
 import { Attributes, AttributeValue, Span, trace } from "@opentelemetry/api";
-import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
-import { StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
+import { getEnvVariable } from "./env";
+import { StackAssertionError } from "./errors";
 
-const tracer = trace.getTracer('stack-backend');
+const tracer = trace.getTracer('stack-tracer');
 
 export function withTraceSpan<P extends any[], T>(optionsOrDescription: string | { description: string, attributes?: Record<string, AttributeValue> }, fn: (...args: P) => Promise<T>): (...args: P) => Promise<T> {
   return async (...args: P) => {

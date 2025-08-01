@@ -1,7 +1,6 @@
-import { DEFAULT_BRANCH_ID } from "@/lib/tenancies";
+import { DEFAULT_BRANCH_ID, Tenancy } from "@/lib/tenancies";
 import { DiscordProvider } from "@/oauth/providers/discord";
 import OAuth2Server from "@node-oauth/oauth2-server";
-import { ProjectsCrud } from "@stackframe/stack-shared/dist/interface/crud/projects";
 import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
 import { StackAssertionError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
 import { OAuthModel } from "./model";
@@ -16,8 +15,8 @@ import { LinkedInProvider } from "./providers/linkedin";
 import { MicrosoftProvider } from "./providers/microsoft";
 import { MockProvider } from "./providers/mock";
 import { SpotifyProvider } from "./providers/spotify";
-import { XProvider } from "./providers/x";
 import { TwitchProvider } from "./providers/twitch";
+import { XProvider } from "./providers/x";
 
 const _providers = {
   github: GithubProvider,
@@ -57,27 +56,28 @@ export function getProjectBranchFromClientId(clientId: string): [projectId: stri
   return [projectId, branchId];
 }
 
-export async function getProvider(provider: ProjectsCrud['Admin']['Read']['config']['oauth_providers'][number]): Promise<OAuthBaseProvider> {
-  if (provider.type === 'shared') {
-    const clientId = _getEnvForProvider(provider.id).clientId;
-    const clientSecret = _getEnvForProvider(provider.id).clientSecret;
+export async function getProvider(provider: Tenancy['config']['auth']['oauth']['providers'][string]): Promise<OAuthBaseProvider> {
+  const providerType = provider.type || throwErr("Provider type is required for shared providers");
+  if (provider.isShared) {
+    const clientId = _getEnvForProvider(providerType).clientId;
+    const clientSecret = _getEnvForProvider(providerType).clientSecret;
     if (clientId === "MOCK") {
       if (clientSecret !== "MOCK") {
         throw new StackAssertionError("If OAuth provider client ID is set to MOCK, then client secret must also be set to MOCK");
       }
-      return await mockProvider.create(provider.id);
+      return await mockProvider.create(providerType);
     } else {
-      return await _providers[provider.id].create({
+      return await _providers[providerType].create({
         clientId,
         clientSecret,
       });
     }
   } else {
-    return await _providers[provider.id].create({
-      clientId: provider.client_id || throwErr("Client ID is required for standard providers"),
-      clientSecret: provider.client_secret || throwErr("Client secret is required for standard providers"),
-      facebookConfigId: provider.facebook_config_id,
-      microsoftTenantId: provider.microsoft_tenant_id,
+    return await _providers[providerType].create({
+      clientId: provider.clientId || throwErr("Client ID is required for standard providers"),
+      clientSecret: provider.clientSecret || throwErr("Client secret is required for standard providers"),
+      facebookConfigId: provider.facebookConfigId,
+      microsoftTenantId: provider.microsoftTenantId,
     });
   }
 }

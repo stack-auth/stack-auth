@@ -66,6 +66,7 @@ export function VersionAlerter({ severeOnly }: { severeOnly: boolean }) {
       whiteSpace: "pre-wrap",
       maxHeight: "110px",
       overflow: "auto",
+      zIndex: 5,
     }}>
       {versionCheckResult && (enableNonSevereVersionCheck || versionCheckResult.severe) && versionCheckResult.error}
     </div>
