@@ -1,7 +1,6 @@
 import "../polyfills";
 
 import { Tenancy, getSoleTenancyFromProjectBranch, } from "@/lib/tenancies";
-import { traceSpan } from "@/utils/telemetry";
 import { CrudSchema, CrudTypeOf, CrudlOperation } from "@stackframe/stack-shared/dist/crud";
 import { ProjectsCrud } from "@stackframe/stack-shared/dist/interface/crud/projects";
 import { UsersCrud } from "@stackframe/stack-shared/dist/interface/crud/users";
@@ -10,6 +9,7 @@ import { typedIncludes } from "@stackframe/stack-shared/dist/utils/arrays";
 import { StackAssertionError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
 import { FilterUndefined } from "@stackframe/stack-shared/dist/utils/objects";
 import { deindent, typedToLowercase } from "@stackframe/stack-shared/dist/utils/strings";
+import { traceSpan } from "@stackframe/stack-shared/dist/utils/telemetry";
 import * as yup from "yup";
 import { SmartRequestAuth } from "./smart-request";
 import { SmartRouteHandler, createSmartRouteHandler, routeHandlerTypeHelper } from "./smart-route-handler";
