@@ -112,7 +112,7 @@ export function LogoUpload(props: {
             </Button>
           </div>
         ) : (
-          <div className="flex-col items-center gap-4">
+          <div className="flex flex-col items-center gap-4">
             <div className={cn(placeholderContainerClasses, "cursor-pointer", uploading && "opacity-50 pointer-events-none")} onClick={uploading ? undefined : upload}>
               <Upload className="h-6 w-6 text-muted-foreground" />
             </div>
