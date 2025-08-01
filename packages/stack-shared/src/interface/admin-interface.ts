@@ -446,7 +446,7 @@ export class StackAdminInterface extends StackServerInterface {
 
   async getConfig(): Promise<ConfigCrud["Admin"]["Read"]> {
     const response = await this.sendAdminRequest(
-      `/internal/configs`,
+      `/internal/config`,
       { method: "GET" },
       null,
     );
@@ -455,7 +455,7 @@ export class StackAdminInterface extends StackServerInterface {
 
   async updateConfig(data: { configOverride: any }): Promise<ConfigOverrideCrud["Admin"]["Read"]> {
     const response = await this.sendAdminRequest(
-      `/internal/configs/overrides`,
+      `/internal/config/override`,
       {
         method: "PATCH",
         headers: {
