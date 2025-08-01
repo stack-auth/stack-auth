@@ -10,7 +10,7 @@ export function ProjectCard({ project }: { project: AdminProject }) {
 
   return (
     <Link href={urlString`/projects/${project.id}`}>
-      <Card className='flex flex-col justify-between'>
+      <Card className='flex flex-col justify-between h-full'>
         <CardHeader>
           <CardTitle className="normal-case truncate">{project.displayName}</CardTitle>
           <CardDescription>{project.description}</CardDescription>

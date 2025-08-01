@@ -1,3 +1,4 @@
+import { renderedOrganizationConfigToProjectCrud } from "@/lib/config";
 import { createOrUpdateProject } from "@/lib/projects";
 import { getTenancy } from "@/lib/tenancies";
 import { getPrismaClientForTenancy, globalPrismaClient } from "@/prisma-client";
@@ -12,7 +13,7 @@ export const projectsCrudHandlers = createLazyProxy(() => createCrudHandlers(pro
   onUpdate: async ({ auth, data }) => {
     if (
       data.config?.email_theme &&
-      !Object.keys(auth.tenancy.completeConfig.emails.themes).includes(data.config.email_theme)
+      !Object.keys(auth.tenancy.config.emails.themes).includes(data.config.email_theme)
     ) {
       throw new StatusError(400, "Invalid email theme");
     }
@@ -25,13 +26,13 @@ export const projectsCrudHandlers = createLazyProxy(() => createCrudHandlers(pro
     const tenancy = await getTenancy(auth.tenancy.id) ?? throwErr("Tenancy not found after project update?"); // since we updated the project, we need to re-fetch the new tenancy config
     return {
       ...project,
-      config: tenancy.config,
+      config: renderedOrganizationConfigToProjectCrud(tenancy.config),
     };
   },
   onRead: async ({ auth }) => {
     return {
       ...auth.project,
-      config: auth.tenancy.config,
+      config: renderedOrganizationConfigToProjectCrud(auth.tenancy.config),
     };
   },
   onDelete: async ({ auth }) => {
