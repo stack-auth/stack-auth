@@ -2,7 +2,6 @@ import { ensureTeamExists, ensureTeamMembershipExists, ensureUserExists, ensureU
 import { sendTeamCreatedWebhook, sendTeamDeletedWebhook, sendTeamUpdatedWebhook } from "@/lib/webhooks";
 import { getPrismaClientForTenancy, retryTransaction } from "@/prisma-client";
 import { createCrudHandlers } from "@/route-handlers/crud-handler";
-import { getS3PublicUrl, uploadAndGetImageUpdateInfo } from "@/s3";
 import { runAsynchronouslyAndWaitUntil } from "@/utils/vercel";
 import { Prisma } from "@prisma/client";
 import { KnownErrors } from "@stackframe/stack-shared";
@@ -18,7 +17,7 @@ export function teamPrismaToCrud(prisma: Prisma.TeamGetPayload<{}>) {
   return {
     id: prisma.teamId,
     display_name: prisma.displayName,
-    profile_image_url: prisma.profileImageKey ? getS3PublicUrl(prisma.profileImageKey) : prisma.profileImageUrl,
+    profile_image_url: prisma.profileImageUrl,
     created_at_millis: prisma.createdAt.getTime(),
     client_metadata: prisma.clientMetadata,
     client_read_only_metadata: prisma.clientReadOnlyMetadata,
@@ -81,7 +80,7 @@ export const teamsCrudHandlers = createLazyProxy(() => createCrudHandlers(teamsC
           clientMetadata: data.client_metadata === null ? Prisma.JsonNull : data.client_metadata,
           clientReadOnlyMetadata: data.client_read_only_metadata === null ? Prisma.JsonNull : data.client_read_only_metadata,
           serverMetadata: data.server_metadata === null ? Prisma.JsonNull : data.server_metadata,
-          ...await uploadAndGetImageUpdateInfo(data.profile_image_url, "team-profile-images")
+          profileImageUrl: await uploadAndGetUrl(data.profile_image_url, "team-profile-images")
         },
       });
 
@@ -165,7 +164,7 @@ export const teamsCrudHandlers = createLazyProxy(() => createCrudHandlers(teamsC
           clientMetadata: data.client_metadata === null ? Prisma.JsonNull : data.client_metadata,
           clientReadOnlyMetadata: data.client_read_only_metadata === null ? Prisma.JsonNull : data.client_read_only_metadata,
           serverMetadata: data.server_metadata === null ? Prisma.JsonNull : data.server_metadata,
-          ...await uploadAndGetImageUpdateInfo(data.profile_image_url, "team-profile-images")
+          profileImageUrl: await uploadAndGetUrl(data.profile_image_url, "team-profile-images")
         },
       });
     });

@@ -1,7 +1,6 @@
 import { ensureTeamExists, ensureTeamMembershipExists, ensureUserExists, ensureUserTeamPermissionExists } from "@/lib/request-checks";
 import { getPrismaClientForTenancy, retryTransaction } from "@/prisma-client";
 import { createCrudHandlers } from "@/route-handlers/crud-handler";
-import { uploadAndGetImageUpdateInfo } from "@/s3";
 import { Prisma } from "@prisma/client";
 import { KnownErrors } from "@stackframe/stack-shared";
 import { teamMemberProfilesCrud } from "@stackframe/stack-shared/dist/interface/crud/team-member-profiles";
@@ -150,7 +149,7 @@ export const teamMemberProfilesCrudHandlers = createLazyProxy(() => createCrudHa
         },
         data: {
           displayName: data.display_name,
-          ...await uploadAndGetImageUpdateInfo(data.profile_image_url, "team-member-profile-images")
+          profileImageUrl: await uploadAndGetUrl(data.profile_image_url, "team-member-profile-images")
         },
         include: fullInclude,
       });

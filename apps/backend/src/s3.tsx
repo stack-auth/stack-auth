@@ -78,36 +78,24 @@ export function checkImageString(input: string) {
   };
 }
 
-export async function uploadAndGetImageUpdateInfo(
+export async function uploadAndGetUrl(
   input: string | null | undefined,
   folderName: 'user-profile-images' | 'team-profile-images' | 'team-member-profile-images'
 ) {
-  let profileImageKey: string | null | undefined = undefined;
-  let profileImageUrl: string | null | undefined = undefined;
   if (input) {
     const checkResult = checkImageString(input);
     if (checkResult.isBase64Image) {
-      const { key } = await uploadBase64Image({ input, folderName });
-      profileImageKey = key;
+      const { url } = await uploadBase64Image({ input, folderName });
+      return url;
     } else if (checkResult.isUrl) {
-      profileImageUrl = input;
+      return input;
     } else {
       throw new StatusError(StatusError.BadRequest, "Invalid profile image URL");
     }
 
-    return {
-      profileImageKey,
-      profileImageUrl,
-    };
   } else if (input === null) {
-    return {
-      profileImageKey: null,
-      profileImageUrl: null,
-    };
+    return null;
   } else {
-    return {
-      profileImageKey: undefined,
-      profileImageUrl: undefined,
-    };
+    return undefined;
   }
 }

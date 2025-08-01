@@ -78,12 +78,7 @@ model Team {
   clientMetadata         Json?
   clientReadOnlyMetadata Json?
   serverMetadata         Json?
-
-  // if profileImageKey is set, we fetch the image from S3
-  // otherwise if the profileImageUrl is set, we send the user to the URL.
-  // if neither is set, we return null.
-  profileImageKey String?
-  profileImageUrl String?
+  profileImageUrl        String?
 
   teamMembers   TeamMember[]
   projectApiKey ProjectApiKey[]
@@ -105,13 +100,7 @@ model TeamMember {
   teamId        String @db.Uuid
 
   // This will override the displayName of the user in this team.
-  displayName String?
-
-  // This will override the profileImageUrl of the user in this team.
-  // if profileImageKey is set, we fetch the image from S3
-  // otherwise if the profileImageUrl is set, we send the user to the URL.
-  // if neither is set, we return null.
-  profileImageKey String?
+  displayName     String?
   profileImageUrl String?
 
   createdAt DateTime @default(now())
@@ -167,16 +156,11 @@ model ProjectUser {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  // if profileImageKey is set, we fetch the image from S3
-  // otherwise if the profileImageUrl is set, we send the user to the URL.
-  // if neither is set, we return null.
-  profileImageKey String?
-  profileImageUrl String?
-
   displayName            String?
   serverMetadata         Json?
   clientReadOnlyMetadata Json?
   clientMetadata         Json?
+  profileImageUrl        String?
   requiresTotpMfa        Boolean @default(false)
   totpSecret             Bytes?
   isAnonymous            Boolean @default(false)
