@@ -1,19 +1,19 @@
 import { getPrismaClientForTenancy } from '@/prisma-client';
-import { traceSpan } from '@/utils/telemetry';
+import { DEFAULT_TEMPLATE_IDS } from '@stackframe/stack-shared/dist/helpers/emails';
 import { UsersCrud } from '@stackframe/stack-shared/dist/interface/crud/users';
 import { getEnvVariable } from '@stackframe/stack-shared/dist/utils/env';
 import { StackAssertionError, StatusError, captureError } from '@stackframe/stack-shared/dist/utils/errors';
 import { filterUndefined, omit, pick } from '@stackframe/stack-shared/dist/utils/objects';
 import { runAsynchronously, wait } from '@stackframe/stack-shared/dist/utils/promises';
 import { Result } from '@stackframe/stack-shared/dist/utils/results';
+import { traceSpan } from '@stackframe/stack-shared/dist/utils/telemetry';
 import nodemailer from 'nodemailer';
-import { Tenancy, getTenancy } from './tenancies';
 import { getEmailThemeForTemplate, renderEmailWithTemplate } from './email-rendering';
-import { DEFAULT_TEMPLATE_IDS } from '@stackframe/stack-shared/dist/helpers/emails';
+import { Tenancy, getTenancy } from './tenancies';
 
 
 function getDefaultEmailTemplate(tenancy: Tenancy, type: keyof typeof DEFAULT_TEMPLATE_IDS) {
-  const templateList = new Map(Object.entries(tenancy.completeConfig.emails.templates));
+  const templateList = new Map(Object.entries(tenancy.config.emails.templates));
   const defaultTemplateIdsMap = new Map(Object.entries(DEFAULT_TEMPLATE_IDS));
   const defaultTemplateId = defaultTemplateIdsMap.get(type);
   if (defaultTemplateId) {
@@ -363,12 +363,12 @@ export async function sendEmailFromTemplate(options: {
 }
 
 export async function getEmailConfig(tenancy: Tenancy): Promise<EmailConfig> {
-  const projectEmailConfig = tenancy.config.email_config;
+  const projectEmailConfig = tenancy.config.emails.server;
 
-  if (projectEmailConfig.type === 'shared') {
+  if (projectEmailConfig.isShared) {
     return await getSharedEmailConfig(tenancy.project.display_name);
   } else {
-    if (!projectEmailConfig.host || !projectEmailConfig.port || !projectEmailConfig.username || !projectEmailConfig.password || !projectEmailConfig.sender_email || !projectEmailConfig.sender_name) {
+    if (!projectEmailConfig.host || !projectEmailConfig.port || !projectEmailConfig.username || !projectEmailConfig.password || !projectEmailConfig.senderEmail || !projectEmailConfig.senderName) {
       throw new StackAssertionError("Email config is not complete despite not being shared. This should never happen?", { projectId: tenancy.id, emailConfig: projectEmailConfig });
     }
     return {
@@ -376,8 +376,8 @@ export async function getEmailConfig(tenancy: Tenancy): Promise<EmailConfig> {
       port: projectEmailConfig.port,
       username: projectEmailConfig.username,
       password: projectEmailConfig.password,
-      senderEmail: projectEmailConfig.sender_email,
-      senderName: projectEmailConfig.sender_name,
+      senderEmail: projectEmailConfig.senderEmail,
+      senderName: projectEmailConfig.senderName,
       secure: isSecureEmailPort(projectEmailConfig.port),
       type: 'standard',
     };

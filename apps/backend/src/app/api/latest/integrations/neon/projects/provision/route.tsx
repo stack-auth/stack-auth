@@ -69,7 +69,7 @@ export const POST = createSmartRouteHandler({
 
     const set = await createApiKeySet({
       projectId: createdProject.id,
-      description: `Auto-generated for Neon (${req.body.display_name})`,
+      description: `Auto-generated for Neon Auth (DO NOT DELETE)`,
       expires_at_millis: new Date(Date.now() + 1000 * 60 * 60 * 24 * 365 * 100).getTime(),
       has_publishable_client_key: false,
       has_secret_server_key: false,

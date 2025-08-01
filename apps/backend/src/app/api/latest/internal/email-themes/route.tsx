@@ -67,8 +67,8 @@ export const GET = createSmartRouteHandler({
     }).defined(),
   }),
   async handler({ auth: { tenancy } }) {
-    const themeList = tenancy.completeConfig.emails.themes;
-    const currentActiveTheme = tenancy.completeConfig.emails.selectedThemeId;
+    const themeList = tenancy.config.emails.themes;
+    const currentActiveTheme = tenancy.config.emails.selectedThemeId;
 
     const themes = typedEntries(themeList).map(([id, theme]) => filterUndefined({
       id,

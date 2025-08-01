@@ -39,7 +39,7 @@ export const registerVerificationCodeHandler = createVerificationCodeHandler({
     throw new StackAssertionError("send() called on a Passkey registration verification code handler");
   },
   async handler(tenancy, _, { challenge }, { credential }, user) {
-    if (!tenancy.config.passkey_enabled) {
+    if (!tenancy.config.auth.passkey.allowSignIn) {
       throw new KnownErrors.PasskeyAuthenticationNotEnabled();
     }
 
@@ -55,7 +55,7 @@ export const registerVerificationCodeHandler = createVerificationCodeHandler({
     let expectedOrigin = "";
     const clientDataJSON = decodeClientDataJSON(credential.response.clientDataJSON);
     const { origin } = clientDataJSON;
-    const localhostAllowed = tenancy.config.allow_localhost;
+    const localhostAllowed = tenancy.config.domains.allowLocalhost;
     const parsedOrigin = new URL(origin);
     const isLocalhost = parsedOrigin.hostname === "localhost";
 
@@ -69,7 +69,10 @@ export const registerVerificationCodeHandler = createVerificationCodeHandler({
     }
 
     if (!isLocalhost) {
-      if (!tenancy.config.domains.map(e => e.domain).includes(parsedOrigin.origin)) {
+      if (!Object.values(tenancy.config.domains.trustedDomains)
+        .filter(e => e.baseUrl)
+        .map(e => e.baseUrl)
+        .includes(parsedOrigin.origin)) {
         throw new KnownErrors.PasskeyAuthenticationFailed("Passkey registration failed because the origin is not allowed");
       } else {
         expectedRPID = parsedOrigin.hostname;
