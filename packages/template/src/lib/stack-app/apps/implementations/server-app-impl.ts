@@ -943,7 +943,7 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
   // END_PLATFORM
 
   async sendEmail(options: SendEmailOptions): Promise<Result<void, KnownErrors["RequiresCustomEmailServer"] | KnownErrors["SchemaError"] | KnownErrors["UserIdDoesNotExist"]>> {
-    return this._interface.sendEmail(options);
+    return await this._interface.sendEmail(options);
   }
 
   protected override async _refreshSession(session: InternalSession) {
