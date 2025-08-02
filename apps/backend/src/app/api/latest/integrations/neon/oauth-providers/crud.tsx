@@ -22,6 +22,7 @@ const oauthProviderReadSchema = yupObject({
   // extra params
   facebook_config_id: schemaFields.oauthFacebookConfigIdSchema.optional(),
   microsoft_tenant_id: schemaFields.oauthMicrosoftTenantIdSchema.optional(),
+  issuer: schemaFields.yupString().optional(),
 });
 
 const oauthProviderUpdateSchema = yupObject({
@@ -38,6 +39,7 @@ const oauthProviderUpdateSchema = yupObject({
   // extra params
   facebook_config_id: schemaFields.oauthFacebookConfigIdSchema.optional(),
   microsoft_tenant_id: schemaFields.oauthMicrosoftTenantIdSchema.optional(),
+  issuer: schemaFields.yupString().optional(),
 });
 
 const oauthProviderCreateSchema = oauthProviderUpdateSchema.defined().concat(yupObject({
@@ -77,6 +79,7 @@ function oauthProviderConfigToLegacyConfig(provider: Tenancy['config']['auth']['
     client_secret: provider.clientSecret,
     facebook_config_id: provider.facebookConfigId,
     microsoft_tenant_id: provider.microsoftTenantId,
+    issuer: provider.issuer,
   } as const;
 }
 

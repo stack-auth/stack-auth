@@ -125,6 +125,7 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
           clientSecret: p.client_secret ?? throwErr("Client secret is missing"),
           facebookConfigId: p.facebook_config_id,
           microsoftTenantId: p.microsoft_tenant_id,
+          issuer: p.issuer,
         } as const))),
         emailConfig: data.config.email_config.type === 'shared' ? {
           type: 'shared'
