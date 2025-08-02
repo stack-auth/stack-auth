@@ -98,7 +98,7 @@ export function EmailTheme({ children, unsubscribeLink }: ThemeProps) {
 
 EmailTheme.PreviewProps = {
   unsubscribeLink: "https://example.com"
-} satisfies Partial<ThemeProps>  
+} satisfies Partial<ThemeProps>
 `;
 
 

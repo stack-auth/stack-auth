@@ -27,7 +27,9 @@ export const POST = createSmartRouteHandler({
     }).defined(),
     body: yupObject({
       user_ids: yupArray(yupString().defined()).defined(),
-      theme_id: templateThemeIdSchema.nullable().label("The theme to use for the email. If not specified, the default theme will be used."),
+      theme_id: templateThemeIdSchema.nullable().meta({
+        openapiField: { description: "The theme to use for the email. If not specified, the default theme will be used." }
+      }),
       html: yupString().optional(),
       subject: yupString().optional(),
       notification_category_name: yupString().optional(),
