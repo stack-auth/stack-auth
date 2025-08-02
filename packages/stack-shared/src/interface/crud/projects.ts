@@ -1,3 +1,4 @@
+import { branchPaymentsSchema } from "../../config/schema";
 import { CrudTypeOf, createCrud } from "../../crud";
 import * as schemaFields from "../../schema-fields";
 import { yupArray, yupObject, yupString } from "../../schema-fields";
@@ -89,6 +90,7 @@ export const projectsCrudAdminReadSchema = yupObject({
     team_member_default_permissions: yupArray(teamPermissionSchema.defined()).defined(),
     user_default_permissions: yupArray(teamPermissionSchema.defined()).defined(),
     oauth_account_merge_strategy: schemaFields.oauthAccountMergeStrategySchema.defined(),
+    payments: branchPaymentsSchema.defined(),
   }).defined().meta({ openapiField: { hidden: true } }),
 }).defined();
 

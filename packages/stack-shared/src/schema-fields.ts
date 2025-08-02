@@ -383,6 +383,7 @@ export const moneyAmountSchema = (currency: Currency) => yupString<MoneyAmount>(
   return true;
 });
 
+
 /**
  * A stricter email schema that does some additional checks for UX input. (Some emails are allowed by the spec, for
  * example `test@localhost` or `abc@gmail`, but almost certainly a user input error.)
@@ -489,6 +490,37 @@ export const emailTemplateListSchema = yupRecord(
 
 // Payments
 export const customerTypeSchema = yupString().oneOf(['user', 'team']);
+export const offerPriceSchema = yupObject({
+  ...typedFromEntries(SUPPORTED_CURRENCIES.map(currency => [currency.code, moneyAmountSchema(currency).optional()])),
+  interval: dayIntervalSchema.optional(),
+  serverOnly: yupBoolean(),
+  freeTrial: dayIntervalSchema.optional(),
+}).test("at-least-one-currency", (value, context) => {
+  const currencies = Object.keys(value).filter(key => key.toUpperCase() === key);
+  if (currencies.length === 0) {
+    return context.createError({ message: "At least one currency is required" });
+  }
+  return true;
+});
+export const offerSchema = yupObject({
+  displayName: yupString(),
+  customerType: customerTypeSchema,
+  freeTrial: dayIntervalSchema.optional(),
+  serverOnly: yupBoolean(),
+  stackable: yupBoolean(),
+  prices: yupRecord(
+    userSpecifiedIdSchema("priceId"),
+    offerPriceSchema,
+  ),
+  includedItems: yupRecord(
+    userSpecifiedIdSchema("itemId"),
+    yupObject({
+      quantity: yupNumber(),
+      repeat: dayIntervalOrNeverSchema.optional(),
+      expires: yupString().oneOf(['never', 'when-purchase-expires', 'when-repeated']).optional(),
+    }),
+  ),
+});
 export const inlineOfferSchema = yupObject({
   displayName: yupString().defined(),
   customerType: customerTypeSchema.defined(),

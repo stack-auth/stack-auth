@@ -3,7 +3,7 @@
 import * as yup from "yup";
 import { DEFAULT_EMAIL_TEMPLATES, DEFAULT_EMAIL_THEMES, DEFAULT_EMAIL_THEME_ID } from "../helpers/emails";
 import * as schemaFields from "../schema-fields";
-import { userSpecifiedIdSchema, yupBoolean, yupDate, yupMixed, yupNever, yupNumber, yupObject, yupRecord, yupString, yupTuple, yupUnion } from "../schema-fields";
+import { offerSchema, userSpecifiedIdSchema, yupBoolean, yupDate, yupMixed, yupNever, yupNumber, yupObject, yupRecord, yupString, yupTuple, yupUnion } from "../schema-fields";
 import { isShallowEqual } from "../utils/arrays";
 import { SUPPORTED_CURRENCIES } from "../utils/currencies";
 import { StackAssertionError } from "../utils/errors";
@@ -113,7 +113,8 @@ const branchAuthSchema = yupObject({
   }),
 });
 
-const branchPaymentsSchema = yupObject({
+export const branchPaymentsSchema = yupObject({
+  stripeAccountId: yupString().optional(),
   autoPay: yupObject({
     interval: schemaFields.dayIntervalSchema,
   }).optional(),
@@ -126,36 +127,7 @@ const branchPaymentsSchema = yupObject({
   ),
   offers: yupRecord(
     userSpecifiedIdSchema("offerId"),
-    yupObject({
-      displayName: yupString(),
-      customerType: schemaFields.customerTypeSchema,
-      freeTrial: schemaFields.dayIntervalSchema.optional(),
-      serverOnly: yupBoolean(),
-      stackable: yupBoolean(),
-      prices: yupRecord(
-        userSpecifiedIdSchema("priceId"),
-        yupObject({
-          ...typedFromEntries(SUPPORTED_CURRENCIES.map(currency => [currency.code, schemaFields.moneyAmountSchema(currency).optional()])),
-          interval: schemaFields.dayIntervalSchema.optional(),
-          serverOnly: yupBoolean(),
-          freeTrial: schemaFields.dayIntervalSchema.optional(),
-        }).test("at-least-one-currency", (value, context) => {
-          const currencies = Object.keys(value).filter(key => key.toUpperCase() === key);
-          if (currencies.length === 0) {
-            return context.createError({ message: "At least one currency is required" });
-          }
-          return true;
-        }),
-      ),
-      includedItems: yupRecord(
-        userSpecifiedIdSchema("itemId"),
-        yupObject({
-          quantity: yupNumber(),
-          repeat: schemaFields.dayIntervalOrNeverSchema.optional(),
-          expires: yupString().oneOf(['never', 'when-purchase-expires', 'when-repeated']).optional(),
-        }),
-      ),
-    }),
+    offerSchema,
   ),
   items: yupRecord(
     userSpecifiedIdSchema("itemId"),
@@ -471,6 +443,7 @@ const organizationConfigDefaults = {
   },
 
   payments: {
+    stripeAccountId: undefined,
     autoPay: undefined,
     exclusivityGroups: (key: string) => (key: string) => undefined,
     offers: (key: string) => ({
@@ -514,12 +487,12 @@ typeAssertIs<DefaultsType<{ a: { b: Record<string, 123>, c: 456 } }, [{ a: { c: 
 
 type DeepReplaceAllowFunctionsForObjects<T> = T extends object
   ? (
-      string extends keyof T
-        ? ((arg: Exclude<keyof T, number>) => DeepReplaceAllowFunctionsForObjects<T[keyof T]>) & ({ [K in keyof T]?: DeepReplaceAllowFunctionsForObjects<T[K]> } | {})
-        : { [K in keyof T]: DeepReplaceAllowFunctionsForObjects<T[K]> }
-    )
+    string extends keyof T
+    ? ((arg: Exclude<keyof T, number>) => DeepReplaceAllowFunctionsForObjects<T[keyof T]>) & ({ [K in keyof T]?: DeepReplaceAllowFunctionsForObjects<T[K]> } | {})
+    : { [K in keyof T]: DeepReplaceAllowFunctionsForObjects<T[K]> }
+  )
   :
-    T;
+  T;
 type ReplaceFunctionsWithObjects<T> = T & (T extends (arg: infer K extends string) => infer R ? Record<K, R> & object : unknown);
 type DeepReplaceFunctionsWithObjects<T> = T extends object ? { [K in keyof ReplaceFunctionsWithObjects<T>]: DeepReplaceFunctionsWithObjects<ReplaceFunctionsWithObjects<T>[K]> } : T;
 typeAssertIs<DeepReplaceFunctionsWithObjects<{ a: { b: 123 } & ((key: string) => number) }>, { a: { b: 123, [key: string]: number } }>()();
@@ -528,7 +501,7 @@ function deepReplaceFunctionsWithObjects(obj: any): any {
   return mapValues({ ...obj }, v => (isObjectLike(v) ? deepReplaceFunctionsWithObjects(v as any) : v));
 }
 import.meta.vitest?.test("deepReplaceFunctionsWithObjects", ({ expect }) => {
-  expect(deepReplaceFunctionsWithObjects(() => {})).toEqual({});
+  expect(deepReplaceFunctionsWithObjects(() => { })).toEqual({});
   expect(deepReplaceFunctionsWithObjects({ a: 3 })).toEqual({ a: 3 });
   expect(deepReplaceFunctionsWithObjects({ a: () => ({ b: 1 }) })).toEqual({ a: {} });
   expect(deepReplaceFunctionsWithObjects({ a: typedAssign(() => ({}), { b: { c: 1 } }) })).toEqual({ a: { b: { c: 1 } } });

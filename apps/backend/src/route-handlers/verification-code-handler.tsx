@@ -45,6 +45,7 @@ type VerificationCodeHandler<Data, SendCodeExtraOptions extends {}, SendCodeRetu
   sendCode(options: CreateCodeOptions<Data, Method, string | URL, false>, sendOptions: SendCodeExtraOptions): Promise<SendCodeReturnType>,
   listCodes(options: ListCodesOptions<Data, false>): Promise<CodeObject<Data, Method, string | URL>[]>,
   revokeCode(options: RevokeCodeOptions<false>): Promise<void>,
+  validateCode(code: string): Promise<CodeObject<Data, Method, string | URL>>,
   postHandler: SmartRouteHandler<any, any, any>,
   checkHandler: SmartRouteHandler<any, any, any>,
   detailsHandler: HasDetails extends true ? SmartRouteHandler<any, any, any> : undefined,
@@ -284,6 +285,23 @@ export function createVerificationCodeHandler<
           },
         },
       });
+    },
+    async validateCode(code: string) {
+      const verificationCode = await globalPrismaClient.verificationCode.findFirst({
+        where: {
+          code,
+          type: options.type,
+          usedAt: null,
+          expiresAt: { gt: new Date() },
+        },
+      });
+
+      if (!verificationCode) throw new KnownErrors.VerificationCodeNotFound();
+      if (verificationCode.expiresAt < new Date()) throw new KnownErrors.VerificationCodeExpired();
+      if (verificationCode.usedAt) throw new KnownErrors.VerificationCodeAlreadyUsed();
+      if (verificationCode.attemptCount >= MAX_ATTEMPTS_PER_CODE) throw new KnownErrors.VerificationCodeMaxAttemptsReached;
+
+      return createCodeObjectFromPrismaCode(verificationCode);
     },
     postHandler: createHandler('post'),
     checkHandler: createHandler('check'),

@@ -7,7 +7,12 @@ import { getOrUndefined } from "@stackframe/stack-shared/dist/utils/objects";
 import * as yup from "yup";
 import { Tenancy } from "./tenancies";
 
-export async function ensureOfferIdOrInlineOffer(tenancy: Tenancy, accessType: "client" | "server" | "admin", offerId: string | undefined, inlineOffer: object | undefined): Promise<Tenancy["completeConfig"]["payments"]["offers"][string] | yup.InferType<typeof inlineOfferSchema>> {
+export async function ensureOfferIdOrInlineOffer(
+  tenancy: Tenancy,
+  accessType: "client" | "server" | "admin",
+  offerId: string | undefined,
+  inlineOffer: object | undefined
+): Promise<Tenancy["config"]["payments"]["offers"][string] | yup.InferType<typeof inlineOfferSchema>> {
   if (offerId && inlineOffer) {
     throw new StatusError(400, "Cannot specify both offer_id and offer_inline!");
   }
@@ -18,7 +23,7 @@ export async function ensureOfferIdOrInlineOffer(tenancy: Tenancy, accessType: "
     throw new StatusError(400, "Must specify either offer_id or offer_inline!");
   }
   if (offerId) {
-    const offer = getOrUndefined(tenancy.completeConfig.payments.offers, offerId);
+    const offer = getOrUndefined(tenancy.config.payments.offers, offerId);
     if (!offer || (offer.serverOnly && accessType === "client")) {
       throw new KnownErrors.OfferDoesNotExist(offerId, accessType);
     }
