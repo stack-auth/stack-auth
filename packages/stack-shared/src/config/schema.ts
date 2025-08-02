@@ -3,8 +3,9 @@
 import * as yup from "yup";
 import { DEFAULT_EMAIL_TEMPLATES, DEFAULT_EMAIL_THEMES, DEFAULT_EMAIL_THEME_ID } from "../helpers/emails";
 import * as schemaFields from "../schema-fields";
-import { yupBoolean, yupDate, yupMixed, yupNever, yupNumber, yupObject, yupRecord, yupString, yupTuple, yupUnion } from "../schema-fields";
+import { userSpecifiedIdSchema, yupBoolean, yupDate, yupMixed, yupNever, yupNumber, yupObject, yupRecord, yupString, yupTuple, yupUnion } from "../schema-fields";
 import { isShallowEqual } from "../utils/arrays";
+import { SUPPORTED_CURRENCIES } from "../utils/currencies";
 import { StackAssertionError } from "../utils/errors";
 import { allProviders } from "../utils/oauth";
 import { DeepFilterUndefined, DeepMerge, DeepRequiredOrUndefined, deleteKey, filterUndefined, get, has, isObjectLike, mapValues, set, typedAssign, typedFromEntries } from "../utils/objects";
@@ -112,6 +113,66 @@ const branchAuthSchema = yupObject({
   }),
 });
 
+const branchPaymentsSchema = yupObject({
+  autoPay: yupObject({
+    interval: schemaFields.dayIntervalSchema,
+  }).optional(),
+  exclusivityGroups: yupRecord(
+    userSpecifiedIdSchema("exclusivityGroupId"),
+    yupRecord(
+      userSpecifiedIdSchema("offerId"),
+      yupBoolean().isTrue(),
+    ),
+  ),
+  offers: yupRecord(
+    userSpecifiedIdSchema("offerId"),
+    yupObject({
+      displayName: yupString(),
+      customerType: schemaFields.customerTypeSchema,
+      freeTrial: schemaFields.dayIntervalSchema.optional(),
+      serverOnly: yupBoolean(),
+      stackable: yupBoolean(),
+      prices: yupRecord(
+        userSpecifiedIdSchema("priceId"),
+        yupObject({
+          ...typedFromEntries(SUPPORTED_CURRENCIES.map(currency => [currency.code, schemaFields.moneyAmountSchema(currency).optional()])),
+          interval: schemaFields.dayIntervalSchema.optional(),
+          serverOnly: yupBoolean(),
+          freeTrial: schemaFields.dayIntervalSchema.optional(),
+        }).test("at-least-one-currency", (value, context) => {
+          const currencies = Object.keys(value).filter(key => key.toUpperCase() === key);
+          if (currencies.length === 0) {
+            return context.createError({ message: "At least one currency is required" });
+          }
+          return true;
+        }),
+      ),
+      includedItems: yupRecord(
+        userSpecifiedIdSchema("itemId"),
+        yupObject({
+          quantity: yupNumber(),
+          repeat: schemaFields.dayIntervalOrNeverSchema.optional(),
+          expires: yupString().oneOf(['never', 'when-purchase-expires', 'when-repeated']).optional(),
+        }),
+      ),
+    }),
+  ),
+  items: yupRecord(
+    userSpecifiedIdSchema("itemId"),
+    yupObject({
+      displayName: yupString().optional(),
+      customerType: schemaFields.customerTypeSchema,
+      default: yupObject({
+        quantity: yupNumber(),
+        repeat: schemaFields.dayIntervalOrNeverSchema.optional(),
+        expires: yupString().oneOf(['never', 'when-repeated']).optional(),
+      }).default({
+        quantity: 0,
+      }),
+    }),
+  ),
+});
+
 const branchDomain = yupObject({
   allowLocalhost: yupBoolean(),
 });
@@ -139,6 +200,8 @@ export const branchConfigSchema = canNoLongerBeOverridden(projectConfigSchema, [
     themes: schemaFields.emailThemeListSchema,
     templates: schemaFields.emailTemplateListSchema,
   }),
+
+  payments: branchPaymentsSchema,
 }));
 
 
@@ -175,7 +238,7 @@ export const environmentConfigSchema = branchConfigSchema.concat(yupObject({
 
   domains: branchConfigSchema.getNested("domains").concat(yupObject({
     trustedDomains: yupRecord(
-      yupString(),
+      userSpecifiedIdSchema("trustedDomainId"),
       yupObject({
         baseUrl: schemaFields.urlSchema,
         handlerPath: schemaFields.handlerPathSchema,
@@ -405,6 +468,37 @@ const organizationConfigDefaults = {
       tsxSource: "Error: Template config is missing TypeScript source code.",
       themeId: undefined,
     }), DEFAULT_EMAIL_TEMPLATES),
+  },
+
+  payments: {
+    autoPay: undefined,
+    exclusivityGroups: (key: string) => (key: string) => undefined,
+    offers: (key: string) => ({
+      displayName: key,
+      customerType: undefined,
+      freeTrial: undefined,
+      serverOnly: false,
+      stackable: undefined,
+      prices: (key: string) => ({
+        ...typedFromEntries(SUPPORTED_CURRENCIES.map(currency => [currency.code, undefined])),
+        interval: undefined,
+        serverOnly: false,
+        freeTrial: undefined,
+      }),
+      includedItems: (key: string) => ({
+        quantity: undefined,
+        repeat: "never",
+        expires: "when-repeated",
+      }),
+    } as const),
+    items: (key: string) => ({
+      displayName: key,
+      default: {
+        quantity: 0,
+        expires: "when-repeated",
+        repeat: "never",
+      },
+    } as const),
   },
 } as const satisfies DefaultsType<OrganizationRenderedConfigBeforeDefaults, [typeof environmentConfigDefaults, typeof branchConfigDefaults, typeof projectConfigDefaults]>;
 
