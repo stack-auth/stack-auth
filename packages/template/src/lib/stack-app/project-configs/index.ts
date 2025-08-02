@@ -68,7 +68,7 @@ export type AdminOAuthProviderConfig = {
     clientSecret: string,
     facebookConfigId?: string,
     microsoftTenantId?: string,
-    issuer?: string,
+    issuerUrl?: string,
   }
 ) & OAuthProviderConfig;
 

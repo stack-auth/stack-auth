@@ -62,7 +62,7 @@ export const providerFormSchema = yupObject({
     }),
   facebookConfigId: yupString().optional(),
   microsoftTenantId: yupString().optional(),
-  issuer: yupString().optional(),
+  issuerUrl: yupString().optional(),
 });
 
 export type ProviderFormValues = yup.InferType<typeof providerFormSchema>
@@ -75,7 +75,7 @@ export function ProviderSettingDialog(props: Props & { open: boolean, onClose: (
     clientSecret: (props.provider as any)?.clientSecret ?? "",
     facebookConfigId: (props.provider as any)?.facebookConfigId ?? "",
     microsoftTenantId: (props.provider as any)?.microsoftTenantId ?? "",
-    issuer: (props.provider as any)?.issuer ?? "",
+    issuerUrl: (props.provider as any)?.issuerUrl ?? "",
   };
 
   const onSubmit = async (values: ProviderFormValues) => {
@@ -89,7 +89,7 @@ export function ProviderSettingDialog(props: Props & { open: boolean, onClose: (
         clientSecret: values.clientSecret || "",
         facebookConfigId: values.facebookConfigId,
         microsoftTenantId: values.microsoftTenantId,
-        issuer: values.issuer,
+        issuerUrl: values.issuerUrl,
       });
     }
   };
@@ -168,9 +168,9 @@ export function ProviderSettingDialog(props: Props & { open: boolean, onClose: (
               {props.id === 'okta' && (
                 <InputField
                   control={form.control}
-                  name="issuer"
+                  name="issuerUrl"
                   label="Issuer URL (e.g., https://dev-123456.okta.com/oauth2/default)"
-                  placeholder="Issuer"
+                  placeholder="Issuer URL"
                   required
                 />
               )}

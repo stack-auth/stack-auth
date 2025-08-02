@@ -63,6 +63,7 @@ export async function getProvider(provider: Tenancy['config']['auth']['oauth']['
   if (provider.isShared) {
     const clientId = _getEnvForProvider(providerType).clientId;
     const clientSecret = _getEnvForProvider(providerType).clientSecret;
+    const issuerUrl = provider.issuerUrl;
     if (clientId === "MOCK") {
       if (clientSecret !== "MOCK") {
         throw new StackAssertionError("If OAuth provider client ID is set to MOCK, then client secret must also be set to MOCK");
@@ -72,7 +73,7 @@ export async function getProvider(provider: Tenancy['config']['auth']['oauth']['
       return await _providers[providerType].create({
         clientId,
         clientSecret,
-        issuer: provider.issuer,
+        issuerUrl,
       });
     }
   } else {
@@ -81,7 +82,7 @@ export async function getProvider(provider: Tenancy['config']['auth']['oauth']['
       clientSecret: provider.clientSecret || throwErr("Client secret is required for standard providers"),
       facebookConfigId: provider.facebookConfigId,
       microsoftTenantId: provider.microsoftTenantId,
-      issuer: provider.issuer,
+      issuerUrl: provider.issuerUrl,
     });
   }
 }

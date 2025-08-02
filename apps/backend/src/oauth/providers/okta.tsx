@@ -13,11 +13,11 @@ export class OktaProvider extends OAuthBaseProvider {
   static async create(options: {
     clientId: string,
     clientSecret: string,
-    issuer?: string,
+    issuerUrl?: string,
   }) {
     return new OktaProvider(
       ...(await OAuthBaseProvider.createConstructorArgs({
-        discoverFromUrl: options.issuer || throwErr("Okta issuer URL is required"),
+        discoverFromUrl: options.issuerUrl || throwErr("Okta issuer URL is required"),
         redirectUri: getEnvVariable("NEXT_PUBLIC_STACK_API_URL") + `/api/v1/auth/oauth/callback/okta`,
         baseScope: "openid profile email",
         openid: true,
