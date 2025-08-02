@@ -22,7 +22,7 @@ async function getResetCode() {
   `);
   const messages = await backendContext.value.mailbox.fetchMessages();
   const messagesNoBody = await backendContext.value.mailbox.fetchMessages({ noBody: true });
-  expect(messagesNoBody.at(-1)).toMatchInlineSnapshot(`
+  expect(messagesNoBody.find(m => m.subject.includes("Reset your password at"))).toMatchInlineSnapshot(`
     MailboxMessage {
       "from": "Stack Dashboard <noreply@example.com>",
       "subject": "Reset your password at Stack Dashboard",
