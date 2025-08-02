@@ -795,4 +795,39 @@ export class StackServerInterface extends StackClientInterface {
     );
     return await response.json();
   }
+
+  async sendEmail(options: {
+    userIds: string[],
+    themeId?: string | null | false,
+    html?: string,
+    subject?: string,
+    notificationCategoryName?: string,
+    templateId?: string,
+    variables?: Record<string, any>,
+  }): Promise<Result<void, KnownErrors["RequiresCustomEmailServer"] | KnownErrors["SchemaError"] | KnownErrors["UserIdDoesNotExist"]>> {
+    const res = await this.sendServerRequestAndCatchKnownError(
+      "/emails/send-email",
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          user_ids: options.userIds,
+          theme_id: options.themeId,
+          html: options.html,
+          subject: options.subject,
+          notification_category_name: options.notificationCategoryName,
+          template_id: options.templateId,
+          variables: options.variables,
+        }),
+      },
+      null,
+      [KnownErrors.RequiresCustomEmailServer, KnownErrors.SchemaError, KnownErrors.UserIdDoesNotExist]
+    );
+    if (res.status === "error") {
+      return Result.error(res.error);
+    }
+    return Result.ok(undefined);
+  }
 }

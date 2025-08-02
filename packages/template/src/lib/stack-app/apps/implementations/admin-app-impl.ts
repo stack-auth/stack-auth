@@ -18,7 +18,9 @@ import { StackAdminApp, StackAdminAppConstructorOptions } from "../interfaces/ad
 import { clientVersion, createCache, getBaseUrl, getDefaultProjectId, getDefaultPublishableClientKey, getDefaultSecretServerKey, getDefaultSuperSecretAdminKey } from "./common";
 import { _StackServerAppImplIncomplete } from "./server-app-impl";
 
+import { EnvironmentConfigOverrideOverride, OrganizationRenderedConfig } from "@stackframe/stack-shared/dist/config/schema";
 import { ChatContent } from "@stackframe/stack-shared/dist/interface/admin-interface";
+import { ConfigCrud } from "@stackframe/stack-shared/dist/interface/crud/config";
 import { useAsyncCache } from "./common"; // THIS_LINE_PLATFORM react-like
 
 export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, ProjectId extends string> extends _StackServerAppImplIncomplete<HasTokenStore, ProjectId> implements StackAdminApp<HasTokenStore, ProjectId>
@@ -56,6 +58,9 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
   private readonly _emailPreviewCache = createCache(async ([themeId, themeTsxSource, templateId, templateTsxSource]: [string | null | false | undefined, string | undefined, string | undefined, string | undefined]) => {
     return await this._interface.renderEmailPreview({ themeId, themeTsxSource, templateId, templateTsxSource });
   });
+  private readonly _configOverridesCache = createCache(async () => {
+    return await this._interface.getConfig();
+  });
 
   constructor(options: StackAdminAppConstructorOptions<HasTokenStore, ProjectId>) {
     super({
@@ -80,6 +85,10 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
       oauthScopesOnSignIn: options.oauthScopesOnSignIn,
       redirectMethod: options.redirectMethod,
     });
+  }
+
+  _adminConfigFromCrud(data: ConfigCrud['Admin']['Read']): OrganizationRenderedConfig {
+    return JSON.parse(data.config_string);
   }
 
   _adminOwnedProjectFromCrud(data: ProjectsCrud['Admin']['Read'], onRefresh: () => Promise<void>): AdminOwnedProject {
@@ -147,9 +156,21 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
         teamMemberDefaultPermissions: data.config.team_member_default_permissions,
         userDefaultPermissions: data.config.user_default_permissions,
       },
-
+      async getConfig() {
+        return app._adminConfigFromCrud(await app._interface.getConfig());
+      },
+      // IF_PLATFORM react-like
+      useConfig() {
+        const config = useAsyncCache(app._configOverridesCache, [], "useConfig()");
+        return useMemo(() => app._adminConfigFromCrud(config), [config]);
+      },
+      // END_PLATFORM
+      async updateConfig(configOverride: EnvironmentConfigOverrideOverride) {
+        await app._interface.updateConfig({ configOverride });
+      },
       async update(update: AdminProjectUpdateOptions) {
-        await app._interface.updateProject(adminProjectUpdateOptionsToCrud(update));
+        const updateOptions = adminProjectUpdateOptionsToCrud(update);
+        await app._interface.updateProject(updateOptions);
         await onRefresh();
       },
       async delete() {
@@ -158,9 +179,11 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
       async getProductionModeErrors() {
         return getProductionModeErrors(data);
       },
+      // IF_PLATFORM react-like
       useProductionModeErrors() {
         return getProductionModeErrors(data);
       },
+      // END_PLATFORM
     };
   }
 
@@ -412,20 +435,6 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
       sentAt: new Date(email.sent_at_millis),
       error: email.error,
     }));
-  }
-
-  async sendEmail(options: {
-    userIds: string[],
-    subject: string,
-    content: string,
-    notificationCategoryName: string,
-  }): Promise<void> {
-    await this._interface.sendEmail({
-      user_ids: options.userIds,
-      subject: options.subject,
-      html: options.content,
-      notification_category_name: options.notificationCategoryName,
-    });
   }
 
   async sendSignInInvitationEmail(email: string, callbackUrl: string): Promise<void> {

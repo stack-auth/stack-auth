@@ -134,6 +134,23 @@ services:
     - svix-redis
     - svix-db
 
+  # ================= Adobe S3 Mock =================
+  
+  s3mock:
+    image: adobe/s3mock:latest
+    ports:
+      - 8121:9090
+    environment:
+      - initialBuckets=stack-storage
+      - root=s3mockroot
+      - debug=false
+    volumes:
+      - s3mock-data:/tmp/s3mock
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:9090/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
   # ================= Freestyle mock =================
 
   freestyle-mock:
@@ -143,7 +160,7 @@ services:
     image: freestyle-mock
     container_name: freestyle-mock
     ports:
-      - "8119:8080"       # POST http://localhost:8119/execute/v1/script
+      - "8122:8080"       # POST http://localhost:8119/execute/v1/script
     environment:
       DENO_DIR: /deno-cache
     volumes:
@@ -157,6 +174,7 @@ volumes:
   inbucket-data:
   svix-redis-data:
   svix-postgres-data:
+  s3mock-data:
   deno-cache:
 
 # ================= configs =================
