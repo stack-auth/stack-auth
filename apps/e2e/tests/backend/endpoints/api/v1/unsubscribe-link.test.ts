@@ -37,7 +37,6 @@ it("unsubscribe link should be sent and update notification preference", async (
       "body": {
         "results": [
           {
-            "success": true,
             "user_email": "unindexed-mailbox--<stripped UUID>@stack-generated.example.com",
             "user_id": "<stripped UUID>",
           },
@@ -132,7 +131,6 @@ it("unsubscribe link should not be sent for emails with transactional notificati
       "body": {
         "results": [
           {
-            "success": true,
             "user_email": "unindexed-mailbox--<stripped UUID>@stack-generated.example.com",
             "user_id": "<stripped UUID>",
           },
@@ -145,35 +143,5 @@ it("unsubscribe link should not be sent for emails with transactional notificati
   const messages = await user.mailbox.fetchMessages();
   const sentEmail = messages.find(msg => msg.subject === "Custom Test Email Subject");
   expect(sentEmail).toBeDefined();
-  expect(sentEmail!.body?.html).toMatchInlineSnapshot(`
-    deindent\`
-      <div>Mock api key detected, 
-      
-      templateComponent: export function EmailTemplate() {
-        return <>
-          <div dangerouslySetInnerHTML={{ __html: "<h1>Test Email</h1><p>This is a test email with HTML content.</p>"}} />
-          
-        </>
-      };
-      
-      themeComponent: import { Html, Head, Tailwind, Body, Container } from '@react-email/components';
-      
-      export function EmailTheme({ children }: { children: React.ReactNode }) {
-        return (
-          <Html>
-            <Head />
-            <Tailwind>
-              <Body className="bg-[#fafbfb] font-sans text-base">
-                <Container className="bg-white p-[45px] rounded-lg">
-                  {children}
-                </Container>
-              </Body>
-            </Tailwind>
-          </Html>
-        );
-      }
-      
-       variables: {}</div>
-    \`
-  `);
+  expect(sentEmail!.body?.html).toMatchInlineSnapshot(`"<!DOCTYPE html PUBLIC \\"-//W3C//DTD XHTML 1.0 Transitional//EN\\" \\"http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd\\"><html dir=\\"ltr\\" lang=\\"en\\"><head><meta content=\\"text/html; charset=UTF-8\\" http-equiv=\\"Content-Type\\"/><meta name=\\"x-apple-disable-message-reformatting\\"/></head><body style=\\"background-color:rgb(250,251,251);font-family:ui-sans-serif, system-ui, sans-serif, &quot;Apple Color Emoji&quot;, &quot;Segoe UI Emoji&quot;, &quot;Segoe UI Symbol&quot;, &quot;Noto Color Emoji&quot;;font-size:1rem;line-height:1.5rem\\"><!--$--><table align=\\"center\\" width=\\"100%\\" border=\\"0\\" cellPadding=\\"0\\" cellSpacing=\\"0\\" role=\\"presentation\\" style=\\"background-color:rgb(255,255,255);padding:45px;border-radius:0.5rem;max-width:37.5em\\"><tbody><tr style=\\"width:100%\\"><td><div><h1>Test Email</h1><p>This is a test email with HTML content.</p></div></td></tr></tbody></table><!--7--><!--/$--></body></html>"`);
 });

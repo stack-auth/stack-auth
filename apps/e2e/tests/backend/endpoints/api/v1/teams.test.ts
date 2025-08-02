@@ -515,7 +515,7 @@ it("updates a team on the server", async ({ expect }) => {
     method: "PATCH",
     body: {
       display_name: "My Updated Team",
-      profile_image_url: "data:image/gif;base64,R0lGODlhAQABAAAAACw=",
+      profile_image_url: "data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==",
       server_metadata: {
         "test": "test-value"
       },
@@ -530,7 +530,7 @@ it("updates a team on the server", async ({ expect }) => {
         "created_at_millis": <stripped field 'created_at_millis'>,
         "display_name": "My Updated Team",
         "id": "<stripped UUID>",
-        "profile_image_url": "data:image/gif;base64,R0lGODlhAQABAAAAACw=",
+        "profile_image_url": "http://localhost:8121/stack-storage/team-profile-images/<stripped UUID>.gif",
         "server_metadata": { "test": "test-value" },
       },
       "headers": Headers { <some fields may have been hidden> },
@@ -550,7 +550,7 @@ it("updates a team on the server", async ({ expect }) => {
             "created_at_millis": <stripped field 'created_at_millis'>,
             "display_name": "My Updated Team",
             "id": "<stripped UUID>",
-            "profile_image_url": "data:image/gif;base64,R0lGODlhAQABAAAAACw=",
+            "profile_image_url": "http://localhost:8121/stack-storage/team-profile-images/<stripped UUID>.gif",
             "server_metadata": { "test": "test-value" },
           },
         ],

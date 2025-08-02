@@ -3,6 +3,8 @@
 # svix-server: 32201
 # mock-oauth-server: 32202
 # inbucket: 32203
+# freestyle-mock: 32204
+# s3mock: 32205
 
 
 services:
@@ -49,12 +51,21 @@ services:
       STACK_MICROSOFT_CLIENT_SECRET: "MOCK"
       STACK_SPOTIFY_CLIENT_ID: "MOCK"
       STACK_SPOTIFY_CLIENT_SECRET: "MOCK"
+      STACK_S3_ENDPOINT: "http://localhost:32205"
+      STACK_S3_BUCKET: "stack-storage"
+      STACK_S3_REGION: "us-east-1"
+      STACK_S3_ACCESS_KEY_ID: "S3RVER"
+      STACK_S3_SECRET_ACCESS_KEY: "S3RVER"
     depends_on:
       db:
         condition: service_healthy
       inbucket:
         condition: service_started
       svix-server:
+        condition: service_started
+      s3mock:
+        condition: service_healthy
+      freestyle-mock:
         condition: service_started
 
   # ================= Mock OAuth Server =================
@@ -124,6 +135,39 @@ services:
     - svix-redis
     - svix-db
 
+  # ================= Adobe S3 Mock =================
+  
+  s3mock:
+    image: adobe/s3mock:latest
+    ports:
+      - 32205:9090
+    environment:
+      - initialBuckets=stack-storage
+      - root=s3mockroot
+      - debug=false
+    volumes:
+      - s3mock-data:/tmp/s3mock
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:9090/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # ================= Freestyle mock =================
+
+  freestyle-mock:
+    build:
+      context: ../dependencies/freestyle-mock
+      dockerfile: Dockerfile
+    image: freestyle-mock
+    container_name: freestyle-mock
+    ports:
+      - "32204:8080"
+    environment:
+      DENO_DIR: /deno-cache
+    volumes:
+      - deno-cache:/deno-cache
+
 # ================= volumes =================
 
 volumes:
@@ -131,4 +175,6 @@ volumes:
   inbucket-data:
   svix-redis-data:
   svix-postgres-data:
+  s3mock-data:
+  deno-cache:
 

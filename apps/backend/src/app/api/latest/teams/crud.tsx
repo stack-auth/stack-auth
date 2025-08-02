@@ -2,6 +2,7 @@ import { ensureTeamExists, ensureTeamMembershipExists, ensureUserExists, ensureU
 import { sendTeamCreatedWebhook, sendTeamDeletedWebhook, sendTeamUpdatedWebhook } from "@/lib/webhooks";
 import { getPrismaClientForTenancy, retryTransaction } from "@/prisma-client";
 import { createCrudHandlers } from "@/route-handlers/crud-handler";
+import { uploadAndGetUrl } from "@/s3";
 import { runAsynchronouslyAndWaitUntil } from "@/utils/vercel";
 import { Prisma } from "@prisma/client";
 import { KnownErrors } from "@stackframe/stack-shared";
@@ -77,10 +78,10 @@ export const teamsCrudHandlers = createLazyProxy(() => createCrudHandlers(teamsC
           mirroredProjectId: auth.project.id,
           mirroredBranchId: auth.branchId,
           tenancyId: auth.tenancy.id,
-          profileImageUrl: data.profile_image_url,
           clientMetadata: data.client_metadata === null ? Prisma.JsonNull : data.client_metadata,
           clientReadOnlyMetadata: data.client_read_only_metadata === null ? Prisma.JsonNull : data.client_read_only_metadata,
           serverMetadata: data.server_metadata === null ? Prisma.JsonNull : data.server_metadata,
+          profileImageUrl: await uploadAndGetUrl(data.profile_image_url, "team-profile-images")
         },
       });
 
@@ -161,10 +162,10 @@ export const teamsCrudHandlers = createLazyProxy(() => createCrudHandlers(teamsC
         },
         data: {
           displayName: data.display_name,
-          profileImageUrl: data.profile_image_url,
           clientMetadata: data.client_metadata === null ? Prisma.JsonNull : data.client_metadata,
           clientReadOnlyMetadata: data.client_read_only_metadata === null ? Prisma.JsonNull : data.client_read_only_metadata,
           serverMetadata: data.server_metadata === null ? Prisma.JsonNull : data.server_metadata,
+          profileImageUrl: await uploadAndGetUrl(data.profile_image_url, "team-profile-images")
         },
       });
     });
