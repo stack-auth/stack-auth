@@ -41,8 +41,13 @@ export class OktaProvider extends OAuthBaseProvider {
 
   async checkAccessTokenValidity(accessToken: string): Promise<boolean> {
     try {
-      const response = await this.oauthClient.userinfo(accessToken);
-      return !!response.sub;
+      const issuerUrl = this.oauthClient.issuer.metadata.issuer;
+      const res = await fetch(`${issuerUrl}/oauth2/v1/userinfo`, {
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+        },
+      });
+      return res.ok;
     } catch (error) {
       return false;
     }
