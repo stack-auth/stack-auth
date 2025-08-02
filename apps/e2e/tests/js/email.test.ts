@@ -50,6 +50,10 @@ it("should successfully send email with template", async ({ expect }) => {
   const result = await serverApp.sendEmail({
     userIds: [user.id],
     templateId: DEFAULT_TEMPLATE_IDS.sign_in_invitation,
+    variables: {
+      teamDisplayName: "Test Team",
+      signInInvitationLink: "https://example.com",
+    },
     subject: "Welcome!",
   });
 
