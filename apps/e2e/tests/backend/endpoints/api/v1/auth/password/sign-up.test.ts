@@ -22,7 +22,7 @@ it("should sign up new users", async ({ expect }) => {
     [
       MailboxMessage {
         "from": "Stack Dashboard <noreply@example.com>",
-        "subject": "Mock subject, <Subject value={\`Verify your email at \${project.displayName}\`} />",
+        "subject": "Verify your email at Stack Dashboard",
         "to": ["<default-mailbox--<stripped UUID>@stack-generated.example.com>"],
         <some fields may have been hidden>,
       },
