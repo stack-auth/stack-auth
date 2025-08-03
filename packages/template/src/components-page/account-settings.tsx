@@ -1,7 +1,7 @@
 'use client';
 
 import { Skeleton, Typography } from '@stackframe/stack-ui';
-import { icons } from 'lucide-react';
+import { Contact, ShieldCheck, Bell, Monitor, Key, Settings, CirclePlus } from 'lucide-react';
 import React, { Suspense } from "react";
 import { useStackApp, useUser } from '..';
 import { MaybeFullPage } from "../components/elements/maybe-full-page";
@@ -17,8 +17,18 @@ import { SettingsPage } from './account-settings/settings/settings-page';
 import { TeamCreationPage } from './account-settings/teams/team-creation-page';
 import { TeamPage } from './account-settings/teams/team-page';
 
-const Icon = ({ name }: { name: keyof typeof icons }) => {
-  const LucideIcon = icons[name];
+const iconMap = {
+  Contact,
+  ShieldCheck,
+  Bell,
+  Monitor,
+  Key,
+  Settings,
+  CirclePlus
+} as const;
+
+const Icon = ({ name }: { name: keyof typeof iconMap }) => {
+  const LucideIcon = iconMap[name];
   return <LucideIcon className="mr-2 h-4 w-4"/>;
 };
 
@@ -31,7 +41,7 @@ export function AccountSettings(props: {
   } & ({
     icon?: React.ReactNode,
   } | {
-    iconName?: keyof typeof icons,
+    iconName?: keyof typeof iconMap,
   }))[],
   mockUser?: {
     displayName?: string,
@@ -140,7 +150,7 @@ export function AccountSettings(props: {
               type: 'item',
               id: item.id,
               icon: (() => {
-                const iconName = (item as any).iconName as keyof typeof icons | undefined;
+                const iconName = (item as any).iconName as keyof typeof iconMap | undefined;
                 if (iconName) {
                   return <Icon name={iconName}/>;
                 } else if ((item as any).icon) {
