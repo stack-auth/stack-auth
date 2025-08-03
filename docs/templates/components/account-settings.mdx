@@ -42,15 +42,9 @@ full: true
         {
           name: "icon",
           type: "React.ReactNode",
-          description: "The icon component for the item. Only used if iconName is not provided.",
+          description: "The icon component for the item.",
           optional: true
         },
-        {
-          name: "iconName",
-          type: "string",
-          description: "The name of the Lucide icon to be used for the item. Only used if icon is not provided.",
-          optional: true
-        }
       ]
     }
   ]}
@@ -67,7 +61,7 @@ export default function MyAccountPage() {
       fullPage={true}
       extraItems={[{
         title: 'Custom Section',
-        iconName: "Settings",
+        icon: <SettingsIcon />,
         content: <CustomContent />,
         subpath: '/custom',
       }]}
