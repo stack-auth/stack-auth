@@ -52,13 +52,13 @@ it("should send a verification code per e-mail", async ({ expect }) => {
     [
       MailboxMessage {
         "from": "Stack Dashboard <noreply@example.com>",
-        "subject": "Verify your email at Stack Dashboard",
+        "subject": "Mock subject, <Subject value={\`Verify your email at \${project.displayName}\`} />",
         "to": ["<default-mailbox--<stripped UUID>@stack-generated.example.com>"],
         <some fields may have been hidden>,
       },
       MailboxMessage {
         "from": "Stack Dashboard <noreply@example.com>",
-        "subject": "Verify your email at Stack Dashboard",
+        "subject": "Mock subject, <Subject value={\`Verify your email at \${project.displayName}\`} />",
         "to": ["<default-mailbox--<stripped UUID>@stack-generated.example.com>"],
         <some fields may have been hidden>,
       },
