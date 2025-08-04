@@ -2,7 +2,7 @@
 
 This changelog contains all changes across all packages and applications in the Stack Auth monorepo.
 
-## 2.8.26
+## 2.8.27
 
 ### Patch Changes
 
@@ -11,12 +11,30 @@ This changelog contains all changes across all packages and applications in the 
 - Various changes
 - Updated dependencies
 
-#### @stackframe/stack-dashboard
+#### @stackframe/stack-shared
+
+- Various changes
+
+## 2.8.26
+
+### Patch Changes
+
+#### @stackframe/stack
 
 - Various changes
 - Updated dependencies
 
-#### @stackframe/stack-docs
+#### @stackframe/react
+
+- Various changes
+- Updated dependencies
+
+#### @stackframe/js
+
+- Various changes
+- Updated dependencies
+
+#### @stackframe/stack-backend
 
 - Various changes
 - Updated dependencies
@@ -25,92 +43,7 @@ This changelog contains all changes across all packages and applications in the 
 
 - Various changes
 
-#### @stackframe/stack-ui
-
-- Various changes
-- Updated dependencies
-
-#### @stackframe/stack-sc
-
-- Various changes
-- Updated dependencies
-
 #### @stackframe/stack-emails
-
-- Various changes
-- Updated dependencies
-
-#### @stackframe/init-stack
-
-- Various changes
-- Updated dependencies
-
-#### @stackframe/template
-
-- Various changes
-- Updated dependencies
-
-#### @stackframe/e2e-tests
-
-- Various changes
-- Updated dependencies
-
-#### @stackframe/mcp-server
-
-- Various changes
-- Updated dependencies
-
-#### @stackframe/mock-oauth-server
-
-- Various changes
-- Updated dependencies
-
-#### @stackframe/dev-launchpad
-
-- Various changes
-- Updated dependencies
-
-#### @stackframe/example-demo-app
-
-- Various changes
-- Updated dependencies
-
-#### @stackframe/docs-examples
-
-- Various changes
-- Updated dependencies
-
-#### @stackframe/example-middleware-demo
-
-- Various changes
-- Updated dependencies
-
-#### @stackframe/example-cjs-test
-
-- Various changes
-- Updated dependencies
-
-#### @stackframe/js-example
-
-- Various changes
-- Updated dependencies
-
-#### react-example
-
-- Various changes
-- Updated dependencies
-
-#### @stackframe/example-supabase
-
-- Various changes
-- Updated dependencies
-
-#### @stackframe/e-commerce-demo
-
-- Various changes
-- Updated dependencies
-
-#### @stackframe/example-partial-prerendering
 
 - Various changes
 - Updated dependencies
