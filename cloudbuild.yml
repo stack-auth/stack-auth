@@ -1,0 +1,84 @@
+steps:
+  - id: Run SCA
+    name: 'gcr.io/$PROJECT_ID/secops'
+    entrypoint: bash
+    dir: "applications/${_MODULE}"
+    args:
+      - "-c"
+      - |-
+        if [ -f sonar-project.properties ]; then
+          export WORKSPACE=$(pwd)
+          /opt/sq.sh
+        fi
+    env:
+      - 'PROJECT_ID=$PROJECT_ID'
+      - 'CI_PR_NUMBER=${_PR_NUMBER}'
+      - 'CI_BRANCH=${BRANCH_NAME}'
+      - 'CI_BASE_BRANCH=${_BASE_BRANCH}'
+    secretEnv:
+      - 'SCA_TOKEN'
+    waitFor:
+      - "Test & Build"
+
+  - id: Build & Push Image
+    dir: 'docker/${_MODULE}'
+    name: 'gcr.io/cloud-builders/docker'
+    entrypoint: bash
+    args:
+      - "-c"
+      - |
+        docker buildx build \
+        -t ${_REGISTRY_URL}/${_PROJECT}/${_MODULE}:${TAG_NAME:-$SHORT_SHA} \
+        -t ${_REGISTRY_URL}/${_PROJECT}/${_MODULE}:latest \
+        --cache-from ${_REGISTRY_URL}/${_PROJECT}/${_MODULE} \
+        --output type=image,name=${_REGISTRY_URL}/${_PROJECT}/${_MODULE},compression-level=22,force-compression=true,push=true,compression=zstd \
+        --build-arg BUILDKIT_INLINE_CACHE=1 .
+    env:
+      - "SHORT_SHA=${SHORT_SHA}"
+    waitFor: ['-']
+
+  # - id: Deployment
+  #   name: "gcr.io/cloud-builders/gcloud"
+  #   entrypoint: bash
+  #   args:
+  #     - "-c"
+  #     - |
+  #       IFS=',' read -ra DEPLOYMENT_TYPES <<< "${_DEPLOYMENT_TYPES}"
+
+  #       for dt in "${DEPLOYMENT_TYPES[@]}"; do
+  #         if [[ -n "${TAG_NAME}" ]]; then
+  #           gcloud builds triggers run "${_PROJECT}-deployment-$${dt}-${_ENVIRONMENT}" \
+  #             --substitutions "_COMMIT_ID=${TAG_NAME},_MODULE=${_MODULE}" \
+  #             --sha ${COMMIT_SHA} \
+  #             --region ${LOCATION}
+  #         else
+  #           gcloud builds triggers run "${_PROJECT}-deployment-$${dt}-${_ENVIRONMENT}" \
+  #             --substitutions "_COMMIT_ID=${SHORT_SHA},_MODULE=${_MODULE}" \
+  #             --branch ${BRANCH_NAME} \
+  #             --region ${LOCATION}
+  #         fi
+  #       done
+  #   waitFor:
+  #     - "Build & Push Image"
+
+timeout: 30m
+
+substitutions:
+  _GITHUB_USER: "GDP-ADMIN"
+  _REGISTRY_URL: "asia-southeast2-docker.pkg.dev/${PROJECT_ID}/projects"
+  _PROJECT: "stack-auth"
+
+options:
+  env:
+    - 'DOCKER_BUILDKIT=1'
+    - 'COMPOSE_DOCKER_CLI_BUILD=1'
+    - 'XDG_CACHE_HOME=.cache'
+  pool:
+    name: 'projects/${PROJECT_ID}/locations/${LOCATION}/workerPools/${_WORKER_POOL_NAME}'
+
+availableSecrets:
+  secretManager:
+    - versionName: 'projects/$PROJECT_ID/secrets/INFRA_GL_SONARQUBE_TOKEN/versions/latest'
+      env: 'SCA_TOKEN'
+
+tags: ["stack-auth", "server", "build"]
