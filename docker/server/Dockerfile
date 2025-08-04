@@ -83,7 +83,7 @@ COPY --from=builder --chown=node:node /app/apps/dashboard/.next/static ./apps/da
 COPY --from=builder --chown=node:node /app/apps/dashboard/public ./apps/dashboard/public
 
 # Add the entrypoint script
-COPY ./docker/server/entrypoint.sh .
+COPY ./entrypoint.sh .
 RUN chmod +x entrypoint.sh
 
 WORKDIR /app
