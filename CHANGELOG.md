@@ -2,6 +2,119 @@
 
 This changelog contains all changes across all packages and applications in the Stack Auth monorepo.
 
+## 2.8.26
+
+### Patch Changes
+
+#### @stackframe/stack-backend
+
+- Various changes
+- Updated dependencies
+
+#### @stackframe/stack-dashboard
+
+- Various changes
+- Updated dependencies
+
+#### @stackframe/stack-docs
+
+- Various changes
+- Updated dependencies
+
+#### @stackframe/stack-shared
+
+- Various changes
+
+#### @stackframe/stack-ui
+
+- Various changes
+- Updated dependencies
+
+#### @stackframe/stack-sc
+
+- Various changes
+- Updated dependencies
+
+#### @stackframe/stack-emails
+
+- Various changes
+- Updated dependencies
+
+#### @stackframe/init-stack
+
+- Various changes
+- Updated dependencies
+
+#### @stackframe/template
+
+- Various changes
+- Updated dependencies
+
+#### @stackframe/e2e-tests
+
+- Various changes
+- Updated dependencies
+
+#### @stackframe/mcp-server
+
+- Various changes
+- Updated dependencies
+
+#### @stackframe/mock-oauth-server
+
+- Various changes
+- Updated dependencies
+
+#### @stackframe/dev-launchpad
+
+- Various changes
+- Updated dependencies
+
+#### @stackframe/example-demo-app
+
+- Various changes
+- Updated dependencies
+
+#### @stackframe/docs-examples
+
+- Various changes
+- Updated dependencies
+
+#### @stackframe/example-middleware-demo
+
+- Various changes
+- Updated dependencies
+
+#### @stackframe/example-cjs-test
+
+- Various changes
+- Updated dependencies
+
+#### @stackframe/js-example
+
+- Various changes
+- Updated dependencies
+
+#### react-example
+
+- Various changes
+- Updated dependencies
+
+#### @stackframe/example-supabase
+
+- Various changes
+- Updated dependencies
+
+#### @stackframe/e-commerce-demo
+
+- Various changes
+- Updated dependencies
+
+#### @stackframe/example-partial-prerendering
+
+- Various changes
+- Updated dependencies
+
 ## 2.8.25
 
 ### Patch Changes

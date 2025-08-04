@@ -110,7 +110,13 @@ export function getProjectConfigOverrideQuery(options: ProjectOptions): RawQuery
       WHERE "Project"."id" = ${options.projectId}
     `,
     postProcess: async (queryResult) => {
-      return queryResult[0].projectConfigOverride ?? {};
+      if (queryResult.length > 1) {
+        throw new StackAssertionError(`Expected 0 or 1 project config overrides for project ${options.projectId}, got ${queryResult.length}`, { queryResult });
+      }
+      if (queryResult.length === 0) {
+        return {};
+      }
+      return queryResult[0].projectConfigOverride;
     },
   };
 }
