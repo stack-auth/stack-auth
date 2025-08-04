@@ -161,8 +161,14 @@ export default function McpBrowserPage() {
       // For API docs, if we don't have explicit content, use everything after the description
       if (isApiDoc && !content.trim()) {
         const titleDescEnd = textContent.indexOf('\n\n');
-        if (titleDescEnd !== -1) {
+        if (titleDescEnd !== -1 && titleDescEnd + 2 < textContent.length) {
           content = textContent.substring(titleDescEnd + 2);
+        } else if (titleDescEnd === -1) {
+          // If no double newline found, try to extract content after "Description: " line
+          const descMatch = textContent.match(/Description: .*?\n([\s\S]*)/);
+          if (descMatch && descMatch[1]) {
+            content = descMatch[1].trim();
+          }
         }
       }
 
