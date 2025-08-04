@@ -110,7 +110,7 @@ export default function McpBrowserPage() {
     const loadDocs = async () => {
       try {
         setLoading(true);
-        const result = await callMcpTool('listAvailableDocs');
+        const result = await callMcpTool('list_available_docs');
         const textContent = result.content[0]?.text || '';
         const parsedDocs = parseDocSummaries(textContent);
         setDocs(parsedDocs);
@@ -131,7 +131,7 @@ export default function McpBrowserPage() {
   const loadDoc = async (docId: string) => {
     try {
       setDocLoading(true);
-      const result = await callMcpTool('getDocById', { id: docId });
+      const result = await callMcpTool('get_docs_by_id', { id: docId });
       const textContent = result.content[0]?.text || '';
 
       // Parse the response which includes title, description, and content

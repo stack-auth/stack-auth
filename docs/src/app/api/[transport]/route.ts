@@ -1,5 +1,5 @@
 import { createMcpHandler } from "@vercel/mcp-adapter";
-import { readFileSync } from "node:fs";
+import { readFile } from "node:fs/promises";
 import { z } from "zod";
 import { apiSource, source } from "../../../../lib/source";
 
@@ -64,7 +64,7 @@ const handler = createMcpHandler(
         // Try primary path first, then fallback to docs/ prefix or api/ prefix
         const filePath = `content/${page.file.path}`;
         try {
-          const content = readFileSync(filePath, "utf-8");
+          const content = await readFile(filePath, "utf-8");
 
           if (isApiPage && content.includes('<EnhancedAPIPage')) {
             // Extract OpenAPI information from API pages
@@ -81,7 +81,7 @@ const handler = createMcpHandler(
 
                   try {
                     const specPath = specFile;
-                    const specContent = readFileSync(specPath, "utf-8");
+                    const specContent = await readFile(specPath, "utf-8");
                     const spec = JSON.parse(specContent);
                     const parsedOps = JSON.parse(operations);
                     let apiDetails = '';
@@ -161,7 +161,7 @@ const handler = createMcpHandler(
 
           for (const altPath of altPaths) {
             try {
-              const content = readFileSync(altPath, "utf-8");
+              const content = await readFile(altPath, "utf-8");
 
               if (isApiPage && content.includes('<EnhancedAPIPage')) {
                 // Same OpenAPI extraction logic for alternative path
@@ -192,7 +192,7 @@ const handler = createMcpHandler(
 
                       try {
                         const specPath = specFile;
-                        const specContent = readFileSync(specPath, "utf-8");
+                        const specContent = await readFile(specPath, "utf-8");
                         const spec = JSON.parse(specContent);
                         const parsedOps = JSON.parse(operations);
                         let apiDetails = '';
