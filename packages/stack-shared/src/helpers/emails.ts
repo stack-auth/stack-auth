@@ -1,7 +1,7 @@
 import { deindent } from "../utils/strings";
 
 export const previewTemplateSource = deindent`
-  import { Heading, Section, Button, Link, Column } from "@react-email/components";
+  import { Heading, Section, Row, Button, Link, Column } from "@react-email/components";
   export const variablesSchema = v => v;
   export function EmailTemplate() {
     return <>
@@ -42,9 +42,10 @@ export const emptyEmailTheme = deindent`
   }
 `;
 
-export const LightEmailTheme = `import { Html, Head, Tailwind, Body, Container } from '@react-email/components';
+export const LightEmailTheme = `import { Html, Head, Tailwind, Body, Container, Link } from '@react-email/components';
+import { ThemeProps } from "@stackframe/emails"
 
-export function EmailTheme({ children }: { children: React.ReactNode }) {
+export function EmailTheme({ children, unsubscribeLink }: ThemeProps) {
   return (
     <Html>
       <Head />
@@ -53,16 +54,28 @@ export function EmailTheme({ children }: { children: React.ReactNode }) {
           <Container className="bg-white p-[45px] rounded-lg">
             {children}
           </Container>
+          {unsubscribeLink && (
+            <div className="p-4">
+              <Link href={unsubscribeLink}>Click here{" "}</Link>
+              to unsubscribe from these emails
+            </div>
+          )}
         </Body>
       </Tailwind>
     </Html>
   );
-}`;
+}
+
+EmailTheme.PreviewProps = {
+  unsubscribeLink: "https://example.com"
+} satisfies Partial<ThemeProps>
+`;
 
 
-const DarkEmailTheme = `import { Html, Head, Tailwind, Body, Container } from '@react-email/components';
+const DarkEmailTheme = `import { Html, Head, Tailwind, Body, Container, Link } from '@react-email/components';
+import { ThemeProps } from "@stackframe/emails"
 
-export function EmailTheme({ children }: { children: React.ReactNode }) {
+export function EmailTheme({ children, unsubscribeLink }: ThemeProps) {
   return (
     <Html>
       <Head />
@@ -71,11 +84,22 @@ export function EmailTheme({ children }: { children: React.ReactNode }) {
           <Container className="bg-black p-[45px] rounded-lg">
             {children}
           </Container>
+          {unsubscribeLink && (
+            <div className="p-4">
+              <Link href={unsubscribeLink}>Click here{" "}</Link>
+              to unsubscribe from these emails
+            </div>
+          )}
         </Body>
       </Tailwind>
     </Html>
   );
-}`;
+}
+
+EmailTheme.PreviewProps = {
+  unsubscribeLink: "https://example.com"
+} satisfies Partial<ThemeProps>
+`;
 
 
 export const DEFAULT_EMAIL_THEME_ID = "1df07ae6-abf3-4a40-83a5-a1a2cbe336ac";

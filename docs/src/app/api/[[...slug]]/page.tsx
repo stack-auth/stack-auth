@@ -1,7 +1,7 @@
 import { EnhancedAPIPage } from '@/components/api/enhanced-api-page';
 import { getMDXComponents } from '@/mdx-components';
 import { apiSource } from 'lib/source';
-import { notFound } from 'next/navigation';
+import { redirect } from 'next/navigation';
 import { SharedContentLayout } from '../../../components/layouts/shared-content-layout';
 
 export default async function ApiPage({
@@ -12,7 +12,7 @@ export default async function ApiPage({
   const { slug } = await params;
   const page = apiSource.getPage(slug ?? []);
 
-  if (!page) notFound();
+  if (!page) redirect("/");
 
   const MDX = page.data.body;
 
