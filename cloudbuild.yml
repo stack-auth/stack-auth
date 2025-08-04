@@ -21,13 +21,14 @@ steps:
   #     - "Test & Build"
 
   - id: Build & Push Image
-    dir: 'docker/${_MODULE}'
+    dir: './'
     name: 'gcr.io/cloud-builders/docker'
     entrypoint: bash
     args:
       - "-c"
       - |
         docker buildx build \
+        -f docker/server/Dockerfile \
         -t ${_REGISTRY_URL}/${_PROJECT}/${_MODULE}:${TAG_NAME:-$SHORT_SHA} \
         -t ${_REGISTRY_URL}/${_PROJECT}/${_MODULE}:latest \
         --cache-from ${_REGISTRY_URL}/${_PROJECT}/${_MODULE} \
