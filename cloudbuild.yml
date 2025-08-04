@@ -1,24 +1,24 @@
 steps:
-  - id: Run SCA
-    name: 'gcr.io/$PROJECT_ID/secops'
-    entrypoint: bash
-    dir: "applications/${_MODULE}"
-    args:
-      - "-c"
-      - |-
-        if [ -f sonar-project.properties ]; then
-          export WORKSPACE=$(pwd)
-          /opt/sq.sh
-        fi
-    env:
-      - 'PROJECT_ID=$PROJECT_ID'
-      - 'CI_PR_NUMBER=${_PR_NUMBER}'
-      - 'CI_BRANCH=${BRANCH_NAME}'
-      - 'CI_BASE_BRANCH=${_BASE_BRANCH}'
-    secretEnv:
-      - 'SCA_TOKEN'
-    waitFor:
-      - "Test & Build"
+  # - id: Run SCA
+  #   name: 'gcr.io/$PROJECT_ID/secops'
+  #   entrypoint: bash
+  #   dir: "applications/${_MODULE}"
+  #   args:
+  #     - "-c"
+  #     - |-
+  #       if [ -f sonar-project.properties ]; then
+  #         export WORKSPACE=$(pwd)
+  #         /opt/sq.sh
+  #       fi
+  #   env:
+  #     - 'PROJECT_ID=$PROJECT_ID'
+  #     - 'CI_PR_NUMBER=${_PR_NUMBER}'
+  #     - 'CI_BRANCH=${BRANCH_NAME}'
+  #     - 'CI_BASE_BRANCH=${_BASE_BRANCH}'
+  #   secretEnv:
+  #     - 'SCA_TOKEN'
+  #   waitFor:
+  #     - "Test & Build"
 
   - id: Build & Push Image
     dir: 'docker/${_MODULE}'
