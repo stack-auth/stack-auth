@@ -1,45 +1,152 @@
 #!/usr/bin/env node
 import * as fs from 'fs';
+import * as path from 'path';
 import * as readline from 'readline';
 
-class InteractiveChangelogManager {
+class ChangelogManager {
   private masterChangelogPath = 'CHANGELOG.md';
   private rl: readline.Interface;
-  
-  // List of all packages in the monorepo
-  private packages = [
-    '@stackframe/stack',
-    '@stackframe/stack-shared',
-    '@stackframe/stack-ui',
-    '@stackframe/stack-sc',
-    '@stackframe/stack-emails',
-    '@stackframe/stack-backend',
-    '@stackframe/stack-dashboard',
-    '@stackframe/stack-docs',
-    '@stackframe/react',
-    '@stackframe/js',
-    '@stackframe/init-stack',
-    '@stackframe/template',
-    '@stackframe/e2e',
-    '@stackframe/mcp-server',
-    '@stackframe/mock-oauth-server',
-    '@stackframe/dev-launchpad',
-    // Examples
-    '@stackframe/example-demo-app',
-    '@stackframe/docs-examples',
-    '@stackframe/example-middleware-demo',
-    '@stackframe/cjs-test',
-    '@stackframe/js-example',
-    '@stackframe/react-example',
-    '@stackframe/supabase-example',
-    '@stackframe/e-commerce-example',
-    '@stackframe/partial-prerendering-example'
-  ];
+  private packages: string[] = [];
+  private workspaceRoot = process.cwd();
 
   constructor() {
     this.rl = readline.createInterface({
       input: process.stdin,
       output: process.stdout
+    });
+    this.packages = this.discoverPackages();
+  }
+
+  private discoverPackages(): string[] {
+    try {
+      // Read pnpm-workspace.yaml to get workspace patterns
+      const workspaceFile = path.join(this.workspaceRoot, 'pnpm-workspace.yaml');
+      let patterns: string[] = [];
+      
+      if (fs.existsSync(workspaceFile)) {
+        const workspaceContent = fs.readFileSync(workspaceFile, 'utf-8');
+        patterns = this.parseWorkspaceYaml(workspaceContent);
+      } else {
+        console.warn('No pnpm-workspace.yaml found, falling back to default patterns');
+        patterns = ['packages/*', 'apps/*', 'examples/*', 'docs'];
+      }
+      
+      return this.discoverPackagesFromDirectories(patterns);
+    } catch (error) {
+      console.error('Error discovering packages:', error);
+      return [];
+    }
+  }
+
+  private parseWorkspaceYaml(content: string): string[] {
+    // Simple YAML parser for pnpm-workspace.yaml structure
+    const lines = content.split('\n');
+    const patterns: string[] = [];
+    let inPackagesSection = false;
+    
+    for (const line of lines) {
+      const trimmed = line.trim();
+      
+      if (trimmed === 'packages:') {
+        inPackagesSection = true;
+        continue;
+      }
+      
+      if (inPackagesSection) {
+        if (trimmed.startsWith('- ')) {
+          const pattern = trimmed.substring(2).trim();
+          patterns.push(pattern);
+        } else if (trimmed && !trimmed.startsWith(' ') && !trimmed.startsWith('-')) {
+          // End of packages section
+          break;
+        }
+      }
+    }
+    
+    return patterns;
+  }
+
+  private discoverPackagesFromDirectories(patterns: string[]): string[] {
+    const packageNames: string[] = [];
+    
+    for (const pattern of patterns) {
+      try {
+        const packageJsonFiles = this.findPackageJsonFiles(pattern);
+        
+        for (const packageJsonFile of packageJsonFiles) {
+          try {
+            const packageJson = JSON.parse(fs.readFileSync(packageJsonFile, 'utf-8'));
+            
+            // Skip the root monorepo package and packages without names
+            if (packageJson.name && 
+                packageJson.name !== '@stackframe/monorepo' && 
+                !packageJson.name.includes('node_modules')) {
+              packageNames.push(packageJson.name);
+            }
+          } catch (error) {
+            console.warn(`Failed to read package.json at ${packageJsonFile}:`, error);
+          }
+        }
+      } catch (error) {
+        console.warn(`Failed to process pattern ${pattern}:`, error);
+      }
+    }
+    
+    // Remove duplicates and sort
+    const uniquePackages = [...new Set(packageNames)];
+    return this.sortPackages(uniquePackages);
+  }
+
+  private findPackageJsonFiles(pattern: string): string[] {
+    const packageJsonFiles: string[] = [];
+    
+    if (pattern.endsWith('*')) {
+      // Handle wildcard patterns like "packages/*"
+      const baseDir = pattern.slice(0, -1); // Remove the '*'
+      const fullBasePath = path.join(this.workspaceRoot, baseDir);
+      
+      if (fs.existsSync(fullBasePath)) {
+        const entries = fs.readdirSync(fullBasePath, { withFileTypes: true });
+        
+        for (const entry of entries) {
+          if (entry.isDirectory()) {
+            const packageJsonPath = path.join(fullBasePath, entry.name, 'package.json');
+            if (fs.existsSync(packageJsonPath)) {
+              packageJsonFiles.push(packageJsonPath);
+            }
+          }
+        }
+      }
+    } else {
+      // Handle specific directory patterns like "docs"
+      const packageJsonPath = path.join(this.workspaceRoot, pattern, 'package.json');
+      if (fs.existsSync(packageJsonPath)) {
+        packageJsonFiles.push(packageJsonPath);
+      }
+    }
+    
+    return packageJsonFiles;
+  }
+
+  private sortPackages(packages: string[]): string[] {
+    return packages.sort((a, b) => {
+      // Define sorting priority
+      const getPriority = (name: string) => {
+        if (name.includes('stack-shared') || name === '@stackframe/stack') return 0;
+        if (name.includes('backend') || name.includes('dashboard') || name.includes('docs')) return 1;
+        if (name.includes('example') || name.includes('demo')) return 3;
+        return 2;
+      };
+      
+      const priorityA = getPriority(a);
+      const priorityB = getPriority(b);
+      
+      if (priorityA !== priorityB) {
+        return priorityA - priorityB;
+      }
+      
+      // If same priority, sort alphabetically
+      return a.localeCompare(b);
     });
   }
 
@@ -229,9 +336,9 @@ class InteractiveChangelogManager {
 }
 
 // CLI interface
-if (require.main === module) {
-  const manager = new InteractiveChangelogManager();
+if (import.meta.url === `file://${process.argv[1]}`) {
+  const manager = new ChangelogManager();
   manager.runInteractiveUpdate();
 }
 
-export { InteractiveChangelogManager };
+export { ChangelogManager };
