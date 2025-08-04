@@ -35,7 +35,7 @@ const handler = createMcpHandler(
       {},
       async ({}) => {
         nodeClient?.capture({
-          event: "listAvailableDocs",
+          event: "list_available_docs",
           properties: {},
           distinctId: "mcp-handler",
         });
@@ -50,7 +50,7 @@ const handler = createMcpHandler(
       { id: z.string() },
       async ({ id }) => {
         nodeClient?.capture({
-          event: "getDocById",
+          event: "get_docs_by_id",
           properties: { id },
           distinctId: "mcp-handler",
         });
