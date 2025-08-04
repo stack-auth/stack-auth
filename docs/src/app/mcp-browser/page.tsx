@@ -234,9 +234,9 @@ export default function McpBrowserPage() {
             </div>
           </div>
           <div className="max-h-[600px] overflow-y-auto">
-            {docs.map((doc, index) => (
+            {docs.map((doc) => (
               <div
-                key={index}
+                key={doc.id}
                 className="p-4 border-b last:border-b-0 hover:bg-muted/50 cursor-pointer transition-all duration-200 hover:shadow-sm group"
                 onClick={() => {
                   loadDoc(doc.id).catch(err => {
