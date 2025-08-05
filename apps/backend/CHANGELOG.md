@@ -1212,7 +1212,7 @@
 
 ## 2.4.28
 
-### Patch Changes
+### Patch Changess
 
 - Bugfixes
 - Updated dependencies
