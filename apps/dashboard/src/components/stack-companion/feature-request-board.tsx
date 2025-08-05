@@ -4,7 +4,7 @@ import { getPublicEnvVar } from '@/lib/env';
 import { cn } from '@/lib/utils';
 import { useUser } from '@stackframe/stack';
 import { Button } from '@stackframe/stack-ui';
-import { ChevronUp, Loader2, Send, Zap } from 'lucide-react';
+import { ChevronUp, Lightbulb, Loader2, Send } from 'lucide-react';
 import { useCallback, useEffect, useState } from 'react';
 
 type FeatureRequestBoardProps = {
@@ -281,7 +281,7 @@ export function FeatureRequestBoard({ isActive }: FeatureRequestBoardProps) {
     <div className="flex flex-col h-full">
       {submitStatus === 'success' ? (
         <div className="bg-green-50 dark:bg-green-900/20 rounded-lg p-4 text-center border border-green-200 dark:border-green-800">
-          <Zap className="h-6 w-6 mx-auto mb-2 text-green-600" />
+          <Lightbulb className="h-6 w-6 mx-auto mb-2 text-green-600" />
           <p className="text-sm text-green-800 dark:text-green-200 font-medium">
             Feature request submitted successfully!
           </p>
@@ -292,7 +292,7 @@ export function FeatureRequestBoard({ isActive }: FeatureRequestBoardProps) {
       ) : (
         <div className="bg-card rounded-lg border border-border p-4 shadow-sm">
           <div className="flex items-center gap-2 mb-3">
-            <Zap className="h-5 w-5 text-purple-600" />
+            <Lightbulb className="h-5 w-5 text-purple-600" />
             <h4 className="text-sm font-semibold text-foreground">Submit Feature Request</h4>
           </div>
 
@@ -468,7 +468,7 @@ export function FeatureRequestBoard({ isActive }: FeatureRequestBoardProps) {
           </div>
         ) : (
           <div className="bg-card rounded-lg border border-border p-6 text-center">
-            <Zap className="h-8 w-8 mx-auto mb-2 text-muted-foreground" />
+            <Lightbulb className="h-8 w-8 mx-auto mb-2 text-muted-foreground" />
             <p className="text-sm text-muted-foreground">No feature requests yet.</p>
             <p className="text-xs text-muted-foreground mt-1">Be the first to submit one!</p>
           </div>
