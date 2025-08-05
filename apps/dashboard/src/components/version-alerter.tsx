@@ -6,7 +6,7 @@ import { useEffect, useState } from "react";
 /**
  * A version checking component for self-hosters which displays a banner if the server is out of date.
  */
-export function VersionAlerter({ severeOnly }: { severeOnly: boolean }) {
+export function VersionAlerter() {
   const [versionCheckResult, setVersionCheckResult] = useState<VersionCheckResult>(null);
 
   useEffect(() => {
