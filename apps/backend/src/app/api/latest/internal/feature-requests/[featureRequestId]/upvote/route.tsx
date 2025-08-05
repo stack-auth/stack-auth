@@ -1,8 +1,9 @@
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { adaptSchema, yupBoolean, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
 import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
+import { StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
 
-const FEATUREBASE_API_KEY = getEnvVariable("FEATUREBASE_API_KEY");
+const STACK_FEATUREBASE_API_KEY = getEnvVariable("STACK_FEATUREBASE_API_KEY");
 
 // POST /api/latest/internal/feature-requests/[featureRequestId]/upvote
 export const POST = createSmartRouteHandler({
@@ -38,7 +39,7 @@ export const POST = createSmartRouteHandler({
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'X-API-Key': FEATUREBASE_API_KEY,
+        'X-API-Key': STACK_FEATUREBASE_API_KEY,
       },
       body: JSON.stringify({
         id: params.featureRequestId,
@@ -50,7 +51,7 @@ export const POST = createSmartRouteHandler({
     const data = await response.json();
 
     if (!response.ok) {
-      throw new Error(`Featurebase upvote API error: ${data.error || 'Failed to toggle upvote'}`);
+      throw new StackAssertionError(`Featurebase upvote API error: ${data.error || 'Failed to toggle upvote'}`, { data });
     }
 
     return {
