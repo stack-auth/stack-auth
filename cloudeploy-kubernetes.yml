@@ -22,7 +22,7 @@ steps:
       path: '/.kube'
 
   - id: Get Credentials Artifact Registry
-    dir: 'deployment/kubernetes/helm-values/${_ENVIRONMENT}/infra-add-ons'
+    dir: 'deployment/kubernetes/helm-values/${_ENVIRONMENT}/${_MODULE}'
     name: 'gcr.io/cloud-builders/gcloud'
     entrypoint: 'bash'
     args:
@@ -43,7 +43,7 @@ steps:
     waitFor: ['-']
 
   - id: Login Helm Registry
-    dir: 'deployment/kubernetes/helm-values/${_ENVIRONMENT}/infra-add-ons'
+    dir: 'deployment/kubernetes/helm-values/${_ENVIRONMENT}/${_MODULE}'
     name: 'gcr.io/${PROJECT_ID}/deployer:teleport'
     entrypoint: 'bash'
     args:

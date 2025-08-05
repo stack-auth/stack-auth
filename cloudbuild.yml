@@ -34,6 +34,7 @@ steps:
         --build-arg BUILDKIT_INLINE_CACHE=1 .
     env:
       - "SHORT_SHA=${SHORT_SHA}"
+      - "TAG_NAME=${TAG_NAME}"
     waitFor: ['-']
 
   - id: Deployment
@@ -78,4 +79,4 @@ availableSecrets:
     - versionName: "projects/$PROJECT_ID/secrets/INFRA_GL_SONARQUBE_TOKEN/versions/latest"
       env: "SCA_TOKEN"
 
-tags: ["stack-auth", "server", "build"]
+tags: ["stack-auth", "${_MODULE}", "build"]

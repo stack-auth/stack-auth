@@ -45,23 +45,15 @@ steps:
     args:
       - "-c"
       - |
-        docker buildx build --secret id=gh_token,env=GH_TOKEN --secret id=token_key,src=./token.key \
-        --secret id=aws_access_key_id,env=AWS_ACCESS_KEY_ID --secret id=aws_secret_access_key,env=AWS_SECRET_ACCESS_KEY \
+        docker buildx build \
         -f docker/server/Dockerfile \
         -t ${_REGISTRY_URL}/${_PROJECT}/${_MODULE}:${TAG_NAME:-$SHORT_SHA} \
         -t ${_REGISTRY_URL}/${_PROJECT}/${_MODULE}:latest \
         --cache-from ${_REGISTRY_URL}/${_PROJECT}/${_MODULE} \
-        --build-arg BUILD_NUMBER=${SHORT_SHA} \
-        --build-arg VERSION_NUMBER=${REF_NAME//\//--} \
         --build-arg BUILDKIT_INLINE_CACHE=1 .
     env:
       - "SHORT_SHA=${SHORT_SHA}"
       - "TAG_NAME=${TAG_NAME}"
-      - 'REF_NAME=${REF_NAME}'
-    secretEnv:
-      - "GH_TOKEN"
-      - "AWS_ACCESS_KEY_ID"
-      - "AWS_SECRET_ACCESS_KEY"
     waitFor:
       - "Generate Google Token"
 
@@ -99,9 +91,5 @@ availableSecrets:
       env: "GH_TOKEN"
     - versionName: projects/$PROJECT_ID/secrets/INFRA_GL_SONARQUBE_TOKEN/versions/latest
       env: "SCA_TOKEN"
-    - versionName: "projects/glair-ci/secrets/GLAIR_SHARED_AWS_ACCESS_KEY_ID/versions/latest"
-      env: "AWS_ACCESS_KEY_ID"
-    - versionName: "projects/glair-ci/secrets/GLAIR_SHARED_AWS_SECRET_ACCESS_KEY/versions/latest"
-      env: "AWS_SECRET_ACCESS_KEY"
 
-tags: ["stack-auth", "infra-add-ons", "pull-request"]
+tags: ["stack-auth", "${_MODULE}", "pull-request"]

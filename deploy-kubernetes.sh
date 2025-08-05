@@ -22,11 +22,9 @@ if [ -z "${COMMIT_ID:-}" ]; then
 	fi
 fi
 
-#DEPLOY_DIR="deployment/kubernetes/helm-values/${ENVIRONMENT}/${MODULE}" #need hardcoded
-DEPLOY_DIR="deployment/kubernetes/helm-values/${ENVIRONMENT}/infra-add-ons"
+DEPLOY_DIR="deployment/kubernetes/helm-values/${ENVIRONMENT}/${_MODULE}"
 # shellcheck disable=SC2034
-#BASE_MODULE=${MODULE}
-BASE_MODULE="infra-add-ons"
+BASE_MODULE=${MODULE}
 
 cd "${DEPLOY_DIR}"
 VALUES_FILES=$(find . -type f -iname "values.yaml" | sort)
