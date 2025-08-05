@@ -1,4 +1,23 @@
 steps:
+  - id: Run SCA
+    name: gcr.io/$PROJECT_ID/secops
+    entrypoint: bash
+    dir: "./"
+    args:
+      - "-c"
+      - |-
+        if [ -f sonar-project.properties ]; then
+          export WORKSPACE=$(pwd)
+          /opt/sq.sh
+        fi
+    env:
+      - "PROJECT_ID=$PROJECT_ID"
+      - "CI_PR_NUMBER=${_PR_NUMBER}"
+      - "CI_BRANCH=${BRANCH_NAME}"
+      - "CI_BASE_BRANCH=${_BASE_BRANCH}"
+    secretEnv:
+      - "SCA_TOKEN"
+
   - id: Build & Push Image
     dir: './'
     name: 'gcr.io/cloud-builders/docker'
@@ -56,5 +75,9 @@ options:
   pool:
     name: 'projects/${PROJECT_ID}/locations/${LOCATION}/workerPools/${_WORKER_POOL_NAME}'
 
+vailableSecrets:
+  secretManager:
+    - versionName: "projects/$PROJECT_ID/secrets/INFRA_GL_SONARQUBE_TOKEN/versions/latest"
+      env: "SCA_TOKEN"
 
 tags: ["stack-auth", "server", "build"]

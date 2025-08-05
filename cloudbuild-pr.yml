@@ -1,7 +1,7 @@
 steps:
   - id: Generate Google Token
     name: gcr.io/cloud-builders/gcloud
-    dir: "applications/${_MODULE}"
+    dir: "./"
     entrypoint: 'bash'
     args:
       - '-c'
@@ -10,7 +10,7 @@ steps:
   - id: Run SCA
     name: gcr.io/$PROJECT_ID/secops
     entrypoint: bash
-    dir: "applications/${_MODULE}"
+    dir: "./"
     args:
       - "-c"
       - |-
@@ -25,8 +25,6 @@ steps:
       - "CI_BASE_BRANCH=${_BASE_BRANCH}"
     secretEnv:
       - "SCA_TOKEN"
-    waitFor:
-      - "Test and Build"
 
   - id: Dockerfile Lint
     name: "hadolint/hadolint:latest-alpine"
