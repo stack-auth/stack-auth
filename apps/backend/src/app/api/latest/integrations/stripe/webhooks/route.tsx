@@ -46,7 +46,7 @@ export async function POST(req: NextRequest) {
   if (event.type === "account.updated") {
     if (!event.account) {
       captureError('stripe-webhook-account-id-missing', { event });
-      return NextResponse.json({ received: true }, { status: 500 });
+      return NextResponse.json({ received: true }, { status: 400 });
     }
     try {
       await syncStripeAccountStatus(event.account);
