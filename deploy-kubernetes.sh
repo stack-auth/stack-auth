@@ -25,7 +25,8 @@ fi
 #DEPLOY_DIR="deployment/kubernetes/helm-values/${ENVIRONMENT}/${MODULE}" #need hardcoded
 DEPLOY_DIR="deployment/kubernetes/helm-values/${ENVIRONMENT}/infra-add-ons"
 # shellcheck disable=SC2034
-BASE_MODULE=${MODULE}
+#BASE_MODULE=${MODULE}
+BASE_MODULE="infra-add-ons"
 
 cd "${DEPLOY_DIR}"
 VALUES_FILES=$(find . -type f -iname "values.yaml" | sort)
