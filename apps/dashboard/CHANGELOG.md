@@ -1923,7 +1923,7 @@
 
 ## 0.1.1
 
-### Patch Changes
+### Patch Changess
 
 - Updated dependencies
   - @stackframe/stack@1.1.0
