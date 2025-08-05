@@ -3,7 +3,7 @@
 */
 'use client';
 
-import React, { CSSProperties, useEffect, useRef } from "react";
+import React, { CSSProperties, useEffect, useRef, useState } from "react";
 
 class Grad {
   x: number;
@@ -206,6 +206,28 @@ const Waves: React.FC<WavesProps> = ({
   });
 
   const frameIdRef = useRef<number | null>(null);
+
+  // Add prefers-reduced-motion detection
+  const [prefersReducedMotion, setPrefersReducedMotion] = useState(false);
+
+  // Check for prefers-reduced-motion preference
+  useEffect(() => {
+    const mediaQuery = window.matchMedia('(prefers-reduced-motion: reduce)');
+
+    // Set initial value
+    setPrefersReducedMotion(mediaQuery.matches);
+
+    // Listen for changes
+    const handleChange = (e: MediaQueryListEvent) => {
+      setPrefersReducedMotion(e.matches);
+    };
+
+    mediaQuery.addEventListener('change', handleChange);
+
+    return () => {
+      mediaQuery.removeEventListener('change', handleChange);
+    };
+  }, []);
 
   useEffect(() => {
     configRef.current = {
@@ -421,6 +443,11 @@ const Waves: React.FC<WavesProps> = ({
       }
     };
   }, []);
+
+  // If user prefers reduced motion, don't render the waves at all
+  if (prefersReducedMotion) {
+    return null;
+  }
 
   return (
     <div
