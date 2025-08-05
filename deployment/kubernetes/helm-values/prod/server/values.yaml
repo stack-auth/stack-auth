@@ -32,11 +32,11 @@ strategy:
 configmap:
   create: true
   configmapRef:
-    name: stackauth-configmap
+    name: stackauth-server-configmap
 secret:
   create: true
   secretRef:
-    name: stackauth-secret
+    name: stackauth-server-secret
 
 resources:
   limits:
@@ -50,12 +50,12 @@ pvc:
 
 
 ingress:
-  name: add-ons-stackauth
+  name: stackauth-server
   className: "alb"
-  groupname: alb-gdplabs-shared-kubernetes
+  groupname: alb-gdplabs-shared-kubernetes-private
   healthcheckpath: "/"
   serviceannotations:
-    alb.ingress.kubernetes.io/tags: "Environment=production,Project=gen-ai,Organization=gdplabs,Owner=glx-sre@gdplabs.id,CreatedOn=30/07/2025"
+    alb.ingress.kubernetes.io/tags: "Environment=production,Project=gen-ai,Organization=gdplabs,Owner=glx-sre@gdplabs.id,CreatedOn=05/08/2025"
   extraAnnotations:
     # Whitelist internal platform / services for VPN access only.
     # In front of application load balancer, there are security group who allow non-VPN IPs through the load balancer.
@@ -64,11 +64,11 @@ ingress:
     alb.ingress.kubernetes.io/conditions.forward-service-if-whitelisted: >
       [{"Field":"source-ip","SourceIpConfig":{"Values":["34.101.184.41/32"]}}]
     alb.ingress.kubernetes.io/actions.forward-service-if-whitelisted: >
-      {"Type":"forward","ForwardConfig":{"TargetGroups":[{"ServiceName":"add-ons-stackauth-service","ServicePort":"8101"}]}}
+      {"Type":"forward","ForwardConfig":{"TargetGroups":[{"ServiceName":"stackauth-server-service","ServicePort":"8101"}]}}
 
     # No condition, forward all traffic to the service.
     alb.ingress.kubernetes.io/actions.forward-service-if-not-whitelisted: >
-      {"Type":"forward","ForwardConfig":{"TargetGroups":[{"ServiceName":"add-ons-stackauth-service","ServicePort":"8102"}]}}
+      {"Type":"forward","ForwardConfig":{"TargetGroups":[{"ServiceName":"stackauth-server-service","ServicePort":"8102"}]}}
   rules:
     - host: chat-auth.gdplabs.id
       http:

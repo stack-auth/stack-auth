@@ -2,7 +2,7 @@ configmapExtra:
   - apiVersion: v1
     kind: ConfigMap
     metadata:
-      name: stackauth-configmap
+      name: stackauth-server-configmap
       namespace: gen-ai-template-prod
     data:
       NEXT_PUBLIC_STACK_API_URL: "https://chat-auth-api.gdplabs.id"

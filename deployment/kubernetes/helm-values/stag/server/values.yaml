@@ -32,11 +32,11 @@ strategy:
 configmap:
   create: true
   configmapRef:
-    name: stackauth-configmap
+    name: stackauth-server-configmap
 secret:
   create: true
   secretRef:
-    name: stackauth-secret
+    name: stackauth-server-secret
 
 resources:
   limits:
@@ -50,12 +50,12 @@ pvc:
 
 
 ingress:
-  name: add-ons-stackauth
+  name: stackauth-server
   className: "alb"
-  groupname: alb-gdplabs-shared-kubernetes
+  groupname: alb-gdplabs-shared-kubernetes-private
   healthcheckpath: "/"
   serviceannotations:
-    alb.ingress.kubernetes.io/tags: "Environment=stag,Project=gen-ai,Organization=gdplabs,Owner=glx-sre@gdplabs.id,CreatedOn=17/06/2025"
+    alb.ingress.kubernetes.io/tags: "Environment=stag,Project=gen-ai,Organization=gdplabs,Owner=glx-sre@gdplabs.id,CreatedOn=05/08/2025"
   rules:
     - host: stag-stackauth-gdplabs-gen-ai-starter.obrol.id
       http:
@@ -71,7 +71,7 @@ ingress:
             pathType: Prefix
             backend:
               service:
-                name: add-ons-stackauth-service
+                name: stackauth-server-service
                 port:
                   number: 8101
     - host: stag-api-stackauth-gdplabs-gen-ai-starter.obrol.id
@@ -88,6 +88,6 @@ ingress:
             pathType: Prefix
             backend:
               service:
-                name: add-ons-stackauth-service
+                name: stackauth-server-service
                 port:
                   number: 8102
