@@ -46,12 +46,13 @@ export async function POST(req: NextRequest) {
   if (event.type === "account.updated") {
     if (!event.account) {
       captureError('stripe-webhook-account-id-missing', { event });
-      return NextResponse.json({ received: true }, { status: 200 });
+      return NextResponse.json({ received: true }, { status: 500 });
     }
     try {
       await syncStripeAccountStatus(event.account);
     } catch (e) {
       captureError('stripe-webhook-sync-account-status-failed', { event, error: e });
+      return NextResponse.json({ received: true }, { status: 500 });
     }
     return NextResponse.json({ received: true }, { status: 200 });
   }
@@ -63,18 +64,18 @@ export async function POST(req: NextRequest) {
   const customerId = event.data.object.customer;
   if (!accountId) {
     captureError('stripe-webhook-account-id-missing', { event });
-    return NextResponse.json({ received: true }, { status: 200 });
+    return NextResponse.json({ received: true }, { status: 400 });
   }
   if (typeof customerId !== 'string') {
     captureError('stripe-webhook-bad-customer-id', { event });
-    return NextResponse.json({ received: true }, { status: 200 });
+    return NextResponse.json({ received: true }, { status: 400 });
   }
 
   try {
     await syncStripeSubscriptions(accountId, customerId);
   } catch (e) {
     captureError('stripe-webhook-sync-failed', { accountId, customerId, event, error: e });
-    return NextResponse.json({ received: true }, { status: 200 });
+    return NextResponse.json({ received: true }, { status: 500 });
   }
   return NextResponse.json({ received: true }, { status: 200 });
 }
