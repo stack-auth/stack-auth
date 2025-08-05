@@ -72,8 +72,6 @@ options:
     - 'DOCKER_BUILDKIT=1'
     - 'COMPOSE_DOCKER_CLI_BUILD=1'
     - 'XDG_CACHE_HOME=.cache'
-  pool:
-    name: 'projects/${PROJECT_ID}/locations/${LOCATION}/workerPools/${_WORKER_POOL_NAME}'
 
 availableSecrets:
   secretManager:

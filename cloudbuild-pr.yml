@@ -87,8 +87,6 @@ substitutions:
 
 timeout: 30m
 options:
-  pool:
-    name: 'projects/${PROJECT_ID}/locations/${LOCATION}/workerPools/${_WORKER_POOL_NAME}'
   env:
     - "DOCKER_BUILDKIT=1"
     - "COMPOSE_DOCKER_CLI_BUILD=1"
