@@ -120,9 +120,21 @@ export function StackCompanion({ className, onExpandedChange }: StackCompanionPr
                       <Icon className="h-5 w-5" />
 
                       {/* Tooltip */}
-                      <div className="absolute left-full top-1/2 -translate-y-1/2 ml-3 px-3 py-2 bg-gray-900 text-white text-sm font-medium rounded-md shadow-lg opacity-0 group-hover:opacity-100 pointer-events-none whitespace-nowrap z-[9999]">
+                      <div className={cn(
+                        "absolute right-full top-1/2 -translate-y-1/2 mr-3 px-3 py-2 text-white text-sm font-medium rounded-md shadow-lg opacity-0 group-hover:opacity-100 pointer-events-none whitespace-nowrap z-[9999] group-active:opacity-0 group-focus:opacity-0 transition-opacity duration-150 group-hover:delay-700 delay-0",
+                        item.id === 'docs' ? 'bg-blue-600' :
+                          item.id === 'feedback' ? 'bg-purple-600' :
+                            item.id === 'changelog' ? 'bg-green-600' :
+                              item.id === 'support' ? 'bg-orange-600' : 'bg-gray-900'
+                      )}>
                         {item.label}
-                        <div className="absolute right-full top-1/2 -translate-y-1/2 border-4 border-transparent border-r-gray-900"></div>
+                        <div className={cn(
+                          "absolute left-full top-1/2 -translate-y-1/2 border-4 border-transparent",
+                          item.id === 'docs' ? 'border-l-blue-600' :
+                            item.id === 'feedback' ? 'border-l-purple-600' :
+                              item.id === 'changelog' ? 'border-l-green-600' :
+                                item.id === 'support' ? 'border-l-orange-600' : 'border-l-gray-900'
+                        )}></div>
                       </div>
                     </button>
                   </div>
