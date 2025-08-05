@@ -115,6 +115,7 @@ const branchAuthSchema = yupObject({
 
 export const branchPaymentsSchema = yupObject({
   stripeAccountId: yupString().optional(),
+  stripeAccountSetupComplete: yupBoolean().optional(),
   autoPay: yupObject({
     interval: schemaFields.dayIntervalSchema,
   }).optional(),
@@ -444,6 +445,7 @@ const organizationConfigDefaults = {
 
   payments: {
     stripeAccountId: undefined,
+    stripeAccountSetupComplete: false,
     autoPay: undefined,
     exclusivityGroups: (key: string) => (key: string) => undefined,
     offers: (key: string) => ({

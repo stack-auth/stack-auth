@@ -5,7 +5,6 @@ import { adaptSchema, clientOrHigherAuthTypeSchema, inlineOfferSchema, yupNumber
 import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
 import { throwErr } from "@stackframe/stack-shared/dist/utils/errors";
 import { purchaseUrlVerificationCodeHandler } from "../verification-code-handler";
-import { getPrismaClientForTenancy } from "@/prisma-client";
 import { CustomerType } from "@prisma/client";
 
 export const POST = createSmartRouteHandler({
@@ -19,7 +18,7 @@ export const POST = createSmartRouteHandler({
       tenancy: adaptSchema.defined(),
     }).defined(),
     body: yupObject({
-      customer_id: yupString().defined(),
+      customer_id: yupString().uuid().defined(),
       offer_id: yupString().optional(),
       offer_inline: inlineOfferSchema.optional(),
     }),
@@ -37,30 +36,17 @@ export const POST = createSmartRouteHandler({
     const offerConfig = await ensureOfferIdOrInlineOffer(tenancy, req.auth.type, req.body.offer_id, req.body.offer_inline);
     await ensureOfferCustomerTypeMatches(req.body.offer_id, offerConfig.customerType, req.body.customer_id, tenancy);
     const customerType = offerConfig.customerType ?? throwErr(500, "Customer type not found");
-    const prisma = await getPrismaClientForTenancy(tenancy);
 
-    let dbCustomer = await prisma.customer.findUnique({
-      where: {
-        tenancyId_id: {
-          tenancyId: tenancy.id,
-          id: req.body.customer_id,
-        },
-      },
+    const stripeCustomerSearch = await stripe.customers.search({
+      query: `metadata['customerId']:'${req.body.customer_id}'`,
     });
-    if (!dbCustomer) {
-      const stripeCustomer = await stripe.customers.create({
+    let stripeCustomer = stripeCustomerSearch.data.length ? stripeCustomerSearch.data[0] : undefined;
+    if (!stripeCustomer) {
+      stripeCustomer = await stripe.customers.create({
         metadata: {
           customerId: req.body.customer_id,
-          customerType,
-        }
-      });
-      dbCustomer = await prisma.customer.create({
-        data: {
-          tenancyId: tenancy.id,
-          id: req.body.customer_id,
-          stripeCustomerId: stripeCustomer.id,
           customerType: customerType === "user" ? CustomerType.USER : CustomerType.TEAM,
-        },
+        }
       });
     }
 
@@ -71,7 +57,7 @@ export const POST = createSmartRouteHandler({
         tenancyId: tenancy.id,
         customerId: req.body.customer_id,
         offer: offerConfig,
-        stripeCustomerId: dbCustomer.stripeCustomerId,
+        stripeCustomerId: stripeCustomer.id,
         stripeAccountId: tenancy.config.payments.stripeAccountId ?? throwErr(500, "Stripe account not configured"),
       },
       method: {},

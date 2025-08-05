@@ -1,4 +1,4 @@
-import { stackStripe, syncStripeDataToDB } from "@/lib/stripe";
+import { stackStripe, syncStripeAccountStatus, syncStripeSubscriptions } from "@/lib/stripe";
 import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
 import { captureError } from "@stackframe/stack-shared/dist/utils/errors";
 import { NextRequest, NextResponse } from "next/server";
@@ -41,10 +41,23 @@ export async function POST(req: NextRequest) {
   } catch (err) {
     return NextResponse.json({ error: 'Invalid signature' }, { status: 400 });
   }
-  if (!isAllowedEvent(event)) {
+
+  if (event.type === "account.updated") {
+    if (!event.account) {
+      captureError('stripe-webhook-account-id-missing', { event });
+      return NextResponse.json({ received: true }, { status: 200 });
+    }
+    try {
+      await syncStripeAccountStatus(event.account);
+    } catch (e) {
+      captureError('stripe-webhook-sync-account-status-failed', { event, error: e });
+    }
     return NextResponse.json({ received: true }, { status: 200 });
   }
 
+  if (!isAllowedEvent(event)) {
+    return NextResponse.json({ received: true }, { status: 200 });
+  }
   const accountId = event.account;
   const customerId = event.data.object.customer;
   if (!accountId) {
@@ -57,7 +70,7 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    await syncStripeDataToDB(accountId, customerId);
+    await syncStripeSubscriptions(accountId, customerId);
   } catch (e) {
     captureError('stripe-webhook-sync-failed', { accountId, customerId, event, error: e });
     return NextResponse.json({ received: true }, { status: 200 });

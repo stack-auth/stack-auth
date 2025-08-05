@@ -155,9 +155,6 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
         teamCreatorDefaultPermissions: data.config.team_creator_default_permissions,
         teamMemberDefaultPermissions: data.config.team_member_default_permissions,
         userDefaultPermissions: data.config.user_default_permissions,
-        payments: {
-          stripeAccountId: data.config.payments.stripeAccountId,
-        },
       },
       async getConfig() {
         return app._adminConfigFromCrud(await app._interface.getConfig());

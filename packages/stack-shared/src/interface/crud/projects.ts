@@ -90,7 +90,6 @@ export const projectsCrudAdminReadSchema = yupObject({
     team_member_default_permissions: yupArray(teamPermissionSchema.defined()).defined(),
     user_default_permissions: yupArray(teamPermissionSchema.defined()).defined(),
     oauth_account_merge_strategy: schemaFields.oauthAccountMergeStrategySchema.defined(),
-    payments: branchPaymentsSchema.defined(),
   }).defined().meta({ openapiField: { hidden: true } }),
 }).defined();
 

@@ -1,10 +1,20 @@
 import { getTenancy, Tenancy } from "@/lib/tenancies";
 import { getPrismaClientForTenancy } from "@/prisma-client";
-import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
+import { getEnvVariable, getNodeEnvironment } from "@stackframe/stack-shared/dist/utils/env";
 import { throwErr } from "@stackframe/stack-shared/dist/utils/errors";
+import { overrideEnvironmentConfigOverride } from "./config";
+import { CustomerType } from "@prisma/client";
 import Stripe from "stripe";
 
-export const stackStripe = new Stripe(getEnvVariable("STACK_STRIPE_SECRET_KEY"));
+const stripeSecretKey = getEnvVariable("STACK_STRIPE_SECRET_KEY");
+const useStripeMock = stripeSecretKey === "sk_test_mockstripekey" && ["development", "test"].includes(getNodeEnvironment());
+const stripeConfig: Stripe.StripeConfig = useStripeMock ? {
+  protocol: "http",
+  host: "localhost",
+  port: 8120,
+} : {};
+
+export const stackStripe = new Stripe(stripeSecretKey, stripeConfig);
 
 export const getStripeForAccount = (options: { tenancy?: Tenancy, accountId?: string }) => {
   if (!options.tenancy && !options.accountId) {
@@ -14,34 +24,32 @@ export const getStripeForAccount = (options: { tenancy?: Tenancy, accountId?: st
   if (!accountId) {
     throwErr(400, "Stripe account not configured");
   }
-  return new Stripe(getEnvVariable("STACK_STRIPE_SECRET_KEY"), {
-    stripeAccount: accountId,
-  });
+  return new Stripe(stripeSecretKey, { stripeAccount: accountId, ...stripeConfig });
 };
 
-export async function syncStripeDataToDB(stripeAccountId: string, stripeCustomerId: string) {
+export async function syncStripeSubscriptions(stripeAccountId: string, stripeCustomerId: string) {
   const stripe = getStripeForAccount({ accountId: stripeAccountId });
   const account = await stripe.accounts.retrieve(stripeAccountId);
   if (!account.metadata?.tenancyId) {
     throwErr(500, "Stripe account metadata missing tenancyId");
+  }
+  const stripeCustomer = await stripe.customers.retrieve(stripeCustomerId);
+  if (stripeCustomer.deleted) {
+    return;
+  }
+  const customerId = stripeCustomer.metadata.customerId;
+  const customerType = stripeCustomer.metadata.customerType;
+  if (!customerId || !customerType) {
+    throwErr(500, "Stripe customer metadata missing customerId or customerType");
+  }
+  if (customerType !== CustomerType.USER && customerType !== CustomerType.TEAM) {
+    throwErr(500, "Stripe customer metadata has invalid customerType");
   }
   const tenancy = await getTenancy(account.metadata.tenancyId);
   if (!tenancy) {
     throwErr(500, "Tenancy not found");
   }
   const prisma = await getPrismaClientForTenancy(tenancy);
-  const customer = await prisma.customer.findUnique({
-    where: {
-      tenancyId_stripeCustomerId: {
-        tenancyId: tenancy.id,
-        stripeCustomerId,
-      },
-    },
-  });
-  if (!customer) {
-    throwErr(500, "Customer not found in DB");
-  }
-
   const subscriptions = await stripe.subscriptions.list({
     customer: stripeCustomerId,
     status: "all",
@@ -58,13 +66,16 @@ export async function syncStripeDataToDB(stripeAccountId: string, stripeCustomer
       },
       update: {
         status: subscription.status,
+        offer: JSON.parse(subscription.metadata.offer),
         currentPeriodEnd: new Date(subscription.items.data[0].current_period_end * 1000),
         currentPeriodStart: new Date(subscription.items.data[0].current_period_start * 1000),
         cancelAtPeriodEnd: subscription.cancel_at_period_end,
       },
       create: {
         tenancyId: tenancy.id,
-        customerId: customer.id,
+        customerId,
+        customerType,
+        offer: JSON.parse(subscription.metadata.offer),
         stripeSubscriptionId: subscription.id,
         status: subscription.status,
         currentPeriodEnd: new Date(subscription.items.data[0].current_period_end * 1000),
@@ -73,4 +84,20 @@ export async function syncStripeDataToDB(stripeAccountId: string, stripeCustomer
       },
     });
   }
+}
+
+export async function syncStripeAccountStatus(stripeAccountId: string) {
+  const account = await stackStripe.accounts.retrieve(stripeAccountId);
+  if (!account.metadata?.tenancyId) {
+    throwErr(500, "Stripe account metadata missing tenancyId");
+  }
+  const tenancy = await getTenancy(account.metadata.tenancyId) ?? throwErr(500, "Tenancy not found");
+  const setupComplete = !account.requirements?.past_due?.length;
+  await overrideEnvironmentConfigOverride({
+    projectId: tenancy.project.id,
+    branchId: tenancy.branchId,
+    environmentConfigOverrideOverride: {
+      [`payments.stripeAccountSetupComplete`]: setupComplete,
+    },
+  });
 }

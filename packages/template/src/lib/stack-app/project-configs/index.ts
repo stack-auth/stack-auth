@@ -38,7 +38,6 @@ export type AdminProjectConfig = {
   readonly oauthAccountMergeStrategy: 'link_method' | 'raise_error' | 'allow_duplicates',
   readonly allowUserApiKeys: boolean,
   readonly allowTeamApiKeys: boolean,
-  readonly payments: AdminPaymentsConfig,
 };
 
 export type AdminEmailConfig = (
@@ -96,8 +95,4 @@ export type AdminProjectConfigUpdateOptions = {
   oauthAccountMergeStrategy?: 'link_method' | 'raise_error' | 'allow_duplicates',
   allowUserApiKeys?: boolean,
   allowTeamApiKeys?: boolean,
-};
-
-type AdminPaymentsConfig = {
-  stripeAccountId: string | undefined,
 };

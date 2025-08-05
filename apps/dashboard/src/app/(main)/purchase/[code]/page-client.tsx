@@ -5,13 +5,14 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { getPublicEnvVar } from "@/lib/env";
 import { StripeElementsProvider } from "@/components/payments/stripe-elements-provider";
 import { CheckoutForm } from "@/components/payments/checkout";
+import { throwErr } from "@stackframe/stack-shared/dist/utils/errors";
 
 type OfferData = {
   offer?: any,
   stripe_account_id: string,
 };
 
-const apiUrl = getPublicEnvVar("NEXT_PUBLIC_STACK_API_URL") ?? "https://api.stack-auth.com";
+const apiUrl = getPublicEnvVar("NEXT_PUBLIC_STACK_API_URL") ?? throwErr("NEXT_PUBLIC_STACK_API_URL is not set");
 const baseUrl = new URL("/api/v1", apiUrl).toString();
 
 export default function PageClient({ code }: { code: string }) {
@@ -65,6 +66,7 @@ export default function PageClient({ code }: { code: string }) {
   const setupSubscription = async () => {
     const response = await fetch(`${baseUrl}/payments/purchases/purchase-session`, {
       method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ code, price_id: selectedPriceId }),
     });
     const result = await response.json();

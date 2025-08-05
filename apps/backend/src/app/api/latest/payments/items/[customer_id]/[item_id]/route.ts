@@ -1,8 +1,10 @@
 import { ensureItemCustomerTypeMatches } from "@/lib/payments";
+import { getPrismaClientForTenancy } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
+import { SubscriptionStatus } from "@prisma/client";
 import { KnownErrors } from "@stackframe/stack-shared";
-import { adaptSchema, clientOrHigherAuthTypeSchema, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
-import { throwErr } from "@stackframe/stack-shared/dist/utils/errors";
+import { adaptSchema, clientOrHigherAuthTypeSchema, yupNumber, yupObject, yupString, offerSchema } from "@stackframe/stack-shared/dist/schema-fields";
+import * as yup from "yup";
 import { getOrUndefined } from "@stackframe/stack-shared/dist/utils/objects";
 
 export const GET = createSmartRouteHandler({
@@ -25,12 +27,12 @@ export const GET = createSmartRouteHandler({
     bodyType: yupString().oneOf(["json"]).defined(),
     body: yupObject({
       id: yupString().defined(),
-      displayName: yupString().defined(),
+      display_name: yupString().defined(),
       quantity: yupNumber().defined(),
     }).defined(),
   }),
   handler: async (req) => {
-    const { project, tenancy } = req.auth;
+    const { tenancy } = req.auth;
     const paymentsConfig = tenancy.config.payments;
 
     const itemConfig = getOrUndefined(paymentsConfig.items, req.params.item_id);
@@ -39,10 +41,22 @@ export const GET = createSmartRouteHandler({
     }
 
     await ensureItemCustomerTypeMatches(req.params.item_id, itemConfig.customerType, req.params.customer_id, tenancy);
+    const prisma = await getPrismaClientForTenancy(tenancy);
+    const subscriptions = await prisma.subscription.findMany({
+      where: {
+        tenancyId: tenancy.id,
+        customerId: req.params.customer_id,
+        status: {
+          in: [SubscriptionStatus.active, SubscriptionStatus.trialing],
+        }
+      },
+    });
 
-
-    // TODO: calculate the total quantity of the item for the customer
-    const totalQuantity = throwErr("TODO unimplemented");
+    const totalQuantity = subscriptions.reduce((acc, subscription) => {
+      const offer = subscription.offer as yup.InferType<typeof offerSchema>;
+      const item = getOrUndefined(offer.includedItems, req.params.item_id);
+      return acc + (item?.quantity ?? 0);
+    }, 0);
 
 
     return {
@@ -50,7 +64,7 @@ export const GET = createSmartRouteHandler({
       bodyType: "json",
       body: {
         id: req.params.item_id,
-        displayName: itemConfig.displayName,
+        display_name: itemConfig.displayName,
         quantity: totalQuantity,
       },
     };

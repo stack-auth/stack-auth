@@ -41,7 +41,6 @@ export const POST = createSmartRouteHandler({
         }
       });
       stripeAccountId = account.id;
-      // TODO: listen for webhook to ensure account setup is complete and set payments.setupComplete to true
       await overrideEnvironmentConfigOverride({
         projectId: auth.project.id,
         branchId: auth.tenancy.branchId,

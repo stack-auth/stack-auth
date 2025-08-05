@@ -2,14 +2,38 @@
 
 import { SmartFormDialog } from "@/components/form-dialog";
 import { SelectField } from "@/components/form-fields";
-import { ActionDialog, Button, FormControl, FormField, FormItem, FormLabel, FormMessage, InlineCode, toast, Input, Select, SelectContent, SelectItem, SelectTrigger, SelectValue, Label, Card, CardContent, CardHeader, CardTitle, Checkbox } from "@stackframe/stack-ui";
+import {
+  ActionDialog,
+  Button,
+  FormControl,
+  FormField,
+  FormItem,
+  FormLabel,
+  FormMessage,
+  InlineCode,
+  toast,
+  Input,
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+  Label,
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle
+} from "@stackframe/stack-ui";
 import { PaymentOfferTable } from "@/components/data-table/payment-offer-table";
 import { PaymentItemTable } from "@/components/data-table/payment-item-table";
 import { useState } from "react";
 import * as yup from "yup";
 import { PageLayout } from "../page-layout";
 import { useAdminApp } from "../use-admin-app";
-import { offerPriceSchema, yupRecord } from "@stackframe/stack-shared/dist/schema-fields";
+import {
+  offerPriceSchema,
+  yupRecord
+} from "@stackframe/stack-shared/dist/schema-fields";
 import { Control, FieldValues, Path } from "react-hook-form";
 import { Trash2, Plus } from "lucide-react";
 import { AdminProject } from "@stackframe/stack";
@@ -49,8 +73,11 @@ export default function PageClient() {
       title="Payments"
       description="Manage your payment offers and items"
       actions={<div className="flex gap-2">
-        <CreatePurchaseDialog />
-        <Button onClick={setupPayments}>Setup</Button>
+        {paymentsConfig.stripeAccountSetupComplete ? (
+          <CreatePurchaseDialog />
+        ) : (
+          <Button onClick={setupPayments}>Complete Setup</Button>
+        )}
       </div>}
     >
       <PaymentOfferTable
@@ -206,7 +233,7 @@ function CreatePurchaseDialog() {
   return (
     <>
       <SmartFormDialog
-        trigger={<Button>Create New Purchase</Button>}
+        trigger={<Button>Create Purchase URL</Button>}
         title="Create New Purchase"
         formSchema={yup.object({
           customerId: yup.string().uuid().defined().label("Customer ID"),

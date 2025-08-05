@@ -714,23 +714,26 @@ enum CustomerType {
   TEAM
 }
 
-model Customer {
-  id               String       @default(uuid()) @db.Uuid
-  tenancyId        String       @db.Uuid
-  customerType     CustomerType
-  stripeCustomerId String
-
-  @@id([tenancyId, id])
-  @@unique([tenancyId, stripeCustomerId])
+enum SubscriptionStatus {
+  active
+  trialing
+  canceled
+  paused
+  incomplete
+  incomplete_expired
+  past_due
+  unpaid
 }
 
 model Subscription {
   id         String @default(uuid()) @db.Uuid
   tenancyId  String @db.Uuid
   customerId String @db.Uuid
+  customerType CustomerType
+  offer      Json
 
   stripeSubscriptionId String
-  status               String
+  status               SubscriptionStatus
   currentPeriodEnd     DateTime
   currentPeriodStart   DateTime
   cancelAtPeriodEnd    Boolean

@@ -522,16 +522,16 @@ export const offerSchema = yupObject({
   ),
 });
 export const inlineOfferSchema = yupObject({
-  displayName: yupString().defined(),
-  customerType: customerTypeSchema.defined(),
-  freeTrial: dayIntervalSchema.optional(),
-  serverOnly: yupBoolean().oneOf([true]).default(true),
+  display_name: yupString().defined(),
+  customer_type: customerTypeSchema.defined(),
+  free_trial: dayIntervalSchema.optional(),
+  server_only: yupBoolean().oneOf([true]).default(true),
   prices: yupRecord(
     userSpecifiedIdSchema("priceId"),
     yupObject({
       ...typedFromEntries(SUPPORTED_CURRENCIES.map(currency => [currency.code, moneyAmountSchema(currency).optional()])),
       interval: dayIntervalSchema.optional(),
-      freeTrial: dayIntervalSchema.optional(),
+      free_trial: dayIntervalSchema.optional(),
     }).test("at-least-one-currency", (value, context) => {
       const currencies = Object.keys(value).filter(key => key.toUpperCase() === key);
       if (currencies.length === 0) {
@@ -540,7 +540,7 @@ export const inlineOfferSchema = yupObject({
       return true;
     }),
   ),
-  includedItems: yupRecord(
+  included_items: yupRecord(
     userSpecifiedIdSchema("itemId"),
     yupObject({
       quantity: yupNumber(),

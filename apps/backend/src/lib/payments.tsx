@@ -11,8 +11,8 @@ export async function ensureOfferIdOrInlineOffer(
   tenancy: Tenancy,
   accessType: "client" | "server" | "admin",
   offerId: string | undefined,
-  inlineOffer: object | undefined
-): Promise<Tenancy["config"]["payments"]["offers"][string] | yup.InferType<typeof inlineOfferSchema>> {
+  inlineOffer: yup.InferType<typeof inlineOfferSchema> | undefined
+): Promise<Tenancy["config"]["payments"]["offers"][string]> {
   if (offerId && inlineOffer) {
     throw new StatusError(400, "Cannot specify both offer_id and offer_inline!");
   }
@@ -29,8 +29,23 @@ export async function ensureOfferIdOrInlineOffer(
     }
     return offer;
   } else {
-    // if we fail the validation here, we should throw an internal server error; inline offers should've been validated in the request schema already
-    return await yupValidate(inlineOfferSchema, inlineOffer);
+    if (!inlineOffer) {
+      throw new StatusError(500, "Inline offer does not exist, this should never happen");
+    }
+    return {
+      displayName: inlineOffer.display_name,
+      customerType: inlineOffer.customer_type,
+      freeTrial: inlineOffer.free_trial,
+      serverOnly: inlineOffer.server_only,
+      stackable: false,
+      prices: Object.fromEntries(Object.entries(inlineOffer.prices).map(([key, value]) => [key, {
+        ...value,
+        freeTrial: value.free_trial,
+        serverOnly: true,
+        free_trial: undefined,
+      }])) as Tenancy["config"]["payments"]["offers"][string]["prices"],
+      includedItems: inlineOffer.included_items as Tenancy["config"]["payments"]["offers"][string]["includedItems"],
+    };
   }
 }
 
