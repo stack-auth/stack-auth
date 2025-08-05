@@ -103,8 +103,6 @@ export default function PageClient({ code }: { code: string }) {
                     <div className="flex justify-between items-center">
                       <div>
                         <Typography type="h4">{priceId}</Typography>
-                        <Typography type="label" variant="secondary">
-                        </Typography>
                       </div>
                       <div className="text-right">
                         <Typography type="h3">
