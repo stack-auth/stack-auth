@@ -6,8 +6,6 @@ image:
   pullSecret: gcr-secret
   repositoryUrl: asia-southeast2-docker.pkg.dev/${PROJECT_ID}/projects/stack-auth/server
   tag: "${BUILD_NUMBER}"
-  # repositoryUrl: stackauth/server
-  # tag: 2bcbe01
   ports:
     - name: dashboard
       port: 8101
