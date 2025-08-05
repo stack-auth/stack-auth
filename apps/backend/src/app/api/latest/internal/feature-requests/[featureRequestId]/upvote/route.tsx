@@ -1,3 +1,4 @@
+import { getOrCreateFeaturebaseUser } from "@/lib/featurebase-utils";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { adaptSchema, yupBoolean, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
 import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
@@ -35,6 +36,14 @@ export const POST = createSmartRouteHandler({
     }).defined(),
   }),
   handler: async ({ auth, params }) => {
+    // Get or create Featurebase user for consistent email handling
+    const featurebaseUser = await getOrCreateFeaturebaseUser({
+      id: auth.user.id,
+      primary_email: auth.user.primary_email,
+      display_name: auth.user.display_name,
+      profile_image_url: auth.user.profile_image_url,
+    });
+
     const response = await fetch('https://do.featurebase.app/v2/posts/upvoters', {
       method: 'POST',
       headers: {
@@ -43,8 +52,9 @@ export const POST = createSmartRouteHandler({
       },
       body: JSON.stringify({
         id: params.featureRequestId,
-        email: auth.user.primary_email,
-        name: auth.user.display_name || auth.user.primary_email?.split('@')[0] || 'User'
+        userId: featurebaseUser.userId, // Use userId for consistency with SSO
+        email: featurebaseUser.email,
+        name: auth.user.display_name || featurebaseUser.email.split('@')[0] || 'User'
       }),
     });
 

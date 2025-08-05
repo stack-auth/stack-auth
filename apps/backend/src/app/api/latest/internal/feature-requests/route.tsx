@@ -1,3 +1,4 @@
+import { getOrCreateFeaturebaseUser } from "@/lib/featurebase-utils";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { adaptSchema, yupArray, yupBoolean, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
 import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
@@ -42,6 +43,14 @@ export const GET = createSmartRouteHandler({
     }).defined(),
   }),
   handler: async ({ auth }) => {
+    // Get or create Featurebase user for consistent email handling
+    const featurebaseUser = await getOrCreateFeaturebaseUser({
+      id: auth.user.id,
+      primary_email: auth.user.primary_email,
+      display_name: auth.user.display_name,
+      profile_image_url: auth.user.profile_image_url,
+    });
+
     // Fetch all posts with sorting
     const response = await fetch('https://do.featurebase.app/v2/posts?limit=50&sortBy=date:desc', {
       method: 'GET',
@@ -58,7 +67,7 @@ export const GET = createSmartRouteHandler({
 
     const posts = data.results || [];
 
-    // Check upvote status for each post for the current user
+    // Check upvote status for each post for the current user using Featurebase email
     const postsWithUpvoteStatus = await Promise.all(
       posts.map(async (post: any) => {
         let userHasUpvoted = false;
@@ -74,7 +83,7 @@ export const GET = createSmartRouteHandler({
           const upvoteData = await upvoteResponse.json();
           const upvoters = upvoteData.results || [];
           userHasUpvoted = upvoters.some((upvoter: any) =>
-            upvoter.email === auth.user.primary_email
+            upvoter.email === featurebaseUser.email || upvoter.userId === featurebaseUser.userId
           );
 
         }
@@ -133,14 +142,23 @@ export const POST = createSmartRouteHandler({
     }).defined(),
   }),
   handler: async ({ auth, body }) => {
+    // Get or create Featurebase user for consistent email handling
+    const featurebaseUser = await getOrCreateFeaturebaseUser({
+      id: auth.user.id,
+      primary_email: auth.user.primary_email,
+      display_name: auth.user.display_name,
+      profile_image_url: auth.user.profile_image_url,
+    });
+
     const featurebaseRequestBody = {
       title: body.title,
       content: body.content || '',
       category: body.category || 'feature-requests',
       tags: body.tags || ['feature_request', 'dashboard'],
       commentsAllowed: body.commentsAllowed ?? true,
-      email: auth.user.primary_email,
-      authorName: auth.user.display_name || auth.user.primary_email?.split('@')[0] || 'User',
+      userId: featurebaseUser.userId, // Include userId for consistency
+      email: featurebaseUser.email,
+      authorName: auth.user.display_name || featurebaseUser.email.split('@')[0] || 'User',
       customInputValues: {
         // Using the actual field IDs from Featurebase
         "6872f858cc9682d29cf2e4c0": 'dashboard_companion', // source field
