@@ -1,7 +1,7 @@
 replicaCount: 1
 
 image:
-  namespace: gen-ai-template-dev2
+  namespace: gen-ai-template-stag
   pullPolicy: IfNotPresent
   pullSecret: gcr-secret
   repositoryUrl: asia-southeast2-docker.pkg.dev/${PROJECT_ID}/projects/stack-auth/server
@@ -57,9 +57,9 @@ ingress:
   groupname: alb-gdplabs-shared-kubernetes
   healthcheckpath: "/"
   serviceannotations:
-    alb.ingress.kubernetes.io/tags: "Environment=dev2,Project=gen-ai,Organization=gdplabs,Owner=glx-sre@gdplabs.id,CreatedOn=17/06/2025"
+    alb.ingress.kubernetes.io/tags: "Environment=stag,Project=gen-ai,Organization=gdplabs,Owner=glx-sre@gdplabs.id,CreatedOn=17/06/2025"
   rules:
-    - host: dev2-stackauth-gdplabs-gen-ai-starter.obrol.id
+    - host: stag-stackauth-gdplabs-gen-ai-starter.obrol.id
       http:
         paths:
           - path: /
@@ -76,7 +76,7 @@ ingress:
                 name: add-ons-stackauth-service
                 port:
                   number: 8101
-    - host: dev2-api-stackauth-gdplabs-gen-ai-starter.obrol.id
+    - host: stag-api-stackauth-gdplabs-gen-ai-starter.obrol.id
       http:
         paths:
           - path: /
