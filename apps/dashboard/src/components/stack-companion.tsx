@@ -28,25 +28,25 @@ const sidebarItems: SidebarItem[] = [
     id: 'docs',
     label: 'Docs',
     icon: BookOpen,
-    color: 'text-muted-foreground hover:text-foreground',
+    color: 'text-blue-600 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300',
   },
   {
     id: 'feedback',
     label: 'Feature Requests',
     icon: Lightbulb,
-    color: 'text-muted-foreground hover:text-foreground',
+    color: 'text-purple-600 hover:text-purple-700 dark:text-purple-400 dark:hover:text-purple-300',
   },
   {
     id: 'changelog',
     label: 'Changelog',
     icon: TimerReset,
-    color: 'text-muted-foreground hover:text-foreground',
+    color: 'text-green-600 hover:text-green-700 dark:text-green-400 dark:hover:text-green-300',
   },
   {
     id: 'support',
     label: "Support",
     icon: HelpCircle,
-    color: 'text-muted-foreground hover:text-foreground',
+    color: 'text-orange-600 hover:text-orange-700 dark:text-orange-400 dark:hover:text-orange-300',
   }
 ];
 
@@ -113,8 +113,8 @@ export function StackCompanion({ className, onExpandedChange }: StackCompanionPr
                     <button
                       onClick={() => setActiveItem(item.id)}
                       className={cn(
-                        "flex items-center justify-center w-10 h-10 rounded-lg group transition-none",
-                        "text-muted-foreground hover:text-foreground hover:bg-muted"
+                        "flex items-center justify-center w-10 h-10 rounded-lg group transition-none hover:bg-muted",
+                        item.color
                       )}
                     >
                       <Icon className="h-5 w-5" />
@@ -167,7 +167,8 @@ export function StackCompanion({ className, onExpandedChange }: StackCompanionPr
                       onClick={() => setActiveItem(item.id)}
                       className={cn(
                         "flex items-center justify-center w-10 h-10 rounded-lg transition-none",
-                        isActive ? "bg-primary text-primary-foreground shadow-md" : "text-muted-foreground hover:text-foreground hover:bg-muted"
+                        isActive ? "bg-gray-200 dark:bg-muted shadow-md" : "hover:bg-muted",
+                        item.color
                       )}
                     >
                       <Icon className="h-5 w-5" />
@@ -200,7 +201,7 @@ export function StackCompanion({ className, onExpandedChange }: StackCompanionPr
                     const Icon = item?.icon || BookOpen;
                     return (
                       <>
-                        <Icon className="h-4 w-4 text-muted-foreground" />
+                        <Icon className={cn("h-4 w-4", item?.color || "text-muted-foreground")} />
                         <h3 className="text-sm font-semibold">{item?.label}</h3>
                       </>
                     );
