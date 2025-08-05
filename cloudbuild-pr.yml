@@ -30,7 +30,7 @@ steps:
     name: "hadolint/hadolint:latest-alpine"
     dir: "./docker/server/"
     entrypoint: hadolint
-    args: ["--failure-threshold", "style", "Dockerfile"]
+    args: ["--failure-threshold", "error", "Dockerfile"]
     waitFor: ["-"]
 
   - id: Shell Lint
