@@ -1,8 +1,8 @@
 'use client';
 
 import { cn } from '@/lib/utils';
+import { checkVersion, VersionCheckResult } from '@/lib/version-check';
 import { useUser } from '@stackframe/stack';
-import { runAsynchronously, wait } from "@stackframe/stack-shared/dist/utils/promises";
 import { Button } from '@stackframe/stack-ui';
 import { BookOpen, HelpCircle, Lightbulb, TimerReset, X } from 'lucide-react';
 import { useEffect, useState } from 'react';
@@ -53,7 +53,7 @@ const sidebarItems: SidebarItem[] = [
 export function StackCompanion({ className, onExpandedChange }: StackCompanionProps) {
   const [activeItem, setActiveItem] = useState<string | null>(null);
   const [mounted, setMounted] = useState(false);
-  const [versionCheckResult, setVersionCheckResult] = useState<{ severe: boolean, error: string } | null>(null);
+  const [versionCheckResult, setVersionCheckResult] = useState<VersionCheckResult>(null);
 
   // Get current user from Stack Auth
   const user = useUser({ or: 'redirect', projectIdMustMatch: "internal" });
@@ -63,38 +63,15 @@ export function StackCompanion({ className, onExpandedChange }: StackCompanionPr
     setMounted(true);
   }, []);
 
-  // Version checking logic (similar to version-alerter.tsx)
+  // Version checking logic
   useEffect(() => {
-    if (window.location.origin === "https://app.stack-auth.com") {
-      // Save ourselves one request for the managed hosting
-      return;
-    }
-    let cancelled = false;
-    runAsynchronously(async () => {
-      try {
-        await wait(2000); // Give other API requests priority
-        if (cancelled) return;
-        const res = await fetch(`https://api.stack-auth.com/api/v1/check-version`, {
-          method: "POST",
-          body: JSON.stringify({ clientVersion: packageJson.version }),
-          headers: {
-            "Content-Type": "application/json",
-          },
-        });
-        if (res.status !== 200) {
-          return; // Silently fail for the companion
-        }
-        const data = await res.json();
-        // Only set the result if we haven't been cancelled
-        setVersionCheckResult(data.upToDate ? null : data);
-      } catch (e) {
-        // Silently fail for the companion - we don't want to show errors here
-        console.warn("Version check failed in companion:", e);
-      }
+    const cleanup = checkVersion(setVersionCheckResult, {
+      delay: 2000, // Give other API requests priority
+      silentFailure: true, // Silently fail for the companion
+      errorPrefix: "Version check failed in companion"
     });
-    return () => {
-      cancelled = true;
-    };
+
+    return cleanup;
   }, []);
 
   // Notify parent when expanded state changes
