@@ -4,9 +4,10 @@ import { cn } from '@/lib/utils';
 import { useUser } from '@stackframe/stack';
 import { runAsynchronously, wait } from "@stackframe/stack-shared/dist/utils/promises";
 import { Button } from '@stackframe/stack-ui';
-import { BookOpen, HelpCircle, Lightbulb, X, Zap } from 'lucide-react';
+import { BookOpen, HelpCircle, Lightbulb, TimerReset, X } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import packageJson from '../../package.json';
+import { FeedbackForm } from './feedback-form';
 import { ChangelogWidget } from './stack-companion/changelog-widget';
 import { FeatureRequestBoard } from './stack-companion/feature-request-board';
 
@@ -32,15 +33,21 @@ const sidebarItems: SidebarItem[] = [
   {
     id: 'feedback',
     label: 'Feature Requests',
-    icon: Zap,
+    icon: Lightbulb,
     color: 'text-muted-foreground hover:text-foreground',
   },
   {
     id: 'changelog',
     label: 'Changelog',
-    icon: HelpCircle,
+    icon: TimerReset,
     color: 'text-muted-foreground hover:text-foreground',
   },
+  {
+    id: 'support',
+    label: "Support",
+    icon: HelpCircle,
+    color: 'text-muted-foreground hover:text-foreground',
+  }
 ];
 
 export function StackCompanion({ className, onExpandedChange }: StackCompanionProps) {
@@ -259,6 +266,10 @@ export function StackCompanion({ className, onExpandedChange }: StackCompanionPr
 
                 {activeItem === 'changelog' && (
                   <ChangelogWidget isActive={true} />
+                )}
+
+                {activeItem === 'support' && (
+                  <FeedbackForm />
                 )}
               </div>
             </div>

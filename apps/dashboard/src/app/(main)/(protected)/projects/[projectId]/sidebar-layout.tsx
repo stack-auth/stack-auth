@@ -1,6 +1,5 @@
 'use client';
 
-import { FeedbackDialog } from "@/components/feedback-dialog";
 import { Link } from "@/components/link";
 import { Logo } from "@/components/logo";
 import { ProjectSwitcher } from "@/components/project-switcher";
@@ -15,7 +14,7 @@ import {
   BreadcrumbList,
   BreadcrumbPage,
   BreadcrumbSeparator,
-  Button,
+
   Sheet,
   SheetContent,
   SheetTitle,
@@ -535,9 +534,6 @@ export default function SidebarLayout(props: { projectId: string, children?: Rea
           </div>
 
           <div className="flex gap-4 relative">
-            <FeedbackDialog
-              trigger={<Button variant="outline" size='sm'>Feedback</Button>}
-            />
             {getPublicEnvVar("NEXT_PUBLIC_STACK_EMULATOR_ENABLED") === "true" ?
               <ThemeToggle /> :
               <UserButton colorModeToggle={() => setTheme(resolvedTheme === 'light' ? 'dark' : 'light')} />
