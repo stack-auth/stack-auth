@@ -1,23 +1,21 @@
 -- CreateEnum
 CREATE TYPE "CustomerType" AS ENUM ('USER', 'TEAM');
 
--- CreateTable
-CREATE TABLE "Customer" (
-    "id" UUID NOT NULL,
-    "tenancyId" UUID NOT NULL,
-    "customerType" "CustomerType" NOT NULL,
-    "stripeCustomerId" TEXT NOT NULL,
+-- CreateEnum
+CREATE TYPE "SubscriptionStatus" AS ENUM ('active', 'trialing', 'canceled', 'paused', 'incomplete', 'incomplete_expired', 'past_due', 'unpaid');
 
-    CONSTRAINT "Customer_pkey" PRIMARY KEY ("tenancyId","id")
-);
+-- AlterEnum
+ALTER TYPE "VerificationCodeType" ADD VALUE 'PURCHASE_URL';
 
 -- CreateTable
 CREATE TABLE "Subscription" (
     "id" UUID NOT NULL,
     "tenancyId" UUID NOT NULL,
     "customerId" UUID NOT NULL,
+    "customerType" "CustomerType" NOT NULL,
+    "offer" JSONB NOT NULL,
     "stripeSubscriptionId" TEXT NOT NULL,
-    "status" TEXT NOT NULL,
+    "status" "SubscriptionStatus" NOT NULL,
     "currentPeriodEnd" TIMESTAMP(3) NOT NULL,
     "currentPeriodStart" TIMESTAMP(3) NOT NULL,
     "cancelAtPeriodEnd" BOOLEAN NOT NULL,
@@ -26,9 +24,6 @@ CREATE TABLE "Subscription" (
 
     CONSTRAINT "Subscription_pkey" PRIMARY KEY ("tenancyId","id")
 );
-
--- CreateIndex
-CREATE UNIQUE INDEX "Customer_tenancyId_stripeCustomerId_key" ON "Customer"("tenancyId", "stripeCustomerId");
 
 -- CreateIndex
 CREATE UNIQUE INDEX "Subscription_tenancyId_stripeSubscriptionId_key" ON "Subscription"("tenancyId", "stripeSubscriptionId");

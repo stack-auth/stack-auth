@@ -56,14 +56,14 @@ describe("invalid requests", () => {
         email_config: testEmailConfig,
       },
     });
-    const userId = randomUUID();
+    const user = await User.create();
     const response = await niceBackendFetch(
       "/api/v1/emails/send-email",
       {
         method: "POST",
         accessType: "server",
         body: {
-          user_ids: [userId],
+          user_ids: [user.userId],
           html: "<p>Test email</p>",
           subject: "Test Subject",
           notification_category_name: "Marketing",
@@ -76,8 +76,7 @@ describe("invalid requests", () => {
         "body": {
           "results": [
             {
-              "error": "User not found",
-              "success": false,
+              "user_email": "unindexed-mailbox--<stripped UUID>@stack-generated.example.com",
               "user_id": "<stripped UUID>",
             },
           ],
@@ -111,13 +110,19 @@ describe("invalid requests", () => {
     expect(response).toMatchInlineSnapshot(`
       NiceResponse {
         "status": 400,
-        "body": "Cannot send custom emails when using shared email config",
-        "headers": Headers { <some fields may have been hidden> },
+        "body": {
+          "code": "REQUIRES_CUSTOM_EMAIL_SERVER",
+          "error": "This action requires a custom SMTP server. Please edit your email server configuration and try again.",
+        },
+        "headers": Headers {
+          "x-stack-known-error": "REQUIRES_CUSTOM_EMAIL_SERVER",
+          <some fields may have been hidden>,
+        },
       }
     `);
   });
 
-  it("should return 404 when invalid notification category name is provided", async ({ expect }) => {
+  it("should return 400 when invalid notification category name is provided", async ({ expect }) => {
     await Project.createAndSwitch({
       display_name: "Test Successful Email Project",
       config: {
@@ -146,8 +151,8 @@ describe("invalid requests", () => {
     );
     expect(response).toMatchInlineSnapshot(`
       NiceResponse {
-        "status": 404,
-        "body": "Notification category not found",
+        "status": 400,
+        "body": "Notification category not found with given name",
         "headers": Headers { <some fields may have been hidden> },
       }
     `);
@@ -203,8 +208,7 @@ it("should return 200 with disabled notifications error in results when user has
       "body": {
         "results": [
           {
-            "error": "User has disabled notifications for this category",
-            "success": false,
+            "user_email": "unindexed-mailbox--<stripped UUID>@stack-generated.example.com",
             "user_id": "<stripped UUID>",
           },
         ],
@@ -244,15 +248,7 @@ it("should return 200 with no primary email error in results when user does not 
   expect(response).toMatchInlineSnapshot(`
     NiceResponse {
       "status": 200,
-      "body": {
-        "results": [
-          {
-            "error": "User does not have a primary email",
-            "success": false,
-            "user_id": "<stripped UUID>",
-          },
-        ],
-      },
+      "body": { "results": [{ "user_id": "<stripped UUID>" }] },
       "headers": Headers { <some fields may have been hidden> },
     }
   `);
@@ -281,20 +277,19 @@ it("should return 200 and send email successfully", async ({ expect }) => {
   );
 
   expect(response).toMatchInlineSnapshot(`
-      NiceResponse {
-        "status": 200,
-        "body": {
-          "results": [
-            {
-              "success": true,
-              "user_email": "unindexed-mailbox--<stripped UUID>@stack-generated.example.com",
-              "user_id": "<stripped UUID>",
-            },
-          ],
-        },
-        "headers": Headers { <some fields may have been hidden> },
-      }
-    `);
+    NiceResponse {
+      "status": 200,
+      "body": {
+        "results": [
+          {
+            "user_email": "unindexed-mailbox--<stripped UUID>@stack-generated.example.com",
+            "user_id": "<stripped UUID>",
+          },
+        ],
+      },
+      "headers": Headers { <some fields may have been hidden> },
+    }
+  `);
 
   // Verify the email was actually sent by checking the mailbox
   const messages = await user.mailbox.fetchMessages();
@@ -303,7 +298,7 @@ it("should return 200 and send email successfully", async ({ expect }) => {
   expect(sentEmail!.body?.html).toMatchInlineSnapshot(`"http://localhost:8102/api/v1/emails/unsubscribe-link?code=%3Cstripped+query+param%3E"`);
 });
 
-it("should handle mixed results for multiple users", async ({ expect }) => {
+it("should handle user that does not exist", async ({ expect }) => {
   await Project.createAndSwitch({
     display_name: "Test Mixed Results Project",
     config: {
@@ -337,38 +332,246 @@ it("should handle mixed results for multiple users", async ({ expect }) => {
 
   expect(response).toMatchInlineSnapshot(`
     NiceResponse {
-      "status": 200,
+      "status": 400,
       "body": {
-        "results": [
-          {
-            "error": "User has disabled notifications for this category",
-            "success": false,
-            "user_id": "<stripped UUID>",
-          },
-          {
-            "error": "User not found",
-            "success": false,
-            "user_id": "<stripped UUID>",
-          },
-          {
-            "success": true,
-            "user_email": "unindexed-mailbox--<stripped UUID>@stack-generated.example.com",
-            "user_id": "<stripped UUID>",
-          },
-        ],
+        "code": "USER_ID_DOES_NOT_EXIST",
+        "details": { "user_id": "<stripped UUID>" },
+        "error": "The given user with the ID <stripped UUID> does not exist.",
       },
-      "headers": Headers { <some fields may have been hidden> },
+      "headers": Headers {
+        "x-stack-known-error": "USER_ID_DOES_NOT_EXIST",
+        <some fields may have been hidden>,
+      },
     }
   `);
+});
 
-  // Verify only the successful user received the email
-  const successfulUserMessages = await successfulUser.mailbox.fetchMessages();
-  const sentEmail = successfulUserMessages.find(msg => msg.subject === "Bulk Test Email Subject");
-  expect(sentEmail).toBeDefined();
-  expect(sentEmail!.body?.html).toMatchInlineSnapshot(`"http://localhost:8102/api/v1/emails/unsubscribe-link?code=%3Cstripped+query+param%3E"`);
+describe("validation errors", () => {
+  it("should return 400 when neither html nor template_id is provided", async ({ expect }) => {
+    await Project.createAndSwitch({
+      display_name: "Test Validation Project",
+      config: {
+        email_config: testEmailConfig,
+      },
+    });
+    const user = await User.create();
+    const response = await niceBackendFetch(
+      "/api/v1/emails/send-email",
+      {
+        method: "POST",
+        accessType: "server",
+        body: {
+          user_ids: [user.userId],
+          subject: "Test Subject",
+          notification_category_name: "Marketing",
+        }
+      }
+    );
+    expect(response).toMatchInlineSnapshot(`
+      NiceResponse {
+        "status": 400,
+        "body": {
+          "code": "SCHEMA_ERROR",
+          "details": { "message": "Either html or template_id must be provided" },
+          "error": "Either html or template_id must be provided",
+        },
+        "headers": Headers {
+          "x-stack-known-error": "SCHEMA_ERROR",
+          <some fields may have been hidden>,
+        },
+      }
+    `);
+  });
 
-  // Verify the user with disabled notifications did not receive the email
-  const disabledUserMessages = await userWithDisabledNotifications.mailbox.fetchMessages();
-  const disabledUserEmail = disabledUserMessages.find(msg => msg.subject === "Bulk Test Email Subject");
-  expect(disabledUserEmail).toBeUndefined();
+  it("should return 200 when empty user_ids array is provided", async ({ expect }) => {
+    await Project.createAndSwitch({
+      display_name: "Test Empty UserIds Project",
+      config: {
+        email_config: testEmailConfig,
+      },
+    });
+    const response = await niceBackendFetch(
+      "/api/v1/emails/send-email",
+      {
+        method: "POST",
+        accessType: "server",
+        body: {
+          user_ids: [],
+          html: "<p>Test email</p>",
+          subject: "Test Subject",
+          notification_category_name: "Marketing",
+        }
+      }
+    );
+    expect(response).toMatchInlineSnapshot(`
+      NiceResponse {
+        "status": 200,
+        "body": { "results": [] },
+        "headers": Headers { <some fields may have been hidden> },
+      }
+    `);
+  });
+});
+
+describe("template-based emails", () => {
+  it("should return 400 when invalid template_id is provided", async ({ expect }) => {
+    await Project.createAndSwitch({
+      display_name: "Test Invalid Template Project",
+      config: {
+        email_config: testEmailConfig,
+      },
+    });
+    const user = await User.create();
+    const response = await niceBackendFetch(
+      "/api/v1/emails/send-email",
+      {
+        method: "POST",
+        accessType: "server",
+        body: {
+          user_ids: [user.userId],
+          template_id: "non-existent-template",
+          variables: { name: "Test User" },
+          notification_category_name: "Marketing",
+        }
+      }
+    );
+    expect(response).toMatchInlineSnapshot(`
+      NiceResponse {
+        "status": 400,
+        "body": "Template not found with given id",
+        "headers": Headers { <some fields may have been hidden> },
+      }
+    `);
+  });
+
+  it("should return 400 when invalid theme_id is provided", async ({ expect }) => {
+    await Project.createAndSwitch({
+      display_name: "Test Invalid Theme Project",
+      config: {
+        email_config: testEmailConfig,
+      },
+    });
+    const user = await User.create();
+    const response = await niceBackendFetch(
+      "/api/v1/emails/send-email",
+      {
+        method: "POST",
+        accessType: "server",
+        body: {
+          user_ids: [user.userId],
+          html: "<p>Test email with invalid theme</p>",
+          subject: "Test Subject",
+          theme_id: "non-existent-theme",
+          notification_category_name: "Marketing",
+        }
+      }
+    );
+    expect(response).toMatchInlineSnapshot(`
+      NiceResponse {
+        "status": 400,
+        "body": {
+          "code": "SCHEMA_ERROR",
+          "details": {
+            "message": deindent\`
+              Request validation failed on POST /api/v1/emails/send-email:
+                - body.theme_id is invalid
+            \`,
+          },
+          "error": deindent\`
+            Request validation failed on POST /api/v1/emails/send-email:
+              - body.theme_id is invalid
+          \`,
+        },
+        "headers": Headers {
+          "x-stack-known-error": "SCHEMA_ERROR",
+          <some fields may have been hidden>,
+        },
+      }
+    `);
+  });
+});
+
+describe("notification categories", () => {
+  it("should return 200 and send email successfully with Transactional category", async ({ expect }) => {
+    await Project.createAndSwitch({
+      display_name: "Test Transactional Project",
+      config: {
+        email_config: testEmailConfig,
+      },
+    });
+    const user = await User.create();
+    const response = await niceBackendFetch(
+      "/api/v1/emails/send-email",
+      {
+        method: "POST",
+        accessType: "server",
+        body: {
+          user_ids: [user.userId],
+          html: "<p>Transactional email</p>",
+          subject: "Transactional Test Subject",
+          notification_category_name: "Transactional",
+        }
+      }
+    );
+    expect(response).toMatchInlineSnapshot(`
+      NiceResponse {
+        "status": 200,
+        "body": {
+          "results": [
+            {
+              "user_email": "unindexed-mailbox--<stripped UUID>@stack-generated.example.com",
+              "user_id": "<stripped UUID>",
+            },
+          ],
+        },
+        "headers": Headers { <some fields may have been hidden> },
+      }
+    `);
+
+    // Verify the email was sent
+    const messages = await user.mailbox.fetchMessages();
+    const sentEmail = messages.find(msg => msg.subject === "Transactional Test Subject");
+    expect(sentEmail).toBeDefined();
+  });
+
+  it("should default to Transactional category when notification_category_name is not provided", async ({ expect }) => {
+    await Project.createAndSwitch({
+      display_name: "Test Default Category Project",
+      config: {
+        email_config: testEmailConfig,
+      },
+    });
+    const user = await User.create();
+    const response = await niceBackendFetch(
+      "/api/v1/emails/send-email",
+      {
+        method: "POST",
+        accessType: "server",
+        body: {
+          user_ids: [user.userId],
+          html: "<p>Default category email</p>",
+          subject: "Default Category Test Subject",
+        }
+      }
+    );
+    expect(response).toMatchInlineSnapshot(`
+      NiceResponse {
+        "status": 200,
+        "body": {
+          "results": [
+            {
+              "user_email": "unindexed-mailbox--<stripped UUID>@stack-generated.example.com",
+              "user_id": "<stripped UUID>",
+            },
+          ],
+        },
+        "headers": Headers { <some fields may have been hidden> },
+      }
+    `);
+
+    // Verify the email was sent
+    const messages = await user.mailbox.fetchMessages();
+    const sentEmail = messages.find(msg => msg.subject === "Default Category Test Subject");
+    expect(sentEmail).toBeDefined();
+  });
 });

@@ -1,7 +1,4 @@
 import { AdminTeamPermission } from "../permissions";
-import { branchPaymentsSchema } from "@stackframe/stack-shared/dist/config/schema";
-import * as yup from "yup";
-
 
 export type ProjectConfig = {
   readonly signUpEnabled: boolean,
