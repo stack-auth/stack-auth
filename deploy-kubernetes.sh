@@ -22,7 +22,7 @@ if [ -z "${COMMIT_ID:-}" ]; then
 	fi
 fi
 
-DEPLOY_DIR="deployment/kubernetes/helm-values/${ENVIRONMENT}/${_MODULE}"
+DEPLOY_DIR="deployment/kubernetes/helm-values/${ENVIRONMENT}/${MODULE}"
 # shellcheck disable=SC2034
 BASE_MODULE=${MODULE}
 
@@ -99,7 +99,7 @@ for values_file in ${VALUES_FILES}; do
 	fi
 	run_deploy "$log_file" "$values_file" &
 	pid=$!
-	PIDS+=($pid)
+	PIDS+=("$pid")
 	LOG_FILES+=("$log_file")
 	VALUES_FILES_ARRAY+=("$values_file")
 	
