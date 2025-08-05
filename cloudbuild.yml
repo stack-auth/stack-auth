@@ -75,7 +75,7 @@ options:
   pool:
     name: 'projects/${PROJECT_ID}/locations/${LOCATION}/workerPools/${_WORKER_POOL_NAME}'
 
-vailableSecrets:
+availableSecrets:
   secretManager:
     - versionName: "projects/$PROJECT_ID/secrets/INFRA_GL_SONARQUBE_TOKEN/versions/latest"
       env: "SCA_TOKEN"
