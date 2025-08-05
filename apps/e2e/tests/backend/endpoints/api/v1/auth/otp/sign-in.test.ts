@@ -197,7 +197,7 @@ it("should sign in with otp code", async ({ expect }) => {
   expect(sendSignInCodeResponse.body.nonce).toBeDefined();
 
   const email = (await backendContext.value.mailbox.fetchMessages()).findLast((message) => message.subject.includes("Sign in to")) ?? throwErr("Sign-in code message not found");
-  const match = email.body?.text.match(/"otp":"([A-Z0-9]{6})"/);
+  const match = email.body?.html.match(/\>([A-Z0-9]{6})\<\/p\>/);
 
   const signInResponse = await niceBackendFetch("/api/v1/auth/otp/sign-in", {
     method: "POST",
@@ -270,7 +270,7 @@ it("should set the code to invalid after too many attempts", async ({ expect }) 
   });
 
   const email = (await backendContext.value.mailbox.fetchMessages()).findLast((message) => message.subject.includes("Sign in to")) ?? throwErr("Sign-in code message not found");
-  const match = email.body?.text.match(/"otp":"([A-Z0-9]{6})"/);
+  const match = email.body?.html.match(/\>([A-Z0-9]{6})\<\/p\>/);
 
   for (let i = 0; i < 25; i++) {
     await niceBackendFetch("/api/v1/auth/otp/sign-in", {
