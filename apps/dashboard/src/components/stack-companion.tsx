@@ -111,7 +111,7 @@ export function StackCompanion({ className, onExpandedChange }: StackCompanionPr
                 return (
                   <div key={item.id} className="relative">
                     <button
-                      onClick={() => setActiveItem(item.id)}
+                      onClick={() => setActiveItem(String(activeItem) === item.id ? null : item.id)}
                       className={cn(
                         "flex items-center justify-center w-10 h-10 rounded-lg group transition-none hover:bg-muted",
                         item.color
@@ -164,7 +164,7 @@ export function StackCompanion({ className, onExpandedChange }: StackCompanionPr
                   return (
                     <button
                       key={item.id}
-                      onClick={() => setActiveItem(item.id)}
+                      onClick={() => setActiveItem(String(activeItem) === item.id ? null : item.id)}
                       className={cn(
                         "flex items-center justify-center w-10 h-10 rounded-lg transition-none",
                         isActive ? "bg-gray-200 dark:bg-muted shadow-md" : "hover:bg-muted",
