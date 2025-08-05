@@ -503,10 +503,7 @@ export default function SidebarLayout(props: { projectId: string, children?: Rea
       </div>
 
       {/* Main Content Area */}
-      <div className={cn(
-        "flex flex-col flex-grow w-0 transition-[padding] duration-300 ease-in-out",
-        companionExpanded ? "pr-80" : "pr-12"
-      )}>
+      <div className="flex flex-col flex-grow w-0">
         {/* Header */}
         <div className="h-14 border-b flex items-center justify-between sticky top-0 backdrop-blur-md bg-white/20 dark:bg-black/20 z-10 px-4 md:px-6">
           <div className="hidden md:flex">
@@ -547,8 +544,8 @@ export default function SidebarLayout(props: { projectId: string, children?: Rea
         </div>
       </div>
 
-      {/* Stack Companion - Fixed positioned */}
-      <div className="fixed right-0 top-0 h-screen z-20">
+      {/* Stack Companion - Sticky positioned like left sidebar */}
+      <div className="h-screen sticky top-0 backdrop-blur-md bg-white/20 dark:bg-black/20 z-[10]">
         <StackCompanion onExpandedChange={setCompanionExpanded} />
       </div>
     </div>
