@@ -1,4 +1,4 @@
-import { stackStripe } from "@/lib/stripe";
+import { getStackStripe } from "@/lib/stripe";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { adaptSchema, adminAuthTypeSchema, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
 import { StatusError } from "@stackframe/stack-shared/dist/utils/errors";
@@ -22,11 +22,12 @@ export const POST = createSmartRouteHandler({
     }).defined(),
   }),
   handler: async ({ auth }) => {
+    const stripe = getStackStripe();
     if (!auth.tenancy.config.payments.stripeAccountId) {
       throw new StatusError(400, "Stripe account ID is not set");
     }
 
-    const accountSession = await stackStripe.accountSessions.create({
+    const accountSession = await stripe.accountSessions.create({
       account: auth.tenancy.config.payments.stripeAccountId,
       components: {
         payments: {

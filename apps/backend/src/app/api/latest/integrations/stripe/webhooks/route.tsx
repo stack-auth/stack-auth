@@ -1,4 +1,4 @@
-import { stackStripe, syncStripeAccountStatus, syncStripeSubscriptions } from "@/lib/stripe";
+import { getStackStripe, syncStripeAccountStatus, syncStripeSubscriptions } from "@/lib/stripe";
 import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
 import { captureError } from "@stackframe/stack-shared/dist/utils/errors";
 import { NextRequest, NextResponse } from "next/server";
@@ -31,13 +31,14 @@ const isAllowedEvent = (event: Stripe.Event): event is Stripe.Event & { type: (t
 
 export async function POST(req: NextRequest) {
   const body = await req.text();
+  const stripe = getStackStripe();
   const signature = req.headers.get('stripe-signature');
   if (!signature) {
     return NextResponse.json({ error: 'Missing stripe-signature header' }, { status: 400 });
   }
   let event;
   try {
-    event = stackStripe.webhooks.constructEvent(body, signature, getEnvVariable("STACK_STRIPE_WEBHOOK_SECRET"));
+    event = stripe.webhooks.constructEvent(body, signature, getEnvVariable("STACK_STRIPE_WEBHOOK_SECRET"));
   } catch (err) {
     return NextResponse.json({ error: 'Invalid signature' }, { status: 400 });
   }

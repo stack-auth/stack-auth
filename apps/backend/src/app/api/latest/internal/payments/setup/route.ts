@@ -1,5 +1,5 @@
 import { overrideEnvironmentConfigOverride } from "@/lib/config";
-import { stackStripe } from "@/lib/stripe";
+import { getStackStripe } from "@/lib/stripe";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { adaptSchema, adminAuthTypeSchema, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
 import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
@@ -23,11 +23,12 @@ export const POST = createSmartRouteHandler({
     }).defined(),
   }),
   handler: async ({ auth }) => {
+    const stripe = getStackStripe();
     let stripeAccountId = auth.tenancy.config.payments.stripeAccountId;
     const returnToUrl = new URL(`/projects/${auth.project.id}/payments`, getEnvVariable("NEXT_PUBLIC_STACK_DASHBOARD_URL")).toString();
 
     if (!stripeAccountId) {
-      const account = await stackStripe.accounts.create({
+      const account = await stripe.accounts.create({
         controller: {
           stripe_dashboard: { type: "none" },
         },
@@ -50,7 +51,7 @@ export const POST = createSmartRouteHandler({
       });
     }
 
-    const accountLink = await stackStripe.accountLinks.create({
+    const accountLink = await stripe.accountLinks.create({
       account: stripeAccountId,
       refresh_url: returnToUrl,
       return_url: returnToUrl,

@@ -1,10 +1,10 @@
 import { getTenancy, Tenancy } from "@/lib/tenancies";
 import { getPrismaClientForTenancy } from "@/prisma-client";
+import { CustomerType } from "@prisma/client";
 import { getEnvVariable, getNodeEnvironment } from "@stackframe/stack-shared/dist/utils/env";
 import { throwErr } from "@stackframe/stack-shared/dist/utils/errors";
-import { overrideEnvironmentConfigOverride } from "./config";
-import { CustomerType } from "@prisma/client";
 import Stripe from "stripe";
+import { overrideEnvironmentConfigOverride } from "./config";
 
 const stripeSecretKey = getEnvVariable("STACK_STRIPE_SECRET_KEY");
 const useStripeMock = stripeSecretKey === "sk_test_mockstripekey" && ["development", "test"].includes(getNodeEnvironment());
@@ -14,7 +14,7 @@ const stripeConfig: Stripe.StripeConfig = useStripeMock ? {
   port: 8120,
 } : {};
 
-export const stackStripe = new Stripe(stripeSecretKey, stripeConfig);
+export const getStackStripe = () => new Stripe(stripeSecretKey, stripeConfig);
 
 export const getStripeForAccount = (options: { tenancy?: Tenancy, accountId?: string }) => {
   if (!options.tenancy && !options.accountId) {
@@ -87,7 +87,8 @@ export async function syncStripeSubscriptions(stripeAccountId: string, stripeCus
 }
 
 export async function syncStripeAccountStatus(stripeAccountId: string) {
-  const account = await stackStripe.accounts.retrieve(stripeAccountId);
+  const stripe = getStackStripe();
+  const account = await stripe.accounts.retrieve(stripeAccountId);
   if (!account.metadata?.tenancyId) {
     throwErr(500, "Stripe account metadata missing tenancyId");
   }
