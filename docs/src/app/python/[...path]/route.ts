@@ -1,5 +1,5 @@
 import { source } from 'lib/source';
-import { notFound, redirect } from 'next/navigation';
+import { redirect } from 'next/navigation';
 import { NextRequest } from 'next/server';
 
 export function GET(request: NextRequest) {
@@ -26,6 +26,6 @@ export function GET(request: NextRequest) {
     return redirect(targetPath);
   } else {
     // Page doesn't exist, redirect to overview
-    return notFound();
+    return redirect("/");
   }
 }
