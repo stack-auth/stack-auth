@@ -238,13 +238,22 @@ export function StackCompanion({ className, onExpandedChange }: StackCompanionPr
                 `}</style>
                 {activeItem === 'docs' && (
                   <div className="space-y-3">
-                    <div className="bg-muted/30 rounded-lg p-4 text-center">
-                      <BookOpen className="h-6 w-6 mx-auto mb-2 text-muted-foreground" />
-                      <p className="text-xs text-muted-foreground">
-                        Access Stack Auth documentation
+                    <button
+                      onClick={() => window.open('https://docs.stack-auth.com', '_blank')}
+                      className="w-full bg-muted/30 hover:bg-muted/50 rounded-lg p-4 text-center transition-colors cursor-pointer group"
+                    >
+                      <BookOpen className="h-6 w-6 mx-auto mb-2 text-blue-600 group-hover:text-blue-700" />
+                      <p className="text-xs text-foreground group-hover:text-blue-600 font-medium">
+                        Access Stack Auth Documentation
                       </p>
                       <p className="text-[10px] text-muted-foreground mt-1">
-                        Interactive documentation coming soon!
+                        Click to open docs.stack-auth.com
+                      </p>
+                    </button>
+
+                    <div className="text-center">
+                      <p className="text-[10px] text-muted-foreground italic">
+                        Interactive dashboard docs coming soon
                       </p>
                     </div>
                   </div>
