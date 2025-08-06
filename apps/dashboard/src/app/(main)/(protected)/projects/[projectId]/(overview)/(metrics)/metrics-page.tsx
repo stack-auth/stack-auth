@@ -1,5 +1,6 @@
 'use client';
 
+import { Link } from "@/components/link";
 import { useRouter } from "@/components/router";
 import { ErrorBoundary } from '@sentry/nextjs';
 import {
@@ -68,7 +69,7 @@ Add powerful payment capabilities to your application with support for:
 - Automated invoicing and receipts
 - Dunning management for failed payments
 - Webhook events for payment updates`,
-    screenshots: ['https://via.placeholder.com/600x400', 'https://via.placeholder.com/600x400', 'https://via.placeholder.com/600x400'],
+    screenshots: ['/example-screenshot.png', '/example-screenshot.png', '/example-screenshot.png'],
     category: 'Finance',
     developer: 'Stack Auth'
   },
@@ -93,7 +94,7 @@ Protect your platform with intelligent fraud detection that learns and adapts:
 - Block fraudulent accounts automatically
 - Detailed risk analytics dashboard
 - Integration with major fraud databases`,
-    screenshots: ['https://via.placeholder.com/600x400', 'https://via.placeholder.com/600x400'],
+    screenshots: ['/example-screenshot.png', '/example-screenshot.png'],
     category: 'Security',
     developer: 'Stack Auth'
   },
@@ -112,7 +113,7 @@ Engage your users with targeted email campaigns:
 - **A/B testing** - Optimize your campaigns
 - **Automation workflows** - Set up drip campaigns
 - **Analytics** - Track opens, clicks, and conversions`,
-    screenshots: ['https://via.placeholder.com/600x400', 'https://via.placeholder.com/600x400'],
+    screenshots: ['/example-screenshot.png', '/example-screenshot.png'],
     category: 'Marketing',
     developer: 'Stack Auth'
   },
@@ -131,7 +132,7 @@ Accelerate growth with built-in referral tracking:
 - **Social sharing** - One-click sharing to social media
 - **Leaderboards** - Gamify your referral program
 - **Analytics** - Track viral coefficient and program ROI`,
-    screenshots: ['https://via.placeholder.com/600x400', 'https://via.placeholder.com/600x400'],
+    screenshots: ['/example-screenshot.png', '/example-screenshot.png'],
     category: 'Growth',
     developer: 'Stack Auth'
   },
@@ -150,7 +151,7 @@ Transform your office TVs into live dashboards:
 - **Rotating dashboards** - Cycle through multiple views
 - **Custom layouts** - Design your perfect dashboard
 - **Real-time updates** - See changes as they happen`,
-    screenshots: ['https://via.placeholder.com/600x400'],
+    screenshots: ['/example-screenshot.png'],
     category: 'Analytics',
     developer: 'Stack Auth'
   },
@@ -219,7 +220,7 @@ function AppStoreDialog({ app, open, onOpenChange, onEnable }: {
                   {app.category && <Badge variant="secondary">{app.category}</Badge>}
                 </div>
               </div>
-              <div>
+              <div className="text-right">
                 <Button
                   onClick={handleEnable}
                   size="lg"
@@ -228,6 +229,9 @@ function AppStoreDialog({ app, open, onOpenChange, onEnable }: {
                 >
                   {isEnabling ? 'Enabling...' : 'Enable'}
                 </Button>
+                <p className="text-xs text-gray-500 dark:text-gray-400 mt-2">
+                  No additional cost
+                </p>
               </div>
             </div>
           </div>
@@ -280,30 +284,29 @@ function AppSquare({ app, onClick, onToggleEnabled, projectId }: {
   onToggleEnabled: (app: App) => void,
   projectId: string,
 }) {
-  const handleClick = (e: React.MouseEvent) => {
+  const handleClick = () => {
     if (!app.enabled) {
-      e.preventDefault();
       onClick(app);
     }
   };
 
   const handleOpenNewTab = () => {
-    const fullUrl = app.url === '.' 
-      ? `/projects/${encodeURIComponent(projectId)}` 
+    const fullUrl = app.url === '.'
+      ? `/projects/${encodeURIComponent(projectId)}`
       : `/projects/${encodeURIComponent(projectId)}/${app.url}`;
     window.open(fullUrl, '_blank');
   };
 
-  const appHref = app.enabled 
-    ? (app.url === '.' 
-      ? `/projects/${encodeURIComponent(projectId)}` 
+  const appHref = app.enabled
+    ? (app.url === '.'
+      ? `/projects/${encodeURIComponent(projectId)}`
       : `/projects/${encodeURIComponent(projectId)}/${app.url}`)
     : '#';
 
   return (
     <ContextMenu>
       <ContextMenuTrigger>
-        <a
+        <Link
           href={appHref}
           onClick={handleClick}
           className="flex flex-col items-center gap-1 sm:gap-2 transition-all duration-200 cursor-pointer group select-none"
@@ -330,7 +333,7 @@ function AppSquare({ app, onClick, onToggleEnabled, projectId }: {
           }`}>
             {app.name}
           </span>
-        </a>
+        </Link>
       </ContextMenuTrigger>
       <ContextMenuContent>
         <ContextMenuItem onClick={handleOpenNewTab}>
@@ -345,7 +348,7 @@ function AppSquare({ app, onClick, onToggleEnabled, projectId }: {
   );
 }
 
-export default function MetricsPage(props: { toSetup: () => void }) {
+export default function MetricsPage(_props: { toSetup: () => void }) {
   const adminApp = useAdminApp();
   const router = useRouter();
   const [selectedApp, setSelectedApp] = useState<App | null>(null);

@@ -23,7 +23,11 @@ import {
   buttonVariants
 } from "@stackframe/stack-ui";
 import {
+  AppWindow,
+  BarChart3,
   Book,
+  ChevronDown,
+  ChevronRight,
   Globe,
   KeyRound,
   Link as LinkIcon,
@@ -38,7 +42,7 @@ import {
   SquarePen,
   User,
   Users,
-  Webhook,
+  Webhook
 } from "lucide-react";
 import { useTheme } from "next-themes";
 import { usePathname } from "next/navigation";
@@ -61,13 +65,20 @@ type Item = {
   requiresDevFeatureFlag?: boolean,
 };
 
+type AppGroup = {
+  name: React.ReactNode,
+  icon: LucideIcon,
+  type: 'app',
+  items: Item[],
+};
+
 type Hidden = {
   name: BreadcrumbItem[] | ((pathname: string) => BreadcrumbItem[]),
   regex: RegExp,
   type: 'hidden',
 };
 
-const navigationItems: (Label | Item | Hidden)[] = [
+const navigationItems: (Label | Item | AppGroup | Hidden)[] = [
   {
     name: "Overview",
     href: "/",
@@ -76,16 +87,146 @@ const navigationItems: (Label | Item | Hidden)[] = [
     type: 'item'
   },
   {
-    name: "Users",
-    type: 'label'
-  },
-  {
-    name: "Users",
-    href: "/users",
-    regex: /^\/projects\/[^\/]+\/users$/,
-    icon: User,
+    name: "My dashboards",
+    href: "/dashboards",
+    regex: /^\/projects\/[^\/]+\/dashboards$/,
+    icon: BarChart3,
     type: 'item'
   },
+  {
+    name: "Auth",
+    icon: ShieldEllipsis,
+    type: 'app',
+    items: [
+      {
+        name: "Users",
+        href: "/users",
+        regex: /^\/projects\/[^\/]+\/users$/,
+        icon: User,
+        type: 'item'
+      },
+      {
+        name: "Auth Methods",
+        href: "/auth-methods",
+        regex: /^\/projects\/[^\/]+\/auth-methods$/,
+        icon: ShieldEllipsis,
+        type: 'item'
+      },
+      {
+        name: "Project Permissions",
+        href: "/project-permissions",
+        regex: /^\/projects\/[^\/]+\/project-permissions$/,
+        icon: LockKeyhole,
+        type: 'item'
+      },
+    ]
+  },
+  {
+    name: "Teams",
+    icon: Users,
+    type: 'app',
+    items: [
+      {
+        name: "Teams",
+        href: "/teams",
+        regex: /^\/projects\/[^\/]+\/teams$/,
+        icon: Users,
+        type: 'item'
+      },
+      {
+        name: "Team Permissions",
+        href: "/team-permissions",
+        regex: /^\/projects\/[^\/]+\/team-permissions$/,
+        icon: LockKeyhole,
+        type: 'item'
+      },
+      {
+        name: "Team Settings",
+        href: "/team-settings",
+        regex: /^\/projects\/[^\/]+\/team-settings$/,
+        icon: Settings2,
+        type: 'item'
+      },
+    ]
+  },
+  {
+    name: "Emails",
+    icon: Mail,
+    type: 'app',
+    items: [
+      {
+        name: "Emails",
+        href: "/emails",
+        regex: /^\/projects\/[^\/]+\/emails$/,
+        icon: Mail,
+        type: 'item'
+      },
+      {
+        name: "Templates",
+        href: "/email-templates",
+        regex: /^\/projects\/[^\/]+\/email-templates$/,
+        icon: SquarePen,
+        type: 'item'
+      },
+      {
+        name: "Themes",
+        href: "/email-themes",
+        regex: /^\/projects\/[^\/]+\/email-themes$/,
+        icon: Palette,
+        type: 'item',
+      },
+    ]
+  },
+  {
+    name: "API Keys",
+    icon: KeyRound,
+    type: 'app',
+    items: [
+      {
+        name: "Stack Auth Keys",
+        href: "/api-keys",
+        regex: /^\/projects\/[^\/]+\/api-keys$/,
+        icon: KeyRound,
+        type: 'item'
+      },
+    ]
+  },
+  {
+    name: "Webhooks",
+    icon: Webhook,
+    type: 'app',
+    items: [
+      {
+        name: "Webhooks",
+        href: "/webhooks",
+        regex: /^\/projects\/[^\/]+\/webhooks$/,
+        icon: Webhook,
+        type: 'item'
+      },
+    ]
+  },
+  {
+    name: "Settings",
+    icon: Settings,
+    type: 'app',
+    items: [
+      {
+        name: "Domains",
+        href: "/domains",
+        regex: /^\/projects\/[^\/]+\/domains$/,
+        icon: LinkIcon,
+        type: 'item'
+      },
+      {
+        name: "Project Settings",
+        href: "/project-settings",
+        regex: /^\/projects\/[^\/]+\/project-settings$/,
+        icon: Settings,
+        type: 'item'
+      },
+    ]
+  },
+  // Hidden breadcrumb items
   {
     name: (pathname: string) => {
       const match = pathname.match(/^\/projects\/[^\/]+\/users\/([^\/]+)$/);
@@ -107,31 +248,6 @@ const navigationItems: (Label | Item | Hidden)[] = [
     type: 'hidden',
   },
   {
-    name: "Auth Methods",
-    href: "/auth-methods",
-    regex: /^\/projects\/[^\/]+\/auth-methods$/,
-    icon: ShieldEllipsis,
-    type: 'item'
-  },
-  {
-    name: "Project Permissions",
-    href: "/project-permissions",
-    regex: /^\/projects\/[^\/]+\/project-permissions$/,
-    icon: LockKeyhole,
-    type: 'item'
-  },
-  {
-    name: "Teams",
-    type: 'label'
-  },
-  {
-    name: "Teams",
-    href: "/teams",
-    regex: /^\/projects\/[^\/]+\/teams$/,
-    icon: Users,
-    type: 'item'
-  },
-  {
     name: (pathname: string) => {
       const match = pathname.match(/^\/projects\/[^\/]+\/teams\/([^\/]+)$/);
       let item;
@@ -143,7 +259,6 @@ const navigationItems: (Label | Item | Hidden)[] = [
         item = "Members";
         href = "";
       }
-
       return [
         { item: "Teams", href: "/teams" },
         { item, href },
@@ -151,45 +266,6 @@ const navigationItems: (Label | Item | Hidden)[] = [
     },
     regex: /^\/projects\/[^\/]+\/teams\/[^\/]+$/,
     type: "hidden",
-  },
-  {
-    name: "Team Permissions",
-    href: "/team-permissions",
-    regex: /^\/projects\/[^\/]+\/team-permissions$/,
-    icon: LockKeyhole,
-    type: 'item'
-  },
-  {
-    name: "Team Settings",
-    href: "/team-settings",
-    regex: /^\/projects\/[^\/]+\/team-settings$/,
-    icon: Settings2,
-    type: 'item'
-  },
-  {
-    name: "Emails",
-    type: 'label'
-  },
-  {
-    name: "Emails",
-    href: "/emails",
-    regex: /^\/projects\/[^\/]+\/emails$/,
-    icon: Mail,
-    type: 'item'
-  },
-  {
-    name: "Templates",
-    href: "/email-templates",
-    regex: /^\/projects\/[^\/]+\/email-templates$/,
-    icon: SquarePen,
-    type: 'item'
-  },
-  {
-    name: "Themes",
-    href: "/email-themes",
-    regex: /^\/projects\/[^\/]+\/email-themes$/,
-    icon: Palette,
-    type: 'item',
   },
   {
     name: (pathname: string) => {
@@ -212,24 +288,6 @@ const navigationItems: (Label | Item | Hidden)[] = [
     type: 'hidden',
   },
   {
-    name: "Configuration",
-    type: 'label'
-  },
-  {
-    name: "Domains",
-    href: "/domains",
-    regex: /^\/projects\/[^\/]+\/domains$/,
-    icon: LinkIcon,
-    type: 'item'
-  },
-  {
-    name: "Webhooks",
-    href: "/webhooks",
-    regex: /^\/projects\/[^\/]+\/webhooks$/,
-    icon: Webhook,
-    type: 'item'
-  },
-  {
     name: (pathname: string) => {
       const match = pathname.match(/^\/projects\/[^\/]+\/webhooks\/([^\/]+)$/);
       let href;
@@ -238,7 +296,6 @@ const navigationItems: (Label | Item | Hidden)[] = [
       } else {
         href = "";
       }
-
       return [
         { item: "Webhooks", href: "/webhooks" },
         { item: "Endpoint", href },
@@ -266,20 +323,6 @@ const navigationItems: (Label | Item | Hidden)[] = [
     },
     regex: /^\/projects\/[^\/]+\/email-templates\/[^\/]+$/,
     type: 'hidden',
-  },
-  {
-    name: "Stack Auth Keys",
-    href: "/api-keys",
-    regex: /^\/projects\/[^\/]+\/api-keys$/,
-    icon: KeyRound,
-    type: 'item'
-  },
-  {
-    name: "Project Settings",
-    href: "/project-settings",
-    regex: /^\/projects\/[^\/]+\/project-settings$/,
-    icon: Settings,
-    type: 'item'
   }
 ];
 
@@ -321,7 +364,7 @@ function TemplateBreadcrumbItem(props: { templateId: string }) {
   return template.displayName;
 }
 
-function NavItem({ item, href, onClick }: { item: Item, href: string, onClick?: () => void }) {
+function NavItem({ item, href, onClick, indent = false }: { item: Item, href: string, onClick?: () => void, indent?: boolean }) {
   const pathname = usePathname();
   const selected = useMemo(() => {
     let pathnameWithoutTrailingSlash = pathname.endsWith("/") ? pathname.slice(0, -1) : pathname;
@@ -335,6 +378,7 @@ function NavItem({ item, href, onClick }: { item: Item, href: string, onClick?: 
         buttonVariants({ variant: 'ghost', size: "sm" }),
         "flex-grow justify-start text-md text-zinc-800 dark:text-zinc-300 px-2",
         selected && "bg-muted",
+        indent && "ml-6",
       )}
       onClick={onClick}
       prefetch={true}
@@ -342,6 +386,54 @@ function NavItem({ item, href, onClick }: { item: Item, href: string, onClick?: 
       <item.icon className="mr-2 h-4 w-4" />
       {item.name}
     </Link>
+  );
+}
+
+function AppGroupItem({ app, projectId, onNavigate }: { app: AppGroup, projectId: string, onNavigate?: () => void }) {
+  const [expanded, setExpanded] = useState(true);
+  const pathname = usePathname();
+
+  // Check if any child item is selected
+  const hasSelectedChild = useMemo(() => {
+    return app.items.some(item => {
+      const pathnameWithoutTrailingSlash = pathname.endsWith("/") ? pathname.slice(0, -1) : pathname;
+      return item.regex.test(pathnameWithoutTrailingSlash);
+    });
+  }, [app.items, pathname]);
+
+  return (
+    <div>
+      <button
+        onClick={() => setExpanded(!expanded)}
+        className={cn(
+          buttonVariants({ variant: 'ghost', size: "sm" }),
+          "w-full justify-start text-md text-zinc-800 dark:text-zinc-300 px-2",
+          hasSelectedChild && "font-semibold",
+        )}
+      >
+        {expanded ? (
+          <ChevronDown className="mr-2 h-4 w-4" />
+        ) : (
+          <ChevronRight className="mr-2 h-4 w-4" />
+        )}
+        <app.icon className="mr-2 h-4 w-4" />
+        {app.name}
+      </button>
+      {expanded && (
+        <div className="flex flex-col gap-1 mt-1">
+          {app.items.map((item, index) => (
+            <div key={index} className="flex px-2">
+              <NavItem
+                item={item}
+                onClick={onNavigate}
+                href={`/projects/${projectId}${item.href}`}
+                indent
+              />
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -373,12 +465,38 @@ function SidebarContent({ projectId, onNavigate }: { projectId: string, onNaviga
             return <div key={index} className="flex px-2">
               <NavItem item={item} onClick={onNavigate} href={`/projects/${projectId}${item.href}`} />
             </div>;
+          } else if (item.type === 'app') {
+            return <div key={index} className="px-2">
+              <AppGroupItem app={item} projectId={projectId} onNavigate={onNavigate} />
+            </div>;
           }
         })}
 
         <div className="flex-grow" />
 
-        <div className="py-2 px-2 flex">
+        <div className="py-2 px-2 flex flex-col gap-1">
+          <NavItem
+            onClick={onNavigate}
+            item={{
+              name: "Manage apps",
+              type: "item",
+              href: "",
+              icon: AppWindow,
+              regex: /^$/,
+            }}
+            href={`/projects/${projectId}/apps`}
+          />
+          <NavItem
+            onClick={onNavigate}
+            item={{
+              name: "Project Settings",
+              type: "item",
+              href: "",
+              icon: Settings,
+              regex: /^$/,
+            }}
+            href={`/projects/${projectId}/project-settings`}
+          />
           <NavItem
             onClick={onNavigate}
             item={{
@@ -408,12 +526,25 @@ function HeaderBreadcrumb({
   const projects = user.useOwnedProjects();
 
   const breadcrumbItems: BreadcrumbItem[] = useMemo(() => {
-    const item = navigationItems.find((item) => {
-      if (item.type === 'label') {
-        return false;
-      } else {
+    let foundItem: any = null;
+
+    // First, check for matches in app groups
+    for (const navItem of navigationItems) {
+      if (navItem.type === 'app') {
+        const childMatch = navItem.items.find(child => child.regex.test(pathname));
+        if (childMatch) {
+          foundItem = childMatch;
+          break;
+        }
+      }
+    }
+
+    // If no match in app groups, check regular items
+    const item = foundItem || navigationItems.find((item) => {
+      if (item.type === 'item' || item.type === 'hidden') {
         return item.regex.test(pathname);
       }
+      return false;
     });
     const name = item?.name;
 
@@ -437,7 +568,7 @@ function HeaderBreadcrumb({
   }, [pathname, projectId]);
 
   const selectedProject: AdminProject | undefined = useMemo(() => {
-    return projects.find((project) => project.id === projectId);
+    return projects.find((project: AdminProject) => project.id === projectId);
   }, [projectId, projects]);
 
   if (mobile) {
@@ -506,7 +637,7 @@ export default function SidebarLayout(props: { projectId: string, children?: Rea
           </div>
 
           <div className="flex md:hidden items-center">
-            <Sheet onOpenChange={(open) => setSidebarOpen(open)} open={sidebarOpen}>
+            <Sheet onOpenChange={(open: boolean) => setSidebarOpen(open)} open={sidebarOpen}>
               <SheetTitle className="hidden">
                 Sidebar Menu
               </SheetTitle>
