@@ -1,0 +1,44 @@
+---
+name: port-number-validation
+description: Validate and document port number assignments
+globs: ['*.ts', '*.tsx', '*.env', '*.json']
+alwaysApply: true
+---
+
+Port numbers should be validated to avoid conflicts and documented clearly.
+
+BAD:
+```typescript
+const config = {
+  port: 8120 // Conflicting port
+};
+
+// .env
+PORT=8120 
+```
+
+GOOD:
+```typescript
+// ports.ts
+export const RESERVED_PORTS = {
+  REACT_EXAMPLE: 8120,
+  JS_EXAMPLE: 8121,
+  S3_MOCK: 8122
+} as const;
+
+// config.ts
+import { RESERVED_PORTS } from './ports';
+
+const config = {
+  port: RESERVED_PORTS.JS_EXAMPLE
+};
+
+// .env
+PORT=${RESERVED_PORTS.JS_EXAMPLE}
+```
+
+WHY:
+- Prevents port conflicts
+- Documents port assignments
+- Makes port changes trackable
+- Ensures consistent port usage
