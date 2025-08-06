@@ -50,3 +50,11 @@ import.meta.vitest?.test("html", ({ expect }) => {
   const obj = { toString: () => "<object>" };
   expect(html`Object: ${obj}`).toBe("Object: &lt;object&gt;");
 });
+
+export function htmlToText(untrustedHtml: string): string {
+  // ① Create a detached, script-free document.
+  const doc = new DOMParser().parseFromString(untrustedHtml, 'text/html');
+
+  // ② Read the flattened text. No scripts run, no links followed.
+  return doc.body.textContent ?? '';
+}

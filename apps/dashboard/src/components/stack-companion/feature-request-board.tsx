@@ -3,6 +3,7 @@
 import { getPublicEnvVar } from '@/lib/env';
 import { cn } from '@/lib/utils';
 import { useUser } from '@stackframe/stack';
+import { htmlToText } from '@stackframe/stack-shared/dist/utils/html';
 import { runAsynchronously } from '@stackframe/stack-shared/dist/utils/promises';
 import { Button } from '@stackframe/stack-ui';
 import { ChevronUp, ExternalLink, Lightbulb, Loader2, Send } from 'lucide-react';
@@ -471,7 +472,7 @@ export function FeatureRequestBoard({ isActive }: FeatureRequestBoardProps) {
 
                     {request.content && (
                       <p className="text-xs text-muted-foreground line-clamp-2 mb-2">
-                        {request.content}
+                        {htmlToText(request.content)}
                       </p>
                     )}
 
