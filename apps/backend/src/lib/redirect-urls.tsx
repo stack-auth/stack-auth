@@ -2,109 +2,93 @@ import { StackAssertionError, captureError } from "@stackframe/stack-shared/dist
 import { createUrlIfValid, isLocalhost, matchHostnamePattern } from "@stackframe/stack-shared/dist/utils/urls";
 import { Tenancy } from "./tenancies";
 
+/**
+ * Normalizes a URL to include explicit default ports for comparison
+ */
+function normalizePort(url: URL): string {
+  const defaultPorts: Record<string, string> = { 'https:': '443', 'http:': '80' };
+  const port = url.port || defaultPorts[url.protocol] || '';
+  return port ? `${url.hostname}:${port}` : url.hostname;
+}
+
+/**
+ * Checks if a URL uses the default port for its protocol
+ */
+function isDefaultPort(url: URL): boolean {
+  return !url.port ||
+    (url.protocol === 'https:' && url.port === '443') ||
+    (url.protocol === 'http:' && url.port === '80');
+}
+
+/**
+ * Checks if two URLs have matching ports (considering default ports)
+ */
+function portsMatch(url1: URL, url2: URL): boolean {
+  return normalizePort(url1) === normalizePort(url2);
+}
+
+/**
+ * Validates a URL against a domain pattern (with or without wildcards)
+ */
+function matchesDomain(testUrl: URL, pattern: string, handlerPath: string): boolean {
+  const baseUrl = createUrlIfValid(pattern);
+
+  // If pattern is invalid as a URL, it might contain wildcards
+  if (!baseUrl || pattern.includes('*')) {
+    // Parse wildcard pattern manually
+    const match = pattern.match(/^([^:]+:\/\/)([^/]*)(.*)$/);
+    if (!match) {
+      captureError("invalid-redirect-domain", new StackAssertionError("Invalid domain pattern", { pattern }));
+      return false;
+    }
+
+    const [, protocol, hostPattern, basePath] = match;
+
+    // Check protocol
+    if (testUrl.protocol + '//' !== protocol) {
+      return false;
+    }
+
+    // Check host with wildcard pattern
+    const hasPortInPattern = hostPattern.includes(':');
+    if (hasPortInPattern) {
+      // Pattern includes port - match against normalized host:port
+      if (!matchHostnamePattern(hostPattern, normalizePort(testUrl))) {
+        return false;
+      }
+    } else {
+      // Pattern doesn't include port - match hostname only, require default port
+      if (!matchHostnamePattern(hostPattern, testUrl.hostname) || !isDefaultPort(testUrl)) {
+        return false;
+      }
+    }
+
+    // Check path
+    const fullPath = basePath === '/' ? handlerPath : basePath + handlerPath;
+    return testUrl.pathname.startsWith(fullPath || '/');
+  }
+
+  // For non-wildcard patterns, use URL comparison
+  return baseUrl.protocol === testUrl.protocol &&
+         baseUrl.hostname === testUrl.hostname &&
+         portsMatch(baseUrl, testUrl) &&
+         testUrl.pathname.startsWith(handlerPath || '/');
+}
+
 export function validateRedirectUrl(
   urlOrString: string | URL,
   tenancy: Tenancy,
 ): boolean {
   const url = createUrlIfValid(urlOrString);
   if (!url) return false;
+
+  // Check localhost permission
   if (tenancy.config.domains.allowLocalhost && isLocalhost(url)) {
     return true;
   }
-  return Object.values(tenancy.config.domains.trustedDomains).some((domain) => {
-    if (!domain.baseUrl) {
-      return false;
-    }
 
-    const testUrl = url;
-
-    // Check if the domain uses wildcards
-    const hasWildcard = domain.baseUrl.includes('*');
-
-    if (hasWildcard) {
-      // For wildcard domains, we need to parse the pattern manually
-      // Extract protocol, hostname pattern, and path
-      const protocolEnd = domain.baseUrl.indexOf('://');
-      if (protocolEnd === -1) {
-        captureError("invalid-redirect-domain", new StackAssertionError("Invalid domain format; missing protocol", {
-          domain: domain.baseUrl,
-        }));
-        return false;
-      }
-
-      const protocol = domain.baseUrl.substring(0, protocolEnd + 3);
-      const afterProtocol = domain.baseUrl.substring(protocolEnd + 3);
-      const pathStart = afterProtocol.indexOf('/');
-      const hostPattern = pathStart === -1 ? afterProtocol : afterProtocol.substring(0, pathStart);
-      const basePath = pathStart === -1 ? '/' : afterProtocol.substring(pathStart);
-
-      // Check protocol
-      if (testUrl.protocol + '//' !== protocol) {
-        return false;
-      }
-
-      // Check host (including port) with wildcard pattern
-      // We need to handle port matching correctly
-      const hasPortInPattern = hostPattern.includes(':');
-
-      if (hasPortInPattern) {
-        // Pattern includes port - match against full host (hostname:port)
-        // Need to normalize for default ports
-        let normalizedTestHost = testUrl.host;
-        if (testUrl.port === '' ||
-            (testUrl.protocol === 'https:' && testUrl.port === '443') ||
-            (testUrl.protocol === 'http:' && testUrl.port === '80')) {
-          // Add default port explicitly for matching when pattern has a port
-          const defaultPort = testUrl.protocol === 'https:' ? '443' : '80';
-          normalizedTestHost = testUrl.hostname + ':' + (testUrl.port || defaultPort);
-        }
-
-        if (!matchHostnamePattern(hostPattern, normalizedTestHost)) {
-          return false;
-        }
-      } else {
-        // Pattern doesn't include port - match hostname only and check port separately
-        if (!matchHostnamePattern(hostPattern, testUrl.hostname)) {
-          return false;
-        }
-
-        // When no port is specified in pattern, only allow default ports
-        const isDefaultPort =
-          (testUrl.protocol === 'https:' && (testUrl.port === '' || testUrl.port === '443')) ||
-          (testUrl.protocol === 'http:' && (testUrl.port === '' || testUrl.port === '80'));
-
-        if (!isDefaultPort) {
-          return false;
-        }
-      }
-
-      // Check path
-      const handlerPath = domain.handlerPath || '/';
-      const fullBasePath = basePath === '/' ? handlerPath : basePath + handlerPath;
-      return testUrl.pathname.startsWith(fullBasePath);
-    } else {
-      // For non-wildcard domains, use the original logic
-      const baseUrl = createUrlIfValid(domain.baseUrl);
-      if (!baseUrl) {
-        captureError("invalid-redirect-domain", new StackAssertionError("Invalid redirect domain; maybe this should be fixed in the database", {
-          domain: domain.baseUrl,
-        }));
-        return false;
-      }
-
-      const protocolMatches = baseUrl.protocol === testUrl.protocol;
-      const hostnameMatches = baseUrl.hostname === testUrl.hostname;
-
-      // Check port matching for non-wildcard domains
-      const portMatches = baseUrl.port === testUrl.port ||
-        (baseUrl.port === '' && testUrl.protocol === 'https:' && testUrl.port === '443') ||
-        (baseUrl.port === '' && testUrl.protocol === 'http:' && testUrl.port === '80') ||
-        (testUrl.port === '' && baseUrl.protocol === 'https:' && baseUrl.port === '443') ||
-        (testUrl.port === '' && baseUrl.protocol === 'http:' && baseUrl.port === '80');
-
-      const pathMatches = testUrl.pathname.startsWith(domain.handlerPath || '/');
-
-      return protocolMatches && hostnameMatches && portMatches && pathMatches;
-    }
-  });
+  // Check trusted domains
+  return Object.values(tenancy.config.domains.trustedDomains).some(domain =>
+    domain.baseUrl && matchesDomain(url, domain.baseUrl, domain.handlerPath || '/')
+  );
 }
