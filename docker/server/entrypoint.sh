@@ -13,7 +13,9 @@ fi
 
 # shellcheck disable=SC2155
 export STACK_SEED_INTERNAL_PROJECT_PUBLISHABLE_CLIENT_KEY=$(openssl rand -base64 32)
+# shellcheck disable=SC2155
 export STACK_SEED_INTERNAL_PROJECT_SECRET_SERVER_KEY=$(openssl rand -base64 32)
+# shellcheck disable=SC2155
 export STACK_SEED_INTERNAL_PROJECT_SUPER_SECRET_ADMIN_KEY=$(openssl rand -base64 32)
 
 export NEXT_PUBLIC_STACK_PROJECT_ID=internal
