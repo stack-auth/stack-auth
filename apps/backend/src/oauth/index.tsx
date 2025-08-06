@@ -14,6 +14,7 @@ import { GoogleProvider } from "./providers/google";
 import { LinkedInProvider } from "./providers/linkedin";
 import { MicrosoftProvider } from "./providers/microsoft";
 import { MockProvider } from "./providers/mock";
+import { OktaProvider } from "./providers/okta";
 import { SpotifyProvider } from "./providers/spotify";
 import { TwitchProvider } from "./providers/twitch";
 import { XProvider } from "./providers/x";
@@ -31,6 +32,7 @@ const _providers = {
   linkedin: LinkedInProvider,
   x: XProvider,
   twitch: TwitchProvider,
+  okta: OktaProvider,
 } as const;
 
 const mockProvider = MockProvider;
@@ -61,6 +63,7 @@ export async function getProvider(provider: Tenancy['config']['auth']['oauth']['
   if (provider.isShared) {
     const clientId = _getEnvForProvider(providerType).clientId;
     const clientSecret = _getEnvForProvider(providerType).clientSecret;
+    const issuerUrl = provider.issuerUrl;
     if (clientId === "MOCK") {
       if (clientSecret !== "MOCK") {
         throw new StackAssertionError("If OAuth provider client ID is set to MOCK, then client secret must also be set to MOCK");
@@ -70,6 +73,7 @@ export async function getProvider(provider: Tenancy['config']['auth']['oauth']['
       return await _providers[providerType].create({
         clientId,
         clientSecret,
+        issuerUrl,
       });
     }
   } else {
@@ -78,6 +82,7 @@ export async function getProvider(provider: Tenancy['config']['auth']['oauth']['
       clientSecret: provider.clientSecret || throwErr("Client secret is required for standard providers"),
       facebookConfigId: provider.facebookConfigId,
       microsoftTenantId: provider.microsoftTenantId,
+      issuerUrl: provider.issuerUrl,
     });
   }
 }

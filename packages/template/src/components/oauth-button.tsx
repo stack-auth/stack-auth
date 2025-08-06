@@ -156,6 +156,15 @@ export function OAuthButton({
       };
       break;
     }
+    case 'okta': {
+      style = {
+        backgroundColor: "#007dc1",
+        textColor: "#fff",
+        name: "Okta",
+        icon: <BrandIcons.Okta iconSize={iconSize} />,
+      };
+      break;
+    }
     default: {
       style = {
         name: provider,

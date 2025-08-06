@@ -54,6 +54,7 @@ export function adminProjectUpdateOptionsToCrud(options: AdminProjectUpdateOptio
           client_secret: p.clientSecret,
           facebook_config_id: p.facebookConfigId,
           microsoft_tenant_id: p.microsoftTenantId,
+          issuer_url: p.issuerUrl,
         }),
       })),
       email_config: options.config?.emailConfig && (

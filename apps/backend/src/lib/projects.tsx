@@ -156,6 +156,7 @@ export async function createOrUpdateProject(
             clientSecret: provider.client_secret,
             facebookConfigId: provider.facebook_config_id,
             microsoftTenantId: provider.microsoft_tenant_id,
+            issuerUrl: provider.issuer_url,
             allowSignIn: true,
             allowConnectedAccounts: true,
           } satisfies OrganizationRenderedConfig['auth']['oauth']['providers'][string]
