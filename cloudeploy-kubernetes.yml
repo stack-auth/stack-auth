@@ -1,0 +1,105 @@
+steps:
+  - name: gcr.io/cloud-builders/git
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        git config --unset credential.helper || :
+        git config --global user.username "infra-gl"
+        git config --global user.email "gdplabs@gdplabs.id"
+        git config --global url."https://$${GH_TOKEN}:x-oauth-basic@github.com/".insteadOf "https://github.com/"
+        git fetch --unshallow
+    secretEnv:
+      - 'GH_TOKEN'
+
+  - id: Download Kubernetes Config
+    name: 'gcr.io/cloud-builders/gcloud'
+    secretEnv: ['TELEPORT']
+    entrypoint: 'bash'
+    args: ['-c', 'echo "$$TELEPORT" >> /.kube/config']
+    volumes:
+    - name: 'kubeconfig'
+      path: '/.kube'
+
+  - id: Get Credentials Artifact Registry
+    dir: 'deployment/kubernetes/helm-values/${_ENVIRONMENT}/${_MODULE}'
+    name: 'gcr.io/cloud-builders/gcloud'
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |-
+        gcloud auth print-access-token > token.key
+        # Decrypt files
+        for filepath in $(find . -type f -name '*.enc'); do
+          gcloud kms decrypt \
+            --ciphertext-file=$$filepath \
+            --plaintext-file=$${filepath::-4} \
+            --location=global \
+            --keyring=cloudbuild \
+            --key=${_PROJECT}-$${ENVIRONMENT:0:4}
+        done
+    env:
+      - 'ENVIRONMENT=${_ENVIRONMENT}'
+    waitFor: ['-']
+
+  - id: Login Helm Registry
+    dir: 'deployment/kubernetes/helm-values/${_ENVIRONMENT}/${_MODULE}'
+    name: 'gcr.io/${PROJECT_ID}/deployer:teleport'
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - 'cat token.key | helm registry login -u oauth2accesstoken --password-stdin asia-southeast2-docker.pkg.dev'
+
+  - id: Deployment
+    name: 'gcr.io/${PROJECT_ID}/deployer:teleport'
+    entrypoint: 'bash'
+    args: ['deploy-kubernetes.sh']
+    env:
+      - 'PROJECT_ID=${PROJECT_ID}'
+      - 'PROJECT=${_PROJECT}'
+      - 'MODULE=${_MODULE}'
+      - 'COMMIT_ID=${_COMMIT_ID}'
+      - 'ENVIRONMENT=${_ENVIRONMENT}'
+      - 'KUBECONFIG=/.kube/config'
+    volumes:
+    - name: 'kubeconfig'
+      path: /.kube
+
+  - id: Run DAST
+    name: 'gcr.io/cloud-builders/gcloud'
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |-
+        if [ "$BRANCH_NAME" = "main" ] && [ -f "applications/${_MODULE}/zap.yml" ]; then
+          TRIGGER_OPTION="--branch ${BRANCH_NAME}"
+        else
+          if [ "$BRANCH_NAME" != "main" ]; then
+            echo "Not on main branch"
+          fi
+          if [ ! -f "applications/${_MODULE}/zap.yml" ]; then
+            echo "No zap.yml found in applications/${_MODULE}"
+          fi
+          exit 0
+        fi
+
+        gcloud builds triggers run ${_PROJECT}-scan-stackhawk \
+          $$TRIGGER_OPTION \
+          --substitutions _ENVIRONMENT=${_ENVIRONMENT},_MODULE=${_MODULE} \
+          --region=${LOCATION}
+
+timeout: 30m
+options:
+  machineType: E2_MEDIUM
+
+substitutions:
+  _PROJECT: 'gen-ai-template'
+
+availableSecrets:
+  secretManager:
+  - versionName: 'projects/$PROJECT_ID/secrets/INFRA_GL_GITHUB_TOKEN/versions/latest'
+    env: 'GH_TOKEN'
+  - versionName: 'projects/$PROJECT_ID/secrets/${_KUBECONFIG_SECRET_NAME}/versions/latest'
+    env: 'TELEPORT'
+
+tags: ['stack-auth', "infra-add-ons", 'release', 'deploy']

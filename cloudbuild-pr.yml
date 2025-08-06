@@ -1,0 +1,95 @@
+steps:
+  - id: Generate Google Token
+    name: gcr.io/cloud-builders/gcloud
+    dir: "./"
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - 'gcloud auth print-access-token > token.key'
+
+  - id: Run SCA
+    name: gcr.io/$PROJECT_ID/secops
+    entrypoint: bash
+    dir: "./"
+    args:
+      - "-c"
+      - |-
+        if [ -f sonar-project.properties ]; then
+          export WORKSPACE=$(pwd)
+          /opt/sq.sh
+        fi
+    env:
+      - "PROJECT_ID=$PROJECT_ID"
+      - "CI_PR_NUMBER=${_PR_NUMBER}"
+      - "CI_BRANCH=${BRANCH_NAME}"
+      - "CI_BASE_BRANCH=${_BASE_BRANCH}"
+    secretEnv:
+      - "SCA_TOKEN"
+
+  - id: Dockerfile Lint
+    name: "hadolint/hadolint:latest-alpine"
+    dir: "./docker/server/"
+    entrypoint: hadolint
+    args: ["--failure-threshold", "error", "Dockerfile"]
+    waitFor: ["-"]
+
+  - id: Shell Lint
+    name: "gcr.io/$PROJECT_ID/shellcheck"
+    args: ["**/*.sh"]
+    waitFor: ["-"]
+
+  - id: Build Image
+    dir: "./"
+    name: gcr.io/cloud-builders/docker
+    entrypoint: bash
+    args:
+      - "-c"
+      - |
+        docker buildx build \
+        -f docker/server/Dockerfile \
+        -t ${_REGISTRY_URL}/${_PROJECT}/${_MODULE}:${TAG_NAME:-$SHORT_SHA} \
+        -t ${_REGISTRY_URL}/${_PROJECT}/${_MODULE}:latest \
+        --cache-from ${_REGISTRY_URL}/${_PROJECT}/${_MODULE} \
+        --build-arg BUILDKIT_INLINE_CACHE=1 .
+    env:
+      - "SHORT_SHA=${SHORT_SHA}"
+      - "TAG_NAME=${TAG_NAME}"
+    waitFor:
+      - "Generate Google Token"
+
+  - id: Vulnerability Scanning
+    dir: './'
+    name: 'gcr.io/$PROJECT_ID/trivyhub'
+    args:
+      - "image"
+      - "${_REGISTRY_URL}/${_PROJECT}/${_MODULE}"
+      - "trivy-result.txt"
+    env:
+      - "REPOSITORY=${_GITHUB_USER}/${REPO_NAME}"
+      - "COMMIT_ID=${REVISION_ID}"
+      - "TRIVY_ARGS=--skip-dirs /opt/poetry/venv --skip-dirs /app/.cache/pre-commit"
+      - "TITLE=Trivy Result: ${_REGISTRY_URL}/${_PROJECT}/${_MODULE}:${SHORT_SHA}"
+    secretEnv:
+      - "GH_TOKEN"
+
+substitutions:
+  _REGISTRY_URL: "asia-southeast2-docker.pkg.dev/${PROJECT_ID}/projects"
+  _PROJECT: "stack-auth"
+  _GITHUB_USER: "GDP-ADMIN"
+
+timeout: 30m
+options:
+  env:
+    - "DOCKER_BUILDKIT=1"
+    - "COMPOSE_DOCKER_CLI_BUILD=1"
+    - 'SONAR_USER_HOME=.cache'
+    - 'XDG_CACHE_HOME=.cache'
+
+availableSecrets:
+  secretManager:
+    - versionName: projects/$PROJECT_ID/secrets/INFRA_GL_GITHUB_TOKEN/versions/latest
+      env: "GH_TOKEN"
+    - versionName: projects/$PROJECT_ID/secrets/INFRA_GL_SONARQUBE_TOKEN/versions/latest
+      env: "SCA_TOKEN"
+
+tags: ["stack-auth", "${_MODULE}", "pull-request"]

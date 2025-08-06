@@ -11,8 +11,11 @@ fi
 
 # ============= ENV VARS =============
 
+# shellcheck disable=SC2155
 export STACK_SEED_INTERNAL_PROJECT_PUBLISHABLE_CLIENT_KEY=$(openssl rand -base64 32)
+# shellcheck disable=SC2155
 export STACK_SEED_INTERNAL_PROJECT_SECRET_SERVER_KEY=$(openssl rand -base64 32)
+# shellcheck disable=SC2155
 export STACK_SEED_INTERNAL_PROJECT_SUPER_SECRET_ADMIN_KEY=$(openssl rand -base64 32)
 
 export NEXT_PUBLIC_STACK_PROJECT_ID=internal
@@ -60,6 +63,7 @@ echo "Copying files to working directory..."
 cp -r /app/. "$WORK_DIR"/.
 
 # Find all files in the working directory that contain a STACK_ENV_VAR_SENTINEL and extract the unique sentinel strings.
+# shellcheck disable=SC2038
 unhandled_sentinels=$(find "$WORK_DIR/apps" -type f -exec grep -l "STACK_ENV_VAR_SENTINEL" {} + | \
   xargs grep -h "STACK_ENV_VAR_SENTINEL" | \
   grep -o "STACK_ENV_VAR_SENTINEL[A-Z_]*" | \
