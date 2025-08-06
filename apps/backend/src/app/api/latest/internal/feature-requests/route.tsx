@@ -83,9 +83,8 @@ export const GET = createSmartRouteHandler({
           const upvoteData = await upvoteResponse.json();
           const upvoters = upvoteData.results || [];
           userHasUpvoted = upvoters.some((upvoter: any) =>
-            upvoter.email === featurebaseUser.email || upvoter.userId === featurebaseUser.userId
+            upvoter.userId === featurebaseUser.userId
           );
-
         }
 
         return {
