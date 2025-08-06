@@ -4,7 +4,7 @@ import { getPublicEnvVar } from '@/lib/env';
 import { cn } from '@/lib/utils';
 import { useUser } from '@stackframe/stack';
 import { Button } from '@stackframe/stack-ui';
-import { ChevronUp, Lightbulb, Loader2, Send } from 'lucide-react';
+import { ChevronUp, ExternalLink, Lightbulb, Loader2, Send } from 'lucide-react';
 import { useCallback, useEffect, useState } from 'react';
 
 type FeatureRequestBoardProps = {
@@ -209,6 +209,8 @@ export function FeatureRequestBoard({ isActive }: FeatureRequestBoardProps) {
           }
           : request
       ));
+
+      throw error;
     } finally {
       setUpvotingIds(prev => {
         const newSet = new Set(prev);
@@ -275,6 +277,17 @@ export function FeatureRequestBoard({ isActive }: FeatureRequestBoardProps) {
     } finally {
       setIsSubmitting(false);
     }
+  };
+
+  // Handle clicking on a feature request card to view it on Featurebase
+  const handleFeatureRequestClick = (requestId: string) => {
+    // Construct the Featurebase post URL (we'll need to get the actual slug from the API response)
+    // For now, we'll use the ID to construct a URL - this might need adjustment based on Featurebase's URL structure
+    const featureRequestUrl = `https://feedback.stack-auth.com/p/${requestId}`;
+    const redirectTo = `/integrations/featurebase/sso?return_to=${encodeURIComponent(featureRequestUrl)}`;
+
+    // Open in new tab to maintain the current Stack Companion session
+    window.open(redirectTo, '_blank');
   };
 
   return (
@@ -410,14 +423,19 @@ export function FeatureRequestBoard({ isActive }: FeatureRequestBoardProps) {
               }
             `}</style>
             {existingRequests.map((request) => (
-              <div key={request.id} className="bg-card rounded-lg border border-border p-3 shadow-sm hover:shadow-md transition-shadow">
-                <div className="flex items-start gap-3">
+              <div key={request.id} className="bg-card rounded-lg border border-border shadow-sm hover:shadow-md transition-shadow">
+                <div className="flex items-start gap-3 p-3">
                   {/* Upvote Button */}
                   <div className="flex flex-col items-center gap-1">
                     <Button
                       variant={userUpvotes.has(request.id) ? "default" : "outline"}
                       size="sm"
-                      onClick={() => handleUpvote(request.id)}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleUpvote(request.id).catch((error) => {
+                          console.error('Failed to handle upvote:', error);
+                        });
+                      }}
                       disabled={upvotingIds.has(request.id)}
                       className="h-6 w-6 p-0 rounded-md"
                     >
@@ -432,12 +450,18 @@ export function FeatureRequestBoard({ isActive }: FeatureRequestBoardProps) {
                     </span>
                   </div>
 
-                  {/* Content */}
-                  <div className="flex-1 min-w-0">
+                  {/* Clickable Content */}
+                  <button
+                    onClick={() => handleFeatureRequestClick(request.id)}
+                    className="flex-1 min-w-0 text-left group hover:bg-muted/30 rounded-md p-2 -m-2 transition-colors"
+                  >
                     <div className="flex items-start justify-between gap-2 mb-1">
-                      <h6 className="text-sm font-medium text-foreground line-clamp-2">
-                        {request.title}
-                      </h6>
+                      <div className="flex items-center gap-2 flex-1">
+                        <h6 className="text-sm font-medium text-foreground line-clamp-2 group-hover:text-primary">
+                          {request.title}
+                        </h6>
+                        <ExternalLink className="h-3 w-3 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0" />
+                      </div>
                       <span className={cn(
                         "text-[10px] px-1.5 py-0.5 rounded-md font-medium flex-shrink-0 border",
                         request.postStatus?.color === 'Green'
@@ -461,7 +485,7 @@ export function FeatureRequestBoard({ isActive }: FeatureRequestBoardProps) {
                     <div className="flex items-center justify-end text-xs text-muted-foreground">
                       <span>{new Date(request.date).toLocaleDateString()}</span>
                     </div>
-                  </div>
+                  </button>
                 </div>
               </div>
             ))}
