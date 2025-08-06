@@ -3,6 +3,7 @@
 import { getPublicEnvVar } from '@/lib/env';
 import { cn } from '@/lib/utils';
 import { useUser } from '@stackframe/stack';
+import { runAsynchronously } from '@stackframe/stack-shared/dist/utils/promises';
 import { Button } from '@stackframe/stack-ui';
 import { ChevronUp, ExternalLink, Lightbulb, Loader2, Send } from 'lucide-react';
 import { useCallback, useEffect, useState } from 'react';
@@ -105,21 +106,13 @@ export function FeatureRequestBoard({ isActive }: FeatureRequestBoardProps) {
   // Load feature requests when component becomes active
   useEffect(() => {
     if (isActive) {
-      fetchFeatureRequests().then(() => {
-        // Successfully loaded feature requests
-      }).catch((error) => {
-        console.error('Failed to load feature requests:', error);
-      });
+      runAsynchronously(fetchFeatureRequests());
     }
   }, [isActive, fetchFeatureRequests]);
 
   // Handle refresh button click
   const handleRefreshRequests = () => {
-    fetchFeatureRequests().then(() => {
-      // Successfully refreshed
-    }).catch((error) => {
-      console.error('Failed to refresh feature requests:', error);
-    });
+    runAsynchronously(fetchFeatureRequests());
   };
 
   // Handle upvote
