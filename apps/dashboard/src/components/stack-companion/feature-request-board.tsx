@@ -275,8 +275,7 @@ export function FeatureRequestBoard({ isActive }: FeatureRequestBoardProps) {
 
   // Handle clicking on a feature request card to view it on Featurebase
   const handleFeatureRequestClick = (requestId: string) => {
-    // Construct the Featurebase post URL (we'll need to get the actual slug from the API response)
-    // For now, we'll use the ID to construct a URL - this might need adjustment based on Featurebase's URL structure
+    // Construct the Featurebase post URL using the post ID
     const featureRequestUrl = `https://feedback.stack-auth.com/p/${requestId}`;
     const redirectTo = `/integrations/featurebase/sso?return_to=${encodeURIComponent(featureRequestUrl)}`;
 
