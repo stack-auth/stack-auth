@@ -39,9 +39,9 @@ export const POST = createSmartRouteHandler({
     // Get or create Featurebase user for consistent email handling
     const featurebaseUser = await getOrCreateFeaturebaseUser({
       id: auth.user.id,
-      primary_email: auth.user.primary_email,
-      display_name: auth.user.display_name,
-      profile_image_url: auth.user.profile_image_url,
+      primaryEmail: auth.user.primary_email,
+      displayName: auth.user.display_name,
+      profileImageUrl: auth.user.profile_image_url,
     });
 
     const response = await fetch('https://do.featurebase.app/v2/posts/upvoters', {
@@ -52,9 +52,7 @@ export const POST = createSmartRouteHandler({
       },
       body: JSON.stringify({
         id: params.featureRequestId,
-        userId: featurebaseUser.userId, // Use userId for consistency with SSO
-        email: featurebaseUser.email,
-        name: auth.user.display_name || featurebaseUser.email.split('@')[0] || 'User'
+        userId: featurebaseUser.userId,
       }),
     });
 
