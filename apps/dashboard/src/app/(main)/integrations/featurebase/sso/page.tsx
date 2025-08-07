@@ -41,7 +41,7 @@ export default async function FeaturebaseSSO({
   const jwt = await new jose.SignJWT({
     userId: featurebaseUser.userId,
     email: featurebaseUser.email,
-    name: user.displayName || featurebaseUser.email.split('@')[0] || 'User',
+    name: user.displayName || 'Stack Auth User',
     profilePicture: user.profileImageUrl || undefined,
   })
     .setProtectedHeader({ alg: "HS256" })
