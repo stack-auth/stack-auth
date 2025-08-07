@@ -6,7 +6,7 @@ import { useUser } from '@stackframe/stack';
 import { htmlToText } from '@stackframe/stack-shared/dist/utils/html';
 import { runAsynchronously } from '@stackframe/stack-shared/dist/utils/promises';
 import { Button } from '@stackframe/stack-ui';
-import { ChevronUp, ExternalLink, Lightbulb, Loader2, Send } from 'lucide-react';
+import { ChevronUp, Lightbulb, Loader2, Send } from 'lucide-react';
 import { useCallback, useEffect, useState } from 'react';
 
 type FeatureRequestBoardProps = {
@@ -453,7 +453,6 @@ export function FeatureRequestBoard({ isActive }: FeatureRequestBoardProps) {
                         <h6 className="text-sm font-medium text-foreground line-clamp-2 group-hover:text-primary">
                           {request.title}
                         </h6>
-                        <ExternalLink className="h-3 w-3 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0" />
                       </div>
                       <span className={cn(
                         "text-[10px] px-1.5 py-0.5 rounded-md font-medium flex-shrink-0 border",
