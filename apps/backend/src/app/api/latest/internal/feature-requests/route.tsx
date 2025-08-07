@@ -156,7 +156,7 @@ export const POST = createSmartRouteHandler({
       tags: body.tags || ['feature_request', 'dashboard'],
       commentsAllowed: body.commentsAllowed ?? true,
       email: featurebaseUser.email,
-      authorName: auth.user.display_name || featurebaseUser.email.split('@')[0] || 'User',
+      authorName: auth.user.display_name || 'Stack Auth User',
       customInputValues: {
         // Using the actual field IDs from Featurebase
         "6872f858cc9682d29cf2e4c0": 'dashboard_companion', // source field
