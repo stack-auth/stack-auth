@@ -6,7 +6,7 @@ import { useUser } from '@stackframe/stack';
 import { htmlToText } from '@stackframe/stack-shared/dist/utils/html';
 import { runAsynchronously } from '@stackframe/stack-shared/dist/utils/promises';
 import { Button } from '@stackframe/stack-ui';
-import { ChevronUp, Lightbulb, Loader2, Send } from 'lucide-react';
+import { ChevronUp, Lightbulb, Loader2, Plus, Send, X } from 'lucide-react';
 import { useCallback, useEffect, useState } from 'react';
 
 type FeatureRequestBoardProps = {
@@ -57,6 +57,7 @@ export function FeatureRequestBoard({ isActive }: FeatureRequestBoardProps) {
   const [featureContent, setFeatureContent] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitStatus, setSubmitStatus] = useState<'idle' | 'success' | 'error'>('idle');
+  const [showSubmitForm, setShowSubmitForm] = useState(false);
 
   // Existing feature requests state
   const [existingRequests, setExistingRequests] = useState<FeatureRequest[]>([]);
@@ -257,9 +258,10 @@ export function FeatureRequestBoard({ isActive }: FeatureRequestBoardProps) {
           console.error('Failed to refresh feature requests:', error);
         }
 
-        // Auto-reset status after success
+        // Auto-reset status and hide form after success
         setTimeout(() => {
           setSubmitStatus('idle');
+          setShowSubmitForm(false);
         }, 3000);
       } else {
         console.error('Backend API error:', responseData);
@@ -295,11 +297,22 @@ export function FeatureRequestBoard({ isActive }: FeatureRequestBoardProps) {
             Thank you for helping us improve Stack Auth!
           </p>
         </div>
-      ) : (
-        <div className="bg-card rounded-lg border border-border p-4 shadow-sm">
-          <div className="flex items-center gap-2 mb-3">
-            <Lightbulb className="h-5 w-5 text-purple-600" />
-            <h4 className="text-sm font-semibold text-foreground">Submit Feature Request</h4>
+      ) : showSubmitForm ? (
+        <div className="bg-card rounded-lg border border-border p-4 shadow-sm animate-in slide-in-from-top-2 duration-200">
+          <div className="flex items-center justify-between gap-2 mb-3">
+            <div className="flex items-center gap-2">
+              <Lightbulb className="h-5 w-5 text-purple-600" />
+              <h4 className="text-sm font-semibold text-foreground">Submit Feature Request</h4>
+            </div>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setShowSubmitForm(false)}
+              className="h-6 w-6 p-0 hover:bg-muted rounded-md"
+              title="Cancel"
+            >
+              <X className="h-3 w-3" />
+            </Button>
           </div>
 
           {/* Title Input */}
@@ -360,6 +373,16 @@ export function FeatureRequestBoard({ isActive }: FeatureRequestBoardProps) {
             </p>
           )}
         </div>
+      ) : (
+        <Button
+          onClick={() => setShowSubmitForm(true)}
+          variant="outline"
+          className="w-full mb-4 min-h-[36px] flex-shrink-0 animate-in fade-in-0 duration-200"
+          size="sm"
+        >
+          <Plus className="h-4 w-4 mr-2 flex-shrink-0" />
+          <span className="flex-1">Submit New Feature Request</span>
+        </Button>
       )}
 
       {/* Existing Feature Requests */}
