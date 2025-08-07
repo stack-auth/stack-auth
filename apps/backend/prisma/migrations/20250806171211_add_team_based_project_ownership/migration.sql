@@ -1,3 +1,4 @@
+-- SINGLE_STATEMENT_SENTINEL
 -- Add team-based project ownership
 -- Step 1: Add ownerTeamId column to Project table
 ALTER TABLE "Project" ADD COLUMN "ownerTeamId" UUID;
