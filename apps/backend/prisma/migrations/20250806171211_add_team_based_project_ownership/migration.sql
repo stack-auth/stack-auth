@@ -1,8 +1,10 @@
--- SINGLE_STATEMENT_SENTINEL
 -- Add team-based project ownership
 -- Step 1: Add ownerTeamId column to Project table
 ALTER TABLE "Project" ADD COLUMN "ownerTeamId" UUID;
 
+SPLIT_STATEMENT_SENTINEL
+
+-- SINGLE_STATEMENT_SENTINEL
 -- Step 2: For each existing user with managed projects, create a personal team and assign their projects to it
 DO $$
 DECLARE
