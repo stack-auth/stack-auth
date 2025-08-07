@@ -1,8 +1,8 @@
-import { getOrCreateFeaturebaseUser } from "@/lib/featurebase-utils";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { adaptSchema, yupArray, yupBoolean, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
 import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
 import { StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
+import { getOrCreateFeaturebaseUser } from "@stackframe/stack-shared/dist/utils/featurebase";
 
 const STACK_FEATUREBASE_API_KEY = getEnvVariable("STACK_FEATUREBASE_API_KEY");
 
