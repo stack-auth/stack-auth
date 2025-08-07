@@ -448,14 +448,12 @@ export function FeatureRequestBoard({ isActive }: FeatureRequestBoardProps) {
                     onClick={() => handleFeatureRequestClick(request.id)}
                     className="flex-1 min-w-0 text-left group hover:bg-muted/30 rounded-md p-2 -m-2 transition-colors"
                   >
-                    <div className="flex items-start justify-between gap-2 mb-1">
-                      <div className="flex items-center gap-2 flex-1">
-                        <h6 className="text-sm font-medium text-foreground line-clamp-2 group-hover:text-primary">
-                          {request.title}
-                        </h6>
-                      </div>
+                    <div className="mb-2">
+                      <h6 className="text-sm font-medium text-foreground line-clamp-4 group-hover:text-primary mb-2">
+                        {request.title}
+                      </h6>
                       <span className={cn(
-                        "text-[10px] px-1.5 py-0.5 rounded-md font-medium flex-shrink-0 border",
+                        "text-[10px] px-1.5 py-0.5 rounded-md font-medium inline-block border",
                         request.postStatus?.color === 'Green'
                           ? "bg-green-50 dark:bg-green-950 text-green-600 dark:text-green-400 border-green-200 dark:border-green-800"
                           : request.postStatus?.color === 'Blue'
