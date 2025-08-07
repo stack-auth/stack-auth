@@ -60,7 +60,7 @@ export async function getProject(projectId: string): Promise<Omit<ProjectsCrud["
   return result;
 }
 
-export async function createOrUpdateProject(
+export async function createOrUpdateProjectWithLegacyConfig(
   options: {
     ownerIds?: string[],
     sourceOfTruth?: ProjectConfigOverrideOverride["sourceOfTruth"],

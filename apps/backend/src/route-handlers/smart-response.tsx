@@ -1,8 +1,8 @@
-import { traceSpan } from "@/utils/telemetry";
 import { yupValidate } from "@stackframe/stack-shared/dist/schema-fields";
 import { StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
 import { Json } from "@stackframe/stack-shared/dist/utils/json";
 import { deepPlainEquals } from "@stackframe/stack-shared/dist/utils/objects";
+import { traceSpan } from "@stackframe/stack-shared/dist/utils/telemetry";
 import { NextRequest } from "next/server";
 import * as yup from "yup";
 import "../polyfills";

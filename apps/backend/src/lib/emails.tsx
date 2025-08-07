@@ -1,5 +1,4 @@
 import { getPrismaClientForTenancy } from '@/prisma-client';
-import { traceSpan } from '@/utils/telemetry';
 import { DEFAULT_TEMPLATE_IDS } from '@stackframe/stack-shared/dist/helpers/emails';
 import { UsersCrud } from '@stackframe/stack-shared/dist/interface/crud/users';
 import { getEnvVariable } from '@stackframe/stack-shared/dist/utils/env';
@@ -7,6 +6,7 @@ import { StackAssertionError, StatusError, captureError } from '@stackframe/stac
 import { filterUndefined, omit, pick } from '@stackframe/stack-shared/dist/utils/objects';
 import { runAsynchronously, wait } from '@stackframe/stack-shared/dist/utils/promises';
 import { Result } from '@stackframe/stack-shared/dist/utils/results';
+import { traceSpan } from '@stackframe/stack-shared/dist/utils/telemetry';
 import nodemailer from 'nodemailer';
 import { getEmailThemeForTemplate, renderEmailWithTemplate } from './email-rendering';
 import { Tenancy, getTenancy } from './tenancies';
@@ -78,34 +78,42 @@ async function _sendEmailWithoutRetries(options: SendEmailOptions): Promise<Resu
     if (options.emailConfig.type === 'shared' && emailableApiKey) {
       await traceSpan('verifying email addresses with Emailable', async () => {
         toArray = (await Promise.all(toArray.map(async (to) => {
-          const emailableResponseResult = await Result.retry(async (attempt) => {
-            const res = await fetch(`https://api.emailable.com/v1/verify?email=${encodeURIComponent(options.to as string)}&api_key=${emailableApiKey}`);
-            if (res.status === 249) {
-              const text = await res.text();
-              console.log('Emailable is taking longer than expected, retrying...', text, { to: options.to });
-              return Result.error(new Error("Emailable API returned a 249 error for " + options.to + ". This means it takes some more time to verify the email address. Response body: " + text));
+          try {
+            const emailableResponseResult = await Result.retry(async (attempt) => {
+              const res = await fetch(`https://api.emailable.com/v1/verify?email=${encodeURIComponent(options.to as string)}&api_key=${emailableApiKey}`);
+              if (res.status === 249) {
+                const text = await res.text();
+                console.log('Emailable is taking longer than expected, retrying...', text, { to: options.to });
+                return Result.error(new Error("Emailable API returned a 249 error for " + options.to + ". This means it takes some more time to verify the email address. Response body: " + text));
+              }
+              return Result.ok(res);
+            }, 4, { exponentialDelayBase: 4000 });
+            if (emailableResponseResult.status === 'error') {
+              throw new StackAssertionError("Timed out while verifying email address with Emailable", {
+                to: options.to,
+                emailableResponseResult,
+              });
             }
-            return Result.ok(res);
-          }, 4, { exponentialDelayBase: 4000 });
-          if (emailableResponseResult.status === 'error') {
-            captureError("emailable-api-timeout", emailableResponseResult.error);
+            const emailableResponse = emailableResponseResult.data;
+            if (!emailableResponse.ok) {
+              throw new StackAssertionError("Failed to verify email address with Emailable", {
+                to: options.to,
+                emailableResponse,
+                emailableResponseText: await emailableResponse.text(),
+              });
+            }
+            const json = await emailableResponse.json();
+            console.log('emailableResponse', json);
+            if (json.state === 'undeliverable' || json.disposable) {
+              console.log('email not deliverable', to, json);
+              return null;
+            }
+            return to;
+          } catch (error) {
+            // if something goes wrong with the Emailable API (eg. 500, ran out of credits, etc.), we just send the email anyway
+            captureError("emailable-api-error", error);
             return to;
           }
-          const emailableResponse = emailableResponseResult.data;
-          if (!emailableResponse.ok) {
-            throw new StackAssertionError("Failed to verify email address with Emailable", {
-              to: options.to,
-              emailableResponse,
-              emailableResponseText: await emailableResponse.text(),
-            });
-          }
-          const json = await emailableResponse.json();
-          console.log('emailableResponse', json);
-          if (json.state === 'undeliverable' || json.disposable) {
-            console.log('email not deliverable', to, json);
-            return null;
-          }
-          return to;
         }))).filter((to): to is string => to !== null);
       });
     }
