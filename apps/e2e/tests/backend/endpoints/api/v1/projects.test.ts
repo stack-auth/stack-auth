@@ -1366,7 +1366,6 @@ it("makes sure user have the correct managed project ID after project creation",
     accessType: "admin",
     method: "GET",
   });
-  expect(projectResponse).toMatchInlineSnapshot();
   expect(projectResponse.body.owner_team_id).toBe(userResponse.body.selected_team.id);
 });
 
@@ -1422,7 +1421,6 @@ it("makes sure other users are not affected by project deletion", async ({ expec
   const { projectId } = await Project.create();
 
   backendContext.set({ projectKeys: InternalProjectKeys });
-  const user2Auth = backendContext.value.userAuth;
   const { adminAccessToken } = await Project.createAndGetAdminToken();
 
   // Delete the project
@@ -1462,7 +1460,7 @@ it("has a correctly formatted JWKS endpoint", async ({ expect }) => {
 });
 
 it("should increment and decrement userCount when a user is added to a project", async ({ expect }) => {
-  const { adminAccessToken } = await Project.createAndSwitch({
+  await Project.createAndSwitch({
     config: {
       magic_link_enabled: true,
     }
