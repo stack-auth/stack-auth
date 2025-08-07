@@ -46,9 +46,9 @@ export const GET = createSmartRouteHandler({
     // Get or create Featurebase user for consistent email handling
     const featurebaseUser = await getOrCreateFeaturebaseUser({
       id: auth.user.id,
-      primary_email: auth.user.primary_email,
-      display_name: auth.user.display_name,
-      profile_image_url: auth.user.profile_image_url,
+      primaryEmail: auth.user.primary_email,
+      displayName: auth.user.display_name,
+      profileImageUrl: auth.user.profile_image_url,
     });
 
     // Fetch all posts with sorting
@@ -144,9 +144,9 @@ export const POST = createSmartRouteHandler({
     // Get or create Featurebase user for consistent email handling
     const featurebaseUser = await getOrCreateFeaturebaseUser({
       id: auth.user.id,
-      primary_email: auth.user.primary_email,
-      display_name: auth.user.display_name,
-      profile_image_url: auth.user.profile_image_url,
+      primaryEmail: auth.user.primary_email,
+      displayName: auth.user.display_name,
+      profileImageUrl: auth.user.profile_image_url,
     });
 
     const featurebaseRequestBody = {
