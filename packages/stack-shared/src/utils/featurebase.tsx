@@ -1,7 +1,5 @@
-import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
-import { StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
-
-const STACK_FEATUREBASE_API_KEY = getEnvVariable("STACK_FEATUREBASE_API_KEY");
+import { getEnvVariable } from "./env";
+import { StackAssertionError } from "./errors";
 
 export type FeaturebaseUser = {
   userId: string,
@@ -10,7 +8,7 @@ export type FeaturebaseUser = {
   profilePicture?: string,
 };
 
-type StackAuthUser = {
+export type StackAuthUser = {
   id: string,
   primaryEmail: string | null,
   displayName?: string | null,
@@ -20,12 +18,12 @@ type StackAuthUser = {
 /**
  * Find a Featurebase user by their Stack Auth user ID
  */
-async function findFeaturebaseUserById(stackAuthUserId: string): Promise<FeaturebaseUser | null> {
+async function findFeaturebaseUserById(stackAuthUserId: string, apiKey: string): Promise<FeaturebaseUser | null> {
   try {
     const response = await fetch(`https://do.featurebase.app/v2/organization/identifyUser?id=${stackAuthUserId}`, {
       method: 'GET',
       headers: {
-        'X-API-Key': STACK_FEATUREBASE_API_KEY,
+        'X-API-Key': apiKey,
       },
     });
 
@@ -59,12 +57,12 @@ async function findFeaturebaseUserById(stackAuthUserId: string): Promise<Feature
 /**
  * Find a Featurebase user by their email address
  */
-async function findFeaturebaseUserByEmail(email: string): Promise<FeaturebaseUser | null> {
+async function findFeaturebaseUserByEmail(email: string, apiKey: string): Promise<FeaturebaseUser | null> {
   try {
     const response = await fetch(`https://do.featurebase.app/v2/organization/identifyUser?email=${encodeURIComponent(email)}`, {
       method: 'GET',
       headers: {
-        'X-API-Key': STACK_FEATUREBASE_API_KEY,
+        'X-API-Key': apiKey,
       },
     });
 
@@ -98,12 +96,12 @@ async function findFeaturebaseUserByEmail(email: string): Promise<FeaturebaseUse
 /**
  * Create a new Featurebase user using the identifyUser endpoint
  */
-async function createFeaturebaseUser(user: FeaturebaseUser): Promise<FeaturebaseUser> {
+async function createFeaturebaseUser(user: FeaturebaseUser, apiKey: string): Promise<FeaturebaseUser> {
   const response = await fetch('https://do.featurebase.app/v2/organization/identifyUser', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      'X-API-Key': STACK_FEATUREBASE_API_KEY,
+      'X-API-Key': apiKey,
     },
     body: JSON.stringify({
       userId: user.userId,
@@ -125,12 +123,12 @@ async function createFeaturebaseUser(user: FeaturebaseUser): Promise<Featurebase
 /**
  * Update an existing Featurebase user (excluding email)
  */
-async function updateFeaturebaseUser(userId: string, updates: Partial<Omit<FeaturebaseUser, 'userId' | 'email'>>): Promise<FeaturebaseUser> {
+async function updateFeaturebaseUser(userId: string, updates: Partial<Omit<FeaturebaseUser, 'userId' | 'email'>>, apiKey: string): Promise<FeaturebaseUser> {
   const response = await fetch(`https://do.featurebase.app/v2/users/${userId}`, {
     method: 'PATCH',
     headers: {
       'Content-Type': 'application/json',
-      'X-API-Key': STACK_FEATUREBASE_API_KEY,
+      'X-API-Key': apiKey,
     },
     body: JSON.stringify(updates),
   });
@@ -158,12 +156,14 @@ async function updateFeaturebaseUser(userId: string, updates: Partial<Omit<Featu
  * 4. We update profile information when needed
  */
 export async function getOrCreateFeaturebaseUser(
-  stackAuthUser: StackAuthUser
+  stackAuthUser: StackAuthUser,
+  options?: { apiKey?: string }
 ): Promise<{ userId: string, email: string }> {
+  const apiKey = options?.apiKey || getEnvVariable("STACK_FEATUREBASE_API_KEY");
   const fallbackEmail = `${stackAuthUser.id}@featurebase-user.stack-auth-app.com`;
 
   // First, try to find existing user by Stack Auth user ID
-  const existingById = await findFeaturebaseUserById(stackAuthUser.id);
+  const existingById = await findFeaturebaseUserById(stackAuthUser.id, apiKey);
   if (existingById) {
     // Update profile information if needed (but not email)
     try {
@@ -178,7 +178,7 @@ export async function getOrCreateFeaturebaseUser(
       }
 
       if (Object.keys(updates).length > 0) {
-        await updateFeaturebaseUser(existingById.userId, updates);
+        await updateFeaturebaseUser(existingById.userId, updates, apiKey);
       }
     } catch (error) {
       console.error('Failed to update existing Featurebase user profile:', error);
@@ -195,7 +195,7 @@ export async function getOrCreateFeaturebaseUser(
   const candidateEmail = stackAuthUser.primaryEmail ?? fallbackEmail;
 
   // Check if someone already has this email on Featurebase
-  const existingByEmail = await findFeaturebaseUserByEmail(candidateEmail);
+  const existingByEmail = await findFeaturebaseUserByEmail(candidateEmail, apiKey);
   const safeEmail = existingByEmail ? fallbackEmail : candidateEmail;
 
   // Create new user
@@ -204,7 +204,7 @@ export async function getOrCreateFeaturebaseUser(
     email: safeEmail,
     name: stackAuthUser.displayName || stackAuthUser.primaryEmail?.split('@')[0] || 'User',
     profilePicture: stackAuthUser.profileImageUrl || undefined,
-  });
+  }, apiKey);
 
   return {
     userId: created.userId,
