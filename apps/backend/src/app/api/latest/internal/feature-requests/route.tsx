@@ -52,7 +52,7 @@ export const GET = createSmartRouteHandler({
     });
 
     // Fetch all posts with sorting
-    const response = await fetch('https://do.featurebase.app/v2/posts?limit=50&sortBy=date:desc', {
+    const response = await fetch('https://do.featurebase.app/v2/posts?limit=50&sortBy=upvotes:desc', {
       method: 'GET',
       headers: {
         'X-API-Key': STACK_FEATUREBASE_API_KEY,
