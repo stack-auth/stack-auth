@@ -41,7 +41,7 @@ async function findFeaturebaseUserById(stackAuthUserId: string): Promise<Feature
     const user = data.user;
 
     if (!user) {
-      return null;
+      throw new StackAssertionError(`Featurebase API returned success but no user data for ID: ${stackAuthUserId}`, { data });
     }
 
     return {
@@ -80,7 +80,7 @@ async function findFeaturebaseUserByEmail(email: string): Promise<FeaturebaseUse
     const user = data.user;
 
     if (!user) {
-      return null;
+      throw new StackAssertionError(`Featurebase API returned success but no user data for email: ${email}`, { data });
     }
 
     return {
