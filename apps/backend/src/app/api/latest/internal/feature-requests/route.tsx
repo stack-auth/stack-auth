@@ -155,13 +155,12 @@ export const POST = createSmartRouteHandler({
       category: body.category || 'feature-requests',
       tags: body.tags || ['feature_request', 'dashboard'],
       commentsAllowed: body.commentsAllowed ?? true,
-      userId: featurebaseUser.userId, // Include userId for consistency
       email: featurebaseUser.email,
       authorName: auth.user.display_name || featurebaseUser.email.split('@')[0] || 'User',
       customInputValues: {
         // Using the actual field IDs from Featurebase
         "6872f858cc9682d29cf2e4c0": 'dashboard_companion', // source field
-        "6872f88041fa77a4dd9dab29": auth.user.id, // userId field
+        "6872f88041fa77a4dd9dab29": featurebaseUser.userId, // userId field
         "6872f890143fc108288d8f5a": 'stack-auth', // projectId field
         ...body.customInputValues,
       }
