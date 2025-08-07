@@ -37,7 +37,7 @@ export async function listManagedProjectIds(projectUser: UsersCrud["Admin"]["Rea
   return projectIds.map((project) => project.id);
 }
 
-export function getProjectQuery(projectId: string): RawQuery<Promise<Omit<ProjectsCrud["Admin"]["Read"], "config" | "owner_team_name" | "owner_team_display_name"> | null>> {
+export function getProjectQuery(projectId: string): RawQuery<Promise<Omit<ProjectsCrud["Admin"]["Read"], "config"> | null>> {
   return {
     supportedPrismaClients: ["global"],
     sql: Prisma.sql`
@@ -65,7 +65,7 @@ export function getProjectQuery(projectId: string): RawQuery<Promise<Omit<Projec
   };
 }
 
-export async function getProject(projectId: string): Promise<Omit<ProjectsCrud["Admin"]["Read"], "config" | "owner_team_display_name"> | null> {
+export async function getProject(projectId: string): Promise<Omit<ProjectsCrud["Admin"]["Read"], "config"> | null> {
   const result = await rawQuery(globalPrismaClient, getProjectQuery(projectId));
   return result;
 }

@@ -1354,35 +1354,35 @@ it("does not allow accessing a project without a project ID header", async ({ ex
 
 it("makes sure user have the correct managed project ID after project creation", async ({ expect }) => {
   backendContext.set({ projectKeys: InternalProjectKeys });
-  const { creatorUserId, projectId } = await Project.createAndGetAdminToken();
+  const { creatorUserId, projectId, adminAccessToken } = await Project.createAndGetAdminToken();
 
   backendContext.set({ projectKeys: InternalProjectKeys });
   const userResponse = await niceBackendFetch(`/api/v1/users/${creatorUserId}`, {
     accessType: "server",
     method: "GET",
   });
-  backendContext.set({ projectKeys: { projectId } });
+  backendContext.set({ projectKeys: { projectId, adminAccessToken } });
   const projectResponse = await niceBackendFetch(`/api/v1/internal/projects/current`, {
     accessType: "admin",
     method: "GET",
   });
+  expect(projectResponse).toMatchInlineSnapshot();
   expect(projectResponse.body.owner_team_id).toBe(userResponse.body.selected_team.id);
 });
 
-it("removes a deleted project from a user's managed project IDs", async ({ expect }) => {
+it("removes a deleted project from a user", async ({ expect }) => {
   backendContext.set({ projectKeys: InternalProjectKeys });
-  const { creatorUserId, adminAccessToken, projectId } = await Project.createAndGetAdminToken();
+  await Auth.Otp.signIn();
+  const adminAccessToken = backendContext.value.userAuth?.accessToken;
+  const { projectId } = await Project.create();
 
-  backendContext.set({ projectKeys: InternalProjectKeys });
-  const userResponse1 = await niceBackendFetch(`/api/v1/users/${creatorUserId}`, {
-    accessType: "server",
-    method: "GET",
+  const projectResponse = await niceBackendFetch(`/api/v1/internal/projects`, {
+    accessType: "client",
   });
-  const projectIds1 = userResponse1.body.server_metadata.managedProjectIds;
-  expect(projectIds1.length).toBe(1);
+  expect(projectResponse.body.items.length).toBe(1);
 
   // Delete the project
-  backendContext.set({ projectKeys: { projectId, adminAccessToken } });
+  backendContext.set({ projectKeys: { projectId, adminAccessToken }, userAuth: null });
   const deleteResponse = await niceBackendFetch(`/api/v1/internal/projects/current`, {
     accessType: "admin",
     method: "DELETE",
@@ -1396,21 +1396,33 @@ it("removes a deleted project from a user's managed project IDs", async ({ expec
     }
   `);
 
-  backendContext.set({ projectKeys: InternalProjectKeys });
-
-  const userResponse2 = await niceBackendFetch(`/api/v1/users/${creatorUserId}`, {
-    accessType: "server",
-    method: "GET",
+  const projectResponse2 = await niceBackendFetch(`/api/v1/internal/projects`, {
+    accessType: "admin",
   });
-  const projectIds2 = userResponse2.body.server_metadata.managedProjectIds;
-  expect(projectIds2.length).toBe(0);
+  expect(projectResponse2).toMatchInlineSnapshot(`
+    NiceResponse {
+      "status": 400,
+      "body": {
+        "code": "CURRENT_PROJECT_NOT_FOUND",
+        "details": { "project_id": "<stripped UUID>" },
+        "error": "The current project with ID <stripped UUID> was not found. Please check the value of the x-stack-project-id header.",
+      },
+      "headers": Headers {
+        "x-stack-known-error": "CURRENT_PROJECT_NOT_FOUND",
+        <some fields may have been hidden>,
+      },
+    }
+  `);
 });
 
 it("makes sure other users are not affected by project deletion", async ({ expect }) => {
   backendContext.set({ projectKeys: InternalProjectKeys });
-  const { creatorUserId, projectId } = await Project.createAndGetAdminToken();
+  await Auth.Otp.signIn();
+  const user1Auth = backendContext.value.userAuth;
+  const { projectId } = await Project.create();
 
   backendContext.set({ projectKeys: InternalProjectKeys });
+  const user2Auth = backendContext.value.userAuth;
   const { adminAccessToken } = await Project.createAndGetAdminToken();
 
   // Delete the project
@@ -1422,14 +1434,13 @@ it("makes sure other users are not affected by project deletion", async ({ expec
     }
   });
 
-  backendContext.set({ projectKeys: InternalProjectKeys });
-  const userResponse1 = await niceBackendFetch(`/api/v1/users/${creatorUserId}`, {
-    accessType: "server",
-    method: "GET",
+  backendContext.set({ projectKeys: InternalProjectKeys, userAuth: user1Auth });
+  const projectResponse = await niceBackendFetch(`/api/v1/internal/projects`, {
+    accessType: "client",
   });
-  const projectIds1 = userResponse1.body.server_metadata.managedProjectIds;
-  expect(projectIds1.length).toBe(1);
-  expect(projectIds1[0]).toBe(projectId);
+
+  expect(projectResponse.body.items.length).toBe(1);
+  expect(projectResponse.body.items[0].id).toBe(projectId);
 });
 
 it("has a correctly formatted JWKS endpoint", async ({ expect }) => {
