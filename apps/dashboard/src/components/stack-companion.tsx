@@ -122,7 +122,7 @@ export function StackCompanion({ className, onExpandedChange }: StackCompanionPr
 
                       {/* Tooltip */}
                       <div className={cn(
-                        "absolute right-full top-1/2 -translate-y-1/2 mr-3 px-3 py-2 text-white text-sm font-medium rounded-md shadow-lg opacity-0 group-hover:opacity-100 pointer-events-none whitespace-nowrap z-[9999] group-active:opacity-0 group-focus:opacity-0 transition-opacity duration-150 group-hover:delay-100 delay-0",
+                        "absolute right-full top-1/2 -translate-y-1/2 mr-3 px-3 py-2 text-white text-sm font-medium rounded-md shadow-lg opacity-0 group-hover:opacity-100 pointer-events-none whitespace-nowrap z-[9999] group-active:opacity-0 group-focus:opacity-0 transition-opacity duration-150 delay-0",
                         item.id === 'docs' ? 'bg-blue-600' :
                           item.id === 'feedback' ? 'bg-purple-600' :
                             item.id === 'changelog' ? 'bg-green-600' :
