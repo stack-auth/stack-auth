@@ -16,16 +16,21 @@ BEGIN
     -- Loop through all users in the 'internal' project who have managed projects
     FOR user_record IN 
         SELECT 
-            "tenancyId",
-            "projectUserId", 
-            "displayName",
-            "mirroredProjectId",
-            "mirroredBranchId",
-            "serverMetadata"
-        FROM "ProjectUser" 
-        WHERE "mirroredProjectId" = 'internal' 
-        AND "serverMetadata" IS NOT NULL 
-        AND "serverMetadata"::jsonb ? 'managedProjectIds'
+            pu."tenancyId",
+            pu."projectUserId", 
+            pu."displayName",
+            pu."mirroredProjectId",
+            pu."mirroredBranchId",
+            pu."serverMetadata",
+            cc."value" as contact_value
+        FROM "ProjectUser" pu
+        LEFT JOIN "ContactChannel" cc 
+          ON cc."projectUserId" = pu."projectUserId"
+          AND cc."type" = 'EMAIL'
+          AND cc."isPrimary" = 'TRUE'
+        WHERE pu."mirroredProjectId" = 'internal' 
+        AND pu."serverMetadata" IS NOT NULL 
+        AND pu."serverMetadata"::jsonb ? 'managedProjectIds'
     LOOP
         -- Extract managedProjectIds from serverMetadata
         managed_project_ids := user_record."serverMetadata"::jsonb -> 'managedProjectIds';
@@ -51,7 +56,7 @@ BEGIN
             team_uuid,
             user_record."mirroredProjectId",
             user_record."mirroredBranchId", 
-            COALESCE(user_record."displayName", 'User') || '''s Team',
+            COALESCE(user_record."displayName", user_record.contact_value, 'User') || '''s Team',
             NOW(),
             NOW()
         );
@@ -83,7 +88,5 @@ BEGIN
             WHERE "id" = project_id_text;
         END LOOP;
         
-        RAISE NOTICE 'Created team % for user % with % managed projects', 
-            team_uuid, user_record."displayName", jsonb_array_length(managed_project_ids);
     END LOOP;
 END $$;
