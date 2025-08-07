@@ -94,6 +94,7 @@ it("creates a new project", async ({ expect }) => {
         "display_name": "Test Project",
         "id": "<stripped UUID>",
         "is_production_mode": false,
+        "owner_team_id": "<stripped UUID>",
       },
       "headers": Headers { <some fields may have been hidden> },
     }
@@ -144,6 +145,7 @@ it("creates a new project with different configurations", async ({ expect }) => 
         "display_name": "Test Project",
         "id": "<stripped UUID>",
         "is_production_mode": true,
+        "owner_team_id": "<stripped UUID>",
       },
       "headers": Headers { <some fields may have been hidden> },
     }
@@ -197,6 +199,7 @@ it("creates a new project with different configurations", async ({ expect }) => 
         "display_name": "Test Project",
         "id": "<stripped UUID>",
         "is_production_mode": false,
+        "owner_team_id": "<stripped UUID>",
       },
       "headers": Headers { <some fields may have been hidden> },
     }
@@ -241,6 +244,7 @@ it("creates a new project with different configurations", async ({ expect }) => 
         "display_name": "Test Project",
         "id": "<stripped UUID>",
         "is_production_mode": false,
+        "owner_team_id": "<stripped UUID>",
       },
       "headers": Headers { <some fields may have been hidden> },
     }
@@ -299,6 +303,7 @@ it("creates a new project with different configurations", async ({ expect }) => 
         "display_name": "Test Project",
         "id": "<stripped UUID>",
         "is_production_mode": false,
+        "owner_team_id": "<stripped UUID>",
       },
       "headers": Headers { <some fields may have been hidden> },
     }
@@ -359,6 +364,7 @@ it("creates a new project with different configurations", async ({ expect }) => 
         "display_name": "Test Project",
         "id": "<stripped UUID>",
         "is_production_mode": false,
+        "owner_team_id": "<stripped UUID>",
       },
       "headers": Headers { <some fields may have been hidden> },
     }
@@ -402,6 +408,7 @@ it("lists the current projects after creating a new project", async ({ expect })
             "display_name": "New Project",
             "id": "<stripped UUID>",
             "is_production_mode": false,
+            "owner_team_id": "<stripped UUID>",
           },
         ],
       },
@@ -451,6 +458,7 @@ it("verifies email_theme update persists", async ({ expect }) => {
         "display_name": "New Project",
         "id": "<stripped UUID>",
         "is_production_mode": false,
+        "owner_team_id": "<stripped UUID>",
       },
       "headers": Headers { <some fields may have been hidden> },
     }
@@ -489,6 +497,7 @@ it("verifies email_theme update persists", async ({ expect }) => {
         "display_name": "New Project",
         "id": "<stripped UUID>",
         "is_production_mode": false,
+        "owner_team_id": "<stripped UUID>",
       },
       "headers": Headers { <some fields may have been hidden> },
     }
@@ -537,6 +546,7 @@ it("updates trusted domains without modifying allow_localhost", async ({ expect 
         "display_name": "New Project",
         "id": "<stripped UUID>",
         "is_production_mode": false,
+        "owner_team_id": "<stripped UUID>",
       },
       "headers": Headers { <some fields may have been hidden> },
     }
@@ -588,6 +598,7 @@ it("updates trusted domains without modifying allow_localhost", async ({ expect 
         "display_name": "New Project",
         "id": "<stripped UUID>",
         "is_production_mode": false,
+        "owner_team_id": "<stripped UUID>",
       },
       "headers": Headers { <some fields may have been hidden> },
     }

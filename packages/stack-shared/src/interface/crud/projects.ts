@@ -67,7 +67,7 @@ export const projectsCrudAdminReadSchema = yupObject({
   description: schemaFields.projectDescriptionSchema.nonNullable().defined(),
   created_at_millis: schemaFields.projectCreatedAtMillisSchema.defined(),
   is_production_mode: schemaFields.projectIsProductionModeSchema.defined(),
-  owner_team_id: schemaFields.yupString().defined(),
+  owner_team_id: schemaFields.yupString().nullable().defined(),
   /** @deprecated */
   config: yupObject({
     allow_localhost: schemaFields.projectAllowLocalhostSchema.defined(),
