@@ -24,10 +24,6 @@ export async function listManagedProjectIds(projectUser: UsersCrud["Admin"]["Rea
       }
     },
   });
-  if (!teams.length) {
-    throw new StackAssertionError("No teams found for user", { tenancyId: internalTenancy.id, projectUserId: projectUser.id });
-  }
-
   const projectIds = await globalPrismaClient.project.findMany({
     where: {
       ownerTeamId: {
@@ -41,7 +37,7 @@ export async function listManagedProjectIds(projectUser: UsersCrud["Admin"]["Rea
   return projectIds.map((project) => project.id);
 }
 
-export function getProjectQuery(projectId: string): RawQuery<Promise<Omit<ProjectsCrud["Admin"]["Read"], "config"> | null>> {
+export function getProjectQuery(projectId: string): RawQuery<Promise<Omit<ProjectsCrud["Admin"]["Read"], "config" | "owner_team_name" | "owner_team_display_name"> | null>> {
   return {
     supportedPrismaClients: ["global"],
     sql: Prisma.sql`
@@ -63,12 +59,13 @@ export function getProjectQuery(projectId: string): RawQuery<Promise<Omit<Projec
         description: row.description,
         created_at_millis: new Date(row.createdAt + "Z").getTime(),
         is_production_mode: row.isProductionMode,
+        owner_team_id: row.ownerTeamId,
       };
     },
   };
 }
 
-export async function getProject(projectId: string): Promise<Omit<ProjectsCrud["Admin"]["Read"], "config"> | null> {
+export async function getProject(projectId: string): Promise<Omit<ProjectsCrud["Admin"]["Read"], "config" | "owner_team_display_name"> | null> {
   const result = await rawQuery(globalPrismaClient, getProjectQuery(projectId));
   return result;
 }
@@ -79,7 +76,7 @@ export async function createOrUpdateProjectWithLegacyConfig(
   } & ({
     type: "create",
     projectId?: string,
-    ownerTeamId: string,
+    ownerTeamId: string | null,
     data: AdminUserProjectsCrud["Admin"]["Create"],
   } | {
     type: "update",
@@ -245,14 +242,9 @@ export async function createOrUpdateProjectWithLegacyConfig(
   });
 
 
-  // Project ownership is now handled via ownerTeamId field in Project table
-  // No additional metadata updates needed
-
   const result = await getProject(projectId);
-
   if (!result) {
     throw new StackAssertionError("Project not found after creation/update", { projectId });
   }
-
   return result;
 }

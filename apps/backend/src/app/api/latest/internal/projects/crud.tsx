@@ -38,6 +38,7 @@ export const adminUserProjectsCrudHandlers = createLazyProxy(() => createCrudHan
       },
     });
     const tenancy = await getSoleTenancyFromProjectBranch(project.id, DEFAULT_BRANCH_ID);
+
     return {
       ...project,
       config: renderedOrganizationConfigToProjectCrud(tenancy.config),

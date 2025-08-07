@@ -99,6 +99,7 @@ it("creates and updates the basic project information of a project", async ({ ex
         "display_name": "Updated Project",
         "id": "<stripped UUID>",
         "is_production_mode": true,
+        "owner_team_id": "<stripped UUID>",
       },
       "headers": Headers { <some fields may have been hidden> },
     }
@@ -146,6 +147,7 @@ it("updates the basic project configuration", async ({ expect }) => {
         "display_name": "New Project",
         "id": "<stripped UUID>",
         "is_production_mode": false,
+        "owner_team_id": "<stripped UUID>",
       },
       "headers": Headers { <some fields may have been hidden> },
     }
@@ -198,6 +200,7 @@ it("updates the project domains configuration", async ({ expect }) => {
         "display_name": "New Project",
         "id": "<stripped UUID>",
         "is_production_mode": false,
+        "owner_team_id": "<stripped UUID>",
       },
       "headers": Headers { <some fields may have been hidden> },
     }
@@ -256,6 +259,7 @@ it("updates the project domains configuration", async ({ expect }) => {
         "display_name": "New Project",
         "id": "<stripped UUID>",
         "is_production_mode": false,
+        "owner_team_id": "<stripped UUID>",
       },
       "headers": Headers { <some fields may have been hidden> },
     }
@@ -308,6 +312,7 @@ it("should allow insecure HTTP connections if insecureHttp is true", async ({ ex
         "display_name": "New Project",
         "id": "<stripped UUID>",
         "is_production_mode": false,
+        "owner_team_id": "<stripped UUID>",
       },
       "headers": Headers { <some fields may have been hidden> },
     }
@@ -403,6 +408,7 @@ it("updates the project email configuration", async ({ expect }) => {
         "display_name": "New Project",
         "id": "<stripped UUID>",
         "is_production_mode": false,
+        "owner_team_id": "<stripped UUID>",
       },
       "headers": Headers { <some fields may have been hidden> },
     }
@@ -460,6 +466,7 @@ it("updates the project email configuration", async ({ expect }) => {
         "display_name": "New Project",
         "id": "<stripped UUID>",
         "is_production_mode": false,
+        "owner_team_id": "<stripped UUID>",
       },
       "headers": Headers { <some fields may have been hidden> },
     }
@@ -503,6 +510,7 @@ it("updates the project email configuration", async ({ expect }) => {
         "display_name": "New Project",
         "id": "<stripped UUID>",
         "is_production_mode": false,
+        "owner_team_id": "<stripped UUID>",
       },
       "headers": Headers { <some fields may have been hidden> },
     }
@@ -546,6 +554,7 @@ it("updates the project email configuration", async ({ expect }) => {
         "display_name": "New Project",
         "id": "<stripped UUID>",
         "is_production_mode": false,
+        "owner_team_id": "<stripped UUID>",
       },
       "headers": Headers { <some fields may have been hidden> },
     }
@@ -603,6 +612,7 @@ it("updates the project email configuration", async ({ expect }) => {
         "display_name": "New Project",
         "id": "<stripped UUID>",
         "is_production_mode": false,
+        "owner_team_id": "<stripped UUID>",
       },
       "headers": Headers { <some fields may have been hidden> },
     }
@@ -773,6 +783,7 @@ it("updates the project oauth configuration", async ({ expect }) => {
         "display_name": "New Project",
         "id": "<stripped UUID>",
         "is_production_mode": false,
+        "owner_team_id": "<stripped UUID>",
       },
       "headers": Headers { <some fields may have been hidden> },
     }
@@ -823,6 +834,7 @@ it("updates the project oauth configuration", async ({ expect }) => {
         "display_name": "New Project",
         "id": "<stripped UUID>",
         "is_production_mode": false,
+        "owner_team_id": "<stripped UUID>",
       },
       "headers": Headers { <some fields may have been hidden> },
     }
@@ -877,6 +889,7 @@ it("updates the project oauth configuration", async ({ expect }) => {
         "display_name": "New Project",
         "id": "<stripped UUID>",
         "is_production_mode": false,
+        "owner_team_id": "<stripped UUID>",
       },
       "headers": Headers { <some fields may have been hidden> },
     }
@@ -926,6 +939,7 @@ it("updates the project oauth configuration", async ({ expect }) => {
         "display_name": "New Project",
         "id": "<stripped UUID>",
         "is_production_mode": false,
+        "owner_team_id": "<stripped UUID>",
       },
       "headers": Headers { <some fields may have been hidden> },
     }
@@ -990,6 +1004,7 @@ it("updates the project oauth configuration", async ({ expect }) => {
         "display_name": "New Project",
         "id": "<stripped UUID>",
         "is_production_mode": false,
+        "owner_team_id": "<stripped UUID>",
       },
       "headers": Headers { <some fields may have been hidden> },
     }
@@ -1054,6 +1069,7 @@ it("updates the project oauth configuration", async ({ expect }) => {
         "display_name": "New Project",
         "id": "<stripped UUID>",
         "is_production_mode": false,
+        "owner_team_id": "<stripped UUID>",
       },
       "headers": Headers { <some fields may have been hidden> },
     }
@@ -1345,9 +1361,12 @@ it("makes sure user have the correct managed project ID after project creation",
     accessType: "server",
     method: "GET",
   });
-  const projectIds = userResponse.body.server_metadata.managedProjectIds;
-  expect(projectIds.length).toBe(1);
-  expect(projectIds[0]).toBe(projectId);
+  backendContext.set({ projectKeys: { projectId } });
+  const projectResponse = await niceBackendFetch(`/api/v1/internal/projects/current`, {
+    accessType: "admin",
+    method: "GET",
+  });
+  expect(projectResponse.body.owner_team_id).toBe(userResponse.body.selected_team.id);
 });
 
 it("removes a deleted project from a user's managed project IDs", async ({ expect }) => {

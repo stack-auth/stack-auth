@@ -2,6 +2,7 @@
 import { StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
 import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
 import {
+  cn,
   Button,
   Select,
   SelectContent,
@@ -12,7 +13,7 @@ import {
   SelectTrigger,
   SelectValue,
   Skeleton,
-  Typography
+  Typography,
 } from "@stackframe/stack-ui";
 import { PlusCircle, Settings } from "lucide-react";
 import { Suspense, useEffect, useMemo } from "react";
@@ -33,6 +34,7 @@ type SelectedTeamSwitcherProps<AllowNull extends boolean = false> = {
   allowNull?: AllowNull,
   nullLabel?: string,
   onChange?: (team: AllowNull extends true ? Team | null : Team) => void,
+  triggerClassName?: string,
   // Mock data props
   mockUser?: {
     selectedTeam?: MockTeam,
@@ -117,7 +119,7 @@ function Inner<AllowNull extends boolean>(props: SelectedTeamSwitcherProps<Allow
         });
       }}
     >
-      <SelectTrigger className="stack-scope max-w-64">
+      <SelectTrigger className={cn("stack-scope max-w-64", props.triggerClassName)}>
         <SelectValue placeholder="Select team"/>
       </SelectTrigger>
       <SelectContent className="stack-scope">

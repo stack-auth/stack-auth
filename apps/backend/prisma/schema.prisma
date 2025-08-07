@@ -19,7 +19,7 @@ model Project {
   displayName      String
   description      String  @default("")
   isProductionMode Boolean
-  ownerTeamId      String  @db.Uuid
+  ownerTeamId      String?  @db.Uuid
 
   projectConfigOverride Json?
 
