@@ -10,11 +10,11 @@ export type FeaturebaseUser = {
   profilePicture?: string,
 };
 
-export type StackAuthUser = {
+type StackAuthUser = {
   id: string,
-  primary_email: string | null,
-  display_name?: string | null,
-  profile_image_url?: string | null,
+  primaryEmail: string | null,
+  displayName?: string | null,
+  profileImageUrl?: string | null,
 };
 
 /**
@@ -169,12 +169,12 @@ export async function getOrCreateFeaturebaseUser(
     try {
       const updates: Partial<Omit<FeaturebaseUser, 'userId' | 'email'>> = {};
 
-      if (stackAuthUser.display_name && stackAuthUser.display_name !== existingById.name) {
-        updates.name = stackAuthUser.display_name;
+      if (stackAuthUser.displayName && stackAuthUser.displayName !== existingById.name) {
+        updates.name = stackAuthUser.displayName;
       }
 
-      if (stackAuthUser.profile_image_url && stackAuthUser.profile_image_url !== existingById.profilePicture) {
-        updates.profilePicture = stackAuthUser.profile_image_url;
+      if (stackAuthUser.profileImageUrl && stackAuthUser.profileImageUrl !== existingById.profilePicture) {
+        updates.profilePicture = stackAuthUser.profileImageUrl;
       }
 
       if (Object.keys(updates).length > 0) {
@@ -192,7 +192,7 @@ export async function getOrCreateFeaturebaseUser(
   }
 
   // No existing user found by ID, need to create one
-  const candidateEmail = stackAuthUser.primary_email ?? fallbackEmail;
+  const candidateEmail = stackAuthUser.primaryEmail ?? fallbackEmail;
 
   // Check if someone already has this email on Featurebase
   const existingByEmail = await findFeaturebaseUserByEmail(candidateEmail);
@@ -202,8 +202,8 @@ export async function getOrCreateFeaturebaseUser(
   const created = await createFeaturebaseUser({
     userId: stackAuthUser.id,
     email: safeEmail,
-    name: stackAuthUser.display_name || stackAuthUser.primary_email?.split('@')[0] || 'User',
-    profilePicture: stackAuthUser.profile_image_url || undefined,
+    name: stackAuthUser.displayName || stackAuthUser.primaryEmail?.split('@')[0] || 'User',
+    profilePicture: stackAuthUser.profileImageUrl || undefined,
   });
 
   return {
