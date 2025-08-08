@@ -1,4 +1,3 @@
-import { branchPaymentsSchema } from "../../config/schema";
 import { CrudTypeOf, createCrud } from "../../crud";
 import * as schemaFields from "../../schema-fields";
 import { yupArray, yupObject, yupString } from "../../schema-fields";
