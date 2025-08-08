@@ -97,7 +97,7 @@ export default function RootLayout({
                 <ClientPolyfill />
                 <RouterProvider>
                   <UserIdentity />
-                  <VersionAlerter severeOnly={false} />
+                  <VersionAlerter />
                   <BackgroundShine />
                   {children}
                 </RouterProvider>
