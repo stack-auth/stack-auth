@@ -12,8 +12,8 @@ source /root/shared.sh
 
 # If COMMIT_ID is not provided, try to get it from git
 if [ -z "${COMMIT_ID:-}" ]; then
-	if [ -d "applications/${MODULE}" ]; then
-		FULL_COMMIT_ID=$(cd "applications/${MODULE}/" && git log --pretty=tformat:"%H" -n1 .)
+	if [ -d "./" ]; then
+		FULL_COMMIT_ID=$(git log --pretty=tformat:"%H" -n1 .)
 		export COMMIT_ID="${FULL_COMMIT_ID:0:7}"
 		echo "Using commit ID from git: ${COMMIT_ID}"
 	else
