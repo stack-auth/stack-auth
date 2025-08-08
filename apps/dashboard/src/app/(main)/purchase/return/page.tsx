@@ -1,25 +1,25 @@
+import ReturnClient from "./page-client";
+export const dynamic = "force-dynamic";
+
 type Props = {
-  searchParams: Promise<{ redirect_status: string }>,
+  searchParams: Promise<{
+    redirect_status?: string,
+    payment_intent?: string,
+    payment_intent_client_secret?: string,
+    stripe_account_id?: string,
+    purchase_full_code?: string,
+  }>,
 };
 
 export default async function Page({ searchParams }: Props) {
-  const { redirect_status } = await searchParams;
-  if (redirect_status === "failed") {
-    return (
-      <div className="flex flex-col items-center justify-center h-screen">
-        <h1 className="text-2xl font-bold">Purchase failed</h1>
-        <p className="text-sm text-gray-500">
-          There was an error processing your purchase
-        </p>
-      </div>
-    );
-  }
+  const params = await searchParams;
   return (
-    <div className="flex flex-col items-center justify-center h-screen">
-      <h1 className="text-2xl font-bold">Purchase successful</h1>
-      <p className="text-sm text-gray-500">
-        You can now close this page
-      </p>
-    </div>
+    <ReturnClient
+      redirectStatus={params.redirect_status}
+      paymentIntentId={params.payment_intent}
+      clientSecret={params.payment_intent_client_secret}
+      stripeAccountId={params.stripe_account_id}
+      purchaseFullCode={params.purchase_full_code}
+    />
   );
 }

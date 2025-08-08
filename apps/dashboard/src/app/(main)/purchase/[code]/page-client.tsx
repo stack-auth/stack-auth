@@ -1,11 +1,11 @@
 "use client";
 
+import { CheckoutForm } from "@/components/payments/checkout";
+import { StripeElementsProvider } from "@/components/payments/stripe-elements-provider";
+import { getPublicEnvVar } from "@/lib/env";
+import { throwErr } from "@stackframe/stack-shared/dist/utils/errors";
 import { Card, CardContent, Skeleton, Typography } from "@stackframe/stack-ui";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { getPublicEnvVar } from "@/lib/env";
-import { StripeElementsProvider } from "@/components/payments/stripe-elements-provider";
-import { CheckoutForm } from "@/components/payments/checkout";
-import { throwErr } from "@stackframe/stack-shared/dist/utils/errors";
 
 type OfferData = {
   offer?: any,
@@ -126,7 +126,11 @@ export default function PageClient({ code }: { code: string }) {
             stripeAccountId={data.stripe_account_id}
             amount={currentAmount}
           >
-            <CheckoutForm setupSubscription={setupSubscription} />
+            <CheckoutForm
+              fullCode={code}
+              stripeAccountId={data.stripe_account_id}
+              setupSubscription={setupSubscription}
+            />
           </StripeElementsProvider>
         )}
       </div>

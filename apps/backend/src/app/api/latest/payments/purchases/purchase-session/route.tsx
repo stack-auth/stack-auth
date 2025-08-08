@@ -1,7 +1,7 @@
 import Stripe from "stripe";
 import { getStripeForAccount } from "@/lib/stripe";
 import { purchaseUrlVerificationCodeHandler } from "../verification-code-handler";
-import { throwErr } from "@stackframe/stack-shared/dist/utils/errors";
+import { StackAssertionError, StatusError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
 
@@ -29,11 +29,11 @@ export const POST = createSmartRouteHandler({
     const pricesMap = new Map(Object.entries(data.offer.prices));
     const selectedPrice = pricesMap.get(price_id);
     if (!selectedPrice) {
-      throwErr(400, "Price not found");
+      throw new StatusError(400, "Price not found on offer associated with this purchase code");
     }
     // TODO: prices with no interval should be allowed and work without a subscription
     if (!selectedPrice.interval) {
-      throwErr(500, "Price does not have an interval");
+      throw new StackAssertionError("unimplemented; prices without an interval are currently not supported");
     }
     const product = await stripe.products.create({
       name: data.offer.displayName ?? "Subscription",

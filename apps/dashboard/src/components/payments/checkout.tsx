@@ -1,11 +1,11 @@
-import React, { useState } from "react";
+import { Button } from "@stackframe/stack-ui";
 import {
   PaymentElement,
-  useStripe,
   useElements,
+  useStripe,
 } from "@stripe/react-stripe-js";
-import { StripePaymentElementOptions } from "@stripe/stripe-js";
-import { Button } from "@stackframe/stack-ui";
+import { StripeError, StripePaymentElementOptions } from "@stripe/stripe-js";
+import { useState } from "react";
 
 const paymentElementOptions = {
   layout: "auto",
@@ -17,7 +17,13 @@ const paymentElementOptions = {
   },
 } satisfies StripePaymentElementOptions;
 
-export function CheckoutForm({ setupSubscription }: { setupSubscription: () => Promise<string> }) {
+type Props = {
+  setupSubscription: () => Promise<string>,
+  stripeAccountId: string,
+  fullCode: string,
+};
+
+export function CheckoutForm({ setupSubscription, stripeAccountId, fullCode }: Props) {
   const stripe = useStripe();
   const elements = useElements();
   const [message, setMessage] = useState<string | null>(null);
@@ -32,15 +38,21 @@ export function CheckoutForm({ setupSubscription }: { setupSubscription: () => P
     }
 
     const clientSecret = await setupSubscription();
+    const returnUrl = new URL(`/purchase/return`, window.location.origin);
+    returnUrl.searchParams.set("stripe_account_id", stripeAccountId);
+    returnUrl.searchParams.set("purchase_full_code", fullCode);
+
     const { error } = await stripe.confirmPayment({
       elements,
       clientSecret,
       confirmParams: {
-        return_url: new URL(`/purchase/return`, window.location.origin).toString(),
+        return_url: returnUrl.toString(),
       },
-    });
+    }) as { error?: StripeError };
 
-
+    if (!error) {
+      return;
+    }
     if (error.type === "card_error" || error.type === "validation_error") {
       setMessage(error.message ?? "An unexpected error occurred.");
     } else {

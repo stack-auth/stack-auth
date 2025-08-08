@@ -35,7 +35,7 @@ export const POST = createSmartRouteHandler({
     const stripe = getStripeForAccount({ tenancy });
     const offerConfig = await ensureOfferIdOrInlineOffer(tenancy, req.auth.type, req.body.offer_id, req.body.offer_inline);
     await ensureOfferCustomerTypeMatches(req.body.offer_id, offerConfig.customerType, req.body.customer_id, tenancy);
-    const customerType = offerConfig.customerType ?? throwErr(500, "Customer type not found");
+    const customerType = offerConfig.customerType ?? throwErr("Customer type not found");
 
     const stripeCustomerSearch = await stripe.customers.search({
       query: `metadata['customerId']:'${req.body.customer_id}'`,
@@ -58,7 +58,7 @@ export const POST = createSmartRouteHandler({
         customerId: req.body.customer_id,
         offer: offerConfig,
         stripeCustomerId: stripeCustomer.id,
-        stripeAccountId: tenancy.config.payments.stripeAccountId ?? throwErr(500, "Stripe account not configured"),
+        stripeAccountId: tenancy.config.payments.stripeAccountId ?? throwErr("Stripe account not configured"),
       },
       method: {},
       callbackUrl: undefined,

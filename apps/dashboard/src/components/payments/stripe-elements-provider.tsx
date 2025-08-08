@@ -5,6 +5,7 @@ import { Elements } from "@stripe/react-stripe-js";
 import { loadStripe } from "@stripe/stripe-js";
 import { useMemo } from "react";
 import { appearanceVariablesForTheme } from "./stripe-theme-variables";
+import { throwErr } from "@stackframe/stack-shared/dist/utils/errors";
 
 const stripePublicKey = getPublicEnvVar("NEXT_PUBLIC_STACK_STRIPE_PUBLISHABLE_KEY");
 
@@ -22,7 +23,10 @@ export function StripeElementsProvider({
   const { resolvedTheme } = useTheme();
 
   const stripePromise = useMemo(() => {
-    return loadStripe(stripePublicKey ?? "", { stripeAccount: stripeAccountId });
+    return loadStripe(
+      stripePublicKey ?? throwErr("NEXT_PUBLIC_STACK_STRIPE_PUBLISHABLE_KEY is missing!"),
+      { stripeAccount: stripeAccountId }
+    );
   }, [stripeAccountId]);
 
 
