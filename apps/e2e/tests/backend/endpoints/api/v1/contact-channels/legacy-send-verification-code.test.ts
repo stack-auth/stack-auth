@@ -1,3 +1,4 @@
+import { wait } from "@stackframe/stack-shared/dist/utils/promises";
 import { it } from "../../../../../helpers";
 import { Auth, backendContext, niceBackendFetch } from "../../../../backend-helpers";
 
@@ -48,6 +49,7 @@ it("should send a verification code per e-mail", async ({ expect }) => {
       callback_url: "http://localhost:12345/some-callback-url",
     },
   });
+  await wait(1000);
   expect(await backendContext.value.mailbox.fetchMessages({ noBody: true })).toMatchInlineSnapshot(`
     [
       MailboxMessage {
