@@ -10,8 +10,9 @@ type Params = {
   projectId: string,
 };
 
-export default function Page({ params }: { params: Params }) {
-  if (!devFeaturesEnabledForProject(params.projectId)) {
+export default async function Page({ params }: { params: Promise<Params> }) {
+  const { projectId } = await params;
+  if (!devFeaturesEnabledForProject(projectId)) {
     notFound();
   }
   return (
