@@ -42,12 +42,12 @@ jobs:
           
           function count_pending_checks() {
             local response=$1
-            echo "$response" | jq '([.check_runs[]? | select(.status != "completed" and .name != "all-good")] | length) // 0'
+            echo "$response" | jq '([.check_runs[]? | select(.status != "completed" and .name != "all-good" and .name != "claude-review")] | length) // 0'
           }
           
           function count_failed_checks() {
             local response=$1
-            echo "$response" | jq '([.check_runs[]? | select(.conclusion != "success" and .conclusion != "skipped" and .conclusion != "neutral" and .name != "all-good")] | length) // 0'
+            echo "$response" | jq '([.check_runs[]? | select(.conclusion != "success" and .conclusion != "skipped" and .conclusion != "neutral" and .name != "all-good" and .name != "claude-review")] | length) // 0'
           }
           
           while true; do
@@ -99,11 +99,11 @@ jobs:
               exit 0
             else
               echo "The following check run(s) failed:"
-              # Failed checks on the current commit
-              echo "$commit_response" | jq -r '.check_runs[] | select(.conclusion != "success") | .name' | sed 's/^/  - /'
-              # Failed checks on the PR head commit (if different)
+              # Failed checks on the current commit (excluding claude-review)
+              echo "$commit_response" | jq -r '.check_runs[] | select(.conclusion != "success" and .conclusion != "skipped" and .conclusion != "neutral" and .name != "claude-review") | .name' | sed 's/^/  - /'
+              # Failed checks on the PR head commit (if different, excluding claude-review)
               if [ -n "$PR_HEAD_SHA" ] && [ "$PR_HEAD_SHA" != "$COMMIT" ]; then
-                echo "$pr_response" | jq -r '.check_runs[] | select(.conclusion != "success") | .name' | sed 's/^/  - /'
+                echo "$pr_response" | jq -r '.check_runs[] | select(.conclusion != "success" and .conclusion != "skipped" and .conclusion != "neutral" and .name != "claude-review") | .name' | sed 's/^/  - /'
               fi
               echo "$commit_response"
               echo "$pr_response"
