@@ -41,7 +41,7 @@ export default function PageClient({ code }: { code: string }) {
       headers: {
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({ code }),
+      body: JSON.stringify({ full_code: code }),
     });
     if (!response.ok) {
       throw new Error('Failed to validate code');
@@ -67,7 +67,7 @@ export default function PageClient({ code }: { code: string }) {
     const response = await fetch(`${baseUrl}/payments/purchases/purchase-session`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ code, price_id: selectedPriceId }),
+      body: JSON.stringify({ full_code: code, price_id: selectedPriceId }),
     });
     const result = await response.json();
     if (!result.client_secret) {

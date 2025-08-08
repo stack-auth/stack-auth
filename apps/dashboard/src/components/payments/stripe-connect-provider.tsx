@@ -22,7 +22,7 @@ export function StripeConnectProvider({ children }: StripeConnectProviderProps) 
   const stripeConnectInstance = useMemo(() => {
     const publishableKey = getPublicEnvVar("NEXT_PUBLIC_STACK_STRIPE_PUBLISHABLE_KEY") ?? throwErr("No Stripe publishable key found");
     const fetchClientSecret = async () => {
-      const { client_secret } = await adminApp.createPaymentsAccountSession();
+      const { client_secret } = await adminApp.createStripeWidgetAccountSession();
       return client_secret;
     };
 

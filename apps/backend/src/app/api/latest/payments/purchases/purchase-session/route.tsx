@@ -11,7 +11,7 @@ export const POST = createSmartRouteHandler({
   },
   request: yupObject({
     body: yupObject({
-      code: yupString().defined(),
+      full_code: yupString().defined(),
       price_id: yupString().defined(),
     }),
   }),
@@ -23,8 +23,8 @@ export const POST = createSmartRouteHandler({
     }),
   }),
   async handler({ body }) {
-    const { code, price_id } = body;
-    const { data } = await purchaseUrlVerificationCodeHandler.validateCode(code);
+    const { full_code, price_id } = body;
+    const { data } = await purchaseUrlVerificationCodeHandler.validateCode(full_code);
     const stripe = getStripeForAccount({ accountId: data.stripeAccountId });
     const pricesMap = new Map(Object.entries(data.offer.prices));
     const selectedPrice = pricesMap.get(price_id);

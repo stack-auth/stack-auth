@@ -57,6 +57,9 @@ export async function syncStripeSubscriptions(stripeAccountId: string, stripeCus
 
   // TODO: handle in parallel, store payment method?
   for (const subscription of subscriptions.data) {
+    if (subscription.items.data.length === 0) {
+      continue;
+    }
     await prisma.subscription.upsert({
       where: {
         tenancyId_stripeSubscriptionId: {

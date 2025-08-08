@@ -64,7 +64,8 @@ export const POST = createSmartRouteHandler({
       callbackUrl: undefined,
     });
 
-    const url = new URL(`/purchase/${code}`, getEnvVariable("NEXT_PUBLIC_STACK_DASHBOARD_URL"));
+    const fullCode = `${tenancy.id}_${code}`;
+    const url = new URL(`/purchase/${fullCode}`, getEnvVariable("NEXT_PUBLIC_STACK_DASHBOARD_URL"));
 
     return {
       statusCode: 200,

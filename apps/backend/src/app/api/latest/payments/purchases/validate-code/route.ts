@@ -9,7 +9,7 @@ export const POST = createSmartRouteHandler({
   },
   request: yupObject({
     body: yupObject({
-      code: yupString().defined(),
+      full_code: yupString().defined(),
     }),
   }),
   response: yupObject({
@@ -31,7 +31,7 @@ export const POST = createSmartRouteHandler({
     }).defined(),
   }),
   async handler({ body }) {
-    const verificationCode = await purchaseUrlVerificationCodeHandler.validateCode(body.code);
+    const verificationCode = await purchaseUrlVerificationCodeHandler.validateCode(body.full_code);
     const offer = verificationCode.data.offer;
     const offerData = {
       display_name: offer.displayName,

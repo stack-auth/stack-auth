@@ -484,9 +484,9 @@ export class StackAdminInterface extends StackServerInterface {
     return await response.json();
   }
 
-  async createPaymentsAccountSession(): Promise<{ client_secret: string }> {
+  async createStripeWidgetAccountSession(): Promise<{ client_secret: string }> {
     const response = await this.sendAdminRequest(
-      "/internal/payments/account-session",
+      "/internal/payments/stripe-widgets/account-session",
       {
         method: "POST",
         headers: {

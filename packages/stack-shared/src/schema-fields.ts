@@ -490,18 +490,19 @@ export const emailTemplateListSchema = yupRecord(
 
 // Payments
 export const customerTypeSchema = yupString().oneOf(['user', 'team']);
+const validateHasAtLeastOneSupportedCurrency = (value: Record<string, unknown>, context: any) => {
+  const currencies = Object.keys(value).filter(key => SUPPORTED_CURRENCIES.some(c => c.code === key));
+  if (currencies.length === 0) {
+    return context.createError({ message: "At least one currency is required" });
+  }
+  return true;
+};
 export const offerPriceSchema = yupObject({
   ...typedFromEntries(SUPPORTED_CURRENCIES.map(currency => [currency.code, moneyAmountSchema(currency).optional()])),
   interval: dayIntervalSchema.optional(),
   serverOnly: yupBoolean(),
   freeTrial: dayIntervalSchema.optional(),
-}).test("at-least-one-currency", (value, context) => {
-  const currencies = Object.keys(value).filter(key => key.toUpperCase() === key);
-  if (currencies.length === 0) {
-    return context.createError({ message: "At least one currency is required" });
-  }
-  return true;
-});
+}).test("at-least-one-currency", (value, context) => validateHasAtLeastOneSupportedCurrency(value, context));
 export const offerSchema = yupObject({
   displayName: yupString(),
   customerType: customerTypeSchema,
@@ -532,13 +533,7 @@ export const inlineOfferSchema = yupObject({
       ...typedFromEntries(SUPPORTED_CURRENCIES.map(currency => [currency.code, moneyAmountSchema(currency).optional()])),
       interval: dayIntervalSchema.optional(),
       free_trial: dayIntervalSchema.optional(),
-    }).test("at-least-one-currency", (value, context) => {
-      const currencies = Object.keys(value).filter(key => key.toUpperCase() === key);
-      if (currencies.length === 0) {
-        return context.createError({ message: "At least one currency is required" });
-      }
-      return true;
-    }),
+    }).test("at-least-one-currency", (value, context) => validateHasAtLeastOneSupportedCurrency(value, context)),
   ),
   included_items: yupRecord(
     userSpecifiedIdSchema("itemId"),

@@ -502,8 +502,8 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
     return await this._interface.setupPayments();
   }
 
-  async createPaymentsAccountSession(): Promise<{ client_secret: string }> {
-    return await this._interface.createPaymentsAccountSession();
+  async createStripeWidgetAccountSession(): Promise<{ client_secret: string }> {
+    return await this._interface.createStripeWidgetAccountSession();
   }
 
   async createPurchaseUrl(options: { customerId: string, offerId: string }): Promise<string> {

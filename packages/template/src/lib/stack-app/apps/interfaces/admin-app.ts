@@ -75,7 +75,7 @@ export type StackAdminApp<HasTokenStore extends boolean = boolean, ProjectId ext
     createEmailTemplate(displayName: string): Promise<{ id: string }>,
 
     setupPayments(): Promise<{ url: string }>,
-    createPaymentsAccountSession(): Promise<{ client_secret: string }>,
+    createStripeWidgetAccountSession(): Promise<{ client_secret: string }>,
     createPurchaseUrl(options: { customerId: string, offerId: string }): Promise<string>,
   }
   & StackServerApp<HasTokenStore, ProjectId>
