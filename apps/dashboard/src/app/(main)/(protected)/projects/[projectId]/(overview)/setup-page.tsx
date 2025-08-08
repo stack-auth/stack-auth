@@ -10,13 +10,14 @@ import { Button, Tabs, TabsContent, TabsList, TabsTrigger, Typography, cn } from
 import { Book, X } from "lucide-react";
 import dynamic from "next/dynamic";
 import Image from 'next/image';
-import { use, useEffect, useRef, useState } from "react";
-import { GlobeMethods } from "react-globe.gl";
-import { globeImages } from '../(utils)/utils';
-import { PageLayout } from "../../page-layout";
-import { useAdminApp } from '../../use-admin-app';
+import { Suspense, use, useRef, useState } from "react";
+import type { GlobeMethods } from 'react-globe.gl';
+import { PageLayout } from "../page-layout";
+import { useAdminApp } from '../use-admin-app';
+import { globeImages } from './globe';
 import styles from './setup-page.module.css';
-const countriesPromise = import('../(utils)/country-data.geo.json');
+
+const countriesPromise = import('./country-data.geo.json');
 const Globe = dynamic(() => import('react-globe.gl').then((mod) => mod.default), { ssr: false });
 
 const commandClasses = "text-red-600 dark:text-red-400";
@@ -24,10 +25,6 @@ const nameClasses = "text-green-600 dark:text-green-500";
 
 export default function SetupPage(props: { toMetrics: () => void }) {
   const adminApp = useAdminApp();
-  const countries = use(countriesPromise);
-  const globeEl = useRef<GlobeMethods | undefined>(undefined);
-  const { theme, mounted } = useThemeWatcher();
-  const [showPulse, setShowPulse] = useState(false);
   const [selectedFramework, setSelectedFramework] = useState<'nextjs' | 'react' | 'javascript' | 'python'>('nextjs');
   const [keys, setKeys] = useState<{ projectId: string, publishableClientKey: string, secretServerKey: string } | null>(null);
 
@@ -46,15 +43,6 @@ export default function SetupPage(props: { toMetrics: () => void }) {
       secretServerKey: newKey.secretServerKey!,
     });
   };
-
-  useEffect(() => {
-    // Add delay before showing pulse circles in order to allow the globe to animate in
-    const timer = setTimeout(() => {
-      setShowPulse(true);
-    }, 1000);
-
-    return () => clearTimeout(timer);
-  }, []);
 
   const nextJsSteps = [
     {
@@ -178,7 +166,7 @@ export default function SetupPage(props: { toMetrics: () => void }) {
 
             export default function App() {
               return (
-                <Suspense fallback={null}>
+                <Suspense fallback={"Loading..."}>
                   <BrowserRouter>
                     <StackProvider app={stackClientApp}>
                       <StackTheme>
@@ -440,60 +428,7 @@ export default function SetupPage(props: { toMetrics: () => void }) {
         </Button>
       </div>
       <div className="flex gap-4 justify-center items-center border rounded-2xl py-4 px-8 backdrop-blur-md bg-white/20 dark:bg-black/20">
-        <div className="w-[200px] h-[200px] relative hidden md:block">
-          {showPulse && (
-            <div className="absolute inset-0 pointer-events-none w-[200px] h-[200px] flex items-center justify-center">
-              {[...Array(3)].map((_, i) => (
-                <div
-                  key={i}
-                  className={`${styles['pulse-circle']} rounded-full bg-blue-200 dark:bg-blue-800`}
-                  style={{
-                    width: "50px",
-                    height: "50px",
-                    animationDelay: `${i * 2.5}s`,
-                  }}
-                />
-              ))}
-            </div>
-          )}
-
-          <div className="relative z-10 items-center justify-center w-full h-full hidden md:flex">
-            {mounted && (
-              <Globe
-                ref={globeEl}
-                onGlobeReady={() => {
-                  const setupControls = () => {
-                    if (globeEl.current) {
-                      const controls = globeEl.current.controls();
-                      controls.autoRotate = true;
-                      controls.enableZoom = false;
-                      controls.enablePan = false;
-                      controls.enableRotate = false;
-                      return true;
-                    }
-                    return false;
-                  };
-
-                  setupControls();
-                  // Sometimes the controls don't get set up in time, so we try again
-                  setTimeout(setupControls, 100);
-                }}
-                globeImageUrl={globeImages[theme]}
-                backgroundColor="#00000000"
-                polygonsData={countries.features}
-                polygonCapColor={() => "transparent"}
-                polygonSideColor={() => "transparent"}
-                hexPolygonsData={countries.features}
-                hexPolygonResolution={1}
-                hexPolygonMargin={0.2}
-                hexPolygonAltitude={0.003}
-                hexPolygonColor={() => "rgb(107, 93, 247)"}
-                width={160}
-                height={160}
-              />
-            )}
-          </div>
-        </div>
+        <GlobeIllustration />
 
         <div className="flex flex-col gap-4">
           <div className="flex flex-col gap-1">
@@ -591,6 +526,81 @@ export default function SetupPage(props: { toMetrics: () => void }) {
         </ol>
       </div>
     </PageLayout>
+  );
+}
+
+function GlobeIllustration() {
+  return (
+    <div className="w-[200px] h-[200px] relative hidden md:block">
+      <Suspense fallback={"LOADING"}>
+        <GlobeIllustrationInner />
+      </Suspense>
+    </div>
+  );
+}
+
+function GlobeIllustrationInner() {
+  const { theme, mounted } = useThemeWatcher();
+  const [showPulse, setShowPulse] = useState(false);
+  const globeEl = useRef<GlobeMethods | undefined>(undefined);
+  const countries = use(countriesPromise);
+
+  return (
+    <>
+      {showPulse && (
+        <div className="absolute inset-0 pointer-events-none w-[200px] h-[200px] flex items-center justify-center">
+          {[...Array(3)].map((_, i) => (
+            <div
+              key={i}
+              className={`${styles['pulse-circle']} rounded-full bg-blue-200 dark:bg-blue-800`}
+              style={{
+                width: "50px",
+                height: "50px",
+                animationDelay: `${i * 2.5}s`,
+              }}
+            />
+          ))}
+        </div>
+      )}
+
+      <div className="relative z-10 items-center justify-center w-full h-full hidden md:flex">
+        {mounted && (
+          <Globe
+            ref={globeEl}
+            onGlobeReady={() => {
+              const setupControls = () => {
+                if (globeEl.current) {
+                  const controls = globeEl.current.controls();
+                  controls.autoRotate = true;
+                  controls.enableZoom = false;
+                  controls.enablePan = false;
+                  controls.enableRotate = false;
+                  return true;
+                }
+                return false;
+              };
+
+              setupControls();
+              // Sometimes the controls don't get set up in time, so we try again
+              setTimeout(setupControls, 100);
+              setTimeout(() => setShowPulse(true), 200);
+            }}
+            globeImageUrl={globeImages[theme]}
+            backgroundColor="#00000000"
+            polygonsData={countries.features}
+            polygonCapColor={() => "transparent"}
+            polygonSideColor={() => "transparent"}
+            hexPolygonsData={countries.features}
+            hexPolygonResolution={1}
+            hexPolygonMargin={0.2}
+            hexPolygonAltitude={0.003}
+            hexPolygonColor={() => "rgb(107, 93, 247)"}
+            width={160}
+            height={160}
+          />
+        )}
+      </div>
+    </>
   );
 }
 
