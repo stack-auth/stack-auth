@@ -2,7 +2,7 @@ import { getTenancy, Tenancy } from "@/lib/tenancies";
 import { getPrismaClientForTenancy } from "@/prisma-client";
 import { CustomerType } from "@prisma/client";
 import { getEnvVariable, getNodeEnvironment } from "@stackframe/stack-shared/dist/utils/env";
-import { throwErr } from "@stackframe/stack-shared/dist/utils/errors";
+import { StackAssertionError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
 import Stripe from "stripe";
 import { overrideEnvironmentConfigOverride } from "./config";
 
@@ -11,7 +11,7 @@ const useStripeMock = stripeSecretKey === "sk_test_mockstripekey" && ["developme
 const stripeConfig: Stripe.StripeConfig = useStripeMock ? {
   protocol: "http",
   host: "localhost",
-  port: 8120,
+  port: 8123,
 } : {};
 
 export const getStackStripe = () => new Stripe(stripeSecretKey, stripeConfig);
@@ -22,7 +22,7 @@ export const getStripeForAccount = (options: { tenancy?: Tenancy, accountId?: st
   }
   const accountId = options.accountId ?? options.tenancy?.config.payments.stripeAccountId;
   if (!accountId) {
-    throwErr(400, "Stripe account not configured");
+    throwErr(400, "Payments are not set up in this Stack Auth project. Please go to the Stack Auth dashboard and complete the Payments onboarding.");
   }
   return new Stripe(stripeSecretKey, { stripeAccount: accountId, ...stripeConfig });
 };
@@ -40,14 +40,14 @@ export async function syncStripeSubscriptions(stripeAccountId: string, stripeCus
   const customerId = stripeCustomer.metadata.customerId;
   const customerType = stripeCustomer.metadata.customerType;
   if (!customerId || !customerType) {
-    throwErr(500, "Stripe customer metadata missing customerId or customerType");
+    throw new StackAssertionError("Stripe customer metadata missing customerId or customerType");
   }
   if (customerType !== CustomerType.USER && customerType !== CustomerType.TEAM) {
-    throwErr(500, "Stripe customer metadata has invalid customerType");
+    throw new StackAssertionError("Stripe customer metadata has invalid customerType");
   }
   const tenancy = await getTenancy(account.metadata.tenancyId);
   if (!tenancy) {
-    throwErr(500, "Tenancy not found");
+    throw new StackAssertionError("Tenancy not found");
   }
   const prisma = await getPrismaClientForTenancy(tenancy);
   const subscriptions = await stripe.subscriptions.list({

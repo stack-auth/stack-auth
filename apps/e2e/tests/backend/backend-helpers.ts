@@ -1416,8 +1416,8 @@ export namespace Payments {
     });
     expect(response.status).toBe(200);
     const body = response.body as { url: string };
-    expect(body.url).toMatch(/^https?:\/\/localhost:8101\/purchase\/[a-z0-9]+$/);
-    const codeMatch = body.url.match(/\/purchase\/([a-z0-9]+)/);
+    expect(body.url).toMatch(/^https?:\/\/localhost:8101\/purchase\/[a-z0-9-_]+$/);
+    const codeMatch = body.url.match(/\/purchase\/([a-z0-9-_]+)/);
     const code = codeMatch ? codeMatch[1] : undefined;
     expect(code).toBeDefined();
 

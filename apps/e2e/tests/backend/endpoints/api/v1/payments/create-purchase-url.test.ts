@@ -157,7 +157,7 @@ it("should error for no connected stripe account", async ({ expect }) => {
   expect(response).toMatchInlineSnapshot(`
       NiceResponse {
         "status": 400,
-        "body": "Stripe account not configured",
+        "body": "Payments are not set up in this Stack Auth project. Please go to the Stack Auth dashboard and complete the Payments onboarding.",
         "headers": Headers { <some fields may have been hidden> },
       }
     `);
@@ -225,7 +225,7 @@ it("should allow offer_inline when calling from server", async ({ expect }) => {
   });
   expect(response.status).toBe(200);
   const body = response.body as { url: string };
-  expect(body.url).toMatch(/^https?:\/\/localhost:8101\/purchase\/[a-z0-9]+$/);
+  expect(body.url).toMatch(/^https?:\/\/localhost:8101\/purchase\/[a-z0-9-_]+$/);
 });
 
 it("should allow valid offer_id", async ({ expect }) => {
@@ -262,5 +262,5 @@ it("should allow valid offer_id", async ({ expect }) => {
   });
   expect(response.status).toBe(200);
   const body = response.body as { url: string };
-  expect(body.url).toMatch(/^https?:\/\/localhost:8101\/purchase\/[a-z0-9]+$/);
+  expect(body.url).toMatch(/^https?:\/\/localhost:8101\/purchase\/[a-z0-9-_]+$/);
 });

@@ -171,7 +171,7 @@ services:
   stripe-mock:
     image: stripe/stripe-mock:v0.195.0
     ports:
-      - 8120:12111
+      - 8123:12111
     environment:
       - STRIPE_API_KEY=sk_test_1234567890
 

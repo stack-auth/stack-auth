@@ -3,9 +3,10 @@ import { usersCrudHandlers } from "@/app/api/latest/users/crud";
 import { KnownErrors } from "@stackframe/stack-shared";
 import { inlineOfferSchema, yupValidate } from "@stackframe/stack-shared/dist/schema-fields";
 import { StackAssertionError, StatusError } from "@stackframe/stack-shared/dist/utils/errors";
-import { getOrUndefined } from "@stackframe/stack-shared/dist/utils/objects";
+import { getOrUndefined, typedFromEntries } from "@stackframe/stack-shared/dist/utils/objects";
 import * as yup from "yup";
 import { Tenancy } from "./tenancies";
+import { SUPPORTED_CURRENCIES } from "@stackframe/stack-shared/dist/utils/currencies";
 
 export async function ensureOfferIdOrInlineOffer(
   tenancy: Tenancy,
@@ -30,7 +31,7 @@ export async function ensureOfferIdOrInlineOffer(
     return offer;
   } else {
     if (!inlineOffer) {
-      throw new StatusError(500, "Inline offer does not exist, this should never happen");
+      throw new StackAssertionError("Inline offer does not exist, this should never happen", { inlineOffer, offerId });
     }
     return {
       displayName: inlineOffer.display_name,
@@ -39,12 +40,16 @@ export async function ensureOfferIdOrInlineOffer(
       serverOnly: inlineOffer.server_only,
       stackable: false,
       prices: Object.fromEntries(Object.entries(inlineOffer.prices).map(([key, value]) => [key, {
-        ...value,
+        ...typedFromEntries(SUPPORTED_CURRENCIES.map(c => [c.code, getOrUndefined(value, c.code)])),
+        interval: value.interval,
         freeTrial: value.free_trial,
         serverOnly: true,
-        free_trial: undefined,
-      }])) as Tenancy["config"]["payments"]["offers"][string]["prices"],
-      includedItems: inlineOffer.included_items as Tenancy["config"]["payments"]["offers"][string]["includedItems"],
+      }])),
+      includedItems: typedFromEntries(Object.entries(inlineOffer.included_items).map(([key, value]) => [key, {
+        repeat: value.repeat ?? "never",
+        quantity: value.quantity,
+        expires: value.expires ?? "never",
+      }])),
     };
   }
 }

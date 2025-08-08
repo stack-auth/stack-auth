@@ -8,7 +8,7 @@ it("should error on invalid code", async ({ expect }) => {
     method: "POST",
     accessType: "client",
     body: {
-      code: "invalid-code",
+      full_code: "invalid-code",
     },
   });
   expect(response).toMatchInlineSnapshot(`
@@ -31,7 +31,7 @@ it("should allow valid code and return offer data", async ({ expect }) => {
   const validateResponse = await niceBackendFetch("/api/latest/payments/purchases/validate-code", {
     method: "POST",
     accessType: "client",
-    body: { code },
+    body: { full_code: code },
   });
   expect(validateResponse).toMatchInlineSnapshot(`
     NiceResponse {
