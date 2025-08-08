@@ -52,10 +52,23 @@ pvc:
 ingress:
   name: stackauth-server
   className: "alb"
-  groupname: alb-gdplabs-shared-kubernetes-private
+  groupname: lb-gdplabs-exploration-shared
   healthcheckpath: "/"
   serviceannotations:
     alb.ingress.kubernetes.io/tags: "Environment=plgr,Project=gen-ai,Organization=gdplabs,Owner=glx-sre@gdplabs.id,CreatedOn=08/08/2025"
+  extraAnnotations:
+    # Whitelist internal platform / services for VPN access only.
+    # In front of application load balancer, there are security group who allow non-VPN IPs through the load balancer.
+
+    # Forward traffic to the service if the source IP is whitelisted.
+    alb.ingress.kubernetes.io/conditions.forward-service-if-whitelisted: >
+      [{"Field":"source-ip","SourceIpConfig":{"Values":["34.101.184.41/32"]}}]
+    alb.ingress.kubernetes.io/actions.forward-service-if-whitelisted: >
+      {"Type":"forward","ForwardConfig":{"TargetGroups":[{"ServiceName":"stackauth-server-service","ServicePort":"8101"}]}}
+
+    # No condition, forward all traffic to the service.
+    alb.ingress.kubernetes.io/actions.forward-service-if-not-whitelisted: >
+      {"Type":"forward","ForwardConfig":{"TargetGroups":[{"ServiceName":"stackauth-server-service","ServicePort":"8102"}]}}
   rules:
     - host: beta-stackauth-gdplabs-gen-ai-starter.obrol.id
       http:
@@ -71,9 +84,9 @@ ingress:
             pathType: Prefix
             backend:
               service:
-                name: stackauth-server-service
+                name: forward-service-if-whitelisted
                 port:
-                  number: 8101
+                  name: use-annotation
     - host: beta-api-stackauth-gdplabs-gen-ai-starter.obrol.id
       http:
         paths:
@@ -88,6 +101,6 @@ ingress:
             pathType: Prefix
             backend:
               service:
-                name: stackauth-server-service
+                name: forward-service-if-not-whitelisted
                 port:
-                  number: 8102
+                  name: use-annotation
