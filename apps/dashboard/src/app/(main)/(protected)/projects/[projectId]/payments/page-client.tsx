@@ -1,44 +1,45 @@
 "use client";
 
+import { PaymentItemTable } from "@/components/data-table/payment-item-table";
+import { PaymentOfferTable } from "@/components/data-table/payment-offer-table";
 import { SmartFormDialog } from "@/components/form-dialog";
 import { SelectField } from "@/components/form-fields";
+import { AdminProject } from "@stackframe/stack";
+import { KnownErrors } from "@stackframe/stack-shared";
+import {
+  offerPriceSchema,
+  userSpecifiedIdSchema,
+  yupRecord
+} from "@stackframe/stack-shared/dist/schema-fields";
+import { Result } from "@stackframe/stack-shared/dist/utils/results";
 import {
   ActionDialog,
   Button,
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
   FormControl,
   FormField,
   FormItem,
   FormLabel,
   FormMessage,
   InlineCode,
-  toast,
   Input,
+  Label,
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-  Label,
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle
+  toast
 } from "@stackframe/stack-ui";
-import { PaymentOfferTable } from "@/components/data-table/payment-offer-table";
-import { PaymentItemTable } from "@/components/data-table/payment-item-table";
-import { useState } from "react";
+import { Plus, Trash2 } from "lucide-react";
+import { useEffect, useState } from "react";
+import { Control, FieldValues, Path, useWatch } from "react-hook-form";
 import * as yup from "yup";
 import { PageLayout } from "../page-layout";
 import { useAdminApp } from "../use-admin-app";
-import {
-  offerPriceSchema,
-  yupRecord
-} from "@stackframe/stack-shared/dist/schema-fields";
-import { Control, FieldValues, Path } from "react-hook-form";
-import { Trash2, Plus } from "lucide-react";
-import { AdminProject } from "@stackframe/stack";
-import { KnownErrors } from "@stackframe/stack-shared";
-import { Result } from "@stackframe/stack-shared/dist/utils/results";
 
 export default function PageClient() {
   const stackAdminApp = useAdminApp();
@@ -123,10 +124,12 @@ function CreateOfferDialog({
         ]} />
       ),
     }),
-    prices: yupRecord(yup.string(), offerPriceSchema).defined().label("Prices").meta({
+    prices: yupRecord(userSpecifiedIdSchema("priceId"), offerPriceSchema).defined().label("Prices").meta({
       stackFormFieldRender: (props) => (
         <PricesFormField {...props} />
       ),
+    }).test("at-least-one-price", "At least one price is required", (value) => {
+      return Object.keys(value).length > 0;
     }),
     freeTrialDays: yup.number().min(0).optional().label("Free Trial (days)"),
     serverOnly: yup.boolean().default(false).label("Server Only"),
@@ -255,6 +258,7 @@ function CreatePurchaseDialog() {
   );
 }
 
+type PriceRow = { uid: string, priceId: string, price: Record<string, any> };
 
 function PricesFormField<F extends FieldValues>(props: {
   control: Control<F>,
@@ -263,12 +267,6 @@ function PricesFormField<F extends FieldValues>(props: {
   required?: boolean,
 }) {
   const intervalOptions = [
-    { value: "1-week", label: "1 week" },
-    { value: "1-month", label: "1 month" },
-    { value: "1-year", label: "1 year" },
-  ];
-
-  const freeTrialOptions = [
     { value: "1-week", label: "1 week" },
     { value: "1-month", label: "1 month" },
     { value: "1-year", label: "1 year" },
@@ -284,51 +282,58 @@ function PricesFormField<F extends FieldValues>(props: {
     const [amount, unit] = interval;
     return `${amount}-${unit}`;
   };
+  const fieldValue = useWatch({ control: props.control, name: props.name });
+  const [rows, setRows] = useState<PriceRow[]>([]);
+
+  useEffect(() => {
+    const src = fieldValue || {};
+    const oldMap = new Map(rows.map(r => [r.priceId, r.uid]));
+    const createUid = () => Date.now().toString(36);
+    const next = Object.entries(src).map(([priceId, price]) => ({ uid: oldMap.get(priceId) ?? createUid(), priceId, price: price as Record<string, any> }));
+    const same = rows.length === next.length && rows.every((r, i) => r.priceId === next[i]?.priceId && JSON.stringify(r.price) === JSON.stringify(next[i]?.price) && r.uid === next[i]?.uid);
+    if (!same) setRows(next);
+  }, [fieldValue, rows]);
 
   return (
     <FormField
-      control={props.control}
-      name={props.name}
+      control={props.control as any}
+      name={props.name as any}
       render={({ field }) => {
-        const prices: Record<string, any> = field.value || {};
-        const priceIds = Object.keys(prices);
+        const sync = (newRows: PriceRow[]) => {
+          setRows(newRows);
+          const record = Object.fromEntries(newRows.map(r => [r.priceId, r.price]));
+          field.onChange(record);
+        };
 
         const addPrice = () => {
-          const newPriceId = `price_${priceIds.length}`;
-          const newPrices = {
-            ...prices,
-            [newPriceId]: {
-              USD: "20",
-              interval: [1, "month"] as [number, string],
-            }
-          };
-          field.onChange(newPrices);
-        };
-
-        const removePrice = (priceId: string) => {
-          const newPrices = { ...prices };
-          delete newPrices[priceId];
-          field.onChange(newPrices);
-        };
-
-        const updatePrice = (priceId: string, updates: Record<string, any>) => {
-          const newPrices = {
-            ...prices,
-            [priceId]: {
-              ...prices[priceId],
-              ...updates,
-            }
-          };
-          field.onChange(newPrices);
-        };
-
-        const updatePriceId = (oldPriceId: string, newPriceId: string) => {
-          if (oldPriceId !== newPriceId && !prices[newPriceId]) {
-            const newPrices = { ...prices };
-            newPrices[newPriceId] = newPrices[oldPriceId];
-            delete newPrices[oldPriceId];
-            field.onChange(newPrices);
+          const used = new Set(rows.map(r => r.priceId));
+          let i = rows.length;
+          let newPriceId = `price_${i}`;
+          while (used.has(newPriceId)) {
+            i += 1;
+            newPriceId = `price_${i}`;
           }
+          const newRow = {
+            uid: `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`,
+            priceId: newPriceId,
+            price: { USD: "20", interval: [1, "month"] as [number, string] },
+          };
+          sync([...rows, newRow]);
+        };
+
+        const removePrice = (uid: string) => {
+          sync(rows.filter(r => r.uid !== uid));
+        };
+
+        const updatePrice = (uid: string, updates: Record<string, any>) => {
+          const newRows = rows.map(r => r.uid === uid ? { ...r, price: { ...r.price, ...updates } } : r);
+          sync(newRows);
+        };
+
+        const updatePriceId = (uid: string, newPriceId: string) => {
+          if (rows.some(r => r.uid !== uid && r.priceId === newPriceId)) return;
+          const newRows = rows.map(r => r.uid === uid ? { ...r, priceId: newPriceId } : r);
+          sync(newRows);
         };
 
         return (
@@ -339,17 +344,17 @@ function PricesFormField<F extends FieldValues>(props: {
             </FormLabel>
             <FormControl>
               <div className="space-y-4">
-                {priceIds.map((priceId) => {
-                  const price = prices[priceId];
+                {rows.map((row) => {
+                  const price = row.price;
                   return (
-                    <Card key={priceId}>
+                    <Card key={row.uid}>
                       <CardHeader className="flex flex-row items-center justify-between space-y-0 p-4">
                         <CardTitle className="text-sm font-bold">Price Settings</CardTitle>
                         <Button
                           type="button"
                           variant="outline"
                           size="sm"
-                          onClick={() => removePrice(priceId)}
+                          onClick={() => removePrice(row.uid)}
                         >
                           <Trash2 className="h-4 w-4" />
                         </Button>
@@ -358,8 +363,8 @@ function PricesFormField<F extends FieldValues>(props: {
                         <div className="space-y-1">
                           <Label>Price ID</Label>
                           <Input
-                            value={priceId}
-                            onChange={(e) => updatePriceId(priceId, e.target.value)}
+                            value={row.priceId}
+                            onChange={(e) => updatePriceId(row.uid, e.target.value)}
                             placeholder="Enter price ID"
                           />
                         </div>
@@ -368,8 +373,8 @@ function PricesFormField<F extends FieldValues>(props: {
                           <Label>Price (USD)</Label>
                           <Input
                             type="number"
-                            value={price?.USD || ""}
-                            onChange={(e) => updatePrice(priceId, { USD: e.target.value })}
+                            value={price.USD || ""}
+                            onChange={(e) => updatePrice(row.uid, { USD: e.target.value })}
                             placeholder="9"
                           />
                         </div>
@@ -377,8 +382,8 @@ function PricesFormField<F extends FieldValues>(props: {
                         <div className="space-y-1">
                           <Label>Interval</Label>
                           <Select
-                            value={formatInterval(price?.interval) || undefined}
-                            onValueChange={(value) => updatePrice(priceId, { interval: value ? parseInterval(value) : undefined })}
+                            value={formatInterval(price.interval) || undefined}
+                            onValueChange={(value) => updatePrice(row.uid, { interval: value ? parseInterval(value) : undefined })}
                           >
                             <SelectTrigger>
                               <SelectValue placeholder="No interval" />
