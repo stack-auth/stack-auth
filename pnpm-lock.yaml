@@ -376,6 +376,9 @@ importers:
       '@vercel/speed-insights':
         specifier: ^1.0.12
         version: 1.0.12(next@15.4.1(@babel/core@7.26.0)(@opentelemetry/api@1.9.0)(react-dom@19.0.0(react@19.0.0))(react@19.0.0))(react@19.0.0)
+      browser-image-compression:
+        specifier: ^2.0.2
+        version: 2.0.2
       canvas-confetti:
         specifier: ^1.9.2
         version: 1.9.3

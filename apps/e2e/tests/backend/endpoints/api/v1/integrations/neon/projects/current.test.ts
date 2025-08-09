@@ -39,8 +39,10 @@ it("get project details", async ({ expect }) => {
         "created_at_millis": <stripped field 'created_at_millis'>,
         "description": "",
         "display_name": "New Project",
+        "full_logo_url": null,
         "id": "<stripped UUID>",
         "is_production_mode": false,
+        "logo_url": null,
       },
       "headers": Headers { <some fields may have been hidden> },
     }
@@ -91,8 +93,10 @@ it("creates and updates the basic project information of a project", async ({ ex
         "created_at_millis": <stripped field 'created_at_millis'>,
         "description": "Updated description",
         "display_name": "Updated Project",
+        "full_logo_url": null,
         "id": "<stripped UUID>",
         "is_production_mode": true,
+        "logo_url": null,
       },
       "headers": Headers { <some fields may have been hidden> },
     }
@@ -159,8 +163,10 @@ it("creates and updates the email config of a project", async ({ expect }) => {
         "created_at_millis": <stripped field 'created_at_millis'>,
         "description": "",
         "display_name": "New Project",
+        "full_logo_url": null,
         "id": "<stripped UUID>",
         "is_production_mode": false,
+        "logo_url": null,
       },
       "headers": Headers { <some fields may have been hidden> },
     }
