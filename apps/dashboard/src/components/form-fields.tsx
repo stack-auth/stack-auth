@@ -245,7 +245,7 @@ export function SelectField<F extends FieldValues>(props: {
           <FormControl>
             <Select onValueChange={field.onChange} defaultValue={field.value} disabled={props.disabled}>
               <SelectTrigger className="max-w-lg">
-                <SelectValue placeholder={props.placeholder}/>
+                <SelectValue placeholder={props.placeholder} />
               </SelectTrigger>
               <SelectContent>
                 <SelectGroup>
@@ -296,6 +296,45 @@ export function CheckboxField<F extends FieldValues>(props: {
             )}
           </div>
           <FormMessage />
+        </FormItem>
+      )}
+    />
+  );
+}
+
+export function NumberField<F extends FieldValues>(props: {
+  className?: string,
+  control: Control<F>,
+  name: Path<F>,
+  label?: React.ReactNode,
+  placeholder?: string,
+  required?: boolean,
+  disabled?: boolean,
+  min?: number,
+  max?: number,
+}) {
+  return (
+    <FormField
+      control={props.control}
+      name={props.name}
+      render={({ field }) => (
+        <FormItem className={props.className}>
+          <label className="flex flex-col gap-2">
+            {props.label ? <FieldLabel required={props.required}>{props.label}</FieldLabel> : null}
+            <FormControl>
+              <Input
+                {...field}
+                value={field.value ?? ""}
+                placeholder={props.placeholder}
+                className="max-w-lg"
+                disabled={props.disabled}
+                type="number"
+                min={props.min}
+                max={props.max}
+              />
+            </FormControl>
+            <FormMessage />
+          </label>
         </FormItem>
       )}
     />

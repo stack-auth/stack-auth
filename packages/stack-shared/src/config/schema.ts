@@ -3,8 +3,9 @@
 import * as yup from "yup";
 import { DEFAULT_EMAIL_TEMPLATES, DEFAULT_EMAIL_THEMES, DEFAULT_EMAIL_THEME_ID } from "../helpers/emails";
 import * as schemaFields from "../schema-fields";
-import { yupBoolean, yupDate, yupMixed, yupNever, yupNumber, yupObject, yupRecord, yupString, yupTuple, yupUnion } from "../schema-fields";
+import { offerSchema, userSpecifiedIdSchema, yupBoolean, yupDate, yupMixed, yupNever, yupNumber, yupObject, yupRecord, yupString, yupTuple, yupUnion } from "../schema-fields";
 import { isShallowEqual } from "../utils/arrays";
+import { SUPPORTED_CURRENCIES } from "../utils/currencies";
 import { StackAssertionError } from "../utils/errors";
 import { allProviders } from "../utils/oauth";
 import { DeepFilterUndefined, DeepMerge, DeepRequiredOrUndefined, deleteKey, filterUndefined, get, has, isObjectLike, mapValues, set, typedAssign, typedFromEntries } from "../utils/objects";
@@ -112,6 +113,39 @@ const branchAuthSchema = yupObject({
   }),
 });
 
+export const branchPaymentsSchema = yupObject({
+  stripeAccountId: yupString().optional(),
+  stripeAccountSetupComplete: yupBoolean().optional(),
+  autoPay: yupObject({
+    interval: schemaFields.dayIntervalSchema,
+  }).optional(),
+  exclusivityGroups: yupRecord(
+    userSpecifiedIdSchema("exclusivityGroupId"),
+    yupRecord(
+      userSpecifiedIdSchema("offerId"),
+      yupBoolean().isTrue(),
+    ),
+  ),
+  offers: yupRecord(
+    userSpecifiedIdSchema("offerId"),
+    offerSchema,
+  ),
+  items: yupRecord(
+    userSpecifiedIdSchema("itemId"),
+    yupObject({
+      displayName: yupString().optional(),
+      customerType: schemaFields.customerTypeSchema,
+      default: yupObject({
+        quantity: yupNumber(),
+        repeat: schemaFields.dayIntervalOrNeverSchema.optional(),
+        expires: yupString().oneOf(['never', 'when-repeated']).optional(),
+      }).default({
+        quantity: 0,
+      }),
+    }),
+  ),
+});
+
 const branchDomain = yupObject({
   allowLocalhost: yupBoolean(),
 });
@@ -139,6 +173,8 @@ export const branchConfigSchema = canNoLongerBeOverridden(projectConfigSchema, [
     themes: schemaFields.emailThemeListSchema,
     templates: schemaFields.emailTemplateListSchema,
   }),
+
+  payments: branchPaymentsSchema,
 }));
 
 
@@ -175,7 +211,7 @@ export const environmentConfigSchema = branchConfigSchema.concat(yupObject({
 
   domains: branchConfigSchema.getNested("domains").concat(yupObject({
     trustedDomains: yupRecord(
-      yupString(),
+      userSpecifiedIdSchema("trustedDomainId"),
       yupObject({
         baseUrl: schemaFields.urlSchema,
         handlerPath: schemaFields.handlerPathSchema,
@@ -406,6 +442,39 @@ const organizationConfigDefaults = {
       themeId: undefined,
     }), DEFAULT_EMAIL_TEMPLATES),
   },
+
+  payments: {
+    stripeAccountId: undefined,
+    stripeAccountSetupComplete: false,
+    autoPay: undefined,
+    exclusivityGroups: (key: string) => (key: string) => undefined,
+    offers: (key: string) => ({
+      displayName: key,
+      customerType: undefined,
+      freeTrial: undefined,
+      serverOnly: false,
+      stackable: undefined,
+      prices: (key: string) => ({
+        ...typedFromEntries(SUPPORTED_CURRENCIES.map(currency => [currency.code, undefined])),
+        interval: undefined,
+        serverOnly: false,
+        freeTrial: undefined,
+      }),
+      includedItems: (key: string) => ({
+        quantity: undefined,
+        repeat: "never",
+        expires: "when-repeated",
+      }),
+    } as const),
+    items: (key: string) => ({
+      displayName: key,
+      default: {
+        quantity: 0,
+        expires: "when-repeated",
+        repeat: "never",
+      },
+    } as const),
+  },
 } as const satisfies DefaultsType<OrganizationRenderedConfigBeforeDefaults, [typeof environmentConfigDefaults, typeof branchConfigDefaults, typeof projectConfigDefaults]>;
 
 type _DeepOmitDefaultsImpl<T, U> = T extends object ? (
@@ -420,12 +489,12 @@ typeAssertIs<DefaultsType<{ a: { b: Record<string, 123>, c: 456 } }, [{ a: { c: 
 
 type DeepReplaceAllowFunctionsForObjects<T> = T extends object
   ? (
-      string extends keyof T
-        ? ((arg: Exclude<keyof T, number>) => DeepReplaceAllowFunctionsForObjects<T[keyof T]>) & ({ [K in keyof T]?: DeepReplaceAllowFunctionsForObjects<T[K]> } | {})
-        : { [K in keyof T]: DeepReplaceAllowFunctionsForObjects<T[K]> }
-    )
+    string extends keyof T
+    ? ((arg: Exclude<keyof T, number>) => DeepReplaceAllowFunctionsForObjects<T[keyof T]>) & ({ [K in keyof T]?: DeepReplaceAllowFunctionsForObjects<T[K]> } | {})
+    : { [K in keyof T]: DeepReplaceAllowFunctionsForObjects<T[K]> }
+  )
   :
-    T;
+  T;
 type ReplaceFunctionsWithObjects<T> = T & (T extends (arg: infer K extends string) => infer R ? Record<K, R> & object : unknown);
 type DeepReplaceFunctionsWithObjects<T> = T extends object ? { [K in keyof ReplaceFunctionsWithObjects<T>]: DeepReplaceFunctionsWithObjects<ReplaceFunctionsWithObjects<T>[K]> } : T;
 typeAssertIs<DeepReplaceFunctionsWithObjects<{ a: { b: 123 } & ((key: string) => number) }>, { a: { b: 123, [key: string]: number } }>()();
@@ -434,7 +503,7 @@ function deepReplaceFunctionsWithObjects(obj: any): any {
   return mapValues({ ...obj }, v => (isObjectLike(v) ? deepReplaceFunctionsWithObjects(v as any) : v));
 }
 import.meta.vitest?.test("deepReplaceFunctionsWithObjects", ({ expect }) => {
-  expect(deepReplaceFunctionsWithObjects(() => {})).toEqual({});
+  expect(deepReplaceFunctionsWithObjects(() => { })).toEqual({});
   expect(deepReplaceFunctionsWithObjects({ a: 3 })).toEqual({ a: 3 });
   expect(deepReplaceFunctionsWithObjects({ a: () => ({ b: 1 }) })).toEqual({ a: {} });
   expect(deepReplaceFunctionsWithObjects({ a: typedAssign(() => ({}), { b: { c: 1 } }) })).toEqual({ a: { b: { c: 1 } } });

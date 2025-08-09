@@ -3,8 +3,8 @@
 import { stackAppInternalsSymbol } from "@/app/(main)/integrations/transfer-confirm-page";
 import { useState } from "react";
 import { useAdminApp } from "../use-admin-app";
-import MetricsPage from "./(metrics)/metrics-page";
-import SetupPage from "./(setup)/setup-page";
+import MetricsPage from "./metrics-page";
+import SetupPage from "./setup-page";
 
 export default function PageClient() {
   const adminApp = useAdminApp();

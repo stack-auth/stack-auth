@@ -1,6 +1,5 @@
 import { AdminTeamPermission } from "../permissions";
 
-
 export type ProjectConfig = {
   readonly signUpEnabled: boolean,
   readonly credentialEnabled: boolean,

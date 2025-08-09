@@ -7,7 +7,7 @@ import { Form } from "@stackframe/stack-ui";
 import React, { useCallback, useState } from "react";
 import { useForm } from "react-hook-form";
 import * as yup from "yup";
-import { CheckboxField, DateField, InputField, TextAreaField } from "./form-fields";
+import { CheckboxField, DateField, InputField, NumberField, TextAreaField } from "./form-fields";
 
 // Used for yup TS support
 declare module 'yup' {
@@ -112,6 +112,9 @@ function SmartFormField(props: {
     }
     case 'boolean': {
       return <CheckboxField {...usualProps} />;
+    }
+    case 'number': {
+      return <NumberField {...usualProps} />;
     }
   }
 

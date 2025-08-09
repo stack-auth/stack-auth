@@ -1414,6 +1414,78 @@ const RequiresCustomEmailServer = createKnownErrorConstructor(
   () => [] as const,
 );
 
+const ItemNotFound = createKnownErrorConstructor(
+  KnownError,
+  "ITEM_NOT_FOUND",
+  (itemId: string) => [
+    404,
+    `Item with ID "${itemId}" not found.`,
+    {
+      item_id: itemId,
+    },
+  ] as const,
+  (json) => [json.item_id] as const,
+);
+
+const ItemCustomerTypeDoesNotMatch = createKnownErrorConstructor(
+  KnownError,
+  "ITEM_CUSTOMER_TYPE_DOES_NOT_MATCH",
+  (itemId: string, customerId: string, itemCustomerType: "user" | "team" | undefined, actualCustomerType: "user" | "team") => [
+    400,
+    `The ${actualCustomerType} with ID ${JSON.stringify(customerId)} is not a valid customer for the item with ID ${JSON.stringify(itemId)}. ${itemCustomerType ? `The item is configured to only be available for ${itemCustomerType} customers, but the customer is a ${actualCustomerType}.` : `The item is missing a customer type field. Please make sure it is set up correctly in your project configuration.`}`,
+    {
+      item_id: itemId,
+      customer_id: customerId,
+      item_customer_type: itemCustomerType ?? null,
+      actual_customer_type: actualCustomerType,
+    },
+  ] as const,
+  (json) => [json.item_id, json.customer_id, json.item_customer_type ?? undefined, json.actual_customer_type] as const,
+);
+
+const CustomerDoesNotExist = createKnownErrorConstructor(
+  KnownError,
+  "CUSTOMER_DOES_NOT_EXIST",
+  (customerId: string) => [
+    400,
+    `Customer with ID ${JSON.stringify(customerId)} does not exist.`,
+    {
+      customer_id: customerId,
+    },
+  ] as const,
+  (json) => [json.customer_id] as const,
+);
+
+const OfferDoesNotExist = createKnownErrorConstructor(
+  KnownError,
+  "OFFER_DOES_NOT_EXIST",
+  (offerId: string, accessType: "client" | "server" | "admin") => [
+    400,
+    `Offer with ID ${JSON.stringify(offerId)} does not exist${accessType === "client" ? " or you don't have permissions to access it." : "."}`,
+    {
+      offer_id: offerId,
+      access_type: accessType,
+    },
+  ] as const,
+  (json) => [json.offer_id, json.access_type] as const,
+);
+
+const OfferCustomerTypeDoesNotMatch = createKnownErrorConstructor(
+  KnownError,
+  "OFFER_CUSTOMER_TYPE_DOES_NOT_MATCH",
+  (offerId: string | undefined, customerId: string, offerCustomerType: "user" | "team" | undefined, actualCustomerType: "user" | "team") => [
+    400,
+    `The ${actualCustomerType} with ID ${JSON.stringify(customerId)} is not a valid customer for the inline offer that has been passed in. ${offerCustomerType ? `The offer is configured to only be available for ${offerCustomerType} customers, but the customer is a ${actualCustomerType}.` : `The offer is missing a customer type field. Please make sure it is set up correctly in your project configuration.`}`,
+    {
+      offer_id: offerId ?? null,
+      customer_id: customerId,
+      offer_customer_type: offerCustomerType ?? null,
+      actual_customer_type: actualCustomerType,
+    },
+  ] as const,
+  (json) => [json.offer_id ?? undefined, json.customer_id, json.offer_customer_type ?? undefined, json.actual_customer_type] as const,
+);
+
 
 export type KnownErrors = {
   [K in keyof typeof KnownErrors]: InstanceType<typeof KnownErrors[K]>;
@@ -1528,7 +1600,12 @@ export const KnownErrors = {
   ApiKeyRevoked,
   WrongApiKeyType,
   EmailRenderingError,
-  RequiresCustomEmailServer
+  RequiresCustomEmailServer,
+  ItemNotFound,
+  ItemCustomerTypeDoesNotMatch,
+  CustomerDoesNotExist,
+  OfferDoesNotExist,
+  OfferCustomerTypeDoesNotMatch,
 } satisfies Record<string, KnownErrorConstructor<any, any>>;
 
 
