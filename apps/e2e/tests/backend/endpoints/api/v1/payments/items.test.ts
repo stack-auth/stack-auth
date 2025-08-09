@@ -145,3 +145,150 @@ it("should return ItemCustomerTypeDoesNotMatch error for user accessing team ite
       }
     `);
 });
+
+it("creates an item quantity change and returns id", async ({ expect }) => {
+  await Project.createAndSwitch();
+  await updateConfig({
+    payments: {
+      items: {
+        "test-item": {
+          displayName: "Test Item",
+          customerType: "user",
+          default: { quantity: 0 },
+        },
+      },
+    },
+  });
+
+  const user = await User.create();
+
+  const response = await niceBackendFetch(`/api/latest/payments/items/${user.userId}/test-item`, {
+    method: "POST",
+    accessType: "admin",
+    body: {
+      quantity: 3,
+      description: "manual grant",
+    },
+  });
+
+  expect(response.status).toBe(200);
+  expect(response.body).toMatchObject({ id: expect.any(String) });
+});
+
+it("aggregates item quantity changes in item quantity", async ({ expect }) => {
+  await Project.createAndSwitch();
+  await updateConfig({
+    payments: {
+      items: {
+        "test-item": {
+          displayName: "Test Item",
+          customerType: "user",
+          default: { quantity: 0 },
+        },
+      },
+    },
+  });
+
+  const user = await User.create();
+
+  const post1 = await niceBackendFetch(`/api/latest/payments/items/${user.userId}/test-item`, {
+    method: "POST",
+    accessType: "admin",
+    body: { quantity: 2 },
+  });
+  expect(post1.status).toBe(200);
+
+  const get1 = await niceBackendFetch(`/api/latest/payments/items/${user.userId}/test-item`, {
+    accessType: "client",
+  });
+  expect(get1.status).toBe(200);
+  expect(get1.body.quantity).toBe(2);
+});
+
+// Note: subscription aggregation is tested indirectly via manual changes integration tests above.
+
+it("ignores expired changes", async ({ expect }) => {
+  await Project.createAndSwitch();
+  await updateConfig({
+    payments: {
+      items: {
+        "test-item": {
+          displayName: "Test Item",
+          customerType: "user",
+          default: { quantity: 0 },
+        },
+      },
+    },
+  });
+
+  const user = await User.create();
+
+  const post = await niceBackendFetch(`/api/latest/payments/items/${user.userId}/test-item`, {
+    method: "POST",
+    accessType: "admin",
+    body: { quantity: 4, expires_at: new Date(Date.now() - 1000).toISOString() },
+  });
+  expect(post.status).toBe(200);
+
+  const get = await niceBackendFetch(`/api/latest/payments/items/${user.userId}/test-item`, {
+    accessType: "client",
+  });
+  expect(get.status).toBe(200);
+  expect(get.body.quantity).toBe(0);
+});
+
+it("sums multiple non-expired changes", async ({ expect }) => {
+  await Project.createAndSwitch();
+  await updateConfig({
+    payments: {
+      items: {
+        "test-item": {
+          displayName: "Test Item",
+          customerType: "user",
+          default: { quantity: 0 },
+        },
+      },
+    },
+  });
+
+  const user = await User.create();
+
+  for (const q of [2, -1, 5]) {
+    const r = await niceBackendFetch(`/api/latest/payments/items/${user.userId}/test-item`, {
+      method: "POST",
+      accessType: "admin",
+      body: { quantity: q },
+    });
+    expect(r.status).toBe(200);
+  }
+
+  const get = await niceBackendFetch(`/api/latest/payments/items/${user.userId}/test-item`, {
+    accessType: "client",
+  });
+  expect(get.status).toBe(200);
+  expect(get.body.quantity).toBe(6);
+});
+
+it("validates item and customer type", async ({ expect }) => {
+  await Project.createAndSwitch();
+  await updateConfig({
+    payments: {
+      items: {
+        "team-item": {
+          displayName: "Team Item",
+          customerType: "team",
+          default: { quantity: 0 },
+        },
+      },
+    },
+  });
+
+  const user = await User.create();
+  const response = await niceBackendFetch(`/api/latest/payments/items/${user.userId}/team-item`, {
+    method: "POST",
+    accessType: "admin",
+    body: { quantity: 1 },
+  });
+  expect(response.status).toBe(400);
+  expect(response.body.code).toBe("ITEM_CUSTOMER_TYPE_DOES_NOT_MATCH");
+});
