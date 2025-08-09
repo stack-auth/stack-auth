@@ -1,12 +1,12 @@
 import * as yup from "yup";
 import { KnownErrors } from ".";
 import { isBase64 } from "./utils/bytes";
-import { Currency, MoneyAmount } from "./utils/currencies";
+import { Currency, MoneyAmount, SUPPORTED_CURRENCIES } from "./utils/currencies";
 import { DayInterval, Interval } from "./utils/dates";
 import { StackAssertionError, throwErr } from "./utils/errors";
 import { decodeBasicAuthorizationHeader } from "./utils/http";
 import { allProviders } from "./utils/oauth";
-import { deepPlainClone, omit } from "./utils/objects";
+import { deepPlainClone, omit, typedFromEntries } from "./utils/objects";
 import { deindent } from "./utils/strings";
 import { isValidUrl } from "./utils/urls";
 import { isUuid } from "./utils/uuids";
@@ -372,7 +372,7 @@ export const dayIntervalOrNeverSchema = yupUnion(dayIntervalSchema.defined(), yu
  * This schema is useful for fields where the user can specify the ID, such as price IDs. It is particularly common
  * for IDs in the config schema.
  */
-export const userSpecifiedIdSchema = (idName: `${string}Id`) => yupString().matches(/^[a-zA-Z_][a-zA-Z0-9_-]*$/);
+export const userSpecifiedIdSchema = (idName: `${string}Id`) => yupString().matches(/^[a-zA-Z_][a-zA-Z0-9_-]*$/, `${idName} must start with a letter or underscore and contain only letters, numbers, underscores, and hyphens`);
 export const moneyAmountSchema = (currency: Currency) => yupString<MoneyAmount>().test('money-amount', 'Invalid money amount', (value, context) => {
   if (value == null) return true;
   const regex = /^([0-9]+)(\.([0-9]+))?$/;
@@ -384,6 +384,7 @@ export const moneyAmountSchema = (currency: Currency) => yupString<MoneyAmount>(
   if (whole !== '0' && whole.startsWith('0')) return context.createError({ message: 'Money amount must not have leading zeros' });
   return true;
 });
+
 
 /**
  * A stricter email schema that does some additional checks for UX input. (Some emails are allowed by the spec, for
@@ -492,7 +493,61 @@ export const emailTemplateListSchema = yupRecord(
 ).meta({ openapiField: { description: 'Record of email template IDs to their display name and source code' } });
 
 // Payments
-export const customerTypeSchema = yupString().oneOf(['user', 'team', 'organization']);
+export const customerTypeSchema = yupString().oneOf(['user', 'team']);
+const validateHasAtLeastOneSupportedCurrency = (value: Record<string, unknown>, context: any) => {
+  const currencies = Object.keys(value).filter(key => SUPPORTED_CURRENCIES.some(c => c.code === key));
+  if (currencies.length === 0) {
+    return context.createError({ message: "At least one currency is required" });
+  }
+  return true;
+};
+export const offerPriceSchema = yupObject({
+  ...typedFromEntries(SUPPORTED_CURRENCIES.map(currency => [currency.code, moneyAmountSchema(currency).optional()])),
+  interval: dayIntervalSchema.optional(),
+  serverOnly: yupBoolean(),
+  freeTrial: dayIntervalSchema.optional(),
+}).test("at-least-one-currency", (value, context) => validateHasAtLeastOneSupportedCurrency(value, context));
+export const offerSchema = yupObject({
+  displayName: yupString(),
+  customerType: customerTypeSchema,
+  freeTrial: dayIntervalSchema.optional(),
+  serverOnly: yupBoolean(),
+  stackable: yupBoolean(),
+  prices: yupRecord(
+    userSpecifiedIdSchema("priceId"),
+    offerPriceSchema,
+  ),
+  includedItems: yupRecord(
+    userSpecifiedIdSchema("itemId"),
+    yupObject({
+      quantity: yupNumber(),
+      repeat: dayIntervalOrNeverSchema.optional(),
+      expires: yupString().oneOf(['never', 'when-purchase-expires', 'when-repeated']).optional(),
+    }),
+  ),
+});
+export const inlineOfferSchema = yupObject({
+  display_name: yupString().defined(),
+  customer_type: customerTypeSchema.defined(),
+  free_trial: dayIntervalSchema.optional(),
+  server_only: yupBoolean().oneOf([true]).default(true),
+  prices: yupRecord(
+    userSpecifiedIdSchema("priceId"),
+    yupObject({
+      ...typedFromEntries(SUPPORTED_CURRENCIES.map(currency => [currency.code, moneyAmountSchema(currency).optional()])),
+      interval: dayIntervalSchema.optional(),
+      free_trial: dayIntervalSchema.optional(),
+    }).test("at-least-one-currency", (value, context) => validateHasAtLeastOneSupportedCurrency(value, context)),
+  ),
+  included_items: yupRecord(
+    userSpecifiedIdSchema("itemId"),
+    yupObject({
+      quantity: yupNumber(),
+      repeat: dayIntervalOrNeverSchema.optional(),
+      expires: yupString().oneOf(['never', 'when-purchase-expires', 'when-repeated']).optional(),
+    }),
+  ),
+});
 
 // Users
 export class ReplaceFieldWithOwnUserId extends Error {
