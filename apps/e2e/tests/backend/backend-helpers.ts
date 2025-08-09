@@ -414,6 +414,9 @@ export namespace Auth {
         headers: expect.anything(),
       });
 
+      // the verification email is sent asynchronously, so let's give it a tiny bit of time to arrive
+      await wait(200);
+
       backendContext.set({
         userAuth: {
           accessToken: response.body.access_token,
