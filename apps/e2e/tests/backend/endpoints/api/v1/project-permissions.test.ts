@@ -239,6 +239,7 @@ it("can customize default user permissions", async ({ expect }) => {
         "display_name": "New Project",
         "id": "<stripped UUID>",
         "is_production_mode": false,
+        "owner_team_id": "<stripped UUID>",
       },
       "headers": Headers { <some fields may have been hidden> },
     }

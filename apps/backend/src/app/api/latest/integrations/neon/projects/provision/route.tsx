@@ -33,7 +33,7 @@ export const POST = createSmartRouteHandler({
     const [clientId] = decodeBasicAuthorizationHeader(req.headers.authorization[0])!;
 
     const createdProject = await createOrUpdateProjectWithLegacyConfig({
-      ownerIds: [],
+      ownerTeamId: null,
       sourceOfTruth: req.body.connection_strings ? {
         type: 'neon',
         connectionStrings: Object.fromEntries(req.body.connection_strings.map((c) => [c.branch_id, c.connection_string])),

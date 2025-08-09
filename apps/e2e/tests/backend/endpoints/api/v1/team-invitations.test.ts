@@ -96,6 +96,15 @@ it("can send invitation", async ({ expect }) => {
             "profile_image_url": null,
             "server_metadata": null,
           },
+          {
+            "client_metadata": null,
+            "client_read_only_metadata": null,
+            "created_at_millis": <stripped field 'created_at_millis'>,
+            "display_name": "mailbox-1--<stripped UUID>@stack-generated.example.com's Team",
+            "id": "<stripped UUID>",
+            "profile_image_url": null,
+            "server_metadata": null,
+          },
         ],
       },
       "headers": Headers { <some fields may have been hidden> },
@@ -137,8 +146,8 @@ it("can send invitation without a current user on the server", async ({ expect }
     accessType: "server",
     method: "GET",
   });
-  expect(response.body.items).toHaveLength(1);
-  expect(response.body.items[0].display_name).toBe("New Team");
+  expect(response.body.items).toHaveLength(2);
+  expect(response.body.items.find((item: any) => item.display_name === "New Team")).toBeDefined();
 });
 
 

@@ -35,7 +35,15 @@ it("lists all the teams the current user has on the client", async ({ expect }) 
       "status": 200,
       "body": {
         "is_paginated": false,
-        "items": [],
+        "items": [
+          {
+            "client_metadata": null,
+            "client_read_only_metadata": null,
+            "display_name": "default-mailbox--<stripped UUID>@stack-generated.example.com's Team",
+            "id": "<stripped UUID>",
+            "profile_image_url": null,
+          },
+        ],
       },
       "headers": Headers { <some fields may have been hidden> },
     }
@@ -47,7 +55,15 @@ it("lists all the teams the current user has on the client", async ({ expect }) 
       "status": 200,
       "body": {
         "is_paginated": false,
-        "items": [],
+        "items": [
+          {
+            "client_metadata": null,
+            "client_read_only_metadata": null,
+            "display_name": "default-mailbox--<stripped UUID>@stack-generated.example.com's Team",
+            "id": "<stripped UUID>",
+            "profile_image_url": null,
+          },
+        ],
       },
       "headers": Headers { <some fields may have been hidden> },
     }
@@ -62,7 +78,17 @@ it("lists all the teams the current user has on the server", async ({ expect }) 
       "status": 200,
       "body": {
         "is_paginated": false,
-        "items": [],
+        "items": [
+          {
+            "client_metadata": null,
+            "client_read_only_metadata": null,
+            "created_at_millis": <stripped field 'created_at_millis'>,
+            "display_name": "default-mailbox--<stripped UUID>@stack-generated.example.com's Team",
+            "id": "<stripped UUID>",
+            "profile_image_url": null,
+            "server_metadata": null,
+          },
+        ],
       },
       "headers": Headers { <some fields may have been hidden> },
     }
@@ -74,7 +100,17 @@ it("lists all the teams the current user has on the server", async ({ expect }) 
       "status": 200,
       "body": {
         "is_paginated": false,
-        "items": [],
+        "items": [
+          {
+            "client_metadata": null,
+            "client_read_only_metadata": null,
+            "created_at_millis": <stripped field 'created_at_millis'>,
+            "display_name": "default-mailbox--<stripped UUID>@stack-generated.example.com's Team",
+            "id": "<stripped UUID>",
+            "profile_image_url": null,
+            "server_metadata": null,
+          },
+        ],
       },
       "headers": Headers { <some fields may have been hidden> },
     }
@@ -548,6 +584,15 @@ it("updates a team on the server", async ({ expect }) => {
             "client_metadata": null,
             "client_read_only_metadata": null,
             "created_at_millis": <stripped field 'created_at_millis'>,
+            "display_name": "default-mailbox--<stripped UUID>@stack-generated.example.com's Team",
+            "id": "<stripped UUID>",
+            "profile_image_url": null,
+            "server_metadata": null,
+          },
+          {
+            "client_metadata": null,
+            "client_read_only_metadata": null,
+            "created_at_millis": <stripped field 'created_at_millis'>,
             "display_name": "My Updated Team",
             "id": "<stripped UUID>",
             "profile_image_url": "http://localhost:8121/stack-storage/team-profile-images/<stripped UUID>.gif",
@@ -692,7 +737,17 @@ it("deletes a team on the server", async ({ expect }) => {
       "status": 200,
       "body": {
         "is_paginated": false,
-        "items": [],
+        "items": [
+          {
+            "client_metadata": null,
+            "client_read_only_metadata": null,
+            "created_at_millis": <stripped field 'created_at_millis'>,
+            "display_name": "default-mailbox--<stripped UUID>@stack-generated.example.com's Team",
+            "id": "<stripped UUID>",
+            "profile_image_url": null,
+            "server_metadata": null,
+          },
+        ],
       },
       "headers": Headers { <some fields may have been hidden> },
     }

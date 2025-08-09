@@ -1,3 +1,6 @@
+import { addUserToTeam } from "@/app/api/latest/team-memberships/crud";
+import { teamsCrudHandlers } from "@/app/api/latest/teams/crud";
+import { DEFAULT_BRANCH_ID } from "@/lib/tenancies";
 import { getPrismaClientForTenancy, globalPrismaClient } from "@/prisma-client";
 import { createVerificationCodeHandler } from "@/route-handlers/verification-code-handler";
 import { VerificationCodeType } from "@prisma/client";
@@ -53,33 +56,25 @@ export const integrationProjectTransferCodeHandler = createVerificationCodeHandl
 
     if (provisionedProject.count === 0) throw new StatusError(400, "The project to transfer was not provisioned or has already been transferred.");
 
-    const prisma = await getPrismaClientForTenancy(tenancy);
-
-    const recentDbUser = await prisma.projectUser.findUnique({
-      where: {
-        tenancyId_projectUserId: {
-          tenancyId: tenancy.id,
-          projectUserId: user.id,
-        },
+    const team = await teamsCrudHandlers.adminCreate({
+      data: {
+        display_name: user.display_name ?
+          `${user.display_name}'s Team` :
+          user.primary_email ?
+            `${user.primary_email}'s Team` :
+            "Personal Team",
+        creator_user_id: 'me',
       },
-    }) ?? throwErr("Authenticated user not found in transaction. Something went wrong. Did the user delete their account at the wrong time? (Very unlikely.)");
-    const rduServerMetadata: any = recentDbUser.serverMetadata;
+      tenancy,
+      user,
+    });
 
-    await prisma.projectUser.update({
+    await globalPrismaClient.project.update({
       where: {
-        tenancyId_projectUserId: {
-          tenancyId: tenancy.id,
-          projectUserId: user.id,
-        },
+        id: data.project_id,
       },
       data: {
-        serverMetadata: {
-          ...typeof rduServerMetadata === "object" ? rduServerMetadata : {},
-          managedProjectIds: [
-            ...(Array.isArray(rduServerMetadata?.managedProjectIds) ? rduServerMetadata.managedProjectIds : []),
-            data.project_id,
-          ],
-        },
+        ownerTeamId: team.id,
       },
     });
 

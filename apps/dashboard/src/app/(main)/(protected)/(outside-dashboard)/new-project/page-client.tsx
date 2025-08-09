@@ -1,11 +1,11 @@
 'use client';
-import { InputField, SwitchListField } from "@/components/form-fields";
+import { FieldLabel, InputField, SwitchListField } from "@/components/form-fields";
 import { useRouter } from "@/components/router";
 import { yupResolver } from "@hookform/resolvers/yup";
-import { AuthPage, useUser } from "@stackframe/stack";
+import { AuthPage, SelectedTeamSwitcher, useUser } from "@stackframe/stack";
 import { allProviders } from "@stackframe/stack-shared/dist/utils/oauth";
 import { runAsynchronouslyWithAlert, wait } from "@stackframe/stack-shared/dist/utils/promises";
-import { BrowserFrame, Button, Form, Separator, Typography } from "@stackframe/stack-ui";
+import { BrowserFrame, Button, Form, FormField, FormMessage, Label, Separator, Typography } from "@stackframe/stack-ui";
 import { useSearchParams } from "next/navigation";
 import { useState } from "react";
 import { useForm } from "react-hook-form";
@@ -20,7 +20,7 @@ export const projectFormSchema = yup.object({
 
 type ProjectFormValues = yup.InferType<typeof projectFormSchema>
 
-export default function PageClient () {
+export default function PageClient() {
   const user = useUser({ or: 'redirect', projectIdMustMatch: "internal" });
   const [loading, setLoading] = useState(false);
   const router = useRouter();
@@ -95,6 +95,11 @@ export default function PageClient () {
             <form onSubmit={e => runAsynchronouslyWithAlert(form.handleSubmit(onSubmit)(e))} className="space-y-4">
 
               <InputField required control={form.control} name="displayName" label="Display Name" placeholder="My Project" />
+
+              <div className="flex flex-col gap-2">
+                <Label>Team</Label>
+                <SelectedTeamSwitcher triggerClassName="max-w-full" />
+              </div>
 
               <SwitchListField
                 control={form.control}

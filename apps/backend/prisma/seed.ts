@@ -29,12 +29,15 @@ async function seed() {
 
   const apiKeyId = '3142e763-b230-44b5-8636-aa62f7489c26';
   const defaultUserId = '33e7c043-d2d1-4187-acd3-f91b5ed64b46';
+  const internalTeamId = 'a23e1b7f-ab18-41fc-9ee6-7a9ca9fa543c';
   const emulatorAdminUserId = '63abbc96-5329-454a-ba56-e0460173c6c1';
+  const emulatorAdminTeamId = '5a0c858b-d9e9-49d4-9943-8ce385d86428';
 
   let internalProject = await getProject('internal');
 
   if (!internalProject) {
     internalProject = await createOrUpdateProjectWithLegacyConfig({
+      ownerTeamId: internalTeamId,
       type: 'create',
       projectId: 'internal',
       data: {
@@ -66,6 +69,7 @@ async function seed() {
     type: 'update',
     data: {
       config: {
+        create_team_on_sign_up: true,
         sign_up_enabled: signUpEnabled,
         magic_link_enabled: otpEnabled,
         allow_localhost: allowLocalhost,
@@ -78,6 +82,27 @@ async function seed() {
       },
     },
   });
+
+  const internalTeam = await internalPrisma.team.findUnique({
+    where: {
+      tenancyId_teamId: {
+        tenancyId: internalTenancy.id,
+        teamId: internalTeamId,
+      },
+    },
+  });
+  if (!internalTeam) {
+    await internalPrisma.team.create({
+      data: {
+        tenancyId: internalTenancy.id,
+        teamId: internalTeamId,
+        displayName: 'Internal Team',
+        mirroredProjectId: 'internal',
+        mirroredBranchId: DEFAULT_BRANCH_ID,
+      },
+    });
+    console.log('Internal team created');
+  }
 
   const keySet = {
     publishableClientKey: process.env.STACK_SEED_INTERNAL_PROJECT_PUBLISHABLE_CLIENT_KEY || throwErr('STACK_SEED_INTERNAL_PROJECT_PUBLISHABLE_CLIENT_KEY is not set'),
@@ -114,7 +139,7 @@ async function seed() {
     });
 
     if (oldAdminUser) {
-        console.log(`Admin user already exists, skipping creation`);
+      console.log(`Admin user already exists, skipping creation`);
     } else {
       const newUser = await internalPrisma.projectUser.create({
         data: {
@@ -123,11 +148,18 @@ async function seed() {
           tenancyId: internalTenancy.id,
           mirroredProjectId: 'internal',
           mirroredBranchId: DEFAULT_BRANCH_ID,
-          serverMetadata: adminInternalAccess
-            ? { managedProjectIds: ['internal'] }
-            : undefined,
         }
       });
+
+      if (adminInternalAccess) {
+        await internalPrisma.teamMember.create({
+          data: {
+            tenancyId: internalTenancy.id,
+            teamId: internalTeamId,
+            projectUserId: defaultUserId,
+          },
+        });
+      }
 
       if (adminEmail && adminPassword) {
         await usersCrudHandlers.adminUpdate({
@@ -140,7 +172,7 @@ async function seed() {
           },
         });
 
-          console.log(`Added admin user with email ${adminEmail}`);
+        console.log(`Added admin user with email ${adminEmail}`);
       }
 
       if (adminGithubId) {
@@ -189,6 +221,27 @@ async function seed() {
       throw new Error('STACK_EMULATOR_PROJECT_ID is not set');
     }
 
+    const emulatorTeam = await internalPrisma.team.findUnique({
+      where: {
+        tenancyId_teamId: {
+          tenancyId: internalTenancy.id,
+          teamId: emulatorAdminTeamId,
+        },
+      },
+    });
+    if (!emulatorTeam) {
+      await internalPrisma.team.create({
+        data: {
+          tenancyId: internalTenancy.id,
+          teamId: emulatorAdminTeamId,
+          displayName: 'Emulator Team',
+          mirroredProjectId: emulatorProjectId,
+          mirroredBranchId: DEFAULT_BRANCH_ID,
+        },
+      });
+      console.log('Created emulator team');
+    }
+
     const existingUser = await internalPrisma.projectUser.findFirst({
       where: {
         mirroredProjectId: 'internal',
@@ -198,7 +251,7 @@ async function seed() {
     });
 
     if (existingUser) {
-        console.log('Emulator user already exists, skipping creation');
+      console.log('Emulator user already exists, skipping creation');
     } else {
       const newEmulatorUser = await internalPrisma.projectUser.create({
         data: {
@@ -207,10 +260,15 @@ async function seed() {
           tenancyId: internalTenancy.id,
           mirroredProjectId: 'internal',
           mirroredBranchId: DEFAULT_BRANCH_ID,
-          serverMetadata: {
-            managedProjectIds: [emulatorProjectId],
-          },
         }
+      });
+
+      await internalPrisma.teamMember.create({
+        data: {
+          tenancyId: internalTenancy.id,
+          teamId: emulatorAdminTeamId,
+          projectUserId: newEmulatorUser.projectUserId,
+        },
       });
 
       await usersCrudHandlers.adminUpdate({
@@ -237,6 +295,7 @@ async function seed() {
     } else {
       await createOrUpdateProjectWithLegacyConfig({
         projectId: emulatorProjectId,
+        ownerTeamId: emulatorAdminTeamId,
         type: 'create',
         data: {
           display_name: 'Emulator Project',
@@ -266,5 +325,5 @@ seed().catch(async (e) => {
   console.error(errorToNiceString(e));
   await globalPrisma.$disconnect();
   process.exit(1);
-// eslint-disable-next-line @typescript-eslint/no-misused-promises
+  // eslint-disable-next-line @typescript-eslint/no-misused-promises
 }).finally(async () => await globalPrisma.$disconnect());
