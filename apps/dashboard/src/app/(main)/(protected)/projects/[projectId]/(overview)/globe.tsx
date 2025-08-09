@@ -6,11 +6,15 @@ import { Typography } from '@stackframe/stack-ui';
 import dynamic from 'next/dynamic';
 import { RefObject, use, useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
 import { GlobeMethods } from 'react-globe.gl';
-import { globeImages } from '../(utils)/utils';
+
+export const globeImages = {
+  light: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAAXNSR0IArs4c6QAAAERlWElmTU0AKgAAAAgAAYdpAAQAAAABAAAAGgAAAAAAA6ABAAMAAAABAAEAAKACAAQAAAABAAAAAaADAAQAAAABAAAAAQAAAAD5Ip3+AAAADUlEQVQIHWO48vjffwAI+QO1AqIWWgAAAABJRU5ErkJggg==',
+  dark: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAAXNSR0IArs4c6QAAAERlWElmTU0AKgAAAAgAAYdpAAQAAAABAAAAGgAAAAAAA6ABAAMAAAABAAEAAKACAAQAAAABAAAAAaADAAQAAAABAAAAAQAAAAD5Ip3+AAAADUlEQVQIHWPgF9f8DwAB1wFPLWQXmAAAAABJRU5ErkJggg=='
+};
 
 // https://github.com/vasturiano/react-globe.gl/issues/1#issuecomment-554459831
 const Globe = dynamic(() => import('react-globe.gl').then((mod) => mod.default), { ssr: false });
-const countriesPromise = import('../(utils)/country-data.geo.json');
+const countriesPromise = import('./country-data.geo.json');
 
 function useSize(target: RefObject<HTMLDivElement | null>) {
   const [size, setSize] = useState<DOMRectReadOnly>();
