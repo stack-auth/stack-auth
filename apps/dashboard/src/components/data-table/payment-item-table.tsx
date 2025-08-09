@@ -1,8 +1,13 @@
 'use client';
-import { DataTable, DataTableColumnHeader, TextCell, ActionCell, Button } from "@stackframe/stack-ui";
-import { ColumnDef } from "@tanstack/react-table";
-import * as yup from "yup";
+import { useAdminApp } from "@/app/(main)/(protected)/projects/[projectId]/use-admin-app";
+import { SmartFormDialog } from "@/components/form-dialog";
+import { KnownErrors } from "@stackframe/stack-shared";
 import { branchPaymentsSchema } from "@stackframe/stack-shared/dist/config/schema";
+import { Result } from "@stackframe/stack-shared/dist/utils/results";
+import { ActionCell, DataTable, DataTableColumnHeader, TextCell, toast } from "@stackframe/stack-ui";
+import { ColumnDef } from "@tanstack/react-table";
+import { useState } from "react";
+import * as yup from "yup";
 
 type PaymentItem = {
   id: string,
@@ -49,15 +54,7 @@ const columns: ColumnDef<PaymentItem>[] = [
   },
   {
     id: "actions",
-    cell: ({ row }) => <ActionCell
-      items={[
-        {
-          item: "Delete",
-          disabled: true,
-          onClick: () => { },
-        },
-      ]}
-    />,
+    cell: ({ row }) => <ActionsCell itemId={row.original.id} />,
   }
 ];
 
@@ -81,4 +78,77 @@ export function PaymentItemTable({
     showDefaultToolbar={false}
     toolbarRender={toolbarRender}
   />;
+}
+
+function ActionsCell({ itemId }: { itemId: string }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <>
+      <ActionCell
+        items={[
+          {
+            item: "New Item Quantity Change",
+            onClick: () => setOpen(true),
+          },
+          {
+            item: "Delete",
+            disabled: true,
+            onClick: () => { },
+          },
+        ]}
+      />
+      <CreateItemQuantityChangeDialog
+        open={open}
+        onOpenChange={setOpen}
+        itemId={itemId}
+      />
+    </>
+  );
+}
+
+function CreateItemQuantityChangeDialog({ open, onOpenChange, itemId }: { open: boolean, onOpenChange: (open: boolean) => void, itemId: string }) {
+  const stackAdminApp = useAdminApp();
+
+  const schema = yup.object({
+    customerId: yup.string().uuid().defined().label("Customer ID"),
+    quantity: yup.number().defined().label("Quantity"),
+    description: yup.string().optional().label("Description"),
+    expiresAt: yup.date().optional().label("Expires At"),
+  });
+
+  const submit = async (values: yup.InferType<typeof schema>) => {
+    const result = await Result.fromPromise(stackAdminApp.createItemQuantityChange({
+      customerId: values.customerId,
+      itemId,
+      quantity: values.quantity,
+      expiresAt: values.expiresAt ? values.expiresAt.toISOString() : undefined,
+      description: values.description,
+    }));
+    if (result.status === "ok") {
+      toast({ title: "Item quantity change created" });
+      return;
+    }
+    if (result.error instanceof KnownErrors.ItemNotFound) {
+      toast({ title: "Item not found", variant: "destructive" });
+    } else if (result.error instanceof KnownErrors.ItemCustomerTypeDoesNotMatch) {
+      toast({ title: "Customer type does not match expected type for this item", variant: "destructive" });
+    } else if (result.error instanceof KnownErrors.CustomerDoesNotExist) {
+      toast({ title: "Customer does not exist", variant: "destructive" });
+    } else {
+      throw result.error;
+    }
+    return "prevent-close" as const;
+  };
+
+  return (
+    <SmartFormDialog
+      open={open}
+      onOpenChange={onOpenChange}
+      title="New Item Quantity Change"
+      formSchema={schema}
+      cancelButton
+      okButton={{ label: "Create" }}
+      onSubmit={submit}
+    />
+  );
 }

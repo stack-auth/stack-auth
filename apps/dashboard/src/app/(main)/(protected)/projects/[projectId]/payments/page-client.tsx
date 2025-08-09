@@ -75,7 +75,9 @@ export default function PageClient() {
       description="Manage your payment offers and items"
       actions={<div className="flex gap-2">
         {paymentsConfig.stripeAccountSetupComplete ? (
-          <CreatePurchaseDialog />
+          <>
+            <CreatePurchaseDialog />
+          </>
         ) : (
           <Button onClick={setupPayments}>Complete Setup</Button>
         )}
@@ -257,6 +259,7 @@ function CreatePurchaseDialog() {
     </>
   );
 }
+
 
 type PriceRow = { uid: string, priceId: string, price: Record<string, any> };
 
