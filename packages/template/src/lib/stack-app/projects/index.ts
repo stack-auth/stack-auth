@@ -18,6 +18,7 @@ export type AdminProject = {
   readonly description: string | null,
   readonly createdAt: Date,
   readonly isProductionMode: boolean,
+  readonly ownerTeamId: string | null,
   readonly config: AdminProjectConfig,
 
   update(this: AdminProject, update: AdminProjectUpdateOptions): Promise<void>,

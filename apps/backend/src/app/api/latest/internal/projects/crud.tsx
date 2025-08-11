@@ -10,9 +10,6 @@ import { StackAssertionError, throwErr } from "@stackframe/stack-shared/dist/uti
 import { isNotNull, typedEntries, typedFromEntries } from "@stackframe/stack-shared/dist/utils/objects";
 import { createLazyProxy } from "@stackframe/stack-shared/dist/utils/proxies";
 
-// if one of these users creates a project, the others will be added as owners
-const ownerPacks: Set<string>[] = [];
-
 export const adminUserProjectsCrudHandlers = createLazyProxy(() => createCrudHandlers(adminUserProjectsCrud, {
   paramsSchema: yupObject({
     projectId: projectIdSchema.defined(),
@@ -27,11 +24,10 @@ export const adminUserProjectsCrudHandlers = createLazyProxy(() => createCrudHan
   },
   onCreate: async ({ auth, data }) => {
     const user = auth.user ?? throwErr('auth.user is required');
-    const ownerPack = ownerPacks.find(p => p.has(user.id));
-    const userIds = ownerPack ? [...ownerPack] : [user.id];
+    const teamId = user.selected_team_id ?? throwErr('auth.user.selected_team_id is required');
 
     const project = await createOrUpdateProjectWithLegacyConfig({
-      ownerIds: userIds,
+      ownerTeamId: teamId,
       type: 'create',
       data: {
         ...data,
@@ -42,13 +38,14 @@ export const adminUserProjectsCrudHandlers = createLazyProxy(() => createCrudHan
       },
     });
     const tenancy = await getSoleTenancyFromProjectBranch(project.id, DEFAULT_BRANCH_ID);
+
     return {
       ...project,
       config: renderedOrganizationConfigToProjectCrud(tenancy.config),
     };
   },
   onList: async ({ auth }) => {
-    const projectIds = listManagedProjectIds(auth.user ?? throwErr('auth.user is required'));
+    const projectIds = await listManagedProjectIds(auth.user ?? throwErr('auth.user is required'));
     const projectsRecord = await rawQueryAll(globalPrismaClient, typedFromEntries(projectIds.map((id, index) => [index, getProjectQuery(id)])));
     const projects = (await Promise.all(typedEntries(projectsRecord).map(async ([_, project]) => await project))).filter(isNotNull);
 
