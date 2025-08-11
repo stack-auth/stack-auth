@@ -52,7 +52,7 @@ export const POST = createSmartRouteHandler({
       },
       body: JSON.stringify({
         id: params.featureRequestId,
-        userId: featurebaseUser.userId,
+        email: featurebaseUser.email,
       }),
     });
 
