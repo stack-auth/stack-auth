@@ -57,7 +57,7 @@ export const GET = createSmartRouteHandler({
       const item = getOrUndefined(offer.includedItems, req.params.item_id);
       return acc + (item?.quantity ?? 0);
     }, 0);
-    const manualChanges = await prisma.itemQuantityChange.findMany({
+    const { _sum } = await prisma.itemQuantityChange.aggregate({
       where: {
         tenancyId: tenancy.id,
         customerId: req.params.customer_id,
@@ -67,9 +67,11 @@ export const GET = createSmartRouteHandler({
           { expiresAt: { gt: new Date() } },
         ],
       },
+      _sum: {
+        quantity: true,
+      },
     });
-    const manualQuantity = manualChanges.reduce((acc, change) => acc + change.quantity, 0);
-    const totalQuantity = subscriptionQuantity + manualQuantity;
+    const totalQuantity = subscriptionQuantity + (_sum.quantity ?? 0);
 
     return {
       statusCode: 200,

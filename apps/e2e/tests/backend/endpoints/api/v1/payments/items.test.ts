@@ -205,8 +205,6 @@ it("aggregates item quantity changes in item quantity", async ({ expect }) => {
   expect(get1.body.quantity).toBe(2);
 });
 
-// Note: subscription aggregation is tested indirectly via manual changes integration tests above.
-
 it("ignores expired changes", async ({ expect }) => {
   await Project.createAndSwitch();
   await updateConfig({

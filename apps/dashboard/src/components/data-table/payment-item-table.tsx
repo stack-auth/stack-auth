@@ -135,7 +135,7 @@ function CreateItemQuantityChangeDialog({ open, onOpenChange, itemId }: { open: 
     } else if (result.error instanceof KnownErrors.CustomerDoesNotExist) {
       toast({ title: "Customer does not exist", variant: "destructive" });
     } else {
-      throw result.error;
+      toast({ title: "An unknown error occurred", variant: "destructive" });
     }
     return "prevent-close" as const;
   };
