@@ -6,6 +6,18 @@ import { OrganizationRenderedConfig } from "@stackframe/stack-shared/dist/config
 import { neonAuthorizationHeaderSchema, projectDisplayNameSchema, yupArray, yupNumber, yupObject, yupString, yupTuple } from "@stackframe/stack-shared/dist/schema-fields";
 import { decodeBasicAuthorizationHeader } from "@stackframe/stack-shared/dist/utils/http";
 
+const buildSourceOfTruth = (connectionStrings: { branch_id: string, connection_string: string }[]): OrganizationRenderedConfig["sourceOfTruth"] => {
+  return connectionStrings.length > 0 ? {
+    type: 'neon' as const,
+    connectionString: undefined,
+    connectionStrings: Object.fromEntries(connectionStrings.map((c) => [c.branch_id, c.connection_string])),
+  } : {
+    type: 'hosted' as const,
+    connectionStrings: undefined,
+    connectionString: undefined,
+  };
+};
+
 export const POST = createSmartRouteHandler({
   metadata: {
     hidden: true,
@@ -33,16 +45,7 @@ export const POST = createSmartRouteHandler({
   handler: async (req) => {
     const [clientId] = decodeBasicAuthorizationHeader(req.headers.authorization[0])!;
 
-    const sourceOfTruth: OrganizationRenderedConfig["sourceOfTruth"] = req.body.connection_strings ? {
-      type: 'neon' as const,
-      connectionString: undefined,
-      connectionStrings: Object.fromEntries(req.body.connection_strings.map((c) => [c.branch_id, c.connection_string])),
-    } : {
-      type: 'hosted' as const,
-      connectionStrings: undefined,
-      connectionString: undefined,
-    };
-
+    const sourceOfTruth = buildSourceOfTruth(req.body.connection_strings ?? []);
     const createdProject = await createOrUpdateProjectWithLegacyConfig({
       ownerIds: [],
       sourceOfTruth: sourceOfTruth,
@@ -67,13 +70,11 @@ export const POST = createSmartRouteHandler({
       }
     });
 
-    if (req.body.connection_strings) {
+    if (sourceOfTruth.type === 'neon') {
       // Run migration for all branches in parallel. The `getPrismaClientForSourceOfTruth` internally runs migrations before returning the client
-      await Promise.all(
-        req.body.connection_strings.map((branch) =>
-          getPrismaClientForSourceOfTruth(sourceOfTruth, branch.branch_id)
-        )
-      );
+      // De-duplicate branch IDs to avoid duplicate runs
+      const branchIds = Object.keys(sourceOfTruth.connectionStrings);
+      await Promise.all(branchIds.map((branchId) => getPrismaClientForSourceOfTruth(sourceOfTruth, branchId)));
     }
 
     await globalPrismaClient.provisionedProject.create({

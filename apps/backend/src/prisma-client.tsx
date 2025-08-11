@@ -36,7 +36,7 @@ function getNeonPrismaClient(connectionString: string) {
   let neonPrismaClient = prismaClientsStore.neon.get(connectionString);
   if (!neonPrismaClient) {
     const schema = getSchemaFromConnectionString(connectionString);
-    const adapter = new PrismaNeon({ connectionString }, schema ? { schema } : undefined);
+    const adapter = new PrismaNeon({ connectionString }, { schema });
     neonPrismaClient = new PrismaClient({ adapter });
     prismaClientsStore.neon.set(connectionString, neonPrismaClient);
   }
