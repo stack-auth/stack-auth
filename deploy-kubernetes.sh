@@ -12,10 +12,25 @@ source /root/shared.sh
 
 # If COMMIT_ID is not provided, try to get it from git
 if [ -z "${COMMIT_ID:-}" ]; then
-	if [ -d "applications/${MODULE}" ]; then
-		FULL_COMMIT_ID=$(cd "applications/${MODULE}/" && git log --pretty=tformat:"%H" -n1 .)
-		export COMMIT_ID="${FULL_COMMIT_ID:0:7}"
-		echo "Using commit ID from git: ${COMMIT_ID}"
+	if [ -d "./apps" ] && [ -d "./packages" ]; then
+		# Fetch the latest commit ID for each directories
+		COMMIT_ID1=$(cd "./apps" && git log --pretty=tformat:"%H" -n1 .)
+		COMMIT_ID2=$(cd "./packages" && git log --pretty=tformat:"%H" -n1 .)
+
+		echo "apps latest commit id: $COMMIT_ID1"
+		echo "packages latest commit id: $COMMIT_ID2"
+
+		# Compare the commits and get the later one
+		if [ "$COMMIT_ID1" = "$COMMIT_ID2" ]; then
+			echo "both directory are in the same commit"
+			LATEST_COMMIT_ID="$COMMIT_ID1"
+		else
+			LATEST_COMMIT_ID=$(git rev-list "$COMMIT_ID1" "$COMMIT_ID2")
+		fi
+
+		# Get the short version of the latest commit ID
+		export COMMIT_ID="${LATEST_COMMIT_ID:0:7}"
+		echo "Using latest commit ID between packages and plugin directories: ${COMMIT_ID}"
 	else
 		echo "Warning: COMMIT_ID not provided and could not be determined from git"
 		echo "Deployment will proceed with provided COMMIT_ID: ${COMMIT_ID:-not provided}"

@@ -1,7 +1,7 @@
 replicaCount: 1
 
 image:
-  namespace: gen-ai-template-stag
+  namespace: gen-ai-template-plgr
   pullPolicy: IfNotPresent
   pullSecret: gcr-secret
   repositoryUrl: asia-southeast2-docker.pkg.dev/${PROJECT_ID}/projects/stack-auth/server
@@ -55,7 +55,7 @@ ingress:
   groupname: lb-gdplabs-exploration-shared
   healthcheckpath: "/"
   serviceannotations:
-    alb.ingress.kubernetes.io/tags: "Environment=stag,Project=gen-ai,Organization=gdplabs,Owner=glx-sre@gdplabs.id,CreatedOn=05/08/2025"
+    alb.ingress.kubernetes.io/tags: "Environment=plgr,Project=gen-ai,Organization=gdplabs,Owner=glx-sre@gdplabs.id,CreatedOn=08/08/2025"
   extraAnnotations:
     # Whitelist internal platform / services for VPN access only.
     # In front of application load balancer, there are security group who allow non-VPN IPs through the load balancer.
@@ -70,7 +70,7 @@ ingress:
     alb.ingress.kubernetes.io/actions.forward-service-if-not-whitelisted: >
       {"Type":"forward","ForwardConfig":{"TargetGroups":[{"ServiceName":"stackauth-server-service","ServicePort":"8102"}]}}
   rules:
-    - host: stag-stackauth-gdplabs-gen-ai-starter.obrol.id
+    - host: beta-stackauth-gdplabs-gen-ai-starter.obrol.id
       http:
         paths:
           - path: /
@@ -87,7 +87,7 @@ ingress:
                 name: forward-service-if-whitelisted
                 port:
                   name: use-annotation
-    - host: stag-api-stackauth-gdplabs-gen-ai-starter.obrol.id
+    - host: beta-api-stackauth-gdplabs-gen-ai-starter.obrol.id
       http:
         paths:
           - path: /
