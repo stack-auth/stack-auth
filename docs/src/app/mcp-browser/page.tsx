@@ -17,6 +17,15 @@ type DocContent = {
   content: string,
 }
 
+// Treat common placeholder values as empty descriptions
+function isBlankDescription(description?: string | null): boolean {
+  if (!description) return true;
+  const trimmed = description.trim();
+  if (!trimmed) return true;
+  const lowered = trimmed.toLowerCase();
+  return lowered === 'undefined' || lowered === 'null' || lowered === 'none' || lowered === 'n/a' || lowered === 'na';
+}
+
 export default function McpBrowserPage() {
   const [docs, setDocs] = useState<DocSummary[]>([]);
   const [selectedDoc, setSelectedDoc] = useState<DocContent | null>(null);
@@ -172,7 +181,8 @@ export default function McpBrowserPage() {
         }
       }
 
-      setSelectedDoc({ title, description, content: content.trim() });
+      const safeDescription = isBlankDescription(description) ? '' : description;
+      setSelectedDoc({ title, description: safeDescription, content: content.trim() });
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load document');
     } finally {
@@ -253,9 +263,11 @@ export default function McpBrowserPage() {
                 <div className="font-medium text-primary hover:underline mb-2 group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">
                   {doc.title}
                 </div>
-                <p className="text-sm text-muted-foreground mb-3 line-clamp-2">
-                  {doc.description || 'No description available'}
-                </p>
+                {!isBlankDescription(doc.description) && (
+                  <p className="text-sm text-muted-foreground mb-3 line-clamp-2">
+                    {doc.description}
+                  </p>
+                )}
                 <div className="inline-flex items-center gap-1 px-2 py-1 bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 text-xs rounded-full border border-gray-200 dark:border-gray-700">
                   <FileText className="h-3 w-3" />
                   {doc.id}
@@ -287,7 +299,7 @@ export default function McpBrowserPage() {
               <div>
                 <div className="mb-4">
                   <div className="text-xl font-semibold mb-1">{selectedDoc.title}</div>
-                  {selectedDoc.description && selectedDoc.description !== 'undefined' && (
+                  {!isBlankDescription(selectedDoc.description) && (
                     <p className="text-muted-foreground">
                       {selectedDoc.description}
                     </p>
