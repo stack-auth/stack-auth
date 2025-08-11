@@ -1,6 +1,6 @@
 {
   "name": "@stackframe/stack-dashboard",
-  "version": "2.8.27",
+  "version": "2.8.28",
   "private": true,
   "scripts": {
     "clean": "rimraf .next && rimraf node_modules",
@@ -31,6 +31,10 @@
     "@stackframe/stack": "workspace:*",
     "@stackframe/stack-shared": "workspace:*",
     "@stackframe/stack-ui": "workspace:*",
+    "@stripe/connect-js": "^3.3.27",
+    "@stripe/react-connect-js": "^3.3.24",
+    "@stripe/react-stripe-js": "^3.8.1",
+    "@stripe/stripe-js": "^7.7.0",
     "@tanstack/react-table": "^8.20.5",
     "@vercel/analytics": "^1.2.2",
     "@vercel/speed-insights": "^1.0.12",

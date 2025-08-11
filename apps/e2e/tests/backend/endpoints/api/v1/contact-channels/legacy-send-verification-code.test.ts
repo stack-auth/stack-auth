@@ -1,3 +1,4 @@
+import { wait } from "@stackframe/stack-shared/dist/utils/promises";
 import { it } from "../../../../../helpers";
 import { Auth, backendContext, niceBackendFetch } from "../../../../backend-helpers";
 
@@ -48,17 +49,18 @@ it("should send a verification code per e-mail", async ({ expect }) => {
       callback_url: "http://localhost:12345/some-callback-url",
     },
   });
+  await wait(1000);
   expect(await backendContext.value.mailbox.fetchMessages({ noBody: true })).toMatchInlineSnapshot(`
     [
       MailboxMessage {
         "from": "Stack Dashboard <noreply@example.com>",
-        "subject": "Mock subject, <Subject value={\`Verify your email at \${project.displayName}\`} />",
+        "subject": "Verify your email at Stack Dashboard",
         "to": ["<default-mailbox--<stripped UUID>@stack-generated.example.com>"],
         <some fields may have been hidden>,
       },
       MailboxMessage {
         "from": "Stack Dashboard <noreply@example.com>",
-        "subject": "Mock subject, <Subject value={\`Verify your email at \${project.displayName}\`} />",
+        "subject": "Verify your email at Stack Dashboard",
         "to": ["<default-mailbox--<stripped UUID>@stack-generated.example.com>"],
         <some fields may have been hidden>,
       },

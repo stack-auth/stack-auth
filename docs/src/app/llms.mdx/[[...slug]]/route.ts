@@ -1,5 +1,5 @@
-import { notFound } from 'next/navigation';
-import { type NextRequest, NextResponse } from 'next/server';
+import { redirect } from 'next/navigation';
+import { NextResponse, type NextRequest } from 'next/server';
 import { getLLMText } from '../../../../lib/get-llm-text';
 import { apiSource, source } from '../../../../lib/source';
 
@@ -19,7 +19,7 @@ export async function GET(
     page = apiSource.getPage(slug);
   }
 
-  if (!page) notFound();
+  if (!page) redirect("/");
 
   try {
     return new NextResponse(await getLLMText(page));

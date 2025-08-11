@@ -167,6 +167,7 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
       // END_PLATFORM
       async updateConfig(configOverride: EnvironmentConfigOverrideOverride) {
         await app._interface.updateConfig({ configOverride });
+        await app._configOverridesCache.refresh([]);
       },
       async update(update: AdminProjectUpdateOptions) {
         const updateOptions = adminProjectUpdateOptionsToCrud(update);
@@ -437,20 +438,6 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
     }));
   }
 
-  async sendEmail(options: {
-    userIds: string[],
-    subject: string,
-    content: string,
-    notificationCategoryName: string,
-  }): Promise<void> {
-    await this._interface.sendEmail({
-      user_ids: options.userIds,
-      subject: options.subject,
-      html: options.content,
-      notification_category_name: options.notificationCategoryName,
-    });
-  }
-
   async sendSignInInvitationEmail(email: string, callbackUrl: string): Promise<void> {
     await this._interface.sendSignInInvitationEmail(email, callbackUrl);
   }
@@ -509,6 +496,21 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
     const result = await this._interface.updateEmailTemplate(id, tsxSource, themeId);
     await this._adminEmailTemplatesCache.refresh([]);
     return { renderedHtml: result.rendered_html };
+  }
+
+  async setupPayments(): Promise<{ url: string }> {
+    return await this._interface.setupPayments();
+  }
+
+  async createStripeWidgetAccountSession(): Promise<{ client_secret: string }> {
+    return await this._interface.createStripeWidgetAccountSession();
+  }
+
+  async createPurchaseUrl(options: { customerId: string, offerId: string }): Promise<string> {
+    return await this._interface.createPurchaseUrl({
+      customer_id: options.customerId,
+      offer_id: options.offerId,
+    });
   }
 
 }

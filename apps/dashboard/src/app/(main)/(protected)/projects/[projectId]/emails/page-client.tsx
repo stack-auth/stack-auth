@@ -345,7 +345,7 @@ function SendEmailDialog(props: {
     await stackAdminApp.sendEmail({
       userIds: selectedUsers.map(user => user.id),
       subject: formData.subject,
-      content: formData.content,
+      html: formData.content,
       notificationCategoryName: formData.notificationCategoryName,
     });
 

@@ -291,21 +291,6 @@ export class StackAdminInterface extends StackServerInterface {
     return await response.json();
   }
 
-  async sendEmail(options: {
-    user_ids: string[],
-    subject: string,
-    html: string,
-    notification_category_name: string,
-  }): Promise<void> {
-    await this.sendAdminRequest("/emails/send-email", {
-      method: "POST",
-      headers: {
-        "content-type": "application/json",
-      },
-      body: JSON.stringify(options),
-    }, null);
-  }
-
   async sendSignInInvitationEmail(
     email: string,
     callbackUrl: string,
@@ -483,4 +468,51 @@ export class StackAdminInterface extends StackServerInterface {
     );
     return await response.json();
   }
+
+  async setupPayments(): Promise<{ url: string }> {
+    const response = await this.sendAdminRequest(
+      "/internal/payments/setup",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({}),
+      },
+      null,
+    );
+    return await response.json();
+  }
+
+  async createStripeWidgetAccountSession(): Promise<{ client_secret: string }> {
+    const response = await this.sendAdminRequest(
+      "/internal/payments/stripe-widgets/account-session",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({}),
+      },
+      null,
+    );
+    return await response.json();
+  }
+
+  async createPurchaseUrl(options: { customer_id: string, offer_id: string }): Promise<string> {
+    const response = await this.sendAdminRequest(
+      "/payments/purchases/create-purchase-url",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+        },
+        body: JSON.stringify(options),
+      },
+      null,
+    );
+    const result = await response.json() as { url: string };
+    return result.url;
+  }
+
 }

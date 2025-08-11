@@ -59,13 +59,6 @@ export type StackAdminApp<HasTokenStore extends boolean = boolean, ProjectId ext
 
     listSentEmails(): Promise<AdminSentEmail[]>,
 
-    sendEmail(options: {
-      userIds: string[],
-      subject: string,
-      content: string,
-      notificationCategoryName: string,
-    }): Promise<void>,
-
     useEmailTheme(id: string): { displayName: string, tsxSource: string }, // THIS_LINE_PLATFORM react-like
     createEmailTheme(displayName: string): Promise<{ id: string }>,
     updateEmailTheme(id: string, tsxSource: string): Promise<void>,
@@ -80,6 +73,10 @@ export type StackAdminApp<HasTokenStore extends boolean = boolean, ProjectId ext
     listChatMessages(threadId: string): Promise<{ messages: Array<any> }>,
     updateEmailTemplate(id: string, tsxSource: string, themeId: string | null | false): Promise<{ renderedHtml: string }>,
     createEmailTemplate(displayName: string): Promise<{ id: string }>,
+
+    setupPayments(): Promise<{ url: string }>,
+    createStripeWidgetAccountSession(): Promise<{ client_secret: string }>,
+    createPurchaseUrl(options: { customerId: string, offerId: string }): Promise<string>,
   }
   & StackServerApp<HasTokenStore, ProjectId>
 );

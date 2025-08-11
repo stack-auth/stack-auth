@@ -91,9 +91,10 @@ describe("get email theme", () => {
         "body": {
           "display_name": "Default Light",
           "tsx_source": deindent\`
-            import { Html, Head, Tailwind, Body, Container } from '@react-email/components';
+            import { Html, Head, Tailwind, Body, Container, Link } from '@react-email/components';
+            import { ThemeProps } from "@stackframe/emails"
             
-            export function EmailTheme({ children }: { children: React.ReactNode }) {
+            export function EmailTheme({ children, unsubscribeLink }: ThemeProps) {
               return (
                 <Html>
                   <Head />
@@ -102,12 +103,22 @@ describe("get email theme", () => {
                       <Container className="bg-white p-[45px] rounded-lg">
                         {children}
                       </Container>
+                      {unsubscribeLink && (
+                        <div className="p-4">
+                          <Link href={unsubscribeLink}>Click here{" "}</Link>
+                          to unsubscribe from these emails
+                        </div>
+                      )}
                     </Body>
                   </Tailwind>
                 </Html>
               );
             }
-          \`,
+            
+            EmailTheme.PreviewProps = {
+              unsubscribeLink: "https://example.com"
+            } satisfies Partial<ThemeProps>
+          \` + "\\n",
         },
         "headers": Headers { <some fields may have been hidden> },
       }

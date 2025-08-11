@@ -160,11 +160,20 @@ services:
     image: freestyle-mock
     container_name: freestyle-mock
     ports:
-      - "8119:8080"       # POST http://localhost:8119/execute/v1/script
+      - "8122:8080"       # POST http://localhost:8119/execute/v1/script
     environment:
       DENO_DIR: /deno-cache
     volumes:
       - deno-cache:/deno-cache
+
+  # ================= Stripe =================
+  
+  stripe-mock:
+    image: stripe/stripe-mock:v0.195.0
+    ports:
+      - 8123:12111
+    environment:
+      - STRIPE_API_KEY=sk_test_1234567890
 
 
 # ================= volumes =================
