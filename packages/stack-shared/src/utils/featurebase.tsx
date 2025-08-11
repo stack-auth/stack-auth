@@ -165,6 +165,24 @@ export async function getOrCreateFeaturebaseUser(
   // First, try to find existing user by Stack Auth user ID
   const existingById = await findFeaturebaseUserById(stackAuthUser.id, apiKey);
   if (existingById) {
+    // Ensure the user has an email on Featurebase.
+    let ensuredEmail = existingById.email;
+    if (!ensuredEmail) {
+      const fallbackEmailForExisting = `${stackAuthUser.id}@featurebase-user.stack-auth-app.com`;
+      try {
+        await createFeaturebaseUser({
+          userId: existingById.userId,
+          email: fallbackEmailForExisting,
+          name: stackAuthUser.displayName || undefined,
+          profilePicture: stackAuthUser.profileImageUrl || undefined,
+        }, apiKey);
+        ensuredEmail = fallbackEmailForExisting;
+      } catch (e) {
+        // If setting fallback email failed, keep ensuredEmail as-is (undefined) and let callers handle
+        console.error("Failed to set fallback email for existing Featurebase user", e);
+      }
+    }
+
     // Update profile information if needed (but not email)
     try {
       const updates: Partial<Omit<FeaturebaseUser, 'userId' | 'email'>> = {};
@@ -187,7 +205,7 @@ export async function getOrCreateFeaturebaseUser(
 
     return {
       userId: existingById.userId,
-      email: existingById.email,
+      email: ensuredEmail ?? `${stackAuthUser.id}@featurebase-user.stack-auth-app.com`,
     };
   }
 
