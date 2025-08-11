@@ -1,5 +1,4 @@
 import { globalPrismaClient } from '@/prisma-client';
-import { traceSpan } from '@/utils/telemetry';
 import { Prisma } from '@prisma/client';
 import { KnownErrors } from '@stackframe/stack-shared';
 import { yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
@@ -8,6 +7,7 @@ import { getEnvVariable } from '@stackframe/stack-shared/dist/utils/env';
 import { throwErr } from '@stackframe/stack-shared/dist/utils/errors';
 import { signJWT, verifyJWT } from '@stackframe/stack-shared/dist/utils/jwt';
 import { Result } from '@stackframe/stack-shared/dist/utils/results';
+import { traceSpan } from '@stackframe/stack-shared/dist/utils/telemetry';
 import * as jose from 'jose';
 import { JOSEError, JWTExpired } from 'jose/errors';
 import { SystemEventTypes, logEvent } from './events';

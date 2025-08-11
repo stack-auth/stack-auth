@@ -1,6 +1,5 @@
 import { overrideEnvironmentConfigOverride } from "@/lib/config";
 import { getActiveEmailTheme, renderEmailWithTemplate } from "@/lib/email-rendering";
-import { globalPrismaClient } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { KnownErrors } from "@stackframe/stack-shared/dist/known-errors";
 import { adaptSchema, templateThemeIdSchema, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
@@ -32,10 +31,10 @@ export const PATCH = createSmartRouteHandler({
     }).defined(),
   }),
   async handler({ auth: { tenancy }, params: { templateId }, body }) {
-    if (tenancy.completeConfig.emails.server.isShared) {
+    if (tenancy.config.emails.server.isShared) {
       throw new KnownErrors.RequiresCustomEmailServer();
     }
-    const templateList = tenancy.completeConfig.emails.templates;
+    const templateList = tenancy.config.emails.templates;
     if (!Object.keys(templateList).includes(templateId)) {
       throw new StatusError(StatusError.NotFound, "No template found with given id");
     }
@@ -55,7 +54,6 @@ export const PATCH = createSmartRouteHandler({
     }
 
     await overrideEnvironmentConfigOverride({
-      tx: globalPrismaClient,
       projectId: tenancy.project.id,
       branchId: tenancy.branchId,
       environmentConfigOverrideOverride: {

@@ -233,7 +233,7 @@ it(`should exchange the authorization code for an admin API key that works`, asy
       "items": [
         {
           "created_at_millis": <stripped field 'created_at_millis'>,
-          "description": "Auto-generated for an external project",
+          "description": "Auto-generated for an external project (DO NOT DELETE)",
           "expires_at_millis": <stripped field 'expires_at_millis'>,
           "id": "<stripped UUID>",
           "super_secret_admin_key": { "last_four": <stripped field 'last_four'> },
