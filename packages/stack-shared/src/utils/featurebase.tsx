@@ -49,8 +49,10 @@ async function findFeaturebaseUserById(stackAuthUserId: string, apiKey: string):
       profilePicture: user.profilePicture,
     };
   } catch (error) {
-    console.error('Error finding Featurebase user by ID:', error);
-    return null;
+    if (error instanceof StackAssertionError) {
+      throw error;
+    }
+    throw new StackAssertionError("Failed to find Featurebase user by ID", { cause: error });
   }
 }
 
@@ -205,7 +207,7 @@ export async function getOrCreateFeaturebaseUser(
 
     return {
       userId: existingById.userId,
-      email: ensuredEmail ?? `${stackAuthUser.id}@featurebase-user.stack-auth-app.com`,
+      email: ensuredEmail,
     };
   }
 
