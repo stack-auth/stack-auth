@@ -290,3 +290,47 @@ it("validates item and customer type", async ({ expect }) => {
   expect(response.status).toBe(400);
   expect(response.body.code).toBe("ITEM_CUSTOMER_TYPE_DOES_NOT_MATCH");
 });
+
+it("should error when deducting more quantity than available", async ({ expect }) => {
+  await Project.createAndSwitch();
+  await updateConfig({
+    payments: {
+      items: {
+        "test-item": {
+          displayName: "Test Item",
+          customerType: "user",
+          default: { quantity: 0 },
+        },
+      },
+    },
+  });
+
+  const user = await User.create();
+
+  const response = await niceBackendFetch(`/api/latest/payments/items/${user.userId}/test-item`, {
+    method: "POST",
+    accessType: "admin",
+    body: { quantity: -1 },
+  });
+
+  expect(response.status).toBe(400);
+  expect(response).toMatchInlineSnapshot(`
+    NiceResponse {
+      "status": 400,
+      "body": {
+        "code": "ITEM_QUANTITY_INSUFFICIENT_AMOUNT",
+        "details": {
+          "available_quantity": 0,
+          "customer_id": "<stripped UUID>",
+          "item_id": "test-item",
+          "quantity": -1,
+        },
+        "error": "The item with ID \\"test-item\\" has an insufficient quantity for the customer with ID \\"<stripped UUID>\\". The customer has 0 credits of this item available, but an attempt was made to charge -1 credits.",
+      },
+      "headers": Headers {
+        "x-stack-known-error": "ITEM_QUANTITY_INSUFFICIENT_AMOUNT",
+        <some fields may have been hidden>,
+      },
+    }
+  `);
+});
