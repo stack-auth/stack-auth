@@ -1,5 +1,6 @@
 import { useUser } from "@stackframe/stack";
 import { emailSchema } from "@stackframe/stack-shared/dist/schema-fields";
+import { captureError } from "@stackframe/stack-shared/dist/utils/errors";
 import { Button } from "@stackframe/stack-ui";
 import { AlertCircle, CheckCircle2, Github, Mail } from "lucide-react";
 import { useState } from "react";
@@ -60,7 +61,7 @@ export function FeedbackForm() {
 
       setSubmitStatus('success');
     } catch (error) {
-      console.error('Error sending feedback:', error);
+      captureError("feedback-form-submit", error);
       setSubmitStatus('error');
       setErrorMessage(error instanceof Error ? error.message : 'An unexpected error occurred');
     }
