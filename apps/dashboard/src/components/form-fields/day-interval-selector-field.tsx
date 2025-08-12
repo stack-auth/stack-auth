@@ -21,6 +21,7 @@ export function DayIntervalSelectorField<F extends FieldValues>(props: {
     const [amount, unit] = value.split("-");
     const n = parseInt(amount);
     if (!Number.isFinite(n) || !unit) return;
+    if (!["day", "week", "month", "year"].includes(unit)) return;
     return [n, unit as DayInterval[1]];
   };
 
@@ -38,7 +39,7 @@ export function DayIntervalSelectorField<F extends FieldValues>(props: {
           <FieldLabel required={props.required}>{props.label}</FieldLabel>
           <FormControl>
             <Select
-              defaultValue={formatDayInterval(field.value)}
+              defaultValue={formatDayInterval(field.value as DayInterval)}
               onValueChange={(value) => field.onChange(convertToDayInterval(value))}
             >
               <SelectTrigger className="max-w-lg">

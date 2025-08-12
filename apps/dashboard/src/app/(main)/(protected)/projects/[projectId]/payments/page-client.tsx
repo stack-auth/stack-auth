@@ -1,9 +1,11 @@
 "use client";
 
+import * as yup from "yup";
+import { useState } from "react";
 import { PaymentItemTable } from "@/components/data-table/payment-item-table";
 import { PaymentOfferTable } from "@/components/data-table/payment-offer-table";
 import { FormDialog, SmartFormDialog } from "@/components/form-dialog";
-import { InputField, NumberField, SelectField, SwitchField } from "@/components/form-fields";
+import { InputField, SelectField, SwitchField } from "@/components/form-fields";
 import { IncludedItemEditorField } from "@/components/payments/included-item-editor";
 import { PriceEditorField } from "@/components/payments/price-editor";
 import { AdminProject } from "@stackframe/stack";
@@ -20,8 +22,6 @@ import {
   InlineCode,
   toast
 } from "@stackframe/stack-ui";
-import { useState } from "react";
-import * as yup from "yup";
 import { PageLayout } from "../page-layout";
 import { useAdminApp } from "../use-admin-app";
 
@@ -121,7 +121,7 @@ function CreateOfferDialog({
       open={open}
       onOpenChange={onOpenChange}
       title="Create New Offer"
-      formSchema={offerSchema as any}
+      formSchema={offerSchema}
       okButton={{ label: "Create Offer" }}
       cancelButton
       onSubmit={async (values: yup.InferType<typeof offerSchema>) => {
