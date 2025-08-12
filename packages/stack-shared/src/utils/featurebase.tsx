@@ -161,7 +161,7 @@ async function updateFeaturebaseUser(userId: string, updates: Partial<Omit<Featu
       throw error;
     }
     throw new StackAssertionError("Failed to update Featurebase user", { cause: error });
-  };
+  }
 }
 
 /**
