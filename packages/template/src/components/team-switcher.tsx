@@ -147,7 +147,7 @@ function Inner<AllowNull extends boolean>(props: TeamSwitcherProps<AllowNull>) {
         {teams?.length ?
           <SelectGroup>
             <SelectLabel>{t('Other teams')}</SelectLabel>
-            {teams.filter(team => team.id !== user?.selectedTeam?.id)
+            {teams.filter(team => team.id !== selectedTeam?.id)
               .map(team => (
                 <SelectItem value={team.id} key={team.id}>
                   <div className="flex items-center gap-2">

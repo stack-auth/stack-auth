@@ -1,6 +1,7 @@
 import { AdminProjectCreateOptions, StackAdminApp, StackClientApp, StackServerApp } from '@stackframe/js';
 import { Result } from '@stackframe/stack-shared/dist/utils/results';
 import { STACK_BACKEND_BASE_URL, STACK_INTERNAL_PROJECT_ADMIN_KEY, STACK_INTERNAL_PROJECT_CLIENT_KEY, STACK_INTERNAL_PROJECT_SERVER_KEY } from '../helpers';
+import { throwErr } from '@stackframe/stack-shared/dist/utils/errors';
 
 export async function scaffoldProject(body?: Omit<AdminProjectCreateOptions, 'displayName' | 'teamId'> & { displayName?: string }) {
   const internalApp = new StackAdminApp({
@@ -22,7 +23,7 @@ export async function scaffoldProject(body?: Omit<AdminProjectCreateOptions, 'di
   const adminUser = await internalApp.getUser({
     or: 'throw',
   });
-  const teamId = adminUser.selectedTeam?.id;
+  const teamId = adminUser.selectedTeam?.id ?? throwErr("No team selected");
 
   const project = await adminUser.createProject({
     displayName: body?.displayName || 'New Project',
