@@ -56,7 +56,15 @@ export const POST = createSmartRouteHandler({
       }),
     });
 
-    const data = await response.json();
+    let data;
+    try {
+      data = await response.json();
+    } catch (error) {
+      if (error instanceof StackAssertionError) {
+        throw error;
+      }
+      throw new StackAssertionError("Failed to parse Featurebase upvote response", { cause: error });
+    }
 
     if (!response.ok) {
       throw new StackAssertionError(`Featurebase upvote API error: ${data.error || 'Failed to toggle upvote'}`, { data });
