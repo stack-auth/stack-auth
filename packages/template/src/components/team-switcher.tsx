@@ -107,7 +107,7 @@ function Inner<AllowNull extends boolean>(props: TeamSwitcherProps<AllowNull>) {
         <SelectValue placeholder="Select team"/>
       </SelectTrigger>
       <SelectContent className="stack-scope">
-        {user?.selectedTeam ? <SelectGroup>
+        {selectedTeam ? <SelectGroup>
           <SelectLabel>
             <div className="flex items-center justify-between">
               <span>
@@ -119,7 +119,7 @@ function Inner<AllowNull extends boolean>(props: TeamSwitcherProps<AllowNull>) {
                 className="h-6 w-6"
                 onClick={() => {
                   if (!props.mockUser) {
-                    navigate(`${app.urls.accountSettings}#team-${user.selectedTeam?.id}`);
+                    navigate(`${app.urls.accountSettings}#team-${selectedTeam.id}`);
                   }
                 }}
               >
@@ -127,10 +127,10 @@ function Inner<AllowNull extends boolean>(props: TeamSwitcherProps<AllowNull>) {
               </Button>
             </div>
           </SelectLabel>
-          <SelectItem value={user.selectedTeam.id}>
+          <SelectItem value={selectedTeam.id}>
             <div className="flex items-center gap-2">
-              <TeamIcon team={user.selectedTeam as Team} />
-              <Typography className="max-w-40 truncate">{user.selectedTeam.displayName}</Typography>
+              <TeamIcon team={selectedTeam as Team} />
+              <Typography className="max-w-40 truncate">{selectedTeam.displayName}</Typography>
             </div>
           </SelectItem>
         </SelectGroup> : undefined}
