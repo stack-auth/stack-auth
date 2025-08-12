@@ -1,0 +1,110 @@
+replicaCount: 1
+
+image:
+  namespace: gen-ai-template-benchmark
+  pullPolicy: IfNotPresent
+  pullSecret: gcr-secret
+  repositoryUrl: asia-southeast2-docker.pkg.dev/${PROJECT_ID}/projects/stack-auth/server
+  tag: "${BUILD_NUMBER}"
+  ports:
+    - name: dashboard
+      port: 8101
+      targetPort: 8101
+      nodePort: null
+      Values:
+        service:
+          type: ClusterIP
+    - name: api
+      port: 8102
+      targetPort: 8102
+      nodePort: null
+      Values:
+        service:
+          type: ClusterIP
+
+strategy:
+  type: RollingUpdate
+  rollingUpdate:
+    # The default function is used to provide a fallback value if the specified value is not defined or is empty. In Helm, 0 (zero) is treated as an empty value (falsy)
+    maxSurge: "1"
+    maxUnavailable: "0"
+
+tolerations:
+  effect: NoSchedule
+  key: gen-ai
+  operator: Equal
+  value: benchmark
+
+affinity:
+  expressions:
+    - key: gen-ai
+      operator: In
+      values:
+        - benchmark
+    - key: topology.kubernetes.io/zone
+      operator: In
+      values:
+        - ap-southeast-3a
+        - ap-southeast-3b
+
+configmap:
+  create: true
+  configmapRef:
+    name: stackauth-server-configmap
+secret:
+  create: true
+  secretRef:
+    name: stackauth-server-secret
+
+resources:
+  limits:
+    memory: 2Gi
+  requests:
+    cpu: 512m
+    memory: 768Mi
+
+pvc:
+  create: false
+
+
+ingress:
+  name: stackauth-server
+  className: "alb"
+  groupname: alb-gdplabs-shared-kubernetes
+  healthcheckpath: "/"
+  serviceannotations:
+    alb.ingress.kubernetes.io/tags: "Environment=stag,Project=gen-ai,Organization=gdplabs,Owner=glx-sre@gdplabs.id,CreatedOn=05/08/2025"
+  rules:
+    - host: benchmark-stackauth-gdplabs-gen-ai-starter.obrol.id
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: ssl-redirect
+                port:
+                  name: use-annotation
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: stackauth-server
+                port:
+                  number: 8101
+    - host: benchmark-api-stackauth-gdplabs-gen-ai-starter.obrol.id
+      http:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: ssl-redirect
+                port:
+                  name: use-annotation
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: stackauth-server
+                port:
+                  number: 8102

@@ -36,7 +36,7 @@ steps:
             --plaintext-file=$${filepath::-4} \
             --location=global \
             --keyring=cloudbuild \
-            --key=${_PROJECT}-$${ENVIRONMENT:0:4}
+            --key=${_PROJECT}
         done
     env:
       - 'ENVIRONMENT=${_ENVIRONMENT}'
