@@ -27,6 +27,17 @@ export const api = defineDocs({
   },
 });
 
+// Separate collection for Dashboard content
+export const dashboard = defineDocs({
+  dir: './content/dashboard',
+  docs: {
+    schema: frontmatterSchema,
+  },
+  meta: {
+    schema: metaSchema,
+  },
+});
+
 export default defineConfig({
   mdxOptions: {
     // MDX options
