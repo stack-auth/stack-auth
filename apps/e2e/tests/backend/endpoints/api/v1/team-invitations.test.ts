@@ -209,6 +209,7 @@ it("can't list invitations across teams", async ({ expect }) => {
 
 
 it("allows team admins to list invitations", async ({ expect }) => {
+  await Project.createAndSwitch({ config: {  magic_link_enabled: true } });
   const { userId: inviter } = await Auth.Otp.signIn();
   const { teamId } = await createAndAddCurrentUserWithoutMemberPermission();
 

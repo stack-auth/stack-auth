@@ -40,7 +40,7 @@ it("gets current project (internal)", async ({ expect }) => {
         "config": {
           "allow_team_api_keys": false,
           "allow_user_api_keys": false,
-          "client_team_creation_enabled": false,
+          "client_team_creation_enabled": true,
           "client_user_deletion_enabled": false,
           "credential_enabled": true,
           "enabled_oauth_providers": [

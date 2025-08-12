@@ -2,7 +2,7 @@ import { AdminProjectCreateOptions, StackAdminApp, StackClientApp, StackServerAp
 import { Result } from '@stackframe/stack-shared/dist/utils/results';
 import { STACK_BACKEND_BASE_URL, STACK_INTERNAL_PROJECT_ADMIN_KEY, STACK_INTERNAL_PROJECT_CLIENT_KEY, STACK_INTERNAL_PROJECT_SERVER_KEY } from '../helpers';
 
-export async function scaffoldProject(body?: Omit<AdminProjectCreateOptions, 'displayName'> & { displayName?: string }) {
+export async function scaffoldProject(body?: Omit<AdminProjectCreateOptions, 'displayName' | 'teamId'> & { displayName?: string }) {
   const internalApp = new StackAdminApp({
     projectId: 'internal',
     baseUrl: STACK_BACKEND_BASE_URL,
@@ -22,9 +22,11 @@ export async function scaffoldProject(body?: Omit<AdminProjectCreateOptions, 'di
   const adminUser = await internalApp.getUser({
     or: 'throw',
   });
+  const teamId = adminUser.selectedTeam?.id;
 
   const project = await adminUser.createProject({
     displayName: body?.displayName || 'New Project',
+    teamId,
     ...body,
   });
 
