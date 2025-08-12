@@ -2,80 +2,10 @@
 
 import { ArrowRight, Check, Code, Copy, Play, Send, Settings, Zap } from 'lucide-react';
 import { useCallback, useEffect, useState } from 'react';
+import type { OpenAPIOperation, OpenAPIParameter, OpenAPISchema, OpenAPISpec } from '../../lib/openapi-types';
 import { resolveSchema } from '../../lib/openapi-utils';
 import { useAPIPageContext } from './api-page-wrapper';
 import { Button } from './button';
-
-// Types for OpenAPI specification
-export type OpenAPISchema = {
-  type?: 'string' | 'number' | 'integer' | 'boolean' | 'array' | 'object' | 'null',
-  properties?: Record<string, OpenAPISchema>,
-  items?: OpenAPISchema,
-  required?: string[],
-  example?: unknown,
-  description?: string,
-  $ref?: string,
-  allOf?: OpenAPISchema[],
-  oneOf?: OpenAPISchema[],
-  anyOf?: OpenAPISchema[],
-  enum?: unknown[],
-  format?: string,
-  minimum?: number,
-  maximum?: number,
-  minLength?: number,
-  maxLength?: number,
-  pattern?: string,
-  additionalProperties?: boolean | OpenAPISchema,
-}
-
-export type OpenAPISpec = {
-  openapi: string,
-  info: {
-    title: string,
-    version: string,
-    description?: string,
-  },
-  servers: Array<{
-    url: string,
-    description?: string,
-  }>,
-  paths: Record<string, Record<string, OpenAPIOperation>>,
-  webhooks?: Record<string, Record<string, OpenAPIOperation>>,
-  components?: {
-    schemas?: Record<string, OpenAPISchema>,
-    securitySchemes?: Record<string, unknown>,
-  },
-}
-
-type OpenAPIOperation = {
-  summary?: string,
-  description?: string,
-  operationId?: string,
-  tags?: string[],
-  parameters?: OpenAPIParameter[],
-  requestBody?: {
-    required?: boolean,
-    content: Record<string, {
-      schema: OpenAPISchema,
-    }>,
-  },
-  responses: Record<string, {
-    description: string,
-    content?: Record<string, {
-      schema: OpenAPISchema,
-    }>,
-  }>,
-  security?: Array<Record<string, string[]>>,
-}
-
-type OpenAPIParameter = {
-  name: string,
-  in: 'query' | 'path' | 'header' | 'cookie',
-  required?: boolean,
-  description?: string,
-  schema: OpenAPISchema,
-  example?: unknown,
-}
 
 type EnhancedAPIPageProps = {
   document: string,
@@ -275,7 +205,7 @@ export function EnhancedAPIPage({ document, operations, description }: EnhancedA
     }));
 
     try {
-      const baseUrl = spec?.servers[0]?.url || '';
+      const baseUrl = spec?.servers?.[0]?.url || '';
       let url = baseUrl + path;
 
       // Replace path parameters
@@ -455,7 +385,7 @@ function ModernAPIPlayground({
   };
 
   const generateCurlCommand = useCallback(() => {
-    const baseUrl = spec.servers[0]?.url || '';
+    const baseUrl = spec.servers?.[0]?.url || '';
     let url = baseUrl + path;
 
     // Replace path parameters
@@ -500,9 +430,8 @@ function ModernAPIPlayground({
 
     return curlCommand;
   }, [operation, path, method, spec, requestState]);
-
   const generateJavaScriptCode = useCallback(() => {
-    const baseUrl = spec.servers[0]?.url || '';
+    const baseUrl = spec.servers?.[0]?.url || '';
     let url = baseUrl + path;
 
     // Replace path parameters
@@ -552,7 +481,7 @@ function ModernAPIPlayground({
   }, [operation, path, method, spec, requestState]);
 
   const generatePythonCode = useCallback(() => {
-    const baseUrl = spec.servers[0]?.url || '';
+    const baseUrl = spec.servers?.[0]?.url || '';
     let url = baseUrl + path;
 
     // Replace path parameters
