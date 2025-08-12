@@ -28,6 +28,7 @@ it("lists all the teams in a project with server access", async ({ expect }) => 
 });
 
 it("lists all the teams the current user has on the client", async ({ expect }) => {
+  await Project.createAndSwitch({ config: {  magic_link_enabled: true } });
   const { userId } = await Auth.Otp.signIn();
   const response1 = await niceBackendFetch("/api/v1/teams?user_id=me", { accessType: "client" });
   expect(response1).toMatchInlineSnapshot(`
@@ -35,15 +36,7 @@ it("lists all the teams the current user has on the client", async ({ expect }) 
       "status": 200,
       "body": {
         "is_paginated": false,
-        "items": [
-          {
-            "client_metadata": null,
-            "client_read_only_metadata": null,
-            "display_name": "default-mailbox--<stripped UUID>@stack-generated.example.com's Team",
-            "id": "<stripped UUID>",
-            "profile_image_url": null,
-          },
-        ],
+        "items": [],
       },
       "headers": Headers { <some fields may have been hidden> },
     }
@@ -55,15 +48,7 @@ it("lists all the teams the current user has on the client", async ({ expect }) 
       "status": 200,
       "body": {
         "is_paginated": false,
-        "items": [
-          {
-            "client_metadata": null,
-            "client_read_only_metadata": null,
-            "display_name": "default-mailbox--<stripped UUID>@stack-generated.example.com's Team",
-            "id": "<stripped UUID>",
-            "profile_image_url": null,
-          },
-        ],
+        "items": [],
       },
       "headers": Headers { <some fields may have been hidden> },
     }
@@ -71,6 +56,7 @@ it("lists all the teams the current user has on the client", async ({ expect }) 
 });
 
 it("lists all the teams the current user has on the server", async ({ expect }) => {
+  await Project.createAndSwitch({ config: {  magic_link_enabled: true } });
   const { userId } = await Auth.Otp.signIn();
   const response1 = await niceBackendFetch("/api/v1/teams?user_id=me", { accessType: "server" });
   expect(response1).toMatchInlineSnapshot(`
@@ -78,17 +64,7 @@ it("lists all the teams the current user has on the server", async ({ expect }) 
       "status": 200,
       "body": {
         "is_paginated": false,
-        "items": [
-          {
-            "client_metadata": null,
-            "client_read_only_metadata": null,
-            "created_at_millis": <stripped field 'created_at_millis'>,
-            "display_name": "default-mailbox--<stripped UUID>@stack-generated.example.com's Team",
-            "id": "<stripped UUID>",
-            "profile_image_url": null,
-            "server_metadata": null,
-          },
-        ],
+        "items": [],
       },
       "headers": Headers { <some fields may have been hidden> },
     }
@@ -100,17 +76,7 @@ it("lists all the teams the current user has on the server", async ({ expect }) 
       "status": 200,
       "body": {
         "is_paginated": false,
-        "items": [
-          {
-            "client_metadata": null,
-            "client_read_only_metadata": null,
-            "created_at_millis": <stripped field 'created_at_millis'>,
-            "display_name": "default-mailbox--<stripped UUID>@stack-generated.example.com's Team",
-            "id": "<stripped UUID>",
-            "profile_image_url": null,
-            "server_metadata": null,
-          },
-        ],
+        "items": [],
       },
       "headers": Headers { <some fields may have been hidden> },
     }
@@ -543,6 +509,7 @@ it("should not update a team without permission on the client", async ({ expect 
 });
 
 it("updates a team on the server", async ({ expect }) => {
+  await Project.createAndSwitch({ config: {  magic_link_enabled: true } });
   await Auth.Otp.signIn();
   const { teamId } = await Team.createWithCurrentAsCreator({ accessType: "server" });
 
@@ -580,15 +547,6 @@ it("updates a team on the server", async ({ expect }) => {
       "body": {
         "is_paginated": false,
         "items": [
-          {
-            "client_metadata": null,
-            "client_read_only_metadata": null,
-            "created_at_millis": <stripped field 'created_at_millis'>,
-            "display_name": "default-mailbox--<stripped UUID>@stack-generated.example.com's Team",
-            "id": "<stripped UUID>",
-            "profile_image_url": null,
-            "server_metadata": null,
-          },
           {
             "client_metadata": null,
             "client_read_only_metadata": null,
@@ -715,6 +673,7 @@ it("should not update a team without permission on the client", async ({ expect 
 });
 
 it("deletes a team on the server", async ({ expect }) => {
+  await Project.createAndSwitch({ config: {  magic_link_enabled: true } });
   await Auth.Otp.signIn();
   const { teamId } = await Team.createWithCurrentAsCreator({ accessType: "server" });
 
@@ -737,17 +696,7 @@ it("deletes a team on the server", async ({ expect }) => {
       "status": 200,
       "body": {
         "is_paginated": false,
-        "items": [
-          {
-            "client_metadata": null,
-            "client_read_only_metadata": null,
-            "created_at_millis": <stripped field 'created_at_millis'>,
-            "display_name": "default-mailbox--<stripped UUID>@stack-generated.example.com's Team",
-            "id": "<stripped UUID>",
-            "profile_image_url": null,
-            "server_metadata": null,
-          },
-        ],
+        "items": [],
       },
       "headers": Headers { <some fields may have been hidden> },
     }

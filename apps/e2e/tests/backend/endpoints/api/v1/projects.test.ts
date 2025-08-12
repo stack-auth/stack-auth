@@ -40,7 +40,7 @@ it("gets current project (internal)", async ({ expect }) => {
         "config": {
           "allow_team_api_keys": false,
           "allow_user_api_keys": false,
-          "client_team_creation_enabled": false,
+          "client_team_creation_enabled": true,
           "client_user_deletion_enabled": false,
           "credential_enabled": true,
           "enabled_oauth_providers": [
@@ -1352,7 +1352,7 @@ it("does not allow accessing a project without a project ID header", async ({ ex
   `);
 });
 
-it("makes sure user have the correct managed project ID after project creation", async ({ expect }) => {
+it("makes sure users own the correct projects after creating a project", async ({ expect }) => {
   backendContext.set({ projectKeys: InternalProjectKeys });
   const { creatorUserId, projectId, adminAccessToken } = await Project.createAndGetAdminToken();
 

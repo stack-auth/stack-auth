@@ -1,7 +1,7 @@
 import { ProductionModeError } from "@stackframe/stack-shared/dist/helpers/production-mode";
 import { AdminUserProjectsCrud, ProjectsCrud } from "@stackframe/stack-shared/dist/interface/crud/projects";
 
-import { EnvironmentConfigOverrideOverride, OrganizationRenderedConfig } from "@stackframe/stack-shared/dist/config/schema";
+import { CompleteConfig, EnvironmentConfigOverrideOverride } from "@stackframe/stack-shared/dist/config/schema";
 import { StackAdminApp } from "../apps/interfaces/admin-app";
 import { AdminProjectConfig, AdminProjectConfigUpdateOptions, ProjectConfig } from "../project-configs";
 
@@ -24,9 +24,9 @@ export type AdminProject = {
   update(this: AdminProject, update: AdminProjectUpdateOptions): Promise<void>,
   delete(this: AdminProject): Promise<void>,
 
-  getConfig(this: AdminProject): Promise<OrganizationRenderedConfig>,
+  getConfig(this: AdminProject): Promise<CompleteConfig>,
   // NEXT_LINE_PLATFORM react-like
-  useConfig(this: AdminProject): OrganizationRenderedConfig,
+  useConfig(this: AdminProject): CompleteConfig,
   updateConfig(this: AdminProject, config: EnvironmentConfigOverrideOverride): Promise<void>,
 
   getProductionModeErrors(this: AdminProject): Promise<ProductionModeError[]>,
@@ -98,10 +98,12 @@ export function adminProjectUpdateOptionsToCrud(options: AdminProjectUpdateOptio
 
 export type AdminProjectCreateOptions = Omit<AdminProjectUpdateOptions, 'displayName'> & {
   displayName: string,
+  teamId: string,
 };
 export function adminProjectCreateOptionsToCrud(options: AdminProjectCreateOptions): AdminUserProjectsCrud["Server"]["Create"] {
   return {
     ...adminProjectUpdateOptionsToCrud(options),
     display_name: options.displayName,
+    owner_team_id: options.teamId,
   };
 }

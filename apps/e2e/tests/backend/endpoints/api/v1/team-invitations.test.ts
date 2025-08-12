@@ -1,6 +1,6 @@
 import { expect } from "vitest";
 import { it } from "../../../../helpers";
-import { Auth, Team, User, backendContext, bumpEmailAddress, createMailbox, niceBackendFetch } from "../../../backend-helpers";
+import { Auth, Project, Team, User, backendContext, bumpEmailAddress, createMailbox, niceBackendFetch } from "../../../backend-helpers";
 
 async function createAndAddCurrentUserWithoutMemberPermission() {
   const { teamId } = await Team.create();
@@ -58,6 +58,7 @@ it("requires $invite_members permission to send invitation", async ({ expect }) 
 });
 
 it("can send invitation", async ({ expect }) => {
+  await Project.createAndSwitch({ config: {  magic_link_enabled: true } });
   const { userId: userId1 } = await Auth.Otp.signIn();
   const { teamId } = await createAndAddCurrentUserWithoutMemberPermission();
 
@@ -92,15 +93,6 @@ it("can send invitation", async ({ expect }) => {
             "client_read_only_metadata": null,
             "created_at_millis": <stripped field 'created_at_millis'>,
             "display_name": "New Team",
-            "id": "<stripped UUID>",
-            "profile_image_url": null,
-            "server_metadata": null,
-          },
-          {
-            "client_metadata": null,
-            "client_read_only_metadata": null,
-            "created_at_millis": <stripped field 'created_at_millis'>,
-            "display_name": "mailbox-1--<stripped UUID>@stack-generated.example.com's Team",
             "id": "<stripped UUID>",
             "profile_image_url": null,
             "server_metadata": null,
@@ -217,6 +209,7 @@ it("can't list invitations across teams", async ({ expect }) => {
 
 
 it("allows team admins to list invitations", async ({ expect }) => {
+  await Project.createAndSwitch({ config: {  magic_link_enabled: true } });
   const { userId: inviter } = await Auth.Otp.signIn();
   const { teamId } = await createAndAddCurrentUserWithoutMemberPermission();
 
