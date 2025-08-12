@@ -1,0 +1,16 @@
+{
+  "title": "Dashboard",
+  "description": "Stack Auth Dashboard Documentation",
+  "pages": [
+    "overview",
+    "---General---",
+    "users",
+    "teams", 
+    "permissions",
+    "---Configuration---",
+    "settings",
+    "auth-providers",
+    "---Analytics---", 
+    "analytics"
+  ]
+}
