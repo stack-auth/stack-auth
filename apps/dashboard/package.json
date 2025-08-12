@@ -65,7 +65,6 @@
   },
   "devDependencies": {
     "@types/canvas-confetti": "^1.6.4",
-    "@types/jsonwebtoken": "^9.0.10",
     "@types/lodash": "^4.17.5",
     "@types/node": "20.17.6",
     "@types/react": "19.0.12",
