@@ -528,6 +528,7 @@ it("removes user from team on the client", async ({ expect }) => {
 });
 
 it("creates a team on the server and adds a different user as the creator", async ({ expect }) => {
+  await Project.createAndSwitch({ config: {  magic_link_enabled: true } });
   const user1Mailbox = await bumpEmailAddress();
   const { userId: userId1 } = await Auth.Otp.signIn();
   await bumpEmailAddress();
@@ -570,13 +571,6 @@ it("creates a team on the server and adds a different user as the creator", asyn
       "body": {
         "is_paginated": false,
         "items": [
-          {
-            "client_metadata": null,
-            "client_read_only_metadata": null,
-            "display_name": "mailbox-1--<stripped UUID>@stack-generated.example.com's Team",
-            "id": "<stripped UUID>",
-            "profile_image_url": null,
-          },
           {
             "client_metadata": null,
             "client_read_only_metadata": null,

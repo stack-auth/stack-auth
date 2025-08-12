@@ -1352,7 +1352,7 @@ it("does not allow accessing a project without a project ID header", async ({ ex
   `);
 });
 
-it("makes sure user have the correct managed project ID after project creation", async ({ expect }) => {
+it("makes sure users own the correct projects after creating a project", async ({ expect }) => {
   backendContext.set({ projectKeys: InternalProjectKeys });
   const { creatorUserId, projectId, adminAccessToken } = await Project.createAndGetAdminToken();
 
