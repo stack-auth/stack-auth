@@ -76,8 +76,7 @@ export async function createOrUpdateProjectWithLegacyConfig(
   } & ({
     type: "create",
     projectId?: string,
-    ownerTeamId: string | null,
-    data: AdminUserProjectsCrud["Admin"]["Create"],
+    data: Omit<AdminUserProjectsCrud["Admin"]["Create"], "owner_team_id"> & { owner_team_id: string | null },
   } | {
     type: "update",
     projectId: string,
@@ -97,7 +96,7 @@ export async function createOrUpdateProjectWithLegacyConfig(
           displayName: options.data.display_name,
           description: options.data.description ?? "",
           isProductionMode: options.data.is_production_mode ?? false,
-          ownerTeamId: options.ownerTeamId,
+          ownerTeamId: options.data.owner_team_id,
         },
       });
 

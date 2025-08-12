@@ -34,7 +34,6 @@ export const adminUserProjectsCrudHandlers = createLazyProxy(() => createCrudHan
     });
 
     const project = await createOrUpdateProjectWithLegacyConfig({
-      ownerTeamId: data.owner_team_id,
       type: 'create',
       data: {
         ...data,

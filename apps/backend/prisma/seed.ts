@@ -6,7 +6,6 @@ import { DEFAULT_BRANCH_ID, getSoleTenancyFromProjectBranch } from '@/lib/tenanc
 import { getPrismaClientForTenancy, globalPrismaClient } from '@/prisma-client';
 import { PrismaClient } from '@prisma/client';
 import { errorToNiceString, throwErr } from '@stackframe/stack-shared/dist/utils/errors';
-import { wait } from '@stackframe/stack-shared/dist/utils/promises';
 
 const globalPrisma = new PrismaClient();
 
@@ -39,11 +38,11 @@ async function seed() {
 
   if (!internalProject) {
     internalProject = await createOrUpdateProjectWithLegacyConfig({
-      ownerTeamId: internalTeamId,
       type: 'create',
       projectId: 'internal',
       data: {
         display_name: 'Stack Dashboard',
+        owner_team_id: internalTeamId,
         description: 'Stack\'s admin dashboard',
         is_production_mode: false,
         config: {
@@ -330,10 +329,10 @@ async function seed() {
     } else {
       await createOrUpdateProjectWithLegacyConfig({
         projectId: emulatorProjectId,
-        ownerTeamId: emulatorAdminTeamId,
         type: 'create',
         data: {
           display_name: 'Emulator Project',
+          owner_team_id: emulatorAdminTeamId,
           config: {
             allow_localhost: true,
             create_team_on_sign_up: false,
