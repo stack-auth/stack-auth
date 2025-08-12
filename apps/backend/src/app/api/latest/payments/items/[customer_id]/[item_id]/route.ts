@@ -1,11 +1,10 @@
-import { ensureItemCustomerTypeMatches } from "@/lib/payments";
+import { ensureItemCustomerTypeMatches, getItemQuantityForCustomer } from "@/lib/payments";
 import { getPrismaClientForTenancy } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
-import { SubscriptionStatus } from "@prisma/client";
 import { KnownErrors } from "@stackframe/stack-shared";
-import { adaptSchema, adminAuthTypeSchema, clientOrHigherAuthTypeSchema, offerSchema, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
+import { adaptSchema, adminAuthTypeSchema, clientOrHigherAuthTypeSchema, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
 import { getOrUndefined } from "@stackframe/stack-shared/dist/utils/objects";
-import * as yup from "yup";
+
 
 export const GET = createSmartRouteHandler({
   metadata: {
@@ -42,36 +41,7 @@ export const GET = createSmartRouteHandler({
 
     await ensureItemCustomerTypeMatches(req.params.item_id, itemConfig.customerType, req.params.customer_id, tenancy);
     const prisma = await getPrismaClientForTenancy(tenancy);
-    const subscriptions = await prisma.subscription.findMany({
-      where: {
-        tenancyId: tenancy.id,
-        customerId: req.params.customer_id,
-        status: {
-          in: [SubscriptionStatus.active, SubscriptionStatus.trialing],
-        }
-      },
-    });
-
-    const subscriptionQuantity = subscriptions.reduce((acc, subscription) => {
-      const offer = subscription.offer as yup.InferType<typeof offerSchema>;
-      const item = getOrUndefined(offer.includedItems, req.params.item_id);
-      return acc + (item?.quantity ?? 0);
-    }, 0);
-    const { _sum } = await prisma.itemQuantityChange.aggregate({
-      where: {
-        tenancyId: tenancy.id,
-        customerId: req.params.customer_id,
-        itemId: req.params.item_id,
-        OR: [
-          { expiresAt: null },
-          { expiresAt: { gt: new Date() } },
-        ],
-      },
-      _sum: {
-        quantity: true,
-      },
-    });
-    const totalQuantity = subscriptionQuantity + (_sum.quantity ?? 0);
+    const totalQuantity = await getItemQuantityForCustomer(prisma, tenancy.id, req.params.item_id, req.params.customer_id);
 
     return {
       statusCode: 200,
@@ -100,7 +70,7 @@ export const POST = createSmartRouteHandler({
       item_id: yupString().defined(),
     }).defined(),
     body: yupObject({
-      quantity: yupNumber().defined(),
+      quantity: yupNumber().integer().defined(),
       expires_at: yupString().optional(),
       description: yupString().optional(),
     }).defined(),
@@ -124,6 +94,11 @@ export const POST = createSmartRouteHandler({
     await ensureItemCustomerTypeMatches(req.params.item_id, itemConfig.customerType, req.params.customer_id, tenancy);
     const prisma = await getPrismaClientForTenancy(tenancy);
 
+    const totalQuantity = await getItemQuantityForCustomer(prisma, tenancy.id, req.params.item_id, req.params.customer_id);
+    if (totalQuantity + req.body.quantity < 0) {
+      throw new KnownErrors.ItemQuantityInsufficientAmount(req.params.item_id, req.params.customer_id, req.body.quantity, totalQuantity);
+    }
+
     const change = await prisma.itemQuantityChange.create({
       data: {
         tenancyId: tenancy.id,
@@ -139,6 +114,6 @@ export const POST = createSmartRouteHandler({
       statusCode: 200,
       bodyType: "json",
       body: { id: change.id },
-    } as const;
+    };
   },
 });
