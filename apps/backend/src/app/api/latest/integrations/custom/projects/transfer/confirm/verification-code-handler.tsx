@@ -6,7 +6,7 @@ import { createVerificationCodeHandler } from "@/route-handlers/verification-cod
 import { VerificationCodeType } from "@prisma/client";
 import { KnownErrors } from "@stackframe/stack-shared";
 import { yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
-import { StatusError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
+import { StackAssertionError, StatusError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
 
 export const integrationProjectTransferCodeHandler = createVerificationCodeHandler({
   metadata: {
@@ -44,7 +44,7 @@ export const integrationProjectTransferCodeHandler = createVerificationCodeHandl
   },
 
   async handler(tenancy, method, data, body, user) {
-    const project = tenancy.project;
+    if (tenancy.project.id !== "internal") throw new StackAssertionError("This endpoint is only available for internal projects, why is it being called for a non-internal project?");
     if (!user) throw new KnownErrors.UserAuthenticationRequired;
 
     const provisionedProject = await globalPrismaClient.provisionedProject.deleteMany({
@@ -55,6 +55,14 @@ export const integrationProjectTransferCodeHandler = createVerificationCodeHandl
     });
 
     if (provisionedProject.count === 0) throw new StatusError(400, "The project to transfer was not provisioned or has already been transferred.");
+
+    const project = await globalPrismaClient.project.findUnique({
+      where: {
+        id: data.project_id,
+      },
+    });
+    if (!project) throw new StatusError(400, "The project to transfer was not found.");
+    if (project.ownerTeamId) throw new StatusError(400, "The project to transfer has already been transferred.");
 
     const team = await teamsCrudHandlers.adminCreate({
       data: {

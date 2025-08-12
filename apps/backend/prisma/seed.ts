@@ -1,8 +1,9 @@
 /* eslint-disable no-restricted-syntax */
 import { usersCrudHandlers } from '@/app/api/latest/users/crud';
+import { updatePermissionDefinition } from '@/lib/permissions';
 import { createOrUpdateProjectWithLegacyConfig, getProject } from '@/lib/projects';
 import { DEFAULT_BRANCH_ID, getSoleTenancyFromProjectBranch } from '@/lib/tenancies';
-import { getPrismaClientForTenancy } from '@/prisma-client';
+import { getPrismaClientForTenancy, globalPrismaClient } from '@/prisma-client';
 import { PrismaClient } from '@prisma/client';
 import { errorToNiceString, throwErr } from '@stackframe/stack-shared/dist/utils/errors';
 
@@ -37,11 +38,11 @@ async function seed() {
 
   if (!internalProject) {
     internalProject = await createOrUpdateProjectWithLegacyConfig({
-      ownerTeamId: internalTeamId,
       type: 'create',
       projectId: 'internal',
       data: {
         display_name: 'Stack Dashboard',
+        owner_team_id: internalTeamId,
         description: 'Stack\'s admin dashboard',
         is_production_mode: false,
         config: {
@@ -73,6 +74,7 @@ async function seed() {
         sign_up_enabled: signUpEnabled,
         magic_link_enabled: otpEnabled,
         allow_localhost: allowLocalhost,
+        client_team_creation_enabled: true,
         domains: [
           ...(dashboardDomain && new URL(dashboardDomain).hostname !== 'localhost' ? [{ domain: dashboardDomain, handler_path: '/handler' }] : []),
           ...Object.values(internalTenancy.config.domains.trustedDomains)
@@ -82,6 +84,38 @@ async function seed() {
       },
     },
   });
+
+  await updatePermissionDefinition(
+    globalPrismaClient,
+    internalPrisma,
+    {
+      oldId: "team_member",
+      scope: "team",
+      tenancy: internalTenancy,
+      data: {
+        id: "team_member",
+        description: "1",
+        contained_permission_ids: ["$read_members"],
+      }
+    }
+  );
+  const updatedInternalTenancy = await getSoleTenancyFromProjectBranch("internal", DEFAULT_BRANCH_ID);
+  await updatePermissionDefinition(
+    globalPrismaClient,
+    internalPrisma,
+    {
+      oldId: "team_admin",
+      scope: "team",
+      tenancy: updatedInternalTenancy,
+      data: {
+        id: "team_admin",
+        description: "2",
+        contained_permission_ids: ["$read_members", "$update_team"],
+      }
+    }
+  );
+
+
 
   const internalTeam = await internalPrisma.team.findUnique({
     where: {
@@ -235,7 +269,7 @@ async function seed() {
           tenancyId: internalTenancy.id,
           teamId: emulatorAdminTeamId,
           displayName: 'Emulator Team',
-          mirroredProjectId: emulatorProjectId,
+          mirroredProjectId: "internal",
           mirroredBranchId: DEFAULT_BRANCH_ID,
         },
       });
@@ -295,10 +329,10 @@ async function seed() {
     } else {
       await createOrUpdateProjectWithLegacyConfig({
         projectId: emulatorProjectId,
-        ownerTeamId: emulatorAdminTeamId,
         type: 'create',
         data: {
           display_name: 'Emulator Project',
+          owner_team_id: emulatorAdminTeamId,
           config: {
             allow_localhost: true,
             create_team_on_sign_up: false,

@@ -77,7 +77,7 @@ BEGIN
             user_record."tenancyId",
             user_record."projectUserId",
             team_uuid,
-            'TRUE',
+            NULL,
             NOW(),
             NOW()
         );

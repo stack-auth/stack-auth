@@ -50,3 +50,11 @@ import.meta.vitest?.test("html", ({ expect }) => {
   const obj = { toString: () => "<object>" };
   expect(html`Object: ${obj}`).toBe("Object: &lt;object&gt;");
 });
+
+export function htmlToText(untrustedHtml: string): string {
+
+  const doc = new DOMParser().parseFromString(untrustedHtml, 'text/html');
+
+  return doc.body.textContent ?? '';
+
+}

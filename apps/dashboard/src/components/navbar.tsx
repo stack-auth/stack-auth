@@ -1,9 +1,9 @@
 'use client';
 
 import { UserButton } from "@stackframe/stack";
-import { Button, Typography } from "@stackframe/stack-ui";
+import { Typography } from "@stackframe/stack-ui";
 import { useTheme } from "next-themes";
-import { FeedbackDialog } from "./feedback-dialog";
+
 import { Link } from "./link";
 import { Logo } from "./logo";
 
@@ -19,9 +19,6 @@ export function Navbar({ ...props }) {
       </div>
       <div className="flex items-center">
         <div className="flex gap-4 mr-8 items-center">
-          <FeedbackDialog
-            trigger={<Button variant="outline" size='sm'>Feedback</Button>}
-          />
           <Link href="https://docs.stack-auth.com/">
             <Typography type='label'>Docs</Typography>
           </Link>

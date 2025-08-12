@@ -1,6 +1,6 @@
 import { Prisma } from "@prisma/client";
 import { KnownErrors } from "@stackframe/stack-shared";
-import { EnvironmentConfigOverrideOverride, OrganizationRenderedConfig, ProjectConfigOverrideOverride } from "@stackframe/stack-shared/dist/config/schema";
+import { CompleteConfig, EnvironmentConfigOverrideOverride, ProjectConfigOverrideOverride } from "@stackframe/stack-shared/dist/config/schema";
 import { AdminUserProjectsCrud, ProjectsCrud } from "@stackframe/stack-shared/dist/interface/crud/projects";
 import { UsersCrud } from "@stackframe/stack-shared/dist/interface/crud/users";
 import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
@@ -76,8 +76,7 @@ export async function createOrUpdateProjectWithLegacyConfig(
   } & ({
     type: "create",
     projectId?: string,
-    ownerTeamId: string | null,
-    data: AdminUserProjectsCrud["Admin"]["Create"],
+    data: Omit<AdminUserProjectsCrud["Admin"]["Create"], "owner_team_id"> & { owner_team_id: string | null },
   } | {
     type: "update",
     projectId: string,
@@ -97,7 +96,7 @@ export async function createOrUpdateProjectWithLegacyConfig(
           displayName: options.data.display_name,
           description: options.data.description ?? "",
           isProductionMode: options.data.is_production_mode ?? false,
-          ownerTeamId: options.ownerTeamId,
+          ownerTeamId: options.data.owner_team_id,
         },
       });
 
@@ -169,7 +168,7 @@ export async function createOrUpdateProjectWithLegacyConfig(
             microsoftTenantId: provider.microsoft_tenant_id,
             allowSignIn: true,
             allowConnectedAccounts: true,
-          } satisfies OrganizationRenderedConfig['auth']['oauth']['providers'][string]
+          } satisfies CompleteConfig['auth']['oauth']['providers'][string]
         ];
       })) : undefined,
     // ======================= users =======================
@@ -185,7 +184,7 @@ export async function createOrUpdateProjectWithLegacyConfig(
         {
           baseUrl: domain.domain,
           handlerPath: domain.handler_path,
-        } satisfies OrganizationRenderedConfig['domains']['trustedDomains'][string],
+        } satisfies CompleteConfig['domains']['trustedDomains'][string],
       ];
     })) : undefined,
     // ======================= api keys =======================
@@ -200,7 +199,7 @@ export async function createOrUpdateProjectWithLegacyConfig(
       password: dataOptions.email_config.password,
       senderName: dataOptions.email_config.sender_name,
       senderEmail: dataOptions.email_config.sender_email,
-    } satisfies OrganizationRenderedConfig['emails']['server'] : undefined,
+    } satisfies CompleteConfig['emails']['server'] : undefined,
     'emails.selectedThemeId': dataOptions.email_theme,
     // ======================= rbac =======================
     'rbac.defaultPermissions.teamMember': translateDefaultPermissions(dataOptions.team_member_default_permissions),
@@ -216,7 +215,7 @@ export async function createOrUpdateProjectWithLegacyConfig(
         '$read_members': true,
         '$invite_members': true,
       },
-    } satisfies OrganizationRenderedConfig['rbac']['permissions'][string];
+    } satisfies CompleteConfig['rbac']['permissions'][string];
     configOverrideOverride['rbac.permissions.team_admin'] ??= {
       description: "Default permission for team admins",
       scope: "team",
@@ -228,7 +227,7 @@ export async function createOrUpdateProjectWithLegacyConfig(
         '$invite_members': true,
         '$manage_api_keys': true,
       },
-    } satisfies OrganizationRenderedConfig['rbac']['permissions'][string];
+    } satisfies CompleteConfig['rbac']['permissions'][string];
 
     configOverrideOverride['rbac.defaultPermissions.teamCreator'] ??= { 'team_admin': true };
     configOverrideOverride['rbac.defaultPermissions.teamMember'] ??= { 'team_member': true };

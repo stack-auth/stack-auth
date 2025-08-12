@@ -1027,11 +1027,13 @@ export namespace InternalApiKey {
 
 export namespace Project {
   export async function create(body?: any) {
+    const ownerTeamId = body?.owner_team_id ?? (await User.getCurrent()).selected_team_id;
     const response = await niceBackendFetch("/api/v1/internal/projects", {
       accessType: "client",
       method: "POST",
       body: {
         display_name: body?.display_name || 'New Project',
+        owner_team_id: ownerTeamId,
         ...body,
         config: {
           credential_enabled: true,

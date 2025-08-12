@@ -1140,7 +1140,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
     const app = this;
     this._ensureInternalProject();
     return {
-      createProject(newProject: AdminProjectUpdateOptions & { displayName: string }) {
+      createProject(newProject: AdminProjectUpdateOptions & { displayName: string, teamId: string }) {
         return app._createProject(session, newProject);
       },
       listOwnedProjects() {
@@ -1862,7 +1862,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
     )), [projects]);
   }
   // END_PLATFORM
-  protected async _createProject(session: InternalSession, newProject: AdminProjectUpdateOptions & { displayName: string }): Promise<AdminOwnedProject> {
+  protected async _createProject(session: InternalSession, newProject: AdminProjectUpdateOptions & { displayName: string, teamId: string }): Promise<AdminOwnedProject> {
     this._ensureInternalProject();
     const crud = await this._interface.createProject(adminProjectCreateOptionsToCrud(newProject), session);
     const res = this._getOwnedAdminApp(crud.id, session)._adminOwnedProjectFromCrud(

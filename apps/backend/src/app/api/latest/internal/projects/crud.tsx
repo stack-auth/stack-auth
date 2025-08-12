@@ -1,5 +1,7 @@
 import { renderedOrganizationConfigToProjectCrud } from "@/lib/config";
+import { getPrismaClientForTenancy } from "@/prisma-client";
 import { createOrUpdateProjectWithLegacyConfig, getProjectQuery, listManagedProjectIds } from "@/lib/projects";
+import { ensureTeamMembershipExists } from "@/lib/request-checks";
 import { DEFAULT_BRANCH_ID, getSoleTenancyFromProjectBranch } from "@/lib/tenancies";
 import { globalPrismaClient, rawQueryAll } from "@/prisma-client";
 import { createCrudHandlers } from "@/route-handlers/crud-handler";
@@ -24,10 +26,14 @@ export const adminUserProjectsCrudHandlers = createLazyProxy(() => createCrudHan
   },
   onCreate: async ({ auth, data }) => {
     const user = auth.user ?? throwErr('auth.user is required');
-    const teamId = user.selected_team_id ?? throwErr('auth.user.selected_team_id is required');
+    const prisma = await getPrismaClientForTenancy(auth.tenancy);
+    await ensureTeamMembershipExists(prisma, {
+      tenancyId: auth.tenancy.id,
+      teamId: data.owner_team_id,
+      userId: user.id,
+    });
 
     const project = await createOrUpdateProjectWithLegacyConfig({
-      ownerTeamId: teamId,
       type: 'create',
       data: {
         ...data,

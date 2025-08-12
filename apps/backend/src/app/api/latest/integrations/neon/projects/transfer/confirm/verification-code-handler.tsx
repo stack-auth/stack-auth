@@ -42,8 +42,7 @@ export const neonIntegrationProjectTransferCodeHandler = createVerificationCodeH
   },
 
   async handler(tenancy, method, data, body, user) {
-    const project = tenancy.project;
-    if (project.id !== "internal") throw new StackAssertionError("This endpoint is only available for internal projects, why is it being called for a non-internal project?");
+    if (tenancy.project.id !== "internal") throw new StackAssertionError("This endpoint is only available for internal projects, why is it being called for a non-internal project?");
     if (!user) throw new KnownErrors.UserAuthenticationRequired;
 
     const provisionedProject = await globalPrismaClient.provisionedProject.deleteMany({
@@ -54,6 +53,14 @@ export const neonIntegrationProjectTransferCodeHandler = createVerificationCodeH
     });
 
     if (provisionedProject.count === 0) throw new StatusError(400, "The project to transfer was not provisioned by Neon or has already been transferred.");
+
+    const project = await globalPrismaClient.project.findUnique({
+      where: {
+        id: data.project_id,
+      },
+    });
+    if (!project) throw new StatusError(400, "The project to transfer was not found.");
+    if (project.ownerTeamId) throw new StatusError(400, "The project to transfer has already been transferred.");
 
     const team = await teamsCrudHandlers.adminCreate({
       data: {

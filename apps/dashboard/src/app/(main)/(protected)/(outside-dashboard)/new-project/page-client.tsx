@@ -2,10 +2,10 @@
 import { FieldLabel, InputField, SwitchListField } from "@/components/form-fields";
 import { useRouter } from "@/components/router";
 import { yupResolver } from "@hookform/resolvers/yup";
-import { AuthPage, SelectedTeamSwitcher, useUser } from "@stackframe/stack";
+import { AuthPage, TeamSwitcher, useUser } from "@stackframe/stack";
 import { allProviders } from "@stackframe/stack-shared/dist/utils/oauth";
 import { runAsynchronouslyWithAlert, wait } from "@stackframe/stack-shared/dist/utils/promises";
-import { BrowserFrame, Button, Form, FormField, FormMessage, Label, Separator, Typography } from "@stackframe/stack-ui";
+import { BrowserFrame, Button, Form, FormControl, FormField, FormItem, FormMessage, Label, Separator, Typography } from "@stackframe/stack-ui";
 import { useSearchParams } from "next/navigation";
 import { useState } from "react";
 import { useForm } from "react-hook-form";
@@ -16,6 +16,7 @@ export const projectFormSchema = yup.object({
   signInMethods: yup.array(yup.string().oneOf(["credential", "magicLink", "passkey"].concat(allProviders)).defined())
     .min(1, "At least one sign-in method is required")
     .defined("At least one sign-in method is required"),
+  teamId: yup.string().uuid().defined("Team is required"),
 });
 
 type ProjectFormValues = yup.InferType<typeof projectFormSchema>
@@ -30,6 +31,7 @@ export default function PageClient() {
   const defaultValues: Partial<ProjectFormValues> = {
     displayName: displayName || "",
     signInMethods: ["credential", "google", "github"],
+    teamId: user.selectedTeam?.id,
   };
 
   const form = useForm<ProjectFormValues>({
@@ -58,6 +60,7 @@ export default function PageClient() {
     try {
       newProject = await user.createProject({
         displayName: values.displayName,
+        teamId: values.teamId,
         config: {
           credentialEnabled: values.signInMethods.includes("credential"),
           magicLinkEnabled: values.signInMethods.includes("magicLink"),
@@ -83,6 +86,7 @@ export default function PageClient() {
     }
   };
 
+
   return (
     <div className="w-full flex-grow flex items-center justify-center">
       <div className="w-full md:w-1/2 p-4">
@@ -96,10 +100,27 @@ export default function PageClient() {
 
               <InputField required control={form.control} name="displayName" label="Display Name" placeholder="My Project" />
 
-              <div className="flex flex-col gap-2">
-                <Label>Team</Label>
-                <SelectedTeamSwitcher triggerClassName="max-w-full" />
-              </div>
+              <FormField
+                control={form.control}
+                name="teamId"
+                render={({ field }) => (
+                  <FormItem>
+                    <label className="flex flex-col gap-2">
+                      <FieldLabel required={true}>Team</FieldLabel>
+                      <FormControl>
+                        <TeamSwitcher
+                          triggerClassName="max-w-full"
+                          selectedTeamId={field.value}
+                          onChange={async (team) => {
+                            field.onChange(team.id);
+                          }}
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </label>
+                  </FormItem>
+                )}
+              />
 
               <SwitchListField
                 control={form.control}
