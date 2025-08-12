@@ -99,27 +99,35 @@ async function findFeaturebaseUserByEmail(email: string, apiKey: string): Promis
  * Create a new Featurebase user using the identifyUser endpoint
  */
 async function createFeaturebaseUser(user: FeaturebaseUser, apiKey: string): Promise<FeaturebaseUser> {
-  const response = await fetch('https://do.featurebase.app/v2/organization/identifyUser', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'X-API-Key': apiKey,
-    },
-    body: JSON.stringify({
-      userId: user.userId,
-      email: user.email,
-      name: user.name,
-      profilePicture: user.profilePicture,
-    }),
-  });
+  try {
+    const response = await fetch('https://do.featurebase.app/v2/organization/identifyUser', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-API-Key': apiKey,
+      },
+      body: JSON.stringify({
+        userId: user.userId,
+        email: user.email,
+        name: user.name,
+        profilePicture: user.profilePicture,
+      }),
+    });
 
-  if (!response.ok) {
-    const errorData = await response.json().catch(() => ({}));
-    throw new StackAssertionError(`Failed to create Featurebase user: ${errorData.error || response.statusText}`, { errorData });
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new StackAssertionError(`Failed to create Featurebase user: ${errorData.error || response.statusText}`, { errorData });
+    }
+
+    // The identifyUser endpoint just returns { "success": true }, so we return the input data
+    return user;
+  } catch (error) {
+    if (error instanceof StackAssertionError) {
+      throw error;
+    }
+    throw new StackAssertionError("Failed to create Featurebase user", { cause: error });
+
   }
-
-  // The identifyUser endpoint just returns { "success": true }, so we return the input data
-  return user;
 }
 
 /**
