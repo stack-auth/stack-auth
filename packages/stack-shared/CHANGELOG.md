@@ -1,5 +1,11 @@
 # @stackframe/stack-shared
 
+## 2.8.29
+
+### Patch Changes
+
+- Various changes
+
 ## 2.8.28
 
 ### Patch Changes

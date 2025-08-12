@@ -926,6 +926,8 @@ export type BranchRenderedConfig = Expand<Awaited<ReturnType<typeof sanitizeBran
 export type EnvironmentRenderedConfig = Expand<Awaited<ReturnType<typeof sanitizeEnvironmentConfig<EnvironmentRenderedConfigBeforeSanitization>>>>;
 export type OrganizationRenderedConfig = Expand<Awaited<ReturnType<typeof sanitizeOrganizationConfig>>>;
 
+// Complete config
+export type CompleteConfig = OrganizationRenderedConfig;
 
 // Type assertions (just to make sure the types are correct)
 const __assertEmptyObjectIsValidProjectOverride: ProjectConfigOverride = {};

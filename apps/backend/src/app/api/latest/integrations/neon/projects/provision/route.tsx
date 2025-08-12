@@ -1,6 +1,6 @@
 import { createApiKeySet } from "@/lib/internal-api-keys";
 import { createOrUpdateProjectWithLegacyConfig } from "@/lib/projects";
-import { globalPrismaClient } from "@/prisma-client";
+import { getPrismaClientForSourceOfTruth, globalPrismaClient } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { neonAuthorizationHeaderSchema, projectDisplayNameSchema, yupArray, yupNumber, yupObject, yupString, yupTuple } from "@stackframe/stack-shared/dist/schema-fields";
 import { decodeBasicAuthorizationHeader } from "@stackframe/stack-shared/dist/utils/http";
@@ -32,12 +32,15 @@ export const POST = createSmartRouteHandler({
   handler: async (req) => {
     const [clientId] = decodeBasicAuthorizationHeader(req.headers.authorization[0])!;
 
+    const sourceOfTruth = req.body.connection_strings ? {
+      type: 'neon',
+      connectionString: undefined,
+      connectionStrings: Object.fromEntries(req.body.connection_strings.map((c) => [c.branch_id, c.connection_string])),
+    } as const : { type: 'hosted', connectionString: undefined, connectionStrings: undefined } as const;
+
     const createdProject = await createOrUpdateProjectWithLegacyConfig({
       ownerIds: [],
-      sourceOfTruth: req.body.connection_strings ? {
-        type: 'neon',
-        connectionStrings: Object.fromEntries(req.body.connection_strings.map((c) => [c.branch_id, c.connection_string])),
-      } : { type: 'hosted' },
+      sourceOfTruth,
       type: 'create',
       data: {
         display_name: req.body.display_name,
@@ -58,6 +61,13 @@ export const POST = createSmartRouteHandler({
         },
       }
     });
+
+
+    if (sourceOfTruth.type === 'neon') {
+      // Get the Prisma client for all branches in parallel, as doing so will run migrations
+      const branchIds = Object.keys(sourceOfTruth.connectionStrings);
+      await Promise.all(branchIds.map((branchId) => getPrismaClientForSourceOfTruth(sourceOfTruth, branchId)));
+    }
 
 
     await globalPrismaClient.provisionedProject.create({
