@@ -134,26 +134,33 @@ async function createFeaturebaseUser(user: FeaturebaseUser, apiKey: string): Pro
  * Update an existing Featurebase user (excluding email)
  */
 async function updateFeaturebaseUser(userId: string, updates: Partial<Omit<FeaturebaseUser, 'userId' | 'email'>>, apiKey: string): Promise<FeaturebaseUser> {
-  const response = await fetch(`https://do.featurebase.app/v2/users/${userId}`, {
-    method: 'PATCH',
-    headers: {
-      'Content-Type': 'application/json',
-      'X-API-Key': apiKey,
-    },
-    body: JSON.stringify(updates),
-  });
+  try {
+    const response = await fetch(`https://do.featurebase.app/v2/users/${userId}`, {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-API-Key': apiKey,
+      },
+      body: JSON.stringify(updates),
+    });
 
-  if (!response.ok) {
-    const errorData = await response.json().catch(() => ({}));
-    throw new StackAssertionError(`Failed to update Featurebase user: ${errorData.error || response.statusText}`, { errorData });
-  }
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new StackAssertionError(`Failed to update Featurebase user: ${errorData.error || response.statusText}`, { errorData });
+    }
 
-  const data = await response.json();
-  return {
-    userId: data.userId || userId,
-    email: data.email,
-    name: data.name,
-    profilePicture: data.profilePicture,
+    const data = await response.json();
+    return {
+      userId: data.userId || userId,
+      email: data.email,
+      name: data.name,
+      profilePicture: data.profilePicture,
+    };
+  } catch (error) {
+    if (error instanceof StackAssertionError) {
+      throw error;
+    }
+    throw new StackAssertionError("Failed to update Featurebase user", { cause: error });
   };
 }
 
@@ -178,18 +185,17 @@ export async function getOrCreateFeaturebaseUser(
     // Ensure the user has an email on Featurebase.
     let ensuredEmail = existingById.email;
     if (!ensuredEmail) {
-      const fallbackEmailForExisting = `${stackAuthUser.id}@featurebase-user.stack-auth-app.com`;
       try {
         await createFeaturebaseUser({
           userId: existingById.userId,
-          email: fallbackEmailForExisting,
+          email: fallbackEmail,
           name: stackAuthUser.displayName || undefined,
           profilePicture: stackAuthUser.profileImageUrl || undefined,
         }, apiKey);
-        ensuredEmail = fallbackEmailForExisting;
+        ensuredEmail = fallbackEmail;
       } catch (e) {
         // If setting fallback email failed, keep ensuredEmail as-is (undefined) and let callers handle
-        console.error("Failed to set fallback email for existing Featurebase user", e);
+        throw new StackAssertionError(`Failed to set fallback email for existing Featurebase user ${existingById.userId}`, { cause: e });
       }
     }
 
