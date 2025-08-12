@@ -35,7 +35,8 @@ export const globalPrismaSchema = dbString === "" ? "public" : getSchemaFromConn
 function getNeonPrismaClient(connectionString: string) {
   let neonPrismaClient = prismaClientsStore.neon.get(connectionString);
   if (!neonPrismaClient) {
-    const adapter = new PrismaNeon({ connectionString });
+    const schema = getSchemaFromConnectionString(connectionString);
+    const adapter = new PrismaNeon({ connectionString }, { schema });
     neonPrismaClient = new PrismaClient({ adapter });
     prismaClientsStore.neon.set(connectionString, neonPrismaClient);
   }

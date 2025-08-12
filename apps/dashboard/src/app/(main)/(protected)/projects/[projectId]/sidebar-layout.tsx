@@ -6,7 +6,7 @@ import { ProjectSwitcher } from "@/components/project-switcher";
 import { StackCompanion } from "@/components/stack-companion";
 import ThemeToggle from "@/components/theme-toggle";
 import { getPublicEnvVar } from '@/lib/env';
-import { cn } from "@/lib/utils";
+import { cn, devFeaturesEnabledForProject } from "@/lib/utils";
 import { AdminProject, UserButton, useUser } from "@stackframe/stack";
 import {
   Breadcrumb,
@@ -364,10 +364,7 @@ function SidebarContent({ projectId, onNavigate }: { projectId: string, onNaviga
               {item.name}
             </Typography>;
           } else if (item.type === 'item') {
-            if (
-              item.requiresDevFeatureFlag &&
-              !JSON.parse(getPublicEnvVar("NEXT_PUBLIC_STACK_ENABLE_DEVELOPMENT_FEATURES_PROJECT_IDS") || "[]").includes(projectId)
-            ) {
+            if (item.requiresDevFeatureFlag && !devFeaturesEnabledForProject(projectId)) {
               return null;
             }
             return <div key={index} className="flex px-2">
