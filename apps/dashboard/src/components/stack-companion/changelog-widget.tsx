@@ -1,5 +1,6 @@
 'use client';
 
+import { runAsynchronously } from '@stackframe/stack-shared/dist/utils/promises';
 import { Button } from '@stackframe/stack-ui';
 import { Calendar, ChevronDown, ChevronUp } from 'lucide-react';
 import Image from 'next/image';
@@ -98,9 +99,7 @@ export function ChangelogWidget({ isActive }: ChangelogWidgetProps) {
       }
     };
 
-    fetchChangelogs().catch((error) => {
-      console.error('Error in fetchChangelogs:', error);
-    });
+    runAsynchronously(fetchChangelogs());
   }, [isActive]);
 
   if (loading) {
