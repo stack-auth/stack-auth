@@ -1,7 +1,7 @@
 import { createMcpHandler } from "@vercel/mcp-adapter";
 import { readFile } from "node:fs/promises";
 import { z } from "zod";
-import { apiSource, source } from "../../../../lib/source";
+import { apiSource, source } from "../../../../../lib/source";
 
 import { PostHog } from "posthog-node";
 
@@ -246,7 +246,7 @@ const handler = createMcpHandler(
     },
   },
   {
-    basePath: "/api",
+    basePath: "/api/internal",
     verboseLogs: true,
     maxDuration: 60,
   }
