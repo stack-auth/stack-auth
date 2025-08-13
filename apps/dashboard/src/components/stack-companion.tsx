@@ -2,7 +2,7 @@
 
 import { cn } from '@/lib/utils';
 import { checkVersion, VersionCheckResult } from '@/lib/version-check';
-import { useUser } from '@stackframe/stack';
+// import { useUser } from '@stackframe/stack'; // TODO: Fix import when useUser is available
 import { Button } from '@stackframe/stack-ui';
 import { BookOpen, HelpCircle, Lightbulb, TimerReset, X } from 'lucide-react';
 import { useEffect, useState } from 'react';
@@ -10,6 +10,7 @@ import packageJson from '../../package.json';
 import { FeedbackForm } from './feedback-form';
 import { Logo } from './logo';
 import { ChangelogWidget } from './stack-companion/changelog-widget';
+import { DashboardDocsWidget } from './stack-companion/dashboard-docs-widget';
 import { FeatureRequestBoard } from './stack-companion/feature-request-board';
 
 type StackCompanionProps = {
@@ -57,7 +58,7 @@ export function StackCompanion({ className, onExpandedChange }: StackCompanionPr
   const [versionCheckResult, setVersionCheckResult] = useState<VersionCheckResult>(null);
 
   // Get current user from Stack Auth
-  const user = useUser({ or: 'redirect', projectIdMustMatch: "internal" });
+  // const user = useUser({ or: 'redirect', projectIdMustMatch: "internal" }); // TODO: Enable when useUser is available
 
   // Handle hydration
   useEffect(() => {
@@ -238,26 +239,7 @@ export function StackCompanion({ className, onExpandedChange }: StackCompanionPr
                   }
                 `}</style>
                 {activeItem === 'docs' && (
-                  <div className="space-y-3">
-                    <button
-                      onClick={() => window.open('https://docs.stack-auth.com', '_blank')}
-                      className="w-full bg-muted/30 hover:bg-muted/50 rounded-lg p-4 text-center transition-colors cursor-pointer group"
-                    >
-                      <BookOpen className="h-6 w-6 mx-auto mb-2 text-blue-600 group-hover:text-blue-700" />
-                      <p className="text-xs text-foreground group-hover:text-blue-600 font-medium">
-                        Access Stack Auth Documentation
-                      </p>
-                      <p className="text-[10px] text-muted-foreground mt-1">
-                        Click to open docs.stack-auth.com
-                      </p>
-                    </button>
-
-                    <div className="text-center">
-                      <p className="text-[10px] text-muted-foreground italic">
-                        Interactive dashboard docs coming soon
-                      </p>
-                    </div>
-                  </div>
+                  <DashboardDocsWidget isActive={true} />
                 )}
 
                 {activeItem === 'feedback' && (
