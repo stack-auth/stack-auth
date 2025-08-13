@@ -48,40 +48,40 @@ export default function PageClient() {
 
   if (!stripeAccountId) {
     return (
-        <div className="mx-auto max-w-sm h-full flex items-center">
-          <Card className="w-full">
-            <CardContent className="p-8 text-center">
-              <div className="mx-auto mb-4 grid h-12 w-12 place-items-center rounded-full bg-primary/10 text-primary">
-                <Wallet className="h-6 w-6" />
-              </div>
-              <Typography type="h3" className="mb-4">Setup Payments</Typography>
-              <Typography type="p" variant="secondary" className="mt-2">
-                Let your users pay seamlessly and securely.
-              </Typography>
-              <ul className="mt-6 grid gap-3 text-left text-sm text-muted-foreground">
-                <li className="flex items-center gap-2">
-                  <Webhook className="h-4 w-4 text-primary" />
-                  <span>No webhooks or syncing</span>
-                </li>
-                <li className="flex items-center gap-2">
-                  <Repeat className="h-4 w-4 text-primary" />
-                  <span>One-time and recurring</span>
-                </li>
-                <li className="flex items-center gap-2">
-                  <BarChart3 className="h-4 w-4 text-primary" />
-                  <span>Usage-based billing</span>
-                </li>
-              </ul>
-              <div className="mt-8 flex justify-center">
-                <SetupPaymentsButton setupPayments={setupPayments} />
-              </div>
-              <div className="mt-4 flex items-center justify-center gap-2 text-xs text-muted-foreground">
-                <Shield className="h-3.5 w-3.5" />
-                <span>Powered by Stripe</span>
-              </div>
-            </CardContent>
-          </Card>
-        </div>
+      <div className="mx-auto max-w-sm h-full flex items-center">
+        <Card className="w-full">
+          <CardContent className="p-8 text-center">
+            <div className="mx-auto mb-4 grid h-12 w-12 place-items-center rounded-full bg-primary/10 text-primary">
+              <Wallet className="h-6 w-6" />
+            </div>
+            <Typography type="h3" className="mb-4">Setup Payments</Typography>
+            <Typography type="p" variant="secondary" className="mt-2">
+              Let your users pay seamlessly and securely.
+            </Typography>
+            <ul className="mt-6 grid gap-3 text-left text-sm text-muted-foreground">
+              <li className="flex items-center gap-2">
+                <Webhook className="h-4 w-4 text-primary" />
+                <span>No webhooks or syncing</span>
+              </li>
+              <li className="flex items-center gap-2">
+                <Repeat className="h-4 w-4 text-primary" />
+                <span>One-time and recurring</span>
+              </li>
+              <li className="flex items-center gap-2">
+                <BarChart3 className="h-4 w-4 text-primary" />
+                <span>Usage-based billing</span>
+              </li>
+            </ul>
+            <div className="mt-8 flex justify-center">
+              <SetupPaymentsButton setupPayments={setupPayments} />
+            </div>
+            <div className="mt-4 flex items-center justify-center gap-2 text-xs text-muted-foreground">
+              <Shield className="h-3.5 w-3.5" />
+              <span>Powered by Stripe</span>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
     );
   }
 
@@ -156,7 +156,7 @@ function SetupPaymentsButton({ setupPayments }: { setupPayments: () => Promise<v
         await setupPayments();
       }}
     />
-  )
+  );
 }
 
 
