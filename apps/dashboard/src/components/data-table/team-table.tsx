@@ -8,6 +8,7 @@ import { useState } from "react";
 import * as yup from "yup";
 import { FormDialog } from "../form-dialog";
 import { InputField } from "../form-fields";
+import { TeamInviteDialog } from "../team-invite-dialog";
 
 function toolbarRender<TData>(table: Table<TData>) {
   return (
@@ -70,17 +71,23 @@ function Actions({ row }: { row: Row<ServerTeam> }) {
   const router = useRouter();
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
+  const [isInviteModalOpen, setIsInviteModalOpen] = useState(false);
   const adminApp = useAdminApp();
 
   return (
     <>
       <EditDialog team={row.original} open={isEditModalOpen} onOpenChange={setIsEditModalOpen} />
       <DeleteDialog team={row.original} open={isDeleteModalOpen} onOpenChange={setIsDeleteModalOpen} />
+      <TeamInviteDialog team={row.original} open={isInviteModalOpen} onOpenChange={setIsInviteModalOpen} />
       <ActionCell
         items={[
           {
             item: "View Members",
             onClick: () => router.push(`/projects/${adminApp.projectId}/teams/${row.original.id}`),
+          },
+          {
+            item: "Invite Member",
+            onClick: () => setIsInviteModalOpen(true),
           },
           {
             item: "Edit",
