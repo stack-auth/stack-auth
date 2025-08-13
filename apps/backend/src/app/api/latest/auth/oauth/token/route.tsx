@@ -3,6 +3,7 @@ import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { InvalidClientError, InvalidGrantError, InvalidRequestError, Request as OAuthRequest, Response as OAuthResponse, ServerError } from "@node-oauth/oauth2-server";
 import { KnownErrors } from "@stackframe/stack-shared/dist/known-errors";
 import { yupMixed, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
+import { StatusError } from "@stackframe/stack-shared/dist/utils/errors";
 import { oauthResponseToSmartResponse } from "../oauth-helpers";
 
 export const POST = createSmartRouteHandler({
@@ -61,7 +62,7 @@ export const POST = createSmartRouteHandler({
       }
       if (e instanceof InvalidRequestError) {
         if (e.message.includes("`redirect_uri` is invalid")) {
-          throw new KnownErrors.RedirectUrlNotWhitelisted();
+          throw new StatusError(400, "Invalid redirect URI. Your redirect URI must be the same as the one used to get the authorization code.");
         } else if (oauthResponse.status && oauthResponse.status >= 400 && oauthResponse.status < 500) {
           console.log("Invalid OAuth token request by a client; returning it to the user", e);
           return oauthResponseToSmartResponse(oauthResponse);

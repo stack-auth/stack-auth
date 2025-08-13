@@ -35,7 +35,7 @@ export default function McpBrowserPage() {
 
   // Function to call MCP tools
   const callMcpTool = async (toolName: string, args: Record<string, string> = {}) => {
-    const response = await fetch('/api/mcp', {
+    const response = await fetch('/api/internal/mcp', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',

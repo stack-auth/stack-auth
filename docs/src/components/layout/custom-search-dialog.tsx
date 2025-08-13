@@ -189,6 +189,7 @@ export function CustomSearchDialog({ open, onOpenChange }: CustomSearchDialogPro
     }
 
     searchTimeoutRef.current = setTimeout(() => {
+      // eslint-disable-next-line no-restricted-syntax
       performSearch(query).catch((error) => {
         console.error('Search failed:', error);
       });

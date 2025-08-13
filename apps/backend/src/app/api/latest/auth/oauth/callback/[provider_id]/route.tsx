@@ -403,7 +403,7 @@ const handler = createSmartRouteHandler({
       } catch (error) {
         if (error instanceof InvalidClientError) {
           if (error.message.includes("redirect_uri") || error.message.includes("redirectUri")) {
-            throw new StatusError(400, "Invalid redirect URI. You might have set the wrong redirect URI in the OAuth provider settings. (Please copy the redirect URI from the Stack Auth dashboard and paste it into the OAuth provider's dashboard)");
+            throw new KnownErrors.RedirectUrlNotWhitelisted();
           }
         } else if (error instanceof InvalidScopeError) {
           // which scopes are being requested, and by whom?

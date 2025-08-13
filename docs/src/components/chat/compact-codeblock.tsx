@@ -45,6 +45,7 @@ export function CompactCodeblock({ code, language = 'tsx', maxHeight = '200px', 
       }
     };
 
+    // eslint-disable-next-line no-restricted-syntax
     highlightCode().catch((error) => {
       console.error('Error highlighting code:', error);
     });
@@ -55,6 +56,7 @@ export function CompactCodeblock({ code, language = 'tsx', maxHeight = '200px', 
   }, [code, language]);
 
   const handleCopy = () => {
+    // eslint-disable-next-line no-restricted-syntax
     void navigator.clipboard.writeText(code).then(() => {
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);

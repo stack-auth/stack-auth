@@ -1,4 +1,4 @@
-import type { OpenAPISchema, OpenAPISpec } from '../components/api/enhanced-api-page';
+import type { OpenAPISchema, OpenAPISpec } from './openapi-types';
 
 /**
  * Resolves $ref references in OpenAPI schemas recursively

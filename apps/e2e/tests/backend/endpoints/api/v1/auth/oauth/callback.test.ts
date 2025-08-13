@@ -188,11 +188,56 @@ it("should fail if an untrusted redirect URL is provided", async ({ expect }) =>
   expect(response).toMatchInlineSnapshot(`
     NiceResponse {
       "status": 400,
-      "body": "Invalid redirect URI. You might have set the wrong redirect URI in the OAuth provider settings. (Please copy the redirect URI from the Stack Auth dashboard and paste it into the OAuth provider's dashboard)",
+      "body": {
+        "code": "REDIRECT_URL_NOT_WHITELISTED",
+        "error": "Redirect URL not whitelisted. Did you forget to add this domain to the trusted domains list on the Stack Auth dashboard?",
+      },
       "headers": Headers {
         "set-cookie": <deleting cookie 'stack-oauth-inner-<stripped cookie name key>' at path '/'>,
+        "x-stack-known-error": "REDIRECT_URL_NOT_WHITELISTED",
         <some fields may have been hidden>,
       },
     }
   `);
 });
+
+it("should fail if an untrusted redirect URL is provided that is similar to a trusted domain", async ({ expect }) => {
+  await Project.createAndSwitch({
+    config: {
+      oauth_providers: [
+        { id: "spotify", type: "shared" },
+      ],
+      domains: [
+        {
+          domain: "https://trusted-domain.com",
+          handler_path: "/api/v1/auth/oauth/callback/spotify",
+        },
+      ],
+    },
+  });
+  await InternalApiKey.createAndSetProjectKeys();
+  const authorize = await Auth.OAuth.authorize({ redirectUrl: "https://trusted-domain.com.evil.com" });
+  const getInnerCallbackUrlResponse = await Auth.OAuth.getInnerCallbackUrl(authorize);
+  const cookie = updateCookiesFromResponse("", getInnerCallbackUrlResponse.authorizeResponse);
+  const response = await niceBackendFetch(getInnerCallbackUrlResponse.innerCallbackUrl, {
+    redirect: "manual",
+    headers: {
+      cookie,
+    },
+  });
+  expect(response).toMatchInlineSnapshot(`
+    NiceResponse {
+      "status": 400,
+      "body": {
+        "code": "REDIRECT_URL_NOT_WHITELISTED",
+        "error": "Redirect URL not whitelisted. Did you forget to add this domain to the trusted domains list on the Stack Auth dashboard?",
+      },
+      "headers": Headers {
+        "set-cookie": <deleting cookie 'stack-oauth-inner-<stripped cookie name key>' at path '/'>,
+        "x-stack-known-error": "REDIRECT_URL_NOT_WHITELISTED",
+        <some fields may have been hidden>,
+      },
+    }
+  `);
+});
+
