@@ -16,6 +16,7 @@ import { ProfilePage } from "./account-settings/profile-page/profile-page";
 import { SettingsPage } from './account-settings/settings/settings-page';
 import { TeamCreationPage } from './account-settings/teams/team-creation-page';
 import { TeamPage } from './account-settings/teams/team-page';
+import { pluralize } from "pluralize";
 
 const iconMap = {
   Contact,
@@ -34,6 +35,7 @@ const Icon = ({ name }: { name: keyof typeof iconMap }) => {
 
 export function AccountSettings(props: {
   fullPage?: boolean,
+  entityName?: string,
   extraItems?: ({
     title: string,
     content: React.ReactNode,
@@ -76,6 +78,8 @@ export function AccountSettings(props: {
   const userFromHook = useUser({ or: props.mockUser ? 'return-null' : 'redirect' });
   const stackApp = useStackApp();
   const projectFromHook = stackApp.useProject();
+  const entityName = props.entityName ?? "Team";
+  const entityPlural = pluralize(entityName);
 
   // Use mock data if provided, otherwise use real data
   const user = props.mockUser ? {
@@ -161,7 +165,7 @@ export function AccountSettings(props: {
               content: item.content,
             } as const)) || []),
             ...(teams.length > 0 || project.config.clientTeamCreationEnabled) ? [{
-              title: t('Teams'),
+              title: t('{entityPlural}', { entityPlural: entityPlural }),
               type: 'divider',
             }] as const : [],
             ...teams.map(team => ({
@@ -176,7 +180,7 @@ export function AccountSettings(props: {
               </Suspense>,
             } as const)),
             ...project.config.clientTeamCreationEnabled ? [{
-              title: t('Create a team'),
+              title: t('Create a {entity}', { entity: entityName.toLowerCase() }),
               icon: <Icon name="CirclePlus"/>,
               type: 'item',
               id: 'team-creation',
