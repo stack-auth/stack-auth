@@ -1,18 +1,19 @@
 "use client";
-import { TeamMemberSearchTable } from '@/components/data-table/team-member-search-table';
 import { TeamMemberTable } from '@/components/data-table/team-member-table';
+import { Button } from '@stackframe/stack-ui';
+import { ServerTeam } from '@stackframe/stack';
+import { notFound } from 'next/navigation';
+import { PageLayout } from '../../page-layout';
+import { useAdminApp } from '../../use-admin-app';
+import { TeamMemberSearchTable } from '@/components/data-table/team-member-search-table';
 import { InputField } from '@/components/form-fields';
 import { yupResolver } from '@hookform/resolvers/yup';
-import { ServerTeam } from '@stackframe/stack';
 import { strictEmailSchema, yupObject } from '@stackframe/stack-shared/dist/schema-fields';
 import { runAsynchronouslyWithAlert } from '@stackframe/stack-shared/dist/utils/promises';
-import { ActionDialog, Button, Form, Separator } from '@stackframe/stack-ui';
-import { notFound } from 'next/navigation';
+import { ActionDialog, Form, Separator } from '@stackframe/stack-ui';
 import { useState } from 'react';
 import { useForm } from 'react-hook-form';
 import * as yup from 'yup';
-import { PageLayout } from '../../page-layout';
-import { useAdminApp } from '../../use-admin-app';
 
 const inviteFormSchema = yupObject({
   email: strictEmailSchema("Please enter a valid email address").defined(),
@@ -95,7 +96,6 @@ export function AddUserDialog(props: {
     />
   </ActionDialog>;
 }
-
 
 export default function PageClient(props: { teamId: string }) {
   const stackAdminApp = useAdminApp();

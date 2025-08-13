@@ -22,9 +22,7 @@ export default function PageClient() {
     <PageLayout
       title="Teams"
       actions={
-        <Button onClick={() => setCreateTeamsOpen(true)}>
-          Create Team
-        </Button>
+        <Button onClick={() => setCreateTeamsOpen(true)}>Create Team</Button>
       }>
       <TeamTable teams={teams} />
       <CreateDialog
