@@ -97,8 +97,9 @@ const nextConfig = {
         source: "/(.*)",
         headers: [
           {
+            // needed for stripe connect embedded components
             key: "Cross-Origin-Opener-Policy",
-            value: "same-origin",
+            value: "same-origin-allow-popups",
           },
           {
             key: "Permissions-Policy",
