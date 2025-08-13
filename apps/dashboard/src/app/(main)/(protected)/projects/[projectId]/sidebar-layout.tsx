@@ -14,13 +14,13 @@ import {
   BreadcrumbList,
   BreadcrumbPage,
   BreadcrumbSeparator,
-
   Sheet,
   SheetContent,
   SheetTitle,
   SheetTrigger,
   Typography,
-  buttonVariants
+  buttonVariants,
+  Button,
 } from "@stackframe/stack-ui";
 import {
   Book,
@@ -44,6 +44,7 @@ import { useTheme } from "next-themes";
 import { usePathname } from "next/navigation";
 import { Fragment, useMemo, useState } from "react";
 import { useAdminApp } from "./use-admin-app";
+import { InternalInviteDialog } from "@/components/internal-invite-dialog";
 
 type BreadcrumbItem = { item: React.ReactNode, href: string }
 
@@ -490,6 +491,7 @@ function HeaderBreadcrumb({
 export default function SidebarLayout(props: { projectId: string, children?: React.ReactNode }) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [companionExpanded, setCompanionExpanded] = useState(false);
+  const [inviteOpen, setInviteOpen] = useState(false);
   const { resolvedTheme, setTheme } = useTheme();
 
   return (
@@ -527,7 +529,8 @@ export default function SidebarLayout(props: { projectId: string, children?: Rea
             </div>
           </div>
 
-          <div className="flex gap-4 relative">
+          <div className="flex gap-4 relative items-center">
+            <Button variant="outline" size="sm" onClick={() => setInviteOpen(true)}>Invite teammate</Button>
             {getPublicEnvVar("NEXT_PUBLIC_STACK_EMULATOR_ENABLED") === "true" ?
               <ThemeToggle /> :
               <UserButton colorModeToggle={() => setTheme(resolvedTheme === 'light' ? 'dark' : 'light')} />
@@ -539,6 +542,9 @@ export default function SidebarLayout(props: { projectId: string, children?: Rea
         <div className="flex-grow relative">
           {props.children}
         </div>
+
+        {/* Internal invite dialog */}
+        <InternalInviteDialog open={inviteOpen} onOpenChange={setInviteOpen} />
       </div>
 
       {/* Stack Companion - Sticky positioned like left sidebar */}

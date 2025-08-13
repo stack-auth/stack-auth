@@ -6,8 +6,6 @@ import React from "react";
 import * as yup from "yup";
 import { PageLayout } from "../page-layout";
 import { useAdminApp } from "../use-admin-app";
-import { TeamInviteDialog } from "@/components/team-invite-dialog";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@stackframe/stack-ui";
 
 type CreateDialogProps = {
   open: boolean,
@@ -19,33 +17,14 @@ export default function PageClient() {
   const teams = stackAdminApp.useTeams();
 
   const [createTeamsOpen, setCreateTeamsOpen] = React.useState(false);
-  const [inviteOpen, setInviteOpen] = React.useState(false);
-  const [selectedTeamId, setSelectedTeamId] = React.useState<string | null>(null);
-  const selectedTeam = selectedTeamId ? stackAdminApp.useTeam(selectedTeamId) : null;
 
   return (
     <PageLayout
       title="Teams"
       actions={
-        <div className="flex gap-2">
-          <Button onClick={() => setCreateTeamsOpen(true)}>Create Team</Button>
-          <div className="flex items-center gap-2">
-            <Select onValueChange={(v) => setSelectedTeamId(v)}>
-              <SelectTrigger className="w-[200px]"><SelectValue placeholder="Select team" /></SelectTrigger>
-              <SelectContent>
-                {teams.map(t => (
-                  <SelectItem key={t.id} value={t.id}>{t.displayName}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <Button disabled={!selectedTeam} onClick={() => setInviteOpen(true)}>Invite to team</Button>
-          </div>
-        </div>
+        <Button onClick={() => setCreateTeamsOpen(true)}>Create Team</Button>
       }>
       <TeamTable teams={teams} />
-      {selectedTeam && (
-        <TeamInviteDialog team={selectedTeam} open={inviteOpen} onOpenChange={setInviteOpen} />
-      )}
       <CreateDialog
         open={createTeamsOpen}
         onOpenChange={setCreateTeamsOpen}
