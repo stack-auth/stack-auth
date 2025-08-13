@@ -2,7 +2,6 @@
 
 import { cn } from '@/lib/utils';
 import { checkVersion, VersionCheckResult } from '@/lib/version-check';
-import { useUser } from '@stackframe/stack';
 import { Button } from '@stackframe/stack-ui';
 import { BookOpen, HelpCircle, Lightbulb, TimerReset, X } from 'lucide-react';
 import { useEffect, useState } from 'react';
@@ -55,9 +54,10 @@ export function StackCompanion({ className, onExpandedChange }: StackCompanionPr
   const [activeItem, setActiveItem] = useState<string | null>(null);
   const [mounted, setMounted] = useState(false);
   const [versionCheckResult, setVersionCheckResult] = useState<VersionCheckResult>(null);
+  const [width, setWidth] = useState(320); // Default expanded width (80 * 4 = 320px)
+  const [isResizing, setIsResizing] = useState(false);
 
   // Get current user from Stack Auth
-  const user = useUser({ or: 'redirect', projectIdMustMatch: "internal" });
 
   // Handle hydration
   useEffect(() => {
@@ -80,6 +80,43 @@ export function StackCompanion({ className, onExpandedChange }: StackCompanionPr
     onExpandedChange?.(activeItem !== null);
   }, [activeItem, onExpandedChange]);
 
+  // Handle resize logic
+  const handleMouseDown = (e: React.MouseEvent) => {
+    setIsResizing(true);
+    e.preventDefault();
+  };
+
+  useEffect(() => {
+    const handleMouseMove = (e: MouseEvent) => {
+      if (!isResizing) return;
+
+      const rect = document.documentElement.getBoundingClientRect();
+      const newWidth = rect.width - e.clientX;
+
+      // Constrain width between 280px and 600px
+      const constrainedWidth = Math.max(280, Math.min(600, newWidth));
+      setWidth(constrainedWidth);
+    };
+
+    const handleMouseUp = () => {
+      setIsResizing(false);
+    };
+
+    if (isResizing) {
+      document.addEventListener('mousemove', handleMouseMove);
+      document.addEventListener('mouseup', handleMouseUp);
+      document.body.style.cursor = 'col-resize';
+      document.body.style.userSelect = 'none';
+    }
+
+    return () => {
+      document.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('mouseup', handleMouseUp);
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+    };
+  }, [isResizing]);
+
   // Don't render anything until mounted to avoid hydration issues
   if (!mounted) {
     return null;
@@ -89,12 +126,53 @@ export function StackCompanion({ className, onExpandedChange }: StackCompanionPr
 
   return (
     <div className={cn("relative", className)}>
+      {/* Resize Handle - positioned on outer container to straddle border */}
+      {isExpanded && (
+        <div
+          className={cn(
+            "absolute left-0 top-1/2 -translate-y-1/2 -translate-x-1/2 w-6 h-12 cursor-col-resize group z-30 flex items-center justify-center",
+            "transition-colors"
+          )}
+          onMouseDown={handleMouseDown}
+          title="Drag to resize panel"
+        >
+          {/* Pill-shaped Resize Nub */}
+          <div className={cn(
+            "w-2 h-8 rounded-full transition-all duration-200 flex items-center justify-center",
+            "bg-black dark:bg-white border-black dark:border-white shadow-sm",
+            "group-hover:bg-gray-700 group-hover:border-gray-700 dark:group-hover:bg-gray-200 dark:group-hover:border-gray-200",
+            isResizing ? "bg-blue-600 border-blue-600 dark:bg-blue-400 dark:border-blue-400 scale-110" : ""
+          )}>
+            {/* Grip lines */}
+            <div className="flex flex-col items-center justify-center space-y-0.5">
+              <div className={cn(
+                "w-0.5 h-1 rounded-full transition-colors",
+                "bg-white dark:bg-black group-hover:bg-white dark:group-hover:bg-black",
+                isResizing ? "bg-white dark:bg-black" : ""
+              )} />
+              <div className={cn(
+                "w-0.5 h-1 rounded-full transition-colors",
+                "bg-white dark:bg-black group-hover:bg-white dark:group-hover:bg-black",
+                isResizing ? "bg-white dark:bg-black" : ""
+              )} />
+              <div className={cn(
+                "w-0.5 h-1 rounded-full transition-colors",
+                "bg-white dark:bg-black group-hover:bg-white dark:group-hover:bg-black",
+                isResizing ? "bg-white dark:bg-black" : ""
+              )} />
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Single Expanding Sidebar */}
       <div
         className={cn(
-          "h-screen bg-background border-l shadow-lg flex transition-all duration-300 ease-in-out",
-          isExpanded ? "w-80" : "w-12"
+          "h-screen bg-background border-l shadow-lg flex relative",
+          isExpanded ? "" : "w-12",
+          !isResizing ? "transition-all duration-300 ease-in-out" : ""
         )}
+        style={isExpanded ? { width: `${width}px` } : undefined}
       >
         {/* Collapsed State - Vertical Buttons */}
         {!isExpanded && (
@@ -179,10 +257,10 @@ export function StackCompanion({ className, onExpandedChange }: StackCompanionPr
                       key={item.id}
                       onClick={() => setActiveItem(String(activeItem) === item.id ? null : item.id)}
                       className={cn(
-                        "flex items-center justify-center w-10 h-10 rounded-lg transition-none",
-                        isActive ? "bg-gray-200 dark:bg-muted shadow-md" : "hover:bg-muted",
-                        item.color
-                      )}
+                          "flex items-center justify-center w-10 h-10 rounded-lg transition-none",
+                          isActive ? "bg-gray-200 dark:bg-muted shadow-md" : "hover:bg-muted",
+                          item.color
+                        )}
                     >
                       <Icon className="h-5 w-5" />
                     </button>
@@ -192,13 +270,13 @@ export function StackCompanion({ className, onExpandedChange }: StackCompanionPr
 
               {/* Footer - Normal orientation text */}
               <div className={cn(
-                "h-12 border-t flex items-center justify-center",
-                versionCheckResult ? (versionCheckResult.severe ? "bg-red-500" : "bg-orange-500") : ""
-              )}>
-                <div className={cn(
-                  "text-[10px] font-medium text-center",
-                  versionCheckResult ? "text-white" : "text-muted-foreground"
+                  "h-12 border-t flex items-center justify-center",
+                  versionCheckResult ? (versionCheckResult.severe ? "bg-red-500" : "bg-orange-500") : ""
                 )}>
+                <div className={cn(
+                    "text-[10px] font-medium text-center",
+                    versionCheckResult ? "text-white" : "text-muted-foreground"
+                  )}>
                   v{packageJson.version}
                 </div>
               </div>
@@ -233,10 +311,10 @@ export function StackCompanion({ className, onExpandedChange }: StackCompanionPr
               {/* Content Body */}
               <div className="flex-1 overflow-y-auto p-3" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' } as React.CSSProperties}>
                 <style jsx>{`
-                  div::-webkit-scrollbar {
-                    display: none;
-                  }
-                `}</style>
+                    div::-webkit-scrollbar {
+                      display: none;
+                    }
+                  `}</style>
                 {activeItem === 'docs' && (
                   <div className="space-y-3">
                     <button
