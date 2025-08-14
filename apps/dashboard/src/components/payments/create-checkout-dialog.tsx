@@ -43,7 +43,7 @@ export function CreateCheckoutDialog(props: Props) {
     } else if (result.error instanceof KnownErrors.CustomerDoesNotExist) {
       toast({ title: "Customer with given customerId does not exist", variant: "destructive" });
     } else {
-      throw result.error;
+      toast({ title: "An unknown error occurred", variant: "destructive" });
     }
     return "prevent-close";
   };

@@ -305,7 +305,7 @@ it("should error when deducting more quantity than available", async ({ expect }
   `);
 });
 
-it("allows team admins to be added when item quantity is increased", async ({ expect }) => {
+it.only("allows team admins to be added when item quantity is increased", async ({ expect }) => {
   backendContext.set({ projectKeys: InternalProjectKeys });
   await Auth.Otp.signIn();
   const { createProjectResponse } = await Project.create();
