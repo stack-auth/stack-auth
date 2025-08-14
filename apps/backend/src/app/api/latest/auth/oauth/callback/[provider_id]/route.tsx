@@ -403,7 +403,7 @@ const handler = createSmartRouteHandler({
       } catch (error) {
         if (error instanceof InvalidClientError) {
           if (error.message.includes("redirect_uri") || error.message.includes("redirectUri")) {
-            console.log("User is trying to authorize OAuth with an invalid redirect URI", error, oauthRequest);
+            console.log("User is trying to authorize OAuth with an invalid redirect URI", error, { redirectUri: oauthRequest.query?.redirect_uri, clientId: oauthRequest.query?.client_id });
             throw new StatusError(400, "Invalid redirect URI. The URL you are trying to redirect to is not trusted. If it should be, add it to the list of trusted domains in the Stack Auth dashboard.");
           }
         } else if (error instanceof InvalidScopeError) {
