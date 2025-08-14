@@ -27,7 +27,6 @@ it("should error on invalid code", async ({ expect }) => {
 });
 
 it("should error on invalid price_id", async ({ expect }) => {
-  await Project.createAndSwitch();
   const { code } = await Payments.createPurchaseUrlAndGetCode();
   const response = await niceBackendFetch("/api/latest/payments/purchases/purchase-session", {
     method: "POST",
@@ -47,7 +46,6 @@ it("should error on invalid price_id", async ({ expect }) => {
 });
 
 it("should properly create subscription", async ({ expect }) => {
-  await Project.createAndSwitch();
   const { code } = await Payments.createPurchaseUrlAndGetCode();
   const response = await niceBackendFetch("/api/latest/payments/purchases/purchase-session", {
     method: "POST",
@@ -67,7 +65,6 @@ it("should properly create subscription", async ({ expect }) => {
 });
 
 it("should create purchase URL, validate code, and create purchase session", async ({ expect }) => {
-  await Project.createAndSwitch();
   const { code } = await Payments.createPurchaseUrlAndGetCode();
   const response = await niceBackendFetch("/api/latest/payments/purchases/purchase-session", {
     method: "POST",

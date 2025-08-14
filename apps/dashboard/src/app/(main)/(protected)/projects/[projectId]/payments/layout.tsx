@@ -24,7 +24,7 @@ export default function PaymentsLayout({ children }: { children: React.ReactNode
           <ConnectNotificationBanner
             onNotificationsChange={({ total }) => setBannerHasItems(total > 0)}
             collectionOptions={{
-              fields: "eventually_due",
+              fields: "currently_due",
             }}
           />
         </div>
