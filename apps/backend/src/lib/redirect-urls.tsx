@@ -6,8 +6,8 @@ import { Tenancy } from "./tenancies";
  * Normalizes a URL to include explicit default ports for comparison
  */
 function normalizePort(url: URL): string {
-  const defaultPorts: Record<string, string> = { 'https:': '443', 'http:': '80' };
-  const port = url.port || defaultPorts[url.protocol] || '';
+  const defaultPorts = new Map<string, string>([['https:', '443'], ['http:', '80']]);
+  const port = url.port || defaultPorts.get(url.protocol) || '';
   return port ? `${url.hostname}:${port}` : url.hostname;
 }
 
