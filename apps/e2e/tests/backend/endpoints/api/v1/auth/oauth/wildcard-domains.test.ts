@@ -269,7 +269,8 @@ describe("OAuth with wildcard domains", () => {
         oauth_providers: [{ id: "spotify", type: "shared" }],
       }
     });
-
+});
+    await InternalApiKey.createAndSetProjectKeys();
     // Configure multiple domains, only one matches
     const configResponse = await niceBackendFetch("/api/v1/internal/config/override", {
       method: "PATCH",
