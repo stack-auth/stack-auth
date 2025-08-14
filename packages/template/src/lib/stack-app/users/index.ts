@@ -15,6 +15,7 @@ import { AdminTeamPermission, TeamPermission } from "../permissions";
 import { AdminOwnedProject, AdminProjectCreateOptions, AdminProjectUpdateOptions } from "../projects";
 import { EditableTeamMemberProfile, ServerTeam, ServerTeamCreateOptions, Team, TeamCreateOptions } from "../teams";
 import { NotificationCategory } from "../notification-categories";
+import { Customer } from "../customers";
 
 
 export type Session = {
@@ -235,7 +236,7 @@ export type InternalUserExtra =
 
 export type User = BaseUser;
 
-export type CurrentUser = BaseUser & Auth & UserExtra;
+export type CurrentUser = BaseUser & Auth & UserExtra & Customer;
 
 export type CurrentInternalUser = CurrentUser & InternalUserExtra;
 
@@ -328,7 +329,7 @@ export type ServerBaseUser = {
  * A user including sensitive fields that should only be used on the server, never sent to the client
  * (such as sensitive information and serverMetadata).
  */
-export type ServerUser = ServerBaseUser & BaseUser & UserExtra;
+export type ServerUser = ServerBaseUser & BaseUser & UserExtra & Customer;
 
 export type CurrentServerUser = Auth & ServerUser;
 

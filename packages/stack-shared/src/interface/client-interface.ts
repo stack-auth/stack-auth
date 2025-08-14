@@ -16,6 +16,7 @@ import { deindent } from '../utils/strings';
 import { ConnectedAccountAccessTokenCrud } from './crud/connected-accounts';
 import { ContactChannelsCrud } from './crud/contact-channels';
 import { CurrentUserCrud } from './crud/current-user';
+import { ItemCrud } from './crud/items';
 import { NotificationPreferenceCrud } from './crud/notification-preferences';
 import { TeamApiKeysCrud, UserApiKeysCrud, teamApiKeysCreateInputSchema, teamApiKeysCreateOutputSchema, userApiKeysCreateInputSchema, userApiKeysCreateOutputSchema } from './crud/project-api-keys';
 import { ProjectPermissionsCrud } from './crud/project-permissions';
@@ -25,6 +26,7 @@ import { TeamInvitationCrud } from './crud/team-invitation';
 import { TeamMemberProfilesCrud } from './crud/team-member-profiles';
 import { TeamPermissionsCrud } from './crud/team-permissions';
 import { TeamsCrud } from './crud/teams';
+import { inlineOfferSchema } from '../schema-fields';
 
 export type ClientInterfaceOptions = {
   clientVersion: string,
@@ -1741,6 +1743,43 @@ export class StackClientInterface {
       requestType,
     );
     return response.json();
+  }
+
+  async getItem(options: {
+    teamId?: string,
+    userId?: string,
+    itemId: string,
+  }, session: InternalSession | null): Promise<ItemCrud['Client']['Read']> {
+    const customerId = options.teamId ?? options.userId;
+    const response = await this.sendClientRequest(
+      `/payments/items/${customerId}/${options.itemId}`,
+      {},
+      session,
+    );
+    return await response.json();
+  }
+
+  async createCheckoutUrl(
+    customer_id: string,
+    offerIdOrInline: string | yup.InferType<typeof inlineOfferSchema>,
+    session: InternalSession | null,
+  ): Promise<string> {
+    const offerBody = typeof offerIdOrInline === "string" ?
+      { offer_id: offerIdOrInline } :
+      { inline_offer: offerIdOrInline };
+    const response = await this.sendClientRequest(
+      "/payments/purchases/create-purchase-url",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({ customer_id, ...offerBody }),
+      },
+      session
+    );
+    const { url } = await response.json() as { url: string };
+    return url;
   }
 }
 

@@ -1,17 +1,22 @@
 'use client';
 
+import { FormDialog } from "@/components/form-dialog";
+import { InputField } from "@/components/form-fields";
 import { ProjectCard } from "@/components/project-card";
 import { useRouter } from "@/components/router";
 import { SearchBar } from "@/components/search-bar";
-import { AdminOwnedProject, useUser } from "@stackframe/stack";
+import { AdminOwnedProject, Team, useUser } from "@stackframe/stack";
+import { strictEmailSchema, yupObject } from "@stackframe/stack-shared/dist/schema-fields";
 import { groupBy } from "@stackframe/stack-shared/dist/utils/arrays";
 import { wait } from "@stackframe/stack-shared/dist/utils/promises";
 import { stringCompare } from "@stackframe/stack-shared/dist/utils/strings";
-import { Button, Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue, Typography } from "@stackframe/stack-ui";
-import { useEffect, useMemo, useState } from "react";
+import { Button, Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue, toast, Typography } from "@stackframe/stack-ui";
+import { UserPlus } from "lucide-react";
+import { Suspense, useEffect, useMemo, useState } from "react";
+import * as yup from "yup";
 
 
-export default function PageClient() {
+export default function PageClient(props: { inviteUser: (origin: string, teamId: string, email: string) => Promise<void> }) {
   const user = useUser({ or: 'redirect', projectIdMustMatch: "internal" });
   const rawProjects = user.useOwnedProjects();
   const teams = user.useTeams();
@@ -85,7 +90,17 @@ export default function PageClient() {
 
       {projectsByTeam.map(({ teamId, projects }) => (
         <div key={teamId} className="mb-4">
-          <Typography type="label" className="mb-2 ml-2">{teamId ? teamIdMap.get(teamId) : "No Team"}</Typography>
+          <Typography type="label" className="flex items-center">
+            {teamId && teams.find(t => t.id === teamId) && (
+              <Suspense fallback={<Button size="icon" variant="ghost" disabled><UserPlus className="w-4 h-4" /></Button>}>
+                <TeamAddUserDialog
+                  team={teams.find(t => t.id === teamId)!}
+                  onSubmit={(email) => props.inviteUser(window.location.origin, teamId, email)}
+                />
+              </Suspense>
+            )}
+            {teamId ? teamIdMap.get(teamId) : "No Team"}
+          </Typography>
           <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-4">
             {projects.map((project) => (
               <ProjectCard key={project.id} project={project} />
@@ -95,4 +110,34 @@ export default function PageClient() {
       ))}
     </div>
   );
+}
+
+const inviteFormSchema = yupObject({
+  email: strictEmailSchema("Please enter a valid email address").defined(),
+});
+
+function TeamAddUserDialog(props: {
+  team: Team,
+  onSubmit: (email: string) => Promise<void>,
+}) {
+  const users = props.team.useUsers();
+  const { quantity } = props.team.useItem("dashboard_admins");
+
+  const onSubmit = async (values: yup.InferType<typeof inviteFormSchema>) => {
+    if (users.length + 1 > quantity) {
+      toast({ variant: "destructive", title: "You have reached the maximum number of dashboard admins. Please upgrade your plan to add more admins." });
+      return "prevent-close-and-prevent-reset";
+    }
+    await props.onSubmit(values.email);
+    toast({ variant: "success", title: "Team invitation sent" });
+  };
+
+  return <FormDialog
+    title={"Invite a new user"}
+    formSchema={inviteFormSchema}
+    okButton={{ label: "Invite" }}
+    onSubmit={onSubmit}
+    trigger={<Button size="icon" variant="ghost"><UserPlus className="w-4 h-4" /></Button>}
+    render={(form) => <InputField control={form.control} name="email" placeholder="Email" />}
+  />;
 }

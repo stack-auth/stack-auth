@@ -1,0 +1,23 @@
+import { createCrud, CrudTypeOf } from "../../crud";
+import { yupNumber, yupObject, yupString } from "../../schema-fields";
+
+
+const itemReadSchema = yupObject({
+  id: yupString().defined(),
+  display_name: yupString().defined(),
+  quantity: yupNumber().defined(),
+}).defined();
+
+const itemUpdateSchema = yupObject({
+  quantity: yupNumber().defined(),
+  expires_at: yupString().optional(),
+  description: yupString().optional(),
+}).defined();
+
+
+export const itemCrud = createCrud({
+  clientReadSchema: itemReadSchema,
+  serverUpdateSchema: itemUpdateSchema,
+});
+
+export type ItemCrud = CrudTypeOf<typeof itemCrud>;

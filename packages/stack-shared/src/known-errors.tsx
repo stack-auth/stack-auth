@@ -1489,17 +1489,16 @@ const OfferCustomerTypeDoesNotMatch = createKnownErrorConstructor(
 const ItemQuantityInsufficientAmount = createKnownErrorConstructor(
   KnownError,
   "ITEM_QUANTITY_INSUFFICIENT_AMOUNT",
-  (itemId: string, customerId: string, quantity: number, availableQuantity: number) => [
+  (itemId: string, customerId: string, quantity: number) => [
     400,
-    `The item with ID ${JSON.stringify(itemId)} has an insufficient quantity for the customer with ID ${JSON.stringify(customerId)}. The customer has ${availableQuantity} credits of this item available, but an attempt was made to charge ${quantity} credits.`,
+    `The item with ID ${JSON.stringify(itemId)} has an insufficient quantity for the customer with ID ${JSON.stringify(customerId)}. An attempt was made to charge ${quantity} credits.`,
     {
       item_id: itemId,
       customer_id: customerId,
       quantity,
-      available_quantity: availableQuantity,
     },
   ] as const,
-  (json) => [json.item_id, json.customer_id, json.quantity, json.available_quantity] as const,
+  (json) => [json.item_id, json.customer_id, json.quantity] as const,
 );
 
 
