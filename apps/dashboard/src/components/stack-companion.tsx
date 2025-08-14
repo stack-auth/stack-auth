@@ -73,8 +73,6 @@ export function StackCompanion({ className, onExpandedChange }: StackCompanionPr
   const [width, setWidth] = useState(DEFAULT_SIDEBAR_WIDTH);
   const [isResizing, setIsResizing] = useState(false);
 
-  // Get current user from Stack Auth
-
   // Handle hydration
   useEffect(() => {
     setMounted(true);
