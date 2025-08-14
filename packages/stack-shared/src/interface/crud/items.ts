@@ -8,9 +8,16 @@ const itemReadSchema = yupObject({
   quantity: yupNumber().defined(),
 }).defined();
 
+const itemUpdateSchema = yupObject({
+  quantity: yupNumber().defined(),
+  expires_at: yupString().optional(),
+  description: yupString().optional(),
+}).defined();
+
 
 export const itemCrud = createCrud({
   clientReadSchema: itemReadSchema,
+  serverUpdateSchema: itemUpdateSchema,
 });
 
 export type ItemCrud = CrudTypeOf<typeof itemCrud>;

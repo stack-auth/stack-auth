@@ -33,7 +33,7 @@ import { SendEmailOptions } from "../../email";
 
 // NEXT_LINE_PLATFORM react-like
 import { useAsyncCache } from "./common";
-import { Item } from "../../customers";
+import { Item, ServerItem } from "../../customers";
 
 export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, ProjectId extends string> extends _StackClientAppImplIncomplete<HasTokenStore, ProjectId> {
   declare protected _interface: StackServerInterface;
@@ -679,30 +679,39 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
       },
       async getItem(itemId: string) {
         const result = Result.orThrow(await app._serverTeamItemsCache.getOrWait([crud.id, itemId], "write-only"));
-        return app._serverItemFromCrud(result);
+        return app._serverItemFromCrud(crud.id, result);
       },
       // IF_PLATFORM react-like
       useItem(itemId: string) {
         const result = useAsyncCache(app._serverTeamItemsCache, [crud.id, itemId] as const, "team.useItem()");
-        return useMemo(() => app._serverItemFromCrud(result), [result]);
+        return useMemo(() => app._serverItemFromCrud(crud.id, result), [result]);
       },
       // END_PLATFORM
     };
   }
 
-  protected _serverItemFromCrud(crud: ItemCrud['Client']['Read']): Item {
+  protected _serverItemFromCrud(customerId: string, crud: ItemCrud['Client']['Read']): ServerItem {
+    const app = this;
     return {
       displayName: crud.display_name,
       quantity: crud.quantity,
       nonNegativeQuantity: Math.max(0, crud.quantity),
-      increaseQuantity: async (amount: number) => {
-        throw new Error("unimplemented");
+      increaseQuantity: async (quantity: number) => {
+        await app._interface.updateItemQuantity(customerId, crud.id, { quantity });
       },
-      decreaseQuantity: async (amount: number) => {
-        throw new Error("unimplemented");
+      decreaseQuantity: async (quantity: number) => {
+        await app._interface.updateItemQuantity(customerId, crud.id, { quantity: -quantity });
       },
-      tryDecreaseQuantity: async (amount: number) => {
-        throw new Error("unimplemented");
+      tryDecreaseQuantity: async (quantity: number) => {
+        try {
+          await app._interface.updateItemQuantity(customerId, crud.id, { quantity: -quantity });
+          return true;
+        } catch (error) {
+          if (error instanceof KnownErrors.ItemQuantityInsufficientAmount) {
+            return false;
+          }
+          throw error;
+        }
       },
     };
   }

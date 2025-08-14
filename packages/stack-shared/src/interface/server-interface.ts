@@ -11,6 +11,7 @@ import {
 import { ConnectedAccountAccessTokenCrud } from "./crud/connected-accounts";
 import { ContactChannelsCrud } from "./crud/contact-channels";
 import { CurrentUserCrud } from "./crud/current-user";
+import { ItemCrud } from "./crud/items";
 import { NotificationPreferenceCrud } from "./crud/notification-preferences";
 import { ProjectPermissionsCrud } from "./crud/project-permissions";
 import { SessionsCrud } from "./crud/sessions";
@@ -829,5 +830,23 @@ export class StackServerInterface extends StackClientInterface {
       return Result.error(res.error);
     }
     return Result.ok(undefined);
+  }
+
+  async updateItemQuantity(
+    customerId: string,
+    itemId: string,
+    data: ItemCrud['Server']['Update'],
+  ): Promise<void> {
+    await this.sendServerRequest(
+      `/payments/items/${customerId}/${itemId}`,
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+        },
+        body: JSON.stringify(data),
+      },
+      null
+    );
   }
 }

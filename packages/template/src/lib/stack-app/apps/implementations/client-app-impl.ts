@@ -773,12 +773,12 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
       },
       async getItem(itemId: string) {
         const result = Result.orThrow(await app._teamItemCache.getOrWait([session, crud.id, itemId], "write-only"));
-        return app._clientItemFromCrud(session, result);
+        return app._clientItemFromCrud(result);
       },
       // IF_PLATFORM react-like
       useItem(itemId: string) {
         const result = useAsyncCache(app._teamItemCache, [session, crud.id, itemId] as const, "team.useItem()");
-        return app._clientItemFromCrud(session, result);
+        return app._clientItemFromCrud(result);
       },
       // END_PLATFORM
     };
@@ -826,21 +826,12 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
     };
   }
 
-  protected _clientItemFromCrud(session: InternalSession, crud: ItemCrud['Client']['Read']): Item {
+  protected _clientItemFromCrud(crud: ItemCrud['Client']['Read']): Item {
     const app = this;
     return {
       displayName: crud.display_name,
       quantity: crud.quantity,
       nonNegativeQuantity: Math.max(0, crud.quantity),
-      increaseQuantity: async (quantity: number) => {
-        throw new Error("unimplemented");
-      },
-      decreaseQuantity: async (quantity: number) => {
-        throw new Error("unimplemented");
-      },
-      tryDecreaseQuantity: (quantity: number) => {
-        throw new Error("unimplemented");
-      },
     };
   }
 

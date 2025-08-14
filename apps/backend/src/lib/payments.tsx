@@ -126,7 +126,6 @@ export async function getItemQuantityForCustomer(options: {
 }) {
   const itemConfig = getOrUndefined(options.tenancy.config.payments.items, options.itemId);
   const defaultQuantity = itemConfig?.default.quantity ?? 0;
-  console.log("defaultQuantity", defaultQuantity, { tenancyId: options.tenancy.id, customerId: options.customerId, itemId: options.itemId });
   const subscriptions = await options.prisma.subscription.findMany({
     where: {
       tenancyId: options.tenancy.id,
@@ -136,7 +135,6 @@ export async function getItemQuantityForCustomer(options: {
       }
     },
   });
-  console.log("subscriptions", subscriptions);
 
   const subscriptionQuantity = subscriptions.reduce((acc, subscription) => {
     const offer = subscription.offer as yup.InferType<typeof offerSchema>;
@@ -158,7 +156,6 @@ export async function getItemQuantityForCustomer(options: {
       quantity: true,
     },
   });
-  console.log("itemQuantityChange", _sum.quantity);
   return subscriptionQuantity + (_sum.quantity ?? 0) + defaultQuantity;
 }
 

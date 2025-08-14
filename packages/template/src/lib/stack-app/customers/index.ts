@@ -21,7 +21,6 @@ export type InlineOffer = {
 
 export type Item = {
   displayName: string,
-
   /**
    * May be negative.
    */
@@ -30,7 +29,9 @@ export type Item = {
    * Equal to Math.max(0, quantity).
    */
   nonNegativeQuantity: number,
+};
 
+export type ServerItem = Item & {
   increaseQuantity(amount: number): Promise<void>,
   /**
    * Decreases the quantity by the given amount.

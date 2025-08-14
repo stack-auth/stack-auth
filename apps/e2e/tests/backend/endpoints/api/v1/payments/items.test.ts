@@ -1,6 +1,6 @@
 import { describe, expect } from "vitest";
 import { it } from "../../../../../helpers";
-import { Project, User, niceBackendFetch } from "../../../../backend-helpers";
+import { Auth, InternalProjectKeys, Project, User, backendContext, createMailbox, niceBackendFetch } from "../../../../backend-helpers";
 
 async function updateConfig(config: any) {
   const response = await niceBackendFetch(`/api/latest/internal/config/override`, {
@@ -331,6 +331,61 @@ it("should error when deducting more quantity than available", async ({ expect }
         "x-stack-known-error": "ITEM_QUANTITY_INSUFFICIENT_AMOUNT",
         <some fields may have been hidden>,
       },
+    }
+  `);
+});
+
+it("allows team admins to be added when item quantity is increased", async ({ expect }) => {
+  backendContext.set({ projectKeys: InternalProjectKeys });
+  await Auth.Otp.signIn();
+  const { createProjectResponse } = await Project.create();
+  const ownerTeamId: string = createProjectResponse.body.owner_team_id;
+
+  await niceBackendFetch(`/api/v1/payments/items/${ownerTeamId}/dashboard_admins`, {
+    method: "POST",
+    accessType: "admin",
+    body: {
+      quantity: 1,
+    },
+  });
+
+  const mailboxB = createMailbox();
+  const sendInvitationResponse = await niceBackendFetch("/api/v1/team-invitations/send-code", {
+    method: "POST",
+    accessType: "server",
+    body: {
+      email: mailboxB.emailAddress,
+      team_id: ownerTeamId,
+      callback_url: "http://localhost:12345/some-callback-url",
+    },
+  });
+  expect(sendInvitationResponse).toMatchInlineSnapshot(`
+    NiceResponse {
+      "status": 200,
+      "body": {
+        "id": "<stripped UUID>",
+        "success": true,
+      },
+      "headers": Headers { <some fields may have been hidden> },
+    }
+  `);
+
+  backendContext.set({ mailbox: mailboxB });
+  await Auth.Otp.signIn();
+
+  const acceptResponse = await niceBackendFetch("/api/v1/team-invitations/accept", {
+    method: "POST",
+    accessType: "client",
+    body: {
+      code: (await mailboxB.fetchMessages()).findLast((m) => m.subject.includes("join"))?.body?.text.match(/http:\/\/localhost:12345\/some-callback-url\?code=([a-zA-Z0-9]+)/)?.[1],
+    },
+  });
+
+  expect(acceptResponse).toMatchInlineSnapshot(`
+    NiceResponse {
+      "status": 200,
+      "body": {},
+      "headers": Headers { <some fields may have been hidden> },
     }
   `);
 });
