@@ -78,6 +78,10 @@ export const teamInvitationCodeHandler = createVerificationCodeHandler({
           teamId: data.team_id,
         },
       });
+      const item = tenancy.config.payments.items["dashboard_admins"] as any;
+      if (!item) {
+        throw new KnownErrors.ItemNotFound("dashboard_admins");
+      }
       const maxDashboardAdmins = await getItemQuantityForCustomer({
         prisma,
         tenancy,
