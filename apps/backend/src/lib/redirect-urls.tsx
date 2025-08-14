@@ -30,7 +30,7 @@ function portsMatch(url1: URL, url2: URL): boolean {
 /**
  * Validates a URL against a domain pattern (with or without wildcards)
  */
-function matchesDomain(testUrl: URL, pattern: string, handlerPath: string): boolean {
+function matchesDomain(testUrl: URL, pattern: string): boolean {
   const baseUrl = createUrlIfValid(pattern);
 
   // If pattern is invalid as a URL, it might contain wildcards
@@ -42,7 +42,7 @@ function matchesDomain(testUrl: URL, pattern: string, handlerPath: string): bool
       return false;
     }
 
-    const [, protocol, hostPattern, basePath] = match;
+    const [, protocol, hostPattern] = match;
 
     // Check protocol
     if (testUrl.protocol + '//' !== protocol) {
@@ -53,26 +53,17 @@ function matchesDomain(testUrl: URL, pattern: string, handlerPath: string): bool
     const hasPortInPattern = hostPattern.includes(':');
     if (hasPortInPattern) {
       // Pattern includes port - match against normalized host:port
-      if (!matchHostnamePattern(hostPattern, normalizePort(testUrl))) {
-        return false;
-      }
+      return matchHostnamePattern(hostPattern, normalizePort(testUrl));
     } else {
       // Pattern doesn't include port - match hostname only, require default port
-      if (!matchHostnamePattern(hostPattern, testUrl.hostname) || !isDefaultPort(testUrl)) {
-        return false;
-      }
+      return matchHostnamePattern(hostPattern, testUrl.hostname) && isDefaultPort(testUrl);
     }
-
-    // Check path
-    const fullPath = basePath === '/' ? handlerPath : basePath + handlerPath;
-    return testUrl.pathname.startsWith(fullPath || '/');
   }
 
   // For non-wildcard patterns, use URL comparison
   return baseUrl.protocol === testUrl.protocol &&
          baseUrl.hostname === testUrl.hostname &&
-         portsMatch(baseUrl, testUrl) &&
-         testUrl.pathname.startsWith(handlerPath || '/');
+         portsMatch(baseUrl, testUrl);
 }
 
 export function validateRedirectUrl(
@@ -89,6 +80,6 @@ export function validateRedirectUrl(
 
   // Check trusted domains
   return Object.values(tenancy.config.domains.trustedDomains).some(domain =>
-    domain.baseUrl && matchesDomain(url, domain.baseUrl, domain.handlerPath || '/')
+    domain.baseUrl && matchesDomain(url, domain.baseUrl)
   );
 }

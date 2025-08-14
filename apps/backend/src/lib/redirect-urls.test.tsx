@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import { validateRedirectUrl } from './redirect-urls';
 import { Tenancy } from './tenancies';
 
@@ -29,8 +29,10 @@ describe('validateRedirectUrl', () => {
 
       expect(validateRedirectUrl('https://example.com/handler', tenancy)).toBe(true);
       expect(validateRedirectUrl('https://example.com/handler/callback', tenancy)).toBe(true);
-      expect(validateRedirectUrl('https://example.com/other', tenancy)).toBe(false);
-      expect(validateRedirectUrl('https://other.com/handler', tenancy)).toBe(false);
+      expect(validateRedirectUrl('https://example.com/other', tenancy)).toBe(true); // Any path on trusted domain is valid
+      expect(validateRedirectUrl('https://example.com/', tenancy)).toBe(true); // Root path is also valid
+      expect(validateRedirectUrl('https://other.com/handler', tenancy)).toBe(false); // Different domain is not trusted
+      expect(validateRedirectUrl('https://example.com.other.com/handler', tenancy)).toBe(false); // Similar different domain is also not trusted
     });
 
     it('should validate protocol matching', () => {
@@ -44,7 +46,8 @@ describe('validateRedirectUrl', () => {
       });
 
       expect(validateRedirectUrl('https://example.com/handler', tenancy)).toBe(true);
-      expect(validateRedirectUrl('http://example.com/handler', tenancy)).toBe(false);
+      expect(validateRedirectUrl('https://example.com/any/path', tenancy)).toBe(true); // Any path is valid
+      expect(validateRedirectUrl('http://example.com/handler', tenancy)).toBe(false); // Wrong protocol
     });
   });
 
@@ -60,10 +63,11 @@ describe('validateRedirectUrl', () => {
       });
 
       expect(validateRedirectUrl('https://api.example.com/handler', tenancy)).toBe(true);
-      expect(validateRedirectUrl('https://www.example.com/handler', tenancy)).toBe(true);
-      expect(validateRedirectUrl('https://staging.example.com/handler', tenancy)).toBe(true);
-      expect(validateRedirectUrl('https://example.com/handler', tenancy)).toBe(false);
-      expect(validateRedirectUrl('https://api.v2.example.com/handler', tenancy)).toBe(false);
+      expect(validateRedirectUrl('https://api.example.com/any/path', tenancy)).toBe(true); // Any path is valid
+      expect(validateRedirectUrl('https://www.example.com/', tenancy)).toBe(true); // Root path is valid
+      expect(validateRedirectUrl('https://staging.example.com/other', tenancy)).toBe(true);
+      expect(validateRedirectUrl('https://example.com/handler', tenancy)).toBe(false); // Not a subdomain
+      expect(validateRedirectUrl('https://api.v2.example.com/handler', tenancy)).toBe(false); // Too many subdomains for single *
     });
 
     it('should validate double wildcard patterns', () => {
@@ -77,9 +81,10 @@ describe('validateRedirectUrl', () => {
       });
 
       expect(validateRedirectUrl('https://api.example.com/handler', tenancy)).toBe(true);
-      expect(validateRedirectUrl('https://api.v2.example.com/handler', tenancy)).toBe(true);
-      expect(validateRedirectUrl('https://a.b.c.example.com/handler', tenancy)).toBe(true);
-      expect(validateRedirectUrl('https://example.com/handler', tenancy)).toBe(false);
+      expect(validateRedirectUrl('https://api.example.com/', tenancy)).toBe(true); // Root path is valid
+      expect(validateRedirectUrl('https://api.v2.example.com/other/path', tenancy)).toBe(true); // Any path is valid
+      expect(validateRedirectUrl('https://a.b.c.example.com/deep/nested/path', tenancy)).toBe(true);
+      expect(validateRedirectUrl('https://example.com/handler', tenancy)).toBe(false); // Not a subdomain
     });
 
     it('should validate wildcard patterns with prefixes', () => {
@@ -93,10 +98,10 @@ describe('validateRedirectUrl', () => {
       });
 
       expect(validateRedirectUrl('https://api-v1.example.com/handler', tenancy)).toBe(true);
-      expect(validateRedirectUrl('https://api-v2.example.com/handler', tenancy)).toBe(true);
-      expect(validateRedirectUrl('https://api-prod.example.com/handler', tenancy)).toBe(true);
-      expect(validateRedirectUrl('https://api.example.com/handler', tenancy)).toBe(false);
-      expect(validateRedirectUrl('https://v1-api.example.com/handler', tenancy)).toBe(false);
+      expect(validateRedirectUrl('https://api-v2.example.com/any/path', tenancy)).toBe(true); // Any path is valid
+      expect(validateRedirectUrl('https://api-prod.example.com/', tenancy)).toBe(true); // Root path is valid
+      expect(validateRedirectUrl('https://api.example.com/handler', tenancy)).toBe(false); // Missing prefix
+      expect(validateRedirectUrl('https://v1-api.example.com/handler', tenancy)).toBe(false); // Wrong prefix position
     });
 
     it('should validate multiple wildcard patterns', () => {
@@ -110,9 +115,10 @@ describe('validateRedirectUrl', () => {
       });
 
       expect(validateRedirectUrl('https://mail.example.org/handler', tenancy)).toBe(true);
-      expect(validateRedirectUrl('https://api.company.org/handler', tenancy)).toBe(true);
-      expect(validateRedirectUrl('https://example.org/handler', tenancy)).toBe(false);
-      expect(validateRedirectUrl('https://a.b.c.org/handler', tenancy)).toBe(false);
+      expect(validateRedirectUrl('https://mail.example.org/any/path', tenancy)).toBe(true); // Any path is valid
+      expect(validateRedirectUrl('https://api.company.org/', tenancy)).toBe(true); // Root path is valid
+      expect(validateRedirectUrl('https://example.org/handler', tenancy)).toBe(false); // Not enough subdomain levels
+      expect(validateRedirectUrl('https://a.b.c.org/handler', tenancy)).toBe(false); // Too many subdomain levels
     });
   });
 
@@ -145,7 +151,7 @@ describe('validateRedirectUrl', () => {
   });
 
   describe('path validation', () => {
-    it('should validate handler path matching', () => {
+    it('should allow any path on trusted domains (handlerPath is only a default)', () => {
       const tenancy = createMockTenancy({
         domains: {
           allowLocalhost: false,
@@ -155,13 +161,15 @@ describe('validateRedirectUrl', () => {
         },
       });
 
+      // All paths on the trusted domain should be valid
       expect(validateRedirectUrl('https://example.com/auth/handler', tenancy)).toBe(true);
       expect(validateRedirectUrl('https://example.com/auth/handler/callback', tenancy)).toBe(true);
-      expect(validateRedirectUrl('https://example.com/auth', tenancy)).toBe(false);
-      expect(validateRedirectUrl('https://example.com/other/handler', tenancy)).toBe(false);
+      expect(validateRedirectUrl('https://example.com/auth', tenancy)).toBe(true); // Any path is valid
+      expect(validateRedirectUrl('https://example.com/other/handler', tenancy)).toBe(true); // Any path is valid
+      expect(validateRedirectUrl('https://example.com/', tenancy)).toBe(true); // Root is valid
     });
 
-    it('should work with wildcard domains and path validation', () => {
+    it('should work with wildcard domains (any path is valid)', () => {
       const tenancy = createMockTenancy({
         domains: {
           allowLocalhost: false,
@@ -171,10 +179,12 @@ describe('validateRedirectUrl', () => {
         },
       });
 
+      // All paths on matched domains should be valid
       expect(validateRedirectUrl('https://api.example.com/api/auth', tenancy)).toBe(true);
       expect(validateRedirectUrl('https://app.example.com/api/auth/callback', tenancy)).toBe(true);
-      expect(validateRedirectUrl('https://api.example.com/api', tenancy)).toBe(false);
-      expect(validateRedirectUrl('https://api.example.com/other/auth', tenancy)).toBe(false);
+      expect(validateRedirectUrl('https://api.example.com/api', tenancy)).toBe(true); // Any path is valid
+      expect(validateRedirectUrl('https://api.example.com/other/auth', tenancy)).toBe(true); // Any path is valid
+      expect(validateRedirectUrl('https://api.example.com/', tenancy)).toBe(true); // Root is valid
     });
   });
 
@@ -453,9 +463,13 @@ describe('validateRedirectUrl', () => {
         },
       });
 
+      // Any path on trusted domains should be valid
       expect(validateRedirectUrl('https://example.com/handler', tenancy)).toBe(true);
+      expect(validateRedirectUrl('https://example.com/any/path', tenancy)).toBe(true);
       expect(validateRedirectUrl('https://api.staging.com/auth', tenancy)).toBe(true);
+      expect(validateRedirectUrl('https://api.staging.com/different/path', tenancy)).toBe(true);
       expect(validateRedirectUrl('https://api.v2.production.com/callback', tenancy)).toBe(true);
+      expect(validateRedirectUrl('https://api.v2.production.com/', tenancy)).toBe(true);
       expect(validateRedirectUrl('https://other.com/handler', tenancy)).toBe(false);
     });
   });

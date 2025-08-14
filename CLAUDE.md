@@ -75,3 +75,6 @@ To see all development ports, refer to the index.html of `apps/dev-launchpad/pub
 - Sometimes, the typecheck will give errors along the line of "Cannot assign Buffer to Uint8Array" or similar, on changes that are completely unrelated to your own changes. If that happens, tell the user to run `pnpm clean && pnpm i && pnpm run codegen && pnpm build:packages`, and restart the dev server (you cannot run this yourself). After that's done, the typecheck should pass.
 - When writing tests, prefer .toMatchInlineSnapshot over other selectors, if possible. You can check (and modify) the snapshot-serializer.ts file to see how the snapshots are formatted and how non-deterministic values are handled.
 - Whenever you learn something new, or at the latest right before you call the `Stop` tool, write whatever you learned into the ./claude/CLAUDE-KNOWLEDGE.md file, in the Q&A format in there. You will later be able to look up knowledge from there (based on the question you asked).
+
+### Code-related
+- Use ES6 maps instead of records wherever you can.
