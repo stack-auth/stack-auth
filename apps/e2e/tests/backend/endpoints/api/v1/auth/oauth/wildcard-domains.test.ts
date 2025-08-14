@@ -89,7 +89,7 @@ describe("OAuth with wildcard domains", () => {
             baseUrl: 'http://*.localhost:8107',
             handlerPath: '/handler',
           },
-          'domains.allowLocalhost': true,
+          'domains.allowLocalhost': false,
         }),
       },
     });
