@@ -90,9 +90,7 @@ export default function PageClient() {
       title="Payments"
       description="Manage your payment offers and items"
       actions={<div className="flex gap-2">
-        {paymentsConfig.stripeAccountSetupComplete ? (
-          <CreatePurchaseDialog />
-        ) : (
+        {!paymentsConfig.stripeAccountSetupComplete && (
           <Button onClick={setupPayments}>Complete Setup</Button>
         )}
       </div>}
@@ -277,53 +275,5 @@ function CreateItemDialog({ open, onOpenChange, project }: { open: boolean, onOp
         });
       }}
     />
-  );
-}
-
-
-function CreatePurchaseDialog() {
-  const stackAdminApp = useAdminApp();
-  const [purchaseUrl, setPurchaseUrl] = useState<string | null>(null);
-
-  const createPurchaseUrl = async (data: { customerId: string, offerId: string }) => {
-    const result = await Result.fromPromise(stackAdminApp.createPurchaseUrl(data));
-    if (result.status === "ok") {
-      setPurchaseUrl(result.data);
-      return;
-    }
-    if (result.error instanceof KnownErrors.OfferDoesNotExist) {
-      toast({ title: "Offer with given offerId does not exist", variant: "destructive" });
-    } else if (result.error instanceof KnownErrors.OfferCustomerTypeDoesNotMatch) {
-      toast({ title: "Customer type does not match expected type for this offer", variant: "destructive" });
-    } else if (result.error instanceof KnownErrors.CustomerDoesNotExist) {
-      toast({ title: "Customer with given customerId does not exist", variant: "destructive" });
-    } else {
-      throw result.error;
-    }
-    return "prevent-close";
-  };
-
-  return (
-    <>
-      <SmartFormDialog
-        trigger={<Button>Create Purchase URL</Button>}
-        title="Create New Purchase"
-        formSchema={yup.object({
-          customerId: yup.string().uuid().defined().label("Customer ID"),
-          offerId: yup.string().defined().label("Offer ID"),
-        })}
-        cancelButton
-        okButton={{ label: "Create Purchase URL" }}
-        onSubmit={values => createPurchaseUrl(values)}
-      />
-      <ActionDialog
-        open={purchaseUrl !== null}
-        onOpenChange={() => setPurchaseUrl(null)}
-        title="Purchase URL"
-        okButton
-      >
-        <InlineCode>{purchaseUrl}</InlineCode>
-      </ActionDialog>
-    </>
   );
 }
