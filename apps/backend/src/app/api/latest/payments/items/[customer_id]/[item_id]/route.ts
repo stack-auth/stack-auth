@@ -104,6 +104,8 @@ export const POST = createSmartRouteHandler({
       customerId: req.params.customer_id,
       itemId: req.params.item_id,
       quantity: req.body.quantity,
+      expiresAt: req.body.expires_at ? new Date(req.body.expires_at) : null,
+      description: req.body.description ?? null,
     });
     if (!success) {
       throw new KnownErrors.ItemQuantityInsufficientAmount(req.params.item_id, req.params.customer_id, req.body.quantity);

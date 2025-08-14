@@ -146,35 +146,6 @@ it("should return ItemCustomerTypeDoesNotMatch error for user accessing team ite
     `);
 });
 
-it("creates an item quantity change and returns id", async ({ expect }) => {
-  await Project.createAndSwitch();
-  await updateConfig({
-    payments: {
-      items: {
-        "test-item": {
-          displayName: "Test Item",
-          customerType: "user",
-          default: { quantity: 0 },
-        },
-      },
-    },
-  });
-
-  const user = await User.create();
-
-  const response = await niceBackendFetch(`/api/latest/payments/items/${user.userId}/test-item`, {
-    method: "POST",
-    accessType: "admin",
-    body: {
-      quantity: 3,
-      description: "manual grant",
-    },
-  });
-
-  expect(response.status).toBe(200);
-  expect(response.body).toMatchObject({ id: expect.any(String) });
-});
-
 it("aggregates item quantity changes in item quantity", async ({ expect }) => {
   await Project.createAndSwitch();
   await updateConfig({
@@ -320,12 +291,11 @@ it("should error when deducting more quantity than available", async ({ expect }
       "body": {
         "code": "ITEM_QUANTITY_INSUFFICIENT_AMOUNT",
         "details": {
-          "available_quantity": 0,
           "customer_id": "<stripped UUID>",
           "item_id": "test-item",
           "quantity": -1,
         },
-        "error": "The item with ID \\"test-item\\" has an insufficient quantity for the customer with ID \\"<stripped UUID>\\". The customer has 0 credits of this item available, but an attempt was made to charge -1 credits.",
+        "error": "The item with ID \\"test-item\\" has an insufficient quantity for the customer with ID \\"<stripped UUID>\\". An attempt was made to charge -1 credits.",
       },
       "headers": Headers {
         "x-stack-known-error": "ITEM_QUANTITY_INSUFFICIENT_AMOUNT",

@@ -165,6 +165,8 @@ export async function tryCreateItemQuantityChange(options: {
   customerId: string,
   itemId: string,
   quantity: number,
+  expiresAt: Date | null,
+  description: string | null,
 }) {
   const currentQuantity = await getItemQuantityForCustomer(options);
   if (currentQuantity + options.quantity < 0) {
@@ -176,6 +178,8 @@ export async function tryCreateItemQuantityChange(options: {
       customerId: options.customerId,
       itemId: options.itemId,
       quantity: options.quantity,
+      expiresAt: options.expiresAt,
+      description: options.description,
     },
   });
   return true;
