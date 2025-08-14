@@ -26,6 +26,7 @@ import { TeamInvitationCrud } from './crud/team-invitation';
 import { TeamMemberProfilesCrud } from './crud/team-member-profiles';
 import { TeamPermissionsCrud } from './crud/team-permissions';
 import { TeamsCrud } from './crud/teams';
+import { inlineOfferSchema } from '../schema-fields';
 
 export type ClientInterfaceOptions = {
   clientVersion: string,
@@ -1758,5 +1759,27 @@ export class StackClientInterface {
     return await response.json();
   }
 
+  async createCheckoutUrl(
+    customer_id: string,
+    offerIdOrInline: string | yup.InferType<typeof inlineOfferSchema>,
+    session: InternalSession | null,
+  ): Promise<string> {
+    const offerBody = typeof offerIdOrInline === "string" ?
+      { offer_id: offerIdOrInline } :
+      { inline_offer: offerIdOrInline };
+    const response = await this.sendClientRequest(
+      "/payments/purchases/create-purchase-url",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({ customer_id, ...offerBody }),
+      },
+      session
+    );
+    const { url } = await response.json() as { url: string };
+    return url;
+  }
 }
 

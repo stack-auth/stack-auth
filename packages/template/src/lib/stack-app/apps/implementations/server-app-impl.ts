@@ -33,7 +33,7 @@ import { SendEmailOptions } from "../../email";
 
 // NEXT_LINE_PLATFORM react-like
 import { useAsyncCache } from "./common";
-import { Item, ServerItem } from "../../customers";
+import { InlineOffer, ServerItem } from "../../customers";
 
 export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, ProjectId extends string> extends _StackClientAppImplIncomplete<HasTokenStore, ProjectId> {
   declare protected _interface: StackServerInterface;
@@ -159,6 +159,12 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
   private readonly _serverTeamItemsCache = createCache<[string, string], ItemCrud['Client']['Read']>(
     async ([teamId, itemId]) => {
       return await this._interface.getItem({ teamId, itemId }, null);
+    }
+  );
+
+  private readonly _serverUserItemsCache = createCache<[string, string], ItemCrud['Client']['Read']>(
+    async ([userId, itemId]) => {
+      return await this._interface.getItem({ userId, itemId }, null);
     }
   );
 
@@ -562,6 +568,19 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
         await app._serverUserApiKeysCache.refresh([crud.id]);
         return app._serverApiKeyFromCrud(result);
       },
+      async createCheckoutUrl(offerIdOrInline: string | InlineOffer) {
+        return await app._interface.createCheckoutUrl(crud.id, offerIdOrInline, null);
+      },
+      async getItem(itemId: string) {
+        const result = Result.orThrow(await app._serverUserItemsCache.getOrWait([crud.id, itemId], "write-only"));
+        return app._serverItemFromCrud(crud.id, result);
+      },
+      // IF_PLATFORM react-like
+      useItem(itemId: string) {
+        const result = useAsyncCache(app._serverUserItemsCache, [crud.id, itemId] as const, "user.useItem()");
+        return useMemo(() => app._serverItemFromCrud(crud.id, result), [result]);
+      },
+      // END_PLATFORM
     };
   }
 
@@ -687,6 +706,9 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
         return useMemo(() => app._serverItemFromCrud(crud.id, result), [result]);
       },
       // END_PLATFORM
+      async createCheckoutUrl(offerIdOrInline: string | InlineOffer) {
+        return await app._interface.createCheckoutUrl(crud.id, offerIdOrInline, null);
+      },
     };
   }
 

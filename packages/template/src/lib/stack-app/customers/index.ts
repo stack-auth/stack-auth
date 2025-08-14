@@ -1,23 +1,8 @@
-import { SupportedCurrency } from "@stackframe/stack-shared/dist/utils/currencies";
-import { DayInterval } from "@stackframe/stack-shared/dist/utils/dates";
 import { AsyncStoreProperty } from "../common";
+import { inlineOfferSchema } from "@stackframe/stack-shared/dist/schema-fields";
+import * as yup from "yup";
 
-export type InlineOffer = {
-  displayName: string,
-  freeTrial?: undefined | DayInterval,
-  prices: Record<string,
-    & Partial<Record<SupportedCurrency["code"], number>>
-    & {
-      interval?: undefined | DayInterval,
-      freeTrial?: undefined | DayInterval,
-    }
-  >,
-  includedItems: Record<string, {
-    quantity: number,
-    repeat?: "never" | DayInterval | undefined,
-    expires?: "never" | "when-repeated" | "when-purchase-expires" | undefined,
-  }>,
-};
+export type InlineOffer = yup.InferType<typeof inlineOfferSchema>;
 
 export type Item = {
   displayName: string,

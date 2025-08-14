@@ -52,7 +52,7 @@ let isReactServer = false;
 // IF_PLATFORM next
 import * as sc from "@stackframe/stack-sc";
 import { cookies } from '@stackframe/stack-sc';
-import { Item } from "../../customers";
+import { Customer, InlineOffer, Item } from "../../customers";
 isReactServer = sc.isReactServer;
 
 // NextNavigation.useRouter does not exist in react-server environments and some bundlers try to be helpful and throw a warning. Ignore the warning.
@@ -198,6 +198,12 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
     async (session) => {
       const results = await this._interface.listNotificationCategories(session);
       return results as NotificationPreferenceCrud['Client']['Read'][];
+    }
+  );
+
+  private readonly _userItemCache = createCacheBySession<[string, string], ItemCrud['Client']['Read']>(
+    async (session, [userId, itemId]) => {
+      return await this._interface.getItem({ userId, itemId }, session);
     }
   );
 
@@ -712,6 +718,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
       profileImageUrl: crud.profile_image_url,
       clientMetadata: crud.client_metadata,
       clientReadOnlyMetadata: crud.client_read_only_metadata,
+      ...this._createCustomer(crud.id, "team", session),
       async inviteUser(options: { email: string, callbackUrl?: string }) {
         await app._interface.sendTeamInvitation({
           teamId: crud.id,
@@ -771,16 +778,6 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
         await app._teamApiKeysCache.refresh([session, crud.id]);
         return app._clientApiKeyFromCrud(session, result);
       },
-      async getItem(itemId: string) {
-        const result = Result.orThrow(await app._teamItemCache.getOrWait([session, crud.id, itemId], "write-only"));
-        return app._clientItemFromCrud(result);
-      },
-      // IF_PLATFORM react-like
-      useItem(itemId: string) {
-        const result = useAsyncCache(app._teamItemCache, [session, crud.id, itemId] as const, "team.useItem()");
-        return app._clientItemFromCrud(result);
-      },
-      // END_PLATFORM
     };
   }
 
@@ -1181,12 +1178,33 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
     };
   }
 
+  protected _createCustomer(userIdOrTeamId: string, type: "user" | "team", session: InternalSession): Omit<Customer, "id"> {
+    const app = this;
+    const cache = type === "user" ? app._userItemCache : app._teamItemCache;
+    return {
+      async getItem(itemId: string) {
+        const result = Result.orThrow(await cache.getOrWait([session, userIdOrTeamId, itemId], "write-only"));
+        return app._clientItemFromCrud(result);
+      },
+      // IF_PLATFORM react-like
+      useItem(itemId: string) {
+        const result = useAsyncCache(cache, [session, userIdOrTeamId, itemId] as const, "team.useItem()");
+        return app._clientItemFromCrud(result);
+      },
+      // END_PLATFORM
+      async createCheckoutUrl(offerIdOrInline: string | InlineOffer) {
+        return await app._interface.createCheckoutUrl(userIdOrTeamId, offerIdOrInline, session);
+      },
+    };
+  }
+
   protected _currentUserFromCrud(crud: NonNullable<CurrentUserCrud['Client']['Read']>, session: InternalSession): ProjectCurrentUser<ProjectId> {
     const currentUser = {
       ...this._createBaseUser(crud),
       ...this._createAuth(session),
       ...this._createUserExtraFromCurrent(crud, session),
       ...this._isInternalProject() ? this._createInternalUserExtra(session) : {},
+      ...this._createCustomer(crud.id, "user", session),
     } satisfies CurrentUser;
 
     Object.freeze(currentUser);
