@@ -230,7 +230,7 @@ describe("OAuth with exact domain matching", () => {
             baseUrl: 'http://localhost:8107', // This one matches!
             handlerPath: '/handler',
           },
-          'domains.allowLocalhost': true,
+          'domains.allowLocalhost': false,
         }),
       },
     });
