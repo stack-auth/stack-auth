@@ -16,6 +16,7 @@ import { deindent } from '../utils/strings';
 import { ConnectedAccountAccessTokenCrud } from './crud/connected-accounts';
 import { ContactChannelsCrud } from './crud/contact-channels';
 import { CurrentUserCrud } from './crud/current-user';
+import { ItemCrud } from './crud/items';
 import { NotificationPreferenceCrud } from './crud/notification-preferences';
 import { TeamApiKeysCrud, UserApiKeysCrud, teamApiKeysCreateInputSchema, teamApiKeysCreateOutputSchema, userApiKeysCreateInputSchema, userApiKeysCreateOutputSchema } from './crud/project-api-keys';
 import { ProjectPermissionsCrud } from './crud/project-permissions';
@@ -1741,6 +1742,20 @@ export class StackClientInterface {
       requestType,
     );
     return response.json();
+  }
+
+  async getItem(options: {
+    teamId?: string,
+    userId?: string,
+    itemId: string,
+  }, session: InternalSession | null): Promise<ItemCrud['Client']['Read']> {
+    const customerId = options.teamId ?? options.userId;
+    const response = await this.sendClientRequest(
+      `/payments/items/${customerId}/${options.itemId}`,
+      {},
+      session,
+    );
+    return await response.json();
   }
 }
 

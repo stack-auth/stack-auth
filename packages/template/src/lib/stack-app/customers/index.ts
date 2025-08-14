@@ -31,19 +31,19 @@ export type Item = {
    */
   nonNegativeQuantity: number,
 
-  increaseQuantity(amount: number): void,
+  increaseQuantity(amount: number): Promise<void>,
   /**
    * Decreases the quantity by the given amount.
    *
    * Note that you may want to use tryDecreaseQuantity instead, as it will prevent the quantity from going below 0 in a race-condition-free way.
    */
-  decreaseQuantity(amount: number): void,
+  decreaseQuantity(amount: number): Promise<void>,
   /**
    * Decreases the quantity by the given amount and returns true if the result is non-negative; returns false and does nothing if the result would be negative.
    *
    * Most useful for pre-paid credits.
    */
-  tryDecreaseQuantity(amount: number): boolean,
+  tryDecreaseQuantity(amount: number): Promise<boolean>,
 };
 
 export type Customer =

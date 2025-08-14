@@ -118,28 +118,37 @@ export async function getCustomerType(tenancy: Tenancy, customerId: string) {
   throw new KnownErrors.CustomerDoesNotExist(customerId);
 }
 
-export async function getItemQuantityForCustomer(prisma: PrismaClient, tenancyId: string, itemId: string, customerId: string) {
-  const subscriptions = await prisma.subscription.findMany({
+export async function getItemQuantityForCustomer(options: {
+  prisma: PrismaClient,
+  tenancy: Tenancy,
+  itemId: string,
+  customerId: string,
+}) {
+  const itemConfig = getOrUndefined(options.tenancy.config.payments.items, options.itemId);
+  const defaultQuantity = itemConfig?.default.quantity ?? 0;
+  console.log("defaultQuantity", defaultQuantity, { tenancyId: options.tenancy.id, customerId: options.customerId, itemId: options.itemId });
+  const subscriptions = await options.prisma.subscription.findMany({
     where: {
-      tenancyId: tenancyId,
-      customerId: customerId,
+      tenancyId: options.tenancy.id,
+      customerId: options.customerId,
       status: {
         in: [SubscriptionStatus.active, SubscriptionStatus.trialing],
       }
     },
   });
+  console.log("subscriptions", subscriptions);
 
   const subscriptionQuantity = subscriptions.reduce((acc, subscription) => {
     const offer = subscription.offer as yup.InferType<typeof offerSchema>;
-    const item = getOrUndefined(offer.includedItems, itemId);
+    const item = getOrUndefined(offer.includedItems, options.itemId);
     return acc + (item?.quantity ?? 0);
   }, 0);
 
-  const { _sum } = await prisma.itemQuantityChange.aggregate({
+  const { _sum } = await options.prisma.itemQuantityChange.aggregate({
     where: {
-      tenancyId: tenancyId,
-      customerId: customerId,
-      itemId: itemId,
+      tenancyId: options.tenancy.id,
+      customerId: options.customerId,
+      itemId: options.itemId,
       OR: [
         { expiresAt: null },
         { expiresAt: { gt: new Date() } },
@@ -149,5 +158,28 @@ export async function getItemQuantityForCustomer(prisma: PrismaClient, tenancyId
       quantity: true,
     },
   });
-  return subscriptionQuantity + (_sum.quantity ?? 0);
+  console.log("itemQuantityChange", _sum.quantity);
+  return subscriptionQuantity + (_sum.quantity ?? 0) + defaultQuantity;
+}
+
+export async function tryCreateItemQuantityChange(options: {
+  prisma: PrismaClient,
+  tenancy: Tenancy,
+  customerId: string,
+  itemId: string,
+  quantity: number,
+}) {
+  const currentQuantity = await getItemQuantityForCustomer(options);
+  if (currentQuantity + options.quantity < 0) {
+    return false;
+  }
+  await options.prisma.itemQuantityChange.create({
+    data: {
+      tenancyId: options.tenancy.id,
+      customerId: options.customerId,
+      itemId: options.itemId,
+      quantity: options.quantity,
+    },
+  });
+  return true;
 }

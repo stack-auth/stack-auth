@@ -12,6 +12,7 @@ import { TeamPermissionsCrud } from "@stackframe/stack-shared/dist/interface/cru
 import { TeamsCrud } from "@stackframe/stack-shared/dist/interface/crud/teams";
 import { UsersCrud } from "@stackframe/stack-shared/dist/interface/crud/users";
 import { NotificationPreferenceCrud } from "@stackframe/stack-shared/dist/interface/crud/notification-preferences";
+import { ItemCrud } from "@stackframe/stack-shared/dist/interface/crud/items";
 import { InternalSession } from "@stackframe/stack-shared/dist/sessions";
 import { scrambleDuringCompileTime } from "@stackframe/stack-shared/dist/utils/compile-time";
 import { isBrowserLike } from "@stackframe/stack-shared/dist/utils/env";
@@ -43,7 +44,6 @@ import { ActiveSession, Auth, BaseUser, CurrentUser, InternalUserExtra, ProjectC
 import { StackClientApp, StackClientAppConstructorOptions, StackClientAppJson } from "../interfaces/client-app";
 import { _StackAdminAppImplIncomplete } from "./admin-app-impl";
 import { TokenObject, clientVersion, createCache, createCacheBySession, createEmptyTokenStore, getBaseUrl, getDefaultExtraRequestHeaders, getDefaultProjectId, getDefaultPublishableClientKey, getUrls, } from "./common";
-
 import * as NextNavigationUnscrambled from "next/navigation"; // import the entire module to get around some static compiler warnings emitted by Next.js in some cases | THIS_LINE_PLATFORM next
 import React, { useCallback, useMemo } from "react"; // THIS_LINE_PLATFORM react-like
 import { useAsyncCache } from "./common"; // THIS_LINE_PLATFORM react-like
@@ -52,6 +52,7 @@ let isReactServer = false;
 // IF_PLATFORM next
 import * as sc from "@stackframe/stack-sc";
 import { cookies } from '@stackframe/stack-sc';
+import { Item } from "../../customers";
 isReactServer = sc.isReactServer;
 
 // NextNavigation.useRouter does not exist in react-server environments and some bundlers try to be helpful and throw a warning. Ignore the warning.
@@ -197,6 +198,12 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
     async (session) => {
       const results = await this._interface.listNotificationCategories(session);
       return results as NotificationPreferenceCrud['Client']['Read'][];
+    }
+  );
+
+  private readonly _teamItemCache = createCacheBySession<[string, string], ItemCrud['Client']['Read']>(
+    async (session, [teamId, itemId]) => {
+      return await this._interface.getItem({ teamId, itemId }, session);
     }
   );
 
@@ -764,6 +771,16 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
         await app._teamApiKeysCache.refresh([session, crud.id]);
         return app._clientApiKeyFromCrud(session, result);
       },
+      async getItem(itemId: string) {
+        const result = Result.orThrow(await app._teamItemCache.getOrWait([session, crud.id, itemId], "write-only"));
+        return app._clientItemFromCrud(session, result);
+      },
+      // IF_PLATFORM react-like
+      useItem(itemId: string) {
+        const result = useAsyncCache(app._teamItemCache, [session, crud.id, itemId] as const, "team.useItem()");
+        return app._clientItemFromCrud(session, result);
+      },
+      // END_PLATFORM
     };
   }
 
@@ -808,6 +825,25 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
       },
     };
   }
+
+  protected _clientItemFromCrud(session: InternalSession, crud: ItemCrud['Client']['Read']): Item {
+    const app = this;
+    return {
+      displayName: crud.display_name,
+      quantity: crud.quantity,
+      nonNegativeQuantity: Math.max(0, crud.quantity),
+      increaseQuantity: async (quantity: number) => {
+        throw new Error("unimplemented");
+      },
+      decreaseQuantity: async (quantity: number) => {
+        throw new Error("unimplemented");
+      },
+      tryDecreaseQuantity: (quantity: number) => {
+        throw new Error("unimplemented");
+      },
+    };
+  }
+
   protected _createAuth(session: InternalSession): Auth {
     const app = this;
     return {

@@ -4,6 +4,7 @@ import { ReadonlyJson } from "@stackframe/stack-shared/dist/utils/json";
 import { ApiKeyCreationOptions, TeamApiKey, TeamApiKeyFirstView } from "../api-keys";
 import { AsyncStoreProperty } from "../common";
 import { ServerUser } from "../users";
+import { Item } from "../customers";
 
 
 export type TeamMemberProfile = {
@@ -46,6 +47,8 @@ export type Team = {
   update(update: TeamUpdateOptions): Promise<void>,
   delete(): Promise<void>,
   createApiKey(options: ApiKeyCreationOptions<"team">): Promise<TeamApiKeyFirstView>,
+  getItem(itemId: string): Promise<Item>,
+  useItem(itemId: string): Item, // THIS_LINE_PLATFORM react-like
 } & AsyncStoreProperty<"apiKeys", [], TeamApiKey[], true>;
 
 export type TeamUpdateOptions = {
