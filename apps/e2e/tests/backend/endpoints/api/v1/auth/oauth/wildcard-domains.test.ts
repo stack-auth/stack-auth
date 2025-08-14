@@ -1,6 +1,7 @@
 import { describe } from "vitest";
-import { it, localRedirectUrl } from "../../../../../../helpers";
+import { it } from "../../../../../../helpers";
 import { Auth, InternalApiKey, Project, niceBackendFetch } from "../../../../../backend-helpers";
+import { parseJson, stringifyJson } from "@stackframe/stack-shared/dist/utils/json";
 
 describe("OAuth with wildcard domains", () => {
   it("should work with exact domain configuration", async ({ expect }) => {
@@ -19,12 +20,12 @@ describe("OAuth with wildcard domains", () => {
         'x-stack-admin-access-token': adminAccessToken,
       },
       body: {
-        config_override_string: JSON.stringify({
+        config_override_string: stringifyJson({
           'domains.trustedDomains.exact': {
             baseUrl: 'http://localhost:8107',
             handlerPath: '/handler',
           },
-          'domains.allowLocalhost': true,
+          'domains.allowLocalhost': false,
         }),
       },
     });
@@ -51,7 +52,7 @@ describe("OAuth with wildcard domains", () => {
         'x-stack-admin-access-token': adminAccessToken,
       },
       body: {
-        config_override_string: JSON.stringify({
+        config_override_string: stringifyJson({
           'domains.trustedDomains.exact': {
             baseUrl: 'https://app.example.com',
             handlerPath: '/handler',
@@ -84,7 +85,7 @@ describe("OAuth with wildcard domains", () => {
         'x-stack-admin-access-token': adminAccessToken,
       },
       body: {
-        config_override_string: JSON.stringify({
+        config_override_string: stringifyJson({
           'domains.trustedDomains.wildcard': {
             baseUrl: 'http://*.localhost:8107',
             handlerPath: '/handler',
@@ -116,7 +117,7 @@ describe("OAuth with wildcard domains", () => {
         'x-stack-admin-access-token': adminAccessToken,
       },
       body: {
-        config_override_string: JSON.stringify({
+        config_override_string: stringifyJson({
           'domains.trustedDomains.wildcard': {
             baseUrl: 'https://*.example.com',
             handlerPath: '/handler',
@@ -149,7 +150,7 @@ describe("OAuth with wildcard domains", () => {
         'x-stack-admin-access-token': adminAccessToken,
       },
       body: {
-        config_override_string: JSON.stringify({
+        config_override_string: stringifyJson({
           'domains.trustedDomains.double': {
             baseUrl: 'http://**.localhost:8107',
             handlerPath: '/handler',
@@ -181,7 +182,7 @@ describe("OAuth with wildcard domains", () => {
         'x-stack-admin-access-token': adminAccessToken,
       },
       body: {
-        config_override_string: JSON.stringify({
+        config_override_string: stringifyJson({
           'domains.trustedDomains.double': {
             baseUrl: 'https://**.example.org', // Different TLD - won't match localhost
             handlerPath: '/handler',
@@ -214,7 +215,7 @@ describe("OAuth with wildcard domains", () => {
         'x-stack-admin-access-token': adminAccessToken,
       },
       body: {
-        config_override_string: JSON.stringify({
+        config_override_string: stringifyJson({
           'domains.trustedDomains.prefix': {
             baseUrl: 'http://local*:8107', // Should match localhost
             handlerPath: '/handler',
@@ -246,7 +247,7 @@ describe("OAuth with wildcard domains", () => {
         'x-stack-admin-access-token': adminAccessToken,
       },
       body: {
-        config_override_string: JSON.stringify({
+        config_override_string: stringifyJson({
           'domains.trustedDomains.prefix': {
             baseUrl: 'http://api-*:8107', // Won't match localhost
             handlerPath: '/handler',
@@ -269,7 +270,6 @@ describe("OAuth with wildcard domains", () => {
         oauth_providers: [{ id: "spotify", type: "shared" }],
       }
     });
-});
     await InternalApiKey.createAndSetProjectKeys();
     // Configure multiple domains, only one matches
     const configResponse = await niceBackendFetch("/api/v1/internal/config/override", {
@@ -279,7 +279,7 @@ describe("OAuth with wildcard domains", () => {
         'x-stack-admin-access-token': adminAccessToken,
       },
       body: {
-        config_override_string: JSON.stringify({
+        config_override_string: stringifyJson({
           'domains.trustedDomains.prod': {
             baseUrl: 'https://app.production.com',
             handlerPath: '/handler',
@@ -308,7 +308,7 @@ describe("OAuth with wildcard domains", () => {
     });
     expect(getResponse.status).toBe(200);
 
-    const config = JSON.parse(getResponse.body.config_string);
+    const config = parseJson(getResponse.body.config_string);
     expect(Object.keys(config.domains.trustedDomains).length).toBe(3);
   });
 });
