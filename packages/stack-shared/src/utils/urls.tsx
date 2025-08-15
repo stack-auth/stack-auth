@@ -36,6 +36,11 @@ import.meta.vitest?.test("isValidUrl", ({ expect }) => {
 });
 
 export function isValidHostname(hostname: string) {
+  // Basic validation
+  if (!hostname || hostname.startsWith('.') || hostname.endsWith('.') || hostname.includes('..')) {
+    return false;
+  }
+
   const url = createUrlIfValid(`https://${hostname}`);
   if (!url) return false;
   return url.hostname === hostname;
@@ -52,6 +57,143 @@ import.meta.vitest?.test("isValidHostname", ({ expect }) => {
   expect(isValidHostname("example.com/path")).toBe(false);
   expect(isValidHostname("https://example.com")).toBe(false);
   expect(isValidHostname("example com")).toBe(false);
+});
+
+export function isValidHostnameWithWildcards(hostname: string) {
+  // Empty hostnames are invalid
+  if (!hostname) return false;
+
+  // Check if it contains wildcards
+  const hasWildcard = hostname.includes('*');
+
+  if (!hasWildcard) {
+    // If no wildcards, validate as a normal hostname
+    return isValidHostname(hostname);
+  }
+
+  // Basic validation checks that apply even with wildcards
+  // - Hostname cannot start or end with a dot
+  if (hostname.startsWith('.') || hostname.endsWith('.')) {
+    return false;
+  }
+
+  // - No consecutive dots
+  if (hostname.includes('..')) {
+    return false;
+  }
+
+  // For wildcard validation, check that non-wildcard parts contain valid characters
+  // Replace wildcards with a valid placeholder to check the rest
+  const testHostname = hostname.replace(/\*+/g, 'wildcard');
+
+  // Check if the resulting string would be a valid hostname
+  if (!/^[a-zA-Z0-9.-]+$/.test(testHostname)) {
+    return false;
+  }
+
+  // Additional check: ensure the pattern makes sense
+  // Check each segment between wildcards
+  const segments = hostname.split(/\*+/);
+  for (let i = 0; i < segments.length; i++) {
+    const segment = segments[i];
+    if (segment === '') continue; // Empty segments are OK (consecutive wildcards)
+
+    // First segment can't start with dot
+    if (i === 0 && segment.startsWith('.')) {
+      return false;
+    }
+
+    // Last segment can't end with dot
+    if (i === segments.length - 1 && segment.endsWith('.')) {
+      return false;
+    }
+
+    // No segment should have consecutive dots
+    if (segment.includes('..')) {
+      return false;
+    }
+  }
+
+  return true;
+}
+import.meta.vitest?.test("isValidHostnameWithWildcards", ({ expect }) => {
+  // Test with valid regular hostnames
+  expect(isValidHostnameWithWildcards("example.com")).toBe(true);
+  expect(isValidHostnameWithWildcards("localhost")).toBe(true);
+  expect(isValidHostnameWithWildcards("sub.domain.example.com")).toBe(true);
+
+  // Test with valid wildcard hostnames
+  expect(isValidHostnameWithWildcards("*.example.com")).toBe(true);
+  expect(isValidHostnameWithWildcards("a-*.example.com")).toBe(true);
+  expect(isValidHostnameWithWildcards("*.*.org")).toBe(true);
+  expect(isValidHostnameWithWildcards("**.example.com")).toBe(true);
+  expect(isValidHostnameWithWildcards("sub.**.com")).toBe(true);
+  expect(isValidHostnameWithWildcards("*-api.*.com")).toBe(true);
+
+  // Test with invalid hostnames
+  expect(isValidHostnameWithWildcards("")).toBe(false);
+  expect(isValidHostnameWithWildcards("example.com/path")).toBe(false);
+  expect(isValidHostnameWithWildcards("https://example.com")).toBe(false);
+  expect(isValidHostnameWithWildcards("example com")).toBe(false);
+  expect(isValidHostnameWithWildcards(".example.com")).toBe(false);
+  expect(isValidHostnameWithWildcards("example.com.")).toBe(false);
+  expect(isValidHostnameWithWildcards("example..com")).toBe(false);
+  expect(isValidHostnameWithWildcards("*.example..com")).toBe(false);
+});
+
+export function matchHostnamePattern(pattern: string, hostname: string): boolean {
+  // If no wildcards, it's an exact match
+  if (!pattern.includes('*')) {
+    return pattern === hostname;
+  }
+
+  // Convert the pattern to a regex
+  // First, escape all regex special characters except *
+  let regexPattern = pattern.replace(/[.+?^${}()|[\]\\]/g, '\\$&');
+
+  // Use a placeholder for ** to handle it separately from single *
+  const doubleWildcardPlaceholder = '\x00DOUBLE_WILDCARD\x00';
+  regexPattern = regexPattern.replace(/\*\*/g, doubleWildcardPlaceholder);
+
+  // Replace single * with a pattern that matches anything except dots
+  regexPattern = regexPattern.replace(/\*/g, '[^.]*');
+
+  // Replace the double wildcard placeholder with a pattern that matches anything including dots
+  regexPattern = regexPattern.replace(new RegExp(doubleWildcardPlaceholder, 'g'), '.*');
+
+  // Anchor the pattern to match the entire hostname
+  regexPattern = '^' + regexPattern + '$';
+
+  try {
+    const regex = new RegExp(regexPattern);
+    return regex.test(hostname);
+  } catch {
+    return false;
+  }
+}
+import.meta.vitest?.test("matchHostnamePattern", ({ expect }) => {
+  // Test exact matches
+  expect(matchHostnamePattern("example.com", "example.com")).toBe(true);
+  expect(matchHostnamePattern("example.com", "other.com")).toBe(false);
+
+  // Test single wildcard matches
+  expect(matchHostnamePattern("*.example.com", "api.example.com")).toBe(true);
+  expect(matchHostnamePattern("*.example.com", "www.example.com")).toBe(true);
+  expect(matchHostnamePattern("*.example.com", "example.com")).toBe(false);
+  expect(matchHostnamePattern("*.example.com", "api.v2.example.com")).toBe(false);
+
+  // Test double wildcard matches
+  expect(matchHostnamePattern("**.example.com", "api.example.com")).toBe(true);
+  expect(matchHostnamePattern("**.example.com", "api.v2.example.com")).toBe(true);
+  expect(matchHostnamePattern("**.example.com", "a.b.c.example.com")).toBe(true);
+  expect(matchHostnamePattern("**.example.com", "example.com")).toBe(false);
+
+  // Test complex patterns
+  expect(matchHostnamePattern("api-*.example.com", "api-v1.example.com")).toBe(true);
+  expect(matchHostnamePattern("api-*.example.com", "api-v2.example.com")).toBe(true);
+  expect(matchHostnamePattern("api-*.example.com", "api.example.com")).toBe(false);
+  expect(matchHostnamePattern("*.*.org", "mail.example.org")).toBe(true);
+  expect(matchHostnamePattern("*.*.org", "example.org")).toBe(false);
 });
 
 export function isLocalhost(urlOrString: string | URL) {
