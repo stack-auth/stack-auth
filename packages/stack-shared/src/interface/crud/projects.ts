@@ -67,6 +67,7 @@ export const projectsCrudAdminReadSchema = yupObject({
   description: schemaFields.projectDescriptionSchema.nonNullable().defined(),
   created_at_millis: schemaFields.projectCreatedAtMillisSchema.defined(),
   is_production_mode: schemaFields.projectIsProductionModeSchema.defined(),
+  owner_team_id: schemaFields.yupString().nullable().defined(),
   /** @deprecated */
   config: yupObject({
     allow_localhost: schemaFields.projectAllowLocalhostSchema.defined(),
@@ -137,6 +138,7 @@ export const projectsCrudAdminUpdateSchema = yupObject({
 
 export const projectsCrudAdminCreateSchema = projectsCrudAdminUpdateSchema.concat(yupObject({
   display_name: schemaFields.projectDisplayNameSchema.defined(),
+  owner_team_id: schemaFields.yupString().uuid().defined(),
 }).defined());
 
 export const projectsCrudAdminDeleteSchema = schemaFields.yupMixed();
