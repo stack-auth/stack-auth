@@ -1,0 +1,42 @@
+---
+name: validate-config-updates
+description: Validate all configuration updates before applying
+globs: ['*.ts', '*.tsx']
+alwaysApply: true
+---
+
+Configuration updates must be validated before being applied. Use schema validation and specific error types.
+
+BAD:
+```typescript
+async function updateConfig(config: any) {
+  await overrideEnvironmentConfigOverride({
+    projectId,
+    branchId,
+    config
+  });
+}
+```
+
+GOOD:
+```typescript
+async function updateConfig(config: ConfigUpdate) {
+  // Validate first
+  const result = await validateEnvironmentConfigOverride(config);
+  if (!result.success) {
+    throw new KnownErrors.ConfigValidationError(result.error);
+  }
+
+  await overrideEnvironmentConfigOverride({
+    projectId,
+    branchId,
+    config: result.value
+  });
+}
+```
+
+WHY:
+- Prevents invalid configurations
+- Provides clear error messages
+- Maintains type safety
+- Makes validation requirements explicit
