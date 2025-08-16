@@ -669,6 +669,29 @@ model SentEmail {
   @@id([tenancyId, id])
 }
 
+model EmailDraft {
+  tenancyId String @db.Uuid
+
+  id String @default(uuid()) @db.Uuid
+
+  displayName String
+  themeMode   DraftThemeMode @default(PROJECT_DEFAULT)
+  themeId     String?
+  tsxSource   String
+  sentAt      DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@id([tenancyId, id])
+}
+
+enum DraftThemeMode {
+  PROJECT_DEFAULT
+  NONE
+  CUSTOM
+}
+
 model CliAuthAttempt {
   tenancyId String @db.Uuid
 
@@ -726,11 +749,11 @@ enum SubscriptionStatus {
 }
 
 model Subscription {
-  id         String @default(uuid()) @db.Uuid
-  tenancyId  String @db.Uuid
-  customerId String @db.Uuid
+  id           String       @default(uuid()) @db.Uuid
+  tenancyId    String       @db.Uuid
+  customerId   String       @db.Uuid
   customerType CustomerType
-  offer      Json
+  offer        Json
 
   stripeSubscriptionId String
   status               SubscriptionStatus

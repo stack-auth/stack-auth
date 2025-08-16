@@ -131,6 +131,41 @@ export class StackAdminInterface extends StackServerInterface {
     return result.templates;
   }
 
+  async listInternalEmailDrafts(): Promise<{ id: string, display_name: string, theme_id?: string | null | false, tsx_source: string, sent_at_millis?: number | null }[]> {
+    const response = await this.sendAdminRequest(`/internal/email-drafts`, {}, null);
+    const result = await response.json() as { drafts: { id: string, display_name: string, theme_id?: string | null | false, tsx_source: string, sent_at_millis?: number | null }[] };
+    return result.drafts;
+  }
+
+  async createEmailDraft(options: { display_name?: string, theme_id?: string | false, tsx_source?: string }): Promise<{ id: string }> {
+    const response = await this.sendAdminRequest(
+      `/internal/email-drafts`,
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+        },
+        body: JSON.stringify(options),
+      },
+      null,
+    );
+    return await response.json();
+  }
+
+  async updateEmailDraft(id: string, data: { display_name?: string, theme_id?: string | null | false, tsx_source?: string, sent_at_millis?: number | null }): Promise<void> {
+    await this.sendAdminRequest(
+      `/internal/email-drafts/${id}`,
+      {
+        method: "PATCH",
+        headers: {
+          "content-type": "application/json",
+        },
+        body: JSON.stringify(data),
+      },
+      null,
+    );
+  }
+
   async listEmailThemes(): Promise<{ id: string, display_name: string }[]> {
     const response = await this.sendAdminRequest(`/internal/email-themes`, {}, null);
     const result = await response.json() as { themes: { id: string, display_name: string }[] };
