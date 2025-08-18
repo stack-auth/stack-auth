@@ -5,7 +5,6 @@ import { deindent } from "@stackframe/stack-shared/dist/utils/strings";
 import { templateThemeIdToThemeMode, themeModeToTemplateThemeId } from "@/lib/email-drafts";
 
 
-
 export const GET = createSmartRouteHandler({
   metadata: { hidden: true },
   request: yupObject({

@@ -1,6 +1,7 @@
 import { getPrismaClientForTenancy } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { templateThemeIdSchema, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
+import { templateThemeIdToThemeMode } from "@/lib/email-drafts";
 
 export const GET = createSmartRouteHandler({
   metadata: { hidden: true },
@@ -68,14 +69,18 @@ export const PATCH = createSmartRouteHandler({
     await prisma.emailDraft.update({
       where: { tenancyId_id: { tenancyId: tenancy.id, id: params.id } },
       data: {
-        displayName: body.display_name ?? undefined,
-        themeMode: (body.theme_id === undefined) ? undefined : ((body.theme_id === null) ? ("PROJECT_DEFAULT" as any) : (body.theme_id === false) ? ("NONE" as any) : ("CUSTOM" as any)),
-        themeId: body.theme_id === undefined ? undefined : (typeof body.theme_id === 'string' ? body.theme_id : null),
-        tsxSource: body.tsx_source ?? undefined,
-        sentAt: body.sent_at_millis === undefined ? undefined : (body.sent_at_millis ? new Date(body.sent_at_millis) : null),
+        displayName: body.display_name,
+        themeMode: templateThemeIdToThemeMode(body.theme_id),
+        themeId: body.theme_id === false ? null : body.theme_id,
+        tsxSource: body.tsx_source,
+        sentAt: body.sent_at_millis ? new Date(body.sent_at_millis) : null,
       },
     });
-    return { statusCode: 200, bodyType: "json", body: { ok: "ok" } } as const;
+    return {
+      statusCode: 200,
+      bodyType: "json",
+      body: { ok: "ok" },
+    };
   },
 });
 

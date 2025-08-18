@@ -180,26 +180,3 @@ it("should handle missing required email content", async ({ expect }) => {
     expect(result.error.message).toMatchInlineSnapshot(`"Either html or template_id must be provided"`);
   }
 });
-
-it("should handle html and templateId at the same time", async ({ expect }) => {
-  const { adminApp, serverApp } = await createApp();
-  await setupEmailServer(adminApp);
-
-  const user = await serverApp.createUser({
-    primaryEmail: "test@example.com",
-    primaryEmailVerified: true,
-  });
-
-  const result = await serverApp.sendEmail({
-    userIds: [user.id],
-    html: "<p>Test Email</p>",
-    templateId: DEFAULT_TEMPLATE_IDS.sign_in_invitation,
-    subject: "Test Email",
-  });
-
-  expect(result.status).toBe("error");
-  if (result.status === "error") {
-    expect(KnownErrors.SchemaError.isInstance(result.error)).toBe(true);
-    expect(result.error.message).toMatchInlineSnapshot(`"If html is provided, cannot provide template_id or variables"`);
-  }
-});

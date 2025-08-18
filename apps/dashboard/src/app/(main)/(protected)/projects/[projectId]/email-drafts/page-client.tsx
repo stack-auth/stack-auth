@@ -15,7 +15,7 @@ export default function PageClient() {
   const project = stackAdminApp.useProject();
   const emailConfig = project.config.emailConfig;
   const router = useRouter();
-  const drafts = stackAdminApp.useEmailDrafts?.() ?? [];
+  const drafts = stackAdminApp.useEmailDrafts();
   const [sharedSmtpWarningDialogOpen, setSharedSmtpWarningDialogOpen] = useState<string | null>(null);
 
   return (
@@ -84,10 +84,8 @@ function NewDraftButton() {
   const router = useRouter();
 
   const handleCreateNewDraft = async (values: { name: string }) => {
-    const draft = await stackAdminApp.createEmailDraft?.({ displayName: values.name });
-    if (draft?.id) {
-      router.push(`email-drafts/${draft.id}`);
-    }
+    const draft = await stackAdminApp.createEmailDraft({ displayName: values.name });
+    router.push(`email-drafts/${draft.id}`);
   };
 
   return (
