@@ -146,6 +146,35 @@ it("should return ItemCustomerTypeDoesNotMatch error for user accessing team ite
     `);
 });
 
+it("creates an item quantity change and returns id", async ({ expect }) => {
+  await Project.createAndSwitch();
+  await updateConfig({
+    payments: {
+      items: {
+        "test-item": {
+          displayName: "Test Item",
+          customerType: "user",
+          default: { quantity: 0 },
+        },
+      },
+    },
+  });
+
+  const user = await User.create();
+
+  const response = await niceBackendFetch(`/api/latest/payments/items/${user.userId}/test-item/update-quantity?allow_negative=false`, {
+    method: "POST",
+    accessType: "admin",
+    body: {
+      delta: 3,
+      description: "manual grant",
+    },
+  });
+
+  expect(response.status).toBe(200);
+  expect(response.body).toMatchObject({ id: expect.any(String) });
+});
+
 it("aggregates item quantity changes in item quantity", async ({ expect }) => {
   await Project.createAndSwitch();
   await updateConfig({
@@ -162,10 +191,10 @@ it("aggregates item quantity changes in item quantity", async ({ expect }) => {
 
   const user = await User.create();
 
-  const post1 = await niceBackendFetch(`/api/latest/payments/items/${user.userId}/test-item`, {
+  const post1 = await niceBackendFetch(`/api/latest/payments/items/${user.userId}/test-item/update-quantity?allow_negative=false`, {
     method: "POST",
     accessType: "admin",
-    body: { quantity: 2 },
+    body: { delta: 2 },
   });
   expect(post1.status).toBe(200);
 
@@ -192,10 +221,10 @@ it("ignores expired changes", async ({ expect }) => {
 
   const user = await User.create();
 
-  const post = await niceBackendFetch(`/api/latest/payments/items/${user.userId}/test-item`, {
+  const post = await niceBackendFetch(`/api/latest/payments/items/${user.userId}/test-item/update-quantity?allow_negative=false`, {
     method: "POST",
     accessType: "admin",
-    body: { quantity: 4, expires_at: new Date(Date.now() - 1000).toISOString() },
+    body: { delta: 4, expires_at: new Date(Date.now() - 1000).toISOString() },
   });
   expect(post.status).toBe(200);
 
@@ -223,10 +252,10 @@ it("sums multiple non-expired changes", async ({ expect }) => {
   const user = await User.create();
 
   for (const q of [2, -1, 5]) {
-    const r = await niceBackendFetch(`/api/latest/payments/items/${user.userId}/test-item`, {
+    const r = await niceBackendFetch(`/api/latest/payments/items/${user.userId}/test-item/update-quantity?allow_negative=false`, {
       method: "POST",
       accessType: "admin",
-      body: { quantity: q },
+      body: { delta: q },
     });
     expect(r.status).toBe(200);
   }
@@ -253,13 +282,30 @@ it("validates item and customer type", async ({ expect }) => {
   });
 
   const user = await User.create();
-  const response = await niceBackendFetch(`/api/latest/payments/items/${user.userId}/team-item`, {
+  const response = await niceBackendFetch(`/api/latest/payments/items/${user.userId}/team-item/update-quantity?allow_negative=true`, {
     method: "POST",
     accessType: "admin",
-    body: { quantity: 1 },
+    body: { delta: 1 },
   });
-  expect(response.status).toBe(400);
-  expect(response.body.code).toBe("ITEM_CUSTOMER_TYPE_DOES_NOT_MATCH");
+  expect(response).toMatchInlineSnapshot(`
+    NiceResponse {
+      "status": 400,
+      "body": {
+        "code": "ITEM_CUSTOMER_TYPE_DOES_NOT_MATCH",
+        "details": {
+          "actual_customer_type": "user",
+          "customer_id": "<stripped UUID>",
+          "item_customer_type": "team",
+          "item_id": "team-item",
+        },
+        "error": "The user with ID \\"<stripped UUID>\\" is not a valid customer for the item with ID \\"team-item\\". The item is configured to only be available for team customers, but the customer is a user.",
+      },
+      "headers": Headers {
+        "x-stack-known-error": "ITEM_CUSTOMER_TYPE_DOES_NOT_MATCH",
+        <some fields may have been hidden>,
+      },
+    }
+  `);
 });
 
 it("should error when deducting more quantity than available", async ({ expect }) => {
@@ -278,10 +324,10 @@ it("should error when deducting more quantity than available", async ({ expect }
 
   const user = await User.create();
 
-  const response = await niceBackendFetch(`/api/latest/payments/items/${user.userId}/test-item`, {
+  const response = await niceBackendFetch(`/api/latest/payments/items/${user.userId}/test-item/update-quantity?allow_negative=false`, {
     method: "POST",
     accessType: "admin",
-    body: { quantity: -1 },
+    body: { delta: -1 },
   });
 
   expect(response.status).toBe(400);
@@ -311,11 +357,11 @@ it("allows team admins to be added when item quantity is increased", async ({ ex
   const { createProjectResponse } = await Project.create();
   const ownerTeamId: string = createProjectResponse.body.owner_team_id;
 
-  await niceBackendFetch(`/api/v1/payments/items/${ownerTeamId}/dashboard_admins`, {
+  await niceBackendFetch(`/api/v1/payments/items/${ownerTeamId}/dashboard_admins/update-quantity?allow_negative=true`, {
     method: "POST",
     accessType: "admin",
     body: {
-      quantity: 1,
+      delta: 1,
     },
   });
 
@@ -355,6 +401,53 @@ it("allows team admins to be added when item quantity is increased", async ({ ex
     NiceResponse {
       "status": 200,
       "body": {},
+      "headers": Headers { <some fields may have been hidden> },
+    }
+  `);
+});
+
+it("should allow negative quantity changes when allow_negative is true", async ({ expect }) => {
+  await Project.createAndSwitch();
+  await updateConfig({
+    payments: {
+      items: {
+        "test-item": {
+          displayName: "Test Item",
+          customerType: "user",
+          default: { quantity: 0 },
+        },
+      },
+    },
+  });
+
+  const user = await User.create();
+
+  const response = await niceBackendFetch(`/api/latest/payments/items/${user.userId}/test-item/update-quantity?allow_negative=true`, {
+    method: "POST",
+    accessType: "admin",
+    body: { delta: -3 },
+  });
+
+  expect(response.status).toBe(200);
+  expect(response).toMatchInlineSnapshot(`
+    NiceResponse {
+      "status": 200,
+      "body": { "id": "<stripped UUID>" },
+      "headers": Headers { <some fields may have been hidden> },
+    }
+  `);
+
+  const getItemResponse = await niceBackendFetch(`/api/latest/payments/items/${user.userId}/test-item`, {
+    accessType: "client",
+  });
+  expect(getItemResponse).toMatchInlineSnapshot(`
+    NiceResponse {
+      "status": 200,
+      "body": {
+        "display_name": "Test Item",
+        "id": "test-item",
+        "quantity": -3,
+      },
       "headers": Headers { <some fields may have been hidden> },
     }
   `);
