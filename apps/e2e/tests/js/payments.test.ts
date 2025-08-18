@@ -140,3 +140,50 @@ it("cannot decrease team item quantity below zero", async ({ expect }) => {
 }, { timeout: 40_000 });
 
 
+it("can create item quantity change from server app", { timeout: 40_000 }, async ({ expect }) => {
+  const { serverApp, adminApp } = await createApp({
+    config: {
+      clientTeamCreationEnabled: true,
+    },
+  });
+
+  const project = await adminApp.getProject();
+  const itemId = "test_item_change";
+
+  await project.updateConfig({
+    [`payments.items.${itemId}`]: {
+      displayName: "Test Item Change",
+      customerType: "user",
+      default: {
+        quantity: 3,
+        repeat: "never",
+        expires: "never",
+      },
+    },
+  });
+
+  const user = await serverApp.createUser({ primaryEmail: "test@test.com" });
+  const item = await user.getItem(itemId);
+  expect(item.quantity).toBe(3);
+  expect(item.nonNegativeQuantity).toBe(3);
+  expect(item.displayName).toBe("Test Item Change");
+
+  await item.increaseQuantity(1);
+  const newItem = await user.getItem(itemId);
+  expect(newItem.quantity).toBe(4);
+
+  await newItem.decreaseQuantity(2);
+  const newItem2 = await user.getItem(itemId);
+  expect(newItem2.quantity).toBe(2);
+  expect(newItem2.nonNegativeQuantity).toBe(2);
+
+  const resultSuccess = await newItem2.tryDecreaseQuantity(2);
+  expect(resultSuccess).toBe(true);
+  const newItem3 = await user.getItem(itemId);
+  expect(newItem3.quantity).toBe(0);
+
+  const resultFailure = await newItem3.tryDecreaseQuantity(1);
+  expect(resultFailure).toBe(false);
+  const newItem4 = await user.getItem(itemId);
+  expect(newItem4.quantity).toBe(0);
+});

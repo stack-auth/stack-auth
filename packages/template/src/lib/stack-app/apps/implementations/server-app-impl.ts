@@ -718,15 +718,18 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
       displayName: crud.display_name,
       quantity: crud.quantity,
       nonNegativeQuantity: Math.max(0, crud.quantity),
-      increaseQuantity: async (quantity: number) => {
-        await app._interface.updateItemQuantity(customerId, crud.id, { quantity });
+      increaseQuantity: async (delta: number) => {
+        await app._interface.updateItemQuantity(customerId, crud.id, { delta });
+        await app._serverUserItemsCache.refresh([customerId, crud.id]);
       },
-      decreaseQuantity: async (quantity: number) => {
-        await app._interface.updateItemQuantity(customerId, crud.id, { quantity: -quantity });
+      decreaseQuantity: async (delta: number) => {
+        await app._interface.updateItemQuantity(customerId, crud.id, { delta: -delta, allow_negative: true });
+        await app._serverUserItemsCache.refresh([customerId, crud.id]);
       },
-      tryDecreaseQuantity: async (quantity: number) => {
+      tryDecreaseQuantity: async (delta: number) => {
         try {
-          await app._interface.updateItemQuantity(customerId, crud.id, { quantity: -quantity });
+          await app._interface.updateItemQuantity(customerId, crud.id, { delta: -delta });
+          await app._serverUserItemsCache.refresh([customerId, crud.id]);
           return true;
         } catch (error) {
           if (error instanceof KnownErrors.ItemQuantityInsufficientAmount) {

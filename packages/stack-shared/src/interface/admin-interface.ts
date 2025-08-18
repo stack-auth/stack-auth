@@ -514,25 +514,4 @@ export class StackAdminInterface extends StackServerInterface {
     const result = await response.json() as { url: string };
     return result.url;
   }
-
-  async createItemQuantityChange(options: { customer_id: string, item_id: string, quantity: number, expires_at?: string, description?: string }): Promise<{ id: string }> {
-    const response = await this.sendAdminRequest(
-      `/payments/items/${options.customer_id}/${options.item_id}`,
-      {
-        method: "POST",
-        headers: {
-          "content-type": "application/json",
-        },
-        body: JSON.stringify({
-          quantity: options.quantity,
-          expires_at: options.expires_at,
-          description: options.description,
-        }),
-      },
-      null,
-    );
-    const result = await response.json() as { id: string };
-    return result;
-  }
-
 }

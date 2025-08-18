@@ -2,7 +2,7 @@ import { ensureItemCustomerTypeMatches, getItemQuantityForCustomer } from "@/lib
 import { getPrismaClientForTenancy, retryTransaction } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { KnownErrors } from "@stackframe/stack-shared";
-import { adaptSchema, adminAuthTypeSchema, yupBoolean, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
+import { adaptSchema, serverOrHigherAuthTypeSchema, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
 import { getOrUndefined } from "@stackframe/stack-shared/dist/utils/objects";
 
 export const POST = createSmartRouteHandler({
@@ -11,7 +11,7 @@ export const POST = createSmartRouteHandler({
   },
   request: yupObject({
     auth: yupObject({
-      type: adminAuthTypeSchema.defined(),
+      type: serverOrHigherAuthTypeSchema.defined(),
       project: adaptSchema.defined(),
       tenancy: adaptSchema.defined(),
     }).defined(),
@@ -48,9 +48,14 @@ export const POST = createSmartRouteHandler({
     const prisma = await getPrismaClientForTenancy(tenancy);
 
     const changeId = await retryTransaction(prisma, async (tx) => {
-      const totalQuantity = await getItemQuantityForCustomer(tx, tenancy.id, req.params.item_id, req.params.customer_id);
+      const totalQuantity = await getItemQuantityForCustomer({
+        prisma: tx,
+        tenancy,
+        itemId: req.params.item_id,
+        customerId: req.params.customer_id,
+      });
       if (!allowNegative && (totalQuantity + req.body.delta < 0)) {
-        throw new KnownErrors.ItemQuantityInsufficientAmount(req.params.item_id, req.params.customer_id, req.body.delta, totalQuantity);
+        throw new KnownErrors.ItemQuantityInsufficientAmount(req.params.item_id, req.params.customer_id, req.body.delta);
       }
       const change = await tx.itemQuantityChange.create({
         data: {

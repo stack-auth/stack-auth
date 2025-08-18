@@ -329,7 +329,7 @@ export type ServerBaseUser = {
  * A user including sensitive fields that should only be used on the server, never sent to the client
  * (such as sensitive information and serverMetadata).
  */
-export type ServerUser = ServerBaseUser & BaseUser & UserExtra & Customer;
+export type ServerUser = ServerBaseUser & BaseUser & UserExtra & Customer<true>;
 
 export type CurrentServerUser = Auth & ServerUser;
 

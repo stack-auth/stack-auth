@@ -837,14 +837,19 @@ export class StackServerInterface extends StackClientInterface {
     itemId: string,
     data: ItemCrud['Server']['Update'],
   ): Promise<void> {
+    const queryParams = new URLSearchParams({ allow_negative: (data.allow_negative ?? false).toString() });
     await this.sendServerRequest(
-      `/payments/items/${customerId}/${itemId}`,
+      `/payments/items/${customerId}/${itemId}/update-quantity?${queryParams.toString()}`,
       {
         method: "POST",
         headers: {
           "content-type": "application/json",
         },
-        body: JSON.stringify(data),
+        body: JSON.stringify({
+          delta: data.delta,
+          expires_at: data.expires_at,
+          description: data.description,
+        }),
       },
       null
     );

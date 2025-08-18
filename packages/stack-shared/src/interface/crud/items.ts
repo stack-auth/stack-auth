@@ -1,5 +1,5 @@
 import { createCrud, CrudTypeOf } from "../../crud";
-import { yupNumber, yupObject, yupString } from "../../schema-fields";
+import { yupBoolean, yupNumber, yupObject, yupString } from "../../schema-fields";
 
 
 const itemReadSchema = yupObject({
@@ -9,9 +9,10 @@ const itemReadSchema = yupObject({
 }).defined();
 
 const itemUpdateSchema = yupObject({
-  quantity: yupNumber().defined(),
+  delta: yupNumber().defined(),
   expires_at: yupString().optional(),
   description: yupString().optional(),
+  allow_negative: yupBoolean().optional(),
 }).defined();
 
 

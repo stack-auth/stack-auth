@@ -32,10 +32,15 @@ export type ServerItem = Item & {
   tryDecreaseQuantity(amount: number): Promise<boolean>,
 };
 
-export type Customer =
+export type Customer<IsServer extends boolean = false> =
   & {
     readonly id: string,
 
     createCheckoutUrl(offerIdOrInline: string | InlineOffer): Promise<string>,
   }
-  & AsyncStoreProperty<"item", [itemId: string], Item, false>
+  & AsyncStoreProperty<
+    "item",
+    [itemId: string],
+    IsServer extends true ? ServerItem : Item,
+    false
+  >;
