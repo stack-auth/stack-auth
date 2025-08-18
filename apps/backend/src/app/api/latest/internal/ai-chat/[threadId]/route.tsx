@@ -59,7 +59,6 @@ export const POST = createSmartRouteHandler({
       messages: body.messages as any,
       tools: adapter.tools,
     });
-    console.log(result.text);
 
     const contentBlocks: InferType<typeof contentSchema> = [];
     result.steps.forEach((step) => {
