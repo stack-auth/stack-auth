@@ -17,8 +17,7 @@ export default function PageClient({ draftId }: { draftId: string }) {
   const { setNeedConfirm } = useRouterConfirm();
   const { toast } = useToast();
 
-  type EmailDraft = { id: string, displayName: string, themeId: string | undefined | false, tsxSource: string, sentAt: Date | null };
-  const drafts = stackAdminApp.useEmailDrafts() as EmailDraft[];
+  const drafts = stackAdminApp.useEmailDrafts();
   const draft = useMemo(() => drafts.find((d) => d.id === draftId), [drafts, draftId]);
 
   const [currentCode, setCurrentCode] = useState<string>(draft?.tsxSource ?? "");
@@ -28,9 +27,11 @@ export default function PageClient({ draftId }: { draftId: string }) {
   useEffect(() => {
     if (!draft) return;
     if (draft.tsxSource === currentCode && draft.themeId === selectedThemeId) return;
+    if (stage !== "edit") return;
+
     setNeedConfirm(true);
     return () => setNeedConfirm(false);
-  }, [setNeedConfirm, draft, currentCode, selectedThemeId]);
+  }, [setNeedConfirm, draft, currentCode, selectedThemeId, stage]);
 
   const handleToolUpdate = (toolCall: ToolCallContent) => {
     setCurrentCode(toolCall.args.content);

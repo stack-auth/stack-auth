@@ -474,7 +474,7 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
     return result;
   }
 
-  async createEmailDraft(options: { displayName?: string, themeId?: string | false, tsxSource?: string }): Promise<{ id: string }> {
+  async createEmailDraft(options: { displayName: string, themeId?: string | false, tsxSource?: string }): Promise<{ id: string }> {
     const result = await this._interface.createEmailDraft({
       display_name: options.displayName,
       theme_id: options.themeId,

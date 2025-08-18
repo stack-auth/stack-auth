@@ -52,7 +52,6 @@ export const PATCH = createSmartRouteHandler({
       display_name: yupString().optional(),
       theme_id: templateThemeIdSchema.optional(),
       tsx_source: yupString().optional(),
-      sent_at_millis: yupNumber().nullable().optional(),
     }).defined(),
   }),
   response: yupObject({
@@ -69,7 +68,6 @@ export const PATCH = createSmartRouteHandler({
         themeMode: templateThemeIdToThemeMode(body.theme_id),
         themeId: body.theme_id === false ? null : body.theme_id,
         tsxSource: body.tsx_source,
-        sentAt: body.sent_at_millis ? new Date(body.sent_at_millis) : null,
       },
     });
     return {
