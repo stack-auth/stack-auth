@@ -3,7 +3,7 @@ import { getEmailConfig, sendEmail } from "@/lib/emails";
 import { getNotificationCategoryByName, hasNotificationEnabled } from "@/lib/notification-categories";
 import { getPrismaClientForTenancy } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
-import { adaptSchema, serverOrHigherAuthTypeSchema, templateThemeIdSchema, yupArray, yupMixed, yupNumber, yupObject, yupRecord, yupString } from "@stackframe/stack-shared/dist/schema-fields";
+import { adaptSchema, serverOrHigherAuthTypeSchema, templateThemeIdSchema, yupArray, yupMixed, yupNumber, yupObject, yupRecord, yupString, yupUnion } from "@stackframe/stack-shared/dist/schema-fields";
 import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
 import { StatusError } from "@stackframe/stack-shared/dist/utils/errors";
 import { throwErr } from "@stackframe/stack-shared/dist/utils/errors";
@@ -25,17 +25,27 @@ export const POST = createSmartRouteHandler({
       type: serverOrHigherAuthTypeSchema,
       tenancy: adaptSchema.defined(),
     }).defined(),
-    body: yupObject({
-      user_ids: yupArray(yupString().defined()).defined(),
-      theme_id: templateThemeIdSchema.nullable().meta({
-        openapiField: { description: "The theme to use for the email. If not specified, the default theme will be used." }
+    body: yupUnion(
+      yupObject({
+        html: yupString().defined(),
+        subject: yupString().optional(),
+        notification_category_name: yupString().optional(),
       }),
-      html: yupString().optional(),
-      subject: yupString().optional(),
-      notification_category_name: yupString().optional(),
-      template_id: yupString().optional(),
-      variables: yupRecord(yupString(), yupMixed()).optional(),
-    }),
+      yupObject({
+        template_id: yupString().uuid().defined(),
+        variables: yupRecord(yupString(), yupMixed()).optional(),
+      }),
+      yupObject({
+        draft_id: yupString().defined(),
+      }),
+    ).defined().concat(
+      yupObject({
+        user_ids: yupArray(yupString().defined()).defined(),
+        theme_id: templateThemeIdSchema.nullable().meta({
+          openapiField: { description: "The theme to use for the email. If not specified, the default theme will be used." }
+        }),
+      })
+    ),
     method: yupString().oneOf(["POST"]).defined(),
   }),
   response: yupObject({

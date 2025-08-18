@@ -19,4 +19,6 @@ export type SendEmailOptions =
   } | {
     templateId: string,
     variables?: Record<string, any>,
-  })
+  }) | {
+    draftId: string,
+  }

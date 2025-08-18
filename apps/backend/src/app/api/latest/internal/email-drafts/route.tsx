@@ -24,22 +24,6 @@ const themeModeToTemplateThemeId = (themeMode: DraftThemeMode, themeId: string |
   return themeId === null ? undefined : themeId;
 };
 
-const defaultDraftSource = deindent`
-  import { Container } from "@react-email/components";
-  import { Subject, NotificationCategory, Props } from "@stackframe/emails";
-
-  export function EmailTemplate({ user, project }: Props<{}>) {
-    return (
-      <Container>
-        <Subject value={\`Hello \${user.displayName}!\`} />
-        <NotificationCategory value="Marketing" />
-        <div className="font-bold">Hi {user.displayName}!</div>
-        <br />
-      </Container>
-    );
-  }
-`;
-
 export const GET = createSmartRouteHandler({
   metadata: { hidden: true },
   request: yupObject({
@@ -66,7 +50,7 @@ export const GET = createSmartRouteHandler({
     const items = await prisma.emailDraft.findMany({
       where: { tenancyId: tenancy.id },
       orderBy: { updatedAt: "desc" },
-      take: 200,
+      take: 50,
     });
     return {
       statusCode: 200,
@@ -84,6 +68,22 @@ export const GET = createSmartRouteHandler({
   },
 });
 
+
+const defaultDraftSource = deindent`
+  import { Container } from "@react-email/components";
+  import { Subject, NotificationCategory, Props } from "@stackframe/emails";
+
+  export function EmailTemplate({ user, project }: Props) {
+    return (
+      <Container>
+        <Subject value={\`Hello \${user.displayName}!\`} />
+        <NotificationCategory value="Marketing" />
+        <div className="font-bold">Hi {user.displayName}!</div>
+        <br />
+      </Container>
+    );
+  }
+`;
 
 export const POST = createSmartRouteHandler({
   metadata: { hidden: true },

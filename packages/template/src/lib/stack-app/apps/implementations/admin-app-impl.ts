@@ -301,7 +301,7 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
       }));
     }, [crud]);
   }
-  useEmailDrafts(): { id: string, displayName: string, themeId?: string | null | false, tsxSource: string, sentAt?: Date | null }[] {
+  useEmailDrafts(): { id: string, displayName: string, themeId: string | undefined | false, tsxSource: string, sentAt: Date | null }[] {
     const crud = useAsyncCache(this._adminEmailDraftsCache, [], "useEmailDrafts()");
     return useMemo(() => {
       return crud.map((draft) => ({
@@ -332,7 +332,7 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
     }));
   }
 
-  async listEmailDrafts(): Promise<{ id: string, displayName: string, themeId?: string | null | false, tsxSource: string, sentAt?: Date | null }[]> {
+  async listEmailDrafts(): Promise<{ id: string, displayName: string, themeId: string | undefined | false, tsxSource: string, sentAt: Date | null }[]> {
     const crud = Result.orThrow(await this._adminEmailDraftsCache.getOrWait([], "write-only"));
     return crud.map((draft) => ({
       id: draft.id,
@@ -484,10 +484,10 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
     return result;
   }
 
-  async updateEmailDraft(id: string, data: { displayName?: string, themeId?: string | null | false, tsxSource?: string }): Promise<void> {
+  async updateEmailDraft(id: string, data: { displayName?: string, themeId?: string | undefined | false, tsxSource?: string }): Promise<void> {
     await this._interface.updateEmailDraft(id, {
       display_name: data.displayName,
-      theme_id: (data.themeId === undefined) ? undefined : ((data.themeId === false) ? false : (data.themeId ?? null)),
+      theme_id: data.themeId,
       tsx_source: data.tsxSource,
     });
     await this._adminEmailDraftsCache.refresh([]);

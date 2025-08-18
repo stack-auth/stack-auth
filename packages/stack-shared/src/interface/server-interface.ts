@@ -804,6 +804,7 @@ export class StackServerInterface extends StackClientInterface {
     notificationCategoryName?: string,
     templateId?: string,
     variables?: Record<string, any>,
+    draftId?: string,
   }): Promise<Result<void, KnownErrors["RequiresCustomEmailServer"] | KnownErrors["SchemaError"] | KnownErrors["UserIdDoesNotExist"]>> {
     const res = await this.sendServerRequestAndCatchKnownError(
       "/emails/send-email",
@@ -820,6 +821,7 @@ export class StackServerInterface extends StackClientInterface {
           notification_category_name: options.notificationCategoryName,
           template_id: options.templateId,
           variables: options.variables,
+          draft_id: options.draftId,
         }),
       },
       null,

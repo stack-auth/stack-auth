@@ -131,9 +131,9 @@ export class StackAdminInterface extends StackServerInterface {
     return result.templates;
   }
 
-  async listInternalEmailDrafts(): Promise<{ id: string, display_name: string, theme_id?: string | null | false, tsx_source: string, sent_at_millis?: number | null }[]> {
+  async listInternalEmailDrafts(): Promise<{ id: string, display_name: string, theme_id?: string | undefined | false, tsx_source: string, sent_at_millis?: number | null }[]> {
     const response = await this.sendAdminRequest(`/internal/email-drafts`, {}, null);
-    const result = await response.json() as { drafts: { id: string, display_name: string, theme_id?: string | null | false, tsx_source: string, sent_at_millis?: number | null }[] };
+    const result = await response.json() as { drafts: { id: string, display_name: string, theme_id?: string | undefined | false, tsx_source: string, sent_at_millis?: number | null }[] };
     return result.drafts;
   }
 

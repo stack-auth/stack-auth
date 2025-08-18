@@ -34,10 +34,8 @@ export type StackAdminApp<HasTokenStore extends boolean = boolean, ProjectId ext
   & AsyncStoreProperty<"emailThemes", [], { id: string, displayName: string }[], true>
   & AsyncStoreProperty<"emailPreview", [{ themeId?: string | null | false, themeTsxSource?: string, templateId?: string, templateTsxSource?: string }], string, false>
   & AsyncStoreProperty<"emailTemplates", [], { id: string, displayName: string, themeId?: string, tsxSource: string }[], true>
+  & AsyncStoreProperty<"emailDrafts", [], { id: string, displayName: string, themeId: string | undefined | false, tsxSource: string, sentAt: Date | null }[], true>
   & {
-    useEmailTemplates(): { id: string, displayName: string, tsxSource: string }[], // THIS_LINE_PLATFORM react-like
-    listEmailTemplates(): Promise<{ id: string, displayName: string, tsxSource: string }[]>,
-
     createInternalApiKey(options: InternalApiKeyCreateOptions): Promise<InternalApiKeyFirstView>,
 
     createTeamPermissionDefinition(data: AdminTeamPermissionDefinitionCreateOptions): Promise<AdminTeamPermission>,
@@ -77,6 +75,8 @@ export type StackAdminApp<HasTokenStore extends boolean = boolean, ProjectId ext
     setupPayments(): Promise<{ url: string }>,
     createStripeWidgetAccountSession(): Promise<{ client_secret: string }>,
     createPurchaseUrl(options: { customerId: string, offerId: string }): Promise<string>,
+    createEmailDraft(options: { displayName?: string, themeId?: string | undefined | false, tsxSource?: string }): Promise<{ id: string }>,
+    updateEmailDraft(id: string, data: { displayName?: string, themeId?: string | undefined | false, tsxSource?: string }): Promise<void>,
   }
   & StackServerApp<HasTokenStore, ProjectId>
 );
