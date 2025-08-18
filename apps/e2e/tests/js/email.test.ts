@@ -177,6 +177,17 @@ it("should handle missing required email content", async ({ expect }) => {
   expect(result.status).toBe("error");
   if (result.status === "error") {
     expect(KnownErrors.SchemaError.isInstance(result.error)).toBe(true);
-    expect(result.error.message).toMatchInlineSnapshot(`"Either html or template_id must be provided"`);
+    expect(result.error.message).toMatchInlineSnapshot(`
+      deindent\`
+        Request validation failed on POST /api/v1/emails/send-email:
+          - body is not matched by any of the provided schemas:
+            Schema 0:
+              body.html must be defined
+            Schema 1:
+              body.template_id must be defined
+            Schema 2:
+              body.draft_id must be defined
+      \`
+    `);
   }
 });

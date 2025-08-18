@@ -3,7 +3,6 @@ import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { KnownErrors } from "@stackframe/stack-shared/dist/known-errors";
 import { adaptSchema, templateThemeIdSchema, yupNumber, yupObject, yupString, yupUnion } from "@stackframe/stack-shared/dist/schema-fields";
 import { StatusError } from "@stackframe/stack-shared/dist/utils/errors";
-import { get, getOrUndefined, has } from "@stackframe/stack-shared/dist/utils/objects";
 
 export const POST = createSmartRouteHandler({
   metadata: {
@@ -17,34 +16,20 @@ export const POST = createSmartRouteHandler({
       tenancy: adaptSchema.defined(),
     }).defined(),
     body: yupUnion(
-      // template_id + theme_id
       yupObject({
         template_id: yupString().uuid().defined(),
         theme_id: templateThemeIdSchema,
       }),
-      // template_id + theme_tsx_source
       yupObject({
         template_id: yupString().uuid().defined(),
         theme_tsx_source: yupString().defined(),
       }),
-      // template_tsx_source + theme_id
       yupObject({
         template_tsx_source: yupString().defined(),
         theme_id: templateThemeIdSchema,
       }),
-      // template_tsx_source + theme_tsx_source
       yupObject({
         template_tsx_source: yupString().defined(),
-        theme_tsx_source: yupString().defined(),
-      }),
-      // draft_content + theme_id
-      yupObject({
-        draft_content: yupString().defined(),
-        theme_id: templateThemeIdSchema,
-      }),
-      // draft_content + theme_tsx_source
-      yupObject({
-        draft_content: yupString().defined(),
         theme_tsx_source: yupString().defined(),
       }),
     ).defined(),
@@ -60,10 +45,14 @@ export const POST = createSmartRouteHandler({
   }),
   async handler({ body, auth: { tenancy } }) {
     const templateList = new Map(Object.entries(tenancy.config.emails.templates));
+    const themeList = new Map(Object.entries(tenancy.config.emails.themes));
     let themeSource: string;
     if ("theme_tsx_source" in body) {
       themeSource = body.theme_tsx_source;
     } else {
+      if (typeof body.theme_id === "string" && !themeList.has(body.theme_id)) {
+        throw new StatusError(400, "No theme found with given id");
+      }
       themeSource = getEmailThemeForTemplate(tenancy, body.theme_id);
     }
 
@@ -77,7 +66,7 @@ export const POST = createSmartRouteHandler({
       }
       contentSource = template.tsxSource;
     } else {
-      contentSource = body.draft_content;
+      throw new KnownErrors.SchemaError("Either template_id or template_tsx_source must be provided");
     }
 
     const result = await renderEmailWithTemplate(
