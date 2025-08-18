@@ -1,13 +1,14 @@
 import { teamsCrudHandlers } from "@/app/api/latest/teams/crud";
 import { usersCrudHandlers } from "@/app/api/latest/users/crud";
 import { KnownErrors } from "@stackframe/stack-shared";
-import { inlineOfferSchema, offerSchema, yupValidate } from "@stackframe/stack-shared/dist/schema-fields";
+import { inlineOfferSchema, offerSchema } from "@stackframe/stack-shared/dist/schema-fields";
 import { StackAssertionError, StatusError } from "@stackframe/stack-shared/dist/utils/errors";
 import { getOrUndefined, typedFromEntries } from "@stackframe/stack-shared/dist/utils/objects";
 import * as yup from "yup";
 import { Tenancy } from "./tenancies";
 import { SUPPORTED_CURRENCIES } from "@stackframe/stack-shared/dist/utils/currencies";
-import { PrismaClient, SubscriptionStatus } from "@prisma/client";
+import { SubscriptionStatus } from "@prisma/client";
+import { PrismaClientTransaction } from "@/prisma-client";
 
 export async function ensureOfferIdOrInlineOffer(
   tenancy: Tenancy,
@@ -119,7 +120,7 @@ export async function getCustomerType(tenancy: Tenancy, customerId: string) {
 }
 
 export async function getItemQuantityForCustomer(options: {
-  prisma: PrismaClient,
+  prisma: PrismaClientTransaction,
   tenancy: Tenancy,
   itemId: string,
   customerId: string,
@@ -157,30 +158,4 @@ export async function getItemQuantityForCustomer(options: {
     },
   });
   return subscriptionQuantity + (_sum.quantity ?? 0) + defaultQuantity;
-}
-
-export async function tryCreateItemQuantityChange(options: {
-  prisma: PrismaClient,
-  tenancy: Tenancy,
-  customerId: string,
-  itemId: string,
-  quantity: number,
-  expiresAt: Date | null,
-  description: string | null,
-}) {
-  const currentQuantity = await getItemQuantityForCustomer(options);
-  if (currentQuantity + options.quantity < 0) {
-    return false;
-  }
-  await options.prisma.itemQuantityChange.create({
-    data: {
-      tenancyId: options.tenancy.id,
-      customerId: options.customerId,
-      itemId: options.itemId,
-      quantity: options.quantity,
-      expiresAt: options.expiresAt,
-      description: options.description,
-    },
-  });
-  return true;
 }
