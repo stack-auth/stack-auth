@@ -205,7 +205,7 @@ const navigationItems: (Label | Item | Hidden)[] = [
       let item;
       let href;
       if (match) {
-        item = "Draft";
+        item = <DraftBreadcrumbItem key='draft-display-name' draftId={match[1]} />;
         href = `/email-drafts/${match[1]}`;
       } else {
         item = "Draft";
@@ -347,6 +347,16 @@ function TemplateBreadcrumbItem(props: { templateId: string }) {
     return null;
   }
   return template.displayName;
+}
+
+function DraftBreadcrumbItem(props: { draftId: string }) {
+  const stackAdminApp = useAdminApp();
+  const drafts = stackAdminApp.useEmailDrafts();
+  const draft = drafts.find((d) => d.id === props.draftId);
+  if (!draft) {
+    return null;
+  }
+  return draft.displayName;
 }
 
 function NavItem({ item, href, onClick }: { item: Item, href: string, onClick?: () => void }) {

@@ -797,7 +797,8 @@ export class StackServerInterface extends StackClientInterface {
   }
 
   async sendEmail(options: {
-    userIds: string[],
+    userIds?: string[],
+    allUsers?: true,
     themeId?: string | null | false,
     html?: string,
     subject?: string,
@@ -815,6 +816,7 @@ export class StackServerInterface extends StackClientInterface {
         },
         body: JSON.stringify({
           user_ids: options.userIds,
+          all_users: options.allUsers,
           theme_id: options.themeId,
           html: options.html,
           subject: options.subject,

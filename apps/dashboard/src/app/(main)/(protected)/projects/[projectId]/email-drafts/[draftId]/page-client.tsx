@@ -2,21 +2,23 @@
 
 import { TeamMemberSearchTable } from "@/components/data-table/team-member-search-table";
 import EmailPreview from "@/components/email-preview";
+import { EmailThemeSelector } from "@/components/email-theme-selector";
 import { useRouterConfirm } from "@/components/router";
 import { AssistantChat, CodeEditor, VibeCodeLayout } from "@/components/vibe-coding";
 import { createChatAdapter, createHistoryAdapter, ToolCallContent } from "@/components/vibe-coding/chat-adapters";
 import { KnownErrors } from "@stackframe/stack-shared/dist/known-errors";
-import { Button, Select, SelectContent, SelectItem, SelectTrigger, SelectValue, Skeleton, toast, Typography, useToast } from "@stackframe/stack-ui";
+import { Badge, Button, Card, CardContent, CardHeader, CardTitle, Select, SelectContent, SelectItem, SelectTrigger, SelectValue, Skeleton, toast, Typography, useToast } from "@stackframe/stack-ui";
 import { Suspense, useEffect, useMemo, useState } from "react";
 import { useAdminApp } from "../../use-admin-app";
-import { EmailThemeSelector } from "@/components/email-theme-selector";
+import { EmailDraftUI } from "@/components/vibe-coding/draft-tool-components";
 
 export default function PageClient({ draftId }: { draftId: string }) {
   const stackAdminApp = useAdminApp();
   const { setNeedConfirm } = useRouterConfirm();
   const { toast } = useToast();
 
-  const drafts = stackAdminApp.useEmailDrafts();
+  type EmailDraft = { id: string, displayName: string, themeId: string | undefined | false, tsxSource: string, sentAt: Date | null };
+  const drafts = stackAdminApp.useEmailDrafts() as EmailDraft[];
   const draft = useMemo(() => drafts.find((d) => d.id === draftId), [drafts, draftId]);
 
   const [currentCode, setCurrentCode] = useState<string>(draft?.tsxSource ?? "");
@@ -38,7 +40,6 @@ export default function PageClient({ draftId }: { draftId: string }) {
     try {
       await stackAdminApp.updateEmailDraft(draftId, { tsxSource: currentCode, themeId: selectedThemeId });
       setStage("send");
-      toast({ title: "Draft saved", variant: "success" });
     } catch (error) {
       if (error instanceof KnownErrors.EmailRenderingError) {
         toast({ title: "Failed to save draft", variant: "destructive", description: error.message });
@@ -74,8 +75,8 @@ export default function PageClient({ draftId }: { draftId: string }) {
           chatComponent={
             <AssistantChat
               historyAdapter={createHistoryAdapter(stackAdminApp, draftId)}
-              chatAdapter={createChatAdapter(stackAdminApp, draftId, "email-template", handleToolUpdate)}
-              toolComponents={[]}
+              chatAdapter={createChatAdapter(stackAdminApp, draftId, "email-draft", handleToolUpdate)}
+              toolComponents={<EmailDraftUI setCurrentCode={setCurrentCode} />}
             />
           }
         />
@@ -92,10 +93,11 @@ function SendStage({ draftId }: { draftId: string }) {
   const [selectedUserIds, setSelectedUserIds] = useState<string[]>([]);
 
   const handleSubmit = async () => {
-    const result = await stackAdminApp.sendEmail({
-      userIds: selectedUserIds,
-      draftId,
-    });
+    const result = await stackAdminApp.sendEmail(
+      scope === "users"
+        ? { draftId, userIds: selectedUserIds }
+        : { draftId, allUsers: true }
+    );
     if (result.status === "ok") {
       toast({ title: "Email sent", variant: "success" });
       return;
@@ -108,44 +110,58 @@ function SendStage({ draftId }: { draftId: string }) {
   };
 
   return (
-    <div className="flex flex-col gap-4">
-      <Typography className="font-medium">Recipients</Typography>
-      <Select value={scope} onValueChange={(v) => setScope(v as "all" | "users")}>
-        <SelectTrigger>
-          <SelectValue />
-        </SelectTrigger>
-        <SelectContent>
-          <SelectItem value="all">All Users</SelectItem>
-          <SelectItem value="users">Select Users</SelectItem>
-        </SelectContent>
-      </Select>
-      {scope === "users" && (
-        <div className="mt-2">
-          <div className="mt-2">
-            <Suspense fallback={<Skeleton className="h-20" />}>
-              <TeamMemberSearchTable
-                action={(user) => (
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() => setSelectedUserIds(userIds => userIds.some(u => u === user.id) ? userIds.filter(u => u !== user.id) : [...userIds, user.id])}
-                  >
-                    {selectedUserIds.some(u => u === user.id) ? 'Remove' : 'Add'}
-                  </Button>
+    <div className="mx-auto w-full max-w-4xl p-4">
+      <Card className="p-4">
+        <CardContent className="flex flex-col gap-4">
+          <div className="flex items-center justify-between">
+            <Typography className="font-medium">Recipients</Typography>
+            {scope === "users" && (
+              <div className="flex items-center gap-2">
+                <Badge variant="secondary">{selectedUserIds.length} selected</Badge>
+                {selectedUserIds.length > 0 && (
+                  <Button size="sm" variant="ghost" onClick={() => setSelectedUserIds([])}>Clear</Button>
                 )}
-              />
-            </Suspense>
+              </div>
+            )}
           </div>
-        </div>
-      )}
-      <div className="flex justify-center">
-        <Button
-          disabled={scope === "users" && selectedUserIds.length === 0}
-          onClick={handleSubmit}
-        >
-          Send
-        </Button>
-      </div>
+          <div className="max-w-sm">
+            <Select value={scope} onValueChange={(v) => setScope(v as "all" | "users")}>
+              <SelectTrigger>
+                <SelectValue placeholder="Choose recipients" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All users</SelectItem>
+                <SelectItem value="users">Select users…</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          {scope === "users" && (
+            <div className="mt-2">
+              <Suspense fallback={<Skeleton className="h-20" />}>
+                <TeamMemberSearchTable
+                  action={(user) => (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => setSelectedUserIds(userIds => userIds.some(u => u === user.id) ? userIds.filter(u => u !== user.id) : [...userIds, user.id])}
+                    >
+                      {selectedUserIds.some(u => u === user.id) ? "Remove" : "Add"}
+                    </Button>
+                  )}
+                />
+              </Suspense>
+            </div>
+          )}
+          <div className="flex justify-end">
+            <Button
+              disabled={scope === "users" && selectedUserIds.length === 0}
+              onClick={handleSubmit}
+            >
+              Send
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
     </div>
   );
 }

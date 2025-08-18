@@ -1,28 +1,10 @@
 import { getPrismaClientForTenancy } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
-import { DraftThemeMode } from "@prisma/client";
 import { templateThemeIdSchema, yupArray, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
 import { deindent } from "@stackframe/stack-shared/dist/utils/strings";
+import { templateThemeIdToThemeMode, themeModeToTemplateThemeId } from "@/lib/email-drafts";
 
-const templateThemeIdToThemeMode = (themeId: string | false | undefined): DraftThemeMode => {
-  if (themeId === undefined) {
-    return DraftThemeMode.PROJECT_DEFAULT;
-  }
-  if (themeId === false) {
-    return DraftThemeMode.NONE;
-  }
-  return DraftThemeMode.CUSTOM;
-};
 
-const themeModeToTemplateThemeId = (themeMode: DraftThemeMode, themeId: string | null): string | false | undefined => {
-  if (themeMode === DraftThemeMode.PROJECT_DEFAULT) {
-    return undefined;
-  }
-  if (themeMode === DraftThemeMode.NONE) {
-    return false;
-  }
-  return themeId === null ? undefined : themeId;
-};
 
 export const GET = createSmartRouteHandler({
   metadata: { hidden: true },

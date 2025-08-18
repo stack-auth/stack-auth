@@ -349,7 +349,7 @@ export class StackAdminInterface extends StackServerInterface {
 
   async sendChatMessage(
     threadId: string,
-    contextType: "email-theme" | "email-template",
+    contextType: "email-theme" | "email-template" | "email-draft",
     messages: Array<{ role: string, content: any }>,
     abortSignal?: AbortSignal,
   ): Promise<{ content: ChatContent }> {

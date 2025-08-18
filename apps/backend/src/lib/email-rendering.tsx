@@ -7,6 +7,7 @@ import { get, has } from '@stackframe/stack-shared/dist/utils/objects';
 import { Result } from "@stackframe/stack-shared/dist/utils/results";
 import { deindent } from "@stackframe/stack-shared/dist/utils/strings";
 import { Tenancy } from './tenancies';
+import { PrismaClient } from '@prisma/client';
 
 export function getActiveEmailTheme(tenancy: Tenancy) {
   const themeList = tenancy.config.emails.themes;
@@ -127,7 +128,6 @@ export async function renderEmailWithTemplate(
     return Result.error("Unable to render email");
   }
 }
-
 
 const findComponentValueUtil = `import React from 'react';
 export function findComponentValue(element, targetStackComponent) {

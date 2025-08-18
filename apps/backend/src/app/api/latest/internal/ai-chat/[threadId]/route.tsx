@@ -37,7 +37,7 @@ export const POST = createSmartRouteHandler({
       threadId: yupString().defined(),
     }),
     body: yupObject({
-      context_type: yupString().oneOf(["email-theme", "email-template"]).defined(),
+      context_type: yupString().oneOf(["email-theme", "email-template", "email-draft"]).defined(),
       messages: yupArray(yupObject({
         role: yupString().oneOf(["user", "assistant", "tool"]).defined(),
         content: yupMixed().defined(),
@@ -59,6 +59,7 @@ export const POST = createSmartRouteHandler({
       messages: body.messages as any,
       tools: adapter.tools,
     });
+    console.log(result.text);
 
     const contentBlocks: InferType<typeof contentSchema> = [];
     result.steps.forEach((step) => {
