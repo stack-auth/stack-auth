@@ -8,6 +8,7 @@ import * as yup from "yup";
 import { Tenancy } from "./tenancies";
 import { SUPPORTED_CURRENCIES } from "@stackframe/stack-shared/dist/utils/currencies";
 import { PrismaClient, SubscriptionStatus } from "@prisma/client";
+import { PrismaClientTransaction } from "@/prisma-client";
 
 export async function ensureOfferIdOrInlineOffer(
   tenancy: Tenancy,
@@ -118,7 +119,7 @@ export async function getCustomerType(tenancy: Tenancy, customerId: string) {
   throw new KnownErrors.CustomerDoesNotExist(customerId);
 }
 
-export async function getItemQuantityForCustomer(prisma: PrismaClient, tenancyId: string, itemId: string, customerId: string) {
+export async function getItemQuantityForCustomer(prisma: PrismaClientTransaction, tenancyId: string, itemId: string, customerId: string) {
   const subscriptions = await prisma.subscription.findMany({
     where: {
       tenancyId: tenancyId,
