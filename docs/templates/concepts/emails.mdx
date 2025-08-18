@@ -63,15 +63,10 @@ type SendEmailOptions = {
   themeId?: string | null | false;      // Theme to apply (optional)
   subject?: string;                     // Email subject
   notificationCategoryName?: string;    // Notification category for user preferences
-} & (
-  | {
-      html: string;                     // Custom HTML content
-    }
-  | {
-      templateId: string;               // Template ID to use
-      variables?: Record<string, any>;  // Template variables
-    }
-);
+  html?: string;                        // Custom HTML content
+  templateId?: string;                  // Template ID to use
+  variables?: Record<string, any>;      // Template variables
+};
 ```
 
 ### Error Handling
@@ -116,37 +111,31 @@ These templates can be customized through the admin interface or programmaticall
 
 ## Email Configuration
 
+Email configuration is managed through the Stack Auth dashboard or admin API, not directly in your application code. You have two options:
+
 ### Shared Email Provider (Development)
 
-For development, you can use Stack's shared email provider:
+For development and testing, you can use Stack's shared email provider. This sends emails from `noreply@stackframe.co` and is configured through your project settings in the Stack Auth dashboard.
 
-```typescript
-// In your project configuration
-{
-  emailConfig: {
-    type: 'shared', // Uses Stack's shared email service
-  }
-}
-```
+- Go to your project's Email settings in the dashboard
+- Select "Shared" as your email server type
+- No additional configuration required
 
 ### Custom Email Server (Production)
 
-For production, configure your own email server:
+For production, configure your own SMTP server through the dashboard:
 
-```typescript
-// In your project configuration
-{
-  emailConfig: {
-    type: 'standard',
-    host: 'smtp.yourprovider.com',
-    port: 587,
-    username: 'your-username',
-    password: 'your-password',
-    senderEmail: 'noreply@yourdomain.com',
-    senderName: 'Your App Name',
-  }
-}
-```
+- Go to your project's Email settings in the dashboard  
+- Select "Custom SMTP server" as your email server type
+- Configure the following settings:
+  - **Host**: Your SMTP server hostname (e.g., `smtp.yourprovider.com`)
+  - **Port**: SMTP port (typically 587 for TLS or 465 for SSL)
+  - **Username**: Your SMTP username
+  - **Password**: Your SMTP password
+  - **Sender Email**: The email address emails will be sent from
+  - **Sender Name**: The display name for your emails
+
+The dashboard will automatically test your configuration when you save it.
 
 ## Notification Categories
 
@@ -178,7 +167,7 @@ For custom email flows, use the `sendEmail` method from your server-side code:
 
 ```typescript
 // In your API route or server action
-import { stackServerApp } from './stack';
+import { stackServerApp } from '@stackframe/stack';;
 
 export async function inviteUser(email: string) {
   const result = await stackServerApp.sendEmail({

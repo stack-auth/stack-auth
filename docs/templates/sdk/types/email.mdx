@@ -17,19 +17,14 @@ Options for sending emails via the `sendEmail` method on `StackServerApp`.
 ### Table of Contents
 
 <ClickableTableOfContents code={`type SendEmailOptions = {
-  userIds: string[];  //$stack-link-to:#sendemaildoptionsuserids
-  themeId?: string | null | false;  //$stack-link-to:#sendemaildoptionsthemeid
-  subject?: string;  //$stack-link-to:#sendemaildoptionssubject
-  notificationCategoryName?: string;  //$stack-link-to:#sendemaildoptionsnotificationcategoryname
-} & (
-  | {
-      html: string;  //$stack-link-to:#sendemaildoptionshtml
-    }
-  | {
-      templateId: string;  //$stack-link-to:#sendemaildoptionstemplateid
-      variables?: Record<string, any>;  //$stack-link-to:#sendemaildoptionsvariables
-    }
-);`} />
+  userIds: string[];  //$stack-link-to:#sendemailoptionsuserids
+  themeId?: string | null | false;  //$stack-link-to:#sendemailoptionsthemeid
+  subject?: string;  //$stack-link-to:#sendemailoptionssubject
+  notificationCategoryName?: string;  //$stack-link-to:#sendemailoptionsnotificationcategoryname
+  html?: string;  //$stack-link-to:#sendemailoptionshtml
+  templateId?: string;  //$stack-link-to:#sendemailoptionstemplateid
+  variables?: Record<string, any>;  //$stack-link-to:#sendemailoptionsvariables
+};`} />
 
 <CollapsibleTypesSection type="sendEmailOptions" property="userIds" defaultOpen={false}>
   <MethodLayout>
@@ -130,12 +125,12 @@ Options for sending emails via the `sendEmail` method on `StackServerApp`.
 <CollapsibleTypesSection type="sendEmailOptions" property="html" defaultOpen={false}>
   <MethodLayout>
     <MethodContent>
-      Custom HTML content for the email. Use this option when you want to send a custom HTML email instead of using a template.
+      Custom HTML content for the email. Use this option when you want to send a custom HTML email instead of using a template. Cannot be used together with `templateId` or `variables`.
     </MethodContent>
     <MethodAside>
       <AsideSection title="Type">
         ```typescript
-        html: string
+        html?: string
         ```
       </AsideSection>
       <AsideSection title="Example">
@@ -154,12 +149,12 @@ Options for sending emails via the `sendEmail` method on `StackServerApp`.
 <CollapsibleTypesSection type="sendEmailOptions" property="templateId" defaultOpen={false}>
   <MethodLayout>
     <MethodContent>
-      ID of the email template to use. Use this option when you want to send a template-based email with variables.
+      ID of the email template to use. Use this option when you want to send a template-based email with variables. Cannot be used together with `html`.
     </MethodContent>
     <MethodAside>
       <AsideSection title="Type">
         ```typescript
-        templateId: string
+        templateId?: string
         ```
       </AsideSection>
       <AsideSection title="Example">
