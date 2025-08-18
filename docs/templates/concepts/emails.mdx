@@ -167,7 +167,7 @@ For custom email flows, use the `sendEmail` method from your server-side code:
 
 ```typescript
 // In your API route or server action
-import { stackServerApp } from '@stackframe/stack';;
+import { stackServerApp } from '@stackframe/stack';
 
 export async function inviteUser(email: string) {
   const result = await stackServerApp.sendEmail({
