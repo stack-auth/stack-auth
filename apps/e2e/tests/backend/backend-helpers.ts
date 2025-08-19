@@ -603,7 +603,10 @@ export namespace Auth {
           }),
         },
       });
-      expect(response.status).toBe(307);
+      expect(response).toMatchObject({
+        status: 307,
+        headers: expect.any(Headers),
+      });
       expect(response.headers.get("location")).toMatch(/^http:\/\/localhost:8114\/auth\?.*$/);
       expect(response.headers.get("set-cookie")).toMatch(/^stack-oauth-inner-[^;]+=[^;]+; Path=\/; Expires=[^;]+; Max-Age=\d+;( Secure;)? HttpOnly$/);
       return {

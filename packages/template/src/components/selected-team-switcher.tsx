@@ -70,7 +70,7 @@ function Inner<AllowNull extends boolean>(props: SelectedTeamSwitcherProps<Allow
 
   return (
     <TeamSwitcher
-      selectedTeam={props.selectedTeam}
+      team={props.selectedTeam}
       allowNull={props.allowNull}
       nullLabel={props.nullLabel}
       triggerClassName={props.triggerClassName}

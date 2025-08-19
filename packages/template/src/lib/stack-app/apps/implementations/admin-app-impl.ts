@@ -113,6 +113,8 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
       createdAt: new Date(data.created_at_millis),
       isProductionMode: data.is_production_mode,
       ownerTeamId: data.owner_team_id,
+      logoUrl: data.logo_url,
+      fullLogoUrl: data.full_logo_url,
       config: {
         signUpEnabled: data.config.sign_up_enabled,
         credentialEnabled: data.config.credential_enabled,

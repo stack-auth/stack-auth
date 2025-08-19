@@ -110,7 +110,7 @@ export default function PageClient() {
                       <FormControl>
                         <TeamSwitcher
                           triggerClassName="max-w-full"
-                          selectedTeamId={field.value}
+                          teamId={field.value}
                           onChange={async (team) => {
                             field.onChange(team.id);
                           }}
