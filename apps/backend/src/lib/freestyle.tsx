@@ -7,7 +7,7 @@ export class Freestyle {
   private freestyle: FreestyleSandboxes;
 
   constructor(options: { apiKey: string }) {
-    let baseUrl = getEnvVariable("STACK_FREESTYLE_API_ENDPOINT", undefined);
+    let baseUrl = getEnvVariable("STACK_FREESTYLE_API_ENDPOINT", "") || undefined;
     if (["development", "test"].includes(getNodeEnvironment()) && options.apiKey === "mock_stack_freestyle_key" && !baseUrl) {
       baseUrl = "http://localhost:8122";
     }
