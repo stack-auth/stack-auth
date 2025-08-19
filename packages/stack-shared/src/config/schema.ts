@@ -200,6 +200,7 @@ export const environmentConfigSchema = branchConfigSchema.concat(yupObject({
   emails: branchConfigSchema.getNested("emails").concat(yupObject({
     server: yupObject({
       isShared: yupBoolean(),
+      provider: yupString().oneOf(['resend', 'smtp']).optional(),
       host: schemaFields.emailHostSchema.optional().nonEmpty(),
       port: schemaFields.emailPortSchema.optional(),
       username: schemaFields.emailUsernameSchema.optional().nonEmpty(),
@@ -424,6 +425,7 @@ const organizationConfigDefaults = {
   emails: {
     server: {
       isShared: true,
+      provider: "resend",
       host: undefined,
       port: undefined,
       username: undefined,
