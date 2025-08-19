@@ -3,6 +3,7 @@
 import { getPublicEnvVar } from '@/lib/env';
 import { cn } from '@/lib/utils';
 import { useUser } from '@stackframe/stack';
+import { StackAssertionError } from '@stackframe/stack-shared/dist/utils/errors';
 import { htmlToText } from '@stackframe/stack-shared/dist/utils/html';
 import { runAsynchronously } from '@stackframe/stack-shared/dist/utils/promises';
 import { Button } from '@stackframe/stack-ui';
@@ -46,7 +47,7 @@ type CreateFeatureRequestResponse = {
   error?: string,
 };
 
-export function FeatureRequestBoard({ isActive }: FeatureRequestBoardProps) {
+export function FeatureRequestBoard({}: FeatureRequestBoardProps) {
   const user = useUser({ or: 'redirect', projectIdMustMatch: "internal" });
 
   // Base URL for API requests
@@ -61,17 +62,13 @@ export function FeatureRequestBoard({ isActive }: FeatureRequestBoardProps) {
 
   // Existing feature requests state
   const [existingRequests, setExistingRequests] = useState<FeatureRequest[]>([]);
-  const [isLoadingRequests, setIsLoadingRequests] = useState(false);
+  const [isLoadingRequests, setIsLoadingRequests] = useState(true);
 
   // Track which posts the current user has upvoted
   const [userUpvotes, setUserUpvotes] = useState<Set<string>>(new Set());
 
-  // Upvote state
-  const [upvotingIds, setUpvotingIds] = useState<Set<string>>(new Set());
-
   // Fetch existing feature requests from secure backend
   const fetchFeatureRequests = useCallback(async () => {
-    setIsLoadingRequests(true);
     try {
       const authJson = await user.getAuthJson();
       const response = await fetch(`${baseUrl}/api/v1/internal/feature-requests`, {
@@ -96,43 +93,38 @@ export function FeatureRequestBoard({ isActive }: FeatureRequestBoardProps) {
         });
         setUserUpvotes(upvotedPosts);
       } else {
-        console.error('Failed to fetch feature requests');
+        throw new StackAssertionError('Fetch response is not OK', {
+          details: {
+            response: response,
+            responseText: await response.text(),
+          },
+        });
       }
-    } catch (error) {
-      console.error('Error fetching feature requests:', error);
     } finally {
       setIsLoadingRequests(false);
     }
   }, [user, baseUrl]);
 
-  // Load feature requests when component becomes active
   useEffect(() => {
-    if (isActive) {
-      runAsynchronously(fetchFeatureRequests());
-    }
-  }, [isActive, fetchFeatureRequests]);
+    runAsynchronously(fetchFeatureRequests());
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Handle refresh button click
   const handleRefreshRequests = () => {
+    setIsLoadingRequests(true);
     runAsynchronously(fetchFeatureRequests());
   };
 
   // Handle upvote
   const handleUpvote = async (postId: string) => {
-    if (upvotingIds.has(postId)) return; // Prevent double-clicking
-
-    setUpvotingIds(prev => new Set(prev).add(postId));
-
     const wasUpvoted = userUpvotes.has(postId);
+    if (wasUpvoted) return;  // sadly Featurebase doesn't currently support unvoting via the API...
 
     // Optimistically update local state
     setUserUpvotes(prev => {
       const newSet = new Set(prev);
-      if (wasUpvoted) {
-        newSet.delete(postId);
-      } else {
-        newSet.add(postId);
-      }
+      newSet.add(postId);
       return newSet;
     });
 
@@ -141,7 +133,7 @@ export function FeatureRequestBoard({ isActive }: FeatureRequestBoardProps) {
       request.id === postId
         ? {
           ...request,
-          upvotes: wasUpvoted ? Math.max(0, request.upvotes - 1) : request.upvotes + 1
+          upvotes: request.upvotes + 1
         }
         : request
     ));
@@ -162,24 +154,20 @@ export function FeatureRequestBoard({ isActive }: FeatureRequestBoardProps) {
 
       if (response.ok) {
         // Refresh the list to get updated upvote counts from server
-        await fetchFeatureRequests();
+        runAsynchronously(fetchFeatureRequests());
       } else {
         console.error('Failed to upvote feature request');
         // Revert optimistic updates on failure
         setUserUpvotes(prev => {
           const newSet = new Set(prev);
-          if (wasUpvoted) {
-            newSet.add(postId);
-          } else {
-            newSet.delete(postId);
-          }
+          newSet.add(postId);
           return newSet;
         });
         setExistingRequests(prev => prev.map(request =>
           request.id === postId
             ? {
               ...request,
-              upvotes: wasUpvoted ? request.upvotes + 1 : Math.max(0, request.upvotes - 1)
+              upvotes: request.upvotes + 1
             }
             : request
         ));
@@ -189,29 +177,19 @@ export function FeatureRequestBoard({ isActive }: FeatureRequestBoardProps) {
       // Revert optimistic updates on failure
       setUserUpvotes(prev => {
         const newSet = new Set(prev);
-        if (wasUpvoted) {
-          newSet.add(postId);
-        } else {
-          newSet.delete(postId);
-        }
+        newSet.add(postId);
         return newSet;
       });
       setExistingRequests(prev => prev.map(request =>
         request.id === postId
           ? {
             ...request,
-            upvotes: wasUpvoted ? request.upvotes + 1 : Math.max(0, request.upvotes - 1)
+            upvotes: request.upvotes + 1
           }
           : request
       ));
 
       throw error;
-    } finally {
-      setUpvotingIds(prev => {
-        const newSet = new Set(prev);
-        newSet.delete(postId);
-        return newSet;
-      });
     }
   };
 
@@ -446,20 +424,13 @@ export function FeatureRequestBoard({ isActive }: FeatureRequestBoardProps) {
                     <Button
                       variant={userUpvotes.has(request.id) ? "default" : "outline"}
                       size="sm"
-                      onClick={(e) => {
+                      onClick={async (e) => {
                         e.stopPropagation();
-                        handleUpvote(request.id).catch((error) => {
-                          console.error('Failed to handle upvote:', error);
-                        });
+                        await handleUpvote(request.id);
                       }}
-                      disabled={upvotingIds.has(request.id)}
                       className="h-6 w-6 p-0 rounded-md"
                     >
-                      {upvotingIds.has(request.id) ? (
-                        <Loader2 className="h-2.5 w-2.5 animate-spin" />
-                      ) : (
-                        <ChevronUp className="h-2.5 w-2.5" />
-                      )}
+                      <ChevronUp className="h-2.5 w-2.5" />
                     </Button>
                     <span className="text-[10px] text-muted-foreground font-medium">
                       {request.upvotes || 0}

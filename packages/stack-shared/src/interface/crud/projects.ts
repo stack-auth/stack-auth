@@ -65,6 +65,8 @@ export const projectsCrudAdminReadSchema = yupObject({
   id: schemaFields.projectIdSchema.defined(),
   display_name: schemaFields.projectDisplayNameSchema.defined(),
   description: schemaFields.projectDescriptionSchema.nonNullable().defined(),
+  logo_url: schemaFields.projectLogoUrlSchema.nullable().optional(),
+  full_logo_url: schemaFields.projectFullLogoUrlSchema.nullable().optional(),
   created_at_millis: schemaFields.projectCreatedAtMillisSchema.defined(),
   is_production_mode: schemaFields.projectIsProductionModeSchema.defined(),
   owner_team_id: schemaFields.yupString().nullable().defined(),
@@ -113,6 +115,8 @@ export const projectsCrudClientReadSchema = yupObject({
 export const projectsCrudAdminUpdateSchema = yupObject({
   display_name: schemaFields.projectDisplayNameSchema.optional(),
   description: schemaFields.projectDescriptionSchema.optional(),
+  logo_url: schemaFields.projectLogoUrlSchema.nullable().optional(),
+  full_logo_url: schemaFields.projectFullLogoUrlSchema.nullable().optional(),
   is_production_mode: schemaFields.projectIsProductionModeSchema.optional(),
   config: yupObject({
     sign_up_enabled: schemaFields.projectSignUpEnabledSchema.optional(),

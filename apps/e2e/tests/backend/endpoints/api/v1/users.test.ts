@@ -741,12 +741,14 @@ describe("with client access", () => {
   });
 
   it("should be able to update selected team", async ({ expect }) => {
+    await Project.createAndSwitch({ config: { magic_link_enabled: true } });
     await Auth.Otp.signIn();
     const { teamId: team1Id } = await Team.createWithCurrentAsCreator({});
     const { teamId: team2Id } = await Team.createWithCurrentAsCreator({});
     const response1 = await niceBackendFetch("/api/v1/users/me", {
       accessType: "client",
     });
+    expect(response1.body.selected_team_id).toEqual(null);
     const response2 = await niceBackendFetch("/api/v1/users/me", {
       accessType: "client",
       method: "PATCH",

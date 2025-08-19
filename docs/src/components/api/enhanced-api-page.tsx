@@ -335,10 +335,12 @@ export function EnhancedAPIPage({ document, operations, description }: EnhancedA
             requestState={requestState}
             setRequestState={setRequestState}
             onExecute={() => {
+              // eslint-disable-next-line no-restricted-syntax
               executeRequest(operation, path, method)
                 .catch(error => console.error('Failed to execute request:', error));
             }}
             onCopy={(text: string) => {
+              // eslint-disable-next-line no-restricted-syntax
               copyToClipboard(text)
                 .catch(error => console.error('Failed to copy to clipboard:', error));
             }}
@@ -665,6 +667,7 @@ function ModernAPIPlayground({
                 variant="outline"
                 size="sm"
                 onClick={() => {
+                  // eslint-disable-next-line no-restricted-syntax
                   handleCopy(getCodeExample())
                     .catch(error => {
                       console.error('Failed to copy code example', error);
