@@ -5,28 +5,37 @@ import { CompleteConfig, EnvironmentConfigOverrideOverride, ProjectConfigOverrid
 import { AdminUserProjectsCrud, ProjectsCrud } from "@stackframe/stack-shared/dist/interface/crud/projects";
 import { UsersCrud } from "@stackframe/stack-shared/dist/interface/crud/users";
 import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
-import { StackAssertionError, captureError } from "@stackframe/stack-shared/dist/utils/errors";
+import { StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
 import { filterUndefined, typedFromEntries } from "@stackframe/stack-shared/dist/utils/objects";
 import { generateUuid } from "@stackframe/stack-shared/dist/utils/uuids";
-import { RawQuery, getPrismaClientForSourceOfTruth, globalPrismaClient, rawQuery, retryTransaction } from "../prisma-client";
-import { getRenderedEnvironmentConfigQuery, overrideEnvironmentConfigOverride, overrideProjectConfigOverride } from "./config";
-import { DEFAULT_BRANCH_ID } from "./tenancies";
+import { getPrismaClientForTenancy, RawQuery, globalPrismaClient, rawQuery, retryTransaction } from "../prisma-client";
+import { overrideEnvironmentConfigOverride, overrideProjectConfigOverride } from "./config";
+import { DEFAULT_BRANCH_ID, getSoleTenancyFromProjectBranch } from "./tenancies";
 
-function isStringArray(value: any): value is string[] {
-  return Array.isArray(value) && value.every((id) => typeof id === "string");
-}
-
-export function listManagedProjectIds(projectUser: UsersCrud["Admin"]["Read"]) {
-  const serverMetadata = projectUser.server_metadata;
-  if (typeof serverMetadata !== "object") {
-    throw new StackAssertionError("Invalid server metadata, did something go wrong?", { serverMetadata });
-  }
-  const managedProjectIds = (serverMetadata as any)?.managedProjectIds ?? [];
-  if (!isStringArray(managedProjectIds)) {
-    throw new StackAssertionError("Invalid server metadata, did something go wrong? Expected string array", { managedProjectIds });
-  }
-
-  return managedProjectIds;
+export async function listManagedProjectIds(projectUser: UsersCrud["Admin"]["Read"]) {
+  const internalTenancy = await getSoleTenancyFromProjectBranch("internal", DEFAULT_BRANCH_ID);
+  const internalPrisma = await getPrismaClientForTenancy(internalTenancy);
+  const teams = await internalPrisma.team.findMany({
+    where: {
+      tenancyId: internalTenancy.id,
+      teamMembers: {
+        some: {
+          projectUserId: projectUser.id,
+        }
+      }
+    },
+  });
+  const projectIds = await globalPrismaClient.project.findMany({
+    where: {
+      ownerTeamId: {
+        in: teams.map((team) => team.teamId),
+      },
+    },
+    select: {
+      id: true,
+    },
+  });
+  return projectIds.map((project) => project.id);
 }
 
 export function getProjectQuery(projectId: string): RawQuery<Promise<Omit<ProjectsCrud["Admin"]["Read"], "config"> | null>> {
@@ -53,6 +62,7 @@ export function getProjectQuery(projectId: string): RawQuery<Promise<Omit<Projec
         full_logo_url: row.fullLogoUrl,
         created_at_millis: new Date(row.createdAt + "Z").getTime(),
         is_production_mode: row.isProductionMode,
+        owner_team_id: row.ownerTeamId,
       };
     },
   };
@@ -65,12 +75,11 @@ export async function getProject(projectId: string): Promise<Omit<ProjectsCrud["
 
 export async function createOrUpdateProjectWithLegacyConfig(
   options: {
-    ownerIds?: string[],
     sourceOfTruth?: ProjectConfigOverrideOverride["sourceOfTruth"],
   } & ({
     type: "create",
     projectId?: string,
-    data: AdminUserProjectsCrud["Admin"]["Create"],
+    data: Omit<AdminUserProjectsCrud["Admin"]["Create"], "owner_team_id"> & { owner_team_id: string | null },
   } | {
     type: "update",
     projectId: string,
@@ -100,6 +109,7 @@ export async function createOrUpdateProjectWithLegacyConfig(
           displayName: options.data.display_name,
           description: options.data.description ?? "",
           isProductionMode: options.data.is_production_mode ?? false,
+          ownerTeamId: options.data.owner_team_id,
           logoUrl,
           fullLogoUrl,
         },
@@ -249,53 +259,9 @@ export async function createOrUpdateProjectWithLegacyConfig(
   });
 
 
-  // Update owner metadata
-  const internalEnvironmentConfig = await rawQuery(globalPrismaClient, getRenderedEnvironmentConfigQuery({ projectId: "internal", branchId: DEFAULT_BRANCH_ID }));
-  const prisma = await getPrismaClientForSourceOfTruth(internalEnvironmentConfig.sourceOfTruth, DEFAULT_BRANCH_ID);
-  await retryTransaction(prisma, async (tx) => {
-    for (const userId of options.ownerIds ?? []) {
-      const projectUserTx = await tx.projectUser.findUnique({
-        where: {
-          mirroredProjectId_mirroredBranchId_projectUserId: {
-            mirroredProjectId: "internal",
-            mirroredBranchId: DEFAULT_BRANCH_ID,
-            projectUserId: userId,
-          },
-        },
-      });
-      if (!projectUserTx) {
-        captureError("project-creation-owner-not-found", new StackAssertionError(`Attempted to create project, but owner user ID ${userId} not found. Did they delete their account? Continuing silently, but if the user is coming from an owner pack you should probably update it.`, { ownerIds: options.ownerIds }));
-        continue;
-      }
-
-      const serverMetadataTx: any = projectUserTx.serverMetadata ?? {};
-
-      await tx.projectUser.update({
-        where: {
-          mirroredProjectId_mirroredBranchId_projectUserId: {
-            mirroredProjectId: "internal",
-            mirroredBranchId: DEFAULT_BRANCH_ID,
-            projectUserId: projectUserTx.projectUserId,
-          },
-        },
-        data: {
-          serverMetadata: {
-            ...serverMetadataTx ?? {},
-            managedProjectIds: [
-              ...serverMetadataTx?.managedProjectIds ?? [],
-              projectId,
-            ],
-          },
-        },
-      });
-    }
-  });
-
   const result = await getProject(projectId);
-
   if (!result) {
     throw new StackAssertionError("Project not found after creation/update", { projectId });
   }
-
   return result;
 }

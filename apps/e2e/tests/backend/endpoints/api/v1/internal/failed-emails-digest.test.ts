@@ -329,7 +329,7 @@ describe("with valid credentials", () => {
     backendContext.set({
       projectKeys: InternalProjectKeys,
     });
-    await Auth.Otp.signIn();
+    const { userId: user1Id } = await Auth.Otp.signIn();
     const { projectId } = await Project.createAndSwitch({
       display_name: "Test Project Multiple Owners",
     }, true);
@@ -339,16 +339,28 @@ describe("with valid credentials", () => {
     backendContext.set({
       projectKeys: InternalProjectKeys,
     });
-    const { userId } = await Auth.Otp.signIn();
+    const { userId: user2Id } = await Auth.Otp.signIn();
 
-    const updateUserResponse = await niceBackendFetch(`/api/v1/users/${userId}`, {
-      method: "PATCH",
+    const user1Response = await niceBackendFetch(`/api/v1/users/${user1Id}`, {
+      method: "GET",
       accessType: "admin",
-      body: {
-        server_metadata: { managedProjectIds: [projectId] }
-      },
     });
-    expect(updateUserResponse.status).toBe(200);
+    expect(user1Response.status).toBe(200);
+    const addUserToTeamResponse = await niceBackendFetch(`/api/v1/team-memberships/${user1Response.body.selected_team_id}/${user2Id}`, {
+      method: "POST",
+      accessType: "admin",
+      body: {},
+    });
+    expect(addUserToTeamResponse).toMatchInlineSnapshot(`
+      NiceResponse {
+        "status": 201,
+        "body": {
+          "team_id": "<stripped UUID>",
+          "user_id": "<stripped UUID>",
+        },
+        "headers": Headers { <some fields may have been hidden> },
+      }
+    `);
     backendContext.set({ projectKeys: oldProjectKeys, userAuth: oldAuth });
 
     // Send a test email that will fail
