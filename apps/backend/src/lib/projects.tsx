@@ -1,3 +1,4 @@
+import { uploadAndGetUrl } from "@/s3";
 import { Prisma } from "@prisma/client";
 import { KnownErrors } from "@stackframe/stack-shared";
 import { CompleteConfig, EnvironmentConfigOverrideOverride, ProjectConfigOverrideOverride } from "@stackframe/stack-shared/dist/config/schema";
@@ -57,6 +58,8 @@ export function getProjectQuery(projectId: string): RawQuery<Promise<Omit<Projec
         id: row.id,
         display_name: row.displayName,
         description: row.description,
+        logo_url: row.logoUrl,
+        full_logo_url: row.fullLogoUrl,
         created_at_millis: new Date(row.createdAt + "Z").getTime(),
         is_production_mode: row.isProductionMode,
         owner_team_id: row.ownerTeamId,
@@ -85,6 +88,16 @@ export async function createOrUpdateProjectWithLegacyConfig(
     data: ProjectsCrud["Admin"]["Update"],
   })
 ) {
+  let logoUrl: string | null | undefined;
+  if (options.data.logo_url !== undefined) {
+    logoUrl = await uploadAndGetUrl(options.data.logo_url, "project-logos");
+  }
+
+  let fullLogoUrl: string | null | undefined;
+  if (options.data.full_logo_url !== undefined) {
+    fullLogoUrl = await uploadAndGetUrl(options.data.full_logo_url, "project-logos");
+  }
+
   const [projectId, branchId] = await retryTransaction(globalPrismaClient, async (tx) => {
     let project: Prisma.ProjectGetPayload<{}>;
     let branchId: string;
@@ -97,6 +110,8 @@ export async function createOrUpdateProjectWithLegacyConfig(
           description: options.data.description ?? "",
           isProductionMode: options.data.is_production_mode ?? false,
           ownerTeamId: options.data.owner_team_id,
+          logoUrl,
+          fullLogoUrl,
         },
       });
 
@@ -127,6 +142,8 @@ export async function createOrUpdateProjectWithLegacyConfig(
           displayName: options.data.display_name,
           description: options.data.description === null ? "" : options.data.description,
           isProductionMode: options.data.is_production_mode,
+          logoUrl,
+          fullLogoUrl,
         },
       });
       branchId = options.branchId;

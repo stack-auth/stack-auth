@@ -62,7 +62,12 @@ export const GET = createSmartRouteHandler({
     const data = await response.json();
 
     if (!response.ok) {
-      throw new Error(`Featurebase API error: ${data.error || 'Failed to fetch feature requests'}`);
+      throw new StackAssertionError(`Featurebase API error: ${data.error || 'Failed to fetch feature requests'}`, {
+        details: {
+          response: response,
+          responseData: data,
+        },
+      });
     }
 
     const posts = data.results || [];

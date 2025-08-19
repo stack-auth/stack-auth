@@ -20,6 +20,8 @@ model Project {
   description      String  @default("")
   isProductionMode Boolean
   ownerTeamId      String?  @db.Uuid
+  logoUrl          String?
+  fullLogoUrl      String?
 
   projectConfigOverride Json?
 
