@@ -258,8 +258,8 @@ it("can customize default team permissions", async ({ expect }) => {
         "full_logo_url": null,
         "id": "<stripped UUID>",
         "is_production_mode": false,
-        "owner_team_id": "<stripped UUID>",
         "logo_url": null,
+        "owner_team_id": "<stripped UUID>",
       },
       "headers": Headers { <some fields may have been hidden> },
     }

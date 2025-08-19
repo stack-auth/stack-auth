@@ -100,8 +100,8 @@ it("creates and updates the basic project information of a project", async ({ ex
         "full_logo_url": null,
         "id": "<stripped UUID>",
         "is_production_mode": true,
-        "owner_team_id": "<stripped UUID>",
         "logo_url": null,
+        "owner_team_id": "<stripped UUID>",
       },
       "headers": Headers { <some fields may have been hidden> },
     }
@@ -150,8 +150,8 @@ it("updates the basic project configuration", async ({ expect }) => {
         "full_logo_url": null,
         "id": "<stripped UUID>",
         "is_production_mode": false,
-        "owner_team_id": "<stripped UUID>",
         "logo_url": null,
+        "owner_team_id": "<stripped UUID>",
       },
       "headers": Headers { <some fields may have been hidden> },
     }
@@ -205,8 +205,8 @@ it("updates the project domains configuration", async ({ expect }) => {
         "full_logo_url": null,
         "id": "<stripped UUID>",
         "is_production_mode": false,
-        "owner_team_id": "<stripped UUID>",
         "logo_url": null,
+        "owner_team_id": "<stripped UUID>",
       },
       "headers": Headers { <some fields may have been hidden> },
     }
@@ -266,8 +266,8 @@ it("updates the project domains configuration", async ({ expect }) => {
         "full_logo_url": null,
         "id": "<stripped UUID>",
         "is_production_mode": false,
-        "owner_team_id": "<stripped UUID>",
         "logo_url": null,
+        "owner_team_id": "<stripped UUID>",
       },
       "headers": Headers { <some fields may have been hidden> },
     }
@@ -321,8 +321,8 @@ it("should allow insecure HTTP connections if insecureHttp is true", async ({ ex
         "full_logo_url": null,
         "id": "<stripped UUID>",
         "is_production_mode": false,
-        "owner_team_id": "<stripped UUID>",
         "logo_url": null,
+        "owner_team_id": "<stripped UUID>",
       },
       "headers": Headers { <some fields may have been hidden> },
     }
@@ -419,8 +419,8 @@ it("updates the project email configuration", async ({ expect }) => {
         "full_logo_url": null,
         "id": "<stripped UUID>",
         "is_production_mode": false,
-        "owner_team_id": "<stripped UUID>",
         "logo_url": null,
+        "owner_team_id": "<stripped UUID>",
       },
       "headers": Headers { <some fields may have been hidden> },
     }
@@ -479,8 +479,8 @@ it("updates the project email configuration", async ({ expect }) => {
         "full_logo_url": null,
         "id": "<stripped UUID>",
         "is_production_mode": false,
-        "owner_team_id": "<stripped UUID>",
         "logo_url": null,
+        "owner_team_id": "<stripped UUID>",
       },
       "headers": Headers { <some fields may have been hidden> },
     }
@@ -525,8 +525,8 @@ it("updates the project email configuration", async ({ expect }) => {
         "full_logo_url": null,
         "id": "<stripped UUID>",
         "is_production_mode": false,
-        "owner_team_id": "<stripped UUID>",
         "logo_url": null,
+        "owner_team_id": "<stripped UUID>",
       },
       "headers": Headers { <some fields may have been hidden> },
     }
@@ -571,8 +571,8 @@ it("updates the project email configuration", async ({ expect }) => {
         "full_logo_url": null,
         "id": "<stripped UUID>",
         "is_production_mode": false,
-        "owner_team_id": "<stripped UUID>",
         "logo_url": null,
+        "owner_team_id": "<stripped UUID>",
       },
       "headers": Headers { <some fields may have been hidden> },
     }
@@ -631,8 +631,8 @@ it("updates the project email configuration", async ({ expect }) => {
         "full_logo_url": null,
         "id": "<stripped UUID>",
         "is_production_mode": false,
-        "owner_team_id": "<stripped UUID>",
         "logo_url": null,
+        "owner_team_id": "<stripped UUID>",
       },
       "headers": Headers { <some fields may have been hidden> },
     }
@@ -804,8 +804,8 @@ it("updates the project oauth configuration", async ({ expect }) => {
         "full_logo_url": null,
         "id": "<stripped UUID>",
         "is_production_mode": false,
-        "owner_team_id": "<stripped UUID>",
         "logo_url": null,
+        "owner_team_id": "<stripped UUID>",
       },
       "headers": Headers { <some fields may have been hidden> },
     }
@@ -857,8 +857,8 @@ it("updates the project oauth configuration", async ({ expect }) => {
         "full_logo_url": null,
         "id": "<stripped UUID>",
         "is_production_mode": false,
-        "owner_team_id": "<stripped UUID>",
         "logo_url": null,
+        "owner_team_id": "<stripped UUID>",
       },
       "headers": Headers { <some fields may have been hidden> },
     }
@@ -914,8 +914,8 @@ it("updates the project oauth configuration", async ({ expect }) => {
         "full_logo_url": null,
         "id": "<stripped UUID>",
         "is_production_mode": false,
-        "owner_team_id": "<stripped UUID>",
         "logo_url": null,
+        "owner_team_id": "<stripped UUID>",
       },
       "headers": Headers { <some fields may have been hidden> },
     }
@@ -966,8 +966,8 @@ it("updates the project oauth configuration", async ({ expect }) => {
         "full_logo_url": null,
         "id": "<stripped UUID>",
         "is_production_mode": false,
-        "owner_team_id": "<stripped UUID>",
         "logo_url": null,
+        "owner_team_id": "<stripped UUID>",
       },
       "headers": Headers { <some fields may have been hidden> },
     }
@@ -1033,8 +1033,8 @@ it("updates the project oauth configuration", async ({ expect }) => {
         "full_logo_url": null,
         "id": "<stripped UUID>",
         "is_production_mode": false,
-        "owner_team_id": "<stripped UUID>",
         "logo_url": null,
+        "owner_team_id": "<stripped UUID>",
       },
       "headers": Headers { <some fields may have been hidden> },
     }
@@ -1100,8 +1100,8 @@ it("updates the project oauth configuration", async ({ expect }) => {
         "full_logo_url": null,
         "id": "<stripped UUID>",
         "is_production_mode": false,
-        "owner_team_id": "<stripped UUID>",
         "logo_url": null,
+        "owner_team_id": "<stripped UUID>",
       },
       "headers": Headers { <some fields may have been hidden> },
     }

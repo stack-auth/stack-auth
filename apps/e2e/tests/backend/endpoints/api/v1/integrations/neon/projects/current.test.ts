@@ -42,8 +42,8 @@ it("get project details", async ({ expect }) => {
         "full_logo_url": null,
         "id": "<stripped UUID>",
         "is_production_mode": false,
-        "owner_team_id": "<stripped UUID>",
         "logo_url": null,
+        "owner_team_id": "<stripped UUID>",
       },
       "headers": Headers { <some fields may have been hidden> },
     }
@@ -97,8 +97,8 @@ it("creates and updates the basic project information of a project", async ({ ex
         "full_logo_url": null,
         "id": "<stripped UUID>",
         "is_production_mode": true,
-        "owner_team_id": "<stripped UUID>",
         "logo_url": null,
+        "owner_team_id": "<stripped UUID>",
       },
       "headers": Headers { <some fields may have been hidden> },
     }
@@ -168,8 +168,8 @@ it("creates and updates the email config of a project", async ({ expect }) => {
         "full_logo_url": null,
         "id": "<stripped UUID>",
         "is_production_mode": false,
-        "owner_team_id": "<stripped UUID>",
         "logo_url": null,
+        "owner_team_id": "<stripped UUID>",
       },
       "headers": Headers { <some fields may have been hidden> },
     }

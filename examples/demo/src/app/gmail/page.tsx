@@ -10,6 +10,7 @@ export default function Test() {
   const [googleAccount, setGoogleAccount] = useState<any>(null);
 
   useEffect(() => {
+    // eslint-disable-next-line
     fetch('https://www.googleapis.com/gmail/v1/users/me/messages', {
       headers: { Authorization: `Bearer ${key.accessToken}` }
     })
@@ -19,6 +20,7 @@ export default function Test() {
   }, [key]);
 
   useEffect(() => {
+    // eslint-disable-next-line
     fetch('https://www.googleapis.com/oauth2/v1/userinfo', {
       headers: { Authorization: `Bearer ${key.accessToken}` }
     })
