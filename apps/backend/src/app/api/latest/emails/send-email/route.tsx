@@ -3,12 +3,11 @@ import { getEmailConfig, sendEmail } from "@/lib/emails";
 import { getNotificationCategoryByName, hasNotificationEnabled } from "@/lib/notification-categories";
 import { getPrismaClientForTenancy } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
+import { KnownErrors } from "@stackframe/stack-shared";
 import { adaptSchema, serverOrHigherAuthTypeSchema, templateThemeIdSchema, yupArray, yupMixed, yupNumber, yupObject, yupRecord, yupString } from "@stackframe/stack-shared/dist/schema-fields";
 import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
-import { StatusError } from "@stackframe/stack-shared/dist/utils/errors";
-import { throwErr } from "@stackframe/stack-shared/dist/utils/errors";
+import { StatusError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
 import { unsubscribeLinkVerificationCodeHandler } from "../unsubscribe-link/verification-handler";
-import { KnownErrors } from "@stackframe/stack-shared";
 
 type UserResult = {
   user_id: string,
@@ -156,7 +155,12 @@ export const POST = createSmartRouteHandler({
           user: { displayName: user.displayName },
           project: { displayName: auth.tenancy.project.display_name },
           variables: body.variables,
-          unsubscribeLink,
+          themeProps: {
+            unsubscribeLink,
+            projectDisplayName: auth.tenancy.project.display_name,
+            logoUrl: auth.tenancy.project.logo_url ?? undefined,
+            fullLogoUrl: auth.tenancy.project.full_logo_url ?? undefined,
+          },
         },
       );
       if (renderedEmail.status === "error") {

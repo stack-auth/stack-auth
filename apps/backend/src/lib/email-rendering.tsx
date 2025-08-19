@@ -1,6 +1,6 @@
 import { Freestyle } from '@/lib/freestyle';
 import { emptyEmailTheme } from '@stackframe/stack-shared/dist/helpers/emails';
-import { getEnvVariable, getNodeEnvironment } from '@stackframe/stack-shared/dist/utils/env';
+import { getEnvVariable } from '@stackframe/stack-shared/dist/utils/env';
 import { StackAssertionError } from '@stackframe/stack-shared/dist/utils/errors';
 import { bundleJavaScript } from '@stackframe/stack-shared/dist/utils/esbuild';
 import { get, has } from '@stackframe/stack-shared/dist/utils/objects';
@@ -49,7 +49,12 @@ export async function renderEmailWithTemplate(
     user?: { displayName: string | null },
     project?: { displayName: string },
     variables?: Record<string, any>,
-    unsubscribeLink?: string,
+    themeProps?: {
+      unsubscribeLink?: string,
+      projectDisplayName?: string,
+      logoUrl?: string,
+      fullLogoUrl?: string,
+    },
     previewMode?: boolean,
   },
 ): Promise<Result<{ html: string, text: string, subject?: string, notificationCategory?: string }, string>> {
@@ -87,9 +92,12 @@ export async function renderEmailWithTemplate(
         if (variables instanceof type.errors) {
           throw new Error(variables.summary)
         }
-        const unsubscribeLink = ${previewMode ? "EmailTheme.PreviewProps?.unsubscribeLink" : JSON.stringify(options.unsubscribeLink)};
+        const themeProps = {
+          ...${JSON.stringify(options.themeProps)},
+          ...${previewMode ? "EmailTheme.PreviewProps" : "{}"},
+        }
         const EmailTemplateWithProps  = <EmailTemplate variables={variables} user={${JSON.stringify(user)}} project={${JSON.stringify(project)}} />;
-        const Email = <EmailTheme unsubscribeLink={unsubscribeLink}>
+        const Email = <EmailTheme {...themeProps}>
           {${previewMode ? "EmailTheme.PreviewProps?.children ?? " : ""} EmailTemplateWithProps}
         </EmailTheme>;
         return {
