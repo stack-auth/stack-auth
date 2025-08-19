@@ -1,6 +1,6 @@
 {
   "name": "@stackframe/stack-dashboard",
-  "version": "2.8.29",
+  "version": "2.8.31",
   "private": true,
   "scripts": {
     "clean": "rimraf .next && rimraf node_modules",
@@ -38,6 +38,7 @@
     "@tanstack/react-table": "^8.20.5",
     "@vercel/analytics": "^1.2.2",
     "@vercel/speed-insights": "^1.0.12",
+    "browser-image-compression": "^2.0.2",
     "canvas-confetti": "^1.9.2",
     "clsx": "^2.0.0",
     "dotenv-cli": "^7.3.0",
