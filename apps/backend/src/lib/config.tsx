@@ -1,6 +1,6 @@
 import { Prisma } from "@prisma/client";
 import { Config, getInvalidConfigReason, normalize, override } from "@stackframe/stack-shared/dist/config/format";
-import { BranchConfigOverride, BranchConfigOverrideOverride, BranchIncompleteConfig, BranchRenderedConfig, EnvironmentConfigOverride, EnvironmentConfigOverrideOverride, EnvironmentIncompleteConfig, EnvironmentRenderedConfig, OrganizationConfigOverride, OrganizationConfigOverrideOverride, OrganizationIncompleteConfig, OrganizationRenderedConfig, ProjectConfigOverride, ProjectConfigOverrideOverride, ProjectIncompleteConfig, ProjectRenderedConfig, applyBranchDefaults, applyEnvironmentDefaults, applyOrganizationDefaults, applyProjectDefaults, assertNoConfigOverrideErrors, branchConfigSchema, environmentConfigSchema, getConfigOverrideErrors, getIncompleteConfigWarnings, migrateConfigOverride, organizationConfigSchema, projectConfigSchema, sanitizeBranchConfig, sanitizeEnvironmentConfig, sanitizeOrganizationConfig, sanitizeProjectConfig } from "@stackframe/stack-shared/dist/config/schema";
+import { BranchConfigOverride, BranchConfigOverrideOverride, BranchIncompleteConfig, BranchRenderedConfig, CompleteConfig, EnvironmentConfigOverride, EnvironmentConfigOverrideOverride, EnvironmentIncompleteConfig, EnvironmentRenderedConfig, OrganizationConfigOverride, OrganizationConfigOverrideOverride, OrganizationIncompleteConfig, ProjectConfigOverride, ProjectConfigOverrideOverride, ProjectIncompleteConfig, ProjectRenderedConfig, applyBranchDefaults, applyEnvironmentDefaults, applyOrganizationDefaults, applyProjectDefaults, assertNoConfigOverrideErrors, branchConfigSchema, environmentConfigSchema, getConfigOverrideErrors, getIncompleteConfigWarnings, migrateConfigOverride, organizationConfigSchema, projectConfigSchema, sanitizeBranchConfig, sanitizeEnvironmentConfig, sanitizeOrganizationConfig, sanitizeProjectConfig } from "@stackframe/stack-shared/dist/config/schema";
 import { ProjectsCrud } from "@stackframe/stack-shared/dist/interface/crud/projects";
 import { yupBoolean, yupMixed, yupObject, yupRecord, yupString, yupUnion } from "@stackframe/stack-shared/dist/schema-fields";
 import { isTruthy } from "@stackframe/stack-shared/dist/utils/booleans";
@@ -10,6 +10,7 @@ import { Result } from "@stackframe/stack-shared/dist/utils/results";
 import { deindent, stringCompare } from "@stackframe/stack-shared/dist/utils/strings";
 import * as yup from "yup";
 import { RawQuery, globalPrismaClient, rawQuery } from "../prisma-client";
+import { listPermissionDefinitionsFromConfig } from "./permissions";
 import { DEFAULT_BRANCH_ID } from "./tenancies";
 
 type ProjectOptions = { projectId: string };
@@ -46,7 +47,7 @@ export function getRenderedEnvironmentConfigQuery(options: EnvironmentOptions): 
   );
 }
 
-export function getRenderedOrganizationConfigQuery(options: OrganizationOptions): RawQuery<Promise<OrganizationRenderedConfig>> {
+export function getRenderedOrganizationConfigQuery(options: OrganizationOptions): RawQuery<Promise<CompleteConfig>> {
   return RawQuery.then(
     getIncompleteOrganizationConfigQuery(options),
     async (incompleteConfig) => await sanitizeOrganizationConfig(normalize(applyOrganizationDefaults(await incompleteConfig), { onDotIntoNonObject: "ignore" }) as any),
@@ -469,7 +470,7 @@ import.meta.vitest?.test('_validateConfigOverrideSchemaImpl(...)', async ({ expe
 // ---------------------------------------------------------------------------------------------------------------------
 
 // C -> A
-export const renderedOrganizationConfigToProjectCrud = (renderedConfig: OrganizationRenderedConfig): ProjectsCrud["Admin"]["Read"]['config'] => {
+export const renderedOrganizationConfigToProjectCrud = (renderedConfig: CompleteConfig): ProjectsCrud["Admin"]["Read"]['config'] => {
   const oauthProviders = typedEntries(renderedConfig.auth.oauth.providers)
     .map(([oauthProviderId, oauthProvider]) => {
       if (!oauthProvider.type) {
@@ -490,6 +491,15 @@ export const renderedOrganizationConfigToProjectCrud = (renderedConfig: Organiza
     })
     .filter(isTruthy)
     .sort((a, b) => stringCompare(a.id, b.id));
+
+  const teamPermissionDefinitions = listPermissionDefinitionsFromConfig({
+    config: renderedConfig,
+    scope: "team",
+  });
+  const projectPermissionDefinitions = listPermissionDefinitionsFromConfig({
+    config: renderedConfig,
+    scope: "project",
+  });
 
   return {
     allow_localhost: renderedConfig.domains.allowLocalhost,
@@ -527,15 +537,15 @@ export const renderedOrganizationConfigToProjectCrud = (renderedConfig: Organiza
     email_theme: renderedConfig.emails.selectedThemeId,
 
     team_creator_default_permissions: typedEntries(renderedConfig.rbac.defaultPermissions.teamCreator)
-      .filter(([_, perm]) => perm)
+      .filter(([id, perm]) => perm && teamPermissionDefinitions.some((p) => p.id === id))
       .map(([id, perm]) => ({ id }))
       .sort((a, b) => stringCompare(a.id, b.id)),
     team_member_default_permissions: typedEntries(renderedConfig.rbac.defaultPermissions.teamMember)
-      .filter(([_, perm]) => perm)
+      .filter(([id, perm]) => perm && teamPermissionDefinitions.some((p) => p.id === id))
       .map(([id, perm]) => ({ id }))
       .sort((a, b) => stringCompare(a.id, b.id)),
     user_default_permissions: typedEntries(renderedConfig.rbac.defaultPermissions.signUp)
-      .filter(([_, perm]) => perm)
+      .filter(([id, perm]) => perm && projectPermissionDefinitions.some((p) => p.id === id))
       .map(([id, perm]) => ({ id }))
       .sort((a, b) => stringCompare(a.id, b.id)),
 
