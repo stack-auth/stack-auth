@@ -81,7 +81,7 @@ export default function PageClient() {
           onValueChange={async (fullLogoUrl) => {
             await project.update({ fullLogoUrl });
           }}
-          description="Upload a full logo with text. Recommended size: 400x100px"
+          description="Upload a full logo with text. Recommended size: At least 100px tall, landscape format"
           type="full-logo"
         />
 
