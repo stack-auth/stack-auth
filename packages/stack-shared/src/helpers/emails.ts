@@ -43,15 +43,24 @@ export const emptyEmailTheme = deindent`
 `;
 
 export const LightEmailTheme = `import { Html, Head, Tailwind, Body, Container, Link } from '@react-email/components';
+import { Html, Head, Tailwind, Body, Container, Link, Img } from '@react-email/components';
 import { ThemeProps } from "@stackframe/emails"
 
-export function EmailTheme({ children, unsubscribeLink }: ThemeProps) {
+export function EmailTheme({ children, unsubscribeLink, logoUrl, fullLogoUrl, projectDisplayName }: ThemeProps) {
   return (
     <Html>
       <Head />
       <Tailwind>
         <Body className="bg-[#fafbfb] font-sans text-base">
           <Container className="bg-white p-[45px] rounded-lg">
+            {fullLogoUrl ? 
+              <Img src={fullLogoUrl} alt="Full Logo" className="h-16" /> :
+              logoUrl ? 
+                <div className="flex gap-2 items-center">
+                  <Img src={logoUrl} alt="Logo" className="h-8" />
+                  <h2>{projectDisplayName}</h2>
+                </div>
+                : null}
             {children}
           </Container>
           {unsubscribeLink && (
@@ -67,26 +76,34 @@ export function EmailTheme({ children, unsubscribeLink }: ThemeProps) {
 }
 
 EmailTheme.PreviewProps = {
-  unsubscribeLink: "https://example.com"
+  unsubscribeLink: "https://example.com",
 } satisfies Partial<ThemeProps>
 `;
 
 
-const DarkEmailTheme = `import { Html, Head, Tailwind, Body, Container, Link } from '@react-email/components';
+const DarkEmailTheme = `import { Html, Head, Tailwind, Body, Container, Link, Img } from '@react-email/components';
 import { ThemeProps } from "@stackframe/emails"
 
-export function EmailTheme({ children, unsubscribeLink }: ThemeProps) {
+export function EmailTheme({ children, unsubscribeLink, logoUrl, fullLogoUrl, projectDisplayName }: ThemeProps) {
   return (
     <Html>
       <Head />
       <Tailwind>
         <Body className="bg-[#323232] font-sans text-white">
           <Container className="bg-black p-[45px] rounded-lg">
+            {fullLogoUrl ? 
+              <Img src={fullLogoUrl} alt="Full Logo" className="h-16" /> :
+              logoUrl ? 
+                <div className="flex gap-2 items-center">
+                  <Img src={logoUrl} alt="Logo" className="h-8" />
+                  <h2 className="text-white">{projectDisplayName}</h2>
+                </div>
+                : null}
             {children}
           </Container>
           {unsubscribeLink && (
             <div className="p-4">
-              <Link href={unsubscribeLink}>Click here{" "}</Link>
+              <Link href={unsubscribeLink} className="text-gray-300">Click here{" "}</Link>
               to unsubscribe from these emails
             </div>
           )}
@@ -97,7 +114,7 @@ export function EmailTheme({ children, unsubscribeLink }: ThemeProps) {
 }
 
 EmailTheme.PreviewProps = {
-  unsubscribeLink: "https://example.com"
+  unsubscribeLink: "https://example.com",
 } satisfies Partial<ThemeProps>
 `;
 
