@@ -19,6 +19,9 @@ export type AdminProject = {
   readonly createdAt: Date,
   readonly isProductionMode: boolean,
   readonly ownerTeamId: string | null,
+  readonly logoUrl: string | null | undefined,
+  readonly fullLogoUrl: string | null | undefined,
+
   readonly config: AdminProjectConfig,
 
   update(this: AdminProject, update: AdminProjectUpdateOptions): Promise<void>,
@@ -42,6 +45,8 @@ export type AdminProjectUpdateOptions = {
   displayName?: string,
   description?: string,
   isProductionMode?: boolean,
+  logoUrl?: string | null,
+  fullLogoUrl?: string | null,
   config?: AdminProjectConfigUpdateOptions,
 };
 export function adminProjectUpdateOptionsToCrud(options: AdminProjectUpdateOptions): ProjectsCrud["Admin"]["Update"] {
@@ -49,6 +54,8 @@ export function adminProjectUpdateOptionsToCrud(options: AdminProjectUpdateOptio
     display_name: options.displayName,
     description: options.description,
     is_production_mode: options.isProductionMode,
+    logo_url: options.logoUrl,
+    full_logo_url: options.fullLogoUrl,
     config: {
       domains: options.config?.domains?.map((d) => ({
         domain: d.domain,

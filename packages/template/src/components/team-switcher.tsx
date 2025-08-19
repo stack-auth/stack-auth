@@ -28,15 +28,15 @@ type MockTeam = {
 };
 
 type TeamSwitcherProps<AllowNull extends boolean = false> = {
-  selectedTeam?: Team,
-  selectedTeamId?: string,
+  team?: Team,
+  teamId?: string,
   allowNull?: AllowNull,
   nullLabel?: string,
   triggerClassName?: string,
   onChange?: (team: AllowNull extends true ? Team | null : Team) => Promise<void>,
   // Mock data props
   mockUser?: {
-    selectedTeam?: MockTeam,
+    team?: MockTeam,
   },
   mockTeams?: MockTeam[],
   mockProject?: {
@@ -69,7 +69,7 @@ function Inner<AllowNull extends boolean>(props: TeamSwitcherProps<AllowNull>) {
   } : appFromHook;
 
   const user = props.mockUser ? {
-    selectedTeam: props.mockUser.selectedTeam,
+    selectedTeam: props.mockUser.team,
     useTeams: () => props.mockTeams || [],
     setSelectedTeam: async () => {}, // Mock function
   } : userFromHook;
@@ -77,7 +77,7 @@ function Inner<AllowNull extends boolean>(props: TeamSwitcherProps<AllowNull>) {
   const navigate = app.useNavigate();
   const project = app.useProject();
   const rawTeams = user?.useTeams();
-  const selectedTeam = props.selectedTeam || rawTeams?.find(team => team.id === props.selectedTeamId) || user?.selectedTeam;
+  const selectedTeam = props.team || rawTeams?.find(team => team.id === props.teamId) || user?.selectedTeam;
   const teams = useMemo(() => rawTeams?.sort((a, b) => b.id === selectedTeam?.id ? 1 : -1), [rawTeams, selectedTeam]);
 
 
