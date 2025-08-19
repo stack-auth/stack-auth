@@ -42,8 +42,8 @@ export const emptyEmailTheme = deindent`
   }
 `;
 
-export const LightEmailTheme = `import { Html, Head, Tailwind, Body, Container, Link } from '@react-email/components';
-import { Html, Head, Tailwind, Body, Container, Link, Img } from '@react-email/components';
+export const LightEmailTheme = `import { Html, Head, Tailwind, Body, Container, Link, Img } from '@react-email/components';
+import { ThemeProps } from "@stackframe/emails"
 import { ThemeProps } from "@stackframe/emails"
 
 export function EmailTheme({ children, unsubscribeLink, logoUrl, fullLogoUrl, projectDisplayName }: ThemeProps) {
