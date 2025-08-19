@@ -3,6 +3,7 @@
 import { getPublicEnvVar } from '@/lib/env';
 import { cn } from '@/lib/utils';
 import { useUser } from '@stackframe/stack';
+import { StackAssertionError } from '@stackframe/stack-shared/dist/utils/errors';
 import { htmlToText } from '@stackframe/stack-shared/dist/utils/html';
 import { runAsynchronously } from '@stackframe/stack-shared/dist/utils/promises';
 import { Button } from '@stackframe/stack-ui';
@@ -68,7 +69,6 @@ export function FeatureRequestBoard({}: FeatureRequestBoardProps) {
 
   // Fetch existing feature requests from secure backend
   const fetchFeatureRequests = useCallback(async () => {
-    console.log("fetching feature requests", user, baseUrl);
     try {
       const authJson = await user.getAuthJson();
       const response = await fetch(`${baseUrl}/api/v1/internal/feature-requests`, {
@@ -93,10 +93,13 @@ export function FeatureRequestBoard({}: FeatureRequestBoardProps) {
         });
         setUserUpvotes(upvotedPosts);
       } else {
-        console.error('Failed to fetch feature requests');
+        throw new StackAssertionError('Fetch response is not OK', {
+          details: {
+            response: response,
+            responseText: await response.text(),
+          },
+        });
       }
-    } catch (error) {
-      console.error('Error fetching feature requests:', error);
     } finally {
       setIsLoadingRequests(false);
     }

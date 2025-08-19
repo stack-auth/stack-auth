@@ -201,8 +201,14 @@ it("delete contact channel on the client", async ({ expect }) => {
       "primary_email_verified": false,
       "profile_image_url": null,
       "requires_totp_mfa": false,
-      "selected_team": null,
-      "selected_team_id": null,
+      "selected_team": {
+        "client_metadata": null,
+        "client_read_only_metadata": null,
+        "display_name": "default-mailbox--<stripped UUID>@stack-generated.example.com's Team",
+        "id": "<stripped UUID>",
+        "profile_image_url": null,
+      },
+      "selected_team_id": "<stripped UUID>",
       "signed_up_at_millis": <stripped field 'signed_up_at_millis'>,
     }
   `);
@@ -558,8 +564,14 @@ it("updates contact channel primary status", async ({ expect }) => {
       "primary_email_verified": false,
       "profile_image_url": null,
       "requires_totp_mfa": false,
-      "selected_team": null,
-      "selected_team_id": null,
+      "selected_team": {
+        "client_metadata": null,
+        "client_read_only_metadata": null,
+        "display_name": "default-mailbox--<stripped UUID>@stack-generated.example.com's Team",
+        "id": "<stripped UUID>",
+        "profile_image_url": null,
+      },
+      "selected_team_id": "<stripped UUID>",
       "signed_up_at_millis": <stripped field 'signed_up_at_millis'>,
     }
   `);
@@ -616,8 +628,14 @@ it("sets a primary contact channel to non-primary", async ({ expect }) => {
       "primary_email_verified": false,
       "profile_image_url": null,
       "requires_totp_mfa": false,
-      "selected_team": null,
-      "selected_team_id": null,
+      "selected_team": {
+        "client_metadata": null,
+        "client_read_only_metadata": null,
+        "display_name": "default-mailbox--<stripped UUID>@stack-generated.example.com's Team",
+        "id": "<stripped UUID>",
+        "profile_image_url": null,
+      },
+      "selected_team_id": "<stripped UUID>",
       "signed_up_at_millis": <stripped field 'signed_up_at_millis'>,
     }
   `);
