@@ -1,5 +1,14 @@
 # @stackframe/stack-docs
 
+## 2.8.30
+
+### Patch Changes
+
+- Various changes
+- Updated dependencies
+  - @stackframe/stack-shared@2.8.30
+  - @stackframe/stack@2.8.30
+
 ## 2.8.29
 
 ### Patch Changes
