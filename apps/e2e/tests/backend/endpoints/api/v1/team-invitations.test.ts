@@ -1,6 +1,6 @@
 import { expect } from "vitest";
 import { it } from "../../../../helpers";
-import { Auth, Team, User, backendContext, bumpEmailAddress, createMailbox, niceBackendFetch } from "../../../backend-helpers";
+import { Auth, Project, Team, User, backendContext, bumpEmailAddress, createMailbox, niceBackendFetch } from "../../../backend-helpers";
 
 async function createAndAddCurrentUserWithoutMemberPermission() {
   const { teamId } = await Team.create();
@@ -58,6 +58,7 @@ it("requires $invite_members permission to send invitation", async ({ expect }) 
 });
 
 it("can send invitation", async ({ expect }) => {
+  await Project.createAndSwitch({ config: {  magic_link_enabled: true } });
   const { userId: userId1 } = await Auth.Otp.signIn();
   const { teamId } = await createAndAddCurrentUserWithoutMemberPermission();
 
@@ -137,8 +138,8 @@ it("can send invitation without a current user on the server", async ({ expect }
     accessType: "server",
     method: "GET",
   });
-  expect(response.body.items).toHaveLength(1);
-  expect(response.body.items[0].display_name).toBe("New Team");
+  expect(response.body.items).toHaveLength(2);
+  expect(response.body.items.find((item: any) => item.display_name === "New Team")).toBeDefined();
 });
 
 
@@ -208,6 +209,7 @@ it("can't list invitations across teams", async ({ expect }) => {
 
 
 it("allows team admins to list invitations", async ({ expect }) => {
+  await Project.createAndSwitch({ config: {  magic_link_enabled: true } });
   const { userId: inviter } = await Auth.Otp.signIn();
   const { teamId } = await createAndAddCurrentUserWithoutMemberPermission();
 

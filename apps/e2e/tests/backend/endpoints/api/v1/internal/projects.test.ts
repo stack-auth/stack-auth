@@ -96,6 +96,7 @@ it("creates a new project", async ({ expect }) => {
         "id": "<stripped UUID>",
         "is_production_mode": false,
         "logo_url": null,
+        "owner_team_id": "<stripped UUID>",
       },
       "headers": Headers { <some fields may have been hidden> },
     }
@@ -148,6 +149,7 @@ it("creates a new project with different configurations", async ({ expect }) => 
         "id": "<stripped UUID>",
         "is_production_mode": true,
         "logo_url": null,
+        "owner_team_id": "<stripped UUID>",
       },
       "headers": Headers { <some fields may have been hidden> },
     }
@@ -203,6 +205,7 @@ it("creates a new project with different configurations", async ({ expect }) => 
         "id": "<stripped UUID>",
         "is_production_mode": false,
         "logo_url": null,
+        "owner_team_id": "<stripped UUID>",
       },
       "headers": Headers { <some fields may have been hidden> },
     }
@@ -249,6 +252,7 @@ it("creates a new project with different configurations", async ({ expect }) => 
         "id": "<stripped UUID>",
         "is_production_mode": false,
         "logo_url": null,
+        "owner_team_id": "<stripped UUID>",
       },
       "headers": Headers { <some fields may have been hidden> },
     }
@@ -309,6 +313,7 @@ it("creates a new project with different configurations", async ({ expect }) => 
         "id": "<stripped UUID>",
         "is_production_mode": false,
         "logo_url": null,
+        "owner_team_id": "<stripped UUID>",
       },
       "headers": Headers { <some fields may have been hidden> },
     }
@@ -371,6 +376,7 @@ it("creates a new project with different configurations", async ({ expect }) => 
         "id": "<stripped UUID>",
         "is_production_mode": false,
         "logo_url": null,
+        "owner_team_id": "<stripped UUID>",
       },
       "headers": Headers { <some fields may have been hidden> },
     }
@@ -416,6 +422,7 @@ it("lists the current projects after creating a new project", async ({ expect })
             "id": "<stripped UUID>",
             "is_production_mode": false,
             "logo_url": null,
+            "owner_team_id": "<stripped UUID>",
           },
         ],
       },
@@ -467,6 +474,7 @@ it("verifies email_theme update persists", async ({ expect }) => {
         "id": "<stripped UUID>",
         "is_production_mode": false,
         "logo_url": null,
+        "owner_team_id": "<stripped UUID>",
       },
       "headers": Headers { <some fields may have been hidden> },
     }
@@ -507,6 +515,7 @@ it("verifies email_theme update persists", async ({ expect }) => {
         "id": "<stripped UUID>",
         "is_production_mode": false,
         "logo_url": null,
+        "owner_team_id": "<stripped UUID>",
       },
       "headers": Headers { <some fields may have been hidden> },
     }
@@ -557,6 +566,7 @@ it("updates trusted domains without modifying allow_localhost", async ({ expect 
         "id": "<stripped UUID>",
         "is_production_mode": false,
         "logo_url": null,
+        "owner_team_id": "<stripped UUID>",
       },
       "headers": Headers { <some fields may have been hidden> },
     }
@@ -610,6 +620,7 @@ it("updates trusted domains without modifying allow_localhost", async ({ expect 
         "id": "<stripped UUID>",
         "is_production_mode": false,
         "logo_url": null,
+        "owner_team_id": "<stripped UUID>",
       },
       "headers": Headers { <some fields may have been hidden> },
     }
