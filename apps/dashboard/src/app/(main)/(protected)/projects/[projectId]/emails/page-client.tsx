@@ -77,9 +77,9 @@ export default function PageClient() {
   );
 }
 
-function definedWhenNotShared<S extends yup.AnyObject>(schema: S, message: string): S {
+function definedWhenTypeIsOneOf<S extends yup.AnyObject>(schema: S, types: string[], message: string): S {
   return schema.when('type', {
-    is: 'standard',
+    is: (t: string) => types.includes(t),
     then: (schema: S) => schema.defined(message),
     otherwise: (schema: S) => schema.optional()
   });
@@ -112,12 +112,12 @@ const getDefaultValues = (emailConfig: CompleteConfig['emails']['server'] | unde
 
 const emailServerSchema = yup.object({
   type: yup.string().oneOf(['shared', 'standard', 'resend']).defined(),
-  host: definedWhenNotShared(yup.string(), "Host is required"),
-  port: definedWhenNotShared(yup.number().min(0, "Port must be a number between 0 and 65535").max(65535, "Port must be a number between 0 and 65535"), "Port is required"),
-  username: definedWhenNotShared(yup.string(), "Username is required"),
-  password: definedWhenNotShared(yup.string(), "Password is required"),
-  senderEmail: definedWhenNotShared(strictEmailSchema("Sender email must be a valid email"), "Sender email is required"),
-  senderName: definedWhenNotShared(yup.string(), "Email sender name is required"),
+  host: definedWhenTypeIsOneOf(yup.string(), ["standard"], "Host is required"),
+  port: definedWhenTypeIsOneOf(yup.number().min(0, "Port must be a number between 0 and 65535").max(65535, "Port must be a number between 0 and 65535"), ["standard"], "Port is required"),
+  username: definedWhenTypeIsOneOf(yup.string(), ["standard"], "Username is required"),
+  password: definedWhenTypeIsOneOf(yup.string(), ["standard", "resend"], "Password is required"),
+  senderEmail: definedWhenTypeIsOneOf(strictEmailSchema("Sender email must be a valid email"), ["standard", "resend"], "Sender email is required"),
+  senderName: definedWhenTypeIsOneOf(yup.string(), ["standard", "resend"], "Email sender name is required"),
 });
 
 function EditEmailServerDialog(props: {
