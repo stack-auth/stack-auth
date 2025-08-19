@@ -12,7 +12,7 @@ import { AsyncStoreProperty } from "../common";
 import { OAuthConnection } from "../connected-accounts";
 import { ContactChannel, ContactChannelCreateOptions, ServerContactChannel, ServerContactChannelCreateOptions } from "../contact-channels";
 import { AdminTeamPermission, TeamPermission } from "../permissions";
-import { AdminOwnedProject, AdminProjectUpdateOptions } from "../projects";
+import { AdminOwnedProject, AdminProjectCreateOptions, AdminProjectUpdateOptions } from "../projects";
 import { EditableTeamMemberProfile, ServerTeam, ServerTeamCreateOptions, Team, TeamCreateOptions } from "../teams";
 import { NotificationCategory } from "../notification-categories";
 
@@ -229,7 +229,7 @@ export type UserExtra = {
 
 export type InternalUserExtra =
   & {
-    createProject(newProject: AdminProjectUpdateOptions & { displayName: string }): Promise<AdminOwnedProject>,
+    createProject(newProject: AdminProjectCreateOptions): Promise<AdminOwnedProject>,
   }
   & AsyncStoreProperty<"ownedProjects", [], AdminOwnedProject[], true>
 
