@@ -1,11 +1,10 @@
-import { ensureItemCustomerTypeMatches } from "@/lib/payments";
+import { ensureItemCustomerTypeMatches, getItemQuantityForCustomer } from "@/lib/payments";
 import { getPrismaClientForTenancy } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
-import { SubscriptionStatus } from "@prisma/client";
 import { KnownErrors } from "@stackframe/stack-shared";
-import { adaptSchema, clientOrHigherAuthTypeSchema, yupNumber, yupObject, yupString, offerSchema } from "@stackframe/stack-shared/dist/schema-fields";
-import * as yup from "yup";
+import { adaptSchema, adminAuthTypeSchema, clientOrHigherAuthTypeSchema, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
 import { getOrUndefined } from "@stackframe/stack-shared/dist/utils/objects";
+
 
 export const GET = createSmartRouteHandler({
   metadata: {
@@ -42,22 +41,7 @@ export const GET = createSmartRouteHandler({
 
     await ensureItemCustomerTypeMatches(req.params.item_id, itemConfig.customerType, req.params.customer_id, tenancy);
     const prisma = await getPrismaClientForTenancy(tenancy);
-    const subscriptions = await prisma.subscription.findMany({
-      where: {
-        tenancyId: tenancy.id,
-        customerId: req.params.customer_id,
-        status: {
-          in: [SubscriptionStatus.active, SubscriptionStatus.trialing],
-        }
-      },
-    });
-
-    const totalQuantity = subscriptions.reduce((acc, subscription) => {
-      const offer = subscription.offer as yup.InferType<typeof offerSchema>;
-      const item = getOrUndefined(offer.includedItems, req.params.item_id);
-      return acc + (item?.quantity ?? 0);
-    }, 0);
-
+    const totalQuantity = await getItemQuantityForCustomer(prisma, tenancy.id, req.params.item_id, req.params.customer_id);
 
     return {
       statusCode: 200,

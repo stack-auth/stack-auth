@@ -516,4 +516,15 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
     });
   }
 
+  async createItemQuantityChange(options: { customerId: string, itemId: string, quantity: number, expiresAt?: string, description?: string }): Promise<{ id: string }> {
+    const res = await this._interface.createItemQuantityChange({
+      customer_id: options.customerId,
+      item_id: options.itemId,
+      quantity: options.quantity,
+      expires_at: options.expiresAt,
+      description: options.description,
+    });
+    return res;
+  }
+
 }

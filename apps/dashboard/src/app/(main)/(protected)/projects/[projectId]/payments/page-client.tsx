@@ -1,9 +1,13 @@
 "use client";
 
+import * as yup from "yup";
+import { useState } from "react";
 import { PaymentItemTable } from "@/components/data-table/payment-item-table";
 import { PaymentOfferTable } from "@/components/data-table/payment-offer-table";
-import { SmartFormDialog } from "@/components/form-dialog";
-import { SelectField } from "@/components/form-fields";
+import { FormDialog, SmartFormDialog } from "@/components/form-dialog";
+import { InputField, SelectField, SwitchField } from "@/components/form-fields";
+import { IncludedItemEditorField } from "@/components/payments/included-item-editor";
+import { PriceEditorField } from "@/components/payments/price-editor";
 import { AdminProject } from "@stackframe/stack";
 import { KnownErrors } from "@stackframe/stack-shared";
 import {
@@ -15,29 +19,9 @@ import { Result } from "@stackframe/stack-shared/dist/utils/results";
 import {
   ActionDialog,
   Button,
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-  FormControl,
-  FormField,
-  FormItem,
-  FormLabel,
-  FormMessage,
   InlineCode,
-  Input,
-  Label,
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
   toast
 } from "@stackframe/stack-ui";
-import { Plus, Trash2 } from "lucide-react";
-import { useEffect, useState } from "react";
-import { Control, FieldValues, Path, useWatch } from "react-hook-form";
-import * as yup from "yup";
 import { PageLayout } from "../page-layout";
 import { useAdminApp } from "../use-admin-app";
 
@@ -113,41 +97,38 @@ function CreateOfferDialog({
   project: AdminProject,
   onOpenChange: (open: boolean) => void,
 }) {
+  const config = project.useConfig();
+
   const offerSchema = yup.object({
     offerId: yup.string().defined().label("Offer ID"),
     displayName: yup.string().defined().label("Display Name"),
-    customerType: yup.string().oneOf(["user", "team"]).defined().label("Customer Type").meta({
-      stackFormFieldRender: (props) => (
-        <SelectField {...props} options={[
-          { value: "user", label: "User" },
-          { value: "team", label: "Team" },
-        ]} />
-      ),
-    }),
-    prices: yupRecord(userSpecifiedIdSchema("priceId"), offerPriceSchema).defined().label("Prices").meta({
-      stackFormFieldRender: (props) => (
-        <PricesFormField {...props} />
-      ),
-    }).test("at-least-one-price", "At least one price is required", (value) => {
+    customerType: yup.string().oneOf(["user", "team"]).defined().label("Customer Type"),
+    prices: yupRecord(userSpecifiedIdSchema("priceId"), offerPriceSchema).defined().label("Prices").test("at-least-one-price", "At least one price is required", (value) => {
       return Object.keys(value).length > 0;
     }),
+    includedItems: yupRecord(userSpecifiedIdSchema("itemId"), yup.object({
+      quantity: yup.number().defined(),
+      repeat: yup.mixed().optional(),
+      expires: yup.string().oneOf(["never", "when-purchase-expires", "when-repeated"]).optional(),
+    })).default({}).label("Included Items"),
     freeTrialDays: yup.number().min(0).optional().label("Free Trial (days)"),
     serverOnly: yup.boolean().default(false).label("Server Only"),
     stackable: yup.boolean().default(false).label("Stackable"),
   });
 
   return (
-    <SmartFormDialog
+    <FormDialog
       open={open}
       onOpenChange={onOpenChange}
       title="Create New Offer"
       formSchema={offerSchema}
       okButton={{ label: "Create Offer" }}
       cancelButton
-      onSubmit={async (values) => {
+      onSubmit={async (values: yup.InferType<typeof offerSchema>) => {
         await project.updateConfig({
           [`payments.offers.${values.offerId}`]: {
             prices: values.prices,
+            includedItems: values.includedItems,
             customerType: values.customerType,
             displayName: values.displayName,
             serverOnly: values.serverOnly,
@@ -156,6 +137,23 @@ function CreateOfferDialog({
           },
         });
       }}
+      render={(form) => (
+        <div className="space-y-4">
+          <InputField control={form.control} name={"offerId"} label="Offer ID" required />
+          <InputField control={form.control} name={"displayName"} label="Display Name" required />
+          <SelectField control={form.control} name={"customerType"} label="Customer Type" required options={[
+            { value: "user", label: "User" },
+            { value: "team", label: "Team" },
+          ]} />
+
+          <PriceEditorField control={form.control} name={"prices"} label="Prices" required />
+          <IncludedItemEditorField itemIds={Object.keys(config.payments.items)} control={form.control} name={"includedItems"} label="Included Items" />
+
+          {/* <NumberField control={form.control} name={"freeTrialDays"} label="Free Trial (days)" /> */}
+          <SwitchField control={form.control} name={"serverOnly"} label="Server Only" />
+          <SwitchField control={form.control} name={"stackable"} label="Stackable" />
+        </div>
+      )}
     />
   );
 }
@@ -255,168 +253,5 @@ function CreatePurchaseDialog() {
         <InlineCode>{purchaseUrl}</InlineCode>
       </ActionDialog>
     </>
-  );
-}
-
-type PriceRow = { uid: string, priceId: string, price: Record<string, any> };
-
-function PricesFormField<F extends FieldValues>(props: {
-  control: Control<F>,
-  name: Path<F>,
-  label: React.ReactNode,
-  required?: boolean,
-}) {
-  const intervalOptions = [
-    { value: "1-week", label: "1 week" },
-    { value: "1-month", label: "1 month" },
-    { value: "1-year", label: "1 year" },
-  ];
-
-  const parseInterval = (value: string) => {
-    const [amount, unit] = value.split("-");
-    return [parseInt(amount), unit] as [number, string];
-  };
-
-  const formatInterval = (interval: [number, string] | undefined) => {
-    if (!interval) return "";
-    const [amount, unit] = interval;
-    return `${amount}-${unit}`;
-  };
-  const fieldValue = useWatch({ control: props.control, name: props.name });
-  const [rows, setRows] = useState<PriceRow[]>([]);
-
-  useEffect(() => {
-    const src = fieldValue || {};
-    const oldMap = new Map(rows.map(r => [r.priceId, r.uid]));
-    const createUid = () => Date.now().toString(36);
-    const next = Object.entries(src).map(([priceId, price]) => ({ uid: oldMap.get(priceId) ?? createUid(), priceId, price: price as Record<string, any> }));
-    const same = rows.length === next.length && rows.every((r, i) => r.priceId === next[i]?.priceId && JSON.stringify(r.price) === JSON.stringify(next[i]?.price) && r.uid === next[i]?.uid);
-    if (!same) setRows(next);
-  }, [fieldValue, rows]);
-
-  return (
-    <FormField
-      control={props.control as any}
-      name={props.name as any}
-      render={({ field }) => {
-        const sync = (newRows: PriceRow[]) => {
-          setRows(newRows);
-          const record = Object.fromEntries(newRows.map(r => [r.priceId, r.price]));
-          field.onChange(record);
-        };
-
-        const addPrice = () => {
-          const used = new Set(rows.map(r => r.priceId));
-          let i = rows.length;
-          let newPriceId = `price_${i}`;
-          while (used.has(newPriceId)) {
-            i += 1;
-            newPriceId = `price_${i}`;
-          }
-          const newRow = {
-            uid: `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`,
-            priceId: newPriceId,
-            price: { USD: "20", interval: [1, "month"] as [number, string] },
-          };
-          sync([...rows, newRow]);
-        };
-
-        const removePrice = (uid: string) => {
-          sync(rows.filter(r => r.uid !== uid));
-        };
-
-        const updatePrice = (uid: string, updates: Record<string, any>) => {
-          const newRows = rows.map(r => r.uid === uid ? { ...r, price: { ...r.price, ...updates } } : r);
-          sync(newRows);
-        };
-
-        const updatePriceId = (uid: string, newPriceId: string) => {
-          if (rows.some(r => r.uid !== uid && r.priceId === newPriceId)) return;
-          const newRows = rows.map(r => r.uid === uid ? { ...r, priceId: newPriceId } : r);
-          sync(newRows);
-        };
-
-        return (
-          <FormItem>
-            <FormLabel className="flex">
-              {props.label}
-              {props.required ? <span className="text-zinc-500">*</span> : null}
-            </FormLabel>
-            <FormControl>
-              <div className="space-y-4">
-                {rows.map((row) => {
-                  const price = row.price;
-                  return (
-                    <Card key={row.uid}>
-                      <CardHeader className="flex flex-row items-center justify-between space-y-0 p-4">
-                        <CardTitle className="text-sm font-bold">Price Settings</CardTitle>
-                        <Button
-                          type="button"
-                          variant="outline"
-                          size="sm"
-                          onClick={() => removePrice(row.uid)}
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
-                      </CardHeader>
-                      <CardContent className="space-y-2 p-4 pt-0">
-                        <div className="space-y-1">
-                          <Label>Price ID</Label>
-                          <Input
-                            value={row.priceId}
-                            onChange={(e) => updatePriceId(row.uid, e.target.value)}
-                            placeholder="Enter price ID"
-                          />
-                        </div>
-
-                        <div className="space-y-1">
-                          <Label>Price (USD)</Label>
-                          <Input
-                            type="number"
-                            value={price.USD || ""}
-                            onChange={(e) => updatePrice(row.uid, { USD: e.target.value })}
-                            placeholder="9"
-                          />
-                        </div>
-
-                        <div className="space-y-1">
-                          <Label>Interval</Label>
-                          <Select
-                            value={formatInterval(price.interval) || undefined}
-                            onValueChange={(value) => updatePrice(row.uid, { interval: value ? parseInterval(value) : undefined })}
-                          >
-                            <SelectTrigger>
-                              <SelectValue placeholder="No interval" />
-                            </SelectTrigger>
-                            <SelectContent>
-                              {intervalOptions.map(option => (
-                                <SelectItem key={option.value} value={option.value}>
-                                  {option.label}
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                        </div>
-                      </CardContent>
-                    </Card>
-                  );
-                })}
-
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={addPrice}
-                  className="w-full"
-                >
-                  <Plus className="h-4 w-4 mr-2" />
-                  Add Price
-                </Button>
-              </div>
-            </FormControl>
-            <FormMessage />
-          </FormItem>
-        );
-      }}
-    />
   );
 }
