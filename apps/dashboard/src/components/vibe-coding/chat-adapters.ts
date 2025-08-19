@@ -15,7 +15,7 @@ const isToolCall = (content: { type: string }): content is ToolCallContent => {
 export function createChatAdapter(
   adminApp: StackAdminApp,
   threadId: string,
-  contextType: "email-theme" | "email-template",
+  contextType: "email-theme" | "email-template" | "email-draft",
   onToolCall: (toolCall: ToolCallContent) => void
 ): ChatModelAdapter {
   return {

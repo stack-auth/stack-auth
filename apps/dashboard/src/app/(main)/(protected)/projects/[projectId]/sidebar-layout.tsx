@@ -24,8 +24,10 @@ import {
 } from "@stackframe/stack-ui";
 import {
   Book,
+  FilePen,
   Globe,
   KeyRound,
+  LayoutTemplate,
   Link as LinkIcon,
   LockKeyhole,
   LucideIcon,
@@ -35,7 +37,6 @@ import {
   Settings,
   Settings2,
   ShieldEllipsis,
-  SquarePen,
   User,
   Users,
   Webhook,
@@ -178,10 +179,17 @@ const navigationItems: (Label | Item | Hidden)[] = [
     type: 'item'
   },
   {
+    name: "Drafts",
+    href: "/email-drafts",
+    regex: /^\/projects\/[^\/]+\/email-drafts$/,
+    icon: FilePen,
+    type: 'item',
+  },
+  {
     name: "Templates",
     href: "/email-templates",
     regex: /^\/projects\/[^\/]+\/email-templates$/,
-    icon: SquarePen,
+    icon: LayoutTemplate,
     type: 'item'
   },
   {
@@ -190,6 +198,26 @@ const navigationItems: (Label | Item | Hidden)[] = [
     regex: /^\/projects\/[^\/]+\/email-themes$/,
     icon: Palette,
     type: 'item',
+  },
+  {
+    name: (pathname: string) => {
+      const match = pathname.match(/^\/projects\/[^\/]+\/email-drafts\/([^\/]+)$/);
+      let item;
+      let href;
+      if (match) {
+        item = <DraftBreadcrumbItem key='draft-display-name' draftId={match[1]} />;
+        href = `/email-drafts/${match[1]}`;
+      } else {
+        item = "Draft";
+        href = "";
+      }
+      return [
+        { item: "Drafts", href: "/email-drafts" },
+        { item, href },
+      ];
+    },
+    regex: /^\/projects\/[^\/]+\/email-drafts\/[^\/]+$/,
+    type: 'hidden',
   },
   {
     name: (pathname: string) => {
@@ -319,6 +347,16 @@ function TemplateBreadcrumbItem(props: { templateId: string }) {
     return null;
   }
   return template.displayName;
+}
+
+function DraftBreadcrumbItem(props: { draftId: string }) {
+  const stackAdminApp = useAdminApp();
+  const drafts = stackAdminApp.useEmailDrafts();
+  const draft = drafts.find((d) => d.id === props.draftId);
+  if (!draft) {
+    return null;
+  }
+  return draft.displayName;
 }
 
 function NavItem({ item, href, onClick }: { item: Item, href: string, onClick?: () => void }) {
