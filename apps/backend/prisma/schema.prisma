@@ -210,7 +210,7 @@ model ProjectUserOAuthAccount {
   // we might want to add more user info here later
   email String?
 
-  // Before the OAuth account is connected to a use (for example, in the link oauth process), the projectUser is null.
+  // Before the OAuth account is connected to a user (for example, in the link oauth process), the projectUser is null.
   projectUser      ProjectUser?       @relation(fields: [tenancyId, projectUserId], references: [tenancyId, projectUserId], onDelete: Cascade)
   oauthTokens      OAuthToken[]
   oauthAccessToken OAuthAccessToken[]
@@ -729,11 +729,11 @@ enum SubscriptionStatus {
 }
 
 model Subscription {
-  id         String @default(uuid()) @db.Uuid
-  tenancyId  String @db.Uuid
-  customerId String @db.Uuid
+  id           String       @default(uuid()) @db.Uuid
+  tenancyId    String       @db.Uuid
+  customerId   String       @db.Uuid
   customerType CustomerType
-  offer      Json
+  offer        Json
 
   stripeSubscriptionId String
   status               SubscriptionStatus
