@@ -389,21 +389,7 @@ function wrapFunctions(code: string): string {
         );
         path.skip();
       },
-      ClassMethod(path) {
-        // Skip all class methods - they'll be handled as part of the class
-        // Getters, setters, constructors, and regular methods all stay as-is
-        return;
-      },
-      ClassDeclaration: {
-        exit(path) {
-          transformClass(path);
-        }
-      },
-      ClassExpression: {
-        exit(path) {
-          transformClass(path);
-        }
-      }
+      // Classes are already transformed to functions in step 3, so we don't handle them here
     }
   };
 
@@ -458,7 +444,8 @@ function wrapFunctions(code: string): string {
 
   // Remove the old transformObjectWithGettersSetters and getKeyName functions - they're now in transformGettersSetters
 
-  function transformClass(path: babel.NodePath<t.ClassDeclaration | t.ClassExpression>) {
+  // Classes are already transformed in step 3
+  function REMOVED_transformClass(path: babel.NodePath<t.ClassDeclaration | t.ClassExpression>) {
     const { node } = path;
 
     // Collect all variables in scope for the class
@@ -869,6 +856,33 @@ function wrapExpressionsWithEnsureSerializable(code: string): string {
   return result?.code || code;
 }
 
+/**
+ * Transform classes to constructor functions using Babel's official plugins
+ */
+function transformClassesToFunctions(code: string): string {
+  const result = babel.transformSync(code, {
+    plugins: [
+      // Transform private methods and fields first
+      ['@babel/plugin-transform-private-methods', { loose: false }],
+      ['@babel/plugin-transform-private-property-in-object', { loose: false }],
+      ['@babel/plugin-transform-class-properties', { loose: false }],
+      ['@babel/plugin-transform-class-static-block'],
+      // Then transform the classes themselves
+      ['@babel/plugin-transform-classes', { loose: false }]
+    ],
+    parserOpts: {
+      sourceType: 'module',
+      plugins: ['jsx', 'typescript', 'classProperties', 'classPrivateProperties', 'classPrivateMethods', 'classStaticBlock']
+    },
+    generatorOpts: {
+      retainLines: false,
+      compact: false
+    }
+  });
+
+  return result?.code || code;
+}
+
 export function transpileJsToSerializableJs(js: string, options: TranspilerOptions = {}): string {
   // Step 1: Transform async functions and generators to use regenerator runtime
   let transformedCode = transformAsyncAndGenerators(js);
@@ -876,7 +890,10 @@ export function transpileJsToSerializableJs(js: string, options: TranspilerOptio
   // Step 2: Bundle runtime helpers and replace imports
   transformedCode = bundleRuntimeHelpers(transformedCode);
 
-  // Step 3: Transform getters/setters to use Object.defineProperty
+  // Step 3: Transform classes to constructor functions
+  transformedCode = transformClassesToFunctions(transformedCode);
+
+  // Step 4: Transform getters/setters to use Object.defineProperty
   transformedCode = transformGettersSetters(transformedCode);
 
   // Step 4 (Optional): Wrap all expressions with ensureSerializable

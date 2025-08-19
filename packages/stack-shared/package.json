@@ -77,6 +77,11 @@
     "uuid": "^9.0.1"
   },
   "devDependencies": {
+    "@babel/plugin-transform-class-properties": "^7.27.1",
+    "@babel/plugin-transform-class-static-block": "^7.28.3",
+    "@babel/plugin-transform-classes": "^7.28.3",
+    "@babel/plugin-transform-private-methods": "^7.27.1",
+    "@babel/plugin-transform-private-property-in-object": "^7.27.1",
     "@sentry/nextjs": "^8.40.0",
     "@simplewebauthn/types": "^11.0.0",
     "@types/babel-generator": "^6.25.8",

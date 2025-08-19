@@ -73,7 +73,6 @@ export function getSerializationHelpers() {
       if (isShallowEqual(Object.getOwnPropertyDescriptor(obj, key), descriptor)) {
         return;
       }
-      console.log("defining property", key, descriptor, Object.getOwnPropertyDescriptor(obj, key));
       Object.defineProperty(obj, key, descriptor);
     };
 
