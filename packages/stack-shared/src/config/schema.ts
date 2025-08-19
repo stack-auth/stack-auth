@@ -425,7 +425,7 @@ const organizationConfigDefaults = {
   emails: {
     server: {
       isShared: true,
-      provider: "resend",
+      provider: "smtp",
       host: undefined,
       port: undefined,
       username: undefined,
