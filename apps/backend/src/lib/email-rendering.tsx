@@ -93,7 +93,7 @@ export async function renderEmailWithTemplate(
           throw new Error(variables.summary)
         }
         const themeProps = {
-          ...${JSON.stringify(options.themeProps)},
+          ...${JSON.stringify(options.themeProps || {})},
           ...${previewMode ? "EmailTheme.PreviewProps" : "{}"},
         }
         const EmailTemplateWithProps  = <EmailTemplate variables={variables} user={${JSON.stringify(user)}} project={${JSON.stringify(project)}} />;
