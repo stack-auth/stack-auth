@@ -1,5 +1,5 @@
 import { traceSpan } from '@/utils/telemetry';
-import { getNodeEnvironment } from '@stackframe/stack-shared/dist/utils/env';
+import { getEnvVariable, getNodeEnvironment } from '@stackframe/stack-shared/dist/utils/env';
 import { StackAssertionError, captureError, errorToNiceString } from '@stackframe/stack-shared/dist/utils/errors';
 import { FreestyleSandboxes } from 'freestyle-sandboxes';
 
@@ -7,8 +7,8 @@ export class Freestyle {
   private freestyle: FreestyleSandboxes;
 
   constructor(options: { apiKey: string }) {
-    let baseUrl = undefined;
-    if (["development", "test"].includes(getNodeEnvironment()) && options.apiKey === "mock_stack_freestyle_key") {
+    let baseUrl = getEnvVariable("STACK_FREESTYLE_API_ENDPOINT", undefined);
+    if (["development", "test"].includes(getNodeEnvironment()) && options.apiKey === "mock_stack_freestyle_key" && !baseUrl) {
       baseUrl = "http://localhost:8122";
     }
     this.freestyle = new FreestyleSandboxes({
