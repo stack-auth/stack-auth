@@ -1,7 +1,7 @@
+import { stringifyJson } from "@stackframe/stack-shared/dist/utils/json";
 import { describe } from "vitest";
 import { it } from "../../../../../../helpers";
 import { Auth, InternalApiKey, Project, niceBackendFetch } from "../../../../../backend-helpers";
-import { parseJson, stringifyJson } from "@stackframe/stack-shared/dist/utils/json";
 
 describe("OAuth with wildcard domains", () => {
   it("should work with exact domain configuration", async ({ expect }) => {
@@ -308,7 +308,7 @@ describe("OAuth with wildcard domains", () => {
     });
     expect(getResponse.status).toBe(200);
 
-    const config = parseJson(getResponse.body.config_string);
+    const config = JSON.parse(getResponse.body.config_string);
     expect(Object.keys(config.domains.trustedDomains).length).toBe(3);
   });
 });

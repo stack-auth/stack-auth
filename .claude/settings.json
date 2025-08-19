@@ -4,6 +4,7 @@
     "allow": [
       "Bash(pnpm typecheck:*)",
       "Bash(pnpm test:*)",
+      "Bash(pnpm build:*)",
       "Bash(pnpm lint:*)",
       "Bash(find:*)",
       "Bash(ls:*)",
@@ -21,7 +22,17 @@
         "hooks": [
           {
             "type": "command",
-            "command": "pnpm run lint --fix"
+            "command": "jq -r '.tool_input.file_path' | { read file_path; if [[ \"$file_path\" =~ \\.(js|jsx|ts|tsx)$ ]]; then pnpm run lint --fix \"$file_path\" || true; fi }"
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "(pnpm run typecheck 1>&2 || exit 2) && (pnpm run lint 1>&2 || exit 2)"
           }
         ]
       }

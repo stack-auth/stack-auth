@@ -53,6 +53,15 @@
     }
   },
   "dependencies": {
+    "@babel/core": "^7.28.3",
+    "@babel/generator": "^7.28.3",
+    "@babel/plugin-transform-async-to-generator": "^7.27.1",
+    "@babel/plugin-transform-for-of": "^7.27.1",
+    "@babel/plugin-transform-regenerator": "^7.28.3",
+    "@babel/plugin-transform-runtime": "^7.28.3",
+    "@babel/preset-env": "^7.28.3",
+    "@babel/runtime": "^7.28.3",
+    "@babel/types": "^7.28.2",
     "@opentelemetry/api": "^1.9.0",
     "@simplewebauthn/browser": "^11.0.0",
     "async-mutex": "^0.5.0",
@@ -63,12 +72,16 @@
     "ip-regex": "^5.0.0",
     "jose": "^5.2.2",
     "oauth4webapi": "^2.10.3",
+    "regenerator-runtime": "^0.14.1",
     "semver": "^7.6.3",
     "uuid": "^9.0.1"
   },
   "devDependencies": {
     "@sentry/nextjs": "^8.40.0",
     "@simplewebauthn/types": "^11.0.0",
+    "@types/babel-generator": "^6.25.8",
+    "@types/babel__core": "^7.20.5",
+    "@types/babel__generator": "^7.27.0",
     "@types/bcryptjs": "^3.0.0",
     "@types/elliptic": "^6.4.18",
     "@types/semver": "^7.5.8",

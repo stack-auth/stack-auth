@@ -1,7 +1,7 @@
+import { stringifyJson } from "@stackframe/stack-shared/dist/utils/json";
 import { describe } from "vitest";
 import { it } from "../../../../../../helpers";
 import { Auth, InternalApiKey, Project, niceBackendFetch } from "../../../../../backend-helpers";
-import { parseJson, stringifyJson } from "@stackframe/stack-shared/dist/utils/json";
 
 describe("Passkey with wildcard domains", () => {
   it("should store wildcard domains in config correctly", async ({ expect }) => {
@@ -55,7 +55,7 @@ describe("Passkey with wildcard domains", () => {
     });
     expect(getResponse.status).toBe(200);
 
-    const config = parseJson(getResponse.body.config_string);
+    const config = JSON.parse(getResponse.body.config_string);
     expect(config.domains.trustedDomains).toMatchObject({
       'exact': {
         baseUrl: 'https://app.example.com',
@@ -474,7 +474,7 @@ describe("Passkey with wildcard domains", () => {
     });
     expect(getResponse.status).toBe(200);
 
-    const config = parseJson(getResponse.body.config_string);
+    const config = JSON.parse(getResponse.body.config_string);
     expect(config.domains.trustedDomains.complex1.baseUrl).toBe('https://api-*.*.example.com');
     expect(config.domains.trustedDomains.complex2.baseUrl).toBe('https://**.api.example.com');
     expect(config.domains.trustedDomains.complex3.baseUrl).toBe('https://*-staging.example.com');

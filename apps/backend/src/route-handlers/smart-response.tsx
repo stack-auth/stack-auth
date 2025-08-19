@@ -14,7 +14,7 @@ export type SmartResponse = {
 } & (
   | {
     bodyType?: undefined,
-    body?: ArrayBuffer | Json | undefined,
+    body?: Uint8Array | ArrayBuffer | Json | undefined,
   }
   | {
     bodyType: "empty",
@@ -30,7 +30,7 @@ export type SmartResponse = {
   }
   | {
     bodyType: "binary",
-    body: ArrayBuffer,
+    body: Uint8Array | ArrayBuffer,
   }
   | {
     bodyType: "success",
