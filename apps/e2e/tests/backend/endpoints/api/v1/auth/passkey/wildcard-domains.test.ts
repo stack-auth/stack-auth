@@ -1,7 +1,6 @@
 import { describe } from "vitest";
 import { it } from "../../../../../../helpers";
 import { Auth, InternalApiKey, Project, niceBackendFetch } from "../../../../../backend-helpers";
-import { parseJson, stringifyJson } from "@stackframe/stack-shared/dist/utils/json";
 
 describe("Passkey with wildcard domains", () => {
   it("should store wildcard domains in config correctly", async ({ expect }) => {
@@ -19,7 +18,7 @@ describe("Passkey with wildcard domains", () => {
         'x-stack-admin-access-token': adminAccessToken,
       },
       body: {
-        config_override_string: stringifyJson({
+        config_override_string: JSON.stringify({
           'domains.trustedDomains.exact': {
             baseUrl: 'https://app.example.com',
             handlerPath: '/handler',
@@ -55,7 +54,7 @@ describe("Passkey with wildcard domains", () => {
     });
     expect(getResponse.status).toBe(200);
 
-    const config = parseJson(getResponse.body.config_string);
+    const config = JSON.parse(getResponse.body.config_string);
     expect(config.domains.trustedDomains).toMatchObject({
       'exact': {
         baseUrl: 'https://app.example.com',
@@ -97,7 +96,7 @@ describe("Passkey with wildcard domains", () => {
       method: "PATCH",
       accessType: "admin",
       body: {
-        config_override_string: stringifyJson({
+        config_override_string: JSON.stringify({
           'domains.trustedDomains.wildcard': {
             baseUrl: 'http://*:8103', // Will match http://localhost:8103 and any host on port 8103
             handlerPath: '/',
@@ -173,7 +172,7 @@ describe("Passkey with wildcard domains", () => {
       method: "PATCH",
       accessType: "admin",
       body: {
-        config_override_string: stringifyJson({
+        config_override_string: JSON.stringify({
           'domains.trustedDomains.double': {
             baseUrl: 'http://**host:8103', // Will match localhost:8103
             handlerPath: '/',
@@ -235,7 +234,7 @@ describe("Passkey with wildcard domains", () => {
       method: "PATCH",
       accessType: "admin",
       body: {
-        config_override_string: stringifyJson({
+        config_override_string: JSON.stringify({
           'domains.trustedDomains.exact': {
             baseUrl: 'https://app.production.com',
             handlerPath: '/handler',
@@ -313,7 +312,7 @@ describe("Passkey with wildcard domains", () => {
       method: "PATCH",
       accessType: "admin",
       body: {
-        config_override_string: stringifyJson({
+        config_override_string: JSON.stringify({
           'domains.trustedDomains.wildcard': {
             baseUrl: 'https://*.example.com',
             handlerPath: '/handler',
@@ -385,7 +384,7 @@ describe("Passkey with wildcard domains", () => {
       method: "PATCH",
       accessType: "admin",
       body: {
-        config_override_string: stringifyJson({
+        config_override_string: JSON.stringify({
           'domains.trustedDomains.wildcard': {
             baseUrl: 'http://*:8103', // Will match localhost:8103
             handlerPath: '/',
@@ -446,7 +445,7 @@ describe("Passkey with wildcard domains", () => {
         'x-stack-admin-access-token': adminAccessToken,
       },
       body: {
-        config_override_string: stringifyJson({
+        config_override_string: JSON.stringify({
           'domains.trustedDomains.complex1': {
             baseUrl: 'https://api-*.*.example.com',
             handlerPath: '/handler',
@@ -474,7 +473,7 @@ describe("Passkey with wildcard domains", () => {
     });
     expect(getResponse.status).toBe(200);
 
-    const config = parseJson(getResponse.body.config_string);
+    const config = JSON.parse(getResponse.body.config_string);
     expect(config.domains.trustedDomains.complex1.baseUrl).toBe('https://api-*.*.example.com');
     expect(config.domains.trustedDomains.complex2.baseUrl).toBe('https://**.api.example.com');
     expect(config.domains.trustedDomains.complex3.baseUrl).toBe('https://*-staging.example.com');

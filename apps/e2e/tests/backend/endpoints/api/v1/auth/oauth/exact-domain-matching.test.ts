@@ -1,7 +1,6 @@
 import { describe } from "vitest";
 import { it } from "../../../../../../helpers";
 import { Auth, InternalApiKey, Project, niceBackendFetch } from "../../../../../backend-helpers";
-import { stringifyJson } from "@stackframe/stack-shared/dist/utils/json";
 
 describe("OAuth with exact domain matching", () => {
   it("should allow OAuth with exact matching domain", async ({ expect }) => {
@@ -20,7 +19,7 @@ describe("OAuth with exact domain matching", () => {
         'x-stack-admin-access-token': adminAccessToken,
       },
       body: {
-        config_override_string: stringifyJson({
+        config_override_string: JSON.stringify({
           'domains.trustedDomains.exact': {
             baseUrl: 'http://localhost:8107',
             handlerPath: '/handler',
@@ -53,7 +52,7 @@ describe("OAuth with exact domain matching", () => {
         'x-stack-admin-access-token': adminAccessToken,
       },
       body: {
-        config_override_string: stringifyJson({
+        config_override_string: JSON.stringify({
           'domains.trustedDomains.production': {
             baseUrl: 'https://app.production.com',
             handlerPath: '/auth/handler',
@@ -86,7 +85,7 @@ describe("OAuth with exact domain matching", () => {
         'x-stack-admin-access-token': adminAccessToken,
       },
       body: {
-        config_override_string: stringifyJson({
+        config_override_string: JSON.stringify({
           'domains.trustedDomains.subdomain': {
             baseUrl: 'https://app.example.com',
             handlerPath: '/handler',
@@ -119,7 +118,7 @@ describe("OAuth with exact domain matching", () => {
         'x-stack-admin-access-token': adminAccessToken,
       },
       body: {
-        config_override_string: stringifyJson({
+        config_override_string: JSON.stringify({
           'domains.trustedDomains.withport': {
             baseUrl: 'http://localhost:3000',
             handlerPath: '/handler',
@@ -152,7 +151,7 @@ describe("OAuth with exact domain matching", () => {
         'x-stack-admin-access-token': adminAccessToken,
       },
       body: {
-        config_override_string: stringifyJson({
+        config_override_string: JSON.stringify({
           'domains.trustedDomains.https': {
             baseUrl: 'https://localhost:8107',
             handlerPath: '/handler',
@@ -185,7 +184,7 @@ describe("OAuth with exact domain matching", () => {
         'x-stack-admin-access-token': adminAccessToken,
       },
       body: {
-        config_override_string: stringifyJson({
+        config_override_string: JSON.stringify({
           'domains.trustedDomains.withpath': {
             baseUrl: 'http://localhost:8107',
             handlerPath: '/auth/oauth/callback', // Different path than default /handler
@@ -218,7 +217,7 @@ describe("OAuth with exact domain matching", () => {
         'x-stack-admin-access-token': adminAccessToken,
       },
       body: {
-        config_override_string: stringifyJson({
+        config_override_string: JSON.stringify({
           'domains.trustedDomains.prod': {
             baseUrl: 'https://app.production.com',
             handlerPath: '/handler',
@@ -258,7 +257,7 @@ describe("OAuth with exact domain matching", () => {
         'x-stack-admin-access-token': adminAccessToken,
       },
       body: {
-        config_override_string: stringifyJson({
+        config_override_string: JSON.stringify({
           'domains.trustedDomains.prod': {
             baseUrl: 'https://app.production.com',
             handlerPath: '/handler',
