@@ -49,7 +49,7 @@ export async function ensureOfferIdOrInlineOffer(
       }])),
       includedItems: typedFromEntries(Object.entries(inlineOffer.included_items).map(([key, value]) => [key, {
         repeat: value.repeat ?? "never",
-        quantity: value.quantity,
+        quantity: value.quantity ?? 0,
         expires: value.expires ?? "never",
       }])),
     };
