@@ -112,16 +112,18 @@ export function MyComponent() {
         <div className="space-y-4">
           <h3 className="text-lg font-semibold">Live Preview</h3>
           <StackContainer color="blue" size="medium">
-            <UserButton
-              showUserInfo={props.showUserInfo}
-              mockUser={mockUser}
-              colorModeToggle={props.colorModeToggle ? () => console.log("color mode toggle clicked") : undefined}
-              extraItems={props.extraItems ? [{
-                text: 'Custom Action',
-                icon: <Wrench />,
-                onClick: () => console.log('Custom action clicked')
-              }] : undefined}
-            />
+            <div className="flex justify-center min-h-[60px] stack-reset">
+              <UserButton
+                showUserInfo={props.showUserInfo}
+                mockUser={mockUser}
+                colorModeToggle={props.colorModeToggle ? () => console.log("color mode toggle clicked") : undefined}
+                extraItems={props.extraItems ? [{
+                  text: 'Custom Action',
+                  icon: <Wrench />,
+                  onClick: () => console.log('Custom action clicked')
+                }] : undefined}
+              />
+            </div>
           </StackContainer>
         </div>
       </div>

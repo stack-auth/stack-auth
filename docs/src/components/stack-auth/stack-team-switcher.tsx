@@ -229,7 +229,7 @@ export function MyTeamSwitcher() {
         <div className="space-y-4">
           <h3 className="text-lg font-semibold">Live Preview</h3>
           <StackContainer color="green" size="medium">
-            <div className="flex items-center justify-center p-4">
+            <div className="flex items-center justify-center p-4 stack-reset">
               <SelectedTeamSwitcher
                 noUpdateSelectedTeam={props.noUpdateSelectedTeam}
                 urlMap={props.urlMap ? (team: { id: string }) => `/teams/${team.id}/dashboard` : undefined}
@@ -255,7 +255,7 @@ export function MyTeamSwitcher() {
 export function TeamSwitcherStackAuth() {
   return (
     <StackContainer color="green" size="medium">
-      <div className="flex items-center justify-center p-4">
+      <div className="flex items-center justify-center p-4 stack-reset-light">
         <SelectedTeamSwitcher
           mockUser={mockUser}
           mockTeams={mockTeams}
@@ -269,7 +269,7 @@ export function TeamSwitcherStackAuth() {
 export function TeamSwitcherNoTeams() {
   return (
     <StackContainer color="amber" size="medium">
-      <div className="flex items-center justify-center p-4">
+      <div className="flex items-center justify-center p-4 stack-reset-light">
         <SelectedTeamSwitcher
           mockUser={{ selectedTeam: undefined }}
           mockTeams={[]}
@@ -283,7 +283,7 @@ export function TeamSwitcherNoTeams() {
 export function TeamSwitcherNoCreation() {
   return (
     <StackContainer color="purple" size="medium">
-      <div className="flex items-center justify-center p-4">
+      <div className="flex items-center justify-center p-4 stack-reset-light">
         <SelectedTeamSwitcher
           mockUser={mockUser}
           mockTeams={mockTeams}
@@ -320,7 +320,7 @@ export function TeamSwitcherManyTeams() {
 
   return (
     <StackContainer color="blue" size="medium">
-      <div className="flex items-center justify-center p-4">
+      <div className="flex items-center justify-center p-4 stack-reset-light">
         <SelectedTeamSwitcher
           mockUser={mockUser}
           mockTeams={manyTeams}
