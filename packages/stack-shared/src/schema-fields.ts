@@ -352,12 +352,12 @@ export const wildcardUrlSchema = yupString().test({
   message: (params) => `${params.path} is not a valid URL or wildcard URL pattern`,
   test: (value) => {
     if (value == null) return true;
-    
+
     // If it doesn't contain wildcards, use the regular URL validation
     if (!value.includes('*')) {
       return isValidUrl(value);
     }
-    
+
     // For wildcard URLs, validate the structure by replacing wildcards with placeholders
     try {
       const PLACEHOLDER = 'wildcard-placeholder';
@@ -380,10 +380,10 @@ export const wildcardUrlSchema = yupString().test({
       if (url.protocol !== 'http:' && url.protocol !== 'https:') {
         return false;
       }
-      
+
       // Extract original hostname pattern from the input
       const hostPattern = url.hostname.split(PLACEHOLDER).join('*');
-      
+
       // Validate the wildcard hostname pattern using the existing function
       return isValidHostnameWithWildcards(hostPattern);
     } catch (e) {

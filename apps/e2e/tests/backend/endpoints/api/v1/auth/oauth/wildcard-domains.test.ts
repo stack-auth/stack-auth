@@ -21,8 +21,8 @@ describe("OAuth with wildcard domains", () => {
       body: {
         config_override_string: JSON.stringify({
           'domains.trustedDomains.exact': {
-            baseUrl: 'http://localhost:8107',
-            handlerPath: '/handler',
+            baseUrl: 'http://stack-test.localhost',
+            handlerPath: '/some-callback-url',
           },
           'domains.allowLocalhost': false,
         }),
@@ -64,8 +64,20 @@ describe("OAuth with wildcard domains", () => {
 
     // Try to complete the OAuth flow - it should fail at the callback stage
     const { response } = await Auth.OAuth.getMaybeFailingAuthorizationCode();
-    expect(response.status).toBe(400);
-    expect(response.body).toBe("Invalid redirect URI. The URL you are trying to redirect to is not trusted. If it should be, add it to the list of trusted domains in the Stack Auth dashboard.");
+    expect(response).toMatchInlineSnapshot(`
+      NiceResponse {
+        "status": 400,
+        "body": {
+          "code": "REDIRECT_URL_NOT_WHITELISTED",
+          "error": "Redirect URL not whitelisted. Did you forget to add this domain to the trusted domains list on the Stack Auth dashboard?",
+        },
+        "headers": Headers {
+          "set-cookie": <deleting cookie 'stack-oauth-inner-<stripped cookie name key>' at path '/'>,
+          "x-stack-known-error": "REDIRECT_URL_NOT_WHITELISTED",
+          <some fields may have been hidden>,
+        },
+      }
+    `);
   });
 
   it("should work with single wildcard domain", async ({ expect }) => {
@@ -86,8 +98,8 @@ describe("OAuth with wildcard domains", () => {
       body: {
         config_override_string: JSON.stringify({
           'domains.trustedDomains.wildcard': {
-            baseUrl: 'http://*.localhost:8107',
-            handlerPath: '/handler',
+            baseUrl: 'http://*.localhost',
+            handlerPath: '/some-callback-url',
           },
           'domains.allowLocalhost': false,
         }),
@@ -129,8 +141,20 @@ describe("OAuth with wildcard domains", () => {
 
     // Try to complete the OAuth flow - it should fail at the callback stage
     const { response } = await Auth.OAuth.getMaybeFailingAuthorizationCode();
-    expect(response.status).toBe(400);
-    expect(response.body).toBe("Invalid redirect URI. The URL you are trying to redirect to is not trusted. If it should be, add it to the list of trusted domains in the Stack Auth dashboard.");
+    expect(response).toMatchInlineSnapshot(`
+      NiceResponse {
+        "status": 400,
+        "body": {
+          "code": "REDIRECT_URL_NOT_WHITELISTED",
+          "error": "Redirect URL not whitelisted. Did you forget to add this domain to the trusted domains list on the Stack Auth dashboard?",
+        },
+        "headers": Headers {
+          "set-cookie": <deleting cookie 'stack-oauth-inner-<stripped cookie name key>' at path '/'>,
+          "x-stack-known-error": "REDIRECT_URL_NOT_WHITELISTED",
+          <some fields may have been hidden>,
+        },
+      }
+    `);
   });
 
   it("should work with double wildcard domain", async ({ expect }) => {
@@ -151,8 +175,8 @@ describe("OAuth with wildcard domains", () => {
       body: {
         config_override_string: JSON.stringify({
           'domains.trustedDomains.double': {
-            baseUrl: 'http://**.localhost:8107',
-            handlerPath: '/handler',
+            baseUrl: 'http://**.localhost',
+            handlerPath: '/some-callback-url',
           },
           'domains.allowLocalhost': false,
         }),
@@ -194,8 +218,20 @@ describe("OAuth with wildcard domains", () => {
 
     // Try to complete the OAuth flow - it should fail at the callback stage
     const { response } = await Auth.OAuth.getMaybeFailingAuthorizationCode();
-    expect(response.status).toBe(400);
-    expect(response.body).toBe("Invalid redirect URI. The URL you are trying to redirect to is not trusted. If it should be, add it to the list of trusted domains in the Stack Auth dashboard.");
+    expect(response).toMatchInlineSnapshot(`
+      NiceResponse {
+        "status": 400,
+        "body": {
+          "code": "REDIRECT_URL_NOT_WHITELISTED",
+          "error": "Redirect URL not whitelisted. Did you forget to add this domain to the trusted domains list on the Stack Auth dashboard?",
+        },
+        "headers": Headers {
+          "set-cookie": <deleting cookie 'stack-oauth-inner-<stripped cookie name key>' at path '/'>,
+          "x-stack-known-error": "REDIRECT_URL_NOT_WHITELISTED",
+          <some fields may have been hidden>,
+        },
+      }
+    `);
   });
 
   it("should match prefix wildcard patterns correctly", async ({ expect }) => {
@@ -216,8 +252,8 @@ describe("OAuth with wildcard domains", () => {
       body: {
         config_override_string: JSON.stringify({
           'domains.trustedDomains.prefix': {
-            baseUrl: 'http://local*:8107', // Should match localhost
-            handlerPath: '/handler',
+            baseUrl: 'http://stack-test.*', // Should match stack-test.localhost
+            handlerPath: '/some-callback-url',
           },
           'domains.allowLocalhost': false,
         }),
@@ -259,8 +295,20 @@ describe("OAuth with wildcard domains", () => {
 
     // Try to complete the OAuth flow - it should fail at the callback stage
     const { response } = await Auth.OAuth.getMaybeFailingAuthorizationCode();
-    expect(response.status).toBe(400);
-    expect(response.body).toBe("Invalid redirect URI. The URL you are trying to redirect to is not trusted. If it should be, add it to the list of trusted domains in the Stack Auth dashboard.");
+    expect(response).toMatchInlineSnapshot(`
+      NiceResponse {
+        "status": 400,
+        "body": {
+          "code": "REDIRECT_URL_NOT_WHITELISTED",
+          "error": "Redirect URL not whitelisted. Did you forget to add this domain to the trusted domains list on the Stack Auth dashboard?",
+        },
+        "headers": Headers {
+          "set-cookie": <deleting cookie 'stack-oauth-inner-<stripped cookie name key>' at path '/'>,
+          "x-stack-known-error": "REDIRECT_URL_NOT_WHITELISTED",
+          <some fields may have been hidden>,
+        },
+      }
+    `);
   });
 
   it("should properly validate multiple domains with wildcards", async ({ expect }) => {
@@ -288,8 +336,8 @@ describe("OAuth with wildcard domains", () => {
             handlerPath: '/handler',
           },
           'domains.trustedDomains.test': {
-            baseUrl: 'http://localhost:8107', // This one matches!
-            handlerPath: '/handler',
+            baseUrl: 'http://stack-test.localhost', // This one matches!
+            handlerPath: '/some-callback-url',
           },
           'domains.allowLocalhost': false,
         }),
