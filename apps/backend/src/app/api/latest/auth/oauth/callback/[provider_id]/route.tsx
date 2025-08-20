@@ -165,11 +165,6 @@ const handler = createSmartRouteHandler({
         if (!user) {
           throw new StackAssertionError("User not found");
         }
-
-        const account = user.projectUserOAuthAccounts.find((a) => a.configOAuthProviderId === provider.id);
-        if (account && account.providerAccountId !== userInfo.accountId) {
-          throw new KnownErrors.UserAlreadyConnectedToAnotherOAuthConnection();
-        }
       }
 
       const oauthRequest = new OAuthRequest({

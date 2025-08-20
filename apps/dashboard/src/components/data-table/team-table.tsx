@@ -8,6 +8,7 @@ import { useState } from "react";
 import * as yup from "yup";
 import { FormDialog } from "../form-dialog";
 import { InputField } from "../form-fields";
+import { CreateCheckoutDialog } from "../payments/create-checkout-dialog";
 
 function toolbarRender<TData>(table: Table<TData>) {
   return (
@@ -70,12 +71,14 @@ function Actions({ row }: { row: Row<ServerTeam> }) {
   const router = useRouter();
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
+  const [isCreateCheckoutModalOpen, setIsCreateCheckoutModalOpen] = useState(false);
   const adminApp = useAdminApp();
 
   return (
     <>
       <EditDialog team={row.original} open={isEditModalOpen} onOpenChange={setIsEditModalOpen} />
       <DeleteDialog team={row.original} open={isDeleteModalOpen} onOpenChange={setIsDeleteModalOpen} />
+      <CreateCheckoutDialog open={isCreateCheckoutModalOpen} onOpenChange={setIsCreateCheckoutModalOpen} team={row.original} />
       <ActionCell
         items={[
           {
@@ -85,6 +88,10 @@ function Actions({ row }: { row: Row<ServerTeam> }) {
           {
             item: "Edit",
             onClick: () => setIsEditModalOpen(true),
+          },
+          {
+            item: "Create Checkout",
+            onClick: () => setIsCreateCheckoutModalOpen(true),
           },
           '-',
           {

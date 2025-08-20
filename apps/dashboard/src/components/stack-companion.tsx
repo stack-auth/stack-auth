@@ -2,10 +2,9 @@
 
 import { cn } from '@/lib/utils';
 import { checkVersion, VersionCheckResult } from '@/lib/version-check';
-import { useUser } from '@stackframe/stack';
 import { Button } from '@stackframe/stack-ui';
 import { BookOpen, HelpCircle, Lightbulb, TimerReset, X } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import packageJson from '../../package.json';
 import { FeedbackForm } from './feedback-form';
 import { Logo } from './logo';
@@ -23,6 +22,22 @@ type SidebarItem = {
   icon: React.ElementType,
   color: string,
 };
+
+// Constants for resize constraints
+const MIN_SIDEBAR_WIDTH = 280;
+const MAX_SIDEBAR_WIDTH = 2000;
+const DEFAULT_SIDEBAR_WIDTH = 320;
+
+// Constants for cursor styles
+const CURSOR_STYLES = {
+  COL_RESIZE: 'col-resize',
+  DEFAULT: '',
+} as const;
+
+const USER_SELECT_VALUES = {
+  NONE: 'none',
+  DEFAULT: '',
+} as const;
 
 const sidebarItems: SidebarItem[] = [
   {
@@ -55,9 +70,11 @@ export function StackCompanion({ className, onExpandedChange }: StackCompanionPr
   const [activeItem, setActiveItem] = useState<string | null>(null);
   const [mounted, setMounted] = useState(false);
   const [versionCheckResult, setVersionCheckResult] = useState<VersionCheckResult>(null);
-
-  // Get current user from Stack Auth
-  const user = useUser({ or: 'redirect', projectIdMustMatch: "internal" });
+  const [width, setWidth] = useState(DEFAULT_SIDEBAR_WIDTH);
+  const [isResizing, setIsResizing] = useState(false);
+  const [nubStretch, setNubStretch] = useState({ scaleX: 1, scaleY: 1, translateY: 0 });
+  const [nubInitialY, setNubInitialY] = useState<number | null>(null);
+  const nubRef = useRef<HTMLDivElement>(null);
 
   // Handle hydration
   useEffect(() => {
@@ -80,6 +97,68 @@ export function StackCompanion({ className, onExpandedChange }: StackCompanionPr
     onExpandedChange?.(activeItem !== null);
   }, [activeItem, onExpandedChange]);
 
+  // Handle resize logic
+  const handleMouseDown = (e: React.MouseEvent) => {
+    setIsResizing(true);
+    setNubInitialY(e.clientY);
+    e.preventDefault();
+  };
+
+  useEffect(() => {
+    if (!isResizing) return;
+
+    const handleMouseMove = (e: MouseEvent) => {
+      const clientWidth = document.documentElement.clientWidth;
+
+      // Add bounds checking for edge cases
+      if (!clientWidth || clientWidth <= 0) return;
+
+      const newWidth = clientWidth - e.clientX;
+
+      // Constrain width between min and max values
+      const constrainedWidth = Math.max(MIN_SIDEBAR_WIDTH, Math.min(MAX_SIDEBAR_WIDTH, newWidth));
+      setWidth(constrainedWidth);
+
+      // Calculate vertical distance from initial position for stretch effect
+      if (nubInitialY !== null) {
+        const verticalDelta = e.clientY - nubInitialY;
+        const verticalDistance = Math.abs(verticalDelta);
+        const horizontalDistance = Math.abs(e.clientX - (nubRef.current?.getBoundingClientRect().left ?? e.clientX));
+        const distance = Math.sqrt(verticalDistance ** 2 + horizontalDistance ** 2);
+
+        const viewportHeight = window.innerHeight;
+        const viewportWidth = window.innerWidth;
+        const maxDistance = Math.sqrt(viewportHeight ** 2 + viewportWidth ** 2) * 0.3;
+        let normalizedDistance =
+          Math.min(Math.sqrt(distance / maxDistance));
+
+        const scaleY = Math.max(0, 1 - (normalizedDistance * 0.4));
+        const scaleX = Math.max(0, 1 + (normalizedDistance * 0.6));
+        const translateY = 0;
+
+        setNubStretch({ scaleX, scaleY, translateY });
+      }
+    };
+
+    const handleMouseUp = () => {
+      setIsResizing(false);
+      setNubInitialY(null);
+      setNubStretch({ scaleX: 1, scaleY: 1, translateY: 0 });
+    };
+
+    document.addEventListener('mousemove', handleMouseMove);
+    document.addEventListener('mouseup', handleMouseUp);
+    document.body.style.cursor = CURSOR_STYLES.COL_RESIZE;
+    document.body.style.userSelect = USER_SELECT_VALUES.NONE;
+
+    return () => {
+      document.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('mouseup', handleMouseUp);
+      document.body.style.cursor = CURSOR_STYLES.DEFAULT;
+      document.body.style.userSelect = USER_SELECT_VALUES.DEFAULT;
+    };
+  }, [isResizing, nubInitialY]);
+
   // Don't render anything until mounted to avoid hydration issues
   if (!mounted) {
     return null;
@@ -89,12 +168,58 @@ export function StackCompanion({ className, onExpandedChange }: StackCompanionPr
 
   return (
     <div className={cn("relative", className)}>
+      {/* Resize Handle - positioned on outer container to straddle border */}
+      {isExpanded && (
+        <div
+          className={cn(
+            "absolute left-0 top-1/2 -translate-y-1/2 -translate-x-1/2 w-6 h-12 cursor-col-resize group z-30 flex items-center justify-center",
+            "transition-colors"
+          )}
+          ref={nubRef}
+          onMouseDown={handleMouseDown}
+          title="Drag to resize panel"
+        >
+          {/* Pill-shaped Resize Nub */}
+          <div
+            className={cn(
+                "w-2 h-8 rounded-full transition-colors duration-200 flex items-center justify-center shadow-sm",
+                isResizing ? "bg-blue-600 border-blue-600 dark:bg-blue-400 dark:border-blue-400"
+                  : "bg-white dark:bg-black border border dark:border-white/50 group-hover:bg-gray-700 group-hover:border-gray-700 dark:group-hover:bg-gray-200 dark:group-hover:border-gray-200"
+              )}
+            style={{
+              transform: `scaleX(${nubStretch.scaleX * (isResizing ? 0.95 : 1)}) scaleY(${nubStretch.scaleY * (isResizing ? 1.05 : 1)}) translateY(${nubStretch.translateY}px)`
+            }}
+          >
+            {/* Grip lines */}
+            <div className="flex flex-col items-center justify-center space-y-0.5">
+              <div className={cn(
+                "w-0.5 h-1 rounded-full transition-colors",
+                "bg-black/50 dark:bg-white/50 group-hover:bg-white dark:group-hover:bg-black",
+                isResizing ? "bg-white dark:bg-black" : ""
+              )} />
+              <div className={cn(
+                "w-0.5 h-1 rounded-full transition-colors",
+                "bg-black/50 dark:bg-white/50 group-hover:bg-white dark:group-hover:bg-black",
+                isResizing ? "bg-white dark:bg-black" : ""
+              )} />
+              <div className={cn(
+                "w-0.5 h-1 rounded-full transition-colors",
+                "bg-black/50 dark:bg-white/50 group-hover:bg-white dark:group-hover:bg-black",
+                isResizing ? "bg-white dark:bg-black" : ""
+              )} />
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Single Expanding Sidebar */}
       <div
         className={cn(
-          "h-screen bg-background border-l shadow-lg flex transition-all duration-300 ease-in-out",
-          isExpanded ? "w-80" : "w-12"
+          "h-screen bg-background border-l shadow-lg flex relative",
+          isExpanded ? "" : "w-12",
+          !isResizing ? "transition-all duration-300 ease-in-out" : ""
         )}
+        style={isExpanded ? { width: `${width}px` } : undefined}
       >
         {/* Collapsed State - Vertical Buttons */}
         {!isExpanded && (
@@ -179,10 +304,10 @@ export function StackCompanion({ className, onExpandedChange }: StackCompanionPr
                       key={item.id}
                       onClick={() => setActiveItem(String(activeItem) === item.id ? null : item.id)}
                       className={cn(
-                        "flex items-center justify-center w-10 h-10 rounded-lg transition-none",
-                        isActive ? "bg-gray-200 dark:bg-muted shadow-md" : "hover:bg-muted",
-                        item.color
-                      )}
+                          "flex items-center justify-center w-10 h-10 rounded-lg transition-none",
+                          isActive ? "bg-gray-200 dark:bg-muted shadow-md" : "hover:bg-muted",
+                          item.color
+                        )}
                     >
                       <Icon className="h-5 w-5" />
                     </button>
@@ -192,13 +317,13 @@ export function StackCompanion({ className, onExpandedChange }: StackCompanionPr
 
               {/* Footer - Normal orientation text */}
               <div className={cn(
-                "h-12 border-t flex items-center justify-center",
-                versionCheckResult ? (versionCheckResult.severe ? "bg-red-500" : "bg-orange-500") : ""
-              )}>
-                <div className={cn(
-                  "text-[10px] font-medium text-center",
-                  versionCheckResult ? "text-white" : "text-muted-foreground"
+                  "h-12 border-t flex items-center justify-center",
+                  versionCheckResult ? (versionCheckResult.severe ? "bg-red-500" : "bg-orange-500") : ""
                 )}>
+                <div className={cn(
+                    "text-[10px] font-medium text-center",
+                    versionCheckResult ? "text-white" : "text-muted-foreground"
+                  )}>
                   v{packageJson.version}
                 </div>
               </div>
@@ -233,10 +358,10 @@ export function StackCompanion({ className, onExpandedChange }: StackCompanionPr
               {/* Content Body */}
               <div className="flex-1 overflow-y-auto p-3" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' } as React.CSSProperties}>
                 <style jsx>{`
-                  div::-webkit-scrollbar {
-                    display: none;
-                  }
-                `}</style>
+                    div::-webkit-scrollbar {
+                      display: none;
+                    }
+                  `}</style>
                 {activeItem === 'docs' && (
                   <div className="space-y-3">
                     <button
