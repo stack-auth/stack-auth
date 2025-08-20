@@ -8,7 +8,7 @@ import { decodeBasicAuthorizationHeader } from "./utils/http";
 import { allProviders } from "./utils/oauth";
 import { deepPlainClone, omit, typedFromEntries } from "./utils/objects";
 import { deindent } from "./utils/strings";
-import { isValidUrl } from "./utils/urls";
+import { isValidUrl, isValidHostnameWithWildcards } from "./utils/urls";
 import { isUuid } from "./utils/uuids";
 
 const MAX_IMAGE_SIZE_BASE64_BYTES = 1_000_000; // 1MB
@@ -360,15 +360,31 @@ export const wildcardUrlSchema = yupString().test({
     
     // For wildcard URLs, validate the structure by replacing wildcards with placeholders
     try {
+      const PLACEHOLDER = 'wildcard-placeholder';
       // Replace wildcards with valid placeholders for URL parsing
-      const normalizedUrl = value.replace(/\*+/g, 'wildcard-placeholder');
+      const normalizedUrl = value.replace(/\*/g, PLACEHOLDER);
       const url = new URL(normalizedUrl);
+
+      // Only allow wildcards in the hostname; reject anywhere else
+      if (
+        url.username.includes(PLACEHOLDER) ||
+        url.password.includes(PLACEHOLDER) ||
+        url.pathname.includes(PLACEHOLDER) ||
+        url.search.includes(PLACEHOLDER) ||
+        url.hash.includes(PLACEHOLDER)
+      ) {
+        return false;
+      }
+
+      // Only http/https are acceptable
+      if (url.protocol !== 'http:' && url.protocol !== 'https:') {
+        return false;
+      }
       
       // Extract original hostname pattern from the input
-      const hostPattern = url.hostname.replace(/wildcard-placeholder/g, '*');
+      const hostPattern = url.hostname.split(PLACEHOLDER).join('*');
       
       // Validate the wildcard hostname pattern using the existing function
-      const { isValidHostnameWithWildcards } = require('./utils/urls');
       return isValidHostnameWithWildcards(hostPattern);
     } catch (e) {
       return false;
