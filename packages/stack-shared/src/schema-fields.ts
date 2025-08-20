@@ -571,7 +571,7 @@ export const offerSchema = yupObject({
   includedItems: yupRecord(
     userSpecifiedIdSchema("itemId"),
     yupObject({
-      quantity: yupNumber(),
+      quantity: yupNumber().defined(),
       repeat: dayIntervalOrNeverSchema.optional(),
       expires: yupString().oneOf(['never', 'when-purchase-expires', 'when-repeated']).optional(),
     }),

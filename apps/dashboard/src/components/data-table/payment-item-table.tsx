@@ -1,14 +1,15 @@
 'use client';
 import { useAdminApp } from "@/app/(main)/(protected)/projects/[projectId]/use-admin-app";
 import { SmartFormDialog } from "@/components/form-dialog";
+import { ItemDialog } from "@/components/payments/item-dialog";
 import { KnownErrors } from "@stackframe/stack-shared";
 import { branchPaymentsSchema } from "@stackframe/stack-shared/dist/config/schema";
+import { has } from "@stackframe/stack-shared/dist/utils/objects";
 import { Result } from "@stackframe/stack-shared/dist/utils/results";
-import { ActionCell, DataTable, DataTableColumnHeader, TextCell, toast } from "@stackframe/stack-ui";
+import { ActionCell, ActionDialog, DataTable, DataTableColumnHeader, TextCell, toast } from "@stackframe/stack-ui";
 import { ColumnDef } from "@tanstack/react-table";
 import { useState } from "react";
 import * as yup from "yup";
-import { SelectField } from "../form-fields";
 
 type PaymentItem = {
   id: string,
@@ -59,13 +60,7 @@ const columns: ColumnDef<PaymentItem>[] = [
   }
 ];
 
-export function PaymentItemTable({
-  items,
-  toolbarRender,
-}: {
-  items: Record<string, yup.InferType<typeof branchPaymentsSchema>["items"][string]>,
-  toolbarRender: () => React.ReactNode,
-}) {
+export function PaymentItemTable({ items }: { items: Record<string, yup.InferType<typeof branchPaymentsSchema>["items"][string]> }) {
   const data: PaymentItem[] = Object.entries(items).map(([id, item]) => ({
     id,
     ...item,
@@ -77,24 +72,32 @@ export function PaymentItemTable({
     defaultColumnFilters={[]}
     defaultSorting={[]}
     showDefaultToolbar={false}
-    toolbarRender={toolbarRender}
   />;
 }
 
 function ActionsCell({ item }: { item: PaymentItem }) {
   const [open, setOpen] = useState(false);
+  const [isEditOpen, setIsEditOpen] = useState(false);
+  const [isDeleteOpen, setIsDeleteOpen] = useState(false);
+  const stackAdminApp = useAdminApp();
+  const project = stackAdminApp.useProject();
   return (
     <>
       <ActionCell
         items={[
           {
-            item: "New Item Quantity Change",
+            item: "Update Customer Quantity",
             onClick: () => setOpen(true),
           },
           {
+            item: "Edit",
+            onClick: () => setIsEditOpen(true),
+          },
+          '-',
+          {
             item: "Delete",
-            disabled: true,
-            onClick: () => { },
+            onClick: () => setIsDeleteOpen(true),
+            danger: true,
           },
         ]}
       />
@@ -103,6 +106,41 @@ function ActionsCell({ item }: { item: PaymentItem }) {
         onOpenChange={setOpen}
         itemId={item.id}
         customerType={item.customerType}
+      />
+      <ItemDialog
+        open={isEditOpen}
+        onOpenChange={setIsEditOpen}
+        project={project}
+        mode="edit"
+        initial={{ id: item.id, value: item }}
+      />
+      <ActionDialog
+        open={isDeleteOpen}
+        onOpenChange={setIsDeleteOpen}
+        title="Delete Item"
+        description="This will delete the item"
+        cancelButton
+        danger
+        okButton={{
+          label: "Delete",
+          onClick: async () => {
+            const config = await project.getConfig();
+            for (const [offerId, offer] of Object.entries(config.payments.offers)) {
+              if (has(offer.includedItems, item.id)) {
+                toast({
+                  title: "Item is included in offer",
+                  description: `Please remove it from the offer "${offerId}" before deleting.`,
+                  variant: "destructive",
+                });
+                return "prevent-close";
+              }
+            }
+            await project.updateConfig({
+              [`payments.items.${item.id}`]: null,
+            });
+            toast({ title: "Item deleted" });
+          }
+        }}
       />
     </>
   );
