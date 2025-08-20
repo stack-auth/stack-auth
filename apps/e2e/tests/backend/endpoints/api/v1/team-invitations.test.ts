@@ -1,6 +1,6 @@
 import { expect } from "vitest";
 import { it } from "../../../../helpers";
-import { Auth, Project, Team, User, backendContext, bumpEmailAddress, createMailbox, niceBackendFetch } from "../../../backend-helpers";
+import { Auth, InternalProjectKeys, Project, Team, User, backendContext, bumpEmailAddress, createMailbox, niceBackendFetch } from "../../../backend-helpers";
 
 async function createAndAddCurrentUserWithoutMemberPermission() {
   const { teamId } = await Team.create();
@@ -462,6 +462,64 @@ it("requires $remove_members permission to revoke invitations", async ({ expect 
       },
       "headers": Headers {
         "x-stack-known-error": "TEAM_PERMISSION_REQUIRED",
+        <some fields may have been hidden>,
+      },
+    }
+  `);
+});
+
+
+it("errors with item_quantity_insufficient_amount when accepting invite without remaining dashboard_admins", async ({ expect }) => {
+  backendContext.set({ projectKeys: InternalProjectKeys });
+  await Auth.Otp.signIn();
+  const { createProjectResponse } = await Project.create({ display_name: "Test Project (Insufficient Admins)" });
+  const ownerTeamId: string = createProjectResponse.body.owner_team_id;
+  const mailboxB = createMailbox();
+  const sendInvitationResponse = await niceBackendFetch("/api/v1/team-invitations/send-code", {
+    method: "POST",
+    accessType: "server",
+    body: {
+      email: mailboxB.emailAddress,
+      team_id: ownerTeamId,
+      callback_url: "http://localhost:12345/some-callback-url",
+    },
+  });
+  expect(sendInvitationResponse).toMatchInlineSnapshot(`
+    NiceResponse {
+      "status": 200,
+      "body": {
+        "id": "<stripped UUID>",
+        "success": true,
+      },
+      "headers": Headers { <some fields may have been hidden> },
+    }
+  `);
+
+  backendContext.set({ mailbox: mailboxB });
+  await Auth.Otp.signIn();
+
+  const acceptResponse = await niceBackendFetch("/api/v1/team-invitations/accept", {
+    method: "POST",
+    accessType: "client",
+    body: {
+      code: (await mailboxB.fetchMessages()).findLast((m) => m.subject.includes("join"))?.body?.text.match(/http:\/\/localhost:12345\/some-callback-url\?code=([a-zA-Z0-9]+)/)?.[1],
+    },
+  });
+
+  expect(acceptResponse).toMatchInlineSnapshot(`
+    NiceResponse {
+      "status": 400,
+      "body": {
+        "code": "ITEM_QUANTITY_INSUFFICIENT_AMOUNT",
+        "details": {
+          "customer_id": "<stripped UUID>",
+          "item_id": "dashboard_admins",
+          "quantity": -1,
+        },
+        "error": "The item with ID \\"dashboard_admins\\" has an insufficient quantity for the customer with ID \\"<stripped UUID>\\". An attempt was made to charge -1 credits.",
+      },
+      "headers": Headers {
+        "x-stack-known-error": "ITEM_QUANTITY_INSUFFICIENT_AMOUNT",
         <some fields may have been hidden>,
       },
     }

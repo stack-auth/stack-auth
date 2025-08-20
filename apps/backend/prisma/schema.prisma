@@ -747,3 +747,17 @@ model Subscription {
   @@id([tenancyId, id])
   @@unique([tenancyId, stripeSubscriptionId])
 }
+
+model ItemQuantityChange {
+  id          String    @default(uuid()) @db.Uuid
+  tenancyId   String    @db.Uuid
+  customerId  String    @db.Uuid
+  itemId      String
+  quantity    Int
+  description String?
+  expiresAt   DateTime?
+  createdAt   DateTime  @default(now())
+
+  @@id([tenancyId, id])
+  @@index([tenancyId, customerId, expiresAt])
+}

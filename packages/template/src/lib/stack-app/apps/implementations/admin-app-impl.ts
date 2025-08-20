@@ -23,8 +23,7 @@ import { ChatContent } from "@stackframe/stack-shared/dist/interface/admin-inter
 import { ConfigCrud } from "@stackframe/stack-shared/dist/interface/crud/config";
 import { useAsyncCache } from "./common"; // THIS_LINE_PLATFORM react-like
 
-export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, ProjectId extends string> extends _StackServerAppImplIncomplete<HasTokenStore, ProjectId> implements StackAdminApp<HasTokenStore, ProjectId>
-{
+export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, ProjectId extends string> extends _StackServerAppImplIncomplete<HasTokenStore, ProjectId> implements StackAdminApp<HasTokenStore, ProjectId> {
   declare protected _interface: StackAdminInterface;
 
   private readonly _adminProjectCache = createCache(async () => {
@@ -321,7 +320,7 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
   }
 
 
-  async createTeamPermissionDefinition(data: AdminTeamPermissionDefinitionCreateOptions): Promise<AdminTeamPermission>{
+  async createTeamPermissionDefinition(data: AdminTeamPermissionDefinitionCreateOptions): Promise<AdminTeamPermission> {
     const crud = await this._interface.createTeamPermissionDefinition(adminTeamPermissionDefinitionCreateOptionsToCrud(data));
     await this._adminTeamPermissionDefinitionsCache.refresh([]);
     return this._serverTeamPermissionDefinitionFromCrud(crud);
@@ -516,4 +515,15 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
     });
   }
 
+  async createItemQuantityChange(options: { customerId: string, itemId: string, quantity: number, expiresAt?: string, description?: string }): Promise<void> {
+    await this._interface.updateItemQuantity(
+      options.customerId,
+      options.itemId,
+      {
+        delta: options.quantity,
+        expires_at: options.expiresAt,
+        description: options.description,
+      }
+    );
+  }
 }

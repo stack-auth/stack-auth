@@ -398,6 +398,7 @@ const handler = createSmartRouteHandler({
       } catch (error) {
         if (error instanceof InvalidClientError) {
           if (error.message.includes("redirect_uri") || error.message.includes("redirectUri")) {
+            console.log("User is trying to authorize OAuth with an invalid redirect URI", error, { redirectUri: oauthRequest.query?.redirect_uri, clientId: oauthRequest.query?.client_id });
             throw new KnownErrors.RedirectUrlNotWhitelisted();
           }
         } else if (error instanceof InvalidScopeError) {
