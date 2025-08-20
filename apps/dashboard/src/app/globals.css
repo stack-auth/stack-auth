@@ -165,10 +165,12 @@
   pointer-events: none;
   touch-action: none;
   user-select: none;
-  display: none;
+  opacity: 0;
+  transition: opacity 0.2s ease-in-out;
 }
 body:has(.show-site-loading-indicator) .site-loading-indicator {
-  display: block;
+  opacity: 1;
+  transition: none;
 }
 .site-loading-indicator > .site-loading-indicator-inner {
   width: 40%;

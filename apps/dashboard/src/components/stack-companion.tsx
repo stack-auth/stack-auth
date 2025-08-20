@@ -7,7 +7,6 @@ import { BookOpen, HelpCircle, Lightbulb, TimerReset, X } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import packageJson from '../../package.json';
 import { FeedbackForm } from './feedback-form';
-import { Logo } from './logo';
 import { ChangelogWidget } from './stack-companion/changelog-widget';
 import { FeatureRequestBoard } from './stack-companion/feature-request-board';
 
@@ -225,8 +224,8 @@ export function StackCompanion({ className, onExpandedChange }: StackCompanionPr
         {!isExpanded && (
           <div className="flex flex-col h-full w-12">
             {/* Header - Match navbar height */}
-            <div className="flex items-center justify-center h-14 border-b">
-              <Logo noLink width={16} height={16} />
+            <div className="flex items-center justify-center h-14">
+              {/* Nothing here for now */}
             </div>
 
             {/* Navigation Items */}
@@ -289,8 +288,8 @@ export function StackCompanion({ className, onExpandedChange }: StackCompanionPr
             {/* Left side - Navigation */}
             <div className="flex flex-col h-full w-12 border-r">
               {/* Header - Match navbar height */}
-              <div className="flex items-center justify-center h-14 border-b">
-                <Logo noLink width={16} height={16} />
+              <div className="flex items-center justify-center h-14">
+                {/* Nothing here for now */}
               </div>
 
               {/* Navigation Items */}
