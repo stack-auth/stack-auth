@@ -38,7 +38,7 @@ export const POST = createSmartRouteHandler({
     const offerConfig = await ensureOfferIdOrInlineOffer(tenancy, req.auth.type, req.body.offer_id, req.body.offer_inline);
     const customerType = offerConfig.customerType ?? throwErr("Customer type not found");
     if (req.body.customer_type !== customerType) {
-      throw new KnownErrors.OfferCustomerTypeDoesNotMatch(req.body.offer_id, req.body.customer_id, req.body.customer_type, customerType);
+      throw new KnownErrors.OfferCustomerTypeDoesNotMatch(req.body.offer_id, req.body.customer_id, customerType, req.body.customer_type);
     }
 
     const stripeCustomerSearch = await stripe.customers.search({

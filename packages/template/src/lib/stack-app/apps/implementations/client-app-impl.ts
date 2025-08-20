@@ -46,7 +46,10 @@ import { EditableTeamMemberProfile, Team, TeamCreateOptions, TeamInvitation, Tea
 import { ActiveSession, Auth, BaseUser, CurrentUser, InternalUserExtra, ProjectCurrentUser, UserExtra, UserUpdateOptions, userUpdateOptionsToCrud } from "../../users";
 import { StackClientApp, StackClientAppConstructorOptions, StackClientAppJson } from "../interfaces/client-app";
 import { _StackAdminAppImplIncomplete } from "./admin-app-impl";
-import { TokenObject, clientVersion, createCache, createCacheBySession, createEmptyTokenStore, getBaseUrl, getDefaultExtraRequestHeaders, getDefaultProjectId, getDefaultPublishableClientKey, getUrls, useAsyncCache, } from "./common";
+import { TokenObject, clientVersion, createCache, createCacheBySession, createEmptyTokenStore, getBaseUrl, getDefaultExtraRequestHeaders, getDefaultProjectId, getDefaultPublishableClientKey, getUrls } from "./common";
+
+// NEXT_LINE_PLATFORM react-like
+import { useAsyncCache } from "./common";
 
 let isReactServer = false;
 // IF_PLATFORM next
@@ -257,15 +260,15 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
         `);
       }
       await addNewOAuthProviderOrScope(
-          this._interface,
-          {
-            provider: options.providerId,
-            redirectUrl: this.urls.oauthCallback,
-            errorRedirectUrl: this.urls.error,
-            providerScope: mergeScopeStrings(options.scope || "", (this._oauthScopesOnSignIn[options.providerId] ?? []).join(" ")),
-          },
-          options.session,
-        );
+        this._interface,
+        {
+          provider: options.providerId,
+          redirectUrl: this.urls.oauthCallback,
+          errorRedirectUrl: this.urls.error,
+          providerScope: mergeScopeStrings(options.scope || "", (this._oauthScopesOnSignIn[options.providerId] ?? []).join(" ")),
+        },
+        options.session,
+      );
       return await neverResolve();
     } else if (!hasConnection) {
       return null;
@@ -601,7 +604,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
     return (overrideTokenStoreInit !== undefined ? overrideTokenStoreInit : this._tokenStoreInit) !== null;
   }
 
-  protected _ensurePersistentTokenStore(overrideTokenStoreInit?: TokenStoreInit): asserts this is StackClientApp<true, ProjectId>  {
+  protected _ensurePersistentTokenStore(overrideTokenStoreInit?: TokenStoreInit): asserts this is StackClientApp<true, ProjectId> {
     if (!this._hasPersistentTokenStore(overrideTokenStoreInit)) {
       throw new Error("Cannot call this function on a Stack app without a persistent token store. Make sure the tokenStore option on the constructor is set to a non-null value when initializing Stack.\n\nStack uses token stores to access access tokens of the current user. For example, on web frontends it is commonly the string value 'cookies' for cookie storage.");
     }
@@ -678,10 +681,10 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
       value: typeof crud.value === "string" ? crud.value : {
         lastFour: crud.value.last_four,
       },
-      isValid: function() {
+      isValid: function () {
         return this.whyInvalid() === null;
       },
-      whyInvalid: function() {
+      whyInvalid: function () {
         if (this.manuallyRevokedAt) {
           return "manually-revoked";
         }
@@ -753,7 +756,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
         return result.map((crud) => app._clientTeamInvitationFromCrud(session, crud));
       },
       // END_PLATFORM
-      async update(data: TeamUpdateOptions){
+      async update(data: TeamUpdateOptions) {
         await app._interface.updateTeam({ data: teamUpdateOptionsToCrud(data), teamId: crud.id }, session);
         await app._currentUserTeamsCache.refresh([session]);
       },
@@ -1089,7 +1092,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
           session
         );
       },
-      async updatePassword(options: { oldPassword: string, newPassword: string}) {
+      async updatePassword(options: { oldPassword: string, newPassword: string }) {
         const result = await app._interface.updatePassword(options, session);
         await app._currentUserCache.refresh([session]);
         return result;
@@ -1219,14 +1222,10 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
   // IF_PLATFORM react-like
   useItem(options: { itemId: string, userId: string } | { itemId: string, teamId: string } | { itemId: string, customId: string }): Item {
     const session = this._useSession();
-    let crud: ItemCrud['Client']['Read'];
-    if ("userId" in options) {
-      crud = useAsyncCache(this._userItemCache, [session, options.userId, options.itemId] as const, "app.useItem(user)");
-    } else if ("teamId" in options) {
-      crud = useAsyncCache(this._teamItemCache, [session, options.teamId, options.itemId] as const, "app.useItem(team)");
-    } else {
-      crud = useAsyncCache(this._customItemCache, [session, options.customId, options.itemId] as const, "app.useItem(custom)");
-    }
+    const [cache, ownerId] =
+      "userId" in options ? [this._userItemCache, options.userId] :
+        "teamId" in options ? [this._teamItemCache, options.teamId] : [this._customItemCache, options.customId];
+    const crud = useAsyncCache(cache, [session, ownerId, options.itemId] as const, "app.useItem()");
     return this._clientItemFromCrud(crud);
   }
   // END_PLATFORM
@@ -1290,10 +1289,10 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
   protected async _redirectTo(options: { url: URL | string, replace?: boolean }) {
     if (this._redirectMethod === "none") {
       return;
-    // IF_PLATFORM next
+      // IF_PLATFORM next
     } else if (isReactServer && this._redirectMethod === "nextjs") {
       NextNavigation.redirect(options.url.toString(), options.replace ? NextNavigation.RedirectType.replace : NextNavigation.RedirectType.push);
-    // END_PLATFORM
+      // END_PLATFORM
     } else if (typeof this._redirectMethod === "object" && this._redirectMethod.navigate) {
       this._redirectMethod.navigate(options.url.toString());
     } else {
@@ -1313,13 +1312,13 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
       return this._redirectMethod.useNavigate();
     } else if (this._redirectMethod === "window") {
       return (to: string) => window.location.assign(to);
-    // IF_PLATFORM next
+      // IF_PLATFORM next
     } else if (this._redirectMethod === "nextjs") {
       const router = NextNavigation.useRouter();
       return (to: string) => router.push(to);
-    // END_PLATFORM
+      // END_PLATFORM
     } else {
-      return (to: string) => {};
+      return (to: string) => { };
     }
   }
   // END_PLATFORM

@@ -27,6 +27,7 @@ import { TeamInvitationCrud } from './crud/team-invitation';
 import { TeamMemberProfilesCrud } from './crud/team-member-profiles';
 import { TeamPermissionsCrud } from './crud/team-permissions';
 import { TeamsCrud } from './crud/teams';
+import { urlString } from '../utils/urls';
 
 export type ClientInterfaceOptions = {
   clientVersion: string,
@@ -1769,7 +1770,7 @@ export class StackClientInterface {
     }
 
     const response = await this.sendClientRequest(
-      `/payments/items/${customerType}/${customerId}/${options.itemId}`,
+      urlString`/payments/items/${customerType}/${customerId}/${options.itemId}`,
       {},
       session,
     );

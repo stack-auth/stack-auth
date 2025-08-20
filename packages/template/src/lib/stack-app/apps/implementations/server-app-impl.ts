@@ -10,6 +10,7 @@ import { TeamPermissionDefinitionsCrud, TeamPermissionsCrud } from "@stackframe/
 import { TeamsCrud } from "@stackframe/stack-shared/dist/interface/crud/teams";
 import { UsersCrud } from "@stackframe/stack-shared/dist/interface/crud/users";
 import { InternalSession } from "@stackframe/stack-shared/dist/sessions";
+import type { AsyncCache } from "@stackframe/stack-shared/dist/utils/caches";
 import { StackAssertionError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
 import { ProviderType } from "@stackframe/stack-shared/dist/utils/oauth";
 import { runAsynchronously } from "@stackframe/stack-shared/dist/utils/promises";
@@ -30,9 +31,9 @@ import { ProjectCurrentServerUser, ServerUser, ServerUserCreateOptions, ServerUs
 import { StackServerAppConstructorOptions } from "../interfaces/server-app";
 import { _StackClientAppImplIncomplete } from "./client-app-impl";
 import { clientVersion, createCache, createCacheBySession, getBaseUrl, getDefaultProjectId, getDefaultPublishableClientKey, getDefaultSecretServerKey } from "./common";
+import { InlineOffer, ServerItem } from "../../customers";
 
 // NEXT_LINE_PLATFORM react-like
-import { InlineOffer, ServerItem } from "../../customers";
 import { useAsyncCache } from "./common";
 
 export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, ProjectId extends string> extends _StackClientAppImplIncomplete<HasTokenStore, ProjectId> {
@@ -1009,16 +1010,27 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
 
   // IF_PLATFORM react-like
   useItem(options: { itemId: string, userId: string } | { itemId: string, teamId: string } | { itemId: string, customId: string }): ServerItem {
+    let type: "user" | "team" | "custom";
+    let id: string;
+    let cache: AsyncCache<[string, string], Result<ItemCrud['Client']['Read']>>;
     if ("userId" in options) {
-      const result = useAsyncCache(this._serverUserItemsCache, [options.userId, options.itemId] as const, "app.useItem(user)");
-      return useMemo(() => this._serverItemFromCrud({ type: "user", id: options.userId }, result), [result]);
+      type = "user";
+      id = options.userId;
+      cache = this._serverUserItemsCache;
     } else if ("teamId" in options) {
-      const result = useAsyncCache(this._serverTeamItemsCache, [options.teamId, options.itemId] as const, "app.useItem(team)");
-      return useMemo(() => this._serverItemFromCrud({ type: "team", id: options.teamId }, result), [result]);
+      type = "team";
+      id = options.teamId;
+      cache = this._serverTeamItemsCache;
     } else {
-      const result = useAsyncCache(this._serverCustomItemsCache, [options.customId, options.itemId] as const, "app.useItem(custom)");
-      return useMemo(() => this._serverItemFromCrud({ type: "custom", id: options.customId }, result), [result]);
+      type = "custom";
+      id = options.customId;
+      cache = this._serverCustomItemsCache;
     }
+
+    const cacheKey = [id, options.itemId] as [string, string];
+    const debugLabel = `app.useItem(${type})`;
+    const result = useAsyncCache(cache, cacheKey, debugLabel);
+    return useMemo(() => this._serverItemFromCrud({ type, id }, result), [result]);
   }
   // END_PLATFORM
 
