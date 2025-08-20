@@ -38,6 +38,9 @@ export const POST = createSmartRouteHandler({
             capture_payments: true,
           },
         },
+        notification_banner: {
+          enabled: true,
+        },
       },
     });
 

@@ -217,7 +217,7 @@ const parseAuth = withTraceSpan('smart request parseAuth', async (req: NextReque
       throw new StatusError(401, "The user associated with the admin access token is no longer valid. Please refresh the admin access token and try again.");
     }
 
-    const allProjects = listManagedProjectIds(user);
+    const allProjects = await listManagedProjectIds(user);
     if (!allProjects.includes(options.projectId)) {
       throw new KnownErrors.AdminAccessTokenIsNotAdmin();
     }
