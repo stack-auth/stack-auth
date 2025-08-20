@@ -1,6 +1,7 @@
 /* eslint-disable no-restricted-syntax */
 import { usersCrudHandlers } from '@/app/api/latest/users/crud';
-import { updatePermissionDefinition } from '@/lib/permissions';
+import { overrideEnvironmentConfigOverride } from '@/lib/config';
+import { grantTeamPermission, updatePermissionDefinition } from '@/lib/permissions';
 import { createOrUpdateProjectWithLegacyConfig, getProject } from '@/lib/projects';
 import { DEFAULT_BRANCH_ID, getSoleTenancyFromProjectBranch } from '@/lib/tenancies';
 import { getPrismaClientForTenancy, globalPrismaClient } from '@/prisma-client';
@@ -80,10 +81,72 @@ async function seed() {
           ...Object.values(internalTenancy.config.domains.trustedDomains)
             .filter((d) => d.baseUrl !== dashboardDomain && d.baseUrl)
             .map((d) => ({ domain: d.baseUrl || throwErr('Domain base URL is required'), handler_path: d.handlerPath })),
-        ]
+        ],
       },
     },
   });
+
+  await overrideEnvironmentConfigOverride({
+    projectId: 'internal',
+    branchId: DEFAULT_BRANCH_ID,
+    environmentConfigOverrideOverride: {
+      payments: {
+        offers: {
+          team: {
+            displayName: "Team",
+            customerType: "team",
+            serverOnly: false,
+            stackable: false,
+            prices: {
+              monthly: {
+                USD: "49",
+                interval: [1, "month"] as any,
+                serverOnly: false
+              }
+            },
+            includedItems: {
+              dashboard_admins: {
+                quantity: 2,
+                repeat: "never",
+                expires: "when-purchase-expires"
+              }
+            }
+          },
+          growth: {
+            displayName: "Growth",
+            customerType: "team",
+            serverOnly: false,
+            stackable: false,
+            prices: {
+              monthly: {
+                USD: "299",
+                interval: [1, "month"] as any,
+                serverOnly: false
+              }
+            },
+            includedItems: {
+              dashboard_admins: {
+                quantity: 4,
+                repeat: "never",
+                expires: "when-purchase-expires"
+              }
+            }
+          }
+        },
+        items: {
+          dashboard_admins: {
+            displayName: "Dashboard Admins",
+            default: {
+              quantity: 1,
+              expires: "never",
+              repeat: "never"
+            },
+            customerType: "team"
+          }
+        },
+      }
+    }
+  })
 
   await updatePermissionDefinition(
     globalPrismaClient,
@@ -248,6 +311,13 @@ async function seed() {
         }
       }
     }
+
+    await grantTeamPermission(internalPrisma, {
+      tenancy: internalTenancy,
+      teamId: internalTeamId,
+      userId: defaultUserId,
+      permissionId: "team_admin",
+    });
   }
 
   if (emulatorEnabled) {

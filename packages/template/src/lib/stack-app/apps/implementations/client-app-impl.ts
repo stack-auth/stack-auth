@@ -12,6 +12,7 @@ import { TeamMemberProfilesCrud } from "@stackframe/stack-shared/dist/interface/
 import { TeamPermissionsCrud } from "@stackframe/stack-shared/dist/interface/crud/team-permissions";
 import { TeamsCrud } from "@stackframe/stack-shared/dist/interface/crud/teams";
 import { UsersCrud } from "@stackframe/stack-shared/dist/interface/crud/users";
+import { ItemCrud } from "@stackframe/stack-shared/dist/interface/crud/items";
 import { InternalSession } from "@stackframe/stack-shared/dist/sessions";
 import { scrambleDuringCompileTime } from "@stackframe/stack-shared/dist/utils/compile-time";
 import { isBrowserLike } from "@stackframe/stack-shared/dist/utils/env";
@@ -40,10 +41,10 @@ import { TeamPermission } from "../../permissions";
 import { AdminOwnedProject, AdminProjectUpdateOptions, Project, adminProjectCreateOptionsToCrud } from "../../projects";
 import { EditableTeamMemberProfile, Team, TeamCreateOptions, TeamInvitation, TeamUpdateOptions, TeamUser, teamCreateOptionsToCrud, teamUpdateOptionsToCrud } from "../../teams";
 import { ActiveSession, Auth, BaseUser, CurrentUser, InternalUserExtra, ProjectCurrentUser, UserExtra, UserUpdateOptions, userUpdateOptionsToCrud } from "../../users";
+import { Customer, InlineOffer, Item } from "../../customers";
 import { StackClientApp, StackClientAppConstructorOptions, StackClientAppJson } from "../interfaces/client-app";
 import { _StackAdminAppImplIncomplete } from "./admin-app-impl";
 import { TokenObject, clientVersion, createCache, createCacheBySession, createEmptyTokenStore, getBaseUrl, getDefaultExtraRequestHeaders, getDefaultProjectId, getDefaultPublishableClientKey, getUrls, } from "./common";
-
 import * as NextNavigationUnscrambled from "next/navigation"; // import the entire module to get around some static compiler warnings emitted by Next.js in some cases | THIS_LINE_PLATFORM next
 import React, { useCallback, useMemo } from "react"; // THIS_LINE_PLATFORM react-like
 import { useAsyncCache } from "./common"; // THIS_LINE_PLATFORM react-like
@@ -197,6 +198,18 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
     async (session) => {
       const results = await this._interface.listNotificationCategories(session);
       return results as NotificationPreferenceCrud['Client']['Read'][];
+    }
+  );
+
+  private readonly _userItemCache = createCacheBySession<[string, string], ItemCrud['Client']['Read']>(
+    async (session, [userId, itemId]) => {
+      return await this._interface.getItem({ userId, itemId }, session);
+    }
+  );
+
+  private readonly _teamItemCache = createCacheBySession<[string, string], ItemCrud['Client']['Read']>(
+    async (session, [teamId, itemId]) => {
+      return await this._interface.getItem({ teamId, itemId }, session);
     }
   );
 
@@ -705,6 +718,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
       profileImageUrl: crud.profile_image_url,
       clientMetadata: crud.client_metadata,
       clientReadOnlyMetadata: crud.client_read_only_metadata,
+      ...this._createCustomer(crud.id, "team", session),
       async inviteUser(options: { email: string, callbackUrl?: string }) {
         await app._interface.sendTeamInvitation({
           teamId: crud.id,
@@ -808,6 +822,16 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
       },
     };
   }
+
+  protected _clientItemFromCrud(crud: ItemCrud['Client']['Read']): Item {
+    const app = this;
+    return {
+      displayName: crud.display_name,
+      quantity: crud.quantity,
+      nonNegativeQuantity: Math.max(0, crud.quantity),
+    };
+  }
+
   protected _createAuth(session: InternalSession): Auth {
     const app = this;
     return {
@@ -1154,12 +1178,33 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
     };
   }
 
+  protected _createCustomer(userIdOrTeamId: string, type: "user" | "team", session: InternalSession): Omit<Customer, "id"> {
+    const app = this;
+    const cache = type === "user" ? app._userItemCache : app._teamItemCache;
+    return {
+      async getItem(itemId: string) {
+        const result = Result.orThrow(await cache.getOrWait([session, userIdOrTeamId, itemId], "write-only"));
+        return app._clientItemFromCrud(result);
+      },
+      // IF_PLATFORM react-like
+      useItem(itemId: string) {
+        const result = useAsyncCache(cache, [session, userIdOrTeamId, itemId] as const, "team.useItem()");
+        return app._clientItemFromCrud(result);
+      },
+      // END_PLATFORM
+      async createCheckoutUrl(offerIdOrInline: string | InlineOffer) {
+        return await app._interface.createCheckoutUrl(userIdOrTeamId, offerIdOrInline, session);
+      },
+    };
+  }
+
   protected _currentUserFromCrud(crud: NonNullable<CurrentUserCrud['Client']['Read']>, session: InternalSession): ProjectCurrentUser<ProjectId> {
     const currentUser = {
       ...this._createBaseUser(crud),
       ...this._createAuth(session),
       ...this._createUserExtraFromCurrent(crud, session),
       ...this._isInternalProject() ? this._createInternalUserExtra(session) : {},
+      ...this._createCustomer(crud.id, "user", session),
     } satisfies CurrentUser;
 
     Object.freeze(currentUser);

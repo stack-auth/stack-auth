@@ -1392,6 +1392,7 @@ export namespace Webhook {
 
 export namespace Payments {
   export async function createPurchaseUrlAndGetCode() {
+    await Project.createAndSwitch();
     await Project.updateConfig({
       payments: {
         stripeAccountId: "acct_test123",

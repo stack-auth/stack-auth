@@ -8,6 +8,7 @@ import { TeamMemberProfilesCrud } from "@stackframe/stack-shared/dist/interface/
 import { TeamPermissionDefinitionsCrud, TeamPermissionsCrud } from "@stackframe/stack-shared/dist/interface/crud/team-permissions";
 import { TeamsCrud } from "@stackframe/stack-shared/dist/interface/crud/teams";
 import { UsersCrud } from "@stackframe/stack-shared/dist/interface/crud/users";
+import { ItemCrud } from "@stackframe/stack-shared/dist/interface/crud/items";
 import { InternalSession } from "@stackframe/stack-shared/dist/sessions";
 import { StackAssertionError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
 import { ProviderType } from "@stackframe/stack-shared/dist/utils/oauth";
@@ -32,9 +33,9 @@ import { SendEmailOptions } from "../../email";
 
 // NEXT_LINE_PLATFORM react-like
 import { useAsyncCache } from "./common";
+import { InlineOffer, ServerItem } from "../../customers";
 
-export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, ProjectId extends string> extends _StackClientAppImplIncomplete<HasTokenStore, ProjectId>
-{
+export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, ProjectId extends string> extends _StackClientAppImplIncomplete<HasTokenStore, ProjectId> {
   declare protected _interface: StackServerInterface;
 
   // TODO override the client user cache to use the server user cache, so we save some requests
@@ -154,6 +155,18 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
     );
     return result;
   });
+
+  private readonly _serverTeamItemsCache = createCache<[string, string], ItemCrud['Client']['Read']>(
+    async ([teamId, itemId]) => {
+      return await this._interface.getItem({ teamId, itemId }, null);
+    }
+  );
+
+  private readonly _serverUserItemsCache = createCache<[string, string], ItemCrud['Client']['Read']>(
+    async ([userId, itemId]) => {
+      return await this._interface.getItem({ userId, itemId }, null);
+    }
+  );
 
   private async _updateServerUser(userId: string, update: ServerUserUpdateOptions): Promise<UsersCrud['Server']['Read']> {
     const result = await this._interface.updateServerUser(userId, serverUserUpdateOptionsToCrud(update));
@@ -488,7 +501,7 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
       async sendVerificationEmail() {
         return await app._checkFeatureSupport("sendVerificationEmail() on ServerUser", {});
       },
-      async updatePassword(options: { oldPassword: string, newPassword: string}) {
+      async updatePassword(options: { oldPassword: string, newPassword: string }) {
         const result = await app._interface.updatePassword(options);
         await app._serverUserCache.refresh([crud.id]);
         return result;
@@ -555,6 +568,19 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
         await app._serverUserApiKeysCache.refresh([crud.id]);
         return app._serverApiKeyFromCrud(result);
       },
+      async createCheckoutUrl(offerIdOrInline: string | InlineOffer) {
+        return await app._interface.createCheckoutUrl(crud.id, offerIdOrInline, null);
+      },
+      async getItem(itemId: string) {
+        const result = Result.orThrow(await app._serverUserItemsCache.getOrWait([crud.id, itemId], "write-only"));
+        return app._serverItemFromCrud(crud.id, result);
+      },
+      // IF_PLATFORM react-like
+      useItem(itemId: string) {
+        const result = useAsyncCache(app._serverUserItemsCache, [crud.id, itemId] as const, "user.useItem()");
+        return useMemo(() => app._serverItemFromCrud(crud.id, result), [result]);
+      },
+      // END_PLATFORM
     };
   }
 
@@ -669,6 +695,48 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
         );
         await app._serverTeamApiKeysCache.refresh([crud.id]);
         return app._serverApiKeyFromCrud(result);
+      },
+      async getItem(itemId: string) {
+        const result = Result.orThrow(await app._serverTeamItemsCache.getOrWait([crud.id, itemId], "write-only"));
+        return app._serverItemFromCrud(crud.id, result);
+      },
+      // IF_PLATFORM react-like
+      useItem(itemId: string) {
+        const result = useAsyncCache(app._serverTeamItemsCache, [crud.id, itemId] as const, "team.useItem()");
+        return useMemo(() => app._serverItemFromCrud(crud.id, result), [result]);
+      },
+      // END_PLATFORM
+      async createCheckoutUrl(offerIdOrInline: string | InlineOffer) {
+        return await app._interface.createCheckoutUrl(crud.id, offerIdOrInline, null);
+      },
+    };
+  }
+
+  protected _serverItemFromCrud(customerId: string, crud: ItemCrud['Client']['Read']): ServerItem {
+    const app = this;
+    return {
+      displayName: crud.display_name,
+      quantity: crud.quantity,
+      nonNegativeQuantity: Math.max(0, crud.quantity),
+      increaseQuantity: async (delta: number) => {
+        await app._interface.updateItemQuantity(customerId, crud.id, { delta });
+        await app._serverUserItemsCache.refresh([customerId, crud.id]);
+      },
+      decreaseQuantity: async (delta: number) => {
+        await app._interface.updateItemQuantity(customerId, crud.id, { delta: -delta, allow_negative: true });
+        await app._serverUserItemsCache.refresh([customerId, crud.id]);
+      },
+      tryDecreaseQuantity: async (delta: number) => {
+        try {
+          await app._interface.updateItemQuantity(customerId, crud.id, { delta: -delta });
+          await app._serverUserItemsCache.refresh([customerId, crud.id]);
+          return true;
+        } catch (error) {
+          if (error instanceof KnownErrors.ItemQuantityInsufficientAmount) {
+            return false;
+          }
+          throw error;
+        }
       },
     };
   }
