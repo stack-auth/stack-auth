@@ -340,6 +340,41 @@ export const urlSchema = yupString().test({
   message: (params) => `${params.path} is not a valid URL`,
   test: (value) => value == null || isValidUrl(value)
 });
+/**
+ * URL schema that supports wildcard patterns in hostnames (e.g., "https://*.example.com", "http://*:8080")
+ */
+export const wildcardUrlSchema = yupString().test({
+  name: 'no-spaces',
+  message: (params) => `${params.path} contains spaces`,
+  test: (value) => value == null || !value.includes(' ')
+}).test({
+  name: 'wildcard-url',
+  message: (params) => `${params.path} is not a valid URL or wildcard URL pattern`,
+  test: (value) => {
+    if (value == null) return true;
+    
+    // If it doesn't contain wildcards, use the regular URL validation
+    if (!value.includes('*')) {
+      return isValidUrl(value);
+    }
+    
+    // For wildcard URLs, validate the structure by replacing wildcards with placeholders
+    try {
+      // Replace wildcards with valid placeholders for URL parsing
+      const normalizedUrl = value.replace(/\*+/g, 'wildcard-placeholder');
+      const url = new URL(normalizedUrl);
+      
+      // Extract original hostname pattern from the input
+      const hostPattern = url.hostname.replace(/wildcard-placeholder/g, '*');
+      
+      // Validate the wildcard hostname pattern using the existing function
+      const { isValidHostnameWithWildcards } = require('./utils/urls');
+      return isValidHostnameWithWildcards(hostPattern);
+    } catch (e) {
+      return false;
+    }
+  }
+});
 export const jsonSchema = yupMixed().nullable().defined().transform((value) => JSON.parse(JSON.stringify(value)));
 export const jsonStringSchema = yupString().test("json", (params) => `${params.path} is not valid JSON`, (value) => {
   if (value == null) return true;
