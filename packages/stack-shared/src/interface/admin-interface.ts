@@ -514,5 +514,4 @@ export class StackAdminInterface extends StackServerInterface {
     const result = await response.json() as { url: string };
     return result.url;
   }
-
 }

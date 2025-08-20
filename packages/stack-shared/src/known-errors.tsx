@@ -1486,6 +1486,21 @@ const OfferCustomerTypeDoesNotMatch = createKnownErrorConstructor(
   (json) => [json.offer_id ?? undefined, json.customer_id, json.offer_customer_type ?? undefined, json.actual_customer_type] as const,
 );
 
+const ItemQuantityInsufficientAmount = createKnownErrorConstructor(
+  KnownError,
+  "ITEM_QUANTITY_INSUFFICIENT_AMOUNT",
+  (itemId: string, customerId: string, quantity: number) => [
+    400,
+    `The item with ID ${JSON.stringify(itemId)} has an insufficient quantity for the customer with ID ${JSON.stringify(customerId)}. An attempt was made to charge ${quantity} credits.`,
+    {
+      item_id: itemId,
+      customer_id: customerId,
+      quantity,
+    },
+  ] as const,
+  (json) => [json.item_id, json.customer_id, json.quantity] as const,
+);
+
 
 export type KnownErrors = {
   [K in keyof typeof KnownErrors]: InstanceType<typeof KnownErrors[K]>;
@@ -1606,6 +1621,7 @@ export const KnownErrors = {
   CustomerDoesNotExist,
   OfferDoesNotExist,
   OfferCustomerTypeDoesNotMatch,
+  ItemQuantityInsufficientAmount,
 } satisfies Record<string, KnownErrorConstructor<any, any>>;
 
 

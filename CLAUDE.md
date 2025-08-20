@@ -6,18 +6,22 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ### Essential Commands
 - **Install dependencies**: `pnpm install`
+- **Run tests**: `pnpm test run` (uses Vitest). You can filter with `pnpm test run <file-filters>`. The `run` is important to not trigger watch mode
+- **Lint code**: `pnpm lint`. `pnpm lint --fix` will fix some of the linting errors, prefer that over fixing them manually.
+- **Type check**: `pnpm typecheck`
+
+#### Extra commands
+These commands are usually already called by the user, but you can remind them to run it for you if they forgot to.
 - **Build packages**: `pnpm build:packages`
 - **Generate code**: `pnpm codegen`
 - **Start dependencies**: `pnpm restart-deps` (resets & restarts Docker containers for DB, Inbucket, etc. Usually already called by the user)
 - **Run development**: `pnpm dev` (starts all services on different ports. Usually already started by the user in the background)
 - **Run minimal dev**: `pnpm dev:basic` (only backend and dashboard for resource-limited systems)
-- **Run tests**: `pnpm test --no-watch` (uses Vitest). You can filter with `pnpm test --no-watch <file-filters>`
-- **Lint code**: `pnpm lint`
-- **Type check**: `pnpm typecheck`
 
 ### Testing
-- **Run all tests**: `pnpm test --no-watch`
-- **Run some tests**: `pnpm test --no-watch <file-filters>`
+You should ALWAYS add new E2E tests when you change the API or SDK interface. Generally, err on the side of creating too many tests; it is super important that our codebase is well-tested, due to the nature of the industry we're building in.
+- **Run all tests**: `pnpm test run`
+- **Run some tests**: `pnpm test run <file-filters>`
 
 ### Database Commands
 - **Generate migration**: `pnpm db:migration-gen`
@@ -62,15 +66,15 @@ The API follows a RESTful design with routes organized by resource type:
 - OAuth providers: `/api/latest/oauth-providers/*`
 
 ### Development Ports
-- 8100: Dev launchpad
-- 8101: Dashboard
-- 8102: Backend API
-- 8103: Demo app
-- 8104: Documentation
-- 8105: Inbucket (email testing)
-- 8106: Prisma Studio
+To see all development ports, refer to the index.html of `apps/dev-launchpad/public/index.html`.
 
 ## Important Notes
 - Environment variables are pre-configured in `.env.development` files
-- Code generation (`pnpm codegen`) must be run after schema changes
+- Always run typecheck, lint, and test to make sure your changes are working as expected. You can save time by only linting and testing the files you've changed (and/or related E2E tests).
 - The project uses a custom route handler system in the backend for consistent API responses
+- Sometimes, the typecheck will give errors along the line of "Cannot assign Buffer to Uint8Array" or similar, on changes that are completely unrelated to your own changes. If that happens, tell the user to run `pnpm clean && pnpm i && pnpm run codegen && pnpm build:packages`, and restart the dev server (you cannot run this yourself). After that's done, the typecheck should pass.
+- When writing tests, prefer .toMatchInlineSnapshot over other selectors, if possible. You can check (and modify) the snapshot-serializer.ts file to see how the snapshots are formatted and how non-deterministic values are handled.
+- Whenever you learn something new, or at the latest right before you call the `Stop` tool, write whatever you learned into the ./claude/CLAUDE-KNOWLEDGE.md file, in the Q&A format in there. You will later be able to look up knowledge from there (based on the question you asked).
+
+### Code-related
+- Use ES6 maps instead of records wherever you can.

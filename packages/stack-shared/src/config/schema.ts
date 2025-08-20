@@ -213,7 +213,7 @@ export const environmentConfigSchema = branchConfigSchema.concat(yupObject({
     trustedDomains: yupRecord(
       userSpecifiedIdSchema("trustedDomainId"),
       yupObject({
-        baseUrl: schemaFields.urlSchema,
+        baseUrl: schemaFields.wildcardUrlSchema,
         handlerPath: schemaFields.handlerPathSchema,
       }),
     ),

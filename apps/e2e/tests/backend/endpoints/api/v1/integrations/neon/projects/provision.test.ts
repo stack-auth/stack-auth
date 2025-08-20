@@ -84,6 +84,7 @@ it("should be able to provision a new project if neon client details are correct
         "id": "<stripped UUID>",
         "is_production_mode": false,
         "logo_url": null,
+        "owner_team_id": null,
       },
       "headers": Headers { <some fields may have been hidden> },
     }

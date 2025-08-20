@@ -39,12 +39,12 @@ export const POST = createSmartRouteHandler({
     } as const : { type: 'hosted', connectionString: undefined, connectionStrings: undefined } as const;
 
     const createdProject = await createOrUpdateProjectWithLegacyConfig({
-      ownerIds: [],
       sourceOfTruth,
       type: 'create',
       data: {
         display_name: req.body.display_name,
         description: "Created with Neon",
+        owner_team_id: null,
         config: {
           oauth_providers: [
             {

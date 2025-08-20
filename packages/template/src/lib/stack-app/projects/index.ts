@@ -18,6 +18,7 @@ export type AdminProject = {
   readonly description: string | null,
   readonly createdAt: Date,
   readonly isProductionMode: boolean,
+  readonly ownerTeamId: string | null,
   readonly logoUrl: string | null | undefined,
   readonly fullLogoUrl: string | null | undefined,
 
@@ -104,10 +105,12 @@ export function adminProjectUpdateOptionsToCrud(options: AdminProjectUpdateOptio
 
 export type AdminProjectCreateOptions = Omit<AdminProjectUpdateOptions, 'displayName'> & {
   displayName: string,
+  teamId: string,
 };
 export function adminProjectCreateOptionsToCrud(options: AdminProjectCreateOptions): AdminUserProjectsCrud["Server"]["Create"] {
   return {
     ...adminProjectUpdateOptionsToCrud(options),
     display_name: options.displayName,
+    owner_team_id: options.teamId,
   };
 }

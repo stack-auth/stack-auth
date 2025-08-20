@@ -40,7 +40,7 @@ it("gets current project (internal)", async ({ expect }) => {
         "config": {
           "allow_team_api_keys": false,
           "allow_user_api_keys": false,
-          "client_team_creation_enabled": false,
+          "client_team_creation_enabled": true,
           "client_user_deletion_enabled": false,
           "credential_enabled": true,
           "enabled_oauth_providers": [
@@ -101,6 +101,7 @@ it("creates and updates the basic project information of a project", async ({ ex
         "id": "<stripped UUID>",
         "is_production_mode": true,
         "logo_url": null,
+        "owner_team_id": "<stripped UUID>",
       },
       "headers": Headers { <some fields may have been hidden> },
     }
@@ -150,6 +151,7 @@ it("updates the basic project configuration", async ({ expect }) => {
         "id": "<stripped UUID>",
         "is_production_mode": false,
         "logo_url": null,
+        "owner_team_id": "<stripped UUID>",
       },
       "headers": Headers { <some fields may have been hidden> },
     }
@@ -204,6 +206,7 @@ it("updates the project domains configuration", async ({ expect }) => {
         "id": "<stripped UUID>",
         "is_production_mode": false,
         "logo_url": null,
+        "owner_team_id": "<stripped UUID>",
       },
       "headers": Headers { <some fields may have been hidden> },
     }
@@ -264,6 +267,7 @@ it("updates the project domains configuration", async ({ expect }) => {
         "id": "<stripped UUID>",
         "is_production_mode": false,
         "logo_url": null,
+        "owner_team_id": "<stripped UUID>",
       },
       "headers": Headers { <some fields may have been hidden> },
     }
@@ -318,6 +322,7 @@ it("should allow insecure HTTP connections if insecureHttp is true", async ({ ex
         "id": "<stripped UUID>",
         "is_production_mode": false,
         "logo_url": null,
+        "owner_team_id": "<stripped UUID>",
       },
       "headers": Headers { <some fields may have been hidden> },
     }
@@ -415,6 +420,7 @@ it("updates the project email configuration", async ({ expect }) => {
         "id": "<stripped UUID>",
         "is_production_mode": false,
         "logo_url": null,
+        "owner_team_id": "<stripped UUID>",
       },
       "headers": Headers { <some fields may have been hidden> },
     }
@@ -474,6 +480,7 @@ it("updates the project email configuration", async ({ expect }) => {
         "id": "<stripped UUID>",
         "is_production_mode": false,
         "logo_url": null,
+        "owner_team_id": "<stripped UUID>",
       },
       "headers": Headers { <some fields may have been hidden> },
     }
@@ -519,6 +526,7 @@ it("updates the project email configuration", async ({ expect }) => {
         "id": "<stripped UUID>",
         "is_production_mode": false,
         "logo_url": null,
+        "owner_team_id": "<stripped UUID>",
       },
       "headers": Headers { <some fields may have been hidden> },
     }
@@ -564,6 +572,7 @@ it("updates the project email configuration", async ({ expect }) => {
         "id": "<stripped UUID>",
         "is_production_mode": false,
         "logo_url": null,
+        "owner_team_id": "<stripped UUID>",
       },
       "headers": Headers { <some fields may have been hidden> },
     }
@@ -623,6 +632,7 @@ it("updates the project email configuration", async ({ expect }) => {
         "id": "<stripped UUID>",
         "is_production_mode": false,
         "logo_url": null,
+        "owner_team_id": "<stripped UUID>",
       },
       "headers": Headers { <some fields may have been hidden> },
     }
@@ -795,6 +805,7 @@ it("updates the project oauth configuration", async ({ expect }) => {
         "id": "<stripped UUID>",
         "is_production_mode": false,
         "logo_url": null,
+        "owner_team_id": "<stripped UUID>",
       },
       "headers": Headers { <some fields may have been hidden> },
     }
@@ -847,6 +858,7 @@ it("updates the project oauth configuration", async ({ expect }) => {
         "id": "<stripped UUID>",
         "is_production_mode": false,
         "logo_url": null,
+        "owner_team_id": "<stripped UUID>",
       },
       "headers": Headers { <some fields may have been hidden> },
     }
@@ -903,6 +915,7 @@ it("updates the project oauth configuration", async ({ expect }) => {
         "id": "<stripped UUID>",
         "is_production_mode": false,
         "logo_url": null,
+        "owner_team_id": "<stripped UUID>",
       },
       "headers": Headers { <some fields may have been hidden> },
     }
@@ -954,6 +967,7 @@ it("updates the project oauth configuration", async ({ expect }) => {
         "id": "<stripped UUID>",
         "is_production_mode": false,
         "logo_url": null,
+        "owner_team_id": "<stripped UUID>",
       },
       "headers": Headers { <some fields may have been hidden> },
     }
@@ -1020,6 +1034,7 @@ it("updates the project oauth configuration", async ({ expect }) => {
         "id": "<stripped UUID>",
         "is_production_mode": false,
         "logo_url": null,
+        "owner_team_id": "<stripped UUID>",
       },
       "headers": Headers { <some fields may have been hidden> },
     }
@@ -1086,6 +1101,7 @@ it("updates the project oauth configuration", async ({ expect }) => {
         "id": "<stripped UUID>",
         "is_production_mode": false,
         "logo_url": null,
+        "owner_team_id": "<stripped UUID>",
       },
       "headers": Headers { <some fields may have been hidden> },
     }
@@ -1368,34 +1384,36 @@ it("does not allow accessing a project without a project ID header", async ({ ex
   `);
 });
 
-it("makes sure user have the correct managed project ID after project creation", async ({ expect }) => {
+it("makes sure users own the correct projects after creating a project", async ({ expect }) => {
   backendContext.set({ projectKeys: InternalProjectKeys });
-  const { creatorUserId, projectId } = await Project.createAndGetAdminToken();
+  const { creatorUserId, projectId, adminAccessToken } = await Project.createAndGetAdminToken();
 
   backendContext.set({ projectKeys: InternalProjectKeys });
   const userResponse = await niceBackendFetch(`/api/v1/users/${creatorUserId}`, {
     accessType: "server",
     method: "GET",
   });
-  const projectIds = userResponse.body.server_metadata.managedProjectIds;
-  expect(projectIds.length).toBe(1);
-  expect(projectIds[0]).toBe(projectId);
-});
-
-it("removes a deleted project from a user's managed project IDs", async ({ expect }) => {
-  backendContext.set({ projectKeys: InternalProjectKeys });
-  const { creatorUserId, adminAccessToken, projectId } = await Project.createAndGetAdminToken();
-
-  backendContext.set({ projectKeys: InternalProjectKeys });
-  const userResponse1 = await niceBackendFetch(`/api/v1/users/${creatorUserId}`, {
-    accessType: "server",
+  backendContext.set({ projectKeys: { projectId, adminAccessToken } });
+  const projectResponse = await niceBackendFetch(`/api/v1/internal/projects/current`, {
+    accessType: "admin",
     method: "GET",
   });
-  const projectIds1 = userResponse1.body.server_metadata.managedProjectIds;
-  expect(projectIds1.length).toBe(1);
+  expect(projectResponse.body.owner_team_id).toBe(userResponse.body.selected_team.id);
+});
+
+it("removes a deleted project from a user", async ({ expect }) => {
+  backendContext.set({ projectKeys: InternalProjectKeys });
+  await Auth.Otp.signIn();
+  const adminAccessToken = backendContext.value.userAuth?.accessToken;
+  const { projectId } = await Project.create();
+
+  const projectResponse = await niceBackendFetch(`/api/v1/internal/projects`, {
+    accessType: "client",
+  });
+  expect(projectResponse.body.items.length).toBe(1);
 
   // Delete the project
-  backendContext.set({ projectKeys: { projectId, adminAccessToken } });
+  backendContext.set({ projectKeys: { projectId, adminAccessToken }, userAuth: null });
   const deleteResponse = await niceBackendFetch(`/api/v1/internal/projects/current`, {
     accessType: "admin",
     method: "DELETE",
@@ -1409,19 +1427,30 @@ it("removes a deleted project from a user's managed project IDs", async ({ expec
     }
   `);
 
-  backendContext.set({ projectKeys: InternalProjectKeys });
-
-  const userResponse2 = await niceBackendFetch(`/api/v1/users/${creatorUserId}`, {
-    accessType: "server",
-    method: "GET",
+  const projectResponse2 = await niceBackendFetch(`/api/v1/internal/projects`, {
+    accessType: "admin",
   });
-  const projectIds2 = userResponse2.body.server_metadata.managedProjectIds;
-  expect(projectIds2.length).toBe(0);
+  expect(projectResponse2).toMatchInlineSnapshot(`
+    NiceResponse {
+      "status": 400,
+      "body": {
+        "code": "CURRENT_PROJECT_NOT_FOUND",
+        "details": { "project_id": "<stripped UUID>" },
+        "error": "The current project with ID <stripped UUID> was not found. Please check the value of the x-stack-project-id header.",
+      },
+      "headers": Headers {
+        "x-stack-known-error": "CURRENT_PROJECT_NOT_FOUND",
+        <some fields may have been hidden>,
+      },
+    }
+  `);
 });
 
 it("makes sure other users are not affected by project deletion", async ({ expect }) => {
   backendContext.set({ projectKeys: InternalProjectKeys });
-  const { creatorUserId, projectId } = await Project.createAndGetAdminToken();
+  await Auth.Otp.signIn();
+  const user1Auth = backendContext.value.userAuth;
+  const { projectId } = await Project.create();
 
   backendContext.set({ projectKeys: InternalProjectKeys });
   const { adminAccessToken } = await Project.createAndGetAdminToken();
@@ -1435,14 +1464,13 @@ it("makes sure other users are not affected by project deletion", async ({ expec
     }
   });
 
-  backendContext.set({ projectKeys: InternalProjectKeys });
-  const userResponse1 = await niceBackendFetch(`/api/v1/users/${creatorUserId}`, {
-    accessType: "server",
-    method: "GET",
+  backendContext.set({ projectKeys: InternalProjectKeys, userAuth: user1Auth });
+  const projectResponse = await niceBackendFetch(`/api/v1/internal/projects`, {
+    accessType: "client",
   });
-  const projectIds1 = userResponse1.body.server_metadata.managedProjectIds;
-  expect(projectIds1.length).toBe(1);
-  expect(projectIds1[0]).toBe(projectId);
+
+  expect(projectResponse.body.items.length).toBe(1);
+  expect(projectResponse.body.items[0].id).toBe(projectId);
 });
 
 it("has a correctly formatted JWKS endpoint", async ({ expect }) => {
@@ -1464,7 +1492,7 @@ it("has a correctly formatted JWKS endpoint", async ({ expect }) => {
 });
 
 it("should increment and decrement userCount when a user is added to a project", async ({ expect }) => {
-  const { adminAccessToken } = await Project.createAndSwitch({
+  await Project.createAndSwitch({
     config: {
       magic_link_enabled: true,
     }

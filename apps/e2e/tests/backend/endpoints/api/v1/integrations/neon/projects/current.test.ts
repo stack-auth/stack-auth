@@ -43,6 +43,7 @@ it("get project details", async ({ expect }) => {
         "id": "<stripped UUID>",
         "is_production_mode": false,
         "logo_url": null,
+        "owner_team_id": "<stripped UUID>",
       },
       "headers": Headers { <some fields may have been hidden> },
     }
@@ -97,6 +98,7 @@ it("creates and updates the basic project information of a project", async ({ ex
         "id": "<stripped UUID>",
         "is_production_mode": true,
         "logo_url": null,
+        "owner_team_id": "<stripped UUID>",
       },
       "headers": Headers { <some fields may have been hidden> },
     }
@@ -167,6 +169,7 @@ it("creates and updates the email config of a project", async ({ expect }) => {
         "id": "<stripped UUID>",
         "is_production_mode": false,
         "logo_url": null,
+        "owner_team_id": "<stripped UUID>",
       },
       "headers": Headers { <some fields may have been hidden> },
     }

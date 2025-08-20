@@ -24,6 +24,7 @@ import {
 } from "@stackframe/stack-ui";
 import {
   Book,
+  CreditCard,
   Globe,
   KeyRound,
   Link as LinkIcon,
@@ -50,6 +51,7 @@ type BreadcrumbItem = { item: React.ReactNode, href: string }
 type Label = {
   name: React.ReactNode,
   type: 'label',
+  requiresDevFeatureFlag?: boolean,
 };
 
 type Item = {
@@ -212,6 +214,19 @@ const navigationItems: (Label | Item | Hidden)[] = [
     type: 'hidden',
   },
   {
+    name: "Payments",
+    type: 'label',
+    requiresDevFeatureFlag: true,
+  },
+  {
+    name: "Payments",
+    href: "/payments",
+    regex: /^\/projects\/[^\/]+\/payments$/,
+    icon: CreditCard,
+    type: 'item',
+    requiresDevFeatureFlag: true,
+  },
+  {
     name: "Configuration",
     type: 'label'
   },
@@ -360,6 +375,9 @@ function SidebarContent({ projectId, onNavigate }: { projectId: string, onNaviga
       <div className="flex flex-grow flex-col gap-1 pt-2 overflow-y-auto">
         {navigationItems.map((item, index) => {
           if (item.type === 'label') {
+            if (item.requiresDevFeatureFlag && !devFeaturesEnabledForProject(projectId)) {
+              return null;
+            }
             return <Typography key={index} className="pl-2 mt-3" type="label" variant="secondary">
               {item.name}
             </Typography>;

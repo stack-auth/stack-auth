@@ -9,6 +9,7 @@ import { ColumnDef, ColumnFiltersState, Row, SortingState, Table } from "@tansta
 import { useState } from "react";
 import { Link } from '../link';
 import { DeleteUserDialog, ImpersonateUserDialog } from '../user-dialogs';
+import { CreateCheckoutDialog } from '../payments/create-checkout-dialog';
 
 export type ExtendedServerUser = ServerUser & {
   authTypes: string[],
@@ -26,12 +27,14 @@ function userToolbarRender<TData>(table: Table<TData>) {
 function UserActions({ row }: { row: Row<ExtendedServerUser> }) {
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
   const [impersonateSnippet, setImpersonateSnippet] = useState<string | null>(null);
+  const [isCreateCheckoutModalOpen, setIsCreateCheckoutModalOpen] = useState(false);
   const app = useAdminApp();
   const router = useRouter();
   return (
     <>
       <DeleteUserDialog user={row.original} open={isDeleteModalOpen} onOpenChange={setIsDeleteModalOpen} />
       <ImpersonateUserDialog user={row.original} impersonateSnippet={impersonateSnippet} onClose={() => setImpersonateSnippet(null)} />
+      <CreateCheckoutDialog open={isCreateCheckoutModalOpen} onOpenChange={setIsCreateCheckoutModalOpen} user={row.original} />
       <ActionCell
         items={[
           {
@@ -52,6 +55,10 @@ function UserActions({ row }: { row: Row<ExtendedServerUser> }) {
                 window.location.reload();
               `);
             }
+          },
+          {
+            item: "Create Checkout",
+            onClick: () => setIsCreateCheckoutModalOpen(true),
           },
           ...row.original.isMultiFactorRequired ? [{
             item: "Remove 2FA",

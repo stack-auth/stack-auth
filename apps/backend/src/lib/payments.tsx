@@ -1,12 +1,14 @@
 import { teamsCrudHandlers } from "@/app/api/latest/teams/crud";
 import { usersCrudHandlers } from "@/app/api/latest/users/crud";
 import { KnownErrors } from "@stackframe/stack-shared";
-import { inlineOfferSchema, yupValidate } from "@stackframe/stack-shared/dist/schema-fields";
+import { inlineOfferSchema, offerSchema } from "@stackframe/stack-shared/dist/schema-fields";
 import { StackAssertionError, StatusError } from "@stackframe/stack-shared/dist/utils/errors";
 import { getOrUndefined, typedFromEntries } from "@stackframe/stack-shared/dist/utils/objects";
 import * as yup from "yup";
 import { Tenancy } from "./tenancies";
 import { SUPPORTED_CURRENCIES } from "@stackframe/stack-shared/dist/utils/currencies";
+import { SubscriptionStatus } from "@prisma/client";
+import { PrismaClientTransaction } from "@/prisma-client";
 
 export async function ensureOfferIdOrInlineOffer(
   tenancy: Tenancy,
@@ -115,4 +117,45 @@ export async function getCustomerType(tenancy: Tenancy, customerId: string) {
     return "team";
   }
   throw new KnownErrors.CustomerDoesNotExist(customerId);
+}
+
+export async function getItemQuantityForCustomer(options: {
+  prisma: PrismaClientTransaction,
+  tenancy: Tenancy,
+  itemId: string,
+  customerId: string,
+}) {
+  const itemConfig = getOrUndefined(options.tenancy.config.payments.items, options.itemId);
+  const defaultQuantity = itemConfig?.default.quantity ?? 0;
+  const subscriptions = await options.prisma.subscription.findMany({
+    where: {
+      tenancyId: options.tenancy.id,
+      customerId: options.customerId,
+      status: {
+        in: [SubscriptionStatus.active, SubscriptionStatus.trialing],
+      }
+    },
+  });
+
+  const subscriptionQuantity = subscriptions.reduce((acc, subscription) => {
+    const offer = subscription.offer as yup.InferType<typeof offerSchema>;
+    const item = getOrUndefined(offer.includedItems, options.itemId);
+    return acc + (item?.quantity ?? 0);
+  }, 0);
+
+  const { _sum } = await options.prisma.itemQuantityChange.aggregate({
+    where: {
+      tenancyId: options.tenancy.id,
+      customerId: options.customerId,
+      itemId: options.itemId,
+      OR: [
+        { expiresAt: null },
+        { expiresAt: { gt: new Date() } },
+      ],
+    },
+    _sum: {
+      quantity: true,
+    },
+  });
+  return subscriptionQuantity + (_sum.quantity ?? 0) + defaultQuantity;
 }
