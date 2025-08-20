@@ -1,7 +1,5 @@
 "use client";
 
-import * as yup from "yup";
-import { useState } from "react";
 import { PaymentItemTable } from "@/components/data-table/payment-item-table";
 import { PaymentOfferTable } from "@/components/data-table/payment-offer-table";
 import { FormDialog, SmartFormDialog } from "@/components/form-dialog";
@@ -9,24 +7,22 @@ import { InputField, SelectField, SwitchField } from "@/components/form-fields";
 import { IncludedItemEditorField } from "@/components/payments/included-item-editor";
 import { PriceEditorField } from "@/components/payments/price-editor";
 import { AdminProject } from "@stackframe/stack";
-import { KnownErrors } from "@stackframe/stack-shared";
 import {
   offerPriceSchema,
   userSpecifiedIdSchema,
   yupRecord
 } from "@stackframe/stack-shared/dist/schema-fields";
 import { wait } from "@stackframe/stack-shared/dist/utils/promises";
-import { Result } from "@stackframe/stack-shared/dist/utils/results";
 import {
-  ActionDialog,
   Button,
   Card,
   CardContent,
-  InlineCode,
   Typography,
   toast
 } from "@stackframe/stack-ui";
 import { ArrowRight, BarChart3, Repeat, Shield, Wallet, Webhook } from "lucide-react";
+import { useState } from "react";
+import * as yup from "yup";
 import { PageLayout } from "../page-layout";
 import { useAdminApp } from "../use-admin-app";
 
@@ -172,7 +168,7 @@ function CreateOfferDialog({
   const offerSchema = yup.object({
     offerId: yup.string().defined().label("Offer ID"),
     displayName: yup.string().defined().label("Display Name"),
-    customerType: yup.string().oneOf(["user", "team"]).defined().label("Customer Type"),
+    customerType: yup.string().oneOf(["user", "team", "custom"]).defined().label("Customer Type"),
     prices: yupRecord(userSpecifiedIdSchema("priceId"), offerPriceSchema).defined().label("Prices").test("at-least-one-price", "At least one price is required", (value) => {
       return Object.keys(value).length > 0;
     }),
@@ -214,6 +210,7 @@ function CreateOfferDialog({
           <SelectField control={form.control} name={"customerType"} label="Customer Type" required options={[
             { value: "user", label: "User" },
             { value: "team", label: "Team" },
+            { value: "custom", label: "Custom" },
           ]} />
 
           <PriceEditorField control={form.control} name={"prices"} label="Prices" required />
@@ -233,11 +230,12 @@ function CreateItemDialog({ open, onOpenChange, project }: { open: boolean, onOp
   const itemSchema = yup.object({
     itemId: yup.string().defined().label("Item ID"),
     displayName: yup.string().optional().label("Display Name"),
-    customerType: yup.string().oneOf(["user", "team"]).defined().label("Customer Type").meta({
+    customerType: yup.string().oneOf(["user", "team", "custom"]).defined().label("Customer Type").meta({
       stackFormFieldRender: (props) => (
         <SelectField {...props} options={[
           { value: "user", label: "User" },
           { value: "team", label: "Team" },
+          { value: "custom", label: "Custom" },
         ]} />
       ),
     }),

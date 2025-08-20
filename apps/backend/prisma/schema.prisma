@@ -19,7 +19,7 @@ model Project {
   displayName      String
   description      String  @default("")
   isProductionMode Boolean
-  ownerTeamId      String?  @db.Uuid
+  ownerTeamId      String? @db.Uuid
   logoUrl          String?
   fullLogoUrl      String?
 
@@ -715,6 +715,7 @@ model ThreadMessage {
 enum CustomerType {
   USER
   TEAM
+  CUSTOM
 }
 
 enum SubscriptionStatus {
@@ -731,7 +732,7 @@ enum SubscriptionStatus {
 model Subscription {
   id           String       @default(uuid()) @db.Uuid
   tenancyId    String       @db.Uuid
-  customerId   String       @db.Uuid
+  customerId   String
   customerType CustomerType
   offer        Json
 
@@ -749,14 +750,15 @@ model Subscription {
 }
 
 model ItemQuantityChange {
-  id          String    @default(uuid()) @db.Uuid
-  tenancyId   String    @db.Uuid
-  customerId  String    @db.Uuid
-  itemId      String
-  quantity    Int
-  description String?
-  expiresAt   DateTime?
-  createdAt   DateTime  @default(now())
+  id           String       @default(uuid()) @db.Uuid
+  tenancyId    String       @db.Uuid
+  customerType CustomerType
+  customerId   String
+  itemId       String
+  quantity     Int
+  description  String?
+  expiresAt    DateTime?
+  createdAt    DateTime     @default(now())
 
   @@id([tenancyId, id])
   @@index([tenancyId, customerId, expiresAt])

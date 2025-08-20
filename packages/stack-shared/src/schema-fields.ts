@@ -493,7 +493,7 @@ export const emailTemplateListSchema = yupRecord(
 ).meta({ openapiField: { description: 'Record of email template IDs to their display name and source code' } });
 
 // Payments
-export const customerTypeSchema = yupString().oneOf(['user', 'team']);
+export const customerTypeSchema = yupString().oneOf(['user', 'team', 'custom']);
 const validateHasAtLeastOneSupportedCurrency = (value: Record<string, unknown>, context: any) => {
   const currencies = Object.keys(value).filter(key => SUPPORTED_CURRENCIES.some(c => c.code === key));
   if (currencies.length === 0) {

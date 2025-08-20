@@ -1,11 +1,12 @@
+import { KnownErrors } from "@stackframe/stack-shared";
 import { Result } from "@stackframe/stack-shared/dist/utils/results";
 import { AsyncStoreProperty, GetUserOptions } from "../../common";
+import { ServerItem } from "../../customers";
+import { SendEmailOptions } from "../../email";
 import { ServerListUsersOptions, ServerTeam, ServerTeamCreateOptions } from "../../teams";
 import { ProjectCurrentServerUser, ServerUser, ServerUserCreateOptions } from "../../users";
 import { _StackServerAppImpl } from "../implementations";
 import { StackClientApp, StackClientAppConstructorOptions } from "./client-app";
-import { KnownErrors } from "@stackframe/stack-shared";
-import { SendEmailOptions } from "../../email";
 
 
 export type StackServerAppConstructorOptions<HasTokenStore extends boolean, ProjectId extends string> = StackClientAppConstructorOptions<HasTokenStore, ProjectId> & {
@@ -54,6 +55,12 @@ export type StackServerApp<HasTokenStore extends boolean = boolean, ProjectId ex
   & AsyncStoreProperty<"user", [id: string], ServerUser | null, false>
   & Omit<AsyncStoreProperty<"users", [], ServerUser[], true>, "listUsers" | "useUsers">
   & AsyncStoreProperty<"teams", [], ServerTeam[], true>
+  & AsyncStoreProperty<
+    "item",
+    [{ itemId: string, userId: string } | { itemId: string, teamId: string } | { itemId: string, customId: string }],
+    ServerItem,
+    false
+  >
   & StackClientApp<HasTokenStore, ProjectId>
 );
 export type StackServerAppConstructor = {

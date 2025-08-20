@@ -508,17 +508,13 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
     return await this._interface.createStripeWidgetAccountSession();
   }
 
-  async createPurchaseUrl(options: { customerId: string, offerId: string }): Promise<string> {
-    return await this._interface.createPurchaseUrl({
-      customer_id: options.customerId,
-      offer_id: options.offerId,
-    });
-  }
-
-  async createItemQuantityChange(options: { customerId: string, itemId: string, quantity: number, expiresAt?: string, description?: string }): Promise<void> {
+  async createItemQuantityChange(options: (
+    { userId: string, itemId: string, quantity: number, expiresAt?: string, description?: string } |
+    { teamId: string, itemId: string, quantity: number, expiresAt?: string, description?: string } |
+    { customId: string, itemId: string, quantity: number, expiresAt?: string, description?: string }
+  )): Promise<void> {
     await this._interface.updateItemQuantity(
-      options.customerId,
-      options.itemId,
+      { itemId: options.itemId, ...("userId" in options ? { userId: options.userId } : ("teamId" in options ? { teamId: options.teamId } : { customId: (options as any).customId })) },
       {
         delta: options.quantity,
         expires_at: options.expiresAt,

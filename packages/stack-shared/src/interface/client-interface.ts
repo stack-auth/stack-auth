@@ -2,6 +2,7 @@ import * as oauth from 'oauth4webapi';
 
 import * as yup from 'yup';
 import { KnownError, KnownErrors } from '../known-errors';
+import { inlineOfferSchema } from '../schema-fields';
 import { AccessToken, InternalSession, RefreshToken } from '../sessions';
 import { generateSecureRandomString } from '../utils/crypto';
 import { StackAssertionError, throwErr } from '../utils/errors';
@@ -26,7 +27,6 @@ import { TeamInvitationCrud } from './crud/team-invitation';
 import { TeamMemberProfilesCrud } from './crud/team-member-profiles';
 import { TeamPermissionsCrud } from './crud/team-permissions';
 import { TeamsCrud } from './crud/teams';
-import { inlineOfferSchema } from '../schema-fields';
 
 export type ClientInterfaceOptions = {
   clientVersion: string,
@@ -1745,14 +1745,31 @@ export class StackClientInterface {
     return response.json();
   }
 
-  async getItem(options: {
-    teamId?: string,
-    userId?: string,
-    itemId: string,
-  }, session: InternalSession | null): Promise<ItemCrud['Client']['Read']> {
-    const customerId = options.teamId ?? options.userId;
+  async getItem(
+    options: (
+      { itemId: string, userId: string } |
+      { itemId: string, teamId: string } |
+      { itemId: string, customId: string }
+    ),
+    session: InternalSession | null,
+  ): Promise<ItemCrud['Client']['Read']> {
+    let customerType: "user" | "team" | "custom";
+    let customerId: string;
+    if ("userId" in options) {
+      customerType = "user";
+      customerId = options.userId;
+    } else if ("teamId" in options) {
+      customerType = "team";
+      customerId = options.teamId;
+    } else if ("customId" in options) {
+      customerType = "custom";
+      customerId = options.customId;
+    } else {
+      throw new StackAssertionError("getItem requires one of userId, teamId, or customId");
+    }
+
     const response = await this.sendClientRequest(
-      `/payments/items/${customerId}/${options.itemId}`,
+      `/payments/items/${customerType}/${customerId}/${options.itemId}`,
       {},
       session,
     );
@@ -1760,6 +1777,7 @@ export class StackClientInterface {
   }
 
   async createCheckoutUrl(
+    customer_type: "user" | "team" | "custom",
     customer_id: string,
     offerIdOrInline: string | yup.InferType<typeof inlineOfferSchema>,
     session: InternalSession | null,
@@ -1774,7 +1792,7 @@ export class StackClientInterface {
         headers: {
           "content-type": "application/json",
         },
-        body: JSON.stringify({ customer_id, ...offerBody }),
+        body: JSON.stringify({ customer_type, customer_id, ...offerBody }),
       },
       session
     );

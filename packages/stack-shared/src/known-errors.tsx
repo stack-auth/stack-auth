@@ -1430,7 +1430,7 @@ const ItemNotFound = createKnownErrorConstructor(
 const ItemCustomerTypeDoesNotMatch = createKnownErrorConstructor(
   KnownError,
   "ITEM_CUSTOMER_TYPE_DOES_NOT_MATCH",
-  (itemId: string, customerId: string, itemCustomerType: "user" | "team" | undefined, actualCustomerType: "user" | "team") => [
+  (itemId: string, customerId: string, itemCustomerType: "user" | "team" | "custom" | undefined, actualCustomerType: "user" | "team" | "custom") => [
     400,
     `The ${actualCustomerType} with ID ${JSON.stringify(customerId)} is not a valid customer for the item with ID ${JSON.stringify(itemId)}. ${itemCustomerType ? `The item is configured to only be available for ${itemCustomerType} customers, but the customer is a ${actualCustomerType}.` : `The item is missing a customer type field. Please make sure it is set up correctly in your project configuration.`}`,
     {
@@ -1473,7 +1473,7 @@ const OfferDoesNotExist = createKnownErrorConstructor(
 const OfferCustomerTypeDoesNotMatch = createKnownErrorConstructor(
   KnownError,
   "OFFER_CUSTOMER_TYPE_DOES_NOT_MATCH",
-  (offerId: string | undefined, customerId: string, offerCustomerType: "user" | "team" | undefined, actualCustomerType: "user" | "team") => [
+  (offerId: string | undefined, customerId: string, offerCustomerType: "user" | "team" | "custom" | undefined, actualCustomerType: "user" | "team" | "custom") => [
     400,
     `The ${actualCustomerType} with ID ${JSON.stringify(customerId)} is not a valid customer for the inline offer that has been passed in. ${offerCustomerType ? `The offer is configured to only be available for ${offerCustomerType} customers, but the customer is a ${actualCustomerType}.` : `The offer is missing a customer type field. Please make sure it is set up correctly in your project configuration.`}`,
     {

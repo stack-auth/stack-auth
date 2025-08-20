@@ -1,5 +1,6 @@
 import { KnownErrors, StackServerInterface } from "@stackframe/stack-shared";
 import { ContactChannelsCrud } from "@stackframe/stack-shared/dist/interface/crud/contact-channels";
+import { ItemCrud } from "@stackframe/stack-shared/dist/interface/crud/items";
 import { NotificationPreferenceCrud } from "@stackframe/stack-shared/dist/interface/crud/notification-preferences";
 import { TeamApiKeysCrud, UserApiKeysCrud, teamApiKeysCreateOutputSchema, userApiKeysCreateOutputSchema } from "@stackframe/stack-shared/dist/interface/crud/project-api-keys";
 import { ProjectPermissionDefinitionsCrud, ProjectPermissionsCrud } from "@stackframe/stack-shared/dist/interface/crud/project-permissions";
@@ -8,7 +9,6 @@ import { TeamMemberProfilesCrud } from "@stackframe/stack-shared/dist/interface/
 import { TeamPermissionDefinitionsCrud, TeamPermissionsCrud } from "@stackframe/stack-shared/dist/interface/crud/team-permissions";
 import { TeamsCrud } from "@stackframe/stack-shared/dist/interface/crud/teams";
 import { UsersCrud } from "@stackframe/stack-shared/dist/interface/crud/users";
-import { ItemCrud } from "@stackframe/stack-shared/dist/interface/crud/items";
 import { InternalSession } from "@stackframe/stack-shared/dist/sessions";
 import { StackAssertionError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
 import { ProviderType } from "@stackframe/stack-shared/dist/utils/oauth";
@@ -22,6 +22,7 @@ import { ApiKey, ApiKeyCreationOptions, ApiKeyUpdateOptions, apiKeyCreationOptio
 import { GetUserOptions, HandlerUrls, OAuthScopesOnSignIn, TokenStoreInit } from "../../common";
 import { OAuthConnection } from "../../connected-accounts";
 import { ServerContactChannel, ServerContactChannelCreateOptions, ServerContactChannelUpdateOptions, serverContactChannelCreateOptionsToCrud, serverContactChannelUpdateOptionsToCrud } from "../../contact-channels";
+import { SendEmailOptions } from "../../email";
 import { NotificationCategory } from "../../notification-categories";
 import { AdminProjectPermissionDefinition, AdminTeamPermission, AdminTeamPermissionDefinition } from "../../permissions";
 import { EditableTeamMemberProfile, ServerListUsersOptions, ServerTeam, ServerTeamCreateOptions, ServerTeamUpdateOptions, ServerTeamUser, Team, TeamInvitation, serverTeamCreateOptionsToCrud, serverTeamUpdateOptionsToCrud } from "../../teams";
@@ -29,11 +30,10 @@ import { ProjectCurrentServerUser, ServerUser, ServerUserCreateOptions, ServerUs
 import { StackServerAppConstructorOptions } from "../interfaces/server-app";
 import { _StackClientAppImplIncomplete } from "./client-app-impl";
 import { clientVersion, createCache, createCacheBySession, getBaseUrl, getDefaultProjectId, getDefaultPublishableClientKey, getDefaultSecretServerKey } from "./common";
-import { SendEmailOptions } from "../../email";
 
 // NEXT_LINE_PLATFORM react-like
-import { useAsyncCache } from "./common";
 import { InlineOffer, ServerItem } from "../../customers";
+import { useAsyncCache } from "./common";
 
 export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, ProjectId extends string> extends _StackClientAppImplIncomplete<HasTokenStore, ProjectId> {
   declare protected _interface: StackServerInterface;
@@ -165,6 +165,12 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
   private readonly _serverUserItemsCache = createCache<[string, string], ItemCrud['Client']['Read']>(
     async ([userId, itemId]) => {
       return await this._interface.getItem({ userId, itemId }, null);
+    }
+  );
+
+  private readonly _serverCustomItemsCache = createCache<[string, string], ItemCrud['Client']['Read']>(
+    async ([customId, itemId]) => {
+      return await this._interface.getItem({ customId, itemId }, null);
     }
   );
 
@@ -569,16 +575,16 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
         return app._serverApiKeyFromCrud(result);
       },
       async createCheckoutUrl(offerIdOrInline: string | InlineOffer) {
-        return await app._interface.createCheckoutUrl(crud.id, offerIdOrInline, null);
+        return await app._interface.createCheckoutUrl("user", crud.id, offerIdOrInline, null);
       },
       async getItem(itemId: string) {
         const result = Result.orThrow(await app._serverUserItemsCache.getOrWait([crud.id, itemId], "write-only"));
-        return app._serverItemFromCrud(crud.id, result);
+        return app._serverItemFromCrud({ type: "user", id: crud.id }, result);
       },
       // IF_PLATFORM react-like
       useItem(itemId: string) {
         const result = useAsyncCache(app._serverUserItemsCache, [crud.id, itemId] as const, "user.useItem()");
-        return useMemo(() => app._serverItemFromCrud(crud.id, result), [result]);
+        return useMemo(() => app._serverItemFromCrud({ type: "user", id: crud.id }, result), [result]);
       },
       // END_PLATFORM
     };
@@ -698,38 +704,59 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
       },
       async getItem(itemId: string) {
         const result = Result.orThrow(await app._serverTeamItemsCache.getOrWait([crud.id, itemId], "write-only"));
-        return app._serverItemFromCrud(crud.id, result);
+        return app._serverItemFromCrud({ type: "team", id: crud.id }, result);
       },
       // IF_PLATFORM react-like
       useItem(itemId: string) {
         const result = useAsyncCache(app._serverTeamItemsCache, [crud.id, itemId] as const, "team.useItem()");
-        return useMemo(() => app._serverItemFromCrud(crud.id, result), [result]);
+        return useMemo(() => app._serverItemFromCrud({ type: "team", id: crud.id }, result), [result]);
       },
       // END_PLATFORM
       async createCheckoutUrl(offerIdOrInline: string | InlineOffer) {
-        return await app._interface.createCheckoutUrl(crud.id, offerIdOrInline, null);
+        return await app._interface.createCheckoutUrl("team", crud.id, offerIdOrInline, null);
       },
     };
   }
 
-  protected _serverItemFromCrud(customerId: string, crud: ItemCrud['Client']['Read']): ServerItem {
+  protected _serverItemFromCrud(customer: { type: "user" | "team" | "custom", id: string }, crud: ItemCrud['Client']['Read']): ServerItem {
     const app = this;
     return {
       displayName: crud.display_name,
       quantity: crud.quantity,
       nonNegativeQuantity: Math.max(0, crud.quantity),
       increaseQuantity: async (delta: number) => {
-        await app._interface.updateItemQuantity(customerId, crud.id, { delta });
-        await app._serverUserItemsCache.refresh([customerId, crud.id]);
+        const updateOptions = customer.type === "user"
+          ? { itemId: crud.id, userId: customer.id }
+          : customer.type === "team"
+            ? { itemId: crud.id, teamId: customer.id }
+            : { itemId: crud.id, customId: customer.id };
+        await app._interface.updateItemQuantity(updateOptions, { delta });
+        if (customer.type === "user") await app._serverUserItemsCache.refresh([customer.id, crud.id]);
+        else if (customer.type === "team") await app._serverTeamItemsCache.refresh([customer.id, crud.id]);
+        else await app._serverCustomItemsCache.refresh([customer.id, crud.id]);
       },
       decreaseQuantity: async (delta: number) => {
-        await app._interface.updateItemQuantity(customerId, crud.id, { delta: -delta, allow_negative: true });
-        await app._serverUserItemsCache.refresh([customerId, crud.id]);
+        const updateOptions = customer.type === "user"
+          ? { itemId: crud.id, userId: customer.id }
+          : customer.type === "team"
+            ? { itemId: crud.id, teamId: customer.id }
+            : { itemId: crud.id, customId: customer.id };
+        await app._interface.updateItemQuantity(updateOptions, { delta: -delta, allow_negative: true });
+        if (customer.type === "user") await app._serverUserItemsCache.refresh([customer.id, crud.id]);
+        else if (customer.type === "team") await app._serverTeamItemsCache.refresh([customer.id, crud.id]);
+        else await app._serverCustomItemsCache.refresh([customer.id, crud.id]);
       },
       tryDecreaseQuantity: async (delta: number) => {
         try {
-          await app._interface.updateItemQuantity(customerId, crud.id, { delta: -delta });
-          await app._serverUserItemsCache.refresh([customerId, crud.id]);
+          const updateOptions = customer.type === "user"
+            ? { itemId: crud.id, userId: customer.id }
+            : customer.type === "team"
+              ? { itemId: crud.id, teamId: customer.id }
+              : { itemId: crud.id, customId: customer.id };
+          await app._interface.updateItemQuantity(updateOptions, { delta: -delta });
+          if (customer.type === "user") await app._serverUserItemsCache.refresh([customer.id, crud.id]);
+          else if (customer.type === "team") await app._serverTeamItemsCache.refresh([customer.id, crud.id]);
+          else await app._serverCustomItemsCache.refresh([customer.id, crud.id]);
           return true;
         } catch (error) {
           if (error instanceof KnownErrors.ItemQuantityInsufficientAmount) {
@@ -966,6 +993,34 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
     const teams = Result.orThrow(await this._serverTeamsCache.getOrWait([undefined], "write-only"));
     return teams.map((t) => this._serverTeamFromCrud(t));
   }
+
+  async getItem(options: { itemId: string, userId: string } | { itemId: string, teamId: string } | { itemId: string, customId: string }): Promise<ServerItem> {
+    if ("userId" in options) {
+      const result = Result.orThrow(await this._serverUserItemsCache.getOrWait([options.userId, options.itemId], "write-only"));
+      return this._serverItemFromCrud({ type: "user", id: options.userId }, result);
+    } else if ("teamId" in options) {
+      const result = Result.orThrow(await this._serverTeamItemsCache.getOrWait([options.teamId, options.itemId], "write-only"));
+      return this._serverItemFromCrud({ type: "team", id: options.teamId }, result);
+    } else {
+      const result = Result.orThrow(await this._serverCustomItemsCache.getOrWait([options.customId, options.itemId], "write-only"));
+      return this._serverItemFromCrud({ type: "custom", id: options.customId }, result);
+    }
+  }
+
+  // IF_PLATFORM react-like
+  useItem(options: { itemId: string, userId: string } | { itemId: string, teamId: string } | { itemId: string, customId: string }): ServerItem {
+    if ("userId" in options) {
+      const result = useAsyncCache(this._serverUserItemsCache, [options.userId, options.itemId] as const, "app.useItem(user)");
+      return useMemo(() => this._serverItemFromCrud({ type: "user", id: options.userId }, result), [result]);
+    } else if ("teamId" in options) {
+      const result = useAsyncCache(this._serverTeamItemsCache, [options.teamId, options.itemId] as const, "app.useItem(team)");
+      return useMemo(() => this._serverItemFromCrud({ type: "team", id: options.teamId }, result), [result]);
+    } else {
+      const result = useAsyncCache(this._serverCustomItemsCache, [options.customId, options.itemId] as const, "app.useItem(custom)");
+      return useMemo(() => this._serverItemFromCrud({ type: "custom", id: options.customId }, result), [result]);
+    }
+  }
+  // END_PLATFORM
 
   async createTeam(data: ServerTeamCreateOptions): Promise<ServerTeam> {
     const team = await this._interface.createServerTeam(serverTeamCreateOptionsToCrud(data));

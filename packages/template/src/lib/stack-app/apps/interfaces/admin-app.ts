@@ -76,8 +76,11 @@ export type StackAdminApp<HasTokenStore extends boolean = boolean, ProjectId ext
 
     setupPayments(): Promise<{ url: string }>,
     createStripeWidgetAccountSession(): Promise<{ client_secret: string }>,
-    createPurchaseUrl(options: { customerId: string, offerId: string }): Promise<string>,
-    createItemQuantityChange(options: { customerId: string, itemId: string, quantity: number, expiresAt?: string, description?: string }): Promise<void>,
+    createItemQuantityChange(options: (
+      { userId: string, itemId: string, quantity: number, expiresAt?: string, description?: string } |
+      { teamId: string, itemId: string, quantity: number, expiresAt?: string, description?: string } |
+      { customId: string, itemId: string, quantity: number, expiresAt?: string, description?: string }
+    )): Promise<void>,
   }
   & StackServerApp<HasTokenStore, ProjectId>
 );

@@ -13,6 +13,7 @@ it("should not be able to create purchase URL without offer_id or offer_inline",
     method: "POST",
     accessType: "client",
     body: {
+      customer_type: "user",
       customer_id: generateUuid(),
     },
   });
@@ -52,6 +53,7 @@ it("should error for non-existent offer_id", async ({ expect }) => {
     method: "POST",
     accessType: "client",
     body: {
+      customer_type: "user",
       customer_id: generateUuid(),
       offer_id: "non-existent-offer",
     },
@@ -103,6 +105,7 @@ it("should error for invalid customer_id", async ({ expect }) => {
     method: "POST",
     accessType: "client",
     body: {
+      customer_type: "team",
       customer_id: generateUuid(),
       offer_id: "test-offer",
     },
@@ -150,6 +153,7 @@ it("should error for no connected stripe account", async ({ expect }) => {
     method: "POST",
     accessType: "client",
     body: {
+      customer_type: "user",
       customer_id: user.userId,
       offer_id: "test-offer",
     },
@@ -177,6 +181,7 @@ it("should not allow offer_inline when calling from client", async ({ expect }) 
     method: "POST",
     accessType: "client",
     body: {
+      customer_type: "user",
       customer_id: userId,
       offer_inline: {
         display_name: "Inline Test Offer",
@@ -208,6 +213,7 @@ it("should allow offer_inline when calling from server", async ({ expect }) => {
     method: "POST",
     accessType: "server",
     body: {
+      customer_type: "user",
       customer_id: userId,
       offer_inline: {
         display_name: "Inline Test Offer",
@@ -223,7 +229,13 @@ it("should allow offer_inline when calling from server", async ({ expect }) => {
       },
     },
   });
-  expect(response.status).toBe(200);
+  expect(response).toMatchInlineSnapshot(`
+    NiceResponse {
+      "status": 200,
+      "body": { "url": "http://localhost:8101/purchase/<stripped UUID>_cngg259jnn72d55dxfzmafzan54vcw7n429evq7bfbaa0" },
+      "headers": Headers { <some fields may have been hidden> },
+    }
+  `);
   const body = response.body as { url: string };
   expect(body.url).toMatch(/^https?:\/\/localhost:8101\/purchase\/[a-z0-9-_]+$/);
 });
@@ -256,6 +268,7 @@ it("should allow valid offer_id", async ({ expect }) => {
     method: "POST",
     accessType: "client",
     body: {
+      customer_type: "user",
       customer_id: userId,
       offer_id: "test-offer",
     },

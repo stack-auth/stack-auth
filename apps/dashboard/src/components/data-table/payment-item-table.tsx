@@ -110,6 +110,7 @@ function CreateItemQuantityChangeDialog({ open, onOpenChange, itemId }: { open: 
   const stackAdminApp = useAdminApp();
 
   const schema = yup.object({
+    customerType: yup.string().oneOf(["user", "team", "custom"]).defined().label("Customer Type"),
     customerId: yup.string().uuid().defined().label("Customer ID"),
     quantity: yup.number().defined().label("Quantity"),
     description: yup.string().optional().label("Description"),
@@ -118,7 +119,12 @@ function CreateItemQuantityChangeDialog({ open, onOpenChange, itemId }: { open: 
 
   const submit = async (values: yup.InferType<typeof schema>) => {
     const result = await Result.fromPromise(stackAdminApp.createItemQuantityChange({
-      customerId: values.customerId,
+      ...(values.customerType === "user" ?
+        { userId: values.customerId } :
+        values.customerType === "team" ?
+          { teamId: values.customerId } :
+          { customId: values.customerId }
+      ),
       itemId,
       quantity: values.quantity,
       expiresAt: values.expiresAt ? values.expiresAt.toISOString() : undefined,

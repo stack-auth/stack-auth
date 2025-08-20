@@ -48,6 +48,63 @@ it("returns default item quantity for a team", async ({ expect }) => {
   timeout: 40_000,
 });
 
+it("root-level getItem works for user and team", async ({ expect }) => {
+  const { clientApp, serverApp, adminApp } = await createApp({
+    config: { clientTeamCreationEnabled: true },
+  });
+
+  const project = await adminApp.getProject();
+  const itemId = "root_level_item";
+  await project.updateConfig({
+    [`payments.items.${itemId}`]: {
+      displayName: "Root Level Item",
+      customerType: "team",
+      default: { quantity: 1, repeat: "never", expires: "never" },
+    },
+  });
+
+  await clientApp.signUpWithCredential({ email: "rl@test.com", password: "password", verificationCallbackUrl: "http://localhost:3000" });
+  await clientApp.signInWithCredential({ email: "rl@test.com", password: "password" });
+  const user = await clientApp.getUser();
+  if (!user) throw new Error("User not found");
+  const team = await user.createTeam({ displayName: "RL Team" });
+
+  const teamItem = await clientApp.getItem({ itemId, teamId: team.id });
+  expect(teamItem.quantity).toBe(1);
+
+  const userItemId = "root_level_user_item";
+  await project.updateConfig({
+    [`payments.items.${userItemId}`]: {
+      displayName: "Root Level User Item",
+      customerType: "user",
+      default: { quantity: 4, repeat: "never", expires: "never" },
+    },
+  });
+  const userItem = await serverApp.getItem({ itemId: userItemId, userId: user.id });
+  expect(userItem.quantity).toBe(4);
+}, { timeout: 60_000 });
+
+it("customId is supported via root-level getItem and admin quantity change", async ({ expect }) => {
+  const { clientApp, adminApp } = await createApp({
+    config: {},
+  });
+  const project = await adminApp.getProject();
+  const itemId = "custom_item_rl";
+  await project.updateConfig({
+    [`payments.items.${itemId}`]: {
+      displayName: "Custom RL Item",
+      customerType: "custom",
+      default: { quantity: 2, repeat: "never", expires: "never" },
+    },
+  });
+  const customId = "custom-abc";
+  const before = await clientApp.getItem({ itemId, customId });
+  expect(before.quantity).toBe(2);
+  await adminApp.createItemQuantityChange({ customId, itemId, quantity: 5 });
+  const after = await clientApp.getItem({ itemId, customId });
+  expect(after.quantity).toBe(7);
+}, { timeout: 60_000 });
+
 it("admin can increase team item quantity and client sees updated value", async ({ expect }) => {
   const { clientApp, adminApp } = await createApp({
     config: {
@@ -87,7 +144,7 @@ it("admin can increase team item quantity and client sees updated value", async 
   expect(before.quantity).toBe(1);
 
   // Increase by 3 via admin API
-  await adminApp.createItemQuantityChange({ customerId: team.id, itemId, quantity: 3 });
+  await adminApp.createItemQuantityChange({ teamId: team.id, itemId, quantity: 3 });
 
   const after = await team.getItem(itemId);
   expect(after.quantity).toBe(4);
@@ -132,7 +189,7 @@ it("cannot decrease team item quantity below zero", async ({ expect }) => {
   expect(current.quantity).toBe(0);
 
   // Try to decrease by 1 (should fail with KnownErrors.ItemQuantityInsufficientAmount)
-  await expect(adminApp.createItemQuantityChange({ customerId: team.id, itemId, quantity: -1 }))
+  await expect(adminApp.createItemQuantityChange({ teamId: team.id, itemId, quantity: -1 }))
     .rejects.toThrow();
 
   const still = await team.getItem(itemId);
