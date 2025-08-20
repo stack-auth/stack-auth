@@ -116,12 +116,12 @@ it("should error for invalid customer_id", async ({ expect }) => {
       "body": {
         "code": "OFFER_CUSTOMER_TYPE_DOES_NOT_MATCH",
         "details": {
-          "actual_customer_type": "user",
+          "actual_customer_type": "team",
           "customer_id": "<stripped UUID>",
-          "offer_customer_type": "team",
+          "offer_customer_type": "user",
           "offer_id": "test-offer",
         },
-        "error": "The user with ID \\"<stripped UUID>\\" is not a valid customer for the inline offer that has been passed in. The offer is configured to only be available for team customers, but the customer is a user.",
+        "error": "The team with ID \\"<stripped UUID>\\" is not a valid customer for the inline offer that has been passed in. The offer is configured to only be available for user customers, but the customer is a team.",
       },
       "headers": Headers {
         "x-stack-known-error": "OFFER_CUSTOMER_TYPE_DOES_NOT_MATCH",
