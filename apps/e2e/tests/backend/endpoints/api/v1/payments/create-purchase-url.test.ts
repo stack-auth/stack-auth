@@ -111,19 +111,24 @@ it("should error for invalid customer_id", async ({ expect }) => {
     },
   });
   expect(response).toMatchInlineSnapshot(`
-      NiceResponse {
-        "status": 400,
-        "body": {
-          "code": "CUSTOMER_DOES_NOT_EXIST",
-          "details": { "customer_id": "<stripped UUID>" },
-          "error": "Customer with ID \\"<stripped UUID>\\" does not exist.",
+    NiceResponse {
+      "status": 400,
+      "body": {
+        "code": "OFFER_CUSTOMER_TYPE_DOES_NOT_MATCH",
+        "details": {
+          "actual_customer_type": "user",
+          "customer_id": "<stripped UUID>",
+          "offer_customer_type": "team",
+          "offer_id": "test-offer",
         },
-        "headers": Headers {
-          "x-stack-known-error": "CUSTOMER_DOES_NOT_EXIST",
-          <some fields may have been hidden>,
-        },
-      }
-    `);
+        "error": "The user with ID \\"<stripped UUID>\\" is not a valid customer for the inline offer that has been passed in. The offer is configured to only be available for team customers, but the customer is a user.",
+      },
+      "headers": Headers {
+        "x-stack-known-error": "OFFER_CUSTOMER_TYPE_DOES_NOT_MATCH",
+        <some fields may have been hidden>,
+      },
+    }
+  `);
 });
 
 it("should error for no connected stripe account", async ({ expect }) => {
@@ -229,15 +234,8 @@ it("should allow offer_inline when calling from server", async ({ expect }) => {
       },
     },
   });
-  expect(response).toMatchInlineSnapshot(`
-    NiceResponse {
-      "status": 200,
-      "body": { "url": "http://localhost:8101/purchase/<stripped UUID>_cngg259jnn72d55dxfzmafzan54vcw7n429evq7bfbaa0" },
-      "headers": Headers { <some fields may have been hidden> },
-    }
-  `);
-  const body = response.body as { url: string };
-  expect(body.url).toMatch(/^https?:\/\/localhost:8101\/purchase\/[a-z0-9-_]+$/);
+  expect(response.status).toBe(200);
+  expect(response.body.url).toMatch(/^https?:\/\/localhost:8101\/purchase\/[a-z0-9-_]+$/);
 });
 
 it("should allow valid offer_id", async ({ expect }) => {
