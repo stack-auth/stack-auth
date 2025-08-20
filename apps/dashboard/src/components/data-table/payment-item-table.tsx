@@ -8,6 +8,7 @@ import { ActionCell, DataTable, DataTableColumnHeader, TextCell, toast } from "@
 import { ColumnDef } from "@tanstack/react-table";
 import { useState } from "react";
 import * as yup from "yup";
+import { SelectField } from "../form-fields";
 
 type PaymentItem = {
   id: string,
@@ -54,7 +55,7 @@ const columns: ColumnDef<PaymentItem>[] = [
   },
   {
     id: "actions",
-    cell: ({ row }) => <ActionsCell itemId={row.original.id} />,
+    cell: ({ row }) => <ActionsCell item={row.original} />,
   }
 ];
 
@@ -80,7 +81,7 @@ export function PaymentItemTable({
   />;
 }
 
-function ActionsCell({ itemId }: { itemId: string }) {
+function ActionsCell({ item }: { item: PaymentItem }) {
   const [open, setOpen] = useState(false);
   return (
     <>
@@ -100,18 +101,25 @@ function ActionsCell({ itemId }: { itemId: string }) {
       <CreateItemQuantityChangeDialog
         open={open}
         onOpenChange={setOpen}
-        itemId={itemId}
+        itemId={item.id}
+        customerType={item.customerType}
       />
     </>
   );
 }
 
-function CreateItemQuantityChangeDialog({ open, onOpenChange, itemId }: { open: boolean, onOpenChange: (open: boolean) => void, itemId: string }) {
+type CreateItemQuantityChangeDialogProps = {
+  open: boolean,
+  onOpenChange: (open: boolean) => void,
+  itemId: string,
+  customerType: "user" | "team" | "custom" | undefined,
+}
+
+function CreateItemQuantityChangeDialog({ open, onOpenChange, itemId, customerType }: CreateItemQuantityChangeDialogProps) {
   const stackAdminApp = useAdminApp();
 
   const schema = yup.object({
-    customerType: yup.string().oneOf(["user", "team", "custom"]).defined().label("Customer Type"),
-    customerId: yup.string().uuid().defined().label("Customer ID"),
+    customerId: yup.string().defined().label("Customer ID"),
     quantity: yup.number().defined().label("Quantity"),
     description: yup.string().optional().label("Description"),
     expiresAt: yup.date().optional().label("Expires At"),
@@ -119,9 +127,9 @@ function CreateItemQuantityChangeDialog({ open, onOpenChange, itemId }: { open: 
 
   const submit = async (values: yup.InferType<typeof schema>) => {
     const result = await Result.fromPromise(stackAdminApp.createItemQuantityChange({
-      ...(values.customerType === "user" ?
+      ...(customerType === "user" ?
         { userId: values.customerId } :
-        values.customerType === "team" ?
+        customerType === "team" ?
           { teamId: values.customerId } :
           { customId: values.customerId }
       ),
@@ -136,10 +144,10 @@ function CreateItemQuantityChangeDialog({ open, onOpenChange, itemId }: { open: 
     }
     if (result.error instanceof KnownErrors.ItemNotFound) {
       toast({ title: "Item not found", variant: "destructive" });
-    } else if (result.error instanceof KnownErrors.ItemCustomerTypeDoesNotMatch) {
-      toast({ title: "Customer type does not match expected type for this item", variant: "destructive" });
-    } else if (result.error instanceof KnownErrors.CustomerDoesNotExist) {
-      toast({ title: "Customer does not exist", variant: "destructive" });
+    } else if (result.error instanceof KnownErrors.UserNotFound) {
+      toast({ title: "No user found with the given ID", variant: "destructive" });
+    } else if (result.error instanceof KnownErrors.TeamNotFound) {
+      toast({ title: "No team found with the given ID", variant: "destructive" });
     } else {
       toast({ title: "An unknown error occurred", variant: "destructive" });
     }

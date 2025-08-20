@@ -8,6 +8,7 @@ import { StackAssertionError, StatusError } from "@stackframe/stack-shared/dist/
 import { getOrUndefined, typedFromEntries } from "@stackframe/stack-shared/dist/utils/objects";
 import * as yup from "yup";
 import { Tenancy } from "./tenancies";
+import { isUuid } from "@stackframe/stack-shared/dist/utils/uuids";
 
 export async function ensureOfferIdOrInlineOffer(
   tenancy: Tenancy,
@@ -97,4 +98,43 @@ export async function getItemQuantityForCustomer(options: {
     },
   });
   return subscriptionQuantity + (_sum.quantity ?? 0) + defaultQuantity;
+}
+
+export async function ensureCustomerExists(options: {
+  prisma: PrismaClientTransaction,
+  tenancyId: string,
+  customerType: "user" | "team" | "custom",
+  customerId: string,
+}) {
+  if (options.customerType === "user") {
+    if (!isUuid(options.customerId)) {
+      throw new KnownErrors.UserNotFound();
+    }
+    const user = await options.prisma.projectUser.findUnique({
+      where: {
+        tenancyId_projectUserId: {
+          tenancyId: options.tenancyId,
+          projectUserId: options.customerId,
+        },
+      },
+    });
+    if (!user) {
+      throw new KnownErrors.UserNotFound();
+    }
+  } else if (options.customerType === "team") {
+    if (!isUuid(options.customerId)) {
+      throw new KnownErrors.TeamNotFound(options.customerId);
+    }
+    const team = await options.prisma.team.findUnique({
+      where: {
+        tenancyId_teamId: {
+          tenancyId: options.tenancyId,
+          teamId: options.customerId,
+        },
+      },
+    });
+    if (!team) {
+      throw new KnownErrors.TeamNotFound(options.customerId);
+    }
+  }
 }

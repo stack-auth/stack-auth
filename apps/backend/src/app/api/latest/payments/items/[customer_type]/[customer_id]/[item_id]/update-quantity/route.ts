@@ -1,5 +1,5 @@
 import { adaptSchema, serverOrHigherAuthTypeSchema, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
-import { getItemQuantityForCustomer } from "@/lib/payments";
+import { ensureCustomerExists, getItemQuantityForCustomer } from "@/lib/payments";
 import { getPrismaClientForTenancy, retryTransaction } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { KnownErrors } from "@stackframe/stack-shared";
@@ -50,6 +50,12 @@ export const POST = createSmartRouteHandler({
       throw new KnownErrors.ItemCustomerTypeDoesNotMatch(req.params.item_id, req.params.customer_id, itemConfig.customerType, req.params.customer_type);
     }
     const prisma = await getPrismaClientForTenancy(tenancy);
+    await ensureCustomerExists({
+      prisma,
+      tenancyId: tenancy.id,
+      customerType: req.params.customer_type,
+      customerId: req.params.customer_id,
+    });
 
     const changeId = await retryTransaction(prisma, async (tx) => {
       const totalQuantity = await getItemQuantityForCustomer({
