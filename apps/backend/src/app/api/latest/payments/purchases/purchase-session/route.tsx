@@ -25,7 +25,7 @@ export const POST = createSmartRouteHandler({
     }),
   }),
   async handler({ body }) {
-    const { full_code, price_id, quantity = 1 } = body;
+    const { full_code, price_id, quantity } = body;
     const { data, id: codeId } = await purchaseUrlVerificationCodeHandler.validateCode(full_code);
     const tenancy = await getTenancy(data.tenancyId);
     if (!tenancy) {

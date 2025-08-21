@@ -27,7 +27,7 @@ export const POST = createSmartRouteHandler({
     bodyType: yupString().oneOf(["success"]).defined(),
   }),
   handler: async ({ auth, body }) => {
-    const { full_code, price_id, quantity = 1 } = body;
+    const { full_code, price_id, quantity } = body;
     const { data, id: codeId } = await purchaseUrlVerificationCodeHandler.validateCode(full_code);
     if (auth.tenancy.id !== data.tenancyId) {
       throw new StatusError(400, "Tenancy id does not match value from code data");
