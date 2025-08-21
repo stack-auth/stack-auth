@@ -65,7 +65,7 @@ export default function RootLayout({
   }
 
   return (
-    <html suppressHydrationWarning lang="en" className={`${GeistSans.variable} ${GeistMono.variable}`} style={{ contain: 'paint' }}>
+    <html suppressHydrationWarning lang="en" className={`${GeistSans.variable} ${GeistMono.variable}`}>
       <head>
         <link rel="preconnect" href="https://fonts.gstatic.com" />
         <StyleLink href="https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded&display=block" />

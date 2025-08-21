@@ -1,5 +1,14 @@
 # @stackframe/e2e-tests
 
+## 2.8.33
+
+### Patch Changes
+
+- Various changes
+- Updated dependencies
+  - @stackframe/stack-shared@2.8.33
+  - @stackframe/js@2.8.33
+
 ## 2.8.32
 
 ### Patch Changes
