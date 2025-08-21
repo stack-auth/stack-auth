@@ -450,7 +450,7 @@ const organizationConfigDefaults = {
     exclusivityGroups: (key: string) => (key: string) => undefined,
     offers: (key: string) => ({
       displayName: key,
-      customerType: undefined,
+      customerType: "user",
       freeTrial: undefined,
       serverOnly: false,
       stackable: undefined,

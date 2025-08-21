@@ -3,13 +3,20 @@
 import { CheckoutForm } from "@/components/payments/checkout";
 import { StripeElementsProvider } from "@/components/payments/stripe-elements-provider";
 import { getPublicEnvVar } from "@/lib/env";
+import { StackAdminApp, useUser } from "@stackframe/stack";
+import { inlineOfferSchema } from "@stackframe/stack-shared/dist/schema-fields";
 import { throwErr } from "@stackframe/stack-shared/dist/utils/errors";
-import { Card, CardContent, Skeleton, Typography } from "@stackframe/stack-ui";
+import { typedEntries } from "@stackframe/stack-shared/dist/utils/objects";
+import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
+import { Button, Card, CardContent, Skeleton, Typography } from "@stackframe/stack-ui";
+import { ArrowRight } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import * as yup from "yup";
 
 type OfferData = {
-  offer?: any,
+  offer?: Omit<yup.InferType<typeof inlineOfferSchema>, "included_items" | "server_only">,
   stripe_account_id: string,
+  project_id: string,
 };
 
 const apiUrl = getPublicEnvVar("NEXT_PUBLIC_STACK_API_URL") ?? throwErr("NEXT_PUBLIC_STACK_API_URL is not set");
@@ -20,12 +27,24 @@ export default function PageClient({ code }: { code: string }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [selectedPriceId, setSelectedPriceId] = useState<string | null>(null);
+  const user = useUser({ projectIdMustMatch: "internal" });
+  const [adminApp, setAdminApp] = useState<StackAdminApp>();
+
+  useEffect(() => {
+    if (!user || !data) return;
+    runAsynchronouslyWithAlert(user.listOwnedProjects().then(projects => {
+      const project = projects.find(p => p.id === data.project_id);
+      if (project) {
+        setAdminApp(project.app);
+      }
+    }));
+  }, [user, data]);
 
   const currentAmount = useMemo(() => {
     if (!selectedPriceId || !data?.offer?.prices) {
       return 0;
     }
-    return data.offer.prices[selectedPriceId]?.USD * 100;
+    return Number(data.offer.prices[selectedPriceId].USD) * 100;
   }, [data, selectedPriceId]);
 
   const shortenedInterval = (interval: [number, string]) => {
@@ -76,6 +95,16 @@ export default function PageClient({ code }: { code: string }) {
     return result.client_secret;
   };
 
+  const handleBypass = useCallback(async () => {
+    if (!adminApp || !selectedPriceId) {
+      return;
+    }
+    await adminApp.testModePurchase({ priceId: selectedPriceId, fullCode: code });
+    const url = new URL(`/purchase/return`, window.location.origin);
+    url.searchParams.set("bypass", "1");
+    url.searchParams.set("purchase_full_code", code);
+    window.location.assign(url.toString());
+  }, [code, adminApp, selectedPriceId]);
 
   return (
     <div className="flex flex-row">
@@ -90,10 +119,10 @@ export default function PageClient({ code }: { code: string }) {
         ) : (
           <>
             <div className="mb-6">
-              <Typography type="h2" className="mb-2">{data?.offer?.displayName || "Plan"}</Typography>
+              <Typography type="h2" className="mb-2">{data?.offer?.display_name || "Plan"}</Typography>
             </div>
             <div className="space-y-3">
-              {data?.offer?.prices && Object.entries(data.offer.prices).map(([priceId, priceData]: [string, any]) => (
+              {data?.offer?.prices && typedEntries(data.offer.prices).map(([priceId, priceData]) => (
                 <Card
                   key={priceId}
                   className={`border cursor-pointer transition-colors ${selectedPriceId === priceId ? 'border-blue-500' : 'hover:border-primary/30'}`}
@@ -107,9 +136,11 @@ export default function PageClient({ code }: { code: string }) {
                       <div className="text-right">
                         <Typography type="h3">
                           ${priceData.USD}
-                          <span className="text-sm text-primary/50">
-                            {" "}/ {shortenedInterval(priceData.interval)}
-                          </span>
+                          {priceData.interval && (
+                            <span className="text-sm text-primary/50">
+                              {" "}/ {shortenedInterval(priceData.interval)}
+                            </span>
+                          )}
                         </Typography>
                       </div>
                     </div>
@@ -120,7 +151,12 @@ export default function PageClient({ code }: { code: string }) {
           </>
         )}
       </div>
-      <div className="grow flex justify-center items-center bg-primary/5">
+      <div className="grow relative flex justify-center items-center bg-primary/5">
+        {adminApp && (
+          <div className="absolute top-4 right-4 max-w-xs">
+            <BypassInfo handleBypass={handleBypass} />
+          </div>
+        )}
         {data && (
           <StripeElementsProvider
             stripeAccountId={data.stripe_account_id}
@@ -134,7 +170,24 @@ export default function PageClient({ code }: { code: string }) {
           </StripeElementsProvider>
         )}
       </div>
-
     </div>
+  );
+}
+
+function BypassInfo({ handleBypass }: { handleBypass: () => Promise<void> }) {
+  return (
+    <Card className="border-primary/30 bg-secondary animate-fade-in">
+      <CardContent className="p-3">
+        <div className="flex items-center justify-between gap-3">
+          <div className="flex flex-col">
+            <Typography type="label">Test mode bypass</Typography>
+            <Typography type="footnote" variant="secondary">Not shown to customers</Typography>
+          </div>
+          <Button onClick={handleBypass} size="icon" variant="ghost">
+            <ArrowRight className="w-4 h-4" />
+          </Button>
+        </div>
+      </CardContent>
+    </Card>
   );
 }
