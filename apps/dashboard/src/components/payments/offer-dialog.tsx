@@ -15,21 +15,21 @@ type Props = {
   onOpenChange: (open: boolean) => void,
   project: AdminProject,
 } & (
-  {
-    mode: "create",
-    initial?: never,
-  } | {
-    mode: "edit",
-    initial: {
-      id: string,
-      value: yup.InferType<typeof offerSchema>,
-    },
-  }
-)
+    {
+      mode: "create",
+      initial?: never,
+    } | {
+      mode: "edit",
+      initial: {
+        id: string,
+        value: yup.InferType<typeof offerSchema>,
+      },
+    }
+  )
 
 export function OfferDialog({ open, onOpenChange, project, mode, initial }: Props) {
   const config = project.useConfig();
-  const offerSchema = yup.object({
+  const localOfferSchema = yup.object({
     offerId: userSpecifiedIdSchema("offerId").defined().label("Offer ID"),
     displayName: yup.string().defined().label("Display Name"),
     customerType: yup.string().oneOf(["user", "team", "custom"]).defined().label("Customer Type"),
@@ -54,7 +54,7 @@ export function OfferDialog({ open, onOpenChange, project, mode, initial }: Prop
       open={open}
       onOpenChange={onOpenChange}
       title={mode === "create" ? "Create New Offer" : "Edit Offer"}
-      formSchema={offerSchema}
+      formSchema={localOfferSchema}
       defaultValues={initial?.value ? {
         offerId: initial.id,
         ...initial.value,
@@ -81,7 +81,7 @@ export function OfferDialog({ open, onOpenChange, project, mode, initial }: Prop
       }}
       render={(form) => (
         <div className="space-y-4">
-          <InputField control={form.control} name={"offerId"} label="Offer ID" required  disabled={mode === "edit"} placeholder="team" />
+          <InputField control={form.control} name={"offerId"} label="Offer ID" required disabled={mode === "edit"} placeholder="team" />
           <InputField control={form.control} name={"displayName"} label="Display Name" required placeholder="Team" />
           <SelectField control={form.control} name={"customerType"} label="Customer Type" required options={[
             { value: "user", label: "User" },

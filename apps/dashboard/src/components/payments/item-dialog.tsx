@@ -84,7 +84,7 @@ export function ItemDialog({ open, onOpenChange, project, mode, initial }: Props
             <AccordionItem value="item-1" className="border-0">
               <AccordionTrigger>Defaults</AccordionTrigger>
               <AccordionContent className="space-y-4">
-                <InputField control={form.control} name={"defaultQuantity"} label="Quantity" />
+                <InputField control={form.control} name={"defaultQuantity"} label="Quantity" type="number" />
                 <DayIntervalSelectorField control={form.control} name={"defaultRepeat"} label="Repeat" unsetLabel="None" />
                 <SelectField control={form.control} name={"defaultExpires"} label="Expires" options={[
                   { value: "never", label: "Never" },
