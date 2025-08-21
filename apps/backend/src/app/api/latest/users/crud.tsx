@@ -14,7 +14,7 @@ import { BooleanTrue, Prisma } from "@prisma/client";
 import { KnownErrors } from "@stackframe/stack-shared";
 import { currentUserCrud } from "@stackframe/stack-shared/dist/interface/crud/current-user";
 import { UsersCrud, usersCrud } from "@stackframe/stack-shared/dist/interface/crud/users";
-import { userIdOrMeSchema, yupBoolean, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
+import { userIdOrMeSchema, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
 import { validateBase64Image } from "@stackframe/stack-shared/dist/utils/base64";
 import { decodeBase64 } from "@stackframe/stack-shared/dist/utils/bytes";
 import { StackAssertionError, StatusError, captureError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
@@ -375,10 +375,11 @@ export const usersCrudHandlers = createLazyProxy(() => createCrudHandlers(usersC
     limit: yupNumber().integer().min(1).optional().meta({ openapiField: { onlyShowInOperations: [ 'List' ], description: "The maximum number of items to return" } }),
     cursor: yupString().uuid().optional().meta({ openapiField: { onlyShowInOperations: [ 'List' ], description: "The cursor to start the result set from." } }),
     order_by: yupString().oneOf(['signed_up_at']).optional().meta({ openapiField: { onlyShowInOperations: [ 'List' ], description: "The field to sort the results by. Defaults to signed_up_at" } }),
-    desc: yupBoolean().optional().meta({ openapiField: { onlyShowInOperations: [ 'List' ], description: "Whether to sort the results in descending order. Defaults to false" } }),
+    desc: yupString().oneOf(["true", "false"]).optional().meta({ openapiField: { onlyShowInOperations: [ 'List' ], description: "Whether to sort the results in descending order. Defaults to false" } }),
     query: yupString().optional().meta({ openapiField: { onlyShowInOperations: [ 'List' ], description: "A search query to filter the results by. This is a free-text search that is applied to the user's id (exact-match only), display name and primary email." } }),
+    include_anonymous: yupString().oneOf(["true", "false"]).optional().meta({ openapiField: { onlyShowInOperations: [ 'List' ], description: "Whether to include anonymous users in the results. Defaults to false" } }),
   }),
-  onRead: async ({ auth, params }) => {
+  onRead: async ({ auth, params, query }) => {
     const user = await getUser({ tenancyId: auth.tenancy.id, userId: params.user_id });
     if (!user) {
       throw new KnownErrors.UserNotFound();
@@ -398,6 +399,10 @@ export const usersCrudHandlers = createLazyProxy(() => createCrudHandlers(usersC
           },
         },
       } : {},
+      ...query.include_anonymous === "true" ? {} : {
+        // Don't return anonymous users unless explicitly requested
+        isAnonymous: false,
+      },
       ...query.query ? {
         OR: [
           ...isUuid(queryWithoutSpecialChars!) ? [{
@@ -431,7 +436,7 @@ export const usersCrudHandlers = createLazyProxy(() => createCrudHandlers(usersC
       orderBy: {
         [({
           signed_up_at: 'createdAt',
-        } as const)[query.order_by ?? 'signed_up_at']]: query.desc ? 'desc' : 'asc',
+        } as const)[query.order_by ?? 'signed_up_at']]: query.desc === 'true' ? 'desc' : 'asc',
       },
       // +1 because we need to know if there is a next page
       take: query.limit ? query.limit + 1 : undefined,
@@ -1040,7 +1045,7 @@ export const currentUserCrudHandlers = createLazyProxy(() => createCrudHandlers(
       tenancy: auth.tenancy,
       user_id: auth.user?.id ?? throwErr(new KnownErrors.CannotGetOwnUserWithoutUser()),
       data,
-      allowedErrorTypes: [StatusError],
+      allowedErrorTypes: [Object],
     });
   },
   async onDelete({ auth }) {
@@ -1051,7 +1056,7 @@ export const currentUserCrudHandlers = createLazyProxy(() => createCrudHandlers(
     return await usersCrudHandlers.adminDelete({
       tenancy: auth.tenancy,
       user_id: auth.user?.id ?? throwErr(new KnownErrors.CannotGetOwnUserWithoutUser()),
-      allowedErrorTypes: [StatusError]
+      allowedErrorTypes: [Object],
     });
   },
 }));

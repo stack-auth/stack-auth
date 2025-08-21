@@ -3,6 +3,7 @@ import { getAuthContactChannel } from "@/lib/contact-channel";
 import { validateRedirectUrl } from "@/lib/redirect-urls";
 import { Tenancy, getTenancy } from "@/lib/tenancies";
 import { oauthCookieSchema } from "@/lib/tokens";
+import { createOrUpgradeAnonymousUser } from "@/lib/users";
 import { getProvider, oauthServer } from "@/oauth";
 import { getPrismaClientForTenancy, globalPrismaClient } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
@@ -352,7 +353,27 @@ const handler = createSmartRouteHandler({
                     }
                   }
 
-                  const newAccount = await usersCrudHandlers.adminCreate({
+                  const currentUser = projectUserId ? await usersCrudHandlers.adminRead({ tenancy, user_id: projectUserId }) : null;
+                  const newAccount = await createOrUpgradeAnonymousUser(
+                    tenancy,
+                    currentUser,
+                    {
+                      display_name: userInfo.displayName,
+                      profile_image_url: userInfo.profileImageUrl || undefined,
+                      primary_email: userInfo.email,
+                      primary_email_verified: userInfo.emailVerified,
+                      primary_email_auth_enabled: primaryEmailAuthEnabled,
+                      oauth_providers: [{
+                        id: provider.id,
+                        account_id: userInfo.accountId,
+                        email: userInfo.email,
+                      }],
+                    },
+                    [],
+                  );
+
+
+                  await usersCrudHandlers.adminCreate({
                     tenancy,
                     data: {
                       display_name: userInfo.displayName,

@@ -830,7 +830,12 @@ export namespace Auth {
           refreshToken: response.body.refresh_token,
         },
       });
-      return { response };
+      return {
+        response,
+        accessToken: response.body.access_token,
+        refreshToken: response.body.refresh_token,
+        userId: response.body.user_id,
+      };
     }
   }
 }
