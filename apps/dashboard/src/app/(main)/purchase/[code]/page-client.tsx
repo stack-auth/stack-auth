@@ -113,8 +113,10 @@ export default function PageClient({ code }: { code: string }) {
           <Skeleton className="w-full h-10" />
         ) : error ? (
           <>
-            <Typography type="h2" className="mb-2">The following error occurred:</Typography>
-            <Typography type="label" variant="secondary">{error}</Typography>
+            <Typography type="h2" className="mb-2">Invalid URL</Typography>
+            <Typography type="label" variant="secondary">
+              The purchase code is invalid or has expired.
+            </Typography>
           </>
         ) : (
           <>

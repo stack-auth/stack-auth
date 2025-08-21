@@ -5,7 +5,6 @@ import { StackAssertionError, StatusError } from "@stackframe/stack-shared/dist/
 import { getPrismaClientForTenancy } from "@/prisma-client";
 import { addInterval } from "@stackframe/stack-shared/dist/utils/dates";
 import { typedToUppercase } from "@stackframe/stack-shared/dist/utils/strings";
-import { KnownErrors } from "@stackframe/stack-shared";
 
 export const POST = createSmartRouteHandler({
   metadata: {
@@ -23,12 +22,12 @@ export const POST = createSmartRouteHandler({
     }),
   }),
   response: yupObject({
-    statusCode: yupNumber().oneOf([200, 500]).defined(),
+    statusCode: yupNumber().oneOf([200]).defined(),
     bodyType: yupString().oneOf(["success"]).defined(),
   }),
   handler: async ({ auth, body }) => {
     const { full_code, price_id } = body;
-    const { data } = await purchaseUrlVerificationCodeHandler.validateCode(full_code);
+    const { data, id: codeId } = await purchaseUrlVerificationCodeHandler.validateCode(full_code);
     if (auth.tenancy.id !== data.tenancyId) {
       throw new StatusError(400, "Tenancy id does not match value from code data");
     }
@@ -53,6 +52,10 @@ export const POST = createSmartRouteHandler({
         cancelAtPeriodEnd: false,
         creationSource: "TEST_MODE",
       },
+    });
+    await purchaseUrlVerificationCodeHandler.revokeCode({
+      tenancy: auth.tenancy,
+      id: codeId,
     });
 
     return {
