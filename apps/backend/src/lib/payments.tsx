@@ -79,7 +79,7 @@ export async function getItemQuantityForCustomer(options: {
   const subscriptionQuantity = subscriptions.reduce((acc, subscription) => {
     const offer = subscription.offer as yup.InferType<typeof offerSchema>;
     const item = getOrUndefined(offer.includedItems, options.itemId);
-    return acc + (item?.quantity ?? 0);
+    return acc + (item?.quantity ?? 0) * subscription.quantity;
   }, 0);
 
   const { _sum } = await options.prisma.itemQuantityChange.aggregate({

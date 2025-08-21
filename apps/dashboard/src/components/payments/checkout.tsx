@@ -21,9 +21,10 @@ type Props = {
   setupSubscription: () => Promise<string>,
   stripeAccountId: string,
   fullCode: string,
+  disabled?: boolean,
 };
 
-export function CheckoutForm({ setupSubscription, stripeAccountId, fullCode }: Props) {
+export function CheckoutForm({ setupSubscription, stripeAccountId, fullCode, disabled }: Props) {
   const stripe = useStripe();
   const elements = useElements();
   const [message, setMessage] = useState<string | null>(null);
@@ -64,12 +65,14 @@ export function CheckoutForm({ setupSubscription, stripeAccountId, fullCode }: P
     <div className="flex flex-col gap-6 max-w-md w-full p-6 rounded-md bg-background">
       <PaymentElement options={paymentElementOptions} />
       <Button
-        disabled={!stripe || !elements}
+        disabled={!stripe || !elements || disabled}
         onClick={handleSubmit}
       >
         Submit
       </Button>
-      {message && <div className="text-destructive">{message}</div>}
+      {message && (
+        <div className="text-destructive">{message}</div>
+      )}
     </div>
   );
 }

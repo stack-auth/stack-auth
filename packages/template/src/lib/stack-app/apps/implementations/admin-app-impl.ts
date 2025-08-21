@@ -523,7 +523,7 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
     );
   }
 
-  async testModePurchase(options: { priceId: string, fullCode: string }): Promise<void> {
-    await this._interface.testModePurchase({ price_id: options.priceId, full_code: options.fullCode });
+  async testModePurchase(options: { priceId: string, fullCode: string, quantity?: number }): Promise<void> {
+    await this._interface.testModePurchase({ price_id: options.priceId, full_code: options.fullCode, quantity: options.quantity });
   }
 }

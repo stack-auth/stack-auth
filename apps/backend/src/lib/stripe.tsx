@@ -60,6 +60,7 @@ export async function syncStripeSubscriptions(stripeAccountId: string, stripeCus
     if (subscription.items.data.length === 0) {
       continue;
     }
+    const item = subscription.items.data[0];
     await prisma.subscription.upsert({
       where: {
         tenancyId_stripeSubscriptionId: {
@@ -70,8 +71,9 @@ export async function syncStripeSubscriptions(stripeAccountId: string, stripeCus
       update: {
         status: subscription.status,
         offer: JSON.parse(subscription.metadata.offer),
-        currentPeriodEnd: new Date(subscription.items.data[0].current_period_end * 1000),
-        currentPeriodStart: new Date(subscription.items.data[0].current_period_start * 1000),
+        quantity: item.quantity ?? 1,
+        currentPeriodEnd: new Date(item.current_period_end * 1000),
+        currentPeriodStart: new Date(item.current_period_start * 1000),
         cancelAtPeriodEnd: subscription.cancel_at_period_end,
       },
       create: {
@@ -79,10 +81,11 @@ export async function syncStripeSubscriptions(stripeAccountId: string, stripeCus
         customerId,
         customerType,
         offer: JSON.parse(subscription.metadata.offer),
+        quantity: item.quantity ?? 1,
         stripeSubscriptionId: subscription.id,
         status: subscription.status,
-        currentPeriodEnd: new Date(subscription.items.data[0].current_period_end * 1000),
-        currentPeriodStart: new Date(subscription.items.data[0].current_period_start * 1000),
+        currentPeriodEnd: new Date(item.current_period_end * 1000),
+        currentPeriodStart: new Date(item.current_period_start * 1000),
         cancelAtPeriodEnd: subscription.cancel_at_period_end,
         creationSource: "PURCHASE_PAGE"
       },
