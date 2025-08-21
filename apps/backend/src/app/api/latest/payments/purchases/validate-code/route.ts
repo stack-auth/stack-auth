@@ -1,13 +1,17 @@
-import { purchaseUrlVerificationCodeHandler } from "../verification-code-handler";
-import { adaptSchema, clientOrHigherAuthTypeSchema, inlineOfferSchema, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
-import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
-import { filterUndefined, typedFromEntries, getOrUndefined } from "@stackframe/stack-shared/dist/utils/objects";
-import { SUPPORTED_CURRENCIES } from "@stackframe/stack-shared/dist/utils/currencies";
-import * as yup from "yup";
 import { getTenancy } from "@/lib/tenancies";
+import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
+import { inlineOfferSchema, yupBoolean, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
+import { SUPPORTED_CURRENCIES } from "@stackframe/stack-shared/dist/utils/currencies";
 import { StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
+import { filterUndefined, getOrUndefined, typedFromEntries } from "@stackframe/stack-shared/dist/utils/objects";
+import * as yup from "yup";
+import { purchaseUrlVerificationCodeHandler } from "../verification-code-handler";
 
-const offerDataSchema = inlineOfferSchema.omit(["server_only", "included_items"]);
+const offerDataSchema = inlineOfferSchema
+  .omit(["server_only", "included_items"])
+  .concat(yupObject({
+    stackable: yupBoolean().defined(),
+  }));
 
 export const POST = createSmartRouteHandler({
   metadata: {
@@ -37,6 +41,7 @@ export const POST = createSmartRouteHandler({
     const offerData: yup.InferType<typeof offerDataSchema> = {
       display_name: offer.displayName ?? "Offer",
       customer_type: offer.customerType,
+      stackable: offer.stackable === true,
       prices: Object.fromEntries(Object.entries(offer.prices).map(([key, value]) => [key, filterUndefined({
         ...typedFromEntries(SUPPORTED_CURRENCIES.map(c => [c.code, getOrUndefined(value, c.code)])),
         interval: value.interval,

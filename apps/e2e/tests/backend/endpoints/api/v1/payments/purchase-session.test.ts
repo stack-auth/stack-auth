@@ -53,6 +53,7 @@ it("should properly create subscription", async ({ expect }) => {
     body: {
       full_code: code,
       price_id: "monthly",
+      quantity: 1,
     },
   });
   expect(response).toMatchInlineSnapshot(`
@@ -72,12 +73,13 @@ it("should create purchase URL, validate code, and create purchase session", asy
     body: {
       full_code: code,
       price_id: "monthly",
+      quantity: 2,
     },
   });
   expect(response).toMatchInlineSnapshot(`
     NiceResponse {
-      "status": 200,
-      "body": { "client_secret": "" },
+      "status": 400,
+      "body": "This offer is not stackable; quantity must be 1",
       "headers": Headers { <some fields may have been hidden> },
     }
   `);
@@ -218,6 +220,7 @@ it("creates subscription in test mode and increases included item quantity", asy
     body: {
       full_code: code,
       price_id: "monthly",
+      quantity: 1,
     },
   });
   expect(purchaseSessionResponse.status).toBe(200);
@@ -228,4 +231,77 @@ it("creates subscription in test mode and increases included item quantity", asy
   });
   expect(getAfter.status).toBe(200);
   expect(getAfter.body.quantity).toBe(2);
+});
+
+it("allows stackable quantity in test mode and multiplies included items", async ({ expect }) => {
+  await Project.createAndSwitch();
+  await Project.updateConfig({
+    payments: {
+      stripeAccountId: "acct_test123",
+      items: {
+        "test-item": {
+          displayName: "Test Item",
+          customerType: "user",
+          default: { quantity: 0 },
+        },
+      },
+      offers: {
+        "test-offer": {
+          displayName: "Test Offer",
+          customerType: "user",
+          serverOnly: false,
+          stackable: true,
+          prices: {
+            monthly: {
+              USD: "1000",
+              interval: [1, "month"],
+            },
+          },
+          includedItems: {
+            "test-item": { quantity: 2 },
+          },
+        },
+      },
+    },
+  });
+
+  const { userId } = await User.create();
+  const createUrlResponse = await niceBackendFetch("/api/latest/payments/purchases/create-purchase-url", {
+    method: "POST",
+    accessType: "client",
+    body: {
+      customer_type: "user",
+      customer_id: userId,
+      offer_id: "test-offer",
+    },
+  });
+  expect(createUrlResponse.status).toBe(200);
+  const body = createUrlResponse.body as { url: string };
+  const codeMatch = body.url.match(/\/purchase\/([a-z0-9-_]+)/);
+  const code = codeMatch ? codeMatch[1] : undefined;
+  expect(code).toBeDefined();
+
+  const getBefore = await niceBackendFetch(`/api/latest/payments/items/user/${userId}/test-item`, {
+    accessType: "client",
+  });
+  expect(getBefore.status).toBe(200);
+  expect(getBefore.body.quantity).toBe(0);
+
+  const purchaseSessionResponse = await niceBackendFetch("/api/latest/internal/payments/test-mode-purchase-session", {
+    method: "POST",
+    accessType: "admin",
+    body: {
+      full_code: code,
+      price_id: "monthly",
+      quantity: 3,
+    },
+  });
+  expect(purchaseSessionResponse.status).toBe(200);
+  expect(purchaseSessionResponse.body).toEqual({ success: true });
+
+  const getAfter = await niceBackendFetch(`/api/latest/payments/items/user/${userId}/test-item`, {
+    accessType: "client",
+  });
+  expect(getAfter.status).toBe(200);
+  expect(getAfter.body.quantity).toBe(6);
 });

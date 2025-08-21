@@ -740,6 +740,7 @@ model Subscription {
   customerId   String
   customerType CustomerType
   offer        Json
+  quantity     Int          @default(1)
 
   stripeSubscriptionId String?
   status               SubscriptionStatus

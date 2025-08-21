@@ -8,13 +8,13 @@ import { inlineOfferSchema } from "@stackframe/stack-shared/dist/schema-fields";
 import { throwErr } from "@stackframe/stack-shared/dist/utils/errors";
 import { typedEntries } from "@stackframe/stack-shared/dist/utils/objects";
 import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
-import { Button, Card, CardContent, Skeleton, Typography } from "@stackframe/stack-ui";
-import { ArrowRight } from "lucide-react";
+import { Button, Card, CardContent, Input, Skeleton, Typography } from "@stackframe/stack-ui";
+import { ArrowRight, Minus, Plus } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import * as yup from "yup";
 
 type OfferData = {
-  offer?: Omit<yup.InferType<typeof inlineOfferSchema>, "included_items" | "server_only">,
+  offer?: Omit<yup.InferType<typeof inlineOfferSchema>, "included_items" | "server_only"> & { stackable: boolean },
   stripe_account_id: string,
   project_id: string,
 };
@@ -27,6 +27,7 @@ export default function PageClient({ code }: { code: string }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [selectedPriceId, setSelectedPriceId] = useState<string | null>(null);
+  const [quantityInput, setQuantityInput] = useState<string>("1");
   const user = useUser({ projectIdMustMatch: "internal" });
   const [adminApp, setAdminApp] = useState<StackAdminApp>();
 
@@ -40,12 +41,35 @@ export default function PageClient({ code }: { code: string }) {
     }));
   }, [user, data]);
 
-  const currentAmount = useMemo(() => {
+  const quantityNumber = useMemo((): number => {
+    const n = parseInt(quantityInput, 10);
+    if (Number.isNaN(n)) {
+      return 0;
+    }
+    return n;
+  }, [quantityInput]);
+
+  const unitCents = useMemo((): number => {
     if (!selectedPriceId || !data?.offer?.prices) {
       return 0;
     }
     return Number(data.offer.prices[selectedPriceId].USD) * 100;
   }, [data, selectedPriceId]);
+
+  const MAX_STRIPE_AMOUNT_CENTS = 999_999 * 100;
+
+  const rawAmountCents = useMemo(() => {
+    return unitCents * Math.max(0, quantityNumber);
+  }, [unitCents, quantityNumber]);
+
+  const isTooLarge = rawAmountCents > MAX_STRIPE_AMOUNT_CENTS;
+
+  const elementsAmountCents = useMemo(() => {
+    if (!unitCents) return 0;
+    if (rawAmountCents < 1) return unitCents;
+    if (isTooLarge) return MAX_STRIPE_AMOUNT_CENTS;
+    return rawAmountCents;
+  }, [unitCents, rawAmountCents, isTooLarge, MAX_STRIPE_AMOUNT_CENTS]);
 
   const shortenedInterval = (interval: [number, string]) => {
     if (interval[0] === 1) {
@@ -86,7 +110,7 @@ export default function PageClient({ code }: { code: string }) {
     const response = await fetch(`${baseUrl}/payments/purchases/purchase-session`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ full_code: code, price_id: selectedPriceId }),
+      body: JSON.stringify({ full_code: code, price_id: selectedPriceId, quantity: quantityNumber }),
     });
     const result = await response.json();
     if (!result.client_secret) {
@@ -99,12 +123,15 @@ export default function PageClient({ code }: { code: string }) {
     if (!adminApp || !selectedPriceId) {
       return;
     }
-    await adminApp.testModePurchase({ priceId: selectedPriceId, fullCode: code });
+    if (quantityNumber < 1 || isTooLarge) {
+      return;
+    }
+    await adminApp.testModePurchase({ priceId: selectedPriceId, fullCode: code, quantity: quantityNumber });
     const url = new URL(`/purchase/return`, window.location.origin);
     url.searchParams.set("bypass", "1");
     url.searchParams.set("purchase_full_code", code);
     window.location.assign(url.toString());
-  }, [code, adminApp, selectedPriceId]);
+  }, [code, adminApp, selectedPriceId, quantityNumber, isTooLarge]);
 
   return (
     <div className="flex flex-row">
@@ -123,7 +150,7 @@ export default function PageClient({ code }: { code: string }) {
             <div className="mb-6">
               <Typography type="h2" className="mb-2">{data?.offer?.display_name || "Plan"}</Typography>
             </div>
-            <div className="space-y-3">
+            <div className="space-y-4">
               {data?.offer?.prices && typedEntries(data.offer.prices).map(([priceId, priceData]) => (
                 <Card
                   key={priceId}
@@ -149,6 +176,63 @@ export default function PageClient({ code }: { code: string }) {
                   </CardContent>
                 </Card>
               ))}
+              {data?.offer?.stackable && selectedPriceId && (
+                <div className="pt-4 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <Typography type="label">Quantity</Typography>
+                    <div className="flex items-center gap-2">
+                      <Button
+                        type="button"
+                        size="icon"
+                        variant="outline"
+                        onClick={() => setQuantityInput(String(Math.max(0, quantityNumber - 1)))}
+                      >
+                        <Minus className="w-4 h-4" />
+                      </Button>
+                      <Input
+                        className="text-center w-20"
+                        inputMode="numeric"
+                        pattern="[0-9]*"
+                        type="text"
+                        value={quantityInput}
+                        onChange={e => {
+                          const digitsOnly = e.target.value.replace(/[^0-9]/g, "");
+                          setQuantityInput(digitsOnly);
+                        }}
+                      />
+                      <Button
+                        type="button"
+                        size="icon"
+                        variant="outline"
+                        onClick={() => setQuantityInput(String(quantityNumber + 1))}
+                      >
+                        <Plus className="w-4 h-4" />
+                      </Button>
+                    </div>
+                  </div>
+                  <div className="text-right">
+                    <Typography type="footnote" variant="destructive">
+                      {quantityNumber < 1 ?
+                        "Enter a quantity of at least 1." :
+                        isTooLarge ?
+                          "Amount exceeds maximum of $999,999" :
+                          " "
+                      }
+                    </Typography>
+                  </div>
+                  <div className="pt-4 flex items-baseline justify-between">
+                    <Typography type="label">Total</Typography>
+                    <Typography type="h4">
+                      ${selectedPriceId ? (Number(data.offer.prices[selectedPriceId].USD) * Math.max(0, quantityNumber)) : 0}
+                      {selectedPriceId && data.offer.prices[selectedPriceId].interval && (
+                        <span className="text-sm text-primary/50">
+                          {" "}/ {shortenedInterval(data.offer.prices[selectedPriceId].interval!)}
+                        </span>
+                      )}
+                    </Typography>
+                  </div>
+                </div>
+              )}
             </div>
           </>
         )}
@@ -162,12 +246,13 @@ export default function PageClient({ code }: { code: string }) {
         {data && (
           <StripeElementsProvider
             stripeAccountId={data.stripe_account_id}
-            amount={currentAmount}
+            amount={elementsAmountCents}
           >
             <CheckoutForm
               fullCode={code}
               stripeAccountId={data.stripe_account_id}
               setupSubscription={setupSubscription}
+              disabled={quantityNumber < 1 || isTooLarge}
             />
           </StripeElementsProvider>
         )}
@@ -193,3 +278,4 @@ function BypassInfo({ handleBypass }: { handleBypass: () => Promise<void> }) {
     </Card>
   );
 }
+

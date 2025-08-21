@@ -1,10 +1,10 @@
-import Stripe from "stripe";
 import { getStripeForAccount } from "@/lib/stripe";
-import { purchaseUrlVerificationCodeHandler } from "../verification-code-handler";
-import { StackAssertionError, StatusError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
+import { getTenancy } from "@/lib/tenancies";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
-import { getTenancy } from "@/lib/tenancies";
+import { StackAssertionError, StatusError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
+import Stripe from "stripe";
+import { purchaseUrlVerificationCodeHandler } from "../verification-code-handler";
 
 export const POST = createSmartRouteHandler({
   metadata: {
@@ -14,6 +14,7 @@ export const POST = createSmartRouteHandler({
     body: yupObject({
       full_code: yupString().defined(),
       price_id: yupString().defined(),
+      quantity: yupNumber().integer().min(1).default(1),
     }),
   }),
   response: yupObject({
@@ -24,7 +25,7 @@ export const POST = createSmartRouteHandler({
     }),
   }),
   async handler({ body }) {
-    const { full_code, price_id } = body;
+    const { full_code, price_id, quantity = 1 } = body;
     const { data, id: codeId } = await purchaseUrlVerificationCodeHandler.validateCode(full_code);
     const tenancy = await getTenancy(data.tenancyId);
     if (!tenancy) {
@@ -39,6 +40,10 @@ export const POST = createSmartRouteHandler({
     // TODO: prices with no interval should be allowed and work without a subscription
     if (!selectedPrice.interval) {
       throw new StackAssertionError("unimplemented; prices without an interval are currently not supported");
+    }
+
+    if (quantity !== 1 && data.offer.stackable !== true) {
+      throw new StatusError(400, "This offer is not stackable; quantity must be 1");
     }
 
     const product = await stripe.products.create({
@@ -59,7 +64,7 @@ export const POST = createSmartRouteHandler({
             interval: selectedPrice.interval[1],
           },
         },
-        quantity: 1,
+        quantity,
       }],
       metadata: {
         offer: JSON.stringify(data.offer),
