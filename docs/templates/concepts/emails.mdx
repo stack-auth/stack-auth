@@ -1,9 +1,20 @@
 ---
-title: Email System
+title: Emails
 description: Send custom emails to your users with Stack Auth's email system.
 ---
 
-Stack Auth provides an email system that allows you to send custom emails to your users. The system supports both custom HTML emails and template-based emails with theming.
+Stack Auth provides emails that allows you to send custom emails to your users. The system supports both custom HTML emails and template-based emails with theming.
+
+## Email Types:
+There are two types of emails that you can send to your users:
+- **Transactional Emails**: Transactional emails are those required for your user to use your application. These emails cannot be opted out of.
+- **Marketing Emails**: Marketing emails always contain an unsubscribe link and may be more general marketing material related to your application/company.
+
+<Info>
+Never send marketing emails as transactional emails, as this can quickly lead to your domain being blacklisted by email spam filters.
+</Info>
+
+
 
 ## Overview
 
@@ -161,7 +172,7 @@ Users can then opt in or out of specific notification categories through their a
 
 ## React Components Integration
 
-The email system integrates seamlessly with Stack Auth's React components. Email verification, password reset, and other authentication emails are automatically sent when users interact with the provided components.
+Emails integrates seamlessly with Stack Auth's React components. Email verification, password reset, and other authentication emails are automatically sent when users interact with the provided components.
 
 For custom email flows, use the `sendEmail` method from your server-side code:
 
