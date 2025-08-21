@@ -131,6 +131,26 @@ async function seed() {
                 expires: "when-purchase-expires"
               }
             }
+          },
+          "extra-admins": {
+            displayName: "Extra Admins",
+            customerType: "team",
+            serverOnly: false,
+            stackable: true,
+            prices: {
+              monthly: {
+                USD: "49",
+                interval: [1, "month"] as any,
+                serverOnly: false
+              }
+            },
+            includedItems: {
+              dashboard_admins: {
+                quantity: 1,
+                repeat: "never",
+                expires: "when-purchase-expires"
+              }
+            }
           }
         },
         items: {
@@ -146,7 +166,7 @@ async function seed() {
         },
       }
     }
-  })
+  });
 
   await updatePermissionDefinition(
     globalPrismaClient,

@@ -41,7 +41,6 @@ export const POST = createSmartRouteHandler({
     if (!selectedPrice.interval) {
       throw new StackAssertionError("unimplemented; prices without an interval are currently not supported");
     }
-
     if (quantity !== 1 && data.offer.stackable !== true) {
       throw new StatusError(400, "This offer is not stackable; quantity must be 1");
     }

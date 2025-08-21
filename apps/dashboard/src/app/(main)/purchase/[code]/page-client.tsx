@@ -185,7 +185,8 @@ export default function PageClient({ code }: { code: string }) {
                         type="button"
                         size="icon"
                         variant="outline"
-                        onClick={() => setQuantityInput(String(Math.max(0, quantityNumber - 1)))}
+                        disabled={quantityNumber <= 1}
+                        onClick={() => setQuantityInput(String(Math.max(1, quantityNumber - 1)))}
                       >
                         <Minus className="w-4 h-4" />
                       </Button>
