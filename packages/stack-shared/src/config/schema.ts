@@ -119,13 +119,12 @@ export const branchPaymentsSchema = yupObject({
   autoPay: yupObject({
     interval: schemaFields.dayIntervalSchema,
   }).optional(),
-  exclusivityGroups: yupRecord(
-    userSpecifiedIdSchema("exclusivityGroupId"),
-    yupRecord(
-      userSpecifiedIdSchema("offerId"),
-      yupBoolean().isTrue(),
-    ),
-  ),
+  groups: yupRecord(
+    userSpecifiedIdSchema("groupId"),
+    yupObject({
+      displayName: yupString().optional(),
+    }),
+  ).meta({ openapiField: { description: 'The groups that offers can be in. All offers in a group (besides add-ons) are mutually exclusive.', exampleValue: { "group-id": { displayName: "My Group" } } } }),
   offers: yupRecord(
     userSpecifiedIdSchema("offerId"),
     offerSchema,

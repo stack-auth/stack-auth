@@ -8,7 +8,7 @@ import { decodeBasicAuthorizationHeader } from "./utils/http";
 import { allProviders } from "./utils/oauth";
 import { deepPlainClone, omit, typedFromEntries } from "./utils/objects";
 import { deindent } from "./utils/strings";
-import { isValidUrl, isValidHostnameWithWildcards } from "./utils/urls";
+import { isValidHostnameWithWildcards, isValidUrl } from "./utils/urls";
 import { isUuid } from "./utils/uuids";
 
 const MAX_IMAGE_SIZE_BASE64_BYTES = 1_000_000; // 1MB
@@ -560,6 +560,14 @@ export const offerPriceSchema = yupObject({
 }).test("at-least-one-currency", (value, context) => validateHasAtLeastOneSupportedCurrency(value, context));
 export const offerSchema = yupObject({
   displayName: yupString(),
+  groupId: userSpecifiedIdSchema("groupId").optional().meta({ openapiField: { description: 'The ID of the group this offer belongs to. Within a group, all offers are mutually exclusive unless they are an add-on to another offer in the group.', exampleValue: 'group-id' } }),
+  isAddOnTo: yupUnion(
+    yupBoolean().isFalse(),
+    yupRecord(
+      userSpecifiedIdSchema("offerId"),
+      yupBoolean().isTrue(),
+    ),
+  ).optional().meta({ openapiField: { description: 'The offers that this offer is an add-on to. If this is set, the customer must already have one of the offers in the record to be able to purchase this offer.', exampleValue: { "offer-id": true } } }),
   customerType: customerTypeSchema.defined(),
   freeTrial: dayIntervalSchema.optional(),
   serverOnly: yupBoolean(),
