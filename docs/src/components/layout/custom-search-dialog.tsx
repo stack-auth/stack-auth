@@ -2,8 +2,10 @@
 
 import { AlignLeft, ChevronDown, ExternalLink, FileText, Hash, Search, X } from 'lucide-react';
 import Link from 'next/link';
+import { usePathname } from 'next/navigation';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { cn } from '../../lib/cn';
+import { getCurrentPlatform } from '../../lib/platform-utils';
 
 // Platform colors matching your theme
 const PLATFORM_COLORS = {
@@ -26,7 +28,7 @@ const PLATFORM_NAMES = {
 
 type SearchResult = {
   id: string,
-  type: 'page' | 'heading' | 'text',
+  type: 'page' | 'heading' | 'text' | 'api',
   content: string,
   url: string,
 };
@@ -39,6 +41,7 @@ type GroupedResult = {
 };
 
 function extractPlatformFromUrl(url: string): string {
+  if (url.startsWith('/api/')) return 'api';
   const match = url.match(/\/docs\/([^\/]+)/);
   const platform = match?.[1] || 'api';
   return platform;
@@ -115,6 +118,9 @@ function SearchResultIcon({ type }: { type: string }) {
     case 'text': {
       return <AlignLeft className="w-4 h-4" />;
     }
+    case 'api': {
+      return <ExternalLink className="w-4 h-4" />;
+    }
     default: {
       return <FileText className="w-4 h-4" />;
     }
@@ -126,6 +132,17 @@ type CustomSearchDialogProps = {
   onOpenChange: (open: boolean) => void,
 };
 
+// Helper function to detect current platform from URL
+function getCurrentPlatformForSearch(pathname: string): string {
+  const platform = getCurrentPlatform(pathname);
+  if (platform) return platform;
+
+  // Check if we're on API pages
+  if (pathname.includes('/api/')) return 'api';
+
+  return 'all';
+}
+
 export function CustomSearchDialog({ open, onOpenChange }: CustomSearchDialogProps) {
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<SearchResult[]>([]);
@@ -135,6 +152,7 @@ export function CustomSearchDialog({ open, onOpenChange }: CustomSearchDialogPro
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
+  const pathname = usePathname();
 
   const searchTimeoutRef = useRef<NodeJS.Timeout>();
 
@@ -205,9 +223,28 @@ export function CustomSearchDialog({ open, onOpenChange }: CustomSearchDialogPro
   const groupedResults = groupResultsByPage(results);
 
   // Filter by selected platform
-  const filteredResults = selectedPlatformFilter === 'all'
+  // When a specific platform is selected, include both that platform AND API results
+  // When 'api' is selected, show only API results
+  // When 'all' is selected, show everything
+  let filteredResults = selectedPlatformFilter === 'all'
     ? groupedResults
-    : groupedResults.filter(group => group.platform === selectedPlatformFilter);
+    : selectedPlatformFilter === 'api'
+      ? groupedResults.filter(group => group.platform === 'api')
+      : groupedResults.filter(group =>
+        group.platform === selectedPlatformFilter || group.platform === 'api'
+      );
+
+  // Sort filtered results to prioritize the selected platform over API
+  if (selectedPlatformFilter !== 'all' && selectedPlatformFilter !== 'api') {
+    filteredResults = filteredResults.sort((a, b) => {
+      // Selected platform comes first, then API, then others
+      if (a.platform === selectedPlatformFilter && b.platform !== selectedPlatformFilter) return -1;
+      if (b.platform === selectedPlatformFilter && a.platform !== selectedPlatformFilter) return 1;
+      if (a.platform === 'api' && b.platform !== 'api' && b.platform !== selectedPlatformFilter) return -1;
+      if (b.platform === 'api' && a.platform !== 'api' && a.platform !== selectedPlatformFilter) return 1;
+      return 0;
+    });
+  }
 
   // Flatten results for keyboard navigation
   const flatResults = filteredResults.flatMap(group =>
@@ -261,15 +298,19 @@ export function CustomSearchDialog({ open, onOpenChange }: CustomSearchDialogPro
     }
   }, [open]);
 
-  // Reset state when dialog opens
+  // Reset state when dialog opens and set platform based on current URL
   useEffect(() => {
     if (open) {
       setQuery('');
       setResults([]);
       setSelectedIndex(0);
       setDropdownOpen(false);
+
+      // Auto-detect platform from current URL
+      const currentPlatform = getCurrentPlatformForSearch(pathname);
+      setSelectedPlatformFilter(currentPlatform);
     }
-  }, [open]);
+  }, [open, pathname]);
 
   if (!open) return null;
 
@@ -303,10 +344,15 @@ export function CustomSearchDialog({ open, onOpenChange }: CustomSearchDialogPro
             >
               {selectedPlatformFilter === 'all' ? (
                 <span>All platforms</span>
-              ) : (
+              ) : selectedPlatformFilter === 'api' ? (
                 <>
                   <PlatformBadge platform={selectedPlatformFilter} />
                   <span>only</span>
+                </>
+              ) : (
+                <>
+                  <PlatformBadge platform={selectedPlatformFilter} />
+                  <span>+ API</span>
                 </>
               )}
               <ChevronDown className={cn("w-3 h-3 transition-transform", dropdownOpen && "rotate-180")} />
@@ -442,7 +488,10 @@ export function CustomSearchDialog({ open, onOpenChange }: CustomSearchDialogPro
             {filteredResults.length} result group{filteredResults.length !== 1 ? 's' : ''}
             {selectedPlatformFilter !== 'all' && filteredResults.length > 0 && (
               <span className="ml-2 text-fd-primary">
-                • {PLATFORM_NAMES[selectedPlatformFilter as keyof typeof PLATFORM_NAMES]} only
+                • {selectedPlatformFilter === 'api'
+                  ? 'API only'
+                  : `${PLATFORM_NAMES[selectedPlatformFilter as keyof typeof PLATFORM_NAMES]} + API`
+                }
               </span>
             )}
           </span>
