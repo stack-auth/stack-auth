@@ -572,9 +572,12 @@ export const offerSchema = yupObject({
   freeTrial: dayIntervalSchema.optional(),
   serverOnly: yupBoolean(),
   stackable: yupBoolean(),
-  prices: yupRecord(
-    userSpecifiedIdSchema("priceId"),
-    offerPriceSchema,
+  prices: yupUnion(
+    yupString().oneOf(['include-by-default']).meta({ openapiField: { description: 'Makes this item free and includes it by default for all customers.', exampleValue: 'include-by-default' } }),
+    yupRecord(
+      userSpecifiedIdSchema("priceId"),
+      offerPriceSchema,
+    ),
   ),
   includedItems: yupRecord(
     userSpecifiedIdSchema("itemId"),
