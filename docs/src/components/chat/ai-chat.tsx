@@ -1,6 +1,7 @@
 'use client';
 
 import { useChat } from '@ai-sdk/react';
+import { runAsynchronously } from '@stackframe/stack-shared/dist/utils/promises';
 import { ExternalLink, FileText, Maximize2, Minimize2, Send, X } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { useSidebar } from '../layouts/sidebar-context';
@@ -36,12 +37,11 @@ const ToolCallDisplay = ({
     const docId = toolCall.args?.id;
     let docTitle = "Loading...";
 
-    if (toolCall.result && toolCall.result.content.length > 0) {
-      const newDocTitle =
-        toolCall.result.content[0].text.match(/Title:\s*(.*)/);
-      if (newDocTitle && newDocTitle[1]) {
-        docTitle = newDocTitle[1].trim();
-      }
+    const titleMatch = toolCall.result?.content[0]?.text.match(/Title:\s*(.*)/);
+    if (titleMatch?.[1]) {
+      docTitle = titleMatch[1].trim();
+    } else {
+      toolCall.result = { content: [{ text: "No title found" }] };
     }
 
     return (
@@ -52,7 +52,7 @@ const ToolCallDisplay = ({
         </span>
         {docId && (
           <a
-            href={`https://docs.stack-auth.com${docId}`}
+            href={`https://docs.stack-auth.com${docId.startsWith('/') ? docId : `/${docId}`}`}
             target="_blank"
             rel="noopener noreferrer"
             className="flex items-center gap-1 text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-200 transition-colors"
@@ -192,10 +192,7 @@ export function AIChatDrawer() {
     },
     onFinish: (message) => {
       // Send AI response to Discord
-      // eslint-disable-next-line no-restricted-syntax
-      sendAIResponseToDiscord(message.content).catch(error => {
-        console.error('Failed to send AI response to Discord:', error);
-      });
+      runAsynchronously(() => sendAIResponseToDiscord(message.content));
     },
   });
 
@@ -284,10 +281,7 @@ export function AIChatDrawer() {
     }));
 
     // Send message to Discord webhook
-    // eslint-disable-next-line no-restricted-syntax
-    sendToDiscord(input.trim()).catch(error => {
-      console.error('Discord webhook error:', error);
-    });
+    runAsynchronously(() => sendToDiscord(input.trim()));
 
     // Continue with normal chat submission
     handleSubmit(e);
@@ -315,6 +309,11 @@ export function AIChatDrawer() {
   const handleStarterPromptClick = (prompt: string) => {
     // Use the handleInputChange from useChat to update the input
     handleInputChange({ target: { value: prompt } } as React.ChangeEvent<HTMLInputElement>);
+  };
+
+  // Helper function for safe async event handling
+  const handleSubmitSafely = () => {
+    runAsynchronously(() => handleChatSubmit({} as React.FormEvent));
   };
 
   return (
@@ -475,10 +474,7 @@ export function AIChatDrawer() {
                 onKeyDown={(e) => {
                   if (e.key === "Enter" && !e.shiftKey) {
                     e.preventDefault();
-                    // eslint-disable-next-line no-restricted-syntax
-                    handleChatSubmit({} as React.FormEvent).catch(error => {
-                      console.error('Chat submit error:', error);
-                    });
+                    handleSubmitSafely();
                   }
                 }}
                 onPaste={(e) => {
@@ -496,12 +492,7 @@ export function AIChatDrawer() {
             </div>
             <button
               disabled={!input.trim() || isLoading}
-              onClick={() => {
-                // eslint-disable-next-line no-restricted-syntax
-                handleChatSubmit({} as React.FormEvent).catch(error => {
-                  console.error('Chat submit error:', error);
-                });
-              }}
+              onClick={handleSubmitSafely}
               className="h-8 w-8 rounded-full p-0 shrink-0 bg-fd-primary text-fd-primary-foreground hover:bg-fd-primary/90 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center"
             >
               <Send className="w-4 h-4" />
