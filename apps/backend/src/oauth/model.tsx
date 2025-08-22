@@ -52,9 +52,13 @@ export class OAuthModel implements AuthorizationCodeModel {
 
     let redirectUris: string[] = [];
     try {
-      redirectUris = Object.entries(tenancy.config.domains.trustedDomains).map(
-        ([_, domain]) => new URL(domain.handlerPath, domain.baseUrl).toString()
-      );
+      redirectUris = Object.entries(tenancy.config.domains.trustedDomains)
+        // note that this may include wildcard domains, which is fine because we correctly account for them in
+        // model.validateRedirectUri(...)
+        .filter(([_, domain]) => {
+          return domain.baseUrl;
+        })
+        .map(([_, domain]) => new URL(domain.handlerPath, domain.baseUrl).toString());
     } catch (e) {
       captureError("get-oauth-redirect-urls", {
         error: e,

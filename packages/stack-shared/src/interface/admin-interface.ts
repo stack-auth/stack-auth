@@ -252,6 +252,23 @@ export class StackAdminInterface extends StackServerInterface {
     );
   }
 
+  async transferProject(session: InternalSession, newTeamId: string): Promise<void> {
+    await this.sendAdminRequest(
+      "/internal/projects/transfer",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          project_id: this.options.projectId,
+          new_team_id: newTeamId,
+        }),
+      },
+      session,
+    );
+  }
+
   async getMetrics(): Promise<any> {
     const response = await this.sendAdminRequest(
       "/internal/metrics",
@@ -514,5 +531,4 @@ export class StackAdminInterface extends StackServerInterface {
     const result = await response.json() as { url: string };
     return result.url;
   }
-
 }

@@ -603,7 +603,10 @@ export namespace Auth {
           }),
         },
       });
-      expect(response.status).toBe(307);
+      expect(response).toMatchObject({
+        status: 307,
+        headers: expect.any(Headers),
+      });
       expect(response.headers.get("location")).toMatch(/^http:\/\/localhost:8114\/auth\?.*$/);
       expect(response.headers.get("set-cookie")).toMatch(/^stack-oauth-inner-[^;]+=[^;]+; Path=\/; Expires=[^;]+; Max-Age=\d+;( Secure;)? HttpOnly$/);
       return {
@@ -1027,11 +1030,13 @@ export namespace InternalApiKey {
 
 export namespace Project {
   export async function create(body?: any) {
+    const ownerTeamId = body?.owner_team_id ?? (await User.getCurrent()).selected_team_id;
     const response = await niceBackendFetch("/api/v1/internal/projects", {
       accessType: "client",
       method: "POST",
       body: {
         display_name: body?.display_name || 'New Project',
+        owner_team_id: ownerTeamId,
         ...body,
         config: {
           credential_enabled: true,
@@ -1387,6 +1392,7 @@ export namespace Webhook {
 
 export namespace Payments {
   export async function createPurchaseUrlAndGetCode() {
+    await Project.createAndSwitch();
     await Project.updateConfig({
       payments: {
         stripeAccountId: "acct_test123",

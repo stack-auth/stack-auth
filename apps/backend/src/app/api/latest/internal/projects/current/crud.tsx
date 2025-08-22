@@ -41,40 +41,5 @@ export const projectsCrudHandlers = createLazyProxy(() => createCrudHandlers(pro
         id: auth.project.id
       }
     });
-
-    const prisma = await getPrismaClientForTenancy(auth.tenancy);
-
-    // delete managed ids from users
-    const users = await prisma.projectUser.findMany({
-      where: {
-        mirroredProjectId: 'internal',
-        serverMetadata: {
-          path: ['managedProjectIds'],
-          array_contains: auth.project.id
-        }
-      }
-    });
-
-    for (const user of users) {
-      const updatedManagedProjectIds = (user.serverMetadata as any).managedProjectIds.filter(
-          (id: any) => id !== auth.project.id
-        ) as string[];
-
-      await prisma.projectUser.update({
-        where: {
-          mirroredProjectId_mirroredBranchId_projectUserId: {
-            mirroredProjectId: 'internal',
-            mirroredBranchId: user.mirroredBranchId,
-            projectUserId: user.projectUserId
-          }
-        },
-        data: {
-          serverMetadata: {
-            ...user.serverMetadata as any,
-            managedProjectIds: updatedManagedProjectIds,
-          }
-        }
-      });
-    }
   }
 }));

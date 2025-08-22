@@ -8,8 +8,10 @@ import { decodeBasicAuthorizationHeader } from "./utils/http";
 import { allProviders } from "./utils/oauth";
 import { deepPlainClone, omit, typedFromEntries } from "./utils/objects";
 import { deindent } from "./utils/strings";
-import { isValidUrl } from "./utils/urls";
+import { isValidUrl, isValidHostnameWithWildcards } from "./utils/urls";
 import { isUuid } from "./utils/uuids";
+
+const MAX_IMAGE_SIZE_BASE64_BYTES = 1_000_000; // 1MB
 
 declare module "yup" {
   // eslint-disable-next-line @typescript-eslint/consistent-type-definitions
@@ -338,6 +340,57 @@ export const urlSchema = yupString().test({
   message: (params) => `${params.path} is not a valid URL`,
   test: (value) => value == null || isValidUrl(value)
 });
+/**
+ * URL schema that supports wildcard patterns in hostnames (e.g., "https://*.example.com", "http://*:8080")
+ */
+export const wildcardUrlSchema = yupString().test({
+  name: 'no-spaces',
+  message: (params) => `${params.path} contains spaces`,
+  test: (value) => value == null || !value.includes(' ')
+}).test({
+  name: 'wildcard-url',
+  message: (params) => `${params.path} is not a valid URL or wildcard URL pattern`,
+  test: (value) => {
+    if (value == null) return true;
+
+    // If it doesn't contain wildcards, use the regular URL validation
+    if (!value.includes('*')) {
+      return isValidUrl(value);
+    }
+
+    // For wildcard URLs, validate the structure by replacing wildcards with placeholders
+    try {
+      const PLACEHOLDER = 'wildcard-placeholder';
+      // Replace wildcards with valid placeholders for URL parsing
+      const normalizedUrl = value.replace(/\*/g, PLACEHOLDER);
+      const url = new URL(normalizedUrl);
+
+      // Only allow wildcards in the hostname; reject anywhere else
+      if (
+        url.username.includes(PLACEHOLDER) ||
+        url.password.includes(PLACEHOLDER) ||
+        url.pathname.includes(PLACEHOLDER) ||
+        url.search.includes(PLACEHOLDER) ||
+        url.hash.includes(PLACEHOLDER)
+      ) {
+        return false;
+      }
+
+      // Only http/https are acceptable
+      if (url.protocol !== 'http:' && url.protocol !== 'https:') {
+        return false;
+      }
+
+      // Extract original hostname pattern from the input
+      const hostPattern = url.hostname.split(PLACEHOLDER).join('*');
+
+      // Validate the wildcard hostname pattern using the existing function
+      return isValidHostnameWithWildcards(hostPattern);
+    } catch (e) {
+      return false;
+    }
+  }
+});
 export const jsonSchema = yupMixed().nullable().defined().transform((value) => JSON.parse(JSON.stringify(value)));
 export const jsonStringSchema = yupString().test("json", (params) => `${params.path} is not valid JSON`, (value) => {
   if (value == null) return true;
@@ -433,6 +486,8 @@ export const adminAuthTypeSchema = yupString().oneOf(['admin']).defined();
 export const projectIdSchema = yupString().test((v) => v === undefined || v === "internal" || isUuid(v)).meta({ openapiField: { description: _idDescription('project'), exampleValue: 'e0b52f4d-dece-408c-af49-d23061bb0f8d' } });
 export const projectBranchIdSchema = yupString().nonEmpty().max(255).meta({ openapiField: { description: _idDescription('project branch'), exampleValue: 'main' } });
 export const projectDisplayNameSchema = yupString().meta({ openapiField: { description: _displayNameDescription('project'), exampleValue: 'MyMusic' } });
+export const projectLogoUrlSchema = urlSchema.max(MAX_IMAGE_SIZE_BASE64_BYTES).meta({ openapiField: { description: 'URL of the logo for the project. This is usually a close to 1:1 image of the company logo.', exampleValue: 'https://example.com/logo.png' } });
+export const projectFullLogoUrlSchema = urlSchema.max(MAX_IMAGE_SIZE_BASE64_BYTES).meta({ openapiField: { description: 'URL of the full logo for the project. This is usually a vertical image with the logo and the company name.', exampleValue: 'https://example.com/full-logo.png' } });
 export const projectDescriptionSchema = yupString().nullable().meta({ openapiField: { description: 'A human readable description of the project', exampleValue: 'A music streaming service' } });
 export const projectCreatedAtMillisSchema = yupNumber().meta({ openapiField: { description: _createdAtMillisDescription('project'), exampleValue: 1630000000000 } });
 export const projectIsProductionModeSchema = yupBoolean().meta({ openapiField: { description: 'Whether the project is in production mode', exampleValue: true } });
@@ -567,7 +622,7 @@ export const primaryEmailAuthEnabledSchema = yupBoolean().meta({ openapiField: {
 export const primaryEmailVerifiedSchema = yupBoolean().meta({ openapiField: { description: 'Whether the primary email has been verified to belong to this user', exampleValue: true } });
 export const userDisplayNameSchema = yupString().nullable().meta({ openapiField: { description: _displayNameDescription('user'), exampleValue: 'John Doe' } });
 export const selectedTeamIdSchema = yupString().uuid().meta({ openapiField: { description: 'ID of the team currently selected by the user', exampleValue: 'team-id' } });
-export const profileImageUrlSchema = urlSchema.max(1000000).meta({ openapiField: { description: _profileImageUrlDescription('user'), exampleValue: 'https://example.com/image.jpg' } });
+export const profileImageUrlSchema = urlSchema.max(MAX_IMAGE_SIZE_BASE64_BYTES).meta({ openapiField: { description: _profileImageUrlDescription('user'), exampleValue: 'https://example.com/image.jpg' } });
 export const signedUpAtMillisSchema = yupNumber().meta({ openapiField: { description: _signedUpAtMillisDescription, exampleValue: 1630000000000 } });
 export const userClientMetadataSchema = jsonSchema.meta({ openapiField: { description: _clientMetaDataDescription('user'), exampleValue: { key: 'value' } } });
 export const userClientReadOnlyMetadataSchema = jsonSchema.meta({ openapiField: { description: _clientReadOnlyMetaDataDescription('user'), exampleValue: { key: 'value' } } });
