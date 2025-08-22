@@ -3,12 +3,11 @@ import { getEmailConfig, sendEmail } from "@/lib/emails";
 import { getNotificationCategoryByName, hasNotificationEnabled } from "@/lib/notification-categories";
 import { getPrismaClientForTenancy } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
+import { KnownErrors } from "@stackframe/stack-shared";
 import { adaptSchema, serverOrHigherAuthTypeSchema, templateThemeIdSchema, yupArray, yupMixed, yupNumber, yupObject, yupRecord, yupString } from "@stackframe/stack-shared/dist/schema-fields";
 import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
-import { StatusError } from "@stackframe/stack-shared/dist/utils/errors";
-import { throwErr } from "@stackframe/stack-shared/dist/utils/errors";
+import { StatusError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
 import { unsubscribeLinkVerificationCodeHandler } from "../unsubscribe-link/verification-handler";
-import { KnownErrors } from "@stackframe/stack-shared";
 
 type UserResult = {
   user_id: string,
@@ -19,6 +18,7 @@ export const POST = createSmartRouteHandler({
   metadata: {
     summary: "Send email",
     description: "Send an email to a list of users. The content field should contain either {html, subject, notification_category_name} for HTML emails or {template_id, variables} for template-based emails.",
+    tags: ["Emails"],
   },
   request: yupObject({
     auth: yupObject({
