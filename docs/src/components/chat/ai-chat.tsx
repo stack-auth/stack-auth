@@ -41,7 +41,7 @@ const ToolCallDisplay = ({
     if (titleMatch?.[1]) {
       docTitle = titleMatch[1].trim();
     } else {
-      toolCall.result = { content: [{ text: "No title found" }] };
+      docTitle = 'No Title Found';
     }
 
     return (
@@ -52,7 +52,7 @@ const ToolCallDisplay = ({
         </span>
         {docId && (
           <a
-            href={`https://docs.stack-auth.com${docId.startsWith('/') ? docId : `/${docId}`}`}
+            href={`https://docs.stack-auth.com/${encodeURIComponent(docId.replace(/^\//, ''))}`}
             target="_blank"
             rel="noopener noreferrer"
             className="flex items-center gap-1 text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-200 transition-colors"
