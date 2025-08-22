@@ -22,13 +22,28 @@ function getErrorMessage(error: unknown): string {
 export async function POST(request: Request) {
   const { messages } = await request.json();
 
-  // Create MCP client for Stack Auth documentation
-  const stackAuthMcp = await createMCPClient({
-    transport: new StreamableHTTPClientTransport(
-      new URL('/api/internal/mcp', 'https://mcp.stack-auth.com')
-    ),
-  });
-  const tools = await stackAuthMcp.tools();
+  // Create MCP client for Stack Auth documentation with error handling
+  let tools = {};
+  try {
+    const stackAuthMcp = await createMCPClient({
+      transport: new StreamableHTTPClientTransport(
+        new URL('/api/internal/mcp', 'https://mcp.stack-auth.com')
+      ),
+    });
+    tools = await stackAuthMcp.tools();
+  } catch (error) {
+    console.error('Failed to initialize MCP client or retrieve tools:', error);
+    return new Response(
+      JSON.stringify({
+        error: 'Documentation service temporarily unavailable',
+        details: 'Our documentation service is currently unreachable. Please try again in a moment, or visit https://docs.stack-auth.com directly for help.',
+      }),
+      {
+        status: 503,
+        headers: { 'Content-Type': 'application/json' },
+      }
+    );
+  }
 
   // Create a comprehensive system prompt that restricts AI to Stack Auth topics
   const systemPrompt = `
