@@ -2,14 +2,14 @@ import { PrismaClientTransaction } from "@/prisma-client";
 import { SubscriptionStatus } from "@prisma/client";
 import { KnownErrors } from "@stackframe/stack-shared";
 import type { inlineOfferSchema, offerSchema } from "@stackframe/stack-shared/dist/schema-fields";
+import { SUPPORTED_CURRENCIES } from "@stackframe/stack-shared/dist/utils/currencies";
 import { FAR_FUTURE_DATE, addInterval, getIntervalsElapsed, getWindowStart } from "@stackframe/stack-shared/dist/utils/dates";
 import { StackAssertionError, StatusError } from "@stackframe/stack-shared/dist/utils/errors";
 import { getOrUndefined, typedFromEntries } from "@stackframe/stack-shared/dist/utils/objects";
 import { typedToUppercase } from "@stackframe/stack-shared/dist/utils/strings";
 import { isUuid } from "@stackframe/stack-shared/dist/utils/uuids";
-import { Tenancy } from "./tenancies";
-import { SUPPORTED_CURRENCIES } from "@stackframe/stack-shared/dist/utils/currencies";
 import * as yup from "yup";
+import { Tenancy } from "./tenancies";
 
 export async function ensureOfferIdOrInlineOffer(
   tenancy: Tenancy,
@@ -194,7 +194,7 @@ export async function getItemQuantityForCustomer(options: {
   }
 
   // Subscriptions → ledger entries
-  const subscriptions = await options.prisma.subscription.findMany({
+  const dbSubscriptions = await options.prisma.subscription.findMany({
     where: {
       tenancyId: options.tenancy.id,
       customerType: typedToUppercase(options.customerType),
@@ -202,6 +202,10 @@ export async function getItemQuantityForCustomer(options: {
       status: { in: [SubscriptionStatus.active, SubscriptionStatus.trialing] },
     },
   });
+  const subscriptions = [
+    ...dbSubscriptions,
+    ...all subscriptions that are include-by-default and no other offer is active that's (not an add-on && in the same group), with the start date January 1st, 1973
+  ];
   for (const s of subscriptions) {
     const offer = s.offer as yup.InferType<typeof offerSchema>;
     const inc = getOrUndefined(offer.includedItems, options.itemId);
