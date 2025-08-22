@@ -2,7 +2,6 @@
 import { StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
 import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
 import {
-  cn,
   Button,
   Select,
   SelectContent,
@@ -14,6 +13,7 @@ import {
   SelectValue,
   Skeleton,
   Typography,
+  cn,
 } from "@stackframe/stack-ui";
 import { PlusCircle, Settings } from "lucide-react";
 import { Suspense, useMemo } from "react";
@@ -77,7 +77,7 @@ function Inner<AllowNull extends boolean>(props: TeamSwitcherProps<AllowNull>) {
   const navigate = app.useNavigate();
   const project = app.useProject();
   const rawTeams = user?.useTeams();
-  const selectedTeam = props.team || rawTeams?.find(team => team.id === props.teamId) || user?.selectedTeam;
+  const selectedTeam = props.team || rawTeams?.find(team => team.id === props.teamId);
   const teams = useMemo(() => rawTeams?.sort((a, b) => b.id === selectedTeam?.id ? 1 : -1), [rawTeams, selectedTeam]);
 
 

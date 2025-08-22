@@ -2,6 +2,7 @@ import { ProductionModeError } from "@stackframe/stack-shared/dist/helpers/produ
 import { AdminUserProjectsCrud, ProjectsCrud } from "@stackframe/stack-shared/dist/interface/crud/projects";
 
 import { CompleteConfig, EnvironmentConfigOverrideOverride } from "@stackframe/stack-shared/dist/config/schema";
+import { CurrentUser } from "..";
 import { StackAdminApp } from "../apps/interfaces/admin-app";
 import { AdminProjectConfig, AdminProjectConfigUpdateOptions, ProjectConfig } from "../project-configs";
 
@@ -26,6 +27,7 @@ export type AdminProject = {
 
   update(this: AdminProject, update: AdminProjectUpdateOptions): Promise<void>,
   delete(this: AdminProject): Promise<void>,
+  transfer(this: AdminProject, user: CurrentUser, newTeamId: string): Promise<void>,
 
   getConfig(this: AdminProject): Promise<CompleteConfig>,
   // NEXT_LINE_PLATFORM react-like

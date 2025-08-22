@@ -376,6 +376,9 @@ export function CollapsibleTypesSection({
         case 'project': {
           return 'bg-lime-50 dark:bg-lime-950/50 text-lime-700 dark:text-lime-300';
         }
+        case 'sendemailoptions': {
+          return 'bg-rose-50 dark:bg-rose-950/50 text-rose-700 dark:text-rose-300';
+        }
         default: {
           return 'bg-gray-50 dark:bg-gray-950/50 text-gray-700 dark:text-gray-300';
         }
