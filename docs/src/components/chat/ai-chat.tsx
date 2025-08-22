@@ -36,7 +36,7 @@ const ToolCallDisplay = ({
     const docId = toolCall.args?.id;
     let docTitle = "Loading...";
 
-    if (toolCall.result) {
+    if (toolCall.result && toolCall.result.content.length > 0) {
       const newDocTitle =
         toolCall.result.content[0].text.match(/Title:\s*(.*)/);
       if (newDocTitle && newDocTitle[1]) {
