@@ -56,7 +56,7 @@ export const domainCrudHandlers = createLazyProxy(() => createCrudHandlers(domai
   }),
   onCreate: async ({ auth, data, params }) => {
     const oldDomains = auth.tenancy.config.domains.trustedDomains;
-    if (oldDomains.length > 1000) {
+    if (Object.keys(oldDomains).length > 1000) {
       throw new StatusError(400, "This project has more than 1000 trusted domains. This is not supported. Please delete some domains to add a new one, or use wildcard domains instead.");
     }
     await projectsCrudHandlers.adminUpdate({
