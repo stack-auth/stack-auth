@@ -208,6 +208,16 @@ export async function overrideProjectConfigOverride(options: {
     oldConfig,
     options.projectConfigOverrideOverride,
   );
+
+  // large configs make our DB slow; let's prevent them early
+  const newConfigString = JSON.stringify(newConfig);
+  if (newConfigString.length > 1_000_000) {
+    captureError("override-project-config-too-large", new StackAssertionError(`Project config override for ${options.projectId} is ${(newConfigString.length/1_000_000).toFixed(1)}MB long!`));
+  }
+  if (newConfigString.length > 5_000_000) {
+    throw new StackAssertionError(`Project config override for ${options.projectId} is too large.`);
+  }
+
   await assertNoConfigOverrideErrors(projectConfigSchema, newConfig);
   await globalPrismaClient.project.update({
     where: {
