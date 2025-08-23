@@ -2,6 +2,7 @@ import { WebAuthnError, startAuthentication, startRegistration } from "@simplewe
 import { KnownErrors, StackClientInterface } from "@stackframe/stack-shared";
 import { ContactChannelsCrud } from "@stackframe/stack-shared/dist/interface/crud/contact-channels";
 import { CurrentUserCrud } from "@stackframe/stack-shared/dist/interface/crud/current-user";
+import { ItemCrud } from "@stackframe/stack-shared/dist/interface/crud/items";
 import { NotificationPreferenceCrud } from "@stackframe/stack-shared/dist/interface/crud/notification-preferences";
 import { TeamApiKeysCrud, UserApiKeysCrud, teamApiKeysCreateOutputSchema, userApiKeysCreateOutputSchema } from "@stackframe/stack-shared/dist/interface/crud/project-api-keys";
 import { ProjectPermissionsCrud } from "@stackframe/stack-shared/dist/interface/crud/project-permissions";
@@ -12,7 +13,6 @@ import { TeamMemberProfilesCrud } from "@stackframe/stack-shared/dist/interface/
 import { TeamPermissionsCrud } from "@stackframe/stack-shared/dist/interface/crud/team-permissions";
 import { TeamsCrud } from "@stackframe/stack-shared/dist/interface/crud/teams";
 import { UsersCrud } from "@stackframe/stack-shared/dist/interface/crud/users";
-import { ItemCrud } from "@stackframe/stack-shared/dist/interface/crud/items";
 import { InternalSession } from "@stackframe/stack-shared/dist/sessions";
 import { scrambleDuringCompileTime } from "@stackframe/stack-shared/dist/utils/compile-time";
 import { isBrowserLike } from "@stackframe/stack-shared/dist/utils/env";
@@ -28,6 +28,8 @@ import { deindent, mergeScopeStrings } from "@stackframe/stack-shared/dist/utils
 import { getRelativePart, isRelative } from "@stackframe/stack-shared/dist/utils/urls";
 import { generateUuid } from "@stackframe/stack-shared/dist/utils/uuids";
 import * as cookie from "cookie";
+import * as NextNavigationUnscrambled from "next/navigation"; // import the entire module to get around some static compiler warnings emitted by Next.js in some cases | THIS_LINE_PLATFORM next
+import React, { useCallback, useMemo } from "react"; // THIS_LINE_PLATFORM react-like
 import type * as yup from "yup";
 import { constructRedirectUrl } from "../../../../utils/url";
 import { addNewOAuthProviderOrScope, callOAuthCallback, signInWithOAuth } from "../../../auth";
@@ -36,18 +38,15 @@ import { ApiKey, ApiKeyCreationOptions, ApiKeyUpdateOptions, apiKeyCreationOptio
 import { GetUserOptions, HandlerUrls, OAuthScopesOnSignIn, RedirectMethod, RedirectToOptions, RequestLike, TokenStoreInit, stackAppInternalsSymbol } from "../../common";
 import { OAuthConnection } from "../../connected-accounts";
 import { ContactChannel, ContactChannelCreateOptions, ContactChannelUpdateOptions, contactChannelCreateOptionsToCrud, contactChannelUpdateOptionsToCrud } from "../../contact-channels";
+import { Customer, InlineOffer, Item } from "../../customers";
 import { NotificationCategory } from "../../notification-categories";
 import { TeamPermission } from "../../permissions";
 import { AdminOwnedProject, AdminProjectUpdateOptions, Project, adminProjectCreateOptionsToCrud } from "../../projects";
 import { EditableTeamMemberProfile, Team, TeamCreateOptions, TeamInvitation, TeamUpdateOptions, TeamUser, teamCreateOptionsToCrud, teamUpdateOptionsToCrud } from "../../teams";
 import { ActiveSession, Auth, BaseUser, CurrentUser, InternalUserExtra, ProjectCurrentUser, UserExtra, UserUpdateOptions, userUpdateOptionsToCrud } from "../../users";
-import { Customer, InlineOffer, Item } from "../../customers";
 import { StackClientApp, StackClientAppConstructorOptions, StackClientAppJson } from "../interfaces/client-app";
 import { _StackAdminAppImplIncomplete } from "./admin-app-impl";
-import { TokenObject, clientVersion, createCache, createCacheBySession, createEmptyTokenStore, getBaseUrl, getDefaultExtraRequestHeaders, getDefaultProjectId, getDefaultPublishableClientKey, getUrls, } from "./common";
-import * as NextNavigationUnscrambled from "next/navigation"; // import the entire module to get around some static compiler warnings emitted by Next.js in some cases | THIS_LINE_PLATFORM next
-import React, { useCallback, useMemo } from "react"; // THIS_LINE_PLATFORM react-like
-import { useAsyncCache } from "./common"; // THIS_LINE_PLATFORM react-like
+import { TokenObject, clientVersion, createCache, createCacheBySession, createEmptyTokenStore, getBaseUrl, getDefaultExtraRequestHeaders, getDefaultProjectId, getDefaultPublishableClientKey, getUrls, useAsyncCache, } from "./common";
 
 let isReactServer = false;
 // IF_PLATFORM next
@@ -1504,13 +1503,16 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
     }
 
     this._ensurePersistentTokenStore();
+    const session = await this._getSession();
     await signInWithOAuth(
-      this._interface, {
+      this._interface,
+      {
         provider,
         redirectUrl: this.urls.oauthCallback,
         errorRedirectUrl: this.urls.error,
         providerScope: this._oauthScopesOnSignIn[provider]?.join(" "),
-      }
+      },
+      session,
     );
   }
 
@@ -1623,10 +1625,11 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
 
   async signInWithMagicLink(code: string, options?: { noRedirect?: boolean }): Promise<Result<undefined, KnownErrors["VerificationCodeError"] | KnownErrors["InvalidTotpCode"]>> {
     this._ensurePersistentTokenStore();
+    const session = await this._getSession();
     let result;
     try {
       result = await this._catchMfaRequiredError(async () => {
-        return await this._interface.signInWithMagicLink(code);
+        return await this._interface.signInWithMagicLink(code, session);
       });
     } catch (e) {
       if (KnownErrors.InvalidTotpCode.isInstance(e)) {
@@ -1755,10 +1758,11 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
    */
   async signInWithMfa(totp: string, code: string, options?: { noRedirect?: boolean }): Promise<Result<undefined, KnownErrors["VerificationCodeError"] | KnownErrors["InvalidTotpCode"]>> {
     this._ensurePersistentTokenStore();
+    const session = await this._getSession();
     let result;
     try {
       result = await this._catchMfaRequiredError(async () => {
-        return await this._interface.signInWithMfa(totp, code);
+        return await this._interface.signInWithMfa(totp, code, session);
       });
     } catch (e) {
       if (e instanceof KnownErrors.InvalidTotpCode) {
@@ -1801,7 +1805,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
         options_json.rpId = window.location.hostname;
 
         const authentication_response = await startAuthentication({ optionsJSON: options_json });
-        return await this._interface.signInWithPasskey({ authentication_response, code });
+        return await this._interface.signInWithPasskey({ authentication_response, code }, session);
       });
     } catch (error) {
       if (error instanceof WebAuthnError) {

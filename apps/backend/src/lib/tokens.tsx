@@ -74,8 +74,8 @@ export async function decodeAccessToken(accessToken: string, { allowAnonymous }:
 
       payload = await verifyJWT({
         allowedIssuers: [
-          getIssuer(aud, false),
-          ...(allowAnonymous ? [getIssuer(aud, true)] : []),
+          getIssuer(aud.split(":")[0], false),
+          ...(allowAnonymous ? [getIssuer(aud.split(":")[0], true)] : []),
         ],
         jwt: accessToken,
       });

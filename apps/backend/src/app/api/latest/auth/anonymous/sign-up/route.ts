@@ -29,7 +29,6 @@ export const POST = createSmartRouteHandler({
     const createdUser = await usersCrudHandlers.adminCreate({
       tenancy,
       data: {
-        display_name: "Anonymous user",
         is_anonymous: true,
       },
       allowedErrorTypes: [],

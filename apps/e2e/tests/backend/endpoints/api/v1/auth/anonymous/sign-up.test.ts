@@ -5,6 +5,9 @@ it("allows anonymous users to sign up on the internal project", async ({ expect 
   await Auth.Anonymous.signUp();
   const me = await niceBackendFetch("/api/v1/users/me", {
     accessType: "client",
+    headers: {
+      "x-stack-allow-anonymous-user": "true",
+    },
   });
   expect(me).toMatchInlineSnapshot(`
     NiceResponse {
@@ -13,7 +16,7 @@ it("allows anonymous users to sign up on the internal project", async ({ expect 
         "auth_with_email": false,
         "client_metadata": null,
         "client_read_only_metadata": null,
-        "display_name": "Anonymous user",
+        "display_name": null,
         "has_password": false,
         "id": "<stripped UUID>",
         "is_anonymous": true,
@@ -24,14 +27,8 @@ it("allows anonymous users to sign up on the internal project", async ({ expect 
         "primary_email_verified": false,
         "profile_image_url": null,
         "requires_totp_mfa": false,
-        "selected_team": {
-          "client_metadata": null,
-          "client_read_only_metadata": null,
-          "display_name": "Anonymous user's Team",
-          "id": "<stripped UUID>",
-          "profile_image_url": null,
-        },
-        "selected_team_id": "<stripped UUID>",
+        "selected_team": null,
+        "selected_team_id": null,
         "signed_up_at_millis": <stripped field 'signed_up_at_millis'>,
       },
       "headers": Headers { <some fields may have been hidden> },

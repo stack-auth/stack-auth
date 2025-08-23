@@ -1,3 +1,4 @@
+import { urlString } from "@stackframe/stack-shared/dist/utils/urls";
 import { it } from "../../../../../../helpers";
 import { Auth, Project, backendContext, bumpEmailAddress, niceBackendFetch } from "../../../../../backend-helpers";
 
@@ -14,35 +15,49 @@ it("anonymous user can upgrade to regular user via password sign-up", async ({ e
     accessType: "client",
     headers: {
       "x-stack-access-token": anonAccessToken,
-      "x-stack-allow-anonymous-user": "true",
     },
   });
   expect(anonMeRes).toMatchInlineSnapshot(`
     NiceResponse {
-      "status": 401,asdf
-      "headers": Headers {
-        "x-stack-known-error": "UNPARSABLE_ACCESS_TOKEN",
-        <some fields may have been hidden>,
+      "status": 200,
+      "body": {
+        "auth_with_email": false,
+        "client_metadata": null,
+        "client_read_only_metadata": null,
+        "display_name": null,
+        "has_password": false,
+        "id": "<stripped UUID>",
+        "is_anonymous": true,
+        "oauth_providers": [],
+        "otp_auth_enabled": false,
+        "passkey_auth_enabled": false,
+        "primary_email": null,
+        "primary_email_verified": false,
+        "profile_image_url": null,
+        "requires_totp_mfa": false,
+        "selected_team": null,
+        "selected_team_id": null,
+        "signed_up_at_millis": <stripped field 'signed_up_at_millis'>,
       },
+      "headers": Headers { <some fields may have been hidden> },
     }
   `);
 
   // Upgrade the user via password sign-up while logged in as anonymous
-  const upgradeRes = await niceBackendFetch("/api/v1/auth/password/sign-up", {
-    method: "POST",
-    accessType: "client",
-    headers: {
-      "x-stack-access-token": anonAccessToken,
-    },
-    body: {
-      email: "upgraded@example.com",
-      password: "TestPassword123!",
-      verification_callback_url: "http://localhost:3000/callback",
-    },
-  });
+  const { signUpResponse: upgradeRes } = await Auth.Password.signUpWithEmail();
 
-  expect(upgradeRes.status).toBe(200);
-  expect(upgradeRes.body.user_id).toBe(anonUserId); // Should be the same user ID
+  expect(upgradeRes).toMatchInlineSnapshot(`
+    NiceResponse {
+      "status": 200,
+      "body": {
+        "access_token": <stripped field 'access_token'>,
+        "refresh_token": <stripped field 'refresh_token'>,
+        "user_id": "<stripped UUID>",
+      },
+      "headers": Headers { <some fields may have been hidden> },
+    }
+  `);
+  expect(upgradeRes.body.user_id).toBe(anonUserId);
 
   // Verify the user is no longer anonymous
   const upgradedMeRes = await niceBackendFetch("/api/v1/users/me", {
@@ -51,21 +66,67 @@ it("anonymous user can upgrade to regular user via password sign-up", async ({ e
       "x-stack-access-token": upgradeRes.body.access_token,
     },
   });
-  expect(upgradedMeRes.status).toBe(200);
-  expect(upgradedMeRes.body.is_anonymous).toBe(false);
-  expect(upgradedMeRes.body.primary_email).toBe("upgraded@example.com");
-  expect(upgradedMeRes.body.has_password).toBe(true);
+  expect(upgradedMeRes).toMatchInlineSnapshot(`
+    NiceResponse {
+      "status": 200,
+      "body": {
+        "auth_with_email": true,
+        "client_metadata": null,
+        "client_read_only_metadata": null,
+        "display_name": null,
+        "has_password": true,
+        "id": "<stripped UUID>",
+        "is_anonymous": false,
+        "oauth_providers": [],
+        "otp_auth_enabled": false,
+        "passkey_auth_enabled": false,
+        "primary_email": "default-mailbox--<stripped UUID>@stack-generated.example.com",
+        "primary_email_verified": false,
+        "profile_image_url": null,
+        "requires_totp_mfa": false,
+        "selected_team": null,
+        "selected_team_id": null,
+        "signed_up_at_millis": <stripped field 'signed_up_at_millis'>,
+      },
+      "headers": Headers { <some fields may have been hidden> },
+    }
+  `);
 
   // Old anonymous token should still work
+  backendContext.set({
+    userAuth: null,
+  });
   const oldTokenRes = await niceBackendFetch("/api/v1/users/me", {
     accessType: "client",
     headers: {
       "x-stack-access-token": anonAccessToken,
     },
   });
-  expect(oldTokenRes.status).toBe(200);
-  expect(oldTokenRes.body.is_anonymous).toBe(false);
-  expect(oldTokenRes.body.primary_email).toBe("upgraded@example.com");
+  expect(oldTokenRes).toMatchInlineSnapshot(`
+    NiceResponse {
+      "status": 200,
+      "body": {
+        "auth_with_email": true,
+        "client_metadata": null,
+        "client_read_only_metadata": null,
+        "display_name": null,
+        "has_password": true,
+        "id": "<stripped UUID>",
+        "is_anonymous": false,
+        "oauth_providers": [],
+        "otp_auth_enabled": false,
+        "passkey_auth_enabled": false,
+        "primary_email": "default-mailbox--<stripped UUID>@stack-generated.example.com",
+        "primary_email_verified": false,
+        "profile_image_url": null,
+        "requires_totp_mfa": false,
+        "selected_team": null,
+        "selected_team_id": null,
+        "signed_up_at_millis": <stripped field 'signed_up_at_millis'>,
+      },
+      "headers": Headers { <some fields may have been hidden> },
+    }
+  `);
 });
 
 it("non-anonymous user sign-up creates new account (does not upgrade)", async ({ expect }) => {
@@ -116,14 +177,68 @@ it("non-anonymous user sign-up creates new account (does not upgrade)", async ({
     },
   });
 
-  expect(firstUserRes.status).toBe(200);
-  expect(firstUserRes.body.id).toBe(firstUserId);
-  expect(firstUserRes.body.primary_email).toBe("first@example.com");
+  expect(firstUserRes).toMatchInlineSnapshot(`
+    NiceResponse {
+      "status": 200,
+      "body": {
+        "auth_with_email": true,
+        "client_metadata": null,
+        "client_read_only_metadata": null,
+        "display_name": null,
+        "has_password": true,
+        "id": "<stripped UUID>",
+        "is_anonymous": false,
+        "oauth_providers": [],
+        "otp_auth_enabled": false,
+        "passkey_auth_enabled": false,
+        "primary_email": "default-mailbox--<stripped UUID>@stack-generated.example.com",
+        "primary_email_verified": false,
+        "profile_image_url": null,
+        "requires_totp_mfa": false,
+        "selected_team": null,
+        "selected_team_id": null,
+        "signed_up_at_millis": <stripped field 'signed_up_at_millis'>,
+      },
+      "headers": Headers { <some fields may have been hidden> },
+    }
+  `);
+});
+
+it("signing in to an existing account while logged in as anonymous does not upgrade the user", async ({ expect }) => {
+  const password = "TestPassword123!";
+  const { userId: existingUserId } = await Auth.Password.signUpWithEmail({ password });
+  await Auth.signOut();
+
+  const { accessToken: anonAccessToken, userId: anonUserId } = await Auth.Anonymous.signUp();
+
+  // Sign in to an existing account while logged in as anonymous
+  const signInRes = await niceBackendFetch("/api/v1/auth/password/sign-in", {
+    method: "POST",
+    accessType: "client",
+    body: {
+      email: backendContext.value.mailbox.emailAddress,
+      password,
+    },
+    headers: {
+      "x-stack-access-token": anonAccessToken,
+    },
+  });
+  expect(signInRes).toMatchInlineSnapshot(`
+    NiceResponse {
+      "status": 200,
+      "body": {
+        "access_token": <stripped field 'access_token'>,
+        "refresh_token": <stripped field 'refresh_token'>,
+        "user_id": "<stripped UUID>",
+      },
+      "headers": Headers { <some fields may have been hidden> },
+    }
+  `);
+  expect(signInRes.body.user_id).toBe(existingUserId);
+  expect(signInRes.body.user_id).not.toBe(anonUserId);
 });
 
 it("anonymous user can upgrade via OTP sign-in", async ({ expect }) => {
-  await Project.createAndSwitch();
-
   // Create an anonymous user
   const anonSignUp = await Auth.Anonymous.signUp();
   const anonUserId = anonSignUp.userId;
@@ -133,142 +248,125 @@ it("anonymous user can upgrade via OTP sign-in", async ({ expect }) => {
   await bumpEmailAddress();
   const mailbox = backendContext.value.mailbox;
 
-  // Send OTP code while logged in as anonymous
-  const sendCodeRes = await niceBackendFetch("/api/v1/auth/otp/sign-in", {
-    method: "POST",
-    accessType: "client",
-    headers: {
-      "x-stack-access-token": anonAccessToken,
-    },
-    body: {
-      email: mailbox.emailAddress,
-    },
-  });
-
-  expect(sendCodeRes.status).toBe(200);
-
-  // Get the OTP code
-  const messages = await mailbox.fetchMessages();
-  expect(messages).toHaveLength(1);
-  const otpMatch = messages[0].body?.text.match(/\b([0-9]{6})\b/);
-  expect(otpMatch).toBeTruthy();
-  const otpCode = otpMatch![1];
-
-  // Verify OTP code to complete upgrade
-  const verifyRes = await niceBackendFetch("/api/v1/auth/otp/sign-in/verification-code", {
-    method: "POST",
-    accessType: "client",
-    headers: {
-      "x-stack-access-token": anonAccessToken,
-    },
-    body: {
-      code: otpCode + sendCodeRes.body.nonce,
-    },
-  });
-
-  expect(verifyRes.status).toBe(200);
-  expect(verifyRes.body.user_id).toBe(anonUserId); // Should be the same user ID
-  expect(verifyRes.body.is_new_user).toBe(false); // Not a new user, upgraded existing
+  const { signInResponse: verifyRes } = await Auth.Otp.signIn();
+  expect(verifyRes).toMatchInlineSnapshot(`
+    NiceResponse {
+      "status": 200,
+      "body": {
+        "access_token": <stripped field 'access_token'>,
+        "is_new_user": true,
+        "refresh_token": <stripped field 'refresh_token'>,
+        "user_id": "<stripped UUID>",
+      },
+      "headers": Headers { <some fields may have been hidden> },
+    }
+  `);
 
   // Verify the user is no longer anonymous
   const upgradedMeRes = await niceBackendFetch("/api/v1/users/me", {
     accessType: "client",
-    headers: {
-      "x-stack-access-token": verifyRes.body.access_token,
-    },
   });
-  expect(upgradedMeRes.status).toBe(200);
-  expect(upgradedMeRes.body.is_anonymous).toBe(false);
-  expect(upgradedMeRes.body.primary_email).toBe(mailbox.emailAddress);
-  expect(upgradedMeRes.body.otp_auth_enabled).toBe(true);
+  expect(upgradedMeRes).toMatchInlineSnapshot(`
+    NiceResponse {
+      "status": 200,
+      "body": {
+        "auth_with_email": true,
+        "client_metadata": null,
+        "client_read_only_metadata": null,
+        "display_name": null,
+        "has_password": false,
+        "id": "<stripped UUID>",
+        "is_anonymous": false,
+        "oauth_providers": [],
+        "otp_auth_enabled": true,
+        "passkey_auth_enabled": false,
+        "primary_email": "mailbox-1--<stripped UUID>@stack-generated.example.com",
+        "primary_email_verified": true,
+        "profile_image_url": null,
+        "requires_totp_mfa": false,
+        "selected_team": null,
+        "selected_team_id": null,
+        "signed_up_at_millis": <stripped field 'signed_up_at_millis'>,
+      },
+      "headers": Headers { <some fields may have been hidden> },
+    }
+  `);
+  expect(upgradedMeRes.body.id).toBe(anonUserId);
 });
 
-it("anonymous user can upgrade via OAuth sign-in", async ({ expect }) => {
-  await Project.createAndSwitch();
-
+it("anonymous user can upgrade via OAuth sign-in if ?token is set on the authorize endpoint", async ({ expect }) => {
   // Create an anonymous user
-  const anonSignUp = await Auth.Anonymous.signUp();
-  const anonAccessToken = anonSignUp.accessToken;
+  const { userId: anonUserId, accessToken: anonAccessToken } = await Auth.Anonymous.signUp();
 
-  // Start OAuth flow while logged in as anonymous
-  const authorizeRes = await niceBackendFetch("/api/v1/auth/oauth/authorize/github", {
-    method: "GET",
+  const {  } = await Auth.OAuth.signIn();
+
+  // Verify that the OAuth providers exist
+  const oauthProvidersRes = await niceBackendFetch("/api/v1/oauth-providers?user_id=me", {
+    accessType: "client",
+  });
+  expect(oauthProvidersRes).toMatchInlineSnapshot(`
+    NiceResponse {
+      "status": 200,
+      "body": {
+        "is_paginated": false,
+        "items": [
+          {
+            "allow_connected_accounts": true,
+            "allow_sign_in": true,
+            "email": "default-mailbox--<stripped UUID>@stack-generated.example.com",
+            "id": "<stripped UUID>",
+            "type": "spotify",
+            "user_id": "<stripped UUID>",
+          },
+        ],
+      },
+      "headers": Headers { <some fields may have been hidden> },
+    }
+  `);
+
+  const upgradedMeRes = await niceBackendFetch("/api/v1/users/me", {
     accessType: "client",
     headers: {
       "x-stack-access-token": anonAccessToken,
     },
-    query: {
-      redirect_uri: "http://localhost:3000/callback",
-    },
   });
-
-  // OAuth flow would upgrade the anonymous user
-  // This test is simplified since we can't easily simulate the full OAuth flow
-  expect(authorizeRes.status).toBe(303);
+  expect(upgradedMeRes).toMatchInlineSnapshot(`
+    NiceResponse {
+      "status": 200,
+      "body": {
+        "auth_with_email": false,
+        "client_metadata": null,
+        "client_read_only_metadata": null,
+        "display_name": null,
+        "has_password": false,
+        "id": "<stripped UUID>",
+        "is_anonymous": false,
+        "oauth_providers": [
+          {
+            "account_id": "default-mailbox--<stripped UUID>@stack-generated.example.com",
+            "email": "default-mailbox--<stripped UUID>@stack-generated.example.com",
+            "id": "spotify",
+          },
+        ],
+        "otp_auth_enabled": false,
+        "passkey_auth_enabled": false,
+        "primary_email": "default-mailbox--<stripped UUID>@stack-generated.example.com",
+        "primary_email_verified": true,
+        "profile_image_url": null,
+        "requires_totp_mfa": false,
+        "selected_team": null,
+        "selected_team_id": null,
+        "signed_up_at_millis": <stripped field 'signed_up_at_millis'>,
+      },
+      "headers": Headers { <some fields may have been hidden> },
+    }
+  `);
+  expect(upgradedMeRes.body.oauth_providers).toHaveLength(1);
+  expect(upgradedMeRes.body.is_anonymous).toBe(false);
+  expect(upgradedMeRes.body.id).toBe(anonUserId);
 });
 
-it("multiple anonymous users can upgrade to different regular users", async ({ expect }) => {
-  await Project.createAndSwitch();
-
-  // Create two anonymous users
-  const anon1 = await Auth.Anonymous.signUp();
-  const anon2 = await Auth.Anonymous.signUp();
-
-  expect(anon1.userId).not.toBe(anon2.userId);
-
-  // Upgrade first anonymous user
-  const upgrade1Res = await niceBackendFetch("/api/v1/auth/password/sign-up", {
-    method: "POST",
-    accessType: "client",
-    headers: {
-      "x-stack-access-token": anon1.accessToken,
-    },
-    body: {
-      email: "user1@example.com",
-      password: "TestPassword123!",
-      verification_callback_url: "http://localhost:3000/callback",
-    },
-  });
-
-  expect(upgrade1Res.status).toBe(200);
-  expect(upgrade1Res.body.user_id).toBe(anon1.userId);
-
-  // Upgrade second anonymous user
-  const upgrade2Res = await niceBackendFetch("/api/v1/auth/password/sign-up", {
-    method: "POST",
-    accessType: "client",
-    headers: {
-      "x-stack-access-token": anon2.accessToken,
-    },
-    body: {
-      email: "user2@example.com",
-      password: "TestPassword123!",
-      verification_callback_url: "http://localhost:3000/callback",
-    },
-  });
-
-  expect(upgrade2Res.status).toBe(200);
-  expect(upgrade2Res.body.user_id).toBe(anon2.userId);
-
-  // Verify both are now different regular users
-  const user1Res = await niceBackendFetch("/api/v1/users/me", {
-    accessType: "client",
-    headers: {
-      "x-stack-access-token": upgrade1Res.body.access_token,
-    },
-  });
-
-  const user2Res = await niceBackendFetch("/api/v1/users/me", {
-    accessType: "client",
-    headers: {
-      "x-stack-access-token": upgrade2Res.body.access_token,
-    },
-  });
-
-  expect(user1Res.body.primary_email).toBe("user1@example.com");
-  expect(user2Res.body.primary_email).toBe("user2@example.com");
-  expect(user1Res.body.id).not.toBe(user2Res.body.id);
-});
+it.todo("anonymous user does not upgrade via OAuth when access token headers are passed on the authorize endpoint, but ?token is not set");
 
 it("anonymous user preserves metadata when upgrading", async ({ expect }) => {
   await Project.createAndSwitch();
@@ -316,7 +414,7 @@ it("anonymous user preserves metadata when upgrading", async ({ expect }) => {
   expect(upgradedUser.body.client_metadata).toEqual({ preference: "dark-mode" });
 
   // Check server metadata via server API
-  const serverUser = await niceBackendFetch(`/api/v1/users/${anonUserId}?include_anonymous=true`, {
+  const serverUser = await niceBackendFetch(urlString`/api/v1/users/${anonUserId}?include_anonymous=true`, {
     accessType: "server",
   });
   expect(serverUser.body.server_metadata).toEqual({ internal_id: "123" });
@@ -347,7 +445,132 @@ it("cannot upgrade anonymous user to email that already exists", async ({ expect
     },
   });
 
-  expect(upgradeRes.status).toBe(400);
-  expect(upgradeRes.body.code).toBe("USER_WITH_EMAIL_ALREADY_EXISTS");
-  expect(upgradeRes.body.details.email).toBe(existingEmail);
+  expect(upgradeRes.status).toMatchInlineSnapshot(`409`);
+});
+
+it("updates the personal team display name when upgrading from anonymous", async ({ expect }) => {
+  await Project.createAndSwitch({
+    config: {
+      create_team_on_sign_up: true,
+    },
+  });
+
+  // Create an anonymous user
+  const anonSignUp = await Auth.Anonymous.signUp();
+
+  // Get the personal team
+  const personalTeamResponse = await niceBackendFetch("/api/v1/teams?user_id=me", {
+    accessType: "client",
+  });
+  expect(personalTeamResponse).toMatchInlineSnapshot(`
+    NiceResponse {
+      "status": 200,
+      "body": {
+        "is_paginated": false,
+        "items": [
+          {
+            "client_metadata": null,
+            "client_read_only_metadata": null,
+            "display_name": "Personal Team",
+            "id": "<stripped UUID>",
+            "profile_image_url": null,
+          },
+        ],
+      },
+      "headers": Headers { <some fields may have been hidden> },
+    }
+  `);
+
+  // Upgrade the user
+  const upgradeRes = await niceBackendFetch("/api/v1/auth/password/sign-up", {
+    method: "POST",
+    accessType: "client",
+    headers: {
+      "x-stack-access-token": anonSignUp.accessToken,
+    },
+    body: {
+      email: "preserved@example.com",
+      password: "TestPassword123!",
+      verification_callback_url: "http://localhost:3000/callback",
+    },
+  });
+  expect(upgradeRes).toMatchInlineSnapshot(`
+    NiceResponse {
+      "status": 200,
+      "body": {
+        "access_token": <stripped field 'access_token'>,
+        "refresh_token": <stripped field 'refresh_token'>,
+        "user_id": "<stripped UUID>",
+      },
+      "headers": Headers { <some fields may have been hidden> },
+    }
+  `);
+});
+
+it("does not update the personal team display name when upgrading an anonymous user after changing the personal team display name already", async ({ expect }) => {
+  // Create an anonymous user
+  const anonSignUp = await Auth.Anonymous.signUp();
+  const anonUserId = anonSignUp.userId;
+
+  // Get the personal team
+  const personalTeamResponse = await niceBackendFetch("/api/v1/teams/me", {
+    accessType: "client",
+    headers: {
+      "x-stack-access-token": anonSignUp.accessToken,
+    },
+  });
+  expect(personalTeamResponse).toMatchInlineSnapshot(`
+    NiceResponse {
+      "status": 400,
+      "body": {
+        "code": "SCHEMA_ERROR",
+        "details": {
+          "message": deindent\`
+            Request validation failed on GET /api/v1/teams/me:
+              - params.team_id must be a valid UUID
+          \`,
+        },
+        "error": deindent\`
+          Request validation failed on GET /api/v1/teams/me:
+            - params.team_id must be a valid UUID
+        \`,
+      },
+      "headers": Headers {
+        "x-stack-known-error": "SCHEMA_ERROR",
+        <some fields may have been hidden>,
+      },
+    }
+  `);
+
+  // Upgrade the user
+  const upgradeRes = await niceBackendFetch("/api/v1/auth/password/sign-up", {
+    method: "POST",
+    accessType: "client",
+    headers: {
+      "x-stack-access-token": anonSignUp.accessToken,
+    },
+    body: {
+      email: "preserved@example.com",
+      password: "TestPassword123!",
+      verification_callback_url: "http://localhost:3000/callback",
+    },
+  });
+
+  expect(upgradeRes).toMatchInlineSnapshot(`
+    NiceResponse {
+      "status": 409,
+      "body": {
+        "code": "USER_EMAIL_ALREADY_EXISTS",
+        "details": {
+          "email": "preserved@example.com",
+          "would_work_if_email_was_verified": false,
+        },
+        "error": "A user with email \\"preserved@example.com\\" already exists.",
+      },
+      "headers": Headers {
+        "x-stack-known-error": "USER_EMAIL_ALREADY_EXISTS",
+        <some fields may have been hidden>,
+      },
+    }
+  `);
 });

@@ -10,7 +10,7 @@ import { pick } from "./objects";
 function getStackServerSecret() {
   const STACK_SERVER_SECRET = process.env.STACK_SERVER_SECRET ?? "";
   try {
-    jose.base64url.decode(STACK_SERVER_SECRET);
+    return jose.base64url.decode(STACK_SERVER_SECRET);
   } catch (e) {
     throw new StackAssertionError("STACK_SERVER_SECRET is not valid. Please use the generateKeys script to generate a new secret.", { cause: e });
   }
@@ -93,7 +93,7 @@ export async function getPrivateJwks(options: {
       .digest()
   );
   const perAudienceSecret = getHashOfJwkInfo("stack-jwk-audience-secret");
-  const perAudienceKid = getHashOfJwkInfo("stack-jwk-kid");
+  const perAudienceKid = getHashOfJwkInfo("stack-jwk-kid").slice(0, 12);
 
   return [
     // TODO next-release: make this not take precedence; then, in the release after that, remove it entirely

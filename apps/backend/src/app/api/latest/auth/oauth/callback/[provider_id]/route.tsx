@@ -354,7 +354,7 @@ const handler = createSmartRouteHandler({
                   }
 
                   const currentUser = projectUserId ? await usersCrudHandlers.adminRead({ tenancy, user_id: projectUserId }) : null;
-                  const newAccount = await createOrUpgradeAnonymousUser(
+                  const newAccountBeforeAuthMethod = await createOrUpgradeAnonymousUser(
                     tenancy,
                     currentUser,
                     {
@@ -363,51 +363,36 @@ const handler = createSmartRouteHandler({
                       primary_email: userInfo.email,
                       primary_email_verified: userInfo.emailVerified,
                       primary_email_auth_enabled: primaryEmailAuthEnabled,
-                      oauth_providers: [{
-                        id: provider.id,
-                        account_id: userInfo.accountId,
-                        email: userInfo.email,
-                      }],
                     },
                     [],
                   );
-
-
-                  await usersCrudHandlers.adminCreate({
-                    tenancy,
+                  const authMethod = await prisma.authMethod.create({
                     data: {
-                      display_name: userInfo.displayName,
-                      profile_image_url: userInfo.profileImageUrl || undefined,
-                      primary_email: userInfo.email,
-                      primary_email_verified: userInfo.emailVerified,
-                      primary_email_auth_enabled: primaryEmailAuthEnabled,
-                      oauth_providers: [{
-                        id: provider.id,
-                        account_id: userInfo.accountId,
-                        email: userInfo.email,
-                      }],
-                    },
+                      tenancyId: tenancy.id,
+                      projectUserId: newAccountBeforeAuthMethod.id,
+                    }
                   });
-
-                  const oauthAccount = await prisma.projectUserOAuthAccount.findUnique({
-                    where: {
-                      tenancyId_configOAuthProviderId_projectUserId_providerAccountId: {
-                        tenancyId: outerInfo.tenancyId,
-                        configOAuthProviderId: provider.id,
-                        providerAccountId: userInfo.accountId,
-                        projectUserId: newAccount.id,
+                  const oauthAccount = await prisma.projectUserOAuthAccount.create({
+                    data: {
+                      tenancyId: tenancy.id,
+                      projectUserId: newAccountBeforeAuthMethod.id,
+                      configOAuthProviderId: provider.id,
+                      providerAccountId: userInfo.accountId,
+                      email: userInfo.email,
+                      oauthAuthMethod: {
+                        create: {
+                          authMethodId: authMethod.id,
+                        }
                       },
-                    },
+                      allowConnectedAccounts: true,
+                      allowSignIn: true,
+                    }
                   });
-
-                  if (!oauthAccount) {
-                    throw new StackAssertionError("OAuth account not found");
-                  }
 
                   await storeTokens(oauthAccount.id);
 
                   return {
-                    id: newAccount.id,
+                    id: newAccountBeforeAuthMethod.id,
                     newUser: true,
                     afterCallbackRedirectUrl,
                   };

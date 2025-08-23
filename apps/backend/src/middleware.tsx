@@ -30,6 +30,7 @@ const corsAllowedRequestHeaders = [
   // User auth
   'x-stack-refresh-token',
   'x-stack-access-token',
+  'x-stack-allow-anonymous-user',
 
   // Sentry
   'baggage',

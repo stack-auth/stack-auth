@@ -1,11 +1,12 @@
 import { usersCrudHandlers } from "@/app/api/latest/users/crud";
 import { UsersCrud } from "@stackframe/stack-shared/dist/interface/crud/users";
+import { KeyIntersect } from "@stackframe/stack-shared/dist/utils/types";
 import { Tenancy } from "./tenancies";
 
 export async function createOrUpgradeAnonymousUser(
   tenancy: Tenancy,
   currentUser: UsersCrud["Admin"]["Read"] | null,
-  createOrUpdate: UsersCrud["Admin"]["Create"] & UsersCrud["Admin"]["Update"],
+  createOrUpdate: KeyIntersect<UsersCrud["Admin"]["Create"], UsersCrud["Admin"]["Update"]>,
   allowedErrorTypes: (new (...args: any) => any)[],
 ): Promise<UsersCrud["Admin"]["Read"]> {
   if (currentUser?.is_anonymous) {
