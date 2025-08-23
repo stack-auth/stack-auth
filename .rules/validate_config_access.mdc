@@ -1,0 +1,31 @@
+---
+name: validate-config-access
+description: Use safe property access methods when working with configuration objects
+globs: ['*.ts', '*.tsx']
+alwaysApply: true
+---
+
+Use safe property access methods like `has()` and `get()` instead of direct property access or `in` operator when working with configuration objects.
+
+BAD:
+```typescript
+if (!(currentActiveTheme in themeList)) {
+  throw new Error('Theme not found');
+}
+
+return themeList[templateThemeId].tsxSource;
+```
+
+GOOD:
+```typescript
+if (!has(themeList, 'currentActiveTheme')) {
+  throw new Error('Theme not found'); 
+}
+
+return get(themeList, 'templateThemeId.tsxSource');
+```
+
+WHY:
+- Prevents prototype pollution vulnerabilities
+- Provides type-safe access to nested properties
+- Handles undefined/null values gracefully
