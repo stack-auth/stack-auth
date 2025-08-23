@@ -1,14 +1,13 @@
 import { Prisma } from "@prisma/client";
-import { Config, getInvalidConfigReason, normalize, override } from "@stackframe/stack-shared/dist/config/format";
-import { BranchConfigOverride, BranchConfigOverrideOverride, BranchIncompleteConfig, BranchRenderedConfig, CompleteConfig, EnvironmentConfigOverride, EnvironmentConfigOverrideOverride, EnvironmentIncompleteConfig, EnvironmentRenderedConfig, OrganizationConfigOverride, OrganizationConfigOverrideOverride, OrganizationIncompleteConfig, ProjectConfigOverride, ProjectConfigOverrideOverride, ProjectIncompleteConfig, ProjectRenderedConfig, applyBranchDefaults, applyEnvironmentDefaults, applyOrganizationDefaults, applyProjectDefaults, assertNoConfigOverrideErrors, branchConfigSchema, environmentConfigSchema, getConfigOverrideErrors, getIncompleteConfigWarnings, migrateConfigOverride, organizationConfigSchema, projectConfigSchema, sanitizeBranchConfig, sanitizeEnvironmentConfig, sanitizeOrganizationConfig, sanitizeProjectConfig } from "@stackframe/stack-shared/dist/config/schema";
+import { normalize, override } from "@stackframe/stack-shared/dist/config/format";
+import { BranchConfigOverride, BranchConfigOverrideOverride, BranchRenderedConfig, CompleteConfig, EnvironmentConfigOverride, EnvironmentConfigOverrideOverride, EnvironmentRenderedConfig, OrganizationConfigOverride, ProjectConfigOverride, ProjectConfigOverrideOverride, ProjectRenderedConfig, applyBranchDefaults, applyEnvironmentDefaults, applyOrganizationDefaults, applyProjectDefaults, assertNoConfigOverrideErrors, branchConfigSchema, environmentConfigSchema, migrateConfigOverride, organizationConfigSchema, projectConfigSchema, sanitizeBranchConfig, sanitizeEnvironmentConfig, sanitizeOrganizationConfig, sanitizeProjectConfig } from "@stackframe/stack-shared/dist/config/schema";
 import { ProjectsCrud } from "@stackframe/stack-shared/dist/interface/crud/projects";
-import { yupBoolean, yupMixed, yupObject, yupRecord, yupString, yupUnion } from "@stackframe/stack-shared/dist/schema-fields";
+import { yupMixed, yupObject } from "@stackframe/stack-shared/dist/schema-fields";
 import { isTruthy } from "@stackframe/stack-shared/dist/utils/booleans";
 import { StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
 import { filterUndefined, typedEntries } from "@stackframe/stack-shared/dist/utils/objects";
 import { Result } from "@stackframe/stack-shared/dist/utils/results";
 import { deindent, stringCompare } from "@stackframe/stack-shared/dist/utils/strings";
-import * as yup from "yup";
 import { RawQuery, globalPrismaClient, rawQuery } from "../prisma-client";
 import { listPermissionDefinitionsFromConfig } from "./permissions";
 import { DEFAULT_BRANCH_ID } from "./tenancies";
@@ -243,6 +242,16 @@ export async function overrideEnvironmentConfigOverride(options: {
     oldConfig,
     options.environmentConfigOverrideOverride,
   );
+
+  // large configs make our DB slow; let's prevent them early
+  const newConfigString = JSON.stringify(newConfig);
+  if (newConfigString.length > 1_000_000) {
+    captureError("override-environment-config-too-large", new StackAssertionError(`Environment config override for ${options.projectId}/${options.branchId} is ${(newConfigString.length/1_000_000).toFixed(1)}MB long!`));
+  }
+  if (newConfigString.length > 5_000_000) {
+    throw new StackAssertionError(`Environment config override for ${options.projectId}/${options.branchId} is too large.`);
+  }
+
   await assertNoConfigOverrideErrors(environmentConfigSchema, newConfig);
   await globalPrismaClient.environmentConfigOverride.upsert({
     where: {
