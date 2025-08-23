@@ -8,7 +8,7 @@ import { createLazyProxy } from "@stackframe/stack-shared/dist/utils/proxies";
 import { stringCompare } from "@stackframe/stack-shared/dist/utils/strings";
 import { projectsCrudHandlers } from "../../../internal/projects/current/crud";
 
-const domainSchema = schemaFields.urlSchema.defined()
+const domainSchema = schemaFields.wildcardUrlSchema.max(300).defined()
   .matches(/^https?:\/\//, 'URL must start with http:// or https://')
   .meta({ openapiField: { description: 'URL. Must start with http:// or https://', exampleValue: 'https://example.com' } });
 
