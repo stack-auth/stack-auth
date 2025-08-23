@@ -2,11 +2,10 @@
 
 import { FormDialog } from "@/components/form-dialog";
 import { InputField, SelectField } from "@/components/form-fields";
-import { DayIntervalSelectorField } from "@/components/form-fields/day-interval-selector-field";
 import { AdminProject } from "@stackframe/stack";
 import { branchPaymentsSchema } from "@stackframe/stack-shared/dist/config/schema";
-import { AccordionContent, AccordionItem, Accordion, toast, AccordionTrigger } from "@stackframe/stack-ui";
-import { dayIntervalOrNeverSchema, userSpecifiedIdSchema } from "@stackframe/stack-shared/dist/schema-fields";
+import { toast } from "@stackframe/stack-ui";
+import { userSpecifiedIdSchema } from "@stackframe/stack-shared/dist/schema-fields";
 import { has } from "@stackframe/stack-shared/dist/utils/objects";
 import * as yup from "yup";
 
@@ -32,9 +31,6 @@ export function ItemDialog({ open, onOpenChange, project, mode, initial }: Props
     itemId: userSpecifiedIdSchema("itemId").defined().label("Item ID"),
     displayName: yup.string().optional().label("Display Name"),
     customerType: yup.string().oneOf(["user", "team", "custom"]).defined().label("Customer Type"),
-    defaultQuantity: yup.number().min(0).default(0).label("Default Quantity"),
-    defaultRepeat: dayIntervalOrNeverSchema.optional().label("Default Repeat"),
-    defaultExpires: yup.string().oneOf(["never", "when-repeated"]).optional().label("Default Expires"),
   });
 
   return (
@@ -62,11 +58,6 @@ export function ItemDialog({ open, onOpenChange, project, mode, initial }: Props
           [`payments.items.${values.itemId}`]: {
             displayName: values.displayName,
             customerType: values.customerType,
-            default: {
-              quantity: values.defaultQuantity,
-              repeat: values.defaultRepeat,
-              expires: values.defaultExpires,
-            },
           },
         });
       }}
@@ -79,20 +70,6 @@ export function ItemDialog({ open, onOpenChange, project, mode, initial }: Props
             { value: "custom", label: "Custom" },
           ]} />
           <InputField control={form.control} name={"displayName"} label="Display Name" placeholder="Pro Features" />
-
-          <Accordion type="single" collapsible>
-            <AccordionItem value="item-1" className="border-0">
-              <AccordionTrigger>Defaults</AccordionTrigger>
-              <AccordionContent className="space-y-4">
-                <InputField control={form.control} name={"defaultQuantity"} label="Quantity" type="number" />
-                <DayIntervalSelectorField control={form.control} name={"defaultRepeat"} label="Repeat" unsetLabel="None" />
-                <SelectField control={form.control} name={"defaultExpires"} label="Expires" options={[
-                  { value: "never", label: "Never" },
-                  { value: "when-repeated", label: "When Repeated" },
-                ]} />
-              </AccordionContent>
-            </AccordionItem>
-          </Accordion>
         </div>
       )}
     />

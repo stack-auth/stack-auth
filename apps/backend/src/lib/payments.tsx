@@ -5,11 +5,13 @@ import type { inlineOfferSchema, offerSchema } from "@stackframe/stack-shared/di
 import { SUPPORTED_CURRENCIES } from "@stackframe/stack-shared/dist/utils/currencies";
 import { FAR_FUTURE_DATE, addInterval, getIntervalsElapsed, getWindowStart } from "@stackframe/stack-shared/dist/utils/dates";
 import { StackAssertionError, StatusError } from "@stackframe/stack-shared/dist/utils/errors";
-import { getOrUndefined, typedFromEntries } from "@stackframe/stack-shared/dist/utils/objects";
+import { getOrUndefined, typedEntries, typedFromEntries } from "@stackframe/stack-shared/dist/utils/objects";
 import { typedToUppercase } from "@stackframe/stack-shared/dist/utils/strings";
 import { isUuid } from "@stackframe/stack-shared/dist/utils/uuids";
 import * as yup from "yup";
 import { Tenancy } from "./tenancies";
+
+const DEFAULT_OFFER_START_DATE = new Date("2024-01-01T12:00:00.000Z");
 
 export async function ensureOfferIdOrInlineOffer(
   tenancy: Tenancy,
@@ -37,6 +39,8 @@ export async function ensureOfferIdOrInlineOffer(
       throw new StackAssertionError("Inline offer does not exist, this should never happen", { inlineOffer, offerId });
     }
     return {
+      groupId: undefined,
+      isAddOnTo: false,
       displayName: inlineOffer.display_name,
       customerType: inlineOffer.customer_type,
       freeTrial: inlineOffer.free_trial,
@@ -144,68 +148,13 @@ export async function getItemQuantityForCustomer(options: {
     }
   }
 
-  // Defaults → ledger entries
-  const def = itemConfig?.default;
-  const defQty = def?.quantity ?? 0;
-  if (defQty > 0) {
-    let anchor: Date;
-    if (options.customerType === "user") {
-      const user = await options.prisma.projectUser.findUnique({
-        where: { tenancyId_projectUserId: { tenancyId: options.tenancy.id, projectUserId: options.customerId } },
-        select: { createdAt: true },
-      });
-      anchor = user?.createdAt ?? now;
-    } else if (options.customerType === "team") {
-      const team = await options.prisma.team.findUnique({
-        where: { tenancyId_teamId: { tenancyId: options.tenancy.id, teamId: options.customerId } },
-        select: { createdAt: true },
-      });
-      anchor = team?.createdAt ?? now;
-    } else {
-      const firstChange = await options.prisma.itemQuantityChange.findFirst({
-        where: {
-          tenancyId: options.tenancy.id,
-          customerType: typedToUppercase(options.customerType),
-          customerId: options.customerId,
-          itemId: options.itemId,
-        },
-        orderBy: { createdAt: "asc" },
-        select: { createdAt: true },
-      });
-      anchor = firstChange?.createdAt ?? now;
-    }
-
-    if (!def?.repeat || def.repeat === "never") {
-      pos.push({ amount: defQty, grantTime: anchor, expirationTime: FAR_FUTURE_DATE });
-    } else {
-      const repeat = def.repeat;
-      const expires = def.expires;
-      if (expires === "when-repeated") {
-        const start = getWindowStart(anchor, repeat, now);
-        const end = addInterval(new Date(start), repeat);
-        pos.push({ amount: defQty, grantTime: start, expirationTime: end });
-      } else {
-        const elapsed = getIntervalsElapsed(anchor, now, repeat);
-        const occurrences = elapsed + 1; // include current window
-        const amount = occurrences * defQty;
-        pos.push({ amount, grantTime: anchor, expirationTime: FAR_FUTURE_DATE });
-      }
-    }
-  }
-
   // Subscriptions → ledger entries
-  const dbSubscriptions = await options.prisma.subscription.findMany({
-    where: {
-      tenancyId: options.tenancy.id,
-      customerType: typedToUppercase(options.customerType),
-      customerId: options.customerId,
-      status: { in: [SubscriptionStatus.active, SubscriptionStatus.trialing] },
-    },
+  const subscriptions = await getSubscriptions({
+    prisma: options.prisma,
+    tenancy: options.tenancy,
+    customerType: options.customerType,
+    customerId: options.customerId,
   });
-  const subscriptions = [
-    ...dbSubscriptions,
-    ...all subscriptions that are include-by-default and no other offer is active that's (not an add-on && in the same group), with the start date January 1st, 1973
-  ];
   for (const s of subscriptions) {
     const offer = s.offer as yup.InferType<typeof offerSchema>;
     const inc = getOrUndefined(offer.includedItems, options.itemId);
@@ -213,7 +162,7 @@ export async function getItemQuantityForCustomer(options: {
     const baseQty = inc.quantity * s.quantity;
     if (baseQty <= 0) continue;
     const pStart = s.currentPeriodStart;
-    const pEnd = s.currentPeriodEnd;
+    const pEnd = s.currentPeriodEnd ?? FAR_FUTURE_DATE;
     const nowClamped = now < pEnd ? now : pEnd;
     if (nowClamped < pStart) continue;
 
@@ -286,4 +235,63 @@ export async function ensureCustomerExists(options: {
       throw new KnownErrors.TeamNotFound(options.customerId);
     }
   }
+}
+
+type Subscription = {
+  offerId: string,
+  offer: yup.InferType<typeof offerSchema>,
+  quantity: number,
+  currentPeriodStart: Date,
+  currentPeriodEnd: Date | null,
+  status: SubscriptionStatus,
+};
+
+async function getSubscriptions(options: {
+  prisma: PrismaClientTransaction,
+  tenancy: Tenancy,
+  customerType: "user" | "team" | "custom",
+  customerId: string,
+}) {
+  const groups = options.tenancy.config.payments.groups;
+  const offers = options.tenancy.config.payments.offers;
+  const subscriptions: Subscription[] = [];
+  const dbSubscriptions = await options.prisma.subscription.findMany({
+    where: {
+      tenancyId: options.tenancy.id,
+      customerType: typedToUppercase(options.customerType),
+      customerId: options.customerId,
+      status: { in: [SubscriptionStatus.active, SubscriptionStatus.trialing] },
+    },
+  });
+
+  for (const groupId of Object.keys(groups)) {
+    const offersInGroup = typedEntries(offers).filter(([_, offer]) => offer.groupId === groupId);
+    for (const [offerId, offer] of offersInGroup) {
+      const subscription = dbSubscriptions.find(s => s.offerId === offerId);
+      if (subscription) {
+        subscriptions.push({
+          offerId,
+          offer,
+          quantity: subscription.quantity,
+          currentPeriodStart: subscription.currentPeriodStart,
+          currentPeriodEnd: subscription.currentPeriodEnd,
+          status: subscription.status,
+        });
+        continue;
+      }
+    }
+    const defaultGroupOffer = offersInGroup.find(([_, offer]) => offer.prices === "include-by-default");
+    if (defaultGroupOffer) {
+      subscriptions.push({
+        offerId: defaultGroupOffer[0],
+        offer: defaultGroupOffer[1],
+        quantity: 1,
+        currentPeriodStart: DEFAULT_OFFER_START_DATE,
+        currentPeriodEnd: null,
+        status: SubscriptionStatus.active,
+      });
+    }
+  }
+
+  return subscriptions;
 }

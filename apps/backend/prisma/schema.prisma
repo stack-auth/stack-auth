@@ -739,6 +739,7 @@ model Subscription {
   tenancyId    String       @db.Uuid
   customerId   String
   customerType CustomerType
+  offerId      String?
   offer        Json
   quantity     Int          @default(1)
 

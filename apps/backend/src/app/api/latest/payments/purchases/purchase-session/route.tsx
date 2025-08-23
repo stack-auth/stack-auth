@@ -66,6 +66,7 @@ export const POST = createSmartRouteHandler({
         quantity,
       }],
       metadata: {
+        offerId: data.offerId ?? null,
         offer: JSON.stringify(data.offer),
       },
     });

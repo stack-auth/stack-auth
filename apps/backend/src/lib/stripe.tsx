@@ -80,6 +80,7 @@ export async function syncStripeSubscriptions(stripeAccountId: string, stripeCus
         tenancyId: tenancy.id,
         customerId,
         customerType,
+        offerId: subscription.metadata.offerId,
         offer: JSON.parse(subscription.metadata.offer),
         quantity: item.quantity ?? 1,
         stripeSubscriptionId: subscription.id,

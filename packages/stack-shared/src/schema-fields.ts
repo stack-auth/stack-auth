@@ -558,6 +558,13 @@ export const offerPriceSchema = yupObject({
   serverOnly: yupBoolean(),
   freeTrial: dayIntervalSchema.optional(),
 }).test("at-least-one-currency", (value, context) => validateHasAtLeastOneSupportedCurrency(value, context));
+export const priceOrIncludeByDefaultSchema = yupUnion(
+  yupString().oneOf(['include-by-default']).meta({ openapiField: { description: 'Makes this item free and includes it by default for all customers.', exampleValue: 'include-by-default' } }),
+  yupRecord(
+    userSpecifiedIdSchema("priceId"),
+    offerPriceSchema,
+  ),
+);
 export const offerSchema = yupObject({
   displayName: yupString(),
   groupId: userSpecifiedIdSchema("groupId").optional().meta({ openapiField: { description: 'The ID of the group this offer belongs to. Within a group, all offers are mutually exclusive unless they are an add-on to another offer in the group.', exampleValue: 'group-id' } }),
@@ -565,20 +572,14 @@ export const offerSchema = yupObject({
     yupBoolean().isFalse(),
     yupRecord(
       userSpecifiedIdSchema("offerId"),
-      yupBoolean().isTrue(),
+      yupBoolean().isTrue().defined(),
     ),
   ).optional().meta({ openapiField: { description: 'The offers that this offer is an add-on to. If this is set, the customer must already have one of the offers in the record to be able to purchase this offer.', exampleValue: { "offer-id": true } } }),
   customerType: customerTypeSchema.defined(),
   freeTrial: dayIntervalSchema.optional(),
   serverOnly: yupBoolean(),
   stackable: yupBoolean(),
-  prices: yupUnion(
-    yupString().oneOf(['include-by-default']).meta({ openapiField: { description: 'Makes this item free and includes it by default for all customers.', exampleValue: 'include-by-default' } }),
-    yupRecord(
-      userSpecifiedIdSchema("priceId"),
-      offerPriceSchema,
-    ),
-  ),
+  prices: priceOrIncludeByDefaultSchema.defined(),
   includedItems: yupRecord(
     userSpecifiedIdSchema("itemId"),
     yupObject({
