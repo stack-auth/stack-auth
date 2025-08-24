@@ -22,6 +22,7 @@ import { ApiKey, ApiKeyCreationOptions, ApiKeyUpdateOptions, apiKeyCreationOptio
 import { GetUserOptions, HandlerUrls, OAuthScopesOnSignIn, TokenStoreInit } from "../../common";
 import { OAuthConnection } from "../../connected-accounts";
 import { ServerContactChannel, ServerContactChannelCreateOptions, ServerContactChannelUpdateOptions, serverContactChannelCreateOptionsToCrud, serverContactChannelUpdateOptionsToCrud } from "../../contact-channels";
+import { InlineOffer, ServerItem } from "../../customers";
 import { SendEmailOptions } from "../../email";
 import { NotificationCategory } from "../../notification-categories";
 import { AdminProjectPermissionDefinition, AdminTeamPermission, AdminTeamPermissionDefinition } from "../../permissions";
@@ -31,9 +32,9 @@ import { StackServerAppConstructorOptions } from "../interfaces/server-app";
 import { _StackClientAppImplIncomplete } from "./client-app-impl";
 import { clientVersion, createCache, createCacheBySession, getBaseUrl, getDefaultProjectId, getDefaultPublishableClientKey, getDefaultSecretServerKey } from "./common";
 
-// NEXT_LINE_PLATFORM react-like
-import { InlineOffer, ServerItem } from "../../customers";
+// IF_PLATFORM react-like
 import { useAsyncCache } from "./common";
+// END_PLATFORM
 
 export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, ProjectId extends string> extends _StackClientAppImplIncomplete<HasTokenStore, ProjectId> {
   declare protected _interface: StackServerInterface;
