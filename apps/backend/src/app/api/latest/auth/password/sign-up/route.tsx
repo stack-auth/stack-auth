@@ -45,6 +45,10 @@ export const POST = createSmartRouteHandler({
       throw new KnownErrors.RedirectUrlNotWhitelisted();
     }
 
+    if (!tenancy.config.auth.allowSignUp) {
+      throw new KnownErrors.SignUpNotEnabled();
+    }
+
     const passwordError = getPasswordError(password);
     if (passwordError) {
       throw passwordError;

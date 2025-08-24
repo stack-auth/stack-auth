@@ -1,3 +1,4 @@
+import { generateSecureRandomString } from "@stackframe/stack-shared/dist/utils/crypto";
 import { urlString } from "@stackframe/stack-shared/dist/utils/urls";
 import { it } from "../../../../../../helpers";
 import { Auth, Project, backendContext, bumpEmailAddress, niceBackendFetch } from "../../../../../backend-helpers";
@@ -663,4 +664,46 @@ it("does not update the personal team display name when upgrading an anonymous u
     }
   `);
   expect(personalTeamResponse2.body.items[0].id).toBe(personalTeamResponse.body.items[0].id);
+});
+
+it("should not allow upgrading account if sign ups are disabled", async ({ expect }) => {
+  await Project.createAndSwitch({ config: { sign_up_enabled: false, credential_enabled: true } });
+  const res = await niceBackendFetch("/api/v1/auth/anonymous/sign-up", {
+    accessType: "client",
+    method: "POST",
+  });
+  expect(res).toMatchInlineSnapshot(`
+    NiceResponse {
+      "status": 200,
+      "body": {
+        "access_token": <stripped field 'access_token'>,
+        "refresh_token": <stripped field 'refresh_token'>,
+        "user_id": "<stripped UUID>",
+      },
+      "headers": Headers { <some fields may have been hidden> },
+    }
+  `);
+
+  const res2 = await niceBackendFetch("/api/v1/auth/password/sign-up", {
+    method: "POST",
+    accessType: "client",
+    body: {
+      email: backendContext.value.mailbox.emailAddress,
+      password: generateSecureRandomString(),
+      verification_callback_url: "http://localhost:12345/some-callback-url",
+    },
+  });
+  expect(res2).toMatchInlineSnapshot(`
+    NiceResponse {
+      "status": 400,
+      "body": {
+        "code": "SIGN_UP_NOT_ENABLED",
+        "error": "Creation of new accounts is not enabled for this project. Please ask the project owner to enable it.",
+      },
+      "headers": Headers {
+        "x-stack-known-error": "SIGN_UP_NOT_ENABLED",
+        <some fields may have been hidden>,
+      },
+    }
+  `);
 });

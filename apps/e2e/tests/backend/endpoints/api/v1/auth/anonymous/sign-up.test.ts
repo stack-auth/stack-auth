@@ -60,3 +60,22 @@ it("allows anonymous users to sign up on newly created projects", async ({ expec
     }
   `);
 });
+
+it("can still sign up anonymously even if sign ups are disabled", async ({ expect }) => {
+  await Project.createAndSwitch({ config: { sign_up_enabled: false, credential_enabled: true } });
+  const res = await niceBackendFetch("/api/v1/auth/anonymous/sign-up", {
+    accessType: "client",
+    method: "POST",
+  });
+  expect(res).toMatchInlineSnapshot(`
+    NiceResponse {
+      "status": 200,
+      "body": {
+        "access_token": <stripped field 'access_token'>,
+        "refresh_token": <stripped field 'refresh_token'>,
+        "user_id": "<stripped UUID>",
+      },
+      "headers": Headers { <some fields may have been hidden> },
+    }
+  `);
+});
