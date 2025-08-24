@@ -262,11 +262,11 @@ it("search users excludes anonymous users by default", async ({ expect }) => {
         "is_paginated": true,
         "items": [
           {
-            "auth_with_email": true,
+            "auth_with_email": false,
             "client_metadata": null,
             "client_read_only_metadata": null,
             "display_name": "Unique Anonymous Name",
-            "has_password": true,
+            "has_password": false,
             "id": "<stripped UUID>",
             "is_anonymous": true,
             "last_active_at_millis": <stripped field 'last_active_at_millis'>,
