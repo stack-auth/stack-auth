@@ -348,8 +348,8 @@ const handler = createSmartRouteHandler({
                       }
                     }
                   }
-                  
-                  
+
+
                   if (!tenancy.config.auth.allowSignUp) {
                     throw new KnownErrors.SignUpNotEnabled();
                   }
