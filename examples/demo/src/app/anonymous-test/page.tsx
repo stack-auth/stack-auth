@@ -6,8 +6,7 @@ import { Button, Card, CardContent, CardHeader, Typography } from '@stackframe/s
 import { useState } from 'react';
 
 export default function AnonymousTestPage() {
-  const userNotAnonymous = useUser();
-  const user = useUser({ or: "anonymous-if-exists" });
+  const user = useUser({ or: "anonymous-if-exists[deprecated]" });
   const isAnonymous = user?.isAnonymous;
   const app = useStackApp();
   const [testResults, setTestResults] = useState<{ [key: string]: any }>({});

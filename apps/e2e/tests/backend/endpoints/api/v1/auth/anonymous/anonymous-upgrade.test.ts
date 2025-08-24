@@ -284,8 +284,14 @@ it("anonymous user can upgrade via OTP sign-in", async ({ expect }) => {
         "primary_email_verified": true,
         "profile_image_url": null,
         "requires_totp_mfa": false,
-        "selected_team": null,
-        "selected_team_id": null,
+        "selected_team": {
+          "client_metadata": null,
+          "client_read_only_metadata": null,
+          "display_name": "mailbox-1--<stripped UUID>@stack-generated.example.com's Team",
+          "id": "<stripped UUID>",
+          "profile_image_url": null,
+        },
+        "selected_team_id": "<stripped UUID>",
         "signed_up_at_millis": <stripped field 'signed_up_at_millis'>,
       },
       "headers": Headers { <some fields may have been hidden> },
@@ -298,7 +304,7 @@ it("anonymous user can upgrade via OAuth sign-in if ?token is set on the authori
   // Create an anonymous user
   const { userId: anonUserId, accessToken: anonAccessToken } = await Auth.Anonymous.signUp();
 
-  const {  } = await Auth.OAuth.signIn();
+  await Auth.OAuth.signIn();
 
   // Verify that the OAuth providers exist
   const oauthProvidersRes = await niceBackendFetch("/api/v1/oauth-providers?user_id=me", {
@@ -354,8 +360,14 @@ it("anonymous user can upgrade via OAuth sign-in if ?token is set on the authori
         "primary_email_verified": true,
         "profile_image_url": null,
         "requires_totp_mfa": false,
-        "selected_team": null,
-        "selected_team_id": null,
+        "selected_team": {
+          "client_metadata": null,
+          "client_read_only_metadata": null,
+          "display_name": "default-mailbox--<stripped UUID>@stack-generated.example.com's Team",
+          "id": "<stripped UUID>",
+          "profile_image_url": null,
+        },
+        "selected_team_id": "<stripped UUID>",
         "signed_up_at_millis": <stripped field 'signed_up_at_millis'>,
       },
       "headers": Headers { <some fields may have been hidden> },
@@ -505,34 +517,92 @@ it("updates the personal team display name when upgrading from anonymous", async
       "headers": Headers { <some fields may have been hidden> },
     }
   `);
+
+  // Verify the personal team display name was updated
+  const personalTeamResponse2 = await niceBackendFetch("/api/v1/teams?user_id=me", {
+    accessType: "client",
+    headers: {
+      "x-stack-access-token": upgradeRes.body.access_token,
+    },
+  });
+  expect(personalTeamResponse2).toMatchInlineSnapshot(`
+    NiceResponse {
+      "status": 200,
+      "body": {
+        "is_paginated": false,
+        "items": [
+          {
+            "client_metadata": null,
+            "client_read_only_metadata": null,
+            "display_name": "preserved@example.com's Team",
+            "id": "<stripped UUID>",
+            "profile_image_url": null,
+          },
+        ],
+      },
+      "headers": Headers { <some fields may have been hidden> },
+    }
+  `);
+  expect(personalTeamResponse2.body.items[0].id).toBe(personalTeamResponse.body.items[0].id);
 });
 
 it("does not update the personal team display name when upgrading an anonymous user after changing the personal team display name already", async ({ expect }) => {
-  // Create an anonymous user
-  const anonSignUp = await Auth.Anonymous.signUp();
-  const anonUserId = anonSignUp.userId;
-
-  // Get the personal team
-  const personalTeamResponse = await niceBackendFetch("/api/v1/teams/me", {
-    accessType: "client",
-    headers: {
-      "x-stack-access-token": anonSignUp.accessToken,
+  await Project.createAndSwitch({
+    config: {
+      create_team_on_sign_up: true,
     },
   });
+
+  // Create an anonymous user
+  const anonSignUp = await Auth.Anonymous.signUp();
+
+  // Get the personal team
+  const personalTeamResponse = await niceBackendFetch("/api/v1/teams?user_id=me", {
+    accessType: "client",
+  });
   expect(personalTeamResponse).toMatchInlineSnapshot(`
+    NiceResponse {
+      "status": 200,
+      "body": {
+        "is_paginated": false,
+        "items": [
+          {
+            "client_metadata": null,
+            "client_read_only_metadata": null,
+            "display_name": "Personal Team",
+            "id": "<stripped UUID>",
+            "profile_image_url": null,
+          },
+        ],
+      },
+      "headers": Headers { <some fields may have been hidden> },
+    }
+  `);
+
+  // Update the personal team display name
+  const updatePersonalTeamRes = await niceBackendFetch(urlString`/api/v1/teams/me?team_id=${personalTeamResponse.body.items[0].id}`, {
+    method: "PATCH",
+    accessType: "client",
+    body: {
+      display_name: "Custom Team Name",
+    },
+  });
+  expect(updatePersonalTeamRes).toMatchInlineSnapshot(`
     NiceResponse {
       "status": 400,
       "body": {
         "code": "SCHEMA_ERROR",
         "details": {
           "message": deindent\`
-            Request validation failed on GET /api/v1/teams/me:
+            Request validation failed on PATCH /api/v1/teams/me:
               - params.team_id must be a valid UUID
+              - query contains unknown properties: team_id
           \`,
         },
         "error": deindent\`
-          Request validation failed on GET /api/v1/teams/me:
+          Request validation failed on PATCH /api/v1/teams/me:
             - params.team_id must be a valid UUID
+            - query contains unknown properties: team_id
         \`,
       },
       "headers": Headers {
@@ -555,22 +625,42 @@ it("does not update the personal team display name when upgrading an anonymous u
       verification_callback_url: "http://localhost:3000/callback",
     },
   });
-
   expect(upgradeRes).toMatchInlineSnapshot(`
     NiceResponse {
-      "status": 409,
+      "status": 200,
       "body": {
-        "code": "USER_EMAIL_ALREADY_EXISTS",
-        "details": {
-          "email": "preserved@example.com",
-          "would_work_if_email_was_verified": false,
-        },
-        "error": "A user with email \\"preserved@example.com\\" already exists.",
+        "access_token": <stripped field 'access_token'>,
+        "refresh_token": <stripped field 'refresh_token'>,
+        "user_id": "<stripped UUID>",
       },
-      "headers": Headers {
-        "x-stack-known-error": "USER_EMAIL_ALREADY_EXISTS",
-        <some fields may have been hidden>,
-      },
+      "headers": Headers { <some fields may have been hidden> },
     }
   `);
+
+  // Verify the personal team display name was updated
+  const personalTeamResponse2 = await niceBackendFetch("/api/v1/teams?user_id=me", {
+    accessType: "client",
+    headers: {
+      "x-stack-access-token": upgradeRes.body.access_token,
+    },
+  });
+  expect(personalTeamResponse2).toMatchInlineSnapshot(`
+    NiceResponse {
+      "status": 200,
+      "body": {
+        "is_paginated": false,
+        "items": [
+          {
+            "client_metadata": null,
+            "client_read_only_metadata": null,
+            "display_name": "preserved@example.com's Team",
+            "id": "<stripped UUID>",
+            "profile_image_url": null,
+          },
+        ],
+      },
+      "headers": Headers { <some fields may have been hidden> },
+    }
+  `);
+  expect(personalTeamResponse2.body.items[0].id).toBe(personalTeamResponse.body.items[0].id);
 });

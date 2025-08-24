@@ -230,7 +230,7 @@ it("search users excludes anonymous users by default", async ({ expect }) => {
   });
 
   // Create a regular user
-  await bumpEmailAddress();
+  await Auth.signOut();
   await Auth.Password.signUpWithEmail();
 
   // Search for users with query matching anonymous user
@@ -238,16 +238,55 @@ it("search users excludes anonymous users by default", async ({ expect }) => {
     accessType: "server",
   });
 
-  expect(searchRes.status).toBe(200);
-  expect(searchRes.body.items).toHaveLength(0);
+  expect(searchRes).toMatchInlineSnapshot(`
+    NiceResponse {
+      "status": 200,
+      "body": {
+        "is_paginated": true,
+        "items": [],
+        "pagination": { "next_cursor": null },
+      },
+      "headers": Headers { <some fields may have been hidden> },
+    }
+  `);
 
   // Search with include_anonymous=true
   const searchWithAnonRes = await niceBackendFetch("/api/v1/users?query=Unique&include_anonymous=true", {
     accessType: "server",
   });
 
-  expect(searchWithAnonRes.status).toBe(200);
-  expect(searchWithAnonRes.body.items).toHaveLength(1);
-  expect(searchWithAnonRes.body.items[0].display_name).toBe("Unique Anonymous Name");
-  expect(searchWithAnonRes.body.items[0].is_anonymous).toBe(true);
+  expect(searchWithAnonRes).toMatchInlineSnapshot(`
+    NiceResponse {
+      "status": 200,
+      "body": {
+        "is_paginated": true,
+        "items": [
+          {
+            "auth_with_email": true,
+            "client_metadata": null,
+            "client_read_only_metadata": null,
+            "display_name": "Unique Anonymous Name",
+            "has_password": true,
+            "id": "<stripped UUID>",
+            "is_anonymous": true,
+            "last_active_at_millis": <stripped field 'last_active_at_millis'>,
+            "oauth_providers": [],
+            "otp_auth_enabled": false,
+            "passkey_auth_enabled": false,
+            "primary_email": null,
+            "primary_email_auth_enabled": false,
+            "primary_email_verified": false,
+            "profile_image_url": null,
+            "requires_totp_mfa": false,
+            "selected_team": null,
+            "selected_team_id": null,
+            "server_metadata": null,
+            "signed_up_at_millis": <stripped field 'signed_up_at_millis'>,
+          },
+        ],
+        "pagination": { "next_cursor": null },
+      },
+      "headers": Headers { <some fields may have been hidden> },
+    }
+  `);
 });

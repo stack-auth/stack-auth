@@ -819,7 +819,7 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
       this._ensurePersistentTokenStore(options?.tokenStore);
       const session = await this._getSession(options?.tokenStore);
       let crud = Result.orThrow(await this._currentServerUserCache.getOrWait([session], "write-only"));
-      if (crud?.is_anonymous && options?.or !== "anonymous" && options?.or !== "anonymous-if-exists") {
+      if (crud?.is_anonymous && options?.or !== "anonymous" && options?.or !== "anonymous-if-exists[deprecated]") {
         crud = null;
       }
 
@@ -834,10 +834,10 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
           }
           case 'anonymous': {
             const tokens = await this._signUpAnonymously();
-            return await this.getUser({ tokenStore: tokens, or: "anonymous-if-exists" }) ?? throwErr("Something went wrong while signing up anonymously");
+            return await this.getUser({ tokenStore: tokens, or: "anonymous-if-exists[deprecated]" }) ?? throwErr("Something went wrong while signing up anonymously");
           }
           case undefined:
-          case "anonymous-if-exists":
+          case "anonymous-if-exists[deprecated]":
           case "return-null": {
             return null;
           }
@@ -876,7 +876,7 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
 
       const session = this._useSession(options?.tokenStore);
       let crud = useAsyncCache(this._currentServerUserCache, [session] as const, "useUser()");
-      if (crud?.is_anonymous && options?.or !== "anonymous" && options?.or !== "anonymous-if-exists") {
+      if (crud?.is_anonymous && options?.or !== "anonymous" && options?.or !== "anonymous-if-exists[deprecated]") {
         crud = null;
       }
 
@@ -903,7 +903,7 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
             throw new StackAssertionError("suspend should never return");
           }
           case undefined:
-          case "anonymous-if-exists":
+          case "anonymous-if-exists[deprecated]":
           case "return-null": {
             // do nothing
           }
