@@ -248,3 +248,121 @@ A: Missing newline at end of file. ESLint requires files to end with a newline c
 
 ### Q: How do you handle TypeScript errors about missing exports?
 A: Double-check that you're only importing what's actually exported from a module. The error "Module declares 'X' locally, but it is not exported" means you're trying to import something that isn't exported.
+
+## Project Transfer Implementation
+
+### Q: How do I add a new API endpoint to the internal project?
+A: Create a new route file in `/apps/backend/src/app/api/latest/internal/` using the `createSmartRouteHandler` pattern. Internal endpoints should check `auth.project.id === "internal"` and throw `KnownErrors.ExpectedInternalProject()` if not.
+
+### Q: How do team permissions work in Stack Auth?
+A: Team permissions are defined in `/apps/backend/src/lib/permissions.tsx`. The permission `team_admin` (not `$team_admin`) is a normal permission that happens to be defined by default on the internal project. Use `ensureUserTeamPermissionExists` to check if a user has a specific permission.
+
+### Q: How do I check team permissions in the backend?
+A: Use `ensureUserTeamPermissionExists` from `/apps/backend/src/lib/request-checks.tsx`. Example:
+```typescript
+await ensureUserTeamPermissionExists(prisma, {
+  tenancy: internalTenancy,
+  teamId: teamId,
+  userId: userId,
+  permissionId: "team_admin",
+  errorType: "required",
+  recursive: true,
+});
+```
+
+### Q: How do I add new functionality to the admin interface?
+A: Don't use server actions. Instead, implement the endpoint functions on the admin-app and admin-interface. Add methods to the AdminProject class in the SDK packages that call the backend API endpoints.
+
+### Q: How do I use TeamSwitcher component in the dashboard?
+A: Import `TeamSwitcher` from `@stackframe/stack` and use it like:
+```typescript
+<TeamSwitcher
+  triggerClassName="w-full"
+  teamId={selectedTeamId}
+  onChange={async (team) => {
+    setSelectedTeamId(team.id);
+  }}
+/>
+```
+
+### Q: How do I write E2E tests for backend endpoints?
+A: Import `it` from helpers (not vitest), and set up the project context inside each test:
+```typescript
+import { describe } from "vitest";
+import { it } from "../../../../../../helpers";
+import { Auth, Project, backendContext, niceBackendFetch, InternalProjectKeys } from "../../../../../backend-helpers";
+
+it("test name", async ({ expect }) => {
+  backendContext.set({ projectKeys: InternalProjectKeys });
+  await Project.createAndSwitch({ config: { magic_link_enabled: true } });
+  // test logic
+});
+```
+
+### Q: Where is project ownership stored in the database?
+A: Projects have an `ownerTeamId` field in the Project model (see `/apps/backend/prisma/schema.prisma`). This links to a team in the internal project.
+
+### Q: How do I make authenticated API calls from dashboard server actions?
+A: Get the session cookie and include it in the request headers:
+```typescript
+const cookieStore = await cookies();
+const sessionCookie = cookieStore.get("stack-refresh-internal");
+const response = await fetch(url, {
+  headers: {
+    'X-Stack-Access-Type': 'server',
+    'X-Stack-Project-Id': 'internal',
+    'X-Stack-Secret-Server-Key': getEnvVariable('STACK_SECRET_SERVER_KEY'),
+    ...(sessionCookie ? { 'Cookie': `${sessionCookie.name}=${sessionCookie.value}` } : {})
+  }
+});
+```
+
+### Q: What's the difference between ensureTeamMembershipExists and ensureUserTeamPermissionExists?
+A: `ensureTeamMembershipExists` only checks if a user is a member of a team. `ensureUserTeamPermissionExists` checks if a user has a specific permission (like `team_admin`) within that team. The latter also calls `ensureTeamMembershipExists` internally.
+
+### Q: How do I handle errors in the backend API?
+A: Use `KnownErrors` from `@stackframe/stack-shared` for standard errors (e.g., `KnownErrors.ProjectNotFound()`). For custom errors, use `StatusError` from `@stackframe/stack-shared/dist/utils/errors` with an HTTP status code and message.
+
+### Q: What's the pattern for TypeScript schema validation in API routes?
+A: Use yup schemas from `@stackframe/stack-shared/dist/schema-fields`. Don't use regular yup imports. Example:
+```typescript
+import { yupObject, yupString, yupNumber } from "@stackframe/stack-shared/dist/schema-fields";
+```
+
+### Q: How are teams and projects related in Stack Auth?
+A: Projects belong to teams via the `ownerTeamId` field. Teams exist within the internal project. Users can be members of multiple teams and have different permissions in each team.
+
+### Q: How do I properly escape quotes in React components to avoid lint errors?
+A: Use template literals with backticks instead of quotes in JSX text content:
+```typescript
+<Typography>{`Text with "quotes" inside`}</Typography>
+```
+
+### Q: What auth headers are needed for internal API calls?
+A: Internal API calls need:
+- `X-Stack-Access-Type: 'server'`
+- `X-Stack-Project-Id: 'internal'`
+- `X-Stack-Secret-Server-Key: <server key>`
+- Either `X-Stack-Auth: Bearer <token>` or a session cookie
+
+### Q: How do I reload the page after a successful action in the dashboard?
+A: Use `window.location.reload()` after the action completes. This ensures the UI reflects the latest state from the server.
+
+### Q: What's the file structure for API routes in the backend?
+A: Routes follow Next.js App Router conventions in `/apps/backend/src/app/api/latest/`. Each route has a `route.tsx` file that exports HTTP method handlers (GET, POST, etc.).
+
+### Q: How do I get all teams a user is a member of in the dashboard?
+A: Use `user.useTeams()` where `user` is from `useUser({ or: 'redirect', projectIdMustMatch: "internal" })`.
+
+### Q: What's the difference between client and server access types?
+A: Client access type is for frontend applications and has limited permissions. Server access type is for backend operations and requires a secret key. Admin access type is for dashboard operations with full permissions.
+
+### Q: How to avoid TypeScript "unnecessary conditional" errors when checking auth.user?
+A: If the schema defines `auth.user` as `.defined()`, TypeScript knows it can't be null, so checking `if (!auth.user)` causes a lint error. Remove the check or adjust the schema if the field can be undefined.
+
+### Q: What to do when TypeScript can't find module '@stackframe/stack' declarations?
+A: This happens when packages haven't been built yet. Run these commands in order:
+```bash
+pnpm clean && pnpm i && pnpm codegen && pnpm build:packages
+```
+Then restart the dev server. This rebuilds all packages and generates the necessary TypeScript declarations.

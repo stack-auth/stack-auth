@@ -277,10 +277,6 @@ const handler = createSmartRouteHandler({
 
                   // ========================== sign up user ==========================
 
-                  if (!tenancy.config.auth.allowSignUp) {
-                    throw new KnownErrors.SignUpNotEnabled();
-                  }
-
                   let primaryEmailAuthEnabled = false;
                   if (userInfo.email) {
                     primaryEmailAuthEnabled = true;
@@ -351,6 +347,11 @@ const handler = createSmartRouteHandler({
                         }
                       }
                     }
+                  }
+                  
+                  
+                  if (!tenancy.config.auth.allowSignUp) {
+                    throw new KnownErrors.SignUpNotEnabled();
                   }
 
                   const currentUser = projectUserId ? await usersCrudHandlers.adminRead({ tenancy, user_id: projectUserId }) : null;
