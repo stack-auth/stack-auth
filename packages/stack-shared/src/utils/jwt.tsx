@@ -3,17 +3,19 @@ import elliptic from "elliptic";
 import * as jose from "jose";
 import { JOSEError } from "jose/errors";
 import { encodeBase64Url } from "./bytes";
+import { getEnvVariable } from "./env";
 import { StackAssertionError } from "./errors";
 import { globalVar } from "./globals";
 import { pick } from "./objects";
 
 function getStackServerSecret() {
-  const STACK_SERVER_SECRET = process.env.STACK_SERVER_SECRET ?? "";
+  const STACK_SERVER_SECRET = getEnvVariable("STACK_SERVER_SECRET");
   try {
-    return jose.base64url.decode(STACK_SERVER_SECRET);
+    jose.base64url.decode(STACK_SERVER_SECRET);
   } catch (e) {
     throw new StackAssertionError("STACK_SERVER_SECRET is not valid. Please use the generateKeys script to generate a new secret.", { cause: e });
   }
+  return STACK_SERVER_SECRET;
 }
 
 export async function signJWT(options: {
@@ -95,9 +97,12 @@ export async function getPrivateJwks(options: {
   const perAudienceSecret = getHashOfJwkInfo("stack-jwk-audience-secret");
   const perAudienceKid = getHashOfJwkInfo("stack-jwk-kid").slice(0, 12);
 
+  const oldPerAudienceSecret = oldGetPerAudienceSecret({ audience: options.audience });
+  const oldPerAudienceKid = oldGetKid({ secret: oldPerAudienceSecret });
+
   return [
     // TODO next-release: make this not take precedence; then, in the release after that, remove it entirely
-    await getPrivateJwkFromDerivedSecret(oldGetPerAudienceSecret({ audience: options.audience }), oldGetKid({ secret: perAudienceSecret })),
+    await getPrivateJwkFromDerivedSecret(oldPerAudienceSecret, oldPerAudienceKid),
 
     await getPrivateJwkFromDerivedSecret(perAudienceSecret, perAudienceKid),
   ];
