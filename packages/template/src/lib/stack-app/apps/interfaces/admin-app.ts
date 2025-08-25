@@ -82,6 +82,9 @@ export type StackAdminApp<HasTokenStore extends boolean = boolean, ProjectId ext
       { customId: string, itemId: string, quantity: number, expiresAt?: string, description?: string }
     )): Promise<void>,
     testModePurchase(options: { priceId: string, fullCode: string, quantity?: number }): Promise<void>,
+
+    getStripeAccountInfo(): Promise<{ account_id: string, charges_enabled: boolean, details_submitted: boolean, payouts_enabled: boolean }>,
+    useStripeAccountInfo(): { account_id: string, charges_enabled: boolean, details_submitted: boolean, payouts_enabled: boolean } | null, // THIS_LINE_PLATFORM react-like
   }
   & StackServerApp<HasTokenStore, ProjectId>
 );

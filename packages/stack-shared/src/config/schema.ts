@@ -114,8 +114,6 @@ const branchAuthSchema = yupObject({
 });
 
 export const branchPaymentsSchema = yupObject({
-  stripeAccountId: yupString().optional(),
-  stripeAccountSetupComplete: yupBoolean().optional(),
   autoPay: yupObject({
     interval: schemaFields.dayIntervalSchema,
   }).optional(),
@@ -267,6 +265,13 @@ export function migrateConfigOverride(type: "project" | "branch" | "environment"
   // BEGIN 2025-07-28: sourceOfTruth was mistakenly written to the environment config in some cases, so let's remove it
   if (type === "environment") {
     res = removeProperty(res, "sourceOfTruth");
+  }
+  // END
+
+  // BEGIN 2025-08-25: stripeAccountId and stripeAccountSetupComplete are unused, so let's remove them
+  if (type === "environment") {
+    res = removeProperty(res, "payments.stripeAccountId");
+    res = removeProperty(res, "payments.stripeAccountSetupComplete");
   }
   // END
 
@@ -444,8 +449,6 @@ const organizationConfigDefaults = {
   },
 
   payments: {
-    stripeAccountId: undefined,
-    stripeAccountSetupComplete: false,
     autoPay: undefined,
     exclusivityGroups: (key: string) => (key: string) => undefined,
     offers: (key: string) => ({

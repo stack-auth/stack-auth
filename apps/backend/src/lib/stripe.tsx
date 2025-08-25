@@ -1,10 +1,9 @@
-import Stripe from "stripe";
 import { getTenancy, Tenancy } from "@/lib/tenancies";
-import { getPrismaClientForTenancy } from "@/prisma-client";
+import { getPrismaClientForTenancy, globalPrismaClient } from "@/prisma-client";
 import { CustomerType } from "@prisma/client";
 import { getEnvVariable, getNodeEnvironment } from "@stackframe/stack-shared/dist/utils/env";
 import { StackAssertionError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
-import { overrideEnvironmentConfigOverride } from "./config";
+import Stripe from "stripe";
 
 const stripeSecretKey = getEnvVariable("STACK_STRIPE_SECRET_KEY");
 const useStripeMock = stripeSecretKey === "sk_test_mockstripekey" && ["development", "test"].includes(getNodeEnvironment());
@@ -16,11 +15,21 @@ const stripeConfig: Stripe.StripeConfig = useStripeMock ? {
 
 export const getStackStripe = () => new Stripe(stripeSecretKey, stripeConfig);
 
-export const getStripeForAccount = (options: { tenancy?: Tenancy, accountId?: string }) => {
+export const getStripeForAccount = async (options: { tenancy?: Tenancy, accountId?: string }) => {
   if (!options.tenancy && !options.accountId) {
     throwErr(400, "Either tenancy or stripeAccountId must be provided");
   }
-  const accountId = options.accountId ?? options.tenancy?.config.payments.stripeAccountId;
+
+  let accountId = options.accountId;
+
+  if (!accountId && options.tenancy) {
+    const project = await globalPrismaClient.project.findUnique({
+      where: { id: options.tenancy.project.id },
+      select: { stripeAccountId: true },
+    });
+    accountId = project?.stripeAccountId || undefined;
+  }
+
   if (!accountId) {
     throwErr(400, "Payments are not set up in this Stack Auth project. Please go to the Stack Auth dashboard and complete the Payments onboarding.");
   }
@@ -28,7 +37,7 @@ export const getStripeForAccount = (options: { tenancy?: Tenancy, accountId?: st
 };
 
 export async function syncStripeSubscriptions(stripeAccountId: string, stripeCustomerId: string) {
-  const stripe = getStripeForAccount({ accountId: stripeAccountId });
+  const stripe = await getStripeForAccount({ accountId: stripeAccountId });
   const account = await stripe.accounts.retrieve(stripeAccountId);
   if (!account.metadata?.tenancyId) {
     throwErr(500, "Stripe account metadata missing tenancyId");
@@ -91,21 +100,4 @@ export async function syncStripeSubscriptions(stripeAccountId: string, stripeCus
       },
     });
   }
-}
-
-export async function syncStripeAccountStatus(stripeAccountId: string) {
-  const stripe = getStackStripe();
-  const account = await stripe.accounts.retrieve(stripeAccountId);
-  if (!account.metadata?.tenancyId) {
-    throwErr(500, "Stripe account metadata missing tenancyId");
-  }
-  const tenancy = await getTenancy(account.metadata.tenancyId) ?? throwErr(500, "Tenancy not found");
-  const setupComplete = !account.requirements?.past_due?.length;
-  await overrideEnvironmentConfigOverride({
-    projectId: tenancy.project.id,
-    branchId: tenancy.branchId,
-    environmentConfigOverrideOverride: {
-      [`payments.stripeAccountSetupComplete`]: setupComplete,
-    },
-  });
 }

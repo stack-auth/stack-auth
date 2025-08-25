@@ -31,7 +31,7 @@ export const POST = createSmartRouteHandler({
     if (!tenancy) {
       throw new StackAssertionError("No tenancy found from purchase code data tenancy id. This should never happen.");
     }
-    const stripe = getStripeForAccount({ accountId: data.stripeAccountId });
+    const stripe = await getStripeForAccount({ accountId: data.stripeAccountId });
     const pricesMap = new Map(Object.entries(data.offer.prices));
     const selectedPrice = pricesMap.get(price_id);
     if (!selectedPrice) {

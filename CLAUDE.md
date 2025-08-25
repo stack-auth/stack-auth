@@ -13,9 +13,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 #### Extra commands
 These commands are usually already called by the user, but you can remind them to run it for you if they forgot to.
 - **Build packages**: `pnpm build:packages`
-- **Generate code**: `pnpm codegen`
 - **Start dependencies**: `pnpm restart-deps` (resets & restarts Docker containers for DB, Inbucket, etc. Usually already called by the user)
-- **Run development**: `pnpm dev` (starts all services on different ports. Usually already started by the user in the background)
+- **Run development**: Already called by the user in the background. You don't need to do this. This will also watch for changes and rebuild packages, codegen, etc.
 - **Run minimal dev**: `pnpm dev:basic` (only backend and dashboard for resource-limited systems)
 
 ### Testing
@@ -69,6 +68,7 @@ The API follows a RESTful design with routes organized by resource type:
 To see all development ports, refer to the index.html of `apps/dev-launchpad/public/index.html`.
 
 ## Important Notes
+- NEVER UPDATE packages/stack OR packages/js. Instead, update packages/template, as the others are simply copies of that package.
 - Environment variables are pre-configured in `.env.development` files
 - Always run typecheck, lint, and test to make sure your changes are working as expected. You can save time by only linting and testing the files you've changed (and/or related E2E tests).
 - The project uses a custom route handler system in the backend for consistent API responses
