@@ -150,7 +150,7 @@ export default function PageClient({ code }: { code: string }) {
             <div className="mb-6">
               <Typography type="h2" className="mb-2">{data?.offer?.display_name || "Plan"}</Typography>
             </div>
-            <div className="space-y-4">
+            <div className="space-y-3">
               {data?.offer?.prices && typedEntries(data.offer.prices).map(([priceId, priceData]) => (
                 <Card
                   key={priceId}
@@ -279,4 +279,3 @@ function BypassInfo({ handleBypass }: { handleBypass: () => Promise<void> }) {
     </Card>
   );
 }
-

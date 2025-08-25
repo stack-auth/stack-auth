@@ -149,7 +149,7 @@ function CreateItemQuantityChangeDialog({ open, onOpenChange, itemId, customerTy
         { userId: values.customerId } :
         customerType === "team" ?
           { teamId: values.customerId } :
-          { customId: values.customerId }
+          { customCustomerId: values.customerId }
       ),
       itemId,
       quantity: values.quantity,

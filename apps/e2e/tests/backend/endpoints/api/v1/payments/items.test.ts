@@ -466,22 +466,22 @@ it("supports custom customer type for items (GET and update-quantity)", async ({
     },
   });
 
-  const customId = "custom-xyz";
+  const customCustomerId = "custom-xyz";
 
-  const getBefore = await niceBackendFetch(`/api/latest/payments/items/custom/${customId}/custom-item`, {
+  const getBefore = await niceBackendFetch(`/api/latest/payments/items/custom/${customCustomerId}/custom-item`, {
     accessType: "client",
   });
   expect(getBefore.status).toBe(200);
   expect(getBefore.body.quantity).toBe(2);
 
-  const postChange = await niceBackendFetch(`/api/latest/payments/items/custom/${customId}/custom-item/update-quantity?allow_negative=false`, {
+  const postChange = await niceBackendFetch(`/api/latest/payments/items/custom/${customCustomerId}/custom-item/update-quantity?allow_negative=false`, {
     method: "POST",
     accessType: "admin",
     body: { delta: 3, description: "grant" },
   });
   expect(postChange.status).toBe(200);
 
-  const getAfter = await niceBackendFetch(`/api/latest/payments/items/custom/${customId}/custom-item`, {
+  const getAfter = await niceBackendFetch(`/api/latest/payments/items/custom/${customCustomerId}/custom-item`, {
     accessType: "client",
   });
   expect(getAfter.status).toBe(200);

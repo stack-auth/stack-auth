@@ -353,3 +353,42 @@ async function getSubscriptions(options: {
 
   return subscriptions;
 }
+
+export async function ensureCustomerExists(options: {
+  prisma: PrismaClientTransaction,
+  tenancyId: string,
+  customerType: "user" | "team" | "custom",
+  customerId: string,
+}) {
+  if (options.customerType === "user") {
+    if (!isUuid(options.customerId)) {
+      throw new KnownErrors.UserNotFound();
+    }
+    const user = await options.prisma.projectUser.findUnique({
+      where: {
+        tenancyId_projectUserId: {
+          tenancyId: options.tenancyId,
+          projectUserId: options.customerId,
+        },
+      },
+    });
+    if (!user) {
+      throw new KnownErrors.UserNotFound();
+    }
+  } else if (options.customerType === "team") {
+    if (!isUuid(options.customerId)) {
+      throw new KnownErrors.TeamNotFound(options.customerId);
+    }
+    const team = await options.prisma.team.findUnique({
+      where: {
+        tenancyId_teamId: {
+          tenancyId: options.tenancyId,
+          teamId: options.customerId,
+        },
+      },
+    });
+    if (!team) {
+      throw new KnownErrors.TeamNotFound(options.customerId);
+    }
+  }
+}

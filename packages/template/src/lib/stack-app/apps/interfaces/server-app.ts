@@ -57,7 +57,7 @@ export type StackServerApp<HasTokenStore extends boolean = boolean, ProjectId ex
   & AsyncStoreProperty<"teams", [], ServerTeam[], true>
   & AsyncStoreProperty<
     "item",
-    [{ itemId: string, userId: string } | { itemId: string, teamId: string } | { itemId: string, customId: string }],
+    [{ itemId: string, userId: string } | { itemId: string, teamId: string } | { itemId: string, customCustomerId: string }],
     ServerItem,
     false
   >

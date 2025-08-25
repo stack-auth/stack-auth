@@ -8,7 +8,7 @@ import { StackAssertionError, throwErr } from "@stackframe/stack-shared/dist/uti
 import { pick } from "@stackframe/stack-shared/dist/utils/objects";
 import { Result } from "@stackframe/stack-shared/dist/utils/results";
 import { useMemo } from "react"; // THIS_LINE_PLATFORM react-like
-import { AdminSentEmail } from "../..";
+import { AdminSentEmail, CurrentUser } from "../..";
 import { EmailConfig, stackAppInternalsSymbol } from "../../common";
 import { AdminEmailTemplate } from "../../email-templates";
 import { InternalApiKey, InternalApiKeyBase, InternalApiKeyBaseCrudRead, InternalApiKeyCreateOptions, InternalApiKeyFirstView, internalApiKeyCreateOptionsToCrud } from "../../internal-api-keys";
@@ -178,6 +178,10 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
       },
       async delete() {
         await app._interface.deleteProject();
+      },
+      async transfer(user: CurrentUser, newTeamId: string) {
+        await app._interface.transferProject(user._internalSession, newTeamId);
+        await onRefresh();
       },
       async getProductionModeErrors() {
         return getProductionModeErrors(data);
@@ -511,10 +515,10 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
   async createItemQuantityChange(options: (
     { userId: string, itemId: string, quantity: number, expiresAt?: string, description?: string } |
     { teamId: string, itemId: string, quantity: number, expiresAt?: string, description?: string } |
-    { customId: string, itemId: string, quantity: number, expiresAt?: string, description?: string }
+    { customCustomerId: string, itemId: string, quantity: number, expiresAt?: string, description?: string }
   )): Promise<void> {
     await this._interface.updateItemQuantity(
-      { itemId: options.itemId, ...("userId" in options ? { userId: options.userId } : ("teamId" in options ? { teamId: options.teamId } : { customId: options.customId })) },
+      { itemId: options.itemId, ...("userId" in options ? { userId: options.userId } : ("teamId" in options ? { teamId: options.teamId } : { customCustomerId: options.customCustomerId })) },
       {
         delta: options.quantity,
         expires_at: options.expiresAt,
