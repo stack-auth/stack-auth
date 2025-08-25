@@ -29,7 +29,7 @@ export type RedirectMethod = "window"
 
 export type GetUserOptions<HasTokenStore> =
   & {
-    or?: 'redirect' | 'throw' | 'return-null' | 'anonymous' | 'anonymous-if-exists',
+    or?: 'redirect' | 'throw' | 'return-null' | 'anonymous' | /** @deprecated */ 'anonymous-if-exists[deprecated]',
     tokenStore?: TokenStoreInit,
   }
   & (HasTokenStore extends false ? {
