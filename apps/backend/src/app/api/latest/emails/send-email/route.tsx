@@ -156,7 +156,12 @@ export const POST = createSmartRouteHandler({
           user: { displayName: user.displayName },
           project: { displayName: auth.tenancy.project.display_name },
           variables: body.variables,
-          unsubscribeLink,
+          themeProps: {
+            unsubscribeLink,
+            projectDisplayName: auth.tenancy.project.display_name,
+            logoUrl: auth.tenancy.project.logo_url ?? undefined,
+            fullLogoUrl: auth.tenancy.project.full_logo_url ?? undefined,
+          },
         },
       );
       if (renderedEmail.status === "error") {
