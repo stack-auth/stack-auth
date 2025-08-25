@@ -229,3 +229,76 @@ it("creates subscription in test mode and increases included item quantity", asy
   expect(getAfter.status).toBe(200);
   expect(getAfter.body.quantity).toBe(2);
 });
+
+it("test-mode should error when access type is not admin", async ({ expect }) => {
+  const { code } = await Payments.createPurchaseUrlAndGetCode();
+  const response = await niceBackendFetch("/api/latest/internal/payments/test-mode-purchase-session", {
+    method: "POST",
+    accessType: "client",
+    body: {
+      full_code: code,
+      price_id: "monthly",
+    },
+  });
+  expect(response).toMatchInlineSnapshot(`
+    NiceResponse {
+      "status": 401,
+      "body": {
+        "code": "INSUFFICIENT_ACCESS_TYPE",
+        "details": {
+          "actual_access_type": "client",
+          "allowed_access_types": ["admin"],
+        },
+        "error": "The x-stack-access-type header must be 'admin', but was 'client'.",
+      },
+      "headers": Headers {
+        "x-stack-known-error": "INSUFFICIENT_ACCESS_TYPE",
+        <some fields may have been hidden>,
+      },
+    }
+  `);
+});
+
+it("test-mode should error on invalid code", async ({ expect }) => {
+  await Project.createAndSwitch();
+  const response = await niceBackendFetch("/api/latest/internal/payments/test-mode-purchase-session", {
+    method: "POST",
+    accessType: "admin",
+    body: {
+      full_code: "invalid-code",
+      price_id: "monthly",
+    },
+  });
+  expect(response).toMatchInlineSnapshot(`
+    NiceResponse {
+      "status": 404,
+      "body": {
+        "code": "VERIFICATION_CODE_NOT_FOUND",
+        "error": "The verification code does not exist for this project.",
+      },
+      "headers": Headers {
+        "x-stack-known-error": "VERIFICATION_CODE_NOT_FOUND",
+        <some fields may have been hidden>,
+      },
+    }
+  `);
+});
+
+it("test-mode should error on invalid price_id", async ({ expect }) => {
+  const { code } = await Payments.createPurchaseUrlAndGetCode();
+  const response = await niceBackendFetch("/api/latest/internal/payments/test-mode-purchase-session", {
+    method: "POST",
+    accessType: "admin",
+    body: {
+      full_code: code,
+      price_id: "invalid-price-id",
+    },
+  });
+  expect(response).toMatchInlineSnapshot(`
+    NiceResponse {
+      "status": 400,
+      "body": "Price not found on offer associated with this purchase code",
+      "headers": Headers { <some fields may have been hidden> },
+    }
+  `);
+});
