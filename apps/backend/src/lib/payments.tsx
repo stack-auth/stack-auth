@@ -184,7 +184,6 @@ export async function getItemQuantityForCustomer(options: {
   const changes = await options.prisma.itemQuantityChange.findMany({
     where: {
       tenancyId: options.tenancy.id,
-      customerType: typedToUppercase(options.customerType),
       customerId: options.customerId,
       itemId: options.itemId,
     },
@@ -252,45 +251,6 @@ export async function getItemQuantityForCustomer(options: {
   }
 
   return computeLedgerBalanceAtNow(pos, neg, now);
-}
-
-export async function ensureCustomerExists(options: {
-  prisma: PrismaClientTransaction,
-  tenancyId: string,
-  customerType: "user" | "team" | "custom",
-  customerId: string,
-}) {
-  if (options.customerType === "user") {
-    if (!isUuid(options.customerId)) {
-      throw new KnownErrors.UserNotFound();
-    }
-    const user = await options.prisma.projectUser.findUnique({
-      where: {
-        tenancyId_projectUserId: {
-          tenancyId: options.tenancyId,
-          projectUserId: options.customerId,
-        },
-      },
-    });
-    if (!user) {
-      throw new KnownErrors.UserNotFound();
-    }
-  } else if (options.customerType === "team") {
-    if (!isUuid(options.customerId)) {
-      throw new KnownErrors.TeamNotFound(options.customerId);
-    }
-    const team = await options.prisma.team.findUnique({
-      where: {
-        tenancyId_teamId: {
-          tenancyId: options.tenancyId,
-          teamId: options.customerId,
-        },
-      },
-    });
-    if (!team) {
-      throw new KnownErrors.TeamNotFound(options.customerId);
-    }
-  }
 }
 
 type Subscription = {
