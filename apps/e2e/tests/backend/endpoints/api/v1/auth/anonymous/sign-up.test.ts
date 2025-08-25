@@ -5,6 +5,9 @@ it("allows anonymous users to sign up on the internal project", async ({ expect 
   await Auth.Anonymous.signUp();
   const me = await niceBackendFetch("/api/v1/users/me", {
     accessType: "client",
+    headers: {
+      "x-stack-allow-anonymous-user": "true",
+    },
   });
   expect(me).toMatchInlineSnapshot(`
     NiceResponse {
@@ -13,7 +16,7 @@ it("allows anonymous users to sign up on the internal project", async ({ expect 
         "auth_with_email": false,
         "client_metadata": null,
         "client_read_only_metadata": null,
-        "display_name": "Anonymous user",
+        "display_name": null,
         "has_password": false,
         "id": "<stripped UUID>",
         "is_anonymous": true,
@@ -27,7 +30,7 @@ it("allows anonymous users to sign up on the internal project", async ({ expect 
         "selected_team": {
           "client_metadata": null,
           "client_read_only_metadata": null,
-          "display_name": "Anonymous user's Team",
+          "display_name": "Personal Team",
           "id": "<stripped UUID>",
           "profile_image_url": null,
         },
@@ -39,7 +42,7 @@ it("allows anonymous users to sign up on the internal project", async ({ expect 
   `);
 });
 
-it("does not allow anonymous users to sign up on newly created projects", async ({ expect }) => {
+it("allows anonymous users to sign up on newly created projects", async ({ expect }) => {
   await Project.createAndSwitch();
   const res = await niceBackendFetch("/api/v1/auth/anonymous/sign-up", {
     accessType: "client",
@@ -47,15 +50,32 @@ it("does not allow anonymous users to sign up on newly created projects", async 
   });
   expect(res).toMatchInlineSnapshot(`
     NiceResponse {
-      "status": 400,
+      "status": 200,
       "body": {
-        "code": "ANONYMOUS_ACCOUNTS_NOT_ENABLED",
-        "error": "Anonymous accounts are not enabled for this project.",
+        "access_token": <stripped field 'access_token'>,
+        "refresh_token": <stripped field 'refresh_token'>,
+        "user_id": "<stripped UUID>",
       },
-      "headers": Headers {
-        "x-stack-known-error": "ANONYMOUS_ACCOUNTS_NOT_ENABLED",
-        <some fields may have been hidden>,
+      "headers": Headers { <some fields may have been hidden> },
+    }
+  `);
+});
+
+it("can still sign up anonymously even if sign ups are disabled", async ({ expect }) => {
+  await Project.createAndSwitch({ config: { sign_up_enabled: false, credential_enabled: true } });
+  const res = await niceBackendFetch("/api/v1/auth/anonymous/sign-up", {
+    accessType: "client",
+    method: "POST",
+  });
+  expect(res).toMatchInlineSnapshot(`
+    NiceResponse {
+      "status": 200,
+      "body": {
+        "access_token": <stripped field 'access_token'>,
+        "refresh_token": <stripped field 'refresh_token'>,
+        "user_id": "<stripped UUID>",
       },
+      "headers": Headers { <some fields may have been hidden> },
     }
   `);
 });
