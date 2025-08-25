@@ -23,6 +23,7 @@ import { ApiKey, ApiKeyCreationOptions, ApiKeyUpdateOptions, apiKeyCreationOptio
 import { GetUserOptions, HandlerUrls, OAuthScopesOnSignIn, TokenStoreInit } from "../../common";
 import { OAuthConnection } from "../../connected-accounts";
 import { ServerContactChannel, ServerContactChannelCreateOptions, ServerContactChannelUpdateOptions, serverContactChannelCreateOptionsToCrud, serverContactChannelUpdateOptionsToCrud } from "../../contact-channels";
+import { InlineOffer, ServerItem } from "../../customers";
 import { SendEmailOptions } from "../../email";
 import { NotificationCategory } from "../../notification-categories";
 import { AdminProjectPermissionDefinition, AdminTeamPermission, AdminTeamPermissionDefinition } from "../../permissions";
@@ -31,10 +32,10 @@ import { ProjectCurrentServerUser, ServerUser, ServerUserCreateOptions, ServerUs
 import { StackServerAppConstructorOptions } from "../interfaces/server-app";
 import { _StackClientAppImplIncomplete } from "./client-app-impl";
 import { clientVersion, createCache, createCacheBySession, getBaseUrl, getDefaultProjectId, getDefaultPublishableClientKey, getDefaultSecretServerKey } from "./common";
-import { InlineOffer, ServerItem } from "../../customers";
 
-// NEXT_LINE_PLATFORM react-like
+// IF_PLATFORM react-like
 import { useAsyncCache } from "./common";
+// END_PLATFORM
 
 export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, ProjectId extends string> extends _StackClientAppImplIncomplete<HasTokenStore, ProjectId> {
   declare protected _interface: StackServerInterface;
@@ -53,8 +54,9 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
     orderBy?: 'signedUpAt',
     desc?: boolean,
     query?: string,
-  ], UsersCrud['Server']['List']>(async ([cursor, limit, orderBy, desc, query]) => {
-    return await this._interface.listServerUsers({ cursor, limit, orderBy, desc, query });
+    includeAnonymous?: boolean,
+  ], UsersCrud['Server']['List']>(async ([cursor, limit, orderBy, desc, query, includeAnonymous]) => {
+    return await this._interface.listServerUsers({ cursor, limit, orderBy, desc, query, includeAnonymous });
   });
   private readonly _serverUserCache = createCache<string[], UsersCrud['Server']['Read'] | null>(async ([userId]) => {
     const user = await this._interface.getServerUserById(userId);
@@ -846,7 +848,7 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
       this._ensurePersistentTokenStore(options?.tokenStore);
       const session = await this._getSession(options?.tokenStore);
       let crud = Result.orThrow(await this._currentServerUserCache.getOrWait([session], "write-only"));
-      if (crud?.is_anonymous && options?.or !== "anonymous" && options?.or !== "anonymous-if-exists") {
+      if (crud?.is_anonymous && options?.or !== "anonymous" && options?.or !== "anonymous-if-exists[deprecated]") {
         crud = null;
       }
 
@@ -861,10 +863,10 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
           }
           case 'anonymous': {
             const tokens = await this._signUpAnonymously();
-            return await this.getUser({ tokenStore: tokens, or: "anonymous-if-exists" }) ?? throwErr("Something went wrong while signing up anonymously");
+            return await this.getUser({ tokenStore: tokens, or: "anonymous-if-exists[deprecated]" }) ?? throwErr("Something went wrong while signing up anonymously");
           }
           case undefined:
-          case "anonymous-if-exists":
+          case "anonymous-if-exists[deprecated]":
           case "return-null": {
             return null;
           }
@@ -903,7 +905,7 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
 
       const session = this._useSession(options?.tokenStore);
       let crud = useAsyncCache(this._currentServerUserCache, [session] as const, "useUser()");
-      if (crud?.is_anonymous && options?.or !== "anonymous" && options?.or !== "anonymous-if-exists") {
+      if (crud?.is_anonymous && options?.or !== "anonymous" && options?.or !== "anonymous-if-exists[deprecated]") {
         crud = null;
       }
 
@@ -930,7 +932,7 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
             throw new StackAssertionError("suspend should never return");
           }
           case undefined:
-          case "anonymous-if-exists":
+          case "anonymous-if-exists[deprecated]":
           case "return-null": {
             // do nothing
           }
@@ -953,7 +955,7 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
   // END_PLATFORM
 
   async listUsers(options?: ServerListUsersOptions): Promise<ServerUser[] & { nextCursor: string | null }> {
-    const crud = Result.orThrow(await this._serverUsersCache.getOrWait([options?.cursor, options?.limit, options?.orderBy, options?.desc, options?.query], "write-only"));
+    const crud = Result.orThrow(await this._serverUsersCache.getOrWait([options?.cursor, options?.limit, options?.orderBy, options?.desc, options?.query, options?.includeAnonymous], "write-only"));
     const result: any = crud.items.map((j) => this._serverUserFromCrud(j));
     result.nextCursor = crud.pagination?.next_cursor ?? null;
     return result as any;
