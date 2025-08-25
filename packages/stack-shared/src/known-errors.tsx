@@ -731,6 +731,16 @@ const AnonymousAccountsNotEnabled = createKnownErrorConstructor(
   () => [] as const,
 );
 
+const AnonymousAuthenticationNotAllowed = createKnownErrorConstructor(
+  KnownError,
+  "ANONYMOUS_AUTHENTICATION_NOT_ALLOWED",
+  () => [
+    401,
+    "X-Stack-Access-Token is for an anonymous user, but anonymous users are not enabled. Set the X-Stack-Allow-Anonymous-User header of this request to 'true' to allow anonymous users.",
+  ] as const,
+  () => [] as const,
+);
+
 
 const EmailPasswordMismatch = createKnownErrorConstructor(
   KnownError,
@@ -1562,6 +1572,7 @@ export const KnownErrors = {
   PasswordAuthenticationNotEnabled,
   PasskeyAuthenticationNotEnabled,
   AnonymousAccountsNotEnabled,
+  AnonymousAuthenticationNotAllowed,
   EmailPasswordMismatch,
   RedirectUrlNotWhitelisted,
   PasswordRequirementsNotMet,

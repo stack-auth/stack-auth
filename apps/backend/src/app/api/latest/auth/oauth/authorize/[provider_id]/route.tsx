@@ -71,10 +71,14 @@ export const GET = createSmartRouteHandler({
 
     const provider = { id: providerRaw[0], ...providerRaw[1] };
 
-    // If the authorization token is present, we are adding new scopes to the user instead of sign-in/sign-up
+    if (query.type === "link" && !query.token) {
+      throw new StatusError(StatusError.BadRequest, "?token= query parameter is required for link type");
+    }
+
+    // If a token is provided, store it in the outer info so we can use it to link another user to the account, or to upgrade an anonymous user
     let projectUserId: string | undefined;
-    if (query.type === "link") {
-      const result = await decodeAccessToken(query.token);
+    if (query.token) {
+      const result = await decodeAccessToken(query.token, { allowAnonymous: true });
       if (result.status === "error") {
         throw result.error;
       }

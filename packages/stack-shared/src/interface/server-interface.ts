@@ -223,6 +223,7 @@ export class StackServerInterface extends StackClientInterface {
     orderBy?: 'signedUpAt',
     desc?: boolean,
     query?: string,
+    includeAnonymous?: boolean,
   }): Promise<UsersCrud['Server']['List']> {
     const searchParams = new URLSearchParams(filterUndefined({
       cursor: options.cursor,
@@ -235,6 +236,9 @@ export class StackServerInterface extends StackClientInterface {
       } : {},
       ...options.query ? {
         query: options.query,
+      } : {},
+      ...options.includeAnonymous ? {
+        include_anonymous: 'true',
       } : {},
     }));
     const response = await this.sendServerRequest("/users?" + searchParams.toString(), {}, null);

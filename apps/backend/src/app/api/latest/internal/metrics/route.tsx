@@ -223,7 +223,7 @@ export const GET = createSmartRouteHandler({
         tenancy: req.auth.tenancy,
         query: {
           order_by: 'signed_up_at',
-          desc: true,
+          desc: "true",
           limit: 5,
         },
         allowedErrorTypes: [

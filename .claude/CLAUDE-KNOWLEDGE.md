@@ -1,6 +1,131 @@
 # CLAUDE-KNOWLEDGE.md
 
-This file documents key learnings from implementing wildcard domain support in Stack Auth, organized in Q&A format.
+This file contains knowledge learned while working on the codebase in Q&A format.
+
+## Q: How do anonymous users work in Stack Auth?
+A: Anonymous users are a special type of user that can be created without any authentication. They have `isAnonymous: true` in the database and use different JWT signing keys with a `role: 'anon'` claim. Anonymous JWTs use a prefixed secret ("anon-" + audience) for signing and verification.
+
+## Q: How are anonymous user JWTs different from regular user JWTs?
+A: Anonymous JWTs have:
+1. Different kid (key ID) - prefixed with "anon-" in the generation
+2. Different signing secret - uses `getPerAudienceSecret` with `isAnonymous: true`
+3. Contains `role: 'anon'` in the payload
+4. Must pass `isAnonymous` flag to both `getPrivateJwk` and `getPublicJwkSet` functions for proper verification
+
+## Q: What is the X-Stack-Allow-Anonymous-User header?
+A: This header controls whether anonymous users are allowed to access an endpoint. When set to "true" (which is the default for client SDK calls), anonymous JWTs are accepted. When false or missing, anonymous users get an `AnonymousAuthenticationNotAllowed` error.
+
+## Q: How do you upgrade an anonymous user to a regular user?
+A: When an anonymous user (identified by `is_anonymous: true`) signs up or signs in through any auth method (password, OTP, OAuth), instead of creating a new user, the system upgrades the existing anonymous user by:
+1. Setting `is_anonymous: false`
+2. Adding the authentication method (email, password, OAuth provider, etc.)
+3. Keeping the same user ID so old JWTs remain valid
+
+## Q: How do you access the current user in smart route handlers?
+A: In smart route handlers, the user is accessed through `fullReq.auth?.user` not through the destructured `auth` parameter. The auth parameter only guarantees `tenancy`, while `user` is optional and needs to be accessed from the full request.
+
+## Q: How do user CRUD handlers work with parameters?
+A: The `adminUpdate` and similar methods take parameters directly, not wrapped in a `params` object:
+- Correct: `adminUpdate({ tenancy, user_id: "...", data: {...} })`
+- Wrong: `adminUpdate({ tenancy, params: { user_id: "..." }, data: {...} })`
+
+## Q: What query parameter filters anonymous users in user endpoints?
+A: The `include_anonymous` query parameter controls whether anonymous users are included in results:
+- Without parameter or `include_anonymous=false`: Anonymous users are filtered out
+- With `include_anonymous=true`: Anonymous users are included in results
+This applies to user list, get by ID, search, and team member endpoints.
+
+## Q: How does the JWKS endpoint handle anonymous keys?
+A: The JWKS (JSON Web Key Set) endpoint at `/.well-known/jwks.json`:
+- By default: Returns only regular user signing keys
+- With `?include_anonymous=true`: Returns both regular and anonymous user signing keys
+This allows systems that need to verify anonymous JWTs to fetch the appropriate public keys.
+
+## Q: What is the typical test command flow for Stack Auth?
+A: 
+1. `pnpm typecheck` - Check TypeScript compilation
+2. `pnpm lint --fix` - Fix linting issues
+3. `pnpm test run <path>` - Run specific tests (the `run` is important to avoid watch mode)
+4. Use `-t "test name"` to run specific tests by name
+
+## Q: How do E2E tests handle authentication in Stack Auth?
+A: E2E tests use `niceBackendFetch` which automatically:
+- Sets `x-stack-allow-anonymous-user: "true"` for client access type
+- Includes project keys and tokens from `backendContext.value`
+- Handles auth tokens through the context rather than manual header setting
+
+## Q: What is the signature of a verification code handler?
+A: The handler function in `createVerificationCodeHandler` receives 5 parameters:
+```typescript
+async handler(tenancy, validatedMethod, validatedData, requestBody, currentUser)
+```
+Where:
+- `tenancy` - The tenancy object
+- `validatedMethod` - The validated method data (e.g., `{ email: "..." }`)
+- `validatedData` - The validated data object
+- `requestBody` - The raw request body
+- `currentUser` - The current authenticated user (if any)
+
+## Q: How does JWT key derivation work for anonymous users?
+A: The JWT signing/verification uses a multi-step key derivation process:
+1. **Secret Derivation**: `getPerAudienceSecret()` creates a derived secret from:
+   - Base secret (STACK_SERVER_SECRET)
+   - Audience (usually project ID)
+   - Optional "anon-" prefix for anonymous users
+2. **Kid Generation**: `getKid()` creates a key ID from:
+   - Base secret (STACK_SERVER_SECRET) 
+   - "kid" string with optional "anon-" prefix
+   - Takes only first 12 characters of hash
+3. **Key Generation**: Private/public keys are generated from the derived secret
+
+## Q: What is the JWT signing and verification flow?
+A: 
+**Signing (signJWT)**:
+1. Derive secret: `getPerAudienceSecret(audience, STACK_SERVER_SECRET, isAnonymous)`
+2. Generate kid: `getKid(STACK_SERVER_SECRET, isAnonymous)`
+3. Create private key from derived secret
+4. Sign JWT with kid in header and role in payload
+
+**Verification (verifyJWT)**:
+1. Decode JWT without verification to read the role
+2. Check if role === 'anon' to determine if it's anonymous
+3. Derive secret with same parameters as signing
+4. Generate kid with same parameters as signing
+5. Create public key set and verify JWT
+
+## Q: What makes anonymous JWTs different from regular JWTs?
+A: Anonymous JWTs have:
+1. **Different derived secret**: Uses "anon-" prefix in secret derivation
+2. **Different kid**: Uses "anon-" prefix resulting in different key ID
+3. **Role field**: Contains `role: 'anon'` in the payload
+4. **Verification requirements**: Requires `allowAnonymous: true` flag to be verified
+
+## Q: How do you debug JWT verification issues?
+A: Common debugging steps:
+1. Check that the `X-Stack-Allow-Anonymous-User` header is set to "true"
+2. Verify the JWT has `role: 'anon'` in its payload
+3. Ensure the same secret derivation parameters are used for signing and verification
+4. Check that the kid in the JWT header matches the expected kid
+5. Verify that `allowAnonymous` flag is passed through the entire call chain
+
+## Q: What is the difference between getPrivateJwk and getPrivateJwkFromDerivedSecret?
+A: 
+- `getPrivateJwk(secret, isAnonymous)`: Takes a base secret, may derive it internally, generates kid
+- `getPrivateJwkFromDerivedSecret(derivedSecret, kid)`: Takes an already-derived secret and pre-calculated kid
+The second is used internally for the actual JWT signing flow, while the first is for backward compatibility and special cases like IDP.
+
+## Q: How does the JWT verification process work with jose?
+A: The `jose.jwtVerify` function:
+1. Extracts the kid from the JWT header
+2. Looks for a key with matching kid in the provided JWK set
+3. Uses that key to verify the JWT signature
+4. If no matching kid is found, verification fails with an error
+
+## Q: What causes UNPARSABLE_ACCESS_TOKEN errors?
+A: This error occurs when JWT verification fails in `decodeAccessToken`. Common causes:
+1. Kid mismatch - the kid in the JWT header doesn't match any key in the JWK set
+2. Wrong secret derivation - using different parameters for signing vs verification
+3. JOSEError thrown during `jose.jwtVerify` due to invalid signature or key mismatch
 
 ## OAuth Flow and Validation
 

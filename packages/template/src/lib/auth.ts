@@ -14,7 +14,8 @@ export async function signInWithOAuth(
     redirectUrl: string,
     errorRedirectUrl: string,
     providerScope?: string,
-  }
+  },
+  session: InternalSession,
 ) {
   const { codeChallenge, state } = await saveVerifierAndState();
   const location = await iface.getOAuthUrl({
@@ -25,6 +26,7 @@ export async function signInWithOAuth(
     state,
     type: "authenticate",
     providerScope: options.providerScope,
+    session,
   });
   window.location.assign(location);
   await neverResolve();
