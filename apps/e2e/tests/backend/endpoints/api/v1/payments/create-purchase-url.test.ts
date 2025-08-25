@@ -13,6 +13,7 @@ it("should not be able to create purchase URL without offer_id or offer_inline",
     method: "POST",
     accessType: "client",
     body: {
+      customer_type: "user",
       customer_id: generateUuid(),
     },
   });
@@ -52,6 +53,7 @@ it("should error for non-existent offer_id", async ({ expect }) => {
     method: "POST",
     accessType: "client",
     body: {
+      customer_type: "user",
       customer_id: generateUuid(),
       offer_id: "non-existent-offer",
     },
@@ -103,24 +105,30 @@ it("should error for invalid customer_id", async ({ expect }) => {
     method: "POST",
     accessType: "client",
     body: {
+      customer_type: "team",
       customer_id: generateUuid(),
       offer_id: "test-offer",
     },
   });
   expect(response).toMatchInlineSnapshot(`
-      NiceResponse {
-        "status": 400,
-        "body": {
-          "code": "CUSTOMER_DOES_NOT_EXIST",
-          "details": { "customer_id": "<stripped UUID>" },
-          "error": "Customer with ID \\"<stripped UUID>\\" does not exist.",
+    NiceResponse {
+      "status": 400,
+      "body": {
+        "code": "OFFER_CUSTOMER_TYPE_DOES_NOT_MATCH",
+        "details": {
+          "actual_customer_type": "team",
+          "customer_id": "<stripped UUID>",
+          "offer_customer_type": "user",
+          "offer_id": "test-offer",
         },
-        "headers": Headers {
-          "x-stack-known-error": "CUSTOMER_DOES_NOT_EXIST",
-          <some fields may have been hidden>,
-        },
-      }
-    `);
+        "error": "The team with ID \\"<stripped UUID>\\" is not a valid customer for the inline offer that has been passed in. The offer is configured to only be available for user customers, but the customer is a team.",
+      },
+      "headers": Headers {
+        "x-stack-known-error": "OFFER_CUSTOMER_TYPE_DOES_NOT_MATCH",
+        <some fields may have been hidden>,
+      },
+    }
+  `);
 });
 
 it("should error for no connected stripe account", async ({ expect }) => {
@@ -150,6 +158,7 @@ it("should error for no connected stripe account", async ({ expect }) => {
     method: "POST",
     accessType: "client",
     body: {
+      customer_type: "user",
       customer_id: user.userId,
       offer_id: "test-offer",
     },
@@ -177,6 +186,7 @@ it("should not allow offer_inline when calling from client", async ({ expect }) 
     method: "POST",
     accessType: "client",
     body: {
+      customer_type: "user",
       customer_id: userId,
       offer_inline: {
         display_name: "Inline Test Offer",
@@ -208,6 +218,7 @@ it("should allow offer_inline when calling from server", async ({ expect }) => {
     method: "POST",
     accessType: "server",
     body: {
+      customer_type: "user",
       customer_id: userId,
       offer_inline: {
         display_name: "Inline Test Offer",
@@ -224,8 +235,7 @@ it("should allow offer_inline when calling from server", async ({ expect }) => {
     },
   });
   expect(response.status).toBe(200);
-  const body = response.body as { url: string };
-  expect(body.url).toMatch(/^https?:\/\/localhost:8101\/purchase\/[a-z0-9-_]+$/);
+  expect(response.body.url).toMatch(/^https?:\/\/localhost:8101\/purchase\/[a-z0-9-_]+$/);
 });
 
 it("should allow valid offer_id", async ({ expect }) => {
@@ -256,6 +266,7 @@ it("should allow valid offer_id", async ({ expect }) => {
     method: "POST",
     accessType: "client",
     body: {
+      customer_type: "user",
       customer_id: userId,
       offer_id: "test-offer",
     },

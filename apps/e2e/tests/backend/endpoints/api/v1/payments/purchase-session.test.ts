@@ -96,6 +96,7 @@ it("should create purchase URL with inline offer, validate code, and create purc
     method: "POST",
     accessType: "server",
     body: {
+      customer_type: "user",
       customer_id: userId,
       offer_inline: {
         display_name: "Inline Test Offer",

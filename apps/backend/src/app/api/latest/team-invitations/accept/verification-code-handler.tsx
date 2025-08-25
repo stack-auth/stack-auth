@@ -87,6 +87,7 @@ export const teamInvitationCodeHandler = createVerificationCodeHandler({
         tenancy,
         customerId: data.team_id,
         itemId: "dashboard_admins",
+        customerType: "team",
       });
       if (currentMemberCount + 1 > maxDashboardAdmins) {
         throw new KnownErrors.ItemQuantityInsufficientAmount("dashboard_admins", data.team_id, -1);
