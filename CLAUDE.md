@@ -72,9 +72,11 @@ To see all development ports, refer to the index.html of `apps/dev-launchpad/pub
 - Environment variables are pre-configured in `.env.development` files
 - Always run typecheck, lint, and test to make sure your changes are working as expected. You can save time by only linting and testing the files you've changed (and/or related E2E tests).
 - The project uses a custom route handler system in the backend for consistent API responses
-- Sometimes, the typecheck will give errors along the line of "Cannot assign Buffer to Uint8Array" or similar, on changes that are completely unrelated to your own changes. If that happens, tell the user to run `pnpm clean && pnpm i && pnpm run codegen && pnpm build:packages`, and restart the dev server (you cannot run this yourself). After that's done, the typecheck should pass.
-- When writing tests, prefer .toMatchInlineSnapshot over other selectors, if possible. You can check (and modify) the snapshot-serializer.ts file to see how the snapshots are formatted and how non-deterministic values are handled.
-- Whenever you learn something new, or at the latest right before you call the `Stop` tool, write whatever you learned into the ./claude/CLAUDE-KNOWLEDGE.md file, in the Q&A format in there. You will later be able to look up knowledge from there (based on the question you asked).
+- Sometimes, the typecheck will give errors along the line of "Cannot assign Buffer to Uint8Array" or similar, on changes that are completely unrelated to your own changes. If that happens, stop and tell the user to run `pnpm clean && pnpm i && pnpm run codegen && pnpm build:packages`, and restart the dev server (you cannot run this yourself). After that's done, the typecheck should pass.
+- Whenever you learn something new, or at the latest right before you call the `Stop` tool, write whatever you learned into the .claude/CLAUDE-KNOWLEDGE.md file, in the Q&A format in there. You will later be able to look up knowledge from there (based on the question you asked). Note that it's not 100% accurate and you may have to update it later if you find that something is wrong.
 
 ### Code-related
 - Use ES6 maps instead of records wherever you can.
+
+### Testing-related
+- When writing tests, prefer .toMatchInlineSnapshot over other matchers, if possible. You can check (and modify) the snapshot-serializer.ts file to see how the snapshots are formatted and how non-deterministic values are handled.

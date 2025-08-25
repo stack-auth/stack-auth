@@ -2,6 +2,7 @@ import * as oauth from 'oauth4webapi';
 
 import * as yup from 'yup';
 import { KnownError, KnownErrors } from '../known-errors';
+import { inlineOfferSchema } from '../schema-fields';
 import { AccessToken, InternalSession, RefreshToken } from '../sessions';
 import { generateSecureRandomString } from '../utils/crypto';
 import { StackAssertionError, throwErr } from '../utils/errors';
@@ -26,7 +27,6 @@ import { TeamInvitationCrud } from './crud/team-invitation';
 import { TeamMemberProfilesCrud } from './crud/team-member-profiles';
 import { TeamPermissionsCrud } from './crud/team-permissions';
 import { TeamsCrud } from './crud/teams';
-import { inlineOfferSchema } from '../schema-fields';
 
 export type ClientInterfaceOptions = {
   clientVersion: string,
@@ -292,6 +292,7 @@ export class StackClientInterface {
         ...(tokenObj?.refreshToken ? {
           "X-Stack-Refresh-Token": tokenObj.refreshToken.token,
         } : {}),
+        "X-Stack-Allow-Anonymous-User": "true",
         ...('publishableClientKey' in this.options ? {
           "X-Stack-Publishable-Client-Key": this.options.publishableClientKey,
         } : {}),
@@ -851,7 +852,7 @@ export class StackClientInterface {
     });
   }
 
-  async signInWithMagicLink(code: string): Promise<Result<{ newUser: boolean, accessToken: string, refreshToken: string }, KnownErrors["VerificationCodeError"]>> {
+  async signInWithMagicLink(code: string, session: InternalSession): Promise<Result<{ newUser: boolean, accessToken: string, refreshToken: string }, KnownErrors["VerificationCodeError"]>> {
     const res = await this.sendClientRequestAndCatchKnownError(
       "/auth/otp/sign-in",
       {
@@ -863,7 +864,7 @@ export class StackClientInterface {
           code,
         }),
       },
-      null,
+      session,
       [KnownErrors.VerificationCodeError]
     );
 
@@ -879,7 +880,7 @@ export class StackClientInterface {
     });
   }
 
-  async signInWithMfa(totp: string, code: string): Promise<Result<{ newUser: boolean, accessToken: string, refreshToken: string }, KnownErrors["VerificationCodeError"]>> {
+  async signInWithMfa(totp: string, code: string, session: InternalSession): Promise<Result<{ newUser: boolean, accessToken: string, refreshToken: string }, KnownErrors["VerificationCodeError"]>> {
     const res = await this.sendClientRequestAndCatchKnownError(
       "/auth/mfa/sign-in",
       {
@@ -893,7 +894,7 @@ export class StackClientInterface {
           code,
         }),
       },
-      null,
+      session,
       [KnownErrors.VerificationCodeError]
     );
 
@@ -909,7 +910,7 @@ export class StackClientInterface {
     });
   }
 
-  async signInWithPasskey(body: { authentication_response: AuthenticationResponseJSON, code: string }): Promise<Result<{accessToken: string, refreshToken: string }, KnownErrors["PasskeyAuthenticationFailed"]>> {
+  async signInWithPasskey(body: { authentication_response: AuthenticationResponseJSON, code: string }, session: InternalSession): Promise<Result<{accessToken: string, refreshToken: string }, KnownErrors["PasskeyAuthenticationFailed"]>> {
     const res = await this.sendClientRequestAndCatchKnownError(
       "/auth/passkey/sign-in",
       {
@@ -919,7 +920,7 @@ export class StackClientInterface {
         },
         body: JSON.stringify(body),
       },
-      null,
+      session,
       [KnownErrors.PasskeyAuthenticationFailed]
     );
 
@@ -944,7 +945,8 @@ export class StackClientInterface {
       state: string,
       type: "authenticate" | "link",
       providerScope?: string,
-    } & ({ type: "authenticate" } | { type: "link", session: InternalSession })
+      session: InternalSession,
+    }
   ): Promise<string> {
     const updatedRedirectUrl = new URL(options.redirectUrl);
     for (const key of ["code", "state"]) {
@@ -971,14 +973,16 @@ export class StackClientInterface {
     url.searchParams.set("type", options.type);
     url.searchParams.set("error_redirect_url", options.errorRedirectUrl);
 
+    const tokens = await options.session.getOrFetchLikelyValidTokens(20_000);
+    if (tokens) {
+      url.searchParams.set("token", tokens.accessToken.token);
+    }
+
     if (options.afterCallbackRedirectUrl) {
       url.searchParams.set("after_callback_redirect_url", options.afterCallbackRedirectUrl);
     }
 
     if (options.type === "link") {
-      const tokens = await options.session.getOrFetchLikelyValidTokens(20_000);
-      url.searchParams.set("token", tokens?.accessToken.token || "");
-
       if (options.providerScope) {
         url.searchParams.set("provider_scope", options.providerScope);
       }
