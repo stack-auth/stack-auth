@@ -8,7 +8,6 @@ import { ActionCell, DataTable, DataTableColumnHeader, TextCell, toast } from "@
 import { ColumnDef } from "@tanstack/react-table";
 import { useState } from "react";
 import * as yup from "yup";
-import { SelectField } from "../form-fields";
 
 type PaymentItem = {
   id: string,
@@ -131,7 +130,7 @@ function CreateItemQuantityChangeDialog({ open, onOpenChange, itemId, customerTy
         { userId: values.customerId } :
         customerType === "team" ?
           { teamId: values.customerId } :
-          { customId: values.customerId }
+          { customCustomerId: values.customerId }
       ),
       itemId,
       quantity: values.quantity,

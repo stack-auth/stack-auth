@@ -214,8 +214,8 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
   );
 
   private readonly _customItemCache = createCacheBySession<[string, string], ItemCrud['Client']['Read']>(
-    async (session, [customId, itemId]) => {
-      return await this._interface.getItem({ customId, itemId }, session);
+    async (session, [customCustomerId, itemId]) => {
+      return await this._interface.getItem({ customCustomerId, itemId }, session);
     }
   );
 
@@ -1204,7 +1204,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
     };
   }
 
-  async getItem(options: { itemId: string, userId: string } | { itemId: string, teamId: string } | { itemId: string, customId: string }): Promise<Item> {
+  async getItem(options: { itemId: string, userId: string } | { itemId: string, teamId: string } | { itemId: string, customCustomerId: string }): Promise<Item> {
     const session = await this._getSession();
     let crud: ItemCrud['Client']['Read'];
     if ("userId" in options) {
@@ -1212,17 +1212,17 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
     } else if ("teamId" in options) {
       crud = Result.orThrow(await this._teamItemCache.getOrWait([session, options.teamId, options.itemId], "write-only"));
     } else {
-      crud = Result.orThrow(await this._customItemCache.getOrWait([session, options.customId, options.itemId], "write-only"));
+      crud = Result.orThrow(await this._customItemCache.getOrWait([session, options.customCustomerId, options.itemId], "write-only"));
     }
     return this._clientItemFromCrud(crud);
   }
 
   // IF_PLATFORM react-like
-  useItem(options: { itemId: string, userId: string } | { itemId: string, teamId: string } | { itemId: string, customId: string }): Item {
+  useItem(options: { itemId: string, userId: string } | { itemId: string, teamId: string } | { itemId: string, customCustomerId: string }): Item {
     const session = this._useSession();
     const [cache, ownerId] =
       "userId" in options ? [this._userItemCache, options.userId] :
-        "teamId" in options ? [this._teamItemCache, options.teamId] : [this._customItemCache, options.customId];
+        "teamId" in options ? [this._teamItemCache, options.teamId] : [this._customItemCache, options.customCustomerId];
     const crud = useAsyncCache(cache, [session, ownerId, options.itemId] as const, "app.useItem()");
     return this._clientItemFromCrud(crud);
   }

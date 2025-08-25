@@ -14,6 +14,7 @@ import { AuthenticationResponseJSON, PublicKeyCredentialCreationOptionsJSON, Pub
 import { wait } from '../utils/promises';
 import { Result } from "../utils/results";
 import { deindent } from '../utils/strings';
+import { urlString } from '../utils/urls';
 import { ConnectedAccountAccessTokenCrud } from './crud/connected-accounts';
 import { ContactChannelsCrud } from './crud/contact-channels';
 import { CurrentUserCrud } from './crud/current-user';
@@ -27,7 +28,6 @@ import { TeamInvitationCrud } from './crud/team-invitation';
 import { TeamMemberProfilesCrud } from './crud/team-member-profiles';
 import { TeamPermissionsCrud } from './crud/team-permissions';
 import { TeamsCrud } from './crud/teams';
-import { urlString } from '../utils/urls';
 
 export type ClientInterfaceOptions = {
   clientVersion: string,
@@ -1750,7 +1750,7 @@ export class StackClientInterface {
     options: (
       { itemId: string, userId: string } |
       { itemId: string, teamId: string } |
-      { itemId: string, customId: string }
+      { itemId: string, customCustomerId: string }
     ),
     session: InternalSession | null,
   ): Promise<ItemCrud['Client']['Read']> {
@@ -1762,11 +1762,11 @@ export class StackClientInterface {
     } else if ("teamId" in options) {
       customerType = "team";
       customerId = options.teamId;
-    } else if ("customId" in options) {
+    } else if ("customCustomerId" in options) {
       customerType = "custom";
-      customerId = options.customId;
+      customerId = options.customCustomerId;
     } else {
-      throw new StackAssertionError("getItem requires one of userId, teamId, or customId");
+      throw new StackAssertionError("getItem requires one of userId, teamId, or customCustomerId");
     }
 
     const response = await this.sendClientRequest(

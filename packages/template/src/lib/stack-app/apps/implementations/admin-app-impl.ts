@@ -515,10 +515,10 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
   async createItemQuantityChange(options: (
     { userId: string, itemId: string, quantity: number, expiresAt?: string, description?: string } |
     { teamId: string, itemId: string, quantity: number, expiresAt?: string, description?: string } |
-    { customId: string, itemId: string, quantity: number, expiresAt?: string, description?: string }
+    { customCustomerId: string, itemId: string, quantity: number, expiresAt?: string, description?: string }
   )): Promise<void> {
     await this._interface.updateItemQuantity(
-      { itemId: options.itemId, ...("userId" in options ? { userId: options.userId } : ("teamId" in options ? { teamId: options.teamId } : { customId: options.customId })) },
+      { itemId: options.itemId, ...("userId" in options ? { userId: options.userId } : ("teamId" in options ? { teamId: options.teamId } : { customCustomerId: options.customCustomerId })) },
       {
         delta: options.quantity,
         expires_at: options.expiresAt,

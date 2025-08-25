@@ -84,7 +84,7 @@ it("root-level getItem works for user and team", async ({ expect }) => {
   expect(userItem.quantity).toBe(4);
 }, { timeout: 60_000 });
 
-it("customId is supported via root-level getItem and admin quantity change", async ({ expect }) => {
+it("customCustomerId is supported via root-level getItem and admin quantity change", async ({ expect }) => {
   const { clientApp, adminApp } = await createApp({
     config: {},
   });
@@ -97,11 +97,11 @@ it("customId is supported via root-level getItem and admin quantity change", asy
       default: { quantity: 2, repeat: "never", expires: "never" },
     },
   });
-  const customId = "custom-abc";
-  const before = await clientApp.getItem({ itemId, customId });
+  const customCustomerId = "custom-abc";
+  const before = await clientApp.getItem({ itemId, customCustomerId });
   expect(before.quantity).toBe(2);
-  await adminApp.createItemQuantityChange({ customId, itemId, quantity: 5 });
-  const after = await clientApp.getItem({ itemId, customId });
+  await adminApp.createItemQuantityChange({ customCustomerId, itemId, quantity: 5 });
+  const after = await clientApp.getItem({ itemId, customCustomerId });
   expect(after.quantity).toBe(7);
 }, { timeout: 60_000 });
 

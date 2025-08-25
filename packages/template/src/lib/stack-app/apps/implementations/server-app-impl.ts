@@ -170,8 +170,8 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
   );
 
   private readonly _serverCustomItemsCache = createCache<[string, string], ItemCrud['Client']['Read']>(
-    async ([customId, itemId]) => {
-      return await this._interface.getItem({ customId, itemId }, null);
+    async ([customCustomerId, itemId]) => {
+      return await this._interface.getItem({ customCustomerId, itemId }, null);
     }
   );
 
@@ -730,7 +730,7 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
           ? { itemId: crud.id, userId: customer.id }
           : customer.type === "team"
             ? { itemId: crud.id, teamId: customer.id }
-            : { itemId: crud.id, customId: customer.id };
+            : { itemId: crud.id, customCustomerId: customer.id };
         await app._interface.updateItemQuantity(updateOptions, { delta });
         if (customer.type === "user") await app._serverUserItemsCache.refresh([customer.id, crud.id]);
         else if (customer.type === "team") await app._serverTeamItemsCache.refresh([customer.id, crud.id]);
@@ -741,7 +741,7 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
           ? { itemId: crud.id, userId: customer.id }
           : customer.type === "team"
             ? { itemId: crud.id, teamId: customer.id }
-            : { itemId: crud.id, customId: customer.id };
+            : { itemId: crud.id, customCustomerId: customer.id };
         await app._interface.updateItemQuantity(updateOptions, { delta: -delta, allow_negative: true });
         if (customer.type === "user") await app._serverUserItemsCache.refresh([customer.id, crud.id]);
         else if (customer.type === "team") await app._serverTeamItemsCache.refresh([customer.id, crud.id]);
@@ -753,7 +753,7 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
             ? { itemId: crud.id, userId: customer.id }
             : customer.type === "team"
               ? { itemId: crud.id, teamId: customer.id }
-              : { itemId: crud.id, customId: customer.id };
+              : { itemId: crud.id, customCustomerId: customer.id };
           await app._interface.updateItemQuantity(updateOptions, { delta: -delta });
           if (customer.type === "user") await app._serverUserItemsCache.refresh([customer.id, crud.id]);
           else if (customer.type === "team") await app._serverTeamItemsCache.refresh([customer.id, crud.id]);
@@ -995,7 +995,7 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
     return teams.map((t) => this._serverTeamFromCrud(t));
   }
 
-  async getItem(options: { itemId: string, userId: string } | { itemId: string, teamId: string } | { itemId: string, customId: string }): Promise<ServerItem> {
+  async getItem(options: { itemId: string, userId: string } | { itemId: string, teamId: string } | { itemId: string, customCustomerId: string }): Promise<ServerItem> {
     if ("userId" in options) {
       const result = Result.orThrow(await this._serverUserItemsCache.getOrWait([options.userId, options.itemId], "write-only"));
       return this._serverItemFromCrud({ type: "user", id: options.userId }, result);
@@ -1003,13 +1003,13 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
       const result = Result.orThrow(await this._serverTeamItemsCache.getOrWait([options.teamId, options.itemId], "write-only"));
       return this._serverItemFromCrud({ type: "team", id: options.teamId }, result);
     } else {
-      const result = Result.orThrow(await this._serverCustomItemsCache.getOrWait([options.customId, options.itemId], "write-only"));
-      return this._serverItemFromCrud({ type: "custom", id: options.customId }, result);
+      const result = Result.orThrow(await this._serverCustomItemsCache.getOrWait([options.customCustomerId, options.itemId], "write-only"));
+      return this._serverItemFromCrud({ type: "custom", id: options.customCustomerId }, result);
     }
   }
 
   // IF_PLATFORM react-like
-  useItem(options: { itemId: string, userId: string } | { itemId: string, teamId: string } | { itemId: string, customId: string }): ServerItem {
+  useItem(options: { itemId: string, userId: string } | { itemId: string, teamId: string } | { itemId: string, customCustomerId: string }): ServerItem {
     let type: "user" | "team" | "custom";
     let id: string;
     let cache: AsyncCache<[string, string], Result<ItemCrud['Client']['Read']>>;
@@ -1023,7 +1023,7 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
       cache = this._serverTeamItemsCache;
     } else {
       type = "custom";
-      id = options.customId;
+      id = options.customCustomerId;
       cache = this._serverCustomItemsCache;
     }
 
