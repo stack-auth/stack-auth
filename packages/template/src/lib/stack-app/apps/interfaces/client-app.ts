@@ -79,7 +79,7 @@ export type StackClientApp<HasTokenStore extends boolean = boolean, ProjectId ex
   & AsyncStoreProperty<"project", [], Project, false>
   & AsyncStoreProperty<
     "item",
-    [{ itemId: string, userId: string } | { itemId: string, teamId: string } | { itemId: string, customId: string }],
+    [{ itemId: string, userId: string } | { itemId: string, teamId: string } | { itemId: string, customCustomerId: string }],
     Item,
     false
   >

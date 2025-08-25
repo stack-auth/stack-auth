@@ -91,8 +91,14 @@ async function seed() {
     branchId: DEFAULT_BRANCH_ID,
     environmentConfigOverrideOverride: {
       payments: {
+        groups: {
+          plans: {
+            displayName: "Plans",
+          }
+        },
         offers: {
           team: {
+            groupId: "plans",
             displayName: "Team",
             customerType: "team",
             serverOnly: false,
@@ -106,13 +112,14 @@ async function seed() {
             },
             includedItems: {
               dashboard_admins: {
-                quantity: 2,
+                quantity: 3,
                 repeat: "never",
                 expires: "when-purchase-expires"
               }
             }
           },
           growth: {
+            groupId: "plans",
             displayName: "Growth",
             customerType: "team",
             serverOnly: false,
@@ -126,13 +133,29 @@ async function seed() {
             },
             includedItems: {
               dashboard_admins: {
-                quantity: 4,
+                quantity: 5,
+                repeat: "never",
+                expires: "when-purchase-expires"
+              }
+            }
+          },
+          free: {
+            groupId: "plans",
+            displayName: "Free",
+            customerType: "team",
+            serverOnly: false,
+            stackable: false,
+            prices: "include-by-default",
+            includedItems: {
+              dashboard_admins: {
+                quantity: 1,
                 repeat: "never",
                 expires: "when-purchase-expires"
               }
             }
           },
           "extra-admins": {
+            groupId: "plans",
             displayName: "Extra Admins",
             customerType: "team",
             serverOnly: false,
@@ -150,17 +173,16 @@ async function seed() {
                 repeat: "never",
                 expires: "when-purchase-expires"
               }
+            },
+            isAddOnTo: {
+              team: true,
+              growth: true,
             }
           }
         },
         items: {
           dashboard_admins: {
             displayName: "Dashboard Admins",
-            default: {
-              quantity: 1,
-              expires: "never",
-              repeat: "never"
-            },
             customerType: "team"
           }
         },
@@ -193,11 +215,10 @@ async function seed() {
       data: {
         id: "team_admin",
         description: "2",
-        contained_permission_ids: ["$read_members", "$update_team"],
+        contained_permission_ids: ["$read_members", "$remove_members", "$update_team"],
       }
     }
   );
-
 
 
   const internalTeam = await internalPrisma.team.findUnique({

@@ -10,7 +10,7 @@ import { strictEmailSchema, yupObject } from "@stackframe/stack-shared/dist/sche
 import { groupBy } from "@stackframe/stack-shared/dist/utils/arrays";
 import { wait } from "@stackframe/stack-shared/dist/utils/promises";
 import { stringCompare } from "@stackframe/stack-shared/dist/utils/strings";
-import { Button, Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue, toast, Typography } from "@stackframe/stack-ui";
+import { Button, Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue, Typography, toast } from "@stackframe/stack-ui";
 import { UserPlus } from "lucide-react";
 import { Suspense, useEffect, useMemo, useState } from "react";
 import * as yup from "yup";
@@ -122,10 +122,13 @@ function TeamAddUserDialog(props: {
 }) {
   const users = props.team.useUsers();
   const { quantity } = props.team.useItem("dashboard_admins");
+  const router = useRouter();
 
   const onSubmit = async (values: yup.InferType<typeof inviteFormSchema>) => {
     if (users.length + 1 > quantity) {
-      toast({ variant: "destructive", title: "You have reached the maximum number of dashboard admins. Please upgrade your plan to add more admins." });
+      alert("You have reached the maximum number of dashboard admins. Please upgrade your plan to add more admins.");
+      const checkoutUrl = await props.team.createCheckoutUrl("team");
+      window.open(checkoutUrl, "_blank", "noopener");
       return "prevent-close-and-prevent-reset";
     }
     await props.onSubmit(values.email);

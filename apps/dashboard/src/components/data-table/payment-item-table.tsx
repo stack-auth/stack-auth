@@ -35,26 +35,6 @@ const columns: ColumnDef<PaymentItem>[] = [
     enableSorting: false,
   },
   {
-    accessorKey: "default.quantity",
-    header: ({ column }) => <DataTableColumnHeader column={column} columnTitle="Default Quantity" />,
-    cell: ({ row }) => <TextCell>{row.original.default.quantity}</TextCell>,
-    enableSorting: false,
-  },
-  {
-    accessorKey: "default.repeat",
-    header: ({ column }) => <DataTableColumnHeader column={column} columnTitle="Default Repeat" />,
-    cell: ({ row }) => <TextCell>
-      {row.original.default.repeat === "never" ? "Never" : row.original.default.repeat?.join(" ") ?? ""}
-    </TextCell>,
-    enableSorting: false,
-  },
-  {
-    accessorKey: "default.expires",
-    header: ({ column }) => <DataTableColumnHeader column={column} columnTitle="Default Expires" />,
-    cell: ({ row }) => <TextCell><span className="capitalize">{row.original.default.expires || "Never"}</span></TextCell>,
-    enableSorting: false,
-  },
-  {
     id: "actions",
     cell: ({ row }) => <ActionsCell item={row.original} />,
   }
@@ -169,7 +149,7 @@ function CreateItemQuantityChangeDialog({ open, onOpenChange, itemId, customerTy
         { userId: values.customerId } :
         customerType === "team" ?
           { teamId: values.customerId } :
-          { customId: values.customerId }
+          { customCustomerId: values.customerId }
       ),
       itemId,
       quantity: values.quantity,

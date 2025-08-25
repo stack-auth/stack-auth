@@ -32,6 +32,9 @@ export const POST = createSmartRouteHandler({
     if (auth.tenancy.id !== data.tenancyId) {
       throw new StatusError(400, "Tenancy id does not match value from code data");
     }
+    if (data.offer.prices === "include-by-default") {
+      throw new StatusError(400, "This offer does not have any prices");
+    }
     const prisma = await getPrismaClientForTenancy(auth.tenancy);
     const pricesMap = new Map(Object.entries(data.offer.prices));
     const selectedPrice = pricesMap.get(price_id);
@@ -51,6 +54,7 @@ export const POST = createSmartRouteHandler({
         customerId: data.customerId,
         customerType: typedToUppercase(data.offer.customerType),
         status: "active",
+        offerId: data.offerId,
         offer: data.offer,
         quantity,
         currentPeriodStart: new Date(),

@@ -223,6 +223,7 @@ export class StackServerInterface extends StackClientInterface {
     orderBy?: 'signedUpAt',
     desc?: boolean,
     query?: string,
+    includeAnonymous?: boolean,
   }): Promise<UsersCrud['Server']['List']> {
     const searchParams = new URLSearchParams(filterUndefined({
       cursor: options.cursor,
@@ -235,6 +236,9 @@ export class StackServerInterface extends StackClientInterface {
       } : {},
       ...options.query ? {
         query: options.query,
+      } : {},
+      ...options.includeAnonymous ? {
+        include_anonymous: 'true',
       } : {},
     }));
     const response = await this.sendServerRequest("/users?" + searchParams.toString(), {}, null);
@@ -836,7 +840,7 @@ export class StackServerInterface extends StackClientInterface {
     options: (
       { itemId: string, userId: string } |
       { itemId: string, teamId: string } |
-      { itemId: string, customId: string }
+      { itemId: string, customCustomerId: string }
     ),
     data: ItemCrud['Server']['Update'],
   ): Promise<void> {
@@ -850,11 +854,11 @@ export class StackServerInterface extends StackClientInterface {
     } else if ("teamId" in options) {
       customerType = "team";
       customerId = options.teamId;
-    } else if ("customId" in options) {
+    } else if ("customCustomerId" in options) {
       customerType = "custom";
-      customerId = options.customId;
+      customerId = options.customCustomerId;
     } else {
-      throw new StackAssertionError("updateItemQuantity requires one of userId, teamId, or customId");
+      throw new StackAssertionError("updateItemQuantity requires one of userId, teamId, or customCustomerId");
     }
 
     const queryParams = new URLSearchParams({ allow_negative: (data.allow_negative ?? false).toString() });

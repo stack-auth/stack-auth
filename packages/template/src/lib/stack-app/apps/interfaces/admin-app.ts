@@ -79,7 +79,7 @@ export type StackAdminApp<HasTokenStore extends boolean = boolean, ProjectId ext
     createItemQuantityChange(options: (
       { userId: string, itemId: string, quantity: number, expiresAt?: string, description?: string } |
       { teamId: string, itemId: string, quantity: number, expiresAt?: string, description?: string } |
-      { customId: string, itemId: string, quantity: number, expiresAt?: string, description?: string }
+      { customCustomerId: string, itemId: string, quantity: number, expiresAt?: string, description?: string }
     )): Promise<void>,
     testModePurchase(options: { priceId: string, fullCode: string, quantity?: number }): Promise<void>,
 

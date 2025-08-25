@@ -1,7 +1,7 @@
 import { getTenancy } from "@/lib/tenancies";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { inlineOfferSchema, yupBoolean, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
-import { SUPPORTED_CURRENCIES } from "@stackframe/stack-shared/dist/utils/currencies";
+import { SUPPORTED_CURRENCIES } from "@stackframe/stack-shared/dist/utils/currency-constants";
 import { StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
 import { filterUndefined, getOrUndefined, typedFromEntries } from "@stackframe/stack-shared/dist/utils/objects";
 import * as yup from "yup";

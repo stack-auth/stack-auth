@@ -69,6 +69,7 @@ export const POST = createSmartRouteHandler({
       data: {
         tenancyId: tenancy.id,
         customerId: req.body.customer_id,
+        offerId: req.body.offer_id,
         offer: offerConfig,
         stripeCustomerId: stripeCustomer.id,
         stripeAccountId: project?.stripeAccountId ?? throwErr("Stripe account not configured"),

@@ -8,8 +8,7 @@
 ALTER TYPE "CustomerType" ADD VALUE 'CUSTOM';
 
 -- AlterTable
-ALTER TABLE "ItemQuantityChange" ADD COLUMN     "customerType" "CustomerType" NOT NULL,
-ALTER COLUMN "customerId" SET DATA TYPE TEXT;
+ALTER TABLE "ItemQuantityChange" ALTER COLUMN "customerId" SET DATA TYPE TEXT;
 
 -- AlterTable
 ALTER TABLE "Subscription" ALTER COLUMN "customerId" SET DATA TYPE TEXT;

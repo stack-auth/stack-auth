@@ -740,6 +740,7 @@ model Subscription {
   tenancyId    String       @db.Uuid
   customerId   String
   customerType CustomerType
+  offerId      String?
   offer        Json
   quantity     Int          @default(1)
 
@@ -758,15 +759,14 @@ model Subscription {
 }
 
 model ItemQuantityChange {
-  id           String       @default(uuid()) @db.Uuid
-  tenancyId    String       @db.Uuid
-  customerType CustomerType
-  customerId   String
-  itemId       String
-  quantity     Int
-  description  String?
-  expiresAt    DateTime?
-  createdAt    DateTime     @default(now())
+  id          String    @default(uuid()) @db.Uuid
+  tenancyId   String    @db.Uuid
+  customerId  String
+  itemId      String
+  quantity    Int
+  description String?
+  expiresAt   DateTime?
+  createdAt   DateTime  @default(now())
 
   @@id([tenancyId, id])
   @@index([tenancyId, customerId, expiresAt])

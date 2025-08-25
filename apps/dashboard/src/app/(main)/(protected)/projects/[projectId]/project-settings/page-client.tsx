@@ -4,7 +4,10 @@ import { StyledLink } from "@/components/link";
 import { LogoUpload } from "@/components/logo-upload";
 import { FormSettingCard, SettingCard, SettingSwitch, SettingText } from "@/components/settings";
 import { getPublicEnvVar } from '@/lib/env';
+import { TeamSwitcher, useUser } from "@stackframe/stack";
+import { throwErr } from "@stackframe/stack-shared/dist/utils/errors";
 import { ActionDialog, Alert, Button, Typography } from "@stackframe/stack-ui";
+import { useState } from "react";
 import * as yup from "yup";
 import { PageLayout } from "../page-layout";
 import { useAdminApp } from "../use-admin-app";
@@ -18,6 +21,38 @@ export default function PageClient() {
   const stackAdminApp = useAdminApp();
   const project = stackAdminApp.useProject();
   const productionModeErrors = project.useProductionModeErrors();
+  const user = useUser({ or: 'redirect', projectIdMustMatch: "internal" });
+  const teams = user.useTeams();
+  const [selectedTeamId, setSelectedTeamId] = useState<string | null>(null);
+  const [isTransferring, setIsTransferring] = useState(false);
+
+  // Get current owner team
+  const currentOwnerTeam = teams.find(team => team.id === project.ownerTeamId) ?? throwErr(`Owner team of project ${project.id} not found in user's teams?`, { projectId: project.id, teams });
+
+  // Check if user has team_admin permission for the current team
+  const hasAdminPermissionForCurrentTeam = user.usePermission(currentOwnerTeam, "team_admin");
+
+  // Check if user has team_admin permission for teams
+  // We'll check permissions in the backend, but for UI we can check if user is in the team
+  const selectedTeam = teams.find(team => team.id === selectedTeamId);
+
+  const handleTransfer = async () => {
+    if (!selectedTeamId || selectedTeamId === project.ownerTeamId) return;
+
+    setIsTransferring(true);
+    try {
+      await project.transfer(user, selectedTeamId);
+
+      // Reload the page to reflect changes
+      // we don't actually need this, but it's a nicer UX as it clearly indicates to the user that a "big" change was made
+      window.location.reload();
+    } catch (error) {
+      console.error('Failed to transfer project:', error);
+      alert(`Failed to transfer project: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    } finally {
+      setIsTransferring(false);
+    }
+  };
 
   return (
     <PageLayout title="Project Settings" description="Manage your project">
@@ -160,6 +195,61 @@ export default function PageClient() {
             </ul>
           </Alert>
         )}
+      </SettingCard>
+
+      <SettingCard
+        title="Transfer Project"
+        description="Transfer this project to another team"
+      >
+        <div className="flex flex-col gap-4">
+          {!hasAdminPermissionForCurrentTeam ? (
+            <Alert variant="destructive">
+              {`You need to be a team admin of "${currentOwnerTeam.displayName || 'the current team'}" to transfer this project.`}
+            </Alert>
+          ) : (
+            <>
+              <div>
+                <Typography variant="secondary" className="mb-2">
+                  Current owner team: {currentOwnerTeam.displayName || "Unknown"}
+                </Typography>
+              </div>
+              <div className="flex gap-2">
+                <div className="flex-1">
+                  <TeamSwitcher
+                    triggerClassName="w-full"
+                    teamId={selectedTeamId || ""}
+                    onChange={async (team) => {
+                      setSelectedTeamId(team.id);
+                    }}
+                  />
+                </div>
+                <ActionDialog
+                  trigger={
+                    <Button
+                      variant="secondary"
+                      disabled={!selectedTeam || isTransferring}
+                    >
+                      Transfer
+                    </Button>
+                  }
+                  title="Transfer Project"
+                  okButton={{
+                    label: "Transfer Project",
+                    onClick: handleTransfer
+                  }}
+                  cancelButton
+                >
+                  <Typography>
+                    {`Are you sure you want to transfer "${project.displayName}" to ${teams.find(t => t.id === selectedTeamId)?.displayName}?`}
+                  </Typography>
+                  <Typography className="mt-2" variant="secondary">
+                    This will change the ownership of the project. Only team admins of the new team will be able to manage project settings.
+                  </Typography>
+                </ActionDialog>
+              </div>
+            </>
+          )}
+        </div>
       </SettingCard>
 
       <SettingCard
