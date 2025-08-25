@@ -729,6 +729,11 @@ enum SubscriptionStatus {
   unpaid
 }
 
+enum SubscriptionCreationSource {
+  PURCHASE_PAGE
+  TEST_MODE
+}
+
 model Subscription {
   id           String       @default(uuid()) @db.Uuid
   tenancyId    String       @db.Uuid
@@ -736,14 +741,15 @@ model Subscription {
   customerType CustomerType
   offer        Json
 
-  stripeSubscriptionId String
+  stripeSubscriptionId String?
   status               SubscriptionStatus
   currentPeriodEnd     DateTime
   currentPeriodStart   DateTime
   cancelAtPeriodEnd    Boolean
 
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  creationSource SubscriptionCreationSource
+  createdAt      DateTime                   @default(now())
+  updatedAt      DateTime                   @updatedAt
 
   @@id([tenancyId, id])
   @@unique([tenancyId, stripeSubscriptionId])

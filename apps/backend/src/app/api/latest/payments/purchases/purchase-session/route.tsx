@@ -4,6 +4,7 @@ import { purchaseUrlVerificationCodeHandler } from "../verification-code-handler
 import { StackAssertionError, StatusError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
+import { getTenancy } from "@/lib/tenancies";
 
 export const POST = createSmartRouteHandler({
   metadata: {
@@ -24,7 +25,11 @@ export const POST = createSmartRouteHandler({
   }),
   async handler({ body }) {
     const { full_code, price_id } = body;
-    const { data } = await purchaseUrlVerificationCodeHandler.validateCode(full_code);
+    const { data, id: codeId } = await purchaseUrlVerificationCodeHandler.validateCode(full_code);
+    const tenancy = await getTenancy(data.tenancyId);
+    if (!tenancy) {
+      throw new StackAssertionError("No tenancy found from purchase code data tenancy id. This should never happen.");
+    }
     const stripe = getStripeForAccount({ accountId: data.stripeAccountId });
     const pricesMap = new Map(Object.entries(data.offer.prices));
     const selectedPrice = pricesMap.get(price_id);
@@ -35,6 +40,7 @@ export const POST = createSmartRouteHandler({
     if (!selectedPrice.interval) {
       throw new StackAssertionError("unimplemented; prices without an interval are currently not supported");
     }
+
     const product = await stripe.products.create({
       name: data.offer.displayName ?? "Subscription",
     });
@@ -59,6 +65,11 @@ export const POST = createSmartRouteHandler({
         offer: JSON.stringify(data.offer),
       },
     });
+    await purchaseUrlVerificationCodeHandler.revokeCode({
+      tenancy,
+      id: codeId,
+    });
+
     const clientSecret = (subscription.latest_invoice as Stripe.Invoice).confirmation_secret?.client_secret;
     // stripe-mock returns an empty string here
     if (typeof clientSecret !== "string") {

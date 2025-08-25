@@ -5,7 +5,7 @@ import { getPublicEnvVar } from "@/lib/env";
 import { runAsynchronously } from "@stackframe/stack-shared/dist/utils/promises";
 import { Typography } from "@stackframe/stack-ui";
 import { loadStripe } from "@stripe/stripe-js";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 
 type Props = {
   redirectStatus?: string,
@@ -13,6 +13,7 @@ type Props = {
   clientSecret?: string,
   stripeAccountId?: string,
   purchaseFullCode?: string,
+  bypass?: string,
 };
 
 type ViewState =
@@ -22,11 +23,15 @@ type ViewState =
 
 const stripePublicKey = getPublicEnvVar("NEXT_PUBLIC_STACK_STRIPE_PUBLISHABLE_KEY") ?? "";
 
-export default function ReturnClient({ clientSecret, stripeAccountId, purchaseFullCode }: Props) {
+export default function ReturnClient({ clientSecret, stripeAccountId, purchaseFullCode, bypass }: Props) {
   const [state, setState] = useState<ViewState>({ kind: "loading" });
 
   const updateViewState = useCallback(async (): Promise<void> => {
     try {
+      if (bypass === "1") {
+        setState({ kind: "success", message: "Bypassed in test mode. No payment processed." });
+        return;
+      }
       const stripe = await loadStripe(stripePublicKey, { stripeAccount: stripeAccountId });
       if (!stripe) throw new Error("Stripe failed to initialize");
       if (!clientSecret) return;
@@ -59,7 +64,7 @@ export default function ReturnClient({ clientSecret, stripeAccountId, purchaseFu
       const message = e instanceof Error ? e.message : "Unexpected error retrieving payment.";
       setState({ kind: "error", message });
     }
-  }, [clientSecret, stripeAccountId]);
+  }, [clientSecret, stripeAccountId, bypass]);
 
   useEffect(() => {
     runAsynchronously(updateViewState());

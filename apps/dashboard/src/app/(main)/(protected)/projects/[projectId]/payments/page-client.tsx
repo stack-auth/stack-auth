@@ -71,7 +71,6 @@ export default function PageClient() {
   return (
     <PageLayout
       title="Payments"
-      description="Manage your payment offers and items"
       actions={<div className="flex gap-2">
         {!paymentsConfig.stripeAccountSetupComplete && (
           <Button onClick={setupPayments}>Complete Setup</Button>

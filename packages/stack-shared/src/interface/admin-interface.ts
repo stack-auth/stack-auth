@@ -499,4 +499,16 @@ export class StackAdminInterface extends StackServerInterface {
     return await response.json();
   }
 
+  async testModePurchase(options: { price_id: string, full_code: string }): Promise<void> {
+    await this.sendAdminRequest(
+      "/internal/payments/test-mode-purchase-session",
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(options),
+      },
+      null,
+    );
+  }
+
 }
