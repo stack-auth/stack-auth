@@ -560,7 +560,7 @@ export const offerPriceSchema = yupObject({
 }).test("at-least-one-currency", (value, context) => validateHasAtLeastOneSupportedCurrency(value, context));
 export const offerSchema = yupObject({
   displayName: yupString(),
-  customerType: customerTypeSchema,
+  customerType: customerTypeSchema.defined(),
   freeTrial: dayIntervalSchema.optional(),
   serverOnly: yupBoolean(),
   stackable: yupBoolean(),
