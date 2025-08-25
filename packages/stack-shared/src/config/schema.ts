@@ -461,7 +461,7 @@ const organizationConfigDefaults = {
         freeTrial: undefined,
       }),
       includedItems: (key: string) => ({
-        quantity: undefined,
+        quantity: 0,
         repeat: "never",
         expires: "when-repeated",
       }),
