@@ -2,8 +2,8 @@ import { PrismaClientTransaction } from "@/prisma-client";
 import { SubscriptionStatus } from "@prisma/client";
 import { KnownErrors } from "@stackframe/stack-shared";
 import type { inlineOfferSchema, offerSchema } from "@stackframe/stack-shared/dist/schema-fields";
-import { SUPPORTED_CURRENCIES } from "@stackframe/stack-shared/dist/utils/currencies";
-import { FAR_FUTURE_DATE, addInterval, getIntervalsElapsed, getWindowStart } from "@stackframe/stack-shared/dist/utils/dates";
+import { SUPPORTED_CURRENCIES } from "@stackframe/stack-shared/dist/utils/currency-constants";
+import { addInterval, FAR_FUTURE_DATE, getIntervalsElapsed, getWindowStart, subtractInterval } from "@stackframe/stack-shared/dist/utils/dates";
 import { StackAssertionError, StatusError } from "@stackframe/stack-shared/dist/utils/errors";
 import { getOrUndefined, typedEntries, typedFromEntries } from "@stackframe/stack-shared/dist/utils/objects";
 import { typedToUppercase } from "@stackframe/stack-shared/dist/utils/strings";
@@ -72,6 +72,32 @@ type NegativeLedgerTransaction = {
   grantTime: Date,
 };
 
+function addWhenRepeatedBackfillTransactions(options: {
+  baseQty: number,
+  currentPeriodStart: Date,
+  currentPeriodEnd: Date | null,
+  subscriptionCreatedAt: Date,
+}): PositiveLedgerTransaction[] {
+  const { baseQty, currentPeriodStart, currentPeriodEnd, subscriptionCreatedAt } = options;
+  const entries: PositiveLedgerTransaction[] = [];
+  const end = currentPeriodEnd ?? FAR_FUTURE_DATE;
+  entries.push({ amount: baseQty, grantTime: currentPeriodStart, expirationTime: end });
+  if (!currentPeriodEnd) {
+    return entries;
+  }
+  const periodLengthMs = end.getTime() - currentPeriodStart.getTime();
+  if (periodLengthMs <= 0) {
+    return entries;
+  }
+  let nextEnd = new Date(currentPeriodStart.getTime());
+  while (nextEnd > subscriptionCreatedAt) {
+    const nextStart = new Date(nextEnd.getTime() - periodLengthMs);
+    entries.push({ amount: baseQty, grantTime: nextStart, expirationTime: nextEnd });
+    nextEnd = nextStart;
+  }
+  return entries;
+}
+
 function computeLedgerBalanceAtNow(pos: PositiveLedgerTransaction[], neg: NegativeLedgerTransaction[], now: Date): number {
   const grantedAt = new Map<number, number>();
   const expiredAt = new Map<number, number>();
@@ -99,7 +125,9 @@ function computeLedgerBalanceAtNow(pos: PositiveLedgerTransaction[], neg: Negati
   }
 
   const times = Array.from(timeSet.values()).sort((a, b) => a - b);
-  if (times.length === 0) return 0;
+  if (times.length === 0) {
+    return 0;
+  }
 
   let grantedSum = 0;
   let expiredSum = 0;
@@ -117,6 +145,30 @@ function computeLedgerBalanceAtNow(pos: PositiveLedgerTransaction[], neg: Negati
   return grantedSum - usedOrExpiredSum;
 }
 
+function addWhenRepeatedItemWindowTransactions(options: {
+  baseQty: number,
+  repeat: [number, 'day' | 'week' | 'month' | 'year'],
+  anchor: Date,
+  nowClamped: Date,
+  hardEnd: Date | null,
+}): PositiveLedgerTransaction[] {
+  const { baseQty, repeat, anchor, nowClamped } = options;
+  const endLimit = options.hardEnd ?? FAR_FUTURE_DATE;
+  const finalNow = nowClamped < endLimit ? nowClamped : endLimit;
+  if (finalNow < anchor) return [];
+
+  const entries: PositiveLedgerTransaction[] = [];
+  let windowStart = getWindowStart(anchor, repeat, finalNow);
+  // Backfill windows from current window back to anchor (inclusive)
+  while (windowStart >= anchor) {
+    const windowEnd = addInterval(new Date(windowStart), repeat);
+    const expirationTime = windowEnd < endLimit ? windowEnd : endLimit;
+    entries.push({ amount: baseQty, grantTime: windowStart, expirationTime });
+    windowStart = subtractInterval(windowStart, repeat);
+  }
+  return entries;
+}
+
 export async function getItemQuantityForCustomer(options: {
   prisma: PrismaClientTransaction,
   tenancy: Tenancy,
@@ -125,11 +177,10 @@ export async function getItemQuantityForCustomer(options: {
   customerType: "user" | "team" | "custom",
 }) {
   const now = new Date();
-  const itemConfig = getOrUndefined(options.tenancy.config.payments.items, options.itemId);
   const pos: PositiveLedgerTransaction[] = [];
   const neg: NegativeLedgerTransaction[] = [];
 
-  // Manual changes → ledger entries
+  // Quantity changes → ledger entries
   const changes = await options.prisma.itemQuantityChange.findMany({
     where: {
       tenancyId: options.tenancy.id,
@@ -170,7 +221,8 @@ export async function getItemQuantityForCustomer(options: {
       if (inc.expires === "when-purchase-expires") {
         pos.push({ amount: baseQty, grantTime: pStart, expirationTime: pEnd });
       } else if (inc.expires === "when-repeated") {
-        pos.push({ amount: baseQty, grantTime: pStart, expirationTime: pEnd < FAR_FUTURE_DATE ? pEnd : FAR_FUTURE_DATE });
+        // repeat=never + expires=when-repeated → treat as no expiry
+        pos.push({ amount: baseQty, grantTime: pStart, expirationTime: FAR_FUTURE_DATE });
       } else {
         pos.push({ amount: baseQty, grantTime: pStart, expirationTime: FAR_FUTURE_DATE });
       }
@@ -182,10 +234,14 @@ export async function getItemQuantityForCustomer(options: {
         const amount = occurrences * baseQty;
         pos.push({ amount, grantTime: pStart, expirationTime: pEnd });
       } else if (inc.expires === "when-repeated") {
-        const start = getWindowStart(pStart, repeat, nowClamped);
-        const end = addInterval(new Date(start), repeat);
-        const exp = end < pEnd ? end : pEnd;
-        pos.push({ amount: baseQty, grantTime: start, expirationTime: exp });
+        const entries = addWhenRepeatedItemWindowTransactions({
+          baseQty,
+          repeat,
+          anchor: s.createdAt,
+          nowClamped,
+          hardEnd: s.currentPeriodEnd,
+        });
+        pos.push(...entries);
       } else {
         const elapsed = getIntervalsElapsed(pStart, nowClamped, repeat);
         const occurrences = elapsed + 1;
@@ -244,6 +300,7 @@ type Subscription = {
   currentPeriodStart: Date,
   currentPeriodEnd: Date | null,
   status: SubscriptionStatus,
+  createdAt: Date,
 };
 
 async function getSubscriptions(options: {
@@ -260,7 +317,6 @@ async function getSubscriptions(options: {
       tenancyId: options.tenancy.id,
       customerType: typedToUppercase(options.customerType),
       customerId: options.customerId,
-      status: { in: [SubscriptionStatus.active, SubscriptionStatus.trialing] },
     },
   });
 
@@ -276,6 +332,7 @@ async function getSubscriptions(options: {
           currentPeriodStart: subscription.currentPeriodStart,
           currentPeriodEnd: subscription.currentPeriodEnd,
           status: subscription.status,
+          createdAt: subscription.createdAt,
         });
         continue;
       }
@@ -289,6 +346,7 @@ async function getSubscriptions(options: {
         currentPeriodStart: DEFAULT_OFFER_START_DATE,
         currentPeriodEnd: null,
         status: SubscriptionStatus.active,
+        createdAt: DEFAULT_OFFER_START_DATE,
       });
     }
   }

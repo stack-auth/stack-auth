@@ -5,7 +5,7 @@ import { DEFAULT_EMAIL_TEMPLATES, DEFAULT_EMAIL_THEMES, DEFAULT_EMAIL_THEME_ID }
 import * as schemaFields from "../schema-fields";
 import { offerSchema, userSpecifiedIdSchema, yupBoolean, yupDate, yupMixed, yupNever, yupNumber, yupObject, yupRecord, yupString, yupTuple, yupUnion } from "../schema-fields";
 import { isShallowEqual } from "../utils/arrays";
-import { SUPPORTED_CURRENCIES } from "../utils/currencies";
+import { SUPPORTED_CURRENCIES } from "../utils/currency-constants";
 import { StackAssertionError } from "../utils/errors";
 import { allProviders } from "../utils/oauth";
 import { DeepFilterUndefined, DeepMerge, DeepRequiredOrUndefined, deleteKey, filterUndefined, get, has, isObjectLike, mapValues, set, typedAssign, typedEntries, typedFromEntries, typedKeys } from "../utils/objects";
@@ -464,11 +464,7 @@ const organizationConfigDefaults = {
     } as const),
     items: (key: string) => ({
       displayName: key,
-      default: {
-        quantity: 0,
-        expires: "when-repeated",
-        repeat: "never",
-      },
+      customerType: "user",
     } as const),
   },
 } as const satisfies DefaultsType<OrganizationRenderedConfigBeforeDefaults, [typeof environmentConfigDefaults, typeof branchConfigDefaults, typeof projectConfigDefaults]>;

@@ -221,7 +221,6 @@ async function seed() {
   );
 
 
-
   const internalTeam = await internalPrisma.team.findUnique({
     where: {
       tenancyId_teamId: {

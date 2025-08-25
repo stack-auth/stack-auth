@@ -1,7 +1,7 @@
 import * as yup from "yup";
 import { KnownErrors } from ".";
 import { isBase64 } from "./utils/bytes";
-import { Currency, MoneyAmount, SUPPORTED_CURRENCIES } from "./utils/currencies";
+import { type Currency, type MoneyAmount, SUPPORTED_CURRENCIES } from "./utils/currency-constants";
 import { DayInterval, Interval } from "./utils/dates";
 import { StackAssertionError, throwErr } from "./utils/errors";
 import { decodeBasicAuthorizationHeader } from "./utils/http";
