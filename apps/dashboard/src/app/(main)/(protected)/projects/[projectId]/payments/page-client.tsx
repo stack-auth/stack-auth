@@ -58,7 +58,7 @@ function ActionMenu({ items }: { items: ActionMenuItem[] }) {
 }
 
 type ListSectionProps = {
-  title: JSX.Element,
+  title: React.ReactNode,
   titleTooltip?: string,
   onAddClick?: () => void,
   children: ReactNode,
@@ -91,10 +91,7 @@ function ListSection({
                 tooltip={titleTooltip}
                 type="info"
                 inline
-                className="ml-2 mb-[2px]"
-                style={{
-                  transform: "translateY(-1px)",
-                }}
+                className="ml-2 mb-[2px] translate-y-[-1px]"
                 disabled={!titleTooltip}
               />
             )}
