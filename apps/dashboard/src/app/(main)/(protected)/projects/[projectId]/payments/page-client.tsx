@@ -1,15 +1,19 @@
 "use client";
 
 import { cn } from "@/lib/utils";
+import { CompleteConfig } from "@stackframe/stack-shared/dist/config/schema";
+import { DayInterval } from "@stackframe/stack-shared/dist/utils/dates";
 import { prettyPrintWithMagnitudes } from "@stackframe/stack-shared/dist/utils/numbers";
 import { stringCompare } from "@stackframe/stack-shared/dist/utils/strings";
-import { Button, Card } from "@stackframe/stack-ui";
+import { Button, Card, Checkbox } from "@stackframe/stack-ui";
 import { Plus } from "lucide-react";
 import React, { ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { PageLayout } from "../page-layout";
 import { useAdminApp } from "../use-admin-app";
+import { DUMMY_PAYMENTS_CONFIG } from "./dummy-data";
 
-type Interval = [number, 'day' | 'week' | 'month' | 'year'];
+type Offer = CompleteConfig['payments']['offers'][keyof CompleteConfig['payments']['offers']];
+type Item = CompleteConfig['payments']['items'][keyof CompleteConfig['payments']['items']];
 
 type ListSectionProps = {
   title: string,
@@ -207,7 +211,7 @@ function ConnectionLine({ fromRef, toRef, containerRef, quantity }: ConnectionLi
               dominantBaseline="middle"
               className="text-xs font-medium fill-primary/50"
             >
-              {prettyPrintWithMagnitudes(quantity)}{quantity < 1000 ? "x" : ""}
+              ×{prettyPrintWithMagnitudes(quantity)}
             </text>
           </>
         )}
@@ -217,21 +221,21 @@ function ConnectionLine({ fromRef, toRef, containerRef, quantity }: ConnectionLi
 }
 
 // Price formatting utilities
-function formatInterval(interval: Interval): string {
+function formatInterval(interval: DayInterval): string {
   const [count, unit] = interval;
   const unitShort = unit === 'month' ? 'mo' : unit === 'year' ? 'yr' : unit === 'week' ? 'wk' : unit;
   return count > 1 ? `${count}${unitShort}` : unitShort;
 }
 
-function formatPrice(price: any): string | null {
-  if (!price || typeof price === 'string') return null;
+function formatPrice(price: (Offer['prices'] & object)[string]): string | null {
+  if (typeof price === 'string') return null;
 
   const amounts = [];
   const interval = price.interval;
 
   // Check for USD amounts
-  if (price.usd) {
-    const amount = `$${(price.usd / 100).toFixed(2).replace(/\.00$/, '')}`;
+  if (price.USD) {
+    const amount = `$${(+price.USD).toFixed(2).replace(/\.00$/, '')}`;
     if (interval) {
       amounts.push(`${amount}/${formatInterval(interval)}`);
     } else {
@@ -242,9 +246,9 @@ function formatPrice(price: any): string | null {
   return amounts.join(', ') || null;
 }
 
-function formatOfferPrices(prices: any): string {
+function formatOfferPrices(prices: Offer['prices']): string {
   if (prices === 'include-by-default') return 'Free';
-  if (!prices || typeof prices !== 'object') return '';
+  if (typeof prices !== 'object') return '';
 
   const formattedPrices = Object.values(prices)
     .map(formatPrice)
@@ -316,7 +320,7 @@ function OffersList({
 
 // ItemsList component with props
 type ItemsListProps = {
-  items: any,
+  items: CompleteConfig['payments']['items'],
   hoveredOfferId: string | null,
   getConnectedItems: (offerId: string) => string[],
   itemRefs?: Record<string, React.RefObject<HTMLDivElement>>,
@@ -379,8 +383,9 @@ export default function PageClient() {
   const stackAdminApp = useAdminApp();
   const project = stackAdminApp.useProject();
   const config = project.useConfig();
+  const [shouldUseDummyData, setShouldUseDummyData] = useState(false);
 
-  const paymentsConfig: any = config.payments;
+  const paymentsConfig = shouldUseDummyData ? DUMMY_PAYMENTS_CONFIG : config.payments;
 
   // Refs for offers and items
   const containerRef = useRef<HTMLDivElement>(null);
@@ -404,7 +409,7 @@ export default function PageClient() {
 
   // Group offers by groupId and sort by customer type priority
   const groupedOffers = useMemo(() => {
-    const groups = new Map<string | undefined, Array<{ id: string, offer: any }>>();
+    const groups = new Map<string | undefined, Array<{ id: string, offer: typeof paymentsConfig.offers[keyof typeof paymentsConfig.offers] }>>();
 
     // Group offers
     Object.entries(paymentsConfig.offers).forEach(([id, offer]: [string, any]) => {
@@ -424,13 +429,28 @@ export default function PageClient() {
         if (priorityA !== priorityB) {
           return priorityA - priorityB;
         }
-        // If same customer type, sort by ID
+        // If same customer type, sort addons last
+        if (a.offer.isAddOnTo !== b.offer.isAddOnTo) {
+          return a.offer.isAddOnTo ? 1 : -1;
+        }
+        // If same customer type and addons, sort by lowest price
+        const getPricePriority = (offer: typeof paymentsConfig.offers[keyof typeof paymentsConfig.offers]) => {
+          if (offer.prices === 'include-by-default') return 0;
+          if (typeof offer.prices !== 'object') return 0;
+          return Math.min(...Object.values(offer.prices).map(price => +(price.USD ?? Infinity)));
+        };
+        const priceA = getPricePriority(a.offer);
+        const priceB = getPricePriority(b.offer);
+        if (priceA !== priceB) {
+          return priceA - priceB;
+        }
+        // Otherwise, sort by ID
         return stringCompare(a.id, b.id);
       });
     });
 
     // Sort groups by their predominant customer type
-    const sortedGroups = new Map<string | undefined, Array<{ id: string, offer: any }>>();
+    const sortedGroups = new Map<string | undefined, Array<{ id: string, offer: Offer }>>();
 
     // Helper to get group priority
     const getGroupPriority = (groupId: string | undefined) => {
@@ -488,8 +508,21 @@ export default function PageClient() {
       .map(([id]) => id);
   };
 
+  console.log(groupedOffers);
+
   return (
-    <PageLayout title="Payments">
+    <PageLayout title="Payments" actions={(
+      <div className="flex items-center gap-2">
+        <Checkbox
+          checked={shouldUseDummyData}
+          onClick={() => setShouldUseDummyData(s => !s)}
+          id="use-dummy-data"
+        />
+        <label htmlFor="use-dummy-data">
+          [DEV] Use dummy data
+        </label>
+      </div>
+    )}>
       {/* Mobile tabs */}
       <div className="md:hidden mb-4">
         <div className="flex space-x-1 bg-muted p-1 rounded-md">
