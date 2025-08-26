@@ -3,6 +3,7 @@ import { getAuthContactChannel } from "@/lib/contact-channel";
 import { validateRedirectUrl } from "@/lib/redirect-urls";
 import { Tenancy, getTenancy } from "@/lib/tenancies";
 import { oauthCookieSchema } from "@/lib/tokens";
+import { createOrUpgradeAnonymousUser } from "@/lib/users";
 import { getProvider, oauthServer } from "@/oauth";
 import { getPrismaClientForTenancy, globalPrismaClient } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
@@ -276,10 +277,6 @@ const handler = createSmartRouteHandler({
 
                   // ========================== sign up user ==========================
 
-                  if (!tenancy.config.auth.allowSignUp) {
-                    throw new KnownErrors.SignUpNotEnabled();
-                  }
-
                   let primaryEmailAuthEnabled = false;
                   if (userInfo.email) {
                     primaryEmailAuthEnabled = true;
@@ -352,41 +349,51 @@ const handler = createSmartRouteHandler({
                     }
                   }
 
-                  const newAccount = await usersCrudHandlers.adminCreate({
+
+                  if (!tenancy.config.auth.allowSignUp) {
+                    throw new KnownErrors.SignUpNotEnabled();
+                  }
+
+                  const currentUser = projectUserId ? await usersCrudHandlers.adminRead({ tenancy, user_id: projectUserId }) : null;
+                  const newAccountBeforeAuthMethod = await createOrUpgradeAnonymousUser(
                     tenancy,
-                    data: {
+                    currentUser,
+                    {
                       display_name: userInfo.displayName,
                       profile_image_url: userInfo.profileImageUrl || undefined,
                       primary_email: userInfo.email,
                       primary_email_verified: userInfo.emailVerified,
                       primary_email_auth_enabled: primaryEmailAuthEnabled,
-                      oauth_providers: [{
-                        id: provider.id,
-                        account_id: userInfo.accountId,
-                        email: userInfo.email,
-                      }],
                     },
+                    [],
+                  );
+                  const authMethod = await prisma.authMethod.create({
+                    data: {
+                      tenancyId: tenancy.id,
+                      projectUserId: newAccountBeforeAuthMethod.id,
+                    }
                   });
-
-                  const oauthAccount = await prisma.projectUserOAuthAccount.findUnique({
-                    where: {
-                      tenancyId_configOAuthProviderId_projectUserId_providerAccountId: {
-                        tenancyId: outerInfo.tenancyId,
-                        configOAuthProviderId: provider.id,
-                        providerAccountId: userInfo.accountId,
-                        projectUserId: newAccount.id,
+                  const oauthAccount = await prisma.projectUserOAuthAccount.create({
+                    data: {
+                      tenancyId: tenancy.id,
+                      projectUserId: newAccountBeforeAuthMethod.id,
+                      configOAuthProviderId: provider.id,
+                      providerAccountId: userInfo.accountId,
+                      email: userInfo.email,
+                      oauthAuthMethod: {
+                        create: {
+                          authMethodId: authMethod.id,
+                        }
                       },
-                    },
+                      allowConnectedAccounts: true,
+                      allowSignIn: true,
+                    }
                   });
-
-                  if (!oauthAccount) {
-                    throw new StackAssertionError("OAuth account not found");
-                  }
 
                   await storeTokens(oauthAccount.id);
 
                   return {
-                    id: newAccount.id,
+                    id: newAccountBeforeAuthMethod.id,
                     newUser: true,
                     afterCallbackRedirectUrl,
                   };
@@ -398,6 +405,7 @@ const handler = createSmartRouteHandler({
       } catch (error) {
         if (error instanceof InvalidClientError) {
           if (error.message.includes("redirect_uri") || error.message.includes("redirectUri")) {
+            console.log("User is trying to authorize OAuth with an invalid redirect URI", error, { redirectUri: oauthRequest.query?.redirect_uri, clientId: oauthRequest.query?.client_id });
             throw new KnownErrors.RedirectUrlNotWhitelisted();
           }
         } else if (error instanceof InvalidScopeError) {

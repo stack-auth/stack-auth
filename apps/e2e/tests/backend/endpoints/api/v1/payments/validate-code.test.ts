@@ -50,6 +50,7 @@ it("should allow valid code and return offer data", async ({ expect }) => {
             },
           },
         },
+        "project_id": "<stripped UUID>",
         "stripe_account_id": "acct_test123",
       },
       "headers": Headers { <some fields may have been hidden> },

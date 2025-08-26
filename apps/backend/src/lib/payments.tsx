@@ -1,12 +1,14 @@
-import { teamsCrudHandlers } from "@/app/api/latest/teams/crud";
-import { usersCrudHandlers } from "@/app/api/latest/users/crud";
+import { PrismaClientTransaction } from "@/prisma-client";
+import { SubscriptionStatus } from "@prisma/client";
 import { KnownErrors } from "@stackframe/stack-shared";
-import { inlineOfferSchema, yupValidate } from "@stackframe/stack-shared/dist/schema-fields";
+import { inlineOfferSchema, offerSchema } from "@stackframe/stack-shared/dist/schema-fields";
+import { SUPPORTED_CURRENCIES } from "@stackframe/stack-shared/dist/utils/currencies";
 import { StackAssertionError, StatusError } from "@stackframe/stack-shared/dist/utils/errors";
 import { getOrUndefined, typedFromEntries } from "@stackframe/stack-shared/dist/utils/objects";
+import { typedToUppercase } from "@stackframe/stack-shared/dist/utils/strings";
+import { isUuid } from "@stackframe/stack-shared/dist/utils/uuids";
 import * as yup from "yup";
 import { Tenancy } from "./tenancies";
-import { SUPPORTED_CURRENCIES } from "@stackframe/stack-shared/dist/utils/currencies";
 
 export async function ensureOfferIdOrInlineOffer(
   tenancy: Tenancy,
@@ -47,72 +49,91 @@ export async function ensureOfferIdOrInlineOffer(
       }])),
       includedItems: typedFromEntries(Object.entries(inlineOffer.included_items).map(([key, value]) => [key, {
         repeat: value.repeat ?? "never",
-        quantity: value.quantity,
+        quantity: value.quantity ?? 0,
         expires: value.expires ?? "never",
       }])),
     };
   }
 }
 
-export async function ensureItemCustomerTypeMatches(itemId: string, itemCustomerType: "user" | "team" | undefined, customerId: string, tenancy: Tenancy) {
-  const actualCustomerType = await getCustomerType(tenancy, customerId);
-  if (itemCustomerType !== actualCustomerType) {
-    throw new KnownErrors.ItemCustomerTypeDoesNotMatch(itemId, customerId, itemCustomerType, actualCustomerType);
-  }
-}
-
-export async function ensureOfferCustomerTypeMatches(offerId: string | undefined, offerCustomerType: "user" | "team" | undefined, customerId: string, tenancy: Tenancy) {
-  const actualCustomerType = await getCustomerType(tenancy, customerId);
-  if (offerCustomerType !== actualCustomerType) {
-    throw new KnownErrors.OfferCustomerTypeDoesNotMatch(offerId, customerId, offerCustomerType, actualCustomerType);
-  }
-}
-
-export async function getCustomerType(tenancy: Tenancy, customerId: string) {
-  let user;
-  try {
-    user = await usersCrudHandlers.adminRead(
-      {
-        user_id: customerId,
-        tenancy,
-        allowedErrorTypes: [
-          KnownErrors.UserNotFound,
-        ],
+export async function getItemQuantityForCustomer(options: {
+  prisma: PrismaClientTransaction,
+  tenancy: Tenancy,
+  itemId: string,
+  customerId: string,
+  customerType: "user" | "team" | "custom",
+}) {
+  const itemConfig = getOrUndefined(options.tenancy.config.payments.items, options.itemId);
+  const defaultQuantity = itemConfig?.default.quantity ?? 0;
+  const subscriptions = await options.prisma.subscription.findMany({
+    where: {
+      tenancyId: options.tenancy.id,
+      customerType: typedToUppercase(options.customerType),
+      customerId: options.customerId,
+      status: {
+        in: [SubscriptionStatus.active, SubscriptionStatus.trialing],
       }
-    );
-  } catch (e) {
-    if (KnownErrors.UserNotFound.isInstance(e)) {
-      user = null;
-    } else {
-      throw e;
-    }
-  }
-  let team;
-  try {
-    team = await teamsCrudHandlers.adminRead({
-      team_id: customerId,
-      tenancy,
-      allowedErrorTypes: [
-        KnownErrors.TeamNotFound,
+    },
+  });
+
+  const subscriptionQuantity = subscriptions.reduce((acc, subscription) => {
+    const offer = subscription.offer as yup.InferType<typeof offerSchema>;
+    const item = getOrUndefined(offer.includedItems, options.itemId);
+    return acc + (item?.quantity ?? 0);
+  }, 0);
+
+  const { _sum } = await options.prisma.itemQuantityChange.aggregate({
+    where: {
+      tenancyId: options.tenancy.id,
+      customerId: options.customerId,
+      itemId: options.itemId,
+      OR: [
+        { expiresAt: null },
+        { expiresAt: { gt: new Date() } },
       ],
+    },
+    _sum: {
+      quantity: true,
+    },
+  });
+  return subscriptionQuantity + (_sum.quantity ?? 0) + defaultQuantity;
+}
+
+export async function ensureCustomerExists(options: {
+  prisma: PrismaClientTransaction,
+  tenancyId: string,
+  customerType: "user" | "team" | "custom",
+  customerId: string,
+}) {
+  if (options.customerType === "user") {
+    if (!isUuid(options.customerId)) {
+      throw new KnownErrors.UserNotFound();
+    }
+    const user = await options.prisma.projectUser.findUnique({
+      where: {
+        tenancyId_projectUserId: {
+          tenancyId: options.tenancyId,
+          projectUserId: options.customerId,
+        },
+      },
     });
-  } catch (e) {
-    if (KnownErrors.TeamNotFound.isInstance(e)) {
-      team = null;
-    } else {
-      throw e;
+    if (!user) {
+      throw new KnownErrors.UserNotFound();
+    }
+  } else if (options.customerType === "team") {
+    if (!isUuid(options.customerId)) {
+      throw new KnownErrors.TeamNotFound(options.customerId);
+    }
+    const team = await options.prisma.team.findUnique({
+      where: {
+        tenancyId_teamId: {
+          tenancyId: options.tenancyId,
+          teamId: options.customerId,
+        },
+      },
+    });
+    if (!team) {
+      throw new KnownErrors.TeamNotFound(options.customerId);
     }
   }
-
-  if (user && team) {
-    throw new StackAssertionError("Found a customer that is both user and team at the same time? This should never happen!", { customerId, user, team, tenancy });
-  }
-
-  if (user) {
-    return "user";
-  }
-  if (team) {
-    return "team";
-  }
-  throw new KnownErrors.CustomerDoesNotExist(customerId);
 }

@@ -11,6 +11,7 @@ import {
 import { ConnectedAccountAccessTokenCrud } from "./crud/connected-accounts";
 import { ContactChannelsCrud } from "./crud/contact-channels";
 import { CurrentUserCrud } from "./crud/current-user";
+import { ItemCrud } from "./crud/items";
 import { NotificationPreferenceCrud } from "./crud/notification-preferences";
 import { ProjectPermissionsCrud } from "./crud/project-permissions";
 import { SessionsCrud } from "./crud/sessions";
@@ -222,6 +223,7 @@ export class StackServerInterface extends StackClientInterface {
     orderBy?: 'signedUpAt',
     desc?: boolean,
     query?: string,
+    includeAnonymous?: boolean,
   }): Promise<UsersCrud['Server']['List']> {
     const searchParams = new URLSearchParams(filterUndefined({
       cursor: options.cursor,
@@ -234,6 +236,9 @@ export class StackServerInterface extends StackClientInterface {
       } : {},
       ...options.query ? {
         query: options.query,
+      } : {},
+      ...options.includeAnonymous ? {
+        include_anonymous: 'true',
       } : {},
     }));
     const response = await this.sendServerRequest("/users?" + searchParams.toString(), {}, null);
@@ -833,5 +838,42 @@ export class StackServerInterface extends StackClientInterface {
       return Result.error(res.error);
     }
     return Result.ok(undefined);
+  }
+
+  async updateItemQuantity(
+    options: (
+      { itemId: string, userId: string } |
+      { itemId: string, teamId: string } |
+      { itemId: string, customCustomerId: string }
+    ),
+    data: ItemCrud['Server']['Update'],
+  ): Promise<void> {
+    let customerType: "user" | "team" | "custom";
+    let customerId: string;
+    const itemId: string = options.itemId;
+
+    if ("userId" in options) {
+      customerType = "user";
+      customerId = options.userId;
+    } else if ("teamId" in options) {
+      customerType = "team";
+      customerId = options.teamId;
+    } else if ("customCustomerId" in options) {
+      customerType = "custom";
+      customerId = options.customCustomerId;
+    } else {
+      throw new StackAssertionError("updateItemQuantity requires one of userId, teamId, or customCustomerId");
+    }
+
+    const queryParams = new URLSearchParams({ allow_negative: (data.allow_negative ?? false).toString() });
+    await this.sendServerRequest(
+      `/payments/items/${customerType}/${customerId}/${itemId}/update-quantity?${queryParams.toString()}`,
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ delta: data.delta, expires_at: data.expires_at, description: data.description }),
+      },
+      null
+    );
   }
 }

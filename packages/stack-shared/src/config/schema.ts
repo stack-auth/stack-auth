@@ -213,8 +213,8 @@ export const environmentConfigSchema = branchConfigSchema.concat(yupObject({
     trustedDomains: yupRecord(
       userSpecifiedIdSchema("trustedDomainId"),
       yupObject({
-        baseUrl: schemaFields.urlSchema,
-        handlerPath: schemaFields.handlerPathSchema,
+        baseUrl: schemaFields.wildcardUrlSchema.max(300),
+        handlerPath: schemaFields.handlerPathSchema.max(300),
       }),
     ),
   })),
@@ -450,7 +450,7 @@ const organizationConfigDefaults = {
     exclusivityGroups: (key: string) => (key: string) => undefined,
     offers: (key: string) => ({
       displayName: key,
-      customerType: undefined,
+      customerType: "user",
       freeTrial: undefined,
       serverOnly: false,
       stackable: undefined,
@@ -461,7 +461,7 @@ const organizationConfigDefaults = {
         freeTrial: undefined,
       }),
       includedItems: (key: string) => ({
-        quantity: undefined,
+        quantity: 0,
         repeat: "never",
         expires: "when-repeated",
       }),
