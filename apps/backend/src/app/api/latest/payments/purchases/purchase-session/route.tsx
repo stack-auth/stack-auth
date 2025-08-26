@@ -37,14 +37,44 @@ export const POST = createSmartRouteHandler({
     if (!selectedPrice) {
       throw new StatusError(400, "Price not found on offer associated with this purchase code");
     }
-    // TODO: prices with no interval should be allowed and work without a subscription
-    if (!selectedPrice.interval) {
-      throw new StackAssertionError("unimplemented; prices without an interval are currently not supported");
-    }
     if (quantity !== 1 && data.offer.stackable !== true) {
       throw new StatusError(400, "This offer is not stackable; quantity must be 1");
     }
+    // One-time payment path (no interval): create PaymentIntent and return client_secret
+    if (!selectedPrice.interval) {
+      const amountCents = Number(selectedPrice.USD) * 100 * Math.max(1, quantity);
+      const paymentIntent = await stripe.paymentIntents.create({
+        amount: amountCents,
+        currency: "usd",
+        customer: data.stripeCustomerId,
+        automatic_payment_methods: { enabled: true },
+        metadata: {
+          offerId: data.offerId || "",
+          offer: JSON.stringify(data.offer),
+          customerId: data.customerId,
+          customerType: data.offer.customerType,
+          purchaseQuantity: String(quantity),
+          purchaseKind: "ONE_TIME",
+          tenancyId: data.tenancyId,
+        },
+      });
+      await purchaseUrlVerificationCodeHandler.revokeCode({
+        tenancy,
+        id: codeId,
+      });
 
+      const clientSecret = paymentIntent.client_secret;
+      if (typeof clientSecret !== "string") {
+        throwErr(500, "No client secret returned from Stripe for payment intent");
+      }
+      return {
+        statusCode: 200,
+        bodyType: "json",
+        body: { client_secret: clientSecret },
+      };
+    }
+
+    // Subscription path (recurring interval present)
     const product = await stripe.products.create({
       name: data.offer.displayName ?? "Subscription",
     });

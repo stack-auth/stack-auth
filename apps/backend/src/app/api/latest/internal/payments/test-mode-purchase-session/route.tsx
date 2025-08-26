@@ -1,10 +1,10 @@
 import { purchaseUrlVerificationCodeHandler } from "@/app/api/latest/payments/purchases/verification-code-handler";
+import { ensureCustomerExists } from "@/lib/payments";
 import { getPrismaClientForTenancy } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { adaptSchema, adminAuthTypeSchema, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
-import { addInterval } from "@stackframe/stack-shared/dist/utils/dates";
-import { StackAssertionError, StatusError } from "@stackframe/stack-shared/dist/utils/errors";
-import { typedToUppercase } from "@stackframe/stack-shared/dist/utils/strings";
+import { StatusError } from "@stackframe/stack-shared/dist/utils/errors";
+import { getOrUndefined, typedEntries } from "@stackframe/stack-shared/dist/utils/objects";
 
 export const POST = createSmartRouteHandler({
   metadata: {
@@ -41,28 +41,32 @@ export const POST = createSmartRouteHandler({
     if (!selectedPrice) {
       throw new StatusError(400, "Price not found on offer associated with this purchase code");
     }
-    if (!selectedPrice.interval) {
-      throw new StackAssertionError("unimplemented; prices without an interval are currently not supported");
-    }
     if (quantity !== 1 && data.offer.stackable !== true) {
       throw new StatusError(400, "This offer is not stackable; quantity must be 1");
     }
-
-    await prisma.subscription.create({
-      data: {
-        tenancyId: auth.tenancy.id,
-        customerId: data.customerId,
-        customerType: typedToUppercase(data.offer.customerType),
-        status: "active",
-        offerId: data.offerId,
-        offer: data.offer,
-        quantity,
-        currentPeriodStart: new Date(),
-        currentPeriodEnd: addInterval(new Date(), selectedPrice.interval),
-        cancelAtPeriodEnd: false,
-        creationSource: "TEST_MODE",
-      },
+    // In test mode, simulate the purchase by creating ItemQuantityChange entries for included items
+    await ensureCustomerExists({
+      prisma,
+      tenancyId: auth.tenancy.id,
+      customerType: data.offer.customerType,
+      customerId: data.customerId,
     });
+
+    const includedItems = getOrUndefined(data.offer, "includedItems") || {};
+    const multipliedQuantity = Math.max(1, quantity);
+    for (const [itemId, inc] of typedEntries(includedItems)) {
+      const grant = (inc.quantity || 0) * multipliedQuantity;
+      if (!grant) continue;
+      await prisma.itemQuantityChange.create({
+        data: {
+          tenancyId: auth.tenancy.id,
+          customerId: data.customerId,
+          itemId,
+          quantity: grant,
+          description: `TEST_MODE_PURCHASE offerId=${data.offerId ?? "inline"}`,
+        },
+      });
+    }
     await purchaseUrlVerificationCodeHandler.revokeCode({
       tenancy: auth.tenancy,
       id: codeId,

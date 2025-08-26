@@ -65,6 +65,54 @@ it("should properly create subscription", async ({ expect }) => {
   `);
 });
 
+it("should return client secret for one-time price (no interval)", async ({ expect }) => {
+  await Project.createAndSwitch();
+  await Payments.setup();
+  await Project.updateConfig({
+    payments: {
+      offers: {
+        "ot-offer": {
+          displayName: "One Time Offer",
+          customerType: "user",
+          serverOnly: false,
+          stackable: true,
+          prices: {
+            one: {
+              USD: "1500",
+            },
+          },
+          includedItems: {},
+        },
+      },
+    },
+  });
+
+  const { userId } = await User.create();
+  const urlRes = await niceBackendFetch("/api/latest/payments/purchases/create-purchase-url", {
+    method: "POST",
+    accessType: "client",
+    body: {
+      customer_type: "user",
+      customer_id: userId,
+      offer_id: "ot-offer",
+    },
+  });
+  expect(urlRes.status).toBe(200);
+  const code = (urlRes.body as { url: string }).url.match(/\/purchase\/([a-z0-9-_]+)/)?.[1]!;
+
+  const res = await niceBackendFetch("/api/latest/payments/purchases/purchase-session", {
+    method: "POST",
+    accessType: "client",
+    body: {
+      full_code: code,
+      price_id: "one",
+      quantity: 2,
+    },
+  });
+  expect(res.status).toBe(200);
+  expect(res.body).toEqual({ client_secret: expect.any(String) });
+});
+
 it("should create purchase URL, validate code, and create purchase session", async ({ expect }) => {
   const { code } = await Payments.createPurchaseUrlAndGetCode();
   const response = await niceBackendFetch("/api/latest/payments/purchases/purchase-session", {
