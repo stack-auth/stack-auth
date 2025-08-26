@@ -96,8 +96,8 @@ describe("GET /api/v1/internal/payments/stripe/account-info", () => {
 
       expect(response).toMatchInlineSnapshot(`
         NiceResponse {
-          "status": 404,
-          "body": "No Stripe account ID found for this project",
+          "status": 200,
+          "body": null,
           "headers": Headers { <some fields may have been hidden> },
         }
       `);
@@ -147,8 +147,8 @@ describe("GET /api/v1/internal/payments/stripe/account-info", () => {
 
       expect(response).toMatchInlineSnapshot(`
         NiceResponse {
-          "status": 404,
-          "body": "No Stripe account ID found for this project",
+          "status": 200,
+          "body": null,
           "headers": Headers { <some fields may have been hidden> },
         }
       `);
