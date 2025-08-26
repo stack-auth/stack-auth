@@ -85,7 +85,6 @@ describe("GET /api/v1/internal/payments/stripe/account-info", () => {
 
   describe("with admin access", () => {
     it("should return 404 when no stripe account is configured", async ({ expect }) => {
-      await Auth.Otp.signIn();
       await Project.createAndSwitch({
         display_name: "Test Project Without Stripe"
       });
@@ -96,15 +95,14 @@ describe("GET /api/v1/internal/payments/stripe/account-info", () => {
 
       expect(response).toMatchInlineSnapshot(`
         NiceResponse {
-          "status": 404,
-          "body": "No Stripe account ID found for this project",
+          "status": 200,
+          "body": null,
           "headers": Headers { <some fields may have been hidden> },
         }
       `);
     });
 
     it("should return stripe account info when account is configured", async ({ expect }) => {
-      await Auth.Otp.signIn();
       await Project.createAndSwitch({
         display_name: "Test Project Without Stripe"
       });
@@ -120,23 +118,20 @@ describe("GET /api/v1/internal/payments/stripe/account-info", () => {
         accessType: "admin"
       });
 
-      expect(response).toMatchInlineSnapshot(`
-        NiceResponse {
-          "status": 200,
-          "body": {
-            "account_id": <stripped field 'account_id'>,
-            "charges_enabled": false,
-            "details_submitted": false,
-            "payouts_enabled": false,
-          },
-          "headers": Headers { <some fields may have been hidden> },
+      expect(response.status).toBe(200);
+      const stripped = { ...response.body, account_id: "<stripped account_id>" };
+      expect(stripped).toMatchInlineSnapshot(`
+        {
+          "account_id": "<stripped account_id>",
+          "charges_enabled": false,
+          "details_submitted": false,
+          "payouts_enabled": false,
         }
       `);
+
     });
 
     it("should not allow access without authentication", async ({ expect }) => {
-      // Create a new project first
-      await Auth.Otp.signIn();
       const result = await Project.createAndSwitch({
         display_name: "Test Project for Auth Check"
       });
@@ -147,8 +142,8 @@ describe("GET /api/v1/internal/payments/stripe/account-info", () => {
 
       expect(response).toMatchInlineSnapshot(`
         NiceResponse {
-          "status": 404,
-          "body": "No Stripe account ID found for this project",
+          "status": 200,
+          "body": null,
           "headers": Headers { <some fields may have been hidden> },
         }
       `);

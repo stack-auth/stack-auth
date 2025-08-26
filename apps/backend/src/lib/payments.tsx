@@ -3,7 +3,7 @@ import { SubscriptionStatus } from "@prisma/client";
 import { KnownErrors } from "@stackframe/stack-shared";
 import type { inlineOfferSchema, offerSchema } from "@stackframe/stack-shared/dist/schema-fields";
 import { SUPPORTED_CURRENCIES } from "@stackframe/stack-shared/dist/utils/currency-constants";
-import { addInterval, FAR_FUTURE_DATE, getIntervalsElapsed, getWindowStart, subtractInterval } from "@stackframe/stack-shared/dist/utils/dates";
+import { addInterval, FAR_FUTURE_DATE, getIntervalsElapsed, subtractInterval } from "@stackframe/stack-shared/dist/utils/dates";
 import { StackAssertionError, StatusError } from "@stackframe/stack-shared/dist/utils/errors";
 import { getOrUndefined, typedEntries, typedFromEntries } from "@stackframe/stack-shared/dist/utils/objects";
 import { typedToUppercase } from "@stackframe/stack-shared/dist/utils/strings";
@@ -72,32 +72,6 @@ type NegativeLedgerTransaction = {
   grantTime: Date,
 };
 
-function addWhenRepeatedBackfillTransactions(options: {
-  baseQty: number,
-  currentPeriodStart: Date,
-  currentPeriodEnd: Date | null,
-  subscriptionCreatedAt: Date,
-}): PositiveLedgerTransaction[] {
-  const { baseQty, currentPeriodStart, currentPeriodEnd, subscriptionCreatedAt } = options;
-  const entries: PositiveLedgerTransaction[] = [];
-  const end = currentPeriodEnd ?? FAR_FUTURE_DATE;
-  entries.push({ amount: baseQty, grantTime: currentPeriodStart, expirationTime: end });
-  if (!currentPeriodEnd) {
-    return entries;
-  }
-  const periodLengthMs = end.getTime() - currentPeriodStart.getTime();
-  if (periodLengthMs <= 0) {
-    return entries;
-  }
-  let nextEnd = new Date(currentPeriodStart.getTime());
-  while (nextEnd > subscriptionCreatedAt) {
-    const nextStart = new Date(nextEnd.getTime() - periodLengthMs);
-    entries.push({ amount: baseQty, grantTime: nextStart, expirationTime: nextEnd });
-    nextEnd = nextStart;
-  }
-  return entries;
-}
-
 function computeLedgerBalanceAtNow(pos: PositiveLedgerTransaction[], neg: NegativeLedgerTransaction[], now: Date): number {
   const grantedAt = new Map<number, number>();
   const expiredAt = new Map<number, number>();
@@ -158,14 +132,14 @@ function addWhenRepeatedItemWindowTransactions(options: {
   if (finalNow < anchor) return [];
 
   const entries: PositiveLedgerTransaction[] = [];
-  let windowStart = getWindowStart(anchor, repeat, finalNow);
-  // Backfill windows from current window back to anchor (inclusive)
-  while (windowStart >= anchor) {
+  const elapsed = getIntervalsElapsed(anchor, finalNow, repeat);
+
+  for (let i = 0; i <= elapsed; i++) {
+    const windowStart = addInterval(new Date(anchor), [repeat[0] * i, repeat[1]]);
     const windowEnd = addInterval(new Date(windowStart), repeat);
-    const expirationTime = windowEnd < endLimit ? windowEnd : endLimit;
-    entries.push({ amount: baseQty, grantTime: windowStart, expirationTime });
-    windowStart = subtractInterval(windowStart, repeat);
+    entries.push({ amount: baseQty, grantTime: windowStart, expirationTime: windowEnd });
   }
+
   return entries;
 }
 
@@ -206,7 +180,7 @@ export async function getItemQuantityForCustomer(options: {
     customerId: options.customerId,
   });
   for (const s of subscriptions) {
-    const offer = s.offer as yup.InferType<typeof offerSchema>;
+    const offer = s.offer;
     const inc = getOrUndefined(offer.includedItems, options.itemId);
     if (!inc) continue;
     const baseQty = inc.quantity * s.quantity;
@@ -254,7 +228,6 @@ export async function getItemQuantityForCustomer(options: {
 }
 
 type Subscription = {
-  offerId: string,
   offer: yup.InferType<typeof offerSchema>,
   quantity: number,
   currentPeriodStart: Date,
@@ -280,27 +253,29 @@ async function getSubscriptions(options: {
     },
   });
 
-  for (const groupId of Object.keys(groups)) {
-    const offersInGroup = typedEntries(offers).filter(([_, offer]) => offer.groupId === groupId);
-    for (const [offerId, offer] of offersInGroup) {
-      const subscription = dbSubscriptions.find(s => s.offerId === offerId);
-      if (subscription) {
-        subscriptions.push({
-          offerId,
-          offer,
-          quantity: subscription.quantity,
-          currentPeriodStart: subscription.currentPeriodStart,
-          currentPeriodEnd: subscription.currentPeriodEnd,
-          status: subscription.status,
-          createdAt: subscription.createdAt,
-        });
-        continue;
-      }
+  const groupsWithDbSubscriptions = new Set<string>();
+  for (const s of dbSubscriptions) {
+    const offer = s.offerId ? getOrUndefined(offers, s.offerId) : s.offer as yup.InferType<typeof offerSchema>;
+    if (!offer) continue;
+    subscriptions.push({
+      offer,
+      quantity: s.quantity,
+      currentPeriodStart: s.currentPeriodStart,
+      currentPeriodEnd: s.currentPeriodEnd,
+      status: s.status,
+      createdAt: s.createdAt,
+    });
+    if (offer.groupId !== undefined) {
+      groupsWithDbSubscriptions.add(offer.groupId);
     }
+  }
+
+  for (const groupId of Object.keys(groups)) {
+    if (groupsWithDbSubscriptions.has(groupId)) continue;
+    const offersInGroup = typedEntries(offers).filter(([_, offer]) => offer.groupId === groupId);
     const defaultGroupOffer = offersInGroup.find(([_, offer]) => offer.prices === "include-by-default");
     if (defaultGroupOffer) {
       subscriptions.push({
-        offerId: defaultGroupOffer[0],
         offer: defaultGroupOffer[1],
         quantity: 1,
         currentPeriodStart: DEFAULT_OFFER_START_DATE,

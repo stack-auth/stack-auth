@@ -635,6 +635,46 @@ describe('getItemQuantityForCustomer - subscriptions', () => {
     expect(qty).toBe(0);
     vi.useRealTimers();
   });
+
+  it('ungrouped offer works without tenancy groups', async () => {
+    const now = new Date('2025-02-10T00:00:00.000Z');
+    vi.setSystemTime(now);
+    const itemId = 'ungroupedItem';
+
+    const tenancy = createMockTenancy({
+      items: { [itemId]: { displayName: 'U', customerType: 'user' } },
+      groups: {},
+      offers: {
+        offU: {
+          displayName: 'OU',
+          groupId: undefined,
+          customerType: 'user',
+          freeTrial: undefined,
+          serverOnly: false,
+          stackable: false,
+          prices: {},
+          includedItems: { [itemId]: { quantity: 4, repeat: 'never', expires: 'when-purchase-expires' } },
+          isAddOnTo: false,
+        },
+      },
+    });
+
+    const prisma = createMockPrisma({
+      subscription: {
+        findMany: async () => [{
+          offerId: 'offU',
+          currentPeriodStart: new Date('2025-02-01T00:00:00.000Z'),
+          currentPeriodEnd: new Date('2025-03-01T00:00:00.000Z'),
+          quantity: 2,
+          status: 'active',
+        }],
+      },
+    } as any);
+
+    const qty = await getItemQuantityForCustomer({ prisma, tenancy, itemId, customerId: 'u1', customerType: 'user' });
+    expect(qty).toBe(8);
+    vi.useRealTimers();
+  });
 });
 
 

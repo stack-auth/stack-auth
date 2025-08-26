@@ -87,11 +87,7 @@ it("should create purchase URL, validate code, and create purchase session", asy
 
 it("should create purchase URL with inline offer, validate code, and create purchase session", async ({ expect }) => {
   await Project.createAndSwitch({ config: { magic_link_enabled: true } });
-  await Project.updateConfig({
-    payments: {
-      stripeAccountId: "acct_test123",
-    },
-  });
+  await Payments.setup();
 
   const { userId } = await Auth.Otp.signIn();
   const response = await niceBackendFetch("/api/latest/payments/purchases/create-purchase-url", {
@@ -162,14 +158,13 @@ it("should error when admin tenancy differs from code tenancy", async ({ expect 
 
 it("creates subscription in test mode and increases included item quantity", async ({ expect }) => {
   await Project.createAndSwitch();
+  await Payments.setup();
   await Project.updateConfig({
     payments: {
-      stripeAccountId: "acct_test123",
       items: {
         "test-item": {
           displayName: "Test Item",
           customerType: "user",
-          default: { quantity: 0 },
         },
       },
       offers: {
@@ -307,14 +302,13 @@ it("test-mode should error on invalid price_id", async ({ expect }) => {
 
 it("allows stackable quantity in test mode and multiplies included items", async ({ expect }) => {
   await Project.createAndSwitch();
+  await Payments.setup();
   await Project.updateConfig({
     payments: {
-      stripeAccountId: "acct_test123",
       items: {
         "test-item": {
           displayName: "Test Item",
           customerType: "user",
-          default: { quantity: 0 },
         },
       },
       offers: {

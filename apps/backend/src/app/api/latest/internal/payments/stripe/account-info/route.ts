@@ -23,7 +23,7 @@ export const GET = createSmartRouteHandler({
       charges_enabled: yupBoolean().defined(),
       details_submitted: yupBoolean().defined(),
       payouts_enabled: yupBoolean().defined(),
-    }).defined(),
+    }).nullable(),
   }),
   handler: async ({ auth }) => {
     const project = await globalPrismaClient.project.findUnique({
@@ -32,7 +32,11 @@ export const GET = createSmartRouteHandler({
     });
 
     if (!project?.stripeAccountId) {
-      throw new StatusError(404, "No Stripe account ID found for this project");
+      return {
+        statusCode: 200,
+        bodyType: "json",
+        body: null,
+      };
     }
 
     const stripe = getStackStripe();
