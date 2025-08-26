@@ -5,8 +5,8 @@ import { CompleteConfig } from "@stackframe/stack-shared/dist/config/schema";
 import { DayInterval } from "@stackframe/stack-shared/dist/utils/dates";
 import { prettyPrintWithMagnitudes } from "@stackframe/stack-shared/dist/utils/numbers";
 import { stringCompare } from "@stackframe/stack-shared/dist/utils/strings";
-import { Button, Card, Checkbox, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@stackframe/stack-ui";
-import { MoreVertical, Plus } from "lucide-react";
+import { Button, Card, Checkbox, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger, Input } from "@stackframe/stack-ui";
+import { MoreVertical, Plus, Search } from "lucide-react";
 import React, { ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { PageLayout } from "../page-layout";
 import { useAdminApp } from "../use-admin-app";
@@ -62,14 +62,52 @@ type ListSectionProps = {
   onAddClick?: () => void,
   children: ReactNode,
   hasTitleBorder?: boolean,
+  searchValue?: string,
+  onSearchChange?: (value: string) => void,
+  searchPlaceholder?: string,
 };
 
-function ListSection({ title, onAddClick, children, hasTitleBorder = true }: ListSectionProps) {
+function ListSection({
+  title,
+  onAddClick,
+  children,
+  hasTitleBorder = true,
+  searchValue,
+  onSearchChange,
+  searchPlaceholder = "Search..."
+}: ListSectionProps) {
+  const [isSearchFocused, setIsSearchFocused] = useState(false);
+
   return (
     <div className="flex flex-col h-full">
-      <div className={cn("sticky top-0 z-10 py-1", hasTitleBorder && "border-b")}>
-        <div className="flex items-center justify-between pl-3 pr-1">
+      <div className={cn("sticky top-0 z-10")}>
+        <div className="flex items-center justify-between pl-3 pr-1 py-1">
           <h2 className="font-medium">{title}</h2>
+          {onSearchChange && (
+            <div>
+              <div className={cn(
+              "relative transition-all",
+              isSearchFocused ? "max-w-[200px]" : "max-w-[140px]"
+            )}>
+                <Search className={cn(
+                "absolute left-2.5 text-muted-foreground transition-all duration-200",
+                isSearchFocused ? "top-[6px] h-4 w-4" : "top-[6px] h-3 w-3.5"
+              )} />
+                <Input
+                  type="text"
+                  placeholder={searchPlaceholder}
+                  value={searchValue || ''}
+                  onChange={(e) => onSearchChange(e.target.value)}
+                  onFocus={() => setIsSearchFocused(true)}
+                  onBlur={() => setIsSearchFocused(false)}
+                  className={cn(
+                  "pl-8 bg-secondary/30 border-transparent focus:bg-secondary/50 transition-all duration-200",
+                  isSearchFocused ? "h-7 text-sm" : "h-6 text-xs"
+                )}
+                />
+              </div>
+            </div>
+          )}
           <Button
             variant="ghost"
             size="sm"
@@ -79,6 +117,7 @@ function ListSection({ title, onAddClick, children, hasTitleBorder = true }: Lis
             <Plus className="h-4 w-4" />
           </Button>
         </div>
+        {hasTitleBorder && <div className="border-b" />}
       </div>
       <div className="flex-1 overflow-auto">
         {children}
@@ -122,9 +161,9 @@ function ListItem({
       className={cn(
         "px-3 py-3 cursor-pointer relative duration-200 hover:duration-0 transition-colors flex items-center justify-between group",
         isHighlighted && "bg-primary/10",
-        !isMenuHovered && "hover:bg-primary/15",
+        !isMenuHovered && "hover:bg-primary/10",
         isMenuHovered && "hover:bg-primary/5",
-        isHighlighted && !isMenuHovered && "hover:bg-primary/25"
+        isHighlighted && !isMenuHovered && "hover:bg-primary/20"
       )}
       onClick={onClick}
       onMouseEnter={onMouseEnter}
@@ -175,7 +214,7 @@ function ListGroup({ title, children }: ListGroupProps) {
   return (
     <div className="mb-4">
       {title && (
-        <div className="sticky top-0 bg-muted/50 backdrop-blur px-3 py-2 border-t">
+        <div className="sticky top-0 bg-muted backdrop-blur-lg px-3 py-2 border-t z-[1]">
           <h3 className="text-sm font-medium text-muted-foreground">
             {title}
           </h3>
@@ -216,9 +255,9 @@ function ConnectionLine({ fromRef, toRef, containerRef, quantity }: ConnectionLi
 
       // Calculate positions relative to container
       const fromY = fromRect.top - containerRect.top + fromRect.height / 2;
-      const fromX = fromRect.right - containerRect.left;
+      const fromX = fromRect.right - containerRect.left - 6;
       const toY = toRect.top - containerRect.top + toRect.height / 2;
-      const toX = toRect.left - containerRect.left;
+      const toX = toRect.left - containerRect.left + 6;
 
       // Create a curved path
       const midX = (fromX + toX) / 2;
@@ -338,12 +377,44 @@ function OffersList({
   onOfferMouseEnter,
   onOfferMouseLeave,
 }: OffersListProps) {
+  const [searchQuery, setSearchQuery] = useState("");
   let globalIndex = 0;
 
+  // Filter offers based on search query
+  const filteredGroupedOffers = useMemo(() => {
+    if (!searchQuery) return groupedOffers;
+
+    const filtered = new Map<string | undefined, Array<{ id: string, offer: any }>>();
+
+    groupedOffers.forEach((offers, groupId) => {
+      const filteredOffers = offers.filter(({ id, offer }) => {
+        const query = searchQuery.toLowerCase();
+        return (
+          id.toLowerCase().includes(query) ||
+          offer.displayName?.toLowerCase().includes(query) ||
+          offer.customerType?.toLowerCase().includes(query)
+        );
+      });
+
+      if (filteredOffers.length > 0) {
+        filtered.set(groupId, filteredOffers);
+      }
+    });
+
+    return filtered;
+  }, [groupedOffers, searchQuery]);
+
   return (
-    <ListSection title="Offers" onAddClick={() => {}} hasTitleBorder={false}>
+    <ListSection
+      title="Offers"
+      onAddClick={() => {}}
+      hasTitleBorder={false}
+      searchValue={searchQuery}
+      onSearchChange={setSearchQuery}
+      searchPlaceholder="Search offers..."
+    >
       <GroupedList>
-        {[...groupedOffers.entries()].map(([groupId, offers]) => {
+        {[...filteredGroupedOffers.entries()].map(([groupId, offers]) => {
           const group = groupId ? paymentsGroups[groupId] : undefined;
           const groupName = group?.displayName;
 
@@ -418,6 +489,8 @@ function ItemsList({
   onItemMouseEnter,
   onItemMouseLeave,
 }: ItemsListProps) {
+  const [searchQuery, setSearchQuery] = useState("");
+
   // Sort items by customer type, then by ID
   const sortedItems = useMemo(() => {
     const customerTypePriority = { user: 1, team: 2, custom: 3 };
@@ -432,10 +505,30 @@ function ItemsList({
     });
   }, [items]);
 
+  // Filter items based on search query
+  const filteredItems = useMemo(() => {
+    if (!searchQuery) return sortedItems;
+
+    const query = searchQuery.toLowerCase();
+    return sortedItems.filter(([id, item]) => {
+      return (
+        id.toLowerCase().includes(query) ||
+        (item.displayName && item.displayName.toLowerCase().includes(query)) ||
+        item.customerType.toLowerCase().includes(query)
+      );
+    });
+  }, [sortedItems, searchQuery]);
+
   return (
-    <ListSection title="Items" onAddClick={() => {}}>
+    <ListSection
+      title="Items"
+      onAddClick={() => {}}
+      searchValue={searchQuery}
+      onSearchChange={setSearchQuery}
+      searchPlaceholder="Search items..."
+    >
       <GroupedList>
-        {sortedItems.map(([id, item]: [string, any], index) => {
+        {filteredItems.map(([id, item]: [string, any], index) => {
           const connectedOffers = hoveredOfferId ? getConnectedItems(hoveredOfferId) : [];
           const isHighlighted = hoveredOfferId ? connectedOffers.includes(id) : false;
 
@@ -612,8 +705,6 @@ export default function PageClient() {
       .map(([id]) => id);
   };
 
-  console.log(groupedOffers);
-
   return (
     <PageLayout title="Payments" actions={(
       <div className="flex items-center gap-2">
@@ -656,9 +747,12 @@ export default function PageClient() {
       </div>
 
       {/* Content */}
-      <div className="flex gap-6 flex-1">
+      <div className="flex gap-6 flex-1" style={{
+        flexBasis: "0px",
+        overflow: "scroll",
+      }}>
         {/* Desktop two-column layout */}
-        <div className="hidden lg:flex lg:gap-24 w-full relative" ref={containerRef}>
+        <div className="hidden lg:flex gap-24 w-full relative" ref={containerRef}>
           <Card className="flex-1">
             <OffersList
               groupedOffers={groupedOffers}
@@ -670,6 +764,7 @@ export default function PageClient() {
               onOfferMouseLeave={() => setHoveredOfferId(null)}
             />
           </Card>
+
           <Card className="flex-1">
             <ItemsList
               items={paymentsConfig.items}
