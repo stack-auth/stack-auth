@@ -571,7 +571,7 @@ export default function SidebarLayout(props: { projectId: string, children?: Rea
         </div>
 
         {/* Content Body - Normal scrolling */}
-        <div className="flex-grow relative">
+        <div className="flex-grow relative flex flex-col">
           {props.children}
         </div>
       </div>

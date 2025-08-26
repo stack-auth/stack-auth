@@ -16,7 +16,7 @@ import { useAdminApp } from "../use-admin-app";
 export default function PaymentsLayout({ children }: { children: React.ReactNode }) {
   const [bannerHasItems, setBannerHasItems] = useState(false);
   const stackAdminApp = useAdminApp();
-  const stripeAccountInfo = stackAdminApp.useStripeAccountInfo?.();
+  const stripeAccountInfo = stackAdminApp.useStripeAccountInfo();
 
   const setupPayments = async () => {
     const { url } = await stackAdminApp.setupPayments();
