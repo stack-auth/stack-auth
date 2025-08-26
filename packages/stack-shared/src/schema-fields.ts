@@ -544,7 +544,7 @@ export const emailTemplateListSchema = yupRecord(
 ).meta({ openapiField: { description: 'Record of email template IDs to their display name and source code' } });
 
 // Payments
-export const customerTypeSchema = yupString().oneOf(['user', 'team']);
+export const customerTypeSchema = yupString().oneOf(['user', 'team', 'custom']);
 const validateHasAtLeastOneSupportedCurrency = (value: Record<string, unknown>, context: any) => {
   const currencies = Object.keys(value).filter(key => SUPPORTED_CURRENCIES.some(c => c.code === key));
   if (currencies.length === 0) {
@@ -560,7 +560,7 @@ export const offerPriceSchema = yupObject({
 }).test("at-least-one-currency", (value, context) => validateHasAtLeastOneSupportedCurrency(value, context));
 export const offerSchema = yupObject({
   displayName: yupString(),
-  customerType: customerTypeSchema,
+  customerType: customerTypeSchema.defined(),
   freeTrial: dayIntervalSchema.optional(),
   serverOnly: yupBoolean(),
   stackable: yupBoolean(),
@@ -571,7 +571,7 @@ export const offerSchema = yupObject({
   includedItems: yupRecord(
     userSpecifiedIdSchema("itemId"),
     yupObject({
-      quantity: yupNumber(),
+      quantity: yupNumber().defined(),
       repeat: dayIntervalOrNeverSchema.optional(),
       expires: yupString().oneOf(['never', 'when-purchase-expires', 'when-repeated']).optional(),
     }),

@@ -14,6 +14,7 @@ import { AuthenticationResponseJSON, PublicKeyCredentialCreationOptionsJSON, Pub
 import { wait } from '../utils/promises';
 import { Result } from "../utils/results";
 import { deindent } from '../utils/strings';
+import { urlString } from '../utils/urls';
 import { ConnectedAccountAccessTokenCrud } from './crud/connected-accounts';
 import { ContactChannelsCrud } from './crud/contact-channels';
 import { CurrentUserCrud } from './crud/current-user';
@@ -1749,14 +1750,31 @@ export class StackClientInterface {
     return response.json();
   }
 
-  async getItem(options: {
-    teamId?: string,
-    userId?: string,
-    itemId: string,
-  }, session: InternalSession | null): Promise<ItemCrud['Client']['Read']> {
-    const customerId = options.teamId ?? options.userId;
+  async getItem(
+    options: (
+      { itemId: string, userId: string } |
+      { itemId: string, teamId: string } |
+      { itemId: string, customCustomerId: string }
+    ),
+    session: InternalSession | null,
+  ): Promise<ItemCrud['Client']['Read']> {
+    let customerType: "user" | "team" | "custom";
+    let customerId: string;
+    if ("userId" in options) {
+      customerType = "user";
+      customerId = options.userId;
+    } else if ("teamId" in options) {
+      customerType = "team";
+      customerId = options.teamId;
+    } else if ("customCustomerId" in options) {
+      customerType = "custom";
+      customerId = options.customCustomerId;
+    } else {
+      throw new StackAssertionError("getItem requires one of userId, teamId, or customCustomerId");
+    }
+
     const response = await this.sendClientRequest(
-      `/payments/items/${customerId}/${options.itemId}`,
+      urlString`/payments/items/${customerType}/${customerId}/${options.itemId}`,
       {},
       session,
     );
@@ -1764,6 +1782,7 @@ export class StackClientInterface {
   }
 
   async createCheckoutUrl(
+    customer_type: "user" | "team" | "custom",
     customer_id: string,
     offerIdOrInline: string | yup.InferType<typeof inlineOfferSchema>,
     session: InternalSession | null,
@@ -1778,7 +1797,7 @@ export class StackClientInterface {
         headers: {
           "content-type": "application/json",
         },
-        body: JSON.stringify({ customer_id, ...offerBody }),
+        body: JSON.stringify({ customer_type, customer_id, ...offerBody }),
       },
       session
     );
