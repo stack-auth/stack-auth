@@ -5,7 +5,7 @@ import { CompleteConfig } from "@stackframe/stack-shared/dist/config/schema";
 import { DayInterval } from "@stackframe/stack-shared/dist/utils/dates";
 import { prettyPrintWithMagnitudes } from "@stackframe/stack-shared/dist/utils/numbers";
 import { stringCompare } from "@stackframe/stack-shared/dist/utils/strings";
-import { Button, Card, CardContent, Checkbox, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger, Input } from "@stackframe/stack-ui";
+import { Button, Card, CardContent, Checkbox, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger, Input, SimpleTooltip } from "@stackframe/stack-ui";
 import { MoreVertical, Plus, Search } from "lucide-react";
 import React, { ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { PageLayout } from "../page-layout";
@@ -58,7 +58,8 @@ function ActionMenu({ items }: { items: ActionMenuItem[] }) {
 }
 
 type ListSectionProps = {
-  title: string,
+  title: JSX.Element,
+  titleTooltip?: string,
   onAddClick?: () => void,
   children: ReactNode,
   hasTitleBorder?: boolean,
@@ -69,6 +70,7 @@ type ListSectionProps = {
 
 function ListSection({
   title,
+  titleTooltip,
   onAddClick,
   children,
   hasTitleBorder = true,
@@ -82,7 +84,21 @@ function ListSection({
     <div className="flex flex-col h-full">
       <div className={cn("sticky top-0 z-10")}>
         <div className="flex items-center justify-between pl-3 pr-1 py-1">
-          <h2 className="font-medium">{title}</h2>
+          <div className="flex items-center">
+            <h2 className="font-medium">{title}</h2>
+            {titleTooltip && (
+              <SimpleTooltip
+                tooltip={titleTooltip}
+                type="info"
+                inline
+                className="ml-2 mb-[2px]"
+                style={{
+                  transform: "translateY(-1px)",
+                }}
+                disabled={!titleTooltip}
+              />
+            )}
+          </div>
           {onSearchChange && (
             <div>
               <div className={cn(
@@ -220,10 +236,10 @@ function ListGroup({ title, children }: ListGroupProps) {
           </h3>
         </div>
       )}
-      <div className="absolute top-2 left-4 w-3 h-full border-l border-b rounded-bl-md">
+      <div className="absolute top-2 left-2 w-3 h-full border-l border-b rounded-bl-md">
 
       </div>
-      <div className="pl-6">
+      <div className="pl-4">
         {children}
       </div>
     </div>
@@ -409,7 +425,10 @@ function OffersList({
 
   return (
     <ListSection
-      title="Offers"
+      title={<>
+        Offers
+      </>}
+      titleTooltip="Offers are the products, plans, or pricing tiers you sell to your customers. They are the columns in a pricing table."
       onAddClick={() => {}}
       hasTitleBorder={false}
       searchValue={searchQuery}
@@ -525,6 +544,7 @@ function ItemsList({
   return (
     <ListSection
       title="Items"
+      titleTooltip="Items are the features or services that your customers will receive from you. They are the rows in a pricing table."
       onAddClick={() => {}}
       searchValue={searchQuery}
       onSearchChange={setSearchQuery}
@@ -709,7 +729,7 @@ export default function PageClient() {
   };
 
   return (
-    <PageLayout title="Payments" actions={(
+    <PageLayout title="Payments" actions={process.env.NODE_ENV === "development" && (
       <div className="flex items-center gap-2">
         <Checkbox
           checked={shouldUseDummyData}
@@ -722,7 +742,7 @@ export default function PageClient() {
       </div>
     )}>
       {/* Mobile tabs */}
-      <div className="md:hidden mb-4">
+      <div className="lg:hidden mb-4">
         <div className="flex space-x-1 bg-muted p-1 rounded-md">
           <button
             onClick={() => setActiveTab("offers")}
