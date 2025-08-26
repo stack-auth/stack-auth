@@ -128,7 +128,7 @@ describe("GET /api/v1/internal/payments/stripe/account-info", () => {
           "payouts_enabled": false,
         }
       `);
-      
+
     });
 
     it("should not allow access without authentication", async ({ expect }) => {
