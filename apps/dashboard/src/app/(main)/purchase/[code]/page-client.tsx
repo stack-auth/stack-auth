@@ -10,7 +10,7 @@ import { typedEntries } from "@stackframe/stack-shared/dist/utils/objects";
 import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
 import { Button, Card, CardContent, Skeleton, Typography } from "@stackframe/stack-ui";
 import { ArrowRight } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import * as yup from "yup";
 
 type OfferData = {
@@ -29,6 +29,7 @@ export default function PageClient({ code }: { code: string }) {
   const [selectedPriceId, setSelectedPriceId] = useState<string | null>(null);
   const user = useUser({ projectIdMustMatch: "internal" });
   const [adminApp, setAdminApp] = useState<StackAdminApp>();
+  const paymentSectionRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     if (!user || !data) return;
@@ -107,10 +108,14 @@ export default function PageClient({ code }: { code: string }) {
   }, [code, adminApp, selectedPriceId]);
 
   return (
-    <div className="flex flex-row">
-      <div className="w-1/2 p-6 border-r border-primary/20 h-dvh max-w-md">
+    <div className="flex flex-col md:flex-row min-h-screen">
+      <div className="w-full md:w-1/2 p-4 md:p-6 border-b md:border-b-0 md:border-r border-primary/20 md:h-dvh md:sticky md:top-0 md:max-w-md md:overflow-auto bg-background">
         {loading ? (
-          <Skeleton className="w-full h-10" />
+          <div className="space-y-3">
+            <Skeleton className="w-3/4 h-8" />
+            <Skeleton className="w-full h-10" />
+            <Skeleton className="w-full h-24" />
+          </div>
         ) : error ? (
           <>
             <Typography type="h2" className="mb-2">Invalid URL</Typography>
@@ -120,18 +125,19 @@ export default function PageClient({ code }: { code: string }) {
           </>
         ) : (
           <>
-            <div className="mb-6">
-              <Typography type="h2" className="mb-2">{data?.offer?.display_name || "Plan"}</Typography>
+            <div className="mb-4 md:mb-6">
+              <Typography type="h2" className="mb-1">{data?.offer?.display_name || "Plan"}</Typography>
+              <Typography type="footnote" variant="secondary">Secure checkout powered by Stripe</Typography>
             </div>
             <div className="space-y-3">
               {data?.offer?.prices && typedEntries(data.offer.prices).map(([priceId, priceData]) => (
                 <Card
                   key={priceId}
-                  className={`border cursor-pointer transition-colors ${selectedPriceId === priceId ? 'border-blue-500' : 'hover:border-primary/30'}`}
+                  className={`border cursor-pointer transition-colors rounded-lg ${selectedPriceId === priceId ? 'border-primary ring-2 ring-primary/20 bg-primary/5' : 'hover:border-primary/30'}`}
                   onClick={() => setSelectedPriceId(priceId)}
                 >
-                  <CardContent className="p-4">
-                    <div className="flex justify-between items-center">
+                  <CardContent className="p-4 md:p-5">
+                    <div className="flex justify-between items-center gap-3">
                       <div>
                         <Typography type="h4">{priceId}</Typography>
                       </div>
@@ -150,26 +156,33 @@ export default function PageClient({ code }: { code: string }) {
                 </Card>
               ))}
             </div>
+            <div className="mt-4 md:hidden">
+              <Button className="w-full" disabled={!selectedPriceId || !data} onClick={() => paymentSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })}>
+                Continue to payment
+              </Button>
+            </div>
           </>
         )}
       </div>
-      <div className="grow relative flex justify-center items-center bg-primary/5">
+      <div className="w-full md:grow relative flex justify-center items-start md:items-center bg-primary/5 p-4 md:p-8">
         {adminApp && (
           <div className="absolute top-4 right-4 max-w-xs">
             <BypassInfo handleBypass={handleBypass} />
           </div>
         )}
         {data && (
-          <StripeElementsProvider
-            stripeAccountId={data.stripe_account_id}
-            amount={currentAmount}
-          >
-            <CheckoutForm
-              fullCode={code}
+          <div ref={paymentSectionRef} id="payment-section" className="w-full flex justify-center">
+            <StripeElementsProvider
               stripeAccountId={data.stripe_account_id}
-              setupSubscription={setupSubscription}
-            />
-          </StripeElementsProvider>
+              amount={currentAmount}
+            >
+              <CheckoutForm
+                fullCode={code}
+                stripeAccountId={data.stripe_account_id}
+                setupSubscription={setupSubscription}
+              />
+            </StripeElementsProvider>
+          </div>
         )}
       </div>
     </div>

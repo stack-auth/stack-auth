@@ -61,13 +61,13 @@ export function CheckoutForm({ setupSubscription, stripeAccountId, fullCode }: P
   };
 
   return (
-    <div className="flex flex-col gap-6 max-w-md w-full p-6 rounded-md bg-background">
+    <div className="flex flex-col gap-6 max-w-md w-full p-4 md:p-6 rounded-lg bg-background border border-primary/10 shadow-sm">
       <PaymentElement options={paymentElementOptions} />
       <Button
         disabled={!stripe || !elements}
         onClick={handleSubmit}
       >
-        Submit
+        Pay now
       </Button>
       {message && <div className="text-destructive">{message}</div>}
     </div>
