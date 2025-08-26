@@ -1,12 +1,13 @@
-import { adaptSchema, clientOrHigherAuthTypeSchema, inlineOfferSchema, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
 import { ensureOfferIdOrInlineOffer } from "@/lib/payments";
 import { getStripeForAccount } from "@/lib/stripe";
+import { globalPrismaClient } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
+import { CustomerType } from "@prisma/client";
+import { KnownErrors } from "@stackframe/stack-shared/dist/known-errors";
+import { adaptSchema, clientOrHigherAuthTypeSchema, inlineOfferSchema, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
 import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
 import { throwErr } from "@stackframe/stack-shared/dist/utils/errors";
 import { purchaseUrlVerificationCodeHandler } from "../verification-code-handler";
-import { CustomerType } from "@prisma/client";
-import { KnownErrors } from "@stackframe/stack-shared/dist/known-errors";
 
 export const POST = createSmartRouteHandler({
   metadata: {
@@ -34,7 +35,7 @@ export const POST = createSmartRouteHandler({
   }),
   handler: async (req) => {
     const { tenancy } = req.auth;
-    const stripe = getStripeForAccount({ tenancy });
+    const stripe = await getStripeForAccount({ tenancy });
     const offerConfig = await ensureOfferIdOrInlineOffer(tenancy, req.auth.type, req.body.offer_id, req.body.offer_inline);
     const customerType = offerConfig.customerType;
     if (req.body.customer_type !== customerType) {
@@ -57,6 +58,11 @@ export const POST = createSmartRouteHandler({
       });
     }
 
+    const project = await globalPrismaClient.project.findUnique({
+      where: { id: tenancy.project.id },
+      select: { stripeAccountId: true },
+    });
+
     const { code } = await purchaseUrlVerificationCodeHandler.createCode({
       tenancy,
       expiresInMs: 1000 * 60 * 60 * 24,
@@ -66,7 +72,7 @@ export const POST = createSmartRouteHandler({
         offerId: req.body.offer_id,
         offer: offerConfig,
         stripeCustomerId: stripeCustomer.id,
-        stripeAccountId: tenancy.config.payments.stripeAccountId ?? throwErr("Stripe account not configured"),
+        stripeAccountId: project?.stripeAccountId ?? throwErr("Stripe account not configured"),
       },
       method: {},
       callbackUrl: undefined,

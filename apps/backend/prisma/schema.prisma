@@ -24,6 +24,7 @@ model Project {
   fullLogoUrl      String?
 
   projectConfigOverride Json?
+  stripeAccountId             String?
 
   apiKeySets                 ApiKeySet[]
   projectUsers               ProjectUser[]

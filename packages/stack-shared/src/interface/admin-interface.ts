@@ -501,6 +501,15 @@ export class StackAdminInterface extends StackServerInterface {
     return await response.json();
   }
 
+  async getStripeAccountInfo(): Promise<{ account_id: string, charges_enabled: boolean, details_submitted: boolean, payouts_enabled: boolean }> {
+    const response = await this.sendAdminRequest(
+      "/internal/payments/stripe/account-info",
+      {},
+      null,
+    );
+    return await response.json();
+  }
+
   async createStripeWidgetAccountSession(): Promise<{ client_secret: string }> {
     const response = await this.sendAdminRequest(
       "/internal/payments/stripe-widgets/account-session",
