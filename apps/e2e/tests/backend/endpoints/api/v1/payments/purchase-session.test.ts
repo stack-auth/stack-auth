@@ -169,7 +169,6 @@ it("creates subscription in test mode and increases included item quantity", asy
         "test-item": {
           displayName: "Test Item",
           customerType: "user",
-          default: { quantity: 0 },
         },
       },
       offers: {
@@ -314,7 +313,6 @@ it("allows stackable quantity in test mode and multiplies included items", async
         "test-item": {
           displayName: "Test Item",
           customerType: "user",
-          default: { quantity: 0 },
         },
       },
       offers: {

@@ -200,72 +200,13 @@ export function addInterval(date: Date, interval: Interval): Date {
 
 export const FAR_FUTURE_DATE = new Date(8640000000000000);
 
-function getMsPerDayIntervalUnit(unit: DayInterval[1]): number {
+function getMsPerDayIntervalUnit(unit: 'day' | 'week'): number {
   if (unit === 'day') {
     return 24 * 60 * 60 * 1000;
   }
-  if (unit === 'week') {
-    return 7 * 24 * 60 * 60 * 1000;
-  }
-  if (unit === 'month') {
-    return 30 * 24 * 60 * 60 * 1000;
-  }
-  return 365 * 24 * 60 * 60 * 1000;
+  return 7 * 24 * 60 * 60 * 1000;
 }
 
-export function getWindowStart(anchor: Date, repeat: DayInterval, at: Date): Date {
-  const [amount, unit] = repeat;
-  if (at <= anchor) return anchor;
-
-  if (unit === 'day' || unit === 'week') {
-    const msPerUnit = getMsPerDayIntervalUnit(unit);
-    const diffMs = at.getTime() - anchor.getTime();
-    const steps = Math.floor(diffMs / (msPerUnit * amount));
-    const result = new Date(anchor);
-    return addInterval(result, [amount * steps, unit]);
-  }
-
-  const yearsDiff = at.getFullYear() - anchor.getFullYear();
-  const monthsDiff = at.getMonth() - anchor.getMonth();
-  let totalUnitsDiff;
-  if (unit === 'year') {
-    totalUnitsDiff = yearsDiff;
-    if (at.getMonth() < anchor.getMonth() ||
-      (at.getMonth() === anchor.getMonth() && at.getDate() < anchor.getDate())) {
-      totalUnitsDiff--;
-    }
-  } else { // month
-    totalUnitsDiff = yearsDiff * 12 + monthsDiff;
-    if (at.getDate() < anchor.getDate()) {
-      totalUnitsDiff--;
-    }
-  }
-  const steps = Math.floor(totalUnitsDiff / amount);
-  return addInterval(new Date(anchor), [amount * steps, unit]);
-}
-
-import.meta.vitest?.test("getWindowStart - day/week", ({ expect }) => {
-  const anchor = new Date('2025-01-01T00:00:00.000Z');
-  const at = new Date('2025-01-15T00:00:00.000Z');
-  const weekly = getWindowStart(anchor, [1, 'week'], at);
-  expect(weekly.toISOString()).toBe('2025-01-15T00:00:00.000Z');
-  const daily = getWindowStart(anchor, [3, 'day'], at);
-  expect(daily.toISOString()).toBe('2025-01-13T00:00:00.000Z');
-  const before = getWindowStart(anchor, [1, 'week'], new Date('2024-12-15T00:00:00.000Z'));
-  expect(before.toISOString()).toBe(anchor.toISOString());
-});
-
-import.meta.vitest?.test("getWindowStart - month/year edges", ({ expect }) => {
-  const anchor = new Date('2023-01-31T00:00:00.000Z');
-  const at = new Date('2023-03-01T00:00:00.000Z');
-  const monthly = getWindowStart(anchor, [1, 'month'], at);
-  expect(monthly.toISOString()).toBe('2023-01-31T00:00:00.000Z');
-
-  const leapAnchor = new Date('2020-02-29T00:00:00.000Z');
-  const at2 = new Date('2021-03-01T00:00:00.000Z');
-  const yearly = getWindowStart(leapAnchor, [1, 'year'], at2);
-  expect(yearly.toISOString()).toBe('2021-03-01T00:00:00.000Z');
-});
 
 export function getIntervalsElapsed(anchor: Date, to: Date, repeat: DayInterval): number {
   const [amount, unit] = repeat;
