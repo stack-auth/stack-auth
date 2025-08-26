@@ -212,7 +212,7 @@ type ListGroupProps = {
 
 function ListGroup({ title, children }: ListGroupProps) {
   return (
-    <div className="mb-4">
+    <div className="mb-6 relative">
       {title && (
         <div className="sticky top-0 bg-muted backdrop-blur-lg px-3 py-2 border-t z-[1]">
           <h3 className="text-sm font-medium text-muted-foreground">
@@ -220,7 +220,10 @@ function ListGroup({ title, children }: ListGroupProps) {
           </h3>
         </div>
       )}
-      <div>
+      <div className="absolute top-2 left-4 w-3 h-full border-l border-b rounded-bl-md">
+
+      </div>
+      <div className="pl-6">
         {children}
       </div>
     </div>
