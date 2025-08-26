@@ -347,6 +347,72 @@ it("should handle user that does not exist", async ({ expect }) => {
   `);
 });
 
+it("should send email using a draft_id and mark draft as sent", async ({ expect }) => {
+  await Project.createAndSwitch({
+    display_name: "Send Draft Project",
+    config: {
+      email_config: {
+        type: "standard",
+        host: "localhost",
+        port: 2500,
+        username: "test",
+        password: "test",
+        sender_name: "Test Project",
+        sender_email: "test@example.com",
+      },
+    },
+  });
+  const user = await User.create();
+
+  const tsxSource = `import { Container } from "@react-email/components";
+import { Subject, NotificationCategory, Props } from "@stackframe/emails";
+export function EmailTemplate({ user, project }: Props) {
+  return (
+    <Container>
+      <Subject value="Draft Based Subject" />
+      <NotificationCategory value="Marketing" />
+      <div>Hello {user.displayName}</div>
+    </Container>
+  );
+}`;
+
+  const createDraftRes = await niceBackendFetch("/api/v1/internal/email-drafts", {
+    method: "POST",
+    accessType: "admin",
+    body: {
+      display_name: "Welcome Draft",
+      theme_id: false,
+      tsx_source: tsxSource,
+    },
+  });
+  expect(createDraftRes.status).toBe(200);
+  const draftId = createDraftRes.body.id as string;
+
+  const sendRes = await niceBackendFetch("/api/v1/emails/send-email", {
+    method: "POST",
+    accessType: "server",
+    body: {
+      user_ids: [user.userId],
+      draft_id: draftId,
+      subject: "Overridden Subject", // still allow explicit subject
+      notification_category_name: "Marketing",
+    },
+  });
+  expect(sendRes.status).toBe(200);
+  expect(sendRes.body.results).toHaveLength(1);
+
+  const messages = await user.mailbox.fetchMessages();
+  const sentEmail = messages.find(m => m.subject === "Overridden Subject");
+  expect(sentEmail).toBeDefined();
+
+  const getDraftRes = await niceBackendFetch(`/api/v1/internal/email-drafts/${draftId}`, {
+    method: "GET",
+    accessType: "admin",
+  });
+  expect(getDraftRes.status).toBe(200);
+  expect(getDraftRes.body.sent_at_millis).toEqual(expect.any(Number));
+});
+
 describe("validation errors", () => {
   it("should return 400 when neither html nor template_id is provided", async ({ expect }) => {
     await Project.createAndSwitch({

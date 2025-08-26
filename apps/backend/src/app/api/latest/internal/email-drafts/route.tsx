@@ -31,7 +31,6 @@ export const GET = createSmartRouteHandler({
     const items = await prisma.emailDraft.findMany({
       where: { tenancyId: tenancy.id },
       orderBy: { updatedAt: "desc" },
-      take: 50,
     });
     return {
       statusCode: 200,
