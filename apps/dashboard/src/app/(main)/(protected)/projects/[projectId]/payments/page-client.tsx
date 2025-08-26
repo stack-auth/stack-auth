@@ -10,7 +10,7 @@ export default function PageClient() {
     >
       <div className="flex justify-center">
         <div style={{ maxWidth: 1250, width: '100%' }}>
-          <ConnectPayments />
+          {/* TODO */}
         </div>
       </div>
     </PageLayout >
