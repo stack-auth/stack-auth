@@ -7,11 +7,22 @@ import { UserDialog } from "@/components/user-dialog";
 import { Alert, Button } from "@stackframe/stack-ui";
 import { PageLayout } from "../page-layout";
 import { useAdminApp } from "../use-admin-app";
+import React, { Suspense } from "react";
+
+function FirstUserNotice() {
+  const stackAdminApp = useAdminApp();
+  const firstUser = stackAdminApp.useUsers({ limit: 1 });
+  if (firstUser.length > 0) return null;
+  return (
+    <Alert variant='success'>
+      Congratulations on starting your project! Check the <StyledLink href="https://docs.stack-auth.com">documentation</StyledLink> to add your first users.
+    </Alert>
+  );
+}
 
 export default function PageClient() {
   const stackAdminApp = useAdminApp();
   const data = (stackAdminApp as any)[stackAppInternalsSymbol].useMetrics();
-  const firstUser = stackAdminApp.useUsers({ limit: 1 });
 
   return (
     <PageLayout
@@ -22,11 +33,9 @@ export default function PageClient() {
         trigger={<Button>Create User</Button>}
       />}
     >
-      {firstUser.length > 0 ? null : (
-        <Alert variant='success'>
-          Congratulations on starting your project! Check the <StyledLink href="https://docs.stack-auth.com">documentation</StyledLink> to add your first users.
-        </Alert>
-      )}
+      <Suspense fallback={null}>
+        <FirstUserNotice />
+      </Suspense>
 
       <UserTable />
     </PageLayout>

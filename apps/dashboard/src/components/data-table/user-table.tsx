@@ -187,7 +187,7 @@ export function UserTable() {
   const stackAdminApp = useAdminApp();
   const router = useRouter();
   const [showAnonymous, setShowAnonymous] = useState(false);
-  const [filters, setFilters] = useState<Parameters<typeof stackAdminApp.listUsers>[0]>({
+  const [filters, setFilters] = useState<NonNullable<Parameters<typeof stackAdminApp.listUsers>[0]>>({
     limit: 10,
     orderBy: "signedUpAt",
     desc: true,
@@ -199,7 +199,7 @@ export function UserTable() {
     setFilters(prev => ({ ...prev, includeAnonymous: showAnonymous }));
   }, [showAnonymous]);
 
-  const users = extendUsers(stackAdminApp.useUsers(filters));
+  const [users, setUsers] = useState<ExtendedServerUser[] & { nextCursor: string | null | undefined }>(Object.assign([] as ExtendedServerUser[], { nextCursor: undefined }));
 
   const onUpdate = async (options: {
     cursor: string,
@@ -212,6 +212,7 @@ export function UserTable() {
       cursor: options.cursor,
       limit: options.limit,
       query: options.globalFilters,
+      includeAnonymous: filters.includeAnonymous,
     };
 
     const orderMap = {
@@ -224,11 +225,12 @@ export function UserTable() {
 
     if (deepPlainEquals(newFilters, filters, { ignoreUndefinedValues: true })) {
       // save ourselves a request if the filters didn't change
-      return { nextCursor: users.nextCursor };
+      return { nextCursor: users.nextCursor ?? null };
     } else {
       setFilters(newFilters);
-      const users = await stackAdminApp.listUsers(newFilters);
-      return { nextCursor: users.nextCursor };
+      const listed = await stackAdminApp.listUsers(newFilters);
+      setUsers(extendUsers(listed));
+      return { nextCursor: listed.nextCursor };
     }
   };
 
@@ -243,5 +245,6 @@ export function UserTable() {
     onRowClick={(row) => {
       router.push(`/projects/${encodeURIComponent(stackAdminApp.projectId)}/users/${encodeURIComponent(row.id)}`);
     }}
+    refreshKey={filters}
   />;
 }

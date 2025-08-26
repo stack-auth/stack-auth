@@ -30,6 +30,7 @@ import {
 import React from "react";
 import { DataTablePagination } from "./pagination";
 import { DataTableToolbar } from "./toolbar";
+import { Skeleton } from "../ui/skeleton";
 
 export function TableView<TData, TValue>(props: {
   table: TableType<TData>,
@@ -39,6 +40,7 @@ export function TableView<TData, TValue>(props: {
   defaultColumnFilters: ColumnFiltersState,
   defaultSorting: SortingState,
   onRowClick?: (row: TData) => void,
+  isLoading?: boolean,
 }) {
   return (
     <div className="space-y-4">
@@ -70,37 +72,49 @@ export function TableView<TData, TValue>(props: {
             ))}
           </TableHeader>
           <TableBody>
-            {props.table.getRowModel().rows.length ? (
-              props.table.getRowModel().rows.map((row) => (
-                <TableRow
-                  key={row.id}
-                  data-state={row.getIsSelected() && "selected"}
-                  onClick={(ev) => {
-                    // only trigger onRowClick if the element is a direct descendant; don't trigger for portals
-                    if (ev.target instanceof Node && ev.currentTarget.contains(ev.target)) {
-                      props.onRowClick?.(row.original);
-                    }
-                  }}
-                >
-                  {row.getVisibleCells().map((cell) => (
-                    <TableCell key={cell.id}>
-                      {flexRender(
-                        cell.column.columnDef.cell,
-                        cell.getContext()
-                      )}
+            {props.isLoading ? (
+              Array.from({ length: props.table.getState().pagination?.pageSize ?? 10 }).map((_, rowIndex) => (
+                <TableRow key={`skeleton-${rowIndex}`}>
+                  {props.columns.map((_, colIndex) => (
+                    <TableCell key={`skeleton-cell-${rowIndex}-${colIndex}`}>
+                      <Skeleton className="h-4 w-full" />
                     </TableCell>
                   ))}
                 </TableRow>
               ))
             ) : (
-              <TableRow>
-                <TableCell
-                  colSpan={props.columns.length}
-                  className="h-24 text-center"
-                >
-                  No results.
-                </TableCell>
-              </TableRow>
+              props.table.getRowModel().rows.length ? (
+                props.table.getRowModel().rows.map((row) => (
+                  <TableRow
+                    key={row.id}
+                    data-state={row.getIsSelected() && "selected"}
+                    onClick={(ev) => {
+                      // only trigger onRowClick if the element is a direct descendant; don't trigger for portals
+                      if (ev.target instanceof Node && ev.currentTarget.contains(ev.target)) {
+                        props.onRowClick?.(row.original);
+                      }
+                    }}
+                  >
+                    {row.getVisibleCells().map((cell) => (
+                      <TableCell key={cell.id}>
+                        {flexRender(
+                          cell.column.columnDef.cell,
+                          cell.getContext()
+                        )}
+                      </TableCell>
+                    ))}
+                  </TableRow>
+                ))
+              ) : (
+                <TableRow>
+                  <TableCell
+                    colSpan={props.columns.length}
+                    className="h-24 text-center"
+                  >
+                    No results.
+                  </TableCell>
+                </TableRow>
+              )
             )}
           </TableBody>
         </Table>
@@ -156,6 +170,7 @@ export function DataTable<TData, TValue>({
     globalFilter={globalFilter}
     setGlobalFilter={setGlobalFilter}
     showDefaultToolbar={showDefaultToolbar}
+    isLoading={false}
   />;
 }
 
@@ -167,6 +182,7 @@ type DataTableManualPaginationProps<TData, TValue> = DataTableProps<TData, TValu
     columnFilters: ColumnFiltersState,
     globalFilters: any,
   }) => Promise<{ nextCursor: string | null }>,
+  refreshKey?: unknown,
 }
 
 export function DataTableManualPagination<TData, TValue>({
@@ -179,6 +195,7 @@ export function DataTableManualPagination<TData, TValue>({
   onRowClick,
   onUpdate,
   showDefaultToolbar = true,
+  refreshKey,
 }: DataTableManualPaginationProps<TData, TValue>) {
   const [sorting, setSorting] = React.useState<SortingState>(defaultSorting);
   const [pagination, setPagination] = React.useState({ pageIndex: 0, pageSize: 10 });
@@ -186,19 +203,27 @@ export function DataTableManualPagination<TData, TValue>({
   const [columnFilters, setColumnFilters] = React.useState<ColumnFiltersState>(defaultColumnFilters);
   const [globalFilter, setGlobalFilter] = React.useState<any>();
   const [refreshCounter, setRefreshCounter] = React.useState(0);
+  const [isFetching, setIsFetching] = React.useState<boolean>(false);
+  const [hasLoadedOnce, setHasLoadedOnce] = React.useState<boolean>(false);
 
   React.useEffect(() => {
     runAsynchronouslyWithAlert(async () => {
-      const { nextCursor } = await onUpdate({
-        cursor: cursors[pagination.pageIndex],
-        limit: pagination.pageSize,
-        sorting,
-        columnFilters,
-        globalFilters: globalFilter,
-      });
-      setCursors(c => nextCursor ? { ...c, [pagination.pageIndex + 1]: nextCursor } : c);
+      setIsFetching(true);
+      try {
+        const { nextCursor } = await onUpdate({
+          cursor: cursors[pagination.pageIndex],
+          limit: pagination.pageSize,
+          sorting,
+          columnFilters,
+          globalFilters: globalFilter,
+        });
+        setCursors(c => nextCursor ? { ...c, [pagination.pageIndex + 1]: nextCursor } : c);
+        setHasLoadedOnce(true);
+      } finally {
+        setIsFetching(false);
+      }
     });
-  }, [pagination, sorting, columnFilters, refreshCounter]);
+  }, [pagination, sorting, columnFilters, refreshCounter, refreshKey]);
 
   // Reset to first page when filters change
   React.useEffect(() => {
@@ -232,6 +257,7 @@ export function DataTableManualPagination<TData, TValue>({
     defaultVisibility={defaultVisibility}
     showDefaultToolbar={showDefaultToolbar}
     onRowClick={onRowClick}
+    isLoading={isFetching || !hasLoadedOnce}
   />;
 }
 
@@ -247,6 +273,7 @@ type DataTableBaseProps<TData, TValue> = DataTableProps<TData, TValue> & {
   manualFiltering?: boolean,
   globalFilter?: any,
   setGlobalFilter?: OnChangeFn<any>,
+  isLoading?: boolean,
 }
 
 function DataTableBase<TData, TValue>({
@@ -269,6 +296,7 @@ function DataTableBase<TData, TValue>({
   manualFiltering = true,
   showDefaultToolbar = true,
   onRowClick,
+  isLoading,
 }: DataTableBaseProps<TData, TValue>) {
   const [rowSelection, setRowSelection] = React.useState({});
   const [columnVisibility, setColumnVisibility] = React.useState<VisibilityState>(defaultVisibility || {});
@@ -312,5 +340,6 @@ function DataTableBase<TData, TValue>({
     defaultColumnFilters={defaultColumnFilters}
     defaultSorting={defaultSorting}
     onRowClick={onRowClick}
+    isLoading={isLoading}
   />;
 }
