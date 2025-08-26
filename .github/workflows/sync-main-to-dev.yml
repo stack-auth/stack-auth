@@ -1,0 +1,68 @@
+name: Sync Main to Dev
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  sync-commits:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+      
+      - name: Configure Git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+      
+      - name: Sync main commits to dev
+        run: |
+          # Fetch all branches
+          git fetch origin dev:dev
+          
+          # Switch to dev branch
+          git checkout dev
+          
+          # Find commits on main that are not on dev
+          COMMITS_TO_CHERRY_PICK=$(git rev-list --reverse main ^dev)
+          
+          if [ -z "$COMMITS_TO_CHERRY_PICK" ]; then
+            echo "No commits to sync from main to dev"
+            exit 0
+          fi
+          
+          echo "Found commits to cherry-pick:"
+          echo "$COMMITS_TO_CHERRY_PICK"
+          
+          # Cherry-pick each commit
+          SUCCESS=true
+          for COMMIT in $COMMITS_TO_CHERRY_PICK; do
+            echo "Cherry-picking commit: $COMMIT"
+            if ! git cherry-pick $COMMIT; then
+              echo "Cherry-pick failed for commit $COMMIT"
+              # Try to continue with --allow-empty in case it's already applied
+              if ! git cherry-pick --continue --allow-empty 2>/dev/null; then
+                echo "Failed to cherry-pick $COMMIT, aborting"
+                git cherry-pick --abort
+                SUCCESS=false
+                break
+              fi
+            fi
+          done
+          
+          if [ "$SUCCESS" = true ]; then
+            # Push changes to dev
+            git push origin dev
+            echo "Successfully synced commits from main to dev"
+          else
+            echo "Failed to sync some commits"
+            exit 1
+          fi

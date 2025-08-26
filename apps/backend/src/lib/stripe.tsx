@@ -1,9 +1,9 @@
+import Stripe from "stripe";
 import { getTenancy, Tenancy } from "@/lib/tenancies";
 import { getPrismaClientForTenancy } from "@/prisma-client";
 import { CustomerType } from "@prisma/client";
 import { getEnvVariable, getNodeEnvironment } from "@stackframe/stack-shared/dist/utils/env";
 import { StackAssertionError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
-import Stripe from "stripe";
 import { overrideEnvironmentConfigOverride } from "./config";
 
 const stripeSecretKey = getEnvVariable("STACK_STRIPE_SECRET_KEY");
@@ -84,6 +84,7 @@ export async function syncStripeSubscriptions(stripeAccountId: string, stripeCus
         currentPeriodEnd: new Date(subscription.items.data[0].current_period_end * 1000),
         currentPeriodStart: new Date(subscription.items.data[0].current_period_start * 1000),
         cancelAtPeriodEnd: subscription.cancel_at_period_end,
+        creationSource: "PURCHASE_PAGE"
       },
     });
   }

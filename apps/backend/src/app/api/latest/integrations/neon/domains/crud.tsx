@@ -8,7 +8,7 @@ import { createLazyProxy } from "@stackframe/stack-shared/dist/utils/proxies";
 import { stringCompare } from "@stackframe/stack-shared/dist/utils/strings";
 import { projectsCrudHandlers } from "../../../internal/projects/current/crud";
 
-const domainSchema = schemaFields.urlSchema.defined()
+const domainSchema = schemaFields.wildcardUrlSchema.max(300).defined()
   .matches(/^https?:\/\//, 'URL must start with http:// or https://')
   .meta({ openapiField: { description: 'URL. Must start with http:// or https://', exampleValue: 'https://example.com' } });
 
@@ -56,6 +56,9 @@ export const domainCrudHandlers = createLazyProxy(() => createCrudHandlers(domai
   }),
   onCreate: async ({ auth, data, params }) => {
     const oldDomains = auth.tenancy.config.domains.trustedDomains;
+    if (Object.keys(oldDomains).length > 1000) {
+      throw new StatusError(400, "This project has more than 1000 trusted domains. This is not supported. Please delete some domains to add a new one, or use wildcard domains instead.");
+    }
     await projectsCrudHandlers.adminUpdate({
       data: {
         config: {

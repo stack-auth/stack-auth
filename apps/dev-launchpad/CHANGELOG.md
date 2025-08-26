@@ -1,5 +1,7 @@
 # @stackframe/dev-launchpad
 
+## 2.8.34
+
 ## 2.8.33
 
 ### Patch Changes

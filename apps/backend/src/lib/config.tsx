@@ -4,7 +4,7 @@ import { BranchConfigOverride, BranchConfigOverrideOverride, BranchIncompleteCon
 import { ProjectsCrud } from "@stackframe/stack-shared/dist/interface/crud/projects";
 import { yupBoolean, yupMixed, yupObject, yupRecord, yupString, yupUnion } from "@stackframe/stack-shared/dist/schema-fields";
 import { isTruthy } from "@stackframe/stack-shared/dist/utils/booleans";
-import { StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
+import { StackAssertionError, captureError } from "@stackframe/stack-shared/dist/utils/errors";
 import { filterUndefined, typedEntries } from "@stackframe/stack-shared/dist/utils/objects";
 import { Result } from "@stackframe/stack-shared/dist/utils/results";
 import { deindent, stringCompare } from "@stackframe/stack-shared/dist/utils/strings";
@@ -209,6 +209,16 @@ export async function overrideProjectConfigOverride(options: {
     oldConfig,
     options.projectConfigOverrideOverride,
   );
+
+  // large configs make our DB slow; let's prevent them early
+  const newConfigString = JSON.stringify(newConfig);
+  if (newConfigString.length > 1_000_000) {
+    captureError("override-project-config-too-large", new StackAssertionError(`Project config override for ${options.projectId} is ${(newConfigString.length/1_000_000).toFixed(1)}MB long!`));
+  }
+  if (newConfigString.length > 5_000_000) {
+    throw new StackAssertionError(`Project config override for ${options.projectId} is too large.`);
+  }
+
   await assertNoConfigOverrideErrors(projectConfigSchema, newConfig);
   await globalPrismaClient.project.update({
     where: {
@@ -243,6 +253,16 @@ export async function overrideEnvironmentConfigOverride(options: {
     oldConfig,
     options.environmentConfigOverrideOverride,
   );
+
+  // large configs make our DB slow; let's prevent them early
+  const newConfigString = JSON.stringify(newConfig);
+  if (newConfigString.length > 1_000_000) {
+    captureError("override-environment-config-too-large", new StackAssertionError(`Environment config override for ${options.projectId}/${options.branchId} is ${(newConfigString.length/1_000_000).toFixed(1)}MB long!`));
+  }
+  if (newConfigString.length > 5_000_000) {
+    throw new StackAssertionError(`Environment config override for ${options.projectId}/${options.branchId} is too large.`);
+  }
+
   await assertNoConfigOverrideErrors(environmentConfigSchema, newConfig);
   await globalPrismaClient.environmentConfigOverride.upsert({
     where: {

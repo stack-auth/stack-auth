@@ -1427,6 +1427,7 @@ export namespace Payments {
       method: "POST",
       accessType: "client",
       body: {
+        customer_type: "user",
         customer_id: userId,
         offer_id: "test-offer",
       },
