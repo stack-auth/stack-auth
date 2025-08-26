@@ -32,7 +32,7 @@ const isSubscriptionChangedEvent = (event: Stripe.Event): event is Stripe.Event 
   return subscriptionChangedEvents.includes(event.type as any);
 };
 
-export async function processStripeWebhookEvent(event: Stripe.Event): Promise<void> {
+async function processStripeWebhookEvent(event: Stripe.Event): Promise<void> {
   if (event.type === "payment_intent.succeeded") {
     const object = event.data.object as any;
     const metadata = object?.metadata ?? {};
