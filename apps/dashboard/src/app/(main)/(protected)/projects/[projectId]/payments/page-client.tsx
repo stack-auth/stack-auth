@@ -5,7 +5,7 @@ import { CompleteConfig } from "@stackframe/stack-shared/dist/config/schema";
 import { DayInterval } from "@stackframe/stack-shared/dist/utils/dates";
 import { prettyPrintWithMagnitudes } from "@stackframe/stack-shared/dist/utils/numbers";
 import { stringCompare } from "@stackframe/stack-shared/dist/utils/strings";
-import { Button, Card, Checkbox, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger, Input } from "@stackframe/stack-ui";
+import { Button, Card, CardContent, Checkbox, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger, Input } from "@stackframe/stack-ui";
 import { MoreVertical, Plus, Search } from "lucide-react";
 import React, { ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { PageLayout } from "../page-layout";
@@ -752,29 +752,33 @@ export default function PageClient() {
         overflow: "scroll",
       }}>
         {/* Desktop two-column layout */}
-        <div className="hidden lg:flex gap-24 w-full relative" ref={containerRef}>
-          <Card className="flex-1">
-            <OffersList
-              groupedOffers={groupedOffers}
-              paymentsGroups={paymentsConfig.groups}
-              hoveredItemId={hoveredItemId}
-              getConnectedOffers={getConnectedOffers}
-              offerRefs={offerRefs}
-              onOfferMouseEnter={setHoveredOfferId}
-              onOfferMouseLeave={() => setHoveredOfferId(null)}
-            />
-          </Card>
-
-          <Card className="flex-1">
-            <ItemsList
-              items={paymentsConfig.items}
-              hoveredOfferId={hoveredOfferId}
-              getConnectedItems={getConnectedItems}
-              itemRefs={itemRefs}
-              onItemMouseEnter={setHoveredItemId}
-              onItemMouseLeave={() => setHoveredItemId(null)}
-            />
-          </Card>
+        <Card className="hidden lg:flex w-full relative" ref={containerRef}>
+          <CardContent className="flex w-full">
+            <div className="flex-1">
+              <OffersList
+                groupedOffers={groupedOffers}
+                paymentsGroups={paymentsConfig.groups}
+                hoveredItemId={hoveredItemId}
+                getConnectedOffers={getConnectedOffers}
+                offerRefs={offerRefs}
+                onOfferMouseEnter={setHoveredOfferId}
+                onOfferMouseLeave={() => setHoveredOfferId(null)}
+              />
+            </div>
+          </CardContent>
+          <div className="border-l" />
+          <CardContent className="flex gap-6 w-full">
+            <div className="flex-1">
+              <ItemsList
+                items={paymentsConfig.items}
+                hoveredOfferId={hoveredOfferId}
+                getConnectedItems={getConnectedItems}
+                itemRefs={itemRefs}
+                onItemMouseEnter={setHoveredItemId}
+                onItemMouseLeave={() => setHoveredItemId(null)}
+              />
+            </div>
+          </CardContent>
 
           {/* Connection lines */}
           {hoveredOfferId && getConnectedItems(hoveredOfferId).map(itemId => (
@@ -796,7 +800,7 @@ export default function PageClient() {
               quantity={getItemQuantity(offerId, hoveredItemId)}
             />
           ))}
-        </div>
+        </Card>
 
         {/* Mobile single column with tabs */}
         <div className="lg:hidden w-full">
