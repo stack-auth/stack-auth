@@ -36,7 +36,11 @@ export type Customer<IsServer extends boolean = false> =
   & {
     readonly id: string,
 
-    createCheckoutUrl(offerId: string): Promise<string>,
+    createCheckoutUrl(
+      ...args: IsServer extends true
+        ? [offerIdOrInlineOffer: string | InlineOffer]
+        : [offerId: string]
+    ): Promise<string>,
   }
   & AsyncStoreProperty<
     "item",

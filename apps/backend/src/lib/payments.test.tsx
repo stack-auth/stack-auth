@@ -62,7 +62,7 @@ describe('getItemQuantityForCustomer - manual changes (no subscription)', () => 
         findMany: async () => [
           // +10 expired
           { quantity: 10, createdAt: new Date('2025-01-27T00:00:00.000Z'), expiresAt: new Date('2025-01-31T23:59:59.000Z') },
-          // +5 active
+          // +11 active
           { quantity: 11, createdAt: new Date('2025-01-29T12:00:00.000Z'), expiresAt: null },
           // -3 active
           { quantity: -3, createdAt: new Date('2025-01-30T00:00:00.000Z'), expiresAt: null },
