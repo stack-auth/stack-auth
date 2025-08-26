@@ -5,8 +5,8 @@ import { CompleteConfig } from "@stackframe/stack-shared/dist/config/schema";
 import { DayInterval } from "@stackframe/stack-shared/dist/utils/dates";
 import { prettyPrintWithMagnitudes } from "@stackframe/stack-shared/dist/utils/numbers";
 import { stringCompare } from "@stackframe/stack-shared/dist/utils/strings";
-import { Button, Card, Checkbox } from "@stackframe/stack-ui";
-import { Plus } from "lucide-react";
+import { Button, Card, Checkbox, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@stackframe/stack-ui";
+import { MoreVertical, Plus } from "lucide-react";
 import React, { ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { PageLayout } from "../page-layout";
 import { useAdminApp } from "../use-admin-app";
@@ -14,6 +14,48 @@ import { DUMMY_PAYMENTS_CONFIG } from "./dummy-data";
 
 type Offer = CompleteConfig['payments']['offers'][keyof CompleteConfig['payments']['offers']];
 type Item = CompleteConfig['payments']['items'][keyof CompleteConfig['payments']['items']];
+
+// Custom action menu component
+type ActionMenuItem = '-' | { item: React.ReactNode, onClick: () => void | Promise<void>, danger?: boolean };
+
+function ActionMenu({ items }: { items: ActionMenuItem[] }) {
+  const [isOpen, setIsOpen] = useState(false);
+
+  return (
+    <DropdownMenu open={isOpen} onOpenChange={setIsOpen}>
+      <DropdownMenuTrigger asChild>
+        <Button
+          variant="ghost"
+          className={cn(
+            "h-8 w-8 p-0 relative",
+            "hover:bg-secondary/80",
+            isOpen && "bg-secondary/80"
+          )}
+        >
+          <MoreVertical className="h-4 w-4" />
+          <span className="sr-only">Open menu</span>
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" className="min-w-[150px]">
+        {items.map((item, index) => {
+          if (item === '-') {
+            return <DropdownMenuSeparator key={index} />;
+          }
+
+          return (
+            <DropdownMenuItem
+              key={index}
+              onClick={item.onClick}
+              className={cn(item.danger && "text-destructive focus:text-destructive")}
+            >
+              {item.item}
+            </DropdownMenuItem>
+          );
+        })}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
 
 type ListSectionProps = {
   title: string,
@@ -56,6 +98,7 @@ type ListItemProps = {
   isEven?: boolean,
   isHighlighted?: boolean,
   itemRef?: React.RefObject<HTMLDivElement>,
+  actionItems?: ActionMenuItem[],
 };
 
 function ListItem({
@@ -68,30 +111,47 @@ function ListItem({
   onMouseLeave,
   isEven,
   isHighlighted,
-  itemRef
+  itemRef,
+  actionItems
 }: ListItemProps) {
+  const [isMenuHovered, setIsMenuHovered] = useState(false);
+
   return (
     <div
       ref={itemRef}
       className={cn(
-        "px-3 py-3 cursor-pointer hover:bg-primary/15 relative duration-200 hover:duration-0 transition-colors",
-        isHighlighted && "bg-primary/10 hover:bg-primary/25"
+        "px-3 py-3 cursor-pointer relative duration-200 hover:duration-0 transition-colors flex items-center justify-between group",
+        isHighlighted && "bg-primary/10",
+        !isMenuHovered && "hover:bg-primary/15",
+        isMenuHovered && "hover:bg-primary/5",
+        isHighlighted && !isMenuHovered && "hover:bg-primary/25"
       )}
       onClick={onClick}
       onMouseEnter={onMouseEnter}
       onMouseLeave={onMouseLeave}
     >
-      <div className="text-xs text-muted-foreground">
-        <span className="uppercase font-medium">{customerType}</span>
-        <span className="mx-1">—</span>
-        <span className="font-mono">{id}</span>
+      <div className="flex-1">
+        <div className="text-xs text-muted-foreground">
+          <span className="uppercase font-medium">{customerType}</span>
+          <span className="mx-1">—</span>
+          <span className="font-mono">{id}</span>
+        </div>
+        <div className="font-medium text-sm mt-1">
+          {displayName || id}
+        </div>
+        {subtitle && (
+          <div className="text-xs text-muted-foreground mt-1">
+            {subtitle}
+          </div>
+        )}
       </div>
-      <div className="font-medium text-sm mt-1">
-        {displayName || id}
-      </div>
-      {subtitle && (
-        <div className="text-xs text-muted-foreground mt-1">
-          {subtitle}
+      {actionItems && (
+        <div
+          onClick={(e) => e.stopPropagation()}
+          onMouseEnter={() => setIsMenuHovered(true)}
+          onMouseLeave={() => setIsMenuHovered(false)}
+        >
+          <ActionMenu items={actionItems} />
         </div>
       )}
     </div>
@@ -307,6 +367,28 @@ function OffersList({
                     itemRef={offerRefs?.[id]}
                     onMouseEnter={() => onOfferMouseEnter(id)}
                     onMouseLeave={onOfferMouseLeave}
+                    actionItems={[
+                      {
+                        item: "Edit",
+                        onClick: () => {
+                          console.log("Edit offer", id);
+                        },
+                      },
+                      {
+                        item: "Duplicate",
+                        onClick: () => {
+                          console.log("Duplicate offer", id);
+                        },
+                      },
+                      '-',
+                      {
+                        item: "Delete",
+                        onClick: () => {
+                          console.log("Delete offer", id);
+                        },
+                        danger: true,
+                      },
+                    ]}
                   />
                 );
               })}
@@ -368,6 +450,28 @@ function ItemsList({
               itemRef={itemRefs?.[id]}
               onMouseEnter={() => onItemMouseEnter(id)}
               onMouseLeave={onItemMouseLeave}
+              actionItems={[
+                {
+                  item: "Edit",
+                  onClick: () => {
+                    console.log("Edit item", id);
+                  },
+                },
+                {
+                  item: "Duplicate",
+                  onClick: () => {
+                    console.log("Duplicate item", id);
+                  },
+                },
+                '-',
+                {
+                  item: "Delete",
+                  onClick: () => {
+                    console.log("Delete item", id);
+                  },
+                  danger: true,
+                },
+              ]}
             />
           );
         })}
@@ -434,7 +538,7 @@ export default function PageClient() {
           return a.offer.isAddOnTo ? 1 : -1;
         }
         // If same customer type and addons, sort by lowest price
-        const getPricePriority = (offer: typeof paymentsConfig.offers[keyof typeof paymentsConfig.offers]) => {
+        const getPricePriority = (offer: Offer) => {
           if (offer.prices === 'include-by-default') return 0;
           if (typeof offer.prices !== 'object') return 0;
           return Math.min(...Object.values(offer.prices).map(price => +(price.USD ?? Infinity)));
