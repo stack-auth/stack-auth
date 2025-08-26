@@ -2,6 +2,7 @@
 
 import { cn } from "@/lib/utils";
 import { CompleteConfig } from "@stackframe/stack-shared/dist/config/schema";
+import { useHover } from "@stackframe/stack-shared/dist/hooks/use-hover";
 import { DayInterval } from "@stackframe/stack-shared/dist/utils/dates";
 import { prettyPrintWithMagnitudes } from "@stackframe/stack-shared/dist/utils/numbers";
 import { stringCompare } from "@stackframe/stack-shared/dist/utils/strings";
@@ -166,17 +167,21 @@ function ListItem({
   itemRef,
   actionItems
 }: ListItemProps) {
+  const itemRefBackup = useRef<HTMLDivElement>(null);
+  itemRef ??= itemRefBackup;
   const [isMenuHovered, setIsMenuHovered] = useState(false);
+  const isHovered = useHover(itemRef);
 
   return (
     <div
       ref={itemRef}
       className={cn(
-        "px-3 py-3 cursor-pointer relative duration-200 hover:duration-0 transition-colors flex items-center justify-between group",
+        "px-3 py-3 cursor-pointer relative duration-200 hover:duration-0 hover:bg-primary/10 transition-colors flex items-center justify-between group",
+        isHovered && "duration-0",
         isHighlighted && "bg-primary/10",
-        !isMenuHovered && "hover:bg-primary/10",
-        isMenuHovered && "hover:bg-primary/5",
-        isHighlighted && !isMenuHovered && "hover:bg-primary/20"
+        !isMenuHovered && isHovered && "bg-primary/10",
+        isMenuHovered && isHovered && "bg-primary/5",
+        isHighlighted && !isMenuHovered && isHovered && "hover:bg-primary/20"
       )}
       onClick={onClick}
       onMouseEnter={onMouseEnter}
