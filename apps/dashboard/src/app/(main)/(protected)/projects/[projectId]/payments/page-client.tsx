@@ -1,13 +1,13 @@
 "use client";
 
 import { cn } from "@/lib/utils";
+import { prettyPrintWithMagnitudes } from "@stackframe/stack-shared/dist/utils/numbers";
 import { stringCompare } from "@stackframe/stack-shared/dist/utils/strings";
 import { Button, Card } from "@stackframe/stack-ui";
 import { Plus } from "lucide-react";
 import React, { ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { PageLayout } from "../page-layout";
 import { useAdminApp } from "../use-admin-app";
-import { DUMMY_PAYMENTS_CONFIG } from "./dummy-data";
 
 type Interval = [number, 'day' | 'week' | 'month' | 'year'];
 
@@ -22,7 +22,7 @@ function ListSection({ title, onAddClick, children, hasTitleBorder = true }: Lis
   return (
     <div className="flex flex-col h-full">
       <div className={cn("sticky top-0 z-10 py-1", hasTitleBorder && "border-b")}>
-        <div className="flex items-center justify-between text-muted-foreground pl-3 pr-1">
+        <div className="flex items-center justify-between pl-3 pr-1">
           <h2 className="font-medium">{title}</h2>
           <Button
             variant="ghost"
@@ -207,7 +207,7 @@ function ConnectionLine({ fromRef, toRef, containerRef, quantity }: ConnectionLi
               dominantBaseline="middle"
               className="text-xs font-medium fill-primary/50"
             >
-              {quantity}x
+              {prettyPrintWithMagnitudes(quantity)}{quantity < 1000 ? "x" : ""}
             </text>
           </>
         )}
@@ -380,7 +380,7 @@ export default function PageClient() {
   const project = stackAdminApp.useProject();
   const config = project.useConfig();
 
-  const paymentsConfig: any = /*config.payments*/ DUMMY_PAYMENTS_CONFIG;
+  const paymentsConfig: any = config.payments;
 
   // Refs for offers and items
   const containerRef = useRef<HTMLDivElement>(null);
