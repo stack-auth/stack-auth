@@ -1,11 +1,13 @@
 "use client";
 
 import { cn } from "@/lib/utils";
-import { Button } from "@stackframe/stack-ui";
+import { stringCompare } from "@stackframe/stack-shared/dist/utils/strings";
+import { Button, Card } from "@stackframe/stack-ui";
 import { Plus } from "lucide-react";
 import React, { ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { PageLayout } from "../page-layout";
 import { useAdminApp } from "../use-admin-app";
+import { DUMMY_PAYMENTS_CONFIG } from "./dummy-data";
 
 type Interval = [number, 'day' | 'week' | 'month' | 'year'];
 
@@ -13,12 +15,13 @@ type ListSectionProps = {
   title: string,
   onAddClick?: () => void,
   children: ReactNode,
+  hasTitleBorder?: boolean,
 };
 
-function ListSection({ title, onAddClick, children }: ListSectionProps) {
+function ListSection({ title, onAddClick, children, hasTitleBorder = true }: ListSectionProps) {
   return (
     <div className="flex flex-col h-full">
-      <div className="sticky top-0 z-10 py-1 border-b">
+      <div className={cn("sticky top-0 z-10 py-1", hasTitleBorder && "border-b")}>
         <div className="flex items-center justify-between text-muted-foreground pl-3 pr-1">
           <h2 className="font-medium">{title}</h2>
           <Button
@@ -67,8 +70,8 @@ function ListItem({
     <div
       ref={itemRef}
       className={cn(
-        "px-3 py-3 cursor-pointer hover:bg-muted/50 relative transition-colors duration-150",
-        isHighlighted && "bg-primary/10 hover:bg-primary/20"
+        "px-3 py-3 cursor-pointer hover:bg-primary/15 relative duration-200 hover:duration-0 transition-colors",
+        isHighlighted && "bg-primary/10 hover:bg-primary/25"
       )}
       onClick={onClick}
       onMouseEnter={onMouseEnter}
@@ -106,9 +109,9 @@ type ListGroupProps = {
 
 function ListGroup({ title, children }: ListGroupProps) {
   return (
-    <div>
+    <div className="mb-4">
       {title && (
-        <div className="sticky top-0 bg-muted/50 backdrop-blur px-3 py-2">
+        <div className="sticky top-0 bg-muted/50 backdrop-blur px-3 py-2 border-t">
           <h3 className="text-sm font-medium text-muted-foreground">
             {title}
           </h3>
@@ -185,7 +188,7 @@ function ConnectionLine({ fromRef, toRef, containerRef, quantity }: ConnectionLi
           fill="none"
           stroke="currentColor"
           strokeWidth="2"
-          className="text-primary/50"
+          className="text-primary/30"
           strokeDasharray="5 5"
         />
         {quantity && quantity > 0 && midpoint && (
@@ -251,6 +254,124 @@ function formatOfferPrices(prices: any): string {
   return formattedPrices.join(', ');
 }
 
+// OffersList component with props
+type OffersListProps = {
+  groupedOffers: Map<string | undefined, Array<{ id: string, offer: any }>>,
+  paymentsGroups: any,
+  hoveredItemId: string | null,
+  getConnectedOffers: (itemId: string) => string[],
+  offerRefs?: Record<string, React.RefObject<HTMLDivElement>>,
+  onOfferMouseEnter: (offerId: string) => void,
+  onOfferMouseLeave: () => void,
+};
+
+function OffersList({
+  groupedOffers,
+  paymentsGroups,
+  hoveredItemId,
+  getConnectedOffers,
+  offerRefs,
+  onOfferMouseEnter,
+  onOfferMouseLeave,
+}: OffersListProps) {
+  let globalIndex = 0;
+
+  return (
+    <ListSection title="Offers" onAddClick={() => {}} hasTitleBorder={false}>
+      <GroupedList>
+        {[...groupedOffers.entries()].map(([groupId, offers]) => {
+          const group = groupId ? paymentsGroups[groupId] : undefined;
+          const groupName = group?.displayName;
+
+          return (
+            <ListGroup key={groupId || 'ungrouped'} title={groupId ? (groupName || groupId) : "Other"}>
+              {offers.map(({ id, offer }) => {
+                const isEven = globalIndex % 2 === 0;
+                globalIndex++;
+                const connectedItems = hoveredItemId ? getConnectedOffers(hoveredItemId) : [];
+                const isHighlighted = hoveredItemId ? connectedItems.includes(id) : false;
+
+                return (
+                  <ListItem
+                    key={id}
+                    id={id}
+                    displayName={offer.displayName}
+                    customerType={offer.customerType}
+                    subtitle={formatOfferPrices(offer.prices)}
+                    isEven={isEven}
+                    isHighlighted={isHighlighted}
+                    itemRef={offerRefs?.[id]}
+                    onMouseEnter={() => onOfferMouseEnter(id)}
+                    onMouseLeave={onOfferMouseLeave}
+                  />
+                );
+              })}
+            </ListGroup>
+          );
+        })}
+      </GroupedList>
+    </ListSection>
+  );
+}
+
+// ItemsList component with props
+type ItemsListProps = {
+  items: any,
+  hoveredOfferId: string | null,
+  getConnectedItems: (offerId: string) => string[],
+  itemRefs?: Record<string, React.RefObject<HTMLDivElement>>,
+  onItemMouseEnter: (itemId: string) => void,
+  onItemMouseLeave: () => void,
+};
+
+function ItemsList({
+  items,
+  hoveredOfferId,
+  getConnectedItems,
+  itemRefs,
+  onItemMouseEnter,
+  onItemMouseLeave,
+}: ItemsListProps) {
+  // Sort items by customer type, then by ID
+  const sortedItems = useMemo(() => {
+    const customerTypePriority = { user: 1, team: 2, custom: 3 };
+    return Object.entries(items).sort(([aId, aItem]: [string, any], [bId, bItem]: [string, any]) => {
+      const priorityA = customerTypePriority[aItem.customerType as keyof typeof customerTypePriority] || 4;
+      const priorityB = customerTypePriority[bItem.customerType as keyof typeof customerTypePriority] || 4;
+      if (priorityA !== priorityB) {
+        return priorityA - priorityB;
+      }
+      // If same customer type, sort by ID
+      return stringCompare(aId, bId);
+    });
+  }, [items]);
+
+  return (
+    <ListSection title="Items" onAddClick={() => {}}>
+      <GroupedList>
+        {sortedItems.map(([id, item]: [string, any], index) => {
+          const connectedOffers = hoveredOfferId ? getConnectedItems(hoveredOfferId) : [];
+          const isHighlighted = hoveredOfferId ? connectedOffers.includes(id) : false;
+
+          return (
+            <ListItem
+              key={id}
+              id={id}
+              displayName={item.displayName}
+              customerType={item.customerType}
+              isEven={index % 2 === 0}
+              isHighlighted={isHighlighted}
+              itemRef={itemRefs?.[id]}
+              onMouseEnter={() => onItemMouseEnter(id)}
+              onMouseLeave={onItemMouseLeave}
+            />
+          );
+        })}
+      </GroupedList>
+    </ListSection>
+  );
+}
+
 export default function PageClient() {
   const [activeTab, setActiveTab] = useState<"offers" | "items">("offers");
   const [hoveredOfferId, setHoveredOfferId] = useState<string | null>(null);
@@ -258,33 +379,35 @@ export default function PageClient() {
   const stackAdminApp = useAdminApp();
   const project = stackAdminApp.useProject();
   const config = project.useConfig();
-  const paymentsConfig = config.payments;
+
+  const paymentsConfig: any = /*config.payments*/ DUMMY_PAYMENTS_CONFIG;
 
   // Refs for offers and items
   const containerRef = useRef<HTMLDivElement>(null);
 
   // Create refs for all offers and items
   const offerRefs = useMemo(() => {
-    const refs: Record<string, React.RefObject<HTMLDivElement>> = {};
-    Object.keys(paymentsConfig.offers).forEach(id => {
-      refs[id] = React.createRef<HTMLDivElement>();
-    });
+    const refs = Object.fromEntries(
+      Object.keys(paymentsConfig.offers)
+        .map(id => [id, React.createRef<HTMLDivElement>()])
+    );
     return refs;
   }, [paymentsConfig.offers]);
 
   const itemRefs = useMemo(() => {
-    const refs: Record<string, React.RefObject<HTMLDivElement>> = {};
-    Object.keys(paymentsConfig.items).forEach(id => {
-      refs[id] = React.createRef<HTMLDivElement>();
-    });
+    const refs = Object.fromEntries(
+      Object.keys(paymentsConfig.items)
+        .map(id => [id, React.createRef<HTMLDivElement>()])
+    );
     return refs;
   }, [paymentsConfig.items]);
 
-  // Group offers by groupId
+  // Group offers by groupId and sort by customer type priority
   const groupedOffers = useMemo(() => {
-    const groups = new Map<string | undefined, Array<{ id: string, offer: typeof paymentsConfig.offers[string] }>>();
+    const groups = new Map<string | undefined, Array<{ id: string, offer: any }>>();
 
-    Object.entries(paymentsConfig.offers).forEach(([id, offer]) => {
+    // Group offers
+    Object.entries(paymentsConfig.offers).forEach(([id, offer]: [string, any]) => {
       const groupId = offer.groupId;
       if (!groups.has(groupId)) {
         groups.set(groupId, []);
@@ -292,7 +415,57 @@ export default function PageClient() {
       groups.get(groupId)!.push({ id, offer });
     });
 
-    return groups;
+    // Sort offers within each group by customer type, then by ID
+    const customerTypePriority = { user: 1, team: 2, custom: 3 };
+    groups.forEach((offers) => {
+      offers.sort((a, b) => {
+        const priorityA = customerTypePriority[a.offer.customerType as keyof typeof customerTypePriority] || 4;
+        const priorityB = customerTypePriority[b.offer.customerType as keyof typeof customerTypePriority] || 4;
+        if (priorityA !== priorityB) {
+          return priorityA - priorityB;
+        }
+        // If same customer type, sort by ID
+        return stringCompare(a.id, b.id);
+      });
+    });
+
+    // Sort groups by their predominant customer type
+    const sortedGroups = new Map<string | undefined, Array<{ id: string, offer: any }>>();
+
+    // Helper to get group priority
+    const getGroupPriority = (groupId: string | undefined) => {
+      if (!groupId) return 999; // Ungrouped always last
+
+      const offers = groups.get(groupId) || [];
+      if (offers.length === 0) return 999;
+
+      // Get the most common customer type in the group
+      const typeCounts = offers.reduce((acc, { offer }) => {
+        const type = offer.customerType;
+        acc[type] = (acc[type] || 0) + 1;
+        return acc;
+      }, {} as Record<string, number>);
+
+      // Find predominant type
+      const predominantType = Object.entries(typeCounts)
+        .sort(([, a], [, b]) => b - a)[0]?.[0];
+
+      return customerTypePriority[predominantType as keyof typeof customerTypePriority] || 4;
+    };
+
+    // Sort group entries
+    const sortedEntries = Array.from(groups.entries()).sort(([aId], [bId]) => {
+      const priorityA = getGroupPriority(aId);
+      const priorityB = getGroupPriority(bId);
+      return priorityA - priorityB;
+    });
+
+    // Rebuild map in sorted order
+    sortedEntries.forEach(([groupId, offers]) => {
+      sortedGroups.set(groupId, offers);
+    });
+
+    return sortedGroups;
   }, [paymentsConfig]);
 
   // Get connected items for an offer
@@ -311,75 +484,9 @@ export default function PageClient() {
   // Get connected offers for an item
   const getConnectedOffers = (itemId: string) => {
     return Object.entries(paymentsConfig.offers)
-      .filter(([_, offer]) => itemId in offer.includedItems)
+      .filter(([_, offer]: [string, any]) => itemId in offer.includedItems)
       .map(([id]) => id);
   };
-
-  const OffersList = () => {
-    let globalIndex = 0;
-
-    return (
-      <ListSection title="Offers" onAddClick={() => {}}>
-        <GroupedList>
-          {Array.from(groupedOffers.entries()).map(([groupId, offers]) => {
-            const group = groupId ? paymentsConfig.groups[groupId] : undefined;
-            const groupName = group?.displayName;
-
-            return (
-              <ListGroup key={groupId || 'ungrouped'} title={groupId ? (groupName || groupId) : undefined}>
-                {offers.map(({ id, offer }) => {
-                  const isEven = globalIndex % 2 === 0;
-                  globalIndex++;
-                  const connectedItems = hoveredItemId ? getConnectedOffers(hoveredItemId) : [];
-                  const isHighlighted = hoveredItemId ? connectedItems.includes(id) : false;
-
-                  return (
-                    <ListItem
-                      key={id}
-                      id={id}
-                      displayName={offer.displayName}
-                      customerType={offer.customerType}
-                      subtitle={formatOfferPrices(offer.prices)}
-                      isEven={isEven}
-                      isHighlighted={isHighlighted}
-                      itemRef={offerRefs[id]}
-                      onMouseEnter={() => setHoveredOfferId(id)}
-                      onMouseLeave={() => setHoveredOfferId(null)}
-                    />
-                  );
-                })}
-              </ListGroup>
-            );
-          })}
-        </GroupedList>
-      </ListSection>
-    );
-  };
-
-  const ItemsList = () => (
-    <ListSection title="Items" onAddClick={() => {}}>
-      <GroupedList>
-        {Object.entries(paymentsConfig.items).map(([id, item], index) => {
-          const connectedOffers = hoveredOfferId ? getConnectedItems(hoveredOfferId) : [];
-          const isHighlighted = hoveredOfferId ? connectedOffers.includes(id) : false;
-
-          return (
-            <ListItem
-              key={id}
-              id={id}
-              displayName={item.displayName}
-              customerType={item.customerType}
-              isEven={index % 2 === 0}
-              isHighlighted={isHighlighted}
-              itemRef={itemRefs[id]}
-              onMouseEnter={() => setHoveredItemId(id)}
-              onMouseLeave={() => setHoveredItemId(null)}
-            />
-          );
-        })}
-      </GroupedList>
-    </ListSection>
-  );
 
   return (
     <PageLayout title="Payments">
@@ -414,13 +521,28 @@ export default function PageClient() {
       {/* Content */}
       <div className="flex gap-6 flex-1">
         {/* Desktop two-column layout */}
-        <div className="hidden md:flex md:gap-24 w-full relative border rounded-lg" ref={containerRef}>
-          <div className="flex-1 border-r">
-            <OffersList />
-          </div>
-          <div className="flex-1 border-l">
-            <ItemsList />
-          </div>
+        <div className="hidden lg:flex lg:gap-24 w-full relative" ref={containerRef}>
+          <Card className="flex-1">
+            <OffersList
+              groupedOffers={groupedOffers}
+              paymentsGroups={paymentsConfig.groups}
+              hoveredItemId={hoveredItemId}
+              getConnectedOffers={getConnectedOffers}
+              offerRefs={offerRefs}
+              onOfferMouseEnter={setHoveredOfferId}
+              onOfferMouseLeave={() => setHoveredOfferId(null)}
+            />
+          </Card>
+          <Card className="flex-1">
+            <ItemsList
+              items={paymentsConfig.items}
+              hoveredOfferId={hoveredOfferId}
+              getConnectedItems={getConnectedItems}
+              itemRefs={itemRefs}
+              onItemMouseEnter={setHoveredItemId}
+              onItemMouseLeave={() => setHoveredItemId(null)}
+            />
+          </Card>
 
           {/* Connection lines */}
           {hoveredOfferId && getConnectedItems(hoveredOfferId).map(itemId => (
@@ -445,8 +567,25 @@ export default function PageClient() {
         </div>
 
         {/* Mobile single column with tabs */}
-        <div className="md:hidden w-full">
-          {activeTab === "offers" ? <OffersList /> : <ItemsList />}
+        <div className="lg:hidden w-full">
+          {activeTab === "offers" ? (
+            <OffersList
+              groupedOffers={groupedOffers}
+              paymentsGroups={paymentsConfig.groups}
+              hoveredItemId={hoveredItemId}
+              getConnectedOffers={getConnectedOffers}
+              onOfferMouseEnter={setHoveredOfferId}
+              onOfferMouseLeave={() => setHoveredOfferId(null)}
+            />
+          ) : (
+            <ItemsList
+              items={paymentsConfig.items}
+              hoveredOfferId={hoveredOfferId}
+              getConnectedItems={getConnectedItems}
+              onItemMouseEnter={setHoveredItemId}
+              onItemMouseLeave={() => setHoveredItemId(null)}
+            />
+          )}
         </div>
       </div>
     </PageLayout>

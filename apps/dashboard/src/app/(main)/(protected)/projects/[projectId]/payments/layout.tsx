@@ -68,7 +68,7 @@ export default function PaymentsLayout({ children }: { children: React.ReactNode
       {!stripeAccountInfo.details_submitted && (
         <div className="flex justify-center p-4" >
           <Alert variant="destructive" style={{ maxWidth: 1250, width: '100%' }}>
-            <AlertTitle>Incomplete setup</AlertTitle>
+            <AlertTitle className="font-semibold">Incomplete setup</AlertTitle>
             <AlertDescription>
               Stripe account is not fully setup.
               You can test your application, but please{" "}
