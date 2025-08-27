@@ -146,7 +146,7 @@ async function seed() {
         },
       }
     }
-  })
+  });
 
   await updatePermissionDefinition(
     globalPrismaClient,
@@ -173,11 +173,10 @@ async function seed() {
       data: {
         id: "team_admin",
         description: "2",
-        contained_permission_ids: ["$read_members", "$update_team"],
+        contained_permission_ids: ["$read_members", "$remove_members", "$update_team"],
       }
     }
   );
-
 
 
   const internalTeam = await internalPrisma.team.findUnique({

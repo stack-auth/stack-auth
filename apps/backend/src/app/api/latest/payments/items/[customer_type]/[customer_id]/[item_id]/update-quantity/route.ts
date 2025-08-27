@@ -1,4 +1,4 @@
-import { ensureItemCustomerTypeMatches, getItemQuantityForCustomer } from "@/lib/payments";
+import { ensureCustomerExists, getItemQuantityForCustomer } from "@/lib/payments";
 import { getPrismaClientForTenancy, retryTransaction } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { KnownErrors } from "@stackframe/stack-shared";
@@ -16,6 +16,7 @@ export const POST = createSmartRouteHandler({
       tenancy: adaptSchema.defined(),
     }).defined(),
     params: yupObject({
+      customer_type: yupString().oneOf(["user", "team", "custom"]).defined(),
       customer_id: yupString().defined(),
       item_id: yupString().defined(),
     }).defined(),
@@ -44,8 +45,16 @@ export const POST = createSmartRouteHandler({
       throw new KnownErrors.ItemNotFound(req.params.item_id);
     }
 
-    await ensureItemCustomerTypeMatches(req.params.item_id, itemConfig.customerType, req.params.customer_id, tenancy);
+    if (req.params.customer_type !== itemConfig.customerType) {
+      throw new KnownErrors.ItemCustomerTypeDoesNotMatch(req.params.item_id, req.params.customer_id, itemConfig.customerType, req.params.customer_type);
+    }
     const prisma = await getPrismaClientForTenancy(tenancy);
+    await ensureCustomerExists({
+      prisma,
+      tenancyId: tenancy.id,
+      customerType: req.params.customer_type,
+      customerId: req.params.customer_id,
+    });
 
     const changeId = await retryTransaction(prisma, async (tx) => {
       const totalQuantity = await getItemQuantityForCustomer({
@@ -53,6 +62,7 @@ export const POST = createSmartRouteHandler({
         tenancy,
         itemId: req.params.item_id,
         customerId: req.params.customer_id,
+        customerType: req.params.customer_type,
       });
       if (!allowNegative && (totalQuantity + req.body.delta < 0)) {
         throw new KnownErrors.ItemQuantityInsufficientAmount(req.params.item_id, req.params.customer_id, req.body.delta);
@@ -77,3 +87,5 @@ export const POST = createSmartRouteHandler({
     };
   },
 });
+
+

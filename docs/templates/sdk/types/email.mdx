@@ -1,0 +1,201 @@
+---
+title: Email
+full: true
+---
+
+This is a detailed reference for email-related types in Stack Auth. If you're looking for a more high-level overview, please refer to our [guide on the email system](../../concepts/emails.mdx).
+
+On this page:
+- [SendEmailOptions](#sendemailoptions)
+
+---
+
+# `SendEmailOptions`
+
+Options for sending emails via the `sendEmail` method on `StackServerApp`.
+
+### Table of Contents
+
+<ClickableTableOfContents code={`type SendEmailOptions = {
+  userIds: string[];  //$stack-link-to:#sendemailoptionsuserids
+  themeId?: string | null | false;  //$stack-link-to:#sendemailoptionsthemeid
+  subject?: string;  //$stack-link-to:#sendemailoptionssubject
+  notificationCategoryName?: string;  //$stack-link-to:#sendemailoptionsnotificationcategoryname
+  html?: string;  //$stack-link-to:#sendemailoptionshtml
+  templateId?: string;  //$stack-link-to:#sendemailoptionstemplateid
+  variables?: Record<string, any>;  //$stack-link-to:#sendemailoptionsvariables
+};`} />
+
+<CollapsibleTypesSection type="sendEmailOptions" property="userIds" defaultOpen={false}>
+  <MethodLayout>
+    <MethodContent>
+      An array of user IDs that will receive the email. All users must exist in your Stack Auth project.
+    </MethodContent>
+    <MethodAside>
+      <AsideSection title="Type">
+        ```typescript
+        userIds: string[]
+        ```
+      </AsideSection>
+      <AsideSection title="Example">
+        ```typescript
+        {
+          userIds: ['user-1', 'user-2', 'user-3'],
+          // ... other options
+        }
+        ```
+      </AsideSection>
+    </MethodAside>
+  </MethodLayout>
+</CollapsibleTypesSection>
+
+<CollapsibleTypesSection type="sendEmailOptions" property="themeId" defaultOpen={false}>
+  <MethodLayout>
+    <MethodContent>
+      Optional theme ID to apply to the email. Use `null` for no theme, `false` to use the default theme, or a string ID for a specific theme.
+    </MethodContent>
+    <MethodAside>
+      <AsideSection title="Type">
+        ```typescript
+        themeId?: string | null | false
+        ```
+      </AsideSection>
+      <AsideSection title="Example">
+        ```typescript
+        {
+          themeId: 'corporate-theme-id',
+          // or
+          themeId: null, // no theme
+          // or  
+          themeId: false, // default theme
+          // ... other options
+        }
+        ```
+      </AsideSection>
+    </MethodAside>
+  </MethodLayout>
+</CollapsibleTypesSection>
+
+<CollapsibleTypesSection type="sendEmailOptions" property="subject" defaultOpen={false}>
+  <MethodLayout>
+    <MethodContent>
+      Optional email subject line. If using a template, this overrides the template's default subject.
+    </MethodContent>
+    <MethodAside>
+      <AsideSection title="Type">
+        ```typescript
+        subject?: string
+        ```
+      </AsideSection>
+      <AsideSection title="Example">
+        ```typescript
+        {
+          subject: 'Welcome to our platform!',
+          // ... other options
+        }
+        ```
+      </AsideSection>
+    </MethodAside>
+  </MethodLayout>
+</CollapsibleTypesSection>
+
+<CollapsibleTypesSection type="sendEmailOptions" property="notificationCategoryName" defaultOpen={false}>
+  <MethodLayout>
+    <MethodContent>
+      Optional notification category name for user preferences. Users can opt in or out of specific categories through their account settings.
+    </MethodContent>
+    <MethodAside>
+      <AsideSection title="Type">
+        ```typescript
+        notificationCategoryName?: string
+        ```
+      </AsideSection>
+      <AsideSection title="Example">
+        ```typescript
+        {
+          notificationCategoryName: 'product_updates',
+          // ... other options
+        }
+        ```
+      </AsideSection>
+    </MethodAside>
+  </MethodLayout>
+</CollapsibleTypesSection>
+
+<CollapsibleTypesSection type="sendEmailOptions" property="html" defaultOpen={false}>
+  <MethodLayout>
+    <MethodContent>
+      Custom HTML content for the email. Use this option when you want to send a custom HTML email instead of using a template. Cannot be used together with `templateId` or `variables`.
+    </MethodContent>
+    <MethodAside>
+      <AsideSection title="Type">
+        ```typescript
+        html?: string
+        ```
+      </AsideSection>
+      <AsideSection title="Example">
+        ```typescript
+        {
+          userIds: ['user-1'],
+          html: '<h1>Welcome!</h1><p>Thanks for joining us.</p>',
+          subject: 'Welcome to our platform'
+        }
+        ```
+      </AsideSection>
+    </MethodAside>
+  </MethodLayout>
+</CollapsibleTypesSection>
+
+<CollapsibleTypesSection type="sendEmailOptions" property="templateId" defaultOpen={false}>
+  <MethodLayout>
+    <MethodContent>
+      ID of the email template to use. Use this option when you want to send a template-based email with variables. Cannot be used together with `html`.
+    </MethodContent>
+    <MethodAside>
+      <AsideSection title="Type">
+        ```typescript
+        templateId?: string
+        ```
+      </AsideSection>
+      <AsideSection title="Example">
+        ```typescript
+        {
+          userIds: ['user-1'],
+          templateId: 'welcome-template',
+          variables: {
+            userName: 'John Doe',
+            activationUrl: 'https://app.com/activate/token123'
+          }
+        }
+        ```
+      </AsideSection>
+    </MethodAside>
+  </MethodLayout>
+</CollapsibleTypesSection>
+
+<CollapsibleTypesSection type="sendEmailOptions" property="variables" defaultOpen={false}>
+  <MethodLayout>
+    <MethodContent>
+      Optional variables to substitute in the template. Only used when `templateId` is provided.
+    </MethodContent>
+    <MethodAside>
+      <AsideSection title="Type">
+        ```typescript
+        variables?: Record<string, any>
+        ```
+      </AsideSection>
+      <AsideSection title="Example">
+        ```typescript
+        {
+          templateId: 'welcome-template',
+          variables: {
+            userName: 'John Doe',
+            activationUrl: 'https://app.com/activate/token123',
+            supportEmail: 'support@yourapp.com'
+          }
+        }
+        ```
+      </AsideSection>
+    </MethodAside>
+  </MethodLayout>
+</CollapsibleTypesSection>

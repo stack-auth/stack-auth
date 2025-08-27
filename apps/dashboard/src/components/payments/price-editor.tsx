@@ -67,9 +67,9 @@ export function PriceEditorField<F extends FieldValues>(props: {
         }),
         render: (sub, entryLabel) => (
           <div className="space-y-3">
-            <InputField control={sub.control} name={"id"} label={entryLabel} required />
+            <InputField control={sub.control} name={"id"} label={entryLabel} placeholder="standard" required />
             <InputField control={sub.control} name={"USD"} label="Price (USD)" type="number" />
-            <DayIntervalSelectorField control={sub.control} name={"interval"} label="Interval" />
+            <DayIntervalSelectorField control={sub.control} name={"interval"} label="Interval" unsetLabel="One time" />
           </div>
         ),
       }}
