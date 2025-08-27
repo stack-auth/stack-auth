@@ -5,10 +5,10 @@ import { DEFAULT_EMAIL_TEMPLATES, DEFAULT_EMAIL_THEMES, DEFAULT_EMAIL_THEME_ID }
 import * as schemaFields from "../schema-fields";
 import { offerSchema, userSpecifiedIdSchema, yupBoolean, yupDate, yupMixed, yupNever, yupNumber, yupObject, yupRecord, yupString, yupTuple, yupUnion } from "../schema-fields";
 import { isShallowEqual } from "../utils/arrays";
-import { SUPPORTED_CURRENCIES } from "../utils/currencies";
+import { SUPPORTED_CURRENCIES } from "../utils/currency-constants";
 import { StackAssertionError } from "../utils/errors";
 import { allProviders } from "../utils/oauth";
-import { DeepFilterUndefined, DeepMerge, DeepRequiredOrUndefined, deleteKey, filterUndefined, get, has, isObjectLike, mapValues, set, typedAssign, typedFromEntries } from "../utils/objects";
+import { DeepFilterUndefined, DeepMerge, DeepRequiredOrUndefined, deleteKey, filterUndefined, get, has, isObjectLike, mapValues, set, typedAssign, typedEntries, typedFromEntries, typedKeys } from "../utils/objects";
 import { Result } from "../utils/results";
 import { CollapseObjectUnion, Expand, IntersectAll, IsUnion, typeAssert, typeAssertExtends, typeAssertIs } from "../utils/types";
 import { Config, NormalizationError, NormalizesTo, assertNormalized, getInvalidConfigReason, normalize } from "./format";
@@ -114,18 +114,15 @@ const branchAuthSchema = yupObject({
 });
 
 export const branchPaymentsSchema = yupObject({
-  stripeAccountId: yupString().optional(),
-  stripeAccountSetupComplete: yupBoolean().optional(),
   autoPay: yupObject({
     interval: schemaFields.dayIntervalSchema,
   }).optional(),
-  exclusivityGroups: yupRecord(
-    userSpecifiedIdSchema("exclusivityGroupId"),
-    yupRecord(
-      userSpecifiedIdSchema("offerId"),
-      yupBoolean().isTrue(),
-    ),
-  ),
+  groups: yupRecord(
+    userSpecifiedIdSchema("groupId"),
+    yupObject({
+      displayName: yupString().optional(),
+    }),
+  ).meta({ openapiField: { description: 'The groups that offers can be in. All offers in a group (besides add-ons) are mutually exclusive.', exampleValue: { "group-id": { displayName: "My Group" } } } }),
   offers: yupRecord(
     userSpecifiedIdSchema("offerId"),
     offerSchema,
@@ -135,13 +132,6 @@ export const branchPaymentsSchema = yupObject({
     yupObject({
       displayName: yupString().optional(),
       customerType: schemaFields.customerTypeSchema,
-      default: yupObject({
-        quantity: yupNumber(),
-        repeat: schemaFields.dayIntervalOrNeverSchema.optional(),
-        expires: yupString().oneOf(['never', 'when-repeated']).optional(),
-      }).default({
-        quantity: 0,
-      }),
     }),
   ),
 });
@@ -267,6 +257,13 @@ export function migrateConfigOverride(type: "project" | "branch" | "environment"
   // BEGIN 2025-07-28: sourceOfTruth was mistakenly written to the environment config in some cases, so let's remove it
   if (type === "environment") {
     res = removeProperty(res, "sourceOfTruth");
+  }
+  // END
+
+  // BEGIN 2025-08-25: stripeAccountId and stripeAccountSetupComplete are unused, so let's remove them
+  if (type === "environment") {
+    res = removeProperty(res, "payments.stripeAccountId");
+    res = removeProperty(res, "payments.stripeAccountSetupComplete");
   }
   // END
 
@@ -444,16 +441,18 @@ const organizationConfigDefaults = {
   },
 
   payments: {
-    stripeAccountId: undefined,
-    stripeAccountSetupComplete: false,
     autoPay: undefined,
-    exclusivityGroups: (key: string) => (key: string) => undefined,
+    groups: (key: string) => ({
+      displayName: undefined,
+    }),
     offers: (key: string) => ({
       displayName: key,
+      groupId: undefined,
       customerType: "user",
       freeTrial: undefined,
       serverOnly: false,
       stackable: undefined,
+      isAddOnTo: false,
       prices: (key: string) => ({
         ...typedFromEntries(SUPPORTED_CURRENCIES.map(currency => [currency.code, undefined])),
         interval: undefined,
@@ -468,11 +467,7 @@ const organizationConfigDefaults = {
     } as const),
     items: (key: string) => ({
       displayName: key,
-      default: {
-        quantity: 0,
-        expires: "when-repeated",
-        repeat: "never",
-      },
+      customerType: "user",
     } as const),
   },
 } as const satisfies DefaultsType<OrganizationRenderedConfigBeforeDefaults, [typeof environmentConfigDefaults, typeof branchConfigDefaults, typeof projectConfigDefaults]>;
@@ -652,6 +647,22 @@ export async function sanitizeOrganizationConfig(config: OrganizationRenderedCon
     ...DEFAULT_EMAIL_TEMPLATES,
     ...prepared.emails.templates,
   };
+  const offers = typedFromEntries(typedEntries(prepared.payments.offers).map(([key, offer]) => {
+    const isAddOnTo = offer.isAddOnTo === false ?
+      false as const :
+      typedFromEntries(Object.keys(offer.isAddOnTo).map((key) => [key, true as const]));
+    const prices = offer.prices === "include-by-default" ?
+      "include-by-default" as const :
+      typedFromEntries(typedEntries(offer.prices).map(([key, value]) => {
+        const data = { serverOnly: false, ...(value ?? {}) };
+        return [key, data];
+      }));
+    return [key, {
+      ...offer,
+      isAddOnTo,
+      prices,
+    }];
+  }));
   return {
     ...prepared,
     emails: {
@@ -660,8 +671,13 @@ export async function sanitizeOrganizationConfig(config: OrganizationRenderedCon
       themes,
       templates,
     },
+    payments: {
+      ...prepared.payments,
+      offers
+    }
   };
 }
+
 
 /**
  * Does not require a base config, and hence solely relies on the override itself to validate the config. If it returns
@@ -877,6 +893,7 @@ type BranchConfigNormalizedOverride = Expand<ValidatedToHaveNoConfigOverrideErro
 type EnvironmentConfigNormalizedOverride = Expand<ValidatedToHaveNoConfigOverrideErrors<typeof environmentConfigSchema>>;
 type OrganizationConfigNormalizedOverride = Expand<ValidatedToHaveNoConfigOverrideErrors<typeof organizationConfigSchema>>;
 
+
 // Overrides
 // ex.: { a?: null | { b?: null | number, c: string }, d?: null | number, "a.b"?: number, "a.c"?: string }
 export type ProjectConfigOverride = NormalizesTo<ProjectConfigNormalizedOverride>;
@@ -899,6 +916,7 @@ export type BranchIncompleteConfig = Expand<ProjectIncompleteConfig & BranchConf
 export type EnvironmentIncompleteConfig = Expand<BranchIncompleteConfig & EnvironmentConfigNormalizedOverride>;
 export type OrganizationIncompleteConfig = Expand<EnvironmentIncompleteConfig & OrganizationConfigNormalizedOverride>;
 
+
 // Rendered configs before defaults, normalization, and sanitization
 type ProjectRenderedConfigBeforeDefaults = Omit<ProjectIncompleteConfig,
   | keyof BranchConfigNormalizedOverride
@@ -913,6 +931,7 @@ type EnvironmentRenderedConfigBeforeDefaults = Omit<EnvironmentIncompleteConfig,
   | keyof OrganizationConfigNormalizedOverride
 >;
 type OrganizationRenderedConfigBeforeDefaults = OrganizationIncompleteConfig;
+
 
 // Rendered configs before sanitization
 type ProjectRenderedConfigBeforeSanitization = Expand<Awaited<ReturnType<typeof applyProjectDefaults<ProjectRenderedConfigBeforeDefaults>>>>;

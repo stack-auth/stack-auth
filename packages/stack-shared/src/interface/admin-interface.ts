@@ -536,6 +536,15 @@ export class StackAdminInterface extends StackServerInterface {
     return await response.json();
   }
 
+  async getStripeAccountInfo(): Promise<{ account_id: string, charges_enabled: boolean, details_submitted: boolean, payouts_enabled: boolean }> {
+    const response = await this.sendAdminRequest(
+      "/internal/payments/stripe/account-info",
+      {},
+      null,
+    );
+    return await response.json();
+  }
+
   async createStripeWidgetAccountSession(): Promise<{ client_secret: string }> {
     const response = await this.sendAdminRequest(
       "/internal/payments/stripe-widgets/account-session",
@@ -551,7 +560,7 @@ export class StackAdminInterface extends StackServerInterface {
     return await response.json();
   }
 
-  async testModePurchase(options: { price_id: string, full_code: string }): Promise<void> {
+  async testModePurchase(options: { price_id: string, full_code: string, quantity?: number }): Promise<void> {
     await this.sendAdminRequest(
       "/internal/payments/test-mode-purchase-session",
       {

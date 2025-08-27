@@ -116,6 +116,11 @@ export async function generateAccessToken(options: {
   userId: string,
   refreshTokenId: string,
 }) {
+  const user = await usersCrudHandlers.adminRead({
+    tenancy: options.tenancy,
+    user_id: options.userId,
+  });
+
   await logEvent(
     [SystemEventTypes.SessionActivity],
     {
@@ -123,13 +128,9 @@ export async function generateAccessToken(options: {
       branchId: options.tenancy.branchId,
       userId: options.userId,
       sessionId: options.refreshTokenId,
+      isAnonymous: user.is_anonymous,
     }
   );
-
-  const user = await usersCrudHandlers.adminRead({
-    tenancy: options.tenancy,
-    user_id: options.userId,
-  });
 
   return await signJWT({
     issuer: getIssuer(options.tenancy.project.id, user.is_anonymous),

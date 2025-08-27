@@ -575,6 +575,9 @@ export function nicify(
       if (ArrayBuffer.isView(value)) {
         return `${value.constructor.name}([${value.toString()}])`;
       }
+      if (value instanceof ArrayBuffer) {
+        return `ArrayBuffer [${new Uint8Array(value).toString()}]`;
+      }
       if (value instanceof Error) {
         let stack = value.stack ?? "";
         const toString = value.toString();

@@ -1,10 +1,10 @@
 import { getStackStripe } from "@/lib/stripe";
 import { globalPrismaClient } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
-import { adaptSchema, adminAuthTypeSchema, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
+import { adaptSchema, adminAuthTypeSchema, yupBoolean, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
 import { StatusError } from "@stackframe/stack-shared/dist/utils/errors";
 
-export const POST = createSmartRouteHandler({
+export const GET = createSmartRouteHandler({
   metadata: {
     hidden: true,
   },
@@ -19,43 +19,37 @@ export const POST = createSmartRouteHandler({
     statusCode: yupNumber().oneOf([200]).defined(),
     bodyType: yupString().oneOf(["json"]).defined(),
     body: yupObject({
-      client_secret: yupString().defined(),
-    }).defined(),
+      account_id: yupString().defined(),
+      charges_enabled: yupBoolean().defined(),
+      details_submitted: yupBoolean().defined(),
+      payouts_enabled: yupBoolean().defined(),
+    }).nullable(),
   }),
   handler: async ({ auth }) => {
-    const stripe = getStackStripe();
-
     const project = await globalPrismaClient.project.findUnique({
       where: { id: auth.project.id },
       select: { stripeAccountId: true },
     });
 
     if (!project?.stripeAccountId) {
-      throw new StatusError(400, "Stripe account ID is not set");
+      return {
+        statusCode: 200,
+        bodyType: "json",
+        body: null,
+      };
     }
 
-    const accountSession = await stripe.accountSessions.create({
-      account: project.stripeAccountId,
-      components: {
-        payments: {
-          enabled: true,
-          features: {
-            refund_management: true,
-            dispute_management: true,
-            capture_payments: true,
-          },
-        },
-        notification_banner: {
-          enabled: true,
-        },
-      },
-    });
+    const stripe = getStackStripe();
+    const account = await stripe.accounts.retrieve(project.stripeAccountId);
 
     return {
       statusCode: 200,
       bodyType: "json",
       body: {
-        client_secret: accountSession.client_secret,
+        account_id: account.id,
+        charges_enabled: account.charges_enabled || false,
+        details_submitted: account.details_submitted || false,
+        payouts_enabled: account.payouts_enabled || false,
       },
     };
   },

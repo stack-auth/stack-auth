@@ -5,9 +5,9 @@ import { CheckboxField, InputField, SelectField } from "@/components/form-fields
 import { IncludedItemEditorField } from "@/components/payments/included-item-editor";
 import { PriceEditorField } from "@/components/payments/price-editor";
 import { AdminProject } from "@stackframe/stack";
-import { offerPriceSchema, offerSchema, userSpecifiedIdSchema, yupRecord } from "@stackframe/stack-shared/dist/schema-fields";
+import { offerSchema, priceOrIncludeByDefaultSchema, userSpecifiedIdSchema, yupRecord } from "@stackframe/stack-shared/dist/schema-fields";
 import { has } from "@stackframe/stack-shared/dist/utils/objects";
-import { Accordion, AccordionContent, AccordionItem, AccordionTrigger, toast } from "@stackframe/stack-ui";
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger, FormLabel, FormItem, FormMessage, toast, FormField, Checkbox, FormControl } from "@stackframe/stack-ui";
 import * as yup from "yup";
 
 type Props = {
@@ -33,10 +33,12 @@ export function OfferDialog({ open, onOpenChange, project, mode, initial }: Prop
     offerId: userSpecifiedIdSchema("offerId").defined().label("Offer ID"),
     displayName: yup.string().defined().label("Display Name"),
     customerType: yup.string().oneOf(["user", "team", "custom"]).defined().label("Customer Type"),
-    prices: yupRecord(userSpecifiedIdSchema("priceId"), offerPriceSchema)
-      .defined("At least one price is required")
-      .label("Prices")
-      .test("at-least-one-price", "At least one price is required", (value) => Object.keys(value as any).length > 0),
+    prices: priceOrIncludeByDefaultSchema.defined().label("Prices").test("at-least-one-price", (value, context) => {
+      if (value !== "include-by-default" && Object.keys(value).length === 0) {
+        return context.createError({ message: "At least one price is required" });
+      }
+      return true;
+    }),
     includedItems: yupRecord(
       userSpecifiedIdSchema("itemId"),
       yup.object({
@@ -89,7 +91,7 @@ export function OfferDialog({ open, onOpenChange, project, mode, initial }: Prop
             { value: "custom", label: "Custom" },
           ]} />
 
-          <PriceEditorField control={form.control} name={"prices"} label="Prices" required />
+          <PriceEditorField control={form.control} name={"prices"} label="Prices" required disabled={form.watch("prices") === "include-by-default"} />
           <IncludedItemEditorField itemIds={Object.keys(config.payments.items)} control={form.control} name={"includedItems"} label="Included Items" />
           <Accordion type="single" collapsible>
             <AccordionItem value="item-1" className="border-0">
@@ -106,6 +108,29 @@ export function OfferDialog({ open, onOpenChange, project, mode, initial }: Prop
                   name={"stackable"}
                   label={"Stackable"}
                   description="Allow user to purchase multiple"
+                />
+                <FormField
+                  control={form.control}
+                  name={"prices"}
+                  render={({ field }) => (
+                    <FormItem className="flex flex-row items-start space-x-3 space-y-0 rounded-md p-2">
+                      <FormControl>
+                        <Checkbox
+                          checked={field.value === "include-by-default"}
+                          onCheckedChange={(checked) => field.onChange(checked ? "include-by-default" : {})}
+                        />
+                      </FormControl>
+                      <div className="space-y-1 leading-none">
+                        <FormLabel>
+                          Include by default
+                        </FormLabel>
+                        <p className="text-sm text-muted-foreground">
+                          The default offer that is included in the group.
+                        </p>
+                      </div>
+                      <FormMessage />
+                    </FormItem>
+                  )}
                 />
               </AccordionContent>
             </AccordionItem>
