@@ -282,7 +282,7 @@ function removeProperty(obj: Record<string, any>, pathCond: (path: (string | sym
 }
 
 function mapProperty(obj: Record<string, any>, pathCond: (path: string[]) => boolean, mapper: (value: any) => any): any {
-  const res: Record<string, any> = {};
+  const res: Record<string, any> = Array.isArray(obj) ? [] : {};
   for (const [key, value] of typedEntries(obj)) {
     const path = key.split(".");
     if (pathCond(path)) {
