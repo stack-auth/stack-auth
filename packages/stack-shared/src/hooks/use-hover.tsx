@@ -1,67 +1,41 @@
-import { useLayoutEffect, useRef, useState } from "react";
+import { useLayoutEffect } from "react";
+import { useRefState } from "../utils/react";
 
 export function useHover<T extends HTMLElement>(
-  ref: React.RefObject<T>
+  ref: React.RefObject<T>,
+  options: {
+    onMouseEnter?: () => void,
+    onMouseLeave?: () => void,
+  } = {},
 ): boolean {
   // Internal counter: mouseenter++ / mouseleave-- (isHovering = counter > 0)
-  const [counter, setCounter] = useState(0);
-  const prevInside = useRef(false);
+  const counter = useRefState(0);
 
   useLayoutEffect(() => {
     const el = ref.current;
     if (!el) return;
     let incr = 0;
+    let prevInside = false;
 
     const contains = (r: DOMRect, x: number, y: number) =>
       x >= r.left && x <= r.right && y >= r.top && y <= r.bottom;
 
-    // Liang–Barsky line-vs-rect intersection
-    const segIntersectsRect = (
-      p0: { x: number, y: number },
-      p1: { x: number, y: number },
-      r: DOMRect
-    ) => {
-      const inside = (p: { x: number, y: number }) => contains(r, p.x, p.y);
-      if (inside(p0) || inside(p1)) return true;
-
-      let t0 = 0,
-        t1 = 1;
-      const dx = p1.x - p0.x;
-      const dy = p1.y - p0.y;
-      const clip = (p: number, q: number) => {
-        if (p === 0) return q >= 0;
-        const t = q / p;
-        if (p < 0) {
-          if (t > t1) return false;
-          if (t > t0) t0 = t;
-        } else {
-          if (t < t0) return false;
-          if (t < t1) t1 = t;
-        }
-        return true;
-      };
-
-      return (
-        clip(-dx, p0.x - r.left) &&
-        clip(dx, r.right - p0.x) &&
-        clip(-dy, p0.y - r.top) &&
-        clip(dy, r.bottom - p0.y) &&
-        t0 <= t1
-      );
-    };
-
     const enter = () => {
-      console.log("enter");
       incr++;
-      setCounter(prev => prev + 1);
+      counter.set(c => c + 1);
+      if (counter.current === 1) {
+        options.onMouseEnter?.();
+      }
     };
 
     const leave = () => {
-      console.log("leave");
       incr--;
       requestAnimationFrame(() => {
         requestAnimationFrame(() => {
-          setCounter(prev => prev - 1);
+          counter.set(c => c - 1);
+          if (counter.current === 0) {
+            options.onMouseLeave?.();
+          }
         });
       });
     };
@@ -76,13 +50,12 @@ export function useHover<T extends HTMLElement>(
 
       // True “hoverability”: inside rect AND not occluded by others
       const inside = contains(rect, x, y) && topMatchesTarget(x, y);
-
-      if (inside && !prevInside.current) {
+      if (inside && !prevInside) {
         enter();
-      } else if (!inside && prevInside.current) {
+      } else if (!inside && prevInside) {
         leave();
       }
-      prevInside.current = inside;
+      prevInside = inside;
     };
 
     const onMove = (e: PointerEvent) => {
@@ -107,9 +80,9 @@ export function useHover<T extends HTMLElement>(
 
     return () => {
       window.removeEventListener("pointermove", onMove);
-      setCounter(c => c - incr);
+      counter.set(c => c - incr);
     };
   }, []);
 
-  return counter > 0;
+  return counter.current > 0;
 }

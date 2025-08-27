@@ -6,7 +6,7 @@ import { useHover } from "@stackframe/stack-shared/dist/hooks/use-hover";
 import { DayInterval } from "@stackframe/stack-shared/dist/utils/dates";
 import { prettyPrintWithMagnitudes } from "@stackframe/stack-shared/dist/utils/numbers";
 import { stringCompare } from "@stackframe/stack-shared/dist/utils/strings";
-import { Button, Card, CardContent, Checkbox, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger, Input, SimpleTooltip } from "@stackframe/stack-ui";
+import { Button, Card, CardContent, Checkbox, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger, Input, SimpleTooltip, Typography } from "@stackframe/stack-ui";
 import { MoreVertical, Plus, Search } from "lucide-react";
 import React, { ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { PageLayout } from "../page-layout";
@@ -598,6 +598,76 @@ function ItemsList({
   );
 }
 
+function WelcomeScreen({ onCreateOffer }: { onCreateOffer: () => void }) {
+  return (
+    <div className="flex flex-col items-center justify-center h-full px-4 py-12 max-w-3xl mx-auto">
+      {/* Pricing Table Illustration */}
+      <div className="mb-8 p-8 bg-gradient-to-b from-primary/5 to-primary/10 rounded-lg">
+        <div className="grid grid-cols-3 gap-2">
+          {/* Simple pricing table representation */}
+          <div className="bg-background rounded p-3 shadow-sm">
+            <div className="h-2 bg-muted rounded mb-2"></div>
+            <div className="h-8 bg-primary/20 rounded mb-2"></div>
+            <div className="space-y-1">
+              <div className="h-1.5 bg-muted rounded"></div>
+              <div className="h-1.5 bg-muted rounded"></div>
+              <div className="h-1.5 bg-muted rounded"></div>
+            </div>
+          </div>
+          <div className="bg-background rounded p-3 shadow-sm border-2 border-primary">
+            <div className="h-2 bg-muted rounded mb-2"></div>
+            <div className="h-8 bg-primary/40 rounded mb-2"></div>
+            <div className="space-y-1">
+              <div className="h-1.5 bg-muted rounded"></div>
+              <div className="h-1.5 bg-muted rounded"></div>
+              <div className="h-1.5 bg-muted rounded"></div>
+            </div>
+          </div>
+          <div className="bg-background rounded p-3 shadow-sm">
+            <div className="h-2 bg-muted rounded mb-2"></div>
+            <div className="h-8 bg-primary/20 rounded mb-2"></div>
+            <div className="space-y-1">
+              <div className="h-1.5 bg-muted rounded"></div>
+              <div className="h-1.5 bg-muted rounded"></div>
+              <div className="h-1.5 bg-muted rounded"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Title */}
+      <Typography type="h2" className="mb-6 text-center">
+        Welcome to Payments!
+      </Typography>
+
+      {/* Subtitle */}
+      <div className="text-muted-foreground space-y-4 mb-8 max-w-2xl">
+        <Typography type="p" className="text-center">
+          Stack Auth Payments is built on the basic building blocks of offers and items.
+        </Typography>
+
+        <Typography type="p" className="text-center">
+          An offer is what a customer buys; it&apos;s like a column in a pricing table. Each offer has one or more prices and items that are included with it.
+        </Typography>
+
+        <Typography type="p" className="text-center">
+          An item is what a customer receives; it&apos;s like a row in a pricing table. A user can have multiple of one item. Items are flexible; they can grant access to a product, increase rate limits, or be consumed for usage-based billing.
+        </Typography>
+
+        <Typography type="p" className="text-center font-medium">
+          Get started now by creating your first offer!
+        </Typography>
+      </div>
+
+      {/* Create Offer Button */}
+      <Button size="lg" onClick={onCreateOffer} className="gap-2">
+        <Plus className="h-4 w-4" />
+        Create Your First Offer
+      </Button>
+    </div>
+  );
+}
+
 export default function PageClient() {
   const [activeTab, setActiveTab] = useState<"offers" | "items">("offers");
   const [hoveredOfferId, setHoveredOfferId] = useState<string | null>(null);
@@ -729,6 +799,20 @@ export default function PageClient() {
       .filter(([_, offer]: [string, any]) => itemId in offer.includedItems)
       .map(([id]) => id);
   };
+
+  // Check if there are no offers and no items
+  const hasNoOffersAndNoItems = Object.keys(paymentsConfig.offers).length === 0 && Object.keys(paymentsConfig.items).length === 0;
+
+  // Handler for create offer button
+  const handleCreateOffer = () => {
+    // TODO: Implement offer creation
+    console.log("Create offer clicked");
+  };
+
+  // If no offers and items, show welcome screen instead of everything
+  if (hasNoOffersAndNoItems) {
+    return <WelcomeScreen onCreateOffer={handleCreateOffer} />;
+  }
 
   return (
     <PageLayout title="Payments" actions={process.env.NODE_ENV === "development" && (
