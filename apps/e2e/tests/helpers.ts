@@ -182,7 +182,7 @@ export async function niceFetch(url: string | URL, options?: NiceRequestInit): P
   let body;
   if (fetchRes.headers.get("content-type")?.includes("application/json")) {
     body = await fetchRes.json();
-  } else if (fetchRes.headers.get("content-type")?.includes("text")) {
+  } else if (fetchRes.headers.get("content-type")?.startsWith("text/")) {
     body = await fetchRes.text();
   } else {
     body = await fetchRes.arrayBuffer();
