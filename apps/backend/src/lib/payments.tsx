@@ -381,6 +381,19 @@ export async function validatePurchaseSession(options: {
     throw new StatusError(400, "This offer is not stackable; quantity must be 1");
   }
 
+  // Block based on prior one-time purchases for same customer and customerType
+  const existingOneTimePurchases = await prisma.oneTimePurchase.findMany({
+    where: {
+      tenancyId: tenancy.id,
+      customerId: codeData.customerId,
+      customerType: typedToUppercase(offer.customerType),
+    },
+  });
+
+  if (codeData.offerId && existingOneTimePurchases.some((p) => p.offerId === codeData.offerId)) {
+    throw new StatusError(400, "Customer already has a one-time purchase for this offer");
+  }
+
   const subscriptions = await getSubscriptions({
     prisma,
     tenancy,
@@ -397,6 +410,18 @@ export async function validatePurchaseSession(options: {
 
   const groups = tenancy.config.payments.groups;
   const groupId = typedKeys(groups).find((g) => offer.groupId === g);
+
+  // Block purchasing any offer in the same group if a one-time purchase exists in that group
+  if (groupId) {
+    const hasOneTimeInGroup = existingOneTimePurchases.some((p) => {
+      const offer = p.offer as yup.InferType<typeof offerSchema>;
+      return offer.groupId === groupId;
+    });
+    if (hasOneTimeInGroup) {
+      throw new StatusError(400, "Customer already has a one-time purchase in this offer group");
+    }
+  }
+
   let conflictingGroupSubscriptions: Subscription[] = [];
   if (groupId) {
     conflictingGroupSubscriptions = subscriptions.filter((subscription) => (

@@ -73,6 +73,17 @@ async function processStripeWebhookEvent(event: Stripe.Event): Promise<void> {
           },
         });
       }
+
+      await prisma.oneTimePurchase.create({
+        data: {
+          tenancyId: tenancy.id,
+          customerId: customerIdMeta,
+          customerType: (String(customerTypeMeta).toUpperCase() as any),
+          offerId: metadata.offerId || null,
+          offer,
+          quantity: qty,
+        },
+      });
       return;
     }
   }

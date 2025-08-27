@@ -794,3 +794,124 @@ it("should cancel DB-only subscription then create Stripe subscription when swit
     }
   `);
 });
+
+it("should block one-time purchase for same offer after prior one-time purchase (test-mode persisted)", async ({ expect }) => {
+  await Project.createAndSwitch();
+  await Payments.setup();
+  await Project.updateConfig({
+    payments: {
+      offers: {
+        ot: {
+          displayName: "One Time Offer",
+          customerType: "user",
+          serverOnly: false,
+          stackable: true,
+          prices: { one: { USD: "500" } },
+          includedItems: {},
+        },
+      },
+    },
+  });
+
+  const { userId } = await User.create();
+  // First: create code and complete in TEST_MODE (persists OneTimePurchase)
+  const createUrl1 = await niceBackendFetch("/api/latest/payments/purchases/create-purchase-url", {
+    method: "POST",
+    accessType: "client",
+    body: { customer_type: "user", customer_id: userId, offer_id: "ot" },
+  });
+  expect(createUrl1.status).toBe(200);
+  const code1 = (createUrl1.body as { url: string }).url.match(/\/purchase\/([a-z0-9-_]+)/)?.[1];
+  expect(code1).toBeDefined();
+
+  const testModeRes = await niceBackendFetch("/api/latest/internal/payments/test-mode-purchase-session", {
+    method: "POST",
+    accessType: "admin",
+    body: { full_code: code1, price_id: "one", quantity: 1 },
+  });
+  expect(testModeRes.status).toBe(200);
+
+  // Second: attempt another purchase for same offer (should be blocked by OneTimePurchase)
+  const createUrl2 = await niceBackendFetch("/api/latest/payments/purchases/create-purchase-url", {
+    method: "POST",
+    accessType: "client",
+    body: { customer_type: "user", customer_id: userId, offer_id: "ot" },
+  });
+  expect(createUrl2.status).toBe(200);
+  const code2 = (createUrl2.body as { url: string }).url.match(/\/purchase\/([a-z0-9-_]+)/)?.[1];
+  expect(code2).toBeDefined();
+
+  const res = await niceBackendFetch("/api/latest/payments/purchases/purchase-session", {
+    method: "POST",
+    accessType: "client",
+    body: { full_code: code2, price_id: "one", quantity: 1 },
+  });
+  expect(res.status).toBe(400);
+  expect(String(res.body)).toContain("one-time purchase for this offer");
+});
+
+it("should block one-time purchase in same group after prior one-time purchase in that group (test-mode persisted)", async ({ expect }) => {
+  await Project.createAndSwitch();
+  await Payments.setup();
+  await Project.updateConfig({
+    payments: {
+      groups: { grp: { displayName: "Group" } },
+      offers: {
+        offerA: {
+          displayName: "Offer A",
+          customerType: "user",
+          serverOnly: false,
+          groupId: "grp",
+          stackable: true,
+          prices: { one: { USD: "500" } },
+          includedItems: {},
+        },
+        offerB: {
+          displayName: "Offer B",
+          customerType: "user",
+          serverOnly: false,
+          groupId: "grp",
+          stackable: true,
+          prices: { one: { USD: "700" } },
+          includedItems: {},
+        },
+      },
+    },
+  });
+
+  const { userId } = await User.create();
+  // Purchase offerA in TEST_MODE (persists OneTimePurchase)
+  const urlA = await niceBackendFetch("/api/latest/payments/purchases/create-purchase-url", {
+    method: "POST",
+    accessType: "client",
+    body: { customer_type: "user", customer_id: userId, offer_id: "offerA" },
+  });
+  expect(urlA.status).toBe(200);
+  const codeA = (urlA.body as { url: string }).url.match(/\/purchase\/([a-z0-9-_]+)/)?.[1];
+  expect(codeA).toBeDefined();
+
+  const tmRes = await niceBackendFetch("/api/latest/internal/payments/test-mode-purchase-session", {
+    method: "POST",
+    accessType: "admin",
+    body: { full_code: codeA, price_id: "one", quantity: 1 },
+  });
+  expect(tmRes.status).toBe(200);
+
+  // Attempt to purchase offerB in same group (should be blocked)
+  const urlB = await niceBackendFetch("/api/latest/payments/purchases/create-purchase-url", {
+    method: "POST",
+    accessType: "client",
+    body: { customer_type: "user", customer_id: userId, offer_id: "offerB" },
+  });
+  expect(urlB.status).toBe(200);
+  const codeB = (urlB.body as { url: string }).url.match(/\/purchase\/([a-z0-9-_]+)/)?.[1];
+  expect(codeB).toBeDefined();
+
+  const resB = await niceBackendFetch("/api/latest/payments/purchases/purchase-session", {
+    method: "POST",
+    accessType: "client",
+    body: { full_code: codeB, price_id: "one", quantity: 1 },
+  });
+  expect(resB.status).toBe(400);
+  expect(String(resB.body)).toContain("one-time purchase in this offer group");
+});

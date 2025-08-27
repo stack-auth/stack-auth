@@ -1,5 +1,5 @@
 import { purchaseUrlVerificationCodeHandler } from "@/app/api/latest/payments/purchases/verification-code-handler";
-import { ensureCustomerExists, validatePurchaseSession } from "@/lib/payments";
+import { validatePurchaseSession } from "@/lib/payments";
 import { getStripeForAccount } from "@/lib/stripe";
 import { getPrismaClientForTenancy } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
@@ -65,6 +65,17 @@ export const POST = createSmartRouteHandler({
           },
         });
       }
+
+      await prisma.oneTimePurchase.create({
+        data: {
+          tenancyId: auth.tenancy.id,
+          customerId: data.customerId,
+          customerType: typedToUppercase(data.offer.customerType),
+          offerId: data.offerId,
+          offer: data.offer,
+          quantity: multipliedQuantity,
+        },
+      });
     } else {
       // Cancel conflicting subscriptions for TEST_MODE as well, then create new TEST_MODE subscription
       if (conflictingGroupSubscriptions.length > 0) {
