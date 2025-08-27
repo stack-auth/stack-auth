@@ -113,6 +113,175 @@ it("should return client secret for one-time price (no interval)", async ({ expe
   expect(res.body).toEqual({ client_secret: expect.any(String) });
 });
 
+it("should error on one-time price quantity > 1 when offer is not stackable", async ({ expect }) => {
+  await Project.createAndSwitch();
+  await Payments.setup();
+  await Project.updateConfig({
+    payments: {
+      offers: {
+        "ot-non-stack": {
+          displayName: "One Time Non-Stackable",
+          customerType: "user",
+          serverOnly: false,
+          stackable: false,
+          prices: {
+            one: { USD: "1200" },
+          },
+          includedItems: {},
+        },
+      },
+    },
+  });
+
+  const { userId } = await User.create();
+  const urlRes = await niceBackendFetch("/api/latest/payments/purchases/create-purchase-url", {
+    method: "POST",
+    accessType: "client",
+    body: {
+      customer_type: "user",
+      customer_id: userId,
+      offer_id: "ot-non-stack",
+    },
+  });
+  expect(urlRes.status).toBe(200);
+  const code = (urlRes.body as { url: string }).url.match(/\/purchase\/([a-z0-9-_]+)/)?.[1]!;
+
+  const res = await niceBackendFetch("/api/latest/payments/purchases/purchase-session", {
+    method: "POST",
+    accessType: "client",
+    body: {
+      full_code: code,
+      price_id: "one",
+      quantity: 2,
+    },
+  });
+  expect(res).toMatchInlineSnapshot(`
+    NiceResponse {
+      "status": 400,
+      "body": "This offer is not stackable; quantity must be 1",
+      "headers": Headers { <some fields may have been hidden> },
+    }
+  `);
+});
+
+it("should return client secret for one-time price even if a conflicting group subscription exists (DB-only)", async ({ expect }) => {
+  await Project.createAndSwitch();
+  await Payments.setup();
+  await Project.updateConfig({
+    payments: {
+      groups: { grp: { displayName: "Test Group" } },
+      offers: {
+        subOffer: {
+          displayName: "Sub Offer",
+          customerType: "user",
+          serverOnly: false,
+          groupId: "grp",
+          stackable: false,
+          prices: { monthly: { USD: "1000", interval: [1, "month"] } },
+          includedItems: {},
+        },
+        oneTime: {
+          displayName: "One Time",
+          customerType: "user",
+          serverOnly: false,
+          groupId: "grp",
+          stackable: true,
+          prices: { one: { USD: "500" } },
+          includedItems: {},
+        },
+      },
+    },
+  });
+
+  const { userId } = await User.create();
+
+  // Create test-mode DB-only subscription for subOffer
+  const createUrlRespA = await niceBackendFetch("/api/latest/payments/purchases/create-purchase-url", {
+    method: "POST",
+    accessType: "client",
+    body: {
+      customer_type: "user",
+      customer_id: userId,
+      offer_id: "subOffer",
+    },
+  });
+  expect(createUrlRespA.status).toBe(200);
+  const codeA = (createUrlRespA.body as { url: string }).url.match(/\/purchase\/([a-z0-9-_]+)/)?.[1]!;
+  const testModeRes = await niceBackendFetch("/api/latest/internal/payments/test-mode-purchase-session", {
+    method: "POST",
+    accessType: "admin",
+    body: { full_code: codeA, price_id: "monthly", quantity: 1 },
+  });
+  expect(testModeRes.status).toBe(200);
+
+  // Now purchase one-time offer in same group; should succeed and return client secret
+  const createUrlRespB = await niceBackendFetch("/api/latest/payments/purchases/create-purchase-url", {
+    method: "POST",
+    accessType: "client",
+    body: {
+      customer_type: "user",
+      customer_id: userId,
+      offer_id: "oneTime",
+    },
+  });
+  expect(createUrlRespB.status).toBe(200);
+  const codeB = (createUrlRespB.body as { url: string }).url.match(/\/purchase\/([a-z0-9-_]+)/)?.[1]!;
+
+  const res = await niceBackendFetch("/api/latest/payments/purchases/purchase-session", {
+    method: "POST",
+    accessType: "client",
+    body: { full_code: codeB, price_id: "one", quantity: 1 },
+  });
+  expect(res).toMatchInlineSnapshot(`
+    NiceResponse {
+      "status": 200,
+      "body": { "client_secret": "pi_1PgafyB7WZ01zgkWSjxsAJo3_secret_Dm43xiq1k0ywrRRjDoi8y1gkM" },
+      "headers": Headers { <some fields may have been hidden> },
+    }
+  `);
+});
+
+it("test-mode should error on one-time price quantity > 1 when offer is not stackable", async ({ expect }) => {
+  await Project.createAndSwitch();
+  await Payments.setup();
+  await Project.updateConfig({
+    payments: {
+      offers: {
+        tmOneTime: {
+          displayName: "TM One Time",
+          customerType: "user",
+          serverOnly: false,
+          stackable: false,
+          prices: { one: { USD: "800" } },
+          includedItems: {},
+        },
+      },
+    },
+  });
+
+  const { userId } = await User.create();
+  const urlRes = await niceBackendFetch("/api/latest/payments/purchases/create-purchase-url", {
+    method: "POST",
+    accessType: "client",
+    body: { customer_type: "user", customer_id: userId, offer_id: "tmOneTime" },
+  });
+  expect(urlRes.status).toBe(200);
+  const code = (urlRes.body as { url: string }).url.match(/\/purchase\/([a-z0-9-_]+)/)?.[1]!;
+
+  const res = await niceBackendFetch("/api/latest/internal/payments/test-mode-purchase-session", {
+    method: "POST",
+    accessType: "admin",
+    body: { full_code: code, price_id: "one", quantity: 2 },
+  });
+  expect(res).toMatchInlineSnapshot(`
+    NiceResponse {
+      "status": 400,
+      "body": "This offer is not stackable; quantity must be 1",
+      "headers": Headers { <some fields may have been hidden> },
+    }
+  `);
+});
+
 it("should create purchase URL, validate code, and create purchase session", async ({ expect }) => {
   const { code } = await Payments.createPurchaseUrlAndGetCode();
   const response = await niceBackendFetch("/api/latest/payments/purchases/purchase-session", {
