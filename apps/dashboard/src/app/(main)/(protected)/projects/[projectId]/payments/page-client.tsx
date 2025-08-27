@@ -6,9 +6,10 @@ import { useHover } from "@stackframe/stack-shared/dist/hooks/use-hover";
 import { DayInterval } from "@stackframe/stack-shared/dist/utils/dates";
 import { prettyPrintWithMagnitudes } from "@stackframe/stack-shared/dist/utils/numbers";
 import { stringCompare } from "@stackframe/stack-shared/dist/utils/strings";
-import { Button, Card, CardContent, Checkbox, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger, Input, SimpleTooltip, Typography } from "@stackframe/stack-ui";
+import { Button, Card, CardContent, Checkbox, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger, Input, SimpleTooltip } from "@stackframe/stack-ui";
 import { MoreVertical, Plus, Search } from "lucide-react";
 import React, { ReactNode, useEffect, useMemo, useRef, useState } from "react";
+import { IllustratedInfo } from "../../../../../../components/illustrated-info";
 import { PageLayout } from "../page-layout";
 import { useAdminApp } from "../use-admin-app";
 import { DUMMY_PAYMENTS_CONFIG } from "./dummy-data";
@@ -601,67 +602,49 @@ function ItemsList({
 function WelcomeScreen({ onCreateOffer }: { onCreateOffer: () => void }) {
   return (
     <div className="flex flex-col items-center justify-center h-full px-4 py-12 max-w-3xl mx-auto">
-      {/* Pricing Table Illustration */}
-      <div className="mb-8 p-8 bg-gradient-to-b from-primary/5 to-primary/10 rounded-lg">
-        <div className="grid grid-cols-3 gap-2">
-          {/* Simple pricing table representation */}
-          <div className="bg-background rounded p-3 shadow-sm">
-            <div className="h-2 bg-muted rounded mb-2"></div>
-            <div className="h-8 bg-primary/20 rounded mb-2"></div>
-            <div className="space-y-1">
-              <div className="h-1.5 bg-muted rounded"></div>
-              <div className="h-1.5 bg-muted rounded"></div>
-              <div className="h-1.5 bg-muted rounded"></div>
+      <IllustratedInfo
+        illustration={(
+          <div className="grid grid-cols-3 gap-2">
+            {/* Simple pricing table representation */}
+            <div className="bg-background rounded p-3 shadow-sm">
+              <div className="h-2 bg-muted rounded mb-2"></div>
+              <div className="h-8 bg-primary/20 rounded mb-2"></div>
+              <div className="space-y-1">
+                <div className="h-1.5 bg-muted rounded"></div>
+                <div className="h-1.5 bg-muted rounded"></div>
+                <div className="h-1.5 bg-muted rounded"></div>
+              </div>
+            </div>
+            <div className="bg-background rounded p-3 shadow-sm border-2 border-primary">
+              <div className="h-2 bg-muted rounded mb-2"></div>
+              <div className="h-8 bg-primary/40 rounded mb-2"></div>
+              <div className="space-y-1">
+                <div className="h-1.5 bg-muted rounded"></div>
+                <div className="h-1.5 bg-muted rounded"></div>
+                <div className="h-1.5 bg-muted rounded"></div>
+              </div>
+            </div>
+            <div className="bg-background rounded p-3 shadow-sm">
+              <div className="h-2 bg-muted rounded mb-2"></div>
+              <div className="h-8 bg-primary/20 rounded mb-2"></div>
+              <div className="space-y-1">
+                <div className="h-1.5 bg-muted rounded"></div>
+                <div className="h-1.5 bg-muted rounded"></div>
+                <div className="h-1.5 bg-muted rounded"></div>
+              </div>
             </div>
           </div>
-          <div className="bg-background rounded p-3 shadow-sm border-2 border-primary">
-            <div className="h-2 bg-muted rounded mb-2"></div>
-            <div className="h-8 bg-primary/40 rounded mb-2"></div>
-            <div className="space-y-1">
-              <div className="h-1.5 bg-muted rounded"></div>
-              <div className="h-1.5 bg-muted rounded"></div>
-              <div className="h-1.5 bg-muted rounded"></div>
-            </div>
-          </div>
-          <div className="bg-background rounded p-3 shadow-sm">
-            <div className="h-2 bg-muted rounded mb-2"></div>
-            <div className="h-8 bg-primary/20 rounded mb-2"></div>
-            <div className="space-y-1">
-              <div className="h-1.5 bg-muted rounded"></div>
-              <div className="h-1.5 bg-muted rounded"></div>
-              <div className="h-1.5 bg-muted rounded"></div>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Title */}
-      <Typography type="h2" className="mb-6 text-center">
-        Welcome to Payments!
-      </Typography>
-
-      {/* Subtitle */}
-      <div className="text-muted-foreground space-y-4 mb-8 max-w-2xl">
-        <Typography type="p" className="text-center">
-          Stack Auth Payments is built on the basic building blocks of offers and items.
-        </Typography>
-
-        <Typography type="p" className="text-center">
-          An offer is what a customer buys; it&apos;s like a column in a pricing table. Each offer has one or more prices and items that are included with it.
-        </Typography>
-
-        <Typography type="p" className="text-center">
-          An item is what a customer receives; it&apos;s like a row in a pricing table. A user can have multiple of one item. Items are flexible; they can grant access to a product, increase rate limits, or be consumed for usage-based billing.
-        </Typography>
-
-        <Typography type="p" className="text-center font-medium">
-          Get started now by creating your first offer!
-        </Typography>
-      </div>
-
-      {/* Create Offer Button */}
-      <Button size="lg" onClick={onCreateOffer} className="gap-2">
-        <Plus className="h-4 w-4" />
+        )}
+        title="Welcome to Payments!"
+        description={[
+          <>Stack Auth Payments is built on two primitives: offers and items.</>,
+          <>Offers are what customers buy — the columns of your pricing table. Each offer has one or more prices and may or may not include items.</>,
+          <>Items are what customers receive — the rows of your pricing table. A user can hold multiple of the same item. Items are powerful; they can unlock feature access, raise limits, or meter consumption for usage-based billing.</>,
+          <>Create your first offer to get started!</>,
+        ]}
+      />
+      <Button onClick={onCreateOffer}>
+        <Plus className="h-4 w-4 mr-2" />
         Create Your First Offer
       </Button>
     </div>

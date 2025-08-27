@@ -217,7 +217,6 @@ const navigationItems: (Label | Item | Hidden)[] = [
   {
     name: "Payments",
     type: 'label',
-    requiresDevFeatureFlag: true,
   },
   {
     name: "Payments",
@@ -225,7 +224,6 @@ const navigationItems: (Label | Item | Hidden)[] = [
     regex: /^\/projects\/[^\/]+\/payments$/,
     icon: CreditCard,
     type: 'item',
-    requiresDevFeatureFlag: true,
   },
   {
     name: "Offers",
