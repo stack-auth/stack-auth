@@ -14,6 +14,7 @@ import { GoogleProvider } from "./providers/google";
 import { LinkedInProvider } from "./providers/linkedin";
 import { MicrosoftProvider } from "./providers/microsoft";
 import { MockProvider } from "./providers/mock";
+import { RedditProvider } from "./providers/reddit";
 import { SpotifyProvider } from "./providers/spotify";
 import { TwitchProvider } from "./providers/twitch";
 import { XProvider } from "./providers/x";
@@ -31,6 +32,7 @@ const _providers = {
   linkedin: LinkedInProvider,
   x: XProvider,
   twitch: TwitchProvider,
+  reddit: RedditProvider,
 } as const;
 
 const mockProvider = MockProvider;

@@ -366,6 +366,7 @@ enum StandardOAuthProviderType {
   APPLE
   X
   TWITCH
+  REDDIT
 }
 
 model OAuthToken {

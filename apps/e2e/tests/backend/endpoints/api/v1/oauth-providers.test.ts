@@ -17,6 +17,22 @@ async function createAndSwitchToOAuthEnabledProject() {
   });
 }
 
+async function createAndSwitchToRedditOAuthEnabledProject() {
+  return await Project.createAndSwitch({
+    config: {
+      magic_link_enabled: true,
+      oauth_providers: [
+        {
+          id: "reddit",
+          type: "standard",
+          client_id: "test_reddit_client_id",
+          client_secret: "test_reddit_client_secret",
+        }
+      ]
+    }
+  });
+}
+
 it("should create an OAuth provider connection", async ({ expect }: { expect: any }) => {
   const { createProjectResponse } = await createAndSwitchToOAuthEnabledProject();
   await Auth.Otp.signIn();
@@ -1013,6 +1029,43 @@ it("should not allow get, update, delete oauth providers with wrong user id and 
       "status": 404,
       "body": "OAuth provider <stripped UUID> for user <stripped UUID> not found",
       "headers": Headers { <some fields may have been hidden> },
+    }
+  `);
+});
+
+it("should create a Reddit OAuth provider connection", async ({ expect }: { expect: any }) => {
+  const { createProjectResponse } = await createAndSwitchToRedditOAuthEnabledProject();
+  await Auth.Otp.signIn();
+
+  const providerConfig = createProjectResponse.body.config.oauth_providers.find((p: any) => p.provider_config_id === "reddit");
+  expect(providerConfig).toBeDefined();
+
+  const createResponse = await niceBackendFetch("/api/v1/oauth-providers", {
+    method: "POST",
+    accessType: "server",
+    body: {
+      user_id: "me",
+      provider_config_id: providerConfig.id,
+      account_id: "test_reddit_user_123",
+      email: "test@example.com",
+      allow_sign_in: true,
+      allow_connected_accounts: true,
+    },
+  });
+
+  expect(createResponse).toMatchInlineSnapshot(`
+    NiceResponse {
+      "status": 201,
+      "body": {
+        "account_id": "test_reddit_user_123",
+        "allow_connected_accounts": true,
+        "allow_sign_in": true,
+        "email": "test@example.com",
+        "id": "<stripped UUID>",
+        "type": "reddit",
+        "user_id": "<stripped UUID>",
+      },
+      "headers": Headers { <some fields may be hidden> },
     }
   `);
 });

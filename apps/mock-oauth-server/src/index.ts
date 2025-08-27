@@ -14,6 +14,7 @@ const providerIds = [
   'gitlab',
   'bitbucket',
   'x',
+  'reddit',
 ];
 const clients = providerIds.map((id) => ({
   client_id: id,
