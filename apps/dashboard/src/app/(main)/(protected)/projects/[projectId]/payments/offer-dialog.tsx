@@ -61,7 +61,7 @@ export function OfferDialog({
   const [displayName, setDisplayName] = useState(editingOffer?.displayName || "");
   const [customerType, setCustomerType] = useState<'user' | 'team' | 'custom'>(editingOffer?.customerType || 'user');
   const [groupId, setGroupId] = useState(editingOffer?.groupId || "");
-  const [isAddOn, setIsAddOn] = useState(editingOffer?.isAddOnTo !== false || false);
+  const [isAddOn, setIsAddOn] = useState(!!editingOffer?.isAddOnTo);
   const [isAddOnTo, setIsAddOnTo] = useState<string[]>(editingOffer?.isAddOnTo !== false ? Object.keys(editingOffer?.isAddOnTo || {}) : []);
   const [stackable, setStackable] = useState(editingOffer?.stackable || false);
   const [freeByDefault, setFreeByDefault] = useState(editingOffer?.prices === "include-by-default" || false);
