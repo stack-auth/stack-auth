@@ -25,6 +25,7 @@ type OfferDialogProps = {
   existingOffers: Array<{ id: string, displayName: string, groupId?: string, customerType: string }>,
   existingGroups: Record<string, { displayName: string }>,
   existingItems: Array<{ id: string, displayName: string, customerType: string }>,
+  onCreateNewItem?: () => void,
 };
 
 const TEMPLATE_CONFIGS: Record<Template, Partial<Offer>> = {
@@ -52,7 +53,8 @@ export function OfferDialog({
   editingOffer,
   existingOffers,
   existingGroups,
-  existingItems
+  existingItems,
+  onCreateNewItem
 }: OfferDialogProps) {
   const [currentStep, setCurrentStep] = useState(editingOffer ? 1 : 0);
 
@@ -99,6 +101,11 @@ export function OfferDialog({
         'monthly': {
           USD: '9.99',
           interval: [1, 'month'],
+          serverOnly: false,
+        },
+        'annual': {
+          USD: '99.00',
+          interval: [1, 'year'],
           serverOnly: false,
         }
       });
@@ -804,8 +811,8 @@ export function OfferDialog({
         existingItems={existingItems}
         existingIncludedItemIds={Object.keys(includedItems)}
         onCreateNewItem={() => {
-          // TODO: Open create item dialog
-          console.log("Create new item");
+          setShowItemDialog(false);
+          onCreateNewItem?.();
         }}
       />
     </>

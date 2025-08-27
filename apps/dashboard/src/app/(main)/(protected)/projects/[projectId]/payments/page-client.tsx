@@ -5,7 +5,6 @@ import { CompleteConfig } from "@stackframe/stack-shared/dist/config/schema";
 import { useHover } from "@stackframe/stack-shared/dist/hooks/use-hover";
 import { DayInterval } from "@stackframe/stack-shared/dist/utils/dates";
 import { prettyPrintWithMagnitudes } from "@stackframe/stack-shared/dist/utils/numbers";
-import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
 import { stringCompare } from "@stackframe/stack-shared/dist/utils/strings";
 import { Button, Card, CardContent, Checkbox, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger, toast } from "@stackframe/stack-ui";
 import { MoreVertical, Plus } from "lucide-react";
@@ -14,6 +13,7 @@ import { IllustratedInfo } from "../../../../../../components/illustrated-info";
 import { PageLayout } from "../page-layout";
 import { useAdminApp } from "../use-admin-app";
 import { DUMMY_PAYMENTS_CONFIG } from "./dummy-data";
+import { ItemDialog } from "./item-dialog";
 import { ListSection } from "./list-section";
 import { OfferDialog } from "./offer-dialog";
 
@@ -432,6 +432,9 @@ type ItemsListProps = {
   itemRefs?: Record<string, React.RefObject<HTMLDivElement>>,
   onItemMouseEnter: (itemId: string) => void,
   onItemMouseLeave: () => void,
+  onItemAdd?: () => void,
+  setEditingItem: (item: any) => void,
+  setShowItemDialog: (show: boolean) => void,
 };
 
 function ItemsList({
@@ -441,6 +444,9 @@ function ItemsList({
   itemRefs,
   onItemMouseEnter,
   onItemMouseLeave,
+  onItemAdd,
+  setEditingItem,
+  setShowItemDialog,
 }: ItemsListProps) {
   const stackAdminApp = useAdminApp();
   const project = stackAdminApp.useProject();
@@ -478,7 +484,7 @@ function ItemsList({
     <ListSection
       title="Items"
       titleTooltip="Items are the features or services that your customers will receive from you. They are the rows in a pricing table."
-      onAddClick={() => {}}
+      onAddClick={() => onItemAdd?.()}
       searchValue={searchQuery}
       onSearchChange={setSearchQuery}
       searchPlaceholder="Search items..."
@@ -503,20 +509,22 @@ function ItemsList({
                 {
                   item: "Edit",
                   onClick: () => {
-                    // TODO: Open item edit dialog
-                    console.log("Edit item", id);
+                    setEditingItem({
+                      id,
+                      displayName: item.displayName,
+                      customerType: item.customerType
+                    });
+                    setShowItemDialog(true);
                   },
                 },
                 '-',
                 {
                   item: "Delete",
                   onClick: async () => {
-                    runAsynchronouslyWithAlert(async () => {
-                      if (confirm(`Are you sure you want to delete the item "${item.displayName}"?`)) {
-                        await project.updateConfig({ [`payments.items.${id}`]: null });
-                        toast({ title: "Item deleted" });
-                      }
-                    });
+                    if (confirm(`Are you sure you want to delete the item "${item.displayName}"?`)) {
+                      await project.updateConfig({ [`payments.items.${id}`]: null });
+                      toast({ title: "Item deleted" });
+                    }
                   },
                   danger: true,
                 },
@@ -587,6 +595,8 @@ export default function PageClient() {
   const [hoveredItemId, setHoveredItemId] = useState<string | null>(null);
   const [showOfferDialog, setShowOfferDialog] = useState(false);
   const [editingOffer, setEditingOffer] = useState<any>(null);
+  const [showItemDialog, setShowItemDialog] = useState(false);
+  const [editingItem, setEditingItem] = useState<any>(null);
   const stackAdminApp = useAdminApp();
   const project = stackAdminApp.useProject();
   const config = project.useConfig();
@@ -723,6 +733,11 @@ export default function PageClient() {
     setShowOfferDialog(true);
   };
 
+  // Handler for create item button
+  const handleCreateItem = () => {
+    setShowItemDialog(true);
+  };
+
   // Handler for saving offer
   const handleSaveOffer = async (offerId: string, offer: Offer) => {
     await project.updateConfig({ [`payments.offers.${offerId}`]: offer });
@@ -730,7 +745,15 @@ export default function PageClient() {
     toast({ title: editingOffer ? "Offer updated" : "Offer created" });
   };
 
-  // Prepare data for offer dialog
+  // Handler for saving item
+  const handleSaveItem = async (item: { id: string, displayName: string, customerType: 'user' | 'team' | 'custom' }) => {
+    await project.updateConfig({ [`payments.items.${item.id}`]: { displayName: item.displayName, customerType: item.customerType } });
+    setShowItemDialog(false);
+    setEditingItem(null);
+    toast({ title: editingItem ? "Item updated" : "Item created" });
+  };
+
+  // Prepare data for offer dialog - update when items change
   const existingOffersList = Object.entries(paymentsConfig.offers).map(([id, offer]: [string, any]) => ({
     id,
     displayName: offer.displayName,
@@ -745,151 +768,148 @@ export default function PageClient() {
   }));
 
   // If no offers and items, show welcome screen instead of everything
+  let innerContent;
   if (hasNoOffersAndNoItems) {
-    return <>
-      <WelcomeScreen onCreateOffer={handleCreateOffer} />
-      <OfferDialog
-        open={showOfferDialog}
-        onOpenChange={(open) => {
-          setShowOfferDialog(open);
-          if (!open) {
-            setEditingOffer(null);
-          }
-        }}
-        onSave={async (offerId, offer) => await handleSaveOffer(offerId, offer)}
-        editingOffer={editingOffer}
-        existingOffers={existingOffersList}
-        existingGroups={paymentsConfig.groups}
-        existingItems={existingItemsList}
-      />
-    </>;
-  }
-
-  return (
-    <PageLayout title="Payments" actions={process.env.NODE_ENV === "development" && (
-      <div className="flex items-center gap-2">
-        <Checkbox
-          checked={shouldUseDummyData}
-          onClick={() => setShouldUseDummyData(s => !s)}
-          id="use-dummy-data"
-        />
-        <label htmlFor="use-dummy-data">
-          [DEV] Use dummy data
-        </label>
-      </div>
-    )}>
-      {/* Mobile tabs */}
-      <div className="lg:hidden mb-4">
-        <div className="flex space-x-1 bg-muted p-1 rounded-md">
-          <button
-            onClick={() => setActiveTab("offers")}
-            className={cn(
+    innerContent = <WelcomeScreen onCreateOffer={handleCreateOffer} />;
+  } else {
+    innerContent = (
+      <PageLayout title="Payments" actions={process.env.NODE_ENV === "development" && (
+        <div className="flex items-center gap-2">
+          <Checkbox
+            checked={shouldUseDummyData}
+            onClick={() => setShouldUseDummyData(s => !s)}
+            id="use-dummy-data"
+          />
+          <label htmlFor="use-dummy-data">
+            [DEV] Use dummy data
+          </label>
+        </div>
+      )}>
+        {/* Mobile tabs */}
+        <div className="lg:hidden mb-4">
+          <div className="flex space-x-1 bg-muted p-1 rounded-md">
+            <button
+              onClick={() => setActiveTab("offers")}
+              className={cn(
               "flex-1 px-3 py-2 rounded-sm text-sm font-medium transition-all",
               activeTab === "offers"
                 ? "bg-background text-foreground shadow-sm"
                 : "text-muted-foreground hover:text-foreground"
             )}
-          >
-            Offers
-          </button>
-          <button
-            onClick={() => setActiveTab("items")}
-            className={cn(
+            >
+              Offers
+            </button>
+            <button
+              onClick={() => setActiveTab("items")}
+              className={cn(
               "flex-1 px-3 py-2 rounded-sm text-sm font-medium transition-all",
               activeTab === "items"
                 ? "bg-background text-foreground shadow-sm"
                 : "text-muted-foreground hover:text-foreground"
             )}
-          >
-            Items
-          </button>
+            >
+              Items
+            </button>
+          </div>
         </div>
-      </div>
 
-      {/* Content */}
-      <div className="flex gap-6 flex-1" style={{
-        flexBasis: "0px",
-        overflow: "scroll",
-      }}>
-        {/* Desktop two-column layout */}
-        <Card className="hidden lg:flex w-full relative" ref={containerRef}>
-          <CardContent className="flex w-full">
-            <div className="flex-1">
+        {/* Content */}
+        <div className="flex gap-6 flex-1" style={{
+          flexBasis: "0px",
+          overflow: "scroll",
+        }}>
+          {/* Desktop two-column layout */}
+          <Card className="hidden lg:flex w-full relative" ref={containerRef}>
+            <CardContent className="flex w-full">
+              <div className="flex-1">
+                <OffersList
+                  groupedOffers={groupedOffers}
+                  paymentsGroups={paymentsConfig.groups}
+                  hoveredItemId={hoveredItemId}
+                  getConnectedOffers={getConnectedOffers}
+                  offerRefs={offerRefs}
+                  onOfferMouseEnter={setHoveredOfferId}
+                  onOfferMouseLeave={() => setHoveredOfferId(null)}
+                  onOfferAdd={handleCreateOffer}
+                  setEditingOffer={setEditingOffer}
+                  setShowOfferDialog={setShowOfferDialog}
+                />
+              </div>
+            </CardContent>
+            <div className="border-l" />
+            <CardContent className="flex gap-6 w-full">
+              <div className="flex-1">
+                <ItemsList
+                  items={paymentsConfig.items}
+                  hoveredOfferId={hoveredOfferId}
+                  getConnectedItems={getConnectedItems}
+                  itemRefs={itemRefs}
+                  onItemMouseEnter={setHoveredItemId}
+                  onItemMouseLeave={() => setHoveredItemId(null)}
+                  onItemAdd={handleCreateItem}
+                  setEditingItem={setEditingItem}
+                  setShowItemDialog={setShowItemDialog}
+                />
+              </div>
+            </CardContent>
+
+            {/* Connection lines */}
+            {hoveredOfferId && getConnectedItems(hoveredOfferId).map(itemId => (
+              <ConnectionLine
+                key={`${hoveredOfferId}-${itemId}`}
+                fromRef={offerRefs[hoveredOfferId]}
+                toRef={itemRefs[itemId]}
+                containerRef={containerRef}
+                quantity={getItemQuantity(hoveredOfferId, itemId)}
+              />
+            ))}
+
+            {hoveredItemId && getConnectedOffers(hoveredItemId).map(offerId => (
+              <ConnectionLine
+                key={`${offerId}-${hoveredItemId}`}
+                fromRef={offerRefs[offerId]}
+                toRef={itemRefs[hoveredItemId]}
+                containerRef={containerRef}
+                quantity={getItemQuantity(offerId, hoveredItemId)}
+              />
+            ))}
+          </Card>
+
+          {/* Mobile single column with tabs */}
+          <div className="lg:hidden w-full">
+            {activeTab === "offers" ? (
               <OffersList
                 groupedOffers={groupedOffers}
                 paymentsGroups={paymentsConfig.groups}
                 hoveredItemId={hoveredItemId}
                 getConnectedOffers={getConnectedOffers}
-                offerRefs={offerRefs}
                 onOfferMouseEnter={setHoveredOfferId}
                 onOfferMouseLeave={() => setHoveredOfferId(null)}
                 onOfferAdd={handleCreateOffer}
                 setEditingOffer={setEditingOffer}
                 setShowOfferDialog={setShowOfferDialog}
               />
-            </div>
-          </CardContent>
-          <div className="border-l" />
-          <CardContent className="flex gap-6 w-full">
-            <div className="flex-1">
+            ) : (
               <ItemsList
                 items={paymentsConfig.items}
                 hoveredOfferId={hoveredOfferId}
                 getConnectedItems={getConnectedItems}
-                itemRefs={itemRefs}
                 onItemMouseEnter={setHoveredItemId}
                 onItemMouseLeave={() => setHoveredItemId(null)}
+                onItemAdd={handleCreateItem}
+                setEditingItem={setEditingItem}
+                setShowItemDialog={setShowItemDialog}
               />
-            </div>
-          </CardContent>
-
-          {/* Connection lines */}
-          {hoveredOfferId && getConnectedItems(hoveredOfferId).map(itemId => (
-            <ConnectionLine
-              key={`${hoveredOfferId}-${itemId}`}
-              fromRef={offerRefs[hoveredOfferId]}
-              toRef={itemRefs[itemId]}
-              containerRef={containerRef}
-              quantity={getItemQuantity(hoveredOfferId, itemId)}
-            />
-          ))}
-
-          {hoveredItemId && getConnectedOffers(hoveredItemId).map(offerId => (
-            <ConnectionLine
-              key={`${offerId}-${hoveredItemId}`}
-              fromRef={offerRefs[offerId]}
-              toRef={itemRefs[hoveredItemId]}
-              containerRef={containerRef}
-              quantity={getItemQuantity(offerId, hoveredItemId)}
-            />
-          ))}
-        </Card>
-
-        {/* Mobile single column with tabs */}
-        <div className="lg:hidden w-full">
-          {activeTab === "offers" ? (
-            <OffersList
-              groupedOffers={groupedOffers}
-              paymentsGroups={paymentsConfig.groups}
-              hoveredItemId={hoveredItemId}
-              getConnectedOffers={getConnectedOffers}
-              onOfferMouseEnter={setHoveredOfferId}
-              onOfferMouseLeave={() => setHoveredOfferId(null)}
-              onOfferAdd={handleCreateOffer}
-              setEditingOffer={setEditingOffer}
-              setShowOfferDialog={setShowOfferDialog}
-            />
-          ) : (
-            <ItemsList
-              items={paymentsConfig.items}
-              hoveredOfferId={hoveredOfferId}
-              getConnectedItems={getConnectedItems}
-              onItemMouseEnter={setHoveredItemId}
-              onItemMouseLeave={() => setHoveredItemId(null)}
-            />
-          )}
+            )}
+          </div>
         </div>
-      </div>
+      </PageLayout>
+    );
+  }
+
+  return (
+    <>
+      {innerContent}
 
       {/* Offer Dialog */}
       <OfferDialog
@@ -905,7 +925,22 @@ export default function PageClient() {
         existingOffers={existingOffersList}
         existingGroups={paymentsConfig.groups}
         existingItems={existingItemsList}
+        onCreateNewItem={handleCreateItem}
       />
-    </PageLayout>
+
+      {/* Item Dialog */}
+      <ItemDialog
+        open={showItemDialog}
+        onOpenChange={(open) => {
+          setShowItemDialog(open);
+          if (!open) {
+            setEditingItem(null);
+          }
+        }}
+        onSave={async (item) => await handleSaveItem(item)}
+        editingItem={editingItem}
+        existingItemIds={Object.keys(paymentsConfig.items)}
+      />
+    </>
   );
 }
