@@ -198,7 +198,7 @@ export function addInterval(date: Date, interval: Interval): Date {
   return applyInterval(date, 1, interval);
 }
 
-export const FAR_FUTURE_DATE = new Date(8640000000000000);
+export const FAR_FUTURE_DATE = new Date(8640000000000000); // 13 Sep 275760 00:00:00 UTC
 
 function getMsPerDayIntervalUnit(unit: 'day' | 'week'): number {
   if (unit === 'day') {

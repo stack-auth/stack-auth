@@ -3,15 +3,16 @@ import { SubscriptionStatus } from "@prisma/client";
 import { KnownErrors } from "@stackframe/stack-shared";
 import type { inlineOfferSchema, offerSchema } from "@stackframe/stack-shared/dist/schema-fields";
 import { SUPPORTED_CURRENCIES } from "@stackframe/stack-shared/dist/utils/currency-constants";
-import { addInterval, FAR_FUTURE_DATE, getIntervalsElapsed, subtractInterval } from "@stackframe/stack-shared/dist/utils/dates";
-import { StackAssertionError, StatusError } from "@stackframe/stack-shared/dist/utils/errors";
-import { getOrUndefined, typedEntries, typedFromEntries } from "@stackframe/stack-shared/dist/utils/objects";
+import { addInterval, FAR_FUTURE_DATE, getIntervalsElapsed } from "@stackframe/stack-shared/dist/utils/dates";
+import { StackAssertionError, StatusError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
+import { getOrUndefined, typedEntries, typedFromEntries, typedKeys } from "@stackframe/stack-shared/dist/utils/objects";
 import { typedToUppercase } from "@stackframe/stack-shared/dist/utils/strings";
 import { isUuid } from "@stackframe/stack-shared/dist/utils/uuids";
+import Stripe from "stripe";
 import * as yup from "yup";
 import { Tenancy } from "./tenancies";
 
-const DEFAULT_OFFER_START_DATE = new Date("2024-01-01T12:00:00.000Z");
+const DEFAULT_OFFER_START_DATE = new Date("1973-01-01T12:00:00.000Z"); // monday
 
 export async function ensureOfferIdOrInlineOffer(
   tenancy: Tenancy,
@@ -61,43 +62,34 @@ export async function ensureOfferIdOrInlineOffer(
   }
 }
 
-type PositiveLedgerTransaction = {
+type LedgerTransaction = {
   amount: number,
   grantTime: Date,
   expirationTime: Date,
 };
 
-type NegativeLedgerTransaction = {
-  amount: number,
-  grantTime: Date,
-};
 
-function computeLedgerBalanceAtNow(pos: PositiveLedgerTransaction[], neg: NegativeLedgerTransaction[], now: Date): number {
+function computeLedgerBalanceAtNow(transactions: LedgerTransaction[], now: Date): number {
   const grantedAt = new Map<number, number>();
   const expiredAt = new Map<number, number>();
   const usedAt = new Map<number, number>();
   const timeSet = new Set<number>();
 
-  for (const p of pos) {
-    if (p.grantTime <= now) {
-      const t = p.grantTime.getTime();
-      grantedAt.set(t, (grantedAt.get(t) ?? 0) + p.amount);
-      timeSet.add(t);
+  for (const t of transactions) {
+    const grantTime = t.grantTime.getTime();
+    if (t.grantTime <= now && t.amount < 0 && t.expirationTime > now) {
+      usedAt.set(grantTime, (-1 * t.amount) + (usedAt.get(grantTime) ?? 0));
     }
-    if (p.expirationTime <= now) {
-      const t2 = p.expirationTime.getTime();
-      expiredAt.set(t2, (expiredAt.get(t2) ?? 0) + p.amount);
-      timeSet.add(t2);
+    if (t.grantTime <= now && t.amount > 0) {
+      grantedAt.set(grantTime, (grantedAt.get(grantTime) ?? 0) + t.amount);
     }
+    if (t.expirationTime <= now && t.amount > 0) {
+      const time2 = t.expirationTime.getTime();
+      expiredAt.set(time2, (expiredAt.get(time2) ?? 0) + t.amount);
+      timeSet.add(time2);
+    }
+    timeSet.add(grantTime);
   }
-  for (const n of neg) {
-    if (n.grantTime <= now) {
-      const t = n.grantTime.getTime();
-      usedAt.set(t, (usedAt.get(t) ?? 0) + n.amount);
-      timeSet.add(t);
-    }
-  }
-
   const times = Array.from(timeSet.values()).sort((a, b) => a - b);
   if (times.length === 0) {
     return 0;
@@ -125,13 +117,13 @@ function addWhenRepeatedItemWindowTransactions(options: {
   anchor: Date,
   nowClamped: Date,
   hardEnd: Date | null,
-}): PositiveLedgerTransaction[] {
+}): LedgerTransaction[] {
   const { baseQty, repeat, anchor, nowClamped } = options;
   const endLimit = options.hardEnd ?? FAR_FUTURE_DATE;
   const finalNow = nowClamped < endLimit ? nowClamped : endLimit;
   if (finalNow < anchor) return [];
 
-  const entries: PositiveLedgerTransaction[] = [];
+  const entries: LedgerTransaction[] = [];
   const elapsed = getIntervalsElapsed(anchor, finalNow, repeat);
 
   for (let i = 0; i <= elapsed; i++) {
@@ -151,8 +143,7 @@ export async function getItemQuantityForCustomer(options: {
   customerType: "user" | "team" | "custom",
 }) {
   const now = new Date();
-  const pos: PositiveLedgerTransaction[] = [];
-  const neg: NegativeLedgerTransaction[] = [];
+  const transactions: LedgerTransaction[] = [];
 
   // Quantity changes → ledger entries
   const changes = await options.prisma.itemQuantityChange.findMany({
@@ -164,12 +155,11 @@ export async function getItemQuantityForCustomer(options: {
     orderBy: { createdAt: "asc" },
   });
   for (const c of changes) {
-    if (c.quantity > 0) {
-      pos.push({ amount: c.quantity, grantTime: c.createdAt, expirationTime: c.expiresAt ?? FAR_FUTURE_DATE });
-    } else if (c.quantity < 0 && (!c.expiresAt || c.expiresAt > now)) {
-      // If a negative change has an expiresAt in the past, it's irrelevant; if in the future or null, treat as active.
-      neg.push({ amount: -c.quantity, grantTime: c.createdAt });
-    }
+    transactions.push({
+      amount: c.quantity,
+      grantTime: c.createdAt,
+      expirationTime: c.expiresAt ?? FAR_FUTURE_DATE,
+    });
   }
 
   // Subscriptions → ledger entries
@@ -192,12 +182,12 @@ export async function getItemQuantityForCustomer(options: {
 
     if (!inc.repeat || inc.repeat === "never") {
       if (inc.expires === "when-purchase-expires") {
-        pos.push({ amount: baseQty, grantTime: pStart, expirationTime: pEnd });
+        transactions.push({ amount: baseQty, grantTime: pStart, expirationTime: pEnd });
       } else if (inc.expires === "when-repeated") {
         // repeat=never + expires=when-repeated → treat as no expiry
-        pos.push({ amount: baseQty, grantTime: pStart, expirationTime: FAR_FUTURE_DATE });
+        transactions.push({ amount: baseQty, grantTime: pStart, expirationTime: FAR_FUTURE_DATE });
       } else {
-        pos.push({ amount: baseQty, grantTime: pStart, expirationTime: FAR_FUTURE_DATE });
+        transactions.push({ amount: baseQty, grantTime: pStart, expirationTime: FAR_FUTURE_DATE });
       }
     } else {
       const repeat = inc.repeat;
@@ -205,7 +195,7 @@ export async function getItemQuantityForCustomer(options: {
         const elapsed = getIntervalsElapsed(pStart, nowClamped, repeat);
         const occurrences = elapsed + 1;
         const amount = occurrences * baseQty;
-        pos.push({ amount, grantTime: pStart, expirationTime: pEnd });
+        transactions.push({ amount, grantTime: pStart, expirationTime: pEnd });
       } else if (inc.expires === "when-repeated") {
         const entries = addWhenRepeatedItemWindowTransactions({
           baseQty,
@@ -214,20 +204,32 @@ export async function getItemQuantityForCustomer(options: {
           nowClamped,
           hardEnd: s.currentPeriodEnd,
         });
-        pos.push(...entries);
+        transactions.push(...entries);
       } else {
         const elapsed = getIntervalsElapsed(pStart, nowClamped, repeat);
         const occurrences = elapsed + 1;
         const amount = occurrences * baseQty;
-        pos.push({ amount, grantTime: pStart, expirationTime: FAR_FUTURE_DATE });
+        transactions.push({ amount, grantTime: pStart, expirationTime: FAR_FUTURE_DATE });
       }
     }
   }
 
-  return computeLedgerBalanceAtNow(pos, neg, now);
+  return computeLedgerBalanceAtNow(transactions, now);
 }
 
 type Subscription = {
+  /**
+   * `null` for default subscriptions
+   */
+  id: string | null,
+  /**
+   * `null` for inline offers
+   */
+  offerId: string | null,
+  /**
+   * `null` for test mode purchases and group default offers
+   */
+  stripeSubscriptionId: string | null,
   offer: yup.InferType<typeof offerSchema>,
   quantity: number,
   currentPeriodStart: Date,
@@ -236,7 +238,11 @@ type Subscription = {
   createdAt: Date,
 };
 
-async function getSubscriptions(options: {
+export function isActiveSubscription(subscription: Subscription): boolean {
+  return subscription.status === SubscriptionStatus.active || subscription.status === SubscriptionStatus.trialing;
+}
+
+export async function getSubscriptions(options: {
   prisma: PrismaClientTransaction,
   tenancy: Tenancy,
   customerType: "user" | "team" | "custom",
@@ -258,12 +264,15 @@ async function getSubscriptions(options: {
     const offer = s.offerId ? getOrUndefined(offers, s.offerId) : s.offer as yup.InferType<typeof offerSchema>;
     if (!offer) continue;
     subscriptions.push({
+      id: s.id,
+      offerId: s.offerId,
       offer,
       quantity: s.quantity,
       currentPeriodStart: s.currentPeriodStart,
       currentPeriodEnd: s.currentPeriodEnd,
       status: s.status,
       createdAt: s.createdAt,
+      stripeSubscriptionId: s.stripeSubscriptionId,
     });
     if (offer.groupId !== undefined) {
       groupsWithDbSubscriptions.add(offer.groupId);
@@ -276,12 +285,15 @@ async function getSubscriptions(options: {
     const defaultGroupOffer = offersInGroup.find(([_, offer]) => offer.prices === "include-by-default");
     if (defaultGroupOffer) {
       subscriptions.push({
+        id: null,
+        offerId: defaultGroupOffer[0],
         offer: defaultGroupOffer[1],
         quantity: 1,
         currentPeriodStart: DEFAULT_OFFER_START_DATE,
         currentPeriodEnd: null,
         status: SubscriptionStatus.active,
         createdAt: DEFAULT_OFFER_START_DATE,
+        stripeSubscriptionId: null,
       });
     }
   }
@@ -326,4 +338,88 @@ export async function ensureCustomerExists(options: {
       throw new KnownErrors.TeamNotFound(options.customerId);
     }
   }
+}
+
+type Offer = yup.InferType<typeof offerSchema>;
+type SelectedPrice = Exclude<Offer["prices"], "include-by-default">[string];
+type Subscriptions = Awaited<ReturnType<typeof getSubscriptions>>;
+
+export async function validatePurchaseSession(options: {
+  prisma: PrismaClientTransaction,
+  tenancy: Tenancy,
+  codeData: {
+    tenancyId: string,
+    customerId: string,
+    offerId?: string,
+    offer: Offer,
+  },
+  priceId: string,
+  quantity: number,
+}): Promise<{
+  selectedPrice: SelectedPrice | undefined,
+  groupId: string | undefined,
+  subscriptions: Subscriptions,
+  conflictingGroupSubscriptions: Subscriptions,
+}> {
+  const { prisma, tenancy, codeData, priceId, quantity } = options;
+
+  const offer = codeData.offer;
+  let selectedPrice: SelectedPrice | undefined = undefined;
+  if (offer.prices !== "include-by-default") {
+    const pricesMap = new Map(typedEntries(offer.prices));
+    selectedPrice = pricesMap.get(priceId) as SelectedPrice | undefined;
+    if (!selectedPrice) {
+      throw new StatusError(400, "Price not found on offer associated with this purchase code");
+    }
+    if (!selectedPrice.interval) {
+      throw new StackAssertionError("unimplemented; prices without an interval are currently not supported");
+    }
+  }
+  if (quantity !== 1 && offer.stackable !== true) {
+    throw new StatusError(400, "This offer is not stackable; quantity must be 1");
+  }
+
+  const subscriptions = await getSubscriptions({
+    prisma,
+    tenancy,
+    customerType: offer.customerType,
+    customerId: codeData.customerId,
+  });
+
+  if (subscriptions.find((s) => s.offerId === codeData.offerId) && offer.stackable !== true) {
+    throw new StatusError(400, "Customer already has a subscription for this offer; this offer is not stackable");
+  }
+
+  const groups = tenancy.config.payments.groups;
+  const groupId = typedKeys(groups).find((g) => offer.groupId === g);
+
+  let conflictingGroupSubscriptions: Subscriptions = [];
+  if (groupId && selectedPrice?.interval) {
+    conflictingGroupSubscriptions = subscriptions.filter((subscription) => (
+      subscription.id &&
+      subscription.offerId &&
+      subscription.offer.groupId === groupId &&
+      isActiveSubscription(subscription) &&
+      subscription.offer.prices !== "include-by-default" &&
+      (!offer.isAddOnTo || !typedKeys(offer.isAddOnTo).includes(subscription.offerId))
+    ));
+  }
+
+  return { selectedPrice, groupId, subscriptions, conflictingGroupSubscriptions };
+}
+
+export function getClientSecretFromStripeSubscription(subscription: Stripe.Subscription): string {
+  const latestInvoice = subscription.latest_invoice;
+  if (latestInvoice && typeof latestInvoice !== "string") {
+    type InvoiceWithExtras = Stripe.Invoice & {
+      confirmation_secret?: { client_secret?: string },
+      payment_intent?: string | (Stripe.PaymentIntent & { client_secret?: string }) | null,
+    };
+    const invoice = latestInvoice as InvoiceWithExtras;
+    const confirmationSecret = invoice.confirmation_secret?.client_secret;
+    const piSecret = typeof invoice.payment_intent !== "string" ? invoice.payment_intent?.client_secret : undefined;
+    if (typeof confirmationSecret === "string") return confirmationSecret;
+    if (typeof piSecret === "string") return piSecret;
+  }
+  throwErr(500, "No client secret returned from Stripe for subscription");
 }

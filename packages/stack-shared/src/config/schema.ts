@@ -121,6 +121,7 @@ export const branchPaymentsSchema = yupObject({
     userSpecifiedIdSchema("groupId"),
     yupObject({
       displayName: yupString().optional(),
+      preventClientCancels: yupBoolean().optional(),
     }),
   ).meta({ openapiField: { description: 'The groups that offers can be in. All offers in a group (besides add-ons) are mutually exclusive.', exampleValue: { "group-id": { displayName: "My Group" } } } }),
   offers: yupRecord(
@@ -444,6 +445,7 @@ const organizationConfigDefaults = {
     autoPay: undefined,
     groups: (key: string) => ({
       displayName: undefined,
+      preventClientCancels: false,
     }),
     offers: (key: string) => ({
       displayName: key,

@@ -1,9 +1,13 @@
 import { purchaseUrlVerificationCodeHandler } from "@/app/api/latest/payments/purchases/verification-code-handler";
-import { getPrismaClientForTenancy } from "@/prisma-client";
+import { isActiveSubscription, validatePurchaseSession } from "@/lib/payments";
+import { getStripeForAccount } from "@/lib/stripe";
+import { getPrismaClientForTenancy, retryTransaction } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
+import { SubscriptionCreationSource, SubscriptionStatus } from "@prisma/client";
 import { adaptSchema, adminAuthTypeSchema, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
 import { addInterval } from "@stackframe/stack-shared/dist/utils/dates";
-import { StackAssertionError, StatusError } from "@stackframe/stack-shared/dist/utils/errors";
+import { StatusError } from "@stackframe/stack-shared/dist/utils/errors";
+import { typedKeys } from "@stackframe/stack-shared/dist/utils/objects";
 import { typedToUppercase } from "@stackframe/stack-shared/dist/utils/strings";
 
 export const POST = createSmartRouteHandler({
@@ -32,37 +36,82 @@ export const POST = createSmartRouteHandler({
     if (auth.tenancy.id !== data.tenancyId) {
       throw new StatusError(400, "Tenancy id does not match value from code data");
     }
-    if (data.offer.prices === "include-by-default") {
-      throw new StatusError(400, "This offer does not have any prices");
-    }
     const prisma = await getPrismaClientForTenancy(auth.tenancy);
-    const pricesMap = new Map(Object.entries(data.offer.prices));
-    const selectedPrice = pricesMap.get(price_id);
-    if (!selectedPrice) {
-      throw new StatusError(400, "Price not found on offer associated with this purchase code");
-    }
-    if (!selectedPrice.interval) {
-      throw new StackAssertionError("unimplemented; prices without an interval are currently not supported");
-    }
-    if (quantity !== 1 && data.offer.stackable !== true) {
-      throw new StatusError(400, "This offer is not stackable; quantity must be 1");
+    const { selectedPrice, groupId, subscriptions } = await validatePurchaseSession({
+      prisma,
+      tenancy: auth.tenancy,
+      codeData: data,
+      priceId: price_id,
+      quantity,
+    });
+    if (groupId) {
+      for (const subscription of subscriptions) {
+        if (
+          subscription.id &&
+          subscription.offerId &&
+          subscription.offer.groupId === groupId &&
+          isActiveSubscription(subscription) &&
+          subscription.offer.prices !== "include-by-default" &&
+          (!data.offer.isAddOnTo || !typedKeys(data.offer.isAddOnTo).includes(subscription.offerId))
+        ) {
+          if (!selectedPrice?.interval) {
+            continue;
+          }
+          if (subscription.stripeSubscriptionId) {
+            const stripe = await getStripeForAccount({ tenancy: auth.tenancy });
+            await stripe.subscriptions.cancel(subscription.stripeSubscriptionId);
+          }
+          await retryTransaction(prisma, async (tx) => {
+            if (!subscription.stripeSubscriptionId && subscription.id) {
+              await tx.subscription.update({
+                where: {
+                  tenancyId_id: {
+                    tenancyId: auth.tenancy.id,
+                    id: subscription.id,
+                  },
+                },
+                data: {
+                  status: SubscriptionStatus.canceled,
+                },
+              });
+            }
+            await tx.subscription.create({
+              data: {
+                tenancyId: auth.tenancy.id,
+                customerId: data.customerId,
+                customerType: typedToUppercase(data.offer.customerType),
+                status: SubscriptionStatus.active,
+                offerId: data.offerId,
+                offer: data.offer,
+                quantity,
+                currentPeriodStart: new Date(),
+                currentPeriodEnd: addInterval(new Date(), selectedPrice.interval!),
+                cancelAtPeriodEnd: false,
+                creationSource: SubscriptionCreationSource.TEST_MODE,
+              },
+            });
+          });
+        }
+      }
     }
 
-    await prisma.subscription.create({
-      data: {
-        tenancyId: auth.tenancy.id,
-        customerId: data.customerId,
-        customerType: typedToUppercase(data.offer.customerType),
-        status: "active",
-        offerId: data.offerId,
-        offer: data.offer,
-        quantity,
-        currentPeriodStart: new Date(),
-        currentPeriodEnd: addInterval(new Date(), selectedPrice.interval),
-        cancelAtPeriodEnd: false,
-        creationSource: "TEST_MODE",
-      },
-    });
+    if (selectedPrice?.interval) {
+      await prisma.subscription.create({
+        data: {
+          tenancyId: auth.tenancy.id,
+          customerId: data.customerId,
+          customerType: typedToUppercase(data.offer.customerType),
+          status: "active",
+          offerId: data.offerId,
+          offer: data.offer,
+          quantity,
+          currentPeriodStart: new Date(),
+          currentPeriodEnd: addInterval(new Date(), selectedPrice.interval),
+          cancelAtPeriodEnd: false,
+          creationSource: "TEST_MODE",
+        },
+      });
+    }
     await purchaseUrlVerificationCodeHandler.revokeCode({
       tenancy: auth.tenancy,
       id: codeId,
