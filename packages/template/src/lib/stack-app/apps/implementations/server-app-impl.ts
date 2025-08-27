@@ -577,7 +577,8 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
         await app._serverUserApiKeysCache.refresh([crud.id]);
         return app._serverApiKeyFromCrud(result);
       },
-      async createCheckoutUrl(offerIdOrInline: string | InlineOffer) {
+      async createCheckoutUrl(options: { offerId: string } | { offer: InlineOffer }) {
+        const offerIdOrInline = "offerId" in options ? options.offerId : options.offer;
         return await app._interface.createCheckoutUrl("user", crud.id, offerIdOrInline, null);
       },
       async getItem(itemId: string) {
@@ -715,7 +716,8 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
         return useMemo(() => app._serverItemFromCrud({ type: "team", id: crud.id }, result), [result]);
       },
       // END_PLATFORM
-      async createCheckoutUrl(offerIdOrInline: string | InlineOffer) {
+      async createCheckoutUrl(options: { offerId: string } | { offer: InlineOffer }) {
+        const offerIdOrInline = "offerId" in options ? options.offerId : options.offer;
         return await app._interface.createCheckoutUrl("team", crud.id, offerIdOrInline, null);
       },
     };

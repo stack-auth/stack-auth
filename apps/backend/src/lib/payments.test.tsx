@@ -62,7 +62,7 @@ describe('getItemQuantityForCustomer - manual changes (no subscription)', () => 
         findMany: async () => [
           // +10 expired
           { quantity: 10, createdAt: new Date('2025-01-27T00:00:00.000Z'), expiresAt: new Date('2025-01-31T23:59:59.000Z') },
-          // +5 active
+          // +11 active
           { quantity: 11, createdAt: new Date('2025-01-29T12:00:00.000Z'), expiresAt: null },
           // -3 active
           { quantity: -3, createdAt: new Date('2025-01-30T00:00:00.000Z'), expiresAt: null },
@@ -187,6 +187,45 @@ describe('getItemQuantityForCustomer - subscriptions', () => {
           displayName: 'O', groupId: 'g1', customerType: 'user', freeTrial: undefined, serverOnly: false, stackable: false,
           prices: {},
           includedItems: { [itemId]: { quantity: 4, repeat: [1, 'week'], expires: 'when-purchase-expires' } },
+          isAddOnTo: false,
+        },
+      },
+    });
+
+    const prisma = createMockPrisma({
+      subscription: {
+        findMany: async () => [{
+          offerId: 'offW',
+          currentPeriodStart: new Date('2025-02-01T00:00:00.000Z'),
+          currentPeriodEnd: new Date('2025-03-01T00:00:00.000Z'),
+          quantity: 1,
+          status: 'active',
+        }],
+      },
+    } as any);
+
+    // From 2025-02-01 to 2025-02-15: elapsed weeks = 2 → occurrences = 3 → 3 * 4 = 12
+    const qty = await getItemQuantityForCustomer({ prisma, tenancy, itemId, customerId: 'u1', customerType: 'user' });
+    // Accumulate 3 occurrences * 4 each within current period => 12
+    expect(qty).toBe(12);
+    vi.useRealTimers();
+  });
+
+  it('repeat=weekly, expires=never → accumulate items until now', async () => {
+    const now = new Date('2025-02-15T00:00:00.000Z');
+    vi.setSystemTime(now);
+    const itemId = 'subItemWeekly';
+
+    const tenancy = createMockTenancy({
+      items: {
+        [itemId]: { displayName: 'S', customerType: 'user' },
+      },
+      groups: { g1: { displayName: 'G' } },
+      offers: {
+        offW: {
+          displayName: 'O', groupId: 'g1', customerType: 'user', freeTrial: undefined, serverOnly: false, stackable: false,
+          prices: {},
+          includedItems: { [itemId]: { quantity: 4, repeat: [1, 'week'], expires: 'never' } },
           isAddOnTo: false,
         },
       },

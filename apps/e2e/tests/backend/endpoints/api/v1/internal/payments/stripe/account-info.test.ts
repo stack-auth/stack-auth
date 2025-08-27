@@ -84,7 +84,7 @@ describe("GET /api/v1/internal/payments/stripe/account-info", () => {
   });
 
   describe("with admin access", () => {
-    it("should return 404 when no stripe account is configured", async ({ expect }) => {
+    it("should return null when no stripe account is configured", async ({ expect }) => {
       await Project.createAndSwitch({
         display_name: "Test Project Without Stripe"
       });
