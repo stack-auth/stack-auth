@@ -288,12 +288,12 @@ function mapProperty(obj: Record<string, any>, pathCond: (path: string[]) => boo
     if (pathCond(path)) {
       const newValue = mapper(value);
       if (newValue !== undefined) {
-        set(obj, key, newValue);
+        set(res, key, newValue);
       } else {
-        deleteKey(obj, key);
+        // do nothing
       }
     } else if (isObjectLike(value)) {
-      set(obj, key, mapProperty(value, p => pathCond([...path, ...p]), mapper));
+      set(res, key, mapProperty(value, p => pathCond([...path, ...p]), mapper));
     } else {
       set(res, key, value);
     }
