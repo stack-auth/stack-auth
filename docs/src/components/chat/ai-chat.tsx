@@ -52,7 +52,9 @@ const ToolCallDisplay = ({
         </span>
         {docId && (
           <a
-            href={`https://docs.stack-auth.com/${encodeURIComponent(docId.replace(/^\//, ''))}`}
+            href={`https://docs.stack-auth.com${encodeURI(
+              (String(docId).startsWith('/') ? String(docId) : `/${String(docId)}`)
+            )}`}
             target="_blank"
             rel="noopener noreferrer"
             className="flex items-center gap-1 text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-200 transition-colors"
