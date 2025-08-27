@@ -342,7 +342,6 @@ export async function ensureCustomerExists(options: {
 
 type Offer = yup.InferType<typeof offerSchema>;
 type SelectedPrice = Exclude<Offer["prices"], "include-by-default">[string];
-type Subscriptions = Awaited<ReturnType<typeof getSubscriptions>>;
 
 export async function validatePurchaseSession(options: {
   prisma: PrismaClientTransaction,
@@ -358,8 +357,8 @@ export async function validatePurchaseSession(options: {
 }): Promise<{
   selectedPrice: SelectedPrice | undefined,
   groupId: string | undefined,
-  subscriptions: Subscriptions,
-  conflictingGroupSubscriptions: Subscriptions,
+  subscriptions: Subscription[],
+  conflictingGroupSubscriptions: Subscription[],
 }> {
   const { prisma, tenancy, codeData, priceId, quantity } = options;
 
@@ -393,7 +392,7 @@ export async function validatePurchaseSession(options: {
   const groups = tenancy.config.payments.groups;
   const groupId = typedKeys(groups).find((g) => offer.groupId === g);
 
-  let conflictingGroupSubscriptions: Subscriptions = [];
+  let conflictingGroupSubscriptions: Subscription[] = [];
   if (groupId && selectedPrice?.interval) {
     conflictingGroupSubscriptions = subscriptions.filter((subscription) => (
       subscription.id &&

@@ -108,7 +108,7 @@ export const POST = createSmartRouteHandler({
           currentPeriodStart: new Date(),
           currentPeriodEnd: addInterval(new Date(), selectedPrice.interval),
           cancelAtPeriodEnd: false,
-          creationSource: "TEST_MODE",
+          creationSource: SubscriptionCreationSource.TEST_MODE,
         },
       });
     }
