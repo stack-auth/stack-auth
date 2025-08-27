@@ -1,7 +1,7 @@
 import { EmbeddedLinkInterceptor } from '@/components/embedded-link-interceptor';
 
-// Embedded layout for dashboard docs - no navbar, optimized for iframe
-export default function DashboardEmbedLayout({ children }: { children: React.ReactNode }) {
+// Embedded layout for API docs - no navbar, optimized for iframe
+export default function ApiEmbedLayout({ children }: { children: React.ReactNode }) {
   return (
     <div className="min-h-screen bg-fd-background">
       <EmbeddedLinkInterceptor />

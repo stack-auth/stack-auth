@@ -8,8 +8,8 @@ import { useEffect, useRef, useState } from 'react';
 import packageJson from '../../package.json';
 import { FeedbackForm } from './feedback-form';
 import { ChangelogWidget } from './stack-companion/changelog-widget';
-import { DashboardDocsWidget } from './stack-companion/dashboard-docs-widget';
 import { FeatureRequestBoard } from './stack-companion/feature-request-board';
+import { UnifiedDocsWidget } from './stack-companion/unified-docs-widget';
 
 type StackCompanionProps = {
   className?: string,
@@ -363,7 +363,7 @@ export function StackCompanion({ className, onExpandedChange }: StackCompanionPr
                     }
                   `}</style>
                 {activeItem === 'docs' && (
-                  <DashboardDocsWidget isActive={true} />
+                  <UnifiedDocsWidget isActive={true} />
                 )}
 
                 {activeItem === 'feedback' && (

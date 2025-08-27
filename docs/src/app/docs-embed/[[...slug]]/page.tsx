@@ -1,14 +1,14 @@
 import { getEmbeddedMDXComponents } from '@/mdx-components';
-import { dashboardSource } from 'lib/source';
+import { source } from 'lib/source';
 import { redirect } from 'next/navigation';
 
-export default async function DashboardEmbedPage({
+export default async function DocsEmbedPage({
   params,
 }: {
   params: Promise<{ slug?: string[] }>,
 }) {
   const { slug } = await params;
-  const page = dashboardSource.getPage(slug ?? []);
+  const page = source.getPage(slug ?? []);
 
   if (!page) redirect("/");
 
