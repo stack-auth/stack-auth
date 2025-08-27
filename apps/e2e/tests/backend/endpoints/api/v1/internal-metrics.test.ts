@@ -102,7 +102,6 @@ it("should not work for non-admins", async ({ expect }) => {
     }
   `);
 
-  await ensureAnonymousUsersAreStillExcluded(response);
 });
 
 it("should exclude anonymous users from metrics", async ({ expect }) => {
