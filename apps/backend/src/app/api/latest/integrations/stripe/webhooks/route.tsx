@@ -5,6 +5,8 @@ import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { yupMixed, yupNumber, yupObject, yupString, yupTuple } from "@stackframe/stack-shared/dist/schema-fields";
 import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
 import { StackAssertionError, captureError } from "@stackframe/stack-shared/dist/utils/errors";
+import { typedToUppercase } from "@stackframe/stack-shared/dist/utils/strings";
+import { typedIncludes } from '@stackframe/stack-shared/dist/utils/arrays';
 import Stripe from "stripe";
 
 const subscriptionChangedEvents = [
@@ -59,6 +61,9 @@ async function processStripeWebhookEvent(event: Stripe.Event): Promise<void> {
       if (!customerIdMeta || !customerTypeMeta) {
         throw new StackAssertionError("Missing customer metadata for one-time purchase", { event });
       }
+      if (!typedIncludes(["user", "team", "custom"] as const, customerTypeMeta)) {
+        throw new StackAssertionError("Invalid customer type for one-time purchase", { event });
+      }
       const includedItems = offer?.includedItems || {};
       for (const [itemId, inc] of Object.entries(includedItems as Record<string, { quantity: number }>)) {
         const grant = Math.max(0, Number((inc as any).quantity || 0)) * qty;
@@ -78,7 +83,7 @@ async function processStripeWebhookEvent(event: Stripe.Event): Promise<void> {
         data: {
           tenancyId: tenancy.id,
           customerId: customerIdMeta,
-          customerType: (String(customerTypeMeta).toUpperCase() as any),
+          customerType: typedToUppercase(customerTypeMeta),
           offerId: metadata.offerId || null,
           offer,
           quantity: qty,
