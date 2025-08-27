@@ -298,7 +298,7 @@ function mapProperty(obj: Record<string, any>, pathCond: (path: string[]) => boo
       set(res, key, value);
     }
   }
-  return obj;
+  return res;
 }
 import.meta.vitest?.test("mapProperty - basic property mapping", ({ expect }) => {
   expect(mapProperty({ a: { b: { c: 1 } } }, p => p.join(".") === "a.b.c", (value) => value + 1)).toEqual({ a: { b: { c: 2 } } });
