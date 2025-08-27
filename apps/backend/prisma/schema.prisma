@@ -771,3 +771,16 @@ model ItemQuantityChange {
   @@id([tenancyId, id])
   @@index([tenancyId, customerId, expiresAt])
 }
+
+model OneTimePurchase {
+  id String @default(uuid()) @db.Uuid
+  tenancyId String @db.Uuid
+  customerId String
+  customerType CustomerType
+  offerId String?
+  offer Json
+  quantity Int
+  createdAt DateTime @default(now())
+
+  @@id([tenancyId, id])
+}
