@@ -8,7 +8,7 @@ import { inlineOfferSchema } from "@stackframe/stack-shared/dist/schema-fields";
 import { throwErr } from "@stackframe/stack-shared/dist/utils/errors";
 import { typedEntries } from "@stackframe/stack-shared/dist/utils/objects";
 import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
-import { Button, Card, CardContent, Input, Skeleton, Typography } from "@stackframe/stack-ui";
+import { Alert, AlertDescription, AlertTitle, Button, Card, CardContent, Input, Skeleton, Typography } from "@stackframe/stack-ui";
 import { ArrowRight, Minus, Plus } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import * as yup from "yup";
@@ -17,6 +17,8 @@ type OfferData = {
   offer?: Omit<yup.InferType<typeof inlineOfferSchema>, "included_items" | "server_only"> & { stackable: boolean },
   stripe_account_id: string,
   project_id: string,
+  already_bought_non_stackable?: boolean,
+  conflicting_group_offers?: { offer_id: string, display_name: string }[],
 };
 
 const apiUrl = getPublicEnvVar("NEXT_PUBLIC_STACK_API_URL") ?? throwErr("NEXT_PUBLIC_STACK_API_URL is not set");
@@ -157,6 +159,25 @@ export default function PageClient({ code }: { code: string }) {
               <Typography type="h2" className="mb-2">{data?.offer?.display_name || "Plan"}</Typography>
             </div>
             <div className="space-y-3">
+              {data?.already_bought_non_stackable ? (
+                <Alert variant="destructive">
+                  <AlertTitle>Already purchased</AlertTitle>
+                  <AlertDescription>
+                    You already have this offer.
+                  </AlertDescription>
+                </Alert>
+              ) : data?.conflicting_group_offers && data.conflicting_group_offers.length > 0 ? (
+                <Alert>
+                  <AlertTitle>Plan change</AlertTitle>
+                  <AlertDescription>
+                    {data.conflicting_group_offers.length === 1 ? (
+                      <>This purchase will change your plan from {data.conflicting_group_offers[0].display_name}.</>
+                    ) : (
+                      <>This purchase will change your plan from one of your existing plans.</>
+                    )}
+                  </AlertDescription>
+                </Alert>
+              ) : null}
               {data?.offer?.prices && typedEntries(data.offer.prices).map(([priceId, priceData]) => (
                 <Card
                   key={priceId}
@@ -260,7 +281,7 @@ export default function PageClient({ code }: { code: string }) {
               fullCode={code}
               stripeAccountId={data.stripe_account_id}
               setupSubscription={setupSubscription}
-              disabled={quantityNumber < 1 || isTooLarge}
+              disabled={quantityNumber < 1 || isTooLarge || data.already_bought_non_stackable === true}
             />
           </StripeElementsProvider>
         )}

@@ -1,9 +1,11 @@
+import { getClientSecretFromStripeSubscription, validatePurchaseSession } from "@/lib/payments";
 import { getStripeForAccount } from "@/lib/stripe";
 import { getTenancy } from "@/lib/tenancies";
+import { getPrismaClientForTenancy } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
+import { SubscriptionStatus } from "@prisma/client";
 import { yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
-import { StackAssertionError, StatusError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
-import Stripe from "stripe";
+import { StackAssertionError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
 import { purchaseUrlVerificationCodeHandler } from "../verification-code-handler";
 
 export const POST = createSmartRouteHandler({
@@ -32,15 +34,71 @@ export const POST = createSmartRouteHandler({
       throw new StackAssertionError("No tenancy found from purchase code data tenancy id. This should never happen.");
     }
     const stripe = await getStripeForAccount({ accountId: data.stripeAccountId });
-    const pricesMap = new Map(Object.entries(data.offer.prices));
-    const selectedPrice = pricesMap.get(price_id);
+    const prisma = await getPrismaClientForTenancy(tenancy);
+    const { selectedPrice, conflictingGroupSubscriptions } = await validatePurchaseSession({
+      prisma,
+      tenancy,
+      codeData: data,
+      priceId: price_id,
+      quantity,
+    });
     if (!selectedPrice) {
-      throw new StatusError(400, "Price not found on offer associated with this purchase code");
+      throw new StackAssertionError("Price not resolved for purchase session");
     }
-    if (quantity !== 1 && data.offer.stackable !== true) {
-      throw new StatusError(400, "This offer is not stackable; quantity must be 1");
+
+    if (conflictingGroupSubscriptions.length > 0) {
+      const conflicting = conflictingGroupSubscriptions[0];
+      if (conflicting.stripeSubscriptionId) {
+        const existingStripeSub = await stripe.subscriptions.retrieve(conflicting.stripeSubscriptionId);
+        const existingItem = existingStripeSub.items.data[0];
+        const product = await stripe.products.create({ name: data.offer.displayName ?? "Subscription" });
+        if (selectedPrice.interval) {
+          const updated = await stripe.subscriptions.update(conflicting.stripeSubscriptionId, {
+            payment_behavior: 'default_incomplete',
+            payment_settings: { save_default_payment_method: 'on_subscription' },
+            expand: ['latest_invoice.confirmation_secret'],
+            items: [{
+              id: existingItem.id,
+              price_data: {
+                currency: "usd",
+                unit_amount: Number(selectedPrice.USD) * 100,
+                product: product.id,
+                recurring: {
+                  interval_count: selectedPrice.interval![0],
+                  interval: selectedPrice.interval![1],
+                },
+              },
+              quantity,
+            }],
+            metadata: {
+              offerId: data.offerId ?? null,
+              offer: JSON.stringify(data.offer),
+            },
+          });
+          const clientSecretUpdated = getClientSecretFromStripeSubscription(updated);
+          await purchaseUrlVerificationCodeHandler.revokeCode({ tenancy, id: codeId });
+          if (typeof clientSecretUpdated !== "string") {
+            throwErr(500, "No client secret returned from Stripe for subscription");
+          }
+          return { statusCode: 200, bodyType: "json", body: { client_secret: clientSecretUpdated } };
+        } else {
+          await stripe.subscriptions.cancel(conflicting.stripeSubscriptionId);
+        }
+      } else if (conflicting.id) {
+        await prisma.subscription.update({
+          where: {
+            tenancyId_id: {
+              tenancyId: tenancy.id,
+              id: conflicting.id,
+            },
+          },
+          data: {
+            status: SubscriptionStatus.canceled,
+          },
+        });
+      }
     }
-    // One-time payment path (no interval): create PaymentIntent and return client_secret
+    // One-time payment path after conflicts handled
     if (!selectedPrice.interval) {
       const amountCents = Number(selectedPrice.USD) * 100 * Math.max(1, quantity);
       const paymentIntent = await stripe.paymentIntents.create({
@@ -58,27 +116,18 @@ export const POST = createSmartRouteHandler({
           tenancyId: data.tenancyId,
         },
       });
-      await purchaseUrlVerificationCodeHandler.revokeCode({
-        tenancy,
-        id: codeId,
-      });
-
       const clientSecret = paymentIntent.client_secret;
       if (typeof clientSecret !== "string") {
         throwErr(500, "No client secret returned from Stripe for payment intent");
       }
-      return {
-        statusCode: 200,
-        bodyType: "json",
-        body: { client_secret: clientSecret },
-      };
+      await purchaseUrlVerificationCodeHandler.revokeCode({ tenancy, id: codeId });
+      return { statusCode: 200, bodyType: "json", body: { client_secret: clientSecret } };
     }
 
-    // Subscription path (recurring interval present)
     const product = await stripe.products.create({
       name: data.offer.displayName ?? "Subscription",
     });
-    const subscription = await stripe.subscriptions.create({
+    const created = await stripe.subscriptions.create({
       customer: data.stripeCustomerId,
       payment_behavior: 'default_incomplete',
       payment_settings: { save_default_payment_method: 'on_subscription' },
@@ -89,8 +138,8 @@ export const POST = createSmartRouteHandler({
           unit_amount: Number(selectedPrice.USD) * 100,
           product: product.id,
           recurring: {
-            interval_count: selectedPrice.interval[0],
-            interval: selectedPrice.interval[1],
+            interval_count: selectedPrice.interval![0],
+            interval: selectedPrice.interval![1],
           },
         },
         quantity,
@@ -100,16 +149,15 @@ export const POST = createSmartRouteHandler({
         offer: JSON.stringify(data.offer),
       },
     });
+    const clientSecret = getClientSecretFromStripeSubscription(created);
+    if (typeof clientSecret !== "string") {
+      throwErr(500, "No client secret returned from Stripe for subscription");
+    }
+
     await purchaseUrlVerificationCodeHandler.revokeCode({
       tenancy,
       id: codeId,
     });
-
-    const clientSecret = (subscription.latest_invoice as Stripe.Invoice).confirmation_secret?.client_secret;
-    // stripe-mock returns an empty string here
-    if (typeof clientSecret !== "string") {
-      throwErr(500, "No client secret returned from Stripe for subscription");
-    }
     return {
       statusCode: 200,
       bodyType: "json",

@@ -419,3 +419,209 @@ it("allows stackable quantity in test mode and multiplies included items", async
   expect(getAfter.status).toBe(200);
   expect(getAfter.body.quantity).toBe(6);
 });
+
+it("should update existing stripe subscription when switching offers within a group (non test-mode)", async ({ expect }) => {
+  await Project.createAndSwitch();
+  await Payments.setup();
+  await Project.updateConfig({
+    payments: {
+      groups: {
+        grp: { displayName: "Test Group" },
+      },
+      offers: {
+        offerA: {
+          displayName: "Offer A",
+          customerType: "user",
+          serverOnly: false,
+          groupId: "grp",
+          stackable: false,
+          prices: {
+            monthly: {
+              USD: "1000",
+              interval: [1, "month"],
+            },
+          },
+          includedItems: {},
+        },
+        offerB: {
+          displayName: "Offer B",
+          customerType: "user",
+          serverOnly: false,
+          groupId: "grp",
+          stackable: false,
+          prices: {
+            monthly: {
+              USD: "2000",
+              interval: [1, "month"],
+            },
+          },
+          includedItems: {},
+        },
+      },
+    },
+  });
+
+  const { userId } = await User.create();
+
+  // First purchase: Offer A
+  const createUrlA = await niceBackendFetch("/api/latest/payments/purchases/create-purchase-url", {
+    method: "POST",
+    accessType: "client",
+    body: {
+      customer_type: "user",
+      customer_id: userId,
+      offer_id: "offerA",
+    },
+  });
+  expect(createUrlA.status).toBe(200);
+  const codeA = (createUrlA.body as { url: string }).url.match(/\/purchase\/([a-z0-9-_]+)/)?.[1];
+  expect(codeA).toBeDefined();
+
+  const purchaseA = await niceBackendFetch("/api/latest/payments/purchases/purchase-session", {
+    method: "POST",
+    accessType: "client",
+    body: {
+      full_code: codeA,
+      price_id: "monthly",
+      quantity: 1,
+    },
+  });
+  expect(purchaseA).toMatchInlineSnapshot(`
+    NiceResponse {
+      "status": 200,
+      "body": { "client_secret": "" },
+      "headers": Headers { <some fields may have been hidden> },
+    }
+  `);
+
+  // Second purchase: Offer B in same group (should update existing Stripe subscription)
+  const createUrlB = await niceBackendFetch("/api/latest/payments/purchases/create-purchase-url", {
+    method: "POST",
+    accessType: "client",
+    body: {
+      customer_type: "user",
+      customer_id: userId,
+      offer_id: "offerB",
+    },
+  });
+  expect(createUrlB.status).toBe(200);
+  const codeB = (createUrlB.body as { url: string }).url.match(/\/purchase\/([a-z0-9-_]+)/)?.[1];
+  expect(codeB).toBeDefined();
+
+  const purchaseB = await niceBackendFetch("/api/latest/payments/purchases/purchase-session", {
+    method: "POST",
+    accessType: "client",
+    body: {
+      full_code: codeB,
+      price_id: "monthly",
+      quantity: 1,
+    },
+  });
+  expect(purchaseB).toMatchInlineSnapshot(`
+    NiceResponse {
+      "status": 200,
+      "body": { "client_secret": "" },
+      "headers": Headers { <some fields may have been hidden> },
+    }
+  `);
+});
+
+it("should cancel DB-only subscription then create Stripe subscription when switching from test-mode (same group)", async ({ expect }) => {
+  await Project.createAndSwitch();
+  await Payments.setup();
+  await Project.updateConfig({
+    payments: {
+      groups: {
+        grp: { displayName: "Test Group" },
+      },
+      offers: {
+        offerA: {
+          displayName: "Offer A",
+          customerType: "user",
+          serverOnly: false,
+          groupId: "grp",
+          stackable: false,
+          prices: {
+            monthly: {
+              USD: "1000",
+              interval: [1, "month"],
+            },
+          },
+          includedItems: {},
+        },
+        offerB: {
+          displayName: "Offer B",
+          customerType: "user",
+          serverOnly: false,
+          groupId: "grp",
+          stackable: false,
+          prices: {
+            monthly: {
+              USD: "2000",
+              interval: [1, "month"],
+            },
+          },
+          includedItems: {},
+        },
+      },
+    },
+  });
+
+  const { userId } = await User.create();
+
+  // Create test-mode DB-only subscription for offerA
+  const resUrlA = await niceBackendFetch("/api/latest/payments/purchases/create-purchase-url", {
+    method: "POST",
+    accessType: "client",
+    body: {
+      customer_type: "user",
+      customer_id: userId,
+      offer_id: "offerA",
+    },
+  });
+  expect(resUrlA.status).toBe(200);
+  const codeA = (resUrlA.body as { url: string }).url.match(/\/purchase\/([a-z0-9-_]+)/)?.[1];
+  expect(codeA).toBeDefined();
+
+  const testModeRes = await niceBackendFetch("/api/latest/internal/payments/test-mode-purchase-session", {
+    method: "POST",
+    accessType: "admin",
+    body: {
+      full_code: codeA,
+      price_id: "monthly",
+      quantity: 1,
+    },
+  });
+  expect(testModeRes.status).toBe(200);
+
+  // Now purchase offerB in non test-mode; should cancel DB-only sub and create Stripe subscription
+  const resUrlB = await niceBackendFetch("/api/latest/payments/purchases/create-purchase-url", {
+    method: "POST",
+    accessType: "client",
+    body: {
+      customer_type: "user",
+      customer_id: userId,
+      offer_id: "offerB",
+    },
+  });
+  expect(resUrlB.status).toBe(200);
+  const codeB = (resUrlB.body as { url: string }).url.match(/\/purchase\/([a-z0-9-_]+)/)?.[1];
+  expect(codeB).toBeDefined();
+
+  const purchaseB = await niceBackendFetch("/api/latest/payments/purchases/purchase-session", {
+    method: "POST",
+    accessType: "client",
+    body: {
+      full_code: codeB,
+      price_id: "monthly",
+      quantity: 1,
+    },
+  });
+  expect(purchaseB).toMatchInlineSnapshot(`
+    NiceResponse {
+      "status": 200,
+      "body": { "client_secret": "" },
+      "headers": Headers { <some fields may have been hidden> },
+    }
+  `);
+});

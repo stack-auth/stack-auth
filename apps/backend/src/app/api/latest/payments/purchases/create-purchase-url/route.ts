@@ -41,9 +41,6 @@ export const POST = createSmartRouteHandler({
     if (req.body.customer_type !== customerType) {
       throw new KnownErrors.OfferCustomerTypeDoesNotMatch(req.body.offer_id, req.body.customer_id, customerType, req.body.customer_type);
     }
-    if (offerConfig.serverOnly && req.auth.type === "client") {
-      throw new KnownErrors.OfferDoesNotExist(req.body.offer_id ?? "inline", "client");
-    }
 
     const stripeCustomerSearch = await stripe.customers.search({
       query: `metadata['customerId']:'${req.body.customer_id}'`,
