@@ -5,14 +5,17 @@ import { CompleteConfig } from "@stackframe/stack-shared/dist/config/schema";
 import { useHover } from "@stackframe/stack-shared/dist/hooks/use-hover";
 import { DayInterval } from "@stackframe/stack-shared/dist/utils/dates";
 import { prettyPrintWithMagnitudes } from "@stackframe/stack-shared/dist/utils/numbers";
+import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
 import { stringCompare } from "@stackframe/stack-shared/dist/utils/strings";
-import { Button, Card, CardContent, Checkbox, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger, Input, SimpleTooltip } from "@stackframe/stack-ui";
-import { MoreVertical, Plus, Search } from "lucide-react";
+import { Button, Card, CardContent, Checkbox, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger, toast } from "@stackframe/stack-ui";
+import { MoreVertical, Plus } from "lucide-react";
 import React, { ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { IllustratedInfo } from "../../../../../../components/illustrated-info";
 import { PageLayout } from "../page-layout";
 import { useAdminApp } from "../use-admin-app";
 import { DUMMY_PAYMENTS_CONFIG } from "./dummy-data";
+import { ListSection } from "./list-section";
+import { OfferDialog } from "./offer-dialog";
 
 type Offer = CompleteConfig['payments']['offers'][keyof CompleteConfig['payments']['offers']];
 type Item = CompleteConfig['payments']['items'][keyof CompleteConfig['payments']['items']];
@@ -59,87 +62,6 @@ function ActionMenu({ items }: { items: ActionMenuItem[] }) {
   );
 }
 
-type ListSectionProps = {
-  title: React.ReactNode,
-  titleTooltip?: string,
-  onAddClick?: () => void,
-  children: ReactNode,
-  hasTitleBorder?: boolean,
-  searchValue?: string,
-  onSearchChange?: (value: string) => void,
-  searchPlaceholder?: string,
-};
-
-function ListSection({
-  title,
-  titleTooltip,
-  onAddClick,
-  children,
-  hasTitleBorder = true,
-  searchValue,
-  onSearchChange,
-  searchPlaceholder = "Search..."
-}: ListSectionProps) {
-  const [isSearchFocused, setIsSearchFocused] = useState(false);
-
-  return (
-    <div className="flex flex-col h-full">
-      <div className={cn("sticky top-0 z-10")}>
-        <div className="flex items-center justify-between pl-3 pr-1 py-1">
-          <div className="flex items-center">
-            <h2 className="font-medium">{title}</h2>
-            {titleTooltip && (
-              <SimpleTooltip
-                tooltip={titleTooltip}
-                type="info"
-                inline
-                className="ml-2 mb-[2px] translate-y-[-1px]"
-                disabled={!titleTooltip}
-              />
-            )}
-          </div>
-          {onSearchChange && (
-            <div>
-              <div className={cn(
-              "relative transition-all",
-              isSearchFocused ? "max-w-[200px]" : "max-w-[140px]"
-            )}>
-                <Search className={cn(
-                "absolute left-2.5 text-muted-foreground transition-all duration-200",
-                isSearchFocused ? "top-[6px] h-4 w-4" : "top-[6px] h-3 w-3.5"
-              )} />
-                <Input
-                  type="text"
-                  placeholder={searchPlaceholder}
-                  value={searchValue || ''}
-                  onChange={(e) => onSearchChange(e.target.value)}
-                  onFocus={() => setIsSearchFocused(true)}
-                  onBlur={() => setIsSearchFocused(false)}
-                  className={cn(
-                  "pl-8 bg-secondary/30 border-transparent focus:bg-secondary/50 transition-all duration-200",
-                  isSearchFocused ? "h-7 text-sm" : "h-6 text-xs"
-                )}
-                />
-              </div>
-            </div>
-          )}
-          <Button
-            variant="ghost"
-            size="sm"
-            className="h-8 w-8 p-0"
-            onClick={onAddClick}
-          >
-            <Plus className="h-4 w-4" />
-          </Button>
-        </div>
-        {hasTitleBorder && <div className="border-b" />}
-      </div>
-      <div className="flex-1 overflow-auto">
-        {children}
-      </div>
-    </div>
-  );
-}
 
 type ListItemProps = {
   id: string,
@@ -388,6 +310,9 @@ type OffersListProps = {
   offerRefs?: Record<string, React.RefObject<HTMLDivElement>>,
   onOfferMouseEnter: (offerId: string) => void,
   onOfferMouseLeave: () => void,
+  onOfferAdd?: () => void,
+  setEditingOffer: (offer: any) => void,
+  setShowOfferDialog: (show: boolean) => void,
 };
 
 function OffersList({
@@ -398,7 +323,12 @@ function OffersList({
   offerRefs,
   onOfferMouseEnter,
   onOfferMouseLeave,
+  onOfferAdd,
+  setEditingOffer,
+  setShowOfferDialog,
 }: OffersListProps) {
+  const stackAdminApp = useAdminApp();
+  const project = stackAdminApp.useProject();
   const [searchQuery, setSearchQuery] = useState("");
   let globalIndex = 0;
 
@@ -432,7 +362,7 @@ function OffersList({
         Offers
       </>}
       titleTooltip="Offers are the products, plans, or pricing tiers you sell to your customers. They are the columns in a pricing table."
-      onAddClick={() => {}}
+      onAddClick={() => onOfferAdd?.()}
       hasTitleBorder={false}
       searchValue={searchQuery}
       onSearchChange={setSearchQuery}
@@ -467,20 +397,18 @@ function OffersList({
                       {
                         item: "Edit",
                         onClick: () => {
-                          console.log("Edit offer", id);
-                        },
-                      },
-                      {
-                        item: "Duplicate",
-                        onClick: () => {
-                          console.log("Duplicate offer", id);
+                          setEditingOffer(offer);
+                          setShowOfferDialog(true);
                         },
                       },
                       '-',
                       {
                         item: "Delete",
-                        onClick: () => {
-                          console.log("Delete offer", id);
+                        onClick: async () => {
+                          if (confirm(`Are you sure you want to delete the offer "${offer.displayName}"?`)) {
+                            await project.updateConfig({ [`payments.offers.${id}`]: null });
+                            toast({ title: "Offer deleted" });
+                          }
                         },
                         danger: true,
                       },
@@ -514,6 +442,8 @@ function ItemsList({
   onItemMouseEnter,
   onItemMouseLeave,
 }: ItemsListProps) {
+  const stackAdminApp = useAdminApp();
+  const project = stackAdminApp.useProject();
   const [searchQuery, setSearchQuery] = useState("");
 
   // Sort items by customer type, then by ID
@@ -573,20 +503,20 @@ function ItemsList({
                 {
                   item: "Edit",
                   onClick: () => {
+                    // TODO: Open item edit dialog
                     console.log("Edit item", id);
-                  },
-                },
-                {
-                  item: "Duplicate",
-                  onClick: () => {
-                    console.log("Duplicate item", id);
                   },
                 },
                 '-',
                 {
                   item: "Delete",
-                  onClick: () => {
-                    console.log("Delete item", id);
+                  onClick: async () => {
+                    runAsynchronouslyWithAlert(async () => {
+                      if (confirm(`Are you sure you want to delete the item "${item.displayName}"?`)) {
+                        await project.updateConfig({ [`payments.items.${id}`]: null });
+                        toast({ title: "Item deleted" });
+                      }
+                    });
                   },
                   danger: true,
                 },
@@ -655,6 +585,8 @@ export default function PageClient() {
   const [activeTab, setActiveTab] = useState<"offers" | "items">("offers");
   const [hoveredOfferId, setHoveredOfferId] = useState<string | null>(null);
   const [hoveredItemId, setHoveredItemId] = useState<string | null>(null);
+  const [showOfferDialog, setShowOfferDialog] = useState(false);
+  const [editingOffer, setEditingOffer] = useState<any>(null);
   const stackAdminApp = useAdminApp();
   const project = stackAdminApp.useProject();
   const config = project.useConfig();
@@ -788,13 +720,49 @@ export default function PageClient() {
 
   // Handler for create offer button
   const handleCreateOffer = () => {
-    // TODO: Implement offer creation
-    console.log("Create offer clicked");
+    setShowOfferDialog(true);
   };
+
+  // Handler for saving offer
+  const handleSaveOffer = async (offerId: string, offer: Offer) => {
+    await project.updateConfig({ [`payments.offers.${offerId}`]: offer });
+    setShowOfferDialog(false);
+    toast({ title: editingOffer ? "Offer updated" : "Offer created" });
+  };
+
+  // Prepare data for offer dialog
+  const existingOffersList = Object.entries(paymentsConfig.offers).map(([id, offer]: [string, any]) => ({
+    id,
+    displayName: offer.displayName,
+    groupId: offer.groupId,
+    customerType: offer.customerType
+  }));
+
+  const existingItemsList = Object.entries(paymentsConfig.items).map(([id, item]: [string, any]) => ({
+    id,
+    displayName: item.displayName,
+    customerType: item.customerType
+  }));
 
   // If no offers and items, show welcome screen instead of everything
   if (hasNoOffersAndNoItems) {
-    return <WelcomeScreen onCreateOffer={handleCreateOffer} />;
+    return <>
+      <WelcomeScreen onCreateOffer={handleCreateOffer} />
+      <OfferDialog
+        open={showOfferDialog}
+        onOpenChange={(open) => {
+          setShowOfferDialog(open);
+          if (!open) {
+            setEditingOffer(null);
+          }
+        }}
+        onSave={async (offerId, offer) => await handleSaveOffer(offerId, offer)}
+        editingOffer={editingOffer}
+        existingOffers={existingOffersList}
+        existingGroups={paymentsConfig.groups}
+        existingItems={existingItemsList}
+      />
+    </>;
   }
 
   return (
@@ -855,6 +823,9 @@ export default function PageClient() {
                 offerRefs={offerRefs}
                 onOfferMouseEnter={setHoveredOfferId}
                 onOfferMouseLeave={() => setHoveredOfferId(null)}
+                onOfferAdd={handleCreateOffer}
+                setEditingOffer={setEditingOffer}
+                setShowOfferDialog={setShowOfferDialog}
               />
             </div>
           </CardContent>
@@ -904,6 +875,9 @@ export default function PageClient() {
               getConnectedOffers={getConnectedOffers}
               onOfferMouseEnter={setHoveredOfferId}
               onOfferMouseLeave={() => setHoveredOfferId(null)}
+              onOfferAdd={handleCreateOffer}
+              setEditingOffer={setEditingOffer}
+              setShowOfferDialog={setShowOfferDialog}
             />
           ) : (
             <ItemsList
@@ -916,6 +890,22 @@ export default function PageClient() {
           )}
         </div>
       </div>
+
+      {/* Offer Dialog */}
+      <OfferDialog
+        open={showOfferDialog}
+        onOpenChange={(open) => {
+          setShowOfferDialog(open);
+          if (!open) {
+            setEditingOffer(null);
+          }
+        }}
+        onSave={async (offerId, offer) => await handleSaveOffer(offerId, offer)}
+        editingOffer={editingOffer}
+        existingOffers={existingOffersList}
+        existingGroups={paymentsConfig.groups}
+        existingItems={existingItemsList}
+      />
     </PageLayout>
   );
 }
