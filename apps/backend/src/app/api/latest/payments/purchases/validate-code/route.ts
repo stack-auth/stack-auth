@@ -77,6 +77,7 @@ export const POST = createSmartRouteHandler({
           subscription.offerId &&
           subscription.offer.groupId === groupId &&
           isActiveSubscription(subscription) &&
+          subscription.offer.prices !== "include-by-default" &&
           (!offer.isAddOnTo || !Object.keys(offer.isAddOnTo).includes(subscription.offerId))
         ));
         conflictingGroupOffers = conflicts.map((s) => ({
