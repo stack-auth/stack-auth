@@ -541,7 +541,7 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
     await this._interface.testModePurchase({ price_id: options.priceId, full_code: options.fullCode, quantity: options.quantity });
   }
 
-  async getStripeAccountInfo(): Promise<{ account_id: string, charges_enabled: boolean, details_submitted: boolean, payouts_enabled: boolean }> {
+  async getStripeAccountInfo(): Promise<null | { account_id: string, charges_enabled: boolean, details_submitted: boolean, payouts_enabled: boolean }> {
     return await this._interface.getStripeAccountInfo();
   }
 

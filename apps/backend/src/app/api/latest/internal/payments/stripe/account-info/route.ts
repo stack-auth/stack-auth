@@ -1,8 +1,8 @@
 import { getStackStripe } from "@/lib/stripe";
 import { globalPrismaClient } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
+import { KnownErrors } from "@stackframe/stack-shared";
 import { adaptSchema, adminAuthTypeSchema, yupBoolean, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
-import { StatusError } from "@stackframe/stack-shared/dist/utils/errors";
 
 export const GET = createSmartRouteHandler({
   metadata: {
@@ -32,11 +32,7 @@ export const GET = createSmartRouteHandler({
     });
 
     if (!project?.stripeAccountId) {
-      return {
-        statusCode: 200,
-        bodyType: "json",
-        body: null,
-      };
+      throw new KnownErrors.StripeAccountInfoNotFound();
     }
 
     const stripe = getStackStripe();
