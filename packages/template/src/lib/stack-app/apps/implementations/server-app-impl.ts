@@ -23,7 +23,6 @@ import { ApiKey, ApiKeyCreationOptions, ApiKeyUpdateOptions, apiKeyCreationOptio
 import { GetUserOptions, HandlerUrls, OAuthScopesOnSignIn, TokenStoreInit } from "../../common";
 import { OAuthConnection } from "../../connected-accounts";
 import { ServerContactChannel, ServerContactChannelCreateOptions, ServerContactChannelUpdateOptions, serverContactChannelCreateOptionsToCrud, serverContactChannelUpdateOptionsToCrud } from "../../contact-channels";
-import { InlineOffer, ServerItem } from "../../customers";
 import { SendEmailOptions } from "../../email";
 import { NotificationCategory } from "../../notification-categories";
 import { AdminProjectPermissionDefinition, AdminTeamPermission, AdminTeamPermissionDefinition } from "../../permissions";
@@ -32,6 +31,7 @@ import { ProjectCurrentServerUser, ServerUser, ServerUserCreateOptions, ServerUs
 import { StackServerAppConstructorOptions } from "../interfaces/server-app";
 import { _StackClientAppImplIncomplete } from "./client-app-impl";
 import { clientVersion, createCache, createCacheBySession, getBaseUrl, getDefaultProjectId, getDefaultPublishableClientKey, getDefaultSecretServerKey } from "./common";
+import { InlineOffer, ServerItem } from "../../customers";
 
 // IF_PLATFORM react-like
 import { useAsyncCache } from "./common";
@@ -577,7 +577,8 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
         await app._serverUserApiKeysCache.refresh([crud.id]);
         return app._serverApiKeyFromCrud(result);
       },
-      async createCheckoutUrl(offerIdOrInline: string | InlineOffer) {
+      async createCheckoutUrl(options: { offerId: string } | { offer: InlineOffer }) {
+        const offerIdOrInline = "offerId" in options ? options.offerId : options.offer;
         return await app._interface.createCheckoutUrl("user", crud.id, offerIdOrInline, null);
       },
       async getItem(itemId: string) {
@@ -715,7 +716,8 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
         return useMemo(() => app._serverItemFromCrud({ type: "team", id: crud.id }, result), [result]);
       },
       // END_PLATFORM
-      async createCheckoutUrl(offerIdOrInline: string | InlineOffer) {
+      async createCheckoutUrl(options: { offerId: string } | { offer: InlineOffer }) {
+        const offerIdOrInline = "offerId" in options ? options.offerId : options.offer;
         return await app._interface.createCheckoutUrl("team", crud.id, offerIdOrInline, null);
       },
     };

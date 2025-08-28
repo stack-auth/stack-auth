@@ -1,14 +1,10 @@
 import { it } from "../../../../../helpers";
-import { Auth, Project, User, niceBackendFetch } from "../../../../backend-helpers";
+import { Auth, Project, User, niceBackendFetch, Payments } from "../../../../backend-helpers";
 import { generateUuid } from "@stackframe/stack-shared/dist/utils/uuids";
 
 it("should not be able to create purchase URL without offer_id or offer_inline", async ({ expect }) => {
   await Project.createAndSwitch();
-  await Project.updateConfig({
-    payments: {
-      stripeAccountId: "acct_test123",
-    },
-  });
+  await Payments.setup();
   const response = await niceBackendFetch("/api/latest/payments/purchases/create-purchase-url", {
     method: "POST",
     accessType: "client",
@@ -28,9 +24,9 @@ it("should not be able to create purchase URL without offer_id or offer_inline",
 
 it("should error for non-existent offer_id", async ({ expect }) => {
   await Project.createAndSwitch({ config: { magic_link_enabled: true } });
+  await Payments.setup();
   await Project.updateConfig({
     payments: {
-      stripeAccountId: "acct_test123",
       offers: {
         "test-offer": {
           displayName: "Test Offer",
@@ -79,9 +75,9 @@ it("should error for non-existent offer_id", async ({ expect }) => {
 
 it("should error for invalid customer_id", async ({ expect }) => {
   await Project.createAndSwitch({ config: { magic_link_enabled: true } });
+  await Payments.setup();
   await Project.updateConfig({
     payments: {
-      stripeAccountId: "acct_test123",
       offers: {
         "test-offer": {
           displayName: "Test Offer",
@@ -175,11 +171,7 @@ it("should error for no connected stripe account", async ({ expect }) => {
 
 it("should not allow offer_inline when calling from client", async ({ expect }) => {
   await Project.createAndSwitch({ config: { magic_link_enabled: true } });
-  await Project.updateConfig({
-    payments: {
-      stripeAccountId: "acct_test123",
-    },
-  });
+  await Payments.setup();
 
   const { userId } = await Auth.Otp.signIn();
   const response = await niceBackendFetch("/api/latest/payments/purchases/create-purchase-url", {
@@ -205,13 +197,61 @@ it("should not allow offer_inline when calling from client", async ({ expect }) 
   expect(response.body).toMatchInlineSnapshot(`"Cannot specify offer_inline when calling from client! Please call with a server API key, or use the offer_id parameter."`);
 });
 
-it("should allow offer_inline when calling from server", async ({ expect }) => {
+it("should error for server-only offer when calling from client", async ({ expect }) => {
   await Project.createAndSwitch({ config: { magic_link_enabled: true } });
+  await Payments.setup();
   await Project.updateConfig({
     payments: {
-      stripeAccountId: "acct_test123",
+      offers: {
+        "test-offer": {
+          displayName: "Test Offer",
+          customerType: "user",
+          serverOnly: true,
+          stackable: false,
+          prices: {
+            "monthly": {
+              USD: "1000",
+              interval: [1, "month"],
+            },
+          },
+          includedItems: {},
+        },
+      },
     },
   });
+
+  const { userId } = await User.create();
+  const response = await niceBackendFetch("/api/latest/payments/purchases/create-purchase-url", {
+    method: "POST",
+    accessType: "client",
+    body: {
+      customer_type: "user",
+      customer_id: userId,
+      offer_id: "test-offer",
+    },
+  });
+  expect(response).toMatchInlineSnapshot(`
+    NiceResponse {
+      "status": 400,
+      "body": {
+        "code": "OFFER_DOES_NOT_EXIST",
+        "details": {
+          "access_type": "client",
+          "offer_id": "test-offer",
+        },
+        "error": "Offer with ID \\"test-offer\\" does not exist or you don't have permissions to access it.",
+      },
+      "headers": Headers {
+        "x-stack-known-error": "OFFER_DOES_NOT_EXIST",
+        <some fields may have been hidden>,
+      },
+    }
+  `);
+});
+
+it("should allow offer_inline when calling from server", async ({ expect }) => {
+  await Project.createAndSwitch({ config: { magic_link_enabled: true } });
+  await Payments.setup();
 
   const { userId } = await Auth.Otp.signIn();
   const response = await niceBackendFetch("/api/latest/payments/purchases/create-purchase-url", {
@@ -240,9 +280,9 @@ it("should allow offer_inline when calling from server", async ({ expect }) => {
 
 it("should allow valid offer_id", async ({ expect }) => {
   await Project.createAndSwitch({ config: { magic_link_enabled: true } });
+  await Payments.setup();
   await Project.updateConfig({
     payments: {
-      stripeAccountId: "acct_test123",
       offers: {
         "test-offer": {
           displayName: "Test Offer",

@@ -1511,6 +1511,16 @@ const ItemQuantityInsufficientAmount = createKnownErrorConstructor(
   (json) => [json.item_id, json.customer_id, json.quantity] as const,
 );
 
+const StripeAccountInfoNotFound = createKnownErrorConstructor(
+  KnownError,
+  "STRIPE_ACCOUNT_INFO_NOT_FOUND",
+  () => [
+    404,
+    "Stripe account information not found. Please make sure the user has onboarded with Stripe.",
+  ] as const,
+  () => [] as const,
+);
+
 
 export type KnownErrors = {
   [K in keyof typeof KnownErrors]: InstanceType<typeof KnownErrors[K]>;
@@ -1633,6 +1643,7 @@ export const KnownErrors = {
   OfferDoesNotExist,
   OfferCustomerTypeDoesNotMatch,
   ItemQuantityInsufficientAmount,
+  StripeAccountInfoNotFound,
 } satisfies Record<string, KnownErrorConstructor<any, any>>;
 
 

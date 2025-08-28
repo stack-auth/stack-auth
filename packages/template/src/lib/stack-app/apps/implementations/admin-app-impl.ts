@@ -60,6 +60,16 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
   private readonly _configOverridesCache = createCache(async () => {
     return await this._interface.getConfig();
   });
+  private readonly _stripeAccountInfoCache = createCache(async () => {
+    try {
+      return await this._interface.getStripeAccountInfo();
+    } catch (error: any) {
+      if (error?.status === 404) {
+        return null;
+      }
+      throw error;
+    }
+  });
 
   constructor(options: StackAdminAppConstructorOptions<HasTokenStore, ProjectId>) {
     super({
@@ -527,7 +537,18 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
     );
   }
 
-  async testModePurchase(options: { priceId: string, fullCode: string }): Promise<void> {
-    await this._interface.testModePurchase({ price_id: options.priceId, full_code: options.fullCode });
+  async testModePurchase(options: { priceId: string, fullCode: string, quantity?: number }): Promise<void> {
+    await this._interface.testModePurchase({ price_id: options.priceId, full_code: options.fullCode, quantity: options.quantity });
   }
+
+  async getStripeAccountInfo(): Promise<null | { account_id: string, charges_enabled: boolean, details_submitted: boolean, payouts_enabled: boolean }> {
+    return await this._interface.getStripeAccountInfo();
+  }
+
+  // IF_PLATFORM react-like
+  useStripeAccountInfo(): { account_id: string, charges_enabled: boolean, details_submitted: boolean, payouts_enabled: boolean } | null {
+    const data = useAsyncCache(this._stripeAccountInfoCache, [], "useStripeAccountInfo()");
+    return data;
+  }
+  // END_PLATFORM
 }

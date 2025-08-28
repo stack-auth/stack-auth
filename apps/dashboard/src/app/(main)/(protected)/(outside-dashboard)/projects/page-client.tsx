@@ -122,12 +122,11 @@ function TeamAddUserDialog(props: {
 }) {
   const users = props.team.useUsers();
   const { quantity } = props.team.useItem("dashboard_admins");
-  const router = useRouter();
 
   const onSubmit = async (values: yup.InferType<typeof inviteFormSchema>) => {
     if (users.length + 1 > quantity) {
       alert("You have reached the maximum number of dashboard admins. Please upgrade your plan to add more admins.");
-      const checkoutUrl = await props.team.createCheckoutUrl("team");
+      const checkoutUrl = await props.team.createCheckoutUrl({ offerId: "team" });
       window.open(checkoutUrl, "_blank", "noopener");
       return "prevent-close-and-prevent-reset";
     }
