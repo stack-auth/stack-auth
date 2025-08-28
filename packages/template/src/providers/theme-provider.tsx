@@ -1,6 +1,7 @@
 'use client';
 
 import { deindent } from "@stackframe/stack-shared/dist/utils/strings";
+import { TooltipProvider } from "@stackframe/stack-ui";
 import Color from "color";
 import React from "react";
 import { globalCSS } from "../generated/global-css";
@@ -102,7 +103,9 @@ export function StackTheme({
           __html: globalCSS + "\n" + convertColorsToCSS(themeValue),
         }}
       />
-      {children}
+      <TooltipProvider>
+        {children}
+      </TooltipProvider>
     </>
   );
 }

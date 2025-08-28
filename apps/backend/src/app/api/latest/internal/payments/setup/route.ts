@@ -1,5 +1,5 @@
-import { overrideEnvironmentConfigOverride } from "@/lib/config";
 import { getStackStripe } from "@/lib/stripe";
+import { globalPrismaClient } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { adaptSchema, adminAuthTypeSchema, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
 import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
@@ -24,7 +24,13 @@ export const POST = createSmartRouteHandler({
   }),
   handler: async ({ auth }) => {
     const stripe = getStackStripe();
-    let stripeAccountId = auth.tenancy.config.payments.stripeAccountId;
+
+    const project = await globalPrismaClient.project.findUnique({
+      where: { id: auth.project.id },
+      select: { stripeAccountId: true },
+    });
+
+    let stripeAccountId = project?.stripeAccountId || null;
     const returnToUrl = new URL(`/projects/${auth.project.id}/payments`, getEnvVariable("NEXT_PUBLIC_STACK_DASHBOARD_URL")).toString();
 
     if (!stripeAccountId) {
@@ -42,12 +48,10 @@ export const POST = createSmartRouteHandler({
         }
       });
       stripeAccountId = account.id;
-      await overrideEnvironmentConfigOverride({
-        projectId: auth.project.id,
-        branchId: auth.tenancy.branchId,
-        environmentConfigOverrideOverride: {
-          [`payments.stripeAccountId`]: stripeAccountId,
-        },
+
+      await globalPrismaClient.project.update({
+        where: { id: auth.project.id },
+        data: { stripeAccountId },
       });
     }
 

@@ -44,9 +44,6 @@ it("should be able to get item information with valid customer and item IDs", as
         "test-item": {
           displayName: "Test Item",
           customerType: "user",
-          default: {
-            quantity: 0,
-          },
         },
       },
     },
@@ -77,9 +74,6 @@ it("should return ItemNotFound error for non-existent item", async ({ expect }) 
         "test-item": {
           displayName: "Test Item",
           customerType: "user",
-          default: {
-            quantity: 0,
-          },
         },
       },
     },
@@ -113,9 +107,6 @@ it("should return ItemCustomerTypeDoesNotMatch error for user accessing team ite
         "test-item": {
           displayName: "Test Item",
           customerType: "team",
-          default: {
-            quantity: 0,
-          },
         },
       },
     },
@@ -154,7 +145,6 @@ it("creates an item quantity change and returns id", async ({ expect }) => {
         "test-item": {
           displayName: "Test Item",
           customerType: "user",
-          default: { quantity: 0 },
         },
       },
     },
@@ -183,7 +173,6 @@ it("aggregates item quantity changes in item quantity", async ({ expect }) => {
         "test-item": {
           displayName: "Test Item",
           customerType: "user",
-          default: { quantity: 0 },
         },
       },
     },
@@ -213,7 +202,6 @@ it("ignores expired changes", async ({ expect }) => {
         "test-item": {
           displayName: "Test Item",
           customerType: "user",
-          default: { quantity: 0 },
         },
       },
     },
@@ -243,7 +231,6 @@ it("sums multiple non-expired changes", async ({ expect }) => {
         "test-item": {
           displayName: "Test Item",
           customerType: "user",
-          default: { quantity: 0 },
         },
       },
     },
@@ -275,7 +262,6 @@ it("validates item and customer type", async ({ expect }) => {
         "team-item": {
           displayName: "Team Item",
           customerType: "team",
-          default: { quantity: 0 },
         },
       },
     },
@@ -316,7 +302,6 @@ it("should error when deducting more quantity than available", async ({ expect }
         "test-item": {
           displayName: "Test Item",
           customerType: "user",
-          default: { quantity: 0 },
         },
       },
     },
@@ -413,7 +398,6 @@ it("should allow negative quantity changes when allow_negative is true", async (
         "test-item": {
           displayName: "Test Item",
           customerType: "user",
-          default: { quantity: 0 },
         },
       },
     },
@@ -460,7 +444,6 @@ it("supports custom customer type for items (GET and update-quantity)", async ({
         "custom-item": {
           displayName: "Custom Item",
           customerType: "custom",
-          default: { quantity: 2 },
         },
       },
     },
@@ -472,7 +455,7 @@ it("supports custom customer type for items (GET and update-quantity)", async ({
     accessType: "client",
   });
   expect(getBefore.status).toBe(200);
-  expect(getBefore.body.quantity).toBe(2);
+  expect(getBefore.body.quantity).toBe(0);
 
   const postChange = await niceBackendFetch(`/api/latest/payments/items/custom/${customCustomerId}/custom-item/update-quantity?allow_negative=false`, {
     method: "POST",
@@ -485,5 +468,5 @@ it("supports custom customer type for items (GET and update-quantity)", async ({
     accessType: "client",
   });
   expect(getAfter.status).toBe(200);
-  expect(getAfter.body.quantity).toBe(5);
+  expect(getAfter.body.quantity).toBe(3);
 });

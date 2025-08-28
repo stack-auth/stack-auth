@@ -182,8 +182,9 @@ export function GlobeSection({ countryData, totalUsers, children }: {countryData
               }
               const controls = current.controls();
               controls.maxDistance = 1000;
-              controls.minDistance = 400;
+              controls.minDistance = 200;
               controls.dampingFactor = 0.2;
+              current.camera().position.z = 500;
               // even though rendering is resumed by default, we want to pause it after 200ms, so call resumeRender()
               resumeRender();
             }}

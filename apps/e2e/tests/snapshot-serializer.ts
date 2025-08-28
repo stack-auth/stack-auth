@@ -69,6 +69,7 @@ const stripFieldsIfString = [
   "publishable_client_key",
   "secret_server_key",
   "super_secret_admin_key",
+  "stripe_account_id",
 ] as const;
 
 const stripCookies = [

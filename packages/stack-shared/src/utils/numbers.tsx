@@ -21,6 +21,7 @@ export function prettyPrintWithMagnitudes(num: number): string {
 }
 import.meta.vitest?.test("prettyPrintWithMagnitudes", ({ expect }) => {
   // Test different magnitudes
+  expect(prettyPrintWithMagnitudes(999)).toBe("999");
   expect(prettyPrintWithMagnitudes(1000)).toBe("1k");
   expect(prettyPrintWithMagnitudes(1500)).toBe("1.5k");
   expect(prettyPrintWithMagnitudes(1000000)).toBe("1M");

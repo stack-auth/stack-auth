@@ -8,6 +8,7 @@ export const purchaseUrlVerificationCodeHandler = createVerificationCodeHandler(
   data: yupObject({
     tenancyId: yupString().defined(),
     customerId: yupString().defined(),
+    offerId: yupString(),
     offer: offerSchema,
     stripeCustomerId: yupString().defined(),
     stripeAccountId: yupString().defined(),

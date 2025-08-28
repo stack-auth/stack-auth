@@ -24,6 +24,7 @@ model Project {
   fullLogoUrl      String?
 
   projectConfigOverride Json?
+  stripeAccountId             String?
 
   apiKeySets                 ApiKeySet[]
   projectUsers               ProjectUser[]
@@ -739,7 +740,9 @@ model Subscription {
   tenancyId    String       @db.Uuid
   customerId   String
   customerType CustomerType
+  offerId      String?
   offer        Json
+  quantity     Int          @default(1)
 
   stripeSubscriptionId String?
   status               SubscriptionStatus
