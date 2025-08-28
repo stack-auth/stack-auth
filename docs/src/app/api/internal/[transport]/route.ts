@@ -27,25 +27,43 @@ async function extractOpenApiDetails(content: string, page: { data: { title: str
         const specContent = await readFile(specPath, "utf-8");
         const spec = JSON.parse(specContent);
         const parsedOps = JSON.parse(operations);
-        let apiDetails = '';
 
+        // Extract server URL from the spec (should be https://api.stack-auth.com/api/v1)
+        const serverUrl = spec.servers?.[0]?.url || 'https://api.stack-auth.com/api/v1';
+
+        // Determine API type from the spec file name
+        const apiType = specFile.includes('client') ? 'Client-side' :
+                      specFile.includes('server') ? 'Server-side' :
+                      specFile.includes('admin') ? 'Admin' : 'API';
+
+        let apiDetails = `API Type: ${apiType}\n`;
+        apiDetails += `Base URL: ${serverUrl}\n\n`;
+
+        // Include the full OpenAPI spec content for the specific endpoints
         for (const op of parsedOps) {
           const { path: opPath, method } = op;
           const pathSpec = spec.paths?.[opPath];
           const methodSpec = pathSpec?.[method.toLowerCase()];
 
           if (methodSpec) {
-            // Return the raw OpenAPI spec JSON for this specific endpoint
+            const fullUrl = `${serverUrl}${opPath}`;
+            apiDetails += `Endpoint: ${method.toUpperCase()} ${fullUrl}\n`;
+            apiDetails += `Summary: ${methodSpec.summary || 'No summary'}\n`;
+            apiDetails += `Description: ${methodSpec.description || 'No description'}\n\n`;
+
+            // Include the complete OpenAPI specification for this endpoint
             const endpointJson = {
               [opPath]: {
                 [method.toLowerCase()]: methodSpec
               }
             };
+            apiDetails += `Full OpenAPI Specification:\n`;
             apiDetails += JSON.stringify(endpointJson, null, 2);
+            apiDetails += '\n\n---\n\n';
           }
         }
 
-        const resultText = `Title: ${page.data.title}\nDescription: ${page.data.description || ''}\n\nOpenAPI Spec: ${specFile}\nOperations: ${operations}\n\n${apiDetails}`;
+        const resultText = `Title: ${page.data.title}\nDescription: ${page.data.description || ''}\n\nOpenAPI Details:\n${apiDetails}`;
 
         return {
           content: [
@@ -90,7 +108,7 @@ const allPages = [...pages, ...apiPages];
 
 const pageSummaries = allPages
   .filter((v) => {
-    return !(v.slugs[0] == "API-Reference");
+    return !(v.slugs[0] == "API-Reference") && !v.url.startsWith('/api/admin');
   })
   .map((page) =>
     `
@@ -131,6 +149,11 @@ const handler = createMcpHandler(
         const page = allPages.find((page) => page.url === id);
         if (!page) {
           return { content: [{ type: "text", text: "Page not found." }] };
+        }
+
+        // Filter out admin endpoints unless explicitly requested
+        if (page.url.startsWith('/api/admin')) {
+          return { content: [{ type: "text", text: "Admin endpoints are not available through this interface. Please use client or server endpoints instead." }] };
         }
         // Check if this is an API page and handle OpenAPI spec extraction
         const isApiPage = page.url.startsWith('/api/');
