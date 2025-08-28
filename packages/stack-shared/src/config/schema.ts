@@ -8,7 +8,7 @@ import { isShallowEqual } from "../utils/arrays";
 import { SUPPORTED_CURRENCIES } from "../utils/currency-constants";
 import { StackAssertionError } from "../utils/errors";
 import { allProviders } from "../utils/oauth";
-import { DeepFilterUndefined, DeepMerge, DeepRequiredOrUndefined, deleteKey, filterUndefined, get, has, isObjectLike, mapValues, set, typedAssign, typedEntries, typedFromEntries, typedKeys } from "../utils/objects";
+import { DeepFilterUndefined, DeepMerge, DeepRequiredOrUndefined, deleteKey, filterUndefined, get, has, isObjectLike, mapValues, set, typedAssign, typedEntries, typedFromEntries } from "../utils/objects";
 import { Result } from "../utils/results";
 import { CollapseObjectUnion, Expand, IntersectAll, IsUnion, typeAssert, typeAssertExtends, typeAssertIs } from "../utils/types";
 import { Config, NormalizationError, NormalizesTo, assertNormalized, getInvalidConfigReason, normalize } from "./format";
@@ -238,7 +238,7 @@ export function migrateConfigOverride(type: "project" | "branch" | "environment"
 
   // BEGIN 2025-07-28: domains.trustedDomains can no longer be an array
   if (isEnvironmentOrHigher) {
-    res = mapProperty(res, "domains.trustedDomains", (value) => {
+    res = mapProperty(res, p => p.join(".") === "domains.trustedDomains", (value) => {
       if (Array.isArray(value)) {
         return typedFromEntries(value.map((v, i) => [`${i}`, v]));
       }
@@ -249,21 +249,27 @@ export function migrateConfigOverride(type: "project" | "branch" | "environment"
 
   // BEGIN 2025-07-28: themeList and templateList have been renamed (this was before the email release, so they're safe to remove)
   if (isBranchOrHigher) {
-    res = removeProperty(res, "emails.themeList");
-    res = removeProperty(res, "emails.templateList");
+    res = removeProperty(res, p => p.join(".") === "emails.themeList");
+    res = removeProperty(res, p => p.join(".") === "emails.templateList");
   }
   // END
 
   // BEGIN 2025-07-28: sourceOfTruth was mistakenly written to the environment config in some cases, so let's remove it
   if (type === "environment") {
-    res = removeProperty(res, "sourceOfTruth");
+    res = removeProperty(res, p => p.join(".") === "sourceOfTruth");
   }
   // END
 
   // BEGIN 2025-08-25: stripeAccountId and stripeAccountSetupComplete are unused, so let's remove them
   if (type === "environment") {
-    res = removeProperty(res, "payments.stripeAccountId");
-    res = removeProperty(res, "payments.stripeAccountSetupComplete");
+    res = removeProperty(res, p => p.join(".") === "payments.stripeAccountId");
+    res = removeProperty(res, p => p.join(".") === "payments.stripeAccountSetupComplete");
+  }
+  // END
+
+  // BEGIN 2025-08-25: payments.items.default is no longer used, so let's remove it
+  if (isBranchOrHigher) {
+    res = removeProperty(res, p => p.length === 4 && p[0] === "payments" && p[1] === "items" && p[3] === "default");
   }
   // END
 
@@ -271,41 +277,41 @@ export function migrateConfigOverride(type: "project" | "branch" | "environment"
   return res;
 };
 
-function removeProperty(obj: any, path: string): any {
-  return mapProperty(obj, path, () => undefined);
+function removeProperty(obj: Record<string, any>, pathCond: (path: (string | symbol)[]) => boolean): any {
+  return mapProperty(obj, pathCond, () => undefined);
 }
 
-function mapProperty(obj: any, path: string, mapper: (value: any) => any): any {
-  const keyParts = path.split(".");
-
-  for (let i = 0; i < keyParts.length; i++) {
-    const pathPrefix = keyParts.slice(0, i).join(".");
-    const pathSuffix = keyParts.slice(i).join(".");
-    if (has(obj, pathPrefix) && isObjectLike(get(obj, pathPrefix))) {
-      const newValue = mapProperty(get(obj, pathPrefix), pathSuffix, mapper);
-      set(obj, pathPrefix, newValue);
-    }
-  }
-  if (has(obj, path)) {
-    const newValue = mapper(get(obj, path));
-    if (newValue !== undefined) {
-      set(obj, path, newValue);
+function mapProperty(obj: Record<string, any>, pathCond: (path: string[]) => boolean, mapper: (value: any) => any): any {
+  const res: Record<string, any> = Array.isArray(obj) ? [] : {};
+  for (const [key, value] of typedEntries(obj)) {
+    const path = key.split(".");
+    if (pathCond(path)) {
+      const newValue = mapper(value);
+      if (newValue !== undefined) {
+        set(res, key, newValue);
+      } else {
+        // do nothing
+      }
+    } else if (isObjectLike(value)) {
+      set(res, key, mapProperty(value, p => pathCond([...path, ...p]), mapper));
     } else {
-      deleteKey(obj, path);
+      set(res, key, value);
     }
   }
-
-  return obj;
+  return res;
 }
 import.meta.vitest?.test("mapProperty - basic property mapping", ({ expect }) => {
-  expect(mapProperty({ a: { b: { c: 1 } } }, "a.b.c", (value) => value + 1)).toEqual({ a: { b: { c: 2 } } });
-  expect(mapProperty({ a: { b: { c: 1 } } }, "a.b.d", (value) => value + 1)).toEqual({ a: { b: { c: 1 } } });
-  expect(mapProperty({ x: 5 }, "x", (value) => value * 2)).toEqual({ x: 10 });
-  expect(mapProperty({ a: { b: { c: 1 } } }, "b.c", (value) => value * 10)).toEqual({ a: { b: { c: 1 } } });
-  expect(mapProperty({ a: 1 }, "b.c", (value) => value)).toEqual({ a: 1 });
+  expect(mapProperty({ a: { b: { c: 1 } } }, p => p.join(".") === "a.b.c", (value) => value + 1)).toEqual({ a: { b: { c: 2 } } });
+  expect(mapProperty({ a: { b: { c: 1 } } }, p => p.join(".") === "a.b.d", (value) => value + 1)).toEqual({ a: { b: { c: 1 } } });
+  expect(mapProperty({ x: 5 }, p => p.join(".") === "x", (value) => value * 2)).toEqual({ x: 10 });
+  expect(mapProperty({ a: { b: { c: 1 } } }, p => p.join(".") === "b.c", (value) => value * 10)).toEqual({ a: { b: { c: 1 } } });
+  expect(mapProperty({ a: 1 }, p => p.join(".") === "b.c", (value) => value)).toEqual({ a: 1 });
+  expect(mapProperty({ "a.b": { c: 1 } }, p => p.join(".") === "a.b.c", (value) => value + 1)).toEqual({ "a.b": { c: 2 } });
+
+  expect(mapProperty({ a: { b: { c: 1 } } }, p => p.length === 3 && p[0] === "a" && p[1] === "b", (value) => value + 1)).toEqual({ a: { b: { c: 2 } } });
 });
 
-function renameProperty(obj: any, oldPath: string, newPath: string): any {
+function renameProperty(obj: Record<string, any>, oldPath: string, newPath: string): any {
   const oldKeyParts = oldPath.split(".");
   const newKeyParts = newPath.split(".");
   if (!isShallowEqual(oldKeyParts.slice(0, -1), newKeyParts.slice(0, -1))) throw new StackAssertionError(`oldPath and newPath must have the same prefix. Provided: ${oldPath} and ${newPath}`);

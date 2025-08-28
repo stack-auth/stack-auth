@@ -246,7 +246,6 @@ const navigationItems: (Label | Item | Hidden)[] = [
   {
     name: "Payments",
     type: 'label',
-    requiresDevFeatureFlag: true,
   },
   {
     name: "Payments",
@@ -254,7 +253,6 @@ const navigationItems: (Label | Item | Hidden)[] = [
     regex: /^\/projects\/[^\/]+\/payments$/,
     icon: CreditCard,
     type: 'item',
-    requiresDevFeatureFlag: true,
   },
   {
     name: "Offers",
@@ -610,7 +608,7 @@ export default function SidebarLayout(props: { projectId: string, children?: Rea
         </div>
 
         {/* Content Body - Normal scrolling */}
-        <div className="flex-grow relative">
+        <div className="flex-grow relative flex flex-col">
           {props.children}
         </div>
       </div>
