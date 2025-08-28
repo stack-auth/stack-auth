@@ -1,4 +1,4 @@
-import { getStackStripe, syncStripeAccountStatus, syncStripeSubscriptions } from "@/lib/stripe";
+import { getStackStripe, syncStripeSubscriptions } from "@/lib/stripe";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { yupMixed, yupNumber, yupObject, yupString, yupTuple } from "@stackframe/stack-shared/dist/schema-fields";
 import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
@@ -65,7 +65,6 @@ export const POST = createSmartRouteHandler({
         if (!event.account) {
           throw new StackAssertionError("Stripe webhook account id missing", { event });
         }
-        await syncStripeAccountStatus(event.account);
       } else if (isSubscriptionChangedEvent(event)) {
         const accountId = event.account;
         const customerId = (event.data.object as any).customer;

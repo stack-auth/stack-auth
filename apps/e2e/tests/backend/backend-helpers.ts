@@ -1399,11 +1399,21 @@ export namespace Webhook {
 }
 
 export namespace Payments {
+  export async function setup() {
+    const response = await niceBackendFetch("/api/latest/internal/payments/setup", {
+      accessType: "admin",
+      method: "POST",
+      body: {},
+    });
+    expect(response.status).toBe(200);
+    return response.body;
+  }
+
   export async function createPurchaseUrlAndGetCode() {
     await Project.createAndSwitch();
+    await Payments.setup();
     await Project.updateConfig({
       payments: {
-        stripeAccountId: "acct_test123",
         offers: {
           "test-offer": {
             displayName: "Test Offer",

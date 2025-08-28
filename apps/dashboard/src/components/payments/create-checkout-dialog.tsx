@@ -31,7 +31,7 @@ export function CreateCheckoutDialog(props: Props) {
   const shownOffers = Object.keys(offers).filter(id => offers[id].customerType === (props.user ? "user" : "team"));
 
   const createCheckoutUrl = async (data: { offerId: string }) => {
-    const result = await Result.fromPromise(customer.createCheckoutUrl(data.offerId));
+    const result = await Result.fromPromise(customer.createCheckoutUrl({ offerId: data.offerId }));
     if (result.status === "ok") {
       setCheckoutUrl(result.data);
       return;
