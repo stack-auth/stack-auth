@@ -158,7 +158,7 @@ export default function McpBrowserPage() {
           description = line.substring(13);
         } else if (line.startsWith('Content:')) {
           inContent = true;
-        } else if (line.startsWith('OpenAPI Details:')) {
+        } else if (line.startsWith('OpenAPI')) {
           // This is an API doc - capture everything after title/description
           isApiDoc = true;
           inContent = true;
