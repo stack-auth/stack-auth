@@ -169,6 +169,7 @@ const parseAuth = withTraceSpan('smart request parseAuth', async (req: NextReque
   const adminAccessToken = req.headers.get("x-stack-admin-access-token");
   const accessToken = req.headers.get("x-stack-access-token");
   const developmentKeyOverride = req.headers.get("x-stack-development-override-key");  // in development, the internal project's API key can optionally be used to access any project
+  const allowAnonymousUser = req.headers.get("x-stack-allow-anonymous-user") === "true";
 
   // Ensure header combinations are valid
   const eitherKeyOrToken = !!(publishableClientKey || secretServerKey || superSecretAdminKey || adminAccessToken);
@@ -179,14 +180,19 @@ const parseAuth = withTraceSpan('smart request parseAuth', async (req: NextReque
   if (!typedIncludes(["client", "server", "admin"] as const, requestType)) throw new KnownErrors.InvalidAccessType(requestType);
   if (!projectId) throw new KnownErrors.AccessTypeWithoutProjectId(requestType);
 
-  const extractUserIdAndRefreshTokenIdFromAccessToken = async (options: { token: string, projectId: string }) => {
-    const result = await decodeAccessToken(options.token);
+  const extractUserIdAndRefreshTokenIdFromAccessToken = async (options: { token: string, projectId: string, allowAnonymous: boolean }) => {
+    const result = await decodeAccessToken(options.token, { allowAnonymous: /* always true as we check for anonymous users later */ true });
     if (result.status === "error") {
       throw result.error;
     }
 
     if (result.data.projectId !== options.projectId) {
       throw new KnownErrors.InvalidProjectForAccessToken(options.projectId, result.data.projectId);
+    }
+
+    // Check if anonymous user is allowed
+    if (result.data.isAnonymous && !options.allowAnonymous) {
+      throw new KnownErrors.AnonymousAuthenticationNotAllowed();
     }
 
     return {
@@ -196,7 +202,7 @@ const parseAuth = withTraceSpan('smart request parseAuth', async (req: NextReque
   };
 
   const extractUserFromAdminAccessToken = async (options: { token: string, projectId: string }) => {
-    const result = await decodeAccessToken(options.token);
+    const result = await decodeAccessToken(options.token, { allowAnonymous: false });
     if (result.status === "error") {
       if (KnownErrors.AccessTokenExpired.isInstance(result.error)) {
         throw new KnownErrors.AdminAccessTokenExpired(result.error.constructorArgs[0]);
@@ -225,7 +231,7 @@ const parseAuth = withTraceSpan('smart request parseAuth', async (req: NextReque
     return user;
   };
 
-  const { userId, refreshTokenId } = projectId && accessToken ? await extractUserIdAndRefreshTokenIdFromAccessToken({ token: accessToken, projectId }): { userId: null, refreshTokenId: null };
+  const { userId, refreshTokenId } = projectId && accessToken ? await extractUserIdAndRefreshTokenIdFromAccessToken({ token: accessToken, projectId, allowAnonymous: allowAnonymousUser }) : { userId: null, refreshTokenId: null };
 
   // Prisma does a query for every function call by default, even if we batch them with transactions
   // Because smart route handlers are always called, we instead send over a single raw query that fetches all the

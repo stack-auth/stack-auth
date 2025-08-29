@@ -27,6 +27,7 @@ async function loadUsersByCountry(tenancy: Tenancy): Promise<Record<string, numb
         ON "Event"."endUserIpInfoGuessId" = eip.id
       WHERE '$user-activity' = ANY("systemEventTypeIds"::text[])
         AND "data"->>'projectId' = ${tenancy.project.id}
+        AND "data"->>'isAnonymous' != 'true'
         AND COALESCE("data"->>'branchId', 'main') = ${tenancy.branchId}
         AND "countryCode" IS NOT NULL
       ORDER BY "userId", "eventStartedAt" DESC
@@ -62,7 +63,9 @@ async function loadTotalUsers(tenancy: Tenancy, now: Date): Promise<DataPoints> 
       SUM(COALESCE(COUNT(pu."projectUserId"), 0)) OVER (ORDER BY ds.registration_day) AS "cumUsers"
     FROM date_series ds
     LEFT JOIN ${sqlQuoteIdent(schema)}."ProjectUser" pu
-    ON DATE(pu."createdAt") = ds.registration_day AND pu."tenancyId" = ${tenancy.id}::UUID
+    ON DATE(pu."createdAt") = ds.registration_day 
+      AND pu."tenancyId" = ${tenancy.id}::UUID
+      AND pu."isAnonymous" = false
     GROUP BY ds.registration_day
     ORDER BY ds.registration_day
   `).map((x) => ({
@@ -84,7 +87,7 @@ async function loadDailyActiveUsers(tenancy: Tenancy, now: Date) {
     daily_users AS (
       SELECT
         DATE_TRUNC('day', "eventStartedAt") AS "day",
-        COUNT(DISTINCT "data"->'userId') AS "dau"
+        COUNT(DISTINCT CASE WHEN "data"->>'isAnonymous' = 'false' THEN "data"->'userId' ELSE NULL END) AS "dau"
       FROM "Event"
       WHERE "eventStartedAt" >= ${now}::date - INTERVAL '30 days'
         AND '$user-activity' = ANY("systemEventTypeIds"::text[])
@@ -143,6 +146,7 @@ async function loadRecentlyActiveUsers(tenancy: Tenancy): Promise<UsersCrud["Adm
         ) as rn
       FROM "Event"
       WHERE "data"->>'projectId' = ${tenancy.project.id}
+        AND "data"->>'isAnonymous' != 'true'
         AND COALESCE("data"->>'branchId', 'main') = ${tenancy.branchId}
         AND '$user-activity' = ANY("systemEventTypeIds"::text[])
     )
@@ -214,22 +218,23 @@ export const GET = createSmartRouteHandler({
       loginMethods
     ] = await Promise.all([
       prisma.projectUser.count({
-        where: { tenancyId: req.auth.tenancy.id, },
+        where: { tenancyId: req.auth.tenancy.id, isAnonymous: false },
       }),
       loadTotalUsers(req.auth.tenancy, now),
       loadDailyActiveUsers(req.auth.tenancy, now),
       loadUsersByCountry(req.auth.tenancy),
-      (await usersCrudHandlers.adminList({
+      usersCrudHandlers.adminList({
         tenancy: req.auth.tenancy,
         query: {
           order_by: 'signed_up_at',
-          desc: true,
+          desc: "true",
           limit: 5,
+          include_anonymous: "false",
         },
         allowedErrorTypes: [
           KnownErrors.UserNotFound,
         ],
-      })).items,
+      }).then(res => res.items),
       loadRecentlyActiveUsers(req.auth.tenancy),
       loadLoginMethods(req.auth.tenancy),
     ] as const);

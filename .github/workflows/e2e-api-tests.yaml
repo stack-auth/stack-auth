@@ -134,9 +134,11 @@ jobs:
         run: pnpm test
 
       - name: Run tests again, to make sure they are stable (attempt 1)
+        if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/dev'
         run: pnpm test
 
       - name: Run tests again, to make sure they are stable (attempt 2)
+        if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/dev'
         run: pnpm test
 
       - name: Verify data integrity

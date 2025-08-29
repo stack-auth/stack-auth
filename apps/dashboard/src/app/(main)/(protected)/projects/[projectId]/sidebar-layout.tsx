@@ -24,6 +24,7 @@ import {
 } from "@stackframe/stack-ui";
 import {
   Book,
+  Box,
   CreditCard,
   Globe,
   KeyRound,
@@ -216,13 +217,27 @@ const navigationItems: (Label | Item | Hidden)[] = [
   {
     name: "Payments",
     type: 'label',
-    requiresDevFeatureFlag: true,
   },
   {
     name: "Payments",
     href: "/payments",
     regex: /^\/projects\/[^\/]+\/payments$/,
     icon: CreditCard,
+    type: 'item',
+  },
+  {
+    name: "Offers",
+    href: "/payments/offers",
+    regex: /^\/projects\/[^\/]+\/payments\/offers$/,
+    icon: SquarePen,
+    type: 'item',
+    requiresDevFeatureFlag: true,
+  },
+  {
+    name: "Items",
+    href: "/payments/items",
+    regex: /^\/projects\/[^\/]+\/payments\/items$/,
+    icon: Box,
     type: 'item',
     requiresDevFeatureFlag: true,
   },
@@ -554,7 +569,7 @@ export default function SidebarLayout(props: { projectId: string, children?: Rea
         </div>
 
         {/* Content Body - Normal scrolling */}
-        <div className="flex-grow relative">
+        <div className="flex-grow relative flex flex-col">
           {props.children}
         </div>
       </div>

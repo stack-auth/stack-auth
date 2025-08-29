@@ -133,6 +133,7 @@ export async function niceBackendFetch(url: string | URL, options?: Omit<NiceReq
       "x-stack-branch-id": backendContext.value.currentBranchId ?? undefined,
       "x-stack-access-token": userAuth?.accessToken,
       "x-stack-refresh-token": userAuth?.refreshToken,
+      "x-stack-allow-anonymous-user": "true",
       ...backendContext.value.ipData ? {
         "user-agent": "Mozilla/5.0",  // pretend to be a browser so our IP gets tracked
         "x-forwarded-for": backendContext.value.ipData.ipAddress,
@@ -578,8 +579,9 @@ export namespace Auth {
       const projectKeys = backendContext.value.projectKeys;
       if (projectKeys === "no-project") throw new Error("No project keys found in the backend context");
       const branchId = options.forceBranchId ?? backendContext.value.currentBranchId;
+      const userAuth = backendContext.value.userAuth;
 
-      return {
+      return filterUndefined({
         client_id: !branchId ? projectKeys.projectId : `${projectKeys.projectId}#${branchId}`,
         client_secret: projectKeys.publishableClientKey ?? throwErr("No publishable client key found in the backend context"),
         redirect_uri: localRedirectUrl,
@@ -589,7 +591,8 @@ export namespace Auth {
         grant_type: "authorization_code",
         code_challenge: "some-code-challenge",
         code_challenge_method: "plain",
-      };
+        token: userAuth?.accessToken ?? undefined,
+      });
     }
 
     export async function authorize(options: { redirectUrl?: string, errorRedirectUrl?: string, forceBranchId?: string } = {}) {
@@ -830,7 +833,12 @@ export namespace Auth {
           refreshToken: response.body.refresh_token,
         },
       });
-      return { response };
+      return {
+        response,
+        accessToken: response.body.access_token,
+        refreshToken: response.body.refresh_token,
+        userId: response.body.user_id,
+      };
     }
   }
 }
@@ -1391,11 +1399,21 @@ export namespace Webhook {
 }
 
 export namespace Payments {
+  export async function setup() {
+    const response = await niceBackendFetch("/api/latest/internal/payments/setup", {
+      accessType: "admin",
+      method: "POST",
+      body: {},
+    });
+    expect(response.status).toBe(200);
+    return response.body;
+  }
+
   export async function createPurchaseUrlAndGetCode() {
     await Project.createAndSwitch();
+    await Payments.setup();
     await Project.updateConfig({
       payments: {
-        stripeAccountId: "acct_test123",
         offers: {
           "test-offer": {
             displayName: "Test Offer",
@@ -1419,6 +1437,7 @@ export namespace Payments {
       method: "POST",
       accessType: "client",
       body: {
+        customer_type: "user",
         customer_id: userId,
         offer_id: "test-offer",
       },

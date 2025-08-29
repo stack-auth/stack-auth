@@ -19,11 +19,12 @@ model Project {
   displayName      String
   description      String  @default("")
   isProductionMode Boolean
-  ownerTeamId      String?  @db.Uuid
+  ownerTeamId      String? @db.Uuid
   logoUrl          String?
   fullLogoUrl      String?
 
   projectConfigOverride Json?
+  stripeAccountId             String?
 
   apiKeySets                 ApiKeySet[]
   projectUsers               ProjectUser[]
@@ -715,6 +716,7 @@ model ThreadMessage {
 enum CustomerType {
   USER
   TEAM
+  CUSTOM
 }
 
 enum SubscriptionStatus {
@@ -728,21 +730,29 @@ enum SubscriptionStatus {
   unpaid
 }
 
+enum SubscriptionCreationSource {
+  PURCHASE_PAGE
+  TEST_MODE
+}
+
 model Subscription {
   id           String       @default(uuid()) @db.Uuid
   tenancyId    String       @db.Uuid
-  customerId   String       @db.Uuid
+  customerId   String
   customerType CustomerType
+  offerId      String?
   offer        Json
+  quantity     Int          @default(1)
 
-  stripeSubscriptionId String
+  stripeSubscriptionId String?
   status               SubscriptionStatus
   currentPeriodEnd     DateTime
   currentPeriodStart   DateTime
   cancelAtPeriodEnd    Boolean
 
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  creationSource SubscriptionCreationSource
+  createdAt      DateTime                   @default(now())
+  updatedAt      DateTime                   @updatedAt
 
   @@id([tenancyId, id])
   @@unique([tenancyId, stripeSubscriptionId])
@@ -751,7 +761,7 @@ model Subscription {
 model ItemQuantityChange {
   id          String    @default(uuid()) @db.Uuid
   tenancyId   String    @db.Uuid
-  customerId  String    @db.Uuid
+  customerId  String
   itemId      String
   quantity    Int
   description String?
