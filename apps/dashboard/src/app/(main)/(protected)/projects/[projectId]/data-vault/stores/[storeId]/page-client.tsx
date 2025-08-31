@@ -180,7 +180,7 @@ export default function PageClient({ storeId }: PageClientProps) {
             Your data vault store has been created.
           </p>
           <p>
-            A store securely saves key-value pairs with Stack Auth. Keys and values are never written to a database; instead, they&apos;re encrypted and decrypted on-the-fly using envelope encryption with a rotating master key.
+            A store securely saves key-value pairs with Stack Auth. Plaintext keys and values are never written to a database; instead, they&apos;re encrypted and decrypted on-the-fly using envelope encryption with a rotating master key.
           </p>
           <p>
             To use the store, you&apos;ll need a random, unguessable secret. It can be any format, but for strong security it should be at least 32 characters long and provide 256 bits of entropy. <b>Even Stack Auth</b> can&apos;t access your data if you lose it, so keep it safe.

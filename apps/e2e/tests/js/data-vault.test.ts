@@ -33,6 +33,7 @@ describe('Data Vault Server Functions', () => {
     });
 
     it.todo('should throw error for non-existent store', async () => {
+      // TODO: implement this
       await expect(
         serverApp.getDataVaultStore('non-existent-store')
       ).rejects.toThrow();

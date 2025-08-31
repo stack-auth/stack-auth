@@ -131,7 +131,7 @@ it("can update existing values in data vault", async ({ expect }: { expect: any 
   `);
 });
 
-it("returns 404 when trying to get non-existent value", async ({ expect }: { expect: any }) => {
+it("returns 400 when trying to get non-existent value", async ({ expect }: { expect: any }) => {
   await createDataVaultEnabledProject();
   await Auth.Otp.signIn();
 
