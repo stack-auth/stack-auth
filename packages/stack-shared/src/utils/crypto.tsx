@@ -97,8 +97,8 @@ import.meta.vitest?.test("encrypt & decrypt", async ({ expect }) => {
   expect(await encryptAndDecrypt("p", "p", "secret", "secret", exampleBytes)).toEqual(Result.ok(exampleBytes));
   expect(await encryptAndDecrypt("p", "p", exampleKey1, exampleKey1, exampleBytes)).toEqual(Result.ok(exampleBytes));
   expect(await encryptAndDecrypt("p", "p", exampleKey1, "secret", exampleBytes)).toEqual(Result.error(expect.objectContaining({ message: "Invalid ciphertext or secret when decrypting encrypted value" })));
-  expect(await encryptAndDecrypt("p", "p", exampleKey1, exampleKey2, exampleBytes)).toEqual(Result.error(new Error("Invalid ciphertext or secret when decrypting encrypted value")));
-  expect(await encryptAndDecrypt("p", "not-p", exampleKey1, exampleKey1, exampleBytes)).toEqual(Result.error(new Error("Invalid ciphertext or secret when decrypting encrypted value")));
+  expect(await encryptAndDecrypt("p", "p", exampleKey1, exampleKey2, exampleBytes)).toEqual(Result.error(expect.objectContaining({ message: "Invalid ciphertext or secret when decrypting encrypted value" })));
+  expect(await encryptAndDecrypt("p", "not-p", exampleKey1, exampleKey1, exampleBytes)).toEqual(Result.error(expect.objectContaining({ message: "Invalid ciphertext or secret when decrypting encrypted value" })));
 });
 
 export type HashOptions = {
