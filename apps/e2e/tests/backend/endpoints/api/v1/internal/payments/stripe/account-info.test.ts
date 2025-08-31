@@ -1,6 +1,6 @@
 import { describe } from "vitest";
 import { it } from "../../../../../../../helpers";
-import { Auth, Project, backendContext, niceBackendFetch } from "../../../../../../backend-helpers";
+import { Project, backendContext, niceBackendFetch } from "../../../../../../backend-helpers";
 
 describe("GET /api/v1/internal/payments/stripe/account-info", () => {
   describe("without project access", () => {
@@ -84,7 +84,7 @@ describe("GET /api/v1/internal/payments/stripe/account-info", () => {
   });
 
   describe("with admin access", () => {
-    it("should return null when no stripe account is configured", async ({ expect }) => {
+    it("should throw error when no stripe account is configured", async ({ expect }) => {
       await Project.createAndSwitch({
         display_name: "Test Project Without Stripe"
       });
@@ -95,9 +95,15 @@ describe("GET /api/v1/internal/payments/stripe/account-info", () => {
 
       expect(response).toMatchInlineSnapshot(`
         NiceResponse {
-          "status": 200,
-          "body": null,
-          "headers": Headers { <some fields may have been hidden> },
+          "status": 404,
+          "body": {
+            "code": "STRIPE_ACCOUNT_INFO_NOT_FOUND",
+            "error": "Stripe account information not found. Please make sure the user has onboarded with Stripe.",
+          },
+          "headers": Headers {
+            "x-stack-known-error": "STRIPE_ACCOUNT_INFO_NOT_FOUND",
+            <some fields may have been hidden>,
+          },
         }
       `);
     });
@@ -142,9 +148,15 @@ describe("GET /api/v1/internal/payments/stripe/account-info", () => {
 
       expect(response).toMatchInlineSnapshot(`
         NiceResponse {
-          "status": 200,
-          "body": null,
-          "headers": Headers { <some fields may have been hidden> },
+          "status": 404,
+          "body": {
+            "code": "STRIPE_ACCOUNT_INFO_NOT_FOUND",
+            "error": "Stripe account information not found. Please make sure the user has onboarded with Stripe.",
+          },
+          "headers": Headers {
+            "x-stack-known-error": "STRIPE_ACCOUNT_INFO_NOT_FOUND",
+            <some fields may have been hidden>,
+          },
         }
       `);
     });
