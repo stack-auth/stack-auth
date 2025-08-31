@@ -7,6 +7,7 @@ export const teamInvitationDetailsClientReadSchema = yupObject({
   team_id: schemaFields.teamIdSchema.defined(),
   expires_at_millis: schemaFields.yupNumber().defined(),
   recipient_email: schemaFields.emailSchema.defined(),
+  permission_ids: schemaFields.yupArray(schemaFields.permissionDefinitionIdSchema.defined()).defined(),
 }).defined();
 
 export const teamInvitationCrud = createCrud({

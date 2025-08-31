@@ -23,6 +23,7 @@ import { ApiKey, ApiKeyCreationOptions, ApiKeyUpdateOptions, apiKeyCreationOptio
 import { GetUserOptions, HandlerUrls, OAuthScopesOnSignIn, TokenStoreInit } from "../../common";
 import { OAuthConnection } from "../../connected-accounts";
 import { ServerContactChannel, ServerContactChannelCreateOptions, ServerContactChannelUpdateOptions, serverContactChannelCreateOptionsToCrud, serverContactChannelUpdateOptionsToCrud } from "../../contact-channels";
+import { InlineOffer, ServerItem } from "../../customers";
 import { SendEmailOptions } from "../../email";
 import { NotificationCategory } from "../../notification-categories";
 import { AdminProjectPermissionDefinition, AdminTeamPermission, AdminTeamPermissionDefinition } from "../../permissions";
@@ -31,7 +32,6 @@ import { ProjectCurrentServerUser, ServerUser, ServerUserCreateOptions, ServerUs
 import { StackServerAppConstructorOptions } from "../interfaces/server-app";
 import { _StackClientAppImplIncomplete } from "./client-app-impl";
 import { clientVersion, createCache, createCacheBySession, getBaseUrl, getDefaultProjectId, getDefaultPublishableClientKey, getDefaultSecretServerKey } from "./common";
-import { InlineOffer, ServerItem } from "../../customers";
 
 // IF_PLATFORM react-like
 import { useAsyncCache } from "./common";
@@ -600,6 +600,7 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
       teamProfile: {
         displayName: crud.display_name,
         profileImageUrl: crud.profile_image_url,
+        permission_ids: crud.permission_ids,
       },
     };
   }
@@ -609,6 +610,7 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
       id: crud.id,
       recipientEmail: crud.recipient_email,
       expiresAt: new Date(crud.expires_at_millis),
+      permissionIds: crud.permission_ids,
       revoke: async () => {
         await this._interface.revokeServerTeamInvitation(crud.id, crud.team_id);
       },
@@ -669,11 +671,12 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
         });
         await app._serverTeamMemberProfilesCache.refresh([crud.id]);
       },
-      async inviteUser(options: { email: string, callbackUrl?: string }) {
+      async inviteUser(options: { email: string, callbackUrl?: string, permissionIds?: string[] }) {
         await app._interface.sendServerTeamInvitation({
           teamId: crud.id,
           email: options.email,
           callbackUrl: options.callbackUrl ?? constructRedirectUrl(app.urls.teamInvitation, "callbackUrl"),
+          permissionIds: options.permissionIds,
         });
         await app._serverTeamInvitationsCache.refresh([crud.id]);
       },

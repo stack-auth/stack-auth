@@ -208,6 +208,7 @@ You can get `Team` objects with the
       declare function inviteUser(options: {
         email: string;
         callbackUrl?: string;
+        permissionIds?: string[];
       }): Promise<void>;
       ```
       </AsideSection>
@@ -215,6 +216,18 @@ You can get `Team` objects with the
       ```typescript Sending a team invitation
       await team.inviteUser({
         email: 'user@example.com',
+      });
+      
+      // Send invitation with specific role
+      await team.inviteUser({
+        email: 'admin@example.com',
+        permissionIds: ['team_admin']
+      });
+      
+      // Send invitation with multiple permissions
+      await team.inviteUser({
+        email: 'member@example.com',
+        permissionIds: ['team_member', 'project_viewer']
       });
       ```
       </AsideSection>
@@ -309,14 +322,14 @@ You can get `Team` objects with the
       <AsideSection title="Signature">
 
       ```typescript
-      declare function listInvitations(): Promise<{ id: string, email: string, expiresAt: Date }[]>;
+      declare function listInvitations(): Promise<{ id: string, email: string, expiresAt: Date, permissionIds: string[] }[]>;
       ```
       </AsideSection>
       <AsideSection title="Examples">
       ```typescript Listing team invitations
       const invitations = await team.listInvitations();
       invitations.forEach(invitation => {
-        console.log(invitation.id, invitation.email);
+        console.log(invitation.id, invitation.email, invitation.permissionIds);
       });
       ```
       </AsideSection>
@@ -336,20 +349,20 @@ You can get `Team` objects with the
 
       ### Returns
 
-      `{ id: string, email: string, expiresAt: Date }[]`
+      `{ id: string, email: string, expiresAt: Date, permissionIds: string[] }[]`
     </MethodContent>
     <MethodAside>
       <AsideSection title="Signature">
 
       ```typescript
-      declare function useInvitations(): { id: string, email: string, expiresAt: Date }[];
+      declare function useInvitations(): { id: string, email: string, expiresAt: Date, permissionIds: string[] }[];
       ```
       </AsideSection>
       <AsideSection title="Examples">
       ```typescript Listing team invitations in React component
       const invitations = team.useInvitations();
       invitations.forEach(invitation => {
-        console.log(invitation.id, invitation.email);
+        console.log(invitation.id, invitation.email, invitation.permissionIds);
       });
       ```
       </AsideSection>

@@ -692,6 +692,7 @@ export class StackClientInterface {
     teamId: string,
     callbackUrl: string,
     session: InternalSession,
+    permissionIds?: string[],
   }): Promise<void> {
     await this.sendClientRequest(
       "/team-invitations/send-code",
@@ -704,10 +705,22 @@ export class StackClientInterface {
           email: options.email,
           team_id: options.teamId,
           callback_url: options.callbackUrl,
+          permission_ids: options.permissionIds,
         }),
       },
       options.session,
     );
+  }
+
+  async getTeamRolePermissions(options: {
+    session: InternalSession,
+  }): Promise<{ items: { id: string, description?: string, contained_permission_ids: string[] }[], is_paginated: false }> {
+    const res = await this.sendClientRequest(
+      "/team-invitations/role-permissions",
+      { method: "GET" },
+      options.session,
+    );
+    return res.data;
   }
 
   async acceptTeamInvitation<T extends 'use' | 'details' | 'check'>(options: {
