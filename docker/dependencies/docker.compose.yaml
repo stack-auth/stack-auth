@@ -151,6 +151,21 @@ services:
       interval: 30s
       timeout: 10s
       retries: 3
+
+
+  # ================= LocalStack =================
+  localstack:
+    image: localstack/localstack:4.7
+    ports:
+      - "8124:4566"            # LocalStack Gateway
+      - "8150-8199:4510-4559"  # external services port range
+    environment:
+      # LocalStack configuration: https://docs.localstack.cloud/references/configuration/
+      - DEBUG=${DEBUG:-0}
+    volumes:
+      - localstack-data:/var/lib/localstack
+      - "/var/run/docker.sock:/var/run/docker.sock"
+
   # ================= Freestyle mock =================
 
   freestyle-mock:
@@ -185,6 +200,7 @@ volumes:
   svix-postgres-data:
   s3mock-data:
   deno-cache:
+  localstack-data:
 
 # ================= configs =================
 

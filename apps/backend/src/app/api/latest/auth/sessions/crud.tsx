@@ -49,6 +49,9 @@ export const sessionsCrudHandlers = createLazyProxy(() => createCrudHandlers(ses
           ? Prisma.sql`data->>'sessionId' = ANY(${Prisma.sql`ARRAY[${Prisma.join(refreshTokenObjs.map(s => s.id))}]`})`
           : Prisma.sql`FALSE`}
         AND "systemEventTypeIds" @> '{"$session-activity"}'
+        AND data->>'userId' = ${query.user_id}
+        AND data->>'projectId' = ${auth.tenancy.project.id}
+        AND COALESCE(data->>'branchId', 'main') = ${auth.tenancy.branchId}
         GROUP BY data->>'sessionId'
       )
       SELECT e.data->>'sessionId' as "sessionId", 

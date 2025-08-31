@@ -24,8 +24,6 @@ import {
 } from "@stackframe/stack-ui";
 import {
   Book,
-  Box,
-  CreditCard,
   Globe,
   KeyRound,
   Link as LinkIcon,
@@ -40,7 +38,7 @@ import {
   SquarePen,
   User,
   Users,
-  Webhook,
+  Webhook
 } from "lucide-react";
 import { useTheme } from "next-themes";
 import { usePathname } from "next/navigation";
@@ -214,6 +212,7 @@ const navigationItems: (Label | Item | Hidden)[] = [
     regex: /^\/projects\/[^\/]+\/email-themes\/[^\/]+$/,
     type: 'hidden',
   },
+  /*
   {
     name: "Payments",
     type: 'label',
@@ -224,23 +223,7 @@ const navigationItems: (Label | Item | Hidden)[] = [
     regex: /^\/projects\/[^\/]+\/payments$/,
     icon: CreditCard,
     type: 'item',
-  },
-  {
-    name: "Offers",
-    href: "/payments/offers",
-    regex: /^\/projects\/[^\/]+\/payments\/offers$/,
-    icon: SquarePen,
-    type: 'item',
-    requiresDevFeatureFlag: true,
-  },
-  {
-    name: "Items",
-    href: "/payments/items",
-    regex: /^\/projects\/[^\/]+\/payments\/items$/,
-    icon: Box,
-    type: 'item',
-    requiresDevFeatureFlag: true,
-  },
+  },*/
   {
     name: "Configuration",
     type: 'label'
