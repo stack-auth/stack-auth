@@ -10,7 +10,7 @@ import { ServerUser } from "../users";
 export type TeamMemberProfile = {
   displayName: string | null,
   profileImageUrl: string | null,
-  permission_ids: string[],
+  permissionIds: string[],
 }
 
 export type TeamMemberProfileUpdateOptions = {

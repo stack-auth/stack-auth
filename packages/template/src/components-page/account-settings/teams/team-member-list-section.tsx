@@ -25,8 +25,8 @@ function MemberListSectionInner(props: { team: Team }) {
     const rolesMap = new Map<string, string>();
 
     for (const user of users) {
-      // Use permission_ids directly from teamProfile
-      const permissionIds = user.teamProfile.permission_ids || [];
+      // Use permissionIds directly from teamProfile
+      const permissionIds = user.teamProfile.permissionIds || [];
 
       // Filter out $-prefixed permissions
       const filteredPermissions = permissionIds.filter((id: string) => !id.startsWith('$'));

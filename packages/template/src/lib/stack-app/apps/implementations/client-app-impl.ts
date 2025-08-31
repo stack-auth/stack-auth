@@ -653,7 +653,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
       teamProfile: {
         displayName: crud.display_name,
         profileImageUrl: crud.profile_image_url,
-        permission_ids: crud.permission_ids,
+        permissionIds: crud.permission_ids,
       }
     };
   }

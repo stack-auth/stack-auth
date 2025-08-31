@@ -52,7 +52,6 @@ function MemberInvitationsSectionInvitationsList(props: { team: Team }) {
 
 
     if (!permissionIds || permissionIds.length === 0) {
-      console.log('No permissionIds provided, returning default');
       return t("Default member role");
     }
 

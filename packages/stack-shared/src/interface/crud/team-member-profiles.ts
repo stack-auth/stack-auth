@@ -14,7 +14,6 @@ export const teamMemberProfilesCrudClientReadSchema = yupObject({
 
 export const teamMemberProfilesCrudServerReadSchema = teamMemberProfilesCrudClientReadSchema.concat(yupObject({
   user: usersCrudServerReadSchema.defined(),
-  permission_ids: schemaFields.yupArray(schemaFields.yupString().defined()).defined(),
 })).defined();
 
 export const teamMemberProfilesCrudClientUpdateSchema = yupObject({
