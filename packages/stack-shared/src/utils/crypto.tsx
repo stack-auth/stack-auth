@@ -1,6 +1,7 @@
 import { encodeBase32, encodeBase64 } from "./bytes";
 import { StackAssertionError } from "./errors";
 import { globalVar } from "./globals";
+import { Result } from "./results";
 
 export function generateRandomValues(array: Uint8Array): typeof array {
   if (!globalVar.crypto) {
@@ -61,18 +62,24 @@ export async function encrypt({ purpose, secret, value }: { purpose: string, sec
 
 export async function decrypt({ purpose, secret, cipher }: { purpose: string, secret: string | Uint8Array, cipher: Uint8Array }) {
   const version = cipher.slice(0, 2);
-  if (version[0] !== 0x01 || version[1] !== 0x00) throw new StackAssertionError("Invalid ciphertext version in decrypt(...); expected 0x0100", { purpose, cipher, cipherText: new TextDecoder().decode(cipher) });
+  if (version[0] !== 0x01 || version[1] !== 0x00) throw new StackAssertionError("Invalid ciphertext version in decrypt(...); expected 0x0100", { purpose });
   const salt = cipher.slice(2, 18);
   const iv = cipher.slice(18, 30);
   const cipherBytes = cipher.slice(30);
   const derivedSecretKey = await getDerivedSymmetricKey(purpose, secret, salt);
 
-  const plaintext = await crypto.subtle.decrypt({
-    name: "AES-GCM",
-    iv,
-  }, derivedSecretKey, cipherBytes);
-
-  return new Uint8Array(plaintext);
+  try {
+    const plaintext = await crypto.subtle.decrypt({
+      name: "AES-GCM",
+      iv,
+    }, derivedSecretKey, cipherBytes);
+    return Result.ok(new Uint8Array(plaintext));
+  } catch (e) {
+    if (e instanceof DOMException && e.name === "OperationError") {
+      return Result.error(new Error("Invalid ciphertext or secret when decrypting encrypted value", { cause: e }));
+    }
+    throw e;
+  }
 }
 
 import.meta.vitest?.test("encrypt & decrypt", async ({ expect }) => {

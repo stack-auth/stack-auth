@@ -9,6 +9,7 @@ import {
 import { decodeBase64, encodeBase64 } from "../../utils/bytes";
 import { decrypt, encrypt } from "../../utils/crypto";
 import { getEnvVariable } from "../../utils/env";
+import { Result } from "../../utils/results";
 
 function getKmsClient() {
   return new KMSClient({
@@ -79,11 +80,11 @@ export async function encryptWithKms(value: string) {
 export async function decryptWithKms(encrypted: Awaited<ReturnType<typeof encryptWithKms>>) {
   const { dekBytes } = await unwrapDEK(encrypted.edkBase64);
   try {
-    const value = await decrypt({
+    const value = Result.orThrow(await decrypt({
       purpose: "stack-data-vault-server-side-encryption",
       secret: dekBytes,
       cipher: decodeBase64(encrypted.ciphertextBase64),
-    });
+    }));
     return new TextDecoder().decode(value);
   } finally {
     dekBytes.fill(0);

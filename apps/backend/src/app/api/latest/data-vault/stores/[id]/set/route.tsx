@@ -36,6 +36,8 @@ export const POST = createSmartRouteHandler({
     const prisma = await getPrismaClientForTenancy(tenancy);
 
     // Encrypt the value with KMS
+    // note that encryptedValue is encrypted by client-side encryption, while encrypted is encrypted by both client-side
+    // and server-side encryption.
     const encrypted = await encryptWithKms(encryptedValue);
 
     // Store or update the entry

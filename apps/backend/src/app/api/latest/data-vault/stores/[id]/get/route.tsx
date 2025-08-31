@@ -67,6 +67,9 @@ export const POST = createSmartRouteHandler({
       statusCode: 200,
       bodyType: "json",
       body: {
+        // This looks confusing, but it's actually correct. `encrypted_value` refers to the fact that it is encrypted
+        // with client-side encryption, while `decryptedValue` refers to the fact that it has been decrypted with
+        // server-side encryption.
         encrypted_value: decryptedValue,
       },
     };

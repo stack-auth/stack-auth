@@ -93,9 +93,9 @@ export default function PageClient() {
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
             {storeEntries.map(([storeId, store]) => (
               <Card
-                key={storeId as string}
+                key={storeId}
                 className="cursor-pointer hover:shadow-md transition-shadow"
-                onClick={() => handleStoreClick(storeId as string)}
+                onClick={() => handleStoreClick(storeId)}
               >
                 <CardHeader className="pb-3">
                   <div className="flex items-start justify-between">
@@ -104,7 +104,7 @@ export default function PageClient() {
                 </CardHeader>
                 <CardContent>
                   <div className="space-y-1">
-                    <h3 className="font-semibold text-sm truncate">{storeId as string}</h3>
+                    <h3 className="font-semibold text-sm truncate">{storeId}</h3>
                     <p className="text-xs text-muted-foreground truncate">
                       {store.displayName || "No display name"}
                     </p>

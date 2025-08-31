@@ -46,16 +46,17 @@ export async function encryptValue(secret: string, key: string, value: string) {
 export async function decryptValue(secret: string, key: string, encryptedValue: string) {
   const valueEncryptionDerivedKey = await getDerivedKey(secret, key);
 
-  const bytes = await decrypt({
+  const bytesResult = await decrypt({
     purpose: encryptionValuePurpose,
     secret: valueEncryptionDerivedKey,
     cipher: decodeBase64(encryptedValue),
   });
-  return new TextDecoder().decode(bytes);
+  if (bytesResult.status === "error") throw new Error("Data vault client-side decryption failed. Are you sure you're using the correct secret?", { cause: bytesResult.error });
+  return new TextDecoder().decode(bytesResult.data);
 }
 
 
-import.meta.vitest?.describe("encryptValue & decryptValue", ({}) => {
+import.meta.vitest?.describe("encryptValue & decryptValue", () => {
   import.meta.vitest?.it("should encrypt and decrypt a value", async ({ expect }) => {
     const secret = "test-secret";
     const value = "test-value";
@@ -68,8 +69,14 @@ import.meta.vitest?.describe("encryptValue & decryptValue", ({}) => {
     const secret = "test-secret";
     const value = "test-value";
     const encrypted = await encryptValue(secret, "key", value);
-    const decrypted = await decryptValue(secret, "different-secret", encrypted);
-    expect(decrypted).not.toEqual(value);
+    await expect(decryptValue("different-secret", "key", encrypted)).rejects.toThrow();
+  });
+
+  import.meta.vitest?.it("should not decrypt a value with a different key", async ({ expect }) => {
+    const secret = "test-secret";
+    const value = "test-value";
+    const encrypted = await encryptValue(secret, "key", value);
+    await expect(decryptValue(secret, "different-key", encrypted)).rejects.toThrow();
   });
 
   import.meta.vitest?.it("should not decrypt a value if the cipher was tampered with", async ({ expect }) => {
