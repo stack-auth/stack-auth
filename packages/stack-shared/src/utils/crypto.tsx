@@ -94,11 +94,11 @@ import.meta.vitest?.test("encrypt & decrypt", async ({ expect }) => {
   const exampleKey1 = crypto.getRandomValues(new Uint8Array(32));
   const exampleKey2 = crypto.getRandomValues(new Uint8Array(32));
 
-  expect(await encryptAndDecrypt("p", "p", "secret", "secret", exampleBytes)).toEqual(exampleBytes);
-  expect(await encryptAndDecrypt("p", "p", exampleKey1, exampleKey1, exampleBytes)).toEqual(exampleBytes);
-  await expect(encryptAndDecrypt("p", "p", exampleKey1, "secret", exampleBytes)).rejects.toThrow();
-  await expect(encryptAndDecrypt("p", "p", exampleKey1, exampleKey2, exampleBytes)).rejects.toThrow();
-  await expect(encryptAndDecrypt("p", "not-p", exampleKey1, exampleKey1, exampleBytes)).rejects.toThrow();
+  expect(await encryptAndDecrypt("p", "p", "secret", "secret", exampleBytes)).toEqual(Result.ok(exampleBytes));
+  expect(await encryptAndDecrypt("p", "p", exampleKey1, exampleKey1, exampleBytes)).toEqual(Result.ok(exampleBytes));
+  expect(await encryptAndDecrypt("p", "p", exampleKey1, "secret", exampleBytes)).toEqual(Result.error(new Error("Invalid ciphertext or secret when decrypting encrypted value")));
+  expect(await encryptAndDecrypt("p", "p", exampleKey1, exampleKey2, exampleBytes)).toEqual(Result.error(new Error("Invalid ciphertext or secret when decrypting encrypted value")));
+  expect(await encryptAndDecrypt("p", "not-p", exampleKey1, exampleKey1, exampleBytes)).toEqual(Result.error(new Error("Invalid ciphertext or secret when decrypting encrypted value")));
 });
 
 export type HashOptions = {
