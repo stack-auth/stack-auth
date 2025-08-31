@@ -10,17 +10,20 @@ import { decodeBase64, encodeBase64 } from "../../utils/bytes";
 import { decrypt, encrypt } from "../../utils/crypto";
 import { getEnvVariable } from "../../utils/env";
 
-const kms = new KMSClient({
-  region: getEnvVariable("STACK_AWS_REGION"),
-  endpoint: getEnvVariable("STACK_AWS_KMS_ENDPOINT"),
-  credentials: {
-    accessKeyId: getEnvVariable("STACK_AWS_ACCESS_KEY_ID"),
-    secretAccessKey: getEnvVariable("STACK_AWS_SECRET_ACCESS_KEY")
-  }
-});
+function getKmsClient() {
+  return new KMSClient({
+    region: getEnvVariable("STACK_AWS_REGION"),
+    endpoint: getEnvVariable("STACK_AWS_KMS_ENDPOINT"),
+    credentials: {
+      accessKeyId: getEnvVariable("STACK_AWS_ACCESS_KEY_ID"),
+      secretAccessKey: getEnvVariable("STACK_AWS_SECRET_ACCESS_KEY")
+    }
+  });
+}
 
 async function getOrCreateKekId(): Promise<string> {
   const id = "alias/stack-data-vault-server-side-kek";
+  const kms = getKmsClient();
   try {
     const describeResult = await kms.send(new DescribeKeyCommand({ KeyId: id }));
     if (describeResult.KeyMetadata?.KeyId) return describeResult.KeyMetadata.KeyId;
@@ -39,6 +42,7 @@ async function getOrCreateKekId(): Promise<string> {
 
 async function genDEK() {
   const kekId = await getOrCreateKekId();
+  const kms = getKmsClient();
   const out = await kms.send(new GenerateDataKeyCommand({ KeyId: kekId, KeySpec: "AES_256" }));
   if (!out.Plaintext || !out.CiphertextBlob) throw new Error("GenerateDataKey failed");
   return {
@@ -49,6 +53,7 @@ async function genDEK() {
 
 async function unwrapDEK(edk_b64: string) {
   const edkBytes = decodeBase64(edk_b64);
+  const kms = getKmsClient();
   const out = await kms.send(new DecryptCommand({ CiphertextBlob: edkBytes }));
   if (!out.Plaintext) throw new Error("KMS Decrypt failed");
   return {
