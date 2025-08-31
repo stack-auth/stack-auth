@@ -9,10 +9,12 @@ export const teamMemberProfilesCrudClientReadSchema = yupObject({
   user_id: schemaFields.userIdSchema.defined(),
   display_name: schemaFields.teamMemberDisplayNameSchema.nullable().defined(),
   profile_image_url: schemaFields.teamMemberProfileImageUrlSchema.nullable().defined(),
+  permission_ids: schemaFields.yupArray(schemaFields.yupString().defined()).defined(),
 }).defined();
 
 export const teamMemberProfilesCrudServerReadSchema = teamMemberProfilesCrudClientReadSchema.concat(yupObject({
   user: usersCrudServerReadSchema.defined(),
+  permission_ids: schemaFields.yupArray(schemaFields.yupString().defined()).defined(),
 })).defined();
 
 export const teamMemberProfilesCrudClientUpdateSchema = yupObject({

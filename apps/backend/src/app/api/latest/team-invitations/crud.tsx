@@ -53,6 +53,7 @@ export const teamInvitationsCrudHandlers = createLazyProxy(() => createCrudHandl
           team_id: code.data.team_id,
           expires_at_millis: code.expiresAt.getTime(),
           recipient_email: code.method.email,
+          permission_ids: code.data.permission_ids || [],
         })),
         is_paginated: false,
       };

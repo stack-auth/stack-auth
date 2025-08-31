@@ -10,6 +10,7 @@ import { ServerUser } from "../users";
 export type TeamMemberProfile = {
   displayName: string | null,
   profileImageUrl: string | null,
+  permission_ids: string[],
 }
 
 export type TeamMemberProfileUpdateOptions = {
@@ -30,6 +31,7 @@ export type TeamInvitation = {
   id: string,
   recipientEmail: string | null,
   expiresAt: Date,
+  permissionIds?: string[],
   revoke(): Promise<void>,
 }
 
@@ -39,7 +41,7 @@ export type Team = {
   profileImageUrl: string | null,
   clientMetadata: any,
   clientReadOnlyMetadata: any,
-  inviteUser(options: { email: string, callbackUrl?: string }): Promise<void>,
+  inviteUser(options: { email: string, callbackUrl?: string, permissionIds?: string[] }): Promise<void>,
   listUsers(): Promise<TeamUser[]>,
   useUsers(): TeamUser[], // THIS_LINE_PLATFORM react-like
   listInvitations(): Promise<TeamInvitation[]>,
@@ -89,7 +91,7 @@ export type ServerTeam = {
   update(update: ServerTeamUpdateOptions): Promise<void>,
   delete(): Promise<void>,
   addUser(userId: string): Promise<void>,
-  inviteUser(options: { email: string, callbackUrl?: string }): Promise<void>,
+  inviteUser(options: { email: string, callbackUrl?: string, permissionIds?: string[] }): Promise<void>,
   removeUser(userId: string): Promise<void>,
 } & Team;
 

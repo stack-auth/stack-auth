@@ -12,12 +12,13 @@ import { getUserLastActiveAtMillis, getUsersLastActiveAtMillis, userFullInclude,
 
 const fullInclude = { projectUser: { include: userFullInclude } };
 
-function prismaToCrud(prisma: Prisma.TeamMemberGetPayload<{ include: typeof fullInclude }>, lastActiveAtMillis: number) {
+function prismaToCrud(prisma: Prisma.TeamMemberGetPayload<{ include: typeof fullInclude }>, lastActiveAtMillis: number, permissionIds: string[]) {
   return {
     team_id: prisma.teamId,
     user_id: prisma.projectUserId,
     display_name: prisma.displayName ?? prisma.projectUser.displayName,
     profile_image_url: prisma.profileImageUrl ?? prisma.projectUser.profileImageUrl,
+    permission_ids: permissionIds,
     user: userPrismaToCrud(prisma.projectUser, lastActiveAtMillis),
   };
 }
@@ -78,10 +79,22 @@ export const teamMemberProfilesCrudHandlers = createLazyProxy(() => createCrudHa
         include: fullInclude,
       });
 
+      const permissions = await Promise.all(db.map(async (member) => {
+        const perms = await tx.teamMemberDirectPermission.findMany({
+          where: {
+            tenancyId: auth.tenancy.id,
+            projectUserId: member.projectUserId,
+            teamId: member.teamId,
+          },
+          select: { permissionId: true },
+        });
+        return perms.map(p => p.permissionId);
+      }));
+
       const lastActiveAtMillis = await getUsersLastActiveAtMillis(auth.project.id, auth.branchId, db.map(user => user.projectUserId), db.map(user => user.createdAt));
 
       return {
-        items: db.map((user, index) => prismaToCrud(user, lastActiveAtMillis[index])),
+        items: db.map((user, index) => prismaToCrud(user, lastActiveAtMillis[index], permissions[index])),
         is_paginated: false,
       };
     });
@@ -121,7 +134,16 @@ export const teamMemberProfilesCrudHandlers = createLazyProxy(() => createCrudHa
         throw new KnownErrors.TeamMembershipNotFound(params.team_id, params.user_id);
       }
 
-      return prismaToCrud(db, await getUserLastActiveAtMillis(auth.project.id, auth.branchId, db.projectUser.projectUserId) ?? db.projectUser.createdAt.getTime());
+      const perms = await tx.teamMemberDirectPermission.findMany({
+        where: {
+          tenancyId: auth.tenancy.id,
+          projectUserId: db.projectUserId,
+          teamId: db.teamId,
+        },
+        select: { permissionId: true },
+      });
+
+      return prismaToCrud(db, await getUserLastActiveAtMillis(auth.project.id, auth.branchId, db.projectUser.projectUserId) ?? db.projectUser.createdAt.getTime(), perms.map(p => p.permissionId));
     });
   },
   onUpdate: async ({ auth, data, params }) => {
@@ -155,7 +177,16 @@ export const teamMemberProfilesCrudHandlers = createLazyProxy(() => createCrudHa
         include: fullInclude,
       });
 
-      return prismaToCrud(db, await getUserLastActiveAtMillis(auth.project.id, auth.branchId, db.projectUser.projectUserId) ?? db.projectUser.createdAt.getTime());
+      const perms = await tx.teamMemberDirectPermission.findMany({
+        where: {
+          tenancyId: auth.tenancy.id,
+          projectUserId: db.projectUserId,
+          teamId: db.teamId,
+        },
+        select: { permissionId: true },
+      });
+
+      return prismaToCrud(db, await getUserLastActiveAtMillis(auth.project.id, auth.branchId, db.projectUser.projectUserId) ?? db.projectUser.createdAt.getTime(), perms.map(p => p.permissionId));
     });
   },
 }));

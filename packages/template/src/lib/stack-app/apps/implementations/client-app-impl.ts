@@ -38,7 +38,7 @@ import { ApiKey, ApiKeyCreationOptions, ApiKeyUpdateOptions, apiKeyCreationOptio
 import { GetUserOptions, HandlerUrls, OAuthScopesOnSignIn, RedirectMethod, RedirectToOptions, RequestLike, TokenStoreInit, stackAppInternalsSymbol } from "../../common";
 import { OAuthConnection } from "../../connected-accounts";
 import { ContactChannel, ContactChannelCreateOptions, ContactChannelUpdateOptions, contactChannelCreateOptionsToCrud, contactChannelUpdateOptionsToCrud } from "../../contact-channels";
-import { Customer, InlineOffer, Item } from "../../customers";
+import { Customer, Item } from "../../customers";
 import { NotificationCategory } from "../../notification-categories";
 import { TeamPermission } from "../../permissions";
 import { AdminOwnedProject, AdminProjectUpdateOptions, Project, adminProjectCreateOptionsToCrud } from "../../projects";
@@ -653,6 +653,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
       teamProfile: {
         displayName: crud.display_name,
         profileImageUrl: crud.profile_image_url,
+        permission_ids: crud.permission_ids,
       }
     };
   }
@@ -662,6 +663,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
       id: crud.id,
       recipientEmail: crud.recipient_email,
       expiresAt: new Date(crud.expires_at_millis),
+      permissionIds: crud.permission_ids,
       revoke: async () => {
         await this._interface.revokeTeamInvitation(crud.id, crud.team_id, session);
         await this._teamInvitationsCache.refresh([session, crud.team_id]);
@@ -728,12 +730,13 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
       clientMetadata: crud.client_metadata,
       clientReadOnlyMetadata: crud.client_read_only_metadata,
       ...this._createCustomer(crud.id, "team", session),
-      async inviteUser(options: { email: string, callbackUrl?: string }) {
+      async inviteUser(options: { email: string, callbackUrl?: string, permissionIds?: string[] }) {
         await app._interface.sendTeamInvitation({
           teamId: crud.id,
           email: options.email,
           session,
           callbackUrl: options.callbackUrl ?? constructRedirectUrl(app.urls.teamInvitation, "callbackUrl"),
+          permissionIds: options.permissionIds,
         });
         await app._teamInvitationsCache.refresh([session, crud.id]);
       },
@@ -1430,6 +1433,27 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
     } else {
       return Result.error(result.error);
     }
+  }
+
+  async getTeamRolePermissions(): Promise<{ items: { id: string, description?: string, contained_permission_ids: string[] }[], is_paginated: false }> {
+    const session = await this._getSession();
+    const result = await this._interface.sendClientRequest(
+      "/team-invitations/role-permissions",
+      {
+        method: "GET",
+        headers: {
+          "Content-Type": "application/json",
+        },
+      },
+      session
+    );
+
+    if (!result.ok) {
+      throw new Error(`Failed to get team role permissions: ${result.status} ${await result.text()}`);
+    }
+
+    const data = await result.json();
+    return data;
   }
 
   async verifyEmail(code: string): Promise<Result<undefined, KnownErrors["VerificationCodeError"]>> {
