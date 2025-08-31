@@ -40,7 +40,7 @@ import {
   SquarePen,
   User,
   Users,
-  Webhook,
+  Webhook
 } from "lucide-react";
 import { useTheme } from "next-themes";
 import { usePathname } from "next/navigation";

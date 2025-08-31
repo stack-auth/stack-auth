@@ -23,6 +23,7 @@ import { ApiKey, ApiKeyCreationOptions, ApiKeyUpdateOptions, apiKeyCreationOptio
 import { GetUserOptions, HandlerUrls, OAuthScopesOnSignIn, TokenStoreInit } from "../../common";
 import { OAuthConnection } from "../../connected-accounts";
 import { ServerContactChannel, ServerContactChannelCreateOptions, ServerContactChannelUpdateOptions, serverContactChannelCreateOptionsToCrud, serverContactChannelUpdateOptionsToCrud } from "../../contact-channels";
+import { InlineOffer, ServerItem } from "../../customers";
 import { SendEmailOptions } from "../../email";
 import { NotificationCategory } from "../../notification-categories";
 import { AdminProjectPermissionDefinition, AdminTeamPermission, AdminTeamPermissionDefinition } from "../../permissions";
@@ -31,9 +32,9 @@ import { ProjectCurrentServerUser, ServerUser, ServerUserCreateOptions, ServerUs
 import { StackServerAppConstructorOptions } from "../interfaces/server-app";
 import { _StackClientAppImplIncomplete } from "./client-app-impl";
 import { clientVersion, createCache, createCacheBySession, getBaseUrl, getDefaultProjectId, getDefaultPublishableClientKey, getDefaultSecretServerKey } from "./common";
-import { InlineOffer, ServerItem } from "../../customers";
 
 // IF_PLATFORM react-like
+import { DataVaultStore } from "../../data-vault";
 import { useAsyncCache } from "./common";
 // END_PLATFORM
 
@@ -130,6 +131,9 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
       return await this._interface.listServerNotificationCategories(userId);
     }
   );
+  private readonly _serverDataVaultStoreValueCache = createCache<[string, string, string], string | null>(async ([storeId, key, secret]) => {
+    return await this._interface.getDataVaultStoreValue(secret, storeId, key);
+  });
 
   private readonly _serverUserApiKeysCache = createCache<[string], UserApiKeysCrud['Server']['Read'][]>(
     async ([userId]) => {
@@ -1078,6 +1082,39 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
         return teams.find((t) => t.id === teamId) ?? null;
       }, [teams, teamId]);
     }
+  }
+  // END_PLATFORM
+
+  protected _createServerDataVaultStore(id: string): DataVaultStore {
+    const validateOptions = (options: { secret: string }) => {
+      if (typeof options.secret !== "string") throw new Error("secret must be a string, got " + typeof options.secret);
+    };
+    return {
+      id,
+      setValue: async (key, value, options) => {
+        validateOptions(options);
+        await this._interface.setDataVaultStoreValue(options.secret, id, key, value);
+      },
+      getValue: async (key, options) => {
+        validateOptions(options);
+        return Result.orThrow(await this._serverDataVaultStoreValueCache.getOrWait([id, key, options.secret], "write-only"));
+      },
+      // IF_PLATFORM react-like
+      useValue: (key, options) => {
+        validateOptions(options);
+        return useAsyncCache(this._serverDataVaultStoreValueCache, [id, key, options.secret] as const, `app.useDataVaultStoreValue()`);
+      },
+      // END_PLATFORM
+    };
+  }
+
+  async getDataVaultStore(id: string): Promise<DataVaultStore> {
+    return this._createServerDataVaultStore(id);
+  }
+
+  // IF_PLATFORM react-like
+  useDataVaultStore(id: string): DataVaultStore {
+    return useMemo(() => this._createServerDataVaultStore(id), [id]);
   }
   // END_PLATFORM
 
