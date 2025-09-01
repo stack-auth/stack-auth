@@ -5,6 +5,7 @@ import { ErrorBoundary } from '@sentry/nextjs';
 import { UserAvatar } from '@stackframe/stack';
 import { fromNow } from '@stackframe/stack-shared/dist/utils/dates';
 import { Card, CardContent, CardHeader, CardTitle, Table, TableBody, TableCell, TableRow, Typography } from '@stackframe/stack-ui';
+import { useState } from 'react';
 import { PageLayout } from "../page-layout";
 import { useAdminApp } from '../use-admin-app';
 import { GlobeSection } from './globe';
@@ -38,8 +39,9 @@ const dauConfig = {
 export default function MetricsPage(props: { toSetup: () => void }) {
   const adminApp = useAdminApp();
   const router = useRouter();
+  const [includeAnonymous, setIncludeAnonymous] = useState(false);
 
-  const data = (adminApp as any)[stackAppInternalsSymbol].useMetrics();
+  const data = (adminApp as any)[stackAppInternalsSymbol].useMetrics(includeAnonymous);
 
   return (
     <PageLayout fillWidth>

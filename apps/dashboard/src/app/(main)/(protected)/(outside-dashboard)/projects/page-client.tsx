@@ -49,7 +49,15 @@ export default function PageClient(props: { inviteUser: (origin: string, teamId:
     };
 
     const grouped = groupBy(newProjects, (project) => project.ownerTeamId);
-    return Array.from(grouped.entries()).map(([teamId, projects]) => {
+    return [...grouped.entries()].sort((a, b) => {
+      if (a[0] === null) return -1;
+      if (b[0] === null) return 1;
+      if (sort === "recency") {
+        return a[1][0].createdAt > b[1][0].createdAt ? -1 : 1;
+      } else {
+        return stringCompare(a[1][0].displayName, b[1][0].displayName);
+      }
+    }).map(([teamId, projects]) => {
       return {
         teamId,
         projects: projects.sort(projectSort),

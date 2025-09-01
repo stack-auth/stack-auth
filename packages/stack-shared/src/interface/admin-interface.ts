@@ -297,9 +297,14 @@ export class StackAdminInterface extends StackServerInterface {
     );
   }
 
-  async getMetrics(): Promise<any> {
+  async getMetrics(includeAnonymous: boolean = false): Promise<any> {
+    const params = new URLSearchParams();
+    if (includeAnonymous) {
+      params.append('include_anonymous', 'true');
+    }
+    const queryString = params.toString();
     const response = await this.sendAdminRequest(
-      "/internal/metrics",
+      `/internal/metrics${queryString ? `?${queryString}` : ''}`,
       {
         method: "GET",
       },

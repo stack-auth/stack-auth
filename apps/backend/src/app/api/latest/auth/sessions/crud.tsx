@@ -62,6 +62,9 @@ export const sessionsCrudHandlers = createLazyProxy(() => createCrudHandlers(ses
       JOIN latest_events le ON e.data->>'sessionId' = le."sessionId" AND e."eventStartedAt" = le."lastActiveAt"
       LEFT JOIN ${sqlQuoteIdent(schema)}."EventIpInfo" geo ON geo.id = e."endUserIpInfoGuessId"
       WHERE e."systemEventTypeIds" @> '{"$session-activity"}'
+      AND e.data->>'userId' = ${query.user_id}
+      AND e.data->>'projectId' = ${auth.tenancy.project.id}
+      AND COALESCE(e.data->>'branchId', 'main') = ${auth.tenancy.branchId}
     `;
 
     const sessionsWithLastActiveAt = refreshTokenObjs.map(s => {

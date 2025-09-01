@@ -8,7 +8,7 @@ import SetupPage from "./setup-page";
 
 export default function PageClient() {
   const adminApp = useAdminApp();
-  const data = (adminApp as any)[stackAppInternalsSymbol].useMetrics();
+  const data = (adminApp as any)[stackAppInternalsSymbol].useMetrics(false);
   const [page, setPage] = useState<'setup' | 'metrics'>(data.total_users === 0 ? 'setup' : 'metrics');
 
   switch (page) {
