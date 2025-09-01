@@ -720,7 +720,7 @@ export class StackClientInterface {
       { method: "GET" },
       options.session,
     );
-    return res.data;
+    return await res.json();
   }
 
   async acceptTeamInvitation<T extends 'use' | 'details' | 'check'>(options: {
