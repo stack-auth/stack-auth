@@ -1,14 +1,16 @@
-import { createTemplateComponentFromHtml, getEmailThemeForTemplate, renderEmailWithTemplate } from "@/lib/email-rendering";
-import { getEmailConfig, sendEmail } from "@/lib/emails";
+import { getEmailDraft, themeModeToTemplateThemeId } from "@/lib/email-drafts";
+import { createTemplateComponentFromHtml, getEmailThemeForTemplate, renderEmailsWithTemplateBatched } from "@/lib/email-rendering";
+import { getEmailConfig, sendEmail, sendEmailResendBatched } from "@/lib/emails";
 import { getNotificationCategoryByName, hasNotificationEnabled } from "@/lib/notification-categories";
 import { getPrismaClientForTenancy } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
+import { runAsynchronouslyAndWaitUntil } from "@/utils/vercel";
+import { KnownErrors } from "@stackframe/stack-shared";
 import { adaptSchema, serverOrHigherAuthTypeSchema, templateThemeIdSchema, yupArray, yupBoolean, yupMixed, yupNumber, yupObject, yupRecord, yupString, yupUnion } from "@stackframe/stack-shared/dist/schema-fields";
+import { getChunks } from "@stackframe/stack-shared/dist/utils/arrays";
 import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
 import { StatusError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
 import { unsubscribeLinkVerificationCodeHandler } from "../unsubscribe-link/verification-handler";
-import { KnownErrors } from "@stackframe/stack-shared";
-import { getEmailDraft, themeModeToTemplateThemeId } from "@/lib/email-drafts";
 
 type UserResult = {
   user_id: string,
@@ -108,89 +110,11 @@ export const POST = createSmartRouteHandler({
       throw new KnownErrors.UserIdDoesNotExist(missingUserIds[0]);
     }
     const userMap = new Map(users.map(user => [user.projectUserId, user]));
-    const userSendErrors: Map<string, string> = new Map();
     const userPrimaryEmails: Map<string, string> = new Map();
-
     for (const user of userMap.values()) {
       const primaryEmail = user.contactChannels.find((c) => c.isPrimary === "TRUE")?.value;
-      if (!primaryEmail) {
-        userSendErrors.set(user.projectUserId, "User does not have a primary email");
-        continue;
-      }
-      userPrimaryEmails.set(user.projectUserId, primaryEmail);
-
-      let currentNotificationCategory = defaultNotificationCategory;
-      if (!("html" in body)) {
-        // We have to render email twice in this case, first pass is to get the notification category
-        const renderedTemplateFirstPass = await renderEmailWithTemplate(
-          templateSource,
-          themeSource,
-          {
-            user: { displayName: user.displayName },
-            project: { displayName: auth.tenancy.project.display_name },
-            variables,
-          },
-        );
-        if (renderedTemplateFirstPass.status === "error") {
-          userSendErrors.set(user.projectUserId, "There was an error rendering the email");
-          continue;
-        }
-        const notificationCategory = getNotificationCategoryByName(renderedTemplateFirstPass.data.notificationCategory ?? "");
-        if (!notificationCategory) {
-          userSendErrors.set(user.projectUserId, "Notification category not found with given name");
-          continue;
-        }
-        currentNotificationCategory = notificationCategory;
-      }
-
-      const isNotificationEnabled = await hasNotificationEnabled(auth.tenancy, user.projectUserId, currentNotificationCategory.id);
-      if (!isNotificationEnabled) {
-        userSendErrors.set(user.projectUserId, "User has disabled notifications for this category");
-        continue;
-      }
-
-      let unsubscribeLink: string | undefined = undefined;
-      if (currentNotificationCategory.can_disable) {
-        const { code } = await unsubscribeLinkVerificationCodeHandler.createCode({
-          tenancy: auth.tenancy,
-          method: {},
-          data: {
-            user_id: user.projectUserId,
-            notification_category_id: currentNotificationCategory.id,
-          },
-          callbackUrl: undefined
-        });
-        const unsubUrl = new URL(getEnvVariable("NEXT_PUBLIC_STACK_API_URL"));
-        unsubUrl.pathname = "/api/v1/emails/unsubscribe-link";
-        unsubUrl.searchParams.set("code", code);
-        unsubscribeLink = unsubUrl.toString();
-      }
-
-      const renderedEmail = await renderEmailWithTemplate(
-        templateSource,
-        themeSource,
-        {
-          user: { displayName: user.displayName },
-          project: { displayName: auth.tenancy.project.display_name },
-          variables,
-          unsubscribeLink,
-        },
-      );
-      if (renderedEmail.status === "error") {
-        userSendErrors.set(user.projectUserId, "There was an error rendering the email");
-        continue;
-      }
-      try {
-        await sendEmail({
-          tenancyId: auth.tenancy.id,
-          emailConfig,
-          to: primaryEmail,
-          subject: body.subject ?? renderedEmail.data.subject ?? "",
-          html: renderedEmail.data.html,
-          text: renderedEmail.data.text,
-        });
-      } catch {
-        userSendErrors.set(user.projectUserId, "Failed to send email");
+      if (primaryEmail) {
+        userPrimaryEmails.set(user.projectUserId, primaryEmail);
       }
     }
 
@@ -199,17 +123,134 @@ export const POST = createSmartRouteHandler({
       user_email: userPrimaryEmails.get(user.projectUserId) ?? user.contactChannels.find((c) => c.isPrimary === "TRUE")?.value,
     }));
 
-    if ("draft_id" in body) {
-      await prisma.emailDraft.update({
-        where: {
-          tenancyId_id: {
-            tenancyId: auth.tenancy.id,
-            id: body.draft_id,
+    const BATCH_SIZE = 100;
+
+    const resolveCategoriesForUsers = async (usersWithPrimary: typeof users) => {
+      const currentCategories = new Map<string, ReturnType<typeof getNotificationCategoryByName>>();
+      if (!("html" in body)) {
+        const firstPassInputs = usersWithPrimary.map((user) => ({
+          user: { displayName: user.displayName },
+          project: { displayName: auth.tenancy.project.display_name },
+          variables,
+        }));
+
+        const chunks = getChunks(firstPassInputs, BATCH_SIZE);
+        const userChunks = getChunks(usersWithPrimary, BATCH_SIZE);
+        for (let i = 0; i < chunks.length; i++) {
+          const chunk = chunks[i];
+          const correspondingUsers = userChunks[i];
+          const rendered = await renderEmailsWithTemplateBatched(templateSource, themeSource, chunk);
+          if (rendered.status === "error") {
+            continue;
+          }
+          const outputs = rendered.data;
+          for (let j = 0; j < outputs.length; j++) {
+            const output = outputs[j];
+            const user = correspondingUsers[j];
+            const category = getNotificationCategoryByName(output.notificationCategory ?? "");
+            currentCategories.set(user.projectUserId, category);
+          }
+        }
+      } else {
+        for (const user of usersWithPrimary) {
+          currentCategories.set(user.projectUserId, defaultNotificationCategory);
+        }
+      }
+      return currentCategories;
+    };
+
+    const getAllowedUsersWithUnsub = async (usersWithPrimary: typeof users, currentCategories: Map<string, ReturnType<typeof getNotificationCategoryByName>>) => {
+      const allowed = await Promise.all(usersWithPrimary.map(async (user) => {
+        const category = currentCategories.get(user.projectUserId) ?? defaultNotificationCategory;
+        const enabled = await hasNotificationEnabled(auth.tenancy, user.projectUserId, category.id);
+        return enabled ? { user, category } : null;
+      })).then(r => r.filter((x): x is { user: typeof users[number], category: NonNullable<ReturnType<typeof getNotificationCategoryByName>> } => Boolean(x)));
+
+      const unsubLinks = new Map<string, string | undefined>();
+      await Promise.all(allowed.map(async ({ user, category }) => {
+        if (!category.can_disable) {
+          unsubLinks.set(user.projectUserId, undefined);
+          return;
+        }
+        const { code } = await unsubscribeLinkVerificationCodeHandler.createCode({
+          tenancy: auth.tenancy,
+          method: {},
+          data: {
+            user_id: user.projectUserId,
+            notification_category_id: category.id,
           },
-        },
-        data: { sentAt: new Date() },
-      });
-    }
+          callbackUrl: undefined
+        });
+        const unsubUrl = new URL(getEnvVariable("NEXT_PUBLIC_STACK_API_URL"));
+        unsubUrl.pathname = "/api/v1/emails/unsubscribe-link";
+        unsubUrl.searchParams.set("code", code);
+        unsubLinks.set(user.projectUserId, unsubUrl.toString());
+      }));
+      return { allowed, unsubLinks };
+    };
+
+    const renderAndSendBatches = async (finalUsers: typeof users, unsubLinks: Map<string, string | undefined>) => {
+      const finalInputs = finalUsers.map((user) => ({
+        user: { displayName: user.displayName },
+        project: { displayName: auth.tenancy.project.display_name },
+        variables,
+        unsubscribeLink: unsubLinks.get(user.projectUserId),
+      }));
+
+      const inputChunks = getChunks(finalInputs, BATCH_SIZE);
+      const userChunks = getChunks(finalUsers, BATCH_SIZE);
+
+      for (let i = 0; i < inputChunks.length; i++) {
+        const chunk = inputChunks[i];
+        const correspondingUsers = userChunks[i];
+        const rendered = await renderEmailsWithTemplateBatched(templateSource, themeSource, chunk);
+        if (rendered.status === "error") {
+          continue;
+        }
+        const outputs = rendered.data;
+        const emailOptions = outputs.map((output, idx) => {
+          const user = correspondingUsers[idx];
+          const email = userPrimaryEmails.get(user.projectUserId);
+          if (!email) return null;
+          return {
+            tenancyId: auth.tenancy.id,
+            emailConfig,
+            to: email,
+            subject: body.subject ?? output.subject ?? "",
+            html: output.html,
+            text: output.text,
+          };
+        }).filter((option): option is NonNullable<typeof option> => Boolean(option));
+
+        if (emailConfig.host === "smtp.resend.com") {
+          await sendEmailResendBatched(emailConfig.password, emailOptions);
+        } else {
+          await Promise.allSettled(emailOptions.map(option => sendEmail(option)));
+        }
+      }
+    };
+
+    runAsynchronouslyAndWaitUntil((async () => {
+      const usersArray = Array.from(userMap.values());
+
+      const usersWithPrimary = usersArray.filter(u => userPrimaryEmails.has(u.projectUserId));
+      const currentCategories = await resolveCategoriesForUsers(usersWithPrimary);
+      const { allowed, unsubLinks } = await getAllowedUsersWithUnsub(usersWithPrimary, currentCategories);
+      const finalUsers = allowed.map(({ user }) => user);
+      await renderAndSendBatches(finalUsers, unsubLinks);
+
+      if ("draft_id" in body) {
+        await prisma.emailDraft.update({
+          where: {
+            tenancyId_id: {
+              tenancyId: auth.tenancy.id,
+              id: body.draft_id,
+            },
+          },
+          data: { sentAt: new Date() },
+        });
+      }
+    })());
 
     return {
       statusCode: 200,

@@ -128,6 +128,87 @@ export async function renderEmailWithTemplate(
   }
 }
 
+export async function renderEmailsWithTemplateBatched(
+  templateOrDraftComponent: string,
+  themeComponent: string,
+  inputs: Array<{
+    user: { displayName: string | null },
+    project: { displayName: string },
+    variables?: Record<string, any>,
+    unsubscribeLink?: string,
+  }>,
+): Promise<Result<Array<{ html: string, text: string, subject?: string, notificationCategory?: string }>, string>> {
+  const apiKey = getEnvVariable("STACK_FREESTYLE_API_KEY");
+
+  const serializedInputs = JSON.stringify(inputs);
+
+  const result = await bundleJavaScript({
+    "/utils.tsx": findComponentValueUtil,
+    "/theme.tsx": themeComponent,
+    "/template.tsx": templateOrDraftComponent,
+    "/render.tsx": deindent`
+      import { configure } from "arktype/config"
+      configure({ onUndeclaredKey: "delete" })
+      import React from 'react';
+      import { render } from '@react-email/components';
+      import { type } from "arktype";
+      import { findComponentValue } from "./utils.tsx";
+      import * as TemplateModule from "./template.tsx";
+      const { variablesSchema, EmailTemplate } = TemplateModule;
+      import { EmailTheme } from "./theme.tsx";
+
+      export const renderAll = async () => {
+        const inputs = ${serializedInputs}
+        const renderOne = async (input: any) => {
+          const variables = variablesSchema ? variablesSchema({
+            ...(input.variables || {}),
+          }) : {};
+          if (variables instanceof type.errors) {
+            throw new Error(variables.summary)
+          }
+          const EmailTemplateWithProps  = <EmailTemplate variables={variables} user={input.user} project={input.project} />;
+          const Email = <EmailTheme unsubscribeLink={input.unsubscribeLink}>
+            { EmailTemplateWithProps }
+          </EmailTheme>;
+          return {
+            html: await render(Email),
+            text: await render(Email, { plainText: true }),
+            subject: findComponentValue(EmailTemplateWithProps, "Subject"),
+            notificationCategory: findComponentValue(EmailTemplateWithProps, "NotificationCategory"),
+          };
+        };
+
+        return await Promise.all(inputs.map(renderOne));
+      }
+    `,
+    "/entry.js": deindent`
+      import { renderAll } from "./render.tsx";
+      export default renderAll;
+    `,
+  }, {
+    keepAsImports: ['arktype', 'react', 'react/jsx-runtime', '@react-email/components'],
+    externalPackages: { '@stackframe/emails': stackframeEmailsPackage },
+    format: 'esm',
+    sourcemap: false,
+  });
+  if (result.status === "error") {
+    return Result.error(result.error);
+  }
+
+  const freestyle = new Freestyle({ apiKey });
+  const nodeModules = {
+    "react": "19.1.1",
+    "@react-email/components": "0.1.1",
+    "arktype": "2.1.20",
+  };
+  try {
+    const output = await freestyle.executeScript(result.data, { nodeModules });
+    return Result.ok(output.result as Array<{ html: string, text: string, subject?: string, notificationCategory?: string }>);
+  } catch (error) {
+    return Result.error("Unable to render email");
+  }
+}
+
 const findComponentValueUtil = `import React from 'react';
 export function findComponentValue(element, targetStackComponent) {
   const matches = [];
