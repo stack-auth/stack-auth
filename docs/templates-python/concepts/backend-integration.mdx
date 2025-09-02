@@ -1,0 +1,309 @@
+---
+title: "Backend Integration"
+description: "Learn how to integrate Stack Auth's backend into your Python application"
+---
+
+To authenticate your Python server endpoints, you need to send the user's access token in the headers of the request to your server, and then make a request to Stack Auth's server API to verify the user identity.
+
+## Sending requests to your server endpoints
+
+On the client side (frontend), you can retrieve the access token from the `user` object by calling `user.getAuthJson()`. This will return an object containing `accessToken`.
+
+Then, you can call your Python server endpoint with the access token in the headers:
+
+```typescript
+// Frontend code
+const { accessToken } = await user.getAuthJson();
+const response = await fetch('/api/users/me', {
+  headers: {
+    'X-Stack-Access-Token': accessToken,
+  },
+  // your other options and parameters
+});
+```
+
+## Authenticating users on Python server endpoints
+
+Stack Auth provides two methods for authenticating users on your Python server endpoints:
+
+1. **JWT Verification**: A fast, lightweight approach that validates the user's token locally without making external requests. Ideal for high-performance applications.
+2. **REST API Verification**: Makes a request to Stack Auth's servers to validate the token and retrieve comprehensive user information. Best when you need complete, up-to-date user data.
+
+### Using JWT
+
+JWT verification is faster and reduces external dependencies. Install the required packages:
+
+```bash
+pip install PyJWT[crypto] requests
+```
+
+Here's how to implement JWT verification in your Python backend:
+
+```python
+import jwt
+import requests
+from jwt import PyJWKClient
+from jwt.exceptions import InvalidTokenError
+
+# You can cache this and refresh it with a low frequency
+jwks_client = PyJWKClient("https://api.stack-auth.com/api/v1/projects/<your-project-id>/.well-known/jwks.json")
+
+access_token = 'access token from the headers'
+
+try:
+  signing_key = jwks_client.get_signing_key_from_jwt(access_token)
+  payload = jwt.decode(
+    access_token,
+    signing_key.key,
+    algorithms=["ES256"],
+    audience=<your-project-id>
+  )
+  print('Authenticated user with ID:', payload['sub'])
+except Exception as error:
+  print(error)
+  print('Invalid user')
+```
+
+Now you can use this JWT verification in your Python web framework. Here are examples for different frameworks:
+
+<Tabs defaultValue="flask">
+  <TabsList>
+    <TabsTrigger value="flask">Flask</TabsTrigger>
+    <TabsTrigger value="fastapi">FastAPI</TabsTrigger>
+    <TabsTrigger value="django">Django</TabsTrigger>
+  </TabsList>
+  <TabsContent value="flask">
+    ```python
+    from flask import Flask, request, jsonify
+    from functools import wraps
+
+    app = Flask(__name__)
+
+    def authenticate_user(request):
+        """Extract and verify access token from request headers"""
+        access_token = request.headers.get('X-Stack-Access-Token')
+        if not access_token:
+            return None
+        
+        try:
+            signing_key = jwks_client.get_signing_key_from_jwt(access_token)
+            payload = jwt.decode(
+                access_token,
+                signing_key.key,
+                algorithms=["ES256"],
+                audience="<your-project-id>"
+            )
+            return {
+                'user_id': payload['sub'],
+                'email': payload.get('email'),
+                'is_anonymous': payload.get('is_anonymous', False)
+            }
+        except Exception:
+            return None
+
+    def require_auth(f):
+        @wraps(f)
+        def decorated_function(*args, **kwargs):
+            user = authenticate_user(request)
+            if not user:
+                return jsonify({'error': 'Unauthorized'}), 401
+            return f(user, *args, **kwargs)
+        return decorated_function
+
+    @app.route('/api/users/me')
+    @require_auth
+    def get_current_user(user):
+        return jsonify({
+            'user_id': user['user_id'],
+            'email': user['email'],
+            'is_anonymous': user['is_anonymous']
+        })
+    ```
+  </TabsContent>
+  <TabsContent value="fastapi">
+    ```python
+    from fastapi import FastAPI, HTTPException, Depends, Header
+    from typing import Optional
+
+    app = FastAPI()
+
+    async def get_current_user(x_stack_access_token: Optional[str] = Header(None)):
+        if not x_stack_access_token:
+            raise HTTPException(status_code=401, detail="Access token required")
+        
+        try:
+            signing_key = jwks_client.get_signing_key_from_jwt(x_stack_access_token)
+            payload = jwt.decode(
+                x_stack_access_token,
+                signing_key.key,
+                algorithms=["ES256"],
+                audience="<your-project-id>"
+            )
+            return {
+                'user_id': payload['sub'],
+                'email': payload.get('email'),
+                'is_anonymous': payload.get('is_anonymous', False)
+            }
+        except Exception:
+            raise HTTPException(status_code=401, detail="Invalid access token")
+
+    @app.get("/api/users/me")
+    async def read_current_user(user: dict = Depends(get_current_user)):
+        return {
+            "user_id": user["user_id"],
+            "email": user["email"],
+            "is_anonymous": user["is_anonymous"]
+        }
+    ```
+  </TabsContent>
+  <TabsContent value="django">
+    ```python
+    from django.http import JsonResponse
+    from django.views.decorators.csrf import csrf_exempt
+
+    def authenticate_user(request):
+        """Extract and verify access token from request headers"""
+        access_token = request.META.get('HTTP_X_STACK_ACCESS_TOKEN')
+        if not access_token:
+            return None
+        
+        try:
+            signing_key = jwks_client.get_signing_key_from_jwt(access_token)
+            payload = jwt.decode(
+                access_token,
+                signing_key.key,
+                algorithms=["ES256"],
+                audience="<your-project-id>"
+            )
+            return {
+                'user_id': payload['sub'],
+                'email': payload.get('email'),
+                'is_anonymous': payload.get('is_anonymous', False)
+            }
+        except Exception:
+            return None
+
+    @csrf_exempt
+    def protected_view(request):
+        user = authenticate_user(request)
+        if not user:
+            return JsonResponse({'error': 'Unauthorized'}, status=401)
+        
+        return JsonResponse({
+            'user_id': user['user_id'],
+            'email': user['email'],
+            'is_anonymous': user['is_anonymous']
+        })
+
+    # Or as a decorator
+    def auth_required(view_func):
+        def wrapper(request, *args, **kwargs):
+            user = authenticate_user(request)
+            if not user:
+                return JsonResponse({'error': 'Unauthorized'}, status=401)
+            request.user = user
+            return view_func(request, *args, **kwargs)
+        return wrapper
+
+    @auth_required
+    def my_protected_view(request):
+        return JsonResponse({'message': f'Hello, {request.user["user_id"]}!'})
+    ```
+  </TabsContent>
+</Tabs>
+
+### Using the REST API
+
+For cases where you need complete user information, you can use the `stack_auth_request` helper function from the [setup guide](../getting-started/setup):
+
+```python
+def authenticate_user_with_api(access_token):
+    """
+    Authenticate user and get complete profile via REST API
+    Uses the stack_auth_request helper from setup
+    """
+    try:
+        user_data = stack_auth_request('GET', 'api/v1/users/me', headers={
+            'x-stack-access-token': access_token
+        })
+        return user_data
+    except Exception as e:
+        print(f"Authentication failed: {e}")
+        return None
+
+# Example usage
+access_token = request.headers.get('X-Stack-Access-Token')
+if access_token:
+    user_info = authenticate_user_with_api(access_token)
+    if user_info:
+        print(f"Authenticated user: {user_info['primary_email']}")
+    else:
+        print("Authentication failed")
+```
+
+## Environment Configuration
+
+As shown in the [setup guide](../getting-started/setup), make sure you have your Stack Auth credentials configured:
+
+```python
+import os
+
+stack_project_id = os.getenv("STACK_PROJECT_ID")
+stack_publishable_client_key = os.getenv("STACK_PUBLISHABLE_CLIENT_KEY")  
+stack_secret_server_key = os.getenv("STACK_SECRET_SERVER_KEY")
+```
+
+And ensure you have the `stack_auth_request` helper function available from the setup guide.
+
+## Error Handling Best Practices
+
+```python
+from enum import Enum
+
+class AuthError(Enum):
+    MISSING_TOKEN = "Access token required"
+    INVALID_TOKEN = "Invalid or expired access token"
+    SERVER_ERROR = "Authentication server error"
+
+def safe_authenticate_user(request):
+    """
+    Robust authentication with proper error handling
+    """
+    access_token = request.headers.get('X-Stack-Access-Token')
+    
+    if not access_token:
+        return None, AuthError.MISSING_TOKEN
+    
+    try:
+        payload = auth_verifier.verify_token(access_token)
+        if payload:
+            return {
+                'user_id': payload['sub'],
+                'email': payload.get('email'),
+                'is_anonymous': payload.get('is_anonymous', False)
+            }, None
+        else:
+            return None, AuthError.INVALID_TOKEN
+    except Exception as e:
+        print(f"Authentication error: {e}")
+        return None, AuthError.SERVER_ERROR
+
+# Usage in your endpoints
+def protected_endpoint(request):
+    user, error = safe_authenticate_user(request)
+    
+    if error:
+        return JsonResponse({'error': error.value}, status=401)
+    
+    # User is authenticated, proceed with your logic
+    return JsonResponse({'user': user})
+```
+
+## Performance Considerations
+
+- **JWT Verification**: Faster, no external requests, but limited user data
+- **REST API Verification**: Slower, requires network calls, but provides complete user information
+- **Caching**: Consider caching JWKs and user data for better performance
+- **Connection Pooling**: Use session objects for REST API calls to reuse connections
+
+Choose JWT verification for high-performance scenarios and REST API verification when you need complete user profiles.
