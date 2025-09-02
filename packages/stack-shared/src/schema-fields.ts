@@ -1,14 +1,14 @@
 import * as yup from "yup";
 import { KnownErrors } from ".";
 import { isBase64 } from "./utils/bytes";
-import { Currency, MoneyAmount, SUPPORTED_CURRENCIES } from "./utils/currencies";
+import { type Currency, type MoneyAmount, SUPPORTED_CURRENCIES } from "./utils/currency-constants";
 import { DayInterval, Interval } from "./utils/dates";
 import { StackAssertionError, throwErr } from "./utils/errors";
 import { decodeBasicAuthorizationHeader } from "./utils/http";
 import { allProviders } from "./utils/oauth";
 import { deepPlainClone, omit, typedFromEntries } from "./utils/objects";
 import { deindent } from "./utils/strings";
-import { isValidUrl } from "./utils/urls";
+import { isValidHostnameWithWildcards, isValidUrl } from "./utils/urls";
 import { isUuid } from "./utils/uuids";
 
 const MAX_IMAGE_SIZE_BASE64_BYTES = 1_000_000; // 1MB
@@ -340,6 +340,57 @@ export const urlSchema = yupString().test({
   message: (params) => `${params.path} is not a valid URL`,
   test: (value) => value == null || isValidUrl(value)
 });
+/**
+ * URL schema that supports wildcard patterns in hostnames (e.g., "https://*.example.com", "http://*:8080")
+ */
+export const wildcardUrlSchema = yupString().test({
+  name: 'no-spaces',
+  message: (params) => `${params.path} contains spaces`,
+  test: (value) => value == null || !value.includes(' ')
+}).test({
+  name: 'wildcard-url',
+  message: (params) => `${params.path} is not a valid URL or wildcard URL pattern`,
+  test: (value) => {
+    if (value == null) return true;
+
+    // If it doesn't contain wildcards, use the regular URL validation
+    if (!value.includes('*')) {
+      return isValidUrl(value);
+    }
+
+    // For wildcard URLs, validate the structure by replacing wildcards with placeholders
+    try {
+      const PLACEHOLDER = 'wildcard-placeholder';
+      // Replace wildcards with valid placeholders for URL parsing
+      const normalizedUrl = value.replace(/\*/g, PLACEHOLDER);
+      const url = new URL(normalizedUrl);
+
+      // Only allow wildcards in the hostname; reject anywhere else
+      if (
+        url.username.includes(PLACEHOLDER) ||
+        url.password.includes(PLACEHOLDER) ||
+        url.pathname.includes(PLACEHOLDER) ||
+        url.search.includes(PLACEHOLDER) ||
+        url.hash.includes(PLACEHOLDER)
+      ) {
+        return false;
+      }
+
+      // Only http/https are acceptable
+      if (url.protocol !== 'http:' && url.protocol !== 'https:') {
+        return false;
+      }
+
+      // Extract original hostname pattern from the input
+      const hostPattern = url.hostname.split(PLACEHOLDER).join('*');
+
+      // Validate the wildcard hostname pattern using the existing function
+      return isValidHostnameWithWildcards(hostPattern);
+    } catch (e) {
+      return false;
+    }
+  }
+});
 export const jsonSchema = yupMixed().nullable().defined().transform((value) => JSON.parse(JSON.stringify(value)));
 export const jsonStringSchema = yupString().test("json", (params) => `${params.path} is not valid JSON`, (value) => {
   if (value == null) return true;
@@ -493,7 +544,7 @@ export const emailTemplateListSchema = yupRecord(
 ).meta({ openapiField: { description: 'Record of email template IDs to their display name and source code' } });
 
 // Payments
-export const customerTypeSchema = yupString().oneOf(['user', 'team']);
+export const customerTypeSchema = yupString().oneOf(['user', 'team', 'custom']);
 const validateHasAtLeastOneSupportedCurrency = (value: Record<string, unknown>, context: any) => {
   const currencies = Object.keys(value).filter(key => SUPPORTED_CURRENCIES.some(c => c.code === key));
   if (currencies.length === 0) {
@@ -507,20 +558,32 @@ export const offerPriceSchema = yupObject({
   serverOnly: yupBoolean(),
   freeTrial: dayIntervalSchema.optional(),
 }).test("at-least-one-currency", (value, context) => validateHasAtLeastOneSupportedCurrency(value, context));
-export const offerSchema = yupObject({
-  displayName: yupString(),
-  customerType: customerTypeSchema,
-  freeTrial: dayIntervalSchema.optional(),
-  serverOnly: yupBoolean(),
-  stackable: yupBoolean(),
-  prices: yupRecord(
+export const priceOrIncludeByDefaultSchema = yupUnion(
+  yupString().oneOf(['include-by-default']).meta({ openapiField: { description: 'Makes this item free and includes it by default for all customers.', exampleValue: 'include-by-default' } }),
+  yupRecord(
     userSpecifiedIdSchema("priceId"),
     offerPriceSchema,
   ),
+);
+export const offerSchema = yupObject({
+  displayName: yupString(),
+  groupId: userSpecifiedIdSchema("groupId").optional().meta({ openapiField: { description: 'The ID of the group this offer belongs to. Within a group, all offers are mutually exclusive unless they are an add-on to another offer in the group.', exampleValue: 'group-id' } }),
+  isAddOnTo: yupUnion(
+    yupBoolean().isFalse(),
+    yupRecord(
+      userSpecifiedIdSchema("offerId"),
+      yupBoolean().isTrue().defined(),
+    ),
+  ).optional().meta({ openapiField: { description: 'The offers that this offer is an add-on to. If this is set, the customer must already have one of the offers in the record to be able to purchase this offer.', exampleValue: { "offer-id": true } } }),
+  customerType: customerTypeSchema.defined(),
+  freeTrial: dayIntervalSchema.optional(),
+  serverOnly: yupBoolean(),
+  stackable: yupBoolean(),
+  prices: priceOrIncludeByDefaultSchema.defined(),
   includedItems: yupRecord(
     userSpecifiedIdSchema("itemId"),
     yupObject({
-      quantity: yupNumber(),
+      quantity: yupNumber().defined(),
       repeat: dayIntervalOrNeverSchema.optional(),
       expires: yupString().oneOf(['never', 'when-purchase-expires', 'when-repeated']).optional(),
     }),

@@ -710,6 +710,32 @@ const PasswordAuthenticationNotEnabled = createKnownErrorConstructor(
   () => [] as const,
 );
 
+const DataVaultStoreDoesNotExist = createKnownErrorConstructor(
+  KnownError,
+  "DATA_VAULT_STORE_DOES_NOT_EXIST",
+  (storeId: string) => [
+    400,
+    `Data vault store with ID ${storeId} does not exist.`,
+    {
+      store_id: storeId,
+    },
+  ] as const,
+  (json: any) => [json.store_id] as const,
+);
+
+const DataVaultStoreHashedKeyDoesNotExist = createKnownErrorConstructor(
+  KnownError,
+  "DATA_VAULT_STORE_HASHED_KEY_DOES_NOT_EXIST",
+  (storeId: string, hashedKey: string) => [
+    400,
+    `Data vault store with ID ${storeId} does not contain a key with hash ${hashedKey}.`,
+    {
+      store_id: storeId,
+      hashed_key: hashedKey,
+    },
+  ] as const,
+  (json: any) => [json.store_id, json.hashed_key] as const,
+);
 
 const PasskeyAuthenticationNotEnabled = createKnownErrorConstructor(
   KnownError,
@@ -727,6 +753,16 @@ const AnonymousAccountsNotEnabled = createKnownErrorConstructor(
   () => [
     400,
     "Anonymous accounts are not enabled for this project.",
+  ] as const,
+  () => [] as const,
+);
+
+const AnonymousAuthenticationNotAllowed = createKnownErrorConstructor(
+  KnownError,
+  "ANONYMOUS_AUTHENTICATION_NOT_ALLOWED",
+  () => [
+    401,
+    "X-Stack-Access-Token is for an anonymous user, but anonymous users are not enabled. Set the X-Stack-Allow-Anonymous-User header of this request to 'true' to allow anonymous users.",
   ] as const,
   () => [] as const,
 );
@@ -1430,7 +1466,7 @@ const ItemNotFound = createKnownErrorConstructor(
 const ItemCustomerTypeDoesNotMatch = createKnownErrorConstructor(
   KnownError,
   "ITEM_CUSTOMER_TYPE_DOES_NOT_MATCH",
-  (itemId: string, customerId: string, itemCustomerType: "user" | "team" | undefined, actualCustomerType: "user" | "team") => [
+  (itemId: string, customerId: string, itemCustomerType: "user" | "team" | "custom" | undefined, actualCustomerType: "user" | "team" | "custom") => [
     400,
     `The ${actualCustomerType} with ID ${JSON.stringify(customerId)} is not a valid customer for the item with ID ${JSON.stringify(itemId)}. ${itemCustomerType ? `The item is configured to only be available for ${itemCustomerType} customers, but the customer is a ${actualCustomerType}.` : `The item is missing a customer type field. Please make sure it is set up correctly in your project configuration.`}`,
     {
@@ -1473,7 +1509,7 @@ const OfferDoesNotExist = createKnownErrorConstructor(
 const OfferCustomerTypeDoesNotMatch = createKnownErrorConstructor(
   KnownError,
   "OFFER_CUSTOMER_TYPE_DOES_NOT_MATCH",
-  (offerId: string | undefined, customerId: string, offerCustomerType: "user" | "team" | undefined, actualCustomerType: "user" | "team") => [
+  (offerId: string | undefined, customerId: string, offerCustomerType: "user" | "team" | "custom" | undefined, actualCustomerType: "user" | "team" | "custom") => [
     400,
     `The ${actualCustomerType} with ID ${JSON.stringify(customerId)} is not a valid customer for the inline offer that has been passed in. ${offerCustomerType ? `The offer is configured to only be available for ${offerCustomerType} customers, but the customer is a ${actualCustomerType}.` : `The offer is missing a customer type field. Please make sure it is set up correctly in your project configuration.`}`,
     {
@@ -1484,6 +1520,31 @@ const OfferCustomerTypeDoesNotMatch = createKnownErrorConstructor(
     },
   ] as const,
   (json) => [json.offer_id ?? undefined, json.customer_id, json.offer_customer_type ?? undefined, json.actual_customer_type] as const,
+);
+
+const ItemQuantityInsufficientAmount = createKnownErrorConstructor(
+  KnownError,
+  "ITEM_QUANTITY_INSUFFICIENT_AMOUNT",
+  (itemId: string, customerId: string, quantity: number) => [
+    400,
+    `The item with ID ${JSON.stringify(itemId)} has an insufficient quantity for the customer with ID ${JSON.stringify(customerId)}. An attempt was made to charge ${quantity} credits.`,
+    {
+      item_id: itemId,
+      customer_id: customerId,
+      quantity,
+    },
+  ] as const,
+  (json) => [json.item_id, json.customer_id, json.quantity] as const,
+);
+
+const StripeAccountInfoNotFound = createKnownErrorConstructor(
+  KnownError,
+  "STRIPE_ACCOUNT_INFO_NOT_FOUND",
+  () => [
+    404,
+    "Stripe account information not found. Please make sure the user has onboarded with Stripe.",
+  ] as const,
+  () => [] as const,
 );
 
 
@@ -1547,6 +1608,7 @@ export const KnownErrors = {
   PasswordAuthenticationNotEnabled,
   PasskeyAuthenticationNotEnabled,
   AnonymousAccountsNotEnabled,
+  AnonymousAuthenticationNotAllowed,
   EmailPasswordMismatch,
   RedirectUrlNotWhitelisted,
   PasswordRequirementsNotMet,
@@ -1606,6 +1668,10 @@ export const KnownErrors = {
   CustomerDoesNotExist,
   OfferDoesNotExist,
   OfferCustomerTypeDoesNotMatch,
+  ItemQuantityInsufficientAmount,
+  StripeAccountInfoNotFound,
+  DataVaultStoreDoesNotExist,
+  DataVaultStoreHashedKeyDoesNotExist,
 } satisfies Record<string, KnownErrorConstructor<any, any>>;
 
 

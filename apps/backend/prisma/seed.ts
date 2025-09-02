@@ -1,6 +1,7 @@
 /* eslint-disable no-restricted-syntax */
 import { usersCrudHandlers } from '@/app/api/latest/users/crud';
-import { updatePermissionDefinition } from '@/lib/permissions';
+import { overrideEnvironmentConfigOverride } from '@/lib/config';
+import { grantTeamPermission, updatePermissionDefinition } from '@/lib/permissions';
 import { createOrUpdateProjectWithLegacyConfig, getProject } from '@/lib/projects';
 import { DEFAULT_BRANCH_ID, getSoleTenancyFromProjectBranch } from '@/lib/tenancies';
 import { getPrismaClientForTenancy, globalPrismaClient } from '@/prisma-client';
@@ -80,9 +81,113 @@ async function seed() {
           ...Object.values(internalTenancy.config.domains.trustedDomains)
             .filter((d) => d.baseUrl !== dashboardDomain && d.baseUrl)
             .map((d) => ({ domain: d.baseUrl || throwErr('Domain base URL is required'), handler_path: d.handlerPath })),
-        ]
+        ],
       },
     },
+  });
+
+  await overrideEnvironmentConfigOverride({
+    projectId: 'internal',
+    branchId: DEFAULT_BRANCH_ID,
+    environmentConfigOverrideOverride: {
+      payments: {
+        groups: {
+          plans: {
+            displayName: "Plans",
+          }
+        },
+        offers: {
+          team: {
+            groupId: "plans",
+            displayName: "Team",
+            customerType: "team",
+            serverOnly: false,
+            stackable: false,
+            prices: {
+              monthly: {
+                USD: "49",
+                interval: [1, "month"] as any,
+                serverOnly: false
+              }
+            },
+            includedItems: {
+              dashboard_admins: {
+                quantity: 3,
+                repeat: "never",
+                expires: "when-purchase-expires"
+              }
+            }
+          },
+          growth: {
+            groupId: "plans",
+            displayName: "Growth",
+            customerType: "team",
+            serverOnly: false,
+            stackable: false,
+            prices: {
+              monthly: {
+                USD: "299",
+                interval: [1, "month"] as any,
+                serverOnly: false
+              }
+            },
+            includedItems: {
+              dashboard_admins: {
+                quantity: 5,
+                repeat: "never",
+                expires: "when-purchase-expires"
+              }
+            }
+          },
+          free: {
+            groupId: "plans",
+            displayName: "Free",
+            customerType: "team",
+            serverOnly: false,
+            stackable: false,
+            prices: "include-by-default",
+            includedItems: {
+              dashboard_admins: {
+                quantity: 1,
+                repeat: "never",
+                expires: "when-purchase-expires"
+              }
+            }
+          },
+          "extra-admins": {
+            groupId: "plans",
+            displayName: "Extra Admins",
+            customerType: "team",
+            serverOnly: false,
+            stackable: true,
+            prices: {
+              monthly: {
+                USD: "49",
+                interval: [1, "month"] as any,
+                serverOnly: false
+              }
+            },
+            includedItems: {
+              dashboard_admins: {
+                quantity: 1,
+                repeat: "never",
+                expires: "when-purchase-expires"
+              }
+            },
+            isAddOnTo: {
+              team: true,
+              growth: true,
+            }
+          }
+        },
+        items: {
+          dashboard_admins: {
+            displayName: "Dashboard Admins",
+            customerType: "team"
+          }
+        },
+      }
+    }
   });
 
   await updatePermissionDefinition(
@@ -110,11 +215,10 @@ async function seed() {
       data: {
         id: "team_admin",
         description: "2",
-        contained_permission_ids: ["$read_members", "$update_team"],
+        contained_permission_ids: ["$read_members", "$remove_members", "$update_team"],
       }
     }
   );
-
 
 
   const internalTeam = await internalPrisma.team.findUnique({
@@ -248,6 +352,13 @@ async function seed() {
         }
       }
     }
+
+    await grantTeamPermission(internalPrisma, {
+      tenancy: internalTenancy,
+      teamId: internalTeamId,
+      userId: defaultUserId,
+      permissionId: "team_admin",
+    });
   }
 
   if (emulatorEnabled) {

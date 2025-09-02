@@ -51,6 +51,7 @@ type BreadcrumbItem = { item: React.ReactNode, href: string }
 type Label = {
   name: React.ReactNode,
   type: 'label',
+  requiresDevFeatureFlag?: boolean,
 };
 
 type Item = {
@@ -239,6 +240,18 @@ const navigationItems: (Label | Item | Hidden)[] = [
     regex: /^\/projects\/[^\/]+\/email-themes\/[^\/]+$/,
     type: 'hidden',
   },
+  /*
+  {
+    name: "Payments",
+    type: 'label',
+  },
+  {
+    name: "Payments",
+    href: "/payments",
+    regex: /^\/projects\/[^\/]+\/payments$/,
+    icon: CreditCard,
+    type: 'item',
+  },*/
   {
     name: "Configuration",
     type: 'label'
@@ -398,6 +411,9 @@ function SidebarContent({ projectId, onNavigate }: { projectId: string, onNaviga
       <div className="flex flex-grow flex-col gap-1 pt-2 overflow-y-auto">
         {navigationItems.map((item, index) => {
           if (item.type === 'label') {
+            if (item.requiresDevFeatureFlag && !devFeaturesEnabledForProject(projectId)) {
+              return null;
+            }
             return <Typography key={index} className="pl-2 mt-3" type="label" variant="secondary">
               {item.name}
             </Typography>;
@@ -574,7 +590,7 @@ export default function SidebarLayout(props: { projectId: string, children?: Rea
         </div>
 
         {/* Content Body - Normal scrolling */}
-        <div className="flex-grow relative">
+        <div className="flex-grow relative flex flex-col">
           {props.children}
         </div>
       </div>

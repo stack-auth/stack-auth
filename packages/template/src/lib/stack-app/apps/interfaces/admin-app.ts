@@ -35,6 +35,7 @@ export type StackAdminApp<HasTokenStore extends boolean = boolean, ProjectId ext
   & AsyncStoreProperty<"emailPreview", [{ themeId?: string | null | false, themeTsxSource?: string, templateId?: string, templateTsxSource?: string }], string, false>
   & AsyncStoreProperty<"emailTemplates", [], { id: string, displayName: string, themeId?: string, tsxSource: string }[], true>
   & AsyncStoreProperty<"emailDrafts", [], { id: string, displayName: string, themeId: string | undefined | false, tsxSource: string, sentAt: Date | null }[], true>
+  & AsyncStoreProperty<"stripeAccountInfo", [], { account_id: string, charges_enabled: boolean, details_submitted: boolean, payouts_enabled: boolean } | null, false>
   & {
     createInternalApiKey(options: InternalApiKeyCreateOptions): Promise<InternalApiKeyFirstView>,
 
@@ -74,9 +75,14 @@ export type StackAdminApp<HasTokenStore extends boolean = boolean, ProjectId ext
 
     setupPayments(): Promise<{ url: string }>,
     createStripeWidgetAccountSession(): Promise<{ client_secret: string }>,
-    createPurchaseUrl(options: { customerId: string, offerId: string }): Promise<string>,
     createEmailDraft(options: { displayName: string, themeId?: string | undefined | false, tsxSource?: string }): Promise<{ id: string }>,
     updateEmailDraft(id: string, data: { displayName?: string, themeId?: string | undefined | false, tsxSource?: string }): Promise<void>,
+    createItemQuantityChange(options: (
+      { userId: string, itemId: string, quantity: number, expiresAt?: string, description?: string } |
+      { teamId: string, itemId: string, quantity: number, expiresAt?: string, description?: string } |
+      { customCustomerId: string, itemId: string, quantity: number, expiresAt?: string, description?: string }
+    )): Promise<void>,
+    testModePurchase(options: { priceId: string, fullCode: string, quantity?: number }): Promise<void>,
   }
   & StackServerApp<HasTokenStore, ProjectId>
 );

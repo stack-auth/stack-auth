@@ -1,5 +1,6 @@
 import { it, localRedirectUrl } from "../../../../../../helpers";
 import { Auth, backendContext, niceBackendFetch } from "../../../../../backend-helpers";
+import { wait } from "@stackframe/stack-shared/dist/utils/promises";
 
 it("should send a password reset code per e-mail", async ({ expect }) => {
   await Auth.Password.signUpWithEmail();
@@ -20,6 +21,7 @@ it("should send a password reset code per e-mail", async ({ expect }) => {
       "headers": Headers { <some fields may have been hidden> },
     }
   `);
+  await wait(1000);
   const messages = await backendContext.value.mailbox.fetchMessages({ noBody: true });
   expect(messages.length).toBe(2);
   expect(messages.find(m => m.subject.includes("Verify your email at Stack Dashboard"))).toMatchInlineSnapshot(`

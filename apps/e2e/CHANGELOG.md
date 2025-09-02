@@ -1,5 +1,59 @@
 # @stackframe/e2e-tests
 
+## 2.8.36
+
+### Patch Changes
+
+- Various changes
+- Updated dependencies
+  - @stackframe/stack-shared@2.8.36
+  - @stackframe/js@2.8.36
+
+## 2.8.35
+
+### Patch Changes
+
+- Various changes
+- Updated dependencies
+  - @stackframe/stack-shared@2.8.35
+  - @stackframe/js@2.8.35
+
+## 2.8.34
+
+### Patch Changes
+
+- Various changes
+- Updated dependencies
+  - @stackframe/stack-shared@2.8.34
+  - @stackframe/js@2.8.34
+
+## 2.8.33
+
+### Patch Changes
+
+- Various changes
+- Updated dependencies
+  - @stackframe/stack-shared@2.8.33
+  - @stackframe/js@2.8.33
+
+## 2.8.32
+
+### Patch Changes
+
+- Various changes
+- Updated dependencies
+  - @stackframe/stack-shared@2.8.32
+  - @stackframe/js@2.8.32
+
+## 2.8.31
+
+### Patch Changes
+
+- Various changes
+- Updated dependencies
+  - @stackframe/js@2.8.31
+  - @stackframe/stack-shared@2.8.31
+
 ## 2.8.30
 
 ### Patch Changes
