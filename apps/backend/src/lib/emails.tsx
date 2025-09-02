@@ -1,7 +1,6 @@
 import { getPrismaClientForTenancy } from '@/prisma-client';
 import { DEFAULT_TEMPLATE_IDS } from '@stackframe/stack-shared/dist/helpers/emails';
 import { UsersCrud } from '@stackframe/stack-shared/dist/interface/crud/users';
-import { getChunks } from '@stackframe/stack-shared/dist/utils/arrays';
 import { getEnvVariable } from '@stackframe/stack-shared/dist/utils/env';
 import { StackAssertionError, StatusError, captureError } from '@stackframe/stack-shared/dist/utils/errors';
 import { filterUndefined, omit, pick } from '@stackframe/stack-shared/dist/utils/objects';
@@ -11,7 +10,7 @@ import { traceSpan } from '@stackframe/stack-shared/dist/utils/telemetry';
 import nodemailer from 'nodemailer';
 import { getEmailThemeForTemplate, renderEmailWithTemplate } from './email-rendering';
 import { Tenancy, getTenancy } from './tenancies';
-import { CreateBatchOptions, Resend } from 'resend';
+import { Resend } from 'resend';
 
 
 function getDefaultEmailTemplate(tenancy: Tenancy, type: keyof typeof DEFAULT_TEMPLATE_IDS) {
