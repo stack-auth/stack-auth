@@ -291,6 +291,9 @@ export async function sendEmailResendBatched(resendApiKey: string, emailOptions:
   if (emailOptions.length > 100) {
     throw new StackAssertionError("sendEmailResendBatched expects at most 100 emails to be sent at once", { emailOptions });
   }
+  if (emailOptions.some(option => option.tenancyId !== emailOptions[0].tenancyId)) {
+    throw new StackAssertionError("sendEmailResendBatched expects all emails to be sent from the same tenancy", { emailOptions });
+  }
   const tenancy = await getTenancy(emailOptions[0].tenancyId);
   if (!tenancy) {
     throw new StackAssertionError("Tenancy not found");
