@@ -13,6 +13,10 @@ import { generateUuid } from "@stackframe/stack-shared/dist/utils/uuids";
 import { Freestyle } from "./freestyle";
 import { Tenancy } from "./tenancies";
 
+const externalPackages = {
+  '@stackframe/stack': 'latest',
+};
+
 type WorkflowRegisteredTriggerType = "sign-up";
 
 type WorkflowTrigger =
@@ -50,6 +54,8 @@ export async function compileWorkflowSource(source: string): Promise<Result<stri
   const bundleResult = await bundleJavaScript({
     "/source.tsx": source,
     "/entry.js": `
+      import { StackServerApp } from '@stackframe/stack';
+
       export default async () => {
         const registeredTriggers = new Map();
 
@@ -60,23 +66,28 @@ export async function compileWorkflowSource(source: string): Promise<Result<stri
           registeredTriggers: [...registeredTriggers.keys()],
         }));
 
-        function makeTriggerRegisterer(str, cb) {
-          globalThis[str] = (func, ...args) => _registerTrigger(cb(...args), func); 
+        globalThis.stackApp = new StackServerApp({
+          tokenStore: null,
+        });
+
+        function makeTriggerRegisterer(str, typeCb, argsCb) {
+          globalThis[str] = (...args) => _registerTrigger(typeCb(...args.slice(0, -1)), (data) => args[args.length - 1](...argsCb(data))); 
         }
 
-        makeTriggerRegisterer("onSignUp", () => "sign-up");
+        makeTriggerRegisterer("onSignUp", () => "sign-up", async ({ userId }) => [stackApp.getUser(userId, { or: "throw" })]);
 
         await import("./source.tsx");
 
         const triggerData = JSON.parse(process.env.STACK_WORKFLOW_TRIGGER_DATA);
         const trigger = registeredTriggers.get(triggerData.type);
         return {
-          triggerOutput: trigger(triggerData.data),
+          triggerOutput: await trigger(triggerData.data),
         };
       }
     `,
   }, {
     format: 'esm',
+    keepAsImports: Object.keys(externalPackages),
   });
   if (bundleResult.status === "error") {
     return Result.error(bundleResult.error);
@@ -327,6 +338,7 @@ async function triggerWorkflowRaw(tenancy: Tenancy, compiledWorkflowCode: string
       STACK_PUBLISHABLE_CLIENT_KEY: "insert actual publishable client key here",
       STACK_SECRET_SERVER_KEY: "insert actual secret server key here",
     },
+    nodeModules: Object.fromEntries(Object.entries(externalPackages).map(([packageName, version]) => [packageName, version])),
   });
   return Result.map(freestyleRes, (data) => data.result);
 }
