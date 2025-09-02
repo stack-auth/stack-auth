@@ -773,7 +773,7 @@ export default function PageClient() {
     innerContent = <WelcomeScreen onCreateOffer={handleCreateOffer} />;
   } else {
     innerContent = (
-      <PageLayout title="Payments" actions={process.env.NODE_ENV === "development" && (
+      <PageLayout title="Offers & Items" actions={process.env.NODE_ENV === "development" && (
         <div className="flex items-center gap-2">
           <Checkbox
             checked={shouldUseDummyData}

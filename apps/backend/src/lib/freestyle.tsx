@@ -1,18 +1,23 @@
 import { traceSpan } from '@/utils/telemetry';
-import { getNodeEnvironment } from '@stackframe/stack-shared/dist/utils/env';
-import { StackAssertionError, captureError, errorToNiceString } from '@stackframe/stack-shared/dist/utils/errors';
+import { getEnvVariable, getNodeEnvironment } from '@stackframe/stack-shared/dist/utils/env';
+import { StackAssertionError } from '@stackframe/stack-shared/dist/utils/errors';
+import { Result } from '@stackframe/stack-shared/dist/utils/results';
 import { FreestyleSandboxes } from 'freestyle-sandboxes';
 
 export class Freestyle {
   private freestyle: FreestyleSandboxes;
 
-  constructor(options: { apiKey: string }) {
+  constructor(options: { apiKey?: string } = {}) {
+    const apiKey = options.apiKey || getEnvVariable("STACK_FREESTYLE_API_KEY");
     let baseUrl = undefined;
-    if (["development", "test"].includes(getNodeEnvironment()) && options.apiKey === "mock_stack_freestyle_key") {
+    if (apiKey === "mock_stack_freestyle_key") {
+      if (!["development", "test"].includes(getNodeEnvironment())) {
+        throw new StackAssertionError("Mock Freestyle key used in production; please set the STACK_FREESTYLE_API_KEY environment variable.");
+      }
       baseUrl = "http://localhost:8122";
     }
     this.freestyle = new FreestyleSandboxes({
-      apiKey: options.apiKey,
+      apiKey,
       baseUrl,
     });
   }
@@ -27,10 +32,13 @@ export class Freestyle {
       }
     }, async () => {
       try {
-        return await this.freestyle.executeScript(script, options);
-      } catch (error) {
-        captureError("freestyle.executeScript", error);
-        throw new StackAssertionError("Error executing script with Freestyle! " + errorToNiceString(error), { cause: error });
+        return Result.ok(await this.freestyle.executeScript(script, options));
+      } catch (e: unknown) {
+        const wrap1 = e && typeof e === "object" && "error" in e ? e.error : e;
+        const wrap2 = wrap1 && typeof wrap1 === "object" && "error" in wrap1 ? wrap1.error : wrap1;
+        const wrap3 = wrap2 && typeof wrap2 === "string" ? JSON.parse(wrap2) : wrap2;
+        const wrap4 = wrap3 && typeof wrap3 === "object" && "error" in wrap3 ? wrap3.error : wrap3;
+        return Result.error(wrap4);
       }
     });
   }
