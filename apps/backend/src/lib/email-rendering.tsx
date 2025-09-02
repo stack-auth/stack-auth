@@ -1,6 +1,6 @@
 import { Freestyle } from '@/lib/freestyle';
 import { emptyEmailTheme } from '@stackframe/stack-shared/dist/helpers/emails';
-import { getEnvVariable, getNodeEnvironment } from '@stackframe/stack-shared/dist/utils/env';
+import { getEnvVariable } from '@stackframe/stack-shared/dist/utils/env';
 import { StackAssertionError } from '@stackframe/stack-shared/dist/utils/errors';
 import { bundleJavaScript } from '@stackframe/stack-shared/dist/utils/esbuild';
 import { get, has } from '@stackframe/stack-shared/dist/utils/objects';
@@ -43,7 +43,7 @@ export function createTemplateComponentFromHtml(html: string) {
 }
 
 export async function renderEmailWithTemplate(
-  templateComponent: string,
+  templateOrDraftComponent: string,
   themeComponent: string,
   options: {
     user?: { displayName: string | null },
@@ -68,7 +68,7 @@ export async function renderEmailWithTemplate(
   const result = await bundleJavaScript({
     "/utils.tsx": findComponentValueUtil,
     "/theme.tsx": themeComponent,
-    "/template.tsx": templateComponent,
+    "/template.tsx": templateOrDraftComponent,
     "/render.tsx": deindent`
       import { configure } from "arktype/config"
       configure({ onUndeclaredKey: "delete" })
@@ -80,10 +80,10 @@ export async function renderEmailWithTemplate(
       const { variablesSchema, EmailTemplate } = TemplateModule;
       import { EmailTheme } from "./theme.tsx";
       export const renderAll = async () => {
-        const variables = variablesSchema({
+        const variables = variablesSchema ? variablesSchema({
           ${previewMode ? "...(EmailTemplate.PreviewVariables || {})," : ""}
           ...(${JSON.stringify(variables)}),
-        })
+        }) : {};
         if (variables instanceof type.errors) {
           throw new Error(variables.summary)
         }
@@ -120,13 +120,13 @@ export async function renderEmailWithTemplate(
     "@react-email/components": "0.1.1",
     "arktype": "2.1.20",
   };
-  const output = await freestyle.executeScript(result.data, { nodeModules });
-  if ("error" in output) {
-    return Result.error(output.error as string);
+  try {
+    const output = await freestyle.executeScript(result.data, { nodeModules });
+    return Result.ok(output.result as { html: string, text: string, subject: string, notificationCategory: string });
+  } catch (error) {
+    return Result.error("Unable to render email");
   }
-  return Result.ok(output.result as { html: string, text: string, subject: string, notificationCategory: string });
 }
-
 
 const findComponentValueUtil = `import React from 'react';
 export function findComponentValue(element, targetStackComponent) {
