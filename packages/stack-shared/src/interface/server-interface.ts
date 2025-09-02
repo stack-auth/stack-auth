@@ -1,3 +1,4 @@
+import { decryptValue, encryptValue, hashKey } from "../helpers/vault/client-side";
 import { KnownErrors } from "../known-errors";
 import { AccessToken, InternalSession, RefreshToken } from "../sessions";
 import { StackAssertionError } from "../utils/errors";
@@ -874,6 +875,45 @@ export class StackServerInterface extends StackClientInterface {
         body: JSON.stringify({ delta: data.delta, expires_at: data.expires_at, description: data.description }),
       },
       null
+    );
+  }
+
+  async getDataVaultStoreValue(secret: string, storeId: string, key: string) {
+    const hashedKey = await hashKey(secret, key);
+    const response = await this.sendServerRequestAndCatchKnownError(
+      `/data-vault/stores/${storeId}/get`,
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ hashed_key: hashedKey }),
+      },
+      null,
+      [KnownErrors.DataVaultStoreHashedKeyDoesNotExist] as const,
+    );
+    if (response.status === "error") {
+      if (KnownErrors.DataVaultStoreHashedKeyDoesNotExist.isInstance(response.error)) {
+        return null;
+      } else {
+        throw new StackAssertionError("Unexpected uncaught error", { cause: response.error });
+      }
+    }
+    const json = await response.data.json();
+    const encryptedValue = json.encrypted_value;
+    if (typeof encryptedValue !== "string") throw new StackAssertionError("encrypted_value is not a string", { type: typeof encryptedValue });
+    return await decryptValue(secret, key, encryptedValue);
+  }
+
+  async setDataVaultStoreValue(secret: string, storeId: string, key: string, value: string) {
+    const hashedKey = await hashKey(secret, key);
+    const encryptedValue = await encryptValue(secret, key, value);
+    await this.sendServerRequest(
+      `/data-vault/stores/${storeId}/set`,
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ hashed_key: hashedKey, encrypted_value: encryptedValue }),
+      },
+      null,
     );
   }
 }

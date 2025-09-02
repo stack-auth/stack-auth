@@ -710,6 +710,32 @@ const PasswordAuthenticationNotEnabled = createKnownErrorConstructor(
   () => [] as const,
 );
 
+const DataVaultStoreDoesNotExist = createKnownErrorConstructor(
+  KnownError,
+  "DATA_VAULT_STORE_DOES_NOT_EXIST",
+  (storeId: string) => [
+    400,
+    `Data vault store with ID ${storeId} does not exist.`,
+    {
+      store_id: storeId,
+    },
+  ] as const,
+  (json: any) => [json.store_id] as const,
+);
+
+const DataVaultStoreHashedKeyDoesNotExist = createKnownErrorConstructor(
+  KnownError,
+  "DATA_VAULT_STORE_HASHED_KEY_DOES_NOT_EXIST",
+  (storeId: string, hashedKey: string) => [
+    400,
+    `Data vault store with ID ${storeId} does not contain a key with hash ${hashedKey}.`,
+    {
+      store_id: storeId,
+      hashed_key: hashedKey,
+    },
+  ] as const,
+  (json: any) => [json.store_id, json.hashed_key] as const,
+);
 
 const PasskeyAuthenticationNotEnabled = createKnownErrorConstructor(
   KnownError,
@@ -1511,6 +1537,16 @@ const ItemQuantityInsufficientAmount = createKnownErrorConstructor(
   (json) => [json.item_id, json.customer_id, json.quantity] as const,
 );
 
+const StripeAccountInfoNotFound = createKnownErrorConstructor(
+  KnownError,
+  "STRIPE_ACCOUNT_INFO_NOT_FOUND",
+  () => [
+    404,
+    "Stripe account information not found. Please make sure the user has onboarded with Stripe.",
+  ] as const,
+  () => [] as const,
+);
+
 
 export type KnownErrors = {
   [K in keyof typeof KnownErrors]: InstanceType<typeof KnownErrors[K]>;
@@ -1633,6 +1669,9 @@ export const KnownErrors = {
   OfferDoesNotExist,
   OfferCustomerTypeDoesNotMatch,
   ItemQuantityInsufficientAmount,
+  StripeAccountInfoNotFound,
+  DataVaultStoreDoesNotExist,
+  DataVaultStoreHashedKeyDoesNotExist,
 } satisfies Record<string, KnownErrorConstructor<any, any>>;
 
 

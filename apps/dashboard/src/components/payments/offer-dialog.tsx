@@ -7,7 +7,7 @@ import { PriceEditorField } from "@/components/payments/price-editor";
 import { AdminProject } from "@stackframe/stack";
 import { offerSchema, priceOrIncludeByDefaultSchema, userSpecifiedIdSchema, yupRecord } from "@stackframe/stack-shared/dist/schema-fields";
 import { has } from "@stackframe/stack-shared/dist/utils/objects";
-import { Accordion, AccordionContent, AccordionItem, AccordionTrigger, FormLabel, FormItem, FormMessage, toast, FormField, Checkbox, FormControl } from "@stackframe/stack-ui";
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger, FormLabel, FormItem, FormMessage, toast, FormField, Checkbox, FormControl, SimpleTooltip } from "@stackframe/stack-ui";
 import * as yup from "yup";
 
 type Props = {
@@ -100,14 +100,20 @@ export function OfferDialog({ open, onOpenChange, project, mode, initial }: Prop
                 <CheckboxField
                   control={form.control}
                   name={"serverOnly"}
-                  label={"Server Only"}
-                  description="Restricts purchases to only server-side calls"
+                  label={
+                    <SimpleTooltip tooltip="Restricts purchases to only server-side calls">
+                      Server Only
+                    </SimpleTooltip>
+                  }
                 />
                 <CheckboxField
                   control={form.control}
                   name={"stackable"}
-                  label={"Stackable"}
-                  description="Allow user to purchase multiple"
+                  label={
+                    <SimpleTooltip tooltip="Allow user to purchase multiple">
+                      Stackable
+                    </SimpleTooltip>
+                  }
                 />
                 <FormField
                   control={form.control}
@@ -122,11 +128,10 @@ export function OfferDialog({ open, onOpenChange, project, mode, initial }: Prop
                       </FormControl>
                       <div className="space-y-1 leading-none">
                         <FormLabel>
-                          Include by default
+                          <SimpleTooltip tooltip="The default offer that is included in the group">
+                            Include by default
+                          </SimpleTooltip>
                         </FormLabel>
-                        <p className="text-sm text-muted-foreground">
-                          The default offer that is included in the group.
-                        </p>
                       </div>
                       <FormMessage />
                     </FormItem>
