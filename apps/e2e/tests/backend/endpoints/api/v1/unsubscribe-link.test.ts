@@ -1,3 +1,4 @@
+import { wait } from "@stackframe/stack-shared/dist/utils/promises";
 import { it } from "../../../../helpers";
 import { niceBackendFetch, Project, User } from "../../../backend-helpers";
 
@@ -47,6 +48,7 @@ it("unsubscribe link should be sent and update notification preference", async (
   `);
 
   // Verify the email was actually sent by checking the mailbox
+  await wait(2000);
   const messages = await user.mailbox.fetchMessages();
   const sentEmail = messages.find(msg => msg.subject === "Custom Test Email Subject");
   expect(sentEmail).toBeDefined();
@@ -140,6 +142,7 @@ it("unsubscribe link should not be sent for emails with transactional notificati
     }
   `);
 
+  await wait(2000);
   const messages = await user.mailbox.fetchMessages();
   const sentEmail = messages.find(msg => msg.subject === "Custom Test Email Subject");
   expect(sentEmail).toBeDefined();
