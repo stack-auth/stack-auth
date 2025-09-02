@@ -27,7 +27,7 @@ async function loadUsersByCountry(tenancy: Tenancy, includeAnonymous: boolean = 
         ON "Event"."endUserIpInfoGuessId" = eip.id
       WHERE '$user-activity' = ANY("systemEventTypeIds"::text[])
         AND "data"->>'projectId' = ${tenancy.project.id}
-        AND (${includeAnonymous} OR "data"->>'isAnonymous' != 'true')
+        AND (${includeAnonymous} OR NOT "data"->>'isAnonymous' = 'true')
         AND COALESCE("data"->>'branchId', 'main') = ${tenancy.branchId}
         AND "countryCode" IS NOT NULL
       ORDER BY "userId", "eventStartedAt" DESC
@@ -208,7 +208,7 @@ export const GET = createSmartRouteHandler({
   }),
   handler: async (req) => {
     const now = new Date();
-    const includeAnonymous = req.query?.include_anonymous === "true";
+    const includeAnonymous = req.query.include_anonymous === "true";
 
     const prisma = await getPrismaClientForTenancy(req.auth.tenancy);
 
