@@ -1,11 +1,13 @@
-import { getPrismaClientForTenancy } from "@/prisma-client";
+import { getPrismaClientForTenancy, globalPrismaClient, retryTransaction } from "@/prisma-client";
+import { traceSpan } from "@/utils/telemetry";
+import { allPromisesAndWaitUntilEach } from "@/utils/vercel";
 import { CompiledWorkflow, Prisma } from "@prisma/client";
 import { isStringArray } from "@stackframe/stack-shared/dist/utils/arrays";
 import { encodeBase64 } from "@stackframe/stack-shared/dist/utils/bytes";
 import { hash } from "@stackframe/stack-shared/dist/utils/crypto";
-import { StackAssertionError, captureError, errorToNiceString } from "@stackframe/stack-shared/dist/utils/errors";
+import { StackAssertionError, captureError, errorToNiceString, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
 import { bundleJavaScript } from "@stackframe/stack-shared/dist/utils/esbuild";
-import { timeout } from "@stackframe/stack-shared/dist/utils/promises";
+import { timeout, wait } from "@stackframe/stack-shared/dist/utils/promises";
 import { Result } from "@stackframe/stack-shared/dist/utils/results";
 import { generateUuid } from "@stackframe/stack-shared/dist/utils/uuids";
 import { Freestyle } from "./freestyle";
@@ -83,43 +85,45 @@ export async function compileWorkflowSource(source: string): Promise<Result<stri
 }
 
 async function compileWorkflow(tenancy: Tenancy, workflowId: string): Promise<Result<{ compiledCode: string, registeredTriggers: WorkflowRegisteredTriggerType[] }, { compileError?: string }>> {
-  if (!(workflowId in tenancy.config.workflows.availableWorkflows)) {
-    throw new StackAssertionError(`Workflow ${workflowId} not found`);
-  }
-  const workflow = tenancy.config.workflows.availableWorkflows[workflowId];
-  const res = await timeout(async () => {
-    const compiledCodeResult = await compileWorkflowSource(workflow.tsSource);
-    if (compiledCodeResult.status === "error") {
-      return Result.error({ compileError: `Failed to compile workflow: ${compiledCodeResult.error}` });
+  return await traceSpan(`compileWorkflow ${workflowId}`, async () => {
+    if (!(workflowId in tenancy.config.workflows.availableWorkflows)) {
+      throw new StackAssertionError(`Workflow ${workflowId} not found`);
     }
+    const workflow = tenancy.config.workflows.availableWorkflows[workflowId];
+    const res = await timeout(async () => {
+      const compiledCodeResult = await compileWorkflowSource(workflow.tsSource);
+      if (compiledCodeResult.status === "error") {
+        return Result.error({ compileError: `Failed to compile workflow: ${compiledCodeResult.error}` });
+      }
 
-    const compileTriggerResult = await triggerWorkflowRaw(tenancy, compiledCodeResult.data, {
-      type: "compile",
-    });
-    if (compileTriggerResult.status === "error") {
-      return Result.error({ compileError: `Failed to initialize workflow: ${compileTriggerResult.error}` });
-    }
-    const compileTriggerOutputResult = compileTriggerResult.data;
-    if (typeof compileTriggerOutputResult !== "object" || !compileTriggerOutputResult || !("triggerOutput" in compileTriggerOutputResult)) {
-      captureError("workflows-compile-trigger-output", new StackAssertionError(`Failed to parse compile trigger output`, { compileTriggerOutputResult }));
-      return Result.error({ compileError: `Failed to parse compile trigger output` });
-    }
-    const registeredTriggers = (compileTriggerOutputResult.triggerOutput as any)?.registeredTriggers;
-    if (!isStringArray(registeredTriggers)) {
-      captureError("workflows-compile-trigger-output", new StackAssertionError(`Failed to parse compile trigger output, should be array of strings`, { compileTriggerOutputResult }));
-      return Result.error({ compileError: `Failed to parse compile trigger output, should be array of strings` });
-    }
+      const compileTriggerResult = await triggerWorkflowRaw(tenancy, compiledCodeResult.data, {
+        type: "compile",
+      });
+      if (compileTriggerResult.status === "error") {
+        return Result.error({ compileError: `Failed to initialize workflow: ${compileTriggerResult.error}` });
+      }
+      const compileTriggerOutputResult = compileTriggerResult.data;
+      if (typeof compileTriggerOutputResult !== "object" || !compileTriggerOutputResult || !("triggerOutput" in compileTriggerOutputResult)) {
+        captureError("workflows-compile-trigger-output", new StackAssertionError(`Failed to parse compile trigger output`, { compileTriggerOutputResult }));
+        return Result.error({ compileError: `Failed to parse compile trigger output` });
+      }
+      const registeredTriggers = (compileTriggerOutputResult.triggerOutput as any)?.registeredTriggers;
+      if (!isStringArray(registeredTriggers)) {
+        captureError("workflows-compile-trigger-output", new StackAssertionError(`Failed to parse compile trigger output, should be array of strings`, { compileTriggerOutputResult }));
+        return Result.error({ compileError: `Failed to parse compile trigger output, should be array of strings` });
+      }
 
-    return Result.ok({
-      compiledCode: compiledCodeResult.data,
-      registeredTriggers: registeredTriggers as WorkflowRegisteredTriggerType[],
-    });
-  }, 10_000);
+      return Result.ok({
+        compiledCode: compiledCodeResult.data,
+        registeredTriggers: registeredTriggers as WorkflowRegisteredTriggerType[],
+      });
+    }, 10_000);
 
-  if (res.status === "error") {
-    return Result.error({ compileError: `Timed out compiling workflow ${workflowId} after ${res.error.ms}ms` });
-  }
-  return res.data;
+    if (res.status === "error") {
+      return Result.error({ compileError: `Timed out compiling workflow ${workflowId} after ${res.error.ms}ms` });
+    }
+    return res.data;
+  });
 }
 
 import.meta.vitest?.test("compileWorkflow", async ({ expect }) => {
@@ -175,12 +179,140 @@ import.meta.vitest?.test("compileWorkflow", async ({ expect }) => {
   `);
 });
 
-async function getCompiledWorkflows(tenancy: Tenancy): Promise<Map<string, CompiledWorkflow>> {
-  // TODO: On the DB, for each workflow in the tenancy config, check whether all workflows have a compiled WorkflowCompilationStatus with a matching source hash, if so, return those.
-  // If any of the workflows has no WorkflowCompilationStatus, or it's null, set each of those to compiling and call compileWorkflow, then update those rows with the result. Once that's done, repeat.
-  // Otherwise, if the status is still compiling, and it was started <20 seconds ago, wait 1 second, and then try again. If it was started >20 seconds ago, assume it failed, so reset the WorkflowCompilationStatus to null and throw a StackAssertionError.
-  // The above should happen in a single DB query/serializable transaction to prevent race conditions.
-  throw new StackAssertionError("Not implemented");
+async function compileAndGetEnabledWorkflows(tenancy: Tenancy): Promise<Map<string, CompiledWorkflow>> {
+  const compilationVersion = 1;
+  const enabledWorkflows = new Map(await Promise.all(Object.entries(tenancy.config.workflows.availableWorkflows)
+    .filter(([_, workflow]) => workflow.enabled)
+    .map(async ([workflowId, workflow]) => [workflowId, {
+      id: workflowId,
+      workflow,
+      sourceHash: await hashWorkflowSource(workflow.tsSource),
+    }] as const)));
+
+  const getWorkflowsToCompile = async (tx: Prisma.TransactionClient) => {
+    const compiledWorkflows = await tx.compiledWorkflow.findMany({
+      where: {
+        tenancyId: tenancy.id,
+        workflowId: { in: [...enabledWorkflows.keys()] },
+        compilationVersion,
+        sourceHash: { in: [...enabledWorkflows.values()].map(({ sourceHash }) => sourceHash) },
+      },
+    });
+
+    const found = new Map<string, CompiledWorkflow>();
+    const missing = new Set(enabledWorkflows.keys());
+    for (const compiledWorkflow of compiledWorkflows) {
+      const enabledWorkflow = enabledWorkflows.get(compiledWorkflow.workflowId) ?? throwErr(`Compiled workflow ${compiledWorkflow.workflowId} not found in enabled workflows — this should not happen due to our Prisma filter!`);
+      if (enabledWorkflow.sourceHash === compiledWorkflow.sourceHash) {
+        found.set(compiledWorkflow.workflowId, compiledWorkflow);
+        missing.delete(compiledWorkflow.workflowId);
+      }
+    }
+
+    const toCompile: string[] = [];
+    const waiting: string[] = [];
+    for (const workflowId of missing) {
+      const enabledWorkflow = enabledWorkflows.get(workflowId) ?? throwErr(`Enabled workflow ${workflowId} not found in enabled workflows — this should not happen due to our Prisma filter!`);
+      const currentlyCompiling = await tx.currentlyCompilingWorkflow.findUnique({
+        where: {
+          tenancyId_workflowId_compilationVersion_sourceHash: {
+            tenancyId: tenancy.id,
+            workflowId,
+            compilationVersion,
+            sourceHash: enabledWorkflow.sourceHash,
+          },
+        },
+      });
+      if (currentlyCompiling) {
+        waiting.push(workflowId);
+      } else {
+        toCompile.push(workflowId);
+      }
+    }
+
+    if (toCompile.length > 0) {
+      await tx.currentlyCompilingWorkflow.createMany({
+        data: toCompile.map((workflowId) => ({
+          tenancyId: tenancy.id,
+          compilationVersion,
+          workflowId,
+          sourceHash: enabledWorkflows.get(workflowId)?.sourceHash ?? throwErr(`Enabled workflow ${workflowId} not found in enabled workflows — this should not happen due to our Prisma filter!`),
+        })),
+      });
+    }
+
+    return {
+      toCompile,
+      waiting,
+      workflows: found,
+    };
+  };
+
+  let retryInfo = [];
+  const prisma = globalPrismaClient; //await getPrismaClientForTenancy(tenancy);
+  for (let retries = 0; retries < 10; retries++) {
+    const todo = await retryTransaction(prisma, async (tx) => {
+      return await getWorkflowsToCompile(tx);
+    }, { level: "serializable" });
+
+    retryInfo.push({
+      toCompile: todo.toCompile,
+      waiting: todo.waiting,
+      done: [...todo.workflows.entries()].map(([workflowId, workflow]) => workflowId),
+    });
+
+    if (todo.toCompile.length === 0 && todo.waiting.length === 0) {
+      return todo.workflows;
+    }
+
+    await allPromisesAndWaitUntilEach(todo.toCompile.map(async (workflowId) => {
+      const enabledWorkflow = enabledWorkflows.get(workflowId) ?? throwErr(`Enabled workflow ${workflowId} not found in enabled workflows — this should not happen due to our Prisma filter!`);
+      try {
+        const compiledWorkflow = await compileWorkflow(tenancy, workflowId);
+        await prisma.compiledWorkflow.create({
+          data: {
+            tenancyId: tenancy.id,
+            compilationVersion,
+            workflowId,
+            sourceHash: enabledWorkflow.sourceHash,
+            ...compiledWorkflow.status === "ok" ? {
+              compiledCode: compiledWorkflow.data.compiledCode,
+              registeredTriggers: compiledWorkflow.data.registeredTriggers,
+            } : {
+              compileError: compiledWorkflow.error.compileError,
+              registeredTriggers: [],
+            },
+          },
+        });
+        console.log(`Compiled workflow ${workflowId}`);
+      } finally {
+        await prisma.currentlyCompilingWorkflow.delete({
+          where: {
+            tenancyId_workflowId_compilationVersion_sourceHash: {
+              tenancyId: tenancy.id,
+              compilationVersion,
+              workflowId,
+              sourceHash: enabledWorkflow.sourceHash,
+            },
+          },
+        });
+      }
+    }));
+
+    const { count } = await prisma.currentlyCompilingWorkflow.deleteMany({
+      where: {
+        tenancyId: tenancy.id,
+        startedCompilingAt: { lt: new Date(Date.now() - 20_000) },
+      },
+    });
+    if (count > 0) {
+      captureError("workflows-compile-timeout", new StackAssertionError(`Deleted ${count} currently compiling workflows that were compiling for more than 20 seconds; this probably indicates a bug in the workflow compilation code`));
+    }
+
+    await wait(1000);
+  }
+
+  throw new StackAssertionError(`Timed out compiling workflows after retries`, { retryInfo });
 }
 
 async function triggerWorkflowRaw(tenancy: Tenancy, compiledWorkflowCode: string, trigger: WorkflowTrigger): Promise<Result<unknown, string>> {
@@ -229,7 +361,7 @@ async function triggerWorkflow(tenancy: Tenancy, compiledWorkflow: CompiledWorkf
 }
 
 export async function triggerWorkflows(tenancy: Tenancy, trigger: WorkflowTrigger) {
-  const compiledWorkflows = await getCompiledWorkflows(tenancy);
+  const compiledWorkflows = await compileAndGetEnabledWorkflows(tenancy);
   const promises = [...compiledWorkflows].map(async ([workflowId, compiledWorkflow]) => {
     await triggerWorkflow(tenancy, compiledWorkflow, trigger);
   });

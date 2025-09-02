@@ -6,3 +6,10 @@ export function runAsynchronouslyAndWaitUntil(promise: Promise<unknown>) {
   runAsynchronously(promise);
   waitUntilVercel(promise);
 }
+
+export async function allPromisesAndWaitUntilEach(promises: Promise<unknown>[]): Promise<unknown[]> {
+  for (const promise of promises) {
+    waitUntilVercel(promise);
+  }
+  return await Promise.all(promises);
+}
