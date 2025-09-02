@@ -794,3 +794,17 @@ model ItemQuantityChange {
   @@id([tenancyId, id])
   @@index([tenancyId, customerId, expiresAt])
 }
+
+model DataVaultEntry {
+  id         String   @default(uuid()) @db.Uuid
+  tenancyId  String   @db.Uuid
+  storeId    String
+  hashedKey  String
+  encrypted  Json     // Contains { edkBase64, ciphertextBase64 } from encryptWithKms()
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@id([tenancyId, id])
+  @@unique([tenancyId, storeId, hashedKey])
+  @@index([tenancyId, storeId])
+}

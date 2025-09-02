@@ -54,8 +54,8 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
   private readonly _svixTokenCache = createCache(async () => {
     return await this._interface.getSvixToken();
   });
-  private readonly _metricsCache = createCache(async () => {
-    return await this._interface.getMetrics();
+  private readonly _metricsCache = createCache(async ([includeAnonymous]: [boolean]) => {
+    return await this._interface.getMetrics(includeAnonymous);
   });
   private readonly _emailPreviewCache = createCache(async ([themeId, themeTsxSource, templateId, templateTsxSource]: [string | null | false | undefined, string | undefined, string | undefined, string | undefined]) => {
     return await this._interface.renderEmailPreview({ themeId, themeTsxSource, templateId, templateTsxSource });
@@ -441,8 +441,8 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
     return {
       ...super[stackAppInternalsSymbol],
       // IF_PLATFORM react-like
-      useMetrics: (): any => {
-        return useAsyncCache(this._metricsCache, [], "useMetrics()");
+      useMetrics: (includeAnonymous: boolean = false): any => {
+        return useAsyncCache(this._metricsCache, [includeAnonymous] as const, "useMetrics()");
       }
       // END_PLATFORM
     };

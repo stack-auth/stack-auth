@@ -165,6 +165,15 @@ export const branchConfigSchema = canNoLongerBeOverridden(projectConfigSchema, [
   }),
 
   payments: branchPaymentsSchema,
+
+  dataVault: yupObject({
+    stores: yupRecord(
+      yupString(),
+      yupObject({
+        displayName: yupString(),
+      }),
+    ),
+  }),
 }));
 
 
@@ -474,7 +483,13 @@ const organizationConfigDefaults = {
     items: (key: string) => ({
       displayName: key,
       customerType: "user",
-    } as const),
+    } as const)
+  },
+
+  dataVault: {
+    stores: (key: string) => ({
+      displayName: "Unnamed Vault",
+    }),
   },
 } as const satisfies DefaultsType<OrganizationRenderedConfigBeforeDefaults, [typeof environmentConfigDefaults, typeof branchConfigDefaults, typeof projectConfigDefaults]>;
 
