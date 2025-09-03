@@ -65,11 +65,11 @@ export function getUrls(partial: Partial<HandlerUrls>): HandlerUrls {
 }
 
 export function getDefaultProjectId() {
-  return process.env.NEXT_PUBLIC_STACK_PROJECT_ID || throwErr(new Error("Welcome to Stack Auth! It seems that you haven't provided a project ID. Please create a project on the Stack dashboard at https://app.stack-auth.com and put it in the NEXT_PUBLIC_STACK_PROJECT_ID environment variable."));
+  return process.env.NEXT_PUBLIC_STACK_PROJECT_ID || process.env.STACK_PROJECT_ID || throwErr(new Error("Welcome to Stack Auth! It seems that you haven't provided a project ID. Please create a project on the Stack dashboard at https://app.stack-auth.com and put it in the NEXT_PUBLIC_STACK_PROJECT_ID environment variable."));
 }
 
 export function getDefaultPublishableClientKey() {
-  return process.env.NEXT_PUBLIC_STACK_PUBLISHABLE_CLIENT_KEY || throwErr(new Error("Welcome to Stack Auth! It seems that you haven't provided a publishable client key. Please create an API key for your project on the Stack dashboard at https://app.stack-auth.com and copy your publishable client key into the NEXT_PUBLIC_STACK_PUBLISHABLE_CLIENT_KEY environment variable."));
+  return process.env.NEXT_PUBLIC_STACK_PUBLISHABLE_CLIENT_KEY || process.env.STACK_PUBLISHABLE_CLIENT_KEY || throwErr(new Error("Welcome to Stack Auth! It seems that you haven't provided a publishable client key. Please create an API key for your project on the Stack dashboard at https://app.stack-auth.com and copy your publishable client key into the NEXT_PUBLIC_STACK_PUBLISHABLE_CLIENT_KEY environment variable."));
 }
 
 export function getDefaultSecretServerKey() {
@@ -81,7 +81,7 @@ export function getDefaultSuperSecretAdminKey() {
 }
 
 export function getDefaultExtraRequestHeaders() {
-  return JSON.parse(process.env.NEXT_PUBLIC_STACK_EXTRA_REQUEST_HEADERS || '{}');
+  return JSON.parse(process.env.NEXT_PUBLIC_STACK_EXTRA_REQUEST_HEADERS || process.env.STACK_EXTRA_REQUEST_HEADERS || '{}');
 }
 
 /**
@@ -115,12 +115,13 @@ export function getBaseUrl(userSpecifiedBaseUrl: string | { browser: string, ser
       }
     }
   } else {
+    // note: NEXT_PUBLIC_BROWSER_STACK_API_URL was renamed to NEXT_PUBLIC_STACK_API_URL_BROWSER, and NEXT_PUBLIC_STACK_URL to NEXT_PUBLIC_STACK_API_URL
     if (isBrowserLike()) {
-      url = process.env.NEXT_PUBLIC_BROWSER_STACK_API_URL;
+      url = process.env.NEXT_PUBLIC_BROWSER_STACK_API_URL || process.env.NEXT_PUBLIC_STACK_API_URL_BROWSER || process.env.STACK_API_URL_BROWSER;
     } else {
-      url = process.env.NEXT_PUBLIC_SERVER_STACK_API_URL;
+      url = process.env.NEXT_PUBLIC_SERVER_STACK_API_URL || process.env.NEXT_PUBLIC_STACK_API_URL_SERVER || process.env.STACK_API_URL_SERVER;
     }
-    url = url || process.env.NEXT_PUBLIC_STACK_API_URL || process.env.NEXT_PUBLIC_STACK_URL || defaultBaseUrl;
+    url = url || process.env.NEXT_PUBLIC_STACK_API_URL || process.env.STACK_API_URL || process.env.NEXT_PUBLIC_STACK_URL || defaultBaseUrl;
   }
 
   return url.endsWith('/') ? url.slice(0, -1) : url;

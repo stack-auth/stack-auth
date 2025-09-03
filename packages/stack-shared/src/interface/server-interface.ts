@@ -811,7 +811,7 @@ export class StackServerInterface extends StackClientInterface {
     templateId?: string,
     variables?: Record<string, any>,
   }): Promise<Result<void, KnownErrors["RequiresCustomEmailServer"] | KnownErrors["SchemaError"] | KnownErrors["UserIdDoesNotExist"]>> {
-    const res = await this.sendServerRequestAndCatchKnownError(
+    const res = await this.sendServerRequest(
       "/emails/send-email",
       {
         method: "POST",
@@ -829,11 +829,7 @@ export class StackServerInterface extends StackClientInterface {
         }),
       },
       null,
-      [KnownErrors.RequiresCustomEmailServer, KnownErrors.SchemaError, KnownErrors.UserIdDoesNotExist]
     );
-    if (res.status === "error") {
-      return Result.error(res.error);
-    }
     return Result.ok(undefined);
   }
 

@@ -125,6 +125,10 @@ export function ProviderSettingDialog(props: Props & { open: boolean, onClose: (
               </Typography>
             </div>}
 
+          <Typography variant="secondary" type="footnote">
+            Existing user accounts will be transferred over automatically when you change the OAuth keys.
+          </Typography>
+
           {!form.watch("shared") && (
             <>
               <InputField

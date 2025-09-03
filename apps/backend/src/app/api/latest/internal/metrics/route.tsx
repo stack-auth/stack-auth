@@ -146,7 +146,7 @@ async function loadRecentlyActiveUsers(tenancy: Tenancy, includeAnonymous: boole
         ) as rn
       FROM "Event"
       WHERE "data"->>'projectId' = ${tenancy.project.id}
-        AND (${includeAnonymous} OR "data"->>'isAnonymous' != 'true')
+        AND (${includeAnonymous} OR NOT "data"->>'isAnonymous' = 'true')
         AND COALESCE("data"->>'branchId', 'main') = ${tenancy.branchId}
         AND '$user-activity' = ANY("systemEventTypeIds"::text[])
     )
