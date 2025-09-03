@@ -121,9 +121,9 @@ class TransactionErrorThatShouldNotBeRetried extends Error {
   }
 }
 
-export async function retryTransaction<T>(client: PrismaClient, fn: (tx: PrismaClientTransaction) => Promise<T>): Promise<T> {
-  // disable serializable transactions for now, later we may re-add them
-  const enableSerializable = false as boolean;
+export async function retryTransaction<T>(client: PrismaClient, fn: (tx: PrismaClientTransaction) => Promise<T>, options: { level?: "default" | "serializable" } = {}): Promise<T> {
+  // serializable transactions are currently off by default, later we may turn them on
+  const enableSerializable = options.level === "serializable";
 
   return await traceSpan('Prisma transaction', async (span) => {
     const res = await Result.retry(async (attemptIndex) => {
@@ -154,7 +154,7 @@ export async function retryTransaction<T>(client: PrismaClient, fn: (tx: PrismaC
               }
               return res;
             }, {
-              isolationLevel: enableSerializable && attemptIndex < 4 ? Prisma.TransactionIsolationLevel.Serializable : undefined,
+              isolationLevel: enableSerializable ? Prisma.TransactionIsolationLevel.Serializable : undefined,
             }));
           } catch (e) {
             // we don't want to retry too aggressively here, because the error may have been thrown after the transaction was already committed
