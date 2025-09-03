@@ -214,7 +214,7 @@ function HomeNavbar() {
             >
               <DiscordIcon className="h-4 w-4" />
             </Link>
-            
+
             {/* Compact Search */}
             <button
               onClick={() => setSearchOpen(true)}
