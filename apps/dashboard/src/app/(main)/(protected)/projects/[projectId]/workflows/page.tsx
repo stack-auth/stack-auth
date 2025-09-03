@@ -83,11 +83,18 @@ function CreateWorkflowDialog({
     setIsSubmitting(true);
     try {
       await onSave(generateUuid(), displayName, deindent`
-        export async function execute(context) {
-          // Your workflow logic here
-          console.log('Workflow executing', context);
-          return { success: true };
-        }
+        onSignUp(async (user) => {
+          await stackApp.sendEmail({ userIds: [user.id], subject: "Welcome to the app!", html: "<p>Example email</p>" });
+          return scheduleCallback({
+            scheduleAt: new Date(Date.now() + 1000 * 60 * 60 * 24 * 7),
+            data: { "userId": user.id },
+            callbackId: "in-7-days",
+          });
+        });
+
+        registerCallback("in-7-days", async (data) => {
+          await stackApp.sendEmail({ userIds: [data.userId], subject: "Welcome to the app!", html: "<p>Example email</p>" });
+        });
       `);
       onOpenChange(false);
       setDisplayName("");
