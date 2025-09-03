@@ -32,7 +32,7 @@ type WorkflowTrigger =
     type: "callback",
     callbackId: string,
     scheduledAtMillis: number,
-    dataJson: string,
+    data: unknown,
     callerTriggerId: string,
     executionId: string,
   };
@@ -82,13 +82,15 @@ export async function compileWorkflowSource(source: string): Promise<Result<stri
           if (!callbackFunc) {
             throw new Error(\`Callback \${callbackId} not found. Was it maybe deleted from the workflow?\`);
           }
-          return callbackFunc(data);
+          return callbackFunc(JSON.parse(data.dataJson));
         });
-        globalThis.scheduleCallback = ({ callbackId, data, date }) => {
-          if (!registeredCallbacks.has(callbackId)) {
-            throw new Error(\`Callback \${callbackId} not found. Please register it first with registerCallback(\${JSON.stringify(callbackId)}, () => ...)\`);
+        let scheduledCallback = undefined;
+        globalThis.scheduleCallback = ({ callbackId, data, scheduleAt }) => {
+          if (scheduledCallback) {
+            throw new Error("Only one callback can be scheduled at a time!");
           }
-          globalThis.stackApp.scheduleCallback(options);
+          scheduledCallback = { callbackId, data, scheduleAtMillis: scheduleAt.getTime() };
+          return scheduledCallback;
         };
 
         function makeTriggerRegisterer(str, typeCb, argsCb) {
@@ -104,9 +106,19 @@ export async function compileWorkflowSource(source: string): Promise<Result<stri
         if (!trigger) {
           throw new Error(\`Workflow trigger \${triggerData.type} invoked but not found. Please report this to the developers.\`);
         }
-        return {
-          triggerOutput: await trigger(triggerData),
-        };
+        const triggerOutput = await trigger(triggerData);
+        if (scheduledCallback !== undefined) {
+          if (triggerOutput !== scheduledCallback) {
+            throw new Error("When calling scheduleCallback, you must return its return value in the event handler!");
+          }
+          return {
+            scheduledCallback: triggerOutput,
+          };
+        } else {
+          return {
+            triggerOutput,
+          };
+        }
       }
     `,
   }, {
@@ -192,7 +204,7 @@ import.meta.vitest?.test("compileWorkflow", async ({ expect }) => {
     "compile",
     "callback",
   ]);
-  expect(await compileAndGetRegisteredTriggers("onSignUp(() => {});")).toEqual([
+  expect(await compileAndGetRegisteredTriggers("onSignUp(() => {}); registerCallback('test', () => {});")).toEqual([
     "compile",
     "callback",
     "sign-up",
@@ -353,17 +365,12 @@ async function compileAndGetEnabledWorkflows(tenancy: Tenancy): Promise<Map<stri
 }
 
 async function triggerWorkflowRaw(tenancy: Tenancy, compiledWorkflowCode: string, trigger: WorkflowTrigger): Promise<Result<unknown, string>> {
-  const triggerId = generateUuid();
-  const executionId = trigger.type === "callback" ? trigger.executionId : generateUuid();
-
   const workflowToken = generateSecureRandomString();
   const workflowTriggerToken = await globalPrismaClient.workflowTriggerToken.create({
     data: {
       expiresAt: new Date(Date.now() + 1000 * 35),
       tenancyId: tenancy.id,
       tokenHash: await hashWorkflowTriggerToken(workflowToken),
-      triggerId,
-      executionId,
     },
   });
 
@@ -400,44 +407,109 @@ async function triggerWorkflowRaw(tenancy: Tenancy, compiledWorkflowCode: string
   }
 }
 
-async function triggerWorkflow(tenancy: Tenancy, compiledWorkflow: CompiledWorkflow, trigger: WorkflowTrigger): Promise<Result<void, string>> {
-  if (compiledWorkflow.compiledCode === null) {
-    return Result.error(`Workflow ${compiledWorkflow.id} failed to compile: ${compiledWorkflow.compileError}`);
-  }
-  const res = await triggerWorkflowRaw(tenancy, compiledWorkflow.compiledCode, trigger);
-  if (res.status === "error") {
-    console.log(`Compiled workflow failed to process trigger: ${res.error}`, { trigger, compiledWorkflowId: compiledWorkflow.id, res });
-  }
+async function createScheduledTrigger(tenancy: Tenancy, workflowId: string, trigger: WorkflowTrigger, scheduledAt: Date) {
+  const executionId = trigger.type === "callback" ? trigger.executionId : generateUuid();
+
   const prisma = await getPrismaClientForTenancy(tenancy);
-  await prisma.workflowTrigger.create({
+  const dbTrigger = await prisma.workflowTrigger.create({
     data: {
-      triggerData: trigger,
-      ...(res.status === "ok" ? { output: (res.data ?? Prisma.JsonNull) as any } : { error: res.error }),
+      triggerData: trigger as any,
+      scheduledAt,
       execution: {
         connectOrCreate: {
           where: {
             tenancyId_id: {
               tenancyId: tenancy.id,
-              id: compiledWorkflow.id,
+              id: executionId,
             },
           },
           create: {
             tenancyId: tenancy.id,
-            compiledWorkflowId: compiledWorkflow.id,
+            workflowId,
           },
         },
+      },
+    },
+  });
+  return dbTrigger;
+}
+
+async function triggerWorkflow(tenancy: Tenancy, compiledWorkflow: CompiledWorkflow, triggerId: string): Promise<Result<void, string>> {
+  if (compiledWorkflow.compiledCode === null) {
+    return Result.error(`Workflow ${compiledWorkflow.id} failed to compile: ${compiledWorkflow.compileError}`);
+  }
+
+  const prisma = await getPrismaClientForTenancy(tenancy);
+  const trigger = await prisma.workflowTrigger.update({
+    where: {
+      tenancyId_id: {
+        tenancyId: tenancy.id,
+        id: triggerId,
+      },
+    },
+    data: {
+      compiledWorkflowId: compiledWorkflow.id,
+      scheduledAt: null,
+      output: Prisma.DbNull,
+      error: Prisma.DbNull,
+    },
+  });
+
+  const res = await triggerWorkflowRaw(tenancy, compiledWorkflow.compiledCode, trigger.triggerData as WorkflowTrigger);
+  if (res.status === "error") {
+    console.log(`Compiled workflow failed to process trigger: ${res.error}`, { trigger, compiledWorkflowId: compiledWorkflow.id, res });
+  } else {
+    if (res.data && typeof res.data === "object" && "scheduledCallback" in res.data && res.data.scheduledCallback && typeof res.data.scheduledCallback === "object") {
+      const scheduledCallback: any = res.data.scheduledCallback;
+      const callbackId = `${scheduledCallback.callbackId}`;
+      const scheduleAt = new Date(scheduledCallback.scheduleAtMillis);
+      const callbackData = scheduledCallback.data;
+      await createScheduledTrigger(
+        tenancy,
+        compiledWorkflow.id,
+        {
+          type: "callback",
+          callbackId,
+          data: callbackData,
+          scheduledAtMillis: scheduleAt.getTime(),
+          callerTriggerId: triggerId,
+          executionId: trigger.executionId,
+        },
+        scheduleAt
+      );
+    }
+  }
+  await prisma.workflowTrigger.update({
+    where: {
+      tenancyId_id: {
+        tenancyId: tenancy.id,
+        id: triggerId,
+      },
+    },
+    data: {
+      ...res.status === "ok" ? {
+        output: res.data as any,
+      } : {
+        error: res.error,
       },
     },
   });
   return Result.ok(undefined);
 }
 
-export async function triggerWorkflows(tenancy: Tenancy, trigger: WorkflowTrigger) {
+export async function triggerScheduledCallbacks(tenancy: Tenancy) {
+
+}
+
+export async function triggerWorkflows(tenancy: Tenancy, trigger: WorkflowTrigger & { type: WorkflowRegisteredTriggerType }) {
   runAsynchronouslyAndWaitUntil(async () => {
     const compiledWorkflows = await compileAndGetEnabledWorkflows(tenancy);
-    const promises = [...compiledWorkflows].map(async ([workflowId, compiledWorkflow]) => {
-      await triggerWorkflow(tenancy, compiledWorkflow, trigger);
-    });
+    const promises = [...compiledWorkflows]
+      .filter(([_, compiledWorkflow]) => compiledWorkflow.registeredTriggers.includes(trigger.type))
+      .map(async ([workflowId, compiledWorkflow]) => {
+        const dbTrigger = await createScheduledTrigger(tenancy, workflowId, trigger, new Date());
+        await triggerWorkflow(tenancy, compiledWorkflow, dbTrigger.id);
+      });
     await Promise.all(promises);
   });
 }

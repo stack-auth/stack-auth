@@ -45,6 +45,15 @@ test("onSignUp workflow sends email for client sign-up", async ({ expect }) => {
   await configureEmailAndWorkflow("wf-email", `
     onSignUp(async (user) => {
       await stackApp.sendEmail({ userIds: [user.id], subject: ${JSON.stringify(subject)}, html: "<p>hi</p>" });
+      return scheduleCallback({
+        scheduleAt: new Date(Date.now() + 120_000),
+        data: { "example": "data" },
+        callbackId: "my-callback",
+      });
+    });
+
+    registerCallback("my-callback", async (data) => {
+      console.log("my-callback", data);
     });
   `);
 

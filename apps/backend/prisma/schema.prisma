@@ -792,10 +792,6 @@ model WorkflowTriggerToken {
 
   tokenHash String
 
-  // no foreign key constraint on triggerId and executionId, as those are on the source-of-truth tables
-  triggerId   String @db.Uuid
-  executionId String @db.Uuid
-
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -812,24 +808,31 @@ model WorkflowTrigger {
 
   triggerData Json
 
-  // exactly one of [output, error] must be set
-  output Json?
-  error  Json?
+  // the following fields determine the state of the trigger:
+  // - scheduledAt && !compiledWorkflowId && !output && !error: the trigger is scheduled to be executed
+  // - !scheduledAt && compiledWorkflowId && !output && !error: the trigger is currently executing
+  // - !scheduledAt && compiledWorkflowId && output && !error: the trigger has successfully completed execution
+  // - !scheduledAt && compiledWorkflowId && !output && error: the trigger has failed execution
+  // All other combinations are invalid.
+  scheduledAt        DateTime?
+  output             Json?
+  error              Json?
+  compiledWorkflowId String?           @db.Uuid
+  compiledWorkflow   CompiledWorkflow? @relation(fields: [tenancyId, compiledWorkflowId], references: [tenancyId, id])
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   execution WorkflowExecution @relation(fields: [tenancyId, executionId], references: [tenancyId, id])
 
-  @@id([tenancyId, executionId, id])
+  @@id([tenancyId, id])
 }
 
 model WorkflowExecution {
   tenancyId String @db.Uuid
   id        String @default(uuid()) @db.Uuid
 
-  compiledWorkflowId String           @db.Uuid
-  compiledWorkflow   CompiledWorkflow @relation(fields: [tenancyId, compiledWorkflowId], references: [tenancyId, id])
+  workflowId String
 
   triggerIds String[]
   triggers   WorkflowTrigger[]
@@ -868,9 +871,10 @@ model CompiledWorkflow {
   compiledAt         DateTime @default(now())
   registeredTriggers String[]
 
-  createdAt         DateTime            @default(now())
-  updatedAt         DateTime            @updatedAt
-  WorkflowExecution WorkflowExecution[]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  workflowTriggers WorkflowTrigger[]
 
   @@id([tenancyId, id])
   @@unique([tenancyId, workflowId, compilationVersion, sourceHash])
