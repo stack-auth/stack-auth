@@ -792,6 +792,10 @@ model WorkflowTriggerToken {
 
   tokenHash String
 
+  // no foreign key constraint on triggerId and executionId, as those are on the source-of-truth tables
+  triggerId   String @db.Uuid
+  executionId String @db.Uuid
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 

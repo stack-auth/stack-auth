@@ -37,13 +37,6 @@ type WorkflowTrigger =
     executionId: string,
   };
 
-type WorkflowCompilationStatus =
-  | null  // not compiled yet, recently created
-  | { type: "compiling", sourceHash: string, startedCompilingAtMillis: number }
-  | { type: "compiled", compiled: string, sourceHash: string, compiledAtMillis: number, registeredTriggers: WorkflowRegisteredTriggerType[] }
-  | { type: "compile-error", error: string, sourceHash: string };
-
-
 async function hashWorkflowSource(source: string) {
   return encodeBase64(await hash({
     purpose: "stack-auth-workflow-source",
@@ -65,8 +58,14 @@ export async function compileWorkflowSource(source: string): Promise<Result<stri
       import { StackServerApp } from '@stackframe/stack';
 
       export default async () => {
-        const registeredTriggers = new Map();
+        globalThis.stackApp = new StackServerApp({
+          tokenStore: null,
+          extraRequestHeaders: {
+            "x-stack-workflow-token": process.env.STACK_WORKFLOW_TOKEN_SECRET,
+          }
+        });
 
+        const registeredTriggers = new Map();
         globalThis._registerTrigger = (triggerType, func) => {
           registeredTriggers.set(triggerType, func);
         };
@@ -74,12 +73,23 @@ export async function compileWorkflowSource(source: string): Promise<Result<stri
           registeredTriggers: [...registeredTriggers.keys()],
         }));
 
-        globalThis.stackApp = new StackServerApp({
-          tokenStore: null,
-          extraRequestHeaders: {
-            "x-stack-workflow-token": process.env.STACK_WORKFLOW_TOKEN_SECRET,
+        const registeredCallbacks = new Map();
+        globalThis.registerCallback = (callbackId, func) => {
+          registeredCallbacks.set(callbackId, func);
+        };
+        _registerTrigger("callback", ({ callbackId, data }) => {
+          const callbackFunc = registeredCallbacks.get(callbackId);
+          if (!callbackFunc) {
+            throw new Error(\`Callback \${callbackId} not found. Was it maybe deleted from the workflow?\`);
           }
+          return callbackFunc(data);
         });
+        globalThis.scheduleCallback = ({ callbackId, data, date }) => {
+          if (!registeredCallbacks.has(callbackId)) {
+            throw new Error(\`Callback \${callbackId} not found. Please register it first with registerCallback(\${JSON.stringify(callbackId)}, () => ...)\`);
+          }
+          globalThis.stackApp.scheduleCallback(options);
+        };
 
         function makeTriggerRegisterer(str, typeCb, argsCb) {
           globalThis[str] = (...args) => _registerTrigger(typeCb(...args.slice(0, -1)), async (data) => args[args.length - 1](...await argsCb(data))); 
@@ -91,6 +101,9 @@ export async function compileWorkflowSource(source: string): Promise<Result<stri
 
         const triggerData = JSON.parse(process.env.STACK_WORKFLOW_TRIGGER_DATA);
         const trigger = registeredTriggers.get(triggerData.type);
+        if (!trigger) {
+          throw new Error(\`Workflow trigger \${triggerData.type} invoked but not found. Please report this to the developers.\`);
+        }
         return {
           triggerOutput: await trigger(triggerData),
         };
@@ -106,7 +119,7 @@ export async function compileWorkflowSource(source: string): Promise<Result<stri
   return Result.ok(bundleResult.data);
 }
 
-async function compileWorkflow(tenancy: Tenancy, workflowId: string): Promise<Result<{ compiledCode: string, registeredTriggers: WorkflowRegisteredTriggerType[] }, { compileError?: string }>> {
+async function compileWorkflow(tenancy: Tenancy, workflowId: string): Promise<Result<{ compiledCode: string, registeredTriggers: string[] }, { compileError?: string }>> {
   return await traceSpan(`compileWorkflow ${workflowId}`, async () => {
     if (!(workflowId in tenancy.config.workflows.availableWorkflows)) {
       throw new StackAssertionError(`Workflow ${workflowId} not found`);
@@ -137,7 +150,7 @@ async function compileWorkflow(tenancy: Tenancy, workflowId: string): Promise<Re
 
       return Result.ok({
         compiledCode: compiledCodeResult.data,
-        registeredTriggers: registeredTriggers as WorkflowRegisteredTriggerType[],
+        registeredTriggers: registeredTriggers,
       });
     }, 10_000);
 
@@ -177,9 +190,11 @@ import.meta.vitest?.test("compileWorkflow", async ({ expect }) => {
 
   expect(await compileAndGetRegisteredTriggers("console.log('hello, world!');")).toEqual([
     "compile",
+    "callback",
   ]);
   expect(await compileAndGetRegisteredTriggers("onSignUp(() => {});")).toEqual([
     "compile",
+    "callback",
     "sign-up",
   ]);
   expect(await compileAndGetResult("return return return return;")).toMatchInlineSnapshot(`
@@ -347,6 +362,8 @@ async function triggerWorkflowRaw(tenancy: Tenancy, compiledWorkflowCode: string
       expiresAt: new Date(Date.now() + 1000 * 35),
       tenancyId: tenancy.id,
       tokenHash: await hashWorkflowTriggerToken(workflowToken),
+      triggerId,
+      executionId,
     },
   });
 
