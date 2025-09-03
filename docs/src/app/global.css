@@ -194,8 +194,3 @@ button:not(.chat-gradient-active)::before {
   mask: radial-gradient(circle at 20% 80%, transparent 0%, transparent 100%);
   transition: mask 0.3s ease-out;
 }
-
-/* Fix Stack Auth UserButton dropdown z-index to appear above navbar */
-[data-radix-popper-content-wrapper] .stack-scope {
-  z-index: 100 !important;
-}
