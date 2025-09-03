@@ -120,7 +120,7 @@ export async function renderEmailWithTemplate(
   };
   const output = await freestyle.executeScript(result.data, { nodeModules });
   if (output.status === "error") {
-    return Result.error(output.error);
+    return Result.error(`${output.error}`);
   }
   return Result.ok(output.data.result as { html: string, text: string, subject: string, notificationCategory: string });
 }

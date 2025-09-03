@@ -115,12 +115,13 @@ export function getBaseUrl(userSpecifiedBaseUrl: string | { browser: string, ser
       }
     }
   } else {
+    // note: NEXT_PUBLIC_BROWSER_STACK_API_URL was renamed to NEXT_PUBLIC_STACK_API_URL_BROWSER, and NEXT_PUBLIC_STACK_URL to NEXT_PUBLIC_STACK_API_URL
     if (isBrowserLike()) {
-      url = process.env.NEXT_PUBLIC_BROWSER_STACK_API_URL;
+      url = process.env.NEXT_PUBLIC_BROWSER_STACK_API_URL || process.env.NEXT_PUBLIC_STACK_API_URL_BROWSER || process.env.STACK_API_URL_BROWSER;
     } else {
-      url = process.env.NEXT_PUBLIC_SERVER_STACK_API_URL;
+      url = process.env.NEXT_PUBLIC_SERVER_STACK_API_URL || process.env.NEXT_PUBLIC_STACK_API_URL_SERVER || process.env.STACK_API_URL_SERVER;
     }
-    url = url || process.env.NEXT_PUBLIC_STACK_API_URL || process.env.NEXT_PUBLIC_STACK_URL || defaultBaseUrl;
+    url = url || process.env.NEXT_PUBLIC_STACK_API_URL || process.env.STACK_API_URL || process.env.NEXT_PUBLIC_STACK_URL || defaultBaseUrl;
   }
 
   return url.endsWith('/') ? url.slice(0, -1) : url;

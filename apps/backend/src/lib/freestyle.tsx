@@ -1,6 +1,7 @@
 import { traceSpan } from '@/utils/telemetry';
 import { getEnvVariable, getNodeEnvironment } from '@stackframe/stack-shared/dist/utils/env';
 import { StackAssertionError } from '@stackframe/stack-shared/dist/utils/errors';
+import { parseJson } from '@stackframe/stack-shared/dist/utils/json';
 import { Result } from '@stackframe/stack-shared/dist/utils/results';
 import { FreestyleSandboxes } from 'freestyle-sandboxes';
 
@@ -32,13 +33,15 @@ export class Freestyle {
       }
     }, async () => {
       try {
-        return Result.ok(await this.freestyle.executeScript(script, options));
+        const res = await this.freestyle.executeScript(script, options);
+        return Result.ok(res);
       } catch (e: unknown) {
+        // for whatever reason, Freestyle's errors are sometimes returned in JSON.parse(e.error.error).error (lol)
         const wrap1 = e && typeof e === "object" && "error" in e ? e.error : e;
         const wrap2 = wrap1 && typeof wrap1 === "object" && "error" in wrap1 ? wrap1.error : wrap1;
-        const wrap3 = wrap2 && typeof wrap2 === "string" ? JSON.parse(wrap2) : wrap2;
+        const wrap3 = wrap2 && typeof wrap2 === "string" ? Result.or(parseJson(wrap2), wrap2) : wrap2;
         const wrap4 = wrap3 && typeof wrap3 === "object" && "error" in wrap3 ? wrap3.error : wrap3;
-        return Result.error(wrap4);
+        return Result.error(`${wrap4}`);
       }
     });
   }

@@ -786,6 +786,21 @@ model DataVaultEntry {
   @@index([tenancyId, storeId])
 }
 
+model WorkflowTriggerToken {
+  tenancyId String @db.Uuid
+  id        String @default(uuid()) @db.Uuid
+
+  tokenHash String
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  expiresAt DateTime
+
+  @@id([tenancyId, id])
+  @@unique([tenancyId, tokenHash])
+}
+
 model WorkflowTrigger {
   tenancyId   String @db.Uuid
   id          String @default(uuid()) @db.Uuid

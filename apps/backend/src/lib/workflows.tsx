@@ -1,13 +1,14 @@
 import { getPrismaClientForTenancy, globalPrismaClient, retryTransaction } from "@/prisma-client";
 import { traceSpan } from "@/utils/telemetry";
-import { allPromisesAndWaitUntilEach } from "@/utils/vercel";
+import { allPromisesAndWaitUntilEach, runAsynchronouslyAndWaitUntil } from "@/utils/vercel";
 import { CompiledWorkflow, Prisma } from "@prisma/client";
 import { isStringArray } from "@stackframe/stack-shared/dist/utils/arrays";
 import { encodeBase64 } from "@stackframe/stack-shared/dist/utils/bytes";
-import { hash } from "@stackframe/stack-shared/dist/utils/crypto";
+import { generateSecureRandomString, hash } from "@stackframe/stack-shared/dist/utils/crypto";
+import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
 import { StackAssertionError, captureError, errorToNiceString, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
 import { bundleJavaScript } from "@stackframe/stack-shared/dist/utils/esbuild";
-import { timeout, wait } from "@stackframe/stack-shared/dist/utils/promises";
+import { runAsynchronously, timeout, wait } from "@stackframe/stack-shared/dist/utils/promises";
 import { Result } from "@stackframe/stack-shared/dist/utils/results";
 import { generateUuid } from "@stackframe/stack-shared/dist/utils/uuids";
 import { Freestyle } from "./freestyle";
@@ -50,6 +51,13 @@ async function hashWorkflowSource(source: string) {
   }));
 }
 
+export async function hashWorkflowTriggerToken(token: string) {
+  return encodeBase64(await hash({
+    purpose: "stack-auth-workflow-trigger-token",
+    value: token,
+  }));
+}
+
 export async function compileWorkflowSource(source: string): Promise<Result<string, string>> {
   const bundleResult = await bundleJavaScript({
     "/source.tsx": source,
@@ -68,20 +76,23 @@ export async function compileWorkflowSource(source: string): Promise<Result<stri
 
         globalThis.stackApp = new StackServerApp({
           tokenStore: null,
+          extraRequestHeaders: {
+            "x-stack-workflow-token": process.env.STACK_WORKFLOW_TOKEN_SECRET,
+          }
         });
 
         function makeTriggerRegisterer(str, typeCb, argsCb) {
-          globalThis[str] = (...args) => _registerTrigger(typeCb(...args.slice(0, -1)), (data) => args[args.length - 1](...argsCb(data))); 
+          globalThis[str] = (...args) => _registerTrigger(typeCb(...args.slice(0, -1)), async (data) => args[args.length - 1](...await argsCb(data))); 
         }
 
-        makeTriggerRegisterer("onSignUp", () => "sign-up", async ({ userId }) => [stackApp.getUser(userId, { or: "throw" })]);
+        makeTriggerRegisterer("onSignUp", () => "sign-up", async (data) => [await stackApp.getUser(data.userId, { or: "throw" })]);
 
         await import("./source.tsx");
 
         const triggerData = JSON.parse(process.env.STACK_WORKFLOW_TRIGGER_DATA);
         const trigger = registeredTriggers.get(triggerData.type);
         return {
-          triggerOutput: await trigger(triggerData.data),
+          triggerOutput: await trigger(triggerData),
         };
       }
     `,
@@ -140,7 +151,7 @@ async function compileWorkflow(tenancy: Tenancy, workflowId: string): Promise<Re
 import.meta.vitest?.test("compileWorkflow", async ({ expect }) => {
   const compileAndGetResult = async (tsSource: string) => {
     const tenancy = {
-      id: "test-tenancy",
+      id: "01234567-89ab-cdef-0123-456789abcdef",
       project: {
         id: "test-project",
       },
@@ -260,7 +271,7 @@ async function compileAndGetEnabledWorkflows(tenancy: Tenancy): Promise<Map<stri
   };
 
   let retryInfo = [];
-  const prisma = globalPrismaClient; //await getPrismaClientForTenancy(tenancy);
+  const prisma = await getPrismaClientForTenancy(tenancy);
   for (let retries = 0; retries < 10; retries++) {
     const todo = await retryTransaction(prisma, async (tx) => {
       return await getWorkflowsToCompile(tx);
@@ -330,17 +341,46 @@ async function triggerWorkflowRaw(tenancy: Tenancy, compiledWorkflowCode: string
   const triggerId = generateUuid();
   const executionId = trigger.type === "callback" ? trigger.executionId : generateUuid();
 
-  const freestyle = new Freestyle();
-  const freestyleRes = await freestyle.executeScript(compiledWorkflowCode, {
-    envVars: {
-      STACK_WORKFLOW_TRIGGER_DATA: JSON.stringify(trigger),
-      STACK_PROJECT_ID: tenancy.project.id,
-      STACK_PUBLISHABLE_CLIENT_KEY: "insert actual publishable client key here",
-      STACK_SECRET_SERVER_KEY: "insert actual secret server key here",
+  const workflowToken = generateSecureRandomString();
+  const workflowTriggerToken = await globalPrismaClient.workflowTriggerToken.create({
+    data: {
+      expiresAt: new Date(Date.now() + 1000 * 35),
+      tenancyId: tenancy.id,
+      tokenHash: await hashWorkflowTriggerToken(workflowToken),
     },
-    nodeModules: Object.fromEntries(Object.entries(externalPackages).map(([packageName, version]) => [packageName, version])),
   });
-  return Result.map(freestyleRes, (data) => data.result);
+
+  const tokenRefreshInterval = setInterval(() => {
+    runAsynchronously(async () => {
+      await globalPrismaClient.workflowTriggerToken.update({
+        where: {
+          tenancyId_id: {
+            tenancyId: tenancy.id,
+            id: workflowTriggerToken.id,
+          },
+        },
+        data: { expiresAt: new Date(Date.now() + 1000 * 35) },
+      });
+    });
+  }, 10_000);
+
+  try {
+    const freestyle = new Freestyle();
+    const freestyleRes = await freestyle.executeScript(compiledWorkflowCode, {
+      envVars: {
+        STACK_WORKFLOW_TRIGGER_DATA: JSON.stringify(trigger),
+        NEXT_PUBLIC_STACK_PROJECT_ID: tenancy.project.id,
+        NEXT_PUBLIC_STACK_API_URL: getEnvVariable("NEXT_PUBLIC_STACK_API_URL").replace("http://localhost", "http://host.docker.internal"),  // the replace is a hardcoded hack for the Freestyle mock server
+        NEXT_PUBLIC_STACK_PUBLISHABLE_CLIENT_KEY: "<placeholder publishable client key; the actual auth happens with the workflow token>",
+        STACK_SECRET_SERVER_KEY: "<placeholder secret server key; the actual auth happens with the workflow token>",
+        STACK_WORKFLOW_TOKEN_SECRET: workflowToken,
+      },
+      nodeModules: Object.fromEntries(Object.entries(externalPackages).map(([packageName, version]) => [packageName, version])),
+    });
+    return Result.map(freestyleRes, (data) => data.result);
+  } finally {
+    clearInterval(tokenRefreshInterval);
+  }
 }
 
 async function triggerWorkflow(tenancy: Tenancy, compiledWorkflow: CompiledWorkflow, trigger: WorkflowTrigger): Promise<Result<void, string>> {
@@ -348,6 +388,9 @@ async function triggerWorkflow(tenancy: Tenancy, compiledWorkflow: CompiledWorkf
     return Result.error(`Workflow ${compiledWorkflow.id} failed to compile: ${compiledWorkflow.compileError}`);
   }
   const res = await triggerWorkflowRaw(tenancy, compiledWorkflow.compiledCode, trigger);
+  if (res.status === "error") {
+    console.log(`Compiled workflow failed to process trigger: ${res.error}`, { trigger, compiledWorkflowId: compiledWorkflow.id, res });
+  }
   const prisma = await getPrismaClientForTenancy(tenancy);
   await prisma.workflowTrigger.create({
     data: {
@@ -373,9 +416,11 @@ async function triggerWorkflow(tenancy: Tenancy, compiledWorkflow: CompiledWorkf
 }
 
 export async function triggerWorkflows(tenancy: Tenancy, trigger: WorkflowTrigger) {
-  const compiledWorkflows = await compileAndGetEnabledWorkflows(tenancy);
-  const promises = [...compiledWorkflows].map(async ([workflowId, compiledWorkflow]) => {
-    await triggerWorkflow(tenancy, compiledWorkflow, trigger);
+  runAsynchronouslyAndWaitUntil(async () => {
+    const compiledWorkflows = await compileAndGetEnabledWorkflows(tenancy);
+    const promises = [...compiledWorkflows].map(async ([workflowId, compiledWorkflow]) => {
+      await triggerWorkflow(tenancy, compiledWorkflow, trigger);
+    });
+    await Promise.all(promises);
   });
-  await Promise.all(promises);
 }
