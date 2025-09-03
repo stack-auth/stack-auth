@@ -32,7 +32,7 @@ import { EditableTeamMemberProfile, ServerListUsersOptions, ServerTeam, ServerTe
 import { ProjectCurrentServerUser, ServerUser, ServerUserCreateOptions, ServerUserUpdateOptions, serverUserCreateOptionsToCrud, serverUserUpdateOptionsToCrud } from "../../users";
 import { StackServerAppConstructorOptions } from "../interfaces/server-app";
 import { _StackClientAppImplIncomplete } from "./client-app-impl";
-import { clientVersion, createCache, createCacheBySession, getBaseUrl, getDefaultProjectId, getDefaultPublishableClientKey, getDefaultSecretServerKey } from "./common";
+import { clientVersion, createCache, createCacheBySession, getBaseUrl, getDefaultExtraRequestHeaders, getDefaultProjectId, getDefaultPublishableClientKey, getDefaultSecretServerKey } from "./common";
 
 import { useAsyncCache } from "./common"; // THIS_LINE_PLATFORM react-like
 
@@ -266,7 +266,7 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
       interface: new StackServerInterface({
         getBaseUrl: () => getBaseUrl(options.baseUrl),
         projectId: options.projectId ?? getDefaultProjectId(),
-        extraRequestHeaders: options.extraRequestHeaders ?? {},
+        extraRequestHeaders: options.extraRequestHeaders ?? getDefaultExtraRequestHeaders(),
         clientVersion,
         publishableClientKey: options.publishableClientKey ?? getDefaultPublishableClientKey(),
         secretServerKey: options.secretServerKey ?? getDefaultSecretServerKey(),
@@ -1116,8 +1116,8 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
   }
   // END_PLATFORM
 
-  async sendEmail(options: SendEmailOptions): Promise<Result<void, KnownErrors["RequiresCustomEmailServer"] | KnownErrors["SchemaError"] | KnownErrors["UserIdDoesNotExist"]>> {
-    return await this._interface.sendEmail(options);
+  async sendEmail(options: SendEmailOptions): Promise<void> {
+    await this._interface.sendEmail(options);
   }
 
   protected override async _refreshSession(session: InternalSession) {
