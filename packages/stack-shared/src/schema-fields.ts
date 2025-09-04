@@ -1,7 +1,7 @@
 import * as yup from "yup";
 import { KnownErrors } from ".";
 import { isBase64 } from "./utils/bytes";
-import { type Currency, type MoneyAmount, SUPPORTED_CURRENCIES } from "./utils/currency-constants";
+import { SUPPORTED_CURRENCIES, type Currency, type MoneyAmount } from "./utils/currency-constants";
 import { DayInterval, Interval } from "./utils/dates";
 import { StackAssertionError, throwErr } from "./utils/errors";
 import { decodeBasicAuthorizationHeader } from "./utils/http";
@@ -423,7 +423,7 @@ export const dayIntervalOrNeverSchema = yupUnion(dayIntervalSchema.defined(), yu
  * This schema is useful for fields where the user can specify the ID, such as price IDs. It is particularly common
  * for IDs in the config schema.
  */
-export const userSpecifiedIdSchema = (idName: `${string}Id`) => yupString().matches(/^[a-zA-Z_][a-zA-Z0-9_-]*$/, `${idName} must start with a letter or underscore and contain only letters, numbers, underscores, and hyphens`);
+export const userSpecifiedIdSchema = (idName: `${string}Id`) => yupString().max(63).matches(/^[a-zA-Z_][a-zA-Z0-9_-]*$/, `${idName} must start with a letter or underscore and contain only letters, numbers, underscores, and hyphens`);
 export const moneyAmountSchema = (currency: Currency) => yupString<MoneyAmount>().test('money-amount', 'Invalid money amount', (value, context) => {
   if (value == null) return true;
   const regex = /^([0-9]+)(\.([0-9]+))?$/;
