@@ -10,11 +10,10 @@ import { AccordionProvider, renderSidebarContent } from './layouts/docs';
 
 type EmbeddedDocsWithSidebarProps = {
   pageTree: PageTree.Root,
-  currentSlug: string[],
   children: React.ReactNode,
 }
 
-export function EmbeddedDocsWithSidebar({ pageTree, currentSlug, children }: EmbeddedDocsWithSidebarProps) {
+export function EmbeddedDocsWithSidebar({ pageTree, children }: EmbeddedDocsWithSidebarProps) {
   const [isSidebarVisible, setIsSidebarVisible] = useState(false);
   const pathname = usePathname();
 
