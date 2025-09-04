@@ -1,7 +1,7 @@
 'use client';
 
 import { usePathname } from 'next/navigation';
-import { createContext, useContext, useEffect, useState, type ReactNode } from 'react';
+import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 
 type CodeOverlayContextType = {
   isOpen: boolean,
@@ -29,33 +29,33 @@ export function CodeOverlayProvider({ children }: { children: ReactNode }) {
     setCurrentPage(pathname);
   }, [pathname]);
 
-  const openOverlay = (newCode: string, newLanguage = 'tsx', newTitle = 'Code Example') => {
+  const openOverlay = useCallback((newCode: string, newLanguage = 'tsx', newTitle = 'Code Example') => {
     setCode(newCode);
     setLanguage(newLanguage);
     setTitle(newTitle);
     setIsOpen(true);
-  };
+  }, []);
 
-  const closeOverlay = () => {
+  const closeOverlay = useCallback(() => {
     setIsOpen(false);
-  };
+  }, []);
 
-  const toggleOverlay = () => {
-    setIsOpen(!isOpen);
-  };
+  const toggleOverlay = useCallback(() => {
+    setIsOpen(prev => !prev);
+  }, []);
+
+  const contextValue = useMemo(() => ({
+    isOpen,
+    code,
+    language,
+    title,
+    openOverlay,
+    closeOverlay,
+    toggleOverlay,
+  }), [isOpen, code, language, title, openOverlay, closeOverlay, toggleOverlay]);
 
   return (
-    <CodeOverlayContext.Provider
-      value={{
-        isOpen,
-        code,
-        language,
-        title,
-        openOverlay,
-        closeOverlay,
-        toggleOverlay,
-      }}
-    >
+    <CodeOverlayContext.Provider value={contextValue}>
       {children}
     </CodeOverlayContext.Provider>
   );
