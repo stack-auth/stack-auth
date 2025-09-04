@@ -1,4 +1,5 @@
 import { getStackStripe } from "@/lib/stripe";
+import { globalPrismaClient } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { adaptSchema, adminAuthTypeSchema, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
 import { StatusError } from "@stackframe/stack-shared/dist/utils/errors";
@@ -23,12 +24,18 @@ export const POST = createSmartRouteHandler({
   }),
   handler: async ({ auth }) => {
     const stripe = getStackStripe();
-    if (!auth.tenancy.config.payments.stripeAccountId) {
+
+    const project = await globalPrismaClient.project.findUnique({
+      where: { id: auth.project.id },
+      select: { stripeAccountId: true },
+    });
+
+    if (!project?.stripeAccountId) {
       throw new StatusError(400, "Stripe account ID is not set");
     }
 
     const accountSession = await stripe.accountSessions.create({
-      account: auth.tenancy.config.payments.stripeAccountId,
+      account: project.stripeAccountId,
       components: {
         payments: {
           enabled: true,

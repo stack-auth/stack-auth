@@ -24,7 +24,6 @@ import {
 } from "@stackframe/stack-ui";
 import {
   Book,
-  CreditCard,
   Globe,
   KeyRound,
   Link as LinkIcon,
@@ -39,7 +38,7 @@ import {
   SquarePen,
   User,
   Users,
-  Webhook,
+  Webhook
 } from "lucide-react";
 import { useTheme } from "next-themes";
 import { usePathname } from "next/navigation";
@@ -213,10 +212,10 @@ const navigationItems: (Label | Item | Hidden)[] = [
     regex: /^\/projects\/[^\/]+\/email-themes\/[^\/]+$/,
     type: 'hidden',
   },
+  /*
   {
     name: "Payments",
     type: 'label',
-    requiresDevFeatureFlag: true,
   },
   {
     name: "Payments",
@@ -224,8 +223,7 @@ const navigationItems: (Label | Item | Hidden)[] = [
     regex: /^\/projects\/[^\/]+\/payments$/,
     icon: CreditCard,
     type: 'item',
-    requiresDevFeatureFlag: true,
-  },
+  },*/
   {
     name: "Configuration",
     type: 'label'
@@ -554,7 +552,7 @@ export default function SidebarLayout(props: { projectId: string, children?: Rea
         </div>
 
         {/* Content Body - Normal scrolling */}
-        <div className="flex-grow relative">
+        <div className="flex-grow relative flex flex-col">
           {props.children}
         </div>
       </div>

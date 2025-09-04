@@ -1,12 +1,12 @@
 import { validateRedirectUrl } from "@/lib/redirect-urls";
 import { createAuthTokens } from "@/lib/tokens";
+import { createOrUpgradeAnonymousUser } from "@/lib/users";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { runAsynchronouslyAndWaitUntil } from "@/utils/vercel";
 import { KnownErrors } from "@stackframe/stack-shared";
 import { getPasswordError } from "@stackframe/stack-shared/dist/helpers/password";
 import { adaptSchema, clientOrHigherAuthTypeSchema, emailVerificationCallbackUrlSchema, passwordSchema, signInEmailSchema, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
 import { contactChannelVerificationCodeHandler } from "../../../contact-channels/verify/verification-code-handler";
-import { usersCrudHandlers } from "../../../users/crud";
 import { createMfaRequiredError } from "../../mfa/sign-in/verification-code-handler";
 
 export const POST = createSmartRouteHandler({
@@ -19,6 +19,7 @@ export const POST = createSmartRouteHandler({
     auth: yupObject({
       type: clientOrHigherAuthTypeSchema,
       tenancy: adaptSchema,
+      user: adaptSchema.optional()
     }).defined(),
     body: yupObject({
       email: signInEmailSchema.defined(),
@@ -35,7 +36,7 @@ export const POST = createSmartRouteHandler({
       user_id: yupString().defined(),
     }).defined(),
   }),
-  async handler({ auth: { tenancy }, body: { email, password, verification_callback_url: verificationCallbackUrl } }, fullReq) {
+  async handler({ auth: { tenancy, user: currentUser }, body: { email, password, verification_callback_url: verificationCallbackUrl } }, fullReq) {
     if (!tenancy.config.auth.password.allowSignIn) {
       throw new KnownErrors.PasswordAuthenticationNotEnabled();
     }
@@ -44,25 +45,26 @@ export const POST = createSmartRouteHandler({
       throw new KnownErrors.RedirectUrlNotWhitelisted();
     }
 
+    if (!tenancy.config.auth.allowSignUp) {
+      throw new KnownErrors.SignUpNotEnabled();
+    }
+
     const passwordError = getPasswordError(password);
     if (passwordError) {
       throw passwordError;
     }
 
-    if (!tenancy.config.auth.allowSignUp) {
-      throw new KnownErrors.SignUpNotEnabled();
-    }
-
-    const createdUser = await usersCrudHandlers.adminCreate({
+    const createdUser = await createOrUpgradeAnonymousUser(
       tenancy,
-      data: {
+      currentUser ?? null,
+      {
         primary_email: email,
         primary_email_verified: false,
         primary_email_auth_enabled: true,
         password,
       },
-      allowedErrorTypes: [KnownErrors.UserWithEmailAlreadyExists],
-    });
+      [KnownErrors.UserWithEmailAlreadyExists]
+    );
 
     runAsynchronouslyAndWaitUntil((async () => {
       await contactChannelVerificationCodeHandler.sendCode({

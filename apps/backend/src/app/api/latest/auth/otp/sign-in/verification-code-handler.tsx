@@ -2,6 +2,7 @@ import { getAuthContactChannel } from "@/lib/contact-channel";
 import { sendEmailFromTemplate } from "@/lib/emails";
 import { getSoleTenancyFromProjectBranch, Tenancy } from "@/lib/tenancies";
 import { createAuthTokens } from "@/lib/tokens";
+import { createOrUpgradeAnonymousUser } from "@/lib/users";
 import { getPrismaClientForTenancy } from "@/prisma-client";
 import { createVerificationCodeHandler } from "@/route-handlers/verification-code-handler";
 import { VerificationCodeType } from "@prisma/client";
@@ -100,20 +101,23 @@ export const signInVerificationCodeHandler = createVerificationCodeHandler({
       nonce: codeObj.code.slice(6),
     };
   },
-  async handler(tenancy, { email }) {
+  async handler(tenancy, { email }, data, requestBody, currentUser) {
     let user = await ensureUserForEmailAllowsOtp(tenancy, email);
     let isNewUser = false;
+
     if (!user) {
-      isNewUser = true;
-      user = await usersCrudHandlers.adminCreate({
+      user = await createOrUpgradeAnonymousUser(
         tenancy,
-        data: {
+        currentUser ?? null,
+        {
           primary_email: email,
           primary_email_verified: true,
           primary_email_auth_enabled: true,
           otp_auth_enabled: true,
         },
-      });
+        []
+      );
+      isNewUser = true;
     }
 
     if (user.requires_totp_mfa) {

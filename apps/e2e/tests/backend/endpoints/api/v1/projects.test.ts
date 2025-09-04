@@ -1487,6 +1487,14 @@ it("has a correctly formatted JWKS endpoint", async ({ expect }) => {
         x: expect.toSatisfy(isBase64Url),
         y: expect.toSatisfy(isBase64Url),
       },
+      {
+        alg: "ES256",
+        crv: "P-256",
+        kid: expect.any(String),
+        kty: "EC",
+        x: expect.toSatisfy(isBase64Url),
+        y: expect.toSatisfy(isBase64Url),
+      },
     ],
   });
 });
