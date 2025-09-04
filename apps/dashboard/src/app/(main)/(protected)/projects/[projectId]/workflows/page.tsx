@@ -69,7 +69,7 @@ function CreateWorkflowDialog({
 }: {
   open: boolean,
   onOpenChange: (open: boolean) => void,
-  onSave: (id: string, displayName: string, tsSource: string) => Promise<void>,
+  onSave: (id: string, displayName: string, tsSource: string, enabled: boolean) => Promise<void>,
 }) {
   const [displayName, setDisplayName] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -95,7 +95,7 @@ function CreateWorkflowDialog({
         registerCallback("in-7-days", async (data) => {
           await stackApp.sendEmail({ userIds: [data.userId], subject: "Welcome to the app!", html: "<p>Example email</p>" });
         });
-      `);
+      `, false);
       onOpenChange(false);
       setDisplayName("");
     } finally {
@@ -151,12 +151,12 @@ export default function WorkflowsPage() {
     setShowCreateDialog(true);
   };
 
-  const handleSaveWorkflow = async (id: string, displayName: string, tsSource: string) => {
+  const handleSaveWorkflow = async (id: string, displayName: string, tsSource: string, enabled: boolean) => {
     await project.updateConfig({
       [`workflows.availableWorkflows.${id}`]: {
         displayName,
         tsSource,
-        enabled: true
+        enabled,
       }
     });
     toast({ title: "Workflow created successfully" });
