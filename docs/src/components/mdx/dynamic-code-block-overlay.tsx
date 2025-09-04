@@ -2,7 +2,7 @@
 
 import { runAsynchronously } from "@stackframe/stack-shared/dist/utils/promises";
 import { Check, ChevronDown, ChevronUp, Code, Copy, X } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { codeToHtml } from "shiki";
 import { cn } from "../../lib/cn";
 import { useSidebar } from "../layouts/sidebar-context";
@@ -29,11 +29,14 @@ export function DynamicCodeblockOverlay({
   const sidebarContext = useSidebar();
   const isMainSidebarCollapsed = sidebarContext?.isMainSidebarCollapsed ?? false;
 
+  // Memoize line count calculation for performance
+  const lineCount = useMemo(() => code.split('\n').length, [code]);
+
   // Calculate dynamic height based on actual code lines and screen size
   const getOptimalHeight = () => {
-    const lines = code.split('\n').length;
-    const viewportHeight = windowSize.height || window.innerHeight;
-    const viewportWidth = windowSize.width || window.innerWidth;
+    const lines = lineCount;
+    const viewportHeight = windowSize.height || (typeof window !== 'undefined' ? window.innerHeight : 800);
+    const viewportWidth = windowSize.width || (typeof window !== 'undefined' ? window.innerWidth : 1200);
 
     // Different behavior for mobile vs desktop
     const isMobile = viewportWidth < 768;
@@ -72,7 +75,9 @@ export function DynamicCodeblockOverlay({
   // Handle window resize to recalculate optimal height
   useEffect(() => {
     const updateWindowSize = () => {
-      setWindowSize({ width: window.innerWidth, height: window.innerHeight });
+      if (typeof window !== 'undefined') {
+        setWindowSize({ width: window.innerWidth, height: window.innerHeight });
+      }
     };
 
     // Set initial window size
@@ -192,7 +197,7 @@ export function DynamicCodeblockOverlay({
             </button>
 
             {/* Expand/Collapse button - only show if content would benefit from expansion */}
-            {code.split('\n').length > 10 && (
+            {lineCount > 10 && (
               <button
                 onClick={() => setIsExpanded(!isExpanded)}
                 className="flex items-center gap-1 sm:gap-2 px-2 sm:px-3 py-1.5 text-xs sm:text-sm text-fd-muted-foreground hover:text-fd-foreground bg-fd-muted/50 hover:bg-fd-muted rounded-md transition-colors"
