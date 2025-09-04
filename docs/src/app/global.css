@@ -5,7 +5,6 @@
 @import '../components/mdx/mdx-info.css';
 @import '../components/mdx/mdx-cards.css';
 @import '../components/mdx/reset-code-styles.css';
-@import '../components/mdx/stack-reset.css';
 
 /* Standardize top spacing between docs and API pages */
 /* Target the specific fumadocs layout components */
